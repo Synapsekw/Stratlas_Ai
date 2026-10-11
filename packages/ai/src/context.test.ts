@@ -68,6 +68,44 @@ describe('window context', () => {
   });
 });
 
+describe('severity levels in the context', () => {
+  it('lists every model with its levels by name, lowest first', () => {
+    const ctx = assembleContext(fixtureWorkspace().getState(), 'issues');
+    expect(ctx.severityLevels).toEqual([
+      {
+        model: 'sev',
+        levels: [1, 2, 3, 4, 5].map((value) => ({ value, label: `S${value}` })),
+        uncertain: 'Uncertain',
+      },
+    ]);
+  });
+
+  it('cuts a long criterion to 120 characters and orders levels by value', () => {
+    const ws = fixtureWorkspace();
+    const model = ws.getState().project?.manifest.severityModels[0];
+    if (!model) throw new Error('no model');
+    model.levels = [
+      { value: 3, label: 'High', color: '#aa0000', criteria: 'x'.repeat(300) },
+      { value: 1, label: 'Low', color: '#00aa00', criteria: 'Cosmetic' },
+    ];
+    delete model.uncertain;
+    const models = assembleContext(ws.getState(), 'issues').severityLevels as {
+      levels: { value: number; criteria?: string }[];
+    }[];
+    const levels = models[0]?.levels;
+    expect(levels?.map((l) => l.value)).toEqual([1, 3]);
+    expect(levels?.[0]?.criteria).toBe('Cosmetic');
+    expect(levels?.[1]?.criteria).toHaveLength(120);
+    expect(models[0]).not.toHaveProperty('uncertain');
+  });
+
+  it('is left out with no project open', () => {
+    const ws = fixtureWorkspace();
+    ws.getState().closeProject();
+    expect(assembleContext(ws.getState(), 'map')).not.toHaveProperty('severityLevels');
+  });
+});
+
 describe('binding chip', () => {
   it('reads window, selection and time', () => {
     const ws = fixtureWorkspace();

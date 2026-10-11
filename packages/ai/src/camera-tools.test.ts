@@ -1,11 +1,13 @@
 import { fromWgs84, projectToLocal, toWgs84 } from '@aio/geo';
 import type { Vec3, WindowKind } from '@aio/schema';
 import { describe, expect, it, vi } from 'vitest';
+import { ensureScene, flyToIssue } from './camera-tools';
 import { parseCoordinate, resolveName, scorePlace, type Place } from './places';
 import { runRendererTool, type AppHooks, type RendererToolContext } from './renderer-tools';
 import { spatialContext } from './site';
 import {
   fakeStage,
+  fixtureIssue,
   SITE_NODES,
   SITE_ORIGIN,
   SITE_T0,
@@ -409,6 +411,108 @@ describe('camera tools', () => {
     const c = ctx({ app: { stageView: () => ({ show3d: false, showMap: true }), show3d } });
     await runRendererTool('orbit', { yawDeg: 45 }, c);
     expect(show3d).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('a camera move asked for on another screen', () => {
+  const host = (screen: 'scene' | 'media') => {
+    const openScreen = vi.fn();
+    const app: AppHooks = { screen: () => screen, openScreen };
+    return { app, openScreen };
+  };
+
+  it('fly_to from Media opens Scene first, then flies', async () => {
+    const { app, openScreen } = host('media');
+    const c = ctx({ app });
+    await runRendererTool('fly_to', { target: { kind: 'place', name: 'tank 1' } }, c);
+    expect(openScreen).toHaveBeenCalledTimes(1);
+    expect(openScreen).toHaveBeenCalledWith('scene');
+    expect(near(view(c).target, centreOf('20-T-0001'))).toBe(true);
+  });
+
+  it('every camera move opens Scene, and none does when Scene is showing', async () => {
+    const moves: [string, unknown][] = [
+      ['set_view', { view: 'top' }],
+      ['orbit', { yawDeg: 30 }],
+      ['zoom', { factor: 2 }],
+      ['look_at', { target: { kind: 'place', name: 'jetty' } }],
+      ['frame_all', {}],
+    ];
+    for (const [tool, input] of moves) {
+      const away = host('media');
+      await runRendererTool(tool, input, ctx({ app: away.app }));
+      expect(away.openScreen, tool).toHaveBeenCalledWith('scene');
+      const there = host('scene');
+      await runRendererTool(tool, input, ctx({ app: there.app }));
+      expect(there.openScreen, tool).not.toHaveBeenCalled();
+    }
+  });
+
+  it('waits for the 3D view to mount', async () => {
+    const base = ctx({ app: host('media').app });
+    let asked = 0;
+    const c: RendererToolContext = { ...base, scene: () => (++asked > 2 ? base.stage : null) };
+    await ensureScene(c);
+    expect(asked).toBe(3);
+  });
+
+  it('gives up at the deadline and lets the move go on, by the clock or by the count', async () => {
+    const { app } = host('media');
+    // the clock of the tests stands still: the number of polls ends the wait
+    const frozen = ctx({ stage: false, app });
+    const scene = vi.spyOn(frozen, 'scene');
+    await expect(ensureScene(frozen, 120)).resolves.toBeUndefined();
+    expect(scene.mock.calls.length).toBeLessThanOrEqual(4);
+    // a running clock ends it at the deadline
+    let t = Date.parse('2026-10-05T12:00:00Z');
+    const running = { ...ctx({ stage: false, app }), now: () => new Date((t += 2000)) };
+    const polled = vi.spyOn(running, 'scene');
+    await ensureScene(running);
+    expect(polled.mock.calls.length).toBeLessThanOrEqual(3);
+  });
+
+  it('without a screen hook does not wait at all', async () => {
+    const c = ctx({ stage: false });
+    const scene = vi.spyOn(c, 'scene');
+    await ensureScene(c);
+    expect(scene).not.toHaveBeenCalled();
+  });
+});
+
+describe('flyToIssue', () => {
+  it('frames a finding on the model and says so', async () => {
+    const c = ctx();
+    const issue = c.workspace.getState().issues[0];
+    if (!issue) throw new Error('no issue');
+    const flight = await flyToIssue(c, issue);
+    expect(flight).toMatchObject({ moved: true, view: 'framed' });
+    expect(near(view(c).target, [300, 50, -50])).toBe(true);
+  });
+
+  it('stands where the photo was taken for a finding marked on a photo only', async () => {
+    const c = ctx();
+    const onPhoto = fixtureIssue({
+      id: 'p1',
+      code: 'P01',
+      sightings: [
+        { on: 'image', layer: 'photos', photo: 'DJI_0661', geom: { type: 'point', x: 1, y: 1 } },
+      ],
+    });
+    c.workspace.getState().upsertIssue(onPhoto);
+    expect(await flyToIssue(c, onPhoto)).toMatchObject({ moved: true, view: 'eye' });
+    expect(near(view(c).position, [150, 80, 50])).toBe(true);
+  });
+
+  it('moves nothing for a finding without a position, where fly_to explains', async () => {
+    const c = ctx();
+    const nowhere = fixtureIssue({ id: 'n1', code: 'N01', sightings: [] });
+    c.workspace.getState().upsertIssue(nowhere);
+    const before = view(c);
+    expect(await flyToIssue(c, nowhere)).toEqual({ moved: false, view: null });
+    expect(view(c)).toEqual(before);
+    await expect(
+      runRendererTool('fly_to', { target: { kind: 'issue', id: 'N01' } }, c),
+    ).rejects.toThrow('Issue N01 has no location to fly to.');
   });
 });
 

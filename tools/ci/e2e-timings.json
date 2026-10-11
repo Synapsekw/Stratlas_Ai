@@ -1,6 +1,7 @@
 {
   "e2e/a11y.spec.ts": 75,
   "e2e/agent-camera.spec.ts": 1,
+  "e2e/agent-eval.spec.ts": 1,
   "e2e/agent-local.spec.ts": 24,
   "e2e/agent.spec.ts": 18,
   "e2e/alzour-calibration.spec.ts": 1,

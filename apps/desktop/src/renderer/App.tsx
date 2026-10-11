@@ -63,6 +63,9 @@ import { toasts } from './exports/exports';
 import { evidence, openEvidence, startEvidenceSplit } from './issueCard/evidence';
 import { registerAppChangeProducers } from './change/producers/register';
 import { startCardFocus } from './issueCard/state';
+import { AgentDock, useAgentDockOpen } from './agent/AgentDock';
+import { isDockScreen } from './agent/dockScreens';
+import { startAgentSession } from './agent/session';
 
 /** The Globe (M10 G6) is its own chunk: CesiumJS loads only when the Globe opens. */
 const GlobeScreen = lazy(() => import('./globe/GlobeScreen'));
@@ -80,7 +83,9 @@ function onKeyDown(e: KeyboardEvent) {
     s.setPalette(!s.paletteOpen);
   } else if (id === 'global.rightPanel') {
     e.preventDefault();
-    s.toggleRight();
+    // where the agent is in its own column, the shortcut folds that column
+    if (isDockScreen(s.screen) && workspace.getState().project) s.toggleAgentDock();
+    else s.toggleRight();
   } else if (id === 'global.sidebar') {
     e.preventDefault();
     void s.toggleSidebar();
@@ -221,6 +226,7 @@ export function App() {
   const contrast = useShell((s) => s.settings.contrast);
   const motion = useShell((s) => s.settings.motion);
   const screen = useShell((s) => s.screen);
+  const agentDockOpen = useAgentDockOpen();
   // the date bar follows the open project whichever screen shows
   useTimelineSync();
   // stockpile projects: the volumes own the survey layers, the date bar mirrors them
@@ -292,6 +298,8 @@ export function App() {
       }
     });
     void initAuthor(bridge);
+    // the agent's one conversation: it listens for as long as the app runs, whatever screen shows
+    const stopAgent = startAgentSession();
     window.addEventListener('keydown', onKeyDown);
     // a control that disappears hands focus to its neighbours, else to the screen heading
     const stopFocus = keepFocusAlive(
@@ -363,6 +371,7 @@ export function App() {
       stopIssueReload();
       stopRoad();
       stopRoadMode();
+      stopAgent();
       window.removeEventListener('keydown', onKeyDown);
       stopFocus();
       stopJobAnnounce();
@@ -394,13 +403,19 @@ export function App() {
   }, [theme, direction, contrast, motion]);
 
   return (
-    <div className="app" data-sb={collapsed ? 'collapsed' : 'expanded'} data-screen={screen}>
+    <div
+      className="app"
+      data-sb={collapsed ? 'collapsed' : 'expanded'}
+      data-screen={screen}
+      data-agent-dock={agentDockOpen ? 'open' : undefined}
+    >
       <AnnotateStyles />
       <VolumetricStyles />
       <TitleBar />
       <Sidebar />
       <main className="main">
         <Screen />
+        <AgentDock />
       </main>
       <Palette />
       <ProcessingDrawer />

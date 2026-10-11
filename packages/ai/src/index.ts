@@ -35,9 +35,16 @@ export {
   runRendererTool,
   ToolError,
   type AppHooks,
+  type AppScreen,
+  type IssueViewFilter,
+  type PhotoViewFilter,
+  type PhotoViewResult,
   type RendererToolContext,
   type RendererToolRun,
+  type SeverityLevel,
   type ToolRunResult,
+  type ViewFilters,
+  type ViewScope,
 } from './renderer-tools';
 export {
   addProviderUsage,
@@ -79,4 +86,16 @@ export {
   type PlaceKind,
   type PlaceSource,
 } from './places';
-export { SUGGESTIONS } from './suggestions';
+export { SUGGESTIONS, suggestionsFor, type SuggestionFacts } from './suggestions';
+export { viewContext } from './view-context';
+export {
+  assetIndex,
+  clearAssetCache,
+  describeIssue,
+  issuesOn,
+  severityLabel,
+  type AssetIndex,
+  type AssetLink,
+  type IssueDetail,
+} from './asset-index';
+export { compareCodes } from './tool-kit';

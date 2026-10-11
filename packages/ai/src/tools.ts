@@ -8,6 +8,7 @@ import { z } from 'zod';
 import { CHANGE_TOOL_SPECS } from './change-tool-specs';
 import { COLLAB_TOOL_SPECS } from './collab-tool-specs';
 import { MODELLING_TOOL_SPECS } from './modelling-tools';
+import { SHOW_TOOL_SPECS } from './show-tool-specs';
 
 export interface ToolSpec {
   meta: ToolMeta;
@@ -221,6 +222,15 @@ export const toolInputs = {
       classId: z.string().min(1).optional(),
       source: z.enum(['human', 'agent', 'import']).optional(),
       text: z.string().min(1).optional().describe('Matches code, title or note'),
+      where: z
+        .string()
+        .min(1)
+        .max(120)
+        .optional()
+        .describe(
+          'Only the findings on this asset or in this area; "selection": the selected asset',
+        ),
+      sort: z.enum(['severity', 'code']).optional().describe('severity lists the worst first'),
       limit: z.number().int().positive().max(200).default(50),
     })
     .strict(),
@@ -447,7 +457,7 @@ const BUILT_IN: ToolSpec[] = [
   }),
   spec('summarize_issues', {
     description:
-      'Counts of issues by severity, status and class, plus the most severe ones, for writing a summary.',
+      'Counts of issues by severity, status and class, plus the most severe open ones (the closed ones when status is closed), for writing a summary.',
     scope: 'project',
     risk: 'read',
   }),
@@ -501,6 +511,7 @@ const BUILT_IN: ToolSpec[] = [
   }),
   ...CHANGE_TOOL_SPECS,
   ...COLLAB_TOOL_SPECS,
+  ...SHOW_TOOL_SPECS,
 ];
 
 const extra = new Map<string, ToolSpec>();
@@ -559,6 +570,11 @@ export const COMPACT_TOOLS: Readonly<Record<string, string>> = {
   fit_primitives: 'Fit tanks, boxes and pipes to a point cloud.',
   edit_model_part: 'Change one part of a model.',
   build_model: 'Build the 3D model from its parts.',
+  // the show tools
+  show_issue:
+    'Show a finding: select it, fly to it, open its photo. No issue given: the most severe.',
+  show_photos: 'Open Media filtered by severity, asset or finding.',
+  show_issues: 'Open Issues filtered and sorted.',
 };
 
 /** Tools offered to the agent bound to a window, in the full or the compact profile. */

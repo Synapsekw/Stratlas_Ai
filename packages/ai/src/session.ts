@@ -30,6 +30,7 @@ import { addProviderUsage, type ProviderUsageRow, type UsageTotals } from './pri
 import { runRendererTool, ToolError, type RendererToolContext } from './renderer-tools';
 import type { ModelRoute } from './routes';
 import { spatialContext } from './site';
+import { viewContext } from './view-context';
 import { undoable } from './tools';
 
 export type { StepStatus };
@@ -258,6 +259,7 @@ export class AgentSession {
     const context = {
       ...assembleContext(ctx.workspace.getState(), this.window),
       ...spatialContext(ctx, this.window),
+      ...viewContext(ctx),
     };
     let image: string | undefined;
     if (opts.attachFrame) image = (await ctx.captureFrame(this.window)) ?? undefined;

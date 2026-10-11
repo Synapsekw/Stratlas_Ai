@@ -225,7 +225,7 @@ describe('shell store', () => {
     expect(s.getState().rightCollapsed).toBe(false);
     s.getState().toggleRight();
     expect(s.getState().rightCollapsed).toBe(true);
-    expect(data['quadrion.panels']).toBe('{"rightCollapsed":true}');
+    expect(data['quadrion.panels']).toBe('{"rightCollapsed":true,"agentDockCollapsed":true}');
     // the choice belongs to this workstation: it is not a setting
     expect(calls).toEqual([]);
     // the next start of the app begins folded
@@ -233,7 +233,73 @@ describe('shell store', () => {
     expect(again.getState().rightCollapsed).toBe(true);
     again.getState().toggleRight();
     expect(again.getState().rightCollapsed).toBe(false);
-    expect(data['quadrion.panels']).toBe('{"rightCollapsed":false}');
+    expect(data['quadrion.panels']).toBe('{"rightCollapsed":false,"agentDockCollapsed":true}');
+  });
+
+  it('keeps the agent column folded until asked for, and remembers that it was opened', () => {
+    const data: Record<string, string> = {};
+    const storage = {
+      getItem: (k: string) => data[k] ?? null,
+      setItem: (k: string, v: string) => {
+        data[k] = v;
+      },
+    };
+    const { bridge, calls } = fakeBridge({});
+    const s = createShellStore(bridge, createWorkspace(), { storage });
+    expect(s.getState().agentDockCollapsed).toBe(true);
+    s.getState().toggleAgentDock();
+    expect(s.getState().agentDockCollapsed).toBe(false);
+    expect(data['quadrion.panels']).toBe('{"rightCollapsed":false,"agentDockCollapsed":false}');
+    expect(calls).toEqual([]);
+    // the next start of the app begins with the column open
+    const again = createShellStore(bridge, createWorkspace(), { storage });
+    expect(again.getState().agentDockCollapsed).toBe(false);
+    again.getState().toggleAgentDock();
+    expect(again.getState().agentDockCollapsed).toBe(true);
+    expect(data['quadrion.panels']).toBe('{"rightCollapsed":false,"agentDockCollapsed":true}');
+  });
+
+  it('remembers each of the two panels when the other one changes', () => {
+    const data: Record<string, string> = {};
+    const storage = {
+      getItem: (k: string) => data[k] ?? null,
+      setItem: (k: string, v: string) => {
+        data[k] = v;
+      },
+    };
+    const s = createShellStore(fakeBridge({}).bridge, createWorkspace(), { storage });
+    s.getState().setAgentDock(false);
+    s.getState().setRight(true);
+    expect(data['quadrion.panels']).toBe('{"rightCollapsed":true,"agentDockCollapsed":false}');
+    s.getState().setAgentDock(true);
+    expect(data['quadrion.panels']).toBe('{"rightCollapsed":true,"agentDockCollapsed":true}');
+    const again = createShellStore(fakeBridge({}).bridge, createWorkspace(), { storage });
+    expect(again.getState()).toMatchObject({ rightCollapsed: true, agentDockCollapsed: true });
+  });
+
+  it('leaves an agent column alone that is already as asked', () => {
+    const writes: string[] = [];
+    const storage = {
+      getItem: () => '{"rightCollapsed":true}',
+      setItem: (_k: string, v: string) => {
+        writes.push(v);
+      },
+    };
+    const s = createShellStore(fakeBridge({}).bridge, createWorkspace(), { storage });
+    // a value stored before the column existed: the right panel as stored, the column folded
+    expect(s.getState()).toMatchObject({ rightCollapsed: true, agentDockCollapsed: true });
+    s.getState().setAgentDock(true);
+    expect(writes).toEqual([]);
+    s.getState().setAgentDock(false);
+    s.getState().setAgentDock(false);
+    expect(writes).toEqual(['{"rightCollapsed":true,"agentDockCollapsed":false}']);
+  });
+
+  it('folds the agent column without storage (blocked, or none)', () => {
+    const s = createShellStore(fakeBridge({}).bridge, createWorkspace(), { storage: null });
+    expect(s.getState().agentDockCollapsed).toBe(true);
+    s.getState().toggleAgentDock();
+    expect(s.getState().agentDockCollapsed).toBe(false);
   });
 
   it('unfolds the right panel for an action that needs it and leaves a shown one alone', () => {
@@ -250,7 +316,7 @@ describe('shell store', () => {
     expect(s.getState().rightCollapsed).toBe(false);
     s.getState().setRight(false);
     expect(s.getState().rightCollapsed).toBe(false);
-    expect(writes).toEqual(['{"rightCollapsed":false}']);
+    expect(writes).toEqual(['{"rightCollapsed":false,"agentDockCollapsed":true}']);
   });
 
   it('folds the right panel without storage (blocked, or none)', () => {

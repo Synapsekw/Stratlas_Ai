@@ -2,16 +2,20 @@
  * Which side panels are folded away, remembered on this machine.
  *
  * The left sidebar's state is the `sidebarCollapsed` setting (settings.json). The right panel's
- * state lives here, in the window's local storage, because settings.json keeps the key set older
- * builds read (docs/release/UPGRADE-POLICY.md, "Settings and downgrade"): like the stage layout
- * and the timeline choice, it is a layout preference of this workstation, not a setting.
+ * state and the agent column's live here, in the window's local storage, because settings.json
+ * keeps the key set older builds read (docs/release/UPGRADE-POLICY.md, "Settings and downgrade"):
+ * like the stage layout and the timeline choice, they are layout preferences of this workstation,
+ * not settings.
  */
 export interface PanelPrefs {
   /** The right panel of the Scene (selection, issues, agent) is folded away. */
   rightCollapsed: boolean;
+  /** The agent column of Issues, Media, Detections and Reports is folded away. */
+  agentDockCollapsed: boolean;
 }
 
-export const DEFAULT_PANEL_PREFS: PanelPrefs = { rightCollapsed: false };
+/** The Scene's panel is shown; the agent column takes room from a screen only once asked for. */
+export const DEFAULT_PANEL_PREFS: PanelPrefs = { rightCollapsed: false, agentDockCollapsed: true };
 
 export const PANEL_PREFS_KEY = 'quadrion.panels';
 
@@ -26,14 +30,20 @@ export function browserStorage(): PanelStorage | null {
   }
 }
 
-/** Anything that is not a stored choice falls back to its default: both panels shown. */
+/**
+ * Anything that is not a stored choice falls back to its default, field by field: a value stored
+ * before the agent column existed keeps its right panel choice.
+ */
 export function parsePanelPrefs(raw: string | null | undefined): PanelPrefs {
   if (!raw) return DEFAULT_PANEL_PREFS;
   try {
     const v = JSON.parse(raw) as unknown;
     if (!v || typeof v !== 'object') return DEFAULT_PANEL_PREFS;
-    const right = (v as Record<string, unknown>).rightCollapsed;
-    return { rightCollapsed: typeof right === 'boolean' ? right : false };
+    const { rightCollapsed: right, agentDockCollapsed: dock } = v as Record<string, unknown>;
+    return {
+      rightCollapsed: typeof right === 'boolean' ? right : DEFAULT_PANEL_PREFS.rightCollapsed,
+      agentDockCollapsed: typeof dock === 'boolean' ? dock : DEFAULT_PANEL_PREFS.agentDockCollapsed,
+    };
   } catch {
     return DEFAULT_PANEL_PREFS;
   }

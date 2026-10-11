@@ -62,7 +62,8 @@ To open only the card, switch off **Open evidence in split** on the card.
 
 Click **Issues** in the sidebar.
 
-- Filter by severity, **Search code, title, note**, class, status and dataset.
+- Filter by severity, **Search code, title, note**, class, status and dataset. The filters stay as you set them while the project is open, on this screen and in the issue list of the **Scene** panel alike, and reset when you open another project.
+- When the agent opens the register on one asset or area, a chip above the list names it. Click the **x** on the chip to clear it. See [Show me](07-ai-agent.md#show-me).
 - Sort by **Code**, **Severity**, **Status**, **Last change** or **Class**; group by severity, class, zone or status.
 - Tick several rows for **Set status**, **Set class** or **Merge**.
 - Up and Down (or **J** and **K**) move through the list; **Enter** opens the issue. **Ctrl Z** undoes, **Ctrl Y** redoes.
@@ -77,6 +78,9 @@ Click **Issues** in the sidebar.
 - A photo with findings has a count badge in its worst severity colour, a tinted border and the boxes drawn on the thumbnail. The bar reads, for example, "12 photos with findings".
 - **Only with findings** hides the other photos.
 - **Order**: **As captured**, **Worst first** or **Most findings first**.
+- **Severity**: **Any**, or one level of the project's severity models, worst first (and **Uncertain** when a model has it). A project with several severity models lists the levels of all of them, each value once. Only the photos with a finding of that level stay. When none match, the list reads "No photos match this filter."
+- A chip above the photos, for example `On Tank T-101`, shows a filter the agent set on an asset, an area or one finding. Click its **x** to clear it. See [Show me](07-ai-agent.md#show-me).
+- The filters stay while the app runs. The level and the chip clear when you open another project.
 - Click a photo to open it beside the list; mark issues on it as above.
 
 ## Severity models

@@ -38,6 +38,32 @@ function countBy<T>(items: readonly T[], key: (t: T) => string): Record<string, 
   return out;
 }
 
+const MAX_CRITERIA = 120;
+
+export interface SeverityLevelsOfModel {
+  model: string;
+  levels: { value: number; label: string; criteria?: string }[];
+  uncertain?: string;
+}
+
+/**
+ * The names of the project's severity levels, so the agent says "S4" and maps "the worst" to a
+ * level that exists. Text only; a long criterion is cut so the context stays small.
+ */
+function severityLevels(state: WorkspaceState): SeverityLevelsOfModel[] {
+  return (state.project?.manifest.severityModels ?? []).map((m) => ({
+    model: m.id,
+    levels: [...m.levels]
+      .sort((a, b) => a.value - b.value)
+      .map((l) => ({
+        value: l.value,
+        label: l.label,
+        ...(l.criteria ? { criteria: l.criteria.slice(0, MAX_CRITERIA) } : {}),
+      })),
+    ...(m.uncertain ? { uncertain: m.uncertain.label } : {}),
+  }));
+}
+
 export function assembleContext(
   state: WorkspaceState,
   window: WindowKind,
@@ -92,6 +118,7 @@ export function assembleContext(
       issuesByStatus: countBy(state.issues, (i) => i.status),
       openIssuesBySeverity: countBy(open, (i) => String(i.severity)),
     },
+    severityLevels: severityLevels(state),
   };
 }
 

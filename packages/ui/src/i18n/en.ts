@@ -631,6 +631,10 @@ export const en = {
   'agent.fix.testing': 'Testing',
   'agent.fix.openSettings': 'Open AI settings',
   'agent.fix.dismiss': 'Dismiss',
+  // The agent column of Issues, Media, Detections and Reports, and its title bar button
+  'agent.dock.name': 'Agent',
+  'agent.dock.label': 'Agent',
+  'agent.dock.tip': 'Show or hide the agent',
   'settings.privacy.text':
     '{product} works fully offline. Cloud AI is opt-in, and every action that sends data or changes the project asks you first.',
   'settings.data.text': 'Where projects and offline map packs live on this workstation.',
@@ -1594,6 +1598,10 @@ export const en = {
   'media.findings.tile_other': '{count} findings, worst {severity}',
   'media.findings.tileUngraded_one': '{count} finding',
   'media.findings.tileUngraded_other': '{count} findings',
+  'media.findings.severity': 'Severity',
+  'media.findings.severity.any': 'Any',
+  'media.findings.severity.uncertain': 'Uncertain',
+  'view.scope.clear': 'Clear the filter {label}',
   'media.photoLimit': 'Showing the first {limit} of {total}. Use {keys} to find a photo by name.',
   // User guide (F1): help panel and the "?" links
   'help.title': 'User guide',

@@ -376,7 +376,7 @@ export const boxCentre = (b: PlaceBox): Vec3 => [
   (b.min[2] + b.max[2]) / 2,
 ];
 
-function boxOfPoints(points: readonly Vec3[]): PlaceBox | undefined {
+export function boxOfPoints(points: readonly Vec3[]): PlaceBox | undefined {
   if (points.length === 0) return undefined;
   const min: Vec3 = [Infinity, Infinity, Infinity];
   const max: Vec3 = [-Infinity, -Infinity, -Infinity];

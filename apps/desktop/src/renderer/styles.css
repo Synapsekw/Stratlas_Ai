@@ -1121,6 +1121,42 @@ button.chip-status:hover {
   color: var(--fg-2);
   font: 400 10.5px/1 var(--f-mono);
 }
+/* A filter the person can clear: the label and an x (Media, the issue register). It reads as set,
+   like a pressed toggle in the same row. */
+.scope-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  max-width: 100%;
+  height: 24px;
+  padding: 0 4px 0 8px;
+  border: 1px solid var(--acc-a40);
+  border-radius: var(--r-4);
+  background: var(--acc-a20);
+  color: var(--acc-strong);
+  font-size: var(--t-12);
+  white-space: nowrap;
+}
+.scope-chip > button {
+  display: inline-grid;
+  place-items: center;
+  flex: none;
+  width: 16px;
+  height: 16px;
+  padding: 0;
+  border: 0;
+  border-radius: var(--r-4);
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+}
+.scope-chip > button:hover {
+  background: var(--acc-a40);
+}
+.scope-chip > button:focus-visible {
+  outline: 2px solid var(--acc);
+  outline-offset: 1px;
+}
 .no-match {
   padding: 24px 0;
 }
@@ -2291,6 +2327,78 @@ svg.flip {
   min-height: 0;
 }
 
+/* ---------- the agent column (agent/AgentDock.tsx) and its title bar chip ----------
+   On Issues, Media, Detections and Reports the agent sits in a column on the right edge of the
+   main area, the Scene's right panel in look. Unfolded, the screen beside it gives it the room;
+   folded, it takes none. It opens and closes at once, so there is no motion to still. */
+.app {
+  --agent-dock-w: min(360px, 33vw);
+}
+.app[data-agent-dock='open'] .main > .screen {
+  inset-inline-end: var(--agent-dock-w);
+}
+.agent-dock {
+  position: absolute;
+  inset-block: 0;
+  inset-inline-end: 0;
+  width: var(--agent-dock-w);
+  background: var(--bg-1);
+  border-inline-start: 1px solid var(--line-soft);
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  overflow: hidden;
+}
+.agent-dock[aria-hidden='true'] {
+  display: none;
+}
+/* In a small window the open column leaves a screen little room: the screen's fixed side columns
+   give way in proportion, so nothing is pushed under the column. With room they are as wide as
+   they always are. */
+.app[data-agent-dock='open'] .issues-screen {
+  grid-template-columns: minmax(0, 1fr) min(420px, 55%);
+}
+.app[data-agent-dock='open'] .media.with-viewer {
+  grid-template-columns: minmax(0, 1fr) minmax(min(380px, 60%), 46%);
+}
+.app[data-agent-dock='open'] .det-body {
+  grid-template-columns: minmax(min(260px, 34%), 34%) minmax(0, 1fr) min(300px, 36%);
+}
+/* the Reports side column holds controls built for its width (four figures in a row, two columns
+   of sections): it keeps it, and the preview beside it gives way, as it does in any window */
+.app[data-agent-dock='open'] .screen.reports {
+  grid-template-columns: min(320px, 65%) minmax(0, 1fr);
+}
+/* the Agent chip (agent/AgentToggle.tsx): the Processing chip's neighbour, lit while the column
+   is open, as the connection chip is while its menu is */
+.agent-toggle {
+  app-region: no-drag;
+  cursor: pointer;
+}
+.agent-toggle[aria-expanded='true'] {
+  border-color: var(--line-strong);
+  background: var(--bg-2);
+  color: var(--fg-0);
+}
+@media (max-width: 1280px) {
+  .agent-toggle {
+    gap: 5px;
+    padding: 0 6px;
+  }
+}
+/* narrower than 1280 px: the icon alone, so the breadcrumbs keep the name of the screen. The
+   label stays in the button for its accessible name, drawn in no room (as .sr-only is). */
+@media (max-width: 1279px) {
+  .agent-toggle > .lbl {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
+}
+
 /* ---------- issues ---------- */
 .issues-screen {
   grid-template-columns: minmax(0, 1fr) 420px;
@@ -2349,7 +2457,7 @@ svg.flip {
   gap: 8px;
 }
 .m-grid.wide {
-  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(min(220px, 100%), 1fr));
   gap: 12px;
 }
 .m-card {
@@ -2367,6 +2475,11 @@ svg.flip {
 }
 .m-card.on {
   border-color: var(--acc);
+}
+/* a photo brought into view (the selected one, the first the agent's filter shows) keeps clear of
+   the edge of the list */
+.m-card.sq {
+  scroll-margin-block: 12px;
 }
 .m-thumb {
   aspect-ratio: 16 / 9;
@@ -2451,12 +2564,14 @@ svg.flip {
 .m-play:focus-visible {
   opacity: 1;
 }
+/* A card is never wider than the list: beside the viewer and the agent column in a small window
+   the list is narrower than one card's usual width, and must not scroll sideways for it. */
 .m-grid.flights {
-  grid-template-columns: repeat(auto-fill, minmax(184px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(min(184px, 100%), 1fr));
   gap: 10px;
 }
 .m-grid.clips {
-  grid-template-columns: repeat(auto-fill, minmax(168px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(min(168px, 100%), 1fr));
 }
 .media-viewer {
   display: flex;

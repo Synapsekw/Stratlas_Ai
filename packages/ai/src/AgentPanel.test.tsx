@@ -1,9 +1,16 @@
 // @vitest-environment jsdom
-import type { AioBridge, IpcChannel, IpcEvent, IpcRequest, IpcResponse } from '@aio/schema';
+import type {
+  AioBridge,
+  IpcChannel,
+  IpcEvent,
+  IpcRequest,
+  IpcResponse,
+  WindowKind,
+} from '@aio/schema';
 import { workspace } from '@aio/workspace';
 import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   AgentPanel,
   describeStep,
@@ -11,7 +18,9 @@ import {
   type AgentPanelProps,
 } from './AgentPanel';
 import { OFFLINE_ONLY_MESSAGE } from './errors';
-import { fixtureManifest } from './test-fixtures';
+import { defaultToolContext } from './renderer-tools';
+import { AgentSession } from './session';
+import { fixtureIssue, fixtureManifest } from './test-fixtures';
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -42,10 +51,12 @@ async function render(bridge: AioBridge | null, props: Partial<AgentPanelProps> 
 
 function bridge(cloudAi: boolean, alwaysAllow = true) {
   const sent: IpcRequest<'ai:send'>[] = [];
+  const cancelled: IpcRequest<'ai:cancel'>[] = [];
   let listener: ((e: IpcEvent<'ai:event'>) => void) | null = null;
   const b: AioBridge = {
     invoke: <C extends IpcChannel>(channel: C, req: IpcRequest<C>) => {
       if (channel === 'ai:send') sent.push(req as IpcRequest<'ai:send'>);
+      if (channel === 'ai:cancel') cancelled.push(req as IpcRequest<'ai:cancel'>);
       const route = { task: 'chat', provider: 'anthropic', model: 'claude-sonnet-5-5' };
       const answer: Partial<Record<IpcChannel, unknown>> = {
         'ai:status': cloudAi
@@ -82,7 +93,31 @@ function bridge(cloudAi: boolean, alwaysAllow = true) {
       };
     },
   };
-  return { b, sent, emit: (e: IpcEvent<'ai:event'>) => listener?.(e) };
+  return { b, sent, cancelled, emit: (e: IpcEvent<'ai:event'>) => listener?.(e) };
+}
+
+/** A session the app owns, connected and holding one question. */
+async function ownedSession(bridge: AioBridge, win: WindowKind = 'scene3d') {
+  const session = new AgentSession({
+    bridge,
+    window: win,
+    toolContext: () => defaultToolContext(win),
+  });
+  session.connect();
+  await session.refresh();
+  await session.send('Which clips are open?');
+  return session;
+}
+
+/** Mount the panel on the host from `render`, after it was unmounted. */
+async function remount(props: Partial<AgentPanelProps>) {
+  if (!host) throw new Error('render the panel first');
+  root = createRoot(host);
+  await act(async () => {
+    root?.render(<AgentPanel window="scene3d" {...props} />);
+    await Promise.resolve();
+  });
+  await act(() => new Promise((r) => setTimeout(r, 0)));
 }
 
 describe('AgentPanel', () => {
@@ -139,14 +174,22 @@ describe('AgentPanel', () => {
     expect(el.querySelector('textarea')?.disabled).toBe(false);
   });
 
-  it('shows the binding chip and three suggestions, and sends one', async () => {
-    workspace.getState().openProject({ id: 'p1', root: 'E:/x', manifest: fixtureManifest() }, []);
+  it('shows the binding chip and the suggestions the project can answer, and sends one', async () => {
+    workspace
+      .getState()
+      .openProject({ id: 'p1', root: 'E:/x', manifest: fixtureManifest() }, [fixtureIssue()]);
     workspace.getState().select({ kind: 'asset', id: '20-T-0002' });
     const t = bridge(true);
     const el = await render(t.b);
     expect(el.querySelector('.ag-bind')?.textContent).toBe('3D view, 20-T-0002, 15:11:00');
     const suggestions = el.querySelectorAll<HTMLButtonElement>('.ag-sug');
-    expect(suggestions).toHaveLength(3);
+    // no photos in this project, so the photo request is left out
+    expect([...suggestions].map((b) => b.textContent)).toEqual([
+      'Take me to the most severe finding',
+      'Which asset has the most findings?',
+      'Which clips fly within 40 m of the selected asset?',
+      'Fly to the most severe open issue',
+    ]);
     await act(async () => {
       suggestions[0]?.click();
       await new Promise((r) => setTimeout(r, 0));
@@ -167,6 +210,17 @@ describe('AgentPanel', () => {
     expect(el.textContent).toContain('Two clips.');
     expect(el.textContent).toContain('12.4k tok · $0.04');
     expect(el.textContent).toContain('Claude Sonnet 5.5');
+  });
+
+  it('invites a question about the window in words that fit it', async () => {
+    workspace
+      .getState()
+      .openProject({ id: 'p1', root: 'E:/x', manifest: fixtureManifest() }, [fixtureIssue()]);
+    // the agent column of Media is bound to the photos, that of Issues to the issues
+    const el = await render(bridge(true).b, { window: 'photo' });
+    expect(el.querySelector('.ag-empty p')?.textContent).toBe(
+      'Ask about these photos or tell the agent what to do.',
+    );
   });
 });
 
@@ -227,6 +281,122 @@ describe('AgentPanel send preview', () => {
     });
     expect(t.sent).toHaveLength(1);
     expect(el.querySelector('[role="dialog"]')).toBeNull();
+  });
+});
+
+describe('AgentPanel with a session the app owns', () => {
+  it('shows the conversation the session already holds, without resetting it', async () => {
+    workspace.getState().openProject({ id: 'p1', root: 'E:/x', manifest: fixtureManifest() }, []);
+    const t = bridge(true);
+    const session = await ownedSession(t.b);
+    const el = await render(t.b, { session });
+    expect(el.textContent).toContain('Which clips are open?');
+    expect(session.getState().turns).toHaveLength(2);
+  });
+
+  it('keeps the conversation when the panel is unmounted and mounted again', async () => {
+    workspace.getState().openProject({ id: 'p1', root: 'E:/x', manifest: fixtureManifest() }, []);
+    const t = bridge(true);
+    const session = await ownedSession(t.b);
+    const el = await render(t.b, { session });
+    act(() => {
+      root?.unmount();
+    });
+    expect(el.textContent).toBe('');
+    await remount({ session });
+    expect(el.textContent).toContain('Which clips are open?');
+  });
+
+  it('does not stop a running reply when the panel goes away', async () => {
+    workspace.getState().openProject({ id: 'p1', root: 'E:/x', manifest: fixtureManifest() }, []);
+    const t = bridge(true);
+    const session = await ownedSession(t.b);
+    expect(session.getState().busy).toBe(true);
+    await render(t.b, { session });
+    act(() => {
+      root?.unmount();
+    });
+    expect(t.cancelled).toHaveLength(0);
+    expect(session.getState().busy).toBe(true);
+  });
+
+  it('keeps the conversation when the project changes: the owner resets it', async () => {
+    workspace.getState().openProject({ id: 'p1', root: 'E:/x', manifest: fixtureManifest() }, []);
+    const t = bridge(true);
+    const session = await ownedSession(t.b);
+    const el = await render(t.b, { session });
+    await act(async () => {
+      workspace.getState().openProject({ id: 'p2', root: 'E:/y', manifest: fixtureManifest() }, []);
+      await Promise.resolve();
+    });
+    expect(el.textContent).toContain('Which clips are open?');
+  });
+
+  it('still tells the session its window and checks the route on a settings change', async () => {
+    let current = bridge(false).b;
+    const b: AioBridge = {
+      invoke: (channel, req) => current.invoke(channel, req),
+      on: (event, listener) => current.on(event, listener),
+    };
+    const session = new AgentSession({
+      bridge: b,
+      window: 'scene3d',
+      toolContext: () => defaultToolContext('scene3d'),
+    });
+    const setWindow = vi.spyOn(session, 'setWindow');
+    const el = await render(b, { session, settingsKey: 'off' });
+    expect(setWindow).toHaveBeenCalledWith('scene3d');
+    expect(el.textContent).toContain('Cloud AI is off');
+    // cloud AI turned on from the palette: a new settings key, the shown session checks again
+    current = bridge(true).b;
+    await act(async () => {
+      root?.render(<AgentPanel window="photo" session={session} settingsKey="on" />);
+      await Promise.resolve();
+    });
+    await act(() => new Promise((r) => setTimeout(r, 0)));
+    expect(setWindow).toHaveBeenLastCalledWith('photo');
+    expect(el.textContent).not.toContain('Cloud AI is off');
+    expect(el.querySelector('textarea')?.disabled).toBe(false);
+  });
+
+  it('says why the agent is off under a conversation it kept', async () => {
+    workspace.getState().openProject({ id: 'p1', root: 'E:/x', manifest: fixtureManifest() }, []);
+    let current = bridge(true).b;
+    const b: AioBridge = {
+      invoke: (channel, req) => current.invoke(channel, req),
+      on: (event, listener) => current.on(event, listener),
+    };
+    const session = await ownedSession(b);
+    const el = await render(b, { session });
+    expect(el.querySelector('.ag-off')).toBeNull();
+    // cloud AI is switched off past the panel, and the person comes back from another screen: the
+    // conversation is still there, so the reason has to be said beside it, not instead of it
+    current = bridge(false).b;
+    act(() => {
+      root?.unmount();
+    });
+    await remount({ session });
+    expect(el.textContent).toContain('Which clips are open?');
+    expect(el.querySelector('.ag-off')?.textContent).toContain('Cloud AI is off');
+    expect(el.querySelector('textarea')?.disabled).toBe(true);
+  });
+
+  it('without the prop each mount gets a fresh conversation', async () => {
+    workspace.getState().openProject({ id: 'p1', root: 'E:/x', manifest: fixtureManifest() }, []);
+    const t = bridge(true);
+    const el = await render(t.b);
+    await act(async () => {
+      el.querySelector<HTMLButtonElement>('.ag-sug')?.click();
+      await new Promise((r) => setTimeout(r, 0));
+    });
+    expect(el.querySelectorAll('.ag-msg.user')).toHaveLength(1);
+    act(() => {
+      root?.unmount();
+    });
+    await remount({});
+    expect(el.querySelectorAll('.ag-msg.user')).toHaveLength(0);
+    // and unmounting a busy panel it owns still cancels the run
+    expect(t.cancelled).toHaveLength(1);
   });
 });
 

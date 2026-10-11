@@ -1,5 +1,11 @@
-import { registerAppHooks, registerFrameSource, ToolError } from '@aio/ai';
-import { registerIssueHistory, setFlightPoses } from '@aio/annotate';
+import {
+  assetIndex,
+  defaultToolContext,
+  registerAppHooks,
+  registerFrameSource,
+  ToolError,
+} from '@aio/ai';
+import { issueView, registerIssueHistory, setFlightPoses } from '@aio/annotate';
 import {
   configureEngine,
   getActiveStage,
@@ -12,11 +18,15 @@ import { t } from '@aio/ui';
 import { loadFlight, registerVideoAdapters, videoRig } from '@aio/video';
 import { volumetric } from '@aio/volumetric';
 import { assetUrl, workspace, type OpenProject } from '@aio/workspace';
+import { startAssetWarm } from './agent/assetWarm';
+import { registerAgentHooks } from './agent/hooks';
 import { registerAgentPlaces } from './agentPlaces';
 import { IssueHistoryPanel } from './audit/HistoryPanel';
 import { graphics } from './graphics';
+import { evidence } from './issueCard/evidence';
 import { graphicsReport, memoryWatch } from './memoryWatch';
 import { requestGlobe } from './globe/request';
+import { mediaView } from './screens/mediaView';
 import { bridge, shell } from './shell';
 import { COMPARE_GPU_BYTES, compareRuntime } from './workspace/compare';
 import { registerCorrectedPhotos } from './builder/photoPoses';
@@ -91,6 +101,10 @@ export function bootstrap(): void {
       shell.getState().go('globe');
     },
   });
+  // The agent opens screens, sets the Media and Issues filters and puts the view back on undo;
+  // the bounds of the tagged assets are measured as soon as the model has loaded.
+  registerAgentHooks();
+  startAssetWarm();
   // Stockpiles and road chainages for find_places and fly_to.
   registerAgentPlaces();
   // The issue detail's History reads the project journal (M9).
@@ -116,6 +130,26 @@ export function bootstrap(): void {
         models: meshTemplates.stats(),
         gpuLimit: COMPARE_GPU_BYTES[graphics().getState().tier],
       }),
+      /** The screen, the Media and Issues filters and the evidence beside the 3D view (agent tests). */
+      shell,
+      mediaView,
+      issueView,
+      evidence,
+      /**
+       * The bounds of the tagged assets remembered for the open project: the status of the asset
+       * index and how many assets have their box; null without a project (agent tests: the
+       * warm-up of assetWarm.ts has measured). It is the index the warm-up asks for, read without
+       * the 3D view: this measures nothing itself, so it reports what the warm-up or a tool of
+       * the agent has remembered, and asking does not do their work for them.
+       */
+      assetBounds: () => {
+        try {
+          const index = assetIndex({ ...defaultToolContext('scene3d'), scene: () => null });
+          return { status: index.status, boxes: index.boxes.length };
+        } catch {
+          return null;
+        }
+      },
     },
   });
   shareFlightPoses(workspace.getState().project);

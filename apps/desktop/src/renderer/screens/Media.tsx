@@ -22,13 +22,21 @@ import { photoSize } from '../thumbs/photoSize';
 import { MediaThumb } from '../thumbs/Thumb';
 import {
   findingsIndex,
-  orderPhotos,
   photoKey,
   shapesInPhoto,
   type PhotoFindings,
   type PhotoOrder,
 } from './mediaFindings';
 import { flightCards, flightOf, type FlightCard } from './mediaModel';
+import {
+  noPhotoMatches,
+  photosInView,
+  setMediaView,
+  severityOptions,
+  takeMediaReveal,
+  useMediaRevealAsked,
+  useMediaView,
+} from './mediaView';
 import { NoProject } from './NoProject';
 
 const PHOTO_LIMIT = 600;
@@ -182,21 +190,27 @@ function usePhotoFindings(projectId: string | null): ReadonlyMap<string, PhotoFi
   );
 }
 
-/** The filter and order stay while the app runs. */
-let rememberedOnly = false;
-let rememberedOrder: PhotoOrder = 'file';
-
 export function MediaScreen() {
   const t = useT();
   const project = useWorkspace((s) => s.project);
   const activeClip = useWorkspace((s) => s.activeClip);
   const selection = useWorkspace((s) => s.selection);
   const findings = usePhotoFindings(project?.id ?? null);
-  const [onlyFindings, setOnlyFindings] = useState(rememberedOnly);
-  const [order, setOrder] = useState<PhotoOrder>(rememberedOrder);
+  const view = useMediaView((s) => s);
+  const { onlyFindings, order, severity, scope } = view;
   const { durations } = useMedia(project);
   const layers = useMemo(() => project?.manifest.layers ?? [], [project]);
   const flights = useMemo(() => flightCards(layers, durations), [layers, durations]);
+  const photoSets = useMemo(
+    () => layers.filter((l): l is Extract<Layer, { kind: 'photos' }> => l.kind === 'photos'),
+    [layers],
+  );
+  // a second filter and sort of every photo set: done when the sets, the findings or the view
+  // change, not on every render (each selection, each clip duration that is read)
+  const noMatch = useMemo(
+    () => noPhotoMatches(photoSets, findings, view),
+    [photoSets, findings, view],
+  );
   const [openFlight, setOpenFlight] = useState<string | null>(null);
   const shownFlight = flights.find((f) => f.id === openFlight) ?? flightOf(flights, activeClip);
   // The photo viewer follows the selection: a photo picked here, in 3D or from an issue.
@@ -216,15 +230,23 @@ export function MediaScreen() {
       ?.querySelector(`[data-photo="${CSS.escape(photoId)}"]`)
       ?.scrollIntoView({ block: 'nearest' });
   }, [photoId]);
+  // The agent set a photo filter: the first photo it shows comes into view (the photos are below
+  // the videos), once per request. The effect runs after the filtered sets are drawn, also when
+  // the request was made before this screen showed. No photo matches: there is nothing to find.
+  const revealAsked = useMediaRevealAsked();
+  useEffect(() => {
+    if (!takeMediaReveal()) return;
+    photoRef.current?.querySelector('.m-card.sq[data-photo]')?.scrollIntoView({ block: 'nearest' });
+  }, [revealAsked]);
   if (!project) return <NoProject view="Media" />;
 
   const clips = layers.filter((l): l is Extract<Layer, { kind: 'video' }> => l.kind === 'video');
-  const photoSets = layers.filter(
-    (l): l is Extract<Layer, { kind: 'photos' }> => l.kind === 'photos',
-  );
   const panoSets = layers.filter(
     (l): l is Extract<Layer, { kind: 'panoramas' }> => l.kind === 'panoramas',
   );
+  // every level of every severity model, and always the one that is on: a level the agent set
+  // shows in the select and can be cleared there, whichever model it is from
+  const severityChoices = severityOptions(project.manifest.severityModels, severity);
   const empty = clips.length + photoSets.length + panoSets.length === 0;
   const withFindings = photoSets.reduce(
     (n, set) => n + set.items.filter((p) => findings.has(photoKey(set.id, p.id))).length,
@@ -257,8 +279,7 @@ export function MediaScreen() {
                 data-testid="media-only-findings"
                 disabled={withFindings === 0 && !onlyFindings}
                 onClick={() => {
-                  rememberedOnly = !onlyFindings;
-                  setOnlyFindings(rememberedOnly);
+                  setMediaView({ onlyFindings: !onlyFindings });
                 }}
               >
                 <Icon name="filter" size={14} />
@@ -271,8 +292,7 @@ export function MediaScreen() {
                   value={order}
                   data-testid="media-order"
                   onChange={(e) => {
-                    rememberedOrder = e.target.value as PhotoOrder;
-                    setOrder(rememberedOrder);
+                    setMediaView({ order: e.target.value as PhotoOrder });
                   }}
                 >
                   <option value="file">{t('media.findings.sort.file')}</option>
@@ -280,6 +300,49 @@ export function MediaScreen() {
                   <option value="count">{t('media.findings.sort.count')}</option>
                 </select>
               </label>
+              {severityChoices && (
+                <label className="m-order">
+                  <span>{t('media.findings.severity')}</span>
+                  <select
+                    className="input sm"
+                    value={severity === null ? '' : String(severity)}
+                    data-testid="media-severity"
+                    onChange={(e) => {
+                      const v = e.target.value;
+                      setMediaView({
+                        severity: v === '' ? null : v === 'uncertain' ? 'uncertain' : Number(v),
+                      });
+                    }}
+                  >
+                    <option value="">{t('media.findings.severity.any')}</option>
+                    {severityChoices.map((o) =>
+                      o === 'uncertain' ? (
+                        <option key={o} value={o}>
+                          {t('media.findings.severity.uncertain')}
+                        </option>
+                      ) : (
+                        <option key={o.value} value={String(o.value)}>
+                          {o.label || String(o.value)}
+                        </option>
+                      ),
+                    )}
+                  </select>
+                </label>
+              )}
+              {scope && (
+                <span className="scope-chip" data-testid="media-scope-chip">
+                  {scope.label}
+                  <button
+                    type="button"
+                    aria-label={t('view.scope.clear', { label: scope.label })}
+                    onClick={() => {
+                      setMediaView({ scope: null });
+                    }}
+                  >
+                    <Icon name="x" size={12} />
+                  </button>
+                </span>
+              )}
             </div>
           )}
         </header>
@@ -360,15 +423,22 @@ export function MediaScreen() {
             </div>
           </section>
         )}
+        {noMatch && (
+          <div className="side-empty" data-testid="media-no-match">
+            <Icon name="filter" size={20} />
+            <p>No photos match this filter.</p>
+          </div>
+        )}
         {photoSets.map((set) => {
-          const items = orderPhotos(set.items, set.id, findings, onlyFindings, order);
-          if (onlyFindings && items.length === 0) return null;
+          const filtered = onlyFindings || severity !== null || scope !== null;
+          const items = photosInView(set.items, set.id, findings, view);
+          if (filtered && items.length === 0) return null;
           return (
             <section className="m-sec" key={set.id}>
               <h2 className="caps">
                 {set.name}{' '}
                 <span className="mono faint">
-                  {onlyFindings
+                  {filtered
                     ? `${formatCount(items.length)} / ${formatCount(set.items.length)}`
                     : formatCount(set.items.length)}
                 </span>

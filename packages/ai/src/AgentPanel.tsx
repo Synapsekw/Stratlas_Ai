@@ -11,7 +11,7 @@ import {
 import { bindingLabel } from './context';
 import { PANEL_CSS } from './panel-css';
 import { formatMeter, totalUsage } from './pricing';
-import { WINDOW_LABELS } from './prompt';
+import { WINDOW_LABELS, WINDOW_SUBJECTS } from './prompt';
 import { defaultToolContext } from './renderer-tools';
 import { modelLabel, PROVIDER_LABELS } from './routes';
 import {
@@ -22,7 +22,7 @@ import {
   type Step,
   type Turn,
 } from './session';
-import { SUGGESTIONS } from './suggestions';
+import { suggestionsFor } from './suggestions';
 import { getToolSpec } from './tools';
 
 /** What the app's fix card gets when a reply failed with an error it can fix in place. */
@@ -50,6 +50,11 @@ export interface AgentPanelProps {
    * route again, as it does when the window gets the focus.
    */
   settingsKey?: string | undefined;
+  /**
+   * A session owned by the app, so the conversation outlives this panel. The owner connects it,
+   * resets it when the project changes and keeps its tool context; the panel only shows it.
+   */
+  session?: AgentSession | undefined;
 }
 
 const CAPTURE_WINDOWS: readonly WindowKind[] = ['video', 'scene3d', 'pointcloud', 'photo', 'map'];
@@ -75,13 +80,17 @@ export function AgentPanel({
   renderFix,
   task,
   settingsKey,
+  session: given,
 }: AgentPanelProps) {
   const taskRef = useRef(task);
   useEffect(() => {
     taskRef.current = task;
   }, [task]);
+  // A given session is not ours to start or stop: leaving this screen must not cancel its run.
+  const shared = given !== undefined;
   const [session] = useState(
     () =>
+      given ??
       new AgentSession({
         bridge: getBridge(),
         window: win,
@@ -92,6 +101,20 @@ export function AgentPanel({
   const state = useSyncExternalStore(session.subscribe, session.getState);
   const binding = useWorkspace((s) => bindingLabel(win, s));
   const projectId = useWorkspace((s) => s.project?.id ?? null);
+  // booleans, so the panel does not render again on every store change
+  const hasPhotos = useWorkspace(
+    (s) =>
+      s.project?.manifest.layers.some((l) => l.kind === 'photos' && l.items.length > 0) ?? false,
+  );
+  const hasIssues = useWorkspace((s) => s.issues.length > 0);
+  const hasAssets = useWorkspace(
+    (s) =>
+      s.project?.manifest.layers.some((l) => l.kind === 'mesh' && (l.tags?.length ?? 0) > 0) ??
+      false,
+  );
+  const hasClips = useWorkspace(
+    (s) => s.project?.manifest.layers.some((l) => l.kind === 'video') ?? false,
+  );
   const [draft, setDraft] = useState('');
   const [attach, setAttach] = useState(false);
   const [showHistory, setShowHistory] = useState(false);
@@ -103,16 +126,16 @@ export function AgentPanel({
   }, [session, win]);
 
   useEffect(() => {
-    const disconnect = session.connect();
+    const disconnect = shared ? undefined : session.connect();
     const onFocus = () => {
       void session.refresh();
     };
     globalThis.addEventListener('focus', onFocus);
     return () => {
       globalThis.removeEventListener('focus', onFocus);
-      disconnect();
+      disconnect?.();
     };
-  }, [session]);
+  }, [session, shared]);
 
   // The AI settings changed (cloud AI turned on from the palette, a route): check again.
   const seenKey = useRef(settingsKey);
@@ -122,17 +145,18 @@ export function AgentPanel({
     void session.refresh();
   }, [session, settingsKey]);
 
-  // A different project: a fresh conversation, its consent, policy and meter.
+  // A different project: a fresh conversation, its consent, policy and meter. A session the app
+  // owns is reset by the app (mounting a second screen must not wipe it); only the meter is read.
   useEffect(() => {
-    session.reset();
+    if (!shared) session.reset();
     setShowHistory(false);
     void session.refresh();
-  }, [session, projectId]);
+  }, [session, shared, projectId]);
 
   useEffect(() => {
     const el = log.current;
     if (el) el.scrollTop = el.scrollHeight;
-  }, [state.turns, state.steps, state.fix]);
+  }, [state.turns, state.steps, state.fix, state.availability.status]);
 
   const ready = state.availability.status === 'ready';
   const canCapture = CAPTURE_WINDOWS.includes(win);
@@ -241,8 +265,8 @@ export function AgentPanel({
           <Disabled availability={state.availability} onRetry={() => void session.refresh()} />
         ) : state.turns.length === 0 ? (
           <div className="ag-empty">
-            <p>Ask about this {WINDOW_LABELS[win].toLowerCase()} or tell the agent what to do.</p>
-            {SUGGESTIONS[win].map((s) => (
+            <p>Ask about {WINDOW_SUBJECTS[win]} or tell the agent what to do.</p>
+            {suggestionsFor(win, { hasPhotos, hasIssues, hasAssets, hasClips }).map((s) => (
               <button
                 key={s}
                 type="button"
@@ -277,6 +301,9 @@ export function AgentPanel({
                   session.dismissFix();
                 },
               })}
+            {/* a conversation the app kept across screens outlives the agent being on: the reason
+                it is off is said under it, where an empty panel says it instead of the requests */}
+            <Disabled availability={state.availability} onRetry={() => void session.refresh()} />
           </>
         )}
       </div>

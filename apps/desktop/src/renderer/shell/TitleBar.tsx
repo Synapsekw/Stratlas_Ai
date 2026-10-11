@@ -2,6 +2,7 @@ import { brand } from '@aio/brand';
 import { ariaKeys, formatDate, Icon, shortcutHint, t, useT, type MessageKey } from '@aio/ui';
 import { useWorkspace } from '@aio/workspace';
 import { Fragment } from 'react';
+import { AgentToggle } from '../agent/AgentToggle';
 import { shell, useShell } from '../shell';
 import type { Screen } from '../store';
 import { help } from '../help/store';
@@ -85,6 +86,7 @@ export function TitleBar() {
         ?
       </button>
       <div className="tb-status">
+        <AgentToggle />
         <ProcessingChip />
         {pkg && (
           <span

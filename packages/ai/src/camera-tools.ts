@@ -6,13 +6,14 @@
  * person's terms (place, easting and northing, height) and can be undone.
  */
 import { fitDistance, headingDeg, isEngineStage } from '@aio/engine';
-import type { Vec3 } from '@aio/schema';
+import type { Issue, Vec3 } from '@aio/schema';
 import { Frustum, Matrix4, Quaternion, Vector3 } from 'three';
 import { assetUrl } from '@aio/workspace';
 import { parseFlight } from './geometry';
 import {
   boxCentre,
   describePoint,
+  findIssueFuzzy,
   measure,
   placeIndex,
   resolveTarget,
@@ -196,6 +197,29 @@ const mapOnly = (ctx: RendererToolContext) => {
   return v ? !v.show3d && v.showMap : false;
 };
 
+const SCENE_WAIT_MS = 5000;
+const SCENE_POLL_MS = 50;
+
+/**
+ * A camera move asked for on another screen (Media, Issues): open Scene, then give the 3D view a
+ * moment to mount, so the move starts from the live camera. A host without a `screen` hook cannot
+ * say what shows, so there is nothing to wait for.
+ */
+export async function ensureScene(ctx: RendererToolContext, waitMs = SCENE_WAIT_MS): Promise<void> {
+  const screen = ctx.app?.screen?.();
+  if (screen === undefined) return;
+  if (screen !== 'scene') ctx.app?.openScreen?.('scene');
+  const deadline = ctx.now().getTime() + waitMs;
+  // counted as well as timed: a clock that stands still must not hold the move forever
+  for (
+    let polls = Math.ceil(waitMs / SCENE_POLL_MS);
+    polls > 0 && ctx.scene() === null && ctx.now().getTime() < deadline;
+    polls--
+  ) {
+    await new Promise((resolve) => setTimeout(resolve, SCENE_POLL_MS));
+  }
+}
+
 /** Distance to the first thing a camera at `pos` looking along `dir` sees, or `fallback`. */
 function sightDistance(ctx: RendererToolContext, pos: Vec3, dir: Vec3, fallback: number): number {
   const s = ctx.scene();
@@ -204,11 +228,17 @@ function sightDistance(ctx: RendererToolContext, pos: Vec3, dir: Vec3, fallback:
   return Math.min(500, Math.max(2, hit.distance));
 }
 
+/** From which side and how far: both absent keeps the current side and fits the target. */
+export interface PoseOptions {
+  view?: ViewDirection | 'iso';
+  distanceM?: number;
+}
+
 /** The pose that shows a resolved target. */
 export function poseFor(
   ctx: RendererToolContext,
   r: Resolved,
-  opts: { view?: ViewDirection | 'iso'; distanceM?: number; margin?: number },
+  opts: PoseOptions & { margin?: number },
 ): Pose | null {
   const current = currentPose(ctx);
   // a photo, panorama or clip without a side asked for: stand where that camera stood
@@ -244,6 +274,34 @@ export function poseFor(
   return { target: centre, position: add(centre, scale(dir, distance)) };
 }
 
+/** eye: the camera stands where the finding's photo was taken. framed: its 3D sightings fill the view. */
+export type IssueFlight =
+  | { moved: true; view: 'eye' | 'framed'; resolved: Resolved; pose: Pose }
+  | { moved: false; view: null };
+
+/**
+ * Fly to a finding: the one way the agent locates it, for fly_to and show_issue alike. A finding
+ * without a position (marked on a photo that has no pose, or on a map only) moves nothing.
+ */
+export async function flyToIssue(
+  ctx: RendererToolContext,
+  issue: Issue,
+  opts: PoseOptions = {},
+): Promise<IssueFlight> {
+  let resolved: Resolved;
+  try {
+    resolved = await resolveTarget(ctx, { kind: 'issue', id: issue.id });
+  } catch (e) {
+    if (e instanceof ToolError) return { moved: false, view: null };
+    throw e;
+  }
+  const pose = poseFor(ctx, resolved, opts);
+  if (!pose) return { moved: false, view: null };
+  applyPose(ctx, pose);
+  const eye = resolved.eye !== undefined && !opts.view && opts.distanceM === undefined;
+  return { moved: true, view: eye ? 'eye' : 'framed', resolved, pose };
+}
+
 /** Named assets and groups whose centre is in the camera's view, nearest first. */
 export function placesInView(
   ctx: RendererToolContext,
@@ -273,14 +331,13 @@ export function placesInView(
 // Tools --------------------------------------------------------------------------------------
 
 /** The tool result for a move: what it showed, where the camera is now, how to undo it. */
-function moved(
+function arrived(
   ctx: RendererToolContext,
   label: string,
   pose: Pose,
   before: Pose | null,
   extra: Record<string, unknown> = {},
 ) {
-  applyPose(ctx, pose);
   const report = cameraReport(ctx, pose);
   const undo = undoTo(ctx, before);
   const where = report.lookingAt.place ?? label;
@@ -295,6 +352,18 @@ function moved(
     summary,
     ...(undo ? { undo } : {}),
   };
+}
+
+/** Make the move, then report it. */
+function moved(
+  ctx: RendererToolContext,
+  label: string,
+  pose: Pose,
+  before: Pose | null,
+  extra: Record<string, unknown> = {},
+) {
+  applyPose(ctx, pose);
+  return arrived(ctx, label, pose, before, extra);
 }
 
 /** A clip's place sized by its flight path (read from its pose file). */
@@ -383,13 +452,27 @@ define('find_places', async ({ query, kinds, near, radiusM, limit }, ctx) => {
 
 define('fly_to', async ({ target, view, distanceM, open3d }, ctx) => {
   project(ctx);
+  await ensureScene(ctx);
   const before = currentPose(ctx);
-  const r = await resolveTarget(ctx, target);
-  if (open3d === true || (view !== undefined && view !== 'top')) ensure3d(ctx, true);
-  const pose = poseFor(ctx, r, {
+  const opts: PoseOptions = {
     ...(view ? { view } : {}),
     ...(distanceM !== undefined ? { distanceM } : {}),
-  });
+  };
+  const wants3d = open3d === true || (view !== undefined && view !== 'top');
+  if (target.kind === 'issue') {
+    const issue = findIssueFuzzy(ctx, target.id);
+    const flight = await flyToIssue(ctx, issue, opts);
+    if (!flight.moved) throw new ToolError(`Issue ${issue.code} has no location to fly to.`);
+    if (wants3d) ensure3d(ctx, true);
+    const { place, label } = flight.resolved;
+    return arrived(ctx, label, flight.pose, before, {
+      ...(place ? { place: { id: place.id, kind: place.kind, name: place.name } } : {}),
+      ...(flight.view === 'eye' ? { view: 'eye' } : {}),
+    });
+  }
+  const r = await resolveTarget(ctx, target);
+  if (wants3d) ensure3d(ctx, true);
+  const pose = poseFor(ctx, r, opts);
   if (!pose) {
     // an asset the 3D view has not loaded yet: it frames it once the model is in
     const node = r.place?.nodes?.[0];
@@ -426,6 +509,7 @@ const PRESET: Record<string, ViewDirection | 'iso'> = {
 
 define('set_view', async ({ view, target }, ctx) => {
   project(ctx);
+  await ensureScene(ctx);
   const before = currentPose(ctx);
   ensure3d(ctx, view !== 'top' && view !== 'home');
   let r: Resolved;
@@ -443,8 +527,9 @@ define('set_view', async ({ view, target }, ctx) => {
   return moved(ctx, `${view} view of ${r.label}`, pose, before, { view });
 });
 
-define('frame_all', (_input, ctx) => {
+define('frame_all', async (_input, ctx) => {
   project(ctx);
+  await ensureScene(ctx);
   const before = currentPose(ctx);
   const box = siteBox(ctx);
   const pose = box
@@ -463,6 +548,7 @@ define('frame_all', (_input, ctx) => {
 
 define('orbit', async ({ yawDeg, pitchDeg, target }, ctx) => {
   project(ctx);
+  await ensureScene(ctx);
   const before = currentPose(ctx);
   if (!before) throw new ToolError('Open the 3D view first.');
   ensure3d(ctx, true);
@@ -478,8 +564,9 @@ define('orbit', async ({ yawDeg, pitchDeg, target }, ctx) => {
   return moved(ctx, label, pose, before);
 });
 
-define('zoom', ({ factor, distanceM }, ctx) => {
+define('zoom', async ({ factor, distanceM }, ctx) => {
   project(ctx);
+  await ensureScene(ctx);
   const before = currentPose(ctx);
   if (!before) throw new ToolError('Open the 3D view or the map first.');
   const offset = sub(before.position, before.target);
@@ -491,6 +578,7 @@ define('zoom', ({ factor, distanceM }, ctx) => {
 
 define('look_at', async ({ target }, ctx) => {
   project(ctx);
+  await ensureScene(ctx);
   const before = currentPose(ctx);
   if (!before) throw new ToolError('Open the 3D view first.');
   ensure3d(ctx, true);
