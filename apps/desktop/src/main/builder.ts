@@ -269,6 +269,23 @@ export async function builderAddDrawingPage(
   }
 }
 
+/**
+ * A `drawing.import` job started by hand (the Processing form, the model builder): refused when
+ * a picture drawing has the folder the pipeline would file the DXF under. Null for every other
+ * job, and when the DXF may come in.
+ */
+export async function drawingJobRefusal(req: IpcRequest<'jobs:start'>): Promise<string | null> {
+  if (!('pipeline' in req) || req.pipeline !== 'drawing.import') return null;
+  const src = (req.params as { src?: unknown }).src;
+  if (typeof src !== 'string' || !src) return null;
+  try {
+    return await (await lib()).dxfClash(req.project, src);
+  } catch {
+    // a project that cannot be looked at: the job says what is wrong with it
+    return null;
+  }
+}
+
 /** The app window is done with a staged drawing: no more pages, and no copy left without one. */
 export async function builderCloseDrawing(
   req: IpcRequest<'builder:closeDrawing'>,

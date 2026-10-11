@@ -32,6 +32,7 @@ import {
 import { readPhotoMeta } from './exif';
 import { mergeImport } from './importMerge';
 import { modelTextures } from './modelTextures';
+import { readTiffHeaderFile } from './tiffFile';
 import { objToGlb } from './obj';
 import { photoAltitude, photoHeight, photoRef } from './photos';
 import {
@@ -39,7 +40,6 @@ import {
   epsgFromPrj,
   parseWorldFile,
   rasterToRgba,
-  readTiffHeader,
   tiffCorners,
   tiffGeoreferenced,
 } from './tiff';
@@ -534,7 +534,8 @@ export async function importRawFiles(
         });
       } else if (RASTER.has(ext)) {
         const size = (await stat(file)).size;
-        const head = readTiffHeader(await readHead(file, 64 * 1024));
+        // read where the file keeps its directory: at the start, or after the image data
+        const head = await readTiffHeaderFile(file);
         const role = head.samples === 1 && head.bits >= 16 ? 'dsm' : 'ortho';
         if (head.bigTiff || size > RASTER_BYTES || head.width * head.height > RASTER_PIXELS) {
           items.push({ file: name, kind: 'raster', status: 'error', message: RASTER_TOO_LARGE });

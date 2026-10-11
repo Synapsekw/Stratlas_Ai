@@ -23,7 +23,8 @@ import {
   provisionalCorners,
   writePlacement,
 } from './drawingPlacement';
-import { decodeTiff, rasterToRgba, readTiffHeader } from './tiff';
+import { decodeTiff, rasterToRgba } from './tiff';
+import { readTiffHeaderFile } from './tiffFile';
 
 /**
  * Drawings from pictures and PDF (data-conventions section 15): the original is copied to
@@ -39,6 +40,8 @@ const ON_REQUEST = new Set(['.jpg', '.jpeg', '.tif', '.tiff']);
 /** Types main has no decoder for: the app window draws them (`ImportItem.drawing`). */
 const DRAWN_BY_WINDOW = new Set(['.pdf', '.webp', '.svg']);
 const TIFF = new Set(['.tif', '.tiff']);
+/** How far into a picture its size is looked for when the first 64 KB do not hold it. */
+const SIZE_SEARCH_BYTES = 8 * 1024 * 1024;
 /** Names Windows keeps for devices: no file or folder can carry one, with any extension. */
 const RESERVED = /^(con|prn|aux|nul|com[1-9]|lpt[1-9])$/i;
 
@@ -207,6 +210,37 @@ export async function dxfSource(
   };
 }
 
+/**
+ * For a `drawing.import` job that is started outside an import (the Processing form, the model
+ * builder): the refusal when a picture drawing has the folder the pipeline would file `src`
+ * under, else null. The pipeline writes `drawings/<stem>/` whatever is there, and such a job
+ * cannot be given another name. Says nothing when the project cannot be read.
+ */
+export async function dxfClash(root: string, src: string): Promise<string | null> {
+  const stem = dxfStem(src);
+  const s = stem.toLowerCase();
+  const { pictures } = await namesInUse(root);
+  let layers: ProjectManifest['layers'] = [];
+  try {
+    const m = JSON.parse(await readFile(join(root, 'manifest.json'), 'utf8')) as {
+      layers?: ProjectManifest['layers'];
+    };
+    if (Array.isArray(m.layers)) layers = m.layers;
+  } catch {
+    // no manifest to read: the job itself reports that
+  }
+  const owned =
+    [...pictures].some((p) => isStemOrPage(p, s)) ||
+    (staged.get(rootKey(root))?.has(s) ?? false) ||
+    layers.some((l) => {
+      const id = typeof l.id === 'string' ? l.id.toLowerCase() : '';
+      return id.startsWith('sheet-') && isStemOrPage(id.slice(6), s);
+    });
+  return owned
+    ? `A picture drawing is already called ${stem}. Rename the DXF file, then import it.`
+    : null;
+}
+
 /** List `plan.png` of `stem` (already written) as a hidden, not placed plan raster. */
 async function listDrawing(
   root: string,
@@ -266,14 +300,24 @@ async function checkPicture(file: string, name: string, ext: string): Promise<vo
     );
   }
   if (TIFF.has(ext)) {
-    const head = readTiffHeader(await readHead(file, 65536));
+    const head = await readTiffHeaderFile(file);
     if (head.bigTiff)
       throw new Error(
         `${name} is a BigTIFF, too large for a drawing. Save it smaller, as TIFF or PNG.`,
       );
     checkPixels(name, head);
   } else if (ext !== '.pdf' && ext !== '.svg') {
-    checkPixels(name, imageSize(await readHead(file, 65536)));
+    // The size stands at the start of the file, but a JPEG may carry a preview or a colour
+    // profile of megabytes before it. A picture whose size cannot be found is not decoded: it
+    // could be larger than any limit.
+    const size =
+      imageSize(await readHead(file, 65536)) ?? imageSize(await readHead(file, SIZE_SEARCH_BYTES));
+    if (!size || !(size.width > 0) || !(size.height > 0)) {
+      throw new Error(
+        `The size of ${name} could not be read from the file, so it was not opened. Save it again as PNG or JPEG, then import it.`,
+      );
+    }
+    checkPixels(name, size);
   }
 }
 

@@ -12,6 +12,7 @@ import {
   builderUpdateCapture,
   builderUpdateLayers,
   createBuilderProject,
+  drawingJobRefusal,
   photoGps,
 } from './builder';
 import { ProjectRegistry } from './project';
@@ -155,6 +156,29 @@ describe('builder main handlers', () => {
     expect(await builderCloseDrawing({ projectId: 'x', stem: 'sheets' }, registry)).toMatchObject({
       ok: false,
     });
+  });
+
+  it('a drawing.import job started by hand never lands on a picture drawing', async () => {
+    const dir = join(base, 'projects', 'clash');
+    await writeProject(dir, sampleManifest());
+    const job = (src: string) =>
+      drawingJobRefusal({ pipeline: 'drawing.import', project: dir, params: { src } });
+    expect(await job('C:/in/Layout.dxf')).toBeNull();
+    // a picture drawing called layout: its original lies in drawings/
+    await mkdir(join(dir, 'drawings', 'layout'), { recursive: true });
+    await writeFile(join(dir, 'drawings', 'layout.png'), 'png');
+    expect(await job('C:/in/Layout.dxf')).toBe(
+      'A picture drawing is already called Layout. Rename the DXF file, then import it.',
+    );
+    expect(await job('C:/in/other.dxf')).toBeNull();
+    // other pipelines are not looked at
+    expect(
+      await drawingJobRefusal({
+        pipeline: 'pointcloud.to_copc',
+        project: dir,
+        params: { src: 'C:/in/Layout.dxf' },
+      }),
+    ).toBeNull();
   });
 
   it('ensureCapture adds the survey date of a day once, and refuses a closed project', async () => {

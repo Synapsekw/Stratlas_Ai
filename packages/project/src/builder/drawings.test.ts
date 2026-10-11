@@ -25,7 +25,7 @@ import {
   provisionalCorners,
   type DrawingPlacementFile,
 } from './drawingPlacement';
-import { addDrawingPage, closeDrawing, dxfStem } from './drawings';
+import { addDrawingPage, closeDrawing, dxfClash, dxfStem } from './drawings';
 import { modelTextures } from './modelTextures';
 import { NO_PIPELINE, importRawFiles, type ImportDeps, type PipelineJobs } from './raw';
 import { makeTiff, withExif } from './testing';
@@ -209,6 +209,89 @@ describe('drawings from pictures (raw import)', () => {
     });
     const plan = new Uint8Array(await readFile(join(root, 'drawings', 'scan', 'plan.png')));
     expect(imageSize(plan)).toEqual({ width: 4, height: 2 });
+  });
+
+  it('a TIFF as scanner software writes it, its directory after the image, comes in', async () => {
+    const root = await project();
+    const sheet = (name: string) => {
+      const file = join(dir, name);
+      return writeFile(
+        file,
+        makeTiff(
+          {
+            width: 200,
+            height: 120,
+            samples: 3,
+            bits: 8,
+            values: new Array<number>(200 * 120 * 3).fill(90),
+            directoryLast: true,
+          },
+          deflateSync,
+        ),
+      ).then(() => file);
+    };
+    // dropped like any file (no georeference: a drawing), and through Add drawing
+    const dropped = await importRawFiles(root, [await sheet('scan-a.tif')], deps());
+    const added = await importRawFiles(root, [await sheet('scan-b.tif')], deps({ drawings: true }));
+    for (const r of [dropped, added]) {
+      expect(r.items[0]?.message).not.toContain('Offset');
+      expect(r.items[0]).toMatchObject({ kind: 'drawing', status: 'imported' });
+    }
+    const plan = new Uint8Array(await readFile(join(root, 'drawings', 'scan-b', 'plan.png')));
+    expect(imageSize(plan)).toEqual({ width: 200, height: 120 });
+  });
+
+  it('never decodes a picture whose size it cannot find', async () => {
+    const root = await project();
+    // a JPEG whose frame header lies behind 100 KB of other segments: found by reading further
+    const pad = new Uint8Array(4 + 60_000);
+    pad.set([0xff, 0xe2, 0xea, 0x62]);
+    const far = join(dir, 'far.jpg');
+    const stub = withExif({ width: 64, height: 48 });
+    const body = new Uint8Array(2 + pad.length * 2 + stub.length - 2);
+    body.set([0xff, 0xd8]);
+    body.set(pad, 2);
+    body.set(pad, 2 + pad.length);
+    body.set(stub.subarray(2), 2 + pad.length * 2);
+    await writeFile(far, body);
+    expect(imageSize(body.subarray(0, 65536))).toBeNull();
+    // a JPEG with no frame header at all, and a WebP whose first chunk is not a known one
+    const none = join(dir, 'none.jpg');
+    await writeFile(
+      none,
+      new Uint8Array([0xff, 0xd8, 0xff, 0xe0, 0x00, 0x04, 0x00, 0x00, 0xff, 0xd9]),
+    );
+    const odd = join(dir, 'odd.webp');
+    const riff = new Uint8Array(40);
+    riff.set(new TextEncoder().encode('RIFF'), 0);
+    riff.set(new TextEncoder().encode('WEBPXXXX'), 8);
+    await writeFile(odd, riff);
+    let decoded = 0;
+    const r = await importRawFiles(
+      root,
+      [far, none, odd],
+      deps({
+        drawings: true,
+        images: {
+          resizeJpeg: (src, dst) => copyFile(src, dst),
+          toPng: async (_src, dst) => {
+            decoded += 1;
+            await writeFile(dst, png(64, 48));
+            return { width: 64, height: 48 };
+          },
+        },
+      }),
+    );
+    expect(r.items.map((i) => [i.file, i.status])).toEqual([
+      ['far.jpg', 'imported'],
+      ['none.jpg', 'error'],
+      ['odd.webp', 'error'],
+    ]);
+    expect(r.items[1]?.message).toContain('size of none.jpg could not be read');
+    expect(r.items[2]?.message).toContain('size of odd.webp could not be read');
+    // only the picture with a known size reached the decoder, and nothing else was copied in
+    expect(decoded).toBe(1);
+    expect((await readdir(join(root, 'drawings'))).sort()).toEqual(['far', 'far.jpg']);
   });
 
   it('a PDF is copied in and waits for the app window to draw its pages', async () => {
@@ -538,6 +621,21 @@ describe('a DXF and a picture of the same name', () => {
     const second = await importRawFiles(b, [dxf, pic], deps({ jobs }));
     expect(started[0]?.params.src).toBe(dxf);
     expect(second.items[1]).toMatchObject({ layerId: 'sheet-site-2' });
+  });
+
+  it('tells a job started by hand that a picture drawing has that folder', async () => {
+    const root = await project();
+    const { pic } = await files();
+    expect(await dxfClash(root, 'C:/in/SITE.dxf')).toBeNull();
+    await importRawFiles(root, [pic], deps({ jobs }));
+    expect(await dxfClash(root, 'C:/in/SITE.dxf')).toBe(
+      'A picture drawing is already called SITE. Rename the DXF file, then import it.',
+    );
+    expect(await dxfClash(root, 'C:/in/other.dxf')).toBeNull();
+    // the copy an import made for this very reason is the pipeline's to read
+    expect(await dxfClash(root, join(root, 'drawings', 'site-2.dxf'))).toBeNull();
+    // a folder that is no project says nothing
+    expect(await dxfClash(join(dir, 'nowhere'), 'C:/in/site.dxf')).toBeNull();
   });
 
   it('without the processing tools nothing is copied for the DXF', async () => {

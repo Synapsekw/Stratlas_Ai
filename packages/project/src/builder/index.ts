@@ -26,6 +26,7 @@ export {
   DRAWING_ADDED,
   addDrawingPage,
   closeDrawing,
+  dxfClash,
   dxfSource,
   dxfStem,
   importDrawingFile,
@@ -35,6 +36,7 @@ export {
   type DrawingPage,
 } from './drawings';
 export { modelTextures, mtlTextures, type ModelTextures } from './modelTextures';
+export { readTiffHeaderFile } from './tiffFile';
 export {
   NO_PIPELINE,
   importRawFiles,

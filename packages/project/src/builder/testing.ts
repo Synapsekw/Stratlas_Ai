@@ -213,6 +213,11 @@ export interface FixtureTiff {
   pixelScale?: [number, number];
   tiepoint?: [number, number];
   nodata?: string;
+  /**
+   * Write the directory after the image data, as libtiff does (most scanner software and image
+   * tools): a reader that only looks at the start of the file does not find it.
+   */
+  directoryLast?: boolean;
 }
 
 /** A little-endian strip TIFF with optional GeoTIFF tags. */
@@ -273,8 +278,8 @@ export function makeTiff(o: FixtureTiff, compress: (b: Uint8Array) => Uint8Array
     typeof t.values === 'string'
       ? t.values.length + 1
       : t.values.length * (t.type === 3 ? 2 : t.type === 12 ? 8 : 4);
-  const ifdAt = 8;
-  let dataAt = ifdAt + 2 + tags.length * 12 + 4;
+  let ifdAt = 8;
+  let dataAt = o.directoryLast ? 8 : ifdAt + 2 + tags.length * 12 + 4;
   const extra: { at: number; t: T }[] = [];
   for (const t of tags) {
     if (size(t) > 4) {
@@ -289,6 +294,10 @@ export function makeTiff(o: FixtureTiff, compress: (b: Uint8Array) => Uint8Array
   }
   const off = tags.find((t) => t.tag === 273);
   if (off) off.values = stripAt;
+  if (o.directoryLast) {
+    ifdAt = dataAt + (dataAt % 2);
+    dataAt = ifdAt + 2 + tags.length * 12 + 4;
+  }
   const buf = new Uint8Array(dataAt);
   const v = new DataView(buf.buffer);
   buf.set([0x49, 0x49]);
