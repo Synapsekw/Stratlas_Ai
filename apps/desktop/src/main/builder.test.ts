@@ -5,6 +5,8 @@ import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import {
   builderAddDrawingPage,
+  builderCloseDrawing,
+  builderImport,
   builderEnsureCapture,
   builderTemplates,
   builderUpdateCapture,
@@ -116,13 +118,22 @@ describe('builder main handlers', () => {
     const closed = await builderAddDrawingPage({ projectId: 'x', ...page }, registry);
     expect(closed).toMatchObject({ ok: false });
     const projectId = registry.register(dir);
+    // a file lying in drawings/ is not a staged drawing: only an import makes one
+    await mkdir(join(dir, 'drawings'), { recursive: true });
+    await writeFile(join(dir, 'drawings', 'sheets.pdf'), '%PDF-1.4');
     const unstaged = await builderAddDrawingPage({ projectId, ...page }, registry);
     expect(unstaged).toEqual({
       ok: false,
-      error: 'The drawing "sheets" was not imported into this project.',
+      error: 'The drawing "sheets" is not waiting for pages. Import it again.',
     });
-    await mkdir(join(dir, 'drawings'), { recursive: true });
-    await writeFile(join(dir, 'drawings', 'sheets.pdf'), '%PDF-1.4');
+    await rm(join(dir, 'drawings'), { recursive: true });
+    const pdf = join(base, 'sheets.pdf');
+    await writeFile(pdf, '%PDF-1.4');
+    const imported = await builderImport(
+      { projectId, paths: [pdf] },
+      { registry, images: { resizeJpeg: () => Promise.resolve() }, emit: () => undefined },
+    );
+    expect(imported.ok && imported.items[0]?.drawing?.stem).toBe('sheets');
     const r = await builderAddDrawingPage({ projectId, ...page, page: 2, pages: 4 }, registry);
     expect(r.ok && r.layerId).toBe('sheet-sheets-p2');
     expect(r.ok && r.manifest.layers.find((l) => l.id === 'sheet-sheets-p2')).toMatchObject({
@@ -132,6 +143,17 @@ describe('builder main handlers', () => {
       role: 'plan',
       format: 'image',
       src: { path: 'drawings/sheets-p2/plan.png' },
+    });
+    // closed: no more pages; it got one, so its original stays
+    expect(await builderCloseDrawing({ projectId, stem: 'sheets' }, registry)).toEqual({
+      ok: true,
+      removed: false,
+    });
+    expect(await builderAddDrawingPage({ projectId, ...page }, registry)).toMatchObject({
+      ok: false,
+    });
+    expect(await builderCloseDrawing({ projectId: 'x', stem: 'sheets' }, registry)).toMatchObject({
+      ok: false,
     });
   });
 

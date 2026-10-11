@@ -1,11 +1,22 @@
 import type { ImportItem, Layer, ProjectManifest } from '@aio/schema';
-import { copyFile, mkdir, open, readFile, readdir, writeFile } from 'node:fs/promises';
-import { basename, extname, join } from 'node:path';
+import {
+  copyFile,
+  mkdir,
+  open,
+  readFile,
+  readdir,
+  rm,
+  rmdir,
+  stat,
+  writeFile,
+} from 'node:fs/promises';
+import { basename, extname, join, resolve } from 'node:path';
 import { encodePng } from '../import/png';
-import { slug, uniqueId } from './create';
+import { slug } from './create';
 import { updateManifestFile } from './manifestFile';
 import {
-  MAX_DRAWING_MP,
+  MAX_DRAWING_BYTES,
+  MAX_DRAWING_PIXELS,
   MAX_DRAWING_PX,
   imageSize,
   placementFor,
@@ -28,6 +39,8 @@ const ON_REQUEST = new Set(['.jpg', '.jpeg', '.tif', '.tiff']);
 /** Types main has no decoder for: the app window draws them (`ImportItem.drawing`). */
 const DRAWN_BY_WINDOW = new Set(['.pdf', '.webp', '.svg']);
 const TIFF = new Set(['.tif', '.tiff']);
+/** Names Windows keeps for devices: no file or folder can carry one, with any extension. */
+const RESERVED = /^(con|prn|aux|nul|com[1-9]|lpt[1-9])$/i;
 
 export const DRAWING_ADDED =
   'Added to Drawings, not placed yet. Open it side by side, or place it on the site to lay it over the model.';
@@ -56,27 +69,142 @@ async function readHead(file: string, bytes: number): Promise<Uint8Array> {
 
 const sheetId = (stem: string) => `sheet-${stem}`;
 
+/** One name for a project folder however it is spelled (Windows ignores case). */
+const rootKey = (root: string) => resolve(root).toLowerCase();
+
 /**
- * A folder name for a new drawing: the file name slugged, with `-2`, `-3` ... while a drawing, a
- * layer or a file of that name is there (pages of a PDF take `<stem>-p<N>`).
+ * Drawings main copied in and the app window is still drawing (PDF, WebP, SVG), by project: only
+ * these take pages (`addDrawingPage`), and only until the window closes them (`closeDrawing`).
+ * Kept in memory: an import that is cut off by closing the app is not picked up again.
  */
-async function newStem(root: string, m: ProjectManifest, name: string): Promise<string> {
+const staged = new Map<string, Map<string, { src: string; pages: number }>>();
+
+/**
+ * The stems one import has given out or handed to the DXF pipeline, lower case: a picture and a
+ * DXF of one name picked together must not take the same folder, whichever comes first.
+ */
+export type ClaimedStems = Set<string>;
+
+/** What already carries a name in `drawings/`, lower case: files (without ending) and folders. */
+async function namesInUse(root: string): Promise<{ all: Set<string>; pictures: Set<string> }> {
   let files: string[] = [];
   try {
     files = await readdir(join(root, 'drawings'));
   } catch {
     // no drawings folder yet
   }
-  const used = new Set(files.map((f) => f.replace(/\.[^.]+$/, '').toLowerCase()));
-  const ids = m.layers.map((l) => l.id);
-  const base = slug(name.slice(0, name.length - extname(name).length), 'drawing').slice(0, 60);
-  return uniqueId(
-    base.replace(/-+$/, '') || 'drawing',
-    (s) =>
-      used.has(s) ||
-      [...used].some((u) => u.startsWith(`${s}-p`) && /^\d+$/.test(u.slice(s.length + 2))) ||
-      ids.some((id) => id === sheetId(s) || id === `plan-${s}` || id.startsWith(`${sheetId(s)}-p`)),
-  );
+  const all = new Set<string>();
+  const pictures = new Set<string>();
+  for (const f of files) {
+    const ext = extname(f).toLowerCase();
+    const name = (ext ? f.slice(0, f.length - ext.length) : f).toLowerCase();
+    all.add(name);
+    // the original of a picture drawing (a DXF's own copy is not one)
+    if (ext && ext !== '.dxf') pictures.add(name);
+  }
+  return { all, pictures };
+}
+
+/** `name` is `stem` itself or one of its pages (`<stem>-p<N>`). */
+const isStemOrPage = (name: string, stem: string) =>
+  name === stem || (name.startsWith(`${stem}-p`) && /^\d+$/.test(name.slice(stem.length + 2)));
+
+/** The first of `base`, `base-2`, `base-3` ... that `taken` does not hold. */
+function freeStem(base: string, taken: (stem: string) => boolean): string {
+  let stem = base;
+  for (let n = 2; taken(stem); n++) stem = `${base}-${String(n)}`;
+  return stem;
+}
+
+/** Whether a stem (lower case) is in use by a file, a folder, a layer or this import. */
+function stemTaken(
+  s: string,
+  m: ProjectManifest,
+  used: ReadonlySet<string>,
+  claimed: ClaimedStems,
+): boolean {
+  if (claimed.has(s) || [...used].some((u) => isStemOrPage(u, s))) return true;
+  return m.layers.some((l) => {
+    const id = l.id.toLowerCase();
+    return id === `plan-${s}` || (id.startsWith('sheet-') && isStemOrPage(id.slice(6), s));
+  });
+}
+
+/**
+ * A folder name for a new drawing: the file name slugged, with `-2`, `-3` ... while a drawing, a
+ * layer or a file of that name is there (pages of a PDF take `<stem>-p<N>`), whatever its case.
+ */
+async function newStem(
+  root: string,
+  m: ProjectManifest,
+  name: string,
+  claimed: ClaimedStems,
+): Promise<string> {
+  const bare = name.slice(0, name.length - extname(name).length);
+  if (RESERVED.test(bare.trim())) {
+    throw new Error(
+      `"${name}" has a name Windows keeps for a device (${bare.trim()}). Rename the file, then import it.`,
+    );
+  }
+  const base = slug(bare, 'drawing').slice(0, 60).replace(/-+$/, '') || 'drawing';
+  const { all } = await namesInUse(root);
+  const stem = freeStem(base, (s) => stemTaken(s, m, all, claimed));
+  claimed.add(stem);
+  return stem;
+}
+
+/** The folder the DXF pipeline files a drawing under (python `stem_of` of `drawing.import`). */
+export function dxfStem(file: string): string {
+  const name = basename(file.replace(/\\/g, '/'));
+  const bare = name.slice(0, name.length - extname(name).length);
+  const s = bare
+    .replace(/[^A-Za-z0-9_-]+/g, '-')
+    .replace(/^[-_]+|[-_]+$/g, '')
+    .slice(0, 80);
+  return s && /^[A-Za-z0-9]/.test(s) ? s : `drawing${s ? `-${s}` : ''}`.slice(0, 80);
+}
+
+/**
+ * Before a DXF goes to `drawing.import`: the pipeline files it under `drawings/<stem>/` whatever
+ * is there, so a picture drawing of the same name (in any case) would lose its picture and its
+ * placement. When one owns the stem, the DXF is copied to `drawings/<free>.dxf` and the job reads
+ * that copy, which makes the pipeline file it under the free name. Otherwise the stem is kept for
+ * the DXF: for the rest of this import, and for later ones through its (still empty) folder.
+ * Nothing is copied or made without the processing tools (`run` false).
+ */
+export async function dxfSource(
+  root: string,
+  m: ProjectManifest,
+  file: string,
+  claimed: ClaimedStems,
+  run: boolean,
+): Promise<{ src: string; copy?: string; note?: string }> {
+  if (!run) return { src: file };
+  const stem = dxfStem(file).toLowerCase();
+  const { all, pictures } = await namesInUse(root);
+  const owned =
+    claimed.has(stem) ||
+    [...pictures].some((p) => isStemOrPage(p, stem)) ||
+    [...(staged.get(rootKey(root))?.keys() ?? [])].some((s) => s === stem) ||
+    m.layers.some(
+      (l) =>
+        l.id.toLowerCase().startsWith('sheet-') && isStemOrPage(l.id.toLowerCase().slice(6), stem),
+    );
+  await mkdir(join(root, 'drawings'), { recursive: true });
+  if (!owned) {
+    claimed.add(stem);
+    await mkdir(join(root, 'drawings', dxfStem(file)), { recursive: true });
+    return { src: file };
+  }
+  const free = freeStem(stem, (s) => stemTaken(s, m, all, claimed));
+  claimed.add(free);
+  const copy = join(root, 'drawings', `${free}.dxf`);
+  await copyFile(file, copy);
+  return {
+    src: copy,
+    copy,
+    note: `A picture drawing is already called ${stem}, so this drawing comes in as ${free}.`,
+  };
 }
 
 /** List `plan.png` of `stem` (already written) as a hidden, not placed plan raster. */
@@ -111,47 +239,69 @@ async function listDrawing(
     m.layers[at] = { ...layer, id: old?.id ?? layer.id };
     return old?.id ?? layer.id;
   }
-  layer.id = uniqueId(layer.id, (id) => m.layers.some((l) => l.id === id));
+  layer.id = freeStem(layer.id, (id) => m.layers.some((l) => l.id === id));
   m.layers.push(layer);
   return layer.id;
 }
 
-function checkSize(name: string, size: { width: number; height: number } | null): void {
-  if (size && (size.width * size.height) / 1e6 > MAX_DRAWING_MP) {
+const megapixels = (px: number) => String(Math.round(px / 1e6));
+
+function checkPixels(name: string, size: { width: number; height: number } | null): void {
+  if (size && size.width * size.height > MAX_DRAWING_PIXELS) {
     throw new Error(
-      `${name} is ${String(size.width)} x ${String(size.height)} pixels, too large to open. Save it smaller (at most ${String(MAX_DRAWING_MP)} megapixels), then import it.`,
+      `${name} is ${String(size.width)} x ${String(size.height)} pixels, too large to open. Save it smaller (at most ${megapixels(MAX_DRAWING_PIXELS)} megapixels), then import it.`,
     );
+  }
+}
+
+/**
+ * Refuse a picture too large to open, from its file size and its header, before anything is
+ * decoded or copied. An SVG and a PDF have no pixels of their own; they are sized when drawn.
+ */
+async function checkPicture(file: string, name: string, ext: string): Promise<void> {
+  const bytes = (await stat(file)).size;
+  if (bytes > MAX_DRAWING_BYTES) {
+    throw new Error(
+      `${name} is ${String(Math.round(bytes / (1024 * 1024)))} MB, too large for a drawing. Save it smaller (at most ${String(MAX_DRAWING_BYTES / (1024 * 1024))} MB), then import it.`,
+    );
+  }
+  if (TIFF.has(ext)) {
+    const head = readTiffHeader(await readHead(file, 65536));
+    if (head.bigTiff)
+      throw new Error(
+        `${name} is a BigTIFF, too large for a drawing. Save it smaller, as TIFF or PNG.`,
+      );
+    checkPixels(name, head);
+  } else if (ext !== '.pdf' && ext !== '.svg') {
+    checkPixels(name, imageSize(await readHead(file, 65536)));
   }
 }
 
 /**
  * Import one picture as a drawing into the manifest `m` (the caller saves it). PNG and JPEG go
  * through `images.toPng`, TIFF through the builder's reader; PDF, WebP and SVG are only copied in
- * and answer `drawing`, for the app window to draw (`addDrawingPage`).
+ * and answer `drawing`, for the app window to draw (`addDrawingPage`, then `closeDrawing`). A
+ * picture that cannot be decoded leaves nothing behind: the copy made here is removed again.
  */
 export async function importDrawingFile(
   root: string,
   m: ProjectManifest,
   file: string,
   images: DrawingImages,
+  claimed: ClaimedStems = new Set(),
 ): Promise<ImportItem> {
   const name = basename(file);
   const ext = extname(file).toLowerCase();
-  const tiff = TIFF.has(ext);
-  // sizes are read from the file head, so a picture too large to open is refused before any work
-  if (tiff) {
-    const head = readTiffHeader(await readHead(file, 65536));
-    if (head.bigTiff)
-      throw new Error(
-        `${name} is a BigTIFF, too large for a drawing. Save it smaller, as TIFF or PNG.`,
-      );
-    checkSize(name, head);
-  } else if (!DRAWN_BY_WINDOW.has(ext)) checkSize(name, imageSize(await readHead(file, 65536)));
-  const stem = await newStem(root, m, name);
+  const stem = await newStem(root, m, name, claimed);
+  await checkPicture(file, name, ext);
   const src = `drawings/${stem}${ext}`;
   await mkdir(join(root, 'drawings'), { recursive: true });
   await copyFile(file, join(root, src));
   if (DRAWN_BY_WINDOW.has(ext)) {
+    const key = rootKey(root);
+    const waiting = staged.get(key) ?? new Map<string, { src: string; pages: number }>();
+    waiting.set(stem, { src, pages: 0 });
+    staged.set(key, waiting);
     return {
       file: name,
       kind: 'drawing',
@@ -160,20 +310,29 @@ export async function importDrawingFile(
       drawing: { stem, src, name },
     };
   }
-  await mkdir(join(root, 'drawings', stem), { recursive: true });
-  const plan = join(root, 'drawings', stem, 'plan.png');
+  const folder = join(root, 'drawings', stem);
+  const plan = join(folder, 'plan.png');
   let size: { width: number; height: number };
-  if (tiff) {
-    const t = decodeTiff(new Uint8Array(await readFile(file)));
-    const img = rasterToRgba(t, 'ortho', MAX_DRAWING_PX);
-    await writeFile(
-      plan,
-      encodePng({ width: img.width, height: img.height, channels: 4, data: img.data }),
-    );
-    size = { width: img.width, height: img.height };
-  } else {
-    if (!images.toPng) throw new Error('Picture drawings are not available in this build.');
-    size = await images.toPng(file, plan, MAX_DRAWING_PX);
+  try {
+    await mkdir(folder, { recursive: true });
+    if (TIFF.has(ext)) {
+      const t = decodeTiff(new Uint8Array(await readFile(file)));
+      const img = rasterToRgba(t, 'ortho', MAX_DRAWING_PX);
+      await writeFile(
+        plan,
+        encodePng({ width: img.width, height: img.height, channels: 4, data: img.data }),
+      );
+      size = { width: img.width, height: img.height };
+    } else {
+      if (!images.toPng) throw new Error('Picture drawings are not available in this build.');
+      size = await images.toPng(file, plan, MAX_DRAWING_PX);
+    }
+  } catch (e) {
+    // only what this import just made: its copy, and its folder when that is empty again
+    await rm(join(root, src), { force: true }).catch(() => undefined);
+    await rm(plan, { force: true }).catch(() => undefined);
+    await rmdir(folder).catch(() => undefined);
+    throw e;
   }
   const layerId = await listDrawing(root, m, { stem, name, file: name, ...size });
   return { file: name, kind: 'drawing', status: 'imported', layerId, message: DRAWING_ADDED };
@@ -193,7 +352,10 @@ export interface DrawingPage {
 /**
  * One page the app window drew for a staged drawing (`builder:addDrawingPage`): written as
  * `drawings/<stem>/plan.png`, or `drawings/<stem>-p<page>/plan.png` when the original has several
- * pages, and listed. The same page again replaces its picture and keeps its layer.
+ * pages, and listed. Only a drawing an import of this session staged and the window has not
+ * closed takes pages: any other stem (a DXF's, a picture that is already a drawing) is refused,
+ * so a page can never replace a drawing that is there. The same page again, while its drawing is
+ * still open, replaces its picture and keeps its layer.
  */
 export async function addDrawingPage(
   root: string,
@@ -201,21 +363,18 @@ export async function addDrawingPage(
 ): Promise<{ manifest: ProjectManifest; layerId: string; backup: string }> {
   const size = imageSize(p.png);
   if (!size || p.png[1] !== 0x50) throw new Error('The page is not a PNG picture.');
-  checkSize(p.name, size);
-  let files: string[] = [];
-  try {
-    files = await readdir(join(root, 'drawings'));
-  } catch {
-    // no drawings folder: nothing was staged
+  if (size.width > MAX_DRAWING_PX || size.height > MAX_DRAWING_PX) {
+    throw new Error(
+      `The page is ${String(size.width)} x ${String(size.height)} pixels; a drawing is at most ${String(MAX_DRAWING_PX)} pixels on a side.`,
+    );
   }
-  const original = files.find(
-    (f) => f.slice(0, f.length - extname(f).length) === p.stem && extname(f) !== '',
-  );
-  if (!original) throw new Error(`The drawing "${p.stem}" was not imported into this project.`);
+  const open = staged.get(rootKey(root))?.get(p.stem);
+  if (!open) throw new Error(`The drawing "${p.stem}" is not waiting for pages. Import it again.`);
   const many = (p.pages ?? 1) > 1 && p.page !== undefined;
   const stem = many ? `${p.stem}-p${String(p.page)}` : p.stem;
   const name = many ? `${p.name}, page ${String(p.page)}` : p.name;
-  // read, list and save in one turn, so pages added one after another never lose each other
+  // read, list and save in one turn, on the manifest as it is by then (as an import's own save
+  // does): a page is appended by its id, and pages added one after another never lose each other
   const r = await updateManifestFile(root, async (read) => {
     const m = structuredClone(read);
     await mkdir(join(root, 'drawings', stem), { recursive: true });
@@ -229,5 +388,23 @@ export async function addDrawingPage(
     });
     return { manifest: m, layerId };
   });
+  open.pages += 1;
   return { manifest: r.manifest, layerId: r.layerId, backup: r.backup };
+}
+
+/**
+ * The app window is done with a staged drawing (`builder:closeDrawing`): every page asked for is
+ * in, the person cancelled the page question, or the file could not be drawn. No more pages are
+ * taken for it. When it got none, the copy the import made (`drawings/<stem>.<ext>`) is removed,
+ * and only that copy; a stem that is not staged removes nothing.
+ */
+export async function closeDrawing(root: string, stem: string): Promise<{ removed: boolean }> {
+  const waiting = staged.get(rootKey(root));
+  const open = waiting?.get(stem);
+  if (!waiting || !open) return { removed: false };
+  waiting.delete(stem);
+  if (waiting.size === 0) staged.delete(rootKey(root));
+  if (open.pages > 0) return { removed: false };
+  await rm(join(root, open.src), { force: true });
+  return { removed: true };
 }

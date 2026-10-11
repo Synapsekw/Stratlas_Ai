@@ -12,8 +12,13 @@ import { dirname, join } from 'node:path';
 export const DRAWING_LONG_M = 100;
 /** Long side of a drawing's `plan.png`, pixels: larger pictures are scaled down to it. */
 export const MAX_DRAWING_PX = 8192;
-/** Pictures above this are refused before they are decoded (megapixels). */
-export const MAX_DRAWING_MP = 400;
+/**
+ * A picture above either limit is refused before it is decoded, from its file size and its header.
+ * The same limits as a plain raster import draws in one piece (`raw.ts` `RASTER_PIXELS` and
+ * `RASTER_BYTES`): 144 megapixels, 300 MB.
+ */
+export const MAX_DRAWING_PIXELS = 12_000 * 12_000;
+export const MAX_DRAWING_BYTES = 300 * 1024 * 1024;
 
 /** `drawings/<stem>/plan.png`: the plan raster of one drawing. */
 export const DRAWING_PLAN = /^drawings\/([A-Za-z0-9][A-Za-z0-9_-]{0,80})\/plan\.png$/;
@@ -79,12 +84,32 @@ export function placementFor(
   };
 }
 
-/** Width and height from the head of a PNG or JPEG file; null for anything else. */
+/** Width and height of a WebP from its first chunk (VP8X, VP8 or VP8L); null when unreadable. */
+function webpSize(b: Uint8Array, v: DataView): { width: number; height: number } | null {
+  const tag = (at: number) => String.fromCharCode(...b.subarray(at, at + 4));
+  if (b.length < 30 || tag(0) !== 'RIFF' || tag(8) !== 'WEBP') return null;
+  const chunk = tag(12);
+  if (chunk === 'VP8X') {
+    const u24 = (at: number) => v.getUint16(at, true) | ((b[at + 2] ?? 0) << 16);
+    return { width: u24(24) + 1, height: u24(27) + 1 };
+  }
+  if (chunk === 'VP8 ') {
+    return { width: v.getUint16(26, true) & 0x3fff, height: v.getUint16(28, true) & 0x3fff };
+  }
+  if (chunk === 'VP8L' && b[20] === 0x2f) {
+    const bits = v.getUint32(21, true);
+    return { width: (bits & 0x3fff) + 1, height: ((bits >>> 14) & 0x3fff) + 1 };
+  }
+  return null;
+}
+
+/** Width and height from the head of a PNG, JPEG or WebP file; null for anything else. */
 export function imageSize(b: Uint8Array): { width: number; height: number } | null {
   const v = new DataView(b.buffer, b.byteOffset, b.byteLength);
   if (b.length >= 24 && v.getUint32(0) === 0x89504e47 && v.getUint32(4) === 0x0d0a1a0a) {
     return { width: v.getUint32(16), height: v.getUint32(20) };
   }
+  if (b.length >= 12 && b[0] === 0x52 && b[1] === 0x49) return webpSize(b, v);
   if (b.length < 4 || b[0] !== 0xff || b[1] !== 0xd8) return null;
   // JPEG: walk the segments to the frame header (SOF0 to SOF15, not DHT, JPG or DAC)
   let p = 2;

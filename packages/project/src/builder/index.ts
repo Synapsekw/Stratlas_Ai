@@ -25,11 +25,16 @@ export * from './drawingPlacement';
 export {
   DRAWING_ADDED,
   addDrawingPage,
+  closeDrawing,
+  dxfSource,
+  dxfStem,
   importDrawingFile,
   isDrawingFile,
+  type ClaimedStems,
   type DrawingImages,
   type DrawingPage,
 } from './drawings';
+export { modelTextures, mtlTextures, type ModelTextures } from './modelTextures';
 export {
   NO_PIPELINE,
   importRawFiles,

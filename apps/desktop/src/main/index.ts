@@ -48,6 +48,7 @@ import { runInUtility } from './exports/utility';
 import {
   builderAltitudePlan,
   builderAddDrawingPage,
+  builderCloseDrawing,
   builderEnsureCapture,
   builderImport,
   builderTemplates,
@@ -1254,6 +1255,10 @@ function registerIpc(): void {
   handle(
     'builder:addDrawingPage',
     (req) => packageRefusal(req.projectId) ?? builderAddDrawingPage(req, registry),
+  );
+  handle(
+    'builder:closeDrawing',
+    (req) => packageRefusal(req.projectId) ?? builderCloseDrawing(req, registry),
   );
 
   handle('dialog:saveFile', (req) => {

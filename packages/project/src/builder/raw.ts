@@ -11,7 +11,7 @@ import type {
   ProjectManifest,
   Vec3,
 } from '@aio/schema';
-import { open, copyFile, mkdir, readFile, stat, writeFile } from 'node:fs/promises';
+import { open, copyFile, mkdir, readFile, rm, stat, writeFile } from 'node:fs/promises';
 import { basename, dirname, extname, join } from 'node:path';
 import { encodePng } from '../import/png';
 import {
@@ -22,9 +22,16 @@ import {
   type FileAltitudes,
 } from './altitude';
 import { captureForDate, slug, uniqueId, readManifestFile, updateManifestFile } from './create';
-import { importDrawingFile, isDrawingFile, type DrawingImages } from './drawings';
+import {
+  dxfSource,
+  importDrawingFile,
+  isDrawingFile,
+  type ClaimedStems,
+  type DrawingImages,
+} from './drawings';
 import { readPhotoMeta } from './exif';
 import { mergeImport } from './importMerge';
+import { modelTextures } from './modelTextures';
 import { objToGlb } from './obj';
 import { photoAltitude, photoHeight, photoRef } from './photos';
 import {
@@ -256,6 +263,9 @@ export async function importRawFiles(
   const items: ImportItem[] = [];
   const consumed = new Set<string>();
   const pipeline = await deps.jobs.available().catch(() => false);
+  // drawings: the folder names this import gives out, and the pictures its models use
+  const drawingStems: ClaimedStems = new Set();
+  const textures = await modelTextures(paths);
   const total = paths.length;
   let done = 0;
   const tick = (file: string) => {
@@ -321,8 +331,16 @@ export async function importRawFiles(
     const ext = extname(file).toLowerCase();
     try {
       if (consumed.has(file)) continue;
-      if (isDrawingFile(ext, deps.drawings === true)) {
-        items.push(await importDrawingFile(root, m, file, deps.images));
+      if (isDrawingFile(ext, deps.drawings === true) && textures.has(file)) {
+        // picked with its model: part of the model, not a sheet to look at
+        items.push({
+          file: name,
+          kind: 'unknown',
+          status: 'skipped',
+          message: `A texture of the model ${textures.modelOf(file) ?? ''}, read with it. Not added as a drawing.`,
+        });
+      } else if (isDrawingFile(ext, deps.drawings === true)) {
+        items.push(await importDrawingFile(root, m, file, deps.images, drawingStems));
       } else if (PHOTO.has(ext)) {
         const meta = readPhotoMeta(await readHead(file, 512 * 1024));
         const layer = photosLayer();
@@ -528,7 +546,7 @@ export async function importRawFiles(
           const world = tfw ? parseWorldFile(await readFile(tfw, 'utf8')) : undefined;
           // a scan with no position is a drawing, placed by hand
           if (!tiffGeoreferenced(t, world)) {
-            items.push(await importDrawingFile(root, m, file, deps.images));
+            items.push(await importDrawingFile(root, m, file, deps.images, drawingStems));
             continue;
           }
           let src = t.geo.epsg ?? (prj ? epsgFromPrj(await readFile(prj, 'utf8')) : undefined);
@@ -589,7 +607,14 @@ export async function importRawFiles(
           out: `clouds/${slug(name.slice(0, -ext.length), 'cloud')}.copc.laz`,
         });
       } else if (DRAWING.has(ext)) {
-        await job(file, 'drawing', 'drawing.import', {});
+        // a picture drawing of the same name keeps its folder: the DXF then comes in from a copy
+        // under a free name (`dxfSource`)
+        const dxf = await dxfSource(root, m, file, drawingStems, pipeline);
+        await job(file, 'drawing', 'drawing.import', dxf.copy ? { src: dxf.src } : {});
+        const started = items[items.length - 1];
+        if (started?.status === 'queued') {
+          if (dxf.note) started.message = `${started.message ?? ''} ${dxf.note}`.trim();
+        } else if (dxf.copy) await rm(dxf.copy, { force: true }).catch(() => undefined);
       } else if (OPF.has(ext)) {
         await job(file, 'opf', 'opf.import', {});
       } else if (

@@ -1371,7 +1371,8 @@ export const ipc = {
    * One page of a drawing the app window drew (`ImportItem.drawing`: PDF, WebP, SVG), as a PNG:
    * written to `drawings/<stem>/plan.png` (`drawings/<stem>-p<page>/plan.png` when the file has
    * several `pages`) with its provisional placement and a hidden `raster` layer (`role: 'plan'`,
-   * `format: 'image'`). Refused on a package.
+   * `format: 'image'`). Only a drawing that an import of this session staged and that is not
+   * closed yet (`builder:closeDrawing`) takes pages. Refused on a package.
    */
   'builder:addDrawingPage': {
     request: z
@@ -1390,6 +1391,18 @@ export const ipc = {
       .strict(),
     response: z.discriminatedUnion('ok', [
       z.object({ ok: z.literal(true), manifest: ProjectManifest, layerId: z.string() }),
+      z.object({ ok: z.literal(false), error: z.string() }),
+    ]),
+  },
+  /**
+   * The app window is done with a staged drawing: all its pages are in, the person cancelled, or
+   * the file could not be drawn. No more pages are taken for `stem`. When it got none, the copy
+   * the import made (`drawings/<stem>.<ext>`) is removed (`removed`), and only that copy.
+   */
+  'builder:closeDrawing': {
+    request: z.object({ projectId: z.string().min(1), stem: DrawingStem }).strict(),
+    response: z.discriminatedUnion('ok', [
+      z.object({ ok: z.literal(true), removed: z.boolean() }),
       z.object({ ok: z.literal(false), error: z.string() }),
     ]),
   },

@@ -300,4 +300,14 @@ describe('drawings (PDF and picture imports, placement)', () => {
     const res = ipc['builder:addDrawingPage'].response;
     expect(res.safeParse({ ok: false, error: 'no' }).success).toBe(true);
   });
+
+  it('builder:closeDrawing ends a staged drawing by its stem, nothing else', () => {
+    const req = ipc['builder:closeDrawing'].request;
+    expect(req.safeParse({ projectId: 'p', stem: 'site' }).success).toBe(true);
+    expect(req.safeParse({ projectId: 'p', stem: '../site' }).success).toBe(false);
+    expect(req.safeParse({ projectId: 'p', stem: 'site', path: 'x' }).success).toBe(false);
+    const res = ipc['builder:closeDrawing'].response;
+    expect(res.safeParse({ ok: true, removed: true }).success).toBe(true);
+    expect(res.safeParse({ ok: false, error: 'no' }).success).toBe(true);
+  });
 });

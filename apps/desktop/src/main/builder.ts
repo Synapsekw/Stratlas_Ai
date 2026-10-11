@@ -269,6 +269,22 @@ export async function builderAddDrawingPage(
   }
 }
 
+/** The app window is done with a staged drawing: no more pages, and no copy left without one. */
+export async function builderCloseDrawing(
+  req: IpcRequest<'builder:closeDrawing'>,
+  registry: ProjectRegistry,
+): Promise<IpcResponse<'builder:closeDrawing'>> {
+  const root = registry.root(req.projectId);
+  if (root === undefined)
+    return { ok: false, error: `Project "${req.projectId}" is not open. Open it, then import.` };
+  try {
+    const r = await (await lib()).closeDrawing(root, req.stem);
+    return { ok: true, removed: r.removed };
+  } catch (e) {
+    return { ok: false, error: errorText(e) };
+  }
+}
+
 export async function builderUpdateLayers(
   req: IpcRequest<'builder:updateLayers'>,
   registry: ProjectRegistry,

@@ -150,6 +150,12 @@ function patchLayers(
         );
       const round = (p: Vec3): Vec3 => [r6(p[0]), r6(p[1]), r6(p[2])];
       const { tl, tr, bl } = patch.corners;
+      const side = (a: Vec3, b: Vec3) => Math.hypot(a[0] - b[0], a[1] - b[1], a[2] - b[2]);
+      // corners fitted from points that coincide: a picture with no width or no height
+      if (!(side(tl, tr) > 1e-6) || !(side(tl, bl) > 1e-6))
+        throw new Error(
+          `"${l.name}" would have no size there. Pick points further apart, then place it again.`,
+        );
       const corners = { tl: round(tl), tr: round(tr), bl: round(bl) };
       // a drawing that is placed shows (it was saved hidden while it had no place)
       const stem = drawingStemOf(l);
