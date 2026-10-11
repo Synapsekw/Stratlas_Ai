@@ -5,12 +5,22 @@ import { act, useEffect } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-/** What the screen reads from the app: the library's sites, or why they could not be read. */
-const app = { sites: [] as GlobeSite[], error: null as string | null };
+/**
+ * What the screen reads from the app: the library's sites (or why they could not be read), the
+ * open project and its issues; and what it sent to main.
+ */
+const app = {
+  sites: [] as GlobeSite[],
+  error: null as string | null,
+  project: null as { id: string; manifest: object } | null,
+  issues: [] as object[],
+  sent: [] as { channel: string; payload: unknown }[],
+};
 /** What the screen gave the Globe at its last render, and the flights it asked of it. */
 const globe = { props: null as GlobeViewProps | null, flyToSite: vi.fn(() => Promise.resolve()) };
 
-function answer(channel: string): unknown {
+function answer(channel: string, payload: unknown): unknown {
+  app.sent.push({ channel, payload });
   if (channel === 'globe:sites')
     return app.error === null
       ? { ok: true, value: { ok: true, sites: app.sites } }
@@ -32,14 +42,16 @@ vi.mock('@aio/globe/view', () => ({
 }));
 vi.mock('@aio/engine', () => ({ reducedMotion: () => true }));
 vi.mock('@aio/workspace', () => {
-  const state = () => ({ project: null, issues: [] });
+  const state = () => ({ project: app.project, issues: app.issues });
   return {
     useWorkspace: (selector: (s: ReturnType<typeof state>) => unknown) => selector(state()),
     workspace: { getState: state },
   };
 });
 vi.mock('../shell', () => ({
-  bridge: { call: (channel: string) => Promise.resolve(answer(channel)) },
+  bridge: {
+    call: (channel: string, payload: unknown) => Promise.resolve(answer(channel, payload)),
+  },
   shell: { getState: () => ({}) },
   useShell: (selector: (s: { library: object[]; settings: object }) => unknown) =>
     selector({ library: [], settings: {} }),
@@ -69,6 +81,19 @@ const site = (projectId: string, name: string, open = 0): GlobeSite => ({
 });
 const QUARRY = site('quarry', 'Hill quarry', 2);
 const YARD = site('yard', 'Harbour yard');
+/** The quarry as the open project, and one open issue of it with a place in 3D (so it has a pin). */
+const QUARRY_PROJECT = {
+  id: 'quarry',
+  manifest: { crs: { epsg: 4326 }, origin: [0, 0, 0], severityModels: [] },
+};
+const LOOSE_ROCK = {
+  id: 'i1',
+  code: 'Q-1',
+  title: 'Loose rock',
+  status: 'open',
+  severity: 2,
+  sightings: [{ on: 'mesh', geom: { type: 'spoint', p: [1, 2, 3] } }],
+};
 
 let host: HTMLDivElement;
 let root: Root | undefined;
@@ -79,6 +104,9 @@ beforeEach(() => {
   Element.prototype.scrollIntoView = () => undefined;
   app.sites = [QUARRY, YARD];
   app.error = null;
+  app.project = null;
+  app.issues = [];
+  app.sent = [];
   globe.props = null;
   globe.flyToSite.mockClear();
 });
@@ -248,10 +276,53 @@ describe('the Globe screen', () => {
     });
   });
 
-  it('keeps the card clear of its own pieces, with the same insets at every render', async () => {
+  it('saves a look chosen in the Map dialog, and the screen follows it', async () => {
+    await mount();
+    expect(q('globe-screen')?.getAttribute('data-look')).toBe('street');
+    act(() => q('globe-map-button')?.click());
+    expect(q('globe-look-street')?.getAttribute('aria-pressed')).toBe('true');
+
+    act(() => q('globe-look-satellite')?.click());
+    const saved = app.sent.filter((s) => s.channel === 'globe:setSettings');
+    expect(saved).toHaveLength(1);
+    expect(saved[0]?.payload).toMatchObject({ settings: { style: 'satellite' } });
+    expect(q('globe-screen')?.getAttribute('data-look')).toBe('satellite');
+    expect(globe.props?.style).toBe('satellite');
+    expect(q('globe-look-satellite')?.getAttribute('aria-pressed')).toBe('true');
+  });
+
+  it('closes the card of an issue when its pin is no longer drawn', async () => {
+    app.project = QUARRY_PROJECT;
+    app.issues = [LOOSE_ROCK];
+    await mount();
+    expect(globe.props?.issuePins?.pins.map((p) => p.id)).toEqual(['i1']);
+    act(() => globe.props?.onPick({ kind: 'issue', projectId: 'quarry', issueId: 'i1' }));
+    expect(q('globe-card')?.textContent).toContain('Q-1 Loose rock');
+    expect(globe.props?.cardPick).toEqual({ kind: 'issue', projectId: 'quarry', issueId: 'i1' });
+
+    // "Show issues of the open project" switched off in the Map dialog: the pins go, and the card
+    act(() => q('globe-map-button')?.click());
+    act(() => host.querySelector<HTMLInputElement>('.globe-check input')?.click());
+    expect(globe.props?.issuePins).toBeNull();
+    expect(q('globe-card')).toBeNull();
+    expect(globe.props?.cardPick).toBeNull();
+  });
+
+  it('never shows an issue with no pin as its site', async () => {
+    app.project = QUARRY_PROJECT;
+    app.issues = [LOOSE_ROCK];
+    await mount();
+    // an issue this project does not have (the pick of a project that was open before)
+    act(() => globe.props?.onPick({ kind: 'issue', projectId: 'quarry', issueId: 'gone' }));
+    expect(q('globe-card')).toBeNull();
+    expect(globe.props?.cardPick).toBeNull();
+  });
+
+  it('hands the Globe one insets object for the card, with the agreed room at each edge', async () => {
     await mount();
     const insets = globe.props?.cardInsets;
-    expect(insets).toEqual({ top: 56, right: 12, bottom: 44, left: 12 });
+    // top: the field's row; right: the view buttons (12 + 36 + 8); bottom: the credits
+    expect(insets).toEqual({ top: 56, right: 56, bottom: 44, left: 12 });
     pickInField('Hill quarry');
     expect(globe.props?.cardInsets).toBe(insets);
   });

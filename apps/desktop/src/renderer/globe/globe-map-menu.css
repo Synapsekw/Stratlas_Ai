@@ -10,6 +10,8 @@
   background: color-mix(in oklch, var(--bg-1) 90%, transparent);
   backdrop-filter: blur(16px) saturate(1.15);
   border: 1px solid var(--line);
+  /* the corner of the field beside it */
+  border-radius: var(--r-6);
   box-shadow: 0 12px 32px var(--shadow);
   color: var(--fg-1);
 }
@@ -30,10 +32,6 @@
   box-shadow: 0 12px 32px var(--shadow);
   color: var(--fg-1);
   font-size: var(--t-12);
-}
-/* the options start the dialog, so they need no rule above them */
-.globe-map-pop .globe-options {
-  border-top: 0;
 }
 @media (forced-colors: active) {
   .globe-map-button,

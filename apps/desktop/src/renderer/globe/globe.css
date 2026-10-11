@@ -47,7 +47,8 @@
   position: absolute;
   z-index: 2;
 }
-/* a card that reaches the bottom corners lies over these, so its buttons can always be pressed */
+/* the card is kept clear of these (the screen's insets); if they ever meet, say when the credits
+   wrap to a second line, the card lies over them so its buttons can still be pressed */
 .globe-controls,
 .globe-credits {
   position: absolute;

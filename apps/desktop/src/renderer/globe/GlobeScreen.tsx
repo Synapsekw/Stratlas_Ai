@@ -52,8 +52,11 @@ import { GLOBE_PALETTE, useStreetTiles } from './street';
 /** Where the renderer build serves its copy of Cesium (electron.vite.config.ts `cesiumAssets`). */
 const CESIUM_BASE = new URL('cesium/', document.baseURI).href;
 
-/** The room the screen's own pieces take at each edge: the card of a pin keeps clear of it. */
-const CARD_INSETS: Insets = { top: 56, right: 12, bottom: 44, left: 12 };
+/**
+ * The room the screen's own pieces take at each edge: the card of a pin keeps clear of the top
+ * row, the view buttons at the right and the credits.
+ */
+const CARD_INSETS: Insets = { top: 56, right: 56, bottom: 44, left: 12 };
 
 /** The words on the chip of sites that gathered. */
 const clusterLabel = (count: number) => t('globe.siteCount', { count });
@@ -172,6 +175,13 @@ export default function GlobeScreen() {
       pins: issuePins(issues, project.manifest),
     };
   }, [project, issues, prefs.showIssues]);
+  // an issue's card goes when its pin does: issues hidden, another project opened, the issue closed
+  // (dropped while rendering, so the card is never drawn without its pin)
+  if (
+    pick?.kind === 'issue' &&
+    !(pins?.projectId === pick.projectId && pins.pins.some((p) => p.id === pick.issueId))
+  )
+    setPick(null);
   // what the look credits before the Globe says what it drew
   const [credits, setCredits] = useState<string[]>(() =>
     planCredits(planGlobeLayers({ style: look, street: false, imagery: [] }), ''),
