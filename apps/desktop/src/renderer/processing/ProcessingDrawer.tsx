@@ -59,9 +59,16 @@ export function ProcessingDrawer() {
     heading.current?.focus();
   }, [open]);
 
-  if (!open) return null;
   // a picked job that is gone, or of a project no longer open, falls back to the list
   const job = shownJob(all, picked, root);
+  const shownId = job?.id ?? null;
+  // a row or Back unmounts the button that had the focus, and the app would hand the focus to
+  // the screen heading outside the drawer (Esc would no longer close it): keep it on our heading
+  useEffect(() => {
+    if (open) heading.current?.focus();
+  }, [open, shownId]);
+
+  if (!open) return null;
   const close = () => {
     processing.getState().closeDrawer();
     focusChip();
