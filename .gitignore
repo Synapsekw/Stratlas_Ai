@@ -8,6 +8,7 @@ coverage/
 *.tsbuildinfo
 playwright-report/
 test-results/
+.playwright-mcp/
 *.log
 
 # secrets and local config
