@@ -5,7 +5,7 @@ import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { DrawerList, FINISHED_SHOWN, type DrawerListProps } from './DrawerList';
 
-Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
+(globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
 let n = 0;
 const job = (over: Partial<JobRecord>): JobRecord => ({
@@ -113,12 +113,9 @@ describe('the processing list of a project', () => {
           elsewhere={[]}
           toolsMissing={false}
           now={0}
-          // eslint-disable-next-line @typescript-eslint/no-empty-function
-          onPick={() => {}}
-          // eslint-disable-next-line @typescript-eslint/no-empty-function
-          onCreateMaps={() => {}}
-          // eslint-disable-next-line @typescript-eslint/no-empty-function
-          onUpdateTools={() => {}}
+          onPick={() => undefined}
+          onCreateMaps={() => undefined}
+          onUpdateTools={() => undefined}
         >
           <p data-testid="slot">runs</p>
         </DrawerList>,
