@@ -53,6 +53,28 @@ async function exists(p: string): Promise<boolean> {
   }
 }
 
+/** Codes Windows gives a rename onto a file that something has open at that moment. */
+const LOCKED = new Set(['EPERM', 'EACCES', 'EBUSY']);
+
+/**
+ * Rename `from` over `to`. Windows refuses to replace a file while anything holds it open, even
+ * only to read it: the app's own journal reading the manifest when a job ends, a pipeline, a
+ * search indexer, antivirus. Such a reader is gone within milliseconds, so there a refused rename
+ * is tried again for about 2.5 s before it fails (as the desktop app's `writeJsonAtomic` does).
+ */
+async function renameOver(from: string, to: string): Promise<void> {
+  for (let wait = 10; ; wait *= 2) {
+    try {
+      await rename(from, to);
+      return;
+    } catch (e) {
+      const code = (e as NodeJS.ErrnoException).code ?? '';
+      if (process.platform !== 'win32' || !LOCKED.has(code) || wait > 1280) throw e;
+      await new Promise((resolve) => setTimeout(resolve, wait));
+    }
+  }
+}
+
 export async function readManifestFile(root: string): Promise<ProjectManifest> {
   const file = join(root, 'manifest.json');
   const r = parseManifest(JSON.parse(await readFile(file, 'utf8')) as unknown);
@@ -85,7 +107,7 @@ export async function writeManifestFile(root: string, manifest: ProjectManifest)
   if (!kept.ok) throw new Error(kept.error);
   const tmp = `${file}.partial`;
   await writeFile(tmp, `${JSON.stringify(kept.value, null, 2)}\n`);
-  await rename(tmp, file);
+  await renameOver(tmp, file);
   return backup;
 }
 
