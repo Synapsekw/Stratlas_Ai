@@ -95,7 +95,10 @@ describe('builder conversions as pipeline jobs', () => {
   it('says when the pack is missing or cannot convert a file type yet', async () => {
     expect(await builderPipelineJobs(runner(false).r).available()).toBe(false);
     await expect(
-      builderPipelineJobs(runner().r).start('raster.tile', { projectRoot: 'E:/p', src: 'a.tif' }),
+      builderPipelineJobs(runner().r).start('video.transcode', {
+        projectRoot: 'E:/p',
+        src: 'a.mov',
+      }),
     ).rejects.toThrow(/cannot convert this file type yet/);
   });
 

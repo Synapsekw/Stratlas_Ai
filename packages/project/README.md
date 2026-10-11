@@ -78,8 +78,10 @@ alignment saves in the app:
   <= 2560 px and 480 px thumb), MP4/MOV with the DJI SRT of the same name (to `aio.flight/1`,
   frame timing checked), GLB, OBJ (+ MTL and textures, `objToGlb`), small GeoTIFF orthos and DSMs
   (`decodeTiff`: strips or tiles, none, LZW, Deflate, PackBits; GeoKeys or world file and .prj).
-  LAS, LAZ, E57, PLY and large or BigTIFF rasters become pipeline-pack jobs (`PipelineJobs`,
-  methods `pointcloud.toCopc` and `raster.tile`) and report `needs-pipeline` until it is installed.
+  LAS, LAZ, E57 and PLY clouds, DXF plans, OPF projects and designs become pipeline-pack jobs
+  (`PipelineJobs`, methods such as `pointcloud.toCopc`) and report `needs-pipeline` until the pack
+  is installed. A GeoTIFF over 300 MB, over 12,000 x 12,000 pixels or a BigTIFF is refused with an
+  `error` item saying so: no pipeline tiles a large raster yet.
 
 ## Importers (stream S10)
 

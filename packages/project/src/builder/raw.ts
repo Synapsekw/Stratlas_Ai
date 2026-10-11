@@ -127,9 +127,14 @@ const DESIGN = new Set(['.landxml', '.12da']);
 const OPF = new Set(['.opf']);
 /** Codecs Chromium plays (sample entry fourcc). */
 const PLAYABLE = new Set(['avc1', 'avc3', 'hvc1', 'hev1', 'vp09', 'av01']);
-/** GeoTIFFs above this go to the pipeline pack (tiling), below it are drawn as one image. */
+/**
+ * GeoTIFFs above either limit (and every BigTIFF) are refused: no pipeline tiles a large raster
+ * yet. Below them the file is decoded in memory and drawn as one image.
+ */
 const RASTER_BYTES = 300 * 1024 * 1024;
 const RASTER_PIXELS = 12_000 * 12_000;
+const RASTER_TOO_LARGE =
+  'This GeoTIFF is too large to import yet (over 300 MB, over 12,000 x 12,000 pixels, or a BigTIFF). Reduce or split it in other software, then import the parts.';
 const REVIEW_PX = 2560;
 const THUMB_PX = 480;
 
@@ -203,8 +208,9 @@ const layerIdTaken = (m: ProjectManifest) => (id: string) => m.layers.some((l) =
 
 /**
  * Import raw files into a project package: photos (EXIF GPS, DJI gimbal, review copies), video
- * with its DJI SRT (to `aio.flight/1`), GLB and OBJ models, small GeoTIFF orthos and DSMs; point
- * clouds and large rasters become pipeline-pack jobs. The manifest is validated, backed up and
+ * with its DJI SRT (to `aio.flight/1`), GLB and OBJ models, small GeoTIFF orthos and DSMs (a
+ * larger one is refused with a message); point clouds, drawings and designs become
+ * pipeline-pack jobs. The manifest is validated, backed up and
  * replaced once at the end. Each file reports its own outcome; one bad file never stops the rest.
  *
  * The manifest is read at the start and the import works on its own copy, so nothing waits behind
@@ -504,10 +510,7 @@ export async function importRawFiles(
         const head = readTiffHeader(await readHead(file, 64 * 1024));
         const role = head.samples === 1 && head.bits >= 16 ? 'dsm' : 'ortho';
         if (head.bigTiff || size > RASTER_BYTES || head.width * head.height > RASTER_PIXELS) {
-          await job(file, 'raster', 'raster.tile', {
-            role,
-            out: `rasters/${slug(name.slice(0, -ext.length), 'raster')}`,
-          });
+          items.push({ file: name, kind: 'raster', status: 'error', message: RASTER_TOO_LARGE });
         } else {
           const t = decodeTiff(new Uint8Array(await readFile(file)));
           const stem = file.slice(0, -ext.length);

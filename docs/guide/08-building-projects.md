@@ -36,6 +36,7 @@ Projects made before the types above keep working as they are. An empty one show
 1. Drag files onto the window, or click **Import files** (or **Ctrl K**, **Import raw data into this project**).
 2. {product} takes photos, video with its `.SRT` log, GLB or OBJ models, GeoTIFF orthos and DSMs, and point clouds.
 3. Each file reports **Imported**, **Skipped**, **Queued** (a job converts it) or **Failed**.
+4. A GeoTIFF over 300 MB, over 12,000 x 12,000 pixels, or saved as a BigTIFF is **Failed** with the reason: reduce or split it in other software, then import the parts.
 
 - A DJI video with its `.SRT` becomes a clip with its flight path, in sync with the timeline.
 - A LAS or LAZ point cloud is converted in the background; **Processing** in the title bar shows the progress, and the cloud appears when it is done.
