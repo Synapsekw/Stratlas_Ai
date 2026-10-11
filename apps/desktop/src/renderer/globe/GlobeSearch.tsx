@@ -40,6 +40,8 @@ export function GlobeSearch({ sites, selected, onPick, onLight }: GlobeSearchPro
 
   const results = useMemo(() => filterSites(sites, query), [sites, query]);
   const open = wantOpen && sites.length > 0;
+  // the list itself is there only while something matches; the no-match words stand in its place
+  const listed = open && results.length > 0;
   const index = Math.min(active, results.length - 1);
   const activeSite = open ? results[index] : undefined;
 
@@ -73,11 +75,17 @@ export function GlobeSearch({ sites, selected, onPick, onLight }: GlobeSearchPro
     }
   }, [activeId, index]);
 
+  // closing forgets the row that was chosen, so reopening never picks it by surprise
+  const close = () => {
+    setActive(-1);
+    setWantOpen(false);
+  };
+
   // a press anywhere else on the page closes the list
   useEffect(() => {
     if (!open) return;
     const away = (e: Event) => {
-      if (!rootRef.current?.contains(e.target as Node)) setWantOpen(false);
+      if (!rootRef.current?.contains(e.target as Node)) close();
     };
     document.addEventListener('pointerdown', away);
     return () => {
@@ -88,8 +96,7 @@ export function GlobeSearch({ sites, selected, onPick, onLight }: GlobeSearchPro
   const pick = (site: GlobeSite | undefined) => {
     if (!site) return;
     setQuery('');
-    setActive(-1);
-    setWantOpen(false);
+    close();
     onPick(site);
   };
 
@@ -108,13 +115,13 @@ export function GlobeSearch({ sites, selected, onPick, onLight }: GlobeSearchPro
       pick(activeSite ?? (query.trim() ? results[0] : undefined));
     } else if (e.key === 'Escape' && open) {
       e.preventDefault();
-      setWantOpen(false);
+      close();
     }
   };
 
   // Tab to another control closes the list; a press on an option must not (it keeps the focus)
   const onBlur = (e: FocusEvent) => {
-    if (!rootRef.current?.contains(e.relatedTarget)) setWantOpen(false);
+    if (!rootRef.current?.contains(e.relatedTarget)) close();
   };
 
   return (
@@ -136,8 +143,8 @@ export function GlobeSearch({ sites, selected, onPick, onLight }: GlobeSearchPro
           }}
           onKeyDown={onKey}
           role="combobox"
-          aria-expanded={open}
-          aria-controls={open ? listId : undefined}
+          aria-expanded={listed}
+          aria-controls={listed ? listId : undefined}
           aria-activedescendant={activeSite ? `${listId}-${index}` : undefined}
           aria-label={t('globe.find')}
           placeholder={t('globe.find')}
@@ -152,48 +159,49 @@ export function GlobeSearch({ sites, selected, onPick, onLight }: GlobeSearchPro
             e.preventDefault();
           }}
         >
-          <div
-            id={listId}
-            className="globe-search-list"
-            role="listbox"
-            aria-label={t('globe.sites')}
-            data-testid="globe-sites"
-            hidden={results.length === 0}
-          >
-            {results.map((s, i) => (
-              <button
-                key={s.projectId}
-                type="button"
-                tabIndex={-1}
-                id={`${listId}-${i}`}
-                data-index={i}
-                role="option"
-                className="globe-search-site"
-                data-tone={s.issues.open > 0 ? 'attention' : 'clear'}
-                data-active={i === index ? 'true' : undefined}
-                aria-selected={s.projectId === selected}
-                onPointerMove={() => {
-                  setActive(i);
-                  light(s.projectId);
-                }}
-                onPointerLeave={() => {
-                  light(null);
-                }}
-                onClick={() => {
-                  pick(s);
-                }}
-              >
-                <span className="globe-dot" aria-hidden="true" />
-                <span className="name">{s.name}</span>
-                <SiteFacts site={s} />
-              </button>
-            ))}
-          </div>
-          {results.length === 0 && (
-            <p className="globe-search-none" role="status">
-              {t('globe.findNone')}
-            </p>
+          {listed && (
+            <div
+              id={listId}
+              className="globe-search-list"
+              role="listbox"
+              aria-label={t('globe.sites')}
+              data-testid="globe-sites"
+            >
+              {results.map((s, i) => (
+                <button
+                  key={s.projectId}
+                  type="button"
+                  tabIndex={-1}
+                  id={`${listId}-${i}`}
+                  data-index={i}
+                  role="option"
+                  className="globe-search-site"
+                  data-tone={s.issues.open > 0 ? 'attention' : 'clear'}
+                  data-active={i === index ? 'true' : undefined}
+                  aria-selected={s.projectId === selected}
+                  onPointerMove={() => {
+                    setActive(i);
+                    light(s.projectId);
+                  }}
+                  onPointerLeave={() => {
+                    setActive(-1);
+                    light(null);
+                  }}
+                  onClick={() => {
+                    pick(s);
+                  }}
+                >
+                  <span className="globe-dot" aria-hidden="true" />
+                  <span className="name">{s.name}</span>
+                  <SiteFacts site={s} />
+                </button>
+              ))}
+            </div>
           )}
+          {/* mounted before it has words, so a screen reader announces them when they arrive */}
+          <p className="globe-search-none" role="status">
+            {results.length === 0 ? t('globe.findNone') : ''}
+          </p>
         </div>
       )}
     </div>

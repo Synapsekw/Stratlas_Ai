@@ -135,12 +135,22 @@ describe('the Globe search field', () => {
   it('says so when no site has that name, and Enter picks nothing', () => {
     const { onPick } = mount();
     focusField();
+    const status = host.querySelector('[role="status"]');
+    expect(status?.textContent).toBe('');
     typeInto('zzz');
     expect(options()).toHaveLength(0);
-    expect(host.textContent).toContain('No site with that name');
+    // the same element that was already there, so a screen reader announces its new words
+    expect(host.querySelector('[role="status"]')).toBe(status);
+    expect(status?.textContent).toBe('No site with that name');
+    // nothing is listed, so the field does not claim an open list
+    expect(q('globe-sites')).toBeNull();
+    expect(field()?.getAttribute('aria-expanded')).toBe('false');
+    expect(field()?.hasAttribute('aria-controls')).toBe(false);
     expect(field()?.getAttribute('aria-activedescendant')).toBeNull();
     press('Enter');
     expect(onPick).not.toHaveBeenCalled();
+    typeInto('');
+    expect(host.querySelector('[role="status"]')?.textContent).toBe('');
   });
 
   it('Enter picks the top match of what was typed, and nothing from an untouched list', () => {
@@ -244,6 +254,48 @@ describe('the Globe search field', () => {
       options()[2]?.dispatchEvent(new Event('pointerout', { bubbles: true }));
     });
     expect(onLight).toHaveBeenLastCalledWith(null);
+    // the highlight goes with the chip, so Enter does not pick a row nothing shows
+    expect(host.querySelector('[data-active]')).toBeNull();
+    expect(field()?.getAttribute('aria-activedescendant')).toBeNull();
+  });
+
+  it('forgets the chosen row when the list closes, whichever way it closes', () => {
+    const { onPick, onLight } = mount();
+    focusField();
+    press('ArrowDown');
+    press('Escape');
+    press('ArrowDown');
+    expect(options()).toHaveLength(3);
+    expect(field()?.getAttribute('aria-activedescendant')).toBeNull();
+    expect(host.querySelector('[data-active]')).toBeNull();
+    expect(onLight).toHaveBeenLastCalledWith(null);
+
+    // a row under the pointer, a press elsewhere, then back into the field and Enter
+    act(() => {
+      options()[1]?.dispatchEvent(new Event('pointermove', { bubbles: true }));
+    });
+    expect(onLight).toHaveBeenLastCalledWith('yard');
+    act(() => {
+      document.body.dispatchEvent(new Event('pointerdown', { bubbles: true }));
+    });
+    act(() => field()?.click());
+    expect(field()?.getAttribute('aria-activedescendant')).toBeNull();
+    expect(onLight).toHaveBeenLastCalledWith(null);
+    press('Enter');
+    expect(onPick).not.toHaveBeenCalled();
+
+    // and the focus leaving for another control
+    press('ArrowDown');
+    const other = document.createElement('button');
+    document.body.append(other);
+    act(() => {
+      other.focus();
+    });
+    act(() => field()?.focus());
+    expect(field()?.getAttribute('aria-activedescendant')).toBeNull();
+    press('Enter');
+    expect(onPick).not.toHaveBeenCalled();
+    other.remove();
   });
 
   it('lights the chip of the option the keyboard is on, and none once the list closes', () => {
