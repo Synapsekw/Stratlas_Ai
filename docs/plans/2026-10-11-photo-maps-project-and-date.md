@@ -1202,6 +1202,17 @@ git commit -m "test(e2e): a photo run names its project and files its layers und
 
 ---
 
+## Amendments made during the build
+
+The task text above is the plan as approved. The build changed four things:
+
+1. **Photos layer days (Tasks 5 and 6).** For a photos layer the wizard takes the days from the layer items' `takenAt` (`daysOfItems(items)` in `surveyDate.ts`) and falls back to the estimate's `photoDays`. A layer's files can be copies without the date, and the items are exact.
+2. **`dateOptions` (Tasks 5 and 6).** It takes the picks to offer, `dateOptions(picks, captures, show)`, and the wizard passes `[autoPick, pick]`. With only the automatic pick, a new day the person chose in Options dropped out of the list when they changed the photos, and the list then showed "None".
+3. **The stand-in pipeline (Task 8).** `e2e/photo-fake/aio_photo_fake.py` now writes `capture` into `run.json` as the real pack does; the run panel reads it from there.
+4. **The synthetic photos (Task 8).** They carry DateTimeOriginal as well as DateTime: the app reads a photo's date only when the photo has an Exif block, so DateTime alone counts as no date.
+
+Commits in a parallel batch were made by the controller, one per task, once the batch was quiet.
+
 ## After the last task
 
 1. `pnpm check` in the worktree: green.
