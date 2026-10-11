@@ -6,21 +6,23 @@
  * the time the person leaves Scene.
  *
  * The engine says when the 3D view is mounted, not when a model has loaded, so the index is asked
- * once a second while the view is there, until it has bounds.
+ * once a second while the view is there, until it has the bounds of every tagged asset. The first
+ * bounds are not enough: the tagged nodes of a project can arrive in several models, and an index
+ * with some of them is `ready` while it counts the findings of an area short.
  */
 import { assetIndex, defaultToolContext, type AssetIndex } from '@aio/ai';
 import { getActiveScene, onActiveScene } from '@aio/engine';
 import { workspace, type OpenProject } from '@aio/workspace';
 
 const EVERY_MS = 1000;
-/** A minute for the model to load; after that the asset tools measure when they are used. */
+/** A minute for the models to load; after that the asset tools measure when they are used. */
 const MAX_TRIES = 60;
 
 /** The timers and the index, so a test turns the clock itself. */
 export interface AssetWarmDeps<Timer> {
   setInterval(run: () => void, ms: number): Timer;
   clearInterval(timer: Timer): void;
-  index(): Pick<AssetIndex, 'status'>;
+  index(): Pick<AssetIndex, 'status' | 'boxes'>;
 }
 
 const APP_DEPS: AssetWarmDeps<ReturnType<typeof globalThis.setInterval>> = {
@@ -31,15 +33,29 @@ const APP_DEPS: AssetWarmDeps<ReturnType<typeof globalThis.setInterval>> = {
   index: () => assetIndex(defaultToolContext('scene3d')),
 };
 
-/**
- * The project and how many assets it has tagged: what the remembered bounds are good for (the
- * index drops them when the count changes). Null without a project or without a tagged asset.
- */
-function warmKey(project: OpenProject | null): string | null {
+interface WarmTarget {
+  /**
+   * The project and how many tags it has: what the remembered bounds are good for (the index
+   * drops them when the count changes).
+   */
+  key: string;
+  /** How many assets there are to measure: the index has one box per tag name. */
+  assets: number;
+}
+
+/** What there is to warm; null without a project or without a tagged asset. */
+function warmTarget(project: OpenProject | null): WarmTarget | null {
   if (!project) return null;
   let tags = 0;
-  for (const l of project.manifest.layers) if (l.kind === 'mesh') tags += l.tags?.length ?? 0;
-  return tags > 0 ? `${project.id}/${String(tags)}` : null;
+  const names = new Set<string>();
+  for (const l of project.manifest.layers) {
+    if (l.kind !== 'mesh') continue;
+    for (const t of l.tags ?? []) {
+      tags += 1;
+      names.add(t.tag);
+    }
+  }
+  return tags > 0 ? { key: `${project.id}/${String(tags)}`, assets: names.size } : null;
 }
 
 function warm<Timer>(deps: AssetWarmDeps<Timer>): () => void {
@@ -54,22 +70,27 @@ function warm<Timer>(deps: AssetWarmDeps<Timer>): () => void {
   };
   const start = () => {
     stop();
-    const key = warmKey(workspace.getState().project);
+    const target = warmTarget(workspace.getState().project);
     // without the 3D view there is nothing to measure: its mounting starts this again
-    if (key === null || key === known || !getActiveScene()) return;
+    if (target === null || target.key === known || !getActiveScene()) return;
     let tries = 0;
     const id = deps.setInterval(() => {
       tries += 1;
-      let status: AssetIndex['status'];
+      let index: Pick<AssetIndex, 'status' | 'boxes'>;
       try {
-        status = deps.index().status;
+        index = deps.index();
       } catch {
         // no project any more, or a scene half torn down: the next project or view starts anew
         stop();
         return;
       }
-      if (status === 'ready') known = key;
-      if (status !== 'loading' || tries >= MAX_TRIES) stop();
+      const ready = index.status === 'ready';
+      const all = ready && index.boxes.length >= target.assets;
+      const last = tries >= MAX_TRIES;
+      // some bounds after the whole minute: a tag whose node is in no model never gets its box,
+      // and must not start the minute again on every return to Scene
+      if (all || (ready && last)) known = target.key;
+      if (all || last || index.status === 'none') stop();
     }, EVERY_MS);
     timer = { id };
   };
@@ -78,7 +99,8 @@ function warm<Timer>(deps: AssetWarmDeps<Timer>): () => void {
   const offProject = workspace.subscribe((s, prev) => {
     // another project, or the same one with its assets tagged anew; a manifest that is saved
     // again with the same tags leaves a running count alone
-    if (s.project !== prev.project && warmKey(s.project) !== warmKey(prev.project)) start();
+    if (s.project !== prev.project && warmTarget(s.project)?.key !== warmTarget(prev.project)?.key)
+      start();
   });
   const offScene = onActiveScene((scene) => {
     if (scene) start();
@@ -92,7 +114,7 @@ function warm<Timer>(deps: AssetWarmDeps<Timer>): () => void {
 }
 
 /**
- * Fill the asset bounds of the open project as soon as its model has loaded, and again for every
+ * Fill the asset bounds of the open project as soon as its models have loaded, and again for every
  * project opened after it. Returns a stop function.
  */
 export function startAssetWarm(): () => void;

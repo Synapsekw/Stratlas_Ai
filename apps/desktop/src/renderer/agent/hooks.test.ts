@@ -2,9 +2,9 @@
 import { defaultToolContext, type AppHooks } from '@aio/ai';
 import { DEFAULT_ISSUE_VIEW, issueView, resetIssueView, setIssueView } from '@aio/annotate';
 import { initialReview, reviewReducer, type Detection } from '@aio/annotate/detections';
-import type { Issue, ProjectManifest } from '@aio/schema';
+import type { DetectionsFile, Issue, ProjectManifest } from '@aio/schema';
 import { workspace } from '@aio/workspace';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { detections } from '../detections/store';
 import { evidence } from '../issueCard/evidence';
 import { DEFAULT_MEDIA_VIEW, mediaView, setMediaView } from '../screens/mediaView';
@@ -12,6 +12,48 @@ import { shell } from '../shell';
 import type { Screen } from '../store';
 import { stagePrefs } from '../workspace/stagePrefs';
 import { registerAgentHooks } from './hooks';
+
+/**
+ * The main process, as far as these tests go: it answers the read of a project's detection passes
+ * (`files` is what the project has on disk) and notes which projects were read. Set before the
+ * imports run, because the app's bridge is bound to `window.aio` when its module loads.
+ */
+const main = vi.hoisted(() => {
+  const state = {
+    reads: [] as string[],
+    files: [] as { name: string; file: DetectionsFile }[],
+  };
+  (globalThis as { aio?: unknown }).aio = {
+    invoke: (channel: string, request: { projectId?: string }) => {
+      if (channel !== 'detections:read') {
+        return Promise.reject(new Error(`${channel} is not answered in this test`));
+      }
+      state.reads.push(request.projectId ?? '');
+      return Promise.resolve({
+        ok: true,
+        files: state.files,
+        problems: [],
+        sizes: {},
+        issuesMap: {},
+        readOnly: false,
+      });
+    },
+    on: () => () => undefined,
+  };
+  return state;
+});
+
+const T0 = Date.UTC(2026, 0, 1, 10, 0, 0);
+const clip = (id: string, startUtcMs: number): ProjectManifest['layers'][number] => ({
+  kind: 'video',
+  id,
+  name: id,
+  visible: true,
+  src: { path: `video/${id}.mp4` },
+  flight: { src: { path: `flights/${id}.json` }, startUtcMs },
+  lens: { model: 'pinhole', hfovDeg: 80, aspect: 1.7778 },
+  offsetMs: 0,
+});
 
 const photos = (ids: string[]) => ids.map((id) => ({ id, src: { path: `photos/${id}.jpg` } }));
 
@@ -37,6 +79,8 @@ const manifest = (id: string): ProjectManifest => ({
       visible: true,
       items: photos(['t0', 't1']),
     },
+    clip('clip-1', T0),
+    clip('clip-2', T0 + 600_000),
   ],
   severityModels: [
     {
@@ -50,7 +94,16 @@ const manifest = (id: string): ProjectManifest => ({
       uncertain: { label: 'Uncertain', color: '#b68ef8' },
     },
   ],
-  classCatalogues: [],
+  classCatalogues: [
+    {
+      id: 'cat',
+      name: 'Tanks',
+      assetType: 'tank',
+      classes: [
+        { id: 'crack', label: 'Hairline fracture', color: '#aa0000', severityModel: 'sev' },
+      ],
+    },
+  ],
 });
 const project = (id: string) => ({ id, root: `E:/projects/${id}`, manifest: manifest(id) });
 
@@ -98,6 +151,35 @@ const detection: Detection = {
   origin: { kind: 'human', author: 'x' },
 };
 
+/** The same detection as the project has it on disk, in the review's pass file. */
+const PASS: { name: string; file: DetectionsFile } = {
+  name: 'review.json',
+  file: {
+    schema: 'aio.detections/1',
+    source: 'human',
+    layer: 'thermal',
+    detections: [
+      {
+        id: 'd',
+        photo: 't0',
+        class: 'crack',
+        severity: 3,
+        status: 'draft',
+        bbox: [0.25, 0.5, 0.5, 0.75],
+        space: 'normalized',
+      },
+    ],
+  },
+};
+
+/** The detections store has finished reading this project. */
+const read = (projectId: string) =>
+  vi.waitFor(() => {
+    expect(detections.getState()).toMatchObject({ projectId, loading: false });
+  });
+/** Long enough for a read that was started to have reached main. */
+const settle = () => new Promise<void>((done) => setTimeout(done, 0));
+
 function reviewed(projectId: string) {
   detections.setState({
     projectId,
@@ -113,19 +195,27 @@ function hook<K extends keyof AppHooks>(name: K): NonNullable<AppHooks[K]> {
 }
 
 let unregister: () => void;
-beforeEach(() => {
+beforeEach(async () => {
+  main.reads.length = 0;
+  main.files = [];
   unregister = registerAgentHooks();
   shell.setState({ screen: 'scene', stageMode: '3d', stageAuto: false });
   shell.getState().setAgentDock(true);
+  shell.getState().setRight(false);
   workspace.getState().openProject(project('p1'), ISSUES);
+  // the hooks read the review of a project that opens: every test starts with that done
+  await read('p1');
   mediaView.setState(DEFAULT_MEDIA_VIEW);
   resetIssueView();
 });
-afterEach(() => {
+afterEach(async () => {
   unregister();
-  evidence.setState({ open: null });
+  evidence.setState({ open: null, enabled: true });
   stagePrefs.getState().update('p1', { split: undefined });
+  workspace.getState().pause();
   workspace.getState().closeProject();
+  // the detections store forgets a closed project a moment later: not into the next test
+  await settle();
   detections.setState({ projectId: null, review: initialReview() });
 });
 
@@ -144,6 +234,48 @@ describe('registering the hooks', () => {
     unregister();
     const app = defaultToolContext('photo').app;
     for (const name of names) expect(app?.[name], name).toBeUndefined();
+  });
+});
+
+describe('the review detections', () => {
+  it('are read when a project with photos opens, so the first count has them', async () => {
+    expect(main.reads).toEqual(['p1']);
+    main.files = [PASS];
+    workspace.getState().openProject(project('p2'), ISSUES);
+    await read('p2');
+    expect(main.reads).toEqual(['p1', 'p2']);
+    // asked first thing, Media was never opened: the Severe detection on a thermal photo counts
+    expect(hook('showPhotos')({ severity: 'highest' })).toMatchObject({ shown: 3, severity: 3 });
+  });
+
+  it('are not read for a project without photos', async () => {
+    const bare = project('p3');
+    bare.manifest.layers = [];
+    workspace.getState().openProject(bare, []);
+    await settle();
+    expect(main.reads).toEqual(['p1']);
+  });
+
+  it('are read once: not again for a project that is loaded', async () => {
+    unregister();
+    unregister = registerAgentHooks();
+    await settle();
+    expect(main.reads).toEqual(['p1']);
+  });
+
+  it('are read for a project that is already open when the hooks are registered', async () => {
+    unregister();
+    detections.setState({ projectId: null, review: initialReview() });
+    unregister = registerAgentHooks();
+    await read('p1');
+    expect(main.reads).toEqual(['p1', 'p1']);
+  });
+
+  it('are no longer read once the hooks are taken back', async () => {
+    unregister();
+    workspace.getState().openProject(project('p2'), ISSUES);
+    await settle();
+    expect(main.reads).toEqual(['p1']);
   });
 });
 
@@ -324,9 +456,14 @@ describe('showing findings', () => {
     expect(hook('showIssues')({ status: 'closed' })).toEqual({ shown: 0 });
   });
 
-  it('puts the search text in the register without counting by it', () => {
-    expect(hook('showIssues')({ text: 'nothing has this title' })).toEqual({ shown: 5 });
+  it('counts by the search text, as the register lists', () => {
+    expect(hook('showIssues')({ text: 'nothing has this title' })).toEqual({ shown: 0 });
     expect(issueView.getState().text).toBe('nothing has this title');
+    // a code, whatever the case
+    expect(hook('showIssues')({ text: 'd03' })).toEqual({ shown: 1 });
+    // the label of the class, which is not its id: every finding is one, two of them Severe
+    expect(hook('showIssues')({ text: 'Hairline' })).toEqual({ shown: 5 });
+    expect(hook('showIssues')({ text: 'hairline', severity: 3 })).toEqual({ shown: 2 });
   });
 });
 
@@ -339,6 +476,15 @@ describe('the evidence of a finding', () => {
       kind: 'photo',
     });
     expect(shell.getState().stageMode).toBe('split');
+  });
+
+  it('opens with the evidence switch of the card off, and leaves the switch off', () => {
+    // the switch is about a finding picked in 3D; a request to show one is not that
+    evidence.setState({ enabled: false });
+    expect(hook('showEvidence')('4')).toBe(true);
+    expect(evidence.getState().open?.issueId).toBe('4');
+    expect(evidence.getState().enabled).toBe(false);
+    expect(localStorage.getItem('stratlas.evidenceSplit')).toBeNull();
   });
 
   it('says when there is none', () => {
@@ -408,6 +554,56 @@ describe('putting the view back', () => {
     expect(stagePrefs.getState().byProject.p1?.split).toEqual(split);
   });
 
+  it('puts the right panel, the clip and the clock back after a finding was shown', () => {
+    // a finding seen in a clip only: its evidence is the video frame, twelve seconds in
+    const onVideo: Issue = {
+      ...issue('6', 2, 'p0'),
+      sightings: [
+        {
+          on: 'video',
+          layer: 'clip-2',
+          track: [{ t: 12, geom: { type: 'box', x: 10, y: 20, w: 30, h: 40 } }],
+        },
+      ],
+    };
+    workspace.getState().openProject(project('p1'), [...ISSUES, onVideo]);
+    workspace.getState().setActiveClip('clip-1');
+    workspace.getState().setTime(T0 + 5000);
+    shell.getState().setRight(true);
+    const restore = hook('captureView')();
+    // what show_issue does: the selection opens the card (the app unfolds the right panel for
+    // it), then the evidence
+    workspace.getState().select({ kind: 'issue', id: '6' });
+    shell.getState().setRight(false);
+    expect(hook('showEvidence')('6')).toBe(true);
+    expect(evidence.getState().open?.kind).toBe('video');
+    expect(workspace.getState()).toMatchObject({
+      activeClip: 'clip-2',
+      nowMs: T0 + 600_000 + 12_000,
+    });
+    restore();
+    expect(evidence.getState().open).toBeNull();
+    expect(workspace.getState()).toMatchObject({ activeClip: 'clip-1', nowMs: T0 + 5000 });
+    expect(shell.getState()).toMatchObject({ rightCollapsed: true, stageMode: '3d' });
+  });
+
+  it('unfolds the right panel again when it was unfolded', () => {
+    const restore = hook('captureView')();
+    shell.getState().setRight(true);
+    restore();
+    expect(shell.getState().rightCollapsed).toBe(false);
+  });
+
+  it('leaves a running clock where it is', () => {
+    workspace.getState().setTime(T0 + 5000);
+    const restore = hook('captureView')();
+    // the person plays the clip while the agent's step is still the last one
+    workspace.getState().play();
+    workspace.getState().setTime(T0 + 9000);
+    restore();
+    expect(workspace.getState().nowMs).toBe(T0 + 9000);
+  });
+
   it('puts the stage mode back with how it was chosen', () => {
     // side by side because the project is video first, not because the person asked
     shell.setState({ stageMode: 'split', stageAuto: true });
@@ -423,13 +619,16 @@ describe('putting the view back', () => {
     const prefs = stagePrefs.getState().byProject;
     const media = mediaView.getState();
     const issues = issueView.getState();
+    const { activeClip, nowMs } = workspace.getState();
     hook('captureView')()();
     expect(shell.getState()).toMatchObject({
       screen: 'media',
       stageMode: '3d',
       stageAuto: true,
       agentDockCollapsed: true,
+      rightCollapsed: false,
     });
+    expect(workspace.getState()).toMatchObject({ activeClip, nowMs });
     expect(stagePrefs.getState().byProject).toBe(prefs);
     expect(mediaView.getState()).toEqual(media);
     expect(issueView.getState()).toEqual(issues);
