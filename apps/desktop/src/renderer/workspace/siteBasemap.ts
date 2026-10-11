@@ -1,22 +1,24 @@
 /**
- * The offline street map under the site in 3D: the maps package's street ground (the app's
- * street style rendered from the installed PMTiles packs and draped as a ground quad), added for
- * projects placed on the Earth whose manifest has no basemap layer of its own. It covers what the
- * project covers (flight paths, photo places, the origin) and stands in for the plain ground, so
- * a project that starts with drone video is placed on the map at once. On by default for
- * stockpile projects and projects without their own ground (no ortho, model or cloud), a choice
- * remembered per project otherwise (Layers popover). Nothing is drawn, and nothing fails, when no
- * installed pack covers the site.
+ * The offline street map under the site in 3D: the maps package's street rings (the app's street
+ * style rendered from the installed PMTiles packs, sharp near the site and out to the horizon),
+ * added for projects placed on the Earth whose manifest has no basemap layer of its own. It
+ * covers what the project covers (models, clouds, flight paths, photo places, the origin) and
+ * stands in for the plain ground. On for every project until turned off with the stage toolbar's
+ * street map button, a choice remembered per project on this computer. It gives way to imagery
+ * and terrain around the site from packs. Nothing is drawn, and nothing fails, when no installed
+ * pack covers the site.
  */
 import type { EngineStage, LayerHandle } from '@aio/engine';
 import { createStreetGround, frameProjection, packCovers, type GroundExtent } from '@aio/maps';
 import type { AioBridge, Layer, MapPackInfo, ProjectManifest, Vec3 } from '@aio/schema';
+import type { MessageKey } from '@aio/ui';
 import { loadFlight } from '@aio/video';
 import { assetUrl } from '@aio/workspace';
 import type { Mesh } from 'three';
 import { useEffect, useState } from 'react';
 import { useStore } from 'zustand';
 import { createStore } from 'zustand/vanilla';
+import type { GroundModel } from './basemap';
 
 /** Id of the street map ground (never a manifest layer id: those are the project's own). */
 export const SITE_BASEMAP_ID = 'site-street-map';
@@ -47,10 +49,13 @@ function readChoices(): Record<string, boolean> {
 }
 
 interface SiteBasemapState {
-  /** Choices made per project (absent: the project's default). */
+  /** Choices made per project (absent: on). */
   choices: Record<string, boolean>;
   /** The open project has a covering pack: null while unknown. */
   covered: boolean | null;
+  /** The rings the main view draws for a project, as JSON: a second view draws the same. */
+  rings: { projectId: string; json: string } | null;
+  setRings(projectId: string, json: string): void;
   set(projectId: string, on: boolean): void;
   setCovered(covered: boolean | null): void;
 }
@@ -58,6 +63,7 @@ interface SiteBasemapState {
 export const siteBasemap = createStore<SiteBasemapState>()((set, get) => ({
   choices: readChoices(),
   covered: null,
+  rings: null,
   set(projectId, on) {
     const choices = { ...get().choices, [projectId]: on };
     set({ choices });
@@ -69,6 +75,11 @@ export const siteBasemap = createStore<SiteBasemapState>()((set, get) => ({
   },
   setCovered(covered) {
     set({ covered });
+  },
+  setRings(projectId, json) {
+    const cur = get().rings;
+    if (cur?.projectId === projectId && cur.json === json) return;
+    set({ rings: { projectId, json } });
   },
 }));
 
@@ -82,29 +93,9 @@ export function wantsSiteBasemap(manifest: ProjectManifest): boolean {
   return !manifest.layers.some((l) => l.kind === 'basemap');
 }
 
-/** The project brings its own ground or model: an ortho, a mesh or a point cloud. */
-export function hasOwnGround(manifest: ProjectManifest): boolean {
-  return manifest.layers.some(
-    (l) =>
-      l.kind === 'mesh' || l.kind === 'pointcloud' || (l.kind === 'raster' && l.role === 'ortho'),
-  );
-}
-
-/**
- * The street map starts on for stockpile projects and for projects without their own ground
- * (video and photos first); off where the project's own maps and models come first.
- */
-export function siteBasemapDefault(manifest: ProjectManifest, volumetric: boolean): boolean {
-  return volumetric || !hasOwnGround(manifest);
-}
-
-/** The remembered choice, else the project's default (`siteBasemapDefault`). */
-export function siteBasemapOn(
-  choices: Record<string, boolean>,
-  projectId: string,
-  defaultOn: boolean,
-): boolean {
-  return choices[projectId] ?? defaultOn;
+/** The remembered choice for the project, else on. */
+export function siteBasemapOn(choices: Record<string, boolean>, projectId: string): boolean {
+  return choices[projectId] ?? true;
 }
 
 /** Street map margin around the content, and its smallest and largest half size, metres. */
@@ -112,16 +103,13 @@ const MARGIN = 1.25;
 const PAD_M = 150;
 const MIN_HALF_M = 400;
 const MAX_HALF_M = 6000;
-/** The square the street map covered before it followed the content (models, orthos). */
-const LEGACY_HALF_M = 2500;
 
 /**
- * The square of the local frame the street map covers: the content (flight paths, photo places)
- * and the origin with a margin, at least MIN_HALF_M (or the old 5 km square when the project
- * has its own ground or models, which are not measured here), at most MAX_HALF_M. Rounded to
- * 50 m so small additions do not redraw it.
+ * The square of the local frame the near ring of the street map covers: the content (models,
+ * clouds, flight paths, photo places) and the origin with a margin, at least MIN_HALF_M, at most
+ * MAX_HALF_M. Rounded to 50 m so small additions do not redraw it.
  */
-export function streetMapExtent(points: readonly Vec3[], ownGround = false): GroundExtent {
+export function streetMapExtent(points: readonly Vec3[]): GroundExtent {
   let minX = 0;
   let maxX = 0;
   let minZ = 0;
@@ -139,12 +127,128 @@ export function streetMapExtent(points: readonly Vec3[], ownGround = false): Gro
   const span = Math.max(maxX - cx, cx - minX, maxZ - cz, cz - minZ);
   const half = Math.min(
     MAX_HALF_M,
-    Math.max(
-      ownGround ? LEGACY_HALF_M : MIN_HALF_M,
-      Math.ceil((span * MARGIN + PAD_M) / step) * step,
-    ),
+    Math.max(MIN_HALF_M, Math.ceil((span * MARGIN + PAD_M) / step) * step),
   );
   return { minX: cx - half, maxX: cx + half, minZ: cz - half, maxZ: cz + half };
+}
+
+/** A box on the ground (the stage's content box). */
+export interface BoxLike {
+  min: { x: number; z: number };
+  max: { x: number; z: number };
+}
+
+/** The corners of a content box, as points for `streetMapExtent`. */
+export function boxPoints(box: BoxLike): Vec3[] {
+  return [
+    [box.min.x, 0, box.min.z],
+    [box.max.x, 0, box.min.z],
+    [box.max.x, 0, box.max.z],
+    [box.min.x, 0, box.max.z],
+  ];
+}
+
+/** Each ring is this many times the size of the ring inside it. */
+const RING_STEP = 4;
+/** No ring reaches further from its centre than this, metres (the camera sees 20 km). */
+const MAX_RING_HALF_M = 12_000;
+/** A ring less than this many times the ring inside it adds too little to be drawn. */
+const MIN_RING_GROWTH = 1.5;
+
+/**
+ * The squares the street map is drawn in, nearest first: `near` (sharp, under the content), then
+ * up to two more around the same centre, so the map runs out to the horizon without one picture
+ * having to cover everything.
+ */
+export function streetMapRings(near: GroundExtent): GroundExtent[] {
+  const cx = (near.minX + near.maxX) / 2;
+  const cz = (near.minZ + near.maxZ) / 2;
+  const half = (near.maxX - near.minX) / 2;
+  const rings = [near];
+  let last = half;
+  for (let k = 1; k <= 2; k++) {
+    const h = Math.min(MAX_RING_HALF_M, half * RING_STEP ** k);
+    if (h < last * MIN_RING_GROWTH) break;
+    rings.push({ minX: cx - h, maxX: cx + h, minZ: cz - h, maxZ: cz + h });
+    last = h;
+  }
+  return rings;
+}
+
+/**
+ * Wait for the scene to be up: `done` gets the content box once two readings `stepMs` apart are
+ * the same (to the metre), or whatever it is after `capMs` (null for a project with nothing in
+ * it yet). The street map is drawn after that, so it never holds up the first frames, and is
+ * sized by what was loaded. Returns a function that stops the wait.
+ */
+export function settledBox<B extends BoxLike>(
+  read: () => B | null,
+  done: (box: B | null) => void,
+  stepMs = 300,
+  capMs = 2400,
+): () => void {
+  let last: string | null = null;
+  let waited = 0;
+  const timer = setInterval(() => {
+    waited += stepMs;
+    const box = read();
+    const key = box
+      ? [box.min.x, box.min.z, box.max.x, box.max.z].map((v) => Math.round(v)).join()
+      : null;
+    if ((key !== null && key === last) || waited >= capMs) {
+      clearInterval(timer);
+      done(box);
+      return;
+    }
+    last = key;
+  }, stepMs);
+  return () => {
+    clearInterval(timer);
+  };
+}
+
+/**
+ * Imagery or terrain around the site is drawn (the landscape from packs, `siteTiles.ts`): the
+ * street map gives way, because the landscape follows the terrain and a flat map would cut
+ * through it.
+ */
+export function landscapeOn(
+  prefs: { aroundTerrain: boolean; aroundImagery: boolean },
+  ground: GroundModel,
+): boolean {
+  return (
+    ground.offered &&
+    ((prefs.aroundTerrain && ground.terrain) || (prefs.aroundImagery && ground.imagery))
+  );
+}
+
+/** The street map of the open project's 3D view, for the layer and its button. */
+export interface StreetMap3d {
+  projectId: string | null;
+  /** The project can have it (placed on the Earth, no basemap layer of its own). */
+  wanted: boolean;
+  /** The choice: remembered, else on. */
+  on: boolean;
+  /** A pack covers the site: null while unknown. */
+  covered: boolean | null;
+  /** The landscape from packs is drawn instead. */
+  landscape: boolean;
+  /** Draw it (given a covering pack). */
+  shown: boolean;
+}
+
+/** The toolbar button: its label, whether it is pressed or greyed out; null when there is none. */
+export function streetMapTool(
+  s: StreetMap3d,
+): { label: MessageKey; pressed: boolean; disabled: boolean } | null {
+  if (!s.projectId || !s.wanted) return null;
+  if (s.covered === false) return { label: 'stage.streetMap.none', pressed: false, disabled: true };
+  if (s.landscape) return { label: 'stage.streetMap.landscape', pressed: false, disabled: true };
+  return {
+    label: s.on ? 'stage.streetMap.hide' : 'stage.streetMap.show',
+    pressed: s.on,
+    disabled: false,
+  };
 }
 
 /** Every tenth flight pose and every photo place of the project's video and photo layers. */
@@ -258,13 +362,12 @@ export function useSiteBasemapLayer(
   useEffect(() => {
     if (!active) return;
     let live = true;
-    const own = hasOwnGround(manifest);
     contentPoints(projectId, manifest).then(
       (points) => {
-        if (live) setExtent(JSON.stringify(streetMapExtent(points, own)));
+        if (live) setExtent(JSON.stringify(streetMapExtent(points)));
       },
       () => {
-        if (live) setExtent(JSON.stringify(streetMapExtent([], own)));
+        if (live) setExtent(JSON.stringify(streetMapExtent([])));
       },
     );
     return () => {

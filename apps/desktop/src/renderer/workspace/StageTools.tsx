@@ -19,7 +19,6 @@ import {
   type ShortcutId,
 } from '@aio/ui';
 import { setCameraMode, videoRig, type CameraMode } from '@aio/video';
-import { useVolumetric } from '@aio/volumetric';
 import { useWorkspace, workspace } from '@aio/workspace';
 import {
   useCallback,
@@ -40,13 +39,7 @@ import { MeasureToolbar } from '../survey/MeasureToolbar';
 import { usePopPlacement } from './popPlacement';
 import { toggleTelemetry, useTelemetryOn } from './telemetryPref';
 import { useCutawayPref } from './useCutaway';
-import {
-  siteBasemap,
-  siteBasemapDefault,
-  siteBasemapOn,
-  useSiteBasemap,
-  wantsSiteBasemap,
-} from './siteBasemap';
+import { siteBasemap, siteBasemapOn, useSiteBasemap, wantsSiteBasemap } from './siteBasemap';
 
 /** The live 3D stage (view presets, tools, section), re-rendering on tool and section changes. */
 export function useEngineStage(): EngineStage | null {
@@ -432,14 +425,8 @@ function StreetMapRow() {
   const t = useT();
   const projectId = useWorkspace((s) => s.project?.id ?? null);
   const wanted = useWorkspace((s) => (s.project ? wantsSiteBasemap(s.project.manifest) : false));
-  const volumes = useVolumetric((s) => s.status === 'ready');
   const covered = useSiteBasemap((s) => s.covered);
-  const defaultOn = useWorkspace((s) =>
-    s.project ? siteBasemapDefault(s.project.manifest, volumes) : false,
-  );
-  const on = useSiteBasemap((s) =>
-    projectId ? siteBasemapOn(s.choices, projectId, defaultOn) : false,
-  );
+  const on = useSiteBasemap((s) => (projectId ? siteBasemapOn(s.choices, projectId) : false));
   if (!projectId || !wanted) return null;
   return (
     <label

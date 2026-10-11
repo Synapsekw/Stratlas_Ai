@@ -117,12 +117,7 @@ import {
 import { VolumeTools } from './VolumeTools';
 import { MeasureMount, MeasureToolbar } from '../survey/MeasureToolbar';
 import { SurveyQaMount } from '../survey/Qa';
-import {
-  siteBasemapDefault,
-  siteBasemapOn,
-  useSiteBasemap,
-  useSiteBasemapLayer,
-} from './siteBasemap';
+import { siteBasemapOn, useSiteBasemap, useSiteBasemapLayer } from './siteBasemap';
 import { BasemapPicker } from './BasemapPicker';
 import { useSiteTiles } from './siteTiles';
 
@@ -678,12 +673,7 @@ export function Stage() {
   useStageEnvironment(engine);
   // the offline street map under the site in 3D
   const project = useWorkspace((s) => s.project);
-  const hasVolumes = useVolumetric((s) => s.status === 'ready');
-  const streetMap = useSiteBasemap((s) =>
-    project
-      ? siteBasemapOn(s.choices, project.id, siteBasemapDefault(project.manifest, hasVolumes))
-      : false,
-  );
+  const streetMap = useSiteBasemap((s) => (project ? siteBasemapOn(s.choices, project.id) : false));
   useSiteBasemapLayer(engine, project, streetMap);
   // M10 G7: 3D Tiles, terrain and imagery around the site, the Satellite map
   useSiteTiles(engine, project, maps[0], maps[1]);
