@@ -72,6 +72,15 @@ export const IMPORT_FILTERS = [
   { name: 'All files', extensions: ['*'] },
 ];
 
+/**
+ * A dropped batch whose camera heights are being read (`builder:altitudePlan`) and that shows
+ * nothing yet: `importing` is set only when the import itself starts, since the panel must not
+ * say "importing" while the heights prompt is open. Files dropped again in that time used to
+ * start a second import into the same project next to the first; now that drop does nothing,
+ * like a drop while an import runs.
+ */
+let preparing = false;
+
 export const builder = createStore<Builder>()((set, get) => ({
   wizardOpen: false,
   importing: null,
@@ -101,10 +110,15 @@ export const builder = createStore<Builder>()((set, get) => ({
     }
     if (!paths.length || get().importing) return;
     if (!altitude) {
-      const plan = await bridge.call('builder:altitudePlan', {
-        projectId: project.id,
-        paths: [...paths],
-      });
+      if (preparing) return;
+      preparing = true;
+      const plan = await bridge
+        .call('builder:altitudePlan', { projectId: project.id, paths: [...paths] })
+        .finally(() => {
+          preparing = false;
+        });
+      // an import confirmed in the heights prompt started while these heights were read
+      if (get().importing) return;
       if (plan.ok && plan.value.ok && needsTakeoff(plan.value.plan)) {
         const p = plan.value.plan;
         const y = p.takeoff ? terrainHeightAt(p.takeoff.x, p.takeoff.z) : null;
