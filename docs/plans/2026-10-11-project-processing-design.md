@@ -67,7 +67,7 @@ It shows when a project folder is open, or when anything is running on this comp
 | A job failed or was interrupted, not yet looked at | a warning mark, `1 needs attention` |
 | Nothing here, something running elsewhere          | `Processing · 1 running elsewhere`  |
 
-"Not yet looked at" lasts until the drawer is next opened. It is kept for the session only. At start, a job of the open project that was interrupted by quitting counts as not looked at, because it waits for **Resume**.
+"Not yet looked at" lasts until the drawer is next opened. When each project's drawer was last looked at is kept on this computer, so a job that was interrupted by quitting counts as not looked at once, at the next start, because it waits for **Resume**; after the drawer has been opened it does not come back. (Changed during the build: the first design kept this for the session only, which would have flagged an old interrupted job at every start.) A failure counts from the last look, or from the start of the session in a project that has never been looked at.
 
 The running count that the Jobs item showed in the sidebar is replaced by the chip.
 
