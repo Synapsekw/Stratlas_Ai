@@ -116,8 +116,8 @@ test('the wizard offers six types, and the project keeps the one picked', async 
   await shot(win, info, 'project-types-wizard.png');
   await wiz.getByRole('button', { name: 'Next' }).click();
   await wiz.getByRole('button', { name: 'Typed coordinate' }).click();
-  await wiz.getByLabel('Origin coordinate').fill('29.0276, 48.1352, 30');
-  await expect(wiz.getByTestId('origin-readout')).toContainText('E 2');
+  await wiz.getByLabel('Origin coordinate').fill('25.1000, 55.2000, 12');
+  await expect(wiz.getByTestId('origin-readout')).toContainText('E 3');
   await wiz.getByRole('button', { name: 'Next' }).click();
   await wiz.getByRole('button', { name: 'Next' }).click();
   // the review step names the type, and an inspection has no survey data block
@@ -159,8 +159,8 @@ test('a survey project still starts from its survey data', async ({ win, dataRoo
     .click();
   await wiz.getByRole('button', { name: 'Next' }).click();
   await wiz.getByRole('button', { name: 'Typed coordinate' }).click();
-  await wiz.getByLabel('Origin coordinate').fill('29.0276, 48.1352, 30');
-  await expect(wiz.getByTestId('origin-readout')).toContainText('E 2');
+  await wiz.getByLabel('Origin coordinate').fill('25.1000, 55.2000, 12');
+  await expect(wiz.getByTestId('origin-readout')).toContainText('E 3');
   await wiz.getByRole('button', { name: 'Next' }).click();
   await wiz.getByRole('button', { name: 'Next' }).click();
   await expect(wiz.locator('.b-summary')).toContainText('Survey');
