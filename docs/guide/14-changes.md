@@ -31,7 +31,7 @@ Pins and outlines of the changes show on both views. On the earlier view, an ite
 
 Click **Find changes**. It compares the issues, the detections and the map layers of the two dates. While it runs the panel reads "Finding changes" with the step; **Cancel** stops it.
 
-The other buttons compare the data itself. Each runs as a job (see [Run a job](08-building-projects.md#run-a-job)) and adds its results to the list when it finishes:
+The other buttons compare the data itself. Each runs in the background (see [Processing](08-building-projects.md#processing)) and adds its results to the list when it finishes:
 
 - **Run imagery change** and **Run surface change**: see [Imagery and surface change](15-imagery-and-surface-change.md).
 - **Run cloud change** and **Run model change**: see [Point cloud and 3D model change](16-cloud-and-model-change.md).

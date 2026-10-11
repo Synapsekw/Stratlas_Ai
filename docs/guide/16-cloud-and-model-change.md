@@ -4,10 +4,10 @@ Two point clouds of the same site show, point by point, how far the later survey
 
 ## Run cloud change
 
-Each date needs a point cloud of its own, in COPC. Convert LAS or LAZ first with the **Point cloud to COPC** job (see [Run a job](08-building-projects.md#run-a-job)).
+Each date needs a point cloud of its own, in COPC. Convert LAS or LAZ first with the **Point cloud to COPC** pipeline (**Settings**, **Processing tools**, **Advanced: run a pipeline directly**; see [Processing](08-building-projects.md#processing)).
 
 1. Open the **Changes** tab (see [Show changes](14-changes.md#show-changes)) and pick the two dates.
-2. Click **Run cloud change**. The job shows in **Jobs** while it runs.
+2. Click **Run cloud change**. **Processing** in the title bar shows it while it runs.
 3. When it finishes:
    - a layer "Cloud change ... to ..." is added: the later cloud with the distance of each point to the earlier cloud;
    - the clouds are coloured by **Change**;

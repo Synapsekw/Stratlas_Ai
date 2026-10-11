@@ -1,6 +1,6 @@
 # Building projects
 
-Build a project from raw data: photos, video with its flight log, models, orthos, elevation models and point clouds. Heavy processing runs as jobs from the pipeline pack, on this workstation.
+Build a project from raw data: photos, video with its flight log, models, orthos, elevation models and point clouds. Heavy processing runs in the background from the pipeline pack, on this workstation.
 
 ## Create a project
 
@@ -33,7 +33,7 @@ Build a project from raw data: photos, video with its flight log, models, orthos
 3. Each file reports **Imported**, **Skipped**, **Queued** (a job converts it) or **Failed**.
 
 - A DJI video with its `.SRT` becomes a clip with its flight path, in sync with the timeline.
-- A LAS or LAZ point cloud is converted by a job in **Jobs**; the cloud appears when the job is done.
+- A LAS or LAZ point cloud is converted in the background; **Processing** in the title bar shows the progress, and the cloud appears when it is done.
 - A GLB or OBJ model can be placed with **Georeference a model by point pairs** (**Ctrl K**): click a point on the model (**Pick on model**), then the same point on the scene, map or photo, three times or more; **Apply and save**.
 
 ### Camera heights
@@ -45,39 +45,28 @@ When photos or a video logged only the height above the take-off point, the **Ca
 
 After the import the panel says which altitude was used and with which number. One take-off height applies to the whole import: import flights that took off at different heights separately.
 
-## Run a job
+## Processing
 
-**Jobs** is the processing that runs on this computer: what is running, and what finished. The processing tools (the pipeline pack) are installed and updated in **Settings**, **Processing tools** (see [Processing tools](12-settings.md#processing-tools)); **Jobs** shows "Processing tools" and their version at the top.
+Heavy work runs in the background on this computer: making maps from photos, comparing survey dates, converting a point cloud, an AI inspection. It always belongs to the project it was started in.
 
-The first button, **Create maps from photos**, turns drone photos into maps and a 3D model: see [Creating maps from photos](28-processing-photos.md).
+**Processing**, in the title bar, shows what the open project is doing: "Processing 40%" while one thing runs, "Processing · 3 running" for several, and a warning mark with "1 needs attention" when something failed or was interrupted. With no project open it shows only while another project is still working ("Processing · 1 running elsewhere").
 
-**New job** offers a short list of tasks. Each one opens the screen that guides you through it:
+Click it to open the drawer:
 
-- **Maps and models:** **Create maps from photos**, **Build a model from a drawing or point cloud**.
-- **Measure and compare:** **Compare two survey dates**, **Cut and fill for the whole site**, **Check a survey**, **Contours, slope and relief**, **Measure stockpiles**.
-- **Import and convert:** **Import files**, **Export survey data**.
+- **Create maps from photos** turns drone photos into maps and a 3D model: see [Creating maps from photos](28-processing-photos.md).
+- **Running** and **Finished** list this project's work, newest first. Each line has a tag: **Maps and models**, **Survey**, **AI analysis**, **Files** or **System**.
+- **Maps from photos** lists the project's runs, with **Open run**, **Create maps again**, **Export as OPF** and **Delete work files**.
+- **Running in other projects** appears only when another project is still working. Each line names its project.
 
-A task that needs an open project, or two survey dates, says so.
+Click a line to see its steps and progress. **Cancel** stops it. After a failure, a cancel or an interruption (quitting {product} while it ran), **Resume** carries on from the next step. **Open output** and **Log file** show what it wrote. **Settings used** and **Log** are folded away until you open them. **Back** returns to the list.
 
-Each running job shows its steps and progress; the log is below. A job ends **Done**, **Failed** or **Cancelled**. **Cancel** stops a running job. A job stopped by quitting {product} shows **Interrupted**; **Resume** carries on from the next step. **Open output** and **Log file** show what it wrote.
+Everything else starts where the work is: compare dates and survey tools on the **Scene**, imports from **Import files**, the AI inspection from **Detections**, a road survey from its setup panel.
 
-### Advanced: run a pipeline directly
+Processing writes into the open project, always with a backup, and never drops your own issues.
 
-Under the tasks, **Advanced: run a pipeline directly** holds every pipeline of the processing tools with its own form, for when no guided screen fits.
+The list is kept on this computer for the project's folder. A project that was moved, or opened on another computer, starts with an empty list; its maps, runs and reports are all still there.
 
-1. Click **Jobs**, **New job**, then **Advanced: run a pipeline directly**.
-2. Pick the **Pipeline** and the **Project folder**, fill in the pipeline's fields, and click **Start job**.
-
-The pipelines are grouped by area:
-
-- **Photos to maps:** the three steps **Create maps from photos** runs for you.
-- **Inspection:** **Cameras from photos**, **Place findings on the model**, **Findings register and stats**, and **Inspection: detections to issues**, which places reviewed detections on the model and groups them into issues.
-- **Stockpiles and volumes:** **Volumetric survey** and **Stockpile volumes**: see [Volumes](09-volumes-and-roads.md).
-- **Change between dates**, **Survey tools** and **Water and haul roads:** what the Changes tab and the survey tools on the Scene run.
-- **Import and convert:** for example **Point cloud to COPC**, which converts LAS and LAZ for streaming.
-- **Map packs**, **Road survey** (see [Roads](09-volumes-and-roads.md#roads)) and **System** (**Check the pipeline pack**).
-
-Jobs write into the open project, always with a backup, and never drop your own issues.
+The processing tools themselves are installed and updated in **Settings**, **Processing tools**: see [Processing tools](12-settings.md#processing-tools).
 
 ## Review detections
 
@@ -94,7 +83,7 @@ Detections are boxes or outlines on photos and video frames, from you, a model o
 
 **Ctrl Z** and **Ctrl Y** undo and redo. **Ctrl**+click selects several tiles; **Clear selection** empties it. The state reads **Saved** once your decisions are written into the detection file.
 
-Run **Inspection: detections to issues** afterwards to place the accepted boxes on the model. It never makes a second issue for the same box.
+On an inspection project, **Turn detections into issues** on the **Detections** screen places the accepted detections on the model and groups them into issues. It asks only for the inspection's own options, then runs for the open project; the **Processing** drawer opens on it. It never makes a second issue for the same box.
 
 ## Detect with AI
 

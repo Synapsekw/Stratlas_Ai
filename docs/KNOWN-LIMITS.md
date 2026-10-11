@@ -36,6 +36,7 @@ Current limits only; each is removed from this list when fixed.
 - **Outline** (mask assist) needs a mask model file in the pipeline pack; none ships yet (licences).
 - The HCl sample's GPS and gimbal tags are written from the delivered camera poses (the Elios 3 logs no GPS in the tank) around the approximate HCl origin; a real photo set brings its own tags.
 - Cloud AI detection needs Cloud AI on and your own key; cost is an estimate from list prices.
+- **Processing history stays on the computer.** The **Processing** drawer lists what this computer ran for a project's folder. A project that is moved or opened on another computer starts with an empty list. Its maps, runs and reports are unaffected.
 
 ## Release
 

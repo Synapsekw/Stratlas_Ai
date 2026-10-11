@@ -12,7 +12,7 @@ Open the **Changes** tab (see [Show changes](14-changes.md#show-changes)) and pi
 
 ## Run imagery change
 
-1. Click **Run imagery change**. The job shows in **Jobs** while it runs.
+1. Click **Run imagery change**. **Processing** in the title bar shows it while it runs.
 2. When it finishes, two layers are added:
    - "Imagery change heat map, ..." with the two dates: yellow where the change is weak, red where it is strong.
    - "Imagery change areas, ...": an outline around each changed area.

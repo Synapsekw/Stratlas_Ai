@@ -31,22 +31,31 @@ The processing tools build maps and models from your data: photo processing, sur
 
 1. **Settings**, **Processing tools**.
 2. Under **Install or update from file**, click **Choose file** and pick that file. When {product} finds a newer one in Downloads, in the app folder or in `runtime` in the data folder, it offers it instead: click **Install version 0.5.1 found in Downloads**.
-3. Wait for "Processing tools 0.5.2 are installed." **Jobs** shows the new version at once; there is no restart. **Cancel** stops the install and leaves everything as it was. If you came here from **Create maps from photos**, the message has a **Create maps from photos** button that takes you back to it.
+3. Wait for "Processing tools 0.5.2 are installed." Processing uses the new version at once; there is no restart. **Cancel** stops the install and leaves everything as it was. If you came here from **Create maps from photos**, the message has a **Create maps from photos** button that takes you back to it.
 
 **Status** says where you stand:
 
 - **Up to date**: every job this version of {product} has can run.
 - **Too old for this version of {product}**: the lines below say what the installed version lacks, for example "Creating maps from photos needs version 0.4.0 or later."
 - **Not made for this version of {product}**: the tools in the data folder are for another version of {product}.
-- **Not installed**: viewing, measuring, maps and reports work; jobs do not start.
+- **Not installed**: viewing, measuring, maps and reports work; processing does not start.
 
 {product} checks the file before it uses it: it must hold the processing tools for this computer and this version, complete, with every file matching its checksum. A file that fails says why and changes nothing. A version that is already installed asks first: **Replace version 0.5.1** or **Keep it**. Nothing is downloaded.
 
 **Versions no longer in use** lists the older versions with their sizes. **Remove**, then **Move version 0.2.0 to the bin**, moves one to the bin of the computer (Recycle Bin on Windows, Trash on a Mac), where it can be restored. {product} never removes one on its own.
 
-With a project open, {product} says once when the tools are missing or too old: "The processing tools need an update", with **Update processing tools**. **Dismiss** keeps the notice away for that version. The same button is in **Create maps from photos** and on **Jobs** when jobs cannot run; all of them open this page.
+With a project open, {product} says once when the tools are missing or too old: "The processing tools need an update", with **Update processing tools**. **Dismiss** keeps the notice away for that version. The same button is in **Create maps from photos** and in the **Processing** drawer when processing cannot run; all of them open this page.
 
 ![The Processing tools page](images/settings-tools.png)
+
+### Advanced: run a pipeline directly
+
+At the bottom of the page, folded away. It is for support: every pipeline of the processing tools with its own form, for when no screen of {product} fits, and **All jobs on this computer**, whichever project they belong to.
+
+1. Open **Advanced: run a pipeline directly**.
+2. Pick the **Pipeline** and the **Project folder** (the open project by default), fill in the pipeline's fields, and click **Start job**.
+
+The pipelines are grouped by area: **Photos to maps**, **Inspection**, **Stockpiles and volumes**, **Change between dates**, **Survey tools**, **Water and haul roads**, **Import and convert**, **Map packs**, **Road survey** and **System** (**Check the pipeline pack**). A job started here for the open project also shows in its **Processing** drawer.
 
 ## Graphics quality
 
