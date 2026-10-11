@@ -12,6 +12,8 @@ import { t } from '@aio/ui';
 import { loadFlight, registerVideoAdapters, videoRig } from '@aio/video';
 import { volumetric } from '@aio/volumetric';
 import { assetUrl, workspace, type OpenProject } from '@aio/workspace';
+import { startAssetWarm } from './agent/assetWarm';
+import { registerAgentHooks } from './agent/hooks';
 import { registerAgentPlaces } from './agentPlaces';
 import { IssueHistoryPanel } from './audit/HistoryPanel';
 import { graphics } from './graphics';
@@ -91,6 +93,10 @@ export function bootstrap(): void {
       shell.getState().go('globe');
     },
   });
+  // The agent opens screens, sets the Media and Issues filters and puts the view back on undo;
+  // the bounds of the tagged assets are measured as soon as the model has loaded.
+  registerAgentHooks();
+  startAssetWarm();
   // Stockpiles and road chainages for find_places and fly_to.
   registerAgentPlaces();
   // The issue detail's History reads the project journal (M9).
