@@ -504,16 +504,18 @@ git commit -m "feat(brand): the brand kit draws the Quarter mark"
 
 **Files:**
 
-- Create: `apps/desktop/src/renderer/shell/brandMotion.ts`
-- Create: `apps/desktop/src/renderer/shell/brandMotion.test.ts`
+- Create: `apps/desktop/src/renderer/shell/brandMotionEngine.ts`
+- Create: `apps/desktop/src/renderer/shell/brandMotionEngine.test.ts`
 - Create: `apps/desktop/src/renderer/shell/BrandMotion.tsx`
 - Create: `apps/desktop/src/renderer/shell/BrandMotion.test.tsx`
 - Create: `apps/desktop/src/renderer/shell/brandMotion.css`
 
+The engine file is `brandMotionEngine.ts`, not `brandMotion.ts`: beside `BrandMotion.tsx` the shorter name collides on a case-insensitive file system, and the bundler then resolves `./BrandMotion` to the engine. Found while building; the rest pose tolerance in the engine test is 0.12 for the same kind of reason (the polygons sit 0.05 inside the exact outline).
+
 **Interfaces:**
 
 - Consumes: `QUARTER`, `quarterPolygons`, `ringPolygons`, `sectorPolygon`, `quarterBounds`, `type Pt` from `@aio/brand`.
-- Produces (`brandMotion.ts`):
+- Produces (`brandMotionEngine.ts`):
   - `type MotionName = 'stepOut' | 'turns' | 'sequence'`
   - `interface Pose { label: string; rot: number; halo: number; opacity: readonly number[]; pts: readonly (readonly Pt[])[] }`
   - `interface Motion { name: MotionName; poses: readonly Pose[]; rest: Pose; lead: number; move: number; stagger: number; hold: number; back: boolean; loops: boolean; fromFirst: boolean }`
@@ -587,7 +589,7 @@ function cube(): Pt[][] {
 
 The model pose has `halo: 2.2`, `opacity: [1, 0.5, 0.75, 1]` and its three faces are inset by a further 0.9 (the plate is not). Every other pose has `halo: 0` and full opacity.
 
-- [ ] **Step 1: Write the failing engine test** (`brandMotion.test.ts`)
+- [ ] **Step 1: Write the failing engine test** (`brandMotionEngine.test.ts`)
 
 ```ts
 import { QUARTER, quarterBounds } from '@aio/brand';
@@ -600,7 +602,7 @@ import {
   POINTS,
   resamplePolygon,
   restFrame,
-} from './brandMotion';
+} from './brandMotionEngine';
 
 const points = (d: string) =>
   d
@@ -726,10 +728,10 @@ describe('motions', () => {
 
 - [ ] **Step 2: Run it and see it fail**
 
-Run: `pnpm vitest run apps/desktop/src/renderer/shell/brandMotion.test.ts --retry=0`
+Run: `pnpm vitest run apps/desktop/src/renderer/shell/brandMotionEngine.test.ts --retry=0`
 Expected: FAIL, cannot resolve `./brandMotion`.
 
-- [ ] **Step 3: Write `brandMotion.ts`.** Port the board's engine (it is proven there) to typed code with these parts:
+- [ ] **Step 3: Write `brandMotionEngine.ts`.** Port the board's engine (it is proven there) to typed code with these parts:
 
   - `insetPolygon`: normalise to clockwise (shoelace area, reverse when negative), then move each vertex by `(n1 + n2) * r / (1 + n1.n2)` where `n1`, `n2` are the inward normals `(-dy, dx) / len` of the edges before and after it. Round results with `+v.toFixed(6)` so the square test is exact.
   - `resamplePolygon`: keep every vertex; share `count - vertices` extra points between edges in proportion to edge length (largest remainder for the leftovers), evenly spaced on each edge; then rotate the list so it starts at the point with the largest `(-dx - dy) / length` measured from the centre of the bounding box.
@@ -741,7 +743,7 @@ Expected: FAIL, cannot resolve `./brandMotion`.
 
 - [ ] **Step 4: Run the engine tests**
 
-Run: `pnpm vitest run apps/desktop/src/renderer/shell/brandMotion.test.ts --retry=0`
+Run: `pnpm vitest run apps/desktop/src/renderer/shell/brandMotionEngine.test.ts --retry=0`
 Expected: PASS.
 
 - [ ] **Step 5: Write the failing component test** (`BrandMotion.test.tsx`; copy the jsdom pragma and the render and cleanup helpers from `apps/desktop/src/renderer/shell/PanelHandle.test.tsx`, which is the pattern this folder uses)
@@ -750,7 +752,7 @@ Expected: PASS.
 // (jsdom pragma and render helper as in PanelHandle.test.tsx)
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { BrandLoader, BrandMotion } from './BrandMotion';
-import { restFrame } from './brandMotion';
+import { restFrame } from './brandMotionEngine';
 
 afterEach(() => {
   vi.useRealTimers();
@@ -865,13 +867,13 @@ Expected: FAIL, cannot resolve `./BrandMotion`.
 
 - [ ] **Step 9: Run both test files**
 
-Run: `pnpm vitest run apps/desktop/src/renderer/shell/brandMotion.test.ts apps/desktop/src/renderer/shell/BrandMotion.test.tsx --retry=0`
+Run: `pnpm vitest run apps/desktop/src/renderer/shell/brandMotionEngine.test.ts apps/desktop/src/renderer/shell/BrandMotion.test.tsx --retry=0`
 Expected: PASS.
 
 - [ ] **Step 10: Commit**
 
 ```bash
-git add apps/desktop/src/renderer/shell/brandMotion.ts apps/desktop/src/renderer/shell/brandMotion.test.ts apps/desktop/src/renderer/shell/BrandMotion.tsx apps/desktop/src/renderer/shell/BrandMotion.test.tsx apps/desktop/src/renderer/shell/brandMotion.css
+git add apps/desktop/src/renderer/shell/brandMotionEngine.ts apps/desktop/src/renderer/shell/brandMotionEngine.test.ts apps/desktop/src/renderer/shell/BrandMotion.tsx apps/desktop/src/renderer/shell/BrandMotion.test.tsx apps/desktop/src/renderer/shell/brandMotion.css
 git commit -m "feat(desktop): the Quarter mark's motion engine and component"
 ```
 
