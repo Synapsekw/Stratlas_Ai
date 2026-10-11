@@ -167,6 +167,108 @@ describe('the tileset adapter (3DTilesRendererJS in the site view)', () => {
     expect(model.userData.layerId).toBe('tileset:mesh-tiles');
   });
 
+  describe('a tile whose shader programs are made ahead of its first frame', () => {
+    /** A scene that makes programs ahead: the test says when a tile's are in. */
+    function compilingScene() {
+      const made = fakeScene();
+      const waits: { object: Object3D; planes: unknown; done: () => void }[] = [];
+      made.scene.compileAhead = (object) =>
+        new Promise<void>((done) => {
+          const mat = (object as Mesh<BoxGeometry, MeshStandardMaterial>).material;
+          waits.push({ object, planes: mat.clippingPlanes, done });
+        });
+      return { ...made, waits };
+    }
+    const attach = (scene: SceneHandle, fake: FakeTiles) =>
+      attachTileset(scene, {
+        url: 'x',
+        entry: entry({ kind: 'imported', transform: new Matrix4().toArray() }),
+        frame,
+        budget: TILES_BUDGETS.low,
+        create: () => fake,
+      });
+    const tileModel = () => {
+      const material = new MeshStandardMaterial();
+      const disposed = vi.fn();
+      material.addEventListener('dispose', disposed);
+      return { model: new Mesh(new BoxGeometry(1, 1, 1), material), disposed };
+    };
+    /** What a plugin of 3DTilesRendererJS is told when a tile is dropped. */
+    const dropTile = (fake: FakeTiles, tile: object) => {
+      for (const p of fake.plugins as { disposeTile?: (t: object) => void }[])
+        p.disposeTile?.(tile);
+    };
+
+    it('joins the scene only when they are in, compiled as it will be drawn', async () => {
+      const { scene, waits } = compilingScene();
+      const fake = new FakeTiles();
+      attach(scene, fake);
+      const { model, disposed } = tileModel();
+      const loaded = fake.load(model, {});
+      await Promise.resolve();
+      expect(waits).toHaveLength(1);
+      // compiled with the section planes it is drawn with, or the program would be made twice
+      expect(waits[0]?.object).toBe(model);
+      expect(waits[0]?.planes).toBe(scene.clippingPlanes);
+      expect(fake.group.children).not.toContain(model);
+      waits[0]?.done();
+      await loaded;
+      expect(fake.group.children).toContain(model);
+      expect(disposed).not.toHaveBeenCalled();
+      // once it is the renderer's, dropping the tile is the renderer's business
+      dropTile(fake, {});
+      expect(disposed).not.toHaveBeenCalled();
+    });
+
+    it('frees the materials of a tile dropped while its programs compile', async () => {
+      const { scene, waits } = compilingScene();
+      const fake = new FakeTiles();
+      attach(scene, fake);
+      const tile = {};
+      const { model, disposed } = tileModel();
+      const loaded = fake.load(model, tile);
+      await Promise.resolve();
+      dropTile(fake, tile);
+      expect(disposed).toHaveBeenCalledOnce();
+      // the same tile asked for again, with a new model, while the first compile still runs
+      const again = tileModel();
+      const reloaded = fake.load(again.model, tile);
+      await Promise.resolve();
+      waits[0]?.done();
+      await loaded;
+      expect(disposed).toHaveBeenCalledOnce();
+      // the second model is still the adapter's to free
+      dropTile(fake, tile);
+      expect(again.disposed).toHaveBeenCalledOnce();
+      waits[1]?.done();
+      await reloaded;
+      expect(again.disposed).toHaveBeenCalledOnce();
+    });
+
+    it('frees the materials of tiles still compiling when the tileset goes', async () => {
+      const { scene, waits } = compilingScene();
+      const fake = new FakeTiles();
+      const h = attach(scene, fake);
+      const { model, disposed } = tileModel();
+      const loaded = fake.load(model, {});
+      await Promise.resolve();
+      h.dispose();
+      expect(disposed).toHaveBeenCalledOnce();
+      waits[0]?.done();
+      await loaded;
+      expect(disposed).toHaveBeenCalledOnce();
+    });
+
+    it('joins the scene at once on a scene that makes no programs ahead', async () => {
+      const { scene } = fakeScene();
+      const fake = new FakeTiles();
+      attach(scene, fake);
+      const { model } = tileModel();
+      await fake.load(model, {});
+      expect(fake.group.children).toContain(model);
+    });
+  });
+
   it('uses an imported tileset its own placement, and the identity without a CRS', () => {
     const t = new Matrix4().makeTranslation(10, 0, -5).toArray();
     expect(groupMatrix(entry({ kind: 'imported', transform: t }), frame)).toEqual(t);
