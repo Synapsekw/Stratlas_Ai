@@ -20,7 +20,15 @@ export type AlignTool = { kind: 'mesh'; layerId: string } | { kind: 'video'; lay
 export interface BuilderState {
   wizardOpen: boolean;
   /** Import in progress (progress from main), or null. */
-  importing: { done: number; total: number; file: string } | null;
+  importing: { done: number; total: number; file: string; part?: number } | null;
+  /**
+   * Main is importing the files and can be told to stop (`builder:cancelImport`). False while
+   * `importing` only covers the drawings of an import being finished in this window: their page
+   * question has its own way out.
+   */
+  cancellable: boolean;
+  /** Cancel was asked for; the import ends when main has stopped what it was doing. */
+  cancelling: boolean;
   /** Outcome of the last import, shown until dismissed. */
   importResult: { items: ImportItem[]; error: string | null; heights?: ImportHeights } | null;
   /** Camera heights to confirm before the import runs (relative altitude needs a take-off H). */
@@ -40,20 +48,31 @@ export interface BuilderActions {
   importFiles: (
     paths: readonly string[],
     altitude?: AltitudeChoice,
-    /** `drawings`: every picture becomes a drawing (Add drawing), not a photo or an ortho. */
-    opts?: { drawings?: boolean },
+    opts?: ImportOptions,
   ) => Promise<void>;
+  /** Cancel the running import as a whole (a 360 stitch stops; imported files stay). */
+  cancelImport: () => Promise<void>;
   /** Run the prompted import with the confirmed heights, or drop it. */
   confirmHeights: (altitude: AltitudeChoice) => Promise<void>;
   cancelHeights: () => void;
   pickAndImport: () => Promise<void>;
   /** Add drawing: pick PDF, pictures or DXF and bring them in as drawings. */
   pickAndAddDrawing: () => Promise<void>;
+  /** Pick 360 camera files or stitched 360 videos and add them as walks. */
+  pickAndImport360: () => Promise<void>;
   dismissImport: () => void;
   startAlign: (tool: AlignTool) => void;
   stopAlign: () => void;
   /** Save an alignment and swap the open project's manifest. Returns an error text or null. */
   saveLayers: (layerIds: readonly string[], patch: LayerPatch) => Promise<string | null>;
+}
+
+/** How an import treats its files; named, so further options do not become positional flags. */
+export interface ImportOptions {
+  /** Add drawing: every picture becomes a drawing, not a photo or an ortho. */
+  drawings?: boolean;
+  /** "Add 360 video": MP4 and MOV files are stitched 360 video, not drone clips. */
+  as360?: boolean;
 }
 
 export type Builder = BuilderState & BuilderActions;
@@ -67,6 +86,8 @@ export const IMPORT_FILTERS = [
       'mp4',
       'mov',
       'srt',
+      'insv',
+      'lrv',
       'glb',
       'obj',
       'tif',
@@ -95,6 +116,12 @@ export const DRAWING_FILTERS = [
   { name: 'All files', extensions: ['*'] },
 ];
 
+/** "Add 360 video": a 360 camera's own files, or a video that is already stitched. */
+export const IMPORT_360_FILTERS = [
+  { name: '360 video', extensions: ['insv', 'lrv', 'mp4', 'mov'] },
+  { name: 'All files', extensions: ['*'] },
+];
+
 /**
  * A dropped batch whose camera heights are being read (`builder:altitudePlan`) and that shows
  * nothing yet: `importing` is set only when the import itself starts, since the panel must not
@@ -104,9 +131,37 @@ export const DRAWING_FILTERS = [
  */
 let preparing = false;
 
+/** The project the running import was started in (it stays there when another one is opened). */
+let importingProject: string | null = null;
+
+/**
+ * The rows of a cancelled import whose drawings main had only copied in (`ImportItem.drawing`,
+ * still `queued`): each is closed (`builder:closeDrawing` removes a copy that got no page, as
+ * for a cancelled page question) and reported as skipped.
+ */
+async function dropStaged(projectId: string, items: readonly ImportItem[]): Promise<ImportItem[]> {
+  const out: ImportItem[] = [];
+  for (const it of items) {
+    if (!it.drawing || it.status !== 'queued') {
+      out.push(it);
+      continue;
+    }
+    const { drawing, ...row } = it;
+    await bridge.call('builder:closeDrawing', { projectId, stem: drawing.stem });
+    out.push({
+      ...row,
+      status: 'skipped',
+      message: 'The import was cancelled before this drawing was drawn. Nothing of it was added.',
+    });
+  }
+  return out;
+}
+
 export const builder = createStore<Builder>()((set, get) => ({
   wizardOpen: false,
   importing: null,
+  cancellable: false,
+  cancelling: false,
   importResult: null,
   heightsPrompt: null,
   align: null,
@@ -132,8 +187,8 @@ export const builder = createStore<Builder>()((set, get) => ({
       return;
     }
     if (!paths.length || get().importing) return;
-    // a drawing has no camera, so Add drawing never asks for camera heights
-    if (!altitude && !opts?.drawings) {
+    // a drawing has no camera and a 360 video is not placed: neither asks for camera heights
+    if (!altitude && !opts?.drawings && !opts?.as360) {
       if (preparing) return;
       preparing = true;
       const plan = await bridge
@@ -153,23 +208,38 @@ export const builder = createStore<Builder>()((set, get) => ({
         return;
       }
     }
+    importingProject = project.id;
     set({
       importing: { done: 0, total: paths.length, file: '' },
+      cancellable: true,
+      cancelling: false,
       importResult: null,
       heightsPrompt: null,
     });
     const aio = window.aio as AioBridge | undefined;
     const off = aio?.on('builder:progress', (e: IpcEvent<'builder:progress'>) => {
       if (e.projectId === project.id)
-        set({ importing: { done: e.done, total: e.total, file: e.file } });
+        set({
+          importing: {
+            done: e.done,
+            total: e.total,
+            file: e.file,
+            ...(e.part !== undefined ? { part: e.part } : {}),
+          },
+        });
     });
     const r = await bridge.call('builder:import', {
       projectId: project.id,
       paths: [...paths],
       ...(altitude ? { altitude } : {}),
       ...(opts?.drawings ? { drawings: true } : {}),
+      ...(opts?.as360 ? { as360: true } : {}),
     });
     off?.();
+    // main has answered: what follows (drawing pages) is not main's import any more
+    const cancelled = get().cancelling;
+    importingProject = null;
+    set({ cancellable: false, cancelling: false });
     if (!r.ok) {
       set({ importing: null, importResult: { items: [], error: r.error } });
       return;
@@ -186,6 +256,9 @@ export const builder = createStore<Builder>()((set, get) => ({
       error: null,
       ...(r.value.heights ? { heights: r.value.heights } : {}),
     };
+    // a cancelled import draws nothing more: the drawings it had only copied in are closed, so
+    // their copies are removed, and no page question is asked for them
+    if (cancelled) result = { ...result, items: await dropStaged(project.id, result.items) };
     const staged = result.items.filter((i) => i.drawing).length;
     // PDF, WebP and SVG were only copied in, their pages are drawn in this window. The import
     // stays busy until they are in or cancelled, the page question included, so a pick or a drop
@@ -240,6 +313,27 @@ export const builder = createStore<Builder>()((set, get) => ({
       multi: true,
     });
     if (pick.ok && pick.value.paths.length) await get().importFiles(pick.value.paths);
+  },
+
+  pickAndImport360: async () => {
+    shell.getState().setPalette(false);
+    const pick = await bridge.call('dialog:openFiles', {
+      title: 'Add 360 video',
+      filters: IMPORT_360_FILTERS,
+      multi: true,
+    });
+    if (pick.ok && pick.value.paths.length)
+      await get().importFiles(pick.value.paths, undefined, { as360: true });
+  },
+
+  cancelImport: async () => {
+    const projectId = importingProject;
+    if (!get().cancellable || projectId === null || get().cancelling) return;
+    set({ cancelling: true });
+    const r = await bridge.call('builder:cancelImport', { projectId });
+    // nothing was cancelled (the import had just ended, or main could not be reached): the
+    // button works again if the import is somehow still shown
+    if (!(r.ok && r.value.ok) && importingProject === projectId) set({ cancelling: false });
   },
 
   dismissImport: () => {

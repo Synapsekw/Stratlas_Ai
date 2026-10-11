@@ -81,7 +81,8 @@ export function ImportLayer() {
             <Icon name="import" size={20} />
             <h3>{projectName ? `Import into ${projectName}` : 'Open a project to import'}</h3>
             <p>
-              Photos, video with its SRT, GLB or OBJ models, GeoTIFF orthos and DSMs, point clouds
+              Photos, video with its SRT, 360 camera files (.insv), GLB or OBJ models, GeoTIFF
+              orthos and DSMs, point clouds
             </p>
             <p>Drawings as PDF, PNG or DXF</p>
           </div>
@@ -233,6 +234,8 @@ function HeightsCard({ p }: { p: HeightsPrompt }) {
 
 function ImportStatus() {
   const importing = useBuilder((s) => s.importing);
+  const cancellable = useBuilder((s) => s.cancellable);
+  const cancelling = useBuilder((s) => s.cancelling);
   const result = useBuilder((s) => s.importResult);
   const prompt = useBuilder((s) => s.heightsPrompt);
   const pages = useDrawings((s) => s.pagePrompt);
@@ -252,11 +255,29 @@ function ImportStatus() {
       <header role="none">
         <Icon name="import" size={14} />
         {importing
-          ? `Importing ${String(importing.done)} of ${String(importing.total)}`
+          ? cancelling
+            ? 'Cancelling the import'
+            : `Importing ${String(importing.done)} of ${String(importing.total)}`
           : result?.error
             ? 'Import failed'
             : `Imported ${String(counts.imported ?? 0)} of ${String(result?.items.length ?? 0)} files`}
-        {!importing && (
+        {importing ? (
+          // while main imports the files; drawing pages finished afterwards have their own way out
+          cancellable && (
+            <button
+              type="button"
+              className="btn ghost sm"
+              data-testid="import-cancel"
+              disabled={cancelling}
+              title="Stop this import. Files already imported stay in the project."
+              onClick={() => {
+                void builder.getState().cancelImport();
+              }}
+            >
+              Cancel
+            </button>
+          )
+        ) : (
           <button
             type="button"
             className="btn ghost sm"
@@ -272,7 +293,10 @@ function ImportStatus() {
         <>
           <div className="b-progress">
             <i
-              style={{ width: `${String((importing.done / Math.max(1, importing.total)) * 100)}%` }}
+              style={{
+                // a long file (a 360 video playback copy) moves the bar while it is made
+                width: `${String(Math.min(100, ((importing.done + (importing.part ?? 0)) / Math.max(1, importing.total)) * 100))}%`,
+              }}
             />
           </div>
           {importing.file && (

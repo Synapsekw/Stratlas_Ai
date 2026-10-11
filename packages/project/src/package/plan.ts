@@ -42,6 +42,9 @@ const SKIP = [
   /^[^/]+\.before-[^/]*\.json$/i,
   /^[^/]+\.(before|next)-[^/]+\//i,
   /(^|\/)(Thumbs\.db|desktop\.ini|\.DS_Store)$/i,
+  // A 360 video being imported, or what an interrupted import left (`builder/walks.ts`): half a
+  // playback copy, also under its final file name. Only a finished `walks/<id>/` travels.
+  /^walks\/\.staging-[^/]*\//i,
 ];
 
 /** Where importers put the delivered viewer until 11 Oct 2026, and the grids beside it. */

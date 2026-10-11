@@ -492,6 +492,8 @@ export const SCHEMA_REGISTRY: readonly SchemaEntry[] = [
     where: 'GPU add-on manifest.json (runtime/pipeline-addon-cuda-<version>/)',
     since: '0.11',
   },
+  // 360 video from a 360 camera's own file (walks.ts): a side folder older builds never read
+  { family: 'aio.walk', version: 1, home: 'project', where: 'walks/<id>/walk.json', since: '0.11' },
 ];
 
 /**

@@ -36,7 +36,8 @@ Projects made before the types above keep working as they are. An empty one show
 1. Drag files onto the window, or click **Import files** (or **Ctrl K**, **Import raw data into this project**).
 2. {product} takes photos, video with its `.SRT` log, GLB or OBJ models, GeoTIFF orthos and DSMs, point clouds and drawings (see **Drawings** below).
 3. Each file reports **Imported**, **Skipped**, **Queued** (a job converts it) or **Failed**.
-4. A GeoTIFF over 300 MB, over 12,000 x 12,000 pixels, or saved as a BigTIFF is **Failed** with the reason: reduce or split it in other software, then import the parts.
+4. **Cancel** in the import panel stops the import: files already imported stay, the rest are listed as skipped.
+5. A GeoTIFF over 300 MB, over 12,000 x 12,000 pixels, or saved as a BigTIFF is **Failed** with the reason: reduce or split it in other software, then import the parts.
 
 - A DJI video with its `.SRT` becomes a clip with its flight path, in sync with the timeline.
 - A LAS or LAZ point cloud is converted in the background; **Processing** in the title bar shows the progress, and the cloud appears when it is done.
@@ -50,6 +51,20 @@ When photos or a video logged only the height above the take-off point, the **Ca
 - **Absolute altitude + datum offset**: enter **Offset (m)**. It is saved as the project's vertical datum.
 
 After the import the panel says which altitude was used and with which number. One take-off height applies to the whole import: import flights that took off at different heights separately.
+
+### 360 video from a 360 camera
+
+{product} takes the files an Insta360 camera writes, without Insta360 Studio in between.
+
+1. Drag the `.insv` file onto the window, or pick it with **Add data**. The camera's low resolution copy (`LRV_...lrv`) can come along: it is skipped, because the full clip is imported.
+2. The two lens pictures are stitched into one 360 video for playback (at most 3840 x 1920). The import panel shows the progress; a minute of footage takes about a minute or two, and **Cancel** stops it. Other files of the same drop are saved in the project before the stitch starts; they show when the import has ended. The original stays where it is.
+3. The video appears under **360 video** below the datasets. Click it: the **Scene** opens in **Split** with the **360 video** pane on the right.
+4. Drag in the pane to look around and scroll to zoom. The bar below plays, pauses and scrubs; **Sound** turns the sound on. The keys are those of the video window: **Space** or **K**, **J**, **L**, comma and period.
+
+- A video that is already stitched (an equirectangular MP4 exported from Insta360 Studio or another program) comes in with **Ctrl K**, **Add 360 video**. The same command also takes `.insv` files.
+- Stitching needs **ffmpeg** on this computer. Without it the import says so and adds nothing: install a full ffmpeg build (on Windows `winget install Gyan.FFmpeg`), restart {product} and import again.
+- An `.lrv` imported without its `.insv` plays at its own low resolution.
+- A 360 video is not placed on the site yet: it has no position, no path and no survey date. It travels inside a package, and older versions of {product} open the project without showing it.
 
 ## Drawings
 

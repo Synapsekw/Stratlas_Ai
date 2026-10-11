@@ -102,6 +102,7 @@ import {
   TerrainImportRequest,
 } from './globe';
 import { TilesetEntry, TilesetsFile } from './tilesets';
+import { WalkFile } from './walks';
 
 const Empty = z.object({}).strict();
 
@@ -1341,6 +1342,11 @@ export const ipc = {
          * a georeference do.
          */
         drawings: z.boolean().optional(),
+        /**
+         * "Add 360 video": an MP4 or MOV is taken as a stitched equirectangular video and stored
+         * as a walk (`walks/<id>/`), not as a drone clip that needs its SRT.
+         */
+        as360: z.boolean().optional(),
       })
       .strict(),
     response: z.discriminatedUnion('ok', [
@@ -2799,6 +2805,26 @@ export const ipc = {
       Failure,
     ]),
   },
+
+  // ---------------------------------------------------------------- 360 video (walks, W1 front)
+  /**
+   * The 360 videos of an open project or package: every `walks/<id>/walk.json` that reads, newest
+   * first. Read only; a project without the folder answers with an empty list.
+   */
+  'walks:list': {
+    request: z.object({ projectId: z.string().min(1) }).strict(),
+    response: z.object({ walks: z.array(WalkFile) }),
+  },
+  /**
+   * Cancel the `builder:import` running for a project, as a whole: a 360 video being stitched is
+   * stopped and removed, files whose turn had not come are answered as skipped, and what was
+   * already imported is saved. `builder:import` itself then answers with the rows. `ok` is false
+   * when no import is running for the project.
+   */
+  'builder:cancelImport': {
+    request: z.object({ projectId: z.string().min(1) }).strict(),
+    response: z.object({ ok: z.boolean() }),
+  },
 } as const satisfies Record<string, { request: z.ZodType; response: z.ZodType }>;
 
 /** Events pushed from main to the renderer. */
@@ -2868,6 +2894,8 @@ export const ipcEvents = {
     done: z.number().int().nonnegative(),
     total: z.number().int().nonnegative(),
     file: z.string(),
+    /** 0 to 1 inside the file being imported, for one long file (a 360 video playback copy). */
+    part: z.number().min(0).max(1).optional(),
   }),
   /** Progress of a `change:compute` run (M8). */
   'change:progress': z.object({

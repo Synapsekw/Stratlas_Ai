@@ -447,6 +447,15 @@ export function Palette() {
           run: () => void builder.getState().pickAndAddDrawing(),
         });
         list.push({
+          id: 'builder:import-360',
+          title: 'Add 360 video',
+          group: 'Actions',
+          icon: 'pano',
+          hint: 'A 360 camera file (.insv) or a stitched 360 video (MP4)',
+          keywords: ['360', 'insta360', 'insv', 'lrv', 'equirectangular', 'walk', 'panorama'],
+          run: () => void builder.getState().pickAndImport360(),
+        });
+        list.push({
           id: 'builder:import-tiles',
           title: 'Import 3D Tiles from another program',
           group: 'Actions',

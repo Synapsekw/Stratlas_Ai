@@ -1,7 +1,8 @@
 import type { Layer } from '@aio/schema';
 
 /** What one side of the split stage shows. */
-export type PaneKind = '3d' | 'map' | 'video' | 'photo' | 'raster' | 'report' | 'frames';
+export type PaneKind =
+  '3d' | 'map' | 'video' | 'photo' | 'raster' | 'report' | 'frames' | 'walk360';
 
 export type Side = 'left' | 'right';
 
@@ -143,6 +144,7 @@ export const PANE_KINDS: readonly PaneKind[] = [
   'raster',
   'report',
   'frames',
+  'walk360',
 ];
 
 /** As today: the 3D view on the left, the map on the right. */
@@ -150,12 +152,14 @@ export const DEFAULT_SPLIT: SplitPref = { left: '3d', right: 'map' };
 
 /**
  * The panes a project can fill: the 3D view and the map always, the rest when it has the data
- * (Frames: video or photos and `dates` survey dates, two or more).
+ * (Frames: video or photos and `dates` survey dates, two or more; 360 video: a walk in
+ * `walks/`, which is not a layer, so its count comes in `extra`).
  */
 export function paneOptions(
   layers: readonly Pick<Layer, 'kind'>[],
   reports: number,
   dates = 0,
+  extra: { walks?: number } = {},
 ): PaneKind[] {
   const has = (k: Layer['kind']) => layers.some((l) => l.kind === k);
   return PANE_KINDS.filter((k) => {
@@ -173,6 +177,8 @@ export function paneOptions(
         return reports > 0;
       case 'frames': // M8 C4: same view on another date (FramesPane.tsx)
         return dates >= 2 && (has('video') || has('photos'));
+      case 'walk360': // 360 video kept beside the manifest (walks/Walk360Pane.tsx)
+        return (extra.walks ?? 0) > 0;
     }
   });
 }

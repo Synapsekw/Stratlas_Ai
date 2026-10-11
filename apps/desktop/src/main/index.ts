@@ -52,6 +52,7 @@ import {
   drawingJobRefusal,
   builderEnsureCapture,
   builderImport,
+  importRuns,
   builderTemplates,
   builderUpdateCapture,
   builderUpdateLayers,
@@ -59,6 +60,7 @@ import {
   photoGps,
 } from './builder';
 import { builderPipelineJobs } from './builderJobs';
+import { listProjectWalks, packageWalks } from './walks';
 import { registerChangeIpc } from './change';
 import { registerInferenceIpc } from './inference';
 import {
@@ -1244,6 +1246,15 @@ function registerIpc(): void {
       }),
   );
   handle('builder:altitudePlan', (req) => builderAltitudePlan(req, registry));
+  // the import as a whole: a running 360 stitch is stopped, the rest is reported as skipped
+  handle('builder:cancelImport', ({ projectId }) => ({ ok: importRuns.cancel(projectId) }));
+  // 360 video kept beside the manifest (walks/<id>/); a package lists the ones it carries
+  handle('walks:list', async ({ projectId }) => {
+    const root = registry.root(projectId);
+    if (root !== undefined) return { walks: await listProjectWalks(root) };
+    const pkg = registry.package(projectId);
+    return { walks: pkg ? await packageWalks(pkg.archive) : [] };
+  });
   handle(
     'builder:updateLayers',
     (req) => packageRefusal(req.projectId) ?? builderUpdateLayers(req, registry),
@@ -1771,6 +1782,8 @@ app.on('before-quit', (e) => {
 // Running pipelines stop with the app; their jobs show as interrupted and resume later.
 app.on('will-quit', () => {
   jobs.shutdownSync();
+  // a 360 stitch must not go on in an ffmpeg nobody is waiting for
+  importRuns.cancelAll();
   // the journal keeps each chain's segment open between appends (T8 finding 4)
   void journal.closeAll();
 });

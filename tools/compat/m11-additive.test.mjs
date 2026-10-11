@@ -117,12 +117,14 @@ describe('existing files 0.11 writes stay readable by 0.10', () => {
   it('new M11 files are families 0.10 does not know, so it never reads them', () => {
     const known010 = new Set(v010.SCHEMA_REGISTRY.map((e) => e.family));
     const m11 = current.SCHEMA_REGISTRY.filter((e) => e.since === '0.11');
-    // 17 survey files, userData online.json (online satellite's switch, 10 Oct 2026) and the GPU
-    // add-on's manifest beside the pipeline pack (11 Oct 2026)
-    expect(m11.length).toBe(19);
+    // 17 survey files, userData online.json (online satellite's switch, 10 Oct 2026), the GPU
+    // add-on's manifest beside the pipeline pack (11 Oct 2026) and walk.json of a 360 video in
+    // its own project folder, walks/ (11 Oct 2026)
+    expect(m11.length).toBe(20);
     for (const e of m11) expect(known010.has(e.family), e.family).toBe(false);
+    // a new project file lives in a folder 0.10 never opens: survey/, or walks/ for 360 video
     for (const e of m11.filter((x) => x.home === 'project'))
-      expect(e.where.startsWith('survey/'), `${e.family} lives in ${e.where}`).toBe(true);
+      expect(/^(survey|walks)\//.test(e.where), `${e.family} lives in ${e.where}`).toBe(true);
   });
 
   it('the job index lists M11 jobs that 0.10 skips one by one (the known exception)', () => {

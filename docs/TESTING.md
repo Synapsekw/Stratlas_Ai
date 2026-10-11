@@ -1029,3 +1029,53 @@ Your three jobs, on this PC only, with Wi-Fi off. Client files stay on this PC: 
 | Landfill   | Airspace remaining to the cell design    |                                          |             |            | 1%     | [ ]  |
 | Landfill   | Compaction from the weighbridge tonnage  |                                          |             |            | 1%     | [ ]  |
 | Landfill   | Checkpoint heights                       |                                          |             |            | 10 mm  | [ ]  |
+
+## 360 video from a 360 camera
+
+New on 11 Oct 2026, in the build after branch `feat/insta360-native` is merged. This is the first part of Walks 360: the video comes in and plays; it is not placed on the site yet.
+
+### Before you start
+
+- [ ] ffmpeg is installed: open a terminal and run `ffmpeg -version`. If the command is not found, run `winget install Gyan.FFmpeg`, then close and reopen the app.
+- [ ] Have one Insta360 clip at hand: the `VID_..._00_001.insv` file and, in the same folder, its `LRV_..._01_001.lrv`. Any project will do; use a copy or a test project.
+
+### Import
+
+- [ ] Open the project, then **Add data** (or drag the files onto the window) and pick the `.insv` and the `.lrv` together. The import panel counts the files ("Importing 1 of 2") and, under the bar, shows the file name with "playback copy" and a percentage that counts up; the bar moves with it.
+- [ ] When it ends the panel reads "Imported 1 of 2 files". The `.insv` line says "Stitched to 3840 x 1920 for playback from two lens streams of 2880 x 2880; the original stays where it is." The `.lrv` line is **Skipped**: "The camera's low resolution copy of VID_..., which is imported in full."
+- [ ] An 80 second clip takes about two minutes on this PC. The app stays usable meanwhile.
+- [ ] Import the clip again and click **Cancel** in the panel while the percentage counts: the header reads "Cancelling the import", then "Imported 0 of 1 files", and the clip's line is **Skipped**: "The import was cancelled while this 360 video was made. Nothing of it was added." The **360 video** list has no new row, and in Task Manager no ffmpeg is left running.
+- [ ] Drop the clip together with a few photos and click **Cancel** while the clip's percentage counts: the photos are kept ("Imported ... files", their lines **Imported**) and show in the scene and the dataset tree, and the clip is **Skipped**. Without Cancel the photos are saved in the project at once, but they show only when the whole import has ended, clip included.
+- [ ] Drop the clip together with a PDF of several pages and click **Cancel** while the clip's percentage counts: no page question appears, the PDF's line is **Skipped** ("The import was cancelled before this drawing was drawn. Nothing of it was added.") and the **Drawings** group has no new row.
+- [ ] Start an import of the clip and close the app while the percentage counts. In Task Manager no ffmpeg is left running. Open the app and import any 360 video: the project folder's `walks` folder holds no `.staging-...` folder afterwards.
+- [ ] The dataset count and the layers are as before: a 360 video is not a layer.
+
+### Play
+
+- [ ] Below the datasets there is a **360 video** list with the clip and its length. Click it: the **Scene** switches to **Split**, with **360 video** on the right.
+- [ ] The picture is upright and the horizon is level. Drag in the pane: the view turns with the pointer. Scroll: it zooms in and out. The round arrow in the bar ("Look ahead again") puts the view back.
+- [ ] The play button plays and pauses; the time counts up ("0:12 / 1:21"); dragging the slider jumps to that moment.
+- [ ] Click in the picture, then use the keys: **Space** plays and pauses, **L** plays faster (the bar shows "2x"), **J** slows down or steps back a second, **K** pauses, comma and period step one frame.
+- [ ] **Sound** turns the sound on and off.
+- [ ] The small chooser at the top right of the pane still switches the side to **3D view**, **Map** and back to **360 video**.
+- [ ] Faint seams at the quarter lines of the picture, and the person holding the camera at the bottom, are expected (see KNOWN-LIMITS).
+
+### A stitched video
+
+- [ ] **Ctrl K**, **Add 360 video**, pick an equirectangular MP4 (an Insta360 Studio export, 2:1). The panel says "Stored as it is (...)" for an H.264 file up to 3840 wide, or "Playback copy at ..." for a larger one or another codec.
+- [ ] The **360 video** list now has two rows, and the pane has a chooser for them at the top left.
+- [ ] **Ctrl K**, **Add 360 video** with an ordinary drone MP4: **Skipped**, "The frame is ..., not a 2:1 equirectangular picture, and the file has no 360 metadata."
+- [ ] **Add data** with the same drone MP4 without its SRT behaves as before ("No DJI SRT telemetry...").
+
+### The low resolution copy on its own
+
+- [ ] **Add data** with only the `.lrv`: it imports, and the message says it is the camera's low resolution copy and names the `.insv` beside it. The pane shows "Low resolution copy" next to its name.
+
+### Without ffmpeg
+
+- [ ] Optional, on a PC without ffmpeg: import an `.insv`. The line is **Failed** with "ffmpeg was not found, and the app needs it to stitch the two lens pictures of a 360 camera file. Install a full ffmpeg build ..." and the project folder has no `walks` folder.
+
+### Packages and older builds
+
+- [ ] **Reports**, **Export package**, then open the `.aio`: the **360 video** list is there and the video plays; there is no **Add 360 video** button in the list.
+- [ ] Open the same project folder in the previous installer (0.11): it opens as before, without the 360 video and without a warning.

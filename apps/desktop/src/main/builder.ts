@@ -6,7 +6,9 @@ import { execFile } from 'node:child_process';
 import { open, readdir, stat } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
 import { promisify } from 'node:util';
+import { createImportRuns } from './importRuns';
 import { readManifest, type ProjectRegistry } from './project';
+import { stitchProgress, walkTools } from './walks';
 
 const run = promisify(execFile);
 
@@ -205,6 +207,9 @@ export async function ffmpegProxy(src: string, out: string): Promise<void> {
   await l.makeProxy(out, { inputs: [src], encoder: await proxyEncoder });
 }
 
+/** The imports that are running: cancelled by `builder:cancelImport`, and all when the app quits. */
+export const importRuns = createImportRuns();
+
 export interface BuilderImportDeps {
   registry: ProjectRegistry;
   images: ImageOps;
@@ -219,20 +224,27 @@ export async function builderImport(
   const root = d.registry.root(req.projectId);
   if (root === undefined)
     return { ok: false, error: `Project "${req.projectId}" is not open. Open it, then import.` };
+  const run = importRuns.begin(req.projectId);
   try {
     const { importRawFiles, NO_PIPELINE } = await lib();
+    const progress = stitchProgress((e) => {
+      d.emit({ projectId: req.projectId, ...e });
+    }, req.paths.length);
     const r = await importRawFiles(root, req.paths, {
       images: d.images,
       jobs: d.jobs ?? NO_PIPELINE,
       video: videoTools,
       poster: ffmpegPoster,
       proxy: ffmpegProxy,
+      // 360 video: camera files are stitched into walks/<id>/ (walks.ts)
+      walk: { ...walkTools, poster: ffmpegPoster },
+      ...(req.as360 ? { as360: true } : {}),
+      onFileProgress: progress.part,
+      signal: run.signal,
       ...(req.utcOffsetMin !== undefined ? { utcOffsetMin: req.utcOffsetMin } : {}),
       ...(req.altitude ? { altitude: req.altitude } : {}),
       ...(req.drawings ? { drawings: true } : {}),
-      onProgress: (done, total, file) => {
-        d.emit({ projectId: req.projectId, done, total, file });
-      },
+      onProgress: progress.file,
     });
     return {
       ok: true,
@@ -242,6 +254,8 @@ export async function builderImport(
     };
   } catch (e) {
     return { ok: false, error: `Import failed: ${errorText(e)}` };
+  } finally {
+    run.end();
   }
 }
 

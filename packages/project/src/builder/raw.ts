@@ -43,6 +43,8 @@ import {
   tiffCorners,
   tiffGeoreferenced,
 } from './tiff';
+import { CANCELLED_BEFORE, importWalk, type WalkTools } from './walks';
+import { isWalkFile, proxyOwner } from './walkSource';
 
 /** Review copies of photos. The app uses Electron's image codec; tools may use ffmpeg. */
 export interface ImageOps extends DrawingImages {
@@ -118,6 +120,21 @@ export interface ImportDeps {
    */
   drawings?: boolean;
   onProgress?: (done: number, total: number, file: string) => void;
+  /**
+   * 360 video (`walks.ts`): reading and stitching a 360 camera's own files. Without it they
+   * report that this build cannot import them.
+   */
+  walk?: WalkTools;
+  /** "Add 360 video": MP4 and MOV files are taken as stitched 360 video, not as drone clips. */
+  as360?: boolean;
+  /** Progress inside one long file (a 360 stitch), 0 to 1. */
+  onFileProgress?: (file: string, fraction: number) => void;
+  /**
+   * Cancel for the import as a whole: once aborted, a running 360 stitch is stopped and removed,
+   * files whose turn had not come are reported as skipped, and what was already imported is
+   * saved as usual. A file other than a 360 video that is in hand is finished first.
+   */
+  signal?: AbortSignal;
 }
 
 export interface ImportResult {
@@ -326,12 +343,82 @@ export async function importRawFiles(
     }
   };
 
+  /** 360 video is kept in `walks/`, beside the manifest: these items never change it. */
+  const walkItems = new Set<ImportItem>();
+  /**
+   * The 360 videos to stitch, each with its row in `items` (in the order the files were given).
+   * A stitch takes minutes and saves nothing in the manifest, so it runs after the manifest save:
+   * the photos and models of the same drop are in the project before the first stitch begins.
+   */
+  const stitches: { file: string; item: ImportItem }[] = [];
+  /** File a 360 video's row; true when it is stitched later (its progress tick comes then). */
+  const walk = (file: string): boolean => {
+    const name = basename(file);
+    const item: ImportItem = { file: name, kind: 'video', status: 'skipped' };
+    walkItems.add(item);
+    items.push(item);
+    const clip = proxyOwner(
+      name,
+      paths.filter((p) => p !== file && dirname(p) === dirname(file)).map((p) => basename(p)),
+    );
+    if (clip) {
+      item.message = `The camera's low resolution copy of ${clip}, which is imported in full.`;
+      return false;
+    }
+    if (!deps.walk) {
+      item.status = 'error';
+      item.message = '360 video import is not available in this build.';
+      return false;
+    }
+    stitches.push({ file, item });
+    return true;
+  };
+  const stitchWalks = async (tools: WalkTools) => {
+    for (const { file, item } of stitches) {
+      const name = basename(file);
+      try {
+        const r = await importWalk(root, file, {
+          tools,
+          onProgress: (f) => deps.onFileProgress?.(name, f),
+          ...(deps.signal ? { signal: deps.signal } : {}),
+        });
+        item.status = r.ok ? 'imported' : r.status;
+        item.message = r.message;
+      } catch (e) {
+        item.status = 'error';
+        item.message = e instanceof Error ? e.message : String(e);
+      } finally {
+        tick(name);
+      }
+    }
+  };
+  /** The manifest as it is by now, read in the project's turn; `fallback` when it cannot be read. */
+  const manifestNow = (fallback: ProjectManifest) =>
+    updateManifestFile(root, () => ({ manifest: null })).then(
+      (r) => r.manifest,
+      () => fallback,
+    );
+
   for (const file of paths) {
     const name = basename(file);
     const ext = extname(file).toLowerCase();
+    let later = false;
     try {
       if (consumed.has(file)) continue;
-      if (isDrawingFile(ext, deps.drawings === true) && textures.has(file)) {
+      const is360 = isWalkFile(name) || (deps.as360 === true && VIDEO.has(ext));
+      if (deps.signal?.aborted) {
+        // cancelled: this file's turn had not come
+        const item: ImportItem = {
+          file: name,
+          kind: is360 ? 'video' : 'unknown',
+          status: 'skipped',
+          message: CANCELLED_BEFORE,
+        };
+        if (is360) walkItems.add(item);
+        items.push(item);
+      } else if (is360) {
+        later = walk(file);
+      } else if (isDrawingFile(ext, deps.drawings === true) && textures.has(file)) {
         // picked with its model: part of the model, not a sheet to look at
         items.push({
           file: name,
@@ -666,7 +753,7 @@ export async function importRawFiles(
         message: e instanceof Error ? e.message : String(e),
       });
     } finally {
-      tick(name);
+      if (!later) tick(name);
     }
   }
   const placed = items.filter((i) => i.status === 'imported' && i.heightSource);
@@ -674,16 +761,15 @@ export async function importRawFiles(
   if (heights.saveDatum && placed.some((i) => i.heightSource !== 'relative'))
     m.verticalDatum = heights.saveDatum;
   const summary = importHeights(heights, placed, datumDefined);
-  const changed = items.some((i) => i.status === 'imported');
+  // 360 video is filed beside the manifest (walks/): an import of walks only saves nothing
+  const changed = items.some((i) => i.status === 'imported' && !walkItems.has(i));
   if (!changed) {
     // Nothing was filed (only jobs, or only refusals), so nothing is saved. The manifest handed
     // back is the project as it is by now, read in its turn after the saves on their way. When
     // it cannot be read at this moment the import does not fail for it: the jobs are started
     // and their report must arrive, with the manifest as it was read at the start.
-    const now = await updateManifestFile(root, () => ({ manifest: null })).then(
-      (r) => r.manifest,
-      () => atStart,
-    );
+    if (deps.walk) await stitchWalks(deps.walk);
+    const now = await manifestNow(atStart);
     return { manifest: now, items, backup: '', ...(summary ? { heights: summary } : {}) };
   }
   // Only this takes the project's turn: read the manifest as it is now, put what this import
@@ -693,8 +779,14 @@ export async function importRawFiles(
     const id = i.layerId === undefined ? undefined : saved.renamed.get(i.layerId);
     if (id !== undefined) i.layerId = id;
   }
+  // the save above is not held up by a stitch; the manifest handed back is read again after it
+  let manifest = saved.manifest;
+  if (deps.walk && stitches.length > 0) {
+    await stitchWalks(deps.walk);
+    manifest = await manifestNow(manifest);
+  }
   return {
-    manifest: saved.manifest,
+    manifest,
     items,
     backup: saved.backup,
     ...(summary ? { heights: summary } : {}),

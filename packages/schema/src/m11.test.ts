@@ -170,6 +170,8 @@ describe('M11 additive rule: no layer kind, raster role, project type, setting o
         'aio.survey-templates',
         'aio.terrain-edits',
         'aio.tin',
+        // 360 video in a side folder of the project (walks.ts, 11 Oct 2026)
+        'aio.walk',
       ].sort(),
     );
   });
