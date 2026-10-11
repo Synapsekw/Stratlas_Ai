@@ -35,7 +35,7 @@ from aio_pipelines.photo.colmap_io import (
     memory_status,
 )
 from aio_pipelines.photo.exif import read_photo
-from aio_pipelines.photo.model import qvec_to_rotmat
+from aio_pipelines.photo.model import project_points, qvec_to_rotmat
 from aio_pipelines.runtime import INPUTS_CHANGED, Cancelled, JobError
 from conftest import run_job
 from photo_g2_synth import SyntheticEngine, make_scene, synthetic_jpeg, write_gcp_files, write_scene_photos
@@ -160,6 +160,41 @@ def test_gnss_only_standard_accuracy_is_reported_not_hidden(monkeypatch, project
     p = next(p for p in gcp["points"] if p["id"] == "CHK1")
     assert p["predicted"] and all(m["state"] == "confirmed" for m in p["marks"])
     assert all(q["radiusPx"] > 8 for q in p["predicted"])
+
+
+@pytest.mark.parametrize(("marked", "limit_px"), [((), 80), (("GCP1", "GCP3"), 15)])
+def test_predictions_are_on_the_targets_when_the_altitudes_are_off(
+    monkeypatch, project, tmp_path, marked, limit_px
+):
+    # no RTK: the logged altitudes are 21.7 m below the survey, so the GNSS-only model is too
+    scene = make_scene(rows=6, cols=6, points=4000, gnss_sigma=(2.5, 4.0), seed=4)
+    folder = tmp_path / "flight"
+    write_scene_photos(scene, folder, rtk=False, alt_offset=-21.7)
+    path = write_gcp_files(scene, project, "r1")
+    gcp = json.loads(path.read_text("utf-8"))
+    for p in gcp["points"]:  # imported while the photos align: no marks, or two points marked
+        if p["id"] not in marked:
+            p["marks"] = []
+    path.write_text(json.dumps(gcp), "utf-8")
+    _run(monkeypatch, project, _params(folder), SyntheticEngine(scene))
+    gcp = json.loads(path.read_text("utf-8"))
+    w, h = scene.camera.width, scene.camera.height
+    worst = 0.0
+    for g in scene.gcps:
+        predicted = {q["photo"]: q for q in next(p for p in gcp["points"] if p["id"] == g.id)["predicted"]}
+        for i, name in enumerate(scene.names):
+            uv, z = project_points(scene.camera, scene.rotations[i], scene.centres[i], g.enu[None])
+            x, y = uv[0]
+            if not (z[0] > 0 and 60 <= x < w - 60 and 60 <= y < h - 60):
+                continue
+            # every photo that sees the target is offered, with its ring over the target
+            assert name in predicted, (g.id, name)
+            off = float(np.hypot(predicted[name]["px"][0] - x, predicted[name]["px"][1] - y))
+            assert off < predicted[name]["radiusPx"], (g.id, name, off)
+            worst = max(worst, off)
+    # without marks what is left is the flight's GNSS error (the block sits metres beside the
+    # survey and tilted), not the 21.7 m in height; two marked points take that out as well
+    assert worst < limit_px, worst
 
 
 def test_rtk_gnss_only_checkpoints_are_within_three_gsd(monkeypatch, project, scene, tmp_path):

@@ -6,6 +6,8 @@
   and ODM's ``gcp_list.txt`` (a CRS line, then ``x y z px py image [id]`` per mark).
 - ``predict_marks`` projects every point into every aligned photo that sees it, with a search
   radius from the cameras' uncertainty: the drafts G4 shows a person (``predicted``).
+- ``model_positions`` says where the points are in a model that has not seen ground control yet
+  (tens of metres off the survey's heights without RTK), so those predictions land on the targets.
 - ``control_outliers`` names a control point whose surveyed position disagrees with the others
   (leave-one-out similarity of the marked positions, judged by how well the others can say where
   it should be); it is left out of the adjustment and the report says so. Nothing is hidden: its
@@ -246,6 +248,56 @@ def predict_marks(
                 }
             )
         out[pid] = preds
+    return out
+
+
+#: Tie points whose median height is the model's ground level at a place (``model_positions``).
+GROUND_NEIGHBOURS = 24
+#: The largest shift between survey and cameras that is believed, metres: height datums differ by
+#: at most about 106 m (the geoid), a logged altitude is tens of metres off.
+MAX_SHIFT_M = 150.0
+
+
+def model_positions(
+    model: SparseModel,
+    surveyed: dict[str, np.ndarray],
+    measured: dict[str, np.ndarray] | None = None,
+) -> dict[str, np.ndarray]:
+    """Where each point is in a model that ground control has not adjusted (east, north, up).
+
+    Such a model follows the drone's GNSS: without RTK it sits metres beside the survey and tens
+    of metres above or below its heights, and a small block is tilted as well. A point projected
+    at its surveyed position then lands far beside its target, or outside the photos that see it.
+    So, best knowledge first:
+
+    - a point with marks (``measured``, where they put it through the cameras) is where its
+      marks say;
+    - any other point is moved in plan by the median shift of the marked points (none without
+      marks) and set on the model's own ground there: the median height of the
+      ``GROUND_NEIGHBOURS`` tie points nearest in plan. Ground control lies on the ground, and
+      the model's ground is right where its heights and its tilt are wrong;
+    - without tie points, the surveyed height plus the median height shift of the marked points.
+
+    The same idea as the marker's own ring (``surveyShift`` in the app's ``marks.ts``), with the
+    same bound: marks that put a point more than ``MAX_SHIFT_M`` from its survey (another target,
+    a wrong coordinate) say nothing about the other points.
+    """
+    measured = {i: np.asarray(x, dtype=np.float64) for i, x in (measured or {}).items() if i in surveyed}
+    shifts = [measured[i] - surveyed[i] for i in measured]
+    shifts = [d for d in shifts if np.isfinite(d).all() and np.linalg.norm(d) <= MAX_SHIFT_M]
+    shift = np.median(shifts, axis=0) if shifts else np.zeros(3)
+    ground = np.asarray(model.xyz, dtype=np.float64).reshape(-1, 3)
+    out: dict[str, np.ndarray] = {}
+    for pid, s in surveyed.items():
+        if pid in measured:
+            out[pid] = np.asarray(measured[pid], dtype=np.float64)
+            continue
+        at = np.asarray(s, dtype=np.float64) + shift
+        if len(ground):
+            d2 = ((ground[:, :2] - at[:2]) ** 2).sum(axis=1)
+            k = min(GROUND_NEIGHBOURS, len(ground))
+            at[2] = float(np.median(ground[np.argpartition(d2, k - 1)[:k], 2]))
+        out[pid] = at
     return out
 
 

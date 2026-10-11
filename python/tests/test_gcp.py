@@ -112,6 +112,29 @@ def test_predictions_fall_inside_the_photos_that_see_the_point():
     assert pred["G1"][0]["radiusPx"] == pytest.approx(700 * 0.5 / 50 * 3 + 8, abs=0.1)
 
 
+def test_points_are_looked_for_on_the_models_own_ground():
+    # a model that follows GNSS without RTK: its ground is 20 m low and tilted against the survey
+    m = SparseModel()
+    gx, gy = np.meshgrid(np.arange(-60.0, 61.0, 2.0), np.arange(-60.0, 61.0, 2.0))
+    m.xyz = np.column_stack([gx.ravel(), gy.ravel(), -20 + 0.05 * gx.ravel()])
+    surveyed = {"G1": np.array([10.0, 5.0, 0.3]), "G2": np.array([-40.0, 20.0, -0.1])}
+    # no marks yet: each point where it was surveyed in plan, on the model's ground there
+    at = G.model_positions(m, surveyed)
+    assert at["G1"] == pytest.approx([10.0, 5.0, -19.5], abs=0.15)
+    assert at["G2"] == pytest.approx([-40.0, 20.0, -22.0], abs=0.15)
+    # marks on G1: it is where they put it, and G2 moves in plan as G1 did
+    seen = {"G1": np.array([11.2, 4.4, -19.44])}
+    at = G.model_positions(m, surveyed, seen)
+    assert at["G1"] == pytest.approx(seen["G1"])
+    assert at["G2"] == pytest.approx([-38.8, 19.4, -21.94], abs=0.15)
+    # marks on another target (half a kilometre away) say nothing about the other points
+    at = G.model_positions(m, surveyed, {"G1": np.array([500.0, 5.0, -19.0])})
+    assert at["G2"] == pytest.approx([-40.0, 20.0, -22.0], abs=0.15)
+    # a model without tie points: the shift of the marked points is all there is
+    at = G.model_positions(SparseModel(), surveyed, seen)
+    assert at["G2"] == pytest.approx([-38.8, 19.4, -19.84])
+
+
 def test_the_one_control_point_that_disagrees_is_named():
     rng = np.random.default_rng(3)
     surveyed = {f"G{i}": rng.uniform(-100, 100, 3) * [1, 1, 0.05] for i in range(1, 7)}
