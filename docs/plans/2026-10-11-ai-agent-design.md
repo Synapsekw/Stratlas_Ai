@@ -203,3 +203,28 @@ The branch touches files other branches in flight also touch: the tool catalogue
 ## Decisions
 
 The founder passed the design decisions to the Orchestrator session, which decided on 11 Oct 2026: extend the existing agent; the agent stays where it is on Scene and gets a folding column on the other project screens, one conversation; a photo-only finding flies to the photo's camera; the real-model check ships opt-in and is first run by the founder; this branch lands last. Conditions: every filter the agent sets is visible and can be cleared, no new step edits project data, and the column works in the small window.
+
+## Changed during the build
+
+Recorded on 11 Oct 2026, after the build. Where this section and the text above differ, this section is what was built.
+
+- **"This asset"**: only an asset can be selected in the app, not an area. With no tagged asset selected (nothing, a finding, a photo, or a part of the model that has no tag) the request covers the whole project, and the result says so. An area is named in the request ("in the bund").
+- **The Agent button** in the title bar shows only its icon below 1280 px of window width, so the screen name beside it stays whole.
+- **A reply stops** when the person goes to a screen without the agent (Settings, the Globe, the project list), as leaving Scene did before. It carries on between Scene, Issues, Media, Detections and Reports.
+- **Media**: the severity level resets when another project opens (the scope does too; the order and **Only with findings** stay). The **Severity** select lists the levels of every severity model of the project, one entry per value, named by the first model that has it, and always shows a level that is on. An empty result reads "No photos match this filter." When the agent sets a photo filter, the first matching photo is scrolled into view, once. After an agent filter, choosing **Any** leaves **Only with findings** on.
+- **The photo of a finding** opens beside the 3D view on "show a finding" even when the person has switched that split off on the finding card. The switch itself is not changed.
+- **Counts**: the photo count the agent states includes the review's detections, which are now read when a project with photos opens. The finding count uses the Issues list's own search. The team filter "mine" is not part of that count.
+- **Asset bounds** are measured once a second after the 3D view mounts until every tagged asset has bounds or a minute has passed, and are remembered per project by tag name. An asset whose bounds are not known answers "still loading"; a part that is not a tagged asset answers that it is not one; an asset whose findings are on photos only says how many are not matched.
+- **Tools**: `list_assets` can sort by the number of findings. The summary's most severe findings are the open ones, the same finding "show the worst" picks. A severity that is not a level of the project is an error that lists the levels. `list_issues` takes a class by its label and rejects an unknown class.
+- **What is sent**: the words typed into the Issues search are not sent, only that a search is on. The guide's list of what is sent was corrected: it had said no positions, while the site's coordinate system, origin and extent and where the camera looks were part of the context before this work.
+- **Layout beside the open column** at the smallest window: the Media list, the finding card and the Reports controls give way instead of scrolling sideways; on Reports the controls keep their width and the preview shrinks.
+- **Undo** also puts back the Scene panel fold, the clip and the clock (the clock only when it is not playing).
+- **The CI window** is 1100 x 720 at display scale 1, not 1100 x 700.
+
+Known limits added to the list above:
+
+- In a project with more than one severity model the **Severity** select filters by value across the models, so a photo graded under another name at that value shows too, with its own colour and tooltip. **Uncertain** reads the app's word in the select and the model's own word in the agent's answer.
+- A project whose models take more than a minute to load is not measured again by itself; asking on Scene measures it.
+- Undo of a camera step taken from another screen puts the camera back, not the screen.
+- Beside the open column at 1100 px the Issues list is about 220 px wide and the Reports preview about 170 px; folding the sidebar or the column gives the room back.
+- The real-model check has not been run. The two requests are verified on the scripted model only.
