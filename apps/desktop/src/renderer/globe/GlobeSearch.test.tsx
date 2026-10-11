@@ -1,9 +1,9 @@
 // @vitest-environment jsdom
 import type { GlobeSite } from '@aio/schema';
-import { act } from 'react';
+import { act, createRef } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { filterSites, GlobeSearch } from './GlobeSearch';
+import { filterSites, GlobeSearch, type GlobeSearchHandle } from './GlobeSearch';
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -377,6 +377,34 @@ describe('the Globe search field', () => {
     });
     expect(options()).toHaveLength(0);
     other.remove();
+  });
+
+  it('takes the focus the screen gives it back without opening its list', () => {
+    const handle = createRef<GlobeSearchHandle>();
+    root = createRoot(host);
+    act(() =>
+      root?.render(
+        <GlobeSearch
+          sites={SITES}
+          selected={null}
+          onPick={vi.fn()}
+          onLight={vi.fn()}
+          handle={handle}
+        />,
+      ),
+    );
+    act(() => handle.current?.focus());
+    expect(document.activeElement).toBe(field());
+    expect(q('globe-sites')).toBeNull();
+    expect(field()?.getAttribute('aria-expanded')).toBe('false');
+    // the keyboard opens it from there, and the person's own focus still lists the sites
+    press('ArrowDown');
+    expect(options()).toHaveLength(3);
+    press('Escape');
+    act(() => field()?.blur());
+    expect(options()).toHaveLength(0);
+    focusField();
+    expect(options()).toHaveLength(3);
   });
 
   it('does not open when there are no sites', () => {

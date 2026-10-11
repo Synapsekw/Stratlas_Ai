@@ -4,11 +4,13 @@ import {
   useCallback,
   useEffect,
   useId,
+  useImperativeHandle,
   useMemo,
   useRef,
   useState,
   type FocusEvent,
   type KeyboardEvent,
+  type Ref,
 } from 'react';
 import './globe-search.css';
 import { SiteFacts } from './SiteFacts';
@@ -19,6 +21,12 @@ export function filterSites(sites: readonly GlobeSite[], query: string): GlobeSi
   return sites.filter((s) => s.name.toLowerCase().includes(needle));
 }
 
+/** What the screen may ask of the field. */
+export interface GlobeSearchHandle {
+  /** Put the keyboard in the field, its list left shut: the person did not ask for the list. */
+  focus(): void;
+}
+
 export interface GlobeSearchProps {
   sites: readonly GlobeSite[];
   /** The selected site's id: its option reads as selected. */
@@ -26,17 +34,34 @@ export interface GlobeSearchProps {
   onPick: (site: GlobeSite) => void;
   /** The site whose chip to light on the map (the option under the pointer or the keyboard). */
   onLight: (projectId: string | null) => void;
+  /** For the screen to put the keyboard back in the field. */
+  handle?: Ref<GlobeSearchHandle>;
 }
 
 /** The Globe's "Find a site" field: focus lists every site, typing filters, a pick opens its card. */
-export function GlobeSearch({ sites, selected, onPick, onLight }: GlobeSearchProps) {
+export function GlobeSearch({ sites, selected, onPick, onLight, handle }: GlobeSearchProps) {
   useT();
   const [query, setQuery] = useState('');
   const [wantOpen, setWantOpen] = useState(false);
   // -1: nothing chosen yet, so opening the list lights no chip
   const [active, setActive] = useState(-1);
   const rootRef = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
   const listId = useId();
+
+  // the focus the screen gives back (a card closed) opens no list, unlike the person's own
+  const given = useRef(false);
+  useImperativeHandle(
+    handle,
+    () => ({
+      focus: () => {
+        given.current = true;
+        inputRef.current?.focus();
+        given.current = false;
+      },
+    }),
+    [],
+  );
 
   const results = useMemo(() => filterSites(sites, query), [sites, query]);
   const open = wantOpen && sites.length > 0;
@@ -129,6 +154,7 @@ export function GlobeSearch({ sites, selected, onPick, onLight }: GlobeSearchPro
       <div className="globe-search-in">
         <Icon name="search" size={14} />
         <input
+          ref={inputRef}
           value={query}
           onChange={(e) => {
             setQuery(e.target.value);
@@ -136,7 +162,7 @@ export function GlobeSearch({ sites, selected, onPick, onLight }: GlobeSearchPro
             setWantOpen(true);
           }}
           onFocus={() => {
-            setWantOpen(true);
+            if (!given.current) setWantOpen(true);
           }}
           onClick={() => {
             setWantOpen(true);

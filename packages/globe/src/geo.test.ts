@@ -2,11 +2,13 @@ import { crsDefinition } from '@aio/geo';
 import type { Issue, Vec3 } from '@aio/schema';
 import proj4 from 'proj4';
 import { describe, expect, it } from 'vitest';
-import { globeToSite, headingPitch, siteToGlobe } from './camera';
+import { globeToSite, headingPitch, padBounds, siteToGlobe, type Bounds } from './camera';
+import type { Insets, ViewSize } from './chips';
 import {
   applyMatrix,
   ecefToGeodetic,
   ecefToLocal,
+  enuBasis,
   enuToEcefMatrix,
   geodeticToEcef,
   geoidShift,
@@ -212,6 +214,204 @@ describe('camera hand-off', () => {
     const site = globeToSite({ position, direction: [d[0] / n, d[1] / n, d[2] / n] }, SITE);
     expect(site.target[2]).toBeCloseTo(-100, 1);
     expect(headingPitch(siteToGlobe(site, SITE)).heading).toBeLessThan(2); // grid north ~ true north
+  });
+});
+
+/**
+ * Where a place is drawn once CesiumJS has flown to a box (`Camera.flyTo` with a rectangle, its
+ * `rectangleCameraPosition3D`): the camera stands straight above the middle of the box, north up,
+ * just far enough for the corners, the middles of the north and south edges and, across the
+ * equator, the ends of the equator to be in view. Pixels from the view's top left corner.
+ */
+function shownAfterFlightTo(box: Bounds, view: ViewSize, fovDeg = 60) {
+  const [w, s, e, n] = box;
+  const mid: [number, number] = [(w + e) / 2, (s + n) / 2];
+  const centre = geodeticToEcef(mid[0], mid[1], 0);
+  const { e: right, n: up, u } = enuBasis(mid[0], mid[1]);
+  const along = (a: Vec3, b: Vec3) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
+  const from = (lon: number, lat: number): Vec3 => {
+    const p = geodeticToEcef(lon, lat, 0);
+    return [p[0] - centre[0], p[1] - centre[1], p[2] - centre[2]];
+  };
+  // the field of view is that of the longer side
+  const t = Math.tan((fovDeg / 2) * (Math.PI / 180));
+  const aspect = view.width / view.height;
+  const tanX = aspect >= 1 ? t : t * aspect;
+  const tanY = aspect >= 1 ? t / aspect : t;
+  const marks: [number, number][] = [
+    [w, n],
+    [e, n],
+    [w, s],
+    [e, s],
+    [mid[0], n],
+    [mid[0], s],
+  ];
+  if (s < 0 && n > 0) marks.push([w, 0], [e, 0]);
+  let d = -Infinity;
+  for (const [lon, lat] of marks) {
+    const v = from(lon, lat);
+    const below = -along(v, u);
+    d = Math.max(
+      d,
+      Math.abs(along(v, up)) / tanY - below,
+      Math.abs(along(v, right)) / tanX - below,
+    );
+  }
+  return (lon: number, lat: number): [number, number] => {
+    const v = from(lon, lat);
+    const depth = d - along(v, u);
+    return [
+      (view.width / 2) * (1 + along(v, right) / (depth * tanX)),
+      (view.height / 2) * (1 - along(v, up) / (depth * tanY)),
+    ];
+  };
+}
+
+/** The room the edge of a box has to each edge of the view after the flight to `flown`, pixels. */
+function roomAround(box: Bounds, flown: Bounds, view: ViewSize): Insets {
+  const at = shownAfterFlightTo(flown, view);
+  const [w, s, e, n] = box;
+  const places: [number, number][] = [];
+  // along the whole edge of the box, not only at the points the fit looks at
+  for (let i = 0; i <= 16; i++) {
+    const f = i / 16;
+    places.push(at(w + (e - w) * f, n), at(w + (e - w) * f, s));
+    places.push(at(w, s + (n - s) * f), at(e, s + (n - s) * f));
+  }
+  const xs = places.map((p) => p[0]);
+  const ys = places.map((p) => p[1]);
+  return {
+    left: Math.min(...xs),
+    top: Math.min(...ys),
+    right: view.width - Math.max(...xs),
+    bottom: view.height - Math.max(...ys),
+  };
+}
+
+describe('framing sites for their chips (padBounds)', () => {
+  // the Globe's own controls, then a chip: wide to the right of its site, little to the left
+  const PAD: Insets = { top: 71, right: 268, bottom: 59, left: 55 };
+  const WIDE: ViewSize = { width: 1668, height: 941 };
+  const NARROW: ViewSize = { width: 848, height: 661 };
+  const GULF: Bounds = [47, 23, 56, 31];
+
+  /** Every edge has its room, and the view is no wider than that takes. */
+  function expectFramed(box: Bounds, view: ViewSize, pad: Insets = PAD) {
+    const flown = padBounds(box, view, pad);
+    const room = roomAround(box, flown, view);
+    for (const edge of ['top', 'right', 'bottom', 'left'] as const)
+      expect(room[edge], `room at the ${edge}`).toBeGreaterThan(pad[edge] - 0.5);
+    // across or down, the box fills what the pads leave: nothing is framed smaller than it must
+    const spare = Math.min(
+      Math.max(room.left - pad.left, room.right - pad.right),
+      Math.max(room.top - pad.top, room.bottom - pad.bottom),
+    );
+    expect(spare, 'room to spare in the tighter direction').toBeLessThan(1);
+    return flown;
+  }
+
+  it('shows why: the box alone puts its edge at the edge of the view', () => {
+    const room = roomAround(GULF, GULF, NARROW);
+    expect(Math.min(room.left, room.right, room.top, room.bottom)).toBeLessThan(1);
+  });
+
+  it('leaves the room asked at each edge of a wide view and of a narrow one', () => {
+    for (const view of [WIDE, NARROW]) {
+      const [w, s, e, n] = expectFramed(GULF, view);
+      expect(w).toBeLessThanOrEqual(GULF[0]);
+      expect(s).toBeLessThanOrEqual(GULF[1]);
+      expect(e).toBeGreaterThanOrEqual(GULF[2]);
+      expect(n).toBeGreaterThanOrEqual(GULF[3]);
+    }
+    // the chip runs east of its site: far more is added in the east than in the west
+    const [w, , e] = padBounds(GULF, NARROW, PAD);
+    expect(e - GULF[2]).toBeGreaterThan(3 * (GULF[0] - w));
+  });
+
+  it('holds for a box that is tall, far north, across the equator or half a continent wide', () => {
+    expectFramed([10, 40, 12, 58], NARROW);
+    expectFramed([10, 60, 30, 68], WIDE);
+    expectFramed([-10, -8, 12, 9], NARROW);
+    expectFramed([100, -42, 150, -12], WIDE);
+    expectFramed([0, 10, 40, 40], NARROW);
+    // a view taller than it is wide
+    expectFramed(GULF, { width: 700, height: 1000 });
+  });
+
+  it('goes as far as the whole Earth for a box too wide for its pads', () => {
+    // a sixth of the way round the Earth, in a view that keeps little more than half its width
+    const box: Bounds = [0, 10, 60, 50];
+    const flown = padBounds(box, NARROW, PAD);
+    const room = roomAround(box, flown, NARROW);
+    const least = (r: Insets) => Math.min(r.left, r.right, r.top, r.bottom);
+    // short of the pads, yet every edge is well inside the view, most room in the east
+    expect(least(room)).toBeGreaterThan(20);
+    expect(room.right).toBeGreaterThan(200);
+    expect(room.right).toBeLessThan(PAD.right);
+    // from there the Earth is as wide as the view: about two radii from its centre, not more
+    expect(flown[2] - flown[0]).toBeGreaterThan(100);
+    expect(flown[2] - flown[0]).toBeLessThan(180);
+  });
+
+  it('gives a single site a span, about a kilometre, and frames that', () => {
+    const flown = padBounds([51, 29, 51, 29], NARROW, PAD);
+    expect(flown[2]).toBeGreaterThan(flown[0]);
+    expect(flown[3]).toBeGreaterThan(flown[1]);
+    const at = shownAfterFlightTo(flown, NARROW);
+    const [x, y] = at(51, 29);
+    expect(x).toBeGreaterThan(PAD.left);
+    expect(x).toBeLessThan(NARROW.width - PAD.right);
+    expect(y).toBeGreaterThan(PAD.top);
+    expect(y).toBeLessThan(NARROW.height - PAD.bottom);
+    // a pixel of the view is a metre or two of ground: near, and not on the ground
+    const [x2] = at(51.01, 29);
+    const metresPerPixel = (0.01 * 111_320 * Math.cos((29 * Math.PI) / 180)) / (x2 - x);
+    expect(metresPerPixel).toBeGreaterThan(0.5);
+    expect(metresPerPixel).toBeLessThan(4);
+    // sites a few hundred metres apart are framed as wide as that least span, and no wider
+    const near = padBounds([51, 29, 51.004, 29.001], NARROW, PAD);
+    expect(near[2] - near[0]).toBeCloseTo(flown[2] - flown[0], 3);
+  });
+
+  it('leaves a box alone when no room is asked for', () => {
+    const none = { top: 0, right: 0, bottom: 0, left: 0 };
+    padBounds(GULF, NARROW, none).forEach((v, i) => {
+      expect(v).toBeCloseTo(GULF[i] ?? 0, 9);
+    });
+  });
+
+  it('leaves alone a box so wide that the whole Earth shows anyway', () => {
+    expect(padBounds([-170, -60, 170, 75], NARROW, PAD)).toEqual([-170, -60, 170, 75]);
+    expect(padBounds([-180, -90, 180, 90], WIDE, PAD)).toEqual([-180, -90, 180, 90]);
+  });
+
+  it('never turns a box inside out, whatever is asked', () => {
+    const boxes: Bounds[] = [GULF, [-120, -80, 40, 85], [51, 29, 51, 29], [-179, 60, -100, 89]];
+    const pads: Insets[] = [
+      PAD,
+      { top: 400, right: 500, bottom: 400, left: 500 },
+      { top: 0, right: 847, bottom: 0, left: 0 },
+    ];
+    for (const box of boxes)
+      for (const pad of pads) {
+        const [w, s, e, n] = padBounds(box, NARROW, pad);
+        expect(w).toBeLessThanOrEqual(box[0]);
+        expect(e).toBeGreaterThanOrEqual(box[2]);
+        expect(s).toBeLessThanOrEqual(box[1]);
+        expect(n).toBeGreaterThanOrEqual(box[3]);
+        expect(s).toBeGreaterThanOrEqual(-90);
+        expect(n).toBeLessThanOrEqual(90);
+        expect(e - w).toBeLessThanOrEqual(360);
+        expect([w, s, e, n].every(Number.isFinite)).toBe(true);
+      }
+  });
+
+  it('pads a box at the antimeridian past it, for the view to wrap', () => {
+    // `sitesBounds` stops a box at 180 degrees; the chip of a site there still needs its room
+    const box: Bounds = [168, -22, 180, -12];
+    const flown = expectFramed(box, NARROW);
+    expect(flown[2]).toBeGreaterThan(180);
+    expect(flown[2]).toBeLessThan(200);
   });
 });
 

@@ -95,7 +95,9 @@ export {
 export {
   globeToSite,
   headingPitch,
+  padBounds,
   siteToGlobe,
+  type Bounds,
   type GlobeCamera,
   type SiteCamera,
 } from './camera';

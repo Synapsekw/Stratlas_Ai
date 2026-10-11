@@ -19,6 +19,7 @@ import {
   HeadingPitchRange,
   Matrix4,
   Math as CMath,
+  PerspectiveFrustum,
   Rectangle,
 } from '@cesium/core';
 import {
@@ -41,7 +42,7 @@ import {
 } from '@cesium/engine';
 import type { GlobeSite, RasterPackInfo, TilesetEntry } from '@aio/schema';
 import { FetchSource, type Source } from 'pmtiles';
-import { siteToGlobe, type GlobeCamera, type SiteCamera } from '../camera';
+import { padBounds, siteToGlobe, type Bounds, type GlobeCamera, type SiteCamera } from '../camera';
 import { CHIP, groupChips, placeCard, type Insets, type PlacedChip } from '../chips';
 import { planCredits } from '../credits';
 import {
@@ -149,11 +150,17 @@ const ISSUE_PREFIX = 'issue:';
 const CHIP_OFFSET = new Cartesian2(-(CHIP.pad + CHIP.dotX), 0);
 const NO_INSETS: Insets = { top: 0, right: 0, bottom: 0, left: 0 };
 
-/** What a site's chip says. */
+/** What a site's chip says, and where the site stands. */
 interface SiteChip {
   name: string;
   open: number;
+  lonLat: readonly [number, number];
+  /** The height of the ground it is drawn on, metres above the ellipsoid. */
+  height: number;
 }
+
+/** A longitude or a difference of two, degrees, as the nearest turn: from -180 to 180. */
+const turn = (deg: number): number => ((((deg + 180) % 360) + 360) % 360) - 180;
 /** The deepest level the land shapes are painted at, alone and under street tiles. */
 const EARTH_LEVELS = { whole: 11, underlay: 8 } as const;
 
@@ -177,6 +184,11 @@ export interface GlobeInspection {
   sites: string[];
   /** The chips that stand for several sites now: how many, and which (ids in order). */
   clusters: { count: number; sites: string[] }[];
+  /**
+   * Every chip drawn now, a site's own or a gathered one: the sites it stands for and its box in
+   * CSS pixels of the canvas (which a chip partly out of view runs past).
+   */
+  chips: { sites: string[]; x: number; y: number; width: number; height: number }[];
   /** Project tilesets on the Globe and whether their root content is drawn. */
   tilesets: { id: string; ready: boolean }[];
   issuePins: string[];
@@ -230,6 +242,8 @@ export class GlobeController {
   private gatheredAs = '';
   /** The view the chips were last gathered for. */
   private readonly gatheredFor = { view: new Matrix4(), width: 0, height: 0 };
+  /** The ground under a site may have changed (terrain came in or went): look after this frame. */
+  private groundStale = false;
   private selected: string | null = null;
   private pointerHover: GlobeHover | null = null;
   private pointerAnchor: Cartesian3 | null = null;
@@ -305,15 +319,19 @@ export class GlobeController {
     }
     this.unlisten.push(
       widget.scene.postRender.addEventListener(() => {
+        this.followGround();
         this.gatherIfMoved();
         this.placeTags();
       }),
       // once the view has come to rest and its tiles are in, the street tiles agree on one style
       widget.scene.camera.moveEnd.addEventListener(() => {
         this.syncStreetStyle();
+        this.groundChanged();
       }),
       widget.scene.globe.tileLoadProgressEvent.addEventListener((queued: number) => {
         if (queued === 0) this.syncStreetStyle();
+        // a terrain tile that came in may be the ground under a site
+        this.groundChanged();
       }),
     );
     this.rebuildLayers();
@@ -473,8 +491,7 @@ export class GlobeController {
     const id = hit?.id;
     // a cluster: zoom to its sites
     if (Array.isArray(id)) {
-      const entities = id.filter((e): e is Entity => e instanceof Entity);
-      void this.widget.flyTo(entities, { duration: this.duration(1.6) });
+      this.flyToSites(id.flatMap((e) => (e instanceof Entity ? [e.id] : [])));
       return;
     }
     if (!(id instanceof Entity)) {
@@ -512,7 +529,10 @@ export class GlobeController {
     this.placeTags();
   }
 
-  /** The room the screen's own controls take at each edge (`null`: none): the card stays clear. */
+  /**
+   * The room the screen's own controls take at each edge (`null`: none): the card stays clear of
+   * it, and so do the chips of the sites a flight frames (`flyHome`, a click on a gathered chip).
+   */
   setCardInsets(insets: Insets | null): void {
     this.cardInsets = insets ?? NO_INSETS;
     this.placeTags();
@@ -647,6 +667,8 @@ export class GlobeController {
       this.terrainDecoded = null;
       this.terrainIds = [];
     }
+    // the sites stand on another ground now (back on the ellipsoid without terrain)
+    this.groundStale = true;
   }
 
   /**
@@ -823,6 +845,8 @@ export class GlobeController {
   /** Vertical exaggeration of the terrain (Globe settings). */
   setExaggeration(k: number): void {
     this.scene.verticalExaggeration = k;
+    // the ground under the sites rises or sinks with it
+    this.groundChanged();
     this.scene.requestRender();
   }
 
@@ -840,9 +864,13 @@ export class GlobeController {
     }
     for (const s of sites) {
       const id = `${SITE_PREFIX}${s.projectId}`;
-      const chip: SiteChip = { name: s.name, open: s.issues.open };
+      const lonLat: [number, number] = [s.lonLat[0], s.lonLat[1]];
+      const was = this.chips.get(id);
+      // a site that stays where it was keeps its ground until `settleSites` has looked again
+      const height = was?.lonLat[0] === lonLat[0] && was.lonLat[1] === lonLat[1] ? was.height : 0;
+      const chip: SiteChip = { name: s.name, open: s.issues.open, lonLat, height };
       this.chips.set(id, chip);
-      const position = Cartesian3.fromDegrees(s.lonLat[0], s.lonLat[1], 0);
+      const position = Cartesian3.fromDegrees(lonLat[0], lonLat[1], height);
       const image = this.chipImage(s.projectId, chip);
       // a site already there keeps its entity: its chip does not go and come back, and stays
       // hidden if it is gathered
@@ -865,12 +893,13 @@ export class GlobeController {
           horizontalOrigin: HorizontalOrigin.LEFT,
           verticalOrigin: VerticalOrigin.CENTER,
           pixelOffset: CHIP_OFFSET,
-          heightReference: HeightReference.CLAMP_TO_GROUND,
+          // no height reference: the site's position is on the ground already (`settleSites`)
           disableDepthTestDistance: Number.POSITIVE_INFINITY,
         },
       });
     }
     entities.resumeEvents();
+    this.settleSites();
     // the faces these words need, asked for now: `loadingdone` then draws the chips again
     const words = [...sites.map((s) => s.name), this.clusterWords(2), '0123456789+…'].join(' ');
     void this.fonts?.load(chipFont(this.font), words).catch(() => undefined);
@@ -882,6 +911,54 @@ export class GlobeController {
 
   private clusterWords(count: number): string {
     return this.o.clusterLabel?.(count) ?? String(count);
+  }
+
+  /** The ground under the sites may have changed; nothing to look at without terrain. */
+  private groundChanged(): void {
+    if (this.terrainIds.length > 0) this.groundStale = true;
+  }
+
+  /**
+   * Put every site on the ground as it is drawn now; says whether one moved. With terrain that
+   * is the height of the most detailed tile loaded under the site, exaggeration included
+   * (`Globe.getHeight`; where no tile is loaded, the site stays as it stood); without, the
+   * ellipsoid. The chip is drawn at the site's position, and the pointer, the rings, the card,
+   * `pinPosition` and the gathering all read that same position. (A billboard CesiumJS clamps
+   * itself keeps where it stands to itself, so nothing else could point at it: with terrain and
+   * a tilted view the card and the rings stood tens of pixels off the chip.)
+   */
+  private settleSites(): boolean {
+    const terrain = this.terrainIds.length > 0;
+    const entities = this.sites.entities;
+    let moved = false;
+    for (const [id, chip] of this.chips) {
+      const [lon, lat] = chip.lonLat;
+      const height = terrain
+        ? (this.scene.globe.getHeight(Cartographic.fromDegrees(lon, lat)) ?? chip.height)
+        : 0;
+      // (a centimetre is nothing on screen, and a tile read twice differs by less)
+      if (Math.abs(height - chip.height) < 0.01) continue;
+      chip.height = height;
+      const entity = entities.getById(id);
+      if (entity)
+        entity.position = new ConstantPositionProperty(Cartesian3.fromDegrees(lon, lat, height));
+      moved = true;
+    }
+    return moved;
+  }
+
+  /**
+   * After a frame in which the ground may have changed: the sites follow it, and are gathered
+   * again where they stand now. Nothing is looked at otherwise, and never without terrain.
+   */
+  private followGround(): void {
+    if (!this.groundStale || this.destroyed) return;
+    this.groundStale = false;
+    if (!this.settleSites()) return;
+    // the gathered chips stand in the middle of their sites: place them again as well
+    this.gatheredAs = '';
+    this.gather();
+    this.scene.requestRender();
   }
 
   /**
@@ -1079,11 +1156,83 @@ export class GlobeController {
 
   // ---------------------------------------------------------------- camera
 
-  /** The whole Earth, or a box around the given sites. */
+  /**
+   * The room a flight to these sites (entity ids) leaves at each edge of the view: what the
+   * screen's own controls take, then what a chip takes around its site. A site's own chip runs
+   * to the right of its dot; gathered, the sites share one chip centred on the middle of them.
+   */
+  private chipRoom(ids: readonly string[]): Insets {
+    let east = 0;
+    for (const id of ids) {
+      const chip = this.chips.get(id);
+      if (chip) east = Math.max(east, chipSize(chip.name, chip.open, this.font).width - CHIP.dotX);
+    }
+    const half =
+      ids.length > 1 ? chipSize(this.clusterWords(ids.length), 0, this.font).width / 2 : 0;
+    // and the clear room of a sprite: an outline stays whole, a pixel of rounding costs nothing
+    const above = CHIP.height / 2 + CHIP.pad;
+    const edge = this.cardInsets;
+    return {
+      top: edge.top + above,
+      right: edge.right + Math.max(east, half) + CHIP.pad,
+      bottom: edge.bottom + above,
+      left: edge.left + Math.max(CHIP.dotX, half) + CHIP.pad,
+    };
+  }
+
+  /**
+   * The box to fly to so that the chips of these sites (entity ids), which lie in `bounds`, are
+   * whole in the view and clear of the screen's controls (`padBounds`).
+   */
+  private frame(bounds: Readonly<Bounds>, ids: readonly string[]): Rectangle {
+    const { clientWidth: width, clientHeight: height } = this.scene.canvas;
+    const frustum = this.scene.camera.frustum;
+    const fov = frustum instanceof PerspectiveFrustum ? frustum.fov : undefined;
+    const [west, south, east, north] = padBounds(
+      bounds,
+      { width, height },
+      this.chipRoom(ids),
+      fov === undefined ? {} : { fovDeg: CMath.toDegrees(fov) },
+    );
+    // a box padded past the antimeridian: CesiumJS reads west beyond east as a box across it
+    const wrapped = (lon: number) => (Math.abs(lon) > 180 ? turn(lon) : lon);
+    return Rectangle.fromDegrees(wrapped(west), south, wrapped(east), north);
+  }
+
+  /**
+   * Fly to where these sites (entity ids) are all in view, as near as their chips allow: sites
+   * that gathered part there, unless they stand at the same place.
+   */
+  private flyToSites(ids: readonly string[]): void {
+    const places = ids.flatMap((id) => {
+      const chip = this.chips.get(id);
+      return chip ? [chip.lonLat] : [];
+    });
+    const [first] = places;
+    if (!first) return;
+    // longitudes as they lie around the first site, so a group across the antimeridian is one box
+    const lons = places.map(([lon]) => first[0] + turn(lon - first[0]));
+    const lats = places.map(([, lat]) => lat);
+    const bounds: Bounds = [
+      Math.min(...lons),
+      Math.min(...lats),
+      Math.max(...lons),
+      Math.max(...lats),
+    ];
+    this.scene.camera.flyTo({
+      destination: this.frame(bounds, ids),
+      duration: this.duration(1.6),
+    });
+  }
+
+  /**
+   * The whole Earth, or a box around the given sites (`sitesBounds`), with room for their chips
+   * and the screen's controls around it.
+   */
   flyHome(bounds: readonly [number, number, number, number] | null): void {
     this.touch();
     const rect = bounds
-      ? Rectangle.fromDegrees(...bounds)
+      ? this.frame(bounds, [...this.chips.keys()])
       : Rectangle.fromDegrees(-30, -40, 110, 70);
     this.scene.camera.flyTo({
       destination: rect,
@@ -1262,6 +1411,7 @@ export class GlobeController {
       terrainTiles: this.terrainDecoded?.() ?? 0,
       sites: this.sites.entities.values.map((e) => e.id.slice(SITE_PREFIX.length)),
       clusters: this.gathered.map((sites) => ({ count: sites.length, sites })),
+      chips: this.chipBoxes(),
       tilesets: this.tilesets.map(({ id, tileset }) => ({
         id,
         ready:
@@ -1276,6 +1426,38 @@ export class GlobeController {
       hover: this.pointerHover,
       selected: this.selected,
     };
+  }
+
+  /** Where every chip drawn now is, a site's own and a gathered one (`GlobeInspection.chips`). */
+  private chipBoxes(): GlobeInspection['chips'] {
+    const scene = this.scene;
+    const time = this.widget.clock.currentTime;
+    const boxes: GlobeInspection['chips'] = [];
+    for (const [id, chip] of this.chips) {
+      if (this.hidden.has(id)) continue;
+      const p = this.sites.entities.getById(id)?.position?.getValue(time);
+      const at = p && SceneTransforms.worldToWindowCoordinates(scene, p);
+      if (!at) continue;
+      const { width, height } = chipSize(chip.name, chip.open, this.font);
+      // the dot is the site; the chip runs to the right of it
+      boxes.push({
+        sites: [id.slice(SITE_PREFIX.length)],
+        x: at.x - CHIP.dotX,
+        y: at.y - height / 2,
+        width,
+        height,
+      });
+    }
+    this.gathered.forEach((sites, i) => {
+      const at =
+        i < this.gatheredChips.length
+          ? SceneTransforms.worldToWindowCoordinates(scene, this.gatheredChips.get(i).position)
+          : undefined;
+      if (!at) return;
+      const { width, height } = chipSize(this.clusterWords(sites.length), 0, this.font);
+      boxes.push({ sites, x: at.x - width / 2, y: at.y - height / 2, width, height });
+    });
+    return boxes;
   }
 
   /** The colour drawn at a point of the canvas (fractions of its size), after the next frame. */

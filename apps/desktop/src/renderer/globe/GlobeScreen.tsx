@@ -37,14 +37,14 @@ import {
 } from '@aio/schema';
 import { Icon, t, useT } from '@aio/ui';
 import { useWorkspace, workspace } from '@aio/workspace';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useGraphics } from '../graphics';
 import { bridge, shell, useShell } from '../shell';
 import { BrandLoader } from '../shell/BrandMotion';
 import { rasterPacks, useRasterPacks } from '../workspace/siteTiles';
 import './globe.css';
 import { GlobeMapMenu } from './GlobeMapMenu';
-import { GlobeSearch } from './GlobeSearch';
+import { GlobeSearch, type GlobeSearchHandle } from './GlobeSearch';
 import { onGlobeRequest, takeGlobeRequest } from './request';
 import { SiteFacts } from './SiteFacts';
 import { GLOBE_PALETTE, useStreetTiles } from './street';
@@ -54,7 +54,8 @@ const CESIUM_BASE = new URL('cesium/', document.baseURI).href;
 
 /**
  * The room the screen's own pieces take at each edge: the card of a pin keeps clear of the top
- * row, the view buttons at the right and the credits.
+ * row, the view buttons at the right and the credits, and so do the chips of the sites a flight
+ * frames (the opening view, **Show all sites**, a click on a gathered chip).
  */
 const CARD_INSETS: Insets = { top: 56, right: 56, bottom: 44, left: 12 };
 
@@ -126,6 +127,7 @@ export default function GlobeScreen() {
   const [busy, setBusy] = useState<string | null>(null);
   const [measuring, setMeasuring] = useState(false);
   const [measured, setMeasured] = useState<[number, number][]>([]);
+  const search = useRef<GlobeSearchHandle>(null);
   const prefs = settings ?? loaded?.settings ?? defaultGlobeSettings();
   const look = globeStyleOf(prefs);
 
@@ -247,6 +249,15 @@ export default function GlobeScreen() {
     shell.getState().go('scene');
   };
 
+  /**
+   * Close the card from inside it (Esc, its Close button). The keyboard was in the card, which
+   * goes: it is put back in the field the site was picked from, not left on nothing.
+   */
+  const closeCard = () => {
+    setPick(null);
+    search.current?.focus();
+  };
+
   if (!loaded)
     return (
       <section className="globe-screen" aria-busy="true" data-surface="dark">
@@ -283,16 +294,14 @@ export default function GlobeScreen() {
         if (e.key !== 'Escape' || e.defaultPrevented) return;
         e.preventDefault();
         e.stopPropagation();
-        setPick(null);
+        closeCard();
       }}
     >
       <button
         type="button"
         className="btn ghost icon sm globe-card-close"
         aria-label={t('globe.closeCard')}
-        onClick={() => {
-          setPick(null);
-        }}
+        onClick={closeCard}
       >
         <Icon name="x" size={14} />
       </button>
@@ -370,6 +379,7 @@ export default function GlobeScreen() {
       ) : (
         loaded.sites.length > 0 && (
           <GlobeSearch
+            handle={search}
             sites={loaded.sites}
             selected={site?.projectId ?? null}
             onPick={(s) => {

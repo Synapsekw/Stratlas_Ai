@@ -17,7 +17,11 @@ const app = {
   sent: [] as { channel: string; payload: unknown }[],
 };
 /** What the screen gave the Globe at its last render, and the flights it asked of it. */
-const globe = { props: null as GlobeViewProps | null, flyToSite: vi.fn(() => Promise.resolve()) };
+const globe = {
+  props: null as GlobeViewProps | null,
+  flyToSite: vi.fn(() => Promise.resolve()),
+  flyHome: vi.fn(),
+};
 
 function answer(channel: string, payload: unknown): unknown {
   app.sent.push({ channel, payload });
@@ -35,7 +39,10 @@ vi.mock('@aio/globe/view', () => ({
     globe.props = props;
     const { onReady } = props;
     useEffect(() => {
-      onReady?.({ flyToSite: globe.flyToSite } as unknown as GlobeController);
+      onReady?.({
+        flyToSite: globe.flyToSite,
+        flyHome: globe.flyHome,
+      } as unknown as GlobeController);
     }, [onReady]);
     return <div data-testid="globe-canvas">{props.card}</div>;
   },
@@ -109,6 +116,7 @@ beforeEach(() => {
   app.sent = [];
   globe.props = null;
   globe.flyToSite.mockClear();
+  globe.flyHome.mockClear();
 });
 afterEach(() => {
   act(() => root?.unmount());
@@ -131,11 +139,24 @@ async function mount() {
     await new Promise((done) => setTimeout(done, 0));
   });
 }
-/** Pick a site in the field, as a person does: focus lists the sites, a click picks one. */
+/**
+ * Pick a site in the field, as a person does: a click in the field lists the sites (whether or
+ * not the keyboard was there already), a click picks one.
+ */
 function pickInField(name: string) {
-  act(() => field()?.focus());
+  act(() => {
+    field()?.focus();
+    field()?.click();
+  });
   act(() => option(name)?.click());
 }
+const pressEscapeOn = (el: Element | null | undefined) => {
+  act(() => {
+    el?.dispatchEvent(
+      new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }),
+    );
+  });
+};
 const comesBefore = (a: Element | null, b: Element | null) =>
   a !== null &&
   b !== null &&
@@ -144,6 +165,8 @@ const comesBefore = (a: Element | null, b: Element | null) =>
 describe('the Globe screen', () => {
   it('has the field, the Map button and Measure, and no side panel', async () => {
     await mount();
+    // one heading names the screen (nothing on the Globe shows its name)
+    expect([...host.querySelectorAll('h1')].map((h) => h.textContent)).toEqual(['Globe']);
     expect(field()?.getAttribute('aria-label')).toBe('Find a site');
     expect(q('globe-map-button')?.textContent).toBe('Map');
     expect(q('globe-notice')).toBeNull();
@@ -208,20 +231,61 @@ describe('the Globe screen', () => {
   it('closes the card on Esc pressed inside it, and with its Close button', async () => {
     await mount();
     pickInField('Hill quarry');
-    act(() => {
-      q('globe-card')
-        ?.querySelector('.actions button')
-        ?.dispatchEvent(
-          new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }),
-        );
-    });
+    pressEscapeOn(q('globe-card')?.querySelector('.actions button'));
     expect(q('globe-card')).toBeNull();
     expect(globe.props?.cardPick).toBeNull();
     expect(globe.props?.selected).toBeNull();
 
     pickInField('Hill quarry');
+    expect(q('globe-card')).not.toBeNull();
     act(() => q('globe-card')?.querySelector<HTMLElement>('[aria-label="Close"]')?.click());
     expect(q('globe-card')).toBeNull();
+  });
+
+  it('gives the keyboard back to the field when the card closes, its list still shut', async () => {
+    await mount();
+    const closedFrom = (inCard: (card: HTMLElement) => void) => {
+      pickInField('Hill quarry');
+      const card = q('globe-card');
+      expect(card).not.toBeNull();
+      // the keyboard is in the card, on its first action
+      const flyTo = card?.querySelector<HTMLElement>('.actions button');
+      act(() => flyTo?.focus());
+      expect(document.activeElement).toBe(flyTo);
+      if (card) inCard(card);
+      expect(q('globe-card')).toBeNull();
+      // back where the site was picked from, and the list waits to be asked for
+      expect(document.activeElement).toBe(field());
+      expect(host.querySelector('[role="listbox"]')).toBeNull();
+      expect(field()?.getAttribute('aria-expanded')).toBe('false');
+    };
+    closedFrom((card) => {
+      pressEscapeOn(card.querySelector('.actions button'));
+    });
+    closedFrom((card) => {
+      act(() => card.querySelector<HTMLElement>('[aria-label="Close"]')?.click());
+    });
+    // the field still answers the keyboard: Down opens the list
+    act(() => {
+      field()?.dispatchEvent(
+        new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true, cancelable: true }),
+      );
+    });
+    expect(host.querySelector('[role="listbox"]')).not.toBeNull();
+  });
+
+  it('leaves the keyboard where it is when the card closes from elsewhere', async () => {
+    await mount();
+    pickInField('Hill quarry');
+    // Show all sites closes the card: the keyboard stays on that button
+    const all = q('globe-all-sites');
+    act(() => {
+      all?.focus();
+      all?.click();
+    });
+    expect(globe.flyHome).toHaveBeenCalledTimes(1);
+    expect(q('globe-card')).toBeNull();
+    expect(document.activeElement).toBe(all);
   });
 
   it('puts the read-out in the place of the field while measuring', async () => {

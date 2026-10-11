@@ -62,7 +62,10 @@ export interface GlobeViewProps {
   card?: ReactNode;
   /** The pin the card tells of, a site's or an issue's. */
   cardPick?: GlobePick | null;
-  /** The room the screen's own controls take at each edge: the card stays clear of it. */
+  /**
+   * The room the screen's own controls take at each edge: the card stays clear of it, and so do
+   * the chips of the sites a flight frames (the opening view, every site, a gathered chip's).
+   */
   cardInsets?: Insets;
   /** The words on the chip of sites that gathered, in the app's language. */
   clusterLabel?: (count: number) => string;
@@ -145,7 +148,13 @@ export function GlobeView(props: GlobeViewProps) {
       const start = latest.current.start;
       if (start && 'camera' in start) c.setCamera(start.camera);
       else if (start && 'site' in start) void c.flyToSite(start.site);
-      else c.flyHome(sitesBounds(latest.current.sites));
+      else {
+        // the opening view frames the sites' chips, clear of the screen's controls: the Globe
+        // has to know both before it flies (the effects below hand them over again, to no effect)
+        c.setCardInsets(latest.current.cardInsets ?? null);
+        c.setSites(latest.current.sites);
+        c.flyHome(sitesBounds(latest.current.sites));
+      }
       latest.current.onReady?.(c);
     });
     return () => {
