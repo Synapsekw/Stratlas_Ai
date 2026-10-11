@@ -482,6 +482,18 @@ describe('DateTree: a whole group onto a date folder', () => {
     expect(asked.item).toBeUndefined();
   });
 
+  it('the menu key on a focused group header opens the same menu', () => {
+    const onItemMenu = vi.fn();
+    renderWith({ folders: withNov([group(many)], many), onMove: vi.fn(), onItemMenu });
+    // the menu key fires `contextmenu` at the focused button, with no pointer position (0, 0)
+    rightClick(head('nov')?.querySelector('.tgroup-btn') ?? null, 0, 0);
+    expect(onItemMenu).toHaveBeenCalledTimes(1);
+    const asked = onItemMenu.mock.calls[0]?.[0] as DateItemMenuRequest;
+    expect(asked).toMatchObject({ layerIds: many, from: 'nov' });
+    expect(typeof asked.x).toBe('number');
+    expect(typeof asked.y).toBe('number');
+  });
+
   it('names a group of one in the singular', () => {
     const onItemMenu = vi.fn();
     render('nov', {}, vi.fn(), { onMove: vi.fn(), onItemMenu });
