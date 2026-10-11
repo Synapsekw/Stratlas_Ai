@@ -52,10 +52,11 @@
   align-items: center;
   padding-right: 56px;
 }
-/* the symbol's box is 62 of the prototype's 64 units wide: the same plate size */
+/* the symbol is square: 52 of the kit's 64 units, so this box is the mark itself */
 .qg-mark {
   grid-area: mark;
-  width: calc(clamp(62px, 7vw, 84px) * 0.96875);
+  width: clamp(56px, 6.4vw, 76px);
+  aspect-ratio: 1;
   height: auto;
   overflow: visible;
 }
@@ -321,27 +322,13 @@
   }
 }
 
-/* The intro, about 1.3 s: the plates drop in turn and the top one lights, the wordmark is
-   revealed behind a scan line, then the tagline, then the welcome comes into focus. Skip intro
-   (or Esc) sets data-instant and every part stands at its end. */
+/* The intro, about 1.3 s: the mark comes up as a closed ring and its fourth piece steps out, the
+   wordmark is revealed behind a scan line, then the tagline, then the welcome comes into focus.
+   Skip intro (or Esc) sets data-instant and every part stands at its end. */
 @media (prefers-reduced-motion: no-preference) {
-  :root:not([data-motion='reduce']) .qg[data-phase='intro'] .qg-mark .plate {
-    transform-box: fill-box;
-    animation: qg-drop 520ms var(--qg-ease) both;
-  }
-  :root:not([data-motion='reduce']) .qg[data-phase='intro'] .qg-mark .p1 {
-    animation-delay: 50ms;
-  }
-  :root:not([data-motion='reduce']) .qg[data-phase='intro'] .qg-mark .p2 {
-    animation-delay: 110ms;
-  }
-  :root:not([data-motion='reduce']) .qg[data-phase='intro'] .qg-mark .p3 {
-    animation-delay: 170ms;
-  }
-  :root:not([data-motion='reduce']) .qg[data-phase='intro'] .qg-mark .p4 {
-    animation:
-      qg-drop 520ms var(--qg-ease) 230ms both,
-      qg-light 450ms ease 550ms both;
+  /* the mark comes up as a closed ring; BrandMotion then steps the fourth piece out */
+  :root:not([data-motion='reduce']) .qg[data-phase='intro']:not([data-instant]) .qg-mark {
+    animation: qg-mark-in 320ms var(--qg-ease) both;
   }
   :root:not([data-motion='reduce']) .qg:not([data-instant]) .qg-wm-svg {
     animation: qg-reveal 600ms var(--qg-ease) 500ms both;
@@ -360,27 +347,19 @@
   :root:not([data-motion='reduce']) .qg:not([data-instant]) .qg-foot {
     animation: qg-rise 450ms var(--qg-ease) 1100ms both;
   }
-  /* after the intro the lit plate glows a little */
-  :root:not([data-motion='reduce']) .qg:not([data-phase='intro']) .qg-mark .p4 {
+  /* after the intro the tail glows a little */
+  :root:not([data-motion='reduce']) .qg:not([data-phase='intro']) .qg-mark .mark-tail {
     filter: drop-shadow(0 0 7px color-mix(in srgb, var(--acc) 45%, transparent));
   }
 }
-@keyframes qg-drop {
+@keyframes qg-mark-in {
   from {
     opacity: 0;
-    transform: translateY(-22px);
+    transform: scale(0.92);
   }
   to {
     opacity: 1;
     transform: none;
-  }
-}
-@keyframes qg-light {
-  from {
-    fill: var(--fg-0);
-  }
-  to {
-    fill: var(--acc);
   }
 }
 @keyframes qg-reveal {
