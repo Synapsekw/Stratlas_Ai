@@ -44,7 +44,7 @@ components (`GlobeSearch`, `GlobeMapMenu`) that `GlobeScreen` composes.
 
 ```
 T1 chips.ts (pure) ──┬─> T2 chips on the Globe ──┐
-T3 strings ──────────┼─> T4 GlobeSearch ─────────┼─> T6 GlobeScreen ─> T7 e2e + docs ─> T8 verify, hand off
+T3 strings ──────────┼─> T4 GlobeSearch ─────────┼─> T6 GlobeScreen ─> T7 e2e + docs ─> T9 run fixes ─> T8 verify, hand off
                      └─> T5 GlobeMapMenu ────────┘
 ```
 
@@ -193,8 +193,8 @@ clusterLabel?: (count: number) => string;
       every render that has a card. The selected slot keeps the rings and loses its `Chip`.
       `describe` is not asked for clusters. Pass `clusterLabel` through a ref so a language change
       is read.
-- [ ] `globe-view.css`: `.aio-globe-card-slot { position: absolute; top: 0; left: 0; z-index: 2;
-  visibility: hidden; will-change: transform; }`.
+- [ ] `globe-view.css`: the slot `.aio-globe-card-slot` is absolutely placed at the top left,
+      `z-index: 2`, hidden until it is placed, with `will-change: transform`.
 - [ ] Run `pnpm --filter @aio/globe test` and `pnpm --filter @aio/globe typecheck` (or the repo's
       equivalent): green. Lead commits `feat(globe): sites are named chips, and a card slot at the pin`.
 
@@ -224,8 +224,8 @@ export function SiteFacts(props: { site: GlobeSite; tilesets?: boolean }): JSX.E
       option calls `onLight(id)` and leaving calls `onLight(null)`; Esc closes and keeps focus in
       the field; with no sites the list does not open.
 - [ ] Build it on the pattern of `packages/ui/src/palette/CommandPalette.tsx`:
-      `<input role="combobox" aria-expanded aria-controls aria-activedescendant
-  aria-label={t('globe.find')} placeholder={t('globe.find')}>`, a search icon, and a
+      an `<input role="combobox">` with `aria-expanded`, `aria-controls`, `aria-activedescendant`
+      and its label and placeholder from `globe.find`, a search icon, and a
       `role="listbox"` (`aria-label={t('globe.sites')}`) of options: the dot (`.globe-dot`, tone
       from open issues), the name, `SiteFacts`. The active option also lights its chip. A pointer
       press outside closes the list.
@@ -306,6 +306,22 @@ and any guide page that describes the Globe's panel.
       inside the Globe's box, none overlaps another, and a click at the centre lands on the canvas.
 - [ ] Docs say what the screen does now. `node tools/agent/check-public-text.mjs` on them.
 - [ ] Lead commits `test(globe): the Globe's specs follow the chips, the field and the Map dialog`.
+
+### Task 9: what the first real run showed (added 11 Oct, after Task 7)
+
+Task 7's run found three defects no earlier test could see; they are fixed before the hand-off.
+
+- [ ] **Framing.** The opening view, **Show all sites** and a click on a gathered chip frame the
+      sites' chips, not their points: a pure `padBounds(bounds, view, pad)` in `camera.ts` (unit
+      tests), used by `flyHome` and the gathered-chip flight with the screen's insets plus a chip's
+      room; `inspect().chips` and an end-to-end test that every chip is inside the view.
+- [ ] **Terrain.** The chip, the hover label, the rings, the card, `pinPosition` and the gathering
+      pass use one ground position (public `Globe.getHeight`, exaggeration included), read when
+      tiles load and when the view rests; no work with terrain off.
+- [ ] **Focus.** Esc or Close in the card gives focus back to **Find a site**.
+- [ ] Task 7's review fixes ride along: `putPinAt` asserts the pin arrived; the gather test looks
+      at what is drawn; the issue-pin test asserts its site is not gathered; a unit test for the
+      heading.
 
 ### Task 8: verify and hand off
 
