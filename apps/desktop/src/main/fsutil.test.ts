@@ -1,3 +1,4 @@
+import { writeFileSync } from 'node:fs';
 import { mkdtemp, open, readFile, readdir, rm, stat, utimes, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -9,6 +10,7 @@ import {
   isChangedOnDisk,
   readJson,
   readJsonSeen,
+  seenFiles,
   writeJsonAtomic,
   writeJsonSeen,
 } from './fsutil';
@@ -197,5 +199,111 @@ describe('compare-before-write', () => {
       ChangedOnDiskError,
     );
     expect(await readJson(file)).toEqual({ v: 2 });
+  });
+});
+
+describe('overlapping writes of one file by this app', () => {
+  let dir: string;
+  let file: string;
+  let seen: SeenFiles;
+  beforeEach(async () => {
+    dir = await mkdtemp(join(tmpdir(), 'aio-overlap-'));
+    file = join(dir, 'boundaries.json');
+    seen = new SeenFiles();
+  });
+  afterEach(async () => {
+    seenFiles.forget(file);
+    await rm(dir, { recursive: true, force: true });
+  });
+
+  /** Big enough that writing it takes longer than a whole small write. */
+  const pad = 'x'.repeat(2 * 1024 * 1024);
+
+  it('lets a second write through that was sent before the first one returned', async () => {
+    await writeFile(file, '{"v":0}');
+    await readJsonSeen(file, seen);
+    // two quick edits: the second is sent while the first is still on its way, so both were made
+    // over the version read above. Nothing outside the app touches the file.
+    const first = writeJsonSeen(file, { v: 1 }, { backup: true }, seen);
+    const second = writeJsonSeen(file, { v: 2, pad }, { backup: true }, seen);
+    await expect(first).resolves.toMatchObject({ size: expect.any(Number) as number });
+    await expect(second).resolves.toMatchObject({ size: expect.any(Number) as number });
+    // the later one wins and the earlier one was written too: it is the backup
+    expect(await readJson(file)).toMatchObject({ v: 2 });
+    expect(await readJson(`${file}.bak`)).toEqual({ v: 1 });
+    expect((await readdir(dir)).sort()).toEqual(['boundaries.json', 'boundaries.json.bak']);
+    // and the next write is compared with the last one written
+    await writeJsonSeen(file, { v: 3 }, { backup: true }, seen);
+    expect(await readJson(file)).toEqual({ v: 3 });
+  });
+
+  it('writes many overlapping saves one after the other, in the order of the calls', async () => {
+    await writeFile(file, '{"v":0}');
+    await readJsonSeen(file, seen);
+    const sent = [1, 2, 3, 4, 5, 6, 7, 8].map((v) =>
+      writeJsonSeen(file, { v }, { backup: true }, seen),
+    );
+    expect((await Promise.allSettled(sent)).map((r) => r.status)).toEqual(
+      sent.map(() => 'fulfilled'),
+    );
+    expect(await readJson(file)).toEqual({ v: 8 });
+    expect(await readJson(`${file}.bak`)).toEqual({ v: 7 });
+    expect((await readdir(dir)).sort()).toEqual(['boundaries.json', 'boundaries.json.bak']);
+  });
+
+  it('lets a save through that overlaps a plain write of the same file (a sync merge)', async () => {
+    await writeFile(file, '{"v":0}');
+    await readJsonSeen(file);
+    const merge = writeJsonAtomic(file, { v: 1 }, { backup: true });
+    const save = writeJsonSeen(file, { v: 2, pad }, { backup: true });
+    await expect(merge).resolves.toBeUndefined();
+    await expect(save).resolves.toMatchObject({ size: expect.any(Number) as number });
+    expect(await readJson(file)).toMatchObject({ v: 2 });
+    expect(await readJson(`${file}.bak`)).toEqual({ v: 1 });
+  });
+
+  it('refuses both overlapping writes after an outside change, and leaves the file alone', async () => {
+    await writeFile(file, '{"v":0}');
+    await readJsonSeen(file, seen);
+    // someone else saves, then two quick edits are sent over the version read before that
+    await writeFile(file, '{"v":"other"}');
+    const first = writeJsonSeen(file, { v: 1 }, { backup: true }, seen);
+    const second = writeJsonSeen(file, { v: 2, pad }, { backup: true }, seen);
+    await expect(first).rejects.toBeInstanceOf(ChangedOnDiskError);
+    await expect(second).rejects.toBeInstanceOf(ChangedOnDiskError);
+    expect(await readFile(file, 'utf8')).toBe('{"v":"other"}');
+    expect(await readdir(dir)).toEqual(['boundaries.json']);
+  });
+
+  it('refuses the second of two overlapping writes when someone else saved between them', async () => {
+    await writeFile(file, '{"v":0}');
+    await readJsonSeen(file, seen);
+    const first = writeJsonSeen(file, { v: 1 }, { backup: true }, seen);
+    const second = writeJsonSeen(file, { v: 2, pad }, { backup: true }, seen);
+    // the outside save lands the moment the first write is done, before the second one's turn
+    const outside = first.then(() => {
+      writeFileSync(file, '{"v":"other"}');
+    });
+    await expect(second).rejects.toBeInstanceOf(ChangedOnDiskError);
+    await outside;
+    expect(await readFile(file, 'utf8')).toBe('{"v":"other"}');
+    // the app's first write is still the one remembered: the next save is refused as well
+    await expect(writeJsonSeen(file, { v: 3 }, {}, seen)).rejects.toBeInstanceOf(
+      ChangedOnDiskError,
+    );
+    // until the file is read again
+    await readJsonSeen(file, seen);
+    await writeJsonSeen(file, { v: 4 }, {}, seen);
+    expect(await readJson(file)).toEqual({ v: 4 });
+  });
+
+  it('goes on with the next write after one that failed', async () => {
+    const deep = join(dir, 'edits', 'boundaries.json');
+    const failed = writeJsonSeen(deep, { v: 1 }, {}, seen);
+    const alsoFailed = writeJsonSeen(deep, { v: 2 }, {}, seen);
+    await expect(failed).rejects.toMatchObject({ code: 'ENOENT' });
+    await expect(alsoFailed).rejects.toMatchObject({ code: 'ENOENT' });
+    await writeJsonSeen(file, { v: 3 }, {}, seen);
+    expect(await readJson(file)).toEqual({ v: 3 });
   });
 });

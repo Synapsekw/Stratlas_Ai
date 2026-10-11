@@ -67,9 +67,9 @@ export function GcpPanel({ run, data }: { run: string; data: PhotoRun | null }) 
   if (!project) return null;
 
   /**
-   * Save the whole file (atomic, with a .bak in main), one write at a time and in order: main
-   * compares the file with what it last saw, so two writes at once would look like a change on
-   * disk. A change in the table (`show: 'now'`: Use, a role) shows at once, so the control answers
+   * Save the whole file (atomic, with a .bak in main), one write at a time and in the order the
+   * changes were made, so the last change is the one that stays on disk (main writes one file's
+   * saves in the order they reach it). A change in the table (`show: 'now'`: Use, a role) shows at once, so the control answers
    * its click and the next change builds on it; when its save fails and nothing else waits to be
    * saved, the panel goes back to the file as it was last saved, with the error. An import and a
    * mark (`show: 'saved'`) show only once they are saved: the marker moves on with the mark, and

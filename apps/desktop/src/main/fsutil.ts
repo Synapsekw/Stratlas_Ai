@@ -220,6 +220,29 @@ const tempName = (file: string) => {
 };
 
 /**
+ * The writes of each file on their way, by `keyOf`: the promise that settles when the last one
+ * called is done. A write starts when every write of that file called before it has finished (or
+ * failed), so two never run at once: neither the compare and rename of one nor its `.bak` can
+ * fall between those of another.
+ */
+const turns = new Map<string, Promise<void>>();
+
+/** Run `task` after every write of `file` called before it, in the order of the calls. */
+function inTurn<T>(file: string, task: () => Promise<T>): Promise<T> {
+  const key = keyOf(file);
+  const run = (turns.get(key) ?? Promise.resolve()).then(task);
+  const done = run.then(
+    () => undefined,
+    () => undefined,
+  );
+  turns.set(key, done);
+  void done.then(() => {
+    if (turns.get(key) === done) turns.delete(key);
+  });
+  return run;
+}
+
+/**
  * Write JSON atomically: write a temp file next to the target, then rename over it, so a crash
  * never leaves a half-written file. With `backup`, the previous version is kept as `<file>.bak`,
  * itself copied to a temp file and renamed, so a crash leaves either the old or the new `.bak`
@@ -227,6 +250,7 @@ const tempName = (file: string) => {
  * `ChangedOnDiskError` and nothing is touched when the file is no longer that version (null: the
  * file must not exist); `undefined` writes without a check. `name` is the file's name in the
  * refusal (default: its base name). `seenFiles` keeps the version written when it knew the file.
+ * Writes of one file run one at a time, in the order they were called (`inTurn`).
  */
 export async function writeJsonAtomic(
   file: string,
@@ -248,42 +272,69 @@ export async function writeJsonVersion(
   data: unknown,
   opts: WriteOptions = {},
 ): Promise<DiskVersion> {
+  const { expect } = opts;
+  return writeInTurn(file, data, opts, () => expect);
+}
+
+/**
+ * The write itself, in its turn among the writes of `file`. `expect` is asked when the turn
+ * comes, and `seen` remembers the version written before the next write starts.
+ */
+async function writeInTurn(
+  file: string,
+  data: unknown,
+  opts: { backup?: boolean; name?: string },
+  expect: () => ExpectedVersion | undefined,
+  seen?: SeenFiles,
+): Promise<DiskVersion> {
+  // the data as it is now: the caller may change it while this write waits
   const text = `${JSON.stringify(data, null, 2)}\n`;
   // under the e2e guard, never into the founder's real data (realDataGuard.ts)
   guardWrite(file, 'writeJsonAtomic');
-  // refuse before anything is touched (the .bak included)
-  await check(file, opts.expect, opts.name);
-  if (opts.backup) {
-    // the backup goes first so a kill leaves at most one temp file next to the target
-    const bak = tempName(`${file}.bak`);
-    try {
-      await copyFile(file, bak);
-      await renameOver(bak, `${file}.bak`);
-    } catch (e) {
-      await rm(bak, { force: true });
-      if ((e as NodeJS.ErrnoException).code !== 'ENOENT') throw e;
+  return inTurn(file, async () => {
+    const expected = expect();
+    // refuse before anything is touched (the .bak included)
+    await check(file, expected, opts.name);
+    if (opts.backup) {
+      // the backup goes first so a kill leaves at most one temp file next to the target
+      const bak = tempName(`${file}.bak`);
+      try {
+        await copyFile(file, bak);
+        await renameOver(bak, `${file}.bak`);
+      } catch (e) {
+        await rm(bak, { force: true });
+        if ((e as NodeJS.ErrnoException).code !== 'ENOENT') throw e;
+      }
     }
-  }
-  const tmp = tempName(file);
-  let version: DiskVersion;
-  try {
-    await writeFile(tmp, text, 'utf8');
-    const s = await stat(tmp);
-    version = { mtimeMs: s.mtimeMs, size: s.size, hash: sha256(text) };
-    // and again right before the rename: the window left is the rename itself
-    await check(file, opts.expect, opts.name);
-    await renameOver(tmp, file);
-  } catch (e) {
-    await rm(tmp, { force: true });
-    throw e;
-  }
-  if (seenFiles.has(file)) seenFiles.remember(file, version);
-  return version;
+    const tmp = tempName(file);
+    let version: DiskVersion;
+    try {
+      await writeFile(tmp, text, 'utf8');
+      const s = await stat(tmp);
+      version = { mtimeMs: s.mtimeMs, size: s.size, hash: sha256(text) };
+      // and again right before the rename: the window left is the rename itself
+      await check(file, expected, opts.name);
+      await renameOver(tmp, file);
+    } catch (e) {
+      await rm(tmp, { force: true });
+      throw e;
+    }
+    if (seenFiles.has(file)) seenFiles.remember(file, version);
+    seen?.remember(file, version);
+    return version;
+  });
 }
 
 /**
  * `writeJsonAtomic` for a record the person edits: compare with what `seen` remembers of the file
  * (no check when it was never read here), then remember what was written.
+ *
+ * The comparison is made when the write's turn comes, not when it was called. Two saves of one
+ * file close together (the second called before the first was done) were both made over the
+ * version read; the second is then compared with what the first wrote, so the app's own write is
+ * not taken for someone else's. Both are written, in the order of the calls, and the later one
+ * stays. A save by someone else is still refused, whether it landed before the two or between
+ * them: the file then matches neither what was read nor what this app wrote.
  */
 export async function writeJsonSeen(
   file: string,
@@ -291,9 +342,7 @@ export async function writeJsonSeen(
   opts: { backup?: boolean; name?: string } = {},
   seen: SeenFiles = seenFiles,
 ): Promise<DiskVersion> {
-  const version = await writeJsonVersion(file, data, { ...opts, expect: seen.expect(file) });
-  seen.remember(file, version);
-  return version;
+  return writeInTurn(file, data, opts, () => seen.expect(file), seen);
 }
 
 /** True for a `ChangedOnDiskError` (also across module copies, by its code). */
