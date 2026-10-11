@@ -14,6 +14,7 @@ import {
   AccuracyReport,
   GcpFile,
   HardwareProbe,
+  IsoDate,
   LensModel,
   PHOTO_RUN_FILES,
   PhotoCamerasFile,
@@ -263,6 +264,8 @@ export interface PhotoSet {
   centre?: { lat: number; lon: number };
   /** Photos without a GPS position (of those read). */
   noGps: number;
+  /** Days the photos were taken (local date in the photo), most photos first; scaled when sampled. */
+  days: { date: string; photos: number }[];
 }
 
 /**
@@ -374,6 +377,7 @@ export function estimateRun(
     memoryBytes,
     notes: notes.slice(0, 20),
     ...(cameras.length ? { cameras } : {}),
+    ...(photos.days.length ? { photoDays: photos.days } : {}),
   };
 }
 
@@ -436,6 +440,7 @@ export async function readPhotoSet(files: readonly string[]): Promise<PhotoSet> 
     if (f) sample.push(f);
   }
   const groups = new Map<string, PhotoSet['groups'][number]>();
+  const days = new Map<string, number>();
   const mps: number[] = [];
   let bytes = 0;
   let noGps = 0;
@@ -470,6 +475,8 @@ export async function readPhotoSet(files: readonly string[]): Promise<PhotoSet> 
     };
     g.photos += 1;
     groups.set(key, g);
+    const day = meta.takenAt?.slice(0, 10);
+    if (day && IsoDate.safeParse(day).success) days.set(day, (days.get(day) ?? 0) + 1);
     if (meta.width && meta.height) mps.push((meta.width * meta.height) / 1e6);
     const gps = meta.gps ?? (meta.dji?.lat !== undefined ? meta.dji : undefined);
     if (gps?.lat !== undefined && gps.lon !== undefined) {
@@ -488,6 +495,10 @@ export async function readPhotoSet(files: readonly string[]): Promise<PhotoSet> 
       .map((g) => ({ ...g, photos: sampled ? Math.round(g.photos * factor) : g.photos }))
       .sort((a, b) => b.photos - a.photos),
     sampled,
+    days: [...days.entries()]
+      .map(([date, n]) => ({ date, photos: sampled ? Math.round(n * factor) : n }))
+      .sort((a, b) => b.photos - a.photos || a.date.localeCompare(b.date))
+      .slice(0, 366),
     ...(withGps ? { centre: { lat: lat / withGps, lon: lon / withGps } } : {}),
     noGps: sampled ? Math.round(noGps * factor) : noGps,
   };

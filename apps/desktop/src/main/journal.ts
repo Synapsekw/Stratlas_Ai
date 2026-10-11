@@ -9,8 +9,8 @@
  * - writers (`project:writeIssues`, `change:write`, `detections:write`, `model:write`,
  *   `project:writeBoundaries`, `report:writeNarrative`) are wrapped: ops first, then the write;
  *   a write the handler refuses is undone by ops, never by editing the journal;
- * - `builder:updateLayers` and `builder:updateCapture` are diffed after they write (their result
- *   is computed in the handler);
+ * - `builder:updateLayers`, `builder:updateCapture` and `builder:ensureCapture` are diffed after
+ *   they write (their result is computed in the handler);
  * - on open, a half-done write is finished (crash recovery) and any other difference is recorded
  *   as attributed ops (`via.external`, "changed outside Quadrion AI");
  * - around pipeline jobs, the difference is recorded with `via.pipeline`.
@@ -843,10 +843,16 @@ export function createJournalService(deps: JournalServiceDeps) {
         );
       };
     }
-    if (channel === 'builder:updateLayers' || channel === 'builder:updateCapture') {
+    if (
+      channel === 'builder:updateLayers' ||
+      channel === 'builder:updateCapture' ||
+      channel === 'builder:ensureCapture'
+    ) {
       return async (req) => {
         const r = await handler(req);
-        const { projectId } = req as IpcRequest<'builder:updateLayers' | 'builder:updateCapture'>;
+        const { projectId } = req as IpcRequest<
+          'builder:updateLayers' | 'builder:updateCapture' | 'builder:ensureCapture'
+        >;
         const root = deps.projects.root(projectId);
         if ((r as { ok: boolean }).ok && root !== undefined) {
           const st = await load(root);

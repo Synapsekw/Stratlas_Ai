@@ -656,6 +656,7 @@ describe('journal service', () => {
       'project:writeCentreline',
       'builder:updateLayers',
       'builder:updateCapture',
+      'builder:ensureCapture',
       'change:compute',
       'model:build',
       'library:rename',

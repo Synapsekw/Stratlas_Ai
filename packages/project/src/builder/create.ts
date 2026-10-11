@@ -2,6 +2,7 @@ import {
   keepUnknownLayers,
   parseManifest,
   type CameraOrientation,
+  type Capture,
   type CapturePatch,
   type LayerPatch,
   type NewProjectRequest,
@@ -193,4 +194,37 @@ export async function updateCapture(
   const manifest: ProjectManifest = { ...m, captures };
   const backup = await writeManifestFile(root, manifest);
   return { manifest, backup };
+}
+
+/**
+ * The survey date of a day in a manifest: the capture with that date (the first in the list), or
+ * a new one, `capture-<date>` named "Survey", added in date order. Pure: nothing is saved.
+ */
+export function captureForDate(
+  m: ProjectManifest,
+  date: string,
+): { manifest: ProjectManifest; captureId: string; created: boolean } {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) throw new Error(`"${date}" is not a date (YYYY-MM-DD).`);
+  const found = m.captures.find((c) => c.date === date);
+  if (found) return { manifest: m, captureId: found.id, created: false };
+  const c: Capture = {
+    id: uniqueId(`capture-${date}`, (x) => m.captures.some((k) => k.id === x)),
+    label: 'Survey',
+    date,
+  };
+  const captures = [...m.captures, c].sort((a, b) => a.date.localeCompare(b.date));
+  return { manifest: { ...m, captures }, captureId: c.id, created: true };
+}
+
+/**
+ * Find the survey date of a day or add it, and save. A date that exists writes nothing; a new one
+ * backs up and validates the manifest first. No layer and no file changes.
+ */
+export async function ensureCapture(
+  root: string,
+  date: string,
+): Promise<{ manifest: ProjectManifest; captureId: string; created: boolean }> {
+  const r = captureForDate(await readManifestFile(root), date);
+  if (r.created) await writeManifestFile(root, r.manifest);
+  return r;
 }

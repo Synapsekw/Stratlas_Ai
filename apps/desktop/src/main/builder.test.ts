@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import {
+  builderEnsureCapture,
   builderTemplates,
   builderUpdateCapture,
   builderUpdateLayers,
@@ -99,5 +100,25 @@ describe('builder main handlers', () => {
       registry,
     );
     expect(unknown).toMatchObject({ ok: false });
+  });
+
+  it('ensureCapture adds the survey date of a day once, and refuses a closed project', async () => {
+    const dir = join(base, 'projects', 'dated');
+    await writeProject(dir, sampleManifest());
+    const registry = new ProjectRegistry();
+    const projectId = registry.register(dir);
+    const closed = await builderEnsureCapture({ projectId: 'x', date: '2026-03-14' }, registry);
+    expect(closed).toEqual({
+      ok: false,
+      error: 'Project "x" is not open. Open it, then try again.',
+    });
+    const first = await builderEnsureCapture({ projectId, date: '2026-03-14' }, registry);
+    expect(first.ok && first.created).toBe(true);
+    expect(first.ok && first.captureId).toBe('capture-2026-03-14');
+    const again = await builderEnsureCapture({ projectId, date: '2026-03-14' }, registry);
+    expect(again.ok && again.created).toBe(false);
+    expect(again.ok && again.manifest.captures.filter((c) => c.date === '2026-03-14')).toHaveLength(
+      1,
+    );
   });
 });

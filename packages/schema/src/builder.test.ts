@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { ipc, ProjectManifest } from './index';
+import { ipc, PhotoEstimate, ProjectManifest } from './index';
 
 const base = {
   schema: 'aio.project/1',
@@ -144,5 +144,31 @@ describe('builder ipc contracts', () => {
     expect(
       req.safeParse({ title: 'Photos', filters: [{ name: 'JPEG', extensions: ['jpg'] }] }).success,
     ).toBe(true);
+  });
+});
+
+describe('survey date of a photo run', () => {
+  const estimate = { minutes: [1, 2], diskBytes: 0, memoryBytes: 0 };
+
+  it('photoDays is optional and holds days with photo counts', () => {
+    expect(PhotoEstimate.safeParse(estimate).success).toBe(true);
+    const r = PhotoEstimate.safeParse({
+      ...estimate,
+      photoDays: [{ date: '2026-03-14', photos: 12 }],
+    });
+    expect(r.success && r.data.photoDays).toEqual([{ date: '2026-03-14', photos: 12 }]);
+    expect(
+      PhotoEstimate.safeParse({ ...estimate, photoDays: [{ date: '14/03/2026', photos: 12 }] })
+        .success,
+    ).toBe(false);
+  });
+
+  it('builder:ensureCapture takes a project and a day, nothing else', () => {
+    const req = ipc['builder:ensureCapture'].request;
+    expect(req.safeParse({ projectId: 'p', date: '2026-03-14' }).success).toBe(true);
+    expect(req.safeParse({ projectId: 'p', date: 'tomorrow' }).success).toBe(false);
+    expect(req.safeParse({ projectId: 'p', date: '2026-03-14', label: 'x' }).success).toBe(false);
+    const res = ipc['builder:ensureCapture'].response;
+    expect(res.safeParse({ ok: false, error: 'no' }).success).toBe(true);
   });
 });

@@ -480,7 +480,9 @@ class FakeProducts(_products.PhotoProducts):
             outputs["files"] = sorted(set(outputs.get("files", [])) | {glb_rel})
             settings = dict(data.get("settings") or {})
             settings["products"] = wanted
-            _update_run(ctx, run, status="done", outputs=outputs, settings=settings)
+            # like the real pipeline: the run record names the survey date of its layers
+            cap = {"capture": params["capture"]} if params.get("capture") else {}
+            _update_run(ctx, run, status="done", outputs=outputs, settings=settings, **cap)
             return {}
 
         return [Step(n, n.title(), work(n)) for n in names] + [Step("commit", "Add layers", commit)]

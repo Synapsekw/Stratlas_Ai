@@ -20,7 +20,7 @@ import type {
   PhotoProduct,
   PhotoSource,
 } from '@aio/schema';
-import { Icon, useFocusTrap } from '@aio/ui';
+import { formatDate, Icon, useFocusTrap } from '@aio/ui';
 import { useWorkspace } from '@aio/workspace';
 import { useEffect, useMemo, useRef, useState, type DragEvent } from 'react';
 import { bridge, useShell } from '../shell';
@@ -50,6 +50,16 @@ import {
 import { gpuLine, machineLine, processingLine } from './hardware';
 import { openProcessingTools } from '../processingTools';
 import { photoUi } from './store';
+import {
+  choiceOf,
+  dateOptions,
+  dateSentence,
+  daysNote,
+  daysOfItems,
+  pickFromChoice,
+  pickParams,
+  pickSurveyDate,
+} from './surveyDate';
 
 type Gnss = 'auto' | 'rtk' | 'standard' | 'ignore';
 const GNSS: readonly { id: Gnss; label: string; hint: string }[] = [
@@ -125,7 +135,8 @@ export function ProcessWizard() {
   const [gnss, setGnss] = useState<Gnss>(SIMPLE_DEFAULTS.gnss);
   const [preset, setPreset] = useState<PhotoPreset>(SIMPLE_DEFAULTS.preset);
   const [products, setProducts] = useState<PhotoProduct[]>(defaultProducts(SIMPLE_DEFAULTS.preset));
-  const [capture, setCapture] = useState('');
+  /** The person's own choice in Options ('' is None); null while the pick is automatic. */
+  const [dateChoice, setDateChoice] = useState<string | null>(null);
   const [gcpFirst, setGcpFirst] = useState<boolean>(SIMPLE_DEFAULTS.groundControlFirst);
   /** `undefined` until this computer answered; null when it cannot say (the form then shows). */
   const [probe, setProbe] = useState<HardwareProbe | null | undefined>(undefined);
@@ -219,6 +230,17 @@ export function ProcessWizard() {
     ? photoSummary(estimate, kind === 'layer' ? layer?.items.length : undefined)
     : null;
   const noPhotos = fresh && estimate !== null && estimate.minutes[1] === 0;
+  // the survey date the new layers go under: the person's choice, else worked out from the photos
+  const captures = project.manifest.captures;
+  const itemDays = kind === 'layer' && layer ? daysOfItems(layer.items) : [];
+  const photoDays = itemDays.length ? itemDays : estimate?.photoDays;
+  const autoPick = pickSurveyDate(
+    photoDays,
+    captures,
+    kind === 'layer' ? layer?.capture : undefined,
+  );
+  const pick = dateChoice === null ? autoPick : pickFromChoice(dateChoice, captures);
+  const days = estimate && !noPhotos ? daysNote(photoDays, formatDate) : null;
   const disk = fresh && estimate ? diskNeed(estimate) : null;
   const suggested = estimate ? suggestedEpsg(estimate) : null;
   const zone = estimate && !noPhotos ? zoneQuestion(projectEpsg, suggested) : null;
@@ -282,13 +304,10 @@ export function ProcessWizard() {
       return;
     }
     const ui = photoUi.getState();
-    if (!gcpFirst)
-      ui.setPending(run, {
-        root: project.root,
-        preset,
-        products,
-        ...(capture ? { capture } : {}),
-      });
+    const date = pickParams(pick);
+    // kept for every run: a cancelled run that is resumed later still builds its maps under it
+    ui.setDate(run, date);
+    if (!gcpFirst) ui.setPending(run, { root: project.root, preset, products, ...date });
     ui.openRun(run, 'progress');
   };
 
@@ -356,6 +375,9 @@ export function ProcessWizard() {
         <header className="ph-head" role="none">
           <div>
             <h2>{TITLE}</h2>
+            <p className="small" data-testid="photo-project">
+              Project: <b>{project.manifest.name}</b>
+            </p>
             {ready && (
               <p className="small faint">
                 Choose the photos, then start. They are read where they are and never changed.
@@ -508,6 +530,19 @@ export function ProcessWizard() {
                         <p className="small faint" data-testid="photo-needs">
                           Uses about {formatBytes(estimate.diskBytes)} of disk space and{' '}
                           {formatBytes(estimate.memoryBytes)} of memory while it runs.
+                        </p>
+                      )}
+                      {fresh && (
+                        <p className="small" data-testid="photo-date">
+                          {dateSentence(pick, formatDate)}
+                          {pick.kind === 'none' && dateChoice === null
+                            ? ' These photos carry no date. Choose one in Options.'
+                            : ''}
+                        </p>
+                      )}
+                      {fresh && days && (
+                        <p className="small faint" data-testid="photo-days">
+                          {days}
                         </p>
                       )}
                     </>
@@ -731,15 +766,14 @@ export function ProcessWizard() {
                       <span>Survey date</span>
                       <select
                         className="input"
-                        value={capture}
+                        value={choiceOf(pick)}
                         onChange={(e) => {
-                          setCapture(e.target.value);
+                          setDateChoice(e.target.value);
                         }}
                       >
-                        <option value="">None</option>
-                        {project.manifest.captures.map((c) => (
-                          <option key={c.id} value={c.id}>
-                            {c.label} ({c.date})
+                        {dateOptions([autoPick, pick], captures, formatDate).map((o) => (
+                          <option key={o.value} value={o.value}>
+                            {o.label}
                           </option>
                         ))}
                       </select>
@@ -803,8 +837,15 @@ export function ProcessWizard() {
                   {error}
                 </span>
               ) : (
-                <span className="grow hint faint small" data-testid="photo-missing">
-                  {missing}
+                <span className="grow">
+                  <span className="hint faint small" data-testid="photo-missing">
+                    {missing}
+                  </span>
+                  {missing === null && (
+                    <span className="hint faint small" data-testid="photo-destination">
+                      The maps are added to {project.manifest.name}.
+                    </span>
+                  )}
                 </span>
               )}
               <button type="button" className="btn ghost" onClick={close}>

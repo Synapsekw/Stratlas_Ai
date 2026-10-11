@@ -131,6 +131,7 @@ export function PhotoRuns({ selected }: { selected?: JobRecord | undefined }) {
                         root: project.root,
                         preset: r.preset,
                         products: r.products.length ? r.products : defaultProducts(r.preset),
+                        ...(photoUi.getState().dates[r.id] ?? {}),
                       }).then((err) => {
                         setError(err);
                         if (!err) photoUi.getState().openRun(r.id);

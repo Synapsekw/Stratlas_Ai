@@ -4,7 +4,7 @@
  * `report/accuracy.json`); the jobs of the run give the live progress.
  */
 import type { AccuracyReport, JobRecord, PhotoRun } from '@aio/schema';
-import { Icon, useFocusTrap } from '@aio/ui';
+import { formatDate, Icon, useFocusTrap } from '@aio/ui';
 import { useWorkspace } from '@aio/workspace';
 import { useEffect, useRef, useState } from 'react';
 import { isActive } from '../jobs';
@@ -15,6 +15,7 @@ import { defaultProducts, presetLabel } from './estimate';
 import { GcpPanel } from './GcpTable';
 import { RUN_STATUS, runView, type PhaseState } from './phases';
 import { RefinedPoses } from './RefinedPoses';
+import { captureOfRun } from './surveyDate';
 import { jobsOfRun, photoUi, STAGE_WORDS, usePhotoUi, type RunTab } from './store';
 
 const TABS: readonly { id: RunTab; label: string }[] = [
@@ -98,7 +99,9 @@ export function RunPanel({ run, tab }: { run: string; tab: RunTab }) {
         <header className="ph-head" role="none">
           <div>
             <h2>Photo run {run}</h2>
-            <p className="small faint">
+            <p className="small faint" data-testid="photo-run-project">
+              {project.manifest.name}
+              {' · '}
               {data
                 ? `${RUN_STATUS[data.run.status]} · ${preset ? presetLabel(preset) : ''} · ${String(data.run.photos.count)} photos`
                 : 'Starting'}
@@ -148,6 +151,7 @@ function Progress({ run, data, jobs }: { run: string; data: PhotoRun | null; job
   const project = useWorkspace((s) => s.project);
   const pending = usePhotoUi((s) => s.pending[run]);
   const stopped = usePhotoUi((s) => s.stopped[run]);
+  const kept = usePhotoUi((s) => s.dates[run]);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const act = async (p: Promise<string | null>) => {
@@ -176,6 +180,11 @@ function Progress({ run, data, jobs }: { run: string; data: PhotoRun | null; job
       : job
         ? JOB_WORDS[job.status]
         : '';
+  const datedId = captureOfRun(data?.outputs.layers ?? [], project.manifest.layers, data?.capture);
+  const dated = datedId ? project.manifest.captures.find((c) => c.id === datedId) : undefined;
+  const where = dated
+    ? `Added to ${project.manifest.name} under ${formatDate(dated.date)} as new layers:`
+    : `Added to ${project.manifest.name} as new layers, under no survey date:`;
   const show = (mode: 'map' | '3d') => {
     photoUi.getState().close();
     shell.getState().go('scene');
@@ -192,7 +201,9 @@ function Progress({ run, data, jobs }: { run: string; data: PhotoRun | null; job
             <Icon name="check" size={16} />
             Your maps are ready
           </h3>
-          <p className="small">Added to the project as new layers:</p>
+          <p className="small" data-testid="photo-results-where">
+            {where}
+          </p>
           <ul>
             {layerNames.map((n) => (
               <li key={n}>{n}</li>
@@ -383,6 +394,7 @@ function Progress({ run, data, jobs }: { run: string; data: PhotoRun | null; job
                     root: project.root,
                     preset: data?.preset ?? 'standard',
                     products: defaultProducts(data?.preset ?? 'standard'),
+                    ...(kept ?? {}),
                   }),
                 )
               }

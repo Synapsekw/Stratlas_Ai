@@ -280,3 +280,22 @@ export async function builderUpdateCapture(
     return { ok: false, error: errorText(e) };
   }
 }
+
+/** Find the survey date of a day or add it: only `manifest.captures` can change. */
+export async function builderEnsureCapture(
+  req: IpcRequest<'builder:ensureCapture'>,
+  registry: ProjectRegistry,
+): Promise<IpcResponse<'builder:ensureCapture'>> {
+  const root = registry.root(req.projectId);
+  if (root === undefined)
+    return {
+      ok: false,
+      error: `Project "${req.projectId}" is not open. Open it, then try again.`,
+    };
+  try {
+    const r = await (await lib()).ensureCapture(root, req.date);
+    return { ok: true, manifest: r.manifest, captureId: r.captureId, created: r.created };
+  } catch (e) {
+    return { ok: false, error: errorText(e) };
+  }
+}

@@ -25,7 +25,7 @@ import {
   SeverityTemplate,
 } from './builder';
 import { ProjectManifest } from './manifest';
-import { HexColor } from './common';
+import { HexColor, IsoDate } from './common';
 import { AiPolicy, EditPolicy, ExportKind, PackageInfo, PackageOrigin } from './package';
 import { BoundaryEditsFile, VolumesFile } from './volumes';
 import { DetectionsFile } from './detections';
@@ -1392,6 +1392,22 @@ export const ipc = {
       .strict(),
     response: z.discriminatedUnion('ok', [
       z.object({ ok: z.literal(true), manifest: ProjectManifest, backup: z.string() }),
+      z.object({ ok: z.literal(false), error: z.string() }),
+    ]),
+  },
+  /**
+   * The survey date of a day: the project's capture with that date, or a new one (`capture-<date>`,
+   * label "Survey") added in date order. Nothing is written when the date exists.
+   */
+  'builder:ensureCapture': {
+    request: z.object({ projectId: z.string().min(1), date: IsoDate }).strict(),
+    response: z.discriminatedUnion('ok', [
+      z.object({
+        ok: z.literal(true),
+        manifest: ProjectManifest,
+        captureId: Id,
+        created: z.boolean(),
+      }),
       z.object({ ok: z.literal(false), error: z.string() }),
     ]),
   },
