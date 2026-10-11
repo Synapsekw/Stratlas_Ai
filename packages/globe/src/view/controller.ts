@@ -1,9 +1,9 @@
 /**
  * The Globe's scene: the offline CesiumWidget, the Earth of the chosen look (street tiles over
  * the bundled land shapes, imagery packs, or the old Natural Earth raster), terrain from packs,
- * library sites as clustered pins, the open project's issues as pins coloured by severity,
- * picking, hovering, fly-in, the slow idle turn and the camera hand-off. Nothing here edits or
- * measures (decision 3): picking only says what was hit.
+ * library sites as named chips that gather when they crowd, the open project's issues as pins
+ * coloured by severity, picking, hovering, the card at a pin, fly-in, the slow idle turn and the
+ * camera hand-off. Nothing here edits or measures (decision 3): picking only says what was hit.
  *
  * The scene draws on demand (`requestRenderMode`): every motion here asks for frames only while
  * it runs and then lets the Globe go back to drawing nothing.
@@ -29,6 +29,7 @@ import {
   EllipsoidTerrainProvider,
   Entity,
   HeightReference,
+  HorizontalOrigin,
   ImageryLayer,
   ScreenSpaceEventHandler,
   SceneTransforms,
@@ -39,6 +40,7 @@ import {
 import type { GlobeSite, RasterPackInfo, TilesetEntry } from '@aio/schema';
 import { FetchSource, type Source } from 'pmtiles';
 import { siteToGlobe, type GlobeCamera, type SiteCamera } from '../camera';
+import { CHIP, placeCard, type Insets } from '../chips';
 import { planCredits } from '../credits';
 import {
   ecefToGeodetic,
@@ -66,15 +68,7 @@ import {
   asProvider,
   loadEarthShapes,
 } from './earthLayers';
-import {
-  SITE_PIN_SIZE,
-  clusterPin,
-  issuePin,
-  measurePin,
-  sitePin,
-  type PinState,
-  type PinTone,
-} from './pins';
+import { clusterChip, issuePin, measurePin, siteChip, type PinState } from './pins';
 import { createOnlineSatelliteProvider } from './onlineSatellite';
 import { PmtilesImageryProvider, asImageryProvider, packTerrainProvider } from './providers';
 import {
@@ -95,8 +89,11 @@ export type GlobeHover =
   | { kind: 'cluster'; count: number }
   | { kind: 'issue'; projectId: string; issueId: string };
 
-/** The two labels the view floats over the Globe: beside the selected site, and under the pointer. */
-export type GlobeTagSlot = 'selected' | 'hover';
+/**
+ * What the view floats over the Globe: the rings at the selected site, the label under the
+ * pointer, and the card at the pin it tells of.
+ */
+export type GlobeTagSlot = 'selected' | 'hover' | 'card';
 
 export interface GlobeControllerOptions {
   container: HTMLElement;
@@ -118,8 +115,10 @@ export interface GlobeControllerOptions {
   style?: GlobeStyle;
   /** The colours of the street style; the built-in copy of them when left out. */
   palette?: GlobePalette;
-  /** The font of the cluster counts (the app's UI font). */
+  /** The font of the chips (the app's UI font). */
   font?: string;
+  /** The words on the chip of sites that gathered (the app's language); their number without. */
+  clusterLabel?: (count: number) => string;
 }
 
 type Pack = RasterPackInfo;
@@ -130,8 +129,25 @@ export const packSource: SourceFor = (p) => new FetchSource(rasterPackUrl(p.kind
 
 const SITE_PREFIX = 'site:';
 const ISSUE_PREFIX = 'issue:';
-/** Sites closer than this on screen (CSS pixels) gather into a cluster. */
-const CLUSTER_REACH_PX = 30;
+/**
+ * From a site to the left end of its chip's sprite, which puts the centre of the chip's dot on
+ * the site: `pinPosition`, the pointer and the floating elements all aim there. CSS pixels:
+ * CesiumJS's billboard shader turns the offset into metres with the size of a CSS pixel, and does
+ * not scale it with the billboard.
+ */
+const CHIP_OFFSET = new Cartesian2(-(CHIP.pad + CHIP.dotX), 0);
+/**
+ * How far past its sprite a chip gathers others, CSS pixels. CesiumJS gathers a chip with those
+ * whose own anchor (the middle of their left end) lies in its box: a chip above or below it is
+ * half a chip further away than its edge.
+ */
+const CLUSTER_REACH_PX = CHIP.height / 2;
+
+/** What a site's chip says. */
+interface SiteChip {
+  name: string;
+  open: number;
+}
 /** The deepest level the land shapes are painted at, alone and under street tiles. */
 const EARTH_LEVELS = { whole: 11, underlay: 8 } as const;
 
@@ -191,12 +207,16 @@ export class GlobeController {
   private readonly sites = new CustomDataSource('sites');
   private readonly issues = new CustomDataSource('issues');
   private readonly measure = new CustomDataSource('measure');
-  private readonly tones = new Map<string, PinTone>();
+  private readonly font: string;
+  /** What each site's chip says, by entity id: a chip is drawn again when its state changes. */
+  private readonly chips = new Map<string, SiteChip>();
   private selected: string | null = null;
   private pointerHover: GlobeHover | null = null;
   private pointerAnchor: Cartesian3 | null = null;
   private listHover: string | null = null;
   private readonly tags: Partial<Record<GlobeTagSlot, HTMLElement>> = {};
+  private card: GlobePick | null = null;
+  private cardInsets: Insets = { top: 0, right: 0, bottom: 0, left: 0 };
   private measuring = false;
   private measured: [number, number][] = [];
   private readonly handler: ScreenSpaceEventHandler;
@@ -221,25 +241,26 @@ export class GlobeController {
     this.widget = g.widget;
     this.palette = o.palette ?? STREET_GLOBE_PALETTE;
     this.style = o.style ?? DEFAULT_GLOBE_STYLE;
+    this.font = o.font ?? 'sans-serif';
     const widget = this.widget;
-    const font = o.font ?? 'sans-serif';
     const clustering = this.sites.clustering;
     clustering.enabled = true;
-    // the sprites carry a wide halo: reach in from their edge, so only dots that touch gather
-    clustering.pixelRange = (CLUSTER_REACH_PX - SITE_PIN_SIZE) / 2;
+    clustering.pixelRange = CLUSTER_REACH_PX;
     clustering.minimumClusterSize = 2;
     clustering.clusterEvent.addEventListener((entities, cluster) => {
-      const attention = entities.some((e) => this.tones.get(e.id) === 'attention');
+      const attention = entities.some((e) => (this.chips.get(e.id)?.open ?? 0) > 0);
       cluster.label.show = false;
       cluster.billboard.show = true;
+      // CesiumJS names the sites on the label it made, which is not shown: a pick hits the chip
+      cluster.billboard.id = entities;
       // the typings say string; a Billboard takes a canvas as its image as well
-      cluster.billboard.image = clusterPin(
-        entities.length,
+      cluster.billboard.image = clusterChip(
+        o.clusterLabel?.(entities.length) ?? String(entities.length),
         attention ? 'attention' : 'clear',
         this.palette,
         g.pixelRatio,
-        font,
-      ) as unknown as string;
+        this.font,
+      ).canvas as unknown as string;
       cluster.billboard.verticalOrigin = VerticalOrigin.CENTER;
       cluster.billboard.scale = 1 / g.pixelRatio;
       cluster.billboard.disableDepthTestDistance = Number.POSITIVE_INFINITY;
@@ -389,7 +410,7 @@ export class GlobeController {
     return this.pointerHover?.kind === 'site' ? this.pointerHover.projectId : this.listHover;
   }
 
-  /** A site hovered or focused in the list lights its pin as the pointer would. */
+  /** A site hovered or focused in the list lights its chip as the pointer would. */
   setHighlighted(projectId: string | null): void {
     if (projectId === this.listHover) return;
     const before = this.hoveredSite();
@@ -398,7 +419,7 @@ export class GlobeController {
     this.placeTags();
   }
 
-  /** The selected site (its card is open): its pin wears the ring and the label stays beside it. */
+  /** The selected site (its card is open): its chip wears the outline and the rings leave it. */
   setSelected(projectId: string | null): void {
     if (projectId === this.selected) return;
     const before = this.selected;
@@ -413,15 +434,26 @@ export class GlobeController {
     return projectId === this.hoveredSite() ? 'hover' : 'rest';
   }
 
+  /** A site's chip as it is now: at rest, lit or selected. */
+  private chipImage(projectId: string, chip: SiteChip): HTMLCanvasElement {
+    return siteChip(
+      chip.name,
+      chip.open,
+      chip.open > 0 ? 'attention' : 'clear',
+      this.pinState(projectId),
+      this.palette,
+      this.g.pixelRatio,
+      this.font,
+    ).canvas;
+  }
+
   private restyleSites(ids: readonly (string | null)[]): void {
     for (const id of new Set(ids)) {
       if (id === null) continue;
       const entity = this.sites.entities.getById(`${SITE_PREFIX}${id}`);
-      if (!entity?.billboard) continue;
-      const tone = this.tones.get(entity.id) ?? 'clear';
-      entity.billboard.image = new ConstantProperty(
-        sitePin(tone, this.pinState(id), this.palette, this.g.pixelRatio),
-      );
+      const chip = entity && this.chips.get(entity.id);
+      if (!entity?.billboard || !chip) continue;
+      entity.billboard.image = new ConstantProperty(this.chipImage(id, chip));
     }
     this.scene.requestRender();
   }
@@ -459,8 +491,9 @@ export class GlobeController {
   // ---------------------------------------------------------------- floating labels
 
   /**
-   * Give the Globe an element to keep beside the selected site or under the pointer (`null`
-   * takes it back). The view fills it; the Globe only moves it, after each frame it draws.
+   * Give the Globe an element to keep at the selected site, under the pointer or (the card) by
+   * a pin (`null` takes it back). The view fills it; the Globe only moves it, after each frame
+   * it draws.
    */
   bindTag(slot: GlobeTagSlot, el: HTMLElement | null): void {
     if (el) this.tags[slot] = el;
@@ -468,9 +501,34 @@ export class GlobeController {
     this.placeTags();
   }
 
+  /** The pin the card tells of, a site's or an issue's: the card slot is kept by it. */
+  setCard(pick: GlobePick | null): void {
+    this.card = pick;
+    this.placeTags();
+  }
+
+  /** The room the screen's own controls take at each edge: the card stays clear of it. */
+  setCardInsets(insets: Insets): void {
+    this.cardInsets = insets;
+    this.placeTags();
+  }
+
+  /** Place the floating elements again: the card's size changed with what it holds. */
+  layoutCard(): void {
+    this.placeTags();
+  }
+
   private sitePosition(projectId: string | null): Cartesian3 | null {
     if (projectId === null) return null;
     const e = this.sites.entities.getById(`${SITE_PREFIX}${projectId}`);
+    return e?.position?.getValue(this.widget.clock.currentTime) ?? null;
+  }
+
+  private cardPosition(): Cartesian3 | null {
+    const pick = this.card;
+    if (!pick) return null;
+    if (pick.kind === 'site') return this.sitePosition(pick.projectId);
+    const e = this.issues.entities.getById(`${ISSUE_PREFIX}${pick.projectId}|${pick.issueId}`);
     return e?.position?.getValue(this.widget.clock.currentTime) ?? null;
   }
 
@@ -486,9 +544,10 @@ export class GlobeController {
           : hovered !== this.selected
             ? this.sitePosition(hovered)
             : null,
+      card: this.cardPosition(),
     };
     const occluder = new EllipsoidalOccluder(Ellipsoid.WGS84, this.scene.camera.positionWC);
-    for (const slot of ['selected', 'hover'] as const) {
+    for (const slot of ['selected', 'hover', 'card'] as const) {
       const el = this.tags[slot];
       if (!el) continue;
       const p = anchors[slot];
@@ -501,7 +560,20 @@ export class GlobeController {
         continue;
       }
       el.style.visibility = 'visible';
-      el.style.transform = `translate3d(${at.x.toFixed(1)}px, ${at.y.toFixed(1)}px, 0)`;
+      if (slot !== 'card') {
+        el.style.transform = `translate3d(${at.x.toFixed(1)}px, ${at.y.toFixed(1)}px, 0)`;
+        continue;
+      }
+      // the card has a size, its content's: it goes under or over the pin and stays in the view
+      const canvas = this.scene.canvas;
+      const place = placeCard(
+        at,
+        { width: el.offsetWidth, height: el.offsetHeight },
+        { width: canvas.clientWidth, height: canvas.clientHeight },
+        this.cardInsets,
+      );
+      el.style.transform = `translate3d(${String(place.left)}px, ${String(place.top)}px, 0)`;
+      el.dataset.side = place.side;
     }
   }
 
@@ -751,30 +823,39 @@ export class GlobeController {
 
   // ---------------------------------------------------------------- pins
 
-  /** Library projects as pins at their origins, clustered when they crowd. */
+  /** Library projects as chips at their origins, gathered into one where they crowd. */
   setSites(sites: readonly GlobeSite[]): void {
-    this.sites.entities.suspendEvents();
-    this.sites.entities.removeAll();
-    this.tones.clear();
-    for (const s of sites) {
+    const entities = this.sites.entities;
+    // on its own, before the new ones go in: within one batch CesiumJS sets the removal of an
+    // id against its addition, tells nobody, and the old entity stays drawn (its name, its count)
+    entities.removeAll();
+    this.chips.clear();
+    entities.suspendEvents();
+    // East to west. CesiumJS asks each chip once, the last one added first, which of the chips
+    // not yet asked start in its box: with north up, a chip is asked before those its name runs
+    // into, whatever the order of the list.
+    for (const s of [...sites].sort((a, b) => b.lonLat[0] - a.lonLat[0])) {
       const id = `${SITE_PREFIX}${s.projectId}`;
-      const tone: PinTone = s.issues.open > 0 ? 'attention' : 'clear';
-      this.tones.set(id, tone);
-      this.sites.entities.add({
+      const chip: SiteChip = { name: s.name, open: s.issues.open };
+      this.chips.set(id, chip);
+      entities.add({
         id,
         name: s.name,
         position: Cartesian3.fromDegrees(s.lonLat[0], s.lonLat[1], 0),
         billboard: {
-          image: sitePin(tone, this.pinState(s.projectId), this.palette, this.g.pixelRatio),
+          image: this.chipImage(s.projectId, chip),
           // sprites are drawn in device pixels; CesiumJS sizes billboards in CSS pixels
           scale: 1 / this.g.pixelRatio,
+          // the chip runs to the right of its dot, and the dot is the site
+          horizontalOrigin: HorizontalOrigin.LEFT,
           verticalOrigin: VerticalOrigin.CENTER,
+          pixelOffset: CHIP_OFFSET,
           heightReference: HeightReference.CLAMP_TO_GROUND,
           disableDepthTestDistance: Number.POSITIVE_INFINITY,
         },
       });
     }
-    this.sites.entities.resumeEvents();
+    entities.resumeEvents();
     this.scene.requestRender();
   }
 

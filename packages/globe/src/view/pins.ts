@@ -1,14 +1,35 @@
 /**
- * The Globe's pins, drawn once per look on small canvases (no image is fetched): a site is a lit
- * dot with a soft halo, mint when it has no open issues and amber when it has; hovered and
- * selected sites grow a ring; a cluster is a dark disc with a count; an issue is a solid dot in
- * its severity colour. CesiumJS draws billboards in device pixels, so every sprite is drawn
- * `ratio` times larger than its CSS size.
+ * The Globe's pins, drawn once per look on small canvases (no image is fetched): a site is a chip
+ * with a dot (mint when it has no open issues, amber when it has), its name and the number of its
+ * open issues; a hovered chip's outline brightens and a selected one takes the dot's colour; sites
+ * that crowd share one chip that says how many they are; an issue is a solid dot in its severity
+ * colour. CesiumJS draws billboards in device pixels, so every sprite is drawn `ratio` times
+ * larger than its CSS size.
  */
+import { CHIP, chipMetrics, fitLabel, issueBadge } from '../chips';
 import { withAlpha, type GlobePalette } from '../style';
 
 export type PinTone = 'clear' | 'attention';
 export type PinState = 'rest' | 'hover' | 'selected';
+
+/** A canvas of a CSS size, painted in CSS pixels. */
+function draw(
+  width: number,
+  height: number,
+  ratio: number,
+  paint: (ctx: CanvasRenderingContext2D) => void,
+): HTMLCanvasElement {
+  const canvas = Object.assign(document.createElement('canvas'), {
+    width: Math.round(width * ratio),
+    height: Math.round(height * ratio),
+  });
+  const ctx = canvas.getContext('2d');
+  if (ctx) {
+    ctx.scale(ratio, ratio);
+    paint(ctx);
+  }
+  return canvas;
+}
 
 const cache = new Map<string, HTMLCanvasElement>();
 
@@ -21,13 +42,9 @@ function sprite(
   const id = `${key}@${String(ratio)}`;
   const hit = cache.get(id);
   if (hit) return hit;
-  const px = Math.round(cssSize * ratio);
-  const canvas = Object.assign(document.createElement('canvas'), { width: px, height: px });
-  const ctx = canvas.getContext('2d');
-  if (ctx) {
-    ctx.scale(ratio, ratio);
+  const canvas = draw(cssSize, cssSize, ratio, (ctx) => {
     paint(ctx, cssSize);
-  }
+  });
   cache.set(id, canvas);
   return canvas;
 }
@@ -44,14 +61,6 @@ function disc(
   ctx.fill();
 }
 
-function ring(ctx: CanvasRenderingContext2D, c: number, r: number, width: number, stroke: string) {
-  ctx.beginPath();
-  ctx.arc(c, c, r, 0, Math.PI * 2);
-  ctx.lineWidth = width;
-  ctx.strokeStyle = stroke;
-  ctx.stroke();
-}
-
 function halo(ctx: CanvasRenderingContext2D, c: number, r: number, colour: string, peak: number) {
   const g = ctx.createRadialGradient(c, c, 0, c, c, r);
   g.addColorStop(0, withAlpha(colour, peak));
@@ -63,59 +72,129 @@ function halo(ctx: CanvasRenderingContext2D, c: number, r: number, colour: strin
 export const toneColour = (tone: PinTone, palette: GlobePalette): string =>
   tone === 'attention' ? palette.attention : palette.accent;
 
-/** The CSS size of a site pin's sprite (the halo included). */
-export const SITE_PIN_SIZE = 64;
+/** A chip drawn for the Globe: its canvas and its size in CSS pixels, `CHIP.pad` included. */
+export interface ChipSprite {
+  canvas: HTMLCanvasElement;
+  width: number;
+  height: number;
+}
 
-/** A site: a lit dot with a halo; a ring when hovered, a brighter ring and core when selected. */
-export function sitePin(
+const NAME_FONT = '600 12px';
+const BADGE_FONT = '700 11px';
+/** Text set on its middle line sits a little high: this much lower, capitals look centred. */
+const TEXT_DROP = 0.75;
+
+let ruler: CanvasRenderingContext2D | null = null;
+
+/** The width of a text in a font, in CSS pixels. */
+function textWidth(font: string, text: string): number {
+  ruler ??= document.createElement('canvas').getContext('2d');
+  if (!ruler) return 0;
+  ruler.font = font;
+  return ruler.measureText(text).width;
+}
+
+/** The path of a rectangle with fully round ends. */
+function pill(
+  ctx: CanvasRenderingContext2D,
+  x: number,
+  y: number,
+  width: number,
+  height: number,
+): void {
+  const r = height / 2;
+  ctx.beginPath();
+  ctx.arc(x + r, y + r, r, Math.PI / 2, Math.PI * 1.5);
+  ctx.arc(x + width - r, y + r, r, -Math.PI / 2, Math.PI / 2);
+  ctx.closePath();
+}
+
+const chips = new Map<string, ChipSprite>();
+
+function chip(
+  text: string,
+  open: number,
+  colour: string,
+  state: PinState,
+  palette: GlobePalette,
+  ratio: number,
+  font: string,
+): ChipSprite {
+  const key = JSON.stringify([text, open, colour, state, palette.space, font, ratio]);
+  const hit = chips.get(key);
+  if (hit) return hit;
+  const nameFont = `${NAME_FONT} ${font}`;
+  const badgeFont = `${BADGE_FONT} ${font}`;
+  const label = fitLabel(text, CHIP.maxName, (t) => textWidth(nameFont, t));
+  const badge = issueBadge(open);
+  const m = chipMetrics(
+    textWidth(nameFont, label),
+    badge === null ? null : textWidth(badgeFont, badge),
+  );
+  const width = m.width + 2 * CHIP.pad;
+  const height = m.height + 2 * CHIP.pad;
+  const canvas = draw(width, height, ratio, (ctx) => {
+    ctx.translate(CHIP.pad, CHIP.pad);
+    const mid = m.height / 2;
+    const selected = state === 'selected';
+    pill(ctx, 0, 0, m.width, m.height);
+    ctx.fillStyle = withAlpha(palette.space, 0.94);
+    ctx.fill();
+    if (selected) {
+      ctx.fillStyle = withAlpha(palette.ink, 0.08);
+      ctx.fill();
+    }
+    // the outline is drawn inside the chip: a chip keeps its size whatever its state
+    const line = selected ? 1.5 : 1;
+    pill(ctx, line / 2, line / 2, m.width - line, m.height - line);
+    ctx.lineWidth = line;
+    ctx.strokeStyle = selected ? colour : withAlpha(palette.ink, state === 'hover' ? 0.4 : 0.16);
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.arc(CHIP.dotX, mid, CHIP.dotRadius, 0, Math.PI * 2);
+    ctx.fillStyle = colour;
+    ctx.fill();
+    ctx.textBaseline = 'middle';
+    ctx.font = nameFont;
+    ctx.fillStyle = palette.ink;
+    ctx.fillText(label, m.nameX, mid + TEXT_DROP);
+    if (badge !== null && m.badge) {
+      pill(ctx, m.badge.x, mid - CHIP.badgeHeight / 2, m.badge.width, CHIP.badgeHeight);
+      ctx.fillStyle = palette.attention;
+      ctx.fill();
+      ctx.font = badgeFont;
+      ctx.textAlign = 'center';
+      ctx.fillStyle = palette.space;
+      ctx.fillText(badge, m.badge.x + m.badge.width / 2, mid + TEXT_DROP);
+    }
+  });
+  const made = { canvas, width, height };
+  chips.set(key, made);
+  return made;
+}
+
+/** A site: its dot, its name (cut when long) and, with open issues, their number on amber. */
+export function siteChip(
+  name: string,
+  open: number,
   tone: PinTone,
   state: PinState,
   palette: GlobePalette,
   ratio: number,
-): HTMLCanvasElement {
-  const colour = toneColour(tone, palette);
-  return sprite(`site/${colour}/${state}/${palette.space}`, SITE_PIN_SIZE, ratio, (ctx, size) => {
-    const c = size / 2;
-    const core = state === 'rest' ? 6 : 7;
-    halo(ctx, c, state === 'rest' ? 22 : 31, colour, state === 'rest' ? 0.5 : 0.62);
-    if (state !== 'rest') {
-      const strong = state === 'selected';
-      ring(ctx, c, 14.5, strong ? 1.75 : 1.25, withAlpha(colour, strong ? 0.95 : 0.7));
-    }
-    // a dark seat keeps the dot readable on a bright pack or a busy street map
-    disc(ctx, c, core + 2.25, withAlpha(palette.space, 0.9));
-    disc(ctx, c, core, colour);
-    disc(
-      ctx,
-      c,
-      state === 'selected' ? 2.75 : 2,
-      withAlpha(palette.ink, state === 'rest' ? 0.85 : 1),
-    );
-  });
+  font: string,
+): ChipSprite {
+  return chip(name, open, toneColour(tone, palette), state, palette, ratio, font);
 }
 
-/** Sites that crowd: a dark disc ringed in the tone of what it holds, with their number. */
-export function clusterPin(
-  count: number,
+/** Sites that crowd: one chip, its dot in the tone of what it holds, with the words for them. */
+export function clusterChip(
+  label: string,
   tone: PinTone,
   palette: GlobePalette,
   ratio: number,
   font: string,
-): HTMLCanvasElement {
-  const colour = toneColour(tone, palette);
-  const label = count > 99 ? '99+' : String(count);
-  const r = label.length > 2 ? 16 : label.length > 1 ? 14.5 : 13;
-  return sprite(`cluster/${label}/${colour}/${palette.space}/${font}`, 64, ratio, (ctx, size) => {
-    const c = size / 2;
-    halo(ctx, c, r + 15, colour, 0.36);
-    disc(ctx, c, r, withAlpha(palette.space, 0.94));
-    ring(ctx, c, r - 0.75, 1.5, colour);
-    ctx.fillStyle = palette.ink;
-    ctx.font = `600 ${label.length > 2 ? '11' : '12.5'}px ${font}`;
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-    ctx.fillText(label, c, c + 0.75);
-  });
+): ChipSprite {
+  return chip(label, 0, toneColour(tone, palette), 'rest', palette, ratio, font);
 }
 
 /** An issue of the open project: a solid dot in its severity colour on a dark seat. */
