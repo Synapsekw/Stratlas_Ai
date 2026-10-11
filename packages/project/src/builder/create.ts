@@ -177,6 +177,9 @@ export async function updateCapture(
   return { manifest: r.manifest, backup: r.backup };
 }
 
+/** Survey dates in date order. The sort is stable: dates of one day stay in the order they had. */
+export const byDate = (a: Capture, b: Capture): number => a.date.localeCompare(b.date);
+
 /**
  * The survey date of a day in a manifest: the capture with that date (the first in the list), or
  * a new one, `capture-<date>` named "Survey", added in date order. Pure: nothing is saved.
@@ -193,7 +196,7 @@ export function captureForDate(
     label: 'Survey',
     date,
   };
-  const captures = [...m.captures, c].sort((a, b) => a.date.localeCompare(b.date));
+  const captures = [...m.captures, c].sort(byDate);
   return { manifest: { ...m, captures }, captureId: c.id, created: true };
 }
 

@@ -21,8 +21,9 @@ import {
   resolveHeights,
   type FileAltitudes,
 } from './altitude';
-import { captureForDate, slug, uniqueId, readManifestFile, writeManifestFile } from './create';
+import { captureForDate, slug, uniqueId, readManifestFile, updateManifestFile } from './create';
 import { readPhotoMeta } from './exif';
+import { mergeImport } from './importMerge';
 import { objToGlb } from './obj';
 import { photoAltitude, photoHeight, photoRef } from './photos';
 import {
@@ -206,21 +207,29 @@ const layerIdTaken = (m: ProjectManifest) => (id: string) => m.layers.some((l) =
  * clouds and large rasters become pipeline-pack jobs. The manifest is validated, backed up and
  * replaced once at the end. Each file reports its own outcome; one bad file never stops the rest.
  *
- * The manifest is read at the start and saved at the end; only that last save takes a turn among
- * the saves of the project (`writeManifestFile`), so nothing waits behind minutes of copying.
- * Known limit (docs/KNOWN-LIMITS.md, Builder): a change saved to the project while the files are
- * being imported is replaced by this save, also the layer a conversion job adds when it ends
- * first (the jobs this import starts are not waited for). The import does more than add (photos
- * join the existing Photos layer, a datum picked at the import is set on the project, the survey
- * dates are put in date order), so the follow-up is to save its additions onto a fresh read at
- * the end.
+ * The manifest is read at the start and the import works on its own copy, so nothing waits behind
+ * minutes of copying. At the end, in one turn among the saves of the project
+ * (`updateManifestFile`), the manifest is read again and only what this import added is put onto
+ * it (`mergeImport`: its new layers and survey dates, its photos onto the Photos layer as it is
+ * by then, a datum picked at the import). What was saved meanwhile stays: a survey date renamed,
+ * a dataset moved to another date, the layer a conversion job filed when it ended first (the jobs
+ * this import starts are not waited for). The manifest handed back is the one saved; when nothing
+ * was filed, nothing is saved and it is the project as it is by then (as it was at the start
+ * when it cannot be read at that moment: an import that saves nothing does not fail for it).
+ *
+ * What is left (docs/KNOWN-LIMITS.md, Builder): the processing tools write the manifest from
+ * their own process and take no turn, so a job that is filing its results when this save is made
+ * can replace it, or be replaced. For an OPF project and for maps from photos the filing takes
+ * as long as their files take to move, and the job's write then replaces all this import added.
  */
 export async function importRawFiles(
   root: string,
   paths: readonly string[],
   deps: ImportDeps,
 ): Promise<ImportResult> {
-  const m = structuredClone(await readManifestFile(root));
+  // the manifest as it was read, left untouched: what `m` holds beyond it is what this import added
+  const atStart = await readManifestFile(root);
+  const m = structuredClone(atStart);
   const epsg = epsgOf(m);
   const utcOffsetMin = deps.utcOffsetMin ?? defaultUtcOffset(m);
   const heights = resolveHeights(m, deps.altitude);
@@ -621,8 +630,30 @@ export async function importRawFiles(
     m.verticalDatum = heights.saveDatum;
   const summary = importHeights(heights, placed, datumDefined);
   const changed = items.some((i) => i.status === 'imported');
-  const backup = changed ? await writeManifestFile(root, m) : '';
-  return { manifest: m, items, backup, ...(summary ? { heights: summary } : {}) };
+  if (!changed) {
+    // Nothing was filed (only jobs, or only refusals), so nothing is saved. The manifest handed
+    // back is the project as it is by now, read in its turn after the saves on their way. When
+    // it cannot be read at this moment the import does not fail for it: the jobs are started
+    // and their report must arrive, with the manifest as it was read at the start.
+    const now = await updateManifestFile(root, () => ({ manifest: null })).then(
+      (r) => r.manifest,
+      () => atStart,
+    );
+    return { manifest: now, items, backup: '', ...(summary ? { heights: summary } : {}) };
+  }
+  // Only this takes the project's turn: read the manifest as it is now, put what this import
+  // added onto it, save.
+  const saved = await updateManifestFile(root, (fresh) => mergeImport(atStart, m, fresh));
+  for (const i of items) {
+    const id = i.layerId === undefined ? undefined : saved.renamed.get(i.layerId);
+    if (id !== undefined) i.layerId = id;
+  }
+  return {
+    manifest: saved.manifest,
+    items,
+    backup: saved.backup,
+    ...(summary ? { heights: summary } : {}),
+  };
 }
 
 /**
