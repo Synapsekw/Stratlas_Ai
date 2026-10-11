@@ -115,13 +115,13 @@ test.describe('with QUADRION_SHOW_GATE=1', () => {
     expect(Math.abs(centreY(brand) - centreY(entry))).toBeLessThan(80);
     await expectMarkBesideWordmark(win);
 
-    // the pointer moves the plates (fine pointers only), the top plate furthest
+    // the pointer moves the pieces (fine pointers only), the tail furthest
     if (await win.evaluate(() => matchMedia('(hover: hover) and (pointer: fine)').matches)) {
       await win.mouse.move(1300, 120, { steps: 8 });
       await win.waitForTimeout(700);
       const shift = await win.evaluate(() =>
         [0, 3].map((i) => {
-          const tf = document.querySelector(`.qg-mark path.plate[data-plate="${String(i)}"]`);
+          const tf = document.querySelector(`.qg-mark g[data-piece="${String(i)}"]`);
           const m = /translate\(([-\d.]+) ([-\d.]+)\)/.exec(tf?.getAttribute('transform') ?? '');
           return m ? Math.abs(Number(m[1])) : 0;
         }),
@@ -153,6 +153,15 @@ test.describe('with QUADRION_SHOW_GATE=1', () => {
     await win.keyboard.press('Escape');
     await expect(gate(win)).toHaveAttribute('data-instant', '');
     await expect(gate(win)).toHaveAttribute('data-phase', 'ready');
+    // the mark stands complete: the tail has stepped out of the ring (at rest it starts at 36.6,
+    // in the closed ring near 32.6)
+    const tailX = await win.evaluate(
+      () =>
+        document
+          .querySelector<SVGGraphicsElement>('.qg-mark g[data-piece="3"] .bm-shape')
+          ?.getBBox().x ?? 0,
+    );
+    expect(tailX).toBeGreaterThan(36);
     await expect(gate(win)).toBeVisible();
 
     await setViewport(win, 820, 900);
@@ -182,7 +191,7 @@ test.describe('with QUADRION_SHOW_GATE=1', () => {
     await win.mouse.move(1300, 120, { steps: 6 });
     await win.waitForTimeout(500);
     const moved = await win.evaluate(
-      () => document.querySelectorAll('.qg-mark [data-plate][transform]').length,
+      () => document.querySelectorAll('.qg-mark g[data-piece][transform]').length,
     );
     expect(moved).toBe(0);
     await win.keyboard.press('Enter');

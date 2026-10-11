@@ -41,7 +41,9 @@ export const brand: Brand = raw;
 export const urlSchemes: readonly string[] = [brand.urlScheme, ...brand.legacyUrlSchemes];
 
 export { aliasLegacyEnv, ENV_PREFIX, envVar, LEGACY_ENV_PREFIX } from './env';
-export { SYMBOL, WORDMARK } from './marks';
+export { WORDMARK } from './marks';
+export { SYMBOL } from './symbol';
+export * from './quarter';
 
 /** Report brand themes a project can use (wizard, PDF reports). The first is the default. */
 export const reportBrands: readonly { id: string; label: string }[] = [

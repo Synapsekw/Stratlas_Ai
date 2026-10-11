@@ -157,18 +157,18 @@ code {
   transition: opacity 160ms var(--ease);
 }
 .wm-word,
-.mark-plate {
+.mark-piece {
   fill: var(--fg-0);
 }
 .wm-ai,
-.mark-top {
+.mark-tail {
   fill: var(--acc);
 }
 .app[data-sb='collapsed'] .wordmark {
   opacity: 0;
 }
 .mark {
-  width: 24px;
+  width: 21px;
   height: 21px;
   flex: none;
 }
@@ -179,7 +179,7 @@ code {
   gap: 12px;
 }
 .lockup-mark {
-  width: 37px;
+  width: 32px;
   height: 32px;
   flex: none;
 }

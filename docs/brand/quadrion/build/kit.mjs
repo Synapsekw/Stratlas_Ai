@@ -1,4 +1,4 @@
-// Quadrion AI brand kit: the Time steps mark, the outlined QUADRION AI wordmark
+// Quadrion AI brand kit: the Quarter mark, the outlined QUADRION AI wordmark
 // (Archivo Expanded Bold, converted to paths so no font is needed), lockups,
 // the app icon in the same format as packages/brand/icon.svg, a small-size cut,
 // PNGs, an .ico, favicons and a one-page brand sheet.
@@ -9,6 +9,13 @@ import { createRequire } from 'node:module';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import opentype from 'opentype.js';
+import {
+  QUARTER,
+  QUARTER_SMALL,
+  quarterBounds,
+  quarterPieces,
+  quarterSmallPieces,
+} from '../../../../packages/brand/src/quarter.ts';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const require = createRequire(join(here, '../../../../package.json'));
@@ -29,26 +36,16 @@ const C = {
 
 const f = (n) => +n.toFixed(2);
 
-// ---------- the mark: Time steps ----------
-// Four isometric plates, bottom to top, each stepping forward. Each plate is cut
-// where the plates above overlap it (real transparency), so the mark works in one colour.
-const CENTRES = [[26, 50], [30, 40], [34, 30], [38, 20]];
-function mark(ink, acc, { hw = 21, hh = 8, gap = 5, prefix = 'm' } = {}) {
-  const plate = ([cx, cy]) => `M${cx} ${cy - hh} L${cx + hw} ${cy} L${cx} ${cy + hh} L${cx - hw} ${cy}Z`;
-  let defs = '', body = '';
-  CENTRES.forEach((c, i) => {
-    const above = CENTRES.slice(i + 1);
-    const top = i === CENTRES.length - 1;
-    if (!above.length) { body += `<path d="${plate(c)}" fill="${top ? acc : ink}"/>`; return; }
-    const id = `${prefix}${i}`;
-    defs += `<mask id="${id}" maskUnits="userSpaceOnUse" x="-16" y="-16" width="96" height="96"><rect x="-16" y="-16" width="96" height="96" fill="#fff"/>` +
-      above.map((a) => `<path d="${plate(a)}" fill="#000" stroke="#000" stroke-width="${gap}" stroke-linejoin="miter"/>`).join('') + `</mask>`;
-    body += `<path d="${plate(c)}" fill="${ink}" mask="url(#${id})"/>`;
-  });
-  return `<defs>${defs}</defs>${body}`;
+// ---------- the mark: Quarter ----------
+// Three quarters of a ring in ink and a square tail in the accent. No masks: the gaps are real.
+function mark(ink, acc, { small = false } = {}) {
+  const pieces = small ? quarterSmallPieces() : quarterPieces();
+  return pieces
+    .map((d, i) => `<path d="${d}" fill="${i === pieces.length - 1 ? acc : ink}"/>`)
+    .join('');
 }
-// the mark's own bounds on the 64 grid (plates span x 5..59, y 12..58)
-const MB = { x: 5, y: 12, w: 54, h: 46 };
+const MB = quarterBounds(QUARTER);
+const MB_SMALL = quarterBounds(QUARTER_SMALL);
 
 // ---------- the wordmark, outlined ----------
 const font = opentype.parse(readFileSync(join(here, 'fonts/Archivo-Expanded-Bold.woff')).buffer);
@@ -93,7 +90,7 @@ const svgDoc = (w, h, body, title) =>
 
 // ---------- lockups ----------
 // Horizontal: mark height = 1.9 x cap height; gap = 0.55 x mark height; clear space = cap height.
-function horizontal(ink, acc, bg, withAI = true, prefix = 'h') {
+function horizontal(ink, acc, bg, withAI = true) {
   const cap = 40, markH = cap * 1.9, s = markH / MB.h, pad = cap;
   const wm = wordmark(cap, ink, acc, withAI);
   const markW = MB.w * s, gap = markH * 0.42;
@@ -101,44 +98,47 @@ function horizontal(ink, acc, bg, withAI = true, prefix = 'h') {
   const wmY = pad + (markH - cap) / 2;
   return svgDoc(W, H,
     (bg ? `<rect width="${f(W)}" height="${f(H)}" fill="${bg}"/>` : '') +
-    `<g transform="translate(${f(pad - MB.x * s)} ${f(pad - MB.y * s)}) scale(${f(s)})">${mark(ink, acc, { prefix })}</g>` +
+    `<g transform="translate(${f(pad - MB.x * s)} ${f(pad - MB.y * s)}) scale(${f(s)})">${mark(ink, acc)}</g>` +
     `<g transform="translate(${f(pad + markW + gap)} ${f(wmY)})">${wm.svg}</g>`,
     `Quadrion AI horizontal lockup`);
 }
 // Stacked: mark above, wordmark centred below.
-function stacked(ink, acc, bg, prefix = 's') {
+function stacked(ink, acc, bg) {
   const cap = 34, markH = 150, s = markH / MB.h, pad = 40;
   const wm = wordmark(cap, ink, acc, true);
   const markW = MB.w * s, gap = 34;
   const W = pad * 2 + Math.max(markW, wm.width), H = pad * 2 + markH + gap + cap;
   return svgDoc(W, H,
     (bg ? `<rect width="${f(W)}" height="${f(H)}" fill="${bg}"/>` : '') +
-    `<g transform="translate(${f((W - markW) / 2 - MB.x * s)} ${f(pad - MB.y * s)}) scale(${f(s)})">${mark(ink, acc, { prefix })}</g>` +
+    `<g transform="translate(${f((W - markW) / 2 - MB.x * s)} ${f(pad - MB.y * s)}) scale(${f(s)})">${mark(ink, acc)}</g>` +
     `<g transform="translate(${f((W - wm.width) / 2)} ${f(pad + markH + gap)})">${wm.svg}</g>`,
     'Quadrion AI stacked lockup');
 }
 
 // ---------- icons ----------
-// Master: same format as packages/brand/icon.svg (512 tile, rx 112, mark at 6.4x).
-const icon = (opts = {}) => {
-  const { scale = 6.4, hw, hh, gap, title = 'Quadrion AI app icon', prefix = 'i' } = opts;
-  const cx = MB.x + MB.w / 2, cy = MB.y + MB.h / 2;
-  return svgDoc(512, 512,
+// Master: same format as packages/brand/icon.svg (512 tile, rx 112). The small cut is drawn larger.
+const icon = ({ small = false, title = 'Quadrion AI app icon' } = {}) => {
+  const b = small ? MB_SMALL : MB,
+    scale = small ? 7 : 6.2;
+  return svgDoc(
+    512,
+    512,
     `<rect width="512" height="512" rx="112" fill="${C.ground}"/>` +
-    `<g transform="translate(256 256) scale(${scale}) translate(${-cx} ${-cy})">${mark(C.ink, C.mint, { hw, hh, gap, prefix })}</g>`,
-    title);
+      `<g transform="translate(256 256) scale(${scale}) translate(${-(b.x + b.w / 2)} ${-(b.y + b.h / 2)})">${mark(C.ink, C.mint, { small })}</g>`,
+    title,
+  );
 };
-// Small cut for 16-32 px: mark larger in the tile and wider cuts so the four plates stay apart.
-const iconSmall = () => icon({ scale: 8.4, gap: 7.5, title: 'Quadrion AI app icon, small-size cut (16-32 px)', prefix: 'k' });
+const iconSmall = () =>
+  icon({ small: true, title: 'Quadrion AI app icon, small-size cut (16-32 px)' });
 
 // ---------- write SVGs ----------
 const W = (p, s) => writeFileSync(join(kit, p), s);
-const symbolDoc = (ink, acc, bg, name) => svgDoc(MB.w + 8, MB.h + 8,
-  (bg ? `<rect width="${MB.w + 8}" height="${MB.h + 8}" fill="${bg}"/>` : '') + `<g transform="translate(${4 - MB.x} ${4 - MB.y})">${mark(ink, acc, { prefix: name })}</g>`, 'Quadrion AI symbol');
-W('symbol/quadrion-symbol-on-dark.svg', symbolDoc(C.ink, C.mint, null, 'a'));
-W('symbol/quadrion-symbol-on-light.svg', symbolDoc(C.inkL, C.mintL, null, 'b'));
-W('symbol/quadrion-symbol-black.svg', symbolDoc('#000', '#000', null, 'c'));
-W('symbol/quadrion-symbol-white.svg', symbolDoc('#fff', '#fff', null, 'd'));
+const symbolDoc = (ink, acc, bg) => svgDoc(MB.w + 8, MB.h + 8,
+  (bg ? `<rect width="${MB.w + 8}" height="${MB.h + 8}" fill="${bg}"/>` : '') + `<g transform="translate(${4 - MB.x} ${4 - MB.y})">${mark(ink, acc)}</g>`, 'Quadrion AI symbol');
+W('symbol/quadrion-symbol-on-dark.svg', symbolDoc(C.ink, C.mint, null));
+W('symbol/quadrion-symbol-on-light.svg', symbolDoc(C.inkL, C.mintL, null));
+W('symbol/quadrion-symbol-black.svg', symbolDoc('#000', '#000', null));
+W('symbol/quadrion-symbol-white.svg', symbolDoc('#fff', '#fff', null));
 for (const [name, ink, acc, ai] of [
   ['on-dark', C.ink, C.mint, true], ['on-light', C.inkL, C.mintL, true], ['black', '#000', '#000', true], ['white', '#fff', '#fff', true],
   ['no-ai-on-dark', C.ink, C.mint, false], ['no-ai-on-light', C.inkL, C.mintL, false],
@@ -158,6 +158,12 @@ const ICON = icon(), ICON_SMALL = iconSmall();
 W('icon/icon.svg', ICON);
 W('icon/icon-small.svg', ICON_SMALL);
 W('favicon/favicon.svg', ICON_SMALL);
+// packages/brand holds the copies the app and the installers read; written here so they cannot drift
+// (svgDoc already ends each document with a newline, which is how these files end today)
+const brandDir = join(here, '../../../../packages/brand');
+writeFileSync(join(brandDir, 'icon.svg'), ICON);
+writeFileSync(join(brandDir, 'icon-small.svg'), ICON_SMALL);
+writeFileSync(join(brandDir, 'mark.svg'), horizontal(C.ink, C.mint, null));
 
 // ---------- rasters ----------
 async function render(svg, size) {
@@ -245,11 +251,11 @@ footer{padding-block:24px;font-size:12.5px;color:var(--fg-2)}
 </style>
 </head>
 <body>
-<header class="top"><div class="wrap"><span class="eyebrow">Synapse Solutions · Quadrion AI brand kit · v1 · 7 Oct 2026</span><button class="theme-btn" id="theme-btn" type="button">Theme: auto</button></div></header>
+<header class="top"><div class="wrap"><span class="eyebrow">Synapse Solutions · Quadrion AI brand kit · v2 · 11 Oct 2026</span><button class="theme-btn" id="theme-btn" type="button">Theme: auto</button></div></header>
 <main class="wrap">
 <section>
   <h1>Quadrion AI</h1>
-  <p>Mark: Time steps, four plates stepping forward as they rise, the top one lit. Type: Archivo Expanded Bold, outlined. Colour: Mission, the palette the app already uses. Tagline: <strong>Four dimensions. One view.</strong></p>
+  <p>Mark: Quarter: three quarters of a ring and a mint square. Three dimensions of space and a fourth that is different. It reads as a Q. Type: Archivo Expanded Bold, outlined. Colour: Mission, the palette the app already uses. Tagline: <strong>Four dimensions. One view.</strong></p>
   <div class="hero">${inline('lockup/quadrion-horizontal-on-dark.svg')}</div>
 </section>
 <section>
@@ -266,14 +272,14 @@ footer{padding-block:24px;font-size:12.5px;color:var(--fg-2)}
 </section>
 <section>
   <h2>App icon</h2>
-  <p>Real rendered PNGs at 1x, on a mid-grey ground so the tile edge shows. From 32 px down, the small-size cut takes over: the mark is larger in the tile and the cuts between plates are wider, so the four plates stay apart.</p>
+  <p>Real rendered PNGs at 1x, on a mid-grey ground so the tile edge shows. From 32 px down, the small-size cut takes over: the three quarters close into one ring section and the mark is drawn larger in the tile, so it stays clear.</p>
   <div class="icons">${[256, 128, 64, 48, 32, 24, 16].map((s) => `<figure><img src="${png(s)}" width="${s}" height="${s}" alt="Quadrion AI icon at ${s} px"><span class="lbl">${s}</span></figure>`).join('')}</div>
 </section>
 <section>
   <h2>Colour</h2>
   <div class="sw">
     <div><i style="background:${C.ground}"></i><p><b>Night slate</b><code>${C.ground}</code><br>Ground, title bar, icon tile</p></div>
-    <div><i style="background:${C.mint}"></i><p><b>Mint</b><code>${C.mint}</code><br>Accent on dark: lit plate, AI, focus</p></div>
+    <div><i style="background:${C.mint}"></i><p><b>Mint</b><code>${C.mint}</code><br>Accent on dark: the square, AI, focus</p></div>
     <div><i style="background:${C.paper}"></i><p><b>Paper</b><code>${C.paper}</code><br>Light ground, reports</p></div>
     <div><i style="background:${C.mintL}"></i><p><b>Deep mint</b><code>${C.mintL}</code><br>Accent on light grounds</p></div>
   </div>
@@ -282,8 +288,8 @@ footer{padding-block:24px;font-size:12.5px;color:var(--fg-2)}
 <section>
   <h2>Rules</h2>
   <div class="rules">
-    <div><h3>Keep the plates apart</h3><p>The cuts between plates are real transparency. Never fill them in or place the mark on a busy photo without a solid plate behind it.</p></div>
-    <div><h3>One lit plate</h3><p>Only the top plate takes the accent. In one-colour use all four plates are the same colour.</p></div>
+    <div><h3>Keep the gaps open</h3><p>The gaps between the quarters and the square are real transparency. Never fill them in or place the mark on a busy photo without a solid ground behind it.</p></div>
+    <div><h3>One mint square</h3><p>Only the square takes the accent. In one-colour use all four pieces are the same colour.</p></div>
     <div><h3>Minimum size</h3><p>Horizontal lockup: 120 px wide on screen, 30 mm in print. Mark alone: 16 px, using the small-size cut.</p></div>
   </div>
 </section>

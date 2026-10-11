@@ -8,7 +8,7 @@ import sharp from 'sharp';
 
 export const root = join(dirname(fileURLToPath(import.meta.url)), '../..');
 export const iconSource = join(root, 'packages/brand/icon.svg');
-/** The small-size cut (larger mark, wider cuts between plates) for icons of 32 px and less. */
+/** The small-size cut (larger mark, the ring in one piece) for icons of 32 px and less. */
 export const smallIconSource = join(root, 'packages/brand/icon-small.svg');
 /** Largest icon size, in px, drawn from the small-size cut. */
 export const SMALL_MAX = 32;

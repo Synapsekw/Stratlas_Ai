@@ -41,6 +41,7 @@ import { useWorkspace, workspace } from '@aio/workspace';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useGraphics } from '../graphics';
 import { bridge, shell, useShell } from '../shell';
+import { BrandLoader } from '../shell/BrandMotion';
 import { rasterPacks, useRasterPacks } from '../workspace/siteTiles';
 import './globe.css';
 import { onGlobeRequest, takeGlobeRequest } from './request';
@@ -246,7 +247,12 @@ export default function GlobeScreen() {
     shell.getState().go('scene');
   };
 
-  if (!loaded) return <section className="globe-screen" aria-busy="true" data-surface="dark" />;
+  if (!loaded)
+    return (
+      <section className="globe-screen" aria-busy="true" data-surface="dark">
+        <BrandLoader className="globe-loader" />
+      </section>
+    );
 
   const site = pick ? loaded.sites.find((s) => s.projectId === pick.projectId) : undefined;
   const issue =

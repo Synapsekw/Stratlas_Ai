@@ -498,7 +498,7 @@ Follow `docs/server/README.md` on a Linux machine or Docker Desktop. Then:
 The product name, icon and logo changed; nothing else. Use the installer built from the rename branch (`QuadrionAI-0.9.0-win-x64-setup.exe`).
 
 - [ ] With Stratlas 0.9.0 installed and its settings set up (a data folder, your name, a cloud AI key, a theme), run the new installer. It replaces Stratlas: one entry in **Apps** ("Quadrion AI"), the Start menu and desktop shortcut say "Quadrion AI", the install folder is `%LOCALAPPDATA%\Programs\Quadrion AI` and `Programs\Stratlas` is gone.
-- [ ] Start it: the title bar shows the new mark (four plates, the top one mint) and the outlined QUADRION AI wordmark; the taskbar and window icon are the new icon.
+- [ ] Start it: the title bar shows the new mark (three quarters of a ring and a mint square, a Q) and the outlined QUADRION AI wordmark; the taskbar and window icon are the new icon. A pinned shortcut can keep the old picture until Windows refreshes its icon cache.
 - [ ] Your settings, library, name, identity and AI keys are all there. `%APPDATA%\Quadrion AI` holds `migrated-from-stratlas.json`; `%APPDATA%\Stratlas` is still there, unchanged.
 - [ ] **Settings, About and updates**: the lockup, "Four dimensions. One view.", "Quadrion AI 0.9.0".
 - [ ] **Help, User guide**: the install chapter names `QuadrionAI-<version>-win-x64-setup.exe`.
@@ -548,9 +548,10 @@ Survey dates become folders in the sidebar, with a date bar and calendar above t
 Each start now shows a short launch screen before your projects (the design you approved on 7 Oct 2026, Split layout). Use an installer built from the launch-screen branch.
 
 - [ ] Start the app: no white flash; the launch screen fills the window. Top left, the date and a running clock. Top right, **Skip intro** while the intro plays.
-- [ ] The intro takes about a second: the four plates drop in, the top one turns mint, QUADRION AI appears behind a scan line, then "Four dimensions. One view.", then the welcome comes into focus.
+- [ ] The intro takes about a second: the mark comes up as a closed ring, its fourth piece steps out and becomes the mint square, QUADRION AI appears behind a scan line, then "Four dimensions. One view.", then the welcome comes into focus.
 - [ ] Left: the mark beside the QUADRION AI wordmark (never above it), the tagline under the wordmark. A thin line, then on the right "WELCOME BACK,", your name (the one in **Settings**, **Identity and team**), your company from **Settings**, **Report branding** (if set) and "this computer", the mint **Enter** button with ↵, and "Offline · stays on this machine" ("cloud AI on" when cloud AI is on).
-- [ ] Move the mouse: the points under it light up mint, and the plates lean toward the pointer, the top one most. Leave the mouse still for 4 seconds: everything drifts back to the centre.
+- [ ] Move the mouse: the points under it light up mint, and the pieces of the mark lean toward the pointer, the mint square most. Leave the mouse still for 4 seconds: everything drifts back to the centre.
+- [ ] Open a project from **Projects**: while it opens, its card shows the mark turning a quarter at a time beside "Opening". **Settings**, **About**: the mark forms a map, a model, a row of dates and a globe, then settles. With **Settings**, **Appearance**, reduced motion on, none of this moves.
 - [ ] Press **Enter** at once, during the intro: the launch screen fades back and **Projects** is there straight away. The app shortcuts (**Ctrl K**) work right after.
 - [ ] Start again and press **Esc**: the intro jumps to its end. Click **Enter** with the mouse: same as the key.
 - [ ] Start again and press **Tab**: a focus ring on **Enter** (none before you press Tab).

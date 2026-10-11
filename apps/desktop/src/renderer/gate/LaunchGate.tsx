@@ -5,7 +5,8 @@ import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react
 import { useIdentity } from '../author';
 import { build } from '../buildStamp';
 import { bridge, useShell } from '../shell';
-import { BrandSymbol, BrandWordmark } from '../shell/BrandMark';
+import { BrandWordmark } from '../shell/BrandMark';
+import { BrandMotion } from '../shell/BrandMotion';
 import { connectionStatus } from '../shell/connection';
 import { OS_QUERIES, wantsReducedMotion } from '../theme';
 import {
@@ -22,7 +23,7 @@ import {
   LIGHT,
   MAX_DT,
   PARALLAX,
-  plateOffsets,
+  pieceOffsets,
   pointerTarget,
   stepSpring,
   type Spring,
@@ -43,7 +44,7 @@ import './gate.css';
 
 type Phase = 'intro' | 'ready' | 'leaving';
 
-/** Plates, wordmark, tagline and welcome are in by then; the plates then follow the pointer. */
+/** The mark, wordmark, tagline and welcome are in by then; the pieces then follow the pointer. */
 const INTRO_MS = 1300;
 const EXIT_MS = 300;
 /** Greet without a name if the identity has not answered by then. */
@@ -312,13 +313,13 @@ function Gate({ onGone }: { onGone: () => void }) {
       };
     }
 
-    const plates = [0, 1, 2, 3].map(
-      (i) => markRef.current?.querySelectorAll<SVGElement>(`[data-plate="${String(i)}"]`) ?? [],
+    const pieces = [0, 1, 2, 3].map(
+      (i) => markRef.current?.querySelectorAll<SVGElement>(`[data-piece="${String(i)}"]`) ?? [],
     );
-    const placePlates = () => {
-      plateOffsets(sx.x, sy.x).forEach(([dx, dy], i) => {
+    const placePieces = () => {
+      pieceOffsets(sx.x, sy.x).forEach(([dx, dy], i) => {
         const tf = `translate(${dx.toFixed(2)} ${dy.toFixed(2)})`;
-        for (const el of plates[i] ?? []) el.setAttribute('transform', tf);
+        for (const el of pieces[i] ?? []) el.setAttribute('transform', tf);
       });
     };
 
@@ -343,8 +344,8 @@ function Gate({ onGone }: { onGone: () => void }) {
         stepSpring(lx, px, LIGHT.k, LIGHT.d, dt);
         stepSpring(ly, py, LIGHT.k, LIGHT.d, dt);
       }
-      // the plates belong to the intro's keyframes until it ends, then to the pointer
-      if (phaseRef.current !== 'intro') placePlates();
+      // the pieces belong to the intro until it ends, then to the pointer
+      if (phaseRef.current !== 'intro') placePieces();
       if (now - lastDraw > TERRAIN_FRAME_MS) {
         draw(now - t0);
         lastDraw = now;
@@ -428,7 +429,12 @@ function Gate({ onGone }: { onGone: () => void }) {
       </button>
       <div ref={mainRef} className="qg-main">
         <div className="qg-brand" ref={markRef}>
-          <BrandSymbol className="qg-mark" layered label={brand.productName} />
+          <BrandMotion
+            className="qg-mark"
+            motion="stepOut"
+            still={reduce || instant}
+            label={brand.productName}
+          />
           <div className="qg-wm">
             <BrandWordmark className="qg-wm-svg" decorative />
           </div>

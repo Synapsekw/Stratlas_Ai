@@ -30,7 +30,7 @@ body {
   gap: 14px;
 }
 .pg-mark .lockup-mark {
-  width: 48px;
+  width: 42px;
   height: 42px;
 }
 .pg-mark .lockup-word {
@@ -38,11 +38,11 @@ body {
   width: auto;
 }
 .pg-mark .wm-word,
-.pg-mark .mark-plate {
+.pg-mark .mark-piece {
   fill: var(--fg-0);
 }
 .pg-mark .wm-ai,
-.pg-mark .mark-top {
+.pg-mark .mark-tail {
   fill: var(--acc);
 }
 
