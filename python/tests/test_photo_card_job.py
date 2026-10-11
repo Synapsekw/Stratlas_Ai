@@ -157,9 +157,8 @@ def stand_in(monkeypatch, tmp_path):
 
 
 def test_a_job_that_asks_for_the_card_runs_depth_maps_and_fusion_on_it(stand_in):
-    cpu, _ = _run(
-        ps.project("card-cpu"), {"run": RUN, "products": ["dsm"], "preset": "standard", "dense": "cpu"}
-    )
+    cpu_root = ps.project("card-cpu")
+    cpu, _ = _run(cpu_root, {"run": RUN, "products": ["dsm"], "preset": "standard", "dense": "cpu"})
     root = ps.project("card-gpu")
     steps, log = _run(root, {"run": RUN, "products": ["dsm"], "preset": "standard", "dense": "cuda"})
     dense, fuse = steps["02-dense.json"], steps["03-fuse.json"]
@@ -170,7 +169,7 @@ def test_a_job_that_asks_for_the_card_runs_depth_maps_and_fusion_on_it(stand_in)
     assert cpu["02-dense.json"]["device"] == "cpu" and "accelerator" not in cpu["02-dense.json"]
     # the same cloud to within rounding
     assert abs(fuse["points"] - cpu["03-fuse.json"]["points"]) <= 0.01 * cpu["03-fuse.json"]["points"]
-    a, b = _depth(ps.project.__globals__["_TMP"] / "card-cpu"), _depth(root)
+    a, b = _depth(cpu_root), _depth(root)
     assert a.keys() == b.keys()
     for name in a:
         both = np.isfinite(a[name]) & np.isfinite(b[name])
