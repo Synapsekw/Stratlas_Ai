@@ -15,6 +15,8 @@ export const FINISHED_SHOWN = 20;
 export interface DrawerListProps {
   /** The open project's name; null with no project of its own (none open, or a package). */
   projectName: string | null;
+  /** A read-only package is open: no project of its own, and it says so. */
+  readOnlyPackage?: boolean;
   running: readonly JobRecord[];
   finished: readonly JobRecord[];
   elsewhere: readonly { job: JobRecord; project: string }[];
@@ -29,6 +31,7 @@ export interface DrawerListProps {
 
 export function DrawerList({
   projectName,
+  readOnlyPackage = false,
   running,
   finished,
   elsewhere,
@@ -120,7 +123,7 @@ export function DrawerList({
       )}
       {!own && elsewhere.length === 0 && (
         <p className="proc-empty faint" data-testid="proc-none">
-          {t('processing.noProject')}
+          {t(readOnlyPackage ? 'processing.noPackage' : 'processing.noProject')}
         </p>
       )}
     </div>

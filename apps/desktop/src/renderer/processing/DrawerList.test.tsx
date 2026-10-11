@@ -140,4 +140,9 @@ describe('the processing list without a project of its own', () => {
     show({ projectName: null });
     expect(q('proc-none')?.textContent).toBe('No project is open.');
   });
+
+  it('says a read-only package has no processing of its own, not that no project is open', () => {
+    show({ projectName: null, readOnlyPackage: true });
+    expect(q('proc-none')?.textContent).toBe('A read-only package has no processing of its own.');
+  });
 });

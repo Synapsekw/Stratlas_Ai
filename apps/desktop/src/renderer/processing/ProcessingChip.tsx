@@ -27,6 +27,14 @@ export function chipText(state: ChipState): string {
   }
 }
 
+/** The button's name for a screen reader: the feature first, whatever the visible words. */
+export function chipLabel(state: ChipState): string {
+  const text = chipText(state);
+  return text.startsWith(t('processing.title'))
+    ? text
+    : t('processing.chip.label', { state: text });
+}
+
 export function ChipView({
   state,
   open,
@@ -44,6 +52,7 @@ export function ChipView({
       data-testid="processing-chip"
       data-state={state.kind}
       title={t('processing.chip.tip')}
+      aria-label={chipLabel(state)}
       aria-expanded={open}
       aria-controls="processing-drawer"
       onClick={onToggle}

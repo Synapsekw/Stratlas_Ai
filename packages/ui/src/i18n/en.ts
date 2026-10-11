@@ -1038,7 +1038,8 @@ export const en = {
   'processing.chip.attention_one': '{count} needs attention',
   'processing.chip.attention_other': '{count} need attention',
   'processing.chip.elsewhere': 'Processing · {count} running elsewhere',
-  'processing.chip.tip': 'What this project is processing, and what finished',
+  'processing.chip.label': 'Processing: {state}',
+  'processing.chip.tip': 'What is processing, and what finished',
   'processing.close': 'Close',
   'processing.createMaps': 'Create maps from photos',
   'processing.toolsMissing':
@@ -1050,6 +1051,7 @@ export const en = {
   'processing.elsewhere': 'Running in other projects',
   'processing.empty': 'Nothing is processing in {name} and nothing has finished yet.',
   'processing.noProject': 'No project is open.',
+  'processing.noPackage': 'A read-only package has no processing of its own.',
   'processing.back': 'Back',
   'processing.kind.maps': 'Maps and models',
   'processing.kind.survey': 'Survey',

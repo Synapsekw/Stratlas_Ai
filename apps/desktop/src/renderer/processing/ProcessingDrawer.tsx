@@ -128,6 +128,7 @@ export function ProcessingDrawer() {
         ) : (
           <DrawerList
             projectName={own ? project.manifest.name : null}
+            readOnlyPackage={pkg}
             running={mine.running}
             finished={mine.finished}
             elsewhere={elsewhere}

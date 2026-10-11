@@ -36,13 +36,16 @@ export function runningElsewhere(all: readonly JobRecord[], root: string | null)
 export interface Seen {
   /** When this session started (ISO). */
   start: string;
-  /** When the drawer was last opened or closed in this project, this session (ISO), or null. */
+  /** When the drawer was last opened or closed in this project on this computer (ISO), or null. */
   seenAt: string | null;
 }
 
 /**
- * The finished jobs a person has not looked at: a failure of this session since the drawer was
- * last open, and any interrupted job until the drawer is opened once (it waits for Resume).
+ * The finished jobs a person has not looked at. A failure counts when it ended after the drawer
+ * was last open in this project (before any look: after this session started, so an old failure
+ * stays quiet). An interrupted job waits for Resume, so it counts before any look at all, and
+ * again whenever it was interrupted again after the last look. A look is kept on this computer,
+ * so a job seen once does not light the chip at every start.
  */
 export function needsAttention(finished: readonly JobRecord[], seen: Seen): JobRecord[] {
   return finished.filter((j) => {
