@@ -85,8 +85,14 @@ this slice adds **no lens model, no layer kind and no value to an existing enum*
    (`builder:progress`, which gains an optional `part`): the file line reads "name.insv, playback
    copy 42 %" and the bar moves with it. The existing review copy
    cannot be cancelled, and neither can the stitch in this slice; the runner takes an abort signal
-   so a cancel button can be wired later. A failed or interrupted stitch leaves no `walks/<id>/`
-   folder behind (the copy is written as `.part` in a staging folder and moved into place last).
+   so a cancel button can be wired later. A failed stitch leaves no `walks/<id>/` folder behind:
+   the walk is built in a staging folder of its own and moved into place last. In a drop of
+   several files the manifest is saved before the first stitch starts, so photos and models do
+   not wait for it. A finished stitch is never thrown away because of the move: a refusal by
+   Windows while another program holds a file open is retried for about half a minute, and if it
+   stays refused the folder is kept and the next import of the file adds it without stitching
+   again. What an interrupted import leaves (quitting during a stitch) is removed at the next
+   walk import and never goes into a package.
 9. **Player.** A small three.js view of its own (`@aio/video`): the video is a texture on an
    inside-out sphere, the camera sits in the middle. Look and zoom use the panorama viewer's
    `dragLook`, `zoomLook` and `PANO_FOV` (`panoMath.ts`). It is not on the project clock: a walk
@@ -198,6 +204,20 @@ so a walk does **not** reach team mates through a hub or the Team Server yet; fo
   but a package made before this build has no walks.
 - A survey date for a walk: `capturedAt` is stored, nothing reads it yet.
 - Seam quality: fixed 195 degree lenses, no blending; faint seams at the quarter lines.
+- A top-bottom or side-by-side stereo 360 MP4 with a 2:1 frame is accepted as a mono video and
+  shows both eyes; only the projection is read from the metadata, not the stereo mode.
+- The player does not handle a lost graphics context: after the graphics card resets, the pane
+  stays blank until another walk is chosen or the pane is closed and opened again.
+- A walk cannot be left out of a package: every finished walk goes into every package, however
+  large (the package dialog lists layers only).
+- While an import runs, a second import (also "Add 360 video", also after switching project) does
+  nothing and says nothing: the files picked are dropped silently by the import store's busy
+  guard. A message, or a queue, is owed.
+- `VideoAnnotator` (`packages/annotate`) listens for K, I and O on the window without looking at
+  `defaultPrevented`. The 360 player stops its own keys from reaching it; the annotator itself
+  was left as it is (another package, with its own tests).
+- Staging folders are owned per process: two copies of the app importing into one project folder
+  at once could clear each other's staging folder.
 
 ## Contract
 

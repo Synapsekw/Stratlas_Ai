@@ -1,6 +1,10 @@
+import { mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import {
   equirectCopyArgs,
+  makeWalkCopy,
   ffmpegMissingMessage,
   hasV360,
   progressSeconds,
@@ -179,5 +183,105 @@ describe('ffmpegMissingMessage', () => {
   });
   it('is null when ffmpeg can stitch', () => {
     expect(ffmpegMissingMessage({ ok: true, v360: true, version: '8.1' })).toBeNull();
+  });
+});
+
+describe('makeWalkCopy', () => {
+  const base = {
+    input: 'VID.insv',
+    layout: 'insv-dual-stream',
+    lens: { width: 2880, height: 2880 },
+    srcFps: 59.94,
+    audio: true,
+    durationS: 10,
+  } as const;
+
+  async function inTemp<T>(fn: (dir: string) => Promise<T>): Promise<T> {
+    const dir = await mkdtemp(join(tmpdir(), 'aio-walk-copy-'));
+    try {
+      return await fn(dir);
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  }
+
+  it('writes the copy under its final name: no temporary file and no rename that could fail', async () => {
+    await inTemp(async (dir) => {
+      const out = join(dir, 'playback.mp4');
+      const seen: string[] = [];
+      const fractions: number[] = [];
+      const r = await makeWalkCopy(out, {
+        ...base,
+        encoder: 'libx264',
+        onProgress: (f) => fractions.push(f),
+        run: async (args, o) => {
+          seen.push(args.at(-1) ?? '');
+          o?.onSeconds?.(5);
+          await writeFile(args.at(-1) ?? '', 'video');
+        },
+      });
+      expect(seen).toEqual([out]);
+      expect(await readdir(dir)).toEqual(['playback.mp4']);
+      expect(fractions).toEqual([0.5]);
+      expect(r).toMatchObject({ width: 3840, height: 1920, encoder: 'libx264' });
+      expect(r.filter).toContain('v360=input=dfisheye');
+    });
+  });
+
+  it('tries the CPU encoder when the hardware encoder fails, starting from a clean file', async () => {
+    await inTemp(async (dir) => {
+      const out = join(dir, 'playback.mp4');
+      const encoders: string[] = [];
+      const r = await makeWalkCopy(out, {
+        ...base,
+        encoder: 'h264_nvenc',
+        run: async (args) => {
+          const enc = args[args.indexOf('-c:v') + 1] ?? '';
+          encoders.push(enc);
+          await writeFile(out, `from ${enc}`);
+          if (enc === 'h264_nvenc') throw new Error('No capable devices found');
+        },
+      });
+      expect(encoders).toEqual(['h264_nvenc', 'libx264']);
+      expect(r.encoder).toBe('libx264');
+      expect(await readFile(out, 'utf8')).toBe('from libx264');
+    });
+  });
+
+  it('leaves nothing behind when every encoder fails, and says why', async () => {
+    await inTemp(async (dir) => {
+      const out = join(dir, 'playback.mp4');
+      await expect(
+        makeWalkCopy(out, {
+          ...base,
+          encoder: 'h264_qsv',
+          run: async () => {
+            await writeFile(out, 'half');
+            throw new Error('Conversion failed!');
+          },
+        }),
+      ).rejects.toThrow('Conversion failed!');
+      expect(await readdir(dir)).toEqual([]);
+    });
+  });
+
+  it('does not start again on the CPU when it was cancelled', async () => {
+    await inTemp(async (dir) => {
+      const stop = new AbortController();
+      let runs = 0;
+      await expect(
+        makeWalkCopy(join(dir, 'playback.mp4'), {
+          ...base,
+          encoder: 'h264_nvenc',
+          signal: stop.signal,
+          run: () => {
+            runs++;
+            stop.abort();
+            return Promise.reject(new Error('Cancelled.'));
+          },
+        }),
+      ).rejects.toThrow('Cancelled.');
+      expect(runs).toBe(1);
+    });
   });
 });

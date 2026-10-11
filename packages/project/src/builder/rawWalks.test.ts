@@ -2,7 +2,7 @@ import { copyFile, mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/pro
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { createProject } from './create';
+import { createProject, updateCapture } from './create';
 import { NO_PIPELINE, importRawFiles, type ImportDeps } from './raw';
 import type { WalkTools } from './walks';
 import type { WalkTrack } from './walkSource';
@@ -153,6 +153,87 @@ describe('importRawFiles, 360 video', () => {
     expect(as360.items[0]).toMatchObject({ file: 'tour.mp4', kind: 'video', status: 'imported' });
     expect(as360.backup).toBe('');
     expect(await readdir(join(root, 'walks'))).toEqual(['tour']);
+  });
+
+  /** A tiny but valid GLB (an empty scene). */
+  async function glbFile(name: string): Promise<string> {
+    const json = new TextEncoder().encode('{"asset":{"version":"2.0"},"scenes":[{"nodes":[]}]}  ');
+    const b = new Uint8Array(20 + json.length);
+    const v = new DataView(b.buffer);
+    v.setUint32(0, 0x46546c67, true);
+    v.setUint32(4, 2, true);
+    v.setUint32(8, b.length, true);
+    v.setUint32(12, json.length, true);
+    v.setUint32(16, 0x4e4f534a, true);
+    b.set(json, 20);
+    const p = join(dir, name);
+    await writeFile(p, b);
+    return p;
+  }
+  const layersOnDisk = async (root: string) =>
+    (
+      JSON.parse(await readFile(join(root, 'manifest.json'), 'utf8')) as {
+        layers: { kind: string }[];
+      }
+    ).layers.map((l) => l.kind);
+
+  it('saves the other files of a mixed import before the stitch starts', async () => {
+    const root = await project();
+    const tools = walkTools({ [CLIP]: [vide(128, 128), vide(128, 128)] });
+    const seen: { layers: string[]; walks: boolean }[] = [];
+    const copy = tools.copy.bind(tools);
+    tools.copy = async (out, o) => {
+      // the model given after the clip is already in the saved manifest when the stitch begins
+      seen.push({
+        layers: await layersOnDisk(root),
+        walks: (await readdir(root)).includes('walks'),
+      });
+      return copy(out, o);
+    };
+    const ticks: string[] = [];
+    const r = await importRawFiles(root, [await src(CLIP), await glbFile('pad.glb')], {
+      ...deps({ walk: tools }),
+      onProgress: (done, total, file) => ticks.push(`${String(done)}/${String(total)} ${file}`),
+    });
+    expect(seen).toEqual([{ layers: ['mesh'], walks: true }]);
+    // the rows stay in the order the files were given; the clip is counted when it is done
+    expect(r.items.map((i) => [i.file, i.status])).toEqual([
+      [CLIP, 'imported'],
+      ['pad.glb', 'imported'],
+    ]);
+    expect(r.items[0]?.message).toContain('Stitched to 256 x 128');
+    expect(ticks).toEqual(['1/2 pad.glb', `2/2 ${CLIP}`]);
+    expect(r.backup).not.toBe('');
+    expect(r.manifest.layers.map((l) => l.kind)).toEqual(['mesh']);
+  });
+
+  it('hands back the manifest as it is when the stitch ends, not as it was before it', async () => {
+    const root = await project();
+    const tools = walkTools({ [CLIP]: [vide(128, 128), vide(128, 128)] });
+    const copy = tools.copy.bind(tools);
+    let captureId = '';
+    tools.copy = async (out, o) => {
+      // while the clip is stitched, the person adds a survey date
+      const added = await import('./create').then((m) => m.ensureCapture(root, '2026-02-03'));
+      captureId = added.captureId;
+      await updateCapture(root, captureId, { label: 'Renamed while stitching' });
+      return copy(out, o);
+    };
+    const mixed = await importRawFiles(
+      root,
+      [await glbFile('pad.glb'), await src(CLIP)],
+      deps({ walk: tools }),
+    );
+    expect(mixed.manifest.captures.map((c) => c.label)).toContain('Renamed while stitching');
+    expect(mixed.manifest.layers.map((l) => l.kind)).toEqual(['mesh']);
+    // and the same for an import of nothing but a clip, which saves no manifest
+    tools.copy = async (out, o) => {
+      await updateCapture(root, captureId, { label: 'Renamed again' });
+      return copy(out, o);
+    };
+    const only = await importRawFiles(root, [join(dir, CLIP)], deps({ walk: tools }));
+    expect(only.backup).toBe('');
+    expect(only.manifest.captures.map((c) => c.label)).toContain('Renamed again');
   });
 
   it('keeps importing other files beside a walk, and then saves the manifest once', async () => {

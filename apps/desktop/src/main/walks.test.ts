@@ -75,6 +75,24 @@ describe('packageWalks', () => {
     expect((await packageWalks(archive)).map((w) => w.id)).toEqual(['b', 'a']);
   });
 
+  it('does not read a staging folder or a walk.json far larger than a real one', async () => {
+    const good = JSON.stringify(walk('a', '2026-10-10T08:00:00.000Z'));
+    let reads = 0;
+    const archive = {
+      entries: new Map([
+        ['walks/a/walk.json', { size: good.length }],
+        ['walks/big/walk.json', { size: 5 * 1024 * 1024 }],
+        ['walks/.staging-b-00112233/walk.json', { size: good.length }],
+      ]),
+      read: (name: string) => {
+        reads++;
+        return Promise.resolve(Buffer.from(name === 'walks/a/walk.json' ? good : '{}'));
+      },
+    };
+    expect((await packageWalks(archive)).map((w) => w.id)).toEqual(['a']);
+    expect(reads).toBe(1);
+  });
+
   it('answers with an empty list when a member cannot be read', async () => {
     const archive = {
       entries: new Map([['walks/a/walk.json', {}]]),

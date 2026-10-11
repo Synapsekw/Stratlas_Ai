@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import type { FfmpegCheck } from '../import/stitch';
-import { importWalk, listWalks, type WalkTools } from './walks';
+import { importWalk, listWalks, sweepStaging, walkIdFor, type WalkTools } from './walks';
 import type { WalkTrack } from './walkSource';
 
 let dir: string;
@@ -264,6 +264,152 @@ describe('importWalk', () => {
     expect((await listWalks(root)).map((w) => w.id).sort()).toEqual([a.walk.id, b.walk.id].sort());
   });
 
+  // ---- the move into place when another program holds a file of the folder open (Windows)
+
+  const eperm = () =>
+    Object.assign(new Error('EPERM: operation not permitted, rename'), { code: 'EPERM' });
+  /** A move that is refused `fails` times as Windows refuses it for an open file, then works. */
+  function refusing(fails: number) {
+    let n = 0;
+    return {
+      tries: () => n,
+      move: {
+        platform: 'win32' as const,
+        sleep: () => Promise.resolve(),
+        rename: async (from: string, to: string) => {
+          n++;
+          if (n <= fails) throw eperm();
+          const { rename } = await import('node:fs/promises');
+          await rename(from, to);
+        },
+      },
+    };
+  }
+
+  it('waits for a program that briefly holds the finished folder open, then moves it', async () => {
+    const { t, calls } = tools({ tracksBy: { [CLIP]: [vide(2880, 2880), vide(2880, 2880)] } });
+    const r3 = refusing(3);
+    const r = await importWalk(root, await src(CLIP), { tools: t, move: r3.move });
+    expect(r.ok).toBe(true);
+    expect(r3.tries()).toBe(4);
+    expect(calls.filter((c) => c.startsWith('copy'))).toHaveLength(1);
+    expect(await readdir(join(root, 'walks'))).toEqual(['vid-20260101-120000-00-001']);
+  });
+
+  it('keeps a finished stitch whose move stays refused, and the next import adds it', async () => {
+    const { t, calls } = tools({ tracksBy: { [CLIP]: [vide(2880, 2880), vide(2880, 2880)] } });
+    const never = refusing(Infinity);
+    const file = await src(CLIP);
+    const r = await importWalk(root, file, { tools: t, move: never.move });
+    expect(r).toMatchObject({ ok: false, status: 'error' });
+    if (!r.ok) {
+      expect(r.message).toContain('It was kept');
+      expect(r.message).toContain('Import the file again');
+      expect(r.message).not.toContain('EPERM');
+    }
+    // the whole stitch is still there, in its staging folder, and is not listed as a walk
+    const left = await readdir(join(root, 'walks'));
+    expect(left).toHaveLength(1);
+    expect(left[0]).toMatch(/^\.staging-/);
+    expect((await readdir(join(root, 'walks', left[0] ?? ''))).sort()).toEqual([
+      'playback.mp4',
+      'poster.jpg',
+      'walk.json',
+    ]);
+    expect(await listWalks(root)).toEqual([]);
+
+    // importing the file again moves it into place; nothing is stitched a second time
+    const again = await importWalk(root, file, { tools: t });
+    expect(again.ok).toBe(true);
+    if (!again.ok) return;
+    expect(calls.filter((c) => c.startsWith('copy'))).toHaveLength(1);
+    expect(again.walk.id).toBe('vid-20260101-120000-00-001');
+    expect(again.message).toContain('nothing was stitched again');
+    expect(await readdir(join(root, 'walks'))).toEqual(['vid-20260101-120000-00-001']);
+    const saved = WalkFile.parse(
+      JSON.parse(await readFile(join(root, 'walks', again.walk.id, 'walk.json'), 'utf8')),
+    );
+    expect(saved.video.src).toBe('walks/vid-20260101-120000-00-001/playback.mp4');
+    expect(saved.poster).toBe('walks/vid-20260101-120000-00-001/poster.jpg');
+    expect((await listWalks(root)).map((w) => w.id)).toEqual([again.walk.id]);
+  });
+
+  // ---- what an interrupted import leaves behind
+
+  it('removes the half copy an interrupted import left, before the next import', async () => {
+    const stale = join(root, 'walks', '.staging-old-clip-0a1b2c3d');
+    await mkdir(stale, { recursive: true });
+    await writeFile(join(stale, 'playback.mp4'), 'half a video');
+    await writeFile(join(stale, 'playback.mp4.part'), 'half a video');
+    const { t } = tools({ tracksBy: { 'tour.mp4': [vide(1920, 960, 'avc1', 30)] } });
+    const r = await importWalk(root, await src('tour.mp4'), { tools: t });
+    expect(r.ok).toBe(true);
+    expect(await readdir(join(root, 'walks'))).toEqual(['tour']);
+  });
+
+  it('never touches the staging folder of an import that is still running', async () => {
+    let release: () => void = () => undefined;
+    const waiting = new Promise<void>((r) => {
+      release = r;
+    });
+    let stagingOfSlow = '';
+    const slow = tools({ tracksBy: { [CLIP]: [vide(2880, 2880), vide(2880, 2880)] } });
+    slow.t.copy = async (out) => {
+      stagingOfSlow = out;
+      await writeFile(out, 'being written');
+      await waiting;
+      return { width: 3840, height: 1920, fps: 29.97, encoder: 'libx264', filter: 'v360=test' };
+    };
+    const first = importWalk(root, await src(CLIP), { tools: slow.t });
+    await expect.poll(() => stagingOfSlow).not.toBe('');
+    // a second import starts and finishes while the first is still stitching
+    const quick = tools({ tracksBy: { 'tour.mp4': [vide(1920, 960, 'avc1', 30)] } });
+    expect((await importWalk(root, await src('tour.mp4'), { tools: quick.t })).ok).toBe(true);
+    expect(await readFile(stagingOfSlow, 'utf8')).toBe('being written');
+    expect(await sweepStaging(root)).toEqual([]);
+    expect(await readFile(stagingOfSlow, 'utf8')).toBe('being written');
+    release();
+    expect((await first).ok).toBe(true);
+    expect((await readdir(join(root, 'walks'))).sort()).toEqual([
+      'tour',
+      'vid-20260101-120000-00-001',
+    ]);
+  });
+
+  it('sweeping a project without walks does nothing', async () => {
+    expect(await sweepStaging(root)).toEqual([]);
+    expect(await readdir(root)).toEqual([]);
+  });
+
+  // ---- nothing that can refuse the file waits until after the stitch
+
+  it('caps a very long file name instead of failing after the stitch', async () => {
+    const long = 'Site walk north side '.repeat(6).trim();
+    expect(long.length).toBeGreaterThan(100);
+    const { t, calls } = tools();
+    t.tracks = () => Promise.resolve([vide(1920, 960, 'hvc1', 30)]);
+    const r = await importWalk(root, await src(`${long}.mp4`), { tools: t });
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    expect(calls[0]).toBe('copy:equirect');
+    expect(r.walk.id.length).toBeLessThanOrEqual(80);
+    expect(r.walk.id).toBe(walkIdFor(long));
+    expect(r.walk.name).toBe(long);
+    // the id leaves room for a "-2" inside the contract's limit, and is never empty
+    expect(walkIdFor('a'.repeat(300))).toHaveLength(80);
+    expect(walkIdFor('----')).toBe('walk');
+  });
+
+  it('refuses a file whose details cannot be saved before any copy is made', async () => {
+    const odd = { ...vide(2880, 2880), fps: Number.NaN };
+    const { t, calls } = tools({ tracksBy: { [CLIP]: [odd, odd] } });
+    const r = await importWalk(root, await src(CLIP), { tools: t });
+    expect(r).toMatchObject({ ok: false, status: 'error' });
+    if (!r.ok) expect(r.message).toContain('could not be read well enough');
+    expect(calls).toEqual([]);
+    expect(await readdir(root)).toEqual([]);
+  });
+
   it('stores a stitched H.264 MP4 as it is, without ffmpeg', async () => {
     let asked = false;
     const { t, calls } = tools({
@@ -342,6 +488,12 @@ describe('listWalks', () => {
       JSON.stringify({ schema: 'aio.walk/2', id: 'newer' }),
     );
     await mkdir(join(root, 'walks', '.staging-x'), { recursive: true });
+    // a walk.json far larger than any real one is not read at all
+    await mkdir(join(root, 'walks', 'huge'), { recursive: true });
+    await writeFile(
+      join(root, 'walks', 'huge', 'walk.json'),
+      JSON.stringify({ schema: 'aio.walk/1', id: 'huge', pad: 'x'.repeat(300 * 1024) }),
+    );
     await mkdir(join(root, 'walks', 'empty'), { recursive: true });
     const list = await listWalks(root);
     expect(list.map((w) => w.id)).toEqual(['tour', 'vid-20260101-120000-00-001']);

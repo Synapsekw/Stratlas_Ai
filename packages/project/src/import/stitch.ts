@@ -1,6 +1,6 @@
 import type { WalkLayout } from '@aio/schema';
 import { execFile, spawn } from 'node:child_process';
-import { rename, rm } from 'node:fs/promises';
+import { rm } from 'node:fs/promises';
 import { promisify } from 'node:util';
 import {
   detectProxyEncoder,
@@ -313,6 +313,8 @@ export interface WalkCopyOptions {
   onProgress?: (fraction: number) => void;
   signal?: AbortSignal;
   limitS?: number;
+  /** How ffmpeg is run (tests hand in a stand-in). */
+  run?: (args: readonly string[], o?: RunFfmpegOptions) => Promise<void>;
 }
 
 export interface WalkCopy extends FrameSize {
@@ -324,10 +326,14 @@ export interface WalkCopy extends FrameSize {
 }
 
 /**
- * Write the playback copy of a 360 video to a temporary name next to `out`, then move it into
- * place, so a reader never sees half a file. A failed attempt with a hardware encoder is retried
- * on the CPU (libx264), as the drone review copy does. Decoding stays on the CPU: the stitch
- * filters need the frames in memory anyway.
+ * Write the playback copy of a 360 video to `out`. A failed attempt with a hardware encoder is
+ * retried on the CPU (libx264), as the drone review copy does. Decoding stays on the CPU: the
+ * stitch filters need the frames in memory anyway.
+ *
+ * The copy is written under its final name, with no temporary file renamed at the end: the caller
+ * gives a path nothing reads yet (the walk import's own staging folder, moved into place as a
+ * whole), and a rename that Windows refuses while another program has the file open would throw
+ * away minutes of work or run the whole stitch again. A failed attempt removes what it wrote.
  */
 export async function makeWalkCopy(out: string, o: WalkCopyOptions): Promise<WalkCopy> {
   const encoder = o.encoder ?? (await detectProxyEncoder(o.bin));
@@ -337,14 +343,14 @@ export async function makeWalkCopy(out: string, o: WalkCopyOptions): Promise<Wal
     0.001,
     o.limitS !== undefined ? Math.min(o.limitS, o.durationS) : o.durationS,
   );
-  const tmp = `${out}.part`;
+  const run = o.run ?? runFfmpeg;
   const t0 = Date.now();
   const attempts: ProxyEncoder[] = encoder === 'libx264' ? ['libx264'] : [encoder, 'libx264'];
   let last: unknown;
   for (const enc of attempts) {
     const common = {
       input: o.input,
-      out: tmp,
+      out,
       srcFps: o.srcFps,
       encoder: enc,
       audio: o.audio,
@@ -355,12 +361,11 @@ export async function makeWalkCopy(out: string, o: WalkCopyOptions): Promise<Wal
         ? equirectCopyArgs({ ...common, ...size })
         : stitchArgs({ ...common, layout: o.layout, lens: o.lens });
     try {
-      await runFfmpeg(args, {
+      await run(args, {
         ...(o.bin ? { bin: o.bin } : {}),
         ...(o.signal ? { signal: o.signal } : {}),
         onSeconds: (s) => o.onProgress?.(Math.max(0, Math.min(1, s / total))),
       });
-      await rename(tmp, out);
       return {
         ...size,
         encoder: enc,
@@ -372,7 +377,7 @@ export async function makeWalkCopy(out: string, o: WalkCopyOptions): Promise<Wal
       };
     } catch (e) {
       last = e;
-      await rm(tmp, { force: true });
+      await rm(out, { force: true }).catch(() => undefined);
       if (o.signal?.aborted) break;
     }
   }

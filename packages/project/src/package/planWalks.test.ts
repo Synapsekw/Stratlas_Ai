@@ -24,8 +24,12 @@ const files: SourceFile[] = [
   { path: 'walks/vid-1/walk.json', size: 900 },
   { path: 'walks/vid-1/playback.mp4', size: 5000 },
   { path: 'walks/vid-1/poster.jpg', size: 300 },
-  // a copy that was being written when the app stopped
-  { path: 'walks/.staging-vid-2/playback.mp4.part', size: 4000 },
+  // what an import that was interrupted left in its staging folder: half a stitch, and half a
+  // stored-as-is copy under the final file name
+  { path: 'walks/.staging-vid-2-0a1b2c3d/playback.mp4.part', size: 4000 },
+  { path: 'walks/.staging-tour-9f8e7d6c/playback.mp4', size: 7000 },
+  { path: 'walks/.staging-tour-9f8e7d6c/poster.jpg', size: 70 },
+  { path: 'walks/.staging-done-11223344/walk.json', size: 800 },
 ];
 
 describe('planPackage and walks', () => {
@@ -35,8 +39,10 @@ describe('planPackage and walks', () => {
     expect(paths).toContain('walks/vid-1/walk.json');
     expect(paths).toContain('walks/vid-1/playback.mp4');
     expect(paths).toContain('walks/vid-1/poster.jpg');
-    expect(paths).not.toContain('walks/.staging-vid-2/playback.mp4.part');
+    // nothing of a staging folder travels, whatever its files are called
+    expect(paths.filter((x) => x.startsWith('walks/.staging-'))).toEqual([]);
     expect(p.baseBytes).toBe(2 + 900 + 5000 + 300);
+    expect(p.totalBytes).toBe(10 + 2 + 900 + 5000 + 300);
   });
 
   it('keeps the walk when every layer is left out', () => {

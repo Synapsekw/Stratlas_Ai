@@ -6,9 +6,10 @@ import {
   type WalkLayout,
   type WalkStream,
 } from '@aio/schema';
-import { copyFile, mkdir, readFile, readdir, rename, rm, stat, writeFile } from 'node:fs/promises';
+import { copyFile, mkdir, readFile, readdir, rm, stat, writeFile } from 'node:fs/promises';
 import { randomBytes } from 'node:crypto';
-import { basename, dirname, extname, join } from 'node:path';
+import { basename, dirname, extname, join, resolve } from 'node:path';
+import { renameWhenFree, type RenameOptions } from '../import/rename';
 import {
   WALK_DEFAULTS,
   ffmpegMissingMessage,
@@ -51,7 +52,10 @@ export interface WalkTools {
   trailer?(file: string): Promise<boolean>;
   /** Is ffmpeg there, and can it stitch? */
   check(): Promise<FfmpegCheck>;
-  /** Write the equirectangular playback copy to `out`. */
+  /**
+   * Write the equirectangular playback copy to `out`, a file in the import's own staging folder:
+   * nothing reads it until the walk is moved into place, so it is written under its final name.
+   */
   copy(
     out: string,
     o: WalkCopyRequest,
@@ -65,6 +69,8 @@ export interface WalkImportOptions {
   /** 0 to 1 while the playback copy is written. */
   onProgress?: (fraction: number) => void;
   now?: () => Date;
+  /** How the finished folder is moved into place (tests hand in a rename that fails). */
+  move?: RenameOptions;
 }
 
 export type WalkImportResult =
@@ -74,20 +80,140 @@ export type WalkImportResult =
 /** Codecs and sizes Chromium plays without help: such a stitched video is stored as it is. */
 const DIRECT_CODECS = new Set(['avc1', 'avc3']);
 
+/** A `walk.json` is a few hundred bytes; anything far larger is not one and is not read. */
+export const WALK_JSON_MAX_BYTES = 256 * 1024;
+
+/** Longest walk id before a `-2` is added, well inside the id limit of the contract. */
+const ID_MAX = 80;
+const NAME_MAX = 200;
+const FILE_MAX = 260;
+
 const text = (e: unknown) => (e instanceof Error ? e.message : String(e));
 const px = (s: FrameSize) => `${String(s.width)} x ${String(s.height)}`;
+const r3 = (v: number) => Math.round(v * 1000) / 1000;
 
 const OPEN_HINT = 'Open it under 360 video in the sidebar.';
 
+async function exists(p: string): Promise<boolean> {
+  try {
+    await stat(p);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/** The id a walk of this file name asks for: lower-case, file-safe, short enough for a suffix. */
+export function walkIdFor(stem: string): string {
+  return slug(stem, 'walk').slice(0, ID_MAX).replace(/-+$/, '') || 'walk';
+}
+
+/** Staging folders of the imports running in this process, by resolved path. */
+const live = new Set<string>();
+const liveKey = (p: string) => resolve(p).toLowerCase();
+
+/**
+ * Move a finished staging folder to `walks/<id>/`, taking the first free id. The move itself
+ * takes the id: when another import took it meanwhile the move fails because the folder exists,
+ * and the next free id is tried with `walk.json` written for it. A move that is refused while the
+ * target does not exist means another program holds a file of the folder open (antivirus, the
+ * search indexer): it is tried again for about half a minute before it fails.
+ */
+async function place(
+  walksDir: string,
+  staging: string,
+  base: string,
+  describe: (id: string) => WalkFile,
+  move: RenameOptions | undefined,
+): Promise<WalkFile> {
+  for (let attempt = 0; ; attempt++) {
+    const taken = new Set((await readdir(walksDir)).map((n) => n.toLowerCase()));
+    const walk = describe(uniqueId(base, (x) => taken.has(x)));
+    await writeFile(join(staging, 'walk.json'), `${JSON.stringify(walk, null, 2)}\n`);
+    const target = join(walksDir, walk.id);
+    try {
+      await renameWhenFree(staging, target, { ...move, giveUp: () => exists(target) });
+      return walk;
+    } catch (e) {
+      if (!(await exists(target)) || attempt >= 20) throw e;
+    }
+  }
+}
+
+/** The walk a finished staging folder holds: its `walk.json` reads and the video is there. */
+async function finishedIn(staging: string): Promise<WalkFile | null> {
+  const file = join(staging, 'walk.json');
+  try {
+    if ((await stat(file)).size > WALK_JSON_MAX_BYTES) return null;
+    const r = readVersioned(JSON.parse(await readFile(file, 'utf8')) as unknown, {
+      family: 'aio.walk',
+      schema: WalkFile,
+    });
+    return r.ok && (await exists(join(staging, 'playback.mp4'))) ? r.value : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Clear what earlier imports left in `walks/`: a staging folder no running import of this process
+ * owns. One that holds a finished walk (its move into place was refused, or the app stopped just
+ * before it) is moved into place now and returned; any other is half a copy and is removed.
+ * Failures are ignored: a folder that cannot be removed or moved now is tried at the next import.
+ */
+export async function sweepStaging(root: string, move?: RenameOptions): Promise<WalkFile[]> {
+  const walksDir = join(root, WALKS_DIR);
+  let names: string[];
+  try {
+    names = (await readdir(walksDir, { withFileTypes: true }))
+      .filter((e) => e.isDirectory() && e.name.startsWith('.staging-'))
+      .map((e) => e.name);
+  } catch {
+    return [];
+  }
+  const adopted: WalkFile[] = [];
+  for (const n of names) {
+    const staging = join(walksDir, n);
+    if (live.has(liveKey(staging))) continue;
+    try {
+      const done = await finishedIn(staging);
+      if (!done) {
+        await rm(staging, { recursive: true, force: true });
+        continue;
+      }
+      const poster = await exists(join(staging, 'poster.jpg'));
+      const under = (id: string): WalkFile => {
+        const next: Record<string, unknown> = {
+          ...done,
+          id,
+          video: { ...done.video, src: `${WALKS_DIR}/${id}/playback.mp4` },
+        };
+        if (poster) next.poster = `${WALKS_DIR}/${id}/poster.jpg`;
+        else delete next.poster;
+        return WalkFile.parse(next);
+      };
+      adopted.push(await place(walksDir, staging, done.id, under, move));
+    } catch {
+      // still held open, or gone meanwhile: the next import tries again
+    }
+  }
+  return adopted;
+}
+
 /**
  * Bring one 360 video into the project. A camera file (`.insv`, `.lrv`) is stitched; a stitched
- * MP4 or MOV is stored as it is when Chromium plays it, else as a smaller playback copy. The
- * walk is built in a staging folder of its own and moved into `walks/<id>/` last, so a failure
- * leaves nothing behind; when ffmpeg is needed and missing, nothing is written at all.
+ * MP4 or MOV is stored as it is when Chromium plays it, else as a smaller playback copy.
  *
- * There is no list file to keep in step: the walks of a project are its `walks/` folders. The id
- * is taken by the move itself, which fails when the folder exists, and is then chosen again, so
- * two imports that finish close together both keep their walk.
+ * - Everything that can refuse the file is checked before the long work: the layout, ffmpeg, and
+ *   that the walk's description can be saved. When ffmpeg is needed and missing, nothing is
+ *   written at all.
+ * - The walk is built in a staging folder of its own and moved into `walks/<id>/` last. A copy
+ *   that fails leaves nothing behind. A copy that was finished but could not be moved (another
+ *   program held it open for half a minute) is kept, and the next import of the file adds it
+ *   without a new stitch.
+ * - There is no list file to keep in step: the walks of a project are its `walks/` folders. The
+ *   id is taken by the move itself, so two imports that finish close together both keep their
+ *   walk.
  */
 export async function importWalk(
   root: string,
@@ -107,6 +233,82 @@ export async function importWalk(
   const first = kind.video[0];
   if (!first) return { ok: false, status: 'skipped', message: 'The file has no video track.' };
 
+  const durationS = first.durationMs / 1000;
+  const named = insta360Name(name);
+  const streams: WalkStream[] = kind.video.map((t) => ({
+    width: t.width,
+    height: t.height,
+    codec: t.codec,
+    fps: r3(t.fps),
+  }));
+  const createdAt = (o.now?.() ?? new Date()).toISOString();
+  let bytes: number;
+  try {
+    bytes = (await stat(file)).size;
+  } catch (e) {
+    return { ok: false, status: 'error', message: `Could not read the video: ${text(e)}` };
+  }
+  type Made = FrameSize & { fps: number; encoder?: string; filter?: string };
+  const describe = (id: string, made: Made, extra: { poster: boolean; trailer?: boolean }) =>
+    WalkFile.parse({
+      schema: WALK_SCHEMA,
+      id,
+      name: stem.slice(0, NAME_MAX),
+      createdAt,
+      source: {
+        file: name.slice(0, FILE_MAX),
+        bytes,
+        layout: kind.layout,
+        ...(extra.trailer !== undefined ? { trailer: extra.trailer } : {}),
+        ...(named ? { capturedAt: named.capturedAt } : {}),
+        streams,
+        ...(kind.lowRes ? { lowRes: true } : {}),
+      },
+      video: {
+        src: `${WALKS_DIR}/${id}/playback.mp4`,
+        width: made.width,
+        height: made.height,
+        durationS: r3(durationS),
+        fps: r3(made.fps),
+        audio: kind.audio,
+      },
+      ...(extra.poster ? { poster: `${WALKS_DIR}/${id}/poster.jpg` } : {}),
+      ...(kind.layout !== 'equirect' && made.filter
+        ? {
+            stitch: {
+              tool: 'ffmpeg',
+              filter: made.filter,
+              fovDeg: WALK_DEFAULTS.fovDeg,
+              encoder: made.encoder ?? 'unknown',
+            },
+          }
+        : {}),
+    });
+
+  // what would be saved is checked now, not after minutes of stitching
+  const base = walkIdFor(stem);
+  try {
+    describe(base, { width: first.width, height: first.height, fps: first.fps }, { poster: false });
+  } catch {
+    return {
+      ok: false,
+      status: 'error',
+      message:
+        'The 360 video was not added: its length, frame rate or size could not be read well enough to save it.',
+    };
+  }
+
+  // a playback copy an earlier import of this file finished but could not move into place
+  const again = (await sweepStaging(root, o.move)).find(
+    (w) => w.source.file === name.slice(0, FILE_MAX) && w.source.bytes === bytes,
+  );
+  if (again)
+    return {
+      ok: true,
+      walk: again,
+      message: `The playback copy an earlier import of this file had finished (${px(again.video)}) is now in the project; nothing was stitched again. ${OPEN_HINT}`,
+    };
+
   const direct =
     kind.layout === 'equirect' &&
     DIRECT_CODECS.has(first.codec) &&
@@ -121,13 +323,14 @@ export async function importWalk(
 
   const walksDir = join(root, WALKS_DIR);
   await mkdir(walksDir, { recursive: true });
-  const base = slug(stem, 'walk');
   const staging = join(walksDir, `.staging-${base}-${randomBytes(4).toString('hex')}`);
+  live.add(liveKey(staging));
+  /** The copy, the poster and `walk.json` are written: only the move into place is left. */
+  let finished = false;
   try {
     await mkdir(staging);
-    const durationS = first.durationMs / 1000;
     const video = join(staging, 'playback.mp4');
-    let made: FrameSize & { fps: number; encoder?: string; filter?: string };
+    let made: Made;
     if (direct) {
       await copyFile(file, video);
       made = { width: first.width, height: first.height, fps: first.fps };
@@ -152,70 +355,14 @@ export async function importWalk(
         poster = false;
       }
     }
-    const named = insta360Name(name);
     const trailer = o.tools.trailer ? await o.tools.trailer(file).catch(() => false) : undefined;
-    const streams: WalkStream[] = kind.video.map((t) => ({
-      width: t.width,
-      height: t.height,
-      codec: t.codec,
-      fps: Math.round(t.fps * 1000) / 1000,
-    }));
-    const createdAt = (o.now?.() ?? new Date()).toISOString();
-    const bytes = (await stat(file)).size;
-    const describe = (id: string) =>
-      WalkFile.parse({
-        schema: WALK_SCHEMA,
-        id,
-        name: stem,
-        createdAt,
-        source: {
-          file: name,
-          bytes,
-          layout: kind.layout,
-          ...(trailer !== undefined ? { trailer } : {}),
-          ...(named ? { capturedAt: named.capturedAt } : {}),
-          streams,
-          ...(kind.lowRes ? { lowRes: true } : {}),
-        },
-        video: {
-          src: `${WALKS_DIR}/${id}/playback.mp4`,
-          width: made.width,
-          height: made.height,
-          durationS: Math.round(durationS * 1000) / 1000,
-          fps: Math.round(made.fps * 1000) / 1000,
-          audio: kind.audio,
-        },
-        ...(poster ? { poster: `${WALKS_DIR}/${id}/poster.jpg` } : {}),
-        ...(kind.layout !== 'equirect' && made.filter
-          ? {
-              stitch: {
-                tool: 'ffmpeg',
-                filter: made.filter,
-                fovDeg: WALK_DEFAULTS.fovDeg,
-                encoder: made.encoder ?? 'unknown',
-              },
-            }
-          : {}),
-      });
-    // take the first free id by moving the finished folder into place; when another import took
-    // it meanwhile the move fails, and the next free id is tried with walk.json written for it
-    let walk = describe(base);
-    for (let attempt = 0; ; attempt++) {
-      const taken = new Set((await readdir(walksDir)).map((n) => n.toLowerCase()));
-      walk = describe(uniqueId(base, (x) => taken.has(x)));
-      await writeFile(join(staging, 'walk.json'), `${JSON.stringify(walk, null, 2)}\n`);
-      const target = join(walksDir, walk.id);
-      try {
-        await rename(staging, target);
-        break;
-      } catch (e) {
-        const lost = await stat(target).then(
-          () => true,
-          () => false,
-        );
-        if (!lost || attempt >= 20) throw e;
-      }
-    }
+    const extra = { poster, ...(trailer !== undefined ? { trailer } : {}) };
+    await writeFile(
+      join(staging, 'walk.json'),
+      `${JSON.stringify(describe(base, made, extra), null, 2)}\n`,
+    );
+    finished = true;
+    const walk = await place(walksDir, staging, base, (id) => describe(id, made, extra), o.move);
 
     const parts: string[] = [];
     if (kind.layout === 'insv-dual-stream')
@@ -242,14 +389,25 @@ export async function importWalk(
     parts.push(OPEN_HINT);
     return { ok: true, walk, message: parts.join(' ') };
   } catch (e) {
-    await rm(staging, { recursive: true, force: true });
+    if (finished)
+      // the long work is done and only the move was refused: never thrown away
+      return {
+        ok: false,
+        status: 'error',
+        message:
+          'The playback copy was made, but it could not be moved into the project: another program (antivirus, a search indexer or a file sync) kept one of its files open. It was kept. Import the file again and it is added without a new stitch.',
+      };
+    await rm(staging, { recursive: true, force: true }).catch(() => undefined);
     return { ok: false, status: 'error', message: `The 360 video was not added: ${text(e)}` };
+  } finally {
+    live.delete(liveKey(staging));
   }
 }
 
 /**
  * The walks of a project folder: every `walks/<id>/walk.json` that reads and names its own
- * folder, newest first. Staging folders, broken files and files of a newer version are left out.
+ * folder, newest first. Staging folders, broken or oversized files and files of a newer version
+ * are left out.
  */
 export async function listWalks(root: string): Promise<WalkFile[]> {
   let names: string[];
@@ -262,10 +420,11 @@ export async function listWalks(root: string): Promise<WalkFile[]> {
   }
   const out: WalkFile[] = [];
   for (const n of names) {
-    const walk = parseWalk(
-      await readFile(join(root, WALKS_DIR, n, 'walk.json'), 'utf8').catch(() => null),
-      n,
-    );
+    const file = join(root, WALKS_DIR, n, 'walk.json');
+    const json = await stat(file)
+      .then((s) => (s.size > WALK_JSON_MAX_BYTES ? null : readFile(file, 'utf8')))
+      .catch(() => null);
+    const walk = parseWalk(json, n);
     if (walk) out.push(walk);
   }
   return sortWalks(out);
@@ -273,7 +432,7 @@ export async function listWalks(root: string): Promise<WalkFile[]> {
 
 /** A `walk.json` text as a walk of the folder `id`, or null when it is not one. */
 export function parseWalk(json: string | null, id: string): WalkFile | null {
-  if (json === null) return null;
+  if (json === null || json.length > WALK_JSON_MAX_BYTES) return null;
   let raw: unknown;
   try {
     raw = JSON.parse(json);

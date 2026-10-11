@@ -56,10 +56,13 @@ export {
   type ProxyOptions,
 } from '../import/proxy';
 export {
+  WALK_JSON_MAX_BYTES,
   importWalk,
   listWalks,
   parseWalk,
   sortWalks,
+  sweepStaging,
+  walkIdFor,
   type WalkCopyRequest,
   type WalkImportOptions,
   type WalkImportResult,

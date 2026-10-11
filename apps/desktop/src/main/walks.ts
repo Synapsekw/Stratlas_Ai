@@ -71,11 +71,14 @@ export async function packageWalks(archive: {
   entries: ReadonlyMap<string, unknown>;
   read(name: string): Promise<Buffer>;
 }): Promise<WalkFile[]> {
-  const { parseWalk, sortWalks } = await lib();
+  const { parseWalk, sortWalks, WALK_JSON_MAX_BYTES } = await lib();
   const out: WalkFile[] = [];
-  for (const name of archive.entries.keys()) {
+  for (const [name, entry] of archive.entries) {
     const id = /^walks\/([^/]+)\/walk\.json$/.exec(name)?.[1];
     if (!id || id.startsWith('.')) continue;
+    // a walk.json is a few hundred bytes: a member far larger is not one, and is not unpacked
+    const size = (entry as { size?: unknown } | null)?.size;
+    if (typeof size === 'number' && size > WALK_JSON_MAX_BYTES) continue;
     const text = await archive
       .read(name)
       .then((b) => b.toString('utf8'))

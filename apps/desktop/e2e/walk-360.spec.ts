@@ -217,6 +217,12 @@ test.describe('360 video', () => {
     await expect(play).toHaveAttribute('aria-label', 'Play');
     await win.getByTestId('walk-scrub').fill('1');
     await expect.poll(() => num(win, 'walk-bar', 'data-time')).toBeCloseTo(1, 1);
+    // a key the focused player takes does not reach listeners on the window
+    await win.evaluate(() => {
+      const w = window as unknown as { walkKeysSeen: string[] };
+      w.walkKeysSeen = [];
+      window.addEventListener('keydown', (e) => w.walkKeysSeen.push(e.key));
+    });
     await view.focus();
     await win.keyboard.press('.');
     await expect.poll(() => num(win, 'walk-bar', 'data-time')).toBeGreaterThan(1.01);
@@ -224,6 +230,9 @@ test.describe('360 video', () => {
     await expect(play).toHaveAttribute('aria-label', 'Pause');
     await win.keyboard.press('k');
     await expect(play).toHaveAttribute('aria-label', 'Play');
+    expect(
+      await win.evaluate(() => (window as unknown as { walkKeysSeen: string[] }).walkKeysSeen),
+    ).toEqual([]);
 
     // 6. a stitched MP4 through "Add 360 video": stored as it is, a second walk to choose from
     await nextOpenDialog(app, [tour]);

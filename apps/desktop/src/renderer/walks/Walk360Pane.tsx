@@ -146,6 +146,9 @@ function WalkPlayer({ projectId, walk }: { projectId: string; walk: WalkFile }) 
     });
     if (!a) return;
     e.preventDefault();
+    // a key the player took goes no further: window listeners that do not look at
+    // defaultPrevented (K adds a keyframe in the video annotator) must not act on it too
+    e.stopPropagation();
     if (a.rate !== undefined) v.playbackRate = a.rate;
     if (a.play !== undefined) toggle(a.play);
     if (a.seekBy !== undefined) seek(v.currentTime + a.seekBy);
