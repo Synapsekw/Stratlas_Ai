@@ -70,7 +70,7 @@ Ties: several findings share the worst level. The agent shows the first by code,
 ### The agent on every screen
 
 - One conversation per open project, kept while the person moves between screens. It ends, as today, when another project opens or **New conversation** is pressed.
-- On **Scene** the panel stays where it is. On **Issues**, **Media**, **Detections** and **Reports** it is a column on the right edge with the same panel in it. A button in the title bar and the shortcut that folds the right panel on Scene (**Ctrl Alt B**) fold it away; folded or not is remembered on this machine.
+- On **Scene** the panel stays where it is. On **Issues**, **Media**, **Detections** and **Reports** it is a column on the right edge with the same panel in it. A button in the title bar and the shortcut that folds the right panel on Scene (**Ctrl Alt B**) fold it away. It starts folded on those screens, so nothing moves for people who do not use the agent, and opens by itself when the agent brings the person there; folded or not is then remembered on this machine. In the smallest window the app supports (1100 x 700) the open column leaves the screen usable: it takes at most a third of the width.
 - The chip at the top of the panel names what the agent is looking at, as today: on other screens it reads the screen (`Photos`, `Issues`, `Report`).
 - A step that needs the 3D view (flying, orbiting, a standard view) opens **Scene** first when another screen is showing.
 - A reply under way carries on across a screen change. **Esc** and **Stop** work on any screen.
@@ -106,6 +106,7 @@ A finding is linked to an asset when needed, from where it is:
 
 - A finding with a 3D location belongs to the smallest tagged asset whose bounds contain it (with half a metre of slack). If none contains it, to the nearest one within five metres. Otherwise it has no asset.
 - Its area is the asset's area (the component group).
+- A finding marked only on a photo has no 3D point. **Show a finding** then puts the camera where that photo was taken, looking the way the photo looks, opens the photo, and the agent says the finding is on a photo only.
 - A finding marked only on a photo or only on a map has no asset. The agent says so when it matters ("3 findings are marked on photos only and are not counted per asset").
 
 "This asset" in a request means the selected asset or area. With nothing selected it means the whole project, since a project is often one asset.
@@ -174,7 +175,7 @@ None expected. The tool catalogue, `AppHooks` and the stores live outside `@aio/
 
 - Unit: `assetOfIssue` (inside, nearest, none, photo only, two boxes); each new tool with a stub host (input checks, results, undo); the level filter in `mediaFindings`; the `issueView` and `mediaView` stores; the context (screen, levels, filters); the suggestions; the session surviving a panel unmount.
 - End to end, scripted model, in CI: `agent-show.spec.ts` on the demo project. A scripted "show the worst finding" selects it, flies and opens the evidence; a scripted "show photos, highest severity" lands on Media with the level set, the right photo count and the conversation still there; the column folds and unfolds; Undo puts Scene back. The existing `agent.spec.ts`, `agent-camera.spec.ts`, `agent-local.spec.ts` and `offline-cloud-ai.spec.ts` keep passing unchanged, and `network.spec.ts` still proves zero requests with cloud AI off.
-- Real model, opt-in, never in CI: `agent-eval.spec.ts` runs about 20 plain requests (the founder's two, their rewordings, asset and area questions, a project without photos, an unknown severity name) and checks the tool calls and the state of the app after each. It runs only when a provider key is in the environment, and prints a pass table and the token cost.
+- Real model, opt-in, never in CI: `agent-eval.spec.ts` runs about 20 plain requests (the founder's two, their rewordings, asset and area questions, a project without photos, an unknown severity name) and checks the tool calls and the state of the app after each. It runs only when a provider key is in the environment, and prints a pass table and the token cost. The build does not run it and takes no key from anywhere: the first run is the founder's. Until then the two requests are verified on the scripted model only, and the hand-off says so.
 
 ## The roadmap: what else the agent could do
 
@@ -195,4 +196,8 @@ Suggested order: Walk me through first (it reuses nearly everything from this br
 
 ## Merge order
 
-The branch touches files other branches in flight also touch: the tool catalogue in `packages/ai/src/tools.ts` (the branch that removes the original review edits one tool there), `Media.tsx`, `WorkspaceScreen.tsx` and `App.tsx`. It should merge after them and rebase; the Orchestrator decides the order.
+The branch touches files other branches in flight also touch: the tool catalogue in `packages/ai/src/tools.ts` (the branch that removes the original review edits one tool there), `Media.tsx`, `WorkspaceScreen.tsx` and `App.tsx`. The Orchestrator has set the order: this branch lands last, after `feat/remove-original-review` (which removes the `open_original_review` tool and the Review screen, so the column is not added to Review), `fix/split-view-parity`, `feat/project-types` and `feat/street-map-3d`, rebasing as each reaches `main`.
+
+## Decisions
+
+The founder passed the design decisions to the Orchestrator session, which decided on 11 Oct 2026: extend the existing agent; the agent stays where it is on Scene and gets a folding column on the other project screens, one conversation; a photo-only finding flies to the photo's camera; the real-model check ships opt-in and is first run by the founder; this branch lands last. Conditions: every filter the agent sets is visible and can be cleared, no new step edits project data, and the column works in the small window.
