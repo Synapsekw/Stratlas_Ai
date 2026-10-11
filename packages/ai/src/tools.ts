@@ -96,17 +96,7 @@ export const toolInputs = {
   list_layers: z
     .object({
       kind: z
-        .enum([
-          'mesh',
-          'pointcloud',
-          'basemap',
-          'raster',
-          'vector',
-          'video',
-          'photos',
-          'panoramas',
-          'legacy',
-        ])
+        .enum(['mesh', 'pointcloud', 'basemap', 'raster', 'vector', 'video', 'photos', 'panoramas'])
         .optional(),
     })
     .strict(),
@@ -283,11 +273,6 @@ export const toolInputs = {
       target: Target,
       radiusM: z.number().positive().max(5000).default(25),
       limit: z.number().int().positive().max(200).default(50),
-    })
-    .strict(),
-  open_original_review: z
-    .object({
-      layerId: z.string().min(1).optional().describe('Legacy layer id; default the first'),
     })
     .strict(),
   // M10 Globe (G6): the library's sites on the Earth
@@ -501,12 +486,6 @@ const BUILT_IN: ToolSpec[] = [
       'Find issues within radiusM metres of an asset, an issue or a point, closest first, with their distance.',
     scope: 'project',
     risk: 'read',
-  }),
-  spec('open_original_review', {
-    description:
-      "Open the project's original offline review (the delivered viewer) full screen in the app.",
-    scope: 'app',
-    risk: 'navigate',
   }),
   spec('list_sites', {
     description:

@@ -1,6 +1,6 @@
 /**
  * Analysis and output tools: compare captures, measure, find issues near a place, summaries by
- * zone and class, export issues and open the original review. Read tools only look at the
+ * zone and class, export issues and show sites on the Globe. Read tools only look at the
  * workspace and project files; export_issues writes a file (approval first).
  */
 import type { GlobeSite, Issue } from '@aio/schema';
@@ -334,7 +334,7 @@ define('summarize_by_class', ({ status }, ctx) => {
   return { result: { total: issues.length, classes }, summary: plural(classes.length, 'class') };
 });
 
-// export_issues and open_original_review -----------------------------------------------------
+// export_issues -------------------------------------------------------------------------------
 
 define('export_issues', async (filters, ctx) => {
   const p = project(ctx);
@@ -363,22 +363,6 @@ define('export_issues', async (filters, ctx) => {
     result: { path: saved.path, rows: issues.length, format: 'csv' },
     summary: plural(issues.length, 'row'),
   };
-});
-
-define('open_original_review', ({ layerId }, ctx) => {
-  const legacy = project(ctx).manifest.layers.filter((l) => l.kind === 'legacy');
-  const layer = layerId ? legacy.find((l) => l.id === layerId || l.name === layerId) : legacy[0];
-  if (!layer) {
-    throw new ToolError(
-      legacy.length === 0
-        ? 'This project has no original review.'
-        : `No original review "${layerId ?? ''}". Choose one of: ${legacy.map((l) => l.id).join(', ')}.`,
-    );
-  }
-  const open = ctx.app?.openReview;
-  if (!open) throw new ToolError('The original review can only be opened in the desktop app.');
-  open(layer.id);
-  return { result: { opened: layer.id, name: layer.name }, summary: layer.name };
 });
 
 // list_sites and show_on_globe (M10 Globe): the library on the Earth, no open project needed

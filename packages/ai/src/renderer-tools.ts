@@ -56,7 +56,7 @@ export {
 define('list_layers', ({ kind }, ctx) => {
   const ws = ctx.workspace.getState();
   const layers = project(ctx)
-    .manifest.layers.filter((l) => !kind || l.kind === kind)
+    .manifest.layers.filter((l) => l.kind !== 'legacy' && (!kind || l.kind === kind))
     .map((l) => ({ id: l.id, name: l.name, kind: l.kind, visible: ws.isLayerVisible(l.id) }));
   return { result: { layers }, summary: plural(layers.length, 'layer') };
 });
