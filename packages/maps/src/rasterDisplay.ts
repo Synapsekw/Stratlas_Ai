@@ -16,6 +16,20 @@ export function loadsWithProject(
   return !(hidden && layer.role === 'plan' && layer.format === 'image');
 }
 
+/** The layer every ortho and DSM picture and tile is put under, and every drawing above. */
+export const RASTERS_TOP = 'aio-rasters-top';
+/** The first layer above the project's rasters (the 3D camera's view wedge). */
+export const ABOVE_RASTERS = 'aio-view3d-fill';
+
+/**
+ * The map layer a raster picture or tile is inserted before. Photographic rasters go under the
+ * `RASTERS_TOP` mark and plans above it, so a drawing lies over every ortho tile whenever either
+ * was added: at open, when it was first shown, or when a finer tile arrived after a zoom.
+ */
+export function rasterBefore(role: RasterRole): string {
+  return role === 'plan' ? ABOVE_RASTERS : RASTERS_TOP;
+}
+
 /**
  * Opacity of a project raster on the map. A plan (a drawing) takes the person's choice
  * (`layerDisplay`), else 0.75 so the map under it stays readable; photographic rasters are nearly

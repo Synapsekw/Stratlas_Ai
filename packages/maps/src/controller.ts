@@ -28,7 +28,7 @@ import {
 import { Vector3 } from 'three';
 import { drawPreview, isRepeatClick, type MapDrawSeam } from './draw';
 import { frameProjection, type FrameProjection } from './geo';
-import { loadsWithProject, rasterOpacity } from './rasterDisplay';
+import { RASTERS_TOP, loadsWithProject, rasterBefore, rasterOpacity } from './rasterDisplay';
 import {
   ALL_ISSUES,
   footprint,
@@ -215,6 +215,9 @@ export function createMapController(
         clusterProperties: { top: ['max', ['get', 'rank']] },
       });
     }
+    // a mark that draws nothing: orthos and their tiles go under it, drawings above
+    // (`rasterBefore`)
+    map.addLayer({ id: RASTERS_TOP, type: 'background', layout: { visibility: 'none' } });
     map.addLayer({
       id: 'aio-view3d-fill',
       type: 'fill',
@@ -534,6 +537,8 @@ export function createMapController(
   ): void {
     images.forEach((img, i) => {
       const sid = `aio-raster-${layer.id}-${i}`;
+      // a reload of the same project that overlapped this one may have added it already
+      if (map.getSource(sid)) return;
       map.addSource(sid, { type: 'image', url: img.url, coordinates: img.quad });
       map.addLayer(
         {
@@ -546,7 +551,7 @@ export function createMapController(
             'raster-fade-duration': 0,
           },
         },
-        'aio-view3d-fill',
+        rasterBefore(layer.role),
       );
       rasterIds.push(sid);
     });
@@ -648,7 +653,7 @@ export function createMapController(
               'raster-fade-duration': 0,
             },
           },
-          'aio-view3d-fill',
+          rasterBefore(layer.role),
         );
         pyrTiles.set(key, { sid, layerId: layer.id, z: t.z });
       }

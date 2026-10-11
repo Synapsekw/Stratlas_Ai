@@ -46,6 +46,14 @@ function groundUniforms(scene: SceneHandle): GroundUniforms | undefined {
   return (scene as Partial<{ groundUniforms(): GroundUniforms }>).groundUniforms?.();
 }
 
+/**
+ * Tell the stage that a layer shows something new after it was made (the engine's own stage
+ * listens; other SceneHandle implementations need not).
+ */
+function contentUpdated(scene: SceneHandle): void {
+  (scene as Partial<{ contentUpdated(): void }>).contentUpdated?.();
+}
+
 /** Stacking slot of each raster layer: later layers draw over earlier ones at the same height. */
 const slots = new Map<string, number>();
 
@@ -328,13 +336,18 @@ async function imageRaster(layer: RasterLayer, ctx: AdapterContext): Promise<Lay
   // the picture is there; `wanted` is what the layer's eye says meanwhile.
   let wanted = false;
   mesh.visible = false;
+  // and whatever else switches the quad on meanwhile draws nothing either
+  (mesh.material as MeshBasicMaterial).visible = false;
   const picture = lazyPicture(
     () => loadTexture(ctx.url(layer.src), ctx),
     (loaded) => {
       const m = mesh.material as MeshBasicMaterial;
       m.map = loaded;
+      m.visible = true;
       m.needsUpdate = true;
       mesh.visible = wanted;
+      // the drawing is ground content from now on: the fallback ground plane and the bounds follow
+      contentUpdated(ctx.scene);
       ctx.scene.requestRender();
     },
     (error) => {
