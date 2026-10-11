@@ -210,3 +210,14 @@ Change the existing cases that expect the viewer files in a package or that excl
 3. Open a stockpile project and its volumes: piles, volumes and sections work as before.
 4. Build a package of that stockpile project: the list of what to include has no "Original review viewer"; open the package: volumes work.
 5. Import a new delivered review: the project has no `legacy` folder and no Original review.
+
+## What the build changed
+
+- `popupAction` takes only the URL: with the viewer window gone it no longer needs to know which projects are open.
+- The road importer still recognises its source folder by the review page, which it no longer copies.
+- The stockpile importer warns in its report when the source has no coarse grid, no surface grid for a survey, or no grids at all.
+- Packaging, found in review: after a re-import no layer names the older `legacy/` folder, so the plan leaves that folder out by path, except `legacy/data/` in a project with a `volumes.json`.
+- The assistant: the layer listing and the window context leave a retired viewer out, not only the kind filter.
+- The Datasets count in the sidebar leaves a retired viewer out, so it agrees with the rows.
+- The second compare view keeps dropping `legacy` layers, which saves a console warning.
+- End to end: the new spec also opens a package made before the removal. The road real-data spec times out in a 1100 x 700 window because its measure tool is folded into **More tools** there; it passes at the default size and is not part of CI. The two volumes specs that need the pipeline Python were skipped locally.
