@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { LonLatRing } from './change';
-import { Id, IsoTime, ProjectPath, Vec3 } from './common';
+import { Id, IsoDate, IsoTime, ProjectPath, Vec3 } from './common';
 import { Crs } from './manifest';
 
 /**
@@ -168,6 +168,14 @@ export const PhotoEstimate = z.object({
   cameras: z.array(PhotoCameraGroup).max(100).optional(),
   /** The UTM zone of the photos' GNSS positions, offered when the project CRS is far from them. */
   suggestedEpsg: z.number().int().positive().optional(),
+  /**
+   * The days the photos were taken (the local date in each photo), most photos first; counted on
+   * the sample and scaled like the camera groups. Absent when no photo carries a date.
+   */
+  photoDays: z
+    .array(z.object({ date: IsoDate, photos: z.number().int().nonnegative() }))
+    .max(366)
+    .optional(),
 });
 
 /**
