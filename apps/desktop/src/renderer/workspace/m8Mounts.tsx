@@ -8,6 +8,8 @@ import { COMPARE_TOOLS } from './CompareControls';
 import { FramesPane } from './FramesPane';
 import { CompareViewControls } from './MapSwipe';
 import { EXTRA_PANES } from './SplitPanes';
+// the 360 video pane registers itself on the same mount point (walks/walkMounts.tsx)
+import '../walks/walkMounts';
 
 if (!COMPARE_TOOLS.includes(CompareViewControls)) COMPARE_TOOLS.push(CompareViewControls);
 

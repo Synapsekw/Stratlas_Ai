@@ -1528,6 +1528,56 @@ button.chip-status:hover {
   flex: 1;
   min-width: 0;
 }
+/* 360 video pane: the look-around view between the pane's two bars */
+.walk-view {
+  position: relative;
+  overflow: hidden;
+  /* the video window's backdrop, so a letterboxed clip and a walk sit on the same dark */
+  background: #05080d;
+  cursor: grab;
+  touch-action: none;
+}
+.walk-view.dragging {
+  cursor: grabbing;
+}
+.walk-view:focus-visible {
+  outline-offset: -2px;
+}
+.walk-status {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  color: var(--fg-2);
+  font-size: var(--t-12);
+  text-align: center;
+  pointer-events: none;
+}
+/* the player's bar: the scrubber on a row of its own, so it stays usable in a narrow pane */
+.pane-bar.walk-bar {
+  flex-wrap: wrap;
+  height: auto;
+  min-height: 36px;
+  padding-block: 6px 4px;
+  row-gap: 2px;
+}
+.walk-bar input[type='range'] {
+  order: -1;
+  flex: 1 0 100%;
+  min-width: 0;
+  margin: 0;
+}
+.pane-bar .walk-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+}
+/* a walk in the sidebar list is a button with the look of a tree row */
+.titem.walk-row {
+  width: 100%;
+  text-align: start;
+}
 /* the selector in a split pane's corner: what this side shows */
 .pane-chooser {
   position: absolute;

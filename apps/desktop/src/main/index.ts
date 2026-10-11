@@ -59,6 +59,7 @@ import {
   photoGps,
 } from './builder';
 import { builderPipelineJobs } from './builderJobs';
+import { listProjectWalks, packageWalks } from './walks';
 import { registerChangeIpc } from './change';
 import { registerInferenceIpc } from './inference';
 import {
@@ -1244,6 +1245,13 @@ function registerIpc(): void {
       }),
   );
   handle('builder:altitudePlan', (req) => builderAltitudePlan(req, registry));
+  // 360 video kept beside the manifest (walks/<id>/); a package lists the ones it carries
+  handle('walks:list', async ({ projectId }) => {
+    const root = registry.root(projectId);
+    if (root !== undefined) return { walks: await listProjectWalks(root) };
+    const pkg = registry.package(projectId);
+    return { walks: pkg ? await packageWalks(pkg.archive) : [] };
+  });
   handle(
     'builder:updateLayers',
     (req) => packageRefusal(req.projectId) ?? builderUpdateLayers(req, registry),

@@ -221,6 +221,7 @@ const READS: ReadonlySet<IpcChannel> = new Set<IpcChannel>([
   'detections:maskAssistStatus',
   'report:list',
   'report:readNarrative',
+  'walks:list',
   'orientation:read',
   'change:list',
   'change:read',

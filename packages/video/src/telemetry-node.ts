@@ -10,5 +10,12 @@ export {
   type SrtFrame,
   type SrtTiming,
 } from './srt';
-export { readMp4VideoInfo, type Mp4VideoInfo, type ReadAt } from './mp4';
+export {
+  readMp4Tracks,
+  readMp4VideoInfo,
+  type Mp4Spherical,
+  type Mp4Track,
+  type Mp4VideoInfo,
+  type ReadAt,
+} from './mp4';
 export { fitLens, projectPair, type LensFit, type LensFitStats, type LensPair } from './calibrate';

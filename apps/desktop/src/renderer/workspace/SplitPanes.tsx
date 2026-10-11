@@ -24,6 +24,7 @@ import { openLightbox } from '../issueCard/state';
 import { PdfViewer } from '../report/PdfViewer';
 import { useCall } from '../shell';
 import { DrawingPane, RasterOptions } from '../drawings/DrawingPane';
+import { useWalks } from '../walks/walks';
 import { captureLabel, useCaptureIndex, useSplitDates } from './compare';
 import { DateBadge, pickPhotoSet } from './DatesOnScreen';
 import { SameViewButton } from './FramesPane';
@@ -101,9 +102,14 @@ export function useSplit(): SplitModel {
   const saved = useStagePrefs((s) => (id ? s.byProject[id]?.split : undefined));
   const index = useCaptureIndex();
   const dates = useSplitDates(index);
+  // 360 video is kept beside the manifest (walks/), so its count comes from its own store
+  const walkCount = useWalks((s) => s.walks.length);
   const options = useMemo(
-    () => paneOptions(project?.manifest.layers ?? [], reports.length, dates?.captures.length),
-    [project, reports, dates],
+    () =>
+      paneOptions(project?.manifest.layers ?? [], reports.length, dates?.captures.length, {
+        walks: walkCount,
+      }),
+    [project, reports, dates, walkCount],
   );
   const sides = useMemo(() => resolveSplit(saved, options, dates), [saved, options, dates]);
   return {

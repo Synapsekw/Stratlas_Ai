@@ -45,7 +45,9 @@ this slice adds **no lens model, no layer kind and no value to an existing enum*
    `walks/<id>/playback.mp4`, `walks/<id>/poster.jpg`. The manifest is not touched by a walk
    import. Older builds never look in `walks/`, so they open the project as before and simply do
    not show the walk. The list of walks is the folder itself (every `walks/*/walk.json` that
-   reads); there is no separate index file to keep in step.
+   reads); there is no separate index file to keep in step, so two imports cannot overwrite
+   each other's entry. The id is taken by moving the finished folder into place: the move fails
+   when the folder exists and the next free id is tried.
 2. **Layouts are recognised from the file, never guessed.**
    - `.insv` with exactly two video tracks of the same square size: two lens streams (verified on
      the X4; the X3 and X5 write the same layout according to the Walks design, but no sample has
@@ -80,7 +82,8 @@ this slice adds **no lens model, no layer kind and no value to an existing enum*
    is made (ffmpeg needed, the `v360` filter not). The ordinary import still sends an MP4 down the
    drone path, so nothing changes for drone footage.
 8. **Progress and cancel.** The stitch reports through the existing import panel
-   (`builder:progress`): the file line reads "name.insv, stitching 42 %". The existing review copy
+   (`builder:progress`, which gains an optional `part`): the file line reads "name.insv, playback
+   copy 42 %" and the bar moves with it. The existing review copy
    cannot be cancelled, and neither can the stitch in this slice; the runner takes an abort signal
    so a cancel button can be wired later. A failed or interrupted stitch leaves no `walks/<id>/`
    folder behind (the copy is written as `.part` in a staging folder and moved into place last).
@@ -93,7 +96,8 @@ this slice adds **no lens model, no layer kind and no value to an existing enum*
     when the project has a walk, and a short **360 video** list under the dataset tree; clicking a
     walk opens the split with the pane on the right.
 11. **IPC.** `builder:import` gains the optional `as360`; one new read channel `walks:list`. No
-    new event. Import items for walks use the existing kind `video`.
+    new event (`builder:progress` gains the optional `part`). Import items for walks use the
+    existing kind `video`.
 
 ## Storage
 
@@ -198,7 +202,8 @@ so a walk does **not** reach team mates through a hub or the Team Server yet; fo
 ## Contract
 
 - New file schema `aio.walk/1` (`WalkFile`, `walks.ts`), registered in `versions.ts`.
-- `builder:import` request gains the optional `as360` (boolean).
+- `builder:import` request gains the optional `as360` (boolean); event `builder:progress` gains
+  the optional `part` (0 to 1 inside one long file).
 - New IPC channel `walks:list` (`{ projectId }` to `{ walks: WalkFile[] }`), read only.
 - New project folder `walks/<id>/` (data-conventions section 32).
 

@@ -70,7 +70,8 @@ export function parseRate(r: string | number): Rate {
 }
 
 export const rateValue = (r: Rate) => r.num / r.den;
-const rateText = (r: Rate) => (r.den === 1 ? String(r.num) : `${String(r.num)}/${String(r.den)}`);
+export const rateText = (r: Rate) =>
+  r.den === 1 ? String(r.num) : `${String(r.num)}/${String(r.den)}`;
 
 /** Output rate: the source rate, halved while above `maxFps`. */
 export function proxyRate(src: Rate, maxFps: number = PROXY_DEFAULTS.maxFps): Rate {
@@ -84,7 +85,12 @@ function gcd(a: number, b: number): number {
   return b === 0 ? a : gcd(b, a % b);
 }
 
-function encoderArgs(e: ProxyEncoder, quality: number, maxKbps: number, gop: number): string[] {
+export function encoderArgs(
+  e: ProxyEncoder,
+  quality: number,
+  maxKbps: number,
+  gop: number,
+): string[] {
   const q = String(quality);
   const g = String(gop);
   const rate = `-maxrate ${String(maxKbps)}k -bufsize ${String(maxKbps * 2)}k`;

@@ -647,6 +647,7 @@ describe('journal service', () => {
       'project:readVolumes',
       'change:list',
       'report:list',
+      'walks:list',
       'blobs:status',
       'ai:project',
       'library:reveal',

@@ -30,10 +30,16 @@ export { registerRasterFormat, type RasterFormatHandler } from './adapters/raste
 export { createPanoramasAdapter } from './adapters/panoramas';
 export {
   FULL_SPHERE,
+  PANO_FOV,
+  azElToDir,
   coverageFromImage,
+  dragLook,
   panoUv,
   parsePanoIndex,
+  startLook,
+  zoomLook,
   type PanoCoverage,
+  type PanoLook,
 } from './adapters/panoMath';
 export type { ViewPreset, CameraPose } from './camera/cameraMath';
 export { fitDistance, poseForPreset, frameBox, headingDeg } from './camera/cameraMath';

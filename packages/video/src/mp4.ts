@@ -168,3 +168,97 @@ export async function readMp4VideoInfo(read: ReadAt, fileSize: number): Promise<
   }
   throw new Error('The file has no video track.');
 }
+
+/** What the Spherical Video metadata of a track says, or null when it has none. */
+export type Mp4Spherical = 'equirectangular' | 'other' | null;
+
+export interface Mp4Track {
+  /** Handler type: `vide`, `soun`, `meta`, ... */
+  handler: string;
+  /** Presentation size (0 for tracks without a picture). */
+  width: number;
+  height: number;
+  /** Sample entry fourcc. */
+  codec: string;
+  durationMs: number;
+  frameCount: number;
+  /** Mean sample rate of the track (frames per second for video). */
+  fps: number;
+  spherical: Mp4Spherical;
+}
+
+/** UUID of the Spherical Video V1 box (`ffcc8263-f855-4a93-8814-587a02521fdd`). */
+const SPHERICAL_V1 = [
+  0xff, 0xcc, 0x82, 0x63, 0xf8, 0x55, 0x4a, 0x93, 0x88, 0x14, 0x58, 0x7a, 0x02, 0x52, 0x1f, 0xdd,
+];
+
+/** Spherical Video metadata of a video track: V1 (XML in a `uuid` box) or V2 (`sv3d`). */
+function sphericalOf(moov: Uint8Array, trak: Box, stsd: Box | undefined): Mp4Spherical {
+  const end = trak.start + trak.size;
+  for (const u of children(moov, trak.start, end).filter((c) => c.type === 'uuid')) {
+    if (u.size < 16 || !SPHERICAL_V1.every((b, i) => moov[u.start + i] === b)) continue;
+    const xml = new TextDecoder().decode(moov.subarray(u.start + 16, u.start + u.size));
+    const m = /ProjectionType>\s*([a-z-]+)\s*</i.exec(xml);
+    return m?.[1]?.toLowerCase() === 'equirectangular' ? 'equirectangular' : 'other';
+  }
+  if (!stsd || stsd.size < 16) return null;
+  // the first sample entry: 8 bytes of box header, 78 bytes of visual fields, then its boxes
+  const entryAt = stsd.start + 8;
+  const entrySize = view(moov).getUint32(entryAt);
+  const from = entryAt + 8 + 78;
+  const to = Math.min(entryAt + entrySize, stsd.start + stsd.size);
+  if (from >= to) return null;
+  const sv3d = children(moov, from, to).find((c) => c.type === 'sv3d');
+  if (!sv3d) return null;
+  const proj = find(moov, sv3d, 'proj');
+  if (!proj) return 'other';
+  return find(moov, proj, 'equi') ? 'equirectangular' : 'other';
+}
+
+/**
+ * Every track of an MP4 or MOV file, in file order: what kind it is, its picture size, codec,
+ * length and rate, and the spherical projection it declares. A 360 camera's own file can hold one
+ * video track per lens, which `readMp4VideoInfo` (first video track only) does not show.
+ */
+export async function readMp4Tracks(
+  read: ReadAt,
+  fileSize: number,
+): Promise<{ tracks: Mp4Track[] }> {
+  const moov = await loadMoov(read, fileSize);
+  const v = view(moov);
+  const tracks: Mp4Track[] = [];
+  for (const trak of children(moov).filter((c) => c.type === 'trak')) {
+    const hdlr = path(moov, trak, 'mdia', 'hdlr');
+    const mdhd = path(moov, trak, 'mdia', 'mdhd');
+    const tkhd = find(moov, trak, 'tkhd');
+    if (!hdlr || !mdhd || !tkhd) continue;
+    const handler = fourcc(moov, hdlr.start + 8);
+    const mv = moov[mdhd.start] ?? 0;
+    const timescale = v.getUint32(mdhd.start + (mv === 1 ? 20 : 12));
+    const duration =
+      mv === 1 ? Number(v.getBigUint64(mdhd.start + 24)) : v.getUint32(mdhd.start + 16);
+    const tv = moov[tkhd.start] ?? 0;
+    const whAt = tkhd.start + (tv === 1 ? 88 : 76);
+    const stbl = path(moov, trak, 'mdia', 'minf', 'stbl');
+    const stsd = stbl ? find(moov, stbl, 'stsd') : undefined;
+    const stts = stbl ? find(moov, stbl, 'stts') : undefined;
+    let frameCount = 0;
+    if (stts) {
+      const n = v.getUint32(stts.start + 4);
+      for (let i = 0; i < n && stts.start + 12 + i * 8 <= stts.start + stts.size; i++)
+        frameCount += v.getUint32(stts.start + 8 + i * 8);
+    }
+    const durationMs = timescale > 0 ? (duration * 1000) / timescale : 0;
+    tracks.push({
+      handler,
+      width: Math.round(v.getUint32(whAt) / 65536),
+      height: Math.round(v.getUint32(whAt + 4) / 65536),
+      codec: stsd && stsd.size >= 16 ? fourcc(moov, stsd.start + 12) : 'unknown',
+      durationMs,
+      frameCount,
+      fps: durationMs > 0 ? (frameCount * 1000) / durationMs : 0,
+      spherical: handler === 'vide' ? sphericalOf(moov, trak, stsd) : null,
+    });
+  }
+  return { tracks };
+}

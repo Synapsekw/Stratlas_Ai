@@ -81,7 +81,8 @@ export function ImportLayer() {
             <Icon name="import" size={20} />
             <h3>{projectName ? `Import into ${projectName}` : 'Open a project to import'}</h3>
             <p>
-              Photos, video with its SRT, GLB or OBJ models, GeoTIFF orthos and DSMs, point clouds
+              Photos, video with its SRT, 360 camera files (.insv), GLB or OBJ models, GeoTIFF
+              orthos and DSMs, point clouds
             </p>
             <p>Drawings as PDF, PNG or DXF</p>
           </div>
@@ -272,7 +273,10 @@ function ImportStatus() {
         <>
           <div className="b-progress">
             <i
-              style={{ width: `${String((importing.done / Math.max(1, importing.total)) * 100)}%` }}
+              style={{
+                // a long file (a 360 video playback copy) moves the bar while it is made
+                width: `${String(Math.min(100, ((importing.done + (importing.part ?? 0)) / Math.max(1, importing.total)) * 100))}%`,
+              }}
             />
           </div>
           {importing.file && (

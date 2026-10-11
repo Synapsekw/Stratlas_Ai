@@ -448,7 +448,8 @@ export const en = {
 
   // Dataset tree: eyes over all layers and over a group
   'tree.addData': 'Add data',
-  'tree.addData.tip': 'Import photos, video with its SRT, models, orthos or point clouds',
+  'tree.addData.tip':
+    'Import photos, video with its SRT, 360 camera files, models, orthos or point clouds',
   'tree.addDrawing': 'Add drawing',
   'tree.addDrawing.tip': 'Add a drawing: PDF, PNG, JPEG, WebP, SVG, TIFF or DXF',
   'tree.dates.label': 'Datasets by survey date',
@@ -1863,6 +1864,27 @@ export const en = {
   'cloudChange.volume.started': 'Volume change started. The totals show here when it finishes.',
   'cloudChange.volume.package':
     'Volume change is computed in the project folder, not in a package.',
+  // 360 video from a 360 camera (walks/<id>/): the list under the datasets and the split pane
+  'walk.pane': '360 video',
+  'walk.list': '360 video',
+  'walk.add': 'Add 360 video',
+  'walk.add.tip': 'Add a 360 camera file (.insv) or a stitched 360 video (MP4)',
+  'walk.open': 'Open {name} in the 360 video pane',
+  'walk.none': 'This project has no 360 video yet.',
+  'walk.which': 'Which 360 video',
+  'walk.lowRes': 'Low resolution copy',
+  'walk.view': '360 view of {name}. Drag to look around, scroll to zoom.',
+  'walk.play': 'Play',
+  'walk.pause': 'Pause',
+  'walk.scrub': 'Position in the video',
+  'walk.time': '{now} / {total}',
+  'walk.time.spoken': '{now} of {total}',
+  'walk.sound': 'Sound',
+  'walk.sound.none': 'This video has no sound',
+  'walk.resetView': 'Look ahead again',
+  'walk.loading': 'Loading video',
+  'walk.error': 'The 360 video could not be played.',
+  'walk.noGraphics': 'The 360 view needs 3D graphics, which are not available right now.',
   // M8 C4: same view on another date (Frames pane) and change in matched frames
   'frames.pane': 'Frames',
   'frames.sameView': 'Same view on the other date',

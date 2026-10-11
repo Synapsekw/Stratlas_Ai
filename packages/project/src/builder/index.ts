@@ -55,3 +55,40 @@ export {
   type ProxyEncoder,
   type ProxyOptions,
 } from '../import/proxy';
+export {
+  importWalk,
+  listWalks,
+  parseWalk,
+  sortWalks,
+  type WalkCopyRequest,
+  type WalkImportOptions,
+  type WalkImportResult,
+  type WalkTools,
+} from './walks';
+export {
+  classifyWalkSource,
+  insta360Name,
+  isProxyName,
+  isWalkFile,
+  proxyOwner,
+  type WalkSourceKind,
+  type WalkTrack,
+} from './walkSource';
+export {
+  WALK_DEFAULTS,
+  checkFfmpeg,
+  equirectCopyArgs,
+  ffmpegMissingMessage,
+  hasV360,
+  makeWalkCopy,
+  progressSeconds,
+  runFfmpeg,
+  stitchArgs,
+  v360Filter,
+  walkSize,
+  type FfmpegCheck,
+  type FrameSize,
+  type StitchOptions,
+  type WalkCopy,
+  type WalkCopyOptions,
+} from '../import/stitch';

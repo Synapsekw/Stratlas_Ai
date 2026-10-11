@@ -43,6 +43,8 @@ import {
   tiffCorners,
   tiffGeoreferenced,
 } from './tiff';
+import { importWalk, type WalkTools } from './walks';
+import { isWalkFile, proxyOwner } from './walkSource';
 
 /** Review copies of photos. The app uses Electron's image codec; tools may use ffmpeg. */
 export interface ImageOps extends DrawingImages {
@@ -118,6 +120,15 @@ export interface ImportDeps {
    */
   drawings?: boolean;
   onProgress?: (done: number, total: number, file: string) => void;
+  /**
+   * 360 video (`walks.ts`): reading and stitching a 360 camera's own files. Without it they
+   * report that this build cannot import them.
+   */
+  walk?: WalkTools;
+  /** "Add 360 video": MP4 and MOV files are taken as stitched 360 video, not as drone clips. */
+  as360?: boolean;
+  /** Progress inside one long file (a 360 stitch), 0 to 1. */
+  onFileProgress?: (file: string, fraction: number) => void;
 }
 
 export interface ImportResult {
@@ -326,12 +337,40 @@ export async function importRawFiles(
     }
   };
 
+  /** 360 video is kept in `walks/`, beside the manifest: these items never change it. */
+  const walkItems = new Set<ImportItem>();
+  const walk = async (file: string) => {
+    const name = basename(file);
+    const push = (status: ImportItem['status'], message: string) => {
+      const item: ImportItem = { file: name, kind: 'video', status, message };
+      walkItems.add(item);
+      items.push(item);
+    };
+    const clip = proxyOwner(
+      name,
+      paths.filter((p) => p !== file && dirname(p) === dirname(file)).map((p) => basename(p)),
+    );
+    if (clip) {
+      push('skipped', `The camera's low resolution copy of ${clip}, which is imported in full.`);
+    } else if (!deps.walk) {
+      push('error', '360 video import is not available in this build.');
+    } else {
+      const r = await importWalk(root, file, {
+        tools: deps.walk,
+        onProgress: (f) => deps.onFileProgress?.(name, f),
+      });
+      push(r.ok ? 'imported' : r.status, r.message);
+    }
+  };
+
   for (const file of paths) {
     const name = basename(file);
     const ext = extname(file).toLowerCase();
     try {
       if (consumed.has(file)) continue;
-      if (isDrawingFile(ext, deps.drawings === true) && textures.has(file)) {
+      if (isWalkFile(name) || (deps.as360 === true && VIDEO.has(ext))) {
+        await walk(file);
+      } else if (isDrawingFile(ext, deps.drawings === true) && textures.has(file)) {
         // picked with its model: part of the model, not a sheet to look at
         items.push({
           file: name,
@@ -674,7 +713,8 @@ export async function importRawFiles(
   if (heights.saveDatum && placed.some((i) => i.heightSource !== 'relative'))
     m.verticalDatum = heights.saveDatum;
   const summary = importHeights(heights, placed, datumDefined);
-  const changed = items.some((i) => i.status === 'imported');
+  // 360 video is filed beside the manifest (walks/): an import of walks only saves nothing
+  const changed = items.some((i) => i.status === 'imported' && !walkItems.has(i));
   if (!changed) {
     // Nothing was filed (only jobs, or only refusals), so nothing is saved. The manifest handed
     // back is the project as it is by now, read in its turn after the saves on their way. When

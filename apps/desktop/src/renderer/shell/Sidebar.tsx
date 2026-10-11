@@ -30,6 +30,7 @@ import { DrawingControls } from '../drawings/DrawingControls';
 import { drawings, unplacedOf, useDrawings } from '../drawings/store';
 import { useMedia } from '../media';
 import { shell, useShell } from '../shell';
+import { WalkList } from '../walks/WalkList';
 import { PANEL_ID, PanelHandle } from './PanelHandle';
 import type { Screen } from '../store';
 import { useCaptureIndex } from '../workspace/compare';
@@ -583,6 +584,7 @@ export function Sidebar() {
           <ProjectSwitcher collapsed={collapsed} />
         </div>
         <Datasets collapsed={collapsed} />
+        {!collapsed && <WalkList />}
       </div>
       <div className="sb-foot">
         <NavItem
