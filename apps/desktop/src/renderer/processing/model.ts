@@ -96,6 +96,22 @@ export function projectLabel(
 }
 
 /**
+ * The project the drawer's header names: the open project's name, unless the job shown belongs to
+ * another project (it runs elsewhere), which is then named instead so the header never puts one
+ * project's name over another's job. `name` is null with no project of its own.
+ */
+export function drawerProject(
+  job: Pick<JobRecord, 'project'> | undefined,
+  root: string | null,
+  name: string | null,
+  library: readonly Pick<LibraryEntry, 'name' | 'path'>[],
+): string | null {
+  if (job && !(root !== null && sameFolder(job.project, root)))
+    return projectLabel(job.project, library);
+  return name;
+}
+
+/**
  * The job whose details the drawer shows: the picked one, if it belongs to the open project or
  * is still running elsewhere. A picked job that is gone, or that belongs to a project no longer
  * open, shows nothing: the drawer falls back to its list.

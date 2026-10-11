@@ -7,6 +7,7 @@ import { workspace } from '@aio/workspace';
 import { useStore } from 'zustand';
 import { createStore, type StoreApi } from 'zustand/vanilla';
 import { folderKey, type JobDraft } from '../jobs';
+import { photoUi } from '../photogrammetry/store';
 
 export interface ProcessingUi {
   open: boolean;
@@ -33,6 +34,8 @@ export function seenAtOf(s: Pick<ProcessingUi, 'seen'>, root: string | null): st
 export function createProcessingStore(deps: {
   now: () => Date;
   root: () => string | null;
+  /** True while a full-screen panel lies over the app: the drawer then does not open. */
+  blocked?: () => boolean;
 }): StoreApi<ProcessingUi> {
   const looked = (seen: Record<string, string>): Record<string, string> => {
     const root = deps.root();
@@ -45,6 +48,8 @@ export function createProcessingStore(deps: {
     seen: {},
     dialog: null,
     openDrawer: (jobId) => {
+      // it would lie under the panel; nothing was looked at
+      if (deps.blocked?.()) return;
       set((s) => ({ open: true, picked: jobId ?? null, seen: looked(s.seen) }));
     },
     closeDrawer: () => {
@@ -66,6 +71,8 @@ export function createProcessingStore(deps: {
 export const processing = createProcessingStore({
   now: () => new Date(),
   root: () => workspace.getState().project?.root ?? null,
+  // the photo wizard and a run's panel cover the screen
+  blocked: () => photoUi.getState().view !== null,
 });
 
 export function useProcessing<T>(selector: (s: ProcessingUi) => T): T {

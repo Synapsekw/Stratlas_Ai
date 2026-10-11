@@ -5,10 +5,11 @@
  */
 import type { JobLogLine, JobRecord, JobStep } from '@aio/schema';
 import { Icon, t, type IconName } from '@aio/ui';
+import { useWorkspace } from '@aio/workspace';
 import { useLayoutEffect, useRef, useState } from 'react';
-import { canResume, isActive } from '../jobs';
+import { canResume, isActive, sameFolder } from '../jobs';
 import { photoUi, runOfJob } from '../photogrammetry/store';
-import { jobs, useJobs } from '../shell';
+import { jobs, useJobs, useShell } from '../shell';
 import { Bar, clock, duration, pct, STATUS, StatusChip } from './JobParts';
 import { jobTitle } from './pipelines';
 
@@ -63,13 +64,17 @@ export function JobDetail({
   folded?: boolean;
 }) {
   const lines = useJobs((s) => s.logs[job.id]) ?? [];
+  const project = useWorkspace((s) => s.project?.root ?? null);
+  const pkg = useShell((s) => s.pkg !== null);
+  const [logOpen, setLogOpen] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
   const act = async (p: Promise<string | null>) => {
     setActionError(await p);
   };
   const outputs = job.artifacts.filter((a) => !a.path.startsWith('jobs/'));
   const params = Object.entries(job.params);
-  const run = runOfJob(job);
+  // the run panel reads the run from the open project: only that project's own runs open there
+  const run = project !== null && !pkg && sameFolder(job.project, project) ? runOfJob(job) : null;
 
   const steps = (
     <div className="jd-col">
@@ -234,9 +239,15 @@ export function JobDetail({
             <summary>{t('processing.detail.settings')}</summary>
             {facts}
           </details>
-          <details className="jd-fold" data-testid="job-log-fold">
+          <details
+            className="jd-fold"
+            data-testid="job-log-fold"
+            onToggle={(e) => {
+              setLogOpen(e.currentTarget.open);
+            }}
+          >
             <summary>{t('processing.detail.log')}</summary>
-            <LogTail lines={lines} />
+            {logOpen && <LogTail lines={lines} />}
           </details>
         </>
       ) : (

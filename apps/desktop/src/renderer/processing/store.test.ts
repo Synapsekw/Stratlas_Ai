@@ -3,10 +3,11 @@ import { createProcessingStore, seenAtOf } from './store';
 
 function make(root: string | null = 'D:\\Sites\\A') {
   let t = Date.parse('2026-10-11T08:00:00.000Z');
-  const where = { root };
+  const where = { root, blocked: false };
   const store = createProcessingStore({
     now: () => new Date((t += 60_000)),
     root: () => where.root,
+    blocked: () => where.blocked,
   });
   return { store, where };
 }
@@ -34,6 +35,15 @@ describe('the processing drawer state', () => {
     store.getState().openDrawer();
     where.root = 'D:\\Sites\\B';
     expect(seenAtOf(store.getState(), where.root)).toBeNull();
+  });
+
+  it('does not open under a panel that covers the screen, and notes no look', () => {
+    const { store, where } = make();
+    where.blocked = true;
+    store.getState().openDrawer('job-7');
+    expect(store.getState().open).toBe(false);
+    expect(store.getState().picked).toBeNull();
+    expect(store.getState().seen).toEqual({});
   });
 
   it('opens on a job when asked, and goes back to the list', () => {

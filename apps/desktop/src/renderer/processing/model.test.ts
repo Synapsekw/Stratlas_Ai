@@ -2,6 +2,7 @@ import type { JobRecord } from '@aio/schema';
 import { describe, expect, it } from 'vitest';
 import {
   chipState,
+  drawerProject,
   needsAttention,
   projectJobs,
   projectLabel,
@@ -88,6 +89,18 @@ describe('what needs a look', () => {
     expect(needsAttention([cut], { start, seenAt: '2026-10-11T07:10:00.000Z' })).toEqual([]);
   });
 
+  it('marks an interrupted job again when it is interrupted again after the last look', () => {
+    const cutAgain = job({ status: 'interrupted', updatedAt: '2026-10-11T08:00:00.000Z' });
+    expect(needsAttention([cutAgain], { start, seenAt: '2026-10-11T07:30:00.000Z' })).toEqual([
+      cutAgain,
+    ]);
+  });
+
+  it('does not mark a failure that ended at the very moment of the last look', () => {
+    const failed = job({ status: 'failed', updatedAt: '2026-10-11T08:00:00.000Z' });
+    expect(needsAttention([failed], { start, seenAt: '2026-10-11T08:00:00.000Z' })).toEqual([]);
+  });
+
   it('never marks a job that is done or was cancelled', () => {
     const later = '2026-10-11T09:00:00.000Z';
     const all = [job({ updatedAt: later }), job({ status: 'cancelled', updatedAt: later })];
@@ -156,6 +169,28 @@ describe('the name of another project', () => {
     const library = [{ name: 'North quarry', path: 'D:/Sites/B' }];
     expect(projectLabel(B, library)).toBe('North quarry');
     expect(projectLabel('D:\\Sites\\C\\', library)).toBe('C');
+  });
+});
+
+describe('the project named at the top of the drawer', () => {
+  const library = [{ name: 'North quarry', path: 'D:/Sites/B' }];
+
+  it('is the open project while its own list or job shows', () => {
+    expect(drawerProject(undefined, A, 'Site A', library)).toBe('Site A');
+    expect(drawerProject(job({ project: 'd:/sites/a/' }), A, 'Site A', library)).toBe('Site A');
+  });
+
+  it('is the project of a shown job that belongs to another project', () => {
+    expect(drawerProject(job({ project: B, status: 'running' }), A, 'Site A', library)).toBe(
+      'North quarry',
+    );
+    expect(drawerProject(job({ project: B, status: 'running' }), null, null, library)).toBe(
+      'North quarry',
+    );
+  });
+
+  it('is nothing with no project of its own and no job', () => {
+    expect(drawerProject(undefined, null, null, library)).toBeNull();
   });
 });
 

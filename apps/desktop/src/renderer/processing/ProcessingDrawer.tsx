@@ -15,7 +15,7 @@ import { jobs, useJobs, useShell } from '../shell';
 import { DrawerList } from './DrawerList';
 import { JobDetail } from './JobDetail';
 import { useNow } from './JobParts';
-import { projectJobs, projectLabel, runningElsewhere, shownJob } from './model';
+import { drawerProject, projectJobs, projectLabel, runningElsewhere, shownJob } from './model';
 import { processing, useProcessing } from './store';
 import './processing.css';
 
@@ -47,26 +47,28 @@ export function ProcessingDrawer() {
   const now = useNow(open && mine.running.length + elsewhere.length > 0);
   const photoOpen = useStore(photoUi, (s) => s.view !== null);
 
-  // the photo wizard and a run's panel lie over the screen: the drawer makes way for them. Only
-  // an open drawer is closed, because closing also marks the project's processing as looked at
+  // the photo wizard and a run's panel lie over the screen: the drawer makes way for them. (The
+  // store does not open it while one is open.) Only an open drawer is closed, because closing also
+  // marks the project's processing as looked at
   useEffect(() => {
     if (photoOpen && processing.getState().open) processing.getState().closeDrawer();
   }, [photoOpen]);
-  // opening reads the list again and takes the focus
+  // opening reads the list again
   useEffect(() => {
-    if (!open) return;
-    void jobs.getState().refresh();
-    heading.current?.focus();
+    if (open) void jobs.getState().refresh();
   }, [open]);
 
   // a picked job that is gone, or of a project no longer open, falls back to the list
   const job = shownJob(all, picked, root);
   const shownId = job?.id ?? null;
-  // a row or Back unmounts the button that had the focus, and the app would hand the focus to
-  // the screen heading outside the drawer (Esc would no longer close it): keep it on our heading
+  // opening, and a row or Back unmounting the button that had the focus (the app would hand the
+  // focus to the screen heading outside the drawer, and Esc would no longer close it): the focus
+  // sits on our heading
   useEffect(() => {
     if (open) heading.current?.focus();
   }, [open, shownId]);
+  // another project's job shows under that project's name, never under the open project's
+  const headerProject = drawerProject(job, root, own ? project.manifest.name : null, library ?? []);
 
   if (!open) return null;
   const close = () => {
@@ -104,9 +106,9 @@ export function ProcessingDrawer() {
           <h2 ref={heading} tabIndex={-1}>
             {t('processing.title')}
           </h2>
-          {own && (
+          {headerProject !== null && (
             <p className="muted" dir="auto" data-testid="proc-project">
-              {project.manifest.name}
+              {headerProject}
             </p>
           )}
         </div>
