@@ -483,6 +483,15 @@ export const SCHEMA_REGISTRY: readonly SchemaEntry[] = [
     where: 'online.json',
     since: '0.11',
   },
+  // the optional GPU add-on beside the pipeline pack (tools/pipeline-pack/accelerator.mjs; plan
+  // "GPU acceleration for photo processing", decided 11 Oct 2026)
+  {
+    family: 'aio.pipeline-addon',
+    version: 1,
+    home: 'pack',
+    where: 'GPU add-on manifest.json (runtime/pipeline-addon-cuda-<version>/)',
+    since: '0.11',
+  },
 ];
 
 /**

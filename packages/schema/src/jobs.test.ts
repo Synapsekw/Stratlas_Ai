@@ -4,6 +4,7 @@ import {
   ipcEvents,
   JobRecord,
   newJobId,
+  PipelineAddonManifest,
   PipelinePackManifest,
   PIPELINES,
   pipelineParams,
@@ -167,5 +168,27 @@ describe('job ids, records and events', () => {
       files: { 'python/python.exe': { size: 10, sha256: 'a'.repeat(64) } },
     });
     expect(m.success).toBe(true);
+  });
+
+  it('reads a GPU add-on manifest, and refuses a pack manifest or another kind in its place', () => {
+    const addon = {
+      schema: 'aio.pipeline-addon/1',
+      kind: 'gpu-cuda',
+      version: '0.1.0',
+      packRange: '>=0.5.0 <0.6.0',
+      python: '3.13',
+      platform: 'win32-x64',
+      runtime: { cuda: '12.9', minDriver: '528.33' },
+      createdAt: '2026-10-11T10:00:00Z',
+      packages: [{ name: 'cupy-cuda12x', version: '14.2.0', license: 'MIT' }],
+      files: { 'site/cupy/__init__.py': { size: 10, sha256: 'a'.repeat(64) } },
+    };
+    expect(PipelineAddonManifest.safeParse(addon).success).toBe(true);
+    expect(PipelineAddonManifest.safeParse({ ...addon, packages: undefined }).success).toBe(true);
+    expect(PipelineAddonManifest.safeParse({ ...addon, kind: 'gpu-metal' }).success).toBe(false);
+    expect(
+      PipelineAddonManifest.safeParse({ ...addon, schema: 'aio.pipeline-pack/1' }).success,
+    ).toBe(false);
+    expect(PipelinePackManifest.safeParse(addon).success).toBe(false);
   });
 });

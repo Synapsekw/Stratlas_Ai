@@ -1282,3 +1282,33 @@ export const PipelinePackManifest = z.object({
   ),
 });
 export type PipelinePackManifest = z.infer<typeof PipelinePackManifest>;
+
+/**
+ * `manifest.json` at the root of the GPU add-on, the optional folder
+ * `runtime/pipeline-addon-cuda-<version>/` beside the pipeline pack (written by
+ * tools/pipeline-pack/accelerator.mjs; read by `aio_pipelines.accel`). It has no interpreter of
+ * its own: `packRange` names the pipeline packs whose Python it fits.
+ */
+export const PipelineAddonManifest = z.object({
+  schema: z.literal('aio.pipeline-addon/1'),
+  /** What the add-on accelerates with; a kind this app does not know is not an add-on to it. */
+  kind: z.literal('gpu-cuda'),
+  version: z.string().min(1).max(64),
+  /** The pipeline pack versions it works with (`>=0.5.0 <0.6.0`). */
+  packRange: z.string().min(1).max(100),
+  /** The Python line its compiled modules are for (`3.13`). */
+  python: z.string().min(1).max(20),
+  platform: z.string(),
+  /** The CUDA runtime it carries and the oldest graphics driver that runs it. */
+  runtime: z.object({ cuda: z.string().min(1).max(20), minDriver: z.string().min(1).max(20) }),
+  createdAt: z.string(),
+  /** The packages it was made of, for the notices. */
+  packages: z
+    .array(z.object({ name: z.string(), version: z.string(), license: z.string() }))
+    .optional(),
+  files: z.record(
+    z.string(),
+    z.object({ size: z.number().int().nonnegative(), sha256: z.string().regex(/^[a-f0-9]{64}$/) }),
+  ),
+});
+export type PipelineAddonManifest = z.infer<typeof PipelineAddonManifest>;

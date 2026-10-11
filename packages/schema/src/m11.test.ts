@@ -158,6 +158,8 @@ describe('M11 additive rule: no layer kind, raster role, project type, setting o
         'aio.measurements',
         // online satellite's switch, its own userData file (ADR 0007, amendment of 10 Oct 2026)
         'aio.online-settings',
+        // the optional GPU add-on beside the pipeline pack (decided 11 Oct 2026)
+        'aio.pipeline-addon',
         'aio.site-calibration',
         'aio.site-transform',
         'aio.survey-compare',
