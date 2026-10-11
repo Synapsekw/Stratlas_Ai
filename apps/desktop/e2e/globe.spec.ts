@@ -4,9 +4,14 @@
  * synthetic packs with their credits, the three looks, the hand-off to the site view and back,
  * issue pins, and the WebGL context given back when the Globe closes. Synthetic data only; the
  * zero-network guard of the fixtures runs on every test.
+ *
+ * A site is a named chip on the Globe (chips that would overlap gather into one), its card opens
+ * by its pin, the sites are listed by the **Find a site** field at the top and the map settings
+ * are a dialog behind the **Map** button: the tests reach a site and a look the way a person does.
  */
 import { utmToWgs84 } from '@aio/geo';
 import { enuToEcefMatrix } from '@aio/globe';
+import type { GlobeStyle } from '@aio/globe';
 import type { GlobeInspection } from '@aio/globe/view';
 import {
   pmtilesOf,
@@ -21,12 +26,12 @@ import {
   SCHEMA_VERSION,
   type ProjectManifestInput,
 } from '@aio/schema';
-import type { ElectronApplication, Page } from '@playwright/test';
+import type { ElectronApplication, Locator, Page } from '@playwright/test';
 import { mkdir, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { APP_CSP, metaPolicy } from '../src/main/csp';
 import { expectAccessible } from './a11y';
-import { expect, test, tinyGlb, type DataRoot } from './fixtures';
+import { expect, processingChip, test, tinyGlb, TINY_PROJECT_ID, type DataRoot } from './fixtures';
 
 /** The app's CSP as the build writes it into the page's `<meta>` (src/main/csp.ts). */
 const appCsp = (): string => metaPolicy(APP_CSP);
@@ -245,7 +250,192 @@ const sampleAt = (win: Page, fx: number, fy: number) =>
   );
 
 /**
- * A click at this point of the window lands on the Globe's canvas: no panel, card, button or
+ * Two frames of the Globe. What it places after a frame it draws (the labels, the card by its
+ * pin, the chips that gather) is in place once the second has been drawn.
+ */
+async function frames(win: Page) {
+  await sampleAt(win, 0.5, 0.5);
+  await sampleAt(win, 0.5, 0.5);
+}
+
+/** The parts of the Globe's controller (the hook on its element) that turn and move the view. */
+interface GlobeHook {
+  pinPosition(id: string): [number, number] | null;
+  widget: {
+    scene: {
+      canvas: HTMLCanvasElement;
+      requestRender(): void;
+      camera: {
+        pitch: number;
+        positionCartographic: { height: number };
+        frustum: { fov: number };
+        setView(view: { orientation: { heading: number; pitch: number; roll: number } }): void;
+        moveLeft(metres: number): void;
+        moveUp(metres: number): void;
+      };
+    };
+  };
+}
+
+/** Turn the view where it stands until south is up, as a drag with the middle button does. */
+async function faceSouth(win: Page) {
+  await win.evaluate(() => {
+    const el = document.querySelector('[data-testid="globe-canvas"]');
+    const scene = (el as unknown as { __aioGlobe: GlobeHook }).__aioGlobe.widget.scene;
+    scene.camera.setView({
+      orientation: { heading: Math.PI, pitch: scene.camera.pitch, roll: 0 },
+    });
+    scene.requestRender();
+  });
+  await frames(win);
+}
+
+/**
+ * Slide the view sideways (no turn, no zoom), as a drag does, until a site's pin is drawn at this
+ * point of the Globe (fractions of its size).
+ */
+async function putPinAt(win: Page, projectId: string, fx: number, fy: number) {
+  await win.evaluate(
+    ([id, x, y]) => {
+      const el = document.querySelector('[data-testid="globe-canvas"]');
+      const c = (el as unknown as { __aioGlobe: GlobeHook }).__aioGlobe;
+      const { camera, canvas } = c.widget.scene;
+      // pixels to metres at the pin, roughly: each step lands nearer, so a few of them arrive
+      const focal =
+        Math.max(canvas.clientWidth, canvas.clientHeight) / 2 / Math.tan(camera.frustum.fov / 2);
+      for (let i = 0; i < 24; i++) {
+        const at = c.pinPosition(`site:${id}`);
+        if (!at) break;
+        const dx = x * canvas.clientWidth - at[0];
+        const dy = y * canvas.clientHeight - at[1];
+        if (Math.hypot(dx, dy) < 1) break;
+        const depth = camera.positionCartographic.height / Math.max(0.2, -Math.sin(camera.pitch));
+        camera.moveLeft((dx * depth) / focal);
+        camera.moveUp((dy * depth) / focal);
+      }
+      c.widget.scene.requestRender();
+    },
+    [projectId, fx, fy] as const,
+  );
+  await frames(win);
+}
+
+interface Box {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+const edges = (b: Box) =>
+  `${b.x.toFixed(0)}, ${b.y.toFixed(0)} to ${(b.x + b.width).toFixed(0)}, ${(b.y + b.height).toFixed(0)}`;
+/** `a` lies wholly inside `b` (half a pixel of rounding allowed). */
+const within = (a: Box, b: Box) =>
+  a.x >= b.x - 0.5 &&
+  a.y >= b.y - 0.5 &&
+  a.x + a.width <= b.x + b.width + 0.5 &&
+  a.y + a.height <= b.y + b.height + 0.5;
+const overlap = (a: Box, b: Box) =>
+  a.x < b.x + b.width && b.x < a.x + a.width && a.y < b.y + b.height && b.y < a.y + a.height;
+
+/** Where an element is drawn in the window; it must be there. */
+async function boxOf(target: Locator, what: string): Promise<Box> {
+  await expect(target, what).toBeVisible();
+  const box = await target.boundingBox();
+  if (!box) throw new Error(`${what} has no box`);
+  return box;
+}
+
+/** The Globe's own box: the screen under the title bar, beside the sidebar. */
+const globeBox = (win: Page) => boxOf(win.getByTestId('globe-screen'), 'the Globe');
+
+/** Every part lies wholly inside the Globe, and no two of them overlap. */
+function expectLaidOut(globe: Box, parts: Record<string, Box>) {
+  const named = Object.entries(parts);
+  for (const [name, box] of named)
+    expect(within(box, globe), `${name} (${edges(box)}) inside the Globe (${edges(globe)})`).toBe(
+      true,
+    );
+  named.forEach(([name, box], i) => {
+    for (const [other, otherBox] of named.slice(i + 1))
+      expect(
+        overlap(box, otherBox),
+        `${name} (${edges(box)}) overlaps ${other} (${edges(otherBox)})`,
+      ).toBe(false);
+  });
+}
+
+/**
+ * The pieces the Globe keeps at its edges whatever it shows: the field (or the read-out that
+ * takes its place), the Map button, the view buttons and the credits.
+ */
+async function edgePieces(win: Page): Promise<Record<string, Box>> {
+  const top = (await win.getByTestId('globe-readout').count())
+    ? { 'the read-out': await boxOf(win.getByTestId('globe-readout'), 'the read-out') }
+    : { 'the field': await boxOf(win.locator('.globe-search-in'), 'the Find a site field') };
+  return {
+    ...top,
+    'the Map button': await boxOf(win.getByTestId('globe-map-button'), 'the Map button'),
+    'the view buttons': await boxOf(
+      win.getByRole('group', { name: 'Globe view' }),
+      'the view buttons',
+    ),
+    'the credits': await boxOf(win.getByTestId('globe-credits'), 'the credits'),
+  };
+}
+
+/** The open card, once it has risen into place by its pin. */
+async function cardBox(win: Page): Promise<Box> {
+  const card = win.getByTestId('globe-card');
+  await expect(card).toBeVisible();
+  await card.evaluate((el) => Promise.all(el.getAnimations().map((a) => a.finished)));
+  await frames(win);
+  return boxOf(card, 'the card');
+}
+
+/**
+ * The card stands by its pin (a point of the window): just under it or just over it, and across
+ * it. For a pin well inside the Globe; at an edge the card slides along the edge instead.
+ */
+function expectByPin(card: Box, [x, y]: readonly [number, number]) {
+  const gap = Math.min(Math.abs(card.y - y), Math.abs(y - (card.y + card.height)));
+  expect(gap, `from the pin at ${y.toFixed(0)} to the card (${edges(card)})`).toBeLessThan(24);
+  expect(x, `the pin against the card (${edges(card)})`).toBeGreaterThan(card.x);
+  expect(x, `the pin against the card (${edges(card)})`).toBeLessThan(card.x + card.width);
+}
+
+/**
+ * The field and the Map button keep out of the title bar above the Globe: its breadcrumbs, its
+ * search and help buttons and every status chip it shows (Processing, Share, the connection).
+ */
+async function expectClearOfTitleBar(win: Page) {
+  const bar: [string, Box][] = [];
+  const items = win.locator(
+    '.titlebar > .brand, .titlebar > .crumbs, .titlebar > button, .titlebar .tb-status > *',
+  );
+  for (const item of await items.all()) {
+    const box = await item.boundingBox();
+    if (!box || box.width === 0) continue;
+    const name = await item.evaluate(
+      (el) => el.getAttribute('data-testid') ?? el.getAttribute('class') ?? el.tagName,
+    );
+    bar.push([`the title bar's ${name}`, box]);
+  }
+  // the brand, the breadcrumbs, search, help and the connection menu are always there
+  expect(bar.length).toBeGreaterThanOrEqual(5);
+  const mine = {
+    'the field': await boxOf(win.locator('.globe-search-in'), 'the Find a site field'),
+    'the Map button': await boxOf(win.getByTestId('globe-map-button'), 'the Map button'),
+  };
+  for (const [name, box] of Object.entries(mine))
+    for (const [other, otherBox] of bar)
+      expect(
+        overlap(box, otherBox),
+        `${name} (${edges(box)}) overlaps ${other} (${edges(otherBox)})`,
+      ).toBe(false);
+}
+
+/**
+ * A click at this point of the window lands on the Globe's canvas: no card, button, field or
  * label of the Globe's chrome is in the way (whatever the platform's window chrome and fonts).
  */
 async function expectGlobeAt(win: Page, x: number, y: number) {
@@ -269,14 +459,91 @@ async function openGlobe(win: Page) {
   await settle(win, 'the Globe placed the sites', (s) => s.sites.length > 0);
 }
 
-/** Pick a site in the list and wait for the flight to end over it. */
+/** The field at the top of the Globe that lists the sites and finds one by name. */
+const findField = (win: Page) => win.getByRole('combobox', { name: 'Find a site' });
+
+/** Open the field's list of sites (a click in the field); the list. */
+async function openSiteList(win: Page) {
+  await findField(win).click();
+  const list = win.getByTestId('globe-sites');
+  await expect(list).toBeVisible();
+  return list;
+}
+
+/** Pick a site in the field's list and wait for the flight to end over it. */
 async function flyToSite(win: Page, name: string) {
-  await win
-    .getByTestId('globe-sites')
-    .getByRole('button', { name: new RegExp(name) })
-    .click();
+  const list = await openSiteList(win);
+  await list.getByRole('option', { name: new RegExp(name) }).click();
+  await expect(list).toHaveCount(0);
   await expect(win.getByTestId('globe-card')).toContainText(name);
   await settle(win, `the flight to ${name} ended`, (s) => !s.flying && s.cameraHeight < 5000);
+}
+
+/** Open the Map dialog (the Map button at the top right), unless it is open; the dialog. */
+async function openMap(win: Page) {
+  const menu = win.getByTestId('globe-map-menu');
+  if (!(await menu.isVisible())) await win.getByTestId('globe-map-button').click();
+  await expect(menu).toBeVisible();
+  return menu;
+}
+
+/** Close the Map dialog with Esc, so nothing of it lies over the Globe. */
+async function closeMap(win: Page) {
+  const menu = win.getByTestId('globe-map-menu');
+  if (await menu.isVisible()) {
+    // Esc is the dialog's own: it closes while the focus is inside it
+    await expect(menu.locator(':focus')).toHaveCount(1);
+    await win.keyboard.press('Escape');
+  }
+  await expect(menu).toHaveCount(0);
+}
+
+/** Choose a map type in the Map dialog, which stays open to show what the look needs; the dialog. */
+async function chooseLook(win: Page, style: GlobeStyle) {
+  const menu = await openMap(win);
+  const look = win.getByTestId(`globe-look-${style}`);
+  await look.click();
+  await expect(look).toHaveAttribute('aria-pressed', 'true');
+  return menu;
+}
+
+/** Choose a map type in the Map dialog, then close the dialog: nothing of it covers the Globe. */
+async function setLook(win: Page, style: GlobeStyle) {
+  await chooseLook(win, style);
+  await closeMap(win);
+}
+
+/** Whether a site is drawn inside a gathered chip ("2 sites") and not as its own. */
+const gathered = async (win: Page, projectId: string) =>
+  (await inspect(win))?.clusters.some((c) => c.sites.includes(projectId)) ?? true;
+
+/**
+ * Make sure a site has a chip of its own before the pointer goes to it: a gathered site is
+ * drawn as part of one chip, which is not the site's to hover or click. Near the ground no other
+ * site is in view, so a flight there and back out of its card always parts them.
+ */
+async function standAlone(win: Page, site: { id: string; name: string }) {
+  await frames(win);
+  if (!(await gathered(win, site.id))) return;
+  await flyToSite(win, site.name);
+  await win.getByTestId('globe-card').getByRole('button', { name: 'Close' }).click();
+  await expect(win.getByTestId('globe-card')).toHaveCount(0);
+  await expect.poll(() => gathered(win, site.id), { timeout: SETTLE_MS }).toBe(false);
+}
+
+/** Where a site's pin (the dot of its chip) is drawn, in the window's own pixels. */
+async function pinInWindow(win: Page, projectId: string): Promise<[number, number]> {
+  await expect.poll(async () => (await pinOf(win, projectId)) !== null).toBe(true);
+  const box = await boxOf(win.getByTestId('globe-canvas'), 'the Globe');
+  const [x, y] = (await pinOf(win, projectId)) ?? [0, 0];
+  return [box.x + x, box.y + y];
+}
+
+/** Bring the pointer to a point of the Globe and let it rest there, as a hand does. */
+async function pointAt(win: Page, x: number, y: number) {
+  await expectGlobeAt(win, x, y);
+  await win.mouse.move(x + 40, y + 30);
+  await win.mouse.move(x, y);
 }
 
 // ---------------------------------------------------------------- tests
@@ -349,30 +616,36 @@ test('every library project is a site; packs draw with their credits', async ({
 }) => {
   await installSyntheticPacks(dataRoot);
   await openGlobe(win);
-  const list = win.getByTestId('globe-sites');
-  await expect(list.getByRole('button')).toHaveCount(3); // A, B and the tiny e2e project
+  // the field lists them: A, B and the tiny e2e project, each with its state
+  const list = await openSiteList(win);
+  await expect(list.getByRole('option')).toHaveCount(3);
   await expect(list).toContainText(SITE_A.name);
   await expect(list).toContainText(SITE_B.name);
   await expect(list).toContainText('1 open issue');
   await expectAccessible(win, 'Globe');
+  await win.keyboard.press('Escape');
+  await expect(list).toHaveCount(0);
   // the street map is the default look: the bundled land shapes, and no imagery pack drawn
   const credits = win.getByTestId('globe-credits');
+  const map = await openMap(win);
   await expect(win.getByTestId('globe-look-street')).toHaveAttribute('aria-pressed', 'true');
   await expect
     .poll(async () => (await inspect(win))?.layers, { timeout: SETTLE_MS })
     .toEqual(['earth-shapes:whole']);
   await expect(credits).toContainText('Natural Earth (public domain)');
   await expect(credits).not.toContainText('Synthetic imagery test pack');
-  await expect(win.getByText(/No street map pack is installed/)).toBeVisible();
+  await expect(map.getByText(/No street map pack is installed/)).toBeVisible();
+  await expectAccessible(win, 'Globe');
   // satellite is a choice: the packs go over the street globe
-  await win.getByTestId('globe-look-satellite').click();
+  await chooseLook(win, 'satellite');
   await settle(win, 'the imagery pack is a layer', (s) => s.imagery.includes('syn-imagery'));
   await expect
     .poll(async () => (await inspect(win))?.layers, { timeout: SETTLE_MS })
     .toEqual(['earth-shapes:whole', 'pack:syn-imagery']);
-  await expect(win.locator('.globe-field select').first()).toContainText(
+  await expect(map.locator('.globe-field select').first()).toContainText(
     'Synthetic imagery (syn-imagery)',
   );
+  await closeMap(win);
   await flyToSite(win, SITE_A.name);
   await settle(win, 'the pack tiles loaded', (s) => s.tilesLoaded && s.imageryTiles > 0);
   // the pack's flat magenta is drawn below the site pin, in the middle of the view
@@ -407,11 +680,14 @@ test('every library project is a site; packs draw with their credits', async ({
       )
       .toBeCloseTo(BENCHMARK_M, 0);
   } else {
-    // Low tier (software GPU): terrain stays off, and the panel says so
-    await expect(win.getByText('Terrain is off on the Low graphics preset.')).toBeVisible();
+    // Low tier (software GPU): terrain stays off, and the Map dialog says so
+    await expect(
+      (await openMap(win)).getByText('Terrain is off on the Low graphics preset.'),
+    ).toBeVisible();
+    await closeMap(win);
   }
   // the old look stays within reach: Natural Earth II under the packs, credited as before
-  await win.getByTestId('globe-look-natural-earth').click();
+  await setLook(win, 'natural-earth');
   await settle(
     win,
     'the Natural Earth raster is the base',
@@ -429,6 +705,7 @@ test('every library project is a site; packs draw with their credits', async ({
   await win.locator('.sb-nav .nav-item', { hasText: 'Projects' }).click();
   await expect(win.getByTestId('globe-canvas')).toHaveCount(0);
   await win.locator('.sb-nav .nav-item', { hasText: 'Globe' }).click();
+  await openMap(win);
   await expect(win.getByTestId('globe-look-natural-earth')).toHaveAttribute('aria-pressed', 'true');
 });
 
@@ -458,7 +735,11 @@ test('street packs draw as the street map of the Globe, offline under the app CS
     .poll(async () => (await inspect(win))?.layers, { timeout: SETTLE_MS })
     .toEqual(['earth-shapes:underlay', 'street']);
   await expect(win.getByTestId('globe-credits')).toContainText('OpenStreetMap contributors');
-  await expect(win.getByText(/No street map pack is installed/)).toHaveCount(0);
+  // the Map dialog has no word about a missing street pack
+  const map = await openMap(win);
+  await expect(win.getByTestId('globe-look-street')).toHaveAttribute('aria-pressed', 'true');
+  await expect(map.getByText(/No street map pack is installed/)).toHaveCount(0);
+  await closeMap(win);
   await flyToSite(win, SITE_A.name);
   // street tiles are drawn one at a time by a hidden map: wait for the ones in view
   await settle(win, 'the street tiles drew', (s) => s.tilesLoaded && (s.street?.tiles ?? 0) > 0);
@@ -471,7 +752,7 @@ test('street packs draw as the street map of the Globe, offline under the app CS
   expect(state?.street?.timeouts).toBe(0);
   expect(state?.street?.lastError ?? null).toBeNull();
   // the Natural Earth look draws no street tiles
-  await win.getByTestId('globe-look-natural-earth').click();
+  await setLook(win, 'natural-earth');
   await settle(win, 'the street layer is gone', (s) => !s.layers.includes('street'));
   await expect.poll(async () => (await inspect(win))?.street, { timeout: SETTLE_MS }).toBeNull();
   const violations = await win.evaluate(
@@ -484,15 +765,47 @@ test('street packs draw as the street map of the Globe, offline under the app CS
 
 test('a site lights up under the pointer and when it is selected', async ({ win }) => {
   await openGlobe(win);
-  // the sites are far apart, each its own pin; the pins stand still once the opening flight ends
+  // the chips stand still once the opening flight ends; site A has one of its own
   await settle(win, 'the opening flight ended', (s) => !s.flying);
-  await expect.poll(async () => (await pinOf(win, SITE_A.id)) !== null).toBe(true);
-  const box = await win.getByTestId('globe-canvas').boundingBox();
-  const [x, y] = (await pinOf(win, SITE_A.id)) ?? [0, 0];
-  // the pointer arrives, then rests on the pin
-  await expectGlobeAt(win, (box?.x ?? 0) + x, (box?.y ?? 0) + y);
-  await win.mouse.move((box?.x ?? 0) + x + 40, (box?.y ?? 0) + y + 30);
-  await win.mouse.move((box?.x ?? 0) + x, (box?.y ?? 0) + y);
+  await standAlone(win, SITE_A);
+  // The dot of the chip is the site: at the site's own place the chip is drawn in the amber of
+  // a site with an open issue, and 6 px to each side in the chip's dark ground (the dot is 8 px
+  // across), whatever the screen's scale.
+  const [x, y] = await pinInWindow(win, SITE_A.id);
+  const canvas = await boxOf(win.getByTestId('globe-canvas'), 'the Globe');
+  const drawnAt = async (dx: number, dy: number) => {
+    const [r = 0, g = 0, b = 0] =
+      (await sampleAt(
+        win,
+        (x - canvas.x + dx) / canvas.width,
+        (y - canvas.y + dy) / canvas.height,
+      )) ?? [];
+    return { r, g, b };
+  };
+  // (billboard images load a frame late)
+  await expect
+    .poll(
+      async () => {
+        const { r, g, b } = await drawnAt(0, 0);
+        return r > 180 && g > 80 && g < 200 && r - b > 80;
+      },
+      { message: "amber at the place of site A's pin", timeout: 15_000 },
+    )
+    .toBe(true);
+  for (const [dx, dy] of [
+    [-6, 0],
+    [6, 0],
+    [0, -6],
+    [0, 6],
+  ] as const) {
+    const { r, g, b } = await drawnAt(dx, dy);
+    expect(
+      Math.max(r, g, b),
+      `the chip ${String(dx)}, ${String(dy)} px from its dot is drawn ${String(r)}, ${String(g)}, ${String(b)}`,
+    ).toBeLessThan(90);
+  }
+  // the pointer arrives, then rests on the dot
+  await pointAt(win, x, y);
   await expect
     .poll(async () => (await inspect(win))?.hover, { timeout: 15_000 })
     .toEqual({ kind: 'site', projectId: SITE_A.id });
@@ -500,24 +813,197 @@ test('a site lights up under the pointer and when it is selected', async ({ win 
   await expect(hover).toContainText(SITE_A.name);
   // the label itself (the element the Globe moves is a point without a size)
   await expect(hover.locator('.aio-globe-chip')).toBeVisible();
-  // a click selects it: the card opens and the label stays beside the pin
-  await win.mouse.click((box?.x ?? 0) + x, (box?.y ?? 0) + y);
-  await expect(win.getByTestId('globe-card')).toContainText(SITE_A.name);
+  // a click selects it: its card opens, by the pin and wholly inside the Globe
+  await win.mouse.click(x, y);
+  const card = win.getByTestId('globe-card');
+  await expect(card).toContainText(SITE_A.name);
+  await expect(card).toHaveAccessibleName(SITE_A.name);
   await expect
     .poll(async () => (await inspect(win))?.selected, { timeout: SETTLE_MS })
     .toBe(SITE_A.id);
+  const globe = await globeBox(win);
+  const placed = await cardBox(win);
+  expect(within(placed, globe), `the card (${edges(placed)}) inside the Globe`).toBe(true);
+  expectByPin(placed, [x, y]);
+  // the selected site wears its rings and no label: the chip and the card say its name
   const selected = win.getByTestId('globe-tag-selected');
-  await expect(selected).toContainText(SITE_A.name);
-  await expect(selected.locator('.aio-globe-chip')).toBeVisible();
-  // a row of the list lights its pin the same way
-  await win
-    .getByTestId('globe-sites')
-    .getByRole('button', { name: new RegExp(SITE_B.name) })
-    .hover();
+  await expect(selected.locator('.aio-globe-pulse')).toBeVisible();
+  await expect(selected).toHaveText('');
+  await expect(selected.locator('.aio-globe-chip')).toHaveCount(0);
+  // a row of the field under the pointer lights its chip the same way
+  const list = await openSiteList(win);
+  await list.getByRole('option', { name: new RegExp(SITE_B.name) }).hover();
   await expect(hover).toContainText(SITE_B.name);
+  await win.keyboard.press('Escape');
+  await expect(list).toHaveCount(0);
+  await expect(hover).not.toContainText(SITE_B.name);
   // closing the card clears the selection
-  await win.getByTestId('globe-card').getByRole('button', { name: 'Close' }).click();
-  await expect(win.getByTestId('globe-card')).toHaveCount(0);
+  await card.getByRole('button', { name: 'Close' }).click();
+  await expect(card).toHaveCount(0);
+  await expect.poll(async () => (await inspect(win))?.selected).toBeNull();
+});
+
+test('chips that overlap gather into one, at any heading, and part again', async ({ win }) => {
+  await openGlobe(win);
+  await settle(win, 'the opening flight ended', (s) => !s.flying);
+  // the tiny project and site A lie some 250 km apart, site B far to the south-west of both
+  const pair = [TINY_PROJECT_ID, SITE_A.id];
+  const groups = async () => (await inspect(win))?.clusters ?? null;
+  const together = async () =>
+    (await groups())?.some((c) => pair.every((id) => c.sites.includes(id))) ?? false;
+  // from further out the chips of the two would overlap: one chip stands for both
+  for (let step = 0; step < 2 && !(await together()); step++) {
+    const from = (await inspect(win))?.cameraHeight ?? 0;
+    await win.getByRole('button', { name: 'Zoom out' }).click();
+    await expect
+      .poll(async () => (await inspect(win))?.cameraHeight ?? 0, { timeout: 15_000 })
+      .toBeGreaterThan(from * 1.8);
+    await frames(win);
+  }
+  await expect.poll(groups, { timeout: SETTLE_MS }).toEqual([{ count: 2, sites: pair }]);
+  // the gathered chip lies between its sites and answers the pointer as one thing
+  const between = async (): Promise<[number, number]> => {
+    const [ax, ay] = await pinInWindow(win, SITE_A.id);
+    const [tx, ty] = await pinInWindow(win, TINY_PROJECT_ID);
+    return [(ax + tx) / 2, (ay + ty) / 2];
+  };
+  const hoverOf = async () => (await inspect(win))?.hover ?? null;
+  const northUp = await between();
+  await pointAt(win, ...northUp);
+  await expect.poll(hoverOf, { timeout: 15_000 }).toEqual({ kind: 'cluster', count: 2 });
+  // its words are on the chip: no label is added under the pointer
+  await expect(win.getByTestId('globe-tag-hover')).toHaveText('');
+  // neither site answers at its own place while it is gathered
+  for (const id of pair) {
+    const [x, y] = await pinInWindow(win, id);
+    if (Math.hypot(x - northUp[0], y - northUp[1]) < 40) continue; // under the gathered chip
+    await pointAt(win, x, y);
+    await frames(win);
+    expect((await hoverOf())?.kind ?? 'nothing', `what is at the place of ${id}`).not.toBe('site');
+  }
+
+  // with south up the two change sides, and still share one chip
+  const [aBefore] = await pinInWindow(win, SITE_A.id);
+  const [tBefore] = await pinInWindow(win, TINY_PROJECT_ID);
+  await faceSouth(win);
+  const [aAfter] = await pinInWindow(win, SITE_A.id);
+  const [tAfter] = await pinInWindow(win, TINY_PROJECT_ID);
+  expect(Math.sign(aAfter - tAfter)).toBe(-Math.sign(aBefore - tBefore));
+  await expect.poll(groups, { timeout: SETTLE_MS }).toEqual([{ count: 2, sites: pair }]);
+
+  // a click on the gathered chip flies in until they part: each is its own chip again
+  const southUp = await between();
+  await pointAt(win, ...southUp);
+  await expect.poll(hoverOf, { timeout: 15_000 }).toEqual({ kind: 'cluster', count: 2 });
+  await win.mouse.click(...southUp);
+  await expect.poll(groups, { timeout: SETTLE_MS }).toEqual([]);
+  await settle(win, 'the flight to the two sites ended', (s) => !s.flying);
+  await frames(win);
+  for (const id of pair) {
+    expect(await gathered(win, id)).toBe(false);
+    const [x, y] = await pinInWindow(win, id);
+    await pointAt(win, x, y);
+    await expect.poll(hoverOf, { timeout: 15_000 }).toEqual({ kind: 'site', projectId: id });
+  }
+});
+
+test("the Globe's controls fit the smallest window", async ({ win }) => {
+  await openGlobe(win);
+  await settle(win, 'the opening flight ended', (s) => !s.flying);
+  const globe = await globeBox(win);
+  // at rest: the field in the middle of the top edge, Map at its end, the four view buttons
+  // (Measure first) and the credits along the bottom, each inside the Globe and clear of the rest
+  expectLaidOut(globe, await edgePieces(win));
+  await expectClearOfTitleBar(win);
+  const view = win.getByRole('group', { name: 'Globe view' }).getByRole('button');
+  await expect(view).toHaveCount(4);
+  const names: (string | null)[] = [];
+  for (const button of await view.all()) {
+    expect(within(await boxOf(button, 'a view button'), globe)).toBe(true);
+    names.push(await button.getAttribute('aria-label'));
+  }
+  expect(names).toEqual(['Measure on the ellipsoid', 'Zoom in', 'Zoom out', 'Show all sites']);
+  // nothing of it covers the middle of the Globe
+  await expectGlobeAt(win, globe.x + globe.width / 2, globe.y + globe.height / 2);
+
+  // the field's list and the Map dialog open inside the Globe too
+  const list = await openSiteList(win);
+  expect(within(await boxOf(list, 'the list of sites'), globe)).toBe(true);
+  await win.keyboard.press('Escape');
+  await expect(list).toHaveCount(0);
+  const map = await openMap(win);
+  const dialog = await boxOf(map, 'the Map dialog');
+  expect(within(dialog, globe), `the Map dialog (${edges(dialog)}) inside the Globe`).toBe(true);
+  const field = await boxOf(win.locator('.globe-search-in'), 'the Find a site field');
+  expect(overlap(dialog, field), 'the Map dialog overlaps the field').toBe(false);
+  await closeMap(win);
+
+  // a selected site's card, wherever its pin is: in the middle after the flight, then with the
+  // pin slid into the lower right corner (where the view buttons are) and the upper right one
+  // (under the Map button), the card stays inside the Globe and clear of every control
+  await flyToSite(win, SITE_A.name);
+  for (const [fx, fy] of [
+    [0.5, 0.5],
+    [0.96, 0.94],
+    [0.97, 0.05],
+    [0.45, 0.04],
+    [0.03, 0.95],
+  ] as const) {
+    await putPinAt(win, SITE_A.id, fx, fy);
+    expectLaidOut(globe, { ...(await edgePieces(win)), 'the card': await cardBox(win) });
+  }
+  // and what is not under the card still takes the pointer
+  await expectGlobeAt(win, globe.x + globe.width * 0.25, globe.y + globe.height * 0.4);
+
+  // while measuring, the read-out stands where the field was, clear of the Map button
+  await win.getByRole('button', { name: 'Measure on the ellipsoid' }).click();
+  await expect(findField(win)).toHaveCount(0);
+  expectLaidOut(globe, await edgePieces(win));
+});
+
+test('the keyboard alone reaches a site and the map settings', async ({ win }) => {
+  await openGlobe(win);
+  await settle(win, 'the opening flight ended', (s) => !s.flying);
+  // the field: part of a name, Down to the match, Enter
+  await findField(win).focus();
+  const list = win.getByTestId('globe-sites');
+  await expect(list.getByRole('option')).toHaveCount(3);
+  await win.keyboard.type('site b');
+  await expect(list.getByRole('option')).toHaveCount(1);
+  await win.keyboard.press('ArrowDown');
+  await expect(list.getByRole('option', { name: new RegExp(SITE_B.name) })).toHaveAttribute(
+    'data-active',
+    'true',
+  );
+  // the row the keyboard is on lights its chip, as the pointer does
+  await expect(win.getByTestId('globe-tag-hover')).toContainText(SITE_B.name);
+  await win.keyboard.press('Enter');
+  const card = win.getByTestId('globe-card');
+  await expect(card).toContainText(SITE_B.name);
+  await expect(list).toHaveCount(0);
+  await expect(findField(win)).toHaveValue('');
+  await settle(win, 'the flight to site B ended', (s) => !s.flying && s.cameraHeight < 5000);
+  expect((await inspect(win))?.selected).toBe(SITE_B.id);
+
+  // Tab goes on to Map; Enter opens its dialog with the focus inside, Esc gives it back
+  await win.keyboard.press('Tab');
+  const mapButton = win.getByTestId('globe-map-button');
+  await expect(mapButton).toBeFocused();
+  await win.keyboard.press('Enter');
+  const map = win.getByTestId('globe-map-menu');
+  await expect(map).toBeVisible();
+  await expect(mapButton).toHaveAttribute('aria-expanded', 'true');
+  await expect(map.locator(':focus')).toHaveCount(1);
+  await win.keyboard.press('Escape');
+  await expect(map).toHaveCount(0);
+  await expect(mapButton).toBeFocused();
+  // the site's card is still open, and is the next stop
+  await expect(card).toContainText(SITE_B.name);
+  await win.keyboard.press('Tab');
+  await expect(card.locator(':focus')).toHaveCount(1);
+  // Esc in the card closes it
+  await win.keyboard.press('Escape');
+  await expect(card).toHaveCount(0);
   await expect.poll(async () => (await inspect(win))?.selected).toBeNull();
 });
 
@@ -579,28 +1065,58 @@ test('an issue pin opens the issue in the site view', async ({ win }) => {
       return c?.pinPosition(`issue:${id}`) ?? null;
     }, pin);
   await expect.poll(async () => (await pinAt()) !== null).toBe(true);
-  const [x, y] = (await pinAt()) ?? [0, 0];
-  const box = await win.getByTestId('globe-canvas').boundingBox();
-  // the pin is drawn (its severity red) before it is clicked: billboard images load a frame late
-  await expect
-    .poll(
-      () =>
-        win.evaluate(
-          ([fx, fy]) => {
-            const el = document.querySelector('[data-testid="globe-canvas"]');
-            const c = (
-              el as { __aioGlobe?: { samplePixel(x: number, y: number): Promise<number[]> } }
-            ).__aioGlobe;
-            return c?.samplePixel(fx, fy).then((p) => (p[0] ?? 0) > 180 && (p[1] ?? 255) < 110);
-          },
-          [x / (box?.width ?? 1), y / (box?.height ?? 1)] as const,
-        ),
-      { timeout: 15_000 },
-    )
-    .toBe(true);
-  await expectGlobeAt(win, (box?.x ?? 0) + x, (box?.y ?? 0) + y);
-  await win.mouse.click((box?.x ?? 0) + x, (box?.y ?? 0) + y);
+  const box = await boxOf(win.getByTestId('globe-canvas'), 'the Globe');
+  // the pin is drawn (its severity red): billboard images load a frame late
+  const drawnRed = async () => {
+    const [x, y] = (await pinAt()) ?? [0, 0];
+    const [r = 0, g = 255] = (await sampleAt(win, x / box.width, y / box.height)) ?? [];
+    return r > 180 && g < 110;
+  };
   const card = win.getByTestId('globe-card');
+  // the project's own title bar chips (Processing, Share) are over the Globe now: the field and
+  // the Map button keep out of them too
+  await expect(processingChip(win)).toBeVisible();
+  await expectClearOfTitleBar(win);
+
+  // from the height of the flight the pin stands clear of its site's chip
+  await expect.poll(drawnRed, { timeout: 15_000 }).toBe(true);
+  let [x, y] = (await pinAt()) ?? [0, 0];
+  await expectGlobeAt(win, box.x + x, box.y + y);
+  await win.mouse.click(box.x + x, box.y + y);
+  await expect(card).toContainText('F01 Corrosion on the tank');
+  // the card is the issue's, by the issue's pin and inside the Globe
+  const placed = await cardBox(win);
+  expect(within(placed, await globeBox(win)), `the card (${edges(placed)}) inside the Globe`).toBe(
+    true,
+  );
+  expectByPin(placed, [box.x + x, box.y + y]);
+  await card.getByRole('button', { name: 'Close' }).click();
+  await expect(card).toHaveCount(0);
+
+  // from further out the pin lies on the chip of its site (which runs east of the site's dot):
+  // it is still drawn over the chip, and it is the pin that answers the pointer, not the chip
+  const onChip = async () => {
+    const [sx, sy] = (await pinOf(win, SITE_A.id)) ?? [0, 0];
+    const [ix, iy] = (await pinAt()) ?? [0, 0];
+    return ix - sx > 4 && ix - sx < 60 && Math.abs(iy - sy) < 11;
+  };
+  for (let step = 0; step < 4 && !(await onChip()); step++) {
+    const from = (await inspect(win))?.cameraHeight ?? 0;
+    await win.getByRole('button', { name: 'Zoom out' }).click();
+    await expect
+      .poll(async () => (await inspect(win))?.cameraHeight ?? 0, { timeout: 15_000 })
+      .toBeGreaterThan(from * 1.8);
+    await frames(win);
+  }
+  expect(await onChip(), "the issue pin lies on its site's chip").toBe(true);
+  await expect.poll(drawnRed, { timeout: 15_000 }).toBe(true);
+  [x, y] = (await pinAt()) ?? [0, 0];
+  await pointAt(win, box.x + x, box.y + y);
+  await expect
+    .poll(async () => (await inspect(win))?.hover, { timeout: 15_000 })
+    .toEqual({ kind: 'issue', projectId: SITE_A.id, issueId: majorIssue.id });
+  await expect(win.getByTestId('globe-tag-hover')).toContainText('F01 Corrosion on the tank');
+  await win.mouse.click(box.x + x, box.y + y);
   await expect(card).toContainText('F01 Corrosion on the tank');
   await card.getByRole('button', { name: 'Open issue' }).click();
   await expect(win.locator('.app')).toHaveAttribute('data-screen', 'scene');
@@ -682,11 +1198,14 @@ test('the only tool is a distance and area read-out on the ellipsoid', async ({ 
   await win.getByRole('button', { name: 'Measure on the ellipsoid' }).click();
   const readout = win.getByTestId('globe-readout');
   await expect(readout).toContainText('Click points on the ground');
+  // the read-out stands where the field was, and the selected site's card has closed
+  await expect(findField(win)).toHaveCount(0);
+  await expect(win.getByTestId('globe-card')).toHaveCount(0);
   const box = await win.getByTestId('globe-canvas').boundingBox();
   const at = async (fx: number, fy: number) => {
     const x = (box?.x ?? 0) + (box?.width ?? 0) * fx;
     const y = (box?.y ?? 0) + (box?.height ?? 0) * fy;
-    // the panel, the read-out and the view buttons leave this part of the Globe free
+    // the read-out, the view buttons and the credits leave this part of the Globe free
     await expectGlobeAt(win, x, y);
     await win.mouse.click(x, y);
   };
@@ -758,7 +1277,7 @@ test.describe('online satellite on the Globe', () => {
     await openGlobe(win);
     const credits = win.getByTestId('globe-credits');
     // switched off (as a new profile is): the Satellite look is the packs alone
-    await win.getByTestId('globe-look-satellite').click();
+    await setLook(win, 'satellite');
     await expect
       .poll(() => layers(win), { timeout: SETTLE_MS })
       .toEqual(['earth-shapes:whole', 'pack:syn-imagery']);
@@ -780,7 +1299,11 @@ test.describe('online satellite on the Globe', () => {
       .toEqual(['earth-shapes:whole', 'online-satellite', 'pack:syn-imagery']);
     await expect(credits).toContainText(ONLINE_SATELLITE.attribution);
     await expect(credits).toContainText('Synthetic imagery test pack');
-    await expect(win.getByText(HINT)).toHaveCount(0);
+    // the Map dialog opens on the look that was remembered, with no hint to switch it on
+    const map = await openMap(win);
+    await expect(win.getByTestId('globe-look-satellite')).toHaveAttribute('aria-pressed', 'true');
+    await expect(map.getByText(HINT)).toHaveCount(0);
+    await closeMap(win);
     // its tiles come through main (the stand-in here) and draw: green well over red and blue,
     // whatever the GPU and the Globe's light make of the exact shade
     await expect.poll(() => asked(app), { timeout: SETTLE_MS }).toBeGreaterThan(0);
@@ -795,10 +1318,10 @@ test.describe('online satellite on the Globe', () => {
       .toBe(true);
 
     // never in the other looks
-    await win.getByTestId('globe-look-street').click();
+    await setLook(win, 'street');
     await expect.poll(() => layers(win), { timeout: SETTLE_MS }).toEqual(['earth-shapes:whole']);
     await expect(credits).not.toContainText(ONLINE_SATELLITE.attribution);
-    await win.getByTestId('globe-look-natural-earth').click();
+    await setLook(win, 'natural-earth');
     await expect
       .poll(() => layers(win), { timeout: SETTLE_MS })
       .toEqual(['natural-earth-ii', 'pack:syn-imagery']);
@@ -812,12 +1335,13 @@ test.describe('online satellite on the Globe', () => {
     win,
   }) => {
     await openGlobe(win);
-    await win.getByTestId('globe-look-satellite').click();
+    // the Map dialog stays open after a choice, and says what the look lacks
+    const map = await chooseLook(win, 'satellite');
     await expect
       .poll(async () => (await inspect(win))?.style, { timeout: SETTLE_MS })
       .toBe('satellite');
     await expect.poll(() => layers(win), { timeout: SETTLE_MS }).toEqual(['earth-shapes:whole']);
-    await expect(win.getByText(HINT)).toBeVisible();
+    await expect(map.getByText(HINT)).toBeVisible();
     await expect(win.getByTestId('globe-credits')).not.toContainText(ONLINE_SATELLITE.attribution);
     expect(await asked(app)).toBe(0);
   });
