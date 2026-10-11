@@ -24,8 +24,8 @@ The full table, with plans, is [plans/ROADMAP.md](plans/ROADMAP.md). Status and 
 
 ## 3. Now
 
-- **Phase**: M10 integration rounds; app 0.11.3 with pipeline pack 0.5.2. Pipeline pack install from Settings (round 40), the Globe street map (round 41), the session workflow (round 45), moving a whole group to another survey date (round 46), maps from photos landing under the photos' survey date with the project named (round 49) and a photo run saying why its maps could not start (round 50) are merged.
-- **Branch**: `main` at round 52 (the testing document describes projects neutrally); merging goes through the Orchestrator session, one branch at a time, and sessions follow the workflow in `CLAUDE.md` ("How a build runs"). CI is Windows-only with six e2e shards; macOS is parked in CI, the nightly and the release.
-- **In flight**: a redesign of the Jobs screen, where jobs belong to the open project, is being designed in its own session.
+- **Phase**: M10 integration rounds; app 0.11.3 with pipeline pack 0.5.2. Pipeline pack install from Settings (round 40), the Globe street map (round 41), the session workflow (round 45), moving a whole group to another survey date (round 46), maps from photos landing under the photos' survey date with the project named (round 49), a photo run saying why its maps could not start (round 50) and processing that belongs to the project (round 57: a **Processing** chip and drawer replace the Jobs screen, the raw pipeline forms move to Settings) are merged.
+- **Branch**: `main` at round 58 (the bump to app 0.11.3); merging goes through the Orchestrator session, one branch at a time, and sessions follow the workflow in `CLAUDE.md` ("How a build runs"). CI is Windows-only with six e2e shards; macOS is parked in CI, the nightly and the release.
+- **In flight**: photo depth maps and fusion on several cores, and a new app mark, each in its own session.
 - **Next**: finish M10; then Walks 360 and the timeline.
-- **Owed**: founder decisions on the online map provider and API key, the GPU spike, and the M11 G12 AI helpers; the job runner's refusals still say "pipeline pack" and want plain words (small follow-up); macOS stays parked.
+- **Owed**: founder decisions on the online map provider and API key, the GPU spike, and the M11 G12 AI helpers; the inspection sample's keyboard review test fails about one run in six on `main` and needs its own fix; a **Make 3D Tiles** item on the layer and a screen for building and training AI models are follow-ups of the processing work; macOS stays parked.
