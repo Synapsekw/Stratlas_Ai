@@ -471,7 +471,7 @@ function Wizard() {
                       <input
                         className="input mono"
                         value={typed}
-                        placeholder="29.0276, 48.1352, 31.7   or   221029.4 3214462 31.7"
+                        placeholder="25.1000, 55.2000, 12   or   318490.6 2777230.4 12"
                         aria-label="Origin coordinate"
                         onChange={(e) => {
                           fromTyped(e.target.value);
