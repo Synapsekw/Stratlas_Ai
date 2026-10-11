@@ -1,5 +1,14 @@
 import { describe, expect, it } from 'vitest';
-import { ipc, PhotoEstimate, ProjectManifest } from './index';
+import {
+  ipc,
+  NewProjectRequest,
+  PhotoEstimate,
+  ProjectManifest,
+  ProjectPurpose,
+  projectPurpose,
+  ProjectType,
+  PURPOSE_TYPE,
+} from './index';
 
 const base = {
   schema: 'aio.project/1',
@@ -19,6 +28,71 @@ describe('project type', () => {
     expect(ProjectManifest.safeParse({ ...base, type: 'inspection' }).success).toBe(true);
     expect(ProjectManifest.safeParse({ ...base, type: 'fusion' }).success).toBe(true);
     expect(ProjectManifest.safeParse({ ...base, type: 'cinema' }).success).toBe(false);
+  });
+});
+
+describe('project purpose', () => {
+  const parse = (purpose: unknown) => {
+    const r = ProjectManifest.safeParse({ ...base, type: 'inspection', purpose });
+    if (!r.success) throw new Error(r.error.message);
+    return r.data;
+  };
+
+  it('is optional: a manifest without it parses to what it was', () => {
+    const r = ProjectManifest.safeParse({ ...base, type: 'inspection' });
+    expect(r.success && 'purpose' in r.data).toBe(false);
+    expect(r.success && r.data).toEqual({ ...base, type: 'inspection' });
+    expect(r.success && projectPurpose(r.data)).toBeUndefined();
+  });
+
+  it('keeps each purpose the wizard offers', () => {
+    for (const purpose of ProjectPurpose.options) {
+      const m = parse(purpose);
+      expect(m.purpose).toBe(purpose);
+      expect(projectPurpose(m)).toBe(purpose);
+    }
+  });
+
+  it('never refuses the value of a later build: it reads as none and stays in the file', () => {
+    const m = parse('tunnel');
+    expect(m.purpose).toBe('tunnel');
+    expect(projectPurpose(m)).toBeUndefined();
+    expect(JSON.parse(JSON.stringify(m))).toMatchObject({ type: 'inspection', purpose: 'tunnel' });
+  });
+
+  it('reads a malformed value as absent instead of failing', () => {
+    for (const bad of [7, null, '', 'Has Spaces', ['survey'], 'x'.repeat(33)]) {
+      const m = parse(bad);
+      expect(m.purpose).toBeUndefined();
+      expect(projectPurpose(m)).toBeUndefined();
+      expect('purpose' in JSON.parse(JSON.stringify(m))).toBe(false);
+    }
+  });
+
+  it('maps every purpose to one of the five existing types', () => {
+    expect(PURPOSE_TYPE).toEqual({
+      survey: 'volumetric',
+      construction: 'fusion',
+      'vertical-asset': 'inspection',
+      'confined-space': 'inspection',
+      'data-fusion': 'fusion',
+      road: 'road',
+    });
+    expect(Object.keys(PURPOSE_TYPE).sort()).toEqual([...ProjectPurpose.options].sort());
+    for (const type of Object.values(PURPOSE_TYPE)) expect(ProjectType.options).toContain(type);
+  });
+
+  it('is an optional, closed field of the new project request', () => {
+    const good = {
+      name: 'Tank 4',
+      type: 'inspection',
+      epsg: 32639,
+      origin: [0, 0, 0],
+      severityTemplate: null,
+    };
+    expect(NewProjectRequest.safeParse(good).success).toBe(true);
+    expect(NewProjectRequest.safeParse({ ...good, purpose: 'confined-space' }).success).toBe(true);
+    expect(NewProjectRequest.safeParse({ ...good, purpose: 'tunnel' }).success).toBe(false);
   });
 });
 

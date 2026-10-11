@@ -2,7 +2,7 @@ import { z } from 'zod';
 import { Id, IsoDate, Vec3, err, ok, uniqueIds, type Result } from './common';
 import { Layer } from './layers';
 import { ClassCatalogue, SeverityModel } from './severity';
-import { ProjectType, VerticalDatum } from './builder';
+import { ProjectPurpose, ProjectType, VerticalDatum } from './builder';
 
 export const SCHEMA_VERSION = 'aio.project/1' as const;
 
@@ -47,6 +47,17 @@ export const ProjectManifest = z
     /** What the project is for (builder wizard); absent on imported kit projects. */
     type: ProjectType.optional(),
     /**
+     * The finer type the wizard offered (11 Oct 2026, additive): a `ProjectPurpose`, kept as a
+     * plain name so that a value a later build adds never refuses the project. Read it with
+     * `projectPurpose`; a malformed value reads as absent. Absent on every older project, which
+     * shows what its `type` says. Only labels and the starter list read it, never behaviour.
+     */
+    purpose: z
+      .string()
+      .regex(/^[a-z0-9-]{1,32}$/)
+      .optional()
+      .catch(undefined),
+    /**
      * How drone absolute altitudes become project heights (`H = absolute + absAltOffsetM`); raw
      * imports use absolute altitude when it is set, else relative altitude plus a take-off height.
      */
@@ -64,6 +75,17 @@ export const ProjectManifest = z
 export type Capture = z.infer<typeof Capture>;
 export type ProjectManifest = z.infer<typeof ProjectManifest>;
 export type ProjectManifestInput = z.input<typeof ProjectManifest>;
+
+/**
+ * The purpose a manifest names, when this build knows it. A value it does not know (written by a
+ * later build) reads as none, and stays in the file when this build saves the manifest.
+ */
+export function projectPurpose(
+  manifest: Pick<ProjectManifest, 'purpose'>,
+): ProjectPurpose | undefined {
+  const r = ProjectPurpose.safeParse(manifest.purpose);
+  return r.success ? r.data : undefined;
+}
 
 /** The layer kinds this build reads. */
 export const LAYER_KINDS: ReadonlySet<string> = new Set(
