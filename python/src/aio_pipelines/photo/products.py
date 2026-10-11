@@ -404,48 +404,75 @@ class PhotoProducts:
         }
 
     def _dense(self, ctx: StepContext) -> dict[str, Any]:
-        from .dense import DenseSettings, depth_map, make_matcher, select_pairs
+        from . import pool
 
         s = self._settings(ctx)
         if not s["scale"]:
             ctx.log("Fast preset: no dense matching; the surface comes from the sparse points.")
             return {"engine": "sparse", "maps": 0}
         run = self._run(ctx)
-        settings = DenseSettings(scale=s["scale"])
-        matcher = make_matcher(settings, native.memory_budget(), "auto")
-        ctx.log(f"Dense matching with {matcher.name} at {s['scale']:.0%} of the photo size.")
-        pairs = select_pairs(run.model, settings.neighbours)
         out = self._work(ctx) / "depth"
         out.mkdir(parents=True, exist_ok=True)
-        images = _Images(s["scale"])
+        budget = native.memory_budget()
+        state = pool.dense_state(run.model, s["scale"], budget, out)
+        matcher, pairs = state["matcher"], state["pairs"]
+        ctx.log(f"Dense matching with {matcher.name} at {s['scale']:.0%} of the photo size.")
         views = run.model.views
-        done = matched = 0
-        for i, v in enumerate(views):
+        # photos with a map already (a resume) and photos nothing overlaps need no matching
+        done = 0
+        todo: list[int] = []
+        for v in views:
             ctx.check()
             dst = out / f"{v.id}.npy"
             if dst.exists():
                 done += 1
-                continue
-            partners = [run.model.view(j) for j in pairs.get(v.id, [])]
-            if not partners:
+            elif not pairs.get(v.id):
                 ctx.log(f"{v.name}: no photo overlaps it enough for matching.", "warn")
                 d = np.full(
                     (round(v.camera.height * s["scale"]), round(v.camera.width * s["scale"])),
                     np.nan,
                     np.float32,
                 )
+                tmp = out / f".{v.id}.tmp.npy"
+                np.save(tmp, d)
+                replace_over(tmp, dst)
             else:
-                d, info = depth_map(v, partners, images, run.model, matcher, settings, ctx.check)
-                matched += sum(p["matched"] for p in info["pairs"])
-            tmp = out / f".{v.id}.tmp.npy"
-            np.save(tmp, d)
-            replace_over(tmp, dst)
-            ctx.progress((i + 1) / len(views), f"Depth map {i + 1} of {len(views)}")
+                todo.append(v.id)
+        made = len(views) - len(todo)
+
+        def finished(view_id: int, matched: int) -> None:
+            nonlocal made
+            made += 1
+            ctx.progress(made / len(views), f"Depth map {made} of {len(views)}")
+
+        cam = views[0].camera.scaled(s["scale"])
+        workers = pool.plan_workers(len(todo), cam.width * cam.height, pool.DENSE_BYTES_PER_PIXEL, budget)
+        if workers > 1:
+            ctx.log(f"Depth maps of {workers} photos at a time.")
+            args = (
+                str(ctx.project),
+                ctx.params["run"],
+                s["scale"],
+                budget // workers,
+                str(out),
+                pool.worker_threads(workers),
+            )
+            try:
+                pool.run_pool(workers, pool.init_dense, args, pool.dense_task, todo, ctx.check, finished)
+                todo = []
+            except pool.PoolBroken:
+                ctx.log("A worker process stopped; finishing the depth maps one photo at a time.", "warn")
+                todo = [i for i in todo if not (out / f"{i}.npy").exists()]
+                made = len(views) - len(todo)
+        for view_id in todo:
+            ctx.check()
+            finished(view_id, pool.depth_photo(state, view_id, ctx.check))
         return {
             "engine": matcher.name,
             "maps": len(views),
             "resumed": done,
             "pairs": sum(len(x) for x in pairs.values()),
+            "workers": workers,
         }
 
     def _fuse(self, ctx: StepContext) -> dict[str, Any]:

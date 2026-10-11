@@ -130,3 +130,55 @@ def run_pool(
     except BaseException:
         _stop(executor)
         raise
+
+
+# ----------------------------------------------------------------------------------- depth maps
+
+_W: dict[str, Any] = {}
+
+
+def dense_state(model, scale: float, budget: int, out) -> dict[str, Any]:
+    """What making one photo's depth map needs: the same in the job's process and in a worker."""
+    from .dense import DenseSettings, make_matcher, select_pairs
+    from .products import _Images
+
+    settings = DenseSettings(scale=scale)
+    return {
+        "model": model,
+        "settings": settings,
+        "pairs": select_pairs(model, settings.neighbours),
+        "matcher": make_matcher(settings, budget, "auto"),
+        "images": _Images(scale),
+        "out": out,
+    }
+
+
+def depth_photo(state: dict[str, Any], view_id: int, check: Callable[[], None]) -> int:
+    """Make and save one photo's depth map; the pixels matched over its pairs."""
+    import numpy as np
+
+    from ..runtime import replace_over
+    from .dense import depth_map
+
+    model = state["model"]
+    v = model.view(view_id)
+    partners = [model.view(j) for j in state["pairs"].get(view_id, [])]
+    d, info = depth_map(v, partners, state["images"], model, state["matcher"], state["settings"], check)
+    tmp = state["out"] / f".{view_id}.tmp.npy"
+    np.save(tmp, d)
+    replace_over(tmp, state["out"] / f"{view_id}.npy")
+    return sum(p["matched"] for p in info["pairs"])
+
+
+def init_dense(project: str, run_id: str, scale: float, budget: int, out: str, threads: int) -> None:
+    from pathlib import Path
+
+    from .scene import load_run
+
+    cap_threads(threads)
+    _W.clear()
+    _W.update(dense_state(load_run(Path(project), run_id).model, scale, budget, Path(out)))
+
+
+def dense_task(view_id: int) -> int:
+    return depth_photo(_W, view_id, lambda: None)
