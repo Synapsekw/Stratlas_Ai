@@ -200,6 +200,8 @@ Every channel is declared once in `schema/ipc.ts` as `{ request: ZodType, respon
 
 ## 6. Legacy viewers in Release A
 
+Removed on 11 October 2026: the legacy host and the original review screen (see `docs/plans/2026-10-11-remove-original-review-design.md`). The rest of this section is history.
+
 The six existing jobs open two ways:
 
 1. **Native**: importers in `packages/project` convert kit offline folders into a project package (manifest, layers, issues, severity model from the kit profile). The two mandatory workspaces (Al-Zour and HCl) are native from the first milestone.
