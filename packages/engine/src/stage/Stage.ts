@@ -54,6 +54,7 @@ import type { GroundUniforms } from './groundShading';
 import { skyDirection, solarPosition } from './solar';
 import { estimateGpuBytes, formatPerf, type PerfStats } from './perf';
 import { Highlighter } from './highlight';
+import { drawnObjects, ProgramWarmup } from './programWarmup';
 import { moduleTextures } from './sharedTextures';
 import { reducedMotion } from '../motion';
 
@@ -149,6 +150,7 @@ export class Stage implements EngineStage {
   private readonly env: Environment;
   private readonly overlay: Overlay;
   private readonly highlight: Highlighter;
+  private readonly warmup: ProgramWarmup;
   private readonly measureTool = new MeasureTool();
   private readonly ro: ResizeObserver;
   private readonly unsubscribe: () => void;
@@ -196,6 +198,12 @@ export class Stage implements EngineStage {
   private contentCentre = new Vector3();
   private _tool: StageTool = 'select';
   private _section: SectionState = { ...DEFAULT_SECTION };
+  /**
+   * The section as it is drawn while the programs of a newer one are made: the planes and the
+   * on/off state from before the switch. Null when what is drawn is `_section`.
+   */
+  private sectionDrawn: { planes: Plane[]; enabled: boolean } | null = null;
+  private sectionSwitch = 0;
   private _labelMode: LabelMode = 'key';
   private keepOut: (() => Iterable<ClientRectLike>) | null = null;
   private envSettings: EnvironmentSettings = {
@@ -234,6 +242,7 @@ export class Stage implements EngineStage {
     r.shadowMap.autoUpdate = false;
     r.localClippingEnabled = true;
     this.renderer = r;
+    this.warmup = new ProgramWarmup(r);
 
     this.camera.position.set(60, 45, 60);
     this.controls = new OrbitControls(this.camera, this.canvas);
@@ -354,10 +363,19 @@ export class Stage implements EngineStage {
 
   addProjectionReceiver(mesh: Mesh): () => void {
     this.receivers.add(mesh);
-    this.applySectionSide(mesh);
+    this.applySectionSide(mesh, this._section.enabled);
     return () => {
       this.receivers.delete(mesh);
     };
+  }
+
+  compileAhead(object: Object3D): Promise<void> {
+    return this.warmup.compile(object, this.camera, this.scene) ?? Promise.resolve();
+  }
+
+  /** Objects and section switches waiting for their shader programs (0 when none). */
+  get compiling(): number {
+    return this.warmup.pending;
   }
 
   raycast(ndcX: number, ndcY: number): Intersection | null {
@@ -428,13 +446,47 @@ export class Stage implements EngineStage {
 
   setSection(patch: Partial<SectionState>): void {
     const wasEnabled = this._section.enabled;
+    const switched = patch.enabled !== undefined && patch.enabled !== wasEnabled;
+    const before = switched ? this.clippingPlanes.map((p) => p.clone()) : [];
     this._section = { ...this._section, ...patch };
     applySection(this.clippingPlanes, this._section, this.contentCentre);
-    if (wasEnabled !== this._section.enabled)
-      for (const m of this.receivers) this.applySectionSide(m);
+    if (switched) {
+      for (const m of this.receivers) this.applySectionSide(m, this._section.enabled);
+      this.compileSection(before, wasEnabled);
+    }
     this.shadowDirty = true;
     this.need = true;
     this.emitState();
+  }
+
+  /**
+   * Switching the section on or off changes the number of clipping planes, and with it the
+   * shader program of every material that takes them. The new programs are made ahead of the
+   * frame; until they are in, the view is drawn with the section it had (`sectionDrawn`).
+   */
+  private compileSection(planes: Plane[], enabled: boolean): void {
+    const turn = ++this.sectionSwitch;
+    // still waiting for an earlier switch: what is on screen is the section from before that one
+    const drawn = this.sectionDrawn ?? { planes, enabled };
+    const ready = this.warmup.compile(
+      drawnObjects(this.scene, this.camera),
+      this.camera,
+      this.scene,
+    );
+    this.sectionDrawn = ready ? drawn : null;
+    void ready?.then(() => {
+      if (turn !== this.sectionSwitch || this.disposed) return;
+      this.sectionDrawn = null;
+      this.shadowDirty = true;
+      this.need = true;
+    });
+  }
+
+  /** Put a section in the shared clipping planes and the receivers' sides; answers the planes. */
+  private swapSection(planes: readonly Plane[], enabled: boolean): Plane[] {
+    const was = this.clippingPlanes.splice(0, this.clippingPlanes.length, ...planes);
+    for (const m of this.receivers) this.applySectionSide(m, enabled);
+    return was;
   }
 
   sectionOrigin(): Vector3 {
@@ -553,6 +605,9 @@ export class Stage implements EngineStage {
     // animated water and a pending sky light map draw at their own idle rate
     if (this.env.wantsFrame(now)) this.need = true;
     if (!this.need && this.holders.size === 0) return;
+    // A software renderer is catching up before new shader programs are used: a frame sent now
+    // would only queue in front of them (programWarmup.ts). The frame is drawn when it has.
+    if (this.warmup.holdsFrames) return;
     this.need = false;
     this.renderNow(dt, now);
   };
@@ -572,7 +627,14 @@ export class Stage implements EngineStage {
     // one frame's counters across every render call (the point-cloud EDL pass renders inside)
     const info = this.renderer.info as Partial<WebGLRenderer['info']>;
     info.reset?.();
-    this.renderer.render(this.scene, this.camera);
+    // the section on screen, while the programs of the one asked for are made
+    const drawn = this.sectionDrawn;
+    const asked = drawn ? this.swapSection(drawn.planes, drawn.enabled) : null;
+    try {
+      this.renderer.render(this.scene, this.camera);
+    } finally {
+      if (asked) this.swapSection(asked, this._section.enabled);
+    }
     this.lastRenderMs = performance.now() - t;
     this.overlay.update(
       this.camera,
@@ -608,6 +670,7 @@ export class Stage implements EngineStage {
   private readonly onContextLost = () => {
     if (this.disposed) return;
     this.lost = true;
+    this.warmup.contextLost();
     // nothing is drawn until the context is back: the last frame's counters must not stand in for
     // the first restored frame (which, on a software GPU, may take tens of seconds)
     (this.renderer.info as Partial<WebGLRenderer['info']>).reset?.();
@@ -1300,12 +1363,12 @@ export class Stage implements EngineStage {
   /* ----------------------------------------------------------------------- misc */
 
   /** While a section is on, show back faces so cut solids read as shells; restore after. */
-  private applySectionSide(mesh: Mesh) {
+  private applySectionSide(mesh: Mesh, enabled: boolean) {
     const mats: Material[] = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
     for (const m of mats) {
       if (m.userData.aioKeepSide === true) continue;
       m.userData.aioBaseSide ??= m.side;
-      const side = this._section.enabled ? DoubleSide : (m.userData.aioBaseSide as Side);
+      const side = enabled ? DoubleSide : (m.userData.aioBaseSide as Side);
       if (m.side === side) continue;
       m.side = side;
       m.needsUpdate = true;
@@ -1356,6 +1419,7 @@ export class Stage implements EngineStage {
     this.highlight.dispose();
     this.measureTool.dispose();
     this.env.dispose();
+    this.warmup.dispose();
     this.renderer.dispose();
     // three's module-level textures would keep this renderer (and its canvas) alive otherwise
     for (const t of shared) t.dispose();

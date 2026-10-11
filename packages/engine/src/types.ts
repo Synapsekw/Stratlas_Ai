@@ -102,6 +102,15 @@ export interface SceneHandle {
   addContentBounds(bounds: () => Box3 | null): () => void;
   /** Register a mesh that should receive projected video. */
   addProjectionReceiver(mesh: Mesh): () => void;
+  /**
+   * Compile the shader programs `object` will be drawn with, before it is in the scene, so the
+   * frame that first draws it does not wait for the compiler (seconds on a software renderer).
+   * Resolves when it can be added or shown; the view keeps drawing meanwhile. Never rejects: on a
+   * lost context, a disposed stage or a renderer that cannot say when a program is done it
+   * resolves at once and the object compiles in its first frame, as before. Dispose the object's
+   * materials yourself if it is dropped while this is pending. A scene without it draws at once.
+   */
+  compileAhead?(object: Object3D): Promise<void>;
 }
 
 /** Extra content for `SceneHandle.raycast`, e.g. point picking within a few pixels. */
