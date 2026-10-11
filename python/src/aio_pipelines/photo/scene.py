@@ -22,6 +22,7 @@ project. Photos are only ever read.
 
 from __future__ import annotations
 
+import functools
 import json
 import math
 import struct
@@ -162,6 +163,15 @@ class Camera:
         """Directions (z = 1) through every pixel centre, shape (height, width, 3), float32."""
         ys, xs = np.mgrid[0 : self.height, 0 : self.width].astype(np.float64)
         return self.rays(xs + 0.5, ys + 0.5).astype(np.float32)
+
+
+@functools.lru_cache(maxsize=2)
+def pixel_rays(cam: Camera) -> np.ndarray:
+    """``cam.pixel_rays()``, kept for the last two cameras: a run has one or two, and fusion asks
+    for every photo (the lens model is half of fusing a photo otherwise). Read-only."""
+    rays = cam.pixel_rays()
+    rays.flags.writeable = False
+    return rays
 
 
 def quat_to_r(q: Iterable[float]) -> np.ndarray:

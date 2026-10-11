@@ -22,7 +22,7 @@ from pathlib import Path
 import numpy as np
 
 from ..runtime import replace_over
-from .scene import Camera, View
+from .scene import Camera, View, pixel_rays
 
 
 @dataclass(frozen=True)
@@ -34,7 +34,7 @@ class FuseSettings:
 
 def world_points(view: View, cam: Camera, depth: np.ndarray, rays: np.ndarray | None = None) -> np.ndarray:
     """(h, w, 3) world points of a depth map (NaN where empty)."""
-    r = cam.pixel_rays() if rays is None else rays
+    r = pixel_rays(cam) if rays is None else rays
     pc = r.astype(np.float64) * depth[..., None].astype(np.float64)
     return (pc - view.t) @ view.r
 

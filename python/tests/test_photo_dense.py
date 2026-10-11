@@ -297,3 +297,22 @@ def test_the_cloud_is_written_as_las_tile_by_tile(tmp_path):
     assert np.abs(las.xyz - want).max() <= 0.0005 + 1e-9
     assert set(np.unique(las.field("Classification"))) == {1}
     assert las.field("Red").max() > 255  # 16-bit colour
+
+
+def test_pixel_directions_are_worked_out_once_per_camera(monkeypatch):
+    from aio_pipelines.photo import scene as S
+
+    s = ps.scene()
+    a, b = s.views[5], s.views[6]
+    cam = a.camera
+    da, db = D.zbuffer(cam, a, s.points), D.zbuffer(cam, b, s.points)
+    want = world_points(a, cam, da, cam.pixel_rays())
+    calls = []
+    real = S.Camera.pixel_rays
+    monkeypatch.setattr(S.Camera, "pixel_rays", lambda self: calls.append(1) or real(self))
+    S.pixel_rays.cache_clear()
+    got_a = world_points(a, cam, da)
+    world_points(b, cam, db)
+    assert len(calls) == 1
+    np.testing.assert_array_equal(got_a, want)
+    assert not S.pixel_rays(cam).flags.writeable
