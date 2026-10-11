@@ -1,4 +1,12 @@
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import {
+  cpSync,
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { deflateSync } from 'node:zlib';
@@ -165,6 +173,31 @@ describe('Masafi stockpile import (synthetic kit build)', () => {
       },
     };
     writeFileSync(src('data/site.js'), `window.VS_SITE=${JSON.stringify(site)};`);
+    // the kit's 0.4 m site surfaces and pile masks, which the volumes workspace reads beside the
+    // pile grids
+    for (const e of ['e1', 'e2'] as const) {
+      const cm = new Int16Array(100);
+      for (let j = 0; j < 10; j++)
+        for (let i = 0; i < 10; i++)
+          cm[j * 10 + i] = Math.round(
+            (surface(e, X0 + (i + 0.5) * 0.4, Y1 - (j + 0.5) * 0.4) - 50) * 100,
+          );
+      const dsm = {
+        res: 0.4,
+        w: 10,
+        h: 10,
+        x0: X0,
+        y1: Y1,
+        zoff: 50,
+        z: encI16(cm, 10),
+        valid: encBits(new Uint8Array(100).fill(1)),
+      };
+      writeFileSync(
+        src(`data/dsm_${e}.js`),
+        `window.VS_DSM=window.VS_DSM||{};window.VS_DSM["${e}"]=${JSON.stringify(dsm)};`,
+      );
+    }
+    writeFileSync(src('data/vol.js'), 'window.VS_VOL={"res":0.4,"piles":{}};');
     const jpg = src('overlays/site_e2.jpg');
     await testImage(jpg, 64, 64);
     const b64 = readFileSync(jpg).toString('base64');
@@ -202,8 +235,8 @@ describe('Masafi stockpile import (synthetic kit build)', () => {
       'mesh:terrain-2020-12-31:false',
       'raster:ortho-2021-01-10:true',
       'raster:ortho-2020-12-31:false',
-      'legacy:volumetric-review:true',
     ]);
+    expect(man.layers.some((l) => l.kind === 'legacy')).toBe(false);
     expect(man.severityModels[0]?.name).toBe('Stockpile');
     expect(man.classCatalogues[0]?.classes).toHaveLength(3);
     const issues = JSON.parse(readFileSync(join(out(), 'issues.json'), 'utf8')) as {
@@ -255,9 +288,9 @@ describe('Masafi stockpile import (synthetic kit build)', () => {
     const v = VolumesFile.parse(JSON.parse(readFileSync(join(out(), 'volumes.json'), 'utf8')));
     expect(v.grids).toEqual({
       format: 'vs-kit-js',
-      piles: 'legacy/data/piles/{id}.js',
-      dsm: 'legacy/data/dsm_{epoch}.js',
-      coarse: 'legacy/data/vol.js',
+      piles: 'volumes/grids/piles/{id}.js',
+      dsm: 'volumes/grids/dsm_{epoch}.js',
+      coarse: 'volumes/grids/vol.js',
     });
     const c = v.captures.find((x) => x.epoch === 'e2');
     expect(c?.layers).toEqual([`terrain-${c?.date ?? ''}`, `ortho-${c?.date ?? ''}`]);
@@ -267,10 +300,14 @@ describe('Masafi stockpile import (synthetic kit build)', () => {
     for (const id of c?.layers ?? []) expect(man.layers.map((l) => l.id)).toContain(id);
   });
 
-  it('keeps the offline viewer, the report and the register', () => {
-    expect(existsSync(join(out(), 'legacy/Masafi Stockpile Review.html'))).toBe(true);
-    expect(existsSync(join(out(), 'legacy/data/site.js'))).toBe(true);
-    expect(existsSync(join(out(), 'legacy/data/piles/P01.js'))).toBe(true);
+  it('keeps the grids, the report and the register, and nothing under legacy/', () => {
+    for (const f of ['piles/P01.js', 'dsm_e1.js', 'dsm_e2.js', 'vol.js']) {
+      // copied unchanged: the workspace decodes the kit's own files
+      expect(readFileSync(join(out(), 'volumes/grids', f), 'utf8'), f).toBe(
+        readFileSync(src('data', f), 'utf8'),
+      );
+    }
+    expect(existsSync(join(out(), 'legacy'))).toBe(false);
     expect(existsSync(join(out(), 'report/Masafi stockpile register.csv'))).toBe(true);
     expect(existsSync(join(out(), 'report/Masafi Stockpile Volume Report.pdf'))).toBe(true);
     expect(existsSync(join(out(), 'thumbnail.jpg'))).toBe(true);
@@ -290,4 +327,44 @@ describe('Masafi stockpile import (synthetic kit build)', () => {
     expect(r.written).toBe(0);
     expect(r.skipped).toBeGreaterThan(10);
   }, 60_000);
+
+  describe('a source that differs from the full build', () => {
+    const src2 = (...p: string[]) => join(root, 'src2', ...p);
+    const out2 = () => join(root, 'out2');
+    const volumes = () =>
+      VolumesFile.parse(JSON.parse(readFileSync(join(out2(), 'volumes.json'), 'utf8')));
+
+    it('writes the grids when the source has no viewer HTML', async () => {
+      cpSync(src(), src2(), { recursive: true, preserveTimestamps: true });
+      rmSync(src2('Masafi Stockpile Review.html'));
+      const r = await importMasafi({ src: src2(), out: out2(), regionBufferM: 0.5 });
+      expect(volumes().grids).toEqual({
+        format: 'vs-kit-js',
+        piles: 'volumes/grids/piles/{id}.js',
+        dsm: 'volumes/grids/dsm_{epoch}.js',
+        coarse: 'volumes/grids/vol.js',
+      });
+      expect(existsSync(join(out2(), 'volumes/grids/piles/P01.js'))).toBe(true);
+      expect(existsSync(join(out2(), 'volumes/grids/dsm_e2.js'))).toBe(true);
+      expect(existsSync(join(out2(), 'legacy'))).toBe(false);
+      expect(r.warnings.filter((w) => /viewer|grid/i.test(w))).toEqual([]);
+    }, 60_000);
+
+    it('names no coarse grid when the source has none', async () => {
+      rmSync(src2('data/vol.js'));
+      await importMasafi({ src: src2(), out: out2(), regionBufferM: 0.5 });
+      expect(volumes().grids).toEqual({
+        format: 'vs-kit-js',
+        piles: 'volumes/grids/piles/{id}.js',
+        dsm: 'volumes/grids/dsm_{epoch}.js',
+      });
+    }, 60_000);
+
+    it('names no grids and warns when the source has no site surface grid', async () => {
+      for (const e of ['e1', 'e2']) rmSync(src2(`data/dsm_${e}.js`));
+      const r = await importMasafi({ src: src2(), out: out2(), regionBufferM: 0.5 });
+      expect(volumes().grids).toBeUndefined();
+      expect(r.warnings.some((w) => w.includes('cannot be recomputed'))).toBe(true);
+    }, 60_000);
+  });
 });

@@ -22,7 +22,10 @@ import {
 } from './siteBasemap';
 import type { Side } from './splitModel';
 
-/** Layer kinds the second view leaves out: the video plays (and projects) in one view only. */
+/**
+ * Layer kinds the second view leaves out: the video plays (and projects) in one view only, and a
+ * retired viewer of an older project is drawn nowhere.
+ */
 const SECOND_VIEW_DROPS = ['video', 'legacy'] as const;
 
 function sameSection(a: object, b: object): boolean {

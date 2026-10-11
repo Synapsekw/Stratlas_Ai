@@ -14,7 +14,7 @@ The highlighted folder is the date you are viewing. Click a date's name to view 
 
 Drag a dataset from the list and drop it on another date folder to file it under that date. While you drag, the folders that can take it get a dashed outline and the one under the pointer lights up in its colour. Dropping a dataset on the folder it is already in does nothing. A flight row carries all of its clips with it.
 
-To move everything of one kind at once, drag the group's heading instead: **Video**, **Photos**, **Panoramas**, **Models**, **Point clouds** or **Maps and rasters** inside a date folder. Every dataset of the group goes to the folder you drop it on, the ones behind "more" too. An offline basemap or an original review in the group stays where it is.
+To move everything of one kind at once, drag the group's heading instead: **Video**, **Photos**, **Panoramas**, **Models**, **Point clouds** or **Maps and rasters** inside a date folder. Every dataset of the group goes to the folder you drop it on, the ones behind "more" too. An offline basemap in the group stays where it is.
 
 In a small window the list can be longer than the sidebar. If the folder you want is out of view, hold the dataset at the top or bottom edge of the list and the list scrolls under it.
 
@@ -28,7 +28,7 @@ Moving a dataset only changes which survey date it is filed under. Its files sta
 
 - A dataset whose name carries a date, such as "Ortho 2024-11-06", is filed by that name when it has no date of its own. Taking its date off therefore leaves it under the date in its name, and the list says so. Move it to another date to override the name.
 - Results worked out earlier keep the dates they were worked out for: change detection results, survey quality checks, prepared survey surfaces and their measurements, and the stockpile volumes. After you move a surface, a point cloud or a model that such results use, run them again for the dates involved.
-- Offline basemaps and original reviews never belong to a date and cannot be dragged.
+- Offline basemaps never belong to a date and cannot be dragged.
 
 ## The folder menu: name, colour and icon
 

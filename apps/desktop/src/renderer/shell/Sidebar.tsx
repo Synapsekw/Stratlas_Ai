@@ -26,7 +26,6 @@ import { clipStartMs, dateTags, useWorkspace, workspace } from '@aio/workspace';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { openAuditTrail } from '../audit/auditView';
 import { builder } from '../builder/state';
-import { legacyLayers } from '../legacy';
 import { useMedia } from '../media';
 import { shell, useShell } from '../shell';
 import { PANEL_ID, PanelHandle } from './PanelHandle';
@@ -43,8 +42,6 @@ interface NavDef {
   label: MessageKey;
   icon: IconName;
 }
-
-const REVIEW: NavDef = { screen: 'review', label: 'nav.review', icon: 'history' };
 
 const NAV: NavDef[] = [
   { screen: 'projects', label: 'nav.projects', icon: 'projects' },
@@ -372,7 +369,10 @@ function Datasets({ collapsed }: { collapsed: boolean }) {
       <div className="tree-h sb-hide">
         <span className="caps">Datasets</span>
         <span className="tree-h-end">
-          <span className="mono faint">{project.manifest.layers.length}</span>
+          {/* a retired viewer of an older project has no row, so it is not counted */}
+          <span className="mono faint">
+            {project.manifest.layers.filter((l) => l.kind !== 'legacy').length}
+          </span>
           {!readOnly && (
             <button
               type="button"
@@ -518,15 +518,12 @@ export function Sidebar() {
   const collapsed = useShell((s) => s.settings.sidebarCollapsed);
   const libCount = useShell((s) => s.library?.length);
   const issueCount = useWorkspace((s) => (s.project ? s.issues.length : undefined));
-  const hasReview = useWorkspace((s) => legacyLayers(s.project?.manifest).length > 0);
-  // The original review sits right after Scene when the open project has one.
-  const withReview = hasReview ? [...NAV.slice(0, 2), REVIEW, ...NAV.slice(2)] : NAV;
 
   return (
     <aside className="sidebar" id={PANEL_ID.left} aria-label={t('nav.primary')}>
       <div className="sb-scroll">
         <nav className="sb-sec sb-nav" aria-label={t('nav.sections')}>
-          {withReview.map((n) => (
+          {NAV.map((n) => (
             <NavItem
               key={n.screen}
               def={n}

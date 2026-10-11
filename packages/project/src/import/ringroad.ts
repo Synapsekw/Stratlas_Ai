@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto';
 import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs';
-import { basename, join, relative } from 'node:path';
+import { join, relative } from 'node:path';
 import type SharpFactory from 'sharp';
 import { loadSharp } from './sharp-lazy';
 
@@ -61,7 +61,6 @@ const NO_DATA: [number, number, number] = [20, 29, 45];
 const CREATED_AT = '2024-04-02T00:00:00+03:00';
 const AUTHOR = 'MPW defect shapefile (2 Apr 2024)';
 const CAPTURE_DATE = '2024-03-31';
-const LEGACY_DIR = 'legacy';
 const STAGE_COLOR: Record<number, string> = { 1: '#fad34b', 2: '#ff7a2d', 3: '#ee3f4b' };
 /**
  * Georeferencing of the two 1.25 cm GeoTIFF blocks the close-ups were cut from (ModelTiepoint and
@@ -97,19 +96,6 @@ const toProject = (lon: number, lat: number): [number, number] => {
   const [e, n] = fromWgs84([lon, lat, 0], EPSG);
   return [e, n];
 };
-
-function listFiles(dir: string): string[] {
-  const out: string[] = [];
-  const walk = (d: string) => {
-    for (const e of readdirSync(d, { withFileTypes: true })) {
-      const p = join(d, e.name);
-      if (e.isDirectory()) walk(p);
-      else out.push(p);
-    }
-  };
-  if (existsSync(dir)) walk(dir);
-  return out.sort();
-}
 
 /** Every tile of the review's `ortho/b*` script bundles, keyed `z/x/y`, and the bundle files. */
 function readOrthoBundles(src: string): { tiles: Map<string, Uint8Array>; files: string[] } {
@@ -155,25 +141,6 @@ function corridorBounds(tiles: ReadonlyMap<string, Uint8Array>) {
 }
 
 const r3 = (v: number) => Math.round(v * 1000) / 1000;
-
-/** Viewer folder `ortho-hd/` (plain `{z}/{x}/{y}.webp`) and its index, rebuilt from the bundles. */
-function writeLegacyOrtho(w: PackageWriter, tiles: ReadonlyMap<string, Uint8Array>) {
-  const listed: Record<string, [number, number][]> = {};
-  let minZ = Infinity;
-  let maxZ = -Infinity;
-  const checkZ = 18;
-  for (const [k, v] of tiles) {
-    const [z, x, y] = k.split('/').map(Number) as [number, number, number];
-    w.write(`${LEGACY_DIR}/ortho-hd/${z}/${x}/${y}.webp`, v);
-    minZ = Math.min(minZ, z);
-    maxZ = Math.max(maxZ, z);
-    if (z <= checkZ) (listed[String(z)] ??= []).push([x, y]);
-  }
-  for (const l of Object.values(listed)) l.sort((a, b) => a[0] - b[0] || a[1] - b[1]);
-  const index = { format: 'files', dir: 'ortho-hd', minZ, maxZ, checkZ, tiles: listed };
-  w.write(`${LEGACY_DIR}/ortho-hd/index.js`, `window.RR_ORTHO_INDEX=${JSON.stringify(index)};\n`);
-  return { minZ, maxZ };
-}
 
 interface LandingCheck {
   code: string;
@@ -461,31 +428,6 @@ export async function importRingroad(opts: ImportOptions): Promise<ImportResult>
   });
   w.writeJson(overlays.pciUnits, pciUnitsGeojson(grid, toLonLat), false);
 
-  // Legacy viewer --------------------------------------------------------------------------------
-  await w.copy(src(html), `${LEGACY_DIR}/${html}`);
-  for (const f of listFiles(src('lib')))
-    await w.copy(f, `${LEGACY_DIR}/${relative(opts.src, f).replace(/\\/g, '/')}`);
-  for (const f of ['defects.js', 'grid.js'])
-    await w.copy(src('data', f), `${LEGACY_DIR}/data/${f}`);
-  const closeupFiles = listFiles(src('closeups'));
-  for (const f of closeupFiles) await w.copy(f, `${LEGACY_DIR}/closeups/${basename(f)}`);
-  const legacyOrtho = writeLegacyOrtho(w, tiles);
-  const hasBasemap = existsSync(src('basemap', 'index.js'));
-  if (hasBasemap) {
-    for (const f of listFiles(src('basemap')))
-      await w.copy(f, `${LEGACY_DIR}/${relative(opts.src, f).replace(/\\/g, '/')}`);
-  } else {
-    w.write(`${LEGACY_DIR}/basemap/index.js`, 'window.RR_BASE_INDEX={};\n');
-  }
-  layers.push({
-    kind: 'legacy',
-    id: 'road-review',
-    name: 'Road review (original viewer: PCI grid, filters, measure)',
-    visible: true,
-    viewer: 'road',
-    entry: { path: `${LEGACY_DIR}/${html}` },
-  });
-
   // Thumbnail, manifest ---------------------------------------------------------------------------
   await writeThumbnail(w, plan, bounds, defects, data.centerline);
   const meta = data.meta;
@@ -517,7 +459,7 @@ export async function importRingroad(opts: ImportOptions): Promise<ImportResult>
   const valid = validatePackage(manifestInput, merged);
   w.writeJson('manifest.json', valid.manifest);
   w.writeJson('issues.json', { schema: ISSUES_SCHEMA, issues: valid.issues });
-  for (const dir of ['rasters', 'photos', 'road', LEGACY_DIR]) {
+  for (const dir of ['rasters', 'photos', 'road']) {
     for (const p of w.prune(dir)) rep.note(`Removed stale ${p}`);
   }
 
@@ -588,7 +530,7 @@ export async function importRingroad(opts: ImportOptions): Promise<ImportResult>
   );
 
   rep.section('Source', [
-    `\`${opts.src}\` (copy of \`\\\\DanNas\\Work Data\\MPW Roads\\1st Ring Road\\Road Review\`). Read: \`${html}\`, \`data/defects.js\` (RR_DATA), \`data/grid.js\` (RR_GRID), \`_build/crops.json\` (close-up UTM boxes), \`ortho/index.js\` with the \`ortho/b13\` and \`ortho/b18\` tile bundles, \`closeups/\`, \`lib/\`.`,
+    `\`${opts.src}\` (copy of \`\\\\DanNas\\Work Data\\MPW Roads\\1st Ring Road\\Road Review\`). Read: \`data/defects.js\` (RR_DATA), \`data/grid.js\` (RR_GRID), \`_build/crops.json\` (close-up UTM boxes), \`ortho/index.js\` with the \`ortho/b13\` and \`ortho/b18\` tile bundles, \`closeups/\`. The review page \`${html}\` and its \`lib/\` are not copied.`,
     '',
     `The review page loads \`ortho-hd/index.js\` and \`basemap/index.js\`, but neither folder is in the source (\`_build/README.md\` lists \`ortho/\` as the retired z13 to z22 script bundles that it replaced). The bundles are the highest-resolution ortho in the folder: Web Mercator 256 px WebP tiles z13 to z22, z22 being ${(FINEST_M * 100).toFixed(2)} cm per pixel here (rendered from the 2.5 cm overview of the 1.25 cm GeoTIFFs). The full 1.25 cm GeoTIFFs (blocks 1 and 2, 34 GB) are on the NAS under \`1st Ring Road\\Orthomosaic\`, outside the review folder; a z23 rebuild from them is not part of this import.`,
   ]);
@@ -637,9 +579,6 @@ export async function importRingroad(opts: ImportOptions): Promise<ImportResult>
   rep.section('Road model and PCI', [
     `\`road.json\` (\`aio.road/1\`, for a native road panel): centreline (${data.centerline.length} vertices, local frame) with chainage 0 to ${lastKm.toFixed(3)} km; network PCI ${grid.pci.road.join(' / ')} (Low / Medium / High severity assumption, Medium is the headline); ${grid.pci.sections.length} sections of 250 m; ${grid.pci.units.length} ASTM D6433 sample units on the ${grid.pci.unit_m} m UTM grid (cell i, j spans x \`grid.origin.x + j * ${grid.pci.unit_m}\`, z \`grid.origin.z + i * ${grid.pci.unit_m}\`) with deducts; density grids at ${Object.keys(grid.density).join(', ')} m.`,
     `\`road/centreline.geojson\` (centreline and km ticks every 0.5 km) and \`road/pci-units.geojson\` (unit cells as lon/lat MultiPolygons with \`pciLow\`, \`pciMedium\`, \`pciHigh\`) are ready as map overlays.`,
-  ]);
-  rep.section('Legacy viewer', [
-    `\`${LEGACY_DIR}/${html}\` (layer \`road-review\`, viewer \`road\`) with \`lib/\`, \`data/defects.js\`, \`data/grid.js\`, \`closeups/\` (${closeupFiles.length} files, close-ups and thumbnail sheets). The ortho folder the page expects is rebuilt as \`${LEGACY_DIR}/ortho-hd/{z}/{x}/{y}.webp\` (z${legacyOrtho.minZ} to z${legacyOrtho.maxZ}, ${tiles.size} tiles) with its \`index.js\` (format files, z18 ancestor check), so the page shows the ortho with no change to its code. ${hasBasemap ? 'The street basemap is copied.' : '`basemap/` is not in the source: `basemap/index.js` is an empty index, so the page runs without its street map.'} Not copied: \`_build/\` and the retired \`data/osm.js\`, \`heat/\`, \`tiles/\`, \`assets/\`, \`preview/\`.`,
   ]);
   const landingRows = landing.map(
     (c) =>

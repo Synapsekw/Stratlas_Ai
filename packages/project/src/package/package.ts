@@ -153,7 +153,7 @@ function requiredFiles(layer: Layer): string[] {
       for (const i of layer.items) refs.push(i.src);
       break;
     case 'legacy':
-      refs.push(layer.entry);
+      // Retired: a package need not carry the viewer.
       break;
     case 'basemap':
       break;

@@ -34,8 +34,6 @@ export interface SaveResult {
  * tool that needs a missing one fails with a fixed message.
  */
 export interface AppHooks {
-  /** Show the original review (legacy layer) full screen. */
-  openReview?: (layerId: string) => void;
   /** A dedicated issue exporter (the exports stream). The tool falls back to CSV when absent. */
   exportIssues?: (issues: readonly Issue[], format: 'csv') => Promise<SaveResult>;
   /** What the stage shows now: the 3D view, the map, or both (split). */

@@ -12,6 +12,7 @@ export interface LayerGroup {
   state: 'all' | 'some' | 'none';
 }
 
+/** A retired viewer (`legacy`) of an older project has no group: it is never packed. */
 const GROUPS: { kind: string; label: string }[] = [
   { kind: 'mesh', label: 'Models' },
   { kind: 'pointcloud', label: 'Point clouds' },
@@ -20,7 +21,6 @@ const GROUPS: { kind: string; label: string }[] = [
   { kind: 'panoramas', label: 'Panoramas' },
   { kind: 'raster', label: 'Rasters and orthos' },
   { kind: 'basemap', label: 'Base maps' },
-  { kind: 'legacy', label: 'Original review viewer' },
 ];
 
 /** Export kinds a builder can grant, in dialog order. */

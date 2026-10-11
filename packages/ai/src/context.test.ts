@@ -26,6 +26,30 @@ describe('window context', () => {
     expect(layers.hiddenCount).toBe(1);
   });
 
+  it('leaves a retired viewer of an older project out of the layers and counts', () => {
+    const fixture = fixtureWorkspace().getState().project;
+    if (!fixture) throw new Error('no fixture project');
+    const contextOf = (extra: typeof fixture.manifest.layers) => {
+      const ws = fixtureWorkspace();
+      const manifest = { ...fixture.manifest, layers: [...fixture.manifest.layers, ...extra] };
+      ws.getState().openProject({ ...fixture, manifest }, []);
+      return assembleContext(ws.getState(), 'scene3d');
+    };
+    const withViewer = contextOf([
+      {
+        kind: 'legacy',
+        id: 'old-viewer',
+        name: 'Old viewer',
+        visible: true,
+        viewer: 'aik',
+        entry: { path: 'legacy/index.html' },
+      },
+    ]);
+    const without = contextOf([]);
+    expect(withViewer.layers).toEqual(without.layers);
+    expect(withViewer.counts).toEqual(without.counts);
+  });
+
   it('labels an issue selection by its code', () => {
     const ws = fixtureWorkspace();
     ws.getState().select({ kind: 'issue', id: 'i1' });

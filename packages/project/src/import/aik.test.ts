@@ -1,12 +1,4 @@
-import {
-  existsSync,
-  mkdirSync,
-  mkdtempSync,
-  readFileSync,
-  rmSync,
-  statSync,
-  writeFileSync,
-} from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { gzipSync } from 'node:zlib';
@@ -204,8 +196,8 @@ describe('importAik (synthetic kit offline build)', () => {
       'mesh:model',
       'photos:photos',
       'photos:thermal',
-      'legacy:legacy',
     ]);
+    expect(man.layers.some((l) => l.kind === 'legacy')).toBe(false);
     const photos = man.layers.find((l) => l.id === 'photos');
     expect(photos?.kind === 'photos' ? photos.items.map((p) => p.id) : []).toEqual([
       'p001',
@@ -228,7 +220,7 @@ describe('importAik (synthetic kit offline build)', () => {
     expect(r.issues).toBe(2);
   }, 60_000);
 
-  it('writes masks, patch files, report, thumbnail and the legacy viewer', () => {
+  it('writes masks, patch files, report and thumbnail, and nothing under legacy/', () => {
     for (const f of [
       'photos/masks/p001_mask.png',
       'photos/masks/p001_overlay.png',
@@ -248,9 +240,8 @@ describe('importAik (synthetic kit offline build)', () => {
     };
     // Kit (x north, z east) to local (x east, z south): [-1, 9, 0] -> [0, 9, 1].
     expect(patch.positions.slice(0, 3)).toEqual([0, 9, 1]);
-    const html = join(out(), 'legacy/OPEN Test Review.html');
-    expect(statSync(html).ino).toBe(statSync(join(src(), 'OPEN Test Review.html')).ino);
-    expect(existsSync(join(out(), 'legacy/photos/p003.jpg'))).toBe(true);
+    // the delivered viewer is not copied: no legacy/ folder in a fresh import
+    expect(existsSync(join(out(), 'legacy'))).toBe(false);
     expect(readFileSync(join(out(), 'IMPORT-REPORT.md'), 'utf8')).toContain('Kit stats');
   });
 
@@ -288,5 +279,15 @@ describe('importAik (synthetic kit offline build)', () => {
       ['F12', 'draft', 'human'],
     ]);
     expect(after[1]?.note).toBe('Checked on site.');
+  }, 60_000);
+
+  it('leaves the legacy/ folder of an earlier import alone when it runs again', async () => {
+    mkdirSync(join(out(), 'legacy'), { recursive: true });
+    writeFileSync(join(out(), 'legacy/keep.txt'), 'kept');
+    await run();
+    expect(readFileSync(join(out(), 'legacy/keep.txt'), 'utf8')).toBe('kept');
+    const m = parseManifest(JSON.parse(readFileSync(join(out(), 'manifest.json'), 'utf8')));
+    if (!m.ok) throw new Error(m.error);
+    expect(m.value.layers.some((l) => l.kind === 'legacy')).toBe(false);
   }, 60_000);
 });

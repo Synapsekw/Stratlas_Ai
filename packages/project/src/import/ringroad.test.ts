@@ -141,7 +141,7 @@ afterAll(() => {
 });
 
 describe('1st Ring Road import', () => {
-  it('writes a valid package with the ortho, issues, close-ups, road model and legacy viewer', async () => {
+  it('writes a valid package with the ortho, issues, close-ups and road model, and nothing under legacy/', async () => {
     const r = await importRingroad({ src: src(), out: out() });
     expect(r.issues).toBe(2);
     const manifest = parseManifest(JSON.parse(readFileSync(join(out(), 'manifest.json'), 'utf8')));
@@ -151,13 +151,10 @@ describe('1st Ring Road import', () => {
     expect(m.layers.map((l) => [l.id, l.kind])).toEqual([
       ['ortho', 'raster'],
       ['closeups', 'photos'],
-      ['road-review', 'legacy'],
     ]);
-    const legacy = m.layers.find((l) => l.kind === 'legacy');
-    expect(legacy).toMatchObject({
-      viewer: 'road',
-      entry: { path: 'legacy/1st Ring Road Review.html' },
-    });
+    expect(m.layers.some((l) => l.kind === 'legacy')).toBe(false);
+    // the class catalogue is what marks the project as a road survey
+    expect(m.classCatalogues.some((c) => c.assetType === 'road')).toBe(true);
 
     const tiles = readJson('rasters/ortho/tiles.json') as {
       schema: string;
@@ -183,35 +180,29 @@ describe('1st Ring Road import', () => {
     expect(existsSync(join(out(), 'road/pci-units.geojson'))).toBe(true);
     expect(existsSync(join(out(), 'road/centreline.geojson'))).toBe(true);
 
-    // the viewer runs from legacy/: plain ortho tiles with the index it expects
-    const idx = readFileSync(join(out(), 'legacy/ortho-hd/index.js'), 'utf8');
-    expect(idx).toMatch(/^window\.RR_ORTHO_INDEX=\{"format":"files","dir":"ortho-hd"/);
-    const [x22, y22] = worldPx(DOT[0], DOT[1], 22).map((v) => Math.floor(v / SRC_TILE));
-    expect(existsSync(join(out(), `legacy/ortho-hd/22/${x22}/${y22}.webp`))).toBe(true);
-    for (const f of [
-      'legacy/1st Ring Road Review.html',
-      'legacy/lib/leaflet.js',
-      'legacy/data/defects.js',
-      'legacy/data/grid.js',
-      'legacy/closeups/f0000.webp',
-      'legacy/closeups/sheet-0.jpg',
-      'legacy/basemap/index.js',
-      'thumbnail.jpg',
-      'IMPORT-REPORT.md',
-    ])
+    for (const f of ['thumbnail.jpg', 'IMPORT-REPORT.md'])
       expect(existsSync(join(out(), f)), f).toBe(true);
-    // retired files of the source stay out
-    expect(existsSync(join(out(), 'legacy/data/osm.js'))).toBe(false);
+    // the review page, its libraries, tiles and thumbnail sheets are not copied
+    expect(existsSync(join(out(), 'legacy'))).toBe(false);
+    expect(existsSync(join(out(), 'photos/closeups/sheet-0.jpg'))).toBe(false);
 
     const report = readFileSync(join(out(), 'IMPORT-REPORT.md'), 'utf8');
     expect(report).toContain('| Few | 1 | Low |');
     expect(report).toContain('| Extensive | 3 | High |');
     expect(report).not.toMatch(/[–—]/);
+    expect(report).not.toContain('legacy/');
     expect(r.warnings.some((w) => w.includes('D0001'))).toBe(true);
   }, 120_000);
 
   it('skips everything on a re-run of an unchanged source', async () => {
     const r = await importRingroad({ src: src(), out: out() });
     expect(r.written, JSON.stringify(r)).toBe(0);
+  }, 120_000);
+
+  it('leaves the legacy/ folder of an earlier import alone when it runs again', async () => {
+    mkdirSync(join(out(), 'legacy/data'), { recursive: true });
+    writeFileSync(join(out(), 'legacy/data/keep.txt'), 'kept');
+    await importRingroad({ src: src(), out: out() });
+    expect(readFileSync(join(out(), 'legacy/data/keep.txt'), 'utf8')).toBe('kept');
   }, 120_000);
 });

@@ -21,8 +21,9 @@ export interface PackagePlanResult {
   manifest: ProjectManifest;
   /** Project files to copy (the manifest and package header are written by the exporter). */
   members: SourceFile[];
+  /** One share per layer that can be packaged: a retired `legacy` layer has none. */
   layers: LayerShare[];
-  /** Files no layer owns: issues, thumbnail, report, issue masks. */
+  /** Files no layer owns: issues, thumbnail, report, issue masks, stockpile grids. */
   baseBytes: number;
   totalBytes: number;
   totalFiles: number;
@@ -43,6 +44,10 @@ const SKIP = [
   /(^|\/)(Thumbs\.db|desktop\.ini|\.DS_Store)$/i,
 ];
 
+/** Where importers put the delivered viewer until 11 Oct 2026, and the grids beside it. */
+const RETIRED_DIR = 'legacy/';
+const RETIRED_GRIDS = 'legacy/data/';
+
 const pathOf = (ref: AssetRef | undefined): string | null =>
   ref && 'path' in ref ? ref.path.replace(/\\/g, '/').replace(/^\.\//, '') : null;
 
@@ -51,10 +56,14 @@ const dirOf = (p: string) => {
   return i < 0 ? '' : p.slice(0, i);
 };
 
-/** Paths and folder prefixes a layer's files live under. */
-function ownership(layer: Layer): { files: string[]; prefixes: string[] } {
+/**
+ * Paths and folder prefixes a layer's files live under, and `kept`: folders inside those
+ * prefixes that the layer does not own.
+ */
+function ownership(layer: Layer): { files: string[]; prefixes: string[]; kept: string[] } {
   const files: string[] = [];
   const prefixes: string[] = [];
+  const kept: string[] = [];
   const add = (ref: AssetRef | undefined) => {
     const p = pathOf(ref);
     if (p) files.push(p);
@@ -96,21 +105,28 @@ function ownership(layer: Layer): { files: string[]; prefixes: string[] } {
     case 'panoramas':
       for (const item of layer.items) add(item.src);
       break;
-    case 'legacy':
+    case 'legacy': {
+      // Retired: the viewer and its folder never travel. The grids beside a stockpile viewer
+      // are what the volumes read, so they are not the layer's files.
       folderOf(layer.entry);
+      const d = dirOf(pathOf(layer.entry) ?? '');
+      if (layer.viewer === 'volumetric' && d) kept.push(`${d}/data/`);
       break;
+    }
     case 'basemap':
       break;
   }
-  return { files, prefixes };
+  return { files, prefixes, kept };
 }
 
 /**
  * Decide which files a package of `manifest` carries when the layers in `exclude` are left
  * out, and how many bytes each layer brings. A file shared by several layers (one flight file
  * for many clips) stays while any of them stays. Draft layers (`derived.draft`, a Model builder
- * preview nobody accepted) are always left out; the rest of the project folder travels, so
- * `change/`, `models/` and `drawings/` go with it.
+ * preview nobody accepted) and retired `legacy` layers (the delivered viewer) are always left
+ * out, and a `legacy` layer has no share; the rest of the project folder travels, so `change/`,
+ * `models/` and `drawings/` go with it, and so does the `data/` folder beside a stockpile
+ * viewer, which holds the grids of the volumes.
  */
 export function planPackage(
   manifest: ProjectManifest,
@@ -119,7 +135,8 @@ export function planPackage(
 ): PackagePlanResult {
   const ids = new Set(manifest.layers.map((l) => l.id));
   const drafts = manifest.layers.filter((l) => l.derived?.draft === true).map((l) => l.id);
-  const excluded = [...new Set([...exclude, ...drafts])].filter((id) => ids.has(id));
+  const retired = manifest.layers.filter((l) => l.kind === 'legacy').map((l) => l.id);
+  const excluded = [...new Set([...exclude, ...drafts, ...retired])].filter((id) => ids.has(id));
   const out = new Set(excluded);
 
   const owned = manifest.layers.map((l) => ({ layer: l, ...ownership(l) }));
@@ -129,22 +146,32 @@ export function planPackage(
   }
   const ownersOf = (path: string): string[] => {
     const set = new Set(exact.get(path) ?? []);
-    for (const o of owned) if (o.prefixes.some((p) => path.startsWith(p))) set.add(o.layer.id);
+    for (const o of owned) {
+      if (o.kept.some((p) => path.startsWith(p))) continue;
+      if (o.prefixes.some((p) => path.startsWith(p))) set.add(o.layer.id);
+    }
     return [...set];
   };
 
   const shares = new Map<string, LayerShare>(
-    manifest.layers.map((l) => [
-      l.id,
-      { id: l.id, name: l.name, kind: l.kind, bytes: 0, files: 0 },
-    ]),
+    manifest.layers
+      .filter((l) => l.kind !== 'legacy')
+      .map((l) => [l.id, { id: l.id, name: l.name, kind: l.kind, bytes: 0, files: 0 }]),
   );
+  // A re-import writes a manifest without the retired layer and leaves the older viewer folder
+  // on disk. No layer names it then, and it is not packed, except the grids a project with
+  // volumes may still read from it.
+  const orphanViewer = retired.length === 0;
+  const hasVolumes = files.some((f) => f.path.replace(/\\/g, '/') === 'volumes.json');
   const members: SourceFile[] = [];
   let baseBytes = 0;
   for (const f of files) {
     const path = f.path.replace(/\\/g, '/');
     if (SKIP.some((re) => re.test(path))) continue;
     const owners = ownersOf(path);
+    if (orphanViewer && owners.length === 0 && path.startsWith(RETIRED_DIR)) {
+      if (!hasVolumes || !path.startsWith(RETIRED_GRIDS)) continue;
+    }
     if (owners.length === 0) baseBytes += f.size;
     if (owners.length === 1) {
       const s = shares.get(owners[0] ?? '');

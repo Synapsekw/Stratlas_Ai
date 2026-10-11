@@ -51,7 +51,7 @@ export function hashFromAssetPath(path: string): string | undefined {
 
 /**
  * Every file each layer reads: sources, posters, flight logs, photos and panoramas. Basemaps (map
- * packs live outside projects) and legacy viewers (small folders of their own) are left out.
+ * packs live outside projects) and retired viewers (the `legacy` kind) are left out.
  */
 export function layerFiles(manifest: Pick<ProjectManifest, 'layers'>): LayerFile[] {
   const out: LayerFile[] = [];

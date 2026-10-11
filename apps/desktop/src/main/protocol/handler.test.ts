@@ -1,9 +1,8 @@
-import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { createAioHandler } from './handler';
-import { LEGACY_CSP } from './legacy';
 import { mimeFor } from './mime';
 
 let base: string;
@@ -21,7 +20,6 @@ beforeAll(async () => {
       '<script src="data/site.js"></script></head><body>review</body></html>',
   );
   await writeFile(join(base, 'p1', 'legacy', 'data', 'site.js'), 'window.SITE=1;');
-  await writeFile(join(base, 'p1', 'report.html'), '<html><head></head></html>');
   await writeFile(join(base, 'secret.txt'), 'secret');
   await mkdir(join(base, 'packs'));
   await writeFile(join(base, 'packs', 'gcc.pmtiles'), 'PMTiles');
@@ -119,36 +117,28 @@ describe('aio:// handler', () => {
     expect((await get('aio://packs/gcc.json')).status).toBe(404);
   });
 
-  it('serves a legacy viewer document with the shims first and the legacy CSP', async () => {
-    const res = await get('aio://project/p1/legacy/Old%20Review.html', { Range: 'bytes=0-3' });
+  it('serves HTML under legacy/ as a plain file', async () => {
+    const res = await get('aio://project/p1/legacy/Old%20Review.html');
     expect(res.status).toBe(200);
     expect(res.headers.get('content-type')).toBe('text/html; charset=utf-8');
-    expect(res.headers.get('content-security-policy')).toBe(LEGACY_CSP);
-    const html = await res.text();
-    expect(res.headers.get('content-length')).toBe(String(Buffer.byteLength(html)));
-    const shim = html.indexOf('"projectId":"p1"');
-    expect(shim).toBeGreaterThan(-1);
-    expect(shim).toBeLessThan(html.indexOf('<script src="data/site.js">'));
-    expect(html).not.toContain('fonts.googleapis.com');
-    expect(html).toContain('<body>review</body>');
+    expect(res.headers.get('content-security-policy')).toBeNull();
+    const onDisk = await readFile(join(base, 'p1', 'legacy', 'Old Review.html'));
+    expect(res.headers.get('content-length')).toBe(String(onDisk.length));
+    expect(Buffer.from(await res.arrayBuffer()).equals(onDisk)).toBe(true);
   });
 
-  it('answers HEAD on a legacy document without a body', async () => {
-    const res = await get('aio://project/p1/legacy/Old%20Review.html', {}, 'HEAD');
-    expect(res.status).toBe(200);
-    expect(await res.text()).toBe('');
+  it('answers a Range request on HTML under legacy/ like on any file', async () => {
+    const res = await get('aio://project/p1/legacy/Old%20Review.html', { Range: 'bytes=0-3' });
+    expect(res.status).toBe(206);
+    expect(res.headers.get('content-length')).toBe('4');
+    expect(await res.text()).toBe('<!do');
   });
 
-  it('serves the files next to a legacy viewer unchanged', async () => {
+  it('serves the files under legacy/ unchanged (older projects keep their grids there)', async () => {
     const res = await get('aio://project/p1/legacy/data/site.js');
     expect(res.headers.get('content-type')).toBe('text/javascript; charset=utf-8');
     expect(res.headers.get('content-security-policy')).toBeNull();
     expect(await res.text()).toBe('window.SITE=1;');
-  });
-
-  it('does not touch HTML outside legacy/', async () => {
-    const res = await get('aio://project/p1/report.html');
-    expect(await res.text()).toBe('<html><head></head></html>');
   });
 
   it('answers 404 for unknown hosts', async () => {

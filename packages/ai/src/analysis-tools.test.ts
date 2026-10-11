@@ -1,8 +1,9 @@
 import type { GlobeSite } from '@aio/schema';
 import { describe, expect, it, vi } from 'vitest';
 import { issuesCsv } from './exporting';
-import { runRendererTool, type RendererToolContext } from './renderer-tools';
+import { getRendererTool, runRendererTool, type RendererToolContext } from './renderer-tools';
 import { fixtureIssue, fixtureManifest, fixtureWorkspace } from './test-fixtures';
+import { allToolSpecs, toolInputs } from './tools';
 
 /** A two-date stockpile survey in the shape of volumes.json (aio.volumes/1). */
 const volumes = {
@@ -235,29 +236,40 @@ describe('export_issues', () => {
   });
 });
 
-describe('open_original_review', () => {
-  it('opens the legacy layer through the app', async () => {
-    const ws = fixtureWorkspace();
-    const manifest = fixtureManifest();
-    manifest.layers.push({
-      kind: 'legacy',
-      id: 'legacy',
-      name: 'Original review',
-      visible: true,
-      viewer: 'aik',
-      entry: { path: 'legacy/index.html' },
-    });
-    ws.getState().openProject({ id: 'p1', root: 'E:/x', manifest }, []);
-    const openReview = vi.fn();
-    const r = await runRendererTool('open_original_review', {}, ctx({ app: { openReview } }, ws));
-    expect(openReview).toHaveBeenCalledWith('legacy');
-    expect(r.summary).toBe('Original review');
+describe('the retired delivered viewer', () => {
+  it('has no tool: no spec, no input schema and no handler', () => {
+    const toolNames = allToolSpecs().map((s) => s.meta.name);
+    expect(toolNames).not.toContain('open_original_review');
+    expect(Object.keys(toolInputs)).not.toContain('open_original_review');
+    expect(getRendererTool('open_original_review')).toBeUndefined();
   });
 
-  it('says so when the project has no original review', async () => {
-    await expect(
-      runRendererTool('open_original_review', {}, ctx({ app: { openReview: vi.fn() } })),
-    ).rejects.toThrow('no original review');
+  it('is not a layer kind the layer listing filters by', () => {
+    expect(toolInputs.list_layers.safeParse({ kind: 'mesh' }).success).toBe(true);
+    expect(toolInputs.list_layers.safeParse({ kind: 'legacy' }).success).toBe(false);
+  });
+
+  it('is not listed among the layers of an older project', async () => {
+    const ws = fixtureWorkspace();
+    const base = fixtureManifest();
+    const manifest = {
+      ...base,
+      layers: [
+        ...base.layers,
+        {
+          kind: 'legacy' as const,
+          id: 'old-viewer',
+          name: 'Old viewer',
+          visible: true,
+          viewer: 'aik' as const,
+          entry: { path: 'legacy/index.html' },
+        },
+      ],
+    };
+    ws.getState().openProject({ id: 'p1', root: 'E:/x', manifest }, []);
+    const r = await runRendererTool('list_layers', {}, ctx({}, ws));
+    const listed = (r.result as { layers: { id: string }[] }).layers.map((l) => l.id);
+    expect(listed).toEqual(base.layers.map((l) => l.id));
   });
 });
 

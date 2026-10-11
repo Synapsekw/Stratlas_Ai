@@ -10,7 +10,7 @@ The **Projects** screen is the library: every project in the data folder, every 
 2. Type in **Filter by name, client or site** to narrow the list. **Recent** and **Name** change the order.
 3. Click a project card. The card shows "Opening", then the project opens.
 
-Most projects open on **Scene**. A project that only holds an original review viewer opens on **Original review**. A read-only package opens on **Welcome** (see [Packages](11-packages.md)).
+Most projects open on **Scene**. A read-only package opens on **Welcome** (see [Packages](11-packages.md)).
 
 Each card shows the kind (for example **Inspection kit**, **Volumetric survey**, **Road survey**, **Package**), the capture date, the client and site, the size, and how many models, point clouds, rasters, video clips, photos, panoramas and issues it holds.
 
@@ -55,7 +55,7 @@ The palette also has the screens (**Go to Issues**, **Go to Settings**, ...) and
 
 ## The sidebar
 
-- **Projects**, **Scene**, **Issues**, **Media**, **Detections** and **Reports**. **Original review** appears after Scene when the project has one.
+- **Projects**, **Scene**, **Issues**, **Media**, **Detections** and **Reports**.
 - **Datasets** lists the layers of the open project with an eye to show or hide each one.
 - The small tab on the sidebar's right edge, halfway down, folds the sidebar to a rail of icons and brings it back. **Ctrl B** and **Collapse** at the bottom do the same. The arrow on the tab points the way the edge will move.
 
@@ -70,7 +70,3 @@ Both side panels fold away to give the view more room: the sidebar on the left, 
 - The tabs lie inside the panels, so they never cover the 3D view, the map or a list.
 - **Ctrl B** folds the left sidebar and **Ctrl Alt B** the right panel. **Ctrl K** has **Collapse left sidebar** and **Collapse right sidebar** (**Expand** when they are folded).
 - {product} remembers both on this computer, so they are as you left them the next time you start it.
-
-## The original review
-
-Projects imported from a delivered review keep the original viewer. **Original review** shows it as a read-only snapshot. **Back to workspace** returns to the scene.

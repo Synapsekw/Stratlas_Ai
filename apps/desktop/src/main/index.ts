@@ -175,8 +175,7 @@ import { createMaskAssist, loadOnnxRuntime } from './maskAssist';
 import { resolveInside } from './protocol/paths';
 import { writeCentreline } from './centreline';
 import { createAioHandler } from './protocol/handler';
-import { APP_CSP } from './csp';
-import { cspForUrl } from './protocol/legacy';
+import { APP_CSP, cspForUrl } from './csp';
 import { saveFile } from './saveFile';
 import { savePath } from './exports/savePath';
 import { aiGates } from './aiGates';
@@ -1535,39 +1534,6 @@ app.on('open-url', (e, url) => {
   }
 });
 
-/**
- * A plain window for a project file a legacy viewer opens in a new tab (its PDF report, a
- * photo). No preload, sandboxed, and it shows only aio:// content.
- */
-function openViewerWindow(url: string, title: string): void {
-  const parent = targetWindow();
-  const win = new BrowserWindow({
-    width: 1100,
-    height: 900,
-    title: `${title} - ${brand.productName}`,
-    backgroundColor: chrome().background,
-    autoHideMenuBar: true,
-    show: false,
-    ...placement(1100),
-    ...(parent ? { parent } : {}),
-    webPreferences: {
-      contextIsolation: true,
-      sandbox: true,
-      nodeIntegration: false,
-      webSecurity: true,
-      devTools: dev,
-    },
-  });
-  win.removeMenu();
-  win.once('ready-to-show', () => {
-    reveal(win);
-  });
-  win.on('page-title-updated', (e) => {
-    e.preventDefault();
-  });
-  void win.loadURL(url);
-}
-
 function createWindow(): BrowserWindow {
   const size = windowSize(process.env);
   const win = new BrowserWindow({
@@ -1662,7 +1628,7 @@ function hardenSession(): void {
   ses.webRequest.onBeforeRequest((details, callback) => {
     callback({ cancel: !isAllowedRendererUrl(details.url) });
   });
-  // Only plain-text clipboard writes (legacy viewers' "Copy coordinates"); everything else is off.
+  // Only plain-text clipboard writes (the app's own copy buttons); everything else is off.
   ses.setPermissionRequestHandler((_wc, permission, callback) => {
     callback(permission === 'clipboard-sanitized-write');
   });
@@ -1671,9 +1637,8 @@ function hardenSession(): void {
 app.on('web-contents-created', (_e, contents) => {
   // Never navigate away from the app, open windows inside it or attach webviews.
   contents.setWindowOpenHandler(({ url }) => {
-    const action = popupAction(url, (id) => registry.root(id) !== undefined);
+    const action = popupAction(url);
     if (action.kind === 'external') void shell.openExternal(action.url);
-    else if (action.kind === 'viewer') openViewerWindow(action.url, action.title);
     return { action: 'deny' };
   });
   contents.on('will-navigate', (e) => {

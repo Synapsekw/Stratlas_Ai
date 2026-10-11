@@ -24,7 +24,7 @@ player (APP-5). Node only.
   passphrase. File names stay readable in the directory; contents do not. Whole-member reads
   (header, manifest, issues) verify the auth code; ranged reads cannot and do not.
 - **Layers:** `planPackage` maps files to layers (sources, posters, flight files, photo
-  thumbnails, and the folder beside an index for tile pyramids, PNG clouds and legacy viewers).
+  thumbnails, and the folder beside an index for tile pyramids and PNG clouds).
   A file shared by several layers stays while any of them stays; files no layer owns (issues,
   masks, report, thumbnail) always go. Backups, temp files, `IMPORT-REPORT.md` and other `.aio`
   files never do. The plan reports bytes per layer for the size report.
@@ -35,10 +35,9 @@ player (APP-5). Node only.
   foreign-encrypted members and unsafe names; `openPackage` unlocks, validates the header and
   manifest, and names any layer file that is missing.
 
-Legacy layers that the importer hard-linked into `legacy/` take real space in a package (the
-size report shows it); leave the legacy layer out for a smaller delivery. A map region can ride
-along as extra members (`exportPackage({ extra })`, written by the desktop app as
-`packs/<id>.pmtiles` and `packs/<id>.json`, see data-conventions section 8).
+A retired `legacy` layer of an older project is never packed, nor is a `legacy/` folder that no
+layer names after a re-import; the grids of a stockpile project travel. A map region can ride along as extra members (`exportPackage({ extra })`, written by the
+desktop app as `packs/<id>.pmtiles` and `packs/<id>.json`, see data-conventions section 8).
 
 - **Extract to edit:** `extractProject` copies an opened package into a new project folder
   `<dataRoot>/projects/<file name>-edit/`, every member verified on the way (`ZipArchive.copyTo`:
@@ -137,8 +136,8 @@ gets an `IMPORT-REPORT.md` with counts, sizes, the frame check and warnings.
   F codes) or per defect (region unit, D codes, worst severity) with boxes, masks and mesh
   sightings (`spatch` to `models/patches/<fid>.json` decals in the local frame, or `spoint` pins);
   one `uncertain` issue per uncertain-only photo (U codes).
-- `legacy/`: the whole offline viewer as hard links (no extra space on the same volume), layer
-  `legacy` with `viewer: 'aik'`. `IMPORT-REPORT.md` compares every count with the kit stats.
+- `IMPORT-REPORT.md` compares every count with the kit stats. The offline viewer itself is not
+  copied, and a `legacy/` folder left by an earlier import is not touched.
 
 ### Al-Zour (plant twin artifact)
 
@@ -177,7 +176,9 @@ Source: the kit's offline build (`job.json`, `data/*.js` with `window.VS_*` grid
 - `volumes.json` (`aio.volumes/1`): every pile, date and base (tin, plane, avg, low) recomputed from
   the 10 cm pile grids (`vsdata.ts`, the viewer's maths) and checked against `site.js`; change
   between dates; totals, yard polygon and excluded zones. Kept for a future native volumetric panel.
-- Legacy layer (`viewer: "volumetric"`): the offline viewer with its data under `legacy/`.
+- Grids: the kit's pile grids, site surfaces and pile masks are copied unchanged to
+  `volumes/grids/` (`piles/{id}.js`, `dsm_{epoch}.js`, `vol.js`) and named in `volumes.json`
+  `grids`, whether or not the source has the viewer HTML. The offline viewer itself is not copied.
 - No issues; severity model "Stockpile" (1 to 3) and classes spillage, unsafe slope, encroachment.
 
 ### 1st Ring Road (road review)
@@ -199,8 +200,8 @@ WebP})` script bundles, z13 to z22) resampled into a `kit-pyramid` aligned to UT
 - `road.json` (`aio.road/1`): centreline in the local frame with chainage, network, section and
   sample unit PCI (Low, Medium, High) with deducts on the 15 m UTM grid, density grids; plus
   `road/centreline.geojson` and `road/pci-units.geojson` for map overlays.
-- Legacy layer (`viewer: 'road'`): the review page under `legacy/` with its data, close-ups and an
-  `ortho-hd/` folder rebuilt from the bundles (the page's own tile format), so it runs unchanged.
+- The review page, its `lib/` and its thumbnail sheets are not copied; the road class catalogue
+  marks the project as a road survey.
 - Checks in `IMPORT-REPORT.md`: issue count, lon/lat to UTM round trip of the viewer centroids,
   close-up outlines against the polygons, and the ortho against the close-ups (cut from the 1.25 cm
   GeoTIFF) by normalised cross correlation.

@@ -67,8 +67,9 @@ export const VolumeCapture = z
 
 /**
  * Where the 10 cm pile grids, the site DSM grids and the coarse volume grids live inside the
- * package. `{id}` is the pile id and `{epoch}` the capture epoch. Absent in packages imported
- * before this field existed; readers then use the kit layout under `legacy/data/`.
+ * package. `{id}` is the pile id and `{epoch}` the capture epoch. New imports write the grids to
+ * `volumes/grids/` and name those paths here. Absent in packages imported before this field
+ * existed; readers then use the kit layout under `legacy/data/`.
  */
 export const VolumeGrids = z.object({
   format: z.literal('vs-kit-js'),

@@ -6,8 +6,8 @@ import type { Issue, PciRating, ProjectManifest, RoadModel, Vec3 } from '@aio/sc
  */
 
 /**
- * A road survey: the original road review, a road class catalogue (data-conventions 9) or a
- * project the wizard created as a road.
+ * A road survey: a road review imported before 11 Oct 2026 (its retired `legacy` layer is the
+ * sign), a road class catalogue (data-conventions 9) or a project the wizard created as a road.
  */
 export function isRoadProject(manifest: ProjectManifest): boolean {
   return (

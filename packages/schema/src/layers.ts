@@ -205,6 +205,10 @@ export const Layer = z.discriminatedUnion('kind', [
     format: z.literal('geojson'),
     style: VectorStyle.optional(),
   }),
+  /**
+   * Retired (11 Oct 2026): the delivered viewer is no longer shown. Kept so manifests and
+   * packages written before then still parse; importers no longer write it.
+   */
   z.object({
     kind: z.literal('legacy'),
     ...base,

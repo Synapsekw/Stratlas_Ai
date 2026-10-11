@@ -8,7 +8,7 @@
  *   in the page, never lost into <body> (a removed control, a closed popover).
  *
  * axe runs in legacy mode: Electron cannot open the extra page axe uses to merge frame results,
- * and the app has no cross-origin frames to merge (the original review iframe is excluded).
+ * and the app has no cross-origin frames to merge.
  */
 import AxeBuilder from '@axe-core/playwright';
 import { expect, type Page } from '@playwright/test';
@@ -19,12 +19,7 @@ export const AXE_TAGS = ['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa', 'best-pract
  * Not applicable, never "too hard to fix". Selectors are left out of the audit, rules are off.
  * Keep it short; every entry says why.
  */
-export const AXE_ALLOW: { exclude?: string; rule?: string; why: string }[] = [
-  {
-    exclude: 'iframe.review-frame',
-    why: 'The original review is a delivered third-party HTML viewer shown read-only, not app UI.',
-  },
-];
+export const AXE_ALLOW: { exclude?: string; rule?: string; why: string }[] = [];
 
 export interface AuditOptions {
   /** Audit only inside this selector (a dialog), e.g. to check a popover on its own. */

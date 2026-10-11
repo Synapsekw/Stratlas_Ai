@@ -1,14 +1,13 @@
 import type { ZipArchive } from '@aio/project/package';
 import { MISSING_BLOB_HEADER, missingBlobHeader } from '@aio/schema';
 import { createReadStream } from 'node:fs';
-import { readFile, stat } from 'node:fs/promises';
+import { stat } from 'node:fs/promises';
 import { join } from 'node:path';
 import { Readable } from 'node:stream';
 import type { BlobLookup } from '../blobs';
 import { LOGO_NAME } from '../branding';
 import { rasterPackFile } from '../packs/raster';
 import { findThumb } from '../thumbs';
-import { LEGACY_CSP, isLegacyDocument, prepareLegacyHtml } from './legacy';
 import { mimeFor } from './mime';
 import { resolveInside } from './paths';
 import { parseRange } from './range';
@@ -161,30 +160,9 @@ export async function serveMember(
 }
 
 /**
- * Serve a legacy viewer document: shims injected, remote links removed, legacy CSP. The page
- * is small and rewritten, so it is always a whole 200 response.
- */
-async function serveLegacyDocument(read: () => Promise<string>, projectId: string, req: Request) {
-  let html: string;
-  try {
-    html = prepareLegacyHtml(await read(), projectId);
-  } catch {
-    return status(404);
-  }
-  const headers = {
-    ...COMMON,
-    'Content-Type': 'text/html; charset=utf-8',
-    'Content-Length': String(Buffer.byteLength(html)),
-    'Content-Security-Policy': LEGACY_CSP,
-  };
-  return new Response(req.method === 'HEAD' ? null : html, { status: 200, headers });
-}
-
-/**
  * Handler for `protocol.handle('aio', ...)`:
  * - `aio://project/<id>/<path>` serves a file inside the registered project root, or a member
  *   of an opened `.aio` package (by offset, in place).
- * - `aio://project/<id>/legacy/<...>.html` serves a legacy viewer with its shims (legacy.ts).
  * - `aio://packs/<id>.pmtiles` serves a map pack from the packs folder, or one carried inside
  *   an open package (`roots.embeddedPack`).
  * - `aio://thumb/<id>/<path>` serves a small thumbnail of a project image, or 404 (thumbs.ts).
@@ -212,13 +190,6 @@ export function createAioHandler(roots: AioRoots): (req: Request) => Promise<Res
         if (rest.some((s) => s === '..' || s === '.' || s.includes('\\'))) return status(404);
         const name = rest.join('/');
         if (!archive.entries.has(name)) return status(404);
-        if (isLegacyDocument(rest)) {
-          return serveLegacyDocument(
-            async () => (await archive.read(name)).toString('utf8'),
-            id,
-            req,
-          );
-        }
         return serveMember(archive, name, req);
       }
       const root = roots.projectRoot(id);
@@ -233,9 +204,6 @@ export function createAioHandler(roots: AioRoots): (req: Request) => Promise<Res
         if (blob?.kind === 'file') return serveFile(blob.path, req);
         if (blob?.kind === 'missing') return missingBlob(blob.sha256, blob.size);
         return status(resolved.status);
-      }
-      if (isLegacyDocument(rest)) {
-        return serveLegacyDocument(() => readFile(resolved.path, 'utf8'), id, req);
       }
       return serveFile(resolved.path, req);
     }

@@ -295,16 +295,16 @@ describe('shell store', () => {
     expect(s.getState().screen).toBe('reports');
   });
 
-  it('opens a project that only has an original review straight into the review', async () => {
+  it('opens a project that only holds a retired viewer on Scene', async () => {
     const legacyOnly: ProjectManifest = {
       ...manifest,
       layers: [
         {
           kind: 'legacy',
-          id: 'review',
-          name: 'Masafi review',
+          id: 'viewer',
+          name: 'Stockpile review',
           viewer: 'volumetric',
-          entry: { path: 'legacy/Masafi Stockpile Review.html' },
+          entry: { path: 'legacy/Stockpile Review.html' },
           visible: true,
         },
       ],
@@ -312,15 +312,19 @@ describe('shell store', () => {
     const { bridge } = fakeBridge({
       'project:open': () => ({
         ok: true,
-        id: 'masafi',
+        id: 'yard',
         root: 'E:\\m',
         manifest: legacyOnly,
         issues: [],
       }),
     });
-    const s = createShellStore(bridge, createWorkspace());
+    const ws = createWorkspace();
+    const s = createShellStore(bridge, ws);
     await s.getState().openProject('E:\\m');
-    expect(s.getState().screen).toBe('review');
+    expect(s.getState().screen).toBe('scene');
+    expect(s.getState().openError).toBeNull();
+    // the manifest is kept whole: saving it must not drop the entry on disk
+    expect(ws.getState().project?.manifest.layers).toEqual(legacyOnly.layers);
   });
 
   it('reports a project that fails to open and stays put', async () => {
@@ -526,5 +530,44 @@ describe('shell store', () => {
     open = manifest;
     await s.getState().openProject(entry.path);
     expect(s.getState().stageMode).toBe('map');
+  });
+
+  it('does not count a retired viewer as 3D content of a video-first project', async () => {
+    const withViewer = {
+      ...manifest,
+      id: 'site',
+      layers: [
+        {
+          kind: 'video',
+          id: 'clip-1',
+          name: 'Clip 1',
+          visible: true,
+          src: { path: 'video/clip-1.mp4' },
+          flight: { src: { path: 'flights/clip-1.json' }, startUtcMs: 0 },
+          lens: { model: 'pinhole', hfovDeg: 70, aspect: 1.7778 },
+          offsetMs: 0,
+        },
+        {
+          kind: 'legacy',
+          id: 'viewer',
+          name: 'Old viewer',
+          viewer: 'aik',
+          entry: { path: 'legacy/index.html' },
+          visible: true,
+        },
+      ],
+    } as ProjectManifest;
+    const { bridge } = fakeBridge({
+      'project:open': () => ({
+        ok: true,
+        id: withViewer.id,
+        root: entry.path,
+        manifest: withViewer,
+        issues: [],
+      }),
+    });
+    const s = createShellStore(bridge, createWorkspace());
+    await s.getState().openProject(entry.path);
+    expect(s.getState().stageMode).toBe('split');
   });
 });

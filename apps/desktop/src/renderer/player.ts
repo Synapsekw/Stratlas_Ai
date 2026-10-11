@@ -47,7 +47,6 @@ export function welcomeTips(manifest: ProjectManifest, issueCount: number): stri
     );
   }
   if (photos > 0) tips.push(`Browse ${plural(photos, 'inspection photo')} in Media.`);
-  if (count('legacy') > 0) tips.push('Open the original review delivered with the survey.');
   tips.push(`Press ${shortcutHint('global.palette')} to search layers, issues and commands.`);
   return tips;
 }
