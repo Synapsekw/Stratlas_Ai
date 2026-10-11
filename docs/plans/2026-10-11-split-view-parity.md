@@ -100,7 +100,11 @@ None. `@aio/schema` is not touched.
 
 ## Amendments made during the build
 
-(Recorded here as they happen.)
+- **T3:** one new string only (`vol.compare.noDrape`). The notice is a line inside the second view's legend box, not a box of its own, so it can never lie over the pane's date selector.
+- **T5:** the rule "which measurements a view draws" went into its own small module, `survey/measureDates.ts` (`measurementsOn`), tested in `survey/measureDates.test.ts`. `measureScene.ts` pulls in the measurement store and three.js, which a unit test of one pure function should not need.
+- **T5:** `attachMap` now waits for the map to settle once when its style is not loaded yet. The main map was redrawn by later events; a map that only draws got none, so the second map stayed empty (found by the new end to end test).
+- **T6:** the two point cloud legends moved from `Stage.tsx` into `workspace/StageLegends.tsx`, so the second view can mount them without importing `Stage.tsx` (which imports the second view). `CloudChangeLegend` takes the same optional view.
+- **T7:** the synthetic measurements check is a test of its own in `e2e/compare.spec.ts` (3D views, then two maps) instead of more steps in the existing synthetic test; both share one project writer.
 
 ## After the last task
 
