@@ -18,8 +18,11 @@ vi.mock('@aio/workspace', () => ({
   },
 }));
 vi.mock('./pick', () => ({ terrainHeightAt: () => null }));
-// drawing the pages of a PDF needs the app window; nothing here stages a drawing
-vi.mock('../drawings/importFlow', () => ({ finishStagedDrawings: () => Promise.resolve() }));
+// drawing the pages of a PDF needs the app window; the store only has to wait for it
+const finishStaged = vi.fn();
+vi.mock('../drawings/importFlow', () => ({
+  finishStagedDrawings: (...a: unknown[]) => finishStaged(...a) as unknown,
+}));
 // the store listens for progress on the preload bridge
 vi.stubGlobal('window', {
   aio: {
@@ -53,6 +56,8 @@ const b = () => builder.getState();
 beforeEach(() => {
   call.mockReset();
   replaceManifest.mockReset();
+  finishStaged.mockReset();
+  finishStaged.mockImplementation(() => Promise.resolve());
   builder.setState({
     importing: null,
     cancellable: false,
@@ -118,6 +123,65 @@ describe('cancelImport', () => {
     expect(b().cancelling).toBe(false);
     running.give(imported());
     await done;
+  });
+});
+
+describe('cancel and the drawings an import staged', () => {
+  const staged = {
+    file: 'plan.pdf',
+    kind: 'drawing',
+    status: 'queued',
+    drawing: { stem: 'plan', src: 'drawings/plan.pdf', name: 'plan' },
+  };
+
+  it('Cancel can act only while main imports: not while staged drawings are finished', async () => {
+    const drawing = later<undefined>();
+    finishStaged.mockImplementation(() => drawing.reply);
+    call.mockImplementation((channel: string) =>
+      Promise.resolve(channel === 'builder:import' ? imported([staged]) : { ok: true, value: {} }),
+    );
+    const done = b().importFiles(['plan.pdf']);
+    await vi.waitFor(() => {
+      expect(finishStaged).toHaveBeenCalledTimes(1);
+    });
+    // the import is still busy (a page question may be open), but main has answered
+    expect(b().importing).not.toBeNull();
+    expect(b().cancellable).toBe(false);
+    await b().cancelImport();
+    expect(calls('builder:cancelImport')).toEqual([]);
+    drawing.give(undefined);
+    await done;
+    expect(b().importing).toBeNull();
+  });
+
+  it('after a cancelled import its staged drawings are not asked about or drawn, and are removed', async () => {
+    const running = later<unknown>();
+    call.mockImplementation((channel: string) =>
+      channel === 'builder:import'
+        ? running.reply
+        : Promise.resolve({ ok: true, value: { ok: true, removed: true } }),
+    );
+    const done = b().importFiles(['plan.pdf', 'a.insv'], undefined, { as360: true });
+    await vi.waitFor(() => {
+      expect(b().cancellable).toBe(true);
+    });
+    await b().cancelImport();
+    running.give(
+      imported([
+        staged,
+        { file: 'a.insv', kind: 'video', status: 'skipped', message: 'cancelled' },
+      ]),
+    );
+    await done;
+    expect(finishStaged).not.toHaveBeenCalled();
+    expect(calls('builder:closeDrawing')).toEqual([
+      ['builder:closeDrawing', { projectId: 'p1', stem: 'plan' }],
+    ]);
+    const rows = b().importResult?.items ?? [];
+    expect(rows[0]).toMatchObject({ file: 'plan.pdf', status: 'skipped' });
+    expect(rows[0]?.message).toContain('cancelled');
+    expect(rows[0]?.drawing).toBeUndefined();
+    expect(b().importing).toBeNull();
   });
 });
 

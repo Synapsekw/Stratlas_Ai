@@ -9,7 +9,7 @@ import {
 import { copyFile, mkdir, readFile, readdir, rm, stat, writeFile } from 'node:fs/promises';
 import { randomBytes } from 'node:crypto';
 import { basename, dirname, extname, join, resolve } from 'node:path';
-import { renameWhenFree, type RenameOptions } from '../import/rename';
+import { isLockedError, renameWhenFree, type RenameOptions } from '../import/rename';
 import {
   WALK_DEFAULTS,
   ffmpegMissingMessage,
@@ -104,6 +104,12 @@ const OPEN_HINT = 'Open it under 360 video in the sidebar.';
 /** What a walk's row says when the import was cancelled while it was made. */
 export const WALK_CANCELLED =
   'The import was cancelled while this 360 video was made. Nothing of it was added.';
+/**
+ * The reason main aborts every running import with when the app quits (`importRuns.ts`). A quit
+ * is not the person's Cancel: a playback copy that is finished is then kept for the next import
+ * instead of being removed.
+ */
+export const QUIT_REASON = 'quit';
 /** What a file's row says when the import was cancelled before its turn. */
 export const CANCELLED_BEFORE = 'The import was cancelled before this file.';
 
@@ -194,6 +200,8 @@ export async function sweepStaging(root: string, move?: RenameOptions): Promise<
   for (const n of names) {
     const staging = join(walksDir, n);
     if (live.has(liveKey(staging))) continue;
+    // cancelled: what is left is cleared or adopted by the next import
+    if (move?.signal?.aborted) break;
     try {
       const done = await finishedIn(staging);
       if (!done) {
@@ -319,7 +327,10 @@ export async function importWalk(
   }
 
   // a playback copy an earlier import of this file finished but could not move into place
-  const again = (await sweepStaging(root, o.move)).find(
+  // (with the import's signal: a kept folder that is still held open must not make a cancelled
+  // import wait half a minute for it)
+  const moving: RenameOptions = { ...o.move, ...(o.signal ? { signal: o.signal } : {}) };
+  const again = (await sweepStaging(root, moving)).find(
     (w) => w.source.file === name.slice(0, FILE_MAX) && w.source.bytes === bytes,
   );
   if (again)
@@ -328,6 +339,9 @@ export async function importWalk(
       walk: again,
       message: `The playback copy an earlier import of this file had finished (${px(again.video)}) is now in the project; nothing was stitched again. ${OPEN_HINT}`,
     };
+
+  // cancelled while the leftovers of earlier imports were cleared
+  if (o.signal?.aborted) return { ok: false, status: 'skipped', message: WALK_CANCELLED };
 
   const direct =
     kind.layout === 'equirect' &&
@@ -386,10 +400,7 @@ export async function importWalk(
       `${JSON.stringify(describe(base, made, extra), null, 2)}\n`,
     );
     finished = true;
-    const walk = await place(walksDir, staging, base, (id) => describe(id, made, extra), {
-      ...o.move,
-      ...(o.signal ? { signal: o.signal } : {}),
-    });
+    const walk = await place(walksDir, staging, base, (id) => describe(id, made, extra), moving);
 
     const parts: string[] = [];
     if (kind.layout === 'insv-dual-stream')
@@ -416,14 +427,25 @@ export async function importWalk(
     parts.push(OPEN_HINT);
     return { ok: true, walk, message: parts.join(' ') };
   } catch (e) {
-    if (finished)
-      // the long work is done and only the move was refused: never thrown away
+    const cancelled = o.signal?.aborted === true && o.signal.reason !== QUIT_REASON;
+    if (finished && !cancelled) {
+      // the long work is done and only the last step failed: never thrown away. The next import
+      // of the file finds the folder and adds it.
+      const kept = 'It was kept. Import the file again and it is added without a new stitch.';
+      const why =
+        o.signal?.aborted === true
+          ? 'the app was closed before it was moved into the project.'
+          : isLockedError(e)
+            ? 'it could not be moved into the project: another program (antivirus, a search indexer or a file sync) kept one of its files open.'
+            : `it could not be added to the project (${text(e)}).`;
       return {
         ok: false,
         status: 'error',
-        message:
-          'The playback copy was made, but it could not be moved into the project: another program (antivirus, a search indexer or a file sync) kept one of its files open. It was kept. Import the file again and it is added without a new stitch.',
+        message: `The playback copy was made, but ${why} ${kept}`,
       };
+    }
+    // not finished, or the person cancelled (also while the finished folder waited to be moved):
+    // nothing of it stays
     await removeStaging(staging);
     if (o.signal?.aborted) return { ok: false, status: 'skipped', message: WALK_CANCELLED };
     return { ok: false, status: 'error', message: `The 360 video was not added: ${text(e)}` };

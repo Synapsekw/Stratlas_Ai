@@ -4,7 +4,7 @@ import { builder } from '../builder/state';
 import { bridge, shell } from '../shell';
 import { PANE_KINDS } from '../workspace/splitModel';
 import { stagePrefs } from '../workspace/stagePrefs';
-import { splitWithWalk } from './walkModel';
+import { importAnswered, splitWithWalk } from './walkModel';
 import { createWalkStore, type WalkState } from './walkStore';
 
 /** The 360 videos of the open project, kept in step with it. */
@@ -29,10 +29,10 @@ const follow = () => {
 workspace.subscribe(follow);
 follow();
 
-// 360 video lands beside the manifest (walks/), which the workspace does not follow: when an
-// import ends, the list is asked for again
+// 360 video lands beside the manifest (walks/), which the workspace does not follow: when main
+// answers an import, the list is asked for again
 builder.subscribe((s, prev) => {
-  if (prev.importing && !s.importing) void refreshWalks();
+  if (importAnswered(prev, s)) void refreshWalks();
 });
 
 /** Show a walk: the Scene screen in split view, the 360 video pane where it is or on the right. */

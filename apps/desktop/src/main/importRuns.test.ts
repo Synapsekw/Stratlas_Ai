@@ -8,6 +8,7 @@ describe('import runs', () => {
     const b = runs.begin('b');
     expect(runs.cancel('a')).toBe(true);
     expect(a.signal.aborted).toBe(true);
+    expect(a.signal.reason).toBe('cancel');
     expect(b.signal.aborted).toBe(false);
   });
 
@@ -41,6 +42,8 @@ describe('import runs', () => {
     const done = runs.begin('c');
     done.end();
     expect(runs.cancelAll()).toBe(2);
+    // a quit is told apart from the person's Cancel: a finished copy is then kept, not removed
+    expect(a.signal.reason).toBe('quit');
     expect([a.signal.aborted, b.signal.aborted, done.signal.aborted]).toEqual([true, true, false]);
     expect(runs.cancelAll()).toBe(0);
   });

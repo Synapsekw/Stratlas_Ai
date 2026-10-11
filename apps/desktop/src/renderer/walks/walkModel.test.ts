@@ -1,6 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import { paneOptions, resolveSplit, type SplitPref } from '../workspace/splitModel';
-import { formatWalkTime, pickWalk, splitWithWalk, walkKeyAction } from './walkModel';
+import {
+  formatWalkTime,
+  importAnswered,
+  pickWalk,
+  splitWithWalk,
+  walkKeyAction,
+} from './walkModel';
 
 describe('formatWalkTime', () => {
   it('writes minutes and seconds, hours only when there are any', () => {
@@ -53,6 +59,17 @@ describe('walkKeyAction', () => {
   it('leaves every other key alone', () => {
     expect(walkKeyAction('a', paused)).toBeNull();
     expect(walkKeyAction('Enter', paused)).toBeNull();
+  });
+});
+
+describe('importAnswered', () => {
+  it('is the moment main answers an import, not the moment the panel is free again', () => {
+    // main was importing and has answered: the walk list is asked for again now, even though
+    // the import is still busy with a drawing's page question
+    expect(importAnswered({ cancellable: true }, { cancellable: false })).toBe(true);
+    expect(importAnswered({ cancellable: false }, { cancellable: false })).toBe(false);
+    expect(importAnswered({ cancellable: false }, { cancellable: true })).toBe(false);
+    expect(importAnswered({ cancellable: true }, { cancellable: true })).toBe(false);
   });
 });
 

@@ -57,6 +57,7 @@ export {
 } from '../import/proxy';
 export {
   CANCELLED_BEFORE,
+  QUIT_REASON,
   WALK_CANCELLED,
   WALK_JSON_MAX_BYTES,
   importWalk,

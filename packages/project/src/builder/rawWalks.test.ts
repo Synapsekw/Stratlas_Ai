@@ -2,7 +2,10 @@ import { copyFile, mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/pro
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { encodePng } from '../import/png';
 import { createProject, updateCapture } from './create';
+import { imageSize } from './drawingPlacement';
+import { withExif } from './testing';
 import { NO_PIPELINE, importRawFiles, type ImportDeps } from './raw';
 import type { WalkTools } from './walks';
 import type { WalkTrack } from './walkSource';
@@ -42,8 +45,19 @@ function walkTools(tracksBy: Record<string, WalkTrack[]>): WalkTools {
   };
 }
 
+const png = (width: number, height: number): Uint8Array =>
+  encodePng({ width, height, channels: 4, data: new Uint8Array(width * height * 4).fill(200) });
+
 const deps = (over: Partial<ImportDeps> = {}): ImportDeps => ({
-  images: { resizeJpeg: (src, dst) => copyFile(src, dst) },
+  images: {
+    resizeJpeg: (src, dst) => copyFile(src, dst),
+    // the image step of the tests: PNG in, PNG out (the app decodes with Electron)
+    toPng: async (src, dst) => {
+      const size = imageSize(new Uint8Array(await readFile(src)));
+      await writeFile(dst, png(size?.width ?? 8, size?.height ?? 6));
+      return size ?? { width: 8, height: 6 };
+    },
+  },
   jobs: NO_PIPELINE,
   utcOffsetMin: 0,
   ...over,
@@ -234,6 +248,76 @@ describe('importRawFiles, 360 video', () => {
     const only = await importRawFiles(root, [join(dir, CLIP)], deps({ walk: tools }));
     expect(only.backup).toBe('');
     expect(only.manifest.captures.map((c) => c.label)).toContain('Renamed again');
+  });
+
+  it('a mixed pick: the photo, the drawing and the camera clip each land where they belong', async () => {
+    const root = await project();
+    const photo = join(dir, 'IMG_0001.jpg');
+    await writeFile(photo, withExif({ width: 64, height: 48 }));
+    const sheet = join(dir, 'Site Layout.png');
+    await writeFile(sheet, png(40, 20));
+    const tools = walkTools({ [CLIP]: [vide(128, 128), vide(128, 128)] });
+    const copy = tools.copy.bind(tools);
+    const atStitch: { layers: string[]; drawings: string[] }[] = [];
+    tools.copy = async (out, o) => {
+      // the photo and the drawing are saved, and their files are in place, before the stitch
+      atStitch.push({
+        layers: (await layersOnDisk(root)).sort(),
+        drawings: (await readdir(join(root, 'drawings'))).sort(),
+      });
+      return copy(out, o);
+    };
+    const r = await importRawFiles(root, [await src(CLIP), photo, sheet], deps({ walk: tools }));
+    expect(r.items.map((i) => [i.file, i.kind, i.status])).toEqual([
+      [CLIP, 'video', 'imported'],
+      ['IMG_0001.jpg', 'photo', 'imported'],
+      ['Site Layout.png', 'drawing', 'imported'],
+    ]);
+    expect(atStitch).toEqual([
+      { layers: ['photos', 'raster'], drawings: ['site-layout', 'site-layout.png'] },
+    ]);
+    // the clip is a walk beside the manifest, never a layer; the drawing is a raster layer,
+    // never a walk; the photo is in the photo set
+    expect(r.items[0]?.layerId).toBeUndefined();
+    expect(r.items[2]?.layerId).toBe('sheet-site-layout');
+    expect(r.manifest.layers.map((l) => l.kind).sort()).toEqual(['photos', 'raster']);
+    expect(await readdir(join(root, 'walks'))).toEqual(['vid-20260101-120000-00-001']);
+    expect((await readdir(join(root, 'drawings'))).sort()).toEqual([
+      'site-layout',
+      'site-layout.png',
+    ]);
+    expect(r.backup).not.toBe('');
+  });
+
+  it('Add 360 video never hands an MP4 to the drawings, and Add drawing never takes a clip', async () => {
+    const root = await project();
+    const tools = walkTools({
+      'tour.mp4': [vide(256, 128, 'avc1')],
+      [CLIP]: [vide(128, 128), vide(128, 128)],
+    });
+    const sheet = join(dir, 'plan.png');
+    await writeFile(sheet, png(8, 8));
+    // Add 360 video with a picture in the pick: the picture is still a drawing, the MP4 a walk
+    const as360 = await importRawFiles(
+      root,
+      [await src('tour.mp4'), sheet],
+      deps({ walk: tools, as360: true }),
+    );
+    expect(as360.items.map((i) => [i.file, i.kind, i.status])).toEqual([
+      ['tour.mp4', 'video', 'imported'],
+      ['plan.png', 'drawing', 'imported'],
+    ]);
+    // Add drawing with a camera clip in the pick: the clip is a walk, not a drawing
+    const drawings = await importRawFiles(
+      root,
+      [await src(CLIP)],
+      deps({ walk: tools, drawings: true }),
+    );
+    expect(drawings.items[0]).toMatchObject({ file: CLIP, kind: 'video', status: 'imported' });
+    expect((await readdir(join(root, 'walks'))).sort()).toEqual([
+      'tour',
+      'vid-20260101-120000-00-001',
+    ]);
   });
 
   it('cancel stops the stitch, skips what had not started and keeps what was imported', async () => {

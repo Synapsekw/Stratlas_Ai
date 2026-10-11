@@ -45,6 +45,18 @@ export function walkKeyAction(
   return null;
 }
 
+/**
+ * Main has just answered an import (the import store's `cancellable` went from true to false).
+ * The walk list is asked for again then, not when the import panel is free: an import stays
+ * busy while a drawing's page question is open, and a walk must not wait for that answer.
+ */
+export function importAnswered(
+  prev: { cancellable: boolean },
+  next: { cancellable: boolean },
+): boolean {
+  return prev.cancellable && !next.cancellable;
+}
+
 /** The walk the pane shows: the chosen one while the project has it, else the first. */
 export function pickWalk<T extends { id: string }>(
   walks: readonly T[],

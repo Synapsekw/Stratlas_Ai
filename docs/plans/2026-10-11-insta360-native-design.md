@@ -87,7 +87,9 @@ this slice adds **no lens model, no layer kind and no value to an existing enum*
    (`builder:cancelImport`) stops the import as a whole: ffmpeg is stopped, the staging folder of
    the walk in hand is removed, files whose turn had not come are listed as skipped and what was
    already imported stays. Quitting the app cancels the same way, so no ffmpeg is left running.
-   There is no cancel per file, and a drone review copy in hand is finished first. A failed stitch leaves no `walks/<id>/` folder behind:
+   There is no cancel per file, and a drone review copy in hand is finished first. The panel's
+   Cancel shows only while main is importing; the page question of a PDF keeps its own. After a
+   cancelled import its staged drawings are closed without being asked about or drawn. A failed stitch leaves no `walks/<id>/` folder behind:
    the walk is built in a staging folder of its own and moved into place last. In a drop of
    several files the manifest is saved before the first stitch starts, so photos and models do
    not wait for it. A finished stitch is never thrown away because of the move: a refusal by
@@ -200,6 +202,10 @@ so a walk does **not** reach team mates through a hub or the Team Server yet; fo
 ## Follow-ups noted, not built
 
 - A quick preview from the `.lrv` while the stitch runs. Cancel per file.
+- Showing the photos and models of a mixed import while its 360 video is still being stitched:
+  they are saved before the stitch, but the app receives the manifest only when the import
+  returns. A re-read of the manifest at the first stitch progress would do it; left for a change
+  with its own review.
 - Chapter joining (`_001`, `_002` with the same time stamp): each chapter imports as its own walk.
 - Removing or renaming a walk from the app (delete the `walks/<id>/` folder by hand for now).
 - Sync of `walks/` through hubs and the Team Server; a walk list for an open package is built,

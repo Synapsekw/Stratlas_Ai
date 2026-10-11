@@ -470,6 +470,107 @@ describe('importWalk', () => {
     expect(await readdir(join(root, 'walks'))).toEqual([]);
   });
 
+  it('cancel while the finished folder waits to be moved ends as cancelled, nothing kept', async () => {
+    const { t } = tools({ tracksBy: { [CLIP]: [vide(2880, 2880), vide(2880, 2880)] } });
+    const stop = new AbortController();
+    const never = refusing(Infinity);
+    let waits = 0;
+    const r = await importWalk(root, await src(CLIP), {
+      tools: t,
+      signal: stop.signal,
+      move: {
+        ...never.move,
+        // the person clicks Cancel during the second wait for the other program
+        sleep: () => {
+          if (++waits === 2) stop.abort();
+          return Promise.resolve();
+        },
+      },
+    });
+    expect(r).toMatchObject({ ok: false, status: 'skipped' });
+    if (!r.ok) {
+      expect(r.message).toContain('cancelled');
+      expect(r.message).not.toContain('another program');
+    }
+    expect(never.tries()).toBe(2);
+    expect(await readdir(join(root, 'walks'))).toEqual([]);
+  });
+
+  it('a quit while the finished folder waits to be moved keeps it, for the next import', async () => {
+    const { t, calls } = tools({ tracksBy: { [CLIP]: [vide(2880, 2880), vide(2880, 2880)] } });
+    const stop = new AbortController();
+    const never = refusing(Infinity);
+    const file = await src(CLIP);
+    const r = await importWalk(root, file, {
+      tools: t,
+      signal: stop.signal,
+      move: {
+        ...never.move,
+        sleep: () => {
+          stop.abort('quit');
+          return Promise.resolve();
+        },
+      },
+    });
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.message).not.toContain('another program');
+    const left = await readdir(join(root, 'walks'));
+    expect(left).toHaveLength(1);
+    expect(left[0]).toMatch(/^\.staging-/);
+    const again = await importWalk(root, file, { tools: t });
+    expect(again.ok).toBe(true);
+    expect(calls.filter((c) => c.startsWith('copy'))).toHaveLength(1);
+  });
+
+  it('does not blame another program when the finished walk cannot be added for another reason', async () => {
+    const { t } = tools({ tracksBy: { [CLIP]: [vide(2880, 2880), vide(2880, 2880)] } });
+    const r = await importWalk(root, await src(CLIP), {
+      tools: t,
+      move: {
+        platform: 'win32',
+        sleep: () => Promise.resolve(),
+        rename: () =>
+          Promise.reject(Object.assign(new Error('ENOSPC: no space left'), { code: 'ENOSPC' })),
+      },
+    });
+    expect(r).toMatchObject({ ok: false, status: 'error' });
+    if (!r.ok) {
+      expect(r.message).not.toContain('another program');
+      expect(r.message).toContain('no space left');
+      expect(r.message).toContain('It was kept');
+    }
+  });
+
+  it('a cancelled import does not wait for a kept folder that is still held open', async () => {
+    const { t } = tools({ tracksBy: { [CLIP]: [vide(2880, 2880), vide(2880, 2880)] } });
+    const file = await src(CLIP);
+    // an earlier import left a finished stitch that still cannot be moved
+    await importWalk(root, file, { tools: t, move: refusing(Infinity).move });
+    const stop = new AbortController();
+    const held = refusing(Infinity);
+    let waits = 0;
+    const r = await importWalk(root, file, {
+      tools: t,
+      signal: stop.signal,
+      move: {
+        ...held.move,
+        sleep: () => {
+          waits++;
+          stop.abort();
+          return Promise.resolve();
+        },
+      },
+    });
+    // the sweep gave up at the first wait instead of waiting half a minute for the kept folder
+    expect(waits).toBe(1);
+    expect(held.tries()).toBe(1);
+    expect(r).toMatchObject({ ok: false, status: 'skipped' });
+    // the kept stitch is still there for a later import
+    expect(
+      (await readdir(join(root, 'walks'))).filter((n) => n.startsWith('.staging-')),
+    ).toHaveLength(1);
+  });
+
   it('stores a stitched H.264 MP4 as it is, without ffmpeg', async () => {
     let asked = false;
     const { t, calls } = tools({
@@ -550,13 +651,34 @@ describe('listWalks', () => {
     await mkdir(join(root, 'walks', '.staging-x'), { recursive: true });
     // a walk.json far larger than any real one is not read at all
     await mkdir(join(root, 'walks', 'huge'), { recursive: true });
+    // (a valid walk of that folder, so only its size keeps it out)
+    const real = JSON.parse(
+      await readFile(join(root, 'walks', 'tour', 'walk.json'), 'utf8'),
+    ) as Record<string, unknown>;
+    const huge = {
+      ...real,
+      id: 'huge',
+      video: { ...(real.video as object), src: 'walks/huge/playback.mp4' },
+    };
+    expect(WalkFile.safeParse(huge).success).toBe(true);
     await writeFile(
       join(root, 'walks', 'huge', 'walk.json'),
-      JSON.stringify({ schema: 'aio.walk/1', id: 'huge', pad: 'x'.repeat(300 * 1024) }),
+      JSON.stringify({ ...huge, pad: 'x'.repeat(300 * 1024) }),
+    );
+    // the same walk without the padding is listed: it is the size that keeps the other out
+    await mkdir(join(root, 'walks', 'small'), { recursive: true });
+    await writeFile(
+      join(root, 'walks', 'small', 'walk.json'),
+      JSON.stringify({
+        ...huge,
+        id: 'small',
+        createdAt: '2026-10-01T08:00:00.000Z',
+        video: { ...(real.video as object), src: 'walks/small/playback.mp4' },
+      }),
     );
     await mkdir(join(root, 'walks', 'empty'), { recursive: true });
     const list = await listWalks(root);
-    expect(list.map((w) => w.id)).toEqual(['tour', 'vid-20260101-120000-00-001']);
+    expect(list.map((w) => w.id)).toEqual(['tour', 'vid-20260101-120000-00-001', 'small']);
     // a walk whose folder was renamed by hand is listed under its folder name
     const { rename } = await import('node:fs/promises');
     await rename(join(root, 'walks', 'tour'), join(root, 'walks', 'tour-moved'));

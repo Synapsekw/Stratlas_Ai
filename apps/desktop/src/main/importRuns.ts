@@ -40,7 +40,7 @@ export function createImportRuns(): ImportRuns {
       const set = running.get(projectId);
       if (!set || set.size === 0) return false;
       running.delete(projectId);
-      for (const run of set) run.abort();
+      for (const run of set) run.abort('cancel');
       set.clear();
       return true;
     },
@@ -48,7 +48,9 @@ export function createImportRuns(): ImportRuns {
       let n = 0;
       for (const set of running.values()) {
         for (const run of set) {
-          run.abort();
+          // told apart from the person's Cancel (`QUIT_REASON` in the builder library): a
+          // playback copy that is finished is kept for the next import, not removed
+          run.abort('quit');
           n++;
         }
         set.clear();

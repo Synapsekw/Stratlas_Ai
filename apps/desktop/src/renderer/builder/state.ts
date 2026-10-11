@@ -134,6 +134,29 @@ let preparing = false;
 /** The project the running import was started in (it stays there when another one is opened). */
 let importingProject: string | null = null;
 
+/**
+ * The rows of a cancelled import whose drawings main had only copied in (`ImportItem.drawing`,
+ * still `queued`): each is closed (`builder:closeDrawing` removes a copy that got no page, as
+ * for a cancelled page question) and reported as skipped.
+ */
+async function dropStaged(projectId: string, items: readonly ImportItem[]): Promise<ImportItem[]> {
+  const out: ImportItem[] = [];
+  for (const it of items) {
+    if (!it.drawing || it.status !== 'queued') {
+      out.push(it);
+      continue;
+    }
+    const { drawing, ...row } = it;
+    await bridge.call('builder:closeDrawing', { projectId, stem: drawing.stem });
+    out.push({
+      ...row,
+      status: 'skipped',
+      message: 'The import was cancelled before this drawing was drawn. Nothing of it was added.',
+    });
+  }
+  return out;
+}
+
 export const builder = createStore<Builder>()((set, get) => ({
   wizardOpen: false,
   importing: null,
@@ -214,6 +237,7 @@ export const builder = createStore<Builder>()((set, get) => ({
     });
     off?.();
     // main has answered: what follows (drawing pages) is not main's import any more
+    const cancelled = get().cancelling;
     importingProject = null;
     set({ cancellable: false, cancelling: false });
     if (!r.ok) {
@@ -232,6 +256,9 @@ export const builder = createStore<Builder>()((set, get) => ({
       error: null,
       ...(r.value.heights ? { heights: r.value.heights } : {}),
     };
+    // a cancelled import draws nothing more: the drawings it had only copied in are closed, so
+    // their copies are removed, and no page question is asked for them
+    if (cancelled) result = { ...result, items: await dropStaged(project.id, result.items) };
     const staged = result.items.filter((i) => i.drawing).length;
     // PDF, WebP and SVG were only copied in, their pages are drawn in this window. The import
     // stays busy until they are in or cancelled, the page question included, so a pick or a drop
