@@ -1,0 +1,36 @@
+/* ---------- processing: the kind tag of a job row ---------- */
+.jr-sub .jr-kind {
+  flex: none;
+  padding: 0 6px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  color: var(--fg-2);
+  font-size: 11px;
+  line-height: 16px;
+}
+.job-row[data-kind='ai'] .jr-kind {
+  border-color: var(--line-strong);
+  color: var(--fg-0);
+}
+
+/* ---------- processing: a job's details, folded (the drawer) ---------- */
+.job-detail[data-form='folded'] {
+  padding: 0;
+  overflow: visible;
+}
+.jd-fold {
+  margin-top: 12px;
+  border-top: 1px solid var(--line);
+  padding-top: 8px;
+}
+.jd-fold > summary {
+  cursor: pointer;
+  color: var(--fg-1);
+  font-size: 12px;
+}
+.jd-fold[open] > summary {
+  margin-bottom: 8px;
+}
+.jd-fold .job-log {
+  max-height: 240px;
+}
