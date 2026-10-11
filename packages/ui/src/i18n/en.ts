@@ -631,6 +631,10 @@ export const en = {
   'agent.fix.testing': 'Testing',
   'agent.fix.openSettings': 'Open AI settings',
   'agent.fix.dismiss': 'Dismiss',
+  // The agent column of Issues, Media, Detections and Reports, and its title bar button
+  'agent.dock.name': 'Agent',
+  'agent.dock.label': 'Agent',
+  'agent.dock.tip': 'Show or hide the agent',
   'settings.privacy.text':
     '{product} works fully offline. Cloud AI is opt-in, and every action that sends data or changes the project asks you first.',
   'settings.data.text': 'Where projects and offline map packs live on this workstation.',

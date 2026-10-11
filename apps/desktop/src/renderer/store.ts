@@ -95,6 +95,11 @@ export interface ShellState {
   stageAuto: boolean;
   /** The right panel of the Scene is folded away (remembered on this machine, panelPrefs.ts). */
   rightCollapsed: boolean;
+  /**
+   * The agent column of Issues, Media, Detections and Reports is folded away (remembered on this
+   * machine, panelPrefs.ts). Folded until the person asks for it.
+   */
+  agentDockCollapsed: boolean;
   videoDocked: boolean;
   videoHidden: boolean;
   /** Component callouts in 3D: off, one per group, or all. */
@@ -162,6 +167,9 @@ export interface ShellActions {
    * unfolds it.
    */
   setRight: (collapsed: boolean) => void;
+  toggleAgentDock: () => void;
+  /** Fold the agent column away or bring it back. */
+  setAgentDock: (collapsed: boolean) => void;
   setVideoDocked: (docked: boolean) => void;
   setVideoHidden: (hidden: boolean) => void;
   setLabelMode: (mode: LabelMode) => void;
@@ -178,7 +186,10 @@ export type Shell = ShellState & ShellActions;
 export interface ShellOptions {
   /** Player mode on or off (annotation read-only); called on every project open and close. */
   onReadOnly?: (on: boolean) => void;
-  /** Where the right panel's folded state is kept; the window's local storage by default. */
+  /**
+   * Where the folded state of the right panel and of the agent column is kept; the window's local
+   * storage by default.
+   */
   storage?: PanelStorage | null;
 }
 
@@ -198,6 +209,7 @@ export function createShellStore(
     options.onReadOnly?.(on);
   };
   const storage = options.storage === undefined ? browserStorage() : options.storage;
+  const panels = readPanelPrefs(storage);
   return createStore<Shell>()((set, get) => ({
     screen: 'projects',
     settingsFocus: null,
@@ -211,7 +223,8 @@ export function createShellStore(
     paletteOpen: false,
     stageMode: '3d',
     stageAuto: false,
-    rightCollapsed: readPanelPrefs(storage).rightCollapsed,
+    rightCollapsed: panels.rightCollapsed,
+    agentDockCollapsed: panels.agentDockCollapsed,
     videoDocked: false,
     videoHidden: false,
     labelMode: 'key',
@@ -426,7 +439,16 @@ export function createShellStore(
     setRight: (rightCollapsed) => {
       if (get().rightCollapsed === rightCollapsed) return;
       set({ rightCollapsed });
-      writePanelPrefs(storage, { rightCollapsed });
+      // the two panels are stored as one value: write both, so neither forgets the other
+      writePanelPrefs(storage, { rightCollapsed, agentDockCollapsed: get().agentDockCollapsed });
+    },
+    toggleAgentDock: () => {
+      get().setAgentDock(!get().agentDockCollapsed);
+    },
+    setAgentDock: (agentDockCollapsed) => {
+      if (get().agentDockCollapsed === agentDockCollapsed) return;
+      set({ agentDockCollapsed });
+      writePanelPrefs(storage, { rightCollapsed: get().rightCollapsed, agentDockCollapsed });
     },
     setVideoDocked: (videoDocked) => {
       set({ videoDocked });

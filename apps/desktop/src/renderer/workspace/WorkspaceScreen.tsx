@@ -1,4 +1,3 @@
-import { AgentPanel } from '@aio/ai';
 import { IssueRegister } from '@aio/annotate';
 import {
   ariaKeys,
@@ -19,7 +18,7 @@ import { useCardFocusSeq } from '../issueCard/state';
 import { useMedia } from '../media';
 import { PANEL_ID, PanelHandle } from '../shell/PanelHandle';
 import { selectClip } from '../shell/Sidebar';
-import { cloudAiBlocked } from '../player';
+import { AgentHost } from '../agent/AgentHost';
 import { useModeller } from '../modeller';
 import { shell, useShell } from '../shell';
 import { ChainageRuler } from '../road/ChainageRuler';
@@ -27,7 +26,6 @@ import { RoadPanel } from '../road/RoadPanel';
 import { RoadSetupCard } from '../road/RoadSetup';
 import { useIsRoad } from '../road/useRoadMap';
 import { NoProject } from '../screens/NoProject';
-import { AgentFixCard } from './AgentFixCard';
 import { useCaptureIndex } from './compare';
 import { agentWindow } from './agentWindow';
 import { DateBar } from './DateBar';
@@ -248,18 +246,8 @@ export function WorkspaceScreen() {
   const stageMode = useShell((s) => s.stageMode);
   const focused = agentWindow(focusedWindow, stageMode);
   const rightCollapsed = useShell((s) => s.rightCollapsed);
-  const pkg = useShell((s) => s.pkg);
   // the agent answers on the build route while the Model builder is open (C5)
   const modellerOpen = useModeller((s) => s.open);
-  // the agent checks its route again when the AI settings change
-  const aiKey = useShell((s) =>
-    JSON.stringify([
-      s.settings.cloudAi,
-      s.settings.offlineOnly === true,
-      s.settings.routes,
-      s.settings.localModel,
-    ]),
-  );
   const road = useIsRoad();
   const volumes = useVolumetric((s) => s.status === 'ready');
   const project = useWorkspace((s) => s.project);
@@ -300,19 +288,7 @@ export function WorkspaceScreen() {
           </>
         )}
         <div className="agent">
-          {cloudAiBlocked(pkg) ? (
-            <p className="faint small" style={{ padding: 12 }} data-testid="agent-blocked">
-              This package does not allow cloud AI. Nothing from it is sent to any provider.
-            </p>
-          ) : (
-            <AgentPanel
-              window={focused}
-              task={modellerOpen ? 'build' : undefined}
-              settingsKey={aiKey}
-              className="agent-host"
-              renderFix={(controls) => <AgentFixCard {...controls} />}
-            />
-          )}
+          <AgentHost window={focused} task={modellerOpen ? 'build' : undefined} />
         </div>
       </aside>
     </section>
