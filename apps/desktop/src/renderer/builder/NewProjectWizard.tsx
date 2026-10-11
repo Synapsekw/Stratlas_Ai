@@ -319,7 +319,7 @@ function Wizard() {
                   className="input"
                   autoFocus
                   value={form.name}
-                  placeholder="EBSM flare stack"
+                  placeholder="Tank farm inspection"
                   aria-label="Project name"
                   onChange={(e) => {
                     setForm({ ...form, name: e.target.value });
@@ -332,7 +332,7 @@ function Wizard() {
                   <input
                     className="input"
                     value={form.customer}
-                    placeholder="EQUATE"
+                    placeholder="Customer name"
                     aria-label="Customer"
                     onChange={(e) => {
                       setForm({ ...form, customer: e.target.value });
@@ -344,7 +344,7 @@ function Wizard() {
                   <input
                     className="input"
                     value={form.site}
-                    placeholder="Shuaiba, Kuwait"
+                    placeholder="City, country"
                     aria-label="Site"
                     onChange={(e) => {
                       setForm({ ...form, site: e.target.value });
