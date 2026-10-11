@@ -49,3 +49,30 @@
   border-color: var(--warn);
   color: var(--warn);
 }
+
+/* ---------- processing: the drawer's list ---------- */
+.proc-list {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+.proc-list h3 {
+  margin: 0 0 6px;
+}
+.proc-go {
+  justify-content: center;
+}
+.proc-tools {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  font-size: 12px;
+}
+.proc-empty {
+  margin: 0;
+  font-size: 12px;
+}
