@@ -158,3 +158,70 @@ describe('groupDatableLayerIds', () => {
     expect(groupDatableLayerIds(g)).toEqual([]);
   });
 });
+
+describe('drawings in the dataset tree', () => {
+  const plan = (id: string, path: string, name = id): Layer => ({
+    kind: 'raster',
+    id,
+    name,
+    visible: true,
+    src: { path },
+    role: 'plan',
+    format: 'image',
+    corners: { tl: [0, 0, 0], tr: [1, 0, 0], bl: [0, 0, 1] },
+  });
+  const vector = (id: string, path: string): Layer => ({
+    kind: 'vector',
+    id,
+    name: id,
+    visible: true,
+    src: { path },
+    format: 'geojson',
+  });
+  const layers: Layer[] = [
+    plan('plan-site', 'drawings/site/plan.png', 'site.dxf plan'),
+    vector('drawing-site-walls', 'drawings/site/walls.geojson'),
+    plan('sheet-layout', 'drawings/layout/plan.png', 'layout.pdf'),
+    plan('plot', 'rasters/plot.png'),
+    vector('roads', 'vectors/roads.geojson'),
+  ];
+  const tree = buildDatasetTree({ ...mockManifest(), layers }, []);
+
+  it('holds every plan and vector layer stored under drawings/, after Maps and rasters', () => {
+    expect(tree.map((g) => g.kind)).toEqual(['maps', 'drawings']);
+    const drawings = tree.find((g) => g.kind === 'drawings');
+    expect(drawings?.label).toBe('Drawings');
+    expect(drawings?.count).toBe(3);
+    expect(drawings?.items.map((i) => i.id)).toEqual([
+      'plan-site',
+      'drawing-site-walls',
+      'sheet-layout',
+    ]);
+  });
+
+  it('leaves a plan or a vector layer stored elsewhere under Maps and rasters', () => {
+    expect(tree.find((g) => g.kind === 'maps')?.items.map((i) => i.id)).toEqual(['plot', 'roads']);
+  });
+
+  it('marks the plan rows as drawings, not their line work', () => {
+    const drawings = tree.find((g) => g.kind === 'drawings');
+    expect(drawings?.items.map((i) => i.drawing === true)).toEqual([true, false, true]);
+  });
+
+  it('says which drawings are not placed yet', () => {
+    const marked = buildDatasetTree(
+      { ...mockManifest(), layers },
+      [],
+      {},
+      {
+        unplaced: new Set(['sheet-layout']),
+      },
+    );
+    const meta = Object.fromEntries(
+      (marked.find((g) => g.kind === 'drawings')?.items ?? []).map((i) => [i.id, i.meta]),
+    );
+    expect(meta['sheet-layout']).toBe('not placed');
+    expect(meta['plan-site']).toBe('plan');
+    expect(meta['drawing-site-walls']).toBe('GeoJSON');
+  });
+});

@@ -1005,6 +1005,22 @@ select.input option {
 .titem .eye.tact:focus-visible {
   opacity: 1;
 }
+/* a group action (Add drawing): always in view, as a row action is */
+.tgroup-row > .eye.tgroup-act {
+  opacity: 0.7;
+  margin-inline-end: 0;
+}
+.tgroup-row:hover > .eye.tgroup-act,
+.tgroup-row > .eye.tgroup-act:focus-visible {
+  opacity: 1;
+}
+/* controls drawn under a row (a drawing's opacity, on top, place): aligned with the row's name */
+.titem-extra {
+  padding-block: 4px 8px;
+  padding-inline: 30px 8px;
+  font-size: var(--t-12);
+  color: var(--fg-2);
+}
 .titem .eye-sp {
   width: 20px;
   flex: none;

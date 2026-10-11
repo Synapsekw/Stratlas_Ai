@@ -62,6 +62,48 @@ describe('DatasetTree', () => {
     expect(hidden).toContain('aria-label="Hide clip 1"');
   });
 
+  const drawings: TreeGroup = {
+    kind: 'drawings',
+    label: 'Drawings',
+    icon: 'drawing',
+    count: 2,
+    items: [
+      { id: 'sheet-a', layerId: 'sheet-a', layerKind: 'raster', name: 'layout.pdf', drawing: true },
+      { id: 'walls', layerId: 'walls', layerKind: 'vector', name: 'walls' },
+    ],
+  };
+
+  it('opens the Drawings group at first and gives its header the group action', () => {
+    const html = renderToStaticMarkup(
+      <DatasetTree
+        {...base}
+        groups={[drawings]}
+        groupAction={(g) =>
+          g.kind === 'drawings' ? { label: 'Add drawing', onClick: () => undefined } : undefined
+        }
+      />,
+    );
+    expect(html).toContain('aria-label="Add drawing"');
+    expect(html).toContain('data-testid="tree-group-add-drawings"');
+    // open without being listed in defaultOpen
+    expect(html).toContain('layout.pdf');
+  });
+
+  it('a drawing row offers its controls, and shows them under the row when open', () => {
+    const html = renderToStaticMarkup(
+      <DatasetTree
+        {...base}
+        groups={[drawings]}
+        onDrawingSettings={() => undefined}
+        rowExtra={(it) => (it.id === 'sheet-a' ? <p>controls of {it.name}</p> : null)}
+      />,
+    );
+    expect(html).toContain('aria-label="Drawing display and placement: layout.pdf"');
+    expect(html).not.toContain('aria-label="Drawing display and placement: walls"');
+    expect(html).toContain('controls of layout.pdf');
+    expect(html).toContain('aria-expanded="true"');
+  });
+
   it('a point cloud row offers its display settings', () => {
     const html = renderToStaticMarkup(
       <DatasetTree {...base} defaultOpen={['pointclouds']} onLayerSettings={() => undefined} />,

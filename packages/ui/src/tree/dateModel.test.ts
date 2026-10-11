@@ -166,3 +166,25 @@ describe('date folder names, icons and drops', () => {
     ).toEqual(['c1', 'c2']);
   });
 });
+
+describe('drawings in the date tree', () => {
+  it('each folder gets its own Drawings group', () => {
+    const sheet = (id: string): ProjectManifest['layers'][number] => ({
+      kind: 'raster',
+      id,
+      name: id,
+      visible: true,
+      src: { path: `drawings/${id}/plan.png` },
+      role: 'plan',
+      format: 'image',
+    });
+    const m: ProjectManifest = { ...base, captures, layers: [sheet('s1'), sheet('s2')] };
+    const folders = buildDateTree(m, [], {}, { captures, of: { s2: 'c' } }, labels, {
+      unplaced: new Set(['s2']),
+    });
+    const kinds = (id: string) => folders.find((f) => f.id === id)?.groups.map((g) => g.kind);
+    expect(kinds(EVERY_DATE)).toEqual(['drawings']);
+    expect(kinds('c')).toEqual(['drawings']);
+    expect(folders.find((f) => f.id === 'c')?.groups[0]?.items[0]?.meta).toBe('not placed');
+  });
+});
