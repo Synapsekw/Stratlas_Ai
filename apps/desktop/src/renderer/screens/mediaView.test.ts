@@ -6,6 +6,7 @@ import {
   DEFAULT_MEDIA_VIEW,
   highestLevel,
   mediaView,
+  noPhotoMatches,
   photosInView,
   setMediaView,
 } from './mediaView';
@@ -179,26 +180,56 @@ describe('the view store', () => {
     });
   });
 
-  it('clears the scope and keeps the order when another project opens', () => {
+  it('clears the scope and the level, and keeps the order, when another project opens', () => {
     workspace.setState({ project: { id: 'a' } } as unknown as Parameters<
       typeof workspace.setState
     >[0]);
-    setMediaView({ order: 'severity', scope: { label: 'Some', ids: ['photos/p1'] } });
+    setMediaView({
+      order: 'severity',
+      onlyFindings: true,
+      severity: 3,
+      scope: { label: 'Some', ids: ['photos/p1'] },
+    });
     workspace.setState({ project: { id: 'b' } } as unknown as Parameters<
       typeof workspace.setState
     >[0]);
-    expect(mediaView.getState().scope).toBeNull();
-    expect(mediaView.getState().order).toBe('severity');
+    expect(mediaView.getState()).toMatchObject({
+      scope: null,
+      severity: null,
+      order: 'severity',
+      onlyFindings: true,
+    });
   });
 
-  it('keeps the scope while the same project reloads', () => {
+  it('keeps the scope and the level while the same project reloads', () => {
     workspace.setState({ project: { id: 'a' } } as unknown as Parameters<
       typeof workspace.setState
     >[0]);
-    setMediaView({ scope: { label: 'Some', ids: ['photos/p1'] } });
+    setMediaView({ severity: 2, scope: { label: 'Some', ids: ['photos/p1'] } });
     workspace.setState({ project: { id: 'a', root: 'x' } } as unknown as Parameters<
       typeof workspace.setState
     >[0]);
     expect(mediaView.getState().scope).not.toBeNull();
+    expect(mediaView.getState().severity).toBe(2);
+  });
+});
+
+describe('a filter that matches nothing', () => {
+  const sets = [{ id: 'photos', items }];
+
+  it('is reported only when a level or a scope is set and no photo passes', () => {
+    expect(noPhotoMatches(sets, index, view({ severity: 'uncertain' }))).toBe(true);
+    expect(noPhotoMatches(sets, index, view({ scope: { label: 'x', ids: ['photos/zz'] } }))).toBe(
+      true,
+    );
+    expect(noPhotoMatches(sets, index, view({ severity: 3 }))).toBe(false);
+  });
+
+  it('is not reported without a level or a scope, nor when another set still matches', () => {
+    expect(noPhotoMatches([], index, DEFAULT_MEDIA_VIEW)).toBe(false);
+    expect(noPhotoMatches(sets, new Map(), view({ onlyFindings: true }))).toBe(false);
+    expect(noPhotoMatches([{ id: 'thermal', items }, ...sets], index, view({ severity: 3 }))).toBe(
+      false,
+    );
   });
 });

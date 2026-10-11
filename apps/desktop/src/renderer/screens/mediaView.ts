@@ -4,8 +4,8 @@
  * store so the screen and the agent set the same thing, and the person sees every filter on the
  * screen and can clear it.
  *
- * The first three last while the app runs; the scope belongs to the open project and clears when
- * another one opens.
+ * The only-with-findings switch and the order last while the app runs; the scope and the level
+ * belong to the open project and clear when another one opens.
  */
 import { workspace } from '@aio/workspace';
 import { useStore } from 'zustand';
@@ -85,8 +85,20 @@ export function highestLevel(
   return worst === rankOfSeverity('uncertain') ? 'uncertain' : null;
 }
 
-// Another project has other photos: the scope goes, the person's own choices stay.
+/** A level or a scope is set and no photo of any set passes it: the screen says so. */
+export function noPhotoMatches(
+  sets: readonly { id: string; items: readonly { id: string }[] }[],
+  index: ReadonlyMap<string, PhotoFindings>,
+  v: MediaViewState,
+): boolean {
+  if (v.severity === null && v.scope === null) return false;
+  return sets.every((set) => photosInView(set.items, set.id, index, v).length === 0);
+}
+
+// Another project has other photos and another severity model: the scope and the level go (the
+// person could not tell a level of the old model from "Any"), the other choices stay.
 workspace.subscribe((ws, prev) => {
   if ((ws.project?.id ?? null) === (prev.project?.id ?? null)) return;
-  if (mediaView.getState().scope) mediaView.setState({ scope: null });
+  const { scope, severity } = mediaView.getState();
+  if (scope || severity !== null) mediaView.setState({ scope: null, severity: null });
 });

@@ -28,7 +28,7 @@ import {
   type PhotoOrder,
 } from './mediaFindings';
 import { flightCards, flightOf, type FlightCard } from './mediaModel';
-import { photosInView, setMediaView, useMediaView } from './mediaView';
+import { noPhotoMatches, photosInView, setMediaView, useMediaView } from './mediaView';
 import { NoProject } from './NoProject';
 
 const PHOTO_LIMIT = 600;
@@ -222,6 +222,7 @@ export function MediaScreen() {
     (l): l is Extract<Layer, { kind: 'panoramas' }> => l.kind === 'panoramas',
   );
   const severityModel = project.manifest.severityModels[0];
+  const noMatch = noPhotoMatches(photoSets, findings, view);
   const empty = clips.length + photoSets.length + panoSets.length === 0;
   const withFindings = photoSets.reduce(
     (n, set) => n + set.items.filter((p) => findings.has(photoKey(set.id, p.id))).length,
@@ -396,6 +397,12 @@ export function MediaScreen() {
               })}
             </div>
           </section>
+        )}
+        {noMatch && (
+          <div className="side-empty" data-testid="media-no-match">
+            <Icon name="filter" size={20} />
+            <p>No photos match this filter.</p>
+          </div>
         )}
         {photoSets.map((set) => {
           const filtered = onlyFindings || severity !== null || scope !== null;
