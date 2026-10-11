@@ -63,7 +63,8 @@ def test_a_cancel_stops_the_workers_at_once():
 
 
 def test_a_job_error_in_a_worker_keeps_its_message():
-    with pytest.raises(JobError, match="The photo 1 could not be read: broken"):
+    # both photos refuse, each in its own worker: the first answer to arrive is the one reported
+    with pytest.raises(JobError, match=r"^The photo [12] could not be read: broken$"):
         P.run_pool(2, T.init, (0,), T.refuse, [1, 2], lambda: None, lambda item, res: None)
 
 
