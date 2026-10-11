@@ -653,15 +653,43 @@ export async function openProject(win: Page): Promise<{ id: string | null; root:
   });
 }
 
+/** The title bar chip of the open project's processing. */
+export const processingChip = (win: Page) => win.getByTestId('processing-chip');
+
+/** Open the Processing drawer from its chip (nothing to do when it is open); the drawer. */
+export async function openProcessing(win: Page) {
+  const drawer = win.getByTestId('processing-drawer');
+  if (!(await drawer.isVisible())) await processingChip(win).click();
+  await expect(drawer).toBeVisible();
+  return drawer;
+}
+
+/** Close the Processing drawer if it is open. */
+export async function closeProcessing(win: Page): Promise<void> {
+  const drawer = win.getByTestId('processing-drawer');
+  if (await drawer.isVisible()) await drawer.getByTestId('proc-close').click();
+  await expect(drawer).toHaveCount(0);
+}
+
 /**
- * On the Jobs screen: **New job**, then **Advanced: run a pipeline directly**, the form that takes
- * a pipeline (`#job-pipeline`) and its parameters and starts it (`job-start`). New job itself
- * opens on a short list of tasks; specs that run a pipeline by name go through here.
+ * Settings, Processing tools, **Advanced: run a pipeline directly**: the form that takes a
+ * pipeline (`#job-pipeline`) and its parameters and starts it (`job-start`), with every job on
+ * this computer and the details of the one started below it. Specs that run a pipeline by name go
+ * through here. Safe to call again while the form is showing.
  */
 export async function openPipelineForm(win: Page): Promise<void> {
-  await win.getByRole('button', { name: 'New job', exact: true }).click();
-  await win.getByTestId('job-advanced').locator('summary').click();
-  await expect(win.locator('#job-pipeline')).toBeVisible();
+  const form = win.locator('#job-pipeline');
+  if (await form.isVisible()) return;
+  await closeProcessing(win);
+  await win.locator('.nav-item', { hasText: 'Settings' }).click();
+  await win
+    .getByRole('navigation', { name: 'Settings sections' })
+    .getByRole('button', { name: 'Processing tools' })
+    .click();
+  const advanced = win.getByTestId('job-advanced');
+  if (!(await advanced.evaluate((el) => (el as HTMLDetailsElement).open)))
+    await advanced.locator('summary').click();
+  await expect(form).toBeVisible();
 }
 
 /**
