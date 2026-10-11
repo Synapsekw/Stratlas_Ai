@@ -2743,8 +2743,6 @@ export const en = {
   'globe.key': 'Site pins',
   'globe.keyClear': 'No open issues',
   'globe.keyAttention': 'Open issues',
-  'globe.cluster_one': '{count} site here',
-  'globe.cluster_other': '{count} sites here',
   'globe.closeCard': 'Close',
   // project chips on the Globe (11 Oct 2026): the field that finds a site, the Map dialog
   'globe.find': 'Find a site',

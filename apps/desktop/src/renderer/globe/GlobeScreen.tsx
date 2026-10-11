@@ -1,7 +1,6 @@
 import { brand } from '@aio/brand';
 import { reducedMotion } from '@aio/engine';
 import {
-  GLOBE_STYLES,
   formatArea,
   formatLength,
   globeStyleOf,
@@ -16,7 +15,7 @@ import {
   sitesBounds,
   sortSites,
   type GlobeCamera,
-  type GlobeStyle,
+  type Insets,
   type SiteGeoref,
 } from '@aio/globe';
 import {
@@ -36,7 +35,7 @@ import {
   type ProjectManifest,
   type RasterPackInfo,
 } from '@aio/schema';
-import { Icon, t, useT, type MessageKey } from '@aio/ui';
+import { Icon, t, useT } from '@aio/ui';
 import { useWorkspace, workspace } from '@aio/workspace';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useGraphics } from '../graphics';
@@ -44,17 +43,20 @@ import { bridge, shell, useShell } from '../shell';
 import { BrandLoader } from '../shell/BrandMotion';
 import { rasterPacks, useRasterPacks } from '../workspace/siteTiles';
 import './globe.css';
+import { GlobeMapMenu } from './GlobeMapMenu';
+import { GlobeSearch } from './GlobeSearch';
 import { onGlobeRequest, takeGlobeRequest } from './request';
+import { SiteFacts } from './SiteFacts';
 import { GLOBE_PALETTE, useStreetTiles } from './street';
-
-const LOOK_LABEL: Record<GlobeStyle, MessageKey> = {
-  street: 'globe.lookStreet',
-  satellite: 'globe.lookSatellite',
-  'natural-earth': 'globe.lookNaturalEarth',
-};
 
 /** Where the renderer build serves its copy of Cesium (electron.vite.config.ts `cesiumAssets`). */
 const CESIUM_BASE = new URL('cesium/', document.baseURI).href;
+
+/** The room the screen's own pieces take at each edge: the card of a pin keeps clear of it. */
+const CARD_INSETS: Insets = { top: 56, right: 12, bottom: 44, left: 12 };
+
+/** The words on the chip of sites that gathered. */
+const clusterLabel = (count: number) => t('globe.siteCount', { count });
 
 /** The Globe camera when it last closed, so coming back shows the same view (this session). */
 let lastCamera: GlobeCamera | null = null;
@@ -104,19 +106,6 @@ function useGlobeData(): Loaded | null {
     };
   }, []);
   return data;
-}
-
-/** A site's facts in the list and on its card: its last capture, its open issues, its tilesets. */
-function SiteFacts({ site, tilesets }: { site: GlobeSite; tilesets?: boolean }) {
-  return (
-    <span className="globe-facts">
-      <span>{lastCapture(site) ?? t('globe.noCapture')}</span>
-      <span data-tone={site.issues.open > 0 ? 'attention' : undefined}>
-        {t('globe.openIssues', { count: site.issues.open })}
-      </span>
-      {tilesets && <span>{t('globe.tilesets', { count: site.tilesets.length })}</span>}
-    </span>
-  );
 }
 
 /** The Globe screen (M10 G6): loaded lazily, so CesiumJS costs nothing until it opens. */
@@ -212,10 +201,11 @@ export default function GlobeScreen() {
     void bridge.call('globe:setSettings', { settings: next });
   };
 
-  /** The words of the label beside a pin: a site's name and state, a cluster's size, an issue. */
+  /** The words of the label under the pointer: a site's name and state, or an issue. */
   const describe = useCallback(
     (what: GlobeHover): GlobeTagText | null => {
-      if (what.kind === 'cluster') return { title: t('globe.cluster', { count: what.count }) };
+      // a cluster's chip already says how many sites it holds
+      if (what.kind === 'cluster') return null;
       if (what.kind === 'issue') {
         const i = project?.id === what.projectId ? issues.find((x) => x.id === what.issueId) : null;
         return i ? { title: `${i.code} ${i.title}` } : null;
@@ -267,9 +257,81 @@ export default function GlobeScreen() {
           return s ? { site: s.lonLat } : null;
         })()
       : null;
-  const light = (projectId: string | null) => () => {
-    setLit(projectId);
-  };
+  // the library could not be read, or nothing in it can be placed
+  const notice =
+    loaded.error ??
+    (loaded.sites.length === 0 ? t('globe.noSites', { product: brand.productName }) : null);
+
+  // the Globe keeps this by the pin it tells of (a site's, or an issue's)
+  const card = site && (
+    <div
+      className="globe-card"
+      role="dialog"
+      aria-label={site.name}
+      data-testid="globe-card"
+      onKeyDown={(e) => {
+        if (e.key !== 'Escape' || e.defaultPrevented) return;
+        e.preventDefault();
+        e.stopPropagation();
+        setPick(null);
+      }}
+    >
+      <button
+        type="button"
+        className="btn ghost icon sm globe-card-close"
+        aria-label={t('globe.closeCard')}
+        onClick={() => {
+          setPick(null);
+        }}
+      >
+        <Icon name="x" size={14} />
+      </button>
+      {issue ? (
+        <>
+          <h2>
+            {issue.code} {issue.title}
+          </h2>
+          <p className="meta">
+            {t('globe.issueMeta', {
+              severity: String(issue.severity),
+              status: issue.status,
+            })}
+          </p>
+          <div className="actions">
+            <button
+              type="button"
+              className="btn primary"
+              disabled={busy !== null}
+              onClick={() => void openSite(site.projectId, issue.id)}
+            >
+              {t('globe.openIssue')}
+            </button>
+          </div>
+        </>
+      ) : (
+        <>
+          <h2 data-tone={site.issues.open > 0 ? 'attention' : 'clear'}>
+            <span className="globe-dot" aria-hidden="true" />
+            {site.name}
+          </h2>
+          <SiteFacts site={site} tilesets />
+          <div className="actions">
+            <button type="button" className="btn" onClick={() => void ctl?.flyToSite(site.lonLat)}>
+              {t('globe.flyTo')}
+            </button>
+            <button
+              type="button"
+              className="btn primary"
+              disabled={busy !== null || !library?.some((e) => e.id === site.projectId)}
+              onClick={() => void openSite(site.projectId)}
+            >
+              {t('globe.openSite')}
+            </button>
+          </div>
+        </>
+      )}
+    </div>
+  );
 
   return (
     <section
@@ -279,6 +341,53 @@ export default function GlobeScreen() {
       data-surface="dark"
       data-look={look}
     >
+      {/* the top edge, in tab order: the field (the read-out while measuring), then Map */}
+      {measuring ? (
+        <p className="globe-readout" data-testid="globe-readout" aria-live="polite">
+          {measured.length < 2 ? (
+            t('globe.measureHint')
+          ) : (
+            <>
+              <span>{t('globe.distance', { value: formatLength(pathLength(measured)) })}</span>
+              {measured.length >= 3 && (
+                <span>{t('globe.area', { value: formatArea(polygonArea(measured)) })}</span>
+              )}
+            </>
+          )}
+        </p>
+      ) : (
+        loaded.sites.length > 0 && (
+          <GlobeSearch
+            sites={loaded.sites}
+            selected={site?.projectId ?? null}
+            onPick={(s) => {
+              setPick({ kind: 'site', projectId: s.projectId });
+              void ctl?.flyToSite(s.lonLat);
+            }}
+            onLight={setLit}
+          />
+        )
+      )}
+      {notice && (
+        <p
+          className="globe-notice"
+          role="status"
+          data-testid="globe-notice"
+          data-tone={loaded.error ? 'danger' : undefined}
+        >
+          {notice}
+        </p>
+      )}
+      <GlobeMapMenu
+        prefs={prefs}
+        look={look}
+        tier={tier}
+        imagery={loaded.imagery}
+        terrain={loaded.terrain}
+        streetPacks={loaded.street.length}
+        online={online}
+        onSave={save}
+      />
       <GlobeView
         baseUrl={CESIUM_BASE}
         tier={tier}
@@ -298,6 +407,10 @@ export default function GlobeScreen() {
         selected={site?.projectId ?? null}
         highlighted={lit}
         describe={describe}
+        card={card}
+        cardPick={pick}
+        cardInsets={CARD_INSETS}
+        clusterLabel={clusterLabel}
         onCredits={setCredits}
         measuring={measuring}
         onMeasure={setMeasured}
@@ -306,219 +419,21 @@ export default function GlobeScreen() {
           lastCamera = c;
         }}
       />
-      <aside className="globe-panel" aria-label={t('globe.sites')}>
-        <header className="globe-head">
-          <h1 className="globe-title">{t('globe.nav')}</h1>
-          {loaded.sites.length > 0 && (
-            <span className="globe-count">
-              {t('globe.siteCount', { count: loaded.sites.length })}
-            </span>
-          )}
-        </header>
-        {loaded.error && <p className="globe-error">{loaded.error}</p>}
-        {loaded.sites.length === 0 ? (
-          <p className="globe-empty">{t('globe.noSites', { product: brand.productName })}</p>
-        ) : (
-          <ul className="globe-sites" data-testid="globe-sites">
-            {loaded.sites.map((s) => (
-              <li key={s.projectId}>
-                <button
-                  type="button"
-                  className="globe-site"
-                  data-tone={s.issues.open > 0 ? 'attention' : 'clear'}
-                  aria-current={pick?.projectId === s.projectId ? 'true' : undefined}
-                  onMouseEnter={light(s.projectId)}
-                  onMouseLeave={light(null)}
-                  onFocus={light(s.projectId)}
-                  onBlur={light(null)}
-                  onClick={() => {
-                    setPick({ kind: 'site', projectId: s.projectId });
-                    void ctl?.flyToSite(s.lonLat);
-                  }}
-                >
-                  <span className="globe-dot" aria-hidden="true" />
-                  <span className="name">{s.name}</span>
-                  <SiteFacts site={s} />
-                </button>
-              </li>
-            ))}
-          </ul>
-        )}
-        <div className="globe-options">
-          <div className="globe-field">
-            <span id="globe-look-label">{t('globe.look')}</span>
-            <div className="seg globe-looks" role="group" aria-labelledby="globe-look-label">
-              {GLOBE_STYLES.map((style) => (
-                <button
-                  key={style}
-                  type="button"
-                  aria-pressed={look === style}
-                  data-testid={`globe-look-${style}`}
-                  onClick={() => {
-                    save({ ...prefs, style });
-                  }}
-                >
-                  {t(LOOK_LABEL[style])}
-                </button>
-              ))}
-            </div>
-          </div>
-          {look === 'street' && loaded.street.length === 0 && (
-            <p className="globe-note">{t('globe.noStreetPacks')}</p>
-          )}
-          {look === 'satellite' && loaded.imagery.length === 0 && !online && (
-            <p className="globe-note">{t('globe.satelliteHint')}</p>
-          )}
-          {look !== 'street' && (
-            <label className="globe-field">
-              <span>{t('globe.imagery')}</span>
-              <select
-                className="input"
-                value={prefs.imagery ?? 'auto'}
-                onChange={(e) => {
-                  save({ ...prefs, imagery: e.target.value });
-                }}
-              >
-                <option value="auto">{t('globe.imageryAuto')}</option>
-                {loaded.imagery.map((p) => (
-                  <option key={p.id} value={p.id}>
-                    {p.label}
-                  </option>
-                ))}
-              </select>
-            </label>
-          )}
-          <label className="globe-field">
-            <span>{t('globe.terrain')}</span>
-            <select
-              className="input"
-              value={prefs.terrain ?? 'auto'}
-              disabled={tier === 'low'}
-              onChange={(e) => {
-                save({ ...prefs, terrain: e.target.value });
-              }}
-            >
-              <option value="auto">{t('globe.terrainAuto')}</option>
-              <option value="off">{t('globe.terrainOff')}</option>
-              {loaded.terrain.map((p) => (
-                <option key={p.id} value={p.id}>
-                  {p.label}
-                </option>
-              ))}
-            </select>
-          </label>
-          {tier === 'low' && <p className="globe-note">{t('globe.lowTier')}</p>}
-          <label className="globe-check">
-            <input
-              type="checkbox"
-              checked={prefs.showIssues !== false}
-              onChange={(e) => {
-                save({ ...prefs, showIssues: e.target.checked });
-              }}
-            />
-            <span>{t('globe.showIssues')}</span>
-          </label>
-          <button
-            type="button"
-            className="btn globe-measure"
-            aria-pressed={measuring}
-            onClick={() => {
-              setMeasuring(!measuring);
-              setPick(null);
-            }}
-          >
-            <Icon name="measure" size={14} />
-            {t('globe.measure')}
-          </button>
-        </div>
-        <ul className="globe-key" aria-label={t('globe.key')}>
-          <li data-tone="clear">
-            <span className="globe-dot" aria-hidden="true" />
-            {t('globe.keyClear')}
-          </li>
-          <li data-tone="attention">
-            <span className="globe-dot" aria-hidden="true" />
-            {t('globe.keyAttention')}
-          </li>
-        </ul>
-      </aside>
-      {measuring && (
-        <p className="globe-readout" data-testid="globe-readout" aria-live="polite">
-          {measured.length < 2 ? (
-            t('globe.measureHint')
-          ) : (
-            <>
-              <span>{t('globe.distance', { value: formatLength(pathLength(measured)) })}</span>
-              {measured.length >= 3 && (
-                <span>{t('globe.area', { value: formatArea(polygonArea(measured)) })}</span>
-              )}
-            </>
-          )}
-        </p>
-      )}
-      {site && (
-        <div className="globe-card" role="dialog" aria-label={site.name} data-testid="globe-card">
-          <button
-            type="button"
-            className="btn ghost icon sm globe-card-close"
-            aria-label={t('globe.closeCard')}
-            onClick={() => {
-              setPick(null);
-            }}
-          >
-            <Icon name="x" size={14} />
-          </button>
-          {issue ? (
-            <>
-              <h2>
-                {issue.code} {issue.title}
-              </h2>
-              <p className="meta">
-                {t('globe.issueMeta', {
-                  severity: String(issue.severity),
-                  status: issue.status,
-                })}
-              </p>
-              <div className="actions">
-                <button
-                  type="button"
-                  className="btn primary"
-                  disabled={busy !== null}
-                  onClick={() => void openSite(site.projectId, issue.id)}
-                >
-                  {t('globe.openIssue')}
-                </button>
-              </div>
-            </>
-          ) : (
-            <>
-              <h2 data-tone={site.issues.open > 0 ? 'attention' : 'clear'}>
-                <span className="globe-dot" aria-hidden="true" />
-                {site.name}
-              </h2>
-              <SiteFacts site={site} tilesets />
-              <div className="actions">
-                <button
-                  type="button"
-                  className="btn"
-                  onClick={() => void ctl?.flyToSite(site.lonLat)}
-                >
-                  {t('globe.flyTo')}
-                </button>
-                <button
-                  type="button"
-                  className="btn primary"
-                  disabled={busy !== null || !library?.some((e) => e.id === site.projectId)}
-                  onClick={() => void openSite(site.projectId)}
-                >
-                  {t('globe.openSite')}
-                </button>
-              </div>
-            </>
-          )}
-        </div>
-      )}
       <div className="globe-controls" role="group" aria-label={t('globe.controls')}>
+        <button
+          type="button"
+          className="btn ghost icon globe-measure"
+          aria-label={t('globe.measure')}
+          title={t('globe.measure')}
+          aria-pressed={measuring}
+          data-testid="globe-measure"
+          onClick={() => {
+            setMeasuring(!measuring);
+            setPick(null);
+          }}
+        >
+          <Icon name="measure" />
+        </button>
         <button
           type="button"
           className="btn ghost icon"
