@@ -262,8 +262,13 @@ describe('the Globe screen', () => {
     closedFrom((card) => {
       pressEscapeOn(card.querySelector('.actions button'));
     });
+    // Close from the keyboard: the button has the focus, and Enter or Space clicks it
     closedFrom((card) => {
-      act(() => card.querySelector<HTMLElement>('[aria-label="Close"]')?.click());
+      const close = card.querySelector<HTMLElement>('[aria-label="Close"]');
+      act(() => {
+        close?.focus();
+        close?.click();
+      });
     });
     // the field still answers the keyboard: Down opens the list
     act(() => {
@@ -272,6 +277,123 @@ describe('the Globe screen', () => {
       );
     });
     expect(host.querySelector('[role="listbox"]')).not.toBeNull();
+  });
+
+  it('leaves the keyboard where it is when the card is closed with the mouse', async () => {
+    await mount();
+    /**
+     * A click of the mouse on Close, as the browser does it: the press comes first and moves the
+     * focus to the button, unless the button refuses it; then the click.
+     */
+    const mouseClose = () => {
+      const close = q('globe-card')?.querySelector<HTMLElement>('[aria-label="Close"]');
+      expect(close).toBeTruthy();
+      const press = new MouseEvent('mousedown', { bubbles: true, cancelable: true });
+      act(() => {
+        close?.dispatchEvent(press);
+        if (!press.defaultPrevented) close?.focus();
+        close?.dispatchEvent(
+          new MouseEvent('click', { bubbles: true, cancelable: true, detail: 1 }),
+        );
+      });
+      // the button does not take the focus for a press of the mouse: it is about to go, and the
+      // app would hand the focus it took to the nearest control left, the field
+      expect(press.defaultPrevented).toBe(true);
+      expect(q('globe-card')).toBeNull();
+      expect(globe.props?.cardPick).toBeNull();
+    };
+
+    // the keyboard in no control (the card opened by a click on the Globe): it stays in none,
+    // and no text field shows its ring for a click of the mouse
+    act(() => globe.props?.onPick({ kind: 'site', projectId: 'quarry' }));
+    expect(q('globe-card')).not.toBeNull();
+    expect(document.activeElement).toBe(document.body);
+    mouseClose();
+    expect(document.activeElement).toBe(document.body);
+    expect(host.querySelector('[role="listbox"]')).toBeNull();
+
+    // the keyboard in the field (the site was picked there): it stays there, the list shut
+    pickInField('Hill quarry');
+    expect(document.activeElement).toBe(field());
+    mouseClose();
+    expect(document.activeElement).toBe(field());
+    expect(host.querySelector('[role="listbox"]')).toBeNull();
+
+    // the keyboard in the card, which goes: back to the field, as with Esc
+    pickInField('Hill quarry');
+    const flyTo = q('globe-card')?.querySelector<HTMLElement>('.actions button');
+    act(() => flyTo?.focus());
+    expect(document.activeElement).toBe(flyTo);
+    mouseClose();
+    expect(document.activeElement).toBe(field());
+    expect(host.querySelector('[role="listbox"]')).toBeNull();
+  });
+
+  it('closes the card on Esc in the field once its list is shut, the keyboard staying there', async () => {
+    await mount();
+    const escapeInField = () => {
+      const event = new KeyboardEvent('keydown', {
+        key: 'Escape',
+        bubbles: true,
+        cancelable: true,
+      });
+      act(() => {
+        field()?.dispatchEvent(event);
+      });
+      return event;
+    };
+    // as after a pick with the keyboard: the focus in the field, its list shut, the card open
+    pickInField('Hill quarry');
+    expect(document.activeElement).toBe(field());
+    expect(host.querySelector('[role="listbox"]')).toBeNull();
+    expect(q('globe-card')).not.toBeNull();
+    // with the list open, Esc is the list's: the card stays
+    act(() => {
+      field()?.dispatchEvent(
+        new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true, cancelable: true }),
+      );
+    });
+    expect(host.querySelector('[role="listbox"]')).not.toBeNull();
+    escapeInField();
+    expect(host.querySelector('[role="listbox"]')).toBeNull();
+    expect(q('globe-card')).not.toBeNull();
+    // the next Esc closes the card
+    expect(escapeInField().defaultPrevented).toBe(true);
+    expect(q('globe-card')).toBeNull();
+    expect(globe.props?.cardPick).toBeNull();
+    expect(globe.props?.selected).toBeNull();
+    expect(document.activeElement).toBe(field());
+    expect(host.querySelector('[role="listbox"]')).toBeNull();
+    // with no card left, Esc in the field is nobody's
+    expect(escapeInField().defaultPrevented).toBe(false);
+  });
+
+  it('lists in the field the sites of a gathered chip that cannot part', async () => {
+    app.sites = [QUARRY, YARD, site('depot', 'North depot')];
+    await mount();
+    expect(host.querySelector('[role="listbox"]')).toBeNull();
+    // the Globe: these two were clicked as one chip and still stand as one after the flight
+    act(() => globe.props?.onGroup?.(['yard', 'quarry']));
+    expect(document.activeElement).toBe(field());
+    expect(field()?.getAttribute('aria-expanded')).toBe('true');
+    const listed = [...host.querySelectorAll('[role="option"] .name')].map((n) => n.textContent);
+    expect(listed).toEqual(['Harbour yard', 'Hill quarry']);
+    // one of them picked there opens its card, as any pick in the field does
+    act(() => option('Hill quarry')?.click());
+    expect(globe.flyToSite).toHaveBeenCalledWith(QUARRY.lonLat);
+    expect(q('globe-card')?.getAttribute('aria-label')).toBe('Hill quarry');
+    // and the field lists the whole library again
+    act(() => field()?.click());
+    expect(host.querySelectorAll('[role="option"]')).toHaveLength(3);
+  });
+
+  it('has nothing to list them in while measuring, and says nothing', async () => {
+    await mount();
+    act(() => q('globe-measure')?.click());
+    expect(field()).toBeNull();
+    act(() => globe.props?.onGroup?.(['yard', 'quarry']));
+    expect(host.querySelector('[role="listbox"]')).toBeNull();
+    expect(q('globe-readout')).not.toBeNull();
   });
 
   it('leaves the keyboard where it is when the card closes from elsewhere', async () => {

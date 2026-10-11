@@ -52,6 +52,11 @@ export interface GlobeViewProps {
   start: { camera: GlobeCamera } | { site: readonly [number, number] } | null;
   reducedMotion: () => boolean;
   onPick: (pick: GlobePick | null) => void;
+  /**
+   * A gathered chip was clicked and its sites (project ids) cannot part: they still stand as
+   * one chip where the flight to them ended. The host has another way to tell them apart.
+   */
+  onGroup?: (projectIds: string[]) => void;
   /** The selected site: its chip wears the outline, and rings leave it once. */
   selected?: string | null;
   /** A site hovered or focused elsewhere (the list): its chip lights as under the pointer. */
@@ -124,6 +129,9 @@ export function GlobeView(props: GlobeViewProps) {
       reducedMotion: () => latest.current.reducedMotion(),
       onPick: (pick) => {
         latest.current.onPick(pick);
+      },
+      onGroup: (projectIds) => {
+        latest.current.onGroup?.(projectIds);
       },
       onHover: (h) => {
         if (live) setHover(h);

@@ -78,6 +78,16 @@ export type Bounds = [number, number, number, number];
 /** The least a framed box spans, degrees of latitude: about a kilometre on the ground. */
 const MIN_FRAME_SPAN_DEG = 0.01;
 
+/**
+ * The least the box of a click on a gathered chip spans, degrees of latitude: some 55 m, so that
+ * sites a stone's throw apart are flown to by their own span and part. (By the kilometre of the
+ * opening view they would land less than a chip apart and gather again.)
+ */
+export const PARTING_SPAN_DEG = 0.0005;
+
+/** No box is flown to with less span than this, whatever is asked: about a metre. */
+const LEAST_SPAN_DEG = 0.00001;
+
 const RAD = Math.PI / 180;
 
 /** The places CesiumJS keeps in view when it flies to a box. */
@@ -131,6 +141,19 @@ function flightTo(box: Readonly<Bounds>, view: ViewSize, tanX: number, tanY: num
   return { distance, at };
 }
 
+/** How `padBounds` frames a box. */
+export interface PadOptions {
+  /** The view's angle along its longer side, degrees (CesiumJS's default). */
+  fovDeg?: number;
+  /** The least span the box is given first, degrees of latitude. */
+  minSpanDeg?: number;
+  /**
+   * A box around `bounds` that the flight shows whatever the pads ask (the sites with their
+   * margin, `sitesBounds`): the answer holds all of it.
+   */
+  around?: Readonly<Bounds>;
+}
+
 /**
  * The box to fly to so that `bounds` lands inside the view less `pad` pixels at each edge: the
  * room the screen's controls take, and what a chip needs around its site (a chip runs far to the
@@ -141,24 +164,34 @@ function flightTo(box: Readonly<Bounds>, view: ViewSize, tanX: number, tanY: num
  * A box with little or no span is first given `minSpanDeg` (the flight to one site must not end
  * on the ground). A box half the Earth wide, or pads that leave no view, come back as they are;
  * a box too wide for its pads grows until the whole Earth is in view, which is as far as a
- * flight to a box goes. East may pass 180 degrees: the caller wraps it. `fovDeg` is the view's
- * angle along its longer side (CesiumJS's default).
+ * flight to a box goes. East may pass 180 degrees: the caller wraps it.
+ *
+ * With `around`, the answer starts from that box and grows only at the edges where `bounds`
+ * would lack its room: a margin that already leaves the room is flown to as it is. And where
+ * the room cannot be had, the answer is that box again, the plain fit: the box grown as far as it
+ * goes is lopsided, and may leave a site out of view at the side it grew least.
  */
 export function padBounds(
   bounds: Readonly<Bounds>,
   view: ViewSize,
   pad: Insets,
-  { fovDeg = 60, minSpanDeg = MIN_FRAME_SPAN_DEG } = {},
+  { fovDeg = 60, minSpanDeg = MIN_FRAME_SPAN_DEG, around }: PadOptions = {},
 ): Bounds {
   const [west, south, east, north] = bounds;
+  // what is flown to when the room cannot be had
+  const plain: Bounds = around
+    ? [around[0], around[1], around[2], around[3]]
+    : [west, south, east, north];
   const fits = view.width - pad.left - pad.right >= 1 && view.height - pad.top - pad.bottom >= 1;
   // the whole Earth shows anyway, or nothing of the view is left to frame in
-  if (east - west >= 180 || !fits) return [west, south, east, north];
+  if (east - west >= 180 || !fits) return plain;
 
-  // the least span, the same on the ground both ways
+  // the least span, the same on the ground both ways (and never none: a box of no span has no
+  // pixel to tell its degrees by)
+  const least = minSpanDeg > LEAST_SPAN_DEG ? minSpanDeg : LEAST_SPAN_DEG;
   const narrow = Math.max(Math.cos(((south + north) / 2) * RAD), 0.01);
-  const addLat = Math.max(0, minSpanDeg - (north - south)) / 2;
-  const addLon = Math.max(0, minSpanDeg / narrow - (east - west)) / 2;
+  const addLat = Math.max(0, least - (north - south)) / 2;
+  const addLon = Math.max(0, least / narrow - (east - west)) / 2;
   const wanted: Bounds = [
     west - addLon,
     Math.max(-90, south - addLat),
@@ -178,7 +211,14 @@ export function padBounds(
     const lat = wanted[1] + ((wanted[3] - wanted[1]) * i) / 8;
     edge.push([lon, wanted[1]], [lon, wanted[3]], [wanted[0], lat], [wanted[2], lat]);
   }
-  let box = wanted;
+  let box: Bounds = around
+    ? [
+        Math.min(wanted[0], around[0]),
+        Math.min(wanted[1], around[1]),
+        Math.max(wanted[2], around[2]),
+        Math.max(wanted[3], around[3]),
+      ]
+    : wanted;
   let shown = { box, distance: -Infinity };
   // Growing the box moves the camera away, which takes back part of the room just made: each
   // round adds what is still missing, less every time (by the share of the view the pads take).
@@ -186,7 +226,8 @@ export function padBounds(
     const flight = flightTo(box, view, tanX, tanY);
     // Once the whole Earth is in view a wider box brings the camera nearer again (its corners
     // go round the far side): the box before it showed the most there is to show.
-    if (flight.distance < shown.distance || box[2] - box[0] >= 180) return shown.box;
+    if (flight.distance < shown.distance || box[2] - box[0] >= 180)
+      return around ? plain : shown.box;
     shown = { box, distance: flight.distance };
     const drawn = edge.map(flight.at);
     const xs = drawn.map((p) => p[0]);
@@ -201,7 +242,7 @@ export function padBounds(
       top: Math.max(0, pad.top - top),
       bottom: Math.max(0, bottom - (view.height - pad.bottom)),
     };
-    if (Math.max(missing.left, missing.right, missing.top, missing.bottom) < 0.05) break;
+    if (Math.max(missing.left, missing.right, missing.top, missing.bottom) < 0.05) return box;
     const lonPerPixel = (wanted[2] - wanted[0]) / (right - left);
     const latPerPixel = (wanted[3] - wanted[1]) / (bottom - top);
     box = [
@@ -211,5 +252,6 @@ export function padBounds(
       Math.min(90, box[3] + missing.top * latPerPixel),
     ];
   }
-  return box;
+  // (the rounds ran out with room still missing)
+  return around ? plain : box;
 }

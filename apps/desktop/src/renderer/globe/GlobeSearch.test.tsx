@@ -407,6 +407,164 @@ describe('the Globe search field', () => {
     expect(options()).toHaveLength(3);
   });
 
+  /** The field with the screen's handle on it, and what it was given. */
+  function mountWithHandle(props: Partial<Parameters<typeof GlobeSearch>[0]> = {}) {
+    const handle = createRef<GlobeSearchHandle>();
+    const onPick = vi.fn();
+    root = createRoot(host);
+    act(() =>
+      root?.render(
+        <GlobeSearch
+          sites={SITES}
+          selected={null}
+          onPick={onPick}
+          onLight={vi.fn()}
+          handle={handle}
+          {...props}
+        />,
+      ),
+    );
+    return { handle, onPick };
+  }
+  /** The window is activated again: the browser tells the element that has the keyboard. */
+  const windowComesBack = () => {
+    act(() => {
+      window.dispatchEvent(new Event('focus'));
+      document.activeElement?.dispatchEvent(new FocusEvent('focusin', { bubbles: true }));
+    });
+  };
+
+  it('stays shut when the window comes back with the keyboard resting in the field', () => {
+    const { handle } = mountWithHandle();
+    // as after a card closed with the keyboard: the field has the focus, its list is shut
+    act(() => handle.current?.focus());
+    act(() => {
+      window.dispatchEvent(new Event('blur'));
+    });
+    windowComesBack();
+    expect(document.activeElement).toBe(field());
+    expect(options()).toHaveLength(0);
+    expect(field()?.getAttribute('aria-expanded')).toBe('false');
+    // the person's own click still lists the sites
+    act(() => field()?.click());
+    expect(options()).toHaveLength(3);
+  });
+
+  it('still opens when the keyboard comes into the field, also after the window was away', () => {
+    mountWithHandle();
+    const other = document.createElement('button');
+    document.body.append(other);
+    // the window goes and comes back with the keyboard on another control
+    act(() => {
+      other.focus();
+    });
+    act(() => {
+      window.dispatchEvent(new Event('blur'));
+    });
+    windowComesBack();
+    expect(options()).toHaveLength(0);
+    // Tab into the field: its list opens as ever
+    focusField();
+    expect(options()).toHaveLength(3);
+    // and again after the window went away with the keyboard in the field
+    act(() => {
+      window.dispatchEvent(new Event('blur'));
+    });
+    windowComesBack();
+    act(() => {
+      other.focus();
+    });
+    expect(options()).toHaveLength(0);
+    focusField();
+    expect(options()).toHaveLength(3);
+    other.remove();
+  });
+
+  it('lists only the sites the screen names, with the keyboard in the field', () => {
+    const { handle, onPick } = mountWithHandle();
+    act(() => handle.current?.list(['depot', 'quarry']));
+    expect(document.activeElement).toBe(field());
+    expect(field()?.getAttribute('aria-expanded')).toBe('true');
+    // those two and no other, in the library's order
+    expect(names()).toEqual(['Hill quarry', 'North depot']);
+    // the arrows go round those two
+    press('ArrowDown');
+    press('ArrowDown');
+    press('ArrowDown');
+    expect(field()?.getAttribute('aria-activedescendant')).toBe(options()[0]?.id);
+    press('ArrowDown');
+    press('Enter');
+    expect(onPick).toHaveBeenCalledExactlyOnceWith(SITES[2]);
+    // a pick ends it: the list is the whole library the next time
+    press('ArrowDown');
+    expect(names()).toHaveLength(3);
+  });
+
+  it('goes back to the whole library when the person types or closes the narrowed list', () => {
+    const { handle } = mountWithHandle();
+    act(() => handle.current?.list(['depot', 'quarry']));
+    typeInto('har');
+    expect(names()).toEqual(['Harbour yard']);
+    typeInto('');
+    expect(names()).toHaveLength(3);
+
+    act(() => handle.current?.list(['depot', 'quarry']));
+    expect(names()).toHaveLength(2);
+    press('Escape');
+    expect(options()).toHaveLength(0);
+    press('ArrowDown');
+    expect(names()).toHaveLength(3);
+
+    // a press elsewhere on the page closes it the same way
+    act(() => handle.current?.list(['yard']));
+    expect(names()).toEqual(['Harbour yard']);
+    act(() => {
+      document.body.dispatchEvent(new Event('pointerdown', { bubbles: true }));
+    });
+    act(() => field()?.click());
+    expect(names()).toHaveLength(3);
+  });
+
+  it('drops what was typed when the screen names sites to list', () => {
+    const { handle } = mountWithHandle();
+    focusField();
+    typeInto('har');
+    act(() => handle.current?.list(['depot', 'quarry']));
+    expect(field()?.value).toBe('');
+    expect(names()).toEqual(['Hill quarry', 'North depot']);
+  });
+
+  it('hands Esc to the screen when its list is shut, and keeps it while the list is open', () => {
+    const onEscape = vi.fn();
+    const { handle } = mountWithHandle({ onEscape });
+    const escape = () => {
+      const event = new KeyboardEvent('keydown', {
+        key: 'Escape',
+        bubbles: true,
+        cancelable: true,
+      });
+      act(() => {
+        field()?.dispatchEvent(event);
+      });
+      return event;
+    };
+    focusField();
+    expect(options()).toHaveLength(3);
+    // the first Esc is the list's
+    expect(escape().defaultPrevented).toBe(true);
+    expect(options()).toHaveLength(0);
+    expect(onEscape).not.toHaveBeenCalled();
+    // the next one is the screen's, and the keyboard stays in the field
+    expect(escape().defaultPrevented).toBe(true);
+    expect(onEscape).toHaveBeenCalledTimes(1);
+    expect(document.activeElement).toBe(field());
+    expect(options()).toHaveLength(0);
+    // the same from the focus the screen gave back
+    act(() => handle.current?.focus());
+    escape();
+    expect(onEscape).toHaveBeenCalledTimes(2);
+  });
+
   it('does not open when there are no sites', () => {
     mount([]);
     focusField();

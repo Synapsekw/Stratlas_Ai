@@ -42,7 +42,15 @@ import {
 } from '@cesium/engine';
 import type { GlobeSite, RasterPackInfo, TilesetEntry } from '@aio/schema';
 import { FetchSource, type Source } from 'pmtiles';
-import { padBounds, siteToGlobe, type Bounds, type GlobeCamera, type SiteCamera } from '../camera';
+import {
+  padBounds,
+  PARTING_SPAN_DEG,
+  siteToGlobe,
+  type Bounds,
+  type GlobeCamera,
+  type PadOptions,
+  type SiteCamera,
+} from '../camera';
 import { CHIP, groupChips, placeCard, type Insets, type PlacedChip } from '../chips';
 import { planCredits } from '../credits';
 import {
@@ -115,6 +123,11 @@ export interface GlobeControllerOptions {
   /** Jump instead of flying (OS or Settings reduced motion). */
   reducedMotion: () => boolean;
   onPick: (pick: GlobePick | null) => void;
+  /**
+   * A gathered chip was clicked and its sites (project ids) still stand as one chip where the
+   * flight to them ended: they are at the same place, or nearer than a chip can show.
+   */
+  onGroup?: (projectIds: string[]) => void;
   /** What the pointer rests on, whenever it changes. */
   onHover?: (hover: GlobeHover | null) => void;
   /** The credit lines of what is drawn (the Earth's source, then each pack once). */
@@ -1184,16 +1197,18 @@ export class GlobeController {
    * The box to fly to so that the chips of these sites (entity ids), which lie in `bounds`, are
    * whole in the view and clear of the screen's controls (`padBounds`).
    */
-  private frame(bounds: Readonly<Bounds>, ids: readonly string[]): Rectangle {
+  private frame(
+    bounds: Readonly<Bounds>,
+    ids: readonly string[],
+    how: Pick<PadOptions, 'minSpanDeg' | 'around'> = {},
+  ): Rectangle {
     const { clientWidth: width, clientHeight: height } = this.scene.canvas;
     const frustum = this.scene.camera.frustum;
     const fov = frustum instanceof PerspectiveFrustum ? frustum.fov : undefined;
-    const [west, south, east, north] = padBounds(
-      bounds,
-      { width, height },
-      this.chipRoom(ids),
-      fov === undefined ? {} : { fovDeg: CMath.toDegrees(fov) },
-    );
+    const [west, south, east, north] = padBounds(bounds, { width, height }, this.chipRoom(ids), {
+      ...how,
+      ...(fov === undefined ? {} : { fovDeg: CMath.toDegrees(fov) }),
+    });
     // a box padded past the antimeridian: CesiumJS reads west beyond east as a box across it
     const wrapped = (lon: number) => (Math.abs(lon) > 180 ? turn(lon) : lon);
     return Rectangle.fromDegrees(wrapped(west), south, wrapped(east), north);
@@ -1201,39 +1216,74 @@ export class GlobeController {
 
   /**
    * Fly to where these sites (entity ids) are all in view, as near as their chips allow: sites
-   * that gathered part there, unless they stand at the same place.
+   * that gathered part there. Those that cannot (the same place, or nearer than a chip can show)
+   * still stand as one chip when the flight has ended, and the screen is told (`onGroup`).
    */
   private flyToSites(ids: readonly string[]): void {
-    const places = ids.flatMap((id) => {
-      const chip = this.chips.get(id);
-      return chip ? [chip.lonLat] : [];
-    });
-    const [first] = places;
+    const members = ids.flatMap((id) => this.chips.get(id) ?? []);
+    const [first] = members;
     if (!first) return;
     // longitudes as they lie around the first site, so a group across the antimeridian is one box
-    const lons = places.map(([lon]) => first[0] + turn(lon - first[0]));
-    const lats = places.map(([, lat]) => lat);
+    const lons = members.map((chip) => first.lonLat[0] + turn(chip.lonLat[0] - first.lonLat[0]));
+    const lats = members.map((chip) => chip.lonLat[1]);
     const bounds: Bounds = [
       Math.min(...lons),
       Math.min(...lats),
       Math.max(...lons),
       Math.max(...lats),
     ];
-    this.scene.camera.flyTo({
-      destination: this.frame(bounds, ids),
+    const camera = this.scene.camera;
+    // their own span, however small: sites a stone's throw apart are to part too
+    const box = this.frame(bounds, ids, { minSpanDeg: PARTING_SPAN_DEG });
+    // The box is framed on the ellipsoid, and the chips stand on the ground: seen straight down
+    // from a distance d, a chip h up is drawn d / (d - h) further from the middle. The camera
+    // stands as much higher as the highest of them (no higher without terrain).
+    const above = camera.getRectangleCameraCoordinates(box);
+    const ground = Math.max(0, ...members.map((chip) => chip.height));
+    const up = Ellipsoid.WGS84.geodeticSurfaceNormal(above, new Cartesian3());
+    camera.flyTo({
+      destination: Cartesian3.add(above, Cartesian3.multiplyByScalar(up, ground, up), up),
+      // as a flight to a box ends: straight down, north up
+      orientation: { heading: 0, pitch: -CMath.PI_OVER_TWO, roll: 0 },
       duration: this.duration(1.6),
+      complete: () => {
+        this.landedOn(ids);
+      },
     });
   }
 
+  /** The flight to the sites of a gathered chip (entity ids) has ended: have they parted? */
+  private landedOn(ids: readonly string[]): void {
+    if (this.destroyed || !this.o.onGroup) return;
+    // as they stand in the view the flight ended at, which no frame has drawn yet
+    this.gather();
+    const sites = ids.map((id) => id.slice(SITE_PREFIX.length));
+    if (this.gathered.some((group) => sites.every((id) => group.includes(id))))
+      this.o.onGroup(sites);
+  }
+
+  /** The box of every site, with no margin around it; null without sites. */
+  private sitesBox(): Bounds | null {
+    const places = [...this.chips.values()].map((chip) => chip.lonLat);
+    if (places.length === 0) return null;
+    const lons = places.map(([lon]) => lon);
+    const lats = places.map(([, lat]) => lat);
+    return [Math.min(...lons), Math.min(...lats), Math.max(...lons), Math.max(...lats)];
+  }
+
   /**
-   * The whole Earth, or a box around the given sites (`sitesBounds`), with room for their chips
-   * and the screen's controls around it.
+   * The whole Earth, or a box around the given sites (`sitesBounds`): the view as that box
+   * alone gives it, widened only at the edges where a chip would not be whole in it or would
+   * lie under the screen's controls.
    */
   flyHome(bounds: readonly [number, number, number, number] | null): void {
     this.touch();
-    const rect = bounds
-      ? this.frame(bounds, [...this.chips.keys()])
-      : Rectangle.fromDegrees(-30, -40, 110, 70);
+    const sites = this.sitesBox();
+    const rect = !bounds
+      ? Rectangle.fromDegrees(-30, -40, 110, 70)
+      : sites
+        ? this.frame(sites, [...this.chips.keys()], { around: bounds })
+        : Rectangle.fromDegrees(...bounds);
     this.scene.camera.flyTo({
       destination: rect,
       duration: this.duration(1.8),
@@ -1241,10 +1291,17 @@ export class GlobeController {
     });
   }
 
-  /** Fly to a site: looking down at 45 degrees from the south, `range` metres away. */
+  /**
+   * Fly to a site: looking down at 45 degrees from the south, `range` metres away. The view
+   * aims at the ground the site's chip stands on, so the chip lands in the middle of it with
+   * terrain as without.
+   */
   flyToSite(lonLat: readonly [number, number], range = 1500): Promise<void> {
     this.touch();
-    const centre = Cartesian3.fromDegrees(lonLat[0], lonLat[1], 0);
+    const site = [...this.chips.values()].find(
+      (chip) => chip.lonLat[0] === lonLat[0] && chip.lonLat[1] === lonLat[1],
+    );
+    const centre = Cartesian3.fromDegrees(lonLat[0], lonLat[1], site?.height ?? 0);
     return new Promise((resolve) => {
       this.scene.camera.flyToBoundingSphere(new BoundingSphere(centre, 50), {
         offset: new HeadingPitchRange(0, CMath.toRadians(-45), range),

@@ -128,6 +128,7 @@ export default function GlobeScreen() {
   const [measuring, setMeasuring] = useState(false);
   const [measured, setMeasured] = useState<[number, number][]>([]);
   const search = useRef<GlobeSearchHandle>(null);
+  const cardEl = useRef<HTMLDivElement>(null);
   const prefs = settings ?? loaded?.settings ?? defaultGlobeSettings();
   const look = globeStyleOf(prefs);
 
@@ -250,12 +251,16 @@ export default function GlobeScreen() {
   };
 
   /**
-   * Close the card from inside it (Esc, its Close button). The keyboard was in the card, which
-   * goes: it is put back in the field the site was picked from, not left on nothing.
+   * Close the card from inside it (Esc, its Close button). With the keyboard in the card (Esc
+   * there, Enter or Space on Close), the card goes from under it: the keyboard is put back in the
+   * field the site was picked from, its list left shut, not left on nothing. A click of the
+   * mouse on Close finds the focus elsewhere (the button does not take it) and leaves it there:
+   * no text field shows its ring for a click.
    */
   const closeCard = () => {
+    const inCard = cardEl.current?.contains(document.activeElement) === true;
     setPick(null);
-    search.current?.focus();
+    if (inCard) search.current?.focus();
   };
 
   if (!loaded)
@@ -286,6 +291,7 @@ export default function GlobeScreen() {
   // the Globe keeps this by the pin it tells of (a site's, or an issue's)
   const card = site && (
     <div
+      ref={cardEl}
       className="globe-card"
       role="dialog"
       aria-label={site.name}
@@ -301,6 +307,12 @@ export default function GlobeScreen() {
         type="button"
         className="btn ghost icon sm globe-card-close"
         aria-label={t('globe.closeCard')}
+        // A press of the mouse does not move the focus to this button. It goes with the card,
+        // and the focus it took would be handed to the nearest control left, the field
+        // (`keepFocusAlive`), whose list opens when the focus comes into it.
+        onMouseDown={(e) => {
+          e.preventDefault();
+        }}
         onClick={closeCard}
       >
         <Icon name="x" size={14} />
@@ -387,6 +399,15 @@ export default function GlobeScreen() {
               void ctl?.flyToSite(s.lonLat);
             }}
             onLight={setLit}
+            // after a pick with the keyboard the focus is in the field, not in the card: Esc
+            // there, once the list is shut, closes the card too
+            onEscape={
+              site
+                ? () => {
+                    setPick(null);
+                  }
+                : undefined
+            }
           />
         )
       )}
@@ -426,6 +447,8 @@ export default function GlobeScreen() {
         start={start}
         reducedMotion={reducedMotion}
         onPick={setPick}
+        // sites that share a chip at any zoom are told apart by name, in the field's list
+        onGroup={(projectIds) => search.current?.list(projectIds)}
         selected={site?.projectId ?? null}
         highlighted={lit}
         describe={describe}

@@ -2,7 +2,14 @@ import { crsDefinition } from '@aio/geo';
 import type { Issue, Vec3 } from '@aio/schema';
 import proj4 from 'proj4';
 import { describe, expect, it } from 'vitest';
-import { globeToSite, headingPitch, padBounds, siteToGlobe, type Bounds } from './camera';
+import {
+  globeToSite,
+  headingPitch,
+  padBounds,
+  PARTING_SPAN_DEG,
+  siteToGlobe,
+  type Bounds,
+} from './camera';
 import type { Insets, ViewSize } from './chips';
 import {
   applyMatrix,
@@ -412,6 +419,126 @@ describe('framing sites for their chips (padBounds)', () => {
     const flown = expectFramed(box, NARROW);
     expect(flown[2]).toBeGreaterThan(180);
     expect(flown[2]).toBeLessThan(200);
+  });
+
+  describe('for a click on a gathered chip (a far smaller least span)', () => {
+    // two sites 150 m apart, east to west
+    const NEAR: Bounds = [51, 29, 51 + 150 / (111_320 * Math.cos((29 * Math.PI) / 180)), 29];
+    const apart = (flown: Bounds) => {
+      const at = shownAfterFlightTo(flown, NARROW);
+      return at(NEAR[2], 29)[0] - at(NEAR[0], 29)[0];
+    };
+
+    it('frames near sites by their own span, so they part', () => {
+      // by the opening view's least span they land less than a chip apart, and gather again
+      expect(apart(padBounds(NEAR, NARROW, PAD))).toBeLessThan(120);
+      // by the gathered chip's they are as far apart as the pads allow
+      const flown = padBounds(NEAR, NARROW, PAD, { minSpanDeg: PARTING_SPAN_DEG });
+      expect(apart(flown)).toBeGreaterThan(NARROW.width - PAD.left - PAD.right - 1);
+      const room = roomAround(NEAR, flown, NARROW);
+      for (const edge of ['top', 'right', 'bottom', 'left'] as const)
+        expect(room[edge], `room at the ${edge}`).toBeGreaterThan(PAD[edge] - 0.5);
+    });
+
+    it('still gives sites at one place a span, some tens of metres', () => {
+      const flown = padBounds([51, 29, 51, 29], NARROW, PAD, { minSpanDeg: PARTING_SPAN_DEG });
+      const at = shownAfterFlightTo(flown, NARROW);
+      const [x, y] = at(51, 29);
+      expect(x).toBeGreaterThan(PAD.left);
+      expect(x).toBeLessThan(NARROW.width - PAD.right);
+      expect(y).toBeGreaterThan(PAD.top);
+      expect(y).toBeLessThan(NARROW.height - PAD.bottom);
+      // a pixel of the view is a hand's width of ground: very near, and not on the ground
+      const [x2] = at(51.001, 29);
+      const metresPerPixel = (0.001 * 111_320 * Math.cos((29 * Math.PI) / 180)) / (x2 - x);
+      expect(metresPerPixel).toBeGreaterThan(0.05);
+      expect(metresPerPixel).toBeLessThan(0.3);
+    });
+
+    it('never answers with a box that is no box, however small the least span asked', () => {
+      for (const minSpanDeg of [0, -1, Number.NaN]) {
+        const [w, s, e, n] = padBounds([51, 29, 51, 29], NARROW, PAD, { minSpanDeg });
+        expect([w, s, e, n].every(Number.isFinite), `least span ${String(minSpanDeg)}`).toBe(true);
+        expect(e).toBeGreaterThan(w);
+        expect(n).toBeGreaterThan(s);
+      }
+    });
+  });
+
+  describe('for the opening view (a box around the sites that shows anyway)', () => {
+    const margin = ([w, s, e, n]: Bounds, deg = 2): Bounds => [w - deg, s - deg, e + deg, n + deg];
+    const EDGES = ['top', 'right', 'bottom', 'left'] as const;
+    /** The index of each edge's coordinate in a box. */
+    const AT = { top: 3, right: 2, bottom: 1, left: 0 } as const;
+
+    it('flies to that box as it is when it already leaves the room', () => {
+      // a town's worth of sites: two degrees of margin are far more than a chip needs
+      const town: Bounds = [51, 29, 51.3, 29.2];
+      const around = margin(town);
+      expect(padBounds(town, NARROW, PAD, { around })).toEqual(around);
+      const room = roomAround(town, around, NARROW);
+      for (const edge of EDGES) expect(room[edge]).toBeGreaterThan(PAD[edge]);
+      // one site alone as well: the region around it, not a kilometre of it
+      expect(padBounds([51, 29, 51, 29], WIDE, PAD, { around: margin([51, 29, 51, 29]) })).toEqual(
+        margin([51, 29, 51, 29]),
+      );
+    });
+
+    it('grows that box only at the edges where a chip would lack its room', () => {
+      const cases: [Bounds, ViewSize][] = [
+        [GULF, NARROW],
+        [[40, 20, 60, 28], WIDE],
+      ];
+      for (const [sites, view] of cases) {
+        const around = margin(sites);
+        const flown = padBounds(sites, view, PAD, { around });
+        const room = roomAround(sites, flown, view);
+        // the margin alone leaves the chips in the east short
+        expect(roomAround(sites, around, view).right).toBeLessThan(PAD.right);
+        let grown = 0;
+        for (const edge of EDGES) {
+          expect(room[edge], `room at the ${edge}`).toBeGreaterThan(PAD[edge] - 0.5);
+          const out = AT[edge] >= 2 ? 1 : -1;
+          const more = out * (flown[AT[edge]] - around[AT[edge]]);
+          // an edge is where the margin put it, or just as far out as its chip needs
+          expect(more, `the ${edge} edge against the margin's`).toBeGreaterThanOrEqual(0);
+          if (more > 0) {
+            grown++;
+            expect(room[edge], `room at the grown ${edge} edge`).toBeLessThan(PAD[edge] + 1);
+          }
+        }
+        expect(grown).toBeGreaterThan(0);
+        // and it is nearer than the margin's box padded all round, which is what flew before
+        const before = padBounds(around, view, PAD);
+        expect(flown[2] - flown[0]).toBeLessThan(before[2] - before[0]);
+        expect(flown[3] - flown[1]).toBeLessThan(before[3] - before[1]);
+      }
+    });
+
+    it('falls back to that box when a library is too wide for the room to be had', () => {
+      for (const width of [80, 100]) {
+        const library: Bounds = [0, 10, width, 50];
+        const around = margin(library);
+        expect(padBounds(library, NARROW, PAD, { around }), `${String(width)} degrees`).toEqual(
+          around,
+        );
+        // every site is in view there, which the box grown as far as it goes does not promise
+        const room = roomAround(library, around, NARROW);
+        for (const edge of EDGES)
+          expect(room[edge], `${String(width)} degrees, room at the ${edge}`).toBeGreaterThan(0);
+      }
+      // (without a box to fall back to, the west edge of the wider one is out of view)
+      const lone: Bounds = [0, 10, 100, 50];
+      expect(roomAround(lone, padBounds(lone, NARROW, PAD), NARROW).left).toBeLessThan(0);
+    });
+
+    it('answers with that box when the whole Earth shows anyway or no view is left', () => {
+      const world: Bounds = [-170, -60, 170, 75];
+      const around: Bounds = [-172, -62, 172, 77];
+      expect(padBounds(world, NARROW, PAD, { around })).toEqual(around);
+      const none = { top: 400, right: 500, bottom: 400, left: 500 };
+      expect(padBounds(GULF, NARROW, none, { around: margin(GULF) })).toEqual(margin(GULF));
+    });
   });
 });
 
