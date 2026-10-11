@@ -307,6 +307,7 @@ Build: the M6.1 installer, 5 Oct 2026, from main at commit `c0fda90` or later. A
 - [ ] With two 3D views, click **Elevation** in the stage toolbar: both views are coloured by elevation, each on its own survey. The left view has the legend with the ramp and range controls, the right view the same legend without controls. Move a range slider on the left: both views and both legends follow.
 - [ ] Click **Cut / fill**: both views show the height change colours and the legend. Click **Photo**: both go back to the photo.
 - [ ] Save a survey measurement (**Survey measurements**, a distance, **Save measurements**), then **Compare dates**: the line and its label are drawn on both 3D views. Choose **Map** on both sides: it is drawn on both maps. A measurement that belongs to one survey date shows only on the side with that date.
+- [ ] In the ordinary **Split** (3D beside the map) on a project with two or more survey dates, set the two sides to different dates: a measurement that belongs to one survey is drawn only on the pane that shows that date; a measurement of the whole site is drawn on both.
 - [ ] Still left view only: drawing a measurement, editing a pile boundary, picking a section line, the swipe.
 - [ ] **Split** with **Ortho and plans** on both sides shows two orthos side by side.
 

@@ -106,6 +106,12 @@ None. `@aio/schema` is not touched.
 - **T6:** the two point cloud legends moved from `Stage.tsx` into `workspace/StageLegends.tsx`, so the second view can mount them without importing `Stage.tsx` (which imports the second view). `CloudChangeLegend` takes the same optional view.
 - **T7:** the synthetic measurements check is a test of its own in `e2e/compare.spec.ts` (3D views, then two maps) instead of more steps in the existing synthetic test; both share one project writer.
 
+### After the review
+
+- **Refused restyle.** A drape a view already holds is replaced by its restyle, so only the memory beyond what it holds is asked of the budget; a restyle of the same size is never refused. Should a refusal still come with a drape present, the drape is removed, so the view shows the photo its legend says it shows.
+- **A second view on a date without volumes** draws no bodies, toe lines, section line or surface colours and shows no legend. The main view still falls back to the survey the volumes panel shows.
+- **End to end:** the synthetic measurements test has its own 180 s timeout and 30 s polls; the legend's "does not take clicks" check is polled; the surface switch helper retries the look and the click together, in case the toolbar folds in between.
+
 ## After the last task
 
 `pnpm check` green, the specs above green the CI way (1100 x 700, software renderer, every demo built), then `node tools/agent/finish-task.mjs`.
