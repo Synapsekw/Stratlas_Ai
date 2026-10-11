@@ -1,6 +1,7 @@
 import { getAdapter, registerAdapter, type AdapterContext, type LayerHandle } from '@aio/engine';
 import type { Layer } from '@aio/schema';
 import type { GroundExtent } from './ground';
+import type { GroundRingsHandle, GroundRingsOptions } from './groundRings';
 import type { MapPack } from './packs';
 import type { StreetTileOptions, StreetTiles } from './streetTiles';
 
@@ -115,4 +116,19 @@ export async function createStreetGround(
 ): Promise<LayerHandle> {
   const { createGround } = await import('./groundRender');
   return createGround(layer, ctx, { extent });
+}
+
+export type { GroundRingsHandle, GroundRingsOptions } from './groundRings';
+
+/**
+ * The street map ground under a site in 3D as nested rings (`groundRings.ts`): sharp near the
+ * site, out to the horizon, without a manifest layer. MapLibre loads lazily.
+ */
+export async function createStreetRings(
+  layer: Extract<Layer, { kind: 'basemap' }>,
+  ctx: AdapterContext,
+  options: GroundRingsOptions,
+): Promise<GroundRingsHandle> {
+  const { createGroundRings } = await import('./groundRings');
+  return createGroundRings(layer, ctx, options);
 }
