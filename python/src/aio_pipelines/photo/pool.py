@@ -182,3 +182,69 @@ def init_dense(project: str, run_id: str, scale: float, budget: int, out: str, t
 
 def dense_task(view_id: int) -> int:
     return depth_photo(_W, view_id, lambda: None)
+
+
+# -------------------------------------------------------------------------------------- fusion
+
+
+def fuse_state(model, scale: float, depth_dir, store_root, tile_m: float) -> dict[str, Any]:
+    """What fusing one photo needs: the same in the job's process and in a worker."""
+    from .dense import select_pairs
+    from .fuse import FuseSettings, PointTiles
+
+    settings = FuseSettings()
+    marks = store_root / "chunks" / ".done"
+    marks.mkdir(parents=True, exist_ok=True)
+    return {
+        "model": model,
+        "scale": scale,
+        "settings": settings,
+        "near": select_pairs(model, settings.neighbours),
+        "cams": {v.id: v.camera.scaled(scale) for v in model.views},
+        "depth": depth_dir,
+        "store": PointTiles(store_root, tile_m),
+        "marks": marks,
+    }
+
+
+def fuse_photo(state: dict[str, Any], view_id: int) -> int:
+    """Keep one photo's points that its neighbours confirm, add them to the tiles and mark the
+    photo done; the points added."""
+    import numpy as np
+
+    from .fuse import consistent, normals_of
+    from .scene import load_image
+
+    model, cams, depth, settings = state["model"], state["cams"], state["depth"], state["settings"]
+    v = model.view(view_id)
+    d = np.load(depth / f"{v.id}.npy")
+    others = [(model.view(j), cams[j], np.load(depth / f"{j}.npy")) for j in state["near"].get(v.id, [])]
+    pts, agree = consistent(v, cams[v.id], d, others, settings)
+    good = np.isfinite(d) & (agree >= settings.min_agree)
+    added = 0
+    if good.any():
+        nrm = normals_of(pts, v.centre)
+        img = load_image(v.path, state["scale"])
+        h, w = d.shape
+        rgb = img[:h, :w][good]
+        ok = np.isfinite(nrm[good]).all(1)
+        added = state["store"].add(f"v{v.id}", pts[good][ok], rgb[ok], nrm[good][ok].astype(np.float32))
+    (state["marks"] / str(v.id)).write_text("", "utf-8")
+    return added
+
+
+def init_fuse(
+    project: str, run_id: str, scale: float, depth_dir: str, store_root: str, tile_m: float, threads: int
+) -> None:
+    from pathlib import Path
+
+    from .scene import load_run
+
+    cap_threads(threads)
+    _W.clear()
+    model = load_run(Path(project), run_id).model
+    _W.update(fuse_state(model, scale, Path(depth_dir), Path(store_root), tile_m))
+
+
+def fuse_task(view_id: int) -> int:
+    return fuse_photo(_W, view_id)

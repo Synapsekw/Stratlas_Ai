@@ -158,3 +158,32 @@ def test_a_broken_pool_finishes_in_process(monkeypatch):
         Job("b1", PhotoProducts(), root, PARAMS, emit, cancel).run()
     assert len(_depth(root)) > 4
     assert any("one photo at a time" in p.get("message", "") for p in seen.of("log"))
+
+
+def _fused(root):
+    d = next((root / "photogrammetry" / RUN / "work" / "products").glob("*/cloud/fused"))
+    out = {}
+    for p in sorted(d.glob("*.npz")):
+        with np.load(p) as z:
+            out[p.name] = {k: z[k] for k in z.files}
+    return out
+
+
+def _fuse_only(name: str, monkeypatch, workers: str):
+    monkeypatch.setenv(P.WORKERS_ENV, workers)
+    root = ps.project(name)
+    emit, cancel = _after("fuse")
+    with pytest.raises(Cancelled):
+        Job("f1", PhotoProducts(), root, PARAMS, emit, cancel).run()
+    return root
+
+
+def test_two_workers_fuse_the_cloud_of_one(monkeypatch):
+    one = _fused(_fuse_only("fuse-one", monkeypatch, "1"))
+    root = _fuse_only("fuse-two", monkeypatch, "2")
+    two = _fused(root)
+    assert one.keys() == two.keys() and one
+    for name in one:
+        for key in one[name]:
+            np.testing.assert_array_equal(one[name][key], two[name][key])
+    assert _step(root, "f1", "03-fuse.json")["workers"] == 2

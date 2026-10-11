@@ -476,8 +476,6 @@ class PhotoProducts:
         }
 
     def _fuse(self, ctx: StepContext) -> dict[str, Any]:
-        from .fuse import FuseSettings, consistent, normals_of
-
         s = self._settings(ctx)
         run = self._run(ctx)
         store = self._tiles_store(ctx)
@@ -496,42 +494,56 @@ class PhotoProducts:
             store.add("sparse", pts, run.model.colours, nrm)
             info = store.merge(s["gsd"], keep, ctx.check)
             return {"points": info["points"], "source": "sparse"}
-        from .dense import select_pairs
+        from . import pool
 
-        settings = FuseSettings()
         views = run.model.views
         depth_dir = self._work(ctx) / "depth"
-        marks = store.root / "chunks" / ".done"
-        marks.mkdir(parents=True, exist_ok=True)
-        near = select_pairs(run.model, settings.neighbours)
-        cams = {v.id: v.camera.scaled(s["scale"]) for v in views}
-        from .scene import load_image
+        state = pool.fuse_state(run.model, s["scale"], depth_dir, store.root, s["tileM"])
+        marks = state["marks"]
+        todo = [v.id for v in views if not (marks / str(v.id)).exists()]
+        made = len(views) - len(todo)
 
-        for i, v in enumerate(views):
+        def finished(view_id: int, added: int) -> None:
+            nonlocal made
+            made += 1
+            ctx.progress(0.7 * made / len(views), f"Fusing photo {made} of {len(views)}")
+
+        cam = views[0].camera.scaled(s["scale"])
+        budget = native.memory_budget()
+        workers = pool.plan_workers(len(todo), cam.width * cam.height, pool.FUSE_BYTES_PER_PIXEL, budget)
+        if workers > 1:
+            ctx.log(f"Fusing {workers} photos at a time.")
+            args = (
+                str(ctx.project),
+                ctx.params["run"],
+                s["scale"],
+                str(depth_dir),
+                str(store.root),
+                s["tileM"],
+                pool.worker_threads(workers),
+            )
+            try:
+                pool.run_pool(workers, pool.init_fuse, args, pool.fuse_task, todo, ctx.check, finished)
+                todo = []
+            except pool.PoolBroken:
+                ctx.log("A worker process stopped; fusing the rest one photo at a time.", "warn")
+                todo = [i for i in todo if not (marks / str(i)).exists()]
+                made = len(views) - len(todo)
+        for view_id in todo:
             ctx.check()
-            if (marks / str(v.id)).exists():
-                continue
-            d = np.load(depth_dir / f"{v.id}.npy")
-            others = [
-                (run.model.view(j), cams[j], np.load(depth_dir / f"{j}.npy")) for j in near.get(v.id, [])
-            ]
-            pts, agree = consistent(v, cams[v.id], d, others, settings)
-            good = np.isfinite(d) & (agree >= settings.min_agree)
-            if good.any():
-                nrm = normals_of(pts, v.centre)
-                img = load_image(v.path, s["scale"])
-                h, w = d.shape
-                rgb = img[:h, :w][good]
-                ok = np.isfinite(nrm[good]).all(1)
-                store.add(f"v{v.id}", pts[good][ok], rgb[ok], nrm[good][ok].astype(np.float32))
-            (marks / str(v.id)).write_text("", "utf-8")
-            ctx.progress(0.7 * (i + 1) / len(views), f"Fusing photo {i + 1} of {len(views)}")
+            finished(view_id, pool.fuse_photo(state, view_id))
         voxel = s["gsd"] / s["scale"]
         info = store.merge(voxel, keep, ctx.check, lambda f: ctx.progress(0.7 + 0.3 * f, "Merging the cloud"))
         if not info["points"]:
             raise JobError("Dense matching found no consistent points; the photos may not overlap enough.")
         ctx.log(f"Dense cloud: {info['points']:,} points at {voxel * 100:.1f} cm spacing.")
-        return {"points": info["points"], "voxel": voxel, "bounds": info["bounds"], "source": "dense"}
+        return {
+            "points": info["points"],
+            "voxel": voxel,
+            "bounds": info["bounds"],
+            "source": "dense",
+            "workers": workers,
+        }
 
     def _cloud(self, ctx: StepContext) -> dict[str, Any]:
         from ..pointcloud import _run as pdal_run
