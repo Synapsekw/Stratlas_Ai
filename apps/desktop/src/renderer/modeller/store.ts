@@ -148,7 +148,7 @@ export function createModeller(deps: ModellerDeps): StoreApi<Modeller> {
     const job = await waitForJob(jobs, id);
     store.setState({ busy: null });
     if (job.status !== 'done') {
-      return job.error ?? `The job stopped (${job.status}). See Jobs for its log.`;
+      return job.error ?? `The job stopped (${job.status}). Processing lists it with its log.`;
     }
     return job;
   }

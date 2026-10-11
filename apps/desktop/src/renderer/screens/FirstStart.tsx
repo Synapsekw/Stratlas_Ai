@@ -63,8 +63,8 @@ export function setupRows(s: SetupStatus, online: boolean): Row[] {
         ? `Installed${s.pipeline.version ? ` (${s.pipeline.version})` : ''}`
         : 'Not installed',
       explain: s.pipeline.found
-        ? 'Builds projects from raw photos, surveys and road data in Jobs.'
-        : 'Needed to build projects from raw data, for survey jobs and for Suggest boundaries (Jobs). Viewing, annotating, measuring, volumes, maps and reports work without it. It installs from its file in Settings, Processing tools.',
+        ? 'Builds projects from raw photos, surveys and road data in the background.'
+        : 'Needed to build projects from raw data, for survey jobs and for Suggest boundaries. Viewing, annotating, measuring, volumes, maps and reports work without it. It installs from its file in Settings, Processing tools.',
       action: {
         label: 'Processing tools',
         run: openProcessingTools,

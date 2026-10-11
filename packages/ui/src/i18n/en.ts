@@ -672,7 +672,7 @@ export const en = {
   'tools.replace.text': 'Replace it with the one in this file?',
   'tools.replace.yes': 'Replace version {version}',
   'tools.replace.no': 'Keep it',
-  'tools.installed': 'Processing tools {version} are installed. Jobs use them from now on.',
+  'tools.installed': 'Processing tools {version} are installed. Processing uses them from now on.',
   'tools.resume.createMaps': 'Create maps from photos',
   'tools.removed': '{name} was moved to the bin.',
   'tools.others.title': 'Versions no longer in use',
@@ -690,7 +690,7 @@ export const en = {
   'tools.notice.missing':
     'Building maps and models from your data needs them. Viewing, measuring and reports work without.',
   'tools.notice.incompatible':
-    'The processing tools on this computer are not made for this version of {product}. Jobs do not start until they are updated.',
+    'The processing tools on this computer are not made for this version of {product}. Processing does not start until they are updated.',
   'tools.notice.update': 'Update processing tools',
   'tools.notice.dismiss': 'Dismiss',
   'settings.severity.text':
@@ -905,8 +905,8 @@ export const en = {
   'builder.surveys.needSurface': 'Every survey needs a DSM or a point cloud.',
   'builder.surveys.sameDate': 'Two surveys have the same date.',
   'builder.surveys.none': 'None, add data later',
-  'builder.surveys.count_one': '{count} survey date, built in Jobs after creating',
-  'builder.surveys.count_other': '{count} survey dates, built in Jobs after creating',
+  'builder.surveys.count_one': '{count} survey date, built after creating (see Processing)',
+  'builder.surveys.count_other': '{count} survey dates, built after creating (see Processing)',
   'builder.surveys.startFailed':
     'The project was created, but the volumetric build did not start: {error}',
 
@@ -1068,7 +1068,7 @@ export const en = {
   'processing.advanced.all': 'All jobs on this computer',
   'processing.advanced.none': 'No job has run on this computer yet.',
   'det.toIssues': 'Turn detections into issues',
-  // Jobs: inspection pipeline form
+  // Inspection pipeline form (Detections, Turn detections into issues)
   'jobs.inspection.detections': 'Detections',
   'jobs.inspection.detectionsHelp':
     'aio.detections/1 files or folders, from review, AI or a local model. Empty: the project detections folder.',
@@ -1109,7 +1109,7 @@ export const en = {
   'diag.crash.save': 'Save a report',
   'diag.crash.dismiss': 'Dismiss',
 
-  // Road builder (road.build in the Jobs panel)
+  // Road builder (road.build, started from road setup)
   'jobs.chooseFile': 'Choose',
   'jobs.road.centreline': 'Centreline',
   'jobs.road.centrelineHelp':
@@ -2751,8 +2751,9 @@ export const en = {
   'g7.packs.build': 'Build the pack',
   'g7.packs.cancel': 'Cancel',
   'g7.packs.building':
-    'Building {name} with the processing tools. It appears here when the job in Jobs is done.',
-  'g7.packs.failed': 'The pack was not built. See the job in Jobs for why.',
+    'Building {name} with the processing tools. It appears here when it is done.',
+  'g7.packs.failed':
+    'The pack was not built. Settings, Processing tools, Advanced lists the job and its log.',
   'g7.packs.colPack': 'Pack',
   'g7.packs.colZoom': 'Zoom',
   'g7.packs.colSize': 'Size',

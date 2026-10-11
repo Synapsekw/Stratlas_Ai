@@ -36,7 +36,7 @@ export const PIPELINE_GROUPS: readonly { id: PipelineGroupId; label: string }[] 
 
 /**
  * The area of every pipeline. A `Record` over `PipelineName`: a pipeline added to the schema
- * without an area here does not compile, and `jobTasks.test.ts` fails on it.
+ * without an area here does not compile, and `pipelines.test.ts` fails on it.
  */
 export const PIPELINE_GROUP: Record<PipelineName, PipelineGroupId> = {
   'photo.align': 'photos',
