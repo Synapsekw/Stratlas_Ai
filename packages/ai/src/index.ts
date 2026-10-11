@@ -87,3 +87,13 @@ export {
   type PlaceSource,
 } from './places';
 export { SUGGESTIONS } from './suggestions';
+export {
+  assetIndex,
+  clearAssetCache,
+  describeIssue,
+  issuesOn,
+  severityLabel,
+  type AssetIndex,
+  type AssetLink,
+  type IssueDetail,
+} from './asset-index';

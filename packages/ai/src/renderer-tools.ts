@@ -15,12 +15,14 @@ import {
 } from '@aio/schema';
 import { assetUrl, workspace, type Selection } from '@aio/workspace';
 import './analysis-tools';
+import { assetIndex, describeIssue, issuesOn, type AssetIndex } from './asset-index';
 import './camera-tools';
 import './collab-tools';
 import { clipStartUtcMs, selectionLabel } from './context';
 import { parseFlight, passNear } from './geometry';
 import { targetPoint } from './places';
 import { capturePhoto, MAX_EDGE } from './photo-frame';
+import { compareCodes, worstFirst } from './show-tools';
 import {
   appHooks,
   assetRef,
@@ -33,7 +35,6 @@ import {
   project,
   round1,
   severityRank,
-  issueRow,
   ToolError,
   type RendererToolContext,
 } from './tool-kit';
@@ -120,12 +121,26 @@ define('find_clips_near', async ({ target, radiusM }, ctx) => {
   };
 });
 
+/**
+ * Rows carry the asset a finding sits on. While the bounds of the assets are not known the rows
+ * have none, and the model is told why, so it does not read that as "on no asset".
+ */
+const assetsUnknown = (index: AssetIndex) =>
+  index.status === 'loading'
+    ? {
+        note: 'The 3D model has not loaded yet, so the asset of each finding is not known. Open Scene and ask again.',
+      }
+    : {};
+
 define('list_issues', (f, ctx) => {
   const text = f.text?.toLowerCase();
+  const there = f.where !== undefined ? issuesOn(ctx, f.where) : null;
+  const ids = there ? new Set(there.ids) : null;
   const matching = ctx.workspace
     .getState()
     .issues.filter(
       (i) =>
+        (!ids || ids.has(i.id)) &&
         (!f.status || i.status === f.status) &&
         (!f.classId || i.classId === f.classId) &&
         (!f.source || i.source === f.source) &&
@@ -134,9 +149,20 @@ define('list_issues', (f, ctx) => {
           (i.severity !== 'uncertain' && i.severity <= f.severityMax)) &&
         (!text || `${i.code} ${i.title} ${i.note}`.toLowerCase().includes(text)),
     );
-  const issues = matching.slice(0, f.limit).map(issueRow);
+  // sorted before the limit cuts, so the worst are never the ones left out
+  if (f.sort === 'severity') matching.sort(worstFirst);
+  else if (f.sort === 'code') matching.sort((a, b) => compareCodes(a.code, b.code));
+  const index = assetIndex(ctx);
+  const issues = matching.slice(0, f.limit).map((i) => describeIssue(ctx, i, index));
   return {
-    result: { total: matching.length, shown: issues.length, issues },
+    result: {
+      total: matching.length,
+      shown: issues.length,
+      ...(there ? { where: there.label } : {}),
+      ...(there && there.unplaced > 0 ? { notOnAnAsset: there.unplaced } : {}),
+      issues,
+      ...assetsUnknown(index),
+    },
     summary: plural(matching.length, 'issue'),
   };
 });
@@ -150,10 +176,11 @@ define('summarize_issues', ({ status }, ctx) => {
     for (const i of issues) out[key(i)] = (out[key(i)] ?? 0) + 1;
     return out;
   };
+  const index = assetIndex(ctx);
   const worst = [...issues]
-    .sort((a, b) => severityRank(b.severity) - severityRank(a.severity))
+    .sort(worstFirst)
     .slice(0, 10)
-    .map(issueRow);
+    .map((i) => describeIssue(ctx, i, index));
   return {
     result: {
       total: issues.length,
@@ -162,6 +189,7 @@ define('summarize_issues', ({ status }, ctx) => {
       byClass: count((i) => label.get(i.classId) ?? i.classId),
       bySource: count((i) => i.source),
       mostSevere: worst,
+      ...assetsUnknown(index),
     },
     summary: plural(issues.length, 'issue'),
   };

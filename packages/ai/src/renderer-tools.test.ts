@@ -39,6 +39,14 @@ describe('renderer tool registry', () => {
     for (const s of TOOL_SPECS) expect(getRendererTool(s.meta.name), s.meta.name).toBeDefined();
   });
 
+  it('has the show tools in the catalogue, each with its executor', () => {
+    const names = TOOL_SPECS.map((s) => s.meta.name);
+    for (const n of ['show_issue', 'show_photos', 'show_issues', 'open_screen', 'list_assets']) {
+      expect(names, n).toContain(n);
+      expect(getRendererTool(n), n).toBeDefined();
+    }
+  });
+
   it('refuses to register a tool twice', () => {
     expect(() => {
       registerRendererTool('list_issues', () => Promise.resolve({ result: null, summary: '' }));
@@ -63,6 +71,64 @@ describe('read tools', () => {
     const drafts = await runRendererTool('list_issues', { status: 'draft' }, ctx());
     expect(drafts.result).toMatchObject({ total: 1, issues: [{ code: 'D02' }] });
     expect(drafts.summary).toBe('1 issue');
+  });
+
+  it('list_issues sorted by severity is worst first, and every row names its level', async () => {
+    const r = await runRendererTool('list_issues', { sort: 'severity' }, ctx());
+    const rows = (r.result as { issues: { code: string; severityLabel: string }[] }).issues;
+    expect(rows.map((i) => i.code)).toEqual(['F01', 'D01', 'D02']);
+    expect(rows.map((i) => i.severityLabel)).toEqual(['S5', 'S4', 'S2']);
+    // the fields a row had before keep their names
+    expect(rows[1]).toMatchObject({
+      id: 'i1',
+      title: 'Roof corrosion',
+      classId: 'corrosion',
+      severity: 4,
+      status: 'reviewed',
+      source: 'human',
+      layers: ['m1'],
+      position: [0, 70, 0],
+      photos: 0,
+      photoOnly: false,
+    });
+  });
+
+  it('list_issues sorts before it cuts to the limit', async () => {
+    const r = await runRendererTool('list_issues', { sort: 'severity', limit: 1 }, ctx());
+    expect(r.result).toMatchObject({ total: 3, shown: 1, issues: [{ code: 'F01' }] });
+  });
+
+  it('list_issues without a sort keeps the order of the project', async () => {
+    const r = await runRendererTool('list_issues', {}, ctx());
+    const rows = (r.result as { issues: { code: string }[] }).issues;
+    expect(rows.map((i) => i.code)).toEqual(['D01', 'D02', 'F01']);
+  });
+
+  it('list_issues on an asset says the model is still loading when no bounds are known', async () => {
+    // the 3D view is not mounted here: "no findings on this asset" would be a wrong answer
+    await expect(runRendererTool('list_issues', { where: '20-T-0002' }, ctx())).rejects.toThrow(
+      'still loading',
+    );
+  });
+
+  it('rows without an asset say why while the bounds are not known', async () => {
+    const note = 'The 3D model has not loaded yet, so the asset of each finding is not known.';
+    const listed = await runRendererTool('list_issues', {}, ctx());
+    expect((listed.result as { note?: string }).note).toContain(note);
+    expect((listed.result as { issues: object[] }).issues[0]).not.toHaveProperty('asset');
+    const summed = await runRendererTool('summarize_issues', {}, ctx());
+    expect((summed.result as { note?: string }).note).toContain(note);
+  });
+
+  it('summarize_issues lists the most severe with the name of their level', async () => {
+    const r = await runRendererTool('summarize_issues', {}, ctx());
+    expect(r.result).toMatchObject({
+      mostSevere: [
+        { code: 'F01', severityLabel: 'S5' },
+        { code: 'D01', severityLabel: 'S4' },
+        { code: 'D02', severityLabel: 'S2' },
+      ],
+    });
   });
 
   it('summarize_issues counts by severity, status and class', async () => {

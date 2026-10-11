@@ -136,9 +136,9 @@ describe('compact tool profile (small local models)', () => {
     for (const w of WindowKind.options) {
       const compact = toolsForWindow(w, 'compact');
       expect(compact.length, w).toBeGreaterThan(3);
-      // 13 everyday tools, the four change tools (C1, every window) and the four modelling
-      // tools (C5: 3D view, map and point cloud)
-      expect(compact.length, w).toBeLessThanOrEqual(21);
+      // 13 everyday tools, the four change tools (C1, every window), the four modelling
+      // tools (C5: 3D view, map and point cloud) and the three show tools
+      expect(compact.length, w).toBeLessThanOrEqual(24);
       expect(compact.length, w).toBeLessThan(toolsForWindow(w, 'full').length);
       for (const s of compact) {
         expect(s.meta.description.length, s.meta.name).toBeLessThanOrEqual(100);
