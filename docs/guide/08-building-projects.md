@@ -34,7 +34,7 @@ Projects made before the types above keep working as they are. An empty one show
 ## Import raw data
 
 1. Drag files onto the window, or click **Import files** (or **Ctrl K**, **Import raw data into this project**).
-2. {product} takes photos, video with its `.SRT` log, GLB or OBJ models, GeoTIFF orthos and DSMs, and point clouds.
+2. {product} takes photos, video with its `.SRT` log, GLB or OBJ models, GeoTIFF orthos and DSMs, point clouds and drawings (see **Drawings** below).
 3. Each file reports **Imported**, **Skipped**, **Queued** (a job converts it) or **Failed**.
 4. A GeoTIFF over 300 MB, over 12,000 x 12,000 pixels, or saved as a BigTIFF is **Failed** with the reason: reduce or split it in other software, then import the parts.
 
@@ -50,6 +50,23 @@ When photos or a video logged only the height above the take-off point, the **Ca
 - **Absolute altitude + datum offset**: enter **Offset (m)**. It is saved as the project's vertical datum.
 
 After the import the panel says which altitude was used and with which number. One take-off height applies to the whole import: import flights that took off at different heights separately.
+
+## Drawings
+
+A plan, a layout or any other sheet comes in as a drawing: PDF, PNG, JPEG, WebP, SVG, TIFF or DXF. DWG is not supported: save it as DXF or PDF, or as a PNG picture.
+
+1. In **Datasets**, click the **Add drawing** button beside **Add data** (or the **+** on the **Drawings** group, or **Ctrl K**, **Add a drawing to this project**) and pick the files. A PDF or a PNG dropped on the window, or picked through **Add data**, goes to Drawings too. A JPEG is a photo, and a GeoTIFF an ortho, unless you use **Add drawing**.
+2. A PDF with several pages asks **Pages**: type the ones you want, for example `1-3, 7`. Each page becomes one drawing. One import takes at most 20 pages.
+3. The drawings appear in the **Drawings** group. A picture or a PDF page says "not placed" and is hidden in the 3D view and on the map until you place it.
+
+Each drawing row has a settings button. It opens the drawing's controls under the row:
+
+- **Side by side** opens the split with the drawing on the right and the view you were in on the left. In the pane's list, drawings come first under **Drawings**, and each PDF page is its own entry. Drag to pan, scroll to zoom, double-click to fit.
+- **Place on the site** puts a picture or a PDF page where it belongs. The split opens with the 3D view on the left and a strip above the drawing. Click a point on the drawing, then give the same spot on the site: click it in the **3D view**, click it on the small **Map**, or choose **Typed** and enter easting and northing (or latitude and longitude). Do this for two points or more, far apart. The strip shows how far each pair is off. **Place** saves it: the drawing shows on the site and "not placed" goes. **Place again** starts over.
+- **Opacity** makes the drawing more or less see-through in the 3D view and on the map.
+- **On top in 3D** draws the drawing over models and point clouds, which otherwise hide the parts of it that lie under them.
+
+A DXF drawing is placed in the model builder, which also reads parts from it: see [Models from drawings and point clouds](18-model-builder.md).
 
 ## Processing
 

@@ -76,9 +76,24 @@ Current limits only; each is removed from this list when fixed.
 - While a clip plays, the Frames pane shows still frames of the other date, not a second video.
 - The video of the demo change site is small (384 x 216 pixels, 2 frames per second).
 
+### Drawings
+
+- Drawings come in as PDF, PNG, JPEG, WebP, SVG, TIFF and DXF. No DWG and no IFC: both need a converter from another company. Save a DWG as DXF or PDF, or as a PNG picture.
+- A PDF, a picture or a scan is a picture of the drawing: it has no line work to snap to and no parts for the model builder. Only DXF drawings have those.
+- A picture drawing has no position until you place it, so it starts hidden in the 3D view and on the map and marked "not placed". It opens side by side straight away.
+- PDF pages keep their white paper. Over the site, use the opacity slider to see through it.
+- One import takes at most 20 pages of a PDF. Import the file again for more.
+- Pictures above 8192 pixels on the long side are scaled down to it, and pictures above 400 megapixels are refused.
+- A site point for placing comes from a click in the 3D view, a click on the small map in the place strip, or a typed coordinate. Clicking the main map does not work for it.
+- Side by side, the drawing pans and zooms by itself: it does not follow the 3D view or the map.
+- Opacity and **On top in 3D** are remembered on this computer per project. They do not travel with the project or a package.
+- Until you move the opacity slider, a drawing is solid in the 3D view and at 75 percent on the map; after that one value applies to both.
+- Drawings do not show on the Globe, their order over each other cannot be changed, and a drawing cannot be removed from a project in the app.
+- Importing the same picture or PDF again adds a second drawing; importing a DXF again replaces it.
+
 ### Models from drawings and point clouds
 
-- DXF only: no DWG. Save DWG drawings as DXF first.
+- Parts come from DXF drawings only. A DWG has to be saved as DXF first; a PDF or a picture is a drawing to look at and place, without parts.
 - Parts are edited by numbers only: no drag handles, no overlay of the fit residual on the cloud.
 - Straight pipes only; tank roofs are flat or cone.
 - Arcs in DXF polylines (bulges) are drawn straight, and block arrays bring in only their first copy.
