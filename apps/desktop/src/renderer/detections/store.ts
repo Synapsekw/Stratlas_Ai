@@ -26,10 +26,12 @@ import {
   type ReviewState,
 } from '@aio/annotate/detections';
 import type { DetectionsFile, ProjectManifest } from '@aio/schema';
+import { t } from '@aio/ui';
 import { workspace } from '@aio/workspace';
 import { useStore } from 'zustand';
 import { createStore } from 'zustand/vanilla';
 import { authorName } from '../author';
+import { beforeJobStart } from '../bridge';
 import { bridge } from '../shell';
 
 export type DetectionSaveState = 'saved' | 'pending' | 'saving' | 'error';
@@ -232,6 +234,25 @@ export async function flushDetections(): Promise<void> {
   }
   await writing;
 }
+
+/**
+ * A pipeline reads the pass files from disk (the inspection run counts the accepted detections):
+ * write the pending review changes before any job starts. When an earlier write failed, nothing
+ * is waiting any more, so the changed passes are written once more here; the job starts when that
+ * write succeeds (and "Not saved" clears). Only a write that fails now stops the start, with the
+ * review's own "Not saved" status still up. A failed save with no project to write to (closed, or
+ * a read-only package) holds no job back.
+ */
+beforeJobStart(async () => {
+  const s = detections.getState();
+  if (s.save.state === 'error') {
+    if (!s.projectId || s.readOnly) return null;
+    if (!timer) writing = (writing ?? Promise.resolve()).then(write);
+  }
+  await flushDetections();
+  const { state, error } = detections.getState().save;
+  return state === 'error' ? t('jobs.unsaved.detections', { error: error ?? '' }).trim() : null;
+});
 
 export function dispatch(action: ReviewAction): void {
   const s = detections.getState();
