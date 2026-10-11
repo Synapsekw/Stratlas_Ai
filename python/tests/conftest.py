@@ -6,7 +6,10 @@ import io
 import math
 import os
 import struct
+import subprocess
+import sys
 import threading
+import time
 from pathlib import Path
 
 import numpy as np
@@ -40,19 +43,35 @@ def run_job(pipeline, project, params, job_id="j1", cancel=None):
 @pytest.fixture
 def reused_pid(monkeypatch):
     """What Windows shows when a child is given the PID of an ended process: an older process
-    names that PID as its parent. Here the older process is this test process, for every child
-    it starts, and it is made to hold a terabyte, far above any memory limit."""
+    names that PID as its parent. The older process, the stranger, is one this fixture starts and
+    ends (nothing else may ever be at risk in a test that ends processes). It names every child
+    the test starts later as its parent, and it is made to hold a terabyte, far above any memory
+    limit. Gives the stranger."""
     from aio_pipelines.photo import colmap_io
 
+    stranger = subprocess.Popen(
+        [sys.executable, "-c", "import time; time.sleep(120)"],
+        stdin=subprocess.DEVNULL,
+        creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+    )
+    time.sleep(colmap_io.START_TOLERANCE_S + 0.3)  # clearly older than what the test starts
     me = os.getpid()
     links, memory = colmap_io.process_links, colmap_io.process_memory
 
     def links_after_reuse():
         rows = links()
-        return rows + [(me, pid) for pid, parent in rows if parent == me]
+        mine = [pid for pid, parent in rows if parent == me and pid != stranger.pid]
+        return rows + [(stranger.pid, pid) for pid in mine]
 
     monkeypatch.setattr(colmap_io, "process_links", links_after_reuse)
-    monkeypatch.setattr(colmap_io, "process_memory", lambda pid: 10**12 if pid == me else memory(pid))
+    monkeypatch.setattr(
+        colmap_io, "process_memory", lambda pid: 10**12 if pid == stranger.pid else memory(pid)
+    )
+    try:
+        yield stranger
+    finally:
+        monkeypatch.setattr(colmap_io, "process_links", links)
+        colmap_io.kill(stranger)
 
 
 def _rational(x, den=10000):

@@ -211,27 +211,44 @@ def process_memory(pid: int) -> int:
         return 0
 
 
-def process_started(pid: int) -> float | None:
-    """When a process started, in seconds (Windows); None when that cannot be read: the process
-    is gone, or it is not ours to open."""
-    try:
-        import ctypes
-        from ctypes import wintypes
+def _kernel32():
+    import ctypes
+    from ctypes import wintypes
 
-        k32 = ctypes.WinDLL("kernel32")
-        k32.OpenProcess.restype = wintypes.HANDLE
-        k32.GetProcessTimes.argtypes = [wintypes.HANDLE] + [ctypes.POINTER(wintypes.FILETIME)] * 4
-        k32.CloseHandle.argtypes = [wintypes.HANDLE]
+    k32 = ctypes.WinDLL("kernel32")
+    k32.OpenProcess.restype = wintypes.HANDLE
+    k32.OpenProcess.argtypes = [wintypes.DWORD, wintypes.BOOL, wintypes.DWORD]
+    k32.GetProcessTimes.argtypes = [wintypes.HANDLE] + [ctypes.POINTER(wintypes.FILETIME)] * 4
+    k32.TerminateProcess.argtypes = [wintypes.HANDLE, wintypes.UINT]
+    k32.WaitForSingleObject.restype = wintypes.DWORD
+    k32.WaitForSingleObject.argtypes = [wintypes.HANDLE, wintypes.DWORD]
+    k32.CloseHandle.argtypes = [wintypes.HANDLE]
+    return k32
+
+
+def _handle_started(k32, h) -> float | None:
+    import ctypes
+    from ctypes import wintypes
+
+    made, ended, kernel, user = (wintypes.FILETIME() for _ in range(4))
+    if not k32.GetProcessTimes(
+        h, ctypes.byref(made), ctypes.byref(ended), ctypes.byref(kernel), ctypes.byref(user)
+    ):
+        return None
+    # 100 ns ticks since 1601, as the seconds of ``time.time()``
+    return ((made.dwHighDateTime << 32) | made.dwLowDateTime) / 1e7 - 11_644_473_600
+
+
+def process_started(pid: int) -> float | None:
+    """When a process started, in the seconds of ``time.time()`` (Windows); None when that
+    cannot be read: the process is gone, or it is not ours to open."""
+    try:
+        k32 = _kernel32()
         h = k32.OpenProcess(0x1000, False, pid)  # PROCESS_QUERY_LIMITED_INFORMATION
         if not h:
             return None
         try:
-            made, ended, kernel, user = (wintypes.FILETIME() for _ in range(4))
-            if not k32.GetProcessTimes(
-                h, ctypes.byref(made), ctypes.byref(ended), ctypes.byref(kernel), ctypes.byref(user)
-            ):
-                return None
-            return ((made.dwHighDateTime << 32) | made.dwLowDateTime) / 1e7
+            return _handle_started(k32, h)
         finally:
             k32.CloseHandle(h)
     except Exception:
@@ -296,22 +313,110 @@ def descendants(
     to a new process, the old children still name that PID and the new process would adopt them,
     and everything below them. A process whose start is unknown is left out with all below it: it
     has ended, or it is not ours to open, and then its memory cannot be read either."""
-    tree = [pid]
-    times = {pid: started(pid)} if started else {}
+    return list(_family(pid, links, started))
+
+
+def _family(
+    pid: int,
+    links: list[tuple[int, int]],
+    started: Callable[[int], float | None] | None,
+    ended: dict[int, tuple[float, float]] | None = None,
+) -> dict[int, float | None]:
+    """The walk of ``descendants``: each process of the tree with its start, ``pid`` first."""
+    ended = ended or {}
+    times: dict[int, float | None] = {pid: started(pid) if started else None}
+    times.update({p: t for p, (t, _) in ended.items()})
+    tree = list(times)
     k = 0
     while k < len(tree):
         parent = tree[k]
         k += 1
         for child, of in links:
-            if of != parent or child in tree:
+            if of != parent or child in times:
                 continue
+            t = None
             if started:
                 t0, t = times[parent], started(child)
                 if t0 is None or t is None or t < t0 - START_TOLERANCE_S:
                     continue
-                times[child] = t
+                if parent in ended and t > ended[parent][1]:
+                    continue  # started after that parent ended: a child of whoever has its PID now
+            times[child] = t
             tree.append(child)
-    return tree
+    return times
+
+
+def kill_list(
+    pid: int,
+    links: list[tuple[int, int]],
+    started: Callable[[int], float | None],
+    ended: dict[int, tuple[float, float]] | None = None,
+) -> list[tuple[int, float]]:
+    """The processes below ``pid`` to end, parents first, each with the start it had in this walk
+    (``end_process`` checks it again). Only what ``descendants`` counts is in it.
+
+    ``ended`` names the processes of the tree that were ended already, as PID: (start, end).
+    A child one of them started in between still names its PID, and started before that end."""
+    ended = ended or {}
+    family = _family(pid, links, started, ended)
+    return [(p, t) for p, t in family.items() if p != pid and p not in ended and t is not None]
+
+
+def end_process(pid: int, started_at: float) -> str:
+    """End the process that has ``pid`` and started at ``started_at`` (Windows).
+
+    A PID is given out again once its process has ended, so the start is read from the very
+    handle the process is ended through. Returns "ended"; "gone" when there is no such process any
+    more (a process that has the PID now is left alone); "refused" when it could not be ended."""
+
+    def same(t: float | None) -> bool:
+        return t is not None and abs(t - started_at) < 1e-3
+
+    try:
+        k32 = _kernel32()
+        h = k32.OpenProcess(0x101001, False, pid)  # SYNCHRONIZE, QUERY_LIMITED_INFORMATION, TERMINATE
+        if not h:
+            return "refused" if same(process_started(pid)) else "gone"
+        try:
+            if not same(_handle_started(k32, h)):
+                return "gone"
+            k32.TerminateProcess(h, 1)
+            return "ended" if k32.WaitForSingleObject(h, 5000) == 0 else "refused"
+        finally:
+            k32.CloseHandle(h)
+    except Exception:
+        return "refused"
+
+
+def end_tree(proc: subprocess.Popen, passes: int = 3) -> None:
+    """End a child and every process below it, and nothing else (Windows).
+
+    ``taskkill /T`` is not used: it builds its own tree from parent PIDs, and a parent PID alone
+    does not make a child (``descendants``). The processes below are listed first, then the child
+    is ended through its own handle (so it starts nothing more), then the listed ones, each only
+    if it still is the process that was listed. A few more walks catch what was started in
+    between."""
+    pid = proc.pid
+    root_started = process_started(pid)
+    try:
+        todo = kill_list(pid, process_links(), process_started)
+    except Exception:
+        todo = []
+    with contextlib.suppress(OSError):
+        proc.kill()
+    with contextlib.suppress(subprocess.TimeoutExpired):
+        proc.wait(timeout=5)
+    ended = {} if root_started is None else {pid: (root_started, time.time())}
+    for _ in range(passes):
+        for p, t in todo:
+            if end_process(p, t) != "refused":
+                ended[p] = (t, time.time())
+        try:
+            todo = kill_list(pid, process_links(), process_started, ended)
+        except Exception:
+            return
+        if not todo:
+            return
 
 
 def process_tree(pid: int) -> list[int]:
@@ -535,17 +640,12 @@ class ColmapEngine:
 
 
 def kill(proc: subprocess.Popen) -> None:
-    """Stop a worker now (the whole tree on Windows), and reap it."""
+    """Stop a worker now (the whole tree on Windows, ``end_tree``), and reap it."""
     try:
         if os.name == "nt":
-            subprocess.run(
-                ["taskkill", "/T", "/F", "/PID", str(proc.pid)],
-                capture_output=True,
-                timeout=10,
-                creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
-            )
+            end_tree(proc)
         proc.kill()
-    except (OSError, subprocess.TimeoutExpired):
+    except OSError:
         pass
     with contextlib.suppress(subprocess.TimeoutExpired):
         proc.wait(timeout=10)
