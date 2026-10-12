@@ -21,7 +21,6 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 
-import cv2
 import numpy as np
 
 from ..photo.native import _kill_tree
@@ -82,11 +81,15 @@ class Stitcher:
         self._cached: tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray] | None = None
 
     def _blend(self, frame: np.ndarray, p0: np.ndarray, p1: np.ndarray, w0: np.ndarray, w1: np.ndarray):
+        import cv2  # on use: importing the pipelines must not load OpenCV
+
         a = cv2.remap(frame, p0, None, cv2.INTER_LINEAR, borderMode=cv2.BORDER_CONSTANT)
         b = cv2.remap(frame, p1, None, cv2.INTER_LINEAR, borderMode=cv2.BORDER_CONSTANT)
         return cv2.blendLinear(a, b, w0, w1)
 
     def apply(self, frame: np.ndarray, rotation: np.ndarray | None = None) -> np.ndarray:
+        import cv2  # on use: importing the pipelines must not load OpenCV
+
         if not self.fisheye:
             if frame.shape[1] != self.out_w or frame.shape[0] != self.out_h:
                 frame = cv2.resize(frame, (self.out_w, self.out_h), interpolation=cv2.INTER_AREA)

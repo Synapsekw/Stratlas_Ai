@@ -34,7 +34,6 @@ from __future__ import annotations
 import functools
 import math
 
-import cv2
 import numpy as np
 
 from .calib import Lens
@@ -129,6 +128,8 @@ def _grid(out_w: int, out_h: int, s: int) -> np.ndarray:
 def _upsample(a: np.ndarray, out_w: int, out_h: int, s: int) -> np.ndarray:
     """The padded coarse grid ``a`` upsampled to the output size (a row-strided view, which
     ``cv2.remap`` and ``cv2.blendLinear`` take without a copy)."""
+    import cv2  # on use: importing the pipelines must not load OpenCV
+
     if s == 1:
         return a
     gh, gw = a.shape[:2]

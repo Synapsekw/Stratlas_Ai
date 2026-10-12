@@ -47,7 +47,7 @@ import numpy as np
 from ..photo import colmap_io as cio
 from ..photo.model import qvec_to_rotmat, rotmat_to_qvec
 from ..photo.native import memory_cap, tool_threads
-from ..runtime import Cancelled, JobError
+from ..runtime import Cancelled, JobError, atomic_write_bytes
 
 #: Stills two chunk models must share (registered in both) to be joined.
 MIN_SHARED = 5
@@ -164,11 +164,7 @@ def write_ply(path: Path, points: np.ndarray, colors: np.ndarray) -> None:
         "end_header\n"
     )
     path.parent.mkdir(parents=True, exist_ok=True)
-    tmp = path.with_name(path.name + ".tmp")
-    with open(tmp, "wb") as f:
-        f.write(head.encode("ascii"))
-        f.write(rec.tobytes())
-    os.replace(tmp, path)
+    atomic_write_bytes(path, head.encode("ascii") + rec.tobytes())
 
 
 # ------------------------------------------------------------------------------- chunks and join

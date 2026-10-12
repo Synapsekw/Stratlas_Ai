@@ -19,8 +19,9 @@ import math
 from collections.abc import Callable, Sequence
 from pathlib import Path
 
-import cv2
 import numpy as np
+
+from ..runtime import atomic_write_bytes
 
 MAP_SPACING_M = 1.0  # map stills about this far apart by step count
 MAP_MIN_GAP_S = 1.0  # and never more than one per second
@@ -82,14 +83,14 @@ def sfm_size(width: int, height: int) -> tuple[int, int]:
 
 
 def write_jpeg(path: Path, bgr: np.ndarray, quality: int) -> None:
-    """A JPEG through ``imencode`` (``imwrite`` refuses non-ASCII paths on Windows), temp + rename."""
+    """A JPEG through ``imencode`` (``imwrite`` refuses non-ASCII paths on Windows), written atomically."""
+    import cv2  # on use: importing the pipelines must not load OpenCV
+
     ok, buf = cv2.imencode(".jpg", bgr, [cv2.IMWRITE_JPEG_QUALITY, int(quality)])
     if not ok:
         raise OSError(f"could not encode {path.name}")
     path.parent.mkdir(parents=True, exist_ok=True)
-    tmp = path.with_name(f".{path.name}.tmp")
-    tmp.write_bytes(buf.tobytes())
-    tmp.replace(path)
+    atomic_write_bytes(path, buf.tobytes())
 
 
 def still_name(k: int) -> str:
@@ -116,6 +117,8 @@ class StillSaver:
         self.saved: dict[int, str] = {}
 
     def __call__(self, i: int, t: float, bgr: np.ndarray) -> None:
+        import cv2  # on use: importing the pipelines must not load OpenCV
+
         name = self.names.get(i)
         if name is None:
             return
