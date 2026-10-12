@@ -83,6 +83,16 @@ describe('timeline visibility', () => {
     expect(createTimelinePref(storage).getState().byProject).toEqual({ c: false });
   });
 
+  it('moves the choices from the old key at once, so the date prefs can overwrite it', () => {
+    const storage = memory();
+    storage.setItem('stratlas.timeline', JSON.stringify({ a: true, b: { focus: 's1' } }));
+    createTimelinePref(storage);
+    expect(JSON.parse(storage.getItem(TIMELINE_SHOWN_KEY) ?? '{}')).toEqual({ a: true });
+    // the date store's next save rewrites the old key with dates only
+    storage.setItem('stratlas.timeline', JSON.stringify({ b: { focus: 's2' } }));
+    expect(createTimelinePref(storage).getState().byProject).toEqual({ a: true });
+  });
+
   it('does not wipe the date prefs when both stores share one storage', () => {
     const m = new Map<string, string>();
     const storage = {

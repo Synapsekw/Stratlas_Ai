@@ -61,6 +61,10 @@ export function createTimelinePref(
   try {
     const saved = storage?.getItem(TIMELINE_SHOWN_KEY);
     initial = parse(saved ?? storage?.getItem(LEGACY_KEY));
+    // move them now: the date prefs rewrite the old key with dates only on their next save
+    if (saved == null && Object.keys(initial).length > 0) {
+      storage?.setItem(TIMELINE_SHOWN_KEY, JSON.stringify(initial));
+    }
   } catch {
     // blocked storage: start with the defaults
   }
