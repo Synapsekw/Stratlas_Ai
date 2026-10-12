@@ -4,10 +4,12 @@ import {
   brand,
   ENV_PREFIX,
   envVar,
+  privacyPolicyLink,
   reportBrands,
   SYMBOL,
   urlSchemes,
   WORDMARK,
+  type Brand,
 } from './index';
 
 describe('reportBrands', () => {
@@ -45,6 +47,26 @@ describe('brand', () => {
   it('answers the quadrion scheme first and still the legacy stratlas scheme', () => {
     expect(brand.urlScheme).toBe('quadrion');
     expect(urlSchemes).toEqual(['quadrion', 'stratlas']);
+  });
+});
+
+describe('privacyPolicyLink', () => {
+  it('is the https privacy policy address, or null while none is published', () => {
+    const url = 'https://example.com/privacy';
+    expect(privacyPolicyLink({ ...brand, privacyPolicyUrl: url })).toBe(url);
+    expect(privacyPolicyLink({ ...brand, privacyPolicyUrl: '' })).toBeNull();
+    const unset: Brand = { ...brand };
+    delete unset.privacyPolicyUrl;
+    expect(privacyPolicyLink(unset)).toBeNull();
+    expect(
+      privacyPolicyLink({ ...brand, privacyPolicyUrl: 'http://example.com/privacy' }),
+    ).toBeNull();
+    expect(privacyPolicyLink({ ...brand, privacyPolicyUrl: 'not a url' })).toBeNull();
+  });
+
+  it('reads brand.json by default, where it stays empty until the policy is published', () => {
+    if (brand.privacyPolicyUrl) expect(privacyPolicyLink()).toBe(brand.privacyPolicyUrl);
+    else expect(privacyPolicyLink()).toBeNull();
   });
 });
 

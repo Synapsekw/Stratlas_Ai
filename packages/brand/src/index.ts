@@ -33,12 +33,28 @@ export interface Brand {
    * CN (or O) of the Authenticode certificate; absent, the signer must name `company`.
    */
   signing?: { windowsPublisher?: string };
+  /**
+   * Public https address of the privacy policy, linked from Settings, Privacy and cloud. Empty
+   * until the policy is published; the link shows only when it is set.
+   */
+  privacyPolicyUrl?: string;
 }
 
 export const brand: Brand = raw;
 
 /** Every URL scheme the app answers: the current one first, then the legacy ones. */
 export const urlSchemes: readonly string[] = [brand.urlScheme, ...brand.legacyUrlSchemes];
+
+/** The privacy policy address to link to, or null when none is set or it is not https. */
+export function privacyPolicyLink(b: Brand = brand): string | null {
+  const raw = b.privacyPolicyUrl;
+  if (!raw) return null;
+  try {
+    return new URL(raw).protocol === 'https:' ? raw : null;
+  } catch {
+    return null;
+  }
+}
 
 export { aliasLegacyEnv, ENV_PREFIX, envVar, LEGACY_ENV_PREFIX } from './env';
 export { WORDMARK } from './marks';

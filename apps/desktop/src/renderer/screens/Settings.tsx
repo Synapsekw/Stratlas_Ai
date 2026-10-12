@@ -9,7 +9,7 @@ import {
   totalUsage,
   type ModelRoute,
 } from '@aio/ai';
-import { brand } from '@aio/brand';
+import { brand, privacyPolicyLink } from '@aio/brand';
 import type { AiProvider, AiTask } from '@aio/schema';
 import {
   Icon,
@@ -633,9 +633,25 @@ function Privacy() {
           />
         </div>
       </div>
+      {PRIVACY_POLICY && (
+        <div className="sblock">
+          <h2>Privacy policy</h2>
+          <p className="help">
+            What the app collects and sends, and why.{' '}
+            {/* a new-window link: the main process hands https links to the system browser */}
+            <a href={PRIVACY_POLICY} target="_blank" rel="noreferrer" data-testid="privacy-policy">
+              Read the privacy policy
+            </a>{' '}
+            (opens in your browser).
+          </p>
+        </div>
+      )}
     </>
   );
 }
+
+/** Set in brand.json once the policy is published; until then there is no link. */
+const PRIVACY_POLICY = privacyPolicyLink();
 
 function OfflineOnly() {
   const offlineOnly = useShell((s) => s.settings.offlineOnly === true);

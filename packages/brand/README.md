@@ -2,7 +2,7 @@
 
 The only place the product's identity lives. The product is **Quadrion AI** (called Stratlas until 7 Oct 2026); the full identity kit is in `docs/brand/quadrion/kit/`.
 
-- `brand.json`: product name, app id, executable name, URL schemes, tagline, company, Microsoft Store identity. Installer config is generated from it (`tools/release/brand-config.mjs`).
+- `brand.json`: product name, app id, executable name, URL schemes, tagline, company, Microsoft Store identity, privacy policy address (`privacyPolicyUrl`, empty until the policy is published; Settings links to it only when set). Installer config is generated from it (`tools/release/brand-config.mjs`).
 - `icon.svg`: the 512 px app icon; `icon-small.svg`: its small-size cut (the ring in one piece), used from 32 px down (`tools/release/icon-render.mjs`). Run `pnpm icons` after either changes; the outputs are committed.
 - `mark.svg`: the outlined horizontal lockup on dark.
 - `src/marks.ts`: the outlined wordmark only, as path data coloured by the caller (title bar, About, printed guide, Store images). It stays free of imports: the release tools load it directly.
