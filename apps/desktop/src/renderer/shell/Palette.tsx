@@ -1,4 +1,4 @@
-import { pinDisplay } from '@aio/annotate';
+import { pinDisplay, useAnnotateReadOnly } from '@aio/annotate';
 import { COLOUR_MODES, pointcloudSettings } from '@aio/pointcloud';
 import type { Layer } from '@aio/schema';
 import {
@@ -31,6 +31,7 @@ import { rasterPacks, useBasemap } from '../workspace/siteTiles';
 import { toggleTelemetry } from '../workspace/telemetryPref';
 import { timeline, useTimeline } from '../workspace/timeline';
 import { toggleTimeline } from '../workspace/timelinePref';
+import { addDateMenu } from './AddSurveyDate';
 import { panelHandleLabel } from './PanelHandle';
 import { selectClip } from './Sidebar';
 
@@ -82,6 +83,7 @@ export function Palette() {
   const leftCollapsed = useShell((s) => s.settings.sidebarCollapsed);
   const rightCollapsed = useShell((s) => s.rightCollapsed);
   const surveys = useTimeline((s) => s.index);
+  const lookOnly = useAnnotateReadOnly();
   // the map type commands follow the packs on this computer: list them as the palette opens
   const basemap = useBasemap();
   const hasProject = project !== null;
@@ -321,6 +323,15 @@ export function Palette() {
             tl.focusSurvey(c.id);
           }),
         );
+      }
+      if (!pkg && !lookOnly) {
+        action('add-survey-date', t('palette.addSurveyDate'), 'history', () => {
+          if (shell.getState().settings.sidebarCollapsed) void shell.getState().toggleSidebar();
+          addDateMenu.getState().set(true);
+        });
+        action('import-flight-folder', t('palette.importFlightFolder'), 'import', () => {
+          void builder.getState().pickAndImportFolder();
+        });
       }
       const layers = project.manifest.layers;
       action(
@@ -572,6 +583,7 @@ export function Palette() {
     offlineOnly,
     project,
     pkg,
+    lookOnly,
     issues,
     hidden,
     playing,

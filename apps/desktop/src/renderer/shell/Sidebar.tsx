@@ -38,7 +38,10 @@ import { flightPathShown, toggleFlightPath } from '../workspace/flightPaths';
 import { updateFlightPaths, useFlightPathModel } from '../workspace/pathModel';
 import { timeline, useTimeline } from '../workspace/timeline';
 import { type MovedLayer, moveLayersToDate, undoDateMove, updateCapture } from './dateFolders';
+import { AddSurveyDateButton } from './AddSurveyDate';
 import { DateFolderMenu, LayerDateMenu } from './DateMenus';
+import { DatePrompt } from './DatePrompt';
+import './surveyDates.css';
 
 interface NavDef {
   screen: Screen;
@@ -429,6 +432,13 @@ function Datasets({ collapsed }: { collapsed: boolean }) {
               <Icon name="drawing" size={14} />
             </button>
           )}
+          {canEdit && (
+            <AddSurveyDateButton
+              onNote={(text) => {
+                setNote({ text, danger: false });
+              }}
+            />
+          )}
           <VisibilityEye
             layerIds={treeLayerIds(groups)}
             hidden={hidden}
@@ -441,7 +451,13 @@ function Datasets({ collapsed }: { collapsed: boolean }) {
           />
         </span>
       </div>
-      {datesOn && note && (
+      <DatePrompt
+        canEdit={canEdit}
+        onResult={(n) => {
+          setNote({ text: n.text, danger: false, ...(n.undo ? { undo: n.undo } : {}) });
+        }}
+      />
+      {note && (
         <p
           className={`dtree-note${note.danger ? ' danger' : ''}`}
           role={note.danger ? 'alert' : 'status'}
