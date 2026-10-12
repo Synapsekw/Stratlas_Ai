@@ -12,8 +12,9 @@ import tempfile
 from pathlib import Path
 
 import numpy as np
-import products_synth as ps
 import pytest
+
+import products_synth as ps
 import two_surveys_synth as ts
 
 # sha256 of the first image of make_scene(step=0.1), computed before the Variant refactor
