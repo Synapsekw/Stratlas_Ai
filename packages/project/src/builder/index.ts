@@ -88,6 +88,13 @@ export {
   type MigrateOptions,
   type WalkFiles,
 } from './walkLayers';
+export {
+  readWalkInputs,
+  surfacesOf,
+  writeWalkPose,
+  type WalkInputs,
+  type WalkPoseResult,
+} from './walkPose';
 export { TRASH_DIR, TRASH_KEEP_DAYS, removeWalk, sweepTrash } from './walkRemove';
 export {
   classifyWalkSource,

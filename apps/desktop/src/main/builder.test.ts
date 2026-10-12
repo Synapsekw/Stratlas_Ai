@@ -83,6 +83,53 @@ describe('builder main handlers', () => {
     expect(r).toMatchObject({ ok: false });
   });
 
+  it('logs each walk file that could not be used when a walk is placed', async () => {
+    const dir = join(base, 'projects', 'walked');
+    const manifest = sampleManifest();
+    await writeProject(dir, {
+      ...manifest,
+      layers: [
+        ...manifest.layers,
+        {
+          kind: 'walk',
+          id: 'walk-w',
+          name: 'W',
+          visible: true,
+          record: { path: 'walks/w/walk.json' },
+          src: { path: 'walks/w/playback.mp4' },
+          durationS: 10,
+        },
+      ],
+    });
+    await mkdir(join(dir, 'walks', 'w'), { recursive: true });
+    await writeFile(join(dir, 'walks', 'w', 'raw-path.json'), '{ not json');
+    const registry = new ProjectRegistry();
+    const projectId = registry.register(dir);
+    const lines: string[] = [];
+    const r = await builderUpdateLayers(
+      {
+        projectId,
+        layerIds: ['walk-w'],
+        patch: {
+          walk: {
+            pins: [
+              { t: 0, surface: '@model', at: [0, 0], y: 0 },
+              { t: 10, surface: '@model', at: [10, 0], y: 0 },
+            ],
+            yawOffsetDeg: 0,
+            heightM: 1.7,
+            quality: 'unplaced',
+          },
+        },
+      },
+      registry,
+      (l) => lines.push(l),
+    );
+    expect(r.ok).toBe(true);
+    expect(lines).toHaveLength(1);
+    expect(lines[0]).toContain('walks/w/raw-path.json');
+  });
+
   it('renames and colours a survey date of an open project, and only that', async () => {
     const dir = join(base, 'projects', 'dated');
     const manifest = sampleManifest();

@@ -369,6 +369,8 @@ export async function builderCloseDrawing(
 export async function builderUpdateLayers(
   req: IpcRequest<'builder:updateLayers'>,
   registry: ProjectRegistry,
+  /** The project log: one line for each walk file that could not be used. */
+  log: (line: string) => void = () => undefined,
 ): Promise<IpcResponse<'builder:updateLayers'>> {
   const root = registry.root(req.projectId);
   if (root === undefined)
@@ -378,6 +380,7 @@ export async function builderUpdateLayers(
     };
   try {
     const r = await (await lib()).updateLayers(root, req.layerIds, req.patch);
+    for (const line of r.problems) log(line);
     return { ok: true, manifest: r.manifest, backup: r.backup };
   } catch (e) {
     return { ok: false, error: errorText(e) };

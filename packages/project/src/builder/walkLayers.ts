@@ -2,8 +2,9 @@ import type { Capture, ProjectManifest, WalkFile, WalkLayer } from '@aio/schema'
 import { WALKS_DIR } from '@aio/schema';
 import { stat } from 'node:fs/promises';
 import { join } from 'node:path';
-import { uniqueId, updateManifestFile } from './create';
+import { uniqueId, updateManifestFile, withPose } from './create';
 import { listWalks } from './walks';
+import { writeWalkPose } from './walkPose';
 
 /*
  * Walks as layers (the walk layer and placing, "Migration on open"): a walk is a `walk` layer in
@@ -169,37 +170,79 @@ export async function migrateWalks(
   }
 }
 
+/** How the file `name` of a walk's folder stands to its pose file: no pose yet, newer, or not. */
+async function againstPose(
+  root: string,
+  walkId: string,
+  name: string,
+): Promise<'no-pose' | 'newer' | 'older'> {
+  try {
+    const file = (await stat(join(root, WALKS_DIR, walkId, name))).mtimeMs;
+    const pose = await stat(join(root, WALKS_DIR, walkId, 'pose.json')).then(
+      (s) => s.mtimeMs,
+      () => undefined,
+    );
+    if (pose === undefined) return 'no-pose';
+    return file > pose ? 'newer' : 'older';
+  } catch {
+    return 'older';
+  }
+}
+
 /**
  * Fill `path` on walk layers whose files have appeared since (a `walk.process` job wrote them),
- * and save once. Answers the ids that changed.
+ * and save once. A placed walk whose raw path or orientation is new, or newer than its pose file,
+ * has its pose rewritten from the fit in the same turn, with `flight` and the quality saved on the
+ * layer (the walk was placed on its pins alone until its path came). Answers the ids that
+ * changed; `onProblem` gets a line for each walk file that could not be used.
  */
-export async function refreshWalkPaths(root: string): Promise<string[]> {
+export async function refreshWalkPaths(
+  root: string,
+  onProblem: (line: string) => void = () => undefined,
+): Promise<string[]> {
   // no walks, nothing to link: the manifest is not taken for a turn
   if (!(await listWalks(root)).length) return [];
   const probe = new Map<string, WalkFiles>();
   const r = await updateManifestFile(root, async (m) => {
     const changed: string[] = [];
-    const layers: ProjectManifest['layers'] = [];
+    let current = m;
     for (const l of m.layers) {
       const id = l.kind === 'walk' && 'path' in l.record ? walkIdOf(l.record.path) : undefined;
-      if (l.kind !== 'walk' || id === undefined) {
-        layers.push(l);
-        continue;
-      }
+      if (l.kind !== 'walk' || id === undefined) continue;
       let files = probe.get(id);
       if (!files) {
         files = await walkFilesOn(root, id);
         probe.set(id, files);
       }
-      const path = walkPathRefs(id, files);
-      if (!path || JSON.stringify(path) === JSON.stringify(l.path)) {
-        layers.push(l);
-        continue;
+      const path = walkPathRefs(id, files) ?? l.path;
+      const pathChanged = JSON.stringify(path) !== JSON.stringify(l.path);
+      let next: ProjectManifest = pathChanged
+        ? {
+            ...current,
+            layers: current.layers.map((x) => (x.id === l.id && path ? { ...l, path } : x)),
+          }
+        : current;
+      let stale = false;
+      let rewrote = false;
+      if (l.place !== undefined && files.raw) {
+        const states = [await againstPose(root, id, 'raw-path.json')];
+        if (files.orientation) states.push(await againstPose(root, id, 'orientation.json'));
+        stale = pathChanged || states.some((x) => x !== 'older');
+        // a pose that is there and is older than its inputs is rewritten even if the layer reads
+        // the same afterwards
+        rewrote = states.includes('newer');
       }
-      changed.push(l.id);
-      layers.push({ ...l, path });
+      if (stale) {
+        const pose = await writeWalkPose(root, next, l.id);
+        for (const line of pose.problems) onProblem(line);
+        next = withPose(next, l.id, pose);
+      }
+      if (rewrote || JSON.stringify(next.layers) !== JSON.stringify(current.layers)) {
+        changed.push(l.id);
+        current = next;
+      }
     }
-    return { manifest: changed.length > 0 ? { ...m, layers } : null, changed };
+    return { manifest: changed.length > 0 ? current : null, changed };
   });
   return r.changed;
 }

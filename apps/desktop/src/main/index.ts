@@ -1286,7 +1286,11 @@ function registerIpc(): void {
   });
   handle(
     'builder:updateLayers',
-    (req) => packageRefusal(req.projectId) ?? builderUpdateLayers(req, registry),
+    (req) =>
+      packageRefusal(req.projectId) ??
+      builderUpdateLayers(req, registry, (line) => {
+        appLog.write('warn', [line]);
+      }),
   );
   handle(
     'builder:updateCapture',

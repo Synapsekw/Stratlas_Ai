@@ -146,7 +146,7 @@ function walksToPose(
 }
 
 /** The manifest with a walk's pose result on its layer: `flight` set or removed, the quality saved. */
-function withPose(m: ProjectManifest, id: string, pose: WalkPoseResult): ProjectManifest {
+export function withPose(m: ProjectManifest, id: string, pose: WalkPoseResult): ProjectManifest {
   const layers = m.layers.map((l) => {
     if (l.id !== id || l.kind !== 'walk') return l;
     const next = { ...l };

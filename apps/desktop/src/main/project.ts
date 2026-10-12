@@ -255,7 +255,7 @@ export async function openProject(
 /** What opening a project uses of the builder; tests hand in others. */
 export interface WalkOpenTools {
   migrateWalks(root: string): Promise<{ added: WalkLayer[]; saved: boolean; error?: string }>;
-  refreshWalkPaths(root: string): Promise<string[]>;
+  refreshWalkPaths(root: string, onProblem?: (line: string) => void): Promise<string[]>;
   /** Clears what `.trash/` holds from more than seven days ago. */
   sweepTrash?(root: string): Promise<string[]>;
 }
@@ -303,7 +303,7 @@ export async function withWalkLayers(
     log(`${String(n)} ${n === 1 ? 'walk' : 'walks'} became ${n === 1 ? 'a layer' : 'layers'}`);
   }
   try {
-    if ((await t.refreshWalkPaths(root)).length > 0) changed = true;
+    if ((await t.refreshWalkPaths(root, log)).length > 0) changed = true;
   } catch (e) {
     log(`The files of the walks were not linked: ${why(e)}`);
   }
