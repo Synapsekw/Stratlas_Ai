@@ -11,6 +11,7 @@ import type { Page } from '@playwright/test';
 import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { expect, hasPipelinePython, PIPELINE_ENV, test, VENV_PYTHON } from './fixtures';
+import { choosePane } from './panoFixtures';
 
 test.use({ appEnv: PIPELINE_ENV });
 
@@ -157,14 +158,9 @@ test('imagery and surface change on the change demo, then swipe and blend', asyn
 
   // 3. two orthos: side by side, then swipe and blend
   await win.keyboard.press('3');
-  const left = win.getByTestId('pane-chooser-left').locator('select').first();
-  const right = win.getByTestId('pane-chooser-right').locator('select').first();
-  await left.selectOption('raster');
-  await right.selectOption('raster');
+  await choosePane(win, 'left', 'raster', from);
+  await choosePane(win, 'right', 'raster', to);
   await expect(win.getByTestId('pane-raster')).toHaveCount(2);
-  await win.getByTestId('pane-date-left').selectOption(from);
-  await expect(win.getByTestId('pane-date-left')).toHaveValue(from);
-  await expect(win.getByTestId('pane-date-right')).toHaveValue(to);
   const panes = win.locator('.stage-panes');
   const bar = win.getByTestId('compare-view');
   await expect(bar).toBeVisible();

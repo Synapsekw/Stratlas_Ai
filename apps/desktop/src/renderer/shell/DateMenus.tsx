@@ -14,6 +14,7 @@ import {
 import { DATE_COLOURS, dateTags, useWorkspace, type DateTag } from '@aio/workspace';
 import {
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -61,6 +62,34 @@ function place(x: number, y: number, height: number): CSSProperties {
     top: Math.max(8, Math.min(y, window.innerHeight - height - 8)),
     width: WIDTH,
   };
+}
+
+/**
+ * `place` with the menu's drawn height once it is known: the estimate places it until the menu is
+ * measured, the measured height after that (a picked colour adds Reset, Compare with swaps the
+ * items).
+ */
+function usePlace(
+  list: RefObject<HTMLDivElement | null>,
+  x: number,
+  y: number,
+  estimate: number,
+): CSSProperties {
+  const [height, setHeight] = useState<number | null>(null);
+  useLayoutEffect(() => {
+    const el = list.current;
+    if (!el || typeof ResizeObserver === 'undefined') return;
+    // called after layout and before paint, on the first frame and on every change of size
+    const ro = new ResizeObserver(() => {
+      const h = el.offsetHeight;
+      if (h > 0) setHeight(h);
+    });
+    ro.observe(el);
+    return () => {
+      ro.disconnect();
+    };
+  }, [list]);
+  return place(x, y, height ?? estimate);
 }
 
 /** Up and Down walk the items; Left and Right walk a row of colours or icons. */
@@ -245,6 +274,12 @@ export function DateFolderMenu(props: DateFolderMenuProps) {
   );
   const edit = canEdit && capture !== null;
   const compare = canCompare(ctx, capture?.id ?? null);
+  const placed = usePlace(
+    list,
+    menu.x,
+    menu.y,
+    edit || view === 'compare' ? 340 : compare ? 200 : 170,
+  );
 
   return createPortal(
     <div
@@ -252,7 +287,7 @@ export function DateFolderMenu(props: DateFolderMenuProps) {
       className="dmenu"
       role="menu"
       aria-label={t('tree.dates.menu.label', { date: folder.label })}
-      style={place(menu.x, menu.y, edit || view === 'compare' ? 340 : compare ? 200 : 170)}
+      style={placed}
       data-testid="date-menu"
       onKeyDown={menuKeys}
       onContextMenu={(e) => {
@@ -447,6 +482,7 @@ export function LayerDateMenu({
   useEffect(() => {
     if (empty) onClose();
   }, [empty, onClose]);
+  const placed = usePlace(list, menu.x, menu.y, Math.min(90 + (captures.length + 1) * 30, 340));
   const newestFirst = [...captures].sort(
     (a, b) => b.date.localeCompare(a.date) || b.id.localeCompare(a.id),
   );
@@ -475,7 +511,7 @@ export function LayerDateMenu({
       className="dmenu"
       role="menu"
       aria-label={t('tree.dates.move.label', { name: menu.name })}
-      style={place(menu.x, menu.y, Math.min(90 + (captures.length + 1) * 30, 340))}
+      style={placed}
       data-testid="move-menu"
       onKeyDown={menuKeys}
       onContextMenu={(e) => {

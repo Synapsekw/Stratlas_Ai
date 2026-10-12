@@ -19,6 +19,7 @@ import {
   tinyGlb,
   tinyManifest,
 } from './fixtures';
+import { choosePane } from './panoFixtures';
 import { copyRealData, hasRealData, missingRealProject, realProjectDir } from './realData';
 
 const ALZOUR = realProjectDir('alzour');
@@ -126,6 +127,37 @@ async function shot(win: Page, name: string) {
   await win.mouse.move(1, 1);
   await win.waitForTimeout(300);
   await win.screenshot({ path: join(SHOTS, `compare-${name}.png`) });
+}
+
+/**
+ * What a side of the split shows, `kind@capture` in its picker, and the survey date the picker's
+ * group names for it (with two dates the picker lists the panes under each date).
+ */
+async function expectPane(
+  win: Page,
+  side: 'left' | 'right',
+  kind: string,
+  capture: string,
+  date?: string,
+) {
+  const select = win.getByTestId(`pane-select-${side}`);
+  await expect(select).toHaveValue(`${kind}@${capture}`);
+  if (date)
+    await expect(select.locator('optgroup:has(option:checked)')).toHaveAttribute('label', date);
+}
+
+/**
+ * The picker never offers the other side's exact pane and date, so two dates swap sides through
+ * the tree: right-click the date folder that goes on the left, "Compare with...", the other date.
+ */
+async function compareFolder(win: Page, from: string, to: string) {
+  const row = win.getByTestId(`date-folder-${from}`).locator('.dfolder-row');
+  await row.scrollIntoViewIfNeeded();
+  await row.click({ button: 'right' });
+  const menu = win.getByTestId('date-menu');
+  await menu.getByTestId('date-menu-compare').click();
+  await menu.getByTestId(`compare-to-${to}`).click();
+  await expect(menu).toHaveCount(0);
 }
 
 /** Which of these layers each 3D view has, and whether each shows. */
@@ -367,7 +399,8 @@ fixtures(
     await win.keyboard.press('3');
     const right = win.getByTestId('pane-chooser-right').locator('select').first();
     await expect(right.locator('option[value="3d"]')).toBeDisabled();
-    await expect(win.getByTestId('pane-date-left')).toHaveCount(0);
+    // one date: the flat list, no survey dates in the picker
+    await expect(right.locator('optgroup')).toHaveCount(0);
 
     // two dates: compare
     await win.locator('.nav-item', { hasText: 'Projects' }).first().click();
@@ -376,11 +409,8 @@ fixtures(
     await pinTwoViewTier(win);
     await win.getByTestId('compare-dates').click();
     await expect(win.locator('[data-scene-view] canvas')).toHaveCount(2);
-    await expect(win.getByTestId('pane-date-left')).toHaveValue('jan');
-    await expect(win.getByTestId('pane-date-right')).toHaveValue('jun');
-    await expect(win.getByTestId('pane-date-left').locator('option:checked')).toHaveText(
-      '1 Jan 2026',
-    );
+    await expectPane(win, 'left', '3d', 'jan', '1 Jan 2026');
+    await expectPane(win, 'right', '3d', 'jun', '1 Jun 2026');
 
     const ids = ['site', 'model-2026-01-01', 'model-2026-06-01'];
     await expect
@@ -410,9 +440,11 @@ fixtures(
       })
       .toBe(true);
 
-    // the right side picks the left date: they swap
-    await win.getByTestId('pane-date-right').selectOption('jan');
-    await expect(win.getByTestId('pane-date-left')).toHaveValue('jun');
+    // the dates swap sides (June compared with January from the tree)
+    await expect(right.locator('option[value="3d@jan"]')).toBeDisabled();
+    await compareFolder(win, 'jun', 'jan');
+    await expectPane(win, 'left', '3d', 'jun');
+    await expectPane(win, 'right', '3d', 'jan');
     await expect
       .poll(() => layerState(win, ids))
       .toEqual({
@@ -453,19 +485,20 @@ fixtures(
     await pinTwoViewTier(win);
     await win.getByTestId('compare-dates').click();
     await expect(win.locator('[data-scene-view] canvas')).toHaveCount(2, { timeout: 30_000 });
-    await expect(win.getByTestId('pane-date-left')).toHaveValue('jan');
+    await expectPane(win, 'left', '3d', 'jan');
     await expect
       .poll(() => measuresDrawn(win), { timeout: 30_000 })
       .toEqual({ main: ['m-jan', 'm-site'], second: ['m-jun', 'm-site'] });
-    // the right side picks January: the sides swap, and so do the measurements
-    await win.getByTestId('pane-date-right').selectOption('jan');
-    await expect(win.getByTestId('pane-date-left')).toHaveValue('jun');
+    // the dates swap sides, and so do the measurements
+    await compareFolder(win, 'jun', 'jan');
+    await expectPane(win, 'left', '3d', 'jun');
     await expect
       .poll(() => measuresDrawn(win), { timeout: 30_000 })
       .toEqual({ main: ['m-jun', 'm-site'], second: ['m-jan', 'm-site'] });
     // and back: January on the left, June on the right
-    await win.getByTestId('pane-date-left').selectOption('jan');
-    await expect(win.getByTestId('pane-date-right')).toHaveValue('jun');
+    await compareFolder(win, 'jan', 'jun');
+    await expectPane(win, 'left', '3d', 'jan');
+    await expectPane(win, 'right', '3d', 'jun');
 
     // two maps: the same rule
     await pinTwoViewTier(win);
@@ -479,8 +512,8 @@ fixtures(
     );
     await win.getByTestId('compare-dates').click();
     await expect(win.locator('.pane-map')).toHaveCount(2, { timeout: 30_000 });
-    await expect(win.getByTestId('pane-date-left')).toHaveValue('jan');
-    await expect(win.getByTestId('pane-date-right')).toHaveValue('jun');
+    await expectPane(win, 'left', 'map', 'jan');
+    await expectPane(win, 'right', 'map', 'jun');
     await expect
       .poll(() => measuresOnMaps(win), { timeout: 60_000 })
       .toEqual([
@@ -693,11 +726,8 @@ real.describe('@realdata Masafi', () => {
       await pinTwoViewTier(win);
       await win.getByTestId('compare-dates').click();
       await expect(win.locator('[data-scene-view] canvas')).toHaveCount(2);
-      await expect(win.getByTestId('pane-date-left')).toHaveValue('survey-2020-12-31');
-      await expect(win.getByTestId('pane-date-right')).toHaveValue('survey-2021-01-10');
-      await expect(win.getByTestId('pane-date-left').locator('option:checked')).toHaveText(
-        '31 Dec 2020',
-      );
+      await expectPane(win, 'left', '3d', 'survey-2020-12-31', '31 Dec 2020');
+      await expectPane(win, 'right', '3d', 'survey-2021-01-10');
       // each view shows its survey's terrain; the second never loads the other date. Neither
       // draws the flat ortho in 3D: the terrain mesh carries the same photo (the map shows it)
       await expect
@@ -883,11 +913,9 @@ real.describe('@realdata Masafi', () => {
       expect(two.gpuBytes.reduce((x, y) => x + y, 0)).toBeLessThan(limit);
 
       // two maps, one ortho each, linked pan and zoom
-      await win.getByTestId('pane-chooser-left').locator('select').first().selectOption('map');
-      await win.getByTestId('pane-chooser-right').locator('select').first().selectOption('map');
+      await choosePane(win, 'left', 'map', 'survey-2020-12-31');
+      await choosePane(win, 'right', 'map', 'survey-2021-01-10');
       await expect(win.locator('.pane-map')).toHaveCount(2);
-      await expect(win.getByTestId('pane-date-left')).toHaveValue('survey-2020-12-31');
-      await expect(win.getByTestId('pane-date-right')).toHaveValue('survey-2021-01-10');
       await expect
         .poll(
           () => inspect(win, ({ w }) => w.__stratlas.compare().maps.every((m) => m !== null), null),
@@ -935,8 +963,8 @@ real.describe('@realdata Masafi', () => {
       await shot(win, 'masafi-maps');
 
       // two orthos, one per date, panned together
-      await win.getByTestId('pane-chooser-left').locator('select').first().selectOption('raster');
-      await win.getByTestId('pane-chooser-right').locator('select').first().selectOption('raster');
+      await choosePane(win, 'left', 'raster', 'survey-2020-12-31');
+      await choosePane(win, 'right', 'raster', 'survey-2021-01-10');
       await expect(win.getByTestId('raster-view')).toHaveCount(2);
       // translate x, y and scale of each pane's image
       const planes = () =>
@@ -977,9 +1005,7 @@ real.describe('@realdata Masafi', () => {
       // remembered: the split comes back as left
       await win.keyboard.press('1');
       await win.keyboard.press('3');
-      await expect(win.getByTestId('pane-chooser-left').locator('select').first()).toHaveValue(
-        'raster',
-      );
+      await expectPane(win, 'left', 'raster', 'survey-2020-12-31');
       expect(errors).toEqual([]);
     },
   );
