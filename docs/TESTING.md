@@ -1122,3 +1122,30 @@ A 360 camera file needs ffmpeg on the PC, so check that first (Before you start)
 
 - [ ] **Reports**, **Export package**, then open the `.aio`: the **360 video** list is there and the video plays; there is no **Add 360 video** button in the list.
 - [ ] Open the same project folder in the previous installer (0.11): it opens as before, without the 360 video and without a warning.
+
+## Stage Timeline T3: compare across dates
+
+Compare two survey dates from the sidebar tree, and two panoramas side by side. Test it on 0.11.4.
+
+### Before you start
+
+- [ ] Open a project with panoramas on at least two survey dates (a demo or a test project you pick).
+
+### Panoramas side by side
+
+- [ ] In the sidebar, under the newest date, right-click **Panoramas** and choose **Compare with another date...**, then an older date. The stage splits into two panoramas: the newest date on the left, the older one on the right, each with its date tag.
+- [ ] Drag in either panorama. Both turn together and show the same bearing (**HDG**). Press the link button in the right pane's corner and drag again: now only one turns.
+- [ ] Press **Next panorama** in the left pane. The right pane follows to the panorama nearest the new spot and says how far apart they are. Where no older panorama is within 25 m it says so and offers **Show the nearest**.
+- [ ] Use the date bar's arrows. The left pane changes date and stays at the same spot.
+- [ ] Open the right pane's picker: the choices are grouped by date, newest first, with **Any date** last. Pick **Panoramas** under a third date; the right pane switches date and pairs again.
+
+### From the tree
+
+- [ ] Right-click a date folder, choose **Compare with...** and another date. With the stage on 3D, two 3D views open, one per date; on the map, two maps.
+- [ ] Right-click an ortho under a date and compare it with another date: two orthos open. Do the same on a video: the **Frames** pane opens with the other date.
+- [ ] A date with no matching data is listed but greyed, with the reason (for example "No panoramas").
+- [ ] The existing **Compare dates** button still works as before.
+
+### Saved state
+
+- [ ] Close and reopen the project: the split, its dates and the left panorama are as you left them.
