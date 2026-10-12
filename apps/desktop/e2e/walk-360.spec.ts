@@ -11,7 +11,8 @@ import type { ElectronApplication, Locator, Page } from '@playwright/test';
 import { spawnSync } from 'node:child_process';
 import { readFile, readdir } from 'node:fs/promises';
 import { join } from 'node:path';
-import { expect, test } from './fixtures';
+import { VENV_PYTHON, expect, test } from './fixtures';
+import { hasWalkProcess, makeSynthWalk } from './walkSynth';
 
 const FFMPEG = process.env.FFMPEG ?? 'ffmpeg';
 
@@ -367,5 +368,110 @@ test.describe('360 video', () => {
     await expect(panel).toContainText('160 x 90, not a 2:1 equirectangular picture');
     await expect(walkRows(win)).toHaveCount(0);
     expect(await readdir(dataRoot.projectDir)).not.toContain('walks');
+  });
+});
+
+test.describe('360 video processing', () => {
+  test.skip(!ffmpegReady(), 'needs ffmpeg with the v360 filter and libx264 on the PATH');
+  test.skip(
+    !hasWalkProcess(VENV_PYTHON),
+    `no pipeline Python with walk.process at ${VENV_PYTHON} (set QUADRION_E2E_PYTHON)`,
+  );
+  test.use({ appEnv: { QUADRION_PIPELINE_PYTHON: VENV_PYTHON } });
+
+  test('processes an imported walk and plays the levelled copy', async ({ app, win, dataRoot }) => {
+    test.setTimeout(480_000);
+    // a 12 s walk of a textured scene with motion data in its trailer (cached after the first run)
+    const clip = makeSynthWalk(VENV_PYTHON, dataRoot.base, {
+      seconds: 12,
+      fps: 15,
+      lensPx: 320,
+      standingS: 2,
+    });
+    const walkId = 'vid-20261012-120000-00-001';
+
+    await win.getByTestId('project-card').filter({ hasText: 'E2E tiny project' }).first().click();
+    await expect(win.locator('[data-scene-view] canvas')).toBeVisible();
+
+    // every status line the walk's row shows, sampled: a fast machine can process the small clip
+    // in a few seconds, so "Processing" is looked for in the history, not waited on
+    await win.evaluate((id) => {
+      const seen: string[] = [];
+      (window as unknown as { walkStatusSeen: string[] }).walkStatusSeen = seen;
+      setInterval(() => {
+        const text = document.querySelector(`[data-testid="walk-status-${id}"]`)?.textContent;
+        if (text && seen.at(-1) !== text) seen.push(text);
+      }, 50);
+    }, walkId);
+
+    // 1. the import stitches the clip; the pack has walk.process, so processing starts by itself
+    await nextOpenDialog(app, [clip]);
+    await palette(win, 'Import raw data');
+    const panel = win.getByTestId('import-panel');
+    await expect(panel).toContainText('Imported 1 of 1 files', { timeout: 180_000 });
+    await panel.getByRole('button', { name: 'Close' }).click();
+    const status = win.getByTestId(`walk-status-${walkId}`);
+
+    // 2. it finishes: a texture-poor stretch may leave the path from the pins only
+    await expect(status).toHaveAttribute('data-kind', /^(processed|failed)$/, {
+      timeout: 240_000,
+    });
+    await expect(status).toHaveText(/^Processed(, path from pins only)?$/);
+    const seen = await win.evaluate(
+      () => (window as unknown as { walkStatusSeen: string[] }).walkStatusSeen,
+    );
+    expect(
+      seen.some((t) => /^Processing \d+ %$/.test(t)),
+      seen.join(' | '),
+    ).toBe(true);
+    const folder = join(dataRoot.projectDir, 'walks', walkId);
+    expect(await readdir(folder)).toEqual(
+      expect.arrayContaining(['process.json', 'stabilized.mp4', 'playback.mp4']),
+    );
+
+    // 3. the walk plays the levelled copy; Level horizon off plays the playback copy
+    await win.getByTestId(`walk-row-${walkId}`).click();
+    const view = win.getByTestId('walk-view');
+    await expect(view).toHaveAttribute('data-status', 'ready', { timeout: 60_000 });
+    await expect(view).toHaveAttribute('data-src', /stabilized\.mp4$/);
+    const level = win.getByTestId('walk-level');
+    await expect(level).toHaveAttribute('aria-pressed', 'true');
+    // a levelled copy is not labelled as unstabilised
+    await expect(win.getByTestId('walk-unstabilised')).toHaveCount(0);
+    await level.click();
+    await expect(level).toHaveAttribute('aria-pressed', 'false');
+    await expect(view).toHaveAttribute('data-src', /playback\.mp4$/);
+    await expect(view).toHaveAttribute('data-status', 'ready', { timeout: 60_000 });
+    await level.click();
+    await expect(view).toHaveAttribute('data-src', /stabilized\.mp4$/);
+
+    // 4. in a 1100 x 700 window the toggle sits in the bar: a click in the view's middle reaches
+    // the view. The page's size, not the window's, is what counts: on Windows the frameless window's page
+    // can come out bigger than the window after a resize, so size it, measure and correct once
+    const resizeTo = (w: number, h: number) =>
+      app.evaluate(
+        ({ BrowserWindow }, [ww, wh]) => {
+          const bw = BrowserWindow.getAllWindows()[0];
+          bw?.setMinimumSize(0, 0);
+          bw?.setSize(ww ?? 0, wh ?? 0);
+          return bw?.getSize() ?? [0, 0];
+        },
+        [w, h],
+      );
+    const page = () => win.evaluate(() => [innerWidth, innerHeight]);
+    const [sw = 0, sh = 0] = await resizeTo(1100, 700);
+    await expect.poll(page).not.toEqual([1100, 720]);
+    const [pw = 0, ph = 0] = await page();
+    await resizeTo(sw + 1100 - pw, sh + 700 - ph);
+    await expect.poll(page).toEqual([1100, 700]);
+    await expect(level).toBeVisible();
+    const box = await view.boundingBox();
+    if (!box) throw new Error('the 360 view has no box');
+    const reached = await win.evaluate(
+      ([x, y]) =>
+        Boolean(document.elementFromPoint(x ?? 0, y ?? 0)?.closest('[data-testid="walk-view"]')),
+      [box.x + box.width / 2, box.y + box.height / 2],
+    );
+    expect(reached).toBe(true);
   });
 });
