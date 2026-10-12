@@ -317,4 +317,19 @@ describe('photogrammetry run folders', () => {
     expect(runFileTravels('photogrammetry/readme.txt')).toBe(true); // not a run folder file
     expect(runFileTravels('models/a.glb')).toBe(true);
   });
+
+  it('a layer whose folder is the run folder does not carry its work files', () => {
+    const m = manifest();
+    m.layers.push({
+      kind: 'raster',
+      id: 'pyr',
+      name: 'Pyramid',
+      src: { path: `${run}/pyramid.json` },
+      format: 'kit-pyramid',
+    } as never);
+    const p = planPackage(m, [...files, { path: `${run}/pyramid.json`, size: 10 }], []);
+    expect(p.members.some((x) => x.path === `${run}/work/database.db`)).toBe(false);
+    expect(p.members.some((x) => x.path === `${run}/report/accuracy.json`)).toBe(true);
+    expect(p.members.some((x) => x.path === `${run}/pyramid.json`)).toBe(true);
+  });
 });

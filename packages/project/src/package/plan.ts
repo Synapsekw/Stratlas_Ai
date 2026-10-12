@@ -54,6 +54,8 @@ const RETIRED_GRIDS = 'legacy/data/';
 /** Inside a run folder only its records and reports travel (data-conventions section 21). */
 const RUN_FILE = /^photogrammetry\/[^/]+\/(.+)$/;
 const RUN_KEEP = /^(run\.json|gcp\.json|report\/.+)$/;
+/** A folder prefix that is exactly a run folder, `photogrammetry/<run>/`. */
+const RUN_DIR = /^photogrammetry\/[^/]+\/$/;
 export function runFileTravels(path: string): boolean {
   const m = RUN_FILE.exec(path);
   return !m?.[1] || RUN_KEEP.test(m[1]);
@@ -165,6 +167,16 @@ export function planPackage(
     return [...set];
   };
 
+  // A layer whose folder is the run folder itself (a pyramid beside its run.json) must not own
+  // the run's work files; only an exact file or a folder deeper than the run folder counts.
+  const ownedBeyondRun = (path: string): boolean =>
+    exact.has(path) ||
+    owned.some(
+      (o) =>
+        !o.kept.some((p) => path.startsWith(p)) &&
+        o.prefixes.some((p) => !RUN_DIR.test(p) && path.startsWith(p)),
+    );
+
   const shares = new Map<string, LayerShare>(
     manifest.layers
       .filter((l) => l.kind !== 'legacy')
@@ -181,7 +193,7 @@ export function planPackage(
     const path = f.path.replace(/\\/g, '/');
     if (SKIP.some((re) => re.test(path))) continue;
     const owners = ownersOf(path);
-    if (owners.length === 0 && !runFileTravels(path)) continue;
+    if (!runFileTravels(path) && !ownedBeyondRun(path)) continue;
     if (orphanViewer && owners.length === 0 && path.startsWith(RETIRED_DIR)) {
       if (!hasVolumes || !path.startsWith(RETIRED_GRIDS)) continue;
     }
