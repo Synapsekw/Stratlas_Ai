@@ -1,4 +1,4 @@
-import type { AioBridge } from '@aio/schema';
+import type { AioBridge, Vec3 } from '@aio/schema';
 import { workspace, type Workspace } from '@aio/workspace';
 import { useEffect, useRef, useState } from 'react';
 import type { StoreApi } from 'zustand/vanilla';
@@ -34,6 +34,12 @@ export interface MapViewProps {
   primary?: boolean;
   /** Called with the controller once the map runs and with null when it goes (linked views). */
   onController?: (controller: MapController | null) => void;
+  /**
+   * A one-shot point pick (`MapController.pickPoint`): while set, the next click reports its local
+   * point instead of selecting; Escape calls `onCancel`. Clear it in `onPick` and `onCancel` (and
+   * keep its identity stable): a new object arms a new pick.
+   */
+  pick?: { onPick: (local: Vec3) => void; onCancel?: () => void } | null;
 }
 
 type Status = 'loading' | 'ready' | 'error';
@@ -70,6 +76,7 @@ export function MapView({
   store,
   primary = true,
   onController,
+  pick = null,
 }: MapViewProps) {
   const ref = useRef<HTMLDivElement>(null);
   // read when the map starts; later changes do not restart it
@@ -105,6 +112,11 @@ export function MapView({
   useEffect(() => {
     ctlRef.current?.setCameraWedge(cameraWedge);
   }, [cameraWedge, started]);
+  useEffect(() => {
+    const ctl = ctlRef.current;
+    if (!pick || !ctl) return;
+    return ctl.pickPoint(pick.onPick, pick.onCancel);
+  }, [pick, started]);
 
   useEffect(() => {
     const el = ref.current;

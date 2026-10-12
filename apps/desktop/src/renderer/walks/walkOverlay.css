@@ -1,0 +1,51 @@
+/* ---------- the walk on a drawing (WalkSheetOverlay, in picture pixels) ---------- */
+.walk-overlay {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+  pointer-events: none;
+}
+.walk-line {
+  fill: none;
+  stroke-linejoin: round;
+  stroke-linecap: round;
+}
+.walk-now line {
+  stroke-width: 2px;
+  stroke-linecap: round;
+}
+.walk-now circle {
+  stroke: var(--bg-0);
+  stroke-width: 2px;
+}
+/* numbered pins, styled as the drawing's place marks: date colour, a ring of the page */
+.walk-pin circle {
+  fill: currentColor;
+  stroke: var(--bg-0);
+  stroke-width: 2px;
+}
+.walk-pin text {
+  fill: var(--bg-0);
+  font: 600 11px/1 var(--f-mono);
+  text-anchor: middle;
+  user-select: none;
+}
+.walk-pin.inactive circle {
+  fill: var(--bg-0);
+  stroke: currentColor;
+}
+.walk-pin.inactive text {
+  fill: currentColor;
+}
+.walk-pin.draggable {
+  pointer-events: auto;
+  cursor: grab;
+}
+.walk-pin.draggable:active {
+  cursor: grabbing;
+}
+.walk-pin.raised circle {
+  stroke-width: 3px;
+}

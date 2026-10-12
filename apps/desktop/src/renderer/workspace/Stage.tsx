@@ -87,6 +87,7 @@ import {
   type Side,
 } from './splitModel';
 import { DatesOnScreen } from './DatesOnScreen';
+import { useWalkMapOverlays, useWalkMapPick } from '../walks/walkMapStore';
 import { useTimeline } from './timeline';
 import { hiddenPathClips, togglePaths } from './flightPaths';
 import { telemetryLabels, toggleTelemetry, useTelemetryOn } from './telemetryPref';
@@ -641,6 +642,14 @@ export function Stage() {
   const mapDraw = useMapDraw(mapLayer);
   const roadMap = useRoadMap();
   const roadSetup = useRoadSetupMap();
+  // the walks' path, stills and pins (and a point pick while placing one) on the main map
+  const walkOverlays = useWalkMapOverlays();
+  const walkPick = useWalkMapPick();
+  const baseOverlays = roadMap ? roadMap.overlays : roadSetup?.overlays;
+  const mapOverlays = useMemo(
+    () => (walkOverlays.length === 0 ? baseOverlays : [...(baseOverlays ?? []), ...walkOverlays]),
+    [baseOverlays, walkOverlays],
+  );
   const isRoad = roadMap !== null;
   const closeupOn = useRoad((s) => s.closeup);
   const selectedIssue = useWorkspace((s) =>
@@ -844,16 +853,15 @@ export function Stage() {
                 issues={mapIssues}
                 store={primaryMap}
                 onController={onMainMap}
+                pick={walkPick}
+                {...(mapOverlays ? { overlays: mapOverlays } : {})}
                 {...(roadMap
                   ? {
-                      overlays: roadMap.overlays,
                       issueFilter: roadMap.issueFilter,
                       issueColorBy: roadMap.issueColorBy,
                       cameraWedge: mode === 'split',
                     }
-                  : roadSetup
-                    ? { overlays: roadSetup.overlays }
-                    : {})}
+                  : {})}
               />
             </div>
             <BasemapPicker />

@@ -2,7 +2,7 @@ import type { Layer } from '@aio/schema';
 import { Icon, useT } from '@aio/ui';
 import { assetUrl } from '@aio/workspace';
 import { isChangeHeatMap } from '@aio/maps';
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { ChangeLegend } from './MapSwipe';
 import { fromLinked, placement, rasterLink, toLinked, type LinkedView } from './rasterLink';
 import {
@@ -37,7 +37,28 @@ export interface RasterPick {
   /** A click that was not a drag: the pixel under it (x right, y down), inside the picture. */
   onPick: (px: [number, number]) => void;
   marks: readonly { x: number; y: number; label: string; pending?: boolean }[];
+  /**
+   * Marks can be dragged (placing a walk): the mark's index in `marks` and the pixel under the
+   * pointer, on every move once it left a 4 px dead zone. A press that does not move is a pick.
+   */
+  onDrag?: ((index: number, px: [number, number]) => void) | undefined;
 }
+
+/** What an overlay drawn on the picture (the walk path) needs from the view. */
+export interface RasterOverlayContext {
+  /** Screen pixels per picture pixel: draw at `1 / scale` for a constant screen size. */
+  scale: number;
+  /** The picture's size in pixels. */
+  size: { width: number; height: number };
+  /**
+   * The picture pixel under a client (screen) point, for dragging what the overlay draws; `from`
+   * is an element inside the view (the dragged element).
+   */
+  toImage: (clientX: number, clientY: number, from: Element) => [number, number];
+}
+
+/** Presses inside this many screen pixels are a click, not a drag. */
+const CLICK_PX = 4;
 
 /** A shared view set by the other pane of this project (`link` is `<project>:<side>`). */
 function othersView(lv: LinkedView | null, link: string | null): lv is LinkedView {
@@ -63,12 +84,15 @@ export function RasterView({
   layer,
   link: side = null,
   pick,
+  overlay,
 }: {
   projectId: string;
   layer: RasterLayer;
   /** Pan and zoom with the other ortho pane (two survey dates): this pane's id, or null. */
   link?: string | null;
   pick?: RasterPick | undefined;
+  /** Drawn on the picture above the tiles, in picture pixels (the walk path on a drawing). */
+  overlay?: ((ctx: RasterOverlayContext) => ReactNode) | undefined;
 }) {
   const t = useT();
   // a view shared in another project is not this project's
@@ -78,7 +102,25 @@ export function RasterView({
   const [error, setError] = useState<string | null>(null);
   const [view, setViewState] = useState<View | null>(null);
   const [box, setBox] = useState({ width: 0, height: 0 });
-  const drag = useRef<{ id: number; x: number; y: number; view: View } | null>(null);
+  /** A press: a pan, or the drag of mark `mark` (`moved` once it left the dead zone). */
+  const drag = useRef<{
+    id: number;
+    x: number;
+    y: number;
+    view: View;
+    mark?: number;
+    moved?: boolean;
+  } | null>(null);
+  // the picture pixel under a screen point in the current view (overlays drag with it)
+  const toImage = useCallback(
+    (clientX: number, clientY: number, from: Element): [number, number] => {
+      const el = from.closest('.raster-view');
+      if (!view || !el) return [NaN, NaN];
+      const r = el.getBoundingClientRect();
+      return [(clientX - r.left - view.x) / view.scale, (clientY - r.top - view.y) / view.scale];
+    },
+    [view],
+  );
   const url = useCallback((path: string) => assetUrl(projectId, { path }), [projectId]);
   const place = useMemo(
     () => (src ? placement(src.size, layer.corners) : null),
@@ -244,21 +286,47 @@ export function RasterView({
       onPointerDown={(e) => {
         if (e.button !== 0 || !view) return;
         e.currentTarget.setPointerCapture(e.pointerId);
-        drag.current = { id: e.pointerId, x: e.clientX, y: e.clientY, view };
+        // a press on a draggable mark moves the mark, not the picture
+        const markEl =
+          pick?.onDrag && e.target instanceof Element
+            ? e.target.closest('[data-mark-index]')
+            : null;
+        const mark = markEl ? Number(markEl.getAttribute('data-mark-index')) : NaN;
+        drag.current = {
+          id: e.pointerId,
+          x: e.clientX,
+          y: e.clientY,
+          view,
+          ...(Number.isInteger(mark) ? { mark } : {}),
+        };
       }}
       onPointerMove={(e) => {
         const d = drag.current;
         if (d?.id !== e.pointerId) return;
+        if (d.mark !== undefined) {
+          if (!d.moved && Math.hypot(e.clientX - d.x, e.clientY - d.y) <= CLICK_PX) return;
+          d.moved = true;
+          if (!src || !pick?.onDrag) return;
+          const r = e.currentTarget.getBoundingClientRect();
+          const x = (e.clientX - r.left - d.view.x) / d.view.scale;
+          const y = (e.clientY - r.top - d.view.y) / d.view.scale;
+          // the mark stays on the picture
+          pick.onDrag(d.mark, [
+            Math.min(src.size.width, Math.max(0, x)),
+            Math.min(src.size.height, Math.max(0, y)),
+          ]);
+          return;
+        }
         setView({ ...d.view, x: d.view.x + e.clientX - d.x, y: d.view.y + e.clientY - d.y });
       }}
       onPointerUp={(e) => {
         const d = drag.current;
         drag.current = null;
         // a click, not a pan: the pixel under it, for the place tool
-        if (!pick || !src || d?.id !== e.pointerId) return;
+        if (!pick || !src || d?.id !== e.pointerId || d.moved) return;
         // the fit button sits on the picture: a click on it is not a point
         if (e.target instanceof Element && e.target.closest('button')) return;
-        if (Math.hypot(e.clientX - d.x, e.clientY - d.y) > 4) return;
+        if (Math.hypot(e.clientX - d.x, e.clientY - d.y) > CLICK_PX) return;
         const r = e.currentTarget.getBoundingClientRect();
         const x = (e.clientX - r.left - d.view.x) / d.view.scale;
         const y = (e.clientY - r.top - d.view.y) / d.view.scale;
@@ -282,16 +350,18 @@ export function RasterView({
           }}
         >
           {src.image && <img src={src.image} alt="" draggable={false} />}
-          {pick?.marks.map((m) => (
+          {pick?.marks.map((m, i) => (
             <span
               key={m.label}
               className={m.pending ? 'raster-mark pending' : 'raster-mark'}
               data-testid="raster-mark"
+              {...(pick.onDrag ? { 'data-mark-index': i } : {})}
               style={{
                 left: m.x,
                 top: m.y,
                 // marks keep their size on screen while the picture zooms
                 transform: `translate(-50%, -50%) scale(${String(1 / view.scale)})`,
+                ...(pick.onDrag ? { pointerEvents: 'auto', cursor: 'grab' } : {}),
               }}
             >
               {m.label}
@@ -310,6 +380,7 @@ export function RasterView({
               }}
             />
           ))}
+          {overlay?.({ scale: view.scale, size: src.size, toImage })}
         </div>
       )}
       {!src && !error && <p className="pane-empty">{t('stage.pane.loading')}</p>}
