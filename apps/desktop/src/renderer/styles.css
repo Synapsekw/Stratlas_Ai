@@ -1573,11 +1573,6 @@ button.chip-status:hover {
   text-overflow: ellipsis;
   min-width: 0;
 }
-/* a walk in the sidebar list is a button with the look of a tree row */
-.titem.walk-row {
-  width: 100%;
-  text-align: start;
-}
 /* the selector in a split pane's corner: what this side shows */
 .pane-chooser {
   position: absolute;

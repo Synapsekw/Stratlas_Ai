@@ -65,6 +65,25 @@ export interface DatasetTreeProps {
   dragGroupIds?: ((group: TreeGroup) => string[]) | undefined;
   /** Right-click, or the menu key, on a group header that carries layers. */
   onGroupMenu?: ((group: TreeGroup, layerIds: string[], at: MenuPoint) => void) | undefined;
+  /** The one badge a row carries (a walk's placing state), or null for none. */
+  rowBadge?: ((item: TreeItem) => TreeRowBadge | null) | undefined;
+  /**
+   * The actions of a walk row: open it in the 360 video pane, place it, remove it (after a confirm
+   * in the row). Place and Remove are left out where nothing may change (a package).
+   */
+  walkActions?: WalkRowActions | undefined;
+}
+
+/** A short state word on a row: `info` for a step still to take, `warn` for something to check. */
+export interface TreeRowBadge {
+  text: string;
+  tone: 'info' | 'warn';
+}
+
+export interface WalkRowActions {
+  onOpen: (item: TreeItem) => void;
+  onPlace?: ((item: TreeItem) => void) | undefined;
+  onRemove?: ((item: TreeItem) => void) | undefined;
 }
 
 /** Where a context menu opens, in window pixels. */
@@ -136,6 +155,106 @@ export function DatasetTree(props: DatasetTreeProps) {
   const [showAll, setShowAll] = useState<Partial<Record<TreeGroupKind, boolean>>>({});
   /** Flight rows the user opened or closed; others open while they hold the active clip. */
   const [flightOpen, setFlightOpen] = useState<Record<string, boolean>>({});
+  /** The walk row whose Remove waits for its confirm, shown under the row. */
+  const [removing, setRemoving] = useState<string | null>(null);
+
+  /** Open, Place walk and Remove walk on a walk row; they stand in for the length and badge on hover. */
+  const walkButtons = (it: TreeItem) => {
+    const acts = it.layerKind === 'walk' ? props.walkActions : undefined;
+    if (!acts) return null;
+    const button = (
+      kind: 'open' | 'place' | 'remove',
+      icon: 'split' | 'pin' | 'trash',
+      label: string,
+      tip: string,
+      run: () => void,
+    ) => (
+      <button
+        type="button"
+        className="eye tact"
+        aria-label={label}
+        title={tip}
+        data-testid={`walk-${kind}-${it.id}`}
+        // Enter and Space press this button, not the row around it
+        onKeyDown={(e) => {
+          if (e.key === 'Enter' || e.key === ' ') e.stopPropagation();
+        }}
+        onClick={(e) => {
+          e.stopPropagation();
+          run();
+        }}
+      >
+        <Icon name={icon} size={14} />
+      </button>
+    );
+    const { onPlace, onRemove } = acts;
+    return (
+      <span className="tacts">
+        {button('open', 'split', t('walk.open', { name: it.name }), t('walk.row.open'), () => {
+          acts.onOpen(it);
+        })}
+        {onPlace &&
+          button(
+            'place',
+            'pin',
+            t('walk.row.place', { name: it.name }),
+            t('walk.row.placeTip'),
+            () => {
+              onPlace(it);
+            },
+          )}
+        {onRemove &&
+          button(
+            'remove',
+            'trash',
+            t('walk.row.remove', { name: it.name }),
+            t('walk.row.removeTip'),
+            () => {
+              setRemoving(it.id);
+            },
+          )}
+      </span>
+    );
+  };
+
+  /** The inline confirm of a walk's Remove: no dialog, the row says what happens to the files. */
+  const removeConfirm = (it: TreeItem) => {
+    const onRemove = it.layerKind === 'walk' ? props.walkActions?.onRemove : undefined;
+    if (!onRemove || removing !== it.id) return null;
+    return (
+      <div className="trow-confirm" role="group" data-testid="walk-remove-confirm">
+        <span className="trow-confirm-q">{t('walk.row.confirm', { name: it.name })}</span>
+        <span className="trow-confirm-acts">
+          <button
+            type="button"
+            className="btn sm danger"
+            data-testid="walk-remove-yes"
+            onClick={() => {
+              setRemoving(null);
+              onRemove(it);
+            }}
+          >
+            {t('walk.row.confirmYes')}
+          </button>
+          <button
+            type="button"
+            className="btn sm ghost"
+            data-testid="walk-remove-cancel"
+            // focus stays in the row's neighbourhood: Escape cancels as the button does
+            autoFocus
+            onClick={() => {
+              setRemoving(null);
+            }}
+            onKeyDown={(e) => {
+              if (e.key === 'Escape') setRemoving(null);
+            }}
+          >
+            {t('walk.row.confirmNo')}
+          </button>
+        </span>
+      </div>
+    );
+  };
 
   /** Drag and menu wiring of a row; nothing when the tree is not editable. */
   const moving = (it: TreeItem) => {
@@ -171,7 +290,10 @@ export function DatasetTree(props: DatasetTreeProps) {
   const row = (it: TreeItem, sub: boolean) => {
     const off = it.layerId ? hidden[it.layerId] === true : false;
     const sel = it.id === selectedId;
-    const extra = props.rowExtra?.(it) ?? null;
+    const confirm = removeConfirm(it);
+    const extra = confirm ?? props.rowExtra?.(it) ?? null;
+    const badge = props.rowBadge?.(it) ?? null;
+    const walkActs = walkButtons(it);
     const drawingSettings = it.drawing === true ? props.onDrawingSettings : undefined;
     const line = (
       <div
@@ -179,7 +301,7 @@ export function DatasetTree(props: DatasetTreeProps) {
         role="treeitem"
         aria-selected={sel}
         tabIndex={0}
-        className={`titem${sub ? ' sub' : ''}${sel ? ' sel' : ''}${off ? ' hidden' : ''}`}
+        className={`titem${sub ? ' sub' : ''}${sel ? ' sel' : ''}${off ? ' hidden' : ''}${walkActs ? ' has-acts' : ''}`}
         title={it.name}
         data-testid={it.layerId ? `tree-row-${it.layerId}` : undefined}
         {...moving(it)}
@@ -198,6 +320,15 @@ export function DatasetTree(props: DatasetTreeProps) {
         )}
         <span className="tn">{it.name}</span>
         {it.meta && <span className="tm">{it.meta}</span>}
+        {badge && (
+          <span
+            className={`tbadge ${badge.tone}`}
+            data-testid={it.layerId ? `tree-badge-${it.layerId}` : undefined}
+          >
+            {badge.text}
+          </span>
+        )}
+        {walkActs}
         {it.layerKind === 'pointcloud' && props.onLayerSettings && (
           <button
             type="button"

@@ -19,6 +19,7 @@ import {
   type DateItemMenuRequest,
   type IconName,
   type MessageKey,
+  type TreeGroup,
   type TreeItem,
   shortcutHint,
 } from '@aio/ui';
@@ -30,7 +31,9 @@ import { DrawingControls } from '../drawings/DrawingControls';
 import { drawings, unplacedOf, useDrawings } from '../drawings/store';
 import { useMedia } from '../media';
 import { shell, useShell } from '../shell';
-import { WalkList } from '../walks/WalkList';
+import { walkBadge, walkGroupAction } from '../walks/walkBadge';
+import { openWalk, placeWalk, removeWalk, useWalks } from '../walks/walks';
+import { walkFilesMissing } from '../walks/walkStore';
 import { PANEL_ID, PanelHandle } from './PanelHandle';
 import type { Screen } from '../store';
 import { useCaptureIndex } from '../workspace/compare';
@@ -246,6 +249,20 @@ function Datasets({ collapsed }: { collapsed: boolean }) {
   const placed = useDrawings((s) => s.placed);
   const unplaced = useMemo(() => unplacedOf(placed), [placed]);
   const drawingOpen = useDrawings((s) => s.controls);
+  // a walk row carries one badge: files missing, needs placing, path not computed, check placing
+  const walkLayers = useWalks((s) => s.walks);
+  const walkRecords = useWalks((s) => s.records);
+  const walkChecked = useWalks((s) => s.checked);
+  const walkBadges = useMemo(
+    () =>
+      new Map(
+        walkLayers.map((w) => [
+          w.id,
+          walkBadge(w, walkFilesMissing({ records: walkRecords, checked: walkChecked }, w)),
+        ]),
+      ),
+    [walkLayers, walkRecords, walkChecked],
+  );
   const groups = useMemo(
     () => (project ? buildDatasetTree(project.manifest, issues, durations, { unplaced }) : []),
     [project, issues, durations, unplaced],
@@ -358,6 +375,8 @@ function Datasets({ collapsed }: { collapsed: boolean }) {
     }
     if (it.layerKind === 'video') selectClip(it.layerId);
     else workspace.getState().select({ kind: 'layer', id: it.layerId, layer: it.layerId });
+    // a walk row opens the walk in the 360 video pane, as its Open action does
+    if (it.layerKind === 'walk') openWalk(it.layerId);
   };
 
   const onToggleVisible = (id: string, visible: boolean) => {
@@ -386,13 +405,37 @@ function Datasets({ collapsed }: { collapsed: boolean }) {
       it.drawing && it.id === drawingOpen ? (
         <DrawingControls layerId={it.id} name={it.name} canEdit={canEdit} />
       ) : null,
-    groupAction: (g: { kind: string }) =>
+    groupAction: (g: TreeGroup) =>
       g.kind === 'drawings' && !readOnly
         ? {
             label: t('tree.addDrawing'),
             onClick: () => void builder.getState().pickAndAddDrawing(),
           }
+        : walkGroupAction(g.kind, readOnly, t('walk.add'), () => {
+            void builder.getState().pickAndImport360();
+          }),
+  };
+
+  // a walk row: its placing badge, and Open, Place walk and Remove walk (not in a package, nor
+  // for a reviewer who may only look)
+  const walkProps = {
+    rowBadge: (it: TreeItem) =>
+      it.layerKind === 'walk' && it.layerId ? (walkBadges.get(it.layerId) ?? null) : null,
+    walkActions: {
+      onOpen: (it: TreeItem) => {
+        if (it.layerId) openWalk(it.layerId);
+      },
+      onPlace: canEdit
+        ? (it: TreeItem) => {
+            if (it.layerId) placeWalk(it.layerId);
+          }
         : undefined,
+      onRemove: canEdit
+        ? (it: TreeItem) => {
+            if (it.layerId) void removeWalk(it.layerId).then(failed);
+          }
+        : undefined,
+    },
   };
 
   return (
@@ -480,6 +523,7 @@ function Datasets({ collapsed }: { collapsed: boolean }) {
           flightPath={flightPath}
           onLayerSettings={onLayerSettings}
           {...drawingProps}
+          {...walkProps}
           onFolderMenu={setFolderMenu}
           onMove={canEdit ? onMove : undefined}
           onItemMenu={setItemMenu}
@@ -502,6 +546,7 @@ function Datasets({ collapsed }: { collapsed: boolean }) {
           flightPath={flightPath}
           onLayerSettings={onLayerSettings}
           {...drawingProps}
+          {...walkProps}
           onSelect={onSelect}
           onRailGroup={() => {
             void shell.getState().toggleSidebar();
@@ -572,7 +617,6 @@ export function Sidebar() {
           <ProjectSwitcher collapsed={collapsed} />
         </div>
         <Datasets collapsed={collapsed} />
-        {!collapsed && <WalkList />}
       </div>
       <div className="sb-foot">
         <NavItem

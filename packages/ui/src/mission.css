@@ -1048,6 +1048,57 @@ select.input option {
   box-shadow: 0 0 0 3px var(--acc-a20);
   flex: none;
 }
+/* one state word on a row (a walk's placing): quiet for a step to take, amber for a check */
+.titem .tbadge {
+  flex: none;
+  height: 16px;
+  padding: 0 5px;
+  display: inline-flex;
+  align-items: center;
+  border: 1px solid var(--line);
+  border-radius: 3px;
+  font-size: 10.5px;
+  line-height: 1;
+  color: var(--fg-2);
+}
+.titem .tm + .tbadge {
+  margin-inline-start: -2px;
+}
+.titem .tn + .tbadge {
+  margin-inline-start: auto;
+}
+.titem .tbadge.warn {
+  border-color: var(--warn-line);
+  color: var(--warn);
+}
+/* a walk row's Open, Place walk and Remove walk take the place of its length and badge */
+.titem .tacts {
+  display: none;
+  margin-inline-start: auto;
+  gap: 2px;
+  flex: none;
+}
+.titem.has-acts:hover .tacts,
+.titem.has-acts:focus-within .tacts {
+  display: inline-flex;
+}
+.titem.has-acts:hover > .tm,
+.titem.has-acts:hover > .tbadge,
+.titem.has-acts:focus-within > .tm,
+.titem.has-acts:focus-within > .tbadge {
+  display: none;
+}
+/* the inline confirm under a row (Remove walk): the question, then the two buttons */
+.trow-confirm {
+  display: grid;
+  gap: 6px;
+  color: var(--fg-1);
+  white-space: normal;
+}
+.trow-confirm-acts {
+  display: flex;
+  gap: 6px;
+}
 
 .dfolder-row {
   display: flex;

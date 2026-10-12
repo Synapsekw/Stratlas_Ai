@@ -114,7 +114,8 @@ function metaOf(layer: Layer, durations: Readonly<Record<string, number>>): stri
       return d !== undefined ? formatDuration(d) : undefined;
     }
     case 'walk':
-      return formatDuration(layer.durationS);
+      // the walk's length (`durationS`, seconds) as m:ss
+      return formatDuration(layer.durationS * 1000);
     case 'photos':
     case 'panoramas':
       return formatCompact(layer.items.length);

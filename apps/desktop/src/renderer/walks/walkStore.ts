@@ -1,21 +1,32 @@
-import type { WalkFile } from '@aio/schema';
+import type { Layer, WalkFile, WalkLayer } from '@aio/schema';
 import { createStore, type StoreApi } from 'zustand/vanilla';
 
 /*
- * The 360 videos of the open project (`walks:list`). A walk is not a manifest layer, so the
- * workspace store does not know it: this store asks main when the project changes and after an
- * import, and remembers which walk the pane shows.
+ * The 360 walks of the open project. A walk is a manifest layer (kind `walk`), so the list follows
+ * the manifest; main's `walks:list` only adds what the layer does not carry (the camera layout, a
+ * low resolution copy) and tells which walk folders are still on disk. The store also remembers
+ * which walk the 360 video pane shows.
  */
 
 export interface WalkState {
   /** The project the list belongs to (null: none open). */
   projectId: string | null;
-  walks: WalkFile[];
-  /** The walk the 360 video pane shows (null: the first). */
+  /** The walk layers of the manifest, in manifest order. */
+  walks: WalkLayer[];
+  /** The `walk.json` records main listed, by their path in the project (`walks/<id>/walk.json`). */
+  records: Readonly<Record<string, WalkFile>>;
+  /** Record paths a `walks:list` answer covered: a walk among them that was not listed has lost its files. */
+  checked: ReadonlySet<string>;
+  /** The walk layer the 360 video pane shows (null: the first). */
   selected: string | null;
-  /** Ask main for the project's walks; a stale answer (the project changed meanwhile) is dropped. */
-  load(projectId: string | null): Promise<void>;
-  select(id: string): void;
+  /**
+   * Follow the manifest of the open project: its walk layers, the chosen one kept while it is
+   * there. Main is asked for the records when a walk layer is new to the store.
+   */
+  sync(projectId: string | null, layers: readonly Layer[]): Promise<void>;
+  /** Ask main for the records again; a stale answer (the project changed meanwhile) is dropped. */
+  refresh(): Promise<void>;
+  select(layerId: string): void;
 }
 
 /** What main answers to `walks:list`, as the bridge wraps it. */
@@ -23,22 +34,68 @@ export type WalkListCall = (
   projectId: string,
 ) => Promise<{ ok: true; value: { walks: WalkFile[] } } | { ok: false; error: string }>;
 
+const recordPath = (w: WalkFile) => `walks/${w.id}/walk.json`;
+
+/** Where a walk layer's record is: its path in the project, or its content hash in a package store. */
+export function walkRecordKey(layer: WalkLayer): string {
+  return 'path' in layer.record
+    ? layer.record.path.replace(/\\/g, '/')
+    : `hash:${layer.record.hash}`;
+}
+
+/** The walk's folder id (`walks/<id>/walk.json`), or the layer id for a record stored elsewhere. */
+export function walkFolderId(layer: WalkLayer): string {
+  return /^walks\/([^/]+)\/walk\.json$/.exec(walkRecordKey(layer))?.[1] ?? layer.id;
+}
+
+/** Whether main was asked about this walk and did not list it: its folder is gone or unreadable. */
+export function walkFilesMissing(
+  s: Pick<WalkState, 'records' | 'checked'>,
+  layer: WalkLayer,
+): boolean {
+  const key = walkRecordKey(layer);
+  return s.checked.has(key) && !(key in s.records);
+}
+
 export function createWalkStore(call: WalkListCall): StoreApi<WalkState> {
+  let asked = 0;
+  let applied = 0;
   return createStore<WalkState>()((set, get) => ({
     projectId: null,
     walks: [],
+    records: {},
+    checked: new Set(),
     selected: null,
-    load: async (projectId) => {
-      if (projectId !== get().projectId) set({ projectId, walks: [], selected: null });
+    sync: async (projectId, layers) => {
+      if (projectId !== get().projectId)
+        set({ projectId, walks: [], records: {}, checked: new Set(), selected: null });
       if (projectId === null) return;
-      const r = await call(projectId);
-      if (get().projectId !== projectId) return;
-      const walks = r.ok ? r.value.walks : [];
+      const walks = layers.filter((l): l is WalkLayer => l.kind === 'walk');
       const selected = get().selected;
       set({ walks, selected: walks.some((w) => w.id === selected) ? selected : null });
+      const { checked } = get();
+      if (walks.some((w) => !checked.has(walkRecordKey(w)))) await get().refresh();
     },
-    select: (id) => {
-      if (get().walks.some((w) => w.id === id)) set({ selected: id });
+    refresh: async () => {
+      const { projectId, walks } = get();
+      if (projectId === null) return;
+      const ask = ++asked;
+      const paths = walks.map(walkRecordKey);
+      const r = await call(projectId);
+      // an older answer never overwrites a newer one
+      if (get().projectId !== projectId || ask < applied) return;
+      applied = ask;
+      if (!r.ok) {
+        set({ records: {}, checked: new Set() });
+        return;
+      }
+      set({
+        records: Object.fromEntries(r.value.walks.map((w) => [recordPath(w), w])),
+        checked: new Set(paths),
+      });
+    },
+    select: (layerId) => {
+      if (get().walks.some((w) => w.id === layerId)) set({ selected: layerId });
     },
   }));
 }

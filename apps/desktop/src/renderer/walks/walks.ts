@@ -7,43 +7,72 @@ import { stagePrefs } from '../workspace/stagePrefs';
 import { importAnswered, splitWithWalk } from './walkModel';
 import { createWalkStore, type WalkState } from './walkStore';
 
-/** The 360 videos of the open project, kept in step with it. */
+/** The 360 walks of the open project, kept in step with its manifest. */
 export const walks = createWalkStore((projectId) => bridge.call('walks:list', { projectId }));
 
 export function useWalks<T>(selector: (s: WalkState) => T): T {
   return useStore(walks, selector);
 }
 
-/** Ask main again (after an import added a walk). */
+/** Ask main for the walk records again (after an import added a walk). */
 export function refreshWalks(): Promise<void> {
-  return walks.getState().load(workspace.getState().project?.id ?? null);
+  return walks.getState().refresh();
 }
 
-let followed: string | null | undefined;
+let followedId: string | null | undefined;
+let followedLayers: unknown;
 const follow = () => {
-  const id = workspace.getState().project?.id ?? null;
-  if (id === followed) return;
-  followed = id;
-  void walks.getState().load(id);
+  const project = workspace.getState().project;
+  const id = project?.id ?? null;
+  const layers = project?.manifest.layers ?? [];
+  if (id === followedId && layers === followedLayers) return;
+  followedId = id;
+  followedLayers = layers;
+  void walks.getState().sync(id, layers);
 };
 workspace.subscribe(follow);
 follow();
 
-// 360 video lands beside the manifest (walks/), which the workspace does not follow: when main
-// answers an import, the list is asked for again
+// an import answered: a walk folder may have been written beside its new layer
 builder.subscribe((s, prev) => {
   if (importAnswered(prev, s)) void refreshWalks();
 });
 
 /** Show a walk: the Scene screen in split view, the 360 video pane where it is or on the right. */
-export function openWalk(id: string): void {
+export function openWalk(layerId: string): void {
   const project = workspace.getState().project;
   if (!project) return;
-  walks.getState().select(id);
+  walks.getState().select(layerId);
   const sh = shell.getState();
   if (sh.screen !== 'scene') sh.go('scene');
   const saved = stagePrefs.getState().byProject[project.id]?.split;
   // every pane counts as offered here: the split itself drops what the project cannot fill
   stagePrefs.getState().update(project.id, { split: splitWithWalk(saved, PANE_KINDS) });
   if (sh.stageMode !== 'split') sh.setStageMode('split');
+}
+
+let placeHandler: ((layerId: string) => void) | null = null;
+
+/** The Place walk flow registers itself here; the tree row's Place walk calls it. */
+export function setPlaceWalkHandler(fn: ((layerId: string) => void) | null): void {
+  placeHandler = fn;
+}
+
+/** Start placing a walk (the Place walk strip), when that flow is registered. */
+export function placeWalk(layerId: string): void {
+  placeHandler?.(layerId);
+}
+
+/**
+ * Remove a walk from the project: main takes its layer out of the manifest and moves its folder
+ * to the project trash (`walks:remove`). Null when it is gone, else why not.
+ */
+export async function removeWalk(layerId: string): Promise<string | null> {
+  const project = workspace.getState().project;
+  if (!project) return 'No project is open.';
+  const r = await bridge.call('walks:remove', { projectId: project.id, layerId });
+  if (!r.ok) return r.error;
+  if (!r.value.ok) return r.value.error;
+  workspace.getState().replaceManifest(r.value.manifest);
+  return null;
 }

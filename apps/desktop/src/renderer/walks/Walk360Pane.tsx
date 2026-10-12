@@ -1,23 +1,36 @@
 import { PANO_FOV, dragLook, zoomLook, type PanoLook } from '@aio/engine';
-import type { WalkFile } from '@aio/schema';
+import type { WalkFile, WalkLayer } from '@aio/schema';
 import { Icon, useT } from '@aio/ui';
 import { createPanoVideoView, type PanoVideoView } from '@aio/video';
 import { assetUrl, useWorkspace } from '@aio/workspace';
 import { useEffect, useRef, useState, type KeyboardEvent, type PointerEvent } from 'react';
 import { formatWalkTime, pickWalk, walkKeyAction, walkUnstabilised } from './walkModel';
 import { useWalks, walks } from './walks';
+import { walkFolderId, walkRecordKey } from './walkStore';
 
 /** Where the view starts: along the picture centre, level, at the panorama viewer's zoom. */
 const START: PanoLook = { yawDeg: 0, pitchDeg: 0, fovDeg: PANO_FOV.start };
 
 type Status = 'loading' | 'ready' | 'error' | 'no-graphics';
 
+/** Frame steps before main has listed the walk's record (its real rate comes with it). */
+const DEFAULT_FPS = 30;
+
 /**
  * The look-around player of one walk: its equirectangular playback copy on the inside of a
  * sphere. Drag to look, wheel to zoom, the bar below plays and scrubs. It has its own clock: a
  * walk has no place on the project timeline yet.
  */
-function WalkPlayer({ projectId, walk }: { projectId: string; walk: WalkFile }) {
+function WalkPlayer({
+  projectId,
+  walk,
+  record,
+}: {
+  projectId: string;
+  walk: WalkLayer;
+  /** The walk's `walk.json` as main listed it (frame rate, sound); absent until it answers. */
+  record: WalkFile | undefined;
+}) {
   const t = useT();
   const host = useRef<HTMLDivElement>(null);
   const video = useRef<HTMLVideoElement | null>(null);
@@ -27,11 +40,13 @@ function WalkPlayer({ projectId, walk }: { projectId: string; walk: WalkFile }) 
   const [status, setStatus] = useState<Status>('loading');
   const [shown, setShown] = useState<PanoLook>(START);
   const [time, setTime] = useState(0);
-  const [duration, setDuration] = useState(walk.video.durationS);
+  const [duration, setDuration] = useState(walk.durationS);
   const [playing, setPlaying] = useState(false);
   const [rate, setRate] = useState(1);
   const [sound, setSound] = useState(false);
   const [dragging, setDragging] = useState(false);
+  const audio = record?.video.audio ?? false;
+  const poster = walk.poster ? assetUrl(projectId, walk.poster) : undefined;
 
   const setLook = (next: PanoLook) => {
     look.current = next;
@@ -49,7 +64,7 @@ function WalkPlayer({ projectId, walk }: { projectId: string; walk: WalkFile }) 
     // aio:// answers with CORS headers so WebGL can read the frames
     v.crossOrigin = 'anonymous';
     v.disablePictureInPicture = true;
-    v.src = assetUrl(projectId, { path: walk.video.src });
+    v.src = assetUrl(projectId, walk.src);
     video.current = v;
     look.current = START;
 
@@ -116,7 +131,7 @@ function WalkPlayer({ projectId, walk }: { projectId: string; walk: WalkFile }) 
       v.removeAttribute('src');
       v.load();
     };
-  }, [projectId, walk.video.src]);
+  }, [projectId, walk.src]);
 
   const toggle = (play: boolean) => {
     const v = video.current;
@@ -142,7 +157,7 @@ function WalkPlayer({ projectId, walk }: { projectId: string; walk: WalkFile }) 
     const a = walkKeyAction(e.key, {
       playing: !v.paused && !v.ended,
       rate: v.playbackRate,
-      fps: walk.video.fps,
+      fps: record?.video.fps ?? DEFAULT_FPS,
     });
     if (!a) return;
     e.preventDefault();
@@ -192,6 +207,16 @@ function WalkPlayer({ projectId, walk }: { projectId: string; walk: WalkFile }) 
         aria-label={t('walk.view', { name: walk.name })}
         data-testid="walk-view"
         data-status={status}
+        // the poster stands in while the first frame loads
+        style={
+          poster && status === 'loading'
+            ? {
+                backgroundImage: `url("${poster}")`,
+                backgroundSize: 'cover',
+                backgroundPosition: 'center',
+              }
+            : undefined
+        }
         data-yaw={shown.yawDeg.toFixed(1)}
         data-pitch={shown.pitchDeg.toFixed(1)}
         data-fov={shown.fovDeg.toFixed(1)}
@@ -252,8 +277,8 @@ function WalkPlayer({ projectId, walk }: { projectId: string; walk: WalkFile }) 
           className="btn sm ghost"
           data-testid="walk-sound"
           aria-pressed={sound}
-          disabled={!walk.video.audio}
-          title={walk.video.audio ? undefined : t('walk.sound.none')}
+          disabled={!audio}
+          title={audio ? undefined : t('walk.sound.none')}
           onClick={() => {
             const v = video.current;
             if (!v) return;
@@ -286,10 +311,12 @@ export function Walk360Pane() {
   const projectId = useWorkspace((s) => s.project?.id);
   const list = useWalks((s) => s.walks);
   const selected = useWalks((s) => s.selected);
+  const records = useWalks((s) => s.records);
   const walk = pickWalk(list, selected);
   if (!projectId || !walk) return <p className="pane-empty">{t('walk.none')}</p>;
+  const record = records[walkRecordKey(walk)];
   return (
-    <div className="pane-col" data-testid="walk-360" data-walk={walk.id}>
+    <div className="pane-col" data-testid="walk-360" data-walk={walkFolderId(walk)}>
       <div className="pane-bar">
         <Icon name="pano" size={14} className="muted" />
         {list.length > 1 ? (
@@ -311,14 +338,14 @@ export function Walk360Pane() {
         ) : (
           <span className="walk-name">{walk.name}</span>
         )}
-        {walk.source.lowRes && <span className="faint">{t('walk.lowRes')}</span>}
-        {walkUnstabilised(walk) && (
+        {record?.source.lowRes && <span className="faint">{t('walk.lowRes')}</span>}
+        {record && walkUnstabilised(record) && (
           <span className="faint" title={t('walk.rawHint')} data-testid="walk-unstabilised">
             {t('walk.unstabilised')}
           </span>
         )}
       </div>
-      <WalkPlayer key={walk.id} projectId={projectId} walk={walk} />
+      <WalkPlayer key={walk.id} projectId={projectId} walk={walk} record={record} />
     </div>
   );
 }

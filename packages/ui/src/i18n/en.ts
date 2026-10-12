@@ -1905,9 +1905,8 @@ export const en = {
   'cloudChange.volume.started': 'Volume change started. The totals show here when it finishes.',
   'cloudChange.volume.package':
     'Volume change is computed in the project folder, not in a package.',
-  // 360 video from a 360 camera (walks/<id>/): the list under the datasets and the split pane
+  // 360 video from a 360 camera (walks/<id>/): the 360 walks rows and the split pane
   'walk.pane': '360 video',
-  'walk.list': '360 video',
   'walk.add': 'Add 360 video',
   'walk.add.tip': 'Add a 360 camera file (.insv) or a stitched 360 video (MP4)',
   'walk.open': 'Open {name} in the 360 video pane',
@@ -1931,6 +1930,15 @@ export const en = {
   'walk.noGraphics': 'The 360 view needs 3D graphics, which are not available right now.',
   // the walk on a drawing: a pin whose drawing was removed
   'walk.pin.gone': 'The drawing it was on is gone',
+  // a walk row in the Datasets list: its actions and the inline confirm of Remove walk
+  'walk.row.open': 'Open in the 360 video pane',
+  'walk.row.place': 'Place {name} on a drawing or the map',
+  'walk.row.placeTip': 'Place walk',
+  'walk.row.remove': 'Remove {name}',
+  'walk.row.removeTip': 'Remove walk',
+  'walk.row.confirm': 'Remove {name}? Its files stay in the project trash for seven days.',
+  'walk.row.confirmYes': 'Remove walk',
+  'walk.row.confirmNo': 'Cancel',
   // M8 C4: same view on another date (Frames pane) and change in matched frames
   'frames.pane': 'Frames',
   'frames.sameView': 'Same view on the other date',
