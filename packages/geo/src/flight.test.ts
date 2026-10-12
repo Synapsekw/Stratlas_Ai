@@ -293,6 +293,120 @@ describe('normaliseFlight', () => {
     });
   });
 
+  /** A 60 Hz log of `truth` (east, north in metres) with five-decimal SRT fixes every 100 ms. */
+  function gridTrack(
+    truth: (tMs: number) => [number, number],
+    durationMs: number,
+    skip: (tMs: number) => boolean = () => false,
+  ): { t: number[]; pos: Vec3[] } {
+    const t: number[] = [];
+    const pos: Vec3[] = [];
+    for (let i = 0; i * FRAME <= durationMs; i++) {
+      const ti = Math.round(i * FRAME);
+      if (skip(ti)) continue;
+      const [e, n] = truth(Math.floor(ti / 100) * 100);
+      t.push(ti);
+      pos.push([Math.round((e + 0.3) / 0.97) * 0.97, 50, -Math.round((n + 0.2) / 1.11) * 1.11]);
+    }
+    return { t, pos };
+  }
+
+  const estimated = (t: number[], pos: Vec3[], h: (i: number) => number): PoseSample[] =>
+    t.map((ti, i) => ({
+      t: ti,
+      pos: pos[i] ?? ([0, 0, 0] as Vec3),
+      q: cameraQuatFromGimbal(h(i), -30, 0),
+    }));
+
+  it('re-estimates a stored heading that wobbles 40 degrees around the track', () => {
+    const { t, pos } = gridStairs(20000);
+    const file = estimated(t, pos, (i) => COURSE + 40 * Math.sin((t[i] ?? 0) / 700));
+    const n = normaliseFlight(file);
+    expect(n.heading).toBe(true);
+    for (const s of n.samples)
+      if (s.t > 3000 && s.t < 17000) expect(gap(heading(s.q), COURSE)).toBeLessThan(3);
+  });
+
+  it('leaves a level camera alone that looks north while the aircraft flies east', () => {
+    const { t, pos } = gridTrack((ms) => [ms * 0.0025, 0.3 * Math.sin(ms / 900)], 20000);
+    const file = estimated(t, pos, () => 0);
+    expect(looksEstimated(file)).toBe(true);
+    const n = normaliseFlight(file);
+    expect(n.heading).toBe(false);
+    n.samples.forEach((s, i) => {
+      expect(s.q).toBe(file[i]?.q);
+    });
+  });
+
+  it('leaves the positions of a slow, noisy measured log alone', () => {
+    let seed = 7;
+    const noise = () => {
+      seed = (seed * 16807) % 2147483647;
+      return (seed / 2147483647 - 0.5) * 0.04;
+    };
+    const file = Array.from({ length: 1200 }, (_, i) => {
+      const ti = Math.round(i * FRAME);
+      return {
+        t: ti,
+        pos: [ti * 0.0007 + noise(), 30, -ti * 0.0007 + noise()] as Vec3,
+        q: cameraQuatFromGimbal(45, -60, 0),
+        gimbal: { yaw: 45, pitch: -60, roll: 0 },
+      };
+    });
+    const n = normaliseFlight(file);
+    expect(n.positions).toBe(false);
+    expect(n.samples).toBe(file);
+  });
+
+  it('keeps the corner of a fast turn', () => {
+    // a slow diagonal staircase, then 15 m/s east and a sharp turn north
+    const slow = 10000;
+    const corner = slow + 4000;
+    const truth = (ms: number): [number, number] => {
+      const d = Math.min(ms, slow) * 0.0025;
+      const base: [number, number] = [d * 0.64, d * 0.77];
+      if (ms <= slow) return base;
+      if (ms <= corner) return [base[0] + (ms - slow) * 0.015, base[1]];
+      return [base[0] + 60, base[1] + (ms - corner) * 0.015];
+    };
+    const { t, pos } = gridTrack(truth, corner + 4000);
+    const n = normaliseFlight(estimated(t, pos, () => 0));
+    const [ce, cn] = truth(corner);
+    const nearest = Math.min(...n.samples.map((s) => Math.hypot(s.pos[0] - ce, -s.pos[2] - cn)));
+    expect(nearest).toBeLessThan(1.5);
+  });
+
+  it('averages over time, so dropped frames do not pull the track', () => {
+    // 5 m/s north-east with half a second of frames missing after 5 s
+    const truth = (ms: number): [number, number] => [ms * 0.0035, ms * 0.0035];
+    const full = gridTrack(truth, 12000);
+    const { t, pos } = gridTrack(truth, 12000, (ms) => ms > 5000 && ms < 5500);
+    const whole = normaliseFlight(estimated(full.t, full.pos, () => 45)).samples;
+    const n = normaliseFlight(estimated(t, pos, () => 45));
+    expect(n.positions).toBe(true);
+    let checked = 0;
+    for (const s of n.samples) {
+      if (s.t < 5500 || s.t > 5800) continue;
+      const w = whole.find((x) => x.t === s.t);
+      if (!w) continue;
+      checked++;
+      // the same place as without the gap, along the track
+      const along = (s.pos[0] - w.pos[0]) * 0.7071 - (s.pos[2] - w.pos[2]) * 0.7071;
+      expect(Math.abs(along)).toBeLessThan(0.15);
+    }
+    expect(checked).toBeGreaterThan(10);
+  });
+
+  it('does not move the positions again on a second pass', () => {
+    const { t, pos } = gridStairs(20000);
+    const once = normaliseFlight(estimated(t, pos, () => COURSE)).samples;
+    const twice = normaliseFlight(once);
+    expect(twice.positions).toBe(false);
+    twice.samples.forEach((s, i) => {
+      expect(s.pos).toEqual(once[i]?.pos);
+    });
+  });
+
   it('returns the very same samples for high-rate measured logs', () => {
     const file = Array.from({ length: 200 }, (_, i) => ({
       t: i * 100,

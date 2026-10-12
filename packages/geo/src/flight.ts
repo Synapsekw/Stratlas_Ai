@@ -117,15 +117,20 @@ export function smoothHeldPositions(t: readonly number[], pos: readonly Vec3[]):
 const STEP_MS = 100;
 /** A direction change between consecutive short spans above this is a flip, degrees. */
 const FLIP_DEG = 30;
-/** Above this share of flips among the moving spans, the track is a staircase. */
+/** Above this share of flips among the moving spans, the track zig-zags. */
 const FLIP_SHARE = 0.03;
-/** Span of the centred average that straightens a staircase, ms. */
+/** Longest span of the centred average that straightens a staircase, ms. */
 const STRAIGHTEN_MS = 1500;
+/** Longest distance the averaging window covers, metres (fast flights keep their corners). */
+const STRAIGHTEN_M = 4.5;
+/** Grid steps are this big at least (RMS off the straightened track, metres); less is jitter. */
+const STEP_RMS_M = 0.1;
 
 /**
  * The horizontal track zig-zags: its direction over consecutive short spans keeps flipping. That
  * is what positions rounded to a grid look like (SRT latitude and longitude with five decimals,
  * about a metre), whose two axes step at different moments, even after a spline through the fixes.
+ * Jitter of a few centimetres can flip too; `straightenTrack` tells them apart by the step size.
  */
 export function zigzagTrack(t: readonly number[], pos: readonly Vec3[]): boolean {
   const n = Math.min(t.length, pos.length);
@@ -155,11 +160,24 @@ export function zigzagTrack(t: readonly number[], pos: readonly Vec3[]): boolean
   return moving >= 10 && flips / moving > FLIP_SHARE;
 }
 
+/** Position on the piecewise linear track at time `tau` within segment `k`. */
+function lerpAt(t: readonly number[], pos: readonly Vec3[], k: number, tau: number): Vec3 {
+  const a = pos[k] ?? ZERO;
+  const b = pos[k + 1] ?? a;
+  const ta = t[k] ?? 0;
+  const tb = t[k + 1] ?? ta;
+  const u = tb > ta ? (tau - ta) / (tb - ta) : 0;
+  return mix(a, b, 1 - u, u);
+}
+
 /**
- * A zig-zag track (`zigzagTrack`) straightened by a centred moving average over 1.5 s.
- * The window shrinks towards the ends of the log and towards hovers (samples repeating their
- * neighbour), so the end points and a hover stay exactly where they were. Null when the track
- * does not zig-zag.
+ * A grid-rounded track straightened: a zig-zag track (`zigzagTrack`) whose steps are grid sized
+ * (not centimetre jitter) is averaged over a centred window, weighted by time (the integral of
+ * the track over the window, so dropped frames do not pull it). The window spans at most 1.5 s
+ * and 4.5 m, so fast flights keep their corners, and shrinks towards the ends of the log and
+ * towards hovers (samples repeating their neighbour), which stay exactly where they were. Null
+ * when the track does not need it; a straightened track no longer zig-zags, so a second pass
+ * leaves it alone.
  */
 export function straightenTrack(t: readonly number[], pos: readonly Vec3[]): Vec3[] | null {
   const n = Math.min(t.length, pos.length);
@@ -182,34 +200,50 @@ export function straightenTrack(t: readonly number[], pos: readonly Vec3[]): Vec
     if (still(i)) nextStill = t[i] ?? 0;
     ahead[i] = nextStill - (t[i] ?? 0);
   }
-  const sum: Vec3[] = [[0, 0, 0]];
-  for (let i = 0; i < n; i++) {
-    const s = sum[i] ?? ZERO;
-    const p = pos[i] ?? ZERO;
-    sum.push([s[0] + p[0], s[1] + p[1], s[2] + p[2]]);
+  // running integral of the piecewise linear track (trapezoids)
+  const area: Vec3[] = [[0, 0, 0]];
+  for (let k = 0; k + 1 < n; k++) {
+    const dt = (t[k + 1] ?? 0) - (t[k] ?? 0);
+    area.push(mix(area[k] ?? ZERO, mix(pos[k] ?? ZERO, pos[k + 1] ?? ZERO, 1, 1), 1, dt / 2));
   }
+  // integral from t[0] to tau, with tau in segment k
+  const integral = (k: number, tau: number): Vec3 => {
+    const p = lerpAt(t, pos, k, tau);
+    return mix(area[k] ?? ZERO, mix(pos[k] ?? ZERO, p, 1, 1), 1, (tau - (t[k] ?? 0)) / 2);
+  };
   const out: Vec3[] = [];
   let lo = 0;
   let hi = 0;
+  let sq = 0;
+  let count = 0;
   for (let i = 0; i < n; i++) {
     const ti = t[i] ?? 0;
-    const half = Math.min(STRAIGHTEN_MS / 2, back[i] ?? 0, ahead[i] ?? 0);
+    // horizontal speed over the surrounding half second, for the distance limit
+    while ((t[lo] ?? 0) < ti - 250) lo++;
+    while (hi + 1 < n && (t[hi + 1] ?? 0) <= ti + 250) hi++;
+    const a = pos[lo] ?? ZERO;
+    const b = pos[hi] ?? ZERO;
+    const span = (t[hi] ?? 0) - (t[lo] ?? 0);
+    const speed = span > 0 ? Math.hypot(b[0] - a[0], b[2] - a[2]) / span : 0;
+    const byDistance = speed > 0 ? STRAIGHTEN_M / 2 / speed : Infinity;
+    const half = Math.min(STRAIGHTEN_MS / 2, byDistance, back[i] ?? 0, ahead[i] ?? 0);
+    const p = pos[i] ?? ZERO;
     if (half <= 0) {
-      out.push([...(pos[i] ?? ZERO)]);
+      out.push([...p]);
       continue;
     }
-    // symmetric in time: the window may not run past a hover or an end on either side
-    lo = Math.min(lo, i);
-    while (lo < i && (t[lo] ?? 0) < ti - half) lo++;
-    while (lo > 0 && (t[lo - 1] ?? 0) >= ti - half) lo--;
-    hi = Math.max(hi, i);
-    while (hi + 1 < n && (t[hi + 1] ?? 0) <= ti + half) hi++;
-    while (hi > i && (t[hi] ?? 0) > ti + half) hi--;
-    const c = hi - lo + 1;
-    const a = sum[lo] ?? ZERO;
-    const b = sum[hi + 1] ?? ZERO;
-    out.push([(b[0] - a[0]) / c, (b[1] - a[1]) / c, (b[2] - a[2]) / c]);
+    let k0 = i;
+    while (k0 > 0 && (t[k0] ?? 0) > ti - half) k0--;
+    let k1 = i;
+    while (k1 < n - 2 && (t[k1 + 1] ?? 0) < ti + half) k1++;
+    const s = mix(integral(k1, ti + half), integral(k0, ti - half), 1, -1);
+    const m: Vec3 = [s[0] / (2 * half), s[1] / (2 * half), s[2] / (2 * half)];
+    sq += (m[0] - p[0]) ** 2 + (m[2] - p[2]) ** 2;
+    count++;
+    out.push(m);
   }
+  // centimetre jitter is left alone: grid steps put the track tens of centimetres off its average
+  if (count === 0 || Math.sqrt(sq / count) < STEP_RMS_M) return null;
   return out;
 }
 
@@ -328,9 +362,10 @@ const round = (v: number, d: number) => Math.round(v * 10 ** d) / 10 ** d;
 
 /**
  * The stored heading follows the track: while the aircraft moves (over half a metre in a two
- * second window), nearly all of it lies close to a fresh track estimate. True for every SRT import
- * without gimbal angles (before the first movement the first importer pointed north, which is not
- * counted); false for a level camera with a fixed pitch that looks elsewhere.
+ * second window), its difference from a fresh track estimate averages (circular mean) under 20
+ * degrees and does not scatter at random. True for every SRT import without gimbal angles, however
+ * much its estimate wobbled with a zig-zag track (before the first movement the first importer
+ * pointed north, which is not counted); false for a level camera that looks elsewhere.
  */
 function followsTrack(
   t: readonly number[],
@@ -339,7 +374,8 @@ function followsTrack(
   estimate: readonly number[],
 ): boolean {
   let moving = 0;
-  let close = 0;
+  let sin = 0;
+  let cos = 0;
   let lo = 0;
   let hi = 0;
   for (let i = 0; i < t.length; i++) {
@@ -350,9 +386,13 @@ function followsTrack(
     const b = pos[hi] ?? ZERO;
     if (Math.hypot(b[0] - a[0], b[2] - a[2]) <= 0.5) continue;
     moving++;
-    if (angleGap(stored[i] ?? 0, estimate[i] ?? 0) < 25) close++;
+    const d = ((stored[i] ?? 0) - (estimate[i] ?? 0)) / R2D;
+    sin += Math.sin(d);
+    cos += Math.cos(d);
   }
-  return moving >= 10 && close >= moving * 0.9;
+  if (moving < 10) return false;
+  const mean = Math.abs(Math.atan2(sin, cos) * R2D);
+  return mean < 20 && Math.hypot(sin, cos) / moving > 0.5;
 }
 
 /**
