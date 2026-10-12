@@ -346,18 +346,25 @@ jobs:
           cache-dependency-glob: python/uv.lock
       - name: Sync the locked environment (CPython 3.13)
         run: uv sync --frozen
-      # conda-forge's packages for PDAL, keyed by its lock (tools/pipeline-pack/pdal-lock.json)
-      - name: Cache PDAL's conda packages
+      # conda-forge's packages for PDAL and ffmpeg, keyed by their locks (tools/pipeline-pack/)
+      - name: Cache PDAL's and ffmpeg's conda packages
         uses: actions/cache@v4
         with:
           path: ${{ runner.temp }}/conda
-          key: conda-pdal-${{ runner.os }}-${{ hashFiles('tools/pipeline-pack/pdal-lock.json') }}
+          key: conda-pdal-ffmpeg-${{ runner.os }}-${{ hashFiles('tools/pipeline-pack/pdal-lock.json', 'tools/pipeline-pack/ffmpeg-lock.json') }}
       - name: PDAL (conda-forge, as in the pack)
         env:
           QUADRION_CONDA_ROOT: ${{ runner.temp }}/conda
         run: |
           node ../tools/pipeline-pack/pdal.mjs --out "$RUNNER_TEMP/pdal" | tee "$RUNNER_TEMP/pdal.log"
           grep '^AIO_PDAL=' "$RUNNER_TEMP/pdal.log" >> "$GITHUB_ENV"
+      # the pack's ffmpeg (conda-forge's GPL build, checked for v360, libx264 and the HEVC decoder)
+      - name: ffmpeg (conda-forge, as in the pack)
+        env:
+          QUADRION_CONDA_ROOT: ${{ runner.temp }}/conda
+        run: |
+          node ../tools/pipeline-pack/ffmpeg.mjs --out "$RUNNER_TEMP/ffmpeg" | tee "$RUNNER_TEMP/ffmpeg.log"
+          grep '^QUADRION_FFMPEG=' "$RUNNER_TEMP/ffmpeg.log" >> "$GITHUB_ENV"
       - name: Cache photo set renders
         uses: actions/cache@v4
         with:

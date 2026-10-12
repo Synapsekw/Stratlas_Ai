@@ -785,11 +785,17 @@ Hydrology (G10) and haul-road compliance (G11) are pipeline jobs over a prepared
 
 ```
 <dataRoot>/runtime/pipeline-pack-<version>/           the pipeline pack (aio.pipeline-pack/1)
+  python/                                             CPython with the locked wheels and aio_pipelines
+  tools/pdal/                                         PDAL (conda-forge), conda-packages.json, licenses/
+  tools/ffmpeg/                                       ffmpeg and ffprobe (conda-forge GPL build), conda-packages.json, licenses/
+  models/sam/                                         the boundary model
+  manifest.json                                       every file's size and SHA-256, tools, pipelines
 <dataRoot>/runtime/pipeline-addon-cuda-<version>/     the GPU add-on, optional
   manifest.json                                       aio.pipeline-addon/1
   site/                                               CuPy and NVIDIA's CUDA runtime, runtime compiler and cuBLAS (unpacked wheels)
 ```
 
+- **The pack's tools** (pack 0.6.0): `tools/ffmpeg/` holds conda-forge's GPL `ffmpeg` (libx264, the `v360` filter, the HEVC decoder; `tools/pipeline-pack/ffmpeg.mjs`, SHA-256 pinned in `ffmpeg-lock.json`), pruned to `ffmpeg`, `ffprobe` and the libraries they load: `Library/bin/ffmpeg.exe` and `ffprobe.exe` with their DLLs on Windows, `bin/` and `lib/` on macOS. The pack build fails when its ffmpeg lacks any of the three. The walk pipeline and the app look for ffmpeg in this order: `QUADRION_FFMPEG` (the program), the pack's `tools/ffmpeg`, the PATH. The pack manifest's `tools` names each tool the pack carries (`null` when the build left it out): `pdal` `{ path, packages }` and `ffmpeg` `{ path, version, source, packages }`, `packages` being the tool's `conda-packages.json`.
 - **What it is**: Python packages for an NVIDIA graphics card on Windows x64, built by `tools/pipeline-pack/accelerator.mjs` from the wheels pinned in `accelerator-lock.json`. It has no interpreter: the pipeline pack's Python loads it. The pack's folder pattern (`pipeline-pack-<version>`) does not match it, so an app or a pack that does not know it leaves it alone.
 - **Manifest** (`PipelineAddonManifest`, `aio.pipeline-addon/1`; `versions.ts` since 0.11): `kind` (`gpu-cuda`), `version`, `packRange` (the pipeline pack versions it fits, such as `>=0.5.0 <0.6.0`), `python` (the Python line of its compiled modules, `3.13`), `platform` (`win32-x64`), `runtime` (`cuda`, the CUDA runtime it carries, and `minDriver`, the oldest graphics driver that runs it), `createdAt`, `packages` (name, version and licence of each wheel) and `files` (every file under the folder but the manifest, with `size` and `sha256`, as in the pack's manifest).
 - **Loading** (`aio_pipelines.accel`): nothing imports the add-on by itself. `activate(folder)` checks the manifest against this pack (Python line and `packRange`; a source tree is not held to the range), appends `site/` to the import path after the pack's own libraries, loads NVIDIA's libraries by path and points CuPy at the add-on's CUDA headers, in that process only. `AIO_PHOTO_ADDON` names the folder (the app sets it), `AIO_PHOTO_GPU=0` switches the card off, and `AIO_PHOTO_GPU_CACHE` is where CuPy keeps the kernels it compiles on this computer (the add-on itself is never written to).

@@ -5,6 +5,8 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import {
   BuildError,
   defaultOutRoot,
+  ffmpegToolProblem,
+  packTools,
   photogrammetryProblem,
   staleTempDirs,
   tarCommand,
@@ -184,6 +186,39 @@ describe('pipeline pack photogrammetry smoke test', () => {
     expect(photogrammetryProblem({ ...full, opencv: undefined })).toMatch(/incomplete/);
     expect(photogrammetryProblem({ ...full, pymeshlabInParent: true })).toMatch(
       /outside its child/,
+    );
+  });
+});
+
+describe('pipeline pack tools', () => {
+  it('lists the tools the pack carries in the manifest', () => {
+    expect(
+      packTools({
+        pdal: true,
+        ffmpeg: { version: 'ffmpeg version 9.0.2', spec: 'ffmpeg=9.0.2=gpl_*' },
+      }),
+    ).toEqual({
+      pdal: { path: 'tools/pdal', packages: 'tools/pdal/conda-packages.json' },
+      ffmpeg: {
+        path: 'tools/ffmpeg',
+        version: '9.0.2',
+        source: 'conda-forge ffmpeg=9.0.2=gpl_*',
+        packages: 'tools/ffmpeg/conda-packages.json',
+      },
+    });
+  });
+
+  it('leaves out a tool the build skipped (--no-pdal, --no-ffmpeg)', () => {
+    expect(packTools({ pdal: false, ffmpeg: null })).toEqual({ pdal: null, ffmpeg: null });
+  });
+
+  it('fails a pack whose ffmpeg lacks what the walk pipeline needs', () => {
+    expect(ffmpegToolProblem({ version: 'ffmpeg version 9.0.2', missing: [] })).toBeNull();
+    expect(
+      ffmpegToolProblem({ version: 'ffmpeg version 9.0.2', missing: ['libx264 encoder'] }),
+    ).toBe("the pack's ffmpeg (ffmpeg version 9.0.2) lacks libx264 encoder");
+    expect(ffmpegToolProblem({ version: '', missing: ['ffmpeg'] })).toBe(
+      "the pack's ffmpeg is missing: ffmpeg",
     );
   });
 });

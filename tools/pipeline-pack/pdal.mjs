@@ -85,12 +85,16 @@ export function explicitSpec(packages) {
   return ['@EXPLICIT', ...packages.map((p) => `${p.url}#${p.sha256}`), ''].join('\n');
 }
 
-/** The lock's packages for a pack platform. */
-export function lockedPackages(platform, lock = JSON.parse(readFileSync(LOCK_FILE, 'utf8'))) {
+/** A lock's packages for a pack platform (PDAL's unless another lock is given). */
+export function lockedPackages(
+  platform,
+  lock = JSON.parse(readFileSync(LOCK_FILE, 'utf8')),
+  label = 'pdal-lock.json',
+) {
   const sub = PLATFORMS[platform]?.subdir;
   const list = sub ? lock.platforms?.[sub] : undefined;
   if (!Array.isArray(list) || list.length === 0)
-    throw new Error(`pdal-lock.json has no packages for ${platform}`);
+    throw new Error(`${label} has no packages for ${platform}`);
   return list;
 }
 
@@ -124,7 +128,7 @@ export function otoolLibs(text) {
   return out;
 }
 
-function run(cmd, args, opts = {}) {
+export function run(cmd, args, opts = {}) {
   const r = spawnSync(cmd, args, { encoding: 'utf8', stdio: 'pipe', ...opts });
   if (r.error) throw new Error(`${cmd} could not start: ${r.error.message}`);
   if (r.status !== 0)
@@ -133,16 +137,20 @@ function run(cmd, args, opts = {}) {
 }
 
 /**
- * macOS: the program and the dylibs it loads, followed through `otool -L` from bin/pdal, each
- * copied as a plain file under the name it is loaded by (conda's symlinks are left behind).
+ * macOS: the programs and the dylibs they load, followed through `otool -L` from bin/<program>,
+ * each copied as a plain file under the name it is loaded by (conda's symlinks are left behind),
+ * and the data folders of share/.
  */
-function copyMac(prefix, dest) {
+function copyMac(prefix, dest, { programs, share = [] }) {
   mkdirSync(join(dest, 'bin'), { recursive: true });
   mkdirSync(join(dest, 'lib'), { recursive: true });
-  const exe = join(dest, 'bin', 'pdal');
-  copyFileSync(realpathSync(join(prefix, 'bin', 'pdal')), exe);
-  chmodSync(exe, 0o755);
-  const todo = [join(prefix, 'bin', 'pdal')];
+  const todo = [];
+  for (const program of programs) {
+    const exe = join(dest, 'bin', program);
+    copyFileSync(realpathSync(join(prefix, 'bin', program)), exe);
+    chmodSync(exe, 0o755);
+    todo.push(join(prefix, 'bin', program));
+  }
   const seen = new Set();
   while (todo.length > 0) {
     const file = todo.pop();
@@ -158,15 +166,16 @@ function copyMac(prefix, dest) {
       todo.push(real);
     }
   }
-  for (const d of ['proj', 'gdal'])
+  for (const d of share)
     cpSync(join(prefix, 'share', d), join(dest, 'share', d), {
       recursive: true,
       dereference: true,
     });
-  return seen.size + 1;
+  return seen.size + programs.length;
 }
 
-function walk(dir, base = dir) {
+/** Every file below `dir`, relative to it with `/` separators. */
+export function walk(dir, base = dir) {
   const out = [];
   for (const e of readdirSync(dir, { withFileTypes: true })) {
     const p = join(dir, e.name);
@@ -182,10 +191,10 @@ function walk(dir, base = dir) {
   return out;
 }
 
-function copyWindows(prefix, dest) {
+function copyWindows(prefix, dest, keep) {
   let n = 0;
   for (const rel of walk(prefix)) {
-    const to = keepWindows(rel);
+    const to = keep(rel);
     if (!to) continue;
     mkdirSync(dirname(join(dest, to)), { recursive: true });
     copyFileSync(join(prefix, rel), join(dest, to));
@@ -230,7 +239,7 @@ export async function ensureMicromamba(cache, platform, log = say) {
  * header paths pass Windows' 260 characters below a long folder. Kept between builds;
  * `QUADRION_CONDA_ROOT` puts it elsewhere (CI caches it).
  */
-const condaRoot = () => process.env.QUADRION_CONDA_ROOT || join(tmpdir(), 'quadrion-conda');
+export const condaRoot = () => process.env.QUADRION_CONDA_ROOT || join(tmpdir(), 'quadrion-conda');
 
 function micromambaEnv(platform) {
   const env = { ...process.env, MAMBA_ROOT_PREFIX: condaRoot(), MAMBA_NO_BANNER: '1' };
@@ -265,22 +274,39 @@ function copyLicences(packages, dest) {
 }
 
 /**
- * PDAL for `platform` into `dest` (the pack's tools/pdal): micromamba installs the locked
- * packages into a temporary prefix, then the program, its libraries, data and licences are copied
- * over, with `conda-packages.json` (every package with its version, licence and source).
+ * A conda-forge tool for `platform` into `dest` (a folder of the pack's tools/): micromamba
+ * installs the locked packages (`lock`, solved for `spec`) into a temporary prefix, then `prune`
+ * picks what goes over. On Windows `prune.windows(prefix)` returns a function giving, for each
+ * file of the environment (path relative to the prefix, `/` separated), its path in `dest` or
+ * null; on macOS `prune.mac` names the programs (the dylibs they load follow) and the share/
+ * folders. Each package's licence files go to `dest/licenses/<package>/`, the inventory to
+ * `conda-packages.json`. Returns the counts `{ packages, files }`.
  */
-export async function installPdal({ platform, cache, dest, log = say }) {
-  const packages = lockedPackages(platform);
+export async function installCondaTool({
+  spec,
+  lock,
+  dest,
+  prune,
+  platform,
+  cache,
+  log = say,
+  label,
+}) {
+  const packages = lockedPackages(platform, lock, label);
   const mm = await ensureMicromamba(cache, platform, log);
-  const work = mkdtempSync(join(tmpdir(), 'qpdal-'));
+  const work = mkdtempSync(join(tmpdir(), 'qconda-'));
   try {
-    const spec = join(work, 'explicit.txt');
-    writeFileSync(spec, explicitSpec(packages));
+    const explicit = join(work, 'explicit.txt');
+    writeFileSync(explicit, explicitSpec(packages));
     const prefix = join(work, 'env');
-    run(mm, ['create', '-y', '-q', '-p', prefix, '--file', spec], { env: micromambaEnv(platform) });
+    run(mm, ['create', '-y', '-q', '-p', prefix, '--file', explicit], {
+      env: micromambaEnv(platform),
+    });
     rmSync(dest, { recursive: true, force: true });
     mkdirSync(dest, { recursive: true });
-    const n = platform.startsWith('win32') ? copyWindows(prefix, dest) : copyMac(prefix, dest);
+    const files = platform.startsWith('win32')
+      ? copyWindows(prefix, dest, prune.windows(prefix))
+      : copyMac(prefix, dest, prune.mac);
     const missing = copyLicences(packages, dest);
     if (missing > 0) log(`  warning: ${missing} conda packages came without licence files`);
     const inventory = packages.map(({ name, version, build, license, url }) => ({
@@ -292,13 +318,30 @@ export async function installPdal({ platform, cache, dest, log = say }) {
     }));
     writeFileSync(
       join(dest, 'conda-packages.json'),
-      `${JSON.stringify({ schema: 'conda-packages/1', spec: PDAL_SPEC, packages: inventory }, null, 1)}\n`,
+      `${JSON.stringify({ schema: 'conda-packages/1', spec, packages: inventory }, null, 1)}\n`,
     );
-    log(`  PDAL: ${packages.length} conda-forge packages, ${n} files kept`);
-    return pdalExe(dest, platform);
+    return { packages: packages.length, files };
   } finally {
     rmSync(work, { recursive: true, force: true });
   }
+}
+
+/**
+ * PDAL for `platform` into `dest` (the pack's tools/pdal): the program, its libraries, data and
+ * licences, with `conda-packages.json` (every package with its version, licence and source).
+ */
+export async function installPdal({ platform, cache, dest, log = say }) {
+  const { packages, files } = await installCondaTool({
+    spec: PDAL_SPEC,
+    lock: JSON.parse(readFileSync(LOCK_FILE, 'utf8')),
+    dest,
+    prune: { windows: () => keepWindows, mac: { programs: ['pdal'], share: ['proj', 'gdal'] } },
+    platform,
+    cache,
+    log,
+  });
+  log(`  PDAL: ${packages} conda-forge packages, ${files} files kept`);
+  return pdalExe(dest, platform);
 }
 
 /** The pdal program inside an installPdal folder. */
@@ -333,8 +376,11 @@ export function checkPdal(exe) {
   return { version, missing };
 }
 
-/** Re-solve the lock for every platform (online). */
-async function relock(cache) {
+/**
+ * Solve `spec` on conda-forge for every pack platform (online) and write the lock to `file`:
+ * `{ $comment, schema, spec, channel, platforms: { <subdir>: [package] } }`.
+ */
+export async function relockConda({ spec, file, schema, comment, cache }) {
   const host = `${process.platform}-${process.arch}`;
   const mm = await ensureMicromamba(cache, host);
   const platforms = {};
@@ -345,35 +391,40 @@ async function relock(cache) {
         '-c',
         'conda-forge',
         '--override-channels',
-        PDAL_SPEC,
+        spec,
       ]),
       { env: micromambaEnv(platform), maxBuffer: 64 * 1024 * 1024 },
     );
     const link = JSON.parse(out).actions?.LINK ?? [];
     if (link.length === 0) throw new Error(`micromamba solved nothing for ${subdir}`);
-    platforms[subdir] = link
-      .map(({ name, version, build, url, sha256: hash, license }) => ({
-        name,
-        version,
-        build,
-        license: license ?? '',
-        url,
-        sha256: hash,
-      }))
-      .sort((a, b) => a.name.localeCompare(b.name));
+    // the solver's order is the install order (dependencies first): a package's post-link script
+    // may run a program that needs the libraries before it (gdk-pixbuf's loaders cache)
+    platforms[subdir] = link.map(({ name, version, build, url, sha256: hash, license }) => ({
+      name,
+      version,
+      build,
+      license: license ?? '',
+      url,
+      sha256: hash,
+    }));
     say(`  ${subdir}: ${link.length} packages`);
   }
-  const lock = {
-    $comment:
-      "conda-forge packages of the pack's PDAL (tools/pipeline-pack/pdal.mjs), solved by `node tools/pipeline-pack/pdal.mjs --lock`; do not edit by hand. Installed from these URLs with their SHA-256, never re-solved by a build.",
-    schema: 'pdal-lock/1',
-    spec: PDAL_SPEC,
-    channel: 'conda-forge',
-    platforms,
-  };
-  writeFileSync(LOCK_FILE, `${JSON.stringify(lock, null, 2)}\n`);
-  say(`Wrote ${LOCK_FILE.pathname}`);
+  const lock = { $comment: comment, schema, spec, channel: 'conda-forge', platforms };
+  writeFileSync(file, `${JSON.stringify(lock, null, 2)}\n`);
+  say(`Wrote ${file instanceof URL ? file.pathname : file}`);
+  return lock;
 }
+
+/** Re-solve the PDAL lock for every platform (online). */
+const relock = (cache) =>
+  relockConda({
+    spec: PDAL_SPEC,
+    file: LOCK_FILE,
+    schema: 'pdal-lock/1',
+    comment:
+      "conda-forge packages of the pack's PDAL (tools/pipeline-pack/pdal.mjs), solved by `node tools/pipeline-pack/pdal.mjs --lock`; do not edit by hand. Installed from these URLs with their SHA-256, never re-solved by a build.",
+    cache,
+  });
 
 if (process.argv[1] && resolve(process.argv[1]) === resolve(import.meta.filename)) {
   const { values } = parseArgs({

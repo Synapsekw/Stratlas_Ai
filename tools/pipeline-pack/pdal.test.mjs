@@ -27,6 +27,9 @@ describe('the PDAL lock', () => {
 
   it('refuses a platform it has no packages for', () => {
     expect(() => lockedPackages('linux-x64')).toThrow('no packages for linux-x64');
+    expect(() => lockedPackages('win32-x64', { platforms: {} }, 'ffmpeg-lock.json')).toThrow(
+      'ffmpeg-lock.json has no packages for win32-x64',
+    );
   });
 
   it('becomes a conda explicit file', () => {

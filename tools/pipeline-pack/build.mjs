@@ -3,7 +3,7 @@
 // aio_pipelines, as a folder outside the repository and the installer, with a manifest of every
 // file's size and SHA-256 (the pack is signed file by file in CI and verified by the app later).
 //
-//   node tools/pipeline-pack/build.mjs [--out "E:/Stratlas Data/runtime"] [--force] [--no-pdal] [--no-sam]
+//   node tools/pipeline-pack/build.mjs [--out "E:/Stratlas Data/runtime"] [--force] [--no-pdal] [--no-ffmpeg] [--no-sam]
 //
 // Everything is prebuilt (founder decision of 8 Oct 2026, ADR 0008 amended): the photogrammetry
 // engines are wheels in uv.lock (pycolmap, opencv-python-headless and pymeshlab, for Windows x64
@@ -12,6 +12,9 @@
 // compiled. The native licence report (tools/release/native-licences.mjs) prints a summary and
 // never fails; the size budget of decision 6 still does. --native and --strict, from the old
 // source build, are accepted and ignored. --no-pdal leaves PDAL out (a quicker local pack).
+// ffmpeg (conda-forge's GPL build: libx264, v360, the HEVC decoder) goes into tools/ffmpeg the same
+// way from its lock (ffmpeg.mjs, founder decision 3 of 12 Oct 2026) and is checked for what the
+// walk pipeline needs; --no-ffmpeg leaves it out.
 // The boundary model for Suggest boundaries (MobileSAM, ADR 0011) goes into models/sam from pinned,
 // checksummed downloads (sam.mjs); --no-sam leaves it out.
 //
@@ -37,6 +40,7 @@ import { join, relative, resolve, win32 } from 'node:path';
 import { parseArgs } from 'node:util';
 import { packBudgetProblems } from '../release/budgets.mjs';
 import { runGate } from '../release/native-licences.mjs';
+import { checkFfmpegTool, FFMPEG_SPEC, installFfmpeg } from './ffmpeg.mjs';
 import { checkPdal, installPdal } from './pdal.mjs';
 import { installSam, SAM_MODEL } from './sam.mjs';
 import { envVar } from '../../packages/brand/src/env.ts';
@@ -140,6 +144,32 @@ export function tarCommand(
   const system = win32.join(root, 'System32', 'tar.exe');
   if (exists(system)) return { cmd: system, args: [] };
   return { cmd: 'tar', args: /GNU tar/i.test(version()) ? ['--force-local'] : [] };
+}
+
+/**
+ * The manifest's `tools`: each native tool the pack carries in tools/ (null when the build left it
+ * out), with its conda inventory. `ffmpeg` is checkFfmpegTool's result plus the conda spec.
+ */
+export function packTools({ pdal, ffmpeg }) {
+  return {
+    pdal: pdal ? { path: 'tools/pdal', packages: 'tools/pdal/conda-packages.json' } : null,
+    ffmpeg: ffmpeg
+      ? {
+          path: 'tools/ffmpeg',
+          version: ffmpeg.version.replace(/^ffmpeg version /, ''),
+          source: `conda-forge ${ffmpeg.spec}`,
+          packages: 'tools/ffmpeg/conda-packages.json',
+        }
+      : null,
+  };
+}
+
+/** What is wrong with the pack's ffmpeg (checkFfmpegTool's result), or null. */
+export function ffmpegToolProblem({ version, missing }) {
+  if (missing.length === 0) return null;
+  return version
+    ? `the pack's ffmpeg (${version}) lacks ${missing.join(', ')}`
+    : `the pack's ffmpeg is missing: ${missing.join(', ')}`;
 }
 
 const pyDir = join(repo, 'python');
@@ -281,6 +311,7 @@ async function main() {
       force: { type: 'boolean', default: false },
       'keep-tests': { type: 'boolean', default: false },
       'no-pdal': { type: 'boolean', default: false },
+      'no-ffmpeg': { type: 'boolean', default: false },
       'no-sam': { type: 'boolean', default: false },
       // the old source build's options, ignored since 8 Oct 2026
       native: { type: 'string' },
@@ -375,6 +406,11 @@ async function main() {
       : await installPdal({ platform, cache, dest: join(tmp, 'tools', 'pdal'), log: say });
     if (!pdal) say('  --no-pdal: this pack has no PDAL');
 
+    // 2b'. ffmpeg (conda-forge's GPL build) for the walk pipeline and the app's walk import
+    const ffmpegDir = join(tmp, 'tools', 'ffmpeg');
+    if (values['no-ffmpeg']) say('  --no-ffmpeg: this pack has no ffmpeg');
+    else await installFfmpeg({ platform, cache, dest: ffmpegDir, log: say });
+
     // 2c. The boundary model for Suggest boundaries and the mask assist (ADR 0011)
     const sam = values['no-sam']
       ? null
@@ -431,6 +467,14 @@ async function main() {
       if (missing.length > 0) fail(`PDAL lacks ${missing.join(', ')}`);
       say(`  ${pdalVersion}`);
     }
+    let ffmpeg = null;
+    if (!values['no-ffmpeg']) {
+      const check = checkFfmpegTool(ffmpegDir, platform);
+      const problem = ffmpegToolProblem(check);
+      if (problem) fail(problem);
+      ffmpeg = { ...check, spec: FFMPEG_SPEC };
+      say(`  ${check.version}: v360, libx264 and the HEVC decoder present`);
+    }
 
     // 4b. Native licence report over every DLL, dylib and executable of the pack: a summary, never
     // a failure (founder decision of 8 Oct 2026); the notes go to the build log
@@ -463,6 +507,7 @@ async function main() {
           ? `models/sam (${SAM_MODEL.name} ${SAM_MODEL.version}, ${SAM_MODEL.licence})`
           : null,
       },
+      tools: packTools({ pdal: Boolean(pdal), ffmpeg }),
       createdAt: new Date().toISOString(),
       pipelines,
       files,

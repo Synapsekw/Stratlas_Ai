@@ -952,6 +952,95 @@
       "files": ["tools/pdal/**"],
       "linkage": "shared",
       "note": "conda-forge's prebuilt PDAL with GDAL, PROJ, GEOS and their libraries (tools/pipeline-pack/pdal.mjs); every package with its licence is in tools/pipeline-pack/pdal-lock.json and the pack's tools/pdal/conda-packages.json, their licence files in tools/pdal/licenses"
+    },
+    {
+      "name": "ffmpeg (conda-forge)",
+      "version": "9.0.2 (GPL build, conda-forge)",
+      "spdx": "GPL-3.0-or-later AND GPL-2.0-or-later AND LGPL-2.1-or-later AND LGPL-2.1-only AND LGPL-2.0-only AND BSD-2-Clause AND BSD-3-Clause AND MIT AND Apache-2.0 AND Zlib AND 0BSD AND bzip2-1.0.6 AND IJG AND libpng-2.0 AND HPND AND (GPL-2.0-only OR FTL) AND (LGPL-2.1-only OR MPL-1.1)",
+      "source": "https://github.com/conda-forge/ffmpeg-feedstock",
+      "files": ["tools/ffmpeg/**"],
+      "linkage": "shared",
+      "includes": [
+        {
+          "name": "FFmpeg libraries (built with --enable-gpl --enable-version3)",
+          "spdx": "GPL-3.0-or-later"
+        },
+        {
+          "name": "x264",
+          "spdx": "GPL-2.0-or-later"
+        },
+        {
+          "name": "x265",
+          "spdx": "GPL-2.0-or-later"
+        },
+        {
+          "name": "OpenH264",
+          "spdx": "BSD-2-Clause"
+        },
+        {
+          "name": "libaom",
+          "spdx": "BSD-2-Clause"
+        },
+        {
+          "name": "SVT-AV1",
+          "spdx": "BSD-2-Clause"
+        },
+        {
+          "name": "dav1d",
+          "spdx": "BSD-2-Clause"
+        },
+        {
+          "name": "LAME",
+          "spdx": "LGPL-2.0-only"
+        },
+        {
+          "name": "mpg123",
+          "spdx": "LGPL-2.1-only"
+        },
+        {
+          "name": "Opus, Ogg, Vorbis",
+          "spdx": "BSD-3-Clause"
+        },
+        {
+          "name": "libjxl, libwebp, Highway",
+          "spdx": "BSD-3-Clause"
+        },
+        {
+          "name": "libvpx",
+          "spdx": "BSD-3-Clause",
+          "where": "macOS"
+        },
+        {
+          "name": "librsvg, Pango, GLib, gdk-pixbuf, FriBidi, libintl, libiconv",
+          "spdx": "LGPL-2.1-or-later"
+        },
+        {
+          "name": "cairo",
+          "spdx": "LGPL-2.1-only OR MPL-1.1"
+        },
+        {
+          "name": "FreeType",
+          "spdx": "GPL-2.0-only OR FTL"
+        },
+        {
+          "name": "HarfBuzz, Fontconfig, ICU, libxml2, pixman, Brotli, libdeflate, libexpat",
+          "spdx": "MIT"
+        },
+        {
+          "name": "OpenSSL, Vulkan loader",
+          "spdx": "Apache-2.0"
+        },
+        {
+          "name": "libjpeg-turbo, libpng, libtiff, zlib, bzip2, xz, zstd",
+          "spdx": "IJG AND libpng-2.0 AND HPND AND Zlib AND bzip2-1.0.6 AND 0BSD AND BSD-3-Clause"
+        },
+        {
+          "name": "libplacebo, libass, OpenVINO, glslang, shaderc",
+          "spdx": "LGPL-2.1-or-later AND ISC AND Apache-2.0 AND BSD-3-Clause",
+          "where": "macOS"
+        }
+      ],
+      "note": "conda-forge's prebuilt GPL ffmpeg (tools/pipeline-pack/ffmpeg.mjs), pruned to ffmpeg, ffprobe and the libraries they load; every package with its licence is in tools/pipeline-pack/ffmpeg-lock.json and the pack's tools/ffmpeg/conda-packages.json, their licence files in tools/ffmpeg/licenses"
     }
   ]
 }

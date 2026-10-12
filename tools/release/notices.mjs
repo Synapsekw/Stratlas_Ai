@@ -188,10 +188,11 @@ function counts(entries) {
 
 const readJson = (rel) => JSON.parse(readFileSync(join(repo, rel), 'utf8'));
 
-/** The pack's native libraries: { libs, bundled, pdal } as inventory entries. */
+/** The pack's native libraries: { libs, bundled, pdal, ffmpeg } as inventory entries. */
 export function nativeInventory(
   libsDoc = readJson('tools/release/native-libs.json'),
   lockDoc = readJson('tools/pipeline-pack/pdal-lock.json'),
+  ffmpegLockDoc = readJson('tools/pipeline-pack/ffmpeg-lock.json'),
 ) {
   const entry = (name, version, license, homepage = '') => ({
     name,
@@ -210,27 +211,33 @@ export function nativeInventory(
       ),
     ),
   );
-  const subdirs = Object.keys(lockDoc.platforms ?? {});
-  const byName = new Map();
-  for (const [sub, pkgs] of Object.entries(lockDoc.platforms ?? {}))
-    for (const p of pkgs) {
-      const e = byName.get(p.name) ?? { versions: new Set(), licences: new Set(), subs: [] };
-      e.versions.add(p.version);
-      e.licences.add(p.license || 'see package');
-      e.subs.push(sub);
-      byName.set(p.name, e);
-    }
-  const pdal = [...byName].map(([name, e]) =>
-    entry(
-      e.subs.length === subdirs.length ? name : `${name} (${e.subs.join(', ')})`,
-      [...e.versions].join(', '),
-      [...e.licences].join(' / '),
-    ),
-  );
+  // a conda lock's packages, once each, with the platforms named when not on all of them
+  const conda = (doc) => {
+    const subdirs = Object.keys(doc.platforms ?? {});
+    const byName = new Map();
+    for (const [sub, pkgs] of Object.entries(doc.platforms ?? {}))
+      for (const p of pkgs) {
+        const e = byName.get(p.name) ?? { versions: new Set(), licences: new Set(), subs: [] };
+        e.versions.add(p.version);
+        e.licences.add(p.license || 'see package');
+        e.subs.push(sub);
+        byName.set(p.name, e);
+      }
+    return sort(
+      [...byName].map(([name, e]) =>
+        entry(
+          e.subs.length === subdirs.length ? name : `${name} (${e.subs.join(', ')})`,
+          [...e.versions].join(', '),
+          [...e.licences].join(' / '),
+        ),
+      ),
+    );
+  };
   return {
     libs: sort(libsDoc.libs.map((r) => entry(r.name, r.version, r.spdx, r.source))),
     bundled,
-    pdal: sort(pdal),
+    pdal: conda(lockDoc),
+    ffmpeg: conda(ffmpegLockDoc),
   };
 }
 
@@ -308,9 +315,9 @@ function nativeSections(native, data, models, addon) {
   if (native) {
     out.push(`## Pipeline pack native libraries
 
-Generated from \`tools/release/native-libs.json\` and \`tools/pipeline-pack/pdal-lock.json\`. Since the founder decision of 8 Oct 2026 (ADR 0008, amended) the pack is built from prebuilt binaries: COLMAP's, OpenCV's and MeshLab's PyPI wheels and conda-forge's PDAL, with their GPL and LGPL parts. The native licence report (\`tools/release/native-licences.mjs\`) lists every DLL, dylib and executable of each pack against these inventories; it never fails a build.
+Generated from \`tools/release/native-libs.json\`, \`tools/pipeline-pack/pdal-lock.json\` and \`tools/pipeline-pack/ffmpeg-lock.json\`. Since the founder decision of 8 Oct 2026 (ADR 0008, amended) the pack is built from prebuilt binaries: COLMAP's, OpenCV's and MeshLab's PyPI wheels and conda-forge's PDAL, with their GPL and LGPL parts. The native licence report (\`tools/release/native-licences.mjs\`) lists every DLL, dylib and executable of each pack against these inventories; it never fails a build.
 
-**GPL.** Our pipeline code (MIT) runs in one process with GPL libraries: SuiteSparse CHOLMOD and SPQR inside pycolmap (GPL-2.0-or-later), MeshLab inside pymeshlab (GPL-3.0) and, on macOS, the GPL FFmpeg build inside OpenCV's wheel. A pipeline pack as a whole is therefore distributed under the terms of the GNU General Public License, version 3; the source of each GPL component is available from its project (the sources below), and the source of our pipeline code is available on request. The desktop app and the Team Server do not link any of it: they start the pack as a separate program.
+**GPL.** Our pipeline code (MIT) runs in one process with GPL libraries: SuiteSparse CHOLMOD and SPQR inside pycolmap (GPL-2.0-or-later), MeshLab inside pymeshlab (GPL-3.0), the ffmpeg tool (\`tools/ffmpeg\`, a GPL build with x264 and x265) and, on macOS, the GPL FFmpeg build inside OpenCV's wheel. A pipeline pack as a whole is therefore distributed under the terms of the GNU General Public License, version 3; the source of each GPL component is available from its project (the sources below), and the source of our pipeline code is available on request. The desktop app and the Team Server do not link any of it: they start the pack as a separate program.
 
 ### Inside the Python wheels and CPython
 
@@ -329,7 +336,17 @@ ${table(native.bundled)}
 The \`pdal\` tool of the pack (\`tools/pdal\`), installed from conda-forge's \`libpdal-core\` with the packages it needs; ${String(native.pdal.length)} packages: ${counts(native.pdal)}. Each package's licence files ship in \`tools/pdal/licenses\`.
 
 ${table(native.pdal)}
-`);
+${
+  native.ffmpeg?.length
+    ? `
+### ffmpeg from conda-forge
+
+The \`ffmpeg\` and \`ffprobe\` tools of the pack (\`tools/ffmpeg\`), installed from conda-forge's GPL \`ffmpeg\` build (configured with \`--enable-gpl --enable-version3\`, so GPL-3.0-or-later as a whole) and pruned to the libraries the two programs load; ${String(native.ffmpeg.length)} packages in the lock: ${counts(native.ffmpeg)}. Each package's licence files ship in \`tools/ffmpeg/licenses\`.
+
+${table(native.ffmpeg)}
+`
+    : ''
+}`);
   }
   if (models?.length) {
     out.push(`## Pipeline pack models

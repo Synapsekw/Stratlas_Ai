@@ -97,6 +97,19 @@ describe('licence inventory', () => {
     );
     expect(native.bundled.map((b) => b.name)).toEqual(['SuiteSparse SPQR (in pycolmap, Windows)']);
     expect(native.pdal.map((b) => b.name)).toEqual(['libcxx (osx-arm64)', 'proj']);
+    const withFfmpeg = nativeInventory(
+      { libs: [] },
+      { platforms: {} },
+      {
+        platforms: {
+          'win-64': [{ name: 'x264', version: '1!164.3095', license: 'GPL-2.0-or-later' }],
+        },
+      },
+    );
+    expect(withFfmpeg.ffmpeg).toEqual([
+      { name: 'x264', version: '1!164.3095', license: 'GPL-2.0-or-later', homepage: '' },
+    ]);
+    expect(render([], [], withFfmpeg)).toContain('### ffmpeg from conda-forge');
     const md = render([], [], native, [
       { name: 'Copernicus DEM GLO-30', kind: 'terrain', license: 'X', attribution: '© DLR' },
     ]);
@@ -141,7 +154,13 @@ describe('licence inventory', () => {
   it('lists every native library and data source of the inventories', () => {
     const committed = readFileSync(NOTICES, 'utf8');
     const native = nativeInventory();
-    const missing = [...native.libs, ...native.bundled, ...native.pdal, ...dataInventory()]
+    const missing = [
+      ...native.libs,
+      ...native.bundled,
+      ...native.pdal,
+      ...native.ffmpeg,
+      ...dataInventory(),
+    ]
       .map((e) => e.name)
       .filter((n) => !committed.includes(`| ${n} `));
     expect(missing).toEqual([]);

@@ -36,9 +36,12 @@ export const BUDGETS = Object.freeze({
    * Pipeline pack 0.5.0 per platform (M10 decision 6): the unpacked folder and its archive. Over
    * budget, split a "photogrammetry" component pack rather than grow the base. The unpacked
    * budget was 1,100 MB until the boundary model of M11 G12 (MobileSAM, 44.7 MB) took the Windows
-   * pack to about 1,106 MB: the founder raised it to 1,150 MB on 10 Oct 2026 (ADR 0011).
+   * pack to about 1,106 MB: the founder raised it to 1,150 MB on 10 Oct 2026 (ADR 0011). ffmpeg in
+   * the pack (founder decision of 12 Oct 2026, Walks 360 `walk.process`; conda-forge's GPL build,
+   * about 141 MB pruned) takes the Windows pack to about 1,245 MB: raised to 1,300 MB with it,
+   * pending the founder's confirmation of the number.
    */
-  pack: Object.freeze({ unpackedBytes: 1_150_000_000, compressedBytes: 450_000_000 }),
+  pack: Object.freeze({ unpackedBytes: 1_300_000_000, compressedBytes: 450_000_000 }),
   /**
    * The optional GPU add-on beside the pack (tools/pipeline-pack/accelerator.mjs), with a budget
    * of its own so the pack's does not move (founder, 11 Oct 2026: one add-on that carries cuBLAS,

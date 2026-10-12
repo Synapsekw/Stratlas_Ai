@@ -335,6 +335,30 @@ describe('the committed inventory', () => {
     ]);
   });
 
+  it("knows the pack's conda-forge ffmpeg and its codec libraries", () => {
+    const bin = 'tools/ffmpeg/Library/bin';
+    const r = checkFiles(
+      [
+        `${bin}/ffmpeg.exe`,
+        `${bin}/ffprobe.exe`,
+        `${bin}/avcodec-63.dll`,
+        `${bin}/libx264-164.dll`,
+        `${bin}/libx265.dll`,
+        `${bin}/api-ms-win-crt-runtime-l1-1-0.dll`,
+        'tools/ffmpeg/bin/ffmpeg',
+        'tools/ffmpeg/lib/libavcodec.62.dylib',
+      ],
+      new Map(),
+      loadInventory(),
+      loadPolicy(),
+    );
+    expect(r.problems).toEqual([]);
+    expect([...r.used]).toContain('ffmpeg (conda-forge)');
+    const row = loadInventory().libs.find((l) => l.name === 'ffmpeg (conda-forge)');
+    expect(row.spdx).toMatch(/GPL-2\.0-or-later/);
+    expect(row.includes.map((i) => i.name)).toEqual(expect.arrayContaining(['x264', 'x265']));
+  });
+
   it('runs end to end on a folder and reports what it found', () => {
     put('tools/pdal/bin/pdal.exe', 'MZ');
     const out = runGate({ scan: [root], policy, inventory });

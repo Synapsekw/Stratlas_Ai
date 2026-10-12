@@ -232,13 +232,13 @@ The full licence texts ship with the software: the app lists every package with 
 
 ## Pipeline pack native libraries
 
-Generated from `tools/release/native-libs.json` and `tools/pipeline-pack/pdal-lock.json`. Since the founder decision of 8 Oct 2026 (ADR 0008, amended) the pack is built from prebuilt binaries: COLMAP's, OpenCV's and MeshLab's PyPI wheels and conda-forge's PDAL, with their GPL and LGPL parts. The native licence report (`tools/release/native-licences.mjs`) lists every DLL, dylib and executable of each pack against these inventories; it never fails a build.
+Generated from `tools/release/native-libs.json`, `tools/pipeline-pack/pdal-lock.json` and `tools/pipeline-pack/ffmpeg-lock.json`. Since the founder decision of 8 Oct 2026 (ADR 0008, amended) the pack is built from prebuilt binaries: COLMAP's, OpenCV's and MeshLab's PyPI wheels and conda-forge's PDAL, with their GPL and LGPL parts. The native licence report (`tools/release/native-licences.mjs`) lists every DLL, dylib and executable of each pack against these inventories; it never fails a build.
 
-**GPL.** Our pipeline code (MIT) runs in one process with GPL libraries: SuiteSparse CHOLMOD and SPQR inside pycolmap (GPL-2.0-or-later), MeshLab inside pymeshlab (GPL-3.0) and, on macOS, the GPL FFmpeg build inside OpenCV's wheel. A pipeline pack as a whole is therefore distributed under the terms of the GNU General Public License, version 3; the source of each GPL component is available from its project (the sources below), and the source of our pipeline code is available on request. The desktop app and the Team Server do not link any of it: they start the pack as a separate program.
+**GPL.** Our pipeline code (MIT) runs in one process with GPL libraries: SuiteSparse CHOLMOD and SPQR inside pycolmap (GPL-2.0-or-later), MeshLab inside pymeshlab (GPL-3.0), the ffmpeg tool (`tools/ffmpeg`, a GPL build with x264 and x265) and, on macOS, the GPL FFmpeg build inside OpenCV's wheel. A pipeline pack as a whole is therefore distributed under the terms of the GNU General Public License, version 3; the source of each GPL component is available from its project (the sources below), and the source of our pipeline code is available on request. The desktop app and the Team Server do not link any of it: they start the pack as a separate program.
 
 ### Inside the Python wheels and CPython
 
-55 libraries: MIT (14), BSD-3-Clause (5), BSD-2-Clause (3), LGPL-2.1-or-later (3), Zlib (3), Apache-2.0 (2), GPL-3.0-or-later WITH GCC-exception-3.1 (2), MPL-1.1 OR GPL-2.0-or-later OR LGPL-2.1-or-later (2), 0BSD (1), Apache-2.0 AND GPL-2.0-or-later AND LGPL-2.1-or-later AND (LGPL-3.0-or-later OR GPL-2.0-or-later) AND BSD-3-Clause AND ISC AND MIT AND (FTL OR GPL-2.0-or-later) AND HPND AND (LGPL-2.1-or-later OR MPL-2.0 OR GPL-2.0-or-later) AND Zlib AND LGPL-2.0-or-later AND LGPL-3.0-or-later AND MPL-2.0 AND X11 AND BSD-2-Clause AND BSD-3-Clause-Clear AND WTFPL AND BSD-2-Clause-Patent AND CC0-1.0 AND IJG AND libpng-2.0 AND libtiff AND 0BSD (1), Apache-2.0 WITH LLVM-exception (1), blessing (1), BSD-3-Clause AND GPL-3.0-or-later WITH GCC-exception-3.1 (1), BSD-3-Clause AND LGPL-2.1-or-later AND GPL-2.0-or-later AND BSL-1.0 AND Apache-2.0 AND BSD-2-Clause AND MIT AND BSD-3-Clause-Open-MPI AND GPL-3.0-or-later WITH GCC-exception-3.1 AND curl AND blessing AND IJG AND Zlib AND libpng-2.0 AND libtiff AND bzip2-1.0.6 AND 0BSD AND (BSD-3-Clause OR GPL-2.0-only) AND Apache-2.0 WITH LLVM-exception (1), BSD-3-Clause AND MIT AND Apache-2.0 AND LGPL-2.1-only AND GPL-2.0-or-later AND MPL-1.1 AND Zlib AND curl AND blessing AND HPND AND 0BSD AND BSD-2-Clause AND ISC AND bzip2-1.0.6 AND IJG AND libpng-2.0 AND (Apache-2.0 WITH LLVM-exception) (1), BSD-3-Clause OR GPL-2.0-only (1), curl (1), FTL OR GPL-2.0-or-later (1), GPL-3.0-only AND LGPL-3.0-only AND BSD-3-Clause AND MIT AND Apache-2.0 AND BSD-2-Clause AND BSL-1.0 AND LGPL-2.1-or-later AND (LGPL-3.0-or-later OR GPL-2.0-or-later) AND LGPL-3.0-or-later AND Apache-2.0 WITH LLVM-exception AND (FTL OR GPL-2.0-or-later) AND IJG AND libpng-2.0 AND libtiff AND 0BSD (1), IJG AND BSD-3-Clause AND Zlib (1), LGPL-2.1-only (1), libpng-2.0 (1), libtiff (1), LicenseRef-Microsoft-VC-Redist (1), PostgreSQL (1), PSF-2.0 (1), Qhull (1), TCL (1), X11 (1).
+56 libraries: MIT (14), BSD-3-Clause (5), BSD-2-Clause (3), LGPL-2.1-or-later (3), Zlib (3), Apache-2.0 (2), GPL-3.0-or-later WITH GCC-exception-3.1 (2), MPL-1.1 OR GPL-2.0-or-later OR LGPL-2.1-or-later (2), 0BSD (1), Apache-2.0 AND GPL-2.0-or-later AND LGPL-2.1-or-later AND (LGPL-3.0-or-later OR GPL-2.0-or-later) AND BSD-3-Clause AND ISC AND MIT AND (FTL OR GPL-2.0-or-later) AND HPND AND (LGPL-2.1-or-later OR MPL-2.0 OR GPL-2.0-or-later) AND Zlib AND LGPL-2.0-or-later AND LGPL-3.0-or-later AND MPL-2.0 AND X11 AND BSD-2-Clause AND BSD-3-Clause-Clear AND WTFPL AND BSD-2-Clause-Patent AND CC0-1.0 AND IJG AND libpng-2.0 AND libtiff AND 0BSD (1), Apache-2.0 WITH LLVM-exception (1), blessing (1), BSD-3-Clause AND GPL-3.0-or-later WITH GCC-exception-3.1 (1), BSD-3-Clause AND LGPL-2.1-or-later AND GPL-2.0-or-later AND BSL-1.0 AND Apache-2.0 AND BSD-2-Clause AND MIT AND BSD-3-Clause-Open-MPI AND GPL-3.0-or-later WITH GCC-exception-3.1 AND curl AND blessing AND IJG AND Zlib AND libpng-2.0 AND libtiff AND bzip2-1.0.6 AND 0BSD AND (BSD-3-Clause OR GPL-2.0-only) AND Apache-2.0 WITH LLVM-exception (1), BSD-3-Clause AND MIT AND Apache-2.0 AND LGPL-2.1-only AND GPL-2.0-or-later AND MPL-1.1 AND Zlib AND curl AND blessing AND HPND AND 0BSD AND BSD-2-Clause AND ISC AND bzip2-1.0.6 AND IJG AND libpng-2.0 AND (Apache-2.0 WITH LLVM-exception) (1), BSD-3-Clause OR GPL-2.0-only (1), curl (1), FTL OR GPL-2.0-or-later (1), GPL-3.0-only AND LGPL-3.0-only AND BSD-3-Clause AND MIT AND Apache-2.0 AND BSD-2-Clause AND BSL-1.0 AND LGPL-2.1-or-later AND (LGPL-3.0-or-later OR GPL-2.0-or-later) AND LGPL-3.0-or-later AND Apache-2.0 WITH LLVM-exception AND (FTL OR GPL-2.0-or-later) AND IJG AND libpng-2.0 AND libtiff AND 0BSD (1), GPL-3.0-or-later AND GPL-2.0-or-later AND LGPL-2.1-or-later AND LGPL-2.1-only AND LGPL-2.0-only AND BSD-2-Clause AND BSD-3-Clause AND MIT AND Apache-2.0 AND Zlib AND 0BSD AND bzip2-1.0.6 AND IJG AND libpng-2.0 AND HPND AND (GPL-2.0-only OR FTL) AND (LGPL-2.1-only OR MPL-1.1) (1), IJG AND BSD-3-Clause AND Zlib (1), LGPL-2.1-only (1), libpng-2.0 (1), libtiff (1), LicenseRef-Microsoft-VC-Redist (1), PostgreSQL (1), PSF-2.0 (1), Qhull (1), TCL (1), X11 (1).
 
 | Package                                    | Version                                    | Licence                                                                                                                                                                                                                                                                                                                                                                                                                                     |
 | ------------------------------------------ | ------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -247,6 +247,7 @@ Generated from `tools/release/native-libs.json` and `tools/pipeline-pack/pdal-lo
 | cpython                                    | 3.13 (python-build-standalone)             | PSF-2.0                                                                                                                                                                                                                                                                                                                                                                                                                                     |
 | curl                                       | 8.x (rasterio)                             | curl                                                                                                                                                                                                                                                                                                                                                                                                                                        |
 | expat                                      | 2.x (rasterio)                             | MIT                                                                                                                                                                                                                                                                                                                                                                                                                                         |
+| ffmpeg (conda-forge)                       | 9.0.2 (GPL build, conda-forge)             | GPL-3.0-or-later AND GPL-2.0-or-later AND LGPL-2.1-or-later AND LGPL-2.1-only AND LGPL-2.0-only AND BSD-2-Clause AND BSD-3-Clause AND MIT AND Apache-2.0 AND Zlib AND 0BSD AND bzip2-1.0.6 AND IJG AND libpng-2.0 AND HPND AND (GPL-2.0-only OR FTL) AND (LGPL-2.1-only OR MPL-1.1)                                                                                                                                                         |
 | freetype                                   | 2.14 (Pillow macOS)                        | FTL OR GPL-2.0-or-later                                                                                                                                                                                                                                                                                                                                                                                                                     |
 | freexl                                     | 2.0 (rasterio Windows)                     | MPL-1.1 OR GPL-2.0-or-later OR LGPL-2.1-or-later                                                                                                                                                                                                                                                                                                                                                                                            |
 | gdal                                       | 3.12 (rasterio 1.5)                        | MIT                                                                                                                                                                                                                                                                                                                                                                                                                                         |
@@ -410,6 +411,25 @@ What the pycolmap, opencv-python-headless and pymeshlab wheels carry, as their p
 | LLVM OpenMP (libomp) (in pymeshlab, macOS)                                                                                                                          | 2025.7.post1 (PyPI wheel)      | Apache-2.0 WITH LLVM-exception                                                    |
 | FreeType, GLib, gettext (libintl), md4c, PCRE2 (in pymeshlab, macOS)                                                                                                | 2025.7.post1 (PyPI wheel)      | (FTL OR GPL-2.0-or-later) AND LGPL-2.1-or-later AND MIT AND BSD-3-Clause          |
 | libjpeg-turbo, libpng, libtiff, libwebp, zstd, xz (in pymeshlab, macOS)                                                                                             | 2025.7.post1 (PyPI wheel)      | IJG AND libpng-2.0 AND libtiff AND BSD-3-Clause AND 0BSD                          |
+| FFmpeg libraries (built with --enable-gpl --enable-version3) (in ffmpeg)                                                                                            | 9.0.2 (GPL build, conda-forge) | GPL-3.0-or-later                                                                  |
+| x264 (in ffmpeg)                                                                                                                                                    | 9.0.2 (GPL build, conda-forge) | GPL-2.0-or-later                                                                  |
+| x265 (in ffmpeg)                                                                                                                                                    | 9.0.2 (GPL build, conda-forge) | GPL-2.0-or-later                                                                  |
+| OpenH264 (in ffmpeg)                                                                                                                                                | 9.0.2 (GPL build, conda-forge) | BSD-2-Clause                                                                      |
+| libaom (in ffmpeg)                                                                                                                                                  | 9.0.2 (GPL build, conda-forge) | BSD-2-Clause                                                                      |
+| SVT-AV1 (in ffmpeg)                                                                                                                                                 | 9.0.2 (GPL build, conda-forge) | BSD-2-Clause                                                                      |
+| dav1d (in ffmpeg)                                                                                                                                                   | 9.0.2 (GPL build, conda-forge) | BSD-2-Clause                                                                      |
+| LAME (in ffmpeg)                                                                                                                                                    | 9.0.2 (GPL build, conda-forge) | LGPL-2.0-only                                                                     |
+| mpg123 (in ffmpeg)                                                                                                                                                  | 9.0.2 (GPL build, conda-forge) | LGPL-2.1-only                                                                     |
+| Opus, Ogg, Vorbis (in ffmpeg)                                                                                                                                       | 9.0.2 (GPL build, conda-forge) | BSD-3-Clause                                                                      |
+| libjxl, libwebp, Highway (in ffmpeg)                                                                                                                                | 9.0.2 (GPL build, conda-forge) | BSD-3-Clause                                                                      |
+| libvpx (in ffmpeg, macOS)                                                                                                                                           | 9.0.2 (GPL build, conda-forge) | BSD-3-Clause                                                                      |
+| librsvg, Pango, GLib, gdk-pixbuf, FriBidi, libintl, libiconv (in ffmpeg)                                                                                            | 9.0.2 (GPL build, conda-forge) | LGPL-2.1-or-later                                                                 |
+| cairo (in ffmpeg)                                                                                                                                                   | 9.0.2 (GPL build, conda-forge) | LGPL-2.1-only OR MPL-1.1                                                          |
+| FreeType (in ffmpeg)                                                                                                                                                | 9.0.2 (GPL build, conda-forge) | GPL-2.0-only OR FTL                                                               |
+| HarfBuzz, Fontconfig, ICU, libxml2, pixman, Brotli, libdeflate, libexpat (in ffmpeg)                                                                                | 9.0.2 (GPL build, conda-forge) | MIT                                                                               |
+| OpenSSL, Vulkan loader (in ffmpeg)                                                                                                                                  | 9.0.2 (GPL build, conda-forge) | Apache-2.0                                                                        |
+| libjpeg-turbo, libpng, libtiff, zlib, bzip2, xz, zstd (in ffmpeg)                                                                                                   | 9.0.2 (GPL build, conda-forge) | IJG AND libpng-2.0 AND HPND AND Zlib AND bzip2-1.0.6 AND 0BSD AND BSD-3-Clause    |
+| libplacebo, libass, OpenVINO, glslang, shaderc (in ffmpeg, macOS)                                                                                                   | 9.0.2 (GPL build, conda-forge) | LGPL-2.1-or-later AND ISC AND Apache-2.0 AND BSD-3-Clause                         |
 
 ### PDAL from conda-forge
 
@@ -480,6 +500,106 @@ The `pdal` tool of the pack (`tools/pdal`), installed from conda-forge's `libpda
 | xerces-c                        | 3.3.0        | Apache-2.0                                    |
 | zlib                            | 1.3.2        | Zlib                                          |
 | zstd                            | 1.5.7        | BSD-3-Clause                                  |
+
+### ffmpeg from conda-forge
+
+The `ffmpeg` and `ffprobe` tools of the pack (`tools/ffmpeg`), installed from conda-forge's GPL `ffmpeg` build (configured with `--enable-gpl --enable-version3`, so GPL-3.0-or-later as a whole) and pruned to the libraries the two programs load; 93 packages in the lock: Apache-2.0 (19), BSD-3-Clause (16), MIT (15), LGPL-2.1-or-later (8), BSD-2-Clause (5), GPL-2.0-or-later (3), Zlib (3), GPL-2.0-only OR FTL (2), ISC (2), LGPL-2.1-only (2), LicenseRef-MicrosoftVisualCpp2015-2022Runtime (2), OFL-1.1 (2), 0BSD (1), AFL-2.1 OR GPL-2.0-or-later (1), Apache-2.0 OR BSD-3-Clause (1), Apache-2.0 WITH LLVM-exception (1), bzip2-1.0.6 (1), GPL-2.0-or-later OR LGPL-3.0-or-later (1), HPND (1), IJG AND BSD-3-Clause AND Zlib (1), LGPL-2.0-only (1), LGPL-2.0-or-later (1), LGPL-2.1-only or MPL-1.1 (1), LicenseRef-MicrosoftWindowsSDK10 (1), LicenseRef-Ubuntu-Font-Licence-Version-1.0 (1), zlib-acknowledgement (1). Each package's licence files ship in `tools/ffmpeg/licenses`.
+
+| Package                                          | Version        | Licence                                       |
+| ------------------------------------------------ | -------------- | --------------------------------------------- |
+| aom                                              | 3.14.1         | BSD-2-Clause                                  |
+| bzip2                                            | 1.0.8          | bzip2-1.0.6                                   |
+| ca-certificates                                  | 2026.7.22      | ISC                                           |
+| cairo                                            | 1.18.6         | LGPL-2.1-only or MPL-1.1                      |
+| dbus (osx-arm64, osx-64)                         | 1.16.2         | AFL-2.1 OR GPL-2.0-or-later                   |
+| ffmpeg                                           | 9.0.2          | GPL-2.0-or-later                              |
+| font-ttf-dejavu-sans-mono                        | 2.37           | BSD-3-Clause                                  |
+| font-ttf-inconsolata                             | 3.000          | OFL-1.1                                       |
+| font-ttf-source-code-pro                         | 2.038          | OFL-1.1                                       |
+| font-ttf-ubuntu                                  | 0.83           | LicenseRef-Ubuntu-Font-Licence-Version-1.0    |
+| fontconfig                                       | 2.18.3         | MIT                                           |
+| fonts-conda-ecosystem                            | 1              | BSD-3-Clause                                  |
+| fonts-conda-forge                                | 1              | BSD-3-Clause                                  |
+| fribidi                                          | 1.0.17         | LGPL-2.1-or-later                             |
+| gdk-pixbuf                                       | 2.44.8         | LGPL-2.1-or-later                             |
+| glslang (osx-arm64, osx-64)                      | 16.6.0         | BSD-3-Clause                                  |
+| gmp (osx-arm64, osx-64)                          | 6.3.0          | GPL-2.0-or-later OR LGPL-3.0-or-later         |
+| graphite2                                        | 1.3.15         | LGPL-2.0-or-later                             |
+| icu                                              | 78.3           | MIT                                           |
+| lame                                             | 4.0            | LGPL-2.0-only                                 |
+| lcms2 (osx-arm64, osx-64)                        | 2.19.1         | MIT                                           |
+| lerc                                             | 4.2.0          | Apache-2.0                                    |
+| libabseil (osx-arm64)                            | 20260526.0     | Apache-2.0                                    |
+| libass (osx-arm64, osx-64)                       | 0.17.5         | ISC                                           |
+| libbrotlicommon                                  | 1.2.0          | MIT                                           |
+| libbrotlidec                                     | 1.2.0          | MIT                                           |
+| libbrotlienc                                     | 1.2.0          | MIT                                           |
+| libcxx (osx-arm64, osx-64)                       | 23.1.3         | Apache-2.0 WITH LLVM-exception                |
+| libdav1d (win-64)                                | 1.5.4          | BSD-2-Clause                                  |
+| libdav1d7                                        | 1.5.4          | BSD-2-Clause                                  |
+| libdeflate                                       | 1.25           | MIT                                           |
+| libdovi (osx-arm64, osx-64)                      | 3.4.0          | MIT                                           |
+| libexpat                                         | 2.8.5          | MIT                                           |
+| libffi                                           | 3.7.0          | MIT                                           |
+| libfreetype                                      | 2.14.3         | GPL-2.0-only OR FTL                           |
+| libfreetype6                                     | 2.14.3         | GPL-2.0-only OR FTL                           |
+| libglib                                          | 2.90.1, 2.90.0 | LGPL-2.1-or-later                             |
+| libharfbuzz                                      | 14.6.0         | MIT                                           |
+| libhwloc (osx-arm64)                             | 2.15.0         | BSD-3-Clause                                  |
+| libhwy                                           | 1.4.0          | Apache-2.0 OR BSD-3-Clause                    |
+| libiconv                                         | 1.18           | LGPL-2.1-only                                 |
+| libintl                                          | 0.22.5, 0.25.1 | LGPL-2.1-or-later                             |
+| libjpeg-turbo                                    | 3.2.0          | IJG AND BSD-3-Clause AND Zlib                 |
+| libjxl                                           | 0.12.0         | BSD-3-Clause                                  |
+| liblzma                                          | 5.8.3          | 0BSD                                          |
+| libogg                                           | 1.3.5          | BSD-3-Clause                                  |
+| libopenvino (osx-arm64)                          | 2026.4.0       | Apache-2.0                                    |
+| libopenvino-arm-cpu-plugin (osx-arm64)           | 2026.4.0       | Apache-2.0                                    |
+| libopenvino-auto-batch-plugin (osx-arm64)        | 2026.4.0       | Apache-2.0                                    |
+| libopenvino-auto-plugin (osx-arm64)              | 2026.4.0       | Apache-2.0                                    |
+| libopenvino-gguf-frontend (osx-arm64)            | 2026.4.0       | Apache-2.0                                    |
+| libopenvino-hetero-plugin (osx-arm64)            | 2026.4.0       | Apache-2.0                                    |
+| libopenvino-ir-frontend (osx-arm64)              | 2026.4.0       | Apache-2.0                                    |
+| libopenvino-onnx-frontend (osx-arm64)            | 2026.4.0       | Apache-2.0                                    |
+| libopenvino-paddle-frontend (osx-arm64)          | 2026.4.0       | Apache-2.0                                    |
+| libopenvino-pytorch-frontend (osx-arm64)         | 2026.4.0       | Apache-2.0                                    |
+| libopenvino-tensorflow-frontend (osx-arm64)      | 2026.4.0       | Apache-2.0                                    |
+| libopenvino-tensorflow-lite-frontend (osx-arm64) | 2026.4.0       | Apache-2.0                                    |
+| libopus                                          | 1.6.1          | BSD-3-Clause                                  |
+| libplacebo (osx-arm64, osx-64)                   | 7.360.1        | LGPL-2.1-or-later                             |
+| libpng                                           | 1.6.59         | zlib-acknowledgement                          |
+| libprotobuf (osx-arm64)                          | 7.35.1         | BSD-3-Clause                                  |
+| librsvg                                          | 2.62.4         | LGPL-2.1-or-later                             |
+| libtiff                                          | 4.7.2          | HPND                                          |
+| libusb                                           | 1.0.30         | LGPL-2.1-or-later                             |
+| libvorbis                                        | 1.3.7          | BSD-3-Clause                                  |
+| libvpx (osx-arm64, osx-64)                       | 1.17.0         | BSD-3-Clause                                  |
+| libvulkan-loader                                 | 1.4.357.0      | Apache-2.0                                    |
+| libwebp-base                                     | 1.6.0          | BSD-3-Clause                                  |
+| libxml2                                          | 2.15.4         | MIT                                           |
+| libxml2-16                                       | 2.15.4         | MIT                                           |
+| libzlib                                          | 1.3.2          | Zlib                                          |
+| mpg123                                           | 1.33.7         | LGPL-2.1-only                                 |
+| openh264                                         | 2.6.0          | BSD-2-Clause                                  |
+| openssl                                          | 3.6.5          | Apache-2.0                                    |
+| pango                                            | 1.58.2         | LGPL-2.1-or-later                             |
+| pcre2                                            | 10.47          | BSD-3-Clause                                  |
+| pixman                                           | 0.46.4         | MIT                                           |
+| pugixml (osx-arm64)                              | 1.15           | MIT                                           |
+| sdl2                                             | 2.32.56        | Zlib                                          |
+| sdl3                                             | 3.4.18         | Zlib                                          |
+| shaderc (osx-arm64, osx-64)                      | 2026.3         | Apache-2.0                                    |
+| snappy (osx-arm64)                               | 1.2.2          | BSD-3-Clause                                  |
+| spirv-tools (osx-arm64, osx-64)                  | 2026.4         | Apache-2.0                                    |
+| svt-av1                                          | 4.2.0          | BSD-2-Clause                                  |
+| tbb (osx-arm64)                                  | 2023.1.0       | Apache-2.0                                    |
+| ucrt (win-64)                                    | 10.0.26100.0   | LicenseRef-MicrosoftWindowsSDK10              |
+| vc (win-64)                                      | 14.5           | BSD-3-Clause                                  |
+| vc14_runtime (win-64)                            | 14.51.36247    | LicenseRef-MicrosoftVisualCpp2015-2022Runtime |
+| vcomp14 (win-64)                                 | 14.51.36247    | LicenseRef-MicrosoftVisualCpp2015-2022Runtime |
+| x264                                             | 1!164.3095     | GPL-2.0-or-later                              |
+| x265                                             | 3.5            | GPL-2.0-or-later                              |
+| zstd                                             | 1.5.7          | BSD-3-Clause                                  |
 
 ## Pipeline pack models
 
