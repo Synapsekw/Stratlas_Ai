@@ -3,9 +3,11 @@ import { describe, expect, it } from 'vitest';
 import {
   dateChoices,
   firstStep,
+  northTick,
   placeSurfaces,
   rememberedSurface,
   surfaceFramesOf,
+  viewClickYawRad,
 } from './placeModel';
 
 const captures: Capture[] = [
@@ -148,5 +150,37 @@ describe('dateChoices', () => {
       pick: [],
       add: '2026-03-05',
     });
+  });
+});
+
+describe('the 360 view: a click as a direction, north on the top edge', () => {
+  const look = { yawDeg: 0, pitchDeg: 0, fovDeg: 90 };
+  it('a click at the centre is the view direction as an Ry angle (positive turns left)', () => {
+    expect(viewClickYawRad(look, 100, 50, 200, 100)).toBeCloseTo(0, 9);
+    // looking 90 degrees clockwise (east of forward) is Ry -pi/2
+    expect(viewClickYawRad({ ...look, yawDeg: 90 }, 100, 50, 200, 100)).toBeCloseTo(
+      -Math.PI / 2,
+      9,
+    );
+  });
+  it('a click right of the centre turns right (negative Ry)', () => {
+    // 90 degree vertical fov, aspect 2: the right edge is atan(2) right of the centre
+    expect(viewClickYawRad(look, 200, 50, 200, 100)).toBeCloseTo(-Math.atan(2), 9);
+    expect(viewClickYawRad(look, 0, 50, 200, 100)).toBeCloseTo(Math.atan(2), 9);
+  });
+  it('a click on the same column keeps its yaw when the view looks up', () => {
+    expect(viewClickYawRad({ ...look, pitchDeg: 30 }, 100, 10, 200, 100)).toBeCloseTo(0, 9);
+  });
+  it('north sits where the camera heading puts it', () => {
+    // heading 0: the camera looks north, so north is the centre
+    expect(northTick(look, 0, 200, 100)).toEqual({ x: 0.5, edge: 'in' });
+    // the camera faces west (Ry +pi/2): north is to its right
+    const west = northTick(look, Math.PI / 2, 200, 100);
+    expect(west.edge).toBe('right');
+    // a little turn left of north: north shows right of the centre
+    const near = northTick(look, 0.2, 200, 100);
+    expect(near.edge).toBe('in');
+    expect(near.x).toBeGreaterThan(0.5);
+    expect(northTick(look, -0.2, 200, 100).x).toBeLessThan(0.5);
   });
 });

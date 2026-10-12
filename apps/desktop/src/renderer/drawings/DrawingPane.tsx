@@ -8,6 +8,7 @@ import { parseCoordinate } from '../builder/model';
 import { useStagePick, usePickMarkers, type Marker } from '../builder/pick';
 import { builder } from '../builder/state';
 import { RasterView, type RasterPick } from '../workspace/RasterPane';
+import { PlaceWalkHere, useWalkPlacingOn } from '../walks/PlaceWalkStrip';
 import { cornersFromPairs } from './model';
 import { drawings, useDrawings, type PlaceSession } from './store';
 
@@ -283,7 +284,8 @@ function PlaceStrip({
 
 /**
  * A raster in the split view. While the place tool works on it, the strip above it collects the
- * point pairs and clicks on the picture pick drawing points.
+ * point pairs and clicks on the picture pick drawing points. While a walk is placed on it, the
+ * Place walk strip sits above it and the walk is drawn on the picture.
  */
 export function DrawingPane({
   projectId,
@@ -317,10 +319,20 @@ export function DrawingPane({
       ],
     };
   }, [place]);
+  const walk = useWalkPlacingOn(layer.id, size);
   return (
     <>
       {place && size && <PlaceStrip layer={layer} place={place} size={size} />}
-      <RasterView projectId={projectId} layer={layer} link={link} pick={size ? pick : undefined} />
+      {!place && (
+        <PlaceWalkHere at={{ kind: 'drawing', id: layer.id, name: layer.name, dated: false }} />
+      )}
+      <RasterView
+        projectId={projectId}
+        layer={layer}
+        link={link}
+        pick={size ? (pick ?? walk.pick) : undefined}
+        overlay={place ? undefined : walk.overlay}
+      />
     </>
   );
 }

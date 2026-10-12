@@ -4,6 +4,10 @@ import { Icon, useT } from '@aio/ui';
 import { createPanoVideoView, type PanoVideoView } from '@aio/video';
 import { assetUrl, useWorkspace } from '@aio/workspace';
 import { useEffect, useRef, useState, type KeyboardEvent, type PointerEvent } from 'react';
+import { useStore } from 'zustand';
+import { northTick, viewClickYawRad } from './placeModel';
+import { placeSession, placeUi, useWalkViewHeading } from './placeWalk';
+import { PlaceWalkHere } from './PlaceWalkStrip';
 import { formatWalkTime, pickWalk, walkKeyAction, walkUnstabilised } from './walkModel';
 import { useWalks, walks } from './walks';
 import { walkFolderId, walkRecordKey } from './walkStore';
@@ -12,6 +16,9 @@ import { walkFolderId, walkRecordKey } from './walkStore';
 const START: PanoLook = { yawDeg: 0, pitchDeg: 0, fovDeg: PANO_FOV.start };
 
 type Status = 'loading' | 'ready' | 'error' | 'no-graphics';
+
+/** Presses inside this many screen pixels are a click (Align view), not a drag. */
+const CLICK_PX = 4;
 
 /** Frame steps before main has listed the walk's record (its real rate comes with it). */
 const DEFAULT_FPS = 30;
@@ -36,7 +43,7 @@ function WalkPlayer({
   const video = useRef<HTMLVideoElement | null>(null);
   const view = useRef<PanoVideoView | null>(null);
   const look = useRef<PanoLook>(START);
-  const drag = useRef<{ x: number; y: number } | null>(null);
+  const drag = useRef<{ x: number; y: number; x0: number; y0: number } | null>(null);
   const [status, setStatus] = useState<Status>('loading');
   const [shown, setShown] = useState<PanoLook>(START);
   const [time, setTime] = useState(0);
@@ -45,6 +52,11 @@ function WalkPlayer({
   const [rate, setRate] = useState(1);
   const [sound, setSound] = useState(false);
   const [dragging, setDragging] = useState(false);
+  const [box, setBox] = useState({ w: 0, h: 0 });
+  // Place walk: the session follows this player's time, seeks it, and takes Align view clicks
+  const aiming = useStore(placeSession, (s) => s.layerId === walk.id && s.armed === 'align-360');
+  const seekReq = useStore(placeUi, (s) => (s.layerId === walk.id ? s.seek : null));
+  const heading = useWalkViewHeading(projectId, walk, time);
   const audio = record?.video.audio ?? false;
   const poster = walk.poster ? assetUrl(projectId, walk.poster) : undefined;
 
@@ -83,6 +95,8 @@ function WalkPlayer({
     };
     const onTime = () => {
       setTime(v.currentTime);
+      const place = placeSession.getState();
+      if (place.layerId === walk.id) place.setTime(v.currentTime);
     };
     const onPlay = () => {
       setPlaying(!v.paused && !v.ended);
@@ -112,8 +126,17 @@ function WalkPlayer({
       setShown(next);
     };
     el.addEventListener('wheel', onWheel, { passive: false });
+    // the view's size places the north tick
+    const sized =
+      typeof ResizeObserver === 'undefined'
+        ? null
+        : new ResizeObserver(() => {
+            setBox({ w: el.clientWidth, h: el.clientHeight });
+          });
+    sized?.observe(el);
 
     return () => {
+      sized?.disconnect();
       el.removeEventListener('wheel', onWheel);
       v.removeEventListener('loadeddata', onReady);
       v.removeEventListener('durationchange', onReady);
@@ -131,7 +154,15 @@ function WalkPlayer({
       v.removeAttribute('src');
       v.load();
     };
-  }, [projectId, walk.src]);
+  }, [projectId, walk.src, walk.id]);
+
+  // a seek asked by Place walk (the start or end of the walk, a pin's moment)
+  useEffect(() => {
+    const v = video.current;
+    if (!seekReq || !v) return;
+    const end = Number.isFinite(v.duration) ? v.duration : seekReq.t;
+    v.currentTime = Math.max(0, Math.min(end, seekReq.t));
+  }, [seekReq]);
 
   const toggle = (play: boolean) => {
     const v = video.current;
@@ -172,7 +203,7 @@ function WalkPlayer({
   const onDown = (e: PointerEvent<HTMLDivElement>) => {
     if (e.button !== 0) return;
     e.currentTarget.setPointerCapture(e.pointerId);
-    drag.current = { x: e.clientX, y: e.clientY };
+    drag.current = { x: e.clientX, y: e.clientY, x0: e.clientX, y0: e.clientY };
     setDragging(true);
   };
   const onMove = (e: PointerEvent<HTMLDivElement>) => {
@@ -181,12 +212,29 @@ function WalkPlayer({
     setLook(
       dragLook(look.current, e.clientX - from.x, e.clientY - from.y, e.currentTarget.clientHeight),
     );
-    drag.current = { x: e.clientX, y: e.clientY };
+    drag.current = { ...from, x: e.clientX, y: e.clientY };
   };
-  const onUp = () => {
+  const onUp = (e: PointerEvent<HTMLDivElement>) => {
+    const from = drag.current;
+    drag.current = null;
+    setDragging(false);
+    // Align view: a click (not a drag) on a landmark gives its direction in the camera frame
+    if (!from || !aiming || Math.hypot(e.clientX - from.x0, e.clientY - from.y0) > CLICK_PX) return;
+    const r = e.currentTarget.getBoundingClientRect();
+    placeSession
+      .getState()
+      .align360(
+        viewClickYawRad(look.current, e.clientX - r.left, e.clientY - r.top, r.width, r.height),
+      );
+  };
+  const onCancel = () => {
     drag.current = null;
     setDragging(false);
   };
+  const north =
+    heading !== null && status === 'ready' && box.w > 0 && box.h > 0
+      ? northTick(shown, heading, box.w, box.h)
+      : null;
 
   const message =
     status === 'loading'
@@ -201,7 +249,7 @@ function WalkPlayer({
     <>
       <div
         ref={host}
-        className={`fill-col walk-view${dragging ? ' dragging' : ''}`}
+        className={`fill-col walk-view${dragging ? ' dragging' : ''}${aiming ? ' aiming' : ''}`}
         tabIndex={0}
         role="application"
         aria-label={t('walk.view', { name: walk.name })}
@@ -224,8 +272,18 @@ function WalkPlayer({
         onPointerDown={onDown}
         onPointerMove={onMove}
         onPointerUp={onUp}
-        onPointerCancel={onUp}
+        onPointerCancel={onCancel}
       >
+        {north && (
+          <span
+            className={north.edge === 'in' ? 'walk-north' : 'walk-north edge'}
+            data-testid="walk-north"
+            title="North"
+            style={{ left: `clamp(8px, ${(north.x * 100).toFixed(2)}%, calc(100% - 8px))` }}
+          >
+            N
+          </span>
+        )}
         {message && (
           <div className="walk-status" role="status">
             {message}
@@ -345,6 +403,7 @@ export function Walk360Pane() {
           </span>
         )}
       </div>
+      <PlaceWalkHere at="walk" />
       <WalkPlayer key={walk.id} projectId={projectId} walk={walk} record={record} />
     </div>
   );

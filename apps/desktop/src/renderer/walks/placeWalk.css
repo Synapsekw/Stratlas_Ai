@@ -1,0 +1,82 @@
+/* ---------- the Place walk strip (laid out as the drawing's .dplace strip) ---------- */
+.wplace {
+  flex: none;
+}
+.wplace-on,
+.wplace-yaw {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.wplace-on .input {
+  max-width: 180px;
+}
+.wplace-yaw .input {
+  width: 64px;
+}
+/* the steps are a real sequence: numbered, only the current one primary */
+.wplace-steps {
+  display: flex;
+  gap: 2px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.wplace-steps b {
+  font: 600 11px var(--f-mono);
+  opacity: 0.7;
+}
+.wplace-steps .btn:disabled {
+  opacity: 0.45;
+}
+.wplace-swatch {
+  width: 8px;
+  height: 8px;
+  border-radius: var(--r-2);
+  background: var(--sw);
+}
+.wplace-note {
+  margin: 0;
+  line-height: 1.4;
+}
+
+/* placing on the map: the strip above the map, below the stage toolbar, never over it */
+.pane-map.walk-placing {
+  display: flex;
+  flex-direction: column;
+  padding-top: 90px;
+}
+.pane-map.walk-placing > .fill {
+  position: relative;
+  inset: auto;
+  flex: 1;
+  min-height: 0;
+}
+
+/* Align view: the 360 view waits for a click on a landmark */
+.walk-view.aiming {
+  cursor: crosshair;
+}
+/* north once the walk is placed: a small tick on the top edge of the 360 view */
+.walk-north {
+  position: absolute;
+  top: 0;
+  display: grid;
+  justify-items: center;
+  gap: 1px;
+  transform: translateX(-50%);
+  pointer-events: none;
+  font: 600 10px/1 var(--f-mono);
+  color: var(--fg-0);
+  text-shadow: 0 0 3px var(--bg-0);
+}
+.walk-north::before {
+  content: '';
+  width: 2px;
+  height: 8px;
+  background: currentColor;
+  box-shadow: 0 0 2px var(--bg-0);
+}
+.walk-north.edge {
+  opacity: 0.55;
+}

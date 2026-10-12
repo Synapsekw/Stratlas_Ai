@@ -88,6 +88,7 @@ import {
 } from './splitModel';
 import { DatesOnScreen } from './DatesOnScreen';
 import { useWalkMapOverlays, useWalkMapPick } from '../walks/walkMapStore';
+import { PlaceWalkHere, usePlacingOnMap } from '../walks/PlaceWalkStrip';
 import { useTimeline } from './timeline';
 import { hiddenPathClips, togglePaths } from './flightPaths';
 import { telemetryLabels, toggleTelemetry, useTelemetryOn } from './telemetryPref';
@@ -534,6 +535,8 @@ function mapLayerId(layers: readonly { id: string; kind: string }[]): string {
   return layers.find((l) => l.kind === 'basemap' || l.kind === 'raster')?.id ?? 'basemap';
 }
 
+const MAP_SURFACE = { kind: 'map' } as const;
+
 export function Stage() {
   const mode = useShell((s) => s.stageMode);
   const docked = useShell((s) => s.videoDocked);
@@ -645,6 +648,7 @@ export function Stage() {
   // the walks' path, stills and pins (and a point pick while placing one) on the main map
   const walkOverlays = useWalkMapOverlays();
   const walkPick = useWalkMapPick();
+  const placingOnMap = usePlacingOnMap();
   const baseOverlays = roadMap ? roadMap.overlays : roadSetup?.overlays;
   const mapOverlays = useMemo(
     () => (walkOverlays.length === 0 ? baseOverlays : [...(baseOverlays ?? []), ...walkOverlays]),
@@ -845,7 +849,12 @@ export function Stage() {
           />
         )}
         {showMap && (
-          <FocusZone kind="map" className="pane pane-map" data-side={at('map')}>
+          <FocusZone
+            kind="map"
+            className={`pane pane-map${placingOnMap ? ' walk-placing' : ''}`}
+            data-side={at('map')}
+          >
+            <PlaceWalkHere at={MAP_SURFACE} />
             <div className="fill">
               <MapView
                 className="scene-fill"
