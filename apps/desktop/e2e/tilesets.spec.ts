@@ -4,7 +4,8 @@
  * 3DTilesRendererJS: tiles load, the tileset is picked by the stage's raycaster, and the cutaway's
  * section planes cut it. The same tiles, copied out as another program's export, come back in
  * through **Import 3D Tiles** (palette): checked, copied into `tiles/<id>/`, placed by their own
- * ECEF root and streamed. Zero network, as every test (the fixture asserts it).
+ * ECEF root and streamed. History records the import and a later edit of the 3D Tiles list.
+ * Zero network, as every test (the fixture asserts it).
  */
 import type { ElectronApplication, Page } from '@playwright/test';
 import { cp, readdir, writeFile } from 'node:fs/promises';
@@ -197,4 +198,41 @@ test('a mesh becomes 3D Tiles that stream, pick and cut in the site view, and im
   await expect
     .poll(() => loadedTiles(win, 'Bentley-export'), { timeout: 60_000 })
     .toBeGreaterThan(0);
+
+  // History (the Audit trail) records the import under the tileset's name
+  await expect
+    .poll(() => auditLabels(win), { timeout: 30_000 })
+    .toContain('Imported 3D Tiles "Bentley export"');
+
+  // renaming the imported tileset is recorded as an edit of the 3D Tiles list
+  const renamed = (await win.evaluate(async () => {
+    const w = window as unknown as Probe & {
+      __stratlas: { workspace: { getState(): { project: { id: string } | null } } };
+    };
+    const projectId = w.__stratlas.workspace.getState().project?.id;
+    const r = (await w.aio.invoke('tilesets:list', { projectId })) as {
+      file: { schema: string; entries: { id: string; name: string }[] };
+    };
+    const entries = r.file.entries.map((e) =>
+      e.id === 'Bentley-export' ? { ...e, name: 'Bridge as built' } : e,
+    );
+    return w.aio.invoke('tilesets:write', { projectId, file: { ...r.file, entries } });
+  })) as { ok: boolean; error?: string };
+  expect(renamed.error).toBeUndefined();
+  expect(renamed.ok).toBe(true);
+  await expect.poll(() => auditLabels(win), { timeout: 30_000 }).toContain('3D Tiles list edited');
 });
+
+/**
+ * The labels of the open project's History on the Audit trail, read afresh: Reports is left and
+ * opened again, so the trail loads the journal as it is now.
+ */
+async function auditLabels(win: Page): Promise<string[]> {
+  await win.locator('.sb-nav .nav-item', { hasText: 'Issues' }).click();
+  await win.locator('.sb-nav .nav-item', { hasText: 'Reports' }).click();
+  await win.getByTestId('open-audit-trail').click();
+  const screen = win.getByTestId('audit-screen');
+  await expect(screen).toBeVisible();
+  await expect(screen.getByTestId('audit-entry').first()).toBeVisible({ timeout: 10_000 });
+  return screen.locator('.aud-label').allInnerTexts();
+}
