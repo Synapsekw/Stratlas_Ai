@@ -9,6 +9,8 @@ import type { TimelineState, VolumeDates } from './timeline';
  * for a survey and mirrors the one they show, whichever control picked it (the Volumes toolbar,
  * the volumes panel, the date bar). While the compare split is open the volumes follow the 3D
  * pane's date instead (useVolumesFollowDate), so their survey is mirrored when the split closes.
+ * When they load, they are asked for the date the project was left on, since they always start
+ * on their last survey.
  */
 /** Whether the compare split is open, and a way to hear it open or close. */
 export interface SplitState {
@@ -47,6 +49,15 @@ export function connectVolumeDates(
         },
       };
       tl.getState().setVolumes(current);
+      // The volumes always load on their last survey; the date bar holds the date the project
+      // was left on (or picked before they loaded). Ask the volumes for that one instead of
+      // mirroring their default over it. Their switch comes back through the subscription.
+      const t = tl.getState();
+      const wanted = t.projectId === projectId && t.focus ? current.epochOf(t.focus) : undefined;
+      if (wanted && wanted !== s.epoch && !split.isOpen()) {
+        v.getState().setEpoch(wanted);
+        return;
+      }
     }
     const shown = captures.find((c) => c.epoch === s.epoch)?.captureId;
     if (shown && !split.isOpen()) tl.getState().mirrorFocus(shown);

@@ -142,9 +142,19 @@ function testSplit() {
   return { split, set };
 }
 
-async function setup() {
+interface SetupOpts {
+  /** Date prefs already saved, as on a reopen. */
+  saved?: Record<string, DatePref>;
+  /** The volumes finish loading before the date bar attaches. */
+  volumesFirst?: boolean;
+  /** The compare split is open while the volumes load. */
+  splitOpen?: boolean;
+}
+
+async function setup(opts: SetupOpts = {}) {
   const ws = createWorkspace();
   const storage = new MemoryStorage();
+  if (opts.saved) storage.setItem(TIMELINE_KEY, JSON.stringify(opts.saved));
   const tl = createTimelineStore(ws, storage, () => undefined);
   const deps: VolumetricDeps = {
     workspace: ws,
@@ -157,12 +167,18 @@ async function setup() {
   };
   const v = createVolumetricStore(deps);
   const compare = testSplit();
+  if (opts.splitOpen) compare.set(true);
   const off = connectVolumeDates(v, tl, ws, compare.split);
   // what the app does on open: the timeline attaches, the volumes load
   ws.getState().openProject({ id: 'm', root: '/m', manifest: stockpile });
-  tl.getState().attach('m', captureIndex(stockpile));
-  await v.getState().load();
-  tl.getState().attach('m', captureIndex(stockpile, volumeHints(v.getState())));
+  if (opts.volumesFirst) {
+    await v.getState().load();
+    tl.getState().attach('m', captureIndex(stockpile, volumeHints(v.getState())));
+  } else {
+    tl.getState().attach('m', captureIndex(stockpile));
+    await v.getState().load();
+    tl.getState().attach('m', captureIndex(stockpile, volumeHints(v.getState())));
+  }
   const saved = () =>
     (JSON.parse(storage.getItem(TIMELINE_KEY) ?? '{}') as Record<string, DatePref>).m;
   return { ws, tl, v, off, saved, compare };
@@ -248,6 +264,45 @@ describe('date bar and stockpile volumes', () => {
     v.getState().setEpoch('e1');
     expect(tl.getState().focus).toBe('s2');
     compare.set(false);
+    expect(tl.getState().focus).toBe('s1');
+  });
+
+  it('reopens on the saved survey: the volumes are asked for it, not mirrored', async () => {
+    const { tl, v, saved } = await setup({ saved: { m: { focus: 's1' } } });
+    expect(tl.getState().owner).toBe('volumetric');
+    expect(v.getState().epoch).toBe('e1');
+    expect(tl.getState().focus).toBe('s1');
+    expect(saved()?.focus).toBe('s1');
+  });
+
+  it('reopens on the saved survey when the volumes load before the date bar attaches', async () => {
+    const { tl, v, saved } = await setup({ saved: { m: { focus: 's1' } }, volumesFirst: true });
+    expect(v.getState().epoch).toBe('e1');
+    expect(tl.getState().focus).toBe('s1');
+    expect(saved()?.focus).toBe('s1');
+  });
+
+  it('a saved survey the volumes do not have falls back to their last survey', async () => {
+    const { tl, v } = await setup({ saved: { m: { focus: 'gone' } } });
+    expect(v.getState().epoch).toBe('e2');
+    expect(tl.getState().focus).toBe('s2');
+  });
+
+  it('with the compare split open the volumes are not moved to the saved survey', async () => {
+    const { v } = await setup({ saved: { m: { focus: 's1' } }, splitOpen: true });
+    expect(v.getState().epoch).toBe('e2');
+  });
+
+  it('a survey picked, another project opened, the stockpile reopened: the picked survey', async () => {
+    const { ws, tl, v } = await setup();
+    tl.getState().focusSurvey('s1');
+    ws.getState().openProject({ id: 'other', root: '/o', manifest: { ...stockpile, id: 'other' } });
+    tl.getState().attach('other', captureIndex({ ...stockpile, id: 'other' }));
+    await v.getState().load();
+    ws.getState().openProject({ id: 'm', root: '/m', manifest: stockpile });
+    tl.getState().attach('m', captureIndex(stockpile));
+    await v.getState().load();
+    expect(v.getState().epoch).toBe('e1');
     expect(tl.getState().focus).toBe('s1');
   });
 });

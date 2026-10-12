@@ -195,9 +195,19 @@ export function createTimelineStore(
       const pref = s.byProject[projectId] ?? {};
       const vol = owner === 'volumetric' ? volumes : null;
       if (vol) {
-        // the volumes already show their survey: focus it and leave the layers to them
-        const shown = index.captures.find((c) => vol.epochOf(c.id) === vol.epoch());
-        set({ projectId, index, owner, focus: shown?.id ?? initialFocus(index, pref.focus) });
+        // The volumes already show their survey (always their last one on load): the saved date
+        // wins when they have it, else focus what they show. The layers stay theirs.
+        const savedEpoch =
+          pref.focus && index.captures.some((c) => c.id === pref.focus)
+            ? vol.epochOf(pref.focus)
+            : undefined;
+        if (pref.focus && savedEpoch && savedEpoch !== vol.epoch()) {
+          set({ projectId, index, owner, focus: pref.focus });
+          vol.setEpoch(savedEpoch);
+        } else {
+          const shown = index.captures.find((c) => vol.epochOf(c.id) === vol.epoch());
+          set({ projectId, index, owner, focus: shown?.id ?? initialFocus(index, pref.focus) });
+        }
       } else {
         // Claim the project before touching visibility so the subscription below
         // writes the new project's pref, never the previous project's.
