@@ -1,0 +1,35 @@
+/*
+ * Survey dates (timeline T2): the Datasets header's Add survey date popover. The surface, rows,
+ * separator and focus ring are the date folder menu's (`.dmenu`); the fields are `.input`.
+ */
+.add-date-form {
+  display: grid;
+  gap: 8px;
+  padding: 4px 8px 8px;
+}
+/* a two-column field grid: the labels line up, the fields take the rest */
+.add-date-field {
+  display: grid;
+  grid-template-columns: 48px minmax(0, 1fr);
+  align-items: center;
+  gap: 8px;
+  color: var(--fg-2);
+}
+.add-date-field .input {
+  width: 100%;
+}
+.add-date-error {
+  margin: 0;
+}
+.add-date-actions {
+  display: flex;
+  justify-content: flex-end;
+}
+/* Import a flight folder...: the item, then its hint on a second line */
+.add-date-folder > span:last-child {
+  display: grid;
+  gap: 2px;
+}
+.add-date-hint {
+  font-size: var(--t-11);
+}
