@@ -3,6 +3,7 @@ import {
   type ExportKind,
   type IpcEvent,
   type PackagePlan,
+  type RasterPackRef,
 } from '@aio/schema';
 import { formatBytes, Icon, Switch, t, useFocusTrap } from '@aio/ui';
 import { useWorkspace } from '@aio/workspace';
@@ -48,13 +49,23 @@ function ExportForm({ projectId, name }: { projectId: string; name: string }) {
   const [withMap, setWithMap] = useState(false);
   const [mapZoom, setMapZoom] = useState(14);
   const [mapMargin, setMapMargin] = useState(2);
+  const [rasters, setRasters] = useState<Set<string>>(new Set());
   const [phase, setPhase] = useState<Phase>({ kind: 'setup' });
 
   const mapPack = withMap ? { maxZoom: mapZoom, marginKm: mapMargin } : undefined;
-  const excludeKey = `${[...excluded].sort().join('|')}#${mapPack ? `${String(mapZoom)}/${String(mapMargin)}` : ''}`;
+  const rasterPacks: RasterPackRef[] = [...rasters].sort().map((key) => {
+    const [kind = 'imagery', id = ''] = key.split('/');
+    return { kind: kind === 'terrain' ? 'terrain' : 'imagery', id };
+  });
+  const excludeKey = `${[...excluded].sort().join('|')}#${mapPack ? `${String(mapZoom)}/${String(mapMargin)}` : ''}#${[...rasters].sort().join('|')}`;
   useEffect(() => {
     let live = true;
-    const request = { projectId, exclude: [...excluded], ...(mapPack ? { mapPack } : {}) };
+    const request = {
+      projectId,
+      exclude: [...excluded],
+      ...(mapPack ? { mapPack } : {}),
+      rasterPacks,
+    };
     void bridge.call('package:plan', request).then((r) => {
       if (!live) return;
       if (!r.ok) setPlanError(r.error);
@@ -103,6 +114,7 @@ function ExportForm({ projectId, name }: { projectId: string; name: string }) {
         aiPolicy: allowAi ? 'allow' : 'forbid',
         editPolicy: allowEdit ? 'allow' : 'forbid',
         ...(mapPack ? { mapPack } : {}),
+        ...(rasterPacks.length > 0 ? { rasterPacks } : {}),
         exports: EXPORT_CHOICES.map((c) => c.kind).filter((k) => exportsAllowed.has(k)),
         ...(encrypt ? { passphrase: pass } : {}),
         ...(welcome ? { welcome: { message: welcome } } : {}),
@@ -256,6 +268,69 @@ function ExportForm({ projectId, name }: { projectId: string; name: string }) {
                 ) : (
                   <span className="faint">...</span>
                 )}
+              </div>
+            )}
+          </section>
+
+          <section className="dlg-sec" data-testid="pkg-raster">
+            <h3 className="caps">{t('package.export.rasterTitle')}</h3>
+            <p>{t('package.export.rasterHelp')}</p>
+            {plan?.rasterPacks?.length === 0 && (
+              <p className="faint">{t('package.export.rasterNone')}</p>
+            )}
+            {plan?.rasterPacks && plan.rasterPacks.length > 0 && (
+              <div className="pkg-layers">
+                {plan.rasterPacks.map((r) => {
+                  const key = `${r.kind}/${r.id}`;
+                  const on = rasters.has(key);
+                  return (
+                    <div key={key}>
+                      <label className={`pkg-layer${r.ok && on ? '' : ' off'}`}>
+                        {r.ok ? (
+                          <input
+                            type="checkbox"
+                            checked={on}
+                            disabled={phase.kind === 'running'}
+                            onChange={() => {
+                              setRasters((cur) => {
+                                const next = new Set(cur);
+                                if (next.has(key)) next.delete(key);
+                                else next.add(key);
+                                return next;
+                              });
+                            }}
+                            data-testid={`pkg-raster-${r.kind}-${r.id}`}
+                          />
+                        ) : (
+                          <span />
+                        )}
+                        <Icon name="raster" size={14} />
+                        <span>{r.label}</span>
+                        <span className="n">{t(`package.export.rasterKind.${r.kind}`)}</span>
+                        <span className="mono">
+                          {r.ok
+                            ? t('package.export.rasterSize', {
+                                size: formatBytes(r.bytes),
+                                zoom: r.maxZoom,
+                              })
+                            : ''}
+                        </span>
+                      </label>
+                      {r.ok ? (
+                        r.customerLicence && (
+                          <p className="faint small" style={{ padding: '0 10px 8px' }}>
+                            {t('package.export.rasterCustomer', { licence: r.licence })}
+                          </p>
+                        )
+                      ) : (
+                        <p className="notice danger" role="alert">
+                          <Icon name="warn" size={14} />
+                          {r.reason}
+                        </p>
+                      )}
+                    </div>
+                  );
+                })}
               </div>
             )}
           </section>

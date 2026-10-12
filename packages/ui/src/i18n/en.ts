@@ -103,6 +103,15 @@ export const en = {
   'package.export.mapMargin': 'Margin',
   'package.export.mapMarginKm': '{km} km',
   'package.export.mapFrom': 'From {pack}: {tiles} tiles, {size}',
+  'package.export.rasterTitle': 'Imagery and terrain',
+  'package.export.rasterHelp':
+    "Send a piece of an installed pack, cut to this site, so the Globe shows it on the recipient's computer.",
+  'package.export.rasterNone': 'No installed imagery or terrain pack covers this site.',
+  'package.export.rasterSize': '{size}, up to zoom {zoom}',
+  'package.export.rasterCustomer':
+    'Licensed to you by the provider ({licence}). Send it only if the licence allows this recipient to see it.',
+  'package.export.rasterKind.imagery': 'Imagery',
+  'package.export.rasterKind.terrain': 'Terrain',
 
   // Stage tools
   'stage.pins.show': 'Show issue pins',
