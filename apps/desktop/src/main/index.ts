@@ -806,7 +806,9 @@ function registerIpc(): void {
   handle('project:open', async ({ path, passphrase }) => {
     // a bundled demo project opens as its working copy in userData (never written in resources)
     const target = await demoOpenPath(path, await bundledDemos(), demoCopyRoot());
-    const r = await openProject(target, registry, passphrase);
+    const r = await openProject(target, registry, passphrase, (line) => {
+      appLog.write('info', [line]);
+    });
     if (r.ok) {
       policy.opened(r.id);
       projectNames.set(r.id, r.manifest.name);

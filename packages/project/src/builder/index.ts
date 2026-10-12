@@ -76,6 +76,19 @@ export {
   type WalkTools,
 } from './walks';
 export {
+  NO_WALK_FILES,
+  migrateWalks,
+  missingWalkLayers,
+  refreshWalkPaths,
+  walkCaptureFor,
+  walkFilesOn,
+  walkLayerFor,
+  walkLayerId,
+  walkPathRefs,
+  type MigrateOptions,
+  type WalkFiles,
+} from './walkLayers';
+export {
   classifyWalkSource,
   insta360Name,
   isProxyName,

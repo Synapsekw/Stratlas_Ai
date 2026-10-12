@@ -50,6 +50,7 @@ import {
   tiffGeoreferenced,
 } from './tiff';
 import { CANCELLED_BEFORE, importWalk, type WalkTools } from './walks';
+import { NO_WALK_FILES, missingWalkLayers } from './walkLayers';
 import { isWalkFile, proxyOwner } from './walkSource';
 
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
@@ -424,6 +425,22 @@ export async function importRawFiles(
         });
         item.status = r.ok ? 'imported' : r.status;
         item.message = r.message;
+        if (r.ok) {
+          // the walk becomes a layer at once, in its own turn (the stitch took minutes)
+          try {
+            const filed = await updateManifestFile(root, (fresh) => {
+              const added = missingWalkLayers([r.walk], fresh, () => NO_WALK_FILES);
+              return {
+                manifest:
+                  added.length > 0 ? { ...fresh, layers: [...fresh.layers, ...added] } : null,
+                id: added[0]?.id ?? r.layer.id,
+              };
+            });
+            item.layerId = filed.id;
+          } catch (e) {
+            item.message = `${r.message} It could not be listed as a layer now (${e instanceof Error ? e.message : String(e)}); it is added when the project is next opened.`;
+          }
+        }
       } catch (e) {
         item.status = 'error';
         item.message = e instanceof Error ? e.message : String(e);

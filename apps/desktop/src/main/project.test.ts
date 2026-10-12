@@ -1,4 +1,4 @@
-import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
@@ -36,6 +36,55 @@ describe('ProjectRegistry', () => {
     const reg = new ProjectRegistry();
     expect(reg.register(join(base, 'a', 'hcl'))).toBe('hcl');
     expect(reg.register(join(base, 'b', 'hcl'))).toBe('hcl-2');
+  });
+});
+
+describe('openProject, walks', () => {
+  const walkJson = (id: string) =>
+    JSON.stringify({
+      schema: 'aio.walk/1',
+      id,
+      name: `Walk ${id}`,
+      createdAt: '2026-10-10T08:00:00.000Z',
+      source: {
+        file: `${id}.insv`,
+        layout: 'insv-dual-stream',
+        streams: [{ width: 128, height: 128, codec: 'avc1', fps: 30 }],
+      },
+      video: {
+        src: `walks/${id}/playback.mp4`,
+        width: 256,
+        height: 128,
+        durationS: 5,
+        fps: 30,
+        audio: false,
+      },
+    });
+
+  it('turns side-folder walks into layers, saves them once and logs it', async () => {
+    const dir = await writeProject(join(base, 'with-walks'), sampleManifest());
+    for (const id of ['a', 'b']) {
+      await mkdir(join(dir, 'walks', id), { recursive: true });
+      await writeFile(join(dir, 'walks', id, 'walk.json'), walkJson(id));
+    }
+    const lines: string[] = [];
+    const r = await openProject(dir, new ProjectRegistry(), undefined, (l) => lines.push(l));
+    if (!r.ok) throw new Error(r.error);
+    expect(r.manifest.layers.filter((l) => l.kind === 'walk').map((l) => l.id)).toEqual([
+      'walk-a',
+      'walk-b',
+    ]);
+    expect(lines).toEqual(['2 walks became layers']);
+    const saved = JSON.parse(await readFile(join(dir, 'manifest.json'), 'utf8')) as {
+      layers: { kind: string }[];
+    };
+    expect(saved.layers.filter((l) => l.kind === 'walk')).toHaveLength(2);
+    // a second open adds nothing and says nothing
+    const again: string[] = [];
+    const r2 = await openProject(dir, new ProjectRegistry(), undefined, (l) => again.push(l));
+    if (!r2.ok) throw new Error(r2.error);
+    expect(r2.manifest.layers.filter((l) => l.kind === 'walk')).toHaveLength(2);
+    expect(again).toEqual([]);
   });
 });
 

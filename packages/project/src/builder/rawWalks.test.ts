@@ -84,10 +84,8 @@ const CLIP = 'VID_20260101_120000_00_001.insv';
 const PROXY = 'LRV_20260101_120000_01_001.lrv';
 
 describe('importRawFiles, 360 video', () => {
-  it('stores a camera file as a walk and leaves the manifest and its backups alone', async () => {
+  it('stores a camera file as a walk and lists it as a walk layer', async () => {
     const root = await project();
-    const before = await readFile(join(root, 'manifest.json'), 'utf8');
-    const filesBefore = (await readdir(root)).sort();
     const progress: [string, number][] = [];
     const r = await importRawFiles(root, [await src(CLIP)], {
       ...deps({ walk: walkTools({ [CLIP]: [vide(128, 128), vide(128, 128)] }) }),
@@ -96,11 +94,20 @@ describe('importRawFiles, 360 video', () => {
     expect(r.items).toEqual([
       expect.objectContaining({ file: CLIP, kind: 'video', status: 'imported' }),
     ]);
-    expect(r.items[0]?.layerId).toBeUndefined();
+    expect(r.items[0]?.layerId).toBe('walk-vid-20260101-120000-00-001');
     expect(r.items[0]?.message).toContain('Stitched to 256 x 128');
     expect(r.backup).toBe('');
-    expect(await readFile(join(root, 'manifest.json'), 'utf8')).toBe(before);
-    expect((await readdir(root)).sort()).toEqual([...filesBefore, 'walks'].sort());
+    const layer = r.manifest.layers.find((l) => l.kind === 'walk');
+    expect(layer).toMatchObject({
+      id: 'walk-vid-20260101-120000-00-001',
+      record: { path: 'walks/vid-20260101-120000-00-001/walk.json' },
+      src: { path: 'walks/vid-20260101-120000-00-001/playback.mp4' },
+      durationS: 2,
+    });
+    const onDisk = JSON.parse(await readFile(join(root, 'manifest.json'), 'utf8')) as {
+      layers: { kind: string }[];
+    };
+    expect(onDisk.layers.map((l) => l.kind)).toEqual(['walk']);
     expect(await readdir(join(root, 'walks'))).toEqual(['vid-20260101-120000-00-001']);
     expect(progress).toContainEqual([CLIP, 0.25]);
   });
@@ -218,7 +225,7 @@ describe('importRawFiles, 360 video', () => {
     expect(r.items[0]?.message).toContain('Stitched to 256 x 128');
     expect(ticks).toEqual(['1/2 pad.glb', `2/2 ${CLIP}`]);
     expect(r.backup).not.toBe('');
-    expect(r.manifest.layers.map((l) => l.kind)).toEqual(['mesh']);
+    expect(r.manifest.layers.map((l) => l.kind)).toEqual(['mesh', 'walk']);
   });
 
   it('hands back the manifest as it is when the stitch ends, not as it was before it', async () => {
@@ -239,7 +246,7 @@ describe('importRawFiles, 360 video', () => {
       deps({ walk: tools }),
     );
     expect(mixed.manifest.captures.map((c) => c.label)).toContain('Renamed while stitching');
-    expect(mixed.manifest.layers.map((l) => l.kind)).toEqual(['mesh']);
+    expect(mixed.manifest.layers.map((l) => l.kind)).toEqual(['mesh', 'walk']);
     // and the same for an import of nothing but a clip, which saves no manifest
     tools.copy = async (out, o) => {
       await updateCapture(root, captureId, { label: 'Renamed again' });
@@ -276,11 +283,11 @@ describe('importRawFiles, 360 video', () => {
     expect(atStitch).toEqual([
       { layers: ['photos', 'raster'], drawings: ['site-layout', 'site-layout.png'] },
     ]);
-    // the clip is a walk beside the manifest, never a layer; the drawing is a raster layer,
-    // never a walk; the photo is in the photo set
-    expect(r.items[0]?.layerId).toBeUndefined();
+    // the clip is a walk layer; the drawing is a raster layer, never a walk; the photo is in the
+    // photo set
+    expect(r.items[0]?.layerId).toBe('walk-vid-20260101-120000-00-001');
     expect(r.items[2]?.layerId).toBe('sheet-site-layout');
-    expect(r.manifest.layers.map((l) => l.kind).sort()).toEqual(['photos', 'raster']);
+    expect(r.manifest.layers.map((l) => l.kind).sort()).toEqual(['photos', 'raster', 'walk']);
     expect(await readdir(join(root, 'walks'))).toEqual(['vid-20260101-120000-00-001']);
     expect((await readdir(join(root, 'drawings'))).sort()).toEqual([
       'site-layout',
@@ -387,7 +394,7 @@ describe('importRawFiles, 360 video', () => {
     expect(ticks).toEqual([1, 2]);
     expect(r.backup).toBe('');
     expect(await readFile(join(root, 'manifest.json'), 'utf8')).toBe(before);
-    expect(await readdir(root)).not.toContain('walks');
+    expect(await readdir(join(root, 'walks'))).toEqual([]);
   });
 
   it('keeps importing other files beside a walk, and then saves the manifest once', async () => {
@@ -410,6 +417,6 @@ describe('importRawFiles, 360 video', () => {
     );
     expect(r.items.map((i) => i.status)).toEqual(['imported', 'imported']);
     expect(r.backup).not.toBe('');
-    expect(r.manifest.layers.map((l) => l.kind)).toEqual(['mesh']);
+    expect(r.manifest.layers.map((l) => l.kind)).toEqual(['mesh', 'walk']);
   });
 });

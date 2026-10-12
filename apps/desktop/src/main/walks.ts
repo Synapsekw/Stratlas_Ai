@@ -1,5 +1,5 @@
 import type { ProxyEncoder, WalkTools } from '@aio/project/builder';
-import type { WalkFile } from '@aio/schema';
+import type { ProjectManifest, WalkFile, WalkLayer } from '@aio/schema';
 import { readMp4Tracks } from '@aio/video/telemetry';
 import { open, stat } from 'node:fs/promises';
 
@@ -87,6 +87,27 @@ export async function packageWalks(archive: {
     if (walk) out.push(walk);
   }
   return sortWalks(out);
+}
+
+/**
+ * The walk layers a package's manifest lacks: its side-folder walks (made by a build before walks
+ * were layers), as layers in memory only. A package is never written. The files each walk holds
+ * are read from the archive's member names.
+ */
+export async function walkLayersInMemory(
+  archive: { entries: ReadonlyMap<string, unknown>; read(name: string): Promise<Buffer> },
+  manifest: ProjectManifest,
+): Promise<WalkLayer[]> {
+  const { missingWalkLayers } = await lib();
+  const walks = await packageWalks(archive);
+  if (walks.length === 0) return [];
+  const has = (id: string, name: string) => archive.entries.has(`walks/${id}/${name}`);
+  return missingWalkLayers(walks, manifest, (id) => ({
+    raw: has(id, 'raw-path.json'),
+    orientation: has(id, 'orientation.json'),
+    orientationData: has(id, 'orientation.bin'),
+    points: has(id, 'sparse.ply'),
+  }));
 }
 
 export interface ImportProgress {

@@ -8,6 +8,7 @@ import {
   endsWithInsta360Mark,
   listProjectWalks,
   packageWalks,
+  walkLayersInMemory,
   stitchProgress,
 } from './walks';
 
@@ -134,5 +135,26 @@ describe('stitchProgress', () => {
       { done: 1, total: 3, file: 'VID.insv, playback copy 100 %', part: 1 },
       { done: 2, total: 3, file: 'VID.insv' },
     ]);
+  });
+});
+
+describe('walkLayersInMemory', () => {
+  it('gives a package its side-folder walks as layers, without writing anything', async () => {
+    const members = new Map<string, string>([
+      ['walks/a/walk.json', JSON.stringify(walk('a', '2026-10-10T08:00:00.000Z'))],
+      ['walks/a/raw-path.json', '{}'],
+      ['walks/b/walk.json', JSON.stringify(walk('b', '2026-10-11T08:00:00.000Z'))],
+    ]);
+    const archive = {
+      entries: new Map([...members.keys()].map((k) => [k, {}])),
+      read: (name: string) => Promise.resolve(Buffer.from(members.get(name) ?? '')),
+    };
+    const manifest = { layers: [], captures: [] } as never;
+    const layers = await walkLayersInMemory(archive, manifest);
+    expect(layers.map((l) => l.id).sort()).toEqual(['walk-a', 'walk-b']);
+    expect(layers.find((l) => l.id === 'walk-a')?.path).toEqual({
+      raw: { path: 'walks/a/raw-path.json' },
+    });
+    expect(layers.find((l) => l.id === 'walk-b')?.path).toBeUndefined();
   });
 });

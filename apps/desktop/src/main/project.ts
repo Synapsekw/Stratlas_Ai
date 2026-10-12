@@ -12,6 +12,7 @@ import {
 } from '@aio/schema';
 import { stat } from 'node:fs/promises';
 import { basename, join, resolve } from 'node:path';
+import { walkLayersInMemory } from './walks';
 import { z } from 'zod';
 import {
   isChangedOnDisk,
@@ -185,7 +186,13 @@ export async function openPackageProject(
   if (!r.ok) {
     return { ok: false, error: r.error, ...(r.needsPassphrase ? { needsPassphrase: true } : {}) };
   }
-  const { archive, header, manifest, issuesJson } = r.value;
+  const { archive, header, issuesJson } = r.value;
+  // walks filed beside the manifest by an older build are layers here, in memory only
+  const walkLayers = await walkLayersInMemory(archive, r.value.manifest).catch(() => []);
+  const manifest =
+    walkLayers.length > 0
+      ? { ...r.value.manifest, layers: [...r.value.manifest.layers, ...walkLayers] }
+      : r.value.manifest;
   const issues = parseIssues(
     issuesJson,
     `issues.json in ${basename(file)}`,
@@ -207,6 +214,8 @@ export async function openProject(
   path: string,
   registry: ProjectRegistry,
   passphrase?: string,
+  /** The project log: one line per notable thing that happened while opening. */
+  log: (line: string) => void = () => undefined,
 ): Promise<IpcResponse<'project:open'>> {
   const root = resolve(path);
   try {
@@ -224,7 +233,9 @@ export async function openProject(
       error: `Folder not found: ${root}. Check the path or the data folder in Settings.`,
     };
   }
-  const manifest = await readManifest(root);
+  let manifest = await readManifest(root);
+  if (!manifest.ok) return manifest;
+  manifest = await withWalkLayers(root, manifest, log);
   if (!manifest.ok) return manifest;
   const issues = await readIssues(root, seenFiles);
   if (!issues.ok) return issues;
@@ -238,6 +249,40 @@ export async function openProject(
     issues: issues.value,
     ...(origin ? { origin } : {}),
   };
+}
+
+/**
+ * Walks filed beside the manifest before they were layers become layers now (the walk layer and
+ * placing, "Migration on open"), and the files a `walk.process` job wrote since are linked. The
+ * manifest is read again when anything was saved. When the save fails the layers are still
+ * answered, in memory only, and the failure is logged. Never fails the open.
+ */
+async function withWalkLayers(
+  root: string,
+  manifest: Loaded<ProjectManifest>,
+  log: (line: string) => void,
+): Promise<Loaded<ProjectManifest>> {
+  if (!manifest.ok) return manifest;
+  try {
+    const { migrateWalks, refreshWalkPaths } = await import('@aio/project/builder');
+    const m = await migrateWalks(root);
+    const linked = await refreshWalkPaths(root);
+    if (m.added.length > 0) {
+      const n = m.added.length;
+      log(`${String(n)} ${n === 1 ? 'walk' : 'walks'} became ${n === 1 ? 'a layer' : 'layers'}`);
+    }
+    if (m.error !== undefined) {
+      log(`The walk layers could not be saved: ${m.error}`);
+      return {
+        ok: true,
+        value: { ...manifest.value, layers: [...manifest.value.layers, ...m.added] },
+      };
+    }
+    if (m.saved || linked.length > 0) return await readManifest(root);
+  } catch (e) {
+    log(`Walks were not turned into layers: ${e instanceof Error ? e.message : String(e)}`);
+  }
+  return manifest;
 }
 
 /** `package-origin.json` of a project extracted from a package; null when absent or not valid. */

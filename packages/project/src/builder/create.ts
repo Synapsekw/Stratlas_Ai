@@ -36,6 +36,7 @@ export const PACKAGE_DIRS = [
   'photos/thumbs',
   'panoramas',
   'report',
+  'walks',
 ];
 
 /** Lower-case, file-safe id. */
