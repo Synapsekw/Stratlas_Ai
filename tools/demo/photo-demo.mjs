@@ -3,10 +3,11 @@
 // The photo processing demo (M10, stream G8): a bundled synthetic project to process drone photos
 // in, made from the synthetic photogrammetry set (python/tests/photo_synth.py). It holds:
 //
-//   photos layer `photos`      the photo set (DJI-style EXIF and XMP of the synthetic camera,
+//   photos layer `photos-<day>` the photo set (DJI-style EXIF and XMP of the synthetic camera,
 //                              standard GNSS geotags with an altitude datum offset the
 //                              manifest's verticalDatum corrects), imported the way the builder
-//                              imports photos; the corrupt photo stays out
+//                              imports photos, so filed under their survey date; the corrupt
+//                              photo stays out
 //   survey/gcp.csv             5 control points and 4 checkpoints (id, x, y, z, role; EPSG:32639)
 //   survey/gcp-blunder.csv     the same plus GCP6, stated 1 m off
 //   photogrammetry/<run>/      a precomputed GNSS-only alignment (run.json, gcp.json with the
@@ -148,9 +149,9 @@ async function removeEmptyDirs(dir) {
 
 /**
  * The run files of the precomputed alignment, from the set's alignment.json, in the project's
- * terms (photo ids of the photos layer). Validated with the M10 schemas.
+ * terms (photo ids of the photos layer `layer`). Validated with the M10 schemas.
  */
-export function precomputedRun(schema, { truth, alignment, ids, capture, gcpCsv }) {
+export function precomputedRun(schema, { truth, alignment, ids, layer, capture, gcpCsv }) {
   const createdAt = '2026-03-14T10:00:00Z';
   const crs = { epsg: truth.site.crs.epsg };
   const heights = {
@@ -200,7 +201,7 @@ export function precomputedRun(schema, { truth, alignment, ids, capture, gcpCsv 
     status: 'aligned',
     preset: 'standard',
     photos: {
-      source: { layer: 'photos' },
+      source: { layer },
       count: ids.size,
       registered: registered.length,
       rejected,
@@ -355,8 +356,10 @@ export async function buildPhotoDemo({ out, log, python, cache, set, photoSet: a
     if (failed.length) throw new Error(`photo import: ${JSON.stringify(failed)}`);
     const m = await builder.readManifestFile(root);
     m.name = PHOTO_NAME;
-    const layer = m.layers.find((l) => l.kind === 'photos');
-    if (!layer || layer.id !== 'photos') throw new Error('no photos layer');
+    // dated photos: the import files them in a layer of their survey date (`photos-<day>`)
+    const layers = m.layers.filter((l) => l.kind === 'photos');
+    if (layers.length !== 1) throw new Error(`${String(layers.length)} photos layers, not one`);
+    const layer = layers[0];
     layer.name = 'Drone photos (synthetic)';
     await builder.writeManifestFile(root, m);
     // file name in the set -> photo id in the layer (the import slugs names: SYN_0001.JPG -> syn-0001)
@@ -383,7 +386,8 @@ export async function buildPhotoDemo({ out, log, python, cache, set, photoSet: a
       truth,
       alignment,
       ids,
-      capture: m.captures[0]?.id,
+      layer: layer.id,
+      capture: layer.capture ?? m.captures[0]?.id,
       gcpCsv,
     });
     await writeFile(join(runDir, 'run.json'), json(run));

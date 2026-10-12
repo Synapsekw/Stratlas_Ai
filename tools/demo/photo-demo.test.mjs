@@ -67,10 +67,13 @@ describe('photo demo run files', () => {
       truth,
       alignment,
       ids,
+      layer: 'photos-2026-03-14',
       capture: 'capture-2026-03-14',
       gcpCsv,
     });
     expect(run.id).toBe(PHOTO_RUN);
+    // the run reads the photos layer the import made (dated photos: `photos-<day>`)
+    expect(run.photos.source).toEqual({ layer: 'photos-2026-03-14' });
     expect(run.status).toBe('aligned');
     expect(run.photos).toMatchObject({ count: 4, registered: 3 });
     expect(run.photos.rejected).toEqual([{ name: 'syn-0004', reason: 'motion blur' }]);
@@ -105,7 +108,13 @@ describe('photo demo run files', () => {
 
   it('leaves out the RMSE of a role with no point in view', () => {
     const gcpCsv = readGcpCsv('id,x,y,z,role\nG1,1,2,3,control\nG2,7,8,9,check\n');
-    const { run, accuracy } = precomputedRun(schema, { truth, alignment, ids, gcpCsv });
+    const { run, accuracy } = precomputedRun(schema, {
+      truth,
+      alignment,
+      ids,
+      layer: 'photos',
+      gcpCsv,
+    });
     expect(accuracy.rmse.check).toBeUndefined();
     expect(run.accuracy?.check).toBeUndefined();
     expect(run.accuracy?.control?.n).toBe(1);
