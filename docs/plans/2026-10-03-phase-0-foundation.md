@@ -141,7 +141,7 @@ export const ipc = {
 export type IpcChannel = keyof typeof ipc;
 ```
 
-- [ ] Step 1: Write tests first: valid Al-Zour-like manifest parses; `aio.project/2` rejected with the newer-version message; duplicate layer ids rejected; out-of-model severity rejected with code in message; unsorted video track rejected; `ipc['project:open'].request` rejects extra keys; tool name regex.
+- [ ] Step 1: Write tests first: valid site-A-like manifest parses; `aio.project/2` rejected with the newer-version message; duplicate layer ids rejected; out-of-model severity rejected with code in message; unsorted video track rejected; `ipc['project:open'].request` rejects extra keys; tool name regex.
 - [ ] Step 2: `pnpm -F @aio/schema test` → FAIL (modules missing).
 - [ ] Step 3: Implement the files above.
 - [ ] Step 4: Tests PASS; `pnpm typecheck` PASS. Commit `feat(schema): shared contracts v1`.
@@ -185,14 +185,14 @@ For each of `geo, engine, pointcloud, maps, video, annotate, ai, ui, project`: `
 
 ### Task 7: Fixtures
 
-**Files:** `tools/fixtures/build.mjs`, `fixtures/README.md`, git-ignored `fixtures/data/{alzour,hcl}/`.
+**Files:** `tools/fixtures/build.mjs`, `fixtures/README.md`, git-ignored `fixtures/data/{site-a,site-b}/`.
 
-- `pnpm fixtures` copies from `docs/design/assets/` (already extracted real data) into `fixtures/data/alzour` and `fixtures/data/hcl`, and writes a `manifest.json` per project that validates with `parseManifest` (Al-Zour: mesh plant.glb, raster ortho, basemap placeholder, 2 video layers with flights from the clip path JSONs, panoramas; HCl: mesh tank.glb, pointcloud kit-packed cloud.bin, 2 video layers with f-theta lens 114 deg, issues from findings.json mapped to `Issue` with severity model "HCl lining 1 to 5").
+- `pnpm fixtures` copies from `docs/design/assets/` (already extracted real data) into `fixtures/data/site-a` and `fixtures/data/site-b`, and writes a `manifest.json` per project that validates with `parseManifest` (site A: mesh plant.glb, raster ortho, basemap placeholder, 2 video layers with flights from the clip path JSONs, panoramas; site B: mesh tank.glb, pointcloud kit-packed cloud.bin, 2 video layers with f-theta lens 114 deg, issues from findings.json mapped to `Issue` with severity model "lining condition 1 to 5").
 - Test: `tools/fixtures/build.test.mjs` runs the build into a temp dir and validates both manifests.
-- [ ] Commit `chore(fixtures): local fixture builder for Al-Zour and HCl`.
+- [ ] Commit `chore(fixtures): local fixture builder for two client sites`.
 
 ### Task 8 (runs in parallel from the start): full project data staging
 
-Founder requirement: M1 must open **KIPIC Al-Zour and HCl Tank with all their data**, not fixtures only. A background job stages complete source data, read-only from the sources, into `E:\Stratlas Data\sources\{alzour,hcl}\` (outside the repo) with an inventory `INVENTORY.md` per project. Sources: Al-Zour published artifact files and asset store (25 clips, flights.json, panoramas, photos, ortho tile pyramid, point-cloud chunks, plan tiles, asset register CSV, plant GLB) and the HCl offline package on `\\DanNas\Work Data\Asset Inspections\Oil and Gas\Hydrochloric Acid Tank\HCl Tank 710-D-130335 Digital Report` (10 flights of video, 10 clouds, flight JSONs, photos, thumbs, findings, PDF). Stream S10 later converts these into `.aio` packages in `E:\Stratlas Data\projects\`.
+Founder requirement: M1 must open **a client survey project and a client inspection project with all their data**, not fixtures only. A background job stages complete source data, read-only from the sources, into `E:Stratlas Datasources{site-a,site-b}` (outside the repo) with an inventory `INVENTORY.md` per project. Sources: the first project's published artifact files and asset store (25 clips, flights.json, panoramas, photos, ortho tile pyramid, point-cloud chunks, plan tiles, asset register CSV, plant GLB) and the second project's offline package in the founder's NAS data folder (10 flights of video, 10 clouds, flight JSONs, photos, thumbs, findings, PDF). Stream S10 later converts these into `.aio` packages in `E:Stratlas Dataprojects`.
 
 **Exit (M0):** `pnpm lint && pnpm typecheck && pnpm test && pnpm -F desktop build && pnpm test:e2e` all green locally on Windows; contracts tagged `contracts-v1`.
