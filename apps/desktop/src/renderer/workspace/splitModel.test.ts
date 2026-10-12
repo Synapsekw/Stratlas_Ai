@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   blockedFor,
+  chooseAt,
   chooseCapture,
   chooseSide,
   compareSplit,
@@ -10,7 +11,10 @@ import {
   sidesOf,
   twinAllowed,
   levelFor,
+  paneGroups,
   paneOptions,
+  paneValue,
+  parsePaneValue,
   parsePyramid,
   parseSplitPref,
   pyramidSize,
@@ -37,7 +41,7 @@ const alzour = [
 describe('what each side of the split shows', () => {
   it('offers only the panes the project has data for', () => {
     expect(paneOptions(hcl, 1)).toEqual(['3d', 'map', 'video', 'photo', 'report']);
-    expect(paneOptions(alzour, 0)).toEqual(['3d', 'map', 'video', 'raster']);
+    expect(paneOptions(alzour, 0)).toEqual(['3d', 'map', 'video', 'raster', 'pano']);
     expect(paneOptions([], 0)).toEqual(['3d', 'map']);
   });
 
@@ -268,5 +272,97 @@ describe('followsFocus', () => {
     expect(followsFocus(at(null, true), at('nov', true))).toBe(false);
     expect(followsFocus(at('nov', true), at(null, true))).toBe(false);
     expect(followsFocus(at('nov', true, 'p'), at('oct', true, 'q'))).toBe(false);
+  });
+});
+
+describe('the Panoramas pane and the picker grouped by date', () => {
+  const dates = { captures: ['sep', 'oct', 'nov'] };
+  const all = ['3d', 'map', 'video', 'raster', 'pano'] as const;
+  const has = (k: string, c: string) =>
+    k === 'raster' ? c === 'nov' : k === 'pano' && c !== 'sep';
+
+  it('offers Panoramas only with a panoramas layer', () => {
+    expect(paneOptions([{ kind: 'panoramas' }], 0)).toContain('pano');
+    expect(paneOptions(hcl, 0)).not.toContain('pano');
+  });
+
+  it('shows Panoramas twice for two dates, first left and last right', () => {
+    expect(twinAllowed('pano', { captures: ['a', 'b'] })).toBe(true);
+    expect(twinAllowed('pano', { captures: ['a'] })).toBe(false);
+    const r = resolveSplit({ left: 'pano', right: 'pano' }, ['3d', 'map', 'pano'], dates);
+    expect([r.leftCapture, r.rightCapture]).toEqual(['sep', 'nov']);
+  });
+
+  it('reads and writes the saved pano pair', () => {
+    const saved = {
+      left: 'pano',
+      right: 'pano',
+      leftCapture: 'a',
+      rightCapture: 'b',
+      pano: 'L/p1',
+    };
+    expect(parseSplitPref(saved)).toEqual(saved);
+    expect(parseSplitPref({ ...saved, pano: 42 })).toEqual({
+      left: 'pano',
+      right: 'pano',
+      leftCapture: 'a',
+      rightCapture: 'b',
+    });
+    expect(parseSplitPref({ left: 'pano', right: 'pano' })).toBeNull();
+    expect(parseSplitPref({ left: 'zzz', right: 'map' })).toBeNull();
+  });
+
+  it('turns a choice into a picker value and back', () => {
+    expect(paneValue('pano', 'nov')).toBe('pano@nov');
+    expect(paneValue('video', null)).toBe('video');
+    expect(parsePaneValue('pano@nov')).toEqual({ kind: 'pano', capture: 'nov' });
+    expect(parsePaneValue('video')).toEqual({ kind: 'video', capture: null });
+    expect(parsePaneValue('nope@x')).toBeNull();
+  });
+
+  it('groups the options by date, newest first, then the undated ones', () => {
+    const g = paneGroups({ left: '3d', right: 'map' }, 'right', all, dates, has);
+    expect(g.map((x) => x.capture)).toEqual(['nov', 'oct', 'sep', null]);
+    const kinds = (c: string | null) => g.find((x) => x.capture === c)?.options.map((o) => o.kind);
+    expect(kinds('nov')).toEqual(['3d', 'map', 'raster', 'pano']);
+    expect(kinds('oct')).toEqual(['3d', 'map', 'pano']);
+    expect(kinds('sep')).toEqual(['3d', 'map']);
+    expect(kinds(null)).toEqual(['video']);
+  });
+
+  it('disables what the other side already shows', () => {
+    const find = (g: ReturnType<typeof paneGroups>, v: string) =>
+      g.flatMap((x) => x.options).find((o) => o.value === v)?.disabled;
+    const a = paneGroups(
+      { left: 'pano', right: 'map', leftCapture: 'oct' },
+      'right',
+      all,
+      dates,
+      has,
+    );
+    expect(find(a, 'pano@oct')).toBe(true);
+    expect(find(a, 'pano@nov')).toBe(false);
+    const b = paneGroups({ left: 'video', right: 'map' }, 'right', all, dates, has);
+    expect(find(b, 'video')).toBe(true);
+  });
+
+  it('lists everything in one undated group without two dates', () => {
+    const g = paneGroups({ left: '3d', right: 'map' }, 'right', all, { captures: ['a'] }, has);
+    expect(g).toHaveLength(1);
+    expect(g[0]?.capture).toBeNull();
+    expect(g[0]?.options.map((o) => o.value)).toEqual([...all]);
+  });
+
+  it('chooses a pane and its date together', () => {
+    const r = chooseAt({ left: '3d', right: 'map' }, 'right', 'pano', 'oct', dates);
+    expect([r.right, r.rightCapture]).toEqual(['pano', 'oct']);
+    const s = chooseAt(
+      { left: 'pano', right: 'map', leftCapture: 'oct' },
+      'right',
+      'pano',
+      'oct',
+      dates,
+    );
+    expect([s.right, s.rightCapture, s.leftCapture]).toEqual(['pano', 'oct', 'nov']);
   });
 });

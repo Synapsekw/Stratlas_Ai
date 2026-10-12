@@ -2,7 +2,7 @@ import type { Layer } from '@aio/schema';
 
 /** What one side of the split stage shows. */
 export type PaneKind =
-  '3d' | 'map' | 'video' | 'photo' | 'raster' | 'report' | 'frames' | 'walk360';
+  '3d' | 'map' | 'video' | 'photo' | 'raster' | 'report' | 'frames' | 'walk360' | 'pano';
 
 export type Side = 'left' | 'right';
 
@@ -13,6 +13,8 @@ export interface SplitPref {
   raster?: string;
   /** The report file the Report pane shows (absent: the first). */
   report?: string;
+  /** The left panorama of the Panoramas pane, `${layerId}/${panoId}` (absent: the nearest). */
+  pano?: string;
   /** Survey date (capture id) the left side shows, for panes drawn per date (3D, map, ortho). */
   leftCapture?: string;
   /** Survey date (capture id) the right side shows. */
@@ -23,9 +25,9 @@ export interface SplitPref {
 
 /**
  * Panes that can show twice when they show two survey dates: one 3D view per date, one map or
- * ortho per date. The video player, photos and the report stay single.
+ * ortho or panorama per date. The video player, photos and the report stay single.
  */
-export const PER_CAPTURE: readonly PaneKind[] = ['3d', 'map', 'raster'];
+export const PER_CAPTURE: readonly PaneKind[] = ['3d', 'map', 'raster', 'pano'];
 
 /** The project's survey dates for the split (capture ids, oldest first). */
 export interface SplitDates {
@@ -142,6 +144,7 @@ export const PANE_KINDS: readonly PaneKind[] = [
   'video',
   'photo',
   'raster',
+  'pano',
   'report',
   'frames',
   'walk360',
@@ -173,6 +176,8 @@ export function paneOptions(
         return has('photos');
       case 'raster':
         return has('raster');
+      case 'pano':
+        return has('panoramas');
       case 'report':
         return reports > 0;
       case 'frames': // M8 C4: same view on another date (FramesPane.tsx)
@@ -217,6 +222,88 @@ export function chooseSide(
   return withCaptures({ ...pref, [side]: kind }, dates);
 }
 
+/** Show `kind` on `side` at `capture` (null: any date), as one choice from the grouped picker. */
+export function chooseAt(
+  pref: SplitPref,
+  side: Side,
+  kind: PaneKind,
+  capture: string | null,
+  dates?: SplitDates,
+): SplitPref {
+  const next = chooseSide(pref, side, kind, dates);
+  return capture ? chooseCapture(next, side, capture, dates) : next;
+}
+
+/** The picker value of a pane on a date: `video`, `pano@nov`. */
+export function paneValue(kind: PaneKind, capture: string | null): string {
+  return capture ? `${kind}@${capture}` : kind;
+}
+
+/** A picker value read back; null when it names no pane. A date only counts on per-date panes. */
+export function parsePaneValue(v: string): { kind: PaneKind; capture: string | null } | null {
+  const at = v.lastIndexOf('@');
+  const kind = at < 0 ? v : v.slice(0, at);
+  const capture = at < 0 ? null : v.slice(at + 1);
+  const known = PANE_KINDS.find((k) => k === kind);
+  if (!known) return null;
+  if (capture !== null && (capture === '' || !PER_CAPTURE.includes(known))) return null;
+  return { kind: known, capture };
+}
+
+export interface PaneOption {
+  value: string;
+  kind: PaneKind;
+  capture: string | null;
+  disabled: boolean;
+}
+
+export interface PaneGroup {
+  /** The survey date of the group; null: panes that show any date. */
+  capture: string | null;
+  options: PaneOption[];
+}
+
+/**
+ * The picker of `side` grouped by survey date, newest first, then the panes without a date.
+ * With fewer than two dates there is one group of every option. `has` tells whether the project
+ * has data of a kind on a date.
+ */
+export function paneGroups(
+  pref: SplitPref,
+  side: Side,
+  options: readonly PaneKind[],
+  dates: SplitDates | undefined,
+  has: (kind: PaneKind, capture: string) => boolean,
+): PaneGroup[] {
+  const blocked = blockedFor(pref, side, dates);
+  const undated = (kind: PaneKind): PaneOption => ({
+    value: paneValue(kind, null),
+    kind,
+    capture: null,
+    disabled: kind === blocked,
+  });
+  if (!dates || dates.captures.length < 2)
+    return [{ capture: null, options: options.map(undated) }];
+  const otherKind = takenBy(pref, side);
+  const otherCapture = sideCapture(pref, side === 'left' ? 'right' : 'left', dates);
+  const groups: PaneGroup[] = [...dates.captures].reverse().map((capture) => ({
+    capture,
+    options: options
+      .filter((k) => PER_CAPTURE.includes(k) && (k === '3d' || k === 'map' || has(k, capture)))
+      .map((kind) => ({
+        value: paneValue(kind, capture),
+        kind,
+        capture,
+        disabled: kind === otherKind && (otherCapture === capture || !twinAllowed(kind, dates)),
+      })),
+  }));
+  groups.push({
+    capture: null,
+    options: options.filter((k) => !PER_CAPTURE.includes(k)).map(undated),
+  });
+  return groups;
+}
+
 /** The pane the other side shows: disabled in this side's chooser. */
 export function takenBy(pref: SplitPref, side: Side): PaneKind {
   return side === 'left' ? pref.right : pref.left;
@@ -230,7 +317,7 @@ export function sideOf(pref: SplitPref, kind: PaneKind): Side | undefined {
 /** A remembered choice read back from storage, or null when it is not one. */
 export function parseSplitPref(v: unknown): SplitPref | null {
   if (!v || typeof v !== 'object') return null;
-  const { left, right, raster, report, leftCapture, rightCapture, unlinked } = v as Record<
+  const { left, right, raster, pano, report, leftCapture, rightCapture, unlinked } = v as Record<
     string,
     unknown
   >;
@@ -252,6 +339,7 @@ export function parseSplitPref(v: unknown): SplitPref | null {
     left,
     right,
     ...(typeof raster === 'string' ? { raster } : {}),
+    ...(typeof pano === 'string' ? { pano } : {}),
     ...(typeof report === 'string' ? { report } : {}),
     ...(typeof leftCapture === 'string' ? { leftCapture } : {}),
     ...(typeof rightCapture === 'string' ? { rightCapture } : {}),
