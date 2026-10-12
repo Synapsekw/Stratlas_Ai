@@ -38,8 +38,8 @@ export const BUDGETS = Object.freeze({
    * budget was 1,100 MB until the boundary model of M11 G12 (MobileSAM, 44.7 MB) took the Windows
    * pack to about 1,106 MB: the founder raised it to 1,150 MB on 10 Oct 2026 (ADR 0011). ffmpeg in
    * the pack (founder decision of 12 Oct 2026, Walks 360 `walk.process`; conda-forge's GPL build,
-   * about 141 MB pruned) takes the Windows pack to about 1,245 MB: raised to 1,300 MB with it,
-   * pending the founder's confirmation of the number.
+   * about 141 MB pruned) takes the Windows pack to about 1,245 MB: the founder approved 1,300 MB
+   * on 12 Oct 2026.
    */
   pack: Object.freeze({ unpackedBytes: 1_300_000_000, compressedBytes: 450_000_000 }),
   /**
