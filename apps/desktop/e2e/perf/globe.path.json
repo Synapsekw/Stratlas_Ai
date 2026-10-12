@@ -1,0 +1,12 @@
+{
+  "note": "The Globe over the synthetic library (createGlobeLibrary, perf-m10.spec.ts): site A close and from orbit, across to site B, down to it, across to site C, down to it. `site` indexes GLOBE_SITES; heights in metres, angles in degrees.",
+  "durationMs": 12000,
+  "keys": [
+    { "site": 0, "height": 4000, "heading": 0, "pitch": -45 },
+    { "site": 0, "height": 2000000, "heading": 0, "pitch": -90 },
+    { "site": 1, "height": 2000000, "heading": 0, "pitch": -90 },
+    { "site": 1, "height": 5000, "heading": 30, "pitch": -40 },
+    { "site": 2, "height": 3000000, "heading": 0, "pitch": -90 },
+    { "site": 2, "height": 6000, "heading": 300, "pitch": -35 }
+  ]
+}

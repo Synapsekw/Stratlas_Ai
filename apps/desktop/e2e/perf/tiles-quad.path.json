@@ -1,0 +1,14 @@
+{
+  "project": "e2e-tiny",
+  "card": "E2E tiny project",
+  "note": "The 85 tile quadtree (60 m square at the origin, perf-m10.spec.ts): high over it, down close over one corner, across low to the far corner, out to the side, back up.",
+  "durationMs": 8000,
+  "keys": [
+    { "position": [0, 80, 60], "target": [0, 2, 0] },
+    { "position": [-20, 12, -10], "target": [-20, 2, -25] },
+    { "position": [15, 6, 10], "target": [25, 2, 25] },
+    { "position": [50, 20, 0], "target": [0, 2, 0] },
+    { "position": [0, 10, -50], "target": [0, 2, 0] },
+    { "position": [0, 80, 60], "target": [0, 2, 0] }
+  ]
+}
