@@ -93,6 +93,7 @@ const CHANNELS = {
   'builder:altitudePlan': true,
   'builder:updateLayers': true,
   'builder:updateCapture': true,
+  'builder:removeCapture': true,
   'builder:ensureCapture': true,
   'builder:addDrawingPage': true,
   'builder:closeDrawing': true,

@@ -55,6 +55,7 @@ import {
   importRuns,
   builderTemplates,
   builderUpdateCapture,
+  builderRemoveCapture,
   builderUpdateLayers,
   createBuilderProject,
   photoGps,
@@ -1271,6 +1272,10 @@ function registerIpc(): void {
   handle(
     'builder:updateCapture',
     (req) => packageRefusal(req.projectId) ?? builderUpdateCapture(req, registry),
+  );
+  handle(
+    'builder:removeCapture',
+    (req) => packageRefusal(req.projectId) ?? builderRemoveCapture(req, registry),
   );
   handle(
     'builder:ensureCapture',

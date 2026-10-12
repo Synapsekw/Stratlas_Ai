@@ -1,10 +1,16 @@
 import { reportBrands } from '@aio/brand';
-import type { ImageOps, PipelineJobs, ProxyEncoder, VideoTools } from '@aio/project/builder';
+import type {
+  Expanded,
+  ImageOps,
+  PipelineJobs,
+  ProxyEncoder,
+  VideoTools,
+} from '@aio/project/builder';
 import type { IpcEvent, IpcRequest, IpcResponse, ProjectManifest } from '@aio/schema';
 import { readMp4VideoInfo, parseDjiSrt, srtTimingCheck, srtToFlight } from '@aio/video/telemetry';
 import { execFile } from 'node:child_process';
 import { open, readdir, stat } from 'node:fs/promises';
-import { join, resolve } from 'node:path';
+import { basename, join, resolve } from 'node:path';
 import { promisify } from 'node:util';
 import { createImportRuns } from './importRuns';
 import { readManifest, type ProjectRegistry } from './project';
@@ -154,16 +160,41 @@ export const videoTools: VideoTools = {
   },
 };
 
+/** The folder limit as the messages print it ("20,000"); a test pins it to `MAX_FOLDER_FILES`. */
+export const FOLDER_LIMIT_TEXT = '20,000';
+
+export interface ExpandOptions {
+  /** Which extensions an import takes; defaults to `isImportableExtension`. */
+  known?: (ext: string) => boolean;
+  /** Files per import; defaults to `MAX_FOLDER_FILES`. */
+  limit?: number;
+}
+
+/** Folders in the paths of an import become the files they hold. */
+export async function expandFor(
+  paths: readonly string[],
+  opts: ExpandOptions = {},
+): Promise<Expanded> {
+  const l = await lib();
+  return l.expandImportPaths(paths, opts.known ?? l.isImportableExtension, opts.limit);
+}
+
+const tooManyError = (folder: string): string =>
+  `${basename(folder)} holds more than ${FOLDER_LIMIT_TEXT} files. Import a smaller folder.`;
+
 /** What the files of an import carry for camera heights (`builder:altitudePlan`). */
 export async function builderAltitudePlan(
   req: IpcRequest<'builder:altitudePlan'>,
   registry: ProjectRegistry,
+  opts: ExpandOptions = {},
 ): Promise<IpcResponse<'builder:altitudePlan'>> {
   const root = registry.root(req.projectId);
   if (root === undefined)
     return { ok: false, error: `Project "${req.projectId}" is not open. Open it, then import.` };
   try {
-    const plan = await (await lib()).planRawAltitudes(root, req.paths, { video: videoTools });
+    const ex = await expandFor(req.paths, opts);
+    if (ex.tooMany !== null) return { ok: false, error: tooManyError(ex.tooMany) };
+    const plan = await (await lib()).planRawAltitudes(root, ex.files, { video: videoTools });
     return { ok: true, plan };
   } catch (e) {
     return { ok: false, error: errorText(e) };
@@ -215,6 +246,9 @@ export interface BuilderImportDeps {
   images: ImageOps;
   jobs?: PipelineJobs;
   emit: (e: IpcEvent<'builder:progress'>) => void;
+  /** Folder expansion overrides (tests). */
+  known?: ExpandOptions['known'];
+  limit?: ExpandOptions['limit'];
 }
 
 export async function builderImport(
@@ -224,13 +258,20 @@ export async function builderImport(
   const root = d.registry.root(req.projectId);
   if (root === undefined)
     return { ok: false, error: `Project "${req.projectId}" is not open. Open it, then import.` };
+  const ex = await expandFor(req.paths, {
+    ...(d.known ? { known: d.known } : {}),
+    ...(d.limit !== undefined ? { limit: d.limit } : {}),
+  });
+  if (ex.tooMany !== null) return { ok: false, error: tooManyError(ex.tooMany) };
+  if (ex.files.length === 0 && ex.leftOut.length === 0)
+    return { ok: false, error: 'The folder holds no files to import.' };
   const run = importRuns.begin(req.projectId);
   try {
     const { importRawFiles, NO_PIPELINE } = await lib();
     const progress = stitchProgress((e) => {
       d.emit({ projectId: req.projectId, ...e });
-    }, req.paths.length);
-    const r = await importRawFiles(root, req.paths, {
+    }, ex.files.length);
+    const r = await importRawFiles(root, ex.files, {
       images: d.images,
       jobs: d.jobs ?? NO_PIPELINE,
       video: videoTools,
@@ -249,7 +290,15 @@ export async function builderImport(
     return {
       ok: true,
       manifest: r.manifest,
-      items: r.items,
+      items: [
+        ...r.items,
+        ...ex.leftOut.map((o) => ({
+          file: basename(o.folder),
+          kind: 'unknown' as const,
+          status: 'skipped' as const,
+          message: `${o.count} files in ${basename(o.folder)} are not data this app imports (${o.exts.join(', ')}).`,
+        })),
+      ],
       ...(r.heights ? { heights: r.heights } : {}),
     };
   } catch (e) {
@@ -347,6 +396,25 @@ export async function builderUpdateCapture(
     };
   try {
     const r = await (await lib()).updateCapture(root, req.captureId, req.patch);
+    return { ok: true, manifest: r.manifest, backup: r.backup };
+  } catch (e) {
+    return { ok: false, error: errorText(e) };
+  }
+}
+
+/** Remove a survey date that holds no datasets: only `manifest.captures` changes. */
+export async function builderRemoveCapture(
+  req: IpcRequest<'builder:removeCapture'>,
+  registry: ProjectRegistry,
+): Promise<IpcResponse<'builder:removeCapture'>> {
+  const root = registry.root(req.projectId);
+  if (root === undefined)
+    return {
+      ok: false,
+      error: `Project "${req.projectId}" is not open. Open it, then try again.`,
+    };
+  try {
+    const r = await (await lib()).removeCapture(root, req.captureId);
     return { ok: true, manifest: r.manifest, backup: r.backup };
   } catch (e) {
     return { ok: false, error: errorText(e) };

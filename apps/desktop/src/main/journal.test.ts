@@ -899,6 +899,7 @@ describe('journal service', () => {
       'builder:updateLayers',
       'builder:updateCapture',
       'builder:ensureCapture',
+      'builder:removeCapture',
       'change:compute',
       'model:build',
       'library:rename',

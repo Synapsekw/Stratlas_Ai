@@ -1,3 +1,4 @@
+import { MAX_FOLDER_FILES } from '@aio/project/builder';
 import { withExif } from '@aio/project/builder/testing';
 import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -5,6 +6,9 @@ import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import {
   builderAddDrawingPage,
+  builderAltitudePlan,
+  builderRemoveCapture,
+  FOLDER_LIMIT_TEXT,
   builderCloseDrawing,
   builderImport,
   builderEnsureCapture,
@@ -199,5 +203,118 @@ describe('builder main handlers', () => {
     expect(again.ok && again.manifest.captures.filter((c) => c.date === '2026-03-14')).toHaveLength(
       1,
     );
+  });
+});
+
+describe('folder imports and removeCapture', () => {
+  const known = (ext: string): boolean => ext === '.mp4' || ext === '.srt';
+  const images = { resizeJpeg: () => Promise.resolve() };
+
+  async function flightFolder(): Promise<string> {
+    const folder = join(base, 'flight');
+    await mkdir(folder);
+    for (const f of ['DJI_0001.MP4', 'DJI_0001.SRT', 'DJI_0001.LRF', 'Thumbs.db'])
+      await writeFile(join(folder, f), 'x');
+    return folder;
+  }
+
+  it('imports a folder, answers one summary row for the left-out files and counts two files', async () => {
+    const dir = join(base, 'projects', 'folder');
+    await writeProject(dir, sampleManifest());
+    const registry = new ProjectRegistry();
+    const projectId = registry.register(dir);
+    const folder = await flightFolder();
+    const events: { total: number }[] = [];
+    const r = await builderImport(
+      { projectId, paths: [folder] },
+      { registry, images, emit: (e) => events.push(e), known },
+    );
+    expect(r.ok).toBe(true);
+    const rows = r.ok ? r.items : [];
+    const summary = rows.filter((i) => i.file === 'flight');
+    expect(summary).toEqual([
+      {
+        file: 'flight',
+        kind: 'unknown',
+        status: 'skipped',
+        message: '2 files in flight are not data this app imports (.db, .lrf).',
+      },
+    ]);
+    expect(rows.some((i) => i.file.endsWith('.LRF') || i.file === 'Thumbs.db')).toBe(false);
+    expect(events.length > 0 && events.every((e) => e.total === 2)).toBe(true);
+  });
+
+  it('answers an error for a folder over the limit and for an empty folder', async () => {
+    const dir = join(base, 'projects', 'big');
+    await writeProject(dir, sampleManifest());
+    const registry = new ProjectRegistry();
+    const projectId = registry.register(dir);
+    const folder = await flightFolder();
+    const over = await builderImport(
+      { projectId, paths: [folder] },
+      { registry, images, emit: () => undefined, known, limit: 1 },
+    );
+    expect(over).toEqual({
+      ok: false,
+      error: 'flight holds more than 20,000 files. Import a smaller folder.',
+    });
+    expect(FOLDER_LIMIT_TEXT).toBe(MAX_FOLDER_FILES.toLocaleString('en-US'));
+    const empty = join(base, 'empty');
+    await mkdir(empty);
+    const none = await builderImport(
+      { projectId, paths: [empty] },
+      { registry, images, emit: () => undefined, known },
+    );
+    expect(none).toEqual({ ok: false, error: 'The folder holds no files to import.' });
+  });
+
+  it('the altitude plan accepts a folder and refuses one over the limit', async () => {
+    const dir = join(base, 'projects', 'alt');
+    await writeProject(dir, sampleManifest());
+    const registry = new ProjectRegistry();
+    const projectId = registry.register(dir);
+    const folder = await flightFolder();
+    const ok = await builderAltitudePlan({ projectId, paths: [folder] }, registry, { known });
+    expect(ok.ok).toBe(true);
+    const over = await builderAltitudePlan({ projectId, paths: [folder] }, registry, {
+      known,
+      limit: 1,
+    });
+    expect(over).toEqual({
+      ok: false,
+      error: 'flight holds more than 20,000 files. Import a smaller folder.',
+    });
+  });
+
+  it('removeCapture removes an empty date, refuses a named date and a closed project', async () => {
+    const dir = join(base, 'projects', 'rm');
+    await writeProject(dir, sampleManifest());
+    const registry = new ProjectRegistry();
+    const projectId = registry.register(dir);
+    expect(await builderRemoveCapture({ projectId: 'x', captureId: 'c' }, registry)).toEqual({
+      ok: false,
+      error: 'Project "x" is not open. Open it, then try again.',
+    });
+    const added = await builderEnsureCapture({ projectId, date: '2026-03-14' }, registry);
+    expect(added.ok && added.created).toBe(true);
+    const gone = await builderRemoveCapture(
+      { projectId, captureId: 'capture-2026-03-14' },
+      registry,
+    );
+    expect(gone.ok && gone.manifest.captures.some((c) => c.id === 'capture-2026-03-14')).toBe(
+      false,
+    );
+    const missing = await builderRemoveCapture(
+      { projectId, captureId: 'capture-2026-03-14' },
+      registry,
+    );
+    expect(missing.ok).toBe(false);
+    const filed = await builderUpdateLayers(
+      { projectId, layerIds: ['plant'], patch: { capture: 'c1' } },
+      registry,
+    );
+    expect(filed.ok).toBe(true);
+    const refused = await builderRemoveCapture({ projectId, captureId: 'c1' }, registry);
+    expect(refused.ok).toBe(false);
   });
 });

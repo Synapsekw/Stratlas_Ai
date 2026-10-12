@@ -10,9 +10,10 @@
  *   `project:writeBoundaries`, `report:writeNarrative`) are wrapped: ops first, then the write;
  *   a write the handler refuses is undone by ops, never by editing the journal;
  * - `tilesets:write` and `photo:writeGcp` are wrapped too (one `record.external` op per save);
- * - `builder:updateLayers`, `builder:updateCapture` and `builder:ensureCapture` are diffed after
- *   they write (their result is computed in the handler), and so are `tilesets:import` (the
- *   imported tileset's name as the label) and `photo:applyPoses` with `apply: true`;
+ * - `builder:updateLayers`, `builder:updateCapture`, `builder:removeCapture` and
+ *   `builder:ensureCapture` are diffed after they write (their result is computed in the
+ *   handler), and so are `tilesets:import` (the imported tileset's name as the label) and
+ *   `photo:applyPoses` with `apply: true`;
  * - on open, a half-done write is finished (crash recovery) and any other difference is recorded
  *   as attributed ops (`via.external`, "changed outside Quadrion AI");
  * - around pipeline jobs, the difference is recorded with `via.pipeline`.
@@ -922,12 +923,16 @@ export function createJournalService(deps: JournalServiceDeps) {
     if (
       channel === 'builder:updateLayers' ||
       channel === 'builder:updateCapture' ||
+      channel === 'builder:removeCapture' ||
       channel === 'builder:ensureCapture'
     ) {
       return async (req) => {
         const r = await handler(req);
         const { projectId } = req as IpcRequest<
-          'builder:updateLayers' | 'builder:updateCapture' | 'builder:ensureCapture'
+          | 'builder:updateLayers'
+          | 'builder:updateCapture'
+          | 'builder:removeCapture'
+          | 'builder:ensureCapture'
         >;
         const root = deps.projects.root(projectId);
         if ((r as { ok: boolean }).ok && root !== undefined) {
