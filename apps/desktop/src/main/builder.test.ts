@@ -231,6 +231,13 @@ describe('folder imports and removeCapture', () => {
     );
     expect(r.ok).toBe(true);
     const rows = r.ok ? r.items : [];
+    // the SRT pairs with its MP4: no row of its own, and the clip is not the "no SRT" skip
+    // (the stand-in file is not a real movie, so the clip itself ends as a read error)
+    expect(rows.some((i) => i.file.toLowerCase().endsWith('.srt'))).toBe(false);
+    const clip = rows.find((i) => i.file === 'DJI_0001.MP4');
+    expect(clip).toBeDefined();
+    expect(clip?.message ?? '').not.toContain('No DJI SRT');
+    expect(clip?.status).not.toBe('skipped');
     const summary = rows.filter((i) => i.file === 'flight');
     expect(summary).toEqual([
       {
