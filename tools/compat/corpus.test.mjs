@@ -1,6 +1,6 @@
 // The 1.x upgrade policy, proved on the compatibility corpus (tools/compat/corpus, built by
 // build-corpus.mjs from each milestone's own schema):
-// - every file written by 0.4 to 0.11 opens in this build with nothing lost;
+// - every file written by 0.4 to 0.10 and this build opens in this build with nothing lost;
 // - every file this build writes parses with the 0.10, 0.9 and 0.8 schemas with nothing lost, bar the
 //   walk-layer project (a new layer kind, see walk-kind.test.mjs): an 0.10, 0.9 or 0.8 build on the
 //   same machine still opens it;

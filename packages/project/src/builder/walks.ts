@@ -98,7 +98,7 @@ const text = (e: unknown) => (e instanceof Error ? e.message : String(e));
 const px = (s: FrameSize) => `${String(s.width)} x ${String(s.height)}`;
 const r3 = (v: number) => Math.round(v * 1000) / 1000;
 
-const OPEN_HINT = 'Open it under 360 video in the sidebar.';
+const OPEN_HINT = 'Open it under 360 walks in Datasets.';
 
 /** What a walk's row says when the import was cancelled while it was made. */
 export const WALK_CANCELLED =

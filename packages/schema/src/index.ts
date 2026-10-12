@@ -38,7 +38,7 @@ export * from './hydro';
 export * from './haul';
 // Video direction keyframes and photo corrections (orientation.json, proposal)
 export * from './orientation';
-// 360 video in a side folder (walks/<id>/walk.json, proposal)
+// 360 walks: the walk record (walks/<id>/walk.json), its path, orientation and placing
 export * from './walks';
 export * from './launch';
 // Online satellite imagery (ADR 0007, amendment of 10 Oct 2026)

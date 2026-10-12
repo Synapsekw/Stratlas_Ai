@@ -2,11 +2,12 @@ import { z } from 'zod';
 import { AssetRef, Id, IsoTime, Quat, Vec3 } from './common';
 
 /*
- * `walks/<id>/walk.json` (`aio.walk/1`, PROPOSAL pending founder review): one 360 video brought
- * into a project from a 360 camera's own file or from a stitched equirectangular MP4. It lives in
- * a side folder with its playback copy and poster, not in the manifest, so builds that do not
- * know it never read it and open the project as before (data-conventions section 32). The front
- * slice of Walks 360 part W1; the later parts add pose, stills and motion data beside it.
+ * `walks/<id>/walk.json` (`aio.walk/1`): one 360 video brought into a project from a 360 camera's
+ * own file or from a stitched equirectangular MP4. It lives in a side folder with its playback
+ * copy and poster, not in the manifest, so builds that do not know it never read it and open the
+ * project as before (data-conventions section 32). The `walk` layer of the manifest points at it;
+ * the path, orientation and pose files sit beside it, and the layer carries the placing
+ * (`WalkCalibration`, below).
  */
 
 export const WALK_SCHEMA = 'aio.walk/1';
