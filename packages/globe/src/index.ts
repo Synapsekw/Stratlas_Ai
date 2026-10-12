@@ -1,7 +1,7 @@
 // @aio/globe (M10 stream G6): the Globe view on CesiumJS. This entry holds what needs no CesiumJS
-// (offline rules, credits, looks and the layer plan, tile and terrain maths, the project frame to ECEF, project rasters on WGS84, the camera
-// hand-off, sites and issue pins); `@aio/globe/view` holds the CesiumJS view, imported only from
-// the renderer's lazily loaded Globe chunk.
+// (offline rules, credits, looks and the layer plan, tile and terrain maths, the project frame to
+// ECEF, project rasters on WGS84, the camera hand-off, sites and issue pins); `@aio/globe/view`
+// holds the CesiumJS view, imported only from the renderer's lazily loaded Globe chunk.
 export {
   BANNED_CESIUM_IMPORTS,
   BANNED_CESIUM_PACKAGES,
