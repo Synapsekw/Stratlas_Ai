@@ -56,7 +56,7 @@ function WalkPlayer({
   // Place walk: the session follows this player's time, seeks it, and takes Align view clicks
   const aiming = useStore(placeSession, (s) => s.layerId === walk.id && s.armed === 'align-360');
   const seekReq = useStore(placeUi, (s) => (s.layerId === walk.id ? s.seek : null));
-  const heading = useWalkViewHeading(projectId, walk, time);
+  const heading = useWalkViewHeading(walk, time);
   const audio = record?.video.audio ?? false;
   const poster = walk.poster ? assetUrl(projectId, walk.poster) : undefined;
 

@@ -80,3 +80,8 @@
 .walk-north.edge {
   opacity: 0.55;
 }
+/* the step in hand is a marker, not a control */
+.wplace-now {
+  cursor: default;
+  pointer-events: none;
+}

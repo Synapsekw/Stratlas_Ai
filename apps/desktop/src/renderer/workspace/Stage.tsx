@@ -89,6 +89,7 @@ import {
 import { DatesOnScreen } from './DatesOnScreen';
 import { useWalkMapOverlays, useWalkMapPick } from '../walks/walkMapStore';
 import { PlaceWalkHere, usePlacingOnMap } from '../walks/PlaceWalkStrip';
+import { usePlacedWalksOnMap } from '../walks/placeWalk';
 import { useTimeline } from './timeline';
 import { hiddenPathClips, togglePaths } from './flightPaths';
 import { telemetryLabels, toggleTelemetry, useTelemetryOn } from './telemetryPref';
@@ -649,6 +650,8 @@ export function Stage() {
   const walkOverlays = useWalkMapOverlays();
   const walkPick = useWalkMapPick();
   const placingOnMap = usePlacingOnMap();
+  // every visible, placed walk on the map at 60 % (the walk placed there draws itself)
+  usePlacedWalksOnMap();
   const baseOverlays = roadMap ? roadMap.overlays : roadSetup?.overlays;
   const mapOverlays = useMemo(
     () => (walkOverlays.length === 0 ? baseOverlays : [...(baseOverlays ?? []), ...walkOverlays]),

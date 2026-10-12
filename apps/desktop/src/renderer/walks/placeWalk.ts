@@ -34,12 +34,14 @@ import {
   placeSurfaces,
   rememberedSurface,
   surfaceFramesOf,
+  surfaceKey,
   type DrawingLookup,
   type PlaceSurface,
 } from './placeModel';
 import { createPlaceStore, type PlaceState } from './placeStore';
 import { walkMap, setWalkMapOverlays, setWalkMapPick } from './walkMapStore';
 import { resolveCssColour, walkMapOverlays, walkNowMapOverlay } from './walkMapOverlay';
+import { walkDrawingsForSheet, type SheetWalk, type WalkDrawing } from './walkOverlay';
 import { splitWithWalk } from './walkModel';
 import { setPlaceWalkHandler, walks } from './walks';
 import { walkRecordKey } from './walkStore';
@@ -112,19 +114,23 @@ export interface PlaceUi {
   note: string | null;
   /** The latest seek the 360 pane should make (`n` tells two seeks to one time apart). */
   seek: { t: number; n: number } | null;
+  /** Place walk was asked for another walk while this one has unsaved pins: it waits for the answer. */
+  pending: string | null;
 }
 
-const CLOSED: Omit<PlaceUi, 'seek'> = {
+const CLOSED: PlaceUi = {
   layerId: null,
   host: null,
   inputs: NO_INPUTS,
   saving: false,
   asking: false,
   note: null,
+  seek: null,
+  pending: null,
 };
 
 export function createPlaceUi(): StoreApi<PlaceUi> {
-  return createStore<PlaceUi>()(() => ({ ...CLOSED, seek: null }));
+  return createStore<PlaceUi>()(() => ({ ...CLOSED }));
 }
 
 /** The session store with its seeks sent to the 360 pane through `ui`. */
@@ -177,7 +183,7 @@ export interface PlaceWalkFlow {
   save(): Promise<void>;
   /** Close the strip: asks first when there are unsaved pins. */
   close(): void;
-  /** Leave the walk as it was. */
+  /** Leave the walk as it was (then place the walk that was waiting, if one was). */
   discard(): void;
   /** Back to placing from the question. */
   keepPlacing(): void;
@@ -199,47 +205,74 @@ export function createPlaceWalk(
     const w = walkOf();
     return m && w ? placeSurfaces(m, w, hasCrs(m)) : [];
   };
-  const discard = (): void => {
+  const reset = (): void => {
     session.getState().cancel();
     ui.setState({ ...CLOSED });
   };
   const failed = (note: string): void => {
     ui.setState({ note });
   };
+  /** The remembered (or first) surface chosen, so the strip opens on its first step. */
+  const enterHost = (): void => {
+    const h = ui.getState().host;
+    if (!h || session.getState().step !== 'surface') return;
+    if (surfacesOf().some((x) => surfaceKey(x) === surfaceKey(h)))
+      session.getState().chooseSurface(h);
+  };
+  /** After the answer to "Keep these pins?": the walk that was waiting is placed next. */
+  const next = (): void => {
+    const waiting = ui.getState().pending;
+    reset();
+    if (waiting) void begin(waiting);
+  };
+
+  const begin = async (layerId: string): Promise<void> => {
+    const project = deps.project();
+    const layer = project?.manifest.layers.find(
+      (l): l is WalkLayer => l.kind === 'walk' && l.id === layerId,
+    );
+    if (!project || !layer) return;
+    const cur = ui.getState();
+    if (cur.layerId === layerId && session.getState().layerId === layerId) {
+      deps.openSurface(layerId, cur.host);
+      return;
+    }
+    // unsaved pins on another walk: ask first, place this one after the answer
+    if (
+      cur.layerId !== null &&
+      session.getState().layerId === cur.layerId &&
+      session.getState().dirty
+    ) {
+      ui.setState({ asking: true, pending: layerId });
+      deps.openSurface(cur.layerId, cur.host);
+      return;
+    }
+    const ask = ++begun;
+    session.getState().cancel();
+    const list = placeSurfaces(project.manifest, layer, hasCrs(project.manifest));
+    const host = rememberedSurface(layer, list) ?? list[0] ?? null;
+    ui.setState({ ...CLOSED, layerId, host });
+    deps.openSurface(layerId, host);
+    const inputs = await deps.loadInputs(project.id, layer);
+    // a newer Place walk (or a close) came first
+    if (ask !== begun || ui.getState().layerId !== layerId) return;
+    const m = deps.project()?.manifest ?? project.manifest;
+    const now = m.layers.find((l): l is WalkLayer => l.kind === 'walk' && l.id === layerId);
+    if (!now) {
+      reset();
+      return;
+    }
+    ui.setState({ inputs });
+    session.getState().start(now, m, {
+      raw: inputs.raw,
+      drawings: deps.drawings,
+      orientation: inputs.orientation,
+    });
+    enterHost();
+  };
 
   return {
-    begin: async (layerId) => {
-      const project = deps.project();
-      const layer = project?.manifest.layers.find(
-        (l): l is WalkLayer => l.kind === 'walk' && l.id === layerId,
-      );
-      if (!project || !layer) return;
-      if (ui.getState().layerId === layerId && session.getState().layerId === layerId) {
-        deps.openSurface(layerId, ui.getState().host);
-        return;
-      }
-      const ask = ++begun;
-      session.getState().cancel();
-      const list = placeSurfaces(project.manifest, layer, hasCrs(project.manifest));
-      const host = rememberedSurface(layer, list) ?? list[0] ?? null;
-      ui.setState({ ...CLOSED, layerId, host });
-      deps.openSurface(layerId, host);
-      const inputs = await deps.loadInputs(project.id, layer);
-      // a newer Place walk (or a close) came first
-      if (ask !== begun || ui.getState().layerId !== layerId) return;
-      const m = deps.project()?.manifest ?? project.manifest;
-      const now = m.layers.find((l): l is WalkLayer => l.kind === 'walk' && l.id === layerId);
-      if (!now) {
-        discard();
-        return;
-      }
-      ui.setState({ inputs });
-      session.getState().start(now, m, {
-        raw: inputs.raw,
-        drawings: deps.drawings,
-        orientation: inputs.orientation,
-      });
-    },
+    begin,
     walk: walkOf,
     surfaces: surfacesOf,
     dates: () => {
@@ -267,6 +300,7 @@ export function createPlaceWalk(
         return;
       }
       session.getState().setDate(captureId);
+      enterHost();
     },
     addDate: async (day) => {
       const id = ui.getState().layerId;
@@ -283,6 +317,7 @@ export function createPlaceWalk(
         return;
       }
       session.getState().setDate(made.captureId);
+      enterHost();
     },
     chooseSurface: (s) => {
       const id = ui.getState().layerId;
@@ -302,15 +337,15 @@ export function createPlaceWalk(
         ui.setState({ saving: false, note: error });
         return;
       }
-      discard();
+      next();
     },
     close: () => {
       if (session.getState().dirty) ui.setState({ asking: true });
-      else discard();
+      else reset();
     },
-    discard,
+    discard: next,
     keepPlacing: () => {
-      ui.setState({ asking: false });
+      ui.setState({ asking: false, pending: null });
     },
   };
 }
@@ -345,6 +380,23 @@ export function wantsSurfaceClick(s: Pick<PlaceState, 'armed'>): boolean {
   );
 }
 
+/*
+ * The walks' map overlays come from two writers: the placed walks (`setPlacedMapOverlays`, from
+ * the stage) and the session placing a walk on the map (`followMap`). Both go out together.
+ */
+let placedMap: readonly MapOverlay[] = [];
+let sessionMap: readonly MapOverlay[] = [];
+const publishMap = (): void => {
+  setWalkMapOverlays([...placedMap, ...sessionMap]);
+};
+
+/** The placed walks' map overlays (every visible, placed walk at 60 %). */
+export function setPlacedMapOverlays(overlays: readonly MapOverlay[]): void {
+  if (overlays.length === 0 && placedMap.length === 0) return;
+  placedMap = overlays;
+  publishMap();
+}
+
 /**
  * Keep the main map in step with a walk placed on the map: its path, stills and pins as overlays
  * (an inactive pin says why on hover), the current position apart, and a point pick while the
@@ -363,7 +415,10 @@ export function followMap(
   let ours: unknown = null;
   let shown = false;
   const clear = (): void => {
-    if (shown) setWalkMapOverlays([]);
+    if (shown) {
+      sessionMap = [];
+      publishMap();
+    }
     shown = false;
     pathFor = { fit: null, layer: null, overlay: null };
     if (ours !== null && walkMap.getState().pick === ours) setWalkMapPick(null);
@@ -401,7 +456,8 @@ export function followMap(
       };
     }
     const now = walkNowMapOverlay({ layer, fit: s.fit, raw }, proj, colour, s.timeS);
-    setWalkMapOverlays([pathFor.overlay, now].filter((o): o is MapOverlay => o !== null));
+    sessionMap = [pathFor.overlay, now].filter((o): o is MapOverlay => o !== null);
+    publishMap();
     shown = true;
     const want = wantsSurfaceClick(s);
     const armed = walkMap.getState().pick;
@@ -475,57 +531,204 @@ setPlaceWalkHandler((layerId) => {
   void placeFlow.begin(layerId);
 });
 
-/** The inputs of placed walks read for their view (by layer id and the files they name). */
+// ---------- placed walks: drawn on every surface, outside placing too ----------
+
+/** The inputs of placed walks (by layer id), read once per the files they name. */
 const inputsCache = new Map<string, { key: string; inputs: Promise<WalkInputs> }>();
+
+const inputsKey = (projectId: string, walk: WalkLayer): string =>
+  `${projectId}|${walk.id}|${JSON.stringify(walk.path ?? null)}`;
+
+function cachedInputs(projectId: string, walk: WalkLayer): Promise<WalkInputs> {
+  const key = inputsKey(projectId, walk);
+  let cached = inputsCache.get(walk.id);
+  if (cached?.key !== key) {
+    cached = { key, inputs: loadWalkInputs(projectId, walk) };
+    inputsCache.set(walk.id, cached);
+  }
+  return cached.inputs;
+}
+
+/** The walks with a saved placement that fits (not `unplaced`). */
+export function placedWalks(m: Pick<ProjectManifest, 'layers'>): WalkLayer[] {
+  return m.layers.filter(
+    (l): l is WalkLayer =>
+      l.kind === 'walk' && l.place !== undefined && l.place.quality !== 'unplaced',
+  );
+}
+
+/**
+ * The live fits of the placed walks whose inputs are read (`inputsOf` undefined: not yet), from
+ * their saved pins and the drawings as they lie now (a moved drawing moves its walks).
+ */
+export function placedWalkFits(
+  m: ProjectManifest,
+  inputsOf: (layer: WalkLayer) => WalkInputs | undefined,
+  lookup: DrawingLookup,
+): SheetWalk[] {
+  const frames = surfaceFramesOf(m, lookup);
+  return placedWalks(m).flatMap((layer): SheetWalk[] => {
+    const inputs = inputsOf(layer);
+    if (!inputs || !layer.place) return [];
+    const fit = fitWalk(inputs.raw, layer.place, frames, layer.durationS);
+    return fit.error ? [] : [{ layer, fit, raw: inputs.raw }];
+  });
+}
+
+/**
+ * The walks drawn on one drawing (`sheetId`): every visible, placed walk, and the walk being
+ * placed on it (`placing`, its live fit in place of its saved one, shown even when switched off).
+ */
+export function walksOnSheet(
+  m: ProjectManifest,
+  sheetId: string,
+  placed: readonly SheetWalk[],
+  lookup: DrawingLookup,
+  opts: {
+    placing?: SheetWalk | null;
+    hidden?: ReadonlySet<string>;
+    size?: { width: number; height: number } | undefined;
+  } = {},
+): WalkDrawing[] {
+  const frame = surfaceFramesOf(m, lookup).drawing(sheetId);
+  if (!frame) return [];
+  const placing = opts.placing ?? null;
+  const list = placed.filter((w) => w.layer.id !== placing?.layer.id);
+  let hidden = opts.hidden;
+  if (placing) {
+    list.push({ ...placing, layer: { ...placing.layer, visible: true } });
+    if (hidden?.has(placing.layer.id))
+      hidden = new Set([...hidden].filter((id) => id !== placing.layer.id));
+  }
+  return walkDrawingsForSheet(list, frame, (l) => walkColour(m, l), {
+    placingId: placing?.layer.id ?? null,
+    ...(hidden ? { hidden } : {}),
+    ...(opts.size ? { size: opts.size } : {}),
+  });
+}
+
+/**
+ * The placed walks on the map (only with a coordinate system): one overlay per visible, placed
+ * walk at 60 %, leaving out `except` (the walk a session is placing on the map draws itself).
+ */
+export function placedMapOverlays(
+  m: ProjectManifest,
+  placed: readonly SheetWalk[],
+  hidden: ReadonlySet<string>,
+  except: string | null,
+): MapOverlay[] {
+  const toLonLat = localToLonLat(m);
+  if (!toLonLat) return [];
+  return walkMapOverlays(
+    placed.filter((w) => w.layer.id !== except),
+    { toLonLat },
+    (l) => resolveCssColour(walkColour(m, l)),
+    { placingId: null, hidden },
+  );
+}
+
+/** The workspace's switched-off layers as a set (stable while they do not change). */
+export function useHiddenLayers(): ReadonlySet<string> {
+  const hidden = useWorkspace((s) => s.hidden);
+  return useMemo(() => new Set(Object.keys(hidden)), [hidden]);
+}
+
+/**
+ * The live fits of the open project's placed walks (inputs read once and shared), rebuilt when
+ * the manifest or a drawing's placement changes; `inputsOf` gives a walk's read inputs.
+ */
+export function usePlacedWalkFits(): {
+  fits: SheetWalk[];
+  inputsOf: (layerId: string) => WalkInputs | undefined;
+} {
+  const project = useWorkspace((s) => s.project);
+  const placed = useStore(drawings, (s) => s.placed);
+  const [loaded, setLoaded] = useState<
+    Readonly<Record<string, { key: string; value: WalkInputs }>>
+  >({});
+  const projectId = project?.id ?? null;
+  const manifest = project?.manifest;
+  const wanted = useMemo(
+    () =>
+      manifest && projectId !== null
+        ? placedWalks(manifest).map((w) => ({ w, key: inputsKey(projectId, w) }))
+        : [],
+    [manifest, projectId],
+  );
+  useEffect(() => {
+    if (projectId === null) return;
+    let live = true;
+    for (const { w, key } of wanted)
+      void cachedInputs(projectId, w).then((value) => {
+        if (!live) return;
+        setLoaded((prev) => (prev[w.id]?.key === key ? prev : { ...prev, [w.id]: { key, value } }));
+      });
+    return () => {
+      live = false;
+    };
+  }, [wanted, projectId]);
+  const fits = useMemo(() => {
+    if (!manifest || projectId === null) return [];
+    return placedWalkFits(
+      manifest,
+      (l) => {
+        const e = loaded[l.id];
+        return e?.key === inputsKey(projectId, l) ? e.value : undefined;
+      },
+      (id) => placed[id],
+    );
+  }, [manifest, projectId, loaded, placed]);
+  const inputsOf = useMemo(() => {
+    const byId = new Map(wanted.map(({ w, key }) => [w.id, key]));
+    return (id: string): WalkInputs | undefined => {
+      const e = loaded[id];
+      return e && e.key === byId.get(id) ? e.value : undefined;
+    };
+  }, [wanted, loaded]);
+  return { fits, inputsOf };
+}
+
+/**
+ * The placed walks on the main map at 60 % while no session places one there (the stage calls
+ * it once); the overlays leave with the stage.
+ */
+export function usePlacedWalksOnMap(): void {
+  const { fits } = usePlacedWalkFits();
+  const manifest = useWorkspace((s) => s.project?.manifest);
+  const hidden = useHiddenLayers();
+  const except = useStore(placeSession, (s) => (s.surface?.kind === 'map' ? s.layerId : null));
+  useEffect(() => {
+    setPlacedMapOverlays(manifest ? placedMapOverlays(manifest, fits, hidden, except) : []);
+  }, [manifest, fits, hidden, except]);
+  useEffect(
+    () => () => {
+      setPlacedMapOverlays([]);
+    },
+    [],
+  );
+}
 
 /**
  * The model heading of the 360 view's picture centre at `time` (yaw offset included), for the
  * north tick: from the live session while this walk is being placed, else from its saved
  * placement. Null while the walk is not placed.
  */
-export function useWalkViewHeading(
-  projectId: string,
-  walk: WalkLayer,
-  time: number,
-): number | null {
+export function useWalkViewHeading(walk: WalkLayer, time: number): number | null {
   const sessionOn = useStore(placeSession, (s) => s.layerId === walk.id);
   const sessionFit = useStore(placeSession, (s) => (s.layerId === walk.id ? s.fit : null));
   const sessionYaw = useStore(placeSession, (s) => s.yawOffsetDeg);
   const sessionOrient = useStore(placeUi, (s) =>
     s.layerId === walk.id ? s.inputs.orientation : null,
   );
-  const manifest = useWorkspace((s) => s.project?.manifest);
-  const placed = useStore(drawings, (s) => s.placed);
-  const [inputs, setInputs] = useState<{ key: string; value: WalkInputs } | null>(null);
-  const place = walk.place && walk.place.quality !== 'unplaced' ? walk.place : null;
-  const key = `${projectId}|${walk.id}|${JSON.stringify(walk.path ?? null)}`;
-  useEffect(() => {
-    if (sessionOn || !place) return;
-    let cached = inputsCache.get(walk.id);
-    if (cached?.key !== key) {
-      cached = { key, inputs: loadWalkInputs(projectId, walk) };
-      inputsCache.set(walk.id, cached);
-    }
-    let live = true;
-    void cached.inputs.then((value) => {
-      if (live) setInputs({ key, value });
-    });
-    return () => {
-      live = false;
-    };
-  }, [sessionOn, place, key, projectId, walk]);
-  const savedFit = useMemo(() => {
-    if (sessionOn || !place || !manifest || inputs?.key !== key) return null;
-    const fit = fitWalk(
-      inputs.value.raw,
-      place,
-      surfaceFramesOf(manifest, (id) => placed[id]),
-      walk.durationS,
-    );
-    return fit.error ? null : fit;
-  }, [sessionOn, place, manifest, inputs, key, placed, walk.durationS]);
+  const { fits, inputsOf } = usePlacedWalkFits();
   if (sessionOn) return viewHeading(sessionFit, sessionOrient, sessionYaw, time);
-  return place && inputs?.key === key
-    ? viewHeading(savedFit, inputs.value.orientation, place.yawOffsetDeg, time)
+  const saved = fits.find((w) => w.layer.id === walk.id);
+  return saved?.layer.place
+    ? viewHeading(
+        saved.fit,
+        inputsOf(walk.id)?.orientation ?? null,
+        saved.layer.place.yawOffsetDeg,
+        time,
+      )
     : null;
 }

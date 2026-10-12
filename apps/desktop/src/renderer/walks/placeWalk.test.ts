@@ -20,8 +20,11 @@ import {
   createPlaceWalk,
   followMap,
   loadWalkInputs,
+  placedMapOverlays,
+  placedWalkFits,
   viewHeading,
   walkColour,
+  walksOnSheet,
   type PlaceWalkDeps,
 } from './placeWalk';
 import { setWalkMapOverlays, setWalkMapPick, walkMap } from './walkMapStore';
@@ -176,7 +179,65 @@ describe('createPlaceWalk', () => {
     expect(openSurface).toHaveBeenCalledWith('walk-a', { kind: 'map' });
     expect(ui.getState().host).toEqual({ kind: 'map' });
     expect(session.getState().layerId).toBe('walk-a');
-    expect(session.getState().step).toBe('surface');
+    // the remembered surface is chosen: the strip opens on Start with the select showing it
+    expect(session.getState().surface).toEqual({ kind: 'map' });
+    expect(session.getState().step).toBe('start');
+  });
+
+  it('Place walk on another walk with unsaved pins asks first, then places it after Discard', async () => {
+    const project = { current: projectWith([plan, walkLayer(), walkLayer({ id: 'walk-b' })]) };
+    const { flow, session, ui, openSurface } = flowFor(project);
+    await flow.begin('walk-a');
+    flow.chooseSurface({ kind: 'map' });
+    session.getState().click([0, 0], 0);
+    expect(session.getState().dirty).toBe(true);
+    openSurface.mockClear();
+    await flow.begin('walk-b');
+    expect(ui.getState()).toMatchObject({ layerId: 'walk-a', asking: true, pending: 'walk-b' });
+    expect(session.getState().layerId).toBe('walk-a');
+    // the question is shown where the strip sits
+    expect(openSurface).toHaveBeenCalledWith('walk-a', { kind: 'map' });
+    flow.discard();
+    await vi.waitFor(() => {
+      expect(session.getState().layerId).toBe('walk-b');
+    });
+    expect(ui.getState().pending).toBeNull();
+  });
+
+  it('Save on the question saves the first walk, then places the waiting one', async () => {
+    const project = { current: projectWith([plan, walkLayer(), walkLayer({ id: 'walk-b' })]) };
+    const { flow, session, ui, save } = flowFor(project);
+    await flow.begin('walk-a');
+    flow.chooseSurface({ kind: 'map' });
+    session.getState().click([0, 0], 0);
+    session.getState().click([40, 0], 0);
+    await flow.begin('walk-b');
+    await flow.save();
+    expect(save).toHaveBeenCalledWith('walk-a', expect.anything());
+    await vi.waitFor(() => {
+      expect(session.getState().layerId).toBe('walk-b');
+    });
+    expect(ui.getState().asking).toBe(false);
+  });
+
+  it('Keep placing drops the waiting walk', async () => {
+    const project = { current: projectWith([plan, walkLayer(), walkLayer({ id: 'walk-b' })]) };
+    const { flow, session, ui } = flowFor(project);
+    await flow.begin('walk-a');
+    flow.chooseSurface({ kind: 'map' });
+    session.getState().click([0, 0], 0);
+    await flow.begin('walk-b');
+    flow.keepPlacing();
+    expect(ui.getState()).toMatchObject({ layerId: 'walk-a', asking: false, pending: null });
+  });
+
+  it("a new session does not replay the last one's seek", async () => {
+    const project = { current: projectWith([plan, walkLayer()]) };
+    const { flow, ui } = flowFor(project);
+    await flow.begin('walk-a');
+    expect(ui.getState().seek).not.toBeNull();
+    flow.discard();
+    expect(ui.getState().seek).toBeNull();
   });
 
   it('a second Place walk while the first reads its files wins', async () => {
@@ -283,5 +344,99 @@ describe('helpers', () => {
     expect(h0).not.toBeNull();
     expect(viewHeading(fit, null, 90, 30)).toBeCloseTo((h0 ?? 0) + Math.PI / 2, 9);
     expect(viewHeading(null, null, 0, 30)).toBeNull();
+  });
+});
+
+describe('placed walks on every surface', () => {
+  const placedOnOwn = (quality: 'good' | 'unplaced' = 'good') =>
+    walkLayer({
+      place: {
+        pins: [
+          { t: 0, surface: 'sheet-own', at: [100, 100] },
+          { t: 62, surface: 'sheet-own', at: [600, 100] },
+        ],
+        yawOffsetDeg: 0,
+        heightM: 1.7,
+        quality,
+        placedOn: 'sheet-own',
+      },
+    });
+  // another drawing over the same ground, larger scale
+  const other = {
+    ...plan,
+    id: 'sheet-loose',
+    name: 'Site plan',
+    corners: {
+      tl: [0, 2, 0] as [number, number, number],
+      tr: [200, 2, 0] as [number, number, number],
+      bl: [0, 2, 100] as [number, number, number],
+    },
+  };
+  const lookup = () => ({ provisional: false, size: { width: 1000, height: 500 } });
+  const pinsOnly = () => ({ raw: null, orientation: null });
+
+  it('a placed walk shows on an unrelated drawing, dimmed', () => {
+    const m = projectWith([plan, other, placedOnOwn()]).manifest;
+    const fits = placedWalkFits(m, pinsOnly, lookup);
+    expect(fits).toHaveLength(1);
+    const drawn = walksOnSheet(m, 'sheet-loose', fits, lookup);
+    expect(drawn).toHaveLength(1);
+    expect(drawn[0]?.placing).toBe(false);
+    expect(drawn[0]?.pins).toHaveLength(0);
+    expect(drawn[0]?.line.flatMap((r) => r.pts).length).toBeGreaterThan(1);
+  });
+
+  it('an unplaced or switched off walk does not show', () => {
+    const unplaced = projectWith([plan, other, placedOnOwn('unplaced')]).manifest;
+    expect(placedWalkFits(unplaced, pinsOnly, lookup)).toHaveLength(0);
+    const m = projectWith([plan, other, placedOnOwn()]).manifest;
+    const fits = placedWalkFits(m, pinsOnly, lookup);
+    expect(walksOnSheet(m, 'sheet-loose', fits, lookup, { hidden: new Set(['walk-a']) })).toEqual(
+      [],
+    );
+    // not read yet: nothing drawn rather than a guess
+    expect(placedWalkFits(m, () => undefined, lookup)).toHaveLength(0);
+  });
+
+  it('the walk being placed on the drawing replaces its saved entry, even when switched off', () => {
+    const m = projectWith([plan, other, placedOnOwn()]).manifest;
+    const fits = placedWalkFits(m, pinsOnly, lookup);
+    const live = fits[0];
+    if (!live) throw new Error('no fit');
+    const drawn = walksOnSheet(m, 'sheet-own', fits, lookup, {
+      placing: live,
+      hidden: new Set(['walk-a']),
+    });
+    expect(drawn).toHaveLength(1);
+    expect(drawn[0]?.placing).toBe(true);
+    expect(drawn[0]?.pins).toHaveLength(2);
+  });
+
+  it('moving the drawing the pins are on moves the drawn path', () => {
+    const before = projectWith([plan, other, placedOnOwn()]).manifest;
+    const moved = projectWith([
+      { ...plan, corners: { tl: [30, 2, 20], tr: [130, 2, 20], bl: [30, 2, 70] } },
+      other,
+      placedOnOwn(),
+    ]).manifest;
+    const first = (m: typeof before) =>
+      walksOnSheet(m, 'sheet-loose', placedWalkFits(m, pinsOnly, lookup), lookup)[0]?.line[0]
+        ?.pts[0];
+    const a = first(before);
+    const b = first(moved);
+    expect(a).toBeDefined();
+    // 20 m east on a sheet of 5 px per metre
+    expect((b?.[0] ?? 0) - (a?.[0] ?? 0)).toBeCloseTo(100, 6);
+    expect(b?.[1]).toBeCloseTo(a?.[1] ?? NaN, 6);
+  });
+
+  it('on the map: one overlay per placed walk, none without a coordinate system', () => {
+    const m = projectWith([plan, other, placedOnOwn()]).manifest;
+    const fits = placedWalkFits(m, pinsOnly, lookup);
+    expect(placedMapOverlays(m, fits, new Set(), null).map((o) => o.id)).toEqual(['walk-walk-a']);
+    expect(placedMapOverlays(m, fits, new Set(), 'walk-a')).toEqual([]);
+    expect(placedMapOverlays(m, fits, new Set(['walk-a']), null)).toEqual([]);
+    const local = { ...m, crs: { wkt: 'LOCAL_CS["local"]' } };
+    expect(placedMapOverlays(local, fits, new Set(), null)).toEqual([]);
   });
 });

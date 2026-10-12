@@ -174,8 +174,12 @@ export function northTick(
   const da = wrapRad(headingRad - look.yawDeg * RAD);
   const tv = Math.tan((look.fovDeg * RAD) / 2);
   const th = tv * (h > 0 ? w / h : 1);
-  const half = Math.atan(th);
-  if (da > half) return { x: 1, edge: 'right' };
-  if (da < -half) return { x: 0, edge: 'left' };
-  return { x: 0.5 + Math.tan(da) / (2 * th), edge: 'in' };
+  // a point on the horizon at da: x = tan(da) / cos(pitch) on the image plane (looking up or down
+  // spreads the horizon out)
+  const cp = Math.cos(look.pitchDeg * RAD);
+  const behind = Math.abs(da) >= Math.PI / 2 || cp <= 1e-6;
+  const x = behind ? Math.sign(da) * Infinity : Math.tan(da) / cp;
+  if (x > th || (behind && da >= 0)) return { x: 1, edge: 'right' };
+  if (x < -th || behind) return { x: 0, edge: 'left' };
+  return { x: 0.5 + x / (2 * th), edge: 'in' };
 }

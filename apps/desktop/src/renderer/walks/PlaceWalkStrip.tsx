@@ -1,8 +1,16 @@
 import type { WalkLayer } from '@aio/schema';
 import { formatDate, Icon } from '@aio/ui';
 import { useWorkspace } from '@aio/workspace';
-import { useMemo, useState, type CSSProperties, type KeyboardEvent, type ReactNode } from 'react';
+import {
+  useEffect,
+  useMemo,
+  useState,
+  type CSSProperties,
+  type KeyboardEvent,
+  type ReactNode,
+} from 'react';
 import { useStore, type StoreApi } from 'zustand';
+import { createStore } from 'zustand/vanilla';
 import { drawings as drawingsStore } from '../drawings/store';
 import type { RasterOverlayContext, RasterPick } from '../workspace/RasterPane';
 import { surfaceFramesOf, surfaceKey, type PlaceSurface } from './placeModel';
@@ -11,12 +19,15 @@ import {
   placeFlow,
   placeSession,
   placeUi,
+  useHiddenLayers,
+  usePlacedWalkFits,
   walkColour,
+  walksOnSheet,
   wantsSurfaceClick,
   type PlaceUi,
   type PlaceWalkFlow,
 } from './placeWalk';
-import { walkDrawingsForSheet, walkNowOnSheet } from './walkOverlay';
+import { walkNowOnSheet } from './walkOverlay';
 import { WalkSheetOverlay } from './WalkSheetOverlay';
 import './placeWalk.css';
 
@@ -79,6 +90,8 @@ export function PlaceWalkStrip({
               ? SAY.pin
               : SAY[st.step];
   const problem = u.note ?? st.error;
+  // only the fit's own refusal stops a save; a passing note (a drawing not ready) does not
+  const refused = (st.fit?.error ?? null) !== null;
   const stepIndex = STEPS.findIndex((s) => s.id === st.step);
 
   const seekTo = (time: number | undefined) => {
@@ -112,7 +125,7 @@ export function PlaceWalkStrip({
           type="button"
           className="btn sm"
           data-testid="walk-place-save"
-          disabled={!enough || u.saving || st.error !== null}
+          disabled={!enough || u.saving || refused}
           onClick={() => void flow.save()}
         >
           <Icon name="check" size={14} />
@@ -158,7 +171,7 @@ export function PlaceWalkStrip({
               type="button"
               className="btn primary sm"
               data-testid="walk-place-keep"
-              disabled={!enough || u.saving || st.error !== null}
+              disabled={!enough || u.saving || refused}
               onClick={() => void flow.save()}
             >
               <Icon name="check" size={14} />
@@ -263,20 +276,31 @@ export function PlaceWalkStrip({
                 s.id === 'start' ? st.pins[0]?.t : s.id === 'end' ? st.pins.at(-1)?.t : undefined;
               return (
                 <li key={s.id}>
-                  <button
-                    type="button"
-                    className={current ? 'btn primary sm' : 'btn ghost sm'}
-                    aria-current={current ? 'step' : undefined}
-                    data-testid={`walk-place-step-${s.id}`}
-                    disabled={!reached}
-                    title={pinT !== undefined && !current ? 'Show this moment' : undefined}
-                    onClick={() => {
-                      seekTo(pinT);
-                    }}
-                  >
-                    <b>{i + 1}</b>
-                    {s.label}
-                  </button>
+                  {current ? (
+                    // the step in hand: a marker, not a button (it does nothing)
+                    <span
+                      className="btn primary sm wplace-now"
+                      aria-current="step"
+                      data-testid={`walk-place-step-${s.id}`}
+                    >
+                      <b>{i + 1}</b>
+                      {s.label}
+                    </span>
+                  ) : (
+                    <button
+                      type="button"
+                      className="btn ghost sm"
+                      data-testid={`walk-place-step-${s.id}`}
+                      disabled={!reached || pinT === undefined}
+                      title={pinT !== undefined ? 'Show this moment' : undefined}
+                      onClick={() => {
+                        seekTo(pinT);
+                      }}
+                    >
+                      <b>{i + 1}</b>
+                      {s.label}
+                    </button>
+                  )}
                 </li>
               );
             })}
@@ -372,15 +396,35 @@ export function PlaceWalkStrip({
     </div>
   );
 }
+/** How many surface panes show the strip now (the 360 pane shows it when none does). */
+export const stripHosts = createStore<{ shown: number }>()(() => ({ shown: 0 }));
+
+/**
+ * Whether the 360 pane shows the strip: when no surface can be offered (`host` null), or when the
+ * surface it sits over is on neither side of the split, so a running session is never invisible.
+ */
+export function stripInWalkPane(host: PlaceSurface | null, surfacesShowing: number): boolean {
+  return host === null || surfacesShowing === 0;
+}
 
 /**
  * The strip where it belongs: over the surface the walk is being placed on (`at`), or in the 360
- * pane (`at` 'walk') when the project offers no surface.
+ * pane (`at` 'walk') when that surface is not on screen.
  */
 export function PlaceWalkHere({ at }: { at: PlaceSurface | 'walk' }) {
   const host = useStore(placeUi, (s) => (s.layerId === null ? undefined : s.host));
+  const showing = useStore(stripHosts, (s) => s.shown);
+  const onSurface =
+    at !== 'walk' && host !== undefined && host !== null && surfaceKey(host) === surfaceKey(at);
+  useEffect(() => {
+    if (!onSurface) return;
+    stripHosts.setState((s) => ({ shown: s.shown + 1 }));
+    return () => {
+      stripHosts.setState((s) => ({ shown: s.shown - 1 }));
+    };
+  }, [onSurface]);
   if (host === undefined) return null;
-  const here = at === 'walk' ? host === null : host !== null && surfaceKey(host) === surfaceKey(at);
+  const here = at === 'walk' ? stripInWalkPane(host, showing) : onSurface;
   if (!here) return null;
   return <PlaceWalkStrip flow={placeFlow} session={placeSession} ui={placeUi} />;
 }
@@ -388,11 +432,11 @@ export function PlaceWalkHere({ at }: { at: PlaceSurface | 'walk' }) {
 const NO_MARKS: RasterPick['marks'] = [];
 
 /**
- * A walk being placed on the drawing `layerId`: the strip shows over it, clicks on the picture drop
- * the armed pin (`pick`), and the overlay draws the live path, stills, pins (draggable) and the
- * current position in the picture's pixels. Nothing while no walk is placed on this drawing.
+ * The walks on the drawing `layerId`: every visible, placed walk at 60 %, and while a walk is
+ * being placed on this drawing its live path with draggable pins and the current position, plus
+ * a pick for the armed pin. No overlay when the drawing has no frame (not placed, size unknown).
  */
-export function useWalkPlacingOn(
+export function useWalksOnDrawing(
   layerId: string,
   size: { width: number; height: number } | undefined,
 ): {
@@ -410,34 +454,29 @@ export function useWalkPlacingOn(
   const raw = useStore(placeUi, (s) => s.inputs.raw);
   const manifest = useWorkspace((s) => s.project?.manifest);
   const placed = useStore(drawingsStore, (s) => s.placed);
+  const hidden = useHiddenLayers();
+  const { fits } = usePlacedWalkFits();
   const on = placingId !== null && surfaceId === layerId;
   const walk = on
     ? manifest?.layers.find((l): l is WalkLayer => l.kind === 'walk' && l.id === placingId)
     : undefined;
-  const frame = useMemo(
-    () => (on && manifest ? surfaceFramesOf(manifest, (id) => placed[id]).drawing(layerId) : null),
-    [on, manifest, placed, layerId],
-  );
-  const colour = walk && manifest ? walkColour(manifest, walk) : 'var(--acc)';
-  // the path is built again only when the fit changes, never on a time tick
+  const placing = useMemo(() => (walk && fit ? { layer: walk, fit, raw } : null), [walk, fit, raw]);
+  // the paths are built again only when a fit or the drawing changes, never on a time tick
   const sheet = useMemo(
     () =>
-      walk && fit && frame
-        ? walkDrawingsForSheet(
-            [{ layer: { ...walk, visible: true }, fit, raw }],
-            frame,
-            () => colour,
-            {
-              placingId: walk.id,
-              ...(size ? { size } : {}),
-            },
-          )
+      manifest
+        ? walksOnSheet(manifest, layerId, fits, (id) => placed[id], { placing, hidden, size })
         : [],
-    [walk, fit, frame, raw, colour, size],
+    [manifest, layerId, fits, placed, placing, hidden, size],
+  );
+  const frame = useMemo(
+    () =>
+      placing && manifest ? surfaceFramesOf(manifest, (id) => placed[id]).drawing(layerId) : null,
+    [placing, manifest, placed, layerId],
   );
   const now =
-    walk && fit && frame
-      ? walkNowOnSheet({ layer: walk, fit, raw }, frame, () => colour, time, size)
+    placing && frame && manifest
+      ? walkNowOnSheet(placing, frame, (l) => walkColour(manifest, l), time, size)
       : null;
   const pick = useMemo<RasterPick | undefined>(
     () =>
@@ -451,23 +490,24 @@ export function useWalkPlacingOn(
         : undefined,
     [on, clickable],
   );
-  const overlay = on
-    ? (ctx: RasterOverlayContext) => (
-        <WalkSheetOverlay
-          drawings={sheet}
-          scale={ctx.scale}
-          now={now}
-          size={ctx.size}
-          toImage={ctx.toImage}
-          onPinDrag={(_id, i, px) => {
-            placeSession.getState().movePin(i, px);
-          }}
-          onPinDragEnd={(_id, i, px) => {
-            placeSession.getState().movePin(i, px);
-          }}
-        />
-      )
-    : undefined;
+  const overlay =
+    on || sheet.length > 0
+      ? (ctx: RasterOverlayContext) => (
+          <WalkSheetOverlay
+            drawings={sheet}
+            scale={ctx.scale}
+            now={now}
+            size={ctx.size}
+            toImage={ctx.toImage}
+            onPinDrag={(_id, i, px) => {
+              placeSession.getState().movePin(i, px);
+            }}
+            onPinDragEnd={(_id, i, px) => {
+              placeSession.getState().movePin(i, px);
+            }}
+          />
+        )
+      : undefined;
   return { on, pick, overlay };
 }
 

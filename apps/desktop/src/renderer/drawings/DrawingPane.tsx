@@ -8,7 +8,7 @@ import { parseCoordinate } from '../builder/model';
 import { useStagePick, usePickMarkers, type Marker } from '../builder/pick';
 import { builder } from '../builder/state';
 import { RasterView, type RasterPick } from '../workspace/RasterPane';
-import { PlaceWalkHere, useWalkPlacingOn } from '../walks/PlaceWalkStrip';
+import { PlaceWalkHere, useWalksOnDrawing } from '../walks/PlaceWalkStrip';
 import { cornersFromPairs } from './model';
 import { drawings, useDrawings, type PlaceSession } from './store';
 
@@ -319,7 +319,7 @@ export function DrawingPane({
       ],
     };
   }, [place]);
-  const walk = useWalkPlacingOn(layer.id, size);
+  const walk = useWalksOnDrawing(layer.id, size);
   return (
     <>
       {place && size && <PlaceStrip layer={layer} place={place} size={size} />}

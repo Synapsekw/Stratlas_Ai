@@ -183,4 +183,11 @@ describe('the 360 view: a click as a direction, north on the top edge', () => {
     expect(near.x).toBeGreaterThan(0.5);
     expect(northTick(look, -0.2, 200, 100).x).toBeLessThan(0.5);
   });
+  it('looking up spreads the horizon: the offset grows by 1 / cos(pitch)', () => {
+    const level = northTick(look, 0.2, 200, 100).x - 0.5;
+    const up = northTick({ ...look, pitchDeg: 60 }, 0.2, 200, 100).x - 0.5;
+    expect(up).toBeCloseTo(level * 2, 9);
+    // straight behind is never in view
+    expect(northTick(look, Math.PI, 200, 100).edge).not.toBe('in');
+  });
 });

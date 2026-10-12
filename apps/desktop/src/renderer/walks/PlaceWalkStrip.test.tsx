@@ -215,7 +215,9 @@ describe('PlaceWalkStrip', () => {
     });
     expect(missing.deps.ensureCapture).toHaveBeenCalledWith('2026-03-05');
     expect(missing.deps.setCapture).toHaveBeenCalledWith('walk-a', 'capture-2026-03-05');
-    expect(missing.session.getState().step).toBe('surface');
+    // on to the surface it opened on (the first offered), at its first step
+    expect(missing.session.getState().surface).toMatchObject({ id: 'sheet-loose' });
+    expect(missing.session.getState().step).toBe('start');
   });
 
   it('Place on lists drawings and Map; choosing one opens it in the surface pane', async () => {
@@ -274,6 +276,8 @@ describe('PlaceWalkStrip', () => {
       [...host.querySelectorAll('.primary')].map((b) => b.getAttribute('data-testid'));
     expect(primaries()).toEqual(['walk-place-step-start']);
     expect(byTest('walk-place-step-start')?.getAttribute('aria-current')).toBe('step');
+    // the step in hand is a marker, not a button that does nothing
+    expect(byTest('walk-place-step-start')?.tagName).toBe('SPAN');
     expect(byTest('walk-place-step-end')?.disabled).toBe(true);
     twoPins(ctx);
     expect(primaries()).toEqual(['walk-place-step-correct']);
@@ -359,6 +363,17 @@ describe('PlaceWalkStrip', () => {
     expect(walkBadge(after, false)?.text).toBe('Path not computed');
   });
 
+  it('a passing note does not stop Save; the fit refusing does', async () => {
+    const ctx = setup(walkLayer({ capture: 'c1' }));
+    await open(ctx);
+    choose('sheet-own');
+    twoPins(ctx);
+    act(() => {
+      ctx.session.setState({ error: 'That drawing is not ready' });
+    });
+    expect(byTest('walk-place-save')?.disabled).toBe(false);
+  });
+
   it('a refused save keeps the strip and says why', async () => {
     const ctx = setup(walkLayer({ capture: 'c1' }));
     ctx.deps.save.mockImplementationOnce(() => Promise.resolve('The project folder is read only'));
@@ -436,5 +451,29 @@ describe('PlaceWalkStrip', () => {
     click(byTest('walk-place-cancel'));
     noDialog();
     expect(strip()).not.toBeNull();
+  });
+});
+
+describe('where the strip shows', () => {
+  it('the 360 pane shows it when no surface pane does', async () => {
+    const { stripInWalkPane, stripHosts, PlaceWalkHere } = await import('./PlaceWalkStrip');
+    const { placeUi } = await import('./placeWalk');
+    expect(stripInWalkPane(null, 1)).toBe(true);
+    expect(stripInWalkPane({ kind: 'map' }, 0)).toBe(true);
+    expect(stripInWalkPane({ kind: 'map' }, 1)).toBe(false);
+    act(() => {
+      placeUi.setState({ layerId: 'walk-a', host: { kind: 'map' } });
+    });
+    act(() => {
+      root.render(<PlaceWalkHere at={{ kind: 'map' }} />);
+    });
+    expect(stripHosts.getState().shown).toBe(1);
+    act(() => {
+      root.render(<PlaceWalkHere at={{ kind: 'drawing', id: 'x', name: 'X', dated: false }} />);
+    });
+    expect(stripHosts.getState().shown).toBe(0);
+    act(() => {
+      placeUi.setState({ layerId: null, host: null });
+    });
   });
 });
