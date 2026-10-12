@@ -8,6 +8,10 @@ import { createGlobeLibrary, GLOBE_SITES } from '../../e2e/m10Fixtures';
 // The e2e globe library is shared by several specs (basemap picker, fixtures, Globe). Its
 // processed rasters draw in site A's map and 3D views too, so only the spec that needs them
 // asks for them; every other spec keeps the site as it was.
+// createGlobeLibrary writes six projects and three raster packs, which takes seconds on a CI
+// runner, so these tests get 30 s instead of the 5 s default.
+const SLOW = { timeout: 30_000 };
+
 describe('the e2e globe library', () => {
   let root: string;
   beforeEach(async () => {
@@ -24,12 +28,12 @@ describe('the e2e globe library', () => {
     return ProjectManifest.parse(JSON.parse(raw)).layers;
   }
 
-  it('gives site A no processed rasters unless asked', async () => {
+  it('gives site A no processed rasters unless asked', SLOW, async () => {
     await createGlobeLibrary(root, Buffer.from('glb'));
     expect((await siteALayers()).filter((l) => l.kind === 'raster')).toEqual([]);
   });
 
-  it('writes two orthos and a surface heat map (role plan) when asked', async () => {
+  it('writes two orthos and a surface heat map (role plan) when asked', SLOW, async () => {
     await createGlobeLibrary(root, Buffer.from('glb'), { siteRasters: true });
     const rasters = (await siteALayers()).flatMap((l) =>
       l.kind === 'raster' ? [{ id: l.id, role: l.role, change: l.derived?.kind === 'change' }] : [],
