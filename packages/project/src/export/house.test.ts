@@ -293,6 +293,9 @@ describe('houseReportModel', () => {
     });
     const h = houseReportModel({ manifest, issues: sampleIssues(), branding, now });
     expect(h.totals).toMatchObject({ walks: 2, walkMinutes: 4 });
-    expect(h.layers.filter((r) => r.kind === 'walk')).toHaveLength(2);
+    expect(h.layers.filter((r) => r.kind === 'walk')).toMatchObject([
+      { name: 'Walk a', count: 2 },
+      { name: 'Walk b', count: 3 },
+    ]);
   });
 });

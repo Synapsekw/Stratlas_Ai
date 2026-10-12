@@ -63,7 +63,7 @@ export interface AuditSummary {
 export interface DataRow {
   kind: Layer['kind'];
   name: string;
-  /** Photos, panoramas: items; point clouds: points (when known). */
+  /** Photos, panoramas: items; point clouds: points (when known); walks: minutes. */
   count: number | null;
   /** Rasters: ortho, dsm or plan. */
   role: string | null;
@@ -79,8 +79,8 @@ export interface DataTotals {
   rasters: number;
   vectors: number;
   /** 360 video walks, and their total length in whole minutes (rounded). */
-  walks?: number;
-  walkMinutes?: number;
+  walks: number;
+  walkMinutes: number;
 }
 
 export interface ScaleRow {
@@ -274,8 +274,10 @@ function dataRows(m: ProjectManifest): { layers: DataRow[]; totals: DataTotals }
         totals.videos++;
         break;
       case 'walk':
-        totals.walks = (totals.walks ?? 0) + 1;
+        totals.walks++;
         walkSeconds += l.durationS;
+        // the row's amount is the walk's length in minutes
+        count = Math.round(l.durationS / 60);
         break;
       case 'mesh':
         totals.meshes++;

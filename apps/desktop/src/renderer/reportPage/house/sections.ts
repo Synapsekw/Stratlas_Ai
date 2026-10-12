@@ -337,6 +337,7 @@ export function layerKindLabel(kind: string, role: string | null): string {
 export function layerAmount(r: { kind: string; count: number | null }): string {
   if (r.count === null) return '';
   if (r.kind === 'pointcloud') return tk('house.n.points', { n: num(r.count) });
+  if (r.kind === 'walk') return tk('house.n.walkmin', { n: num(r.count) });
   if (r.kind === 'photos') return tk('house.n.photos', { count: r.count, n: num(r.count) });
   if (r.kind === 'panoramas') return tk('house.n.panoramas', { count: r.count, n: num(r.count) });
   return num(r.count);
@@ -361,6 +362,10 @@ export function layoutSite(p: Pager, ctx: HouseContext, n: string): void {
   if (data.points > 0)
     items.push({ value: num1(data.points / 1e6), label: tk('house.kpi.points') });
   if (data.videos > 0) items.push({ value: num(data.videos), label: tk('house.layer.video') });
+  if (data.walks > 0) {
+    items.push({ value: num(data.walks), label: tk('house.kpi.walks') });
+    items.push({ value: num(data.walkMinutes), label: tk('house.kpi.walkmin') });
+  }
   p.add(tiles(items));
   subheading(p, tk('house.captures'));
   p.table(

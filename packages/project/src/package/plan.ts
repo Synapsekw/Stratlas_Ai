@@ -45,6 +45,8 @@ const SKIP = [
   // A 360 video being imported, or what an interrupted import left (`builder/walks.ts`): half a
   // playback copy, also under its final file name. Only a finished `walks/<id>/` travels.
   /^walks\/\.staging-[^/]*\//i,
+  // A removed walk waits seven days here before it is deleted (`builder/walkRemove.ts`).
+  /^\.trash\//i,
 ];
 
 /** Where importers put the delivered viewer until 11 Oct 2026, and the grids beside it. */
@@ -107,7 +109,8 @@ function ownership(layer: Layer): { files: string[]; prefixes: string[]; kept: s
       add(layer.flight.src);
       break;
     case 'walk': {
-      // The walk owns its whole folder: record, playback copy, path, orientation, stills.
+      // With its record under walks/<id>/ the walk owns that whole folder (path, orientation,
+      // stills); a record kept elsewhere owns only the files the layer names.
       add(layer.record);
       add(layer.src);
       const d = dirOf(pathOf(layer.record) ?? pathOf(layer.src) ?? '');

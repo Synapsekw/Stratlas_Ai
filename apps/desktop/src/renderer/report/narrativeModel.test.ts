@@ -167,6 +167,8 @@ describe('narrative template', () => {
         points: 1500,
         rasters: 0,
         vectors: 0,
+        walks: 0,
+        walkMinutes: 0,
       }),
     ).toBe('1 photo, 2 video clips, 1 3D model and 1 point cloud (1,500 points)');
   });

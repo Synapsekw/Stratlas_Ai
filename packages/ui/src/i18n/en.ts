@@ -1332,6 +1332,7 @@ export const en = {
   'house.n.vectors_one': '{n} vector overlay',
   'house.n.vectors_other': '{n} vector overlays',
   'house.n.points': '{n} points',
+  'house.n.walkmin': '{n} min',
   'house.n.seen_one': 'seen in {n} photo',
   'house.n.seen_other': 'seen in {n} photos',
   'house.and': 'and',
@@ -1370,6 +1371,8 @@ export const en = {
   'house.kpi.surveys': 'Surveys',
   'house.kpi.layers': 'Data layers',
   'house.kpi.points': 'Points, millions',
+  'house.kpi.walks': '360 walks',
+  'house.kpi.walkmin': '360 walk minutes',
   'house.worst': 'Most severe issues',
   'house.noIssues': 'No issues were recorded in this project.',
   'house.col.code': 'Code',
@@ -1412,6 +1415,7 @@ export const en = {
   'house.layer.photos': 'Photos',
   'house.layer.panoramas': 'Panoramas',
   'house.layer.video': 'Video',
+  'house.layer.walk': '360 walk',
   'house.layer.pointcloud': 'Point cloud',
   'house.layer.raster': 'Raster',
   'house.layer.vector': 'Vector overlay',
@@ -1925,6 +1929,8 @@ export const en = {
   'walk.loading': 'Loading video',
   'walk.error': 'The 360 video could not be played.',
   'walk.noGraphics': 'The 360 view needs 3D graphics, which are not available right now.',
+  // the walk on a drawing: a pin whose drawing was removed
+  'walk.pin.gone': 'The drawing it was on is gone',
   // M8 C4: same view on another date (Frames pane) and change in matched frames
   'frames.pane': 'Frames',
   'frames.sameView': 'Same view on the other date',

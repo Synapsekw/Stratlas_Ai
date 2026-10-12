@@ -13,6 +13,8 @@ import {
   coverHtml,
   frameHtml,
   issuePageHtml,
+  layerAmount,
+  layerKindLabel,
   metres,
   narrativeHtml,
   overlapSvg,
@@ -110,6 +112,13 @@ describe('issue page', () => {
     const html = issuePageHtml(row, { locator: '<svg class="map"></svg>' }, extra);
     expect(html).toContain('ip-loc');
     expect(html).toContain('Where the issue lies');
+  });
+});
+
+describe('walk rows', () => {
+  it('shows the amount of a walk as minutes', () => {
+    expect(layerAmount({ kind: 'walk', count: 3 })).toBe('3 min');
+    expect(layerKindLabel('walk', null)).toBe('360 walk');
   });
 });
 

@@ -23,6 +23,7 @@ const LAYER_CHIPS: { key: string; icon: IconName; label: string }[] = [
   { key: 'pointcloud', icon: 'cloud', label: 'Point clouds' },
   { key: 'raster', icon: 'raster', label: 'Rasters' },
   { key: 'video', icon: 'video', label: 'Video clips' },
+  { key: 'walk', icon: 'pano', label: '360 walks' },
   { key: 'photos', icon: 'photo', label: 'Photos' },
   { key: 'panoramas', icon: 'pano', label: 'Panoramas' },
   { key: 'issues', icon: 'issues', label: 'Issues' },
