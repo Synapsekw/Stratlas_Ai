@@ -903,8 +903,8 @@ The integration lead merges when green, re-locks `uv.lock`, builds pipeline pack
 ## Integration follow-ups (after all streams)
 
 - **House report:** the `processing` section (accuracy summary, GCP table, overlap map); orthos from processing in the site overview figures.
-- **Packages (X1):** carry `photogrammetry/<run>/run.json`, `gcp.json`, reports and `tilesets.json` with `tiles/`; never `photogrammetry/<run>/work/`; customer imagery packs only when ticked (decision 12). Player mode shows the Globe for the package's site and never starts processing.
-- **Journal (M9):** `photogrammetry/` writers and `tilesets.json` writes go through the journal service; jobs record `via.pipeline` as today.
+- **Packages (X1):** carry `photogrammetry/<run>/run.json`, `gcp.json`, reports and `tilesets.json` with `tiles/`; never `photogrammetry/<run>/work/`; customer imagery packs only when ticked (decision 12). Player mode shows the Globe for the package's site and never starts processing. Done 12 Oct 2026 (`docs/plans/2026-10-12-m10-packages-and-journal.md`): imagery and terrain packs travel cut to the site when ticked.
+- **Journal (M9):** `photogrammetry/` writers and `tilesets.json` writes go through the journal service; jobs record `via.pipeline` as today. Done 12 Oct 2026 (`docs/plans/2026-10-12-m10-packages-and-journal.md`).
 - **Change detection (M8):** two processed surveys of the same site run `change.raster`, `change.surface` and `change.cloud` directly; the Globe shows change heat maps as imagery layers.
 - **Agent:** `process_photos` (write, approval; starts `photo.align` with a preset), `accuracy_summary` (read), `show_on_globe` (navigate) in the compact profile. Done 12 Oct 2026 (`docs/plans/2026-10-12-m10-agent-photo-tools.md`).
 - **Performance (D7):** a 500 M point cloud and a 20 M triangle mesh tileset hold the Medium budget in the site view; the Globe holds 30 fps on the Medium tier with three sites and two region packs.
