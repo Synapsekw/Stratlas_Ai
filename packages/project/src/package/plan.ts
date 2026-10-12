@@ -51,6 +51,14 @@ const SKIP = [
 const RETIRED_DIR = 'legacy/';
 const RETIRED_GRIDS = 'legacy/data/';
 
+/** Inside a run folder only its records and reports travel (data-conventions section 21). */
+const RUN_FILE = /^photogrammetry\/[^/]+\/(.+)$/;
+const RUN_KEEP = /^(run\.json|gcp\.json|report\/.+)$/;
+export function runFileTravels(path: string): boolean {
+  const m = RUN_FILE.exec(path);
+  return !m?.[1] || RUN_KEEP.test(m[1]);
+}
+
 const pathOf = (ref: AssetRef | undefined): string | null =>
   ref && 'path' in ref ? ref.path.replace(/\\/g, '/').replace(/^\.\//, '') : null;
 
@@ -129,7 +137,8 @@ function ownership(layer: Layer): { files: string[]; prefixes: string[]; kept: s
  * preview nobody accepted) and retired `legacy` layers (the delivered viewer) are always left
  * out, and a `legacy` layer has no share; the rest of the project folder travels, so `change/`,
  * `models/` and `drawings/` go with it, and so does the `data/` folder beside a stockpile
- * viewer, which holds the grids of the volumes.
+ * viewer, which holds the grids of the volumes. `photogrammetry/<run>/` sends only its records
+ * and reports (`run.json`, `gcp.json`, `report/`), never its work files, unless a layer owns them.
  */
 export function planPackage(
   manifest: ProjectManifest,
@@ -172,6 +181,7 @@ export function planPackage(
     const path = f.path.replace(/\\/g, '/');
     if (SKIP.some((re) => re.test(path))) continue;
     const owners = ownersOf(path);
+    if (owners.length === 0 && !runFileTravels(path)) continue;
     if (orphanViewer && owners.length === 0 && path.startsWith(RETIRED_DIR)) {
       if (!hasVolumes || !path.startsWith(RETIRED_GRIDS)) continue;
     }

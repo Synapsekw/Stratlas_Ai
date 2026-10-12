@@ -1,6 +1,6 @@
 import { ProjectManifest, type ProjectManifestInput } from '@aio/schema';
 import { describe, expect, it } from 'vitest';
-import { planPackage, type SourceFile } from './plan';
+import { planPackage, runFileTravels, type SourceFile } from './plan';
 
 const I = [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1];
 
@@ -249,5 +249,72 @@ describe('planPackage', () => {
     expect(p.manifest.layers.map((l) => l.id)).toContain('model-site');
     expect(paths(p)).not.toContain('models/draft-site.glb');
     for (const f of extra.slice(1)) expect(paths(p)).toContain(f.path);
+  });
+});
+
+describe('photogrammetry run folders', () => {
+  const run = 'photogrammetry/20261007-0915';
+  const files: SourceFile[] = [
+    'run.json',
+    'gcp.json',
+    'gcp.json.bak',
+    'report/accuracy.json',
+    'report/align.json',
+    'report/products.json',
+    'cameras-sfm.json',
+    'sparse/cameras.txt',
+    'sparse/frame.json',
+    'mesh/full.glb',
+    'ortho.tif',
+    'dsm.tif',
+    'work/database.db',
+    'work/products/ab12/depth/1.bin',
+  ].map((p) => ({ path: `${run}/${p}`, size: 10 }));
+  const extra: SourceFile[] = [
+    { path: 'tilesets.json', size: 5 },
+    { path: 'tiles/20261007-0915-mesh/tileset.json', size: 5 },
+  ];
+
+  it('carries run.json, gcp.json, report/ and tiles, never work/', () => {
+    const p = planPackage(manifest(), [...files, ...extra], []);
+    expect(
+      p.members
+        .map((m) => m.path)
+        .filter((x) => x.startsWith('photogrammetry/') || x.startsWith('tile'))
+        .sort(),
+    ).toEqual([
+      `${run}/gcp.json`,
+      `${run}/report/accuracy.json`,
+      `${run}/report/align.json`,
+      `${run}/report/products.json`,
+      `${run}/run.json`,
+      'tiles/20261007-0915-mesh/tileset.json',
+      'tilesets.json',
+    ]);
+  });
+
+  it('does not count left-out run files in baseBytes', () => {
+    const p = planPackage(manifest(), files, []);
+    expect(p.baseBytes).toBe(5 * 10);
+  });
+
+  it('keeps a file a layer owns even inside a run folder', () => {
+    const m = manifest();
+    m.layers.push({
+      kind: 'raster',
+      id: 'o',
+      name: 'Ortho',
+      src: { path: `${run}/ortho.tif` },
+      format: 'cog',
+    } as never);
+    const p = planPackage(m, files, []);
+    expect(p.members.some((x) => x.path === `${run}/ortho.tif`)).toBe(true);
+  });
+
+  it('runFileTravels', () => {
+    expect(runFileTravels(`${run}/report/x/y.json`)).toBe(true);
+    expect(runFileTravels(`${run}/work/database.db`)).toBe(false);
+    expect(runFileTravels('photogrammetry/readme.txt')).toBe(true); // not a run folder file
+    expect(runFileTravels('models/a.glb')).toBe(true);
   });
 });
