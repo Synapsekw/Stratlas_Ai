@@ -15,7 +15,8 @@
  *   handler), and so are `tilesets:import` (the imported tileset's name as the label) and
  *   `photo:applyPoses` with `apply: true`;
  * - on open, a half-done write is finished (crash recovery) and any other difference is recorded
- *   as attributed ops (`via.external`, "changed outside Quadrion AI");
+ *   as attributed ops (`via.external`, "changed outside Quadrion AI"), except the open's own
+ *   manifest write (walks made layers and their files linked), which is the app's change;
  * - around pipeline jobs, the difference is recorded with `via.pipeline`.
  *
  * Packages are read-only: their journal is never appended. Decision 8: the journal is on by
@@ -743,6 +744,37 @@ export function createJournalService(deps: JournalServiceDeps) {
     await saveMeta(st);
   }
 
+  /**
+   * The manifest as the open found it (`before`, read before the open's handler ran) against the
+   * manifest now: what changed in between is the open's own write (walks made layers, their files
+   * linked, `withWalkLayers`), recorded as the app's change, as `library:rename` is. What changed
+   * before it (since the last snapshot) stays an outside edit. A folder with no baseline yet is
+   * left to the open check, which takes one.
+   */
+  async function openedOwnWrite(
+    st: ProjectState,
+    before: string | null | undefined,
+  ): Promise<RecordRef[]> {
+    const rel = 'manifest.json';
+    const known = st.meta.files[rel];
+    if (before === undefined || known === undefined) return [];
+    const now = await readText(join(st.root, rel));
+    if (now === before) return [];
+    const touched: RecordRef[] = [];
+    const step = async (from: string | null, to: string | null, via: Via | undefined) => {
+      const drafts = diffRecordFile(rel, parse(from), parse(to));
+      await append(st, drafts, via);
+      touched.push(...targetsOf(drafts));
+    };
+    const last = await snapText(st, rel);
+    if ((before === null ? undefined : textHash(before)) !== known)
+      await step(last, before, { external: { found: 'open' } });
+    await step(before, now, undefined);
+    await snapshot(st, rel, now);
+    await saveMeta(st);
+    return touched;
+  }
+
   /** Finish a write that was journaled but not written (crash between op and state write). */
   async function recover(st: ProjectState) {
     const pending = Pending.safeParse(parse(await readText(join(st.dir, 'pending.json'))));
@@ -774,14 +806,15 @@ export function createJournalService(deps: JournalServiceDeps) {
    * queued before the open answers, so recovery and outside edits come before any later write.
    * Never rejects: the journal never blocks opening a project.
    */
-  function opened(projectId: string, root: string): Promise<void> {
+  function opened(projectId: string, root: string, before?: string | null): Promise<void> {
     const key = keyOf(root);
     projectIds.set(key, projectId);
     const check = serialKey(key, async () => {
       const st = await load(root);
       if (st.meta.journal === 'off') return [];
       await recover(st);
-      return reconcile(st, null, { external: { found: 'open' } });
+      const own = await openedOwnWrite(st, before);
+      return [...own, ...(await reconcile(st, null, { external: { found: 'open' } }))];
     }).then(
       (touched) => {
         emit(root, touched);
@@ -1020,10 +1053,16 @@ export function createJournalService(deps: JournalServiceDeps) {
     }
     if (channel === 'project:open') {
       return async (req) => {
+        // the manifest before the open writes it (walks made layers): that write is the app's own
+        const path = (req as { path?: unknown } | null)?.path;
+        const before =
+          typeof path === 'string'
+            ? await readText(join(resolve(path), 'manifest.json')).catch(() => undefined)
+            : undefined;
         const r = (await handler(req)) as IpcResponse<'project:open'>;
         if (r.ok && !r.package) {
           // shown first: the open check runs after, and writes to the folder wait for it
-          void opened(r.id, r.root);
+          void opened(r.id, r.root, keyOf(r.root) === keyOf(String(path)) ? before : undefined);
           // one project is open at a time: the segments kept open for the others are closed
           const key = keyOf(r.root);
           for (const [k, st] of states) if (k !== key) void release(st);

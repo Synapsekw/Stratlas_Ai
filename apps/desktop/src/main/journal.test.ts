@@ -706,6 +706,59 @@ describe('journal service', () => {
     expect(h.entries).toEqual([]);
   });
 
+  /** `project:open` whose handler makes side-folder walks layers and saves before it answers. */
+  const openMigrating = (s: ReturnType<typeof service>, root: string) =>
+    s.journal.wrap('project:open', () => {
+      const m = JSON.parse(readFileSync(join(root, 'manifest.json'), 'utf8')) as object;
+      writeFileSync(
+        join(root, 'manifest.json'),
+        JSON.stringify({ ...m, layers: [{ id: 'walk-x', kind: 'walk', name: 'Walk x' }] }),
+      );
+      return Promise.resolve({
+        ok: true as const,
+        id: 'p',
+        root,
+        manifest: {} as never,
+        issues: [],
+      });
+    });
+
+  it("records the walk layers made on open as the app's own change, an edit before it as outside", async () => {
+    const { root, userData } = setup();
+    const s = service(root, userData);
+    await s.open({ path: root });
+    // renamed outside the app while it was closed
+    writeFileSync(
+      join(root, 'manifest.json'),
+      JSON.stringify({ schema: 'aio.project/1', name: 'Outside', layers: [] }),
+    );
+    await openMigrating(s, root)({ path: root });
+    await s.journal.flush(root);
+    const h = await s.journal.history({ projectId: 'p' });
+    if (!h.ok) throw new Error(h.error);
+    const own = h.entries.filter((e) => e.via === undefined);
+    const outside = h.entries.filter((e) => e.via !== undefined);
+    expect(own).toEqual([
+      expect.objectContaining({
+        kind: 'manifest.entry',
+        how: 'hand',
+        target: { rec: 'manifest', id: 'walk-x', in: 'layers' },
+      }),
+    ]);
+    expect(outside).toEqual([
+      expect.objectContaining({
+        how: 'external',
+        via: { external: { found: 'open' } },
+        target: { rec: 'manifest', id: 'project' },
+      }),
+    ]);
+    // the next open finds nothing new
+    await s.open({ path: root });
+    const again = await s.journal.history({ projectId: 'p' });
+    if (!again.ok) throw new Error(again.error);
+    expect(again.entries).toHaveLength(2);
+  });
+
   it('forgets a deleted folder: its segment is closed and a new project there starts afresh', async () => {
     const { root, userData } = setup();
     const s = service(root, userData);
