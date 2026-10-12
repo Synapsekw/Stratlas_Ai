@@ -57,6 +57,12 @@ describe('expandImportPaths', () => {
     expect(r.files).toEqual([]);
   });
 
+  it('counts files with unknown extensions toward the limit', async () => {
+    const r = await expandImportPaths([a], known, 4);
+    expect(r.tooMany).toBe(a);
+    expect(r.files).toEqual([]);
+  });
+
   it('keeps a file given twice once, given files first', async () => {
     const f = join(a, 'sub', 'IMG_2.JPG');
     const r = await expandImportPaths([f, a], known);

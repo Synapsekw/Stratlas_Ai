@@ -69,11 +69,11 @@ export async function expandImportPaths(
           await walk(full);
         } else if (e.isFile()) {
           const ext = extname(e.name).toLowerCase();
+          if (++total > limit) {
+            state.over = true;
+            return;
+          }
           if (known(ext)) {
-            if (++total > limit) {
-              state.over = true;
-              return;
-            }
             found.push(full);
           } else {
             skippedCount += 1;
