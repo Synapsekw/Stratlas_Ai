@@ -545,6 +545,13 @@ export const ICONS = {
       <path d="M2.5 5.5a1 1 0 011-1h4l1.5 2h7.5a1 1 0 011 1v7.5a1 1 0 01-1 1h-13a1 1 0 01-1-1z" />
     </>
   ),
+  'calendar-plus': (
+    <>
+      <rect x="3" y="4.5" width="14" height="12.5" rx="1.5" />
+      <path d="M7 3v3M13 3v3M3 8h14" />
+      <path d="M10 10.5v4M8 12.5h4" />
+    </>
+  ),
   trash: (
     <>
       <path d="M3.5 5.5h13M8 5.5v-2h4v2M5 5.5l.8 11h8.4l.8-11" />

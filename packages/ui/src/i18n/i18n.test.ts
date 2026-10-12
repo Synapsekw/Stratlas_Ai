@@ -56,6 +56,44 @@ describe('the English catalogue', () => {
     for (const [k, v] of Object.entries(en)) expect(v, k).not.toMatch(/[–—]/);
   });
 
+  it('has the strings for adding a survey date', () => {
+    const keys = [
+      'change.surveyDateNew',
+      'change.surveyDateNewDay',
+      'change.surveyDateAdd',
+      'change.surveyDateCancel',
+      'change.surveyDateNewTag',
+      'change.surveyDateFrom.photos',
+      'change.surveyDateFrom.video',
+      'change.surveyDateFrom.both',
+      'tree.addDate',
+      'tree.addDate.tip',
+      'tree.addDate.date',
+      'tree.addDate.name',
+      'tree.addDate.namePlaceholder',
+      'tree.addDate.submit',
+      'tree.addDate.folder',
+      'tree.addDate.folderHint',
+      'tree.addDate.folderTitle',
+      'tree.addDate.exists',
+      'tree.addDate.invalid',
+      'tree.datePrompt.title',
+      'tree.datePrompt.existing',
+      'tree.datePrompt.new',
+      'tree.datePrompt.file',
+      'tree.datePrompt.later',
+      'tree.datePrompt.done',
+      'palette.addSurveyDate',
+      'palette.importFlightFolder',
+    ];
+    for (const k of keys) {
+      const v = (en as Record<string, string>)[k];
+      expect(v, k).toBeTruthy();
+      expect(v, k).not.toMatch(/—/);
+    }
+    expect(en['change.surveyDateNew']).toBe('New survey date...');
+  });
+
   it('finds missing keys and placeholder mismatches in a translation', () => {
     expect(placeholders('{count} of {total}')).toEqual(['count', 'total']);
     const bad: Catalogue = { 'library.count_one': '{n} مشروع', 'nope.key': 'x' };
