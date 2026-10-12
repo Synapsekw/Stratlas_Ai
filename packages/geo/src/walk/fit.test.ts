@@ -2,6 +2,7 @@ import type { WalkPin, WalkRawPath } from '@aio/schema';
 import { describe, expect, it } from 'vitest';
 import { dist, lastT, loadRaw, noDrawings, pinAtTruth, truthXZ } from '../__fixtures__/walk';
 import { fitWalk, type SurfaceFrame, type WalkFit } from './fit';
+import { walkQuality } from './quality';
 
 const raw = loadRaw('synthetic');
 const broken = loadRaw('broken');
@@ -100,6 +101,54 @@ describe('fitWalk', () => {
       expect(dist(cur, prev)).toBeLessThan(0.01 + step);
       prev = cur;
     }
+    // The two stretches alone are the two-pin fits either side of the inner pin.
+    const inner = pinAtTruth(raw, 30, [0, 2]);
+    const A = fitWalk(raw, { pins: [pinAtTruth(raw, 4), inner], yawOffsetDeg: 0 }, noDrawings, dur);
+    const B = fitWalk(
+      raw,
+      { pins: [inner, pinAtTruth(raw, end)], yawOffsetDeg: 0 },
+      noDrawings,
+      dur,
+    );
+    // Outside the window (30 - 2.01): stretch 0 alone.
+    expect(dist(at(fit, 27.99).xz, at(A, 27.99).xz)).toBeLessThan(1e-9);
+    expect(dist(at(fit, 32.01).xz, at(B, 32.01).xz)).toBeLessThan(1e-9);
+    // Inside it: blended, not stretch 0.
+    expect(dist(at(fit, 29).xz, at(A, 29).xz)).toBeGreaterThan(1e-4);
+    // At t = 29, u = (29 - 28) / 4 = 0.25, w = smoothstep(0.25) = 0.15625.
+    const a = at(A, 29).xz;
+    const b = at(B, 29).xz;
+    const m = at(fit, 29).xz;
+    const ab: [number, number] = [b[0] - a[0], b[1] - a[1]];
+    const w = ((m[0] - a[0]) * ab[0] + (m[1] - a[1]) * ab[1]) / (ab[0] ** 2 + ab[1] ** 2);
+    expect(w).toBeCloseTo(0.15625, 9);
+    expect(dist(m, [a[0] + w * ab[0], a[1] + w * ab[1]])).toBeLessThan(1e-9);
+  });
+
+  it('attaches a pin after the last still (or before the first) to the nearest segment', () => {
+    const d64 = 64;
+    const pins = [pinAtTruth(raw, 4), { ...pinAtTruth(raw, end), t: 64 }];
+    const fit = fitWalk(raw, { pins, yawOffsetDeg: 0 }, noDrawings, d64);
+    expect(fit.error).toBeNull();
+    expect(fit.gaps).toEqual([]);
+    expect(walkQuality(fit)).toBe('good');
+    for (let t = 0; t <= d64; t += 0.5) expect(at(fit, t).dashed).toBe(false);
+    for (const s of raw.stills) expect(dist(at(fit, s.t).xz, truthXZ(raw, s.t))).toBeLessThan(1e-6);
+    expect(dist(at(fit, 63).xz, truthXZ(raw, end))).toBeLessThan(1e-6);
+    // Before the first registered still: the stills before t = 2 lost their registration.
+    const lateStart: WalkRawPath = {
+      ...raw,
+      stills: raw.stills.map((s) => (s.t < 2 ? { n: s.n, t: s.t, steps: s.steps } : s)),
+    };
+    const early = fitWalk(
+      lateStart,
+      { pins: [{ ...pinAtTruth(raw, 4), t: 1 }, pinAtTruth(raw, end)], yawOffsetDeg: 0 },
+      noDrawings,
+      dur,
+    );
+    expect(early.gaps).toEqual([]);
+    expect(at(early, 1).dashed).toBe(false);
+    for (const t of [1, 10, 50]) expect(dist(at(early, t).xz, truthXZ(raw, t))).toBeLessThan(1e-6);
   });
 
   it('records the residual of an added pin', () => {

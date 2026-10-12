@@ -9,7 +9,7 @@ import {
   pinAtTruth,
 } from '../__fixtures__/walk';
 import { fitWalk } from './fit';
-import { angleDiff, rotateVec } from './horizontal';
+import { angleDiff, quatFromYawPitchRoll, quatMul, rotateVec } from './horizontal';
 import { walkPathPoints, walkPoseSamples } from './pose';
 
 const raw = loadRaw('synthetic');
@@ -80,6 +80,53 @@ describe('walkPoseSamples', () => {
     const c = cal();
     const s10 = walkPoseSamples(fitFor(c), raw, rows, c, end)[300];
     expect(s10 && yawOf(s10)).toBeCloseTo(-Math.PI / 2, 4);
+  });
+
+  it('reads orientation rows as a relative rotation: a constant offset cancels', () => {
+    const c = cal();
+    const fit = fitFor(c);
+    const base = walkPoseSamples(fit, raw, rows, c, end);
+    const offsets = [
+      quatFromYawPitchRoll((70 * Math.PI) / 180, 0, 0),
+      quatFromYawPitchRoll(0.4, 0.3, -0.2),
+    ];
+    for (const off of offsets) {
+      const turned = rows.map((r) => {
+        const q = quatMul(off, [r[1] ?? 0, r[2] ?? 0, r[3] ?? 0, r[4] ?? 1]);
+        return Float64Array.of(r[0] ?? 0, ...q);
+      });
+      const samples = walkPoseSamples(fit, raw, turned, c, end);
+      expect(samples).toHaveLength(base.length);
+      samples.forEach((s, i) => {
+        const b = base[i];
+        if (!b) throw new Error('no base sample');
+        expect(Math.abs(angleDiff(yawOf(s), yawOf(b)))).toBeLessThan(1e-4);
+      });
+    }
+  });
+
+  it('heads like the fit in the second segment of a broken path', () => {
+    const pins = [4, 25, 40, 60].map((t) => pinAtTruth(broken, t));
+    const c: WalkCalibration = { pins, yawOffsetDeg: 0, heightM: 1.7, quality: 'good' };
+    const fit = fitWalk(broken, c, noDrawings, end);
+    let checked = 0;
+    for (const s of walkPoseSamples(fit, broken, rows, c, end)) {
+      const t = s.t / 1000;
+      if (t < 38.5 || nearCorner(t)) continue;
+      const a = fit.at(t);
+      if (!a) throw new Error('no fit');
+      expect(Math.abs(angleDiff(yawOf(s), a.headingRad))).toBeLessThan(1e-4);
+      checked++;
+    }
+    expect(checked).toBeGreaterThan(600);
+  });
+
+  it('treats a non-finite yaw offset as 0', () => {
+    const c = cal();
+    const fit = fitFor(c);
+    const base = walkPoseSamples(fit, raw, null, c, end);
+    const bad = walkPoseSamples(fit, raw, null, { ...c, yawOffsetDeg: Number.NaN }, end);
+    expect(bad).toEqual(base);
   });
 
   it('is empty while the walk is not placed', () => {

@@ -3,7 +3,6 @@ import { WALK_HEIGHT_M } from '@aio/schema';
 import { slerpQuat } from '../direction';
 import { walkFitDetail, type WalkFit } from './fit';
 import {
-  levelRotation,
   levelStills,
   quatFromYawPitchRoll,
   quatMul,
@@ -64,6 +63,8 @@ export function walkPathPoints(
   return { line, stills: out };
 }
 
+const quatConj = (q: Quat): Quat => [-q[0], -q[1], -q[2], q[3]];
+
 /** Orientation rows (`[t, qx, qy, qz, qw]`, t in playback seconds, sorted) slerped at t. */
 function rowAt(rows: readonly Float64Array[], t: number): Quat | null {
   if (rows.length === 0) return null;
@@ -89,11 +90,12 @@ function rowAt(rows: readonly Float64Array[], t: number): Quat | null {
  * The walk's pose samples for its `aio.flight/1` file: 30 per second with orientation rows
  * (`readWalkOrientationData`), else 10 per second from the stills; `t` in milliseconds from 0;
  * position through the fit at the camera height; `q = Ry(heading + yawOffset)` composed with the
- * raw camera pitch and roll. Empty while the walk is not placed.
+ * raw camera pitch and roll. Empty while the walk is not placed. The raw path itself is read
+ * through the fit (its stills anchor the orientation rows); `_raw` stays in the signature.
  */
 export function walkPoseSamples(
   fit: WalkFit,
-  raw: WalkRawPath | null,
+  _raw: WalkRawPath | null,
   orient: readonly Float64Array[] | null,
   cal: WalkCalibration,
   durationS: number,
@@ -102,20 +104,27 @@ export function walkPoseSamples(
   const hz = rows ? WALK_POSE_HZ_ORIENTED : WALK_POSE_HZ_STILLS;
   const end = Number.isFinite(durationS) && durationS > 0 ? durationS : 0;
   const count = Math.floor(end * hz + 1e-9) + 1;
-  const level = raw ? levelRotation(raw) : null;
   const heightM = Number.isFinite(cal.heightM) ? cal.heightM : WALK_HEIGHT_M;
-  const yawOffset = (cal.yawOffsetDeg * Math.PI) / 180;
+  const yawOffset = Number.isFinite(cal.yawOffsetDeg) ? (cal.yawOffsetDeg * Math.PI) / 180 : 0;
 
   const out: PoseSample[] = [];
   for (let k = 0; k < count; k++) {
     const t = k / hz;
     const d = walkFitDetail(fit, t);
     if (!d) return [];
-    const row = rows ? rowAt(rows, t) : null;
-    const rowLevel = row ? (level ? quatNormalise(quatMul(level, row)) : row) : null;
-    const rawQ = rowLevel ?? d.rawQ;
+    // Orientation rows are a relative rotation: turned from the nearest registered still of the
+    // same segment, `qStill * inverse(qRow(still.t)) * qRow(t)`. Never levelled on their own, so
+    // a constant offset of the gyro frame cancels. Without a still (dashed, pins-only) the
+    // heading is the travel direction and the stills' orientation (if any) gives pitch and roll.
+    let rawQ = d.rawQ;
+    let heading = d.headingRad;
+    const rowT = rows ? rowAt(rows, t) : null;
+    const rowS = rows && d.still ? rowAt(rows, d.still.t) : null;
+    if (d.still && rowT && rowS) {
+      rawQ = quatNormalise(quatMul(quatMul(d.still.q, quatConj(rowS)), rowT));
+      if (d.fitYaw !== null) heading = d.fitYaw + yawPitchRoll(rawQ).yaw;
+    }
     const ypr = rawQ ? yawPitchRoll(rawQ) : { yaw: 0, pitch: 0, roll: 0 };
-    const heading = rowLevel && d.fitYaw !== null ? d.fitYaw + ypr.yaw : d.headingRad;
     out.push({
       t: (k * 1000) / hz,
       pos: [d.xz[0], d.groundY + heightM, d.xz[1]],

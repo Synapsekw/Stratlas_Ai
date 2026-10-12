@@ -102,6 +102,11 @@ export interface WalkFitDetail extends WalkFitSample {
   fitYaw: number | null;
   /** The levelled raw camera orientation from the stills at t, when known. */
   rawQ: Quat | null;
+  /**
+   * The registered still of the same segment nearest to t (its time and levelled orientation):
+   * the anchor that relative orientation rows turn from. Null outside a fitted segment.
+   */
+  still: { t: number; q: Quat } | null;
 }
 
 interface ActivePin {
@@ -153,16 +158,25 @@ function bracket<T>(items: readonly T[], key: (v: T) => number, t: number): numb
   return lo;
 }
 
-/** Registered stills interpolated at t (clamped to their range). */
-function rawAt(stills: readonly LevelStill[], t: number): { xz: XZ; q: Quat | null } {
+interface RawAt {
+  xz: XZ;
+  q: Quat | null;
+  still: { t: number; q: Quat } | null;
+}
+
+/** Registered stills interpolated at t (clamped to their range), and the nearest one. */
+function rawAt(stills: readonly LevelStill[], t: number): RawAt {
   const i = bracket(stills, (s) => s.t, t);
   const a = stills[i];
   const b = stills[i + 1] ?? a;
-  if (!a || !b || !a.xz || !b.xz) return { xz: [0, 0], q: null };
+  if (!a || !b || !a.xz || !b.xz) return { xz: [0, 0], q: null, still: null };
   const span = b.t - a.t;
   const f = span > 0 ? clamp((t - a.t) / span, 0, 1) : 0;
   const q = a.q && b.q ? slerpQuat(a.q, b.q, f) : (a.q ?? b.q);
-  return { xz: lerpXZ(a.xz, b.xz, f), q };
+  const near = f <= 0.5 ? [a, b] : [b, a];
+  const withQ = near.find((s) => s.q);
+  const still = withQ?.q ? { t: withQ.t, q: withQ.q } : null;
+  return { xz: lerpXZ(a.xz, b.xz, f), q, still };
 }
 
 const smoothstep = (u: number): number => {
@@ -171,7 +185,10 @@ const smoothstep = (u: number): number => {
 };
 
 /** One fitted segment at t: model `[x, z]`, the fit's turn and the raw orientation. */
-function evalSeg(seg: SegFit, t: number): { xz: XZ; fitYaw: number; rawQ: Quat | null } {
+function evalSeg(
+  seg: SegFit,
+  t: number,
+): { xz: XZ; fitYaw: number; rawQ: Quat | null; still: RawAt['still'] } {
   const raw = rawAt(seg.stills, clamp(t, seg.startT, seg.endT));
   const n = seg.sims.length;
   const apply = (k: number): { xz: XZ; yaw: number } => {
@@ -181,7 +198,7 @@ function evalSeg(seg: SegFit, t: number): { xz: XZ; fitYaw: number; rawQ: Quat |
   };
   if (n <= 1) {
     const r = apply(0);
-    return { xz: r.xz, fitYaw: r.yaw, rawQ: raw.q };
+    return { xz: r.xz, fitYaw: r.yaw, rawQ: raw.q, still: raw.still };
   }
   const p = seg.pinT;
   const i = clamp(
@@ -189,6 +206,10 @@ function evalSeg(seg: SegFit, t: number): { xz: XZ; fitYaw: number; rawQ: Quat |
     0,
     n - 1,
   );
+  // Blend at inner pin j over tp +- h with smoothstep weight w = 3u^2 - 2u^3,
+  // u = (t - (tp - h)) / (2h). h is BLEND_S, clamped to half the gap to each neighbouring pin so
+  // two windows never overlap (pins closer than 2 * BLEND_S blend over a shorter window, pins at
+  // the same t do not blend).
   for (const j of [i, i + 1]) {
     if (j < 1 || j > n - 1) continue;
     const tp = p[j] ?? 0;
@@ -201,11 +222,12 @@ function evalSeg(seg: SegFit, t: number): { xz: XZ; fitYaw: number; rawQ: Quat |
         xz: lerpXZ(A.xz, B.xz, w),
         fitYaw: A.yaw + w * angleDiff(B.yaw, A.yaw),
         rawQ: raw.q,
+        still: raw.still,
       };
     }
   }
   const r = apply(i);
-  return { xz: r.xz, fitYaw: r.yaw, rawQ: raw.q };
+  return { xz: r.xz, fitYaw: r.yaw, rawQ: raw.q, still: raw.still };
 }
 
 function maxSpan(pins: readonly ActivePin[]): number {
@@ -302,6 +324,7 @@ function buildPinsOnly(
       dashed: false,
       fitYaw: null,
       rawQ: null,
+      still: null,
     };
   };
 }
@@ -347,9 +370,21 @@ function build(
       fit: null,
     }))
     .sort((a, b) => a.startT - b.startT);
+  // A pin before the first registered still or after the last joins the nearest segment, which
+  // widens to cover it (its raw position holds at the end still). A pin in a break between two
+  // segments stays loose: it carries the dashed line there.
   const loose: ActivePin[] = [];
+  const firstDraft = drafts[0];
+  const lastDraft = drafts[drafts.length - 1];
   for (const p of pins) {
-    const d = drafts.find((g) => p.t >= g.startT && p.t <= g.endT);
+    let d = drafts.find((g) => p.t >= g.startT && p.t <= g.endT);
+    if (!d && firstDraft && p.t < firstDraft.startT) {
+      firstDraft.startT = p.t;
+      d = firstDraft;
+    } else if (!d && lastDraft && p.t > lastDraft.endT) {
+      lastDraft.endT = p.t;
+      d = lastDraft;
+    }
     if (d) d.pins.push(p);
     else loose.push(p);
   }
@@ -486,6 +521,7 @@ function build(
           dashed: false,
           fitYaw: e.fitYaw,
           rawQ: e.rawQ,
+          still: e.still,
         };
       }
       const d = dashedAt(t);
@@ -497,6 +533,7 @@ function build(
         dashed: true,
         fitYaw: null,
         rawQ: null,
+        still: null,
       };
     },
   };
