@@ -209,6 +209,26 @@ export async function updateCapture(
   return { manifest: r.manifest, backup: r.backup };
 }
 
+/**
+ * Remove a survey date no layer names and save. Only the `captures` entry goes: no layer and no
+ * file changes. Refuses an unknown id and a date a layer still names (`Layer.capture`). Backs up and
+ * validates the manifest first, read and saved in one turn.
+ */
+export async function removeCapture(
+  root: string,
+  captureId: string,
+): Promise<{ manifest: ProjectManifest; backup: string }> {
+  const r = await updateManifestFile(root, (m) => {
+    if (!m.captures.some((c) => c.id === captureId))
+      throw new Error(`There is no survey date "${captureId}" in this project.`);
+    const named = m.layers.filter((l) => l.capture === captureId).length;
+    if (named === 1) throw new Error('1 dataset is filed under this date. Move it first.');
+    if (named > 1) throw new Error(`${named} datasets are filed under this date. Move them first.`);
+    return { manifest: { ...m, captures: m.captures.filter((c) => c.id !== captureId) } };
+  });
+  return { manifest: r.manifest, backup: r.backup };
+}
+
 /** Survey dates in date order. The sort is stable: dates of one day stay in the order they had. */
 export const byDate = (a: Capture, b: Capture): number => a.date.localeCompare(b.date);
 

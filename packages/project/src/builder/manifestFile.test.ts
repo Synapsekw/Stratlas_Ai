@@ -16,6 +16,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   createProject,
   ensureCapture,
+  removeCapture,
   updateCapture,
   updateLayers,
   updateManifestFile,
@@ -785,5 +786,50 @@ describe('importRawFiles saves what it added onto the project as it is at its en
     expect(await readFile(file, 'utf8')).toBe(`${JSON.stringify(savedBefore, null, 2)}\n`);
     expect(r.manifest).toEqual(await readManifest(root));
     expect(r.backup).toBe(`${file}.bak`);
+  });
+});
+
+describe('removeCapture', () => {
+  it('removes a survey date no layer names, and backs up', async () => {
+    const root = await project();
+    const r = await removeCapture(root, 'c2');
+    expect(r.manifest.captures.map((c) => c.id)).toEqual(['c1']);
+    expect((await readManifest(root)).captures.map((c) => c.id)).toEqual(['c1']);
+    expect(r.backup).toBe(join(root, 'manifest.json.bak'));
+    expect((await readFile(r.backup, 'utf8')).includes('c2')).toBe(true);
+  });
+
+  it('refuses a date a layer names and leaves the manifest as it was', async () => {
+    const root = await project();
+    await updateLayers(root, ['mesh-m'], { capture: 'c1' });
+    const before = await readFile(join(root, 'manifest.json'), 'utf8');
+    await expect(removeCapture(root, 'c1')).rejects.toThrow(
+      '1 dataset is filed under this date. Move it first.',
+    );
+    expect(await readFile(join(root, 'manifest.json'), 'utf8')).toBe(before);
+  });
+
+  it('says how many datasets name the date when there are several', async () => {
+    const root = await project();
+    const m = await readManifest(root);
+    const layer = m.layers.find((l) => l.id === 'mesh-m');
+    if (!layer) throw new Error('no layer');
+    await writeManifestFile(root, {
+      ...m,
+      layers: [
+        { ...layer, capture: 'c1' },
+        { ...layer, id: 'mesh-m2', capture: 'c1' },
+      ],
+    });
+    await expect(removeCapture(root, 'c1')).rejects.toThrow(
+      '2 datasets are filed under this date. Move them first.',
+    );
+  });
+
+  it('refuses an unknown id', async () => {
+    const root = await project();
+    await expect(removeCapture(root, 'c9')).rejects.toThrow(
+      'There is no survey date "c9" in this project.',
+    );
   });
 });

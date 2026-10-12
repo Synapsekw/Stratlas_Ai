@@ -4,12 +4,14 @@ export * from './photos';
 export * from './templates';
 export * from './tiff';
 export * from './obj';
+export * from './folders';
 export {
   PACKAGE_DIRS,
   captureForDate,
   createProject,
   ensureCapture,
   readManifestFile,
+  removeCapture,
   slug,
   uniqueId,
   updateCapture,

@@ -1362,6 +1362,7 @@ export const ipc = {
     request: z
       .object({
         projectId: z.string().min(1),
+        /** Files or folders; a folder is read recursively. */
         paths: z.array(z.string().min(1)).min(1),
         /** The aircraft clock's offset from UTC in minutes; default from the project longitude. */
         utcOffsetMin: z.number().int().min(-720).max(840).optional(),
@@ -1397,7 +1398,11 @@ export const ipc = {
    */
   'builder:altitudePlan': {
     request: z
-      .object({ projectId: z.string().min(1), paths: z.array(z.string().min(1)).min(1) })
+      .object({
+        projectId: z.string().min(1),
+        /** Files or folders; a folder is read recursively. */
+        paths: z.array(z.string().min(1)).min(1),
+      })
       .strict(),
     response: z.discriminatedUnion('ok', [
       z.object({ ok: z.literal(true), plan: AltitudePlan }),
@@ -1491,6 +1496,17 @@ export const ipc = {
         captureId: Id,
         created: z.boolean(),
       }),
+      z.object({ ok: z.literal(false), error: z.string() }),
+    ]),
+  },
+  /**
+   * Remove a survey date that no layer names (`Layer.capture`): only `manifest.captures` changes.
+   * Refused while a layer names it, for an unknown id and on a package. Backed up and validated.
+   */
+  'builder:removeCapture': {
+    request: z.object({ projectId: z.string().min(1), captureId: z.string().min(1) }).strict(),
+    response: z.discriminatedUnion('ok', [
+      z.object({ ok: z.literal(true), manifest: ProjectManifest, backup: z.string() }),
       z.object({ ok: z.literal(false), error: z.string() }),
     ]),
   },

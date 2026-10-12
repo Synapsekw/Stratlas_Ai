@@ -246,6 +246,15 @@ describe('survey date of a photo run', () => {
     const res = ipc['builder:ensureCapture'].response;
     expect(res.safeParse({ ok: false, error: 'no' }).success).toBe(true);
   });
+
+  it('builder:removeCapture takes a project and a survey date, nothing else', () => {
+    const req = ipc['builder:removeCapture'].request;
+    expect(req.safeParse({ projectId: 'p', captureId: 'c1' }).success).toBe(true);
+    expect(req.safeParse({ projectId: 'p', captureId: '' }).success).toBe(false);
+    expect(req.safeParse({ projectId: 'p', captureId: 'c1', force: true }).success).toBe(false);
+    const res = ipc['builder:removeCapture'].response;
+    expect(res.safeParse({ ok: false, error: 'no' }).success).toBe(true);
+  });
 });
 
 describe('drawings (PDF and picture imports, placement)', () => {
