@@ -1,13 +1,13 @@
 /**
  * 360 video from a 360 camera's own files (the front slice of Walks 360 part W1): a two stream
  * `.insv` is stitched on import and stored in `walks/<id>/` beside the manifest, plays in the
- * 360 video pane of the split view, and a stitched MP4 comes in through "Add 360 video".
+ * 360 video pane of the split view (opened from the walk's row in the Datasets list), and a stitched MP4 comes in through "Add 360 video".
  *
  * The clips are made by ffmpeg inside the test (test patterns, a few frames), so no footage is
  * in the repo. Skipped when ffmpeg, its `v360` filter or libx264 is missing. Nothing here looks
  * at rendered pixels: the software renderer of the CI runners draws them, but slowly.
  */
-import type { ElectronApplication, Page } from '@playwright/test';
+import type { ElectronApplication, Locator, Page } from '@playwright/test';
 import { spawnSync } from 'node:child_process';
 import { readFile, readdir } from 'node:fs/promises';
 import { join } from 'node:path';
@@ -94,6 +94,22 @@ async function palette(win: Page, command: string) {
   await win.keyboard.press('Enter');
 }
 
+/** Every walk row of the Datasets list. */
+const walkRows = (win: Page) => win.locator('[data-testid^="tree-row-walk-"]');
+
+/** A walk's row in the Datasets list (layer `walk-<id>`), its date folder opened when it is shut. */
+async function walkRow(win: Page, walkId: string): Promise<Locator> {
+  const row = win.getByTestId(`tree-row-walk-${walkId}`);
+  if (!(await row.isVisible())) {
+    for (const folder of await win.locator('[data-testid^="date-folder-"]').all()) {
+      if ((await folder.getAttribute('aria-expanded')) === 'false')
+        await folder.getByRole('button').first().click();
+    }
+  }
+  await expect(row).toBeVisible();
+  return row;
+}
+
 const num = async (win: Page, testId: string, attr: string) =>
   Number(await win.getByTestId(testId).getAttribute(attr));
 
@@ -140,8 +156,8 @@ test.describe('360 video', () => {
 
     await win.getByTestId('project-card').filter({ hasText: 'E2E tiny project' }).first().click();
     await expect(win.locator('[data-scene-view] canvas')).toBeVisible();
-    // no walk yet: no list, and the split does not offer the pane
-    await expect(win.getByTestId('walk-list')).toHaveCount(0);
+    // no walk yet: no 360 walks in the Datasets list, and the split does not offer the pane
+    await expect(walkRows(win)).toHaveCount(0);
 
     // 1. import the clip with its proxy: one walk, the proxy is skipped
     await nextOpenDialog(app, [proxy, clip]);
@@ -175,10 +191,8 @@ test.describe('360 video', () => {
     await expectWalkLayer(manifestFile, manifestBefore, [WALK]);
     await panel.getByRole('button', { name: 'Close' }).click();
 
-    // 2. the list under the datasets opens the split with the pane on the right
-    const list = win.getByTestId('walk-list');
-    await expect(list).toBeVisible();
-    await list.getByTestId(`walk-row-${WALK}`).click();
+    // 2. the walk's row in the Datasets list opens the split with the pane on the right
+    await (await walkRow(win, WALK)).click();
     const pane = win.getByTestId('pane-walk360');
     await expect(pane).toBeVisible();
     await expect(win.getByTestId('pane-chooser-right').locator('select').first()).toHaveValue(
@@ -270,11 +284,12 @@ test.describe('360 video', () => {
     // the stitched MP4 brings no hint
     await expect(panel.getByTestId('import-raw-360-hint')).toHaveCount(0);
     await panel.getByRole('button', { name: 'Close' }).click();
-    await expect(list.locator('.walk-row')).toHaveCount(2);
+    await walkRow(win, 'site-tour');
+    await expect(walkRows(win)).toHaveCount(2);
     expect((await readdir(join(dataRoot.projectDir, 'walks'))).sort()).toEqual(['site-tour', WALK]);
     const which = win.getByTestId('walk-which');
     await expect(which.locator('option')).toHaveCount(2);
-    await which.selectOption('site-tour');
+    await which.selectOption('walk-site-tour');
     await expect(win.getByTestId('walk-360')).toHaveAttribute('data-walk', 'site-tour');
     await expect(win.getByTestId('walk-view')).toHaveAttribute('data-status', 'ready', {
       timeout: 60_000,
@@ -283,7 +298,7 @@ test.describe('360 video', () => {
     await expect(win.getByTestId('walk-sound')).toBeDisabled();
     // the label follows the walk on screen: gone for the MP4 walk, back for the camera walk
     await expect(win.getByTestId('walk-unstabilised')).toHaveCount(0);
-    await which.selectOption(WALK);
+    await which.selectOption(`walk-${WALK}`);
     await expect(win.getByTestId('walk-360')).toHaveAttribute('data-walk', WALK);
     await expect(win.getByTestId('walk-unstabilised')).toHaveText('Not stabilised');
     await expectWalkLayer(manifestFile, manifestBefore, [WALK, 'site-tour']);
@@ -322,7 +337,7 @@ test.describe('360 video', () => {
     await expect(panel.getByTestId('import-raw-360-hint')).toHaveCount(0);
     await expect(panel.getByTestId('import-cancel')).toHaveCount(0);
     await expect.poll(() => readdir(walks), { timeout: 30_000 }).toEqual([]);
-    await expect(win.getByTestId('walk-list')).toHaveCount(0);
+    await expect(walkRows(win)).toHaveCount(0);
     expect(await readFile(manifestFile, 'utf8')).toBe(manifestBefore);
     await panel.getByRole('button', { name: 'Close' }).click();
 
@@ -331,7 +346,8 @@ test.describe('360 video', () => {
     await palette(win, 'Add 360 video');
     await expect(panel).toContainText('Imported 1 of 1 files', { timeout: 120_000 });
     expect(await readdir(walks)).toEqual(['site-tour']);
-    await expect(win.getByTestId('walk-list').locator('.walk-row')).toHaveCount(1);
+    await walkRow(win, 'site-tour');
+    await expect(walkRows(win)).toHaveCount(1);
   });
 
   test('an ordinary MP4 added as 360 video is refused with the reason, and nothing is stored', async ({
@@ -349,7 +365,7 @@ test.describe('360 video', () => {
     const panel = win.getByTestId('import-panel');
     await expect(panel).toContainText('Imported 0 of 1 files', { timeout: 60_000 });
     await expect(panel).toContainText('160 x 90, not a 2:1 equirectangular picture');
-    await expect(win.getByTestId('walk-list')).toHaveCount(0);
+    await expect(walkRows(win)).toHaveCount(0);
     expect(await readdir(dataRoot.projectDir)).not.toContain('walks');
   });
 });
