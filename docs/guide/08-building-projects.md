@@ -62,7 +62,7 @@ After the import the panel says which altitude was used and with which number. O
 4. Drag in the pane to look around and scroll to zoom. The bar below plays, pauses and scrubs; **Sound** turns the sound on. The keys are those of the video window: **Space** or **K**, **J**, **L**, comma and period.
 
 - A video that is already stitched (an equirectangular MP4 exported from Insta360 Studio or another program) comes in with **Ctrl K**, **Add 360 video**. The same command also takes `.insv` files.
-- Stitching needs **ffmpeg** on this computer. Without it the import says so and adds nothing: install a full ffmpeg build (on Windows `winget install Gyan.FFmpeg`), restart {product} and import again.
+- Stitching uses the **ffmpeg** that comes with the processing tools (pipeline pack 0.6.0 or later), so there is nothing else to install. With an older pack or none, {product} looks for ffmpeg on this computer instead; when there is none the import says so and adds nothing: update the processing tools in **Settings**, **Processing tools**, and import again.
 - An `.lrv` imported without its `.insv` plays at its own low resolution.
 - A video stitched from the camera's own file plays **unstabilised**: every shake of the walk is in it, and the pane marks it **Not stabilised**. For a steady picture, export the clip from Insta360 Studio with FlowState on and bring that MP4 in with **Add 360 video**.
 - A 360 video travels inside a package, and older versions of {product} open the project without showing it.

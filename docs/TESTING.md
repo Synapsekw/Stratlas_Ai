@@ -9,7 +9,6 @@ Only what still needs testing. Each stage lists what to click and what you shoul
 - The product is **Quadrion AI** (it was called Stratlas until 7 Oct 2026; older stages below keep the old name).
 - Close the app first. The installer refuses while it (or an old Stratlas.exe) runs: "Quadrion AI is running. Close it and click Retry."
 - Run `E:\Dev\AIO Software\apps\desktop\dist\QuadrionAI-0.12.0-win-x64-setup.exe` and install over the previous version (also over a Stratlas install).
-- No install: `QuadrionAI-0.12.0-win-x64-portable.exe` in the same folder.
 - 0.12.0 contains every earlier fix, so all stages below are tested on it too.
 - The build is unsigned. SmartScreen shows "Windows protected your PC": choose **More info**, then **Run anyway**.
 
@@ -47,8 +46,8 @@ Only what still needs testing. Each stage lists what to click and what you shoul
 | D           | Drawings: the Drawings group, PDF and picture drawings, side by side, placing by points, opacity and on top                                                                                                                                                                                                                 | Version 0.11.4; any project, a test project is best because a drawing cannot be removed yet (see Stage D)                                                                                                                                                  | Built; not yet tested by the founder                 |
 | M10         | Photos to products: photo processing on the demo and on your own flight, ground control and the accuracy report, OPF, Globe, imagery and terrain packs, 3D Tiles, licence approvals                                                                                                                                         | Version 0.10.0, built 8 Oct 2026 from `integration/m10` at commit `3f07041` or later with the M10 fixes merged (the 24-photo demo), and the processing tools 0.4.0 or later; test it on 0.11.4 with the processing tools 0.5.4 (see M10, Before you start) | Built; not yet tested by the founder                 |
 | M11         | Surveying: site coordinates and calibration, the surface engine, measurement tools and templates, volumes and comparisons, cross-sections and terrain overlays, designs and alignments, survey exports and the interop matrix, QA and cleanup, survey reports and template sets, haul road, hydrology, your three real jobs | Version 0.11.4 with the processing tools 0.5.4 (both carry the local AI helpers), and the survey demos (see M11, Before you start)                                                                                                                         | Built; not yet tested by the founder                 |
-| Walks W1    | 360 video: a 360 camera file or a stitched 360 video comes in and plays beside the 3D view                                                                                                                                                                                                                                  | Version 0.12.0, and ffmpeg on the PC (see Walks W1, Before you start)                                                                                                                                                                                      | Built; not yet tested by the founder                 |
-| Walks W2    | Placing a 360 walk: walks in Datasets with their badge, Place walk on a drawing or the map, pins, Save, Remove walk                                                                                                                                                                                                         | Version 0.12.0, ffmpeg, a 360 video and a drawing (see Walks W2, Before you start)                                                                                                                                                                         | Built; not yet tested by the founder                 |
+| Walks W1    | 360 video: a 360 camera file or a stitched 360 video comes in and plays beside the 3D view                                                                                                                                                                                                                                  | Version 0.12.0 with pipeline pack 0.6.0, which brings ffmpeg (see Walks W1, Before you start)                                                                                                                                                              | Built; not yet tested by the founder                 |
+| Walks W2    | Placing a 360 walk: walks in Datasets with their badge, Place walk on a drawing or the map, pins, Save, Remove walk                                                                                                                                                                                                         | Version 0.12.0 with pipeline pack 0.6.0, a 360 video and a drawing (see Walks W2, Before you start)                                                                                                                                                        | Built; not yet tested by the founder                 |
 
 ## Stage M5: your M4 feedback, fixed
 
@@ -1075,11 +1074,11 @@ Your three jobs, on this PC only, with Wi-Fi off. Client files stay on this PC: 
 
 ## Stage Walks W1: 360 video from a 360 camera
 
-A 360 camera file needs ffmpeg on the PC, so check that first (Before you start). Test it on 0.12.0. This is the first part of Walks 360: the video comes in and plays. Placing it on the site is Stage Walks W2. A 360 video cannot be renamed yet, so use a copy or a test project.
+A 360 camera file is stitched by the ffmpeg in pipeline pack 0.6.0, so check the pack first (Before you start). Test it on 0.12.0. This is the first part of Walks 360: the video comes in and plays. Placing it on the site is Stage Walks W2. A 360 video cannot be renamed yet, so use a copy or a test project.
 
 ### Before you start
 
-- [ ] ffmpeg is installed: open a terminal and run `ffmpeg -version`. If the command is not found, run `winget install Gyan.FFmpeg`, then close and reopen the app.
+- [ ] Pipeline pack 0.6.0 is installed: **Settings**, **Processing tools** names it. It brings its own ffmpeg, so nothing else needs installing; if an older pack is named, update it there first.
 - [ ] Have one Insta360 clip at hand: the `VID_..._00_001.insv` file and, in the same folder, its `LRV_..._01_001.lrv`. Any project will do; use a copy or a test project.
 
 ### Import
@@ -1117,7 +1116,7 @@ A 360 camera file needs ffmpeg on the PC, so check that first (Before you start)
 
 ### Without ffmpeg
 
-- [ ] Optional, on a PC without ffmpeg: import an `.insv`. The panel reads "Imported 0 of 1 files" and the line is **Failed** with "ffmpeg was not found, and the app needs it to stitch the two lens pictures of a 360 camera file. Install a full ffmpeg build ..." ending in "Nothing was added to the project." No `walks` folder is made in the project folder (one that was there before gets no new folder).
+- [ ] Optional, on a PC with no pipeline pack (or one older than 0.6.0) and no ffmpeg of its own: import an `.insv`. The panel reads "Imported 0 of 1 files" and the line is **Failed** with "ffmpeg was not found, and the app needs it to stitch the two lens pictures of a 360 camera file. Install a full ffmpeg build ..." ending in "Nothing was added to the project." No `walks` folder is made in the project folder (one that was there before gets no new folder).
 
 ### Packages and older builds
 
@@ -1158,7 +1157,7 @@ Test it on 0.12.0. A walk is placed on a drawing (or on the map, in a project wi
 
 ### Before you start
 
-- [ ] ffmpeg is installed (Stage Walks W1, Before you start).
+- [ ] Pipeline pack 0.6.0 is installed (Stage Walks W1, Before you start).
 - [ ] Use a test project or a copy, with a 360 video in it (Stage Walks W1) and a drawing of the same area (Stage D). A drawing placed by points gives true distances; one that is not placed yet works too.
 - [ ] A project that had 360 videos in 0.11.4 opens with them as rows under **360 walks**, with nothing to do.
 
