@@ -524,7 +524,29 @@ Copy (exact): status lines "Not processed", "Processing 42 %", "Processed", "Pro
 
 ## Spike results
 
-(Filled in by T2, T4 and T8.)
+Built 12 Oct 2026; the reference X4 walk was read locally and read only, nothing of it is in git
+but an anonymised trailer of 10.9 KB (`python/tests/fixtures/walk/x4-trailer.bin`).
+
+**T2, the trailer (X4, version 3).**
+
+- Footer: the last 72 bytes are 32 zero bytes, a u32 trailer length (from the trailer start to the end of the file), a u32 version and the 32 character mark.
+- Records: payload, then a 6-byte descriptor `u8 format, u8 id, u32 size` (format 0 binary, 1 protobuf). The record before the footer is an index (id 0): 10-byte entries `u8 id, u8 format, u32 size, u32 offset`. The X4 leaves gaps between records, so the index is read first and the backward walk is only a fallback.
+- Ids kept: 1 metadata (protobuf), 3 motion, 4 frame times; the rest (thumbnail, exposure, 3A, highlights, editor) are skipped.
+- Metadata fields used: 1 serial (kept as a sha256 prefix only), 2 camera, 3 firmware, 5 offset, 24 first frame time (us), 27 window crop (5760 x 5760), 28 gyro time offset (ms), 62 raw gyro flag, 65 sensor ranges (32 g, 2000 deg/s).
+- Motion: raw X4 encoding 20 bytes (u64 us, six u16 scaled by the ranges), 1 kHz; the older 56-byte float64 encoding is read too. Samples start about 0.1 s before the first frame; those are dropped.
+- Frame times: 16-byte entries (u64 time, f64 exposure), eight pre-roll entries before the first frame.
+- Offset string: `N_(radius_cx_cy_yaw_pitch_roll) x N_sensorW_sensorH_extra` in sensor pixels; each stream is a centred crop of its lens, scaled.
+- Axes: camera (x right, y down, z forward) = (sz, sx, sy) of the X4 sensor. The first reading from the telemetry-parser orientation string had x and z the other way round; the levelling check in T4 showed the horizon tilting the wrong way, and this mapping levels it.
+
+**T4, the stitch.**
+
+- Both lens streams are upright; the calibration's roll of about 90 degrees is the sensor mount, so only the rest past the nearest quarter turn is applied, as `Ry(-yaw) Rx(pitch) Rz(-roll)`.
+- Seam fit on 708 matches across six frames: median ray mismatch 0.15 degree with the trailer calibration (0.80 with the angles as written, 0.46 without them; a free fit of every parameter reaches 0.095).
+- Equidistant fits (a polynomial term came out at zero). The calibrated radius means a 193.5 degree lens (`CALIBRATED_FOV_DEG`); at the old 195 degrees the seam was off by about 1.5 degrees and a pillar on it was doubled.
+- Lens 0 is the walking direction and the picture centre; the operator is in lens 1.
+- Time on this workstation, 3840 x 1920 from two 2880 px HEVC streams: decode about 82 ms per output frame (the bottleneck), stitch 21 ms cached or 61 to 75 ms levelled, encode 2.5 ms; the frames step of an 82 s walk takes about 4 to 5 minutes. Hardware HEVC decode is the first lever for the benchmark.
+
+**T8, ffmpeg in the pack.** conda-forge's GPL `ffmpeg` 9.0.2 for win-64 has libx264, `v360` and the HEVC decoder, so the BtbN fallback is not needed. Pruned to what ffmpeg and ffprobe load: about 141 MB, which takes the Windows pack to about 1,245 MB; the founder approved a 1,300 MB budget (12 Oct 2026). FFmpeg 9 prints two flag columns in `-filters`; the check reads both forms.
 
 ## Verification before hand-off
 
