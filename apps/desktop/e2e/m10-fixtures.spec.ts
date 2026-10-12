@@ -104,7 +104,7 @@ test('the photo project: the demo as a writable project with a valid precomputed
   expect(m.ok).toBe(true);
   if (!m.ok) return;
   expect(m.value).toMatchObject({ id: PHOTO_DEMO.id, name: PHOTO_DEMO.name, crs: { epsg: 32639 } });
-  const layer = m.value.layers.find((l) => l.id === 'photos');
+  const layer = m.value.layers.find((l) => l.kind === 'photos');
   expect(layer?.kind).toBe('photos');
   const run = PhotoRun.parse(JSON.parse(await readFile(join(p.runDir, 'run.json'), 'utf8')));
   const gcp = GcpFile.parse(JSON.parse(await readFile(join(p.runDir, 'gcp.json'), 'utf8')));
