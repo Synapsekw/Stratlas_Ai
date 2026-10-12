@@ -82,7 +82,7 @@ const manifestName = async (dir: string) =>
 
 /**
  * Where a card and its dots are, with the card scrolled into view first: in a small window (CI
- * runs at the minimum, 1100 x 700) the library is one column and the second card starts below
+ * runs at 1100 x 720) the library is one column and the second card starts below
  * the fold, where `elementFromPoint` finds nothing.
  */
 async function cardLayout(win: Page, name: string) {

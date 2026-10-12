@@ -66,8 +66,8 @@ async function stubDialogAndBin(app: ElectronApplication, path: string): Promise
 }
 
 /**
- * Nothing of the Settings page is cut off or pushed sideways (CI runs the window at its smallest,
- * 1100 x 700): the page does not scroll sideways and `inside` lies wholly in the window.
+ * Nothing of the Settings page is cut off or pushed sideways (CI runs a small window,
+ * 1100 x 720): the page does not scroll sideways and `inside` lies wholly in the window.
  */
 async function expectFits(win: Page, ...inside: string[]): Promise<void> {
   const sideways = await win.locator('.set-body').evaluate((el) => el.scrollWidth - el.clientWidth);

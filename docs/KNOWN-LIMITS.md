@@ -34,7 +34,7 @@ Current limits only; each is removed from this list when fixed.
 ## Builder
 
 - The pipeline pack is not in the installer and updating the app does not update it: it is installed from its file (`pipeline-pack-<version>-<arch>.tar.gz`) in **Settings**, **Processing tools**, into `runtime` in the data folder, and must match the build. The app uses the newest pack there. The pack is not signed: the install checks every file against the checksums in the pack's own manifest, which catches a damaged file, not a forged one.
-- **Outline** (mask assist) needs a mask model file in the pipeline pack; none ships yet (licences).
+- **Outline** (mask assist) on a photo detection uses the pipeline pack's boundary model (MobileSAM, pack 0.5.1 or later); with an older pack the button does not show.
 - The HCl sample's GPS and gimbal tags are written from the delivered camera poses (the Elios 3 logs no GPS in the tank) around the approximate HCl origin; a real photo set brings its own tags.
 - Cloud AI detection needs Cloud AI on and your own key; cost is an estimate from list prices.
 - **A large GeoTIFF cannot be imported yet.** An ortho or DSM over 300 MB, over 12,000 x 12,000 pixels, or saved as a BigTIFF is refused with "This GeoTIFF is too large to import yet"; no tiling job exists for it. Reduce or split it in other software and import the parts. A smaller GeoTIFF is read whole and drawn as one picture of at most 4096 px on its long side.

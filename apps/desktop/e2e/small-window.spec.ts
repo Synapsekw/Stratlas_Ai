@@ -1,5 +1,5 @@
 /**
- * The smallest window, 1100 x 700 (the size the CI runners give the app): what only goes wrong
+ * The smallest window, 1100 x 700 (CI runs a little taller, 1100 x 720): what only goes wrong
  * when there is little room. Asked for here, so a run at the default size covers it too.
  *
  * Screenshots go to the test's output folder (test-results/), or to QUADRION_E2E_SHOTS when it

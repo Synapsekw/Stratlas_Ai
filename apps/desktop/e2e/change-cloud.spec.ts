@@ -194,7 +194,7 @@ test.describe('a change cloud', () => {
     expect((await sample(win, TANK)).grey).toBe(0);
     expect((await sample(win, PIPE)).warm).toBeGreaterThan(3);
 
-    // the distance under the pointer. At the smallest window (1100 x 700, the size the CI
+    // the distance under the pointer. In a small window (1100 x 720, the size the CI
     // runners' small screens give) the change legend in the bottom right of the 3D view covers
     // the pipe as VIEW frames it, so look straight at the pipe first: the middle of the view.
     await win.evaluate(
