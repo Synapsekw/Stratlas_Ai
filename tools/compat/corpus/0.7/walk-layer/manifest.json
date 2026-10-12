@@ -1,0 +1,22 @@
+{
+  "schema": "aio.project/1",
+  "id": "demo-walk-layer",
+  "name": "Demo walk layer",
+  "customer": "Demo customer (fictional)",
+  "site": "Fictional site with a 360 walk (synthetic demo data)",
+  "crs": { "epsg": 32631 },
+  "origin": [318342, 2586475, 382],
+  "captures": [],
+  "layers": [
+    {
+      "kind": "photos",
+      "id": "closeups",
+      "name": "Close-ups",
+      "visible": true,
+      "items": [{ "id": "f0000", "src": { "path": "photos/closeups/f0000.webp" } }]
+    }
+  ],
+  "severityModels": [],
+  "classCatalogues": [],
+  "type": "road"
+}

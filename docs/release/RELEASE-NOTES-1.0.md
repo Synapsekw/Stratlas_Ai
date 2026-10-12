@@ -26,6 +26,10 @@ Draft of 7 Oct 2026. The final pass, with the product name, dates and screenshot
 - The pipeline pack 1.0.0 works with Quadrion AI 0.9 to 1.x and says so if it is paired with another version.
 - See [UPGRADE-POLICY.md](UPGRADE-POLICY.md) for the full policy.
 
+## Upgrading to 0.12
+
+From 0.12, 360 walks are layers. A project that holds a walk opens in 0.10 and later, which keep the walk as it is but do not show it; 0.9 and older refuse to open it. Update every machine that opens such a project.
+
 ## Privacy and security
 
 Nothing is sent to Synapse Solutions. Sharing uses your own shared folder, transfer files or your own server, and signing keys stay in the computer's credential store. Details for IT and procurement: [SECURITY-AND-DATA.md](SECURITY-AND-DATA.md).

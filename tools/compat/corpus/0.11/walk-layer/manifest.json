@@ -1,0 +1,46 @@
+{
+  "schema": "aio.project/1",
+  "id": "demo-walk-layer",
+  "name": "Demo walk layer",
+  "customer": "Demo customer (fictional)",
+  "site": "Fictional site with a 360 walk (synthetic demo data)",
+  "crs": { "epsg": 32631 },
+  "origin": [318342, 2586475, 382],
+  "captures": [],
+  "layers": [
+    {
+      "kind": "photos",
+      "id": "closeups",
+      "name": "Close-ups",
+      "visible": true,
+      "items": [{ "id": "f0000", "src": { "path": "photos/closeups/f0000.webp" } }]
+    },
+    {
+      "kind": "walk",
+      "id": "walk-w1",
+      "name": "Walk 1",
+      "visible": true,
+      "record": { "path": "walks/w1/walk.json" },
+      "src": { "path": "walks/w1/walk.mp4" },
+      "poster": { "path": "walks/w1/poster.webp" },
+      "durationS": 120,
+      "path": {
+        "raw": { "path": "walks/w1/raw-path.json" },
+        "orientation": { "path": "walks/w1/orientation.json" },
+        "orientationData": { "path": "walks/w1/orientation.bin" }
+      },
+      "place": {
+        "pins": [
+          { "t": 0, "surface": "@model", "at": [0, 0], "y": 0 },
+          { "t": 60, "surface": "@model", "at": [30, 40], "y": 0 }
+        ],
+        "yawOffsetDeg": 0,
+        "heightM": 1.7,
+        "quality": "good"
+      }
+    }
+  ],
+  "severityModels": [],
+  "classCatalogues": [],
+  "type": "road"
+}

@@ -57,6 +57,12 @@ The M9 files (journal, identity, team, exchange, hub) are read with unknown keys
 
 A single `.bak` protects only the first overwrite: the second save copies the app's own file over it. Since the M9 integration the `.bak` is copied to a temp file and renamed, so a crash during a save never leaves a torn `.bak`.
 
+## New layer kinds
+
+A new kind of manifest layer is a contract change that older builds meet in three ways. 0.10 and later keep a layer of a kind they do not know as an opaque entry: they do not show it, they save it back unchanged, and `keepUnknownLayers` refuses only a clashing id. 0.9 and older refuse the whole manifest, because their layer list is strict. So a new kind is announced in the release notes with the oldest build that still opens such a project.
+
+The 360 walk is the first such kind (`walk`, from 0.12; Walks 360). From 0.12, 360 walks are layers. A project that holds a walk opens in 0.10 and later, which keep the walk as it is but do not show it; 0.9 and older refuse to open it. Update every machine that opens such a project. `tools/compat/walk-kind.test.mjs` pins all three behaviours against the corpus project `walk-layer`.
+
 ## Settings and downgrade
 
 `settings.json` has no schema id. An 0.8 build keeps each top-level setting its own schema accepts and drops the rest when it next saves. 0.8 reads the house report choices (`reportContents`) with a strict schema over its eight sections, so a later section id (`audit`, `approvals`, M9) would have lost every report choice on that machine. 0.9 and later keep the sections 0.8 does not know in a separate top-level key, `reportSectionsExtra`, which 0.8 ignores (`apps/desktop/src/main/settings.ts`, tested in `tools/compat/settings-0.8.test.mjs`). After a rollback to 0.8 and a settings change there, the M9 sections fall back to their default (shown) on return to 1.0; nothing else is lost.
@@ -64,6 +70,7 @@ A single `.bak` protects only the first overwrite: the second save copies the ap
 ## How it is proved
 
 - `tools/compat/corpus/`: synthetic projects (tank farm, access road, change site) and userData files as the builds 0.4, 0.5, 0.6, 0.7, 0.8 and the current one wrote them. `build-corpus.mjs` takes the current sample through each milestone's own schema, extracted from git (`extract-schema.mjs`); `corpus/index.json` lists what each build could not hold (0.4 and 0.5 had no road units along the chainage, for example).
+- `tools/compat/schema-0.9/` to `schema-0.11/`: the 0.9.0, 0.10.0 and 0.11.4 schemas, committed the same way, for the tests that read a project as that build would.
 - `tools/compat/schema-0.8/`: the 0.8.0 schema as plain modules, committed so CI needs no git history; a drift test re-extracts it when the history is there.
 - `tools/compat/corpus.test.mjs`: every corpus file opens in this build with nothing lost; every file this build writes parses with the 0.8 schema with nothing lost; every versioned file as `/2` is refused with the update message and left unchanged.
 - `apps/desktop/e2e/upgrade.spec.ts`: an 0.8 project is edited in the app and still parses with the 0.8 schema; a newer project is refused and left unchanged.

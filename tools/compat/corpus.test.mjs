@@ -1,8 +1,9 @@
 // The 1.x upgrade policy, proved on the compatibility corpus (tools/compat/corpus, built by
 // build-corpus.mjs from each milestone's own schema):
 // - every file written by 0.4 to 0.11 opens in this build with nothing lost;
-// - every file this build writes parses with the 0.10, 0.9 and 0.8 schemas with nothing lost (an
-//   0.10, 0.9 or 0.8 build on the same machine still opens it);
+// - every file this build writes parses with the 0.10, 0.9 and 0.8 schemas with nothing lost, bar the
+//   walk-layer project (a new layer kind, see walk-kind.test.mjs): an 0.10, 0.9 or 0.8 build on the
+//   same machine still opens it;
 // - every reader refuses a `/2` file with the "newer version" message and changes nothing.
 import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
@@ -21,6 +22,8 @@ const index = JSON.parse(readFileSync(join(corpus, 'index.json'), 'utf8'));
 const versions = readdirSync(corpus).filter((n) => /^\d+\.\d+$/.test(n));
 /** This build (build-corpus.mjs `CURRENT`): corpus/<CURRENT> is what it writes. */
 const CURRENT = '0.11';
+/** The corpus project that holds a walk layer (kind `walk`, new in 0.12). */
+const WALK_PROJECT = 'walk-layer/';
 
 const load = (version, p) => JSON.parse(readFileSync(join(corpus, version, p), 'utf8'));
 const rel = (p) => p.slice(p.indexOf('/') + 1);
@@ -76,6 +79,9 @@ for (const [older, schemas] of [
 ]) {
   describe(`this build writes files an ${older} build reads`, () => {
     for (const p of index.builds[CURRENT].files) {
+      // The 360 walk layer is a kind no earlier build holds; walk-kind.test.mjs pins what each
+      // one does with it (0.10 keeps it opaque, 0.9 and 0.8 refuse the project, as announced).
+      if (p.startsWith(WALK_PROJECT)) continue;
       it(`${p} parses with the ${older} schema with nothing lost`, () => {
         const raw = load(CURRENT, p);
         const schema = familyOf(rel(p))?.pick(schemas);

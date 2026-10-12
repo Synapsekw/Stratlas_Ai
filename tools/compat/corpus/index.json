@@ -21,7 +21,8 @@
         "tank-farm/report/narrative.json",
         "tank-farm/volumes.json",
         "userData/conversations/c-compat.json",
-        "userData/settings.json"
+        "userData/settings.json",
+        "walk-layer/manifest.json"
       ],
       "dropped": {}
     },
@@ -45,9 +46,14 @@
         "tank-farm/report/narrative.json",
         "tank-farm/volumes.json",
         "userData/conversations/c-compat.json",
-        "userData/settings.json"
+        "userData/settings.json",
+        "walk-layer/manifest.json"
       ],
-      "dropped": {}
+      "dropped": {
+        "walk-layer/manifest.json": [
+          "layers.1 (Invalid discriminator value. Expected 'mesh' | 'pointcloud' | 'basemap' | 'raster' | 'video' | 'photos' | 'panoramas' | 'vector' | 'legacy')"
+        ]
+      }
     },
     "0.9": {
       "commit": "91770f2",
@@ -69,9 +75,14 @@
         "tank-farm/report/narrative.json",
         "tank-farm/volumes.json",
         "userData/conversations/c-compat.json",
-        "userData/settings.json"
+        "userData/settings.json",
+        "walk-layer/manifest.json"
       ],
-      "dropped": {}
+      "dropped": {
+        "walk-layer/manifest.json": [
+          "layers.1 (Invalid discriminator value. Expected 'mesh' | 'pointcloud' | 'basemap' | 'raster' | 'video' | 'photos' | 'panoramas' | 'vector' | 'legacy')"
+        ]
+      }
     },
     "0.8": {
       "commit": "7faf945",
@@ -93,9 +104,14 @@
         "tank-farm/report/narrative.json",
         "tank-farm/volumes.json",
         "userData/conversations/c-compat.json",
-        "userData/settings.json"
+        "userData/settings.json",
+        "walk-layer/manifest.json"
       ],
-      "dropped": {}
+      "dropped": {
+        "walk-layer/manifest.json": [
+          "layers.1 (Invalid discriminator value. Expected 'mesh' | 'pointcloud' | 'basemap' | 'raster' | 'video' | 'photos' | 'panoramas' | 'vector' | 'legacy')"
+        ]
+      }
     },
     "0.7": {
       "commit": "af820d6",
@@ -114,9 +130,14 @@
         "tank-farm/report/narrative.json",
         "tank-farm/volumes.json",
         "userData/conversations/c-compat.json",
-        "userData/settings.json"
+        "userData/settings.json",
+        "walk-layer/manifest.json"
       ],
-      "dropped": {}
+      "dropped": {
+        "walk-layer/manifest.json": [
+          "layers.1 (Invalid discriminator value. Expected 'mesh' | 'pointcloud' | 'basemap' | 'raster' | 'video' | 'photos' | 'panoramas' | 'vector' | 'legacy')"
+        ]
+      }
     },
     "0.6": {
       "commit": "eafae4a",
@@ -135,9 +156,14 @@
         "tank-farm/report/narrative.json",
         "tank-farm/volumes.json",
         "userData/conversations/c-compat.json",
-        "userData/settings.json"
+        "userData/settings.json",
+        "walk-layer/manifest.json"
       ],
-      "dropped": {}
+      "dropped": {
+        "walk-layer/manifest.json": [
+          "layers.1 (Invalid discriminator value. Expected 'mesh' | 'pointcloud' | 'basemap' | 'raster' | 'video' | 'photos' | 'panoramas' | 'vector' | 'legacy')"
+        ]
+      }
     },
     "0.5": {
       "commit": "8847687",
@@ -153,10 +179,14 @@
         "tank-farm/manifest.json",
         "tank-farm/volumes.json",
         "userData/conversations/c-compat.json",
-        "userData/settings.json"
+        "userData/settings.json",
+        "walk-layer/manifest.json"
       ],
       "dropped": {
-        "access-road/road.json": ["pci.units.0 (Too small: expected array to have >=1 items) x10"]
+        "access-road/road.json": ["pci.units.0 (Too small: expected array to have >=1 items) x10"],
+        "walk-layer/manifest.json": [
+          "layers.1 (Invalid discriminator value. Expected 'mesh' | 'pointcloud' | 'basemap' | 'raster' | 'video' | 'photos' | 'panoramas' | 'vector' | 'legacy')"
+        ]
       }
     },
     "0.4": {
@@ -173,10 +203,14 @@
         "tank-farm/manifest.json",
         "tank-farm/volumes.json",
         "userData/conversations/c-compat.json",
-        "userData/settings.json"
+        "userData/settings.json",
+        "walk-layer/manifest.json"
       ],
       "dropped": {
-        "access-road/road.json": ["pci.units.0 (Too small: expected array to have >=1 items) x10"]
+        "access-road/road.json": ["pci.units.0 (Too small: expected array to have >=1 items) x10"],
+        "walk-layer/manifest.json": [
+          "layers.1 (Invalid discriminator value. Expected 'mesh' | 'pointcloud' | 'basemap' | 'raster' | 'video' | 'photos' | 'panoramas' | 'vector' | 'legacy')"
+        ]
       }
     }
   }

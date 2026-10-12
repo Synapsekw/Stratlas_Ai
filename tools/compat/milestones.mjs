@@ -21,8 +21,17 @@ export const MILESTONES = [
  */
 export const OLDEST_SUPPORTED_DOWNGRADE = '0.8';
 
+/**
+ * Releases whose schema is kept for a compatibility test but whose corpus build is the current
+ * one (corpus/0.11 holds what the working tree writes), so they are not in MILESTONES.
+ * @type {readonly Milestone[]}
+ */
+export const PINNED_RELEASES = [
+  { version: '0.11', commit: 'fefc218d', date: '2026-10-12', note: 'app 0.11.4, the last 0.11' },
+];
+
 export function milestone(version) {
-  const m = MILESTONES.find((x) => x.version === version);
+  const m = [...MILESTONES, ...PINNED_RELEASES].find((x) => x.version === version);
   if (!m)
     throw new Error(
       `No milestone ${version}. Known: ${MILESTONES.map((x) => x.version).join(', ')}`,
