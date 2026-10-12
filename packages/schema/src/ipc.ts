@@ -1394,6 +1394,11 @@ export const ipc = {
          * them up: not a date another save added meanwhile, nor one the day already had.
          */
         createdCaptures: z.array(z.string().min(1)).optional(),
+        /**
+         * The files the import read, absolute: `paths` with every folder expanded (rows name a
+         * file only), so the app can process a 360 walk from its original.
+         */
+        files: z.array(z.string().min(1)).optional(),
       }),
       z.object({ ok: z.literal(false), error: z.string(), items: z.array(ImportItem).optional() }),
     ]),

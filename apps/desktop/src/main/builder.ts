@@ -334,6 +334,7 @@ export async function builderImport(
       ],
       ...(r.heights ? { heights: r.heights } : {}),
       createdCaptures: r.createdCaptures,
+      files: ex.files,
     };
   } catch (e) {
     return { ok: false, error: `Import failed: ${errorText(e)}` };

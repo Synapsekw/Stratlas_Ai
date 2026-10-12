@@ -169,6 +169,26 @@ describe('importFiles, the paths in the result', () => {
     expect(b().importResult?.paths).toEqual(['D:/cam/VID_1.insv']);
   });
 
+  it('a folder import keeps the files main found in it, so its walks get their original', async () => {
+    call.mockImplementation((channel: string) =>
+      Promise.resolve(
+        channel === 'builder:import'
+          ? {
+              ok: true,
+              value: {
+                ok: true,
+                manifest: { layers: [], captures: [] },
+                items: [{ file: 'VID_1.insv', kind: 'video', status: 'imported' }],
+                files: ['D:/flight/VID_1.insv'],
+              },
+            }
+          : planned(plan()),
+      ),
+    );
+    await b().importFiles(['D:/flight']);
+    expect(b().importResult?.paths).toEqual(['D:/flight/VID_1.insv', 'D:/flight']);
+  });
+
   it('keeps them when main refused the import with rows', async () => {
     call.mockImplementation((channel: string) =>
       Promise.resolve(

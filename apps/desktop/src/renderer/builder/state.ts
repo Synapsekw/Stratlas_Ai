@@ -293,7 +293,8 @@ export const builder = createStore<Builder>()((set, get) => ({
     let result: NonNullable<BuilderState['importResult']> = {
       items: r.value.items,
       error: null,
-      paths: [...paths],
+      // the files a folder expanded to first: a walk inside it is processed from its original
+      paths: [...(r.value.files ?? []), ...paths],
       ...(r.value.heights ? { heights: r.value.heights } : {}),
       newDates: r.value.createdCaptures ?? [],
       dateSource: dateSourceOf(r.value.items, r.value.manifest.layers),

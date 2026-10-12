@@ -393,6 +393,22 @@ describe('originalCheck', () => {
 });
 
 describe('importedWalkRows', () => {
+  it('finds the original of a walk imported with its folder (Import a flight folder)', () => {
+    const rows = importedWalkRows(
+      [{ file: 'VID_1.insv', kind: 'video', status: 'imported' }],
+      ['D:/flight/VID_1.insv', 'D:/flight'],
+    );
+    expect(rows).toEqual([
+      { file: 'VID_1.insv', status: 'imported', path: 'D:/flight/VID_1.insv' },
+    ]);
+    const walk = walkOf('vid-1', 'VID_1.insv', 'insv-dual-stream');
+    const row = rows[0];
+    expect(row && autoStartParams(row, walk, true)).toEqual({
+      walk: 'vid-1',
+      src: ['D:/flight/VID_1.insv'],
+    });
+  });
+
   it('keeps the imported 360 video rows with the path each came from', () => {
     const rows = importedWalkRows(
       [

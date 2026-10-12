@@ -296,6 +296,10 @@ describe('folder imports and removeCapture', () => {
     ]);
     expect(rows.some((i) => i.file.endsWith('.LRF') || i.file === 'Thumbs.db')).toBe(false);
     expect(events.length > 0 && events.every((e) => e.total === 2)).toBe(true);
+    // the files the folder expanded to, absolute, so the app can find a walk's original
+    expect(r.ok ? [...(r.files ?? [])].sort() : []).toEqual(
+      [join(folder, 'DJI_0001.MP4'), join(folder, 'DJI_0001.SRT')].sort(),
+    );
   });
 
   it('hands back the survey dates the import itself created', async () => {
