@@ -101,6 +101,24 @@ const CLIP = 'VID_20260101_120000_00_001.insv';
 const PROXY = 'LRV_20260101_120000_01_001.lrv';
 const WALK = 'vid-20260101-120000-00-001';
 
+/** The manifest gained exactly the walk layers `walk-<id>` of these walks, each with its record. */
+async function expectWalkLayer(
+  manifestFile: string,
+  before: string,
+  walks: readonly string[],
+): Promise<void> {
+  const read = (text: string) =>
+    (JSON.parse(text) as { layers: { id: string; kind: string; record?: { path: string } }[] })
+      .layers;
+  const was = read(before);
+  const now = read(await readFile(manifestFile, 'utf8'));
+  const added = now.filter((l) => !was.some((w) => w.id === l.id));
+  expect(added.map((l) => [l.id, l.kind, l.record?.path]).sort()).toEqual(
+    walks.map((id) => [`walk-${id}`, 'walk', `walks/${id}/walk.json`]).sort(),
+  );
+  expect(now.filter((l) => was.some((w) => w.id === l.id))).toHaveLength(was.length);
+}
+
 test.describe('360 video', () => {
   test.skip(!ffmpegReady(), 'needs ffmpeg with the v360 filter and libx264 on the PATH');
 
@@ -153,8 +171,8 @@ test.describe('360 video', () => {
     });
     expect(walk.source.streams).toHaveLength(2);
     expect(walk.stitch?.filter).toContain('v360=input=dfisheye:output=e');
-    // the walk is beside the manifest, which is exactly as it was
-    expect(await readFile(manifestFile, 'utf8')).toBe(manifestBefore);
+    // the walk is listed as a layer of the manifest, which gained nothing else
+    await expectWalkLayer(manifestFile, manifestBefore, [WALK]);
     await panel.getByRole('button', { name: 'Close' }).click();
 
     // 2. the list under the datasets opens the split with the pane on the right
@@ -268,7 +286,7 @@ test.describe('360 video', () => {
     await which.selectOption(WALK);
     await expect(win.getByTestId('walk-360')).toHaveAttribute('data-walk', WALK);
     await expect(win.getByTestId('walk-unstabilised')).toHaveText('Not stabilised');
-    expect(await readFile(manifestFile, 'utf8')).toBe(manifestBefore);
+    await expectWalkLayer(manifestFile, manifestBefore, [WALK, 'site-tour']);
   });
 
   test('Cancel stops a running stitch, adds nothing of it, and the next import works', async ({

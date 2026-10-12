@@ -2,7 +2,14 @@ import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { openProject, ProjectRegistry, slugify, writeIssues } from './project';
+import {
+  openProject,
+  ProjectRegistry,
+  readManifest,
+  slugify,
+  withWalkLayers,
+  writeIssues,
+} from './project';
 import { sampleIssue, sampleManifest, writeProject } from './testing';
 
 let base: string;
@@ -36,6 +43,39 @@ describe('ProjectRegistry', () => {
     const reg = new ProjectRegistry();
     expect(reg.register(join(base, 'a', 'hcl'))).toBe('hcl');
     expect(reg.register(join(base, 'b', 'hcl'))).toBe('hcl-2');
+  });
+});
+
+describe('withWalkLayers, trash', () => {
+  it('clears the old trash on open, and a failure only logs', async () => {
+    const dir = await writeProject(join(base, 'trash'), sampleManifest());
+    const first = await readManifest(dir);
+    let swept = '';
+    const lines: string[] = [];
+    const tools = (sweepTrash: (root: string) => Promise<string[]>) => () =>
+      Promise.resolve({
+        migrateWalks: () => Promise.resolve({ added: [], saved: false }),
+        refreshWalkPaths: () => Promise.resolve([]),
+        sweepTrash,
+      });
+    await withWalkLayers(
+      dir,
+      first,
+      (l) => lines.push(l),
+      tools((r) => {
+        swept = r;
+        return Promise.resolve([]);
+      }),
+    );
+    expect(swept).toBe(dir);
+    const r = await withWalkLayers(
+      dir,
+      first,
+      (l) => lines.push(l),
+      tools(() => Promise.reject(new Error('busy'))),
+    );
+    expect(r.ok).toBe(true);
+    expect(lines).toEqual(['The removed walks were not cleared: busy']);
   });
 });
 
@@ -85,6 +125,82 @@ describe('openProject, walks', () => {
     if (!r2.ok) throw new Error(r2.error);
     expect(r2.manifest.layers.filter((l) => l.kind === 'walk')).toHaveLength(2);
     expect(again).toEqual([]);
+  });
+});
+
+describe('withWalkLayers', () => {
+  it('keeps the migrated layers when linking the walk files fails', async () => {
+    const dir = await writeProject(join(base, 'refresh-fails'), sampleManifest());
+    await mkdir(join(dir, 'walks', 'a'), { recursive: true });
+    await writeFile(
+      join(dir, 'walks', 'a', 'walk.json'),
+      JSON.stringify({
+        schema: 'aio.walk/1',
+        id: 'a',
+        name: 'Walk a',
+        createdAt: '2026-10-10T08:00:00.000Z',
+        source: {
+          file: 'a.insv',
+          layout: 'insv-dual-stream',
+          streams: [{ width: 128, height: 128, codec: 'avc1', fps: 30 }],
+        },
+        video: {
+          src: 'walks/a/playback.mp4',
+          width: 256,
+          height: 128,
+          durationS: 5,
+          fps: 30,
+          audio: false,
+        },
+      }),
+    );
+    const real = await import('@aio/project/builder');
+    const lines: string[] = [];
+    const first = await readManifest(dir);
+    const r = await withWalkLayers(
+      dir,
+      first,
+      (l) => lines.push(l),
+      () =>
+        Promise.resolve({
+          migrateWalks: real.migrateWalks,
+          refreshWalkPaths: () => Promise.reject(new Error('locked')),
+        }),
+    );
+    if (!r.ok) throw new Error(r.error);
+    expect(r.value.layers.some((l) => l.id === 'walk-a')).toBe(true);
+    expect(lines).toEqual([
+      '1 walk became a layer',
+      'The files of the walks were not linked: locked',
+    ]);
+  });
+
+  it('answers the migrated layers in memory when they cannot be saved', async () => {
+    const dir = await writeProject(join(base, 'unsaved'), sampleManifest());
+    const first = await readManifest(dir);
+    const layer = {
+      kind: 'walk' as const,
+      id: 'walk-z',
+      name: 'Z',
+      visible: true,
+      record: { path: 'walks/z/walk.json' },
+      src: { path: 'walks/z/playback.mp4' },
+      durationS: 3,
+    };
+    const lines: string[] = [];
+    const r = await withWalkLayers(
+      dir,
+      first,
+      (l) => lines.push(l),
+      () =>
+        Promise.resolve({
+          migrateWalks: () => Promise.resolve({ added: [layer], saved: false, error: 'disk full' }),
+          refreshWalkPaths: () => Promise.resolve([]),
+        }),
+    );
+    if (!r.ok) throw new Error(r.error);
+    expect(r.value.layers.map((l) => l.id)).toContain('walk-z');
+    expect(lines[0]).toBe('The walk layers could not be saved: disk full');
   });
 });
 

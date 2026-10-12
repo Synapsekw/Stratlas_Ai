@@ -96,7 +96,7 @@ describe('importRawFiles, 360 video', () => {
     ]);
     expect(r.items[0]?.layerId).toBe('walk-vid-20260101-120000-00-001');
     expect(r.items[0]?.message).toContain('Stitched to 256 x 128');
-    expect(r.backup).toBe('');
+    expect(r.backup).not.toBe('');
     const layer = r.manifest.layers.find((l) => l.kind === 'walk');
     expect(layer).toMatchObject({
       id: 'walk-vid-20260101-120000-00-001',
@@ -172,7 +172,7 @@ describe('importRawFiles, 360 video', () => {
       deps({ walk: tools, as360: true }),
     );
     expect(as360.items[0]).toMatchObject({ file: 'tour.mp4', kind: 'video', status: 'imported' });
-    expect(as360.backup).toBe('');
+    expect(as360.backup).not.toBe('');
     expect(await readdir(join(root, 'walks'))).toEqual(['tour']);
   });
 
@@ -253,7 +253,7 @@ describe('importRawFiles, 360 video', () => {
       return copy(out, o);
     };
     const only = await importRawFiles(root, [join(dir, CLIP)], deps({ walk: tools }));
-    expect(only.backup).toBe('');
+    expect(only.backup).not.toBe('');
     expect(only.manifest.captures.map((c) => c.label)).toContain('Renamed again');
   });
 

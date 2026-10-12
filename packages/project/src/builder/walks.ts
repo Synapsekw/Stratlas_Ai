@@ -3,7 +3,6 @@ import {
   WALK_SCHEMA,
   WalkFile,
   readVersioned,
-  type WalkLayer,
   type WalkLayout,
   type WalkStream,
 } from '@aio/schema';
@@ -17,8 +16,7 @@ import {
   type FfmpegCheck,
   type FrameSize,
 } from '../import/stitch';
-import { readManifestFile, slug, uniqueId } from './create';
-import { NO_WALK_FILES, walkLayerFor } from './walkLayers';
+import { slug, uniqueId } from './create';
 import {
   classifyWalkSource,
   insta360Name,
@@ -30,8 +28,7 @@ import {
 /*
  * 360 video in a project (the front slice of Walks 360 part W1): one folder per walk under
  * `walks/`, holding the equirectangular playback copy, a poster and `walk.json` (`aio.walk/1`).
- * `importWalk` does not touch the manifest: it answers the layer the walk becomes and the caller
- * saves it (`raw.ts`, in the turn of the project's other saves). Everything that needs ffmpeg or reads video files is injected (`WalkTools`).
+ * `importWalk` does not touch the manifest: the caller lists the walk as a layer (`raw.ts`). Everything that needs ffmpeg or reads video files is injected (`WalkTools`).
  */
 
 /** What the import asks the playback copy for. */
@@ -83,7 +80,7 @@ export interface WalkImportOptions {
 }
 
 export type WalkImportResult =
-  | { ok: true; walk: WalkFile; layer: WalkLayer; message: string }
+  | { ok: true; walk: WalkFile; message: string }
   | { ok: false; status: 'skipped' | 'error'; message: string };
 
 /** Codecs and sizes Chromium plays without help: such a stitched video is stored as it is. */
@@ -133,16 +130,6 @@ async function exists(p: string): Promise<boolean> {
 /** The id a walk of this file name asks for: lower-case, file-safe, short enough for a suffix. */
 export function walkIdFor(stem: string): string {
   return slug(stem, 'walk').slice(0, ID_MAX).replace(/-+$/, '') || 'walk';
-}
-
-/**
- * The layer a new walk becomes, against the project's layers and survey dates as they are now
- * (a project whose manifest cannot be read gives a layer without a survey date; the caller's
- * save then fails with the reason).
- */
-async function layerOf(root: string, walk: WalkFile): Promise<WalkLayer> {
-  const m = await readManifestFile(root).catch(() => ({ layers: [], captures: [] }));
-  return walkLayerFor(walk, m, NO_WALK_FILES);
 }
 
 /** Staging folders of the imports running in this process, by resolved path. */
@@ -349,7 +336,6 @@ export async function importWalk(
     return {
       ok: true,
       walk: again,
-      layer: await layerOf(root, again),
       message: `The playback copy an earlier import of this file had finished (${px(again.video)}) is now in the project; nothing was stitched again. ${OPEN_HINT}`,
     };
 
@@ -438,7 +424,7 @@ export async function importWalk(
       );
     }
     parts.push(OPEN_HINT);
-    return { ok: true, walk, layer: await layerOf(root, walk), message: parts.join(' ') };
+    return { ok: true, walk, message: parts.join(' ') };
   } catch (e) {
     const cancelled = o.signal?.aborted === true && o.signal.reason !== QUIT_REASON;
     if (finished && !cancelled) {

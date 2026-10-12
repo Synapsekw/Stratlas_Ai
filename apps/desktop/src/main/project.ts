@@ -9,6 +9,7 @@ import {
   type IpcResponse,
   type PackageHeader,
   type ProjectManifest,
+  type WalkLayer,
 } from '@aio/schema';
 import { stat } from 'node:fs/promises';
 import { basename, join, resolve } from 'node:path';
@@ -251,37 +252,76 @@ export async function openProject(
   };
 }
 
+/** What opening a project uses of the builder; tests hand in others. */
+export interface WalkOpenTools {
+  migrateWalks(root: string): Promise<{ added: WalkLayer[]; saved: boolean; error?: string }>;
+  refreshWalkPaths(root: string): Promise<string[]>;
+  /** Clears what `.trash/` holds from more than seven days ago. */
+  sweepTrash?(root: string): Promise<string[]>;
+}
+
+const walkOpenTools = (): Promise<WalkOpenTools> => import('@aio/project/builder');
+
 /**
  * Walks filed beside the manifest before they were layers become layers now (the walk layer and
- * placing, "Migration on open"), and the files a `walk.process` job wrote since are linked. The
- * manifest is read again when anything was saved. When the save fails the layers are still
- * answered, in memory only, and the failure is logged. Never fails the open.
+ * placing, "Migration on open"), and the files a `walk.process` job wrote since are linked. Each
+ * step has its own guard, so one failing never stops the other. The manifest is read again
+ * whenever a step saved. When the migration cannot save, its layers are still answered, in memory
+ * only, and the failure is logged. Never fails the open.
  */
-async function withWalkLayers(
+export async function withWalkLayers(
   root: string,
   manifest: Loaded<ProjectManifest>,
   log: (line: string) => void,
+  tools: () => Promise<WalkOpenTools> = walkOpenTools,
 ): Promise<Loaded<ProjectManifest>> {
   if (!manifest.ok) return manifest;
+  const why = (e: unknown) => (e instanceof Error ? e.message : String(e));
+  let t: WalkOpenTools;
   try {
-    const { migrateWalks, refreshWalkPaths } = await import('@aio/project/builder');
-    const m = await migrateWalks(root);
-    const linked = await refreshWalkPaths(root);
-    if (m.added.length > 0) {
-      const n = m.added.length;
-      log(`${String(n)} ${n === 1 ? 'walk' : 'walks'} became ${n === 1 ? 'a layer' : 'layers'}`);
-    }
-    if (m.error !== undefined) {
-      log(`The walk layers could not be saved: ${m.error}`);
-      return {
-        ok: true,
-        value: { ...manifest.value, layers: [...manifest.value.layers, ...m.added] },
-      };
-    }
-    if (m.saved || linked.length > 0) return await readManifest(root);
+    t = await tools();
   } catch (e) {
-    log(`Walks were not turned into layers: ${e instanceof Error ? e.message : String(e)}`);
+    log(`Walks were not turned into layers: ${why(e)}`);
+    return manifest;
   }
+  let added: WalkLayer[] = [];
+  let changed = false;
+  let unsaved = false;
+  try {
+    const m = await t.migrateWalks(root);
+    added = m.added;
+    changed = m.saved;
+    if (m.error !== undefined) {
+      unsaved = true;
+      log(`The walk layers could not be saved: ${m.error}`);
+    }
+  } catch (e) {
+    log(`Walks were not turned into layers: ${why(e)}`);
+  }
+  if (added.length > 0) {
+    const n = added.length;
+    log(`${String(n)} ${n === 1 ? 'walk' : 'walks'} became ${n === 1 ? 'a layer' : 'layers'}`);
+  }
+  try {
+    if ((await t.refreshWalkPaths(root)).length > 0) changed = true;
+  } catch (e) {
+    log(`The files of the walks were not linked: ${why(e)}`);
+  }
+  try {
+    await t.sweepTrash?.(root);
+  } catch (e) {
+    log(`The removed walks were not cleared: ${why(e)}`);
+  }
+  if (changed) {
+    const again = await readManifest(root);
+    if (again.ok) {
+      return unsaved
+        ? { ok: true, value: { ...again.value, layers: [...again.value.layers, ...added] } }
+        : again;
+    }
+  }
+  if (unsaved)
+    return { ok: true, value: { ...manifest.value, layers: [...manifest.value.layers, ...added] } };
   return manifest;
 }
 

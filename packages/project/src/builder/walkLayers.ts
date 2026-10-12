@@ -82,9 +82,16 @@ export function walkLayerFor(
   };
 }
 
-/** True when a layer is the one for this record path. */
-const isRecordOf = (l: ProjectManifest['layers'][number], record: string): boolean =>
-  l.kind === 'walk' && 'path' in l.record && l.record.path === record;
+/** The walk layer whose record is this walk's `walk.json`, whatever its id. */
+export function walkLayerOf(
+  layers: readonly ProjectManifest['layers'][number][],
+  walkId: string,
+): WalkLayer | undefined {
+  const record = recordPath(walkId);
+  return layers.find(
+    (l): l is WalkLayer => l.kind === 'walk' && 'path' in l.record && l.record.path === record,
+  );
+}
 
 /** The layers the walks without one need, ids distinct from the manifest's and from each other. */
 export function missingWalkLayers(
@@ -95,7 +102,7 @@ export function missingWalkLayers(
   const taken = new Set(m.layers.map((l) => l.id));
   const out: WalkLayer[] = [];
   for (const w of walks) {
-    if (m.layers.some((l) => isRecordOf(l, recordPath(w.id)))) continue;
+    if (walkLayerOf(m.layers, w.id)) continue;
     const layer = { ...walkLayerFor(w, m, filesOf(w.id)), id: walkLayerId(w.id, taken) };
     taken.add(layer.id);
     out.push(layer);
@@ -167,6 +174,8 @@ export async function migrateWalks(
  * and save once. Answers the ids that changed.
  */
 export async function refreshWalkPaths(root: string): Promise<string[]> {
+  // no walks, nothing to link: the manifest is not taken for a turn
+  if (!(await listWalks(root)).length) return [];
   const probe = new Map<string, WalkFiles>();
   const r = await updateManifestFile(root, async (m) => {
     const changed: string[] = [];

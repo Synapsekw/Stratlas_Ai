@@ -50,7 +50,7 @@ import {
   tiffGeoreferenced,
 } from './tiff';
 import { CANCELLED_BEFORE, importWalk, type WalkTools } from './walks';
-import { NO_WALK_FILES, missingWalkLayers } from './walkLayers';
+import { NO_WALK_FILES, missingWalkLayers, walkLayerOf } from './walkLayers';
 import { isWalkFile, proxyOwner } from './walkSource';
 
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
@@ -414,6 +414,8 @@ export async function importRawFiles(
     stitches.push({ file, item });
     return true;
   };
+  /** The backup of the last save that listed a walk as a layer; '' when none did. */
+  let walkBackup = '';
   const stitchWalks = async (tools: WalkTools) => {
     for (const { file, item } of stitches) {
       const name = basename(file);
@@ -433,10 +435,11 @@ export async function importRawFiles(
               return {
                 manifest:
                   added.length > 0 ? { ...fresh, layers: [...fresh.layers, ...added] } : null,
-                id: added[0]?.id ?? r.layer.id,
+                id: added[0]?.id ?? walkLayerOf(fresh.layers, r.walk.id)?.id,
               };
             });
-            item.layerId = filed.id;
+            if (filed.id !== undefined) item.layerId = filed.id;
+            if (filed.backup) walkBackup = filed.backup;
           } catch (e) {
             item.message = `${r.message} It could not be listed as a layer now (${e instanceof Error ? e.message : String(e)}); it is added when the project is next opened.`;
           }
@@ -853,7 +856,8 @@ export async function importRawFiles(
   if (heights.saveDatum && placed.some((i) => i.heightSource !== 'relative'))
     m.verticalDatum = heights.saveDatum;
   const summary = importHeights(heights, placed, datumDefined);
-  // 360 video is filed beside the manifest (walks/): an import of walks only saves nothing
+  // 360 video is filed beside the manifest (walks/) and listed as a layer by its own save after
+  // its stitch, so it is not a change for the save below
   const changed = items.some((i) => i.status === 'imported' && !walkItems.has(i));
   if (!changed) {
     // Nothing was filed (only jobs, or only refusals), so nothing is saved. The manifest handed
@@ -865,7 +869,7 @@ export async function importRawFiles(
     return {
       manifest: now,
       items,
-      backup: '',
+      backup: walkBackup,
       ...(summary ? { heights: summary } : {}),
       createdCaptures: [],
     };
@@ -896,7 +900,7 @@ export async function importRawFiles(
   return {
     manifest,
     items,
-    backup: saved.backup,
+    backup: saved.backup || walkBackup,
     ...(summary ? { heights: summary } : {}),
     createdCaptures,
   };
