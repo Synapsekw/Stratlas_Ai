@@ -75,6 +75,16 @@ export function layerFiles(manifest: Pick<ProjectManifest, 'layers'>): LayerFile
         add(layer.poster);
         add(layer.flight.src);
         break;
+      case 'walk':
+        add(layer.record);
+        add(layer.src);
+        add(layer.poster);
+        add(layer.path?.raw);
+        add(layer.path?.orientation);
+        add(layer.path?.orientationData);
+        add(layer.path?.points);
+        add(layer.flight?.src);
+        break;
       case 'photos':
       case 'panoramas':
         for (const item of layer.items) add(item.src);

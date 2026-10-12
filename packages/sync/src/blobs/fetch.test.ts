@@ -81,6 +81,10 @@ describe('fetch policies', () => {
   it('defaults by size and kind, and the person can override per layer', () => {
     expect(defaultFetchPolicy('pointcloud', 3e9)).toBe('on-demand');
     expect(defaultFetchPolicy('video', 250 * 1024 * 1024)).toBe('on-demand');
+    expect(defaultFetchPolicy('walk', 250 * 1024 * 1024)).toBe(
+      defaultFetchPolicy('video', 250 * 1024 * 1024),
+    );
+    expect(defaultFetchPolicy('walk', 1e6)).toBe(defaultFetchPolicy('video', 1e6));
     expect(defaultFetchPolicy('mesh', 60 * 1024 * 1024)).toBe('on-demand');
     expect(defaultFetchPolicy('mesh', 1e6)).toBe('always');
     expect(defaultFetchPolicy('raster', 1e6)).toBe('always');

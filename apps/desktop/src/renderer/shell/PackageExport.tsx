@@ -520,6 +520,7 @@ function groupIcon(kind: string) {
       return 'video' as const;
     case 'photos':
       return 'photo' as const;
+    case 'walk':
     case 'panoramas':
       return 'pano' as const;
     case 'raster':

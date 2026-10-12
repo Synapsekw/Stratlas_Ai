@@ -212,6 +212,35 @@ describe('exportPackage and openPackage', () => {
     });
   });
 
+  it('a walk layer needs its record and playback copy', async () => {
+    const m = ProjectManifest.parse({
+      ...manifest(),
+      layers: [
+        {
+          kind: 'walk',
+          id: 'walk-a',
+          name: 'Walk',
+          record: { path: 'walks/a/walk.json' },
+          src: { path: 'walks/a/playback.mp4' },
+          durationS: 30,
+        },
+      ],
+    });
+    const out = join(dir, 'walk.aio');
+    await writeZip(out, [
+      { name: 'manifest.json', data: Buffer.from(JSON.stringify(m)) },
+      { name: 'walks/a/walk.json', data: Buffer.from('{}') },
+    ]);
+    const r = await openPackage(out);
+    expect(!r.ok && r.error).toMatch(/walks\/a\/playback\.mp4/);
+    await writeZip(out, [
+      { name: 'manifest.json', data: Buffer.from(JSON.stringify(m)) },
+      { name: 'walks/a/playback.mp4', data: Buffer.from('v') },
+    ]);
+    const r2 = await openPackage(out);
+    expect(!r2.ok && r2.error).toMatch(/walks\/a\/walk\.json/);
+  });
+
   it('refuses a target without enough free space before it starts', async () => {
     await expect(
       exportPackage({

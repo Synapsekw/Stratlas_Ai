@@ -17,6 +17,7 @@ const GROUPS: { kind: string; label: string }[] = [
   { kind: 'mesh', label: 'Models' },
   { kind: 'pointcloud', label: 'Point clouds' },
   { kind: 'video', label: 'Video clips' },
+  { kind: 'walk', label: '360 walks' },
   { kind: 'photos', label: 'Photos' },
   { kind: 'panoramas', label: 'Panoramas' },
   { kind: 'raster', label: 'Rasters and orthos' },

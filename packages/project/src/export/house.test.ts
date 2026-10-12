@@ -37,7 +37,7 @@ describe('houseReportModel', () => {
     // the uncertain issue is listed in an appendix, not given a page
     expect(h.issuePages.map((r) => r.code)).toEqual(['D002', 'D010']);
     expect(h.uncertain.map((r) => r.code)).toEqual(['D001']);
-    expect(h.totals).toMatchObject({ photos: 3, meshes: 1 });
+    expect(h.totals).toMatchObject({ photos: 3, meshes: 1, walks: 0, walkMinutes: 0 });
     expect(h.withPhoto).toBe(2);
     expect(h.plan.map((p) => [p.code, p.map]).sort()).toEqual([
       ['D001', false],
@@ -275,5 +275,24 @@ describe('houseReportModel', () => {
     const m = { ...sampleManifest(), type: 'twin' as const };
     expect(houseKind(m, sampleIssues(), {})).toBe('fusion');
     expect(houseKind(sampleManifest(), [], { volumes: {} })).toBe('volumetric');
+  });
+
+  it('counts walk layers and their total length in minutes', () => {
+    const base = sampleManifest();
+    const walk = (id: string, durationS: number) => ({
+      kind: 'walk' as const,
+      id: `walk-${id}`,
+      name: `Walk ${id}`,
+      record: { path: `walks/${id}/walk.json` },
+      src: { path: `walks/${id}/playback.mp4` },
+      durationS,
+    });
+    const manifest = ProjectManifest.parse({
+      ...base,
+      layers: [...base.layers, walk('a', 90), walk('b', 150)],
+    });
+    const h = houseReportModel({ manifest, issues: sampleIssues(), branding, now });
+    expect(h.totals).toMatchObject({ walks: 2, walkMinutes: 4 });
+    expect(h.layers.filter((r) => r.kind === 'walk')).toHaveLength(2);
   });
 });

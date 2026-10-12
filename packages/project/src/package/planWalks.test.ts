@@ -51,4 +51,46 @@ describe('planPackage and walks', () => {
     expect(paths).not.toContain('models/pad.glb');
     expect(paths).toContain('walks/vid-1/playback.mp4');
   });
+
+  const withLayer = ProjectManifest.parse({
+    ...manifest,
+    layers: [
+      ...manifest.layers,
+      {
+        kind: 'walk',
+        id: 'walk-vid-1',
+        name: 'Walk',
+        record: { path: 'walks/vid-1/walk.json' },
+        src: { path: 'walks/vid-1/playback.mp4' },
+        poster: { path: 'walks/vid-1/poster.jpg' },
+        durationS: 60,
+      },
+    ],
+  });
+  const stills = [
+    ...files,
+    { path: 'walks/vid-1/stills/a.jpg', size: 40 },
+    { path: 'walks/vid-1/raw-path.json', size: 60 },
+  ];
+
+  it('a walk layer owns its whole folder', () => {
+    const p = planPackage(withLayer, stills, []);
+    const share = p.layers.find((l) => l.id === 'walk-vid-1');
+    expect(share?.bytes).toBe(900 + 5000 + 300 + 40 + 60);
+    expect(p.baseBytes).toBe(2);
+  });
+
+  it('leaves the folder out when the walk layer is excluded', () => {
+    const p = planPackage(withLayer, stills, ['walk-vid-1']);
+    const paths = p.members.map((m) => m.path);
+    expect(paths.filter((x) => x.startsWith('walks/vid-1/'))).toEqual([]);
+    expect(paths).toContain('issues.json');
+  });
+
+  it('still carries a side-folder walk with no layer', () => {
+    const p = planPackage(withLayer, stills, []);
+    expect(p.members.map((m) => m.path)).toContain('walks/vid-1/stills/a.jpg');
+    const q = planPackage(manifest, stills, []);
+    expect(q.members.map((m) => m.path)).toContain('walks/vid-1/stills/a.jpg');
+  });
 });

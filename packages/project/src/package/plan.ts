@@ -106,6 +106,14 @@ function ownership(layer: Layer): { files: string[]; prefixes: string[]; kept: s
       add(layer.poster);
       add(layer.flight.src);
       break;
+    case 'walk': {
+      // The walk owns its whole folder: record, playback copy, path, orientation, stills.
+      add(layer.record);
+      add(layer.src);
+      const d = dirOf(pathOf(layer.record) ?? pathOf(layer.src) ?? '');
+      if (d.startsWith('walks/') && !d.slice(6).includes('/')) prefixes.push(`${d}/`);
+      break;
+    }
     case 'photos':
       for (const item of layer.items) {
         const p = pathOf(item.src);

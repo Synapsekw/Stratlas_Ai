@@ -26,6 +26,12 @@ describe('package export model', () => {
     expect(g.flatMap((x) => x.layers).some((l) => l.id === 'legacy')).toBe(false);
   });
 
+  it('groups walks under 360 walks', () => {
+    const walk = { id: 'walk-a', name: 'Walk', kind: 'walk', bytes: 9_000, files: 6 };
+    const g = groupLayers([...layers, walk], new Set<string>());
+    expect(g.find((x) => x.kind === 'walk')).toMatchObject({ label: '360 walks', count: 1 });
+  });
+
   it('turns a whole group off and on', () => {
     const off = toggleGroup(new Set<string>(), layers, 'pointcloud');
     expect([...off].sort()).toEqual(['c1', 'c2']);

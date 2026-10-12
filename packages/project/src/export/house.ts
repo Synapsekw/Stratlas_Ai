@@ -78,6 +78,9 @@ export interface DataTotals {
   points: number;
   rasters: number;
   vectors: number;
+  /** 360 video walks, and their total length in whole minutes (rounded). */
+  walks?: number;
+  walkMinutes?: number;
 }
 
 export interface ScaleRow {
@@ -248,7 +251,10 @@ function dataRows(m: ProjectManifest): { layers: DataRow[]; totals: DataTotals }
     points: 0,
     rasters: 0,
     vectors: 0,
+    walks: 0,
+    walkMinutes: 0,
   };
+  let walkSeconds = 0;
   const layers: DataRow[] = [];
   for (const l of m.layers) {
     // a Model builder preview nobody accepted is no project data (M8)
@@ -266,6 +272,10 @@ function dataRows(m: ProjectManifest): { layers: DataRow[]; totals: DataTotals }
         break;
       case 'video':
         totals.videos++;
+        break;
+      case 'walk':
+        totals.walks = (totals.walks ?? 0) + 1;
+        walkSeconds += l.durationS;
         break;
       case 'mesh':
         totals.meshes++;
@@ -289,6 +299,7 @@ function dataRows(m: ProjectManifest): { layers: DataRow[]; totals: DataTotals }
     }
     layers.push({ kind: l.kind, name: noDashes(l.name), count, role });
   }
+  totals.walkMinutes = Math.round(walkSeconds / 60);
   return { layers, totals };
 }
 

@@ -148,6 +148,9 @@ function requiredFiles(layer: Layer): string[] {
     case 'video':
       refs.push(layer.src, layer.flight.src);
       break;
+    case 'walk':
+      refs.push(layer.record, layer.src);
+      break;
     case 'photos':
     case 'panoramas':
       for (const i of layer.items) refs.push(i.src);

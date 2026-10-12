@@ -47,6 +47,22 @@ const manifest = ProjectManifest.parse({
         { id: '2', src: { path: 'photos/1.jpg' } },
       ],
     },
+    {
+      kind: 'walk',
+      id: 'walk-a',
+      name: 'Walk',
+      record: { path: 'walks/a/walk.json' },
+      src: { path: 'walks/a/playback.mp4' },
+      poster: { path: 'walks/a/poster.jpg' },
+      durationS: 30,
+      path: {
+        raw: { path: 'walks/a/raw-path.json' },
+        orientation: { path: 'walks/a/orientation.json' },
+        orientationData: { path: 'walks/a/orientation.bin' },
+        points: { path: 'walks/a/points.json' },
+      },
+      flight: { src: { path: 'walks/a/flight.json' }, startUtcMs: 0 },
+    },
     { kind: 'basemap', id: 'b', name: 'Base', pack: 'world', style: 'dark' },
   ],
 });
@@ -71,6 +87,14 @@ describe('layer files', () => {
       'v:video/a.jpg',
       'v:flights/a.json',
       'ph:photos/1.jpg',
+      'walk-a:walks/a/walk.json',
+      'walk-a:walks/a/playback.mp4',
+      'walk-a:walks/a/poster.jpg',
+      'walk-a:walks/a/raw-path.json',
+      'walk-a:walks/a/orientation.json',
+      'walk-a:walks/a/orientation.bin',
+      'walk-a:walks/a/points.json',
+      'walk-a:walks/a/flight.json',
     ]);
     expect(files[1]).toMatchObject({ sha256: H('c'), role: 'source' });
     expect(assetPath({ path: '/x\\y.bin' })).toEqual({ path: 'x/y.bin' });
