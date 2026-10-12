@@ -124,6 +124,9 @@ export function walkStatus(
     const pct = Math.min(99, Math.max(0, Math.floor(job.progress * 100)));
     return { kind: 'processing', pct, jobId: job.id };
   }
+  // done, but the list has not read its process.json back yet (walks.ts refreshes on done): keep
+  // the row on processing instead of flashing "Not processed" and its button
+  if (job?.status === 'done' && !processed) return { kind: 'processing', pct: 99, jobId: job.id };
   if (job?.status === 'failed' && (!processed || processed.createdAt < job.updatedAt))
     return { kind: 'failed', message: job.error ?? t('walk.status.failedUnknown') };
   if (processed) return { kind: 'processed', source: processed.source };

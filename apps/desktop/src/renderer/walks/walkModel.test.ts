@@ -179,6 +179,18 @@ const job = (o: Partial<JobLike> = {}): JobLike => ({
 });
 
 describe('walkStatus', () => {
+  it('stays on processing between a done job and the list reading its run record', () => {
+    expect(walkStatus(insv, undefined, job({ status: 'done', progress: 1 }))).toEqual({
+      kind: 'processing',
+      pct: 99,
+      jobId: 'j1',
+    });
+    expect(walkStatus(insv, summary(), job({ status: 'done', progress: 1 }))).toEqual({
+      kind: 'processed',
+      source: 'sfm',
+    });
+  });
+
   it('is not processed without a run record or a job', () => {
     expect(walkStatus(insv, undefined, undefined)).toEqual({ kind: 'not-processed' });
     expect(walkStatusText({ kind: 'not-processed' })).toBe('Not processed');
