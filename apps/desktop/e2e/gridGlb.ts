@@ -1,10 +1,13 @@
 /** A synthetic mesh for the 3D Tiles specs: big enough to be cut into several tiles. */
 
-const GRID = 81; // 80 x 80 quads, 12 800 triangles
 const SPAN = 60; // metres, centred on the project origin
 
-/** A grid surface 2 m above the ground, in the project local frame (y up), as a GLB. */
-export function gridGlb(): Buffer {
+/**
+ * A grid surface 2 m above the ground, in the project local frame (y up), as a GLB: `quads` x
+ * `quads` quads (the default 80 gives 12 800 triangles, the mesh every 3D Tiles spec uses).
+ */
+export function gridGlb(quads = 80): Buffer {
+  const GRID = quads + 1;
   const pos = new Float32Array(GRID * GRID * 3);
   for (let j = 0; j < GRID; j++)
     for (let i = 0; i < GRID; i++) {
