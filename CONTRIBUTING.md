@@ -45,19 +45,19 @@ CI runs the end to end specs under conditions a workstation does not have by def
 
 - **A small window, at display scale 1.** CI asks for no window size (`.github/workflows/ci.yml` sets no `QUADRION_WINDOW_SIZE`). The app asks for its default, 1440 x 900, and the runner's 1024 x 768 screen cuts that down: the width to the app's minimum, 1100, and the height to what the screen has left above the taskbar, about 720 (`src/main/windowMode.ts`). That is not the smallest window, 1100 x 700. The exact size is in the log of every e2e job, in a line the fixtures print with the first window: `[e2e] window 1100 x 720 px at display scale 1`. At that width the stage toolbar folds groups into **More tools** (`COLLAPSE_ORDER` in `workspace/toolbarFit.ts`), panels are narrower and popovers have less room.
 - **A screen at 100 %.** A workstation's screen may be at 150 or 200 %. A CSS pixel is then more than one device pixel and positions round differently: a row that lies a fraction of a pixel across an edge passes a "fully in view" check on one and fails it on the other, in a window of the same size.
-- **A software renderer.** The runners have no GPU.
+- **A software renderer, WARP.** The runners have no GPU, and Chromium falls back to D3D11 WARP (the e2e log names the "Microsoft Basic Render Driver"). WARP holds the renderer far longer than SwiftShader while the Globe streams tiles, so a spec that passes on SwiftShader can still run out of time on CI.
 - **Every demo built.** CI runs `pnpm demo:build --quick` before the specs, not only the change demo.
 
 Before a hand-off, run every spec you added or changed that way, from `apps/desktop`:
 
 ```bash
 pnpm demo:build --quick
-QUADRION_WINDOW_SIZE=1100x720 QUADRION_E2E_SCALE=1 QUADRION_E2E_SWGL=1 npx playwright test e2e/<spec>.spec.ts --workers=1
+QUADRION_WINDOW_SIZE=1100x720 QUADRION_E2E_SCALE=1 QUADRION_E2E_SWGL=warp npx playwright test e2e/<spec>.spec.ts --workers=1
 ```
 
-In PowerShell, set `$env:QUADRION_WINDOW_SIZE = '1100x720'`, `$env:QUADRION_E2E_SCALE = '1'` and `$env:QUADRION_E2E_SWGL = '1'` first. The run must print `[e2e] window 1100 x 720 px at display scale 1` (with the first window that a spec did not size itself); if a CI log shows another height, use that one. `--repeat-each=3` shows a timing problem early.
+In PowerShell, set `$env:QUADRION_WINDOW_SIZE = '1100x720'`, `$env:QUADRION_E2E_SCALE = '1'` and `$env:QUADRION_E2E_SWGL = 'warp'` first. The run must print `[e2e] window 1100 x 720 px at display scale 1` (with the first window that a spec did not size itself); if a CI log shows another height, use that one. `--repeat-each=3` shows a timing problem early.
 
-`QUADRION_E2E_SCALE` and `QUADRION_E2E_SWGL` are read by the e2e fixtures only (`e2e/fixtures.ts`): they add Chromium's `--force-device-scale-factor` and the SwiftShader switches to every app a spec starts. CI sets neither, and no window size: its runners are like that already.
+`QUADRION_E2E_SCALE` and `QUADRION_E2E_SWGL` are read by the e2e fixtures only (`e2e/fixtures.ts`): they add Chromium's `--force-device-scale-factor` and a software renderer (`warp` for WARP, as on CI; `1` for SwiftShader) to every app a spec starts. CI sets neither, and no window size: its runners are like that already.
 
 Write specs so they hold at that size:
 

@@ -44,7 +44,7 @@ Run the plan with `superpowers:subagent-driven-development`. Dispatch each DAG b
 Invoke `superpowers:verification-before-completion`. In the worktree:
 
 - `pnpm check` green.
-- Every e2e spec added or changed, run the way CI runs it (CONTRIBUTING.md, "End to end the way CI runs it"): `pnpm demo:build --quick`, then from `apps/desktop` with `QUADRION_WINDOW_SIZE=1100x720`, `QUADRION_E2E_SCALE=1` and `QUADRION_E2E_SWGL=1`, `--workers=1`. `@realdata` specs too when the work touches them.
+- Every e2e spec added or changed, run the way CI runs it (CONTRIBUTING.md, "End to end the way CI runs it"): `pnpm demo:build --quick`, then from `apps/desktop` with `QUADRION_WINDOW_SIZE=1100x720`, `QUADRION_E2E_SCALE=1` and `QUADRION_E2E_SWGL=warp`, `--workers=1`. `@realdata` specs too when the work touches them.
 - Pipeline or installer work: `uv sync --frozen` in `python/` first.
 
 A red result goes back to step 4. Never hand off a red branch.

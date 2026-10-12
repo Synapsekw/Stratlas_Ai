@@ -50,7 +50,7 @@ export function handoffMessage({ branch, sha, subjects, checks, contract }) {
     `Summary: <one line: what this branch does>`,
     `Commits (${subjects.length}): ${subjects.slice(0, 8).join('; ')}${subjects.length > 8 ? '; ...' : ''}`,
     `Checks: ${checks} green on the branch rebased onto origin/main.`,
-    'E2E: <specs run CI-like (1100x720 at scale 1, software GL, demos built) and their result, or "none touched">',
+    'E2E: <specs run CI-like (1100x720 at scale 1, WARP, demos built) and their result, or "none touched">',
     `Contract changes: ${contract ? 'yes, see docs/architecture/contract-changes.md' : 'none'}`,
     'Merge order: <none, or what must land first>',
   ];
