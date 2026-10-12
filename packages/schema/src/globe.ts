@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { LonLatRing } from './change';
-import { Id, IsoDate, IsoTime } from './common';
+import { Id, IsoDate, IsoTime, ProjectPath, Vec3 } from './common';
+import { Crs } from './manifest';
 import { TilesetId, TilesetKind } from './tilesets';
 
 /**
@@ -115,6 +116,19 @@ export const TerrainImportRequest = z
   })
   .strict();
 
+/** A `kit-pyramid` raster of a site, for the Globe (12 Oct 2026, additive). */
+export const GlobeRaster = z.object({
+  layerId: Id,
+  name: z.string().min(1),
+  role: z.enum(['ortho', 'dsm', 'plan']),
+  /** The `tiles.json` (`aio.tiles/1`) inside the project, served at `aio://project/<id>/<src>`. */
+  src: ProjectPath,
+  capture: Id.optional(),
+  /** A change heat map (`derived.kind === 'change'`). */
+  change: z.literal(true).optional(),
+});
+export type GlobeRaster = z.infer<typeof GlobeRaster>;
+
 /** A library project on the Globe (`globe:sites`), computed from its manifest in the data process. */
 export const GlobeSite = z.object({
   projectId: z.string().min(1),
@@ -129,6 +143,10 @@ export const GlobeSite = z.object({
     bySeverity: z.record(z.string(), z.number().int().nonnegative()),
   }),
   tilesets: z.array(z.object({ id: TilesetId, name: z.string(), kind: TilesetKind })),
+  /** The project CRS and local-frame origin (12 Oct 2026, additive). */
+  frame: z.object({ crs: Crs, origin: Vec3 }).optional(),
+  /** The project's kit-pyramid raster layers that are not drafts (12 Oct 2026, additive). */
+  rasters: z.array(GlobeRaster).optional(),
 });
 
 /**

@@ -28,6 +28,7 @@ import {
   unknownLayersOf,
   type ProjectManifest,
 } from './index';
+import { GlobeRaster, GlobeSite } from './globe';
 
 /** Keys of an object schema (sorted). */
 const keysOf = (schema: z.ZodType): string[] => Object.keys((schema as z.ZodObject).shape).sort();
@@ -544,5 +545,48 @@ describe('M10 IPC channels', () => {
       expect(r.success, c).toBe(true);
     }
     expect(Object.keys(ipc).filter((c) => c.startsWith('odm:'))).toEqual([]);
+  });
+});
+
+describe('GlobeSite outputs (12 Oct 2026, additive)', () => {
+  const base = {
+    projectId: 'p1',
+    name: 'Synthetic site',
+    lonLat: [55.1, 25.2],
+    captures: [],
+    issues: { open: 0, bySeverity: {} },
+    tilesets: [],
+  };
+  it('parses a site written before the change', () => {
+    expect(GlobeSite.parse(base)).toEqual(base);
+  });
+  it('carries the frame and the kit-pyramid rasters', () => {
+    const site = {
+      ...base,
+      frame: { crs: { epsg: 32640 }, origin: [412000, 3245000, 20] },
+      rasters: [
+        {
+          layerId: 'r1-ortho',
+          name: 'Ortho',
+          role: 'ortho',
+          src: 'rasters/r1/ortho/tiles.json',
+          capture: 'c1',
+        },
+        {
+          layerId: 'chg-heat',
+          name: 'Surface change',
+          role: 'plan',
+          src: 'change/x/tiles.json',
+          change: true,
+        },
+      ],
+    };
+    expect(GlobeSite.parse(site)).toEqual(site);
+  });
+  it('refuses an unknown role and an absolute or parent path', () => {
+    const r = { layerId: 'a', name: 'A', role: 'ortho', src: 'rasters/a/tiles.json' };
+    expect(GlobeRaster.safeParse({ ...r, role: 'mesh' }).success).toBe(false);
+    expect(GlobeRaster.safeParse({ ...r, src: '../x/tiles.json' }).success).toBe(false);
+    expect(GlobeRaster.safeParse({ ...r, src: 'C:/x/tiles.json' }).success).toBe(false);
   });
 });
