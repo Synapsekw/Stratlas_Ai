@@ -292,6 +292,8 @@ export {
   type StoreScope,
 } from './captures';
 
+export { planFiling, recordingDay, type FilingGroup } from './surveyDays';
+
 export {
   clipStartMs,
   clockInClip,
