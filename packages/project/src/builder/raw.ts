@@ -52,6 +52,14 @@ import {
 import { CANCELLED_BEFORE, importWalk, type WalkTools } from './walks';
 import { isWalkFile, proxyOwner } from './walkSource';
 
+const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+
+/** `2026-03-03` as the app writes a day: `3 Mar 2026` (the same as the workspace's date tags). */
+function dayLabel(day: string): string {
+  const [y, m, d] = day.split('-');
+  return `${String(Number(d))} ${MONTHS[Number(m) - 1] ?? ''} ${y ?? ''}`;
+}
+
 /** Review copies of photos. The app uses Electron's image codec; tools may use ffmpeg. */
 export interface ImageOps extends DrawingImages {
   /** Write `dst` as a JPEG no larger than `maxPx` on its long side. */
@@ -810,11 +818,13 @@ export async function importRawFiles(
   // its photos are a layer of their own, never added to an earlier flight's, so the import card
   // can re-date them alone: `photos-<day>`, `photos-<day>-2` ... or `photos`, `photos-2` undated
   if (newPhotos.length > 0) {
-    const id = uniqueId(day === null ? 'photos' : `photos-${day}`, layerIdTaken(m));
+    const base = day === null ? 'photos' : `photos-${day}`;
+    const id = uniqueId(base, layerIdTaken(m));
+    const n = id === base ? '' : ` ${id.slice(base.length + 1)}`;
     m.layers.push({
       kind: 'photos',
       id,
-      name: 'Photos',
+      name: `Photos${n}${day === null ? '' : `, ${dayLabel(day)}`}`,
       visible: true,
       items: newPhotos,
       ...(captureId !== undefined ? { capture: captureId } : {}),

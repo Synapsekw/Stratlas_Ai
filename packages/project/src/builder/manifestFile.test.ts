@@ -774,7 +774,7 @@ describe('importRawFiles saves what it added onto the project as it is at its en
         {
           kind: 'photos',
           id: 'photos-2026-02-01',
-          name: 'Photos',
+          name: 'Photos, 1 Feb 2026',
           visible: true,
           capture: 'capture-2026-02-01',
           items: [

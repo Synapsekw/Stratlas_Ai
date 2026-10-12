@@ -1010,10 +1010,24 @@ describe('one import is one survey date', () => {
     expect(second.createdCaptures).toEqual([]);
     const photos = photosOf(m);
     expect(photos.map((l) => [l.id, l.name, l.capture, l.items.map((p) => p.id)])).toEqual([
-      ['photos-2019-01-24', 'Photos', id, ['a']],
-      ['photos-2019-01-24-2', 'Photos', id, ['b']],
+      ['photos-2019-01-24', 'Photos, 24 Jan 2019', id, ['a']],
+      ['photos-2019-01-24-2', 'Photos 2, 24 Jan 2019', id, ['b']],
     ]);
     expect(second.items.map((i) => i.layerId)).toEqual(['photos-2019-01-24-2']);
+  });
+
+  it('names each photos layer after its import: the date, then a number for the same day', async () => {
+    const root = await project();
+    await importRawFiles(root, [await photo('a.jpg', '2024:11:06 10:00:00')], deps());
+    await importRawFiles(root, [await photo('b.jpg', '2024:11:06 11:00:00')], deps());
+    await importRawFiles(root, [await photo('c.jpg', undefined)], deps());
+    await importRawFiles(root, [await photo('d.jpg', undefined)], deps());
+    expect(photosOf(await readManifest(root)).map((l) => [l.id, l.name])).toEqual([
+      ['photos-2024-11-06', 'Photos, 6 Nov 2024'],
+      ['photos-2024-11-06-2', 'Photos 2, 6 Nov 2024'],
+      ['photos', 'Photos'],
+      ['photos-2', 'Photos 2'],
+    ]);
   });
 
   it('an import with no dated file adds no date, tags nothing and files its photos in a layer of its own', async () => {
