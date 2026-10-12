@@ -132,6 +132,9 @@ test.describe('360 video', () => {
     await expect(panel).toContainText('Imported 1 of 2 files', { timeout: 180_000 });
     await expect(panel).toContainText('Stitched to 256 x 128');
     await expect(panel).toContainText(`low resolution copy of ${CLIP}`);
+    // a raw camera file plays unstabilised, and the panel says how to get a steady picture
+    await expect(panel.getByTestId('import-raw-360-hint')).toHaveCount(1);
+    await expect(panel.getByTestId('import-raw-360-hint')).toContainText('FlowState');
     const folder = join(dataRoot.projectDir, 'walks', WALK);
     expect((await readdir(folder)).sort()).toEqual(
       expect.arrayContaining(['playback.mp4', 'walk.json']),
@@ -166,6 +169,8 @@ test.describe('360 video', () => {
     const view = win.getByTestId('walk-view');
     await expect(view).toHaveAttribute('data-status', 'ready', { timeout: 60_000 });
     await expect(view.locator('canvas')).toBeVisible();
+    await expect(win.getByTestId('walk-unstabilised')).toHaveText('Not stabilised');
+    await expect(win.getByTestId('walk-unstabilised')).toHaveAttribute('title', /Insta360 Studio/);
     // three seconds of test pattern; the container may round the length just under
     await expect(win.getByTestId('walk-time')).toContainText(/\/ 0:0[23]/);
     // every control of the bar lies inside the pane, also when the pane is narrow
@@ -244,6 +249,8 @@ test.describe('360 video', () => {
     await palette(win, 'Add 360 video');
     await expect(panel).toContainText('Imported 1 of 1 files', { timeout: 120_000 });
     await expect(panel).toContainText('Stored as it is (256 x 128)');
+    // the stitched MP4 brings no hint
+    await expect(panel.getByTestId('import-raw-360-hint')).toHaveCount(0);
     await panel.getByRole('button', { name: 'Close' }).click();
     await expect(list.locator('.walk-row')).toHaveCount(2);
     expect((await readdir(join(dataRoot.projectDir, 'walks'))).sort()).toEqual(['site-tour', WALK]);
@@ -256,6 +263,11 @@ test.describe('360 video', () => {
     });
     // the stitched video has no sound, and the pane says so instead of offering it
     await expect(win.getByTestId('walk-sound')).toBeDisabled();
+    // the label follows the walk on screen: gone for the MP4 walk, back for the camera walk
+    await expect(win.getByTestId('walk-unstabilised')).toHaveCount(0);
+    await which.selectOption(WALK);
+    await expect(win.getByTestId('walk-360')).toHaveAttribute('data-walk', WALK);
+    await expect(win.getByTestId('walk-unstabilised')).toHaveText('Not stabilised');
     expect(await readFile(manifestFile, 'utf8')).toBe(manifestBefore);
   });
 
@@ -288,6 +300,8 @@ test.describe('360 video', () => {
     // the import ends with the clip's row saying why, and nothing of the walk is left
     await expect(panel).toContainText('Imported 0 of 1 files', { timeout: 60_000 });
     await expect(panel).toContainText('cancelled while this 360 video was made');
+    // nothing of the raw file landed: no hint
+    await expect(panel.getByTestId('import-raw-360-hint')).toHaveCount(0);
     await expect(panel.getByTestId('import-cancel')).toHaveCount(0);
     await expect.poll(() => readdir(walks), { timeout: 30_000 }).toEqual([]);
     await expect(win.getByTestId('walk-list')).toHaveCount(0);
