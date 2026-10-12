@@ -162,6 +162,13 @@ describe('runSummary', () => {
     }
   });
 
+  it('keeps only version-like tool versions', () => {
+    const odd = run('r9', '2026-03-14T10:00:00Z', {
+      versions: { pack: '0.5.4', colmap: 'C:\\Users\\tester\\colmap', 'a b': '1.0' },
+    });
+    expect(runSummary('p', odd).versions).toEqual({ pack: '0.5.4' });
+  });
+
   it('leaves out totals no stage reports', () => {
     const bare = runSummary(
       'p',

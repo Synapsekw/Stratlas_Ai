@@ -67,7 +67,7 @@ export function runSummary(project: string, run: PhotoRun): Out {
       ...pick(run.photos, ['registered']),
       rejected: run.photos.rejected?.length ?? 0,
     },
-    versions: { ...run.versions },
+    versions: versionsOf(run.versions),
     stages,
   };
   if (seconds.length > 0) {
@@ -84,6 +84,14 @@ export function runSummary(project: string, run: PhotoRun): Out {
   }
   out.warnings = run.warnings?.length ?? 0;
   if (run.hardware) out.hardware = probeSummary(run.hardware);
+  return out;
+}
+
+/** Tool versions look like `3.12.0` or `2.10.2+cuda`; anything else (a path, free text) stays out. */
+const VERSION = /^[\w.+-]{1,40}$/;
+function versionsOf(v: Record<string, string>): Out {
+  const out: Out = {};
+  for (const [k, x] of Object.entries(v)) if (VERSION.test(k) && VERSION.test(x)) out[k] = x;
   return out;
 }
 
