@@ -285,6 +285,9 @@ export function RasterView({
       data-testid="raster-view"
       onPointerDown={(e) => {
         if (e.button !== 0 || !view) return;
+        // a press on a button over the picture (fit) is neither a pan nor a point; checked here,
+        // since the capture below makes the release the view's own
+        if (e.target instanceof Element && e.target.closest('button')) return;
         e.currentTarget.setPointerCapture(e.pointerId);
         // a press on a draggable mark moves the mark, not the picture
         const markEl =

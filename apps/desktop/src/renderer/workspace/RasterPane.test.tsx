@@ -113,6 +113,18 @@ describe('RasterView picking', () => {
     expect(px[1]).toBeCloseTo(25, 6);
   });
 
+  it('a press on the fit button is not a point, also when the release reaches the view', async () => {
+    const onPick = vi.fn();
+    await render({ pick: { onPick, marks: [] } });
+    const fitButton = view().querySelector('button.raster-fit');
+    if (!fitButton) throw new Error('no fit button');
+    const at = screen(50, 25);
+    // the view captures the pointer on press, so the release is the view's, not the button's
+    pointer(fitButton, 'pointerdown', at.x, at.y);
+    pointer(view(), 'pointerup', at.x, at.y);
+    expect(onPick).not.toHaveBeenCalled();
+  });
+
   it('marks without onDrag stay out of the pointer (drawings behaviour unchanged)', async () => {
     const onPick = vi.fn();
     await render({ pick: { onPick, marks: [{ x: 10, y: 10, label: '1' }] } });

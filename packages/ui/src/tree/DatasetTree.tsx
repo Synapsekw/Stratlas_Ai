@@ -110,7 +110,15 @@ export function menuPoint(e: MouseEvent<HTMLElement>): MenuPoint {
   return { x: r.left + 24, y: r.bottom };
 }
 
-const DEFAULT_OPEN: TreeGroupKind[] = ['models', 'maps', 'drawings', 'video', 'annotations'];
+// 360 walks are open so a walk's "Needs placing" badge is seen without a click
+const DEFAULT_OPEN: TreeGroupKind[] = [
+  'models',
+  'maps',
+  'drawings',
+  'video',
+  'walks',
+  'annotations',
+];
 /** Rows shown per group before a "more" row; selected and active rows always show. */
 const ROW_LIMIT = 8;
 

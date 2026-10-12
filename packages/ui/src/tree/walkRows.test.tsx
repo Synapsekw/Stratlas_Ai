@@ -122,6 +122,11 @@ describe('walk rows', () => {
     expect(b?.className).toContain('info');
   });
 
+  it('opens the 360 walks group by default, so a Needs placing badge is seen', () => {
+    const { q } = mount({ rowBadge: badge, defaultOpen: undefined });
+    expect(q('[data-testid="tree-badge-walk-a"]')?.textContent).toBe('Needs placing');
+  });
+
   it('keeps the length and badge in the row name, for when the actions cover them', () => {
     const { q } = mount({ rowBadge: badge, walkActions: { onOpen: () => undefined } });
     expect(q('[data-testid="tree-row-walk-a"]')?.getAttribute('aria-label')).toBe(
