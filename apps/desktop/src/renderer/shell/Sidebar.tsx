@@ -33,7 +33,8 @@ import { useMedia } from '../media';
 import { shell, useShell } from '../shell';
 import { walkBadge, walkGroupAction } from '../walks/walkBadge';
 import { openWalk, placeWalk, removeWalk, useWalks } from '../walks/walks';
-import { walkFilesMissing } from '../walks/walkStore';
+import { WalkRowProcess } from '../walks/WalkProcessLine';
+import { walkFilesMissing, walkRecordKey } from '../walks/walkStore';
 import { PANEL_ID, PanelHandle } from './PanelHandle';
 import type { Screen } from '../store';
 import { useCaptureIndex } from '../workspace/compare';
@@ -396,6 +397,13 @@ function Datasets({ collapsed }: { collapsed: boolean }) {
     shell.getState().openCloudPanel();
   };
 
+  // a walk row says under itself where its processing stands (walk.process), once main has
+  // listed its record
+  const walkLine = (it: TreeItem) => {
+    const layer = it.layerKind === 'walk' ? walkLayers.find((w) => w.id === it.layerId) : undefined;
+    return layer && walkRecordKey(layer) in walkRecords ? <WalkRowProcess layer={layer} /> : null;
+  };
+
   // a drawing row opens its controls under itself; the Drawings header adds a drawing
   const drawingProps = {
     onDrawingSettings: (it: TreeItem) => {
@@ -404,7 +412,9 @@ function Datasets({ collapsed }: { collapsed: boolean }) {
     rowExtra: (it: TreeItem) =>
       it.drawing && it.id === drawingOpen ? (
         <DrawingControls layerId={it.id} name={it.name} canEdit={canEdit} />
-      ) : null,
+      ) : (
+        walkLine(it)
+      ),
     groupAction: (g: TreeGroup) =>
       g.kind === 'drawings' && !readOnly
         ? {

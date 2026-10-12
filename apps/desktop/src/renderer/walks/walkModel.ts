@@ -1,4 +1,4 @@
-import type { WalkLayout } from '@aio/schema';
+import type { AssetRef, WalkLayer, WalkLayout } from '@aio/schema';
 import {
   PIPELINES,
   WALK_PROCESS_FEATURE,
@@ -134,7 +134,7 @@ export function walkStatus(
   return { kind: 'not-processed' };
 }
 
-/** The status line under a walk in the 360 video list. */
+/** The status line under a walk row in the Datasets list. */
 export function walkStatusText(s: WalkStatus): string {
   switch (s.kind) {
     case 'not-processed':
@@ -155,6 +155,15 @@ export function playbackSrc(
   level: boolean,
 ): string {
   return level && processed?.stabilized ? processed.stabilized : walk.video.src;
+}
+
+/** What a walk layer plays: its levelled copy when there is one and Level horizon is on. */
+export function playbackRef(
+  layer: Pick<WalkLayer, 'src'>,
+  processed: WalkProcessSummary | undefined,
+  level: boolean,
+): AssetRef {
+  return level && processed?.stabilized ? { path: processed.stabilized } : layer.src;
 }
 
 /** Level horizon for a walk: on unless the person turned it off. */

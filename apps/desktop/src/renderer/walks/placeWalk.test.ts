@@ -9,6 +9,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 vi.mock('../shell', () => ({
   bridge: { call: vi.fn() },
   shell: { getState: () => ({ screen: 'scene', stageMode: 'split', go: vi.fn() }) },
+  jobs: { getState: () => ({ jobs: [], start: vi.fn() }), subscribe: () => () => undefined },
 }));
 vi.mock('../builder/state', () => ({
   builder: { getState: () => ({ saveLayers: vi.fn() }), subscribe: () => () => undefined },

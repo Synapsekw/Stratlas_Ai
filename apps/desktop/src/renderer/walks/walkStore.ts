@@ -1,4 +1,4 @@
-import type { Layer, WalkFile, WalkLayer } from '@aio/schema';
+import type { Layer, WalkFile, WalkLayer, WalkProcessSummary } from '@aio/schema';
 import { createStore, type StoreApi } from 'zustand/vanilla';
 
 /*
@@ -17,6 +17,15 @@ export interface WalkState {
   records: Readonly<Record<string, WalkFile>>;
   /** Record paths a `walks:list` answer covered: a walk among them that was not listed has lost its files. */
   checked: ReadonlySet<string>;
+  /** What each processed walk's `process.json` says (`walk.process`), by walk folder id. */
+  processed: Readonly<Record<string, WalkProcessSummary>>;
+  /**
+   * **Level horizon** per walk layer, as the person set it (absent: on). Kept over refreshes and
+   * project changes: walk layer ids are unique to their clip.
+   */
+  level: Readonly<Record<string, boolean>>;
+  /** Why starting `walk.process` on a walk was refused, by walk layer id, until it starts again. */
+  startErrors: Readonly<Record<string, string>>;
   /** The walk layer the 360 video pane shows (null: the first). */
   selected: string | null;
   /**
@@ -33,12 +42,18 @@ export interface WalkState {
    * `sync` brings it back if it is still in the manifest.
    */
   release(layerId: string): void;
+  setLevel(layerId: string, on: boolean): void;
+  setStartError(layerId: string, error: string | null): void;
 }
 
 /** What main answers to `walks:list`, as the bridge wraps it. */
-export type WalkListCall = (
-  projectId: string,
-) => Promise<{ ok: true; value: { walks: WalkFile[] } } | { ok: false; error: string }>;
+export type WalkListCall = (projectId: string) => Promise<
+  | {
+      ok: true;
+      value: { walks: WalkFile[]; processed?: Record<string, WalkProcessSummary> | undefined };
+    }
+  | { ok: false; error: string }
+>;
 
 const recordPath = (w: WalkFile) => `walks/${w.id}/walk.json`;
 
@@ -71,10 +86,21 @@ export function createWalkStore(call: WalkListCall): StoreApi<WalkState> {
     walks: [],
     records: {},
     checked: new Set(),
+    processed: {},
+    level: {},
+    startErrors: {},
     selected: null,
     sync: async (projectId, layers) => {
       if (projectId !== get().projectId)
-        set({ projectId, walks: [], records: {}, checked: new Set(), selected: null });
+        set({
+          projectId,
+          walks: [],
+          records: {},
+          checked: new Set(),
+          processed: {},
+          startErrors: {},
+          selected: null,
+        });
       if (projectId === null) return;
       const walks = layers.filter((l): l is WalkLayer => l.kind === 'walk');
       const selected = get().selected;
@@ -97,12 +123,13 @@ export function createWalkStore(call: WalkListCall): StoreApi<WalkState> {
       if (get().projectId !== projectId || ask < applied) return;
       applied = ask;
       if (!r.ok) {
-        set({ records: {}, checked: new Set() });
+        set({ records: {}, checked: new Set(), processed: {} });
         return;
       }
       set({
         records: Object.fromEntries(r.value.walks.map((w) => [recordPath(w), w])),
         checked: new Set(paths),
+        processed: r.value.processed ?? {},
       });
     },
     select: (layerId) => {
@@ -113,6 +140,17 @@ export function createWalkStore(call: WalkListCall): StoreApi<WalkState> {
       set({
         walks: walks.filter((w) => w.id !== layerId),
         selected: selected === layerId ? null : selected,
+      });
+    },
+    setLevel: (layerId, on) => {
+      set((s) => ({ level: { ...s.level, [layerId]: on } }));
+    },
+    setStartError: (layerId, error) => {
+      set((s) => {
+        const rest = Object.fromEntries(
+          Object.entries(s.startErrors).filter(([k]) => k !== layerId),
+        );
+        return { startErrors: error === null ? rest : { ...rest, [layerId]: error } };
       });
     },
   }));

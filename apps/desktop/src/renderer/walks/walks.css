@@ -1,11 +1,16 @@
-/* 360 video list: a walk's processing line under its row, and the locate-original choice */
+/* a walk row in the Datasets list: its processing line under the row, and the locate-original
+   choice. The row's extra block (`.titem-extra`) already indents to the name: it only tightens. */
+
+.titem-extra:has(> .walk-proc-wrap) {
+  padding-block: 0 4px;
+}
 
 .walk-proc {
   display: flex;
   align-items: center;
   gap: 8px;
-  min-height: 20px;
-  padding-inline: 30px 4px;
+  min-height: 18px;
+  padding-inline-end: 4px;
   font-size: var(--t-11);
   color: var(--fg-3);
 }
@@ -54,12 +59,12 @@
   cursor: default;
 }
 .walk-proc-hint {
-  padding-inline: 30px 4px;
+  padding-inline-end: 4px;
   font-size: var(--t-11);
   color: var(--fg-4);
 }
 .walk-locate {
-  margin: 4px 4px 6px 30px;
+  margin: 4px 4px 2px 0;
   padding: 8px;
   border: 1px solid var(--line);
   border-radius: var(--r-4);

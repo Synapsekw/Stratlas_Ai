@@ -1,5 +1,5 @@
 import { PANO_FOV, dragLook, zoomLook, type PanoLook } from '@aio/engine';
-import type { WalkFile, WalkLayer } from '@aio/schema';
+import type { AssetRef, WalkFile, WalkLayer } from '@aio/schema';
 import { Icon, useT } from '@aio/ui';
 import { createPanoVideoView, type PanoVideoView } from '@aio/video';
 import { assetUrl, useWorkspace } from '@aio/workspace';
@@ -8,7 +8,14 @@ import { useStore } from 'zustand';
 import { northTick, viewClickYawRad } from './placeModel';
 import { placeSession, placeUi, useWalkViewHeading } from './placeWalk';
 import { PlaceWalkHere } from './PlaceWalkStrip';
-import { formatWalkTime, pickWalk, walkKeyAction, walkUnstabilised } from './walkModel';
+import {
+  formatWalkTime,
+  levelOn,
+  pickWalk,
+  playbackRef,
+  walkKeyAction,
+  walkUnstabilised,
+} from './walkModel';
 import { useWalks, walks } from './walks';
 import { walkFolderId, walkRecordKey } from './walkStore';
 
@@ -32,11 +39,19 @@ function WalkPlayer({
   projectId,
   walk,
   record,
+  src,
+  levelled,
+  level,
 }: {
   projectId: string;
   walk: WalkLayer;
   /** The walk's `walk.json` as main listed it (frame rate, sound); absent until it answers. */
   record: WalkFile | undefined;
+  /** The video to play (`playbackRef`): the levelled copy or the playback copy. */
+  src: AssetRef;
+  /** The walk has a levelled copy: the bar offers **Level horizon**. */
+  levelled: boolean;
+  level: boolean;
 }) {
   const t = useT();
   const host = useRef<HTMLDivElement>(null);
@@ -53,6 +68,10 @@ function WalkPlayer({
   const [sound, setSound] = useState(false);
   const [dragging, setDragging] = useState(false);
   const [box, setBox] = useState({ w: 0, h: 0 });
+  // where the other copy stopped when Level horizon switched copies: the new one goes on there
+  const resume = useRef<{ time: number; play: boolean } | null>(null);
+  const srcKey = 'path' in src ? src.path : `hash:${src.hash}`;
+  const url = assetUrl(projectId, src);
   // Place walk: the session follows this player's time, seeks it, and takes Align view clicks
   const aiming = useStore(placeSession, (s) => s.layerId === walk.id && s.armed === 'align-360');
   const seekReq = useStore(placeUi, (s) => (s.layerId === walk.id ? s.seek : null));
@@ -76,13 +95,13 @@ function WalkPlayer({
     // aio:// answers with CORS headers so WebGL can read the frames
     v.crossOrigin = 'anonymous';
     v.disablePictureInPicture = true;
-    v.src = assetUrl(projectId, walk.src);
+    v.src = url;
     video.current = v;
-    look.current = START;
+    // the player is made per walk: another copy of the same walk keeps where the person looks
 
     let pano: PanoVideoView | null = null;
     try {
-      pano = createPanoVideoView(el, v, START);
+      pano = createPanoVideoView(el, v, look.current);
       view.current = pano;
     } catch {
       queueMicrotask(() => {
@@ -91,6 +110,12 @@ function WalkPlayer({
     }
     const onReady = () => {
       setStatus((s) => (s === 'no-graphics' ? s : 'ready'));
+      const at = resume.current;
+      if (at) {
+        resume.current = null;
+        v.currentTime = at.time;
+        if (at.play) v.play().catch(() => undefined);
+      }
       if (Number.isFinite(v.duration) && v.duration > 0) setDuration(v.duration);
     };
     const onTime = () => {
@@ -147,6 +172,7 @@ function WalkPlayer({
       v.removeEventListener('ended', onPlay);
       v.removeEventListener('ratechange', onRate);
       v.removeEventListener('error', onError);
+      resume.current = { time: v.currentTime, play: !v.paused && !v.ended };
       pano?.dispose();
       view.current = null;
       video.current = null;
@@ -154,7 +180,7 @@ function WalkPlayer({
       v.removeAttribute('src');
       v.load();
     };
-  }, [projectId, walk.src, walk.id]);
+  }, [url, walk.id]);
 
   // a seek asked by Place walk (the start or end of the walk, a pin's moment)
   useEffect(() => {
@@ -255,6 +281,7 @@ function WalkPlayer({
         aria-label={t('walk.view', { name: walk.name })}
         data-testid="walk-view"
         data-status={status}
+        data-src={srcKey}
         // the poster stands in while the first frame loads
         style={
           poster && status === 'loading'
@@ -330,6 +357,20 @@ function WalkPlayer({
           </span>
         )}
         <span className="grow" />
+        {levelled && (
+          <button
+            type="button"
+            className="btn sm ghost"
+            data-testid="walk-level"
+            aria-pressed={level}
+            title={t('walk.level.tip')}
+            onClick={() => {
+              walks.getState().setLevel(walk.id, !level);
+            }}
+          >
+            {t('walk.level')}
+          </button>
+        )}
         <button
           type="button"
           className="btn sm ghost"
@@ -371,8 +412,11 @@ export function Walk360Pane() {
   const selected = useWalks((s) => s.selected);
   const records = useWalks((s) => s.records);
   const walk = pickWalk(list, selected);
+  const processed = useWalks((s) => (walk ? s.processed[walkFolderId(walk)] : undefined));
+  const level = useWalks((s) => (walk ? levelOn(s.level, walk.id) : true));
   if (!projectId || !walk) return <p className="pane-empty">{t('walk.none')}</p>;
   const record = records[walkRecordKey(walk)];
+  const levelled = processed?.stabilized !== undefined;
   return (
     <div className="pane-col" data-testid="walk-360" data-walk={walkFolderId(walk)}>
       <div className="pane-bar">
@@ -397,14 +441,22 @@ export function Walk360Pane() {
           <span className="walk-name">{walk.name}</span>
         )}
         {record?.source.lowRes && <span className="faint">{t('walk.lowRes')}</span>}
-        {record && walkUnstabilised(record) && (
+        {record && walkUnstabilised(record) && !(level && levelled) && (
           <span className="faint" title={t('walk.rawHint')} data-testid="walk-unstabilised">
             {t('walk.unstabilised')}
           </span>
         )}
       </div>
       <PlaceWalkHere at="walk" />
-      <WalkPlayer key={walk.id} projectId={projectId} walk={walk} record={record} />
+      <WalkPlayer
+        key={walk.id}
+        projectId={projectId}
+        walk={walk}
+        record={record}
+        src={playbackRef(walk, processed, level)}
+        levelled={levelled}
+        level={level}
+      />
     </div>
   );
 }

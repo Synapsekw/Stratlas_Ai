@@ -393,13 +393,16 @@ test.describe('360 video processing', () => {
     await win.getByTestId('project-card').filter({ hasText: 'E2E tiny project' }).first().click();
     await expect(win.locator('[data-scene-view] canvas')).toBeVisible();
 
-    // every status line the walk's row shows, sampled: a fast machine can process the small clip
-    // in a few seconds, so "Processing" is looked for in the history, not waited on
+    // every status line under the walk's row in the Datasets list (layer `walk-<id>`), sampled: a
+    // fast machine can process the small clip in a few seconds, so "Processing" is looked for in
+    // the history, not waited on
     await win.evaluate((id) => {
       const seen: string[] = [];
       (window as unknown as { walkStatusSeen: string[] }).walkStatusSeen = seen;
       setInterval(() => {
-        const text = document.querySelector(`[data-testid="walk-status-${id}"]`)?.textContent;
+        const text = document.querySelector(
+          `[data-testid="walk-status-walk-${id}"] .walk-proc-text`,
+        )?.textContent;
         if (text && seen.at(-1) !== text) seen.push(text);
       }, 50);
     }, walkId);
@@ -410,13 +413,18 @@ test.describe('360 video processing', () => {
     const panel = win.getByTestId('import-panel');
     await expect(panel).toContainText('Imported 1 of 1 files', { timeout: 180_000 });
     await panel.getByRole('button', { name: 'Close' }).click();
-    const status = win.getByTestId(`walk-status-${walkId}`);
+    const row = await walkRow(win, walkId);
+    const status = win.getByTestId(`walk-status-walk-${walkId}`);
 
     // 2. it finishes: a texture-poor stretch may leave the path from the pins only
     await expect(status).toHaveAttribute('data-kind', /^(processed|failed)$/, {
       timeout: 240_000,
     });
-    await expect(status).toHaveText(/^Processed(, path from pins only)?$/);
+    await expect(status.locator('.walk-proc-text')).toHaveText(
+      /^Processed(, path from pins only)?$/,
+    );
+    // a processed walk offers no Process walk
+    await expect(win.getByTestId(`walk-process-walk-${walkId}`)).toHaveCount(0);
     const seen = await win.evaluate(
       () => (window as unknown as { walkStatusSeen: string[] }).walkStatusSeen,
     );
@@ -430,7 +438,7 @@ test.describe('360 video processing', () => {
     );
 
     // 3. the walk plays the levelled copy; Level horizon off plays the playback copy
-    await win.getByTestId(`walk-row-${walkId}`).click();
+    await row.click();
     const view = win.getByTestId('walk-view');
     await expect(view).toHaveAttribute('data-status', 'ready', { timeout: 60_000 });
     await expect(view).toHaveAttribute('data-src', /stabilized\.mp4$/);
@@ -473,5 +481,11 @@ test.describe('360 video processing', () => {
       [box.x + box.width / 2, box.y + box.height / 2],
     );
     expect(reached).toBe(true);
+    // the walk row's status line stays inside the sidebar at this size
+    const sidebar = await win.locator('aside.sidebar').boundingBox();
+    const line = await status.boundingBox();
+    if (!sidebar || !line) throw new Error('the sidebar or the status line has no box');
+    expect(line.x + line.width).toBeLessThanOrEqual(sidebar.x + sidebar.width + 0.5);
+    expect(await row.evaluate((el) => el.getBoundingClientRect().height)).toBe(26);
   });
 });

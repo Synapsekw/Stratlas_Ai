@@ -142,6 +142,48 @@ describe('walk store', () => {
     expect(Object.keys(s.getState().records)).toEqual(['walks/fast/walk.json']);
   });
 
+  it('keeps what main says about processed walks, by walk folder, and drops it with the project', async () => {
+    const processed = {
+      a: { createdAt: '2026-10-12T10:00:00.000Z', source: 'sfm' as const, warnings: 0 },
+    };
+    const s = createWalkStore(() =>
+      Promise.resolve({ ok: true, value: { walks: [record('a'), record('b')], processed } }),
+    );
+    await s.getState().sync('p', [layer('a'), layer('b')]);
+    expect(s.getState().processed).toEqual(processed);
+    await s.getState().sync(null, []);
+    expect(s.getState().processed).toEqual({});
+  });
+
+  it('reads an answer without processed walks as none processed', async () => {
+    const s = createWalkStore(answers({ p: [record('a')] }));
+    await s.getState().sync('p', [layer('a')]);
+    expect(s.getState().processed).toEqual({});
+  });
+
+  it('keeps Level horizon per walk layer over a refresh', async () => {
+    const s = createWalkStore(answers({ p: [record('a'), record('b')] }));
+    await s.getState().sync('p', [layer('a'), layer('b')]);
+    expect(s.getState().level).toEqual({});
+    s.getState().setLevel('walk-a', false);
+    await s.getState().refresh();
+    expect(s.getState().level).toEqual({ 'walk-a': false });
+    s.getState().setLevel('walk-a', true);
+    expect(s.getState().level).toEqual({ 'walk-a': true });
+  });
+
+  it('remembers why a walk could not start processing until it starts again', async () => {
+    const s = createWalkStore(answers({ p: [record('a')] }));
+    await s.getState().sync('p', [layer('a')]);
+    s.getState().setStartError('walk-a', 'No pipeline pack');
+    expect(s.getState().startErrors).toEqual({ 'walk-a': 'No pipeline pack' });
+    s.getState().setStartError('walk-a', null);
+    expect(s.getState().startErrors).toEqual({});
+    s.getState().setStartError('walk-a', 'No pipeline pack');
+    await s.getState().sync('q', []);
+    expect(s.getState().startErrors).toEqual({});
+  });
+
   it('reads the walk folder id from the record path', () => {
     expect(walkFolderId(layer('site-tour'))).toBe('site-tour');
     expect(walkFolderId({ ...layer('x'), record: { path: 'odd.json' } })).toBe('walk-x');

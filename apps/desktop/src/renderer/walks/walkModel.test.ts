@@ -17,6 +17,7 @@ import {
   originalCheck,
   packOffersWalkProcess,
   pickWalk,
+  playbackRef,
   playbackSrc,
   splitWithWalk,
   walkForRow,
@@ -258,6 +259,22 @@ describe('playbackSrc', () => {
     expect(playbackSrc(insv, level, false)).toBe('walks/vid-1/playback.mp4');
     expect(playbackSrc(insv, summary(), true)).toBe('walks/vid-1/playback.mp4');
     expect(playbackSrc(insv, undefined, true)).toBe('walks/vid-1/playback.mp4');
+  });
+});
+
+describe('playbackRef', () => {
+  const layerSrc = { src: { path: 'walks/vid-1/playback.mp4' } };
+  it('plays the levelled copy of a walk layer when there is one and Level horizon is on', () => {
+    const level = summary({ stabilized: 'walks/vid-1/stabilized.mp4' });
+    expect(playbackRef(layerSrc, level, true)).toEqual({ path: 'walks/vid-1/stabilized.mp4' });
+    expect(playbackRef(layerSrc, level, false)).toEqual(layerSrc.src);
+    expect(playbackRef(layerSrc, summary(), true)).toEqual(layerSrc.src);
+    expect(playbackRef(layerSrc, undefined, true)).toEqual(layerSrc.src);
+  });
+
+  it('keeps a playback copy held by hash when nothing levelled is there', () => {
+    const byHash = { src: { hash: 'a'.repeat(64) } };
+    expect(playbackRef(byHash, undefined, true)).toEqual(byHash.src);
   });
 });
 
