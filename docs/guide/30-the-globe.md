@@ -50,6 +50,14 @@ Street names and other labels are part of the map, so they lie on the ground: th
 
 The two dots at the bottom of the settings show the chips' colours: **No open issues** and **Open issues**.
 
+## Processed maps on the Globe
+
+The processed maps of a site lie on the Earth where the site is, above the street map, imagery packs and online satellite, in every look. The Globe draws them for the open project and the site you pick, two sites at most.
+
+Click a site's chip and look for **On the Globe** in its card. It lists the site's orthophotos by survey date, its shaded surfaces and any change heat maps, each with its own switch. The orthophoto of the latest survey date is on to start with. Switch an older date on to see that day, or a heat map to see what changed (red where material was added, blue where it was removed, with its legend in the card). Orthophotos lie at the bottom, then shaded surfaces, then other maps, and change heat maps on top. If a map cannot be read, the card says "This map could not be read."
+
+The switches last until you close the app. They are not saved.
+
 ## Terrain
 
 **Terrain**, in the map settings: **Best available** uses installed terrain packs for relief; **Off (smooth Earth)** turns relief off. On the Low graphics preset terrain is off: "Terrain is off on the Low graphics preset."

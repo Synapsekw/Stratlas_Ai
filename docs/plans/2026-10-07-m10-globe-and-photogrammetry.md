@@ -905,7 +905,7 @@ The integration lead merges when green, re-locks `uv.lock`, builds pipeline pack
 - **House report:** the `processing` section (accuracy summary, GCP table, overlap map); orthos from processing in the site overview figures.
 - **Packages (X1):** carry `photogrammetry/<run>/run.json`, `gcp.json`, reports and `tilesets.json` with `tiles/`; never `photogrammetry/<run>/work/`; customer imagery packs only when ticked (decision 12). Player mode shows the Globe for the package's site and never starts processing. Done 12 Oct 2026 (`docs/plans/2026-10-12-m10-packages-and-journal.md`): imagery and terrain packs travel cut to the site when ticked.
 - **Journal (M9):** `photogrammetry/` writers and `tilesets.json` writes go through the journal service; jobs record `via.pipeline` as today. Done 12 Oct 2026 (`docs/plans/2026-10-12-m10-packages-and-journal.md`).
-- **Change detection (M8):** two processed surveys of the same site run `change.raster`, `change.surface` and `change.cloud` directly; the Globe shows change heat maps as imagery layers.
+- **Change detection (M8):** two processed surveys of the same site run `change.raster`, `change.surface` and `change.cloud` directly; the Globe shows change heat maps as imagery layers. Done for the raster and surface results (the cloud result is not drawn): see `docs/plans/2026-10-12-m10-globe-processed-outputs-design.md`.
 - **Agent:** `process_photos` (write, approval; starts `photo.align` with a preset), `accuracy_summary` (read), `show_on_globe` (navigate) in the compact profile. Done 12 Oct 2026 (`docs/plans/2026-10-12-m10-agent-photo-tools.md`).
 - **Performance (D7):** a 500 M point cloud and a 20 M triangle mesh tileset hold the Medium budget in the site view; the Globe holds 30 fps on the Medium tier with three sites and two region packs.
   - Done 12 Oct 2026 in `2026-10-12-m10-hardening-and-docs.md`: the CI proxy `e2e/perf-m10.spec.ts` (Medium forced on the software GPU, the tile cache scaled to 1 %, the point cap at 4,000; frame ceilings 400 ms until three CI runs set them) and the opt-in benchmark `e2e/perf-m10-bench.spec.ts` with `tools/bench/m10-bench-data.mjs` (real hardware, 30 fps, in a window the founder gives).
@@ -930,7 +930,7 @@ The integration lead merges when green, re-locks `uv.lock`, builds pipeline pack
 
 - On the founder's machine, with Wi-Fi off:
   - the photo demo processes end to end on CPU with checkpoint RMSE within the targets, and the founder's real flight processes with an accuracy report the founder accepts against the delivered product;
-  - the outputs open in the existing viewers (ortho on the map, DSM in volumes and change, COPC and mesh in 3D) and in the Globe;
+  - the outputs open in the existing viewers (ortho on the map, DSM in volumes and change, COPC and mesh in 3D) and in the Globe (done 12 Oct 2026: processed orthophotos, shaded surfaces and change heat maps lie on the Globe, see `docs/plans/2026-10-12-m10-globe-processed-outputs-design.md`);
   - an OPF export opens in another OPF reader, and an OPF import opens in Stratlas;
   - the Globe shows every library project over offline imagery and terrain, with attributions, and hands over to the site view.
 - The licence gate covers npm, Python and native libraries and data packs, and reports nothing forbidden; `THIRD-PARTY-NOTICES.md` lists every native library and data source.

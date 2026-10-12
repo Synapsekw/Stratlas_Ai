@@ -231,7 +231,7 @@ Current limits only; each is removed from this list when fixed.
 
 - The Globe is for overview and navigation: no editing tools, only a distance and area read-out on the ellipsoid.
 - No geoid grid ships, so terrain heights on the Globe are not corrected to the geoid.
-- Processed orthophotos do not show on the Globe yet, sites have no footprints and there is no date filter.
+- Processed maps (orthophotos, shaded surfaces and change heat maps) show for the open project and the site you pick, not for every site at once. COG-only and plain-image rasters and the cloud change result are not drawn on the Globe. Sites have no footprints and there is no date filter.
 - The agent's **show_on_globe** ends the agent's reply: the agent panel belongs to the project view and closes when the Globe opens.
 
 ### Imagery, terrain and 3D Tiles
