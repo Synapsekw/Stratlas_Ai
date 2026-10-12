@@ -2826,6 +2826,7 @@ export const en = {
   'globe.outputs.imageryChange': 'Imagery change',
   'globe.outputs.surfaceChange': 'Surface change',
   'globe.outputs.unreadable': 'This map could not be read.',
+  'globe.outputs.withName': '{label} ({name})',
   // M10 G7: imagery and terrain packs (Settings, Map packs)
   'g7.packs.title': 'Imagery and terrain',
   'g7.packs.count_one': '{count} pack, {size}',

@@ -137,6 +137,22 @@ describe('the On the Globe section of a site card', () => {
     expect(switches().map(nameOf)).toEqual(['Orthophoto']);
   });
 
+  it('tells repeating labels apart by the layer name, and leaves unique ones as they are', async () => {
+    await mount({
+      ...SITE,
+      rasters: [
+        { layerId: 'a', name: 'North block', role: 'ortho', src: 'o1/tiles.json', capture: 'c2' },
+        { layerId: 'b', name: 'South block', role: 'ortho', src: 'o2/tiles.json', capture: 'c2' },
+        { layerId: 'e', name: 'Ortho early', role: 'ortho', src: 'dsm2/tiles.json', capture: 'c1' },
+      ],
+    });
+    expect(switches().map(nameOf)).toEqual([
+      'Orthophoto 2026-10-07',
+      'Orthophoto 2026-10-21 (North block)',
+      'Orthophoto 2026-10-21 (South block)',
+    ]);
+  });
+
   it('turns a heat map on with a click and shows the legend of its index', async () => {
     files['aio://project/p1/heat/tiles.json'] = index(SCORE_FROM_INDEX);
     await mount(SITE);

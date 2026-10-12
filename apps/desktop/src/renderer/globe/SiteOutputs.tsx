@@ -128,23 +128,31 @@ export function SiteOutputs({ site }: { site: GlobeSite }) {
   if (rasters.length === 0) return null;
   const on = new Set(shownOf(shown, site));
   const dates = new Map(site.captures.map((c) => [c.id, c.date]));
+  const rows = rasterOrder(rasters, site.captures).map((raster) => {
+    const index = indexes[pyramidKey(site.projectId, raster.src)];
+    return { raster, index, label: labelOf(raster, dates, index) };
+  });
+  // a label that repeats (two orthos of one date) is told apart by the layer's own name
+  const counts = new Map<string, number>();
+  for (const r of rows) counts.set(r.label, (counts.get(r.label) ?? 0) + 1);
   return (
     <section className="globe-outputs" aria-labelledby={headingId}>
       <h3 id={headingId}>{t('globe.outputs.title')}</h3>
       <ul>
-        {rasterOrder(rasters, site.captures).map((raster) => {
-          const index = indexes[pyramidKey(site.projectId, raster.src)];
-          return (
-            <OutputRow
-              key={raster.layerId}
-              site={site}
-              raster={raster}
-              label={labelOf(raster, dates, index)}
-              index={index}
-              on={on.has(raster.layerId)}
-            />
-          );
-        })}
+        {rows.map(({ raster, label, index }) => (
+          <OutputRow
+            key={raster.layerId}
+            site={site}
+            raster={raster}
+            label={
+              (counts.get(label) ?? 0) > 1
+                ? t('globe.outputs.withName', { label, name: raster.name })
+                : label
+            }
+            index={index}
+            on={on.has(raster.layerId)}
+          />
+        ))}
       </ul>
     </section>
   );
