@@ -32,14 +32,16 @@ function setup(prefs: PlaceBasemapPrefs, imagery: { on: boolean }) {
   const session = createPlaceStore({ fit: fitWalk, seek: () => undefined });
   const raster = createStore<{
     prefs: PlaceBasemapPrefs;
+    chosen: number;
     set(p: Partial<PlaceBasemapPrefs>): void;
     setForSession(p: Partial<PlaceBasemapPrefs>): void;
   }>()((set, get) => ({
     prefs,
+    chosen: 0,
     // the person's choice (stored)
     set: (p) => {
       stored.push(p);
-      set({ prefs: { ...get().prefs, ...p } });
+      set({ prefs: { ...get().prefs, ...p }, chosen: get().chosen + 1 });
     },
     setForSession: (p) => {
       set({ prefs: { ...get().prefs, ...p } });
@@ -86,6 +88,16 @@ describe('followPlaceBasemap', () => {
     expect(k.prefs().satellite).toBe(false);
     k.session.getState().cancel();
     expect(k.prefs()).toEqual({ satellite: false, streets: true });
+    k.stop();
+  });
+
+  it('Satellite chosen by the person while placing stays when placing ends', () => {
+    const k = setup({ satellite: false, streets: true }, { on: true });
+    k.startOnMap();
+    // the same type the switch made, but now the person's own choice
+    k.raster.getState().set({ satellite: true, streets: true });
+    k.session.getState().cancel();
+    expect(k.prefs()).toEqual({ satellite: true, streets: true });
     k.stop();
   });
 

@@ -123,6 +123,8 @@ interface RasterState {
   terrain: RasterPackInfo[];
   /** Bumped when packs or tilesets may have changed (a pack or tiles job finished). */
   rev: number;
+  /** Bumped when the person picks a map type (`set` with satellite or streets), not by `setForSession`. */
+  chosen: number;
   set(patch: Partial<RasterPrefs>): void;
   /**
    * Change the choices for this session only, never stored (Place walk turns the map to Satellite
@@ -145,10 +147,12 @@ export const rasterPacks = createStore<RasterState>()((set, get) => ({
   imagery: [],
   terrain: [],
   rev: 0,
+  chosen: 0,
   set(patch) {
     const prefs = { ...get().prefs, ...patch };
     chosen = { ...chosen, ...patch };
-    set({ prefs });
+    const picked = 'satellite' in patch || 'streets' in patch;
+    set(picked ? { prefs, chosen: get().chosen + 1 } : { prefs });
     try {
       storage()?.setItem(KEY, JSON.stringify(chosen));
     } catch {

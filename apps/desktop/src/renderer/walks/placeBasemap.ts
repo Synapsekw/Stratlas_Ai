@@ -36,6 +36,8 @@ export function followPlaceBasemap(
   session: StoreApi<PlaceState>,
   raster: StoreApi<{
     prefs: PlaceBasemapPrefs;
+    /** Bumped by every map type the person picks (`RasterState.chosen`). */
+    chosen: number;
     setForSession(patch: Partial<PlaceBasemapPrefs>): void;
   }>,
   available: () => boolean,
@@ -43,6 +45,8 @@ export function followPlaceBasemap(
 ): () => void {
   /** The choices before the switch, while switched (null: not switched this session). */
   let before: PlaceBasemapPrefs | null = null;
+  /** `chosen` when the switch was made: a pick since then is the person's and stays. */
+  let pickedAt = 0;
   /** This session's switch is settled (made, or not needed): a later choice is the person's. */
   let settled = false;
   let busy = false;
@@ -57,7 +61,8 @@ export function followPlaceBasemap(
       const prefs = raster.getState().prefs;
       if (s.layerId === null || s.surface?.kind !== 'map') {
         // placing ended: back to the type it was, unless the person picked another meanwhile
-        if (before && prefs.satellite && prefs.streets) raster.getState().setForSession(before);
+        const picked = raster.getState().chosen !== pickedAt;
+        if (before && !picked) raster.getState().setForSession(before);
         before = null;
         settled = false;
         tell(null);
@@ -70,6 +75,7 @@ export function followPlaceBasemap(
       else if (imagery) {
         settled = true;
         before = { satellite: prefs.satellite, streets: prefs.streets };
+        pickedAt = raster.getState().chosen;
         raster.getState().setForSession(SATELLITE);
       }
     } finally {

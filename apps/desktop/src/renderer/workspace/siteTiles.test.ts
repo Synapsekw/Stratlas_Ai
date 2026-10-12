@@ -121,8 +121,13 @@ describe('raster packs store', () => {
       rasterPacks.getState().set({ hillshade: false });
       expect(saved()).toMatchObject({ satellite: false, hillshade: false });
       expect(rasterPacks.getState().prefs).toMatchObject({ satellite: true, hillshade: false });
-      // a choice of map type is the person's: stored
+      // a choice of map type is the person's: stored, and counted (Place walk then leaves it)
+      const before = rasterPacks.getState().chosen;
+      rasterPacks.getState().setForSession({ satellite: false });
+      rasterPacks.getState().set({ hillshade: true });
+      expect(rasterPacks.getState().chosen).toBe(before);
       rasterPacks.getState().set({ satellite: true, streets: false });
+      expect(rasterPacks.getState().chosen).toBe(before + 1);
       expect(saved()).toMatchObject({ satellite: true, streets: false });
     } finally {
       vi.unstubAllGlobals();
