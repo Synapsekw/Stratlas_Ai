@@ -259,6 +259,26 @@ describe('raster packs and Globe settings', () => {
     ]);
   });
 
+  it('falls back to the installed packs when listing package packs throws', async () => {
+    const img = join(dir, 'packs', 'imagery');
+    await mkdir(img, { recursive: true });
+    await writeFile(join(img, 'gcc.json'), JSON.stringify(meta('gcc', 'imagery')));
+    await writeFile(join(img, 'gcc.pmtiles'), Buffer.alloc(10));
+    const ipc = collectHandlers((handle) => {
+      registerGlobeIpc({
+        handle,
+        library: () => Promise.resolve([]),
+        readProject: () => Promise.resolve(null),
+        dataRoot: () => Promise.resolve(dir),
+        settingsFile: join(dir, 'globe.json'),
+        packageRasterPacks: () => Promise.reject(new Error('damaged package')),
+      });
+    });
+    const r = await ipc.call('globe:packs', {});
+    expect(r).toMatchObject({ ok: true, terrain: [] });
+    expect((r as { imagery: { id: string }[] }).imagery.map((p) => p.id)).toEqual(['gcc']);
+  });
+
   it('answers every channel: sites, packs, and settings saved in globe.json', async () => {
     const file = join(dir, 'globe.json');
     const ipc = collectHandlers((handle) => {

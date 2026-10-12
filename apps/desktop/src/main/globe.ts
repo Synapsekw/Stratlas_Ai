@@ -185,7 +185,7 @@ export function registerGlobeIpc(deps: GlobeIpcDeps): void {
   handle('globe:packs', async () => {
     const more = deps.packageRasterPacks ?? (() => Promise.resolve([]));
     const both = (kind: RasterPackKind) =>
-      Promise.all([packs(kind), more(kind)]).then(([a, b]) => [...a, ...b]);
+      Promise.all([packs(kind), more(kind).catch(() => [])]).then(([a, b]) => [...a, ...b]);
     const [imagery, terrain] = await Promise.all([both('imagery'), both('terrain')]);
     return { ok: true as const, imagery, terrain };
   });

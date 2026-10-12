@@ -11,6 +11,7 @@ import {
   type RasterPackKind,
   type RasterPackRef,
 } from '@aio/schema';
+import { createHash } from 'node:crypto';
 import { mkdtemp, rm, stat } from 'node:fs/promises';
 import { join } from 'node:path';
 import { projectBbox, type Bbox } from './embed';
@@ -215,10 +216,15 @@ export async function packageRasterPacks(
   return out;
 }
 
-const embeddedId = (projectId: string, id: string) => `${PACKAGE_RASTER_PREFIX}${projectId}-${id}`;
+/**
+ * The id a package's raster pack is listed and served under: `pkg-` and 8 hex characters of a
+ * hash of `<projectId>/<id>`. It is short and stable, so it always fits `RasterPackId`.
+ */
+export const embeddedRasterId = (projectId: string, id: string): string =>
+  `${PACKAGE_RASTER_PREFIX}${createHash('sha256').update(`${projectId}/${id}`).digest('hex').slice(0, 8)}`;
 
 /**
- * Raster packs of the open packages that this machine lacks, listed as `pkg-<projectId>-<id>`.
+ * Raster packs of the open packages that this machine lacks, listed as `pkg-<hash of projectId/id>`.
  * A pack is used unless an installed pack has its id or covers its area at its zoom or deeper.
  */
 export async function embeddedRasterPacks(
@@ -235,7 +241,7 @@ export async function embeddedRasterPacks(
       if (have) continue;
       const size = archive.entries.get(member)?.size;
       out.push({
-        id: embeddedId(projectId, id),
+        id: embeddedRasterId(projectId, id),
         kind: meta.kind,
         label: meta.label,
         bbox: meta.bbox,
@@ -264,11 +270,14 @@ export function findEmbeddedRaster(
   id: string,
   packages: Iterable<readonly [string, { archive: ZipArchive }]>,
 ): { archive: ZipArchive; member: string } | undefined {
+  const dir = EMBEDDED_RASTER_DIRS[kind];
+  const re = new RegExp(`^${dir}/([a-z0-9-]+)\\.pmtiles$`);
   for (const [projectId, { archive }] of packages) {
-    const prefix = embeddedId(projectId, '');
-    if (!id.startsWith(prefix)) continue;
-    const member = `${EMBEDDED_RASTER_DIRS[kind]}/${id.slice(prefix.length)}.pmtiles`;
-    if (archive.entries.has(member)) return { archive, member };
+    for (const name of archive.entries.keys()) {
+      const packId = re.exec(name)?.[1];
+      if (!packId || !archive.entries.has(`${dir}/${packId}.json`)) continue;
+      if (embeddedRasterId(projectId, packId) === id) return { archive, member: name };
+    }
   }
   return undefined;
 }

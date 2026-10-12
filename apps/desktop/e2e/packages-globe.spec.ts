@@ -13,6 +13,7 @@ import { pmtilesOf, solidPng, syntheticPackMeta } from '@aio/globe/testing';
 import { openZip } from '@aio/project/package';
 import { ProjectManifest, SCHEMA_VERSION, type ProjectManifestInput } from '@aio/schema';
 import type { ElectronApplication, Page } from '@playwright/test';
+import { createHash } from 'node:crypto';
 import { mkdir, readdir, rm, stat, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import {
@@ -42,7 +43,8 @@ const FAR_TERRAIN_ID = 'far-terrain';
 const MAGENTA = [255, 0, 200, 255] as const;
 /** The package file; its name gives the package's project id in the player. */
 const PACKAGE_ID = 'handover';
-const PACKAGE_RASTER_ID = `pkg-${PACKAGE_ID}-${IMAGERY_ID}`;
+// Same rule as embeddedRasterId in src/main/packs/rasterEmbed.ts.
+const PACKAGE_RASTER_ID = `pkg-${createHash('sha256').update(`${PACKAGE_ID}/${IMAGERY_ID}`).digest('hex').slice(0, 8)}`;
 
 /**
  * A folder project at the site with a finished run (records, a report, work files that must stay

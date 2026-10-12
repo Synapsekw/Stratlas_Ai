@@ -1,5 +1,5 @@
 import type { ZipArchive } from '@aio/project/package';
-import { ProjectManifest, RasterPackMeta, type RasterPackInfo } from '@aio/schema';
+import { ProjectManifest, RasterPackId, RasterPackMeta, type RasterPackInfo } from '@aio/schema';
 import { existsSync, readdirSync } from 'node:fs';
 import { mkdir, mkdtemp, readdir, rm, stat, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -10,6 +10,7 @@ import { sampleManifest } from '../testing';
 import { projectBbox } from './embed';
 import {
   chooseRasterEmbeds,
+  embeddedRasterId,
   embeddedRasterPacks,
   findEmbeddedRaster,
   packageRasterPacks,
@@ -241,7 +242,7 @@ describe('embeddedRasterPacks and findEmbeddedRaster', () => {
   it('hides a pack whose id is installed', async () => {
     const installed: RasterPackInfo[] = [{ ...near.meta, sizeBytes: 1 }];
     const r = await embeddedRasterPacks(installed, pkgs, 'imagery');
-    expect(r.map((x) => x.id)).toEqual(['pkg-p1-other']);
+    expect(r.map((x) => x.id)).toEqual([embeddedRasterId('p1', 'other')]);
     expect(r[0]?.source).toBe('package');
   });
   it('hides a pack covered by an installed pack at its zoom or deeper, not a shallower one', async () => {
@@ -255,18 +256,51 @@ describe('embeddedRasterPacks and findEmbeddedRaster', () => {
     const shallow: RasterPackInfo = { ...deep, maxZoom: 3 };
     expect((await embeddedRasterPacks([deep], pkgs, 'imagery')).map((x) => x.id)).toEqual([]);
     expect((await embeddedRasterPacks([shallow], pkgs, 'imagery')).map((x) => x.id).sort()).toEqual(
-      ['pkg-p1-other', 'pkg-p1-site'],
+      [embeddedRasterId('p1', 'other'), embeddedRasterId('p1', 'site')].sort(),
     );
   });
   it('lists the others under pkg ids', async () => {
     const r = await embeddedRasterPacks([], pkgs, 'imagery');
-    expect(r.map((x) => x.id).sort()).toEqual(['pkg-p1-other', 'pkg-p1-site']);
+    expect(r.map((x) => x.id).sort()).toEqual(
+      [embeddedRasterId('p1', 'other'), embeddedRasterId('p1', 'site')].sort(),
+    );
   });
   it('finds the member', () => {
-    expect(findEmbeddedRaster('imagery', 'pkg-p1-site', pkgs)?.member).toBe(
+    expect(findEmbeddedRaster('imagery', embeddedRasterId('p1', 'site'), pkgs)?.member).toBe(
       'packs/imagery/site.pmtiles',
     );
-    expect(findEmbeddedRaster('imagery', 'pkg-p1-nope', pkgs)).toBeUndefined();
-    expect(findEmbeddedRaster('terrain', 'pkg-p1-site', pkgs)).toBeUndefined();
+    expect(findEmbeddedRaster('imagery', embeddedRasterId('p1', 'nope'), pkgs)).toBeUndefined();
+    expect(findEmbeddedRaster('terrain', embeddedRasterId('p1', 'site'), pkgs)).toBeUndefined();
+  });
+  it('gives a long project name and pack id a valid id that finds its member', async () => {
+    const project = 'north-pit-survey-2026-10.aio';
+    const id = 'esri-world-imagery-z19';
+    const long = archiveOf({
+      [`packs/imagery/${id}.json`]: Buffer.from(JSON.stringify(meta(id))),
+      [`packs/imagery/${id}.pmtiles`]: Buffer.from('x'),
+    });
+    const list: [string, { archive: ZipArchive }][] = [[project, { archive: long }]];
+    const r = await embeddedRasterPacks([], list, 'imagery');
+    expect(r).toHaveLength(1);
+    const listed = r[0]?.id ?? '';
+    expect(RasterPackId.safeParse(listed).success).toBe(true);
+    expect(listed).toBe(embeddedRasterId(project, id));
+    expect(findEmbeddedRaster('imagery', listed, list)?.member).toBe(`packs/imagery/${id}.pmtiles`);
+  });
+  it('keeps packs site and site-2 of one package apart', () => {
+    const two = archiveOf({
+      'packs/imagery/site.json': Buffer.from(JSON.stringify(meta('site'))),
+      'packs/imagery/site.pmtiles': Buffer.from('x'),
+      'packs/imagery/site-2.json': Buffer.from(JSON.stringify(meta('site-2'))),
+      'packs/imagery/site-2.pmtiles': Buffer.from('x'),
+    });
+    const list: [string, { archive: ZipArchive }][] = [['p1', { archive: two }]];
+    expect(findEmbeddedRaster('imagery', embeddedRasterId('p1', 'site'), list)?.member).toBe(
+      'packs/imagery/site.pmtiles',
+    );
+    expect(findEmbeddedRaster('imagery', embeddedRasterId('p1', 'site-2'), list)?.member).toBe(
+      'packs/imagery/site-2.pmtiles',
+    );
+    expect(findEmbeddedRaster('imagery', 'pkg-p1-site-2', list)).toBeUndefined();
   });
 });
