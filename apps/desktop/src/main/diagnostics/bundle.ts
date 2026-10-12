@@ -38,6 +38,8 @@ export interface BundleSources {
   updates?: () => Promise<UpdateStatus> | UpdateStatus;
   /** Local detection runtime, detector model cards and local agent server (`localAi.ts`). */
   localAi?: () => Promise<Record<string, unknown>> | Record<string, unknown>;
+  /** Photo processing: the hardware check and the latest runs of the open projects (`photo.ts`). */
+  photo?: () => unknown;
   now?: () => Date;
 }
 
@@ -202,13 +204,16 @@ What is inside
 - updates.json     update and rollback state: running version, kept previous version, a pending first start, the last return
 - local-ai.json    local detection runtime (onnxruntime version, execution provider), installed detector model
                    cards, and the local agent server kind and version (no address of another machine, no prompts)
+- photo.json       maps from photos: this computer's processing check, and the latest runs of the open projects
+                   (steps, times, peak memory, tool versions; no photo names, folders or coordinates)
 - errors.txt       the latest warnings and errors from every log
 - logs/            main, window (renderer) and export (utility) process logs
 - crash/           crash reports written on this computer, and a list of crash dumps (the dumps stay on this computer)
 - problem.md       what you wrote in Report a problem, when you used it
 
 What is never inside
-API keys, tokens or passwords, project files, photos, models, issue text or report content.
+API keys, tokens or passwords, project files, photos, photo file names or folders, coordinates, models, issue text
+or report content.
 Every text file was scrubbed for key, token and password patterns before it was saved.
 `;
 
@@ -258,6 +263,7 @@ export async function collectBundle(
   const updates = src.updates;
   if (updates) add('updates.json', json(await attempt(() => updateSummary(updates))));
   if (src.localAi) add('local-ai.json', json(await attempt(src.localAi)));
+  if (src.photo) add('photo.json', json(await attempt(src.photo)));
 
   const logNames = await readdir(src.logsDir).then(
     (all) => all.filter((n) => n.endsWith('.log')).sort(byLogAge),

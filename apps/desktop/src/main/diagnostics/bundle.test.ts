@@ -211,6 +211,29 @@ describe('diagnostics bundle', () => {
     expect(again.find((f) => f.name === 'local-ai.json')?.text).toContain('models folder');
   });
 
+  it('carries photo.json when the photo source is wired, and lists it in the README', async () => {
+    const src = await sources();
+    const names = async () => (await collectBundle(src)).map((f) => f.name);
+    expect(await names()).not.toContain('photo.json');
+    src.photo = () => ({ probe: null, runs: [] });
+    const files = await collectBundle(src);
+    const read = (n: string) => files.find((f) => f.name === n)?.text ?? '';
+    expect(JSON.parse(read('photo.json'))).toEqual({ probe: null, runs: [] });
+    expect(read('README.txt')).toContain('photo.json');
+    expect(read('README.txt')).toContain('photo file names or folders, coordinates');
+    // a failing photo source says why and every other member is still there
+    src.photo = () => {
+      throw new Error('boom');
+    };
+    const again = await collectBundle(src);
+    expect(JSON.parse(again.find((f) => f.name === 'photo.json')?.text ?? '')).toEqual({
+      error: 'boom',
+    });
+    expect(again.map((f) => f.name).filter((n) => n !== 'photo.json')).toEqual(
+      files.map((f) => f.name).filter((n) => n !== 'photo.json'),
+    );
+  });
+
   it('still saves when a source fails', async () => {
     const src = await sources();
     src.packs = () => Promise.reject(new Error(`pack folder unreadable ${KEY}`));
