@@ -17,9 +17,11 @@
  *   flown over sites A, B and C (e2e/perf/globe.path.json); the frame p95 stays under
  *   QUADRION_PERF_GLOBE_P95_MS; no network.
  *
- * Ceilings: both start at 400 ms (the Low synthetic budget in perf.spec.ts is 250 ms). Once three
- * CI runs of the shard holding this spec exist, set both to twice the median CI p95 (never below
- * the worst measured) and note the runs here. Three local runs on 12 Oct 2026 (Windows
+ * Ceilings: both started at 400 ms (the Low synthetic budget in perf.spec.ts is 250 ms). Once three
+ * CI runs of the shard holding this spec exist, each is set to twice the median CI p95 (never below
+ * the worst measured) and the runs are noted here. Globe: 1000 ms, from CI p95 312.5 ms (run
+ * 38226929011), 484.5 ms (run 38231054577) and 484.4 ms (run 38243493910). Tiles: still 400 ms,
+ * waiting for its three CI runs. Three local runs on 12 Oct 2026 (Windows
  * workstation, SwiftShader, 1100 x 720, scale 1): tiles p95 50.0, 33.4 and 33.4 ms (cache peak
  * 3.99 MB of 3.84 MB, one tile over); Globe p95 100.0, 116.6 and 100.1 ms; points peak 2,297.
  *
@@ -48,7 +50,7 @@ import { createGlobeLibrary, GLOBE_SITES } from './m10Fixtures';
 import { QUADTREE_TO_LOCAL, writeQuadtreeTileset } from './quadtreeTileset';
 
 const TILES_P95_MS = Number(process.env.QUADRION_PERF_M10_P95_MS ?? 400);
-const GLOBE_P95_MS = Number(process.env.QUADRION_PERF_GLOBE_P95_MS ?? 400);
+const GLOBE_P95_MS = Number(process.env.QUADRION_PERF_GLOBE_P95_MS ?? 1000);
 /** The Medium tile cache scaled to 1 %: 3.84 MB, about a fifth of the quadtree. */
 const BUDGET_SCALE = 0.01;
 const MEDIUM_ERROR_TARGET = 12;
