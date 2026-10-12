@@ -76,7 +76,8 @@ Out (later parts or other branches):
   durationS: number,             // from walk.json, so the list needs no extra read
   path?: {                       // set once walk.process has written its files
     raw: AssetRef,               // walks/<id>/raw-path.json (aio.walkpath/1)
-    orientation?: AssetRef,      // walks/<id>/orientation.json (aio.walkorient/1)
+    orientation?: AssetRef,      // walks/<id>/orientation.json (aio.walkorient/1 header)
+    orientationData?: AssetRef,  // walks/<id>/orientation.bin (the header's data file)
     points?: AssetRef,           // walks/<id>/sparse.ply (W4 reads it)
   },
   place?: WalkCalibration,       // absent: never placed
@@ -145,16 +146,29 @@ type WalkRawPath = {
 
 ### `orientation.json` (`aio.walkorient/1`), written by `walk.process`
 
+The pipeline's orientation runs at up to 1 kHz, too much for JSON. So it is a small JSON header
+plus a binary data file (settled with the pipeline branch, 12 Oct):
+
 ```ts
 type WalkOrientation = {
   schema: 'aio.walkorient/1';
-  rateHz: number; // 30 to 200
-  /** Rows of [t, qx, qy, qz, qw]: integrated gyro, raw frame, aligned to the stills' q. */
-  samples: [number, number, number, number, number][];
+  rateHz: number; // nominal sample rate, 1 to 2000
+  count: number; // records in the data file
+  convention: 'xyzw-camera-threejs'; // quaternion order and axes: three.js camera (+X right, +Y up, looks down -Z)
+  frame: 'raw'; // the same frame as raw-path.json's stills (q there and here agree at the stills)
+  startOffsetS: number; // playback time of t = 0 in the data file, seconds
+  data: string; // file name of the data file in the same folder, e.g. "orientation.bin"
+  layout: 'f32le-t-xyzw'; // see below
 };
 ```
 
-Absent orientation file: the pose takes the stills' orientation, slerped.
+`orientation.bin` (`layout: 'f32le-t-xyzw'`): `count` records of 20 bytes, each five
+little-endian float32 values `[t, qx, qy, qz, qw]`, no header. `t` is seconds after
+`startOffsetS` (playback time = `startOffsetS + t`), strictly increasing; quaternions are unit
+length (readers normalise and drop a record that is not finite). A file whose length is not
+`count * 20` is refused as a whole.
+
+Absent orientation file (or a refused one): the pose takes the stills' orientation, slerped.
 
 ### The pose file
 
@@ -163,7 +177,8 @@ orientation, the calibration and the current placement of every drawing a pin is
 
 - `lens: { model: 'pinhole', hfovDeg: 90, aspect: 2 }` (a placeholder every 1.x reader accepts;
   the walk layer, not the lens, says the video is equirectangular).
-- Samples at the orientation rate (or 10 per second without one), positions through the fit,
+- Samples at 30 per second with an orientation file (decimated from it) or 10 per second
+  without one, positions through the fit,
   `q = Ry(fitYaw + yawOffset) * qRaw` in the model frame, `y = ground + heightM`.
 - `startUtcMs` from `capturedAt` read as UTC (the camera's local time has no zone; W3 puts the walk
   on the project clock and may correct this).
@@ -178,7 +193,9 @@ walks/<id>/walk.json            aio.walk/1 (W1, unchanged)
 walks/<id>/playback.mp4         W1
 walks/<id>/poster.jpg           W1
 walks/<id>/raw-path.json        aio.walkpath/1, walk.process
-walks/<id>/orientation.json     aio.walkorient/1, walk.process
+walks/<id>/orientation.json     aio.walkorient/1 header, walk.process
+walks/<id>/orientation.bin      its float32 records, walk.process
+walks/<id>/process.json         the pipeline's own run record (its schema, not this branch's)
 walks/<id>/sparse.ply           walk.process (W4 reads it)
 walks/<id>/stills/<n>.jpg       walk.process
 walks/<id>/pose.json            aio.flight/1, this branch, written on save
@@ -308,7 +325,7 @@ not show it; 0.9 and older refuse to open it. Update every machine that opens su
 ## The smaller points
 
 - **Sync through hubs.** `layerFiles` (`@aio/sync`) gains `walk`: `record`, `src`, `poster`,
-  `path.raw`, `path.orientation`, `path.points`, `flight.src`. Fetch policy as `video` (on
+  `path.raw`, `path.orientation`, `path.orientationData`, `path.points`, `flight.src`. Fetch policy as `video` (on
   demand). Stills are not synced yet (nothing reads their pictures before W3; their positions are
   in `raw-path.json`).
 - **Leaving a walk out of a package.** A walk layer owns its whole folder `walks/<id>/` in the
@@ -327,7 +344,7 @@ not show it; 0.9 and older refuse to open it. Update every machine that opens su
 - **New layer kind `walk`** in `Layer`, with `WalkCalibration`, `WalkPin`. Older builds: 0.10 and
   later keep it opaque, 0.9 and older refuse the project (the upgrade note).
 - **New file schemas** `aio.walkpath/1` (`raw-path.json`) and `aio.walkorient/1`
-  (`orientation.json`), registered in `versions.ts`. `pose.json` uses `aio.flight/1` unchanged.
+  (`orientation.json` header plus `orientation.bin` records), registered in `versions.ts`. `pose.json` uses `aio.flight/1` unchanged.
 - **`LayerPatch`** gains `{ walk: WalkCalibration | null }` (null clears the placement);
   `{ capture }` and `builder:ensureCapture` are reused for the date step. A `{ corners }` patch on a
   drawing now also rewrites the pose file of every walk with a pin on that drawing.

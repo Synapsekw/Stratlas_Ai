@@ -37,7 +37,7 @@ from it). Parent design: `docs/plans/2026-10-07-walks-360-design.md`.
   `Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>`.
 - Values fixed by the spec: layer id `walk-<walk id>`; `heightM` default 1.7; two pins at least
   5 m apart; blend window 2 s either side of a pin; quality thresholds 0.5 m (`check`) and 2 m
-  (`poor`); at most 64 pins; pose rate = orientation rate, else 10 Hz; pose lens
+  (`poor`); at most 64 pins; pose rate 30 Hz with an orientation file (decimated), else 10 Hz; pose lens
   `{ model: 'pinhole', hfovDeg: 90, aspect: 2 }`; `.trash/` kept seven days; app version 0.12.0.
 
 ## Review focus
@@ -132,7 +132,7 @@ T7 S, T8 M, T9 L, T10 M, T11 S, T12 L, T13 M. Thirteen tasks.
 ## Contract change row (for `docs/architecture/contract-changes.md`)
 
 ```
-| 2026-10-12 | **Major:** new layer kind `walk` (`Layer`), with `WalkCalibration` and `WalkPin`; side-folder walks (`walks/<id>/walk.json`, `aio.walk/1`) become `walk` layers on open. 0.10 and later keep the layer as an opaque entry; 0.9 and older refuse the project (upgrade note in RELEASE-NOTES and UPGRADE-POLICY). New file schemas `aio.walkpath/1` (`walks/<id>/raw-path.json`) and `aio.walkorient/1` (`walks/<id>/orientation.json`), written by `walk.process`, owned here. `walks/<id>/pose.json` is `aio.flight/1`. `LayerPatch` gains `{ walk: WalkCalibration \| null }`; a `{ corners }` patch on a drawing rewrites the pose of walks pinned to it. New IPC `walks:remove`. App 0.12.0. Compat: `tools/compat/walk-kind.test.mjs`, frozen `schema-0.11`. Approval: pending founder review. |
+| 2026-10-12 | **Major:** new layer kind `walk` (`Layer`), with `WalkCalibration` and `WalkPin`; side-folder walks (`walks/<id>/walk.json`, `aio.walk/1`) become `walk` layers on open. 0.10 and later keep the layer as an opaque entry; 0.9 and older refuse the project (upgrade note in RELEASE-NOTES and UPGRADE-POLICY). New file schemas `aio.walkpath/1` (`walks/<id>/raw-path.json`) and `aio.walkorient/1` (`walks/<id>/orientation.json` header plus `orientation.bin`, five float32 LE per record), written by `walk.process`, owned here. `walks/<id>/pose.json` is `aio.flight/1`. `LayerPatch` gains `{ walk: WalkCalibration \| null }`; a `{ corners }` patch on a drawing rewrites the pose of walks pinned to it. New IPC `walks:remove`. App 0.12.0. Compat: `tools/compat/walk-kind.test.mjs`, frozen `schema-0.11`. Approval: founder, 12 Oct 2026. |
 ```
 
 ---
@@ -150,7 +150,7 @@ T7 S, T8 M, T9 L, T10 M, T11 S, T12 L, T13 M. Thirteen tasks.
 - Modify: `packages/ui/src/tree/model.ts` (`TreeGroupKind` gains `walks`, `groupOf.walk`)
 - Modify: `apps/desktop/src/renderer/workspace/SelectionCard.tsx` (`KIND.walk`)
 - Modify: `apps/desktop/src/renderer/shell/Palette.tsx` (`LAYER_ICON.walk`, `LAYER_KIND.walk`)
-- Create: `tools/fixtures/make-walk-path.mjs`, `packages/schema/src/__fixtures__/walk/raw-path.synthetic.json`, `.../orientation.synthetic.json`, `.../raw-path.broken.json`
+- Create: `tools/fixtures/make-walk-path.mjs`, `packages/schema/src/__fixtures__/walk/raw-path.synthetic.json`, `.../orientation.synthetic.json`, `.../orientation.synthetic.bin`, `.../raw-path.broken.json`
 - Modify: `docs/architecture/contract-changes.md`, `docs/architecture/data-conventions.md` (section 32)
 - Test: `packages/schema/src/walks.test.ts`, `packages/schema/src/versions.test.ts`
 
@@ -189,12 +189,21 @@ export const WalkRawPath = z.object({
   walking: z.object({ startT: z.number(), endT: z.number() }).optional(),
   kept: z.array(z.number().int().nonnegative()).optional(),
 });
+export const WALK_ORIENT_LAYOUT = 'f32le-t-xyzw';
+export const WALK_ORIENT_RECORD_BYTES = 20;
 export const WalkOrientation = z.object({
   schema: z.literal(WALK_ORIENT_SCHEMA),
-  rateHz: z.number().min(1).max(1000),
-  samples: z.array(z.tuple([z.number(), z.number(), z.number(), z.number(), z.number()])),
+  rateHz: z.number().min(1).max(2000),
+  count: z.number().int().nonnegative().max(50_000_000),
+  convention: z.literal('xyzw-camera-threejs'),
+  frame: z.literal('raw'),
+  startOffsetS: z.number(),
+  data: z.string().regex(/^[A-Za-z0-9._-]{1,64}$/),   // a file name in the walk's folder, no path
+  layout: z.literal(WALK_ORIENT_LAYOUT),
 });
-export const WalkPathRefs = z.object({ raw: AssetRef, orientation: AssetRef.optional(), points: AssetRef.optional() }).strict();
+/** Records of orientation.bin as [t, qx, qy, qz, qw] rows (t = playback seconds, startOffsetS added); null when the length is not count * 20. Non-finite records dropped, quaternions normalised. */
+export function readWalkOrientationData(header: WalkOrientation, bytes: Uint8Array): Float64Array[] | null;
+export const WalkPathRefs = z.object({ raw: AssetRef, orientation: AssetRef.optional(), orientationData: AssetRef.optional(), points: AssetRef.optional() }).strict();
 export type WalkPin, WalkCalibration, WalkQuality, WalkStill, WalkRawPath, WalkOrientation, WalkPathRefs
 // layers.ts: member of Layer
 z.object({ kind: z.literal('walk'), ...base, record: AssetRef, src: AssetRef,
@@ -280,7 +289,7 @@ version 1, home `project`, since `0.12`.
       (camera looking along the travel direction), `segment: 0`, `steps` (1.8 steps per metre),
       `walking: { startT: 4, endT: <last t> }`, `kept` every second still. The broken variant drops
       registration for t in [30, 38] and puts the stills after it in `segment: 1` with a different
-      raw rotation (a second SfM model). The orientation file samples the same orientation at 30 Hz.
+      raw rotation (a second SfM model). The orientation header plus `orientation.synthetic.bin` sample the same orientation at 200 Hz (`startOffsetS: 0`), written with the `f32le-t-xyzw` layout.
       Header comment in each JSON is not possible, so the script's header says what the ground truth
       is: export it as `GROUND_TRUTH = { rotDeg: 37, scale: 0.23, shift: [3, -1, 7] }` from
       `tools/fixtures/walk-truth.mjs` for the tests of tasks 2 and 5.
@@ -290,7 +299,7 @@ version 1, home `project`, since `0.12`.
       founder decided (keep the marker on the pipeline files).
 - [ ] **Step 6: Run** `pnpm --filter @aio/schema test`, `pnpm typecheck` (the three maps compile),
       `pnpm format:check`. Expect PASS.
-- [ ] **Step 7: Commit** `feat(schema): walk layer kind, walk calibration and the walk path files`.
+- [ ] **Step 7: Commit** `feat(schema): walk path and orientation files, the walk layer kind` (the pipeline branch cherry-picks this commit by its subject prefix `feat(schema): walk path and orientation files`).
 
 ### Task 2: The fit (`@aio/geo`, `walk/`)
 
@@ -423,7 +432,7 @@ it('never returns NaN', () => {
 
 `quality.test.ts`: two pins good; residual 0.6 check; 2.5 poor; one pin unplaced; gap check;
 pins-only check; inactive pin check. Badge text for a gap uses `formatWalkTime`-style `m:ss`.
-`pose.test.ts`: samples at 30 Hz with the orientation fixture, 10 Hz without; `t` in ms from 0;
+`pose.test.ts`: samples at 30 Hz with the orientation fixture (200 Hz decimated), 10 Hz without; `t` in ms from 0;
 `pos[1] = groundY + heightM`; the heading of a sample equals fit heading plus `yawOffsetDeg`
 (rotate 90 and compare the forward vector); positions match `fit.at`.
 
@@ -549,7 +558,7 @@ it('still carries a side-folder walk with no layer', () => {
 it('a walk layer needs its record and playback copy', () => {});
 // sync blobs
 it("layerFiles lists a walk layer's files", () => {
-  // record, src, poster, path.raw, path.orientation, path.points, flight.src; no stills
+  // record, src, poster, path.raw, path.orientation, path.orientationData, path.points, flight.src; no stills
 });
 it('fetches walk files on demand', () => expect(fetchPolicy('walk')).toBe(fetchPolicy('video')));
 // packageModel.test.ts
