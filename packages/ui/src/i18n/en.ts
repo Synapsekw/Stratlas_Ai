@@ -2955,6 +2955,8 @@ export const en = {
   'align.direction.say.undone': 'Undone.',
   'align.direction.say.redone': 'Done again.',
   'align.direction.say.nothingToUndo': 'Nothing to undo.',
+  'align.direction.say.notLoaded':
+    'The saved camera directions have not been read yet. Try again in a moment, or reopen the project.',
   'align.direction.done': 'Done',
   'align.direction.exact': 'Exact values',
   'align.direction.undo': 'Undo',

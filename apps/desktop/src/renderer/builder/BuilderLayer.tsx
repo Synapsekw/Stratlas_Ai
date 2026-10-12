@@ -39,6 +39,7 @@ export function BuilderLayer() {
   const align = useBuilder((s) => s.align);
   const screen = useShell((s) => s.screen);
   const projectId = useWorkspace((s) => s.project?.id ?? null);
+  const openSeq = useWorkspace((s) => s.openSeq);
   const pane = usePane();
   const aligning = useAlign((s) => s.session !== null);
   const aligningPhoto = usePhotoAlign((s) => s.session !== null);
@@ -50,9 +51,12 @@ export function BuilderLayer() {
     alignCamera.getState().dismissNotice();
     photoAlign.getState().cancel();
     photoAlign.getState().dismissNotice();
-    // the project's hand-set camera directions (orientation.json)
-    void loadOrientation();
   }, [projectId]);
+  // the project's hand-set camera directions (orientation.json), read again on every open: the
+  // same project opened again starts with none loaded, and the file may have changed on disk
+  useEffect(() => {
+    void loadOrientation();
+  }, [openSeq]);
   // aligning the camera belongs to the scene
   useEffect(() => {
     if (screen !== 'scene') {

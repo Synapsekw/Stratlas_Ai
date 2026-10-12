@@ -9,7 +9,7 @@ vi.mock('../shell', () => ({
   bridge: { call: (...a: unknown[]) => call(...a) as unknown },
 }));
 
-import { saveOrientationEdit, withClipKeys } from './orientationFile';
+import { loadOrientation, saveOrientationEdit, withClipKeys } from './orientationFile';
 
 const manifest = {
   schema: 'aio.project/1',
@@ -82,5 +82,49 @@ describe('saveOrientationEdit', () => {
     expect(err).toBeNull();
     expect(call.mock.calls.map(([n]) => n as string)).toEqual(['orientation:write']);
     expect(Object.keys(written()?.clips ?? {}).sort()).toEqual(['a', 'b']);
+  });
+
+  it('drops a read that was under way when a save wrote the file', async () => {
+    let giveFirst: () => void = () => undefined;
+    let reads = 0;
+    call.mockImplementation((name: string) => {
+      if (name !== 'orientation:read') return Promise.resolve({ ok: true, value: { ok: true } });
+      reads += 1;
+      const reply = { ok: true, value: { ok: true, file: onDisk, readOnly: false } };
+      if (reads > 1) return Promise.resolve(reply);
+      return new Promise((resolve) => {
+        giveFirst = () => {
+          resolve(reply);
+        };
+      });
+    });
+    const load = loadOrientation();
+    const err = await saveOrientationEdit((f) => withClipKeys(f, 'b', [key(0, 50)]));
+    expect(err).toBeNull();
+    giveFirst();
+    await load;
+    expect(Object.keys(workspace.getState().orientation?.clips ?? {}).sort()).toEqual(['a', 'b']);
+  });
+
+  it('builds each of two overlapping saves on the one before', async () => {
+    call.mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          setTimeout(() => {
+            resolve({ ok: true, value: { ok: true } });
+          }, 5);
+        }),
+    );
+    workspace.getState().setOrientation(onDisk);
+    const [e1, e2] = await Promise.all([
+      saveOrientationEdit((f) => withClipKeys(f, 'b', [key(0, 50)])),
+      saveOrientationEdit((f) => withClipKeys(f, 'c', [key(0, 60)])),
+    ]);
+    expect([e1, e2]).toEqual([null, null]);
+    expect(Object.keys(workspace.getState().orientation?.clips ?? {}).sort()).toEqual([
+      'a',
+      'b',
+      'c',
+    ]);
   });
 });

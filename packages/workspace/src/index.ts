@@ -83,6 +83,11 @@ export interface WorkspaceState {
    * keyframes, photo corrections), or null when it has none (or it is still loading).
    */
   orientation: OrientationFile | null;
+  /**
+   * Whether `orientation` has been read for this open (false from every `openProject` until the
+   * file is read or saved). Nothing is edited from an orientation that is not loaded.
+   */
+  orientationLoaded: boolean;
 }
 
 /** Unsaved direction keyframes of a clip (an empty list shows the logged direction). */
@@ -92,7 +97,7 @@ export interface DirectionDraft {
 }
 
 export interface WorkspaceActions {
-  /** Open a project afresh; opening the open project again keeps its loaded orientation. */
+  /** Open a project afresh (the open one too); its orientation is not loaded until set. */
   openProject(project: OpenProject, issues?: Issue[]): void;
   closeProject(): void;
   /**
@@ -121,8 +126,11 @@ export interface WorkspaceActions {
   consumeCamera(seq: number): void;
   /** Show a clip's camera from unsaved direction keyframes, or `null` for the saved ones. */
   setDirectionDraft(draft: DirectionDraft | null): void;
-  /** The project's orientation file after it loaded or was saved. */
-  setOrientation(file: OrientationFile | null): void;
+  /**
+   * The project's orientation file after it loaded or was saved (`loaded`, default true); `null,
+   * false` while it is being read again.
+   */
+  setOrientation(file: OrientationFile | null, loaded?: boolean): void;
 }
 
 export type Workspace = WorkspaceState & WorkspaceActions;
@@ -143,6 +151,7 @@ const initial: WorkspaceState = {
   lastCamera: null,
   directionDraft: null,
   orientation: null,
+  orientationLoaded: false,
 };
 
 export function createWorkspace(): StoreApi<Workspace> {
@@ -151,12 +160,9 @@ export function createWorkspace(): StoreApi<Workspace> {
     ...initial,
     openProject: (project, issues = []) => {
       const firstClip = project.manifest.layers.find((l) => l.kind === 'video');
-      const before = get();
       set({
         ...initial,
-        openSeq: before.openSeq + 1,
-        // the same project again keeps its orientation.json: nothing reloads it for the same id
-        orientation: before.project?.id === project.id ? before.orientation : null,
+        openSeq: get().openSeq + 1,
         project,
         issues,
         activeClip: firstClip?.id ?? null,
@@ -256,8 +262,8 @@ export function createWorkspace(): StoreApi<Workspace> {
     setDirectionDraft: (directionDraft) => {
       set({ directionDraft });
     },
-    setOrientation: (orientation) => {
-      set({ orientation });
+    setOrientation: (orientation, orientationLoaded = true) => {
+      set({ orientation, orientationLoaded });
     },
   }));
 }

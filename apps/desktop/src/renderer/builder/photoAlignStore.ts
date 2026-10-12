@@ -123,6 +123,11 @@ export function createPhotoAlignStore(deps: PhotoAlignDeps): StoreApi<PhotoAlign
         if (!p?.pos || !p.q) return;
         const s = get().session;
         if (s?.layerId === layerId && s.photoId === photoId) return;
+        // a session seeded from an unread file would save over the photo's saved correction
+        if (!ws.getState().orientationLoaded) {
+          set({ notice: { text: t('align.direction.say.notLoaded'), action: null, flight: null } });
+          return;
+        }
         const w = ws.getState();
         w.select({ kind: 'photo', id: photoId, layer: layerId });
         deps.showBoth();

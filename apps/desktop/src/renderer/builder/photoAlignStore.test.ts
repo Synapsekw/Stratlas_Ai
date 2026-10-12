@@ -14,7 +14,7 @@ const photo = (id: string, min: number): PhotoRef => ({
   q: cameraQuatFromGimbal(90, -45, 0),
 });
 
-function setup() {
+function setup(loaded = true) {
   const ws = createWorkspace();
   const items = [photo('p1', 0), photo('p2', 3), photo('p3', 6), photo('p4', 90)];
   ws.getState().openProject({
@@ -24,6 +24,7 @@ function setup() {
       layers: [{ kind: 'photos', id: 'photos', name: 'Photos', visible: true, items }],
     } as unknown as ProjectManifest,
   });
+  if (loaded) ws.getState().setOrientation(null);
   const saves: Record<string, PhotoCorrection | null>[] = [];
   const save = vi.fn((l: string, fixes: Record<string, PhotoCorrection | null>) => {
     saves.push(fixes);
@@ -41,6 +42,16 @@ function setup() {
 }
 
 describe('align photo to map', () => {
+  it('starts no session from an orientation that is not loaded yet', () => {
+    const { store, ws } = setup(false);
+    store.getState().start('photos', 'p1');
+    expect(store.getState().session).toBeNull();
+    expect(store.getState().notice?.text).toBeTruthy();
+    ws.getState().setOrientation(null);
+    store.getState().start('photos', 'p1');
+    expect(store.getState().session?.photoId).toBe('p1');
+  });
+
   it('turns the photo as a correction of its gimbal pose, saves it, offers the flight', async () => {
     const { store, saves, ws, item } = setup();
     const a = () => store.getState();

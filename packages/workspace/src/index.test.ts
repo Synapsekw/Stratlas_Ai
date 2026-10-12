@@ -44,21 +44,27 @@ describe('workspace store', () => {
     expect(s.isLayerVisible('f110')).toBe(true);
   });
 
-  it('keeps the orientation when the open project is opened again, not for another project', () => {
+  it('marks the orientation not loaded on every open, the same project too', () => {
     const ws = createWorkspace();
     const orientation = {
       schema: 'aio.orientation/1' as const,
       clips: { f110: { keys: [{ t: 0, yaw: 10, pitch: -20, roll: 0, fill: 'hold' }] } },
       photos: {},
     };
+    expect(ws.getState().orientationLoaded).toBe(false);
     ws.getState().openProject({ id: 'hcl', root: 'E:/x', manifest });
+    expect(ws.getState().orientationLoaded).toBe(false);
     ws.getState().setOrientation(orientation);
-    // the same project again (the sidebar, the palette, a finished build): its projectId does
-    // not change, so nothing reloads orientation.json; the loaded file must stay
+    expect(ws.getState().orientationLoaded).toBe(true);
+    // the same project again (the sidebar, the palette, a finished build) reloads the file:
+    // until it is read, nothing may be edited from the empty orientation
     ws.getState().openProject({ id: 'hcl', root: 'E:/x', manifest });
-    expect(ws.getState().orientation).toBe(orientation);
-    ws.getState().openProject({ id: 'other', root: 'E:/y', manifest });
     expect(ws.getState().orientation).toBeNull();
+    expect(ws.getState().orientationLoaded).toBe(false);
+    ws.getState().setOrientation(null);
+    expect(ws.getState().orientationLoaded).toBe(true);
+    ws.getState().setOrientation(null, false);
+    expect(ws.getState().orientationLoaded).toBe(false);
   });
 
   it('counts opens in openSeq, not manifest replacements, issue edits or closes', () => {

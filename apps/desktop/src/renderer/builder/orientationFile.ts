@@ -10,14 +10,17 @@ export { withClipKeys, withPhotoFixes } from './orientationEdit';
  * and only put in the workspace once main has written it.
  */
 
+/** Bumped by every load and every good write: an older read in flight is dropped. */
 let loading = 0;
+/** Saves one after the other, each from the file the one before wrote. */
+let saving: Promise<unknown> = Promise.resolve();
 
 /** Read the open project's orientation file into the workspace (none: null). */
 export async function loadOrientation(): Promise<void> {
   const ws = workspace.getState();
   const id = ws.project?.id;
   const ticket = ++loading;
-  ws.setOrientation(null);
+  ws.setOrientation(null, false);
   if (!id) return;
   const r = await bridge.call('orientation:read', { projectId: id });
   if (ticket !== loading || workspace.getState().project?.id !== id) return;
@@ -33,18 +36,27 @@ export async function loadOrientation(): Promise<void> {
 }
 
 /**
- * Save an edit of the open project's file; an error text or null. When the workspace has no file
- * loaded (none, or still loading) the edit starts from the file on disk, and nothing is written
- * when that cannot be read, so a save never drops other clips' keyframes or photos' corrections.
+ * Save an edit of the open project's file; an error text or null. Saves run one at a time, each
+ * editing the file the one before wrote. When the workspace has not loaded the file yet the edit
+ * starts from the file on disk, and nothing is written when that cannot be read, so a save never
+ * drops other clips' keyframes or photos' corrections.
  */
-export async function saveOrientationEdit(
+export function saveOrientationEdit(
+  edit: (file: OrientationFile | null) => OrientationFile,
+): Promise<string | null> {
+  const run = saving.then(() => editNow(edit));
+  saving = run.catch(() => undefined);
+  return run;
+}
+
+async function editNow(
   edit: (file: OrientationFile | null) => OrientationFile,
 ): Promise<string | null> {
   const ws = workspace.getState();
   const id = ws.project?.id;
   if (!id) return 'No project is open.';
   let base = ws.orientation;
-  if (!base) {
+  if (!ws.orientationLoaded) {
     const r = await bridge.call('orientation:read', { projectId: id });
     if (!r.ok) return r.error;
     if (!r.value.ok) return r.value.error;
@@ -62,6 +74,10 @@ export async function saveOrientation(next: OrientationFile): Promise<string | n
   const r = await bridge.call('orientation:write', { projectId: id, file });
   if (!r.ok) return r.error;
   if (!r.value.ok) return r.value.error ?? 'The camera directions were not saved.';
-  if (workspace.getState().project?.id === id) workspace.getState().setOrientation(file);
+  if (workspace.getState().project?.id === id) {
+    // a read under way started before this write: it would put the older file back
+    loading += 1;
+    workspace.getState().setOrientation(file);
+  }
   return null;
 }

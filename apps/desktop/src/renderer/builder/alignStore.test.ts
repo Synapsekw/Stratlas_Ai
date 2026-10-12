@@ -44,7 +44,7 @@ const key = (t: number, yaw: number, extra: Partial<DirectionKey> = {}): Directi
   ...extra,
 });
 
-function setup(keys?: DirectionKey[]) {
+function setup(keys?: DirectionKey[], loaded = true) {
   const ws = createWorkspace();
   ws.getState().openProject({
     id: 'p',
@@ -53,6 +53,7 @@ function setup(keys?: DirectionKey[]) {
   });
   // the saved keyframes live in orientation.json, held by the workspace
   if (keys) ws.getState().setOrientation(withClipKeys(null, 'clip-1', keys));
+  else if (loaded) ws.getState().setOrientation(null);
   const saved: (DirectionKey[] | null)[] = [];
   const save = vi.fn((id: string, k: DirectionKey[] | null) => {
     saved.push(k);
@@ -73,6 +74,22 @@ function setup(keys?: DirectionKey[]) {
   };
   return { ws, store, saved, save, showBoth, at };
 }
+
+describe('align camera before orientation.json is read', () => {
+  it('starts no session from an orientation that is not loaded yet', async () => {
+    const { ws, store, save } = setup(undefined, false);
+    store.getState().start('clip-1');
+    expect(store.getState().session).toBeNull();
+    expect(store.getState().notice?.text).toBeTruthy();
+    expect(store.getState().notice?.action).toBeNull();
+    // the file arrives with the clip's keyframes: the session starts from them
+    ws.getState().setOrientation(withClipKeys(null, 'clip-1', [key(0, 10), key(5000, 30)]));
+    store.getState().start('clip-1');
+    expect(store.getState().session?.original).toHaveLength(2);
+    await store.getState().done();
+    expect(save).not.toHaveBeenCalled();
+  });
+});
 
 describe('direction keyframe editing rules', () => {
   const keys = [key(0, 10), key(1000, 20), key(5000, 30)];

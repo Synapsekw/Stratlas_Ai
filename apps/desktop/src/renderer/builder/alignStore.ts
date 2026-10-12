@@ -174,6 +174,11 @@ export function createAlignStore(deps: AlignDeps): StoreApi<AlignStore> {
         if (s) end();
         const clip = clipOf(layerId);
         if (!clip) return;
+        // a session seeded from an unread file would save over the clip's saved keyframes
+        if (!ws.getState().orientationLoaded) {
+          set({ notice: { text: t('align.direction.say.notLoaded'), action: null } });
+          return;
+        }
         deps.loadFlight(layerId);
         const w = ws.getState();
         w.pause();
