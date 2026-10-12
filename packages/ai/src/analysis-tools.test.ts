@@ -249,6 +249,10 @@ describe('the retired delivered viewer', () => {
     expect(toolInputs.list_layers.safeParse({ kind: 'legacy' }).success).toBe(false);
   });
 
+  it('accepts walk as a layer kind to filter by', () => {
+    expect(toolInputs.list_layers.safeParse({ kind: 'walk' }).success).toBe(true);
+  });
+
   it('is not listed among the layers of an older project', async () => {
     const ws = fixtureWorkspace();
     const base = fixtureManifest();

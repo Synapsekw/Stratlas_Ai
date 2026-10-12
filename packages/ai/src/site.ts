@@ -76,6 +76,7 @@ export function spatialContext(
     const loc = siteLocation(m);
     const origin = describePoint(ctx, [0, 0, 0]);
     const count = (k: Place['kind']) => index.filter((p) => p.kind === k).length;
+    const walks = m.layers.filter((l) => l.kind === 'walk').length;
     const pose = currentPose(ctx);
     const view = ctx.app?.stageView?.();
     const clock = siteClock(ctx, state.nowMs);
@@ -116,6 +117,7 @@ export function spatialContext(
         photos: count('photo'),
         panoramas: count('pano'),
         clips: count('clip'),
+        ...(walks ? { walks } : {}),
         issuesWithLocation: index.filter((p) => p.kind === 'issue' && p.p).length,
         ...(count('pile') ? { piles: count('pile') } : {}),
       },

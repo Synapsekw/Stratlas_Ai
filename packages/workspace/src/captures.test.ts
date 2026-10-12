@@ -85,6 +85,20 @@ const alzour2: ProjectManifest = {
 };
 
 describe('which layers show which capture', () => {
+  it('dates a walk named after a capture', () => {
+    const walk: Layer = {
+      kind: 'walk',
+      id: 'walk-a1',
+      name: 'Walk 31 Dec 2020',
+      visible: true,
+      record: { path: 'walks/a1/walk.json' },
+      src: { path: 'walks/a1/walk.mp4' },
+      durationS: 60,
+    };
+    const ix = captureIndex({ ...masafi, layers: [...masafi.layers, walk] });
+    expect(ix.of['walk-a1']).toBe('survey-2020-12-31');
+  });
+
   it('spells a date the ways layer names write it', () => {
     const s = dateSpellings('2020-12-31');
     for (const x of ['2020-12-31', '20201231', '31 dec 2020', '31 december 2020', 'dec 31, 2020'])

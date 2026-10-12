@@ -15,6 +15,7 @@ const DATED_KINDS: ReadonlySet<Layer['kind']> = new Set([
   'photos',
   'panoramas',
   'video',
+  'walk',
   'vector',
 ]);
 

@@ -618,6 +618,25 @@ describe('availability and context', () => {
     expect(spatialContext(c, 'report')).toEqual({});
   });
 
+  it('counts the 360 walks in the site summary', () => {
+    const ws = siteWorkspace();
+    const m = siteManifest();
+    m.layers.push({
+      kind: 'walk',
+      id: 'walk-w1',
+      name: 'Walk',
+      visible: true,
+      record: { path: 'walks/w1/walk.json' },
+      src: { path: 'walks/w1/walk.mp4' },
+      durationS: 30,
+    });
+    ws.getState().replaceManifest(m);
+    const s = spatialContext({ ...ctx(), workspace: ws }, 'scene3d').site as {
+      named: Record<string, unknown>;
+    };
+    expect(s.named.walks).toBe(1);
+  });
+
   it('stays small on a plant with hundreds of tags', () => {
     const ws = siteWorkspace();
     const m = siteManifest();
