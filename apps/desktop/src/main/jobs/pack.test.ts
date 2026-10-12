@@ -1,8 +1,8 @@
 import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { compareVersions, findPack, findPdal } from './pack';
+import { compareVersions, findFfmpeg, findPack, findPdal } from './pack';
 
 let root: string;
 
@@ -116,5 +116,55 @@ describe('findPdal', () => {
     );
     expect(await findPdal(null, { AIO_PDAL: exe }, 'win32')).toBe(exe);
     expect(await findPdal(null, { AIO_PDAL: join(root, 'missing.exe') }, 'win32')).toBeNull();
+  });
+});
+
+describe('findFfmpeg', () => {
+  const touch = async (file: string) => {
+    await mkdir(dirname(file), { recursive: true });
+    await writeFile(file, '');
+  };
+
+  it('looks at QUADRION_FFMPEG, the pack, a development venv, then leaves it to the PATH', async () => {
+    const pack = await writePack('0.6.0');
+    const python = join(pack, 'python', 'python.exe');
+    expect(await findFfmpeg({ python }, {}, 'win32')).toBeNull();
+
+    // a pack built with ffmpeg: bin/ first, then Library/bin wins over it
+    const flat = join(pack, 'tools', 'ffmpeg', 'bin', 'ffmpeg.exe');
+    await touch(flat);
+    expect(await findFfmpeg({ python }, {}, 'win32')).toEqual({ ffmpeg: flat });
+    const conda = join(pack, 'tools', 'ffmpeg', 'Library', 'bin', 'ffmpeg.exe');
+    await touch(conda);
+    await touch(join(pack, 'tools', 'ffmpeg', 'Library', 'bin', 'ffprobe.exe'));
+    expect(await findFfmpeg({ python }, {}, 'win32')).toEqual({
+      ffmpeg: conda,
+      ffprobe: join(pack, 'tools', 'ffmpeg', 'Library', 'bin', 'ffprobe.exe'),
+    });
+
+    // QUADRION_FFMPEG wins when the file is there, and is passed over when it is not
+    const own = join(root, 'own', 'ffmpeg.exe');
+    await touch(own);
+    expect(await findFfmpeg({ python }, { QUADRION_FFMPEG: own }, 'win32')).toEqual({
+      ffmpeg: own,
+    });
+    expect(
+      await findFfmpeg({ python }, { QUADRION_FFMPEG: join(root, 'gone.exe') }, 'win32'),
+    ).toMatchObject({ ffmpeg: conda });
+
+    // a development venv: python/.venv/Scripts/python.exe looks in python/tools/ffmpeg
+    const venv = join(root, 'python', '.venv', 'Scripts', 'python.exe');
+    expect(await findFfmpeg({ python: venv }, {}, 'win32')).toBeNull();
+    const dev = join(root, 'python', 'tools', 'ffmpeg', 'Library', 'bin', 'ffmpeg.exe');
+    await touch(dev);
+    expect(await findFfmpeg({ python: venv }, {}, 'win32')).toEqual({ ffmpeg: dev });
+
+    // elsewhere the program has no .exe
+    const posix = join(pack, 'tools', 'ffmpeg', 'bin', 'ffmpeg');
+    await touch(posix);
+    expect(await findFfmpeg({ python }, {}, 'linux')).toEqual({ ffmpeg: posix });
+
+    // no pack and nothing given: null, and the PATH is used as before
+    expect(await findFfmpeg(null, { PATH: join(root, 'own') }, 'win32')).toBeNull();
   });
 });

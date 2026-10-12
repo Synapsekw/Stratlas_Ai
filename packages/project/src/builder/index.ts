@@ -56,6 +56,7 @@ export {
   makePoster,
   makeProxy,
   proxyArgs,
+  type FfmpegBin,
   type ProxyEncoder,
   type ProxyOptions,
 } from '../import/proxy';
@@ -75,6 +76,7 @@ export {
   type WalkImportResult,
   type WalkTools,
 } from './walks';
+export { packageProcessSummaries, parseProcessSummary, readProcessSummaries } from './walkProcess';
 export {
   NO_WALK_FILES,
   WALK_LAYER_MARK,

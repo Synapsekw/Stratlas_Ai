@@ -61,7 +61,13 @@ import {
   photoGps,
 } from './builder';
 import { builderPipelineJobs } from './builderJobs';
-import { listProjectWalks, packageWalks } from './walks';
+import {
+  listProjectWalks,
+  packageWalkProcessing,
+  packageWalks,
+  projectWalkProcessing,
+  walksListAnswer,
+} from './walks';
 import { registerChangeIpc } from './change';
 import { registerInferenceIpc } from './inference';
 import {
@@ -134,6 +140,7 @@ import { CSP_PROBE, GLOBE_PROBE, RENDERER_PROBE, smokeProbe, writeSmokeReport } 
 import { nativeImageOps } from './images';
 import { validated, type Handler } from './ipc';
 import { findPack, findPdal, JobRunner, JobStore, openTarget, safeJobEvent } from './jobs';
+import { findFfmpeg } from './jobs/pack';
 import {
   AcceleratorProbe,
   findAddon,
@@ -1249,6 +1256,18 @@ function registerIpc(): void {
       builderImport(req, {
         registry,
         images: nativeImageOps,
+        // the pipeline pack's ffmpeg, looked up on each import (a pack installed since counts)
+        ffmpeg: async () =>
+          findFfmpeg(
+            (
+              await findPack({
+                dataRoot: settings.current().dataRoot,
+                env: process.env,
+                app: packApp,
+              })
+            ).pack,
+            process.env,
+          ),
         // point clouds convert in the pipeline pack as jobs (Jobs panel)
         jobs: builderPipelineJobs(jobs),
         emit: (e) => {
@@ -1263,9 +1282,14 @@ function registerIpc(): void {
   // 360 video kept beside the manifest (walks/<id>/); a package lists the ones it carries
   handle('walks:list', async ({ projectId }) => {
     const root = registry.root(projectId);
-    if (root !== undefined) return { walks: await listProjectWalks(root) };
+    if (root !== undefined) {
+      const walks = await listProjectWalks(root);
+      return walksListAnswer(walks, await projectWalkProcessing(root, walks));
+    }
     const pkg = registry.package(projectId);
-    return { walks: pkg ? await packageWalks(pkg.archive) : [] };
+    if (!pkg) return { walks: [] };
+    const walks = await packageWalks(pkg.archive);
+    return walksListAnswer(walks, await packageWalkProcessing(pkg.archive, walks));
   });
   // Remove a walk: its layer leaves the manifest and its folder waits seven days in .trash/
   handle('walks:remove', async (req) => {

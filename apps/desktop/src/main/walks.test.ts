@@ -7,9 +7,12 @@ import {
   INSTA360_MARK,
   endsWithInsta360Mark,
   listProjectWalks,
+  packageWalkProcessing,
   packageWalks,
+  projectWalkProcessing,
   walkLayersInMemory,
   stitchProgress,
+  walksListAnswer,
 } from './walks';
 
 let base: string;
@@ -169,5 +172,48 @@ describe('walkLayersInMemory', () => {
     };
     const manifest = { layers: [], captures: [] } as never;
     expect(await walkLayersInMemory(archive, manifest)).toEqual([]);
+  });
+});
+
+describe('walks:list processed', () => {
+  const run = (id: string) => ({
+    schema: 'aio.walk-process/1',
+    walk: id,
+    createdAt: '2026-10-12T10:00:00.000Z',
+    engine: { version: '0.6.0' },
+    input: { layout: 'insv-dual-stream', calibration: 'trailer', imu: true },
+    outputs: { stabilized: `walks/${id}/stabilized.mp4` },
+    stabilize: { levelled: true, keptYaw: true },
+    stills: { sfm: 10, map: 4 },
+    path: { source: 'sfm', registeredFraction: 1, segments: 1 },
+    timings: {},
+    warnings: [],
+  });
+
+  it('adds the processed walks of a project and of a package, and no key when none is', async () => {
+    const a = walk('walk-a', '2026-10-01T10:00:00.000Z');
+    const b = walk('walk-b', '2026-10-02T10:00:00.000Z');
+    await mkdir(join(base, 'walks', 'walk-a'), { recursive: true });
+    await writeFile(join(base, 'walks', 'walk-a', 'process.json'), JSON.stringify(run('walk-a')));
+    const processed = await projectWalkProcessing(base, [a, b]);
+    expect(walksListAnswer([b, a], processed)).toEqual({
+      walks: [b, a],
+      processed: {
+        'walk-a': {
+          createdAt: '2026-10-12T10:00:00.000Z',
+          stabilized: 'walks/walk-a/stabilized.mp4',
+          source: 'sfm',
+          warnings: 0,
+        },
+      },
+    });
+    expect(walksListAnswer([b], await projectWalkProcessing(base, [b]))).toEqual({ walks: [b] });
+
+    const members = new Map([['walks/walk-b/process.json', JSON.stringify(run('walk-b'))]]);
+    const archive = {
+      entries: new Map<string, unknown>([['walks/walk-b/process.json', { size: 100 }]]),
+      read: (name: string) => Promise.resolve(Buffer.from(members.get(name) ?? '')),
+    };
+    expect(Object.keys(await packageWalkProcessing(archive, [a, b]))).toEqual(['walk-b']);
   });
 });

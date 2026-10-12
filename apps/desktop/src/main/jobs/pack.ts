@@ -1,4 +1,5 @@
 import { packRangeRefusal, PipelinePackManifest, type RuntimeInfo } from '@aio/schema';
+import type { FfmpegBin } from '@aio/project/builder';
 import { access, readdir } from 'node:fs/promises';
 import { basename, dirname, join } from 'node:path';
 import { readJson } from '../fsutil';
@@ -169,6 +170,39 @@ export async function findPdal(
     if (!d) continue;
     const cand = join(d, exe);
     if (await exists(cand)) return cand;
+  }
+  return null;
+}
+
+/**
+ * The ffmpeg the walk import and the review copies run (decision 3, 12 Oct: ffmpeg ships in the
+ * pipeline pack): `QUADRION_FFMPEG` (a file that is there), then `tools/ffmpeg` beside the pack's
+ * Python prefix (`Library/bin`, then `bin`), as `findPdal` looks for PDAL, so a development venv
+ * finds `python/tools/ffmpeg`. ffprobe is named when it sits beside ffmpeg. Null leaves it to the
+ * PATH, as before the pack carried ffmpeg.
+ */
+export async function findFfmpeg(
+  pack: Pick<PackInfo, 'python'> | null,
+  env: Record<string, string | undefined>,
+  platform: NodeJS.Platform = process.platform,
+): Promise<FfmpegBin | null> {
+  const exe = platform === 'win32' ? '.exe' : '';
+  const withProbe = async (ffmpeg: string): Promise<FfmpegBin> => {
+    const ffprobe = join(dirname(ffmpeg), `ffprobe${exe}`);
+    return (await exists(ffprobe)) ? { ffmpeg, ffprobe } : { ffmpeg };
+  };
+  const given = env.QUADRION_FFMPEG;
+  if (given && (await exists(given))) return withProbe(given);
+  if (!pack) return null;
+  const dir = dirname(pack.python);
+  const inner = /^(scripts|bin)$/i.test(basename(dir));
+  const prefix = inner ? dirname(dir) : dir;
+  const tools = join(dirname(prefix), 'tools', 'ffmpeg');
+  for (const cand of [
+    join(tools, 'Library', 'bin', `ffmpeg${exe}`),
+    join(tools, 'bin', `ffmpeg${exe}`),
+  ]) {
+    if (await exists(cand)) return withProbe(cand);
   }
   return null;
 }

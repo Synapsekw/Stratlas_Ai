@@ -1,12 +1,12 @@
-import type { ProxyEncoder, WalkTools } from '@aio/project/builder';
-import type { ProjectManifest, WalkFile, WalkLayer } from '@aio/schema';
+import type { FfmpegBin, ProxyEncoder, WalkTools } from '@aio/project/builder';
+import type { ProjectManifest, WalkFile, WalkLayer, WalkProcessSummary } from '@aio/schema';
 import { readMp4Tracks } from '@aio/video/telemetry';
 import { open, stat } from 'node:fs/promises';
 
 /*
  * 360 video in main (the front slice of Walks 360 part W1): the tools the raw import needs to
  * read and stitch a 360 camera's own files, and the list of walks of an open project or package.
- * ffmpeg is the external program the drone review copy already uses (found on the PATH).
+ * ffmpeg is the one the drone review copy uses: the pipeline pack's (`findFfmpeg`), else the PATH.
  */
 
 /** The builder library loads on first use, as in `builder.ts`. */
@@ -33,37 +33,81 @@ export async function endsWithInsta360Mark(file: string): Promise<boolean> {
   }
 }
 
-let encoder: Promise<ProxyEncoder> | undefined;
+/** The encoder each ffmpeg offers, asked once per program (`''` is the one on the PATH). */
+const encoders = new Map<string, Promise<ProxyEncoder>>();
 
-/** Reading and stitching for the raw import (`ImportDeps.walk`); the poster step is added there. */
-export const walkTools: WalkTools = {
-  async tracks(file) {
-    const fh = await open(file, 'r');
-    try {
-      const size = (await stat(file)).size;
-      const r = await readMp4Tracks(async (offset, length) => {
-        const b = new Uint8Array(length);
-        const got = await fh.read(b, 0, length, offset);
-        return b.subarray(0, got.bytesRead);
-      }, size);
-      return r.tracks;
-    } finally {
-      await fh.close();
-    }
-  },
-  trailer: endsWithInsta360Mark,
-  // asked again on every import: a person who installs ffmpeg and restarts is not told it is missing
-  check: async () => (await lib()).checkFfmpeg(),
-  async copy(out, o) {
-    const l = await lib();
-    encoder ??= l.detectProxyEncoder();
-    return l.makeWalkCopy(out, { ...o, encoder: await encoder });
-  },
-};
+/**
+ * Reading and stitching for the raw import (`ImportDeps.walk`) with this ffmpeg (undefined: the
+ * one on the PATH); the poster step is added there.
+ */
+export function walkToolsFor(bin?: FfmpegBin): WalkTools {
+  return {
+    async tracks(file) {
+      const fh = await open(file, 'r');
+      try {
+        const size = (await stat(file)).size;
+        const r = await readMp4Tracks(async (offset, length) => {
+          const b = new Uint8Array(length);
+          const got = await fh.read(b, 0, length, offset);
+          return b.subarray(0, got.bytesRead);
+        }, size);
+        return r.tracks;
+      } finally {
+        await fh.close();
+      }
+    },
+    trailer: endsWithInsta360Mark,
+    // asked again on every import: a person who installs ffmpeg and restarts is not told it is missing
+    check: async () => (await lib()).checkFfmpeg(bin),
+    async copy(out, o) {
+      const l = await lib();
+      const key = bin?.ffmpeg ?? '';
+      let encoder = encoders.get(key);
+      if (!encoder) {
+        encoder = l.detectProxyEncoder(bin);
+        encoders.set(key, encoder);
+      }
+      return l.makeWalkCopy(out, { ...o, encoder: await encoder, ...(bin ? { bin } : {}) });
+    },
+  };
+}
 
 /** The walks of a project folder (`walks:list`). */
 export async function listProjectWalks(root: string): Promise<WalkFile[]> {
   return (await lib()).listWalks(root);
+}
+
+/** The processed walks among `walks` of a project folder (`walks:list`, `processed`). */
+export async function projectWalkProcessing(
+  root: string,
+  walks: readonly WalkFile[],
+): Promise<Record<string, WalkProcessSummary>> {
+  return (await lib()).readProcessSummaries(
+    root,
+    walks.map((w) => w.id),
+  );
+}
+
+/** The processed walks among `walks` a package carries, read in place. */
+export async function packageWalkProcessing(
+  archive: { entries: ReadonlyMap<string, unknown>; read(name: string): Promise<Buffer> },
+  walks: readonly WalkFile[],
+): Promise<Record<string, WalkProcessSummary>> {
+  return (await lib()).packageProcessSummaries(
+    archive,
+    walks.map((w) => w.id),
+  );
+}
+
+/**
+ * The `walks:list` answer: the walks, and `processed` for those the `walk.process` pipeline has
+ * finished (left out when none is).
+ */
+export function walksListAnswer(
+  walks: WalkFile[],
+  processed: Record<string, WalkProcessSummary>,
+): { walks: WalkFile[]; processed?: Record<string, WalkProcessSummary> } {
+  return Object.keys(processed).length > 0 ? { walks, processed } : { walks };
 }
 
 /** The walks a package carries, read in place (`walks:list` for a package). */

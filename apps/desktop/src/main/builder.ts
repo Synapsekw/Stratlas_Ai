@@ -1,7 +1,9 @@
 import { reportBrands } from '@aio/brand';
 import type {
   Expanded,
+  FfmpegBin,
   ImageOps,
+  ImportDeps,
   PipelineJobs,
   ProxyEncoder,
   VideoTools,
@@ -14,7 +16,7 @@ import { basename, join, resolve } from 'node:path';
 import { promisify } from 'node:util';
 import { createImportRuns } from './importRuns';
 import { readManifest, type ProjectRegistry } from './project';
-import { stitchProgress, walkTools } from './walks';
+import { stitchProgress, walkToolsFor } from './walks';
 
 const run = promisify(execFile);
 
@@ -201,10 +203,18 @@ export async function builderAltitudePlan(
   }
 }
 
-/** A JPEG poster frame through ffmpeg when it is installed; rejects otherwise. */
-export async function ffmpegPoster(video: string, atS: number, out: string): Promise<void> {
+/**
+ * A JPEG poster frame through ffmpeg (`bin`, else the one on the PATH) when it is installed;
+ * rejects otherwise.
+ */
+export async function ffmpegPoster(
+  video: string,
+  atS: number,
+  out: string,
+  bin?: FfmpegBin,
+): Promise<void> {
   await run(
-    process.env.FFMPEG ?? 'ffmpeg',
+    bin?.ffmpeg ?? process.env.FFMPEG ?? 'ffmpeg',
     [
       '-hide_banner',
       '-loglevel',
@@ -226,16 +236,39 @@ export async function ffmpegPoster(video: string, atS: number, out: string): Pro
   );
 }
 
-let proxyEncoder: Promise<ProxyEncoder> | undefined;
+/** The encoder each ffmpeg offers, asked once per program (`''` is the one on the PATH). */
+const proxyEncoders = new Map<string, Promise<ProxyEncoder>>();
 
 /**
  * A 1920 px H.264 review copy of a drone recording through ffmpeg (hardware encoding when the
  * machine has it); rejects when ffmpeg is missing, and the import then copies the original.
  */
-export async function ffmpegProxy(src: string, out: string): Promise<void> {
+export async function ffmpegProxy(src: string, out: string, bin?: FfmpegBin): Promise<void> {
   const l = await lib();
-  proxyEncoder ??= l.detectProxyEncoder();
-  await l.makeProxy(out, { inputs: [src], encoder: await proxyEncoder });
+  const key = bin?.ffmpeg ?? '';
+  let encoder = proxyEncoders.get(key);
+  if (!encoder) {
+    encoder = l.detectProxyEncoder(bin);
+    proxyEncoders.set(key, encoder);
+  }
+  await l.makeProxy(out, { inputs: [src], encoder: await encoder, ...(bin ? { bin } : {}) });
+}
+
+/**
+ * The ffmpeg work of an import (posters, drone review copies, 360 walks) with this ffmpeg; null
+ * or undefined uses the one on the PATH.
+ */
+export function ffmpegImportTools(
+  bin?: FfmpegBin | null,
+): Pick<ImportDeps, 'poster' | 'proxy' | 'walk'> {
+  const b = bin ?? undefined;
+  const poster = (video: string, atS: number, out: string) => ffmpegPoster(video, atS, out, b);
+  return {
+    poster,
+    proxy: (src, out) => ffmpegProxy(src, out, b),
+    // 360 video: camera files are stitched into walks/<id>/ (walks.ts)
+    walk: { ...walkToolsFor(b), poster },
+  };
 }
 
 /** The imports that are running: cancelled by `builder:cancelImport`, and all when the app quits. */
@@ -249,6 +282,8 @@ export interface BuilderImportDeps {
   /** Folder expansion overrides (tests). */
   known?: ExpandOptions['known'];
   limit?: ExpandOptions['limit'];
+  /** The ffmpeg to use (the pipeline pack's, `findFfmpeg`), asked on each import; null: the PATH. */
+  ffmpeg?: () => Promise<FfmpegBin | null>;
 }
 
 export async function builderImport(
@@ -275,10 +310,8 @@ export async function builderImport(
       images: d.images,
       jobs: d.jobs ?? NO_PIPELINE,
       video: videoTools,
-      poster: ffmpegPoster,
-      proxy: ffmpegProxy,
-      // 360 video: camera files are stitched into walks/<id>/ (walks.ts)
-      walk: { ...walkTools, poster: ffmpegPoster },
+      // a lookup that fails leaves it to the PATH, as before
+      ...ffmpegImportTools(await (d.ffmpeg?.().catch(() => null) ?? null)),
       ...(req.as360 ? { as360: true } : {}),
       onFileProgress: progress.part,
       signal: run.signal,
