@@ -15,10 +15,10 @@ import { builder } from '../builder/state';
 import { DatePrompt } from './DatePrompt';
 import { datePromptPref } from './datePromptPref';
 
-const photos = (id: string, takenAt: string) => ({
+const photos = (id: string, takenAt: string, name = id) => ({
   id,
   kind: 'photos',
-  name: id,
+  name,
   items: [{ takenAt }],
 });
 const video = (id: string, startUtcMs: number) => ({
@@ -28,9 +28,9 @@ const video = (id: string, startUtcMs: number) => ({
   flight: { startUtcMs },
 });
 
-function open(layers: unknown[], captures: unknown[] = []) {
+function open(layers: unknown[], captures: unknown[] = [], id = 'p1') {
   const manifest = { crs: { local: true }, origin: [0, 0, 0], captures, layers };
-  workspace.setState({ project: { id: 'p1', root: 'C:/p', manifest } as never });
+  workspace.setState({ project: { id, root: 'C:/p', manifest } as never });
 }
 
 let host: HTMLDivElement;
@@ -67,15 +67,24 @@ afterEach(() => {
 
 describe('DatePrompt', () => {
   it('files both groups, adding the missing dates, then finishes', async () => {
-    newSurveyDate.mockResolvedValue({ captureId: 'capture-new' });
+    newSurveyDate.mockImplementation((day: string) =>
+      Promise.resolve({ captureId: `capture-${day}` }),
+    );
+    moveLayersToDate.mockImplementation((ids: string[]) =>
+      Promise.resolve({
+        error: null,
+        stays: {},
+        moved: ids.map((id) => ({ id, capture: null })),
+      }),
+    );
     mount();
     expect(q('date-prompt')).not.toBeNull();
     act(() => q('date-prompt-file')?.click());
     await flush();
     await flush();
-    expect(newSurveyDate).toHaveBeenCalledTimes(2);
-    expect(moveLayersToDate).toHaveBeenCalledWith(['ph'], 'capture-new');
-    expect(moveLayersToDate).toHaveBeenCalledWith(['vid'], 'capture-new');
+    expect(newSurveyDate.mock.calls).toEqual([['2024-11-06'], ['2024-11-07']]);
+    expect(moveLayersToDate).toHaveBeenCalledWith(['ph'], 'capture-2024-11-06');
+    expect(moveLayersToDate).toHaveBeenCalledWith(['vid'], 'capture-2024-11-07');
     expect(datePromptPref.getState().done).toEqual({ p1: true });
     expect(onResult).toHaveBeenCalledWith({ text: 'Filed 2 datasets.' });
   });
@@ -113,8 +122,49 @@ describe('DatePrompt', () => {
     expect(q('date-prompt')).toBeNull();
   });
 
+  it('does not count layers that were not moved, and offers no undo then', async () => {
+    open(
+      [photos('ph', '2024-11-06T08:00:00')],
+      [{ id: 'c1', label: 'Survey', date: '2024-11-06' }],
+    );
+    mount();
+    act(() => q('date-prompt-file')?.click());
+    await flush();
+    await flush();
+    expect(datePromptPref.getState().done).toEqual({ p1: true });
+    expect(onResult).not.toHaveBeenCalled();
+  });
+
+  it('stops quietly when the project changes while filing', async () => {
+    let release: (v: { captureId: string }) => void = () => undefined;
+    newSurveyDate.mockReturnValue(new Promise((r) => (release = r)));
+    mount();
+    act(() => q('date-prompt-file')?.click());
+    act(() => {
+      open([], [], 'p2');
+    });
+    await act(async () => {
+      release({ captureId: 'capture-x' });
+      await Promise.resolve();
+    });
+    await flush();
+    expect(moveLayersToDate).not.toHaveBeenCalled();
+    expect(datePromptPref.getState().done).toEqual({});
+    expect(onResult).not.toHaveBeenCalled();
+    act(() => {
+      open([photos('ph', '2024-11-06T08:00:00')], [], 'p2');
+    });
+    expect(q('date-prompt-file')?.hasAttribute('disabled')).toBe(false);
+  });
+
   it('leaves a name-dated layer alone', () => {
-    open([{ id: 'o', kind: 'raster', name: 'Ortho 2024-11-06' }]);
+    open(
+      [photos('ph', '2024-11-06T08:00:00', 'Photos 2024-11-06')],
+      [
+        { id: 'c1', label: 'Survey', date: '2024-11-06' },
+        { id: 'c2', label: 'Survey', date: '2024-12-01' },
+      ],
+    );
     mount();
     expect(q('date-prompt')).toBeNull();
   });

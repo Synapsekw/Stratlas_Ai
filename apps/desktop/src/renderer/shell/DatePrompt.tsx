@@ -1,7 +1,7 @@
 import { defaultUtcOffsetMin } from '@aio/geo';
 import { formatDate, useT } from '@aio/ui';
-import { planFiling, useWorkspace } from '@aio/workspace';
-import { useMemo, useState } from 'react';
+import { planFiling, useWorkspace, workspace } from '@aio/workspace';
+import { Fragment, useMemo, useState } from 'react';
 import { useStore } from 'zustand';
 import { builder } from '../builder/state';
 import { newSurveyDate } from '../change/SurveyDate';
@@ -30,8 +30,12 @@ export function DatePrompt({
   const index = useCaptureIndex();
   const importing = useStore(builder, (s) => s.importing);
   const done = useDatePromptDone(project?.id);
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  // keyed by project id, so a project switch drops a busy flag or an error of the old one
+  const [attempt, setAttempt] = useState<{
+    pid: string;
+    busy: boolean;
+    error: string | null;
+  } | null>(null);
   const manifest = project?.manifest;
   const groups = useMemo(() => {
     if (!manifest || !index) return [];
@@ -42,56 +46,71 @@ export function DatePrompt({
 
   if (!project || !canEdit || importing || done || groups.length === 0) return null;
   const projectId = project.id;
+  const mine = attempt?.pid === projectId ? attempt : null;
+  const busy = mine?.busy ?? false;
+  const error = mine?.error ?? null;
   const count = groups.reduce((n, g) => n + g.layerIds.length, 0);
+  const stillOpen = () => workspace.getState().project?.id === projectId;
 
   const file = async () => {
-    setBusy(true);
-    setError(null);
+    setAttempt({ pid: projectId, busy: true, error: null });
+    const fail = (message: string) => {
+      setAttempt({ pid: projectId, busy: false, error: message });
+    };
     const moved: MovedLayer[] = [];
     let target: string | null = null;
     for (const g of groups) {
       let captureId = g.captureId;
       if (captureId === null) {
         const r = await newSurveyDate(g.day);
+        if (!stillOpen()) return;
         if ('error' in r) {
-          setError(r.error);
-          setBusy(false);
+          fail(r.error);
           return;
         }
         captureId = r.captureId;
       }
       const r = await moveLayersToDate(g.layerIds, captureId);
+      if (!stillOpen()) return;
       if (r.error) {
-        setError(r.error);
-        setBusy(false);
+        fail(r.error);
         return;
       }
       moved.push(...r.moved);
       target = captureId;
     }
     datePromptPref.getState().finish(projectId);
-    setBusy(false);
+    setAttempt(null);
+    if (moved.length === 0) return;
     onResult({
-      text: t('tree.datePrompt.done', { count }),
+      text: t('tree.datePrompt.done', { count: moved.length }),
       ...(groups.length === 1 ? { undo: { moved, target } } : {}),
     });
   };
 
   return (
-    <p className="dtree-note" role="status" data-testid="date-prompt">
-      <span>{t('tree.datePrompt.title', { count })}</span>
-      {groups.map((g) => (
-        <span key={g.day} className="date-prompt-line">
-          {t(g.captureId === null ? 'tree.datePrompt.new' : 'tree.datePrompt.existing', {
-            count: g.layerIds.length,
-            date: formatDate(g.day),
-          })}
-        </span>
-      ))}
-      {error ? <span role="alert">{error}</span> : null}
+    <p className="dtree-note date-prompt" data-testid="date-prompt">
+      <span role="status">
+        {t('tree.datePrompt.title', { count })}
+        {groups.map((g) => (
+          <Fragment key={g.day}>
+            <br />
+            {t(g.captureId === null ? 'tree.datePrompt.new' : 'tree.datePrompt.existing', {
+              count: g.layerIds.length,
+              date: formatDate(g.day),
+            })}
+          </Fragment>
+        ))}
+        {error ? (
+          <>
+            <br />
+            <span role="alert">{error}</span>
+          </>
+        ) : null}
+      </span>
       <button
         type="button"
-        className="btn"
+        className="dtree-undo"
         data-testid="date-prompt-file"
         disabled={busy}
         onClick={() => void file()}
@@ -100,7 +119,7 @@ export function DatePrompt({
       </button>
       <button
         type="button"
-        className="btn"
+        className="dtree-undo"
         data-testid="date-prompt-later"
         disabled={busy}
         onClick={() => {
