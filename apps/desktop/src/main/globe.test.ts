@@ -7,9 +7,11 @@ import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   globeProjectReader,
+  globeRastersOf,
   globeSites,
   originLonLat,
   registerGlobeIpc,
+  siteOf,
   type GlobeProject,
 } from './globe';
 import { collectHandlers } from './notYet';
@@ -141,6 +143,111 @@ describe('library projects as Globe sites', () => {
         entry('pkg', join(dir, 'x.aio'), { package: { encrypted: true, readOnly: true } }),
       ),
     ).toBeNull();
+  });
+
+  it('lists the kit-pyramid rasters of a project, in manifest order, with the frame', () => {
+    const identity = [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1];
+    const m = manifest({
+      layers: [
+        {
+          kind: 'raster',
+          id: 'ortho',
+          name: 'Ortho March',
+          visible: true,
+          src: { path: 'packs/ortho/tiles.json' },
+          role: 'ortho',
+          format: 'kit-pyramid',
+          capture: 'c1',
+        },
+        {
+          kind: 'raster',
+          id: 'dsm',
+          name: 'DSM',
+          visible: true,
+          src: { path: 'packs/dsm/tiles.json' },
+          role: 'dsm',
+          format: 'kit-pyramid',
+        },
+        {
+          kind: 'raster',
+          id: 'heat',
+          name: 'Change heat',
+          visible: true,
+          src: { path: 'change/c1-c2/tiles.json' },
+          role: 'plan',
+          format: 'kit-pyramid',
+          derived: { kind: 'change', from: 'c1', to: 'c2', changeId: 'ch1' },
+        },
+        {
+          kind: 'raster',
+          id: 'draft',
+          name: 'Draft',
+          visible: true,
+          src: { path: 'drafts/tiles.json' },
+          role: 'plan',
+          format: 'kit-pyramid',
+          derived: { kind: 'model', draft: true },
+        },
+        {
+          kind: 'raster',
+          id: 'cog',
+          name: 'Cloud optimised',
+          visible: true,
+          src: { path: 'packs/ortho/ortho.tif' },
+          role: 'ortho',
+          format: 'cog',
+        },
+        {
+          kind: 'raster',
+          id: 'hashed',
+          name: 'Content addressed',
+          visible: true,
+          src: { hash: 'a'.repeat(64) },
+          role: 'ortho',
+          format: 'kit-pyramid',
+        },
+        {
+          kind: 'mesh',
+          id: 'mesh',
+          name: 'Mesh',
+          visible: true,
+          src: { path: 'mesh/tileset.json' },
+          transform: identity,
+        },
+      ],
+    });
+    expect(globeRastersOf(m.layers)).toEqual([
+      {
+        layerId: 'ortho',
+        name: 'Ortho March',
+        role: 'ortho',
+        src: 'packs/ortho/tiles.json',
+        capture: 'c1',
+      },
+      { layerId: 'dsm', name: 'DSM', role: 'dsm', src: 'packs/dsm/tiles.json' },
+      {
+        layerId: 'heat',
+        name: 'Change heat',
+        role: 'plan',
+        src: 'change/c1-c2/tiles.json',
+        change: true,
+      },
+    ]);
+    const site = siteOf('p1', { manifest: m, issues: [], tilesets: null });
+    expect(site?.frame).toEqual({ crs: { epsg: 32639 }, origin: [745_000, 3_245_000, 12] });
+    expect(site?.rasters).toHaveLength(3);
+  });
+
+  it('leaves rasters out of a site with none, and does not place a local-grid project', () => {
+    const site = siteOf('p1', { manifest: manifest(), issues: [], tilesets: null });
+    expect(site?.frame).toEqual({ crs: { epsg: 32639 }, origin: [745_000, 3_245_000, 12] });
+    expect(site?.rasters).toBeUndefined();
+    const local = siteOf('l1', {
+      manifest: manifest({ crs: { wkt: 'LOCAL_CS["Site grid",UNIT["metre",1]]' } }),
+      issues: [],
+      tilesets: null,
+    });
+    expect(local).toBeNull();
   });
 });
 

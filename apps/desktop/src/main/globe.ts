@@ -11,8 +11,10 @@ import {
   GlobeSettings,
   TilesetsFile,
   defaultGlobeSettings,
+  type GlobeRaster,
   type GlobeSite,
   type Issue,
+  type Layer,
   type LibraryEntry,
   type ProjectManifest,
   type RasterPackInfo,
@@ -68,6 +70,27 @@ export function originLonLat(m: Pick<ProjectManifest, 'crs' | 'origin'>): [numbe
   }
 }
 
+/**
+ * The kit-pyramid rasters of a project that the Globe can draw, in manifest order. Drafts and
+ * content-addressed rasters (no path yet) are left out; a change heat map is marked `change`.
+ */
+export function globeRastersOf(layers: readonly Layer[]): GlobeRaster[] {
+  const out: GlobeRaster[] = [];
+  for (const l of layers) {
+    if (l.kind !== 'raster' || l.format !== 'kit-pyramid' || l.derived?.draft) continue;
+    if (!('path' in l.src)) continue; // content-addressed rasters: not on the Globe yet
+    out.push({
+      layerId: l.id,
+      name: l.name,
+      role: l.role,
+      src: l.src.path,
+      ...(l.capture ? { capture: l.capture } : {}),
+      ...(l.derived?.kind === 'change' ? { change: true as const } : {}),
+    });
+  }
+  return out;
+}
+
 /** A library project as a Globe site; null when the Globe cannot place it. */
 export function siteOf(id: string, p: GlobeProject): GlobeSite | null {
   const lonLat = originLonLat(p.manifest);
@@ -75,6 +98,7 @@ export function siteOf(id: string, p: GlobeProject): GlobeSite | null {
   const open = p.issues.filter((i) => i.status !== 'closed');
   const bySeverity: Record<string, number> = {};
   for (const i of open) bySeverity[String(i.severity)] = (bySeverity[String(i.severity)] ?? 0) + 1;
+  const rasters = globeRastersOf(p.manifest.layers);
   return {
     projectId: id,
     name: p.manifest.name,
@@ -82,6 +106,8 @@ export function siteOf(id: string, p: GlobeProject): GlobeSite | null {
     captures: p.manifest.captures.map((c) => ({ id: c.id, label: c.label, date: c.date })),
     issues: { open: open.length, bySeverity },
     tilesets: (p.tilesets?.entries ?? []).map((e) => ({ id: e.id, name: e.name, kind: e.kind })),
+    frame: { crs: p.manifest.crs, origin: p.manifest.origin },
+    ...(rasters.length ? { rasters } : {}),
   };
 }
 
