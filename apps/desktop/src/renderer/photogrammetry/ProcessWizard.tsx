@@ -125,7 +125,7 @@ export function ProcessWizard() {
   useFocusTrap(dlg, true, {
     onEscape: close,
     returnTo: () =>
-      opener instanceof HTMLElement && opener.isConnected
+      opener instanceof HTMLElement && opener !== document.body && opener.isConnected
         ? opener
         : document.querySelector<HTMLElement>('[data-testid="processing-chip"]'),
   });
