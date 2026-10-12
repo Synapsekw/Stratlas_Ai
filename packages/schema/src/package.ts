@@ -31,6 +31,9 @@ export const EditPolicy = z.enum(['forbid', 'allow']);
 /** Folder inside a package that holds embedded map packs (`<id>.pmtiles` with `<id>.json`). */
 export const EMBEDDED_PACKS_DIR = 'packs';
 
+/** Folders inside a package that hold embedded imagery and terrain packs (`<id>.pmtiles` with `<id>.json`). */
+export const EMBEDDED_RASTER_DIRS = { imagery: 'packs/imagery', terrain: 'packs/terrain' } as const;
+
 /** File an extracted project keeps at its root: where it came from. */
 export const PACKAGE_ORIGIN_FILE = 'package-origin.json';
 

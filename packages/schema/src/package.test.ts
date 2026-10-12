@@ -1,11 +1,14 @@
 import { describe, expect, it } from 'vitest';
 import {
+  EMBEDDED_RASTER_DIRS,
   exportAllowed,
   exportKindForFile,
   ipc,
   LibraryEntry,
   PACKAGE_HEADER_FILE,
+  PackageExportOptions,
   packageEditAllowed,
+  PackagePlan,
   parsePackageHeader,
 } from './index';
 
@@ -120,5 +123,56 @@ describe('package IPC', () => {
     ] as const) {
       expect(ipc[c]).toBeDefined();
     }
+  });
+});
+
+describe('raster packs in packages', () => {
+  const base = { projectId: 'p', exclude: [], readOnly: true, aiPolicy: 'forbid', exports: [] };
+  it('accepts ticked imagery and terrain packs and stays compatible without them', () => {
+    expect(
+      PackageExportOptions.safeParse({
+        ...base,
+        rasterPacks: [{ kind: 'imagery', id: 'site-imagery' }],
+      }).success,
+    ).toBe(true);
+    expect(PackageExportOptions.safeParse(base).success).toBe(true);
+    expect(ipc['package:plan'].request.safeParse({ projectId: 'p', exclude: [] }).success).toBe(
+      true,
+    );
+    expect(
+      ipc['package:plan'].request.safeParse({
+        projectId: 'p',
+        exclude: [],
+        rasterPacks: [{ kind: 'terrain', id: 'dem' }],
+      }).success,
+    ).toBe(true);
+  });
+  it('rejects a bad kind or an id with a slash', () => {
+    expect(
+      PackageExportOptions.safeParse({ ...base, rasterPacks: [{ kind: 'street', id: 'x' }] })
+        .success,
+    ).toBe(false);
+    expect(
+      PackageExportOptions.safeParse({ ...base, rasterPacks: [{ kind: 'imagery', id: 'a/b' }] })
+        .success,
+    ).toBe(false);
+  });
+  it('parses a plan with one ok and one refused raster entry', () => {
+    const meta = { label: 'L', licence: 'x', attribution: 'y', customerLicence: false };
+    const r = PackagePlan.safeParse({
+      layers: [],
+      baseBytes: 0,
+      totalBytes: 0,
+      totalFiles: 0,
+      rasterPacks: [
+        { kind: 'imagery', id: 'a', ...meta, ok: true, bytes: 10, tiles: 2, maxZoom: 18 },
+        { kind: 'terrain', id: 'b', ...meta, ok: false, reason: 'no cover' },
+      ],
+    });
+    expect(r.success).toBe(true);
+  });
+  it('names the embedded directories', () => {
+    expect(EMBEDDED_RASTER_DIRS.imagery).toBe('packs/imagery');
+    expect(EMBEDDED_RASTER_DIRS.terrain).toBe('packs/terrain');
   });
 });

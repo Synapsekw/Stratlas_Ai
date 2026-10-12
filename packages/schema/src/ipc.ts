@@ -411,6 +411,32 @@ const OpenResult = z.discriminatedUnion('ok', [
   }),
 ]);
 
+/** An installed imagery or terrain pack a package may carry, clipped to the site. */
+export const RasterPackRef = z
+  .object({ kind: z.enum(['imagery', 'terrain']), id: RasterPackId })
+  .strict();
+
+/** What carrying one raster pack would cost, or why it cannot be carried. */
+export const PackageRasterPlan = z.intersection(
+  z.object({
+    kind: z.enum(['imagery', 'terrain']),
+    id: RasterPackId,
+    label: z.string(),
+    licence: z.string(),
+    attribution: z.string(),
+    customerLicence: z.boolean(),
+  }),
+  z.discriminatedUnion('ok', [
+    z.object({
+      ok: z.literal(true),
+      bytes: z.number().int().nonnegative(),
+      tiles: z.number().int().nonnegative(),
+      maxZoom: z.number().int(),
+    }),
+    z.object({ ok: z.literal(false), reason: z.string() }),
+  ]),
+);
+
 /** Size of what a package would hold, per layer and in total. */
 export const PackagePlan = z.object({
   layers: z.array(
@@ -450,6 +476,8 @@ export const PackagePlan = z.object({
       z.object({ ok: z.literal(false), reason: z.string() }),
     ])
     .optional(),
+  /** Imagery and terrain packs the package would carry (when `rasterPacks` was asked for). */
+  rasterPacks: z.array(PackageRasterPlan).optional(),
 });
 
 /** Embed the map region a project needs: its area plus a margin, up to a zoom. */
@@ -471,6 +499,8 @@ export const PackageExportOptions = z
     editPolicy: EditPolicy.optional(),
     /** Embed the map region the project needs, clipped from an installed pack. */
     mapPack: PackageMapPackRequest.optional(),
+    /** Imagery and terrain packs to embed, clipped to the site. */
+    rasterPacks: z.array(RasterPackRef).max(32).optional(),
     exports: z.array(ExportKind),
     /** AES-256 (WinZip AE-2) for every member when set. */
     passphrase: z.string().min(8).max(256).optional(),
@@ -1000,6 +1030,7 @@ export const ipc = {
         projectId: z.string().min(1),
         exclude: z.array(z.string()),
         mapPack: PackageMapPackRequest.optional(),
+        rasterPacks: z.array(RasterPackRef).max(32).optional(),
       })
       .strict(),
     response: z.discriminatedUnion('ok', [
@@ -3000,6 +3031,8 @@ export type ProjectUsage = z.infer<typeof ProjectUsage>;
 export type PackagePlan = z.infer<typeof PackagePlan>;
 export type PackageExportOptions = z.infer<typeof PackageExportOptions>;
 export type PackageMapPackRequest = z.infer<typeof PackageMapPackRequest>;
+export type RasterPackRef = z.infer<typeof RasterPackRef>;
+export type PackageRasterPlan = z.infer<typeof PackageRasterPlan>;
 export type ExportFormat = z.infer<typeof ExportFormat>;
 export type ReportFile = z.infer<typeof ReportFile>;
 export type ReportBrandingSettings = z.infer<typeof ReportBrandingSettings>;
