@@ -88,6 +88,7 @@ export {
   type MigrateOptions,
   type WalkFiles,
 } from './walkLayers';
+export { TRASH_DIR, TRASH_KEEP_DAYS, removeWalk, sweepTrash } from './walkRemove';
 export {
   classifyWalkSource,
   insta360Name,

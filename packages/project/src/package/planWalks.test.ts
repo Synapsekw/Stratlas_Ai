@@ -30,6 +30,9 @@ const files: SourceFile[] = [
   { path: 'walks/.staging-tour-9f8e7d6c/playback.mp4', size: 7000 },
   { path: 'walks/.staging-tour-9f8e7d6c/poster.jpg', size: 70 },
   { path: 'walks/.staging-done-11223344/walk.json', size: 800 },
+  // a removed walk, kept seven days before it is deleted
+  { path: '.trash/20261012T081530Z-vid-3/walk.json', size: 800 },
+  { path: '.trash/20261012T081530Z-vid-3/playback.mp4', size: 6000 },
 ];
 
 describe('planPackage and walks', () => {
@@ -41,6 +44,8 @@ describe('planPackage and walks', () => {
     expect(paths).toContain('walks/vid-1/poster.jpg');
     // nothing of a staging folder travels, whatever its files are called
     expect(paths.filter((x) => x.startsWith('walks/.staging-'))).toEqual([]);
+    // a removed walk waiting in .trash/ never travels
+    expect(paths.filter((x) => x.startsWith('.trash/'))).toEqual([]);
     expect(p.baseBytes).toBe(2 + 900 + 5000 + 300);
     expect(p.totalBytes).toBe(10 + 2 + 900 + 5000 + 300);
   });

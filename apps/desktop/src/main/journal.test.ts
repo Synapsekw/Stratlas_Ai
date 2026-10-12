@@ -900,6 +900,7 @@ describe('journal service', () => {
       'builder:updateCapture',
       'builder:ensureCapture',
       'builder:removeCapture',
+      'walks:remove',
       'change:compute',
       'model:build',
       'library:rename',

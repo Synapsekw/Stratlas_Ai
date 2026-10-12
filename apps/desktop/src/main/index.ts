@@ -1267,6 +1267,23 @@ function registerIpc(): void {
     const pkg = registry.package(projectId);
     return { walks: pkg ? await packageWalks(pkg.archive) : [] };
   });
+  // Remove a walk: its layer leaves the manifest and its folder waits seven days in .trash/
+  handle('walks:remove', async (req) => {
+    const refused = packageRefusal(req.projectId);
+    if (refused) return refused;
+    const root = registry.root(req.projectId);
+    if (root === undefined)
+      return {
+        ok: false as const,
+        error: `Project "${req.projectId}" is not open. Open it, then try again.`,
+      };
+    try {
+      const { removeWalk } = await import('@aio/project/builder');
+      return { ok: true as const, manifest: await removeWalk(root, req.layerId) };
+    } catch (e) {
+      return { ok: false as const, error: e instanceof Error ? e.message : String(e) };
+    }
+  });
   handle(
     'builder:updateLayers',
     (req) => packageRefusal(req.projectId) ?? builderUpdateLayers(req, registry),

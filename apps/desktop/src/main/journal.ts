@@ -10,7 +10,7 @@
  *   `project:writeBoundaries`, `report:writeNarrative`) are wrapped: ops first, then the write;
  *   a write the handler refuses is undone by ops, never by editing the journal;
  * - `tilesets:write` and `photo:writeGcp` are wrapped too (one `record.external` op per save);
- * - `builder:updateLayers`, `builder:updateCapture`, `builder:removeCapture` and
+ * - `builder:updateLayers`, `builder:updateCapture`, `builder:removeCapture`, `walks:remove` and
  *   `builder:ensureCapture` are diffed after they write (their result is computed in the
  *   handler), and so are `tilesets:import` (the imported tileset's name as the label) and
  *   `photo:applyPoses` with `apply: true`;
@@ -924,6 +924,7 @@ export function createJournalService(deps: JournalServiceDeps) {
       channel === 'builder:updateLayers' ||
       channel === 'builder:updateCapture' ||
       channel === 'builder:removeCapture' ||
+      channel === 'walks:remove' ||
       channel === 'builder:ensureCapture'
     ) {
       return async (req) => {
@@ -932,6 +933,7 @@ export function createJournalService(deps: JournalServiceDeps) {
           | 'builder:updateLayers'
           | 'builder:updateCapture'
           | 'builder:removeCapture'
+          | 'walks:remove'
           | 'builder:ensureCapture'
         >;
         const root = deps.projects.root(projectId);
