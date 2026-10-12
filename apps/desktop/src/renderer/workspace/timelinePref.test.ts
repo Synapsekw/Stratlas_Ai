@@ -1,7 +1,10 @@
 import type { Layer } from '@aio/schema';
+import { createWorkspace } from '@aio/workspace';
 import { describe, expect, it } from 'vitest';
+import { createTimelineStore, TIMELINE_KEY } from './timeline';
 import {
   createTimelinePref,
+  TIMELINE_SHOWN_KEY,
   timelineByDefault,
   timelineShown,
   toggleTimeline,
@@ -55,9 +58,52 @@ describe('timeline visibility', () => {
 
   it('ignores bad stored values', () => {
     const storage = memory();
-    storage.setItem('stratlas.timeline', '{"a":true,"b":"yes"}');
+    storage.setItem(TIMELINE_SHOWN_KEY, '{"a":true,"b":"yes"}');
     expect(createTimelinePref(storage).getState().byProject).toEqual({ a: true });
-    storage.setItem('stratlas.timeline', 'not json');
+    storage.setItem(TIMELINE_SHOWN_KEY, 'not json');
     expect(createTimelinePref(storage).getState().byProject).toEqual({});
+  });
+
+  it('saves under its own key and leaves the date prefs alone', () => {
+    const storage = memory();
+    storage.setItem('stratlas.timeline', JSON.stringify({ p: { focus: 's1' } }));
+    const store = createTimelinePref(storage);
+    toggleTimeline({ id: 'p', manifest: { layers: kinds('mesh') } }, store);
+    expect(JSON.parse(storage.getItem(TIMELINE_SHOWN_KEY) ?? '{}')).toEqual({ p: true });
+    expect(JSON.parse(storage.getItem('stratlas.timeline') ?? '{}')).toEqual({
+      p: { focus: 's1' },
+    });
+  });
+
+  it('takes the choices saved under the old key once', () => {
+    const storage = memory();
+    storage.setItem('stratlas.timeline', JSON.stringify({ a: true, b: { focus: 's1' } }));
+    expect(createTimelinePref(storage).getState().byProject).toEqual({ a: true });
+    storage.setItem(TIMELINE_SHOWN_KEY, JSON.stringify({ c: false }));
+    expect(createTimelinePref(storage).getState().byProject).toEqual({ c: false });
+  });
+
+  it('does not wipe the date prefs when both stores share one storage', () => {
+    const m = new Map<string, string>();
+    const storage = {
+      ...memory(),
+      getItem: (k: string) => m.get(k) ?? null,
+      setItem: (k: string, v: string) => {
+        m.set(k, v);
+      },
+      removeItem: (k: string) => {
+        m.delete(k);
+      },
+      clear: () => {
+        m.clear();
+      },
+      key: () => null,
+      length: 0,
+    } as Storage;
+    storage.setItem(TIMELINE_KEY, JSON.stringify({ p: { focus: 's1' } }));
+    const pref = createTimelinePref(storage);
+    toggleTimeline({ id: 'p', manifest: { layers: kinds('mesh') } }, pref);
+    const again = createTimelineStore(createWorkspace(), storage, () => undefined);
+    expect(again.getState().byProject.p?.focus).toBe('s1');
   });
 });

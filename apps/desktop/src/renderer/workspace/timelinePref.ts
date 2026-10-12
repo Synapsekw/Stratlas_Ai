@@ -20,7 +20,10 @@ export function timelineShown(
   return saved ?? timelineByDefault(layers);
 }
 
-const KEY = 'stratlas.timeline';
+/** Shown or hidden per project. The date prefs (`timeline.ts`) own `stratlas.timeline`. */
+export const TIMELINE_SHOWN_KEY = 'stratlas.timeline.shown';
+/** Until this fix the choice shared the date prefs' key; its boolean entries are read once. */
+const LEGACY_KEY = 'stratlas.timeline';
 
 function parse(raw: string | null | undefined): Record<string, boolean> {
   if (!raw) return {};
@@ -56,7 +59,8 @@ export function createTimelinePref(
 ): StoreApi<TimelinePrefState> {
   let initial: Record<string, boolean> = {};
   try {
-    initial = parse(storage?.getItem(KEY));
+    const saved = storage?.getItem(TIMELINE_SHOWN_KEY);
+    initial = parse(saved ?? storage?.getItem(LEGACY_KEY));
   } catch {
     // blocked storage: start with the defaults
   }
@@ -68,7 +72,7 @@ export function createTimelinePref(
   }));
   store.subscribe((s) => {
     try {
-      storage?.setItem(KEY, JSON.stringify(s.byProject));
+      storage?.setItem(TIMELINE_SHOWN_KEY, JSON.stringify(s.byProject));
     } catch {
       // private window or blocked storage: the choice is just not remembered
     }
