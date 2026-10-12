@@ -11,6 +11,7 @@ import {
   planCredits,
   planGlobeLayers,
   polygonArea,
+  rasterOrder,
   selectPacks,
   sitesBounds,
   sortSites,
@@ -24,7 +25,7 @@ import {
   type GlobeHover,
   type GlobePick,
   type GlobeTagText,
-  type SiteOutputs,
+  type SiteOutputs as SiteOutputsInput,
 } from '@aio/globe/view';
 import {
   defaultGlobeSettings,
@@ -34,6 +35,7 @@ import {
   type MapPackInfo,
   type ProjectManifest,
   type RasterPackInfo,
+  type TilesetEntry,
 } from '@aio/schema';
 import { Icon, t, useT } from '@aio/ui';
 import { useWorkspace, workspace } from '@aio/workspace';
@@ -47,6 +49,15 @@ import { GlobeMapMenu } from './GlobeMapMenu';
 import { GlobeSearch, type GlobeSearchHandle } from './GlobeSearch';
 import { onGlobeRequest, takeGlobeRequest } from './request';
 import { SiteFacts } from './SiteFacts';
+import { SiteOutputs } from './SiteOutputs';
+import {
+  clearPyramids,
+  focusSites,
+  loadPyramid,
+  pyramidKey,
+  shownOf,
+  useSiteOutputs,
+} from './siteOutputsStore';
 import { GLOBE_PALETTE, useStreetTiles } from './street';
 
 /** Where the renderer build serves its copy of Cesium (electron.vite.config.ts `cesiumAssets`). */
@@ -170,32 +181,70 @@ export default function GlobeScreen() {
   useEffect(() => {
     rasterPacks.getState().refresh();
   }, []);
-  const [tilesets, setTilesets] = useState<SiteOutputs | null>(null);
+  // the sites in focus: the open project, and the site picked when it is another one
+  const focusKey = focusSites(project?.id ?? null, pick?.projectId ?? null).join('\n');
+  const focus = useMemo(() => (focusKey ? focusKey.split('\n') : []), [focusKey]);
+  // each one's 3D Tiles (G7's `tilesets:list`): none drawn until it answers, none when it fails
+  const [tilesets, setTilesets] = useState<Record<string, TilesetEntry[]>>({});
   useEffect(() => {
     let live = true;
-    if (!project) return;
-    // the open project's 3D Tiles (G7's `tilesets:list`; none until it answers)
-    void bridge.call('tilesets:list', { projectId: project.id }).then((r) => {
-      if (!live) return;
-      setTilesets(
-        r.ok && r.value.ok
-          ? {
-              projectId: project.id,
-              georef: georefOf(project.manifest),
-              tilesets: r.value.file.entries,
-              rasters: [],
-            }
-          : null,
-      );
-    });
+    for (const projectId of focus)
+      void bridge.call('tilesets:list', { projectId }).then((r) => {
+        if (!live) return;
+        const entries = r.ok && r.value.ok ? r.value.file.entries : [];
+        setTilesets((now) => ({ ...now, [projectId]: entries }));
+      });
     return () => {
       live = false;
     };
-  }, [project]);
-  // the open project's outputs only, for now (its tilesets; rasters come with the site card)
+    // the open project read again when it changes (a tiles job wrote a tileset)
+  }, [focus, project]);
+  const shown = useSiteOutputs((s) => s.shown);
+  const indexes = useSiteOutputs((s) => s.indexes);
+  // the indexes of the rasters shown (the card reads the others); forgotten when the Globe closes
+  const focusSitesData = useMemo(
+    () =>
+      focus.flatMap((id) => {
+        const s = loaded?.sites.find((x) => x.projectId === id);
+        return s ? [s] : [];
+      }),
+    [focus, loaded],
+  );
+  useEffect(() => {
+    for (const s of focusSitesData) {
+      if (!s.frame) continue;
+      const on = new Set(shownOf(shown, s));
+      for (const r of s.rasters ?? []) if (on.has(r.layerId)) void loadPyramid(s.projectId, r.src);
+    }
+  }, [focusSitesData, shown]);
+  useEffect(() => clearPyramids, []);
   const outputs = useMemo(
-    () => (tilesets && tilesets.projectId === project?.id ? [tilesets] : []),
-    [tilesets, project?.id],
+    () =>
+      focus.flatMap((projectId): SiteOutputsInput[] => {
+        const entries = tilesets[projectId];
+        if (!entries) return [];
+        const s = loaded?.sites.find((x) => x.projectId === projectId);
+        const open = project?.id === projectId ? project : null;
+        // the open project is placed by its manifest; another site by its frame, or not at all
+        const georef = open
+          ? georefOf(open.manifest)
+          : s?.frame
+            ? { ...s.frame, heightOffset: 0 }
+            : null;
+        if (!georef) return [];
+        const on = s?.frame ? new Set(shownOf(shown, s)) : new Set<string>();
+        const rasters = s
+          ? rasterOrder(
+              (s.rasters ?? []).filter((r) => on.has(r.layerId)),
+              s.captures,
+            ).flatMap((r) => {
+              const index = indexes[pyramidKey(projectId, r.src)];
+              return index ? [{ layerId: r.layerId, src: r.src, index }] : [];
+            })
+          : [];
+        return [{ projectId, georef, tilesets: entries, rasters }];
+      }),
+    [focus, tilesets, loaded, project, shown, indexes],
   );
   const pins = useMemo(() => {
     if (!project || prefs.showIssues === false) return null;
@@ -371,6 +420,7 @@ export default function GlobeScreen() {
             {site.name}
           </h2>
           <SiteFacts site={site} tilesets />
+          <SiteOutputs site={site} />
           <div className="actions">
             <button type="button" className="btn" onClick={() => void ctl?.flyToSite(site.lonLat)}>
               {t('globe.flyTo')}

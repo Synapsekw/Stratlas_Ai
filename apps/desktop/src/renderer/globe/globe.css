@@ -225,6 +225,78 @@
   justify-content: flex-end;
   margin-top: 14px;
 }
+/* "On the Globe": the site's processed maps, a switch each, under its facts. A hairline parts it
+   from the facts; the list scrolls past about seven rows so the card fits at 1100 x 700. */
+.globe-outputs {
+  margin-top: 12px;
+  padding-top: 10px;
+  border-top: 1px solid var(--line);
+}
+.globe-outputs h3 {
+  margin: 0 0 4px;
+  color: var(--fg-2);
+  font-size: var(--t-11);
+  font-weight: 600;
+}
+.globe-outputs ul {
+  display: grid;
+  max-height: 232px;
+  margin: 0;
+  padding: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  list-style: none;
+}
+.globe-output-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-height: 30px;
+}
+.globe-output-row label {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  color: var(--fg-1);
+  font-size: var(--t-12);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  cursor: pointer;
+}
+/* the switch's ring is drawn inside the list's clip */
+.globe-output-row .switch {
+  margin-inline-end: 3px;
+}
+.globe-output[data-disabled] label {
+  color: var(--fg-3);
+  cursor: default;
+}
+.globe-output-note {
+  margin: -4px 0 6px;
+  color: var(--fg-2);
+  font-size: var(--t-11);
+}
+/* a heat map that is on: its colour bar and ends, as the map's change legend has them */
+.globe-legend {
+  display: grid;
+  gap: 4px;
+  margin: 0 0 8px;
+  color: var(--fg-2);
+  font-size: var(--t-11);
+}
+.globe-legend-title {
+  color: var(--fg-1);
+}
+.globe-legend .bar {
+  height: 8px;
+  border-radius: var(--r-2);
+}
+.globe-legend .ticks {
+  display: flex;
+  justify-content: space-between;
+  font-family: var(--f-mono);
+}
 
 /* ------------------------------------------------------------------ view buttons, credits */
 .globe-controls {
@@ -283,7 +355,8 @@
   .globe-notice {
     border: 1px solid CanvasText;
   }
-  .globe-dot {
+  .globe-dot,
+  .globe-legend .bar {
     forced-color-adjust: none;
   }
 }

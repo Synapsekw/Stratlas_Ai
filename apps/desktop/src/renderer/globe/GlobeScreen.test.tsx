@@ -24,12 +24,27 @@ const globe = {
   flyHome: vi.fn(),
 };
 
+/** Each project's tilesets, as `tilesets:list` answers. */
+const tilesetsOf = (projectId: string) => [
+  {
+    id: `${projectId}-mesh`,
+    name: 'Mesh',
+    kind: 'mesh',
+    src: 'tiles/m/tileset.json',
+    visible: true,
+  },
+];
+
 function answer(channel: string, payload: unknown): unknown {
   app.sent.push({ channel, payload });
   if (channel === 'globe:sites')
     return app.error === null
       ? { ok: true, value: { ok: true, sites: app.sites } }
       : { ok: true, value: { ok: false, error: app.error } };
+  if (channel === 'tilesets:list') {
+    const { projectId } = payload as { projectId: string };
+    return { ok: true, value: { ok: true, file: { entries: tilesetsOf(projectId) } } };
+  }
   // no packs, no saved settings: the screen falls back to its defaults
   return { ok: false, error: 'none' };
 }
@@ -531,5 +546,138 @@ describe('the Globe screen', () => {
     app.sites = [QUARRY, { ...YARD, lonLat: [20, 60] }];
     await mount();
     expect(globe.props?.start).toEqual({ site: [20, 60] });
+  });
+});
+
+describe('the sites in focus on the Globe', () => {
+  const INDEX = {
+    schema: 'aio.tiles/1',
+    corners: { tl: [0, 0, 0], tr: [10, 0, 0], bl: [0, 0, 10] },
+    levels: [{ z: 0, tileSize: 256, cols: 1, rows: 1, pattern: '{z}/{x}/{y}.png' }],
+  };
+  /** A site that can be placed, with an ortho per survey date and a heat map. */
+  const placed = (projectId: string, name: string): GlobeSite => ({
+    ...site(projectId, name),
+    captures: [
+      { id: 'c1', label: 'First', date: '2026-10-07' },
+      { id: 'c2', label: 'Second', date: '2026-10-21' },
+    ],
+    frame: { crs: { epsg: 32640 }, origin: [500000, 2700000, 10] },
+    rasters: [
+      {
+        layerId: 'heat',
+        name: 'Surface change',
+        role: 'plan',
+        src: 'heat/tiles.json',
+        change: true,
+      },
+      { layerId: 'o2', name: 'Late', role: 'ortho', src: 'o2/tiles.json', capture: 'c2' },
+      { layerId: 'o1', name: 'Early', role: 'ortho', src: 'o1/tiles.json', capture: 'c1' },
+      { layerId: 'bad', name: 'Broken', role: 'ortho', src: 'bad/tiles.json', capture: 'c1' },
+    ],
+  });
+  const B = placed('yard', 'Harbour yard');
+  const C = placed('pit', 'Gravel pit');
+
+  beforeEach(async () => {
+    const { useSiteOutputs, clearPyramids } = await import('./siteOutputsStore');
+    useSiteOutputs.setState({ shown: {} });
+    clearPyramids();
+    app.sites = [QUARRY, B, C];
+    app.project = QUARRY_PROJECT;
+    vi.stubGlobal(
+      'fetch',
+      vi.fn((url: string) =>
+        Promise.resolve(
+          url.includes('/bad/')
+            ? { ok: false, json: () => Promise.resolve(null) }
+            : { ok: true, json: () => Promise.resolve(INDEX) },
+        ),
+      ),
+    );
+  });
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  const settle = () =>
+    act(async () => {
+      await new Promise((done) => setTimeout(done, 0));
+    });
+  const outputs = () =>
+    (globe.props?.outputs ?? []).map((o) => ({
+      projectId: o.projectId,
+      georef: o.georef,
+      tilesets: o.tilesets.map((t) => t.id),
+      rasters: o.rasters.map((r) => r.layerId),
+    }));
+
+  it('draws the open project and the picked site, the picked one placed by its frame', async () => {
+    await mount();
+    await settle();
+    expect(outputs()).toEqual([
+      {
+        projectId: 'quarry',
+        georef: { crs: { epsg: 4326 }, origin: [0, 0, 0], heightOffset: 0 },
+        tilesets: ['quarry-mesh'],
+        rasters: [],
+      },
+    ]);
+
+    pickInField('Harbour yard');
+    await settle();
+    expect(app.sent).toContainEqual({ channel: 'tilesets:list', payload: { projectId: 'yard' } });
+    expect(outputs()).toEqual([
+      {
+        projectId: 'quarry',
+        georef: { crs: { epsg: 4326 }, origin: [0, 0, 0], heightOffset: 0 },
+        tilesets: ['quarry-mesh'],
+        rasters: [],
+      },
+      {
+        projectId: 'yard',
+        georef: { crs: { epsg: 32640 }, origin: [500000, 2700000, 10], heightOffset: 0 },
+        tilesets: ['yard-mesh'],
+        rasters: ['o2'],
+      },
+    ]);
+    const shown = globe.props?.outputs[1]?.rasters[0];
+    expect(shown?.src).toBe('o2/tiles.json');
+    expect(shown?.index.levels).toHaveLength(1);
+    // the card has the section
+    expect(q('globe-card')?.textContent).toContain('On the Globe');
+  });
+
+  it('puts a third site in the place of the second, the open project staying', async () => {
+    await mount();
+    pickInField('Harbour yard');
+    await settle();
+    pickInField('Gravel pit');
+    await settle();
+    expect(outputs().map((o) => o.projectId)).toEqual(['quarry', 'pit']);
+  });
+
+  it('passes only the shown rasters with a readable index, bottom first', async () => {
+    const { useSiteOutputs } = await import('./siteOutputsStore');
+    await mount();
+    pickInField('Harbour yard');
+    await settle();
+    act(() => {
+      useSiteOutputs.getState().toggle(B, 'heat');
+      useSiteOutputs.getState().toggle(B, 'bad');
+      useSiteOutputs.getState().toggle(B, 'o1');
+    });
+    await settle();
+    expect(outputs()[1]?.rasters).toEqual(['o1', 'o2', 'heat']);
+  });
+
+  it('leaves out a picked site that cannot be placed', async () => {
+    const unplaced: GlobeSite = { ...B };
+    delete unplaced.frame;
+    app.sites = [QUARRY, unplaced, C];
+    await mount();
+    pickInField('Harbour yard');
+    await settle();
+    expect(outputs().map((o) => o.projectId)).toEqual(['quarry']);
   });
 });

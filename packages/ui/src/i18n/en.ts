@@ -2818,6 +2818,14 @@ export const en = {
   'globe.findNone': 'No site with that name',
   'globe.mapMenu': 'Map',
   'globe.mapMenuTitle': 'Map settings',
+  // processed outputs of the sites in focus (12 Oct 2026): the site card's switches
+  'globe.outputs.title': 'On the Globe',
+  'globe.outputs.ortho': 'Orthophoto {date}',
+  'globe.outputs.orthoUndated': 'Orthophoto',
+  'globe.outputs.dsm': 'Shaded surface {date}',
+  'globe.outputs.imageryChange': 'Imagery change',
+  'globe.outputs.surfaceChange': 'Surface change',
+  'globe.outputs.unreadable': 'This map could not be read.',
   // M10 G7: imagery and terrain packs (Settings, Map packs)
   'g7.packs.title': 'Imagery and terrain',
   'g7.packs.count_one': '{count} pack, {size}',
