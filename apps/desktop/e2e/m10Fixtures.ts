@@ -689,7 +689,7 @@ async function writeSiteRasters(dir: string): Promise<ProjectManifestInput['laye
       id: l.id,
       name: change ? 'Surface change (synthetic)' : `Orthophoto (synthetic, ${l.capture})`,
       src: { path: `${l.dir}/tiles.json` },
-      role: 'ortho',
+      role: change ? 'plan' : 'ortho',
       format: 'kit-pyramid',
       capture: l.capture,
       ...(change ? { derived: { kind: 'change' as const, from: 'c1', to: 'c2' } } : {}),
@@ -711,7 +711,11 @@ export interface GlobeLibrary {
  * `synthetic-world` (z0 to 3) and `synthetic-site-a` (z12 to 15 around site A); and the terrain
  * pack `synthetic-terrain-a` (z8 to 12 around site A, EGM2008, with a benchmark height).
  */
-export async function createGlobeLibrary(dataRoot: string, glb: Buffer): Promise<GlobeLibrary> {
+export async function createGlobeLibrary(
+  dataRoot: string,
+  glb: Buffer,
+  opts: { siteRasters?: boolean } = {},
+): Promise<GlobeLibrary> {
   for (const [k, s] of GLOBE_SITES.entries()) {
     const d = SITE_DEFS[k];
     if (!d) continue;
@@ -740,8 +744,9 @@ export async function createGlobeLibrary(dataRoot: string, glb: Buffer): Promise
           src: { path: 'models/quad.glb' },
           transform: [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1],
         },
-        // the first site has processed outputs for the Globe
-        ...(k === 0 ? await writeSiteRasters(dir) : []),
+        // processed outputs for the Globe on the first site, only for the spec that asks: they
+        // also draw in the site's map and 3D views, which other specs read
+        ...(k === 0 && opts.siteRasters ? await writeSiteRasters(dir) : []),
       ],
       severityModels: [SEVERITY_MODEL],
       classCatalogues: [

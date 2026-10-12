@@ -794,6 +794,12 @@ interface Fixtures {
    */
   globeLibrary: GlobeLibrary;
   /**
+   * The same library with processed outputs on site A (two kit-pyramid orthos and a surface heat
+   * map), for the Globe spec that draws them. Other specs keep `globeLibrary`, whose site A has
+   * none, because those rasters also draw in the site's map and 3D views.
+   */
+  globeRasterLibrary: GlobeLibrary;
+  /**
    * M11: the synthetic survey demos (tools/demo/survey-demo.mjs, `--quick`, built once into a
    * temp cache) copied into `dataRoot` as writable projects. List them before `win`. Each skips
    * the test when the demos cannot be built (no pipeline Python). `surveyProject` is the analytic
@@ -895,6 +901,10 @@ export const test = base.extend<Fixtures>({
 
   globeLibrary: async ({ dataRoot }, use) => {
     await use(await createGlobeLibrary(dataRoot.root, tinyGlb()));
+  },
+
+  globeRasterLibrary: async ({ dataRoot }, use) => {
+    await use(await createGlobeLibrary(dataRoot.root, tinyGlb(), { siteRasters: true }));
   },
 
   threeDateProject: async ({ dataRoot }, use) => {

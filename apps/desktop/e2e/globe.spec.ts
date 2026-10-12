@@ -1765,7 +1765,7 @@ async function groundInWindow(win: Page, [lon, lat]: readonly [number, number]) 
 }
 
 test('processed orthos and change heat maps draw at their site', async ({
-  globeLibrary,
+  globeRasterLibrary: globeLibrary,
   win,
   network,
 }) => {
