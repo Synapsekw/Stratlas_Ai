@@ -375,6 +375,31 @@ describe('the walk on the map while it is placed there', () => {
     stop();
   });
 
+  it('a walk removed while it is placed leaves the map, and the next walk is placed at once', async () => {
+    const project = { current: projectWith([plan, walkLayer(), walkLayer({ id: 'walk-b' })]) };
+    const { flow, session, ui } = flowFor(project);
+    const stop = followMap(session, ui, () => project.current);
+    await flow.begin('walk-a');
+    flow.chooseSurface({ kind: 'map' });
+    walkMap.getState().pick?.onPick([2, 0.5, 3]);
+    expect(walkMap.getState().overlays.length).toBeGreaterThan(0);
+    // removed from the project (any way: the sidebar, an undo, a reload)
+    project.current = projectWith([plan, walkLayer({ id: 'walk-b' })]);
+    flow.dropIfGone();
+    expect(session.getState().layerId).toBeNull();
+    expect(ui.getState().layerId).toBeNull();
+    expect(walkMap.getState().overlays).toHaveLength(0);
+    expect(walkMap.getState().pick).toBeNull();
+    // no hidden "Keep these pins?" holds the next walk back
+    await flow.begin('walk-b');
+    expect(ui.getState().asking).toBe(false);
+    expect(session.getState().layerId).toBe('walk-b');
+    // a walk still there is left alone
+    flow.dropIfGone();
+    expect(session.getState().layerId).toBe('walk-b');
+    stop();
+  });
+
   it('does nothing while the walk is placed on a drawing', async () => {
     const project = { current: projectWith([plan, walkLayer()]) };
     const { flow, session, ui } = flowFor(project);

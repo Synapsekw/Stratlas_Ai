@@ -201,6 +201,11 @@ export interface PlaceWalkFlow {
   discard(): void;
   /** Back to placing from the question. */
   keepPlacing(): void;
+  /**
+   * The walk being placed is no longer in the project (removed from the sidebar, or any other
+   * way): drop its session, so its path and pins leave the surface and nothing waits on it.
+   */
+  dropIfGone(): void;
 }
 
 export function createPlaceWalk(
@@ -360,6 +365,9 @@ export function createPlaceWalk(
     discard: next,
     keepPlacing: () => {
       ui.setState({ asking: false, pending: null });
+    },
+    dropIfGone: () => {
+      if (ui.getState().layerId !== null && !walkOf()) next();
     },
   };
 }
@@ -539,6 +547,11 @@ workspace.subscribe((s) => {
   if (id === openedIn) return;
   openedIn = id;
   if (placeUi.getState().layerId !== null) placeFlow.discard();
+});
+
+// the walk being placed was removed (any way it goes): its session and its pins go with it
+workspace.subscribe(() => {
+  placeFlow.dropIfGone();
 });
 
 setPlaceWalkHandler((layerId) => {
