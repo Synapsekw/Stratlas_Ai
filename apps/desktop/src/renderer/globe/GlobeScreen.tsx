@@ -64,6 +64,8 @@ const clusterLabel = (count: number) => t('globe.siteCount', { count });
 
 /** The Globe camera when it last closed, and the project open then (this session). */
 let lastCamera: { projectId: string | null; camera: GlobeCamera } | null = null;
+/** The project "Open site here" just opened: the camera left then belongs to it. */
+let handedTo: string | null = null;
 
 /**
  * Where the Globe starts: the camera it was left at when the same project is still open (or none
@@ -262,6 +264,7 @@ export default function GlobeScreen() {
     if (camera && !issueId)
       shell.getState().saveView(opened.id, globeToSite(camera, georefOf(opened.manifest)));
     if (issueId) workspace.getState().select({ kind: 'issue', id: issueId });
+    handedTo = opened.id;
     shell.getState().go('scene');
   };
 
@@ -469,7 +472,8 @@ export default function GlobeScreen() {
         onMeasure={setMeasured}
         onReady={setCtl}
         onClose={(c) => {
-          lastCamera = { projectId: project?.id ?? null, camera: c };
+          lastCamera = { projectId: handedTo ?? project?.id ?? null, camera: c };
+          handedTo = null;
         }}
       />
       <div className="globe-controls" role="group" aria-label={t('globe.controls')}>
