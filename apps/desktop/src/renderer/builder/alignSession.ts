@@ -6,13 +6,12 @@ import { getMedia, loadFlight } from '../media';
 import { shell } from '../shell';
 import { createAlignStore, type AlignStore } from './alignStore';
 import { createPhotoAlignStore, type PhotoAlignStore } from './photoAlignStore';
-import { saveOrientation, withClipKeys, withPhotoFixes } from './orientationFile';
+import { saveOrientationEdit, withClipKeys, withPhotoFixes } from './orientationFile';
 
 /** "Align camera to map": the app's session store (keyframes being edited, notices). */
 export const alignCamera = createAlignStore({
   workspace,
-  save: (layerId, keys) =>
-    saveOrientation(withClipKeys(workspace.getState().orientation, layerId, keys)),
+  save: (layerId, keys) => saveOrientationEdit((file) => withClipKeys(file, layerId, keys)),
   flight: (layerId) => getMedia().flights[layerId] ?? null,
   loadFlight: (layerId) => {
     const project = workspace.getState().project;
@@ -34,8 +33,7 @@ export function useAlign<T>(selector: (s: AlignStore) => T): T {
 /** "Align photo to map": the photo being aligned and the notices after a save. */
 export const photoAlign = createPhotoAlignStore({
   workspace,
-  save: (layerId, fixes) =>
-    saveOrientation(withPhotoFixes(workspace.getState().orientation, layerId, fixes)),
+  save: (layerId, fixes) => saveOrientationEdit((file) => withPhotoFixes(file, layerId, fixes)),
   showBoth: () => {
     const s = shell.getState();
     if (s.screen !== 'scene') s.go('scene');

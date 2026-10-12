@@ -92,6 +92,7 @@ export interface DirectionDraft {
 }
 
 export interface WorkspaceActions {
+  /** Open a project afresh; opening the open project again keeps its loaded orientation. */
   openProject(project: OpenProject, issues?: Issue[]): void;
   closeProject(): void;
   /**
@@ -150,9 +151,12 @@ export function createWorkspace(): StoreApi<Workspace> {
     ...initial,
     openProject: (project, issues = []) => {
       const firstClip = project.manifest.layers.find((l) => l.kind === 'video');
+      const before = get();
       set({
         ...initial,
-        openSeq: get().openSeq + 1,
+        openSeq: before.openSeq + 1,
+        // the same project again keeps its orientation.json: nothing reloads it for the same id
+        orientation: before.project?.id === project.id ? before.orientation : null,
         project,
         issues,
         activeClip: firstClip?.id ?? null,

@@ -32,6 +32,28 @@ export async function loadOrientation(): Promise<void> {
   workspace.getState().setOrientation(r.value.file);
 }
 
+/**
+ * Save an edit of the open project's file; an error text or null. When the workspace has no file
+ * loaded (none, or still loading) the edit starts from the file on disk, and nothing is written
+ * when that cannot be read, so a save never drops other clips' keyframes or photos' corrections.
+ */
+export async function saveOrientationEdit(
+  edit: (file: OrientationFile | null) => OrientationFile,
+): Promise<string | null> {
+  const ws = workspace.getState();
+  const id = ws.project?.id;
+  if (!id) return 'No project is open.';
+  let base = ws.orientation;
+  if (!base) {
+    const r = await bridge.call('orientation:read', { projectId: id });
+    if (!r.ok) return r.error;
+    if (!r.value.ok) return r.value.error;
+    if (workspace.getState().project?.id !== id) return 'The project changed before the save.';
+    base = r.value.file;
+  }
+  return saveOrientation(edit(base));
+}
+
 /** Save the whole file; an error text or null. The workspace takes it after a good write. */
 export async function saveOrientation(next: OrientationFile): Promise<string | null> {
   const id = workspace.getState().project?.id;
