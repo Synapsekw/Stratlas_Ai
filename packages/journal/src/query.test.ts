@@ -59,6 +59,10 @@ describe('auditEntries', () => {
     expect(howOf({ via: { pipeline: { name: 'inspection.run', jobId: 'j' } } })).toBe('pipeline');
     expect(howOf({ via: { external: { found: 'open' } } })).toBe('external');
     expect(howOf({ kind: 'record.external' })).toBe('external');
+    expect(howOf({ kind: 'record.external', label: '3D Tiles list edited' })).toBe('hand');
+    expect(
+      howOf({ kind: 'record.external', label: 'x', via: { external: { found: 'open' } } }),
+    ).toBe('external');
     expect(howOf({ via: { import: { source: 'server' } } })).toBe('server');
     expect(howOf({})).toBe('hand');
   });

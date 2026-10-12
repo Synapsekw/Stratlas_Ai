@@ -40,7 +40,9 @@ export function howOf(raw: Obj): ChangeHow {
   const via = isObj(raw.via) ? raw.via : {};
   if (via.agent) return 'agent';
   if (via.pipeline) return 'pipeline';
-  if (via.external || raw.kind === 'record.external') return 'external';
+  if (via.external) return 'external';
+  // a labelled record.external op without `via` is an in-app write (M10 files): by hand
+  if (raw.kind === 'record.external' && typeof raw.label !== 'string') return 'external';
   if (isObj(via.import)) return via.import.source === 'server' ? 'server' : 'import';
   return 'hand';
 }

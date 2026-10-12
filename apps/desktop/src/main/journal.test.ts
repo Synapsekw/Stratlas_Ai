@@ -449,7 +449,7 @@ describe('journal service', () => {
         packVersion: '0.9.0',
       }) as JobRecord;
 
-    it('records a tilesets:write as one labelled op before the write, shown as external', async () => {
+    it('records a tilesets:write as one labelled op before the write, shown as by hand', async () => {
       const { root, userData } = setup();
       const s = service(root, userData);
       await s.open({ path: root });
@@ -465,8 +465,8 @@ describe('journal service', () => {
         kind: 'record.external',
         label: '3D Tiles list edited',
       });
-      // like orientation:write: howOf maps every record.external op to 'external'
-      expect(e[0]?.how).toBe('external');
+      // a labelled in-app record.external write shows as by hand
+      expect(e[0]?.how).toBe('hand');
       expect(e[0]?.via).toBeUndefined();
     });
 
