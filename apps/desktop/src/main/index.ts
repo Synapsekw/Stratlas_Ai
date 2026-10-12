@@ -103,7 +103,8 @@ import { createTeamConfigStore } from './sync/config';
 import { startSync } from './sync/electron';
 import { registerTeamServerIpc, teamServers } from './teamServer';
 import { globeProjectReader, registerGlobeIpc } from './globe';
-import { registerRasterPacksIpc } from './packs/raster';
+import { listRasterPacks, registerRasterPacksIpc } from './packs/raster';
+import { embeddedRasterPacks, findEmbeddedRaster } from './packs/rasterEmbed';
 import { createOnlineSettingsStore, onlineSettingsPath } from './onlineSettings';
 import { createOnlineTiles, fakeTileFetch } from './onlineTiles';
 import {
@@ -838,6 +839,10 @@ function registerIpc(): void {
       return r.canceled || !r.filePath ? null : r.filePath;
     },
     packs: { dir: () => join(settings.current().dataRoot, 'packs'), list: () => packs.list() },
+    rasterPacks: {
+      list: (kind) => listRasterPacks(settings.current().dataRoot, kind),
+      dataRoot: () => settings.current().dataRoot,
+    },
     tempDir: () => app.getPath('temp'),
     dataRoot: () => settings.current().dataRoot,
     ...osUser(),
@@ -1433,6 +1438,12 @@ function registerIpc(): void {
     readProject: globeProjectReader(registry),
     dataRoot: async () => (await settings.get()).dataRoot,
     settingsFile: join(app.getPath('userData'), 'globe.json'),
+    packageRasterPacks: async (kind) =>
+      embeddedRasterPacks(
+        await listRasterPacks(settings.current().dataRoot, kind),
+        registry.openPackages(),
+        kind,
+      ),
   });
   registerTilesetsIpc({
     handle,
@@ -1746,6 +1757,7 @@ if (restore) {
         thumbsDir,
         brandingDir,
         embeddedPack: (id) => findEmbedded(id, registry.openPackages()),
+        embeddedRaster: (kind, id) => findEmbeddedRaster(kind, id, registry.openPackages()),
         blob: (id, rel) => blobs.lookup(id, rel),
         onlineTile: (segments, req) => onlineTiles.serve(segments, req),
       }),

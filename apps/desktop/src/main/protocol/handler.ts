@@ -1,5 +1,5 @@
 import type { ZipArchive } from '@aio/project/package';
-import { MISSING_BLOB_HEADER, missingBlobHeader } from '@aio/schema';
+import { MISSING_BLOB_HEADER, missingBlobHeader, type RasterPackKind } from '@aio/schema';
 import { createReadStream } from 'node:fs';
 import { stat } from 'node:fs/promises';
 import { join } from 'node:path';
@@ -7,6 +7,7 @@ import { Readable } from 'node:stream';
 import type { BlobLookup } from '../blobs';
 import { LOGO_NAME } from '../branding';
 import { rasterPackFile } from '../packs/raster';
+import { PACKAGE_RASTER_PREFIX } from '../packs/rasterEmbed';
 import { findThumb } from '../thumbs';
 import { mimeFor } from './mime';
 import { resolveInside } from './paths';
@@ -25,6 +26,11 @@ export interface AioRoots {
   brandingDir?(): string;
   /** A map pack carried inside an open package (`packs/<id>.pmtiles`), served in place. */
   embeddedPack?(id: string): { archive: ZipArchive; member: string } | undefined;
+  /** An imagery or terrain pack carried inside an open package, served in place. */
+  embeddedRaster?(
+    kind: RasterPackKind,
+    id: string,
+  ): { archive: ZipArchive; member: string } | undefined;
   /**
    * A project file that is not in the folder but known by content (M9 T6): the downloaded copy,
    * a stream from the shared folder, or missing (a 404 with `x-aio-blob: missing <sha256> <size>`).
@@ -236,6 +242,16 @@ export function createAioHandler(roots: AioRoots): (req: Request) => Promise<Res
 
     if (url.host === 'packs') {
       // M10 G7: imagery and terrain packs, `aio://packs/{imagery,terrain}/<id>.pmtiles`
+      const [rasterKind, rasterName] = segments;
+      if (
+        segments.length === 2 &&
+        (rasterKind === 'imagery' || rasterKind === 'terrain') &&
+        rasterName?.startsWith(PACKAGE_RASTER_PREFIX)
+      ) {
+        const m = PACK.exec(rasterName);
+        const embedded = m?.[1] ? roots.embeddedRaster?.(rasterKind, m[1]) : undefined;
+        return embedded ? serveMember(embedded.archive, embedded.member, req) : status(404);
+      }
       const raster = rasterPackFile(roots.packsDir(), segments);
       if (raster) return serveFile(raster, req);
       const [name, ...rest] = segments;

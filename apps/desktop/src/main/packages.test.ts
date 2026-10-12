@@ -1,10 +1,11 @@
-import { exportPackage } from '@aio/project/package';
+import { exportPackage, openZip } from '@aio/project/package';
 import { PackageHeader, ProjectManifest } from '@aio/schema';
 import { existsSync } from 'node:fs';
-import { mkdir, mkdtemp, readFile, rm } from 'node:fs/promises';
+import { mkdir, mkdtemp, readFile, rm, writeFile as writeFileFs } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { imageryPack } from '../../e2e/m10Fixtures';
 import { listLibrary } from './library';
 import {
   checkExport,
@@ -17,6 +18,7 @@ import {
   ProjectPolicy,
   stagePackageExport,
 } from './packages';
+import { listRasterPacks } from './packs/raster';
 import { openProject, ProjectRegistry, writeProjectIssues } from './project';
 import { createAioHandler } from './protocol/handler';
 import { sampleIssue, sampleManifest, writeProject } from './testing';
@@ -403,5 +405,89 @@ describe('extract to edit', () => {
     const folder = await jobs.extract({ jobId: 'y', projectId: 'nope' });
     expect(!folder.ok && folder.error).toMatch(/Open the package first/);
     expect(existsSync(join(base, 'data', 'projects'))).toBe(false);
+  });
+});
+
+describe('raster packs in packages', () => {
+  const siteBox: [number, number, number, number] = [14, 44, 16, 46];
+
+  async function setup(target: string) {
+    const dataRoot = join(base, 'data');
+    const dir = join(dataRoot, 'packs', 'imagery');
+    await mkdir(dir, { recursive: true });
+    const fx = imageryPack({ id: 'site', label: 'Site', bbox: siteBox, minZoom: 0, maxZoom: 5 });
+    await writeFileFs(join(dir, 'site.pmtiles'), fx.pmtiles);
+    await writeFileFs(join(dir, 'site.json'), JSON.stringify(fx.meta));
+    const project = await writeProject(
+      join(base, 'utm'),
+      sampleManifest({ id: 'utm', crs: { epsg: 32633 }, origin: [500000, 5000000, 0], layers: [] }),
+    );
+    const registry = new ProjectRegistry();
+    const opened = await openProject(project, registry);
+    if (!opened.ok) throw new Error(opened.error);
+    const jobs = createPackageJobs({
+      registry,
+      cache: createPlanCache(),
+      createdBy: 'test',
+      chooseTarget: () => Promise.resolve(target),
+      progress: () => undefined,
+      rasterPacks: {
+        list: (kind) => listRasterPacks(dataRoot, kind),
+        dataRoot: () => dataRoot,
+      },
+    });
+    return { jobs, id: opened.id };
+  }
+
+  const exportOptions = (projectId: string, rasterPacks?: { kind: 'imagery'; id: string }[]) => ({
+    projectId,
+    exclude: [],
+    readOnly: true,
+    aiPolicy: 'forbid' as const,
+    exports: ['issues-csv' as const],
+    ...(rasterPacks ? { rasterPacks } : {}),
+  });
+
+  it('plans the covering pack and counts its bytes only when it is asked for', async () => {
+    const { jobs, id } = await setup(join(base, 'r.aio'));
+    const plain = await jobs.plan({ projectId: id, exclude: [] });
+    const asked = await jobs.plan({
+      projectId: id,
+      exclude: [],
+      rasterPacks: [{ kind: 'imagery', id: 'site' }],
+    });
+    if (!plain.ok || !asked.ok) throw new Error('plan failed');
+    expect(plain.plan.rasterPacks?.map((r) => r.id)).toEqual(['site']);
+    const entry = plain.plan.rasterPacks?.[0];
+    expect(entry?.ok).toBe(true);
+    const bytes = entry?.ok ? entry.bytes : 0;
+    expect(bytes).toBeGreaterThan(0);
+    expect(asked.plan.totalBytes - plain.plan.totalBytes).toBe(bytes);
+    expect(asked.plan.totalFiles - plain.plan.totalFiles).toBe(2);
+  });
+
+  it('writes a ticked pack into the package', async () => {
+    const out = join(base, 'r.aio');
+    const { jobs, id } = await setup(out);
+    const r = await jobs.export({
+      jobId: 'j',
+      options: exportOptions(id, [{ kind: 'imagery', id: 'site' }]),
+    });
+    expect(r).toMatchObject({ ok: true, path: out });
+    const zip = await openZip(out);
+    expect([...zip.entries.keys()]).toEqual(
+      expect.arrayContaining(['packs/imagery/site.pmtiles', 'packs/imagery/site.json']),
+    );
+  });
+
+  it('refuses a pack that is not installed and writes no file', async () => {
+    const out = join(base, 'none.aio');
+    const { jobs, id } = await setup(out);
+    const r = await jobs.export({
+      jobId: 'j',
+      options: exportOptions(id, [{ kind: 'imagery', id: 'gone' }]),
+    });
+    expect(!r.ok && r.error).toContain('gone');
+    expect(existsSync(out)).toBe(false);
   });
 });

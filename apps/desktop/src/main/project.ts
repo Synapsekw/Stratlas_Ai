@@ -160,7 +160,7 @@ export async function readIssues(root: string, seen?: SeenFiles): Promise<Loaded
   return { ok: true, value: parsed.data.issues };
 }
 
-function parseIssues(raw: unknown, where: string, fix: string): Loaded<Issue[]> {
+export function parseIssues(raw: unknown, where: string, fix: string): Loaded<Issue[]> {
   if (raw === undefined) return { ok: true, value: [] };
   const parsed = IssuesFile.safeParse(raw);
   if (!parsed.success) {

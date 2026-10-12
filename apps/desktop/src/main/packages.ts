@@ -21,12 +21,15 @@ import {
   type PackageHeader,
   type PackageMapPackRequest,
   type ProjectManifest,
+  type RasterPackInfo,
+  type RasterPackKind,
   type ReportFile,
 } from '@aio/schema';
 import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { basename, dirname, extname, join } from 'node:path';
 import { embedSummary, planEmbed, writeEmbed } from './packs/embed';
+import { chooseRasterEmbeds, planRasterEmbeds, writeRasterEmbeds } from './packs/rasterEmbed';
 import { readManifest, type PackageSource, type ProjectRegistry } from './project';
 
 const EXPORT_LABEL: Record<string, string> = {
@@ -176,6 +179,8 @@ export interface PackageJobDeps {
   createdBy: string;
   /** Installed map packs and their folder, for map regions inside packages. */
   packs?: { dir: () => string; list: () => Promise<MapPackInfo[]> };
+  /** Installed imagery and terrain packs and the data root, for raster packs inside packages. */
+  rasterPacks?: { list(kind: RasterPackKind): Promise<RasterPackInfo[]>; dataRoot(): string };
   /** Where an embedded map region is clipped before it is packaged. */
   tempDir?: () => string;
   /** Data root that extracted projects go to (extract to edit). */
@@ -203,6 +208,20 @@ export function createPackageJobs(deps: PackageJobDeps) {
     });
   }
 
+  async function rasterPlan(manifest: ProjectManifest, marginKm: number) {
+    if (!deps.rasterPacks) return null;
+    const [imagery, terrain] = await Promise.all([
+      deps.rasterPacks.list('imagery'),
+      deps.rasterPacks.list('terrain'),
+    ]);
+    return planRasterEmbeds({
+      manifest,
+      packs: { imagery, terrain },
+      dataRoot: deps.rasterPacks.dataRoot(),
+      marginKm,
+    });
+  }
+
   async function manifestOf(projectId: string) {
     const root = deps.registry.root(projectId);
     if (root === undefined) return { ok: false as const, error: notFolder(projectId) };
@@ -216,6 +235,7 @@ export function createPackageJobs(deps: PackageJobDeps) {
       projectId,
       exclude,
       mapPack,
+      rasterPacks,
     }: IpcRequest<'package:plan'>): Promise<IpcResponse<'package:plan'>> {
       const m = await manifestOf(projectId);
       if (!m.ok) return m;
@@ -223,16 +243,22 @@ export function createPackageJobs(deps: PackageJobDeps) {
         const p = await deps.cache.plan(m.root, m.manifest, exclude);
         const free = await volumeFreeBytes(m.root);
         const region = mapPack ? embedSummary(await embedPlan(m.manifest, mapPack)) : undefined;
-        const extra = region?.ok ? region.bytes + 1024 : 0;
+        const rasters = await rasterPlan(m.manifest, mapPack?.marginKm ?? 1);
+        const wanted = new Set((rasterPacks ?? []).map((r) => `${r.kind}/${r.id}`));
+        const picked = (rasters?.summary ?? []).filter((r) => wanted.has(`${r.kind}/${r.id}`));
+        const rasterBytes = picked.reduce((n, r) => n + (r.ok ? r.bytes : 0), 0);
+        const rasterFiles = picked.filter((r) => r.ok).length * 2;
+        const extra = (region?.ok ? region.bytes + 1024 : 0) + rasterBytes;
         return {
           ok: true,
           plan: {
             layers: p.layers,
             baseBytes: p.baseBytes,
             totalBytes: p.totalBytes + extra,
-            totalFiles: p.totalFiles + 2 + (region?.ok ? 2 : 0),
+            totalFiles: p.totalFiles + 2 + (region?.ok ? 2 : 0) + rasterFiles,
             ...(free !== undefined ? { freeBytes: Math.floor(free) } : {}),
             ...(region ? { mapPack: region } : {}),
+            ...(rasters ? { rasterPacks: rasters.summary } : {}),
           },
         };
       } catch (e) {
@@ -256,6 +282,7 @@ export function createPackageJobs(deps: PackageJobDeps) {
       const ac = new AbortController();
       jobs.set(jobId, ac);
       let embed: Awaited<ReturnType<typeof writeEmbed>> | null = null;
+      let rasterEmbed: Awaited<ReturnType<typeof writeRasterEmbeds>> | null = null;
       try {
         deps.cache.forget(m.root);
         if (options.mapPack) {
@@ -267,6 +294,19 @@ export function createPackageJobs(deps: PackageJobDeps) {
             signal: ac.signal,
           });
         }
+        const requested = options.rasterPacks ?? [];
+        if (requested.length > 0) {
+          const planned = await rasterPlan(m.manifest, options.mapPack?.marginKm ?? 1);
+          if (!planned)
+            throw new Error('Imagery and terrain packs are not available in this build.');
+          const chosen = chooseRasterEmbeds(requested, planned);
+          if (!chosen.ok) throw new Error(chosen.reason);
+          rasterEmbed = await writeRasterEmbeds(chosen.value, {
+            tempDir: deps.tempDir?.() ?? tmpdir(),
+            signal: ac.signal,
+          });
+        }
+        const extraMembers = [...(embed?.members ?? []), ...(rasterEmbed?.members ?? [])];
         const r = await exportPackage({
           root: m.root,
           out,
@@ -285,7 +325,7 @@ export function createPackageJobs(deps: PackageJobDeps) {
           onProgress: (p) => {
             deps.progress({ jobId, ...p });
           },
-          ...(embed ? { extra: embed.members } : {}),
+          ...(extraMembers.length > 0 ? { extra: extraMembers } : {}),
         });
         return { ok: true, path: out, bytes: r.bytes };
       } catch (e) {
@@ -298,6 +338,7 @@ export function createPackageJobs(deps: PackageJobDeps) {
       } finally {
         jobs.delete(jobId);
         await embed?.dispose().catch(() => undefined);
+        await rasterEmbed?.dispose().catch(() => undefined);
       }
     },
 

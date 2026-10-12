@@ -1,5 +1,6 @@
 import { utmToWgs84 } from '@aio/geo';
 import type { Issue, LibraryEntry, ProjectManifest } from '@aio/schema';
+import { exportPackage, openZip } from '@aio/project/package';
 import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -143,6 +144,54 @@ describe('library projects as Globe sites', () => {
   });
 });
 
+describe('globe reads an open package', () => {
+  async function opened(extra: Record<string, string>) {
+    const root = join(dir, 'proj');
+    await mkdir(root);
+    await writeFile(join(root, 'manifest.json'), JSON.stringify(manifest()));
+    await writeFile(
+      join(root, 'issues.json'),
+      JSON.stringify({ schema: 'aio.issues/1', issues: [issue('i1', 2, 'draft')] }),
+    );
+    for (const [k, v] of Object.entries(extra)) await writeFile(join(root, k), v);
+    const out = join(dir, 'p.aio');
+    await exportPackage({
+      root,
+      out,
+      manifest: manifest(),
+      exclude: [],
+      header: { readOnly: true, aiPolicy: 'forbid', exports: ['issues-csv'] },
+    });
+    const archive = await openZip(out);
+    return globeProjectReader({
+      package: () => ({ archive, manifest: manifest() }) as never,
+    });
+  }
+  const tilesets = JSON.stringify({
+    schema: 'aio.tilesets/1',
+    entries: [
+      { id: 'mesh-1', name: 'Mesh', kind: 'mesh', src: 'tiles/mesh-1/tileset.json', visible: true },
+    ],
+  });
+
+  it('reads issues.json and tilesets.json from the package', async () => {
+    const read = await opened({ 'tilesets.json': tilesets });
+    const p = await read(
+      entry('p1', join(dir, 'p.aio'), { package: { encrypted: false, readOnly: true } }),
+    );
+    expect(p?.issues).toHaveLength(1);
+    expect(p?.tilesets?.entries[0]?.id).toBe('mesh-1');
+  });
+
+  it('answers null tilesets when the member is missing or invalid', async () => {
+    const e = entry('p1', join(dir, 'p.aio'), { package: { encrypted: false, readOnly: true } });
+    expect((await (await opened({}))(e))?.tilesets).toBeNull();
+    await rm(join(dir, 'p.aio'), { force: true });
+    await rm(join(dir, 'proj'), { recursive: true, force: true });
+    expect((await (await opened({ 'tilesets.json': '{nope' }))(e))?.tilesets).toBeNull();
+  });
+});
+
 describe('raster packs and Globe settings', () => {
   const meta = (id: string, kind: 'imagery' | 'terrain') => ({
     schema: 'aio.raster-pack/1',
@@ -180,6 +229,34 @@ describe('raster packs and Globe settings', () => {
       imagery: [{ id: 'gcc', sizeBytes: 1234, attribution: 'Synthetic test pack' }],
       terrain: [],
     });
+  });
+
+  it('lists the packs of open packages after the installed ones', async () => {
+    const img = join(dir, 'packs', 'imagery');
+    await mkdir(img, { recursive: true });
+    await writeFile(join(img, 'gcc.json'), JSON.stringify(meta('gcc', 'imagery')));
+    await writeFile(join(img, 'gcc.pmtiles'), Buffer.alloc(10));
+    const ipc = collectHandlers((handle) => {
+      registerGlobeIpc({
+        handle,
+        library: () => Promise.resolve([]),
+        readProject: () => Promise.resolve(null),
+        dataRoot: () => Promise.resolve(dir),
+        settingsFile: join(dir, 'globe.json'),
+        packageRasterPacks: (kind) =>
+          Promise.resolve(
+            kind === 'imagery'
+              ? [{ ...meta('pkg-p1-site', 'imagery'), sizeBytes: 5, source: 'package' as const }]
+              : [],
+          ) as never,
+      });
+    });
+    const r = await ipc.call('globe:packs', {});
+    expect(r).toMatchObject({ ok: true });
+    expect((r as { imagery: { id: string }[] }).imagery.map((p) => p.id)).toEqual([
+      'gcc',
+      'pkg-p1-site',
+    ]);
   });
 
   it('answers every channel: sites, packs, and settings saved in globe.json', async () => {

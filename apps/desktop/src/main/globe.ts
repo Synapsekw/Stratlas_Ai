@@ -6,6 +6,7 @@
  * imagery or terrain); everything here reads local files.
  */
 import { projectToLonLat } from '@aio/globe';
+import type { ZipArchive } from '@aio/project/package';
 import {
   GlobeSettings,
   TilesetsFile,
@@ -21,7 +22,7 @@ import { join } from 'node:path';
 import { readJson, writeJsonAtomic } from './fsutil';
 import type { Handle } from './notYet';
 import { listRasterPacks } from './packs/raster';
-import { readIssues, readManifest, type ProjectRegistry } from './project';
+import { parseIssues, readIssues, readManifest, type ProjectRegistry } from './project';
 
 /** A library project's records, read for the Globe; null when it cannot be read. */
 export interface GlobeProject {
@@ -42,6 +43,8 @@ export interface GlobeIpcDeps {
   settingsFile: string;
   /** The raster packs of a kind; defaults to G7's `listRasterPacks` over the data folder. */
   rasterPacks?: (kind: RasterPackKind) => Promise<RasterPackInfo[]>;
+  /** Raster packs carried by open packages that this machine lacks (listed after installed ones). */
+  packageRasterPacks?: (kind: RasterPackKind) => Promise<RasterPackInfo[]>;
 }
 
 /**
@@ -107,7 +110,12 @@ export function globeProjectReader(
   return async (entry) => {
     if (entry.package) {
       const pkg = registry.package(entry.id);
-      return pkg ? { manifest: pkg.manifest, issues: [], tilesets: null } : null;
+      if (!pkg) return null;
+      return {
+        manifest: pkg.manifest,
+        issues: await packageIssues(pkg.archive),
+        tilesets: await packageTilesets(pkg.archive),
+      };
     }
     const manifest = await readManifest(entry.path);
     if (!manifest.ok) return null;
@@ -118,6 +126,33 @@ export function globeProjectReader(
       tilesets: await readTilesets(entry.path),
     };
   };
+}
+
+/** `issues.json` of an open package; empty when absent or not valid. */
+async function packageIssues(archive: Pick<ZipArchive, 'entries' | 'read'>): Promise<Issue[]> {
+  if (!archive.entries.has('issues.json')) return [];
+  try {
+    const raw: unknown = JSON.parse((await archive.read('issues.json')).toString('utf8'));
+    const r = parseIssues(raw, 'issues.json', '');
+    return r.ok ? r.value : [];
+  } catch {
+    return [];
+  }
+}
+
+/** `tilesets.json` of an open package; null when absent or not valid. */
+async function packageTilesets(
+  archive: Pick<ZipArchive, 'entries' | 'read'>,
+): Promise<TilesetsFile | null> {
+  if (!archive.entries.has('tilesets.json')) return null;
+  try {
+    const parsed = TilesetsFile.safeParse(
+      JSON.parse((await archive.read('tilesets.json')).toString('utf8')),
+    );
+    return parsed.success ? parsed.data : null;
+  } catch {
+    return null;
+  }
 }
 
 /** `tilesets.json` of a project folder, or null (none, or not readable by this build). */
@@ -148,7 +183,10 @@ export function registerGlobeIpc(deps: GlobeIpcDeps): void {
     }
   });
   handle('globe:packs', async () => {
-    const [imagery, terrain] = await Promise.all([packs('imagery'), packs('terrain')]);
+    const more = deps.packageRasterPacks ?? (() => Promise.resolve([]));
+    const both = (kind: RasterPackKind) =>
+      Promise.all([packs(kind), more(kind)]).then(([a, b]) => [...a, ...b]);
+    const [imagery, terrain] = await Promise.all([both('imagery'), both('terrain')]);
     return { ok: true as const, imagery, terrain };
   });
   handle('globe:getSettings', async () => ({

@@ -5,7 +5,10 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { createAioHandler } from './handler';
 import { mimeFor } from './mime';
 
+import { openZip, writeZip, type ZipArchive } from '@aio/project/package';
+
 let base: string;
+let PKG: ZipArchive;
 const BODY = '0123456789abcdef';
 
 beforeAll(async () => {
@@ -26,6 +29,10 @@ beforeAll(async () => {
   await mkdir(join(base, 'packs', 'imagery'));
   await writeFile(join(base, 'packs', 'imagery', 'site.pmtiles'), 'RasterPM');
   await writeFile(join(base, 'packs', 'imagery', 'site.json'), '{}');
+  await writeZip(join(base, 'pkg.aio'), [
+    { name: 'packs/imagery/site.pmtiles', data: Buffer.from('PkgRasterBytes') },
+  ]);
+  PKG = await openZip(join(base, 'pkg.aio'));
 });
 
 afterAll(async () => {
@@ -36,6 +43,10 @@ function handler() {
   return createAioHandler({
     projectRoot: (id) => (id === 'p1' ? join(base, 'p1') : undefined),
     packsDir: () => join(base, 'packs'),
+    embeddedRaster: (kind, id) =>
+      kind === 'imagery' && id === 'pkg-p1-site'
+        ? { archive: PKG, member: 'packs/imagery/site.pmtiles' }
+        : undefined,
   });
 }
 
@@ -107,6 +118,12 @@ describe('aio:// handler', () => {
     expect(res.status).toBe(206);
     expect(await res.text()).toBe('Raster');
     expect((await get('aio://packs/imagery/site.json')).status).toBe(404);
+    const pkg = await get('aio://packs/imagery/pkg-p1-site.pmtiles', { Range: 'bytes=0-2' });
+    expect(pkg.status).toBe(206);
+    expect(await pkg.text()).toBe('Pkg');
+    expect((await get('aio://packs/imagery/pkg-other.pmtiles')).status).toBe(404);
+    expect((await get('aio://packs/terrain/pkg-p1-site.pmtiles')).status).toBe(404);
+    expect(await (await get('aio://packs/imagery/site.pmtiles')).text()).toBe('RasterPM');
     expect((await get('aio://packs/terrain/site.pmtiles')).status).toBe(404);
     expect((await get('aio://packs/other/site.pmtiles')).status).toBe(404);
   });
