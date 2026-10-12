@@ -1336,7 +1336,7 @@ export const PipelineAddonManifest = z.object({
   /** What the add-on accelerates with; a kind this app does not know is not an add-on to it. */
   kind: z.literal('gpu-cuda'),
   version: z.string().min(1).max(64),
-  /** The pipeline pack versions it works with (`>=0.5.0 <0.6.0`). */
+  /** The pipeline pack versions it works with (`>=0.5.0 <0.7.0`). */
   packRange: z.string().min(1).max(100),
   /** The Python line its compiled modules are for (`3.13`). */
   python: z.string().min(1).max(20),

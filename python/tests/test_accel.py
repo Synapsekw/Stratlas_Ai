@@ -24,7 +24,7 @@ def _addon(root: Path, version: str = "0.1.0", **over) -> Path:
         "schema": "aio.pipeline-addon/1",
         "kind": "gpu-cuda",
         "version": version,
-        "packRange": ">=0.5.0 <0.6.0",
+        "packRange": ">=0.5.0 <0.7.0",
         "python": HERE,
         "platform": "win32-x64",
         "runtime": {"cuda": "12.9", "minDriver": "528.33"},
@@ -109,11 +109,11 @@ def test_switched_off_wins(tmp_path, monkeypatch):
 
 
 def test_an_add_on_for_another_pack_or_python_is_refused_in_words(tmp_path, monkeypatch):
-    monkeypatch.setattr(accel, "__version__", "0.6.1")
+    monkeypatch.setattr(accel, "__version__", "0.7.1")
     out = accel.selftest(_addon(tmp_path))
     assert out["state"] == "failed"
     assert out["reason"] == (
-        "GPU add-on 0.1.0 fits processing tools >=0.5.0 <0.6.0; this is 0.6.1. "
+        "GPU add-on 0.1.0 fits processing tools >=0.5.0 <0.7.0; this is 0.7.1. "
         "Install the add-on made for this version."
     )
     with pytest.raises(accel.AddonProblem, match=r"is for Python 3\.99; the processing tools use"):

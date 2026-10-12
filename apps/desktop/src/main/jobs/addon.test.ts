@@ -29,7 +29,7 @@ async function writeAddon(version: string, over: Record<string, unknown> = {}) {
     schema: 'aio.pipeline-addon/1',
     kind: 'gpu-cuda',
     version,
-    packRange: '>=0.5.0 <0.6.0',
+    packRange: '>=0.5.0 <0.7.0',
     python: '3.13',
     platform: 'win32-x64',
     runtime: { cuda: '12.9', minDriver: '528.33' },
@@ -65,10 +65,10 @@ describe('findAddon', () => {
 
   it('says in words why an add-on that is there cannot be used', async () => {
     await writeAddon('0.1.0');
-    expect(await find('0.6.1')).toEqual({
+    expect(await find('0.7.1')).toEqual({
       addon: null,
       problem:
-        'GPU add-on 0.1.0 fits processing tools >=0.5.0 <0.6.0; these are 0.6.1. Install the add-on made for this version.',
+        'GPU add-on 0.1.0 fits processing tools >=0.5.0 <0.7.0; these are 0.7.1. Install the add-on made for this version.',
     });
     expect(
       await findAddon({
@@ -226,11 +226,11 @@ describe('AcceleratorProbe', () => {
   });
 
   it('an add-on that does not fit is a failure with the reason, without a test', async () => {
-    await writeAddon('0.1.0', { packRange: '>=0.6.0 <0.7.0' });
+    await writeAddon('0.1.0', { packRange: '>=0.7.0 <0.8.0' });
     const run = vi.fn<RunProgram>(() => Promise.resolve('{"state": "ready"}'));
     const r = await probe({ run }).state();
     expect(r.state).toBe('failed');
-    expect(r.reason).toContain('fits processing tools >=0.6.0 <0.7.0; these are 0.5.4');
+    expect(r.reason).toContain('fits processing tools >=0.7.0 <0.8.0; these are 0.5.4');
     expect(run).not.toHaveBeenCalled();
   });
 

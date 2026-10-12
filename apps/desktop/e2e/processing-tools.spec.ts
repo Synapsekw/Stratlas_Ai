@@ -96,7 +96,7 @@ test('the start notice leads to Settings, where a pack file installs and process
   network,
 }, testInfo) => {
   await writeOldPack(dataRoot, '0.2.0');
-  const archive = await writeArchive(join(dataRoot.base, 'kit'), '0.5.0');
+  const archive = await writeArchive(join(dataRoot.base, 'kit'), '0.6.0');
   const app = await launchApp(dataRoot, ENV);
   await network.attach(app);
   try {
@@ -129,16 +129,16 @@ test('the start notice leads to Settings, where a pack file installs and process
     // install from the file the dialog answers
     await page.getByTestId('tools-choose').click();
     await expect(page.getByTestId('tools-note')).toContainText(
-      'Processing tools 0.5.0 are installed.',
+      'Processing tools 0.6.0 are installed.',
     );
     await expect(page.getByTestId('tools-state')).toHaveAttribute('data-state', 'ok');
     await expect(page.getByTestId('tools-state')).toContainText('Up to date');
-    await expect(page.getByTestId('tools-version')).toHaveText('0.5.0');
+    await expect(page.getByTestId('tools-version')).toHaveText('0.6.0');
     await expect(page.getByTestId('tools-needs')).toHaveCount(0);
     // the pack is in place, with nothing half-unpacked beside it
     const runtime = join(dataRoot.root, 'runtime');
-    expect((await readdir(runtime)).sort()).toEqual(['pipeline-pack-0.2.0', 'pipeline-pack-0.5.0']);
-    expect(existsSync(join(runtime, 'pipeline-pack-0.5.0', 'python', 'python.exe'))).toBe(true);
+    expect((await readdir(runtime)).sort()).toEqual(['pipeline-pack-0.2.0', 'pipeline-pack-0.6.0']);
+    expect(existsSync(join(runtime, 'pipeline-pack-0.6.0', 'python', 'python.exe'))).toBe(true);
 
     // the old pack is listed with its size and stays until removed
     const others = win.getByTestId('tools-others');
@@ -149,13 +149,13 @@ test('the start notice leads to Settings, where a pack file installs and process
     // the same file again asks before replacing
     await page.getByTestId('tools-choose').click();
     const replace = page.getByTestId('tools-replace');
-    await expect(replace).toContainText('Version 0.5.0 is already installed.');
+    await expect(replace).toContainText('Version 0.6.0 is already installed.');
     await expectFits(win, 'tools-replace', 'tools-replace-yes');
     await replace.getByRole('button', { name: 'Keep it' }).click();
     await expect(replace).toHaveCount(0);
 
     // processing follows without a restart: nothing says the tools are missing, the notice is gone
-    await expect.poll(() => runtimeVersion(win)).toBe('0.5.0');
+    await expect.poll(() => runtimeVersion(win)).toBe('0.6.0');
     await win.locator('.sb-nav .nav-item', { hasText: 'Scene' }).click();
     const drawer = await openProcessing(win);
     await expect(drawer.getByTestId('proc-tools')).toHaveCount(0);
@@ -174,7 +174,7 @@ test('the start notice leads to Settings, where a pack file installs and process
     await win.getByTestId('tools-remove-confirm-0.2.0').click();
     await expect(win.getByTestId('tools-others')).toHaveCount(0);
     await expect(win.getByTestId('tools-note')).toContainText('pipeline-pack-0.2.0 was moved');
-    expect(await readdir(runtime)).toEqual(['pipeline-pack-0.5.0']);
+    expect(await readdir(runtime)).toEqual(['pipeline-pack-0.6.0']);
     expect(await network.outbound()).toEqual([]);
   } finally {
     await app.close();
@@ -273,7 +273,7 @@ test('Update processing tools is one way in from Create maps and from the Proces
 }) => {
   test.skip(!PHOTO_PLATFORM, PHOTO_PLATFORM_ONLY);
   // no processing tools at all
-  const archive = await writeArchive(join(dataRoot.base, 'kit'), '0.5.0');
+  const archive = await writeArchive(join(dataRoot.base, 'kit'), '0.6.0');
   const app = await launchApp(dataRoot, ENV);
   await network.attach(app);
   try {
@@ -303,7 +303,7 @@ test('Update processing tools is one way in from Create maps and from the Proces
     await expect(win.getByTestId('tools-state')).toHaveAttribute('data-state', 'missing');
     await win.getByTestId('tools-choose').click();
     const note = win.getByTestId('tools-note');
-    await expect(note).toContainText('Processing tools 0.5.0 are installed.');
+    await expect(note).toContainText('Processing tools 0.6.0 are installed.');
     await expectFits(win, 'tools-note', 'tools-resume');
 
     // and back: the dialog opens again, checks this computer again, and is no longer blocked
@@ -312,7 +312,7 @@ test('Update processing tools is one way in from Create maps and from the Proces
     await expect(wizard.getByTestId('photo-blocked')).toHaveCount(0);
     await expect(wizard.getByTestId('photo-drop')).toBeVisible();
     await wizard.getByRole('button', { name: 'Close' }).first().click();
-    await expect.poll(() => runtimeVersion(win)).toBe('0.5.0');
+    await expect.poll(() => runtimeVersion(win)).toBe('0.6.0');
     const after = await openProcessing(win);
     await expect(after.getByTestId('proc-tools')).toHaveCount(0);
     await closeProcessing(win);
