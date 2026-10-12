@@ -814,9 +814,11 @@ Hydrology (G10) and haul-road compliance (G11) are pipeline jobs over a prepared
 <project>/walks/<id>/orientation.bin    its float32 records, written by walk.process
 <project>/walks/<id>/pose.json          aio.flight/1, written by the app when a placement is saved
 <project>/walks/<id>/.layer             marker: the walk has been a layer (since 0.12)
-<project>/walks/<id>/process.json       walk.process's own run record (PROPOSAL, the pipeline's schema)
-<project>/walks/<id>/sparse.ply         walk.process's sparse points (PROPOSAL, W4 reads it)
-<project>/walks/<id>/stills/<n>.jpg     stills kept by walk.process (PROPOSAL)
+<project>/walks/<id>/process.json       aio.walk-process/1, walk.process's run record, written last
+<project>/walks/<id>/imu.bin            motion data, float32 rows at 200 Hz, written by walk.process
+<project>/walks/<id>/sparse.ply         walk.process's sparse points (W4 reads them)
+<project>/walks/<id>/stills/<n>.jpg     map stills kept by walk.process
+<project>/walks/<id>/stabilized.mp4     levelled playback copy, written by walk.process
 <project>/walks/.staging-<name>-<x>/    a walk being written; never listed, never packaged
 ```
 
@@ -830,6 +832,16 @@ Hydrology (G10) and haul-road compliance (G11) are pipeline jobs over a prepared
 - **Original**: not copied; it stays where the person keeps it, as with a drone clip that gets a review copy.
 - **Packages and sync**: a package carries a walk's folder with its `walk` layer (`planPackage`); a `.part` file of an interrupted copy is never packaged, and neither is `.trash/` (removed walks). Hubs and the Team Server carry the files the layer names (the record, the playback copy, the poster, the path files and `pose.json`) but not `stills/` yet.
 - **Reading**: `walks:list` (`{ projectId }` to `{ walks }`, newest first), for a folder project and for an open package; the pane plays `aio://project/<id>/walks/<walk>/playback.mp4`.
+
+### Processing (`walk.process`, founder, 12 Oct 2026; pipeline pack 0.6.0)
+
+- **The job** (`walk.process`, `WalkProcessParams`; python `aio_pipelines/walk/`) works on one walk folder and writes only into it; it never writes the manifest or `walk.json`. It reads the original camera file when given (`src`, absolute, read only; its name and size must match `walk.json`'s `source`), else the playback copy. Steps `read`, `frames`, `sfm` and `finish` resume after a cancel; everything is staged and moved into place at `finish`, `process.json` last, so a reader never sees a mix of two runs.
+- **`process.json`** (`WalkProcessFile`, `aio.walk-process/1`, since 0.12): `walk`, `createdAt`, `engine` (`version`, `pycolmap`, `ffmpeg`), `input` (`file` name only, `layout`, `calibration` `trailer`, `default` (195 degree lenses) or `none` (a stitched input), `lenses` as used, `imu`, `camera`), `outputs` (project-relative paths of what was written: `rawPath`, `orientation`, `imu`, `sparse`, `stills`, `stabilized`; each absent when not written), `stabilize` (`levelled`, `keptYaw: true`), `stills` (`sfm` and `map` counts), `path` (`source`, `registeredFraction`, `segments`), `timings` (seconds per step) and `warnings`. A file over 256 KB is not read. `walks:list` sums each one up in `processed` (`createdAt`, `stabilized`, `source`, the number of warnings).
+- **`imu.bin`**: float32 little-endian rows `t, ax, ay, az, gx, gy, gz` at 200 Hz, no header (`WALK_IMU_COLUMNS`, `WALK_IMU_RATE_HZ`); `t` in playback seconds, accelerations in g (the reaction to gravity reads +1 g up), rates in rad/s, in the camera frame x right, y down, z forward (the picture centre at yaw 0).
+- **`stabilized.mp4`**: the playback copy's encoding (H.264, yuv420p, a keyframe every 0.5 s, faststart), stitched with the camera's own lens calibration from the trailer and levelled: pitch and roll removed per frame, yaw kept (the world-locked view turns in the player). Written only when motion data was read. The 360 pane plays it while **Level horizon** is on.
+- **`stills/<n>.jpg`**: full-size equirectangular stills (at most 3840 x 1920, JPEG), about one per metre of walking by step count; `n` is the still index of `raw-path.json` (its `kept`).
+- **`sparse.ply`**: binary little-endian PLY, `x y z` float and `red green blue` uchar, in the raw frame of segment 0.
+- **Pins only**: when under 60 % of the stills register, or the walk is too short, `raw-path.json` has `source: 'pins-only'` and no positions; the job still succeeds with a warning.
 
 ### The walk layer and placing (founder, 12 Oct 2026; app 0.12)
 
