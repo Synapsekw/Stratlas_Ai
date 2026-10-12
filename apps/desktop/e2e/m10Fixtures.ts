@@ -133,14 +133,23 @@ function pngChunk(type: string, data: Buffer): Buffer {
 
 /** An 8-bit RGB PNG (no metadata chunks, filter none). */
 export function encodePngRgb(width: number, height: number, rgb: Uint8Array): Buffer {
-  const raw = Buffer.alloc((width * 3 + 1) * height);
-  for (let y = 0; y < height; y++)
-    raw.set(rgb.subarray(y * width * 3, (y + 1) * width * 3), y * (width * 3 + 1) + 1);
+  return encodePng(width, height, rgb, 3);
+}
+
+/** An 8-bit RGBA PNG (no metadata chunks, filter none). */
+export function encodePngRgba(width: number, height: number, rgba: Uint8Array): Buffer {
+  return encodePng(width, height, rgba, 4);
+}
+
+function encodePng(width: number, height: number, px: Uint8Array, channels: 3 | 4): Buffer {
+  const row = width * channels;
+  const raw = Buffer.alloc((row + 1) * height);
+  for (let y = 0; y < height; y++) raw.set(px.subarray(y * row, (y + 1) * row), y * (row + 1) + 1);
   const ihdr = Buffer.alloc(13);
   ihdr.writeUInt32BE(width, 0);
   ihdr.writeUInt32BE(height, 4);
   ihdr[8] = 8;
-  ihdr[9] = 2;
+  ihdr[9] = channels === 4 ? 6 : 2;
   return Buffer.concat([
     Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
     pngChunk('IHDR', ihdr),
@@ -595,6 +604,100 @@ const SEVERITY_MODEL = {
   uncertain: { label: 'Uncertain', color: '#757575' },
 };
 
+/**
+ * The processed outputs of the first site (globe-site-a): a kit pyramid ortho per survey date and
+ * one surface change heat map, each 300 m square about the origin (local x east, z south) with a
+ * 1 by 1 level and a 2 by 2 level of 256 px PNG tiles. Survey 1 is all green; survey 2 a
+ * checkerboard (north-west and south-east green, north-east and south-west grey), so a pixel
+ * tells the dates apart; the heat map is red over the middle 100 m and clear elsewhere.
+ */
+export const SITE_RASTERS = {
+  halfM: 150,
+  heatHalfM: 50,
+  green: [0x3a, 0x7d, 0x44] as const,
+  grey: [0x9a, 0x9a, 0x9a] as const,
+  red: [0xe8, 0x20, 0x2a] as const,
+  layers: [
+    { id: 'ortho-c1', capture: 'c1', dir: 'rasters/ortho-c1' },
+    { id: 'ortho-c2', capture: 'c2', dir: 'rasters/ortho-c2' },
+    { id: 'heat', capture: 'c2', dir: 'change/heat' },
+  ],
+} as const;
+
+type Rgba = readonly [number, number, number, number];
+
+/** The colour of each site raster at a local point (x east, z south, metres). */
+const SITE_RASTER_COLOUR: Record<string, (x: number, z: number) => Rgba> = {
+  'ortho-c1': () => [...SITE_RASTERS.green, 255],
+  'ortho-c2': (x, z) => [...(x < 0 === z < 0 ? SITE_RASTERS.green : SITE_RASTERS.grey), 255],
+  heat: (x, z) =>
+    Math.max(Math.abs(x), Math.abs(z)) < SITE_RASTERS.heatHalfM
+      ? [...SITE_RASTERS.red, 255]
+      : [0, 0, 0, 0],
+};
+
+/** Write the site rasters' pyramids into a project folder; the manifest layers for them. */
+async function writeSiteRasters(dir: string): Promise<ProjectManifestInput['layers']> {
+  const h = SITE_RASTERS.halfM;
+  const layers: ProjectManifestInput['layers'] = [];
+  for (const l of SITE_RASTERS.layers) {
+    const colour = SITE_RASTER_COLOUR[l.id];
+    if (!colour) continue;
+    const levels = [0, 1].map((z) => ({
+      z,
+      tileSize: TILE,
+      cols: 2 ** z,
+      rows: 2 ** z,
+      pattern: `${l.dir}/{z}/{x}_{y}.png`,
+    }));
+    for (const lv of levels)
+      for (let ty = 0; ty < lv.rows; ty++)
+        for (let tx = 0; tx < lv.cols; tx++) {
+          const px = new Uint8Array(TILE * TILE * 4);
+          for (let py = 0; py < TILE; py++)
+            for (let qx = 0; qx < TILE; qx++) {
+              const x = -h + (2 * h * (tx + (qx + 0.5) / TILE)) / lv.cols;
+              const z = -h + (2 * h * (ty + (py + 0.5) / TILE)) / lv.rows;
+              px.set(colour(x, z), (py * TILE + qx) * 4);
+            }
+          const file = join(dir, l.dir, String(lv.z), `${String(tx)}_${String(ty)}.png`);
+          await mkdir(join(dir, l.dir, String(lv.z)), { recursive: true });
+          await writeFile(file, encodePngRgba(TILE, TILE, px));
+        }
+    const change = l.id === 'heat';
+    const index = {
+      schema: 'aio.tiles/1',
+      corners: { tl: [-h, 0, -h], tr: [h, 0, -h], bl: [-h, 0, h] },
+      levels,
+      ...(change
+        ? {
+            legend: {
+              kind: 'metres',
+              unit: 'm',
+              stops: [
+                [-2, '#2166ac'],
+                [0, '#f7f7f7'],
+                [2, '#e8202a'],
+              ],
+            },
+          }
+        : {}),
+    };
+    await writeFile(join(dir, l.dir, 'tiles.json'), JSON.stringify(index, null, 2));
+    layers.push({
+      kind: 'raster',
+      id: l.id,
+      name: change ? 'Surface change (synthetic)' : `Orthophoto (synthetic, ${l.capture})`,
+      src: { path: `${l.dir}/tiles.json` },
+      role: 'ortho',
+      format: 'kit-pyramid',
+      capture: l.capture,
+      ...(change ? { derived: { kind: 'change' as const, from: 'c1', to: 'c2' } } : {}),
+    });
+  }
+  return layers;
+}
+
 export interface GlobeLibrary {
   sites: GlobeSiteFixture[];
   imagery: RasterPackMetaT[];
@@ -637,6 +740,8 @@ export async function createGlobeLibrary(dataRoot: string, glb: Buffer): Promise
           src: { path: 'models/quad.glb' },
           transform: [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1],
         },
+        // the first site has processed outputs for the Globe
+        ...(k === 0 ? await writeSiteRasters(dir) : []),
       ],
       severityModels: [SEVERITY_MODEL],
       classCatalogues: [

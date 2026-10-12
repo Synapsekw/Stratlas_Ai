@@ -32,6 +32,7 @@ import { join } from 'node:path';
 import { APP_CSP, metaPolicy } from '../src/main/csp';
 import { expectAccessible } from './a11y';
 import { expect, processingChip, test, tinyGlb, TINY_PROJECT_ID, type DataRoot } from './fixtures';
+import { SITE_RASTERS } from './m10Fixtures';
 
 /** The app's CSP as the build writes it into the page's `<meta>` (src/main/csp.ts). */
 const appCsp = (): string => metaPolicy(APP_CSP);
@@ -592,7 +593,8 @@ async function openSiteList(win: Page) {
 /** Pick a site in the field's list and wait for the flight to end over it. */
 async function flyToSite(win: Page, name: string) {
   const list = await openSiteList(win);
-  await list.getByRole('option', { name: new RegExp(name) }).click();
+  const literal = name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  await list.getByRole('option', { name: new RegExp(literal) }).click();
   await expect(list).toHaveCount(0);
   await expect(win.getByTestId('globe-card')).toContainText(name);
   await settle(win, `the flight to ${name} ended`, (s) => !s.flying && s.cameraHeight < 5000);
@@ -1717,6 +1719,154 @@ test('the tilesets of a project draw on the Globe', async ({ win, dataRoot }) =>
   const quad = await sample();
   expect(ground?.slice(0, 3).every((v) => v > 215)).toBe(false);
   expect(quad?.slice(0, 3).every((v) => v > 215)).toBe(true);
+});
+
+/** Where a point of the ground (degrees) is drawn, in the window; null when it is not in view. */
+async function groundInWindow(win: Page, [lon, lat]: readonly [number, number]) {
+  const at = await win.evaluate(
+    ([lo, la]) => {
+      const el = document.querySelector('[data-testid="globe-canvas"]');
+      const c = (
+        el as {
+          __aioGlobe?: {
+            terrainHeight(lon: number, lat: number): number | undefined;
+            widget: {
+              scene: {
+                globe: {
+                  ellipsoid: {
+                    cartographicToCartesian(c: {
+                      longitude: number;
+                      latitude: number;
+                      height: number;
+                    }): unknown;
+                  };
+                };
+                cartesianToCanvasCoordinates(p: unknown): { x: number; y: number } | undefined;
+              };
+            };
+          };
+        } | null
+      )?.__aioGlobe;
+      if (!c) return null;
+      const scene = c.widget.scene;
+      const p = scene.globe.ellipsoid.cartographicToCartesian({
+        longitude: (lo * Math.PI) / 180,
+        latitude: (la * Math.PI) / 180,
+        height: c.terrainHeight(lo, la) ?? 0,
+      });
+      const w = scene.cartesianToCanvasCoordinates(p);
+      return w ? ([w.x, w.y] as [number, number]) : null;
+    },
+    [lon, lat] as const,
+  );
+  if (!at) return null;
+  const box = await boxOf(win.getByTestId('globe-canvas'), 'the Globe');
+  return [box.x + at[0], box.y + at[1]] as [number, number];
+}
+
+test('processed orthos and change heat maps draw at their site', async ({
+  globeLibrary,
+  win,
+  network,
+}) => {
+  const [site, second] = globeLibrary.sites;
+  if (!site || !second) throw new Error('the globe library has no sites');
+  const [e0, n0] = site.origin;
+  /** A point of the site's local frame (x east, z south, metres) on the Earth. */
+  const local = (x: number, z: number) => utmToWgs84(e0 + x, n0 - z, 39);
+  const rasters = async () =>
+    ((await inspect(win))?.projectRasters ?? []).map(
+      ({ projectId, layerId, ready, lastError }) => ({
+        projectId,
+        layerId,
+        ready,
+        lastError,
+      }),
+    );
+  const drawn = (...layerIds: string[]) =>
+    layerIds.map((layerId) => ({ projectId: site.id, layerId, ready: true, lastError: null }));
+  /** The colour drawn at a local point of the site, which no chip covers. */
+  const colourAt = async (x: number, z: number) => {
+    const at = await groundInWindow(win, local(x, z));
+    expect(at, `${String(x)}, ${String(z)} m from the site in view`).not.toBeNull();
+    const [px, py] = at ?? [0, 0];
+    for (const { sites, box } of await chipsDrawn(win))
+      expect(
+        px > box.x - 4 &&
+          px < box.x + box.width + 4 &&
+          py > box.y - 4 &&
+          py < box.y + box.height + 4,
+        `${String(x)}, ${String(z)} m under the chip of ${sites.join(' and ')}`,
+      ).toBe(false);
+    return drawnAt(win, px, py);
+  };
+  const near = (c: Rgb, [r, g, b]: readonly [number, number, number], tol = 45) =>
+    Math.abs(c.r - r) <= tol && Math.abs(c.g - g) <= tol && Math.abs(c.b - b) <= tol;
+  const { green, grey } = SITE_RASTERS;
+  const looks = async (x: number, z: number, ok: (c: Rgb) => boolean, what: string) => {
+    let last: Rgb = { r: 0, g: 0, b: 0 };
+    await expect
+      .poll(
+        async () => {
+          last = await colourAt(x, z);
+          return ok(last);
+        },
+        {
+          message: `${what} at ${String(x)}, ${String(z)} m (last drawn ${JSON.stringify(last)})`,
+          timeout: SETTLE_MS,
+        },
+      )
+      .toBe(true);
+  };
+
+  await openGlobe(win);
+  await flyToSite(win, site.name);
+  // the street look's ground, 400 m south of the site and off its maps
+  const base = await colourAt(0, 400);
+  // nearer, so the maps' parts lie clear of the site's chip
+  await comeNearer(win, 0.5);
+  const card = win.getByTestId('globe-card');
+  const toggle = (name: string) => card.getByRole('switch', { name, exact: true });
+
+  // the ortho of the latest survey is on by default, and only it
+  await expect.poll(rasters, { timeout: SETTLE_MS }).toEqual(drawn('ortho-c2'));
+  const [info] = (await inspect(win))?.projectRasters ?? [];
+  expect(info?.tiles).toBeGreaterThan(0);
+  await expect(toggle('Orthophoto 2026-04-14')).toHaveAttribute('aria-checked', 'true');
+  await expect(toggle('Orthophoto 2026-03-14')).toHaveAttribute('aria-checked', 'false');
+  // survey 2's checkerboard, not the street map: green north-west and south-east, grey between
+  const isGreen = (c: Rgb) => near(c, green) && !near(c, [base.r, base.g, base.b], 20);
+  const isGrey = (c: Rgb) => near(c, grey) && !near(c, [base.r, base.g, base.b], 20);
+  await looks(-75, 75, isGrey, 'survey 2 grey south-west');
+  await looks(75, 75, isGreen, 'survey 2 green south-east');
+  await looks(-75, -75, isGreen, 'survey 2 green north-west');
+
+  // the surface change heat map goes on top, with its legend
+  await toggle('Surface change').click();
+  await expect(toggle('Surface change')).toHaveAttribute('aria-checked', 'true');
+  await expect.poll(rasters, { timeout: SETTLE_MS }).toEqual(drawn('ortho-c2', 'heat'));
+  const isRed = ({ r, g }: Rgb) => r > 180 && g < 90;
+  // the middle of the site, clear of its chip and the 10 m tileset quad there
+  await looks(-40, 30, isRed, 'the heat map red in the middle');
+  const legend = card.getByTestId('globe-legend');
+  await expect(legend).toHaveAttribute('data-layer', 'heat');
+  await expect(legend).toContainText('Height change');
+
+  // survey 1 instead of survey 2: the heat map stays on top, the ortho is all green
+  await toggle('Orthophoto 2026-04-14').click();
+  await toggle('Orthophoto 2026-03-14').click();
+  await expect.poll(rasters, { timeout: SETTLE_MS }).toEqual(drawn('ortho-c1', 'heat'));
+  await looks(-40, 30, isRed, 'the heat map still red in the middle');
+  // 120 m east of the middle, and south of the row the site's chip runs along
+  await looks(120, 60, isGreen, 'survey 1 green east of the middle');
+  await looks(-75, 75, isGreen, 'survey 1 green where survey 2 is grey');
+
+  expect(await network.outbound()).toEqual([]);
+
+  // another site picked: no project is open, so the first site leaves focus with its maps, and
+  // the second has none
+  await flyToSite(win, second.name);
+  await expect.poll(rasters, { timeout: SETTLE_MS }).toEqual([]);
 });
 
 test('the only tool is a distance and area read-out on the ellipsoid', async ({ win }) => {
