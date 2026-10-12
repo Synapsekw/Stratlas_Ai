@@ -214,7 +214,10 @@ export class KitPyramidImageryProvider {
     }
   }
 
-  /** Pyramid tiles decoded so far and the last read or draw that failed. */
+  /**
+   * Pyramid tiles decoded since the provider was made (every decode counts, including tiles read
+   * again after the LRU dropped them), and the last read or draw that failed.
+   */
   stats(): { tiles: number; lastError: string | null } {
     return { tiles: this.decoded, lastError: this.lastError };
   }

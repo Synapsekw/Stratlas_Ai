@@ -178,6 +178,64 @@ describe('SiteOutputLayers', () => {
     expect(outputs.tilesets()).toEqual([]);
   });
 
+  it('never destroys a tileset twice when the Globe is left while tilesets load', async () => {
+    // tilesets as CesiumJS has them: a second destroy throws
+    interface Destroyable {
+      id: string;
+      destroyed: boolean;
+      isDestroyed(): boolean;
+      destroy(): void;
+    }
+    const tileset = (id: string): Destroyable => ({
+      id,
+      destroyed: false,
+      isDestroyed() {
+        return this.destroyed;
+      },
+      destroy() {
+        if (this.destroyed) throw new Error('DeveloperError: This object was destroyed');
+        this.destroyed = true;
+      },
+    });
+    const primitives: Destroyable[] = [];
+    let sceneGone = false;
+    let arrive: () => void = () => undefined;
+    const removeTileset = vi.fn((t: Destroyable) => {
+      // the controller's host: skip what the scene's teardown destroyed already
+      if (t.isDestroyed()) return;
+      if (!sceneGone) primitives.splice(primitives.indexOf(t), 1);
+      t.destroy();
+    });
+    const host: SiteOutputHost<Destroyable, Layer, Provider> = {
+      ...fakeScene().host,
+      loadTilesets: () =>
+        new Promise((resolve) => {
+          // added to the scene as it loads, handed back once the load ends
+          const t = tileset('mesh');
+          primitives.push(t);
+          arrive = () => {
+            resolve([t]);
+          };
+        }),
+      removeTileset,
+    };
+    const outputs = new SiteOutputLayers(host);
+    const pending = outputs.set([site('A', [])]);
+    // leaving the Globe: the outputs go, then the widget destroys every primitive it holds
+    outputs.dispose();
+    sceneGone = true;
+    for (const p of primitives) p.destroy();
+    arrive();
+    await expect(pending).resolves.toBeUndefined();
+    expect(primitives.every((p) => p.destroyed)).toBe(true);
+    // and the host's guard alone holds too: handed a destroyed tileset, it does nothing
+    const [gone] = primitives;
+    if (gone)
+      expect(() => {
+        host.removeTileset(gone);
+      }).not.toThrow();
+  });
+
   it('disposes every provider and removes everything on dispose', async () => {
     const scene = fakeScene();
     const outputs = new SiteOutputLayers(scene.host);

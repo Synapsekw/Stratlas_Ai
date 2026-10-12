@@ -62,6 +62,8 @@ interface ProjectState<T, L, P> {
 
 export class SiteOutputLayers<T, L, P> {
   private readonly projects = new Map<string, ProjectState<T, L, P>>();
+  /** After `dispose` the scene is gone: late tilesets are not handed back to it. */
+  private disposed = false;
   /** Project ids, in the order given. */
   private projectOrder: string[] = [];
 
@@ -71,7 +73,8 @@ export class SiteOutputLayers<T, L, P> {
    * Draw these sites' outputs: sites no longer listed lose their tilesets, layers and providers;
    * a new site, or one whose tilesets changed, has its tilesets loaded; rasters are added and
    * dropped by layer id; then the shown rasters are raised to the top, bottom first. Resolves
-   * once the tilesets asked for here are in.
+   * once the tilesets this call started loading are in; it does not wait for a load an earlier
+   * call started for the same tilesets.
    */
   async set(outputs: readonly SiteOutputs[]): Promise<void> {
     const wanted = new Set(outputs.map((o) => o.projectId));
@@ -132,7 +135,7 @@ export class SiteOutputLayers<T, L, P> {
       this.projects.get(site.projectId) === state && state.generation === generation;
     const loaded = await this.host.loadTilesets(site, current);
     if (current()) state.tilesets = loaded;
-    else for (const t of loaded) this.host.removeTileset(t);
+    else if (!this.disposed) for (const t of loaded) this.host.removeTileset(t);
   }
 
   private drop(projectId: string): void {
@@ -183,6 +186,7 @@ export class SiteOutputLayers<T, L, P> {
 
   /** Remove everything and dispose every provider (leaving the Globe). */
   dispose(): void {
+    this.disposed = true;
     for (const id of [...this.projects.keys()]) this.drop(id);
     this.projectOrder = [];
   }

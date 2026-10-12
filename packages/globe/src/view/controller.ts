@@ -298,6 +298,8 @@ export class GlobeController {
   >({
     loadTilesets: (site, current) => this.loadTilesets(site, current),
     removeTileset: (t) => {
+      // the scene's teardown destroys what it holds: never destroy a tileset twice
+      if (t.tileset.isDestroyed()) return;
       if (this.widget.isDestroyed()) t.tileset.destroy();
       else this.scene.primitives.remove(t.tileset);
     },
