@@ -35,14 +35,17 @@ export interface BuilderState {
   cancelling: boolean;
   /**
    * Outcome of the last import, shown until dismissed. `newDates`: the survey dates the import
-   * made (not in the manifest before it), so the import card can tidy them up. `dateSource`: what
-   * the date was read from when the import dated its layers, else null.
+   * made (not in the manifest before it), so the import card can tidy them up. `priorLayers`: the
+   * layer ids the project had before the import; the card re-dates only the layers the import
+   * made, so photos it added to a date's existing photos layer never move earlier flights.
+   * `dateSource`: what the date was read from when the import dated its layers, else null.
    */
   importResult: {
     items: ImportItem[];
     error: string | null;
     heights?: ImportHeights;
     newDates?: string[];
+    priorLayers?: string[];
     dateSource?: DateSource;
   } | null;
   /** Camera heights to confirm before the import runs (relative altitude needs a take-off H). */
@@ -241,6 +244,7 @@ export const builder = createStore<Builder>()((set, get) => ({
       }
     }
     const before = new Set(project.manifest.captures.map((c) => c.id));
+    const priorLayers = project.manifest.layers.map((l) => l.id);
     importingProject = project.id;
     set({
       importing: { done: 0, total: paths.length, file: '' },
@@ -289,6 +293,7 @@ export const builder = createStore<Builder>()((set, get) => ({
       error: null,
       ...(r.value.heights ? { heights: r.value.heights } : {}),
       newDates: r.value.manifest.captures.filter((c) => !before.has(c.id)).map((c) => c.id),
+      priorLayers,
       dateSource: dateSourceOf(r.value.items, r.value.manifest.layers),
     };
     // a cancelled import draws nothing more: the drawings it had only copied in are closed, so

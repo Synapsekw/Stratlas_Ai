@@ -37,10 +37,10 @@ import { useCaptureIndex } from '../workspace/compare';
 import { flightPathShown, toggleFlightPath } from '../workspace/flightPaths';
 import { updateFlightPaths, useFlightPathModel } from '../workspace/pathModel';
 import { timeline, useTimeline } from '../workspace/timeline';
-import { type MovedLayer, moveLayersToDate, undoDateMove, updateCapture } from './dateFolders';
+import { moveLayersToDate, undoDateMove, updateCapture } from './dateFolders';
 import { AddSurveyDateButton } from './AddSurveyDate';
 import { DateFolderMenu, LayerDateMenu } from './DateMenus';
-import { DatePrompt } from './DatePrompt';
+import { DateNotes, type DateNote } from './DateNotes';
 import './surveyDates.css';
 
 interface NavDef {
@@ -279,11 +279,7 @@ function Datasets({ collapsed }: { collapsed: boolean }) {
   const [folderMenu, setFolderMenu] = useState<DateFolderMenuRequest | null>(null);
   const [itemMenu, setItemMenu] = useState<DateItemMenuRequest | null>(null);
   const [renaming, setRenaming] = useState<string | null>(null);
-  const [note, setNote] = useState<{
-    text: string;
-    danger: boolean;
-    undo?: { moved: MovedLayer[]; target: string | null };
-  } | null>(null);
+  const [note, setNote] = useState<DateNote | null>(null);
   // menus, the name field and the note belong to the project they were opened in
   const projectId = project?.id;
   const [notedFor, setNotedFor] = useState(projectId);
@@ -451,47 +447,22 @@ function Datasets({ collapsed }: { collapsed: boolean }) {
           />
         </span>
       </div>
-      <DatePrompt
+      <DateNotes
+        collapsed={collapsed}
         canEdit={canEdit}
-        onResult={(n) => {
+        note={note}
+        onPromptResult={(n) => {
           setNote({ text: n.text, danger: false, ...(n.undo ? { undo: n.undo } : {}) });
         }}
+        onUndo={(pending) => {
+          // the note goes first, so a second quick click has nothing to start again
+          setNote(null);
+          void undoDateMove(pending.moved, pending.target).then(failed);
+        }}
+        onDismiss={() => {
+          setNote(null);
+        }}
       />
-      {note && (
-        <p
-          className={`dtree-note${note.danger ? ' danger' : ''}`}
-          role={note.danger ? 'alert' : 'status'}
-          data-testid="date-note"
-        >
-          <span>{note.text}</span>
-          {note.undo && (
-            <button
-              type="button"
-              className="dtree-undo"
-              data-testid="date-undo"
-              onClick={() => {
-                // the note goes first, so a second quick click has nothing to start again
-                const pending = note.undo;
-                if (!pending) return;
-                setNote(null);
-                void undoDateMove(pending.moved, pending.target).then(failed);
-              }}
-            >
-              {t('tree.dates.move.undo')}
-            </button>
-          )}
-          <button
-            type="button"
-            aria-label={t('tree.dates.dismiss')}
-            title={t('tree.dates.dismiss')}
-            onClick={() => {
-              setNote(null);
-            }}
-          >
-            <Icon name="x" size={12} />
-          </button>
-        </p>
-      )}
       {datesOn ? (
         <DateTree
           folders={folders}

@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import type { PaletteCommand } from '@aio/ui';
+import { rankCommands, type Command, type PaletteCommand } from '@aio/ui';
 import { workspace } from '@aio/workspace';
 import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
@@ -8,7 +8,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
 const h = vi.hoisted(() => ({
-  commands: [] as { id: string; run: () => void }[],
+  commands: [] as (Command & { run: () => void })[],
   pickAndImportFolder: vi.fn(),
   toggleSidebar: vi.fn(),
   state: {
@@ -82,6 +82,13 @@ describe('palette survey date commands', () => {
     expect(h.toggleSidebar).not.toHaveBeenCalled();
     act(() => find('import-flight-folder')?.run());
     expect(h.pickAndImportFolder).toHaveBeenCalledTimes(1);
+  });
+
+  it('finds both when searching survey', () => {
+    render();
+    const ids = rankCommands(h.commands, 'survey').map((c) => c.id);
+    expect(ids).toContain('add-survey-date');
+    expect(ids).toContain('import-flight-folder');
   });
 
   it('opens a collapsed sidebar first', () => {

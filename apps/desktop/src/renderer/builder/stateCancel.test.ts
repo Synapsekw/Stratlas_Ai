@@ -15,7 +15,7 @@ vi.mock('../shell', () => ({
 vi.mock('@aio/workspace', () => ({
   workspace: {
     getState: () => ({
-      project: { id: 'p1', manifest: { origin: [0, 0, 30], captures: [] } },
+      project: { id: 'p1', manifest: { origin: [0, 0, 30], captures: [], layers: [] } },
       replaceManifest,
     }),
   },

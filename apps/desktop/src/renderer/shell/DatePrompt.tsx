@@ -50,7 +50,12 @@ export function DatePrompt({
   const busy = mine?.busy ?? false;
   const error = mine?.error ?? null;
   const count = groups.reduce((n, g) => n + g.layerIds.length, 0);
-  const stillOpen = () => workspace.getState().project?.id === projectId;
+  // a project switch mid-filing drops this attempt, so the buttons are free if the project comes back
+  const stillOpen = () => {
+    if (workspace.getState().project?.id === projectId) return true;
+    setAttempt((a) => (a?.pid === projectId ? null : a));
+    return false;
+  };
 
   const file = async () => {
     setAttempt({ pid: projectId, busy: true, error: null });

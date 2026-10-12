@@ -157,6 +157,28 @@ describe('DatePrompt', () => {
     expect(q('date-prompt-file')?.hasAttribute('disabled')).toBe(false);
   });
 
+  it('frees the buttons when the first project comes back after a switch while filing', async () => {
+    let release: (v: { captureId: string }) => void = () => undefined;
+    newSurveyDate.mockReturnValue(new Promise((r) => (release = r)));
+    const layers = [photos('ph', '2024-11-06T08:00:00')];
+    open(layers);
+    mount();
+    act(() => q('date-prompt-file')?.click());
+    act(() => {
+      open([], [], 'p2');
+    });
+    await act(async () => {
+      release({ captureId: 'capture-x' });
+      await Promise.resolve();
+    });
+    await flush();
+    act(() => {
+      open(layers);
+    });
+    expect(q('date-prompt-file')?.hasAttribute('disabled')).toBe(false);
+    expect(q('date-prompt-later')?.hasAttribute('disabled')).toBe(false);
+  });
+
   it('leaves a name-dated layer alone', () => {
     open(
       [photos('ph', '2024-11-06T08:00:00', 'Photos 2024-11-06')],

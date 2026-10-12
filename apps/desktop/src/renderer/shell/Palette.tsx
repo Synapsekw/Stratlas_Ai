@@ -325,12 +325,26 @@ export function Palette() {
         );
       }
       if (!pkg && !lookOnly) {
-        action('add-survey-date', t('palette.addSurveyDate'), 'history', () => {
-          if (shell.getState().settings.sidebarCollapsed) void shell.getState().toggleSidebar();
-          addDateMenu.getState().set(true);
+        list.push({
+          id: 'add-survey-date',
+          title: t('palette.addSurveyDate'),
+          group: 'Actions',
+          icon: 'history',
+          keywords: ['survey', 'date', 'new date', 'capture', 'timeline'],
+          run: () => {
+            if (shell.getState().settings.sidebarCollapsed) void shell.getState().toggleSidebar();
+            addDateMenu.getState().set(true);
+          },
         });
-        action('import-flight-folder', t('palette.importFlightFolder'), 'import', () => {
-          void builder.getState().pickAndImportFolder();
+        list.push({
+          id: 'import-flight-folder',
+          title: t('palette.importFlightFolder'),
+          group: 'Actions',
+          icon: 'import',
+          keywords: ['survey', 'date', 'flight', 'folder', 'import', 'drone', 'photos', 'video'],
+          run: () => {
+            void builder.getState().pickAndImportFolder();
+          },
         });
       }
       const layers = project.manifest.layers;

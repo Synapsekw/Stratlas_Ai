@@ -4,9 +4,12 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 const call = vi.fn();
 const replaceManifest = vi.fn();
 /** The open project as the store reads it; a test may give it survey dates. */
-let openProject: { id: string; manifest: { origin: number[]; captures: { id: string }[] } } = {
+let openProject: {
+  id: string;
+  manifest: { origin: number[]; captures: { id: string }[]; layers: { id: string }[] };
+} = {
   id: 'p1',
-  manifest: { origin: [0, 0, 30], captures: [] },
+  manifest: { origin: [0, 0, 30], captures: [], layers: [] },
 };
 
 vi.mock('../shell', () => ({
@@ -85,7 +88,13 @@ describe('importFiles, one import at a time', () => {
       ['builder:import', { projectId: 'p1', paths: ['a.jpg', 'b.jpg'] }],
     ]);
     expect(b().importing).toBeNull();
-    expect(b().importResult).toEqual({ items: [], error: null, newDates: [], dateSource: null });
+    expect(b().importResult).toEqual({
+      items: [],
+      error: null,
+      newDates: [],
+      priorLayers: [],
+      dateSource: null,
+    });
     expect(replaceManifest).toHaveBeenCalledTimes(1);
   });
 
@@ -241,7 +250,10 @@ describe('importFiles, the survey dates an import made', () => {
   ) => ({ ok: true, value: { ok: true, manifest: { layers, captures }, items } });
 
   beforeEach(() => {
-    openProject = { id: 'p1', manifest: { origin: [0, 0, 30], captures: [{ id: 'capture-a' }] } };
+    openProject = {
+      id: 'p1',
+      manifest: { origin: [0, 0, 30], captures: [{ id: 'capture-a' }], layers: [] },
+    };
   });
 
   it('lists the dates that were not there before and where the date was read from', async () => {
@@ -281,6 +293,34 @@ describe('importFiles, the survey dates an import made', () => {
     expect(b().importResult?.dateSource).toBe('photos');
   });
 
+  it('records the layers that were there before, so the card leaves them where they are', async () => {
+    openProject = {
+      id: 'p1',
+      manifest: {
+        origin: [0, 0, 30],
+        captures: [{ id: 'capture-a' }],
+        layers: [{ id: 'photos-a' }, { id: 'mesh' }],
+      },
+    };
+    call.mockImplementation((channel: string) =>
+      Promise.resolve(
+        channel === 'builder:altitudePlan'
+          ? planned(plan())
+          : reply(
+              [row('b.jpg', 'photo', 'photos-a'), row('b.mp4', 'video', 'clip-b')],
+              [
+                { id: 'photos-a', capture: 'capture-a' },
+                { id: 'mesh' },
+                { id: 'clip-b', capture: 'capture-a' },
+              ],
+              [{ id: 'capture-a' }],
+            ),
+      ),
+    );
+    await b().importFiles(['flight']);
+    expect(b().importResult?.priorLayers).toEqual(['photos-a', 'mesh']);
+  });
+
   it('has no source when the import dated nothing', async () => {
     call.mockImplementation((channel: string) =>
       Promise.resolve(
@@ -297,7 +337,7 @@ describe('importFiles, the survey dates an import made', () => {
 
 describe('pickAndImportFolder', () => {
   beforeEach(() => {
-    openProject = { id: 'p1', manifest: { origin: [0, 0, 30], captures: [] } };
+    openProject = { id: 'p1', manifest: { origin: [0, 0, 30], captures: [], layers: [] } };
   });
 
   it('imports the picked folder', async () => {
