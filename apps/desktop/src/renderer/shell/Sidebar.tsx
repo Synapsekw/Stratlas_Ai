@@ -432,7 +432,12 @@ function Datasets({ collapsed }: { collapsed: boolean }) {
         : undefined,
       onRemove: canEdit
         ? (it: TreeItem) => {
-            if (it.layerId) void removeWalk(it.layerId).then(failed);
+            if (it.layerId)
+              void removeWalk(it.layerId)
+                .then(failed)
+                .catch((e: unknown) => {
+                  failed(String(e));
+                });
           }
         : undefined,
     },

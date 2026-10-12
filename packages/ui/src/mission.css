@@ -1082,11 +1082,17 @@ select.input option {
 .titem.has-acts:focus-within .tacts {
   display: inline-flex;
 }
+/* hidden from sight only: a screen reader still reads the length and the badge */
 .titem.has-acts:hover > .tm,
 .titem.has-acts:hover > .tbadge,
 .titem.has-acts:focus-within > .tm,
 .titem.has-acts:focus-within > .tbadge {
-  display: none;
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
 }
 /* the inline confirm under a row (Remove walk): the question, then the two buttons */
 .trow-confirm {

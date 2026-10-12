@@ -1,4 +1,12 @@
-import { Fragment, useState, type DragEvent, type MouseEvent, type ReactNode } from 'react';
+import {
+  Fragment,
+  useLayoutEffect,
+  useRef,
+  useState,
+  type DragEvent,
+  type MouseEvent,
+  type ReactNode,
+} from 'react';
 import { useT } from '../i18n';
 import { Icon } from '../icons/Icon';
 import {
@@ -157,6 +165,23 @@ export function DatasetTree(props: DatasetTreeProps) {
   const [flightOpen, setFlightOpen] = useState<Record<string, boolean>>({});
   /** The walk row whose Remove waits for its confirm, shown under the row. */
   const [removing, setRemoving] = useState<string | null>(null);
+  /** The rows drawn now, by item id: where focus goes back to when the confirm closes. */
+  const rowEls = useRef(new Map<string, HTMLDivElement>());
+  /** Focus a row again, or (Cancel) its Remove walk button, shown while the row holds focus. */
+  const refocus = (id: string, toRemove: boolean) => {
+    const el = rowEls.current.get(id);
+    if (!el) return;
+    el.focus();
+    if (toRemove) el.querySelector<HTMLElement>('.tact-remove')?.focus();
+  };
+  /** Where focus goes once the confirm has left the page (its buttons held focus till then). */
+  const pendingFocus = useRef<{ id: string; toRemove: boolean } | null>(null);
+  useLayoutEffect(() => {
+    const p = pendingFocus.current;
+    if (!p) return;
+    pendingFocus.current = null;
+    refocus(p.id, p.toRemove);
+  });
 
   /** Open, Place walk and Remove walk on a walk row; they stand in for the length and badge on hover. */
   const walkButtons = (it: TreeItem) => {
@@ -171,7 +196,7 @@ export function DatasetTree(props: DatasetTreeProps) {
     ) => (
       <button
         type="button"
-        className="eye tact"
+        className={`eye tact${kind === 'remove' ? ' tact-remove' : ''}`}
         aria-label={label}
         title={tip}
         data-testid={`walk-${kind}-${it.id}`}
@@ -232,6 +257,7 @@ export function DatasetTree(props: DatasetTreeProps) {
             onClick={() => {
               setRemoving(null);
               onRemove(it);
+              pendingFocus.current = { id: it.id, toRemove: false };
             }}
           >
             {t('walk.row.confirmYes')}
@@ -244,9 +270,13 @@ export function DatasetTree(props: DatasetTreeProps) {
             autoFocus
             onClick={() => {
               setRemoving(null);
+              pendingFocus.current = { id: it.id, toRemove: true };
             }}
             onKeyDown={(e) => {
-              if (e.key === 'Escape') setRemoving(null);
+              if (e.key === 'Escape') {
+                setRemoving(null);
+                pendingFocus.current = { id: it.id, toRemove: true };
+              }
             }}
           >
             {t('walk.row.confirmNo')}
@@ -300,6 +330,12 @@ export function DatasetTree(props: DatasetTreeProps) {
         key={it.id}
         role="treeitem"
         aria-selected={sel}
+        // the badge hides behind the row actions on hover and focus; the name still carries it
+        aria-label={badge ? [it.name, it.meta, badge.text].filter(Boolean).join(', ') : undefined}
+        ref={(el) => {
+          if (el) rowEls.current.set(it.id, el);
+          else rowEls.current.delete(it.id);
+        }}
         tabIndex={0}
         className={`titem${sub ? ' sub' : ''}${sel ? ' sel' : ''}${off ? ' hidden' : ''}${walkActs ? ' has-acts' : ''}`}
         title={it.name}

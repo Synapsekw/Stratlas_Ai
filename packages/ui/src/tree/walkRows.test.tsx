@@ -122,6 +122,13 @@ describe('walk rows', () => {
     expect(b?.className).toContain('info');
   });
 
+  it('keeps the length and badge in the row name, for when the actions cover them', () => {
+    const { q } = mount({ rowBadge: badge, walkActions: { onOpen: () => undefined } });
+    expect(q('[data-testid="tree-row-walk-a"]')?.getAttribute('aria-label')).toBe(
+      'Ground floor, 1:22, Needs placing',
+    );
+  });
+
   it('opens and places from the row actions', () => {
     const log: string[] = [];
     const { click } = mount({
@@ -146,14 +153,20 @@ describe('walk rows', () => {
     });
     click('[data-testid="walk-remove-walk-a"]');
     expect(log).toEqual([]);
-    expect(q('[data-testid="walk-remove-confirm"]')?.textContent).toContain('Ground floor');
+    expect(q('[data-testid="walk-remove-confirm"] .trow-confirm-q')?.textContent).toBe(
+      'Remove Ground floor? Its files stay in the project trash for seven days.',
+    );
     expect(q('[role="dialog"]')).toBeNull();
     click('[data-testid="walk-remove-cancel"]');
     expect(q('[data-testid="walk-remove-confirm"]')).toBeNull();
+    // Cancel gives focus back to the Remove walk button it came from
+    expect(document.activeElement).toBe(q('[data-testid="walk-remove-walk-a"]'));
     click('[data-testid="walk-remove-walk-a"]');
     click('[data-testid="walk-remove-yes"]');
     expect(log).toEqual(['remove walk-a']);
     expect(q('[data-testid="walk-remove-confirm"]')).toBeNull();
+    // Remove gives focus to the row (the list takes it away when the walk goes)
+    expect(document.activeElement).toBe(q('[data-testid="tree-row-walk-a"]'));
   });
 
   it('offers no Place or Remove without their callbacks (a package)', () => {

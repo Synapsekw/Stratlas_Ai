@@ -88,6 +88,21 @@ describe('walk store', () => {
     expect(walkFilesMissing(s.getState(), layer('b'))).toBe(true);
   });
 
+  it('never says files are missing for a walk whose record is held by hash', async () => {
+    let calls = 0;
+    const s = createWalkStore((projectId) => {
+      calls += 1;
+      return answers({ p: [] })(projectId);
+    });
+    const byHash: WalkLayer = { ...layer('h'), record: { hash: 'a'.repeat(64) } };
+    await s.getState().sync('p', [byHash]);
+    expect(calls).toBe(0);
+    await s.getState().sync('p', [byHash, layer('a')]);
+    expect(calls).toBe(1);
+    expect(walkFilesMissing(s.getState(), byHash)).toBe(false);
+    expect(walkFilesMissing(s.getState(), layer('a'))).toBe(true);
+  });
+
   it('claims nothing missing when main cannot list the walks', async () => {
     const s = createWalkStore(() => Promise.resolve({ ok: false, error: 'not open' }));
     await s.getState().sync('p', [layer('a')]);

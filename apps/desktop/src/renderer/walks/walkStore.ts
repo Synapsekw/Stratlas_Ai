@@ -74,13 +74,18 @@ export function createWalkStore(call: WalkListCall): StoreApi<WalkState> {
       const selected = get().selected;
       set({ walks, selected: walks.some((w) => w.id === selected) ? selected : null });
       const { checked } = get();
-      if (walks.some((w) => !checked.has(walkRecordKey(w)))) await get().refresh();
+      const unchecked = (w: WalkLayer) => {
+        const key = walkRecordKey(w);
+        return !key.startsWith('hash:') && !checked.has(key);
+      };
+      if (walks.some(unchecked)) await get().refresh();
     },
     refresh: async () => {
       const { projectId, walks } = get();
       if (projectId === null) return;
       const ask = ++asked;
-      const paths = walks.map(walkRecordKey);
+      // a record held by hash (a package store) is not a walk folder main lists: never missing
+      const paths = walks.map(walkRecordKey).filter((k) => !k.startsWith('hash:'));
       const r = await call(projectId);
       // an older answer never overwrites a newer one
       if (get().projectId !== projectId || ask < applied) return;
