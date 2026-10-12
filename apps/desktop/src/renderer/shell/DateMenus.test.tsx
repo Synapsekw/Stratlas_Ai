@@ -363,4 +363,21 @@ describe('LayerDateMenu', () => {
     open('oct');
     expect(q('move-compare')).toBeNull();
   });
+
+  it('opens no empty menu in a read-only project with nothing to compare', () => {
+    const { onClose } = open(EVERY_DATE, false);
+    expect(q('move-menu')).toBeNull();
+    expect(onClose).toHaveBeenCalledTimes(1);
+  });
+
+  it('closes on Escape, and Back returns to the menu', () => {
+    const { onClose } = open('oct');
+    click('move-compare');
+    click('compare-back');
+    expect(q('move-compare')).not.toBeNull();
+    act(() => {
+      q('move-menu')?.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    });
+    expect(onClose).toHaveBeenCalledTimes(1);
+  });
 });

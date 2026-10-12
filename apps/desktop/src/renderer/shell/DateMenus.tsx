@@ -252,7 +252,7 @@ export function DateFolderMenu(props: DateFolderMenuProps) {
       className="dmenu"
       role="menu"
       aria-label={t('tree.dates.menu.label', { date: folder.label })}
-      style={place(menu.x, menu.y, edit || view === 'compare' ? 340 : 170)}
+      style={place(menu.x, menu.y, edit || view === 'compare' ? 340 : compare ? 200 : 170)}
       data-testid="date-menu"
       onKeyDown={menuKeys}
       onContextMenu={(e) => {
@@ -442,6 +442,11 @@ export function LayerDateMenu({
   useViewFocus(list, view);
   const ctx = useCompareContext();
   const compare = canCompare(ctx, menu.from);
+  // read-only and nothing to compare: there is nothing to show, so do not open an empty menu
+  const empty = !canEdit && !compare;
+  useEffect(() => {
+    if (empty) onClose();
+  }, [empty, onClose]);
   const newestFirst = [...captures].sort(
     (a, b) => b.date.localeCompare(a.date) || b.id.localeCompare(a.id),
   );
@@ -463,6 +468,7 @@ export function LayerDateMenu({
       <span>{label}</span>
     </button>
   );
+  if (empty) return null;
   return createPortal(
     <div
       ref={list}
