@@ -509,6 +509,14 @@ export const SCHEMA_REGISTRY: readonly SchemaEntry[] = [
     where: 'walks/<id>/orientation.json',
     since: '0.12',
   },
+  // the run record of walk.process (walkProcess.ts), beside the walk it processed
+  {
+    family: 'aio.walk-process',
+    version: 1,
+    home: 'project',
+    where: 'walks/<id>/process.json',
+    since: '0.12',
+  },
 ];
 
 /**

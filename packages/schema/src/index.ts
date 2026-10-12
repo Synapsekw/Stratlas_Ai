@@ -40,6 +40,8 @@ export * from './haul';
 export * from './orientation';
 // 360 walks: the walk record (walks/<id>/walk.json), its path, orientation and placing
 export * from './walks';
+// the run record of walk.process (walks/<id>/process.json)
+export * from './walkProcess';
 export * from './launch';
 // Online satellite imagery (ADR 0007, amendment of 10 Oct 2026)
 export * from './onlineImagery';

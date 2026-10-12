@@ -103,6 +103,7 @@ import {
 } from './globe';
 import { TilesetEntry, TilesetsFile } from './tilesets';
 import { WalkFile } from './walks';
+import { WalkProcessSummary } from './walkProcess';
 
 const Empty = z.object({}).strict();
 
@@ -2861,11 +2862,15 @@ export const ipc = {
   // ---------------------------------------------------------------- 360 video (walks, W1 front)
   /**
    * The 360 videos of an open project or package: every `walks/<id>/walk.json` that reads, newest
-   * first. Read only; a project without the folder answers with an empty list.
+   * first. Read only; a project without the folder answers with an empty list. `processed` maps a
+   * walk id to the summary of its `process.json` (`walk.process`), for walks that have one.
    */
   'walks:list': {
     request: z.object({ projectId: z.string().min(1) }).strict(),
-    response: z.object({ walks: z.array(WalkFile) }),
+    response: z.object({
+      walks: z.array(WalkFile),
+      processed: z.record(z.string(), WalkProcessSummary).optional(),
+    }),
   },
   /**
    * Remove a walk from the project: its layer leaves the manifest and its folder `walks/<id>/`

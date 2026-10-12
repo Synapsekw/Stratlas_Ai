@@ -98,6 +98,7 @@ describe('pipeline params', () => {
       'hydro.flow',
       'hydro.rainfall',
       'haul.analyse',
+      'walk.process',
     ]);
     for (const p of PIPELINES) expect(p.title.length).toBeGreaterThan(3);
   });

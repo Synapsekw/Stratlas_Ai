@@ -905,6 +905,9 @@ export const FORMS: Record<PipelineName, Field[]> = {
     { key: 'durationMin', label: 'Duration (min)', kind: 'number', placeholder: 'The rainfall' },
   ],
   'haul.analyse': [],
+  // starts from the 360 video list (or by itself after a walk import), which fills the walk and
+  // the original's path
+  'walk.process': [],
 };
 
 /** Turn the form's text values into checked params, or say what is wrong. */

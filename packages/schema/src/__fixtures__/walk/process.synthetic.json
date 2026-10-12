@@ -1,0 +1,46 @@
+{
+  "schema": "aio.walk-process/1",
+  "walk": "vid-20260101-120000-00-001",
+  "createdAt": "2026-10-12T10:00:00.000Z",
+  "engine": { "version": "0.6.0", "pycolmap": "4.2.1", "ffmpeg": "8.1" },
+  "input": {
+    "file": "VID_20260101_120000_00_001.insv",
+    "layout": "insv-dual-stream",
+    "calibration": "trailer",
+    "lenses": [
+      {
+        "cx": 1440,
+        "cy": 1440,
+        "radius": 1420,
+        "fovDeg": 195,
+        "yawDeg": 0,
+        "pitchDeg": 0,
+        "rollDeg": 0
+      },
+      {
+        "cx": 1440,
+        "cy": 1440,
+        "radius": 1420,
+        "fovDeg": 195,
+        "yawDeg": 180,
+        "pitchDeg": 0,
+        "rollDeg": 0
+      }
+    ],
+    "imu": true,
+    "camera": "X4"
+  },
+  "outputs": {
+    "rawPath": "walks/vid-20260101-120000-00-001/raw-path.json",
+    "orientation": "walks/vid-20260101-120000-00-001/orientation.json",
+    "imu": "walks/vid-20260101-120000-00-001/imu.bin",
+    "sparse": "walks/vid-20260101-120000-00-001/sparse.ply",
+    "stills": "walks/vid-20260101-120000-00-001/stills",
+    "stabilized": "walks/vid-20260101-120000-00-001/stabilized.mp4"
+  },
+  "stabilize": { "levelled": true, "keptYaw": true },
+  "stills": { "sfm": 164, "map": 60 },
+  "path": { "source": "sfm", "registeredFraction": 1, "segments": 1 },
+  "timings": { "read": 1.2, "frames": 66.5, "sfm": 240.1, "finish": 0.4 },
+  "warnings": []
+}

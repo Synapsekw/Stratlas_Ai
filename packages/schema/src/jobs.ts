@@ -78,6 +78,8 @@ export const PipelineName = z.enum([
   'hydro.flow',
   'hydro.rainfall',
   'haul.analyse',
+  // Walks 360 (pipeline pack 0.6.0)
+  'walk.process',
 ]);
 export type PipelineName = z.infer<typeof PipelineName>;
 
@@ -299,6 +301,12 @@ export const PIPELINES: readonly { name: PipelineName; title: string; descriptio
     title: 'Haul-road compliance',
     description:
       'Width, gradient, cross fall, superelevation and berm height along a haul road against site limits.',
+  },
+  {
+    name: 'walk.process',
+    title: 'Process 360 walk',
+    description:
+      'Levelled playback copy, camera orientation, path from the video, sparse points and map stills for a 360 walk.',
   },
 ];
 
@@ -1063,6 +1071,39 @@ export type HydroFlowParams = z.infer<typeof HydroFlowParams>;
 export type HydroRainfallParams = z.infer<typeof HydroRainfallParams>;
 export type HaulAnalyseParams = z.infer<typeof HaulAnalyseParams>;
 
+/**
+ * `walk.process` (python `aio_pipelines/walk/pipeline.py`; plan 2026-10-12-walk-process-pipeline).
+ * Works on the walk in `walks/<walk>/`; writes only into that folder.
+ */
+export const WalkProcessParams = z
+  .object({
+    /** The walk's folder name under `walks/` (as the import writes it). */
+    walk: z
+      .string()
+      .min(1)
+      .max(80)
+      .regex(/^[a-z0-9][a-z0-9-]*$/, 'A walk id is lower-case letters, digits and dashes'),
+    /**
+     * The original camera file (absolute, read only), or the chapter files of one clip in order.
+     * Absent: the job works from the walk's playback copy (no motion data, no levelled copy).
+     */
+    src: z.array(z.string().min(1).max(MAX_PATH)).min(1).max(20).optional(),
+    /** Stills per second of walking for the path; default 2. */
+    stillsPerS: z.number().min(0.5).max(4).optional(),
+    /** Fraction of the picture height masked at the bottom (operator and stick); default 0.25. */
+    maskBottom: z.number().min(0).max(0.5).optional(),
+    /** Stride length used to space map stills by step count, metres; default 0.7. */
+    strideM: z.number().min(0.3).max(1.5).optional(),
+    /** Write the levelled playback copy when motion data exists; default true. */
+    stabilize: z.boolean().optional(),
+    /** Compute the path from the video; false gives a pins-only path. Default true. */
+    sfm: z.boolean().optional(),
+    /** Stills per SfM chunk; default 300. */
+    chunk: z.number().int().min(50).max(2000).optional(),
+  })
+  .strict();
+export type WalkProcessParams = z.infer<typeof WalkProcessParams>;
+
 const PARAMS = {
   'aik.cameras': AikCamerasParams,
   'aik.project': AikProjectParams,
@@ -1102,6 +1143,7 @@ const PARAMS = {
   'hydro.flow': HydroFlowParams,
   'hydro.rainfall': HydroRainfallParams,
   'haul.analyse': HaulAnalyseParams,
+  'walk.process': WalkProcessParams,
 } as const satisfies Record<PipelineName, z.ZodType>;
 
 export function pipelineParams(name: PipelineName): z.ZodType<Record<string, unknown>> {
