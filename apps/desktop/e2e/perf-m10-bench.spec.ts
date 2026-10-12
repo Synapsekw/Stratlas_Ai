@@ -101,6 +101,8 @@ async function benchRoot(): Promise<DataRoot> {
     crs: siteA.crs,
     origin: siteA.origin,
     captures: [],
+    severityModels: [],
+    classCatalogues: [],
     layers: [
       ...(stamp.cloud
         ? [
@@ -207,8 +209,9 @@ base.describe('M10 benchmark on this computer @bench', () => {
           }, TIER);
         await win.getByTestId('project-card').filter({ hasText: 'M10 benchmark' }).first().click();
         await expect(win.locator('[data-scene-view] canvas')).toBeVisible({ timeout: 120_000 });
+        const start: View = { position: [0, 900, 700], target: [0, 4, 0] };
         const keys: View[] = [
-          { position: [0, 900, 700], target: [0, 4, 0] },
+          start,
           { position: [-300, 120, -200], target: [-350, 4, -350] },
           { position: [200, 40, 150], target: [400, 4, 400] },
           { position: [600, 200, 0], target: [0, 4, 0] },
@@ -216,7 +219,7 @@ base.describe('M10 benchmark on this computer @bench', () => {
         ];
         await win.evaluate((v) => {
           (window as unknown as BenchW).__stratlas.stage()?.restoreView(v, false);
-        }, keys[0]);
+        }, start);
         await win.waitForTimeout(20_000);
         const r = await flySite(win, keys, 30_000);
         const g = await win.evaluate(() =>

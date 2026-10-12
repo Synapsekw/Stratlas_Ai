@@ -111,6 +111,13 @@ interface PerfW {
   };
 }
 
+/** The first view of a path (every path has at least two). */
+function firstKey(p: CameraPath): View {
+  const k = p.keys[0];
+  if (!k) throw new Error('a camera path needs keys');
+  return k;
+}
+
 const readPath = (name: string): unknown =>
   JSON.parse(readFileSync(join(import.meta.dirname, 'perf', name), 'utf8'));
 
@@ -311,7 +318,7 @@ base.describe('M10 budgets on the software GPU, Medium forced', () => {
         const path = readPath('tiles-quad.path.json') as CameraPath;
         await win.evaluate((v) => {
           (window as unknown as PerfW).__stratlas.stage()?.restoreView(v, false);
-        }, path.keys[0]);
+        }, firstKey(path));
         await expect
           .poll(async () => (await stats())[0]?.cachedBytes ?? 0, { timeout: 60_000 })
           .toBeGreaterThan(0);
@@ -348,7 +355,7 @@ base.describe('M10 budgets on the software GPU, Medium forced', () => {
         const synthetic: CameraPath = readPath('synthetic.path.json') as CameraPath;
         await win.evaluate((v) => {
           (window as unknown as PerfW).__stratlas.stage()?.restoreView(v, false);
-        }, synthetic.keys[0]);
+        }, firstKey(synthetic));
         const points = () =>
           win.evaluate(
             () => (window as unknown as PerfW).__stratlas.stage()?.perfStats().points ?? 0,
