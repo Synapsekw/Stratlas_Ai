@@ -28,11 +28,15 @@ import { useWalks } from '../walks/walks';
 import { captureLabel, useCaptureIndex, useSplitDates } from './compare';
 import { DateBadge, pickPhotoSet } from './DatesOnScreen';
 import { SameViewButton } from './FramesPane';
+import { panosOf } from './panoPair';
+import { PanoPane } from './PanoPane';
 import {
-  blockedFor,
+  chooseAt,
   chooseCapture,
-  chooseSide,
+  paneGroups,
   paneOptions,
+  paneValue,
+  parsePaneValue,
   PER_CAPTURE,
   resolveSplit,
   sideCapture,
@@ -46,13 +50,14 @@ import { stagePrefs, useStagePrefs } from './stagePrefs';
 import { useTimeline } from './timeline';
 
 /** The panes this file draws itself. */
-type BuiltInPane = '3d' | 'map' | 'video' | 'photo' | 'raster' | 'report';
+type BuiltInPane = '3d' | 'map' | 'video' | 'photo' | 'raster' | 'pano' | 'report';
 
 /**
  * Mount point for panes of later streams (M8). To add one, a stream adds its kind to `PaneKind`,
  * `PANE_KINDS` and `paneOptions` in splitModel.ts, and one entry here, e.g. C4:
  * `frames: { label: 'stage.pane.frames', icon: 'video', zone: 'video', render: (p) => <FramesPane {...p} /> },`
- * Nothing else in this file changes: the chooser, the focus zone and the pane body read it.
+ * Nothing else in this file changes: the chooser (one select grouped by survey date, see
+ * `paneGroups`), the focus zone and the pane body read it.
  */
 export const EXTRA_PANES: Partial<
   Record<
@@ -72,6 +77,7 @@ const BUILT_IN: Record<BuiltInPane, { label: MessageKey; icon: IconName }> = {
   video: { label: 'stage.pane.video', icon: 'video' },
   photo: { label: 'stage.pane.photo', icon: 'photo' },
   raster: { label: 'stage.pane.raster', icon: 'raster' },
+  pano: { label: 'stage.pane.pano', icon: 'pano' },
   report: { label: 'stage.pane.report', icon: 'report' },
 };
 
@@ -136,15 +142,33 @@ export function paneCapture(split: SplitModel, side: Side): string | undefined {
   return sideCapture(split.sides, side, split.dates);
 }
 
-/** The small selector in a pane's corner: what this side of the split shows, and its date. */
+/**
+ * The small selector in a pane's corner: what this side of the split shows, as one list grouped
+ * by survey date (newest first, then the panes of any date) when the project has two dates.
+ */
 export function PaneChooser({ side, split }: { side: Side; split: SplitModel }) {
   const t = useT();
+  const layers = useWorkspace((s) => s.project?.manifest.layers);
   const current = split.sides[side];
-  const blocked = blockedFor(split.sides, side, split.dates);
   const capture = paneCapture(split, side);
   const index = split.index;
   const twin = isTwin(split);
   const linked = !split.sides.unlinked;
+  const has = (kind: PaneKind, c: string): boolean => {
+    if (kind === 'raster')
+      return (layers ?? []).some(
+        (l) => l.kind === 'raster' && (index?.of[l.id] === undefined || index.of[l.id] === c),
+      );
+    if (kind === 'pano') return panosOf(layers ?? [], index, c).length > 0;
+    return true;
+  };
+  const groups = paneGroups(split.sides, side, split.options, split.dates, has);
+  const options = (g: (typeof groups)[number]) =>
+    g.options.map((o) => (
+      <option key={o.value} value={o.value} disabled={o.disabled}>
+        {t(paneInfo(o.kind).label)}
+      </option>
+    ));
   return (
     // over the stage (street map, imagery), like the stage toolbar: dark in every theme
     <div
@@ -153,46 +177,38 @@ export function PaneChooser({ side, split }: { side: Side; split: SplitModel }) 
       data-surface="dark"
     >
       <Icon name={paneInfo(current).icon} size={14} className="muted" />
+      {capture !== undefined && index && (
+        <span
+          className="dtag"
+          style={{ background: dateTags(index.captures)[capture]?.colour }}
+          aria-hidden="true"
+        />
+      )}
       <select
         className="input"
+        data-testid={`pane-select-${side}`}
         aria-label={t(side === 'left' ? 'stage.split.left' : 'stage.split.right')}
-        value={current}
+        value={paneValue(current, capture ?? null)}
         onChange={(e) => {
+          const picked = parsePaneValue(e.target.value);
+          if (!picked) return;
           dropEvidence();
-          split.set(chooseSide(split.sides, side, e.target.value as PaneKind, split.dates));
+          split.set(chooseAt(split.sides, side, picked.kind, picked.capture, split.dates));
         }}
       >
-        {split.options.map((k) => (
-          <option key={k} value={k} disabled={k === blocked}>
-            {t(paneInfo(k).label)}
-          </option>
-        ))}
-      </select>
-      {capture !== undefined && index && split.dates && (
-        <>
-          <span
-            className="dtag"
-            style={{ background: dateTags(index.captures)[capture]?.colour }}
-            aria-hidden="true"
-          />
-          <select
-            className="input pane-date"
-            data-testid={`pane-date-${side}`}
-            aria-label={t(side === 'left' ? 'stage.compare.leftDate' : 'stage.compare.rightDate')}
-            title={t('stage.compare.dateTip')}
-            value={capture}
-            onChange={(e) => {
-              split.set(chooseCapture(split.sides, side, e.target.value, split.dates));
-            }}
-          >
-            {index.captures.map((c) => (
-              <option key={c.id} value={c.id}>
-                {captureLabel(index, c.id)}
-              </option>
+        {groups.length < 2
+          ? groups.map(options)
+          : groups.map((g) => (
+              <optgroup
+                key={g.capture ?? ''}
+                label={
+                  g.capture && index ? captureLabel(index, g.capture) : t('stage.pane.anyDate')
+                }
+              >
+                {options(g)}
+              </optgroup>
             ))}
-          </select>
-        </>
-      )}
+      </select>
       {twin && side === 'right' && (
         <button
           type="button"
@@ -209,6 +225,22 @@ export function PaneChooser({ side, split }: { side: Side; split: SplitModel }) 
         </button>
       )}
     </div>
+  );
+}
+
+/**
+ * The left Panoramas pane picked `key` (stepped, followed or selected elsewhere): remember it,
+ * and when its layer belongs to another survey date, move the left side to that date.
+ */
+function pickPano(split: SplitModel, key: string) {
+  const slash = key.lastIndexOf('/');
+  const layer = slash < 0 ? key : key.slice(0, slash);
+  const at = split.index?.of[layer];
+  const next: SplitPref = { ...split.sides, pano: key };
+  split.set(
+    at !== undefined && split.dates && at !== paneCapture(split, 'left')
+      ? chooseCapture(next, 'left', at, split.dates)
+      : next,
   );
 }
 
@@ -469,6 +501,7 @@ const ZONE: Record<Exclude<BuiltInPane, '3d' | 'map'>, 'video' | 'photo' | 'map'
   video: 'video',
   photo: 'photo',
   raster: 'map',
+  pano: 'photo',
   report: 'report',
 };
 
@@ -489,7 +522,8 @@ export function SplitPane({ side, split }: { side: Side; split: SplitModel }) {
       }
       className={`pane pane-x pane-${kind}`}
       data-side={side}
-      data-testid={`pane-${kind}`}
+      // the Panoramas pane names itself `pane-pano` (with its date and panorama)
+      data-testid={kind === 'pano' ? undefined : `pane-${kind}`}
     >
       {extra ? (
         extra.render({ split, side })
@@ -499,6 +533,18 @@ export function SplitPane({ side, split }: { side: Side; split: SplitModel }) {
         <PhotoPane />
       ) : kind === 'raster' ? (
         <RasterPane split={split} side={side} />
+      ) : kind === 'pano' ? (
+        <PanoPane
+          side={side}
+          capture={paneCapture(split, side)}
+          otherCapture={paneCapture(split, side === 'left' ? 'right' : 'left')}
+          sides={split.sides}
+          linked={!split.sides.unlinked}
+          onPick={(key) => {
+            // the right side shows the nearest panorama of its date: nothing to remember
+            if (side === 'left') pickPano(split, key);
+          }}
+        />
       ) : (
         <ReportPane split={split} />
       )}
