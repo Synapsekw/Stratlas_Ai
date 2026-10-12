@@ -293,6 +293,16 @@ describe('date bar and stockpile volumes', () => {
     expect(v.getState().epoch).toBe('e2');
   });
 
+  it('with the compare split open and the volumes ready first they are not moved either', async () => {
+    const { tl, v } = await setup({
+      saved: { m: { focus: 's1' } },
+      splitOpen: true,
+      volumesFirst: true,
+    });
+    expect(v.getState().epoch).toBe('e2');
+    expect(tl.getState().focus).toBe('s1');
+  });
+
   it('a survey picked, another project opened, the stockpile reopened: the picked survey', async () => {
     const { ws, tl, v } = await setup();
     tl.getState().focusSurvey('s1');

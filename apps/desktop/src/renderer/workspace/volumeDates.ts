@@ -47,6 +47,7 @@ export function connectVolumeDates(
         setEpoch: (epoch) => {
           v.getState().setEpoch(epoch);
         },
+        paneRules: () => split.isOpen(),
       };
       tl.getState().setVolumes(current);
       // The volumes always load on their last survey; the date bar holds the date the project

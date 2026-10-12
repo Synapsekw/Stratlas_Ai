@@ -34,6 +34,8 @@ export interface VolumeDates {
   epoch(): string;
   /** Show a survey; the volumes switch its layers, or refuse (mid boundary edit). */
   setEpoch(epoch: string): void;
+  /** True while the compare split is open: the 3D pane sets the volumes' survey, not the date bar. */
+  paneRules?(): boolean;
 }
 
 /** Who shows and hides the survey layers of the open project. */
@@ -203,7 +205,8 @@ export function createTimelineStore(
             : undefined;
         if (pref.focus && savedEpoch && savedEpoch !== vol.epoch()) {
           set({ projectId, index, owner, focus: pref.focus });
-          vol.setEpoch(savedEpoch);
+          // with the compare split open the pane sets their survey: keep the date, do not move them
+          if (!vol.paneRules?.()) vol.setEpoch(savedEpoch);
         } else {
           const shown = index.captures.find((c) => vol.epochOf(c.id) === vol.epoch());
           set({ projectId, index, owner, focus: shown?.id ?? initialFocus(index, pref.focus) });
