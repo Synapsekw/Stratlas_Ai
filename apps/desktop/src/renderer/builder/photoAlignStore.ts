@@ -74,6 +74,8 @@ export interface PhotoAlignDeps {
   /** Save photo corrections of a set (`null` clears one); an error text or null. */
   save(layerId: string, fixes: Fixes): Promise<string | null>;
   showBoth(): void;
+  /** Read orientation.json again when it is not loaded (a read that failed). */
+  reload(): void;
 }
 
 const ZERO: PhotoCorrection = { yawDeg: 0, pitchDeg: 0, rollDeg: 0 };
@@ -94,6 +96,16 @@ export function createPhotoAlignStore(deps: PhotoAlignDeps): StoreApi<PhotoAlign
     /** A photo's saved correction (orientation.json), or null. */
     const savedOf = (layerId: string, photoId: string): PhotoCorrection | null =>
       photoCorrection(ws.getState().orientation, layerId, photoId) ?? null;
+    /**
+     * True (with a notice, the file asked for again) while orientation.json is not read: an edit
+     * from it would save over the photos' saved corrections.
+     */
+    const unread = (): boolean => {
+      if (ws.getState().orientationLoaded) return false;
+      set({ notice: { text: t('align.direction.say.notLoaded'), action: null, flight: null } });
+      deps.reload();
+      return true;
+    };
     const patch = (p: Partial<PhotoSession>) => {
       const s = get().session;
       if (s) set({ session: { ...s, ...p } });
@@ -123,11 +135,7 @@ export function createPhotoAlignStore(deps: PhotoAlignDeps): StoreApi<PhotoAlign
         if (!p?.pos || !p.q) return;
         const s = get().session;
         if (s?.layerId === layerId && s.photoId === photoId) return;
-        // a session seeded from an unread file would save over the photo's saved correction
-        if (!ws.getState().orientationLoaded) {
-          set({ notice: { text: t('align.direction.say.notLoaded'), action: null, flight: null } });
-          return;
-        }
+        if (unread()) return;
         const w = ws.getState();
         w.select({ kind: 'photo', id: photoId, layer: layerId });
         deps.showBoth();
@@ -244,6 +252,7 @@ export function createPhotoAlignStore(deps: PhotoAlignDeps): StoreApi<PhotoAlign
       },
 
       resetSaved: async (layerId, photoId) => {
+        if (unread()) return;
         const p = photoOf(layerId, photoId);
         const before = p ? savedOf(layerId, photoId) : null;
         if (!before) return;
@@ -262,7 +271,7 @@ export function createPhotoAlignStore(deps: PhotoAlignDeps): StoreApi<PhotoAlign
 
       applyNotice: async () => {
         const a = get().notice?.action;
-        if (!a) return;
+        if (!a || unread()) return;
         const now: Fixes = {};
         for (const id of Object.keys(a.fixes)) now[id] = savedOf(a.layerId, id);
         const s = get().session;
@@ -288,7 +297,7 @@ export function createPhotoAlignStore(deps: PhotoAlignDeps): StoreApi<PhotoAlign
 
       applyToFlight: async () => {
         const f = get().notice?.flight;
-        if (!f) return;
+        if (!f || unread()) return;
         const before: Fixes = {};
         const fixes: Fixes = {};
         for (const id of f.ids) {

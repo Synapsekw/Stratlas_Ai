@@ -32,13 +32,19 @@ function setup(loaded = true) {
     ws.getState().setOrientation(withPhotoFixes(ws.getState().orientation, l, fixes));
     return Promise.resolve(null);
   });
-  const store = createPhotoAlignStore({ workspace: ws, save, showBoth: () => undefined });
+  const reload = vi.fn();
+  const store = createPhotoAlignStore({
+    workspace: ws,
+    save,
+    showBoth: () => undefined,
+    reload,
+  });
   const item = (id: string) => {
     const l = ws.getState().project?.manifest.layers[0];
     const p = l?.kind === 'photos' ? l.items.find((x) => x.id === id) : undefined;
     return p ? { ...p, correction: photoCorrection(ws.getState().orientation, 'photos', id) } : p;
   };
-  return { ws, store, saves, item };
+  return { ws, store, saves, item, reload };
 }
 
 describe('align photo to map', () => {
@@ -50,6 +56,20 @@ describe('align photo to map', () => {
     ws.getState().setOrientation(null);
     store.getState().start('photos', 'p1');
     expect(store.getState().session?.photoId).toBe('p1');
+  });
+
+  it('refuses Undo until the file is read again', async () => {
+    const { store, saves, ws, reload } = setup();
+    const a = () => store.getState();
+    a().start('photos', 'p1');
+    a().turn({ yaw: 100 });
+    await a().done();
+    expect(saves).toHaveLength(1);
+    ws.getState().setOrientation(null, false);
+    await a().applyNotice();
+    expect(saves).toHaveLength(1);
+    expect(a().notice?.action ?? null).toBeNull();
+    expect(reload).toHaveBeenCalledTimes(1);
   });
 
   it('turns the photo as a correction of its gimbal pose, saves it, offers the flight', async () => {

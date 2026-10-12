@@ -61,6 +61,7 @@ function setup(keys?: DirectionKey[], loaded = true) {
     return Promise.resolve(null);
   });
   const showBoth = vi.fn();
+  const reload = vi.fn();
   const store = createAlignStore({
     workspace: ws,
     save,
@@ -68,18 +69,21 @@ function setup(keys?: DirectionKey[], loaded = true) {
     loadFlight: () => undefined,
     duration: () => 20_000,
     showBoth,
+    reload,
   });
   const at = (ms: number) => {
     ws.getState().setTime(START + ms);
   };
-  return { ws, store, saved, save, showBoth, at };
+  return { ws, store, saved, save, showBoth, reload, at };
 }
 
 describe('align camera before orientation.json is read', () => {
   it('starts no session from an orientation that is not loaded yet', async () => {
-    const { ws, store, save } = setup(undefined, false);
+    const { ws, store, save, reload } = setup(undefined, false);
     store.getState().start('clip-1');
     expect(store.getState().session).toBeNull();
+    // the file is asked for again (a read that failed is tried once more)
+    expect(reload).toHaveBeenCalledTimes(1);
     expect(store.getState().notice?.text).toBeTruthy();
     expect(store.getState().notice?.action).toBeNull();
     // the file arrives with the clip's keyframes: the session starts from them
@@ -88,6 +92,35 @@ describe('align camera before orientation.json is read', () => {
     expect(store.getState().session?.original).toHaveLength(2);
     await store.getState().done();
     expect(save).not.toHaveBeenCalled();
+  });
+});
+
+describe('undo and clear while orientation.json is read again', () => {
+  it('refuses Undo until the file is read, so its Redo cannot clear the clip', async () => {
+    const { ws, store, save, reload, at } = setup([key(0, 10), key(5000, 30)]);
+    const a = () => store.getState();
+    a().start('clip-1');
+    at(2000);
+    a().setKey();
+    await a().done();
+    expect(save).toHaveBeenCalledTimes(1);
+    expect(a().notice?.action?.kind).toBe('undo');
+    // the same project opened again: the file is being read again
+    ws.getState().setOrientation(null, false);
+    await a().applyNotice();
+    expect(save).toHaveBeenCalledTimes(1);
+    expect(a().notice?.action ?? null).toBeNull();
+    expect(a().notice?.text).toBeTruthy();
+    expect(reload).toHaveBeenCalledTimes(1);
+  });
+
+  it('refuses Clear until the file is read', async () => {
+    const { ws, store, save, reload } = setup([key(0, 10)]);
+    ws.getState().setOrientation(null, false);
+    await store.getState().clear('clip-1');
+    expect(save).not.toHaveBeenCalled();
+    expect(store.getState().notice?.text).toBeTruthy();
+    expect(reload).toHaveBeenCalledTimes(1);
   });
 });
 

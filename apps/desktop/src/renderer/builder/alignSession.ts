@@ -6,7 +6,12 @@ import { getMedia, loadFlight } from '../media';
 import { shell } from '../shell';
 import { createAlignStore, type AlignStore } from './alignStore';
 import { createPhotoAlignStore, type PhotoAlignStore } from './photoAlignStore';
-import { saveOrientationEdit, withClipKeys, withPhotoFixes } from './orientationFile';
+import {
+  retryOrientation,
+  saveOrientationEdit,
+  withClipKeys,
+  withPhotoFixes,
+} from './orientationFile';
 
 /** "Align camera to map": the app's session store (keyframes being edited, notices). */
 export const alignCamera = createAlignStore({
@@ -24,6 +29,7 @@ export const alignCamera = createAlignStore({
     if (s.screen !== 'scene') s.go('scene');
     if (s.stageMode !== 'split') s.setStageMode('split');
   },
+  reload: retryOrientation,
 });
 
 export function useAlign<T>(selector: (s: AlignStore) => T): T {
@@ -39,6 +45,7 @@ export const photoAlign = createPhotoAlignStore({
     if (s.screen !== 'scene') s.go('scene');
     if (s.stageMode !== 'split') s.setStageMode('split');
   },
+  reload: retryOrientation,
 });
 
 // one alignment at a time: starting one cancels the other

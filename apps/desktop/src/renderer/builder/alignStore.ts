@@ -107,6 +107,8 @@ export interface AlignDeps {
   duration(layerId: string): number | null;
   /** Show the 3D view and the map side by side. */
   showBoth(): void;
+  /** Read orientation.json again when it is not loaded (a read that failed). */
+  reload(): void;
 }
 
 /** Undo steps closer together than this (typing in a field) count as one. */
@@ -127,6 +129,16 @@ export function createAlignStore(deps: AlignDeps): StoreApi<AlignStore> {
     const nowClipMs = (clip: VideoLayer) => clipTimeMs(clip, ws.getState().nowMs);
     /** The clip's saved keyframes (orientation.json). */
     const savedKeys = (id: string) => clipKeys(ws.getState().orientation, id) ?? [];
+    /**
+     * True (with a notice, the file asked for again) while orientation.json is not read: an edit
+     * from it would save over the clip's saved keyframes.
+     */
+    const unread = (): boolean => {
+      if (ws.getState().orientationLoaded) return false;
+      set({ notice: { text: t('align.direction.say.notLoaded'), action: null } });
+      deps.reload();
+      return true;
+    };
     const durationOf = (clip: VideoLayer): number => {
       const d = deps.duration(clip.id);
       if (d !== null && d > 0) return d;
@@ -174,11 +186,7 @@ export function createAlignStore(deps: AlignDeps): StoreApi<AlignStore> {
         if (s) end();
         const clip = clipOf(layerId);
         if (!clip) return;
-        // a session seeded from an unread file would save over the clip's saved keyframes
-        if (!ws.getState().orientationLoaded) {
-          set({ notice: { text: t('align.direction.say.notLoaded'), action: null } });
-          return;
-        }
+        if (unread()) return;
         deps.loadFlight(layerId);
         const w = ws.getState();
         w.pause();
@@ -400,6 +408,7 @@ export function createAlignStore(deps: AlignDeps): StoreApi<AlignStore> {
       },
 
       clear: async (layerId) => {
+        if (unread()) return;
         const clip = clipOf(layerId);
         const before = [...savedKeys(layerId)];
         if (!clip || !before.length) return;
@@ -417,7 +426,7 @@ export function createAlignStore(deps: AlignDeps): StoreApi<AlignStore> {
 
       applyNotice: async () => {
         const a = get().notice?.action;
-        if (!a) return;
+        if (!a || unread()) return;
         const saved = savedKeys(a.layerId);
         const now = saved.length ? [...saved] : null;
         if (get().session?.layerId === a.layerId) end();

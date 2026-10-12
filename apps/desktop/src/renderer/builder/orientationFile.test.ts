@@ -9,7 +9,12 @@ vi.mock('../shell', () => ({
   bridge: { call: (...a: unknown[]) => call(...a) as unknown },
 }));
 
-import { loadOrientation, saveOrientationEdit, withClipKeys } from './orientationFile';
+import {
+  loadOrientation,
+  retryOrientation,
+  saveOrientationEdit,
+  withClipKeys,
+} from './orientationFile';
 
 const manifest = {
   schema: 'aio.project/1',
@@ -104,6 +109,30 @@ describe('saveOrientationEdit', () => {
     giveFirst();
     await load;
     expect(Object.keys(workspace.getState().orientation?.clips ?? {}).sort()).toEqual(['a', 'b']);
+  });
+
+  it('reads again after a failed read, not while a read is under way', async () => {
+    let give: (v: unknown) => void = () => undefined;
+    call.mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          give = resolve;
+        }),
+    );
+    const load = loadOrientation();
+    retryOrientation();
+    expect(call).toHaveBeenCalledTimes(1);
+    give({ ok: true, value: { ok: false, error: 'Could not read the camera directions' } });
+    await load;
+    expect(workspace.getState().orientationLoaded).toBe(false);
+    retryOrientation();
+    expect(call).toHaveBeenCalledTimes(2);
+    give({ ok: true, value: { ok: true, file: onDisk, readOnly: false } });
+    await vi.waitFor(() => {
+      expect(workspace.getState().orientationLoaded).toBe(true);
+    });
+    retryOrientation();
+    expect(call).toHaveBeenCalledTimes(2);
   });
 
   it('builds each of two overlapping saves on the one before', async () => {

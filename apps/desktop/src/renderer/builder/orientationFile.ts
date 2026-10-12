@@ -12,6 +12,8 @@ export { withClipKeys, withPhotoFixes } from './orientationEdit';
 
 /** Bumped by every load and every good write: an older read in flight is dropped. */
 let loading = 0;
+/** The load whose read is under way (0: none). */
+let reading = 0;
 /** Saves one after the other, each from the file the one before wrote. */
 let saving: Promise<unknown> = Promise.resolve();
 
@@ -22,7 +24,10 @@ export async function loadOrientation(): Promise<void> {
   const ticket = ++loading;
   ws.setOrientation(null, false);
   if (!id) return;
-  const r = await bridge.call('orientation:read', { projectId: id });
+  reading = ticket;
+  const r = await bridge.call('orientation:read', { projectId: id }).finally(() => {
+    if (reading === ticket) reading = 0;
+  });
   if (ticket !== loading || workspace.getState().project?.id !== id) return;
   if (!r.ok) {
     console.warn('orientation.json not read', r.error);
@@ -33,6 +38,12 @@ export async function loadOrientation(): Promise<void> {
     return;
   }
   workspace.getState().setOrientation(r.value.file);
+}
+
+/** Read the file again when it is not loaded and no read is under way (a read that failed). */
+export function retryOrientation(): void {
+  const ws = workspace.getState();
+  if (ws.project && !ws.orientationLoaded && reading === 0) void loadOrientation();
 }
 
 /**

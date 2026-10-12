@@ -48,13 +48,14 @@ export function BuilderLayer() {
   useEffect(() => {
     builder.getState().stopAlign();
     alignCamera.getState().cancel();
-    alignCamera.getState().dismissNotice();
     photoAlign.getState().cancel();
-    photoAlign.getState().dismissNotice();
   }, [projectId]);
   // the project's hand-set camera directions (orientation.json), read again on every open: the
-  // same project opened again starts with none loaded, and the file may have changed on disk
+  // same project opened again starts with none loaded, and the file may have changed on disk;
+  // an Undo offered before belongs to the file as it was
   useEffect(() => {
+    alignCamera.getState().dismissNotice();
+    photoAlign.getState().dismissNotice();
     void loadOrientation();
   }, [openSeq]);
   // aligning the camera belongs to the scene
