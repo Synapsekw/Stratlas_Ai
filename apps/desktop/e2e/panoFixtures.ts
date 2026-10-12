@@ -1,6 +1,7 @@
 /**
  * Synthetic panoramas of three survey dates (timeline T3) and the split picker helper the compare
- * specs share. Synthetic only: no real project, no network.
+ * specs share. Synthetic only: no real project, no network. tools/demo/pano-dates-demo.mjs writes the
+ * same project for trying it by hand: keep the two in step.
  */
 import { ProjectManifest, SCHEMA_VERSION, type ProjectManifestInput } from '@aio/schema';
 import { expect, type Page } from '@playwright/test';
