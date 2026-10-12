@@ -289,7 +289,8 @@ export function ProcessWizard() {
     setError(null);
     const runs = await bridge.call('photo:runs', { projectId: project.id });
     const taken = runs.ok && runs.value.ok ? runs.value.runs.map((r) => r.id) : [];
-    const run = newRunId(new Date(), taken);
+    const run = newRunId(new Date(), [...taken, ...photoUi.getState().held]);
+    photoUi.getState().holdRun(run, true);
     const err = await startAlign({
       root: project.root,
       run,
@@ -300,6 +301,7 @@ export function ProcessWizard() {
     });
     setBusy(false);
     if (err) {
+      photoUi.getState().holdRun(run, false);
       setError(err);
       return;
     }

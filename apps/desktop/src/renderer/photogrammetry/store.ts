@@ -41,6 +41,11 @@ export interface PhotoUi {
    * filing them under it later acts on that project only.
    */
   dateWarnings: Record<string, DateWarning>;
+  /**
+   * Run ids handed out in this session (dialog and agent): main lists a run only once photo.align
+   * has read its photos, so a new id avoids these too and two starts never share a run folder.
+   */
+  held: string[];
   /** Bumped after a write, so open panels read the run again. */
   version: number;
   openWizard: () => void;
@@ -52,6 +57,8 @@ export interface PhotoUi {
   setDate: (run: string, d: { capture?: string; captureDate?: string } | null) => void;
   setStartError: (run: string, error: string | null) => void;
   setDateWarning: (run: string, warning: DateWarning | null) => void;
+  /** Hold a run id (true) or free it again after a refused start (false). */
+  holdRun: (run: string, hold: boolean) => void;
   bump: () => void;
 }
 
@@ -62,7 +69,11 @@ export const photoUi = createStore<PhotoUi>()((set) => ({
   dates: {},
   startErrors: {},
   dateWarnings: {},
+  held: [],
   version: 0,
+  holdRun: (run, hold) => {
+    set((s) => ({ held: [...s.held.filter((r) => r !== run), ...(hold ? [run] : [])] }));
+  },
   openWizard: () => {
     set({ view: { kind: 'wizard' } });
   },

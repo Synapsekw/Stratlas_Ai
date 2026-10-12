@@ -48,6 +48,7 @@ const RUN = '20261012-1200';
 function answer(over: Record<string, unknown> = {}) {
   call.mockImplementation((channel: string) => {
     if (channel in over) return Promise.resolve(over[channel]);
+    if (channel === 'photo:probe') return ok({ probe: { processing: 'available' } });
     if (channel === 'photo:estimate') return ok({ estimate });
     if (channel === 'photo:runs') return ok({ runs: [] });
     if (channel === 'jobs:start') return ok({});
@@ -58,7 +59,7 @@ const started = () => call.mock.calls.filter((c) => c[0] === 'jobs:start');
 
 beforeEach(() => {
   call.mockReset();
-  photoUi.setState({ pending: {}, dates: {} });
+  photoUi.setState({ pending: {}, dates: {}, held: [] });
   vi.useFakeTimers();
   vi.setSystemTime(new Date(2026, 9, 12, 12, 0));
 });
@@ -129,6 +130,68 @@ describe('agentProcessPhotos', () => {
     );
     expect(photoUi.getState().pending).toEqual({});
     expect(photoUi.getState().dates).toEqual({});
+  });
+
+  it('does not hand out a run id twice in one minute, before main lists the run', async () => {
+    answer();
+    const first = await agentProcessPhotos(req);
+    const second = await agentProcessPhotos(req);
+    expect(first.run).toBe(RUN);
+    expect(second.run).toBe(`${RUN}-2`);
+    expect(Object.keys(photoUi.getState().pending).sort()).toEqual([RUN, `${RUN}-2`]);
+  });
+
+  it('avoids a run id the dialog started this session', async () => {
+    answer();
+    photoUi.getState().holdRun(RUN, true);
+    expect((await agentProcessPhotos(req)).run).toBe(`${RUN}-2`);
+  });
+
+  it('frees the run id of a refused start', async () => {
+    answer({ 'jobs:start': { ok: true, value: { ok: false, error: 'No.' } } });
+    await expect(agentProcessPhotos(req)).rejects.toThrow('No.');
+    answer();
+    expect((await agentProcessPhotos(req)).run).toBe(RUN);
+  });
+
+  it('takes the survey day from the photos files when the layer items carry no date', async () => {
+    const saved = open.project;
+    open.project = {
+      ...(saved as object),
+      manifest: {
+        crs: { epsg: 32639 },
+        captures: [],
+        layers: [{ kind: 'photos', id: 'ph', name: 'Flight', items: [{}, {}] }],
+      },
+    };
+    answer({
+      'photo:estimate': await ok({
+        estimate: { ...estimate, photoDays: [{ date: '2026-05-02', photos: 2 }] },
+      }),
+    });
+    try {
+      const r = await agentProcessPhotos(req);
+      expect(r.surveyDate).toBe('2026-05-02');
+      expect(photoUi.getState().dates[r.run]).toEqual({ captureDate: '2026-05-02' });
+    } finally {
+      open.project = saved;
+    }
+  });
+
+  it('refuses on a computer that cannot create maps from photos', async () => {
+    answer({ 'photo:probe': await ok({ probe: { processing: 'no-pack' } }) });
+    await expect(agentProcessPhotos(req)).rejects.toThrow(
+      'Creating maps from photos needs the processing tools',
+    );
+    expect(started()).toHaveLength(0);
+  });
+
+  it('passes on a failed estimate or run list', async () => {
+    answer({ 'photo:estimate': { ok: true, value: { ok: false, error: 'No estimate.' } } });
+    await expect(agentProcessPhotos(req)).rejects.toThrow('No estimate.');
+    answer({ 'photo:runs': { ok: false, error: 'No runs.' } });
+    await expect(agentProcessPhotos(req)).rejects.toThrow('No runs.');
+    expect(started()).toHaveLength(0);
   });
 
   it('refuses without an open project, or with a layer that is gone', async () => {

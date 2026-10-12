@@ -3,6 +3,7 @@
  * `process_photos` starts a run as **Create maps from photos** does in its simple flow (the
  * estimate's disk check, a new run id, `photo.align`, the survey date picked from the photos, the
  * maps queued unless ground control comes first); `accuracy_summary` reads runs through main.
+ * Like the dialog it refuses first on a computer that cannot process photos (`photo:probe`).
  * Refusals are thrown as ToolErrors with main's sentence.
  */
 import {
@@ -16,6 +17,7 @@ import type { Res } from '../bridge';
 import { bridge } from '../shell';
 import { startAlign } from './actions';
 import { diskNeed, formatMinutes, newRunId } from './estimate';
+import { processingLine } from './hardware';
 import { photoUi } from './store';
 import { daysOfItems, pickParams, pickSurveyDate } from './surveyDate';
 
@@ -37,6 +39,13 @@ export async function agentProcessPhotos(req: ProcessPhotosRequest): Promise<Pro
   const layer = project.manifest.layers.find((l) => l.kind === 'photos' && l.id === req.layerId);
   if (layer?.kind !== 'photos')
     throw new ToolError(`The photos layer "${req.layerId}" is not in the open project.`);
+  // whether this computer can do it at all comes first, as in the dialog (an unread probe does
+  // not block, as there)
+  const probe = await bridge.call('photo:probe', {});
+  if (probe.ok && probe.value.ok) {
+    const verdict = processingLine(probe.value.probe);
+    if (!verdict.ok) throw new ToolError(`${verdict.title}. ${verdict.text}`);
+  }
   const photos = { layer: layer.id };
   const { estimate } = value(
     await bridge.call('photo:estimate', {
@@ -54,10 +63,19 @@ export async function agentProcessPhotos(req: ProcessPhotosRequest): Promise<Pro
   if (estimate.minutes[1] === 0)
     throw new ToolError('There are no photos to process in this layer.');
   const { runs } = value(await bridge.call('photo:runs', { projectId: project.id }));
-  const run = newRunId(
-    new Date(),
-    runs.map((r) => r.id),
+  // main lists a run only once photo.align has read its photos: the ids this session handed out
+  // are taken too, and the new id is held at once, so two starts never share a run folder
+  const ui = photoUi.getState();
+  const run = newRunId(new Date(), [...runs.map((r) => r.id), ...ui.held]);
+  ui.holdRun(run, true);
+  const itemDays = daysOfItems(layer.items);
+  const pick = pickSurveyDate(
+    itemDays.length ? itemDays : (estimate.photoDays ?? []),
+    project.manifest.captures,
+    layer.capture,
   );
+  const date = pickParams(pick);
+  ui.setDate(run, date);
   const err = await startAlign({
     root: project.root,
     run,
@@ -65,11 +83,11 @@ export async function agentProcessPhotos(req: ProcessPhotosRequest): Promise<Pro
     preset: req.preset,
     gnss: req.gnss,
   });
-  if (err) throw new ToolError(err);
-  const pick = pickSurveyDate(daysOfItems(layer.items), project.manifest.captures, layer.capture);
-  const date = pickParams(pick);
-  const ui = photoUi.getState();
-  ui.setDate(run, date);
+  if (err) {
+    ui.setDate(run, null);
+    ui.holdRun(run, false);
+    throw new ToolError(err);
+  }
   if (!req.groundControlFirst)
     ui.setPending(run, { root: project.root, preset: req.preset, products: req.products, ...date });
   return {
