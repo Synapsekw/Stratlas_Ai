@@ -186,6 +186,21 @@ export function builderEnv(rawEnv, builderArgs) {
  */
 export const isStoreBuild = (args) => args.some((a) => /^(appx|msix)$/i.test(a));
 
+/**
+ * The checks and outputs dist.mjs runs after electron-builder, relative to tools/release. A Store
+ * package skips the update feed: the Store installs its own updates, and feed.mjs would otherwise
+ * rewrite the feed for the installers already in dist.
+ */
+export function postBuildSteps(builderArgs) {
+  const store = isStoreBuild(builderArgs);
+  return [
+    'check-bundle.mjs',
+    'smoke-packaged.mjs',
+    ...(store ? [] : ['feed.mjs']),
+    '../guide/build-pdf.mjs',
+  ];
+}
+
 /** The environment for a Store build: every Windows signing switch removed. */
 export function storeBuildEnv(env) {
   return Object.fromEntries(Object.entries(env).filter(([k]) => !WINDOWS_SIGNING_VARS.includes(k)));

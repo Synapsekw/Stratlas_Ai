@@ -13,6 +13,7 @@ import {
   builderEnv,
   isStoreBuild,
   isWindowsBuild,
+  postBuildSteps,
   windowsSigning,
   writeEffectiveConfig,
 } from './brand-config.mjs';
@@ -67,14 +68,10 @@ const result = spawnSync(process.execPath, args, { cwd: appDir, stdio: 'inherit'
 if (result.status !== 0) process.exit(result.status ?? 1);
 
 // Never hand over a package that cannot start: check the bundle, then launch the packaged app.
-// Then the update feed (stratlas-update.json) for the installers in dist (ADR 0003), and the PDF
-// user guide beside the installers (<Executable>-<version>-user-guide.pdf, from the built guide page).
-for (const step of [
-  'check-bundle.mjs',
-  'smoke-packaged.mjs',
-  'feed.mjs',
-  '../guide/build-pdf.mjs',
-]) {
+// Then the update feed (stratlas-update.json) for the installers in dist (ADR 0003; not for a
+// Store package, whose updates come from the Store), and the PDF user guide beside the installers
+// (<Executable>-<version>-user-guide.pdf, from the built guide page).
+for (const step of postBuildSteps(builderArgs)) {
   const r = spawnSync(process.execPath, [fileURLToPath(new URL(step, import.meta.url))], {
     cwd: appDir,
     stdio: 'inherit',

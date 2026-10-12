@@ -93,7 +93,9 @@ appx:
   backgroundColor: '#11161C'
   showNameOnTiles: true
   languages: [en-US]
-  minVersion: 10.0.17763.0
+  # 1903: the first release whose MSIX AppData virtualisation lets the app change existing files
+  # in place.
+  minVersion: 10.0.18362.0
   maxVersionTested: 10.0.26100.0
 
 # macOS: Developer ID signing with hardened runtime; notarisation is switched on by

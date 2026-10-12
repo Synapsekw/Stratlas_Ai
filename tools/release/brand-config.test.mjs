@@ -6,6 +6,7 @@ import {
   isStoreBuild,
   macIntegration,
   macSigning,
+  postBuildSteps,
   storeBuildEnv,
   windowsPublisher,
   windowsSigning,
@@ -62,6 +63,17 @@ describe('Store builds', () => {
     expect(isStoreBuild(['--win', 'appx'])).toBe(true);
     expect(isStoreBuild(['--win', 'msix'])).toBe(true);
     expect(isStoreBuild(['--win'])).toBe(false);
+  });
+
+  it('leave the update feed alone, since the Store installs its own updates', () => {
+    expect(postBuildSteps(['--win', 'appx'])).not.toContain('feed.mjs');
+    expect(postBuildSteps(['--win', 'appx'])).toContain('smoke-packaged.mjs');
+    expect(postBuildSteps(['--win'])).toEqual([
+      'check-bundle.mjs',
+      'smoke-packaged.mjs',
+      'feed.mjs',
+      '../guide/build-pdf.mjs',
+    ]);
   });
 
   it('drop every Windows signing switch, so the MSIX stays unsigned', () => {
@@ -236,6 +248,9 @@ describe('the signing hash setting in electron-builder.yml', () => {
   const yml = readFileSync(baseConfigPath, 'utf8');
   it('signs with SHA-256 only, one signature per file', () => {
     expect(yml).toMatch(/^\s+signingHashAlgorithms: \[sha256\]$/m);
+  });
+  it('needs Windows 10 1903 for the MSIX, so packaged app data can be changed in place', () => {
+    expect(yml).toMatch(/^\s+minVersion: 10\.0\.18362\.0$/m);
   });
   it('signs only .exe files (no signExts), so DLLs and .node addons are not re-signed', () => {
     expect(yml).not.toMatch(/^\s*signExts:/m);
