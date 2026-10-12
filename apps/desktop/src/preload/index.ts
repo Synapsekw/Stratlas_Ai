@@ -98,6 +98,7 @@ const CHANNELS = {
   'builder:addDrawingPage': true,
   'builder:closeDrawing': true,
   'walks:list': true,
+  'walks:remove': true,
   'builder:cancelImport': true,
   // M8
   'change:list': true,

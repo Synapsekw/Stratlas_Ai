@@ -82,6 +82,8 @@ describe('M10 additive rule: no layer kind, raster format, derived kind or recor
         'raster',
         'vector',
         'video',
+        // the one kind added since, by the 0.12 major change (contract-changes, 12 Oct 2026)
+        'walk',
       ].sort(),
     );
     const enumOf = (kind: string, field: string): unknown => {

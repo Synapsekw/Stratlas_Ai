@@ -494,6 +494,21 @@ export const SCHEMA_REGISTRY: readonly SchemaEntry[] = [
   },
   // 360 video from a 360 camera's own file (walks.ts): a side folder older builds never read
   { family: 'aio.walk', version: 1, home: 'project', where: 'walks/<id>/walk.json', since: '0.11' },
+  // the walk's path and camera orientation from walk.process (walks.ts; founder, 12 Oct 2026)
+  {
+    family: 'aio.walkpath',
+    version: 1,
+    home: 'project',
+    where: 'walks/<id>/raw-path.json',
+    since: '0.12',
+  },
+  {
+    family: 'aio.walkorient',
+    version: 1,
+    home: 'project',
+    where: 'walks/<id>/orientation.json',
+    since: '0.12',
+  },
 ];
 
 /**

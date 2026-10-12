@@ -33,6 +33,18 @@ describe('version registry', () => {
     }
   });
 
+  it('registers the walk path and orientation files of 0.12', () => {
+    for (const family of ['aio.walkpath', 'aio.walkorient'])
+      expect(
+        SCHEMA_REGISTRY.find((e) => e.family === family),
+        family,
+      ).toMatchObject({
+        version: 1,
+        home: 'project',
+        since: '0.12',
+      });
+  });
+
   // Every `aio.<name>/<n>` literal in the code is a registered file schema or a known non-file id
   // (protocols, signing domains, tool-only and test formats). A stream that adds a file schema
   // without a registry row fails here.

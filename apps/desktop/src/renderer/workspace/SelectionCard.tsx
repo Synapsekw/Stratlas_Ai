@@ -80,6 +80,7 @@ const KIND: Record<Layer['kind'], { label: string; icon: IconName }> = {
   raster: { label: 'Raster', icon: 'raster' },
   vector: { label: 'Map overlay', icon: 'map' },
   video: { label: 'Video clip', icon: 'video' },
+  walk: { label: '360 walk', icon: 'pano' },
   photos: { label: 'Photo set', icon: 'photo' },
   panoramas: { label: 'Panoramas', icon: 'pano' },
 };

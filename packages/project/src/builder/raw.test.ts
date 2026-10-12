@@ -797,6 +797,41 @@ describe('updateLayers', () => {
     const after = cleared.manifest.layers.find((l) => l.id === 'mesh-m');
     expect(after && 'capture' in after).toBe(false);
   });
+
+  it('sets and clears the placement of a walk, and refuses it on another kind', async () => {
+    const root = await project();
+    await writeFile(join(dir, 'm.glb'), glb());
+    await importRawFiles(root, [join(dir, 'm.glb')], deps());
+    const m = await readManifest(root);
+    await writeManifestFile(root, {
+      ...m,
+      layers: [
+        ...m.layers,
+        {
+          kind: 'walk',
+          id: 'walk-a',
+          name: 'A',
+          visible: true,
+          record: { path: 'walks/a/walk.json' },
+          src: { path: 'walks/a/playback.mp4' },
+          durationS: 12,
+        },
+      ],
+    });
+    const place = {
+      pins: [{ t: 1, surface: '@model', at: [0, 0] as [number, number] }],
+      yawOffsetDeg: 5,
+      quality: 'unplaced' as const,
+    };
+    const set = await updateLayers(root, ['walk-a'], { walk: place });
+    expect(set.manifest.layers.find((l) => l.id === 'walk-a')).toMatchObject({
+      place: { ...place, heightM: 1.7 },
+    });
+    await expect(updateLayers(root, ['mesh-m'], { walk: place })).rejects.toThrow(/360 walk/);
+    const cleared = await updateLayers(root, ['walk-a'], { walk: null });
+    const after = cleared.manifest.layers.find((l) => l.id === 'walk-a');
+    expect(after && 'place' in after).toBe(false);
+  });
 });
 
 describe('updateCapture', () => {

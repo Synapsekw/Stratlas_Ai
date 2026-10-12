@@ -1,0 +1,10 @@
+{
+  "schema": "aio.walkorient/1",
+  "rateHz": 200,
+  "count": 12401,
+  "convention": "xyzw-camera-threejs",
+  "frame": "raw",
+  "startOffsetS": 0,
+  "data": "orientation.synthetic.bin",
+  "layout": "f32le-t-xyzw"
+}

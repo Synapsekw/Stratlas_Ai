@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { AssetRef, HexColor, Id, IsoTime, Mat4, Quat, Vec3 } from './common';
+import { WalkCalibration, WalkPathRefs } from './walks';
 
 export const LensModel = z.discriminatedUnion('model', [
   z.object({
@@ -206,6 +207,24 @@ export const Layer = z.discriminatedUnion('kind', [
     style: VectorStyle.optional(),
   }),
   /**
+   * A 360 video walk (`walks/<id>/`, data-conventions section 32; founder, 12 Oct 2026). Id
+   * `walk-<walk id>`. `record` is its `walk.json`, `src` the equirectangular playback copy.
+   * `path` appears once `walk.process` has run, `place` once it was placed, and `flight` (the
+   * pose file, `aio.flight/1`) once a placement was saved. 0.10 and later keep it as an opaque
+   * entry; 0.9 and older refuse the manifest.
+   */
+  z.object({
+    kind: z.literal('walk'),
+    ...base,
+    record: AssetRef,
+    src: AssetRef,
+    poster: AssetRef.optional(),
+    durationS: z.number().nonnegative(),
+    path: WalkPathRefs.optional(),
+    place: WalkCalibration.optional(),
+    flight: FlightRef.optional(),
+  }),
+  /**
    * Retired (11 Oct 2026): the delivered viewer is no longer shown. Kept so manifests and
    * packages written before then still parse; importers no longer write it.
    */
@@ -228,3 +247,4 @@ export type LayerDerived = z.infer<typeof LayerDerived>;
 export type PointcloudScalar = z.infer<typeof PointcloudScalar>;
 export type Layer = z.infer<typeof Layer>;
 export type LayerKind = Layer['kind'];
+export type WalkLayer = Extract<Layer, { kind: 'walk' }>;

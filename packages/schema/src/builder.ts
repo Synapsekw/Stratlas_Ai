@@ -2,6 +2,7 @@ import { z } from 'zod';
 import { Id, IsoDate, Mat4, Vec3 } from './common';
 import { CameraOrientation, LensModel } from './layers';
 import { ClassCatalogue, SeverityModel } from './severity';
+import { WalkCalibration } from './walks';
 
 /** What a project is for; picks defaults in the builder and the landing screen. */
 export const ProjectType = z.enum(['inspection', 'volumetric', 'road', 'twin', 'fusion']);
@@ -224,6 +225,8 @@ export const LayerPatch = z.union([
    * (`drawings/<stem>/plan.png`) the save also shows the layer and marks its placement as placed.
    */
   z.object({ corners: RasterCorners }).strict(),
+  /** The placement of a `walk` layer (its pins and corrections); `null` clears it. */
+  z.object({ walk: WalkCalibration.nullable() }).strict(),
 ]);
 
 /**
@@ -254,6 +257,8 @@ export type NewProjectRequest = z.infer<typeof NewProjectRequest>;
 export type ImportItem = z.infer<typeof ImportItem>;
 export type RasterCorners = z.infer<typeof RasterCorners>;
 export type LayerPatch = z.infer<typeof LayerPatch>;
+/** A patch as it is sent (a walk placement may leave out heightM, the default 1.7). */
+export type LayerPatchInput = z.input<typeof LayerPatch>;
 export type CapturePatch = z.infer<typeof CapturePatch>;
 export type VerticalDatum = z.infer<typeof VerticalDatum>;
 export type AltitudeSource = z.infer<typeof AltitudeSource>;

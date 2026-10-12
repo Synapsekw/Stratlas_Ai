@@ -45,6 +45,7 @@ const LAYER_ICON: Record<ListedKind, IconName> = {
   raster: 'raster',
   vector: 'map',
   video: 'video',
+  walk: 'pano',
   photos: 'photo',
   panoramas: 'pano',
 };
@@ -56,6 +57,7 @@ const LAYER_KIND: Record<ListedKind, string> = {
   raster: 'Raster',
   vector: 'Map overlay',
   video: 'Video',
+  walk: '360 walk',
   photos: 'Photos',
   panoramas: 'Panoramas',
 };

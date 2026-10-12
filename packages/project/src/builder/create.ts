@@ -2,12 +2,13 @@ import type {
   CameraOrientation,
   Capture,
   CapturePatch,
-  LayerPatch,
+  LayerPatchInput,
   NewProjectRequest,
   ProjectManifest,
   SeverityTemplate,
   Vec3,
 } from '@aio/schema';
+import { WalkCalibration } from '@aio/schema';
 import { mkdir, stat, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { drawingStemOf, markDrawingPlaced, type PlacedDrawing } from './drawingPlacement';
@@ -102,7 +103,7 @@ function roundOrientation(o: CameraOrientation): CameraOrientation {
 export async function updateLayers(
   root: string,
   layerIds: readonly string[],
-  patch: LayerPatch,
+  patch: LayerPatchInput,
 ): Promise<{ manifest: ProjectManifest; backup: string }> {
   const r = await updateManifestFile(root, async (m) => {
     const { manifest, placed } = patchLayers(m, layerIds, patch);
@@ -120,7 +121,7 @@ export async function updateLayers(
 function patchLayers(
   m: ProjectManifest,
   layerIds: readonly string[],
-  patch: LayerPatch,
+  patch: LayerPatchInput,
 ): { manifest: ProjectManifest; placed: PlacedDrawing[] } {
   const want = new Set(layerIds);
   for (const id of want)
@@ -162,6 +163,14 @@ function patchLayers(
       if (stem === null) return { ...l, corners };
       placed.push({ stem, name: l.name, corners });
       return { ...l, corners, visible: true };
+    }
+    if ('walk' in patch) {
+      if (l.kind !== 'walk')
+        throw new Error(`"${l.name}" is not a 360 walk; only walks take a placement.`);
+      const next = { ...l };
+      if (patch.walk === null) delete next.place;
+      else next.place = WalkCalibration.parse(patch.walk);
+      return next;
     }
     if (l.kind !== 'video')
       throw new Error(`"${l.name}" is not a video; time offset and lens belong to video layers.`);

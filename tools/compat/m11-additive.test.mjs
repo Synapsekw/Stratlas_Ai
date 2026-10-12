@@ -92,7 +92,8 @@ describe('existing files 0.11 writes stay readable by 0.10', () => {
   });
 
   it('keeps the 0.10 layer kinds and project types; report sections gain exactly six survey ids', () => {
-    expect([...current.LAYER_KINDS].sort()).toEqual([...v010.LAYER_KINDS].sort());
+    // plus walk, the 0.12 major change (contract-changes, 12 Oct 2026): 0.10 keeps it opaque
+    expect([...current.LAYER_KINDS].sort()).toEqual([...v010.LAYER_KINDS, 'walk'].sort());
     expect(current.ProjectType.options).toEqual(v010.ProjectType.options);
     // G9 (plan "Contract changes"): the 0.10 sections in order, then the four survey sections and
     // the haul-road and hydrology runs; settings saved with them toggled stay readable by 0.10

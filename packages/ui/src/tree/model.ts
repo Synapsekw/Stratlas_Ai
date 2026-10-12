@@ -4,7 +4,15 @@ import { flightGroups } from '../timeline/model';
 import type { IconName } from '../icons/Icon';
 
 export type TreeGroupKind =
-  'models' | 'pointclouds' | 'maps' | 'drawings' | 'video' | 'photos' | 'panoramas' | 'annotations';
+  | 'models'
+  | 'pointclouds'
+  | 'maps'
+  | 'drawings'
+  | 'video'
+  | 'walks'
+  | 'photos'
+  | 'panoramas'
+  | 'annotations';
 
 export interface TreeItem {
   /** Layer id for layer rows; a fixed id for annotation rows. */
@@ -36,6 +44,7 @@ const GROUPS: { kind: TreeGroupKind; label: string; icon: IconName }[] = [
   { kind: 'maps', label: 'Maps and rasters', icon: 'map' },
   { kind: 'drawings', label: 'Drawings', icon: 'drawing' },
   { kind: 'video', label: 'Video', icon: 'video' },
+  { kind: 'walks', label: '360 walks', icon: 'pano' },
   { kind: 'photos', label: 'Photos', icon: 'photo' },
   { kind: 'panoramas', label: 'Panoramas', icon: 'pano' },
   { kind: 'annotations', label: 'Annotations', icon: 'anno' },
@@ -50,6 +59,7 @@ const groupOf: Record<Layer['kind'], TreeGroupKind> = {
   raster: 'maps',
   vector: 'maps',
   video: 'video',
+  walk: 'walks',
   photos: 'photos',
   panoramas: 'panoramas',
 };
@@ -103,6 +113,8 @@ function metaOf(layer: Layer, durations: Readonly<Record<string, number>>): stri
       const d = durations[layer.id];
       return d !== undefined ? formatDuration(d) : undefined;
     }
+    case 'walk':
+      return formatDuration(layer.durationS);
     case 'photos':
     case 'panoramas':
       return formatCompact(layer.items.length);

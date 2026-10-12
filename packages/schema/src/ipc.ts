@@ -2868,6 +2868,17 @@ export const ipc = {
     response: z.object({ walks: z.array(WalkFile) }),
   },
   /**
+   * Remove a walk from the project: its layer leaves the manifest and its folder `walks/<id>/`
+   * moves to `.trash/` (kept seven days). Answers with the saved manifest.
+   */
+  'walks:remove': {
+    request: z.object({ projectId: z.string().min(1), layerId: z.string().min(1) }).strict(),
+    response: z.discriminatedUnion('ok', [
+      z.object({ ok: z.literal(true), manifest: ProjectManifest }),
+      z.object({ ok: z.literal(false), error: z.string() }),
+    ]),
+  },
+  /**
    * Cancel the `builder:import` running for a project, as a whole: a 360 video being stitched is
    * stopped and removed, files whose turn had not come are answered as skipped, and what was
    * already imported is saved. `builder:import` itself then answers with the rows. `ok` is false

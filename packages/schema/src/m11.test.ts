@@ -75,6 +75,8 @@ describe('M11 additive rule: no layer kind, raster role, project type, setting o
         'raster',
         'vector',
         'video',
+        // the one kind added since, by the 0.12 major change (contract-changes, 12 Oct 2026)
+        'walk',
       ].sort(),
     );
     const raster = Layer.options.find((o) => o.shape.kind.value === 'raster');
