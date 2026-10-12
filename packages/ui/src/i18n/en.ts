@@ -482,6 +482,9 @@ export const en = {
   'tree.datePrompt.later': 'Not now',
   'tree.datePrompt.done_one': 'Filed {count} dataset.',
   'tree.datePrompt.done_other': 'Filed {count} datasets.',
+  'tree.datePrompt.mixed_one': '{count} dataset holds photos from several days. Move it by hand.',
+  'tree.datePrompt.mixed_other':
+    '{count} datasets hold photos from several days. Move them by hand.',
   'tree.dates.label': 'Datasets by survey date',
   'tree.dates.every': 'Every date',
   'tree.dates.expand': 'Expand {date}',

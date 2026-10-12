@@ -23,14 +23,16 @@ function majority(days: readonly string[]): string | null {
   return best;
 }
 
+/** The days a photos layer's dated items were taken on, one entry per item. */
+function photoDays(layer: Extract<Layer, { kind: 'photos' }>): string[] {
+  return layer.items
+    .map((i) => i.takenAt?.slice(0, 10))
+    .filter((d): d is string => d !== undefined && DAY.test(d));
+}
+
 /** The local day a layer was recorded on: photos by most items' `takenAt`, video by flight start. */
 export function recordingDay(layer: Layer, utcOffsetMin: number): string | null {
-  if (layer.kind === 'photos') {
-    const days = layer.items
-      .map((i) => i.takenAt?.slice(0, 10))
-      .filter((d): d is string => d !== undefined && DAY.test(d));
-    return majority(days);
-  }
+  if (layer.kind === 'photos') return majority(photoDays(layer));
   if (layer.kind === 'video') {
     const ms = layer.flight.startUtcMs + utcOffsetMin * 60_000;
     if (!Number.isFinite(ms)) return null;
@@ -46,23 +48,41 @@ export interface FilingGroup {
   layerIds: string[];
 }
 
-/** Layers in Every date that carry a recording day, grouped by day, oldest day first. */
+export interface FilingPlan {
+  groups: FilingGroup[];
+  /** Layers in Every date that hold photos from several days: left out, to be moved by hand. */
+  mixed: string[];
+}
+
+/**
+ * Layers in Every date that carry a recording day, grouped by day, oldest day first. A photos
+ * layer whose items were taken on more than one day is never filed under one of them: it goes to
+ * `mixed`. A video layer is one flight with one start, so it always has a single day.
+ */
 export function planFiling(
   manifest: Pick<ProjectManifest, 'captures' | 'layers'>,
   index: CaptureIndex,
   utcOffsetMin: number,
-): FilingGroup[] {
+): FilingPlan {
   const groups = new Map<string, string[]>();
+  const mixed: string[] = [];
   for (const l of manifest.layers) {
     if (index.of[l.id] !== undefined) continue;
     if (l.kind !== 'photos' && l.kind !== 'video') continue;
+    if (l.kind === 'photos' && new Set(photoDays(l)).size > 1) {
+      mixed.push(l.id);
+      continue;
+    }
     const day = recordingDay(l, utcOffsetMin);
     if (day === null) continue;
     groups.set(day, [...(groups.get(day) ?? []), l.id]);
   }
-  return [...groups.keys()].sort().map((day) => ({
-    day,
-    captureId: manifest.captures.find((c) => c.date === day)?.id ?? null,
-    layerIds: groups.get(day) ?? [],
-  }));
+  return {
+    groups: [...groups.keys()].sort().map((day) => ({
+      day,
+      captureId: manifest.captures.find((c) => c.date === day)?.id ?? null,
+      layerIds: groups.get(day) ?? [],
+    })),
+    mixed,
+  };
 }

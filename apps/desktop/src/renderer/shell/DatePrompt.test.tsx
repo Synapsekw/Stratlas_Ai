@@ -179,6 +179,47 @@ describe('DatePrompt', () => {
     expect(q('date-prompt-later')?.hasAttribute('disabled')).toBe(false);
   });
 
+  it('files the one-day layers and tells to move a several-day layer by hand', async () => {
+    newSurveyDate.mockImplementation((day: string) =>
+      Promise.resolve({ captureId: `capture-${day}` }),
+    );
+    const mixed = {
+      id: 'mix',
+      kind: 'photos',
+      name: 'mix',
+      items: [{ takenAt: '2024-11-06T08:00:00' }, { takenAt: '2024-11-07T08:00:00' }],
+    };
+    open([mixed, photos('ph', '2024-11-06T08:00:00')]);
+    mount();
+    expect(host.textContent).toContain('1 dataset in Every date was recorded on a survey day.');
+    expect(host.textContent).toContain(
+      '1 dataset holds photos from several days. Move it by hand.',
+    );
+    act(() => q('date-prompt-file')?.click());
+    await flush();
+    await flush();
+    expect(moveLayersToDate.mock.calls).toEqual([[['ph'], 'capture-2024-11-06']]);
+  });
+
+  it('with only several-day layers, shows the line and only Not now', () => {
+    const mixed = (id: string) => ({
+      id,
+      kind: 'photos',
+      name: id,
+      items: [{ takenAt: '2024-11-06T08:00:00' }, { takenAt: '2024-11-07T08:00:00' }],
+    });
+    open([mixed('m1'), mixed('m2')]);
+    mount();
+    expect(q('date-prompt')?.textContent).toContain(
+      '2 datasets hold photos from several days. Move them by hand.',
+    );
+    expect(host.textContent).not.toContain('Every date');
+    expect(q('date-prompt-file')).toBeNull();
+    act(() => q('date-prompt-later')?.click());
+    expect(datePromptPref.getState().done).toEqual({ p1: true });
+    expect(q('date-prompt')).toBeNull();
+  });
+
   it('leaves a name-dated layer alone', () => {
     open(
       [photos('ph', '2024-11-06T08:00:00', 'Photos 2024-11-06')],

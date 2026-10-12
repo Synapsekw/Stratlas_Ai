@@ -608,6 +608,7 @@ A flight lands in the project as its own survey date, with every dataset filed u
 - [ ] At the top of Datasets a note says how many datasets in Every date were recorded on survey days and under which dates they go.
 - [ ] Click **File them**: the video and photos move into the date folder; models and drawings stay in Every date.
 - [ ] Close and reopen the project: the note does not come back.
+- [ ] In a project with one photos dataset holding pictures from several days, the note says "1 dataset holds photos from several days. Move it by hand." and **File them** leaves that dataset in Every date.
 
 ### Add a date by hand
 
@@ -621,6 +622,7 @@ A flight lands in the project as its own survey date, with every dataset filed u
 - [ ] The new date folder holds every dataset of that flight (video, photos, any ortho or model you had in the folder). Step to it with the date bar arrows.
 - [ ] In the import card pick **New survey date...**, set another day and click **Add**: the datasets move to that day and the wrong date disappears from Datasets. Picking an existing date works the same way.
 - [ ] Drag a folder from Explorer onto the window: it imports the same way.
+- [ ] Import a second flight of the same day, then change its date in the import card: only that flight's photos move; the first flight's photos stay under their date.
 
 ### Other ways in
 

@@ -292,7 +292,7 @@ export {
   type StoreScope,
 } from './captures';
 
-export { planFiling, recordingDay, type FilingGroup } from './surveyDays';
+export { planFiling, recordingDay, type FilingGroup, type FilingPlan } from './surveyDays';
 
 export {
   clipStartMs,

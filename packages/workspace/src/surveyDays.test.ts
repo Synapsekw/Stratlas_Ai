@@ -69,10 +69,13 @@ describe('planFiling', () => {
       photos('c', ['2024-11-07']),
     ];
     const manifest = { captures: [cap('2024-11-07')], layers };
-    expect(planFiling(manifest, captureIndex(manifest), 0)).toEqual([
-      { day: '2024-11-06', captureId: null, layerIds: ['b'] },
-      { day: '2024-11-07', captureId: 'capture-2024-11-07', layerIds: ['a', 'c'] },
-    ]);
+    expect(planFiling(manifest, captureIndex(manifest), 0)).toEqual({
+      groups: [
+        { day: '2024-11-06', captureId: null, layerIds: ['b'] },
+        { day: '2024-11-07', captureId: 'capture-2024-11-07', layerIds: ['a', 'c'] },
+      ],
+      mixed: [],
+    });
   });
   it('leaves out name-dated layers, meshes and layers with a capture', () => {
     const layers = [
@@ -81,6 +84,22 @@ describe('planFiling', () => {
       video('v', Date.UTC(2024, 10, 6, 9, 0, 0), { capture: 'capture-2024-11-05' }),
     ];
     const manifest = { captures: [cap('2024-11-05'), cap('2024-11-06')], layers };
-    expect(planFiling(manifest, captureIndex(manifest), 0)).toEqual([]);
+    expect(planFiling(manifest, captureIndex(manifest), 0)).toEqual({ groups: [], mixed: [] });
+  });
+  it('leaves out a photos layer holding several days and names it in mixed', () => {
+    const layers = [
+      photos('two', ['2024-11-06', '2024-11-06', '2024-11-07', undefined]),
+      photos('one', ['2024-11-06', undefined]),
+    ];
+    const manifest = { captures: [], layers };
+    expect(planFiling(manifest, captureIndex(manifest), 0)).toEqual({
+      groups: [{ day: '2024-11-06', captureId: null, layerIds: ['one'] }],
+      mixed: ['two'],
+    });
+  });
+  it('does not count a several-day layer that already has a date', () => {
+    const layers = [photos('two', ['2024-11-06', '2024-11-07'], { capture: 'capture-2024-11-05' })];
+    const manifest = { captures: [cap('2024-11-05')], layers };
+    expect(planFiling(manifest, captureIndex(manifest), 0)).toEqual({ groups: [], mixed: [] });
   });
 });

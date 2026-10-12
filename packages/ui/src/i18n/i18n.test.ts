@@ -97,6 +97,12 @@ describe('the English catalogue', () => {
     );
     expect(t('tree.datePrompt.done', { count: 1 })).toBe('Filed 1 dataset.');
     expect(t('tree.datePrompt.done', { count: 4 })).toBe('Filed 4 datasets.');
+    expect(t('tree.datePrompt.mixed', { count: 1 })).toBe(
+      '1 dataset holds photos from several days. Move it by hand.',
+    );
+    expect(t('tree.datePrompt.mixed', { count: 2 })).toBe(
+      '2 datasets hold photos from several days. Move them by hand.',
+    );
     expect(en['change.surveyDateNew']).toBe('New survey date...');
   });
 

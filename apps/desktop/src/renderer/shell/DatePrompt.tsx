@@ -16,7 +16,9 @@ export interface DatePromptNote {
 
 /**
  * The one-time offer to file the datasets that were recorded on survey days but sit in Every
- * date. Shown once per project on this machine; both answers end it.
+ * date. Shown once per project on this machine; both answers end it. Photos layers that hold
+ * several days are never filed: a line asks to move them by hand, and with nothing else to file
+ * the note offers only Not now.
  */
 export function DatePrompt({
   canEdit,
@@ -37,14 +39,15 @@ export function DatePrompt({
     error: string | null;
   } | null>(null);
   const manifest = project?.manifest;
-  const groups = useMemo(() => {
-    if (!manifest || !index) return [];
+  const { groups, mixed } = useMemo(() => {
+    if (!manifest || !index) return { groups: [], mixed: [] };
     const epsg = 'epsg' in manifest.crs ? manifest.crs.epsg : 0;
     const offset = epsg === 0 ? 0 : defaultUtcOffsetMin(manifest.origin, epsg);
     return planFiling(manifest, index, offset);
   }, [manifest, index]);
 
-  if (!project || !canEdit || importing || done || groups.length === 0) return null;
+  const nothing = groups.length === 0 && mixed.length === 0;
+  if (!project || !canEdit || importing || done || nothing) return null;
   const projectId = project.id;
   const mine = attempt?.pid === projectId ? attempt : null;
   const busy = mine?.busy ?? false;
@@ -96,7 +99,7 @@ export function DatePrompt({
   return (
     <p className="dtree-note date-prompt" data-testid="date-prompt">
       <span role="status">
-        {t('tree.datePrompt.title', { count })}
+        {groups.length > 0 ? t('tree.datePrompt.title', { count }) : null}
         {groups.map((g) => (
           <Fragment key={g.day}>
             <br />
@@ -106,6 +109,12 @@ export function DatePrompt({
             })}
           </Fragment>
         ))}
+        {mixed.length > 0 ? (
+          <>
+            {groups.length > 0 ? <br /> : null}
+            {t('tree.datePrompt.mixed', { count: mixed.length })}
+          </>
+        ) : null}
         {error ? (
           <>
             <br />
@@ -113,15 +122,17 @@ export function DatePrompt({
           </>
         ) : null}
       </span>
-      <button
-        type="button"
-        className="dtree-undo"
-        data-testid="date-prompt-file"
-        disabled={busy}
-        onClick={() => void file()}
-      >
-        {t('tree.datePrompt.file')}
-      </button>
+      {groups.length > 0 ? (
+        <button
+          type="button"
+          className="dtree-undo"
+          data-testid="date-prompt-file"
+          disabled={busy}
+          onClick={() => void file()}
+        >
+          {t('tree.datePrompt.file')}
+        </button>
+      ) : null}
       <button
         type="button"
         className="dtree-undo"
