@@ -402,10 +402,19 @@ const FILES: { match: RegExp; kind: FileKind }[] = [
  * as `survey.settings`, `calibration.json` as `survey.calibration`, `qa/<capture>.json` as
  * `survey.hold`) are deliberately not followed, so a write of theirs is never recorded twice; the
  * terrain edits (`cleanups.json`) are one `record.external` per save through their wrapped writer.
+ * So are the M10 files: the 3D Tiles list (`tilesets.json`) and, per photogrammetry run, `run.json`
+ * and `gcp.json` (not the reports, `work/` or backups).
  */
 export function isJournaledFile(rel: string): boolean {
-  return rel === 'issues.json' || rel === MEASUREMENTS_REL || FILES.some((f) => f.match.test(rel));
+  return (
+    rel === 'issues.json' ||
+    rel === MEASUREMENTS_REL ||
+    M10_FILE.test(rel) ||
+    FILES.some((f) => f.match.test(rel))
+  );
 }
+
+const M10_FILE = /^(tilesets\.json|photogrammetry\/[^/]+\/(run|gcp)\.json)$/;
 
 /** Folders that hold journaled record files, for scanning a project. */
 export const JOURNALED_DIRS = [
@@ -448,7 +457,11 @@ export function diffRecordFile(
   }
   const spec = FILES.find((f) => f.match.test(rel))?.kind;
   const okShape = (v: unknown) => v === null || isObj(v);
-  if (!spec || !okShape(before) || !okShape(after)) return [externalOp(rel, before, after)];
+  if (!spec || !okShape(before) || !okShape(after)) {
+    let label: string | undefined;
+    for (const c of commands ?? []) if (c.ids.includes('file')) label = c.label;
+    return [externalOp(rel, before, after, label)];
+  }
   const bu = before === null ? [] : spec.units(rel, before);
   const au = after === null ? [] : spec.units(rel, after);
   const old = new Map(bu.map((u) => [key(u.target), u]));
@@ -491,8 +504,9 @@ function unitOp(
 }
 
 /** A difference the journal cannot split into records: file hashes before and after. */
-export function externalOp(rel: string, before: unknown, after: unknown): DraftOp {
+export function externalOp(rel: string, before: unknown, after: unknown, label?: string): DraftOp {
   return {
+    ...(label ? { label } : {}),
     kind: 'record.external',
     target: { rec: 'file', id: rel },
     payload: {

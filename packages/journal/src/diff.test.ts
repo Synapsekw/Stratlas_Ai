@@ -254,3 +254,31 @@ describe('diffRecordFile: survey/designs.json (M11 G6)', () => {
     ]);
   });
 });
+
+describe('M10 files: 3D Tiles list, runs and ground control', () => {
+  it("follows tilesets.json and a run's run.json and gcp.json only", () => {
+    expect(isJournaledFile('tilesets.json')).toBe(true);
+    expect(isJournaledFile('photogrammetry/r1/run.json')).toBe(true);
+    expect(isJournaledFile('photogrammetry/r1/gcp.json')).toBe(true);
+    expect(isJournaledFile('photogrammetry/r1/report/align.json')).toBe(false);
+    expect(isJournaledFile('photogrammetry/r1/work/x.json')).toBe(false);
+    expect(isJournaledFile('photogrammetry/r1/gcp.json.bak')).toBe(false);
+  });
+
+  it('records a tilesets.json change as one labelled record.external op', () => {
+    const a = { schema: 'aio.tilesets/1', tilesets: [] };
+    const b = { schema: 'aio.tilesets/1', tilesets: [{ id: 't1' }] };
+    const ops = diffRecordFile('tilesets.json', a, b, [
+      { label: 'Imported 3D Tiles "Bridge"', ids: ['file'] },
+    ]);
+    expect(ops).toHaveLength(1);
+    const payload = ops[0]?.payload as { before: unknown; after: unknown };
+    expect(typeof payload.before).toBe('string');
+    expect(typeof payload.after).toBe('string');
+    expect(ops[0]).toMatchObject({
+      kind: 'record.external',
+      label: 'Imported 3D Tiles "Bridge"',
+      payload: { file: 'tilesets.json' },
+    });
+  });
+});

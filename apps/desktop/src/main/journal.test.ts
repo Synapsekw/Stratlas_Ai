@@ -413,6 +413,200 @@ describe('journal service', () => {
     expect(after.entries.find((e) => e.op === op)?.redacted?.by).toBe(identity.actor);
   });
 
+  describe('M10 tilesets, ground control and runs', () => {
+    const tilesFile = (names: string[]) => ({
+      schema: 'aio.tilesets/1',
+      tilesets: names.map((n) => ({
+        id: n,
+        name: n,
+        kind: 'imported',
+        src: `tiles/${n}/tileset.json`,
+      })),
+    });
+    const put = (root: string, rel: string, v: unknown) => {
+      mkdirSync(join(root, ...rel.split('/').slice(0, -1)), { recursive: true });
+      writeFileSync(join(root, ...rel.split('/')), JSON.stringify(v));
+    };
+    const hist = async (s: ReturnType<typeof service>) => {
+      const h = await s.journal.history({ projectId: 'p' });
+      if (!h.ok) throw new Error(h.error);
+      return h.entries;
+    };
+    const jobOf = (pipeline: string, root: string) =>
+      ({
+        id: 'job-m10',
+        pipeline,
+        project: root,
+        params: {},
+        status: 'running',
+        progress: 0,
+        steps: [],
+        artifacts: [],
+        createdAt: '2026-10-07T09:00:00.000Z',
+        updatedAt: '2026-10-07T09:00:00.000Z',
+        packVersion: '0.9.0',
+      }) as JobRecord;
+
+    it('records a tilesets:write as one labelled op before the write, by hand', async () => {
+      const { root, userData } = setup();
+      const s = service(root, userData);
+      await s.open({ path: root });
+      const write = s.journal.wrap('tilesets:write', ({ file }) => {
+        writeFileSync(join(root, 'tilesets.json'), JSON.stringify(file));
+        return { ok: true as const };
+      });
+      const file = tilesFile(['a']) as never;
+      expect(await write({ projectId: 'p', file })).toEqual({ ok: true });
+      const e = await hist(s);
+      expect(e).toHaveLength(1);
+      expect(e[0]).toMatchObject({
+        kind: 'record.external',
+        label: '3D Tiles list edited',
+      });
+      // howOf maps every record.external op to 'external' (query.ts); no via is set
+      expect(e[0]?.via).toBeUndefined();
+    });
+
+    it('records a photo:writeGcp as one op on the run gcp.json', async () => {
+      const { root, userData } = setup();
+      const s = service(root, userData);
+      await s.open({ path: root });
+      const write = s.journal.wrap('photo:writeGcp', ({ gcp }) => {
+        put(root, 'photogrammetry/r1/gcp.json', gcp);
+        return { ok: true as const };
+      });
+      await write({ projectId: 'p', run: 'r1', gcp: { schema: 'aio.gcp/1' } as never });
+      const e = await hist(s);
+      expect(e).toHaveLength(1);
+      expect(e[0]).toMatchObject({ kind: 'record.external', label: 'Ground control edited' });
+    });
+
+    it('records a tilesets:import after it went through, none after a refused one', async () => {
+      const { root, userData } = setup();
+      const s = service(root, userData);
+      await s.open({ path: root });
+      const refused = s.journal.wrap('tilesets:import', () =>
+        Promise.resolve({ ok: false as const, error: 'No tileset.json' }),
+      );
+      await refused({ projectId: 'p', path: 'x' });
+      expect(await hist(s)).toHaveLength(0);
+      const ok = s.journal.wrap('tilesets:import', () => {
+        put(root, 'tilesets.json', tilesFile(['bridge']));
+        return Promise.resolve({
+          ok: true as const,
+          entry: tilesFile(['bridge']).tilesets[0] as never,
+        });
+      });
+      await ok({ projectId: 'p', path: 'x' });
+      const e = await hist(s);
+      expect(e).toHaveLength(1);
+      expect(e[0]).toMatchObject({
+        kind: 'record.external',
+        label: 'Imported 3D Tiles "bridge"',
+      });
+    });
+
+    it('records photo:applyPoses with apply true as a manifest change, none for a preview', async () => {
+      const { root, userData } = setup();
+      const s = service(root, userData);
+      await s.open({ path: root });
+      const apply = s.journal.wrap('photo:applyPoses', ({ apply: on }) => {
+        if (on) {
+          put(root, 'manifest.json', {
+            schema: 'aio.project/1',
+            layers: [{ id: 'ph', kind: 'photos', cameras: 'new' }],
+          });
+        }
+        return Promise.resolve({
+          ok: true as const,
+          cameras: 1,
+          medianMoveM: 0,
+          maxMoveM: 0,
+          applied: on,
+        });
+      });
+      await apply({ projectId: 'p', run: 'r1', layer: 'ph', apply: false });
+      expect(await hist(s)).toHaveLength(0);
+      await apply({ projectId: 'p', run: 'r1', layer: 'ph', apply: true });
+      const e = await hist(s);
+      expect(e).toHaveLength(1);
+      expect(e[0]?.kind).toBe('manifest.entry');
+    });
+
+    it('attributes a photo.align job run.json and gcp.json to the pipeline', async () => {
+      const { root, userData } = setup();
+      put(root, 'photogrammetry/r1/run.json', { schema: 'aio.photo-run/1', state: 'new' });
+      put(root, 'photogrammetry/r1/gcp.json', { schema: 'aio.gcp/1', points: [] });
+      const s = service(root, userData);
+      await s.open({ path: root });
+      const job = jobOf('photo.align', root);
+      await s.journal.wrap('jobs:start', () => Promise.resolve({ ok: true as const, job }))({
+        pipeline: 'photo.align',
+        project: root,
+        params: {},
+      });
+      put(root, 'photogrammetry/r1/run.json', { schema: 'aio.photo-run/1', state: 'aligned' });
+      put(root, 'photogrammetry/r1/gcp.json', { schema: 'aio.gcp/1', points: [1] });
+      await s.journal.jobEvent({ type: 'update', job: { ...job, status: 'done' } });
+      const e = await hist(s);
+      expect(e).toHaveLength(2);
+      expect(e.every((x) => x.via?.pipeline?.name === 'photo.align')).toBe(true);
+    });
+
+    it('records a tiles.mesh job adding a tilesets.json entry with via.pipeline', async () => {
+      const { root, userData } = setup();
+      put(root, 'tilesets.json', tilesFile([]));
+      const s = service(root, userData);
+      await s.open({ path: root });
+      const job = jobOf('tiles.mesh', root);
+      await s.journal.wrap('jobs:start', () => Promise.resolve({ ok: true as const, job }))({
+        pipeline: 'tiles.mesh',
+        project: root,
+        params: {},
+      });
+      put(root, 'tilesets.json', tilesFile(['m1']));
+      await s.journal.jobEvent({ type: 'update', job: { ...job, status: 'done' } });
+      const e = await hist(s);
+      expect(e).toHaveLength(1);
+      expect(e[0]?.via?.pipeline?.name).toBe('tiles.mesh');
+    });
+
+    it('saves and appends nothing with the journal off', async () => {
+      const { root, userData } = setup();
+      const s = service(root, userData);
+      await s.open({ path: root });
+      await s.journal.setJournal('p', false);
+      const before = (await hist(s)).length;
+      const t = s.journal.wrap('tilesets:write', ({ file }) => {
+        writeFileSync(join(root, 'tilesets.json'), JSON.stringify(file));
+        return { ok: true as const };
+      });
+      const g = s.journal.wrap('photo:writeGcp', ({ gcp }) => {
+        put(root, 'photogrammetry/r1/gcp.json', gcp);
+        return { ok: true as const };
+      });
+      expect(await t({ projectId: 'p', file: tilesFile(['a']) as never })).toEqual({ ok: true });
+      expect(await g({ projectId: 'p', run: 'r1', gcp: { schema: 'aio.gcp/1' } as never })).toEqual(
+        { ok: true },
+      );
+      expect(existsSync(join(root, 'tilesets.json'))).toBe(true);
+      expect(existsSync(join(root, 'photogrammetry/r1/gcp.json'))).toBe(true);
+      expect(await hist(s)).toHaveLength(before);
+    });
+
+    it('appends nothing for a package project', async () => {
+      const { root, userData } = setup();
+      const s = service(root, userData);
+      s.pkg.add('p');
+      const t = s.journal.wrap('tilesets:write', () => ({
+        ok: false as const,
+        error: 'read-only',
+      }));
+      await t({ projectId: 'p', file: tilesFile(['a']) as never });
+      expect(readdirSync(root)).not.toContain('journal');
+    });
+  });
+
   it('never journals a package', async () => {
     const { root, userData } = setup();
     const s = service(root, userData);

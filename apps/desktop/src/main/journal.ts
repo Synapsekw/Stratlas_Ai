@@ -9,8 +9,10 @@
  * - writers (`project:writeIssues`, `change:write`, `detections:write`, `model:write`,
  *   `project:writeBoundaries`, `report:writeNarrative`) are wrapped: ops first, then the write;
  *   a write the handler refuses is undone by ops, never by editing the journal;
+ * - `tilesets:write` and `photo:writeGcp` are wrapped too (one `record.external` op per save);
  * - `builder:updateLayers`, `builder:updateCapture` and `builder:ensureCapture` are diffed after
- *   they write (their result is computed in the handler);
+ *   they write (their result is computed in the handler), and so are `tilesets:import` (the
+ *   imported tileset's name as the label) and `photo:applyPoses` with `apply: true`;
  * - on open, a half-done write is finished (crash recovery) and any other difference is recorded
  *   as attributed ops (`via.external`, "changed outside Quadrion AI");
  * - around pipeline jobs, the difference is recorded with `via.pipeline`.
@@ -63,7 +65,11 @@ import {
   JOURNAL_DEVICES_DIR,
   JOURNAL_DIR,
   JOURNAL_OPS_DIR,
+  PHOTO_DIR,
+  PHOTO_RUN_FILES,
+  photoRunDir,
   segmentFileName,
+  TILESETS_FILE,
   type AuditEntry,
   type AuditFilter,
   type EditCommand,
@@ -200,6 +206,19 @@ const WRITERS: Partial<
     projectId: r.projectId,
     rel: 'survey/measurements.json',
     after: r.file,
+  }),
+  // M10 3D Tiles list and ground control: one record.external op per save, labelled
+  'tilesets:write': (r: IpcRequest<'tilesets:write'>) => ({
+    projectId: r.projectId,
+    rel: TILESETS_FILE,
+    after: r.file,
+    commands: [{ label: '3D Tiles list edited', ids: ['file'] }],
+  }),
+  'photo:writeGcp': (r: IpcRequest<'photo:writeGcp'>) => ({
+    projectId: r.projectId,
+    rel: `${photoRunDir(r.run)}/${PHOTO_RUN_FILES.gcp}`,
+    after: r.gcp,
+    commands: [{ label: 'Ground control edited', ids: ['file'] }],
   }),
   // M11 G8 terrain cleanups and crops: one record.external op per save (no record kind yet)
   'survey:writeTerrainEdits': (r: IpcRequest<'survey:writeTerrainEdits'>) => ({
@@ -339,7 +358,7 @@ async function closeHandle(st: ProjectState): Promise<void> {
 /** Every journaled record file of a project folder (project-relative, forward slashes). */
 export async function journaledFiles(root: string): Promise<string[]> {
   const out: string[] = [];
-  for (const top of ['issues.json', 'manifest.json']) {
+  for (const top of ['issues.json', 'manifest.json', TILESETS_FILE]) {
     if ((await readText(join(root, top))) !== null) out.push(top);
   }
   for (const dir of JOURNALED_DIRS) {
@@ -352,6 +371,20 @@ export async function journaledFiles(root: string): Promise<string[]> {
     for (const n of names) {
       const rel = `${dir}/${n}`;
       if (isJournaledFile(rel)) out.push(rel);
+    }
+  }
+  let runs: { name: string; isDirectory(): boolean }[] = [];
+  try {
+    runs = await readdir(join(root, PHOTO_DIR), { withFileTypes: true });
+  } catch {
+    // no photogrammetry folder
+  }
+  for (const d of runs) {
+    if (!d.isDirectory()) continue;
+    for (const file of [PHOTO_RUN_FILES.run, PHOTO_RUN_FILES.gcp]) {
+      const rel = `${PHOTO_DIR}/${d.name}/${file}`;
+      if (isJournaledFile(rel) && (await readText(join(root, ...rel.split('/')))) !== null)
+        out.push(rel);
     }
   }
   return out.sort();
@@ -669,6 +702,17 @@ export function createJournalService(deps: JournalServiceDeps) {
     return touched;
   }
 
+  /** `reconcile` for one file, with the label of the app action that wrote it. */
+  async function reconcileLabelled(st: ProjectState, rel: string, label: string) {
+    const now = await readText(join(st.root, ...rel.split('/')));
+    const known = st.meta.files[rel];
+    if ((now === null ? undefined : textHash(now)) === known) return;
+    const before = known === undefined ? null : await snapText(st, rel);
+    await append(st, diffRecordFile(rel, parse(before), parse(now), [{ label, ids: ['file'] }]));
+    await snapshot(st, rel, now);
+    await saveMeta(st);
+  }
+
   /** Finish a write that was journaled but not written (crash between op and state write). */
   async function recover(st: ProjectState) {
     const pending = Pending.safeParse(parse(await readText(join(st.dir, 'pending.json'))));
@@ -861,6 +905,32 @@ export function createJournalService(deps: JournalServiceDeps) {
           const st = await load(root);
           if (st.meta.journal === 'on') {
             await serial(st, () => reconcile(st, ['manifest.json'], undefined));
+          }
+        }
+        return r;
+      };
+    }
+    if (channel === 'tilesets:import' || channel === 'photo:applyPoses') {
+      // the handler writes the file itself: recorded after, and only when it went through
+      return async (req) => {
+        const r = await handler(req);
+        const { projectId } = req as IpcRequest<'tilesets:import' | 'photo:applyPoses'>;
+        const root = deps.projects.root(projectId);
+        if ((r as { ok: boolean }).ok && root !== undefined && !deps.projects.package(projectId)) {
+          try {
+            const st = await load(root);
+            if (st.meta.journal === 'on') {
+              if (channel === 'tilesets:import') {
+                const entry = (r as IpcResponse<'tilesets:import'> & { ok: true }).entry;
+                await serial(st, () =>
+                  reconcileLabelled(st, TILESETS_FILE, `Imported 3D Tiles "${entry.name}"`),
+                );
+              } else if ((req as IpcRequest<'photo:applyPoses'>).apply) {
+                await serial(st, () => reconcile(st, ['manifest.json'], undefined));
+              }
+            }
+          } catch (e) {
+            console.warn(`Journal: could not record ${channel} in ${root} (${String(e)}).`);
           }
         }
         return r;
