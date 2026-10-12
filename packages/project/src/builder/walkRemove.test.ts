@@ -98,6 +98,29 @@ describe('removeWalk', () => {
   });
 });
 
+describe('removeWalk: the folder moves first', () => {
+  it('keeps the layer and the folder when the folder cannot be moved', async () => {
+    await addWalk('w1');
+    const refused = () => Promise.reject(new Error('playback.mp4 is held open'));
+    await expect(removeWalk(root, 'walk-w1', () => NOW, { rename: refused })).rejects.toThrow(
+      'held open',
+    );
+    expect((await readManifestFile(root)).layers.some((l) => l.id === 'walk-w1')).toBe(true);
+    expect(await exists(join(root, 'walks', 'w1', 'playback.mp4'))).toBe(true);
+  });
+
+  it('moves the folder back when the manifest cannot be saved', async () => {
+    await addWalk('w1');
+    // a folder where the backup goes: the save refuses before it writes the manifest
+    await rm(join(root, 'manifest.json.bak'), { force: true });
+    await mkdir(join(root, 'manifest.json.bak'));
+    await expect(removeWalk(root, 'walk-w1', () => NOW)).rejects.toThrow();
+    expect((await readManifestFile(root)).layers.some((l) => l.id === 'walk-w1')).toBe(true);
+    expect(await exists(join(root, 'walks', 'w1', 'playback.mp4'))).toBe(true);
+    expect(await readdir(join(root, '.trash')).catch(() => [])).toEqual([]);
+  });
+});
+
 describe('sweepTrash', () => {
   it('keeps a 6-day-old entry and removes an 8-day-old one', async () => {
     const t = join(root, '.trash');
