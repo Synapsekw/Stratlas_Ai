@@ -1,6 +1,7 @@
 import type { WalkLayout } from '@aio/schema';
 import {
   PIPELINES,
+  WALK_PROCESS_FEATURE,
   type ImportItem,
   type JobRecord,
   type PipelinePackStatus,
@@ -228,7 +229,10 @@ export function packOffersWalkProcess(status: PipelinePackStatus | null): boolea
   if (status.state === 'ok' || status.state === 'dev') return true;
   if (status.state !== 'too-old') return false;
   return !status.needs.some(
-    (n) => n.includes(`"${WALK_TITLE}"`) || /cannot run \d+ kinds of job/.test(n),
+    (n) =>
+      n.includes(`"${WALK_TITLE}"`) ||
+      n.startsWith(`${WALK_PROCESS_FEATURE} needs`) ||
+      /cannot run \d+ kinds of job/.test(n),
   );
 }
 

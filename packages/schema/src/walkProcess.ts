@@ -12,6 +12,10 @@ import { WalkLayout } from './walks';
 
 export const WALK_PROCESS_SCHEMA = 'aio.walk-process/1';
 
+/** The first pipeline pack with `walk.process` (plan decision 13), and how the app names it. */
+export const WALK_PROCESS_MIN_PACK = '0.6.0';
+export const WALK_PROCESS_FEATURE = 'Processing 360 walks';
+
 /** `imu.bin`: float32 little endian rows, these columns, at this rate (decimated motion data). */
 export const WALK_IMU_COLUMNS = ['t', 'ax', 'ay', 'az', 'gx', 'gy', 'gz'] as const;
 export const WALK_IMU_RATE_HZ = 200;

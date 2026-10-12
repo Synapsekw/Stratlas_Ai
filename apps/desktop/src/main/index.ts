@@ -67,6 +67,8 @@ import {
   packageWalks,
   projectWalkProcessing,
   walksListAnswer,
+  WALK_PACK_FEATURE,
+  walkPackRefusal,
 } from './walks';
 import { registerChangeIpc } from './change';
 import { registerInferenceIpc } from './inference';
@@ -1139,6 +1141,16 @@ function registerIpc(): void {
     // a DXF must not be filed over a picture drawing of the same name
     const refused = await drawingJobRefusal(req);
     if (refused) return { ok: false, error: refused };
+    // walk.process on processing tools older than its first pack: the update path, not a failed job
+    if ('pipeline' in req && req.pipeline === 'walk.process') {
+      const found = await findPack({
+        dataRoot: settings.current().dataRoot,
+        env: process.env,
+        app: packApp,
+      });
+      const tooOld = walkPackRefusal(req.pipeline, found.pack?.version ?? null);
+      if (tooOld) return { ok: false, error: tooOld };
+    }
     return jobs.start(req);
   });
   handle('jobs:cancel', ({ jobId }) => jobs.cancel(jobId));
@@ -1558,7 +1570,7 @@ function registerIpc(): void {
     features:
       processingVerdict(process.platform, process.arch, null) === 'unsupported-platform'
         ? []
-        : [{ label: 'Creating maps from photos', minVersion: PHOTO_PACK }],
+        : [{ label: 'Creating maps from photos', minVersion: PHOTO_PACK }, WALK_PACK_FEATURE],
     places: () =>
       packArchivePlaces({
         exe: app.getPath('exe'),

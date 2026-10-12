@@ -326,6 +326,11 @@ describe('packOffersWalkProcess', () => {
     expect(packOffersWalkProcess(status({ state: 'incompatible' }))).toBe(false);
   });
 
+  it('is false for a pack before the first with walk.process', () => {
+    const need = 'Processing 360 walks needs version 0.6.0 or later.';
+    expect(packOffersWalkProcess(status({ state: 'too-old', needs: [need] }))).toBe(false);
+  });
+
   it('reads a too old pack by what it cannot run', () => {
     const feature = 'Creating maps from photos needs version 0.4.0 or later.';
     expect(packOffersWalkProcess(status({ state: 'too-old', needs: [feature] }))).toBe(true);

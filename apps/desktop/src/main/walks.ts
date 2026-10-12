@@ -1,7 +1,15 @@
 import type { FfmpegBin, ProxyEncoder, WalkTools } from '@aio/project/builder';
-import type { ProjectManifest, WalkFile, WalkLayer, WalkProcessSummary } from '@aio/schema';
+import {
+  WALK_PROCESS_FEATURE,
+  WALK_PROCESS_MIN_PACK,
+  type ProjectManifest,
+  type WalkFile,
+  type WalkLayer,
+  type WalkProcessSummary,
+} from '@aio/schema';
 import { readMp4Tracks } from '@aio/video/telemetry';
 import { open, stat } from 'node:fs/promises';
+import { compareVersions } from './jobs/pack';
 
 /*
  * 360 video in main (the front slice of Walks 360 part W1): the tools the raw import needs to
@@ -191,4 +199,18 @@ export function stitchProgress(emit: (e: ImportProgress) => void, total: number)
       });
     },
   };
+}
+
+/** What the processing tools must be for `walk.process` (Settings, Processing tools lists it). */
+export const WALK_PACK_FEATURE = { label: WALK_PROCESS_FEATURE, minVersion: WALK_PROCESS_MIN_PACK };
+
+/**
+ * Why `jobs:start` refuses a job on the installed pack, or null: `walk.process` needs pack 0.6.0
+ * or later, and an older pack would fail it as an unknown pipeline. A development pack (`dev`)
+ * and no pack (the job runner says so itself) pass.
+ */
+export function walkPackRefusal(pipeline: string, packVersion: string | null): string | null {
+  if (pipeline !== 'walk.process' || packVersion === null || packVersion === 'dev') return null;
+  if (compareVersions(packVersion, WALK_PROCESS_MIN_PACK) >= 0) return null;
+  return `${WALK_PROCESS_FEATURE} needs processing tools ${WALK_PROCESS_MIN_PACK} or later (these are ${packVersion}). Update them in Settings, Processing tools.`;
 }

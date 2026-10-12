@@ -3,7 +3,7 @@
   "schema": "accelerator-lock/1",
   "kind": "gpu-cuda",
   "version": "0.1.0",
-  "packRange": ">=0.5.0 <0.6.0",
+  "packRange": ">=0.5.0 <0.7.0",
   "python": "3.13",
   "runtime": { "cuda": "12.9", "minDriver": "528.33" },
   "platforms": {

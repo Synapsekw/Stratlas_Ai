@@ -217,3 +217,16 @@ describe('walks:list processed', () => {
     expect(Object.keys(await packageWalkProcessing(archive, [a, b]))).toEqual(['walk-b']);
   });
 });
+
+describe('walk.process and the pack version', () => {
+  it('refuses walk.process on a pack before 0.6.0 with the update path, and lets others through', async () => {
+    const { walkPackRefusal } = await import('./walks');
+    expect(walkPackRefusal('walk.process', '0.5.4')).toBe(
+      'Processing 360 walks needs processing tools 0.6.0 or later (these are 0.5.4). Update them in Settings, Processing tools.',
+    );
+    expect(walkPackRefusal('walk.process', '0.6.0')).toBeNull();
+    expect(walkPackRefusal('walk.process', 'dev')).toBeNull();
+    expect(walkPackRefusal('walk.process', null)).toBeNull();
+    expect(walkPackRefusal('photo.align', '0.5.4')).toBeNull();
+  });
+});
