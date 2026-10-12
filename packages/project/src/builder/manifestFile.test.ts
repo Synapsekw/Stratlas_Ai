@@ -487,8 +487,8 @@ describe('importRawFiles saves what it added onto the project as it is at its en
   }
 
   const photoIds = (m: ProjectManifest) => {
-    const l = m.layers.find((x) => x.id === 'photos');
-    return l?.kind === 'photos' ? l.items.map((p) => p.id) : null;
+    const ls = m.layers.flatMap((x) => (x.kind === 'photos' ? [x] : []));
+    return ls.length > 0 ? ls.flatMap((l) => l.items.map((p) => p.id)) : null;
   };
 
   it('keeps a survey date renamed during the import, and has its own new layers and dates', async () => {
@@ -501,7 +501,7 @@ describe('importRawFiles saves what it added onto the project as it is at its en
       deps({ images: busyWith(() => updateCapture(root, 'c1', { label: 'Baseline', colour: 3 })) }),
     );
     expect(r.items.map((i) => [i.status, i.layerId])).toEqual([
-      ['imported', 'photos'],
+      ['imported', 'photos-2026-02-01'],
       ['imported', 'mesh-n'],
     ]);
     const m = await readManifest(root);
@@ -510,7 +510,12 @@ describe('importRawFiles saves what it added onto the project as it is at its en
       { id: 'capture-2026-02-01', label: 'Survey', date: '2026-02-01' },
       { id: 'c2', label: 'Second survey', date: '2026-03-10' },
     ]);
-    expect(m.layers.map((l) => l.id)).toEqual(['mesh-m', 'photos', 'mesh-n']);
+    expect(m.layers.map((l) => l.id)).toEqual(['mesh-m', 'mesh-n', 'photos-2026-02-01']);
+    // every layer of the import is filed under the day it found
+    expect(m.layers.filter((l) => l.capture === 'capture-2026-02-01').map((l) => l.id)).toEqual([
+      'mesh-n',
+      'photos-2026-02-01',
+    ]);
     expect(photoIds(m)).toEqual(['p']);
     expect(r.manifest).toEqual(m);
     expect(await partials(root)).toEqual([]);
@@ -565,7 +570,7 @@ describe('importRawFiles saves what it added onto the project as it is at its en
     expect(started).toEqual(['pointcloud.toCopc']);
     expect(r.items.map((i) => i.status)).toEqual(['queued', 'imported', 'imported']);
     const m = await readManifest(root);
-    expect(m.layers.map((l) => l.id)).toEqual(['mesh-m', 'cloud-site', 'photos', 'mesh-n']);
+    expect(m.layers.map((l) => l.id)).toEqual(['mesh-m', 'cloud-site', 'mesh-n', 'photos']);
     expect(m.layers.find((l) => l.id === 'cloud-site')).toMatchObject({
       src: { path: 'clouds/site.copc.laz' },
       pointCount: 3,
@@ -742,9 +747,8 @@ describe('importRawFiles saves what it added onto the project as it is at its en
       [join(dir, 'flight-0002.jpg'), join(dir, 'n.glb')],
       deps({ altitude: { source: 'absolute', absAltOffsetM: -18.5 } }),
     );
-    // What the import wrote when it still saved its own copy of the manifest (recorded from that
-    // code, byte for byte): the new date in date order, the photo after the one that was there,
-    // the model last, the datum set at the import.
+    // What the import saves: the new date in date order, the project photos layer as it was, the
+    // model and the photos of the flight filed under the new date, the datum set at the import.
     const [model, photos] = start.layers;
     if (photos?.kind !== 'photos') throw new Error('no photos layer');
     const savedBefore = {
@@ -756,10 +760,23 @@ describe('importRawFiles saves what it added onto the project as it is at its en
       ],
       layers: [
         model,
+        photos,
         {
-          ...photos,
+          kind: 'mesh',
+          id: 'mesh-n',
+          name: 'n',
+          visible: true,
+          capture: 'capture-2026-02-01',
+          src: { path: 'models/n.glb' },
+          transform: [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1],
+        },
+        {
+          kind: 'photos',
+          id: 'photos-2026-02-01',
+          name: 'Photos',
+          visible: true,
+          capture: 'capture-2026-02-01',
           items: [
-            ...photos.items,
             {
               id: 'flight-0002',
               src: { path: 'photos/flight-0002.jpg' },
@@ -768,14 +785,6 @@ describe('importRawFiles saves what it added onto the project as it is at its en
               q: [-0.3403317, -0.0932565, -0.0339426, 0.9350537],
             },
           ],
-        },
-        {
-          kind: 'mesh',
-          id: 'mesh-n',
-          name: 'n',
-          visible: true,
-          src: { path: 'models/n.glb' },
-          transform: [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1],
         },
       ],
       verticalDatum: {

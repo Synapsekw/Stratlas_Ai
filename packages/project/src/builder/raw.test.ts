@@ -14,7 +14,9 @@ import {
 } from './create';
 import {
   NO_PIPELINE,
+  importDay,
   importRawFiles,
+  isImportableExtension,
   planRawAltitudes,
   type ImportDeps,
   type PipelineJobs,
@@ -148,7 +150,7 @@ describe('importRawFiles', () => {
       b,
       withExif({
         make: 'Hasselblad',
-        dateTimeOriginal: '2019:01:25 09:00:00',
+        dateTimeOriginal: '2019:01:24 09:00:00',
         focal35: 24,
         width: 4000,
         height: 3000,
@@ -186,8 +188,8 @@ describe('importRawFiles', () => {
     expect(photos.items[0]?.pos?.[1]).toBeCloseTo(110, 3);
     expect(photos.items[0]?.q).toBeUndefined();
     expect(photos.items[1]?.q).toBeDefined();
-    expect(photos.items[1]?.takenAt).toBe('2019-01-25T09:00:00+03:00');
-    expect(m.captures.map((c) => c.date)).toEqual(['2019-01-24', '2019-01-25']);
+    expect(photos.items[1]?.takenAt).toBe('2019-01-24T09:00:00+03:00');
+    expect(m.captures.map((c) => c.date)).toEqual(['2019-01-24']);
     expect(m.layers.find((l) => l.kind === 'mesh')).toMatchObject({
       id: 'mesh-flare',
       src: { path: 'models/flare.glb' },
@@ -917,5 +919,160 @@ describe('ensureCapture', () => {
     expect((await readManifest(root)).captures.map((c) => c.id)).toContain('capture-2026-03-14');
     // every save has a temporary file of its own name now: none of them may stay
     expect((await readdir(root)).filter((n) => n.endsWith('.partial'))).toEqual([]);
+  });
+});
+
+describe('isImportableExtension', () => {
+  it('knows what the builder takes and what it leaves out', () => {
+    expect(isImportableExtension('.lrf')).toBe(false);
+    expect(isImportableExtension('.db')).toBe(false);
+    expect(isImportableExtension('.srt')).toBe(true);
+    expect(isImportableExtension('.jpg')).toBe(true);
+    expect(isImportableExtension('.mp4')).toBe(true);
+    expect(isImportableExtension('.glb')).toBe(true);
+    expect(isImportableExtension('.dxf')).toBe(true);
+    expect(isImportableExtension('.dwg')).toBe(true);
+    expect(isImportableExtension('.insv')).toBe(true);
+    expect(isImportableExtension('.lrv')).toBe(true);
+  });
+});
+
+describe('importDay', () => {
+  it('is the most frequent day, a tie to the earlier, null for none', () => {
+    expect(importDay([])).toBeNull();
+    expect(importDay(['2019-01-25', '2019-01-24', '2019-01-25'])).toBe('2019-01-25');
+    expect(importDay(['2019-01-25', '2019-01-24'])).toBe('2019-01-24');
+  });
+});
+
+describe('one import is one survey date', () => {
+  const photo = async (name: string, taken: string | undefined): Promise<string> => {
+    const f = join(dir, name);
+    await writeFile(
+      f,
+      withExif({
+        ...(taken ? { dateTimeOriginal: taken } : {}),
+        lat: 29.0276,
+        lon: 48.1352,
+        alt: 100,
+      }),
+    );
+    return f;
+  };
+  const photosOf = (m: ProjectManifest) =>
+    m.layers.flatMap((l) => (l.kind === 'photos' ? [l] : []));
+
+  it('files every layer of a dated import under the day most files carry', async () => {
+    const root = await project();
+    const files = [
+      await photo('a.jpg', '2019:01:24 10:00:00'),
+      await photo('b.jpg', '2019:01:24 10:01:00'),
+      await photo('c.jpg', '2019:01:24 10:02:00'),
+      await photo('d.jpg', '2019:01:25 10:00:00'),
+    ];
+    await writeFile(join(dir, 'flare.glb'), glb());
+    const r = await importRawFiles(root, [...files, join(dir, 'flare.glb')], deps());
+    const m = await readManifest(root);
+    expect(m.captures.map((c) => c.date)).toEqual(['2019-01-24']);
+    const id = m.captures[0]?.id;
+    expect(m.layers.find((l) => l.kind === 'mesh')?.capture).toBe(id);
+    const photos = photosOf(m);
+    expect(photos).toHaveLength(1);
+    expect(photos[0]).toMatchObject({ id: 'photos-2019-01-24', capture: id });
+    expect(photos[0]?.items.map((p) => p.id)).toEqual(['a', 'b', 'c', 'd']);
+    expect(r.items.filter((i) => i.kind === 'photo').map((i) => i.layerId)).toEqual(
+      Array(4).fill('photos-2019-01-24'),
+    );
+  });
+
+  it('a tie goes to the earlier day', async () => {
+    const root = await project();
+    const files = [
+      await photo('a.jpg', '2019:01:25 10:00:00'),
+      await photo('b.jpg', '2019:01:24 10:00:00'),
+    ];
+    await importRawFiles(root, files, deps());
+    expect((await readManifest(root)).captures.map((c) => c.date)).toEqual(['2019-01-24']);
+  });
+
+  it("a second import on the same day appends to that date's photos layer and adds no date", async () => {
+    const root = await project();
+    await importRawFiles(root, [await photo('a.jpg', '2019:01:24 10:00:00')], deps());
+    await importRawFiles(root, [await photo('b.jpg', '2019:01:24 11:00:00')], deps());
+    const m = await readManifest(root);
+    expect(m.captures).toHaveLength(1);
+    const photos = photosOf(m);
+    expect(photos).toHaveLength(1);
+    expect(photos[0]?.id).toBe('photos-2019-01-24');
+    expect(photos[0]?.items.map((p) => p.id)).toEqual(['a', 'b']);
+  });
+
+  it('an import with no dated file adds no date, tags nothing and uses the project photos layer', async () => {
+    const root = await project();
+    await writeFile(join(dir, 'flare.glb'), glb());
+    await importRawFiles(root, [await photo('a.jpg', undefined), join(dir, 'flare.glb')], deps());
+    const m = await readManifest(root);
+    expect(m.captures).toEqual([]);
+    expect(m.layers.every((l) => l.capture === undefined)).toBe(true);
+    const photos = photosOf(m);
+    expect(photos.map((l) => l.id)).toEqual(['photos']);
+    expect(photos[0]?.items.map((p) => p.id)).toEqual(['a']);
+  });
+
+  it("a video's day is its local start day", async () => {
+    const root = await project();
+    await writeFile(join(dir, 'DJI_0498.MP4'), new Uint8Array(16));
+    await writeFile(join(dir, 'DJI_0498.SRT'), 'srt text');
+    const video: VideoTools = {
+      probe: () =>
+        Promise.resolve({
+          width: 3840,
+          height: 2160,
+          codec: 'avc1',
+          durationMs: 9009,
+          frameTimesMs: [0, 33.4],
+        }),
+      flightFromSrt: () => ({
+        doc: {
+          startUtcMs: Date.UTC(2024, 10, 5, 22, 30),
+          lens: { model: 'pinhole', hfovDeg: 71.59, aspect: 1.7778 },
+          samples: [{ t: 0, pos: [0, 100, 0], q: [0, 0, 0, 1] }],
+          heights: { source: 'relative', absOffsetM: 0, takeoffH: 30 },
+        },
+        warnings: [],
+        timing: { withinOneFrame: true, maxErrorMs: 1.3, frameMs: 33.4 },
+        orientation: 'estimated',
+        heightSource: 'relative',
+      }),
+      srtAltitudes: () => ({ readings: [] }),
+    };
+    await importRawFiles(root, [join(dir, 'DJI_0498.MP4')], deps({ video }));
+    const m = await readManifest(root);
+    expect(m.captures.map((c) => c.date)).toEqual(['2024-11-06']);
+    expect(m.layers.find((l) => l.kind === 'video')?.capture).toBe(m.captures[0]?.id);
+  });
+
+  it('a cancelled import files what it read', async () => {
+    const root = await project();
+    const stop = new AbortController();
+    const files = [
+      await photo('a.jpg', '2019:01:24 10:00:00'),
+      await photo('b.jpg', '2019:01:24 10:01:00'),
+    ];
+    const r = await importRawFiles(
+      root,
+      files,
+      deps({
+        signal: stop.signal,
+        onProgress: () => {
+          stop.abort();
+        },
+      }),
+    );
+    expect(r.items.map((i) => i.status)).toEqual(['imported', 'skipped']);
+    const m = await readManifest(root);
+    expect(m.captures.map((c) => c.date)).toEqual(['2019-01-24']);
+    expect(photosOf(m)[0]).toMatchObject({ id: 'photos-2019-01-24', capture: m.captures[0]?.id });
+    expect(photosOf(m)[0]?.items.map((p) => p.id)).toEqual(['a']);
   });
 });

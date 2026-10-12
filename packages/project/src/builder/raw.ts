@@ -1,4 +1,11 @@
-import { fromWgs84, isKnownCrs, toWgs84, type HeightRule, type HeightSource } from '@aio/geo';
+import {
+  defaultUtcOffsetMin,
+  fromWgs84,
+  isKnownCrs,
+  toWgs84,
+  type HeightRule,
+  type HeightSource,
+} from '@aio/geo';
 import type {
   AltitudeChoice,
   AltitudePlan,
@@ -156,6 +163,8 @@ const DRAWING = new Set(['.dxf']);
 const DESIGN = new Set(['.landxml', '.12da']);
 /** OPF projects (M10): imported by the `opf.import` pipeline (photos, cloud, ortho, DSM). */
 const OPF = new Set(['.opf']);
+/** Also read or reported by the builder: telemetry, material files, LandXML, DWG, 360 camera files. */
+const EXTRA = new Set(['.srt', '.mtl', '.xml', '.dwg', '.insv', '.lrv']);
 /** Codecs Chromium plays (sample entry fourcc). */
 const PLAYABLE = new Set(['avc1', 'avc3', 'hvc1', 'hev1', 'vp09', 'av01']);
 /**
@@ -221,18 +230,37 @@ function epsgOf(m: ProjectManifest): number {
   return m.crs.epsg;
 }
 
-function defaultUtcOffset(m: ProjectManifest): number {
-  try {
-    const [lon] = toWgs84(m.origin, epsgOf(m));
-    return Math.round(lon / 15) * 60;
-  } catch {
-    return 0;
+const DAY = /^\d{4}-\d{2}-\d{2}$/;
+
+/**
+ * The survey day of an import: the most frequent of the days its files carry, a tie to the
+ * earlier day; null when no file carries one.
+ */
+export function importDay(days: readonly string[]): string | null {
+  const count = new Map<string, number>();
+  for (const d of days) count.set(d, (count.get(d) ?? 0) + 1);
+  let best: string | null = null;
+  for (const [d, n] of count) {
+    const top = best === null ? 0 : (count.get(best) ?? 0);
+    if (best === null || n > top || (n === top && d < best)) best = d;
   }
+  return best;
 }
 
-function addCapture(m: ProjectManifest, date: string | undefined): void {
-  if (!date || !/^\d{4}-\d{2}-\d{2}$/.test(date)) return;
-  m.captures = captureForDate(m, date).manifest.captures;
+/** Whether the builder takes a file of this extension (lower case, with the dot). */
+export function isImportableExtension(ext: string): boolean {
+  return (
+    PHOTO.has(ext) ||
+    VIDEO.has(ext) ||
+    MESH.has(ext) ||
+    RASTER.has(ext) ||
+    CLOUD.has(ext) ||
+    DRAWING.has(ext) ||
+    DESIGN.has(ext) ||
+    OPF.has(ext) ||
+    EXTRA.has(ext) ||
+    isDrawingFile(ext, false)
+  );
 }
 
 const layerIdTaken = (m: ProjectManifest) => (id: string) => m.layers.some((l) => l.id === id);
@@ -268,7 +296,7 @@ export async function importRawFiles(
   const atStart = await readManifestFile(root);
   const m = structuredClone(atStart);
   const epsg = epsgOf(m);
-  const utcOffsetMin = deps.utcOffsetMin ?? defaultUtcOffset(m);
+  const utcOffsetMin = deps.utcOffsetMin ?? defaultUtcOffsetMin(m.origin, epsg);
   const heights = resolveHeights(m, deps.altitude);
   // absolute altitude is corrected by a datum: the project's, or one set at this import
   const datumDefined = m.verticalDatum !== undefined || heights.summary.from === 'datum';
@@ -288,6 +316,23 @@ export async function importRawFiles(
   const tick = (file: string) => {
     done++;
     deps.onProgress?.(done, total, file);
+  };
+
+  /** The days the files of this import carry, and the layers it pushes (filed under the day). */
+  const days: string[] = [];
+  const created = new Set<string>();
+  const newPhotos: PhotoRef[] = [];
+  const photoRows: ImportItem[] = [];
+  const photoLayers = () => m.layers.flatMap((l) => (l.kind === 'photos' ? [l] : []));
+  /** Import a drawing and remember the layers it made. */
+  const drawingIn = async (file: string): Promise<ImportItem> => {
+    const known = new Set(m.layers.map((l) => l.id));
+    const item = await importDrawingFile(root, m, file, deps.images, drawingStems);
+    for (const l of m.layers) if (!known.has(l.id)) created.add(l.id);
+    return item;
+  };
+  const addDay = (day: string | undefined) => {
+    if (day && DAY.test(day)) days.push(day);
   };
 
   const photosLayer = (): Extract<Layer, { kind: 'photos' }> => {
@@ -427,12 +472,14 @@ export async function importRawFiles(
           message: `A texture of the model ${textures.modelOf(file) ?? ''}, read with it. Not added as a drawing.`,
         });
       } else if (isDrawingFile(ext, deps.drawings === true)) {
-        items.push(await importDrawingFile(root, m, file, deps.images, drawingStems));
+        items.push(await drawingIn(file));
       } else if (PHOTO.has(ext)) {
         const meta = readPhotoMeta(await readHead(file, 512 * 1024));
-        const layer = photosLayer();
-        const id = uniqueId(slug(name.slice(0, -ext.length), 'photo'), (x) =>
-          layer.items.some((p) => p.id === x),
+        const id = uniqueId(
+          slug(name.slice(0, -ext.length), 'photo'),
+          (x) =>
+            newPhotos.some((p) => p.id === x) ||
+            photoLayers().some((l) => l.items.some((p) => p.id === x)),
         );
         const rel = `photos/${id}.jpg`;
         await mkdir(join(root, 'photos', 'thumbs'), { recursive: true });
@@ -442,8 +489,8 @@ export async function importRawFiles(
         await deps.images.resizeJpeg(file, join(root, 'photos', 'thumbs', `${id}.jpg`), THUMB_PX);
         const frame = { epsg, origin: m.origin, utcOffsetMin, heights: heights.rule };
         const ref: PhotoRef = photoRef(id, rel, meta, frame);
-        layer.items = [...layer.items, ref];
-        addCapture(m, meta.takenAt?.slice(0, 10));
+        newPhotos.push(ref);
+        addDay(meta.takenAt?.slice(0, 10));
         const heightSource = ref.pos ? photoHeight(meta, frame).source : undefined;
         const message = [
           ...(ref.pos
@@ -453,14 +500,16 @@ export async function importRawFiles(
             : ['No GPS position: listed in Media, not placed in the scene.']),
           ...offRule(heightSource),
         ].join(' ');
-        items.push({
+        const row: ImportItem = {
           file: name,
           kind: 'photo',
           status: 'imported',
-          layerId: layer.id,
+          layerId: 'photos',
           ...(message ? { message } : {}),
           ...(heightSource ? { heightSource } : {}),
-        });
+        };
+        photoRows.push(row);
+        items.push(row);
       } else if (VIDEO.has(ext)) {
         const srt = await sibling(file, '.srt', paths);
         if (srt) consumed.add(srt);
@@ -545,7 +594,8 @@ export async function importRawFiles(
               offsetMs: 0,
               ...(poster ? { poster: { path: poster } } : {}),
             });
-            addCapture(m, start.slice(0, 10));
+            created.add(id);
+            addDay(start.slice(0, 10));
             const timing = r.timing.withinOneFrame
               ? `SRT matches the video frames within ${r.timing.maxErrorMs.toFixed(1)} ms (one frame is ${r.timing.frameMs.toFixed(1)} ms).`
               : `SRT is off the video frames by up to ${r.timing.maxErrorMs.toFixed(0)} ms; check the time offset in Align.`;
@@ -604,6 +654,7 @@ export async function importRawFiles(
           await writeFile(join(root, rel), r.glb);
           message = [`${String(r.triangles)} triangles converted to GLB.`, ...r.warnings].join(' ');
         }
+        created.add(id);
         m.layers.push({
           kind: 'mesh',
           id,
@@ -634,7 +685,7 @@ export async function importRawFiles(
           const world = tfw ? parseWorldFile(await readFile(tfw, 'utf8')) : undefined;
           // a scan with no position is a drawing, placed by hand
           if (!tiffGeoreferenced(t, world)) {
-            items.push(await importDrawingFile(root, m, file, deps.images, drawingStems));
+            items.push(await drawingIn(file));
             continue;
           }
           let src = t.geo.epsg ?? (prj ? epsgFromPrj(await readFile(prj, 'utf8')) : undefined);
@@ -666,6 +717,7 @@ export async function importRawFiles(
             join(root, rel),
             encodePng({ width: img.width, height: img.height, channels: 4, data: img.data }),
           );
+          created.add(id);
           m.layers.push({
             kind: 'raster',
             id,
@@ -754,6 +806,41 @@ export async function importRawFiles(
       });
     } finally {
       if (!later) tick(name);
+    }
+  }
+  // one import is one survey date: the day most files carry; every layer it made is filed under it
+  const day = importDay(days);
+  if (day === null) {
+    if (newPhotos.length > 0) {
+      const layer = photosLayer();
+      layer.items = [...layer.items, ...newPhotos];
+      for (const r of photoRows) r.layerId = layer.id;
+    }
+  } else {
+    const c = captureForDate(m, day);
+    m.captures = c.manifest.captures;
+    m.layers = m.layers.map((l) => (created.has(l.id) ? { ...l, capture: c.captureId } : l));
+    if (newPhotos.length > 0) {
+      const same = m.layers.find(
+        (l): l is Extract<Layer, { kind: 'photos' }> =>
+          l.kind === 'photos' && l.capture === c.captureId,
+      );
+      let id: string;
+      if (same) {
+        same.items = [...same.items, ...newPhotos];
+        id = same.id;
+      } else {
+        id = uniqueId(`photos-${day}`, layerIdTaken(m));
+        m.layers.push({
+          kind: 'photos',
+          id,
+          name: 'Photos',
+          visible: true,
+          items: newPhotos,
+          capture: c.captureId,
+        });
+      }
+      for (const r of photoRows) r.layerId = id;
     }
   }
   const placed = items.filter((i) => i.status === 'imported' && i.heightSource);

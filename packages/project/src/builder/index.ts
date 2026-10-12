@@ -41,7 +41,9 @@ export { modelTextures, mtlTextures, type ModelTextures } from './modelTextures'
 export { readTiffHeaderFile } from './tiffFile';
 export {
   NO_PIPELINE,
+  importDay,
   importRawFiles,
+  isImportableExtension,
   planRawAltitudes,
   type ImageOps,
   type ImportDeps,
