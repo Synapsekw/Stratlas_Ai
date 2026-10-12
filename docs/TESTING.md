@@ -1152,7 +1152,6 @@ Compare two survey dates from the sidebar tree, and two panoramas side by side. 
 
 - [ ] Close and reopen the project: the split, its dates and the left panorama are as you left them.
 
-
 ## Stage Walks W2: placing a 360 walk
 
 Test it on 0.12.0. A walk is placed on a drawing (or on the map, in a project with a coordinate system) by clicking where it started and where it ended, then correcting with pins. The path the camera walked is not computed from the video yet, so every walk is placed between your pins, and after Save its badge reads **Path not computed** (see KNOWN-LIMITS).
