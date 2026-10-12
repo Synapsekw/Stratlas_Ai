@@ -297,7 +297,7 @@ describe('date bar and stockpile volumes', () => {
     const { ws, tl, v } = await setup();
     tl.getState().focusSurvey('s1');
     ws.getState().openProject({ id: 'other', root: '/o', manifest: { ...stockpile, id: 'other' } });
-    tl.getState().attach('other', captureIndex({ ...stockpile, id: 'other' }));
+    tl.getState().attach('other', captureIndex(stockpile));
     await v.getState().load();
     ws.getState().openProject({ id: 'm', root: '/m', manifest: stockpile });
     tl.getState().attach('m', captureIndex(stockpile));
