@@ -165,6 +165,13 @@ describe('compareTargets', () => {
     expect(compareTargets('nov', ['ortho-nov'], ctx())[1]?.reason).toBe('compare.with.noRaster');
     expect(compareTargets('nov', ['clip-nov'], ctx())[1]?.reason).toBe('compare.with.noMedia');
   });
+  it('disables every date for a photos layer without a posed photo', () => {
+    const unposed = L('photos', 'photos-sep', { items: [{ id: 'z' }] });
+    const c = ctx({ layers: [...layers, unposed] });
+    const all = compareTargets('oct', ['photos-sep'], c);
+    expect(all).toHaveLength(2);
+    expect(all.every((x) => x.reason === 'compare.with.noPosedPhoto')).toBe(true);
+  });
   it('disables every date for layers that cannot compare', () => {
     const c = ctx({ layers: [...layers, L('legacy', 'old')] });
     const all = compareTargets('nov', ['old'], c);

@@ -110,7 +110,7 @@ test.describe('panoramas of two survey dates', () => {
     await expect(win.getByTestId('pane-select-right')).toHaveValue('pano@oct');
 
     // 2. linked: a drag on the left turns the right the same way
-    await expect(surface(win, 'left')).toHaveAttribute('data-status', /./);
+    await expect(surface(win, 'left')).toHaveAttribute('data-status', 'ready');
     const before = await yaw(win, 'left');
     await dragLook(win, surface(win, 'left'), 120);
     await expect.poll(() => yaw(win, 'left')).not.toBe(before);
@@ -155,6 +155,13 @@ test.describe('panoramas of two survey dates', () => {
     await expect(pane(win, 'left')).toHaveAttribute('data-capture', 'oct');
     await expect(pane(win, 'left')).toHaveAttribute('data-pano', 'pano-oct/p3');
     await expect(pane(win, 'right')).toHaveAttribute('data-capture', 'sep');
+
+    // 6. a map on the left: the right Panoramas pane is the only one and steps on its own
+    await choosePane(win, 'left', 'map', 'oct');
+    await expect(pane(win, 'right')).toHaveAttribute('data-capture', 'sep');
+    await expect(pane(win, 'right')).toHaveAttribute('data-pano', 'pano-sep/p1');
+    await pane(win, 'right').getByRole('button', { name: 'Next panorama' }).click();
+    await expect(pane(win, 'right')).toHaveAttribute('data-pano', 'pano-sep/p2');
   });
 
   test('Compare with on a date folder, from the 3D view, opens two 3D views', async ({

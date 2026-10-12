@@ -31,7 +31,8 @@ import type { Side, SplitPref } from './splitModel';
 /*
  * The split's Panoramas pane (timeline T3): one survey date's panorama per side. The left side
  * leads (selected, remembered or first panorama of its date, stepped with its bar); the right side
- * shows the panorama of its date nearest on the ground. Linked panes share one look through
+ * shows the panorama of its date nearest on the ground. A right pane leads itself when it is the
+ * only Panoramas pane, or when the left date has no panoramas. Linked panes share one look through
  * `panoLookLink` (panoramas carry their heading, so the shared yaw is a compass bearing).
  */
 
@@ -215,7 +216,7 @@ function PanoSurface(p: {
 
 /**
  * One side of two Panoramas panes. It gets its side's dates, the saved split and the link state
- * from the split (SplitPanes.tsx) and reports the left panorama through `onPick`.
+ * from the split (SplitPanes.tsx) and reports the leading panorama through `onPick`.
  */
 export function PanoPane(p: {
   side: Side;
@@ -243,16 +244,18 @@ export function PanoPane(p: {
     () => (side === 'left' ? leftList : panosOf(manifestLayers ?? [], index, capture)),
     [side, leftList, manifestLayers, index, capture],
   );
-  const leftPano = findPano(leftList, sides.pano) ?? leftList[0];
-  const leftKey = leftPano ? panoKey(leftPano) : undefined;
+  // the pane that steps and follows: the left, or a right pane with no Panoramas to follow
+  const leads = side === 'left' || sides.left !== 'pano' || leftList.length === 0;
+  const leadList = leads ? list : leftList;
+  const leadPano = findPano(leadList, sides.pano) ?? leadList[0];
+  const leadKey = leadPano ? panoKey(leadPano) : undefined;
 
   // the right side's "show the nearest anyway", for the left panorama it was asked for
   const [nearestFor, setNearestFor] = useState<string | undefined>(undefined);
-  const pair = side === 'right' && leftPano ? pairPano(leftPano.pano, list) : null;
+  const pair = !leads && leadPano ? pairPano(leadPano.pano, list) : null;
   let shown: PanoAt | undefined;
-  if (side === 'left') shown = leftPano;
-  else if (!leftPano) shown = list[0];
-  else if (pair && (pair.within || nearestFor === leftKey)) shown = pair.at;
+  if (leads) shown = leadPano;
+  else if (pair && (pair.within || nearestFor === leadKey)) shown = pair.at;
   const shownKey = shown ? panoKey(shown) : undefined;
   const cov = shown ? (coverage.get(shown.pano.id) ?? null) : null;
   const start = shown ? startLook(shown.pano.headingDeg, cov ?? FULL_SPHERE) : START;
@@ -274,14 +277,14 @@ export function PanoPane(p: {
   const startYaw = start.yawDeg;
   const startPitch = start.pitchDeg;
   useEffect(() => {
-    if (side !== 'left' || !linked || !shownKey || seeded.current) return;
+    if (!leads || !linked || !shownKey || seeded.current) return;
     seeded.current = true;
     panoLookLink
       .getState()
       .set(toShared({ yawDeg: startYaw, pitchDeg: startPitch, fovDeg: PANO_FOV.start }, 0));
-  }, [side, linked, shownKey, startYaw, startPitch]);
+  }, [leads, linked, shownKey, startYaw, startPitch]);
 
-  // the left side keeps its spot when its date changes, unless the new panorama was chosen too
+  // the leading side keeps its spot when its date changes, unless the new panorama was chosen too
   const live = useRef({ onPick, shown, list, pano: sides.pano, layers: manifestLayers });
   useEffect(() => {
     live.current = { onPick, shown, list, pano: sides.pano, layers: manifestLayers };
@@ -290,30 +293,37 @@ export function PanoPane(p: {
   useEffect(() => {
     const prev = followed.current;
     followed.current = { capture, at: live.current.shown };
-    if (side !== 'left' || !prev || prev.capture === capture) return;
+    if (!leads || !prev || prev.capture === capture) return;
     const now = live.current;
     if (findPano(now.list, now.pano)) return;
     const next = followPano(prev.at?.pano, now.list);
     if (next) now.onPick(panoKey(next));
-  }, [side, capture]);
+  }, [leads, capture]);
   useEffect(() => {
     if (followed.current) followed.current = { capture, at: shown };
   });
 
-  // a panorama selected elsewhere (a 3D marker, the Media screen) goes on the left
+  // a panorama selected elsewhere (a 3D marker, the Media screen) after the pane opened goes on
+  // the leading side (the left moves to its date; a leading right only takes its own date's)
+  const seenSelection = useRef(selection);
   useEffect(() => {
-    if (side !== 'left' || selection?.kind !== 'pano' || !selection.layer) return;
+    if (selection === seenSelection.current) return;
+    seenSelection.current = selection;
+    if (!leads || selection?.kind !== 'pano' || !selection.layer) return;
     const key = `${selection.layer}/${selection.id}`;
     const now = live.current;
     if (now.shown && panoKey(now.shown) === key) return;
-    const exists = (now.layers ?? []).some(
-      (l) =>
-        l.id === selection.layer &&
-        l.kind === 'panoramas' &&
-        l.items.some((x) => x.id === selection.id),
-    );
+    const exists =
+      side === 'right'
+        ? findPano(now.list, key) !== undefined
+        : (now.layers ?? []).some(
+            (l) =>
+              l.id === selection.layer &&
+              l.kind === 'panoramas' &&
+              l.items.some((x) => x.id === selection.id),
+          );
     if (exists) now.onPick(key);
-  }, [side, selection]);
+  }, [leads, side, selection]);
 
   const date = index ? captureLabel(index, capture) : '';
   const common = {
@@ -333,12 +343,12 @@ export function PanoPane(p: {
     );
 
   const step = (dir: 1 | -1) => {
-    const next = stepPano(leftList, leftKey, dir);
+    const next = stepPano(leadList, leadKey, dir);
     if (next) onPick(panoKey(next));
   };
-  const at = side === 'left' ? leftList.findIndex((a) => panoKey(a) === leftKey) : -1;
+  const at = leads ? leadList.findIndex((a) => panoKey(a) === leadKey) : -1;
   const badgeLayer = shown?.layer ?? list[0]?.layer;
-  const distance = side === 'right' && pair && shown ? pair.distanceM : undefined;
+  const distance = !leads && pair && shown ? pair.distanceM : undefined;
 
   return (
     <div
@@ -348,13 +358,13 @@ export function PanoPane(p: {
     >
       <div className="pane-bar">
         {badgeLayer && <DateBadge layerId={badgeLayer} />}
-        {side === 'left' && (
+        {leads && (
           <button
             type="button"
             className="btn icon sm ghost"
             aria-label={t('pano.compare.prev')}
-            title={`${t('pano.compare.prev')} (Page Up)`}
-            disabled={leftList.length < 2}
+            title={t('pano.compare.prevTip')}
+            disabled={leadList.length < 2}
             onClick={() => {
               step(-1);
             }}
@@ -363,18 +373,18 @@ export function PanoPane(p: {
           </button>
         )}
         {shown && <span className="mono">{shown.pano.id}</span>}
-        {side === 'left' && (
+        {leads && (
           <span className="mono faint">
-            {t('pano.compare.count', { n: at + 1, total: leftList.length })}
+            {t('pano.compare.count', { n: at + 1, total: leadList.length })}
           </span>
         )}
-        {side === 'left' && (
+        {leads && (
           <button
             type="button"
             className="btn icon sm ghost"
             aria-label={t('pano.compare.next')}
-            title={`${t('pano.compare.next')} (Page Down)`}
-            disabled={leftList.length < 2}
+            title={t('pano.compare.nextTip')}
+            disabled={leadList.length < 2}
             onClick={() => {
               step(1);
             }}
@@ -400,7 +410,7 @@ export function PanoPane(p: {
           look={look}
           label={t('pano.compare.label', { id: shown.pano.id, date })}
           onLook={onLook}
-          {...(side === 'left' ? { onStep: step } : {})}
+          {...(leads ? { onStep: step } : {})}
         />
       ) : (
         <div className="pane-empty">
@@ -410,7 +420,7 @@ export function PanoPane(p: {
               type="button"
               className="btn sm"
               onClick={() => {
-                setNearestFor(leftKey);
+                setNearestFor(leadKey);
               }}
             >
               {t('pano.compare.showNearest', { m: metres(pair.distanceM) })}

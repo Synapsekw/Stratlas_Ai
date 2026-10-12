@@ -155,14 +155,19 @@ export function compareTargets(
   ctx: CompareContext,
 ): CompareTarget[] {
   const picked = layers ? firstComparable(layers, ctx.layers) : null;
+  // photos compare from a posed photo (planCompare): without one there is nothing to open
+  const unposed = picked?.layer.kind === 'photos' && !picked.layer.items.some((p) => p.pos && p.q);
+  const reasonFor = (capture: string): MessageKey | null => {
+    if (!layers) return null;
+    if (!picked) return 'compare.with.nothing';
+    if (unposed) return 'compare.with.noPosedPhoto';
+    return missing(picked.kind, capture, ctx);
+  };
   return ctx.index.captures
     .map((c) => c.id)
     .filter((id) => id !== from)
     .reverse()
-    .map((capture) => ({
-      capture,
-      reason: !layers ? null : picked ? missing(picked.kind, capture, ctx) : 'compare.with.nothing',
-    }));
+    .map((capture) => ({ capture, reason: reasonFor(capture) }));
 }
 
 /** Reads the stores, applies the plan and opens the split. False when there is nothing to open. */

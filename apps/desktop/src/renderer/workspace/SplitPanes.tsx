@@ -231,14 +231,19 @@ export function PaneChooser({ side, split }: { side: Side; split: SplitModel }) 
 }
 
 /**
- * The left Panoramas pane picked `key` (stepped, followed or selected elsewhere): remember it,
- * and when its layer belongs to another survey date, move the left side to that date.
+ * The leading Panoramas pane picked `key` (stepped, followed or selected elsewhere): remember it.
+ * From the left, when its layer belongs to another survey date, move the left side to that date;
+ * a leading right pane only picks panoramas of its own date, so its pick moves no date.
  */
-export function pickPano(split: SplitModel, key: string): void {
+export function pickPano(split: SplitModel, key: string, side: Side = 'left'): void {
+  const next: SplitPref = { ...split.sides, pano: key };
+  if (side === 'right') {
+    split.set(next);
+    return;
+  }
   const slash = key.lastIndexOf('/');
   const layer = slash < 0 ? key : key.slice(0, slash);
   const at = split.index?.of[layer];
-  const next: SplitPref = { ...split.sides, pano: key };
   split.set(
     at !== undefined && split.dates && at !== paneCapture(split, 'left')
       ? chooseCapture(next, 'left', at, split.dates)
@@ -543,8 +548,8 @@ export function SplitPane({ side, split }: { side: Side; split: SplitModel }) {
           sides={split.sides}
           linked={!split.sides.unlinked}
           onPick={(key) => {
-            // the right side shows the nearest panorama of its date: nothing to remember
-            if (side === 'left') pickPano(split, key);
+            // only the leading pane picks (a following right pane shows the nearest of its date)
+            pickPano(split, key, side);
           }}
         />
       ) : (

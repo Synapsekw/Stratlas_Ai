@@ -176,6 +176,18 @@ describe('pickPano', () => {
     );
   });
 
+  it('only remembers the panorama when the right side picked it', () => {
+    const split = model({ left: '3d', right: 'pano', leftCapture: 'nov', rightCapture: 'oct' });
+    pickPano(split, 'p-oct/a', 'right');
+    expect(split.saved).toHaveBeenCalledWith({
+      left: '3d',
+      right: 'pano',
+      leftCapture: 'nov',
+      rightCapture: 'oct',
+      pano: 'p-oct/a',
+    });
+  });
+
   it('swaps dates with the right when the right shows that date', () => {
     const split = model({ left: 'pano', right: 'pano', leftCapture: 'nov', rightCapture: 'oct' });
     pickPano(split, 'p-oct/a');

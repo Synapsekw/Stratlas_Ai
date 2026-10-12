@@ -240,6 +240,59 @@ describe('PanoPane', () => {
     expect(onPick).toHaveBeenLastCalledWith('p-nov/e');
   });
 
+  it('leads from the right when it is the only Panoramas pane', () => {
+    const onPick = vi.fn();
+    const only3d: SplitPref = { left: '3d', right: 'pano', rightCapture: 'nov', pano: 'p-nov/e' };
+    render(right({ onPick, sides: only3d }));
+    const pane = only(panes()[0]);
+    expect(pane.dataset.pano).toBe('p-nov/e');
+    expect(pane.textContent).toContain('2 of 4');
+    expect(pane.dataset.distance).toBeUndefined();
+    act(() => {
+      button(pane, 'Next panorama').click();
+    });
+    expect(onPick).toHaveBeenLastCalledWith('p-nov/f');
+    onPick.mockClear();
+    const view = only(pane.querySelector<HTMLElement>('[role="img"]'));
+    act(() => {
+      view.dispatchEvent(new KeyboardEvent('keydown', { key: 'PageUp', bubbles: true }));
+    });
+    expect(onPick).toHaveBeenLastCalledWith('p-nov/d');
+    act(() => {
+      workspace.getState().select({ kind: 'pano', id: 'f', layer: 'p-nov' });
+    });
+    expect(onPick).toHaveBeenLastCalledWith('p-nov/f');
+  });
+
+  it('leads from the right when the left date has no panoramas', () => {
+    const onPick = vi.fn();
+    open(manifest({ undated: false }));
+    render(
+      left({ capture: 'sep', otherCapture: 'nov', sides: { ...sides(), leftCapture: 'sep' } }),
+      right({ onPick, otherCapture: 'sep', sides: { ...sides(), leftCapture: 'sep' } }),
+    );
+    const r = only(panes()[1]);
+    expect(r.dataset.pano).toBe('p-nov/d');
+    expect(r.textContent).toContain('1 of 3');
+    act(() => {
+      button(r, 'Next panorama').click();
+    });
+    expect(onPick).toHaveBeenLastCalledWith('p-nov/e');
+  });
+
+  it('ignores a panorama selected before it opened', () => {
+    act(() => {
+      workspace.getState().select({ kind: 'pano', id: 'e', layer: 'p-nov' });
+    });
+    const onPick = vi.fn();
+    render(left({ onPick }));
+    expect(onPick).not.toHaveBeenCalled();
+    act(() => {
+      workspace.getState().select({ kind: 'pano', id: 'd', layer: 'p-nov' });
+    });
+    expect(onPick).toHaveBeenLastCalledWith('p-nov/d');
+  });
+
   it('keeps the spot when the left date changes', () => {
     const onPick = vi.fn();
     render(left({ onPick }));
