@@ -150,6 +150,14 @@ export function writeManifestFile(root: string, manifest: ProjectManifest): Prom
  */
 export interface ManifestChange {
   manifest: ProjectManifest | null;
+  /**
+   * Run in the turn once the manifest is saved (or when there was nothing to save): files that
+   * must follow the manifest, never lead it (a walk's `pose.json`). Its error reaches the caller;
+   * the manifest stays saved.
+   */
+  afterSave?: () => Promise<void>;
+  /** Run in the turn when the save failed, before its error reaches the caller. */
+  afterFail?: () => Promise<void>;
 }
 
 /** What an update did, next to the keys the change added. */
@@ -168,17 +176,28 @@ export interface ManifestUpdate {
  *
  * `change` may be async and may refuse: when it throws, nothing is written, the error reaches the
  * caller and the next save goes on; `manifest: null` saves nothing (no backup either). Every other
- * key it answers comes back with the result.
+ * key it answers comes back with the result, except `afterSave` and `afterFail`, which run in the
+ * turn after the save succeeded or failed.
  */
 export function updateManifestFile<C extends ManifestChange>(
   root: string,
   change: (manifest: ProjectManifest) => C | Promise<C>,
-): Promise<Omit<C, 'manifest'> & ManifestUpdate> {
+): Promise<Omit<C, 'manifest' | 'afterSave' | 'afterFail'> & ManifestUpdate> {
   return withManifest(root, async () => {
     const read = await readManifestFile(root);
-    const { manifest, ...rest } = await change(read);
-    if (manifest === null) return { ...rest, manifest: read, backup: '', saved: false };
-    const backup = await saveManifest(root, manifest);
+    const { manifest, afterSave, afterFail, ...rest } = await change(read);
+    if (manifest === null) {
+      await afterSave?.();
+      return { ...rest, manifest: read, backup: '', saved: false };
+    }
+    let backup: string;
+    try {
+      backup = await saveManifest(root, manifest);
+    } catch (e) {
+      await afterFail?.().catch(() => undefined);
+      throw e;
+    }
+    await afterSave?.();
     return { ...rest, manifest, backup, saved: true };
   });
 }

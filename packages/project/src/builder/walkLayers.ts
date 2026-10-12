@@ -5,7 +5,7 @@ import { join } from 'node:path';
 import { uniqueId, updateManifestFile, withPose } from './create';
 import { listWalks } from './walks';
 import { walkIdOfRecord } from './walkPaths';
-import { writeWalkPose } from './walkPose';
+import { commitWalkPoses, discardWalkPoses, stageWalkPose, type StagedWalkPose } from './walkPose';
 
 /*
  * Walks as layers (the walk layer and placing, "Migration on open"): a walk is a `walk` layer in
@@ -223,8 +223,8 @@ async function againstPose(
 /**
  * Fill `path` on walk layers whose files have appeared since (a `walk.process` job wrote them),
  * and save once. A placed walk whose raw path or orientation is new, or newer than its pose file,
- * has its pose rewritten from the fit in the same turn, with `flight` and the quality saved on the
- * layer (the walk was placed on its pins alone until its path came). Answers the ids that
+ * has its pose rewritten from the fit in the same turn (put in place once the manifest is saved),
+ * with `flight` and the quality saved on the layer (the walk was placed on its pins alone until its path came). Answers the ids that
  * changed; `onProblem` gets a line for each walk file that could not be used.
  */
 export async function refreshWalkPaths(
@@ -234,6 +234,8 @@ export async function refreshWalkPaths(
   // no walks, nothing to link: the manifest is not taken for a turn
   if (!(await listWalks(root)).length) return [];
   const probe = new Map<string, WalkFiles>();
+  // staged: the pose files are put in place only once the manifest is saved
+  const staged: StagedWalkPose[] = [];
   const r = await updateManifestFile(root, async (m) => {
     const changed: string[] = [];
     let current = m;
@@ -264,7 +266,11 @@ export async function refreshWalkPaths(
         rewrote = states.includes('newer');
       }
       if (stale) {
-        const pose = await writeWalkPose(root, next, l.id);
+        const pose = await stageWalkPose(root, next, l.id).catch(async (e: unknown) => {
+          await discardWalkPoses(staged);
+          throw e;
+        });
+        staged.push(pose);
         for (const line of pose.problems) onProblem(line);
         next = withPose(next, l.id, pose);
       }
@@ -273,7 +279,12 @@ export async function refreshWalkPaths(
         current = next;
       }
     }
-    return { manifest: changed.length > 0 ? current : null, changed };
+    return {
+      manifest: changed.length > 0 ? current : null,
+      changed,
+      afterSave: () => commitWalkPoses(staged),
+      afterFail: () => discardWalkPoses(staged),
+    };
   });
   return r.changed;
 }

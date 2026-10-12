@@ -7,7 +7,7 @@ import {
   type WalkLayer,
   type WalkRawPath,
 } from '@aio/schema';
-import { mkdir, mkdtemp, readFile, rm, stat, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, readFile, readdir, rm, stat, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
@@ -204,6 +204,29 @@ describe('walk pose file', () => {
     expect(l.place).toBeUndefined();
     expect(l.flight).toBeUndefined();
     expect(await exists(join(root, 'walks', 'w', 'pose.json'))).toBe(false);
+  });
+
+  it('leaves the old pose.json when the manifest save is refused', async () => {
+    await setUp();
+    await updateLayers(root, ['walk-w'], { walk: cal() });
+    const pose = join(root, 'walks', 'w', 'pose.json');
+    const before = await readFile(pose, 'utf8');
+    // a folder where the backup goes: the save refuses before it writes the manifest
+    await rm(join(root, 'manifest.json.bak'), { force: true });
+    await mkdir(join(root, 'manifest.json.bak'));
+    const moved: WalkCalibration = {
+      ...cal(),
+      pins: [
+        { t: 0, surface: 'sheet-a', at: [0, 100] },
+        { t: 20, surface: 'sheet-a', at: [200, 400] },
+      ],
+    };
+    await expect(updateLayers(root, ['walk-w'], { walk: moved })).rejects.toThrow();
+    expect(await readFile(pose, 'utf8')).toBe(before);
+    // cleared: the file is removed only once the save is done
+    await expect(updateLayers(root, ['walk-w'], { walk: null })).rejects.toThrow();
+    expect(await readFile(pose, 'utf8')).toBe(before);
+    expect((await readdir(join(root, 'walks', 'w'))).filter((n) => n.endsWith('.tmp'))).toEqual([]);
   });
 
   it('writes no pose for a walk with one pin, quality unplaced', async () => {

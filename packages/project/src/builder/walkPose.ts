@@ -210,39 +210,51 @@ export interface WalkPoseResult {
   problems: string[];
 }
 
+/** A pose worked out but not yet in place: `commit` once the manifest is saved, else `discard`. */
+export interface StagedWalkPose extends WalkPoseResult {
+  /** Put the staged `pose.json` in place, or remove the old one when the walk is not placed. */
+  commit(): Promise<void>;
+  /** Drop the staged file; the old `pose.json` stays as it was. */
+  discard(): Promise<void>;
+}
+
 /**
- * Write (or remove) `walks/<id>/pose.json` of the walk layer `layerId` from the manifest `m` as it
- * is about to be saved: placed (two active pins and a fit), the file is written through
- * `pose.json.tmp`; not placed, the file is removed. The caller puts `flight` and `quality` on the
- * layer. Placement files of the drawings are read from `root`, so write them first.
+ * Work out `walks/<id>/pose.json` of the walk layer `layerId` from the manifest `m` as it is about
+ * to be saved, and stage it: placed (two active pins and a fit), the file is written to
+ * `pose.json.tmp`; not placed, nothing is written and `commit` removes the file. Nothing replaces
+ * or removes `pose.json` before `commit`, so a manifest save that fails leaves the old pose with
+ * the old layer. The caller puts `flight` and `quality` on the layer. Placement files of the
+ * drawings are read from `root`, so write them first.
  */
-export async function writeWalkPose(
+export async function stageWalkPose(
   root: string,
   m: ProjectManifest,
   layerId: string,
-): Promise<WalkPoseResult> {
+): Promise<StagedWalkPose> {
   const layer = m.layers.find((l) => l.id === layerId);
   if (layer?.kind !== 'walk') throw new Error(`Walk "${layerId}" is not in this project.`);
+  const none = () => Promise.resolve();
   const dir = walkFolderOf(layer);
-  if (dir === null) return { flight: null, quality: 'unplaced', problems: [] };
+  if (dir === null)
+    return { flight: null, quality: 'unplaced', problems: [], commit: none, discard: none };
   const file = join(root, dir, POSE);
-  const removePose = () => rm(file, { force: true });
+  const removal = (quality: WalkQuality, problems: string[]): StagedWalkPose => ({
+    flight: null,
+    quality,
+    problems,
+    commit: () => rm(file, { force: true }),
+    discard: none,
+  });
 
   const cal = layer.place;
-  if (!cal) {
-    await removePose();
-    return { flight: null, quality: 'unplaced', problems: [] };
-  }
+  if (!cal) return removal('unplaced', []);
   const { raw, rows, problems } = await readWalkInputs(root, layer);
   const surfaces = surfacesOf(m, await readDrawingSizes(root, m));
   const fit = fitWalk(raw, cal, surfaces, layer.durationS);
   const quality = walkQuality(fit);
   const samples =
     quality === 'unplaced' ? [] : walkPoseSamples(fit, raw, rows, cal, layer.durationS);
-  if (samples.length === 0) {
-    await removePose();
-    return { flight: null, quality, problems };
-  }
+  if (samples.length === 0) return removal(quality, problems);
   const startUtcMs = await readStartUtcMs(root, layer);
   const doc = {
     schema: 'aio.flight/1',
@@ -252,12 +264,54 @@ export async function writeWalkPose(
     samples,
   };
   const tmp = `${file}.tmp`;
+  const drop = () => rm(tmp, { force: true }).catch(() => undefined);
   try {
     await writeFile(tmp, `${JSON.stringify(doc)}\n`);
-    await renameWhenFree(tmp, file);
   } catch (e) {
-    await rm(tmp, { force: true }).catch(() => undefined);
+    await drop();
     throw e;
   }
-  return { flight: { src: { path: `${dir}/${POSE}` }, startUtcMs }, quality, problems };
+  return {
+    flight: { src: { path: `${dir}/${POSE}` }, startUtcMs },
+    quality,
+    problems,
+    async commit() {
+      try {
+        await renameWhenFree(tmp, file);
+      } catch (e) {
+        await drop();
+        throw e;
+      }
+    },
+    discard: drop,
+  };
+}
+
+/** Put every staged pose in place, in order; the first refusal stops and is thrown. */
+export async function commitWalkPoses(staged: readonly StagedWalkPose[]): Promise<void> {
+  for (const s of staged) await s.commit();
+}
+
+/** Drop every staged pose. Never throws. */
+export async function discardWalkPoses(staged: readonly StagedWalkPose[]): Promise<void> {
+  for (const s of staged) await s.discard().catch(() => undefined);
+}
+
+/**
+ * Write (or remove) `walks/<id>/pose.json` of the walk layer `layerId` at once: `stageWalkPose`
+ * and its `commit`, for a caller with no manifest save to wait for.
+ */
+export async function writeWalkPose(
+  root: string,
+  m: ProjectManifest,
+  layerId: string,
+): Promise<WalkPoseResult> {
+  const staged = await stageWalkPose(root, m, layerId);
+  try {
+    await staged.commit();
+  } catch (e) {
+    await staged.discard();
+    throw e;
+  }
+  return { flight: staged.flight, quality: staged.quality, problems: staged.problems };
 }

@@ -94,11 +94,21 @@ export {
 export {
   readWalkInputs,
   surfacesOf,
+  commitWalkPoses,
+  discardWalkPoses,
+  stageWalkPose,
   writeWalkPose,
   type WalkInputs,
+  type StagedWalkPose,
   type WalkPoseResult,
 } from './walkPose';
-export { TRASH_DIR, TRASH_KEEP_DAYS, removeWalk, sweepTrash } from './walkRemove';
+export {
+  TRASH_DIR,
+  TRASH_KEEP_DAYS,
+  removeWalk,
+  sweepTrash,
+  type RemoveWalkOptions,
+} from './walkRemove';
 export { WALK_ID, walkFolder, walkIdOfRecord } from './walkPaths';
 export {
   classifyWalkSource,

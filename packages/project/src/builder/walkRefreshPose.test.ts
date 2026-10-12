@@ -139,6 +139,18 @@ describe('refreshWalkPaths, pose', () => {
     expect(Math.abs(pose.samples[mid]?.pos[2] ?? 9)).toBeLessThan(0.01);
   });
 
+  it('leaves the old pose.json when the manifest save is refused', async () => {
+    await placedPinsOnlyWalk();
+    const pose = join(root, 'walks', 'w', 'pose.json');
+    const before = await readFile(pose, 'utf8');
+    await writeFile(join(root, 'walks', 'w', 'raw-path.json'), JSON.stringify(bulged()));
+    // a folder where the backup goes: the save refuses before it writes the manifest
+    await rm(join(root, 'manifest.json.bak'), { force: true });
+    await mkdir(join(root, 'manifest.json.bak'));
+    await expect(refreshWalkPaths(root)).rejects.toThrow();
+    expect(await readFile(pose, 'utf8')).toBe(before);
+  });
+
   it('names a raw path it cannot read and keeps the walk placed by its pins', async () => {
     await placedPinsOnlyWalk();
     await writeFile(join(root, 'walks', 'w', 'raw-path.json'), '{ not json');

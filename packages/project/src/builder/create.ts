@@ -14,7 +14,13 @@ import { join } from 'node:path';
 import { drawingStemOf, markDrawingPlaced, type PlacedDrawing } from './drawingPlacement';
 import { updateManifestFile, writeManifestFile } from './manifestFile';
 import { newProjectManifest } from './templates';
-import { writeWalkPose, type WalkPoseResult } from './walkPose';
+import {
+  commitWalkPoses,
+  discardWalkPoses,
+  stageWalkPose,
+  type StagedWalkPose,
+  type WalkPoseResult,
+} from './walkPose';
 
 // the manifest file itself (read, save in turn) lives in manifestFile.ts
 export {
@@ -101,7 +107,8 @@ function roundOrientation(o: CameraOrientation): CameraOrientation {
  * date) of any layer (`null` clears it), the `corners` of a picture laid on the ground (placing a
  * drawing, which also shows it and marks its placement file as placed), or the `walk` placement of
  * a walk layer (`null` clears it). A walk patch, and new corners of a drawing a walk has pins on,
- * rewrite that walk's pose file (`walks/<id>/pose.json`) and set its `flight` and its quality as
+ * rewrite that walk's pose file (`walks/<id>/pose.json`, put in place only once the manifest is
+ * saved, so a refused save leaves the old one) and set its `flight` and its quality as
  * the fit gives it here (the renderer's quality is a preview). Lines for the project log about walk
  * files that could not be used come back in `problems`. Backs up and validates the manifest first.
  * The manifest is read and saved in one turn (`updateManifestFile`), so a save made at the same
@@ -118,12 +125,25 @@ export async function updateLayers(
     for (const d of patched.placed) await markDrawingPlaced(root, d.stem, d.name, d.corners);
     let manifest = patched.manifest;
     const problems: string[] = [];
-    for (const id of walksToPose(manifest, layerIds, patch)) {
-      const pose = await writeWalkPose(root, manifest, id);
-      problems.push(...pose.problems);
-      manifest = withPose(manifest, id, pose);
+    // staged: the pose files are put in place only once the manifest is saved
+    const staged: StagedWalkPose[] = [];
+    try {
+      for (const id of walksToPose(manifest, layerIds, patch)) {
+        const pose = await stageWalkPose(root, manifest, id);
+        staged.push(pose);
+        problems.push(...pose.problems);
+        manifest = withPose(manifest, id, pose);
+      }
+    } catch (e) {
+      await discardWalkPoses(staged);
+      throw e;
     }
-    return { manifest, problems };
+    return {
+      manifest,
+      problems,
+      afterSave: () => commitWalkPoses(staged),
+      afterFail: () => discardWalkPoses(staged),
+    };
   });
   return { manifest: r.manifest, backup: r.backup, problems: r.problems };
 }
