@@ -57,6 +57,8 @@ const SAY = {
   keep: 'Keep these pins?',
 } as const;
 
+const moveSay = (i: number): string => `Click the new spot for pin ${String(i + 1)}.`;
+
 const surfaceName = (s: PlaceSurface): string => (s.kind === 'map' ? 'Map' : s.name);
 
 export function PlaceWalkStrip({
@@ -86,9 +88,11 @@ export function PlaceWalkStrip({
           ? SAY.align360
           : st.armed === 'align-surface'
             ? SAY.alignSurface
-            : st.armed === 'pin'
-              ? SAY.pin
-              : SAY[st.step];
+            : st.armed === 'move' && st.moving !== null
+              ? moveSay(st.moving)
+              : st.armed === 'pin'
+                ? SAY.pin
+                : SAY[st.step];
   const problem = u.note ?? st.error;
   // only the fit's own refusal stops a save; a passing note (a drawing not ready) does not
   const refused = (st.fit?.error ?? null) !== null;
@@ -312,14 +316,36 @@ export function PlaceWalkStrip({
         <div className="dplace-row">
           {st.pins.map((p, k) => {
             const r = st.fit?.pins.find((f) => f.index === k);
+            const moving = st.armed === 'move' && st.moving === k;
             return (
-              <span key={k} className="dplace-pair" data-testid="walk-place-pin">
-                <b>{k + 1}</b>
-                {r && !r.active
-                  ? 'gone'
-                  : r?.residualM !== null && r?.residualM !== undefined
-                    ? `${r.residualM.toFixed(2)} m`
-                    : 'set'}
+              <span
+                key={k}
+                className={moving ? 'dplace-pair wplace-pin moving' : 'dplace-pair wplace-pin'}
+                data-testid="walk-place-pin"
+              >
+                {/* the chip itself moves its pin: armed, the next click on the surface is its spot */}
+                <button
+                  type="button"
+                  className="wplace-pin-move"
+                  data-testid="walk-place-pin-move"
+                  aria-pressed={moving}
+                  title={
+                    moving
+                      ? 'Click the new spot, or click here again to keep the pin where it is'
+                      : 'Click to move, then click the new spot'
+                  }
+                  onClick={() => {
+                    session.getState().armMove(k);
+                  }}
+                >
+                  <b>{k + 1}</b>
+                  {r && !r.active
+                    ? 'gone'
+                    : r?.residualM !== null && r?.residualM !== undefined
+                      ? `${r.residualM.toFixed(2)} m`
+                      : 'set'}
+                  <span className="sr-only">, move this pin</span>
+                </button>
                 <button
                   type="button"
                   aria-label={`Remove pin ${String(k + 1)}`}

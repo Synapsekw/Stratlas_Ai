@@ -209,6 +209,66 @@ describe('createPlaceStore', () => {
     expect(dist(before, after)).toBeGreaterThan(1);
   });
 
+  it('armMove: the next click moves that pin only, at the moment it was set', () => {
+    const { s, seek } = placedOnMap();
+    const end = s().pins[1];
+    s().armMove(0);
+    expect(s().armed).toBe('move');
+    expect(s().moving).toBe(0);
+    // the 360 shows the moment of the pin being moved
+    expect(seek).toHaveBeenLastCalledWith(4);
+    const to = truthXZ(4);
+    s().click([to[0] + 3, to[1] - 2], 0.4);
+    expect(s().pins[0]).toEqual({ t: 4, surface: '@model', at: [to[0] + 3, to[1] - 2], y: 0.4 });
+    expect(s().pins[1]).toEqual(end);
+    expect(s().armed).toBeNull();
+    expect(s().moving).toBeNull();
+    expect(s().step).toBe('correct');
+    expect(s().dirty).toBe(true);
+  });
+
+  it('armMove again on the same pin lets go; a move under 5 m is refused and asked again', () => {
+    const { s } = placedOnMap();
+    s().armMove(1);
+    s().armMove(1);
+    expect(s().armed).toBeNull();
+    expect(s().moving).toBeNull();
+    const before = s().pins;
+    s().armMove(1);
+    s().click(truthXZ(4)); // onto the start pin
+    expect(s().error).toBe(PIN_SPAN_ERROR);
+    expect(s().pins).toEqual(before);
+    expect(s().armed).toBe('move');
+    s().click(truthXZ(lastT));
+    expect(s().error).toBeNull();
+    expect(s().armed).toBeNull();
+  });
+
+  it('armMove at the end step moves the start pin, then asks for the end again', () => {
+    const { s } = setup();
+    s().chooseSurface(MAP);
+    s().click([0, 0]);
+    s().armMove(0);
+    s().click([1, 1]);
+    expect(s().pins).toEqual([{ t: 4, surface: '@model', at: [1, 1] }]);
+    expect(s().step).toBe('end');
+    expect(s().armed).toBe('end');
+    // a pin that is not there cannot be armed
+    s().armMove(5);
+    expect(s().armed).toBe('end');
+  });
+
+  it('a pin moved on another surface takes that surface', () => {
+    const { s } = setup();
+    s().chooseSurface(SHEET);
+    s().click([100, 100]);
+    s().click([400, 100]);
+    s().chooseSurface(MAP);
+    s().armMove(0);
+    s().click([20, 25], 0.2);
+    expect(s().pins[0]).toEqual({ t: 4, surface: '@model', at: [20, 25], y: 0.2 });
+  });
+
   it('removing a pin below two goes back to the end step', () => {
     const { s, seek } = placedOnMap();
     s().removePin(1);

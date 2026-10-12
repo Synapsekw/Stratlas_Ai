@@ -309,6 +309,27 @@ describe('PlaceWalkStrip', () => {
     expect(byTest('walk-place-pin-here')?.getAttribute('aria-pressed')).toBe('true');
   });
 
+  it('a pin chip arms moving that pin: the next click moves it, the other stays', async () => {
+    const ctx = setup(walkLayer({ capture: 'c1' }));
+    await open(ctx);
+    choose('sheet-own');
+    twoPins(ctx);
+    const move = host.querySelectorAll<HTMLButtonElement>('[data-testid="walk-place-pin-move"]');
+    expect(move).toHaveLength(2);
+    expect(move[1]?.title).toMatch(/click to move/i);
+    const start = ctx.session.getState().pins[0];
+    click(move[1] ?? null);
+    expect(ctx.session.getState()).toMatchObject({ armed: 'move', moving: 1 });
+    expect(move[1]?.getAttribute('aria-pressed')).toBe('true');
+    expect(byTest('walk-place-strip')?.textContent).toContain('Click the new spot for pin 2.');
+    act(() => {
+      ctx.session.getState().click([700, 200]);
+    });
+    expect(ctx.session.getState().pins[1]?.at).toEqual([700, 200]);
+    expect(ctx.session.getState().pins[0]).toEqual(start);
+    expect(ctx.session.getState().armed).toBeNull();
+  });
+
   it('the yaw field steps 1 with arrows and 10 with Shift', async () => {
     const ctx = setup(walkLayer({ capture: 'c1' }));
     await open(ctx);

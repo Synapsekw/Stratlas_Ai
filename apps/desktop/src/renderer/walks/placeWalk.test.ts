@@ -400,6 +400,24 @@ describe('the walk on the map while it is placed there', () => {
     stop();
   });
 
+  it('a pin armed to move takes the next map click', async () => {
+    const project = { current: projectWith([plan, walkLayer()]) };
+    const { flow, session, ui } = flowFor(project);
+    const stop = followMap(session, ui, () => project.current);
+    await flow.begin('walk-a');
+    flow.chooseSurface({ kind: 'map' });
+    walkMap.getState().pick?.onPick([2, 0.5, 3]);
+    walkMap.getState().pick?.onPick([40, 0, 3]);
+    expect(walkMap.getState().pick).toBeNull();
+    session.getState().armMove(0);
+    walkMap.getState().pick?.onPick([5, 0.2, 6]);
+    expect(session.getState().pins[0]).toMatchObject({ at: [5, 6], y: 0.2 });
+    expect(session.getState().pins[1]).toMatchObject({ at: [40, 3] });
+    expect(walkMap.getState().pick).toBeNull();
+    flow.discard();
+    stop();
+  });
+
   it('does nothing while the walk is placed on a drawing', async () => {
     const project = { current: projectWith([plan, walkLayer()]) };
     const { flow, session, ui } = flowFor(project);

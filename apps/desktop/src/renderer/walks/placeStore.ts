@@ -30,7 +30,7 @@ import {
  * the session and the walk stays as it was.
  */
 
-export type PlaceArmed = 'start' | 'end' | 'pin' | 'align-360' | 'align-surface' | null;
+export type PlaceArmed = 'start' | 'end' | 'pin' | 'move' | 'align-360' | 'align-surface' | null;
 
 /** What the session needs beyond the walk and the manifest, both known before it opens. */
 export interface PlaceStartOptions {
@@ -50,6 +50,8 @@ export interface PlaceState {
   pins: WalkPin[];
   yawOffsetDeg: number;
   armed: PlaceArmed;
+  /** The pin the next click moves (`armed` 'move'), by index in `pins`; null otherwise. */
+  moving: number | null;
   /** The 360 pane's current time, seconds. */
   timeS: number;
   dirty: boolean;
@@ -71,6 +73,11 @@ export interface PlaceState {
   click(surfaceAt: [number, number], y?: number): void;
   pinHere(): void;
   movePin(i: number, at: [number, number], y?: number): void;
+  /**
+   * Arm a click that moves pin `i` to the clicked spot (the other pins stay), and show its moment
+   * in the 360; armed for that pin already, it lets go.
+   */
+  armMove(i: number): void;
   removePin(i: number): void;
   armAlign(): void;
   align360(yawRad: number): void;
@@ -105,6 +112,7 @@ const idle = {
   pins: [] as WalkPin[],
   yawOffsetDeg: 0,
   armed: null as PlaceArmed,
+  moving: null as number | null,
   timeS: 0,
   dirty: false,
   error: null,
@@ -206,6 +214,10 @@ export function createPlaceStore(deps: {
           finishAlign(surfaceAt, y);
           return;
         }
+        if (st.armed === 'move') {
+          moveArmed(surfaceAt, y);
+          return;
+        }
         if (st.armed !== 'start' && st.armed !== 'end' && st.armed !== 'pin') return;
         if (st.surface.kind === 'drawing' && !frames.drawing(st.surface.id)) {
           set({ error: DRAWING_NOT_READY });
@@ -240,7 +252,7 @@ export function createPlaceStore(deps: {
           return;
         }
         armedT = st.timeS;
-        set({ armed: 'pin', align: null });
+        set({ armed: 'pin', moving: null, align: null });
       },
 
       movePin: (i, at, y) => {
@@ -252,19 +264,37 @@ export function createPlaceStore(deps: {
         setPins(st.pins.map((p, k) => (k === i ? moved : p)));
       },
 
+      armMove: (i) => {
+        const st = get();
+        const pin = st.pins[i];
+        if (st.layerId === null || !st.surface || !pin) return;
+        if (st.armed === 'move' && st.moving === i) {
+          set({ armed: stepArmed(), moving: null });
+          return;
+        }
+        set({ armed: 'move', moving: i, align: null, error: null });
+        jump(pin.t);
+      },
+
       removePin: (i) => {
         const st = get();
         if (st.layerId === null || !st.pins[i]) return;
         const pins = st.pins.filter((_, k) => k !== i);
         const aligning = st.armed === 'align-360' || st.armed === 'align-surface';
-        setPins(pins, aligning ? { armed: null, align: null } : {});
+        const moving = st.armed === 'move';
+        setPins(
+          pins,
+          aligning || moving
+            ? { armed: moving ? stepArmed() : null, align: null, moving: null }
+            : {},
+        );
         if (st.surface && pins.length < 2) stepForPins(pins.length);
       },
 
       armAlign: () => {
         const st = get();
         if (st.layerId === null || st.step !== 'correct') return;
-        set({ armed: 'align-360', align: null });
+        set({ armed: 'align-360', moving: null, align: null });
       },
 
       align360: (yawRad) => {
@@ -303,6 +333,35 @@ export function createPlaceStore(deps: {
         set({ ...idle });
       },
     };
+
+    /** What waits for a click in the step in hand (start and end ask for theirs). */
+    function stepArmed(): PlaceArmed {
+      const step = get().step;
+      return step === 'start' || step === 'end' ? step : null;
+    }
+
+    /** The click of a Move: pin `moving` to the spot on the surface in hand, the others stay. */
+    function moveArmed(surfaceAt: [number, number], y: number | undefined): void {
+      const st = get();
+      const old = st.moving === null ? undefined : st.pins[st.moving];
+      if (!old || !st.surface) return;
+      if (st.surface.kind === 'drawing' && !frames.drawing(st.surface.id)) {
+        set({ error: DRAWING_NOT_READY });
+        return;
+      }
+      const pin = pinAt(old.t, surfaceAt, y);
+      if (!pin) return;
+      const next = st.pins.map((p, k) => (k === st.moving ? pin : p));
+      const refused = next.length >= 2 ? (fitOf(next, st.yawOffsetDeg)?.error ?? null) : null;
+      if (refused) {
+        // refused (the start and end closer than 5 m): the pin stays, the spot is asked again
+        set({ error: refused });
+        return;
+      }
+      const back = stepArmed();
+      setPins(next, { armed: back, moving: null });
+      if (back === 'end') jump(endT());
+    }
 
     /**
      * Align view, second click: the yaw offset that turns the 360's direction to the landmark onto

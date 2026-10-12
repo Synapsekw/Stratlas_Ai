@@ -395,10 +395,14 @@ export function viewHeading(
   return h === null ? null : h + (yawOffsetDeg * Math.PI) / 180;
 }
 
-/** The session armed for a click on the surface (a pin, or the second click of Align view). */
+/** The session armed for a click on the surface (a pin, a pin moved, or Align view's second). */
 export function wantsSurfaceClick(s: Pick<PlaceState, 'armed'>): boolean {
   return (
-    s.armed === 'start' || s.armed === 'end' || s.armed === 'pin' || s.armed === 'align-surface'
+    s.armed === 'start' ||
+    s.armed === 'end' ||
+    s.armed === 'pin' ||
+    s.armed === 'move' ||
+    s.armed === 'align-surface'
   );
 }
 

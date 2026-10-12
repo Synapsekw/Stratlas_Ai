@@ -85,3 +85,29 @@
   cursor: default;
   pointer-events: none;
 }
+
+/* a pin chip: the chip itself moves its pin (armed, the next click on the surface is its spot) */
+.dplace-pair.wplace-pin {
+  padding-inline-start: 0;
+}
+.dplace-pair .wplace-pin-move {
+  display: inline-flex;
+  gap: 6px;
+  width: auto;
+  height: 100%;
+  padding-inline: 6px 4px;
+  border-radius: var(--r-4) 0 0 var(--r-4);
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+}
+.dplace-pair .wplace-pin-move:hover {
+  color: var(--fg-0);
+}
+.dplace-pair.wplace-pin.moving {
+  border-color: var(--acc);
+}
+.dplace-pair .wplace-pin-move[aria-pressed='true'] {
+  color: var(--fg-0);
+  background: color-mix(in oklch, var(--acc) 22%, transparent);
+}
