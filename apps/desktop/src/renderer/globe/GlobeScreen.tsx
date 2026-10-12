@@ -135,6 +135,10 @@ export default function GlobeScreen() {
   const tier = useGraphics((s) => s.tier);
   const library = useShell((s) => s.library);
   const project = useWorkspace((s) => s.project);
+  // the hand-over is spent once the Globe is back
+  useEffect(() => {
+    handedTo = null;
+  }, []);
   const issues = useWorkspace((s) => s.issues);
   const loaded = useGlobeData();
   const [settings, setSettings] = useState<GlobeSettings | null>(null);
@@ -256,15 +260,19 @@ export default function GlobeScreen() {
     const camera = ctl?.camera();
     if (!entry) return;
     setBusy(projectId);
+    // opening the project may close the Globe: the camera it leaves belongs to that project
+    handedTo = projectId;
     if (workspace.getState().project?.id !== projectId)
       await shell.getState().openProject(entry.path);
     setBusy(null);
     const opened = workspace.getState().project;
-    if (!opened) return;
+    if (!opened) {
+      handedTo = null;
+      return;
+    }
     if (camera && !issueId)
       shell.getState().saveView(opened.id, globeToSite(camera, georefOf(opened.manifest)));
     if (issueId) workspace.getState().select({ kind: 'issue', id: issueId });
-    handedTo = opened.id;
     shell.getState().go('scene');
   };
 
@@ -473,7 +481,6 @@ export default function GlobeScreen() {
         onReady={setCtl}
         onClose={(c) => {
           lastCamera = { projectId: handedTo ?? project?.id ?? null, camera: c };
-          handedTo = null;
         }}
       />
       <div className="globe-controls" role="group" aria-label={t('globe.controls')}>
