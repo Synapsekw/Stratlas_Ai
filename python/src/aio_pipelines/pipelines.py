@@ -39,6 +39,7 @@ from .tiles.cloud import TilesCloud
 from .tiles.mesh import TilesMesh
 from .volumetric.build import VolumetricBuild
 from .volumetric.pipeline import VolumetricProcess
+from .walk.pipeline import WalkProcess
 
 
 def all_pipelines() -> dict[str, Pipeline]:
@@ -84,5 +85,7 @@ def all_pipelines() -> dict[str, Pipeline]:
         HydroFlow(),
         HydroRainfall(),
         HaulAnalyse(),
+        # Walks 360 (pipeline pack 0.6.0)
+        WalkProcess(),
     ]
     return {p.name: p for p in items}
