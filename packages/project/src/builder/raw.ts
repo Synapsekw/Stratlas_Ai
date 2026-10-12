@@ -50,7 +50,7 @@ import {
   tiffGeoreferenced,
 } from './tiff';
 import { CANCELLED_BEFORE, importWalk, type WalkTools } from './walks';
-import { NO_WALK_FILES, missingWalkLayers, walkLayerOf } from './walkLayers';
+import { NO_WALK_FILES, markWalkLayer, missingWalkLayers, walkLayerOf } from './walkLayers';
 import { isWalkFile, proxyOwner } from './walkSource';
 
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
@@ -438,7 +438,11 @@ export async function importRawFiles(
                 id: added[0]?.id ?? walkLayerOf(fresh.layers, r.walk.id)?.id,
               };
             });
-            if (filed.id !== undefined) item.layerId = filed.id;
+            if (filed.id !== undefined) {
+              item.layerId = filed.id;
+              // a layer now: never added again by the open-time migration once removed
+              await markWalkLayer(root, r.walk.id);
+            }
             if (filed.backup) walkBackup = filed.backup;
           } catch (e) {
             item.message = `${r.message} It could not be listed as a layer now (${e instanceof Error ? e.message : String(e)}); it is added when the project is next opened.`;

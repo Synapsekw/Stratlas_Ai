@@ -157,4 +157,17 @@ describe('walkLayersInMemory', () => {
     });
     expect(layers.find((l) => l.id === 'walk-b')?.path).toBeUndefined();
   });
+
+  it('does not bring back a walk marked as made a layer once', async () => {
+    const members = new Map<string, string>([
+      ['walks/a/walk.json', JSON.stringify(walk('a', '2026-10-10T08:00:00.000Z'))],
+      ['walks/a/.layer', 'marked'],
+    ]);
+    const archive = {
+      entries: new Map([...members.keys()].map((k) => [k, {}])),
+      read: (name: string) => Promise.resolve(Buffer.from(members.get(name) ?? '')),
+    };
+    const manifest = { layers: [], captures: [] } as never;
+    expect(await walkLayersInMemory(archive, manifest)).toEqual([]);
+  });
 });

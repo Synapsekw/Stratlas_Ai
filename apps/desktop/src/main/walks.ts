@@ -98,10 +98,11 @@ export async function walkLayersInMemory(
   archive: { entries: ReadonlyMap<string, unknown>; read(name: string): Promise<Buffer> },
   manifest: ProjectManifest,
 ): Promise<WalkLayer[]> {
-  const { missingWalkLayers } = await lib();
-  const walks = await packageWalks(archive);
-  if (walks.length === 0) return [];
+  const { missingWalkLayers, WALK_LAYER_MARK } = await lib();
   const has = (id: string, name: string) => archive.entries.has(`walks/${id}/${name}`);
+  // a walk that has been a layer and has none now was removed: it is not brought back
+  const walks = (await packageWalks(archive)).filter((w) => !has(w.id, WALK_LAYER_MARK));
+  if (walks.length === 0) return [];
   return missingWalkLayers(walks, manifest, (id) => ({
     raw: has(id, 'raw-path.json'),
     orientation: has(id, 'orientation.json'),

@@ -1,6 +1,6 @@
 import type { Capture, ProjectManifest, WalkFile, WalkLayer } from '@aio/schema';
 import { WALKS_DIR } from '@aio/schema';
-import { stat } from 'node:fs/promises';
+import { stat, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { uniqueId, updateManifestFile, withPose } from './create';
 import { listWalks } from './walks';
@@ -12,7 +12,32 @@ import { writeWalkPose } from './walkPose';
  * the manifest, id `walk-<walk id>`. A project that holds side-folder walks from before gets their
  * layers when it opens; a walk import writes its layer at once. The layer is found by its record
  * path, never by its id, so a renamed id or a second layer of the same walk is not added twice.
+ *
+ * Each walk is migrated once: once a walk has a layer, its folder gets the marker file `.layer`
+ * (`WALK_LAYER_MARK`), and a marked walk is never given a layer again. A walk removed on another
+ * copy of a hub project keeps its folder here (a merge rewrites the manifest, never deletes a
+ * walk's files), and without the marker the next open would add it back and sync it out again.
+ * A separate file, not a field in `walk.json`, so builds that read `aio.walk/1` strictly are not
+ * affected.
  */
+
+/** The marker file in `walks/<id>/` of a walk that has been a layer. */
+export const WALK_LAYER_MARK = '.layer';
+const MARK_TEXT =
+  'This walk has been a layer. The app does not add it again when its layer is removed.\n';
+
+/** Whether a walk's folder holds the marker. */
+export async function walkLayerMarked(root: string, walkId: string): Promise<boolean> {
+  return has(root, walkId, WALK_LAYER_MARK);
+}
+
+/**
+ * Mark a walk's folder as made a layer. Best effort: when the marker cannot be written, the walk
+ * is marked by the next open that finds its layer.
+ */
+export async function markWalkLayer(root: string, walkId: string): Promise<void> {
+  await writeFile(join(root, WALKS_DIR, walkId, WALK_LAYER_MARK), MARK_TEXT).catch(() => undefined);
+}
 
 /** Which of a walk's files exist: `raw-path.json`, `orientation.json` (and `.bin`), `sparse.ply`. */
 export interface WalkFiles {
@@ -137,15 +162,18 @@ export interface MigrateOptions {
 }
 
 /**
- * Give every side-folder walk without a layer one, and save the manifest once when any was added
- * (one read-and-save turn, backed up as every save). `added` lists the layers either way: when the
- * save fails, `saved` is false, `error` says why and the caller keeps `added` in memory.
+ * Give every side-folder walk without a layer and without the marker one, and save the manifest
+ * once when any was added (one read-and-save turn, backed up as every save). Every walk that has a
+ * layer afterwards is marked (`WALK_LAYER_MARK`), so it is never added again. `added` lists the
+ * layers either way: when the save fails, `saved` is false, `error` says why, the caller keeps
+ * `added` in memory and nothing is marked (the next open tries again).
  */
 export async function migrateWalks(
   root: string,
   o: MigrateOptions = {},
 ): Promise<{ added: WalkLayer[]; saved: boolean; error?: string }> {
-  const walks = await listWalks(root);
+  const walks: WalkFile[] = [];
+  for (const w of await listWalks(root)) if (!(await walkLayerMarked(root, w.id))) walks.push(w);
   if (walks.length === 0) return { added: [], saved: false };
   const probed = new Map<string, WalkFiles>();
   for (const w of walks) probed.set(w.id, await walkFilesOn(root, w.id));
@@ -159,6 +187,8 @@ export async function migrateWalks(
         added,
       };
     });
+    for (const w of walks)
+      if (walkLayerOf(r.manifest.layers, w.id)) await markWalkLayer(root, w.id);
     return { added: r.added, saved: r.saved };
   } catch (e) {
     const error = e instanceof Error ? e.message : String(e);

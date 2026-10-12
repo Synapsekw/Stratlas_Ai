@@ -77,6 +77,8 @@ export {
 } from './walks';
 export {
   NO_WALK_FILES,
+  WALK_LAYER_MARK,
+  markWalkLayer,
   migrateWalks,
   missingWalkLayers,
   refreshWalkPaths,
@@ -84,6 +86,7 @@ export {
   walkFilesOn,
   walkLayerFor,
   walkLayerId,
+  walkLayerMarked,
   walkPathRefs,
   type MigrateOptions,
   type WalkFiles,

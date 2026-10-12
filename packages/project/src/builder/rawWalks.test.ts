@@ -109,6 +109,8 @@ describe('importRawFiles, 360 video', () => {
     };
     expect(onDisk.layers.map((l) => l.kind)).toEqual(['walk']);
     expect(await readdir(join(root, 'walks'))).toEqual(['vid-20260101-120000-00-001']);
+    // listed as a layer: marked, so a later removal is never undone by the open-time migration
+    expect(await readdir(join(root, 'walks', 'vid-20260101-120000-00-001'))).toContain('.layer');
     expect(progress).toContainEqual([CLIP, 0.25]);
   });
 

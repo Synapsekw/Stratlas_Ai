@@ -1,11 +1,12 @@
 import { WALK_SCHEMA, type Capture, type ProjectManifest, type WalkFile } from '@aio/schema';
-import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, readFile, readdir, rename, rm, stat, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { createProject, ensureCapture, readManifestFile, updateManifestFile } from './create';
 import {
   NO_WALK_FILES,
+  WALK_LAYER_MARK,
   migrateWalks,
   missingWalkLayers,
   refreshWalkPaths,
@@ -13,6 +14,7 @@ import {
   walkLayerFor,
   walkLayerId,
 } from './walkLayers';
+import { removeWalk } from './walkRemove';
 
 let dir: string;
 let root: string;
@@ -195,5 +197,63 @@ describe('walk layers', () => {
     expect(r.error).toBe('disk full');
     expect(r.added.map((l) => l.id)).toEqual(['walk-x']);
     expect((await readManifestFile(root)).layers.some((l) => l.kind === 'walk')).toBe(false);
+    // not marked: the next open tries again
+    expect(await exists(join(root, 'walks', 'x', WALK_LAYER_MARK))).toBe(false);
+    expect((await migrateWalks(root)).added.map((l) => l.id)).toEqual(['walk-x']);
+  });
+});
+
+const exists = (p: string) =>
+  stat(p).then(
+    () => true,
+    () => false,
+  );
+const walkLayersOnDisk = async () =>
+  (await readManifestFile(root)).layers.filter((l) => l.kind === 'walk');
+
+describe('walk layers: each walk is migrated once', () => {
+  it('migrates a walk from before once and marks its folder', async () => {
+    await putWalk('x');
+    expect(await exists(join(root, 'walks', 'x', WALK_LAYER_MARK))).toBe(false);
+    expect((await migrateWalks(root)).added.map((l) => l.id)).toEqual(['walk-x']);
+    expect(await exists(join(root, 'walks', 'x', WALK_LAYER_MARK))).toBe(true);
+  });
+
+  it('does not add a walk again when its layer was taken out elsewhere and the folder stayed', async () => {
+    await putWalk('x');
+    await migrateWalks(root);
+    // another copy removed the walk: the merged manifest has no layer, this folder is still here
+    await updateManifestFile(root, (m) => ({
+      manifest: { ...m, layers: m.layers.filter((l) => l.kind !== 'walk') },
+    }));
+    expect(await migrateWalks(root)).toEqual({ added: [], saved: false });
+    expect(await walkLayersOnDisk()).toHaveLength(0);
+  });
+
+  it('does not bring back a removed walk whose folder is put back', async () => {
+    await putWalk('x');
+    await migrateWalks(root);
+    await removeWalk(root, 'walk-x');
+    const [trashed] = await readdir(join(root, '.trash'));
+    if (trashed === undefined) throw new Error('nothing in .trash');
+    await rename(join(root, '.trash', trashed), join(root, 'walks', 'x'));
+    expect((await migrateWalks(root)).added).toEqual([]);
+    expect(await walkLayersOnDisk()).toHaveLength(0);
+  });
+
+  it('marks a walk whose layer is already there (made by another copy)', async () => {
+    await putWalk('x');
+    await updateManifestFile(root, (m) => ({
+      manifest: {
+        ...m,
+        layers: [...m.layers, ...missingWalkLayers([walk('x')], m, () => NO_WALK_FILES)],
+      },
+    }));
+    expect((await migrateWalks(root)).added).toEqual([]);
+    expect(await exists(join(root, 'walks', 'x', WALK_LAYER_MARK))).toBe(true);
+    await updateManifestFile(root, (m) => ({
+      manifest: { ...m, layers: m.layers.filter((l) => l.kind !== 'walk') },
+    }));
+    expect((await migrateWalks(root)).added).toEqual([]);
   });
 });
