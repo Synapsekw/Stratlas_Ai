@@ -33,7 +33,10 @@ const entry = (over: Partial<TilesetEntry> = {}): TilesetEntry => ({
 class FakeTiles implements TilesLike {
   group = new Group();
   errorTarget = 16;
-  lruCache = { maxBytesSize: 0, minBytesSize: 0 };
+  lruCache: { maxBytesSize: number; minBytesSize: number; cachedBytes?: number } = {
+    maxBytesSize: 0,
+    minBytesSize: 0,
+  };
   loadProgress = 0.5;
   plugins: object[] = [];
   listeners = new Map<string, ((e: { scene?: Object3D }) => void)[]>();
@@ -100,6 +103,34 @@ function fakeScene() {
 }
 
 describe('the tileset adapter (3DTilesRendererJS in the site view)', () => {
+  it('reports the tile cache, the budget and the load progress (performance tests)', () => {
+    const { scene } = fakeScene();
+    const fake = new FakeTiles();
+    const h = attachTileset(scene, {
+      url: 'aio://project/p/tiles/mesh-tiles/tileset.json',
+      entry: entry(),
+      frame,
+      budget: TILES_BUDGETS.medium,
+      create: () => fake,
+    });
+    expect(h.stats()).toEqual({
+      cachedBytes: 0,
+      maxBytes: TILES_BUDGETS.medium.maxBytes,
+      errorTarget: TILES_BUDGETS.medium.errorTarget,
+      loadProgress: 0.5,
+    });
+    fake.lruCache.cachedBytes = 1234;
+    fake.loadProgress = 1;
+    h.setBudget({ ...TILES_BUDGETS.medium, maxBytes: 10 });
+    expect(h.stats()).toEqual({
+      cachedBytes: 1234,
+      maxBytes: 10,
+      errorTarget: TILES_BUDGETS.medium.errorTarget,
+      loadProgress: 1,
+    });
+    h.dispose();
+  });
+
   it('adds the tileset to the scene with the tier budget, picking and per-frame updates', () => {
     const { scene, frames, targets } = fakeScene();
     const fake = new FakeTiles();

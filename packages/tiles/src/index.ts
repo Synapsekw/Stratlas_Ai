@@ -19,6 +19,7 @@ export {
   type TilesLike,
   type TilesetHandle,
   type TilesetOptions,
+  type TilesetStats,
 } from './adapter';
 export {
   createRasterTileSource,

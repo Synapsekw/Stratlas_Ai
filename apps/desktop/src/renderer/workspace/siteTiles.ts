@@ -30,7 +30,10 @@ import {
   siteFrame,
   tilesBudget,
   tilesetsToLoad,
+  type TilesBudget,
   type TilesetHandle,
+  type TilesetStats,
+  type TilesTier,
 } from '@aio/tiles';
 import { assetUrl, useWorkspace } from '@aio/workspace';
 import { useEffect, useMemo, useRef, useState } from 'react';
@@ -262,6 +265,51 @@ export function listenForJobs(): void {
 
 type Project = { id: string; manifest: ProjectManifest } | null;
 
+// ---------------------------------------------------------------- performance test hook
+
+/** Scale of the tile cache budget; only the performance tests change it (default 1: none). */
+let budgetScale = 1;
+/** The tilesets on screen and the tier their budget follows. */
+const live = new Map<TilesetHandle, TilesTier>();
+
+/** The tier budget, with its tile cache scaled while a performance test has set a scale. */
+export function scaledBudget(tier: TilesTier): TilesBudget {
+  const b = tilesBudget(tier);
+  return budgetScale === 1
+    ? b
+    : { ...b, maxBytes: Math.max(1, Math.round(b.maxBytes * budgetScale)) };
+}
+
+/** Gives a tileset on screen the budget of `tier` (and the scale) and keeps it on the list. */
+export function trackTileset(h: TilesetHandle, tier: TilesTier): void {
+  live.set(h, tier);
+  h.setBudget(scaledBudget(tier));
+}
+
+export function untrackTileset(h: TilesetHandle): void {
+  live.delete(h);
+}
+
+/**
+ * `window.__stratlas.tiles` (the performance tests): what the tilesets on screen hold, and a
+ * scale on the tile cache budget so a small tileset can be several times the cap on the
+ * software GPU. A person's session never sets it.
+ */
+export function tilesDebug(): {
+  stats(): TilesetStats[];
+  setBudgetScale(scale: number): void;
+  budgetScale(): number;
+} {
+  return {
+    stats: () => [...live.keys()].map((h) => h.stats()),
+    setBudgetScale: (scale) => {
+      budgetScale = Number.isFinite(scale) ? Math.min(1, Math.max(1e-6, scale)) : 1;
+      for (const [h, tier] of live) h.setBudget(scaledBudget(tier));
+    },
+    budgetScale: () => budgetScale,
+  };
+}
+
 /** The project's visible tilesets in the 3D stage. */
 export function useSiteTilesets(stage: EngineStage | null, project: Project, rev: number): void {
   const tier = useGraphics((s) => s.tier);
@@ -292,7 +340,7 @@ export function useSiteTilesets(stage: EngineStage | null, project: Project, rev
   useEffect(() => {
     tierNow.current = tier;
     // a new tier changes the budget of the tilesets on screen, without reloading them
-    for (const h of handles.current) h.setBudget(tilesBudget(tier));
+    for (const h of handles.current) trackTileset(h, tier);
   }, [tier]);
 
   useEffect(() => {
@@ -306,16 +354,21 @@ export function useSiteTilesets(stage: EngineStage | null, project: Project, rev
             url: assetUrl(projectId, { path: entry.src }),
             entry,
             frame,
-            budget: tilesBudget(tierNow.current),
+            budget: scaledBudget(tierNow.current),
           }),
         );
+        const h = made[made.length - 1];
+        if (h) live.set(h, tierNow.current);
       } catch (e) {
         console.warn(`Tileset ${entry.id} not shown`, e);
       }
     }
     handles.current = made;
     return () => {
-      for (const h of made) h.dispose();
+      for (const h of made) {
+        untrackTileset(h);
+        h.dispose();
+      }
       handles.current = [];
     };
   }, [stage, projectId, manifest, entries]);

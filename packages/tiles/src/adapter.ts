@@ -28,7 +28,8 @@ import { applyM4, type M4, type SiteFrame, type V3 } from './frame';
 export interface TilesLike {
   group: Object3D;
   errorTarget: number;
-  lruCache: { maxBytesSize: number; minBytesSize: number };
+  /** `cachedBytes`: bytes of the tiles held now (3DTilesRendererJS `LRUCache`). */
+  lruCache: { maxBytesSize: number; minBytesSize: number; cachedBytes?: number };
   loadProgress: number;
   setCamera(camera: unknown): boolean;
   setResolutionFromRenderer(camera: unknown, renderer: unknown): boolean;
@@ -55,12 +56,21 @@ export interface TilesetOptions {
   create?: (url: string) => TilesLike;
 }
 
+/** What the tileset holds now (the performance tests read it through `window.__stratlas.tiles`). */
+export interface TilesetStats {
+  cachedBytes: number;
+  maxBytes: number;
+  errorTarget: number;
+  loadProgress: number;
+}
+
 export interface TilesetHandle {
   readonly tiles: TilesLike;
   /** The layer id hits report. */
   readonly pickId: string;
   setVisible(visible: boolean): void;
   setBudget(budget: TilesBudget): void;
+  stats(): TilesetStats;
   dispose(): void;
 }
 
@@ -196,6 +206,14 @@ export function attachTileset(scene: SceneHandle, opts: TilesetOptions): Tileset
     setBudget(b) {
       applyBudget(b);
       scene.requestRender();
+    },
+    stats() {
+      return {
+        cachedBytes: tiles.lruCache.cachedBytes ?? 0,
+        maxBytes: tiles.lruCache.maxBytesSize,
+        errorTarget: tiles.errorTarget,
+        loadProgress: tiles.loadProgress,
+      };
     },
     dispose() {
       if (disposed) return;

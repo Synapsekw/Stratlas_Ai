@@ -30,6 +30,7 @@ import { mediaView } from './screens/mediaView';
 import { agentPhotoRuns, agentProcessPhotos } from './photogrammetry/agentHooks';
 import { bridge, shell } from './shell';
 import { COMPARE_GPU_BYTES, compareRuntime } from './workspace/compare';
+import { tilesDebug } from './workspace/siteTiles';
 import { registerCorrectedPhotos } from './builder/photoPoses';
 
 let started = false;
@@ -123,6 +124,8 @@ export function bootstrap(): void {
       /** Tier, detection facts and memory now (diagnostics, the performance tests). */
       memory: graphicsReport,
       pointcloud: pointcloudSettings,
+      /** 3D Tiles on screen: cache, budget and a test-only cache scale (the performance tests). */
+      tiles: tilesDebug(),
       /** The video rig of the live stage (calibration tests: logged pose, model view). */
       videoRig: () => {
         const stage = getActiveStage();
