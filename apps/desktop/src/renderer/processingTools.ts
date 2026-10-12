@@ -62,6 +62,8 @@ export function openProcessingTools(): void {
 export function resumeAfterTools(): void {
   if (processingTools.getState().resume !== 'create-maps') return;
   processingTools.setState({ resume: null });
+  // player mode has no photo wizard, whatever Settings was opened from
+  if (shell.getState().pkg) return;
   shell.getState().go('scene');
   photoUi.getState().openWizard();
 }

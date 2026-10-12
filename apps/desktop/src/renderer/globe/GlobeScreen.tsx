@@ -62,8 +62,23 @@ const CARD_INSETS: Insets = { top: 56, right: 56, bottom: 44, left: 12 };
 /** The words on the chip of sites that gathered. */
 const clusterLabel = (count: number) => t('globe.siteCount', { count });
 
-/** The Globe camera when it last closed, so coming back shows the same view (this session). */
-let lastCamera: GlobeCamera | null = null;
+/** The Globe camera when it last closed, and the project open then (this session). */
+let lastCamera: { projectId: string | null; camera: GlobeCamera } | null = null;
+
+/**
+ * Where the Globe starts: the camera it was left at when the same project is still open (or none
+ * is), else the open project's site, else the camera it was left at, else its own default.
+ */
+function startOf(
+  projectId: string | null,
+  sites: readonly GlobeSite[],
+): { camera: GlobeCamera } | { site: GlobeSite['lonLat'] } | null {
+  const last = lastCamera;
+  if (last?.projectId === projectId) return { camera: last.camera };
+  const own = projectId === null ? undefined : sites.find((s) => s.projectId === projectId);
+  if (own) return { site: own.lonLat };
+  return last ? { camera: last.camera } : null;
+}
 
 /** How a manifest sits on the Earth, for issue pins and the hand-off (heights as ellipsoidal). */
 export function georefOf(m: Pick<ProjectManifest, 'crs' | 'origin'>): SiteGeoref {
@@ -275,14 +290,7 @@ export default function GlobeScreen() {
     pick?.kind === 'issue' && project?.id === pick.projectId
       ? issues.find((i) => i.id === pick.issueId)
       : undefined;
-  const start = lastCamera
-    ? { camera: lastCamera }
-    : project
-      ? (() => {
-          const s = loaded.sites.find((x) => x.projectId === project.id);
-          return s ? { site: s.lonLat } : null;
-        })()
-      : null;
+  const start = startOf(project?.id ?? null, loaded.sites);
   // the library could not be read, or nothing in it can be placed
   const notice =
     loaded.error ??
@@ -461,7 +469,7 @@ export default function GlobeScreen() {
         onMeasure={setMeasured}
         onReady={setCtl}
         onClose={(c) => {
-          lastCamera = c;
+          lastCamera = { projectId: project?.id ?? null, camera: c };
         }}
       />
       <div className="globe-controls" role="group" aria-label={t('globe.controls')}>

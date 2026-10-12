@@ -1,4 +1,5 @@
 // @vitest-environment jsdom
+import type { GlobeCamera } from '@aio/globe';
 import type { GlobeController, GlobeViewProps } from '@aio/globe/view';
 import type { GlobeSite } from '@aio/schema';
 import { act, useEffect } from 'react';
@@ -511,5 +512,24 @@ describe('the Globe screen', () => {
     expect(insets).toEqual({ top: 56, right: 56, bottom: 44, left: 12 });
     pickInField('Hill quarry');
     expect(globe.props?.cardInsets).toBe(insets);
+  });
+
+  it('starts at the open project site once another project is open, and at the remembered camera for the same one', async () => {
+    const camera = { position: [1, 2, 3], direction: [0, 0, -1] } as unknown as GlobeCamera;
+    app.project = QUARRY_PROJECT;
+    await mount();
+    act(() => globe.props?.onClose?.(camera));
+    act(() => root?.unmount());
+    root = undefined;
+    // the same project again: the camera it was left at
+    await mount();
+    expect(globe.props?.start).toEqual({ camera });
+    act(() => root?.unmount());
+    root = undefined;
+    // another project: its own site
+    app.project = { ...QUARRY_PROJECT, id: 'yard' };
+    app.sites = [QUARRY, { ...YARD, lonLat: [20, 60] }];
+    await mount();
+    expect(globe.props?.start).toEqual({ site: [20, 60] });
   });
 });
