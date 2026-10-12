@@ -33,6 +33,7 @@ import {
   readFile,
   rename,
   rm,
+  stat,
   writeFile,
   type FileHandle,
 } from 'node:fs/promises';
@@ -383,7 +384,7 @@ export async function journaledFiles(root: string): Promise<string[]> {
     if (!d.isDirectory()) continue;
     for (const file of [PHOTO_RUN_FILES.run, PHOTO_RUN_FILES.gcp]) {
       const rel = `${PHOTO_DIR}/${d.name}/${file}`;
-      if (isJournaledFile(rel) && (await readText(join(root, ...rel.split('/')))) !== null)
+      if (isJournaledFile(rel) && (await stat(join(root, ...rel.split('/'))).catch(() => null)))
         out.push(rel);
     }
   }
@@ -702,7 +703,10 @@ export function createJournalService(deps: JournalServiceDeps) {
     return touched;
   }
 
-  /** `reconcile` for one file, with the label of the app action that wrote it. */
+  /**
+   * `reconcile` for one file, with the label of the app action that wrote it. Any other
+   * unreconciled change to the same file gets the same label.
+   */
   async function reconcileLabelled(st: ProjectState, rel: string, label: string) {
     const now = await readText(join(st.root, ...rel.split('/')));
     const known = st.meta.files[rel];

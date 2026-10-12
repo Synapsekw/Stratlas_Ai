@@ -416,7 +416,7 @@ describe('journal service', () => {
   describe('M10 tilesets, ground control and runs', () => {
     const tilesFile = (names: string[]) => ({
       schema: 'aio.tilesets/1',
-      tilesets: names.map((n) => ({
+      entries: names.map((n) => ({
         id: n,
         name: n,
         kind: 'imported',
@@ -432,6 +432,8 @@ describe('journal service', () => {
       if (!h.ok) throw new Error(h.error);
       return h.entries;
     };
+    const pipelineOf = (via: unknown) =>
+      (via as { pipeline?: { name?: string } } | undefined)?.pipeline?.name;
     const jobOf = (pipeline: string, root: string) =>
       ({
         id: 'job-m10',
@@ -447,7 +449,7 @@ describe('journal service', () => {
         packVersion: '0.9.0',
       }) as JobRecord;
 
-    it('records a tilesets:write as one labelled op before the write, by hand', async () => {
+    it('records a tilesets:write as one labelled op before the write, shown as external', async () => {
       const { root, userData } = setup();
       const s = service(root, userData);
       await s.open({ path: root });
@@ -463,7 +465,8 @@ describe('journal service', () => {
         kind: 'record.external',
         label: '3D Tiles list edited',
       });
-      // howOf maps every record.external op to 'external' (query.ts); no via is set
+      // like orientation:write: howOf maps every record.external op to 'external'
+      expect(e[0]?.how).toBe('external');
       expect(e[0]?.via).toBeUndefined();
     });
 
@@ -494,7 +497,7 @@ describe('journal service', () => {
         put(root, 'tilesets.json', tilesFile(['bridge']));
         return Promise.resolve({
           ok: true as const,
-          entry: tilesFile(['bridge']).tilesets[0] as never,
+          entry: tilesFile(['bridge']).entries[0] as never,
         });
       });
       await ok({ projectId: 'p', path: 'x' });
@@ -531,6 +534,7 @@ describe('journal service', () => {
       const e = await hist(s);
       expect(e).toHaveLength(1);
       expect(e[0]?.kind).toBe('manifest.entry');
+      expect(e[0]?.target).toEqual({ rec: 'manifest', id: 'ph', in: 'layers' });
     });
 
     it('attributes a photo.align job run.json and gcp.json to the pipeline', async () => {
@@ -550,7 +554,7 @@ describe('journal service', () => {
       await s.journal.jobEvent({ type: 'update', job: { ...job, status: 'done' } });
       const e = await hist(s);
       expect(e).toHaveLength(2);
-      expect(e.every((x) => x.via?.pipeline?.name === 'photo.align')).toBe(true);
+      expect(e.map((x) => pipelineOf(x.via))).toEqual(['photo.align', 'photo.align']);
     });
 
     it('records a tiles.mesh job adding a tilesets.json entry with via.pipeline', async () => {
@@ -568,7 +572,7 @@ describe('journal service', () => {
       await s.journal.jobEvent({ type: 'update', job: { ...job, status: 'done' } });
       const e = await hist(s);
       expect(e).toHaveLength(1);
-      expect(e[0]?.via?.pipeline?.name).toBe('tiles.mesh');
+      expect(pipelineOf(e[0]?.via)).toBe('tiles.mesh');
     });
 
     it('saves and appends nothing with the journal off', async () => {
