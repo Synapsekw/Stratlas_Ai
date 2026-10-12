@@ -1129,7 +1129,7 @@ Compare two survey dates from the sidebar tree, and two panoramas side by side. 
 
 ### Before you start
 
-- [ ] Open a project with panoramas on at least two survey dates (a demo or a test project you pick).
+- [ ] Open a project with panoramas on at least two survey dates. No demo has them, so write the synthetic one into the app's data folder (Settings, **Data folder**; it holds `projects`): run `pnpm demo:pano --data <data folder>` from the repo, then restart the app and open **E2E panorama dates** (three dates, three panoramas each).
 
 ### Panoramas side by side
 
@@ -1138,6 +1138,7 @@ Compare two survey dates from the sidebar tree, and two panoramas side by side. 
 - [ ] Press **Next panorama** in the left pane. The right pane follows to the panorama nearest the new spot and says how far apart they are. Where no older panorama is within 25 m it says so and offers **Show the nearest**.
 - [ ] Use the date bar's arrows. The left pane changes date and stays at the same spot.
 - [ ] Open the right pane's picker: the choices are grouped by date, newest first, with **Any date** last. Pick **Panoramas** under a third date; the right pane switches date and pairs again.
+- [ ] Set the left side to **3D** with its picker. The right **Panoramas** pane now has **Previous panorama** and **Next panorama** itself (Page Up and Page Down too) and steps through its own date.
 
 ### From the tree
 
