@@ -123,6 +123,7 @@ const READ_TOOLS: readonly string[] = [
   'summarize_by_class',
   'find_issues_near',
   'list_sites',
+  'accuracy_summary',
   'list_changes',
   'list_my_work',
   'list_assets',

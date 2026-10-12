@@ -216,6 +216,7 @@ Current limits only; each is removed from this list when fixed.
 - Fisheye and spherical cameras are not supported; oblique close-range sets are untested.
 - Texturing drapes the orthophoto or projects one photo per face: there is no seam-levelled texturing (`texrecon` is deferred). The Fast preset is weak on buildings and has no true-ortho on tall structures.
 - No LiDAR processing from raw scans.
+- The agent's **process_photos** reads a photos layer only (no folders), takes the project's coordinate system and picks the survey date as the dialog does by itself.
 
 ### OPF
 
@@ -228,7 +229,7 @@ Current limits only; each is removed from this list when fixed.
 - The Globe is for overview and navigation: no editing tools, only a distance and area read-out on the ellipsoid.
 - No geoid grid ships, so terrain heights on the Globe are not corrected to the geoid.
 - Processed orthophotos do not show on the Globe yet, sites have no footprints and there is no date filter.
-- The agent's **show_on_globe** ends the agent's reply: the agent panel belongs to the project view and closes when the Globe opens. The Globe tools are not in the compact tool profile.
+- The agent's **show_on_globe** ends the agent's reply: the agent panel belongs to the project view and closes when the Globe opens.
 
 ### Imagery, terrain and 3D Tiles
 
