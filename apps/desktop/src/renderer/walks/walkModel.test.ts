@@ -6,6 +6,7 @@ import {
   pickWalk,
   splitWithWalk,
   walkKeyAction,
+  walkUnstabilised,
 } from './walkModel';
 
 describe('formatWalkTime', () => {
@@ -116,5 +117,13 @@ describe('the split and walks', () => {
       left: '3d',
       right: 'walk360',
     });
+  });
+});
+
+describe('walkUnstabilised', () => {
+  it('is true for a walk stitched from a camera file, false for a stitched MP4', () => {
+    expect(walkUnstabilised({ source: { layout: 'insv-dual-stream' } })).toBe(true);
+    expect(walkUnstabilised({ source: { layout: 'dual-fisheye' } })).toBe(true);
+    expect(walkUnstabilised({ source: { layout: 'equirect' } })).toBe(false);
   });
 });

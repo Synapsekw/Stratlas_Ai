@@ -1,3 +1,4 @@
+import type { WalkLayout } from '@aio/schema';
 import {
   chooseSide,
   resolveSplit,
@@ -72,4 +73,12 @@ export function splitWithWalk(
 ): SplitPref {
   const sides = resolveSplit(saved, options);
   return sideOf(sides, 'walk360') ? sides : chooseSide(sides, 'right', 'walk360');
+}
+
+/**
+ * A walk stitched in the app from a camera file plays unstabilised: the camera's gyro data is not
+ * read yet. A stitched MP4 (from Insta360 Studio with FlowState, say) is taken as it is.
+ */
+export function walkUnstabilised(walk: { source: { layout: WalkLayout } }): boolean {
+  return walk.source.layout !== 'equirect';
 }

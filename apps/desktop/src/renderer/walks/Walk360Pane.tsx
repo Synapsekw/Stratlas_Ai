@@ -4,7 +4,7 @@ import { Icon, useT } from '@aio/ui';
 import { createPanoVideoView, type PanoVideoView } from '@aio/video';
 import { assetUrl, useWorkspace } from '@aio/workspace';
 import { useEffect, useRef, useState, type KeyboardEvent, type PointerEvent } from 'react';
-import { formatWalkTime, pickWalk, walkKeyAction } from './walkModel';
+import { formatWalkTime, pickWalk, walkKeyAction, walkUnstabilised } from './walkModel';
 import { useWalks, walks } from './walks';
 
 /** Where the view starts: along the picture centre, level, at the panorama viewer's zoom. */
@@ -312,6 +312,11 @@ export function Walk360Pane() {
           <span className="walk-name">{walk.name}</span>
         )}
         {walk.source.lowRes && <span className="faint">{t('walk.lowRes')}</span>}
+        {walkUnstabilised(walk) && (
+          <span className="faint" title={t('walk.rawHint')} data-testid="walk-unstabilised">
+            {t('walk.unstabilised')}
+          </span>
+        )}
       </div>
       <WalkPlayer key={walk.id} projectId={projectId} walk={walk} />
     </div>
