@@ -205,8 +205,8 @@ describe('importRawFiles', () => {
     await importRawFiles(root, [a], deps());
     await importRawFiles(root, [a], deps());
     const m = await readManifest(root);
-    const photos = m.layers.find((l) => l.kind === 'photos');
-    expect(photos?.kind === 'photos' && photos.items.map((p) => p.id)).toEqual(['p', 'p-2']);
+    const photos = m.layers.flatMap((l) => (l.kind === 'photos' ? l.items.map((p) => p.id) : []));
+    expect(photos).toEqual(['p', 'p-2']);
   });
 
   it('hands a point cloud to the pipeline pack, or says it is missing', async () => {
@@ -612,8 +612,8 @@ describe('camera heights of a raw import (data-conventions 3a)', () => {
     });
   const photoY = async (root: string) => {
     const m = await readManifest(root);
-    const l = m.layers.find((x) => x.kind === 'photos');
-    return l?.kind === 'photos' ? l.items.map((p) => p.pos?.[1]) : [];
+    // every import files its photos in a layer of its own
+    return m.layers.flatMap((l) => (l.kind === 'photos' ? l.items.map((p) => p.pos?.[1]) : []));
   };
 
   it('relative altitude plus the confirmed take-off height when the project has no datum', async () => {
@@ -995,28 +995,76 @@ describe('one import is one survey date', () => {
     expect((await readManifest(root)).captures.map((c) => c.date)).toEqual(['2019-01-24']);
   });
 
-  it("a second import on the same day appends to that date's photos layer and adds no date", async () => {
+  it('a second import on the same day gets a photos layer of its own and adds no date', async () => {
     const root = await project();
-    await importRawFiles(root, [await photo('a.jpg', '2019:01:24 10:00:00')], deps());
-    await importRawFiles(root, [await photo('b.jpg', '2019:01:24 11:00:00')], deps());
+    const first = await importRawFiles(root, [await photo('a.jpg', '2019:01:24 10:00:00')], deps());
+    const second = await importRawFiles(
+      root,
+      [await photo('b.jpg', '2019:01:24 11:00:00')],
+      deps(),
+    );
     const m = await readManifest(root);
     expect(m.captures).toHaveLength(1);
+    const id = m.captures[0]?.id ?? '';
+    expect(first.createdCaptures).toEqual([id]);
+    expect(second.createdCaptures).toEqual([]);
     const photos = photosOf(m);
-    expect(photos).toHaveLength(1);
-    expect(photos[0]?.id).toBe('photos-2019-01-24');
-    expect(photos[0]?.items.map((p) => p.id)).toEqual(['a', 'b']);
+    expect(photos.map((l) => [l.id, l.name, l.capture, l.items.map((p) => p.id)])).toEqual([
+      ['photos-2019-01-24', 'Photos', id, ['a']],
+      ['photos-2019-01-24-2', 'Photos', id, ['b']],
+    ]);
+    expect(second.items.map((i) => i.layerId)).toEqual(['photos-2019-01-24-2']);
   });
 
-  it('an import with no dated file adds no date, tags nothing and uses the project photos layer', async () => {
+  it('an import with no dated file adds no date, tags nothing and files its photos in a layer of its own', async () => {
     const root = await project();
     await writeFile(join(dir, 'flare.glb'), glb());
-    await importRawFiles(root, [await photo('a.jpg', undefined), join(dir, 'flare.glb')], deps());
+    const r = await importRawFiles(
+      root,
+      [await photo('a.jpg', undefined), join(dir, 'flare.glb')],
+      deps(),
+    );
+    expect(r.createdCaptures).toEqual([]);
+    const again = await importRawFiles(root, [await photo('b.jpg', undefined)], deps());
+    expect(again.items.map((i) => i.layerId)).toEqual(['photos-2']);
     const m = await readManifest(root);
     expect(m.captures).toEqual([]);
     expect(m.layers.every((l) => l.capture === undefined)).toBe(true);
     const photos = photosOf(m);
-    expect(photos.map((l) => l.id)).toEqual(['photos']);
-    expect(photos[0]?.items.map((p) => p.id)).toEqual(['a']);
+    expect(photos.map((l) => [l.id, l.items.map((p) => p.id)])).toEqual([
+      ['photos', ['a']],
+      ['photos-2', ['b']],
+    ]);
+  });
+
+  it('names no created date when the day had one, or another save added it meanwhile', async () => {
+    const root = await project();
+    await ensureCapture(root, '2019-01-24');
+    const had = await importRawFiles(root, [await photo('a.jpg', '2019:01:24 10:00:00')], deps());
+    expect(had.createdCaptures).toEqual([]);
+    expect(photosOf(had.manifest)[0]).toMatchObject({
+      id: 'photos-2019-01-24',
+      capture: 'capture-2019-01-24',
+    });
+    // the day has no date when the import reads the project; another writer adds it meanwhile
+    let added = false;
+    const meanwhile = await importRawFiles(
+      root,
+      [await photo('b.jpg', '2019:01:25 10:00:00')],
+      deps({
+        images: {
+          resizeJpeg: async (src, dst) => {
+            if (!added) await ensureCapture(root, '2019-01-25');
+            added = true;
+            await copyFile(src, dst);
+          },
+        },
+      }),
+    );
+    expect(meanwhile.createdCaptures).toEqual([]);
+    expect(meanwhile.manifest.captures.filter((c) => c.date === '2019-01-25')).toHaveLength(1);
+    const made = await importRawFiles(root, [await photo('c.jpg', '2019:01:26 10:00:00')], deps());
+    expect(made.createdCaptures).toEqual(['capture-2019-01-26']);
   });
 
   it("a video's day is its local start day", async () => {

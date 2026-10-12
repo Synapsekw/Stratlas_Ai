@@ -300,6 +300,7 @@ export async function builderImport(
         })),
       ],
       ...(r.heights ? { heights: r.heights } : {}),
+      createdCaptures: r.createdCaptures,
     };
   } catch (e) {
     return { ok: false, error: `Import failed: ${errorText(e)}` };

@@ -581,7 +581,7 @@ describe('importRawFiles saves what it added onto the project as it is at its en
     expect(bak.layers.map((l) => l.id)).toEqual(['mesh-m', 'cloud-site']);
   });
 
-  it('has every photo when the photos layer was changed during the import, and that change too', async () => {
+  it('keeps a change made to the photos layer during the import, and files its photos in a layer of its own', async () => {
     const root = await project();
     for (const n of ['p1', 'p2', 'p3']) await writeFile(join(dir, `${n}.jpg`), photo());
     await importRawFiles(root, [join(dir, 'p1.jpg')], deps());
@@ -606,13 +606,14 @@ describe('importRawFiles saves what it added onto the project as it is at its en
       }),
     );
     expect(r.items.map((i) => [i.status, i.layerId])).toEqual([
-      ['imported', 'photos'],
-      ['imported', 'photos'],
+      ['imported', 'photos-2'],
+      ['imported', 'photos-2'],
     ]);
     const m = await readManifest(root);
     expect(photoIds(m)).toEqual(['p1', 'x', 'p2', 'p3']);
     expect(m.layers.find((l) => l.id === 'photos')).toMatchObject({ capture: 'c2' });
-    expect(m.layers.map((l) => l.id)).toEqual(['mesh-m', 'photos']);
+    expect(m.layers.find((l) => l.id === 'photos-2')?.capture).toBeUndefined();
+    expect(m.layers.map((l) => l.id)).toEqual(['mesh-m', 'photos', 'photos-2']);
     expect(r.manifest).toEqual(m);
   });
 

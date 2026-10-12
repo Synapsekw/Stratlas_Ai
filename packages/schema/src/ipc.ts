@@ -1388,6 +1388,11 @@ export const ipc = {
         items: z.array(ImportItem),
         /** The height rule applied, when any file got a camera height. */
         heights: ImportHeights.optional(),
+        /**
+         * The survey dates the import itself created (0 or 1 id), so the import card can tidy
+         * them up: not a date another save added meanwhile, nor one the day already had.
+         */
+        createdCaptures: z.array(z.string().min(1)).optional(),
       }),
       z.object({ ok: z.literal(false), error: z.string(), items: z.array(ImportItem).optional() }),
     ]),

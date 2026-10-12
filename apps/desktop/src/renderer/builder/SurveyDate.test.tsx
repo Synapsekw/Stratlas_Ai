@@ -33,9 +33,9 @@ function open(layers: { id: string; capture?: string }[], captures: unknown[]) {
 
 let host: HTMLDivElement;
 let root: Root | undefined;
-function mount(items: ImportItem[], newDates: string[], priorLayers: string[]) {
+function mount(items: ImportItem[], newDates: string[]) {
   builder.setState({
-    importResult: { items, error: null, newDates, priorLayers, dateSource: 'photos' },
+    importResult: { items, error: null, newDates, dateSource: 'photos' },
   });
   root = createRoot(host);
   act(() => root?.render(<ImportSurveyDate items={items} />));
@@ -57,21 +57,29 @@ afterEach(() => {
 });
 
 describe('ImportSurveyDate', () => {
-  it('re-dates only the layers the import made, not a photos layer it added to', () => {
+  it('re-dates every layer the import names, its photos layer of the day included', () => {
     open(
       [
         { id: 'photos-2024-11-06', capture: 'capture-2024-11-06' },
+        { id: 'photos-2024-11-06-2', capture: 'capture-2024-11-06' },
         { id: 'clip-b', capture: 'capture-2024-11-06' },
       ],
       [{ id: 'capture-2024-11-06', label: 'Survey', date: '2024-11-06' }],
     );
-    mount([row('b.jpg', 'photos-2024-11-06'), row('b.mp4', 'clip-b')], [], ['photos-2024-11-06']);
-    expect(props()?.layerIds).toEqual(['clip-b']);
+    mount(
+      [
+        row('b.jpg', 'photos-2024-11-06-2'),
+        row('c.jpg', 'photos-2024-11-06-2'),
+        row('b.mp4', 'clip-b'),
+      ],
+      [],
+    );
+    expect(props()?.layerIds).toEqual(['photos-2024-11-06-2', 'clip-b']);
   });
 
-  it('shows no select when every imported layer was there before', () => {
+  it('shows no select when the import made no layer', () => {
     open([{ id: 'photos' }], []);
-    mount([row('b.jpg', 'photos')], [], ['photos']);
+    mount([{ file: 'b.las', kind: 'pointcloud', status: 'queued' }], []);
     expect(select).not.toHaveBeenCalled();
   });
 
@@ -80,7 +88,7 @@ describe('ImportSurveyDate', () => {
       [{ id: 'clip-b', capture: 'capture-2024-11-06' }],
       [{ id: 'capture-2024-11-06', label: 'Survey', date: '2024-11-06' }],
     );
-    mount([row('b.mp4', 'clip-b')], [], []);
+    mount([row('b.mp4', 'clip-b')], []);
     expect(props()?.suggestedDay).toBe('2024-11-06');
   });
 
@@ -89,7 +97,7 @@ describe('ImportSurveyDate', () => {
       [{ id: 'clip-b', capture: 'capture-2024-11-07' }],
       [{ id: 'capture-2024-11-07', label: 'Survey', date: '2024-11-07' }],
     );
-    mount([row('b.mp4', 'clip-b')], ['capture-2024-11-07'], []);
+    mount([row('b.mp4', 'clip-b')], ['capture-2024-11-07']);
     expect(props()?.suggestedDay).toBe('2024-11-07');
   });
 });

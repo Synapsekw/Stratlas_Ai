@@ -12,7 +12,6 @@ import type {
   FlightHeights,
   ImportHeights,
   ImportItem,
-  Layer,
   LensModel,
   PhotoRef,
   ProjectManifest,
@@ -150,6 +149,11 @@ export interface ImportResult {
   backup: string;
   /** The height rule applied, when any file got a camera height. */
   heights?: ImportHeights;
+  /**
+   * The survey dates this import added to the saved project (0 or 1 id): not a date another save
+   * added meanwhile, nor one the day already had.
+   */
+  createdCaptures: string[];
 }
 
 const PHOTO = new Set(['.jpg', '.jpeg']);
@@ -333,23 +337,6 @@ export async function importRawFiles(
   };
   const addDay = (day: string | undefined) => {
     if (day && DAY.test(day)) days.push(day);
-  };
-
-  const photosLayer = (): Extract<Layer, { kind: 'photos' }> => {
-    let l = m.layers.find(
-      (x): x is Extract<Layer, { kind: 'photos' }> => x.kind === 'photos' && x.id === 'photos',
-    );
-    if (!l) {
-      l = {
-        kind: 'photos',
-        id: uniqueId('photos', layerIdTaken(m)),
-        name: 'Photos',
-        visible: true,
-        items: [],
-      };
-      m.layers.push(l);
-    }
-    return l;
   };
 
   const job = async (
@@ -810,38 +797,29 @@ export async function importRawFiles(
   }
   // one import is one survey date: the day most files carry; every layer it made is filed under it
   const day = importDay(days);
-  if (day === null) {
-    if (newPhotos.length > 0) {
-      const layer = photosLayer();
-      layer.items = [...layer.items, ...newPhotos];
-      for (const r of photoRows) r.layerId = layer.id;
-    }
-  } else {
+  /** The date this import added to its copy, if it added one. */
+  let madeDate: string | undefined;
+  let captureId: string | undefined;
+  if (day !== null) {
     const c = captureForDate(m, day);
     m.captures = c.manifest.captures;
+    captureId = c.captureId;
+    if (c.created) madeDate = c.captureId;
     m.layers = m.layers.map((l) => (created.has(l.id) ? { ...l, capture: c.captureId } : l));
-    if (newPhotos.length > 0) {
-      const same = m.layers.find(
-        (l): l is Extract<Layer, { kind: 'photos' }> =>
-          l.kind === 'photos' && l.capture === c.captureId,
-      );
-      let id: string;
-      if (same) {
-        same.items = [...same.items, ...newPhotos];
-        id = same.id;
-      } else {
-        id = uniqueId(`photos-${day}`, layerIdTaken(m));
-        m.layers.push({
-          kind: 'photos',
-          id,
-          name: 'Photos',
-          visible: true,
-          items: newPhotos,
-          capture: c.captureId,
-        });
-      }
-      for (const r of photoRows) r.layerId = id;
-    }
+  }
+  // its photos are a layer of their own, never added to an earlier flight's, so the import card
+  // can re-date them alone: `photos-<day>`, `photos-<day>-2` ... or `photos`, `photos-2` undated
+  if (newPhotos.length > 0) {
+    const id = uniqueId(day === null ? 'photos' : `photos-${day}`, layerIdTaken(m));
+    m.layers.push({
+      kind: 'photos',
+      id,
+      name: 'Photos',
+      visible: true,
+      items: newPhotos,
+      ...(captureId !== undefined ? { capture: captureId } : {}),
+    });
+    for (const r of photoRows) r.layerId = id;
   }
   const placed = items.filter((i) => i.status === 'imported' && i.heightSource);
   // a datum the person set at this import becomes the project's, so later imports agree
@@ -857,11 +835,27 @@ export async function importRawFiles(
     // and their report must arrive, with the manifest as it was read at the start.
     if (deps.walk) await stitchWalks(deps.walk);
     const now = await manifestNow(atStart);
-    return { manifest: now, items, backup: '', ...(summary ? { heights: summary } : {}) };
+    return {
+      manifest: now,
+      items,
+      backup: '',
+      ...(summary ? { heights: summary } : {}),
+      createdCaptures: [],
+    };
   }
   // Only this takes the project's turn: read the manifest as it is now, put what this import
-  // added onto it, save.
-  const saved = await updateManifestFile(root, (fresh) => mergeImport(atStart, m, fresh));
+  // added onto it, save. The date it added is its own only when the project it saves onto had
+  // none under that id (another save may have added the day's date meanwhile).
+  const saved = await updateManifestFile(root, (fresh) => ({
+    ...mergeImport(atStart, m, fresh),
+    freshHad: fresh.captures.some((c) => c.id === madeDate),
+  }));
+  const createdCaptures =
+    madeDate !== undefined &&
+    !saved.freshHad &&
+    saved.manifest.captures.some((c) => c.id === madeDate)
+      ? [madeDate]
+      : [];
   for (const i of items) {
     const id = i.layerId === undefined ? undefined : saved.renamed.get(i.layerId);
     if (id !== undefined) i.layerId = id;
@@ -877,6 +871,7 @@ export async function importRawFiles(
     items,
     backup: saved.backup,
     ...(summary ? { heights: summary } : {}),
+    createdCaptures,
   };
 }
 

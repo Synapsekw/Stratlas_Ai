@@ -153,6 +153,19 @@ describe('builder ipc contracts', () => {
       ],
     });
     expect(ok.success).toBe(true);
+    // the survey dates the import itself created (Timeline T2)
+    const dated = res.safeParse({
+      ok: true,
+      manifest: { ...base },
+      items: [],
+      createdCaptures: ['capture-2024-11-06'],
+    });
+    expect(dated.success && dated.data.ok && dated.data.createdCaptures).toEqual([
+      'capture-2024-11-06',
+    ]);
+    expect(
+      res.safeParse({ ok: true, manifest: { ...base }, items: [], createdCaptures: [''] }).success,
+    ).toBe(false);
   });
 
   it('patches either a mesh transform or a video calibration', () => {

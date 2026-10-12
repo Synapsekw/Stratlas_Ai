@@ -251,6 +251,28 @@ describe('folder imports and removeCapture', () => {
     expect(events.length > 0 && events.every((e) => e.total === 2)).toBe(true);
   });
 
+  it('hands back the survey dates the import itself created', async () => {
+    const dir = join(base, 'projects', 'dates');
+    await writeProject(dir, sampleManifest());
+    const registry = new ProjectRegistry();
+    const projectId = registry.register(dir);
+    const photo = join(base, 'a.jpg');
+    await writeFile(
+      photo,
+      withExif({ dateTimeOriginal: '2024:11:06 10:00:00', lat: 25.2, lon: 55.3, alt: 100 }),
+    );
+    const first = await builderImport(
+      { projectId, paths: [photo] },
+      { registry, images, emit: () => undefined },
+    );
+    expect(first.ok && first.createdCaptures).toEqual(['capture-2024-11-06']);
+    const again = await builderImport(
+      { projectId, paths: [photo] },
+      { registry, images, emit: () => undefined },
+    );
+    expect(again.ok && again.createdCaptures).toEqual([]);
+  });
+
   it('answers an error for a folder over the limit and for an empty folder', async () => {
     const dir = join(base, 'projects', 'big');
     await writeProject(dir, sampleManifest());
