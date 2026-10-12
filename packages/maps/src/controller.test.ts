@@ -71,6 +71,12 @@ class FakeMap {
   resize(): void {
     /* no layout in jsdom */
   }
+  jumpTo(): void {
+    /* the camera is not drawn here */
+  }
+  fitBounds(): void {
+    /* the camera is not drawn here */
+  }
 }
 
 /** A map control: nothing to draw here. */
@@ -100,6 +106,7 @@ vi.mock('maplibre-gl', () => ({
 vi.mock('./runtime', () => ({ installBasemap: vi.fn() }));
 
 const { createMapController } = await import('./controller');
+const geo = await import('./geo');
 
 afterEach(() => {
   setActiveScene(null);
@@ -158,5 +165,70 @@ describe('map controller dispose (T8 soak: maps kept alive after a project close
     map.fire('mousemove', { point: { x: 1, y: 1 }, lngLat: { lng: 0, lat: 0 } });
     ctl.dispose();
     expect(cancel).toHaveBeenCalledWith(42);
+  });
+});
+
+describe('map point pick (placing a walk on the map)', () => {
+  /** A map with a UTM project open, so clicks have a local point. */
+  function startWithProject() {
+    const started = start();
+    const { frameProjection } = geo;
+    const manifest = {
+      crs: { epsg: 32633 },
+      origin: [500_000, 4_000_000, 0],
+      layers: [],
+    };
+    started.store.setState({
+      project: { id: 'p1', manifest } as unknown as ReturnType<
+        typeof started.store.getState
+      >['project'],
+    });
+    const proj = frameProjection({ epsg: 32633 }, [500_000, 4_000_000, 0]);
+    if (!proj) throw new Error('no projection');
+    return { ...started, proj };
+  }
+  const click = (lng: number, lat: number) => ({
+    point: { x: 10, y: 10 },
+    lngLat: { lng, lat },
+    originalEvent: { clientX: 10, clientY: 10, altKey: false },
+  });
+
+  it('map pick returns the local point of the click and disarms', () => {
+    const { ctl, map, proj, store } = startWithProject();
+    const [lng, lat] = proj.toLonLat([12, 0, -34]);
+    const onPick = vi.fn();
+    ctl.pickPoint(onPick);
+    expect(map.canvas.style.cursor).toBe('crosshair');
+    const select = vi.spyOn(store.getState(), 'select');
+    map.fire('click', click(lng, lat));
+    expect(onPick).toHaveBeenCalledTimes(1);
+    const local = onPick.mock.calls[0]?.[0] as [number, number, number];
+    expect(local[0]).toBeCloseTo(12, 3);
+    expect(local[2]).toBeCloseTo(-34, 3);
+    expect(select).not.toHaveBeenCalled();
+    expect(map.canvas.style.cursor).toBe('');
+    // disarmed: the next click is an ordinary one
+    map.fire('click', click(lng, lat));
+    expect(onPick).toHaveBeenCalledTimes(1);
+  });
+
+  it('Escape cancels the pick, and the returned function disarms it', () => {
+    const { ctl, map, proj } = startWithProject();
+    const [lng, lat] = proj.toLonLat([1, 0, 1]);
+    const onPick = vi.fn();
+    const onCancel = vi.fn();
+    ctl.pickPoint(onPick, onCancel);
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
+    expect(onCancel).toHaveBeenCalledTimes(1);
+    expect(map.canvas.style.cursor).toBe('');
+    map.fire('click', click(lng, lat));
+    expect(onPick).not.toHaveBeenCalled();
+
+    const disarm = ctl.pickPoint(onPick, onCancel);
+    disarm();
+    map.fire('click', click(lng, lat));
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
+    expect(onPick).not.toHaveBeenCalled();
+    expect(onCancel).toHaveBeenCalledTimes(1);
   });
 });

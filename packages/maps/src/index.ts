@@ -89,6 +89,8 @@ export function registerMapAdapters(): void {
 // The street map on the Globe: the street style's colours, which tiles are worth drawing, and
 // the tiles themselves (MapLibre loads lazily, only when the Globe opens with street packs).
 export { STREET } from './ink';
+// Overlay ink for the always dark map, and oklch to hex (MapLibre does not parse oklch).
+export { MAP_INK, oklchHex } from './ink';
 export { STREET_MAX_LEVEL, STREET_OVERZOOM, streetCover, type StreetCover } from './streetCover';
 export type { StreetTileOptions, StreetTileStats, StreetTiles } from './streetTiles';
 

@@ -125,6 +125,14 @@ export interface MapController {
   setIssueColor(by: IssueColorBy): void;
   /** Show the 3D camera's view wedge (default on). */
   setCameraWedge(on: boolean): void;
+  /**
+   * A one-shot point pick (placing a walk on the map): the next click on the map reports its
+   * local point (`[x, 0, z]`) to `onPick` instead of selecting, then the pick disarms. The cursor
+   * is a crosshair while armed; Escape cancels (`onCancel`). A new pick replaces a waiting one
+   * (without its `onCancel`). Returns a function that disarms it. Needs a project with a map
+   * projection; until then clicks are ignored while armed.
+   */
+  pickPoint(onPick: (local: Vec3) => void, onCancel?: () => void): () => void;
   dispose(): void;
 }
 
@@ -475,9 +483,34 @@ export function createMapController(
   // ----- drawing (map sightings) -----
   let lastClick: { x: number; y: number; t: number } | null = null;
   let ready = false;
+  // ----- a one-shot point pick -----
+  let picking: { onPick: (local: Vec3) => void; onCancel: (() => void) | undefined } | null = null;
+  function onPickKey(e: KeyboardEvent): void {
+    if (e.key !== 'Escape' || !picking) return;
+    const p = picking;
+    disarmPick();
+    p.onCancel?.();
+  }
+  function disarmPick(): void {
+    if (!picking) return;
+    picking = null;
+    window.removeEventListener('keydown', onPickKey);
+    map.getCanvas().style.cursor = draw?.()?.mode != null ? 'crosshair' : '';
+  }
+  function pickPoint(onPick: (local: Vec3) => void, onCancel?: () => void): () => void {
+    disarmPick();
+    const armed = { onPick, onCancel };
+    picking = armed;
+    window.addEventListener('keydown', onPickKey);
+    map.getCanvas().style.cursor = 'crosshair';
+    return () => {
+      if (picking === armed) disarmPick();
+    };
+  }
+
   function updateDraw(): void {
     const d = draw?.() ?? null;
-    const on = d?.mode != null;
+    const on = d?.mode != null || picking !== null;
     if (map.getSource(SRC.draw)) setData(SRC.draw, drawPreview(d?.mode ?? null, d?.vertices ?? []));
     map.getCanvas().style.cursor = on ? 'crosshair' : '';
     if (on) map.doubleClickZoom.disable();
@@ -1154,6 +1187,14 @@ export function createMapController(
 
   // ----- clicks -----
   function onClick(e: MapLayerMouseEvent): void {
+    if (picking) {
+      // armed for a point: this click is it, not a selection
+      if (!proj) return;
+      const p = picking;
+      disarmPick();
+      p.onPick(proj.toLocal(e.lngLat.lng, e.lngLat.lat));
+      return;
+    }
     const d = draw?.() ?? null;
     if (d?.mode) {
       const at = { x: e.point.x, y: e.point.y, t: performance.now() };
@@ -1217,7 +1258,7 @@ export function createMapController(
       e.preventDefault();
       d.onFinish();
     });
-    const drawing = () => draw?.()?.mode != null;
+    const drawing = () => picking !== null || draw?.()?.mode != null;
     for (const id of [
       'aio-flights-line',
       'aio-drone-point',
@@ -1383,8 +1424,10 @@ export function createMapController(
       wedge = on;
       applyWedge();
     },
+    pickPoint,
     dispose: () => {
       if (disposed) return;
+      disarmPick();
       disposed = true;
       ready = false;
       if (pyrTimer) clearTimeout(pyrTimer);
