@@ -167,4 +167,14 @@ describe('findFfmpeg', () => {
     // no pack and nothing given: null, and the PATH is used as before
     expect(await findFfmpeg(null, { PATH: join(root, 'own') }, 'win32')).toBeNull();
   });
+
+  it('takes ffmpeg.exe straight in tools/ffmpeg first, in the order Python looks', async () => {
+    const pack = await writePack('0.6.1');
+    const python = join(pack, 'python', 'python.exe');
+    const conda = join(pack, 'tools', 'ffmpeg', 'Library', 'bin', 'ffmpeg.exe');
+    await touch(conda);
+    const top = join(pack, 'tools', 'ffmpeg', 'ffmpeg.exe');
+    await touch(top);
+    expect(await findFfmpeg({ python }, {}, 'win32')).toEqual({ ffmpeg: top });
+  });
 });

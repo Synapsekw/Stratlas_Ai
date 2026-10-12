@@ -198,7 +198,9 @@ export async function findFfmpeg(
   const inner = /^(scripts|bin)$/i.test(basename(dir));
   const prefix = inner ? dirname(dir) : dir;
   const tools = join(dirname(prefix), 'tools', 'ffmpeg');
+  // the order Python's find_tool uses: the folder itself, conda's Library/bin, then bin
   for (const cand of [
+    join(tools, `ffmpeg${exe}`),
     join(tools, 'Library', 'bin', `ffmpeg${exe}`),
     join(tools, 'bin', `ffmpeg${exe}`),
   ]) {
