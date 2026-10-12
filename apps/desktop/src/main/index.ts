@@ -162,6 +162,7 @@ import { restoreArgs } from './update/rollback';
 import { createUpdateService, runRestore } from './update/service';
 import { OFFSCREEN_SWITCHES, offscreenOrigin, windowMode, windowSize } from './windowMode';
 import { installMenu } from './menu';
+import { appUserModelId } from './appUserModel';
 import { linkPathFromArgv, parseAppLink } from './appLink';
 import { popupAction } from './popup';
 import {
@@ -1709,7 +1710,9 @@ if (restore) {
   });
 
   void app.whenReady().then(async () => {
-    app.setAppUserModelId(brand.appId);
+    // the Store package supplies its own id (appUserModel.ts)
+    const modelId = appUserModelId(brand.appId, process.windowsStore);
+    if (modelId) app.setAppUserModelId(modelId);
     installMenu(dev, (action) => {
       // Report a problem keeps its own event (D5); the rest go to the renderer's menu handler.
       if (action === 'reportProblem') {
