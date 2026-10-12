@@ -63,6 +63,17 @@ export interface WalkInputs {
 const NO_INPUTS: WalkInputs = { raw: null, orientation: null };
 
 /**
+ * The orientation data file the header names (`data`, a plain file name), next to the header, as
+ * main reads it; undefined for a header that is not a path (the layer's `orientationData` then).
+ */
+export function orientationDataRef(header: AssetRef, data: string): AssetRef | undefined {
+  if (!('path' in header)) return undefined;
+  const p = header.path.replaceAll('\\', '/');
+  const slash = p.lastIndexOf('/');
+  return { path: slash < 0 ? data : `${p.slice(0, slash)}/${data}` };
+}
+
+/**
  * Read the walk's `raw-path.json` and orientation records through the project's asset URLs. A
  * file that is missing, unreadable or of a newer schema reads as absent: the walk is then placed
  * pins-only (main's project log names the bad file when it writes the pose).
@@ -86,11 +97,14 @@ export async function loadWalkInputs(
     raw = null;
   }
   let orientation: Float64Array[] | null = null;
-  if (refs.orientation && refs.orientationData) {
+  if (refs.orientation) {
     try {
       const header = WalkOrientation.safeParse(await json(refs.orientation));
-      if (header.success) {
-        const r = await get(assetUrl(projectId, refs.orientationData));
+      const data = header.success
+        ? (orientationDataRef(refs.orientation, header.data.data) ?? refs.orientationData)
+        : undefined;
+      if (header.success && data) {
+        const r = await get(assetUrl(projectId, data));
         if (r.ok)
           orientation = readWalkOrientationData(header.data, new Uint8Array(await r.arrayBuffer()));
       }
@@ -533,20 +547,49 @@ setPlaceWalkHandler((layerId) => {
 
 // ---------- placed walks: drawn on every surface, outside placing too ----------
 
-/** The inputs of placed walks (by layer id), read once per the files they name. */
-const inputsCache = new Map<string, { key: string; inputs: Promise<WalkInputs> }>();
+/**
+ * What the inputs of a placed walk are read for: the files it names, and its pose and pins. A
+ * reprocess rewrites the raw path under the same name, and main then rewrites the pose (a new
+ * `flight` or quality on the layer), so a changed pose or placement reads the files again.
+ */
+export const inputsKey = (projectId: string, walk: WalkLayer): string =>
+  `${projectId}|${walk.id}|${JSON.stringify(walk.path ?? null)}|${JSON.stringify(walk.flight ?? null)}|${JSON.stringify(walk.place ?? null)}`;
 
-const inputsKey = (projectId: string, walk: WalkLayer): string =>
-  `${projectId}|${walk.id}|${JSON.stringify(walk.path ?? null)}`;
+/** The inputs of placed walks (by layer id), read once per `inputsKey`; `clear` forgets them all. */
+export function createInputsCache(
+  load: (projectId: string, walk: WalkLayer) => Promise<WalkInputs>,
+) {
+  const cache = new Map<string, { key: string; inputs: Promise<WalkInputs> }>();
+  return {
+    get(projectId: string, walk: WalkLayer): Promise<WalkInputs> {
+      const key = inputsKey(projectId, walk);
+      let cached = cache.get(walk.id);
+      if (cached?.key !== key) {
+        cached = { key, inputs: load(projectId, walk) };
+        cache.set(walk.id, cached);
+      }
+      return cached.inputs;
+    },
+    clear(): void {
+      cache.clear();
+    },
+  };
+}
 
-function cachedInputs(projectId: string, walk: WalkLayer): Promise<WalkInputs> {
-  const key = inputsKey(projectId, walk);
-  let cached = inputsCache.get(walk.id);
-  if (cached?.key !== key) {
-    cached = { key, inputs: loadWalkInputs(projectId, walk) };
-    inputsCache.set(walk.id, cached);
-  }
-  return cached.inputs;
+const inputsCache = createInputsCache((projectId, walk) => loadWalkInputs(projectId, walk));
+const cachedInputs = (projectId: string, walk: WalkLayer) => inputsCache.get(projectId, walk);
+
+// another project (or the same one opened again from another folder): read everything afresh
+let inputsProject: string | null = projectCacheKey(workspace.getState().project);
+workspace.subscribe((s) => {
+  const now = projectCacheKey(s.project);
+  if (now === inputsProject) return;
+  inputsProject = now;
+  inputsCache.clear();
+});
+
+function projectCacheKey(p: OpenProject | null | undefined): string | null {
+  return p ? `${p.id}|${p.root}` : null;
 }
 
 /** The walks with a saved placement that fits (not `unplaced`). */

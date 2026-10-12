@@ -199,6 +199,11 @@ test.describe('placing a walk', () => {
     await win.reload();
     await openWalkProject(win);
 
+    // the walk is open in the 360 pane (its playback file in use) when it is removed
+    await rowAction(win, 'open');
+    await expect(win.getByTestId('walk-view')).toHaveAttribute('data-status', 'ready', {
+      timeout: 60_000,
+    });
     await rowAction(win, 'remove');
     const confirm = win.getByTestId('walk-remove-confirm');
     await expect(confirm).toContainText(

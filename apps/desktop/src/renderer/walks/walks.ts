@@ -70,9 +70,19 @@ export function placeWalk(layerId: string): void {
 export async function removeWalk(layerId: string): Promise<string | null> {
   const project = workspace.getState().project;
   if (!project) return 'No project is open.';
+  // the 360 pane lets go of the walk first, so its playback file is free to move
+  walks.getState().release(layerId);
+  await new Promise((resolve) => setTimeout(resolve, RELEASE_MS));
   const r = await bridge.call('walks:remove', { projectId: project.id, layerId });
-  if (!r.ok) return r.error;
-  if (!r.value.ok) return r.value.error;
-  workspace.getState().replaceManifest(r.value.manifest);
-  return null;
+  const error = !r.ok ? r.error : !r.value.ok ? r.value.error : null;
+  if (r.ok && r.value.ok) workspace.getState().replaceManifest(r.value.manifest);
+  else {
+    // not removed: the walk comes back to the list
+    const now = workspace.getState().project;
+    void walks.getState().sync(now?.id ?? null, now?.manifest.layers ?? []);
+  }
+  return error;
 }
+
+/** How long the 360 pane is given to unmount a walk before its files are moved. */
+const RELEASE_MS = 50;

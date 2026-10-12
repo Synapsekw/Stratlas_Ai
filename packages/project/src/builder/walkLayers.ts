@@ -4,6 +4,7 @@ import { stat } from 'node:fs/promises';
 import { join } from 'node:path';
 import { uniqueId, updateManifestFile, withPose } from './create';
 import { listWalks } from './walks';
+import { walkIdOfRecord } from './walkPaths';
 import { writeWalkPose } from './walkPose';
 
 /*
@@ -247,7 +248,8 @@ export async function refreshWalkPaths(
   return r.changed;
 }
 
-/** The walk id in `walks/<id>/walk.json`. */
+/** The walk id in `walks/<id>/walk.json` (a strict id, see `walkFolder`). */
 function walkIdOf(record: string): string | undefined {
-  return /^walks\/([^/]+)\/walk\.json$/.exec(record)?.[1];
+  if (!record.replaceAll('\\', '/').endsWith('/walk.json')) return undefined;
+  return walkIdOfRecord(record) ?? undefined;
 }

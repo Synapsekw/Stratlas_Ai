@@ -36,7 +36,7 @@ const ortho = (id: string, name: string): Layer => ({
 });
 
 /** Masafi as imported: two surveys, a terrain and an ortho each, plus the legacy viewer. */
-const masafi: ProjectManifest = {
+const siteB: ProjectManifest = {
   schema: 'aio.project/1',
   id: 'masafi',
   name: 'Masafi',
@@ -66,7 +66,7 @@ const masafi: ProjectManifest = {
 
 /** Al-Zour has one survey; the synthetic second date is a copy of its ortho named by date. */
 const alzour: ProjectManifest = {
-  ...masafi,
+  ...siteB,
   id: 'alzour',
   captures: [{ id: 'survey-2023-02-21', label: 'Drone survey', date: '2023-02-21' }],
   layers: [
@@ -95,7 +95,7 @@ describe('which layers show which capture', () => {
       src: { path: 'walks/a1/walk.mp4' },
       durationS: 60,
     };
-    const ix = captureIndex({ ...masafi, layers: [...masafi.layers, walk] });
+    const ix = captureIndex({ ...siteB, layers: [...siteB.layers, walk] });
     expect(ix.of['walk-a1']).toBe('survey-2020-12-31');
   });
 
@@ -107,7 +107,7 @@ describe('which layers show which capture', () => {
   });
 
   it('dates the Masafi terrains and orthos and orders the captures oldest first', () => {
-    const ix = captureIndex(masafi);
+    const ix = captureIndex(siteB);
     expect(ix.captures.map((c) => c.date)).toEqual(['2020-12-31', '2021-01-10']);
     expect(ix.layers['survey-2020-12-31']).toEqual(['terrain-2020-12-31', 'ortho-2020-12-31']);
     expect(ix.layers['survey-2021-01-10']).toEqual(['terrain-2021-01-10', 'ortho-2021-01-10']);
@@ -121,7 +121,7 @@ describe('which layers show which capture', () => {
   });
 
   it('takes explicit layer lists and survey keys first (volumes.json)', () => {
-    const ix = captureIndex(masafi, {
+    const ix = captureIndex(siteB, {
       layers: { 'survey-2020-12-31': ['ortho-2021-01-10'] },
       epochs: { 'survey-2020-12-31': 'a', 'survey-2021-01-10': 'b' },
     });
@@ -156,7 +156,7 @@ describe('which layers show which capture', () => {
   });
 
   it('falls back to the first or last date', () => {
-    const ix = captureIndex(masafi);
+    const ix = captureIndex(siteB);
     expect(knownCapture(ix, undefined, 'first')).toBe('survey-2020-12-31');
     expect(knownCapture(ix, 'gone', 'last')).toBe('survey-2021-01-10');
     expect(knownCapture(ix, 'survey-2021-01-10', 'first')).toBe('survey-2021-01-10');
@@ -164,23 +164,23 @@ describe('which layers show which capture', () => {
 });
 
 describe('a view of one capture', () => {
-  const ix = captureIndex(masafi);
+  const ix = captureIndex(siteB);
   const e1 = 'survey-2020-12-31';
   const e2 = 'survey-2021-01-10';
 
   it('hides the other date and shows its own while any date of the slot is shown', () => {
     // the volumetric workspace shows 10 Jan: the 31 Dec layers are switched off
     const hidden = { 'terrain-2020-12-31': true, 'ortho-2020-12-31': true } as const;
-    expect(captureHidden(ix, e1, masafi.layers, hidden)).toEqual({
+    expect(captureHidden(ix, e1, siteB.layers, hidden)).toEqual({
       'terrain-2021-01-10': true,
       'ortho-2021-01-10': true,
     });
-    expect(captureHidden(ix, e2, masafi.layers, hidden)).toEqual(hidden);
+    expect(captureHidden(ix, e2, siteB.layers, hidden)).toEqual(hidden);
     // the ortho switched off for every date stays off in both views
     const noOrtho = { ...hidden, 'ortho-2021-01-10': true } as const;
-    expect(captureHidden(ix, e1, masafi.layers, noOrtho)['ortho-2020-12-31']).toBe(true);
+    expect(captureHidden(ix, e1, siteB.layers, noOrtho)['ortho-2020-12-31']).toBe(true);
     // common layers follow the layer tree
-    expect(captureHidden(ix, e1, masafi.layers, { 'volumetric-review': true })).toMatchObject({
+    expect(captureHidden(ix, e1, siteB.layers, { 'volumetric-review': true })).toMatchObject({
       'volumetric-review': true,
     });
   });
@@ -233,7 +233,7 @@ describe('a view of one capture', () => {
 });
 
 describe('scoped store', () => {
-  const ix = captureIndex(masafi);
+  const ix = captureIndex(siteB);
   const scope = (capture: string, mode: StoreScope['mode'], camera = true): StoreScope => ({
     capture,
     index: ix,
@@ -243,14 +243,14 @@ describe('scoped store', () => {
 
   it('is the workspace itself without a scope', () => {
     const ws = createWorkspace();
-    ws.getState().openProject({ id: 'masafi', root: 'r', manifest: masafi });
+    ws.getState().openProject({ id: siteB.id, root: 'r', manifest: siteB });
     const s = scopedStore(ws);
     expect(s.getState()).toBe(ws.getState());
   });
 
   it('drops other dates in a second view and keeps identities across clock ticks', () => {
     const ws = createWorkspace();
-    ws.getState().openProject({ id: 'masafi', root: 'r', manifest: masafi });
+    ws.getState().openProject({ id: siteB.id, root: 'r', manifest: siteB });
     const s = scopedStore(ws, scope('survey-2020-12-31', 'drop'));
     const a = s.getState();
     expect(a.project?.manifest.layers.map((l) => l.id)).toEqual([
@@ -273,7 +273,7 @@ describe('scoped store', () => {
 
   it('keeps every layer in a hide view and switches the date on a scope change', () => {
     const ws = createWorkspace();
-    ws.getState().openProject({ id: 'masafi', root: 'r', manifest: masafi });
+    ws.getState().openProject({ id: siteB.id, root: 'r', manifest: siteB });
     const s = scopedStore(ws, scope('survey-2020-12-31', 'hide'));
     expect(s.getState().project).toBe(ws.getState().project);
     expect(s.getState().hidden['terrain-2021-01-10']).toBe(true);
@@ -289,7 +289,7 @@ describe('scoped store', () => {
 
   it('writes through to the workspace and holds back camera requests when linked', () => {
     const ws = createWorkspace();
-    ws.getState().openProject({ id: 'masafi', root: 'r', manifest: masafi });
+    ws.getState().openProject({ id: siteB.id, root: 'r', manifest: siteB });
     const s = scopedStore(ws, scope('survey-2020-12-31', 'drop', false));
     s.getState().select({ kind: 'asset', id: 'P02_e1', layer: 'terrain-2020-12-31' });
     expect(ws.getState().selection?.id).toBe('P02_e1');
@@ -308,7 +308,7 @@ describe('scoped store', () => {
 describe('explicit layer dates (M8, Layer.capture)', () => {
   /** A synthetic two-date site: the names say nothing, or the wrong thing, about the date. */
   const site: ProjectManifest = {
-    ...masafi,
+    ...siteB,
     id: 'synthetic-site',
     captures: [
       { id: 'd1', label: 'First survey', date: '2026-03-01' },

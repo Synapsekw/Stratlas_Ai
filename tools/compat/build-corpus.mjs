@@ -37,6 +37,7 @@ import { MILESTONES } from './milestones.mjs';
 import { sampleFromDemo } from './sample.mjs';
 
 export const CORPUS = join(repoRoot, 'tools', 'compat', 'corpus');
+// the in-progress build: renamed to the released version (and a new CURRENT added) when it ships
 export const CURRENT = '0.11';
 
 const argv = process.argv.slice(2);

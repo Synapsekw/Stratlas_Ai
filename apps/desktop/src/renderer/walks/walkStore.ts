@@ -27,6 +27,12 @@ export interface WalkState {
   /** Ask main for the records again; a stale answer (the project changed meanwhile) is dropped. */
   refresh(): Promise<void>;
   select(layerId: string): void;
+  /**
+   * Let go of a walk that is about to be removed: it leaves the list (so the 360 video pane
+   * unmounts it and Chromium closes its playback file) and is no longer the chosen one. The next
+   * `sync` brings it back if it is still in the manifest.
+   */
+  release(layerId: string): void;
 }
 
 /** What main answers to `walks:list`, as the bridge wraps it. */
@@ -101,6 +107,13 @@ export function createWalkStore(call: WalkListCall): StoreApi<WalkState> {
     },
     select: (layerId) => {
       if (get().walks.some((w) => w.id === layerId)) set({ selected: layerId });
+    },
+    release: (layerId) => {
+      const { walks, selected } = get();
+      set({
+        walks: walks.filter((w) => w.id !== layerId),
+        selected: selected === layerId ? null : selected,
+      });
     },
   }));
 }

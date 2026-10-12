@@ -96,6 +96,7 @@ export {
   type WalkPoseResult,
 } from './walkPose';
 export { TRASH_DIR, TRASH_KEEP_DAYS, removeWalk, sweepTrash } from './walkRemove';
+export { WALK_ID, walkFolder, walkIdOfRecord } from './walkPaths';
 export {
   classifyWalkSource,
   insta360Name,

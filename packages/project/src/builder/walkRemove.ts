@@ -4,6 +4,7 @@ import { mkdir, readdir, rm, stat } from 'node:fs/promises';
 import { join } from 'node:path';
 import { renameWhenFree } from '../import/rename';
 import { updateManifestFile } from './manifestFile';
+import { walkFolder } from './walkPaths';
 
 /*
  * Removing a walk (the walk layer and placing, "The smaller points"): the layer leaves the
@@ -30,14 +31,6 @@ const exists = (p: string) =>
     () => false,
   );
 
-/** `walks/<id>` of a record path `walks/<id>/walk.json`, or undefined for any other shape. */
-function walkFolder(recordPath: string): string | undefined {
-  const parts = recordPath.replaceAll('\\', '/').split('/');
-  const [dir, id, file, ...rest] = parts;
-  if (dir !== WALKS_DIR || !id || id.startsWith('.') || !file || rest.length > 0) return undefined;
-  return `${WALKS_DIR}/${id}`;
-}
-
 /**
  * Take a walk layer out of the manifest and move its folder to `.trash/`. Refuses an unknown
  * layer and one that is not a walk. A folder that is already gone still removes the layer.
@@ -53,8 +46,8 @@ export async function removeWalk(
     if (!layer) throw new Error(`There is no layer "${layerId}" in this project.`);
     if (layer.kind !== 'walk') throw new Error(`"${layer.name}" is not a walk.`);
     const rec = layer.record;
-    const where = 'path' in rec ? walkFolder(rec.path) : undefined;
-    if (where !== undefined) found.folder = where;
+    const where = 'path' in rec ? walkFolder(rec.path) : null;
+    if (where !== null) found.folder = where;
     return { manifest: { ...m, layers: m.layers.filter((l) => l.id !== layerId) } };
   });
   const folder = found.folder;

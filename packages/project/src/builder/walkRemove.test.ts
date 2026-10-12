@@ -3,7 +3,7 @@ import { mkdir, mkdtemp, readdir, rm, stat, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { createProject, readManifestFile } from './create';
+import { createProject, readManifestFile, writeManifestFile } from './create';
 import { migrateWalks } from './walkLayers';
 import { removeWalk, sweepTrash } from './walkRemove';
 
@@ -111,4 +111,27 @@ describe('sweepTrash', () => {
   it('answers nothing when there is no .trash', async () => {
     expect(await sweepTrash(root, () => NOW)).toEqual([]);
   });
+});
+
+describe('removeWalk: record paths stay inside the project', () => {
+  for (const record of ['walks/../walk.json', 'walks/../evil/walk.json']) {
+    it(`moves nothing for ${record}`, async () => {
+      await addWalk('w1');
+      await mkdir(join(root, 'evil'), { recursive: true });
+      await writeFile(join(root, 'evil', 'walk.json'), 'keep');
+      const m0 = await readManifestFile(root);
+      await writeManifestFile(root, {
+        ...m0,
+        layers: m0.layers.map((l) =>
+          l.id === 'walk-w1' && l.kind === 'walk' ? { ...l, record: { path: record } } : l,
+        ),
+      });
+      const m = await removeWalk(root, 'walk-w1', () => NOW);
+      expect(m.layers.some((l) => l.id === 'walk-w1')).toBe(false);
+      expect(await exists(join(root, '.trash'))).toBe(false);
+      expect(await exists(join(root, 'evil', 'walk.json'))).toBe(true);
+      expect(await exists(join(root, 'walks', 'w1', 'walk.json'))).toBe(true);
+      expect(await exists(join(root, 'manifest.json'))).toBe(true);
+    });
+  }
 });

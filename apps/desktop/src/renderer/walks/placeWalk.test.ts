@@ -17,9 +17,12 @@ vi.mock('../builder/state', () => ({
 import {
   createPlaceSession,
   createPlaceUi,
+  createInputsCache,
   createPlaceWalk,
   followMap,
+  inputsKey,
   loadWalkInputs,
+  orientationDataRef,
   placedMapOverlays,
   placedWalkFits,
   viewHeading,
@@ -128,6 +131,25 @@ describe('loadWalkInputs', () => {
     expect(gone.raw).toBeNull();
   });
 
+  it('reads the orientation data the header names, next to the header, as main does', async () => {
+    // the layer's orientationData names another file (or none): the header's `data` wins
+    for (const path of [
+      { ...refs, orientationData: { path: 'walks/a/elsewhere.bin' } },
+      { raw: refs.raw, orientation: refs.orientation },
+    ]) {
+      const get = fixtureGet();
+      const got = await loadWalkInputs('p', walkLayer({ path }), get);
+      expect(got.orientation?.length).toBeGreaterThan(1000);
+      expect(get.mock.calls.map((c) => c[0])).toContain(
+        'aio://project/p/walks/a/orientation.synthetic.bin',
+      );
+    }
+    expect(orientationDataRef({ path: 'walks/a/orientation.json' }, 'o.bin')).toEqual({
+      path: 'walks/a/o.bin',
+    });
+    expect(orientationDataRef({ hash: 'a'.repeat(64) }, 'o.bin')).toBeUndefined();
+  });
+
   it('an orientation file of the wrong length is refused, the path still read', async () => {
     const got = await loadWalkInputs(
       'p',
@@ -136,6 +158,52 @@ describe('loadWalkInputs', () => {
     );
     expect(got.raw).not.toBeNull();
     expect(got.orientation).toBeNull();
+  });
+});
+
+describe('placed walk inputs cache', () => {
+  const placed = walkLayer({
+    path: { raw: refs.raw },
+    flight: { src: { path: 'walks/a/pose.json' }, startUtcMs: 0 },
+    place: {
+      pins: [
+        { t: 0, surface: 'sheet-own', at: [0, 0] },
+        { t: 9, surface: 'sheet-own', at: [5, 5] },
+      ],
+      yawOffsetDeg: 0,
+      heightM: 1.7,
+      quality: 'good',
+    },
+  });
+
+  it('reads once per key, again after a new pose, new pins or a clear', async () => {
+    const load = vi.fn(() => Promise.resolve({ raw: null, orientation: null }));
+    const cache = createInputsCache(load);
+    await cache.get('p', placed);
+    await cache.get('p', placed);
+    expect(load).toHaveBeenCalledTimes(1);
+    // a reprocess: main rewrote the pose
+    await cache.get('p', {
+      ...placed,
+      flight: { src: { path: 'walks/a/pose.json' }, startUtcMs: 5 },
+    });
+    expect(load).toHaveBeenCalledTimes(2);
+    const moved = placed.place && {
+      ...placed.place,
+      pins: placed.place.pins.map((p) => ({ ...p, t: p.t + 1 })),
+    };
+    await cache.get('p', { ...placed, place: moved });
+    expect(load).toHaveBeenCalledTimes(3);
+    await cache.get('p', { ...placed, place: moved });
+    expect(load).toHaveBeenCalledTimes(3);
+    cache.clear();
+    await cache.get('p', { ...placed, place: moved });
+    expect(load).toHaveBeenCalledTimes(4);
+  });
+
+  it('the key names the pose and the pins', () => {
+    expect(inputsKey('p', placed)).not.toBe(inputsKey('p', { ...placed, flight: undefined }));
+    expect(inputsKey('p', placed)).not.toBe(inputsKey('q', placed));
   });
 });
 

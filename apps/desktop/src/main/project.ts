@@ -189,7 +189,12 @@ export async function openPackageProject(
   }
   const { archive, header, issuesJson } = r.value;
   // walks filed beside the manifest by an older build are layers here, in memory only
-  const walkLayers = await walkLayersInMemory(archive, r.value.manifest).catch(() => []);
+  const walkLayers = await walkLayersInMemory(archive, r.value.manifest).catch((e: unknown) => {
+    console.warn(
+      `Package ${basename(file)}: its walks were not turned into layers (${e instanceof Error ? e.message : String(e)}).`,
+    );
+    return [];
+  });
   const manifest =
     walkLayers.length > 0
       ? { ...r.value.manifest, layers: [...r.value.manifest.layers, ...walkLayers] }

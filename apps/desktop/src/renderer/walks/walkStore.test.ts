@@ -67,6 +67,20 @@ describe('walk store', () => {
     expect(s.getState().selected).toBeNull();
   });
 
+  it('releases a walk about to be removed: out of the list, not chosen, back on the next sync', async () => {
+    const s = createWalkStore(answers({ p: [record('a'), record('b')] }));
+    await s.getState().sync('p', [layer('a'), layer('b')]);
+    s.getState().select('walk-b');
+    s.getState().release('walk-b');
+    expect(s.getState().walks.map((w) => w.id)).toEqual(['walk-a']);
+    expect(s.getState().selected).toBeNull();
+    s.getState().select('walk-a');
+    s.getState().release('walk-b');
+    expect(s.getState().selected).toBe('walk-a');
+    await s.getState().sync('p', [layer('a'), layer('b')]);
+    expect(s.getState().walks.map((w) => w.id)).toEqual(['walk-a', 'walk-b']);
+  });
+
   it('asks main for the records only when a walk layer is new to it', async () => {
     let calls = 0;
     const s = createWalkStore((projectId) => {

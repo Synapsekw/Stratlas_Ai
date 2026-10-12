@@ -18,9 +18,10 @@ import {
   type WalkQuality,
 } from '@aio/schema';
 import { readFile, rm, writeFile } from 'node:fs/promises';
-import { join, posix } from 'node:path';
+import { join } from 'node:path';
 import { renameWhenFree } from '../import/rename';
 import { drawingStemOf } from './drawingPlacement';
+import { walkFolder } from './walkPaths';
 
 /*
  * The walk's pose file (the walk layer and placing, "The pose file"): `walks/<id>/pose.json`, a
@@ -93,11 +94,12 @@ export async function readDrawingSizes(
   return out;
 }
 
-/** `walks/<id>` of a walk layer (the folder of its `walk.json`), or null for a hashed record. */
+/**
+ * `walks/<id>` of a walk layer (the folder of its `walk.json`), or null for a hashed record and
+ * for any record path that is not exactly `walks/<id>/<file>` (nothing is read or written then).
+ */
 export function walkFolderOf(layer: WalkLayer): string | null {
-  if (!('path' in layer.record)) return null;
-  const dir = posix.dirname(layer.record.path.replace(/\\/g, '/'));
-  return dir === '.' ? null : dir;
+  return 'path' in layer.record ? walkFolder(layer.record.path) : null;
 }
 
 const isMissing = (e: unknown) => (e as { code?: unknown } | null)?.code === 'ENOENT';
@@ -189,7 +191,7 @@ export function walkStartUtcMs(capturedAt: unknown): number {
 }
 
 async function readStartUtcMs(root: string, layer: WalkLayer): Promise<number> {
-  if (!('path' in layer.record)) return 0;
+  if (!('path' in layer.record) || walkFolder(layer.record.path) === null) return 0;
   try {
     const j = JSON.parse(await readFile(join(root, layer.record.path), 'utf8')) as {
       source?: { capturedAt?: unknown };

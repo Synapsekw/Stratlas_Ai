@@ -320,3 +320,43 @@ describe('walk pose file', () => {
     expect(s.drawing('nope')).toBeNull();
   });
 });
+
+describe('walk pose file: record paths stay inside the project', () => {
+  for (const record of ['walks/../walk.json', 'walks/../evil/walk.json']) {
+    it(`writes and removes nothing for ${record}`, async () => {
+      await setUp();
+      // a hand edited record pointing outside walks/<id>/, with a pose.json already there
+      const outside = join(root, record.replace(/walk\.json$/, ''));
+      await mkdir(outside, { recursive: true });
+      await writeFile(join(outside, 'walk.json'), JSON.stringify({ source: {} }));
+      await writeFile(join(outside, 'raw-path.json'), JSON.stringify(rawPath()));
+      await writeFile(join(outside, 'pose.json'), 'keep');
+      await updateManifestFile(root, (m) => ({
+        manifest: {
+          ...m,
+          layers: m.layers.map((l) =>
+            l.id === 'walk-w' && l.kind === 'walk' ? { ...l, record: { path: record } } : l,
+          ),
+        },
+      }));
+      // placing writes nothing outside, clearing removes nothing outside
+      const placed = await writeWalkPose(
+        root,
+        {
+          ...(await readManifestFile(root)),
+          layers: (await readManifestFile(root)).layers.map((l) =>
+            l.id === 'walk-w' && l.kind === 'walk' ? { ...l, place: cal() } : l,
+          ),
+        },
+        'walk-w',
+      );
+      expect(placed.flight).toBeNull();
+      expect(await readFile(join(outside, 'pose.json'), 'utf8')).toBe('keep');
+      expect(await exists(join(outside, 'pose.json.tmp'))).toBe(false);
+      await writeWalkPose(root, await readManifestFile(root), 'walk-w');
+      expect(await readFile(join(outside, 'pose.json'), 'utf8')).toBe('keep');
+      const inputs = await readWalkInputs(root, walkOf(await readManifestFile(root)));
+      expect(inputs.raw).toBeNull();
+    });
+  }
+});
