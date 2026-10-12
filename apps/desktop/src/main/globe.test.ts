@@ -4,7 +4,7 @@ import { exportPackage, openZip } from '@aio/project/package';
 import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   globeProjectReader,
   globeSites,
@@ -277,6 +277,28 @@ describe('raster packs and Globe settings', () => {
     const r = await ipc.call('globe:packs', {});
     expect(r).toMatchObject({ ok: true, terrain: [] });
     expect((r as { imagery: { id: string }[] }).imagery.map((p) => p.id)).toEqual(['gcc']);
+  });
+
+  it('logs a failing package pack listing once, not on every call', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    try {
+      const ipc = collectHandlers((handle) => {
+        registerGlobeIpc({
+          handle,
+          library: () => Promise.resolve([]),
+          readProject: () => Promise.resolve(null),
+          dataRoot: () => Promise.resolve(dir),
+          settingsFile: join(dir, 'globe.json'),
+          packageRasterPacks: () => Promise.reject(new Error('damaged package')),
+        });
+      });
+      await ipc.call('globe:packs', {});
+      await ipc.call('globe:packs', {});
+      expect(warn).toHaveBeenCalledTimes(1);
+      expect(String(warn.mock.calls[0]?.[0])).toContain('damaged package');
+    } finally {
+      warn.mockRestore();
+    }
   });
 
   it('answers every channel: sites, packs, and settings saved in globe.json', async () => {

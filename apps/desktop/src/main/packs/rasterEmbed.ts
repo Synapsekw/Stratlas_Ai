@@ -264,20 +264,46 @@ export async function embeddedRasterPacks(
   return out;
 }
 
+/**
+ * Embedded raster id -> member, per archive and project id, scanned once. Keyed on the archive
+ * object, so a closed package's entry goes with it and needs no invalidation.
+ */
+const embeddedIndex = new WeakMap<ZipArchive, Map<string, Map<string, string>>>();
+
+function indexOf(projectId: string, archive: ZipArchive): Map<string, string> {
+  let byProject = embeddedIndex.get(archive);
+  if (!byProject) {
+    byProject = new Map();
+    embeddedIndex.set(archive, byProject);
+  }
+  let index = byProject.get(projectId);
+  if (!index) {
+    index = new Map();
+    const res = KINDS.map((kind) => {
+      const dir = EMBEDDED_RASTER_DIRS[kind];
+      return { kind, dir, re: new RegExp(`^${dir}/([a-z0-9-]+)\\.pmtiles$`) };
+    });
+    for (const name of archive.entries.keys()) {
+      for (const { kind, dir, re } of res) {
+        const packId = re.exec(name)?.[1];
+        if (!packId || !archive.entries.has(`${dir}/${packId}.json`)) continue;
+        index.set(`${kind}/${embeddedRasterId(projectId, packId)}`, name);
+      }
+    }
+    byProject.set(projectId, index);
+  }
+  return index;
+}
+
 /** The package member behind an embedded raster pack id, for `aio://packs/<kind>/<id>.pmtiles`. */
 export function findEmbeddedRaster(
   kind: RasterPackKind,
   id: string,
   packages: Iterable<readonly [string, { archive: ZipArchive }]>,
 ): { archive: ZipArchive; member: string } | undefined {
-  const dir = EMBEDDED_RASTER_DIRS[kind];
-  const re = new RegExp(`^${dir}/([a-z0-9-]+)\\.pmtiles$`);
   for (const [projectId, { archive }] of packages) {
-    for (const name of archive.entries.keys()) {
-      const packId = re.exec(name)?.[1];
-      if (!packId || !archive.entries.has(`${dir}/${packId}.json`)) continue;
-      if (embeddedRasterId(projectId, packId) === id) return { archive, member: name };
-    }
+    const member = indexOf(projectId, archive).get(`${kind}/${id}`);
+    if (member) return { archive, member };
   }
   return undefined;
 }

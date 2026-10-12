@@ -182,10 +182,28 @@ export function registerGlobeIpc(deps: GlobeIpcDeps): void {
       return { ok: false as const, error: `The Globe could not list the projects: ${String(e)}` };
     }
   });
+  // The last failure logged, so a package that stays damaged is reported once, not on every call.
+  let lastPackError: string | undefined;
   handle('globe:packs', async () => {
     const more = deps.packageRasterPacks ?? (() => Promise.resolve([]));
     const both = (kind: RasterPackKind) =>
-      Promise.all([packs(kind), more(kind).catch(() => [])]).then(([a, b]) => [...a, ...b]);
+      Promise.all([
+        packs(kind),
+        more(kind).then(
+          (r) => {
+            lastPackError = undefined;
+            return r;
+          },
+          (e: unknown) => {
+            const text = e instanceof Error ? e.message : String(e);
+            if (text !== lastPackError) {
+              console.warn(`Globe: could not list the packs of open packages (${text}).`);
+              lastPackError = text;
+            }
+            return [] as RasterPackInfo[];
+          },
+        ),
+      ]).then(([a, b]) => [...a, ...b]);
     const [imagery, terrain] = await Promise.all([both('imagery'), both('terrain')]);
     return { ok: true as const, imagery, terrain };
   });

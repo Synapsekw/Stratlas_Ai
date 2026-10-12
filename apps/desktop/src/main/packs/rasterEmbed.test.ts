@@ -287,6 +287,31 @@ describe('embeddedRasterPacks and findEmbeddedRaster', () => {
     expect(listed).toBe(embeddedRasterId(project, id));
     expect(findEmbeddedRaster('imagery', listed, list)?.member).toBe(`packs/imagery/${id}.pmtiles`);
   });
+  it('scans an archive once however many lookups, and forgets a package that closed', () => {
+    const one = archiveOf({
+      'packs/imagery/site.json': Buffer.from(JSON.stringify(meta('site'))),
+      'packs/imagery/site.pmtiles': Buffer.from('x'),
+    });
+    let scans = 0;
+    const entries = one.entries;
+    const counted = {
+      ...one,
+      entries: new Proxy(entries, {
+        get(t, k) {
+          if (k === 'keys') scans += 1;
+          const v: unknown = Reflect.get(t, k, t);
+          return typeof v === 'function' ? (v as (...a: unknown[]) => unknown).bind(t) : v;
+        },
+      }),
+    } as ZipArchive;
+    const id = embeddedRasterId('p1', 'site');
+    const open: [string, { archive: ZipArchive }][] = [['p1', { archive: counted }]];
+    for (let n = 0; n < 5; n += 1) {
+      expect(findEmbeddedRaster('imagery', id, open)?.member).toBe('packs/imagery/site.pmtiles');
+    }
+    expect(scans).toBe(1);
+    expect(findEmbeddedRaster('imagery', id, [])).toBeUndefined();
+  });
   it('keeps packs site and site-2 of one package apart', () => {
     const two = archiveOf({
       'packs/imagery/site.json': Buffer.from(JSON.stringify(meta('site'))),
