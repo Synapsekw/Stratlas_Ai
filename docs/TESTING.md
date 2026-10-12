@@ -793,6 +793,11 @@ Use a real drone flight of yours. The photos stay in their folder and are only r
 - [ ] Back in **Demo tank farm**, import that same `tileset.json`: "That folder holds this project. Pick the folder of the 3D Tiles export." Nothing is copied.
 - [ ] Optional, with a 3D Tiles export from another program (DJI Terra, Pix4D): a georeferenced one shows in place; one without a georeference says "It has no georeference of its own, so it is kept hidden: placing it on the map is not built yet."
 
+### Diagnostics and performance
+
+- [ ] Open **Photo processing demo**, then **Settings**, **About and updates**, **Export diagnostics**, and save the zip. It holds `photo.json` with run `20260314-1000`, its steps and times and the tool versions, and this computer's processor, memory, free disk and graphics card. Search the whole zip for `SYN_` and for the site's coordinates: nothing. `photo.json` names no folder either (`settings.json` names the data folder on purpose).
+- [ ] (optional, in a window when the PC is free) The benchmark: `node tools/bench/m10-bench-data.mjs --out <folder>`, then `QUADRION_BENCH=1 QUADRION_BENCH_ROOT=<folder> pnpm --filter @aio/desktop exec playwright test e2e/perf-m10-bench.spec.ts --workers=1`. `bench-report.json` in that folder shows 30 fps or more and the Medium caps held.
+
 ### Licences
 
 The six native libraries the build found (libiconv, SpatiaLite, FreeXL, libquadmath, the GCC runtime and the Microsoft Visual C++ runtime) were approved on 8 Oct 2026. Later that day licences stopped gating anything and GPL was accepted in the pipeline pack.

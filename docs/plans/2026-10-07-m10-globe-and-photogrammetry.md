@@ -908,11 +908,15 @@ The integration lead merges when green, re-locks `uv.lock`, builds pipeline pack
 - **Change detection (M8):** two processed surveys of the same site run `change.raster`, `change.surface` and `change.cloud` directly; the Globe shows change heat maps as imagery layers.
 - **Agent:** `process_photos` (write, approval; starts `photo.align` with a preset), `accuracy_summary` (read), `show_on_globe` (navigate) in the compact profile. Done 12 Oct 2026 (`docs/plans/2026-10-12-m10-agent-photo-tools.md`).
 - **Performance (D7):** a 500 M point cloud and a 20 M triangle mesh tileset hold the Medium budget in the site view; the Globe holds 30 fps on the Medium tier with three sites and two region packs.
+  - Done 12 Oct 2026 in `2026-10-12-m10-hardening-and-docs.md`: the CI proxy `e2e/perf-m10.spec.ts` (Medium forced on the software GPU, the tile cache scaled to 1 %, the point cap at 4,000; frame ceilings 400 ms until three CI runs set them) and the opt-in benchmark `e2e/perf-m10-bench.spec.ts` with `tools/bench/m10-bench-data.mjs` (real hardware, 30 fps, in a window the founder gives).
 - **Accessibility (D6):** axe on the wizard, GCP marker, report and Globe chrome; keyboard GCP marking.
+  - Done 12 Oct 2026 in `2026-10-12-m10-hardening-and-docs.md`: axe on the three wizard states that had none (a run starting, the questions, tools too old) and a keyboard-only pass through the wizard; the GCP and Globe audits were there already.
 - **Diagnostics (D5):** pack version, native build ids, hardware probe, last run timings and memory peak; never photo paths or coordinates.
+  - Done 12 Oct 2026 in `2026-10-12-m10-hardening-and-docs.md`: `photo.json` in the diagnostics bundle: the hardware probe and the latest three runs of the open projects (steps, times, peak memory, tool versions, accuracy figures), from an allow-list.
 - **macOS:** notarised native tools; Accelerate sparse in Ceres; the Globe on Apple silicon GPUs.
 - **User guide (D8):** chapters on processing photos, GCPs and accuracy, the Globe, imagery and terrain packs (with each source's licence), OPF; screenshots from e2e on synthetic data only.
 - **Docs:**
+  - Done 12 Oct 2026: `ROADMAP.md`, `PRD.md` and `SECURITY-AND-DATA.md` below. The others are still open.
   - `ROADMAP.md`: the M10 row and status.
   - `PRD.md`: the non-goal change and PHO and GLB lines.
   - `SPEC.md`: `packages/globe`, `packages/tiles`, section 7 (pack native tools).
