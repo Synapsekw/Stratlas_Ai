@@ -42,6 +42,7 @@ TOOLS = {
     "texrecon": ("AIO_TEXRECON", "texrecon"),
     "PoissonRecon": ("AIO_POISSONRECON", "poissonrecon"),
     "SurfaceTrimmer": ("AIO_SURFACETRIMMER", "poissonrecon"),
+    "ffmpeg": ("QUADRION_FFMPEG", "ffmpeg"),
 }
 GB = 1024**3
 
@@ -54,7 +55,8 @@ def find_tool(name: str) -> str | None:
         return env if Path(env).is_file() else None
     exe = f"{name}.exe" if os.name == "nt" else name
     pack = Path(sys.prefix).parent / "tools" / folder
-    for cand in (pack / exe, pack / "bin" / exe):
+    # A conda-forge install (micromamba) puts Windows binaries in Library/bin.
+    for cand in (pack / exe, pack / "Library" / "bin" / exe, pack / "bin" / exe):
         if cand.is_file():
             return str(cand)
     return shutil.which(name)

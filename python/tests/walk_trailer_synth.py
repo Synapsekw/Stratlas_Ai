@@ -53,7 +53,7 @@ def synth_imu(seconds: float, rate: int, seed: int = 0) -> Imu:
 
 def _to_raw_axes(v: np.ndarray) -> np.ndarray:
     """Camera frame (x right, y down, z forward) to the X4 sensor axes (inverse of the reader)."""
-    return np.stack([v[:, 1], -v[:, 2], -v[:, 0]], axis=1)
+    return np.stack([v[:, 1], v[:, 2], v[:, 0]], axis=1)
 
 
 def _record(fmt: int, rid: int, payload: bytes) -> bytes:

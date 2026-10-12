@@ -51,6 +51,7 @@ from pathlib import Path
 import numpy as np
 from PIL import Image
 
+from aio_pipelines.walk.calib import CALIBRATED_FOV_DEG
 from aio_pipelines.walk.trailer import Imu
 from walk_trailer_synth import write_trailer
 
@@ -63,7 +64,7 @@ TURN_RADIUS = 0.6
 STEP_HZ = 1.8
 BOUNCE_G = 0.15
 WOBBLE_DEG = 4.0
-FOV_DEG = 195.0
+FOV_DEG = CALIBRATED_FOV_DEG  # the synthetic clip carries a calibration (parse_offset)
 LENS1_SHIFT = (3.0, -2.0)  # pixels at 640, scaled with lens_px
 SENSOR_LENS = 2880.0  # sensor pixels per lens side in the offset string
 IMU_HZ = 1000

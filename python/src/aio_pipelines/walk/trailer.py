@@ -20,8 +20,8 @@ entries are u64 time (same unit) plus an f64 exposure, 16 bytes.
 Times become seconds from the first video frame (metadata ``first_frame_timestamp``; else the
 first frame-time entry; else the first sample), less the metadata ``gyro_timestamp`` (ms) for the
 samples; samples and frame entries before the first frame are dropped. Axes become the camera
-frame x right, y down, z forward: the X4 sensor's x points down, y back, z left, so camera
-(x, y, z) = (-sz, sx, -sy).
+frame x right, y down, z forward: the X4 sensor's x points down, y forward, z right, so camera
+(x, y, z) = (sz, sx, sy) (checked against the horizon in the picture).
 
 A damaged trailer never raises: every length is bounds-checked and problems become warnings with
 ``imu=None``. The serial is kept only as a sha256 prefix.
@@ -245,8 +245,13 @@ def _decode_samples(
 
 
 def _camera_axes(v: np.ndarray) -> np.ndarray:
-    """X4 sensor axes (x down, y back, z left) to the camera frame (x right, y down, z forward)."""
-    return np.stack([-v[:, 2], v[:, 0], -v[:, 1]], axis=1)
+    """X4 sensor axes (x down, y forward, z right) to the camera frame (x right, y down, z forward).
+
+    Checked on footage (12 Oct 2026): with this mapping the accelerometer's tilt matches the
+    horizon in the picture and the levelled copy is level; the half turn about y that the
+    telemetry-parser orientation string suggests made it tilt the other way.
+    """
+    return np.stack([v[:, 2], v[:, 0], v[:, 1]], axis=1)
 
 
 def read_trailer(path: str | Path) -> Trailer | None:

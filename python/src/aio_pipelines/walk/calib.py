@@ -8,7 +8,12 @@ in sensor pixels, with the N lenses side by side across ``sensor_w`` (an X4: 2 l
 16000 x 6000 sensor, each lens 8000 x 6000). The recorded lens stream is a centred window crop of
 one lens (an X4: 5760 x 5760, metadata ``window_crop_info``) scaled down to the stream size (an
 X4: 2880 x 2880). The angles are passed through as written (an X4 writes a roll near 90 degrees,
-the sensor sits sideways in the body); the stitcher decides how to apply them.
+the sensor sits sideways in the body); ``walk.lens`` applies only the part past the nearest quarter turn, as the streams are already
+upright.
+
+The radius stands for a field of view of 193.5 degrees (``CALIBRATED_FOV_DEG``) under the
+equidistant model, not the 195 degrees assumed without a calibration: fitted on an X4 clip's seam
+(12 Oct 2026, SIFT matches between the lenses' overlap; a polynomial term did not improve it).
 """
 
 from __future__ import annotations
@@ -17,6 +22,7 @@ import math
 from dataclasses import dataclass
 
 DEFAULT_FOV_DEG = 195.0
+CALIBRATED_FOV_DEG = 193.5  # the field of view the offset string's radius stands for (X4, fitted)
 
 
 @dataclass(frozen=True)
@@ -84,7 +90,7 @@ def parse_offset(
                 cx=(cx - x0) * sx,
                 cy=(cy - y0) * sy,
                 radius=radius * math.sqrt(sx * sy),
-                fov_deg=DEFAULT_FOV_DEG,
+                fov_deg=CALIBRATED_FOV_DEG,
                 yaw_deg=yaw,
                 pitch_deg=pitch,
                 roll_deg=roll,

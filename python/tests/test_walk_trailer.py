@@ -13,7 +13,7 @@ from pathlib import Path
 import numpy as np
 import pytest
 
-from aio_pipelines.walk.calib import DEFAULT_FOV_DEG, Lens, default_lenses, parse_offset
+from aio_pipelines.walk.calib import CALIBRATED_FOV_DEG, Lens, default_lenses, parse_offset
 from aio_pipelines.walk.trailer import INSTA360_MARK, REC_IMU, REC_INDEX, Imu, read_trailer
 from walk_trailer_synth import SYNTH_OFFSET, synth_imu, write_trailer
 
@@ -170,7 +170,7 @@ def test_parse_offset_fixture_centres():
         assert abs(lens.cx - STREAM / 2) < 0.05 * STREAM
         assert abs(lens.cy - STREAM / 2) < 0.05 * STREAM
         assert 0.9 * STREAM / 2 < lens.radius < 1.1 * STREAM / 2
-        assert lens.fov_deg == DEFAULT_FOV_DEG
+        assert lens.fov_deg == CALIBRATED_FOV_DEG
     # Without the crop the centres still land near the middle.
     rough = parse_offset(tr.offset, STREAM, STREAM)
     assert rough is not None and all(abs(lens.cx - STREAM / 2) < 0.05 * STREAM for lens in rough)
@@ -178,7 +178,7 @@ def test_parse_offset_fixture_centres():
 
 def test_parse_offset_synth_and_garbage():
     a, b = parse_offset(SYNTH_OFFSET, 2880, 2880)
-    assert a == Lens(cx=1440.0, cy=1440.0, radius=1440.0, fov_deg=DEFAULT_FOV_DEG)
+    assert a == Lens(cx=1440.0, cy=1440.0, radius=1440.0, fov_deg=CALIBRATED_FOV_DEG)
     assert b == a
     small = parse_offset(SYNTH_OFFSET, 720, 720)
     assert small is not None and small[0].radius == pytest.approx(360.0)

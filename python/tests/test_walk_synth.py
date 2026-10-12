@@ -12,7 +12,7 @@ import numpy as np
 import pytest
 
 import walk_synth as ws
-from aio_pipelines.walk.calib import parse_offset
+from aio_pipelines.walk.calib import CALIBRATED_FOV_DEG, parse_offset
 from aio_pipelines.walk.trailer import INSTA360_MARK, read_trailer
 
 FFMPEG = ws.find_ffmpeg()
@@ -100,7 +100,7 @@ def test_offset_parses_to_the_lenses_rendered(walk):
     lens0, lens1 = parse_offset(walk.offset, 640, 640)
     for parsed, used in ((lens0, walk.lenses[0]), (lens1, walk.lenses[1])):
         assert (parsed.cx, parsed.cy, parsed.radius) == pytest.approx(used, abs=1e-3)
-        assert parsed.fov_deg == 195.0
+        assert parsed.fov_deg == CALIBRATED_FOV_DEG
         assert (parsed.yaw_deg, parsed.pitch_deg, parsed.roll_deg) == (0.0, 0.0, 0.0)
     assert walk.lens == walk.lenses[0]
     assert walk.lenses[1] != walk.lenses[0]  # a known shift, so a reader that ignores it shows
