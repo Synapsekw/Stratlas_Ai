@@ -290,10 +290,17 @@ export function PanoPane(p: {
       .set(toShared({ yawDeg: startYaw, pitchDeg: startPitch, fovDeg: PANO_FOV.start }, 0));
   }, [leads, linked, shownKey, startYaw, startPitch]);
 
+  // what a leading side takes from a selection elsewhere: the left any panorama of the project
+  // (its date follows, decision 10), a leading right only those of its own date
+  const takes = useMemo(
+    () => (side === 'left' ? panosOf(manifestLayers ?? [], index, undefined) : list),
+    [side, manifestLayers, index, list],
+  );
+
   // the leading side keeps its spot when its date changes, unless the new panorama was chosen too
-  const live = useRef({ onPick, shown, list, pano: sides.pano, layers: manifestLayers });
+  const live = useRef({ onPick, shown, list, pano: sides.pano, takes });
   useEffect(() => {
-    live.current = { onPick, shown, list, pano: sides.pano, layers: manifestLayers };
+    live.current = { onPick, shown, list, pano: sides.pano, takes };
   });
   const followed = useRef<{ capture: string | undefined; at: PanoAt | undefined } | null>(null);
   useEffect(() => {
@@ -319,17 +326,8 @@ export function PanoPane(p: {
     const key = `${selection.layer}/${selection.id}`;
     const now = live.current;
     if (now.shown && panoKey(now.shown) === key) return;
-    const exists =
-      side === 'right'
-        ? findPano(now.list, key) !== undefined
-        : (now.layers ?? []).some(
-            (l) =>
-              l.id === selection.layer &&
-              l.kind === 'panoramas' &&
-              l.items.some((x) => x.id === selection.id),
-          );
-    if (exists) now.onPick(key);
-  }, [leads, side, selection]);
+    if (findPano(now.takes, key)) now.onPick(key);
+  }, [leads, selection]);
 
   const date = index ? captureLabel(index, capture) : '';
   const common = {

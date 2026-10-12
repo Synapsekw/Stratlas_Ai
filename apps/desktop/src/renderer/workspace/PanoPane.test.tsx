@@ -300,6 +300,25 @@ describe('PanoPane', () => {
     expect(onPick).toHaveBeenLastCalledWith('p-nov/e');
   });
 
+  it('moves to a panorama of another date selected while the left shows its own', () => {
+    const onPick = vi.fn();
+    render(left({ onPick }), right());
+    expect(only(panes()[0]).dataset.capture).toBe('oct');
+    act(() => {
+      workspace.getState().select({ kind: 'pano', id: 'd', layer: 'p-nov' });
+    });
+    expect(onPick).toHaveBeenLastCalledWith('p-nov/d');
+  });
+
+  it('ignores a selected panorama that is not in the project', () => {
+    const onPick = vi.fn();
+    render(left({ onPick }));
+    act(() => {
+      workspace.getState().select({ kind: 'pano', id: 'zz', layer: 'p-nov' });
+    });
+    expect(onPick).not.toHaveBeenCalled();
+  });
+
   it('ignores a panorama selected before it opened', () => {
     act(() => {
       workspace.getState().select({ kind: 'pano', id: 'e', layer: 'p-nov' });

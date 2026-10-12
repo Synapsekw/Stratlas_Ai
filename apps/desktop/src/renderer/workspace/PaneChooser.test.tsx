@@ -176,6 +176,33 @@ describe('pickPano', () => {
     );
   });
 
+  it('moves the left date to nov for a nov panorama picked while it shows oct', () => {
+    const m: ProjectManifest = {
+      ...manifest,
+      layers: [...manifest.layers, panoLayer('p-nov', 'nov')],
+    };
+    const split = {
+      ...model({ left: 'pano', right: 'pano', leftCapture: 'oct', rightCapture: 'sep' }),
+      index: captureIndex(m),
+    };
+    pickPano(split, 'p-nov/a');
+    expect(split.saved).toHaveBeenCalledWith(
+      expect.objectContaining({ pano: 'p-nov/a', leftCapture: 'nov', rightCapture: 'sep' }),
+    );
+  });
+
+  it('keeps the left date for an undated panorama', () => {
+    const m: ProjectManifest = { ...manifest, layers: [...manifest.layers, panoLayer('p-any')] };
+    const split = {
+      ...model({ left: 'pano', right: 'pano', leftCapture: 'oct', rightCapture: 'nov' }),
+      index: captureIndex(m),
+    };
+    pickPano(split, 'p-any/a');
+    expect(split.saved).toHaveBeenCalledWith(
+      expect.objectContaining({ pano: 'p-any/a', leftCapture: 'oct', rightCapture: 'nov' }),
+    );
+  });
+
   it('only remembers the panorama when the right side picked it', () => {
     const split = model({ left: '3d', right: 'pano', leftCapture: 'nov', rightCapture: 'oct' });
     pickPano(split, 'p-oct/a', 'right');
