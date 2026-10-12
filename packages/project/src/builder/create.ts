@@ -14,6 +14,7 @@ import { join } from 'node:path';
 import { drawingStemOf, markDrawingPlaced, type PlacedDrawing } from './drawingPlacement';
 import { updateManifestFile, writeManifestFile } from './manifestFile';
 import { newProjectManifest } from './templates';
+import { writeWalkPose, type WalkPoseResult } from './walkPose';
 
 // the manifest file itself (read, save in turn) lives in manifestFile.ts
 export {
@@ -97,22 +98,64 @@ function roundOrientation(o: CameraOrientation): CameraOrientation {
 /**
  * Apply an alignment to layers and save: a `transform` to mesh layers (georeference), `offsetMs`,
  * `lens`, `orientation` and `positionOffsetM` to video layers (calibration), the `capture` (survey
- * date) of any layer (`null` clears it), or the `corners` of a picture laid on the ground (placing
- * a drawing, which also shows it and marks its placement file as placed). Backs up and validates the manifest first. The manifest
- * is read and saved in one turn (`updateManifestFile`), so a save made at the same moment stays.
+ * date) of any layer (`null` clears it), the `corners` of a picture laid on the ground (placing a
+ * drawing, which also shows it and marks its placement file as placed), or the `walk` placement of
+ * a walk layer (`null` clears it). A walk patch, and new corners of a drawing a walk has pins on,
+ * rewrite that walk's pose file (`walks/<id>/pose.json`) and set its `flight` and its quality as
+ * the fit gives it here (the renderer's quality is a preview). Lines for the project log about walk
+ * files that could not be used come back in `problems`. Backs up and validates the manifest first.
+ * The manifest is read and saved in one turn (`updateManifestFile`), so a save made at the same
+ * moment stays.
  */
 export async function updateLayers(
   root: string,
   layerIds: readonly string[],
   patch: LayerPatchInput,
-): Promise<{ manifest: ProjectManifest; backup: string }> {
+): Promise<{ manifest: ProjectManifest; backup: string; problems: string[] }> {
   const r = await updateManifestFile(root, async (m) => {
-    const { manifest, placed } = patchLayers(m, layerIds, patch);
+    const patched = patchLayers(m, layerIds, patch);
     // a drawing this patch places: its placement file follows before the manifest is saved
-    for (const d of placed) await markDrawingPlaced(root, d.stem, d.name, d.corners);
-    return { manifest };
+    for (const d of patched.placed) await markDrawingPlaced(root, d.stem, d.name, d.corners);
+    let manifest = patched.manifest;
+    const problems: string[] = [];
+    for (const id of walksToPose(manifest, layerIds, patch)) {
+      const pose = await writeWalkPose(root, manifest, id);
+      problems.push(...pose.problems);
+      manifest = withPose(manifest, id, pose);
+    }
+    return { manifest, problems };
   });
-  return { manifest: r.manifest, backup: r.backup };
+  return { manifest: r.manifest, backup: r.backup, problems: r.problems };
+}
+
+/**
+ * The walk layers whose pose file a patch changes: the walks it places, and the walks with a pin on
+ * a drawing it moves.
+ */
+function walksToPose(
+  m: ProjectManifest,
+  layerIds: readonly string[],
+  patch: LayerPatchInput,
+): string[] {
+  const want = new Set(layerIds);
+  if ('walk' in patch) return m.layers.filter((l) => want.has(l.id)).map((l) => l.id);
+  if (!('corners' in patch)) return [];
+  return m.layers
+    .filter((l) => l.kind === 'walk' && l.place?.pins.some((p) => want.has(p.surface)))
+    .map((l) => l.id);
+}
+
+/** The manifest with a walk's pose result on its layer: `flight` set or removed, the quality saved. */
+function withPose(m: ProjectManifest, id: string, pose: WalkPoseResult): ProjectManifest {
+  const layers = m.layers.map((l) => {
+    if (l.id !== id || l.kind !== 'walk') return l;
+    const next = { ...l };
+    if (pose.flight) next.flight = pose.flight;
+    else delete next.flight;
+    if (next.place) next.place = { ...next.place, quality: pose.quality };
+    return next;
+  });
+  return { ...m, layers };
 }
 
 /**
@@ -169,8 +212,14 @@ function patchLayers(
       if (l.kind !== 'walk')
         throw new Error(`"${l.name}" is not a 360 walk; only walks take a placement.`);
       const next = { ...l };
-      if (patch.walk === null) delete next.place;
-      else next.place = WalkCalibration.parse(patch.walk);
+      if (patch.walk === null) {
+        delete next.place;
+        delete next.flight;
+      } else {
+        // pins sorted by time (stable, so pins at the same moment keep their order)
+        const place = WalkCalibration.parse(patch.walk);
+        next.place = { ...place, pins: [...place.pins].sort((a, b) => a.t - b.t) };
+      }
       return next;
     }
     if (l.kind !== 'video')
