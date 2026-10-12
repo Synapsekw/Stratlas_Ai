@@ -189,6 +189,8 @@ export interface PlaceWalkFlow {
   /** The walk being placed, as the open manifest has it now. */
   walk(): WalkLayer | null;
   surfaces(): PlaceSurface[];
+  /** The project's orthomosaic layers (what the map draws of its own imagery under the pins). */
+  orthos(): string[];
   /** The date step: the project's dates (the `capturedAt` one first), and a day to add. */
   dates(): { pick: DateChoice[]; add?: string };
   chooseDate(captureId: string): Promise<void>;
@@ -294,6 +296,10 @@ export function createPlaceWalk(
     begin,
     walk: walkOf,
     surfaces: surfacesOf,
+    orthos: () =>
+      (deps.project()?.manifest.layers ?? []).flatMap((l) =>
+        l.kind === 'raster' && l.role === 'ortho' ? [l.id] : [],
+      ),
     dates: () => {
       const m = deps.project()?.manifest;
       const w = walkOf();

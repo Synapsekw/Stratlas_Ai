@@ -111,3 +111,16 @@
   color: var(--fg-0);
   background: color-mix(in oklch, var(--acc) 22%, transparent);
 }
+
+/* a way out of a note (Show it): a link in the line, like the map type picker's */
+.wplace-link {
+  color: var(--acc-strong);
+  font: inherit;
+  text-decoration: underline;
+  text-decoration-color: var(--acc-a40);
+  text-underline-offset: 2px;
+  cursor: pointer;
+}
+.wplace-link:hover {
+  text-decoration-color: currentColor;
+}

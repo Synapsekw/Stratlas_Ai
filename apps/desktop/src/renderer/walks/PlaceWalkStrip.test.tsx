@@ -18,6 +18,8 @@ vi.mock('../builder/state', () => ({
   builder: { getState: () => ({ saveLayers: vi.fn() }), subscribe: () => () => undefined },
 }));
 
+import { workspace } from '@aio/workspace';
+import { placeImagery } from './placeBasemap';
 import { walkBadge } from './walkBadge';
 import {
   createPlaceSession,
@@ -328,6 +330,64 @@ describe('PlaceWalkStrip', () => {
     expect(ctx.session.getState().pins[1]?.at).toEqual([700, 200]);
     expect(ctx.session.getState().pins[0]).toEqual(start);
     expect(ctx.session.getState().armed).toBeNull();
+  });
+
+  it('placing on the map with no imagery says where to turn it on', async () => {
+    const ctx = setup(walkLayer({ capture: 'c1' }));
+    await open(ctx);
+    act(() => {
+      placeImagery.setState({ imagery: false });
+    });
+    choose('@model');
+    expect(byTest('walk-place-no-imagery')?.textContent).toMatch(/Online satellite.*map type/);
+    act(() => {
+      placeImagery.setState({ imagery: true });
+    });
+    expect(byTest('walk-place-no-imagery')).toBeNull();
+    // on a drawing the map's imagery does not matter
+    act(() => {
+      placeImagery.setState({ imagery: false });
+    });
+    choose('sheet-own');
+    expect(byTest('walk-place-no-imagery')).toBeNull();
+    act(() => {
+      placeImagery.setState({ imagery: null });
+    });
+  });
+
+  it('a switched off orthomosaic is offered back while placing on the map', async () => {
+    const ctx = setup(walkLayer({ capture: 'c1' }));
+    const ortho = {
+      kind: 'raster' as const,
+      id: 'ortho-1',
+      name: 'Orthomosaic',
+      visible: true,
+      src: { path: 'rasters/ortho.tif' },
+      role: 'ortho' as const,
+      format: 'cog' as const,
+    };
+    project = {
+      ...project,
+      manifest: { ...project.manifest, layers: [...project.manifest.layers, ortho] },
+    };
+    act(() => {
+      workspace.setState({ hidden: { 'ortho-1': true } });
+    });
+    await open(ctx);
+    act(() => {
+      placeImagery.setState({ imagery: false });
+    });
+    choose('@model');
+    // the project's own imagery is there, only switched off: that is what the strip says
+    expect(byTest('walk-place-no-imagery')).toBeNull();
+    const note = byTest('walk-place-ortho-off');
+    expect(note?.textContent).toContain('orthomosaic is switched off');
+    click(byTest('walk-place-ortho-show'));
+    expect(workspace.getState().hidden['ortho-1']).toBeUndefined();
+    expect(byTest('walk-place-ortho-off')).toBeNull();
+    act(() => {
+      placeImagery.setState({ imagery: null });
+    });
   });
 
   it('the yaw field steps 1 with arrows and 10 with Shift', async () => {

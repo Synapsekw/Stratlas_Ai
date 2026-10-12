@@ -1,6 +1,6 @@
 import type { WalkLayer } from '@aio/schema';
 import { formatDate, Icon } from '@aio/ui';
-import { useWorkspace } from '@aio/workspace';
+import { useWorkspace, workspace } from '@aio/workspace';
 import {
   useEffect,
   useMemo,
@@ -13,6 +13,7 @@ import { useStore, type StoreApi } from 'zustand';
 import { createStore } from 'zustand/vanilla';
 import { drawings as drawingsStore } from '../drawings/store';
 import type { RasterOverlayContext, RasterPick } from '../workspace/RasterPane';
+import { placeImagery } from './placeBasemap';
 import { surfaceFramesOf, surfaceKey, type PlaceSurface } from './placeModel';
 import type { PlaceState } from './placeStore';
 import {
@@ -54,6 +55,9 @@ const SAY = {
   align360: 'Click a landmark in the 360 view',
   alignSurface: 'Now click the same landmark here',
   pinsOnly: 'Path not computed: the walk is placed between your pins.',
+  noImagery:
+    'No satellite imagery here. Turn on Online satellite in the map type picker, or import an imagery pack.',
+  orthoOff: 'Your orthomosaic is switched off.',
   keep: 'Keep these pins?',
 } as const;
 
@@ -72,6 +76,8 @@ export function PlaceWalkStrip({
 }) {
   const st = useStore(session);
   const u = useStore(ui);
+  const imagery = useStore(placeImagery, (s) => s.imagery);
+  const hidden = useWorkspace((s) => s.hidden);
   const [yawText, setYawText] = useState<string | null>(null);
   const walk = flow.walk();
   if (u.layerId === null || walk?.id !== u.layerId || st.layerId !== u.layerId) return null;
@@ -234,6 +240,11 @@ export function PlaceWalkStrip({
   }
 
   const surfaces = flow.surfaces();
+  // on the map the spots are found on imagery: the project's orthomosaics, else satellite
+  const onMap = st.surface?.kind === 'map';
+  const orthos = onMap ? flow.orthos() : [];
+  const orthosOff = orthos.filter((id) => hidden[id]);
+  const orthosOn = orthos.length - orthosOff.length;
   const value = st.surface ? surfaceKey(st.surface) : '';
   return (
     <div
@@ -413,6 +424,26 @@ export function PlaceWalkStrip({
             <span className="faint">deg</span>
           </label>
         </div>
+      )}
+      {onMap && orthosOff.length > 0 && (
+        <p className="wplace-note faint" data-testid="walk-place-ortho-off">
+          {SAY.orthoOff}{' '}
+          <button
+            type="button"
+            className="wplace-link"
+            data-testid="walk-place-ortho-show"
+            onClick={() => {
+              workspace.getState().setLayersVisible(orthosOff, true);
+            }}
+          >
+            Show it
+          </button>
+        </p>
+      )}
+      {onMap && imagery === false && orthosOff.length === 0 && orthosOn === 0 && (
+        <p className="wplace-note faint" data-testid="walk-place-no-imagery">
+          {SAY.noImagery}
+        </p>
       )}
       {pinsOnly && (
         <p className="wplace-note faint" data-testid="walk-place-pins-only">
