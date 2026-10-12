@@ -1,7 +1,7 @@
 # Timeline T2: add a survey date
 
-Status: spec written 12 Oct 2026 by a scoping session without the founder. The decisions the
-founder has not seen yet are listed under "Decisions taken (founder to confirm)". Plan:
+Status: spec written 12 Oct 2026 by a scoping session; the founder approved the spec, the plan and
+the decisions under "Decisions taken" on 12 Oct 2026. Plan:
 `docs/plans/2026-10-12-timeline-t2-add-survey-date.md`. Parent design:
 `docs/plans/2026-10-07-timeline-design.md` (T1 merged).
 
@@ -182,10 +182,10 @@ drawn on the same 24 px grid and stroke as `folder` and `plus`. Copy is sentence
 no em dashes, and each action keeps its name through the flow ("Add date" adds a date; "File them"
 reports "Filed 6 datasets").
 
-## Decisions taken (founder to confirm)
+## Decisions taken (approved by the founder, 12 Oct 2026)
 
 The founder was not available to the scoping session. Each was answered with the recommended
-option:
+option, and the founder approved them all on 12 Oct 2026:
 
 1. **One import is one survey date.** Files from several days in one import all go under the day
    most of them carry, instead of one date per day. A flight folder is one survey; the date can be

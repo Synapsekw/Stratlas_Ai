@@ -42,6 +42,7 @@ Only what still needs testing. Each stage lists what to click and what you shoul
 | M9          | Team and audit: identity and roles, exchange files, shared folder, conflicts, review workflow, history and audit trail, large files on demand, team server (preview)                                                                                                                                                        | Version 0.9.0 (built 7 Oct 2026, 11:17, from main at commit `6300be4`) or later; test it on 0.11.4                                                                                                                                                         | Built; not yet tested by the founder                 |
 | R           | The rename to Quadrion AI: name, icon, title bar, installer, settings carried over from Stratlas                                                                                                                                                                                                                            | The installer built from the rename branch (QuadrionAI-0.9.0-win-x64-setup.exe)                                                                                                                                                                            | Built; not yet tested by the founder                 |
 | Timeline T1 | Survey dates: one folder per date in Datasets, the date bar and calendar, survey commands in Ctrl K, dates in the viewers and compare split                                                                                                                                                                                 | Main at commit `2fe069e` or later (in version 0.10.0), and a project of yours with two survey dates or more, such as the stockpile project (see Timeline T1, Before you start)                                                                             | Built; not yet tested by the founder                 |
+| Timeline T2 | Adding survey dates: a flight folder comes in as its own date, the Add survey date button, the import card's date, the one-time filing note                                                                                                                                                                                 | The branch `feat/timeline-t2-add-survey-date` built after it merges, or later; a project with one survey date or none, such as the construction progress project, and a drone card folder                                                                  | Built after merge; not yet tested by the founder     |
 | L           | The launch screen: welcome with your name, Enter, Esc, the Settings switch                                                                                                                                                                                                                                                  | An installer built from the launch-screen branch (after the rename), or later                                                                                                                                                                              | Built; not yet tested by the founder                 |
 | D           | Drawings: the Drawings group, PDF and picture drawings, side by side, placing by points, opacity and on top                                                                                                                                                                                                                 | Version 0.11.4; any project, a test project is best because a drawing cannot be removed yet (see Stage D)                                                                                                                                                  | Built; not yet tested by the founder                 |
 | M10         | Photos to products: photo processing on the demo and on your own flight, ground control and the accuracy report, OPF, Globe, imagery and terrain packs, 3D Tiles, licence approvals                                                                                                                                         | Version 0.10.0, built 8 Oct 2026 from `integration/m10` at commit `3f07041` or later with the M10 fixes merged (the 24-photo demo), and the processing tools 0.4.0 or later; test it on 0.11.4 with the processing tools 0.5.4 (see M10, Before you start) | Built; not yet tested by the founder                 |
@@ -593,6 +594,39 @@ Survey dates become folders in the sidebar, with a date bar and calendar above t
 - [ ] Open the compare split: the first date is on the left and the last on the right. Step the date bar: the left side follows it, the right side keeps its own date.
 - [ ] In stockpile projects the Volumes date buttons and the date bar move together: pick a date in either, step away and back, and that survey's terrain still shows.
 - [ ] Close and reopen the project: the same date is viewed, with the same layers on.
+
+## Stage Timeline T2: adding survey dates
+
+A flight lands in the project as its own survey date, with every dataset filed under it; a date can also be added by hand.
+
+### Before you start
+
+- Open a project that has one survey date or none (the construction progress project works). For the folder steps, have a folder straight off a drone card (photos and/or video with their SRT files).
+
+### Recorded datasets note
+
+- [ ] At the top of Datasets a note says how many datasets in Every date were recorded on survey days and under which dates they go.
+- [ ] Click **File them**: the video and photos move into the date folder; models and drawings stay in Every date.
+- [ ] Close and reopen the project: the note does not come back.
+
+### Add a date by hand
+
+- [ ] In the Datasets header click the calendar-plus button, pick a date, type a name such as "Baseline" and click **Add date**. A new, greyed date folder appears and is the date you are viewing; the date bar shows it.
+- [ ] Do it again with the same day: a note says it is already a survey date.
+
+### Import a flight folder
+
+- [ ] Open the same button and click **Import a flight folder...**. Pick the drone card folder. The import card lists the files; files the app does not use (LRF proxies, text files) are summed up in one row.
+- [ ] Under the list, **Survey date** shows the day of the flight with "(new)" and "Read from the photos and video."
+- [ ] The new date folder holds every dataset of that flight (video, photos, any ortho or model you had in the folder). Step to it with the date bar arrows.
+- [ ] In the import card pick **New survey date...**, set another day and click **Add**: the datasets move to that day and the wrong date disappears from Datasets. Picking an existing date works the same way.
+- [ ] Drag a folder from Explorer onto the window: it imports the same way.
+
+### Other ways in
+
+- [ ] Select any dataset: the Selection card's **Belongs to date...** also offers **New survey date...**, also in a project with only one date.
+- [ ] Ctrl+K, type "survey": **Add survey date...** opens the popover; **Import a flight folder...** opens the folder dialog.
+- [ ] Open a shared package: there is no calendar-plus button and no note.
 
 ## Stage L: the launch screen
 

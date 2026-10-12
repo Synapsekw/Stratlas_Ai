@@ -74,3 +74,15 @@ Issues on layers in **Every date**, and measurements for the whole site, are alw
 Each date has a colour. It appears on the folder, in the date bar, on the calendar, in the header of the floating video and of the split video and photo panes (and on the date pickers in the split panes), and in a small chip at the top of the 3D view or map whenever more than one date is on screen. The chip is hidden while the split view is open. The panorama overlay shows the survey date as YYYY-MM-DD.
 
 To put two dates side by side, use [Compare dates](04-compare-dates.md). The left side of the compare split follows the date bar.
+
+## Adding a survey date
+
+A flight comes into the project as its own survey date, with every dataset it brings filed under it. Click the calendar-plus button in the header of Datasets, or press Ctrl+K and type "survey" (**Add survey date...**).
+
+- **By hand.** Pick a date (a future day is fine, to plan the next flight), type a name if you like (it shows beside the date, "Survey" otherwise) and click **Add date**. The new, empty date folder becomes the date you are viewing. If the day is already a survey date, a note says so and that date is shown instead; two dates on one day are not made.
+- **From a flight folder.** In the same popover click **Import a flight folder...** (Ctrl+K: **Import a flight folder...**), or drag a folder from Explorer onto the window. The folder is read with everything inside it. Photos, video with their SRT files, models, maps and drawings are listed in the import card; the files the app does not use (DJI LRF proxies, Thumbs.db, text files) are summed up in one row per folder.
+- **The import card.** Under the list, **Survey date** shows the day read from the photos and video, marked "(new)" when the project has no date for it yet. Pick another survey date from the list, or **New survey date...** to set a day of your own, and click **Add**. Every dataset of the import goes under that date, drawings included. A date the import made and the choice then left empty, including one you made with **New survey date...** and changed again, is tidied away; a date that was there before is never removed. Files of several days in one import all go under one date, the day most of them carry.
+- **Photos.** Each date has its own photos set, so two flights' photos stay apart. Projects made before keep their single photos layer.
+- **Datasets that were recorded earlier.** In a project whose photos and video sit in **Every date** although they carry a recording day, a note at the top of Datasets says how many were recorded on survey days and under which dates they would go. Click **File them** to move them, or **Not now**. Only photos and video are filed this way; models, maps and drawings stay where they are. The note comes once per project on a machine.
+
+A shared package opened for review has no calendar-plus button and no note: dates are not added there.
