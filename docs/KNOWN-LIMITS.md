@@ -67,7 +67,7 @@ Current limits only; each is removed from this list when fixed.
 - Surface change from COPC point clouds (through PDAL) is untested on real data.
 - Surface change reports a height offset between the dates under 5 cm but does not correct it.
 - A change heat map layer counts for both dates until it is given a survey date (**Belongs to date...**).
-- A layer a pipeline job writes (maps from photos, a converted point cloud and the like) is not dated when it arrives: give it a date with **Belongs to date...**.
+- A layer a pipeline job writes (maps from photos, a converted point cloud, a DXF plan, the pages of a PDF, SVG or WebP drawing and the like) is not dated when it arrives: give it a date with **Belongs to date...**.
 - Files of several days in one import all go under one survey date, the day most of them carry. Import them in separate batches to get one date per day.
 - Nearest-neighbour distance overstates change on sparse clouds, and between clouds of very different density.
 - Surface change from a sparse point cloud (a few points per square metre) averages roof and wall points into ground cells at object edges: on the demo change site its volumes are up to a third off, against a few per cent from the height grids. Use a DSM when there is one.
