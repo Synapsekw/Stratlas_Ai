@@ -19,3 +19,4 @@ export {
   WALK_POSE_HZ_ORIENTED,
   WALK_POSE_HZ_STILLS,
 } from './pose';
+export { surfaceFrameFromCorners } from './surface';
