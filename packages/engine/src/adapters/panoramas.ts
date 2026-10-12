@@ -2,7 +2,6 @@ import type { Layer, PanoRef } from '@aio/schema';
 import { layerDate, workspace as appWorkspace, type Workspace } from '@aio/workspace';
 import type { Quaternion } from 'three';
 import {
-  BackSide,
   BufferAttribute,
   BufferGeometry,
   Color,
@@ -12,11 +11,9 @@ import {
   LineSegments,
   Mesh,
   SRGBColorSpace,
-  ShaderMaterial,
   SphereGeometry,
   TextureLoader,
   Vector3,
-  type Texture,
 } from 'three';
 import type { StoreApi } from 'zustand/vanilla';
 import { FONT_MONO, FONT_UI, PALETTE } from '../palette';
@@ -35,45 +32,12 @@ import {
   type PanoCoverage,
   type PanoLook,
 } from './panoMath';
+import { PANO_SPHERE_R, panoSphereMaterial } from './panoSphere';
 
 type PanoLayer = Extract<Layer, { kind: 'panoramas' }>;
 
-/** Radius of the panorama sphere around the camera, metres (inside the camera's near/far). */
-const SPHERE_R = 50;
 /** Camera layer the immersive view renders alone, so the scene behind the sphere costs nothing. */
 const PANO_LAYER = 31;
-const VERTEX = /* glsl */ `
-varying vec3 vDir;
-void main() {
-  vDir = position;
-  gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
-}
-`;
-
-/** Same mapping as panoUv (panoMath.ts): azimuth clockwise from -Z, image centre at `heading`. */
-const FRAGMENT = /* glsl */ `
-uniform sampler2D map;
-uniform float hasMap;
-uniform float heading;
-uniform float hspan;
-uniform float vtop;
-uniform float vbot;
-uniform vec3 backdrop;
-varying vec3 vDir;
-void main() {
-  vec3 d = normalize(vDir);
-  float az = degrees(atan(d.x, -d.z));
-  float el = degrees(asin(clamp(d.y, -1.0, 1.0)));
-  float da = mod(az - heading + 540.0, 360.0) - 180.0;
-  vec2 uv = vec2(0.5 + da / hspan, (el + vbot) / (vtop + vbot));
-  if (hasMap < 0.5 || uv.x < 0.0 || uv.x > 1.0 || uv.y < 0.0 || uv.y > 1.0) {
-    gl_FragColor = vec4(backdrop, 1.0);
-  } else {
-    gl_FragColor = vec4(texture2D(map, uv).rgb, 1.0);
-  }
-  #include <colorspace_fragment>
-}
-`;
 
 function el<K extends keyof HTMLElementTagNameMap>(
   tag: K,
@@ -343,26 +307,9 @@ export function createPanoramasAdapter(
       paintSelection();
 
       // immersive view ---------------------------------------------------------------------------
-      const uniforms = {
-        map: { value: null as Texture | null },
-        hasMap: { value: 0 },
-        heading: { value: 0 },
-        hspan: { value: 360 },
-        vtop: { value: 90 },
-        vbot: { value: 90 },
-        backdrop: { value: new Color(PALETTE.bg0) },
-      };
-      const sphereMat = new ShaderMaterial({
-        uniforms,
-        vertexShader: VERTEX,
-        fragmentShader: FRAGMENT,
-        side: BackSide,
-        depthTest: false,
-        depthWrite: false,
-        transparent: true,
-        toneMapped: false,
-      });
-      const sphereGeo = new SphereGeometry(SPHERE_R, 96, 48);
+      const pano = panoSphereMaterial(new Color(PALETTE.bg0));
+      const sphereMat = pano.material;
+      const sphereGeo = new SphereGeometry(PANO_SPHERE_R, 96, 48);
       const sphere = new Mesh(sphereGeo, sphereMat);
       sphere.name = `panorama-sphere:${layer.id}`;
       sphere.frustumCulled = false;
@@ -408,7 +355,7 @@ export function createPanoramasAdapter(
 
       const loadPano = (p: PanoRef) => {
         const token = ++loadToken;
-        uniforms.hasMap.value = 0;
+        pano.setImage(null);
         hud?.setHint('Loading panorama');
         new TextureLoader().load(
           ctx.url(p.src),
@@ -423,13 +370,9 @@ export function createPanoramasAdapter(
             if (!coverage.has(p.id)) {
               const img = tex.image as { width?: number; height?: number } | undefined;
               const cov = coverageFromImage(img?.width ?? 0, img?.height ?? 0);
-              uniforms.hspan.value = cov.hspanDeg;
-              uniforms.vtop.value = cov.vtopDeg;
-              uniforms.vbot.value = cov.vbotDeg;
+              pano.setFrame(p.headingDeg, cov);
             }
-            uniforms.map.value?.dispose();
-            uniforms.map.value = tex;
-            uniforms.hasMap.value = 1;
+            pano.setImage(tex);
             hud?.setHint('Drag to look around · scroll to zoom · Esc to return');
             scene.requestRender();
           },
@@ -446,10 +389,7 @@ export function createPanoramasAdapter(
         current = i;
         const cov = coverageOf(p);
         center.set(...p.pos);
-        uniforms.heading.value = p.headingDeg;
-        uniforms.hspan.value = cov.hspanDeg;
-        uniforms.vtop.value = cov.vtopDeg;
-        uniforms.vbot.value = cov.vbotDeg;
+        pano.setFrame(p.headingDeg, cov);
         look = startLook(p.headingDeg, cov);
         const date = layerDate(
           store.getState().project?.manifest ?? { captures: [], layers: [] },
@@ -589,9 +529,7 @@ export function createPanoramasAdapter(
         window.removeEventListener('keydown', onKey, true);
         sphere.visible = false;
         scene.scene.remove(sphere);
-        uniforms.map.value?.dispose();
-        uniforms.map.value = null;
-        uniforms.hasMap.value = 0;
+        pano.setImage(null);
         hud?.dispose();
         hud = null;
         const s = saved;
@@ -645,7 +583,7 @@ export function createPanoramasAdapter(
           stemGeo.dispose();
           stemMat.dispose();
           sphereGeo.dispose();
-          sphereMat.dispose();
+          pano.dispose();
           scene.requestRender();
         },
       };

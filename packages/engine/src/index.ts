@@ -28,6 +28,7 @@ export {
 } from './adapters/photos';
 export { registerRasterFormat, type RasterFormatHandler } from './adapters/raster';
 export { createPanoramasAdapter } from './adapters/panoramas';
+export { PANO_SPHERE_R, panoSphereMaterial, type PanoSphereMaterial } from './adapters/panoSphere';
 export {
   FULL_SPHERE,
   PANO_FOV,
