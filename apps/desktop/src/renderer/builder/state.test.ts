@@ -93,6 +93,7 @@ describe('importFiles, one import at a time', () => {
       error: null,
       newDates: [],
       dateSource: null,
+      paths: ['a.jpg', 'b.jpg'],
     });
     expect(replaceManifest).toHaveBeenCalledTimes(1);
   });
@@ -158,6 +159,26 @@ describe('importFiles, one import at a time', () => {
       ],
     ]);
     expect(b().importing).toBeNull();
+  });
+});
+
+describe('importFiles, the paths in the result', () => {
+  it('keeps the paths it gave main, so a walk it added can be processed from its original', async () => {
+    call.mockImplementation(() => Promise.resolve(imported));
+    await b().importFiles(['D:/cam/VID_1.insv'], undefined, { as360: true });
+    expect(b().importResult?.paths).toEqual(['D:/cam/VID_1.insv']);
+  });
+
+  it('keeps them when main refused the import with rows', async () => {
+    call.mockImplementation((channel: string) =>
+      Promise.resolve(
+        channel === 'builder:import'
+          ? { ok: true, value: { ok: false, error: 'no', items: [] } }
+          : planned(plan()),
+      ),
+    );
+    await b().importFiles(['a.mp4']);
+    expect(b().importResult).toEqual({ items: [], error: 'no', paths: ['a.mp4'] });
   });
 });
 

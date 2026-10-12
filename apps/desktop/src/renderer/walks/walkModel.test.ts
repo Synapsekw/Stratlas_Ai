@@ -1,12 +1,30 @@
+import {
+  WALK_SCHEMA,
+  type JobRecord,
+  type PipelinePackStatus,
+  type WalkFile,
+  type WalkProcessSummary,
+} from '@aio/schema';
 import { describe, expect, it } from 'vitest';
 import { paneOptions, resolveSplit, type SplitPref } from '../workspace/splitModel';
 import {
+  autoStartParams,
   formatWalkTime,
   importAnswered,
+  importedWalkRows,
+  jobForWalk,
+  levelOn,
+  originalCheck,
+  packOffersWalkProcess,
   pickWalk,
+  playbackSrc,
   splitWithWalk,
+  walkForRow,
   walkKeyAction,
   walkUnstabilised,
+  walkStatus,
+  walkStatusText,
+  type JobLike,
 } from './walkModel';
 
 describe('formatWalkTime', () => {
@@ -125,5 +143,257 @@ describe('walkUnstabilised', () => {
     expect(walkUnstabilised({ source: { layout: 'insv-dual-stream' } })).toBe(true);
     expect(walkUnstabilised({ source: { layout: 'dual-fisheye' } })).toBe(true);
     expect(walkUnstabilised({ source: { layout: 'equirect' } })).toBe(false);
+  });
+});
+
+// ---------------------------------------------------------------- walk.process
+
+const walkOf = (id: string, file: string, layout: WalkFile['source']['layout']): WalkFile => ({
+  schema: WALK_SCHEMA,
+  id,
+  name: file,
+  createdAt: '2026-10-12T08:00:00.000Z',
+  source: { file, layout, streams: [{ width: 128, height: 128, codec: 'avc1', fps: 30 }] },
+  video: {
+    src: `walks/${id}/playback.mp4`,
+    width: 256,
+    height: 128,
+    durationS: 1,
+    fps: 30,
+    audio: false,
+  },
+});
+const insv = walkOf('vid-1', 'VID_20260101_120000_00_001.insv', 'insv-dual-stream');
+const summary = (o: Partial<WalkProcessSummary> = {}): WalkProcessSummary => ({
+  createdAt: '2026-10-12T10:00:00.000Z',
+  source: 'sfm',
+  warnings: 0,
+  ...o,
+});
+const job = (o: Partial<JobLike> = {}): JobLike => ({
+  id: 'j1',
+  status: 'running',
+  progress: 0.42,
+  updatedAt: '2026-10-12T11:00:00.000Z',
+  ...o,
+});
+
+describe('walkStatus', () => {
+  it('is not processed without a run record or a job', () => {
+    expect(walkStatus(insv, undefined, undefined)).toEqual({ kind: 'not-processed' });
+    expect(walkStatusText({ kind: 'not-processed' })).toBe('Not processed');
+  });
+
+  it('follows a running job in whole percent', () => {
+    const s = walkStatus(insv, undefined, job());
+    expect(s).toEqual({ kind: 'processing', pct: 42, jobId: 'j1' });
+    expect(walkStatusText(s)).toBe('Processing 42 %');
+    // never 100 % before the job is done
+    expect(walkStatus(insv, undefined, job({ progress: 0.999, status: 'starting' }))).toEqual({
+      kind: 'processing',
+      pct: 99,
+      jobId: 'j1',
+    });
+    // a running re-run says so over the older outputs
+    expect(walkStatus(insv, summary(), job({ status: 'cancelling' })).kind).toBe('processing');
+  });
+
+  it('reads the path source of a processed walk', () => {
+    const sfm = walkStatus(insv, summary(), undefined);
+    expect(sfm).toEqual({ kind: 'processed', source: 'sfm' });
+    expect(walkStatusText(sfm)).toBe('Processed');
+    const pins = walkStatus(insv, summary({ source: 'pins-only' }), job({ status: 'done' }));
+    expect(pins).toEqual({ kind: 'processed', source: 'pins-only' });
+    expect(walkStatusText(pins)).toBe('Processed, path from pins only');
+  });
+
+  it('says a failed job failed, unless a newer run record came after it', () => {
+    const failed = walkStatus(insv, undefined, job({ status: 'failed', error: 'No ffmpeg' }));
+    expect(failed).toEqual({ kind: 'failed', message: 'No ffmpeg' });
+    expect(walkStatusText(failed)).toBe('Processing failed: No ffmpeg');
+    // a failed re-run of a processed walk: the failure is the news
+    expect(walkStatus(insv, summary(), job({ status: 'failed', error: 'x' }))).toEqual({
+      kind: 'failed',
+      message: 'x',
+    });
+    expect(
+      walkStatus(
+        insv,
+        summary({ createdAt: '2026-10-12T12:00:00.000Z' }),
+        job({ status: 'failed', error: 'x' }),
+      ),
+    ).toEqual({ kind: 'processed', source: 'sfm' });
+    expect(walkStatus(insv, undefined, job({ status: 'failed' }))).toEqual({
+      kind: 'failed',
+      message: 'The job stopped with an error.',
+    });
+  });
+
+  it('is not processed after a cancelled or interrupted job without outputs', () => {
+    expect(walkStatus(insv, undefined, job({ status: 'cancelled' }))).toEqual({
+      kind: 'not-processed',
+    });
+    expect(walkStatus(insv, undefined, job({ status: 'interrupted' }))).toEqual({
+      kind: 'not-processed',
+    });
+  });
+});
+
+describe('playbackSrc', () => {
+  it('plays the levelled copy only when there is one and Level horizon is on', () => {
+    const level = summary({ stabilized: 'walks/vid-1/stabilized.mp4' });
+    expect(playbackSrc(insv, level, true)).toBe('walks/vid-1/stabilized.mp4');
+    expect(playbackSrc(insv, level, false)).toBe('walks/vid-1/playback.mp4');
+    expect(playbackSrc(insv, summary(), true)).toBe('walks/vid-1/playback.mp4');
+    expect(playbackSrc(insv, undefined, true)).toBe('walks/vid-1/playback.mp4');
+  });
+});
+
+describe('levelOn', () => {
+  it('is on unless the person turned it off for that walk', () => {
+    expect(levelOn({}, 'a')).toBe(true);
+    expect(levelOn({ a: false }, 'a')).toBe(false);
+    expect(levelOn({ a: false }, 'b')).toBe(true);
+  });
+});
+
+describe('autoStartParams', () => {
+  const path = 'D:\\camera\\VID_20260101_120000_00_001.insv';
+  const row = { file: insv.source.file, status: 'imported' as const, path };
+
+  it('carries the walk id and the path the import was given', () => {
+    expect(autoStartParams(row, insv, true)).toEqual({ walk: 'vid-1', src: [path] });
+  });
+
+  it('starts from the playback copy when the path is not known', () => {
+    expect(autoStartParams({ file: row.file, status: 'imported' }, insv, true)).toEqual({
+      walk: 'vid-1',
+    });
+  });
+
+  it('starts nothing for a skipped row, a proxy row, another walk or a pack without it', () => {
+    expect(autoStartParams({ ...row, status: 'skipped' }, insv, true)).toBeNull();
+    expect(autoStartParams({ ...row, status: 'error' }, insv, true)).toBeNull();
+    const lrv = walkOf('lrv-1', 'LRV_20260101_120000_01_001.lrv', 'insv-dual-stream');
+    expect(
+      autoStartParams({ file: lrv.source.file, status: 'imported', path: 'D:\\x.lrv' }, lrv, true),
+    ).toBeNull();
+    expect(autoStartParams({ ...row, file: 'other.insv' }, insv, true)).toBeNull();
+    expect(autoStartParams(row, insv, false)).toBeNull();
+  });
+});
+
+describe('walkForRow', () => {
+  it('finds the newest walk of an import row by its file name', () => {
+    const older = { ...insv, id: 'vid-0' };
+    expect(walkForRow([insv, older], { file: insv.source.file })?.id).toBe('vid-1');
+    expect(walkForRow([insv], { file: 'nope.insv' })).toBeUndefined();
+  });
+});
+
+describe('packOffersWalkProcess', () => {
+  const status = (o: Partial<PipelinePackStatus>): PipelinePackStatus => ({
+    state: 'ok',
+    runtimeDir: 'r',
+    platform: 'win32-x64',
+    needs: [],
+    others: [],
+    installing: false,
+    notify: false,
+    ...o,
+  });
+
+  it('is true for a pack that lacks nothing, or one from the environment', () => {
+    expect(packOffersWalkProcess(status({}))).toBe(true);
+    expect(packOffersWalkProcess(status({ state: 'dev' }))).toBe(true);
+  });
+
+  it('is false with no usable pack, or before main answered', () => {
+    expect(packOffersWalkProcess(null)).toBe(false);
+    expect(packOffersWalkProcess(status({ state: 'missing' }))).toBe(false);
+    expect(packOffersWalkProcess(status({ state: 'incompatible' }))).toBe(false);
+  });
+
+  it('reads a too old pack by what it cannot run', () => {
+    const feature = 'Creating maps from photos needs version 0.4.0 or later.';
+    expect(packOffersWalkProcess(status({ state: 'too-old', needs: [feature] }))).toBe(true);
+    expect(
+      packOffersWalkProcess(
+        status({ state: 'too-old', needs: ['This version cannot run "Process 360 walk".'] }),
+      ),
+    ).toBe(false);
+    expect(
+      packOffersWalkProcess(
+        status({ state: 'too-old', needs: ['This version cannot run "Direct rainfall".'] }),
+      ),
+    ).toBe(true);
+    // several kinds missing: the sentence names only two; a pack that old has no walk.process
+    expect(
+      packOffersWalkProcess(
+        status({
+          state: 'too-old',
+          needs: ['This version cannot run 3 kinds of job this app has, for example "A" and "B".'],
+        }),
+      ),
+    ).toBe(false);
+  });
+});
+
+describe('jobForWalk', () => {
+  const rec = (o: Partial<JobRecord>): JobRecord => ({
+    id: 'j',
+    pipeline: 'walk.process',
+    project: 'D:/p',
+    params: { walk: 'vid-1' },
+    status: 'running',
+    progress: 0,
+    steps: [],
+    artifacts: [],
+    createdAt: '2026-10-12T08:00:00.000Z',
+    updatedAt: '2026-10-12T08:00:00.000Z',
+    ...o,
+  });
+
+  it('takes the newest walk.process job of that walk in that project', () => {
+    const jobs = [
+      rec({ id: 'other-walk', params: { walk: 'vid-2' } }),
+      rec({ id: 'other-project', project: 'D:/q' }),
+      rec({ id: 'other-pipeline', pipeline: 'photo.align' }),
+      rec({ id: 'newest', project: 'd:\\p\\' }),
+      rec({ id: 'older' }),
+    ];
+    expect(jobForWalk(jobs, 'D:/p', 'vid-1')?.id).toBe('newest');
+    expect(jobForWalk(jobs, 'D:/p', 'vid-9')).toBeUndefined();
+  });
+});
+
+describe('originalCheck', () => {
+  it('accepts the file the walk was imported from, by name', () => {
+    expect(originalCheck('D:\\cam\\VID_1.insv', 'VID_1.insv')).toBeNull();
+    expect(originalCheck('D:/cam/vid_1.INSV', 'VID_1.insv')).toBeNull();
+  });
+
+  it('says which file was picked when it is another one', () => {
+    expect(originalCheck('D:\\cam\\VID_2.insv', 'VID_1.insv')).toBe(
+      'VID_2.insv is not VID_1.insv. Pick the original file, or process without it.',
+    );
+  });
+});
+
+describe('importedWalkRows', () => {
+  it('keeps the imported 360 video rows with the path each came from', () => {
+    const rows = importedWalkRows(
+      [
+        { file: 'VID_1.insv', kind: 'video', status: 'imported' },
+        { file: 'LRV_1.lrv', kind: 'video', status: 'skipped' },
+        { file: 'a.jpg', kind: 'photo', status: 'imported' },
+        { file: 'b.mp4', kind: 'video', status: 'imported' },
+      ],
+      ['D:\\cam\\VID_1.insv', 'D:\\cam\\a.jpg'],
+    );
+    expect(rows).toEqual([
+      { file: 'VID_1.insv', status: 'imported', path: 'D:\\cam\\VID_1.insv' },
+      { file: 'b.mp4', status: 'imported' },
+    ]);
   });
 });

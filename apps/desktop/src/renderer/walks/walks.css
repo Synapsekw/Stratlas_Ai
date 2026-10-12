@@ -1,0 +1,93 @@
+/* 360 video list: a walk's processing line under its row, and the locate-original choice */
+
+.walk-proc {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 20px;
+  padding-inline: 30px 4px;
+  font-size: var(--t-11);
+  color: var(--fg-3);
+}
+.walk-proc-text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+}
+.walk-proc[data-kind='processed'] .walk-proc-text {
+  color: var(--fg-2);
+}
+.walk-proc[data-kind='failed'] .walk-proc-text {
+  color: var(--danger-ink);
+  white-space: normal;
+}
+/* how far the job is: a hairline that fills, beside the percent */
+.walk-meter {
+  flex: 1 1 40px;
+  min-width: 24px;
+  max-width: 96px;
+  height: 2px;
+  border-radius: 1px;
+  background: var(--line);
+  overflow: hidden;
+}
+.walk-meter > span {
+  display: block;
+  height: 100%;
+  background: var(--acc);
+}
+.walk-proc-act {
+  margin-inline-start: auto;
+  flex: none;
+  padding: 1px 6px;
+  border-radius: var(--r-2);
+  font-size: var(--t-11);
+  color: var(--acc);
+  white-space: nowrap;
+}
+.walk-proc-act:hover:not(:disabled) {
+  background: var(--acc-a12);
+}
+.walk-proc-act:disabled {
+  color: var(--fg-4);
+  cursor: default;
+}
+.walk-proc-hint {
+  padding-inline: 30px 4px;
+  font-size: var(--t-11);
+  color: var(--fg-4);
+}
+.walk-locate {
+  margin: 4px 4px 6px 30px;
+  padding: 8px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-4);
+  background: var(--bg-1);
+  display: grid;
+  gap: 6px;
+}
+.walk-locate-h {
+  margin: 0;
+  font-size: var(--t-12);
+  color: var(--fg-0);
+  overflow-wrap: anywhere;
+}
+.walk-locate-note {
+  margin: 0;
+  font-size: var(--t-11);
+  color: var(--fg-3);
+}
+.walk-locate-note[data-tone='error'] {
+  color: var(--danger-ink);
+}
+.walk-locate-acts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.app[data-sb='collapsed'] .walk-proc,
+.app[data-sb='collapsed'] .walk-proc-hint,
+.app[data-sb='collapsed'] .walk-locate {
+  display: none;
+}

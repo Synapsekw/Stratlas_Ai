@@ -38,7 +38,8 @@ export interface BuilderState {
    * itself created (main names them; not a date another save added meanwhile), so the import
    * card can tidy them up. Every layer the import names is one it made (its photos are a layer of
    * their own), so the card re-dates them all. `dateSource`: what the date was read from when the
-   * import dated its layers, else null.
+   * import dated its layers, else null. `paths`: the paths this import gave `builder:import`
+   * (rows name a file only), so a walk it added is processed from its original (`walks/walks.ts`).
    */
   importResult: {
     items: ImportItem[];
@@ -46,6 +47,7 @@ export interface BuilderState {
     heights?: ImportHeights;
     newDates?: string[];
     dateSource?: DateSource;
+    paths?: string[];
   } | null;
   /** Camera heights to confirm before the import runs (relative altitude needs a take-off H). */
   heightsPrompt: HeightsPrompt | null;
@@ -279,7 +281,10 @@ export const builder = createStore<Builder>()((set, get) => ({
       return;
     }
     if (!r.value.ok) {
-      set({ importing: null, importResult: { items: r.value.items ?? [], error: r.value.error } });
+      set({
+        importing: null,
+        importResult: { items: r.value.items ?? [], error: r.value.error, paths: [...paths] },
+      });
       return;
     }
     if (workspace.getState().project?.id === project.id)
@@ -288,6 +293,7 @@ export const builder = createStore<Builder>()((set, get) => ({
     let result: NonNullable<BuilderState['importResult']> = {
       items: r.value.items,
       error: null,
+      paths: [...paths],
       ...(r.value.heights ? { heights: r.value.heights } : {}),
       newDates: r.value.createdCaptures ?? [],
       dateSource: dateSourceOf(r.value.items, r.value.manifest.layers),
