@@ -81,17 +81,26 @@ const NEEDS: Partial<Record<CompareKind, { kinds: readonly Layer['kind'][]; reas
     frames: { kinds: ['video', 'photos'], reason: 'compare.with.noMedia' },
   };
 
-/** Why `to` cannot take the comparison of `kind` (null: it can). 3D and map never disable. */
-function missing(kind: CompareKind, to: string, ctx: CompareContext): MessageKey | null {
+/**
+ * Why `to` cannot take the comparison of `kind` from `layer` (null: it can). 3D and map never
+ * disable. An undated layer counts on every date, except against an undated layer itself: that
+ * would be the same picture under two dates, so it needs a layer filed on `to`.
+ */
+function missing(
+  kind: CompareKind,
+  layer: Layer,
+  to: string,
+  ctx: CompareContext,
+): MessageKey | null {
   const need = NEEDS[kind];
   if (!need) return null;
   const here = (ctx.index.layers[to] ?? []).some((id) => {
     const l = ctx.layers.find((x) => x.id === id);
     return l !== undefined && need.kinds.includes(l.kind);
   });
-  const common = ctx.layers.some(
-    (l) => need.kinds.includes(l.kind) && ctx.index.of[l.id] === undefined,
-  );
+  const common =
+    ctx.index.of[layer.id] !== undefined &&
+    ctx.layers.some((l) => need.kinds.includes(l.kind) && ctx.index.of[l.id] === undefined);
   return here || common ? null : need.reason;
 }
 
@@ -106,7 +115,7 @@ export function planCompare(req: CompareRequest, ctx: CompareContext): ComparePl
   let kind: CompareKind;
   if (picked) {
     kind = picked.kind;
-    if (missing(kind, to, ctx)) return null;
+    if (missing(kind, picked.layer, to, ctx)) return null;
   } else {
     kind =
       ctx.stageMode === 'map'
@@ -161,7 +170,7 @@ export function compareTargets(
     if (!layers) return null;
     if (!picked) return 'compare.with.nothing';
     if (unposed) return 'compare.with.noPosedPhoto';
-    return missing(picked.kind, capture, ctx);
+    return missing(picked.kind, picked.layer, capture, ctx);
   };
   return ctx.index.captures
     .map((c) => c.id)

@@ -18,6 +18,7 @@ import { fromShared, panoLookLink, toShared } from './lookLink';
 import {
   PAIR_MAX_M,
   findPano,
+  followCandidates,
   followPano,
   pairPano,
   panoKey,
@@ -252,7 +253,12 @@ export function PanoPane(p: {
 
   // the right side's "show the nearest anyway", for the left panorama it was asked for
   const [nearestFor, setNearestFor] = useState<string | undefined>(undefined);
-  const pair = !leads && leadPano ? pairPano(leadPano.pano, list) : null;
+  // what the following side may pair: never the lead's own picture under the other date
+  const candidates = useMemo(
+    () => (leads || !leadPano ? list : followCandidates(list, leadPano, index)),
+    [leads, leadPano, list, index],
+  );
+  const pair = !leads && leadPano ? pairPano(leadPano.pano, candidates) : null;
   let shown: PanoAt | undefined;
   if (leads) shown = leadPano;
   else if (pair && (pair.within || nearestFor === leadKey)) shown = pair.at;
@@ -335,7 +341,7 @@ export function PanoPane(p: {
   };
 
   if (!projectId) return null;
-  if (list.length === 0)
+  if (candidates.length === 0)
     return (
       <p className="pane-empty" {...common}>
         {t('pano.compare.noneOnDate', { date })}
@@ -347,7 +353,7 @@ export function PanoPane(p: {
     if (next) onPick(panoKey(next));
   };
   const at = leads ? leadList.findIndex((a) => panoKey(a) === leadKey) : -1;
-  const badgeLayer = shown?.layer ?? list[0]?.layer;
+  const badgeLayer = shown?.layer ?? candidates[0]?.layer;
   const distance = !leads && pair && shown ? pair.distanceM : undefined;
 
   return (

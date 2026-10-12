@@ -55,6 +55,21 @@ export function pairPano(
   return best;
 }
 
+/**
+ * The following side's candidates for the leading panorama. Undated panoramas sit on every date,
+ * so for an undated lead they would be the same picture under two dates: only the panoramas
+ * filed on the following date remain then. A dated lead keeps the undated ones.
+ */
+export function followCandidates(
+  list: readonly PanoAt[],
+  lead: PanoAt,
+  index: CaptureIndex | null,
+): PanoAt[] {
+  const dated = (a: PanoAt) => index?.of[a.layer] !== undefined;
+  const leadKey = panoKey(lead);
+  return dated(lead) ? list.filter((a) => panoKey(a) !== leadKey) : list.filter(dated);
+}
+
 export function stepPano(
   list: readonly PanoAt[],
   key: string | undefined,

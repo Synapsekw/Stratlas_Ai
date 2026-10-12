@@ -200,6 +200,26 @@ describe('PanoPane', () => {
     );
   });
 
+  it('never pairs an undated panorama with itself', () => {
+    const undated: ProjectManifest = {
+      ...threeDates,
+      layers: [layer('p-any', [pano('g', 100, 100), pano('k', 0, 0)])],
+    };
+    open(undated);
+    render(left({ sides: sides('p-any/g') }), right({ sides: sides('p-any/g') }));
+    const [l, r] = panes();
+    expect(only(l).dataset.pano).toBe('p-any/g');
+    expect(only(r).dataset.pano).toBe('');
+    expect(only(r).textContent).toContain('No panoramas on 6 Nov 2024. Pick another date above.');
+  });
+
+  it('pairs an undated left panorama only with panoramas of the right date', () => {
+    render(left({ sides: sides('p-any/g') }), right({ sides: sides('p-any/g') }));
+    const r = only(panes()[1]);
+    expect(r.dataset.pano).toBe('');
+    expect(r.textContent).toContain('Show the nearest');
+  });
+
   it('turns both views together when linked', () => {
     const set = vi.spyOn(panoLookLink.getState(), 'set');
     render(left(), right());

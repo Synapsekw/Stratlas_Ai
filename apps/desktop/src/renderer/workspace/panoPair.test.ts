@@ -3,6 +3,7 @@ import type { CaptureIndex } from '@aio/workspace';
 import { describe, expect, it } from 'vitest';
 import {
   findPano,
+  followCandidates,
   followPano,
   groundDistance,
   pairPano,
@@ -46,6 +47,35 @@ describe('panosOf', () => {
   });
   it('lists every panorama without a date or an index', () => {
     expect(panosOf(layers, null, undefined)).toHaveLength(7);
+  });
+});
+
+describe('followCandidates', () => {
+  const at = (layerId: string, id: string): PanoAt => {
+    const found = panosOf(layers, null, undefined).find((a) => panoKey(a) === `${layerId}/${id}`);
+    if (!found) throw new Error(`missing ${layerId}/${id}`);
+    return found;
+  };
+  it('keeps the undated panoramas for a dated lead', () => {
+    const list = panosOf(layers, index, 'nov');
+    expect(followCandidates(list, at('p-oct', 'a'), index).map(panoKey)).toEqual([
+      'p-nov/d',
+      'p-nov/e',
+      'p-nov/f',
+      'p-any/g',
+    ]);
+  });
+  it('never pairs an undated lead with an undated panorama, itself included', () => {
+    const list = panosOf(layers, index, 'nov');
+    expect(followCandidates(list, at('p-any', 'g'), index).map(panoKey)).toEqual([
+      'p-nov/d',
+      'p-nov/e',
+      'p-nov/f',
+    ]);
+  });
+  it('leaves nothing to pair when no panorama has a date', () => {
+    const list = panosOf(layers, null, 'nov');
+    expect(followCandidates(list, at('p-any', 'g'), null)).toEqual([]);
   });
 });
 

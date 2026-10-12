@@ -155,6 +155,25 @@ describe('compareTargets', () => {
       { capture: 'sep', reason: 'compare.with.noPanoramas' },
     ]);
   });
+  it('counts an undated panoramas layer on every date for a dated layer', () => {
+    const c = ctx({ layers: [...layers, L('panoramas', 'pano-any', { items: [pano('g')] })] });
+    expect(compareTargets('nov', ['pano-nov'], c)[1]).toEqual({ capture: 'sep', reason: null });
+  });
+  it('disables every date for an undated panoramas layer when no panorama has a date', () => {
+    const undated = [L('vector', 'vec-oct'), L('panoramas', 'pano-any', { items: [pano('g')] })];
+    const c = ctx({ layers: undated });
+    const all = compareTargets('oct', ['pano-any'], c);
+    expect(all).toHaveLength(2);
+    expect(all.every((x) => x.reason === 'compare.with.noPanoramas')).toBe(true);
+    expect(planCompare({ from: 'oct', to: 'nov', layers: ['pano-any'] }, c)).toBeNull();
+  });
+  it('compares an undated panoramas layer only with dates that have their own', () => {
+    const c = ctx({ layers: [...layers, L('panoramas', 'pano-any', { items: [pano('g')] })] });
+    expect(compareTargets('oct', ['pano-any'], c)).toEqual([
+      { capture: 'nov', reason: null },
+      { capture: 'sep', reason: 'compare.with.noPanoramas' },
+    ]);
+  });
   it('lists every other date for a date folder', () => {
     expect(compareTargets('oct', undefined, ctx())).toEqual([
       { capture: 'nov', reason: null },
