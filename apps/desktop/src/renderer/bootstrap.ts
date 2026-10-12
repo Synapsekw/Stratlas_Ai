@@ -27,6 +27,7 @@ import { evidence } from './issueCard/evidence';
 import { graphicsReport, memoryWatch } from './memoryWatch';
 import { requestGlobe } from './globe/request';
 import { mediaView } from './screens/mediaView';
+import { agentPhotoRuns, agentProcessPhotos } from './photogrammetry/agentHooks';
 import { bridge, shell } from './shell';
 import { COMPARE_GPU_BYTES, compareRuntime } from './workspace/compare';
 import { registerCorrectedPhotos } from './builder/photoPoses';
@@ -100,6 +101,9 @@ export function bootstrap(): void {
       requestGlobe(projectId);
       shell.getState().go('globe');
     },
+    // M10 maps from photos: process_photos and accuracy_summary
+    processPhotos: agentProcessPhotos,
+    photoRuns: agentPhotoRuns,
   });
   // The agent opens screens, sets the Media and Issues filters and puts the view back on undo;
   // the bounds of the tagged assets are measured as soon as the model has loaded.
