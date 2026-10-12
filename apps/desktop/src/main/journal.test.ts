@@ -575,6 +575,48 @@ describe('journal service', () => {
       expect(pipelineOf(e[0]?.via)).toBe('tiles.mesh');
     });
 
+    it('takes tilesets.json and run files of a project journaled by an older build as a silent baseline', async () => {
+      const { root, userData } = setup();
+      const first = service(root, userData);
+      await first.open({ path: root });
+      // the files an older build did not journal are on disk, with no snapshot
+      put(root, 'tilesets.json', tilesFile(['old']));
+      put(root, 'photogrammetry/r1/run.json', { schema: 'aio.photo-run/1', id: 'r1' });
+      put(root, 'photogrammetry/r1/gcp.json', { schema: 'aio.photo-gcp/1', points: [] });
+      await first.journal.flush(root);
+      const cache = join(userData, 'journal-cache');
+      const metaFile = join(cache, readdirSync(cache)[0] ?? '', 'meta.json');
+      const meta = JSON.parse(readFileSync(metaFile, 'utf8')) as {
+        files: Record<string, string>;
+        fileSet?: number;
+      };
+      meta.files = Object.fromEntries(
+        Object.entries(meta.files).filter(([k]) => !/tilesets|photogrammetry/.test(k)),
+      );
+      Reflect.deleteProperty(meta, 'fileSet');
+      writeFileSync(metaFile, JSON.stringify(meta));
+
+      const s = service(root, userData);
+      const count = async () => (await hist(s)).length;
+      const base = await count();
+      await s.open({ path: root });
+      expect(await count()).toBe(base);
+      // a job start is quiet too
+      const job = jobOf('tiles.mesh', root);
+      await s.journal.wrap('jobs:start', () => Promise.resolve({ ok: true as const, job }))({
+        pipeline: 'tiles.mesh',
+        project: root,
+        params: {},
+      });
+      expect(await count()).toBe(base);
+      // a real change afterwards is recorded once
+      put(root, 'tilesets.json', tilesFile(['old', 'new']));
+      await s.journal.jobEvent({ type: 'update', job: { ...job, status: 'done' } });
+      const e = await hist(s);
+      expect(e).toHaveLength(base + 1);
+      expect(pipelineOf(e[0]?.via)).toBe('tiles.mesh');
+    });
+
     it('saves and appends nothing with the journal off', async () => {
       const { root, userData } = setup();
       const s = service(root, userData);

@@ -275,7 +275,18 @@ const Meta = z.object({
   journal: z.enum(['on', 'off']).default('on'),
   /** SHA-256 of the text of each journaled file as last seen. */
   files: z.record(z.string(), z.string()).default({}),
+  /**
+   * Which version of the journaled-file set this cache has seen (0: a build before the set grew).
+   * When the set grows, `reconcile` takes the files that already exist but have no snapshot as a
+   * silent baseline once, so a project journaled by an older build does not show them as changed.
+   */
+  fileSet: z.number().int().default(0),
 });
+/**
+ * Version of the journaled-file set. Raise it whenever `isJournaledFile` starts to cover more
+ * files (1: tilesets.json, photogrammetry run.json and gcp.json).
+ */
+const FILE_SET_VERSION = 1;
 type Meta = z.infer<typeof Meta>;
 
 const Pending = z.object({
@@ -452,6 +463,7 @@ export function createJournalService(deps: JournalServiceDeps) {
                 replicaId: randomId('r_', 16),
                 journal: 'on',
                 files: {},
+                fileSet: FILE_SET_VERSION,
               };
         let fresh = !ok.success;
         // one replica id per folder, from team/projects.json (a copied folder starts a new chain)
@@ -685,12 +697,21 @@ export function createJournalService(deps: JournalServiceDeps) {
     let changedMeta = false;
     // the first look at a folder only takes the baseline: nothing before it is known
     const baseline = rels === null && Object.keys(st.meta.files).length === 0;
+    // A whole-project look (open, job start) after the journaled-file set grew: a file that is on
+    // disk but has no snapshot predates the journal knowing it, so it is a baseline, not a change.
+    // A file created later by an app write or job has no snapshot either, but by then this has run
+    // (open always comes first), so it is still recorded.
+    const growth = rels === null && st.meta.fileSet < FILE_SET_VERSION;
     for (const rel of disk) {
       const now = await readText(join(st.root, ...rel.split('/')));
       const known = st.meta.files[rel];
       const nowHash = now === null ? undefined : textHash(now);
       if (nowHash === known) continue;
       changedMeta = true;
+      if (growth && known === undefined && now !== null) {
+        await snapshot(st, rel, now);
+        continue;
+      }
       const before = known === undefined ? null : await snapText(st, rel);
       if (!baseline) {
         const drafts = diffRecordFile(rel, parse(before), parse(now));
@@ -698,6 +719,10 @@ export function createJournalService(deps: JournalServiceDeps) {
         touched.push(...targetsOf(drafts));
       }
       await snapshot(st, rel, now);
+    }
+    if (growth) {
+      st.meta.fileSet = FILE_SET_VERSION;
+      changedMeta = true;
     }
     if (changedMeta) await saveMeta(st);
     return touched;
