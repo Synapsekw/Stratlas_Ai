@@ -77,12 +77,10 @@ describe('the English catalogue', () => {
       'tree.addDate.folderTitle',
       'tree.addDate.exists',
       'tree.addDate.invalid',
-      'tree.datePrompt.title',
       'tree.datePrompt.existing',
       'tree.datePrompt.new',
       'tree.datePrompt.file',
       'tree.datePrompt.later',
-      'tree.datePrompt.done',
       'palette.addSurveyDate',
       'palette.importFlightFolder',
     ];
@@ -91,6 +89,14 @@ describe('the English catalogue', () => {
       expect(v, k).toBeTruthy();
       expect(v, k).not.toMatch(/—/);
     }
+    expect(t('tree.datePrompt.title', { count: 1 })).toBe(
+      '1 dataset in Every date was recorded on a survey day.',
+    );
+    expect(t('tree.datePrompt.title', { count: 3 })).toBe(
+      '3 datasets in Every date were recorded on survey days.',
+    );
+    expect(t('tree.datePrompt.done', { count: 1 })).toBe('Filed 1 dataset.');
+    expect(t('tree.datePrompt.done', { count: 4 })).toBe('Filed 4 datasets.');
     expect(en['change.surveyDateNew']).toBe('New survey date...');
   });
 
