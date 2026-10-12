@@ -155,7 +155,7 @@ type WalkOrientation = {
   rateHz: number; // nominal sample rate, 1 to 2000
   count: number; // records in the data file
   convention: 'xyzw-camera-threejs'; // quaternion order and axes: three.js camera (+X right, +Y up, looks down -Z)
-  frame: 'raw'; // the same frame as raw-path.json's stills (q there and here agree at the stills)
+  frame: 'raw'; // the same frame as raw-path.json's stills
   startOffsetS: number; // playback time of t = 0 in the data file, seconds
   data: string; // file name of the data file in the same folder, e.g. "orientation.bin"
   layout: 'f32le-t-xyzw'; // see below
@@ -167,6 +167,12 @@ little-endian float32 values `[t, qx, qy, qz, qw]`, no header. `t` is seconds af
 `startOffsetS` (playback time = `startOffsetS + t`), strictly increasing; quaternions are unit
 length (readers normalise and drop a record that is not finite). A file whose length is not
 `count * 20` is refused as a whole.
+
+The rows are used as a relative rotation, anchored at the stills: at a moment between stills, the
+turn the rows make since the nearest still of the same segment is applied to that still's `q`. So
+`q` in the two files does not have to agree at the stills; only the turn between two moments is
+read from the rows. (Correction of 12 Oct, after the build: the spec first asked that both agree
+at the stills.)
 
 Absent orientation file (or a refused one): the pose takes the stills' orientation, slerped.
 
@@ -230,7 +236,9 @@ pose file is written. Both call the same code, so what the person sees is what i
    interpolated by the stills' cumulative `steps` (by time when steps are all zero); before the
    first and after the last pin the walk stays at that pin. Heading comes from the direction of
    travel; the yaw offset still applies.
-8. **Heading.** The fit's rotation applied to the raw orientation, plus `yawOffsetDeg`.
+8. **Heading.** The fit's rotation applied to the raw orientation, plus `yawOffsetDeg`. The
+   orientation rows are a relative rotation anchored at the nearest still of the same segment
+   (see `orientation.json` above).
 9. **Quality:** `unplaced` with fewer than two active pins; `poor` when any residual is above 2 m;
    `check` when any residual is above 0.5 m, a segment has no pin, a pin is inactive, or the walk is
    pins-only; else `good`. A walk placed with exactly two pins has no residuals and is `good`
@@ -275,7 +283,8 @@ badge stays `check`.
   stretch where a segment has no pin; at 60 % opacity outside Place walk.
 - **Still dots** at every kept still, 3 px, same colour, drawn under the line ends.
 - **Pins**: numbered markers in the order of time, the one under the pointer raised; an inactive
-  pin is drawn hollow with "the drawing it was on is gone".
+  pin is drawn hollow with "the drawing it was on is gone". Pins show only for the walk being
+  placed: they are placing tools, and outside Place walk the path and the stills are enough.
 - **Current position**: a dot with a short heading tick at the 360 pane's current time, only
   while Place walk is open (the project clock drives it in W3).
 - On the drawing pane, everything is drawn in image pixels at a constant screen size (as the place
@@ -334,8 +343,8 @@ not show it; 0.9 and older refuse to open it. Update every machine that opens su
   travels as before.
 - **`capturedAt` to survey date.** At migration and import, as in step 2 above; Place walk asks
   when that did not settle it.
-- **Remove walk.** The row action asks inline ("Remove the walk and its files? This cannot be
-  undone.") and then removes the layer and moves `walks/<id>/` to the project's `.trash/` folder
+- **Remove walk.** The row action asks inline ("Remove <name>? Its files stay in the project
+  trash for seven days.") and then removes the layer and moves `walks/<id>/` to the project's `.trash/` folder
   (emptied at the next open after seven days), so a mistaken removal can be recovered by hand.
   Not offered in a package or a read-only project.
 

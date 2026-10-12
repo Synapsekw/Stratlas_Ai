@@ -58,14 +58,30 @@ After the import the panel says which altitude was used and with which number. O
 
 1. Drag the `.insv` file onto the window, or pick it with **Add data**. The camera's low resolution copy (`LRV_...lrv`) can come along: it is skipped, because the full clip is imported.
 2. The two lens pictures are stitched into one 360 video for playback (at most 3840 x 1920). The import panel shows the progress; a minute of footage takes about a minute or two, and **Cancel** stops it. Other files of the same drop are saved in the project before the stitch starts; they show when the import has ended. The original stays where it is.
-3. The video appears under **360 video** below the datasets. Click it: the **Scene** opens in **Split** with the **360 video** pane on the right.
+3. The video appears in **Datasets** under **360 walks**, in the folder of its survey date when the camera's date matches one. Click it: the **Scene** opens in **Split** with the **360 video** pane on the right.
 4. Drag in the pane to look around and scroll to zoom. The bar below plays, pauses and scrubs; **Sound** turns the sound on. The keys are those of the video window: **Space** or **K**, **J**, **L**, comma and period.
 
 - A video that is already stitched (an equirectangular MP4 exported from Insta360 Studio or another program) comes in with **Ctrl K**, **Add 360 video**. The same command also takes `.insv` files.
 - Stitching needs **ffmpeg** on this computer. Without it the import says so and adds nothing: install a full ffmpeg build (on Windows `winget install Gyan.FFmpeg`), restart {product} and import again.
 - An `.lrv` imported without its `.insv` plays at its own low resolution.
 - A video stitched from the camera's own file plays **unstabilised**: every shake of the walk is in it, and the pane marks it **Not stabilised**. For a steady picture, export the clip from Insta360 Studio with FlowState on and bring that MP4 in with **Add 360 video**.
-- A 360 video is not placed on the site yet: it has no position, no path and no survey date. It travels inside a package, and older versions of {product} open the project without showing it.
+- A 360 video travels inside a package, and older versions of {product} open the project without showing it.
+
+### Placing a 360 walk
+
+A walk is placed on a drawing, or on the map when the project has a coordinate system, so you see where the camera was and which way it looked.
+
+1. Point at the walk's row under **360 walks** and press **Place walk** (the pin button). Its badge says **Needs placing** until it is placed.
+2. The **Scene** opens in **Split**: the 360 video on one side, the drawing on the other, and a strip above the drawing. If the walk has no survey date yet, the strip asks for it first.
+3. The video jumps to the start of the walk: click the drawing where it started. The video jumps to the end: click where it ended. A line in the colour of the survey date joins the two.
+4. To correct the line, scrub the video to a moment where you know the spot, press **Pin here** and click the spot. Drag a pin on the drawing to move it; the cross on its chip in the strip removes it. Each pin shows how far the line passes from it.
+5. If the view looks the wrong way, press **Align view**, click a landmark in the 360 video, then the same landmark on the drawing. The **Heading** field turns it by hand (arrow keys 1 degree, Shift 10).
+6. **Save**. The walk then shows on every drawing of the area, and the 360 video shows north (**N**) at its top edge.
+
+- **Place on** in the strip switches between the drawings of the walk's date, the drawings without a date and the **Map**. On the map, pins cannot be dragged: remove one and pin again.
+- **Cancel** with pins not saved asks "Keep these pins?" in the strip.
+- The camera's path between your pins is not worked out from the video yet: the walk runs between the pins, and its row reads **Path not computed**.
+- **Remove walk** (the bin button) asks in the row, then moves the walk's files to the project's trash folder, where they stay seven days.
 
 ## Drawings
 

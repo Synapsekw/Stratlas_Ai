@@ -8,9 +8,9 @@ Only what still needs testing. Each stage lists what to click and what you shoul
 
 - The product is **Quadrion AI** (it was called Stratlas until 7 Oct 2026; older stages below keep the old name).
 - Close the app first. The installer refuses while it (or an old Stratlas.exe) runs: "Quadrion AI is running. Close it and click Retry."
-- Run `E:\Dev\AIO Software\apps\desktop\dist\QuadrionAI-0.11.4-win-x64-setup.exe` and install over the previous version (also over a Stratlas install).
-- No install: `QuadrionAI-0.11.4-win-x64-portable.exe` in the same folder.
-- 0.11.4 contains every earlier fix, so all stages below are tested on it too.
+- Run `E:\Dev\AIO Software\apps\desktop\dist\QuadrionAI-0.12.0-win-x64-setup.exe` and install over the previous version (also over a Stratlas install).
+- No install: `QuadrionAI-0.12.0-win-x64-portable.exe` in the same folder.
+- 0.12.0 contains every earlier fix, so all stages below are tested on it too.
 - The build is unsigned. SmartScreen shows "Windows protected your PC": choose **More info**, then **Run anyway**.
 
 ### Check the build first
@@ -47,7 +47,8 @@ Only what still needs testing. Each stage lists what to click and what you shoul
 | D           | Drawings: the Drawings group, PDF and picture drawings, side by side, placing by points, opacity and on top                                                                                                                                                                                                                 | Version 0.11.4; any project, a test project is best because a drawing cannot be removed yet (see Stage D)                                                                                                                                                  | Built; not yet tested by the founder                 |
 | M10         | Photos to products: photo processing on the demo and on your own flight, ground control and the accuracy report, OPF, Globe, imagery and terrain packs, 3D Tiles, licence approvals                                                                                                                                         | Version 0.10.0, built 8 Oct 2026 from `integration/m10` at commit `3f07041` or later with the M10 fixes merged (the 24-photo demo), and the processing tools 0.4.0 or later; test it on 0.11.4 with the processing tools 0.5.4 (see M10, Before you start) | Built; not yet tested by the founder                 |
 | M11         | Surveying: site coordinates and calibration, the surface engine, measurement tools and templates, volumes and comparisons, cross-sections and terrain overlays, designs and alignments, survey exports and the interop matrix, QA and cleanup, survey reports and template sets, haul road, hydrology, your three real jobs | Version 0.11.4 with the processing tools 0.5.4 (both carry the local AI helpers), and the survey demos (see M11, Before you start)                                                                                                                         | Built; not yet tested by the founder                 |
-| Walks W1    | 360 video: a 360 camera file or a stitched 360 video comes in and plays beside the 3D view; it is not placed on the site yet                                                                                                                                                                                                | Version 0.11.4, and ffmpeg on the PC (see Walks W1, Before you start)                                                                                                                                                                                      | Built; not yet tested by the founder                 |
+| Walks W1    | 360 video: a 360 camera file or a stitched 360 video comes in and plays beside the 3D view                                                                                                                                                                                                                                  | Version 0.12.0, and ffmpeg on the PC (see Walks W1, Before you start)                                                                                                                                                                                      | Built; not yet tested by the founder                 |
+| Walks W2    | Placing a 360 walk: walks in Datasets with their badge, Place walk on a drawing or the map, pins, Save, Remove walk                                                                                                                                                                                                         | Version 0.12.0, ffmpeg, a 360 video and a drawing (see Walks W2, Before you start)                                                                                                                                                                         | Built; not yet tested by the founder                 |
 
 ## Stage M5: your M4 feedback, fixed
 
@@ -1074,7 +1075,7 @@ Your three jobs, on this PC only, with Wi-Fi off. Client files stay on this PC: 
 
 ## Stage Walks W1: 360 video from a 360 camera
 
-A 360 camera file needs ffmpeg on the PC, so check that first (Before you start). Test it on 0.11.4. This is the first part of Walks 360: the video comes in and plays; it is not placed on the site yet. A 360 video cannot be removed or renamed yet, so use a copy or a test project.
+A 360 camera file needs ffmpeg on the PC, so check that first (Before you start). Test it on 0.12.0. This is the first part of Walks 360: the video comes in and plays. Placing it on the site is Stage Walks W2. A 360 video cannot be renamed yet, so use a copy or a test project.
 
 ### Before you start
 
@@ -1084,18 +1085,18 @@ A 360 camera file needs ffmpeg on the PC, so check that first (Before you start)
 ### Import
 
 - [ ] Open the project, then **Add data** (or drag the files onto the window) and pick the `.insv` and the `.lrv` together. The import panel counts the files ("Importing 1 of 2") and, under the bar, shows the file name with "playback copy" and a percentage that counts up; the bar moves with it.
-- [ ] When it ends the panel reads "Imported 1 of 2 files". The `.insv` line is **Imported**: "Stitched to 3840 x 1920 for playback from two lens streams of 2880 x 2880; the original stays where it is. Open it under 360 video in the sidebar." The `.lrv` line is **Skipped**: "The camera's low resolution copy of VID_..., which is imported in full."
+- [ ] When it ends the panel reads "Imported 1 of 2 files". The `.insv` line is **Imported**: "Stitched to 3840 x 1920 for playback from two lens streams of 2880 x 2880; the original stays where it is. Open it under 360 walks in Datasets." The `.lrv` line is **Skipped**: "The camera's low resolution copy of VID_..., which is imported in full."
 - [ ] A minute of footage takes about a minute or two to stitch. The app stays usable meanwhile, but a second import does not start until the first has ended or is cancelled.
-- [ ] Import the clip again and click **Cancel** in the panel while the percentage counts: the header reads "Cancelling the import", then "Imported 0 of 1 files", and the clip's line is **Skipped**: "The import was cancelled while this 360 video was made. Nothing of it was added." The **360 video** list has no new row, and in Task Manager no ffmpeg is left running.
+- [ ] Import the clip again and click **Cancel** in the panel while the percentage counts: the header reads "Cancelling the import", then "Imported 0 of 1 files", and the clip's line is **Skipped**: "The import was cancelled while this 360 video was made. Nothing of it was added." The **360 walks** group in **Datasets** has no new row, and in Task Manager no ffmpeg is left running.
 - [ ] Drop the clip together with a few photos and click **Cancel** while the clip's percentage counts: the photos are kept ("Imported ... files", their lines **Imported**) and show in the scene and the dataset tree, and the clip is **Skipped**. Without Cancel the photos are saved in the project at once, but they show only when the whole import has ended, clip included.
 - [ ] Drop the clip together with a PDF of several pages and click **Cancel** while the clip's percentage counts: no page question appears, the PDF's line is **Skipped** ("The import was cancelled before this drawing was drawn. Nothing of it was added.") and the **Drawings** group has no new row.
 - [ ] Start an import of the clip and close the app while the percentage counts. In Task Manager no ffmpeg is left running. Open the app and import any 360 video: the project folder's `walks` folder holds no `.staging-...` folder afterwards.
-- [ ] The dataset count and the layers are as before: a 360 video is not a layer.
+- [ ] The dataset count goes up by one: the 360 video is a row under **360 walks** in **Datasets**, in the folder of its survey date when the camera's date matches one, else under **Every date**.
 
 ### Play
 
-- [ ] Below the datasets there is a **360 video** list with the clip and its length. Click it: the **Scene** switches to **Split**, with **360 video** on the right.
-- [ ] In the **360 video** list a row shows the video's name and its length, and a click opens it. The row has no eye, no settings button and no menu, and **Ctrl K** has only **Add 360 video**: a 360 video cannot be renamed or removed in the app yet (see KNOWN-LIMITS).
+- [ ] In **Datasets**, the **360 walks** group shows the clip with its length and the badge **Needs placing**. Click the row: the **Scene** switches to **Split**, with **360 video** on the right.
+- [ ] A 360 video cannot be renamed in the app yet (see KNOWN-LIMITS). Placing and removing it are Stage Walks W2.
 - [ ] The picture is not levelled or stabilised (see KNOWN-LIMITS): the horizon is level where the camera was held upright. Drag in the pane: the view turns with the pointer. Scroll: it zooms in and out. The round arrow in the bar ("Look ahead again") puts the view back.
 - [ ] The play button plays and pauses; the time counts up ("0:12 / 1:21"); dragging the slider jumps to that moment.
 - [ ] Click in the picture, then use the keys: **Space** plays and pauses, **L** plays and, pressed again while it plays, doubles the speed (the bar shows "2x", then "4x" and "8x"), **J** slows down or steps back a second, **K** pauses, comma and period step one frame.
@@ -1106,7 +1107,7 @@ A 360 camera file needs ffmpeg on the PC, so check that first (Before you start)
 ### A stitched video
 
 - [ ] **Ctrl K**, **Add 360 video**, pick an equirectangular MP4 (an Insta360 Studio export, 2:1). The panel says "Stored as it is (...)" for an H.264 file up to 3840 wide, or "Playback copy at ..." for a larger one or another codec.
-- [ ] The **360 video** list has one more row, and the pane has a chooser for the videos at the top left.
+- [ ] The **360 walks** group has one more row, and the pane has a chooser for the videos at the top left.
 - [ ] **Ctrl K**, **Add 360 video** with an ordinary drone MP4: **Skipped**, "The frame is ..., not a 2:1 equirectangular picture, and the file has no 360 metadata. Drone video is imported with Add data, together with its SRT."
 - [ ] **Add data** with the same drone MP4 without its SRT behaves as before ("No DJI SRT telemetry...").
 
@@ -1120,8 +1121,8 @@ A 360 camera file needs ffmpeg on the PC, so check that first (Before you start)
 
 ### Packages and older builds
 
-- [ ] **Reports**, **Export package**, then open the `.aio`: the **360 video** list is there and the video plays; there is no **Add 360 video** button in the list.
-- [ ] Open the same project folder in the previous installer (0.11): it opens as before, without the 360 video and without a warning.
+- [ ] **Reports**, **Export package**, then open the `.aio`: the walk is under **360 walks** and plays; the group has no **Add 360 video** button.
+- [ ] Open the same project folder in the previous installer (0.11.4): it opens without a warning.
 
 ## Stage Timeline T3: compare across dates
 
@@ -1150,3 +1151,51 @@ Compare two survey dates from the sidebar tree, and two panoramas side by side. 
 ### Saved state
 
 - [ ] Close and reopen the project: the split, its dates and the left panorama are as you left them.
+
+
+## Stage Walks W2: placing a 360 walk
+
+Test it on 0.12.0. A walk is placed on a drawing (or on the map, in a project with a coordinate system) by clicking where it started and where it ended, then correcting with pins. The path the camera walked is not computed from the video yet, so every walk is placed between your pins, and after Save its badge reads **Path not computed** (see KNOWN-LIMITS).
+
+### Before you start
+
+- [ ] ffmpeg is installed (Stage Walks W1, Before you start).
+- [ ] Use a test project or a copy, with a 360 video in it (Stage Walks W1) and a drawing of the same area (Stage D). A drawing placed by points gives true distances; one that is not placed yet works too.
+- [ ] A project that had 360 videos in 0.11.4 opens with them as rows under **360 walks**, with nothing to do.
+
+### The walk in Datasets
+
+- [ ] The **360 walks** group is open, in the folder of the walk's survey date or under **Every date**. The row shows the name, the length and **Needs placing**.
+- [ ] Point at the row: three buttons take the place of the length: **Open in the 360 video pane**, **Place walk** and **Remove walk**. The group header has **Add 360 video**.
+- [ ] There is no separate **360 video** list below the datasets any more.
+
+### Place on a drawing
+
+- [ ] Press **Place walk**. The **Scene** goes to **Split** with the 360 video on one side and the drawing on the other. A strip above the drawing (never over it) asks "Choose the survey date of this walk", with a button per survey date, or **Add survey date** with the camera's date.
+- [ ] Pick the date. The strip reads "Where did the walk start? Click the spot.", shows **Place on** with the drawing, and the steps **1 Start**, **2 End** and **3 Correct**; only the current step is highlighted. The video jumps to the start of the walk.
+- [ ] Click the drawing where the walk started: pin 1 appears, the video jumps to the end, and the strip reads "Where did it end? Click the spot."
+- [ ] Click where it ended: a line in the colour of the survey date joins the pins, and the step is **Correct**. The note "Path not computed: the walk is placed between your pins." shows in the strip.
+- [ ] Two pins less than 5 m apart are refused, and the strip says why.
+- [ ] Scrub the video to a moment in the middle, press **Pin here** ("Click the true spot for this moment.") and click the spot: pin 3 appears and the line passes through it. Each pin in the strip shows "set" or a distance in metres; its small cross removes it.
+- [ ] Drag a pin on the drawing: the line follows while you drag.
+- [ ] **Align view**: click a landmark in the 360 video ("Click a landmark in the 360 view"), then the same landmark on the drawing ("Now click the same landmark here"). The **Heading** field changes; the arrow keys in it turn by 1 degree, and by 10 with Shift.
+- [ ] Once placed, the 360 video shows a small **N** at its top edge where north is, at the edge and dimmed when north is out of view.
+- [ ] **Save**: the strip closes, the row's badge reads **Path not computed**, and the walk's folder in the project (`walks/<name>/`) holds a new `pose.json`.
+- [ ] **Place walk** again: it opens on the same drawing with the pins as saved.
+- [ ] With unsaved pins, press **Cancel**: the strip asks "Keep these pins?" with **Keep placing**, **Discard** and **Save**, inline, with no dialog.
+- [ ] Open another drawing of the same area in the split: the placed walk is drawn on it too, fainter and without pins.
+
+### Place on the map
+
+- [ ] In a project with a coordinate system, **Place on** offers **Map** after the drawings. The strip sits above the map, and the same steps place the walk by clicks on the map. Map pins cannot be dragged: remove one with its cross and pin again (see KNOWN-LIMITS).
+- [ ] In a project on a local grid, **Map** is not offered.
+
+### Remove a walk
+
+- [ ] Point at the row and press **Remove walk**. Under the row: "Remove <name>? Its files stay in the project trash for seven days." with **Remove walk** and **Cancel**; Escape cancels. No dialog.
+- [ ] Press **Remove walk**, also with the walk open in the 360 video pane: the row goes, and the walk's folder moves to `.trash` in the project folder. It is deleted when the project is opened more than seven days later.
+
+### Packages and older builds
+
+- [ ] Export a package and open it: the placed walk plays, and its row has no **Place walk** or **Remove walk**.
+- [ ] Open the project folder in 0.11.4: it opens without a warning.
