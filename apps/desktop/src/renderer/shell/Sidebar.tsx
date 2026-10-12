@@ -482,7 +482,7 @@ function Datasets({ collapsed }: { collapsed: boolean }) {
           {...drawingProps}
           onFolderMenu={setFolderMenu}
           onMove={canEdit ? onMove : undefined}
-          onItemMenu={canEdit ? setItemMenu : undefined}
+          onItemMenu={setItemMenu}
           renaming={canEdit ? renaming : null}
           onRenameStart={canEdit ? setRenaming : undefined}
           onRename={onRename}
@@ -529,12 +529,13 @@ function Datasets({ collapsed }: { collapsed: boolean }) {
           }}
         />
       )}
-      {datesOn && canEdit && itemMenu && (
+      {datesOn && itemMenu && (
         <LayerDateMenu
           menu={itemMenu}
           captures={project.manifest.captures}
           tags={tags}
           every={EVERY_DATE}
+          canEdit={canEdit}
           onClose={() => {
             setItemMenu(null);
           }}

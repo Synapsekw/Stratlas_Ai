@@ -1,11 +1,24 @@
 // @vitest-environment jsdom
 import type { Capture } from '@aio/schema';
 import { EVERY_DATE, type DateFolder, type DateFolderMenuRequest } from '@aio/ui';
-import { dateTags } from '@aio/workspace';
+import { dateTags, workspace } from '@aio/workspace';
 import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { compareWith, COMPARE_WITH_ACTIONS } from '../workspace/compareWith';
 import { DateFolderMenu, LayerDateMenu, type DateFolderMenuProps } from './DateMenus';
+
+vi.mock('../workspace/compareWith', () => ({
+  COMPARE_WITH_ACTIONS: [],
+  compareWith: vi.fn(() => true),
+  compareTargets: vi.fn((from: string) =>
+    [
+      { capture: 'nov', reason: null },
+      { capture: 'oct', reason: null },
+      { capture: 'sep', reason: 'compare.with.noRaster' },
+    ].filter((x) => x.capture !== from),
+  ),
+}));
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -15,6 +28,11 @@ const captures: Capture[] = [
   { id: 'nov', label: '2024-11-06', date: '2024-11-06' },
 ];
 const tags = dateTags(captures);
+const only = (i: number): Capture => {
+  const c = captures[i];
+  if (!c) throw new Error('no such capture');
+  return c;
+};
 const folder = (id: string, layerIds: string[]): DateFolder => {
   const capture = captures.find((c) => c.id === id) ?? null;
   return { id, capture, label: capture ? capture.date : 'Every date', groups: [], layerIds };
@@ -22,13 +40,22 @@ const folder = (id: string, layerIds: string[]): DateFolder => {
 
 let host: HTMLDivElement;
 let root: Root | undefined;
+const setProject = (list: Capture[]) => {
+  workspace.setState({
+    project: { id: 'p1', root: 'C:/p', manifest: { captures: list, layers: [] } },
+  } as unknown as Partial<ReturnType<typeof workspace.getState>>);
+};
 beforeEach(() => {
+  setProject(captures);
+  vi.mocked(compareWith).mockClear();
+  COMPARE_WITH_ACTIONS.length = 0;
   host = document.createElement('div');
   document.body.append(host);
 });
 afterEach(() => {
   act(() => root?.unmount());
   root = undefined;
+  workspace.setState({ project: null });
   host.remove();
 });
 // the menus render into the body (a portal), not into the host
@@ -155,8 +182,84 @@ describe('DateFolderMenu', () => {
   });
 });
 
+describe('DateFolderMenu: Compare with', () => {
+  it('lists the other dates newest first, with swatches, and compares with the picked one', () => {
+    const p = folderMenu('nov');
+    click('date-menu-compare');
+    expect(q('date-menu')?.textContent).toContain('Compare 6 Nov 2024 with');
+    const ids = [...document.body.querySelectorAll('[data-testid^="compare-to-"]')].map((b) =>
+      b.getAttribute('data-testid'),
+    );
+    expect(ids).toEqual(['compare-to-oct', 'compare-to-sep']);
+    expect(q('compare-to-oct')?.textContent).toContain('2 Oct 2024');
+    expect(q('compare-to-oct')?.querySelector('.sw')).not.toBeNull();
+    click('compare-to-oct');
+    expect(compareWith).toHaveBeenCalledWith({ from: 'nov', to: 'oct' });
+    expect(p.onClose).toHaveBeenCalledTimes(1);
+  });
+
+  it('shows why a date is off and does not compare with it', () => {
+    folderMenu('nov');
+    click('date-menu-compare');
+    const sep = q('compare-to-sep') as HTMLButtonElement;
+    expect(sep.disabled).toBe(true);
+    expect(sep.textContent).toContain('No ortho');
+    click('compare-to-sep');
+    expect(compareWith).not.toHaveBeenCalled();
+  });
+
+  it('goes back to the menu, and Escape closes', () => {
+    const p = folderMenu('nov');
+    click('date-menu-compare');
+    expect(q('date-menu-toggle')).toBeNull();
+    click('compare-back');
+    expect(q('date-menu-toggle')).not.toBeNull();
+    expect(p.onClose).not.toHaveBeenCalled();
+    click('date-menu-compare');
+    act(() => {
+      q('date-menu')?.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    });
+    expect(p.onClose).toHaveBeenCalledTimes(1);
+  });
+
+  it('keeps focus inside the menu after the view changes', () => {
+    folderMenu('nov');
+    click('date-menu-compare');
+    expect(q('date-menu')?.contains(document.activeElement)).toBe(true);
+  });
+
+  it('is offered in a read-only project, but not with one survey date or for Every date', () => {
+    folderMenu('nov', { canEdit: false });
+    expect(q('date-menu-compare')).not.toBeNull();
+    act(() => root?.unmount());
+    folderMenu(EVERY_DATE);
+    expect(q('date-menu-compare')).toBeNull();
+    act(() => root?.unmount());
+    setProject([only(2)]);
+    folderMenu('nov');
+    expect(q('date-menu-compare')).toBeNull();
+  });
+
+  it('renders extra actions under each enabled date with the request and close', () => {
+    const seen: unknown[] = [];
+    COMPARE_WITH_ACTIONS.push((p) => {
+      seen.push(p.request);
+      return (
+        <button key={p.request.to} type="button" data-testid={`extra-${p.request.to}`}>
+          Extra
+        </button>
+      );
+    });
+    folderMenu('nov');
+    click('date-menu-compare');
+    expect(q('extra-oct')).not.toBeNull();
+    expect(q('extra-sep')).toBeNull();
+    expect(seen).toContainEqual({ from: 'nov', to: 'oct', layers: undefined });
+  });
+});
+
 describe('LayerDateMenu', () => {
-  const open = (from: string) => {
+  const open = (from: string, canEdit = true) => {
     const onMove = vi.fn();
     const onClose = vi.fn();
     root = createRoot(host);
@@ -176,6 +279,7 @@ describe('LayerDateMenu', () => {
           every={EVERY_DATE}
           onClose={onClose}
           onMove={onMove}
+          canEdit={canEdit}
         />,
       ),
     );
@@ -216,6 +320,7 @@ describe('LayerDateMenu', () => {
           every={EVERY_DATE}
           onClose={vi.fn()}
           onMove={onMove}
+          canEdit
         />,
       ),
     );
@@ -226,5 +331,36 @@ describe('LayerDateMenu', () => {
       document.body.querySelector<HTMLButtonElement>('[data-testid="move-to-oct"]')?.click();
     });
     expect(onMove).toHaveBeenCalledWith(['a', 'b'], 'oct');
+  });
+
+  it('offers Compare with another date, and File under only when the project can be edited', () => {
+    open('oct', false);
+    expect(q('move-compare')?.textContent).toContain('Compare with another date...');
+    expect(q('move-to-sep')).toBeNull();
+    expect(q('move-to-every')).toBeNull();
+    act(() => root?.unmount());
+    open('oct', true);
+    expect(q('move-compare')).not.toBeNull();
+    expect(q('move-to-sep')).not.toBeNull();
+    expect(document.body.textContent).toContain('File under');
+  });
+
+  it('compares the layers with the picked date', () => {
+    const { onClose } = open('oct');
+    click('move-compare');
+    expect(q('move-menu')?.textContent).toContain('Compare 2 Oct 2024 with');
+    click('compare-to-nov');
+    expect(compareWith).toHaveBeenCalledWith({ from: 'oct', to: 'nov', layers: ['quad'] });
+    expect(onClose).toHaveBeenCalledTimes(1);
+    click('compare-back');
+  });
+
+  it('has no compare item with one survey date or for a layer in Every date', () => {
+    open(EVERY_DATE);
+    expect(q('move-compare')).toBeNull();
+    act(() => root?.unmount());
+    setProject([only(1)]);
+    open('oct');
+    expect(q('move-compare')).toBeNull();
   });
 });
