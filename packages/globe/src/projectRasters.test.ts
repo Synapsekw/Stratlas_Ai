@@ -260,6 +260,33 @@ describe('pyramidTilesFor', () => {
     expect(pyramidTilesFor(index, place, [0, 0, 1, 1], 1)).toBeNull();
   });
 
+  it('a huge rectangle: nothing when it is away from the site, every coarse tile when it holds it', () => {
+    // the western hemisphere: the site (about 56 E) is not in it
+    expect(pyramidTilesFor(index, place, [-180, -90, 0, 90], 1)).toBeNull();
+    expect(pyramidTilesFor(index, place, [-180, -90, 0, 90], 1000)).toBeNull();
+    // the eastern hemisphere holds it: the coarsest level for a coarse pixel, and all of it
+    const east = pyramidTilesFor(index, place, [0, -90, 180, 90], 1000);
+    expect(east?.z).toBe(0);
+    expect(east?.tiles.map((t) => t.path)).toEqual(['rasters/ortho/0/0_0.webp']);
+    // a fine pixel with the default 16 tiles: level 2 has all 16, every one of them
+    const fine = pyramidTilesFor(index, place, [0, -90, 180, 90], 0.3);
+    expect(fine?.z).toBe(2);
+    expect(fine?.tiles).toHaveLength(16);
+  });
+
+  it('tile row 0 runs along tl to tr, column 0 along tl to bl, as the pipelines write them', () => {
+    const got = pyramidTilesFor(index, place, place.rect, 1);
+    expect(got?.z).toBe(1);
+    // x = 1, y = 0: the top right tile, along the tl to tr edge
+    const tile = got?.tiles.find((t) => t.x === 1 && t.y === 0);
+    expect([tile?.u0, tile?.u1, tile?.v0, tile?.v1]).toEqual([0.5, 1, 0, 0.5]);
+    // its centre is north east of the pyramid's centre (tl is north west)
+    const [clon, clat] = place.toLonLat(0.5, 0.5);
+    const [tlon, tlat] = place.toLonLat(0.75, 0.25);
+    expect(tlon).toBeGreaterThan(clon);
+    expect(tlat).toBeGreaterThan(clat);
+  });
+
   it('fills every placeholder of the pattern', () => {
     const custom = { ...index, levels: [{ ...level(3, 1), pattern: 'p/{z}/{z}-{x}-{y}.png' }] };
     const got = pyramidTilesFor(custom, pyramidPlacement(custom, frame), place.rect, 5);

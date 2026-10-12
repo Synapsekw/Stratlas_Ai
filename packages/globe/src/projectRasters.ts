@@ -71,6 +71,7 @@ const RECT_MARGIN = 0.01;
 /** Ground size a grid cell of the placement may span, metres, and the grid's bounds. */
 const GRID_CELL_M = 100;
 const GRID_MIN = 2;
+// past about 3.2 km cells grow beyond 100 m, still within millimetres on pyramids of a few km
 const GRID_MAX = 32;
 
 /**
@@ -205,7 +206,9 @@ const fillPattern = (pattern: string, z: number, x: number, y: number): string =
  * coarsest level whose pixels are no larger than `metresPerPx`, or the finest when zoomed past
  * it, stepping to coarser levels while the rectangle would need more than `maxTiles`. Null when
  * the rectangle misses the pyramid. The same rule as `@aio/maps` `pyramidView`, worked in the
- * placement's (u, v).
+ * placement's (u, v). The rectangle is clipped to `placement.rect` first: (u, v) beyond the
+ * pyramid are extrapolated and mean nothing far from it. The levels of `index` must be coarse
+ * to fine, as `parsePyramid` leaves them and `placement.metresPerPx` lists them.
  */
 export function pyramidTilesFor(
   index: PyramidIndex,
@@ -214,9 +217,13 @@ export function pyramidTilesFor(
   metresPerPx: number,
   maxTiles = 16,
 ): { z: number; tiles: PyramidTileRef[] } | null {
-  const levels = [...index.levels].sort((a, b) => a.cols - b.cols);
+  const levels = index.levels;
   if (!levels.length) return null;
-  const [west, south, east, north] = rect;
+  const west = Math.max(rect[0], placement.rect[0]);
+  const south = Math.max(rect[1], placement.rect[1]);
+  const east = Math.min(rect[2], placement.rect[2]);
+  const north = Math.min(rect[3], placement.rect[3]);
+  if (!(west < east && south < north)) return null;
   const uv = [
     placement.toUv(west, north),
     placement.toUv(east, north),
@@ -230,7 +237,9 @@ export function pyramidTilesFor(
   const v1 = Math.min(1, Math.max(...uv.map((p) => p[1])));
   if (u0 >= u1 || v0 >= v1) return null;
 
-  let pick = levels.findIndex((l) => levelMetresPerPx(index, l) <= metresPerPx * 1.001);
+  let pick = levels.findIndex(
+    (l, i) => (placement.metresPerPx[i] ?? levelMetresPerPx(index, l)) <= metresPerPx * 1.001,
+  );
   if (pick < 0) pick = levels.length - 1;
   for (let i = pick; i >= 0; i--) {
     const level = levels[i];
