@@ -40,6 +40,8 @@ STANDING_WINDOW_S = 0.5  # moving window of the acceleration magnitude's spread
 BLOCK_S = 0.01  # gravity correction step of the filter
 INIT_S = 1.0  # accelerometer average that sets the first tilt
 GATE_G = 0.5  # magnitude error (g) at which the gravity correction is off
+DEVIATION_DEG = (1.5, 3.0)  # the low-passed up this far off the estimate: corrected towards fully, not at all
+# (while moving; standing still there is no sustained acceleration, so the correction is always on)
 LOWPASS_S = 0.5  # time constant of the measured up, gravity frame
 STEP_BAND_HZ = (1.2, 3.0)
 
@@ -296,6 +298,12 @@ def orientation(
     kp = gain / 0.02
     lp = np.minimum(1.0, weight * span / LOWPASS_S).tolist()
     ck = (kp * span).tolist()
+    mid = t[starts] + 0.5 * span
+    still = np.zeros(nb, dtype=bool)
+    for a, b in standing_stretches(t, acc):
+        still |= (mid >= a + 0.5) & (mid <= b - 0.5)  # clear of setting off and stopping
+    still = still.tolist()
+    dev_full, dev_off = (math.cos(math.radians(d)) for d in DEVIATION_DEG)
     dl = deltas.tolist()
     au = a_unit.tolist()
 
@@ -326,7 +334,13 @@ def orientation(
             gy += a * (uy - gy)
             gz += a * (uz - gz)
         # q <- r * q, r about the horizontal axis g x z that turns the measured up towards z
-        c = ck[k]
+        # A low-passed up still far from the estimate is a sustained horizontal acceleration
+        # (setting off, a corner), not a tilt the gyro missed: the gyro drifts far slower.
+        gn = sqrt(gx * gx + gy * gy + gz * gz)
+        # Standing still the up is gravity whatever the gap, so a tilt error past the band (a
+        # gyro glitch) is won back at the next stop instead of staying for good.
+        share = 1.0 if still[k] else (gz / gn - dev_off) / (dev_full - dev_off) if gn > 1e-9 else 0.0
+        c = ck[k] * min(1.0, max(0.0, share))
         ex, ey = gy * c, -gx * c
         ang = sqrt(ex * ex + ey * ey)
         if ang > 1e-12:
@@ -337,6 +351,16 @@ def orientation(
                 rw * x + rx_ * w + ry_ * z,
                 rw * y - rx_ * z + ry_ * w,
                 rw * z + rx_ * y - ry_ * x,
+            )
+            # The low-passed up is a gravity-frame vector of the old estimate: turn it with the
+            # correction, or the filter keeps correcting towards a stale up and overshoots.
+            ux_, uy_ = ex / ang, ey / ang
+            ca, sa = cos(ang), sin(ang)
+            dot = ux_ * gx + uy_ * gy
+            gx, gy, gz = (
+                gx * ca + uy_ * gz * sa + ux_ * dot * (1 - ca),
+                gy * ca - ux_ * gz * sa + uy_ * dot * (1 - ca),
+                gz * ca + (ux_ * gy - uy_ * gx) * sa,
             )
         nrm = sqrt(w * w + x * x + y * y + z * z)
         w, x, y, z = w / nrm, x / nrm, y / nrm, z / nrm

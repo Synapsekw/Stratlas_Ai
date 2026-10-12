@@ -166,6 +166,18 @@ def test_tilt_recovered_from_gravity_under_walking_noise():
     assert tilt[t[::50] > 10].max() < 0.5
 
 
+def test_a_large_tilt_error_is_still_corrected():
+    """A gyro glitch on a still camera leaves the estimate 8 degrees off: gravity must win back."""
+    t, acc, gyro, _ = synth(40.0, lambda x: R_BASE)
+    burst = (t >= 1.0) & (t < 1.2)
+    gyro = gyro.copy()
+    gyro[burst, 0] += math.radians(8.0) / 0.2  # 8 degrees about camera x that never happened
+    q = motion.orientation(t, acc, gyro, np.array([1.3, 39.9]))
+    err = angle_deg(quat_to_mat(q), np.stack([R_BASE, R_BASE]))
+    assert err[0] > 5.0  # the glitch got in
+    assert err[1] < 1.0  # and was corrected away
+
+
 def test_output_times_interpolate_and_clamp():
     t, acc, gyro, rs = synth(4.0, lambda x: rz(0.3 * x) @ R_BASE)
     out_t = np.array([-1.0, 0.0105, 2.0, 99.0])
