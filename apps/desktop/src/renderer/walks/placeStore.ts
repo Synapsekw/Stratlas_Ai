@@ -153,12 +153,12 @@ export function createPlaceStore(deps: {
     /** The step that the pins call for: start with none, end with one, else correct. */
     const stepForPins = (count: number): void => {
       if (count === 0) {
-        set({ step: 'start', armed: 'start' });
+        set({ step: 'start', armed: 'start', moving: null });
         jump(startT());
       } else if (count === 1) {
-        set({ step: 'end', armed: 'end' });
+        set({ step: 'end', armed: 'end', moving: null });
         jump(endT());
-      } else set({ step: 'correct', armed: null });
+      } else set({ step: 'correct', armed: null, moving: null });
     };
 
     const pinAt = (t: number, at: [number, number], y: number | undefined): WalkPin | null => {

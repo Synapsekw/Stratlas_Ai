@@ -319,6 +319,23 @@ describe('PlaceWalkStrip', () => {
     const move = host.querySelectorAll<HTMLButtonElement>('[data-testid="walk-place-pin-move"]');
     expect(move).toHaveLength(2);
     expect(move[1]?.title).toMatch(/click to move/i);
+    // its name reads as words, not "2set"
+    expect(move[1]?.getAttribute('aria-label')).toMatch(/^Pin 2: \S.*\. Click to move$/);
+    // Esc lets go of an armed move
+    click(move[0] ?? null);
+    expect(ctx.session.getState().armed).toBe('move');
+    act(() => {
+      window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
+    });
+    expect(ctx.session.getState().armed).toBeNull();
+    // not while saving
+    act(() => {
+      ctx.ui.setState({ saving: true });
+    });
+    expect(move[1]?.disabled).toBe(true);
+    act(() => {
+      ctx.ui.setState({ saving: false });
+    });
     const start = ctx.session.getState().pins[0];
     click(move[1] ?? null);
     expect(ctx.session.getState()).toMatchObject({ armed: 'move', moving: 1 });

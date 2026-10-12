@@ -328,6 +328,27 @@ describe('createPlaceWalk', () => {
     expect(session.getState().layerId).toBe('walk-b');
   });
 
+  it('Save lets go of a pin being moved, so no move is made while it saves', async () => {
+    const project = { current: projectWith([plan, walkLayer()]) };
+    let answer: (v: string | null) => void = () => undefined;
+    const { flow, session } = flowFor(project, {
+      save: () =>
+        new Promise<string | null>((r) => {
+          answer = r;
+        }),
+    });
+    await flow.begin('walk-a');
+    flow.chooseSurface({ kind: 'map' });
+    session.getState().click([0, 0], 0);
+    session.getState().click([40, 0], 0);
+    session.getState().armMove(0);
+    const saving = flow.save();
+    expect(session.getState().armed).toBeNull();
+    expect(session.getState().moving).toBeNull();
+    answer('Disk full');
+    await saving;
+  });
+
   it('discard closes the session and leaves the walk untouched', async () => {
     const project = { current: projectWith([plan, walkLayer()]) };
     const { flow, save, session, ui } = flowFor(project);

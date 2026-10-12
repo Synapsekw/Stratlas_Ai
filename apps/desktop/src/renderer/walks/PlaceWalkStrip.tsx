@@ -79,6 +79,20 @@ export function PlaceWalkStrip({
   const imagery = useStore(placeImagery, (s) => s.imagery);
   const hidden = useWorkspace((s) => s.hidden);
   const [yawText, setYawText] = useState<string | null>(null);
+  // Esc lets go of a pin waiting to be moved; it stays where it is
+  const movingPin = st.armed === 'move' ? st.moving : null;
+  useEffect(() => {
+    if (movingPin === null) return;
+    const onKey = (e: globalThis.KeyboardEvent) => {
+      if (e.key !== 'Escape') return;
+      e.preventDefault();
+      session.getState().armMove(movingPin);
+    };
+    window.addEventListener('keydown', onKey);
+    return () => {
+      window.removeEventListener('keydown', onKey);
+    };
+  }, [movingPin, session]);
   const walk = flow.walk();
   if (u.layerId === null || walk?.id !== u.layerId || st.layerId !== u.layerId) return null;
 
@@ -328,6 +342,12 @@ export function PlaceWalkStrip({
           {st.pins.map((p, k) => {
             const r = st.fit?.pins.find((f) => f.index === k);
             const moving = st.armed === 'move' && st.moving === k;
+            const status =
+              r && !r.active
+                ? 'gone'
+                : r?.residualM !== null && r?.residualM !== undefined
+                  ? `${r.residualM.toFixed(2)} m`
+                  : 'set';
             return (
               <span
                 key={k}
@@ -340,6 +360,8 @@ export function PlaceWalkStrip({
                   className="wplace-pin-move"
                   data-testid="walk-place-pin-move"
                   aria-pressed={moving}
+                  aria-label={`Pin ${String(k + 1)}: ${status}. Click to move`}
+                  disabled={u.saving}
                   title={
                     moving
                       ? 'Click the new spot, or click here again to keep the pin where it is'
@@ -350,12 +372,7 @@ export function PlaceWalkStrip({
                   }}
                 >
                   <b>{k + 1}</b>
-                  {r && !r.active
-                    ? 'gone'
-                    : r?.residualM !== null && r?.residualM !== undefined
-                      ? `${r.residualM.toFixed(2)} m`
-                      : 'set'}
-                  <span className="sr-only">, move this pin</span>
+                  {status}
                 </button>
                 <button
                   type="button"

@@ -258,6 +258,14 @@ describe('createPlaceStore', () => {
     expect(s().armed).toBe('end');
   });
 
+  it('a step change (another surface) lets go of a pin being moved', () => {
+    const { s } = placedOnMap();
+    s().armMove(1);
+    s().chooseSurface(SHEET);
+    expect(s().armed).toBeNull();
+    expect(s().moving).toBeNull();
+  });
+
   it('a pin moved on another surface takes that surface', () => {
     const { s } = setup();
     s().chooseSurface(SHEET);

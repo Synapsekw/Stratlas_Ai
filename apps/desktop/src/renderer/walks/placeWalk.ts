@@ -355,6 +355,8 @@ export function createPlaceWalk(
       const id = ui.getState().layerId;
       const st = session.getState();
       if (!id || st.layerId !== id || ui.getState().saving) return;
+      // a pin waiting to be moved lets go: a move made while saving would not be saved
+      if (st.armed === 'move' && st.moving !== null) st.armMove(st.moving);
       ui.setState({ saving: true, note: null, asking: false });
       const error = await deps.save(id, { walk: st.calibration() });
       if (ui.getState().layerId !== id) return;
