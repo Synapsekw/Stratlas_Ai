@@ -36,26 +36,61 @@ import { expect, processingChip, test, tinyGlb, TINY_PROJECT_ID, type DataRoot }
 /** The app's CSP as the build writes it into the page's `<meta>` (src/main/csp.ts). */
 const appCsp = (): string => metaPolicy(APP_CSP);
 
-/** What the Globe shows (`GlobeController.inspect()` through the hook on its element). */
+/**
+ * What the Globe shows (`GlobeController.inspect()` through the hook on its element). The first
+ * call also starts counting the page's long tasks (`longTasks`), buffered from the page's start,
+ * so that a failure can say how long the renderer was held.
+ */
 const inspect = (win: Page) =>
   win.evaluate(() => {
+    const w = window as { __e2eLongTasks?: { count: number; maxMs: number } };
+    if (!w.__e2eLongTasks && PerformanceObserver.supportedEntryTypes.includes('longtask')) {
+      const seen = { count: 0, maxMs: 0 };
+      w.__e2eLongTasks = seen;
+      new PerformanceObserver((list) => {
+        for (const t of list.getEntries()) {
+          seen.count += 1;
+          seen.maxMs = Math.max(seen.maxMs, t.duration);
+        }
+      }).observe({ type: 'longtask', buffered: true });
+    }
     const el = document.querySelector('[data-testid="globe-canvas"]');
     const c = (el as { __aioGlobe?: { inspect(): unknown } } | null)?.__aioGlobe;
     return (c?.inspect() ?? null) as GlobeInspection | null;
   });
 
+/** The page's long tasks as `inspect` counts them, for failure messages. */
+const longTasks = (win: Page) =>
+  win
+    .evaluate(() => {
+      const t = (window as { __e2eLongTasks?: { count: number; maxMs: number } }).__e2eLongTasks;
+      return t
+        ? `${String(t.count)} long tasks, the longest ${t.maxMs.toFixed(0)} ms`
+        : 'long tasks not counted';
+    })
+    .catch((e: unknown) => `long tasks unknown: ${String(e)}`);
+
 /**
- * How long a flight and the tiles it brings in may take. On a software GPU the Globe's tile
- * stream can hold the renderer for tens of seconds: on the Windows runner (Low tier) one
- * `inspect()` sent as the flight to the synthetic packs began came back 30 s later (CI run
- * 37722686745), and Chromium's WARP rasteriser shows the same on a workstation
- * (QUADRION_E2E_SWGL=warp: 1 to 6 s per call on one or two cores, 0.2 s on SwiftShader), with the
- * flight then ending where it should. A polled value arrives late but right, so this is wall time
- * for slow software rendering; a fast GPU settles in a second or two.
+ * How long a flight and the tiles it brings in may take. CI draws with Chromium's WARP rasteriser
+ * on the CPU (the runners have no GPU and the workflow sets no QUADRION_E2E_SWGL), and while the
+ * Globe streams tiles WARP can hold the renderer for seconds to tens of seconds: on the Windows
+ * runner (Low tier) one `inspect()` sent as the flight to the synthetic packs began came back 30 s
+ * later (CI run 37722686745), and single calls took 3.6 to 21 s while street tiles streamed (run
+ * 38170329846). QUADRION_E2E_SWGL=warp shows the same on a workstation (1 to 6 s per call on one
+ * or two cores, 0.2 s on SwiftShader), with the flight then ending where it should. A polled value
+ * arrives late but right, so this is wall time for slow software rendering; a fast GPU settles in
+ * a second or two.
  */
 const SETTLE_MS = 60_000;
-// a flight and its tiles may each take SETTLE_MS on the software GPU
-test.describe.configure({ timeout: 3 * SETTLE_MS });
+/**
+ * `settle` waits on past SETTLE_MS while the Globe is still visibly at work (frames drawn, tiles
+ * coming in, a flight under way), up to SETTLE_CAP_MS, and gives up once nothing has moved for
+ * STALL_MS: a slow software renderer gets its time, and a Globe that stopped short fails early.
+ */
+const SETTLE_CAP_MS = 150_000;
+const STALL_MS = 20_000;
+// a test may wait out the cap more than once on the software renderer before its last settle
+test.describe.configure({ timeout: 3 * SETTLE_CAP_MS });
 
 /** The graphics tier and WebGL renderer the app detected, for failure messages. */
 const graphics = (win: Page) =>
@@ -70,29 +105,91 @@ const graphics = (win: Page) =>
     })
     .catch((e: unknown) => `graphics unknown: ${String(e)}`);
 
-/** Poll the Globe until `ok`; a timeout says what it last showed and on which GPU. */
+/** What of the Globe changes while it works: any change between two polls is progress. */
+const workOf = (s: GlobeInspection | null): string =>
+  s
+    ? JSON.stringify([
+        s.frame,
+        s.flying,
+        Math.round(s.cameraHeight),
+        s.tilesLoaded,
+        s.layers,
+        s.imagery,
+        s.terrain,
+        s.sites,
+        s.selected,
+        s.imageryTiles,
+        s.terrainTiles,
+        s.earthTiles,
+        s.street?.tiles,
+        s.street?.skipped,
+        s.street?.deferred,
+        s.street?.timeouts,
+        s.streetZoom,
+      ])
+    : 'no Globe';
+
+/** What the Globe last showed, in a line for a failure message. */
+function describeGlobe(s: GlobeInspection | null): string {
+  if (!s) return 'no Globe';
+  const t = s.street;
+  const street = t
+    ? `street ${String(t.tiles)} tiles (${String(t.skipped)} empty, ${String(t.deferred)} deferred, ${String(t.timeouts ?? 0)} timed out), mean ${t.meanMs.toFixed(0)} ms, slowest ${t.maxMs.toFixed(0)} ms, last ${t.lastMs.toFixed(0)} ms, zoom ${String(s.streetZoom)}${t.lastError ? `, last error ${t.lastError}` : ''}`
+    : 'no street tiles';
+  return [
+    `flying ${String(s.flying)}, height ${s.cameraHeight.toFixed(0)} m, tiles loaded ${String(s.tilesLoaded)}`,
+    `${String(s.imageryTiles)} pack tiles, frame ${String(s.frame)}`,
+    `layers ${s.layers.join(' + ') || 'none'}`,
+    street,
+    `${String(s.earthTiles)} land shape tiles at ${s.earthTileMs.toFixed(0)} ms each`,
+    `${String(s.terrainTiles)} terrain tiles`,
+  ].join(', ');
+}
+
+/**
+ * Poll the Globe until `ok`. It waits while the Globe is at work (see SETTLE_CAP_MS) and fails
+ * once nothing has changed for STALL_MS; the failure says what the Globe last showed, how long
+ * the slowest poll took (the renderer answers only between frames), the page's long tasks and the
+ * GPU.
+ */
 async function settle(win: Page, what: string, ok: (s: GlobeInspection) => boolean) {
-  let last: GlobeInspection | null = null;
-  try {
-    await expect
-      .poll(
-        async () => {
-          last = await inspect(win);
-          return last !== null && ok(last);
-        },
-        { timeout: SETTLE_MS },
-      )
-      .toBe(true);
-  } catch (e) {
-    const shown = last as GlobeInspection | null;
-    const state = shown
-      ? `flying ${String(shown.flying)}, height ${shown.cameraHeight.toFixed(0)} m, tiles loaded ${String(shown.tilesLoaded)}, ${String(shown.imageryTiles)} pack tiles, frame ${String(shown.frame)}`
-      : 'no Globe';
-    throw new Error(`${what} within ${String(SETTLE_MS)} ms: ${state}; ${await graphics(win)}`, {
-      cause: e,
-    });
+  const start = Date.now();
+  let work = '';
+  let movedAt = start;
+  let slowestMs = 0;
+  let pause = 100;
+  for (;;) {
+    const asked = Date.now();
+    const last = await inspect(win);
+    const now = Date.now();
+    slowestMs = Math.max(slowestMs, now - asked);
+    if (last !== null && ok(last)) return;
+    const seen = workOf(last);
+    if (seen !== work) {
+      work = seen;
+      movedAt = now;
+    }
+    const stalled = now - movedAt >= STALL_MS;
+    if (stalled || now - start >= SETTLE_CAP_MS) {
+      const why = stalled
+        ? `nothing moved for ${String(now - movedAt)} ms`
+        : `still at work after ${String(SETTLE_CAP_MS)} ms`;
+      throw new Error(
+        `${what}: ${why} (${String(now - start)} ms in all): ${describeGlobe(last)}; slowest poll ${String(slowestMs)} ms; ${await longTasks(win)}; ${await graphics(win)}`,
+      );
+    }
+    await win.waitForTimeout(pause);
+    pause = Math.min(1000, pause * 2);
   }
 }
+
+/**
+ * Wait until the Globe has stopped flying and drawn the tiles in view, before a click that goes
+ * through the renderer: on the software renderer a click while tiles stream waits behind them and
+ * can run out of its own time (CI run 38181308082).
+ */
+const drawn = (win: Page, what: string) =>
+  settle(win, `${what}: the Globe drew the view`, (s) => !s.flying && s.tilesLoaded);
 
 /** Where a site's pin is drawn, in CSS pixels of the Globe; null when it is not on screen. */
 const pinOf = (win: Page, projectId: string) =>
@@ -739,6 +836,7 @@ test('every library project is a site; packs draw with their credits', async ({
 }) => {
   await installSyntheticPacks(dataRoot);
   await openGlobe(win);
+  await drawn(win, 'before the field is clicked');
   // the field lists them: A, B and the tiny e2e project, each with its state
   const list = await openSiteList(win);
   await expect(list.getByRole('option')).toHaveCount(3);
@@ -769,6 +867,7 @@ test('every library project is a site; packs draw with their credits', async ({
     'Synthetic imagery (syn-imagery)',
   );
   await closeMap(win);
+  await drawn(win, 'before the field is clicked');
   await flyToSite(win, SITE_A.name);
   await settle(win, 'the pack tiles loaded', (s) => s.tilesLoaded && s.imageryTiles > 0);
   // the pack's flat magenta is drawn below the site pin, in the middle of the view
@@ -880,10 +979,12 @@ test('street packs draw as the street map of the Globe, offline under the app CS
     .toEqual(['earth-shapes:underlay', 'street']);
   await expect(win.getByTestId('globe-credits')).toContainText('OpenStreetMap contributors');
   // the Map dialog has no word about a missing street pack
+  await drawn(win, 'before the Map button is clicked');
   const map = await openMap(win);
   await expect(win.getByTestId('globe-look-street')).toHaveAttribute('aria-pressed', 'true');
   await expect(map.getByText(/No street map pack is installed/)).toHaveCount(0);
   await closeMap(win);
+  await drawn(win, 'before the field is clicked');
   await flyToSite(win, SITE_A.name);
   // street tiles are drawn one at a time by a hidden map: wait for the ones in view
   await settle(win, 'the street tiles drew', (s) => s.tilesLoaded && (s.street?.tiles ?? 0) > 0);
