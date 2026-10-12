@@ -155,6 +155,8 @@ export function PaneChooser({ side, split }: { side: Side; split: SplitModel }) 
   const twin = isTwin(split);
   const linked = !split.sides.unlinked;
   const has = (kind: PaneKind, c: string): boolean => {
+    // the side's own pane stays listed, even on a date without its data
+    if (kind === current && c === capture) return true;
     if (kind === 'raster')
       return (layers ?? []).some(
         (l) => l.kind === 'raster' && (index?.of[l.id] === undefined || index.of[l.id] === c),
@@ -232,7 +234,7 @@ export function PaneChooser({ side, split }: { side: Side; split: SplitModel }) 
  * The left Panoramas pane picked `key` (stepped, followed or selected elsewhere): remember it,
  * and when its layer belongs to another survey date, move the left side to that date.
  */
-function pickPano(split: SplitModel, key: string) {
+export function pickPano(split: SplitModel, key: string): void {
   const slash = key.lastIndexOf('/');
   const layer = slash < 0 ? key : key.slice(0, slash);
   const at = split.index?.of[layer];

@@ -6,7 +6,7 @@ import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { threeDates } from './__fixtures__/threeDates';
 import type { PaneKind, SplitDates, SplitPref } from './splitModel';
-import { PaneChooser, type SplitModel } from './SplitPanes';
+import { PaneChooser, pickPano, type SplitModel } from './SplitPanes';
 
 const panoLayer = (id: string, capture?: string) =>
   ({
@@ -146,5 +146,41 @@ describe('PaneChooser', () => {
     expect(host.querySelector('[data-testid="compare-link"]')).not.toBeNull();
     render('right', model({ left: '3d', right: 'pano', rightCapture: 'oct' }));
     expect(host.querySelector('[data-testid="compare-link"]')).toBeNull();
+  });
+
+  it("keeps the side's own pane listed on a date without its data", () => {
+    render('left', model({ left: 'pano', right: 'map', leftCapture: 'nov', rightCapture: 'oct' }));
+    expect(select('left').value).toBe('pano@nov');
+    const group = only(
+      [...select('left').querySelectorAll('optgroup')].find((g) => g.label === '4 Sep 2024'),
+      'sep group',
+    );
+    expect([...group.querySelectorAll('option')].map((o) => o.value)).not.toContain('pano@sep');
+  });
+});
+
+describe('pickPano', () => {
+  it('remembers the panorama and keeps the date when it is on the left date', () => {
+    const split = model({ left: 'pano', right: 'map', leftCapture: 'oct', rightCapture: 'nov' });
+    pickPano(split, 'p-oct/a');
+    expect(split.saved).toHaveBeenCalledWith(
+      expect.objectContaining({ pano: 'p-oct/a', leftCapture: 'oct', rightCapture: 'nov' }),
+    );
+  });
+
+  it('moves the left date to the survey of a panorama of another date', () => {
+    const split = model({ left: 'pano', right: 'map', leftCapture: 'nov', rightCapture: 'oct' });
+    pickPano(split, 'p-oct/a');
+    expect(split.saved).toHaveBeenCalledWith(
+      expect.objectContaining({ pano: 'p-oct/a', leftCapture: 'oct', rightCapture: 'oct' }),
+    );
+  });
+
+  it('swaps dates with the right when the right shows that date', () => {
+    const split = model({ left: 'pano', right: 'pano', leftCapture: 'nov', rightCapture: 'oct' });
+    pickPano(split, 'p-oct/a');
+    expect(split.saved).toHaveBeenCalledWith(
+      expect.objectContaining({ pano: 'p-oct/a', leftCapture: 'oct', rightCapture: 'nov' }),
+    );
   });
 });
