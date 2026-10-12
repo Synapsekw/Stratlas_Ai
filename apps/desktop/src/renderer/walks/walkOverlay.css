@@ -12,6 +12,11 @@
   stroke-linejoin: round;
   stroke-linecap: round;
 }
+/* every still is a zero length segment: the round cap is the dot */
+.walk-stills {
+  fill: none;
+  stroke-linecap: round;
+}
 .walk-now line {
   stroke-width: 2px;
   stroke-linecap: round;
@@ -38,6 +43,10 @@
 }
 .walk-pin.inactive text {
   fill: currentColor;
+}
+/* its tooltip says why it is hollow; a press still pans or picks through it */
+.walk-pin.inactive {
+  pointer-events: auto;
 }
 .walk-pin.draggable {
   pointer-events: auto;

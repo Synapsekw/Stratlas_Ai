@@ -1,8 +1,15 @@
 import type { FitPin, WalkFit, WalkFitSample, XZ } from '@aio/geo';
 import type { Vec3, WalkLayer } from '@aio/schema';
 import type { Feature, FeatureCollection } from 'geojson';
-import { describe, expect, it } from 'vitest';
-import { mapColour, walkMapOverlays } from './walkMapOverlay';
+import { describe, expect, it, vi } from 'vitest';
+import {
+  mapColour,
+  pathStyle,
+  resolveCssColour,
+  walkMapOverlays,
+  walkNowMapOverlay,
+} from './walkMapOverlay';
+import { MAP_INK } from '@aio/maps';
 
 const pos = (t: number): XZ => [t, 2 * t];
 function fit(): WalkFit {
@@ -50,7 +57,6 @@ describe('walkMapOverlays', () => {
   it('map overlay: a line layer, a circle layer for stills, one for pins, in the date colour', () => {
     const [o] = walkMapOverlays([{ layer: layer('walk-a'), fit: fit(), raw: null }], proj, colour, {
       placingId: 'walk-a',
-      nowT: 2,
     });
     expect(o?.id).toBe('walk-walk-a');
     const types = (o?.layers ?? []).map((l) => `${l.type}:${l.id}`);
@@ -69,7 +75,6 @@ describe('walkMapOverlays', () => {
     expect(first?.type === 'LineString' ? first.coordinates[0] : null).toEqual([0, 0]);
     const pins = fs.filter((f) => f.properties?.kind === 'pin');
     expect(pins.map((f): unknown => f.properties?.n)).toEqual([1, 2]);
-    expect(fs.some((f) => f.properties?.kind === 'now')).toBe(true);
   });
 
   it('keeps pins and the position to the walk being placed, and dims the others', () => {
@@ -80,7 +85,7 @@ describe('walkMapOverlays', () => {
       ],
       proj,
       colour,
-      { placingId: null, nowT: 2 },
+      { placingId: null },
     );
     // walk-b is not placed and not being placed
     expect(out.map((o) => o.id)).toEqual(['walk-walk-a']);
@@ -98,5 +103,47 @@ describe('mapColour', () => {
     expect(mapColour('oklch(0.68 0.14 250)')).toMatch(/^#[0-9a-f]{6}$/);
     expect(mapColour('oklch(68% 0.14 250)')).toBe(mapColour('oklch(0.68 0.14 250)'));
     expect(mapColour('#123456')).toBe('#123456');
+  });
+});
+
+describe('the map redraws only what changed', () => {
+  it('pathStyle: the same colour and state give the same style array', () => {
+    expect(pathStyle('#3a7bd5', true)).toBe(pathStyle('#3a7bd5', true));
+    expect(pathStyle('#3a7bd5', true)).not.toBe(pathStyle('#3a7bd5', false));
+    const walks = [{ layer: layer('walk-a'), fit: fit(), raw: null }];
+    const a = walkMapOverlays(walks, proj, colour, { placingId: null });
+    const b = walkMapOverlays(walks, proj, colour, { placingId: null });
+    expect(a[0]?.layers).toBe(b[0]?.layers);
+  });
+
+  it('the position is its own overlay: a new time leaves the path overlay alone', () => {
+    const walks = [{ layer: layer('walk-a'), fit: fit(), raw: null }];
+    const path = walkMapOverlays(walks, proj, colour, { placingId: 'walk-a' });
+    const w = walks[0];
+    if (!w) throw new Error('no walk');
+    const at2 = walkNowMapOverlay(w, proj, colour, 2);
+    const at3 = walkNowMapOverlay(w, proj, colour, 3);
+    expect(at2?.id).toBe('walk-walk-a-now');
+    expect(at3?.layers).toBe(at2?.layers);
+    const point = features(at3?.data ?? '').find((f) => f.properties?.kind === 'now')?.geometry;
+    expect(point?.type === 'Point' ? point.coordinates : null).toEqual([3, 6]);
+    // the path has no position in it, so it never needs a rebuild for the time
+    expect(features(path[0]?.data ?? '').some((f) => f.properties?.kind === 'now')).toBe(false);
+    expect(walkNowMapOverlay(w, proj, colour, null)).toBeNull();
+  });
+});
+
+describe('colours MapLibre cannot read', () => {
+  it('fall back to the map ink', () => {
+    expect(mapColour('none')).toBe(MAP_INK.fg1);
+    expect(mapColour('color-mix(in oklch, red, blue)')).toBe(MAP_INK.fg1);
+    expect(mapColour('rgb(1, 2, 3)')).toBe('rgb(1, 2, 3)');
+    // no DOM here: an unset variable reads as empty
+    const el = { style: {} } as unknown as Element;
+    vi.stubGlobal('getComputedStyle', () => ({ getPropertyValue: () => '' }));
+    expect(resolveCssColour('var(--date-9)', el)).toBe(MAP_INK.fg1);
+    vi.stubGlobal('getComputedStyle', () => ({ getPropertyValue: () => 'oklch(0.68 0.14 250)' }));
+    expect(resolveCssColour('var(--date-1)', el)).toMatch(/^#[0-9a-f]{6}$/);
+    vi.unstubAllGlobals();
   });
 });

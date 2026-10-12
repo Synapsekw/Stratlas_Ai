@@ -199,6 +199,8 @@ describe('map point pick (placing a walk on the map)', () => {
     const onPick = vi.fn();
     ctl.pickPoint(onPick);
     expect(map.canvas.style.cursor).toBe('crosshair');
+    expect(map.doubleClickZoom.disable).toHaveBeenCalled();
+    map.doubleClickZoom.enable.mockClear();
     const select = vi.spyOn(store.getState(), 'select');
     map.fire('click', click(lng, lat));
     expect(onPick).toHaveBeenCalledTimes(1);
@@ -207,6 +209,7 @@ describe('map point pick (placing a walk on the map)', () => {
     expect(local[2]).toBeCloseTo(-34, 3);
     expect(select).not.toHaveBeenCalled();
     expect(map.canvas.style.cursor).toBe('');
+    expect(map.doubleClickZoom.enable).toHaveBeenCalled();
     // disarmed: the next click is an ordinary one
     map.fire('click', click(lng, lat));
     expect(onPick).toHaveBeenCalledTimes(1);

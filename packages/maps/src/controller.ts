@@ -495,7 +495,10 @@ export function createMapController(
     if (!picking) return;
     picking = null;
     window.removeEventListener('keydown', onPickKey);
-    map.getCanvas().style.cursor = draw?.()?.mode != null ? 'crosshair' : '';
+    const drawing = draw?.()?.mode != null;
+    map.getCanvas().style.cursor = drawing ? 'crosshair' : '';
+    // double click zooms again, unless a drawing still wants it
+    if (!drawing) map.doubleClickZoom.enable();
   }
   function pickPoint(onPick: (local: Vec3) => void, onCancel?: () => void): () => void {
     disarmPick();
@@ -503,6 +506,8 @@ export function createMapController(
     picking = armed;
     window.addEventListener('keydown', onPickKey);
     map.getCanvas().style.cursor = 'crosshair';
+    // a double click while picking is two picks at most, never a zoom
+    map.doubleClickZoom.disable();
     return () => {
       if (picking === armed) disarmPick();
     };

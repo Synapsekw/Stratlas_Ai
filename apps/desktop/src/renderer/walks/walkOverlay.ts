@@ -25,11 +25,18 @@ export interface WalkDrawing {
    * `pins`. An inactive pin (its drawing is gone) sits where the walk was at its time.
    */
   pins: { at: SheetPx; n: number; index: number; active: boolean }[];
-  /**
-   * Where the camera is at the 360 pane's time. `headingRad` is the view direction on the sheet,
-   * `atan2(dy, dx)` in image pixels (0 points right, pi/2 down).
-   */
-  now?: { at: SheetPx; headingRad: number };
+}
+
+/**
+ * Where the camera of the walk being placed is at the 360 pane's time, apart from the drawing so
+ * a time tick does not redraw the path. `headingRad` is the view direction on the sheet,
+ * `atan2(dy, dx)` in image pixels (0 points right, pi/2 down).
+ */
+export interface WalkNow {
+  id: string;
+  colour: string;
+  at: SheetPx;
+  headingRad: number;
 }
 
 /** One walk with its live fit and raw path (null for a pins-only walk). */
@@ -42,8 +49,6 @@ export interface SheetWalk {
 export interface WalkDrawOptions {
   /** The walk being placed (shown even when unplaced, with its pins and position), or null. */
   placingId: string | null;
-  /** The 360 pane's time, seconds; only drawn for the walk being placed. */
-  nowT: number | null;
   /** Layers switched off in the workspace. */
   hidden?: ReadonlySet<string>;
 }
@@ -89,8 +94,46 @@ export function walkPinPoints(
   return out;
 }
 
+/** A picture size: points further than 1.5 sheets outside it are not drawn. */
+type SheetSize = { width: number; height: number } | undefined;
+
 /** How far around the sheet a point may lie and still be drawn, in sheet sizes on each side. */
 const MARGIN = 1.5;
+
+function onSheet(p: SheetPx, s: SheetSize): boolean {
+  if (!Number.isFinite(p[0]) || !Number.isFinite(p[1])) return false;
+  if (!s) return true;
+  return (
+    p[0] >= -MARGIN * s.width &&
+    p[0] <= (1 + MARGIN) * s.width &&
+    p[1] >= -MARGIN * s.height &&
+    p[1] <= (1 + MARGIN) * s.height
+  );
+}
+
+/**
+ * The current position of a walk on one drawing at time `nowT` (seconds), or null when the walk
+ * is not placed there yet or the point is far off the sheet. Cheap: one fit lookup.
+ */
+export function walkNowOnSheet(
+  walk: SheetWalk,
+  sheet: SurfaceFrame,
+  colourOf: (l: WalkLayer) => string,
+  nowT: number | null,
+  size?: { width: number; height: number },
+): WalkNow | null {
+  if (nowT === null || !Number.isFinite(nowT)) return null;
+  const a = walk.fit.at(nowT);
+  if (!a) return null;
+  const at = toSheet(sheet, a.xz);
+  if (!onSheet(at, size)) return null;
+  return {
+    id: walk.layer.id,
+    colour: colourOf(walk.layer),
+    at,
+    headingRad: sheetHeading(sheet, a.headingRad),
+  };
+}
 
 /**
  * Every shown walk on one drawing, in its image pixels. Walks show on every drawing, not only the
@@ -103,17 +146,7 @@ export function walkDrawingsForSheet(
   colourOf: (l: WalkLayer) => string,
   opts: WalkDrawOptions & { size?: { width: number; height: number } },
 ): WalkDrawing[] {
-  const inside = (p: SheetPx): boolean => {
-    if (!Number.isFinite(p[0]) || !Number.isFinite(p[1])) return false;
-    const s = opts.size;
-    if (!s) return true;
-    return (
-      p[0] >= -MARGIN * s.width &&
-      p[0] <= (1 + MARGIN) * s.width &&
-      p[1] >= -MARGIN * s.height &&
-      p[1] <= (1 + MARGIN) * s.height
-    );
-  };
+  const inside = (p: SheetPx): boolean => onSheet(p, opts.size);
   const out: WalkDrawing[] = [];
   for (const { layer, fit, raw } of walks) {
     if (!walkShown(layer, opts)) continue;
@@ -139,13 +172,7 @@ export function walkDrawingsForSheet(
           .map((p) => ({ at: toSheet(sheet, p.xz), n: p.n, index: p.index, active: p.active }))
           .filter((p) => inside(p.at))
       : [];
-    const d: WalkDrawing = { id: layer.id, colour: colourOf(layer), placing, line, stills, pins };
-    const a = placing && opts.nowT !== null ? fit.at(opts.nowT) : null;
-    if (a) {
-      const at = toSheet(sheet, a.xz);
-      if (inside(at)) d.now = { at, headingRad: sheetHeading(sheet, a.headingRad) };
-    }
-    out.push(d);
+    out.push({ id: layer.id, colour: colourOf(layer), placing, line, stills, pins });
   }
   return out;
 }

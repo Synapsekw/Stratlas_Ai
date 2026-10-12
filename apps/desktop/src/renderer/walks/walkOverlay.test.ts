@@ -1,7 +1,13 @@
 import type { FitPin, SurfaceFrame, WalkFit, WalkFitSample, XZ } from '@aio/geo';
 import type { WalkLayer } from '@aio/schema';
 import { describe, expect, it } from 'vitest';
-import { sheetHeading, toSheet, walkDrawingsForSheet, type SheetWalk } from './walkOverlay';
+import {
+  sheetHeading,
+  toSheet,
+  walkDrawingsForSheet,
+  walkNowOnSheet,
+  type SheetWalk,
+} from './walkOverlay';
 
 /** A drawing 1000 x 800 px at 0.05 m per px, turned a little and mirrored in y (y down = +z). */
 const sheet: SurfaceFrame = {
@@ -60,7 +66,7 @@ function walkLayer(id: string, over: Partial<WalkLayer> = {}): WalkLayer {
 }
 
 const colour = () => 'var(--date-2)';
-const opts = { placingId: null, nowT: null, size };
+const opts = { placingId: null, size };
 
 describe('toSheet', () => {
   it('toSheet inverts the drawing affine', () => {
@@ -169,23 +175,16 @@ describe('walkDrawingsForSheet', () => {
     for (const l of d?.line ?? []) expect(l.pts.length).toBeGreaterThan(1);
   });
 
-  it('shows pins and the current position only for the walk being placed', () => {
+  it('shows pins only for the walk being placed', () => {
     const walks = [walk('walk-a'), walk('walk-b')];
-    const out = walkDrawingsForSheet(walks, sheet, colour, {
-      ...opts,
-      placingId: 'walk-a',
-      nowT: 3,
-    });
+    const out = walkDrawingsForSheet(walks, sheet, colour, { ...opts, placingId: 'walk-a' });
     const a = out.find((d) => d.id === 'walk-a');
     const b = out.find((d) => d.id === 'walk-b');
     expect(a?.pins.map((p) => p.n)).toEqual([1, 2]);
     expect(a?.pins.map((p) => p.index)).toEqual([0, 1]);
     expect(a?.pins[0]?.at[0]).toBeCloseTo(100, 6);
-    expect(a?.now?.at[1]).toBeCloseTo(toSheet(sheet, fakeFit().at(3)?.xz ?? [0, 0])[1], 6);
-    expect(a?.now?.headingRad).toBeCloseTo(sheetHeading(sheet, -Math.PI / 2), 9);
     expect(a?.placing).toBe(true);
     expect(b?.pins).toEqual([]);
-    expect(b?.now).toBeUndefined();
     expect(b?.placing).toBe(false);
   });
 
@@ -202,5 +201,20 @@ describe('walkDrawingsForSheet', () => {
     expect(pin?.active).toBe(false);
     const want = toSheet(sheet, base.at(10)?.xz ?? [0, 0]);
     expect(pin?.at[0]).toBeCloseTo(want[0], 6);
+  });
+
+  it('gives the current position apart from the drawing, at the time asked', () => {
+    const w = walk('walk-a');
+    const now = walkNowOnSheet(w, sheet, colour, 3, size);
+    expect(now?.id).toBe('walk-a');
+    expect(now?.colour).toBe('var(--date-2)');
+    const want = toSheet(sheet, fakeFit().at(3)?.xz ?? [0, 0]);
+    expect(now?.at[0]).toBeCloseTo(want[0], 6);
+    expect(now?.at[1]).toBeCloseTo(want[1], 6);
+    expect(now?.headingRad).toBeCloseTo(sheetHeading(sheet, -Math.PI / 2), 9);
+    expect(walkNowOnSheet(w, sheet, colour, null, size)).toBeNull();
+    // the fit is not placed yet
+    const unplaced = { ...w, fit: { ...w.fit, at: () => null } };
+    expect(walkNowOnSheet(unplaced, sheet, colour, 3, size)).toBeNull();
   });
 });

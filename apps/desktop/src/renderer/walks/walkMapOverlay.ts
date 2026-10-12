@@ -15,31 +15,90 @@ export const WALK_LINE_DIM = 0.6;
 /** Length of the heading tick at the current position, metres. */
 const TICK_M = 3;
 
-/** An `oklch(l c h)` colour as hex (MapLibre does not parse oklch), else as given. */
+/** Colours MapLibre parses as they are: hex, rgb() and hsl(). */
+const PLAIN = /^(#[0-9a-f]{3,4}|#[0-9a-f]{6}|#[0-9a-f]{8}|(rgb|hsl)a?\([^()]*\))$/i;
+const OKLCH = /^oklch\(\s*([\d.]+)(%?)\s+([\d.]+)\s+([\d.]+)(?:deg)?\s*(?:\/\s*[\d.%]+\s*)?\)$/i;
+
+/**
+ * A colour as MapLibre reads it: hex, rgb() and hsl() as given, `oklch(l c h)` as hex; anything
+ * else (none, color-mix, an unknown word) falls back to the map's secondary ink.
+ */
 export function mapColour(colour: string): string {
-  const m = /^oklch\(\s*([\d.]+)(%?)\s+([\d.]+)\s+([\d.]+)(?:deg)?\s*(?:\/\s*[\d.%]+\s*)?\)$/i.exec(
-    colour.trim(),
-  );
-  if (!m) return colour;
+  const c = colour.trim();
+  if (PLAIN.test(c)) return c;
+  const m = OKLCH.exec(c);
+  if (!m) return MAP_INK.fg1;
   const l = Number(m[1]) / (m[2] === '%' ? 100 : 1);
-  return oklchHex(l, Number(m[3]), Number(m[4]));
+  const hex = oklchHex(l, Number(m[3]), Number(m[4]));
+  return /^#[0-9a-f]{6}$/i.test(hex) ? hex : MAP_INK.fg1;
 }
 
 /**
- * A `var(--name)` colour (the date colours) as a colour MapLibre reads: its computed value,
- * oklch turned into hex; anything else as given.
+ * A `var(--name)` colour (the date colours) as a colour MapLibre reads: its computed value through
+ * `mapColour`; an unset variable falls back to the map's secondary ink.
  */
 export function resolveCssColour(colour: string, el: Element = document.documentElement): string {
   const m = /^var\((--[\w-]+)\)$/.exec(colour.trim());
   if (!m?.[1]) return mapColour(colour);
   const v = getComputedStyle(el).getPropertyValue(m[1]).trim();
-  return v ? mapColour(v) : colour;
+  return v ? mapColour(v) : MAP_INK.fg1;
 }
 
 /** The map overlay id of a walk layer. */
 export const walkOverlayId = (layerId: string): string => `walk-${layerId}`;
+/** The map overlay id of a walk's current position (its own overlay: it moves every tick). */
+export const walkNowOverlayId = (layerId: string): string => `walk-${layerId}-now`;
 
-function styleFor(colour: string, placing: boolean): OverlayLayer[] {
+const styles = new Map<string, OverlayLayer[]>();
+
+/**
+ * The style layers of a walk's path overlay, one array per colour and placing state, so the map
+ * does not restyle when only the data changes.
+ */
+export function pathStyle(colour: string, placing: boolean): OverlayLayer[] {
+  const key = `${colour}|${placing ? 'placing' : 'shown'}`;
+  let out = styles.get(key);
+  if (!out) {
+    out = buildPathStyle(colour, placing);
+    styles.set(key, out);
+  }
+  return out;
+}
+
+const nowStyles = new Map<string, OverlayLayer[]>();
+
+/** The style layers of a walk's current position overlay, one array per colour. */
+export function nowStyle(colour: string): OverlayLayer[] {
+  let out = nowStyles.get(colour);
+  if (!out) {
+    out = [
+      {
+        id: 'tick',
+        type: 'line',
+        filter: ['==', ['get', 'kind'], 'tick'],
+        layout: { 'line-join': 'round', 'line-cap': 'round' },
+        paint: { 'line-color': colour, 'line-width': 2 },
+        above: true,
+      },
+      {
+        id: 'now',
+        type: 'circle',
+        filter: ['==', ['get', 'kind'], 'now'],
+        paint: {
+          'circle-radius': 5,
+          'circle-color': colour,
+          'circle-stroke-color': MAP_INK.bg0,
+          'circle-stroke-width': 2,
+        },
+        above: true,
+      },
+    ];
+    nowStyles.set(colour, out);
+  }
+  return out;
+}
+
+function buildPathStyle(colour: string, placing: boolean): OverlayLayer[] {
   const opacity = placing ? 1 : WALK_LINE_DIM;
   const lineLayout = { 'line-join': 'round', 'line-cap': 'round' };
   const isLine = (dashed: boolean): unknown[] => [
@@ -74,26 +133,6 @@ function styleFor(colour: string, placing: boolean): OverlayLayer[] {
       },
     },
     {
-      id: 'now-tick',
-      type: 'line',
-      filter: ['==', ['get', 'kind'], 'tick'],
-      layout: lineLayout,
-      paint: { 'line-color': colour, 'line-width': 2 },
-      above: true,
-    },
-    {
-      id: 'now',
-      type: 'circle',
-      filter: ['==', ['get', 'kind'], 'now'],
-      paint: {
-        'circle-radius': 5,
-        'circle-color': colour,
-        'circle-stroke-color': MAP_INK.bg0,
-        'circle-stroke-width': 2,
-      },
-      above: true,
-    },
-    {
       id: 'pins',
       type: 'circle',
       filter: ['==', ['get', 'kind'], 'pin'],
@@ -124,8 +163,8 @@ function styleFor(colour: string, placing: boolean): OverlayLayer[] {
 
 /**
  * One overlay per shown walk (visible and placed, or being placed): its line (dashed across a
- * stretch without a pin), kept stills, and for the walk being placed its numbered pins and the
- * current position with a heading tick. Build it again (new data) when a fit changes.
+ * stretch without a pin), kept stills, and for the walk being placed its numbered pins. Build it
+ * again (new data) only when a fit changes; the current position is `walkNowMapOverlay`.
  */
 export function walkMapOverlays(
   walks: readonly SheetWalk[],
@@ -161,28 +200,45 @@ export function walkMapOverlays(
           properties: { kind: 'pin', n: p.n, index: p.index, active: p.active },
           geometry: { type: 'Point', coordinates: ll(p.xz) },
         });
-      const a = opts.nowT !== null ? fit.at(opts.nowT) : null;
-      if (a) {
-        const tip: XZ = [
-          a.xz[0] - TICK_M * Math.sin(a.headingRad),
-          a.xz[1] - TICK_M * Math.cos(a.headingRad),
-        ];
-        features.push(
-          {
-            type: 'Feature',
-            properties: { kind: 'tick' },
-            geometry: { type: 'LineString', coordinates: [ll(a.xz), ll(tip)] },
-          },
-          {
-            type: 'Feature',
-            properties: { kind: 'now' },
-            geometry: { type: 'Point', coordinates: ll(a.xz) },
-          },
-        );
-      }
     }
     const data: FeatureCollection = { type: 'FeatureCollection', features };
-    out.push({ id: walkOverlayId(layer.id), data, layers: styleFor(colourOf(layer), placing) });
+    out.push({ id: walkOverlayId(layer.id), data, layers: pathStyle(colourOf(layer), placing) });
   }
   return out;
+}
+
+/**
+ * The current position of a walk at time `nowT` (seconds) with a short heading tick, as its own
+ * small overlay so a time tick does not rebuild the path. Null before the walk is placed.
+ */
+export function walkNowMapOverlay(
+  walk: SheetWalk,
+  proj: { toLonLat(v: Vec3): [number, number] },
+  colourOf: (l: WalkLayer) => string,
+  nowT: number | null,
+): MapOverlay | null {
+  if (nowT === null || !Number.isFinite(nowT)) return null;
+  const a = walk.fit.at(nowT);
+  if (!a) return null;
+  const ll = (xz: XZ): [number, number] => proj.toLonLat([xz[0], 0, xz[1]]);
+  const tip: XZ = [
+    a.xz[0] - TICK_M * Math.sin(a.headingRad),
+    a.xz[1] - TICK_M * Math.cos(a.headingRad),
+  ];
+  const data: FeatureCollection = {
+    type: 'FeatureCollection',
+    features: [
+      {
+        type: 'Feature',
+        properties: { kind: 'tick' },
+        geometry: { type: 'LineString', coordinates: [ll(a.xz), ll(tip)] },
+      },
+      {
+        type: 'Feature',
+        properties: { kind: 'now' },
+        geometry: { type: 'Point', coordinates: ll(a.xz) },
+      },
+    ],
+  };
+  return { id: walkNowOverlayId(walk.layer.id), data, layers: nowStyle(colourOf(walk.layer)) };
 }
