@@ -137,8 +137,9 @@ describe('compact tool profile (small local models)', () => {
       const compact = toolsForWindow(w, 'compact');
       expect(compact.length, w).toBeGreaterThan(3);
       // 13 everyday tools, the four change tools (C1, every window), the four modelling
-      // tools (C5: 3D view, map and point cloud) and the three show tools
-      expect(compact.length, w).toBeLessThanOrEqual(24);
+      // tools (C5: 3D view, map and point cloud), the three show tools, the two Globe tools
+      // and the two photo tools
+      expect(compact.length, w).toBeLessThanOrEqual(28);
       expect(compact.length, w).toBeLessThan(toolsForWindow(w, 'full').length);
       for (const s of compact) {
         expect(s.meta.description.length, s.meta.name).toBeLessThanOrEqual(100);
@@ -146,6 +147,18 @@ describe('compact tool profile (small local models)', () => {
         expect(COMPACT_TOOLS[s.meta.name], s.meta.name).toBe(s.meta.description);
       }
     }
+  });
+
+  it('has the Globe and photo tools in every window', () => {
+    for (const w of WindowKind.options)
+      expect(names(w, 'compact'), w).toEqual(
+        expect.arrayContaining([
+          'list_sites',
+          'show_on_globe',
+          'process_photos',
+          'accuracy_summary',
+        ]),
+      );
   });
 
   it('keeps the camera, issue and layer tools in the 3D view', () => {
@@ -204,5 +217,24 @@ describe('compact tool profile (small local models)', () => {
   it('keeps the full list and descriptions by default', () => {
     expect(toolsForWindow('scene3d')).toEqual(toolsForWindow('scene3d', 'full'));
     expect(getToolSpec('fly_to')?.meta.description.length).toBeGreaterThan(100);
+  });
+});
+
+describe('photo tools', () => {
+  it('asks before process_photos and not before accuracy_summary', () => {
+    expect(getToolSpec('process_photos')?.meta).toMatchObject({ risk: 'write', scope: 'project' });
+    expect(approvalFor('process_photos')).toBe(true);
+    expect(getToolSpec('accuracy_summary')?.meta).toMatchObject({ risk: 'read', scope: 'project' });
+    expect(approvalFor('accuracy_summary')).toBe(false);
+  });
+
+  it('fills the defaults of process_photos and refuses unknown fields', () => {
+    expect(getToolSpec('process_photos')?.input.parse({})).toEqual({
+      preset: 'standard',
+      gnss: 'auto',
+      groundControlFirst: false,
+    });
+    expect(() => getToolSpec('process_photos')?.input.parse({ folders: ['C:/x'] })).toThrow();
+    expect(() => getToolSpec('process_photos')?.input.parse({ products: [] })).toThrow();
   });
 });

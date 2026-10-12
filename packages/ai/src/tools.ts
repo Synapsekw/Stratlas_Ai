@@ -8,6 +8,7 @@ import { z } from 'zod';
 import { CHANGE_TOOL_SPECS } from './change-tool-specs';
 import { COLLAB_TOOL_SPECS } from './collab-tool-specs';
 import { MODELLING_TOOL_SPECS } from './modelling-tools';
+import { PHOTO_TOOL_SPECS } from './photo-tool-specs';
 import { SHOW_TOOL_SPECS } from './show-tool-specs';
 
 export interface ToolSpec {
@@ -512,6 +513,7 @@ const BUILT_IN: ToolSpec[] = [
   ...CHANGE_TOOL_SPECS,
   ...COLLAB_TOOL_SPECS,
   ...SHOW_TOOL_SPECS,
+  ...PHOTO_TOOL_SPECS,
 ];
 
 const extra = new Map<string, ToolSpec>();
@@ -575,6 +577,11 @@ export const COMPACT_TOOLS: Readonly<Record<string, string>> = {
     'Show a finding: select it, fly to it, open its photo. No issue given: the most severe.',
   show_photos: 'Open Media filtered by severity, asset or finding.',
   show_issues: 'Open Issues filtered and sorted.',
+  // M10: the Globe and maps from photos
+  list_sites: 'List the sites of the project library on the Globe.',
+  show_on_globe: 'Open the Globe at a site. Ends your reply: the panel closes.',
+  process_photos: 'Make maps from a photos layer. Asks for approval first.',
+  accuracy_summary: 'How accurate a photo run is: checkpoint RMSE and ground control.',
 };
 
 /** Tools offered to the agent bound to a window, in the full or the compact profile. */

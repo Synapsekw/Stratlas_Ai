@@ -3,7 +3,19 @@
  * locations, targets). Executors live in renderer-tools.ts and analysis-tools.ts.
  */
 import type { SceneHandle } from '@aio/engine';
-import type { GlobeSite, Issue, Layer, Vec3, WindowKind } from '@aio/schema';
+import type {
+  AccuracyReport,
+  GcpFile,
+  GlobeSite,
+  Issue,
+  Layer,
+  PhotoPreset,
+  PhotoProduct,
+  PhotoRun,
+  PhotoRunSummary,
+  Vec3,
+  WindowKind,
+} from '@aio/schema';
 import type { Workspace } from '@aio/workspace';
 import type { StoreApi } from 'zustand/vanilla';
 import { getToolSpec, toolInputs, type ToolInput, type ToolName } from './tools';
@@ -80,6 +92,29 @@ export interface ViewFilters {
   };
 }
 
+/** What `process_photos` asks the app to start (the dialog's simple flow, without the dialog). */
+export interface ProcessPhotosRequest {
+  layerId: string;
+  preset: PhotoPreset;
+  gnss: 'auto' | 'rtk' | 'standard' | 'ignore';
+  products: PhotoProduct[];
+  groundControlFirst: boolean;
+}
+
+/** What the app started: the run id, the time estimate in words, the survey date (or null). */
+export interface ProcessPhotosStarted {
+  run: string;
+  estimate: string;
+  surveyDate: string | null;
+}
+
+/** One run as `accuracy_summary` reads it. */
+export interface PhotoRunRead {
+  run: PhotoRun;
+  accuracy: AccuracyReport | null;
+  gcp: GcpFile | null;
+}
+
 /**
  * Seams to the host app, registered once at startup (apps/desktop). Every hook is optional: a
  * tool that needs a missing one fails with a fixed message.
@@ -95,6 +130,13 @@ export interface AppHooks {
   listSites?: () => Promise<GlobeSite[]>;
   /** Open the Globe and fly to a site (a project id), or over the whole library (null). */
   showOnGlobe?: (projectId: string | null) => void;
+  /** Start `photo.align` on a photos layer and queue its maps (throws a ToolError when refused). */
+  processPhotos?: (req: ProcessPhotosRequest) => Promise<ProcessPhotosStarted>;
+  /** The open project's photo runs (`photo:runs`, newest first) and one run with its report. */
+  photoRuns?: {
+    list: () => Promise<PhotoRunSummary[]>;
+    read: (run: string) => Promise<PhotoRunRead>;
+  };
   /** The screen that is showing; "other" for Globe, Settings, the project list. */
   screen?: () => AppScreen | 'other';
   /** Open a project screen. Opening a screen with the agent column unfolds the column. */
