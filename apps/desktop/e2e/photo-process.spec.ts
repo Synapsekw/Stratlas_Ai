@@ -10,7 +10,7 @@
  * Needs the development Python (`uv sync` in python/, or QUADRION_E2E_PYTHON), except the blocked
  * states, which run nothing. Synthetic photos only; zero network.
  */
-import type { Page } from '@playwright/test';
+import type { Locator, Page } from '@playwright/test';
 import { mkdir, mkdtemp, readFile, rename, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -20,6 +20,7 @@ import {
   hasPipelinePython,
   launchApp,
   openProcessing,
+  processingChip,
   test as plain,
   VENV_PYTHON,
 } from './fixtures';
@@ -228,6 +229,8 @@ test.describe('on the stand-in pipelines', () => {
     await expect(phase(win, 'map')).toHaveAttribute('data-state', 'pending');
     await expect(phase(win, 'map')).toContainText('Building the map');
     await expect(phase(win, 'model')).toContainText('Building the 3D model');
+    // the dialog has given way to the run panel by now
+    await expectAccessible(win, 'photo run, starting', { include: '[data-testid="photo-run"]' });
     await shot(win, 'create-maps-running');
     await panel.getByRole('button', { name: 'Pause' }).click();
     await expect(panel.getByTestId('photo-job').locator('[data-status="cancelled"]')).toHaveText(
@@ -424,6 +427,61 @@ test.describe('on the stand-in pipelines', () => {
     await expect(wizard.getByTestId('photo-start')).toBeEnabled();
   });
 
+  test('the wizard works from the keyboard alone', async ({ win }) => {
+    test.setTimeout(120_000);
+    await openPhotoSite(win);
+    // Tab (or Shift+Tab) until `target` has the focus, at most 40 presses
+    const tabTo = async (target: Locator, back = false) => {
+      for (let i = 0; i < 40; i++) {
+        if (await target.evaluate((el) => el === document.activeElement)) return;
+        await win.keyboard.press(back ? 'Shift+Tab' : 'Tab');
+      }
+      const at = await win.evaluate(() =>
+        String(document.activeElement?.textContent).trim().slice(0, 60),
+      );
+      throw new Error(`40 presses of Tab did not reach the target; the focus is on "${at}"`);
+    };
+    await processingChip(win).focus();
+    await win.keyboard.press('Enter');
+    const drawer = win.getByTestId('processing-drawer');
+    await expect(drawer).toBeVisible();
+    const create = drawer.getByTestId('create-maps');
+    await tabTo(create);
+    await win.keyboard.press('Enter');
+    const wizard = win.getByRole('dialog', { name: 'Create maps from photos' });
+    await expect(wizard).toBeVisible();
+    await expect
+      .poll(() => wizard.evaluate((el) => el.contains(document.activeElement)))
+      .toBe(true);
+    await expect(wizard.getByTestId('photo-summary')).toBeVisible({ timeout: 60_000 });
+    const options = wizard.getByTestId('photo-options');
+    const summary = options.locator('summary');
+    await tabTo(summary);
+    await win.keyboard.press('Enter');
+    await expect(options.getByRole('group', { name: 'Quality' })).toBeVisible();
+    const quick = options.getByRole('button', { name: /^Quick/ });
+    await tabTo(quick);
+    await win.keyboard.press('Space');
+    await expect(quick).toHaveAttribute('aria-pressed', 'true');
+    // close Options again, then on to Create maps
+    await tabTo(summary, true);
+    await win.keyboard.press('Enter');
+    await expect(options.getByRole('group', { name: 'Quality' })).toBeHidden();
+    await tabTo(wizard.getByTestId('photo-start'));
+    await expect(wizard.getByTestId('photo-start')).toBeEnabled();
+    await win.keyboard.press('Escape');
+    await expect(wizard).toHaveCount(0);
+    // the drawer closed when the dialog opened, so the focus goes back to the Processing chip
+    // (it fell to the page body before this test)
+    const focused = await win.evaluate(
+      () =>
+        document.activeElement?.getAttribute('data-testid') ??
+        document.activeElement?.tagName ??
+        null,
+    );
+    expect(focused).toBe('processing-chip');
+  });
+
   test('a very long run says so once, with the quicker quality one click away', async ({
     app,
     win,
@@ -487,6 +545,9 @@ test.describe('on the stand-in pipelines', () => {
     );
     await expect(wizard).not.toContainText(/warm laptop|Times are a range|expect a long run/);
     await expect(wizard.getByTestId('photo-start')).toBeEnabled();
+    await expectAccessible(win, 'create maps from photos, questions', {
+      include: '[data-testid="photo-wizard"]',
+    });
     await shot(win, 'create-maps-questions');
 
     // with Options open the hint sits beside the quality it is about, still only once
@@ -571,6 +632,9 @@ plain.describe('when this computer cannot create maps', () => {
         ).toBeVisible();
         await expect(wizard.getByTestId('photo-start')).toHaveCount(0);
         await expect(wizard.getByTestId('photo-drop')).toHaveCount(0);
+        await expectAccessible(win, 'create maps from photos, tools too old', {
+          include: '[data-testid="photo-wizard"]',
+        });
         await shot(win, 'create-maps-blocked');
         expect(await network.outbound()).toEqual([]);
       } finally {

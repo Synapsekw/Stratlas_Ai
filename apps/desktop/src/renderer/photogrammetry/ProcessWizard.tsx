@@ -118,7 +118,17 @@ export function ProcessWizard() {
   const close = () => {
     photoUi.getState().close();
   };
-  useFocusTrap(dlg, true, { onEscape: close });
+  // The Processing drawer closes as the dialog opens, taking **Create maps from photos** with it:
+  // on close the focus goes back to whatever opened the dialog if it is still there, else to the
+  // Processing chip, never to the page body.
+  const [opener] = useState(() => document.activeElement);
+  useFocusTrap(dlg, true, {
+    onEscape: close,
+    returnTo: () =>
+      opener instanceof HTMLElement && opener.isConnected
+        ? opener
+        : document.querySelector<HTMLElement>('[data-testid="processing-chip"]'),
+  });
 
   const layers = useMemo(
     () => (project?.manifest.layers ?? []).filter((l) => l.kind === 'photos'),
