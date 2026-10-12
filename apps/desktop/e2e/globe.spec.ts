@@ -1699,15 +1699,20 @@ test('the tilesets of a project draw on the Globe', async ({ win, dataRoot }) =>
   // G7's tilesets:list is not in this build yet: give the Globe the entry it would answer
   await win.evaluate((id) => {
     const el = document.querySelector('[data-testid="globe-canvas"]');
-    const c = (el as { __aioGlobe?: { setTilesets: (...a: unknown[]) => Promise<void> } })
+    const c = (el as { __aioGlobe?: { setSiteOutputs: (o: unknown[]) => Promise<void> } })
       .__aioGlobe;
-    return c?.setTilesets(id, { crs: { epsg: 32639 }, origin: [0, 0, 0], heightOffset: 0 }, [
-      { id: 'quad', src: 'tiles/quad/tileset.json', visible: true },
+    return c?.setSiteOutputs([
+      {
+        projectId: id,
+        georef: { crs: { epsg: 32639 }, origin: [0, 0, 0], heightOffset: 0 },
+        tilesets: [{ id: 'quad', src: 'tiles/quad/tileset.json', visible: true }],
+        rasters: [],
+      },
     ]);
   }, SITE_A.id);
   await expect
     .poll(async () => (await inspect(win))?.tilesets, { timeout: 20_000 })
-    .toEqual([{ id: 'quad', ready: true }]);
+    .toEqual([{ projectId: SITE_A.id, id: 'quad', ready: true }]);
   // the white quad now covers the ground under the camera
   const quad = await sample();
   expect(ground?.slice(0, 3).every((v) => v > 215)).toBe(false);

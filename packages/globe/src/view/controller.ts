@@ -40,7 +40,7 @@ import {
   VerticalOrigin,
   type CesiumWidget,
 } from '@cesium/engine';
-import type { GlobeSite, RasterPackInfo, TilesetEntry } from '@aio/schema';
+import type { GlobeSite, RasterPackInfo } from '@aio/schema';
 import { FetchSource, type Source } from 'pmtiles';
 import {
   padBounds,
@@ -64,6 +64,7 @@ import {
 import { planGlobeLayers, type GlobeTileSource, type GlobeTileStats } from '../layers';
 import { IDLE_SPIN, WHOLE_EARTH_HEIGHT_M, idleSpinPending, idleSpinRate } from '../look';
 import { OFFLINE_CESIUM } from '../offline';
+import { pyramidPlacement } from '../projectRasters';
 import type { IssuePin } from '../sites';
 import {
   DEFAULT_GLOBE_STYLE,
@@ -90,6 +91,7 @@ import {
   type PinState,
 } from './pins';
 import { createOnlineSatelliteProvider } from './onlineSatellite';
+import { KitPyramidImageryProvider, asRasterProvider } from './projectRasterProvider';
 import { PmtilesImageryProvider, asImageryProvider, packTerrainProvider } from './providers';
 import {
   configureCesiumBase,
@@ -99,6 +101,7 @@ import {
   type GlobeTier,
   type GlobeWidget,
 } from './setup';
+import { SiteOutputLayers, type SiteOutputs } from './siteOutputs';
 
 export type GlobePick =
   { kind: 'site'; projectId: string } | { kind: 'issue'; projectId: string; issueId: string };
@@ -152,6 +155,17 @@ export type SourceFor = (pack: Pick<Pack, 'kind' | 'id'>) => Source;
 /** Packs are read from `aio://packs/<kind>/<id>.pmtiles` with range requests. */
 export const packSource: SourceFor = (p) => new FetchSource(rasterPackUrl(p.kind, p.id));
 
+/** A file of a project, over `aio://project/<id>/<path>` (each path segment encoded). */
+const projectUrl = (projectId: string, path: string): string =>
+  `aio://project/${encodeURIComponent(projectId)}/${path.split('/').map(encodeURIComponent).join('/')}`;
+
+/** A kit-pyramid tile of a project, decoded. */
+const readProjectTile = (projectId: string, path: string): Promise<ImageBitmap> =>
+  fetch(projectUrl(projectId, path)).then(async (r) => {
+    if (!r.ok) throw new Error(`${path}: ${String(r.status)} ${r.statusText}`);
+    return createImageBitmap(await r.blob());
+  });
+
 const SITE_PREFIX = 'site:';
 const ISSUE_PREFIX = 'issue:';
 /**
@@ -203,7 +217,15 @@ export interface GlobeInspection {
    */
   chips: { sites: string[]; x: number; y: number; width: number; height: number }[];
   /** Project tilesets on the Globe and whether their root content is drawn. */
-  tilesets: { id: string; ready: boolean }[];
+  tilesets: { projectId: string; id: string; ready: boolean }[];
+  /** Project rasters on the Globe, bottom first: drawn yet, pyramid tiles read, the last fault. */
+  projectRasters: {
+    projectId: string;
+    layerId: string;
+    ready: boolean;
+    tiles: number;
+    lastError: string | null;
+  }[];
   issuePins: string[];
   credits: string[];
   /** Camera height above the ellipsoid, metres. */
@@ -268,8 +290,39 @@ export class GlobeController {
   private measured: [number, number][] = [];
   private readonly handler: ScreenSpaceEventHandler;
   private credits: string[] = [];
-  private tilesets: { id: string; tileset: Cesium3DTileset }[] = [];
-  private tilesetGeneration = 0;
+  /** The sites in focus: their tilesets and shown rasters (`setSiteOutputs`). */
+  private readonly outputs = new SiteOutputLayers<
+    { id: string; tileset: Cesium3DTileset },
+    ImageryLayer,
+    KitPyramidImageryProvider
+  >({
+    loadTilesets: (site, current) => this.loadTilesets(site, current),
+    removeTileset: (t) => {
+      if (this.widget.isDestroyed()) t.tileset.destroy();
+      else this.scene.primitives.remove(t.tileset);
+    },
+    createProvider: (site, raster) =>
+      new KitPyramidImageryProvider(
+        raster.index,
+        pyramidPlacement(raster.index, site.georef),
+        (path) => readProjectTile(site.projectId, path),
+        { cacheTiles: this.o.tier === 'low' ? 16 : 48 },
+      ),
+    disposeProvider: (provider) => {
+      provider.dispose();
+    },
+    addLayer: (provider) => {
+      const layer = new ImageryLayer(asRasterProvider(provider));
+      this.scene.imageryLayers.add(layer);
+      return layer;
+    },
+    removeLayer: (layer) => {
+      if (!this.widget.isDestroyed()) this.scene.imageryLayers.remove(layer, true);
+    },
+    raiseToTop: (layer) => {
+      this.scene.imageryLayers.raiseToTop(layer);
+    },
+  });
   private lastTouch = performance.now();
   private spinTimer: ReturnType<typeof setTimeout> | undefined;
   private spinFrame = 0;
@@ -696,15 +749,22 @@ export class GlobeController {
       street: street !== null,
       imagery: this.imageryPacks,
       onlineSatellite: this.onlineSatellite,
+      projectRasters: this.outputs.order(),
     });
-    const names = plan.map((entry) =>
-      entry.kind === 'earth-shapes'
-        ? `earth-shapes:${entry.role}`
-        : entry.kind === 'imagery-pack'
-          ? `pack:${entry.pack.id}`
-          : entry.kind === 'natural-earth'
-            ? OFFLINE_CESIUM.naturalEarth
-            : entry.kind,
+    // the project rasters stay out of the names: `setSiteOutputs` adds and drops them in place,
+    // so switching one is no reason to build the base again
+    const names = plan.flatMap((entry) =>
+      entry.kind === 'project-raster'
+        ? []
+        : [
+            entry.kind === 'earth-shapes'
+              ? `earth-shapes:${entry.role}`
+              : entry.kind === 'imagery-pack'
+                ? `pack:${entry.pack.id}`
+                : entry.kind === 'natural-earth'
+                  ? OFFLINE_CESIUM.naturalEarth
+                  : entry.kind,
+          ],
     );
     const built = this.built;
     const same =
@@ -753,6 +813,9 @@ export class GlobeController {
           const provider = new PmtilesImageryProvider(entry.pack, this.sourceFor(entry.pack));
           this.imageryProviders.push(provider);
           layers.add(new ImageryLayer(asImageryProvider(provider)));
+        } else {
+          // a project raster, on top of the base, as the plan lists them: a new layer of the same provider
+          this.outputs.readd(entry.raster);
         }
       }
       this.built = { names, street, sourceFor: this.sourceFor };
@@ -1116,34 +1179,43 @@ export class GlobeController {
   }
 
   /**
-   * The open project's 3D Tiles (`tilesets.json`, data-conventions section 22), read from the
-   * project over `aio://project/<id>/<src>`. Ours are written in ECEF; an imported tileset's
-   * `transform` places it in the project frame, which the site's frame takes to ECEF.
+   * The processed outputs of the sites in focus (the open project, and the picked site when it
+   * is another): their 3D Tiles and their shown kit-pyramid rasters, drawn on top of every base
+   * and pack layer. Kept by project and layer id: a raster switched on or off is one imagery
+   * layer added or dropped, and a site that stays keeps its tilesets and layers. Resolves once
+   * the tilesets asked for are in.
    */
-  async setTilesets(
-    projectId: string,
-    georef: SiteGeoref,
-    entries: readonly Pick<TilesetEntry, 'id' | 'src' | 'visible' | 'transform'>[],
-  ): Promise<void> {
-    const generation = ++this.tilesetGeneration;
-    for (const t of this.tilesets) this.scene.primitives.remove(t.tileset);
-    this.tilesets = [];
-    const frame = Matrix4.fromArray(localToEcefMatrix(georef));
-    for (const e of entries) {
+  async setSiteOutputs(outputs: readonly SiteOutputs[]): Promise<void> {
+    if (this.destroyed) return;
+    const done = this.outputs.set(outputs);
+    this.scene.requestRender();
+    await done;
+    if (!this.widget.isDestroyed()) this.scene.requestRender();
+  }
+
+  /**
+   * A site's 3D Tiles (`tilesets.json`, data-conventions section 22), read from the project
+   * over `aio://project/<id>/<src>`. Ours are written in ECEF; an imported tileset's `transform`
+   * places it in the project frame, which the site's frame takes to ECEF. Once `current()` turns
+   * false the load stops, and what it added is handed back to be removed.
+   */
+  private async loadTilesets(
+    site: SiteOutputs,
+    current: () => boolean,
+  ): Promise<{ id: string; tileset: Cesium3DTileset }[]> {
+    const loaded: { id: string; tileset: Cesium3DTileset }[] = [];
+    const frame = Matrix4.fromArray(localToEcefMatrix(site.georef));
+    for (const e of site.tilesets) {
       if (!e.visible) continue;
-      const path = e.src.split('/').map(encodeURIComponent).join('/');
       try {
-        const tileset = await Cesium3DTileset.fromUrl(
-          `aio://project/${encodeURIComponent(projectId)}/${path}`,
-          {
-            maximumScreenSpaceError: this.o.tier === 'low' ? 32 : 16,
-            cacheBytes: OFFLINE_CESIUM.tileCacheBytes,
-            maximumCacheOverflowBytes: OFFLINE_CESIUM.tileCacheBytes / 2,
-          },
-        );
-        if (generation !== this.tilesetGeneration || this.widget.isDestroyed()) {
+        const tileset = await Cesium3DTileset.fromUrl(projectUrl(site.projectId, e.src), {
+          maximumScreenSpaceError: this.o.tier === 'low' ? 32 : 16,
+          cacheBytes: OFFLINE_CESIUM.tileCacheBytes,
+          maximumCacheOverflowBytes: OFFLINE_CESIUM.tileCacheBytes / 2,
+        });
+        if (!current() || this.destroyed) {
           tileset.destroy();
-          return;
+          return loaded;
         }
         if (e.transform)
           tileset.modelMatrix = Matrix4.multiply(
@@ -1159,12 +1231,12 @@ export class GlobeController {
             new Matrix4(),
           );
         this.scene.primitives.add(tileset);
-        this.tilesets.push({ id: e.id, tileset });
+        loaded.push({ id: e.id, tileset });
       } catch (err) {
         console.warn(`The Globe could not load tileset ${e.id}:`, err);
       }
     }
-    this.scene.requestRender();
+    return loaded;
   }
 
   // ---------------------------------------------------------------- camera
@@ -1469,11 +1541,16 @@ export class GlobeController {
       sites: this.sites.entities.values.map((e) => e.id.slice(SITE_PREFIX.length)),
       clusters: this.gathered.map((sites) => ({ count: sites.length, sites })),
       chips: this.chipBoxes(),
-      tilesets: this.tilesets.map(({ id, tileset }) => ({
+      tilesets: this.outputs.tilesets().map(({ projectId, tileset: { id, tileset } }) => ({
+        projectId,
         id,
         ready:
           tileset.tilesLoaded && (tileset.root as { contentReady?: boolean }).contentReady === true,
       })),
+      projectRasters: this.outputs.rasters().map(({ projectId, layerId, layer, provider }) => {
+        const { tiles, lastError } = provider.stats();
+        return { projectId, layerId, ready: layer.ready && tiles > 0, tiles, lastError };
+      }),
       issuePins: this.issues.entities.values.map((e) => e.id.slice(ISSUE_PREFIX.length)),
       credits: this.credits,
       cameraHeight: scene.camera.positionCartographic.height,
@@ -1547,6 +1624,8 @@ export class GlobeController {
     cancelAnimationFrame(this.zoomFrame);
     cancelAnimationFrame(this.hoverFrame);
     for (const off of this.unlisten) off();
+    // every raster provider and its decoded tiles go with the scene
+    this.outputs.dispose();
     const canvas = this.scene.canvas;
     this.handler.destroy();
     this.widget.destroy();

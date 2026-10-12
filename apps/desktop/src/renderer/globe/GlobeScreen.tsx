@@ -24,7 +24,7 @@ import {
   type GlobeHover,
   type GlobePick,
   type GlobeTagText,
-  type GlobeTilesets,
+  type SiteOutputs,
 } from '@aio/globe/view';
 import {
   defaultGlobeSettings,
@@ -170,7 +170,7 @@ export default function GlobeScreen() {
   useEffect(() => {
     rasterPacks.getState().refresh();
   }, []);
-  const [tilesets, setTilesets] = useState<GlobeTilesets | null>(null);
+  const [tilesets, setTilesets] = useState<SiteOutputs | null>(null);
   useEffect(() => {
     let live = true;
     if (!project) return;
@@ -182,7 +182,8 @@ export default function GlobeScreen() {
           ? {
               projectId: project.id,
               georef: georefOf(project.manifest),
-              entries: r.value.file.entries,
+              tilesets: r.value.file.entries,
+              rasters: [],
             }
           : null,
       );
@@ -191,6 +192,11 @@ export default function GlobeScreen() {
       live = false;
     };
   }, [project]);
+  // the open project's outputs only, for now (its tilesets; rasters come with the site card)
+  const outputs = useMemo(
+    () => (tilesets && tilesets.projectId === project?.id ? [tilesets] : []),
+    [tilesets, project?.id],
+  );
   const pins = useMemo(() => {
     if (!project || prefs.showIssues === false) return null;
     return {
@@ -462,7 +468,7 @@ export default function GlobeScreen() {
         terrain={terrain}
         exaggeration={prefs.terrainExaggeration ?? 1}
         issuePins={pins}
-        tilesets={tilesets && tilesets.projectId === project?.id ? tilesets : null}
+        outputs={outputs}
         start={start}
         reducedMotion={reducedMotion}
         onPick={setPick}

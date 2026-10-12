@@ -1,6 +1,6 @@
 import '@cesium/engine/Source/Widget/CesiumWidget.css';
 import './globe-view.css';
-import type { GlobeSite, RasterPackInfo, TilesetEntry } from '@aio/schema';
+import type { GlobeSite, RasterPackInfo } from '@aio/schema';
 import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
 import type { GlobeCamera } from '../camera';
 import type { Insets } from '../chips';
@@ -10,17 +10,12 @@ import { sitesBounds, type IssuePin } from '../sites';
 import type { GlobePalette, GlobeStyle } from '../style';
 import { GlobeController, type GlobeHover, type GlobePick } from './controller';
 import type { GlobeTier } from './setup';
+import type { SiteOutputs } from './siteOutputs';
 
 export interface GlobeIssuePins {
   projectId: string;
   georef: SiteGeoref;
   pins: readonly IssuePin[];
-}
-
-export interface GlobeTilesets {
-  projectId: string;
-  georef: SiteGeoref;
-  entries: readonly TilesetEntry[];
 }
 
 /** The words of a floating label: a name, and a quieter note beside it. */
@@ -46,8 +41,11 @@ export interface GlobeViewProps {
   terrain: readonly RasterPackInfo[];
   exaggeration: number;
   issuePins: GlobeIssuePins | null;
-  /** The open project's 3D Tiles (`tilesets.json`). */
-  tilesets: GlobeTilesets | null;
+  /**
+   * The processed outputs of the sites in focus: their 3D Tiles and shown kit-pyramid rasters
+   * (bottom first). Kept stable between renders: a new array is a new set to draw.
+   */
+  outputs: readonly SiteOutputs[];
   /** Where to start: a remembered camera, a site to fly to, or every site. */
   start: { camera: GlobeCamera } | { site: readonly [number, number] } | null;
   reducedMotion: () => boolean;
@@ -234,10 +232,8 @@ export function GlobeView(props: GlobeViewProps) {
     ctl?.setMeasuring(props.measuring);
   }, [ctl, props.measuring]);
   useEffect(() => {
-    const ts = props.tilesets;
-    if (!ctl) return;
-    void ctl.setTilesets(ts?.projectId ?? '', ts?.georef ?? NOWHERE, ts?.entries ?? []);
-  }, [ctl, props.tilesets]);
+    if (ctl) void ctl.setSiteOutputs(props.outputs);
+  }, [ctl, props.outputs]);
 
   const selected = props.selected ?? null;
   const lit: GlobeHover | null =

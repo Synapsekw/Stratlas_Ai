@@ -4,7 +4,6 @@ export {
   GlobeView,
   type GlobeIssuePins,
   type GlobeTagText,
-  type GlobeTilesets,
   type GlobeViewProps,
 } from './GlobeView';
 export {
@@ -17,6 +16,13 @@ export {
   type GlobeTagSlot,
   type SourceFor,
 } from './controller';
+export {
+  SiteOutputLayers,
+  type SiteOutputRaster,
+  type SiteOutputs,
+  type SiteRasterRef,
+} from './siteOutputs';
+export { KitPyramidImageryProvider } from './projectRasterProvider';
 export {
   PmtilesImageryProvider,
   packCredit,
