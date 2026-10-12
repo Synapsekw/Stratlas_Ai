@@ -46,7 +46,7 @@ export function creditLines(packs: readonly Credited[], shown: CreditsShown = {}
  * in it and the terrain packs in use.
  */
 export function planCredits<P extends Credited>(
-  plan: readonly GlobeLayerPlan<P>[],
+  plan: readonly GlobeLayerPlan<P, unknown>[],
   streetCredit: string,
   terrain: readonly Credited[] = [],
 ): string[] {
@@ -58,7 +58,8 @@ export function planCredits<P extends Credited>(
     else if (layer.kind === 'street') base.push(streetCredit);
     else if (layer.kind === 'natural-earth') base.push(BUNDLED_CREDIT);
     else if (layer.kind === 'online-satellite') onlineSatellite = true;
-    else packs.push(layer.pack);
+    else if (layer.kind === 'imagery-pack') packs.push(layer.pack);
+    // a project raster is the project's own survey: no credit line
   }
   return creditLines([...packs, ...terrain], { base, onlineSatellite });
 }

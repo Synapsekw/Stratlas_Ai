@@ -77,7 +77,7 @@ export function styleZoomFor(level: number, viewZoom: number | null, steps: numb
   return Math.max(level, Math.min(viewZoom, level + Math.max(0, steps)));
 }
 
-export type GlobeLayerPlan<P> =
+export type GlobeLayerPlan<P, R = never> =
   /** The bundled land and border shapes in the street colours: the Earth of the street looks. */
   | { kind: 'earth-shapes'; role: 'whole' | 'underlay' }
   /** The street map from the installed street packs. */
@@ -90,9 +90,14 @@ export type GlobeLayerPlan<P> =
    */
   | { kind: 'online-satellite' }
   /** An installed imagery pack. */
-  | { kind: 'imagery-pack'; pack: P };
+  | { kind: 'imagery-pack'; pack: P }
+  /**
+   * A processed raster of a project (an ortho, a shaded DSM, a change heat map): drawn on top of
+   * every base and pack layer, in every look, so the person's own survey wins where it is.
+   */
+  | { kind: 'project-raster'; raster: R };
 
-export interface GlobeLayerInput<P> {
+export interface GlobeLayerInput<P, R = never> {
   style: GlobeStyle;
   /** Street tiles are available (at least one street pack is installed). */
   street: boolean;
@@ -103,27 +108,42 @@ export interface GlobeLayerInput<P> {
    * `online`, or `cached` on an offline-only workstation). Absent: no.
    */
   onlineSatellite?: boolean;
+  /** The project rasters to draw, bottom first (`rasterOrder`). Absent: none. */
+  projectRasters?: readonly R[];
 }
 
 /** The Globe's imagery layers for a look, bottom first. */
-export function planGlobeLayers<P extends Pick<PackExtent, 'bbox' | 'maxZoom'>>(
-  input: GlobeLayerInput<P>,
-): GlobeLayerPlan<P>[] {
-  const packs = imageryLayerOrder(input.imagery).map((pack): GlobeLayerPlan<P> => ({
+export function planGlobeLayers<P extends Pick<PackExtent, 'bbox' | 'maxZoom'>, R = never>(
+  input: GlobeLayerInput<P, R>,
+): GlobeLayerPlan<P, R>[] {
+  const rasters = (input.projectRasters ?? []).map((raster): GlobeLayerPlan<P, R> => ({
+    kind: 'project-raster',
+    raster,
+  }));
+  return [...baseLayers(input), ...rasters];
+}
+
+/** The layers of a look below the project rasters, bottom first. */
+function baseLayers<P extends Pick<PackExtent, 'bbox' | 'maxZoom'>, R>(
+  input: GlobeLayerInput<P, R>,
+): GlobeLayerPlan<P, R>[] {
+  const packs = imageryLayerOrder(input.imagery).map((pack): GlobeLayerPlan<P, R> => ({
     kind: 'imagery-pack',
     pack,
   }));
   if (input.style === 'natural-earth') return [{ kind: 'natural-earth' }, ...packs];
-  const base: GlobeLayerPlan<P>[] = input.street
+  const base: GlobeLayerPlan<P, R>[] = input.street
     ? [{ kind: 'earth-shapes', role: 'underlay' }, { kind: 'street' }]
     : [{ kind: 'earth-shapes', role: 'whole' }];
   // satellite is a choice: the street globe stays the default, packs or not
   if (input.style !== 'satellite') return base;
   // online imagery covers the whole Earth, so it goes under the packs: a pack wins where it is
-  const online: GlobeLayerPlan<P>[] = input.onlineSatellite ? [{ kind: 'online-satellite' }] : [];
+  const online: GlobeLayerPlan<P, R>[] = input.onlineSatellite
+    ? [{ kind: 'online-satellite' }]
+    : [];
   return [...base, ...online, ...packs];
 }
 
 /** Whether a plan draws imagery packs (their credits show only then). */
-export const planShowsPacks = (plan: readonly GlobeLayerPlan<unknown>[]): boolean =>
+export const planShowsPacks = (plan: readonly GlobeLayerPlan<unknown, unknown>[]): boolean =>
   plan.some((l) => l.kind === 'imagery-pack');

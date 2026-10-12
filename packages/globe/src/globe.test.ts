@@ -9,6 +9,8 @@ import {
   creditLines,
   offlineSource,
   onlineHostsIn,
+  planGlobeLayers,
+  type GlobeStyle,
 } from './index';
 
 const repoFile = (p: string) => readFileSync(new URL(`../../../${p}`, import.meta.url), 'utf8');
@@ -90,5 +92,28 @@ describe('@aio/globe public API (G0)', () => {
     // and it is one of our own providers, not a banned online one
     for (const name of BANNED_CESIUM_IMPORTS)
       expect(provider, name).not.toMatch(new RegExp(`\\b${name}\\b`));
+  });
+});
+
+describe('project rasters in the layer plan', () => {
+  const pack = {
+    id: 'site',
+    bbox: [49.9, 24.9, 50.1, 25.1] as [number, number, number, number],
+    maxZoom: 16,
+  };
+  const a = { layerId: 'ortho-c2' };
+  const b = { layerId: 'heat' };
+  const looks: GlobeStyle[] = ['street', 'satellite', 'natural-earth'];
+
+  it.each(looks)('%s: the project rasters sit on top, in the order given', (style) => {
+    const input = { style, street: true, imagery: [pack], onlineSatellite: true };
+    const without = planGlobeLayers(input);
+    const plan = planGlobeLayers({ ...input, projectRasters: [a, b] });
+    expect(plan).toEqual([
+      ...without,
+      { kind: 'project-raster', raster: a },
+      { kind: 'project-raster', raster: b },
+    ]);
+    expect(without.some((l) => l.kind === 'project-raster')).toBe(false);
   });
 });

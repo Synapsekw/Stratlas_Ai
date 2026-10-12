@@ -749,7 +749,7 @@ export class GlobeController {
           layers.add(naturalEarthLayer());
         } else if (entry.kind === 'online-satellite') {
           layers.add(new ImageryLayer(createOnlineSatelliteProvider()));
-        } else {
+        } else if (entry.kind === 'imagery-pack') {
           const provider = new PmtilesImageryProvider(entry.pack, this.sourceFor(entry.pack));
           this.imageryProviders.push(provider);
           layers.add(new ImageryLayer(asImageryProvider(provider)));
