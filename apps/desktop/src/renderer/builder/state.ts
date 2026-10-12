@@ -6,6 +6,7 @@ import type {
   IpcEvent,
   LayerPatch,
 } from '@aio/schema';
+import { t } from '@aio/ui';
 import { workspace } from '@aio/workspace';
 import { useStore } from 'zustand';
 import { createStore } from 'zustand/vanilla';
@@ -14,6 +15,9 @@ import { drawings } from '../drawings/store';
 import { bridge, shell } from '../shell';
 import { heightsPrompt, needsTakeoff, type HeightsPrompt } from './heights';
 import { terrainHeightAt } from './pick';
+
+/** What an import read its survey date from (the import card's "Read from ..." line). */
+export type DateSource = 'photos' | 'video' | 'both' | null;
 
 export type AlignTool = { kind: 'mesh'; layerId: string } | { kind: 'video'; layerId: string };
 
@@ -29,8 +33,18 @@ export interface BuilderState {
   cancellable: boolean;
   /** Cancel was asked for; the import ends when main has stopped what it was doing. */
   cancelling: boolean;
-  /** Outcome of the last import, shown until dismissed. */
-  importResult: { items: ImportItem[]; error: string | null; heights?: ImportHeights } | null;
+  /**
+   * Outcome of the last import, shown until dismissed. `newDates`: the survey dates the import
+   * made (not in the manifest before it), so the import card can tidy them up. `dateSource`: what
+   * the date was read from when the import dated its layers, else null.
+   */
+  importResult: {
+    items: ImportItem[];
+    error: string | null;
+    heights?: ImportHeights;
+    newDates?: string[];
+    dateSource?: DateSource;
+  } | null;
   /** Camera heights to confirm before the import runs (relative altitude needs a take-off H). */
   heightsPrompt: HeightsPrompt | null;
   align: AlignTool | null;
@@ -56,6 +70,8 @@ export interface BuilderActions {
   confirmHeights: (altitude: AltitudeChoice) => Promise<void>;
   cancelHeights: () => void;
   pickAndImport: () => Promise<void>;
+  /** Pick a flight folder and import it (Add survey date, Import a flight folder...). */
+  pickAndImportFolder: () => Promise<void>;
   /** Add drawing: pick PDF, pictures or DXF and bring them in as drawings. */
   pickAndAddDrawing: () => Promise<void>;
   /** Pick 360 camera files or stitched 360 videos and add them as walks. */
@@ -157,6 +173,22 @@ async function dropStaged(projectId: string, items: readonly ImportItem[]): Prom
   return out;
 }
 
+/**
+ * What the import read its survey date from: the kinds of its imported rows (photos, video or
+ * both) when any layer it made carries a `capture`, else null (nothing was dated).
+ */
+function dateSourceOf(
+  items: readonly ImportItem[],
+  layers: readonly { id: string; capture?: string | undefined }[],
+): DateSource {
+  const rows = items.filter((i) => i.status === 'imported' && i.layerId);
+  const ids = new Set(rows.map((i) => i.layerId));
+  if (!layers.some((l) => ids.has(l.id) && l.capture)) return null;
+  const photos = rows.some((i) => i.kind === 'photo');
+  const video = rows.some((i) => i.kind === 'video');
+  return photos && video ? 'both' : photos ? 'photos' : video ? 'video' : null;
+}
+
 export const builder = createStore<Builder>()((set, get) => ({
   wizardOpen: false,
   importing: null,
@@ -208,6 +240,7 @@ export const builder = createStore<Builder>()((set, get) => ({
         return;
       }
     }
+    const before = new Set(project.manifest.captures.map((c) => c.id));
     importingProject = project.id;
     set({
       importing: { done: 0, total: paths.length, file: '' },
@@ -255,6 +288,8 @@ export const builder = createStore<Builder>()((set, get) => ({
       items: r.value.items,
       error: null,
       ...(r.value.heights ? { heights: r.value.heights } : {}),
+      newDates: r.value.manifest.captures.filter((c) => !before.has(c.id)).map((c) => c.id),
+      dateSource: dateSourceOf(r.value.items, r.value.manifest.layers),
     };
     // a cancelled import draws nothing more: the drawings it had only copied in are closed, so
     // their copies are removed, and no page question is asked for them
@@ -313,6 +348,12 @@ export const builder = createStore<Builder>()((set, get) => ({
       multi: true,
     });
     if (pick.ok && pick.value.paths.length) await get().importFiles(pick.value.paths);
+  },
+
+  pickAndImportFolder: async () => {
+    shell.getState().setPalette(false);
+    const pick = await bridge.call('dialog:openFolder', { title: t('tree.addDate.folderTitle') });
+    if (pick.ok && pick.value.path) await get().importFiles([pick.value.path]);
   },
 
   pickAndImport360: async () => {

@@ -14,7 +14,10 @@ vi.mock('../shell', () => ({
 }));
 vi.mock('@aio/workspace', () => ({
   workspace: {
-    getState: () => ({ project: { id: 'p1', manifest: { origin: [0, 0, 30] } }, replaceManifest }),
+    getState: () => ({
+      project: { id: 'p1', manifest: { origin: [0, 0, 30], captures: [] } },
+      replaceManifest,
+    }),
   },
 }));
 vi.mock('./pick', () => ({ terrainHeightAt: () => null }));
@@ -48,7 +51,7 @@ function later<T>() {
 
 const imported = (items: unknown[] = []) => ({
   ok: true,
-  value: { ok: true, manifest: { layers: [] }, items },
+  value: { ok: true, manifest: { layers: [], captures: [] }, items },
 });
 const calls = (channel: string) => call.mock.calls.filter((c) => c[0] === channel);
 const b = () => builder.getState();

@@ -3,14 +3,21 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const call = vi.fn();
 const replaceManifest = vi.fn();
+/** The open project as the store reads it; a test may give it survey dates. */
+let openProject: { id: string; manifest: { origin: number[]; captures: { id: string }[] } } = {
+  id: 'p1',
+  manifest: { origin: [0, 0, 30], captures: [] },
+};
 
 vi.mock('../shell', () => ({
   bridge: { call: (...a: unknown[]) => call(...a) as unknown },
-  shell: { getState: () => ({ loadLibrary: () => Promise.resolve() }) },
+  shell: {
+    getState: () => ({ loadLibrary: () => Promise.resolve(), setPalette: () => undefined }),
+  },
 }));
 vi.mock('@aio/workspace', () => ({
   workspace: {
-    getState: () => ({ project: { id: 'p1', manifest: { origin: [0, 0, 30] } }, replaceManifest }),
+    getState: () => ({ project: openProject, replaceManifest }),
   },
 }));
 vi.mock('./pick', () => ({ terrainHeightAt: () => null }));
@@ -37,7 +44,10 @@ const plan = (over: Partial<AltitudePlan> = {}): AltitudePlan => ({
 /** A plan that asks for the take-off height before the import runs. */
 const asks = plan({ files: 2, relative: 2, recommended: 'relative' });
 const planned = (p: AltitudePlan) => ({ ok: true, value: { ok: true, plan: p } });
-const imported = { ok: true, value: { ok: true, manifest: { layers: [] }, items: [] } };
+const imported = {
+  ok: true,
+  value: { ok: true, manifest: { layers: [], captures: [] }, items: [] },
+};
 
 /** A reply the test gives when it chooses to. */
 function later<T>() {
@@ -75,7 +85,7 @@ describe('importFiles, one import at a time', () => {
       ['builder:import', { projectId: 'p1', paths: ['a.jpg', 'b.jpg'] }],
     ]);
     expect(b().importing).toBeNull();
-    expect(b().importResult).toEqual({ items: [], error: null });
+    expect(b().importResult).toEqual({ items: [], error: null, newDates: [], dateSource: null });
     expect(replaceManifest).toHaveBeenCalledTimes(1);
   });
 
@@ -150,7 +160,10 @@ describe('importFiles with drawings whose pages are drawn in the window', () => 
     status: 'queued',
     drawing: { stem: 'a', src: 'drawings/a.pdf', name: 'a.pdf' },
   };
-  const staged = { ok: true, value: { ok: true, manifest: { layers: [] }, items: [pdf] } };
+  const staged = {
+    ok: true,
+    value: { ok: true, manifest: { layers: [], captures: [] }, items: [pdf] },
+  };
   interface Io {
     items(): { status: string }[];
     setItem(index: number, patch: Record<string, unknown>): void;
@@ -211,5 +224,109 @@ describe('importFiles with drawings whose pages are drawn in the window', () => 
     expect(io.items()[0]?.status).toBe('error');
     drawing.give(undefined);
     await first;
+  });
+});
+
+describe('importFiles, the survey dates an import made', () => {
+  const row = (file: string, kind: 'photo' | 'video' | 'mesh', layerId: string) => ({
+    file,
+    kind,
+    status: 'imported' as const,
+    layerId,
+  });
+  const reply = (
+    items: ReturnType<typeof row>[],
+    layers: { id: string; capture?: string }[],
+    captures: { id: string }[],
+  ) => ({ ok: true, value: { ok: true, manifest: { layers, captures }, items } });
+
+  beforeEach(() => {
+    openProject = { id: 'p1', manifest: { origin: [0, 0, 30], captures: [{ id: 'capture-a' }] } };
+  });
+
+  it('lists the dates that were not there before and where the date was read from', async () => {
+    call.mockImplementation((channel: string) =>
+      Promise.resolve(
+        channel === 'builder:altitudePlan'
+          ? planned(plan())
+          : reply(
+              [row('a.jpg', 'photo', 'photos-b'), row('b.mp4', 'video', 'clip-b')],
+              [
+                { id: 'photos-b', capture: 'capture-b' },
+                { id: 'clip-b', capture: 'capture-b' },
+              ],
+              [{ id: 'capture-a' }, { id: 'capture-b' }],
+            ),
+      ),
+    );
+    await b().importFiles(['flight']);
+    expect(b().importResult?.newDates).toEqual(['capture-b']);
+    expect(b().importResult?.dateSource).toBe('both');
+  });
+
+  it('reads the source from the photos alone, and no new date for a day that had one', async () => {
+    call.mockImplementation((channel: string) =>
+      Promise.resolve(
+        channel === 'builder:altitudePlan'
+          ? planned(plan())
+          : reply(
+              [row('a.jpg', 'photo', 'photos-a')],
+              [{ id: 'photos-a', capture: 'capture-a' }],
+              [{ id: 'capture-a' }],
+            ),
+      ),
+    );
+    await b().importFiles(['a.jpg']);
+    expect(b().importResult?.newDates).toEqual([]);
+    expect(b().importResult?.dateSource).toBe('photos');
+  });
+
+  it('has no source when the import dated nothing', async () => {
+    call.mockImplementation((channel: string) =>
+      Promise.resolve(
+        channel === 'builder:altitudePlan'
+          ? planned(plan())
+          : reply([row('m.glb', 'mesh', 'mesh')], [{ id: 'mesh' }], [{ id: 'capture-a' }]),
+      ),
+    );
+    await b().importFiles(['m.glb']);
+    expect(b().importResult?.newDates).toEqual([]);
+    expect(b().importResult?.dateSource).toBeNull();
+  });
+});
+
+describe('pickAndImportFolder', () => {
+  beforeEach(() => {
+    openProject = { id: 'p1', manifest: { origin: [0, 0, 30], captures: [] } };
+  });
+
+  it('imports the picked folder', async () => {
+    call.mockImplementation((channel: string) =>
+      Promise.resolve(
+        channel === 'dialog:openFolder'
+          ? { ok: true, value: { path: 'D:/flight' } }
+          : channel === 'builder:altitudePlan'
+            ? planned(plan())
+            : imported,
+      ),
+    );
+    await b().pickAndImportFolder();
+    expect(calls('dialog:openFolder')).toEqual([
+      ['dialog:openFolder', { title: 'Import a flight folder' }],
+    ]);
+    expect(calls('builder:import')).toEqual([
+      ['builder:import', { projectId: 'p1', paths: ['D:/flight'] }],
+    ]);
+  });
+
+  it('does nothing when the pick is cancelled', async () => {
+    call.mockImplementation((channel: string) =>
+      Promise.resolve(
+        channel === 'dialog:openFolder' ? { ok: true, value: { path: null } } : imported,
+      ),
+    );
+    await b().pickAndImportFolder();
+    expect(calls('builder:altitudePlan')).toHaveLength(0);
+    expect(calls('builder:import')).toHaveLength(0);
   });
 });
