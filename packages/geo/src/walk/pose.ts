@@ -1,7 +1,7 @@
 import type { PoseSample, Quat, WalkCalibration, WalkRawPath } from '@aio/schema';
 import { WALK_HEIGHT_M } from '@aio/schema';
 import { slerpQuat } from '../direction';
-import { walkFitDetail, type WalkFit } from './fit';
+import { walkFitDetail, type WalkFit, type WalkFitDetail } from './fit';
 import {
   levelStills,
   quatFromYawPitchRoll,
@@ -87,6 +87,44 @@ function rowAt(rows: readonly Float64Array[], t: number): Quat | null {
 }
 
 /**
+ * The camera's raw orientation and model heading (a `Ry` angle, without the yaw offset) at t.
+ * Orientation rows are a relative rotation: turned from the nearest registered still of the same
+ * segment, `qStill * inverse(qRow(still.t)) * qRow(t)`. Never levelled on their own, so a constant
+ * offset of the gyro frame cancels. Without a still (dashed, pins-only) the heading is the travel
+ * direction and the stills' orientation (if any) gives pitch and roll.
+ */
+function oriented(
+  d: WalkFitDetail,
+  rows: readonly Float64Array[] | null,
+  t: number,
+): { rawQ: Quat | null; heading: number } {
+  let rawQ = d.rawQ;
+  let heading = d.headingRad;
+  const rowT = rows ? rowAt(rows, t) : null;
+  const rowS = rows && d.still ? rowAt(rows, d.still.t) : null;
+  if (d.still && rowT && rowS) {
+    rawQ = quatNormalise(quatMul(quatMul(d.still.q, quatConj(rowS)), rowT));
+    if (d.fitYaw !== null) heading = d.fitYaw + yawPitchRoll(rawQ).yaw;
+  }
+  return { rawQ, heading };
+}
+
+/**
+ * The camera heading at t exactly as the pose file has it before the yaw offset (a `Ry` angle):
+ * the fit's turn plus the yaw of the orientation rows when there are rows, else the fit's heading.
+ * Null while the walk is not placed. Align view uses it so the saved pose matches what was aligned.
+ */
+export function walkHeadingAt(
+  fit: WalkFit,
+  orient: readonly Float64Array[] | null,
+  t: number,
+): number | null {
+  const d = walkFitDetail(fit, t);
+  if (!d) return null;
+  return oriented(d, orient && orient.length > 0 ? orient : null, t).heading;
+}
+
+/**
  * The walk's pose samples for its `aio.flight/1` file: 30 per second with orientation rows
  * (`readWalkOrientationData`), else 10 per second from the stills; `t` in milliseconds from 0;
  * position through the fit at the camera height; `q = Ry(heading + yawOffset)` composed with the
@@ -112,18 +150,7 @@ export function walkPoseSamples(
     const t = k / hz;
     const d = walkFitDetail(fit, t);
     if (!d) return [];
-    // Orientation rows are a relative rotation: turned from the nearest registered still of the
-    // same segment, `qStill * inverse(qRow(still.t)) * qRow(t)`. Never levelled on their own, so
-    // a constant offset of the gyro frame cancels. Without a still (dashed, pins-only) the
-    // heading is the travel direction and the stills' orientation (if any) gives pitch and roll.
-    let rawQ = d.rawQ;
-    let heading = d.headingRad;
-    const rowT = rows ? rowAt(rows, t) : null;
-    const rowS = rows && d.still ? rowAt(rows, d.still.t) : null;
-    if (d.still && rowT && rowS) {
-      rawQ = quatNormalise(quatMul(quatMul(d.still.q, quatConj(rowS)), rowT));
-      if (d.fitYaw !== null) heading = d.fitYaw + yawPitchRoll(rawQ).yaw;
-    }
+    const { rawQ, heading } = oriented(d, rows, t);
     const ypr = rawQ ? yawPitchRoll(rawQ) : { yaw: 0, pitch: 0, roll: 0 };
     out.push({
       t: (k * 1000) / hz,

@@ -1,4 +1,11 @@
-import { pinTarget, walkQuality, type fitWalk, type WalkFit, type WalkSurfaces } from '@aio/geo';
+import {
+  pinTarget,
+  walkHeadingAt,
+  walkQuality,
+  type fitWalk,
+  type WalkFit,
+  type WalkSurfaces,
+} from '@aio/geo';
 import { MAX_WALK_PINS, MODEL_SURFACE, WALK_HEIGHT_M } from '@aio/schema';
 import type {
   ProjectManifest,
@@ -31,6 +38,8 @@ export interface PlaceStartOptions {
   raw?: WalkRawPath | null;
   /** The drawings' picture size and provisional flag; absent: no drawing has a frame. */
   drawings?: DrawingLookup;
+  /** The walk's orientation rows (`readWalkOrientationData`), so Align view heads like the pose. */
+  orientation?: readonly Float64Array[] | null;
 }
 
 export interface PlaceState {
@@ -50,7 +59,11 @@ export interface PlaceState {
   /** The live fit of the pins (null outside a session). */
   fit: WalkFit | null;
   start(walk: WalkLayer, m: ProjectManifest, opts?: PlaceStartOptions): void;
-  /** The date step answered (the layer's `capture` was saved): on to the surface. */
+  /**
+   * The date step answered (the layer's `capture` was saved): on to the surface. The session's
+   * walk takes the capture; the caller lists the surfaces again (`placeSurfaces`) from the
+   * patched walk, since the drawings of its date come first.
+   */
   setDate(captureId: string): void;
   chooseSurface(s: PlaceSurface): void;
   setTime(t: number): void;
@@ -66,6 +79,9 @@ export interface PlaceState {
   calibration(): WalkCalibration;
   cancel(): void;
 }
+
+/** A click on a drawing whose picture size or corners are not known yet. */
+export const DRAWING_NOT_READY = 'That drawing is not ready';
 
 export const MAX_PINS_ERROR = `A walk takes at most ${MAX_WALK_PINS} pins`;
 
@@ -103,7 +119,8 @@ export function createPlaceStore(deps: {
   let walk: WalkLayer | null = null;
   let raw: WalkRawPath | null = null;
   let frames: WalkSurfaces = { drawing: () => null };
-  /** The time the pin waiting for a click belongs to. */
+  let orientation: readonly Float64Array[] | null = null;
+  /** The time a Pin here pin waiting for its click belongs to (start and end take the time shown). */
   let armedT = 0;
 
   return createStore<PlaceState>()((set, get) => {
@@ -121,7 +138,6 @@ export function createPlaceStore(deps: {
     const endT = (): number => raw?.walking?.endT ?? walk?.durationS ?? 0;
 
     const jump = (t: number): void => {
-      armedT = t;
       set({ timeS: t });
       deps.seek(t);
     };
@@ -151,6 +167,7 @@ export function createPlaceStore(deps: {
       start: (w, m, opts = {}) => {
         walk = w;
         raw = opts.raw ?? null;
+        orientation = opts.orientation ?? null;
         frames = surfaceFramesOf(m, opts.drawings ?? (() => undefined));
         armedT = 0;
         const pins = byT(w.place?.pins ?? []);
@@ -166,8 +183,9 @@ export function createPlaceStore(deps: {
         });
       },
 
-      setDate: () => {
-        if (get().layerId === null || get().step !== 'date') return;
+      setDate: (captureId) => {
+        if (!walk || get().layerId === null || get().step !== 'date') return;
+        walk = { ...walk, capture: captureId };
         set({ step: 'surface' });
       },
 
@@ -189,7 +207,11 @@ export function createPlaceStore(deps: {
           return;
         }
         if (st.armed !== 'start' && st.armed !== 'end' && st.armed !== 'pin') return;
-        const pin = pinAt(armedT, surfaceAt, y);
+        if (st.surface.kind === 'drawing' && !frames.drawing(st.surface.id)) {
+          set({ error: DRAWING_NOT_READY });
+          return;
+        }
+        const pin = pinAt(st.armed === 'pin' ? armedT : st.timeS, surfaceAt, y);
         if (!pin) return;
         if (st.armed === 'start') {
           setPins([pin], { step: 'end', armed: 'end' });
@@ -234,7 +256,8 @@ export function createPlaceStore(deps: {
         const st = get();
         if (st.layerId === null || !st.pins[i]) return;
         const pins = st.pins.filter((_, k) => k !== i);
-        setPins(pins);
+        const aligning = st.armed === 'align-360' || st.armed === 'align-surface';
+        setPins(pins, aligning ? { armed: null, align: null } : {});
         if (st.surface && pins.length < 2) stepForPins(pins.length);
       },
 
@@ -274,6 +297,7 @@ export function createPlaceStore(deps: {
       cancel: () => {
         walk = null;
         raw = null;
+        orientation = null;
         frames = { drawing: () => null };
         armedT = 0;
         set({ ...idle });
@@ -294,7 +318,7 @@ export function createPlaceStore(deps: {
       );
       const cam = st.fit.at(st.align.t);
       if (!target || !cam) {
-        set({ armed: null, align: null });
+        set({ armed: null, align: null, ...(target ? {} : { error: DRAWING_NOT_READY }) });
         return;
       }
       const dx = target.xz[0] - cam.xz[0];
@@ -305,7 +329,9 @@ export function createPlaceStore(deps: {
       }
       // a Ry angle: 0 looks down -Z, positive turns towards -X
       const bearing = Math.atan2(-dx, -dz);
-      const deg = ((bearing - cam.headingRad - st.align.yawRad) * 180) / Math.PI;
+      // the heading the pose file will have (orientation rows included), so the save matches
+      const heading = walkHeadingAt(st.fit, orientation, st.align.t) ?? cam.headingRad;
+      const deg = ((bearing - heading - st.align.yawRad) * 180) / Math.PI;
       const yawOffsetDeg = wrapDeg(deg);
       set({
         yawOffsetDeg,

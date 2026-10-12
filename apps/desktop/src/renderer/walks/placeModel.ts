@@ -1,4 +1,4 @@
-import type { SurfaceFrame, WalkSurfaces } from '@aio/geo';
+import { surfaceFrameFromCorners, type SurfaceFrame, type WalkSurfaces } from '@aio/geo';
 import { MODEL_SURFACE } from '@aio/schema';
 import type { Capture, ProjectManifest, WalkLayer } from '@aio/schema';
 import { captureIndex } from '@aio/workspace';
@@ -80,17 +80,7 @@ export function surfaceFramesOf(m: ProjectManifest, drawings: DrawingLookup): Wa
       if (!c || !info) return null;
       const { width: w, height: h } = info.size;
       if (!(w > 0) || !(h > 0)) return null;
-      const [tlx, tly, tlz] = c.tl;
-      return {
-        a: (c.tr[0] - tlx) / w,
-        c: (c.tr[2] - tlz) / w,
-        b: (c.bl[0] - tlx) / h,
-        d: (c.bl[2] - tlz) / h,
-        tx: tlx,
-        tz: tlz,
-        baseY: tly,
-        provisional: info.provisional,
-      };
+      return surfaceFrameFromCorners(c, [w, h], info.provisional);
     },
   };
 }

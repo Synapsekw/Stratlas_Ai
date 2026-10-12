@@ -1,10 +1,18 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { fitWalk, PIN_SPAN_ERROR } from '@aio/geo';
-import { ProjectManifest, WalkRawPath, type WalkLayer, type WalkPin } from '@aio/schema';
+import { fitWalk, PIN_SPAN_ERROR, walkPoseSamples } from '@aio/geo';
+import {
+  ProjectManifest,
+  readWalkOrientationData,
+  WalkOrientation,
+  WalkRawPath,
+  type PoseSample,
+  type WalkLayer,
+  type WalkPin,
+} from '@aio/schema';
 import { describe, expect, it, vi } from 'vitest';
 import type { DrawingLookup, PlaceSurface } from './placeModel';
-import { createPlaceStore, wrapDeg } from './placeStore';
+import { createPlaceStore, DRAWING_NOT_READY, wrapDeg } from './placeStore';
 
 const raw = WalkRawPath.parse(
   JSON.parse(
@@ -16,6 +24,14 @@ const raw = WalkRawPath.parse(
       'utf8',
     ),
   ) as unknown,
+);
+const fixtures = join(import.meta.dirname, '../../../../../packages/schema/src/__fixtures__/walk');
+const orientHeader = WalkOrientation.parse(
+  JSON.parse(readFileSync(join(fixtures, 'orientation.synthetic.json'), 'utf8')) as unknown,
+);
+const rows = readWalkOrientationData(
+  orientHeader,
+  new Uint8Array(readFileSync(join(fixtures, orientHeader.data))),
 );
 const lastT = raw.stills[raw.stills.length - 1]?.t ?? 0;
 
@@ -227,6 +243,87 @@ describe('createPlaceStore', () => {
     const expected = wrapDeg(((Math.atan2(-12, -5) - cam.headingRad - yawRad) * 180) / Math.PI);
     expect(Math.abs(s().yawOffsetDeg - expected)).toBeLessThan(0.01);
     expect(s().calibration().yawOffsetDeg).toBe(s().yawOffsetDeg);
+  });
+
+  it('start and end pins take the time shown when the spot is clicked', () => {
+    const { s } = setup();
+    s().chooseSurface(MAP);
+    s().setTime(6); // scrubbed after the jump to the start
+    s().click(truthXZ(6));
+    expect(s().pins[0]?.t).toBe(6);
+    s().setTime(58);
+    s().click(truthXZ(58));
+    expect(s().pins.map((p) => p.t)).toEqual([6, 58]);
+  });
+
+  it('refuses a pin on a drawing that is not ready', () => {
+    const seek = vi.fn<(t: number) => void>();
+    const store = createPlaceStore({ fit: fitWalk, seek });
+    const s = () => store.getState();
+    s().start(walk(), m, { raw, drawings: () => undefined });
+    s().chooseSurface(SHEET);
+    s().click([100, 100]);
+    expect(s().pins).toEqual([]);
+    expect(s().error).toBe(DRAWING_NOT_READY);
+    expect(s().step).toBe('start');
+  });
+
+  it('removing a pin mid-align drops the align', () => {
+    const { s } = placedOnMap();
+    s().setTime(30);
+    s().pinHere();
+    s().click(truthXZ(30));
+    s().armAlign();
+    s().align360(0.3);
+    s().removePin(1);
+    expect(s().pins).toHaveLength(2);
+    expect(s().armed).toBeNull();
+    expect(s().align).toBeNull();
+  });
+
+  it('align with orientation rows: the saved pose looks at the landmark', () => {
+    if (!rows) throw new Error('orientation fixture refused');
+    // The fixture's rows head like the stills; sway them (a turn about up of 0.3 sin(2 pi t)) so
+    // the rows' heading differs from the fit's between stills.
+    const swayed = rows.map((row) => {
+      const h = 0.15 * Math.sin(2 * Math.PI * (row[0] ?? 0));
+      const [sy, cw] = [Math.sin(h), Math.cos(h)];
+      const [x, y, z, w] = [row[1] ?? 0, row[2] ?? 0, row[3] ?? 0, row[4] ?? 1];
+      // Ry(2h) * q, Hamilton product with [0, sy, 0, cw]
+      return Float64Array.of(
+        row[0] ?? 0,
+        cw * x + sy * z,
+        cw * y + sy * w,
+        cw * z - sy * x,
+        cw * w - sy * y,
+      );
+    });
+    const seek = vi.fn<(t: number) => void>();
+    const store = createPlaceStore({ fit: fitWalk, seek });
+    const s = () => store.getState();
+    s().start(walk(), m, { raw, drawings, orientation: swayed });
+    s().chooseSurface(MAP);
+    s().click(truthXZ(4));
+    s().click(truthXZ(lastT));
+    s().setTime(30.2);
+    s().armAlign();
+    const yawRad = -0.4;
+    s().align360(yawRad);
+    const cam = s().fit?.at(30.2);
+    if (!cam) throw new Error('no fit');
+    s().click([cam.xz[0] - 7, cam.xz[1] + 9]);
+    const cal = s().calibration();
+    const fit = fitWalk(raw, cal, { drawing: () => null }, 62);
+    const sample: PoseSample | undefined = walkPoseSamples(fit, raw, swayed, cal, 62)[906];
+    if (!sample) throw new Error('no sample');
+    // the pose's forward (q applied to -Z), turned by the landmark's angle in the camera frame
+    const [x, y, z, w] = sample.q;
+    const fx = -(2 * (x * z + w * y));
+    const fz = -(1 - 2 * (x * x + y * y));
+    const th = Math.atan2(-fx, -fz) + yawRad;
+    const want = Math.atan2(7, -9); // Ry angle of the direction (-7, +9)
+    const diff = Math.atan2(Math.sin(th - want), Math.cos(th - want));
+    expect(Math.abs(diff)).toBeLessThan(1e-3);
   });
 
   it('setYaw wraps to -180..180', () => {

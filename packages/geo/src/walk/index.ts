@@ -14,6 +14,7 @@ export {
 } from './fit';
 export { walkBadgeText, walkQuality, WALK_CHECK_M, WALK_POOR_M } from './quality';
 export {
+  walkHeadingAt,
   walkPathPoints,
   walkPoseSamples,
   WALK_POSE_HZ_ORIENTED,

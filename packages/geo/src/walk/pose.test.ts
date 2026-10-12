@@ -10,7 +10,7 @@ import {
 } from '../__fixtures__/walk';
 import { fitWalk } from './fit';
 import { angleDiff, quatFromYawPitchRoll, quatMul, rotateVec } from './horizontal';
-import { walkPathPoints, walkPoseSamples } from './pose';
+import { walkHeadingAt, walkPathPoints, walkPoseSamples } from './pose';
 
 const raw = loadRaw('synthetic');
 const broken = loadRaw('broken');
@@ -132,6 +132,28 @@ describe('walkPoseSamples', () => {
   it('is empty while the walk is not placed', () => {
     const c = { ...cal(), pins: [pinAtTruth(raw, 4)] };
     expect(walkPoseSamples(fitFor(c), raw, rows, c, end)).toEqual([]);
+  });
+});
+
+describe('walkHeadingAt', () => {
+  it('is the heading of the pose samples before the yaw offset, with rows and without', () => {
+    const c = cal(20);
+    const fit = fitFor(c);
+    for (const orient of [rows, null]) {
+      const samples = walkPoseSamples(fit, raw, orient, c, end);
+      const hz = orient ? 30 : 10;
+      for (const t of [0, 4, 10.5, 25, 37, 50, end]) {
+        const s = samples[Math.round(t * hz)];
+        const h = walkHeadingAt(fit, orient, t);
+        if (!s || h === null) throw new Error('no sample');
+        expect(Math.abs(angleDiff(yawOf(s), h + (20 * Math.PI) / 180))).toBeLessThan(1e-6);
+      }
+    }
+  });
+
+  it('is null while the walk is not placed', () => {
+    const fit = fitWalk(raw, { pins: [], yawOffsetDeg: 0 }, noDrawings, end);
+    expect(walkHeadingAt(fit, rows, 10)).toBeNull();
   });
 });
 
