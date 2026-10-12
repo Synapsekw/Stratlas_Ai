@@ -9,6 +9,7 @@ import { projectToLonLat } from '@aio/globe';
 import type { ZipArchive } from '@aio/project/package';
 import {
   GlobeSettings,
+  ProjectPath,
   TilesetsFile,
   defaultGlobeSettings,
   type GlobeRaster,
@@ -70,15 +71,27 @@ export function originLonLat(m: Pick<ProjectManifest, 'crs' | 'origin'>): [numbe
   }
 }
 
+/** Raster paths already reported as outside the project folder (each is warned about once). */
+const refusedRasterPaths = new Set<string>();
+
 /**
  * The kit-pyramid rasters of a project that the Globe can draw, in manifest order. Drafts and
  * content-addressed rasters (no path yet) are left out; a change heat map is marked `change`.
+ * A raster whose path leaves the project folder is left out too (warned about once): one bad
+ * layer must not fail the `globe:sites` reply and empty the whole Globe.
  */
 export function globeRastersOf(layers: readonly Layer[]): GlobeRaster[] {
   const out: GlobeRaster[] = [];
   for (const l of layers) {
     if (l.kind !== 'raster' || l.format !== 'kit-pyramid' || l.derived?.draft) continue;
     if (!('path' in l.src)) continue; // content-addressed rasters: not on the Globe yet
+    if (!ProjectPath.safeParse(l.src.path).success) {
+      if (!refusedRasterPaths.has(l.src.path)) {
+        refusedRasterPaths.add(l.src.path);
+        console.warn(`Globe: raster ${l.id} is outside its project folder (${l.src.path}).`);
+      }
+      continue;
+    }
     out.push({
       layerId: l.id,
       name: l.name,

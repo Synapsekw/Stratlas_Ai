@@ -232,6 +232,7 @@ Current limits only; each is removed from this list when fixed.
 - The Globe is for overview and navigation: no editing tools, only a distance and area read-out on the ellipsoid.
 - No geoid grid ships, so terrain heights on the Globe are not corrected to the geoid.
 - Processed maps (orthophotos, shaded surfaces and change heat maps) show for the open project and the site you pick, not for every site at once. COG-only and plain-image rasters and the cloud change result are not drawn on the Globe. Sites have no footprints and there is no date filter.
+- A new orthophoto or change heat map made by a job while the Globe is open shows only after the sites are read again: leave the Globe and open it again.
 - Cloud change (`change.cloud`) on photo-processed surveys needs the Standard preset or higher. The Fast preset makes only a sparse cloud, so cloud change finds no regions on it. A grid that adapts to the cloud density would lift this.
 - The agent's **show_on_globe** ends the agent's reply: the agent panel belongs to the project view and closes when the Globe opens.
 

@@ -1,6 +1,6 @@
 import { utmToWgs84 } from '@aio/geo';
-import type { Issue, LibraryEntry, ProjectManifest } from '@aio/schema';
 import { exportPackage, openZip } from '@aio/project/package';
+import { GlobeSite, type Issue, type LibraryEntry, type ProjectManifest } from '@aio/schema';
 import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -236,6 +236,40 @@ describe('library projects as Globe sites', () => {
     const site = siteOf('p1', { manifest: m, issues: [], tilesets: null });
     expect(site?.frame).toEqual({ crs: { epsg: 32639 }, origin: [745_000, 3_245_000, 12] });
     expect(site?.rasters).toHaveLength(3);
+  });
+
+  it('skips a raster whose path leaves the project folder, keeping the site readable', () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    const raster = (id: string, path: string) =>
+      ({
+        kind: 'raster',
+        id,
+        name: id,
+        visible: true,
+        src: { path },
+        role: 'ortho',
+        format: 'kit-pyramid',
+      }) as const;
+    const m = manifest({
+      layers: [
+        raster('up', '../x/tiles.json'),
+        raster('drive', 'C:/elsewhere/tiles.json'),
+        raster('good', 'packs/ortho/tiles.json'),
+      ],
+    });
+    try {
+      const site = siteOf('p1', { manifest: m, issues: [], tilesets: null });
+      expect(site?.rasters).toEqual([
+        { layerId: 'good', name: 'good', role: 'ortho', src: 'packs/ortho/tiles.json' },
+      ]);
+      expect(GlobeSite.safeParse(site).success).toBe(true);
+      expect(warn).toHaveBeenCalledTimes(2);
+      // the same bad path is reported once, however often the sites are read
+      siteOf('p1', { manifest: m, issues: [], tilesets: null });
+      expect(warn).toHaveBeenCalledTimes(2);
+    } finally {
+      warn.mockRestore();
+    }
   });
 
   it('leaves rasters out of a site with none, and does not place a local-grid project', () => {

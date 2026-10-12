@@ -3,7 +3,8 @@
  * provider (design approach A). CesiumJS asks for geographic tiles; each is drawn on a 256 px
  * canvas from the pyramid tiles under it, every pyramid tile with its own affine map from the
  * placement (`pyramidPlacement` is a fine grid, so one map per pyramid tile follows it within a
- * fraction of a pixel). Pyramid tiles are read through `fetchTile` and kept decoded in a small LRU.
+ * fraction of a pixel). Pyramid tiles are read through `fetchTile` and kept decoded in an LRU that
+ * every raster of a Globe shares (`DecodedTileCache`), so the budget caps them all together.
  * Nothing here throws into CesiumJS: a missing or failing tile leaves its part transparent.
  */
 import { Event, Math as CMath, Rectangle } from '@cesium/core';
@@ -39,6 +40,100 @@ interface Cached {
   decoded: ImageBitmap | null;
   /** Requests drawing it now: it is not dropped while in use. */
   users: number;
+  /** The raster it belongs to (`dropOwner` closes a raster's tiles). */
+  owner: number;
+}
+
+/**
+ * Decoded pyramid tiles of every raster of one Globe, least recently used first, at most `budget`
+ * in all (tiles being drawn are kept over it until released). Keys carry the raster, so two
+ * rasters never share a bitmap by path. A dropped tile is closed; a read that arrives after its
+ * tile was dropped is closed on arrival.
+ */
+export class DecodedTileCache {
+  private readonly entries = new Map<string, Cached>();
+  private nextOwner = 0;
+
+  constructor(readonly budget: number) {}
+
+  /** Tiles held, decoded or still being read. */
+  get size(): number {
+    return this.entries.size;
+  }
+
+  /** A fresh raster identity for the keys. */
+  owner(): number {
+    return this.nextOwner++;
+  }
+
+  /** A tile (read and decoded when missing), held until `release`. */
+  take(
+    owner: number,
+    path: string,
+    fetchTile: (path: string) => Promise<ImageBitmap>,
+    onDecoded: () => void,
+  ): Cached {
+    const key = `${owner}:${path}`;
+    let entry = this.entries.get(key);
+    if (entry) {
+      // most recently used goes last
+      this.entries.delete(key);
+      this.entries.set(key, entry);
+    } else {
+      let read: Promise<ImageBitmap>;
+      try {
+        read = fetchTile(path);
+      } catch (err) {
+        read = Promise.reject(err instanceof Error ? err : new Error(String(err)));
+      }
+      const created: Cached = { bitmap: read, decoded: null, users: 0, owner };
+      created.bitmap = read.then(
+        (bitmap) => {
+          if (this.entries.get(key) !== created) bitmap.close();
+          else {
+            created.decoded = bitmap;
+            onDecoded();
+          }
+          return bitmap;
+        },
+        (err: unknown) => {
+          // not kept: a later request reads it again
+          if (this.entries.get(key) === created) this.entries.delete(key);
+          throw err;
+        },
+      );
+      this.entries.set(key, created);
+      entry = created;
+    }
+    entry.users++;
+    return entry;
+  }
+
+  release(entry: Cached): void {
+    entry.users--;
+    this.trim();
+  }
+
+  /** Close and forget every tile of a raster; its reads still in flight are closed on arrival. */
+  dropOwner(owner: number): void {
+    for (const [key, entry] of this.entries) {
+      if (entry.owner !== owner) continue;
+      this.entries.delete(key);
+      entry.decoded?.close();
+    }
+  }
+
+  /** Drop the least recently used tiles nobody is drawing while there are more than allowed. */
+  private trim(): void {
+    let over = this.entries.size - this.budget;
+    for (const [key, entry] of this.entries) {
+      if (over <= 0) break;
+      if (entry.users > 0) continue;
+      this.entries.delete(key);
+      entry.decoded?.close();
+      over--;
+    }
+  }
 }
 
 export class KitPyramidImageryProvider {
@@ -54,7 +149,8 @@ export class KitPyramidImageryProvider {
   readonly proxy = undefined;
   readonly hasAlphaChannel = true;
   readonly tileDiscardPolicy = undefined;
-  private readonly cache = new Map<string, Cached>();
+  private readonly cache: DecodedTileCache;
+  private readonly owner: number;
   private decoded = 0;
   private lastError: string | null = null;
   private disposed = false;
@@ -63,8 +159,14 @@ export class KitPyramidImageryProvider {
     private readonly index: PyramidIndex,
     private readonly placement: PyramidPlacement,
     private readonly fetchTile: (path: string) => Promise<ImageBitmap>,
-    private readonly o: { cacheTiles: number },
+    private readonly o: {
+      cacheTiles: number;
+      /** The Globe's shared cache; a cache of `cacheTiles` of its own when left out. */
+      cache?: DecodedTileCache;
+    },
   ) {
+    this.cache = o.cache ?? new DecodedTileCache(o.cacheTiles);
+    this.owner = this.cache.owner();
     const [west, south, east, north] = placement.rect;
     this.rectangle = Rectangle.fromDegrees(
       Math.max(west, -180),
@@ -94,6 +196,7 @@ export class KitPyramidImageryProvider {
   }
 
   private async draw(x: number, y: number, level: number): Promise<HTMLCanvasElement> {
+    if (this.disposed) return emptyTile();
     const r = this.tilingScheme.tileXYToRectangle(x, y, level);
     const rect: [number, number, number, number] = [
       CMath.toDegrees(r.west),
@@ -121,7 +224,9 @@ export class KitPyramidImageryProvider {
     if (!ctx) throw new Error('No 2D canvas to draw project rasters');
     await Promise.all(
       cover.tiles.map(async (tile) => {
-        const entry = this.take(tile.path);
+        const entry = this.cache.take(this.owner, tile.path, this.fetchTile, () => {
+          if (!this.disposed) this.decoded++;
+        });
         try {
           const bitmap = await entry.bitmap;
           if (this.disposed) return;
@@ -130,7 +235,7 @@ export class KitPyramidImageryProvider {
         } catch (err) {
           this.lastError = messageOf(err);
         } finally {
-          this.release(entry);
+          this.cache.release(entry);
         }
       }),
     );
@@ -160,60 +265,6 @@ export class KitPyramidImageryProvider {
     return [x10 - x00, y10 - y00, x01 - x00, y01 - y00, x00, y00];
   }
 
-  /** A pyramid tile from the LRU (read and decoded when missing), held until `release`. */
-  private take(path: string): Cached {
-    let entry = this.cache.get(path);
-    if (entry) {
-      // most recently used goes last
-      this.cache.delete(path);
-      this.cache.set(path, entry);
-    } else {
-      let read: Promise<ImageBitmap>;
-      try {
-        read = this.fetchTile(path);
-      } catch (err) {
-        read = Promise.reject(err instanceof Error ? err : new Error(String(err)));
-      }
-      const created: Cached = { bitmap: read, decoded: null, users: 0 };
-      created.bitmap = read.then(
-        (bitmap) => {
-          if (this.disposed || this.cache.get(path) !== created) bitmap.close();
-          else {
-            created.decoded = bitmap;
-            this.decoded++;
-          }
-          return bitmap;
-        },
-        (err: unknown) => {
-          // not kept: a later request reads it again
-          if (this.cache.get(path) === created) this.cache.delete(path);
-          throw err;
-        },
-      );
-      this.cache.set(path, created);
-      entry = created;
-    }
-    entry.users++;
-    return entry;
-  }
-
-  private release(entry: Cached): void {
-    entry.users--;
-    this.trim();
-  }
-
-  /** Drop the least recently used tiles nobody is drawing while there are more than allowed. */
-  private trim(): void {
-    let over = this.cache.size - this.o.cacheTiles;
-    for (const [path, entry] of this.cache) {
-      if (over <= 0) break;
-      if (entry.users > 0) continue;
-      this.cache.delete(path);
-      entry.decoded?.close();
-      over--;
-    }
-  }
-
   /**
    * Pyramid tiles decoded since the provider was made (every decode counts, including tiles read
    * again after the LRU dropped them), and the last read or draw that failed.
@@ -222,11 +273,10 @@ export class KitPyramidImageryProvider {
     return { tiles: this.decoded, lastError: this.lastError };
   }
 
-  /** Close every decoded tile; tiles still being read are closed when they arrive. */
+  /** Close this raster's decoded tiles; its tiles still being read are closed when they arrive. */
   dispose(): void {
     this.disposed = true;
-    for (const entry of this.cache.values()) entry.decoded?.close();
-    this.cache.clear();
+    this.cache.dropOwner(this.owner);
   }
 }
 

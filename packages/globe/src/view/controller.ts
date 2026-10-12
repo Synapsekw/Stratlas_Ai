@@ -91,7 +91,11 @@ import {
   type PinState,
 } from './pins';
 import { createOnlineSatelliteProvider } from './onlineSatellite';
-import { KitPyramidImageryProvider, asRasterProvider } from './projectRasterProvider';
+import {
+  DecodedTileCache,
+  KitPyramidImageryProvider,
+  asRasterProvider,
+} from './projectRasterProvider';
 import { PmtilesImageryProvider, asImageryProvider, packTerrainProvider } from './providers';
 import {
   configureCesiumBase,
@@ -290,6 +294,11 @@ export class GlobeController {
   private measured: [number, number][] = [];
   private readonly handler: ScreenSpaceEventHandler;
   private credits: string[] = [];
+  /**
+   * Decoded pyramid tiles of every shown raster, one budget for them all (48, 16 on Low): made
+   * with the first raster.
+   */
+  private rasterTiles: DecodedTileCache | undefined;
   /** The sites in focus: their tilesets and shown rasters (`setSiteOutputs`). */
   private readonly outputs = new SiteOutputLayers<
     { id: string; tileset: Cesium3DTileset },
@@ -303,13 +312,16 @@ export class GlobeController {
       if (this.widget.isDestroyed()) t.tileset.destroy();
       else this.scene.primitives.remove(t.tileset);
     },
-    createProvider: (site, raster) =>
-      new KitPyramidImageryProvider(
+    createProvider: (site, raster) => {
+      const budget = this.o.tier === 'low' ? 16 : 48;
+      this.rasterTiles ??= new DecodedTileCache(budget);
+      return new KitPyramidImageryProvider(
         raster.index,
         pyramidPlacement(raster.index, site.georef),
         (path) => readProjectTile(site.projectId, path),
-        { cacheTiles: this.o.tier === 'low' ? 16 : 48 },
-      ),
+        { cacheTiles: budget, cache: this.rasterTiles },
+      );
+    },
     disposeProvider: (provider) => {
       provider.dispose();
     },

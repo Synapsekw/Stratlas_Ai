@@ -5,7 +5,7 @@ import type { Vec3 } from '@aio/schema';
 import { afterEach, beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
 import type { SiteGeoref } from '../geodesy';
 import { parsePyramid, pyramidPlacement, type PyramidIndex } from '../projectRasters';
-import { KitPyramidImageryProvider } from './projectRasterProvider';
+import { DecodedTileCache, KitPyramidImageryProvider } from './projectRasterProvider';
 
 /** One level of 2 by 1 tiles of 256 px over 600 by 300 m: the left tile red, the right blue. */
 const pyramidOf = (level: { cols: number; rows: number; tileSize: number }): PyramidIndex => {
@@ -201,5 +201,120 @@ describe('KitPyramidImageryProvider', () => {
       { cacheTiles: 4 },
     );
     expect(capped.maximumLevel).toBe(22);
+  });
+
+  describe('one decoded-tile cache shared by every raster', () => {
+    /** Providers over the same two-tile pyramid (same paths), each with its own bitmaps. */
+    const shared = (budget: number, count: number) => {
+      const index = pyramidOf({ cols: 2, rows: 1, tileSize: 256 });
+      const placement = pyramidPlacement(index, FRAME);
+      const cache = new DecodedTileCache(budget);
+      const rasters = Array.from({ length: count }, () => {
+        const bitmaps: FakeBitmap[] = [];
+        const fetch = vi.fn((path: string) => {
+          const b = bitmapOf(path);
+          bitmaps.push(b);
+          return Promise.resolve(b as unknown as ImageBitmap);
+        });
+        const provider = new KitPyramidImageryProvider(index, placement, fetch, {
+          cacheTiles: budget,
+          cache,
+        });
+        return { provider, fetch, bitmaps };
+      });
+      return { cache, placement, rasters };
+    };
+    const open = (bitmaps: FakeBitmap[]) => bitmaps.filter((b) => b.close.mock.calls.length === 0);
+
+    it('never holds more decoded tiles than the budget in total, closing what it drops', async () => {
+      const { cache, placement, rasters } = shared(3, 3);
+      const left = tileAt(placement, 0.25, 0.5);
+      const right = tileAt(placement, 0.75, 0.5);
+      for (const { provider } of rasters) {
+        for (const t of [left, right]) {
+          await provider.requestImage(t.x, t.y, t.level);
+          expect(cache.size).toBeLessThanOrEqual(3);
+        }
+      }
+      const all = rasters.flatMap((r) => r.bitmaps);
+      // the same path in two rasters is two tiles: never one bitmap for both
+      expect(rasters.map((r) => r.fetch.mock.calls.length)).toEqual([2, 2, 2]);
+      expect(all).toHaveLength(6);
+      expect(cache.size).toBe(3);
+      expect(open(all)).toHaveLength(3);
+      // the oldest went first: the first raster's tiles and the second's left
+      expect(rasters[0]?.bitmaps.every((b) => b.close.mock.calls.length === 1)).toBe(true);
+      expect(open(rasters[2]?.bitmaps ?? [])).toHaveLength(2);
+    });
+
+    it("closes only a disposed raster's tiles, and leaves the others in the cache", async () => {
+      const { cache, placement, rasters } = shared(8, 2);
+      const left = tileAt(placement, 0.25, 0.5);
+      const right = tileAt(placement, 0.75, 0.5);
+      for (const { provider } of rasters) {
+        await provider.requestImage(left.x, left.y, left.level);
+        await provider.requestImage(right.x, right.y, right.level);
+      }
+      expect(cache.size).toBe(4);
+      rasters[0]?.provider.dispose();
+      expect(rasters[0]?.bitmaps.every((b) => b.close.mock.calls.length === 1)).toBe(true);
+      expect(open(rasters[1]?.bitmaps ?? [])).toHaveLength(2);
+      expect(cache.size).toBe(2);
+      // the other raster still draws from the cache, without reading again
+      await rasters[1]?.provider.requestImage(left.x, left.y, left.level);
+      expect(rasters[1]?.fetch).toHaveBeenCalledTimes(2);
+    });
+
+    it('never drops a tile another raster is drawing, and closes a tile arriving after dispose', async () => {
+      const index = pyramidOf({ cols: 2, rows: 1, tileSize: 256 });
+      const placement = pyramidPlacement(index, FRAME);
+      const cache = new DecodedTileCache(1);
+      const pending: (() => void)[] = [];
+      const slowBitmaps: FakeBitmap[] = [];
+      const slow = new KitPyramidImageryProvider(
+        index,
+        placement,
+        (path) =>
+          new Promise<ImageBitmap>((resolve) => {
+            const b = bitmapOf(path);
+            slowBitmaps.push(b);
+            const bitmap = b as unknown as ImageBitmap;
+            pending.push(() => {
+              resolve(bitmap);
+            });
+          }),
+        { cacheTiles: 1, cache },
+      );
+      const fastBitmaps: FakeBitmap[] = [];
+      const fast = new KitPyramidImageryProvider(
+        index,
+        placement,
+        (path) => {
+          const b = bitmapOf(path);
+          fastBitmaps.push(b);
+          return Promise.resolve(b as unknown as ImageBitmap);
+        },
+        { cacheTiles: 1, cache },
+      );
+      const left = tileAt(placement, 0.25, 0.5);
+      const drawing = slow.requestImage(left.x, left.y, left.level);
+      await fast.requestImage(left.x, left.y, left.level);
+      // the slow raster's tile is being drawn: kept although the budget is one
+      pending.shift()?.();
+      const canvas = await drawing;
+      const draw = contexts.find((c) => c.canvas === canvas)?.draws[0];
+      expect(draw?.image).toBe(slowBitmaps[0]);
+      expect(cache.size).toBeLessThanOrEqual(1);
+
+      // a read still in flight when its raster is disposed is closed on arrival
+      const right = tileAt(placement, 0.75, 0.5);
+      const late = slow.requestImage(right.x, right.y, right.level);
+      slow.dispose();
+      pending.shift()?.();
+      await late;
+      expect(slowBitmaps[1]?.close).toHaveBeenCalledTimes(1);
+      expect(cache.size).toBeLessThanOrEqual(1);
+      expect(open(fastBitmaps).length + open(slowBitmaps).length).toBe(cache.size);
+    });
   });
 });
