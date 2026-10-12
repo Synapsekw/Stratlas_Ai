@@ -145,6 +145,13 @@ describe('finishedManifestJob', () => {
     expect(finishedProjectJob([running], [done], 'E:/data/projects/site')).toBe(false);
   });
 
+  it('reloads the manifest when a walk is processed, so its layer links the new path files', () => {
+    const running = job({ id: 'w1', pipeline: 'walk.process', project: 'E:/p', status: 'running' });
+    const done = { ...running, status: 'done' as const };
+    expect(finishedManifestJob([running], [done], 'E:/p')).toBe(true);
+    expect(finishedProjectJob([running], [done], 'E:/p')).toBe(false);
+  });
+
   it('reopens the project whole (manifest and issues) when the road builder finishes', () => {
     const running = job({ id: 'r1', pipeline: 'road.build', project: 'E:\\p', status: 'running' });
     const done = { ...running, status: 'done' as const };

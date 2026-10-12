@@ -83,6 +83,9 @@ const MANIFEST_WRITERS: ReadonlySet<string> = new Set([
   // `photo.georef` write only their run folder, the tiles jobs `tilesets.json` (TILESET_WRITERS)
   // and the pack jobs the data folder, so none of them reloads the manifest.
   'photo.products',
+  // Walks 360: walk.process writes only walks/<id>/, but reopening the manifest links the new
+  // raw-path and orientation files into the walk's layer (`withWalkLayers` in main)
+  'walk.process',
 ]);
 
 /**
