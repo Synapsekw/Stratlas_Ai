@@ -125,6 +125,11 @@ interface RasterState {
   rev: number;
   set(patch: Partial<RasterPrefs>): void;
   /**
+   * Change the choices for this session only, never stored (Place walk turns the map to Satellite
+   * while a walk is placed on it): a quit leaves the stored choices as the person made them.
+   */
+  setForSession(patch: Partial<RasterPrefs>): void;
+  /**
    * Switch online satellite on or off: main first (it refuses every tile until its switch is on),
    * then the layer. Answers an error message, or null when it is done.
    */
@@ -132,20 +137,27 @@ interface RasterState {
   refresh(): void;
 }
 
+/** The choices as the person made them (what is stored), without any session-only change. */
+let chosen: RasterPrefs = readPrefs();
+
 export const rasterPacks = createStore<RasterState>()((set, get) => ({
-  prefs: readPrefs(),
+  prefs: { ...chosen },
   imagery: [],
   terrain: [],
   rev: 0,
   set(patch) {
     const prefs = { ...get().prefs, ...patch };
+    chosen = { ...chosen, ...patch };
     set({ prefs });
     try {
-      storage()?.setItem(KEY, JSON.stringify(prefs));
+      storage()?.setItem(KEY, JSON.stringify(chosen));
     } catch {
       // blocked storage: the choice lasts for this session
     }
     if ('aroundTerrain' in patch || 'aroundImagery' in patch) void saveAroundSite(prefs);
+  },
+  setForSession(patch) {
+    set({ prefs: { ...get().prefs, ...patch } });
   },
   async setOnlineSatellite(on) {
     const bridge = aio();

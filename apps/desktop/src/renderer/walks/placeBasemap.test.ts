@@ -33,19 +33,34 @@ function setup(prefs: PlaceBasemapPrefs, imagery: { on: boolean }) {
   const raster = createStore<{
     prefs: PlaceBasemapPrefs;
     set(p: Partial<PlaceBasemapPrefs>): void;
+    setForSession(p: Partial<PlaceBasemapPrefs>): void;
   }>()((set, get) => ({
     prefs,
+    // the person's choice (stored)
     set: (p) => {
+      stored.push(p);
+      set({ prefs: { ...get().prefs, ...p } });
+    },
+    setForSession: (p) => {
       set({ prefs: { ...get().prefs, ...p } });
     },
   }));
+  const stored: Partial<PlaceBasemapPrefs>[] = [];
   const out = createPlaceImagery();
   const stop = followPlaceBasemap(session, raster, () => imagery.on, out);
   const startOnMap = () => {
     session.getState().start(walk, m);
     session.getState().chooseSurface({ kind: 'map' });
   };
-  return { session, raster, out, stop, startOnMap, prefs: () => raster.getState().prefs };
+  return {
+    session,
+    raster,
+    out,
+    stop,
+    startOnMap,
+    stored,
+    prefs: () => raster.getState().prefs,
+  };
 }
 
 describe('followPlaceBasemap', () => {
@@ -57,6 +72,8 @@ describe('followPlaceBasemap', () => {
     k.session.getState().cancel();
     expect(k.prefs()).toEqual({ satellite: false, streets: false });
     expect(k.out.getState().imagery).toBeNull();
+    // the switch and its undoing are for the session only: nothing is stored
+    expect(k.stored).toEqual([]);
     k.stop();
   });
 

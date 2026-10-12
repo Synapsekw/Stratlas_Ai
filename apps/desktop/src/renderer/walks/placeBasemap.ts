@@ -7,7 +7,8 @@ import type { PlaceState } from './placeStore';
  * Satellite under a walk placed on the map: the spots a walk starts and ends at are found on
  * imagery, not on the street map. While a session places a walk on the map, the map type turns to
  * Satellite when any imagery can be drawn (an imagery pack at the site, or online satellite), and
- * back to what it was when placing ends, unless the person chose another type meanwhile. Nothing
+ * back to what it was when placing ends, unless the person chose another type meanwhile. The switch
+ * is for the session only (`setForSession`): a quit while placing leaves the stored choice. Nothing
  * here knows the packs: the app hands in whether imagery is available (`walkMounts.tsx`), so the
  * strip can read `placeImagery` without loading the map's tile code.
  */
@@ -33,7 +34,10 @@ const SATELLITE: PlaceBasemapPrefs = { satellite: true, streets: true };
 /** Follow the session and the map type choices; returns the unsubscribe. */
 export function followPlaceBasemap(
   session: StoreApi<PlaceState>,
-  raster: StoreApi<{ prefs: PlaceBasemapPrefs; set(patch: Partial<PlaceBasemapPrefs>): void }>,
+  raster: StoreApi<{
+    prefs: PlaceBasemapPrefs;
+    setForSession(patch: Partial<PlaceBasemapPrefs>): void;
+  }>,
   available: () => boolean,
   out: StoreApi<PlaceImagery> = placeImagery,
 ): () => void {
@@ -53,7 +57,7 @@ export function followPlaceBasemap(
       const prefs = raster.getState().prefs;
       if (s.layerId === null || s.surface?.kind !== 'map') {
         // placing ended: back to the type it was, unless the person picked another meanwhile
-        if (before && prefs.satellite && prefs.streets) raster.getState().set(before);
+        if (before && prefs.satellite && prefs.streets) raster.getState().setForSession(before);
         before = null;
         settled = false;
         tell(null);
@@ -66,7 +70,7 @@ export function followPlaceBasemap(
       else if (imagery) {
         settled = true;
         before = { satellite: prefs.satellite, streets: prefs.streets };
-        raster.getState().set(SATELLITE);
+        raster.getState().setForSession(SATELLITE);
       }
     } finally {
       busy = false;

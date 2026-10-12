@@ -103,4 +103,29 @@ describe('raster packs store', () => {
     expect(await rasterPacks.getState().setOnlineSatellite(true)).toBe('No answer.');
     expect(rasterPacks.getState().prefs.onlineSatellite).toBe(false);
   });
+  it('a session-only switch shows on the map but is never stored; a choice stores what was chosen', () => {
+    const stored = new Map<string, string>();
+    vi.stubGlobal('localStorage', {
+      getItem: (k: string) => stored.get(k) ?? null,
+      setItem: (k: string, v: string) => stored.set(k, v),
+    });
+    try {
+      const saved = () =>
+        JSON.parse(stored.get('stratlas.rasterPacks') ?? '{}') as Record<string, unknown>;
+      rasterPacks.getState().set({ satellite: false, streets: true });
+      rasterPacks.getState().setForSession({ satellite: true });
+      expect(rasterPacks.getState().prefs.satellite).toBe(true);
+      // quit now: the next start reads Streets
+      expect(saved().satellite).toBe(false);
+      // another choice stores only itself, not the session's switch
+      rasterPacks.getState().set({ hillshade: false });
+      expect(saved()).toMatchObject({ satellite: false, hillshade: false });
+      expect(rasterPacks.getState().prefs).toMatchObject({ satellite: true, hillshade: false });
+      // a choice of map type is the person's: stored
+      rasterPacks.getState().set({ satellite: true, streets: false });
+      expect(saved()).toMatchObject({ satellite: true, streets: false });
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
 });
