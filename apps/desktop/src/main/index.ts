@@ -1013,6 +1013,8 @@ function registerIpc(): void {
     return error ? { ok: false, error } : { ok: true };
   });
 
+  // set once the photo module registers below; the bundle only reads it when a person exports
+  const photoModule: { diagnostics?: (ids: Iterable<string>) => Promise<unknown> } = {};
   registerDiagnosticsIpc({
     handle,
     crash: crashes,
@@ -1038,6 +1040,7 @@ function registerIpc(): void {
           { root: (id) => registry.root(id), packageFile: (id) => registry.package(id)?.file },
           current,
         ),
+      photo: () => photoModule.diagnostics?.(projectNames.keys()) ?? { probe: null, runs: [] },
     },
   });
 
@@ -1406,7 +1409,7 @@ function registerIpc(): void {
   registerTeamServerIpc({ handle, servers });
 
   // M10: one module per stream (G4 photogrammetry, G6 globe, G7 tilesets and raster packs).
-  registerPhotogrammetryIpc({
+  photoModule.diagnostics = registerPhotogrammetryIpc({
     handle,
     projects: registry,
     system: nodePhotoSystem({
@@ -1418,7 +1421,7 @@ function registerIpc(): void {
       accelerator: () => accelerator.state(),
     }),
     trash: (p) => shell.trashItem(p),
-  });
+  }).diagnostics;
   registerGlobeIpc({
     handle,
     library: async () => {

@@ -8,7 +8,8 @@ import type { ElectronApplication, Page } from '@playwright/test';
 import { spawnSync } from 'node:child_process';
 import { readdir, readFile } from 'node:fs/promises';
 import { join } from 'node:path';
-import { expect, launchApp, NetworkGuard, test } from './fixtures';
+import { expect, launchApp, NetworkGuard, openProject, test } from './fixtures';
+import { PHOTO_DEMO } from './m10Fixtures';
 
 // Fake secrets, assembled at runtime so no scanner mistakes this file for a leak.
 const KEY = ['sk-ant-api03', 'E2e'.repeat(16)].join('-');
@@ -122,6 +123,70 @@ test('exports a diagnostics bundle without keys, tokens or project content', asy
   expect(files.get('errors.txt')).toContain('[renderer]');
   // No project content: the tiny project's model never appears.
   expect([...files.keys()].some((n) => n.endsWith('.glb'))).toBe(false);
+});
+
+test('photo processing goes into photo.json without photo names or coordinates', async ({
+  photoProject,
+  app,
+  win,
+  dataRoot,
+  network,
+}) => {
+  const card = win.getByTestId('project-card').filter({ hasText: PHOTO_DEMO.name });
+  if (
+    !(await card
+      .first()
+      .isVisible()
+      .catch(() => false))
+  )
+    await win.locator('.nav-item', { hasText: 'Projects' }).first().click();
+  await card.first().click();
+  await expect
+    .poll(async () => (await openProject(win)).id, { timeout: 60_000 })
+    .toBe(PHOTO_DEMO.id);
+
+  await openAbout(win);
+  const out = join(dataRoot.base, 'diagnostics-photo.zip');
+  await stubSaveDialog(app, out);
+  await win.getByTestId('diagnostics').getByRole('button', { name: 'Export diagnostics' }).click();
+  await expect(win.getByTestId('diagnostics').getByTestId('diagnostics-saved')).toContainText(out);
+
+  const files = await readZip(out);
+  const photo = JSON.parse(files.get('photo.json') ?? 'null') as {
+    probe: Record<string, unknown> | null;
+    runs: {
+      project: string;
+      id: string;
+      versions?: { pack?: string };
+      stages: { seconds?: number }[];
+    }[];
+  };
+  expect(photo.probe === null || typeof photo.probe === 'object').toBe(true);
+  const run = photo.runs.find((r) => r.id === PHOTO_DEMO.run);
+  expect(run, 'the demo run').toBeDefined();
+  expect(run?.project).toBe(photoProject.id);
+  expect(run?.versions?.pack).toBeTruthy();
+  expect(run?.stages.some((st) => typeof st.seconds === 'number')).toBe(true);
+
+  // no photo name and no coordinate of the demo site in any member, and no data folder in
+  // photo.json (settings.json names the data folder on purpose)
+  const manifest = JSON.parse(await readFile(join(photoProject.dir, 'manifest.json'), 'utf8')) as {
+    origin: [number, number, number];
+  };
+  const [easting, northing] = manifest.origin.map((v) => String(Math.trunc(v)));
+  // the data folder as written in text, with forward slashes and JSON-escaped
+  const roots = [
+    dataRoot.root,
+    dataRoot.root.replaceAll('\\', '/'),
+    dataRoot.root.replaceAll('\\', '\\\\'),
+  ];
+  for (const [name, text] of files) {
+    expect(text, name).not.toContain('SYN_0');
+    if (name === 'photo.json') for (const r of roots) expect(text, name).not.toContain(r);
+    expect(text, name).not.toContain(easting ?? '-');
+    expect(text, name).not.toContain(northing ?? '-');
+  }
+  expect(await network.outbound()).toEqual([]);
 });
 
 test('Report a problem saves problem.md in the bundle and shows where it is', async ({

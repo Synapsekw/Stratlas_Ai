@@ -36,6 +36,7 @@ import { cpus, totalmem } from 'node:os';
 import { basename, extname, isAbsolute, join, relative, resolve } from 'node:path';
 import { z } from 'zod';
 import { isChangedOnDisk, readBytesSeen, writeJsonAtomic, writeJsonSeen } from './fsutil';
+import { photoDiagnostics, type PhotoDiagnostics, type PhotoRunIn } from './diagnostics/photo';
 import type { AcceleratorState } from './jobs/addon';
 import { compareVersions } from './jobs/pack';
 import type { Handle } from './notYet';
@@ -962,7 +963,10 @@ export function registerPhotogrammetryIpc({
   system,
   trash,
   now = () => new Date(),
-}: PhotogrammetryIpcDeps): void {
+}: PhotogrammetryIpcDeps): {
+  /** `photo.json` of the diagnostics bundle: the probe and the latest runs of these projects. */
+  diagnostics: (projectIds: Iterable<string>) => Promise<PhotoDiagnostics>;
+} {
   let probe: Promise<HardwareProbe> | null = null;
   /**
    * The probe, read once per session; free disk is measured again on each call, and so are the
@@ -1251,4 +1255,24 @@ export function registerPhotogrammetryIpc({
     const data = await readFile(path);
     return { ok: true, mime, data: new Uint8Array(data.buffer, data.byteOffset, data.byteLength) };
   });
+
+  return {
+    // the bundle reads runs like photo:runs does; a project that cannot be read is left out
+    diagnostics: async (projectIds) => {
+      const runs: PhotoRunIn[] = [];
+      for (const project of projectIds) {
+        const src = runSource(projects, project);
+        if (!src) continue;
+        try {
+          for (const id of await src.runs()) {
+            const r = await readRunFile(src, id).catch(() => null);
+            if (r?.ok) runs.push({ project, run: r.run });
+          }
+        } catch {
+          // unreadable project: the others are still listed
+        }
+      }
+      return photoDiagnostics(await currentProbe().catch(() => null), runs);
+    },
+  };
 }

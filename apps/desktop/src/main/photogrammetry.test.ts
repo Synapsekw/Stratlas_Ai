@@ -1090,3 +1090,95 @@ describe('photo IPC', () => {
     });
   });
 });
+
+describe('photo diagnostics (the bundle photo.json)', () => {
+  const roots = new Map<string, string>();
+  let pkgFiles: Map<string, Buffer>;
+  const projects: PhotoProjects = {
+    root: (id) => roots.get(id),
+    package: (id) =>
+      id === 'pkg'
+        ? {
+            manifest: photosManifest(),
+            archive: {
+              entries: pkgFiles,
+              read: (n: string) => Promise.resolve(pkgFiles.get(n) ?? Buffer.alloc(0)),
+            },
+          }
+        : undefined,
+  };
+  const writeRun = async (project: string, run: PhotoRun | string) => {
+    let root = roots.get(project);
+    if (!root) {
+      root = await mkdtemp(join(tmpdir(), `aio-photo-diag-${project}-`));
+      roots.set(project, root);
+    }
+    const id = typeof run === 'string' ? 'broken' : run.id;
+    await mkdir(join(root, 'photogrammetry', id), { recursive: true });
+    await writeFile(
+      join(root, 'photogrammetry', id, 'run.json'),
+      typeof run === 'string' ? run : JSON.stringify(run),
+    );
+  };
+  const register = (system?: PhotoSystem) => {
+    let diag: ReturnType<typeof registerPhotogrammetryIpc> | undefined;
+    collectHandlers((handle) => {
+      diag = registerPhotogrammetryIpc({ handle, projects, ...(system ? { system } : {}) });
+    });
+    if (!diag) throw new Error('not registered');
+    return diag;
+  };
+
+  beforeEach(async () => {
+    pkgFiles = new Map();
+    await writeRun('a', sampleRun({ id: 'a1', createdAt: '2026-10-01T09:00:00Z' }));
+    await writeRun('a', sampleRun({ id: 'a2', createdAt: '2026-10-03T09:00:00Z' }));
+    await writeRun('b', sampleRun({ id: 'b1', createdAt: '2026-10-02T09:00:00Z' }));
+  });
+  afterEach(async () => {
+    for (const r of roots.values()) await rm(r, { recursive: true, force: true });
+    roots.clear();
+  });
+
+  it('lists the newest runs of the given projects, each with its project', async () => {
+    await writeRun('b', sampleRun({ id: 'b0', createdAt: '2026-09-01T09:00:00Z' }));
+    const out = await register(fakeSystem()).diagnostics(['a', 'b']);
+    expect(out.runs.map((r) => [r.project, r.id])).toEqual([
+      ['a', 'a2'],
+      ['b', 'b1'],
+      ['a', 'a1'],
+    ]);
+    expect(out.probe).toMatchObject({ platform: 'win32', processing: 'available' });
+  });
+
+  it('skips a project whose run.json does not parse, and unknown projects', async () => {
+    await writeRun('c', '{"schema": "aio.photo-run/1", "id": ');
+    const out = await register(fakeSystem()).diagnostics(['a', 'c', 'nope', 'b']);
+    expect(out.runs.map((r) => r.id)).toEqual(['a2', 'b1', 'a1']);
+  });
+
+  it('reads the runs of a package project without writing', async () => {
+    pkgFiles.set(
+      'photogrammetry/p1/run.json',
+      Buffer.from(JSON.stringify(sampleRun({ id: 'p1', createdAt: '2026-10-05T09:00:00Z' }))),
+    );
+    const out = await register(fakeSystem()).diagnostics(['pkg', 'a']);
+    expect(out.runs.map((r) => [r.project, r.id])).toEqual([
+      ['pkg', 'p1'],
+      ['a', 'a2'],
+      ['a', 'a1'],
+    ]);
+  });
+
+  it('lists the runs with no probe when it fails or is not there', async () => {
+    const failing = fakeSystem({
+      cpu: () => {
+        throw new Error('no CPU query');
+      },
+    });
+    const out = await register(failing).diagnostics(['a']);
+    expect(out.probe).toBeNull();
+    expect(out.runs).toHaveLength(2);
+    expect((await register().diagnostics(['a'])).probe).toBeNull();
+  });
+});
