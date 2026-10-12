@@ -38,6 +38,17 @@ EPSG = 32639
 ORIGIN = (412000.0, 3245000.0, 20.0)
 BOX = (5.0, 15.0, 4.0, 12.0, 6.0)  # x0, x1, y0, y1 (local east, north), height above ground
 PILE = (-12.0, -6.0, 7.0, 4.0)  # cx, cy, radius, height
+
+
+@dataclass(frozen=True)
+class Variant:
+    """The parts of the scene that can change between surveys: the stockpile and the boxes."""
+
+    pile: tuple[float, float, float, float] = PILE
+    boxes: tuple[tuple[float, float, float, float, float], ...] = (BOX,)
+
+
+DEFAULT = Variant()
 TARGETS = [(-20.0, 14.0), (20.0, 15.0), (0.0, 0.0), (-18.0, -16.0), (21.0, -15.0)]
 TARGET_SIZE = 1.2
 
@@ -47,27 +58,32 @@ def ground(x: np.ndarray, y: np.ndarray) -> np.ndarray:
     return 0.03 * x + 0.4 * np.sin(y / 9.0)
 
 
-def pile(x: np.ndarray, y: np.ndarray) -> np.ndarray:
-    cx, cy, r, h = PILE
+def pile(x: np.ndarray, y: np.ndarray, variant: Variant = DEFAULT) -> np.ndarray:
+    cx, cy, r, h = variant.pile
     d = np.hypot(x - cx, y - cy)
     return np.clip(h * (1 - d / r), 0, None)
 
 
-def in_box(x: np.ndarray, y: np.ndarray) -> np.ndarray:
-    x0, x1, y0, y1, _ = BOX
-    return (x >= x0) & (x <= x1) & (y >= y0) & (y <= y1)
+def in_box(x: np.ndarray, y: np.ndarray, variant: Variant = DEFAULT) -> np.ndarray:
+    out = np.zeros(np.shape(x), dtype=bool)
+    for x0, x1, y0, y1, _ in variant.boxes:
+        out |= (x >= x0) & (x <= x1) & (y >= y0) & (y <= y1)
+    return out
 
 
-def dsm(x: np.ndarray, y: np.ndarray) -> np.ndarray:
+def dsm(x: np.ndarray, y: np.ndarray, variant: Variant = DEFAULT) -> np.ndarray:
     """True surface height above the origin height (roof, pile or ground)."""
     g = ground(x, y)
-    h = g + pile(x, y)
-    roof = ground(np.full_like(x, BOX[0]), np.full_like(y, BOX[2])) + BOX[4]
-    return np.where(in_box(x, y), np.maximum(roof, h), h)
+    h = g + pile(x, y, variant)
+    for x0, x1, y0, y1, bh in variant.boxes:
+        roof = ground(np.full_like(x, x0), np.full_like(y, y0)) + bh
+        inside = (x >= x0) & (x <= x1) & (y >= y0) & (y <= y1)
+        h = np.where(inside, np.maximum(roof, h), h)
+    return h
 
 
-def pile_volume() -> float:
-    _, _, r, h = PILE
+def pile_volume(variant: Variant = DEFAULT) -> float:
+    _, _, r, h = variant.pile
     return math.pi * r * r * h / 3
 
 
@@ -127,27 +143,32 @@ class Scene:
         return np.array(ORIGIN)
 
 
-def surface_samples(step: float = 0.025, half=(36.0, 31.0), seed: int = 7) -> tuple[np.ndarray, np.ndarray]:
+def surface_samples(
+    step: float = 0.025, half=(36.0, 31.0), seed: int = 7, variant: Variant = DEFAULT
+) -> tuple[np.ndarray, np.ndarray]:
     n1, n2 = Noise(seed), Noise(seed + 1)
     xs = np.arange(-half[0], half[0], step)
     ys = np.arange(-half[1], half[1], step)
     gx, gy = np.meshgrid(xs, ys)
     gx, gy = gx.ravel(), gy.ravel()
-    gz = dsm(gx, gy)
+    gz = dsm(gx, gy, variant)
     col = _ground_colour(n1, n2, gx, gy)
-    roof = in_box(gx, gy)
+    roof = in_box(gx, gy, variant)
     col[roof] = np.clip(col[roof] * 0.7 + 60, 0, 255)
     pts = [np.column_stack([gx, gy, gz])]
     cols = [col]
-    # the four walls of the box, sampled on their own grid
-    x0, x1, y0, y1, h = BOX
-    top = ground(np.array(x0), np.array(y0)) + h
-    for (ax, ay), (bx, by) in [
-        ((x0, y0), (x1, y0)),
-        ((x1, y0), (x1, y1)),
-        ((x1, y1), (x0, y1)),
-        ((x0, y1), (x0, y0)),
-    ]:
+    # the four walls of each box, sampled on their own grid
+    walls = []
+    for x0, x1, y0, y1, h in variant.boxes:
+        top = ground(np.array(x0), np.array(y0)) + h
+        for a, b in [
+            ((x0, y0), (x1, y0)),
+            ((x1, y0), (x1, y1)),
+            ((x1, y1), (x0, y1)),
+            ((x0, y1), (x0, y0)),
+        ]:
+            walls.append((a, b, h, top))
+    for (ax, ay), (bx, by), h, top in walls:
         length = math.hypot(bx - ax, by - ay)
         t = np.arange(0, length, step)
         wz = np.arange(0, h + 1, step)
@@ -211,9 +232,10 @@ def make_scene(
     seed: int = 3,
     distortion: tuple[float, float, float, float] = (-0.04, 0.008, 0.0004, -0.0003),
     step: float = 0.025,
+    variant: Variant = DEFAULT,
 ) -> Scene:
     rng = np.random.default_rng(seed)
-    pts, cols = surface_samples(step=step)
+    pts, cols = surface_samples(step=step, variant=variant)
     cam = Camera(
         "OPENCV", width, height, (focal, focal * 1.002, width / 2 + 1.3, height / 2 - 0.8, *distortion)
     )
@@ -285,6 +307,8 @@ def write_project(
     scene: Scene,
     run: str = "20261007-0915",
     frame_origin: tuple[float, float, float] | None = None,
+    photos_dir: str = "photos-in",
+    captures: list[dict] | None = None,
 ) -> Path:
     """A project folder with photos, a manifest and an aligned run as ``photo.align`` writes it:
     ``run.json`` and ``sparse/`` in the grid frame (project CRS minus ``frame_origin``, the
@@ -292,7 +316,7 @@ def write_project(
     from aio_pipelines.photo import crs as C
     from aio_pipelines.photo.align import LIST_SCHEMA, write_sparse
 
-    photos = root / "photos-in"
+    photos = root / photos_dir
     photos.mkdir(parents=True, exist_ok=True)
     for v, img in zip(scene.views, scene.images, strict=True):
         Image.fromarray(img).save(photos / v.name, "JPEG", quality=95)
@@ -303,7 +327,7 @@ def write_project(
         "type": "volumetric",
         "crs": {"epsg": EPSG},
         "origin": list(ORIGIN),
-        "captures": [{"id": "c1", "date": "2026-10-07", "label": "7 Oct 2026"}],
+        "captures": captures or [{"id": "c1", "date": "2026-10-07", "label": "7 Oct 2026"}],
         "layers": [],
         "severityModels": [],
         "classCatalogues": [],
@@ -326,7 +350,7 @@ def write_project(
     doc = {
         "schema": "aio.photo-run/1",
         "id": run,
-        "createdAt": "2026-10-07T09:15:00Z",
+        "createdAt": f"{run[:4]}-{run[4:6]}-{run[6:8]}T{run[9:11]}:{run[11:13]}:00Z",
         "status": "aligned",
         "preset": "standard",
         "photos": {
