@@ -64,6 +64,7 @@ After the import the panel says which altitude was used and with which number. O
 - A video that is already stitched (an equirectangular MP4 exported from Insta360 Studio or another program) comes in with **Ctrl K**, **Add 360 video**. The same command also takes `.insv` files.
 - Stitching needs **ffmpeg** on this computer. Without it the import says so and adds nothing: install a full ffmpeg build (on Windows `winget install Gyan.FFmpeg`), restart {product} and import again.
 - An `.lrv` imported without its `.insv` plays at its own low resolution.
+- A video stitched from the camera's own file plays **unstabilised**: every shake of the walk is in it, and the pane marks it **Not stabilised**. For a steady picture, export the clip from Insta360 Studio with FlowState on and bring that MP4 in with **Add 360 video**.
 - A 360 video is not placed on the site yet: it has no position, no path and no survey date. It travels inside a package, and older versions of {product} open the project without showing it.
 
 ## Drawings
