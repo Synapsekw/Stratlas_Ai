@@ -123,7 +123,7 @@ The founder was not available while this was scoped. Each question was answered 
 5. **How are they drawn?** Approach A: an imagery provider that resamples the project's own kit-pyramid tiles. No new files, no pipeline change.
 6. **Contract change.** `GlobeSite.frame?` and `GlobeSite.rasters?`, additive and optional.
 7. **Legend.** A heat map that is on shows the same legend as on the map, from its `tiles.json`.
-8. **End to end cost.** The two-survey spec uses the Fast preset and only the cloud, DSM and ortho products (no mesh or tiles), so it stays under 10 minutes on CI. It is not tagged `@realdata` (the data is synthetic).
+8. **End to end cost.** The two-survey spec uses the Standard preset (Fast has no dense matching, so its sparse cloud gives cloud change nothing to find; decided 12 Oct 2026 after the first runs) and only the cloud, DSM and ortho products (no mesh or tiles), so it stays under 10 minutes on CI. It is not tagged `@realdata` (the data is synthetic).
 
 ## Out of scope
 
