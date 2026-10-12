@@ -184,6 +184,115 @@ describe('normaliseFlight', () => {
     });
   });
 
+  /**
+   * A drone flying a straight 40 degree course at 2.5 m/s, its SRT position rounded to five
+   * decimals of a degree (1.11 m north, 0.97 m east): latitude and longitude step at different
+   * moments, so the log is a staircase, not a line.
+   */
+  const COURSE = 40;
+  const SPEED = 2.5;
+  function gridStairs(durationMs: number): { t: number[]; pos: Vec3[] } {
+    const s = Math.sin((COURSE * Math.PI) / 180);
+    const c = Math.cos((COURSE * Math.PI) / 180);
+    const t: number[] = [];
+    const pos: Vec3[] = [];
+    for (let i = 0; i * FRAME <= durationMs; i++) {
+      const ti = Math.round(i * FRAME);
+      const d = (Math.floor(ti / 100) * 100 * SPEED) / 1000;
+      t.push(ti);
+      pos.push([
+        Math.round((d * s + 0.3) / 0.97) * 0.97,
+        50,
+        -Math.round((d * c + 0.2) / 1.11) * 1.11,
+      ]);
+    }
+    return { t, pos };
+  }
+
+  /** Direction of travel over 200 ms spans, from 3 s in to 3 s before the end. */
+  function shortDirections(samples: readonly PoseSample[]): number[] {
+    const out: number[] = [];
+    const end = samples.at(-1)?.t ?? 0;
+    for (let i = 0; i < samples.length; i += 3) {
+      const a = samples[i];
+      const b = samples.find((x) => x.t >= (a?.t ?? 0) + 200);
+      if (!a || !b || a.t < 3000 || b.t > end - 3000) continue;
+      out.push(
+        ((Math.atan2(b.pos[0] - a.pos[0], -(b.pos[2] - a.pos[2])) * 180) / Math.PI + 360) % 360,
+      );
+    }
+    return out;
+  }
+
+  /** What the second importer wrote: positions splined through every fix, the 1 s track heading. */
+  function splinedFile(): PoseSample[] {
+    const { t, pos } = gridStairs(20000);
+    const p = smoothHeldPositions(t, pos) ?? pos;
+    const h = estimateHeadings(t, p, { windowMs: 1000, smoothMs: 1500 }) ?? [];
+    return t.map((ti, i) => ({
+      t: ti,
+      pos: p[i] ?? [0, 0, 0],
+      q: cameraQuatFromGimbal(h[i] ?? 0, -30, 0),
+    }));
+  }
+
+  it('straightens a grid-rounded staircase into the course flown', () => {
+    const { t, pos } = gridStairs(20000);
+    const file = t.map((ti, i) => ({
+      t: ti,
+      pos: pos[i] ?? ([0, 0, 0] as Vec3),
+      q: cameraQuatFromGimbal(COURSE, -30, 0),
+    }));
+    const n = normaliseFlight(file);
+    const dirs = shortDirections(n.samples);
+    expect(dirs.length).toBeGreaterThan(50);
+    for (const d of dirs) expect(gap(d, COURSE)).toBeLessThan(15);
+  });
+
+  it('re-estimates the heading of an already splined file and straightens its path', () => {
+    const file = splinedFile();
+    // the stored estimate wobbles with the staircase
+    const before = file
+      .filter((s) => s.t > 3000 && s.t < 17000)
+      .map((s) => gap(heading(s.q), COURSE));
+    expect(Math.max(...before)).toBeGreaterThan(3);
+    const n = normaliseFlight(file);
+    expect(n.heading).toBe(true);
+    expect(n.positions).toBe(true);
+    // what is left is a slow drift where the course beats against the grid, no back and forth
+    const mid = n.samples.filter((s) => s.t > 3000 && s.t < 17000);
+    for (const s of mid) expect(gap(heading(s.q), COURSE)).toBeLessThan(3);
+    for (let i = 30; i < mid.length; i++)
+      expect(
+        gap(heading(mid[i]?.q ?? [0, 0, 0, 1]), heading(mid[i - 30]?.q ?? [0, 0, 0, 1])),
+      ).toBeLessThan(0.6);
+    for (const d of shortDirections(n.samples)) expect(gap(d, COURSE)).toBeLessThan(15);
+    // and a second pass leaves it alone
+    const twice = normaliseFlight(n.samples);
+    expect(twice.heading).toBe(false);
+    expect(twice.positions).toBe(false);
+  });
+
+  it('keeps a hover still when straightening a staircase', () => {
+    const { t, pos } = gridStairs(12000);
+    // hover 3 s at the start, then fly the staircase
+    const shift = Math.round(3000 / FRAME);
+    const tt = [...t.slice(0, shift), ...t.map((v) => v + (t[shift] ?? 0))];
+    const pp = [...t.slice(0, shift).map(() => pos[0] ?? ([0, 0, 0] as Vec3)), ...pos];
+    const file = tt.map((ti, i) => ({
+      t: ti,
+      pos: pp[i] ?? ([0, 0, 0] as Vec3),
+      q: cameraQuatFromGimbal(COURSE, -30, 0),
+    }));
+    const n = normaliseFlight(file);
+    n.samples.forEach((s) => {
+      if (s.t <= 2500)
+        s.pos.forEach((v, k) => {
+          expect(v).toBeCloseTo(pp[0]?.[k] ?? 0, 6);
+        });
+    });
+  });
+
   it('returns the very same samples for high-rate measured logs', () => {
     const file = Array.from({ length: 200 }, (_, i) => ({
       t: i * 100,

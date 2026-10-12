@@ -20,6 +20,7 @@ const HOVER_FIXES = 4;
 const HELD_SHARE = 0.5;
 
 const ZERO: Vec3 = [0, 0, 0];
+const angleGap = (a: number, b: number) => Math.abs(((((a - b) % 360) + 540) % 360) - 180);
 const same = (a: Vec3, b: Vec3) => a[0] === b[0] && a[1] === b[1] && a[2] === b[2];
 const dist = (a: Vec3, b: Vec3) => Math.hypot(a[0] - b[0], a[1] - b[1], a[2] - b[2]);
 const mix = (a: Vec3, b: Vec3, wa: number, wb: number): Vec3 => [
@@ -112,12 +113,112 @@ export function smoothHeldPositions(t: readonly number[], pos: readonly Vec3[]):
   return out;
 }
 
+/** Short spans whose direction of travel is compared to find a staircase, ms. */
+const STEP_MS = 100;
+/** A direction change between consecutive short spans above this is a flip, degrees. */
+const FLIP_DEG = 30;
+/** Above this share of flips among the moving spans, the track is a staircase. */
+const FLIP_SHARE = 0.03;
+/** Span of the centred average that straightens a staircase, ms. */
+const STRAIGHTEN_MS = 1500;
+
+/**
+ * The horizontal track zig-zags: its direction over consecutive short spans keeps flipping. That
+ * is what positions rounded to a grid look like (SRT latitude and longitude with five decimals,
+ * about a metre), whose two axes step at different moments, even after a spline through the fixes.
+ */
+export function zigzagTrack(t: readonly number[], pos: readonly Vec3[]): boolean {
+  const n = Math.min(t.length, pos.length);
+  const dirs: number[] = [];
+  // back-to-back spans: each starts where the last one ended
+  for (let i = 0; i < n - 1;) {
+    const ti = t[i] ?? 0;
+    let j = i + 1;
+    while (j < n - 1 && (t[j] ?? 0) < ti + STEP_MS) j++;
+    if ((t[j] ?? 0) < ti + STEP_MS) break;
+    const a = pos[i] ?? ZERO;
+    const b = pos[j] ?? ZERO;
+    const de = b[0] - a[0];
+    const dn = -(b[2] - a[2]);
+    dirs.push(Math.hypot(de, dn) > 0.05 ? Math.atan2(de, dn) * R2D : Number.NaN);
+    i = j;
+  }
+  let moving = 0;
+  let flips = 0;
+  for (let k = 1; k < dirs.length; k++) {
+    const a = dirs[k - 1] ?? Number.NaN;
+    const b = dirs[k] ?? Number.NaN;
+    if (Number.isNaN(a) || Number.isNaN(b)) continue;
+    moving++;
+    if (angleGap(a, b) > FLIP_DEG) flips++;
+  }
+  return moving >= 10 && flips / moving > FLIP_SHARE;
+}
+
+/**
+ * A zig-zag track (`zigzagTrack`) straightened by a centred moving average over 1.5 s.
+ * The window shrinks towards the ends of the log and towards hovers (samples repeating their
+ * neighbour), so the end points and a hover stay exactly where they were. Null when the track
+ * does not zig-zag.
+ */
+export function straightenTrack(t: readonly number[], pos: readonly Vec3[]): Vec3[] | null {
+  const n = Math.min(t.length, pos.length);
+  if (n < 3 || !zigzagTrack(t, pos)) return null;
+  // time to the nearest still sample (a hover) or end of the log, both ways
+  const still = (i: number) =>
+    i === 0 ||
+    i === n - 1 ||
+    same(pos[i] ?? ZERO, pos[i - 1] ?? ZERO) ||
+    same(pos[i] ?? ZERO, pos[i + 1] ?? ZERO);
+  const back: number[] = [];
+  let lastStill = t[0] ?? 0;
+  for (let i = 0; i < n; i++) {
+    if (still(i)) lastStill = t[i] ?? 0;
+    back.push((t[i] ?? 0) - lastStill);
+  }
+  const ahead: number[] = new Array<number>(n).fill(0);
+  let nextStill = t[n - 1] ?? 0;
+  for (let i = n - 1; i >= 0; i--) {
+    if (still(i)) nextStill = t[i] ?? 0;
+    ahead[i] = nextStill - (t[i] ?? 0);
+  }
+  const sum: Vec3[] = [[0, 0, 0]];
+  for (let i = 0; i < n; i++) {
+    const s = sum[i] ?? ZERO;
+    const p = pos[i] ?? ZERO;
+    sum.push([s[0] + p[0], s[1] + p[1], s[2] + p[2]]);
+  }
+  const out: Vec3[] = [];
+  let lo = 0;
+  let hi = 0;
+  for (let i = 0; i < n; i++) {
+    const ti = t[i] ?? 0;
+    const half = Math.min(STRAIGHTEN_MS / 2, back[i] ?? 0, ahead[i] ?? 0);
+    if (half <= 0) {
+      out.push([...(pos[i] ?? ZERO)]);
+      continue;
+    }
+    // symmetric in time: the window may not run past a hover or an end on either side
+    lo = Math.min(lo, i);
+    while (lo < i && (t[lo] ?? 0) < ti - half) lo++;
+    while (lo > 0 && (t[lo - 1] ?? 0) >= ti - half) lo--;
+    hi = Math.max(hi, i);
+    while (hi + 1 < n && (t[hi + 1] ?? 0) <= ti + half) hi++;
+    while (hi > i && (t[hi] ?? 0) > ti + half) hi--;
+    const c = hi - lo + 1;
+    const a = sum[lo] ?? ZERO;
+    const b = sum[hi + 1] ?? ZERO;
+    out.push([(b[0] - a[0]) / c, (b[1] - a[1]) / c, (b[2] - a[2]) / c]);
+  }
+  return out;
+}
+
 export interface HeadingOptions {
-  /** Track window around each sample, ms. Default 1000. */
+  /** Track window around each sample, ms. Default 3000. */
   windowMs?: number;
   /** Below this horizontal speed (m/s) the aircraft hovers and keeps its last heading. Default 0.5. */
   minSpeedMps?: number;
-  /** Circular moving average over this span, ms. Default 1500. */
+  /** Circular moving average over this span, ms. Default 3000. */
   smoothMs?: number;
 }
 
@@ -133,7 +234,7 @@ export function estimateHeadings(
   o: HeadingOptions = {},
 ): number[] | null {
   const n = Math.min(t.length, pos.length);
-  const half = (o.windowMs ?? 1000) / 2;
+  const half = (o.windowMs ?? 3000) / 2;
   const minSpeed = o.minSpeedMps ?? 0.5;
   const raw: (number | null)[] = [];
   let lo = 0;
@@ -160,7 +261,7 @@ export function estimateHeadings(
     sx.push((sx[i] ?? 0) + Math.sin(filled[i] ?? 0));
     cx.push((cx[i] ?? 0) + Math.cos(filled[i] ?? 0));
   }
-  const sHalf = (o.smoothMs ?? 1500) / 2;
+  const sHalf = (o.smoothMs ?? 3000) / 2;
   const out: number[] = [];
   lo = 0;
   hi = 0;
@@ -172,29 +273,6 @@ export function estimateHeadings(
     const c = (cx[hi + 1] ?? 0) - (cx[lo] ?? 0);
     const h = Math.hypot(s, c) > 1e-9 ? Math.atan2(s, c) : (filled[i] ?? 0);
     out.push((((h * R2D) % 360) + 360) % 360);
-  }
-  return out;
-}
-
-/**
- * Heading of the track around each sample as the first importer computed it (1 s window, 0.3 m,
- * north until the aircraft moved). Only used to recognise files that importer wrote.
- */
-function legacyTrackHeadings(pos: readonly Vec3[], t: readonly number[]): number[] {
-  const out: number[] = [];
-  let last = 0;
-  let lo = 0;
-  let hi = 0;
-  for (let i = 0; i < pos.length; i++) {
-    const ti = t[i] ?? 0;
-    while ((t[lo] ?? 0) < ti - 1000) lo++;
-    while (hi + 1 < pos.length && (t[hi + 1] ?? 0) <= ti + 1000) hi++;
-    const a = pos[lo] ?? [0, 0, 0];
-    const b = pos[hi] ?? [0, 0, 0];
-    const de = b[0] - a[0];
-    const dn = -(b[2] - a[2]);
-    if (Math.hypot(de, dn) > 0.3) last = Math.atan2(de, dn) * R2D;
-    out.push(last);
   }
   return out;
 }
@@ -224,8 +302,6 @@ function angles(q: Quat): { heading: number; pitch: number; tilt: number } {
   };
 }
 
-const angleGap = (a: number, b: number) => Math.abs(((((a - b) % 360) + 540) % 360) - 180);
-
 /**
  * The camera orientation looks estimated rather than measured: no gimbal angles, a level image
  * (no roll) and one fixed pitch throughout. True for every SRT import without gimbal angles.
@@ -240,20 +316,6 @@ export function looksEstimated(samples: readonly PoseSample[]): boolean {
   });
 }
 
-/** Written by the first SRT importer: estimated, and the heading is its raw track estimate. */
-function legacyEstimated(samples: readonly PoseSample[]): boolean {
-  if (samples.length < 2 || !looksEstimated(samples)) return false;
-  const legacy = legacyTrackHeadings(
-    samples.map((s) => s.pos),
-    samples.map((s) => s.t),
-  );
-  let off = 0;
-  samples.forEach((s, i) => {
-    if (angleGap(angles(s.q).heading, legacy[i] ?? 0) > 0.5) off++;
-  });
-  return off <= samples.length * 0.02;
-}
-
 export interface NormalisedFlight {
   samples: PoseSample[];
   /** Positions were stair-stepped and are now interpolated between the fixes. */
@@ -265,17 +327,58 @@ export interface NormalisedFlight {
 const round = (v: number, d: number) => Math.round(v * 10 ** d) / 10 ** d;
 
 /**
+ * The stored heading follows the track: while the aircraft moves (over half a metre in a two
+ * second window), nearly all of it lies close to a fresh track estimate. True for every SRT import
+ * without gimbal angles (before the first movement the first importer pointed north, which is not
+ * counted); false for a level camera with a fixed pitch that looks elsewhere.
+ */
+function followsTrack(
+  t: readonly number[],
+  pos: readonly Vec3[],
+  stored: readonly number[],
+  estimate: readonly number[],
+): boolean {
+  let moving = 0;
+  let close = 0;
+  let lo = 0;
+  let hi = 0;
+  for (let i = 0; i < t.length; i++) {
+    const ti = t[i] ?? 0;
+    while ((t[lo] ?? 0) < ti - 1000) lo++;
+    while (hi + 1 < t.length && (t[hi + 1] ?? 0) <= ti + 1000) hi++;
+    const a = pos[lo] ?? ZERO;
+    const b = pos[hi] ?? ZERO;
+    if (Math.hypot(b[0] - a[0], b[2] - a[2]) <= 0.5) continue;
+    moving++;
+    if (angleGap(stored[i] ?? 0, estimate[i] ?? 0) < 25) close++;
+  }
+  return moving >= 10 && close >= moving * 0.9;
+}
+
+/**
  * Clean up a flight log as it loads (never written back): stair-stepped positions are smoothed
- * between the GPS fixes, and a heading estimated by the first SRT importer is estimated again
- * (backfilled before the first movement, held through hovers, smoothed). Measured orientations
- * (gimbal angles, photogrammetry poses) and high-rate positions come back unchanged. Returns the
- * input array itself when nothing changes. Idempotent: a log cleaned at import is left alone.
+ * between the GPS fixes, a track that zig-zags on a rounded grid is straightened
+ * (`straightenTrack`), and an estimated heading (`looksEstimated`) is estimated again from the
+ * cleaned track (backfilled before the first movement, held through hovers, smoothed) whenever
+ * that changes it. Measured orientations (gimbal angles, photogrammetry poses) and smooth
+ * positions come back unchanged. Returns the input array itself when nothing changes.
+ * Idempotent: a cleaned log is left alone.
  */
 export function normaliseFlight(samples: readonly PoseSample[]): NormalisedFlight {
   const t = samples.map((s) => s.t);
   const raw = samples.map((s) => s.pos);
-  const pos = smoothHeldPositions(t, raw);
-  const headings = legacyEstimated(samples) ? estimateHeadings(t, pos ?? raw) : null;
+  const held = smoothHeldPositions(t, raw);
+  const straight = straightenTrack(t, held ?? raw);
+  const pos = straight ?? held;
+  let headings = looksEstimated(samples) ? estimateHeadings(t, pos ?? raw) : null;
+  const stored = samples.map((s) => angles(s.q).heading);
+  // only a heading that follows the track was estimated; one the cleaned track gives again stays
+  if (
+    headings &&
+    (!followsTrack(t, raw, stored, headings) ||
+      headings.every((h, i) => angleGap(h, stored[i] ?? 0) < 0.05))
+  )
+    headings = null;
   if (!pos && !headings)
     return { samples: samples as PoseSample[], positions: false, heading: false };
   const pitch = samples[0] ? angles(samples[0].q).pitch : 0;
