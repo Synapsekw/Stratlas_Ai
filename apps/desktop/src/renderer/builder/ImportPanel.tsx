@@ -1,5 +1,5 @@
 import type { AioBridge, ImportItem } from '@aio/schema';
-import { Icon, type IconName } from '@aio/ui';
+import { Icon, useT, type IconName } from '@aio/ui';
 import { useWorkspace } from '@aio/workspace';
 import { useEffect, useState } from 'react';
 import { PagesCard } from '../drawings/PagesCard';
@@ -10,6 +10,7 @@ import { heightsLine, offsetFromTakeoff, promptChoice, type HeightsPrompt } from
 import { TilesetImportCard } from './ImportTileset';
 import { ProjectKindTag, ProjectStarter } from './ProjectStarter';
 import { builder, useBuilder } from './state';
+import { rawCameraImported } from './rawCamera';
 import { ImportSurveyDate } from './SurveyDate';
 
 const STATUS: Record<ImportItem['status'], { icon: IconName; label: string }> = {
@@ -233,6 +234,7 @@ function HeightsCard({ p }: { p: HeightsPrompt }) {
 }
 
 function ImportStatus() {
+  const t = useT();
   const importing = useBuilder((s) => s.importing);
   const cancellable = useBuilder((s) => s.cancellable);
   const cancelling = useBuilder((s) => s.cancelling);
@@ -321,6 +323,15 @@ function ImportStatus() {
         >
           {heights.warn && <Icon name="warn" size={14} />}
           {heights.text}
+        </p>
+      )}
+      {result && rawCameraImported(result.items) && (
+        <p
+          className="notice small"
+          style={{ margin: '0 12px 10px' }}
+          data-testid="import-raw-360-hint"
+        >
+          {t('walk.rawHint')}
         </p>
       )}
       {result && result.items.length > 0 && <ImportSurveyDate items={result.items} />}
