@@ -115,3 +115,4 @@ export * from './photo';
 export * from './units';
 export * from './catalogue/search';
 export * from './siteTransform';
+export * from './clock';
