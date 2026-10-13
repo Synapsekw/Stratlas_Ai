@@ -34,8 +34,10 @@ FILL_BAND_PER_8K = 12
 FILL_BLUR_SHARE = 1 / 12
 #: The zenith is this much brighter than the mean top edge colour.
 ZENITH_GAIN = 1.05
+#: The fill fades into the image over this many degrees of latitude below the top edge.
+FILL_FEATHER_DEG = 4.0
 #: Pixels of sky computed at a time (bounds the float32 work arrays).
-FILL_STRIP_PIXELS = 1 << 19
+FILL_STRIP_PIXELS = 1 << 17
 #: A canvas whose covered columns are fewer than this share is a wide panorama.
 FULL_COVERAGE_SHARE = 0.995
 THUMB_SIZE = (512, 256)
@@ -159,8 +161,9 @@ def blend(pieces: list[Piece], cw: int, ch: int, check: Callable[[], None] = lam
         # a copy: the wrap duplicates share their image, and apply writes into it
         img = comp.apply(k, p.corner, p.image.copy(), p.mask)
         sm = seams[k].get() if isinstance(seams[k], cv2.UMat) else seams[k]
-        sm = cv2.resize(sm, (p.mask.shape[1], p.mask.shape[0]), interpolation=cv2.INTER_LINEAR)
+        # dilate at seam scale, as OpenCV's stitcher does, so neighbours still meet after the resize
         sm = cv2.dilate(sm, np.ones((3, 3), np.uint8))
+        sm = cv2.resize(sm, (p.mask.shape[1], p.mask.shape[0]), interpolation=cv2.INTER_LINEAR)
         blender.feed(np.asarray(img).astype(np.int16), cv2.bitwise_and(sm, p.mask), p.corner)
     res, mask = blender.blend(None, None)
     res = res.get() if isinstance(res, cv2.UMat) else res
@@ -219,15 +222,21 @@ def fill_sky(pano: np.ndarray, covered: np.ndarray) -> None:
     topf = np.maximum(top.astype(np.float32), 1.0)
     step = max(1, FILL_STRIP_PIXELS // w)
     span = (edge - zenith[None]).astype(np.float32)
-    for r0 in range(0, int(top.max()), step):
+    feather = max(1.0, FILL_FEATHER_DEG / 180 * h)
+    for r0 in range(0, min(h, int(top.max() + feather) + 1), step):
         r1 = min(h, r0 + step)
         yy = np.arange(r0, r1, dtype=np.float32)[:, None]
         a = np.clip(yy / topf[None], 0, 1)
         sky = a[..., None] * span[None]
         sky += zenith
-        above = yy < top[None]
         np.clip(sky, 0, 255, out=sky)
-        pano[r0:r1][above] = sky[above].astype(np.uint8)
+        # 1 above the top edge, fading to 0 over the feather band below it
+        wgt = np.clip(1 - (yy - top[None]) / feather, 0, 1)
+        wgt[(yy >= top[None]) & ~any_col[None]] = 0
+        sel = wgt > 0
+        cur = pano[r0:r1][sel].astype(np.float32)
+        w1 = wgt[sel][:, None]
+        pano[r0:r1][sel] = np.rint(sky[sel] * w1 + cur * (1 - w1)).astype(np.uint8)
     _fill_holes(pano, cov, top)
 
 

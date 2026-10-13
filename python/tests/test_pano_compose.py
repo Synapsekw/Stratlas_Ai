@@ -77,6 +77,32 @@ def test_the_sky_fill_is_smooth_and_leaves_no_hole(tmp_path, scene):
     assert np.abs(np.diff(sky, axis=0)).max() <= 3
 
 
+def _top_edge(mask):
+    cov = mask > 0
+    return cov, cov.argmax(axis=0)
+
+
+def test_seams_leave_no_gap_at_the_16k_seam_scale(tmp_path, scene, monkeypatch):
+    monkeypatch.setattr(compose, "seam_scale", lambda width: 0.125)
+    frames = ps.make_sphere(tmp_path, "rows", scene=scene, frame_w=640, seed=3)
+    _, mask = _stitch(frames)
+    cov, top = _top_edge(mask)
+    below = np.arange(H)[:, None] >= top[None]
+    assert int((below & ~cov).sum()) == 0
+
+
+def test_the_sky_fill_meets_the_image_without_a_step(tmp_path, scene):
+    frames = ps.make_sphere(tmp_path, "rows", scene=scene, frame_w=640, seed=3)
+    pano, mask = _stitch(frames)
+    _, top = _top_edge(mask)
+    pano[: int(top.min())] = 255  # a bright sky row would show any hard edge
+    compose.fill_sky(pano, mask)
+    cols = np.arange(W)
+    above = pano[np.maximum(top - 1, 0), cols].astype(int)
+    below = pano[top, cols].astype(int)
+    assert np.percentile(np.abs(above - below).max(axis=1), 95) < 10
+
+
 def test_the_sky_fill_works_strip_by_strip():
     big = np.full((2048, 4096, 3), 100, np.uint8)
     big[:, :, 1] = np.linspace(0, 255, 4096, dtype=np.uint8)[None]
