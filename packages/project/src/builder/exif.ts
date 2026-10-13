@@ -23,6 +23,8 @@ export interface PhotoMeta {
     gimbal?: { yaw: number; pitch: number; roll: number };
     flightYaw?: number;
   };
+  /** XMP `GPano` (a ready-made panorama): its projection, e.g. `equirectangular`. */
+  gpano?: { projection: string };
 }
 
 const TYPE_SIZE: Record<number, number> = { 1: 1, 2: 1, 3: 2, 4: 4, 5: 8, 7: 1, 9: 4, 10: 8 };
@@ -163,6 +165,12 @@ function parseXmp(xml: string, meta: PhotoMeta): void {
   const fy = get('FlightYawDegree');
   if (fy !== undefined) dji.flightYaw = fy;
   if (Object.keys(dji).length) meta.dji = dji;
+  const proj =
+    /GPano:ProjectionType\s*=\s*"([^"]*)"|<GPano:ProjectionType>([^<]*)<\/GPano:ProjectionType>/.exec(
+      xml,
+    );
+  const projection = (proj?.[1] ?? proj?.[2])?.trim();
+  if (projection) meta.gpano = { projection };
 }
 
 /** Read EXIF, DJI XMP and the frame size from the start of a JPEG file. */

@@ -139,3 +139,16 @@ export {
   type WalkCopy,
   type WalkCopyOptions,
 } from '../import/stitch';
+export {
+  PANO_GROUPING,
+  groupPanoFrames,
+  horizontalM,
+  isReadyMadePano,
+  pitchRows,
+  yawSpanDeg,
+  type PanoFrameMeta,
+  type PanoGrouping,
+  type PanoGroupingThresholds,
+  type PanoSphereGroup,
+} from './panoGroups';
+export { PANO_HEAD_BYTES, panoFrameMeta, readPanoFrameMeta } from './panoScan';

@@ -79,3 +79,32 @@ describe('readPhotoMeta', () => {
     expect(() => readPhotoMeta(new Uint8Array([0x89, 0x50, 0x4e, 0x47]))).toThrow(/JPEG/);
   });
 });
+
+describe('readPhotoMeta and GPano', () => {
+  const gpanoSegment = (projection: string) => {
+    const xml = `<x:xmpmeta xmlns:x="adobe:ns:meta/"><rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#"><rdf:Description xmlns:GPano="http://ns.google.com/photos/1.0/panorama/" GPano:ProjectionType="${projection}"/></rdf:RDF></x:xmpmeta>`;
+    const head = new TextEncoder().encode('http://ns.adobe.com/xap/1.0/\0');
+    const body = new TextEncoder().encode(xml);
+    const payload = new Uint8Array(head.length + body.length);
+    payload.set(head);
+    payload.set(body, head.length);
+    const seg = new Uint8Array(4 + payload.length);
+    seg.set([0xff, 0xe1, (payload.length + 2) >> 8, (payload.length + 2) & 0xff]);
+    seg.set(payload, 4);
+    return seg;
+  };
+  const jpegWith = (seg: Uint8Array) => {
+    const base = withExif({ width: 1400, height: 700 });
+    return new Uint8Array([...base.subarray(0, 2), ...seg, ...base.subarray(2)]);
+  };
+
+  it('reads an equirectangular projection', () => {
+    expect(readPhotoMeta(jpegWith(gpanoSegment('equirectangular'))).gpano).toEqual({
+      projection: 'equirectangular',
+    });
+  });
+
+  it('leaves it out when the XMP has none', () => {
+    expect(readPhotoMeta(withExif({ dji: { GimbalYawDegree: '10' } })).gpano).toBeUndefined();
+  });
+});
