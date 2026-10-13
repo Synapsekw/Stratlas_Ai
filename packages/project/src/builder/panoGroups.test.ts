@@ -174,19 +174,75 @@ describe('groupPanoFrames', () => {
     expect(g.spheres.map((s) => names(s.frames))).toEqual([names(a), names(b)]);
   });
 
-  it('splits two spheres 34 s apart even when they are close (P0: inter-sphere gap)', () => {
+  /** Sphere b starts gapS seconds after sphere a's last frame, offset as given. */
+  function twoSpheres(gapS: number, eastM: number, altShift = 0): PanoFrameMeta[] {
     const a = sphere({ start: t0, eastM: 0, northM: 0, firstNo: 1, pattern: 'rows' });
-    const lastS = 24 * 6;
     const b = sphere({
-      start: new Date(t0.getTime() + (lastS + 34) * 1000),
-      eastM: 5.6,
+      start: new Date(t0.getTime() + (24 * 6 + gapS) * 1000),
+      eastM,
       northM: 0,
       firstNo: 40,
       pattern: 'rows',
       seed: 4,
+    }).map((f) => (f.absAlt === undefined ? f : { ...f, absAlt: f.absAlt + altShift }));
+    return [...a, ...b];
+  }
+
+  it('splits two spheres at the same spot 34 s apart: only the gap rule separates them', () => {
+    expect(groupPanoFrames(twoSpheres(34, 0)).spheres).toHaveLength(2);
+  });
+
+  it('keeps frames 20 s apart at the same spot in one sphere (gap is within the limit)', () => {
+    expect(groupPanoFrames(twoSpheres(20, 0)).spheres).toHaveLength(1);
+  });
+
+  it('splits on distance alone: 10 s apart and 8 m apart at the same height', () => {
+    expect(groupPanoFrames(twoSpheres(10, 8)).spheres).toHaveLength(2);
+  });
+
+  it('splits on height alone: 10 s apart, same spot, 10 m apart in altitude', () => {
+    expect(groupPanoFrames(twoSpheres(10, 0, 10)).spheres).toHaveLength(2);
+  });
+
+  it('keeps one sphere when a single frame jumps 6 m sideways (GPS noise)', () => {
+    const a = sphere({ start: t0, eastM: 0, northM: 0, firstNo: 1, pattern: 'rows' });
+    const jumped = a.map((f, i) =>
+      i === 11 && f.lat !== undefined ? { ...f, lat: f.lat + north(6) } : f,
+    );
+    const g = groupPanoFrames(jumped);
+    expect(g.spheres.map((s) => s.frames.length)).toEqual([25]);
+    expect(g.skipped).toEqual([]);
+  });
+
+  it('keeps one sphere when a single frame jumps 4 m in altitude (barometer noise)', () => {
+    const a = sphere({ start: t0, eastM: 0, northM: 0, firstNo: 1, pattern: 'rows' });
+    const jumped = a.map((f, i) =>
+      i === 11 && f.absAlt !== undefined ? { ...f, absAlt: f.absAlt + 4 } : f,
+    );
+    const g = groupPanoFrames(jumped);
+    expect(g.spheres.map((s) => s.frames.length)).toEqual([25]);
+    expect(g.skipped).toEqual([]);
+  });
+
+  it('judges a wide panorama against wide panoramas, not against spheres', () => {
+    const a = sphere({ start: t0, eastM: 0, northM: 0, firstNo: 1, pattern: 'rows' });
+    const b = sphere({ start: later(5), eastM: 150, northM: 0, firstNo: 40, pattern: 'rows' });
+    const w = sphere({
+      start: later(10),
+      eastM: 300,
+      northM: 0,
+      firstNo: 80,
+      pattern: 'bursts',
+      yaws: [-100, -35.7, 28.7, 60.8, 93],
+      seed: 8,
     });
-    const g = groupPanoFrames([...a, ...b]);
-    expect(g.spheres).toHaveLength(2);
+    expect(w).toHaveLength(16);
+    const g = groupPanoFrames([...a, ...b, ...w]);
+    expect(g.spheres.map((s) => [s.shape, s.incomplete])).toEqual([
+      ['sphere', false],
+      ['sphere', false],
+      ['wide', false],
+    ]);
   });
 
   it('flags a short sphere as incomplete and refuses one under 8 frames', () => {

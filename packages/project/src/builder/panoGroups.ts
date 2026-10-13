@@ -173,36 +173,91 @@ export function groupPanoFrames(
   // by capture time (file numbers wrap: 0975 is followed by 0001), stable on ties
   usable.sort((a, b) => a.s - b.s || a.i - b.i);
 
-  const clusters: PanoFrameMeta[][] = [];
-  let cur: PanoFrameMeta[] = [];
+  interface Entry {
+    f: PanoFrameMeta;
+    s: number;
+  }
+  const medianPos = (c: readonly Entry[]) => ({
+    lat: median(c.map((e) => e.f.lat ?? 0)),
+    lon: median(c.map((e) => e.f.lon ?? 0)),
+  });
+  const medianAlt = (c: readonly Entry[]): number | undefined => {
+    const alts = c.flatMap((e) => {
+      const a = altOf(e.f);
+      return a === undefined ? [] : [a];
+    });
+    return alts.length ? median(alts) : undefined;
+  };
+  const altApart = (x: number | undefined, y: number | undefined) =>
+    x !== undefined && y !== undefined && Math.abs(x - y) > t.maxVerticalM;
+
+  let clusters: Entry[][] = [];
+  let cur: Entry[] = [];
   let lastS = -Infinity;
-  for (const { f, s } of usable) {
+  for (const e of usable) {
     if (cur.length > 0) {
-      const lat = median(cur.map((c) => c.lat ?? 0));
-      const lon = median(cur.map((c) => c.lon ?? 0));
-      const alts = cur.flatMap((c) => (altOf(c) === undefined ? [] : [altOf(c) ?? 0]));
-      const alt = altOf(f);
       const far =
-        s - lastS > t.maxGapS ||
-        horizontalM({ lat, lon }, { lat: f.lat ?? 0, lon: f.lon ?? 0 }) > t.maxHorizontalM ||
-        (alt !== undefined && alts.length > 0 && Math.abs(alt - median(alts)) > t.maxVerticalM);
+        e.s - lastS > t.maxGapS ||
+        horizontalM(medianPos(cur), { lat: e.f.lat ?? 0, lon: e.f.lon ?? 0 }) > t.maxHorizontalM ||
+        altApart(altOf(e.f), medianAlt(cur));
       if (far) {
         clusters.push(cur);
         cur = [];
       }
     }
-    cur.push(f);
-    lastS = s;
+    cur.push(e);
+    lastS = e.s;
   }
   if (cur.length) clusters.push(cur);
 
+  // One stray frame (a GPS or barometer jump) between two clusters of the same hover joins them,
+  // so a sphere is never split in two by a single outlier.
+  const sameHover = (x: readonly Entry[], y: readonly Entry[]): boolean => {
+    const last = x[x.length - 1];
+    const first = y[0];
+    if (!last || !first || first.s - last.s > t.maxGapS) return false;
+    return (
+      horizontalM(medianPos(x), medianPos(y)) <= t.maxHorizontalM &&
+      !altApart(medianAlt(x), medianAlt(y))
+    );
+  };
+  const joined: Entry[][] = [];
+  for (let i = 0; i < clusters.length; i++) {
+    const c = clusters[i] ?? [];
+    const prev = joined[joined.length - 1];
+    const next = clusters[i + 1];
+    const lastP = prev?.[prev.length - 1];
+    const firstN = next?.[0];
+    if (
+      c.length === 1 &&
+      prev &&
+      next &&
+      lastP &&
+      firstN &&
+      c[0] &&
+      c[0].s - lastP.s <= t.maxGapS &&
+      firstN.s - c[0].s <= t.maxGapS &&
+      sameHover(prev, next)
+    ) {
+      joined[joined.length - 1] = [...prev, ...c, ...next];
+      i++;
+    } else joined.push(c);
+  }
+  clusters = joined;
+
   const accepted: { shape: PanoShape; frames: PanoFrameMeta[] }[] = [];
-  for (const c of clusters) {
+  for (const entries of clusters) {
+    const c = entries.map((e) => e.f);
     const k = classify(c, t);
     if (k === 'sphere' || k === 'wide') accepted.push({ shape: k, frames: c });
     else for (const f of c) skipped.push({ file: f.file, reason: k });
   }
-  const typical = accepted.length ? median(accepted.map((a) => a.frames.length)) : 0;
+  // spheres are judged against spheres, wide panoramas against wide panoramas
+  const typicalOf = (shape: PanoShape): number => {
+    const n = accepted.filter((a) => a.shape === shape).map((a) => a.frames.length);
+    return n.length ? median(n) : 0;
+  };
+  const typical = { sphere: typicalOf('sphere'), wide: typicalOf('wide') };
   const spheres = accepted.map(({ shape, frames: fs }): PanoSphereGroup => {
     const abs = fs.flatMap((f) => (f.absAlt === undefined ? [] : [f.absAlt]));
     const rel = fs.flatMap((f) => (f.relAlt === undefined ? [] : [f.relAlt]));
@@ -214,7 +269,7 @@ export function groupPanoFrames(
       ...(abs.length ? { absAlt: median(abs) } : {}),
       ...(rel.length ? { relAlt: median(rel) } : {}),
       startedAt: fs[0]?.takenAt ?? '',
-      incomplete: fs.length < t.incompleteFraction * typical,
+      incomplete: fs.length < t.incompleteFraction * typical[shape],
       bytes: fs.reduce((n, f) => n + f.bytes, 0),
     };
   });
