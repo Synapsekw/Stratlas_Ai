@@ -91,7 +91,7 @@ OLD_LAYOUT = (
 )
 #: What a depth key's folder held before layout 2; none of it is read any more.
 LEGACY_NAMES = (
-    "cloud", "cloud.las", "copc-pipeline.json", "dtm-pipeline.json", "ground-pdal.tif", "gains.json",
+    "cloud", "cloud.las", ".cloud.las.tmp", "copc-pipeline.json", "dtm-pipeline.json", "ground-pdal.tif", "gains.json",
     "poisson", "mesh-full.npz",
 )  # fmt: skip
 LEGACY_GLOBS = ("*-raw.tif", "*.tmp.tif", "*.fill.tif", "*-shaded.tif", "texrecon-*", ".mesh-full.tmp.npz")
@@ -142,18 +142,30 @@ def _bytes_in(p: Path) -> int:
         return 0
 
 
-def legacy_cleanup(folder: Path, log=lambda message, level="info": None) -> int:
+def legacy_cleanup(
+    folder: Path,
+    log=lambda message, level="info": None,
+    progress=lambda fraction, message=None: None,
+    check=lambda: None,
+) -> int:
     """Delete what a version before layout 2 left in a depth key's folder (the cloud tiles, the
-    LAS, the rasters, the mesh); ``depth/`` and layout 2's ``c-*`` folders stay. What cannot be
-    deleted (a file another program holds open) is left with a warning. Answers the bytes freed."""
+    LAS, the rasters, the mesh); ``depth/`` and layout 2's ``c-*`` folders stay. It says so with the
+    size first and reports progress as it goes (it can be hundreds of GB), and ``check`` may cancel
+    between items (what is left goes on the next run). What cannot be deleted (a file another
+    program holds open) is left with a warning. Answers the bytes freed."""
     if not folder.is_dir():
         return 0
     found = [folder / n for n in LEGACY_NAMES] + [p for g in LEGACY_GLOBS for p in folder.glob(g)]
-    freed = 0
-    for p in dict.fromkeys(found):
-        if not (p.is_dir() or p.is_file()):
-            continue
-        before = _bytes_in(p)
+    items = [p for p in dict.fromkeys(found) if p.is_dir() or p.is_file()]
+    if not items:
+        return 0
+    sizes = [_bytes_in(p) for p in items]
+    total = sum(sizes)
+    what = "Removing files of an older processing version"
+    log(f"{what} ({native._gb(total)}).")
+    freed = done = 0
+    for p, before in zip(items, sizes, strict=True):
+        check()
         errors: list[OSError] = []
         try:
             if p.is_dir():
@@ -167,6 +179,8 @@ def legacy_cleanup(folder: Path, log=lambda message, level="info": None) -> int:
             e = errors[0]
             log(f"Could not remove {p.name}, which an older version left: {e.strerror or e}.", "warn")
         freed += max(0, before - (_bytes_in(p) if p.exists() else 0))
+        done += before
+        progress(done / total if total else 1.0, f"{what}: {native._gb(done)} of {native._gb(total)}")
     return freed
 
 
@@ -464,7 +478,7 @@ class PhotoProducts:
         mkey = merge_key(ckey, voxel, budget, DENSE_RULE if scale else SPARSE_RULE)
         base = f"photogrammetry/{run.id}/work/products/{dkey}"
         # before the disk check, so the space an older version took counts as free
-        freed = legacy_cleanup(safe_project_path(ctx.project, base), ctx.log)
+        freed = legacy_cleanup(safe_project_path(ctx.project, base), ctx.log, ctx.progress, ctx.check)
         if freed:
             ctx.log(f"Removed {native._gb(freed)} of intermediate files an older version left.")
         if "cloud" in p["products"]:

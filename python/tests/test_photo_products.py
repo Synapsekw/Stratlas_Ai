@@ -380,6 +380,7 @@ def test_the_legacy_cleanup_keeps_the_depth_maps_layout_2_and_other_keys(tmp_pat
         key / "texrecon-full" / "a.obj": 30,
         key / "ortho-shaded.tif": 40,
         key / "dtm-pipeline.json": 5,
+        key / ".cloud.las.tmp": 60,  # an older version's LAS cut short by a crash
     }
     for f, n in {**keep, **old}.items():
         f.parent.mkdir(parents=True, exist_ok=True)
@@ -394,14 +395,22 @@ def test_the_legacy_cleanup_keeps_the_depth_maps_layout_2_and_other_keys(tmp_pat
 
     monkeypatch.setattr(Path, "unlink", held)
     said: list = []
-    freed = legacy_cleanup(key, lambda m, level="info": said.append((level, m)))
+    steps: list = []
+    freed = legacy_cleanup(
+        key, lambda m, level="info": said.append((level, m)), lambda f, m=None: steps.append((f, m))
+    )
     assert freed == sum(old.values()) - 5
     assert all(f.is_file() for f in keep) and (key / "dtm-pipeline.json").is_file()
     assert not any(f.exists() for f in old if f.name != "dtm-pipeline.json")
     assert not (key / "cloud").exists() and not (key / "texrecon-full").exists()
     assert said == [
-        ("warn", "Could not remove dtm-pipeline.json, which an older version left: The file is in use.")
+        ("info", "Removing files of an older processing version (0 MB)."),
+        ("warn", "Could not remove dtm-pipeline.json, which an older version left: The file is in use."),
     ]
+    # progress through the delete, from the first item to the last
+    fractions = [f for f, _ in steps]
+    assert len(steps) == len(old) - 1 and fractions == sorted(fractions) and fractions[-1] == 1.0
+    assert all(m.startswith("Removing files of an older processing version") for _, m in steps)
     assert legacy_cleanup(tmp_path / "missing") == 0
 
 

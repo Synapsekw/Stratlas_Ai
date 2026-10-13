@@ -3,7 +3,9 @@
 Each photo's depth map is turned into world points; a point is kept when at least ``min_agree``
 (two) of its neighbouring photos see the same surface there (fusion v2: their depths agree within
 ``min(1 % of the depth, 3 x the matching GSD)``, see ``agree_limit``; geometric consistency, as
-COLMAP's fusion does). Kept points carry the photo's colour and a normal from the depth map's
+COLMAP's fusion does). The rule is edge aware: two agreeing photos where two or more others can
+check the pixel, one where only one can (the block's edge), so the edge of the block is kept; a
+pixel no other photo confirms is never kept. Kept points carry the photo's colour and a normal from the depth map's
 neighbours, turned towards the camera.
 
 Points go to square ground tiles on disk (``PointTiles``) as they come, one chunk (chunk format 2,
@@ -37,7 +39,9 @@ from .scene import Camera, View, pixel_rays
 class FuseSettings:
     """When photos agree (fusion v2, 13 Oct 2026): a pixel is kept when at least ``min_agree`` of
     its ``neighbours`` see the same surface there, within ``tolerance`` of the depth and at most
-    ``abs_tol`` metres (3 x the matching GSD on a run; infinite when not set)."""
+    ``abs_tol`` metres (3 x the matching GSD on a run; infinite when not set). Where fewer than
+    ``min_agree`` neighbours can check the pixel (the block's edge), one agreeing is enough: two
+    agreeing photos where two others can check it, one where only one can."""
 
     tolerance: float = 0.01
     min_agree: int = 2
@@ -164,6 +168,19 @@ DENSE_RULE = MergeRule()
 SPARSE_RULE = MergeRule(min_count=1, outliers=False, collapse=False)
 
 
+def remove_tree(path: Path) -> None:
+    """Delete a folder, or refuse naming a file that stayed (on Windows, one another program
+    holds open): a merge or fusion that carried on would take what is left as its own."""
+    shutil.rmtree(path, ignore_errors=True)
+    if not path.exists():
+        return
+    left = next((q for q in sorted(path.rglob("*")) if q.is_file()), path)
+    raise JobError(
+        f"Could not delete {left}; it may be open in another program. Close it, then run the "
+        "processing again."
+    )
+
+
 class ChunksDropped(JobError):
     """The fusion chunks a merge needs were deleted after an earlier, complete merge (perhaps
     under another merge key): the photos must be fused again before this merge can run."""
@@ -281,7 +298,7 @@ class PointTiles:
         if mark.is_file() and json.loads(mark.read_text("utf-8")).get("voxel") == voxel:
             return
         for d in ("collapsed", "fused"):
-            shutil.rmtree(self.root / d, ignore_errors=True)
+            remove_tree(self.root / d)
         self.root.mkdir(parents=True, exist_ok=True)
         atomic_write_json(mark, {**state, "voxel": voxel})
 
@@ -361,8 +378,9 @@ class PointTiles:
         return self._dropped_mark().is_file()
 
     def clear_chunks(self) -> None:
-        """Before fusing again: what is left of the chunks goes, then the dropped mark."""
-        shutil.rmtree(self.chunks_dir, ignore_errors=True)
+        """Before fusing again: what is left of the chunks goes, then the dropped mark (a chunk
+        or fusion mark that cannot be deleted is refused, the mark kept)."""
+        remove_tree(self.chunks_dir)
         self._dropped_mark().unlink(missing_ok=True)
 
 

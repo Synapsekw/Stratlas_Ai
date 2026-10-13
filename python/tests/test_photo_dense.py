@@ -6,7 +6,9 @@ Synthetic data only (``products_synth.py``): known cameras, a known surface.
 from __future__ import annotations
 
 import math
+import shutil
 import struct
+from pathlib import Path
 
 import numpy as np
 import pytest
@@ -505,6 +507,40 @@ def test_a_merge_at_another_spacing_starts_over_and_one_at_the_same_carries_on(t
     assert not (store.root / "collapsed").exists()
     info = store.merge(0.2, rule=SPARSE_RULE)
     assert info["voxel"] == 0.2 and f.stat().st_mtime_ns != t0 and store.merging_voxel() == 0.2
+
+
+def _rmtree_leaving(keep: str):
+    """An rmtree that cannot delete the file ``keep`` (another program holds it open)."""
+
+    def rmtree(path, ignore_errors=False, **_):
+        for p in sorted(Path(path).rglob("*"), reverse=True):
+            if p.is_file() and p.name != keep:
+                p.unlink()
+
+    return rmtree
+
+
+def test_a_merge_at_another_spacing_refuses_when_an_old_tile_cannot_be_deleted(tmp_path, monkeypatch):
+    store = PointTiles(tmp_path / "m", 4.0)
+    xyz = _sheet(3.0, 3.0)
+    store.add("a", xyz, np.zeros((len(xyz), 3), np.uint8), _up(len(xyz)))
+    store.merge(0.1, rule=SPARSE_RULE)
+    monkeypatch.setattr(shutil, "rmtree", _rmtree_leaving("0_0.npz"))
+    with pytest.raises(JobError, match=r"0_0\.npz.*open in another program"):
+        store.merge(0.2, rule=SPARSE_RULE)
+    assert store.merging_voxel() == 0.1  # nothing claims the new spacing
+
+
+def test_fusing_again_refuses_when_a_chunk_cannot_be_deleted(tmp_path, monkeypatch):
+    store = PointTiles(tmp_path / "m", 4.0, chunks=tmp_path / "c" / "chunks")
+    xyz = _sheet(3.0, 3.0)
+    store.add("photo", xyz, np.zeros((len(xyz), 3), np.uint8), _up(len(xyz)))
+    store.merge(0.1, rule=SPARSE_RULE)
+    (tmp_path / "c" / "chunks.dropped.json").write_text("{}")  # as a part way drop_chunks leaves it
+    monkeypatch.setattr(shutil, "rmtree", _rmtree_leaving("photo.npz"))
+    with pytest.raises(JobError, match=r"photo\.npz.*open in another program"):
+        store.clear_chunks()
+    assert store.chunks_dropped()  # still marked: the next run tries again
 
 
 def test_the_chunks_go_after_a_finished_merge(tmp_path):
