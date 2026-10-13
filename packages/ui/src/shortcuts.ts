@@ -28,6 +28,7 @@ export type ShortcutScope =
   | 'review'
   | 'pdf'
   | 'lightbox'
+  | 'spot'
   | 'palette'
   | 'agent'
   | 'dialog';
@@ -55,6 +56,7 @@ export const SHORTCUT_SCOPES: readonly { scope: ShortcutScope; label: MessageKey
   { scope: 'issueList', label: 'keys.scope.issueList' },
   { scope: 'photo', label: 'keys.scope.photo' },
   { scope: 'lightbox', label: 'keys.scope.lightbox' },
+  { scope: 'spot', label: 'keys.scope.spot' },
   { scope: 'videoWindow', label: 'keys.scope.videoWindow' },
   { scope: 'videoAnnotate', label: 'keys.scope.videoAnnotate' },
   { scope: 'panorama', label: 'keys.scope.panorama' },
@@ -302,6 +304,12 @@ export const SHORTCUTS = [
   { id: 'lightbox.zoomIn', scope: 'lightbox', keys: ['Plus'], label: 'keys.view.zoomIn' },
   { id: 'lightbox.zoomOut', scope: 'lightbox', keys: ['Minus'], label: 'keys.view.zoomOut' },
   { id: 'lightbox.marks', scope: 'lightbox', keys: ['M'], label: 'keys.lightbox.marks' },
+  { id: 'spot.close', scope: 'spot', keys: ['Esc'], label: 'keys.dialog.close' },
+  { id: 'spot.prevDate', scope: 'spot', keys: ['Left'], label: 'keys.spot.prevDate' },
+  { id: 'spot.nextDate', scope: 'spot', keys: ['Right'], label: 'keys.spot.nextDate' },
+  { id: 'spot.prevMatch', scope: 'spot', keys: ['Up'], label: 'keys.spot.prevMatch' },
+  { id: 'spot.nextMatch', scope: 'spot', keys: ['Down'], label: 'keys.spot.nextMatch' },
+  { id: 'spot.compare', scope: 'spot', keys: ['C'], label: 'keys.spot.compare' },
 
   // the floating video window has focus
   {
