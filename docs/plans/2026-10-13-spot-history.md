@@ -30,6 +30,7 @@
 3. **The clicked item sits in an undated layer.** Expected: the strip still shows every survey date with its matches, the header says the item has no date, and no slot claims it. Pinned in Task 3 (`an undated origin gets no slot of its own`) and Task 4 (undated entries are still found).
 4. **A video whose flight log is missing or broken, or still loading.** Expected: missing or broken counts as skipped on its date (tooltip), loading leaves it out until it arrives and the strip updates; other dates and kinds still show. Pinned in Task 5 (`videoSamples` null and undefined cases) and Task 3 (skipped counts).
 5. **The project closes, or the shown item's layer disappears, while the viewer is open** (another session edits, a date is removed). Expected: the viewer closes with the project; a vanished current match falls back to the start date instead of a blank view. Pinned in Task 7 (`resolveAt` falls back) and Task 10 (`closes when the project closes`).
+6. **Zooming in Compare, then switching to Swipe or changing a date** (founder, 13 Oct: linked zoom for photos). Expected: both sides keep one zoom and pan, so the swipe divider stays over the same ground; the view never pans past a picture's edge, and leaving Compare starts the next one at fit. Pinned in Task 10 (`spotZoom.test.ts` clamp cases, the viewer test's swipe and date-change cases).
 
 ---
 
@@ -54,11 +55,13 @@ Decision: **one modal viewer, `SpotViewer`** (pattern of `Lightbox.tsx`: scrim, 
 
 **3. Flat ground, no surface in S1.** Surfaces (mesh or DEM) are left for later. Aerial views meet flat ground at `y = 0` (`SPOT_RULES.groundY`), the same plane `@aio/video` pairing uses (`DEFAULTS.groundY`); ground-level views meet flat ground 1.6 m below the camera (`handHeightM`), and a view whose centre line does not meet that ground within 30 m aims 15 m ahead along its bearing. Walks use the fit's own ground height.
 
-## Spec deviations (need the founder's nod at plan review)
+## Spec deviations (founder decisions, 13 Oct 2026)
+
+The founder approved the plan on 13 Oct 2026 with these three deviations from the spec, the second one changed as below. They are decisions now, not open questions.
 
 1. **Compare opens inside the viewer, not in the stage's split.** The spec says Compare opens "the T3 split view". The split cannot show it without breaking decision 2 or the spec's own rules: its photo pane shows the workspace selection (`SetPhotoPane`), the Frames pane picks its other date with its own stricter matcher (30 degrees and footprint overlap, `createViewFollower`) and reads a clip at the project clock, its left side follows the date bar, and no pane shows a walk frame or mixes kinds (the best match of a date can be a 360 when the clicked image is a photo). So **Compare...** turns the viewer's body into two panes (the shown match on the left, the best match of the date before on the right, a date chip above each), with **Side by side** and **Swipe** through `FramesCompare` of `@aio/video` (the same component and handle as the Frames pane), and 360s linked in look through one `createLookLink` store. It stays two clicks away and leaves the main view alone.
-2. **Linked zoom and pan apply to 360s only.** Photos and video frames fit their box in compare, as in the Frames pane; there is no zoom to link.
-3. **Empty slot wording follows the clicked kind.** "Nothing within 15 m" for photos and walk frames, "Nothing within 25 m" for 360s (their tolerance), "Not seen" for aerial spots.
+2. **Linked zoom and pan in Compare for every kind** (founder, 13 Oct 2026: photos too, side by side and Swipe). 360s and walk frames share one look (`createLookLink`); photos and video frames share one zoom and pan (`createZoomLink`, `spotZoom.ts`): the wheel zooms about the pointer, a drag pans, a double click or `0` fits, on either side, and the other side follows. In Swipe both layers carry the same transform, so the divider stays over the same ground. Task 10 owns it.
+3. **Empty slot wording follows the clicked kind** (founder, 13 Oct 2026). "Nothing within 15 m" for photos and walk frames, "Nothing within 25 m" for 360s (their tolerance), "Not seen" for aerial spots.
 
 ---
 
@@ -83,7 +86,7 @@ All new code sits in `apps/desktop/src/renderer/workspace/spot/` unless named ot
 | `workspace/panoSurface.tsx`                                                                                | 9    | new: `PanoSurface` and `useCoverage` moved out of `PanoPane.tsx` |
 | `workspace/PanoPane.tsx`                                                                                   | 9    | imports them                                                     |
 | `SpotMatchView.tsx` (+test)                                                                                | 9    | new: one match, any kind                                         |
-| `SpotViewer.tsx`, `SpotCompare.tsx`, `SpotViewer.test.tsx`                                                 | 10   | new: the dialog and compare                                      |
+| `spotZoom.ts` (+test), `SpotZoom.tsx`, `SpotViewer.tsx`, `SpotCompare.tsx`, `SpotViewer.test.tsx`          | 10   | new: the dialog, compare, linked photo zoom                      |
 | `apps/desktop/src/renderer/App.tsx`                                                                        | 10   | mounts `SpotViewer`                                              |
 | `SpotHistoryEntry.tsx` (+test)                                                                             | 11   | new: button and inline strip                                     |
 | `screens/Media.tsx`, `workspace/SplitPanes.tsx`, `workspace/SelectionCard.tsx`, `workspace/FramesPane.tsx` | 11   | one button each; Media also the inline strip                     |
@@ -113,7 +116,7 @@ T6 words + keys ───────────┴─> T9 match view ───
 | F     | T12, T14                               | T12: T11; T14: T11             | desktop renderer (`spot/`, `walks/Walk360Pane.tsx`); `docs`                             |
 | G     | T13                                    | T12                            | `apps/desktop/e2e`                                                                      |
 
-No two tasks of a batch share a file. **Critical path:** T1, T2, T3, T10, T11, T12, T13. Fourteen tasks; sizes: S = T1, T4, T6, T7, T14; M = T2, T3, T5, T8, T9, T11; L = T10, T12, T13.
+No two tasks of a batch share a file. Linked photo zoom (founder, 13 Oct) adds two files to Task 10 and no dependency: the batches and the critical path are unchanged. **Critical path:** T1, T2, T3, T10, T11, T12, T13. Fourteen tasks; sizes: S = T1, T4, T6, T7, T14; M = T2, T3, T5, T8, T9, T11; L = T10, T12, T13.
 
 T13 can be written during batch F; its run (Step 3) waits for T12's commit so the e2e run covers the final code. Subagents of a batch write and unit-test in parallel (`pnpm --filter @aio/desktop exec vitest run <file>` is light) and each commits through the runner; `pnpm check` runs once per batch, after its last commit.
 
@@ -130,7 +133,7 @@ T13 can be written during batch F; its run (Step 3) waits for T12's commit so th
 | 7    | `spotViewerStore.test.ts`                                    |                            | none     |
 | 8    | `SpotStrip.test.tsx`                                         |                            | none     |
 | 9    | `SpotMatchView.test.tsx`, existing `PanoPane.test.tsx` green |                            | none     |
-| 10   | `SpotViewer.test.tsx`                                        |                            | none     |
+| 10   | `spotZoom.test.ts`, `SpotViewer.test.tsx`                    |                            | none     |
 | 11   | `SpotHistoryEntry.test.tsx`                                  |                            | none     |
 | 12   | `spotWalk.test.ts`, new cases in `SpotMatchView.test.tsx`    |                            | none     |
 | 13   |                                                              | new `spot-history.spec.ts` | none     |
@@ -2689,13 +2692,42 @@ export function SpotMatchView(p: {
 
 - Create: `apps/desktop/src/renderer/workspace/spot/SpotViewer.tsx`
 - Create: `apps/desktop/src/renderer/workspace/spot/SpotCompare.tsx`
+- Create: `apps/desktop/src/renderer/workspace/spot/spotZoom.ts` (pure: linked zoom and pan)
+- Create: `apps/desktop/src/renderer/workspace/spot/SpotZoom.tsx` (the zoomable box)
 - Modify: `apps/desktop/src/renderer/App.tsx` (mount `<SpotViewer />` next to `<Lightbox />`)
+- Test: `apps/desktop/src/renderer/workspace/spot/spotZoom.test.ts`
 - Test: `apps/desktop/src/renderer/workspace/spot/SpotViewer.test.tsx`
 
 **Interfaces:**
 
 - Consumes: Task 3 (`historyFor`), Task 5 (`useSpotEntries`), Task 7 (store and helpers), Task 8 (`SpotStrip`, `stripKey`, `SpotThumb`), Task 9 (`SpotMatchView`), Task 6 (words, `matchShortcut`); `FramesCompare` from `@aio/video`; `useFocusTrap`, `Icon`, `useT`, `matchShortcut` from `@aio/ui`; `dateTags`, `useWorkspace` from `@aio/workspace`; `useCaptureIndex` from `../compare`; `createLookLink` from `../lookLink`.
-- Produces: `SpotViewer()` (no props; reads `spotViewer`), `SpotCompare(p: { history: SpotHistory; state: SpotCompareState; projectId: string; layers: readonly Layer[]; tags: Readonly<Record<string, DateTag>>; onChange(next: SpotCompareState): void })`. Test ids: `spot-viewer` (dialog), `spot-head` (with `data-capture`, `data-kind`, `data-item`, `data-distance`), `spot-compare` (button), `spot-compare-view` (`data-mode`), `spot-mode-side`, `spot-mode-swipe`, `spot-compare-date-left`, `spot-compare-date-right` (selects), `spot-close`, `spot-no-position`.
+- Produces (`spotZoom.ts`, `SpotZoom.tsx`):
+
+```ts
+export interface ZoomView {
+  s: number;
+  x: number;
+  y: number;
+}
+export const ZOOM: { readonly min: 1; readonly max: 8; readonly step: 1.25 };
+export const FIT: ZoomView;
+export function clampView(v: ZoomView): ZoomView;
+export function zoomAt(v: ZoomView, factor: number, px: number, py: number): ZoomView;
+export function panBy(v: ZoomView, dx: number, dy: number): ZoomView;
+export function viewCss(v: ZoomView): string;
+export interface ZoomLinkState {
+  view: ZoomView;
+  set(v: ZoomView): void;
+}
+export function createZoomLink(): StoreApi<ZoomLinkState>;
+export function SpotZoom(p: {
+  link: StoreApi<ZoomLinkState>;
+  side: 'left' | 'right';
+  children: ReactNode;
+}): JSX.Element;
+```
+
+- Produces (viewer): `SpotViewer()` (no props; reads `spotViewer`), `SpotCompare(p: { history: SpotHistory; state: SpotCompareState; projectId: string; layers: readonly Layer[]; tags: Readonly<Record<string, DateTag>>; onChange(next: SpotCompareState): void })`. Test ids: `spot-viewer` (dialog), `spot-head` (with `data-capture`, `data-kind`, `data-item`, `data-distance`), `spot-compare` (button), `spot-compare-view` (`data-mode`), `spot-mode-side`, `spot-mode-swipe`, `spot-compare-date-left`, `spot-compare-date-right` (selects), `spot-close`, `spot-no-position`.
 
 - [ ] **Step 1: Write the failing tests** (`SpotViewer.test.tsx`, jsdom). Mock `./useSpotEntries` to return fixed entries built with the fixture (`photos-d1` photo `a` at `[0, 1.6, 0]` facing north, `photos-d2` photos `b` at `[1, 1.6, 0]` and `c` at `[3, 1.6, 0]`, `photos-d2` `nogps` without a position); mock `./SpotMatchView` as `({ match }) => <i data-testid="spot-view" data-capture={match.capture} />`; mock `@aio/video`'s `FramesCompare` as a component that renders `a`, `b` and a `[role="slider"]` with `aria-valuenow`. Open a manifest with captures `d1`, `d2`, `d3` in `workspace` and `timeline` (as `PanoPane.test.tsx`), select a layer, hide one, set the stage mode, then snapshot `{ selection, hidden, focus: timeline.getState().focus, stage: shell.getState().stageMode }`.
   - `openSpotHistory({ item: { kind: 'photo', layer: 'photos-d1', photo: 'a' } })` shows the dialog, `spot-head` `data-capture="d1"` `data-item="a"`, three slots, `d3` empty;
@@ -2707,9 +2739,213 @@ export function SpotMatchView(p: {
   - a project with one survey date shows the current image and no strip;
   - closing the project (`workspace.getState().closeProject()`) closes the dialog;
   - a key with the swipe slider focused does not step dates (the dialog skips `defaultPrevented` events);
-  - Tab stays inside the dialog (first and last focusable wrap).
+  - Tab stays inside the dialog (first and last focusable wrap);
+  - **linked zoom for photos** (founder, 13 Oct): in compare (side by side), a wheel up over `spot-zoom-left` (`dispatchEvent(new WheelEvent('wheel', { deltaY: -100, clientX, clientY, bubbles: true, cancelable: true }))`) sets `data-scale="1.25"` on both `spot-zoom-left` and `spot-zoom-right`; a pointer drag on the right (down, move by 20 % of its width, up; stub `getBoundingClientRect` to a 400 x 300 box in jsdom) changes `data-x` on both to the same value; a double click on either sets both back to `1.00`; the same after clicking `spot-mode-swipe` (both layers keep one transform: their `.spot-zoom-pic` `style.transform` strings are equal); changing the right date keeps the zoom; leaving compare and opening it again starts at `1.00`; ArrowRight with `spot-zoom-left` focused still steps the left date (the box leaves the arrows to the viewer);
+  - a 360 pair is not wrapped in `spot-zoom-*` (it keeps its linked look).
 - [ ] **Step 2: Run, expect FAIL.**
-- [ ] **Step 3: Implement `SpotCompare.tsx`**
+- [ ] **Step 3: Write the failing zoom tests** (`spotZoom.test.ts`)
+
+```ts
+import { describe, expect, it } from 'vitest';
+import { clampView, createZoomLink, FIT, panBy, viewCss, zoomAt } from './spotZoom';
+
+describe('linked zoom and pan', () => {
+  it('zooms about the box centre', () => {
+    expect(zoomAt(FIT, 2, 0, 0)).toEqual({ s: 2, x: 0, y: 0 });
+  });
+  it('keeps the point under the pointer still', () => {
+    const v = zoomAt(FIT, 2, 0.25, 0);
+    expect(v).toEqual({ s: 2, x: -0.25, y: 0 });
+    // the picture point that was at 0.25 (content 0.25) is still at 0.25
+    expect(v.x + v.s * 0.25).toBeCloseTo(0.25);
+  });
+  it('stops at fit and at eight times', () => {
+    expect(zoomAt({ s: 2, x: -0.25, y: 0 }, 0.25, 0, 0)).toEqual(FIT);
+    expect(zoomAt(FIT, 100, 0, 0).s).toBe(8);
+  });
+  it('pans only while zoomed, never past the picture edge', () => {
+    expect(panBy(FIT, 0.3, 0)).toEqual(FIT);
+    expect(panBy({ s: 2, x: 0, y: 0 }, 1, -1)).toEqual({ s: 2, x: 0.5, y: -0.5 });
+    expect(clampView({ s: 3, x: 2, y: -0.2 })).toEqual({ s: 3, x: 1, y: -0.2 });
+  });
+  it('writes one CSS transform for both sides', () => {
+    expect(viewCss({ s: 2, x: -0.25, y: 0 })).toBe('translate(-25%, 0%) scale(2)');
+  });
+  it('shares one view between two subscribers', () => {
+    const link = createZoomLink();
+    const seen: number[] = [];
+    link.subscribe((st) => seen.push(st.view.s));
+    link.getState().set(zoomAt(FIT, 1.25, 0, 0));
+    expect(link.getState().view.s).toBe(1.25);
+    expect(seen).toEqual([1.25]);
+  });
+});
+```
+
+- [ ] **Step 4: Run, expect FAIL.**
+- [ ] **Step 5: Implement `spotZoom.ts`**
+
+```ts
+import { createStore, type StoreApi } from 'zustand/vanilla';
+
+/**
+ * Linked zoom and pan of two photos or video frames in Compare (founder, 13 Oct 2026): one view
+ * for both sides. `s` is the scale (1: the picture fits its box), `x` and `y` shift the picture
+ * centre in box widths and heights; the picture always covers its box.
+ */
+export interface ZoomView {
+  s: number;
+  x: number;
+  y: number;
+}
+export const ZOOM = { min: 1, max: 8, step: 1.25 } as const;
+export const FIT: ZoomView = { s: 1, x: 0, y: 0 };
+
+const clamp = (v: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, v));
+
+export function clampView(v: ZoomView): ZoomView {
+  const s = clamp(v.s, ZOOM.min, ZOOM.max);
+  const m = (s - 1) / 2;
+  // `|| 0` turns -0 into 0, so a view back at fit equals FIT
+  return { s, x: clamp(v.x, -m, m) || 0, y: clamp(v.y, -m, m) || 0 };
+}
+
+/** Zoom by `factor` about the box point (`px`, `py`), in box fractions from its centre. */
+export function zoomAt(v: ZoomView, factor: number, px: number, py: number): ZoomView {
+  const s = clamp(v.s * factor, ZOOM.min, ZOOM.max);
+  const k = s / v.s;
+  return clampView({ s, x: px - (px - v.x) * k, y: py - (py - v.y) * k });
+}
+
+/** Pan by (`dx`, `dy`) box fractions. */
+export function panBy(v: ZoomView, dx: number, dy: number): ZoomView {
+  return clampView({ s: v.s, x: v.x + dx, y: v.y + dy });
+}
+
+/** The transform of the picture layer (transform origin at its centre). */
+export function viewCss(v: ZoomView): string {
+  return `translate(${String(v.x * 100)}%, ${String(v.y * 100)}%) scale(${String(v.s)})`;
+}
+
+export interface ZoomLinkState {
+  view: ZoomView;
+  set(v: ZoomView): void;
+}
+export function createZoomLink(): StoreApi<ZoomLinkState> {
+  return createStore<ZoomLinkState>()((set) => ({
+    view: FIT,
+    set: (v) => {
+      set({ view: clampView(v) });
+    },
+  }));
+}
+```
+
+- [ ] **Step 6: Implement `SpotZoom.tsx`**
+
+```tsx
+import { useEffect, useRef, type KeyboardEvent, type PointerEvent, type ReactNode } from 'react';
+import { useStore } from 'zustand';
+import type { StoreApi } from 'zustand/vanilla';
+import { FIT, panBy, viewCss, ZOOM, zoomAt, type ZoomLinkState, type ZoomView } from './spotZoom';
+
+/**
+ * A box whose picture zooms and pans with the linked view: wheel about the pointer, drag to pan,
+ * double click, `0` or `F` to fit, `+` and `-` about the centre. The arrow keys, `C` and Esc are
+ * left to the viewer. Both sides of Compare use one link, so they move together.
+ */
+export function SpotZoom(p: {
+  link: StoreApi<ZoomLinkState>;
+  side: 'left' | 'right';
+  children: ReactNode;
+}) {
+  const view = useStore(p.link, (st) => st.view);
+  const box = useRef<HTMLDivElement>(null);
+  const drag = useRef<{ x: number; y: number } | null>(null);
+  const set = (v: ZoomView) => {
+    p.link.getState().set(v);
+  };
+
+  useEffect(() => {
+    const el = box.current;
+    if (!el) return;
+    // the wheel zooms and must not scroll the dialog behind it
+    const onWheel = (e: WheelEvent) => {
+      e.preventDefault();
+      const r = el.getBoundingClientRect();
+      const px = r.width > 0 ? (e.clientX - r.left) / r.width - 0.5 : 0;
+      const py = r.height > 0 ? (e.clientY - r.top) / r.height - 0.5 : 0;
+      const factor = e.deltaY < 0 ? ZOOM.step : 1 / ZOOM.step;
+      p.link.getState().set(zoomAt(p.link.getState().view, factor, px, py));
+    };
+    el.addEventListener('wheel', onWheel, { passive: false });
+    return () => {
+      el.removeEventListener('wheel', onWheel);
+    };
+  }, [p.link]);
+
+  const onDown = (e: PointerEvent<HTMLDivElement>) => {
+    if (e.button !== 0) return;
+    if (typeof e.currentTarget.setPointerCapture === 'function')
+      e.currentTarget.setPointerCapture(e.pointerId);
+    drag.current = { x: e.clientX, y: e.clientY };
+  };
+  const onMove = (e: PointerEvent<HTMLDivElement>) => {
+    const from = drag.current;
+    const r = box.current?.getBoundingClientRect();
+    if (!from || !r || r.width === 0 || r.height === 0) return;
+    set(
+      panBy(
+        p.link.getState().view,
+        (e.clientX - from.x) / r.width,
+        (e.clientY - from.y) / r.height,
+      ),
+    );
+    drag.current = { x: e.clientX, y: e.clientY };
+  };
+  const onUp = () => {
+    drag.current = null;
+  };
+  const onKey = (e: KeyboardEvent<HTMLDivElement>) => {
+    if (e.ctrlKey || e.metaKey || e.altKey) return;
+    const v = p.link.getState().view;
+    if (e.key === '+' || e.key === '=') set(zoomAt(v, ZOOM.step, 0, 0));
+    else if (e.key === '-') set(zoomAt(v, 1 / ZOOM.step, 0, 0));
+    else if (e.key === '0' || e.key === 'f' || e.key === 'F') set(FIT);
+    else return;
+    e.preventDefault();
+    e.stopPropagation();
+  };
+
+  return (
+    <div
+      ref={box}
+      className={`spot-zoom${view.s > 1 ? ' zoomed' : ''}`}
+      tabIndex={0}
+      data-testid={`spot-zoom-${p.side}`}
+      data-scale={view.s.toFixed(2)}
+      data-x={view.x.toFixed(3)}
+      data-y={view.y.toFixed(3)}
+      onPointerDown={onDown}
+      onPointerMove={onMove}
+      onPointerUp={onUp}
+      onPointerCancel={onUp}
+      onDoubleClick={() => {
+        set(FIT);
+      }}
+      onKeyDown={onKey}
+    >
+      <div className="spot-zoom-pic" style={{ transform: viewCss(view) }}>
+        {p.children}
+      </div>
+    </div>
+  );
+}
+```
+
+Add to `spot.css`: `.spot-zoom { position: absolute; inset: 0; overflow: hidden; touch-action: none; }`, `.spot-zoom.zoomed { cursor: grab; }`, `.spot-zoom-pic { position: absolute; inset: 0; transform-origin: 50% 50%; will-change: transform; }`. In Swipe, `FramesCompare` clips the top layer; each layer holds its own `SpotZoom` on the same link, so a drag on either visible part moves both and the swipe handle (its own element) still works.
+
+- [ ] **Step 7: Implement `SpotCompare.tsx`** (photos and video frames inside `SpotZoom` on one shared `createZoomLink`; 360s and walk frames keep the shared look)
 
 ```tsx
 import { PANO_FOV } from '@aio/engine';
@@ -2722,6 +2958,8 @@ import { createLookLink } from '../lookLink';
 import { SpotMatchView } from './SpotMatchView';
 import type { SpotHistory, SpotMatch } from './spotTypes';
 import { matchAt, type SpotCompareState } from './spotViewerStore';
+import { SpotZoom } from './SpotZoom';
+import { createZoomLink } from './spotZoom';
 
 /** Width over height of a match's picture (stacked modes keep it so the swipe lines up). */
 function aspectOf(layers: readonly Layer[], m: SpotMatch | undefined): number {
@@ -2737,7 +2975,8 @@ function aspectOf(layers: readonly Layer[], m: SpotMatch | undefined): number {
 /**
  * Two dates of one spot (spec "Compare (B)", inside the viewer: see the plan's deviation 1): the
  * shown match on the left, another date's best on the right, side by side or swiped with
- * `FramesCompare`. 360s share one look.
+ * `FramesCompare`. 360s and walk frames share one look; photos and video frames share one zoom
+ * and pan (founder, 13 Oct 2026), so in Swipe both layers stay over the same ground.
  */
 export function SpotCompare(p: {
   history: SpotHistory;
@@ -2755,15 +2994,25 @@ export function SpotCompare(p: {
     createLookLink({ yawDeg: left?.lookDeg ?? 0, pitchDeg: 0, fovDeg: PANO_FOV.start }),
   );
   const dated = h.dates.filter((d) => d.matches.length > 0);
-  const view = (m: SpotMatch) => (
-    <SpotMatchView
-      projectId={p.projectId}
-      layers={p.layers}
-      match={m}
-      look={look}
-      playable={false}
-    />
-  );
+  const [zoom] = useState(createZoomLink);
+  const view = (m: SpotMatch, side: 'left' | 'right') => {
+    const shown = (
+      <SpotMatchView
+        projectId={p.projectId}
+        layers={p.layers}
+        match={m}
+        look={look}
+        playable={false}
+      />
+    );
+    return m.kind === 'pano' || m.kind === 'walk' ? (
+      shown
+    ) : (
+      <SpotZoom link={zoom} side={side}>
+        {shown}
+      </SpotZoom>
+    );
+  };
   const chip = (side: 'left' | 'right') => (
     <select
       className="spot-chip"
@@ -2807,8 +3056,8 @@ export function SpotCompare(p: {
       {left && (
         <FramesCompare
           className="spot-compare-frames"
-          a={view(left)}
-          b={right ? view(right) : null}
+          a={view(left, 'left')}
+          b={right ? view(right, 'right') : null}
           mode={state.mode}
           amount={state.amount}
           onAmount={(amount) => {
@@ -2828,7 +3077,7 @@ export function SpotCompare(p: {
 }
 ```
 
-- [ ] **Step 4: Implement `SpotViewer.tsx`.** Structure (pattern of `Lightbox.tsx`):
+- [ ] **Step 8: Implement `SpotViewer.tsx`.** Structure (pattern of `Lightbox.tsx`):
 
 ```tsx
 export function SpotViewer() {
@@ -2863,9 +3112,9 @@ export function SpotViewer() {
 - `onKeyDown` on the dialog: `e.stopPropagation()` (stage and app shortcuts stay out, as the lightbox); return when `e.defaultPrevented` or a modifier is held; `spot.close`: compare on ? `setCompare(null)` : `close()`; `spot.compare`: toggle compare, starting `{ mode: 'side', left: at, right: defaultOther(history, at.capture), amount: 0.5 }`; strip keys through `stripKey` (in compare they move the left side: `setCompare({ ...compare, left: next })`); Tab wraps inside the dialog exactly as `Lightbox.tsx` does.
 - Root: `.spot-scrim` (pointer down on the scrim closes) around `.spot-dialog` with `role="dialog"`, `aria-modal="true"`, `aria-label={t('spot.dialog', { name })}`, `data-testid="spot-viewer"`, `tabIndex={-1}`. It calls nothing on `workspace`, `timeline` or `shell`.
 - Add to `spot.css`: `.spot-scrim` and `.spot-dialog` mirroring the lightbox's `.lb-scrim` / `.lb` sizes (find them in `issueCard`'s CSS), the dialog a column of header, a `flex: 1` body, the strip; `.spot-compare` a column with its bar; `.spot-view` filling its box.
-- [ ] **Step 5: Mount** in `App.tsx`: `import { SpotViewer } from './workspace/spot/SpotViewer';` and `<SpotViewer />` on the line after `<Lightbox />`.
-- [ ] **Step 6: Run** the new test and `pnpm --filter @aio/desktop exec vitest run src/renderer/workspace`, PASS; `tsc --noEmit`.
-- [ ] **Step 7: Commit** `feat(stage): spot history viewer with dates and compare`.
+- [ ] **Step 9: Mount** in `App.tsx`: `import { SpotViewer } from './workspace/spot/SpotViewer';` and `<SpotViewer />` on the line after `<Lightbox />`.
+- [ ] **Step 10: Run** `spotZoom.test.ts`, the new viewer test and `pnpm --filter @aio/desktop exec vitest run src/renderer/workspace`, PASS; `tsc --noEmit`.
+- [ ] **Step 11: Commit** `feat(stage): spot history viewer with dates, compare and linked zoom`.
 
 ### Task 11: One click from every image
 
@@ -3234,7 +3483,7 @@ None. Verified: the search reads loaded layers (`@aio/schema` types unchanged), 
 
 ## Self-review
 
-- **Spec coverage:** the search with every kind and the table's tolerances (Tasks 1 to 5, 12); ground versus aerial by height (Task 2 `matchPhoto`, Task 4); target-only spots for S2 (Task 2 tests); footprint without a lens left out (Task 2); ranking and "+n" (Tasks 3, 8); skipped counts (Tasks 3, 5, 8); the clicked item is its date's match (Task 3); scale and video caching (Task 3 timing guard, Task 5 cache); the strip with colours, thumbnails, kinds, gaps, tooltips (Task 8); header with name, date, kind, distance and angle (Task 10); arrows and clicks (Tasks 8, 10); 360s and walk frames turned to the view, videos paused at the moment and playable (Tasks 9, 12); main view untouched (Task 10 test, Task 13); no-position line and one-date rule (Tasks 10, 11); Compare with Side by side and Swipe, linked 360 look (Task 10, deviation 1); error handling: unreadable flights skipped (Task 5), missing thumbnails (Task 8 `MediaThumb` icon), failed images (Task 9); one e2e spec on the change demo plus the 360 part (Task 13); guide (Task 14).
+- **Spec coverage:** the search with every kind and the table's tolerances (Tasks 1 to 5, 12); ground versus aerial by height (Task 2 `matchPhoto`, Task 4); target-only spots for S2 (Task 2 tests); footprint without a lens left out (Task 2); ranking and "+n" (Tasks 3, 8); skipped counts (Tasks 3, 5, 8); the clicked item is its date's match (Task 3); scale and video caching (Task 3 timing guard, Task 5 cache); the strip with colours, thumbnails, kinds, gaps, tooltips (Task 8); header with name, date, kind, distance and angle (Task 10); arrows and clicks (Tasks 8, 10); 360s and walk frames turned to the view, videos paused at the moment and playable (Tasks 9, 12); main view untouched (Task 10 test, Task 13); no-position line and one-date rule (Tasks 10, 11); Compare with Side by side and Swipe, linked 360 look and linked photo zoom and pan (Task 10, founder decisions 1 and 2); error handling: unreadable flights skipped (Task 5), missing thumbnails (Task 8 `MediaThumb` icon), failed images (Task 9); one e2e spec on the change demo plus the 360 part (Task 13); guide (Task 14).
 - **Placeholders:** none; the two "check before running" notes in Task 13 name exactly what to read.
 - **Types:** `SpotOpen`, `SpotItem`, `SpotMatch`, `SpotAt`, `SpotCompareState`, `historyFor`, `stripKey`, `openSpotHistory` are spelled the same in every task. Task 12 adds the optional `SpotMatch.centreDeg` (it runs after every other task has landed, so no batch shares those files).
 - **Review focus:** each of the five lines names its pinning test and owning task.
@@ -3251,7 +3500,7 @@ On a project with photos on at least two survey dates (the change demo works):
 1. Open **Media** and click a photo. Under the photo a strip shows one slot per survey date, oldest on the left, each in its date colour with a thumbnail and its kind. A date with nothing near is a hatched slot that says "Nothing within 15 m".
 2. Click **Other dates** (the clock-arrow button in the photo panel header). The viewer opens on the photo you clicked; the header shows its name, date and kind.
 3. Press **→**. The viewer shows the same spot on the next date with an image, skipping empty dates, and the header says how far it was taken from your photo. Press **↓** on a date with "+1" or more to see the other images of that date. Press **←** to go back.
-4. Press **C** (or **Compare...**). The two dates sit side by side; the date chips above change either side. Click **Swipe** and drag the handle (or focus it and use the arrow keys).
+4. Press **C** (or **Compare...**). The two dates sit side by side; the date chips above change either side. Turn the mouse wheel over either photo: both zoom in on the same place; drag to pan both, double-click to fit. Click **Swipe** and drag the handle (or focus it and use the arrow keys): the zoom stays and both dates stay lined up under the divider.
 5. Press **Esc** twice to close. The date bar, the layers you had on and the selected photo are exactly as before.
 6. Click a drone photo and open **Other dates**: the other date's slot shows the drone photo that sees the same ground ("Drone"); a date whose flights never saw it says "Not seen".
 7. On a project with 360s on two dates, select a 360 in 3D, open the **Selection** tab and click **Other dates**: the nearest 360 of each date opens turned towards the same spot; where none is within 25 m the slot says so.
