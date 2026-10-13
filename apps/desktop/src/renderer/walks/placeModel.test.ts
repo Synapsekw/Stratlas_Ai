@@ -4,7 +4,6 @@ import { ProjectManifest, WalkRawPath, type Capture, type WalkLayer } from '@aio
 import { describe, expect, it } from 'vitest';
 import {
   dateChoices,
-  firstStep,
   northTick,
   placeSurfaces,
   rawUsable,
@@ -139,13 +138,6 @@ describe('surfaceFramesOf', () => {
     expect(frames.drawing('ortho')).toBeNull();
     expect(frames.drawing('gone')).toBeNull();
     expect(surfaceFramesOf(manifest(), () => undefined).drawing('sheet-own')).toBeNull();
-  });
-});
-
-describe('firstStep', () => {
-  it('starts at the date step when the walk has no capture', () => {
-    expect(firstStep(walk())).toBe('date');
-    expect(firstStep(walk({ capture: 'c1' }))).toBe('surface');
   });
 });
 

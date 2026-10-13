@@ -8,7 +8,8 @@ import { captureIndex } from '@aio/workspace';
  * The session itself is `placeStore.ts`; the fit is `@aio/geo`'s `fitWalk`.
  */
 
-export type PlaceStep = 'date' | 'surface' | 'start' | 'end' | 'correct';
+/** The session's phases (design "Walk placing by start and end"). */
+export type PlaceStep = 'check' | 'start' | 'end' | 'placed' | 'fine-tune';
 
 /** What a walk can be placed on: a drawing (a plan raster), the map or the 3D view (the model frame). */
 export type PlaceSurface =
@@ -141,11 +142,6 @@ export function surfaceFramesOf(m: ProjectManifest, drawings: DrawingLookup): Wa
       return surfaceFrameFromCorners(c, [w, h], info.provisional);
     },
   };
-}
-
-/** The first step of a session: the survey date when the walk has none, else the surface. */
-export function firstStep(walk: WalkLayer): PlaceStep {
-  return walk.capture === undefined ? 'date' : 'surface';
 }
 
 /**
