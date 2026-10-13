@@ -90,6 +90,9 @@ describe('walk frames', () => {
     expect(m?.item).toEqual({ kind: 'walk', layer: 'walk-a', t: 6 });
     expect(m?.distanceM).toBeCloseTo(3);
   });
+  it("carry the frame's picture centre bearing", () => {
+    expect(matchWalk(ground, walk(track([[6, 3, 0]], 120)))?.centreDeg).toBe(120);
+  });
   it('do not match beyond 15 m or when not placed', () => {
     expect(matchWalk(ground, walk(track([[0, 40, 0]])))).toBeNull();
     expect(matchWalk(ground, walk(null))).toBeNull();

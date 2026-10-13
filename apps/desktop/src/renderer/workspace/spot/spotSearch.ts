@@ -1,6 +1,6 @@
 import type { CaptureIndex } from '@aio/workspace';
 import { matchEntry } from './spotMatchers';
-import { originCapture, spotOf } from './spotOrigin';
+import { nearestSample, originCapture, spotOf } from './spotOrigin';
 import type {
   Spot,
   SpotDate,
@@ -41,8 +41,16 @@ export function sameItem(a: SpotItem, b: SpotItem): boolean {
   return a.kind === b.kind;
 }
 
-/** The clicked item as a match of its own spot (the viewer shows an undated one through it). */
-export function selfMatch(item: SpotItem, capture: string, spot: Spot): SpotMatch {
+/**
+ * The clicked item as a match of its own spot (the viewer shows an undated one through it).
+ * `centreDeg`: a walk frame's picture centre bearing at the clicked moment.
+ */
+export function selfMatch(
+  item: SpotItem,
+  capture: string,
+  spot: Spot,
+  centreDeg?: number,
+): SpotMatch {
   const kind: SpotKind = item.kind === 'photo' ? (spot.aerial ? 'drone' : 'photo') : item.kind;
   return {
     capture,
@@ -52,8 +60,16 @@ export function selfMatch(item: SpotItem, capture: string, spot: Spot): SpotMatc
     distanceM: 0,
     angleDeg: 0,
     ...(spot.bearingDeg !== undefined ? { lookDeg: spot.bearingDeg } : {}),
+    ...(centreDeg !== undefined ? { centreDeg } : {}),
     score: -Infinity,
   };
+}
+
+/** The picture centre bearing of a walk item's nearest sample, else undefined. */
+function walkCentreDeg(item: SpotItem, entries: readonly SpotEntry[]): number | undefined {
+  if (item.kind !== 'walk') return undefined;
+  const e = entries.find((x) => x.kind === 'walk' && x.layer === item.layer);
+  return e?.kind === 'walk' ? nearestSample(e.samples, item.t)?.bearingDeg : undefined;
 }
 
 export function searchSpot(input: SearchInput): SpotHistory {
@@ -77,7 +93,7 @@ export function searchSpot(input: SearchInput): SpotHistory {
   const own = o?.capture === undefined ? undefined : byCapture.get(o.capture);
   if (o && own)
     own.matches = [
-      selfMatch(o.item, own.capture, spot),
+      selfMatch(o.item, own.capture, spot, walkCentreDeg(o.item, input.entries)),
       ...own.matches.filter((m) => !sameItem(m.item, o.item)),
     ];
   return { spot, dates };

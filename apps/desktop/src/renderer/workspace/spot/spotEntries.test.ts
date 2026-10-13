@@ -5,6 +5,7 @@ import { describe, expect, it } from 'vitest';
 import { LENS, lookQuat } from './__fixtures__/spotPoses';
 import { safeAssetUrl } from './safeAssetUrl';
 import { sampleVideo, spotEntries } from './spotEntries';
+import type { TrackSample } from './spotTypes';
 
 const photos = (id: string, capture: string | undefined, items: unknown[]) =>
   ({ kind: 'photos', id, name: id, visible: true, capture, items }) as unknown as Layer;
@@ -75,6 +76,22 @@ describe('spotEntries', () => {
     expect(spotEntries({ layers: manifest.layers, index }).some((x) => x.kind === 'video')).toBe(
       false,
     );
+  });
+  it('reads walks the same way: a track, unplaced (null) or still reading (left out)', () => {
+    const walk = (id: string) =>
+      ({ kind: 'walk', id, name: id, visible: true, capture: 'd1' }) as unknown as Layer;
+    const layers = [walk('w-track'), walk('w-unplaced'), walk('w-reading')];
+    const sample: TrackSample = { t: 0, pos: [0, 1.7, 0], groundY: 0, bearingDeg: 0 };
+    const got = spotEntries({
+      layers,
+      index,
+      walkSamples: (l) =>
+        l.id === 'w-track' ? [sample] : l.id === 'w-unplaced' ? null : undefined,
+    });
+    expect(got).toEqual([
+      { kind: 'walk', layer: 'w-track', capture: 'd1', samples: [sample] },
+      { kind: 'walk', layer: 'w-unplaced', capture: 'd1', samples: null },
+    ]);
   });
 });
 

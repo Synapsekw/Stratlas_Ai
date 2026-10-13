@@ -112,6 +112,7 @@ export function matchWalk(spot: Spot, e: WalkEntry): Found | null {
       distanceM: d,
       angleDeg: angle,
       lookDeg: bearingTo(s.pos, spot.target) ?? spot.bearingDeg ?? s.bearingDeg,
+      centreDeg: s.bearingDeg,
       score,
     };
   }

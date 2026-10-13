@@ -96,6 +96,8 @@ export interface SpotMatch {
   angleDeg: number | null;
   /** Compass bearing a 360 or walk frame opens turned to (towards the target). */
   lookDeg?: number;
+  /** A walk frame's picture centre bearing at its moment: the frame turns by look minus this. */
+  centreDeg?: number;
   /** Lower ranks first within its class (ground-level or aerial). */
   score: number;
   aerial: boolean;

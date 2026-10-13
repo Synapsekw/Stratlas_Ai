@@ -127,6 +127,28 @@ describe('historyFor', () => {
       pano: 'b',
     });
   });
+  it("opens a walk frame turned by the origin sample's picture centre", () => {
+    const e: SpotEntry[] = [
+      {
+        kind: 'walk',
+        layer: 'walk-d1',
+        capture: 'd1',
+        samples: [
+          { t: 4, pos: [0, 1.7, 0], groundY: 0, bearingDeg: 30 },
+          { t: 5, pos: [1, 1.7, 0], groundY: 0, bearingDeg: 40 },
+        ],
+      },
+    ];
+    const r = historyFor(
+      { item: { kind: 'walk', layer: 'walk-d1', t: 4.9 }, lookDeg: 100 },
+      e,
+      index,
+    );
+    const self = 'history' in r ? r.history.dates[0]?.matches[0] : undefined;
+    expect(self?.item).toEqual({ kind: 'walk', layer: 'walk-d1', t: 4.9 });
+    expect(self?.lookDeg).toBe(100);
+    expect(self?.centreDeg).toBe(40);
+  });
   it('compares items by identity', () => {
     expect(sameItem({ kind: 'walk', layer: 'w', t: 1 }, { kind: 'walk', layer: 'w', t: 9 })).toBe(
       true,

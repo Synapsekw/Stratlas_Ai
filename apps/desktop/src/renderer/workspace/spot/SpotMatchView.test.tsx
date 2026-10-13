@@ -33,8 +33,25 @@ vi.mock('../panoView', () => ({
     };
   },
 }));
+interface FakeVideoView {
+  video: HTMLVideoElement;
+  looks: PanoLook[];
+}
+const videoViews: FakeVideoView[] = [];
 vi.mock('@aio/video', async (orig) => ({
   ...(await orig<Record<string, unknown>>()),
+  createPanoVideoView: (_host: HTMLElement, video: HTMLVideoElement, look: PanoLook) => {
+    const v: FakeVideoView = { video, looks: [look] };
+    videoViews.push(v);
+    return {
+      canvas: document.createElement('canvas'),
+      setLook(l: PanoLook) {
+        v.looks.push(l);
+      },
+      invalidate: () => undefined,
+      dispose: () => undefined,
+    };
+  },
   FrameImage: ({ src, kind, t }: { src: string; kind: string; t?: number }) => (
     <i data-src={src} data-kind={kind} data-t={t} />
   ),
@@ -61,6 +78,15 @@ const layers = [
     name: 'Clip',
     visible: true,
     src: { path: 'clips/c.mp4', location: 'workspace' },
+  },
+  {
+    kind: 'walk',
+    id: 'walk-d1',
+    name: 'Walk',
+    visible: true,
+    src: { path: 'walks/w/play.mp4' },
+    record: { path: 'walks/w/walk.json' },
+    durationS: 60,
   },
 ] as unknown as Layer[];
 
@@ -90,6 +116,10 @@ function only<T>(v: T | undefined | null, what = 'element'): T {
 
 beforeEach(() => {
   views.length = 0;
+  videoViews.length = 0;
+  // jsdom has no media playback: a walk frame pauses and unloads its video
+  vi.spyOn(HTMLMediaElement.prototype, 'pause').mockImplementation(() => undefined);
+  vi.spyOn(HTMLMediaElement.prototype, 'load').mockImplementation(() => undefined);
   vi.stubGlobal('fetch', () => Promise.reject(new Error('offline')));
   host = document.createElement('div');
   document.body.append(host);
@@ -99,6 +129,7 @@ afterEach(() => {
   root = undefined;
   host.remove();
   vi.unstubAllGlobals();
+  vi.restoreAllMocks();
 });
 
 describe('SpotMatchView', () => {
@@ -197,6 +228,57 @@ describe('SpotMatchView', () => {
     });
     expect(look.getState().look.yawDeg).toBe(10);
     expect(seen).toHaveBeenCalled();
+  });
+
+  it('shows a walk frame at its moment, turned from its picture centre to the spot', () => {
+    render(
+      <SpotMatchView
+        projectId="p"
+        layers={layers}
+        match={match(
+          { kind: 'walk', layer: 'walk-d1', t: 12.5 },
+          { kind: 'walk', lookDeg: 100, centreDeg: 30 },
+        )}
+      />,
+    );
+    expect(videoViews).toHaveLength(1);
+    const v = only(videoViews[0]);
+    expect(only(v.looks[0]).yawDeg).toBe(70);
+    expect(v.video.src).toBe(assetUrl('p', { path: 'walks/w/play.mp4' }));
+    const pause = vi.spyOn(v.video, 'pause').mockImplementation(() => undefined);
+    act(() => {
+      v.video.dispatchEvent(new Event('loadedmetadata'));
+    });
+    expect(v.video.currentTime).toBe(12.5);
+    expect(pause).toHaveBeenCalled();
+  });
+
+  it('turns a walk frame with a shared look of compass bearings', () => {
+    const look = createLookLink({ yawDeg: 100, pitchDeg: 0, fovDeg: 70 });
+    render(
+      <SpotMatchView
+        projectId="p"
+        layers={layers}
+        match={match(
+          { kind: 'walk', layer: 'walk-d1', t: 3 },
+          { kind: 'walk', lookDeg: 100, centreDeg: 30 },
+        )}
+        look={look}
+      />,
+    );
+    const v = only(videoViews[0]);
+    expect(only(v.looks[0]).yawDeg).toBe(70);
+    act(() => {
+      look.getState().set({ yawDeg: 200, pitchDeg: 5, fovDeg: 60 });
+    });
+    expect(v.looks.at(-1)).toEqual({ yawDeg: 170, pitchDeg: 5, fovDeg: 60 });
+    const surface = only(q('[data-testid="spot-walk"]'));
+    act(() => {
+      surface.dispatchEvent(new KeyboardEvent('keydown', { key: '+', bubbles: true }));
+    });
+    // the frame writes back in compass terms: its own yaw plus its picture centre
+    expect(look.getState().look.yawDeg).toBe(200);
+    expect(look.getState().look.fovDeg).toBeLessThan(60);
   });
 
   it('says so when the item is gone', () => {
