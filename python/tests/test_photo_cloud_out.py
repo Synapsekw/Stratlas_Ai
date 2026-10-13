@@ -18,7 +18,7 @@ from aio_pipelines.photo import cloud_out as C
 from aio_pipelines.photo import native
 from aio_pipelines.photo import surface as S
 from aio_pipelines.photo.fuse import PointTiles
-from aio_pipelines.runtime import Job, JobError, Step, StepContext
+from aio_pipelines.runtime import Cancelled, Job, JobError, Step, StepContext
 from conftest import Recorder
 
 
@@ -110,6 +110,26 @@ def test_the_las_is_written_tile_by_tile_with_the_classes(tmp_path):
     assert seen[-1] == "Writing the cloud: tile 4 of 4"
 
 
+def test_a_cancelled_or_empty_las_leaves_no_file(tmp_path):
+    pts = np.array([[1.0, 1.0, 10.0], [2.0, 2.0, 10.0]])
+    store = _fused(tmp_path / "m", {"0_0": pts})
+
+    def cancel():
+        raise Cancelled()
+
+    with pytest.raises(Cancelled):
+        C.write_las(tmp_path / "c.las", store, SHIFT, None, check=cancel)
+    assert sorted(p.name for p in tmp_path.iterdir()) == ["m"]
+    empty = tmp_path / "e" / "fused"
+    empty.mkdir(parents=True)
+    np.savez(empty / "0_0.npz", xyz=np.zeros((0, 3)), rgb=np.zeros((0, 3), np.uint8),
+             normal=np.zeros((0, 3), np.float32), count=np.zeros(0, np.int32))  # fmt: skip
+    (empty / "index.json").write_text(json.dumps({"points": 0, "bounds": [[0, 0, 0], [1, 1, 1]]}), "utf-8")
+    with pytest.raises(JobError, match="empty"):
+        C.write_las(tmp_path / "c.las", PointTiles(tmp_path / "e", 10.0), SHIFT, None)
+    assert sorted(p.name for p in tmp_path.iterdir()) == ["e", "m"]
+
+
 def test_the_copc_command_lines():
     args = C.untwine_args("untwine", Path("a.las"), Path("b.copc.laz"), Path("t"), 32639)
     assert args == ["untwine", "-i", "a.las", "-o", "b.copc.laz", "--temp_dir", "t", "--progress_debug",
@@ -142,6 +162,45 @@ def test_a_tools_own_progress_lines_drive_the_bar(tmp_path):
     got = [p["stepFraction"] for p in rec.of("progress") if p.get("message") == "Building the COPC"]
     assert any(abs(f - (0.3 + 0.65 * 0.5)) < 0.01 for f in got)
     assert max(got) == pytest.approx(0.3 + 0.65 * 0.9, abs=0.01)
+
+
+LATE_PROGRESS = r"""
+import time
+time.sleep(1.5)
+print("Untwine progress (10% done): Processing", flush=True)
+time.sleep(0.6)
+"""
+
+
+def test_the_bar_never_steps_back_when_the_tool_reports_late(tmp_path):
+    exe = ps.fake_tool(tmp_path, "untwine", LATE_PROGRESS)
+    ctx, rec = _ctx(tmp_path)
+    native.run_tool(ctx, [str(exe)], "Building the COPC", tmp_path / "w", expected_s=1,
+                    progress=(0.3, 0.95), on_output=C.untwine_progress)  # fmt: skip
+    got = [p["stepFraction"] for p in rec.of("progress") if p.get("message") == "Building the COPC"]
+    assert got == sorted(got) and max(got) > 0.3 + 0.65 * 0.5  # the ramp passed 10 % and held
+
+
+SURVIVOR = r"""
+import sys, time
+print("Untwine progress (10% done): Processing", flush=True)
+time.sleep(2.5)
+open(sys.argv[1], "w").write("still running")
+"""
+
+
+def test_a_hook_that_raises_stops_the_tool(tmp_path):
+    exe = ps.fake_tool(tmp_path, "untwine", SURVIVOR)
+    ctx, _ = _ctx(tmp_path)
+
+    def broken(line: str) -> float | None:
+        raise ValueError("bad line")
+
+    with pytest.raises(ValueError, match="bad line"):
+        native.run_tool(ctx, [str(exe), str(tmp_path / "alive")], "Building the COPC", tmp_path / "w",
+                        on_output=broken)  # fmt: skip
+    time.sleep(3.5)
+    assert not (tmp_path / "alive").exists()
 
 
 def test_untwine_is_found_by_its_variable_and_in_the_pack(tmp_path, monkeypatch):
@@ -192,13 +251,44 @@ def test_untwine_writes_the_copc_when_it_is_there(tmp_path, monkeypatch):
     assert "--progress_debug" in args and args[-2:] == ["--a_srs", "EPSG:32639"]
 
 
+LEAVES_TEMP = r"""
+import os, shutil, sys
+args = sys.argv[1:]
+temp = args[args.index("--temp_dir") + 1]
+open(os.environ["FAKE_UNTWINE_ARGS"], "w").write(" ".join(sorted(os.listdir(temp))))
+open(os.path.join(temp, "1-1-0-0.bin"), "wb").write(b"0" * 1000)
+if os.environ.get("FAKE_UNTWINE_FAIL"):
+    open(args[args.index("-o") + 1], "wb").write(b"LASF partial")
+    sys.exit("untwine: out of disk")
+shutil.copyfile(args[args.index("-i") + 1], args[args.index("-o") + 1])
+"""
+
+
+def test_untwines_temporary_files_go_after_a_run_and_after_a_failure(tmp_path, monkeypatch):
+    monkeypatch.setenv("AIO_UNTWINE", str(ps.fake_tool(tmp_path / "tools", "untwine", LEAVES_TEMP)))
+    monkeypatch.setenv("FAKE_UNTWINE_ARGS", str(tmp_path / "seen"))
+    ctx, _ = _ctx(tmp_path)
+    temp, out = tmp_path / ".tmp", tmp_path / "out" / "c.copc.laz"
+    out.parent.mkdir()
+    (temp / "untwine").mkdir(parents=True)
+    (temp / "untwine" / "stale.bin").write_bytes(b"from a cancelled run")
+    assert C.write_copc(ctx, _las(tmp_path), out, 1000, None, temp, 2**30) == "untwine"
+    assert (tmp_path / "seen").read_text() == ""  # the stale file was gone before untwine ran
+    assert not (temp / "untwine").exists() and os.listdir(out.parent) == ["c.copc.laz"]
+    out.unlink()
+    monkeypatch.setenv("FAKE_UNTWINE_FAIL", "1")
+    with pytest.raises(JobError, match="out of disk"):
+        C.write_copc(ctx, _las(tmp_path), out, 1000, None, temp, 2**30)
+    assert not (temp / "untwine").exists() and os.listdir(out.parent) == []  # no partial COPC
+
+
 def test_without_untwine_pdal_writes_the_copc(tmp_path, monkeypatch):
     monkeypatch.setenv("AIO_UNTWINE", str(tmp_path / "no-untwine.exe"))
     monkeypatch.setenv("AIO_PDAL", str(ps.fake_tool(tmp_path / "tools", "pdal", FAKE_PDAL)))
     ctx, _ = _ctx(tmp_path)
     out = tmp_path / "out.copc.laz"
     assert C.write_copc(ctx, _las(tmp_path), out, 1000, 32639, tmp_path / ".tmp", 2**30) == "pdal"
-    assert out.is_file()
+    assert out.is_file() and not (tmp_path / ".tmp" / "copc-pipeline.json").exists()
 
 
 def test_the_pdal_fallback_refuses_a_cloud_too_big_for_the_memory(tmp_path, monkeypatch):

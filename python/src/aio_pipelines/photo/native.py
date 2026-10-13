@@ -139,33 +139,41 @@ def run_tool(
         last_mem = last_read = 0.0
         tails = [_Tail(out_path), _Tail(err_path)] if on_output is not None else []
         told: float | None = None
-        while proc.poll() is None:
-            if ctx.cancel_event.is_set():
-                _kill_tree(proc)
-                raise Cancelled()
-            if memory_limit and time.monotonic() - last_mem >= 0.5:
-                from .colmap_io import tree_memory
-
-                last_mem = time.monotonic()
-                used = tree_memory(proc.pid)
-                if used > memory_limit:
+        shown = 0.0  # the bar never steps back (the ramp may pass the tool's first fraction)
+        try:
+            while proc.poll() is None:
+                if ctx.cancel_event.is_set():
                     _kill_tree(proc)
-                    raise ToolMemoryExceeded(
-                        f"{what} stopped: it needed more than {memory_limit / 1e9:.1f} GB of memory."
-                    )
-            if tails and on_output is not None and time.monotonic() - last_read >= 0.2:
-                last_read = time.monotonic()
-                for tail in tails:
-                    for line in tail.lines():
-                        f = on_output(line)
-                        if f is not None:
-                            told = max(told or 0.0, min(1.0, f))
-            if told is not None:
-                frac = told
-            else:
-                frac = min(1.0, (time.monotonic() - t0) / max(1.0, expected_s)) * 0.95
-            ctx.progress(lo + (hi - lo) * frac, what)
-            time.sleep(0.1)
+                    raise Cancelled()
+                if memory_limit and time.monotonic() - last_mem >= 0.5:
+                    from .colmap_io import tree_memory
+
+                    last_mem = time.monotonic()
+                    used = tree_memory(proc.pid)
+                    if used > memory_limit:
+                        _kill_tree(proc)
+                        raise ToolMemoryExceeded(
+                            f"{what} stopped: it needed more than {memory_limit / 1e9:.1f} GB of memory."
+                        )
+                if tails and on_output is not None and time.monotonic() - last_read >= 0.2:
+                    last_read = time.monotonic()
+                    for tail in tails:
+                        for line in tail.lines():
+                            f = on_output(line)
+                            if f is not None:
+                                told = max(told or 0.0, min(1.0, f))
+                if told is not None:
+                    frac = told
+                else:
+                    frac = min(1.0, (time.monotonic() - t0) / max(1.0, expected_s)) * 0.95
+                shown = max(shown, frac)
+                ctx.progress(lo + (hi - lo) * shown, what)
+                time.sleep(0.1)
+        except BaseException:
+            # A hook, the progress callback or the memory probe raised: never leave the tool running.
+            if proc.poll() is None:
+                _kill_tree(proc)
+            raise
     out = out_path.read_text("utf-8", errors="replace")
     if proc.returncode != 0:
         err = err_path.read_text("utf-8", errors="replace")

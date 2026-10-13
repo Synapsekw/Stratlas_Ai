@@ -26,8 +26,9 @@ CHUNK_BYTES = 18
 FUSED_BYTES = 43
 LAS_BYTES = 36
 COPC_BYTES = 15
-#: untwine's temporary files, as a multiple of the COPC it writes.
-UNTWINE_TEMP = 2.0
+#: untwine's temporary files, bytes per point, while it runs: measured 277 MB for 3 M points
+#: (92 a point, about 16x the COPC and 2.7x the LAS), with untwine 1.5.1 from the pipeline pack.
+UNTWINE_TEMP_BYTES = 100
 #: Raw fused points per point at the matching spacing: about how many photos see a spot.
 RAW_PER_POINT = 4
 
@@ -120,5 +121,5 @@ def disk_need(
         + area / dsm_res**2 * 4 * 6
     )
     if cloud:
-        need += merged * (LAS_BYTES + COPC_BYTES * (1 + UNTWINE_TEMP))
+        need += merged * (LAS_BYTES + COPC_BYTES + UNTWINE_TEMP_BYTES)
     return int(need * 1.3 + 64 * 1024**2)

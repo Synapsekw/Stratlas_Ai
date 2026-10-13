@@ -55,13 +55,13 @@ def test_a_merge_over_the_budget_is_done_again_wider():
     assert B.remerge_voxel(0.04, 600_000_000, 150_000_000) == pytest.approx(0.08)
 
 
-def test_the_disk_estimate_reserves_twice_the_copc_for_untwine():
+def test_the_disk_estimate_reserves_a_hundred_bytes_a_point_for_untwine():
     kw = dict(photos=1000, pixels=20_000_000, scale=0.5, area=1e6, gsd=0.02, ortho_res=0.02,
               dsm_res=0.04, voxel=0.1, budget=150_000_000, sparse_points=500_000)  # fmt: skip
     without = B.disk_need(**kw, cloud=False)
     with_cloud = B.disk_need(**kw, cloud=True)
     merged = 1e6 / 0.1**2  # 100 M points
-    assert with_cloud - without == pytest.approx(merged * (36 + 15 * 3) * 1.3, rel=1e-6)
+    assert with_cloud - without == pytest.approx(merged * (36 + 15 + 100) * 1.3, rel=1e-6)
     fast = B.disk_need(**{**kw, "scale": 0.0, "voxel": 0.02, "budget": 0}, cloud=False)
     assert 0 < fast < without
 

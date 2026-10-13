@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import math
 import re
+import shutil
 import struct
 from collections.abc import Callable
 from pathlib import Path
@@ -156,12 +157,15 @@ def write_las(
                     n += len(xyz)
                     ground += int((cls == 2).sum())
                 progress((i + 1) / max(1, total), f"Writing the cloud: tile {i + 1} of {total}")
+            if not n:
+                raise JobError("The cloud is empty.")
             f.seek(0)
             f.write(_las_header(n, lo, mins, maxs))
+        replace_over(tmp, path)
     finally:
         if sampler is not None:
             sampler.close()
-    replace_over(tmp, path)
+        tmp.unlink(missing_ok=True)  # a cancel or failure leaves no partial LAS
     return {"points": n, "ground": ground}
 
 
@@ -196,16 +200,46 @@ def write_copc(
     budget: int,
     progress: tuple[float, float] = (0.3, 0.95),
 ) -> str:
-    """``las`` (``points`` points) as the COPC ``out``, with untwine, else PDAL. Answers which."""
+    """``las`` (``points`` points) as the COPC ``out``, with untwine, else PDAL. Answers which.
+    The tool writes a temporary name beside ``out``, moved over it only on success; untwine's
+    temporary folder (about 92 bytes a point, which it does not remove) and PDAL's pipeline file
+    go whether the run succeeds, fails or is cancelled."""
+    temp.mkdir(parents=True, exist_ok=True)
+    ut, pj = temp / "untwine", temp / "copc-pipeline.json"
+    part = out.with_name(f".tmp.{out.name}")  # keeps the .copc.laz ending untwine reads
+    try:
+        writer = _run_copc(ctx, las, part, points, epsg, temp, budget, progress, ut, pj)
+        if not part.is_file():
+            raise JobError(f"{writer} finished without writing the COPC file.")
+        replace_over(part, out)
+    finally:
+        shutil.rmtree(ut, ignore_errors=True)
+        pj.unlink(missing_ok=True)
+        part.unlink(missing_ok=True)
+    return writer
+
+
+def _run_copc(
+    ctx: StepContext,
+    las: Path,
+    out: Path,
+    points: int,
+    epsg: int | None,
+    temp: Path,
+    budget: int,
+    progress: tuple[float, float],
+    ut: Path,
+    pj: Path,
+) -> str:
     from ..pointcloud import find_pdal, pdal_env
 
-    temp.mkdir(parents=True, exist_ok=True)
     exe = native.find_tool("untwine")
     if exe:
-        (temp / "untwine").mkdir(exist_ok=True)
+        shutil.rmtree(ut, ignore_errors=True)  # a cancelled run's files
+        ut.mkdir(parents=True, exist_ok=True)
         native.run_tool(
             ctx,
-            untwine_args(exe, las, out, temp / "untwine", epsg),
+            untwine_args(exe, las, out, ut, epsg),
             "Building the COPC (untwine)",
             temp,
             expected_s=max(60.0, points / 2e6),
@@ -214,30 +248,25 @@ def write_copc(
             env=pdal_env(exe),
             on_output=untwine_progress,
         )
-        writer = "untwine"
-    else:
-        pdal = find_pdal()
-        if pdal is None:
-            raise JobError(NO_COPC_TOOL)
-        if points * PDAL_COPC_BYTES_PER_POINT > budget:
-            raise JobError(
-                f"The point cloud has {points:,} points, more than PDAL can turn into a COPC within "
-                f"the memory budget ({budget / 1e9:.1f} GB). Install pipeline pack 0.6.1 or later, "
-                "which brings untwine, or leave the point cloud out."
-            )
-        pj = temp / "copc-pipeline.json"
-        atomic_write_json(pj, pdal_copc_pipeline(las, out, epsg))
-        native.run_tool(
-            ctx,
-            [pdal, "pipeline", str(pj)],
-            "Building the COPC (PDAL)",
-            temp,
-            expected_s=max(30.0, points / PDAL_COPC_POINTS_PER_S),
-            progress=progress,
-            memory_limit=budget,
-            env=pdal_env(pdal),
+        return "untwine"
+    pdal = find_pdal()
+    if pdal is None:
+        raise JobError(NO_COPC_TOOL)
+    if points * PDAL_COPC_BYTES_PER_POINT > budget:
+        raise JobError(
+            f"The point cloud has {points:,} points, more than PDAL can turn into a COPC within "
+            f"the memory budget ({budget / 1e9:.1f} GB). Install pipeline pack 0.6.1 or later, "
+            "which brings untwine, or leave the point cloud out."
         )
-        writer = "pdal"
-    if not out.is_file():
-        raise JobError(f"{writer} finished without writing the COPC file.")
-    return writer
+    atomic_write_json(pj, pdal_copc_pipeline(las, out, epsg))
+    native.run_tool(
+        ctx,
+        [pdal, "pipeline", str(pj)],
+        "Building the COPC (PDAL)",
+        temp,
+        expected_s=max(30.0, points / PDAL_COPC_POINTS_PER_S),
+        progress=progress,
+        memory_limit=budget,
+        env=pdal_env(pdal),
+    )
+    return "pdal"
