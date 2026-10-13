@@ -10,21 +10,31 @@ import { sampleVideo, spotEntries, type DirectionKeys } from './spotEntries';
 import type { FrameSample, SpotEntry, TrackSample } from './spotTypes';
 import { walkTrack } from './spotWalk';
 
-/** Samples of each clip, once per clip and calibration per session (spec "Scale"). */
-const sampled = new Map<string, readonly FrameSample[]>();
-function cachedSamples(
+/**
+ * Samples of each clip, once per clip and calibration per session (spec "Scale"): one entry per
+ * clip, replaced when its calibration or lens changes (the lens is copied into every pose).
+ */
+const sampled = new Map<string, { inputs: string; samples: readonly FrameSample[] }>();
+export function cachedSamples(
   projectId: string,
   layer: VideoLayer,
   flight: Flight,
   keys: DirectionKeys,
 ): readonly FrameSample[] {
-  const key = `${projectId}|${layer.id}|${JSON.stringify([layer.flight, layer.offsetMs, layer.orientation ?? null, layer.positionOffsetM ?? null, keys ?? null])}`;
-  let s = sampled.get(key);
-  if (!s) {
-    s = sampleVideo(layer, flight, keys);
-    sampled.set(key, s);
-  }
-  return s;
+  const key = `${projectId}|${layer.id}`;
+  const inputs = JSON.stringify([
+    layer.flight,
+    layer.offsetMs,
+    layer.orientation ?? null,
+    layer.positionOffsetM ?? null,
+    layer.lens,
+    keys ?? null,
+  ]);
+  const hit = sampled.get(key);
+  if (hit?.inputs === inputs) return hit.samples;
+  const samples = sampleVideo(layer, flight, keys);
+  sampled.set(key, { inputs, samples });
+  return samples;
 }
 
 /** Tracks of placed walks, per walk inputs and live fit (a moved drawing makes a new fit). */
@@ -86,14 +96,15 @@ export function useSpotEntries(active: boolean): { entries: SpotEntry[]; reading
     };
   }, [active, project, clips, key]);
   const map = flights?.key === key ? flights.map : null;
-  const { fits, inputsOf } = usePlacedWalkFits();
+  const { fits, inputsOf } = usePlacedWalkFits(active);
   const placed = useMemo(
     () => new Set(project ? placedWalks(project.manifest).map((w) => w.id) : []),
     [project],
   );
   const walksReading = [...placed].some((id) => !inputsOf(id));
   const entries = useMemo(() => {
-    if (!project || !index) return [];
+    // the viewer is mounted all session long: nothing is computed until it (or a strip) opens
+    if (!active || !project || !index) return [];
     return spotEntries({
       layers,
       index,
@@ -111,6 +122,6 @@ export function useSpotEntries(active: boolean): { entries: SpotEntry[]; reading
         return fit ? cachedTrack(project.id, l, fit.fit, inputs.orientation) : null;
       },
     });
-  }, [project, index, layers, orientation, map, placed, inputsOf, fits]);
+  }, [active, project, index, layers, orientation, map, placed, inputsOf, fits]);
   return { entries, reading: active && ((clips.length > 0 && !map) || walksReading) };
 }

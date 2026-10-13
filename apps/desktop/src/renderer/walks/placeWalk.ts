@@ -703,9 +703,10 @@ export function useHiddenLayers(): ReadonlySet<string> {
 
 /**
  * The live fits of the open project's placed walks (inputs read once and shared), rebuilt when
- * the manifest or a drawing's placement changes; `inputsOf` gives a walk's read inputs.
+ * the manifest or a drawing's placement changes; `inputsOf` gives a walk's read inputs. While
+ * `active` is false nothing is read or fitted (no fits, no inputs).
  */
-export function usePlacedWalkFits(): {
+export function usePlacedWalkFits(active = true): {
   fits: SheetWalk[];
   inputsOf: (layerId: string) => WalkInputs | undefined;
 } {
@@ -718,10 +719,10 @@ export function usePlacedWalkFits(): {
   const manifest = project?.manifest;
   const wanted = useMemo(
     () =>
-      manifest && projectId !== null
+      active && manifest && projectId !== null
         ? placedWalks(manifest).map((w) => ({ w, key: inputsKey(projectId, w) }))
         : [],
-    [manifest, projectId],
+    [active, manifest, projectId],
   );
   useEffect(() => {
     if (projectId === null) return;
@@ -736,7 +737,7 @@ export function usePlacedWalkFits(): {
     };
   }, [wanted, projectId]);
   const fits = useMemo(() => {
-    if (!manifest || projectId === null) return [];
+    if (!active || !manifest || projectId === null) return [];
     return placedWalkFits(
       manifest,
       (l) => {
@@ -745,7 +746,7 @@ export function usePlacedWalkFits(): {
       },
       (id) => placed[id],
     );
-  }, [manifest, projectId, loaded, placed]);
+  }, [active, manifest, projectId, loaded, placed]);
   const inputsOf = useMemo(() => {
     const byId = new Map(wanted.map(({ w, key }) => [w.id, key]));
     return (id: string): WalkInputs | undefined => {
