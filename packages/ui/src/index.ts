@@ -37,6 +37,8 @@ export {
   type DateItemMenuRequest,
   type DateTreeProps,
 } from './tree/DateTree';
+export { RemoveDialog, type RemoveDialogProps } from './tree/RemoveDialog';
+export { removeText, type RemoveText, type RemoveTextOptions } from './tree/removeText';
 export { rankCommands, scoreMatch, type Command } from './palette/rank';
 export * from './shortcuts';
 export { announce, announced, LiveAnnouncer, type Politeness } from './announce';
