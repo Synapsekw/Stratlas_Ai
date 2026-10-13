@@ -16,7 +16,7 @@ import rasterio
 import products_synth as ps
 from aio_pipelines.photo import native
 from aio_pipelines.photo.mesh import meshlab_available
-from aio_pipelines.photo.products import PhotoProducts
+from aio_pipelines.photo.products import PhotoProducts, depth_key
 from aio_pipelines.pipelines import all_pipelines
 from aio_pipelines.runtime import Cancelled, Job, JobError
 from conftest import Recorder, run_job
@@ -197,11 +197,10 @@ def test_the_products_report_carries_its_schema(processed):
 
 
 def test_the_dense_cloud_meets_the_targets(processed):
-    root, _, _ = processed
+    root, res, _ = processed
     from aio_pipelines.photo.fuse import PointTiles
 
-    work = next((root / "photogrammetry" / RUN / "work" / "products").iterdir())
-    store = PointTiles(work / "cloud", 1.0)
+    store = PointTiles(root / res["outputs"]["prepare"]["work"], 1.0)
     # the cloud tiles are in the run's grid frame: the project CRS minus the run's origin (here
     # the manifest origin), so local coordinates already
     xyz = np.concatenate([p["xyz"] for _, p in store.fused()])
@@ -254,6 +253,113 @@ def test_changed_alignment_refuses_the_resume():
     imgs.write_text(imgs.read_text("utf-8") + "\n", "utf-8")
     with pytest.raises(JobError, match="changed since this job started"):
         Job("x1", PhotoProducts(), root, params, Recorder(), threading.Event()).run()
+
+
+STANDARD = {"run": RUN, "products": ["dsm"], "preset": "standard"}
+
+
+def _after(step: str):
+    cancel = threading.Event()
+
+    def emit(m, p):
+        if m == "progress" and p.get("step") == step and p.get("stepFraction") == 1.0:
+            cancel.set()
+
+    return emit, cancel
+
+
+def _prepare_outputs(root, job: str) -> dict:
+    return json.loads((root / "jobs" / job / "steps" / "01-prepare.json").read_text("utf-8"))["outputs"]
+
+
+def test_the_depth_key_is_unchanged():
+    # the depth maps of runs made before layout 2 sit under this key and are found again
+    assert depth_key(0.5, "auto", None) == "7bea1144efd8"
+    assert depth_key(1.0, "auto", None) == "de395fb6663c"
+
+
+def test_prepare_lays_out_the_work_folders_by_key():
+    root = ps.project("layout")
+    emit, cancel = _after("prepare")
+    with pytest.raises(Cancelled):
+        Job("l1", PhotoProducts(), root, STANDARD, emit, cancel).run()
+    s = _prepare_outputs(root, "l1")
+    base = f"photogrammetry/{RUN}/work/products/7bea1144efd8"
+    assert s["layout"] == 2 and s["depthWork"] == base
+    assert re.fullmatch(re.escape(base) + r"/c-[0-9a-f]{12}/chunks", s["chunks"])
+    assert re.fullmatch(re.escape(base) + r"/c-[0-9a-f]{12}/m-[0-9a-f]{12}", s["work"])
+    assert s["work"].rsplit("/", 1)[0] == s["chunks"].rsplit("/", 1)[0]
+    assert s["budget"] == 150_000_000 and s["voxel"] == pytest.approx(round(s["gsd"] / 0.5, 6))
+    assert s["areaM2"] > 100 and s["tileM"] == pytest.approx(max(16.0, 1024 * s["dsmRes"]))
+
+
+def test_a_new_start_clears_an_older_versions_files_and_reuses_the_depth_maps():
+    root = ps.project("legacy")
+    emit, cancel = _after("dense")
+    with pytest.raises(Cancelled):
+        Job("o1", PhotoProducts(), root, STANDARD, emit, cancel).run()
+    key = root / "photogrammetry" / RUN / "work" / "products" / "7bea1144efd8"
+    maps = len(list((key / "depth").glob("*.npy")))
+    assert maps == len(ps.scene().views)
+    # what a version before layout 2 left beside the depth maps
+    (key / "cloud" / "chunks" / "0_0").mkdir(parents=True)
+    (key / "cloud" / "chunks" / "0_0" / "v1.npz").write_bytes(bytes(1000))
+    for name in ("cloud.las", "copc-pipeline.json", "dsm-raw.tif", "zmin-raw.tif"):
+        (key / name).write_bytes(bytes(500))
+    res, rec = run_job(PhotoProducts(), root, STANDARD, job_id="n1")
+    assert res["status"] == "done" and res["outputs"]["dense"]["resumed"] == maps
+    for gone in ("cloud", "cloud.las", "copc-pipeline.json", "dsm-raw.tif", "zmin-raw.tif"):
+        assert not (key / gone).exists(), gone
+    assert len(list((key / "depth").glob("*.npy"))) == maps
+    assert any("older version left" in p.get("message", "") for p in rec.of("log"))
+    s = res["outputs"]["prepare"]
+    assert not (root / s["chunks"]).exists()  # the chunks went after the merge
+    index = json.loads((root / s["work"] / "fused" / "index.json").read_text("utf-8"))
+    assert index["complete"] is True and index["points"] == res["outputs"]["fuse"]["points"]
+
+
+def test_a_job_started_before_layout_2_is_refused_when_resumed():
+    root = ps.project("old-job")
+    emit, cancel = _after("prepare")
+    with pytest.raises(Cancelled):
+        Job("x2", PhotoProducts(), root, STANDARD, emit, cancel).run()
+    sf = root / "jobs" / "x2" / "steps" / "01-prepare.json"
+    rec = json.loads(sf.read_text("utf-8"))
+    for k in ("layout", "depthWork", "chunks", "voxel", "budget", "areaM2"):
+        rec["outputs"].pop(k)
+    sf.write_text(json.dumps(rec), "utf-8")
+    with pytest.raises(JobError, match=r"started by an older version; use Create maps again on this run"):
+        Job("x2", PhotoProducts(), root, STANDARD, Recorder(), threading.Event()).run()
+
+
+def test_a_new_point_budget_after_the_chunks_went_fuses_the_photos_again(monkeypatch):
+    from aio_pipelines.photo import budget
+
+    root = ps.project("refuse-chunks")
+    emit, cancel = _after("fuse")
+    with pytest.raises(Cancelled):
+        Job("b1", PhotoProducts(), root, STANDARD, emit, cancel).run()
+    first = _prepare_outputs(root, "b1")
+    fused = json.loads((root / "jobs" / "b1" / "steps" / "03-fuse.json").read_text("utf-8"))["outputs"]
+    assert not (root / first["chunks"]).exists()  # dropped after the complete merge
+    # another budget: the same depth maps and chunk key, a new merge key, the chunks gone
+    monkeypatch.setitem(budget.BUDGET, "standard", 140_000_000)
+    seen = Recorder()
+    emit2, cancel2 = _after("fuse")
+
+    def both(m, p):
+        seen(m, p)
+        emit2(m, p)
+
+    with pytest.raises(Cancelled):
+        Job("b2", PhotoProducts(), root, STANDARD, both, cancel2).run()
+    second = _prepare_outputs(root, "b2")
+    assert second["chunks"] == first["chunks"] and second["work"] != first["work"]
+    assert any("fusing the photos again" in p.get("message", "") for p in seen.of("log"))
+    again = json.loads((root / "jobs" / "b2" / "steps" / "03-fuse.json").read_text("utf-8"))["outputs"]
+    assert again["points"] == fused["points"] > 0 and again["budget"] == 140_000_000
+    index = json.loads((root / second["work"] / "fused" / "index.json").read_text("utf-8"))
+    assert index["complete"] is True and not (root / second["chunks"]).exists()
 
 
 def test_too_little_disk_is_refused_with_both_numbers(monkeypatch):
@@ -396,7 +502,7 @@ def test_with_poissonrecon_the_dense_cloud_is_meshed_and_textured_from_the_photo
     )
     assert res["outputs"]["mesh"]["engine"] == "poissonrecon"
     assert res["outputs"]["texture"]["engine"] == "views" and res["outputs"]["texture"]["triangles"] <= 10_000
-    work = next((root / "photogrammetry" / RUN / "work" / "products").iterdir())
+    work = root / res["outputs"]["prepare"]["work"]
     head = (work / "poisson" / "dense.ply").read_bytes()[:400].decode("ascii", errors="replace")
     assert f"element vertex {res['outputs']['fuse']['points']}" in head
 
@@ -563,10 +669,11 @@ def test_the_cloud_and_dtm_go_through_pdal(tmp_path, monkeypatch):
 
 
 def test_a_cloud_without_pdal_is_refused_before_any_work(monkeypatch, tmp_path):
+    monkeypatch.setenv("AIO_UNTWINE", str(tmp_path / "no-untwine.exe"))
     monkeypatch.setenv("AIO_PDAL", str(tmp_path / "missing.exe"))
     monkeypatch.setattr("aio_pipelines.pointcloud.shutil.which", lambda name: None)
     monkeypatch.setattr("aio_pipelines.pointcloud.sys.prefix", str(tmp_path / "venv"))
     root = ps.project("nopdal")
-    with pytest.raises(JobError, match="needs PDAL"):
+    with pytest.raises(JobError, match="needs untwine or PDAL"):
         run_job(PhotoProducts(), root, _params(products=["cloud"]))
     assert not (root / "photogrammetry" / RUN / "work").exists()

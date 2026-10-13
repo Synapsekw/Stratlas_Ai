@@ -22,9 +22,12 @@ skips finished steps) and cancellable, with progress per stage:
 
 Existing layer kinds only (``mesh``, ``pointcloud`` ``copc``, ``raster`` ``kit-pyramid``); their
 provenance is the run's ``outputs`` (data-conventions section 21). Intermediates live in
-``photogrammetry/<run>/work/products/<key>/`` (``key`` from the settings that change them), so a
-second job with other products reuses the depth maps and the cloud. Nothing a person delivered is
-replaced: a layer with one of this run's ids that the run did not make is refused.
+``photogrammetry/<run>/work/products/<dkey>/`` (layout 2, 13 Oct 2026): ``depth/`` there, the
+fusion chunks in ``c-<ckey>/chunks`` and the merged cloud, rasters, LAS and mesh in
+``c-<ckey>/m-<mkey>/``; each key hashes the settings that change what is under it, so a job with
+other products reuses the depth maps, and new fusion or merge rules never mix with old files.
+Nothing a person delivered is replaced: a layer with one of this run's ids that the run did not
+make is refused.
 
 The report is ``report/products.json`` (``aio.photo-products/1``). Memory: the stages plan their
 clusters within ``AIO_PHOTO_MEMORY_MB`` when the app sets it (the one cap of the photo jobs),
@@ -82,6 +85,17 @@ PDAL_FOR_CLOUD = (
     "The point cloud needs PDAL, which this pipeline pack does not have. Install the full "
     "pipeline pack, or leave the point cloud out."
 )
+LAYOUT = 2
+OLD_LAYOUT = (
+    "This processing was started by an older version; use Create maps again on this run "
+    "(the depth maps are kept)."
+)
+#: What a depth key's folder held before layout 2; none of it is read any more.
+LEGACY_NAMES = (
+    "cloud", "cloud.las", "copc-pipeline.json", "dtm-pipeline.json", "ground-pdal.tif", "gains.json",
+    "poisson", "mesh-full.npz",
+)  # fmt: skip
+LEGACY_GLOBS = ("*-raw.tif", "*.tmp.tif", "*-shaded.tif", "texrecon-*")
 
 
 # ------------------------------------------------------------------------------------ helpers
@@ -89,6 +103,45 @@ PDAL_FOR_CLOUD = (
 
 def _hash(obj: Any) -> str:
     return hashlib.sha256(json.dumps(obj, sort_keys=True).encode()).hexdigest()[:12]
+
+
+def depth_key(scale: float, dense: str, region) -> str:
+    """The depth maps' key: unchanged since layout 1, so earlier depth maps are found."""
+    return _hash({"scale": scale, "dense": dense, "region": region, "v": 1})
+
+
+def fuse_key(dkey: str, settings, tile_m: float) -> str:
+    """The fusion chunks' key: the depth key, the fusion rule, the chunk format and tile size."""
+    from dataclasses import asdict
+
+    from .fuse import CHUNK_FORMAT
+
+    return _hash({"d": dkey, "fuse": asdict(settings), "chunk": CHUNK_FORMAT, "tile": tile_m})
+
+
+def merge_key(ckey: str, voxel: float, budget: int, rule) -> str:
+    """The merged cloud's key: the chunks' key, the spacing, the point budget and the merge rule."""
+    from dataclasses import asdict
+
+    return _hash({"c": ckey, "voxel": voxel, "budget": budget, "merge": asdict(rule)})
+
+
+def legacy_cleanup(folder: Path) -> int:
+    """Delete what a version before layout 2 left in a depth key's folder (the cloud tiles, the
+    LAS, the rasters, the mesh); ``depth/`` and layout 2's ``c-*`` folders stay. Answers the bytes
+    freed."""
+    if not folder.is_dir():
+        return 0
+    found = [folder / n for n in LEGACY_NAMES] + [p for g in LEGACY_GLOBS for p in folder.glob(g)]
+    freed = 0
+    for p in found:
+        if p.is_dir():
+            freed += sum(q.stat().st_size for q in p.rglob("*") if q.is_file())
+            shutil.rmtree(p, ignore_errors=True)
+        elif p.is_file():
+            freed += p.stat().st_size
+            p.unlink(missing_ok=True)
+    return freed
 
 
 def _region_poly(region: list[list[float]] | None, epsg: int | None):
@@ -323,17 +376,25 @@ class PhotoProducts:
         return cached
 
     def _settings(self, ctx: StepContext) -> dict[str, Any]:
-        return ctx.outputs("prepare")
+        """The prepare step's outputs; a job begun before layout 2 is refused (nothing of its
+        work folders is reused)."""
+        s = ctx.outputs("prepare")
+        if s.get("layout") != LAYOUT:
+            raise JobError(OLD_LAYOUT)
+        return s
 
     def _work(self, ctx: StepContext) -> Path:
-        s = self._settings(ctx)
-        return safe_project_path(ctx.project, s["work"])
+        """The merge key's folder: the merged cloud, the rasters, the LAS and the mesh."""
+        return safe_project_path(ctx.project, self._settings(ctx)["work"])
+
+    def _depth_dir(self, ctx: StepContext) -> Path:
+        return safe_project_path(ctx.project, self._settings(ctx)["depthWork"]) / "depth"
 
     def _tiles_store(self, ctx: StepContext):
         from .fuse import PointTiles
 
         s = self._settings(ctx)
-        return PointTiles(self._work(ctx) / "cloud", s["tileM"])
+        return PointTiles(self._work(ctx), s["tileM"], chunks=safe_project_path(ctx.project, s["chunks"]))
 
     # steps ---------------------------------------------------------------------------------------------
     def _prepare(self, ctx: StepContext) -> dict[str, Any]:
@@ -362,41 +423,57 @@ class PhotoProducts:
         n = len(model.views)
         cam = model.views[0].camera
         px = cam.width * cam.height
-        # disk: depth maps and their points (float32), the cloud tiles, rasters, pyramids, mesh
-        lo, hi = model.points.min(0), model.points.max(0)
-        area = max(1.0, float((hi[0] - lo[0]) * (hi[1] - lo[1])))
-        dense_points = area / (gsd / max(scale, 0.25)) ** 2 if scale else len(model.points)
-        need = (
-            n * px * scale**2 * 4 * 3
-            + dense_points * 48 * 2
-            + area / ortho_res**2 * 4 * 3
-            + area / dsm_res**2 * 4 * 6
-        )
-        need = int(need * 1.3 + 64 * 1024**2)
-        free = native.check_disk(ctx.project, need)
-        pdal = None
+        from .budget import BUDGET, budget_voxel, disk_need, site_area
+        from .fuse import DENSE_RULE, SPARSE_RULE, FuseSettings
+
+        poly = _region_poly(p.get("region"), run.epsg)
+        xy = model.points[:, :2] + np.asarray(run.offset[:2], np.float64)
+        area = max(1.0, site_area(xy, poly))
+        budget = BUDGET[preset] if scale else 0
+        voxel = round(budget_voxel(gsd, scale, area, budget), 6)
+        tile_m = max(16.0, 1024 * dsm_res)
+        dkey = depth_key(scale, p.get("dense", "auto"), p.get("region"))
+        ckey = fuse_key(dkey, FuseSettings.for_run(gsd, scale), tile_m)
+        mkey = merge_key(ckey, voxel, budget, DENSE_RULE if scale else SPARSE_RULE)
+        base = f"photogrammetry/{run.id}/work/products/{dkey}"
+        # before the disk check, so the space an older version took counts as free
+        freed = legacy_cleanup(safe_project_path(ctx.project, base))
+        if freed:
+            ctx.log(f"Removed {native._gb(freed)} of intermediate files an older version left.")
         if "cloud" in p["products"]:
             from ..pointcloud import find_pdal
+            from .cloud_out import NO_COPC_TOOL
 
-            pdal = find_pdal()
-            if pdal is None:
-                raise JobError(PDAL_FOR_CLOUD)
-        key = _hash({"scale": scale, "dense": p.get("dense", "auto"), "region": p.get("region"), "v": 1})
-        work = f"photogrammetry/{run.id}/work/products/{key}"
+            if native.find_tool("untwine") is None and find_pdal() is None:
+                raise JobError(NO_COPC_TOOL)
+        need = disk_need(
+            photos=n, pixels=px, scale=scale, area=area, gsd=gsd, ortho_res=ortho_res, dsm_res=dsm_res,
+            voxel=voxel, budget=budget, sparse_points=len(model.points), cloud="cloud" in p["products"],
+        )  # fmt: skip
+        free = native.check_disk(ctx.project, need)
         nadir = nadir_share(model.views)
         ctx.log(
             f"{n} photos, GSD {gsd * 100:.1f} cm; ortho {ortho_res * 100:.1f} cm, DSM {dsm_res * 100:.1f} cm; "
             f"preset {preset}{' (no dense matching)' if not scale else f', matching at {scale:.0%} size'}."
         )
-        tile_m = max(16.0, 2048 * dsm_res)
+        if budget:
+            ctx.log(
+                f"Point budget {budget / 1e6:.0f} M over {area / 1e4:.2f} ha: cloud spacing {voxel * 100:.1f} cm."
+            )
         return {
+            "layout": LAYOUT,
             "preset": preset,
             "gsd": gsd,
             "orthoRes": ortho_res,
             "dsmRes": dsm_res,
             "scale": scale,
-            "work": work,
+            "depthWork": base,
+            "chunks": f"{base}/c-{ckey}/chunks",
+            "work": f"{base}/c-{ckey}/m-{mkey}",
             "tileM": tile_m,
+            "voxel": voxel,
+            "budget": budget,
+            "areaM2": round(area, 1),
             "photos": n,
             "nadirShare": round(nadir, 3),
             "groundZ": float(np.median(model.points[:, 2])) if len(model.points) else 0.0,
@@ -412,7 +489,7 @@ class PhotoProducts:
             ctx.log("Fast preset: no dense matching; the surface comes from the sparse points.")
             return {"engine": "sparse", "maps": 0}
         run = self._run(ctx)
-        out = self._work(ctx) / "depth"
+        out = self._depth_dir(ctx)
         out.mkdir(parents=True, exist_ok=True)
         budget = native.memory_budget()
         state = pool.dense_state(run.model, s["scale"], budget, out)
@@ -582,37 +659,92 @@ class PhotoProducts:
         return {"workers": workers, "device": "gpu" if on_card else "cpu", "fallbacks": fallbacks, **out}
 
     def _fuse(self, ctx: StepContext) -> dict[str, Any]:
+        from .fuse import DENSE_RULE, SPARSE_RULE
+        from .merge import RegionClip, merge_cloud
+
         s = self._settings(ctx)
         run = self._run(ctx)
         store = self._tiles_store(ctx)
+        source = "dense" if s["scale"] else "sparse"
+        done = store.info()
+        if done.get("complete"):  # a stopped job that had merged already
+            store.drop_chunks()
+            extra = {"mergeWorkers": 0, "remerged": int(done.get("remerged", 0))}
+            return self._fused_outputs(done, s, source, extra)
+        if store.chunks_dropped():
+            # The chunks went after a complete merge under another merge key (another budget or
+            # spacing): this merge can only be made from new chunks.
+            ctx.log(
+                "The fused points of an earlier merge were removed and this one needs other "
+                "settings; fusing the photos again."
+            )
+            store.clear_chunks()
         poly = _region_poly(ctx.params.get("region"), run.epsg)
-
-        def keep(xyz: np.ndarray) -> np.ndarray:
-            if poly is None:
-                return np.ones(len(xyz), bool)
-            import shapely
-
-            return shapely.contains_xy(poly, xyz[:, 0] + run.offset[0], xyz[:, 1] + run.offset[1])
-
+        keep = RegionClip(poly.wkt, float(run.offset[0]), float(run.offset[1])) if poly is not None else None
+        memory = native.memory_budget()
+        ran: dict[str, Any] = {}
         if not s["scale"]:
-            from .fuse import SPARSE_RULE
-
             pts = run.model.points
             nrm = np.tile(np.array([0, 0, 1], np.float32), (len(pts), 1))
             store.add("sparse", pts, run.model.colours, nrm)
-            info = store.merge(s["gsd"], keep, ctx.check, rule=SPARSE_RULE)
-            return {"points": info["points"], "source": "sparse"}
+            info = merge_cloud(
+                store, s["voxel"], rule=SPARSE_RULE, keep=keep, memory=memory, check=ctx.check, log=ctx.log
+            )
+        else:
+            ran = self._fuse_photos(ctx, store)
+            info = merge_cloud(
+                store,
+                s["voxel"],
+                rule=DENSE_RULE,
+                keep=keep,
+                budget=s["budget"],
+                memory=memory,
+                check=ctx.check,
+                progress=lambda f, m=None: ctx.progress(0.7 + 0.3 * f, m),
+                log=ctx.log,
+            )
+            if not info["points"]:
+                raise JobError(
+                    "Dense matching found no consistent points; the photos may not overlap enough."
+                )
+        # only now, after a complete merge (and any wider merge again)
+        freed = store.drop_chunks()
+        ctx.log(
+            f"{source.capitalize()} cloud: {info['points']:,} points at {info['voxel'] * 100:.1f} cm spacing"
+            + (f" (budget {s['budget']:,})" if s["budget"] else "")
+            + f"; {native._gb(freed)} of fusion chunks removed."
+        )
+        return self._fused_outputs(
+            info, s, source, {**ran, "mergeWorkers": info["workers"], "remerged": info["remerged"]}
+        )
+
+    @staticmethod
+    def _fused_outputs(info: dict, s: dict, source: str, extra: dict) -> dict[str, Any]:
+        return {
+            "points": int(info["points"]),
+            "voxel": info["voxel"],
+            "bounds": info["bounds"],
+            "source": source,
+            "budget": s["budget"],
+            **extra,
+        }
+
+    def _fuse_photos(self, ctx: StepContext, store) -> dict[str, Any]:
+        """Fuse every photo not yet fused into chunks: on the card, in workers or here."""
         from . import pool
         from .fuse import FuseSettings
 
+        s = self._settings(ctx)
+        run = self._run(ctx)
         views = run.model.views
-        depth_dir = self._work(ctx) / "depth"
+        depth_dir = self._depth_dir(ctx)
         abs_tol = FuseSettings.for_run(s["gsd"], s["scale"]).abs_tol
-        state = pool.fuse_state(run.model, s["scale"], depth_dir, store.root, s["tileM"], abs_tol)
+        root = store.chunks_dir.parent
+        state = pool.fuse_state(run.model, s["scale"], depth_dir, root, s["tileM"], abs_tol)
         marks = state["marks"]
         todo = [v.id for v in views if not (marks / str(v.id)).exists()]
         cam = views[0].camera.scaled(s["scale"])
-        ran = self._each_photo(
+        return self._each_photo(
             ctx,
             todo=todo,
             photos=len(views),
@@ -624,7 +756,7 @@ class PhotoProducts:
                 ctx.params["run"],
                 s["scale"],
                 str(depth_dir),
-                str(store.root),
+                str(root),
                 s["tileM"],
                 abs_tol,
                 pool.worker_threads(n),
@@ -635,18 +767,6 @@ class PhotoProducts:
             progress=lambda k, n: ctx.progress(0.7 * k / n, f"Fusing photo {k} of {n}"),
             words=("Fusion", "Fusing", "fusing the rest one photo at a time"),
         )
-        voxel = s["gsd"] / s["scale"]
-        info = store.merge(voxel, keep, ctx.check, lambda f, m=None: ctx.progress(0.7 + 0.3 * f, m))
-        if not info["points"]:
-            raise JobError("Dense matching found no consistent points; the photos may not overlap enough.")
-        ctx.log(f"Dense cloud: {info['points']:,} points at {voxel * 100:.1f} cm spacing.")
-        return {
-            "points": info["points"],
-            "voxel": voxel,
-            "bounds": info["bounds"],
-            "source": "dense",
-            **ran,
-        }
 
     def _cloud(self, ctx: StepContext) -> dict[str, Any]:
         from ..pointcloud import _run as pdal_run
