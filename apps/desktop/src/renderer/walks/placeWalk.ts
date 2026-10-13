@@ -1,10 +1,11 @@
-import { fitWalk, walkHeadingAt, type WalkFit } from '@aio/geo';
-import type { MapOverlay } from '@aio/maps';
+import { fitWalk, walkHeadingAt, type WalkFit, type XZ } from '@aio/geo';
+import type { MapOverlay, MapPointerSession } from '@aio/maps';
 import {
   readWalkOrientationData,
   WalkOrientation,
   WalkRawPath,
   type AssetRef,
+  type JobRecord,
   type LayerPatch,
   type ProjectManifest,
   type Vec3,
@@ -26,32 +27,54 @@ import { builder } from '../builder/state';
 import { newSurveyDate, setLayersCapture } from '../change/SurveyDate';
 import { localToLonLat } from '../change/draw';
 import { drawings } from '../drawings/store';
-import { shell } from '../shell';
-import { PANE_KINDS, sideOf } from '../workspace/splitModel';
+import { jobs, shell } from '../shell';
+import type { StageMode } from '../store';
+import {
+  PANE_KINDS,
+  resolveSplit,
+  sideOf,
+  type PaneKind,
+  type SplitPref,
+} from '../workspace/splitModel';
 import { stagePrefs } from '../workspace/stagePrefs';
 import {
   dateChoices,
   placeSurfaces,
   rememberedSurface,
+  SCENE_SURFACE,
   surfaceFramesOf,
-  surfaceId,
+  walkPathState,
   type DrawingLookup,
   type PlaceSurface,
+  type WalkPathState,
 } from './placeModel';
-import { createPlaceStore, type PlaceState } from './placeStore';
-import { walkMap, setWalkMapOverlays, setWalkMapPick } from './walkMapStore';
-import { resolveCssColour, walkMapOverlays, walkNowMapOverlay } from './walkMapOverlay';
+import { createPlaceStore, type PlaceHandle, type PlaceState } from './placeStore';
+import { walkMap, setWalkMapOverlays, setWalkMapPointer } from './walkMapStore';
+import {
+  resolveCssColour,
+  walkMapOverlays,
+  walkNowMapOverlay,
+  walkPreviewMapOverlay,
+} from './walkMapOverlay';
 import { walkDrawingsForSheet, type SheetWalk, type WalkDrawing } from './walkOverlay';
-import { splitWithWalk } from './walkModel';
-import { setPlaceWalkHandler, walks } from './walks';
-import { walkRecordKey } from './walkStore';
+import { jobForWalk, splitWithWalk } from './walkModel';
+import {
+  locateOriginal,
+  processWalk,
+  setPlaceWalkHandler,
+  setRemovePlacementHandler,
+  walks,
+} from './walks';
+import { walkFolderId, walkRecordKey } from './walkStore';
 
 /*
- * Place walk, wired (design "Placing a walk: the flow"): `placeWalk(layerId)` opens the split with
- * the 360 video on one side and the surface on the other, reads the walk's raw path and
- * orientation, and starts the session (`placeStore.ts`). The strip (`PlaceWalkStrip.tsx`) sits
- * over the surface pane; Save sends the calibration through `builder.saveLayers`, whose answer
- * (the manifest with the pose written) updates the walk's row.
+ * Place walk, wired (design "Walk placing by start and end"): `placeWalk(layerId)` shows the
+ * surface (the map or the 3D view fill the stage, a drawing sits beside the 3D view), reads the
+ * walk's raw path and orientation, and starts the session (`placeStore.ts`): the path check when
+ * the walk has no usable path, else Start. Fine-tune puts the 360 video beside the surface. The
+ * toolbar (`PlaceWalkStrip.tsx`) sits over the surface; Save applies the survey date field, then
+ * sends the calibration through `builder.saveLayers`, whose answer (the manifest with the pose
+ * written) updates the walk's row. Remove placement sends `{ walk: null }`.
  */
 
 /** What the live fit needs from the walk's folder; null parts: not there or unreadable. */
@@ -130,6 +153,10 @@ export interface PlaceUi {
   seek: { t: number; n: number } | null;
   /** Place walk was asked for another walk while this one has unsaved pins: it waits for the answer. */
   pending: string | null;
+  /** The survey date field: a capture id, `add:YYYY-MM-DD`, or null (save undated). */
+  date: string | null;
+  /** Fine-tune shows the 360 video beside the surface. */
+  fineTune: boolean;
 }
 
 const CLOSED: PlaceUi = {
@@ -141,6 +168,8 @@ const CLOSED: PlaceUi = {
   note: null,
   seek: null,
   pending: null,
+  date: null,
+  fineTune: false,
 };
 
 export function createPlaceUi(): StoreApi<PlaceUi> {
@@ -162,8 +191,11 @@ export interface PlaceWalkDeps {
   project(): OpenProject | null;
   drawings: DrawingLookup;
   loadInputs(projectId: string, layer: WalkLayer): Promise<WalkInputs>;
-  /** Show the 360 video and `host` side by side (null: the 360 video beside what is there). */
-  openSurface(layerId: string, host: PlaceSurface | null): void;
+  /**
+   * Show `host` for placing (the map or 3D fill the stage; a drawing beside the 3D view), with the
+   * 360 video beside it when `fineTune`.
+   */
+  openSurface(layerId: string, host: PlaceSurface, fineTune: boolean): void;
   /** `builder.saveLayers`: null when saved (the manifest is replaced), else why not. */
   save(layerId: string, patch: LayerPatch): Promise<string | null>;
   /** `builder:ensureCapture` for a day; the manifest is replaced. */
@@ -172,9 +204,15 @@ export interface PlaceWalkDeps {
   setCapture(layerId: string, captureId: string): Promise<string | null>;
   /** When the camera says the walk was filmed (`walk.json`), if it says. */
   capturedAt(layer: WalkLayer): string | undefined;
+  /** The walk's newest `walk.process` job. */
+  job(layer: WalkLayer): Pick<JobRecord, 'status' | 'progress'> | undefined;
+  /** What the stage shows of the model now: the map or the 3D view. */
+  modelSurface(): 'map' | '3d';
+  /** Process walk from the notice: null when started, else why not. */
+  process(layer: WalkLayer): Promise<string | null>;
 }
 
-/** One choice of the date step. */
+/** One choice of the survey date field. */
 export interface DateChoice {
   id: string;
   /** The survey date as people read it (`12 Oct 2026`), with the capture's label. */
@@ -191,12 +229,22 @@ export interface PlaceWalkFlow {
   surfaces(): PlaceSurface[];
   /** The project's orthomosaic layers (what the map draws of its own imagery under the pins). */
   orthos(): string[];
-  /** The date step: the project's dates (the `capturedAt` one first), and a day to add. */
+  /** The date field's choices: the project's dates (the `capturedAt` one first), and a day to add. */
   dates(): { pick: DateChoice[]; add?: string };
-  chooseDate(captureId: string): Promise<void>;
-  addDate(day: string): Promise<void>;
+  /** The date field: a capture id, `add:YYYY-MM-DD`, or null (save undated). */
+  setDate(value: string | null): void;
   chooseSurface(s: PlaceSurface): void;
+  /** Where the walk's computed path stands (the check's notice). */
+  pathState(): WalkPathState;
+  /** Process walk from the check's notice; why not shows in the note. */
+  process(): Promise<void>;
+  /** The check's Place between two points anyway. */
+  placeAnyway(): void;
+  /** Fine-tune on (from placed, the 360 video beside the surface) or off. */
+  fineTune(on: boolean): void;
   save(): Promise<void>;
+  /** Remove the saved placement of `layerId` (the walk being placed when absent); null when done. */
+  removePlacement(layerId?: string): Promise<string | null>;
   /** Close the strip: asks first when there are unsaved pins. */
   close(): void;
   /** Leave the walk as it was (then place the walk that was waiting, if one was). */
@@ -208,6 +256,8 @@ export interface PlaceWalkFlow {
    * way): drop its session, so its path and pins leave the surface and nothing waits on it.
    */
   dropIfGone(): void;
+  /** The walk's path files changed in the manifest: read them again into the session. */
+  pathChanged(): Promise<void>;
 }
 
 export function createPlaceWalk(
@@ -216,6 +266,8 @@ export function createPlaceWalk(
   ui: StoreApi<PlaceUi>,
 ): PlaceWalkFlow {
   let begun = 0;
+  /** The walk's path files the session last read (`JSON` of `layer.path`); null: none open. */
+  let pathKey: string | null = null;
   const walkOf = (): WalkLayer | null => {
     const id = ui.getState().layerId;
     const m = deps.project()?.manifest;
@@ -228,23 +280,56 @@ export function createPlaceWalk(
   };
   const reset = (): void => {
     session.getState().cancel();
+    pathKey = null;
     ui.setState({ ...CLOSED });
-  };
-  const failed = (note: string): void => {
-    ui.setState({ note });
-  };
-  /** The remembered (or first) surface chosen, so the strip opens on its first step. */
-  const enterHost = (): void => {
-    const h = ui.getState().host;
-    if (!h || session.getState().step !== 'surface') return;
-    if (surfacesOf().some((x) => surfaceId(x) === surfaceId(h)))
-      session.getState().chooseSurface(h);
   };
   /** After the answer to "Keep these pins?": the walk that was waiting is placed next. */
   const next = (): void => {
     const waiting = ui.getState().pending;
     reset();
     if (waiting) void begin(waiting);
+  };
+
+  const dates = (): { pick: DateChoice[]; add?: string } => {
+    const m = deps.project()?.manifest;
+    const w = walkOf();
+    if (!m || !w) return { pick: [] };
+    const { pick, add } = dateChoices(w, m.captures, deps.capturedAt(w));
+    const tags = dateTags(m.captures);
+    const choices = pick.flatMap((id): DateChoice[] => {
+      const c = m.captures.find((x) => x.id === id);
+      const tag = tags[id];
+      if (!c || !tag) return [];
+      const label = c.label && c.label !== tag.long ? `${tag.long}, ${c.label}` : tag.long;
+      return [{ id, label, colour: tag.colour }];
+    });
+    return add === undefined ? { pick: choices } : { pick: choices, add };
+  };
+
+  /** The date field's first value: the walk's own date, else the first choice, else the day to add. */
+  const defaultDate = (w: WalkLayer): string | null => {
+    if (w.capture !== undefined) return w.capture;
+    const d = dates();
+    const first = d.pick[0];
+    if (first) return first.id;
+    return d.add === undefined ? null : `add:${d.add}`;
+  };
+
+  /** Apply the date field to an undated walk before Save: null when done, else why not. */
+  const applyDate = async (layerId: string): Promise<string | null> => {
+    const w = walkOf();
+    const value = ui.getState().date;
+    if (!w || w.capture !== undefined || value === null) return null;
+    let captureId = value;
+    if (value.startsWith('add:')) {
+      const made = await deps.ensureCapture(value.slice(4));
+      if ('error' in made) return made.error;
+      captureId = made.captureId;
+    }
+    const error = await deps.setCapture(layerId, captureId);
+    if (error) return error;
+    session.getState().setDate(captureId);
+    return null;
   };
 
   const begin = async (layerId: string): Promise<void> => {
@@ -255,7 +340,7 @@ export function createPlaceWalk(
     if (!project || !layer) return;
     const cur = ui.getState();
     if (cur.layerId === layerId && session.getState().layerId === layerId) {
-      deps.openSurface(layerId, cur.host);
+      if (cur.host) deps.openSurface(layerId, cur.host, cur.fineTune);
       return;
     }
     // unsaved pins on another walk: ask first, place this one after the answer
@@ -265,15 +350,18 @@ export function createPlaceWalk(
       session.getState().dirty
     ) {
       ui.setState({ asking: true, pending: layerId });
-      deps.openSurface(cur.layerId, cur.host);
+      if (cur.host) deps.openSurface(cur.layerId, cur.host, cur.fineTune);
       return;
     }
     const ask = ++begun;
     session.getState().cancel();
+    pathKey = null;
     const list = placeSurfaces(project.manifest, layer, hasCrs(project.manifest));
-    const host = rememberedSurface(layer, list, 'map') ?? list[0] ?? null;
+    const host = rememberedSurface(layer, list, deps.modelSurface()) ?? list[0] ?? SCENE_SURFACE;
     ui.setState({ ...CLOSED, layerId, host });
-    deps.openSurface(layerId, host);
+    // the field reads the walk through `ui`, so it is set once the walk is there
+    ui.setState({ date: defaultDate(layer) });
+    deps.openSurface(layerId, host, false);
     const inputs = await deps.loadInputs(project.id, layer);
     // a newer Place walk (or a close) came first
     if (ask !== begun || ui.getState().layerId !== layerId) return;
@@ -283,13 +371,15 @@ export function createPlaceWalk(
       reset();
       return;
     }
+    pathKey = JSON.stringify(now.path ?? null);
     ui.setState({ inputs });
     session.getState().start(now, m, {
       raw: inputs.raw,
       drawings: deps.drawings,
       orientation: inputs.orientation,
+      ready: walkPathState(now, deps.job(now), inputs.raw) === 'ready',
     });
-    enterHost();
+    session.getState().chooseSurface(host);
   };
 
   return {
@@ -300,56 +390,37 @@ export function createPlaceWalk(
       (deps.project()?.manifest.layers ?? []).flatMap((l) =>
         l.kind === 'raster' && l.role === 'ortho' ? [l.id] : [],
       ),
-    dates: () => {
-      const m = deps.project()?.manifest;
-      const w = walkOf();
-      if (!m || !w) return { pick: [] };
-      const { pick, add } = dateChoices(w, m.captures, deps.capturedAt(w));
-      const tags = dateTags(m.captures);
-      const choices = pick.flatMap((id): DateChoice[] => {
-        const c = m.captures.find((x) => x.id === id);
-        const tag = tags[id];
-        if (!c || !tag) return [];
-        const label = c.label && c.label !== tag.long ? `${tag.long}, ${c.label}` : tag.long;
-        return [{ id, label, colour: tag.colour }];
-      });
-      return add === undefined ? { pick: choices } : { pick: choices, add };
-    },
-    chooseDate: async (captureId) => {
-      const id = ui.getState().layerId;
-      if (!id) return;
-      ui.setState({ note: null });
-      const error = await deps.setCapture(id, captureId);
-      if (error) {
-        failed(error);
-        return;
-      }
-      session.getState().setDate(captureId);
-      enterHost();
-    },
-    addDate: async (day) => {
-      const id = ui.getState().layerId;
-      if (!id) return;
-      ui.setState({ note: null });
-      const made = await deps.ensureCapture(day);
-      if ('error' in made) {
-        failed(made.error);
-        return;
-      }
-      const error = await deps.setCapture(id, made.captureId);
-      if (error) {
-        failed(error);
-        return;
-      }
-      session.getState().setDate(made.captureId);
-      enterHost();
+    dates,
+    setDate: (value) => {
+      ui.setState({ date: value });
     },
     chooseSurface: (s) => {
       const id = ui.getState().layerId;
       if (!id) return;
       ui.setState({ host: s, note: null });
-      deps.openSurface(id, s);
+      deps.openSurface(id, s, ui.getState().fineTune);
       session.getState().chooseSurface(s);
+    },
+    pathState: () => {
+      const w = walkOf();
+      return w ? walkPathState(w, deps.job(w), ui.getState().inputs.raw) : 'none';
+    },
+    process: async () => {
+      const w = walkOf();
+      if (!w) return;
+      ui.setState({ note: null });
+      const error = await deps.process(w);
+      if (error && ui.getState().layerId === w.id) ui.setState({ note: error });
+    },
+    placeAnyway: () => {
+      session.getState().placeAnyway();
+    },
+    fineTune: (on) => {
+      const { host, layerId: id } = ui.getState();
+      if (!id || !host) return;
+      session.getState().setFineTune(on);
+      ui.setState({ fineTune: on && session.getState().step === 'fine-tune' });
+      deps.openSurface(id, host, ui.getState().fineTune);
     },
     save: async () => {
       const id = ui.getState().layerId;
@@ -358,13 +429,27 @@ export function createPlaceWalk(
       // a pin waiting to be moved lets go: a move made while saving would not be saved
       if (st.armed === 'move' && st.moving !== null) st.armMove(st.moving);
       ui.setState({ saving: true, note: null, asking: false });
-      const error = await deps.save(id, { walk: st.calibration() });
+      // the survey date field first, so a walk without a date never blocks placing
+      const dateError = await applyDate(id);
+      if (ui.getState().layerId !== id) return;
+      if (dateError) {
+        ui.setState({ saving: false, note: dateError });
+        return;
+      }
+      const error = await deps.save(id, { walk: session.getState().calibration() });
       if (ui.getState().layerId !== id) return;
       if (error) {
         ui.setState({ saving: false, note: error });
         return;
       }
       next();
+    },
+    removePlacement: async (layerId) => {
+      const id = layerId ?? ui.getState().layerId;
+      if (!id) return null;
+      const error = await deps.save(id, { walk: null });
+      if (!error && ui.getState().layerId === id) reset();
+      return error;
     },
     close: () => {
       if (session.getState().dirty) ui.setState({ asking: true });
@@ -376,6 +461,27 @@ export function createPlaceWalk(
     },
     dropIfGone: () => {
       if (ui.getState().layerId !== null && !walkOf()) next();
+    },
+    pathChanged: async () => {
+      const w = walkOf();
+      const project = deps.project();
+      // only an open session (its files read once) follows its path
+      if (!w || !project || pathKey === null || session.getState().layerId !== w.id) return;
+      const key = JSON.stringify(w.path ?? null);
+      if (key === pathKey) return;
+      pathKey = key;
+      const inputs = await deps.loadInputs(project.id, w);
+      // another walk, a close, or a newer change came first
+      if (ui.getState().layerId !== w.id || pathKey !== key) return;
+      const now = walkOf() ?? w;
+      ui.setState({ inputs });
+      session
+        .getState()
+        .setInputs(
+          inputs.raw,
+          inputs.orientation,
+          walkPathState(now, deps.job(now), inputs.raw) === 'ready',
+        );
     },
   };
 }
@@ -403,15 +509,37 @@ export function viewHeading(
   return h === null ? null : h + (yawOffsetDeg * Math.PI) / 180;
 }
 
-/** The session armed for a click on the surface (a pin, a pin moved, or Align view's second). */
-export function wantsSurfaceClick(s: Pick<PlaceState, 'armed'>): boolean {
+/**
+ * The session wants the next click on the surface: Start and End, or in fine-tune an armed pin,
+ * a pin moved, or Align view's second click. A placed walk ignores plain clicks (its handles drag).
+ */
+export function wantsSurfaceClick(s: Pick<PlaceState, 'step' | 'armed'>): boolean {
   return (
-    s.armed === 'start' ||
-    s.armed === 'end' ||
-    s.armed === 'pin' ||
-    s.armed === 'move' ||
-    s.armed === 'align-surface'
+    s.step === 'start' ||
+    s.step === 'end' ||
+    (s.step === 'fine-tune' &&
+      (s.armed === 'pin' || s.armed === 'move' || s.armed === 'align-surface'))
   );
+}
+
+/**
+ * The Start and End handles of a placed walk (placed or fine-tune): the first and the last active
+ * pin by time, at their model x/z, with the pin's height when it has one. Empty otherwise.
+ */
+export function sessionHandles(
+  s: Pick<PlaceState, 'step' | 'fit' | 'pins'>,
+): { handle: PlaceHandle; xz: XZ; y: number | null }[] {
+  if ((s.step !== 'placed' && s.step !== 'fine-tune') || !s.fit) return [];
+  const active = [...s.fit.pins].filter((p) => p.active).sort((a, b) => a.t - b.t);
+  const first = active[0];
+  const last = active[active.length - 1];
+  if (!first || !last || first === last) return [];
+  const at = (handle: PlaceHandle, pin: typeof first) => ({
+    handle,
+    xz: [pin.target[0], pin.target[1]] as XZ,
+    y: s.pins[pin.index]?.y ?? null,
+  });
+  return [at('start', first), at('end', last)];
 }
 
 /*
@@ -432,9 +560,10 @@ export function setPlacedMapOverlays(overlays: readonly MapOverlay[]): void {
 }
 
 /**
- * Keep the main map in step with a walk placed on the map: its path, stills and pins as overlays
- * (an inactive pin says why on hover), the current position apart, and a point pick while the
- * session waits for a click. Returns the unsubscribe.
+ * Keep the main map in step with a walk placed on the map: its path, stills and pins once placed
+ * (an inactive pin says why on hover), the current position apart, the hover preview while Start
+ * or End waits, and one pointer session (hover, clicks, the Start and End handles) for as long as
+ * the session is on the map. Returns the unsubscribe.
  */
 export function followMap(
   session: StoreApi<PlaceState>,
@@ -446,8 +575,33 @@ export function followMap(
     layer: null,
     overlay: null,
   };
-  let ours: unknown = null;
   let shown = false;
+  // one object for the life of the session: the map cancels a drag when its session is replaced
+  const pointer: MapPointerSession = {
+    onMove: (local) => {
+      session.getState().hover(local ? [local[0], local[2]] : null, local?.[1]);
+    },
+    onClick: (local) => {
+      if (wantsSurfaceClick(session.getState()))
+        session.getState().click([local[0], local[2]], local[1]);
+    },
+    handles: () =>
+      sessionHandles(session.getState()).map((h) => ({
+        id: h.handle,
+        local: [h.xz[0], h.y ?? 0, h.xz[1]] as Vec3,
+      })),
+    onDrag: (id, local) => {
+      if (id === 'start' || id === 'end')
+        session.getState().dragHandle(id, [local[0], local[2]], local[1]);
+    },
+    onDragEnd: () => {
+      session.getState().endDrag();
+    },
+    onCancel: () => {
+      const s = session.getState();
+      if (s.armed === 'move' && s.moving !== null) s.armMove(s.moving);
+    },
+  };
   const clear = (): void => {
     if (shown) {
       sessionMap = [];
@@ -455,8 +609,7 @@ export function followMap(
     }
     shown = false;
     pathFor = { fit: null, layer: null, overlay: null };
-    if (ours !== null && walkMap.getState().pick === ours) setWalkMapPick(null);
-    ours = null;
+    if (walkMap.getState().pointer === pointer) setWalkMapPointer(null);
   };
   const update = (): void => {
     const s = session.getState();
@@ -472,7 +625,8 @@ export function followMap(
     const proj = { toLonLat };
     const colour = (l: WalkLayer): string => resolveCssColour(walkColour(p.manifest, l));
     const raw = ui.getState().inputs.raw;
-    if (pathFor.fit !== s.fit || pathFor.layer !== layer) {
+    if (s.pins.length < 2) pathFor = { fit: null, layer: null, overlay: null };
+    else if (pathFor.fit !== s.fit || pathFor.layer !== layer) {
       const shownLayer = { ...layer, visible: true };
       const [ov] = walkMapOverlays([{ layer: shownLayer, fit: s.fit, raw }], proj, colour, {
         placingId: layer.id,
@@ -490,46 +644,88 @@ export function followMap(
       };
     }
     const now = walkNowMapOverlay({ layer, fit: s.fit, raw }, proj, colour, s.timeS);
-    sessionMap = [pathFor.overlay, now].filter((o): o is MapOverlay => o !== null);
+    const preview = s.preview
+      ? walkPreviewMapOverlay(
+          layer.id,
+          s.preview.xz,
+          proj,
+          colour(layer),
+          s.preview.ghost,
+          s.preview.tooClose,
+        )
+      : null;
+    sessionMap = [pathFor.overlay, now, preview].filter((o): o is MapOverlay => o !== null);
     publishMap();
     shown = true;
-    const want = wantsSurfaceClick(s);
-    const armed = walkMap.getState().pick;
-    if (want && (armed === null || armed !== ours)) {
-      setWalkMapPick({
-        onPick: (local: Vec3) => {
-          session.getState().click([local[0], local[2]], local[1]);
-        },
-      });
-      ours = walkMap.getState().pick;
-    } else if (!want && ours !== null && armed === ours) {
-      setWalkMapPick(null);
-      ours = null;
-    }
+    setWalkMapPointer(pointer);
   };
-  // the session without a fit yet shows nothing; a walk with no path draws pins only
   return session.subscribe(update);
 }
 
 // ---------- the app's instance ----------
 
-/** The split with the 360 video beside `host`: the surface on the side the video is not on. */
-function openSurface(layerId: string, host: PlaceSurface | null): void {
+/**
+ * Where the stage shows `host` for placing: the map and 3D fill the stage; a drawing shows in the
+ * split beside the 3D view (never beside the 360 video); fine-tune puts the 360 video beside the
+ * surface.
+ */
+export function surfaceLayout(
+  saved: SplitPref | undefined,
+  host: PlaceSurface,
+  fineTune: boolean,
+): { mode: StageMode; split?: SplitPref } {
+  const kind: PaneKind = host.kind === 'drawing' ? 'raster' : host.kind;
+  const raster = host.kind === 'drawing' ? { raster: host.id } : {};
+  if (fineTune) {
+    const withWalk = splitWithWalk(saved, PANE_KINDS);
+    const other = sideOf(withWalk, 'walk360') === 'left' ? 'right' : 'left';
+    return { mode: 'split', split: { ...withWalk, [other]: kind, ...raster } };
+  }
+  if (host.kind !== 'drawing') return { mode: host.kind };
+  // a drawing shows only in the split: beside the 3D view, never beside the 360 video
+  const sides = resolveSplit(saved, PANE_KINDS);
+  const side = sideOf(sides, 'raster') ?? 'left';
+  const other = side === 'left' ? 'right' : 'left';
+  const keep = sides[other];
+  const otherKind: PaneKind = keep === 'walk360' || keep === 'raster' ? '3d' : keep;
+  return {
+    mode: 'split',
+    split: { ...sides, [side]: 'raster', [other]: otherKind, raster: host.id },
+  };
+}
+
+function openSurface(layerId: string, host: PlaceSurface, fineTune: boolean): void {
   const project = workspace.getState().project;
   if (!project) return;
   walks.getState().select(layerId);
   const sh = shell.getState();
   if (sh.screen !== 'scene') sh.go('scene');
   const saved = stagePrefs.getState().byProject[project.id]?.split;
-  const sides = splitWithWalk(saved, PANE_KINDS);
-  const other = sideOf(sides, 'walk360') === 'left' ? 'right' : 'left';
-  const split = !host
-    ? sides
-    : host.kind === 'drawing'
-      ? { ...sides, [other]: 'raster' as const, raster: host.id }
-      : { ...sides, [other]: host.kind };
-  stagePrefs.getState().update(project.id, { split });
-  if (sh.stageMode !== 'split') sh.setStageMode('split');
+  const { mode, split } = surfaceLayout(saved, host, fineTune);
+  if (split) stagePrefs.getState().update(project.id, { split });
+  if (sh.stageMode !== mode) sh.setStageMode(mode);
+}
+
+/** What the stage shows of the model now: the map (full or on a side of the split), else 3D. */
+function modelSurface(): 'map' | '3d' {
+  const sh = shell.getState();
+  if (sh.stageMode === 'map') return 'map';
+  if (sh.stageMode !== 'split') return '3d';
+  const id = workspace.getState().project?.id;
+  const saved = id === undefined ? undefined : stagePrefs.getState().byProject[id]?.split;
+  const sides = resolveSplit(saved, PANE_KINDS);
+  return sides.left === 'map' || sides.right === 'map' ? 'map' : '3d';
+}
+
+/** Process walk from the check: a stitched video starts at once, a camera file asks for its original. */
+async function processFromCheck(l: WalkLayer): Promise<string | null> {
+  const record = walks.getState().records[walkRecordKey(l)];
+  if (!record) return 'The walk is not listed yet.';
+  if (record.source.layout === 'equirect') return processWalk(l.id, { walk: walkFolderId(l) });
+  const r = await locateOriginal(record);
+  if (!r) return null;
+  if ('error' in r) return r.error;
+  return processWalk(l.id, { walk: walkFolderId(l), src: [r.path] });
 }
 
 export const placeUi = createPlaceUi();
@@ -545,6 +741,14 @@ export const placeFlow = createPlaceWalk(
     ensureCapture: newSurveyDate,
     setCapture: (layerId, captureId) => setLayersCapture([layerId], captureId),
     capturedAt: (layer) => walks.getState().records[walkRecordKey(layer)]?.source.capturedAt,
+    job: (l) => {
+      const root = workspace.getState().project?.root;
+      return root === undefined
+        ? undefined
+        : jobForWalk(jobs.getState().jobs, root, walkFolderId(l));
+    },
+    modelSurface,
+    process: processFromCheck,
   },
   placeSession,
   placeUi,
@@ -561,14 +765,23 @@ workspace.subscribe((s) => {
   if (placeUi.getState().layerId !== null) placeFlow.discard();
 });
 
-// the walk being placed was removed (any way it goes): its session and its pins go with it
+// the walk being placed was removed (any way it goes): its session and its pins go with it; a
+// path written (or gone) since it opened is read again
 workspace.subscribe(() => {
   placeFlow.dropIfGone();
+  void placeFlow.pathChanged();
 });
 
 setPlaceWalkHandler((layerId) => {
   void placeFlow.begin(layerId);
 });
+
+setRemovePlacementHandler((id) => placeFlow.removePlacement(id));
+
+/** A walk is being placed on this surface kind (the stage shows its pointer layer). */
+export function usePlacingOn(kind: 'map' | '3d'): boolean {
+  return useStore(placeUi, (s) => s.layerId !== null && s.host?.kind === kind);
+}
 
 // ---------- placed walks: drawn on every surface, outside placing too ----------
 

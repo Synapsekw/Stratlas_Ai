@@ -26,12 +26,15 @@ import {
   orientationDataRef,
   placedMapOverlays,
   placedWalkFits,
+  sessionHandles,
+  surfaceLayout,
   viewHeading,
   walkColour,
   walksOnSheet,
+  wantsSurfaceClick,
   type PlaceWalkDeps,
 } from './placeWalk';
-import { setWalkMapOverlays, setWalkMapPick, walkMap } from './walkMapStore';
+import { setWalkMapOverlays, setWalkMapPointer, walkMap } from './walkMapStore';
 
 const fixtures = join(import.meta.dirname, '../../../../../packages/schema/src/__fixtures__/walk');
 const file = (name: string) => readFileSync(join(fixtures, name));
@@ -222,41 +225,20 @@ function flowFor(project: { current: OpenProject }, over: Partial<PlaceWalkDeps>
     ensureCapture: vi.fn(),
     setCapture: vi.fn(() => Promise.resolve(null)),
     capturedAt: () => undefined,
+    job: () => undefined,
+    modelSurface: () => '3d',
+    process: vi.fn(() => Promise.resolve(null)),
     ...over,
   };
   return { ui, session, openSurface, save, flow: createPlaceWalk(deps, session, ui) };
 }
 
 describe('createPlaceWalk', () => {
-  it('opens the split on the surface it was last placed on and starts the session', async () => {
-    const project = {
-      current: projectWith([
-        plan,
-        walkLayer({
-          place: {
-            pins: [],
-            yawOffsetDeg: 0,
-            heightM: 1.7,
-            quality: 'unplaced',
-            placedOn: '@model',
-          },
-        }),
-      ]),
-    };
-    const { flow, openSurface, session, ui } = flowFor(project);
-    await flow.begin('walk-a');
-    expect(openSurface).toHaveBeenCalledWith('walk-a', { kind: 'map' });
-    expect(ui.getState().host).toEqual({ kind: 'map' });
-    expect(session.getState().layerId).toBe('walk-a');
-    // the remembered surface is chosen: the strip opens on Start with the select showing it
-    expect(session.getState().surface).toEqual({ kind: 'map' });
-    expect(session.getState().step).toBe('start');
-  });
-
   it('Place walk on another walk with unsaved pins asks first, then places it after Discard', async () => {
     const project = { current: projectWith([plan, walkLayer(), walkLayer({ id: 'walk-b' })]) };
     const { flow, session, ui, openSurface } = flowFor(project);
     await flow.begin('walk-a');
+    flow.placeAnyway();
     flow.chooseSurface({ kind: 'map' });
     session.getState().click([0, 0], 0);
     expect(session.getState().dirty).toBe(true);
@@ -265,7 +247,7 @@ describe('createPlaceWalk', () => {
     expect(ui.getState()).toMatchObject({ layerId: 'walk-a', asking: true, pending: 'walk-b' });
     expect(session.getState().layerId).toBe('walk-a');
     // the question is shown where the strip sits
-    expect(openSurface).toHaveBeenCalledWith('walk-a', { kind: 'map' });
+    expect(openSurface).toHaveBeenCalledWith('walk-a', { kind: 'map' }, false);
     flow.discard();
     await vi.waitFor(() => {
       expect(session.getState().layerId).toBe('walk-b');
@@ -277,6 +259,7 @@ describe('createPlaceWalk', () => {
     const project = { current: projectWith([plan, walkLayer(), walkLayer({ id: 'walk-b' })]) };
     const { flow, session, ui, save } = flowFor(project);
     await flow.begin('walk-a');
+    flow.placeAnyway();
     flow.chooseSurface({ kind: 'map' });
     session.getState().click([0, 0], 0);
     session.getState().click([40, 0], 0);
@@ -293,6 +276,7 @@ describe('createPlaceWalk', () => {
     const project = { current: projectWith([plan, walkLayer(), walkLayer({ id: 'walk-b' })]) };
     const { flow, session, ui } = flowFor(project);
     await flow.begin('walk-a');
+    flow.placeAnyway();
     flow.chooseSurface({ kind: 'map' });
     session.getState().click([0, 0], 0);
     await flow.begin('walk-b');
@@ -304,6 +288,7 @@ describe('createPlaceWalk', () => {
     const project = { current: projectWith([plan, walkLayer()]) };
     const { flow, ui } = flowFor(project);
     await flow.begin('walk-a');
+    flow.placeAnyway();
     expect(ui.getState().seek).not.toBeNull();
     flow.discard();
     expect(ui.getState().seek).toBeNull();
@@ -330,22 +315,28 @@ describe('createPlaceWalk', () => {
 
   it('Save lets go of a pin being moved, so no move is made while it saves', async () => {
     const project = { current: projectWith([plan, walkLayer()]) };
-    let answer: (v: string | null) => void = () => undefined;
+    const held: { answer: ((v: string | null) => void) | null } = { answer: null };
     const { flow, session } = flowFor(project, {
       save: () =>
         new Promise<string | null>((r) => {
-          answer = r;
+          held.answer = r;
         }),
     });
     await flow.begin('walk-a');
+    flow.placeAnyway();
     flow.chooseSurface({ kind: 'map' });
     session.getState().click([0, 0], 0);
     session.getState().click([40, 0], 0);
+    flow.fineTune(true);
     session.getState().armMove(0);
     const saving = flow.save();
     expect(session.getState().armed).toBeNull();
     expect(session.getState().moving).toBeNull();
-    answer('Disk full');
+    // the date field is applied first, so the save goes out a moment later
+    await vi.waitFor(() => {
+      expect(held.answer).not.toBeNull();
+    });
+    held.answer?.('Disk full');
     await saving;
   });
 
@@ -360,39 +351,278 @@ describe('createPlaceWalk', () => {
   });
 });
 
+describe('createPlaceWalk, start and end', () => {
+  const withPath = (extra: Partial<WalkLayer> = {}) => walkLayer({ path: refs, ...extra });
+  const loadFixture = () => Promise.resolve({ raw, orientation: null });
+  const undatedWithPath = (): WalkLayer => {
+    const w = withPath();
+    delete w.capture;
+    return w;
+  };
+
+  it('a walk with a path opens on Start on the first surface', async () => {
+    const project = { current: projectWith([plan, withPath()]) };
+    const { flow, openSurface, session } = flowFor(project, { loadInputs: loadFixture });
+    await flow.begin('walk-a');
+    expect(openSurface).toHaveBeenCalledWith(
+      'walk-a',
+      expect.objectContaining({ kind: 'drawing' }),
+      false,
+    );
+    expect(session.getState().step).toBe('start');
+  });
+
+  it('a walk with no path opens on the check, with the job state', async () => {
+    const project = { current: projectWith([plan, walkLayer()]) };
+    const { flow, session } = flowFor(project, {
+      job: () => ({ status: 'interrupted', progress: 0.31 }),
+    });
+    await flow.begin('walk-a');
+    expect(session.getState().step).toBe('check');
+    expect(flow.pathState()).toBe('interrupted');
+    flow.placeAnyway();
+    expect(session.getState().step).toBe('start');
+  });
+
+  it('Process walk from the check answers why not in the note', async () => {
+    const project = { current: projectWith([plan, walkLayer()]) };
+    const process = vi.fn(() => Promise.resolve('Needs a newer pipeline pack'));
+    const { flow, ui } = flowFor(project, { process });
+    await flow.begin('walk-a');
+    await flow.process();
+    expect(process).toHaveBeenCalledWith(expect.objectContaining({ id: 'walk-a' }));
+    expect(ui.getState().note).toBe('Needs a newer pipeline pack');
+  });
+
+  it('a walk placed on @model reopens on the map when the stage shows the map, else 3D', async () => {
+    const placed = withPath({
+      place: {
+        pins: [
+          { t: 4, surface: '@model', at: [0, 0] },
+          { t: 62, surface: '@model', at: [40, -30] },
+        ],
+        yawOffsetDeg: 0,
+        heightM: 1.7,
+        quality: 'good',
+        placedOn: '@model',
+      },
+    });
+    const project = { current: projectWith([placed]) };
+    const onMap = flowFor(project, { loadInputs: loadFixture, modelSurface: () => 'map' });
+    await onMap.flow.begin('walk-a');
+    expect(onMap.ui.getState().host).toEqual({ kind: 'map' });
+    expect(onMap.session.getState().step).toBe('placed');
+    const in3d = flowFor(project, { loadInputs: loadFixture, modelSurface: () => '3d' });
+    await in3d.flow.begin('walk-a');
+    expect(in3d.ui.getState().host).toEqual({ kind: '3d' });
+  });
+
+  it('a walk placed on a drawing that is gone opens on the first surface', async () => {
+    const placed = withPath({
+      place: {
+        pins: [
+          { t: 4, surface: 'sheet-gone', at: [0, 0] },
+          { t: 62, surface: 'sheet-gone', at: [400, 300] },
+        ],
+        yawOffsetDeg: 0,
+        heightM: 1.7,
+        quality: 'good',
+        placedOn: 'sheet-gone',
+      },
+    });
+    const project = { current: projectWith([plan, placed]) };
+    const { flow, ui } = flowFor(project, { loadInputs: loadFixture });
+    await flow.begin('walk-a');
+    expect(ui.getState().host).toMatchObject({ kind: 'drawing', id: 'sheet-own' });
+  });
+
+  it('the date field preselects the walk capture, else the first choice, else the day to add', async () => {
+    const undated = undatedWithPath();
+    const dated = flowFor(
+      { current: projectWith([plan, withPath()]) },
+      { loadInputs: loadFixture },
+    );
+    await dated.flow.begin('walk-a');
+    expect(dated.ui.getState().date).toBe('c1');
+    const first = flowFor({ current: projectWith([plan, undated]) }, { loadInputs: loadFixture });
+    await first.flow.begin('walk-a');
+    expect(first.ui.getState().date).toBe('c1');
+  });
+
+  it('Save applies the date field first, then saves the placement', async () => {
+    const undated = undatedWithPath();
+    const project = { current: projectWith([plan, undated]) };
+    const setCapture = vi.fn(() => Promise.resolve(null));
+    const { flow, session, save } = flowFor(project, { loadInputs: loadFixture, setCapture });
+    await flow.begin('walk-a');
+    flow.setDate('c1');
+    session.getState().chooseSurface({ kind: '3d' });
+    session.getState().click([0, 0], 0);
+    session.getState().click([40, -30], 0);
+    await flow.save();
+    expect(setCapture).toHaveBeenCalledWith('walk-a', 'c1');
+    expect(save).toHaveBeenCalledWith('walk-a', {
+      walk: expect.objectContaining({ placedOn: '@model' }) as unknown,
+    });
+  });
+
+  it('Save adds a new survey date for an add: field, and stops on its error', async () => {
+    const undated = undatedWithPath();
+    const project = { current: projectWith([plan, undated]) };
+    const ensureCapture = vi.fn(() => Promise.resolve({ error: 'No room' }));
+    const { flow, session, save, ui } = flowFor(project, {
+      loadInputs: loadFixture,
+      ensureCapture,
+    });
+    await flow.begin('walk-a');
+    flow.setDate('add:2026-10-01');
+    session.getState().chooseSurface({ kind: '3d' });
+    session.getState().click([0, 0], 0);
+    session.getState().click([40, -30], 0);
+    await flow.save();
+    expect(ensureCapture).toHaveBeenCalledWith('2026-10-01');
+    expect(save).not.toHaveBeenCalled();
+    expect(ui.getState()).toMatchObject({ note: 'No room', saving: false });
+  });
+
+  it('Fine-tune opens the 360 beside the surface and turns the session to fine-tune', async () => {
+    const project = { current: projectWith([withPath()]) };
+    const { flow, openSurface, session, ui } = flowFor(project, { loadInputs: loadFixture });
+    await flow.begin('walk-a');
+    session.getState().click([0, 0], 0);
+    session.getState().click([40, -30], 0);
+    flow.fineTune(true);
+    expect(session.getState().step).toBe('fine-tune');
+    expect(ui.getState().fineTune).toBe(true);
+    // a project with a CRS and no drawing: the map comes first
+    expect(openSurface).toHaveBeenLastCalledWith('walk-a', { kind: 'map' }, true);
+    flow.fineTune(false);
+    expect(session.getState().step).toBe('placed');
+    expect(openSurface).toHaveBeenLastCalledWith('walk-a', { kind: 'map' }, false);
+  });
+
+  it('Remove placement sends walk null and closes the session', async () => {
+    const project = {
+      current: projectWith([
+        withPath({
+          place: { pins: [], yawOffsetDeg: 0, heightM: 1.7, quality: 'good', placedOn: '@model' },
+        }),
+      ]),
+    };
+    const { flow, save, ui } = flowFor(project, { loadInputs: loadFixture });
+    await flow.begin('walk-a');
+    expect(await flow.removePlacement()).toBeNull();
+    expect(save).toHaveBeenCalledWith('walk-a', { walk: null });
+    expect(ui.getState().layerId).toBeNull();
+  });
+
+  it('Remove placement of another walk leaves the open session alone', async () => {
+    const project = { current: projectWith([withPath(), walkLayer({ id: 'walk-b' })]) };
+    const { flow, save, ui } = flowFor(project, { loadInputs: loadFixture });
+    await flow.begin('walk-a');
+    expect(await flow.removePlacement('walk-b')).toBeNull();
+    expect(save).toHaveBeenCalledWith('walk-b', { walk: null });
+    expect(ui.getState().layerId).toBe('walk-a');
+  });
+
+  it('a path that appears while on the check moves on to Start; one that goes drops the draft', async () => {
+    const project = { current: projectWith([walkLayer()]) };
+    const { flow, session } = flowFor(project, {
+      loadInputs: (_p, l) =>
+        Promise.resolve(l.path ? { raw, orientation: null } : { raw: null, orientation: null }),
+    });
+    await flow.begin('walk-a');
+    expect(session.getState().step).toBe('check');
+    project.current = projectWith([withPath()]);
+    await flow.pathChanged();
+    expect(session.getState().step).toBe('start');
+    project.current = projectWith([walkLayer()]);
+    await flow.pathChanged();
+    expect(session.getState().step).toBe('check');
+  });
+});
+
+describe('surfaceLayout', () => {
+  it('the map and 3D fill the stage; a drawing sits beside the 3D view, never the 360', () => {
+    expect(surfaceLayout(undefined, { kind: 'map' }, false)).toEqual({ mode: 'map' });
+    expect(surfaceLayout(undefined, { kind: '3d' }, false)).toEqual({ mode: '3d' });
+    const d = surfaceLayout(
+      { left: '3d', right: 'walk360' },
+      { kind: 'drawing', id: 's', name: 'S', dated: false },
+      false,
+    );
+    expect(d.mode).toBe('split');
+    expect([d.split?.left, d.split?.right].sort()).toEqual(['3d', 'raster']);
+    expect(d.split?.raster).toBe('s');
+  });
+
+  it('fine-tune puts the 360 video beside the surface', () => {
+    const f = surfaceLayout(undefined, { kind: 'map' }, true);
+    expect(f.mode).toBe('split');
+    expect([f.split?.left, f.split?.right].sort()).toEqual(['map', 'walk360']);
+  });
+});
+
 describe('the walk on the map while it is placed there', () => {
   afterEach(() => {
     setWalkMapOverlays([]);
-    setWalkMapPick(null);
+    setWalkMapPointer(null);
   });
 
-  it('draws the path, the position and pins, picks the armed pin, and clears on close', async () => {
+  it('hover shows the preview, clicks place, handles drag, and close clears', async () => {
+    const project = { current: projectWith([walkLayer({ path: refs })]) };
+    const { flow, session, ui } = flowFor(project, {
+      loadInputs: () => Promise.resolve({ raw, orientation: null }),
+    });
+    const stop = followMap(session, ui, () => project.current);
+    await flow.begin('walk-a');
+    flow.chooseSurface({ kind: 'map' });
+    const pointer = walkMap.getState().pointer;
+    expect(pointer).not.toBeNull();
+    pointer?.onMove?.([5, 0, 6]);
+    expect(walkMap.getState().overlays.map((o) => o.id)).toContain('walk-walk-a-preview');
+    // the session object stays the same while placing goes on (a new one would cancel a drag)
+    expect(walkMap.getState().pointer).toBe(pointer);
+    pointer?.onMove?.(null);
+    expect(walkMap.getState().overlays.map((o) => o.id)).not.toContain('walk-walk-a-preview');
+    pointer?.onClick?.([0, 0.5, 0]);
+    pointer?.onClick?.([40, 0, -30]);
+    expect(session.getState().step).toBe('placed');
+    expect(walkMap.getState().overlays.map((o) => o.id)).not.toContain('walk-walk-a-preview');
+    expect(walkMap.getState().pointer).toBe(pointer);
+    expect(pointer?.handles?.().map((h) => h.id)).toEqual(['start', 'end']);
+    pointer?.onDrag?.('end', [45, 0, -30]);
+    expect(session.getState().pins[1]?.at).toEqual([45, -30]);
+    pointer?.onDragEnd?.('end', [45, 0, -30]);
+    expect(session.getState().dragging).toBeNull();
+    // a placed walk ignores plain clicks
+    pointer?.onClick?.([90, 0, 90]);
+    expect(session.getState().pins).toHaveLength(2);
+    flow.discard();
+    expect(walkMap.getState().overlays).toHaveLength(0);
+    expect(walkMap.getState().pointer).toBeNull();
+    stop();
+  });
+
+  it('draws the path once placed; a time tick keeps the same path overlay', async () => {
     const project = { current: projectWith([plan, walkLayer()]) };
     const { flow, session, ui } = flowFor(project);
     const stop = followMap(session, ui, () => project.current);
     await flow.begin('walk-a');
+    flow.placeAnyway();
     flow.chooseSurface({ kind: 'map' });
-    // waiting for the start click: the map picks a point
-    const pick = walkMap.getState().pick;
-    expect(pick).not.toBeNull();
-    pick?.onPick([2, 0.5, 3]);
+    const pointer = walkMap.getState().pointer;
+    pointer?.onClick?.([2, 0.5, 3]);
     expect(session.getState().pins[0]).toMatchObject({ surface: '@model', at: [2, 3], y: 0.5 });
-    // the end is asked next: armed again
-    expect(walkMap.getState().pick).not.toBeNull();
-    walkMap.getState().pick?.onPick([40, 0, 3]);
-    expect(session.getState().step).toBe('correct');
-    expect(walkMap.getState().pick).toBeNull();
+    pointer?.onClick?.([40, 0, 3]);
+    expect(session.getState().step).toBe('placed');
     const ids = walkMap.getState().overlays.map((o) => o.id);
     expect(ids).toEqual(['walk-walk-a', 'walk-walk-a-now']);
     const path = walkMap.getState().overlays[0];
     expect(path?.tooltip?.({ kind: 'pin', active: false })).toBe('The drawing it was on is gone');
-    expect(path?.tooltip?.({ kind: 'pin', active: true })).toBeNull();
-    // a time tick moves the position only: the path overlay is the same object
     session.getState().setTime(10);
     expect(walkMap.getState().overlays[0]).toBe(path);
     flow.discard();
-    expect(walkMap.getState().overlays).toHaveLength(0);
-    expect(walkMap.getState().pick).toBeNull();
     stop();
   });
 
@@ -401,8 +631,10 @@ describe('the walk on the map while it is placed there', () => {
     const { flow, session, ui } = flowFor(project);
     const stop = followMap(session, ui, () => project.current);
     await flow.begin('walk-a');
+    flow.placeAnyway();
     flow.chooseSurface({ kind: 'map' });
-    walkMap.getState().pick?.onPick([2, 0.5, 3]);
+    walkMap.getState().pointer?.onClick?.([2, 0.5, 3]);
+    walkMap.getState().pointer?.onClick?.([40, 0.5, 3]);
     expect(walkMap.getState().overlays.length).toBeGreaterThan(0);
     // removed from the project (any way: the sidebar, an undo, a reload)
     project.current = projectWith([plan, walkLayer({ id: 'walk-b' })]);
@@ -410,7 +642,7 @@ describe('the walk on the map while it is placed there', () => {
     expect(session.getState().layerId).toBeNull();
     expect(ui.getState().layerId).toBeNull();
     expect(walkMap.getState().overlays).toHaveLength(0);
-    expect(walkMap.getState().pick).toBeNull();
+    expect(walkMap.getState().pointer).toBeNull();
     // no hidden "Keep these pins?" holds the next walk back
     await flow.begin('walk-b');
     expect(ui.getState().asking).toBe(false);
@@ -421,20 +653,24 @@ describe('the walk on the map while it is placed there', () => {
     stop();
   });
 
-  it('a pin armed to move takes the next map click', async () => {
+  it('in fine-tune, a pin armed to move takes the next map click; Escape lets it go', async () => {
     const project = { current: projectWith([plan, walkLayer()]) };
     const { flow, session, ui } = flowFor(project);
     const stop = followMap(session, ui, () => project.current);
     await flow.begin('walk-a');
+    flow.placeAnyway();
     flow.chooseSurface({ kind: 'map' });
-    walkMap.getState().pick?.onPick([2, 0.5, 3]);
-    walkMap.getState().pick?.onPick([40, 0, 3]);
-    expect(walkMap.getState().pick).toBeNull();
+    const pointer = walkMap.getState().pointer;
+    pointer?.onClick?.([2, 0.5, 3]);
+    pointer?.onClick?.([40, 0, 3]);
+    flow.fineTune(true);
     session.getState().armMove(0);
-    walkMap.getState().pick?.onPick([5, 0.2, 6]);
+    pointer?.onClick?.([5, 0.2, 6]);
     expect(session.getState().pins[0]).toMatchObject({ at: [5, 6], y: 0.2 });
     expect(session.getState().pins[1]).toMatchObject({ at: [40, 3] });
-    expect(walkMap.getState().pick).toBeNull();
+    session.getState().armMove(0);
+    pointer?.onCancel?.();
+    expect(session.getState().armed).toBeNull();
     flow.discard();
     stop();
   });
@@ -445,9 +681,38 @@ describe('the walk on the map while it is placed there', () => {
     const stop = followMap(session, ui, () => project.current);
     await flow.begin('walk-a');
     flow.chooseSurface({ kind: 'drawing', id: 'sheet-own', name: 'Ground floor', dated: false });
-    expect(walkMap.getState().pick).toBeNull();
+    expect(session.getState().surface?.kind).toBe('drawing');
+    expect(walkMap.getState().pointer).toBeNull();
     expect(walkMap.getState().overlays).toHaveLength(0);
     stop();
+  });
+});
+
+describe('handles and clicks', () => {
+  it('wantsSurfaceClick: start and end, or an armed fine-tune click', () => {
+    expect(wantsSurfaceClick({ step: 'start', armed: null })).toBe(true);
+    expect(wantsSurfaceClick({ step: 'end', armed: null })).toBe(true);
+    expect(wantsSurfaceClick({ step: 'placed', armed: null })).toBe(false);
+    expect(wantsSurfaceClick({ step: 'check', armed: null })).toBe(false);
+    expect(wantsSurfaceClick({ step: 'fine-tune', armed: null })).toBe(false);
+    expect(wantsSurfaceClick({ step: 'fine-tune', armed: 'pin' })).toBe(true);
+    expect(wantsSurfaceClick({ step: 'fine-tune', armed: 'align-360' })).toBe(false);
+    expect(wantsSurfaceClick({ step: 'fine-tune', armed: 'align-surface' })).toBe(true);
+  });
+
+  it('sessionHandles: the first and last active pin by time, with their heights', () => {
+    const pins = [
+      { t: 0, surface: '@model', at: [0, 0] as [number, number], y: 1 },
+      { t: 30, surface: '@model', at: [40, 0] as [number, number] },
+      { t: 62, surface: '@model', at: [40, -30] as [number, number], y: 2 },
+    ];
+    const fit = fitWalk(null, { pins, yawOffsetDeg: 0 }, { drawing: () => null }, 62);
+    expect(sessionHandles({ step: 'end', fit, pins })).toEqual([]);
+    expect(sessionHandles({ step: 'placed', fit, pins })).toEqual([
+      { handle: 'start', xz: [0, 0], y: 1 },
+      { handle: 'end', xz: [40, -30], y: 2 },
+    ]);
+    expect(sessionHandles({ step: 'fine-tune', fit: null, pins })).toEqual([]);
   });
 });
 

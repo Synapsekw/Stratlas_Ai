@@ -173,3 +173,19 @@ export function setPlaceWalkHandler(fn: ((layerId: string) => void) | null): voi
 export function placeWalk(layerId: string): void {
   placeHandler?.(layerId);
 }
+
+let removePlacementHandler: ((layerId: string) => Promise<string | null>) | null = null;
+
+/** The Place walk flow registers its Remove placement here; the tree row calls it. */
+export function setRemovePlacementHandler(
+  fn: ((layerId: string) => Promise<string | null>) | null,
+): void {
+  removePlacementHandler = fn;
+}
+
+/** Remove a walk's placement (the walk stays): null when removed, else why not. */
+export function removeWalkPlacement(layerId: string): Promise<string | null> {
+  return removePlacementHandler
+    ? removePlacementHandler(layerId)
+    : Promise.resolve('Place walk is not ready.');
+}

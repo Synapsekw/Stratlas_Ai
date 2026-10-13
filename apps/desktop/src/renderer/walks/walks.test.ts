@@ -43,7 +43,13 @@ vi.mock('../processingTools', async () => {
 import { builder } from '../builder/state';
 import { processingTools } from '../processingTools';
 import { jobs } from '../shell';
-import { locateOriginal, processWalk, walks } from './walks';
+import {
+  locateOriginal,
+  processWalk,
+  removeWalkPlacement,
+  setRemovePlacementHandler,
+  walks,
+} from './walks';
 
 const walkLayer = (id: string): WalkLayer => ({
   kind: 'walk',
@@ -200,5 +206,22 @@ describe('walk.process after an import', () => {
     await vi.waitFor(() => {
       expect(listCalls()).toBe(before + 1);
     });
+  });
+});
+
+describe('removeWalkPlacement', () => {
+  afterEach(() => {
+    setRemovePlacementHandler(null);
+  });
+
+  it('calls the registered handler and answers its result', async () => {
+    const fn = vi.fn(() => Promise.resolve('Disk full'));
+    setRemovePlacementHandler(fn);
+    expect(await removeWalkPlacement('walk-a')).toBe('Disk full');
+    expect(fn).toHaveBeenCalledWith('walk-a');
+  });
+
+  it('without a handler it says Place walk is not ready', async () => {
+    expect(await removeWalkPlacement('walk-a')).toBe('Place walk is not ready.');
   });
 });
