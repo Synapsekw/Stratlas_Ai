@@ -77,11 +77,23 @@ class FakeMap {
   resize(): void {
     /* no layout in jsdom */
   }
-  jumpTo(): void {
-    /* the camera is not drawn here */
+  /** The camera, as far as framing reads it. */
+  zoom = 0;
+  center = { lng: 0, lat: 0 };
+  readonly framed = vi.fn();
+  getZoom(): number {
+    return this.zoom;
+  }
+  getCenter(): { lng: number; lat: number } {
+    return this.center;
+  }
+  jumpTo(o: { center?: [number, number]; zoom?: number }): void {
+    if (o.zoom !== undefined) this.zoom = o.zoom;
+    if (o.center) this.center = { lng: o.center[0], lat: o.center[1] };
   }
   fitBounds(): void {
-    /* the camera is not drawn here */
+    this.framed();
+    this.zoom = 16;
   }
 }
 
@@ -124,6 +136,7 @@ function start() {
   document.body.appendChild(el);
   const store = createWorkspace();
   const ctl = createMapController(el, { packs: [], store, showFlights: true });
+  lastStore = store;
   const map = FakeMap.last;
   if (!map) throw new Error('no map');
   map.fire('load');
@@ -175,6 +188,17 @@ describe('map controller dispose (T8 soak: maps kept alive after a project close
 });
 
 /** A map with a UTM project open, so clicks have a local point. */
+let lastStore: ReturnType<typeof createWorkspace> | null = null;
+/** Open a project with a coordinate system and no layers on the last started map's store. */
+function openProjectOnLastMap(): void {
+  lastStore?.setState({
+    project: {
+      id: 'p1',
+      manifest: { crs: { epsg: 32633 }, origin: [500_000, 4_000_000, 0], layers: [] },
+    } as unknown as ReturnType<ReturnType<typeof createWorkspace>['getState']>['project'],
+  });
+}
+
 function startWithProject() {
   const started = start();
   const { frameProjection } = geo;
@@ -349,5 +373,39 @@ describe('map pointer session (placing a walk: hover, click, handles)', () => {
     ctl.pointerSession({ onClick });
     ctl.dispose();
     expect(onClick).not.toHaveBeenCalled();
+  });
+});
+
+describe('framing the project while a walk is placed on the map', () => {
+  const settle = async () => {
+    for (let i = 0; i < 5; i++) await new Promise((r) => setTimeout(r, 0));
+  };
+
+  it('frames the project when it opens, also with a session that left the camera alone', async () => {
+    const { ctl, map } = start();
+    ctl.pointerSession({ onClick: vi.fn() });
+    openProjectOnLastMap();
+    await settle();
+    expect(map.getZoom()).toBe(15);
+  });
+
+  it('keeps the view the person framed while a session runs', async () => {
+    const { ctl, map } = start();
+    ctl.pointerSession({ onClick: vi.fn() });
+    // the person zooms in before the project's extent is known
+    map.jumpTo({ center: [15, 36], zoom: 18 });
+    openProjectOnLastMap();
+    await settle();
+    expect(map.framed).not.toHaveBeenCalled();
+    expect(map.getZoom()).toBe(18);
+    expect(map.getCenter()).toEqual({ lng: 15, lat: 36 });
+  });
+
+  it('without a session the project frames as before', async () => {
+    const { map } = start();
+    map.jumpTo({ center: [15, 36], zoom: 18 });
+    openProjectOnLastMap();
+    await settle();
+    expect(map.getZoom()).toBe(15);
   });
 });

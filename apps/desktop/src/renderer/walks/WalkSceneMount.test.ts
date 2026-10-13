@@ -2,6 +2,7 @@
 import { fitWalk } from '@aio/geo';
 import type { WalkLayer, WalkPin } from '@aio/schema';
 import type { SheetWalk } from './walkOverlay';
+import { Vector3 } from 'three';
 import { describe, expect, it, vi } from 'vitest';
 
 // the mount's module graph reaches the shell and the builder: stub them as placeWalk.test.ts does
@@ -14,7 +15,7 @@ vi.mock('../builder/state', () => ({
   builder: { getState: () => ({ saveLayers: vi.fn() }), subscribe: () => () => undefined },
 }));
 
-const { scenePlacedWalks, scenePlacing } = await import('./WalkSceneMount');
+const { scenePlacedWalks, scenePlacing, walkReach } = await import('./WalkSceneMount');
 
 describe('scenePlacing', () => {
   const pins: WalkPin[] = [
@@ -101,5 +102,27 @@ describe('scenePlacedWalks', () => {
       'walk-b',
       'walk-d',
     ]);
+  });
+});
+
+describe('walkReach', () => {
+  it('nothing without points or a reach', () => {
+    expect(walkReach([], null, 0)).toBeNull();
+    expect(walkReach([], new Vector3(), 0)).toBeNull();
+  });
+
+  it('the points, and a cube of the walk length about the centre while placing', () => {
+    const pts = walkReach(
+      [
+        [0, 0, 0],
+        [40, 1, 30],
+      ],
+      null,
+      0,
+    );
+    expect(pts?.max.toArray()).toEqual([40, 1, 30]);
+    const placing = walkReach([[1, 0, 1]], new Vector3(0, 0, 0), 75);
+    expect(placing?.min.toArray()).toEqual([-75, -75, -75]);
+    expect(placing?.max.toArray()).toEqual([75, 75, 75]);
   });
 });

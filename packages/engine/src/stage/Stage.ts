@@ -162,6 +162,10 @@ export class Stage implements EngineStage {
   private readonly receivers = new Set<Mesh>();
   private readonly providers = new Set<RaycastProvider>();
   private readonly boundsProviders = new Set<() => Box3 | null>();
+  /** Extents the camera must be able to back off to see (`setReach`), by key. */
+  private readonly reach = new Map<string, Box3>();
+  /** The content's box as last framed (empty before content), for the camera's distance cap. */
+  private readonly lastContent = new Box3();
   private readonly frameCbs = new Set<(dtMs: number) => void>();
   private readonly holders = new Map<symbol, string>();
   private readonly stateCbs = new Set<() => void>();
@@ -359,6 +363,28 @@ export class Stage implements EngineStage {
     return () => {
       if (this.boundsProviders.delete(bounds) && !this.disposed) this.contentChanged();
     };
+  }
+
+  setReach(key: string, box: Box3 | null): void {
+    if (box && !box.isEmpty()) this.reach.set(key, box.clone());
+    else if (!this.reach.delete(key)) return;
+    if (this.disposed) return;
+    this.applyDistanceCap();
+    this.need = true;
+  }
+
+  /**
+   * How far the camera may back off: 25 times the radius of the content, widened to cover what
+   * `setReach` added (a long walk next to a small model), so it can all be brought into view.
+   */
+  private applyDistanceCap(): void {
+    if (this.lastContent.isEmpty()) return;
+    const radius = this.lastContent.getSize(new Vector3()).length() / 2;
+    // the reach is measured from the content's centre, where the orbit target sits; four times
+    // its farthest corner keeps all of it in a 30 degree view with room to spare
+    let far = 0;
+    for (const b of this.reach.values()) far = Math.max(far, farthestCorner(b, this.contentCentre));
+    this.controls.maxDistance = Math.max(radius * 25, far * 4);
   }
 
   addProjectionReceiver(mesh: Mesh): () => void {
@@ -941,7 +967,8 @@ export class Stage implements EngineStage {
       this.env.setShadowBounds(sb);
       if (this.env.waterY !== null) this.maskDirty = true;
       this.controls.minDistance = Math.max(radius * 0.002, 0.05);
-      this.controls.maxDistance = radius * 25;
+      this.lastContent.copy(box);
+      this.applyDistanceCap();
       applySection(this.clippingPlanes, this._section, this.contentCentre);
       if (this.autoFit) {
         const pose = poseForPreset(
@@ -1441,4 +1468,12 @@ export class Stage implements EngineStage {
     this.holders.clear();
     this.stateCbs.clear();
   }
+}
+
+/** The distance from `p` to the farthest corner of `box`. */
+function farthestCorner(box: Box3, p: Vector3): number {
+  const dx = Math.max(Math.abs(box.min.x - p.x), Math.abs(box.max.x - p.x));
+  const dy = Math.max(Math.abs(box.min.y - p.y), Math.abs(box.max.y - p.y));
+  const dz = Math.max(Math.abs(box.min.z - p.z), Math.abs(box.max.z - p.z));
+  return Math.hypot(dx, dy, dz);
 }

@@ -211,6 +211,16 @@ export function createMapController(
   });
   // Test hook: end-to-end tests query rendered features through the container.
   Object.assign(el, { __aioMap: map });
+  /** The camera as a comparable key (centre and zoom). */
+  const cameraKey = (): string => {
+    const c = map.getCenter();
+    return `${map.getZoom().toFixed(6)} ${c.lng.toFixed(7)} ${c.lat.toFixed(7)}`;
+  };
+  /**
+   * The camera the map itself last set (at creation, or framing the project). While a walk is
+   * placed on the map the person frames it: a camera that moved since is not framed over.
+   */
+  let ownCamera = cameraKey();
   map.addControl(new AttributionControl({ compact: true }), 'bottom-right');
   map.addControl(new NavigationControl({ showCompass: false }), 'top-right');
   map.addControl(new ScaleControl({ unit: 'metric' }), 'bottom-left');
@@ -1229,6 +1239,8 @@ export function createMapController(
       followCamera(now);
       return;
     }
+    // a walk is being placed here and the person has framed the map: keep their view
+    if (session && cameraKey() !== ownCamera) return;
     if (box) {
       map.fitBounds(
         [
@@ -1240,6 +1252,7 @@ export function createMapController(
     } else {
       map.jumpTo({ center: proj.toLonLat([0, 0, 0]), zoom: 15 });
     }
+    ownCamera = cameraKey();
   }
 
   /** What the project covers (rasters, flights, issues, photos), for the home view. */

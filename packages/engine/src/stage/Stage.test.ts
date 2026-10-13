@@ -406,6 +406,26 @@ describe('Stage', () => {
     stage.dispose();
   });
 
+  it('a reach lets the camera back off far enough to see it, without reframing', async () => {
+    const { stage, store, resize } = make();
+    resize(800, 600);
+    store.getState().openProject(project([meshLayer('plant')]));
+    await flush();
+    const cap = stage.controls.maxDistance;
+    const target = stage.saveView().target;
+    // a walk far longer than the model: the cap grows to cover it
+    stage.setReach('walk', new Box3(new Vector3(-500, 0, -10), new Vector3(500, 2, 10)));
+    expect(stage.controls.maxDistance).toBeGreaterThanOrEqual(1000);
+    expect(stage.contentBounds()?.max.toArray()).toEqual([5, 10, 5]);
+    expect(stage.saveView().target).toEqual(target);
+    // a reach inside the content changes nothing; clearing it brings the old cap back
+    stage.setReach('walk', new Box3(new Vector3(0, 0, 0), new Vector3(1, 1, 1)));
+    expect(stage.controls.maxDistance).toBeCloseTo(cap);
+    stage.setReach('walk', null);
+    expect(stage.controls.maxDistance).toBeCloseTo(cap);
+    stage.dispose();
+  });
+
   it('keeps a selection camera request until its layer has loaded', async () => {
     const { stage, store, resize } = make();
     resize(800, 600);

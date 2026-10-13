@@ -2,6 +2,7 @@ import type { EngineStage } from '@aio/engine';
 import type { ProjectManifest } from '@aio/schema';
 import { useWorkspace, workspace } from '@aio/workspace';
 import { useEffect, useMemo, useRef } from 'react';
+import { Box3, Vector3 } from 'three';
 import { useStore } from 'zustand';
 import type { PlaceState } from './placeStore';
 import {
@@ -86,8 +87,41 @@ export function scenePlacedWalks(
     }));
 }
 
+/** A brisk walking pace, m/s: how far a walk can reach from where it is placed. */
+const WALK_PACE_M_S = 1.5;
+/** The reach of a walk being placed is capped here, metres. */
+const MAX_PLACE_REACH_M = 5000;
+/** `setReach` keys: the walk being placed, and the placed walks drawn faintly. */
+const REACH_PLACING = 'walk-placing';
+const REACH_PLACED = 'walks-placed';
+
+/**
+ * What the camera must be able to back off to see of the walks (`EngineStage.setReach`): their
+ * points, and while one is placed a cube of `radiusM` about `centre` (the walk's length, so a
+ * walk far longer than a small model can be framed before its first click). Null for nothing.
+ */
+export function walkReach(
+  pts: Iterable<readonly [number, number, number]>,
+  centre: Vector3 | null,
+  radiusM: number,
+): Box3 | null {
+  const box = new Box3();
+  const p = new Vector3();
+  for (const q of pts) box.expandByPoint(p.set(q[0], q[1], q[2]));
+  if (centre && radiusM > 0)
+    box.union(new Box3(centre.clone().subScalar(radiusM), centre.clone().addScalar(radiusM)));
+  return box.isEmpty() ? null : box;
+}
+
+const placingPoints = (p: WalkScenePlacing): [number, number, number][] => [
+  ...(p.walk?.runs.flatMap((r) => r.pts) ?? []),
+  ...(p.preview?.pts ?? []),
+  ...p.handles.map((h) => h.at),
+];
+
 /** The placing the view shows now: pushed only when it changes from or to something. */
 function pushPlacing(
+  stage: EngineStage,
   v: WalkSceneView,
   m: ProjectManifest | undefined,
   last: { current: boolean },
@@ -96,7 +130,10 @@ function pushPlacing(
   // a session on the map or a drawing: the 3D view has nothing of it to show (hovers there
   // would otherwise redraw the 3D view on every move)
   if (s.layerId === null || s.surface?.kind !== '3d') {
-    if (last.current) v.setPlacing(null, null);
+    if (last.current) {
+      v.setPlacing(null, null);
+      stage.setReach(REACH_PLACING, null);
+    }
     last.current = false;
     return;
   }
@@ -106,6 +143,10 @@ function pushPlacing(
   const p = scenePlacing(s, colour, walk?.durationS ?? 0);
   v.setPlacing(p, p ? INPUT : null);
   last.current = p !== null;
+  // the camera may back off far enough to see the whole walk, however small the model
+  const reach = Math.min((walk?.durationS ?? 0) * WALK_PACE_M_S, MAX_PLACE_REACH_M);
+  const centre = stage.contentBounds()?.getCenter(new Vector3()) ?? null;
+  stage.setReach(REACH_PLACING, p ? walkReach(placingPoints(p), centre, reach) : null);
 }
 
 export function WalkSceneMount({ stage }: { stage: EngineStage | null }): null {
@@ -122,12 +163,14 @@ export function WalkSceneMount({ stage }: { stage: EngineStage | null }): null {
     view.current = v;
     shown.current = false;
     const push = () => {
-      pushPlacing(v, workspace.getState().project?.manifest, shown);
+      pushPlacing(stage, v, workspace.getState().project?.manifest, shown);
     };
     push();
     const off = placeSession.subscribe(push);
     return () => {
       off();
+      stage.setReach(REACH_PLACING, null);
+      stage.setReach(REACH_PLACED, null);
       v.dispose();
       view.current = null;
     };
@@ -135,7 +178,7 @@ export function WalkSceneMount({ stage }: { stage: EngineStage | null }): null {
 
   useEffect(() => {
     const v = view.current;
-    if (v) pushPlacing(v, manifest, shown);
+    if (v && stage) pushPlacing(stage, v, manifest, shown);
   }, [manifest, stage]);
 
   const placed = useMemo(
@@ -149,6 +192,14 @@ export function WalkSceneMount({ stage }: { stage: EngineStage | null }): null {
   );
   useEffect(() => {
     view.current?.setPlaced(placed);
+    stage?.setReach(
+      REACH_PLACED,
+      walkReach(
+        placed.flatMap((w) => w.runs.flatMap((r) => r.pts)),
+        null,
+        0,
+      ),
+    );
   }, [placed, stage]);
 
   return null;

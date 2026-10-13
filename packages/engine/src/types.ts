@@ -177,6 +177,12 @@ export interface EngineStage extends SceneHandle {
    * has loaded.
    */
   contentBounds(): Box3 | null;
+  /**
+   * An extent the camera must be able to back off far enough to see (a walk being placed), under
+   * `key`; null removes it. It widens the camera's distance cap only: Home and framing still
+   * follow the content.
+   */
+  setReach(key: string, box: Box3 | null): void;
   /** The current view, to restore when the stage is created again. */
   saveView(): SavedView;
   /** Jump (or fly) to a saved view; the stage no longer frames content as it loads. */
