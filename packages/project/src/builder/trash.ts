@@ -25,7 +25,10 @@ export const TRASH_DIR = '.trash';
  * the sweep, the size and Empty project trash pass it by: the person moves its files back by hand.
  */
 export const HELD_PREFIX = 'held-';
-/** Written into a held entry by a removal that failed: it never took effect, whatever the manifest says. */
+/**
+ * In a held entry from before the first move until the manifest is saved, and left there when the
+ * removal failed: while it is there the removal has not taken effect, whatever the manifest says.
+ */
 export const HELD_NOTE = 'not-removed.txt';
 /** How long removed files are kept. */
 export const TRASH_KEEP_DAYS = 7;

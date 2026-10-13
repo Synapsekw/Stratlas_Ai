@@ -15,7 +15,13 @@ import { basename, join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { readManifestFile } from './manifestFile';
 import { MANIFEST_BEFORE, removeItems, stuckMessage } from './remove';
-import { FIXTURE_JOBS, RUN_DONE, RUN_FAILED, makeRemoveProject } from './removeFixture';
+import {
+  FIXTURE_JOBS,
+  RUN_DONE,
+  RUN_FAILED,
+  RUN_FOLDERS,
+  makeRemoveProject,
+} from './removeFixture';
 import { planRemoval } from './removePlan';
 import { emptyTrash, HELD_NOTE, HELD_PREFIX, sweepTrash, trashSize } from './trash';
 import { migrateWalks } from './walkLayers';
@@ -56,6 +62,34 @@ async function realRename(a: string, b: string): Promise<void> {
     }
   }
 }
+async function addWalk(id: string): Promise<void> {
+  await mkdir(at('walks', id), { recursive: true });
+  await writeFile(
+    at('walks', id, 'walk.json'),
+    JSON.stringify({
+      schema: WALK_SCHEMA,
+      id,
+      name: 'Walk w1',
+      createdAt: '2026-10-10T08:00:00.000Z',
+      source: {
+        file: `${id}.insv`,
+        layout: 'insv-dual-stream',
+        streams: [{ width: 128, height: 128, codec: 'avc1', fps: 30 }],
+      },
+      video: {
+        src: `walks/${id}/playback.mp4`,
+        width: 256,
+        height: 128,
+        durationS: 12,
+        fps: 30,
+        audio: false,
+      },
+      poster: `walks/${id}/poster.jpg`,
+    } satisfies WalkFile),
+  );
+  await writeFile(at('walks', id, 'playback.mp4'), 'x');
+  await migrateWalks(root);
+}
 const LATER = new Date('2026-12-31T00:00:00.000Z');
 const refuse = () => Promise.reject(new Error('refused'));
 
@@ -84,6 +118,7 @@ describe('removeItems', () => {
       manifestBefore: MANIFEST_BEFORE,
     });
     expect(rec.plan.jobs).toEqual(['job-failed']);
+    expect(await exists(at('.trash', entry, HELD_NOTE))).toBe(false);
     expect(await readFile(at('.trash', entry, MANIFEST_BEFORE), 'utf8')).toContain(
       `${RUN_FAILED}-ortho`,
     );
@@ -229,6 +264,58 @@ describe('removeItems', () => {
     );
   });
 
+  it('a run-only removal in progress is never taken for trash, and a failed save puts it all back', async () => {
+    // a failed run read from outside folders: no layer, so the manifest cannot tell
+    await mkdir(at('jobs', 'job-folders'), { recursive: true });
+    await writeFile(at('jobs', 'job-folders', 'job.log'), 'x');
+    const jobs = [
+      {
+        id: 'job-folders',
+        pipeline: 'photo.align',
+        status: 'failed',
+        params: { run: RUN_FOLDERS },
+      },
+    ];
+    const before = (await planRemoval(root, [{ run: RUN_FOLDERS }], { jobs })).files;
+    expect(before.length).toBeGreaterThanOrEqual(2);
+    await rm(at('manifest.json.bak'), { force: true });
+    await mkdir(at('manifest.json.bak')); // the save will fail
+    let n = 0;
+    const rename = async (a: string, b: string) => {
+      await realRename(a, b);
+      n += 1;
+      if (a.includes(HELD_PREFIX)) return; // moving back after the failed save
+      {
+        // the project opens, or the footer asks for the size, after each move
+        expect(await trashSize(root)).toEqual({ bytes: 0, entries: 0 });
+        expect(await sweepTrash(root, () => LATER)).toEqual([]);
+        expect(await emptyTrash(root)).toEqual({ freed: 0, removed: [], held: [] });
+        const names = await trashEntries();
+        expect(names).toHaveLength(1);
+        expect(names[0]?.startsWith(HELD_PREFIX)).toBe(true);
+      }
+    };
+    await expect(
+      removeItems(root, [{ run: RUN_FOLDERS }], () => NOW, { jobs, rename }),
+    ).rejects.toThrow(/Nothing was removed\.$/);
+    expect(n).toBeGreaterThanOrEqual(2);
+    for (const f of before) expect(await exists(at(...f.split('/'))), f).toBe(true);
+    expect(await trashEntries()).toEqual([]);
+  });
+
+  it('a walk moved back after a failed save carries no trash files', async () => {
+    const id = 'w1';
+    await addWalk(id);
+    const files = (await readdir(at('walks', id))).sort();
+    await rm(at('manifest.json.bak'), { force: true });
+    await mkdir(at('manifest.json.bak'));
+    await expect(removeItems(root, [{ layer: `walk-${id}` }], () => NOW)).rejects.toThrow(
+      /Nothing was removed\.$/,
+    );
+    expect((await readdir(at('walks', id))).sort()).toEqual(files);
+    expect(await trashEntries()).toEqual([]);
+  });
+
   it('rolls back files and tilesets.json when the save fails', async () => {
     // a folder where the backup goes: the save refuses before it writes the manifest
     await rm(at('manifest.json.bak'), { force: true });
@@ -317,32 +404,7 @@ describe('removeItems', () => {
 
   it('keeps the walk entry layout for a walk removed on its own', async () => {
     const id = 'w1';
-    await mkdir(at('walks', id), { recursive: true });
-    await writeFile(
-      at('walks', id, 'walk.json'),
-      JSON.stringify({
-        schema: WALK_SCHEMA,
-        id,
-        name: 'Walk w1',
-        createdAt: '2026-10-10T08:00:00.000Z',
-        source: {
-          file: `${id}.insv`,
-          layout: 'insv-dual-stream',
-          streams: [{ width: 128, height: 128, codec: 'avc1', fps: 30 }],
-        },
-        video: {
-          src: `walks/${id}/playback.mp4`,
-          width: 256,
-          height: 128,
-          durationS: 12,
-          fps: 30,
-          audio: false,
-        },
-        poster: `walks/${id}/poster.jpg`,
-      } satisfies WalkFile),
-    );
-    await writeFile(at('walks', id, 'playback.mp4'), 'x');
-    await migrateWalks(root);
+    await addWalk(id);
     const r = await removeItems(root, [{ layer: `walk-${id}` }], () => NOW);
     expect(r.trash).toBe(`20261013T081530Z-${id}`);
     expect(await exists(at('.trash', r.trash ?? '', 'playback.mp4'))).toBe(true);
