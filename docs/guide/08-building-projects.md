@@ -61,7 +61,7 @@ After the import the panel says which altitude was used and with which number. O
 3. The video appears in **Datasets** under **360 walks**, in the folder of its survey date when the camera's date matches one. Click it: the **Scene** opens in **Split** with the **360 video** pane on the right.
 4. Drag in the pane to look around and scroll to zoom. The bar below plays, pauses and scrubs; **Sound** turns the sound on. The keys are those of the video window: **Space** or **K**, **J**, **L**, comma and period.
 
-- A video that is already stitched (an equirectangular MP4 exported from Insta360 Studio or another program) comes in with **Ctrl K**, **Add 360 video**. The same command also takes `.insv` files.
+- A video that is already stitched (an equirectangular MP4 exported from Insta360 Studio or another program) comes in like any other file: through **Add data**, a drop on the window or a folder import, and it becomes a walk under **360 walks**. **Ctrl K**, **Add 360 video** also takes it, and `.insv` files. A video that is not 360 and has no drone telemetry next to it is skipped, and the import panel says why. The panel says where each file went.
 - Stitching uses the **ffmpeg** that comes with the processing tools (pipeline pack 0.6.0 or later), so there is nothing else to install. With an older pack or none, {product} looks for ffmpeg on this computer instead; when there is none the import says so and adds nothing: update the processing tools in **Settings**, **Processing tools**, and import again.
 - An `.lrv` imported without its `.insv` plays at its own low resolution.
 - A video stitched from the camera's own file plays **unstabilised**: every shake of the walk is in it, and the pane marks it **Not stabilised**. For a steady picture, export the clip from Insta360 Studio with FlowState on and bring that MP4 in with **Add 360 video**.
@@ -69,19 +69,18 @@ After the import the panel says which altitude was used and with which number. O
 
 ### Placing a 360 walk
 
-A walk is placed on a drawing, or on the map when the project has a coordinate system, so you see where the camera was and which way it looked.
+A walk is placed on a drawing, on the map (when the project has a coordinate system) or in the 3D view, so you see where the camera was and which way it looked. You set where the walk started and where it ended; {product} lays the walk's whole shape, as worked out from the video, between the two.
 
-1. Point at the walk's row under **360 walks** and press **Place walk** (the pin button). Its badge says **Needs placing** until it is placed.
-2. The **Scene** opens in **Split**: the 360 video on one side, the drawing on the other, and a strip above the drawing. If the walk has no survey date yet, the strip asks for it first.
-3. The video jumps to the start of the walk: click the drawing where it started. The video jumps to the end: click where it ended. A line in the colour of the survey date joins the two.
-4. To correct the line, scrub the video to a moment where you know the spot, press **Pin here** and click the spot. Drag a pin on the drawing to move it; the cross on its chip in the strip removes it. Each pin shows how far the line passes from it.
-5. If the view looks the wrong way, press **Align view**, click a landmark in the 360 video, then the same landmark on the drawing. The **Heading** field turns it by hand (arrow keys 1 degree, Shift 10).
-6. **Save**. The walk then shows on every drawing of the area, and the 360 video shows north (**N**) at its top edge.
+1. Point at the walk's row under **360 walks** and press **Place walk** (the pin button). Its badge says **Needs placing** until it is placed. A placed walk shows **Edit placement** instead, which opens the same tools with the walk as saved.
+2. A walk that is not processed yet has no known shape. The toolbar says why (not processed, still processing, failed or stopped) and offers **Process walk** (or **Process again**). **Place between two points anyway** places it without its shape: the walk then runs in a straight line between your two points, and the toolbar says so.
+3. Choose where to place it in **Place on**: a drawing (shown beside the 3D view), the **Map** or the **3D view**. A slim toolbar sits above it. When the walk has no survey date yet, the toolbar has a **Survey date** field; Save applies it.
+4. Move the pointer over the surface: a faint copy of the walk's shape follows it. Click where the walk started. Now the shape turns and scales between the start and the pointer. Click where it ended. An end closer than 5 m to the start is not taken, and the toolbar says so.
+5. The walk is placed with a **Start** and an **End** handle. Drag either one: the shape follows while you drag. **Save** keeps the placement. The walk then shows on every drawing of the area (or on the map and in the 3D view), and the 360 video shows north (**N**) at its top edge.
+6. For a closer fit, press **Fine-tune**: the 360 video opens beside the surface. Scrub to a moment where you know the spot, press **Pin here** and click the spot. **Align view** turns the view: click a landmark in the 360 video, then the same landmark on the surface. The **Heading** field turns it by hand (arrow keys 1 degree, Shift 10).
 
-- **Place on** in the strip switches between the drawings of the walk's date, the drawings without a date and the **Map**. On the map, pins cannot be dragged: remove one and pin again.
-- **Cancel** with pins not saved asks "Keep these pins?" in the strip.
-- The camera's path between your pins is not worked out from the video yet: the walk runs between the pins, and its row reads **Path not computed**.
-- **Remove walk** (the bin button) asks in the row, then moves the walk's files to the project's trash folder, where they stay seven days.
+- **Remove placement** in the row or in the toolbar asks in place, then takes the walk off the drawing, the map and the 3D view. The walk and its video stay.
+- **Cancel** with changes not saved asks "Keep these changes?" in the toolbar.
+- **Remove walk** (the bin button) asks first, then moves the walk's files to the project's trash folder, where they stay seven days.
 
 ## Drawings
 
