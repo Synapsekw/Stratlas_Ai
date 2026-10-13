@@ -102,7 +102,7 @@ The **Other dates** button is in:
 - the photo panel of **Media**, with the strip under the photo;
 - the photo pane of the **Split**;
 - the **Selection** card of a photo or a 360;
-- the **Frames** pane, for the frame on screen (pause the clip first);
+- the **Frames** pane, for the frame on screen;
 - the walk player, for the walk frame on screen.
 
 An image without a position has no other dates to match. The viewer says so instead of guessing.
@@ -121,18 +121,18 @@ An image without a position has no other dates to match. The viewer says so inst
 | Left, Right | Previous or next date that has an image         |
 | Up, Down    | Other images of the same date (the **+n** ones) |
 | C           | Compare two dates                               |
-| Esc         | Close the viewer                                |
+| Esc         | Leave Compare, then close the viewer            |
 
-The header shows the name, date and kind of the image, how far it is from the one you clicked, and the angle when it is turned. A 360 or a walk frame opens turned towards the spot. A video frame opens paused at the moment that saw the spot, and plays when you press play.
+When a date chip (a select) has the focus, or a video is playing, the arrow keys are left to it; Esc still closes. The header shows the name, date and kind of the image, how far it is from the one you clicked, and the angle when it is turned. A 360 or a walk frame opens turned towards the spot. A video frame opens paused at the moment that saw the spot, and plays when you press play.
 
 ### Compare
 
-**Compare...** shows two dates of the spot. Pick the dates with the chips above each side.
+**Compare...** is available when two or more dates have a match. It shows two dates of the spot. In Compare the arrow keys move the left side. Pick the dates with the chips above each side.
 
 - **Side by side** puts the two images next to each other. The mouse wheel zooms both on the same place, a drag pans both, and a double-click fits them. For 360s the two views look the same way.
 - **Swipe** puts one image over the other under a divider. Drag the handle, or focus it and use the arrow keys. The zoom and pan stay.
 
-**One image** goes back to the single viewer. The viewer only reads: the date bar, the layers and the selection behind it do not change.
+**One image**, or the first Esc, leaves Compare and shows the left date alone. A second Esc closes the viewer. The viewer only reads: the date bar, the layers and the selection behind it do not change.
 
 ### How images are matched
 

@@ -1209,16 +1209,16 @@ Test it with a project with photos on two survey dates (the change demo works), 
 - [ ] Press **Right**. The viewer shows the same spot on the next date with an image, skipping empty dates, and the header says how far it was taken from your photo. Press **Down** on a date with "+1" or more to see the other images of that date. Press **Left** to go back.
 - [ ] Press **C** (or **Compare...**). The two dates sit side by side; the date chips above change either side. Turn the mouse wheel over either photo: both zoom in on the same place. Drag to pan both, double-click to fit.
 - [ ] Click **Swipe** and drag the handle (or focus it and use the arrow keys): the zoom stays and both dates stay lined up under the divider.
-- [ ] Press **Esc** twice to close. The date bar, the layers you had on and the selected photo are exactly as before.
+- [ ] Press **Esc**: Compare closes and the left date shows alone. Press **Esc** again to close the viewer. The date bar, the layers you had on and the selected photo are exactly as before.
 - [ ] Click a drone photo and open **Other dates**: the other date's slot shows the drone photo that sees the same ground ("Drone"). A date whose flights never saw it says "Not seen".
 
 ### 360s
 
-- [ ] Select a 360 in 3D, open the **Selection** tab and click **Other dates**: the nearest 360 of each date opens turned towards the same spot. Where none is within 25 m the slot says so.
+- [ ] Select a 360 in 3D, open the **Selection** card and click **Other dates**: the nearest 360 of each date opens turned towards the same spot. Where none is within 25 m the slot says so.
 
 ### Video frames
 
-- [ ] In the split, put the **Frames** pane on a side, play a clip and pause it. **Other dates** in the pane opens the spot the frame looks at. A matched clip of the other date opens paused at the moment it saw the spot; press play to run it.
+- [ ] In the split, put the **Frames** pane on a side, play a clip. **Other dates** in the pane opens the spot the frame on screen looks at. A matched clip of the other date opens paused at the moment it saw the spot; press play to run it.
 
 ### Walks
 
