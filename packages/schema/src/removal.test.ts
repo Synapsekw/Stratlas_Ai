@@ -9,6 +9,9 @@ describe('removal contract', () => {
     expect(RemoveTarget.safeParse({ capture: 'c1' }).success).toBe(true);
     expect(RemoveTarget.safeParse({ layer: 'a', run: 'b' }).success).toBe(false);
     expect(RemoveTarget.safeParse({ file: 'x' }).success).toBe(false);
+    // a run id is a folder name: a path is refused at the boundary
+    for (const run of ['../x', 'a/b', 'a\\b', '', '.hidden'])
+      expect(RemoveTarget.safeParse({ run }).success).toBe(false);
   });
 
   it('parses an empty plan and one with every kind of reason', () => {

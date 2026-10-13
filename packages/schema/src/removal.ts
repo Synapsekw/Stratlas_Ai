@@ -1,13 +1,13 @@
 import { z } from 'zod';
 import { Id, IsoTime, ProjectPath } from './common';
-import { PhotoRun } from './photogrammetry';
+import { PhotoRun, PhotoRunId } from './photogrammetry';
 
 export const TRASH_SCHEMA = 'aio.trash/1';
 
 /** What a removal names: a manifest layer, a photogrammetry run, or a survey date. */
 export const RemoveTarget = z.union([
   z.object({ layer: Id }).strict(),
-  z.object({ run: z.string().min(1).max(128) }).strict(),
+  z.object({ run: PhotoRunId }).strict(),
   z.object({ capture: Id }).strict(),
 ]);
 
@@ -31,7 +31,7 @@ export const RemovalPlan = z
     runs: z.array(
       z
         .object({
-          id: z.string().min(1).max(128),
+          id: PhotoRunId,
           /** null: the run folder has no readable `run.json`. */
           status: PhotoRun.shape.status.nullable(),
           why: RemoveWhy,

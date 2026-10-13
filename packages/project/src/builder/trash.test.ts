@@ -131,4 +131,22 @@ describe('trash', () => {
       await rm(outside, { recursive: true, force: true });
     }
   });
+  it('never follows a junction inside an entry: Empty and the sweep leave the outside folder', async () => {
+    const outside = await mkdtemp(join(tmpdir(), 'aio-outside-'));
+    try {
+      await writeFile(join(outside, 'f.txt'), 'keep');
+      for (const name of ['20261013T081530Z-a', '20261001T081530Z-b']) {
+        await entry(name, 10);
+        await symlink(outside, join(root, TRASH_DIR, name, 'rasters', 'link'), 'junction');
+      }
+      expect(await sweepTrash(root, () => NOW)).toEqual(['20261001T081530Z-b']);
+      expect(await readFile(join(outside, 'f.txt'), 'utf8')).toBe('keep');
+      expect((await emptyTrash(root)).removed).toEqual(['20261013T081530Z-a']);
+      expect(await readdir(join(root, TRASH_DIR))).toEqual([]);
+      expect(await readdir(outside)).toEqual(['f.txt']);
+      expect(await readFile(join(outside, 'f.txt'), 'utf8')).toBe('keep');
+    } finally {
+      await rm(outside, { recursive: true, force: true });
+    }
+  });
 });
