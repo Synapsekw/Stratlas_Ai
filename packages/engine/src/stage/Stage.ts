@@ -166,6 +166,8 @@ export class Stage implements EngineStage {
   private readonly reach = new Map<string, Box3>();
   /** The content's box as last framed (empty before content), for the camera's distance cap. */
   private readonly lastContent = new Box3();
+  /** The distance cap is held out where the camera stood when a reach shrank. */
+  private capHeld = false;
   private readonly frameCbs = new Set<(dtMs: number) => void>();
   private readonly holders = new Map<symbol, string>();
   private readonly stateCbs = new Set<() => void>();
@@ -256,6 +258,7 @@ export class Stage implements EngineStage {
     this.controls.maxPolarAngle = MAX_POLAR;
     this.controls.addEventListener('change', () => {
       this.need = true;
+      if (this.capHeld) this.relaxCap();
     });
     this.controls.addEventListener('start', () => {
       this.flight = null;
@@ -369,7 +372,7 @@ export class Stage implements EngineStage {
     if (box && !box.isEmpty()) this.reach.set(key, box.clone());
     else if (!this.reach.delete(key)) return;
     if (this.disposed) return;
-    this.applyDistanceCap();
+    this.applyDistanceCap(true);
     this.need = true;
   }
 
@@ -377,14 +380,30 @@ export class Stage implements EngineStage {
    * How far the camera may back off: 25 times the radius of the content, widened to cover what
    * `setReach` added (a long walk next to a small model), so it can all be brought into view.
    */
-  private applyDistanceCap(): void {
+  private applyDistanceCap(hold = false): void {
     if (this.lastContent.isEmpty()) return;
     const radius = this.lastContent.getSize(new Vector3()).length() / 2;
     // the reach is measured from the content's centre, where the orbit target sits; four times
     // its farthest corner keeps all of it in a 30 degree view with room to spare
     let far = 0;
     for (const b of this.reach.values()) far = Math.max(far, farthestCorner(b, this.contentCentre));
-    this.controls.maxDistance = Math.max(radius * 25, far * 4);
+    let cap = Math.max(radius * 25, far * 4);
+    // a reach that shrinks (a walk saved or cancelled) does not pull a camera backed off to see
+    // it inward at once: the cap stays where the camera is, and tightens as it comes back in
+    const d = this.camera.position.distanceTo(this.controls.target);
+    this.capHeld = hold && d > cap;
+    if (this.capHeld) cap = d;
+    this.controls.maxDistance = cap;
+    // the fog stays clear of what the camera may reach: the far side of the reach from the
+    // farthest the camera may stand (none: the content's own fog)
+    this.env.setFogReach(cap > radius * 25 ? cap + Math.max(far, radius) : 0);
+  }
+
+  /** A held cap follows the camera in, and lets go once it is back inside the normal cap. */
+  private relaxCap(): void {
+    const d = this.camera.position.distanceTo(this.controls.target);
+    if (d < this.controls.maxDistance) this.controls.maxDistance = d;
+    this.applyDistanceCap(true);
   }
 
   addProjectionReceiver(mesh: Mesh): () => void {

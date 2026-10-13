@@ -426,6 +426,36 @@ describe('Stage', () => {
     stage.dispose();
   });
 
+  it('a reach that clears holds a backed-off camera, then tightens as it comes in', async () => {
+    const { stage, store, resize } = make();
+    resize(800, 600);
+    store.getState().openProject(project([meshLayer('plant')]));
+    await flush();
+    const cap = stage.controls.maxDistance;
+    const fog = stage.scene.fog as { far: number };
+    const fogBefore = fog.far;
+    stage.setReach('walk', new Box3(new Vector3(-500, 0, -10), new Vector3(500, 2, 10)));
+    // the walk's far end stays clear of the fog from the farthest the camera may stand
+    expect(fog.far).toBeGreaterThan(stage.controls.maxDistance);
+    // the camera backs off to see the walk
+    const t = stage.controls.target;
+    const away = (d: number) => {
+      stage.camera.position.copy(t).add(new Vector3(0, 0, d));
+      stage.controls.dispatchEvent({ type: 'change' });
+    };
+    away(1500);
+    stage.setReach('walk', null);
+    // no snap inward: the cap stays at the camera, the fog too
+    expect(stage.controls.maxDistance).toBeCloseTo(1500);
+    expect(fog.far).toBeGreaterThan(1500);
+    away(800);
+    expect(stage.controls.maxDistance).toBeCloseTo(800);
+    away(cap / 2);
+    expect(stage.controls.maxDistance).toBeCloseTo(cap);
+    expect(fog.far).toBeCloseTo(fogBefore);
+    stage.dispose();
+  });
+
   it('keeps a selection camera request until its layer has loaded', async () => {
     const { stage, store, resize } = make();
     resize(800, 600);

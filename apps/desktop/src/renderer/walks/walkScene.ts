@@ -126,7 +126,14 @@ export function attachWalkScene(stage: EngineStage): WalkSceneView {
   ): Line => {
     const g = new BufferGeometry();
     g.setAttribute('position', new Float32BufferAttribute(pts.flat(), 3));
-    const common = { color: new Color(colour), depthTest: false, transparent: true, opacity };
+    // no fog: an overlay reads clearly however far the camera backs off (as the measure tool)
+    const common = {
+      color: new Color(colour),
+      depthTest: false,
+      fog: false,
+      transparent: true,
+      opacity,
+    };
     const l = new Line(
       g,
       dashed
@@ -183,6 +190,7 @@ export function attachWalkScene(stage: EngineStage): WalkSceneView {
           size: 14,
           sizeAttenuation: false,
           depthTest: false,
+          fog: false,
           transparent: true,
         }),
       );

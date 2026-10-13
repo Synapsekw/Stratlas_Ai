@@ -274,6 +274,13 @@ describe('walk in the 3D view', () => {
     const preview = stage.scene.getObjectByName(WALK_PREVIEW_NAME);
     expect(group?.renderOrder).toBeGreaterThanOrEqual(45);
     expect(preview?.visible).toBe(true);
+    // overlays read clearly at any distance: no fog on the walk, its preview or its handles
+    const fogged: unknown[] = [];
+    group?.traverse((o) => {
+      const m = (o as { material?: { fog?: boolean } | { fog?: boolean }[] }).material;
+      for (const x of m ? (Array.isArray(m) ? m : [m]) : []) if (x.fog !== false) fogged.push(o);
+    });
+    expect(fogged).toEqual([]);
     view.setPlacing(null, null);
     expect(stage.scene.getObjectByName(WALK_PREVIEW_NAME)?.visible ?? false).toBe(false);
     view.dispose();
