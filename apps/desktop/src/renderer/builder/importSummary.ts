@@ -8,6 +8,10 @@ import type { ImportItem, Layer } from '@aio/schema';
 
 export const QUEUED_NOTE = 'An import is running. These files are imported when it finishes.';
 
+/** The waiting files of a project that was closed before their turn. */
+export const DROPPED_NOTE =
+  'Files that waited for an import were not imported: their project was closed. Add them again in that project.';
+
 const GROUP: Record<Layer['kind'], string> = {
   mesh: 'Models',
   legacy: 'Models',

@@ -4,13 +4,16 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 const call = vi.fn();
 const replaceManifest = vi.fn();
 /** The open project as the store reads it; a test may give it survey dates. */
-let openProject: {
+type OpenProject = {
   id: string;
   manifest: { origin: number[]; captures: { id: string }[]; layers: { id: string }[] };
-} = {
-  id: 'p1',
-  manifest: { origin: [0, 0, 30], captures: [], layers: [] },
-};
+} | null;
+const P1 = { id: 'p1', manifest: { origin: [0, 0, 30], captures: [], layers: [] } };
+let openProject: OpenProject = P1;
+/** Open another project (or none), as the shell does. */
+function openOther(p: OpenProject): void {
+  openProject = p;
+}
 
 vi.mock('../shell', () => ({
   bridge: { call: (...a: unknown[]) => call(...a) as unknown },
@@ -32,6 +35,7 @@ vi.mock('../drawings/importFlow', () => ({
 // the store listens for progress on the preload bridge, which a test does not have
 vi.stubGlobal('window', {});
 
+import { DROPPED_NOTE } from './importSummary';
 import { builder } from './state';
 
 const plan = (over: Partial<AltitudePlan> = {}): AltitudePlan => ({
@@ -68,7 +72,14 @@ beforeEach(() => {
   call.mockReset();
   replaceManifest.mockReset();
   finishStaged.mockReset();
-  builder.setState({ importing: null, importResult: null, heightsPrompt: null });
+  openProject = P1;
+  builder.setState({
+    importing: null,
+    importResult: null,
+    heightsPrompt: null,
+    queued: 0,
+    importNotice: null,
+  });
 });
 
 describe('importFiles, one import at a time', () => {
@@ -98,17 +109,45 @@ describe('importFiles, one import at a time', () => {
     expect(replaceManifest).toHaveBeenCalledTimes(1);
   });
 
-  it('takes the next drop once the heights prompt is open, as before', async () => {
-    call.mockImplementation((channel: string) =>
-      Promise.resolve(channel === 'builder:altitudePlan' ? planned(asks) : imported),
+  it('a drop while the heights prompt is open waits, and runs after the prompt is confirmed', async () => {
+    // a.jpg asks for the take-off height, b.jpg does not
+    call.mockImplementation((channel: string, req: { paths: string[] }) =>
+      Promise.resolve(
+        channel === 'builder:altitudePlan'
+          ? planned(req.paths.includes('a.jpg') ? asks : plan())
+          : imported,
+      ),
     );
     await b().importFiles(['a.jpg']);
     expect(b().heightsPrompt?.paths).toEqual(['a.jpg']);
     // the prompt is not an import: the panel does not say "importing" while it is open
     expect(b().importing).toBeNull();
     await b().importFiles(['b.jpg']);
-    expect(calls('builder:altitudePlan')).toHaveLength(2);
-    expect(b().heightsPrompt?.paths).toEqual(['b.jpg']);
+    // the prompt stays, nothing is imported behind it
+    expect(b().heightsPrompt?.paths).toEqual(['a.jpg']);
+    expect(b().queued).toBe(1);
+    expect(calls('builder:import')).toHaveLength(0);
+    await b().confirmHeights({ source: 'auto', takeoffH: 31, takeoffFrom: 'typed' });
+    expect(calls('builder:import').map((c) => (c[1] as { paths: string[] }).paths)).toEqual([
+      ['a.jpg'],
+      ['b.jpg'],
+    ]);
+    expect(b().queued).toBe(0);
+  });
+
+  it('a drop that asks for heights too waits for the open prompt, and asks after it is cancelled', async () => {
+    call.mockImplementation((channel: string) =>
+      Promise.resolve(channel === 'builder:altitudePlan' ? planned(asks) : imported),
+    );
+    await b().importFiles(['a.jpg']);
+    await b().importFiles(['b.jpg']);
+    // the first prompt is not replaced
+    expect(b().heightsPrompt?.paths).toEqual(['a.jpg']);
+    expect(calls('builder:altitudePlan')).toHaveLength(1);
+    b().cancelHeights();
+    await vi.waitFor(() => {
+      expect(b().heightsPrompt?.paths).toEqual(['b.jpg']);
+    });
     expect(calls('builder:import')).toHaveLength(0);
   });
 
@@ -204,6 +243,77 @@ describe('importFiles, one import at a time', () => {
       ['a.jpg'],
       ['c.jpg'],
     ]);
+  });
+
+  it('a drop queued in one project is never imported into the project opened next', async () => {
+    const running = later<unknown>();
+    call.mockImplementation((channel: string) =>
+      channel === 'builder:altitudePlan' ? Promise.resolve(planned(plan())) : running.reply,
+    );
+    const first = b().importFiles(['a.jpg']);
+    await vi.waitFor(() => {
+      expect(b().importing).not.toBeNull();
+    });
+    await b().importFiles(['b.jpg']);
+    expect(b().queued).toBe(1);
+    openOther({ id: 'p2', manifest: { origin: [0, 0, 0], captures: [], layers: [] } });
+    running.give(imported);
+    await first;
+    // its turn came in another project: it is dropped, and the panel says so
+    expect(b().queued).toBe(0);
+    expect(b().importNotice).toBe(DROPPED_NOTE);
+    expect(calls('builder:import')).toEqual([
+      ['builder:import', { projectId: 'p1', paths: ['a.jpg'] }],
+    ]);
+  });
+
+  it('closing the project drops its waiting files and the notice goes with Close', async () => {
+    const running = later<unknown>();
+    call.mockImplementation((channel: string) =>
+      channel === 'builder:altitudePlan' ? Promise.resolve(planned(plan())) : running.reply,
+    );
+    const first = b().importFiles(['a.jpg']);
+    await vi.waitFor(() => {
+      expect(b().importing).not.toBeNull();
+    });
+    await b().importFiles(['b.jpg']);
+    openOther(null);
+    running.give(imported);
+    await first;
+    // the same project opened again: the dropped files do not come in behind the user's back
+    openOther(P1);
+    expect(calls('builder:import')).toHaveLength(1);
+    expect(b().queued).toBe(0);
+    expect(b().importNotice).toBe(DROPPED_NOTE);
+    b().dismissImport();
+    expect(b().importNotice).toBeNull();
+  });
+
+  it('an import that throws ends the import, and the waiting drop runs', async () => {
+    const failing = later<unknown>();
+    let imports = 0;
+    call.mockImplementation((channel: string) => {
+      if (channel === 'builder:altitudePlan') return Promise.resolve(planned(plan()));
+      imports++;
+      return imports === 1
+        ? failing.reply.then(() => Promise.reject(new Error('bridge gone')))
+        : Promise.resolve(imported);
+    });
+    const first = b().importFiles(['a.jpg']);
+    await vi.waitFor(() => {
+      expect(b().importing).not.toBeNull();
+    });
+    await b().importFiles(['b.jpg']);
+    failing.give(undefined);
+    await expect(first).rejects.toThrow('bridge gone');
+    await vi.waitFor(() => {
+      expect(calls('builder:import')).toHaveLength(2);
+    });
+    await vi.waitFor(() => {
+      expect(b().importing).toBeNull();
+    });
+    expect(b().cancellable).toBe(false);
+    expect(b().queued).toBe(0);
   });
 });
 

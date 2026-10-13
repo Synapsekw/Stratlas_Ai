@@ -14,7 +14,7 @@ import { finishStagedDrawings } from '../drawings/importFlow';
 import { drawings } from '../drawings/store';
 import { bridge, shell } from '../shell';
 import { heightsPrompt, needsTakeoff, type HeightsPrompt } from './heights';
-import { QUEUED_NOTE } from './importSummary';
+import { DROPPED_NOTE, QUEUED_NOTE } from './importSummary';
 import { terrainHeightAt } from './pick';
 
 /** What an import read its survey date from (the import card's "Read from ..." line). */
@@ -156,8 +156,16 @@ export const IMPORT_360_FILTERS = [
  */
 let preparing = false;
 
-/** Drops and picks that came while an import ran or was being prepared, in the order they came. */
-const waiting: { paths: string[]; altitude?: AltitudeChoice; opts?: ImportOptions }[] = [];
+/**
+ * Drops and picks that came while an import ran, was being prepared or waited for its heights,
+ * in the order they came, each with the project it was made in: it is only ever imported there.
+ */
+const waiting: {
+  projectId: string;
+  paths: string[];
+  altitude?: AltitudeChoice;
+  opts?: ImportOptions;
+}[] = [];
 /** The files of the imports being prepared or run, so the same drop is not queued again. */
 const current: (readonly string[])[] = [];
 const samePaths = (a: readonly string[], b: readonly string[]) =>
@@ -226,9 +234,9 @@ async function runImport(
       .finally(() => {
         preparing = false;
       });
-    // an import confirmed in the heights prompt started while these heights were read: this
-    // drop waits for it
-    if (builder.getState().importing) return true;
+    // an import confirmed in the heights prompt started (or a prompt opened) while these heights
+    // were read: this drop waits for it
+    if (builder.getState().importing || builder.getState().heightsPrompt) return true;
     if (plan.ok && plan.value.ok && needsTakeoff(plan.value.plan)) {
       const p = plan.value.plan;
       const y = p.takeoff ? terrainHeightAt(p.takeoff.x, p.takeoff.z) : null;
@@ -247,6 +255,28 @@ async function runImport(
     importResult: null,
     heightsPrompt: null,
   });
+  try {
+    await importNow(project, paths, altitude, opts);
+  } catch (e) {
+    // the bridge or a step after it threw: the import is over, so the next drop can run
+    importingProject = null;
+    builder.setState({
+      importing: null,
+      cancellable: false,
+      cancelling: false,
+    });
+    throw e;
+  }
+  return false;
+}
+
+/** Main imports the files (`importing` is set), then the drawing pages are drawn here. */
+async function importNow(
+  project: OpenProject,
+  paths: readonly string[],
+  altitude: AltitudeChoice | undefined,
+  opts: ImportOptions | undefined,
+): Promise<void> {
   const aio = window.aio as AioBridge | undefined;
   const off = aio?.on('builder:progress', (e: IpcEvent<'builder:progress'>) => {
     if (e.projectId === project.id)
@@ -259,28 +289,31 @@ async function runImport(
         },
       });
   });
-  const r = await bridge.call('builder:import', {
-    projectId: project.id,
-    paths: [...paths],
-    ...(altitude ? { altitude } : {}),
-    ...(opts?.drawings ? { drawings: true } : {}),
-    ...(opts?.as360 ? { as360: true } : {}),
-  });
-  off?.();
+  const r = await bridge
+    .call('builder:import', {
+      projectId: project.id,
+      paths: [...paths],
+      ...(altitude ? { altitude } : {}),
+      ...(opts?.drawings ? { drawings: true } : {}),
+      ...(opts?.as360 ? { as360: true } : {}),
+    })
+    .finally(() => {
+      off?.();
+    });
   // main has answered: what follows (drawing pages) is not main's import any more
   const cancelled = builder.getState().cancelling;
   importingProject = null;
   builder.setState({ cancellable: false, cancelling: false });
   if (!r.ok) {
     builder.setState({ importing: null, importResult: { items: [], error: r.error } });
-    return false;
+    return;
   }
   if (!r.value.ok) {
     builder.setState({
       importing: null,
       importResult: { items: r.value.items ?? [], error: r.value.error, paths: [...paths] },
     });
-    return false;
+    return;
   }
   if (workspace.getState().project?.id === project.id)
     workspace.getState().replaceManifest(r.value.manifest);
@@ -330,11 +363,11 @@ async function runImport(
   );
   if (drawn?.layerId && workspace.getState().project?.id === project.id)
     drawings.setState({ controls: drawn.layerId });
-  return false;
 }
 
 /** A drop that came while an import ran or was prepared waits; the same files only once. */
 function queue(
+  projectId: string,
   paths: readonly string[],
   altitude: AltitudeChoice | undefined,
   opts: ImportOptions | undefined,
@@ -342,6 +375,7 @@ function queue(
   if (current.some((c) => samePaths(c, paths)) || waiting.some((w) => samePaths(w.paths, paths)))
     return;
   waiting.push({
+    projectId,
     paths: [...paths],
     ...(altitude ? { altitude } : {}),
     ...(opts ? { opts } : {}),
@@ -354,6 +388,7 @@ function queue(
  * queue: its answer (`confirmHeights`, `cancelHeights`) drains it.
  */
 async function next(): Promise<void> {
+  forgetOtherProjects(workspace.getState().project?.id ?? null);
   const s = builder.getState();
   if (s.importing || preparing || s.heightsPrompt) return;
   const w = waiting.shift();
@@ -363,6 +398,20 @@ async function next(): Promise<void> {
     importNotice: waiting.length > 0 ? QUEUED_NOTE : null,
   });
   await s.importFiles(w.paths, w.altitude, w.opts);
+}
+
+/**
+ * The waiting drops of a project that is no longer open are never imported (they would land in
+ * whichever project is open next): they are dropped, and the panel says so.
+ */
+function forgetOtherProjects(openId: string | null): void {
+  const kept = waiting.filter((w) => w.projectId === openId);
+  if (kept.length === waiting.length) return;
+  waiting.splice(0, waiting.length, ...kept);
+  builder.setState({
+    queued: waiting.length,
+    importNotice: waiting.length > 0 ? QUEUED_NOTE : DROPPED_NOTE,
+  });
 }
 
 export const builder = createStore<Builder>()((set, get) => ({
@@ -399,8 +448,9 @@ export const builder = createStore<Builder>()((set, get) => ({
     if (!paths.length) return;
     // one import at a time: a drop made meanwhile waits its turn. The import confirmed in the
     // heights prompt (it has its `altitude`) goes ahead of a drop still being prepared.
-    if (get().importing || (preparing && !altitude)) {
-      queue(paths, altitude, opts);
+    // An open heights prompt is busy too: a drop now would clear it or replace it.
+    if (get().importing || get().heightsPrompt || (preparing && !altitude)) {
+      queue(project.id, paths, altitude, opts);
       return;
     }
     const mine = [...paths];
@@ -414,7 +464,7 @@ export const builder = createStore<Builder>()((set, get) => ({
     } finally {
       current.splice(current.indexOf(mine), 1);
     }
-    if (busy) queue(paths, altitude, opts);
+    if (busy) queue(project.id, paths, altitude, opts);
     await next();
   },
 
@@ -467,7 +517,7 @@ export const builder = createStore<Builder>()((set, get) => ({
   },
 
   dismissImport: () => {
-    set({ importResult: null });
+    set({ importResult: null, ...(waiting.length === 0 ? { importNotice: null } : {}) });
   },
 
   confirmHeights: async (altitude) => {

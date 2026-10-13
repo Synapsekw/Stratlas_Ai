@@ -244,14 +244,14 @@ function ImportStatus() {
   const cancelling = useBuilder((s) => s.cancelling);
   const result = useBuilder((s) => s.importResult);
   const prompt = useBuilder((s) => s.heightsPrompt);
-  const queued = useBuilder((s) => s.queued);
   const importNotice = useBuilder((s) => s.importNotice);
   const layers = useWorkspace((s) => s.project?.manifest.layers ?? NO_LAYERS);
   const pages = useDrawings((s) => s.pagePrompt);
   if (prompt && !importing) return <HeightsCard p={prompt} />;
   // asked in the middle of an import, which stays busy until its drawings are in
   if (pages) return <PagesCard key={pages.name} p={pages} />;
-  if (!importing && !result) return null;
+  // a notice alone (files that waited for a closed project) still shows, until Close
+  if (!importing && !result && !importNotice) return null;
   const heights = result?.heights ? heightsLine(result.heights) : null;
   return (
     <section className="b-import" aria-label="Import" data-testid="import-panel">
@@ -263,7 +263,9 @@ function ImportStatus() {
             : `Importing ${String(importing.done)} of ${String(importing.total)}`
           : result?.error
             ? 'Import failed'
-            : importHeadline(result?.items ?? [])}
+            : result
+              ? importHeadline(result.items)
+              : 'Import'}
         {importing ? (
           // while main imports the files; drawing pages finished afterwards have their own way out
           cancellable && (
@@ -292,7 +294,7 @@ function ImportStatus() {
           </button>
         )}
       </header>
-      {queued > 0 && (
+      {importNotice && (
         <p className="notice small" style={{ margin: '0 12px 10px' }} data-testid="import-queued">
           {importNotice}
         </p>
