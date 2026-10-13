@@ -506,8 +506,11 @@ function Datasets({ collapsed }: { collapsed: boolean }) {
       onRemovePlacement: canEdit
         ? (it: TreeItem) => {
             if (it.layerId)
+              // only a refusal touches the note (a removal leaves any other note alone)
               void removeWalkPlacement(it.layerId)
-                .then(failed)
+                .then((e) => {
+                  if (e) failed(e);
+                })
                 .catch((e: unknown) => {
                   failed(String(e));
                 });

@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 import { fitWalk } from '@aio/geo';
-import type { WalkPin } from '@aio/schema';
+import type { WalkLayer, WalkPin } from '@aio/schema';
+import type { SheetWalk } from './walkOverlay';
 import { describe, expect, it, vi } from 'vitest';
 
 // the mount's module graph reaches the shell and the builder: stub them as placeWalk.test.ts does
@@ -13,7 +14,7 @@ vi.mock('../builder/state', () => ({
   builder: { getState: () => ({ saveLayers: vi.fn() }), subscribe: () => () => undefined },
 }));
 
-const { scenePlacing } = await import('./WalkSceneMount');
+const { scenePlacedWalks, scenePlacing } = await import('./WalkSceneMount');
 
 describe('scenePlacing', () => {
   const pins: WalkPin[] = [
@@ -71,5 +72,34 @@ describe('scenePlacing', () => {
     expect(p?.clicks).toBe(true);
     expect(p?.walk).toBeNull();
     expect(p?.preview?.pts[0]?.[1]).toBeCloseTo(2.1);
+  });
+});
+
+describe('scenePlacedWalks', () => {
+  const pins: WalkPin[] = [
+    { t: 0, surface: '@model', at: [0, 0], y: 0 },
+    { t: 10, surface: '@model', at: [10, 0], y: 0 },
+  ];
+  const fit = fitWalk(null, { pins, yawOffsetDeg: 0 }, { drawing: () => null }, 10);
+  const walk = (id: string, visible = true): SheetWalk => ({
+    layer: { id, visible, durationS: 10 } as unknown as WalkLayer,
+    fit,
+    raw: null,
+  });
+  const fits = [walk('walk-a'), walk('walk-b'), walk('walk-c', false), walk('walk-d')];
+
+  it('visible placed walks, not switched off ones, and never the walk being edited', () => {
+    const out = scenePlacedWalks(fits, new Set(['walk-d']), 'walk-a', () => '#123456');
+    expect(out.map((w) => w.id)).toEqual(['walk-b']);
+    expect(out[0]?.colour).toBe('#123456');
+    expect(out[0]?.runs.length).toBeGreaterThan(0);
+  });
+
+  it('nothing edited: every visible walk', () => {
+    expect(scenePlacedWalks(fits, new Set(), null, () => '#fff').map((w) => w.id)).toEqual([
+      'walk-a',
+      'walk-b',
+      'walk-d',
+    ]);
   });
 });

@@ -29,6 +29,7 @@ import {
   placedWalkFits,
   sessionHandles,
   surfaceLayout,
+  walkBeingEdited,
   viewHeading,
   walkColour,
   walksOnSheet,
@@ -619,6 +620,18 @@ describe('surfaceLayout', () => {
     expect(d.split?.raster).toBe('s');
   });
 
+  it('a drawing always pairs with the 3D view, also when the split showed the map', () => {
+    const drawing = { kind: 'drawing', id: 's', name: 'S', dated: false } as const;
+    for (const saved of [
+      { left: 'map', right: '3d' },
+      { left: '3d', right: 'map' },
+      { left: 'raster', right: 'map' },
+    ] as const) {
+      const d = surfaceLayout(saved, drawing, false);
+      expect([d.split?.left, d.split?.right].sort()).toEqual(['3d', 'raster']);
+    }
+  });
+
   it('fine-tune puts the 360 video beside the surface', () => {
     const f = surfaceLayout(undefined, { kind: 'map' }, true);
     expect(f.mode).toBe('split');
@@ -902,6 +915,9 @@ describe('placed walks on every surface', () => {
     const fits = placedWalkFits(m, pinsOnly, lookup);
     expect(placedMapOverlays(m, fits, new Set(), null).map((o) => o.id)).toEqual(['walk-walk-a']);
     expect(placedMapOverlays(m, fits, new Set(), 'walk-a')).toEqual([]);
+    // the walk being edited is left out whatever surface it is placed on
+    expect(walkBeingEdited({ layerId: 'walk-a' })).toBe('walk-a');
+    expect(walkBeingEdited({ layerId: null })).toBeNull();
     expect(placedMapOverlays(m, fits, new Set(['walk-a']), null)).toEqual([]);
     const local = { ...m, crs: { wkt: 'LOCAL_CS["local"]' } };
     expect(placedMapOverlays(local, fits, new Set(), null)).toEqual([]);

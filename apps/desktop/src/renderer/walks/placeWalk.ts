@@ -716,15 +716,13 @@ export function surfaceLayout(
     return { mode: 'split', split: { ...withWalk, [other]: kind, ...raster } };
   }
   if (host.kind !== 'drawing') return { mode: host.kind };
-  // a drawing shows only in the split: beside the 3D view, never beside the 360 video
+  // a drawing shows only in the split, always beside the 3D view (never the 360 video or the map)
   const sides = resolveSplit(saved, PANE_KINDS);
   const side = sideOf(sides, 'raster') ?? 'left';
   const other = side === 'left' ? 'right' : 'left';
-  const keep = sides[other];
-  const otherKind: PaneKind = keep === 'walk360' || keep === 'raster' ? '3d' : keep;
   return {
     mode: 'split',
-    split: { ...sides, [side]: 'raster', [other]: otherKind, raster: host.id },
+    split: { ...sides, [side]: 'raster', [other]: '3d', raster: host.id },
   };
 }
 
@@ -1010,14 +1008,22 @@ export function usePlacedWalkFits(active = true): {
 }
 
 /**
- * The placed walks on the main map at 60 % while no session places one there (the stage calls
- * it once); the overlays leave with the stage.
+ * The walk a session is placing or editing, on whatever surface: the placed walks drawn faintly
+ * leave it out (its saved spot would disagree with the draft until Save).
+ */
+export function walkBeingEdited(s: Pick<PlaceState, 'layerId'>): string | null {
+  return s.layerId;
+}
+
+/**
+ * The placed walks on the main map at 60 %, but for the walk a session is editing (on any
+ * surface); the stage calls it once and the overlays leave with the stage.
  */
 export function usePlacedWalksOnMap(): void {
   const { fits } = usePlacedWalkFits();
   const manifest = useWorkspace((s) => s.project?.manifest);
   const hidden = useHiddenLayers();
-  const except = useStore(placeSession, (s) => (s.surface?.kind === 'map' ? s.layerId : null));
+  const except = useStore(placeSession, walkBeingEdited);
   useEffect(() => {
     setPlacedMapOverlays(manifest ? placedMapOverlays(manifest, fits, hidden, except) : []);
   }, [manifest, fits, hidden, except]);
