@@ -2,7 +2,8 @@
 // schema (tools/compat/schema-0.11):
 // - PanoRef's new fields are optional: 0.11 reads a new item and drops them when it saves;
 // - the run record lives in `panoramas/<layer>/<pano>/stitch.json`, a file 0.11 never opens;
-// - the job index lists pano.stitch jobs, which 0.11's index reader skips one by one.
+// - the job index lists pano.stitch jobs, which 0.11's index reader skips one by one;
+// - `stitch` and `cov` are not strict, so a field a later phase adds does not refuse the project.
 import { describe, expect, it } from 'vitest';
 import * as current from '../../packages/schema/src/index.ts';
 import * as v011 from './schema-0.11/index.mjs';
@@ -24,6 +25,19 @@ describe('drone panoramas are additive', () => {
     const old = v011.PanoRef.safeParse(item);
     expect(old.success).toBe(true);
     expect(old.data).toEqual({ id: 'p01', src: item.src, pos: item.pos, headingDeg: -0.8 });
+  });
+
+  it('a later build may add fields to stitch and cov: this one still reads the item', () => {
+    const later = {
+      ...item,
+      stitch: { ...item.stitch, keptOld: true },
+      cov: { ...item.cov, tilt: 2 },
+    };
+    const r = current.PanoRef.safeParse(later);
+    expect(r.success).toBe(true);
+    // the unknown fields are dropped, the known ones kept
+    expect(r.data?.stitch).toEqual(item.stitch);
+    expect(r.data?.cov).toEqual(item.cov);
   });
 
   it('writes its run record where 0.11 never reads', () => {

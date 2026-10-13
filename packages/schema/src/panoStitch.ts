@@ -34,13 +34,12 @@ export const PanoStitchStatus = z.enum(['queued', 'running', 'done', 'failed']);
 export type PanoStitchStatus = z.infer<typeof PanoStitchStatus>;
 
 /** `PanoRef.stitch`. `run` (the job id) is absent until a job was started. */
-export const PanoStitchState = z
-  .object({
-    run: Id.optional(),
-    status: PanoStitchStatus,
-    error: z.string().max(400).optional(),
-  })
-  .strict();
+export const PanoStitchState = z.object({
+  run: Id.optional(),
+  status: PanoStitchStatus,
+  error: z.string().max(400).optional(),
+  // not strict: a field a later build adds is dropped here, it does not refuse the project
+});
 export type PanoStitchState = z.infer<typeof PanoStitchState>;
 
 /**
@@ -54,8 +53,8 @@ export const PanoCov = z
     bottom: z.number().min(-90).max(90),
     left: z.number().min(-360).max(360).optional(),
     right: z.number().min(-360).max(720).optional(),
+    // not strict, as `PanoStitchState`
   })
-  .strict()
   .refine((c) => (c.left === undefined) === (c.right === undefined), {
     message: 'A yaw range has both ends.',
   })
