@@ -9,9 +9,11 @@ import {
   canUseHigh,
   defaultKeys,
   defaultLayerName,
+  closePanoImport,
   importPanos,
   panoImport,
   pickAndScanPanos,
+  scanPanoPaths,
   summaryText,
 } from './panos';
 
@@ -184,5 +186,59 @@ describe('importPanos', () => {
       busy: null,
       error: expect.stringMatching(/needs 3.1 GB/) as string,
     });
+  });
+});
+
+describe('stale results', () => {
+  const later = <T>() => {
+    let resolve!: (v: T) => void;
+    const promise = new Promise<T>((r) => {
+      resolve = r;
+    });
+    return { promise, resolve };
+  };
+
+  it('ignores a scan that was cancelled or replaced', async () => {
+    const a = later<unknown>();
+    const b = later<unknown>();
+    call.mockReturnValueOnce(a.promise).mockReturnValueOnce(b.promise);
+    const first = scanPanoPaths(['D:/a']);
+    await closePanoImport();
+    const second = scanPanoPaths(['D:/b']);
+    const scanB = { ...scan, scanId: 'b' };
+    b.resolve({ ok: true, value: { ok: true, scan: scanB } });
+    await second;
+    a.resolve({ ok: true, value: { ok: true, scan } });
+    await first;
+    expect(panoImport.getState().scan?.scanId).toBe('b');
+  });
+
+  it('keeps the manifest of an import that finished after Cancel', async () => {
+    panoImport.setState({ open: true, scan });
+    const imp = later<unknown>();
+    call.mockImplementation((channel: string) =>
+      channel === 'panos:import' ? imp.promise : Promise.resolve({ ok: true, value: {} }),
+    );
+    const pending = importPanos({ keys: ['s1'], layerName: 'P', quality: 'standard' });
+    await closePanoImport();
+    panoImport.setState({ open: true, scan: null, error: null });
+    const manifest = {
+      ...currentManifest(),
+      layers: [{ kind: 'panoramas', id: 'late', name: 'L', visible: true, items: [] }],
+    };
+    imp.resolve({ ok: true, value: { ok: true, manifest, layerId: 'late', started: 1 } });
+    await pending;
+    expect(currentManifest().layers.map((l) => l.id)).toEqual(['late']);
+    expect(panoImport.getState()).toMatchObject({ open: true, busy: null, error: null });
+  });
+
+  it('clears busy and shows the error when the call throws', async () => {
+    call.mockRejectedValue(new Error('boom'));
+    await scanPanoPaths(['D:/a']);
+    expect(panoImport.getState()).toMatchObject({ busy: null, error: 'boom' });
+  });
+
+  it('reads sensibly with nothing selected', () => {
+    expect(summaryText(scan, [])).toBe('No panoramas selected');
   });
 });

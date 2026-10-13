@@ -102,3 +102,28 @@
   font-variant-numeric: tabular-nums;
   color: var(--fg-1);
 }
+.pano-row .tbadge {
+  flex: none;
+  block-size: 16px;
+  padding: 0 5px;
+  display: inline-flex;
+  align-items: center;
+  border: 1px solid var(--line);
+  border-radius: 3px;
+  font-size: 10.5px;
+  line-height: 1;
+  color: var(--fg-2);
+}
+.pano-row .tbadge.warn {
+  border-color: var(--warn-line);
+  color: var(--warn);
+}
+.pano-fields .input {
+  inline-size: 100%;
+  min-inline-size: 0;
+}
+.pano-fields fieldset label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}

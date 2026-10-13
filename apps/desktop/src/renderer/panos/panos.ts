@@ -50,6 +50,7 @@ export function summaryText(scan: PanoScan, keys: readonly string[]): string {
   const count = spheres.length + ready.length;
   const frames = spheres.map((s) => String(s.frames)).join(' + ') || '0';
   const bytes = spheres.reduce((n, s) => n + s.bytes, 0) + ready.reduce((n, r) => n + r.bytes, 0);
+  if (count === 0) return t('pano.preview.noneSelected');
   const parts = [t('pano.preview.found', { count, frames })];
   if (scan.skipped.length) parts.push(t('pano.preview.skipped', { count: scan.skipped.length }));
   parts.push(t('pano.preview.copied', { size: formatBytes(bytes) }));
@@ -82,7 +83,15 @@ function listen(): void {
 }
 
 export function openPanoScan(scan: PanoScan): void {
+  run++;
   panoImport.setState({ ...CLOSED, open: true, scan });
+}
+
+/** Bumped by every scan, import and close: a result that finds it changed is stale. */
+let run = 0;
+
+function failure(e: unknown): string {
+  return e instanceof Error ? e.message : String(e);
 }
 
 export async function scanPanoPaths(paths: readonly string[]): Promise<void> {
@@ -92,11 +101,18 @@ export async function scanPanoPaths(paths: readonly string[]): Promise<void> {
     return;
   }
   listen();
+  const mine = ++run;
   panoImport.setState({ ...CLOSED, open: true, busy: { phase: 'scan', done: 0, total: 0 } });
-  const r = await bridge.call('panos:scan', { projectId: project.id, paths: [...paths] });
-  if (!r.ok) panoImport.setState({ busy: null, error: r.error });
-  else if (!r.value.ok) panoImport.setState({ busy: null, error: r.value.error });
-  else panoImport.setState({ busy: null, scan: r.value.scan });
+  let next: Partial<PanoImportState>;
+  try {
+    const r = await bridge.call('panos:scan', { projectId: project.id, paths: [...paths] });
+    if (!r.ok) next = { busy: null, error: r.error };
+    else if (!r.value.ok) next = { busy: null, error: r.value.error };
+    else next = { busy: null, scan: r.value.scan };
+  } catch (e) {
+    next = { busy: null, error: failure(e) };
+  }
+  if (mine === run) panoImport.setState(next);
 }
 
 export async function pickAndScanPanos(): Promise<void> {
@@ -115,21 +131,31 @@ export async function importPanos(choice: {
   const scan = panoImport.getState().scan;
   if (!project || !scan) return t('pano.noProject');
   listen();
+  const mine = ++run;
   panoImport.setState({ busy: { phase: 'copy', done: 0, total: 0 }, error: null });
-  const r = await bridge.call('panos:import', {
-    projectId: project.id,
-    scanId: scan.scanId,
-    keys: choice.keys,
-    layerName: choice.layerName,
-    ...(choice.date ? { date: choice.date } : {}),
-    quality: choice.quality,
-  });
-  const error = !r.ok ? r.error : !r.value.ok ? r.value.error : null;
-  if (error !== null || !r.ok || !r.value.ok) {
-    panoImport.setState({ busy: null, error });
+  let r;
+  try {
+    r = await bridge.call('panos:import', {
+      projectId: project.id,
+      scanId: scan.scanId,
+      keys: choice.keys,
+      layerName: choice.layerName,
+      ...(choice.date ? { date: choice.date } : {}),
+      quality: choice.quality,
+    });
+  } catch (e) {
+    const error = failure(e);
+    if (mine === run) panoImport.setState({ busy: null, error });
     return error;
   }
+  const error = !r.ok ? r.error : !r.value.ok ? r.value.error : null;
+  if (error !== null || !r.ok || !r.value.ok) {
+    if (mine === run) panoImport.setState({ busy: null, error });
+    return error;
+  }
+  // The files and the layer exist even if the dialog was cancelled meanwhile.
   workspace.getState().replaceManifest(r.value.manifest);
+  if (mine !== run) return null;
   if (r.value.notStarted) panoImport.setState({ busy: null, notStarted: r.value.notStarted });
   else panoImport.setState({ ...CLOSED });
   return null;
@@ -138,7 +164,13 @@ export async function importPanos(choice: {
 export async function closePanoImport(): Promise<void> {
   const { busy } = panoImport.getState();
   const project = workspace.getState().project;
-  if (busy?.phase === 'copy' && project)
-    await bridge.call('panos:cancelImport', { projectId: project.id });
+  run++;
   panoImport.setState({ ...CLOSED });
+  if (busy?.phase === 'copy' && project) {
+    try {
+      await bridge.call('panos:cancelImport', { projectId: project.id });
+    } catch {
+      // the copy ends on its own; nothing to show
+    }
+  }
 }

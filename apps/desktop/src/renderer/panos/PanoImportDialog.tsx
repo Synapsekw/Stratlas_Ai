@@ -39,7 +39,7 @@ function SphereMap({ scan, keys }: { scan: PanoScan; keys: ReadonlySet<string> }
       data-testid="pano-map"
       viewBox={`0 0 ${String(MAP_W)} ${String(MAP_H)}`}
       role="img"
-      aria-label="Where the panoramas sit"
+      aria-label={t('pano.preview.mapLabel')}
     >
       {m.map((p, i) => (
         <g
@@ -101,7 +101,7 @@ function Dialog() {
     <div
       className="dlg-scrim"
       onMouseDown={(e) => {
-        if (e.target === e.currentTarget && !copying) void closePanoImport();
+        if (e.target === e.currentTarget) void closePanoImport();
       }}
     >
       <div
@@ -142,7 +142,7 @@ function Dialog() {
           {notStarted && (
             <p className="notice" role="status">
               <Icon name="clock" size={14} />
-              {notStarted}
+              {t('pano.preview.importedNote')} {notStarted}
             </p>
           )}
           {scan && !notStarted && (
@@ -229,6 +229,7 @@ function Dialog() {
                 <label>
                   <span>{t('pano.preview.name')}</span>
                   <input
+                    className="input"
                     data-testid="pano-name"
                     value={name}
                     disabled={copying}
@@ -240,6 +241,7 @@ function Dialog() {
                 <label>
                   <span>{t('pano.preview.date')}</span>
                   <input
+                    className="input"
                     data-testid="pano-date"
                     type="date"
                     value={date}
@@ -288,7 +290,7 @@ function Dialog() {
         </div>
         <div className="dlg-f">
           <button type="button" className="btn ghost" onClick={() => void closePanoImport()}>
-            {t('pano.preview.cancel')}
+            {notStarted ? t('pano.preview.close') : t('pano.preview.cancel')}
           </button>
           {!notStarted && (
             <button
