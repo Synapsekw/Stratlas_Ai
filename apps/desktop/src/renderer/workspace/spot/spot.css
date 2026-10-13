@@ -1,0 +1,61 @@
+.spot-strip {
+  display: flex;
+  gap: 6px;
+  padding: 6px;
+  overflow-x: auto;
+  background: var(--bg-1);
+}
+.spot-slot {
+  flex: 0 0 104px;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding: 4px;
+  border-top: 3px solid var(--date, var(--fg-4));
+  border-radius: 6px;
+  background: var(--bg-2);
+  color: var(--fg-1);
+  cursor: pointer;
+}
+.spot-strip.compact .spot-slot {
+  flex-basis: 72px;
+}
+.spot-slot.on {
+  outline: 2px solid var(--acc);
+  outline-offset: -1px;
+}
+.spot-slot.empty {
+  cursor: default;
+  background: repeating-linear-gradient(135deg, var(--bg-2) 0 6px, var(--bg-1) 6px 12px);
+}
+.spot-slot-date {
+  font-size: 11px;
+  color: var(--fg-0);
+}
+.spot-slot-thumb {
+  display: block;
+  aspect-ratio: 16 / 10;
+  overflow: hidden;
+  border-radius: 4px;
+}
+.spot-slot-thumb > * {
+  width: 100%;
+  height: 100%;
+}
+.spot-slot-kind,
+.spot-slot-more,
+.spot-slot-none {
+  font-size: 10px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--fg-2);
+}
+.spot-slot-none {
+  text-transform: none;
+  letter-spacing: 0;
+  padding: 6px 0;
+}
+.spot-strip:focus-visible {
+  outline: 1.5px solid var(--acc);
+  outline-offset: 1px;
+}
