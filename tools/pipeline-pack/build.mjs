@@ -41,7 +41,7 @@ import { parseArgs } from 'node:util';
 import { packBudgetProblems } from '../release/budgets.mjs';
 import { runGate } from '../release/native-licences.mjs';
 import { checkFfmpegTool, FFMPEG_SPEC, installFfmpeg } from './ffmpeg.mjs';
-import { checkPdal, installPdal } from './pdal.mjs';
+import { checkPdal, checkUntwine, installPdal, untwineExe } from './pdal.mjs';
 import { installSam, SAM_MODEL } from './sam.mjs';
 import { envVar } from '../../packages/brand/src/env.ts';
 
@@ -466,6 +466,9 @@ async function main() {
       const { version: pdalVersion, missing } = checkPdal(pdal);
       if (missing.length > 0) fail(`PDAL lacks ${missing.join(', ')}`);
       say(`  ${pdalVersion}`);
+      const untwineProblem = checkUntwine(untwineExe(join(tmp, 'tools', 'pdal'), platform));
+      if (untwineProblem) fail(untwineProblem);
+      say('  untwine: turns a LAS into a COPC');
     }
     let ffmpeg = null;
     if (!values['no-ffmpeg']) {

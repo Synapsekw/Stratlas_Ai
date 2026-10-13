@@ -946,12 +946,12 @@
     },
     {
       "name": "pdal (conda-forge)",
-      "version": "2.10.2 (libpdal-core, conda-forge)",
+      "version": "2.10.2 (libpdal-core, conda-forge) with untwine 1.5.1",
       "spdx": "BSD-3-Clause AND MIT AND Apache-2.0 AND LGPL-2.1-only AND GPL-2.0-or-later AND MPL-1.1 AND Zlib AND curl AND blessing AND HPND AND 0BSD AND BSD-2-Clause AND ISC AND bzip2-1.0.6 AND IJG AND libpng-2.0 AND (Apache-2.0 WITH LLVM-exception)",
       "source": "https://github.com/conda-forge/pdal-feedstock",
       "files": ["tools/pdal/**"],
       "linkage": "shared",
-      "note": "conda-forge's prebuilt PDAL with GDAL, PROJ, GEOS and their libraries (tools/pipeline-pack/pdal.mjs); every package with its licence is in tools/pipeline-pack/pdal-lock.json and the pack's tools/pdal/conda-packages.json, their licence files in tools/pdal/licenses"
+      "note": "conda-forge's prebuilt PDAL with GDAL, PROJ, GEOS and their libraries, and conda-forge's untwine (tools/pipeline-pack/pdal.mjs); every package with its licence is in tools/pipeline-pack/pdal-lock.json and the pack's tools/pdal/conda-packages.json, their licence files in tools/pdal/licenses"
     },
     {
       "name": "ffmpeg (conda-forge)",

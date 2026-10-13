@@ -1,13 +1,14 @@
 #!/usr/bin/env node
-// PDAL for the pipeline pack: conda-forge's prebuilt `libpdal-core` (the `pdal` command-line tool
-// with GDAL, PROJ and GEOS, no plugins), installed by micromamba from an explicit lock and pruned
-// to what the tool runs: the program, its shared libraries and the PROJ and GDAL data.
+// PDAL and untwine for the pipeline pack: conda-forge's prebuilt `libpdal-core` (the `pdal`
+// command-line tool with GDAL, PROJ and GEOS, no plugins) and `untwine` (the out-of-core COPC
+// builder, GPL-3.0-or-later), installed by micromamba from an explicit lock and pruned to what the
+// tools run: the programs, their shared libraries and the PROJ and GDAL data.
 // aio_pipelines/pointcloud.py finds it at <pack>/tools/pdal (Library/bin/pdal.exe on Windows,
 // bin/pdal on macOS) and points it at the data (pdal_env). Founder decision of 8 Oct 2026: no
 // source build; conda-forge's binaries as they are, licences listed in the notices.
 //
-//   node tools/pipeline-pack/pdal.mjs --out <folder>   PDAL for this machine into <folder>
-//                                                      (development: AIO_PDAL=<folder>/.../pdal)
+//   node tools/pipeline-pack/pdal.mjs --out <folder>   PDAL and untwine for this machine into <folder>
+//                                                      (development: AIO_PDAL and AIO_UNTWINE, printed at the end)
 //   node tools/pipeline-pack/pdal.mjs --lock           re-solve pdal-lock.json (online)
 //
 // build.mjs calls installPdal(). Downloads: micromamba once (a single static binary, SHA-256
@@ -35,7 +36,7 @@ import { parseArgs } from 'node:util';
 export const LOCK_FILE = new URL('./pdal-lock.json', import.meta.url);
 
 /** The conda spec the lock is solved for. */
-export const PDAL_SPEC = 'libpdal-core==2.10.2';
+export const PDAL_SPEC = 'libpdal-core==2.10.2 untwine';
 
 /** micromamba, a single static binary per platform (github.com/mamba-org/micromamba-releases). */
 export const MICROMAMBA = {
@@ -107,6 +108,7 @@ export function lockedPackages(
 export function keepWindows(rel) {
   const r = rel.toLowerCase();
   if (r === 'library/bin/pdal.exe') return 'Library/bin/pdal.exe';
+  if (r === 'library/bin/untwine.exe') return 'Library/bin/untwine.exe';
   if (/^library\/share\/(proj|gdal)\//.test(r)) return rel;
   const dll = /^(library\/bin\/)?([^/]+\.dll)$/.exec(r);
   if (dll && !SKIP_DLL.test(dll[2])) return `Library/bin/${basename(rel)}`;
@@ -335,12 +337,15 @@ export async function installPdal({ platform, cache, dest, log = say }) {
     spec: PDAL_SPEC,
     lock: JSON.parse(readFileSync(LOCK_FILE, 'utf8')),
     dest,
-    prune: { windows: () => keepWindows, mac: { programs: ['pdal'], share: ['proj', 'gdal'] } },
+    prune: {
+      windows: () => keepWindows,
+      mac: { programs: ['pdal', 'untwine'], share: ['proj', 'gdal'] },
+    },
     platform,
     cache,
     log,
   });
-  log(`  PDAL: ${packages} conda-forge packages, ${files} files kept`);
+  log(`  PDAL and untwine: ${packages} conda-forge packages, ${files} files kept`);
   return pdalExe(dest, platform);
 }
 
@@ -349,6 +354,51 @@ export function pdalExe(dest, platform = `${process.platform}-${process.arch}`) 
   return platform.startsWith('win32')
     ? join(dest, 'Library', 'bin', 'pdal.exe')
     : join(dest, 'bin', 'pdal');
+}
+
+/** The untwine program inside an installPdal folder (beside pdal). */
+export function untwineExe(dest, platform = `${process.platform}-${process.arch}`) {
+  return platform.startsWith('win32')
+    ? join(dest, 'Library', 'bin', 'untwine.exe')
+    : join(dest, 'bin', 'untwine');
+}
+
+/** A LAS 1.4 file of three points (point format 7, millimetre scale, class 2) for the check. */
+export function tinyLas() {
+  const header = 375;
+  const rec = 36;
+  const points = [
+    [0, 0, 0],
+    [1000, 0, 0],
+    [0, 1000, 500],
+  ];
+  const b = Buffer.alloc(header + points.length * rec);
+  b.write('LASF', 0, 'latin1');
+  b.writeUInt16LE(0x10, 6); // global encoding: WKT
+  b[24] = 1;
+  b[25] = 4;
+  b.write('Quadrion AI', 26, 'latin1');
+  b.write('pack check', 58, 'latin1');
+  b.writeUInt16LE(1, 90);
+  b.writeUInt16LE(2026, 92);
+  b.writeUInt16LE(header, 94);
+  b.writeUInt32LE(header, 96);
+  b.writeUInt32LE(0, 100);
+  b[104] = 7;
+  b.writeUInt16LE(rec, 105);
+  for (let i = 0; i < 3; i++) b.writeDoubleLE(0.001, 131 + 8 * i);
+  [1, 0, 1, 0, 0.5, 0].forEach((v, i) => b.writeDoubleLE(v, 179 + 8 * i));
+  b.writeBigUInt64LE(BigInt(points.length), 247);
+  b.writeBigUInt64LE(BigInt(points.length), 255);
+  points.forEach(([x, y, z], i) => {
+    const o = header + i * rec;
+    b.writeInt32LE(x, o);
+    b.writeInt32LE(y, o + 4);
+    b.writeInt32LE(z, o + 8);
+    b[o + 14] = 0x11; // return 1 of 1
+    b[o + 16] = 2; // ground
+  });
+  return b;
 }
 
 /** The environment pdal runs in (as aio_pipelines' pdal_env): its PROJ and GDAL data. */
@@ -377,6 +427,35 @@ export function checkPdal(exe) {
 }
 
 /**
+ * Whether an installed untwine works: it turns tinyLas() into a COPC file. Answers the problem in
+ * words, or null.
+ */
+export function checkUntwine(exe) {
+  if (!existsSync(exe)) return `untwine is missing at ${exe}`;
+  const dir = mkdtempSync(join(tmpdir(), 'quntwine-'));
+  try {
+    const las = join(dir, 'check.las');
+    const out = join(dir, 'check.copc.laz');
+    writeFileSync(las, tinyLas());
+    const r = spawnSync(exe, ['-i', las, '-o', out, '--temp_dir', join(dir, 'tmp')], {
+      encoding: 'utf8',
+      env: pdalEnv(exe),
+      timeout: 120_000,
+    });
+    if (r.error) return `untwine could not start: ${r.error.message}`;
+    if (r.status !== 0) {
+      const last = `${r.stderr}\n${r.stdout}`.trim().split('\n').pop();
+      return `untwine failed (exit ${r.status}): ${last}`;
+    }
+    if (!existsSync(out) || readFileSync(out).subarray(0, 4).toString('latin1') !== 'LASF')
+      return 'untwine wrote no COPC file';
+    return null;
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+}
+
+/**
  * Solve `spec` on conda-forge for every pack platform (online) and write the lock to `file`:
  * `{ $comment, schema, spec, channel, platforms: { <subdir>: [package] } }`.
  */
@@ -391,7 +470,7 @@ export async function relockConda({ spec, file, schema, comment, cache }) {
         '-c',
         'conda-forge',
         '--override-channels',
-        spec,
+        ...spec.split(' '),
       ]),
       { env: micromambaEnv(platform), maxBuffer: 64 * 1024 * 1024 },
     );
@@ -435,10 +514,14 @@ if (process.argv[1] && resolve(process.argv[1]) === resolve(import.meta.filename
     if (values.lock) await relock(cache);
     else if (values.out) {
       const platform = `${process.platform}-${process.arch}`;
-      const exe = await installPdal({ platform, cache, dest: resolve(values.out) });
+      const dest = resolve(values.out);
+      const exe = await installPdal({ platform, cache, dest });
       const { version, missing } = checkPdal(exe);
       if (missing.length > 0) throw new Error(`PDAL lacks ${missing.join(', ')}`);
-      say(`${version}\nAIO_PDAL=${exe}`);
+      const untwine = untwineExe(dest, platform);
+      const problem = checkUntwine(untwine);
+      if (problem) throw new Error(problem);
+      say(`${version}\nAIO_PDAL=${exe}\nAIO_UNTWINE=${untwine}`);
     } else throw new Error('pass --out <folder> or --lock');
   } catch (e) {
     process.stderr.write(`pdal: ${e instanceof Error ? e.message : String(e)}\n`);

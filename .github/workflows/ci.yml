@@ -357,7 +357,7 @@ jobs:
           QUADRION_CONDA_ROOT: ${{ runner.temp }}/conda
         run: |
           node ../tools/pipeline-pack/pdal.mjs --out "$RUNNER_TEMP/pdal" | tee "$RUNNER_TEMP/pdal.log"
-          grep '^AIO_PDAL=' "$RUNNER_TEMP/pdal.log" >> "$GITHUB_ENV"
+          grep -E '^(AIO_PDAL|AIO_UNTWINE)=' "$RUNNER_TEMP/pdal.log" >> "$GITHUB_ENV"
       # the pack's ffmpeg (conda-forge's GPL build, checked for v360, libx264 and the HEVC decoder)
       - name: ffmpeg (conda-forge, as in the pack)
         env:
