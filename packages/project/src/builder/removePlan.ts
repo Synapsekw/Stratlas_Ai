@@ -84,9 +84,14 @@ const isDir = (p: string) =>
     (s) => s.isDirectory(),
     () => false,
   );
-const overlaps = (a: string, b: string) =>
-  a === b || a.startsWith(`${b}/`) || b.startsWith(`${a}/`);
+/** Windows paths are case-insensitive: `Photos/a.jpg` and `photos/a.jpg` are one file there. */
 const fold = (p: string) => (process.platform === 'win32' ? p.toLowerCase() : p);
+/** One path is the other or inside it (case-folded on Windows). */
+const overlaps = (x: string, y: string) => {
+  const a = fold(x);
+  const b = fold(y);
+  return a === b || a.startsWith(`${b}/`) || b.startsWith(`${a}/`);
+};
 
 async function readJson(file: string): Promise<unknown> {
   try {
@@ -181,7 +186,11 @@ function thumbOf(p: string): string {
   return `${i < 0 ? '' : `${p.slice(0, i)}/`}thumbs/${stem}.jpg`;
 }
 
-/** What a layer owns on disk: its folder when a ref's parent folder is named after it, else files. */
+/**
+ * What a layer owns on disk: its folder when a ref sits at `<category>/<layer id>/<file>` or
+ * deeper, else the files. Never a top-level folder: an undated raw import's photos layer is
+ * named `photos` and its items sit at `photos/<file>`, beside files it does not own.
+ */
 export function ownedPaths(layer: Layer): string[] {
   const out = new Set<string>();
   if (layer.kind === 'walk') {
@@ -192,7 +201,7 @@ export function ownedPaths(layer: Layer): string[] {
   }
   for (const p of layerRefs(layer)) {
     const parts = p.split('/');
-    if (parts.length >= 2 && parts[parts.length - 2] === layer.id)
+    if (parts.length >= 3 && parts[parts.length - 2] === layer.id)
       out.add(parts.slice(0, -1).join('/'));
     else out.add(p);
     if (layer.kind === 'photos' || layer.kind === 'panoramas') out.add(thumbOf(p));
@@ -445,10 +454,12 @@ export async function planRemoval(
   const realRoot = await realpath(root);
   const files: string[] = [];
   // sorted: a folder comes before what is inside it, so nothing moves twice
-  for (const rel of [...candidates].sort()) {
+  for (const rel of [...candidates].sort((a, b) =>
+    fold(a) < fold(b) ? -1 : fold(a) > fold(b) ? 1 : 0,
+  )) {
     if (rel === '' || NEVER.some((n) => overlaps(rel, n))) continue;
     if (kept.some((k) => overlaps(rel, k))) continue;
-    if (files.some((f) => rel.startsWith(`${f}/`))) continue;
+    if (files.some((f) => overlaps(rel, f))) continue;
     if (await leadsOutside(root, realRoot, rel))
       return refuse(
         `"${rel}" leads outside the project folder (a link or junction). Nothing was removed.`,

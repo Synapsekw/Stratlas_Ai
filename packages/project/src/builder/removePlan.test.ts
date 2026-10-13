@@ -1,6 +1,7 @@
-import { mkdtemp, rm, symlink, writeFile } from 'node:fs/promises';
+import type { Layer } from '@aio/schema';
+import { mkdir, mkdtemp, readFile, rm, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import {
   FIXTURE_JOBS,
@@ -10,6 +11,7 @@ import {
   RUN_FOLDERS,
   makeRemoveProject,
 } from './removeFixture';
+import { readManifestFile, writeManifestFile } from './create';
 import { namesAny, ownedPaths, planRemoval, valuesUnder } from './removePlan';
 
 let dir: string;
@@ -21,6 +23,22 @@ afterEach(async () => {
   await rm(dir, { recursive: true, force: true });
 });
 const ids = (xs: readonly { id: string }[]) => xs.map((x) => x.id).sort();
+const put = async (rel: string, text = 'x') => {
+  const f = join(root, ...rel.split('/'));
+  await mkdir(dirname(f), { recursive: true });
+  await writeFile(f, text);
+};
+const photos = (id: string, paths: string[]): Layer => ({
+  kind: 'photos',
+  id,
+  name: id,
+  visible: true,
+  items: paths.map((path, i) => ({ id: `${id}-${String(i)}`, src: { path } })),
+});
+const addLayers = async (...layers: Layer[]) => {
+  const m = await readManifestFile(root);
+  await writeManifestFile(root, { ...m, layers: [...m.layers, ...layers] });
+};
 
 describe('planRemoval', () => {
   it('a photos layer takes its runs, their layers by outputs and by id, the comparison, tilesets, surfaces, detections and jobs', async () => {
@@ -179,6 +197,84 @@ describe('planRemoval', () => {
       expect(p.files).toEqual([]);
     } finally {
       await rm(outside, { recursive: true, force: true });
+    }
+  });
+});
+
+describe('what a layer owns', () => {
+  // an undated raw import names its photos layer `photos`, items at `photos/<file>`
+  it('a photos layer named like its top-level folder owns only its items and thumbs', async () => {
+    await addLayers(photos('photos', ['photos/a.jpg', 'photos/b.jpg']));
+    for (const f of ['photos/a.jpg', 'photos/b.jpg', 'photos/thumbs/a.jpg', 'photos/masks/x.png'])
+      await put(f);
+    const p = await planRemoval(root, [{ layer: 'photos' }]);
+    expect(p.refused).toBeUndefined();
+    expect([...p.files].sort()).toEqual(['photos/a.jpg', 'photos/b.jpg', 'photos/thumbs/a.jpg']);
+  });
+
+  it('two photos layers in the same folder each take exactly their own items', async () => {
+    await addLayers(photos('photos', ['photos/a.jpg']), photos('photos-2', ['photos/c.jpg']));
+    for (const f of ['photos/a.jpg', 'photos/c.jpg']) await put(f);
+    expect((await planRemoval(root, [{ layer: 'photos' }])).files).toEqual(['photos/a.jpg']);
+    expect((await planRemoval(root, [{ layer: 'photos-2' }])).files).toEqual(['photos/c.jpg']);
+  });
+
+  it('never owns a top-level folder', () => {
+    expect(ownedPaths(photos('photos', ['photos/a.jpg']))).toEqual([
+      'photos/a.jpg',
+      'photos/thumbs/a.jpg',
+    ]);
+  });
+
+  // Windows paths are case-insensitive: `Photos/a.jpg` and `photos/a.jpg` are one file
+  it.runIf(process.platform === 'win32')(
+    'keeps a file a remaining layer names in other letter case',
+    async () => {
+      await addLayers(photos('gone', ['photos/a.jpg']), photos('stays', ['Photos/a.jpg']));
+      await put('photos/a.jpg');
+      const p = await planRemoval(root, [{ layer: 'gone' }]);
+      expect(ids(p.layers)).toEqual(['gone']);
+      expect(p.files).toEqual([]);
+    },
+  );
+
+  it.runIf(process.platform === 'win32')(
+    'never moves a hash asset named in other letter case',
+    async () => {
+      await addLayers(photos('hashed', ['Assets/sha256/x']));
+      await put('assets/sha256/x');
+      const p = await planRemoval(root, [{ layer: 'hashed' }]);
+      expect(ids(p.layers)).toEqual(['hashed']);
+      expect(p.files).toEqual([]);
+    },
+  );
+
+  it('refuses a tileset whose src climbs out of the project, before it looks at the disk', async () => {
+    const outside = join(root, '..', 'outside', 'tileset.json');
+    await mkdir(dirname(outside), { recursive: true });
+    await writeFile(outside, 'keep');
+    try {
+      const doc = JSON.parse(await readFile(join(root, 'tilesets.json'), 'utf8')) as {
+        entries: unknown[];
+      };
+      doc.entries.push({
+        id: 'c-tiles',
+        name: 'c-tiles',
+        kind: 'mesh',
+        src: '../outside/tileset.json',
+        visible: true,
+        from: 'dsm-c',
+      });
+      await writeFile(join(root, 'tilesets.json'), JSON.stringify(doc));
+      const p = await planRemoval(root, [{ layer: 'dsm-c' }]);
+      expect(p.refused).toBe(
+        '"../outside/tileset.json" leads outside the project folder (a link or junction). Nothing was removed.',
+      );
+      expect(p.files).toEqual([]);
+      expect(p.tilesets).toEqual([]);
+      expect(await readFile(outside, 'utf8')).toBe('keep');
+    } finally {
+      await rm(dirname(outside), { recursive: true, force: true });
     }
   });
 });
