@@ -17,7 +17,9 @@ vi.mock('./useSpotEntries', () => ({
 }));
 vi.mock('./SpotMatchView', () => ({
   SpotMatchView: ({ match }: { match: SpotMatch }) => (
-    <i data-testid="spot-view" data-capture={match.capture} />
+    <i data-testid="spot-view" data-capture={match.capture}>
+      <video data-testid="spot-clip" />
+    </i>
   ),
 }));
 vi.mock('./SpotThumb', () => ({ SpotThumb: () => <i /> }));
@@ -106,16 +108,17 @@ const dialog = () => q('spot-viewer');
 const head = () => q('spot-head');
 const press = (key: string, o: { shiftKey?: boolean; el?: Element | null } = {}) => {
   const el = o.el ?? document.activeElement;
-  act(() => {
-    el?.dispatchEvent(
-      new KeyboardEvent('keydown', {
-        key,
-        shiftKey: o.shiftKey ?? false,
-        bubbles: true,
-        cancelable: true,
-      }),
-    );
+  const e = new KeyboardEvent('keydown', {
+    key,
+    shiftKey: o.shiftKey ?? false,
+    bubbles: true,
+    cancelable: true,
   });
+  act(() => {
+    el?.dispatchEvent(e);
+  });
+  /** Whether something took the key (the dialog, or the control itself). */
+  return e.defaultPrevented;
 };
 const click = (el: Element | null) => {
   act(() => {
@@ -207,6 +210,53 @@ afterEach(() => {
   workspace.getState().closeProject();
   vi.restoreAllMocks();
   vi.unstubAllGlobals();
+});
+
+describe('keys owned by controls inside the viewer', () => {
+  const dateOf = (side: 'left' | 'right') =>
+    host.querySelector<HTMLSelectElement>(`[data-testid="spot-compare-date-${side}"]`);
+
+  it('an arrow on a date select picks in that select, not the left side', () => {
+    render();
+    show(photoA);
+    press('c');
+    const right = dateOf('right');
+    act(() => right?.focus());
+    expect(press('ArrowDown', { el: right })).toBe(false);
+    expect(press('c', { el: right })).toBe(false);
+    expect(dateOf('left')?.value).toBe('d1');
+    expect(q('spot-compare-view')).not.toBeNull();
+    // Esc still reaches the dialog from the select
+    press('Escape', { el: right });
+    expect(q('spot-compare-view')).toBeNull();
+  });
+
+  it('an arrow on a clip seeks it and does not step the date', () => {
+    render();
+    show(photoA);
+    const clip = q('spot-clip');
+    expect(press('ArrowRight', { el: clip })).toBe(false);
+    expect(head()?.dataset.capture).toBe('d1');
+    press('Escape', { el: clip });
+    expect(dialog()).toBeNull();
+  });
+
+  it('a side with no date says so instead of showing the first date', () => {
+    render();
+    show(photoA);
+    act(() => {
+      spotViewer.getState().setCompare({
+        mode: 'side',
+        left: { capture: 'd1', i: 0 },
+        right: null,
+        amount: 0.5,
+      });
+    });
+    const right = dateOf('right');
+    expect(right?.value).toBe('');
+    expect(right?.selectedOptions[0]?.textContent).toBe('No image of this spot on that date');
+    expect(dateOf('left')?.querySelector('option[value=""]')).toBeNull();
+  });
 });
 
 describe('the spot viewer', () => {

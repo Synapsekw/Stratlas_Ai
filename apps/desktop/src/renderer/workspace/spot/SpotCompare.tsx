@@ -64,24 +64,33 @@ export function SpotCompare(p: {
       </SpotZoom>
     );
   };
-  const chip = (side: 'left' | 'right') => (
-    <select
-      className="spot-chip"
-      aria-label={t(side === 'left' ? 'spot.compare.left' : 'spot.compare.right')}
-      data-testid={`spot-compare-date-${side}`}
-      value={(side === 'left' ? state.left : state.right)?.capture ?? ''}
-      onChange={(e) => {
-        const at = { capture: e.target.value, i: 0 };
-        p.onChange(side === 'left' ? { ...state, left: at } : { ...state, right: at });
-      }}
-    >
-      {dated.map((d) => (
-        <option key={d.capture} value={d.capture}>
-          {p.tags[d.capture]?.long ?? d.capture}
-        </option>
-      ))}
-    </select>
-  );
+  const chip = (side: 'left' | 'right') => {
+    const value = (side === 'left' ? state.left : state.right)?.capture ?? '';
+    return (
+      <select
+        className="spot-chip"
+        aria-label={t(side === 'left' ? 'spot.compare.left' : 'spot.compare.right')}
+        data-testid={`spot-compare-date-${side}`}
+        value={value}
+        onChange={(e) => {
+          const at = { capture: e.target.value, i: 0 };
+          p.onChange(side === 'left' ? { ...state, left: at } : { ...state, right: at });
+        }}
+      >
+        {/* no date on this side yet: say so rather than show the first date over an empty pane */}
+        {value === '' && (
+          <option value="" disabled>
+            {t('spot.compare.empty')}
+          </option>
+        )}
+        {dated.map((d) => (
+          <option key={d.capture} value={d.capture}>
+            {p.tags[d.capture]?.long ?? d.capture}
+          </option>
+        ))}
+      </select>
+    );
+  };
   return (
     <div className="spot-compare" data-testid="spot-compare-view" data-mode={state.mode}>
       <div className="spot-compare-bar">

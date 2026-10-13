@@ -6,7 +6,7 @@
  * stepping dates here changes only the viewer's own store.
  */
 import type { Layer } from '@aio/schema';
-import { focusLost, Icon, matchShortcut, useFocusTrap, useT } from '@aio/ui';
+import { focusLost, Icon, matchShortcut, shortcutHint, useFocusTrap, useT } from '@aio/ui';
 import { useWorkspace } from '@aio/workspace';
 import { useEffect, useRef, type KeyboardEvent, type ReactNode } from 'react';
 import { useStore } from 'zustand';
@@ -40,6 +40,10 @@ function itemId(item: SpotItem): string {
 function keyOf(m: SpotMatch): string {
   return `${m.capture}|${m.item.layer}|${itemId(m.item)}|${String(m.lookDeg ?? '')}`;
 }
+
+/** Controls whose own keys the dialog leaves alone (all but Esc and Tab). */
+const ownsKeys = (el: EventTarget) =>
+  el instanceof HTMLSelectElement || el instanceof HTMLMediaElement;
 
 const seconds = (t: number) => String(Math.round(t * 10) / 10);
 
@@ -117,7 +121,7 @@ export function SpotViewer() {
       type="button"
       className="btn icon sm ghost"
       aria-label={t('spot.close')}
-      title={`${t('spot.close')} (Esc)`}
+      title={`${t('spot.close')} (${shortcutHint('spot.close')})`}
       data-testid="spot-close"
       onClick={close}
     >
@@ -145,6 +149,8 @@ export function SpotViewer() {
           e.stopPropagation();
           if (e.defaultPrevented || e.ctrlKey || e.metaKey || e.altKey) return;
           if (e.key === 'Tab') onTab(e);
+          // a date select and a playing clip own their keys (arrows pick, seek); Esc still closes
+          else if (ownsKeys(e.target) && matchShortcut('spot', e) !== 'spot.close') return;
           else onKey(e);
         }}
         onBlur={(e) => {
