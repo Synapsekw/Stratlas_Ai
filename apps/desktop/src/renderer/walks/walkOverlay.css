@@ -58,3 +58,9 @@
 .walk-pin.raised circle {
   stroke-width: 3px;
 }
+/* Start (hollow) and End (filled) handles of the walk being placed */
+.walk-handle.start circle {
+  fill: var(--bg-0);
+  stroke: currentColor;
+  stroke-width: 3px;
+}

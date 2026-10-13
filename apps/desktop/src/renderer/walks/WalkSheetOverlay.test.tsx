@@ -33,8 +33,8 @@ const drawing = (over: Partial<WalkDrawing> = {}): WalkDrawing => ({
     [10, 0],
   ],
   pins: [
-    { at: [0, 0], n: 1, index: 1, active: true },
-    { at: [20, 5], n: 2, index: 0, active: false },
+    { at: [0, 0], n: 1, index: 1, active: true, role: 'pin' },
+    { at: [20, 5], n: 2, index: 0, active: false, role: 'pin' },
   ],
   ...over,
 });
@@ -145,14 +145,14 @@ describe('WalkSheetOverlay', () => {
     // the picture does not pan under a pin drag
     expect(parentDown).not.toHaveBeenCalled();
     pointer(pin, 'pointermove', 40, 20);
-    expect(onPinDrag).toHaveBeenLastCalledWith('walk-a', 1, [20, 10]);
+    expect(onPinDrag).toHaveBeenLastCalledWith('walk-a', 1, [20, 10], 'pin');
     // kept on the picture
     pointer(pin, 'pointermove', 400, -20);
-    expect(onPinDrag).toHaveBeenLastCalledWith('walk-a', 1, [100, 0]);
+    expect(onPinDrag).toHaveBeenLastCalledWith('walk-a', 1, [100, 0], 'pin');
     expect(onPinDragEnd).not.toHaveBeenCalled();
     pointer(pin, 'pointerup', 400, -20);
     expect(onPinDragEnd).toHaveBeenCalledTimes(1);
-    expect(onPinDragEnd).toHaveBeenCalledWith('walk-a', 1, [100, 0]);
+    expect(onPinDragEnd).toHaveBeenCalledWith('walk-a', 1, [100, 0], 'pin');
 
     // an inactive pin is not draggable: the press goes to the picture
     expect(gone.classList.contains('draggable')).toBe(false);
@@ -171,5 +171,67 @@ describe('WalkSheetOverlay', () => {
     if (!pin) throw new Error('no pin');
     pointer(pin, 'pointerdown', 0, 0);
     expect(parentDown).toHaveBeenCalled();
+  });
+
+  it('draws Start and End as handles and passes the role on a drag', () => {
+    const onPinDrag = vi.fn();
+    render(
+      <WalkSheetOverlay
+        drawings={[
+          drawing({
+            pins: [
+              { at: [10, 10], n: 1, index: 0, active: true, role: 'start' },
+              { at: [90, 10], n: 2, index: 1, active: true, role: 'end' },
+            ],
+          }),
+        ]}
+        scale={1}
+        toImage={(): [number, number] => [95, 12]}
+        onPinDrag={onPinDrag}
+      />,
+    );
+    const end = host.querySelector('[data-testid="walk-handle-end"]');
+    expect(host.querySelector('[data-testid="walk-handle-start"]')).not.toBeNull();
+    expect(end?.querySelector('title')?.textContent).toBe('End');
+    if (!end) throw new Error('no handle');
+    pointer(end, 'pointerdown', 0, 0);
+    pointer(end, 'pointermove', 95, 12);
+    expect(onPinDrag).toHaveBeenCalledWith('walk-a', 1, [95, 12], 'end');
+  });
+
+  it('draws the preview faint and dashed as a ghost, and marks a spot too close', () => {
+    render(
+      <WalkSheetOverlay
+        drawings={[]}
+        scale={1}
+        preview={{
+          pts: [
+            [0, 0],
+            [10, 0],
+          ],
+          ghost: true,
+          tooClose: false,
+        }}
+      />,
+    );
+    const p = host.querySelector('[data-testid="walk-preview"]');
+    expect(p?.getAttribute('data-ghost')).toBe('true');
+    render(
+      <WalkSheetOverlay
+        drawings={[]}
+        scale={1}
+        preview={{
+          pts: [
+            [0, 0],
+            [10, 0],
+          ],
+          ghost: false,
+          tooClose: true,
+        }}
+      />,
+    );
+    expect(host.querySelector('[data-testid="walk-preview"]')?.getAttribute('data-too-close')).toBe(
+      'true',
+    );
   });
 });

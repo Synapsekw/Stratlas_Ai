@@ -7,6 +7,7 @@ import {
   pathStyle,
   resolveCssColour,
   walkMapOverlays,
+  walkPreviewMapOverlay,
   walkNowMapOverlay,
 } from './walkMapOverlay';
 import { MAP_INK } from '@aio/maps';
@@ -145,5 +146,52 @@ describe('colours MapLibre cannot read', () => {
     vi.stubGlobal('getComputedStyle', () => ({ getPropertyValue: () => 'oklch(0.68 0.14 250)' }));
     expect(resolveCssColour('var(--date-1)', el)).toMatch(/^#[0-9a-f]{6}$/);
     vi.unstubAllGlobals();
+  });
+});
+
+describe('the placing preview and pin roles', () => {
+  it('the preview is its own overlay; its style stays the same object across hovers', () => {
+    const a = walkPreviewMapOverlay(
+      'walk-a',
+      [
+        [0, 0],
+        [10, 0],
+      ],
+      proj,
+      '#3366ff',
+      false,
+      false,
+    );
+    const b = walkPreviewMapOverlay(
+      'walk-a',
+      [
+        [0, 0],
+        [12, 1],
+      ],
+      proj,
+      '#3366ff',
+      false,
+      false,
+    );
+    expect(a?.id).toBe('walk-walk-a-preview');
+    expect(a?.layers).toBe(b?.layers);
+    expect(a?.data).not.toBe(b?.data);
+    expect(walkPreviewMapOverlay('walk-a', [[0, 0]], proj, '#3366ff', true, false)).toBeNull();
+  });
+
+  it('pins carry their role', () => {
+    const [ov] = walkMapOverlays(
+      [{ layer: layer('walk-a'), fit: fit(), raw: null }],
+      proj,
+      colour,
+      {
+        placingId: 'walk-a',
+      },
+    );
+    const roles = features(ov?.data ?? '')
+      .filter((f) => f.properties?.kind === 'pin')
+      .map((f): unknown => f.properties?.role);
+    expect(roles[0]).toBe('start');
+    expect(roles.at(-1)).toBe('end');
   });
 });

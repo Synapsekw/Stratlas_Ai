@@ -49,6 +49,9 @@ export const walkOverlayId = (layerId: string): string => `walk-${layerId}`;
 /** The map overlay id of a walk's current position (its own overlay: it moves every tick). */
 export const walkNowOverlayId = (layerId: string): string => `walk-${layerId}-now`;
 
+/** The map overlay id of the shape being placed (its own overlay: it follows the pointer). */
+export const walkPreviewOverlayId = (layerId: string): string => `walk-${layerId}-preview`;
+
 const styles = new Map<string, OverlayLayer[]>();
 
 /**
@@ -138,8 +141,22 @@ function buildPathStyle(colour: string, placing: boolean): OverlayLayer[] {
       filter: ['==', ['get', 'kind'], 'pin'],
       paint: {
         'circle-radius': 9,
-        'circle-color': ['case', ['get', 'active'], colour, MAP_INK.bg0],
-        'circle-stroke-color': ['case', ['get', 'active'], MAP_INK.bg0, colour],
+        'circle-color': [
+          'case',
+          ['==', ['get', 'role'], 'start'],
+          MAP_INK.bg0,
+          ['get', 'active'],
+          colour,
+          MAP_INK.bg0,
+        ],
+        'circle-stroke-color': [
+          'case',
+          ['==', ['get', 'role'], 'start'],
+          colour,
+          ['get', 'active'],
+          MAP_INK.bg0,
+          colour,
+        ],
         'circle-stroke-width': 2,
       },
       above: true,
@@ -147,7 +164,7 @@ function buildPathStyle(colour: string, placing: boolean): OverlayLayer[] {
     {
       id: 'pin-n',
       type: 'symbol',
-      filter: ['==', ['get', 'kind'], 'pin'],
+      filter: ['all', ['==', ['get', 'kind'], 'pin'], ['==', ['get', 'role'], 'pin']],
       layout: {
         'text-field': ['to-string', ['get', 'n']],
         'text-font': ['Noto Sans Medium'],
@@ -197,7 +214,7 @@ export function walkMapOverlays(
       for (const p of walkPinPoints(fit))
         features.push({
           type: 'Feature',
-          properties: { kind: 'pin', n: p.n, index: p.index, active: p.active },
+          properties: { kind: 'pin', n: p.n, index: p.index, active: p.active, role: p.role },
           geometry: { type: 'Point', coordinates: ll(p.xz) },
         });
     }
@@ -241,4 +258,56 @@ export function walkNowMapOverlay(
     ],
   };
   return { id: walkNowOverlayId(walk.layer.id), data, layers: nowStyle(colourOf(walk.layer)) };
+}
+
+const previewStyles = new Map<string, OverlayLayer[]>();
+
+/** The style of the shape being placed, one array per colour and look (data changes only). */
+function previewStyle(colour: string, ghost: boolean, tooClose: boolean): OverlayLayer[] {
+  const key = `${colour}|${String(ghost)}|${String(tooClose)}`;
+  let out = previewStyles.get(key);
+  if (!out) {
+    out = [
+      {
+        id: 'preview',
+        type: 'line',
+        layout: { 'line-join': 'round', 'line-cap': 'round' },
+        paint: {
+          'line-color': colour,
+          'line-width': 2,
+          'line-opacity': ghost ? 0.45 : 1,
+          ...(ghost || tooClose ? { 'line-dasharray': [2, 2] } : {}),
+        },
+        above: true,
+      },
+    ];
+    previewStyles.set(key, out);
+  }
+  return out;
+}
+
+/** The shape being placed on the map (ghost or live), or null with fewer than two points. */
+export function walkPreviewMapOverlay(
+  layerId: string,
+  xz: readonly XZ[],
+  proj: { toLonLat(v: Vec3): [number, number] },
+  colour: string,
+  ghost: boolean,
+  tooClose: boolean,
+): MapOverlay | null {
+  if (xz.length < 2) return null;
+  const data: FeatureCollection = {
+    type: 'FeatureCollection',
+    features: [
+      {
+        type: 'Feature',
+        properties: { kind: 'preview' },
+        geometry: {
+          type: 'LineString',
+          coordinates: xz.map((p) => proj.toLonLat([p[0], 0, p[1]])),
+        },
+      },
+    ],
+  };
+  return { id: walkPreviewOverlayId(layerId), data, layers: previewStyle(colour, ghost, tooClose) };
 }

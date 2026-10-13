@@ -1,11 +1,20 @@
-import type { FitPin, SurfaceFrame, WalkFit, WalkFitSample, XZ } from '@aio/geo';
+import {
+  surfaceFrameFromCorners,
+  type FitPin,
+  type SurfaceFrame,
+  type WalkFit,
+  type WalkFitSample,
+  type XZ,
+} from '@aio/geo';
 import type { WalkLayer } from '@aio/schema';
 import { describe, expect, it } from 'vitest';
 import {
+  previewOnSheet,
   sheetHeading,
   toSheet,
   walkDrawingsForSheet,
   walkNowOnSheet,
+  walkPinPoints,
   type SheetWalk,
 } from './walkOverlay';
 
@@ -216,5 +225,45 @@ describe('walkDrawingsForSheet', () => {
     // the fit is not placed yet
     const unplaced = { ...w, fit: { ...w.fit, at: () => null } };
     expect(walkNowOnSheet(unplaced, sheet, colour, 3, size)).toBeNull();
+  });
+});
+
+describe('roles and the preview', () => {
+  const pinAt = (t: number, target: XZ): FitPin => ({
+    index: t,
+    t,
+    target,
+    active: true,
+    residualM: null,
+  });
+  it('names the first pin Start and the last End; inner pins stay pins', () => {
+    const three = fakeFit({
+      pins: [pinAt(4, [0, 0]), pinAt(30, [20, 0]), pinAt(62, [40, -30])],
+    });
+    expect(walkPinPoints(three).map((p) => p.role)).toEqual(['start', 'pin', 'end']);
+    expect(walkPinPoints(fakeFit({ pins: [pinAt(4, [0, 0])] })).map((p) => p.role)).toEqual([
+      'start',
+    ]);
+  });
+
+  it('puts the preview on the sheet in picture px', () => {
+    const frame = surfaceFrameFromCorners(
+      { tl: [-40, 0, -20], tr: [40, 0, -20], bl: [-40, 0, 20] },
+      [400, 200],
+      false,
+    );
+    const p = previewOnSheet(
+      [
+        [0, 0],
+        [40, -20],
+      ],
+      frame,
+      true,
+      false,
+    );
+    expect(p.pts[0]?.[0]).toBeCloseTo(200);
+    expect(p.pts[0]?.[1]).toBeCloseTo(100);
+    expect(p.pts[1]?.[1]).toBeCloseTo(0);
+    expect(p.ghost).toBe(true);
   });
 });

@@ -24,7 +24,27 @@ export interface WalkDrawing {
    * Pins in the order of time (`n` from 1); `index` is the pin's place in the calibration's
    * `pins`. An inactive pin (its drawing is gone) sits where the walk was at its time.
    */
-  pins: { at: SheetPx; n: number; index: number; active: boolean }[];
+  pins: { at: SheetPx; n: number; index: number; active: boolean; role: PinRole }[];
+}
+
+/** The first pin by time is the Start handle, the last the End handle (with two or more). */
+export type PinRole = 'start' | 'end' | 'pin';
+
+/** The shape being placed, on a drawing: in picture px. */
+export interface SheetPreview {
+  pts: SheetPx[];
+  ghost: boolean;
+  tooClose: boolean;
+}
+
+export function previewOnSheet(
+  xz: readonly XZ[],
+  frame: SurfaceFrame,
+  ghost: boolean,
+  tooClose: boolean,
+): SheetPreview {
+  const pts = xz.map((p) => toSheet(frame, p)).filter((p) => p.every(Number.isFinite));
+  return { pts, ghost, tooClose };
 }
 
 /**
@@ -85,11 +105,13 @@ export function walkShown(layer: WalkLayer, opts: WalkDrawOptions): boolean {
 /** Pins in the order of time, each where it stands in the model (null when it has no place). */
 export function walkPinPoints(
   fit: WalkFit,
-): { xz: XZ; n: number; index: number; active: boolean }[] {
-  const out: { xz: XZ; n: number; index: number; active: boolean }[] = [];
+): { xz: XZ; n: number; index: number; active: boolean; role: PinRole }[] {
+  const out: { xz: XZ; n: number; index: number; active: boolean; role: PinRole }[] = [];
+  const last = fit.pins.length - 1;
   fit.pins.forEach((p, k) => {
     const xz = p.active ? p.target : (fit.at(p.t)?.xz ?? null);
-    if (xz) out.push({ xz, n: k + 1, index: p.index, active: p.active });
+    const role: PinRole = k === 0 ? 'start' : k === last ? 'end' : 'pin';
+    if (xz) out.push({ xz, n: k + 1, index: p.index, active: p.active, role });
   });
   return out;
 }
@@ -169,7 +191,13 @@ export function walkDrawingsForSheet(
     const stills = path.stills.map((s) => toSheet(sheet, s.xz)).filter(inside);
     const pins = placing
       ? walkPinPoints(fit)
-          .map((p) => ({ at: toSheet(sheet, p.xz), n: p.n, index: p.index, active: p.active }))
+          .map((p) => ({
+            at: toSheet(sheet, p.xz),
+            n: p.n,
+            index: p.index,
+            active: p.active,
+            role: p.role,
+          }))
           .filter((p) => inside(p.at))
       : [];
     out.push({ id: layer.id, colour: colourOf(layer), placing, line, stills, pins });

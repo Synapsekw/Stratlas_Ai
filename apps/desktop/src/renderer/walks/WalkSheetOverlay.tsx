@@ -1,6 +1,6 @@
 import { useT } from '@aio/ui';
 import { useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react';
-import type { SheetPx, WalkDrawing, WalkNow } from './walkOverlay';
+import type { PinRole, SheetPreview, SheetPx, WalkDrawing, WalkNow } from './walkOverlay';
 import './walkOverlay.css';
 
 /** Line width, dash and still dot diameter on screen, px (non-scaling strokes). */
@@ -11,6 +11,8 @@ const STILL_PX = 3;
 const PIN_R = 9;
 /** Opacity of a walk outside Place walk (and of the walks not being placed). */
 const DIM = 0.6;
+/** Opacity of the ghost (the shape before the first click). */
+const GHOST_OPACITY = 0.45;
 
 const num = (v: number): string => String(Math.round(v * 1000) / 1000);
 const pathOf = (pts: readonly SheetPx[]): string =>
@@ -37,6 +39,7 @@ export function WalkSheetOverlay({
   drawings,
   scale,
   now = null,
+  preview = null,
   size,
   onPinDrag,
   onPinDragEnd,
@@ -45,16 +48,24 @@ export function WalkSheetOverlay({
   drawings: readonly WalkDrawing[];
   scale: number;
   now?: WalkNow | null;
+  /** The shape being placed under the pointer (ghost, live line, or a spot too close). */
+  preview?: SheetPreview | null;
   /** The picture's size: dragged pins stay on it. */
   size?: { width: number; height: number } | undefined;
-  onPinDrag?: ((layerId: string, i: number, px: Px) => void) | undefined;
-  onPinDragEnd?: ((layerId: string, i: number, px: Px) => void) | undefined;
+  onPinDrag?: ((layerId: string, i: number, px: Px, role: PinRole) => void) | undefined;
+  onPinDragEnd?: ((layerId: string, i: number, px: Px, role: PinRole) => void) | undefined;
   toImage?: ((clientX: number, clientY: number, from: Element) => Px) | undefined;
 }) {
   const t = useT();
   const k = 1 / (Number.isFinite(scale) && scale > 0 ? scale : 1);
   const [hover, setHover] = useState<string | null>(null);
-  const drag = useRef<{ id: number; layer: string; index: number; last: Px | null } | null>(null);
+  const drag = useRef<{
+    id: number;
+    layer: string;
+    index: number;
+    role: PinRole;
+    last: Px | null;
+  } | null>(null);
   const draggable = onPinDrag !== undefined && toImage !== undefined;
 
   // the path and stills: rebuilt only when the drawings change, never on a zoom
@@ -99,7 +110,7 @@ export function WalkSheetOverlay({
       ? [Math.min(size.width, Math.max(0, px[0])), Math.min(size.height, Math.max(0, px[1]))]
       : px;
 
-  const pinHandlers = (layer: string, index: number) =>
+  const pinHandlers = (layer: string, index: number, role: PinRole) =>
     draggable
       ? {
           onPointerDown: (e: ReactPointerEvent<SVGGElement>) => {
@@ -107,7 +118,7 @@ export function WalkSheetOverlay({
             // the picture under the pin does not pan or pick
             e.stopPropagation();
             e.currentTarget.setPointerCapture(e.pointerId);
-            drag.current = { id: e.pointerId, layer, index, last: null };
+            drag.current = { id: e.pointerId, layer, index, role, last: null };
           },
           onPointerMove: (e: ReactPointerEvent<SVGGElement>) => {
             const d = drag.current;
@@ -115,13 +126,13 @@ export function WalkSheetOverlay({
             const px = toImage(e.clientX, e.clientY, e.currentTarget);
             if (!px.every(Number.isFinite)) return;
             d.last = clamp(px);
-            onPinDrag(d.layer, d.index, d.last);
+            onPinDrag(d.layer, d.index, d.last, d.role);
           },
           onPointerUp: (e: ReactPointerEvent<SVGGElement>) => {
             const d = drag.current;
             if (d?.id !== e.pointerId) return;
             drag.current = null;
-            if (d.last) onPinDragEnd?.(d.layer, d.index, d.last);
+            if (d.last) onPinDragEnd?.(d.layer, d.index, d.last, d.role);
           },
           onPointerCancel: () => {
             drag.current = null;
@@ -132,6 +143,20 @@ export function WalkSheetOverlay({
   return (
     <svg className="walk-overlay" data-testid="walk-overlay" aria-hidden="true">
       {paths}
+      {preview && preview.pts.length > 1 && (
+        <path
+          className="walk-line walk-preview"
+          data-testid="walk-preview"
+          data-ghost={preview.ghost ? 'true' : 'false'}
+          data-too-close={preview.tooClose ? 'true' : 'false'}
+          d={pathOf(preview.pts)}
+          stroke="var(--acc)"
+          strokeWidth={LINE_PX}
+          vectorEffect="non-scaling-stroke"
+          opacity={preview.ghost ? GHOST_OPACITY : undefined}
+          {...(preview.ghost || preview.tooClose ? { strokeDasharray: DASH } : {})}
+        />
+      )}
       {now && (
         <g
           className="walk-now"
@@ -156,18 +181,21 @@ export function WalkSheetOverlay({
             {pins.map((p) => {
               const key = `${d.id}:${String(p.index)}`;
               const canDrag = draggable && p.active;
+              const handle = p.role !== 'pin';
+              const label = p.role === 'start' ? 'Start' : 'End';
               return (
                 <g
                   key={key}
                   className={[
                     'walk-pin',
+                    handle ? `walk-handle ${p.role}` : '',
                     p.active ? '' : 'inactive',
                     canDrag ? 'draggable' : '',
                     hover === key ? 'raised' : '',
                   ]
                     .filter(Boolean)
                     .join(' ')}
-                  data-testid="walk-pin"
+                  data-testid={handle ? `walk-handle-${p.role}` : 'walk-pin'}
                   transform={`translate(${num(p.at[0])} ${num(p.at[1])}) scale(${num(k)})`}
                   onPointerEnter={() => {
                     setHover(key);
@@ -175,11 +203,15 @@ export function WalkSheetOverlay({
                   onPointerLeave={() => {
                     setHover((h) => (h === key ? null : h));
                   }}
-                  {...(canDrag ? pinHandlers(d.id, p.index) : {})}
+                  {...(canDrag ? pinHandlers(d.id, p.index, p.role) : {})}
                 >
-                  {!p.active && <title>{t('walk.pin.gone')}</title>}
+                  {!p.active ? (
+                    <title>{t('walk.pin.gone')}</title>
+                  ) : (
+                    handle && <title>{label}</title>
+                  )}
                   <circle r={PIN_R} />
-                  <text dy="0.35em">{p.n}</text>
+                  {!handle && <text dy="0.35em">{p.n}</text>}
                 </g>
               );
             })}
