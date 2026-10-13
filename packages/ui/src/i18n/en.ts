@@ -1995,9 +1995,16 @@ export const en = {
   'walk.noGraphics': 'The 360 view needs 3D graphics, which are not available right now.',
   // the walk on a drawing: a pin whose drawing was removed
   'walk.pin.gone': 'The drawing it was on is gone',
-  // a walk row in the Datasets list: its actions and the inline confirm of Remove walk
+  // a walk row in the Datasets list: its actions and the inline confirm of Remove placement
   'walk.row.open': 'Open in the 360 video pane',
-  'walk.row.place': 'Place {name} on a drawing or the map',
+  'walk.row.place': 'Place {name} on a drawing, the map or the 3D view',
+  'walk.row.edit': 'Edit the placement of {name}',
+  'walk.row.editTip': 'Edit placement',
+  'walk.row.unplace': 'Remove the placement of {name}',
+  'walk.row.unplaceTip': 'Remove placement',
+  'walk.row.unplaceConfirm': 'Remove the placement of {name}? The walk stays in the project.',
+  'walk.row.unplaceYes': 'Remove placement',
+  'walk.row.unplaceNo': 'Cancel',
   'walk.row.placeTip': 'Place walk',
   'walk.row.remove': 'Remove {name}',
   'walk.row.removeTip': 'Remove walk',

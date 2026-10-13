@@ -1,4 +1,12 @@
-import { Fragment, useState, type DragEvent, type MouseEvent, type ReactNode } from 'react';
+import {
+  Fragment,
+  useLayoutEffect,
+  useRef,
+  useState,
+  type DragEvent,
+  type MouseEvent,
+  type ReactNode,
+} from 'react';
 import { useT } from '../i18n';
 import { Icon } from '../icons/Icon';
 import {
@@ -106,6 +114,9 @@ export interface WalkRowActions {
   onOpen: (item: TreeItem) => void;
   onPlace?: ((item: TreeItem) => void) | undefined;
   onRemove?: ((item: TreeItem) => void) | undefined;
+  /** The walk has a saved placement: Place walk becomes Edit placement and Remove placement shows. */
+  placed?: ((item: TreeItem) => boolean) | undefined;
+  onRemovePlacement?: ((item: TreeItem) => void) | undefined;
 }
 
 /** Where a context menu opens, in window pixels. */
@@ -186,15 +197,33 @@ export function DatasetTree(props: DatasetTreeProps) {
   /** Flight rows the user opened or closed; others open while they hold the active clip. */
   const [flightOpen, setFlightOpen] = useState<Record<string, boolean>>({});
   /**
-   * Open, Place walk and Remove walk on a walk row; they stand in for the length and badge on
-   * hover. Remove only hands the row over: the caller asks in the shared removal dialog.
+   * The walk row whose Remove placement waits for its confirm, shown under the row. Remove walk
+   * goes to the caller's shared removal dialog, but Remove placement deletes nothing (the walk and
+   * its files stay), so it asks in the row.
+   */
+  const [unplacing, setUnplacing] = useState<string | null>(null);
+  /** The rows drawn now, by item id: where focus goes back to when the confirm closes. */
+  const rowEls = useRef(new Map<string, HTMLDivElement>());
+  /** The row focus goes back to once the confirm has left the page (its buttons held focus till then). */
+  const pendingFocus = useRef<string | null>(null);
+  useLayoutEffect(() => {
+    const id = pendingFocus.current;
+    if (id === null) return;
+    pendingFocus.current = null;
+    rowEls.current.get(id)?.focus();
+  });
+
+  /**
+   * Open, Place walk (Edit placement and Remove placement once placed) and Remove walk on a walk
+   * row; they stand in for the length and badge on hover. Remove only hands the row over: the
+   * caller asks in the shared removal dialog.
    */
   const walkButtons = (it: TreeItem) => {
     const acts = it.layerKind === 'walk' ? props.walkActions : undefined;
     if (!acts) return null;
     const button = (
-      kind: 'open' | 'place' | 'remove',
-      icon: 'split' | 'pin' | 'trash',
+      kind: 'open' | 'place' | 'edit' | 'unplace' | 'remove',
+      icon: 'split' | 'pin' | 'x' | 'trash',
       label: string,
       tip: string,
       run: () => void,
@@ -217,7 +246,8 @@ export function DatasetTree(props: DatasetTreeProps) {
         <Icon name={icon} size={14} />
       </button>
     );
-    const { onPlace, onRemove } = acts;
+    const { onPlace, onRemove, onRemovePlacement } = acts;
+    const isPlaced = acts.placed?.(it) === true;
     return (
       <span className="tacts">
         {button('open', 'split', t('walk.open', { name: it.name }), t('walk.row.open'), () => {
@@ -225,12 +255,23 @@ export function DatasetTree(props: DatasetTreeProps) {
         })}
         {onPlace &&
           button(
-            'place',
+            isPlaced ? 'edit' : 'place',
             'pin',
-            t('walk.row.place', { name: it.name }),
-            t('walk.row.placeTip'),
+            t(isPlaced ? 'walk.row.edit' : 'walk.row.place', { name: it.name }),
+            t(isPlaced ? 'walk.row.editTip' : 'walk.row.placeTip'),
             () => {
               onPlace(it);
+            },
+          )}
+        {isPlaced &&
+          onRemovePlacement &&
+          button(
+            'unplace',
+            'x',
+            t('walk.row.unplace', { name: it.name }),
+            t('walk.row.unplaceTip'),
+            () => {
+              setUnplacing(it.id);
             },
           )}
         {onRemove &&
@@ -240,10 +281,53 @@ export function DatasetTree(props: DatasetTreeProps) {
             t('walk.row.remove', { name: it.name }),
             t('walk.row.removeTip'),
             () => {
+              setUnplacing(null);
               onRemove(it);
             },
           )}
       </span>
+    );
+  };
+
+  /** The inline question of Remove placement: the walk itself stays, so the yes button is calm. */
+  const unplaceConfirm = (it: TreeItem) => {
+    const onRemovePlacement =
+      it.layerKind === 'walk' ? props.walkActions?.onRemovePlacement : undefined;
+    if (!onRemovePlacement || unplacing !== it.id) return null;
+    const close = () => {
+      setUnplacing(null);
+      pendingFocus.current = it.id;
+    };
+    return (
+      <div className="trow-confirm" role="group" data-testid="walk-unplace-confirm">
+        <span className="trow-confirm-q">{t('walk.row.unplaceConfirm', { name: it.name })}</span>
+        <span className="trow-confirm-acts">
+          <button
+            type="button"
+            className="btn sm"
+            data-testid="walk-unplace-yes"
+            onClick={() => {
+              setUnplacing(null);
+              onRemovePlacement(it);
+              pendingFocus.current = it.id;
+            }}
+          >
+            {t('walk.row.unplaceYes')}
+          </button>
+          <button
+            type="button"
+            className="btn sm ghost"
+            data-testid="walk-unplace-cancel"
+            autoFocus
+            onClick={close}
+            onKeyDown={(e) => {
+              if (e.key === 'Escape') close();
+            }}
+          >
+            {t('walk.row.unplaceNo')}
+          </button>
+        </span>
+      </div>
     );
   };
 
@@ -282,7 +366,7 @@ export function DatasetTree(props: DatasetTreeProps) {
     const off = it.layerId ? hidden[it.layerId] === true : false;
     const sel = it.id === selectedId;
     const marked = it.layerId !== undefined && props.marked?.has(it.layerId) === true;
-    const extra = props.rowExtra?.(it) ?? null;
+    const extra = unplaceConfirm(it) ?? props.rowExtra?.(it) ?? null;
     const badge = props.rowBadge?.(it) ?? null;
     const walkActs = walkButtons(it);
     const drawingSettings = it.drawing === true ? props.onDrawingSettings : undefined;
@@ -293,6 +377,10 @@ export function DatasetTree(props: DatasetTreeProps) {
         aria-selected={sel || marked}
         // the badge hides behind the row actions on hover and focus; the name still carries it
         aria-label={badge ? [it.name, it.meta, badge.text].filter(Boolean).join(', ') : undefined}
+        ref={(el) => {
+          if (el) rowEls.current.set(it.id, el);
+          else rowEls.current.delete(it.id);
+        }}
         tabIndex={0}
         className={`titem${sub ? ' sub' : ''}${sel ? ' sel' : ''}${marked ? ' marked' : ''}${off ? ' hidden' : ''}${walkActs ? ' has-acts' : ''}`}
         title={it.name}

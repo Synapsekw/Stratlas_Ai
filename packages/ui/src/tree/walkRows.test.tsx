@@ -2,7 +2,7 @@
 import type { Capture, Layer, ProjectManifest } from '@aio/schema';
 import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { mockManifest } from '../__fixtures__/project';
 import { DatasetTree, type DatasetTreeProps, type TreeRowBadge } from './DatasetTree';
 import { EVERY_DATE, buildDateTree } from './dateModel';
@@ -192,6 +192,65 @@ describe('walk rows', () => {
     expect(q('[data-testid="walk-open-walk-a"]')).not.toBeNull();
     expect(q('[data-testid="walk-place-walk-a"]')).toBeNull();
     expect(q('[data-testid="walk-remove-walk-a"]')).toBeNull();
+  });
+
+  it('a placed walk offers Edit placement and Remove placement, which asks in the row', () => {
+    const onPlace = vi.fn();
+    const onRemovePlacement = vi.fn();
+    const { q, click } = mount({
+      walkActions: {
+        onOpen: vi.fn(),
+        onPlace,
+        onRemove: vi.fn(),
+        placed: (it) => it.id === 'walk-a',
+        onRemovePlacement,
+      },
+    });
+    expect(q('[data-testid="walk-place-walk-a"]')).toBeNull();
+    click('[data-testid="walk-edit-walk-a"]');
+    expect(onPlace).toHaveBeenCalledTimes(1);
+    click('[data-testid="walk-unplace-walk-a"]');
+    expect(q('[data-testid="walk-unplace-confirm"]')?.textContent).toContain(
+      'Remove the placement of Ground floor? The walk stays in the project.',
+    );
+    expect(onRemovePlacement).not.toHaveBeenCalled();
+    click('[data-testid="walk-unplace-yes"]');
+    expect(onRemovePlacement).toHaveBeenCalledTimes(1);
+    expect(q('[data-testid="walk-unplace-confirm"]')).toBeNull();
+  });
+
+  it('an unplaced walk keeps Place walk and has no Remove placement', () => {
+    const { q } = mount({
+      walkActions: {
+        onOpen: vi.fn(),
+        onPlace: vi.fn(),
+        placed: () => false,
+        onRemovePlacement: vi.fn(),
+      },
+    });
+    expect(q('[data-testid="walk-place-walk-a"]')).not.toBeNull();
+    expect(q('[data-testid="walk-unplace-walk-a"]')).toBeNull();
+  });
+
+  it('Cancel closes the Remove placement question; Remove walk closes it and goes to the dialog', () => {
+    const onRemove = vi.fn();
+    const onRemovePlacement = vi.fn();
+    const { q, click } = mount({
+      walkActions: {
+        onOpen: vi.fn(),
+        onRemove,
+        placed: () => true,
+        onRemovePlacement,
+      },
+    });
+    click('[data-testid="walk-unplace-walk-a"]');
+    click('[data-testid="walk-remove-walk-a"]');
+    expect(q('[data-testid="walk-unplace-confirm"]')).toBeNull();
+    expect(onRemove).toHaveBeenCalledTimes(1);
+    click('[data-testid="walk-unplace-walk-a"]');
+    click('[data-testid="walk-unplace-cancel"]');
+    expect(q('[data-testid="walk-unplace-confirm"]')).toBeNull();
+    expect(onRemovePlacement).not.toHaveBeenCalled();
   });
 
   it('shows the group action label on the 360 walks header', () => {
