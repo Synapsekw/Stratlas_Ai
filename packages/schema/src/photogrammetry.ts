@@ -46,7 +46,11 @@ export const PhotoSource = z.union([
   z.object({ folders: z.array(z.string().min(1).max(1024)).min(1).max(100) }).strict(),
 ]);
 
-/** Stages of the three jobs, in order (`photo.align`, `photo.georef`, `photo.products`). */
+/**
+ * Stage names of the three jobs (`photo.align`, `photo.georef`, `photo.products`): a list of
+ * names, not the order they run in. `photo.products` runs prepare, dense, fuse, dsm, dtm, cloud,
+ * ortho, mesh, texture, commit, tiles.
+ */
 export const PhotoStageName = z.enum([
   'inspect',
   'features',
