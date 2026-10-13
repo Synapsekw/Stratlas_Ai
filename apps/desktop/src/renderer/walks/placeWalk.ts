@@ -271,7 +271,7 @@ export function createPlaceWalk(
     const ask = ++begun;
     session.getState().cancel();
     const list = placeSurfaces(project.manifest, layer, hasCrs(project.manifest));
-    const host = rememberedSurface(layer, list) ?? list[0] ?? null;
+    const host = rememberedSurface(layer, list, 'map') ?? list[0] ?? null;
     ui.setState({ ...CLOSED, layerId, host });
     deps.openSurface(layerId, host);
     const inputs = await deps.loadInputs(project.id, layer);
@@ -525,9 +525,9 @@ function openSurface(layerId: string, host: PlaceSurface | null): void {
   const other = sideOf(sides, 'walk360') === 'left' ? 'right' : 'left';
   const split = !host
     ? sides
-    : host.kind === 'map'
-      ? { ...sides, [other]: 'map' as const }
-      : { ...sides, [other]: 'raster' as const, raster: host.id };
+    : host.kind === 'drawing'
+      ? { ...sides, [other]: 'raster' as const, raster: host.id }
+      : { ...sides, [other]: host.kind };
   stagePrefs.getState().update(project.id, { split });
   if (sh.stageMode !== 'split') sh.setStageMode('split');
 }

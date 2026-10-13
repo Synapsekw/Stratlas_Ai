@@ -1,13 +1,19 @@
-import { ProjectManifest, type Capture, type WalkLayer } from '@aio/schema';
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
+import { ProjectManifest, WalkRawPath, type Capture, type WalkLayer } from '@aio/schema';
 import { describe, expect, it } from 'vitest';
 import {
   dateChoices,
   firstStep,
   northTick,
   placeSurfaces,
+  rawUsable,
   rememberedSurface,
   surfaceFramesOf,
+  surfaceKey,
+  surfaceLabel,
   viewClickYawRad,
+  walkPathState,
 } from './placeModel';
 
 const captures: Capture[] = [
@@ -79,7 +85,7 @@ describe('placeSurfaces', () => {
   it('offers no Map without a CRS', () => {
     const s = placeSurfaces(manifest(), walk({ capture: 'c1' }), false);
     expect(s.some((x) => x.kind === 'map')).toBe(false);
-    expect(placeSurfaces(manifest(), walk({ capture: 'c1' }), true).at(-1)).toEqual({
+    expect(placeSurfaces(manifest(), walk({ capture: 'c1' }), true).at(-2)).toEqual({
       kind: 'map',
     });
   });
@@ -89,6 +95,7 @@ describe('placeSurfaces', () => {
       { kind: 'drawing', id: 'sheet-own', name: 'Plan own', dated: true },
       { kind: 'drawing', id: 'sheet-none', name: 'Plan loose', dated: false },
       { kind: 'map' },
+      { kind: '3d' },
     ]);
   });
 
@@ -97,8 +104,10 @@ describe('placeSurfaces', () => {
       capture: 'c1',
       place: { pins: [], yawOffsetDeg: 0, heightM: 1.7, quality: 'unplaced', placedOn: '@model' },
     });
-    expect(rememberedSurface(w, placeSurfaces(manifest(), w, true))).toEqual({ kind: 'map' });
-    expect(rememberedSurface(w, placeSurfaces(manifest(), w, false))).toBeNull();
+    expect(rememberedSurface(w, placeSurfaces(manifest(), w, true), 'map')).toEqual({
+      kind: 'map',
+    });
+    expect(rememberedSurface(w, placeSurfaces(manifest(), w, false))).toEqual({ kind: '3d' });
   });
 });
 
@@ -189,5 +198,79 @@ describe('the 360 view: a click as a direction, north on the top edge', () => {
     expect(up).toBeCloseTo(level * 2, 9);
     // straight behind is never in view
     expect(northTick(look, Math.PI, 200, 100).edge).not.toBe('in');
+  });
+});
+
+const raw = WalkRawPath.parse(
+  JSON.parse(
+    readFileSync(
+      join(
+        import.meta.dirname,
+        '../../../../../packages/schema/src/__fixtures__/walk/raw-path.synthetic.json',
+      ),
+      'utf8',
+    ),
+  ) as unknown,
+);
+
+describe('the 3D view as a surface', () => {
+  it('is always offered, last; the map only with a CRS', () => {
+    const m = { ...manifest(), layers: [] };
+    expect(placeSurfaces(m, walk(), false)).toEqual([{ kind: '3d' }]);
+    expect(placeSurfaces(m, walk(), true)).toEqual([{ kind: 'map' }, { kind: '3d' }]);
+    expect(surfaceKey({ kind: '3d' })).toBe('@model');
+    expect(surfaceLabel({ kind: '3d' })).toBe('3D view');
+  });
+
+  it('a walk placed on the model reopens where the stage shows it', () => {
+    const w = walk({
+      place: { pins: [], yawOffsetDeg: 0, heightM: 1.7, quality: 'good', placedOn: '@model' },
+    });
+    const both = [{ kind: 'map' }, { kind: '3d' }] as const;
+    expect(rememberedSurface(w, both, 'map')).toEqual({ kind: 'map' });
+    expect(rememberedSurface(w, both, '3d')).toEqual({ kind: '3d' });
+    expect(rememberedSurface(w, [{ kind: '3d' }], 'map')).toEqual({ kind: '3d' });
+  });
+
+  it('a walk placed on a drawing that is gone has no remembered surface', () => {
+    const w = walk({
+      place: { pins: [], yawOffsetDeg: 0, heightM: 1.7, quality: 'good', placedOn: 'sheet-gone' },
+    });
+    expect(rememberedSurface(w, [{ kind: '3d' }])).toBeNull();
+  });
+});
+
+describe('walkPathState', () => {
+  const path = { raw: { path: 'walks/a/raw-path.json' } } as unknown as NonNullable<
+    WalkLayer['path']
+  >;
+
+  it('ready with a path and a usable raw path, even while a newer job runs', () => {
+    expect(walkPathState({ path }, undefined, raw)).toBe('ready');
+    expect(walkPathState({ path }, { status: 'running' }, raw)).toBe('ready');
+    expect(walkPathState({ path }, undefined)).toBe('ready');
+  });
+
+  it('a path that is pins-only or unreadable counts as failed', () => {
+    expect(walkPathState({ path }, undefined, { ...raw, source: 'pins-only' })).toBe('failed');
+    expect(walkPathState({ path }, undefined, null)).toBe('failed');
+  });
+
+  it('no path: running, interrupted (or cancelled), failed or none from the job', () => {
+    for (const s of ['starting', 'running', 'cancelling'] as const)
+      expect(walkPathState({}, { status: s })).toBe('running');
+    expect(walkPathState({}, { status: 'interrupted' })).toBe('interrupted');
+    expect(walkPathState({}, { status: 'cancelled' })).toBe('interrupted');
+    expect(walkPathState({}, { status: 'failed' })).toBe('failed');
+    expect(walkPathState({}, { status: 'done' })).toBe('none');
+    expect(walkPathState({}, undefined)).toBe('none');
+  });
+
+  it('rawUsable needs an sfm path with two registered stills', () => {
+    expect(rawUsable(raw)).toBe(true);
+    expect(rawUsable(null)).toBe(false);
+    expect(rawUsable({ ...raw, stills: raw.stills.map((s) => ({ ...s, pos: undefined })) })).toBe(
+      false,
+    );
   });
 });

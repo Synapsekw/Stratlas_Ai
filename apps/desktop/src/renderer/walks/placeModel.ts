@@ -1,6 +1,6 @@
 import { surfaceFrameFromCorners, type SurfaceFrame, type WalkSurfaces } from '@aio/geo';
 import { MODEL_SURFACE } from '@aio/schema';
-import type { Capture, ProjectManifest, WalkLayer } from '@aio/schema';
+import type { Capture, JobRecord, ProjectManifest, WalkLayer, WalkRawPath } from '@aio/schema';
 import { captureIndex } from '@aio/workspace';
 
 /*
@@ -10,9 +10,12 @@ import { captureIndex } from '@aio/workspace';
 
 export type PlaceStep = 'date' | 'surface' | 'start' | 'end' | 'correct';
 
-/** What a walk can be placed on: a drawing (a plan raster) or the map (the model frame). */
+/** What a walk can be placed on: a drawing (a plan raster), the map or the 3D view (the model frame). */
 export type PlaceSurface =
-  { kind: 'drawing'; id: string; name: string; dated: boolean } | { kind: 'map' };
+  { kind: 'drawing'; id: string; name: string; dated: boolean } | { kind: 'map' } | { kind: '3d' };
+
+export const MAP_SURFACE: PlaceSurface = { kind: 'map' };
+export const SCENE_SURFACE: PlaceSurface = { kind: '3d' };
 
 /** What the drawing's `placement.json` says: its picture size and whether it is provisional. */
 export interface DrawingInfo {
@@ -32,7 +35,7 @@ function drawingsOf(m: ProjectManifest) {
 
 /**
  * The surfaces the Place on picker lists: the drawings of the walk's date, then the drawings with
- * no date, then the map (only with a coordinate system). Drawings of other dates are left out.
+ * no date, then the map (only with a coordinate system), then the 3D view, always. Drawings of other dates are left out.
  */
 export function placeSurfaces(
   m: ProjectManifest,
@@ -49,21 +52,63 @@ export function placeSurfaces(
     else if (walk.capture !== undefined && c === walk.capture)
       dated.push({ kind: 'drawing', id: layer.id, name: layer.name, dated: true });
   }
-  return [...dated, ...undated, ...(hasCrs ? [{ kind: 'map' } as const] : [])];
+  return [...dated, ...undated, ...(hasCrs ? [MAP_SURFACE] : []), SCENE_SURFACE];
 }
 
 /** The key a surface is remembered by (`placedOn`): the drawing's layer id, or `@model`. */
 export function surfaceKey(s: PlaceSurface): string {
-  return s.kind === 'map' ? MODEL_SURFACE : s.id;
+  return s.kind === 'drawing' ? s.id : MODEL_SURFACE;
 }
 
-/** The surface the walk was last placed on, when the picker still lists it. */
+/** How the Place on select names a surface. */
+export function surfaceLabel(s: PlaceSurface): string {
+  return s.kind === 'drawing' ? s.name : s.kind === 'map' ? 'Map' : '3D view';
+}
+
+/**
+ * The surface the walk was last placed on, when the picker still lists it. A walk placed on the
+ * model (`@model`) reopens on `modelOn` (the map when the stage shows the map), else the other.
+ */
 export function rememberedSurface(
   walk: WalkLayer,
   surfaces: readonly PlaceSurface[],
+  modelOn: 'map' | '3d' = '3d',
 ): PlaceSurface | null {
   const key = walk.place?.placedOn;
-  return key === undefined ? null : (surfaces.find((s) => surfaceKey(s) === key) ?? null);
+  if (key === undefined) return null;
+  if (key === MODEL_SURFACE)
+    return (
+      surfaces.find((s) => s.kind === modelOn) ??
+      surfaces.find((s) => s.kind === 'map' || s.kind === '3d') ??
+      null
+    );
+  return surfaces.find((s) => surfaceKey(s) === key) ?? null;
+}
+
+/** Where a walk's computed path stands, for the Place walk notice. */
+export type WalkPathState = 'ready' | 'none' | 'running' | 'failed' | 'interrupted';
+
+/** A raw path the shape can be read from: from a reconstruction, two registered stills or more. */
+export function rawUsable(raw: WalkRawPath | null): boolean {
+  return raw !== null && raw.source !== 'pins-only' && raw.stills.filter((s) => s.pos).length >= 2;
+}
+
+const RUNNING: ReadonlySet<JobRecord['status']> = new Set(['starting', 'running', 'cancelling']);
+
+/**
+ * The walk's path: ready when the layer names one and its raw path (when read) is usable; else
+ * what its newest `walk.process` job says. A path that is there but unusable reads as failed.
+ */
+export function walkPathState(
+  layer: Pick<WalkLayer, 'path'>,
+  job: Pick<JobRecord, 'status'> | undefined,
+  raw?: WalkRawPath | null,
+): WalkPathState {
+  if (layer.path && (raw === undefined || rawUsable(raw))) return 'ready';
+  if (job && RUNNING.has(job.status)) return 'running';
+  if (job?.status === 'interrupted' || job?.status === 'cancelled') return 'interrupted';
+  if (layer.path || job?.status === 'failed') return 'failed';
+  return 'none';
 }
 
 /**

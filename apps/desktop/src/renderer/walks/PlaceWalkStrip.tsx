@@ -14,7 +14,7 @@ import { createStore } from 'zustand/vanilla';
 import { drawings as drawingsStore } from '../drawings/store';
 import type { RasterOverlayContext, RasterPick } from '../workspace/RasterPane';
 import { placeImagery } from './placeBasemap';
-import { surfaceFramesOf, surfaceKey, type PlaceSurface } from './placeModel';
+import { surfaceFramesOf, surfaceKey, surfaceLabel, type PlaceSurface } from './placeModel';
 import type { PlaceState } from './placeStore';
 import {
   placeFlow,
@@ -63,7 +63,7 @@ const SAY = {
 
 const moveSay = (i: number): string => `Click the new spot for pin ${String(i + 1)}.`;
 
-const surfaceName = (s: PlaceSurface): string => (s.kind === 'map' ? 'Map' : s.name);
+const surfaceName = surfaceLabel;
 
 export function PlaceWalkStrip({
   flow,

@@ -229,7 +229,7 @@ describe('PlaceWalkStrip', () => {
     const options = [...host.querySelectorAll('[data-testid="walk-place-on"] option')]
       .filter((o) => !(o as HTMLOptionElement).disabled)
       .map((o) => o.textContent);
-    expect(options).toEqual(['Ground floor', 'Site plan', 'Map']);
+    expect(options).toEqual(['Ground floor', 'Site plan', 'Map', '3D view']);
     ctx.deps.openSurface.mockClear();
     choose('sheet-loose');
     expect(ctx.deps.openSurface).toHaveBeenCalledWith(
