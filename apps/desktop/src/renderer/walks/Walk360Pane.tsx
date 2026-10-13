@@ -5,6 +5,9 @@ import { createPanoVideoView, type PanoVideoView } from '@aio/video';
 import { assetUrl, useWorkspace } from '@aio/workspace';
 import { useEffect, useRef, useState, type KeyboardEvent, type PointerEvent } from 'react';
 import { useStore } from 'zustand';
+import { SpotHistoryButton } from '../workspace/spot/SpotHistoryEntry';
+import { wrapDeg } from '../workspace/spot/spotGeom';
+import { bearingFromHeadingRad } from '../workspace/spot/spotWalk';
 import { northTick, viewClickYawRad } from './placeModel';
 import { placeSession, placeUi, useWalkViewHeading } from './placeWalk';
 import { PlaceWalkHere } from './PlaceWalkStrip';
@@ -387,6 +390,15 @@ function WalkPlayer({
         >
           {t('walk.sound')}
         </button>
+        <SpotHistoryButton
+          open={{
+            item: { kind: 'walk', layer: walk.id, t: time },
+            // the compass bearing of the look; none while the walk is not placed
+            ...(heading !== null
+              ? { lookDeg: wrapDeg(bearingFromHeadingRad(heading) + shown.yawDeg) }
+              : {}),
+          }}
+        />
         <button
           type="button"
           className="btn icon sm ghost"

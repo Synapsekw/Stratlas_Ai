@@ -1,16 +1,7 @@
-import {
-  FULL_SPHERE,
-  PANO_FOV,
-  dragLook,
-  parsePanoIndex,
-  startLook,
-  zoomLook,
-  type PanoCoverage,
-  type PanoLook,
-} from '@aio/engine';
+import { FULL_SPHERE, PANO_FOV, startLook, type PanoLook } from '@aio/engine';
 import { Icon, useT } from '@aio/ui';
 import { assetUrl, useWorkspace } from '@aio/workspace';
-import { useEffect, useMemo, useRef, useState, type KeyboardEvent, type PointerEvent } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useStore } from 'zustand';
 import { captureLabel, useCaptureIndex } from './compare';
 import { DateBadge } from './DatesOnScreen';
@@ -26,7 +17,7 @@ import {
   stepPano,
   type PanoAt,
 } from './panoPair';
-import { createPanoImageView, type PanoImageView, type PanoViewStatus } from './panoView';
+import { PanoSurface, metres, useCoverage } from './panoSurface';
 import type { Side, SplitPref } from './splitModel';
 
 /*
@@ -38,182 +29,7 @@ import type { Side, SplitPref } from './splitModel';
  */
 
 const START: PanoLook = { yawDeg: 0, pitchDeg: 0, fovDeg: PANO_FOV.start };
-const TURN_DEG = 5;
-const EMPTY_COVERAGE: ReadonlyMap<string, PanoCoverage> = new Map();
-
-/** Partial coverage from `panoramas/panoramas.json`, read once per project (missing: none). */
-const coverageCache = new Map<string, Promise<ReadonlyMap<string, PanoCoverage>>>();
-function loadCoverage(projectId: string): Promise<ReadonlyMap<string, PanoCoverage>> {
-  let p = coverageCache.get(projectId);
-  if (!p) {
-    p = Promise.resolve()
-      .then(() => fetch(assetUrl(projectId, { path: 'panoramas/panoramas.json' })))
-      .then(async (res) => (res.ok ? parsePanoIndex(await res.json()) : EMPTY_COVERAGE))
-      .catch(() => EMPTY_COVERAGE);
-    coverageCache.set(projectId, p);
-  }
-  return p;
-}
-function useCoverage(projectId: string | undefined): ReadonlyMap<string, PanoCoverage> {
-  const [got, setGot] = useState<{ id: string; map: ReadonlyMap<string, PanoCoverage> } | null>(
-    null,
-  );
-  useEffect(() => {
-    if (!projectId) return;
-    let live = true;
-    void loadCoverage(projectId).then((map) => {
-      if (live) setGot({ id: projectId, map });
-    });
-    return () => {
-      live = false;
-    };
-  }, [projectId]);
-  return got && got.id === projectId ? got.map : EMPTY_COVERAGE;
-}
-
-const metres = (m: number) => (m < 10 ? m.toFixed(1) : String(Math.round(m)));
 const bearing = (yaw: number) => String(Math.round(((yaw % 360) + 360) % 360) % 360);
-
-type SurfaceStatus = PanoViewStatus | 'no-graphics';
-
-/** The look-around view: the WebGL sphere, drag to look, wheel and keys to turn and zoom. */
-function PanoSurface(p: {
-  url: string;
-  headingDeg: number;
-  cov: PanoCoverage | null;
-  look: PanoLook;
-  label: string;
-  onLook: (look: PanoLook) => void;
-  onStep?: (dir: 1 | -1) => void;
-}) {
-  const t = useT();
-  const host = useRef<HTMLDivElement>(null);
-  const view = useRef<PanoImageView | null>(null);
-  const live = useRef({ look: p.look, onLook: p.onLook });
-  const drag = useRef<{ x: number; y: number } | null>(null);
-  const [status, setStatus] = useState<SurfaceStatus>('loading');
-  const [dragging, setDragging] = useState(false);
-
-  useEffect(() => {
-    live.current = { look: p.look, onLook: p.onLook };
-  });
-  const turn = (next: PanoLook) => {
-    live.current = { ...live.current, look: next };
-    live.current.onLook(next);
-  };
-
-  useEffect(() => {
-    const el = host.current;
-    if (!el) return;
-    let v: PanoImageView | null = null;
-    try {
-      v = createPanoImageView(el, live.current.look, setStatus);
-      view.current = v;
-    } catch {
-      queueMicrotask(() => {
-        setStatus('no-graphics');
-      });
-    }
-    // the wheel zooms the view and must not scroll the page behind it
-    const onWheel = (e: WheelEvent) => {
-      e.preventDefault();
-      turn(zoomLook(live.current.look, e.deltaY));
-    };
-    el.addEventListener('wheel', onWheel, { passive: false });
-    return () => {
-      el.removeEventListener('wheel', onWheel);
-      v?.dispose();
-      view.current = null;
-    };
-  }, []);
-
-  const { url, headingDeg, cov } = p;
-  useEffect(() => {
-    view.current?.setImage(url, headingDeg, cov);
-  }, [url, headingDeg, cov]);
-
-  const { yawDeg, pitchDeg, fovDeg } = p.look;
-  useEffect(() => {
-    view.current?.setLook({ yawDeg, pitchDeg, fovDeg });
-  }, [yawDeg, pitchDeg, fovDeg]);
-
-  const onKey = (e: KeyboardEvent<HTMLDivElement>) => {
-    if (e.altKey || e.ctrlKey || e.metaKey) return;
-    const l = live.current.look;
-    let next: PanoLook | null = null;
-    if (e.key === 'ArrowLeft') next = { ...l, yawDeg: l.yawDeg - TURN_DEG };
-    else if (e.key === 'ArrowRight') next = { ...l, yawDeg: l.yawDeg + TURN_DEG };
-    else if (e.key === 'ArrowUp') next = { ...l, pitchDeg: Math.min(89, l.pitchDeg + TURN_DEG) };
-    else if (e.key === 'ArrowDown') next = { ...l, pitchDeg: Math.max(-89, l.pitchDeg - TURN_DEG) };
-    else if (e.key === '+' || e.key === '=') next = zoomLook(l, -1);
-    else if (e.key === '-') next = zoomLook(l, 1);
-    else if ((e.key === 'PageDown' || e.key === 'PageUp') && p.onStep) {
-      e.preventDefault();
-      e.stopPropagation();
-      p.onStep(e.key === 'PageDown' ? 1 : -1);
-      return;
-    }
-    if (!next) return;
-    e.preventDefault();
-    e.stopPropagation();
-    turn({ ...next, yawDeg: ((next.yawDeg % 360) + 360) % 360 });
-  };
-
-  const onDown = (e: PointerEvent<HTMLDivElement>) => {
-    if (e.button !== 0) return;
-    e.currentTarget.focus();
-    if (typeof e.currentTarget.setPointerCapture === 'function')
-      e.currentTarget.setPointerCapture(e.pointerId);
-    drag.current = { x: e.clientX, y: e.clientY };
-    setDragging(true);
-  };
-  const onMove = (e: PointerEvent<HTMLDivElement>) => {
-    const from = drag.current;
-    if (!from) return;
-    turn(
-      dragLook(
-        live.current.look,
-        e.clientX - from.x,
-        e.clientY - from.y,
-        e.currentTarget.clientHeight,
-      ),
-    );
-    drag.current = { x: e.clientX, y: e.clientY };
-  };
-  const onUp = () => {
-    drag.current = null;
-    setDragging(false);
-  };
-
-  const message =
-    status === 'missing'
-      ? t('pano.compare.missing')
-      : status === 'no-graphics'
-        ? t('pano.compare.noGraphics')
-        : null;
-
-  return (
-    <div
-      ref={host}
-      className={`fill-col walk-view${dragging ? ' dragging' : ''}`}
-      tabIndex={0}
-      role="img"
-      aria-label={p.label}
-      data-status={status}
-      onKeyDown={onKey}
-      onPointerDown={onDown}
-      onPointerMove={onMove}
-      onPointerUp={onUp}
-      onPointerCancel={onUp}
-    >
-      {message && (
-        <div className="walk-status" role="status">
-          {message}
-        </div>
-      )}
-    </div>
-  );
-}
 
 /**
  * One side of two Panoramas panes. It gets its side's dates, the saved split and the link state

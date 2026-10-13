@@ -193,6 +193,17 @@ The same list is in **Settings**, **Keyboard**. On a Mac, Ctrl is ⌘ (Command) 
 | -            | Zoom out          |
 | M            | Marks on or off   |
 
+### Other dates of a spot
+
+| Keys | Does                        |
+| ---- | --------------------------- |
+| Esc  | Close                       |
+| ←    | Previous date with an image |
+| →    | Next date with an image     |
+| ↑    | Previous image of the date  |
+| ↓    | Next image of the date      |
+| C    | Compare two dates           |
+
 ### Video window
 
 | Keys                               | Does                              |

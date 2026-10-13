@@ -16,6 +16,7 @@ import { FocusZone } from '../FocusZone';
 import { IssueCard } from '../issueCard/IssueCard';
 import { Mark } from '../issueCard/Marks';
 import { useMedia } from '../media';
+import { InlineSpotStrip, SpotHistoryButton } from '../workspace/spot/SpotHistoryEntry';
 import { shell } from '../shell';
 import { selectClip } from '../shell/Sidebar';
 import { photoSize } from '../thumbs/photoSize';
@@ -223,6 +224,14 @@ export function MediaScreen() {
       : null;
   const issueId = selection?.kind === 'issue' ? selection.id : null;
   const photoId = photo?.photoId;
+  const photoLayerId = photo?.layerId;
+  const spotOpen = useMemo(
+    () =>
+      photoLayerId && photoId
+        ? { item: { kind: 'photo' as const, layer: photoLayerId, photo: photoId } }
+        : null,
+    [photoLayerId, photoId],
+  );
   const photoRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
     if (!photoId) return;
@@ -532,6 +541,7 @@ export function MediaScreen() {
               {photo.photoId}
             </h2>
             <div className="acts">
+              {spotOpen && <SpotHistoryButton open={spotOpen} />}
               <button
                 type="button"
                 className="btn icon sm ghost"
@@ -545,6 +555,7 @@ export function MediaScreen() {
             </div>
           </div>
           <PhotoViewer layerId={photo.layerId} photoId={photo.photoId} className="fill-col" />
+          {spotOpen && <InlineSpotStrip open={spotOpen} />}
         </FocusZone>
       )}
     </section>

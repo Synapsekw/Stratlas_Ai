@@ -1197,3 +1197,29 @@ Test it on 0.12.0. A walk is placed on a drawing (or on the map, in a project wi
 
 - [ ] Export a package and open it: the placed walk plays, and its row has no **Place walk** or **Remove walk**.
 - [ ] Open the project folder in 0.11.4: it opens without a warning.
+
+## Stage Spot history (S1): other dates of one spot
+
+Test it with a project with photos on two survey dates (the change demo works), then a project with 360s on two dates. Nothing is saved: the viewer only reads.
+
+### Photos
+
+- [ ] Open **Media** and click a photo. Under the photo a strip shows one slot per survey date, oldest on the left, each in its date colour with a thumbnail and its kind. A date with nothing near is a hatched slot that says "Nothing within 15 m".
+- [ ] Click **Other dates** (the clock-arrow button in the photo panel header). The viewer opens on the photo you clicked; the header shows its name, date and kind.
+- [ ] Press **Right**. The viewer shows the same spot on the next date with an image, skipping empty dates, and the header says how far it was taken from your photo. Press **Down** on a date with "+1" or more to see the other images of that date. Press **Left** to go back.
+- [ ] Press **C** (or **Compare...**). The two dates sit side by side; the date chips above change either side. Turn the mouse wheel over either photo: both zoom in on the same place. Drag to pan both, double-click to fit.
+- [ ] Click **Swipe** and drag the handle (or focus it and use the arrow keys): the zoom stays and both dates stay lined up under the divider.
+- [ ] Press **Esc**: Compare closes and the left date shows alone. Press **Esc** again to close the viewer. The date bar, the layers you had on and the selected photo are exactly as before.
+- [ ] Click a drone photo and open **Other dates**: the other date's slot shows the drone photo that sees the same ground ("Drone"). A date whose flights never saw it says "Not seen".
+
+### 360s
+
+- [ ] Select a 360 in 3D, open the **Selection** card and click **Other dates**: the nearest 360 of each date opens turned towards the same spot. Where none is within 25 m the slot says so.
+
+### Video frames
+
+- [ ] In the split, put the **Frames** pane on a side, play a clip. **Other dates** in the pane opens the spot the frame on screen looks at. A matched clip of the other date opens paused at the moment it saw the spot; press play to run it.
+
+### Walks
+
+- [ ] With a placed walk, open **Other dates** from the walk player: the walk frames of other dates near you open turned the same way.
