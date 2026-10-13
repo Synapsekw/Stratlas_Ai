@@ -120,7 +120,7 @@ describe('the three dots of a project card', () => {
     expect(menu?.getAttribute('aria-label')).toBe('Project North yard');
     expect(
       [...(menu?.querySelectorAll('[role="menuitem"]') ?? [])].map((i) => i.textContent),
-    ).toEqual(['Open', 'Rename', 'Show in folder', 'Delete']);
+    ).toEqual(['Open', 'Rename', 'Show in folder', 'Empty project trash', 'Delete']);
     // a second click on the dots closes it again
     click(dots());
     expect(q('project-menu')).toBeNull();

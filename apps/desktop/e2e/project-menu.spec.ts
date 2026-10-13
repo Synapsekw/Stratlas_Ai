@@ -184,6 +184,7 @@ test('a project card has a menu: rename keeps after a restart, delete moves the 
       'Open',
       'Rename',
       'Show in folder',
+      'Empty project trash',
       'Delete',
     ]);
     expect((await openProject(win)).id).toBeNull();

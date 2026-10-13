@@ -37,6 +37,7 @@ import {
   issueOrder,
   photoEvidence,
   previewCrop,
+  removedLayersOf,
   stepIssue,
   type Box4,
   type PhotoEvidence,
@@ -210,7 +211,17 @@ function Evidence({ issue, color }: { issue: Issue; color: string }) {
   const videos = evidence.filter((e): e is VideoEvidence => e.kind === 'video');
   const [first, ...rest] = photos;
   if (!first && videos.length === 0) {
-    return <p className="ic-none faint small">{t('card.noPhoto')}</p>;
+    return removedLayersOf(project.manifest, issue).length > 0 ? (
+      <p
+        className="ic-none faint small"
+        data-testid="issue-card-removed"
+        title={t('card.datasetRemoved.tip')}
+      >
+        {t('card.datasetRemoved')}
+      </p>
+    ) : (
+      <p className="ic-none faint small">{t('card.noPhoto')}</p>
+    );
   }
   return (
     <section className="ic-ev" aria-label={t('card.evidence')}>

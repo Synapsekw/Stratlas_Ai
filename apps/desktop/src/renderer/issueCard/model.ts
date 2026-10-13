@@ -270,3 +270,12 @@ export function lightboxReducer(s: LightboxState | null, a: LightboxAction): Lig
       return { ...s, index: (s.index + a.dir + a.count) % a.count };
   }
 }
+
+/** Layers an issue was seen on that the project no longer has (the dataset was deleted). */
+export function removedLayersOf(
+  manifest: Pick<ProjectManifest, 'layers'>,
+  issue: Pick<Issue, 'sightings'>,
+): string[] {
+  const ids = new Set(manifest.layers.map((l) => l.id));
+  return [...new Set(issue.sightings.map((s) => s.layer).filter((id) => !ids.has(id)))];
+}

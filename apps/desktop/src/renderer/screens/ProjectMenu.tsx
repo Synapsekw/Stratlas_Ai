@@ -12,6 +12,8 @@ import { workspace } from '@aio/workspace';
 import { useEffect, useRef, useState, type KeyboardEvent, type SyntheticEvent } from 'react';
 import { createPortal } from 'react-dom';
 import { shell, useShell } from '../shell';
+import { removal } from '../shell/removal';
+import { EmptyTrashDialog } from '../shell/RemoveHost';
 import { projectActions, type ProjectActionId, type WhyNot } from './projectMenuModel';
 
 export interface MenuAt {
@@ -25,6 +27,7 @@ const ICON: Record<ProjectActionId, IconName> = {
   open: 'chev-r',
   rename: 'anno',
   reveal: 'folder',
+  emptyTrash: 'trash',
   export: 'download',
   close: 'x',
   delete: 'trash',
@@ -34,6 +37,7 @@ const LABEL: Record<ProjectActionId, MessageKey> = {
   open: 'library.menu.open',
   rename: 'library.menu.rename',
   reveal: 'library.menu.reveal',
+  emptyTrash: 'library.menu.emptyTrash',
   export: 'library.menu.export',
   close: 'library.menu.close',
   delete: 'library.menu.delete',
@@ -298,7 +302,7 @@ export function ProjectMenu({
   const dataRoot = useShell((s) => s.settings.dataRoot);
   const more = useRef<HTMLButtonElement>(null);
   const list = useRef<HTMLDivElement>(null);
-  const [dialog, setDialog] = useState<'rename' | 'delete' | null>(null);
+  const [dialog, setDialog] = useState<'rename' | 'delete' | 'emptyTrash' | null>(null);
   const open = at !== null;
 
   // a click elsewhere, a resize, or a scroll that moves the card closes the menu
@@ -353,7 +357,11 @@ export function ProjectMenu({
     if (id === 'open') {
       if (!opening) void s.openProject(entry.path);
     } else if (id === 'rename' || id === 'delete') setDialog(id);
-    else if (id === 'reveal') void s.revealProject(entry);
+    else if (id === 'emptyTrash') {
+      // what an earlier Empty held is forgotten, so this one's held entries note again
+      removal.setState({ held: 0 });
+      setDialog(id);
+    } else if (id === 'reveal') void s.revealProject(entry);
     else if (id === 'close') s.closeProject();
     else {
       const project = workspace.getState().project;
@@ -449,6 +457,15 @@ export function ProjectMenu({
           />,
           document.body,
         )}
+      {dialog === 'emptyTrash' && (
+        <EmptyTrashDialog
+          projectId={entry.id}
+          onClose={() => {
+            setDialog(null);
+          }}
+          returnTo={() => more.current}
+        />
+      )}
       {dialog === 'delete' &&
         createPortal(
           <DeleteDialog
