@@ -203,7 +203,7 @@ async function row(win: Page, layer: string, at?: { capture: string; group: stri
     const folder = win.getByTestId(`date-folder-${at.capture}`);
     if ((await folder.getAttribute('aria-expanded')) === 'false')
       await folder.getByRole('button').first().click();
-    const group = folder.getByTestId(`tree-group-${at.group}`).locator('.tgroup-btn');
+    const group = folder.getByTestId(`tree-group-toggle-${at.group}`);
     if ((await group.getAttribute('aria-expanded')) === 'false') await group.click();
   }
   await expect(r).toBeVisible();
@@ -253,6 +253,11 @@ test('datasets go to the project trash with what was made from them, and Empty d
     schema: string;
   };
   expect(record.schema).toBe('aio.trash/1');
+  // the manifest as it was, for a restore by hand
+  const before = JSON.parse(await readFile(join(trash, first, 'manifest.before.json'), 'utf8')) as {
+    layers: { id: string }[];
+  };
+  expect(before.layers.map((l) => l.id)).toEqual(expect.arrayContaining(['clip-1', 'clip-2']));
   expect(await exists(join(dir, 'video', 'clip-1.mp4'))).toBe(false);
   expect(await exists(join(dir, 'flights', 'f1.json'))).toBe(false);
 
@@ -376,6 +381,11 @@ photoTest.describe('Start over on the stand-in pipelines', () => {
       await expect(again.getByTestId('photo-summary')).toContainText('12 photos, 1 camera', {
         timeout: 60_000,
       });
+      await expect(again.getByTestId('start-over-removes')).toContainText(
+        `Run ${OLD_RUN} and what it made go to the project trash when this run starts.`,
+      );
+      const runs = join(photoSite.dir, 'photogrammetry');
+      const runsBefore = await entries(runs);
       await again.getByTestId('photo-start').click();
       const panel = win.getByTestId('photo-run');
       await expect(panel).toBeVisible({ timeout: 30_000 });
@@ -386,6 +396,15 @@ photoTest.describe('Start over on the stand-in pipelines', () => {
         .toHaveLength(1);
       const [entry = ''] = (await entries(trash)).filter((e) => e.endsWith(`-run-${OLD_RUN}`));
       expect(await exists(join(trash, entry, 'photogrammetry', OLD_RUN, 'run.json'))).toBe(true);
+      // the old run's folder is gone; the new run has its own folder with its run.json
+      expect(await exists(join(runs, OLD_RUN))).toBe(false);
+      const added = async () => (await entries(runs)).filter((r) => !runsBefore.includes(r));
+      await expect.poll(added, { timeout: 30_000 }).toHaveLength(1);
+      const [newRun = ''] = await added();
+      expect(newRun).not.toBe(OLD_RUN);
+      await expect
+        .poll(() => exists(join(runs, newRun, 'run.json')), { timeout: 30_000 })
+        .toBe(true);
       // back in the drawer the old run is gone
       await panel.getByRole('button', { name: 'Close' }).click();
       await expect(panel).toHaveCount(0);

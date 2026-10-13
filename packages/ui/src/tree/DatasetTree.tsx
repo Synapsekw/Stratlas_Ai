@@ -503,6 +503,7 @@ export function DatasetTree(props: DatasetTreeProps) {
                 type="button"
                 className="tgroup-btn"
                 aria-expanded={expanded}
+                data-testid={`tree-group-toggle-${g.kind}`}
                 onClick={() => {
                   if (collapsed) {
                     setOpen((o) => ({ ...o, [g.kind]: true }));
