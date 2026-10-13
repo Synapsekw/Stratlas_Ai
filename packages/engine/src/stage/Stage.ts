@@ -162,6 +162,8 @@ export class Stage implements EngineStage {
   private readonly receivers = new Set<Mesh>();
   private readonly providers = new Set<RaycastProvider>();
   private readonly boundsProviders = new Set<() => Box3 | null>();
+  /** The providers of `boundsProviders` that count beside a model too. */
+  private readonly alwaysBounds = new Set<() => Box3 | null>();
   private readonly frameCbs = new Set<(dtMs: number) => void>();
   private readonly holders = new Map<symbol, string>();
   private readonly stateCbs = new Set<() => void>();
@@ -353,10 +355,12 @@ export class Stage implements EngineStage {
     };
   }
 
-  addContentBounds(bounds: () => Box3 | null): () => void {
+  addContentBounds(bounds: () => Box3 | null, opts?: { always?: boolean }): () => void {
     this.boundsProviders.add(bounds);
+    if (opts?.always) this.alwaysBounds.add(bounds);
     this.contentChanged();
     return () => {
+      this.alwaysBounds.delete(bounds);
       if (this.boundsProviders.delete(bounds) && !this.disposed) this.contentChanged();
     };
   }
@@ -972,12 +976,13 @@ export class Stage implements EngineStage {
       if (root.userData.aioRaster === true || root.userData.aioGround === true) continue;
       expandWithoutTerrain(root, box, tmp);
     }
-    // no model or cloud yet: what the flights and photos cover (a video-first project)
-    if (box.isEmpty()) {
-      for (const bounds of this.boundsProviders) {
-        const b = bounds();
-        if (b && !b.isEmpty()) box.union(b);
-      }
+    // no model or cloud yet: what the flights and photos cover (a video-first project); the
+    // providers that ask to (panorama markers) widen the box beside a model as well
+    const bare = box.isEmpty();
+    for (const bounds of this.boundsProviders) {
+      if (!bare && !this.alwaysBounds.has(bounds)) continue;
+      const b = bounds();
+      if (b && !b.isEmpty()) box.union(b);
     }
     if (box.isEmpty()) {
       for (const [root] of this.targets)

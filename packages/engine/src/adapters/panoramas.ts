@@ -622,8 +622,9 @@ export function createPanoramasAdapter(
       }
       // a lone sphere would give a zero-size box, which pins the camera
       placed.expandByScalar(1);
-      const unbound = scene.addContentBounds(() =>
-        group.visible && !placed.isEmpty() ? placed : null,
+      const unbound = scene.addContentBounds(
+        () => (group.visible && !placed.isEmpty() ? placed : null),
+        { always: true },
       );
 
       scene.requestRender();

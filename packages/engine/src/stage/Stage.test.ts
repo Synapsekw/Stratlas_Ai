@@ -406,6 +406,30 @@ describe('Stage', () => {
     stage.dispose();
   });
 
+  it('lets always-bounds widen the range beside a model, and others not', async () => {
+    const { stage, store, resize } = make();
+    resize(800, 600);
+    store.getState().openProject(project([meshLayer('plant')]));
+    await flush();
+    const model = stage.contentBounds()?.clone();
+    const range = stage.controls.maxDistance;
+    const wide = new Box3(new Vector3(0, 0, 0), new Vector3(400, 40, 0));
+    // a photo-style registration still only counts without a model
+    const offPlain = stage.addContentBounds(() => wide);
+    expect(stage.contentBounds()?.max.toArray()).toEqual(model?.max.toArray());
+    expect(stage.controls.maxDistance).toBe(range);
+    offPlain();
+    // an always registration widens the box and the range, and goes away again
+    const off = stage.addContentBounds(() => wide, { always: true });
+    expect(stage.contentBounds()?.max.x).toBeGreaterThanOrEqual(400);
+    expect(stage.controls.maxDistance).toBeGreaterThan(range * 10);
+    expect(stage.controls.maxDistance).toBeGreaterThan(400);
+    off();
+    expect(stage.contentBounds()?.max.toArray()).toEqual(model?.max.toArray());
+    expect(stage.controls.maxDistance).toBe(range);
+    stage.dispose();
+  });
+
   it('keeps a selection camera request until its layer has loaded', async () => {
     const { stage, store, resize } = make();
     resize(800, 600);

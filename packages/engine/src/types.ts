@@ -97,9 +97,11 @@ export interface SceneHandle {
    * Register content that frames the view without being pickable (flight paths, photo places):
    * auto-fit as layers load and Home use it when no model or point cloud is visible. `bounds` is
    * read whenever the stage frames, in the local frame; null while hidden or empty. Returns an
-   * unsubscribe function.
+   * unsubscribe function. With `always`, the bounds widen the view even while a model or cloud is
+   * shown (panorama markers can stand far outside a small model); without it they only count when
+   * there is none.
    */
-  addContentBounds(bounds: () => Box3 | null): () => void;
+  addContentBounds(bounds: () => Box3 | null, opts?: { always?: boolean }): () => void;
   /** Register a mesh that should receive projected video. */
   addProjectionReceiver(mesh: Mesh): () => void;
   /**

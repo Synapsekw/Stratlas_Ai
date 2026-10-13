@@ -122,8 +122,10 @@ describe('panoramas layer', () => {
     const { host, h } = setup();
     const providers: (() => Box3 | null)[] = [];
     const off = vi.fn();
-    h.addContentBounds = (b) => {
+    let always: boolean | undefined;
+    h.addContentBounds = (b, opts) => {
       providers.push(b);
+      always = opts?.always;
       return off;
     };
     const lh = await createPanoramasAdapter(createWorkspace()).create(layer, {
@@ -131,6 +133,8 @@ describe('panoramas layer', () => {
       scene: h,
     });
     expect(providers).toHaveLength(1);
+    // widens the view beside a model too
+    expect(always).toBe(true);
     const box = providers[0]?.();
     // both markers (x 0 and 300, 40 m up) and the stem feet on the ground
     expect(box?.min.toArray()).toEqual([-1, -1, -101]);
