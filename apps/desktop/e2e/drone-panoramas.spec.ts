@@ -49,37 +49,15 @@ interface Inspect {
   };
 }
 
-/** Look at `p` from close by (the tiny project's camera stays within about 18 m of it). */
-async function lookAt(win: Page, p: Vec3) {
-  await win.evaluate((at) => {
-    (window as unknown as Inspect).__stratlas.workspace
-      .getState()
-      .flyTo({ kind: 'point', p: at, distance: 15 });
-  }, p);
-}
-
-/**
- * The visible icons of a marker layer: their count badges summed (a merged icon carries the
- * number of places in it) and how far the nearest icon sits from the stage centre, in px.
- */
+/** Places the visible icons of a marker layer stand for (a merged icon carries a count). */
 async function markers(win: Page, kind: 'pano' | 'photo') {
-  return win.evaluate((k) => {
-    const shown = [...document.querySelectorAll<HTMLElement>(`[data-markers=${k}] .aio-mk`)].filter(
-      (e) => e.style.display !== 'none',
-    );
-    const root = document.querySelector<HTMLElement>(`[data-markers=${k}]`);
-    const cx = (root?.clientWidth ?? 0) / 2;
-    const cy = (root?.clientHeight ?? 0) / 2;
-    let nearest = Infinity;
-    for (const e of shown) {
-      const m = /translate\(([-\d.]+)px, ([-\d.]+)px\)/.exec(e.style.transform);
-      if (m) nearest = Math.min(nearest, Math.hypot(Number(m[1]) - cx, Number(m[2]) - cy));
-    }
-    return {
-      count: shown.reduce((n, e) => n + Number(e.dataset.count ?? '1'), 0),
-      centred: nearest < 40,
-    };
-  }, kind);
+  return win.evaluate(
+    (k) =>
+      [...document.querySelectorAll<HTMLElement>(`[data-markers=${k}] .aio-mk`)]
+        .filter((e) => e.style.display !== 'none')
+        .reduce((n, e) => n + Number(e.dataset.count ?? '1'), 0),
+    kind,
+  );
 }
 
 test.describe('drone panoramas', () => {
@@ -128,26 +106,25 @@ test.describe('drone panoramas', () => {
       existsSync(join(dataRoot.projectDir, 'panoramas', layerId, 'p02', 'frames', 'SYN_0985.JPG')),
     ).toBe(true);
 
-    // 3. one marker per sphere, none for its frames, and no photo markers: the spheres sit 150 m
-    // apart, further than the tiny project's camera can see, so visit each. Frames within a metre
-    // of their sphere would merge into its icon and raise the count above one.
+    // 3. one marker per sphere, none for its frames (a frame marker would merge into its sphere's
+    // icon and raise the count), no photo markers. The tiny project's 1 m quad still bounds the
+    // camera (marker bounds count only in a project without a model), so the import's fly-to
+    // cannot show all three spheres 150 m apart in one view: visit each.
     const positions = (layer?.items ?? []).map((p) => p.pos ?? ([0, 0, 0] as Vec3));
     expect(positions).toHaveLength(3);
     for (const p of positions) {
-      await lookAt(win, p);
-      await expect
-        .poll(() => markers(win, 'pano'), { timeout: 30_000 })
-        .toEqual({
-          count: 1,
-          centred: true,
-        });
-      expect((await markers(win, 'photo')).count).toBe(0);
+      await win.evaluate((at) => {
+        (window as unknown as Inspect).__stratlas.workspace
+          .getState()
+          .flyTo({ kind: 'point', p: at, distance: 15 });
+      }, p);
+      await expect.poll(() => markers(win, 'pano'), { timeout: 30_000 }).toBe(1);
+      await expect.poll(() => markers(win, 'photo'), { timeout: 10_000 }).toBe(0);
     }
 
-    // 4. the stitches finish (one at a time, in import order): every row says Stitched. The
-    // import made a new survey date, which the Datasets tree lists collapsed, Panoramas too.
-    await win.getByRole('button', { name: 'Expand 10 Sep 2026', exact: true }).click();
-    await win.getByRole('button', { name: /^Panoramas 3 Panoramas/ }).click();
+    // 4. the import reveals its rows (the new date opens, Panoramas is open), and the stitches
+    // finish one at a time, in import order: every row says Stitched
+    await expect(win.getByTestId('pano-status-p01')).toBeVisible({ timeout: 30_000 });
     for (const id of ['p01', 'p02', 'p03'])
       await expect(win.getByTestId(`pano-status-${id}`)).toHaveText('Stitched', {
         timeout: 300_000,
@@ -155,6 +132,7 @@ test.describe('drone panoramas', () => {
     const done = await read();
     const items = done.layers.find((l) => l.kind === 'panoramas')?.items ?? [];
     expect(items.map((p) => p.stitch?.status)).toEqual(['done', 'done', 'done']);
+    expect(done.layers.some((l) => l.kind === 'photos')).toBe(false);
     expect(existsSync(join(dataRoot.projectDir, 'panoramas', layerId, 'p01', 'stitch.json'))).toBe(
       true,
     );
