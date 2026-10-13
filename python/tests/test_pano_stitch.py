@@ -188,3 +188,39 @@ def test_the_shape_parameter_is_checked():
     with pytest.raises(JobError, match="sphere or wide"):
         PanoStitch().validate({**PARAMS, "shape": "dome"})
     assert PanoStitch().validate({**PARAMS, "shape": "wide"})["shape"] == "wide"
+
+
+def test_a_sphere_of_too_many_frames_is_refused(project):
+    folder = frames_dir(project)
+    folder.mkdir(parents=True)
+    for n in range(201):
+        (folder / f"F_{n:04d}.jpg").write_bytes(b"x")
+    with pytest.raises(JobError, match="at most 200") as e:
+        stitch(project)
+    assert len(str(e.value)) < 400
+
+
+def test_a_frame_deleted_during_the_run_reads_as_missing(project, monkeypatch):
+    ps.make_sphere(frames_dir(project), "rows", frame_w=320, seed=3)
+
+    def gone(path, *a, **k):
+        raise FileNotFoundError(2, "No such file", str(path))
+
+    monkeypatch.setattr(pipeline, "read_image", gone)
+    with pytest.raises(JobError) as e:
+        stitch(project)
+    assert str(e.value) == FRAMES_MISSING
+
+
+def test_the_record_check_keeps_the_schema_caps():
+    doc = json.loads(FIXTURE.read_text("utf-8"))
+    names = [f"F_{n:04d}.jpg" for n in range(201)]
+    with pytest.raises(ValueError, match="frames"):
+        check_record({**doc, "frames": {"used": names, "dropped": []}})
+    dropped = [{"file": n, "reason": "No gimbal angles"} for n in names]
+    with pytest.raises(ValueError, match="frames"):
+        check_record({**doc, "frames": {"used": names[:8], "dropped": dropped}})
+    with pytest.raises(ValueError, match="frames"):
+        check_record(
+            {**doc, "frames": {"used": names[:8], "dropped": [{"file": "a.jpg", "reason": "x" * 201}]}}
+        )

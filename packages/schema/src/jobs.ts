@@ -4,7 +4,7 @@ import { Id, ProjectPath, Vec3 } from './common';
 import { RasterPackId, TerrainDatum } from './globe';
 import { Crs } from './manifest';
 import { PhotoPreset, PhotoProduct, PhotoRunId, PhotoSource } from './photogrammetry';
-import { PanoFolderId, PanoQuality } from './panoStitch';
+import { PanoFolderId, PanoQuality, PanoShape } from './panoStitch';
 import { ProcModelId, ProcPartKind } from './procmodel';
 import { TilesetId } from './tilesets';
 import { DesignFormat, DesignId, DesignSourceUnits } from './designs';
@@ -1125,7 +1125,7 @@ export const PanoStitchParams = z
     quality: PanoQuality.optional(),
     /** The import's classification: a sphere is filled to the full sphere, a wide panorama is cropped.
      * Absent: decided from the real-pixel coverage. */
-    shape: z.enum(['sphere', 'wide']).optional(),
+    shape: PanoShape.optional(),
   })
   .strict();
 export type PanoStitchParams = z.infer<typeof PanoStitchParams>;

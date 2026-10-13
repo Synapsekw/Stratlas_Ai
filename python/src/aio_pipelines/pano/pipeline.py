@@ -26,6 +26,7 @@ from .. import __version__
 from ..params import known_keys
 from ..photo.native import check_disk
 from ..runtime import (
+    AtomicPath,
     JobError,
     Step,
     StepContext,
@@ -37,13 +38,14 @@ from ..runtime import (
 from . import align, compose
 from .frames import FrameError, FrameInfo, encode_jpeg, list_frames, read_frame_info, read_image
 from .geometry import rot_from_gimbal
-from .record import SCHEMA, check_record
+from .record import MAX_FRAMES, SCHEMA, check_record
 
 PANO_ID = re.compile(r"^[a-z0-9][a-z0-9-]*$")
 WIDTHS = {"standard": 8192, "high": 16384}
 #: Test-only output width (e2e and pytest): 512 to 16384 pixels.
 WIDTH_ENV = "QUADRION_PANO_WIDTH"
 MIN_FRAMES = 8
+THUMB_QUALITY = 85
 JPEG_QUALITY = 90
 #: Disk the job needs per output pixel: the staged canvas and mask, the JPEGs and headroom.
 DISK_BYTES_PER_PIXEL = 8
@@ -85,6 +87,14 @@ def _thumb(img: np.ndarray, wide: bool) -> np.ndarray:
     h, w = img.shape[:2]
     size = (compose.THUMB_SIZE[0], max(1, round(compose.THUMB_SIZE[0] * h / w)))
     return cv2.resize(img, size, interpolation=cv2.INTER_AREA)
+
+
+def _load(path: Path, scale: float, gray: bool = False) -> np.ndarray:
+    """A frame read for matching or composing; one deleted since the read step is a missing frame."""
+    try:
+        return read_image(path, scale, gray=gray)
+    except (OSError, FrameError):
+        raise JobError(FRAMES_MISSING) from None
 
 
 class PanoStitch:
@@ -141,6 +151,11 @@ class PanoStitch:
             paths = list_frames(frames_dir(ctx))
             if not paths:
                 raise JobError(FRAMES_MISSING)
+            if len(paths) > MAX_FRAMES:
+                raise JobError(
+                    f"This panorama has {len(paths)} frames; at most {MAX_FRAMES} can be stitched. "
+                    "It is probably several spheres taken close together."
+                )
             used: list[FrameInfo] = []
             dropped: list[dict[str, str]] = []
             for p in paths:
@@ -180,7 +195,7 @@ class PanoStitch:
             grays = []
             for n, f in enumerate(fs):
                 ctx.check()
-                grays.append(read_image(frames_dir(ctx) / f.name, scale, gray=True))
+                grays.append(_load(frames_dir(ctx) / f.name, scale, gray=True))
                 ctx.progress(0.3 * (n + 1) / len(fs))
             focal = fs[0].focal * scale
             found = align.match_frames(
@@ -189,14 +204,15 @@ class PanoStitch:
             size = [int(grays[0].shape[1]), int(grays[0].shape[0])]
             staged = ctx.stage("match.npz")
             empty = np.zeros((0, 2), np.float32)
-            np.savez(
-                staged,
-                i=np.array([m.i for m in found], np.int32),
-                j=np.array([m.j for m in found], np.int32),
-                n=np.array([len(m.a) for m in found], np.int32),
-                a=np.concatenate([m.a for m in found]) if found else empty,
-                b=np.concatenate([m.b for m in found]) if found else empty,
-            )
+            with AtomicPath(staged) as tmp:
+                np.savez(
+                    tmp,
+                    i=np.array([m.i for m in found], np.int32),
+                    j=np.array([m.j for m in found], np.int32),
+                    n=np.array([len(m.a) for m in found], np.int32),
+                    a=np.concatenate([m.a for m in found]) if found else empty,
+                    b=np.concatenate([m.b for m in found]) if found else empty,
+                )
             return {
                 "pairs": len(found),
                 "focalWork": focal,
@@ -240,7 +256,7 @@ class PanoStitch:
                 ctx.check()
                 focal = f.focal * float(adj["focalScale"])
                 scale = compose.frame_scale(focal, width)
-                img = read_image(frames_dir(ctx) / f.name, scale)
+                img = _load(frames_dir(ctx) / f.name, scale)
                 pieces += compose.warp(img, np.array(rot, float), focal * scale, width, height)
                 ctx.progress(0.6 * (n + 1) / len(fs))
             canvas, covered = compose.blend(pieces, width, height, ctx.check)
@@ -255,6 +271,7 @@ class PanoStitch:
             canvas = _unpng(ctx.stage("canvas.png"), cv2.IMREAD_COLOR)
             covered = _unpng(ctx.stage("covered.png"), cv2.IMREAD_GRAYSCALE)
             h, w = covered.shape
+            # a "wide" hint on a canvas covered all round still yields a sphere
             crop = None if want == "sphere" else compose.wide_crop(covered)
             if crop is None:
                 top, bottom = compose.coverage_deg(covered)
@@ -269,7 +286,9 @@ class PanoStitch:
                 coverage = {"topDeg": top, "bottomDeg": bottom, "leftDeg": left, "rightDeg": right}
             ctx.check()
             atomic_write_bytes(ctx.stage("pano.jpg"), encode_jpeg(out, JPEG_QUALITY))
-            atomic_write_bytes(ctx.stage("thumb.jpg"), encode_jpeg(_thumb(out, crop is not None), 85))
+            atomic_write_bytes(
+                ctx.stage("thumb.jpg"), encode_jpeg(_thumb(out, crop is not None), THUMB_QUALITY)
+            )
             return {
                 "shape": "sphere" if crop is None else "wide",
                 "coverage": coverage,

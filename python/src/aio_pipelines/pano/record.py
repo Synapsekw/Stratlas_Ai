@@ -12,6 +12,8 @@ from typing import Any
 
 SCHEMA = "aio.pano-stitch/1"
 PANO_ID = re.compile(r"^[a-z0-9][a-z0-9-]*$")
+#: Caps of ``PanoStitchFile.frames`` (used, dropped) and of a dropped frame's reason text.
+MAX_FRAMES = 200
 KEYS = {
     "schema",
     "run",
@@ -80,13 +82,15 @@ def check_record(doc: Any) -> None:
     if (
         not isinstance(fr, dict)
         or not isinstance(fr.get("used"), list)
+        or len(fr["used"]) > MAX_FRAMES
         or not all(_frame_name(n) for n in fr["used"])
         or not isinstance(fr.get("dropped"), list)
+        or len(fr["dropped"]) > MAX_FRAMES
         or not all(
             isinstance(d, dict)
             and _frame_name(d.get("file"))
             and isinstance(d.get("reason"), str)
-            and d["reason"]
+            and 1 <= len(d["reason"]) <= 200
             for d in fr["dropped"]
         )
     ):
