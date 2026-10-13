@@ -1,5 +1,15 @@
-import { lstat, mkdir, readdir, rm as fsRm, stat } from 'node:fs/promises';
+import { PHOTO_DIR, PhotoRunId, TrashRecord, type ProjectManifest } from '@aio/schema';
+import {
+  lstat,
+  mkdir,
+  readdir,
+  readFile,
+  rename as fsRename,
+  rm as fsRm,
+  stat,
+} from 'node:fs/promises';
 import { join } from 'node:path';
+import { readManifestFile } from './manifestFile';
 
 /*
  * The project trash (data-conventions section 33): one entry per removal, `<stamp>-<slug>`,
@@ -8,11 +18,15 @@ import { join } from 'node:path';
 
 export const TRASH_DIR = '.trash';
 /**
- * An entry holding files a failed removal could not put back while the manifest still lists them:
- * not trash. It carries no stamp at the start of its name, so the sweep, the size and Empty project
- * trash all pass it by; the person moves its files back by hand (`removed.json` lists them).
+ * A removal works in `held-<stamp>-<slug>` and renames it to `<stamp>-<slug>` once the manifest is
+ * saved. An entry still named so is not trash until the trash reads it and finds the removal took
+ * effect (`removed.json` there, and none of its layers, dates or runs still in the project); then it
+ * gets its stamped name. Otherwise (a failed removal whose files could not come back, no record)
+ * the sweep, the size and Empty project trash pass it by: the person moves its files back by hand.
  */
 export const HELD_PREFIX = 'held-';
+/** Written into a held entry by a removal that failed: it never took effect, whatever the manifest says. */
+export const HELD_NOTE = 'not-removed.txt';
 /** How long removed files are kept. */
 export const TRASH_KEEP_DAYS = 7;
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -34,6 +48,16 @@ export function stampTime(name: string): number | null {
 
 export interface TrashOptions {
   rm?: (path: string) => Promise<void>;
+  /** The rename giving a held entry its stamped name (tests hand in one that fails). */
+  rename?: (from: string, to: string) => Promise<void>;
+  /** The project's manifest; read from `root` when not given. */
+  manifest?: ProjectManifest;
+}
+
+interface Entry {
+  name: string;
+  /** From the stamped name, also for a held entry that took effect but kept its name. */
+  at: number | null;
 }
 
 const exists = (p: string) =>
@@ -79,14 +103,58 @@ export async function freeTrashEntry(root: string, at: Date, slug: string): Prom
   }
 }
 
-async function entries(root: string): Promise<string[]> {
+/** A held entry whose removal took effect: a valid record, and nothing it removed is still here. */
+async function tookEffect(root: string, dir: string, m: ProjectManifest): Promise<boolean> {
+  if (await exists(join(dir, HELD_NOTE))) return false;
+  let rec;
+  try {
+    rec = TrashRecord.safeParse(JSON.parse(await readFile(join(dir, 'removed.json'), 'utf8')));
+  } catch {
+    return false;
+  }
+  if (!rec.success) return false;
+  const { plan } = rec.data;
+  if (plan.layers.length + plan.captures.length + plan.runs.length === 0) return false;
+  if (plan.layers.some((l) => m.layers.some((x) => x.id === l.id))) return false;
+  if (plan.captures.some((c) => m.captures.some((x) => x.id === c))) return false;
+  for (const r of plan.runs) {
+    if (!PhotoRunId.safeParse(r.id).success) return false;
+    if (await exists(join(root, PHOTO_DIR, r.id))) return false;
+  }
+  return true;
+}
+
+async function entries(root: string, o: TrashOptions = {}): Promise<Entry[]> {
+  const dir = join(root, TRASH_DIR);
+  let names: string[];
   try {
     // a link or a plain file named .trash is never followed: nothing is read or deleted through it
-    if (!(await lstat(join(root, TRASH_DIR))).isDirectory()) return [];
-    return (await readdir(join(root, TRASH_DIR))).filter((n) => !n.startsWith(HELD_PREFIX));
+    if (!(await lstat(dir)).isDirectory()) return [];
+    names = await readdir(dir);
   } catch {
     return [];
   }
+  let manifest: ProjectManifest | null | undefined = o.manifest;
+  const out: Entry[] = [];
+  for (const name of names) {
+    if (!name.startsWith(HELD_PREFIX)) {
+      out.push({ name, at: stampTime(name) });
+      continue;
+    }
+    if (manifest === undefined) manifest = await readManifestFile(root).catch(() => null);
+    if (manifest === null || !(await tookEffect(root, join(dir, name), manifest))) continue;
+    const stamped = name.slice(HELD_PREFIX.length);
+    if (!(await exists(join(dir, stamped))))
+      try {
+        await (o.rename ?? fsRename)(join(dir, name), join(dir, stamped));
+        out.push({ name: stamped, at: stampTime(stamped) });
+        continue;
+      } catch {
+        // held open for now: trash under its held name until a later read renames it
+      }
+    out.push({ name, at: stampTime(stamped) });
+  }
+  return out;
 }
 
 export async function sweepTrash(
@@ -96,8 +164,7 @@ export async function sweepTrash(
   o: TrashOptions = {},
 ): Promise<string[]> {
   const removed: string[] = [];
-  for (const name of await entries(root)) {
-    const at = stampTime(name);
+  for (const { name, at } of await entries(root, o)) {
     if (at === null || now().getTime() - at <= keepMs) continue;
     try {
       await (o.rm ?? removeTree)(join(root, TRASH_DIR, name));
@@ -109,11 +176,14 @@ export async function sweepTrash(
   return removed;
 }
 
-export async function trashSize(root: string): Promise<{ bytes: number; entries: number }> {
-  const names = await entries(root);
+export async function trashSize(
+  root: string,
+  o: TrashOptions = {},
+): Promise<{ bytes: number; entries: number }> {
+  const list = await entries(root, o);
   let bytes = 0;
-  for (const name of names) bytes += await pathBytes(join(root, TRASH_DIR, name));
-  return { bytes, entries: names.length };
+  for (const { name } of list) bytes += await pathBytes(join(root, TRASH_DIR, name));
+  return { bytes, entries: list.length };
 }
 
 export async function emptyTrash(
@@ -123,7 +193,7 @@ export async function emptyTrash(
   const removed: string[] = [];
   const held: string[] = [];
   let freed = 0;
-  for (const name of await entries(root)) {
+  for (const { name } of await entries(root, o)) {
     const abs = join(root, TRASH_DIR, name);
     try {
       const bytes = await pathBytes(abs);

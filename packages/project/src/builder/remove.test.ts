@@ -17,7 +17,7 @@ import { readManifestFile } from './manifestFile';
 import { MANIFEST_BEFORE, removeItems, stuckMessage } from './remove';
 import { FIXTURE_JOBS, RUN_DONE, RUN_FAILED, makeRemoveProject } from './removeFixture';
 import { planRemoval } from './removePlan';
-import { emptyTrash, HELD_PREFIX, sweepTrash } from './trash';
+import { emptyTrash, HELD_NOTE, HELD_PREFIX, sweepTrash, trashSize } from './trash';
 import { migrateWalks } from './walkLayers';
 
 let dir: string;
@@ -26,7 +26,7 @@ beforeEach(async () => {
   ({ dir, root } = await makeRemoveProject());
 });
 afterEach(async () => {
-  await rm(dir, { recursive: true, force: true });
+  await rm(dir, { recursive: true, force: true, maxRetries: 5 });
 });
 
 const NOW = new Date('2026-10-13T08:15:30.000Z');
@@ -42,6 +42,22 @@ const tilesetIds = async () =>
     JSON.parse(await readFile(at('tilesets.json'), 'utf8')) as { entries: { id: string }[] }
   ).entries.map((e) => e.id);
 const busy = (msg: string) => Object.assign(new Error(msg), { code: 'EBUSY' });
+const LOCKED = new Set(['EPERM', 'EBUSY', 'EACCES']);
+/** The real rename for the moves a test means to succeed: an indexer's brief lock is waited out. */
+async function realRename(a: string, b: string): Promise<void> {
+  for (let i = 0; ; i++) {
+    try {
+      await fsRename(a, b);
+      return;
+    } catch (e) {
+      const code = (e as { code?: unknown }).code;
+      if (i >= 20 || typeof code !== 'string' || !LOCKED.has(code)) throw e;
+      await new Promise((r) => setTimeout(r, 50));
+    }
+  }
+}
+const LATER = new Date('2026-12-31T00:00:00.000Z');
+const refuse = () => Promise.reject(new Error('refused'));
 
 describe('removeItems', () => {
   it('moves the files in their project layout and writes removed.json and the manifest before', async () => {
@@ -114,7 +130,7 @@ describe('removeItems', () => {
     const rename = async (a: string, b: string) => {
       n += 1;
       if (n <= 2) throw busy('held by a viewer');
-      await fsRename(a, b);
+      await realRename(a, b);
     };
     const r = await removeItems(root, [{ layer: 'clip-1' }], () => NOW, {
       rename,
@@ -131,7 +147,7 @@ describe('removeItems', () => {
     const rename = async (a: string, b: string) => {
       n += 1;
       if (n === 3) throw busy('photos/p1.jpg is held open');
-      await fsRename(a, b);
+      await realRename(a, b);
     };
     await expect(
       removeItems(root, [{ layer: 'photos-a' }], () => NOW, {
@@ -150,7 +166,7 @@ describe('removeItems', () => {
     const rename = async (a: string, b: string) => {
       n += 1;
       if (n >= 3) throw busy('held');
-      await fsRename(a, b);
+      await realRename(a, b);
     };
     await expect(
       removeItems(root, [{ layer: 'photos-a' }], () => NOW, {
@@ -165,9 +181,41 @@ describe('removeItems', () => {
     expect(entry).toBe(`${HELD_PREFIX}20261013T081530Z-photos-a`);
     expect(await exists(at('.trash', entry ?? '', 'removed.json'))).toBe(true);
     // not trash: the manifest still lists these files, so neither the sweep nor Empty takes them
-    expect(await sweepTrash(root, () => new Date('2026-12-31T00:00:00.000Z'))).toEqual([]);
+    expect(await exists(at('.trash', entry ?? '', HELD_NOTE))).toBe(true);
+    expect(await sweepTrash(root, () => LATER)).toEqual([]);
+    expect(await emptyTrash(root)).toEqual({ freed: 0, removed: [], held: [] });
+    expect(await trashSize(root)).toEqual({ bytes: 0, entries: 0 });
+    // the note gone, the manifest still lists photos-a: still held
+    await rm(at('.trash', entry ?? '', HELD_NOTE));
+    expect(await sweepTrash(root, () => LATER)).toEqual([]);
+    expect(await trashSize(root)).toEqual({ bytes: 0, entries: 0 });
     expect(await emptyTrash(root)).toEqual({ freed: 0, removed: [], held: [] });
     expect(await trashEntries()).toEqual([entry]);
+  });
+
+  it('keeps a held entry without a record out of the sweep, the size and Empty', async () => {
+    const held = `${HELD_PREFIX}20261001T081530Z-x`;
+    await mkdir(at('.trash', held), { recursive: true });
+    await writeFile(at('.trash', held, 'p1.jpg'), 'x');
+    expect(await sweepTrash(root, () => LATER)).toEqual([]);
+    expect(await trashSize(root)).toEqual({ bytes: 0, entries: 0 });
+    expect(await emptyTrash(root)).toEqual({ freed: 0, removed: [], held: [] });
+    expect(await trashEntries()).toEqual([held]);
+  });
+
+  it('writes removed.json into the entry before anything moves', async () => {
+    let seen = false;
+    const rename = async (a: string, b: string) => {
+      if (!seen) {
+        seen = true;
+        const [held] = await trashEntries();
+        expect(held?.startsWith(HELD_PREFIX)).toBe(true);
+        expect(await exists(at('.trash', held ?? '', 'removed.json'))).toBe(true);
+      }
+      await realRename(a, b);
+    };
+    await removeItems(root, [{ layer: 'clip-1' }], () => NOW, { rename });
+    expect(seen).toBe(true);
   });
 
   it('says apart moved files and a side file that could not be put back', () => {
@@ -224,19 +272,44 @@ describe('removeItems', () => {
     }
   });
 
-  it('keeps the removal when removed.json cannot be written after the save', async () => {
+  it('a saved removal whose entry kept its held name becomes trash when the trash reads it', async () => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
     try {
       const rename = async (a: string, b: string) => {
-        await fsRename(a, b);
-        // the held entry takes its final name: a folder now sits where removed.json goes
-        if (basename(a).startsWith(HELD_PREFIX)) await mkdir(join(b, 'removed.json'));
+        if (basename(a).startsWith(HELD_PREFIX)) throw new Error('held open');
+        await realRename(a, b);
       };
       const r = await removeItems(root, [{ layer: 'clip-1' }], () => NOW, { rename });
-      expect(r.trash).toBe('20261013T081530Z-clip-1');
+      expect(r.trash).toBe(`${HELD_PREFIX}20261013T081530Z-clip-1`);
       expect((await readManifestFile(root)).layers.some((l) => l.id === 'clip-1')).toBe(false);
-      expect(await exists(at('.trash', r.trash ?? '', 'video', 'clip-1.mp4'))).toBe(true);
-      expect(warn).toHaveBeenCalledWith(expect.stringContaining('removed.json'));
+      expect(warn).toHaveBeenCalledWith(expect.stringContaining('could not be renamed'));
+      // the rename still refused: trash under its held name, counted, swept and emptied
+      expect(await trashSize(root, { rename: refuse })).toMatchObject({ entries: 1 });
+      expect(await sweepTrash(root, () => NOW, undefined, { rename: refuse })).toEqual([]);
+      expect(await sweepTrash(root, () => LATER, undefined, { rename: refuse })).toEqual([
+        `${HELD_PREFIX}20261013T081530Z-clip-1`,
+      ]);
+      expect(await trashEntries()).toEqual([]);
+    } finally {
+      warn.mockRestore();
+    }
+  });
+
+  it('a saved removal held by name gets its stamped name and is emptied', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    try {
+      const rename = async (a: string, b: string) => {
+        if (basename(a).startsWith(HELD_PREFIX)) throw new Error('held open');
+        await realRename(a, b);
+      };
+      await removeItems(root, [{ layer: 'clip-1' }], () => NOW, { rename });
+      const size = await trashSize(root);
+      expect(size.entries).toBe(1);
+      expect(size.bytes).toBeGreaterThan(0);
+      expect(await trashEntries()).toEqual(['20261013T081530Z-clip-1']);
+      const r = await emptyTrash(root);
+      expect(r.removed).toEqual(['20261013T081530Z-clip-1']);
+      expect(await trashEntries()).toEqual([]);
     } finally {
       warn.mockRestore();
     }

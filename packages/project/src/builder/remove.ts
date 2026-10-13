@@ -12,12 +12,12 @@ import { basename, dirname, join } from 'node:path';
 import { renameWhenFree, type RenameOptions } from '../import/rename';
 import { updateManifestFile } from './manifestFile';
 import { planRemoval, type PlanOptions } from './removePlan';
-import { freeTrashEntry, HELD_PREFIX, TRASH_DIR } from './trash';
+import { freeTrashEntry, HELD_NOTE, HELD_PREFIX, TRASH_DIR } from './trash';
 
 /*
- * Removing (delete and start over, spec "Removing"): plan again from disk, move every file into one
- * trash entry, rewrite `tilesets.json` (a copy goes first), save the manifest once, write
- * `removed.json`. When a move is refused, the moves made come back and nothing changed; when the
+ * Removing (delete and start over, spec "Removing"): plan again from disk, write `removed.json` into
+ * a `held-` trash entry, move every file into it, rewrite `tilesets.json` (a copy goes first), save
+ * the manifest once, give the entry its stamped name. When a move is refused, the moves made come back and nothing changed; when the
  * save fails, the side file and the files come back; when the way back is refused too, the files
  * stay in the entry with `removed.json` and the error says where.
  */
@@ -131,11 +131,7 @@ export async function removeItems(
   });
   const writeRecord = async (dir: string) => {
     await writeFile(join(dir, MANIFEST_BEFORE), before);
-    await writeFile(
-      join(dir, 'removed.json'),
-      `${JSON.stringify(record(), null, 2)}
-`,
-    );
+    await writeFile(join(dir, 'removed.json'), `${JSON.stringify(record(), null, 2)}\n`);
   };
   /** Put back what was changed; answers the moved files and the side files that could not. */
   const undo = async (): Promise<{ files: number; sides: string[] }> => {
@@ -156,6 +152,11 @@ export async function removeItems(
     const stuck = await undo();
     if ((stuck.files > 0 || stuck.sides.length > 0) && entry !== null) {
       await writeRecord(entry).catch(() => undefined);
+      // the trash must never take this entry for a removal that took effect
+      await writeFile(
+        join(entry, HELD_NOTE),
+        'This removal failed. Move these files back into the project by hand; removed.json lists them.\n',
+      ).catch(() => undefined);
       throw new Error(
         stuckMessage(message(e), stuck.files, stuck.sides, `${TRASH_DIR}/${basename(entry)}`),
         { cause: e },
@@ -167,6 +168,12 @@ export async function removeItems(
   };
 
   try {
+    // the record goes in first: an entry that outlives this call (a crash, a refused rename) can
+    // always be told apart, taken effect or not (`trash.ts`, held entries)
+    if (entry !== null && !flat) {
+      await mkdir(entry, { recursive: true });
+      await writeRecord(entry);
+    }
     for (const rel of plan.files) {
       const from = join(root, ...rel.split('/'));
       const to = flat && entry !== null ? entry : join(entry ?? root, ...rel.split('/'));
@@ -180,11 +187,11 @@ export async function removeItems(
       }
       moved.push({ from, to });
     }
+    // a walk's entry is its folder, moved as one: the record follows it at once
+    if (flat && entry !== null && moved.length > 0) await writeRecord(entry);
     if (rewrite && entry !== null) {
       const file = join(root, TILESETS_FILE);
       const text = await readFile(file, 'utf8');
-      // a removal may move no file at all and only rewrite tilesets.json: the entry is made here
-      await mkdir(entry, { recursive: true });
       await writeFile(join(entry, TILESETS_FILE), text);
       sides.push({ file, text });
       const doc = JSON.parse(text) as { entries?: { id?: unknown }[] };
@@ -214,17 +221,13 @@ export async function removeItems(
     return fail(e);
   }
   if (entry === null || final === null) return { manifest, plan, trash: null };
-  // the removal stands once the manifest is saved: the entry becomes ordinary trash, and a name or
-  // record that cannot be written is only noted
-  let done = entry;
+  // the removal stands once the manifest is saved: the entry becomes ordinary trash; when the rename
+  // is refused, the trash renames it later (its record shows the removal took effect)
   try {
     await renameWhenFree(entry, final, ro);
-    done = final;
+    return { manifest, plan, trash: basename(final) };
   } catch (e) {
     console.warn(`${basename(entry)} could not be renamed to ${basename(final)}: ${message(e)}`);
+    return { manifest, plan, trash: basename(entry) };
   }
-  await writeRecord(done).catch((e: unknown) => {
-    console.warn(`removed.json could not be written in ${done}: ${message(e)}`);
-  });
-  return { manifest, plan, trash: basename(done) };
 }
