@@ -476,6 +476,26 @@ describe('PlaceWalkStrip: placing', () => {
     });
     expect(byTest('walk-place-save')?.disabled).toBe(false);
   });
+
+  it('Save waits for a change to a saved placement', async () => {
+    const ctx = await open(placedWalk());
+    expect(strip()?.getAttribute('data-step')).toBe('placed');
+    expect(byTest('walk-place-save')?.disabled).toBe(true);
+    act(() => {
+      ctx.session.getState().dragHandle('end', [50, -30], 0);
+      ctx.session.getState().endDrag();
+    });
+    expect(byTest('walk-place-save')?.disabled).toBe(false);
+  });
+
+  it('Save stays off on Start even when the session is marked changed', async () => {
+    const ctx = await open(walkWithPath());
+    act(() => {
+      ctx.session.setState({ dirty: true });
+    });
+    expect(strip()?.getAttribute('data-step')).toBe('start');
+    expect(byTest('walk-place-save')?.disabled).toBe(true);
+  });
 });
 
 describe('PlaceWalkStrip: fine-tune', () => {

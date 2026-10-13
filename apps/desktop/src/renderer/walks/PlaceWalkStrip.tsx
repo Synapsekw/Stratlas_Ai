@@ -180,6 +180,11 @@ export function PlaceWalkStrip({
   );
   const placedBefore =
     walk.place !== undefined && walk.place.quality !== 'unplaced' && walk.place.pins.length >= 2;
+  // Save only when there is something to save: a placed walk with changes (pins, heading, or the
+  // survey date of an undated walk)
+  const changed = st.dirty || (walk.capture === undefined && u.date !== null);
+  const canSave =
+    (st.step === 'placed' || st.step === 'fine-tune') && enough && changed && !u.saving && !refused;
 
   if (u.asking)
     return (
@@ -251,12 +256,13 @@ export function PlaceWalkStrip({
     </button>
   );
 
+  // the fields name themselves (aria-label, title): the toolbar stays two rows on a narrow pane
   const placeOn = (
-    <label className="wplace-field">
-      <span className="faint">Place on</span>
+    <span className="wplace-field">
       <select
         className="input"
         aria-label="Place on"
+        title="Place on"
         data-testid="walk-place-on"
         value={value}
         onChange={(e) => {
@@ -275,15 +281,15 @@ export function PlaceWalkStrip({
           </option>
         ))}
       </select>
-    </label>
+    </span>
   );
 
   const dateField = dates && (
-    <label className="wplace-field">
-      <span className="faint">Survey date</span>
+    <span className="wplace-field">
       <select
         className="input"
         aria-label="Survey date"
+        title="Survey date"
         data-testid="walk-place-date-field"
         value={u.date ?? ''}
         disabled={u.saving}
@@ -303,7 +309,7 @@ export function PlaceWalkStrip({
           <option value="">No survey date</option>
         ) : null}
       </select>
-    </label>
+    </span>
   );
 
   return (
@@ -354,25 +360,40 @@ export function PlaceWalkStrip({
           <span className="dplace-end">{cancel}</span>
         </div>
       ) : (
-        <div className="dplace-row">
-          {hintLine}
-          {placeOn}
-          {dateField}
-          <button
-            type="button"
-            className="btn ghost sm"
-            data-testid="walk-place-finetune"
-            aria-pressed={fineTuning}
-            disabled={st.step !== 'placed' && !fineTuning}
-            title="Pin moments of the 360 video for a closer fit"
-            onClick={() => {
-              flow.fineTune(!fineTuning);
-            }}
-          >
-            <Icon name="target" size={14} />
-            Fine-tune
-          </button>
-          <span className="dplace-end">
+        <>
+          <div className="dplace-row">
+            {hintLine}
+            <span className="dplace-end">
+              {cancel}
+              <button
+                type="button"
+                className="btn primary sm"
+                data-testid="walk-place-save"
+                disabled={!canSave}
+                onClick={() => void flow.save()}
+              >
+                <Icon name="check" size={14} />
+                Save
+              </button>
+            </span>
+          </div>
+          <div className="dplace-row wplace-tools">
+            {placeOn}
+            {dateField}
+            <button
+              type="button"
+              className="btn ghost sm"
+              data-testid="walk-place-finetune"
+              aria-pressed={fineTuning}
+              disabled={st.step !== 'placed' && !fineTuning}
+              title="Pin moments of the 360 video for a closer fit"
+              onClick={() => {
+                flow.fineTune(!fineTuning);
+              }}
+            >
+              <Icon name="target" size={14} />
+              Fine-tune
+            </button>
             {placedBefore && (
               <button
                 ref={removeRef}
@@ -390,19 +411,8 @@ export function PlaceWalkStrip({
                 Remove placement
               </button>
             )}
-            {cancel}
-            <button
-              type="button"
-              className="btn primary sm"
-              data-testid="walk-place-save"
-              disabled={!enough || u.saving || refused}
-              onClick={() => void flow.save()}
-            >
-              <Icon name="check" size={14} />
-              Save
-            </button>
-          </span>
-        </div>
+          </div>
+        </>
       )}
       {askRemove && placedBefore && (
         <div
