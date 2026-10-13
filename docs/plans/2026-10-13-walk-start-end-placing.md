@@ -3762,7 +3762,7 @@ describe('isStitched360', () => {
   });
 
   it('a 16:9 clip, a non equirectangular sphere, a camera file or no video is not', () => {
-    expect(isStitched360('DJI_0001.mp4', [v(3840, 2160)])).toBe(false);
+    expect(isStitched360('flat-clip.mp4', [v(3840, 2160)])).toBe(false);
     expect(isStitched360('cube.mp4', [v(3840, 1920, 'other')])).toBe(false);
     expect(isStitched360('VID_1.insv', [v(2880, 2880), v(2880, 2880)])).toBe(false);
     expect(isStitched360('audio.mp4', [])).toBe(false);
@@ -3794,8 +3794,8 @@ it('a stitched 360 MP4 without an SRT is a walk on every route, not a skipped dr
 
 it('a 16:9 MP4 without an SRT is skipped, and the reason names Add 360 video', async () => {
   const root = await project();
-  const tools = walkTools({ 'DJI_0001.mp4': [vide(3840, 2160, 'avc1')] });
-  const r = await importRawFiles(root, [await src('DJI_0001.mp4')], deps({ walk: tools }));
+  const tools = walkTools({ 'flat-clip.mp4': [vide(3840, 2160, 'avc1')] });
+  const r = await importRawFiles(root, [await src('flat-clip.mp4')], deps({ walk: tools }));
   expect(r.items[0]).toMatchObject({ kind: 'video', status: 'skipped', message: NO_SRT_MESSAGE });
   expect(r.items[0]?.message).toContain('Add 360 video');
   expect(r.manifest.layers.some((l) => l.kind === 'walk')).toBe(false);
@@ -3809,18 +3809,18 @@ it('an MP4 that cannot be read is skipped as before', async () => {
 
 it('an MP4 with its SRT stays a drone clip and is never read for 360', async () => {
   const root = await project();
-  const tools = walkTools({ 'DJI_0002.mp4': [vide(256, 128, 'avc1')] });
+  const tools = walkTools({ 'drone-clip.mp4': [vide(256, 128, 'avc1')] });
   const tracks = vi.spyOn(tools, 'tracks');
-  await src('DJI_0002.SRT');
+  await src('drone-clip.SRT');
   const r = await importRawFiles(
     root,
-    [await src('DJI_0002.mp4'), join(dir, 'DJI_0002.SRT')],
+    [await src('drone-clip.mp4'), join(dir, 'drone-clip.SRT')],
     deps({ walk: tools }),
   );
   expect(tracks).not.toHaveBeenCalled();
   // the drone branch: this test build has no video tools
   expect(r.items[0]).toMatchObject({
-    file: 'DJI_0002.mp4',
+    file: 'drone-clip.mp4',
     status: 'error',
     message: 'Video import is not available in this build.',
   });
@@ -4149,7 +4149,7 @@ test.describe('stitched 360 video through Add data', () => {
     // the walk project as it is in batch 1 (T11's options are not needed here)
     await createWalkProject(dataRoot.root);
     const stitched = join(dataRoot.root, 'Site tour 360.mp4');
-    const flat = join(dataRoot.root, 'DJI_0001.mp4');
+    const flat = join(dataRoot.root, 'flat-clip.mp4');
     makeMp4(stitched, '256x128', 4);
     makeMp4(flat, '320x180', 2);
     await win.reload();
@@ -4164,7 +4164,7 @@ test.describe('stitched 360 video through Add data', () => {
       rows.filter({ hasText: 'Site tour 360.mp4' }).getByTestId('import-where'),
     ).toHaveText('Added as a walk under 360 walks');
     await expect(
-      rows.filter({ hasText: 'DJI_0001.mp4' }).getByTestId('import-where'),
+      rows.filter({ hasText: 'flat-clip.mp4' }).getByTestId('import-where'),
     ).toContainText('Add 360 video');
     await expect(win.getByTestId('tree-row-walk-site-tour-360')).toBeVisible({ timeout: 30_000 });
   });
