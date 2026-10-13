@@ -53,15 +53,31 @@ def _chunk_bytes(store: PointTiles, name: str) -> int:
     return sum(p.stat().st_size for p in (store.chunks_dir / name).glob("*.npz"))
 
 
-def _merge_once(store, voxel, rule, keep, memory, check, progress, log) -> tuple[dict, int]:
+#: The share of the progress bar the first attempt takes; each re-merge takes this share of what
+#: is left, so the bar never steps back however many attempts it takes.
+FIRST_SHARE = 0.8
+
+
+def _here(store, kind: str, todo: list[str], v: float, r: MergeRule, k, check, got) -> None:
+    for name in todo:
+        check()
+        got(name, merge_tile(store, name, v, r, k) if kind == "merge" else filter_tile(store, name, v, r))
+
+
+def _merge_once(store, voxel, rule, keep, memory, check, progress, log, state) -> tuple[dict, int]:
+    """One merge at ``voxel``. ``state["broken"]`` is set once a pool breaks: every pass after
+    that, in this attempt and the next, runs here."""
     names = store.chunk_tiles()
     largest = max((_chunk_bytes(store, n) for n in names), default=0)
-    workers = pool.plan_merge_workers(len(names), largest, memory)
+    workers = 1 if state["broken"] else pool.plan_merge_workers(len(names), largest, memory)
     if workers <= 1:
         return store.merge(voxel, keep, check, progress, rule), 1
     log(f"Merging {len(names)} tiles, {workers} at a time.")
 
     def run_tiles(kind: str, todo: list[str], v: float, r: MergeRule, k, done) -> None:
+        if state["broken"]:
+            _here(store, kind, todo, v, r, k, check, done)
+            return
         finished: set[str] = set()
 
         def got(name: str, res: dict) -> None:
@@ -73,15 +89,9 @@ def _merge_once(store, voxel, rule, keep, memory, check, progress, log) -> tuple
         try:
             pool.run_pool(workers, pool.init_merge, args, task, todo, check, got)
         except pool.PoolBroken:
+            state["broken"] = True
             log("A worker process stopped; merging the rest here.", "warn")
-            for name in todo:
-                if name in finished:
-                    continue
-                check()
-                got(
-                    name,
-                    merge_tile(store, name, v, r, k) if kind == "merge" else filter_tile(store, name, v, r),
-                )
+            _here(store, kind, [n for n in todo if n not in finished], v, r, k, check, got)
 
     return store.merge(voxel, keep, check, progress, rule, run_tiles), workers
 
@@ -100,15 +110,30 @@ def merge_cloud(
 ) -> dict[str, Any]:
     """Merge the tiles at ``voxel`` (or at the spacing a stopped merge was at), in parallel when
     it fits ``memory``, again wider when the cloud ends above 1.2 x ``budget``; then mark it
-    complete. Answers the index plus ``workers`` and ``remerged``. A complete merge whose chunks
-    are gone is answered as it is (``workers`` 0): nothing is merged again."""
+    complete. Answers the index plus ``workers`` and ``remerged`` (the re-merges of the whole
+    merge, across resumes; also kept in the index). A complete merge is answered as it is
+    (``workers`` 0). Raises ``fuse.ChunksDropped`` when the chunks it needs were deleted after an
+    earlier merge (the photos must be fused again)."""
     done = store.info()
-    if done.get("complete") and store.chunks_dropped():
-        return {**done, "workers": 0, "remerged": 0}
+    if done.get("complete"):
+        return {**done, "workers": 0, "remerged": int(done.get("remerged", 0))}
     v = store.merging_voxel() or voxel
-    remerged = 0
+    remerged = int(store.merge_state().get("remerged", 0))
+    state = {"broken": False}
+    last: list = [None]
+
+    def share(k: int) -> Callable[[float, str | None], None]:
+        lo = 1 - (1 - FIRST_SHARE) ** k
+        hi = 1 - (1 - FIRST_SHARE) ** (k + 1)
+
+        def report(f: float, m: str | None = None) -> None:
+            last[0] = m
+            progress(lo + (hi - lo) * f, m)
+
+        return report
+
     while True:
-        info, workers = _merge_once(store, v, rule, keep, memory, check, progress, log)
+        info, workers = _merge_once(store, v, rule, keep, memory, check, share(remerged), log, state)
         if not needs_remerge(info["points"], budget):
             break
         if remerged >= MAX_REMERGES:
@@ -124,4 +149,6 @@ def merge_cloud(
             f"The cloud has {info['points']:,} points, more than its budget of {budget:,}; "
             f"merging again at {v * 100:.1f} cm."
         )
-    return {**store.finish_merge(), "workers": workers, "remerged": remerged}
+        store.begin_merge(v, remerged=remerged)
+    progress(1.0, last[0])
+    return {**store.finish_merge(remerged=remerged), "workers": workers, "remerged": remerged}

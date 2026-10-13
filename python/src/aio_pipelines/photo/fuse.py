@@ -24,6 +24,7 @@ import shutil
 from collections.abc import Callable, Iterator, Mapping
 from dataclasses import asdict, dataclass
 from pathlib import Path
+from typing import Any
 
 import numpy as np
 
@@ -156,6 +157,11 @@ DENSE_RULE = MergeRule()
 SPARSE_RULE = MergeRule(min_count=1, outliers=False, collapse=False)
 
 
+class ChunksDropped(JobError):
+    """The fusion chunks a merge needs were deleted after an earlier, complete merge (perhaps
+    under another merge key): the photos must be fused again before this merge can run."""
+
+
 class PointTiles:
     """Points in square ground tiles. Fusion writes chunks (chunk format 2) to
     ``chunks/<tile>/<name>.npz`` under ``chunks`` (``root/chunks`` unless given); ``merge`` writes
@@ -208,17 +214,18 @@ class PointTiles:
         such as in worker processes, calling ``done(name, result)`` for each tile; by default the
         tiles run here. A merge at another spacing than the one in progress starts over.
 
-        Once the chunks are gone (``drop_chunks``) nothing can be merged again: a complete merge
-        at ``voxel`` is answered as it is, and anything else is refused, the tiles left alone."""
-        names = self.chunk_tiles()
-        if not names and self.chunks_dropped():
+        Once the chunks are marked dropped (``drop_chunks``, even part way through deleting them)
+        nothing is merged again: a complete merge at ``voxel`` is answered as it is, and anything
+        else raises ``ChunksDropped``, the tiles left alone."""
+        if self.chunks_dropped():
             done = self.info()
             if done.get("complete") and self.merging_voxel() == voxel:
                 return done
-            raise JobError(
-                "The fused points of this cloud were cleared after its merge, so it cannot be "
-                "merged again; start the processing again."
+            raise ChunksDropped(
+                "The fused chunks were already removed after an earlier merge, so this cloud "
+                "cannot be merged again; start the processing again."
             )
+        names = self.chunk_tiles()
         self.begin_merge(voxel)
         total = max(1, len(names))
         results: dict[str, dict] = {}
@@ -260,15 +267,21 @@ class PointTiles:
         shutil.rmtree(self.root / "collapsed", ignore_errors=True)
         return info
 
-    def begin_merge(self, voxel: float) -> None:
-        """Start, or carry on, a merge at ``voxel``: what a merge at another spacing left goes."""
+    def begin_merge(self, voxel: float, **state: Any) -> None:
+        """Start, or carry on, a merge at ``voxel``: what a merge at another spacing left goes.
+        ``state`` (such as the re-merge count) is kept beside the spacing (``merge_state``)."""
         mark = self.root / "merge.json"
         if mark.is_file() and json.loads(mark.read_text("utf-8")).get("voxel") == voxel:
             return
         for d in ("collapsed", "fused"):
             shutil.rmtree(self.root / d, ignore_errors=True)
         self.root.mkdir(parents=True, exist_ok=True)
-        atomic_write_json(mark, {"voxel": voxel})
+        atomic_write_json(mark, {**state, "voxel": voxel})
+
+    def merge_state(self) -> dict:
+        """What ``begin_merge`` recorded for the merge in progress or done (``voxel`` and more)."""
+        mark = self.root / "merge.json"
+        return json.loads(mark.read_text("utf-8")) if mark.is_file() else {}
 
     def merging_voxel(self) -> float | None:
         """The spacing of the merge in progress or done, or None."""
@@ -309,9 +322,10 @@ class PointTiles:
         p = self.root / "fused" / "index.json"
         return json.loads(p.read_text("utf-8")) if p.is_file() else {"points": 0, "bounds": None}
 
-    def finish_merge(self) -> dict:
-        """Mark the merge complete (after any re-merge): nothing will change the tiles now."""
-        info = {**self.info(), "complete": True}
+    def finish_merge(self, **extra: Any) -> dict:
+        """Mark the merge complete (after any re-merge), with ``extra`` fields in the index:
+        nothing will change the tiles now."""
+        info = {**self.info(), **extra, "complete": True}
         atomic_write_json(self.root / "fused" / "index.json", info)
         return info
 
@@ -326,14 +340,23 @@ class PointTiles:
         if not base.is_dir():
             return 0
         freed = sum(p.stat().st_size for p in base.rglob("*") if p.is_file())
+        # marked first, so a cancel or a partial delete still reads as dropped
+        atomic_write_json(self._dropped_mark(), {"bytes": freed})
         shutil.rmtree(base, ignore_errors=True)
-        self.root.mkdir(parents=True, exist_ok=True)
-        atomic_write_json(self.root / "chunks-dropped.json", {"bytes": freed})
         return freed
 
+    def _dropped_mark(self) -> Path:
+        """Beside the chunk folder, not in the merge folder: every merge key shares the chunks."""
+        return self.chunks_dir.with_name(f"{self.chunks_dir.name}.dropped.json")
+
     def chunks_dropped(self) -> bool:
-        """Whether ``drop_chunks`` deleted this merge's chunks."""
-        return (self.root / "chunks-dropped.json").is_file()
+        """Whether ``drop_chunks`` deleted (or began deleting) the chunks."""
+        return self._dropped_mark().is_file()
+
+    def clear_chunks(self) -> None:
+        """Before fusing again: what is left of the chunks goes, then the dropped mark."""
+        shutil.rmtree(self.chunks_dir, ignore_errors=True)
+        self._dropped_mark().unlink(missing_ok=True)
 
 
 def write_las_tiles(path: Path, store: PointTiles, shift: np.ndarray, scale: float = 0.001) -> int:

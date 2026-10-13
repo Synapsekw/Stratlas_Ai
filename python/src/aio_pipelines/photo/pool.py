@@ -21,6 +21,8 @@ from concurrent.futures import FIRST_COMPLETED, Future, ProcessPoolExecutor, wai
 from concurrent.futures.process import BrokenProcessPool
 from typing import Any
 
+from .fuse import DENSE_RULE, OUTLIER_BLOCK
+
 WORKERS_ENV = "AIO_PHOTO_WORKERS"
 MAX_WORKERS = 8
 #: Below this many pixels at the matching size a photo takes well under a second: starting
@@ -35,8 +37,8 @@ FUSE_BYTES_PER_PIXEL = 250
 #: 180 this gives each 18 byte chunk point (a tile only loses points to the merge).
 MERGE_BYTES_PER_CHUNK_BYTE = 10
 #: On top, per worker: one block of the outlier filter's neighbour query (``fuse.OUTLIER_BLOCK``
-#: points of 17 float64 distances and 17 int64 indices).
-MERGE_FILTER_BYTES = 1_000_000 * 17 * 16
+#: points of ``k + 1`` float64 distances and int64 indices).
+MERGE_FILTER_BYTES = OUTLIER_BLOCK * (DENSE_RULE.k + 1) * 16
 _THREAD_ENV = ("OMP_NUM_THREADS", "OPENBLAS_NUM_THREADS", "MKL_NUM_THREADS")
 
 

@@ -3,15 +3,15 @@
 from __future__ import annotations
 
 import pickle
+import shutil
 
 import numpy as np
 import pytest
 from shapely.geometry import box
 
 from aio_pipelines.photo import pool as P
-from aio_pipelines.photo.fuse import DENSE_RULE, OUTLIER_BLOCK, PointTiles, outlier_mask
+from aio_pipelines.photo.fuse import DENSE_RULE, OUTLIER_BLOCK, ChunksDropped, PointTiles, outlier_mask
 from aio_pipelines.photo.merge import MAX_REMERGES, RegionClip, merge_cloud
-from aio_pipelines.runtime import JobError
 
 GB = 1024**3
 MB = 1024**2
@@ -54,7 +54,7 @@ def test_plan_merge_workers(monkeypatch, tiles, largest, budget, cores, want):
 def test_the_worker_sizing_holds_the_outlier_filters_working_memory(monkeypatch):
     monkeypatch.delenv(P.WORKERS_ENV, raising=False)
     # the KD-tree query's distances (float64) and indices (int64) for one block of points
-    assert OUTLIER_BLOCK * (DENSE_RULE.k + 1) * 16 <= P.MERGE_FILTER_BYTES
+    assert OUTLIER_BLOCK * (DENSE_RULE.k + 1) * 16 == P.MERGE_FILTER_BYTES
     # 80 % of 5 GB holds four 100 MB tiles at 10 bytes per chunk byte, three with the filter's share
     assert P.plan_merge_workers(16, 100 * MB, 5 * GB, 64) == 3
 
@@ -100,31 +100,47 @@ def test_a_region_clip_shifts_model_points_to_the_project(tmp_path):
     assert clip(xyz).tolist() == [True, False, False]
 
 
-def test_a_broken_pool_merges_the_rest_here(tmp_path, monkeypatch):
+def test_a_pool_that_breaks_midway_merges_the_rest_here_and_stays_here(tmp_path, monkeypatch):
+    one, two = _store(tmp_path / "one", tmp_path / "c1"), _store(tmp_path / "two", tmp_path / "c2")
+    monkeypatch.setenv(P.WORKERS_ENV, "1")
+    merge_cloud(one, 0.1, memory=GB)
     monkeypatch.setenv(P.WORKERS_ENV, "2")
+    monkeypatch.setattr(P, "cap_threads", lambda threads: None)
+    calls: list[int] = []
 
-    def broken(*a, **k):
+    def breaks_after_one(workers, init, args, task, items, check, done):
+        calls.append(len(items))
+        init(*args)
+        done(items[0], task(items[0]))  # one tile came back before a worker stopped
         raise P.PoolBroken("a worker stopped")
 
-    monkeypatch.setattr(P, "run_pool", broken)
+    monkeypatch.setattr(P, "run_pool", breaks_after_one)
     logs: list[str] = []
-    store = _store(tmp_path / "m", tmp_path / "c")
-    info = merge_cloud(store, 0.1, memory=GB, log=lambda m, level="info": logs.append(m))
-    assert info["points"] > 0 and info["complete"] is True
-    assert any("merging the rest here" in m for m in logs)
+    info = merge_cloud(two, 0.1, memory=GB, log=lambda m, level="info": logs.append(m))
+    assert info["complete"] is True and info["workers"] == 2
+    assert calls == [4]  # the cleaning pass did not start another pool
+    assert sum("merging the rest here" in m for m in logs) == 1
+    _same(one, two)
 
 
 def test_a_cloud_over_its_budget_is_merged_again_wider(tmp_path, monkeypatch):
     monkeypatch.setenv(P.WORKERS_ENV, "1")
     store = _store(tmp_path / "m", tmp_path / "c", n=200_000)
     logs: list[tuple[str, str]] = []
+    bar: list[float] = []
     info = merge_cloud(
-        store, 0.1, budget=4000, memory=GB, log=lambda m, level="info": logs.append((m, level))
+        store,
+        0.1,
+        budget=4000,
+        memory=GB,
+        log=lambda m, level="info": logs.append((m, level)),
+        progress=lambda f, m=None: bar.append(f),
     )
     assert info["remerged"] >= 1 and info["voxel"] > 0.1
     assert info["points"] <= 1.2 * 4000
     assert store.merging_voxel() == info["voxel"] and info["complete"] is True
-    assert sum("merging again" in m for m, _ in logs) == info["remerged"]
+    assert sum("merging again" in m for m, _ in logs) == info["remerged"] == store.info()["remerged"]
+    assert bar == sorted(bar) and bar[-1] == 1.0  # the bar never steps back across attempts
 
 
 def test_a_cloud_still_over_its_budget_after_the_last_remerge_is_kept_with_a_warning(tmp_path, monkeypatch):
@@ -135,6 +151,19 @@ def test_a_cloud_still_over_its_budget_after_the_last_remerge_is_kept_with_a_war
     info = merge_cloud(store, 0.1, budget=100, memory=GB, log=lambda m, level="info": logs.append((m, level)))
     assert info["remerged"] == MAX_REMERGES == 3 and info["complete"] is True and info["points"] > 120
     assert logs[-1][1] == "warn" and "budget" in logs[-1][0]
+
+
+def test_a_resumed_safety_net_counts_the_remerges_already_done(tmp_path, monkeypatch):
+    monkeypatch.setenv(P.WORKERS_ENV, "1")
+    store = _store(tmp_path / "m", tmp_path / "c")
+    store.begin_merge(0.12, remerged=MAX_REMERGES)  # stopped during the last re-merge
+    logs: list[tuple[str, str]] = []
+    info = merge_cloud(store, 0.1, budget=100, memory=GB, log=lambda m, level="info": logs.append((m, level)))
+    assert info["voxel"] == 0.12 and info["remerged"] == MAX_REMERGES and store.info()["remerged"] == 3
+    assert not any("merging again" in m for m, _ in logs) and logs[-1][1] == "warn"
+    # a resume after the merge finished does nothing more
+    again = merge_cloud(store, 0.1, budget=100, memory=GB)
+    assert (again["points"], again["remerged"], again["workers"]) == (info["points"], 3, 0)
 
 
 def test_a_merge_stopped_midway_carries_on_at_its_spacing(tmp_path, monkeypatch):
@@ -148,13 +177,47 @@ def test_a_finished_merge_whose_chunks_are_gone_is_kept_not_emptied(tmp_path, mo
     monkeypatch.setenv(P.WORKERS_ENV, "1")
     store = _store(tmp_path / "m", tmp_path / "c")
     first = merge_cloud(store, 0.1, memory=GB)
-    assert store.drop_chunks() > 0
+    assert store.drop_chunks() > 0 and store.chunks_dropped()
     again = merge_cloud(store, 0.1, memory=GB)
     assert again["points"] == first["points"] > 0 and again["complete"] is True
     assert store.merge(0.1)["points"] == first["points"] and store.info()["complete"] is True
-    with pytest.raises(JobError, match="start the processing again"):
+    with pytest.raises(ChunksDropped, match="already removed after an earlier merge"):
         store.merge(0.2)
     assert store.info()["points"] == first["points"] and store.merging_voxel() == 0.1
+
+
+def test_a_drop_stopped_partway_neither_merges_again_nor_shrinks_the_cloud(tmp_path, monkeypatch):
+    monkeypatch.setenv(P.WORKERS_ENV, "1")
+    store = _store(tmp_path / "m", tmp_path / "c")
+    first = merge_cloud(store, 0.1, memory=GB)
+    index = (store.root / "fused" / "index.json").read_bytes()
+    real_rmtree = shutil.rmtree
+
+    def stopped(path, *a, **k):  # the delete is stopped after one of the four tiles
+        real_rmtree(next(p for p in sorted(path.iterdir()) if p.is_dir()))
+        raise KeyboardInterrupt
+
+    monkeypatch.setattr("aio_pipelines.photo.fuse.shutil.rmtree", stopped)
+    with pytest.raises(KeyboardInterrupt):
+        store.drop_chunks()
+    monkeypatch.setattr("aio_pipelines.photo.fuse.shutil.rmtree", real_rmtree)
+    assert len(store.chunk_tiles()) == 3 and store.chunks_dropped()
+    assert merge_cloud(store, 0.1, memory=GB)["points"] == first["points"]
+    assert store.merge(0.1)["counts"] == first["counts"]
+    assert (store.root / "fused" / "index.json").read_bytes() == index
+
+
+def test_a_new_merge_after_the_chunks_went_asks_for_fusing_again(tmp_path, monkeypatch):
+    monkeypatch.setenv(P.WORKERS_ENV, "1")
+    store = _store(tmp_path / "m1", tmp_path / "c")
+    merge_cloud(store, 0.1, memory=GB)
+    store.drop_chunks()
+    other = PointTiles(tmp_path / "m2", 8.0, chunks=tmp_path / "c")  # another merge key, same chunks
+    with pytest.raises(ChunksDropped, match="already removed after an earlier merge"):
+        merge_cloud(other, 0.2, memory=GB)
+    assert not (other.root / "fused" / "index.json").exists()
+    other.clear_chunks()  # fusing again starts from an empty chunk folder
+    assert not other.chunks_dropped() and other.chunk_tiles() == []
 
 
 def test_merge_progress_counts_the_tiles(tmp_path, monkeypatch):
