@@ -1420,6 +1420,11 @@ export const ipc = {
         projectId: z.string().min(1),
         /** Files or folders; a folder is read recursively. */
         paths: z.array(z.string().min(1)).min(1),
+        /**
+         * Files to leave out, absolute, as `builder:import` takes them (the frames of drone
+         * panoramas that go to the panorama import, so they do not ask for camera heights).
+         */
+        exclude: z.array(z.string().min(1).max(2048)).max(20_000).optional(),
       })
       .strict(),
     response: z.discriminatedUnion('ok', [

@@ -449,7 +449,7 @@ describe('builder:import exclude', () => {
     expect(events.length > 0 && events.every((e) => e.total === 1)).toBe(true);
   });
 
-  it('answers an empty folder when every file is excluded', async () => {
+  it('answers ok with nothing imported when every file is excluded', async () => {
     const dir = join(base, 'projects', 'exclude-all');
     await writeProject(dir, sampleManifest());
     const registry = new ProjectRegistry();
@@ -466,7 +466,35 @@ describe('builder:import exclude', () => {
         known: (ext) => ext === '.mp4',
       },
     );
-    expect(r).toEqual({ ok: false, error: 'The folder holds no files to import.' });
+    expect(r).toMatchObject({ ok: true, items: [], files: [], createdCaptures: [] });
+    expect(r.ok ? r.manifest.id : null).toBe(sampleManifest().id);
+  });
+
+  it('leaves the excluded frames out of the camera heights', async () => {
+    const dir = join(base, 'projects', 'exclude-heights');
+    await writeProject(dir, sampleManifest());
+    const registry = new ProjectRegistry();
+    const projectId = registry.register(dir);
+    const folder = join(base, 'excl-heights');
+    await mkdir(folder);
+    const frames = ['SYN_0001.JPG', 'SYN_0002.JPG'].map((f) => join(folder, f));
+    for (const f of frames)
+      await writeFile(
+        f,
+        withExif({
+          make: 'DJI',
+          dji: { GpsLatitude: '28.9', GpsLongitude: '51.0', RelativeAltitude: '70' },
+        }),
+      );
+    const known = (ext: string): boolean => ext === '.jpg';
+    const all = await builderAltitudePlan({ projectId, paths: [folder] }, registry, { known });
+    expect(all.ok ? all.plan.files : -1).toBe(2);
+    const rest = await builderAltitudePlan(
+      { projectId, paths: [folder], exclude: [frames[0] ?? ''] },
+      registry,
+      { known },
+    );
+    expect(rest.ok ? rest.plan.files : -1).toBe(1);
   });
 });
 
@@ -498,6 +526,6 @@ describe("builder:import leaves the project's panorama frames out", () => {
         known: (ext) => ext === '.mp4',
       },
     );
-    expect(r).toEqual({ ok: false, error: 'The folder holds no files to import.' });
+    expect(r).toMatchObject({ ok: true, items: [], files: [] });
   });
 });

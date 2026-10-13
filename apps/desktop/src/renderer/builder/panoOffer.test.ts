@@ -58,8 +58,17 @@ const scan: PanoScan = {
   day: '2026-09-10',
 };
 const none: PanoScan = { ...scan, spheres: [] };
+/** What main answers for a drop without a JPEG (a model, a cloud, a video). */
+const empty: PanoScan = {
+  scanId: 'scan-2',
+  spheres: [],
+  ready: [],
+  skipped: [],
+  files: 0,
+  day: null,
+};
 
-function main(found: PanoScan, plan?: unknown) {
+function main(found: PanoScan, plan?: unknown, nothingLeft = false) {
   call.mockImplementation((channel: string) => {
     if (channel === 'panos:scan')
       return Promise.resolve({ ok: true, value: { ok: true, scan: found } });
@@ -74,6 +83,8 @@ function main(found: PanoScan, plan?: unknown) {
           ok: true,
           manifest: (workspace.getState().project as { manifest: unknown }).manifest,
           items: [],
+          // main answers no files when every file was left out
+          ...(nothingLeft ? { files: [] } : {}),
         },
       });
     return Promise.resolve({ ok: false, error: channel });
@@ -147,12 +158,41 @@ describe('Add data and drone spheres', () => {
     expect(imports()[0]).toEqual(expect.objectContaining({ paths: ['D:/card'], exclude: frames }));
   });
 
-  it('imports everything as photos on no, without asking again', async () => {
+  it('skips the sphere frames on no: imports only the other files, without asking again', async () => {
     main(scan);
     await builder.getState().importFiles(['D:/card']);
     await builder.getState().declinePanoOffer();
     expect(openPanoScan).not.toHaveBeenCalled();
-    expect(imports()).toEqual([expect.objectContaining({ paths: ['D:/card'] })]);
+    expect(imports()).toEqual([expect.objectContaining({ paths: ['D:/card'], exclude: frames })]);
+    expect(call.mock.calls.filter(([c]) => c === 'panos:scan')).toHaveLength(1);
+  });
+
+  it('asks no camera heights for the sphere frames it leaves out', async () => {
+    main(scan);
+    await builder.getState().importFiles(['D:/card']);
+    await builder.getState().declinePanoOffer();
+    const plans = call.mock.calls.filter(([c]) => c === 'builder:altitudePlan');
+    expect(plans).toEqual([
+      ['builder:altitudePlan', expect.objectContaining({ paths: ['D:/card'], exclude: frames })],
+    ]);
+  });
+
+  it('shows no import card when every file was a sphere frame left out', async () => {
+    main(scan, undefined, true);
+    await builder.getState().importFiles(['D:/card'], undefined, { exclude: frames });
+    expect(imports()).toHaveLength(1);
+    expect(builder.getState().importResult).toBeNull();
+    expect(builder.getState().importing).toBeNull();
+  });
+
+  it('imports a drop without JPEGs straight away: no panorama card', async () => {
+    main(empty);
+    await builder.getState().importFiles(['D:/site/model.glb', 'D:/site/cloud.las', 'D:/walk.mp4']);
+    expect(builder.getState().panoOffer).toBeNull();
+    expect(builder.getState().panoFailed).toBeNull();
+    expect(imports()).toEqual([
+      expect.objectContaining({ paths: ['D:/site/model.glb', 'D:/site/cloud.las', 'D:/walk.mp4'] }),
+    ]);
     expect(imports()[0]?.exclude).toBeUndefined();
   });
 
@@ -223,7 +263,7 @@ describe('Add data and drone spheres', () => {
     expect(builder.getState().importNotice).toBe(QUEUED_NOTE);
     // answering the offer runs the first import, then the waiting drop is checked, not imported
     await builder.getState().declinePanoOffer();
-    expect(imports()).toEqual([expect.objectContaining({ paths: ['D:/card'] })]);
+    expect(imports()).toEqual([expect.objectContaining({ paths: ['D:/card'], exclude: frames })]);
     expect(builder.getState().panoOffer?.paths).toEqual(['D:/other']);
     expect(builder.getState().queued).toBe(0);
     builder.getState().dismissPanoOffer();

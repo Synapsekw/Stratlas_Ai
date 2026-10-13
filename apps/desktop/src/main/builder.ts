@@ -196,7 +196,8 @@ export async function builderAltitudePlan(
   try {
     const ex = await expandFor(req.paths, opts);
     if (ex.tooMany !== null) return { ok: false, error: tooManyError(ex.tooMany) };
-    const plan = await (await lib()).planRawAltitudes(root, ex.files, { video: videoTools });
+    const files = outsidePanoFolder(root, withoutExcluded(ex.files, req.exclude));
+    const plan = await (await lib()).planRawAltitudes(root, files, { video: videoTools });
     return { ok: true, plan };
   } catch (e) {
     return { ok: false, error: errorText(e) };
@@ -325,8 +326,18 @@ export async function builderImport(
   if (ex.tooMany !== null) return { ok: false, error: tooManyError(ex.tooMany) };
   // the sphere frames the panorama import takes instead
   const files = outsidePanoFolder(root, withoutExcluded(ex.files, req.exclude));
-  if (files.length === 0 && ex.leftOut.length === 0)
+  if (files.length === 0 && ex.leftOut.length === 0) {
+    // everything was left out (the sphere frames went to the panorama import): nothing to do
+    if (ex.files.length > 0)
+      return {
+        ok: true,
+        manifest: await (await lib()).readManifestFile(root),
+        items: [],
+        createdCaptures: [],
+        files: [],
+      };
     return { ok: false, error: 'The folder holds no files to import.' };
+  }
   const run = importRuns.begin(req.projectId);
   try {
     const { importRawFiles, NO_PIPELINE } = await lib();

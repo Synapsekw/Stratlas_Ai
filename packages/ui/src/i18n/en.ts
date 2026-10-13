@@ -2082,6 +2082,7 @@ export const en = {
   'pano.status.done': 'Stitched',
   'pano.status.failedBare': 'Stitch failed',
   'pano.status.failedDefault': 'The stitch failed.',
+  'pano.notStitched': 'Not stitched yet',
   'pano.action.open': 'Open {name}',
   'pano.action.flyTo': 'Fly to {name}',
   'pano.action.stitch': 'Stitch {name}',
@@ -2090,7 +2091,7 @@ export const en = {
   'pano.offer.text_other':
     '{frames} of these frames are {count} drone panoramas. Import them as panoramas?',
   'pano.offer.yes': 'Import as panoramas',
-  'pano.offer.no': 'Import all as photos',
+  'pano.offer.no': 'Skip these frames',
   'pano.offer.cancel': 'Cancel',
   'pano.offer.checking': 'Checking for drone panoramas…',
   'pano.offer.failed': 'Could not check these files for drone panoramas.',

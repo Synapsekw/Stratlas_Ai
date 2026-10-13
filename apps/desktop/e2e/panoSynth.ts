@@ -32,6 +32,8 @@ export function makeSynthCard(
   python: string,
   outDir: string,
   at: { lat: number; lon: number },
+  /** How many spheres and loose mapping photos (the script's defaults: 3 and 4). */
+  count: { spheres?: number; strays?: number } = {},
 ): SynthCard {
   const r = spawnSync(
     python,
@@ -42,6 +44,8 @@ export function makeSynthCard(
       String(at.lat),
       '--lon',
       String(at.lon),
+      ...(count.spheres !== undefined ? ['--spheres', String(count.spheres)] : []),
+      ...(count.strays !== undefined ? ['--strays', String(count.strays)] : []),
     ],
     {
       encoding: 'utf8',

@@ -88,7 +88,7 @@ export interface BuilderActions {
   cancelHeights: () => void;
   /** Import the offered spheres as panoramas (the preview opens) and the rest as photos. */
   acceptPanoOffer: () => Promise<void>;
-  /** Import everything as photos. */
+  /** Skip the sphere frames: import only the other files, the frames left out. */
   declinePanoOffer: () => Promise<void>;
   /** Cancel the whole import the offer or the failed check stopped at. */
   dismissPanoOffer: () => void;
@@ -324,7 +324,12 @@ async function runImport(
   if (!altitude && !opts?.drawings && !opts?.as360) {
     preparing = true;
     const plan = await bridge
-      .call('builder:altitudePlan', { projectId: project.id, paths: [...paths] })
+      .call('builder:altitudePlan', {
+        projectId: project.id,
+        paths: [...paths],
+        // the sphere frames go to the panorama import: they ask for no camera heights
+        ...(opts?.exclude?.length ? { exclude: [...opts.exclude] } : {}),
+      })
       .finally(() => {
         preparing = false;
       });
@@ -416,6 +421,11 @@ async function importNow(
   }
   if (workspace.getState().project?.id === project.id)
     workspace.getState().replaceManifest(r.value.manifest);
+  // nothing was left to import (every file was a sphere frame the panorama import took): no card
+  if (r.value.items.length === 0 && r.value.files?.length === 0) {
+    builder.setState({ importing: null, importResult: null });
+    return;
+  }
   // the result of this import: its rows are only ever changed in it, never in a later one
   let result: NonNullable<BuilderState['importResult']> = {
     items: r.value.items,
@@ -672,7 +682,8 @@ export const builder = createStore<Builder>()((set, get) => ({
     const o = get().panoOffer;
     if (!o) return;
     set({ panoOffer: null });
-    await get().importFiles(o.paths, o.altitude, { exclude: [] });
+    // the sphere frames never become map photos: only the other files come in
+    await get().importFiles(o.paths, o.altitude, { exclude: o.frames });
   },
   dismissPanoOffer: () => {
     set({ panoOffer: null, panoFailed: null });
