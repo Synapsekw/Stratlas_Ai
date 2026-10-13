@@ -7,7 +7,19 @@ const replaceManifest = vi.fn();
 let progress: ((e: unknown) => void) | undefined;
 
 vi.mock('../shell', () => ({
-  bridge: { call: (...a: unknown[]) => call(...a) as unknown },
+  bridge: {
+    // an import scans for drone spheres first; these tests have none, and do not count the scan
+    call: (channel: string, ...a: unknown[]) =>
+      channel === 'panos:scan'
+        ? Promise.resolve({
+            ok: true,
+            value: {
+              ok: true,
+              scan: { scanId: 's', spheres: [], ready: [], skipped: [], files: 0 },
+            },
+          })
+        : (call(channel, ...a) as unknown),
+  },
   shell: {
     getState: () => ({ loadLibrary: () => Promise.resolve(), setPalette: () => undefined }),
   },

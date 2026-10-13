@@ -233,7 +233,7 @@ function HeightsCard({ p }: { p: HeightsPrompt }) {
   );
 }
 
-function PanoOfferCard({ o }: { o: PanoOffer }) {
+function PanoCardShell({ children }: { children: React.ReactNode }) {
   const t = useT();
   return (
     <section className="b-import" aria-label={t('pano.add')} data-testid="pano-offer">
@@ -241,8 +241,37 @@ function PanoOfferCard({ o }: { o: PanoOffer }) {
         <Icon name="pano" size={14} />
         {t('pano.add')}
       </header>
+      {children}
+    </section>
+  );
+}
+
+function PanoNote() {
+  const note = useBuilder((s) => s.panoNote);
+  return note ? (
+    <p className="faint small" role="status" data-testid="pano-offer-note">
+      {note}
+    </p>
+  ) : null;
+}
+
+function PanoOfferCard({ o }: { o: PanoOffer }) {
+  const t = useT();
+  return (
+    <PanoCardShell>
       <p className="small">{t('pano.offer.text', { frames: o.frames.length, count: o.spheres })}</p>
+      <PanoNote />
       <div className="b-heights-actions">
+        <button
+          type="button"
+          className="btn ghost sm"
+          data-testid="pano-offer-cancel"
+          onClick={() => {
+            builder.getState().dismissPanoOffer();
+          }}
+        >
+          {t('pano.offer.cancel')}
+        </button>
         <button
           type="button"
           className="btn ghost sm"
@@ -260,7 +289,51 @@ function PanoOfferCard({ o }: { o: PanoOffer }) {
           {t('pano.offer.yes')}
         </button>
       </div>
-    </section>
+    </PanoCardShell>
+  );
+}
+
+function PanoFailedCard() {
+  const t = useT();
+  return (
+    <PanoCardShell>
+      <p className="small" data-testid="pano-offer-failed">
+        {t('pano.offer.failed')}
+      </p>
+      <PanoNote />
+      <div className="b-heights-actions">
+        <button
+          type="button"
+          className="btn ghost sm"
+          data-testid="pano-offer-cancel"
+          onClick={() => {
+            builder.getState().dismissPanoOffer();
+          }}
+        >
+          {t('pano.offer.cancel')}
+        </button>
+        <button
+          type="button"
+          className="btn primary sm"
+          data-testid="pano-offer-anyway"
+          onClick={() => void builder.getState().importAnyway()}
+        >
+          {t('pano.offer.anyway')}
+        </button>
+      </div>
+    </PanoCardShell>
+  );
+}
+
+function PanoCheckingCard() {
+  const t = useT();
+  return (
+    <PanoCardShell>
+      <p className="small" role="status" data-testid="pano-offer-checking">
+        {t('pano.offer.checking')}
+      </p>
+      <PanoNote />
+    </PanoCardShell>
   );
 }
 
@@ -273,6 +346,10 @@ function ImportStatus() {
   const prompt = useBuilder((s) => s.heightsPrompt);
   const offer = useBuilder((s) => s.panoOffer);
   const pages = useDrawings((s) => s.pagePrompt);
+  const failed = useBuilder((s) => s.panoFailed);
+  const scanning = useBuilder((s) => s.panoScanning);
+  if (scanning) return <PanoCheckingCard />;
+  if (failed && !importing) return <PanoFailedCard />;
   if (offer && !importing) return <PanoOfferCard o={offer} />;
   if (prompt && !importing) return <HeightsCard p={prompt} />;
   // asked in the middle of an import, which stays busy until its drawings are in

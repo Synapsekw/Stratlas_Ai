@@ -83,7 +83,15 @@ beforeEach(() => {
   call.mockReset();
   openPanoScan.mockReset();
   panoImport.setState({ open: false });
-  builder.setState({ panoOffer: null, importing: null, importResult: null, heightsPrompt: null });
+  builder.setState({
+    panoFailed: null,
+    panoScanning: false,
+    panoNote: null,
+    panoOffer: null,
+    importing: null,
+    importResult: null,
+    heightsPrompt: null,
+  });
   workspace.getState().openProject({
     id: 'p1',
     root: 'D:/projects/p1',
@@ -176,5 +184,68 @@ describe('Add data and drone spheres', () => {
     expect(call.mock.calls.some(([c]) => c === 'panos:scan')).toBe(false);
     expect(imports()).toHaveLength(1);
     expect(imports()[0]).toEqual(expect.objectContaining({ exclude: frames }));
+  });
+
+  it.each([
+    ['not ok', () => Promise.resolve({ ok: false, error: 'x' })],
+    ['refused', () => Promise.resolve({ ok: true, value: { ok: false, error: 'x' } })],
+    ['thrown', () => Promise.reject(new Error('gone'))],
+  ])('fails closed when the check is %s: asks before importing as photos', async (_n, answer) => {
+    call.mockImplementation((channel: string) =>
+      channel === 'panos:scan' ? answer() : Promise.resolve({ ok: false, error: channel }),
+    );
+    await builder.getState().importFiles(['D:/card']);
+    expect(builder.getState().panoFailed).toMatchObject({ paths: ['D:/card'] });
+    expect(builder.getState().panoScanning).toBe(false);
+    expect(imports()).toEqual([]);
+    main(none);
+    await builder.getState().importAnyway();
+    expect(imports()).toHaveLength(1);
+    expect(builder.getState().panoFailed).toBeNull();
+  });
+
+  it('cancel after a failed check imports nothing', async () => {
+    call.mockImplementation(() => Promise.reject(new Error('gone')));
+    await builder.getState().importFiles(['D:/card']);
+    builder.getState().dismissPanoOffer();
+    expect(builder.getState().panoFailed).toBeNull();
+    expect(imports()).toEqual([]);
+  });
+
+  it('refuses a drop while the offer shows, keeping the first files', async () => {
+    main(scan);
+    await builder.getState().importFiles(['D:/card']);
+    call.mockClear();
+    await builder.getState().importFiles(['D:/other']);
+    expect(call).not.toHaveBeenCalled();
+    expect(builder.getState().panoOffer?.paths).toEqual(['D:/card']);
+    expect(builder.getState().panoNote).toBe('Finish the current import first.');
+  });
+
+  it('refuses a drop while the scan runs, and shows the checking state', async () => {
+    let release: (v: unknown) => void = () => undefined;
+    call.mockImplementation(
+      () =>
+        new Promise((r) => {
+          release = r;
+        }),
+    );
+    const first = builder.getState().importFiles(['D:/card']);
+    expect(builder.getState().panoScanning).toBe(true);
+    await builder.getState().importFiles(['D:/other']);
+    expect(call).toHaveBeenCalledTimes(1);
+    expect(builder.getState().panoNote).toBe('Finish the current import first.');
+    release({ ok: true, value: { ok: true, scan } });
+    await first;
+    expect(builder.getState().panoScanning).toBe(false);
+    expect(builder.getState().panoOffer?.paths).toEqual(['D:/card']);
+  });
+
+  it('cancel on the offer imports nothing', async () => {
+    main(scan);
+    await builder.getState().importFiles(['D:/card']);
+    builder.getState().dismissPanoOffer();
+    expect(builder.getState().panoOffer).toBeNull();
+    expect(imports()).toEqual([]);
   });
 });

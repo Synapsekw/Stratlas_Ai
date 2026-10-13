@@ -55,6 +55,12 @@ export interface BuilderState {
   heightsPrompt: HeightsPrompt | null;
   /** Drone sphere frames found in the files: import them as panoramas? Null when not asked. */
   panoOffer: PanoOffer | null;
+  /** The drone panorama check failed: nothing imports until the user picks (fail closed). */
+  panoFailed: { paths: readonly string[]; altitude?: AltitudeChoice } | null;
+  /** The files are being scanned for drone spheres. */
+  panoScanning: boolean;
+  /** Shown in the card when a drop arrived while it was open or the scan ran. */
+  panoNote: string | null;
   align: AlignTool | null;
 }
 
@@ -81,7 +87,10 @@ export interface BuilderActions {
   acceptPanoOffer: () => Promise<void>;
   /** Import everything as photos. */
   declinePanoOffer: () => Promise<void>;
+  /** Cancel the whole import the offer or the failed check stopped at. */
   dismissPanoOffer: () => void;
+  /** After a failed check: import everything as photos. */
+  importAnyway: () => Promise<void>;
   pickAndImport: () => Promise<void>;
   /** Pick a flight folder and import it (Add survey date, Import a flight folder...). */
   pickAndImportFolder: () => Promise<void>;
@@ -240,6 +249,9 @@ export const builder = createStore<Builder>()((set, get) => ({
   importResult: null,
   heightsPrompt: null,
   panoOffer: null,
+  panoFailed: null,
+  panoScanning: false,
+  panoNote: null,
   align: null,
 
   openWizard: () => {
@@ -265,16 +277,29 @@ export const builder = createStore<Builder>()((set, get) => ({
     if (!paths.length || get().importing) return;
     // drone sphere frames go to the panorama import, not into a photo layer (spec section 2)
     if (!opts?.drawings && !opts?.as360 && opts?.exclude === undefined) {
-      if (preparing) return;
+      // one question at a time: a drop during the scan or while a card waits changes nothing
+      if (preparing || get().panoOffer || get().panoFailed) {
+        set({ panoNote: t('pano.offer.busy') });
+        return;
+      }
       preparing = true;
-      const found = await bridge
-        .call('panos:scan', { projectId: project.id, paths: [...paths] })
-        .finally(() => {
-          preparing = false;
-        });
+      set({ panoScanning: true, panoNote: null, importResult: null });
+      let found: Awaited<ReturnType<typeof bridge.call<'panos:scan'>>> | null;
+      try {
+        found = await bridge.call('panos:scan', { projectId: project.id, paths: [...paths] });
+      } catch {
+        found = null;
+      } finally {
+        preparing = false;
+        set({ panoScanning: false });
+      }
       if (get().importing) return;
-      const offer =
-        found.ok && found.value.ok ? panoOfferFrom(paths, found.value.scan, altitude) : null;
+      if (!found || !found.ok || !found.value.ok) {
+        // fail closed: sphere frames must not silently become map photos
+        set({ panoFailed: { paths, ...(altitude ? { altitude } : {}) } });
+        return;
+      }
+      const offer = panoOfferFrom(paths, found.value.scan, altitude);
       if (offer) {
         set({ panoOffer: offer, importResult: null });
         return;
@@ -464,7 +489,7 @@ export const builder = createStore<Builder>()((set, get) => ({
   acceptPanoOffer: async () => {
     const o = get().panoOffer;
     if (!o) return;
-    set({ panoOffer: null });
+    set({ panoOffer: null, panoNote: null });
     openPanoScan(o.scan);
     // the preview is modal; the rest goes in as photos once it closes, imported or cancelled
     await new Promise<void>((done) => {
@@ -479,11 +504,17 @@ export const builder = createStore<Builder>()((set, get) => ({
   declinePanoOffer: async () => {
     const o = get().panoOffer;
     if (!o) return;
-    set({ panoOffer: null });
+    set({ panoOffer: null, panoNote: null });
     await get().importFiles(o.paths, o.altitude, { exclude: [] });
   },
   dismissPanoOffer: () => {
-    set({ panoOffer: null });
+    set({ panoOffer: null, panoFailed: null, panoNote: null });
+  },
+  importAnyway: async () => {
+    const f = get().panoFailed;
+    if (!f) return;
+    set({ panoFailed: null, panoNote: null });
+    await get().importFiles(f.paths, f.altitude, { exclude: [] });
   },
 
   startAlign: (align) => {
