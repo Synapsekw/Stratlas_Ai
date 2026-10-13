@@ -134,4 +134,36 @@ describe('SpotStrip', () => {
     });
     expect(onPick).not.toHaveBeenCalled();
   });
+  it('names the current slot for screen readers and includes the skipped count', () => {
+    render({ at: { capture: 'd3', i: 0 } });
+    const strip = host.querySelector('[data-testid="spot-strip"]');
+    const id = strip?.getAttribute('aria-activedescendant');
+    expect(id).toBeTruthy();
+    expect(slot('d3')?.id).toBe(id);
+    expect(slot('d2')?.getAttribute('aria-label')).toContain('Nothing within 15 m');
+    expect(slot('d2')?.getAttribute('aria-label')).toContain('2 items without a position');
+  });
+  it('scrolls the current slot into view when the date changes', () => {
+    const scroll = vi.fn();
+    (Element.prototype as { scrollIntoView?: unknown }).scrollIntoView = scroll;
+    try {
+      render({ at: { capture: 'd1', i: 0 } });
+      scroll.mockClear();
+      act(() => {
+        root?.render(
+          <SpotStrip
+            history={history}
+            at={{ capture: 'd3', i: 0 }}
+            tags={tags}
+            origin="photo"
+            thumb={() => <i />}
+            onPick={vi.fn()}
+          />,
+        );
+      });
+      expect(scroll).toHaveBeenCalledWith({ inline: 'nearest', block: 'nearest' });
+    } finally {
+      delete (Element.prototype as { scrollIntoView?: unknown }).scrollIntoView;
+    }
+  });
 });

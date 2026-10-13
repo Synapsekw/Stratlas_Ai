@@ -1,6 +1,6 @@
 import { matchShortcut, t, useT } from '@aio/ui';
 import type { DateTag } from '@aio/workspace';
-import type { KeyboardEvent, ReactNode } from 'react';
+import { useEffect, useId, useRef, type KeyboardEvent, type ReactNode } from 'react';
 import { slotRadiusM } from './spotRules';
 import type { Spot, SpotHistory, SpotItem, SpotMatch } from './spotTypes';
 import { cycleMatch, stepDate, type SpotAt } from './spotViewerStore';
@@ -45,6 +45,16 @@ export function SpotStrip(p: {
   compact?: boolean;
 }) {
   const tr = useT();
+  const uid = useId();
+  const strip = useRef<HTMLDivElement>(null);
+  const slotId = (capture: string) => `${uid}-slot-${capture}`;
+  const current = p.at?.capture;
+  useEffect(() => {
+    if (!current) return;
+    const el = strip.current?.querySelector<HTMLElement>(`[data-capture="${CSS.escape(current)}"]`);
+    if (el && typeof el.scrollIntoView === 'function')
+      el.scrollIntoView({ inline: 'nearest', block: 'nearest' });
+  }, [current]);
   const empty = emptyText(p.history.spot, p.origin);
   const onKey = (e: KeyboardEvent<HTMLDivElement>) => {
     if (e.defaultPrevented || e.ctrlKey || e.metaKey || e.altKey) return;
@@ -61,6 +71,8 @@ export function SpotStrip(p: {
       aria-orientation="horizontal"
       aria-label={tr('spot.strip')}
       tabIndex={0}
+      ref={strip}
+      aria-activedescendant={current ? slotId(current) : undefined}
       data-testid="spot-strip"
       onKeyDown={onKey}
     >
@@ -74,13 +86,16 @@ export function SpotStrip(p: {
         return (
           <div
             key={d.capture}
+            id={slotId(d.capture)}
             role="option"
             aria-selected={on}
             aria-disabled={!best}
             aria-label={
               shown
                 ? tr('spot.slot.label', { date, kind: tr(`spot.kind.${shown.kind}`) })
-                : tr('spot.slot.emptyLabel', { date, reason: empty })
+                : [tr('spot.slot.emptyLabel', { date, reason: empty }), skipped]
+                    .filter(Boolean)
+                    .join('. ')
             }
             title={[date, skipped].filter(Boolean).join('\n')}
             className={`spot-slot${on ? ' on' : ''}${best ? '' : ' empty'}`}
