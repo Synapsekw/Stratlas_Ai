@@ -1,8 +1,7 @@
 # Drone panoramas: stitching DJI sphere frames into 360 panoramas
 
-Date: 13 Oct 2026. Branch: `feat/drone-panoramas`. Status: spec written from the founder's
-brainstorming answers of 13 Oct, approved section by section in chat; waits for the founder's review
-of this file before the implementation plan.
+Date: 13 Oct 2026. Branch: `feat/drone-panoramas`. Status: approved by the founder on 13 Oct
+2026 (open questions answered below); next is the implementation plan.
 
 ## What the founder asked for (13 Oct 2026)
 
@@ -325,10 +324,10 @@ only by local `@realdata` tests.
 - High (16K) needs a GPU that supports 16384 px textures; the option is hidden otherwise.
 - Stitching runs on the CPU only.
 
-## Open questions
+## Answered questions (founder, 13 Oct 2026)
 
-1. **"3D beam"** in the founder's Augment note is read as **3D BIM model** (IFC, GLB, meshes).
-   Confirm.
-2. **P0 needs a CPU window** from the founder: stitching loads the CPU for several minutes per
-   sphere.
-3. **16K support**: check which GPU tiers accept 16384 px textures before offering High.
+1. **"3D beam"** means the 3D models the user uploads, in GLB or any other supported model format.
+   The Augment panel lists every uploaded 3D model layer.
+2. **P0 can run at any time**: no CPU window is needed for the probe's stitching runs.
+3. **16K support**: High is offered only on GPUs that accept 16384 px textures, and is hidden
+   elsewhere.
