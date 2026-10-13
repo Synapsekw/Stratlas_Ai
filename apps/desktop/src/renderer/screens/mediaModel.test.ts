@@ -1,6 +1,6 @@
 import type { Layer } from '@aio/schema';
 import { describe, expect, it } from 'vitest';
-import { flightCards, flightOf } from './mediaModel';
+import { flightCards, flightOf, panoCard } from './mediaModel';
 
 const T0 = Date.UTC(2023, 10, 22, 5, 0, 0);
 
@@ -51,5 +51,23 @@ describe('media flight cards', () => {
     expect(flightOf(cards, 'b1')?.clips[0]?.id).toBe('b1');
     expect(flightOf(cards, null)?.clips[0]?.id).toBe('a1');
     expect(flightOf([], 'b1')).toBeNull();
+  });
+});
+
+describe('panoCard', () => {
+  const p = { id: 'p01', src: { path: 'panoramas/l/p01/pano.jpg' }, pos: [0, 0, 0], headingDeg: 3 };
+  it('shows the image of a ready-made or stitched panorama', () => {
+    expect(panoCard(p as never)).toEqual({ asset: p.src, stitched: true });
+    expect(panoCard({ ...p, stitch: { status: 'done' } } as never)).toEqual({
+      asset: p.src,
+      stitched: true,
+    });
+  });
+  it('shows no image for a sphere not stitched yet: its pano.jpg is not there', () => {
+    for (const status of ['queued', 'running', 'failed'])
+      expect(panoCard({ ...p, stitch: { status } } as never)).toEqual({
+        asset: undefined,
+        stitched: false,
+      });
   });
 });

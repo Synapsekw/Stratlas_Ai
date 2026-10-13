@@ -28,7 +28,7 @@ import {
   type PhotoFindings,
   type PhotoOrder,
 } from './mediaFindings';
-import { flightCards, flightOf, type FlightCard } from './mediaModel';
+import { flightCards, flightOf, panoCard, type FlightCard } from './mediaModel';
 import {
   noPhotoMatches,
   photosInView,
@@ -517,10 +517,16 @@ export function MediaScreen() {
                     shell.getState().go('scene');
                   }}
                 >
-                  <MediaThumb projectId={project.id} asset={p.src} icon="pano" />
+                  <MediaThumb projectId={project.id} asset={panoCard(p).asset} icon="pano" />
                   <div className="m-meta">
                     <b>{p.id}</b>
-                    <span className="mono">HDG {String(p.headingDeg)}°</span>
+                    {panoCard(p).stitched ? (
+                      <span className="mono">HDG {String(p.headingDeg)}°</span>
+                    ) : (
+                      <span className="faint" data-testid="media-pano-unstitched">
+                        {t('pano.notStitched')}
+                      </span>
+                    )}
                   </div>
                 </button>
               ))}

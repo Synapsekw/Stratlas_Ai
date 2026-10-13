@@ -1,3 +1,4 @@
+import { panoOpenable } from '@aio/engine';
 import type { Layer, PhotoCorrection, WalkLayer } from '@aio/schema';
 import {
   calibratedVideoPose,
@@ -41,7 +42,8 @@ export function spotEntries(input: EntryInputs): SpotEntry[] {
         });
       }
     } else if (l.kind === 'panoramas') {
-      for (const p of l.items)
+      // a sphere not stitched yet has no image to show in the history
+      for (const p of l.items.filter(panoOpenable))
         out.push({
           kind: 'pano',
           layer: l.id,

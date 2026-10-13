@@ -1,3 +1,4 @@
+import { panoOpenable } from '@aio/engine';
 import type { Layer, PanoRef, Vec3 } from '@aio/schema';
 import type { CaptureIndex } from '@aio/workspace';
 
@@ -23,7 +24,8 @@ export function panosOf(
     if (l.kind !== 'panoramas') continue;
     const of = index?.of[l.id];
     if (capture !== undefined && of !== undefined && of !== capture) continue;
-    for (const pano of l.items) out.push({ layer: l.id, pano });
+    // a sphere not stitched yet has no image to show or pair
+    for (const pano of l.items) if (panoOpenable(pano)) out.push({ layer: l.id, pano });
   }
   return out;
 }

@@ -125,3 +125,41 @@ describe('safeAssetUrl', () => {
     expect(safeAssetUrl('p1', { path: '../x.json' })).toBeUndefined();
   });
 });
+
+describe('spotEntries and unstitched spheres', () => {
+  it('lists only the panoramas that have an image', () => {
+    const layers = [
+      {
+        kind: 'panoramas',
+        id: 'pano-new',
+        name: 'p',
+        visible: true,
+        items: [
+          {
+            id: 'q',
+            src: { path: 'q.jpg' },
+            pos: [0, 0, 0],
+            headingDeg: 0,
+            stitch: { status: 'queued' },
+          },
+          {
+            id: 'f',
+            src: { path: 'f.jpg' },
+            pos: [0, 0, 0],
+            headingDeg: 0,
+            stitch: { status: 'failed' },
+          },
+          {
+            id: 'd',
+            src: { path: 'd.jpg' },
+            pos: [0, 0, 0],
+            headingDeg: 0,
+            stitch: { status: 'done' },
+          },
+        ],
+      },
+    ] as unknown as Layer[];
+    const out = spotEntries({ layers, index: captureIndex({ ...manifest, layers }) });
+    expect(out.map((x) => (x.kind === 'pano' ? x.id : x.kind))).toEqual(['d']);
+  });
+});

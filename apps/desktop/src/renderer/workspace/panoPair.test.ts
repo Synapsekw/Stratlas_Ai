@@ -126,3 +126,17 @@ describe('followPano', () => {
     expect(groundDistance([0, 5, 0], [3, -9, 4])).toBe(5);
   });
 });
+
+describe('panosOf and unstitched spheres', () => {
+  it('leaves out a sphere that has no stitched image yet', () => {
+    const items = [
+      { ...pano('done', 0, 0), stitch: { status: 'done' } },
+      { ...pano('queued', 1, 0), stitch: { status: 'queued' } },
+      { ...pano('running', 2, 0), stitch: { status: 'running' } },
+      { ...pano('failed', 3, 0), stitch: { status: 'failed' } },
+      pano('ready', 4, 0),
+    ];
+    const list = panosOf([layer('p-new', items)], null, undefined);
+    expect(list.map((a) => a.pano.id)).toEqual(['done', 'ready']);
+  });
+});

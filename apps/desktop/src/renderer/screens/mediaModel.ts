@@ -1,4 +1,5 @@
-import type { AssetRef, Layer } from '@aio/schema';
+import { panoOpenable } from '@aio/engine';
+import type { AssetRef, Layer, PanoRef } from '@aio/schema';
 import { DEFAULT_CLIP_MS, flightGroups } from '@aio/ui';
 
 type VideoLayer = Extract<Layer, { kind: 'video' }>;
@@ -53,4 +54,12 @@ export function flightCards(
 /** The flight holding a clip, or the first flight. */
 export function flightOf(cards: readonly FlightCard[], clipId: string | null): FlightCard | null {
   return cards.find((f) => f.clips.some((c) => c.id === clipId)) ?? cards[0] ?? null;
+}
+
+/**
+ * A panorama's Media card: its image, or none for a sphere not stitched yet (its `pano.jpg` is not
+ * there, so the card shows the panorama icon and says so instead of a broken image).
+ */
+export function panoCard(p: PanoRef): { asset: AssetRef | undefined; stitched: boolean } {
+  return panoOpenable(p) ? { asset: p.src, stitched: true } : { asset: undefined, stitched: false };
 }
