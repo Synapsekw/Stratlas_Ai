@@ -12,7 +12,7 @@ import {
 } from '@aio/schema';
 import { describe, expect, it, vi } from 'vitest';
 import type { DrawingLookup, PlaceSurface } from './placeModel';
-import { createPlaceStore, DRAWING_NOT_READY, wrapDeg } from './placeStore';
+import { canRemovePin, createPlaceStore, DRAWING_NOT_READY, wrapDeg } from './placeStore';
 
 const raw = WalkRawPath.parse(
   JSON.parse(
@@ -227,6 +227,22 @@ describe('start and end', () => {
     expect(s.getState().step).toBe('end');
     expect(s.getState().pins).toHaveLength(1);
     expect(s.getState().error).toBeNull();
+  });
+
+  it('an end refused for another reason than the 5 m span says why', () => {
+    const fit = vi.fn<typeof fitWalk>((...args) => {
+      const f = fitWalk(...args);
+      return args[1].pins.length >= 2 ? { ...f, error: 'Those pins cannot be fitted' } : f;
+    });
+    const store = createPlaceStore({ fit, seek: vi.fn() });
+    const s = () => store.getState();
+    s().start(walk(), m, { raw, drawings });
+    s().chooseSurface(MAP);
+    s().click(truthXZ(4));
+    s().click(truthXZ(lastT));
+    expect(s().step).toBe('end');
+    expect(s().pins).toHaveLength(1);
+    expect(s().error).toBe('Those pins cannot be fitted');
   });
 
   it('the end click places the walk: pins at 4 s and 62 s, the corner where the walk turned', () => {
@@ -478,6 +494,23 @@ describe('the path appears or goes', () => {
     expect(s.getState().dirty).toBe(false);
   });
 
+  it('a saved placement survives its path going', () => {
+    const pins = [
+      { t: 4, surface: '@model', at: [0, 0] },
+      { t: 62, surface: '@model', at: [40, -30] },
+    ] as WalkPin[];
+    const s = session({
+      layer: {
+        place: { pins, yawOffsetDeg: 0, heightM: 1.7, quality: 'good', placedOn: '@model' },
+      },
+    });
+    s.getState().chooseSurface({ kind: '3d' });
+    s.getState().setInputs(null, null, false);
+    expect(s.getState().step).toBe('placed');
+    expect(s.getState().pins).toEqual(pins);
+    expect(s.getState().fit?.pinsOnly).toBe(true);
+  });
+
   it('a walk placed before (two saved pins) opens on placed, whatever the path', () => {
     const pins = [
       { t: 4, surface: '@model', at: [0, 0] },
@@ -572,14 +605,40 @@ describe('createPlaceStore', () => {
     expect(s().pins[0]).toEqual({ t: 4, surface: '@model', at: [20, 25], y: 0.2 });
   });
 
-  it('removing a pin below two goes back to the end step', () => {
-    const { s, seek } = fineTuning();
+  it('the start and end of a two pin placement cannot be removed', () => {
+    const { s } = fineTuning();
+    const before = s();
+    expect(canRemovePin(before, 0)).toBe(false);
+    expect(canRemovePin(before, 1)).toBe(false);
+    s().removePin(0);
+    expect(s()).toBe(before);
     s().removePin(1);
-    expect(s().pins.map((p) => p.t)).toEqual([4]);
+    expect(s()).toBe(before);
+    expect(s().pins.map((p) => p.t)).toEqual([4, lastT]);
+    expect(s().step).toBe('fine-tune');
+  });
+
+  it('an inner fine-tune pin can be removed; with three pins any can', () => {
+    const { s } = fineTuning();
+    s().setTime(30);
+    s().pinHere();
+    s().click(truthXZ(30));
+    expect(s().pins.map((p) => p.t)).toEqual([4, 30, lastT]);
+    expect([0, 1, 2, 3].map((i) => canRemovePin(s(), i))).toEqual([true, true, true, false]);
+    s().removePin(1);
+    expect(s().pins.map((p) => p.t)).toEqual([4, lastT]);
+    expect(s().step).toBe('fine-tune');
+    expect(s().dirty).toBe(true);
+  });
+
+  it('the start pin alone (End waiting) cannot be removed', () => {
+    const { s } = setup();
+    s().chooseSurface(MAP);
+    s().click(truthXZ(4));
+    expect(canRemovePin(s(), 0)).toBe(false);
+    s().removePin(0);
+    expect(s().pins).toHaveLength(1);
     expect(s().step).toBe('end');
-    expect(s().armed).toBeNull();
-    expect(seek).toHaveBeenLastCalledWith(lastT);
-    expect(s().calibration().quality).toBe('unplaced');
   });
 
   it('align sets the yaw offset so the landmark bearing matches', () => {

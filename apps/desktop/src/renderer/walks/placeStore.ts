@@ -2,6 +2,7 @@ import {
   ghostLengthM,
   ghostPath,
   MIN_PIN_SPAN_M,
+  PIN_SPAN_ERROR,
   pinTarget,
   previewPath,
   walkHeadingAt,
@@ -148,6 +149,16 @@ export function wrapDeg(deg: number): number {
   if (!Number.isFinite(deg)) return 0;
   const r = (((deg + 180) % 360) + 360) % 360;
   return r === 0 ? 180 : r - 180;
+}
+
+/**
+ * Whether pin `i` can be removed: any pin of three or more; with fewer, the start and end anchors
+ * (first and last by time) stay, they are moved by their handles and Remove placement clears all.
+ */
+export function canRemovePin(state: Pick<PlaceState, 'pins'>, i: number): boolean {
+  const n = state.pins.length;
+  if (!Number.isInteger(i) || i < 0 || i >= n) return false;
+  return n >= 3 || (i !== 0 && i !== n - 1);
 }
 
 const byT = (pins: readonly WalkPin[]): WalkPin[] =>
@@ -426,7 +437,8 @@ export function createPlaceStore(deps: {
         const next = byT([...st.pins, pin]);
         const fit = fitOf(next, st.yawOffsetDeg);
         if (fit?.error) {
-          // too close to the start: ignored, the hint already says why
+          // too close to the start: ignored, the hint already says why; any other refusal says so
+          if (fit.error !== PIN_SPAN_ERROR) set({ error: fit.error });
           get().hover(at, y);
           return;
         }
@@ -498,7 +510,7 @@ export function createPlaceStore(deps: {
 
       removePin: (i) => {
         const st = get();
-        if (st.layerId === null || !st.pins[i]) return;
+        if (st.layerId === null || !canRemovePin(st, i)) return;
         const pins = st.pins.filter((_, k) => k !== i);
         const aligning = st.armed === 'align-360' || st.armed === 'align-surface';
         const moving = st.armed === 'move';
