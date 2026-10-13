@@ -294,6 +294,7 @@ describe('the spot viewer', () => {
     expect(head()?.dataset.item).toBe('b');
     click(q('spot-slot-d1'));
 
+    expect(q('spot-compare')?.title).toBe('Two dates of this spot side by side or swiped (C)');
     press('c');
     expect(q('spot-compare-view')?.dataset.mode).toBe('side');
     const left = host.querySelector<HTMLSelectElement>('[data-testid="spot-compare-date-left"]');

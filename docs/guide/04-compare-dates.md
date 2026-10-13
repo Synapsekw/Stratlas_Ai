@@ -112,7 +112,7 @@ An image without a position has no other dates to match. The viewer says so inst
 - A thumbnail, the date colour and the kind: **Photo**, **Drone**, **360**, **Walk** or **Video**.
 - **+n** when that date has more than one image near the spot. The best match shows first.
 - A hatched slot when the date has nothing: **Nothing within 15 m** (or 25 m for a 360), or **Not seen** for a drone spot that no flight of that date saw.
-- A tooltip when items of that date were left out because they have no position.
+- A tooltip when items of that date were left out because they could not be placed: a photo without a position, a walk that is not placed, or a video whose flight log cannot be read.
 
 ### In the viewer
 
@@ -123,7 +123,7 @@ An image without a position has no other dates to match. The viewer says so inst
 | C           | Compare two dates                               |
 | Esc         | Leave Compare, then close the viewer            |
 
-When a date chip (a select) has the focus, or a video is playing, the arrow keys are left to it; Esc still closes. The header shows the name, date and kind of the image, how far it is from the one you clicked, and the angle when it is turned. A 360 or a walk frame opens turned towards the spot. A video frame opens paused at the moment that saw the spot, and plays when you press play.
+When a date chip (a select) or a video has the focus, the arrow keys are left to it; Esc still works as in the table, leaving Compare first and then closing the viewer. The header shows the name, date and kind of the image, how far it is from the one you clicked, and the angle when it is turned. A 360 or a walk frame opens turned towards the spot. A video frame opens paused at the moment that saw the spot, and plays when you press play.
 
 ### Compare
 

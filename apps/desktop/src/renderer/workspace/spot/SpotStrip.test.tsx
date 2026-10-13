@@ -98,7 +98,9 @@ describe('SpotStrip', () => {
     render();
     expect(slot('d2')?.getAttribute('data-empty')).toBe('true');
     expect(slot('d2')?.textContent).toContain('Nothing within 15 m');
-    expect(slot('d2')?.getAttribute('title')).toContain('2 items without a position were left out');
+    expect(slot('d2')?.getAttribute('title')).toContain(
+      '2 items could not be placed and were left out',
+    );
   });
   it('says "not seen" for an aerial spot and names 25 m for a 360', () => {
     render({ history: { ...history, spot: { ...history.spot, aerial: true } } });
@@ -141,7 +143,7 @@ describe('SpotStrip', () => {
     expect(id).toBeTruthy();
     expect(slot('d3')?.id).toBe(id);
     expect(slot('d2')?.getAttribute('aria-label')).toContain('Nothing within 15 m');
-    expect(slot('d2')?.getAttribute('aria-label')).toContain('2 items without a position');
+    expect(slot('d2')?.getAttribute('aria-label')).toContain('2 items could not be placed');
   });
   it('scrolls the current slot into view when the date changes', () => {
     const scroll = vi.fn();

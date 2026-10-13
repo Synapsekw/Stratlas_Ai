@@ -3138,8 +3138,8 @@ export const en = {
   'spot.slot.none': 'Nothing within {m} m',
   'spot.slot.notSeen': 'Not seen',
   'spot.slot.more': '+{count}',
-  'spot.slot.skipped_one': '{count} item without a position was left out',
-  'spot.slot.skipped_other': '{count} items without a position were left out',
+  'spot.slot.skipped_one': '{count} item could not be placed and was left out',
+  'spot.slot.skipped_other': '{count} items could not be placed and were left out',
   'spot.slot.label': '{date}, {kind}',
   'spot.slot.emptyLabel': '{date}, {reason}',
   'spot.noPosition': "This photo has no position, so other dates can't be matched.",
@@ -3152,7 +3152,7 @@ export const en = {
   'spot.reading': 'Reading flight logs',
   'spot.missing': 'This image could not be loaded',
   'spot.compare': 'Compare...',
-  'spot.compareTip': 'Two dates of this spot side by side or swiped (C)',
+  'spot.compareTip': 'Two dates of this spot side by side or swiped',
   'spot.compare.modes': 'How to compare',
   'spot.compare.side': 'Side by side',
   'spot.compare.swipe': 'Swipe',
@@ -3162,7 +3162,8 @@ export const en = {
   'spot.compare.empty': 'No image of this spot on that date',
   'spot.compare.back': 'One image',
   'spot.close': 'Close',
-  'spot.keys': '← → dates · ↑ ↓ other images of the date · C compare · Esc close',
+  'spot.keys':
+    '← → dates · ↑ ↓ other images of the date · C compare · Esc leave Compare, then close',
 } as const satisfies Record<string, string>;
 
 /** Every key in the catalogue, plural forms included. */

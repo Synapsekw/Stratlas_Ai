@@ -288,7 +288,7 @@ export function SpotViewer() {
             type="button"
             className="btn sm ghost"
             aria-pressed={compare !== null}
-            title={t('spot.compareTip')}
+            title={`${t('spot.compareTip')} (${shortcutHint('spot.compare')})`}
             data-testid="spot-compare"
             disabled={!canCompare}
             onClick={toggleCompare}

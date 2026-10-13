@@ -23,6 +23,12 @@ describe('spot history keys', () => {
   it('has a heading in the keyboard map and its words', () => {
     expect(SHORTCUT_SCOPES.some((s) => s.scope === 'spot')).toBe(true);
     expect(t('spot.slot.none', { m: 15 })).toBe('Nothing within 15 m');
-    expect(t('spot.slot.skipped', { count: 2 })).toBe('2 items without a position were left out');
+    expect(t('spot.slot.skipped', { count: 2 })).toBe(
+      '2 items could not be placed and were left out',
+    );
+  });
+  it('names no key in the words a key hint is added to, and Esc as it works in Compare', () => {
+    expect(t('spot.compareTip')).not.toMatch(/\(C\)/);
+    expect(t('spot.keys')).toContain('Esc leave Compare, then close');
   });
 });
