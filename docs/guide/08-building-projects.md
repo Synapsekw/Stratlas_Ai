@@ -82,6 +82,19 @@ A walk is placed on a drawing, on the map (when the project has a coordinate sys
 - **Cancel** with changes not saved asks "Keep these changes?" in the toolbar.
 - **Remove walk** (the bin button) asks first, then moves the walk's files to the project's trash folder, where they stay seven days.
 
+### Drone panoramas
+
+A drone's own panorama mode writes a set of photos for each sphere. {product} groups them, stitches each sphere into one panorama and places it where the drone flew.
+
+1. **Add data**, then **Add drone panoramas**, and choose the folder with the frames. A scan lists the spheres it found: how many frames, when and how high above the ground, and whether each is a **Wide panorama**, a **Ready-made panorama** or **Incomplete**. A sphere already in the project says **Already in** its layer.
+2. The preview shows **Where the panoramas sit** on a small map. Tick the spheres to bring in, then set the **Survey date**, the **Layer name** and the **Quality**: **Standard (8K)** or **High (16K)**. Click **Import**. The frames are copied into the project first; the originals stay where they are.
+3. Each panorama shows in **Datasets** under its layer with its status: **Waiting to stitch**, **Stitching** with a percentage, **Stitched** or **Stitch failed** with the reason. Several can wait at once; they stitch one after another, and you can keep working.
+4. Click a stitched panorama's row, or its **Open** button, to look around inside it. **Fly to** moves the 3D view to where it was taken. A panorama that is not stitched says **Not stitched yet**; **Stitch** on its row starts it again.
+5. When you drop a folder of drone frames through **Add data** or on the window, {product} offers **Import as panoramas**, **Skip these frames** or, for a set that is not panorama frames, **Import as photos anyway**.
+
+- To remove a panorama, remove it from its layer in **Datasets**.
+- Stitching needs the processing tools (pipeline pack 0.7.0 or later, see [Settings](12-settings.md#processing-tools)).
+
 ## Drawings
 
 A plan, a layout or any other sheet comes in as a drawing: PDF, PNG, JPEG, WebP, SVG, TIFF or DXF. DWG is not supported: save it as DXF or PDF, or as a PNG picture.
