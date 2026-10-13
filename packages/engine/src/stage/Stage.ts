@@ -162,7 +162,7 @@ export class Stage implements EngineStage {
   private readonly receivers = new Set<Mesh>();
   private readonly providers = new Set<RaycastProvider>();
   private readonly boundsProviders = new Set<() => Box3 | null>();
-  /** The providers of `boundsProviders` that count beside a model too. */
+  /** The providers of `boundsProviders` that widen the camera's reach beside a model too. */
   private readonly alwaysBounds = new Set<() => Box3 | null>();
   private readonly frameCbs = new Set<(dtMs: number) => void>();
   private readonly holders = new Map<symbol, string>();
@@ -945,7 +945,9 @@ export class Stage implements EngineStage {
       this.env.setShadowBounds(sb);
       if (this.env.waterY !== null) this.maskDirty = true;
       this.controls.minDistance = Math.max(radius * 0.002, 0.05);
-      this.controls.maxDistance = radius * 25;
+      const reach = this.reachBox(box).getSize(new Vector3()).length() / 2;
+      this.env.setCameraReach(reach);
+      this.controls.maxDistance = Math.max(radius, reach) * 25;
       applySection(this.clippingPlanes, this._section, this.contentCentre);
       if (this.autoFit) {
         const pose = poseForPreset(
@@ -976,18 +978,31 @@ export class Stage implements EngineStage {
       if (root.userData.aioRaster === true || root.userData.aioGround === true) continue;
       expandWithoutTerrain(root, box, tmp);
     }
-    // no model or cloud yet: what the flights and photos cover (a video-first project); the
-    // providers that ask to (panorama markers) widen the box beside a model as well
-    const bare = box.isEmpty();
-    for (const bounds of this.boundsProviders) {
-      if (!bare && !this.alwaysBounds.has(bounds)) continue;
-      const b = bounds();
-      if (b && !b.isEmpty()) box.union(b);
+    // no model or cloud yet: what the flights and photos cover (a video-first project)
+    if (box.isEmpty()) {
+      for (const bounds of this.boundsProviders) {
+        const b = bounds();
+        if (b && !b.isEmpty()) box.union(b);
+      }
     }
     if (box.isEmpty()) {
       for (const [root] of this.targets)
         if (visibleChain(root) && root.userData.aioGround !== true)
           box.union(tmp.setFromObject(root));
+    }
+    return box;
+  }
+
+  /**
+   * The content box widened by the providers that ask to count beside a model (panorama markers):
+   * how far the camera may zoom out and see. Lighting, shadows, fog, the ground, Home and
+   * auto-fit keep the plain content box.
+   */
+  private reachBox(content: Box3): Box3 {
+    const box = content.clone();
+    for (const bounds of this.alwaysBounds) {
+      const b = bounds();
+      if (b && !b.isEmpty()) box.union(b);
     }
     return box;
   }

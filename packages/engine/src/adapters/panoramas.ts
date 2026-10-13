@@ -633,6 +633,8 @@ export function createPanoramasAdapter(
           group.visible = visible;
           markers.setVisible(visible);
           if (!visible) leave();
+          // the camera's reach follows the markers that are shown
+          (scene as Partial<{ contentUpdated(): void }>).contentUpdated?.();
           scene.requestRender();
         },
         dispose() {

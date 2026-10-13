@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 import type { Layer, ProjectManifest } from '@aio/schema';
 import { createWorkspace, type OpenProject } from '@aio/workspace';
+import type { PerspectiveCamera } from 'three';
 import {
   Box3,
   BoxGeometry,
@@ -16,6 +17,7 @@ import {
 } from 'three';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { LayerAdapter, LayerHandle } from '../types';
+import type { Environment } from './environment';
 import { fakeWarmRenderer } from './fakeWarmRenderer';
 import { dampingFor, Stage } from './Stage';
 
@@ -406,26 +408,40 @@ describe('Stage', () => {
     stage.dispose();
   });
 
-  it('lets always-bounds widen the range beside a model, and others not', async () => {
+  it('lets always-bounds widen only the camera reach beside a model', async () => {
     const { stage, store, resize } = make();
     resize(800, 600);
     store.getState().openProject(project([meshLayer('plant')]));
     await flush();
+    const env = (stage as unknown as { env: Environment }).env;
+    const radius = vi.spyOn(env, 'setContentRadius');
+    const shadow = vi.spyOn(env, 'setShadowBounds');
     const model = stage.contentBounds()?.clone();
     const range = stage.controls.maxDistance;
     const wide = new Box3(new Vector3(0, 0, 0), new Vector3(400, 40, 0));
+    const fits = () => stage.saveView();
+    const home = fits();
     // a photo-style registration still only counts without a model
     const offPlain = stage.addContentBounds(() => wide);
     expect(stage.contentBounds()?.max.toArray()).toEqual(model?.max.toArray());
     expect(stage.controls.maxDistance).toBe(range);
     offPlain();
-    // an always registration widens the box and the range, and goes away again
+    radius.mockClear();
+    shadow.mockClear();
+    // an always registration only widens how far the camera can zoom out and see
     const off = stage.addContentBounds(() => wide, { always: true });
-    expect(stage.contentBounds()?.max.x).toBeGreaterThanOrEqual(400);
-    expect(stage.controls.maxDistance).toBeGreaterThan(range * 10);
     expect(stage.controls.maxDistance).toBeGreaterThan(400);
-    off();
+    expect(stage.controls.maxDistance).toBeGreaterThan(range * 10);
+    const sizeOf = (b: Box3 | undefined) => b?.getSize(new Vector3()).length() ?? 0;
+    expect(radius.mock.calls[0]?.[0]).toBeCloseTo(sizeOf(model) / 2);
+    const sb = shadow.mock.calls[0]?.[0];
+    expect(sb?.max.x).toBeCloseTo(model?.max.x ?? NaN);
     expect(stage.contentBounds()?.max.toArray()).toEqual(model?.max.toArray());
+    const camera = (stage as unknown as { camera: PerspectiveCamera }).camera;
+    env.update(camera, stage.controls.target, 0);
+    expect(camera.far).toBeGreaterThanOrEqual(400 * 20);
+    expect(fits().position).toEqual(home.position);
+    off();
     expect(stage.controls.maxDistance).toBe(range);
     stage.dispose();
   });

@@ -232,6 +232,8 @@ export class Environment {
   private skyElevation = 45;
   private day: Daylight | null = null;
   private radius = 50;
+  /** Radius of what the camera may reach (content plus far-flung markers); 0: the content radius. */
+  private reach = 0;
   /** Current drop of the grid and the ground below y = 0 (`groundDrop`). */
   private drop: GroundDrop = { grid: 0, ground: 0 };
   private readonly centre = new Vector3();
@@ -490,6 +492,11 @@ export class Environment {
 
   /* --------------------------------------------------------------------- content */
 
+  /** Content the camera can fly to but that does not size the scene: only the far plane follows. */
+  setCameraReach(radius: number) {
+    this.reach = Math.max(radius, 0);
+  }
+
   /** Rescale fog, ground, grid and water to the content (radius of its bounding sphere). */
   setContentRadius(radius: number, centre = new Vector3()) {
     this.radius = Math.max(radius, 5);
@@ -647,7 +654,12 @@ export class Environment {
     this.rebuildSkyEnv(now);
     const d = camera.position.distanceTo(target);
     const near = Math.min(Math.max(d * 0.004, 0.01), 20);
-    const far = Math.max(this.radius * 40, d * 8, this._mode === 'sky' ? 30000 : 0);
+    const far = Math.max(
+      this.radius * 40,
+      this.reach * 40,
+      d * 8,
+      this._mode === 'sky' ? 30000 : 0,
+    );
     if (Math.abs(camera.near - near) > near * 0.05 || Math.abs(camera.far - far) > far * 0.05) {
       camera.near = near;
       camera.far = far;
