@@ -206,9 +206,20 @@ class PointTiles:
         its neighbours' first passes), and write ``fused/index.json``. ``run_tiles(kind, names,
         voxel, rule, keep, done)`` runs one pass (``kind`` ``merge`` or ``filter``) elsewhere,
         such as in worker processes, calling ``done(name, result)`` for each tile; by default the
-        tiles run here. A merge at another spacing than the one in progress starts over."""
-        self.begin_merge(voxel)
+        tiles run here. A merge at another spacing than the one in progress starts over.
+
+        Once the chunks are gone (``drop_chunks``) nothing can be merged again: a complete merge
+        at ``voxel`` is answered as it is, and anything else is refused, the tiles left alone."""
         names = self.chunk_tiles()
+        if not names and self.chunks_dropped():
+            done = self.info()
+            if done.get("complete") and self.merging_voxel() == voxel:
+                return done
+            raise JobError(
+                "The fused points of this cloud were cleared after its merge, so it cannot be "
+                "merged again; start the processing again."
+            )
+        self.begin_merge(voxel)
         total = max(1, len(names))
         results: dict[str, dict] = {}
         for kind, offset, word in (("merge", 0, "Merging"), ("filter", total, "Cleaning")):
@@ -316,7 +327,13 @@ class PointTiles:
             return 0
         freed = sum(p.stat().st_size for p in base.rglob("*") if p.is_file())
         shutil.rmtree(base, ignore_errors=True)
+        self.root.mkdir(parents=True, exist_ok=True)
+        atomic_write_json(self.root / "chunks-dropped.json", {"bytes": freed})
         return freed
+
+    def chunks_dropped(self) -> bool:
+        """Whether ``drop_chunks`` deleted this merge's chunks."""
+        return (self.root / "chunks-dropped.json").is_file()
 
 
 def write_las_tiles(path: Path, store: PointTiles, shift: np.ndarray, scale: float = 0.001) -> int:
@@ -440,17 +457,29 @@ def collapse_columns(
     return p, c, nn, tot.astype(np.int32)
 
 
-def outlier_mask(pts: np.ndarray, margin: np.ndarray, k: int = 16, sigma: float = 2.5) -> np.ndarray:
+#: Points the outlier filter asks the KD-tree about at once: the answer holds ``k + 1`` distances
+#: (float64) and indices (int64) a point, 272 MB a block at ``k = 16`` (``pool.MERGE_FILTER_BYTES``).
+OUTLIER_BLOCK = 1_000_000
+
+
+def outlier_mask(
+    pts: np.ndarray, margin: np.ndarray, k: int = 16, sigma: float = 2.5, block: int = OUTLIER_BLOCK
+) -> np.ndarray:
     """True for the points of ``pts`` to keep: those whose mean distance to their ``k`` nearest
     neighbours (among ``pts`` and ``margin``) is at most the mean over ``pts`` plus ``sigma``
-    standard deviations. With ``k`` points or fewer everything is kept."""
+    standard deviations. With ``k`` points or fewer everything is kept. The neighbours are asked
+    for ``block`` points at a time, so the working memory stays bounded whatever the tile."""
     from scipy.spatial import cKDTree
 
     allp = np.concatenate([pts, margin]) if len(margin) else pts
     if len(allp) <= k:
         return np.ones(len(pts), bool)
-    d, _ = cKDTree(allp).query(pts, k=k + 1)
-    m = d[:, 1:].mean(1)
+    tree = cKDTree(allp)
+    m = np.empty(len(pts))
+    step = max(1, int(block))
+    for a in range(0, len(pts), step):
+        d, _ = tree.query(pts[a : a + step], k=k + 1)
+        m[a : a + step] = d[:, 1:].mean(1)
     return m <= m.mean() + sigma * m.std()
 
 

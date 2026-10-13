@@ -30,6 +30,13 @@ MIN_PIXELS = 2_000_000
 #: (plan "GPU acceleration", spike results): 295 for a depth map, 234 for fusing a photo.
 DENSE_BYTES_PER_PIXEL = 300
 FUSE_BYTES_PER_PIXEL = 250
+#: Memory of merging one tile per byte of its chunks: unpacked to float64, voxel keys, sorting.
+#: The outlier filter's tile, KD-tree and distances come to about 110 bytes a point, under the
+#: 180 this gives each 18 byte chunk point (a tile only loses points to the merge).
+MERGE_BYTES_PER_CHUNK_BYTE = 10
+#: On top, per worker: one block of the outlier filter's neighbour query (``fuse.OUTLIER_BLOCK``
+#: points of 17 float64 distances and 17 int64 indices).
+MERGE_FILTER_BYTES = 1_000_000 * 17 * 16
 _THREAD_ENV = ("OMP_NUM_THREADS", "OPENBLAS_NUM_THREADS", "MKL_NUM_THREADS")
 
 
@@ -64,6 +71,20 @@ def plan_workers(
     cores = cores or os.cpu_count() or 1
     by_memory = int(0.8 * budget // max(1, pixels * bytes_per_pixel))
     return max(1, min(MAX_WORKERS, cores // 3, by_memory, photos))
+
+
+def plan_merge_workers(tiles: int, largest: int, budget: int, cores: int | None = None) -> int:
+    """How many tiles to merge at once: as many as fit 80% of the memory budget at the largest
+    tile's chunk bytes (plus the outlier filter's block), half the cores and ``MAX_WORKERS``."""
+    if tiles <= 1:
+        return 1
+    forced = forced_workers()
+    if forced is not None:
+        return min(forced, tiles)
+    cores = cores or os.cpu_count() or 1
+    per_tile = largest * MERGE_BYTES_PER_CHUNK_BYTE + MERGE_FILTER_BYTES
+    by_memory = int(0.8 * budget // max(1, per_tile))
+    return max(1, min(MAX_WORKERS, max(1, cores // 2), by_memory, tiles))
 
 
 def worker_threads(workers: int) -> int:
@@ -360,3 +381,35 @@ def init_fuse(
 
 def fuse_task(view_id: int) -> dict[str, Any]:
     return fuse_photo(_W, view_id)
+
+
+# ---------------------------------------------------------------------------------------- merge
+
+
+def init_merge(root: str, chunks: str, tile_m: float, voxel: float, rule, keep, threads: int) -> None:
+    from pathlib import Path
+
+    from .fuse import PointTiles
+
+    cap_threads(threads)
+    _W.clear()
+    _W.update(
+        {
+            "store": PointTiles(Path(root), tile_m, chunks=Path(chunks)),
+            "voxel": voxel,
+            "rule": rule,
+            "keep": keep,
+        }
+    )
+
+
+def merge_task(name: str) -> dict[str, Any]:
+    from .fuse import merge_tile
+
+    return merge_tile(_W["store"], name, _W["voxel"], _W["rule"], _W["keep"])
+
+
+def filter_task(name: str) -> dict[str, Any]:
+    from .fuse import filter_tile
+
+    return filter_tile(_W["store"], name, _W["voxel"], _W["rule"])
