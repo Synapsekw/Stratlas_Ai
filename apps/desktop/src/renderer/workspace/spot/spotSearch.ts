@@ -41,7 +41,8 @@ export function sameItem(a: SpotItem, b: SpotItem): boolean {
   return a.kind === b.kind;
 }
 
-function selfMatch(item: SpotItem, capture: string, spot: Spot): SpotMatch {
+/** The clicked item as a match of its own spot (the viewer shows an undated one through it). */
+export function selfMatch(item: SpotItem, capture: string, spot: Spot): SpotMatch {
   const kind: SpotKind = item.kind === 'photo' ? (spot.aerial ? 'drone' : 'photo') : item.kind;
   return {
     capture,

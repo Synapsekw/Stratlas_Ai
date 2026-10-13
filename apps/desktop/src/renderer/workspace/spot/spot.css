@@ -59,3 +59,164 @@
   outline: 1.5px solid var(--acc);
   outline-offset: 1px;
 }
+
+/* ---------- the viewer: a dialog over the whole app, as the lightbox ---------- */
+.spot-scrim {
+  position: fixed;
+  inset: 0;
+  z-index: 85;
+  display: grid;
+  padding: 24px;
+  background: oklch(0.1 0.01 250 / 0.82);
+  animation: spot-in 160ms var(--ease-x);
+}
+@keyframes spot-in {
+  from {
+    opacity: 0;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .spot-scrim {
+    animation: none;
+  }
+}
+.spot-dialog {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-6);
+  background: var(--bg-0);
+  box-shadow: 0 24px 64px oklch(0 0 0 / 0.5);
+  overflow: hidden;
+  outline: none;
+}
+.spot-h {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 44px;
+  padding: 6px 8px 6px 14px;
+  border-bottom: 1px solid var(--line);
+  background: var(--bg-1);
+}
+.spot-t {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  min-width: 0;
+  flex: 1;
+  font-size: var(--t-13);
+  color: var(--fg-1);
+}
+.spot-t b {
+  color: var(--fg-0);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.spot-t .faint {
+  font-size: var(--t-11);
+  white-space: nowrap;
+}
+.spot-date {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  white-space: nowrap;
+}
+.spot-acts {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  flex: none;
+  margin-inline-start: auto;
+}
+.spot-acts .btn[aria-pressed='true'],
+.spot-modes .btn[aria-pressed='true'] {
+  background: var(--acc-a20);
+  color: var(--acc-strong);
+}
+.spot-sep {
+  width: 1px;
+  height: 18px;
+  margin: 0 4px;
+  background: var(--line);
+}
+.spot-body {
+  flex: 1;
+  min-height: 0;
+  position: relative;
+  display: flex;
+}
+.spot-none {
+  margin: 0;
+  padding: 24px 14px;
+  color: var(--fg-1);
+}
+.spot-foot {
+  flex: none;
+  border-top: 1px solid var(--line-soft);
+  background: var(--bg-1);
+}
+.spot-keys {
+  margin: 0;
+  padding: 4px 14px 6px;
+}
+.spot-view {
+  position: relative;
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  width: 100%;
+  height: 100%;
+}
+
+/* ---------- Compare: two dates side by side or swiped ---------- */
+.spot-compare {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+}
+.spot-compare-bar {
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 6px 8px;
+  border-bottom: 1px solid var(--line-soft);
+}
+.spot-modes {
+  display: flex;
+  gap: 2px;
+}
+.spot-compare-frames {
+  flex: 1;
+  min-height: 0;
+}
+
+/* linked zoom and pan: both sides carry one transform */
+.spot-zoom {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  touch-action: none;
+}
+.spot-zoom.zoomed {
+  cursor: grab;
+}
+.spot-zoom-pic {
+  position: absolute;
+  inset: 0;
+  transform-origin: 50% 50%;
+  will-change: transform;
+}
+.spot-zoom:focus-visible {
+  outline: 1.5px solid var(--acc);
+  outline-offset: -2px;
+}
