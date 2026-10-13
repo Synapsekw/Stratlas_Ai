@@ -21,7 +21,7 @@ import type {
   PhotoSource,
 } from '@aio/schema';
 import { formatDate, Icon, useFocusTrap } from '@aio/ui';
-import { useWorkspace } from '@aio/workspace';
+import { useWorkspace, workspace } from '@aio/workspace';
 import { useEffect, useMemo, useRef, useState, type DragEvent } from 'react';
 import { bridge, useShell } from '../shell';
 import { removal } from '../shell/removal';
@@ -140,6 +140,10 @@ export function ProcessWizard() {
     const v = photoUi.getState().view;
     return v?.kind === 'wizard' ? v.initial : undefined;
   });
+  // the project the dialog was opened in: Start over never removes a run of another project
+  const [openedIn] = useState(() => workspace.getState().project?.id ?? null);
+  /** A start is under way (set at once, so a second click cannot start a second run). */
+  const starting = useRef(false);
   const src = start?.source ?? null;
   const projectEpsg = project && 'epsg' in project.manifest.crs ? project.manifest.crs.epsg : null;
   const [kind, setKind] = useState<'layer' | 'folders'>(
@@ -308,7 +312,8 @@ export function ProcessWizard() {
   };
 
   const go = async () => {
-    if (!photos || cannotStart || !ready) return;
+    if (!photos || cannotStart || !ready || starting.current) return;
+    starting.current = true;
     setBusy(true);
     setError(null);
     const runs = await bridge.call('photo:runs', { projectId: project.id });
@@ -328,9 +333,10 @@ export function ProcessWizard() {
       gnss,
       ...(epsg !== null && epsg !== projectEpsg ? { crs: { epsg } } : {}),
     });
-    setBusy(false);
     if (err) {
       photoUi.getState().holdRun(run, false);
+      starting.current = false;
+      setBusy(false);
       setError(err);
       return;
     }
@@ -339,12 +345,16 @@ export function ProcessWizard() {
     // kept for every run: a cancelled run that is resumed later still builds its maps under it
     ui.setDate(run, date);
     if (!gcpFirst) ui.setPending(run, { root: project.root, preset, products, ...date });
-    // the old run goes only now that the new one started (never on Cancel or a refused start)
+    // the new run opens now (unless the dialog was closed meanwhile); its panel shows the note
+    if (photoUi.getState().view?.kind === 'wizard') ui.openRun(run, 'progress');
+    // the old run goes only now that the new one started (never on Cancel or a refused start),
+    // and only in the project the dialog was opened in; the dialog stays busy until then
     const note = await replaceAfterStart(true, start, (old) =>
-      removal.getState().removeNow([{ run: old }]),
+      workspace.getState().project?.id === openedIn
+        ? removal.getState().removeNow([{ run: old }])
+        : Promise.resolve('Another project was opened meanwhile.'),
     );
-    if (note) ui.setNote(run, note);
-    ui.openRun(run, 'progress');
+    if (note) photoUi.getState().setNote(run, note);
   };
 
   // the one hint about time: beside the summary, or beside the quality choice while Options is open
