@@ -11,7 +11,7 @@ import rasterio
 import products_synth as ps
 from aio_pipelines.change.sources import grid_source
 from aio_pipelines.photo import surface as S
-from aio_pipelines.photo.fuse import PointTiles
+from aio_pipelines.photo.fuse import SPARSE_RULE, PointTiles
 
 
 def test_cell_statistics():
@@ -60,7 +60,7 @@ def _tiles(tmp_path):
     store.add(
         "a", xyz, np.zeros((len(xyz), 3), np.uint8), np.tile([0, 0, 1], (len(xyz), 1)).astype(np.float32)
     )
-    store.merge(0.1)
+    store.merge(0.1, rule=SPARSE_RULE)
     return store
 
 

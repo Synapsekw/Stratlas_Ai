@@ -595,10 +595,12 @@ class PhotoProducts:
             return shapely.contains_xy(poly, xyz[:, 0] + run.offset[0], xyz[:, 1] + run.offset[1])
 
         if not s["scale"]:
+            from .fuse import SPARSE_RULE
+
             pts = run.model.points
             nrm = np.tile(np.array([0, 0, 1], np.float32), (len(pts), 1))
             store.add("sparse", pts, run.model.colours, nrm)
-            info = store.merge(s["gsd"], keep, ctx.check)
+            info = store.merge(s["gsd"], keep, ctx.check, rule=SPARSE_RULE)
             return {"points": info["points"], "source": "sparse"}
         from . import pool
         from .fuse import FuseSettings
@@ -634,7 +636,7 @@ class PhotoProducts:
             words=("Fusion", "Fusing", "fusing the rest one photo at a time"),
         )
         voxel = s["gsd"] / s["scale"]
-        info = store.merge(voxel, keep, ctx.check, lambda f: ctx.progress(0.7 + 0.3 * f, "Merging the cloud"))
+        info = store.merge(voxel, keep, ctx.check, lambda f, m=None: ctx.progress(0.7 + 0.3 * f, m))
         if not info["points"]:
             raise JobError("Dense matching found no consistent points; the photos may not overlap enough.")
         ctx.log(f"Dense cloud: {info['points']:,} points at {voxel * 100:.1f} cm spacing.")

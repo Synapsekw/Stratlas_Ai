@@ -1,27 +1,33 @@
 """Fusion: depth maps to one dense cloud with colours and normals, in bounded memory.
 
 Each photo's depth map is turned into world points; a point is kept when at least ``min_agree``
-other photos see the same surface there (their depth maps agree within ``tolerance`` of the
-depth: geometric consistency, as COLMAP's fusion does). Kept points carry the photo's colour and a
-normal from the depth map's neighbours, turned towards the camera.
+(two) of its neighbouring photos see the same surface there (fusion v2: their depths agree within
+``min(1 % of the depth, 3 x the matching GSD)``, see ``agree_limit``; geometric consistency, as
+COLMAP's fusion does). Kept points carry the photo's colour and a normal from the depth map's
+neighbours, turned towards the camera.
 
-Points go to square ground tiles on disk (``PointTiles``) as they come, one chunk per photo and
-tile; ``merge`` then averages each tile's points per voxel (the point spacing asked for), so a
-surface seen by ten photos is one clean layer, not ten noisy ones. Only one tile is ever in
-memory, whatever the size of the site.
+Points go to square ground tiles on disk (``PointTiles``) as they come, one chunk (chunk format 2,
+18 bytes a point) per photo and tile. ``merge`` (merge v2) then makes each tile's share of the
+cloud in two passes: ``merge_tile`` averages the points per voxel (the point spacing asked for),
+drops the voxels seen fewer than twice and collapses each xy column to one point per two voxels of
+height in each of its clusters, so a surface seen by ten photos is one clean layer, not ten noisy
+ones; ``filter_tile`` then drops statistical outliers, judged over the tile and a one-voxel margin
+of its neighbours so the seams are not thinned. Only a tile and its margin are ever in memory,
+whatever the size of the site.
 """
 
 from __future__ import annotations
 
 import json
 import math
+import shutil
 from collections.abc import Callable, Iterator, Mapping
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass
 from pathlib import Path
 
 import numpy as np
 
-from ..runtime import JobError, replace_over
+from ..runtime import JobError, atomic_write_json, replace_over
 from .scene import Camera, View, pixel_rays
 
 
@@ -129,6 +135,27 @@ def consistent(
     return pts, agree
 
 
+@dataclass(frozen=True)
+class MergeRule:
+    """How a tile's fused points become the cloud (merge v2, 13 Oct 2026): voxels seen fewer than
+    ``min_count`` times go; with ``collapse``, each xy column keeps one point per ``2 x voxel`` of
+    height in each of its clusters; then, with ``outliers``, points whose mean distance to their
+    ``k`` nearest neighbours is more than ``sigma`` standard deviations above the tile's mean go."""
+
+    min_count: int = 2
+    outliers: bool = True
+    k: int = 16
+    sigma: float = 2.5
+    version: int = 2
+    collapse: bool = True
+
+
+DENSE_RULE = MergeRule()
+#: The Fast preset's sparse points: one point a voxel, already few and clean, so every one stays
+#: (no count filter, no column collapse, no outlier filter).
+SPARSE_RULE = MergeRule(min_count=1, outliers=False, collapse=False)
+
+
 class PointTiles:
     """Points in square ground tiles. Fusion writes chunks (chunk format 2) to
     ``chunks/<tile>/<name>.npz`` under ``chunks`` (``root/chunks`` unless given); ``merge`` writes
@@ -171,48 +198,71 @@ class PointTiles:
         voxel: float,
         keep: Callable[[np.ndarray], np.ndarray] | None = None,
         check: Callable[[], None] = lambda: None,
-        progress: Callable[[float], None] = lambda f: None,
+        progress: Callable[[float, str | None], None] = lambda f, m=None: None,
+        rule: MergeRule = DENSE_RULE,
+        run_tiles: Callable[..., None] | None = None,
     ) -> dict:
-        """Average each tile's points per voxel into ``fused/``; return counts and bounds."""
-        out = self.root / "fused"
-        out.mkdir(parents=True, exist_ok=True)
+        """Merge every tile in two passes, ``merge_tile`` then ``filter_tile`` (the filter reads
+        its neighbours' first passes), and write ``fused/index.json``. ``run_tiles(kind, names,
+        voxel, rule, keep, done)`` runs one pass (``kind`` ``merge`` or ``filter``) elsewhere,
+        such as in worker processes, calling ``done(name, result)`` for each tile; by default the
+        tiles run here. A merge at another spacing than the one in progress starts over."""
+        self.begin_merge(voxel)
         names = self.chunk_tiles()
-        total, lo, hi = 0, np.full(3, np.inf), np.full(3, -np.inf)
-        for i, name in enumerate(names):
-            check()
-            dst = out / f"{name}.npz"
-            if not dst.exists():
-                parts = []
-                for p in sorted((self.chunks_dir / name).glob("*.npz")):
-                    if p.name.startswith("."):
-                        continue
-                    with np.load(p) as f:
-                        parts.append(unpack_chunk(f))
-                xyz = np.concatenate([a for a, _, _ in parts])
-                rgb = np.concatenate([c for _, c, _ in parts])
-                nrm = np.concatenate([n for _, _, n in parts])
-                if keep is not None and len(xyz):
-                    m = keep(xyz)
-                    xyz, rgb, nrm = xyz[m], rgb[m], nrm[m]
-                xyz, rgb, nrm, cnt = voxel_mean(xyz, rgb, nrm, voxel)
-                tmp = out / f".{name}.tmp.npz"
-                np.savez(tmp, xyz=xyz, rgb=rgb, normal=nrm, count=cnt)
-                replace_over(tmp, dst)
-            with np.load(dst) as z:
-                xyz = z["xyz"]
-                if len(xyz):
-                    total += len(xyz)
-                    lo = np.minimum(lo, xyz.min(0))
-                    hi = np.maximum(hi, xyz.max(0))
-            progress((i + 1) / max(1, len(names)))
+        total = max(1, len(names))
+        results: dict[str, dict] = {}
+        for kind, offset, word in (("merge", 0, "Merging"), ("filter", total, "Cleaning")):
+            count = [0]
+
+            def done(name: str, res: dict, offset: int = offset, word: str = word, count=count) -> None:
+                count[0] += 1
+                results[name] = res
+                progress((offset + count[0]) / (2 * total), f"{word} tile {count[0]} of {total}")
+
+            if run_tiles is not None:
+                run_tiles(kind, names, voxel, rule, keep, done)
+                continue
+            for name in names:
+                check()
+                if kind == "merge":
+                    done(name, merge_tile(self, name, voxel, rule, keep))
+                else:
+                    done(name, filter_tile(self, name, voxel, rule))
+        lo, hi = np.full(3, np.inf), np.full(3, -np.inf)
+        counts: dict[str, int] = {}
+        for name in names:
+            r = results[name]
+            counts[name] = int(r["n"])
+            if r["n"]:
+                lo, hi = np.minimum(lo, r["lo"]), np.maximum(hi, r["hi"])
+        points = sum(counts.values())
         info = {
-            "points": int(total),
+            "points": int(points),
             "tiles": len(names),
+            "counts": counts,
             "voxel": voxel,
-            "bounds": [lo.tolist(), hi.tolist()] if total else None,
+            "bounds": [lo.tolist(), hi.tolist()] if points else None,
+            "rule": asdict(rule),
         }
-        (out / "index.json").write_text(json.dumps(info), "utf-8")
+        (self.root / "fused").mkdir(parents=True, exist_ok=True)
+        atomic_write_json(self.root / "fused" / "index.json", info)
+        shutil.rmtree(self.root / "collapsed", ignore_errors=True)
         return info
+
+    def begin_merge(self, voxel: float) -> None:
+        """Start, or carry on, a merge at ``voxel``: what a merge at another spacing left goes."""
+        mark = self.root / "merge.json"
+        if mark.is_file() and json.loads(mark.read_text("utf-8")).get("voxel") == voxel:
+            return
+        for d in ("collapsed", "fused"):
+            shutil.rmtree(self.root / d, ignore_errors=True)
+        self.root.mkdir(parents=True, exist_ok=True)
+        atomic_write_json(mark, {"voxel": voxel})
+
+    def merging_voxel(self) -> float | None:
+        """The spacing of the merge in progress or done, or None."""
+        mark = self.root / "merge.json"
+        return json.loads(mark.read_text("utf-8")).get("voxel") if mark.is_file() else None
 
     def fused(self) -> Iterator[tuple[str, dict[str, np.ndarray]]]:
         base = self.root / "fused"
@@ -247,6 +297,26 @@ class PointTiles:
     def info(self) -> dict:
         p = self.root / "fused" / "index.json"
         return json.loads(p.read_text("utf-8")) if p.is_file() else {"points": 0, "bounds": None}
+
+    def finish_merge(self) -> dict:
+        """Mark the merge complete (after any re-merge): nothing will change the tiles now."""
+        info = {**self.info(), "complete": True}
+        atomic_write_json(self.root / "fused" / "index.json", info)
+        return info
+
+    def counts(self) -> list[int]:
+        """Points per fused tile, as ``fused/index.json`` lists them."""
+        return [int(n) for n in (self.info().get("counts") or {}).values()]
+
+    def drop_chunks(self) -> int:
+        """Delete the fusion chunks (after a complete merge, founder decision of 13 Oct 2026).
+        Answers the bytes freed."""
+        base = self.chunks_dir
+        if not base.is_dir():
+            return 0
+        freed = sum(p.stat().st_size for p in base.rglob("*") if p.is_file())
+        shutil.rmtree(base, ignore_errors=True)
+        return freed
 
 
 def write_las_tiles(path: Path, store: PointTiles, shift: np.ndarray, scale: float = 0.001) -> int:
@@ -328,3 +398,145 @@ def voxel_mean(
     ln = np.linalg.norm(nn, axis=1, keepdims=True)
     nn = np.where(ln > 1e-9, nn / np.maximum(ln, 1e-12), [0.0, 0.0, 1.0]).astype(np.float32)
     return p, c, nn, cnt.astype(np.int32)
+
+
+# ------------------------------------------------------------------------------------- merge v2
+
+
+def collapse_columns(
+    xyz: np.ndarray, rgb: np.ndarray, nrm: np.ndarray, cnt: np.ndarray, voxel: float
+) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+    """One point per ``2 x voxel`` of height in each xy column of voxels: a column's points,
+    sorted by height, split into clusters where they are more than ``2 x voxel`` apart (a roof
+    over the ground); each cluster is averaged per ``2 x voxel`` from its lowest point, so a wall
+    keeps its height and stacked noise layers merge. Weighted by the points each input holds."""
+    if not len(xyz):
+        return xyz, rgb, nrm, cnt
+    step = 2.0 * voxel
+    q = np.floor(xyz[:, :2] / voxel).astype(np.int64)
+    q -= q.min(0)
+    col = q[:, 0] * (int(q[:, 1].max()) + 1) + q[:, 1]
+    order = np.lexsort((xyz[:, 2], col))
+    xyz, rgb, nrm, cnt, col = xyz[order], rgb[order], nrm[order], cnt[order], col[order]
+    z = xyz[:, 2]
+    new_cluster = np.r_[True, (col[1:] != col[:-1]) | (np.diff(z) > step)]
+    cluster = np.cumsum(new_cluster) - 1
+    sub = np.floor((z - z[new_cluster][cluster]) / step).astype(np.int64)
+    new_bin = new_cluster | np.r_[True, sub[1:] != sub[:-1]]
+    b = np.cumsum(new_bin) - 1
+    nb = int(b[-1]) + 1
+    w = cnt.astype(np.float64)
+    tot = np.bincount(b, weights=w, minlength=nb)
+
+    def mean(a: np.ndarray) -> np.ndarray:
+        cols = [np.bincount(b, weights=a[:, k] * w, minlength=nb) for k in range(a.shape[1])]
+        return np.stack(cols, 1) / tot[:, None]
+
+    p = mean(xyz)
+    c = np.clip(np.round(mean(rgb.astype(np.float64))), 0, 255).astype(np.uint8)
+    nn = mean(np.nan_to_num(nrm.astype(np.float64)))
+    ln = np.linalg.norm(nn, axis=1, keepdims=True)
+    nn = np.where(ln > 1e-9, nn / np.maximum(ln, 1e-12), [0.0, 0.0, 1.0]).astype(np.float32)
+    return p, c, nn, tot.astype(np.int32)
+
+
+def outlier_mask(pts: np.ndarray, margin: np.ndarray, k: int = 16, sigma: float = 2.5) -> np.ndarray:
+    """True for the points of ``pts`` to keep: those whose mean distance to their ``k`` nearest
+    neighbours (among ``pts`` and ``margin``) is at most the mean over ``pts`` plus ``sigma``
+    standard deviations. With ``k`` points or fewer everything is kept."""
+    from scipy.spatial import cKDTree
+
+    allp = np.concatenate([pts, margin]) if len(margin) else pts
+    if len(allp) <= k:
+        return np.ones(len(pts), bool)
+    d, _ = cKDTree(allp).query(pts, k=k + 1)
+    m = d[:, 1:].mean(1)
+    return m <= m.mean() + sigma * m.std()
+
+
+def _tile_result(xyz: np.ndarray) -> dict:
+    if not len(xyz):
+        return {"n": 0, "lo": None, "hi": None}
+    return {"n": len(xyz), "lo": xyz.min(0).tolist(), "hi": xyz.max(0).tolist()}
+
+
+def _save_tile(dst: Path, **arrays: np.ndarray) -> None:
+    dst.parent.mkdir(parents=True, exist_ok=True)
+    tmp = dst.with_name(f".{dst.stem}.tmp.npz")
+    np.savez(tmp, **arrays)
+    replace_over(tmp, dst)
+
+
+def _xyz_of(path: Path) -> np.ndarray:
+    with np.load(path) as z:
+        return z["xyz"]
+
+
+def merge_tile(
+    store: PointTiles,
+    name: str,
+    voxel: float,
+    rule: MergeRule,
+    keep: Callable[[np.ndarray], np.ndarray] | None = None,
+) -> dict:
+    """First pass for one tile: its chunks, clipped by ``keep``, averaged per voxel, the voxels
+    seen fewer than ``rule.min_count`` times dropped, the columns collapsed (with
+    ``rule.collapse``); into ``collapsed/<tile>.npz``. A tile whose first or second pass is on
+    disk is not done again."""
+    dst = store.root / "collapsed" / f"{name}.npz"
+    for done in (dst, store.root / "fused" / f"{name}.npz"):
+        if done.exists():
+            return _tile_result(_xyz_of(done))
+    parts = []
+    for p in sorted((store.chunks_dir / name).glob("*.npz")):
+        if p.name.startswith("."):
+            continue
+        with np.load(p) as f:
+            parts.append(unpack_chunk(f))
+    if parts:
+        xyz = np.concatenate([a for a, _, _ in parts])
+        rgb = np.concatenate([c for _, c, _ in parts])
+        nrm = np.concatenate([n for _, _, n in parts])
+    else:
+        xyz, rgb, nrm = np.zeros((0, 3)), np.zeros((0, 3), np.uint8), np.zeros((0, 3), np.float32)
+    if keep is not None and len(xyz):
+        m = keep(xyz)
+        xyz, rgb, nrm = xyz[m], rgb[m], nrm[m]
+    p, c, n, cnt = voxel_mean(xyz, rgb, nrm, voxel)
+    ok = cnt >= rule.min_count
+    p, c, n, cnt = p[ok], c[ok], n[ok], cnt[ok]
+    if rule.collapse:
+        p, c, n, cnt = collapse_columns(p, c, n, cnt, voxel)
+    _save_tile(dst, xyz=p, rgb=c, normal=n, count=cnt)
+    return _tile_result(p)
+
+
+def _margin(store: PointTiles, name: str, voxel: float) -> np.ndarray:
+    """The first-pass points of the eight neighbouring tiles within one voxel of this tile."""
+    tx, ty = (int(v) for v in name.split("_"))
+    x0, y0 = tx * store.tile - voxel, ty * store.tile - voxel
+    x1, y1 = (tx + 1) * store.tile + voxel, (ty + 1) * store.tile + voxel
+    out = []
+    for dx in (-1, 0, 1):
+        for dy in (-1, 0, 1):
+            p = store.root / "collapsed" / f"{tx + dx}_{ty + dy}.npz"
+            if (dx or dy) and p.is_file():
+                q = _xyz_of(p)
+                m = (q[:, 0] >= x0) & (q[:, 0] < x1) & (q[:, 1] >= y0) & (q[:, 1] < y1)
+                out.append(q[m])
+    return np.concatenate(out) if out else np.zeros((0, 3))
+
+
+def filter_tile(store: PointTiles, name: str, voxel: float, rule: MergeRule) -> dict:
+    """Second pass for one tile: the outlier filter over the tile and a one-voxel margin of its
+    neighbours' first-pass points; into ``fused/<tile>.npz``."""
+    dst = store.root / "fused" / f"{name}.npz"
+    if dst.exists():
+        return _tile_result(_xyz_of(dst))
+    with np.load(store.root / "collapsed" / f"{name}.npz") as z:
+        d = {k: z[k] for k in z.files}
+    if rule.outliers and len(d["xyz"]):
+        keep = outlier_mask(d["xyz"], _margin(store, name, voxel), rule.k, rule.sigma)
+        d = {k: v[keep] for k, v in d.items()}
+    _save_tile(dst, **d)
+    return _tile_result(d["xyz"])

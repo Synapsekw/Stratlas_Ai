@@ -15,11 +15,16 @@ import products_synth as ps
 from aio_pipelines.photo import dense as D
 from aio_pipelines.photo.fuse import (
     CHUNK_FORMAT,
+    DENSE_RULE,
+    SPARSE_RULE,
     FuseSettings,
+    MergeRule,
     PointTiles,
     agree_limit,
+    collapse_columns,
     consistent,
     normals_of,
+    outlier_mask,
     pack_chunk,
     unpack_chunk,
     voxel_mean,
@@ -331,7 +336,7 @@ def test_voxel_means_and_tiles(tmp_path):
     assert np.allclose(p[i], [0.015, 0.02, 0.005]) and c[i].tolist() == [100, 50, 25]
     store = PointTiles(tmp_path / "cloud", 4.0)
     store.add("a", xyz, rgb, nrm)
-    info = store.merge(0.1)
+    info = store.merge(0.1, rule=SPARSE_RULE)
     assert info["points"] == 2 and info["tiles"] == 2
     box = store.fused_in(-1, -1, 1, 1)
     assert len(box["xyz"]) == 1 and math.isclose(float(box["xyz"][0, 0]), 0.015, abs_tol=1e-6)
@@ -346,7 +351,7 @@ def test_the_cloud_is_written_as_las_tile_by_tile(tmp_path):
     rgb = rng.integers(0, 256, (5000, 3)).astype(np.uint8)
     store = PointTiles(tmp_path / "cloud", 8.0)
     store.add("a", xyz, rgb, np.tile([0, 0, 1], (5000, 1)).astype(np.float32))
-    info = store.merge(0.001)
+    info = store.merge(0.001, rule=SPARSE_RULE)
     shift = np.array([412000.0, 3245000.0, 20.0])
     n = write_las_tiles(tmp_path / "c.las", store, shift)
     las = read_las(tmp_path / "c.las")
@@ -375,3 +380,136 @@ def test_pixel_directions_are_worked_out_once_per_camera(monkeypatch):
     assert len(calls) == 1
     np.testing.assert_array_equal(got_a, want)
     assert not S.pixel_rays(cam).flags.writeable
+
+
+def test_a_chunk_of_an_older_format_is_refused():
+    packed = pack_chunk(np.zeros((2, 3)), np.zeros((2, 3), np.uint8), np.zeros((2, 3)), (0.0, 0.0))
+    old = {k: v for k, v in packed.items() if k != "format"}
+    with pytest.raises(JobError, match="older format"):
+        unpack_chunk(old)
+    with pytest.raises(JobError, match="older format"):
+        unpack_chunk({**packed, "format": np.array(1, np.int16)})
+
+
+def _up(n: int) -> np.ndarray:
+    return np.tile(np.float32([0, 0, 1]), (n, 1))
+
+
+def test_the_merge_rules():
+    assert MergeRule() == DENSE_RULE and DENSE_RULE.min_count == 2 and DENSE_RULE.outliers
+    assert (DENSE_RULE.k, DENSE_RULE.sigma, DENSE_RULE.version) == (16, 2.5, 2)
+    assert SPARSE_RULE.min_count == 1 and not SPARSE_RULE.outliers and not SPARSE_RULE.collapse
+
+
+def test_a_roof_over_the_ground_keeps_two_points():
+    xyz = np.array([[0.05, 0.05, 0.00], [0.05, 0.05, 0.12], [0.05, 0.05, 5.00], [0.05, 0.05, 5.15]])
+    p, _, _, k = collapse_columns(
+        xyz, np.zeros((4, 3), np.uint8), _up(4), np.array([3, 2, 4, 1], np.int32), 0.1
+    )
+    assert len(p) == 2 and k.tolist() == [5, 5]
+    assert p[0, 2] == pytest.approx(0.048) and p[1, 2] == pytest.approx(5.03)
+
+
+def test_a_noisy_flat_surface_is_one_point_per_column():
+    rng = np.random.default_rng(7)
+    xyz = np.column_stack([rng.uniform(0, 1.0, (5000, 2)), rng.uniform(0, 0.15, 5000)])
+    p, _, n, k = collapse_columns(xyz, np.zeros((5000, 3), np.uint8), _up(5000), np.ones(5000, np.int32), 0.1)
+    assert len(p) == 100 and k.sum() == 5000 and np.allclose(n, [0, 0, 1])
+
+
+def test_a_wall_keeps_its_height():
+    z = np.arange(31) * 0.1 + 0.01
+    xyz = np.column_stack([np.full(31, 0.05), np.full(31, 0.05), z])
+    p, _, _, _ = collapse_columns(xyz, np.zeros((31, 3), np.uint8), _up(31), np.ones(31, np.int32), 0.1)
+    assert len(p) == 16 and p[:, 2].min() < 0.1 and p[:, 2].max() > 2.9
+
+
+def test_voxels_seen_once_are_dropped(tmp_path):
+    store = PointTiles(tmp_path / "m", 4.0)
+    xyz = np.array([[0.01, 0.01, 0.0], [0.02, 0.03, 0.01], [0.03, 0.02, 0.02], [2.0, 2.0, 1.0]])
+    store.add("a", xyz, np.zeros((4, 3), np.uint8), _up(4))
+    info = store.merge(0.1, rule=MergeRule(outliers=False))
+    assert info["points"] == 1 and info["counts"] == {"0_0": 1} and info["rule"]["version"] == 2
+
+
+def test_the_sparse_rule_keeps_every_point(tmp_path):
+    rng = np.random.default_rng(8)
+    xyz = np.column_stack([rng.uniform(0, 30, 400), rng.uniform(0, 30, 400), rng.uniform(0, 3, 400)])
+    store = PointTiles(tmp_path / "m", 8.0)
+    store.add("sparse", xyz, np.zeros((400, 3), np.uint8), _up(400))
+    assert store.merge(0.01, rule=SPARSE_RULE)["points"] == 400
+
+
+def test_the_sparse_rule_keeps_stacked_points_at_the_fast_spacing(tmp_path):
+    """Fast merges at the photo GSD: sparse points one above another in a column of voxels (a
+    facade, a pole) less than two GSD apart stay separate points, and so does a lone one."""
+    gsd = 0.03
+    rng = np.random.default_rng(9)
+    cols = (np.floor(rng.uniform(0, 20, (50, 2)) / gsd) + 0.5) * gsd  # voxel column centres
+    stacks = np.column_stack([np.repeat(cols, 5, axis=0), np.tile(np.arange(5) * 1.4 * gsd + 0.001, 50)])
+    xyz = np.concatenate([stacks, [[10.015, 10.015, 8.0]]])
+    rgb, nrm = np.zeros((len(xyz), 3), np.uint8), _up(len(xyz))
+    fast = PointTiles(tmp_path / "fast", 8.0)
+    fast.add("sparse", xyz, rgb, nrm)
+    assert fast.merge(gsd, rule=SPARSE_RULE)["points"] == len(xyz) == 251
+    collapsed = PointTiles(tmp_path / "collapsed", 8.0)
+    collapsed.add("sparse", xyz, rgb, nrm)
+    assert collapsed.merge(gsd, rule=MergeRule(min_count=1, outliers=False))["points"] == 151
+
+
+def _sheet(x1: float, y1: float, step: float = 0.1, seed: int = 1) -> np.ndarray:
+    """A jittered flat sheet, one point per ``step`` cell."""
+    rng = np.random.default_rng(seed)
+    gx, gy = np.meshgrid(np.arange(step / 2, x1, step), np.arange(step / 2, y1, step))
+    xyz = np.column_stack([gx.ravel(), gy.ravel(), np.zeros(gx.size)])
+    xyz[:, :2] += rng.uniform(-0.02, 0.02, (len(xyz), 2))
+    xyz[:, 2] += rng.uniform(-0.01, 0.01, len(xyz))
+    return xyz
+
+
+def test_the_outlier_filter_drops_a_floating_point_and_keeps_the_seams(tmp_path):
+    sheet = _sheet(10.0, 10.0)
+    pts = np.concatenate([sheet, [[5.0, 5.0, 4.0], [5.05, 5.0, 4.0]]])
+    store = PointTiles(tmp_path / "m", 5.0)  # four tiles meeting at x = 5 and y = 5
+    store.add("a", pts, np.zeros((len(pts), 3), np.uint8), _up(len(pts)))
+    store.merge(0.1, rule=MergeRule(min_count=1))
+    out = np.concatenate([p["xyz"] for _, p in store.fused()])
+    assert not (out[:, 2] > 1).any()  # the floating pair is gone
+
+    def inner(a):
+        return (a[:, :2].min(1) > 0.3) & (a[:, :2].max(1) < 9.7)
+
+    def seam(a):
+        return inner(a) & ((np.abs(a[:, 0] - 5.0) < 0.1) | (np.abs(a[:, 1] - 5.0) < 0.1))
+
+    assert seam(out).sum() >= 0.98 * seam(sheet).sum()
+    assert inner(out).sum() >= 0.98 * inner(sheet).sum()
+
+
+def test_outlier_mask_keeps_all_of_a_tiny_tile():
+    assert outlier_mask(np.zeros((5, 3)), np.zeros((0, 3))).all()
+
+
+def test_a_merge_at_another_spacing_starts_over_and_one_at_the_same_carries_on(tmp_path):
+    store = PointTiles(tmp_path / "m", 4.0)
+    xyz = _sheet(3.0, 3.0)
+    store.add("a", xyz, np.zeros((len(xyz), 3), np.uint8), _up(len(xyz)))
+    store.merge(0.1, rule=SPARSE_RULE)
+    f = store.root / "fused" / "0_0.npz"
+    t0 = f.stat().st_mtime_ns
+    store.merge(0.1, rule=SPARSE_RULE)
+    assert f.stat().st_mtime_ns == t0 and store.merging_voxel() == 0.1
+    assert not (store.root / "collapsed").exists()
+    info = store.merge(0.2, rule=SPARSE_RULE)
+    assert info["voxel"] == 0.2 and f.stat().st_mtime_ns != t0 and store.merging_voxel() == 0.2
+
+
+def test_the_chunks_go_after_a_finished_merge(tmp_path):
+    store = PointTiles(tmp_path / "m", 4.0, chunks=tmp_path / "c" / "chunks")
+    xyz = _sheet(6.0, 3.0)
+    store.add("a", xyz, np.zeros((len(xyz), 3), np.uint8), _up(len(xyz)))
+    store.merge(0.1, rule=SPARSE_RULE)
+    assert "complete" not in store.info()
+    assert store.finish_merge()["complete"] is True and store.counts() == [1200, 600]  # x < 4, x >= 4
+    assert store.drop_chunks() > 0 and not (tmp_path / "c" / "chunks").exists()
+    assert store.info()["points"] == len(xyz) == sum(store.counts())
