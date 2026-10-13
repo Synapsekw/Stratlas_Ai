@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import json
+import subprocess
+import sys
 from pathlib import Path
 
 import cv2
@@ -206,7 +208,7 @@ def test_a_frame_deleted_during_the_run_reads_as_missing(project, monkeypatch):
     def gone(path, *a, **k):
         raise FileNotFoundError(2, "No such file", str(path))
 
-    monkeypatch.setattr(pipeline, "read_image", gone)
+    monkeypatch.setattr("aio_pipelines.pano.frames.read_image", gone)
     with pytest.raises(JobError) as e:
         stitch(project)
     assert str(e.value) == FRAMES_MISSING
@@ -224,3 +226,12 @@ def test_the_record_check_keeps_the_schema_caps():
         check_record(
             {**doc, "frames": {"used": names[:8], "dropped": [{"file": "a.jpg", "reason": "x" * 201}]}}
         )
+
+
+def test_importing_the_pipelines_does_not_load_opencv():
+    # MeshLab shares no process with OpenCV (libomp); the pano modules import cv2 on use.
+    probe = "import sys, aio_pipelines.pipelines\nprint('cv2' in sys.modules)"
+    out = subprocess.run(
+        [sys.executable, "-I", "-c", probe], capture_output=True, text=True, timeout=120, check=True
+    ).stdout.strip()
+    assert out == "False"

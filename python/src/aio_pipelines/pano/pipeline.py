@@ -19,7 +19,6 @@ import time
 from pathlib import Path
 from typing import Any
 
-import cv2
 import numpy as np
 
 from .. import __version__
@@ -35,9 +34,6 @@ from ..runtime import (
     commit_files,
     now_iso,
 )
-from . import align, compose
-from .frames import FrameError, FrameInfo, encode_jpeg, list_frames, read_frame_info, read_image
-from .geometry import rot_from_gimbal
 from .record import MAX_FRAMES, SCHEMA, check_record
 
 PANO_ID = re.compile(r"^[a-z0-9][a-z0-9-]*$")
@@ -68,6 +64,8 @@ def out_width(quality: str) -> int:
 
 
 def _png(img: np.ndarray) -> bytes:
+    import cv2  # on use: importing the pipelines must not load OpenCV
+
     ok, buf = cv2.imencode(".png", img, [cv2.IMWRITE_PNG_COMPRESSION, 1])
     if not ok:
         raise JobError("The stitched image could not be staged.")
@@ -75,6 +73,8 @@ def _png(img: np.ndarray) -> bytes:
 
 
 def _unpng(path: Path, flag: int) -> np.ndarray:
+    import cv2  # on use: importing the pipelines must not load OpenCV
+
     img = cv2.imdecode(np.fromfile(str(path), dtype=np.uint8), flag)
     if img is None:
         raise JobError("The staged image is missing; start the stitch again.")
@@ -82,6 +82,10 @@ def _unpng(path: Path, flag: int) -> np.ndarray:
 
 
 def _thumb(img: np.ndarray, wide: bool) -> np.ndarray:
+    import cv2  # on use: importing the pipelines must not load OpenCV
+
+    from . import compose
+
     if not wide:
         return compose.thumbnail(img)
     h, w = img.shape[:2]
@@ -91,6 +95,8 @@ def _thumb(img: np.ndarray, wide: bool) -> np.ndarray:
 
 def _load(path: Path, scale: float, gray: bool = False) -> np.ndarray:
     """A frame read for matching or composing; one deleted since the read step is a missing frame."""
+    from .frames import FrameError, read_image
+
     try:
         return read_image(path, scale, gray=gray)
     except (OSError, FrameError):
@@ -128,6 +134,13 @@ class PanoStitch:
         return [f"panoramas/{params['layer']}/{params['pano']}/frames"]
 
     def plan(self, params: dict[str, Any]) -> list[Step]:
+        # on use: importing the pipelines must not load OpenCV
+        import cv2
+
+        from . import align, compose
+        from .frames import FrameError, FrameInfo, encode_jpeg, list_frames, read_frame_info
+        from .geometry import rot_from_gimbal
+
         layer: str = params["layer"]
         pano: str = params["pano"]
         quality: str = params.get("quality") or "standard"
