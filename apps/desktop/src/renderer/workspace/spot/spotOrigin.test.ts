@@ -1,3 +1,5 @@
+import type { Layer } from '@aio/schema';
+import type { CaptureIndex } from '@aio/workspace';
 import { describe, expect, it } from 'vitest';
 import { lookQuat, overflight, panoAt, photoAt, track } from './__fixtures__/spotPoses';
 import { nearestSample, originCapture, spotFromPose, spotOf } from './spotOrigin';
@@ -114,10 +116,26 @@ describe('spotOf', () => {
     const item = { kind: 'photo', layer: 'photos-undated', photo: 'u' } as const;
     close(spotOf({ item }, entries)?.camera, [2, 1.6, 3]);
     close(spotOf({ item }, entries)?.target, [17, 0, 3]);
-    expect(originCapture(item, entries)).toBeUndefined();
   });
-  it('originCapture reports the date of a dated item', () => {
-    expect(originCapture({ layer: 'photos-d1' }, entries)).toBe('d1');
-    expect(originCapture({ layer: 'clip' }, entries)).toBe('d1');
+});
+
+describe('originCapture', () => {
+  // read from the layer, not the entries: a clip whose flight log is still loading has no entry
+  const layers = [
+    { kind: 'photos', id: 'photos-d1', capture: 'd1', items: [] },
+    { kind: 'video', id: 'clip', capture: 'd2' },
+    { kind: 'photos', id: 'photos-undated', items: [] },
+  ] as unknown as Layer[];
+  const index = {
+    captures: [{ id: 'd1' }, { id: 'd2' }],
+    of: {},
+  } as unknown as CaptureIndex;
+  it("reports the date of the item's layer, entry or not", () => {
+    expect(originCapture({ layer: 'photos-d1' }, layers, index)).toBe('d1');
+    expect(originCapture({ layer: 'clip' }, layers, index)).toBe('d2');
+  });
+  it('an undated or unknown layer has none', () => {
+    expect(originCapture({ layer: 'photos-undated' }, layers, index)).toBeUndefined();
+    expect(originCapture({ layer: 'gone' }, layers, index)).toBeUndefined();
   });
 });

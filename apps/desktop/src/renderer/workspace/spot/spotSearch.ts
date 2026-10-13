@@ -1,6 +1,6 @@
 import type { CaptureIndex } from '@aio/workspace';
 import { matchEntry } from './spotMatchers';
-import { nearestSample, originCapture, spotOf } from './spotOrigin';
+import { nearestSample, spotOf } from './spotOrigin';
 import type {
   Spot,
   SpotDate,
@@ -32,6 +32,14 @@ export interface SearchInput {
 
 const unplaced = (e: SpotEntry): boolean =>
   (e.kind === 'photo' && !e.pos) || ((e.kind === 'walk' || e.kind === 'video') && !e.samples);
+
+/** The entry holds `item` (a photo or panorama by id; a walk or clip by its layer). */
+function holds(e: SpotEntry, item: SpotItem): boolean {
+  if (e.layer !== item.layer || e.kind !== item.kind) return false;
+  if (e.kind === 'photo' && item.kind === 'photo') return e.id === item.photo;
+  if (e.kind === 'pano' && item.kind === 'pano') return e.id === item.pano;
+  return true;
+}
 
 /** The same photo or panorama; for walks and clips, the same layer (one match per layer). */
 export function sameItem(a: SpotItem, b: SpotItem): boolean {
@@ -80,7 +88,8 @@ export function searchSpot(input: SearchInput): SpotHistory {
     const date = e.capture === undefined ? undefined : byCapture.get(e.capture);
     if (!date) continue;
     if (unplaced(e)) {
-      date.skipped++;
+      // the clicked item is shown from its own camera, so it is not left out
+      if (!(input.origin && holds(e, input.origin.item))) date.skipped++;
       continue;
     }
     const m = matchEntry(spot, e);
@@ -101,11 +110,15 @@ export function searchSpot(input: SearchInput): SpotHistory {
 
 export type HistoryResult = { history: SpotHistory } | { error: 'noPosition' };
 
-/** The history of a clicked item, or why there is none. */
+/**
+ * The history of a clicked item, or why there is none. `capture`: the item's own date, from its
+ * layer (`originCapture`), so a clip or walk still being read keeps it.
+ */
 export function historyFor(
   open: SpotOpen,
   entries: readonly SpotEntry[],
   index: Pick<CaptureIndex, 'captures'>,
+  capture: string | undefined,
 ): HistoryResult {
   const spot = spotOf(open, entries);
   if (!spot) return { error: 'noPosition' };
@@ -114,7 +127,7 @@ export function historyFor(
       spot,
       entries,
       captures: index.captures.map((c) => c.id),
-      origin: { item: open.item, capture: originCapture(open.item, entries) },
+      origin: { item: open.item, capture },
     }),
   };
 }

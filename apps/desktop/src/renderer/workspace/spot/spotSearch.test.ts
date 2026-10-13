@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
-import { overflight, panoAt, photoAt } from './__fixtures__/spotPoses';
+import { lookQuat, overflight, panoAt, photoAt } from './__fixtures__/spotPoses';
 import { historyFor, sameItem, searchSpot } from './spotSearch';
-import type { Spot, SpotEntry } from './spotTypes';
+import type { Spot, SpotEntry, SpotOpen } from './spotTypes';
 
 const spot: Spot = { camera: [0, 1.6, 0], bearingDeg: 0, target: [0, 0, -15], aerial: false };
 const captures = ['d1', 'd2', 'd3'];
@@ -115,12 +115,12 @@ describe('historyFor', () => {
   it('says when the clicked item has no position', () => {
     const e = [photoAt('x', undefined, 0, { capture: 'd1', layer: 'photos-d1' })];
     expect(
-      historyFor({ item: { kind: 'photo', layer: 'photos-d1', photo: 'x' } }, e, index),
+      historyFor({ item: { kind: 'photo', layer: 'photos-d1', photo: 'x' } }, e, index, 'd1'),
     ).toEqual({ error: 'noPosition' });
   });
   it('searches from a panorama', () => {
     const e = [panoAt('a', [0, 1.6, 0], 'd1'), panoAt('b', [3, 1.6, 0], 'd2')];
-    const r = historyFor({ item: { kind: 'pano', layer: 'pano-d1', pano: 'a' } }, e, index);
+    const r = historyFor({ item: { kind: 'pano', layer: 'pano-d1', pano: 'a' } }, e, index, 'd1');
     expect('history' in r && r.history.dates[1]?.matches[0]?.item).toEqual({
       kind: 'pano',
       layer: 'pano-d2',
@@ -143,11 +143,28 @@ describe('historyFor', () => {
       { item: { kind: 'walk', layer: 'walk-d1', t: 4.9 }, lookDeg: 100 },
       e,
       index,
+      'd1',
     );
     const self = 'history' in r ? r.history.dates[0]?.matches[0] : undefined;
     expect(self?.item).toEqual({ kind: 'walk', layer: 'walk-d1', t: 4.9 });
     expect(self?.lookDeg).toBe(100);
     expect(self?.centreDeg).toBe(40);
+  });
+  const clipOpen: SpotOpen = {
+    item: { kind: 'video', layer: 'clip-d1', t: 3 },
+    pose: { pos: [0, 40, 0], q: lookQuat(0, -90) },
+  };
+  it('a clip whose flight log is still loading keeps its own date', () => {
+    const r = historyFor(clipOpen, [panoAt('b', [3, 1.6, 0], 'd2')], index, 'd1');
+    const d1 = 'history' in r ? r.history.dates[0] : undefined;
+    expect(d1?.matches[0]?.item).toEqual(clipOpen.item);
+  });
+  it('the clicked item is shown, not counted as left out', () => {
+    const e: SpotEntry[] = [{ kind: 'video', layer: 'clip-d1', capture: 'd1', samples: null }];
+    const r = historyFor(clipOpen, e, index, 'd1');
+    const d1 = 'history' in r ? r.history.dates[0] : undefined;
+    expect(d1?.matches[0]?.item).toEqual(clipOpen.item);
+    expect(d1?.skipped).toBe(0);
   });
   it('compares items by identity', () => {
     expect(sameItem({ kind: 'walk', layer: 'w', t: 1 }, { kind: 'walk', layer: 'w', t: 9 })).toBe(

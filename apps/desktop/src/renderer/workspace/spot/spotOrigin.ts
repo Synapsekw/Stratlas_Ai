@@ -1,5 +1,7 @@
-import type { Quat, Vec3 } from '@aio/schema';
+import type { Layer, Quat, Vec3 } from '@aio/schema';
 import { viewDirection } from '@aio/video';
+import type { CaptureIndex } from '@aio/workspace';
+import { layerCapture } from '../framesModel';
 import { bearingOf, groundAhead, groundHit } from './spotGeom';
 import { SPOT_RULES } from './spotRules';
 import type { Spot, SpotEntry, SpotItem, SpotOpen, TrackSample } from './spotTypes';
@@ -55,14 +57,17 @@ export function nearestSample<T extends { t: number }>(
 }
 
 /**
- * The survey date an item belongs to: the capture of its layer's entry. Undefined for an
- * undated layer or an unknown layer (the item is still found and gets a spot; it has no slot).
+ * The survey date an item belongs to, read from its layer (a clip whose flight log or a walk
+ * whose files are still being read has no entry yet, but has its date). Undefined for an undated
+ * or unknown layer (the item is still found and gets a spot; it has no slot).
  */
 export function originCapture(
   item: Pick<SpotItem, 'layer'>,
-  entries: readonly SpotEntry[],
+  layers: readonly Layer[],
+  index: CaptureIndex,
 ): string | undefined {
-  return entries.find((e) => e.layer === item.layer)?.capture;
+  const layer = layers.find((l) => l.id === item.layer);
+  return layer ? layerCapture(layer, index) : undefined;
 }
 
 export function spotOf(open: SpotOpen, entries: readonly SpotEntry[]): Spot | null {

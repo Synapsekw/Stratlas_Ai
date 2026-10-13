@@ -1,4 +1,4 @@
-import { dateTags, type CaptureIndex, type DateTag } from '@aio/workspace';
+import { dateTags, useWorkspace, type CaptureIndex, type DateTag } from '@aio/workspace';
 import { useMemo } from 'react';
 import { useCaptureIndex } from '../compare';
 import { originCapture } from './spotOrigin';
@@ -25,15 +25,17 @@ export interface SpotHistoryView {
  */
 export function useSpotHistory(open: SpotOpen | null, active: boolean): SpotHistoryView {
   const index = useCaptureIndex();
+  const layers = useWorkspace((s) => s.project?.manifest.layers);
   const { entries, reading } = useSpotEntries(active);
+  // from the layer, not the entries: a clip or walk still being read keeps its date
+  const origin = useMemo(
+    () => (open && index && layers ? originCapture(open.item, layers, index) : undefined),
+    [open, index, layers],
+  );
   const result = useMemo(
-    () => (open && index ? historyFor(open, entries, index) : null),
-    [open, entries, index],
+    () => (open && index ? historyFor(open, entries, index, origin) : null),
+    [open, entries, index, origin],
   );
   const tags = useMemo(() => (index ? dateTags(index.captures) : {}), [index]);
-  const origin = useMemo(
-    () => (open ? originCapture(open.item, entries) : undefined),
-    [open, entries],
-  );
   return { entries, reading, index, tags, result, origin };
 }
