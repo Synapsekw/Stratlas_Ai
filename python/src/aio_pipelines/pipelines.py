@@ -21,6 +21,7 @@ from .opf.exporter import OpfExport
 from .opf.importer import OpfImport
 from .packs.imagery import ImageryPack
 from .packs.terrain import TerrainPack
+from .pano.pipeline import PanoStitch
 from .photo.align import PhotoAlign
 from .photo.georef import PhotoGeoref
 from .photo.products import PhotoProducts
@@ -87,5 +88,7 @@ def all_pipelines() -> dict[str, Pipeline]:
         HaulAnalyse(),
         # Walks 360 (pipeline pack 0.6.0)
         WalkProcess(),
+        # Drone panoramas (pipeline pack 0.7.0)
+        PanoStitch(),
     ]
     return {p.name: p for p in items}
