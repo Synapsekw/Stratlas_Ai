@@ -870,7 +870,19 @@ separators (`20261013T081530Z`); `<slug>` is the first target: a layer id, `run-
   `plan` (`RemovalPlan`: what went and why) and `manifestBefore` (`manifest.before.json`).
 
 A walk removal keeps its own layout: the entry `<stamp>-<walk id>/` is the walk folder itself, with
-`removed.json` added. A removal that moves no file writes no entry.
+`removed.json` added. A removal that moves no file and rewrites no side file (layer files already
+gone) writes no entry; one that only rewrites `tilesets.json` writes an entry with the earlier copy.
+
+While a removal runs, its entry is named `held-<stamp>-<slug>/` and holds `not-removed.txt` from
+before the first move until the manifest is saved. Once the save succeeds the note goes and the
+entry is renamed to `<stamp>-<slug>/`. When the removal fails, the files are moved back and the
+held entry goes; a file that could not be moved back stays in the held entry, listed in its
+`removed.json`, with `not-removed.txt` still there, and the error names the folder. A held entry is
+never swept, never counted in the trash size and never deleted by **Empty project trash**. It
+becomes ordinary trash (renamed to its stamped name) only when the trash reads it and finds the
+removal took effect: no `not-removed.txt`, a valid `removed.json`, and none of the layers, dates
+or runs it names still in the project (a rename the system refused at the end of a removal). Any
+other held entry stays until the person moves its files back by hand and deletes it.
 
 Restoring by hand within seven days: copy the entry's folders back to the project folder, and
 replace `manifest.json` with `manifest.before.json` (or put back only the layers you need). The app
