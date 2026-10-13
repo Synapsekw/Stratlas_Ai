@@ -601,10 +601,12 @@ class PhotoProducts:
             info = store.merge(s["gsd"], keep, ctx.check)
             return {"points": info["points"], "source": "sparse"}
         from . import pool
+        from .fuse import FuseSettings
 
         views = run.model.views
         depth_dir = self._work(ctx) / "depth"
-        state = pool.fuse_state(run.model, s["scale"], depth_dir, store.root, s["tileM"])
+        abs_tol = FuseSettings.for_run(s["gsd"], s["scale"]).abs_tol
+        state = pool.fuse_state(run.model, s["scale"], depth_dir, store.root, s["tileM"], abs_tol)
         marks = state["marks"]
         todo = [v.id for v in views if not (marks / str(v.id)).exists()]
         cam = views[0].camera.scaled(s["scale"])
@@ -622,6 +624,7 @@ class PhotoProducts:
                 str(depth_dir),
                 str(store.root),
                 s["tileM"],
+                abs_tol,
                 pool.worker_threads(n),
             ),
             task=pool.fuse_task,

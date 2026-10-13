@@ -13,6 +13,7 @@ memory) breaks the pool, and the stage finishes the rest in its own process.
 from __future__ import annotations
 
 import contextlib
+import math
 import multiprocessing
 import os
 from collections.abc import Callable
@@ -272,13 +273,17 @@ def dense_task(view_id: int) -> dict[str, Any]:
 # -------------------------------------------------------------------------------------- fusion
 
 
-def fuse_state(model, scale: float, depth_dir, store_root, tile_m: float) -> dict[str, Any]:
-    """What fusing one photo needs: the same in the job's process and in a worker."""
+def fuse_state(
+    model, scale: float, depth_dir, store_root, tile_m: float, abs_tol: float = math.inf
+) -> dict[str, Any]:
+    """What fusing one photo needs: the same in the job's process and in a worker. ``store_root``
+    is the folder that holds ``chunks/``; ``abs_tol`` the run's agreement limit in metres."""
     from .dense import select_pairs
     from .fuse import FuseSettings, PointTiles
 
-    settings = FuseSettings()
-    marks = store_root / "chunks" / ".done"
+    settings = FuseSettings(abs_tol=abs_tol)
+    store = PointTiles(store_root, tile_m)
+    marks = store.chunks_dir / ".done"
     marks.mkdir(parents=True, exist_ok=True)
     return {
         "model": model,
@@ -287,7 +292,7 @@ def fuse_state(model, scale: float, depth_dir, store_root, tile_m: float) -> dic
         "near": select_pairs(model, settings.neighbours),
         "cams": {v.id: v.camera.scaled(scale) for v in model.views},
         "depth": depth_dir,
-        "store": PointTiles(store_root, tile_m),
+        "store": store,
         "marks": marks,
     }
 
@@ -338,6 +343,7 @@ def init_fuse(
     depth_dir: str,
     store_root: str,
     tile_m: float,
+    abs_tol: float,
     threads: int,
     addon: str | None = None,
 ) -> None:
@@ -348,7 +354,7 @@ def init_fuse(
     cap_threads(threads)
     _W.clear()
     model = load_run(Path(project), run_id).model
-    _W.update(fuse_state(model, scale, Path(depth_dir), Path(store_root), tile_m))
+    _W.update(fuse_state(model, scale, Path(depth_dir), Path(store_root), tile_m, abs_tol))
     attach_card(_W, addon)
 
 

@@ -14,10 +14,14 @@ import pytest
 import products_synth as ps
 from aio_pipelines.photo import dense as D
 from aio_pipelines.photo.fuse import (
+    CHUNK_FORMAT,
     FuseSettings,
     PointTiles,
+    agree_limit,
     consistent,
     normals_of,
+    pack_chunk,
+    unpack_chunk,
     voxel_mean,
     world_points,
 )
@@ -262,6 +266,61 @@ def test_fusion_keeps_points_other_photos_confirm():
     assert np.nanmedian(mid[:, 2]) > 0.95
 
 
+def test_fusion_v2_asks_two_photos_to_agree_within_three_gsd():
+    v2 = FuseSettings.for_run(0.02, 0.5)  # the founder's run: GSD 2 cm, matching at half size
+    assert v2.min_agree == 2 and v2.abs_tol == pytest.approx(0.12)
+    # 1 % of the depth up to 12 cm: 10 cm at 10 m, 12 cm from 12 m on
+    np.testing.assert_allclose(agree_limit(np.array([10.0, 34.0, 100.0]), v2), [0.1, 0.12, 0.12])
+    assert FuseSettings.for_run(0.02, 0.0).abs_tol == math.inf  # Fast: no dense matching
+    assert FuseSettings().min_agree == 2
+
+
+def test_one_neighbour_alone_confirms_nothing():
+    from aio_pipelines.photo import card as K
+
+    s = ps.scene()
+    a, b, c = s.views[5], s.views[6], s.views[4]
+    cam = a.camera
+    da = D.zbuffer(cam, a, s.points)
+    near = [(v, cam, D.zbuffer(cam, v, s.points)) for v in (b, c)]
+    b_np = K.numpy_backend()
+    _, _, keep_one = K.fuse_arrays(b_np, a, cam, da, near[:1], FuseSettings(), K.Rays(b_np))
+    _, _, keep_two = K.fuse_arrays(b_np, a, cam, da, near, FuseSettings(), K.Rays(b_np))
+    assert not keep_one.any() and keep_two.sum() > 1000
+
+
+def test_a_chunk_round_trips_within_a_tenth_of_a_millimetre():
+    rng = np.random.default_rng(4)
+    n = 10_000
+    # a 41 m tile far from the origin, at 1,800 m elevation: the worst case for float32
+    xyz = np.column_stack(
+        [rng.uniform(4100.0, 4141.0, n), rng.uniform(-8200.0, -8159.0, n), rng.uniform(1800.0, 1900.0, n)]
+    )
+    nrm = rng.normal(size=(n, 3))
+    nrm /= np.linalg.norm(nrm, axis=1, keepdims=True)
+    rgb = rng.integers(0, 256, (n, 3)).astype(np.uint8)
+    packed = pack_chunk(xyz, rgb, nrm, (4100.0, -8200.0))
+    assert int(packed["format"]) == CHUNK_FORMAT == 2
+    assert sum(packed[k].nbytes for k in ("xy", "z", "normal", "rgb")) == 18 * n
+    back, back_rgb, back_n = unpack_chunk(packed)
+    assert np.abs(back - xyz).max() < 1e-4
+    assert np.array_equal(back_rgb, rgb) and back_n.dtype == np.float32
+    assert np.abs(back_n - nrm).max() <= 0.5 / 127 + 1e-6
+
+
+def test_fusion_writes_chunk_format_2(tmp_path):
+    store = PointTiles(tmp_path / "m", 4.0, chunks=tmp_path / "c" / "chunks")
+    xyz = np.array([[0.5, 0.5, 1.0], [5.0, 0.5, 2.0], [5.5, 0.7, 2.5]])
+    store.add("v1", xyz, np.zeros((3, 3), np.uint8), np.tile(np.float32([0, 0, 1]), (3, 1)))
+    assert store.chunk_tiles() == ["0_0", "1_0"]
+    with np.load(tmp_path / "c" / "chunks" / "1_0" / "v1.npz") as f:
+        assert f["xy"].dtype == np.float32 and f["normal"].dtype == np.int8
+        got, _, nrm = unpack_chunk(f)
+    np.testing.assert_allclose(got, xyz[1:], atol=1e-6)
+    np.testing.assert_allclose(nrm, [[0, 0, 1], [0, 0, 1]])
+    assert not (tmp_path / "m" / "chunks").exists()
+
+
 def test_voxel_means_and_tiles(tmp_path):
     xyz = np.array([[0.01, 0.01, 0.0], [0.02, 0.03, 0.01], [5.0, 5.0, 1.0]])
     rgb = np.array([[0, 0, 0], [200, 100, 50], [9, 9, 9]], np.uint8)
@@ -275,7 +334,7 @@ def test_voxel_means_and_tiles(tmp_path):
     info = store.merge(0.1)
     assert info["points"] == 2 and info["tiles"] == 2
     box = store.fused_in(-1, -1, 1, 1)
-    assert len(box["xyz"]) == 1 and math.isclose(float(box["xyz"][0, 0]), 0.015)
+    assert len(box["xyz"]) == 1 and math.isclose(float(box["xyz"][0, 0]), 0.015, abs_tol=1e-6)
 
 
 def test_the_cloud_is_written_as_las_tile_by_tile(tmp_path):

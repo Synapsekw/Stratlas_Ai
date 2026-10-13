@@ -274,7 +274,8 @@ def fuse_arrays(
             xi = xp.clip(xp.floor(x).astype(xp.int64), 0, oc.width - 1)
             yi = xp.clip(xp.floor(y).astype(xp.int64), 0, oc.height - 1)
             dz = od[yi, xi]
-            got += (inside & xp.isfinite(dz) & (xp.abs(dz - zz) <= settings.tolerance * zz)).astype(xp.int32)
+            limit = xp.minimum(settings.tolerance * zz, settings.abs_tol)
+            got += (inside & xp.isfinite(dz) & (xp.abs(dz - zz) <= limit)).astype(xp.int32)
         agree[ok] = got
         # normals from central differences; the photo's first and last row and column have none
         dx = xp.zeros_like(pts)

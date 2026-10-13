@@ -15,21 +15,70 @@ from __future__ import annotations
 
 import json
 import math
-from collections.abc import Callable, Iterator
+from collections.abc import Callable, Iterator, Mapping
 from dataclasses import dataclass
 from pathlib import Path
 
 import numpy as np
 
-from ..runtime import replace_over
+from ..runtime import JobError, replace_over
 from .scene import Camera, View, pixel_rays
 
 
 @dataclass(frozen=True)
 class FuseSettings:
+    """When photos agree (fusion v2, 13 Oct 2026): a pixel is kept when at least ``min_agree`` of
+    its ``neighbours`` see the same surface there, within ``tolerance`` of the depth and at most
+    ``abs_tol`` metres (3 x the matching GSD on a run; infinite when not set)."""
+
     tolerance: float = 0.01
-    min_agree: int = 1
+    min_agree: int = 2
     neighbours: int = 6
+    abs_tol: float = math.inf
+
+    @classmethod
+    def for_run(cls, gsd: float, scale: float) -> FuseSettings:
+        """The settings of a run matched at ``scale`` (a fraction of the photo) with photo GSD ``gsd``."""
+        return cls(abs_tol=3.0 * gsd / scale) if scale else cls()
+
+
+def agree_limit(z: np.ndarray, settings: FuseSettings) -> np.ndarray:
+    """How far apart two depths may be and still agree, at depth ``z``."""
+    return np.minimum(settings.tolerance * z, settings.abs_tol)
+
+
+CHUNK_FORMAT = 2
+
+
+def pack_chunk(
+    xyz: np.ndarray, rgb: np.ndarray, normal: np.ndarray, corner: tuple[float, float]
+) -> dict[str, np.ndarray]:
+    """One tile's points as chunk format 2, 18 bytes a point: x and y as float32 offsets from the
+    tile's corner, z as float32 above the chunk's whole-metre base (so float32 keeps 0.1 mm at any
+    elevation), normals as int8 x 127, colours as uint8."""
+    z0 = math.floor(float(xyz[:, 2].min())) if len(xyz) else 0.0
+    base = np.array([corner[0], corner[1], z0], np.float64)
+    n = np.nan_to_num(np.asarray(normal, np.float64))
+    return {
+        "format": np.array(CHUNK_FORMAT, np.int16),
+        "base": base,
+        "xy": (xyz[:, :2] - base[:2]).astype(np.float32),
+        "z": (xyz[:, 2] - base[2]).astype(np.float32),
+        "normal": np.clip(np.round(n * 127.0), -127, 127).astype(np.int8),
+        "rgb": np.asarray(rgb, np.uint8),
+    }
+
+
+def unpack_chunk(f: Mapping[str, np.ndarray]) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """A chunk back as world xyz (float64), colours (uint8) and normals (float32)."""
+    if "format" not in f or int(f["format"]) != CHUNK_FORMAT:
+        raise JobError("A fusion chunk of an older format was found; start the processing again.")
+    base = np.asarray(f["base"], np.float64)
+    z = f["z"]
+    xyz = np.empty((len(z), 3))
+    xyz[:, :2] = f["xy"].astype(np.float64) + base[:2]
+    xyz[:, 2] = z.astype(np.float64) + base[2]
+    return xyz, np.asarray(f["rgb"], np.uint8), f["normal"].astype(np.float32) / 127.0
 
 
 def world_points(view: View, cam: Camera, depth: np.ndarray, rays: np.ndarray | None = None) -> np.ndarray:
@@ -73,7 +122,7 @@ def consistent(
         yi = np.clip(np.floor(y).astype(np.int64), 0, oc.height - 1)
         dz = od[yi, xi]
         with np.errstate(invalid="ignore"):
-            good = inside & np.isfinite(dz) & (np.abs(dz - z) <= settings.tolerance * z)
+            good = inside & np.isfinite(dz) & (np.abs(dz - z) <= agree_limit(z, settings))
         a = agree[ok]
         a += good.astype(np.int32)
         agree[ok] = a
@@ -81,12 +130,14 @@ def consistent(
 
 
 class PointTiles:
-    """Points in square ground tiles under ``root``: ``chunks/<tile>/<name>.npz``, then
-    ``fused/<tile>.npz`` after ``merge``. Coordinates are world (project CRS) float64."""
+    """Points in square ground tiles. Fusion writes chunks (chunk format 2) to
+    ``chunks/<tile>/<name>.npz`` under ``chunks`` (``root/chunks`` unless given); ``merge`` writes
+    ``fused/<tile>.npz`` under ``root``. Coordinates are model (grid frame) metres."""
 
-    def __init__(self, root: Path, tile: float):
+    def __init__(self, root: Path, tile: float, chunks: Path | None = None):
         self.root = root
         self.tile = float(tile)
+        self.chunks_dir = chunks if chunks is not None else root / "chunks"
 
     def key(self, x: float, y: float) -> tuple[int, int]:
         return math.floor(x / self.tile), math.floor(y / self.tile)
@@ -101,15 +152,16 @@ class PointTiles:
         xyz, rgb, normal = xyz[order], rgb[order], normal[order]
         cut = np.nonzero((np.diff(tx) != 0) | (np.diff(ty) != 0))[0] + 1
         for a, b in zip(np.r_[0, cut], np.r_[cut, len(tx)], strict=True):
-            d = self.root / "chunks" / f"{tx[a]}_{ty[a]}"
+            d = self.chunks_dir / f"{tx[a]}_{ty[a]}"
             d.mkdir(parents=True, exist_ok=True)
             tmp = d / f".{name}.tmp.npz"
-            np.savez(tmp, xyz=xyz[a:b], rgb=rgb[a:b], normal=normal[a:b].astype(np.float32))
+            corner = (float(tx[a]) * self.tile, float(ty[a]) * self.tile)
+            np.savez(tmp, **pack_chunk(xyz[a:b], rgb[a:b], normal[a:b], corner))
             replace_over(tmp, d / f"{name}.npz")
         return len(xyz)
 
     def chunk_tiles(self) -> list[str]:
-        base = self.root / "chunks"
+        base = self.chunks_dir
         if not base.is_dir():
             return []
         return sorted(p.name for p in base.iterdir() if p.is_dir() and not p.name.startswith("."))
@@ -130,12 +182,15 @@ class PointTiles:
             check()
             dst = out / f"{name}.npz"
             if not dst.exists():
-                parts = [np.load(p) for p in sorted((self.root / "chunks" / name).glob("*.npz"))]
-                xyz = np.concatenate([p["xyz"] for p in parts])
-                rgb = np.concatenate([p["rgb"] for p in parts])
-                nrm = np.concatenate([p["normal"] for p in parts])
-                for p in parts:
-                    p.close()
+                parts = []
+                for p in sorted((self.chunks_dir / name).glob("*.npz")):
+                    if p.name.startswith("."):
+                        continue
+                    with np.load(p) as f:
+                        parts.append(unpack_chunk(f))
+                xyz = np.concatenate([a for a, _, _ in parts])
+                rgb = np.concatenate([c for _, c, _ in parts])
+                nrm = np.concatenate([n for _, _, n in parts])
                 if keep is not None and len(xyz):
                     m = keep(xyz)
                     xyz, rgb, nrm = xyz[m], rgb[m], nrm[m]
