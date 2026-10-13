@@ -187,5 +187,5 @@ export function setRemovePlacementHandler(
 export function removeWalkPlacement(layerId: string): Promise<string | null> {
   return removePlacementHandler
     ? removePlacementHandler(layerId)
-    : Promise.resolve('Place walk is not ready.');
+    : Promise.resolve(t('walk.place.notReady'));
 }

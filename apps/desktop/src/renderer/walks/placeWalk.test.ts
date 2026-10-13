@@ -2,7 +2,8 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { fitWalk } from '@aio/geo';
-import { ProjectManifest, WalkRawPath, type WalkLayer } from '@aio/schema';
+import { ProjectManifest, WalkRawPath, type JobRecord, type WalkLayer } from '@aio/schema';
+import { t } from '@aio/ui';
 import type { OpenProject } from '@aio/workspace';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
@@ -540,6 +541,68 @@ describe('createPlaceWalk, start and end', () => {
     await flow.pathChanged();
     expect(session.getState().step).toBe('check');
   });
+
+  it('Process again rewrites the same files: the finished job reads them again, on to Start', async () => {
+    // an unusable raw path under the layer's refs: the check says failed
+    const project = { current: projectWith([withPath()]) };
+    let job: { id: string; status: JobRecord['status']; progress: number } | undefined;
+    let fresh = false;
+    const loadInputs = vi.fn(() =>
+      Promise.resolve(fresh ? { raw, orientation: null } : { raw: null, orientation: null }),
+    );
+    const { flow, session, ui } = flowFor(project, { loadInputs, job: () => job });
+    await flow.begin('walk-a');
+    expect(session.getState().step).toBe('check');
+    expect(flow.pathState()).toBe('failed');
+    expect(loadInputs).toHaveBeenCalledTimes(1);
+    // nothing changed: nothing is read again
+    await flow.pathChanged();
+    expect(loadInputs).toHaveBeenCalledTimes(1);
+    job = { id: 'j2', status: 'running', progress: 0.2 };
+    await flow.pathChanged();
+    expect(flow.pathState()).toBe('running');
+    expect(session.getState().step).toBe('check');
+    // the run ends: the same refs, new contents
+    fresh = true;
+    job = { id: 'j2', status: 'done', progress: 1 };
+    await flow.pathChanged();
+    expect(ui.getState().inputs.raw).toBe(raw);
+    expect(flow.pathState()).toBe('ready');
+    expect(session.getState().step).toBe('start');
+  });
+
+  it('Remove placement waits for no Save: a Save on its way refuses it, and the other way round', async () => {
+    const project = { current: projectWith([withPath()]) };
+    const held: { answer: ((v: string | null) => void) | null } = { answer: null };
+    const save = vi.fn(
+      () =>
+        new Promise<string | null>((r) => {
+          held.answer = r;
+        }),
+    );
+    const { flow, session, ui } = flowFor(project, { loadInputs: loadFixture, save });
+    await flow.begin('walk-a');
+    session.getState().click([0, 0], 0);
+    session.getState().click([40, -30], 0);
+    const saving = flow.save();
+    await vi.waitFor(() => {
+      expect(held.answer).not.toBeNull();
+    });
+    expect(await flow.removePlacement('walk-a')).toBe(t('walk.place.busy'));
+    expect(save).toHaveBeenCalledTimes(1);
+    held.answer?.('Disk full');
+    await saving;
+    // a Remove placement on its way: Save says so and sends nothing
+    Object.assign(held, { answer: null });
+    const removing = flow.removePlacement('walk-a');
+    expect(save).toHaveBeenCalledTimes(2);
+    await flow.save();
+    expect(save).toHaveBeenCalledTimes(2);
+    expect(ui.getState().note).toBe(t('walk.place.busy'));
+    held.answer?.(null);
+    expect(await removing).toBeNull();
+    expect(save).toHaveBeenLastCalledWith('walk-a', { walk: null });
+  });
 });
 
 describe('surfaceLayout', () => {
@@ -586,6 +649,12 @@ describe('the walk on the map while it is placed there', () => {
     pointer?.onMove?.(null);
     expect(walkMap.getState().overlays.map((o) => o.id)).not.toContain('walk-walk-a-preview');
     pointer?.onClick?.([0, 0.5, 0]);
+    // one pin and the cursor off the map: the start stays drawn
+    pointer?.onMove?.(null);
+    const path = walkMap.getState().overlays.find((o) => o.id === 'walk-walk-a');
+    const data = path?.data as { features: { properties: { kind?: string } | null }[] } | undefined;
+    const kinds = data?.features.map((f) => f.properties?.kind);
+    expect(kinds).toContain('pin');
     pointer?.onClick?.([40, 0, -30]);
     expect(session.getState().step).toBe('placed');
     expect(walkMap.getState().overlays.map((o) => o.id)).not.toContain('walk-walk-a-preview');

@@ -204,8 +204,8 @@ export interface PlaceWalkDeps {
   setCapture(layerId: string, captureId: string): Promise<string | null>;
   /** When the camera says the walk was filmed (`walk.json`), if it says. */
   capturedAt(layer: WalkLayer): string | undefined;
-  /** The walk's newest `walk.process` job. */
-  job(layer: WalkLayer): Pick<JobRecord, 'status' | 'progress'> | undefined;
+  /** The walk's newest `walk.process` job (its id tells a new run from the last one). */
+  job(layer: WalkLayer): (Pick<JobRecord, 'status' | 'progress'> & { id?: string }) | undefined;
   /** What the stage shows of the model now: the map or the 3D view. */
   modelSurface(): 'map' | '3d';
   /** Process walk from the notice: null when started, else why not. */
@@ -256,7 +256,10 @@ export interface PlaceWalkFlow {
    * way): drop its session, so its path and pins leave the surface and nothing waits on it.
    */
   dropIfGone(): void;
-  /** The walk's path files changed in the manifest: read them again into the session. */
+  /**
+   * The walk's path may have changed (other files named, or its `walk.process` job started,
+   * finished or failed: a reprocess rewrites the same file names): read it again into the session.
+   */
   pathChanged(): Promise<void>;
 }
 
@@ -266,8 +269,18 @@ export function createPlaceWalk(
   ui: StoreApi<PlaceUi>,
 ): PlaceWalkFlow {
   let begun = 0;
-  /** The walk's path files the session last read (`JSON` of `layer.path`); null: none open. */
+  /** What the session's path was last read for (`pathKeyOf`); null: none open. */
   let pathKey: string | null = null;
+  /**
+   * The path's files and the walk's newest `walk.process` run and its status: a reprocess writes
+   * the same file names, so only the job tells that the files were written again.
+   */
+  const pathKeyOf = (w: WalkLayer): string => {
+    const job = deps.job(w);
+    return JSON.stringify([w.path ?? null, job?.id ?? null, job?.status ?? null]);
+  };
+  /** The walks with a Save or a Remove placement on its way: one write at a time per walk. */
+  const writing = new Set<string>();
   const walkOf = (): WalkLayer | null => {
     const id = ui.getState().layerId;
     const m = deps.project()?.manifest;
@@ -362,6 +375,8 @@ export function createPlaceWalk(
     // the field reads the walk through `ui`, so it is set once the walk is there
     ui.setState({ date: defaultDate(layer) });
     deps.openSurface(layerId, host, false);
+    // the key of what is read now: a change while it reads is read again after the start
+    const readFor = pathKeyOf(layer);
     const inputs = await deps.loadInputs(project.id, layer);
     // a newer Place walk (or a close) came first
     if (ask !== begun || ui.getState().layerId !== layerId) return;
@@ -371,7 +386,7 @@ export function createPlaceWalk(
       reset();
       return;
     }
-    pathKey = JSON.stringify(now.path ?? null);
+    pathKey = readFor;
     ui.setState({ inputs });
     session.getState().start(now, m, {
       raw: inputs.raw,
@@ -380,6 +395,29 @@ export function createPlaceWalk(
       ready: walkPathState(now, deps.job(now), inputs.raw) === 'ready',
     });
     session.getState().chooseSurface(host);
+    await pathChanged();
+  };
+
+  const pathChanged = async (): Promise<void> => {
+    const w = walkOf();
+    const project = deps.project();
+    // only an open session (its files read once) follows its path
+    if (!w || !project || pathKey === null || session.getState().layerId !== w.id) return;
+    const key = pathKeyOf(w);
+    if (key === pathKey) return;
+    pathKey = key;
+    const inputs = await deps.loadInputs(project.id, w);
+    // another walk, a close, or a newer change came first
+    if (ui.getState().layerId !== w.id || pathKey !== key) return;
+    const now = walkOf() ?? w;
+    ui.setState({ inputs });
+    session
+      .getState()
+      .setInputs(
+        inputs.raw,
+        inputs.orientation,
+        walkPathState(now, deps.job(now), inputs.raw) === 'ready',
+      );
   };
 
   return {
@@ -426,17 +464,24 @@ export function createPlaceWalk(
       const id = ui.getState().layerId;
       const st = session.getState();
       if (!id || st.layerId !== id || ui.getState().saving) return;
+      // a Remove placement on its way: saving now could bring the placement back, or lose it
+      if (writing.has(id)) {
+        ui.setState({ note: t('walk.place.busy') });
+        return;
+      }
       // a pin waiting to be moved lets go: a move made while saving would not be saved
       if (st.armed === 'move' && st.moving !== null) st.armMove(st.moving);
       ui.setState({ saving: true, note: null, asking: false });
-      // the survey date field first, so a walk without a date never blocks placing
-      const dateError = await applyDate(id);
-      if (ui.getState().layerId !== id) return;
-      if (dateError) {
-        ui.setState({ saving: false, note: dateError });
-        return;
+      writing.add(id);
+      let error: string | null;
+      try {
+        // the survey date field first, so a walk without a date never blocks placing
+        error = await applyDate(id);
+        if (!error && ui.getState().layerId === id)
+          error = await deps.save(id, { walk: session.getState().calibration() });
+      } finally {
+        writing.delete(id);
       }
-      const error = await deps.save(id, { walk: session.getState().calibration() });
       if (ui.getState().layerId !== id) return;
       if (error) {
         ui.setState({ saving: false, note: error });
@@ -447,7 +492,15 @@ export function createPlaceWalk(
     removePlacement: async (layerId) => {
       const id = layerId ?? ui.getState().layerId;
       if (!id) return null;
-      const error = await deps.save(id, { walk: null });
+      // a Save (or another Remove) of this walk on its way: one write at a time
+      if (writing.has(id)) return t('walk.place.busy');
+      writing.add(id);
+      let error: string | null;
+      try {
+        error = await deps.save(id, { walk: null });
+      } finally {
+        writing.delete(id);
+      }
       if (!error && ui.getState().layerId === id) reset();
       return error;
     },
@@ -462,27 +515,7 @@ export function createPlaceWalk(
     dropIfGone: () => {
       if (ui.getState().layerId !== null && !walkOf()) next();
     },
-    pathChanged: async () => {
-      const w = walkOf();
-      const project = deps.project();
-      // only an open session (its files read once) follows its path
-      if (!w || !project || pathKey === null || session.getState().layerId !== w.id) return;
-      const key = JSON.stringify(w.path ?? null);
-      if (key === pathKey) return;
-      pathKey = key;
-      const inputs = await deps.loadInputs(project.id, w);
-      // another walk, a close, or a newer change came first
-      if (ui.getState().layerId !== w.id || pathKey !== key) return;
-      const now = walkOf() ?? w;
-      ui.setState({ inputs });
-      session
-        .getState()
-        .setInputs(
-          inputs.raw,
-          inputs.orientation,
-          walkPathState(now, deps.job(now), inputs.raw) === 'ready',
-        );
-    },
+    pathChanged,
   };
 }
 
@@ -625,7 +658,8 @@ export function followMap(
     const proj = { toLonLat };
     const colour = (l: WalkLayer): string => resolveCssColour(walkColour(p.manifest, l));
     const raw = ui.getState().inputs.raw;
-    if (s.pins.length < 2) pathFor = { fit: null, layer: null, overlay: null };
+    // from the start click on: a lone start pin stays drawn while the cursor is off the map
+    if (s.pins.length === 0) pathFor = { fit: null, layer: null, overlay: null };
     else if (pathFor.fit !== s.fit || pathFor.layer !== layer) {
       const shownLayer = { ...layer, visible: true };
       const [ov] = walkMapOverlays([{ layer: shownLayer, fit: s.fit, raw }], proj, colour, {
@@ -720,7 +754,7 @@ function modelSurface(): 'map' | '3d' {
 /** Process walk from the check: a stitched video starts at once, a camera file asks for its original. */
 async function processFromCheck(l: WalkLayer): Promise<string | null> {
   const record = walks.getState().records[walkRecordKey(l)];
-  if (!record) return 'The walk is not listed yet.';
+  if (!record) return t('walk.place.notListed');
   if (record.source.layout === 'equirect') return processWalk(l.id, { walk: walkFolderId(l) });
   const r = await locateOriginal(record);
   if (!r) return null;
@@ -769,6 +803,11 @@ workspace.subscribe((s) => {
 // path written (or gone) since it opened is read again
 workspace.subscribe(() => {
   placeFlow.dropIfGone();
+  void placeFlow.pathChanged();
+});
+
+// the walk's walk.process job started, finished or failed: its path is read again
+jobs.subscribe(() => {
   void placeFlow.pathChanged();
 });
 
