@@ -38,6 +38,7 @@ A real run of 1,003 drone photos (995 registered, Standard preset, GSD 2.0 cm) o
   1. Bin the points into voxels and drop voxels seen fewer than 2 times.
   2. Collapse each xy column: sort by z, split clusters where the gap exceeds `2·voxel`, then keep one mean point per `2·voxel` sub-bin of each cluster.
   3. Roofs over ground and walls survive. Stacked noise layers merge.
+- **Outlier filter, per tile.** After the collapse, drop statistical outliers: mean distance to the 16 nearest neighbours more than 2.5 σ above the tile mean, using a KD-tree over the tile plus a one-voxel margin. ODM runs the same filter on every job, and Pix4D has its own noise filter. The two-view check alone leaves isolated floating pairs.
 - **Safety net.** If the total exceeds `1.2 × budget`, re-merge at `voxel · sqrt(points / budget)` from the chunks before they are deleted.
 - **Parallel.** Tiles merge in `photo/pool.py` worker processes, the count sized by the largest tile's chunk bytes against the memory budget. If the pool breaks, the merge falls back to in-process. Tile size halves to `1024 · dsmRes`.
 - **Clean up.** After a complete merge, the chunks are deleted (decision 4).
@@ -52,7 +53,9 @@ A real run of 1,003 drone photos (995 registered, Standard preset, GSD 2.0 cm) o
   - For each fused tile, sample `dtm-raw.tif` bilinearly over the tile box.
   - Set class 2 where `-0.5 m ≤ z − dtm ≤ 0.2 m`, and class 1 elsewhere or where the DTM has no data.
   - Append the tile to the LAS output.
-  - Build the COPC with **untwine**, out of core, keeping the classification.
+  - Build the COPC with **untwine** 1.5.1, out of core, keeping the classification: `untwine -i <las> -o <x>.copc.laz --temp_dir <job tmp> --progress_debug`.
+  - Checked on 13 Oct: with a `.copc.laz` name, untwine writes one COPC file (`--single_file` is deprecated) and keeps the Classification values.
+  - Its temp folder sits in the job's staging area, and the disk check reserves about 2× the output size for it.
 - **Fallback.** If untwine is missing (development and e2e PDAL), PDAL `writers.copc` runs under `native.run_tool`'s memory limit. It refuses up front, with a message naming untwine, when `points × bytes-per-point` exceeds the budget.
 - **Memory guard.** Every external tool in `photo.products` runs through `native.run_tool` with a memory limit.
 
@@ -60,7 +63,7 @@ A real run of 1,003 drone photos (995 registered, Standard preset, GSD 2.0 cm) o
 
 - The merge reports tiles done out of the total.
 - `dtm_grid` reports windows done.
-- The cloud step reports 0–0.3 for writing LAS (per tile, exact) and 0.3–0.95 for untwine (parsed from its progress output, `run_tool` progress hook). The PDAL fallback uses an expected-time ramp from a measured rate.
+- The cloud step reports 0–0.3 for writing LAS (per tile, exact) and 0.3–0.95 for untwine. The progress comes from the `Untwine progress (N% done)` lines that `--progress_debug` prints, read through a `run_tool` progress hook; `--progress_fd` delivered nothing on Windows. The PDAL fallback uses an expected-time ramp from a measured rate.
 
 ### 5. Work folders, versioning, resume
 
@@ -89,7 +92,11 @@ A real run of 1,003 drone photos (995 registered, Standard preset, GSD 2.0 cm) o
 - `tools/pipeline-pack/pdal.mjs` and `pdal-lock.json` add conda-forge `untwine` next to `libpdal-core 2.10.2`.
 - `keepWindows` keeps `untwine.exe`, and the pack check runs it.
 - `native.TOOLS` gains `untwine` (`AIO_UNTWINE`, then the pack).
-- The third-party notices get untwine's licence.
+- The third-party notices get untwine's licence, GPL-3.0-or-later (allowed by the 8 Oct licence decision).
+- Checked on 13 Oct: `PDAL_SPEC = 'libpdal-core==2.10.2 untwine'` solves on win-64, osx-arm64 and osx-64.
+  - It picks untwine 1.5.1 at about 0.3 MB, and `untwine.exe` is 688 KB.
+  - It does not pull the full `pdal` package.
+  - Re-locking also moves sqlite from 3.53.4 to 3.54.0.
 - The pack version becomes 0.6.1, with an archive budget check.
 
 ## Testing
@@ -114,6 +121,18 @@ A real run of 1,003 drone photos (995 registered, Standard preset, GSD 2.0 cm) o
 - **e2e:** update `photo-change.spec.ts` (cloud, dsm and ortho with PDAL; the dtm step now runs; the COPC goes through untwine when it is available, else the fallback) and the fixtures. Run these the way CI runs them.
 - **Real-data proof** (in a window the founder agrees to): rerun the founder's project. Expect about 150 M points, the COPC written, peak memory inside the budget and real progress throughout.
 
+## How it compares (research, 13 Oct)
+
+- **Pix4D** (documentation; the engine is closed, and the open repositories are OPF and `pyopf`):
+  - densification at ½ image scale by default;
+  - "Optimal" density keeps 1 point per 8 pixels;
+  - 3 matching views by default;
+  - 80–120 M points for 1,000 × 14 MP photos, so about 110–170 M for these 20 MP photos;
+  - DTM = DSM masked by machine-learning ground classes;
+  - 64 GB recommended for 1,000–2,000 images.
+- **OpenDroneMap** (code): OpenMVS fuses 2 views, then a statistical outlier filter runs. untwine writes the COPC. SMRF and OpenPointClass run on the full cloud. It tiles only after running out of memory.
+- **This design:** Standard (150 M) matches Pix4D, and High (400 M) is a ceiling, not a target. Ground on the grid is lighter than ODM.
+
 ## Out of scope
 
-The GPU add-on Settings card, raising the CPU worker caps, OpenCV rectification in depth maps, a parallel orthomosaic, and the whole-cloud SMRF in survey cleanup. These are follow-ups.
+Machine-learning point classes, a metric spacing option next to the budget, and 3 views by default at high overlap are follow-ups from the comparison. Also out of scope: the GPU add-on Settings card, raising the CPU worker caps, OpenCV rectification in depth maps, a parallel orthomosaic, and the whole-cloud SMRF in survey cleanup. These are follow-ups.
