@@ -95,8 +95,10 @@ north" correction for drift and for ready-made panos. Overlays need only the pan
 - `name?`: display name, default "Pano 1, 2 ..." in capture order.
 - `capturedAt?`: ISO time of the first frame.
 - `stitch?`: `{ run: Id, status: 'queued' | 'running' | 'done' | 'failed', error?: string }`.
-- `cov?`: pitch coverage `{ top: number, bottom: number }` in degrees. The renderer reads it today
-  from `panoramas/panoramas.json`; that file is still read for older layers.
+- `cov?`: the part of the sphere the image shows, `{ top: number, bottom: number, left?: number,
+right?: number }` in degrees (top and bottom from the horizon; left and right the yaw range,
+  clockwise from north, for a wide panorama). The renderer reads it today from
+  `panoramas/panoramas.json`; that file is still read for older layers (P0 amendment: yaw range).
 
 **Files per sphere**, `panoramas/<layerId>/<panoId>/`:
 
@@ -124,11 +126,15 @@ folders: the drone hovers in one spot while the gimbal sweeps every direction.
 
 1. Read EXIF and XMP of every JPG with `readPhotoMeta`; order by EXIF capture time.
 2. **Cluster by place and time.** Consecutive frames join a cluster while the drone stays within
-   about 5 m horizontally and 3 m vertically and no gap exceeds 60 s. Moving away, or returning to
+   about 5 m horizontally and 3 m vertically and no gap exceeds 30 s (P0: was 60 s). Moving away, or returning to
    the same spot later in the flight, starts a new cluster. Folder boundaries are a hint only.
 3. **Accept a cluster as a sphere** only with at least 8 frames, gimbal yaw covering at least 270
-   degrees and at least 2 distinct pitch rows. A sphere with fewer frames than its siblings is
-   flagged "incomplete" but can still be stitched.
+   degrees and at least 2 distinct pitch rows (a row is at least 2 frames within 8 degrees of
+   pitch, so the single nadir frame is not a row). A sphere with fewer frames than its siblings is
+   flagged "incomplete" but can still be stitched. **Wide panoramas** (P0 amendment, pending the
+   founder's confirmation): a cluster with at least 8 frames and 2 rows whose yaw covers 150 to 270
+   degrees is a partial panorama, stitched onto an equirect canvas cropped to what it covers and
+   shown with that coverage. The preview labels it "wide panorama".
 4. **Everything else is "not panorama frames"**: mapping photos (moving drone, fixed pitch), single
    shots, frames without gimbal data. They are listed with the reason and **not imported**, with a
    pointer to "Add photos".
@@ -176,7 +182,8 @@ Weighted steps so progress is honest:
 | fill    | Gradient fill above the top row from the top row's sky colour; record coverage.                                                                                                                                                                 |
 | write   | `pano.jpg` (JPEG quality 90), `thumb.jpg`, `stitch.json`.                                                                                                                                                                                       |
 
-Expected 1 to 3 minutes of CPU per sphere at 8K (measured in P0). Parameters `PanoStitchParams`:
+Measured in P0: about 25 s per sphere at 8K on 24 cores (see "P0 findings" below). Parameters
+`PanoStitchParams`:
 `layer`, `pano`, `quality: 'standard' | 'high'`.
 
 ### Failures
@@ -323,6 +330,33 @@ only by local `@realdata` tests.
 - The sky above the top row is a gradient fill, not imagery.
 - High (16K) needs a GPU that supports 16384 px textures; the option is hidden otherwise.
 - Stitching runs on the CPU only.
+
+## P0 findings (13 Oct 2026)
+
+The probe grouped both reference sites and stitched spheres of both capture patterns with
+throwaway code. What it changed in this design:
+
+- **Grouping.** 5 m horizontal and 3 m vertical stay; the gap threshold drops from 60 s to **30 s**.
+  Measured: hover spread at most 1.14 m horizontally and 1.79 m vertically; gaps inside a sphere at
+  most 10 s, between spheres at least 34 s; the nearest two spheres were 5.6 m apart, shot at
+  different times. Yaw at least 270 degrees, at least 2 rows, at least 8 frames: every sphere found,
+  no frame misassigned.
+- **Wide panoramas.** Real clusters with 21 frames (7 yaws x 3 rows) covering 193 degrees of yaw
+  exist. They are imported as wide panoramas (section 2), pending the founder's confirmation.
+- **North.** Gimbal yaw is absolute and north-referenced: the stitched heading agreed with the
+  vendor's result within 0.3 degrees, so north from the metadata is valid.
+- **Fallback.** Frames without matches (sea, sky) keep their seed rotation instead of failing the
+  sphere. The whole sphere falls back to `aligned: 'metadata'` only when the median residual at
+  1600 px exceeds 2 px or any frame turns more than 5 degrees from its seed. The adjustment also
+  refines one focal length shared by the frames (corrections of 1.3 to 1.6 % were seen).
+- **Compose.** Exposure compensation `GAIN` (not gain blocks); seams by dynamic programming on
+  colour and gradient (not graph cut); frames crossing the 180 degree meridian are split at the
+  wrap. The sky fill must be a heavily smoothed, low-frequency gradient, or it streaks when the
+  top row ends at about +22 degrees.
+- **Memory.** 8K peaks at about 3.4 GB with float32 working data. A naive 16K run reached 12.6 GB,
+  so 16K keeps images as uint8 and fills the sky strip by strip.
+- **Time.** About 25 s per sphere at 8K on 24 cores: read and features 4.5 s, matching 1.2 s,
+  adjustment 6 s, warping 8.5 s, seams 1.3 s, blending 0.7 s, fill 2.4 s.
 
 ## Answered questions (founder, 13 Oct 2026)
 
