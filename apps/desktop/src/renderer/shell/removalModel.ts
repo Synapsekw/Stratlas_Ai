@@ -38,6 +38,9 @@ export interface RemovalUi {
   confirm: () => Promise<boolean>;
   /** Remove without the dialog (Start over's old run): null when done, else why not. */
   removeNow: (targets: RemoveTarget[]) => Promise<string | null>;
+  /** Read a project's trash without touching `trash` (the library menu asks for any project). */
+  readTrash: (projectId: string) => Promise<{ bytes: number; entries: number } | null>;
+  /** Read the open project's trash into `trash`; a reply for a project no longer open is dropped. */
   loadTrash: (projectId?: string) => Promise<void>;
   /** null when emptied (held entries are in `held`), else why not. */
   emptyTrash: (projectId?: string) => Promise<string | null>;
@@ -48,27 +51,41 @@ const errorOf = <T extends { ok: boolean; error?: string }>(r: Res<T>): string |
 
 export function createRemovalStore(p: RemovalPorts): StoreApi<RemovalUi> {
   return createStore<RemovalUi>()((set, get) => {
+    /** The project the open dialog was asked in. */
+    let askedIn: string | null = null;
+    /** One removal at a time: null when it went through, else why not. Sets and clears `busy`. */
     const run = async (
       targets: RemoveTarget[],
       plan: RemovalPlan | null,
+      projectId: string | null,
     ): Promise<string | null> => {
-      const projectId = p.projectId();
       if (projectId === null) return 'No project is open.';
+      if (p.projectId() !== projectId) return 'The project changed.';
       if (plan?.refused !== undefined) return plan.refused;
       const layerIds = plan
         ? plan.layers.map((l) => l.id)
         : targets.flatMap((t) => ('layer' in t ? [t.layer] : []));
-      const putBack = await p.release(layerIds);
-      const r = await p.bridge.call('builder:remove', { projectId, targets });
-      if (!r.ok || !r.value.ok) {
-        putBack();
-        return errorOf(r) ?? 'Failed.';
+      try {
+        const putBack = await p.release(layerIds);
+        // another project may have been opened while the viewers let go
+        if (p.projectId() !== projectId) return 'The project changed.';
+        const r = await p.bridge.call('builder:remove', { projectId, targets });
+        // the files moved in the project asked about; a project opened since has its own manifest
+        const same = p.projectId() === projectId;
+        if (!r.ok || !r.value.ok) {
+          if (same) putBack();
+          return errorOf(r) ?? 'Failed.';
+        }
+        if (same) {
+          p.applyManifest(r.value.manifest);
+          p.refresh(r.value.plan);
+          set((s) => ({ removed: s.removed + 1 }));
+        }
+        void get().loadTrash(projectId);
+        return null;
+      } catch (e) {
+        return e instanceof Error ? e.message : 'Failed.';
       }
-      p.applyManifest(r.value.manifest);
-      p.refresh(r.value.plan);
-      set((s) => ({ removed: s.removed + 1 }));
-      void get().loadTrash(projectId);
-      return null;
     };
     return {
       targets: null,
@@ -79,7 +96,9 @@ export function createRemovalStore(p: RemovalPorts): StoreApi<RemovalUi> {
       held: 0,
       removed: 0,
       ask: async (targets) => {
+        if (get().busy) return;
         const projectId = p.projectId();
+        askedIn = projectId;
         set({ targets, plan: null, busy: false, error: null });
         if (projectId === null) {
           set({ error: 'No project is open.' });
@@ -94,10 +113,10 @@ export function createRemovalStore(p: RemovalPorts): StoreApi<RemovalUi> {
         if (!get().busy) set({ targets: null, plan: null, error: null });
       },
       confirm: async () => {
-        const { targets, plan } = get();
-        if (targets === null || plan === null || plan.refused !== undefined) return false;
+        const { targets, plan, busy } = get();
+        if (busy || targets === null || plan === null || plan.refused !== undefined) return false;
         set({ busy: true, error: null });
-        const error = await run(targets, plan);
+        const error = await run(targets, plan, askedIn);
         if (error !== null) {
           set({ busy: false, error });
           return false;
@@ -105,17 +124,28 @@ export function createRemovalStore(p: RemovalPorts): StoreApi<RemovalUi> {
         set({ targets: null, plan: null, busy: false });
         return true;
       },
-      removeNow: (targets) => run(targets, null),
+      removeNow: async (targets) => {
+        if (get().busy) return 'Another removal is still running.';
+        set({ busy: true });
+        const error = await run(targets, null, p.projectId());
+        set({ busy: false });
+        return error;
+      },
+      readTrash: async (projectId) => {
+        const r = await p.bridge.call('builder:trash', { projectId });
+        return r.ok ? r.value : null;
+      },
       loadTrash: async (projectId = p.projectId() ?? undefined) => {
         if (projectId === undefined) return;
-        const r = await p.bridge.call('builder:trash', { projectId });
-        if (r.ok) set({ trash: r.value });
+        const trash = await get().readTrash(projectId);
+        // another project's trash (library menu) or a reply after a switch is not the footer's
+        if (trash && projectId === p.projectId()) set({ trash });
       },
       emptyTrash: async (projectId = p.projectId() ?? undefined) => {
         if (projectId === undefined) return 'No project is open.';
         const r = await p.bridge.call('builder:emptyTrash', { projectId });
         if (!r.ok || !r.value.ok) return errorOf(r) ?? 'Failed.';
-        set({ held: r.value.held });
+        if (projectId === p.projectId()) set({ held: r.value.held });
         await get().loadTrash(projectId);
         return null;
       },

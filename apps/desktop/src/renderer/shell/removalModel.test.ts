@@ -16,7 +16,11 @@ const PLAN: RemovalPlan = {
 };
 const MANIFEST = { layers: [] } as unknown as ProjectManifest;
 
-function ports(answers: Partial<Record<IpcChannel, unknown>>, log: string[]): RemovalPorts {
+function ports(
+  answers: Partial<Record<IpcChannel, unknown>>,
+  log: string[],
+  project: { id: string | null } = { id: 'p' },
+): RemovalPorts {
   const bridge: Bridge = {
     call: (channel, req) => {
       log.push(`call ${channel} ${JSON.stringify(req)}`);
@@ -30,7 +34,7 @@ function ports(answers: Partial<Record<IpcChannel, unknown>>, log: string[]): Re
   };
   return {
     bridge,
-    projectId: () => 'p',
+    projectId: () => project.id,
     release: (ids) => {
       log.push(`release ${ids.join(',')}`);
       return Promise.resolve(() => {
@@ -147,5 +151,134 @@ describe('removal store', () => {
     expect(await s.getState().emptyTrash()).toBeNull();
     expect(s.getState().held).toBe(1);
     expect(s.getState().trash).toEqual({ bytes: 5, entries: 1 });
+  });
+
+  it('does not remove when the project changed between ask and confirm', async () => {
+    const log: string[] = [];
+    const project = { id: 'p' as string | null };
+    const s = createRemovalStore(
+      ports(
+        {
+          'builder:removePlan': { ok: true, plan: PLAN },
+          'builder:remove': { ok: true, manifest: MANIFEST, plan: PLAN },
+        },
+        log,
+        project,
+      ),
+    );
+    await s.getState().ask([{ layer: 'clip-1' }]);
+    project.id = 'q';
+    expect(await s.getState().confirm()).toBe(false);
+    expect(s.getState().error).toBe('The project changed.');
+    expect(log.some((l) => l.startsWith('call builder:remove {'))).toBe(false);
+    expect(log).not.toContain('manifest');
+  });
+
+  it('applies nothing when the project changed while main was removing', async () => {
+    const log: string[] = [];
+    const project = { id: 'p' as string | null };
+    const p = ports(
+      {
+        'builder:removePlan': { ok: true, plan: PLAN },
+        'builder:remove': { ok: true, manifest: MANIFEST, plan: PLAN },
+        'builder:trash': { bytes: 1, entries: 1 },
+      },
+      log,
+      project,
+    );
+    const inner = p.bridge;
+    p.bridge = {
+      call: (channel, req) => {
+        if (channel === 'builder:remove') project.id = 'q';
+        return inner.call(channel, req);
+      },
+    };
+    const s = createRemovalStore(p);
+    await s.getState().ask([{ layer: 'clip-1' }]);
+    await s.getState().confirm();
+    expect(log).not.toContain('manifest');
+    expect(log).not.toContain('refresh');
+    expect(s.getState().busy).toBe(false);
+  });
+
+  it('keeps the open project trash when another project trash is read', async () => {
+    const log: string[] = [];
+    const s = createRemovalStore(ports({ 'builder:trash': { bytes: 5, entries: 1 } }, log));
+    await s.getState().loadTrash('other');
+    expect(s.getState().trash).toBeNull();
+    await s.getState().loadTrash('p');
+    expect(s.getState().trash).toEqual({ bytes: 5, entries: 1 });
+    expect(await s.getState().readTrash('other')).toEqual({ bytes: 5, entries: 1 });
+    expect(s.getState().trash).toEqual({ bytes: 5, entries: 1 });
+  });
+
+  it('drops a trash reply that arrives after the project switched', async () => {
+    const log: string[] = [];
+    const project = { id: 'p' as string | null };
+    const p = ports({ 'builder:trash': { bytes: 5, entries: 1 } }, log, project);
+    const inner = p.bridge;
+    p.bridge = {
+      call: async (channel, req) => {
+        const r = await inner.call(channel, req);
+        project.id = 'q';
+        return r;
+      },
+    };
+    const s = createRemovalStore(p);
+    await s.getState().loadTrash();
+    expect(s.getState().trash).toBeNull();
+  });
+
+  it('two confirms make one builder:remove', async () => {
+    const log: string[] = [];
+    const s = createRemovalStore(
+      ports(
+        {
+          'builder:removePlan': { ok: true, plan: PLAN },
+          'builder:remove': { ok: true, manifest: MANIFEST, plan: PLAN },
+          'builder:trash': { bytes: 1, entries: 1 },
+        },
+        log,
+      ),
+    );
+    await s.getState().ask([{ layer: 'clip-1' }]);
+    const [a, b] = await Promise.all([s.getState().confirm(), s.getState().confirm()]);
+    expect([a, b].filter(Boolean)).toHaveLength(1);
+    expect(log.filter((l) => l.startsWith('call builder:remove {'))).toHaveLength(1);
+  });
+
+  it('removeNow is busy while it runs, and a second one waits its turn', async () => {
+    const log: string[] = [];
+    const s = createRemovalStore(
+      ports({ 'builder:remove': { ok: true, manifest: MANIFEST, plan: PLAN } }, log),
+    );
+    const first = s.getState().removeNow([{ layer: 'clip-1' }]);
+    expect(s.getState().busy).toBe(true);
+    expect(await s.getState().removeNow([{ layer: 'clip-1' }])).not.toBeNull();
+    expect(await first).toBeNull();
+    expect(s.getState().busy).toBe(false);
+    expect(log.filter((l) => l.startsWith('call builder:remove {'))).toHaveLength(1);
+  });
+
+  it('clears busy when a port throws, and ask is ignored while busy', async () => {
+    const log: string[] = [];
+    const p = ports(
+      {
+        'builder:removePlan': { ok: true, plan: PLAN },
+        'builder:remove': { ok: true, manifest: MANIFEST, plan: PLAN },
+      },
+      log,
+    );
+    p.applyManifest = () => {
+      throw new Error('boom');
+    };
+    const s = createRemovalStore(p);
+    await s.getState().ask([{ layer: 'clip-1' }]);
+    const done = s.getState().confirm();
+    await s.getState().ask([{ layer: 'other' }]);
+    expect(s.getState().targets).toEqual([{ layer: 'clip-1' }]);
+    expect(await done).toBe(false);
+    expect(s.getState().busy).toBe(false);
+    expect(s.getState().error).toBe('boom');
   });
 });

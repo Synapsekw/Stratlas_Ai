@@ -44,7 +44,8 @@ export function EmptyTrashDialog({
   returnTo?: () => HTMLElement | null;
 }) {
   const t = useT();
-  const trash = useRemoval((s) => s.trash);
+  // this project's own size: the library menu opens it for a project that may not be open
+  const [trash, setTrash] = useState<{ bytes: number; entries: number } | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const dlg = useRef<HTMLDivElement>(null);
@@ -59,9 +60,19 @@ export function EmptyTrashDialog({
     initial: () => keep.current,
     ...(returnTo ? { returnTo } : {}),
   });
-  // the library menu opens it for a project that may not be open: read that project's trash
   useEffect(() => {
-    void removal.getState().loadTrash(projectId);
+    let live = true;
+    void removal
+      .getState()
+      .readTrash(projectId)
+      .then((size) => {
+        if (live && size) setTrash(size);
+      });
+    return () => {
+      live = false;
+      // the footer shows the open project's trash again whatever happened here
+      void removal.getState().loadTrash();
+    };
   }, [projectId]);
   const confirm = () => {
     if (busy) return;

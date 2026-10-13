@@ -55,6 +55,8 @@ workspace.subscribe((s) => {
   if (id === trashOf) return;
   trashOf = id;
   removal.setState({ trash: null, held: 0 });
+  // a confirm asked in the old project must not act on the new one (a running removal finishes)
+  removal.getState().cancel();
   void removal.getState().loadTrash();
 });
 
