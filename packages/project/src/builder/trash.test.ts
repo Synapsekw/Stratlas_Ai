@@ -1,4 +1,4 @@
-import { mkdir, mkdtemp, readdir, rm, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, readdir, readFile, rm, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
@@ -6,6 +6,7 @@ import {
   TRASH_DIR,
   emptyTrash,
   freeTrashEntry,
+  pathBytes,
   stampOf,
   stampTime,
   sweepTrash,
@@ -83,5 +84,33 @@ describe('trash', () => {
     expect(await sweepTrash(root, () => new Date(NOW.getTime() + 1000), 0)).toEqual([
       '20261013T081530Z-a',
     ]);
+  });
+
+  it('counts a directory it cannot read as 0 bytes', async () => {
+    await entry('20261013T081530Z-a', 10);
+    const refuse = () => Promise.reject(Object.assign(new Error('denied'), { code: 'EPERM' }));
+    expect(await pathBytes(join(root, TRASH_DIR, '20261013T081530Z-a'), refuse)).toBe(0);
+  });
+
+  it('refuses a slug that could leave the trash folder', async () => {
+    for (const slug of ['a/b', 'a\\b', '..', 'x..y', '../x']) {
+      await expect(freeTrashEntry(root, NOW, slug)).rejects.toThrow();
+    }
+  });
+
+  it('never follows a trash folder that is a link', async () => {
+    const outside = await mkdtemp(join(tmpdir(), 'aio-outside-'));
+    try {
+      await mkdir(join(outside, '20200101T000000Z-old'), { recursive: true });
+      await writeFile(join(outside, '20200101T000000Z-old', 'f.txt'), 'keep');
+      await symlink(outside, join(root, TRASH_DIR), 'junction');
+      expect(await trashSize(root)).toEqual({ bytes: 0, entries: 0 });
+      expect(await emptyTrash(root)).toEqual({ freed: 0, removed: [], held: [] });
+      expect(await sweepTrash(root, () => NOW, 0)).toEqual([]);
+      expect(await readFile(join(outside, '20200101T000000Z-old', 'f.txt'), 'utf8')).toBe('keep');
+    } finally {
+      await rm(join(root, TRASH_DIR), { recursive: true, force: true });
+      await rm(outside, { recursive: true, force: true });
+    }
   });
 });

@@ -38,7 +38,10 @@ const exists = (p: string) =>
 
 const removeTree = (p: string) => fsRm(p, { recursive: true, force: true, maxRetries: 3 });
 
-export async function pathBytes(abs: string): Promise<number> {
+export async function pathBytes(
+  abs: string,
+  readDir: (path: string) => Promise<string[]> = readdir,
+): Promise<number> {
   let info;
   try {
     info = await lstat(abs);
@@ -47,11 +50,20 @@ export async function pathBytes(abs: string): Promise<number> {
   }
   if (!info.isDirectory()) return info.size;
   let total = 0;
-  for (const name of await readdir(abs)) total += await pathBytes(join(abs, name));
+  let names: string[];
+  try {
+    names = await readDir(abs);
+  } catch {
+    return 0; // vanished or refused: counts as nothing
+  }
+  for (const name of names) total += await pathBytes(join(abs, name), readDir);
   return total;
 }
 
 export async function freeTrashEntry(root: string, at: Date, slug: string): Promise<string> {
+  if (slug.includes('/') || slug.includes('\\') || slug.includes('..')) {
+    throw new Error(`"${slug}" cannot name a trash entry.`);
+  }
   const base = join(root, TRASH_DIR, `${stampOf(at)}-${slug}`);
   await mkdir(join(root, TRASH_DIR), { recursive: true });
   if (!(await exists(base))) return base;
@@ -63,6 +75,8 @@ export async function freeTrashEntry(root: string, at: Date, slug: string): Prom
 
 async function entries(root: string): Promise<string[]> {
   try {
+    // a link or a plain file named .trash is never followed: nothing is read or deleted through it
+    if (!(await lstat(join(root, TRASH_DIR))).isDirectory()) return [];
     return await readdir(join(root, TRASH_DIR));
   } catch {
     return [];
@@ -105,8 +119,8 @@ export async function emptyTrash(
   let freed = 0;
   for (const name of await entries(root)) {
     const abs = join(root, TRASH_DIR, name);
-    const bytes = await pathBytes(abs);
     try {
+      const bytes = await pathBytes(abs);
       await (o.rm ?? removeTree)(abs);
       removed.push(name);
       freed += bytes;
