@@ -35,6 +35,8 @@ export {
   azElToDir,
   coverageFromImage,
   dragLook,
+  imageCentreDeg,
+  itemCoverage,
   panoOpenable,
   panoUv,
   parsePanoIndex,

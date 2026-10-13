@@ -4,6 +4,7 @@ import { useT } from '@aio/ui';
 import { FrameImage, createPanoVideoView, type PanoVideoView } from '@aio/video';
 import {
   useEffect,
+  useMemo,
   useRef,
   useState,
   type KeyboardEvent,
@@ -16,7 +17,7 @@ import { levelOn, playbackRef } from '../../walks/walkModel';
 import { useWalks } from '../../walks/walks';
 import { walkFolderId } from '../../walks/walkStore';
 import { createLookLink, fromShared, toShared, type LookLinkState } from '../lookLink';
-import { PanoSurface, useCoverage } from '../panoSurface';
+import { PanoSurface, panoFrame, useCoverage } from '../panoSurface';
 import { safeAssetUrl } from './safeAssetUrl';
 import type { SpotMatch } from './spotTypes';
 
@@ -50,14 +51,14 @@ function SpotVideo(p: { src: string; t: number; label: string }) {
 
 function SpotPano(p: {
   url: string;
-  headingDeg: number;
+  pano: Parameters<typeof panoFrame>[0];
   projectId: string;
-  id: string;
   lookDeg: number;
   look?: StoreApi<LookLinkState>;
   label: string;
 }) {
   const coverage = useCoverage(p.projectId);
+  const frame = useMemo(() => panoFrame(p.pano, coverage), [p.pano, coverage]);
   const [own] = useState(() =>
     createLookLink({ yawDeg: p.lookDeg, pitchDeg: 0, fovDeg: PANO_FOV.start }),
   );
@@ -66,8 +67,8 @@ function SpotPano(p: {
   return (
     <PanoSurface
       url={p.url}
-      headingDeg={p.headingDeg}
-      cov={coverage.get(p.id) ?? null}
+      headingDeg={frame.headingDeg}
+      cov={frame.cov}
       look={look}
       label={p.label}
       arrowKeys={false}
@@ -315,9 +316,8 @@ export function SpotMatchView(p: {
         <SpotPano
           key={`${layer.id}/${pano.id}`}
           url={url}
-          headingDeg={pano.headingDeg}
+          pano={pano}
           projectId={p.projectId}
-          id={pano.id}
           lookDeg={match.lookDeg ?? pano.headingDeg}
           {...(p.look ? { look: p.look } : {})}
           label={pano.id}

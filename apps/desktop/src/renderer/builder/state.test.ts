@@ -35,6 +35,10 @@ vi.mock('@aio/workspace', () => ({
     getState: () => ({ project: openProject, replaceManifest }),
   },
 }));
+vi.mock('../panos/panos', () => ({
+  openPanoScan: vi.fn(),
+  panoImport: { setState: vi.fn(), subscribe: vi.fn(() => () => undefined) },
+}));
 vi.mock('./pick', () => ({ terrainHeightAt: () => null }));
 // drawing the pages of a PDF needs the app window; the store only has to wait for it
 const finishStaged = vi.fn();

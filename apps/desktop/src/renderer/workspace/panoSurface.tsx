@@ -1,4 +1,12 @@
-import { dragLook, parsePanoIndex, zoomLook, type PanoCoverage, type PanoLook } from '@aio/engine';
+import {
+  dragLook,
+  imageCentreDeg,
+  itemCoverage,
+  parsePanoIndex,
+  zoomLook,
+  type PanoCoverage,
+  type PanoLook,
+} from '@aio/engine';
 import { useT } from '@aio/ui';
 import { assetUrl } from '@aio/workspace';
 import { useEffect, useRef, useState, type KeyboardEvent, type PointerEvent } from 'react';
@@ -40,6 +48,27 @@ export function useCoverage(projectId: string | undefined): ReadonlyMap<string, 
     };
   }, [projectId]);
   return got && got.id === projectId ? got.map : EMPTY_COVERAGE;
+}
+
+/**
+ * What a panorama shows and where its image centre looks: the item's own `cov` (the stitcher's
+ * coverage, a wide panorama's yaw range included) wins, `panoramas.json` is the fallback, as in
+ * the 3D view. `headingDeg` is the north correction, moved to the centre of a wide panorama.
+ */
+export function panoFrame(
+  pano: {
+    id: string;
+    headingDeg: number;
+    cov?:
+      | { top: number; bottom: number; left?: number | undefined; right?: number | undefined }
+      | undefined;
+  },
+  fromFile: ReadonlyMap<string, PanoCoverage>,
+): { headingDeg: number; cov: PanoCoverage | null } {
+  return {
+    headingDeg: imageCentreDeg(pano.headingDeg, pano.cov),
+    cov: itemCoverage(pano.cov) ?? fromFile.get(pano.id) ?? null,
+  };
 }
 
 /** A distance for the words: one decimal below 10 m, whole metres above. */

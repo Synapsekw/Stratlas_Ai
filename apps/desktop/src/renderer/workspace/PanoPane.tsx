@@ -17,7 +17,7 @@ import {
   stepPano,
   type PanoAt,
 } from './panoPair';
-import { PanoSurface, metres, useCoverage } from './panoSurface';
+import { PanoSurface, metres, panoFrame, useCoverage } from './panoSurface';
 import type { Side, SplitPref } from './splitModel';
 
 /*
@@ -79,8 +79,9 @@ export function PanoPane(p: {
   if (leads) shown = leadPano;
   else if (pair && (pair.within || nearestFor === leadKey)) shown = pair.at;
   const shownKey = shown ? panoKey(shown) : undefined;
-  const cov = shown ? (coverage.get(shown.pano.id) ?? null) : null;
-  const start = shown ? startLook(shown.pano.headingDeg, cov ?? FULL_SPHERE) : START;
+  // the compiler keeps the frame stable between renders, so the surface does not reload the image
+  const frame = shown ? panoFrame(shown.pano, coverage) : null;
+  const start = frame ? startLook(frame.headingDeg, frame.cov ?? FULL_SPHERE) : START;
 
   // unlinked: a look of its own, back to the panorama's start when the panorama changes
   const [local, setLocal] = useState<{ key: string | undefined; look: PanoLook } | null>(null);
@@ -225,8 +226,8 @@ export function PanoPane(p: {
       {shown ? (
         <PanoSurface
           url={assetUrl(projectId, shown.pano.src)}
-          headingDeg={shown.pano.headingDeg}
-          cov={cov}
+          headingDeg={frame?.headingDeg ?? shown.pano.headingDeg}
+          cov={frame?.cov ?? null}
           look={look}
           label={t('pano.compare.label', { id: shown.pano.id, date })}
           onLook={onLook}
