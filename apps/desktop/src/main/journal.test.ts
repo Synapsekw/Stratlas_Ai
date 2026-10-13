@@ -537,6 +537,28 @@ describe('journal service', () => {
       ]);
     });
 
+    it('records a removed run so the next open finds nothing changed outside the app', async () => {
+      const { root, userData } = setup();
+      put(root, 'photogrammetry/r1/run.json', { schema: 'aio.photo-run/1', state: 'failed' });
+      put(root, 'photogrammetry/r1/gcp.json', { schema: 'aio.gcp/1', points: [] });
+      const s = service(root, userData);
+      await s.open({ path: root });
+      const plan = {
+        ...emptyRemovalPlan(),
+        runs: [{ id: 'r1', status: 'failed' as const, why: 'asked' as const }],
+        files: ['photogrammetry/r1'],
+      };
+      const remove = s.journal.wrap('builder:remove', () => {
+        rmSync(join(root, 'photogrammetry', 'r1'), { recursive: true, force: true });
+        return Promise.resolve({ ok: true as const, manifest: {} as never, plan });
+      });
+      await remove({ projectId: 'p', targets: [{ run: 'r1' }] });
+      await s.open({ path: root });
+      const e = await hist(s);
+      expect(e.length).toBeGreaterThan(0);
+      expect(e.filter((x) => x.via !== undefined)).toEqual([]);
+    });
+
     it('records photo:applyPoses with apply true as a manifest change, none for a preview', async () => {
       const { root, userData } = setup();
       const s = service(root, userData);

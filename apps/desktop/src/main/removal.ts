@@ -10,8 +10,13 @@
  */
 import type * as Builder from '@aio/project/builder';
 import type { PlanJob } from '@aio/project/builder';
+import { isJournaledFile } from '@aio/journal';
 import {
+  CHANGE_DIR,
+  PHOTO_RUN_FILES,
+  TILESETS_FILE,
   emptyRemovalPlan,
+  photoRunDir,
   type IpcRequest,
   type IpcResponse,
   type JobRecord,
@@ -106,13 +111,16 @@ export async function removeAnswer(
       return { ok: false as const, error: text(e) };
     }
     // after the save only: a record cannot come back from the trash
+    const kept = (id: string, why: string) => {
+      d.log(
+        `Removal: the job record ${id} was not deleted (${why}); it shows as a job whose run no longer exists.`,
+      );
+    };
     for (const id of done.plan.jobs) {
       try {
-        d.deleteJob(id);
+        if (!d.deleteJob(id)) kept(id, 'the job index does not hold it or it is still running');
       } catch (e) {
-        d.log(
-          `Removal: the job record ${id} was not deleted (${text(e)}); it shows as a job whose run no longer exists.`,
-        );
+        kept(id, text(e));
       }
     }
     await d.flushJobs().catch((e: unknown) => {
@@ -151,7 +159,8 @@ export async function trashAnswer(
   if (root === undefined) return { bytes: 0, entries: 0 };
   try {
     return await (await load(d)).trashSize(root);
-  } catch {
+  } catch (e) {
+    d.log(`Removal: the project trash could not be read (${text(e)}).`);
     return { bytes: 0, entries: 0 };
   }
 }
@@ -173,12 +182,23 @@ export async function emptyTrashAnswer(
   });
 }
 
-/** The journaled files a removal changed: the manifest, tilesets.json, change sets, detections. */
+/**
+ * The journaled files a removal changed: the manifest, tilesets.json, change sets, detections,
+ * each removed run's `run.json` and `gcp.json`, and any other journaled file the plan moves (a
+ * `models/<id>.procmodel.json` only when a hand-edited layer names it), so the next whole-project
+ * reconcile does not take their disappearance for a change made outside the app.
+ */
 export function journaledRemovals(plan: RemovalPlan): string[] {
-  return [
+  const out = [
     'manifest.json',
-    ...(plan.tilesets.length > 0 ? ['tilesets.json'] : []),
-    ...plan.changes.map((c) => `change/${c.id}.json`),
+    ...(plan.tilesets.length > 0 ? [TILESETS_FILE] : []),
+    ...plan.changes.map((c) => `${CHANGE_DIR}/${c.id}.json`),
     ...plan.detections,
+    ...plan.runs.flatMap((r) => [
+      `${photoRunDir(r.id)}/${PHOTO_RUN_FILES.run}`,
+      `${photoRunDir(r.id)}/${PHOTO_RUN_FILES.gcp}`,
+    ]),
+    ...plan.files.filter(isJournaledFile),
   ];
+  return [...new Set(out)];
 }

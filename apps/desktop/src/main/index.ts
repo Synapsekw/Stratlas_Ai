@@ -155,6 +155,7 @@ import { createKeyVault } from './keys';
 import { addToLibrary, createLibraryStore, listLibrary } from './library';
 import { registerLibraryActionsIpc, samePath } from './libraryActions';
 import {
+  PACKAGE_REFUSAL,
   emptyTrashAnswer,
   removalPlanAnswer,
   removeAnswer,
@@ -1266,7 +1267,7 @@ function registerIpc(): void {
     registry.package(projectId)
       ? {
           ok: false as const,
-          error: 'This project is a read-only package. Nothing can be added or changed.',
+          error: PACKAGE_REFUSAL,
         }
       : null;
   handle(

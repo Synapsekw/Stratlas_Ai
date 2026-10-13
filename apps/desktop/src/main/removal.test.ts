@@ -129,6 +129,20 @@ describe('removal channels', () => {
     expect(order.some((l) => l.startsWith('log ') && l.includes('job-1'))).toBe(true);
   });
 
+  it('logs a job record the index would not delete, and a trash it could not read', async () => {
+    const order: string[] = [];
+    const lib: Partial<RemovalLib> = {
+      removeItems: () => Promise.resolve({ manifest: MANIFEST, plan: PLAN, trash: 'x' }),
+      trashSize: () => Promise.reject(new Error('access denied')),
+    };
+    const d = deps(lib, order);
+    d.deleteJob = () => false;
+    expect((await removeAnswer({ projectId: 'p', targets: [{ run: 'r1' }] }, d)).ok).toBe(true);
+    expect(order.some((l) => l.startsWith('log ') && l.includes('job-1'))).toBe(true);
+    expect(await trashAnswer({ projectId: 'p' }, d)).toEqual({ bytes: 0, entries: 0 });
+    expect(order.some((l) => l.startsWith('log ') && l.includes('access denied'))).toBe(true);
+  });
+
   it('refuses a package and a project that is not open', async () => {
     const pkg = deps({}, [], { pkg: true });
     expect(await removeAnswer({ projectId: 'p', targets: [{ run: 'r1' }] }, pkg)).toEqual({
@@ -174,6 +188,19 @@ describe('removal channels', () => {
       }),
     ).toEqual(['manifest.json', 'tilesets.json', 'change/chg-1.json', 'detections/pass-1.json']);
     expect(journaledRemovals(emptyRemovalPlan())).toEqual(['manifest.json']);
+    // a removed run's run.json and gcp.json are journaled; so is a model file a plan moves
+    expect(
+      journaledRemovals({
+        ...emptyRemovalPlan(),
+        runs: [{ id: 'r1', status: 'failed', why: 'asked' }],
+        files: ['photogrammetry/r1', 'models/m1.procmodel.json', 'models/m1.glb'],
+      }),
+    ).toEqual([
+      'manifest.json',
+      'photogrammetry/r1/run.json',
+      'photogrammetry/r1/gcp.json',
+      'models/m1.procmodel.json',
+    ]);
   });
 });
 
