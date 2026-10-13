@@ -48,7 +48,13 @@ export interface PanoScanDeps {
   limit?: number;
   /** A new scan id; every scan gets its own, a rescan of the same folder too. */
   newId?: () => string;
+  /** The clock for the progress throttle (ms). */
+  now?: () => number;
 }
+
+/** Scan progress goes out at most every `PROGRESS_MS` or every `PROGRESS_FILES` files, and once at the end. */
+export const PROGRESS_MS = 100;
+export const PROGRESS_FILES = 50;
 
 const JPEG = /\.jpe?g$/i;
 
@@ -84,9 +90,16 @@ export async function scanPanoPaths(
   const jpegs = ex.files.filter((f) => JPEG.test(f)).map((f) => resolve(f));
   if (jpegs.length === 0) return { error: 'There are no JPEG files there.' };
   const metas = [];
+  const now = deps.now ?? Date.now;
+  let sentAt = now();
   for (const [i, f] of jpegs.entries()) {
     metas.push(await l.readPanoFrameMeta(f));
-    deps.onProgress?.(i + 1, jpegs.length, basename(f));
+    const done = i + 1;
+    const t = now();
+    if (done === jpegs.length || done % PROGRESS_FILES === 0 || t - sentAt >= PROGRESS_MS) {
+      sentAt = t;
+      deps.onProgress?.(done, jpegs.length, basename(f));
+    }
   }
   const raw = l.groupPanoFrames(metas);
   const grouping = l.keyGrouping(raw);
@@ -280,7 +293,12 @@ export function stitchLane(deps: {
     while (running === null && !starting && waiting.length > 0) {
       const w = waiting.shift();
       if (!w) return;
-      const r = await launch(w);
+      let r: Awaited<ReturnType<typeof launch>>;
+      try {
+        r = await launch(w);
+      } catch (e) {
+        r = { ok: false, error: e instanceof Error ? e.message : String(e) };
+      }
       if (!r.ok) {
         deps.log?.(`A queued panorama stitch in ${w.project} did not start: ${r.error}`);
         continue;
@@ -561,6 +579,77 @@ export async function fileThenSend(filer: PanoFiler, e: JobEvent, send: () => vo
   } finally {
     send();
   }
+}
+
+const why = (e: unknown) => (e instanceof Error ? e.message : String(e));
+
+/**
+ * One job event from the runner, in main: a finished stitch is filed, then the event goes to the
+ * window, then the journal and the stitch lane see it. Neither a window that cannot take it (a
+ * frame disposed during a reload) nor an event that fails validation may keep the lane from
+ * moving on: a dropped update still tells the lane its job ended (it reads only id and status).
+ * Note a filed update waits for its filing, other events do not: a job's last log lines can
+ * arrive after its end.
+ */
+export async function relayJobEvent(
+  event: JobEvent,
+  safe: JobEvent | null,
+  d: {
+    filer: PanoFiler;
+    send: (e: JobEvent) => void;
+    /** The journal and the like: each runs after the send, a failure is logged. */
+    after: readonly ((e: JobEvent) => Promise<unknown>)[];
+    lane: Pick<StitchLane, 'settled'>;
+    log: (line: string) => void;
+  },
+): Promise<void> {
+  const settle = (e: JobEvent) =>
+    d.lane.settled(e).catch((err: unknown) => {
+      d.log(`The panorama stitch queue did not move on: ${why(err)}`);
+    });
+  if (!safe) {
+    d.log(`Dropped an invalid jobs:event of type ${event.type}.`);
+    await settle(event);
+    return;
+  }
+  try {
+    await fileThenSend(d.filer, safe, () => {
+      try {
+        d.send(safe);
+      } catch (err) {
+        d.log(`A jobs:event did not reach the window: ${why(err)}`);
+      }
+    });
+  } catch (err) {
+    d.log(`A jobs:event was not filed: ${why(err)}`);
+  }
+  await Promise.all([
+    ...d.after.map((f) =>
+      f(safe).catch((err: unknown) => {
+        d.log(`A jobs:event was not recorded: ${why(err)}`);
+      }),
+    ),
+    settle(safe),
+  ]);
+}
+
+/** A thumbnail maker of `nativeImage` (`createThumbnailFromPath`: async, the OS thumbnail path). */
+export type ThumbnailFromPath = (
+  file: string,
+  size: { width: number; height: number },
+) => Promise<{ isEmpty(): boolean; toJPEG(quality: number): Buffer }>;
+
+/** The scan preview of a frame, a small JPEG data URL, without decoding the whole frame on main. */
+export function panoThumbs(create: ThumbnailFromPath) {
+  return async (file: string): Promise<string | undefined> => {
+    try {
+      const img = await create(file, { width: 160, height: 120 });
+      if (img.isEmpty()) return undefined;
+      return `data:image/jpeg;base64,${img.toJPEG(70).toString('base64')}`;
+    } catch {
+      return undefined;
+    }
+  };
 }
 
 /** Main's filer: a read-change-save of the fresh manifest. */

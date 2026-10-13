@@ -7,6 +7,8 @@ import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   PANO_IMPORT_BUSY,
+  panoThumbs,
+  relayJobEvent,
   fileLaneRun,
   fileThenSend,
   laneSphere,
@@ -626,5 +628,136 @@ describe('stitchLane: one drone panorama stitch at a time', () => {
       run: '20261013-101500-pano-stitch-a1b2',
       status: 'queued',
     });
+  });
+});
+
+describe('relayJobEvent (the stitch queue never stalls)', () => {
+  const req = (pano: string) => ({
+    pipeline: 'pano.stitch',
+    project: 'D:/p',
+    params: { layer: 'l', pano },
+  });
+  function queued() {
+    const started: string[] = [];
+    const lane = stitchLane({
+      start: (r) => {
+        const pano = 'params' in r ? String(r.params.pano) : r.resume;
+        started.push(pano);
+        return Promise.resolve({
+          ok: true as const,
+          job: job({ id: `j-${pano}`, status: 'starting' }),
+        });
+      },
+    });
+    return { lane, started };
+  }
+  const noFiling = panoStitchFiler({
+    update: () => Promise.resolve(),
+    readRecord: () => Promise.resolve(null),
+  });
+
+  it('starts the next stitch when the window cannot take the event', async () => {
+    const { lane, started } = queued();
+    await lane.start(req('p01'), { project: 'D:/p', layer: 'l', pano: 'p01' });
+    await lane.start(req('p02'), { project: 'D:/p', layer: 'l', pano: 'p02' });
+    const logged: string[] = [];
+    const journaled: string[] = [];
+    const end: JobEvent = {
+      type: 'update',
+      job: job({ id: 'j-p01', status: 'failed', error: 'x' }),
+    };
+    await relayJobEvent(end, end, {
+      filer: noFiling,
+      send: () => {
+        throw new Error('Render frame was disposed');
+      },
+      after: [
+        (e) => {
+          journaled.push(e.type);
+          return Promise.resolve();
+        },
+      ],
+      lane,
+      log: (line) => logged.push(line),
+    });
+    expect(started).toEqual(['p01', 'p02']);
+    expect(journaled).toEqual(['update']);
+    expect(logged.join(' ')).toMatch(/Render frame was disposed/);
+  });
+
+  it('starts the next stitch when validation drops the end of the running one', async () => {
+    const { lane, started } = queued();
+    await lane.start(req('p01'), { project: 'D:/p', layer: 'l', pano: 'p01' });
+    await lane.start(req('p02'), { project: 'D:/p', layer: 'l', pano: 'p02' });
+    const send = vi.fn();
+    const end: JobEvent = { type: 'update', job: job({ id: 'j-p01', status: 'done' }) };
+    await relayJobEvent(end, null, {
+      filer: noFiling,
+      send,
+      after: [],
+      lane,
+      log: () => undefined,
+    });
+    expect(send).not.toHaveBeenCalled();
+    expect(started).toEqual(['p01', 'p02']);
+  });
+
+  it('starts the next stitch when the journal fails', async () => {
+    const { lane, started } = queued();
+    await lane.start(req('p01'), { project: 'D:/p', layer: 'l', pano: 'p01' });
+    await lane.start(req('p02'), { project: 'D:/p', layer: 'l', pano: 'p02' });
+    const end: JobEvent = { type: 'update', job: job({ id: 'j-p01', status: 'cancelled' }) };
+    await relayJobEvent(end, end, {
+      filer: noFiling,
+      send: () => undefined,
+      after: [() => Promise.reject(new Error('journal'))],
+      lane,
+      log: () => undefined,
+    });
+    expect(started).toEqual(['p01', 'p02']);
+  });
+});
+
+describe('panoThumbs', () => {
+  it('asks the async thumbnail maker for a small image and answers a data URL', async () => {
+    const create = vi.fn(() =>
+      Promise.resolve({ isEmpty: () => false, toJPEG: () => Buffer.from('jpg') }),
+    );
+    expect(await panoThumbs(create)('D:/card/SYN_0001.JPG')).toBe(
+      `data:image/jpeg;base64,${Buffer.from('jpg').toString('base64')}`,
+    );
+    expect(create).toHaveBeenCalledWith('D:/card/SYN_0001.JPG', { width: 160, height: 120 });
+  });
+
+  it('answers nothing for an empty image or a failure', async () => {
+    const empty = () => Promise.resolve({ isEmpty: () => true, toJPEG: () => Buffer.from('') });
+    expect(await panoThumbs(empty)('a.jpg')).toBeUndefined();
+    expect(await panoThumbs(() => Promise.reject(new Error('no')))('a.jpg')).toBeUndefined();
+  });
+});
+
+describe('scan progress throttle', () => {
+  it('sends at the end only when the files come fast', async () => {
+    const seen: number[] = [];
+    const r = await scanPanoPaths(root, [await card()], {
+      ...noThumb,
+      now: () => 0,
+      onProgress: (d) => seen.push(d),
+    });
+    if ('error' in r) throw new Error(r.error);
+    expect(seen).toEqual([18]);
+  });
+
+  it('sends at most every 100 ms while files come slowly', async () => {
+    const seen: number[] = [];
+    let t = 0;
+    const r = await scanPanoPaths(root, [await card()], {
+      ...noThumb,
+      // 60 ms per file: every second file
+      now: () => (t += 60) - 60,
+      onProgress: (d) => seen.push(d),
+    });
+    if ('error' in r) throw new Error(r.error);
+    expect(seen).toEqual([2, 4, 6, 8, 10, 12, 14, 16, 18]);
   });
 });

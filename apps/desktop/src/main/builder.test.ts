@@ -18,6 +18,7 @@ import {
   createBuilderProject,
   drawingJobRefusal,
   photoGps,
+  outsidePanoFolder,
   withoutExcluded,
 } from './builder';
 import { ProjectRegistry } from './project';
@@ -458,6 +459,38 @@ describe('builder:import exclude', () => {
     await writeFile(join(folder, 'SYN_0001.MP4'), 'x');
     const r = await builderImport(
       { projectId, paths: [folder], exclude: [join(folder, 'SYN_0001.MP4')] },
+      {
+        registry,
+        images: { resizeJpeg: () => Promise.resolve() },
+        emit: () => undefined,
+        known: (ext) => ext === '.mp4',
+      },
+    );
+    expect(r).toEqual({ ok: false, error: 'The folder holds no files to import.' });
+  });
+});
+
+describe("builder:import leaves the project's panorama frames out", () => {
+  it('drops files under <root>/panoramas/ only', () => {
+    const root = join(base, 'proj');
+    const inside = join(root, 'panoramas', 'panos-1', 'p01', 'frames', 'SYN_0001.JPG');
+    const near = join(root, 'panoramas-old', 'SYN_0002.JPG');
+    const other = join(base, 'card', 'SYN_0003.JPG');
+    expect(outsidePanoFolder(root, [inside, near, other])).toEqual([near, other]);
+    if (process.platform === 'win32')
+      expect(outsidePanoFolder(root, [inside.toUpperCase().replaceAll('\\', '/')])).toEqual([]);
+  });
+
+  it('imports nothing from the frames folder of a sphere', async () => {
+    const dir = join(base, 'projects', 'frames');
+    await writeProject(dir, sampleManifest());
+    const registry = new ProjectRegistry();
+    const projectId = registry.register(dir);
+    const frames = join(dir, 'panoramas', 'panos-1', 'p01', 'frames');
+    await mkdir(frames, { recursive: true });
+    await writeFile(join(frames, 'SYN_0001.MP4'), 'x');
+    const r = await builderImport(
+      { projectId, paths: [frames] },
       {
         registry,
         images: { resizeJpeg: () => Promise.resolve() },

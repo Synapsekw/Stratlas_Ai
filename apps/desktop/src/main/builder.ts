@@ -12,7 +12,7 @@ import type { IpcEvent, IpcRequest, IpcResponse, ProjectManifest } from '@aio/sc
 import { readMp4VideoInfo, parseDjiSrt, srtTimingCheck, srtToFlight } from '@aio/video/telemetry';
 import { execFile } from 'node:child_process';
 import { open, readdir, stat } from 'node:fs/promises';
-import { basename, join, resolve } from 'node:path';
+import { basename, join, resolve, sep } from 'node:path';
 import { promisify } from 'node:util';
 import { createImportRuns } from './importRuns';
 import { readManifest, type ProjectRegistry } from './project';
@@ -300,6 +300,17 @@ export function withoutExcluded(
   return files.filter((f) => !out.has(key(f)));
 }
 
+/**
+ * `files` without those under the project's own `panoramas/` folder: a sphere's raw frames never
+ * become map items, whatever folder Add data is pointed at.
+ */
+export function outsidePanoFolder(root: string, files: readonly string[]): string[] {
+  const fold = (p: string) =>
+    process.platform === 'win32' ? resolve(p).toLowerCase() : resolve(p);
+  const dir = fold(join(root, 'panoramas')) + sep;
+  return files.filter((f) => !fold(f).startsWith(dir));
+}
+
 export async function builderImport(
   req: IpcRequest<'builder:import'>,
   d: BuilderImportDeps,
@@ -313,7 +324,7 @@ export async function builderImport(
   });
   if (ex.tooMany !== null) return { ok: false, error: tooManyError(ex.tooMany) };
   // the sphere frames the panorama import takes instead
-  const files = withoutExcluded(ex.files, req.exclude);
+  const files = outsidePanoFolder(root, withoutExcluded(ex.files, req.exclude));
   if (files.length === 0 && ex.leftOut.length === 0)
     return { ok: false, error: 'The folder holds no files to import.' };
   const run = importRuns.begin(req.projectId);

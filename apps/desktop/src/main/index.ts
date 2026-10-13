@@ -75,7 +75,8 @@ import {
   PANO_PACK_FEATURE,
   PANO_QUEUED,
   fileLaneRun,
-  fileThenSend,
+  panoThumbs,
+  relayJobEvent,
   laneSphere,
   stitchLane,
   panoFiler,
@@ -708,23 +709,22 @@ const jobs = new JobRunner({
     findPack({ dataRoot: settings.current().dataRoot, env: process.env, app: packApp }),
   emit: (event) => {
     const safe = safeJobEvent(event);
-    if (!safe) {
-      console.error(`Dropped an invalid jobs:event of type ${event.type}.`);
-      return;
-    }
-    // a finished stitch is filed into the manifest before the renderer hears of it, and the
-    // journal records the job's changes after that filing
-    void fileThenSend(panoFiler, safe, () => {
-      const win = mainWindow ?? BrowserWindow.getAllWindows()[0];
-      if (win && !win.isDestroyed()) win.webContents.send('jobs:event', safe);
-    }).then(() =>
-      Promise.all([
-        journal.jobEvent(safe),
-        // the stitch that waits next starts when the running one has ended
-        panoLane.settled(safe),
-      ]),
-    );
-    void surveyQaJobs(safe);
+    // a finished stitch is filed into the manifest before the renderer hears of it, the journal
+    // records the job's changes after that filing, and the stitch that waits next starts when
+    // the running one has ended (even when the window or the validation drops the event)
+    void relayJobEvent(event, safe, {
+      filer: panoFiler,
+      send: (e) => {
+        const win = mainWindow ?? BrowserWindow.getAllWindows()[0];
+        if (win && !win.isDestroyed()) win.webContents.send('jobs:event', e);
+      },
+      after: [(e) => journal.jobEvent(e)],
+      lane: panoLane,
+      log: (line) => {
+        console.error(line);
+      },
+    });
+    if (safe) void surveyQaJobs(safe);
   },
 });
 /** Drone panorama stitches run one at a time on this computer; the others wait in line. */
@@ -1347,12 +1347,8 @@ function registerIpc(): void {
     const parsed = ipcEvents['panos:progress'].safeParse(e);
     if (parsed.success) targetWindow()?.webContents.send('panos:progress', parsed.data);
   };
-  const panoThumb = (file: string): Promise<string | undefined> => {
-    const img = nativeImage.createFromPath(file);
-    if (img.isEmpty()) return Promise.resolve(undefined);
-    const jpeg = img.resize({ width: 160, quality: 'good' }).toJPEG(70);
-    return Promise.resolve(`data:image/jpeg;base64,${jpeg.toString('base64')}`);
-  };
+  // the OS thumbnail path, async: a 20 MP frame is never decoded whole on main
+  const panoThumb = panoThumbs((file, size) => nativeImage.createThumbnailFromPath(file, size));
   handle('panos:scan', async ({ projectId, paths }) => {
     const refused = packageRefusal(projectId);
     if (refused) return refused;
