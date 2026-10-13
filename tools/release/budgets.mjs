@@ -40,7 +40,8 @@ export const BUDGETS = Object.freeze({
    * the pack (founder decision of 12 Oct 2026, Walks 360 `walk.process`; conda-forge's GPL build,
    * about 141 MB pruned) takes the Windows pack to about 1,245 MB: the founder approved 1,300 MB
    * on 12 Oct 2026. The archive budget was 450 MB: the founder approved 500 MB on 12 Oct 2026,
-   * as the 0.6.0 archive is 448.7 MB.
+   * as the 0.6.0 archive is 448.7 MB. Pack 0.7.0 (drone panoramas, pano.stitch) adds Python
+   * sources only; the budget is unchanged.
    */
   pack: Object.freeze({ unpackedBytes: 1_300_000_000, compressedBytes: 500_000_000 }),
   /**
