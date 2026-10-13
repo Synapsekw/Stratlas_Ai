@@ -3,6 +3,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import {
+  HELD_PREFIX,
   TRASH_DIR,
   emptyTrash,
   freeTrashEntry,
@@ -46,6 +47,23 @@ describe('trash', () => {
     await entry('20261013T081530Z-a', 1000);
     await entry('20261012T081530Z-b', 24);
     expect(await trashSize(root)).toEqual({ bytes: 1024, entries: 2 });
+  });
+
+  it('leaves a held- entry alone: it holds files a removal could not put back', async () => {
+    await entry(`${HELD_PREFIX}20261001T081530Z-run-1`, 24);
+    await entry('20261013T081530Z-a', 1000);
+    expect(stampTime(`${HELD_PREFIX}20261001T081530Z-run-1`)).toBeNull();
+    expect(await sweepTrash(root, () => new Date('2026-11-30T00:00:00.000Z'))).toEqual([
+      '20261013T081530Z-a',
+    ]);
+    await entry('20261013T081530Z-b', 1000);
+    expect(await trashSize(root)).toEqual({ bytes: 1000, entries: 1 });
+    expect(await emptyTrash(root)).toEqual({
+      freed: 1000,
+      removed: ['20261013T081530Z-b'],
+      held: [],
+    });
+    expect(await readdir(join(root, TRASH_DIR))).toEqual([`${HELD_PREFIX}20261001T081530Z-run-1`]);
   });
 
   it('answers 0 and 0 without a trash folder', async () => {

@@ -1,4 +1,4 @@
-import { TrashRecord } from '@aio/schema';
+import { TrashRecord, WALK_SCHEMA, type WalkFile } from '@aio/schema';
 import {
   mkdir,
   mkdtemp,
@@ -11,12 +11,14 @@ import {
   writeFile,
 } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { basename, join } from 'node:path';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { readManifestFile } from './manifestFile';
-import { MANIFEST_BEFORE, removeItems } from './remove';
+import { MANIFEST_BEFORE, removeItems, stuckMessage } from './remove';
 import { FIXTURE_JOBS, RUN_DONE, RUN_FAILED, makeRemoveProject } from './removeFixture';
 import { planRemoval } from './removePlan';
+import { emptyTrash, HELD_PREFIX, sweepTrash } from './trash';
+import { migrateWalks } from './walkLayers';
 
 let dir: string;
 let root: string;
@@ -156,17 +158,36 @@ describe('removeItems', () => {
         rename,
         platform: 'linux',
       }),
-    ).rejects.toThrow(/could not be moved back.*\.trash/);
+    ).rejects.toThrow(
+      /2 file\(s\) could not be moved back.*\.trash\/held-20261013T081530Z-photos-a/,
+    );
     const [entry] = await trashEntries();
-    expect(entry).toBeDefined();
+    expect(entry).toBe(`${HELD_PREFIX}20261013T081530Z-photos-a`);
     expect(await exists(at('.trash', entry ?? '', 'removed.json'))).toBe(true);
+    // not trash: the manifest still lists these files, so neither the sweep nor Empty takes them
+    expect(await sweepTrash(root, () => new Date('2026-12-31T00:00:00.000Z'))).toEqual([]);
+    expect(await emptyTrash(root)).toEqual({ freed: 0, removed: [], held: [] });
+    expect(await trashEntries()).toEqual([entry]);
+  });
+
+  it('says apart moved files and a side file that could not be put back', () => {
+    const held = `.trash/${HELD_PREFIX}20261013T081530Z-x`;
+    expect(stuckMessage('Boom.', 2, ['tilesets.json'], held)).toBe(
+      `Boom. 2 file(s) could not be moved back. They are in ${held}, listed in removed.json. ` +
+        `tilesets.json could not be restored; its earlier copy is in ${held}.`,
+    );
+    expect(stuckMessage('Boom.', 0, ['tilesets.json'], held)).toBe(
+      `Boom. tilesets.json could not be restored; its earlier copy is in ${held}.`,
+    );
   });
 
   it('rolls back files and tilesets.json when the save fails', async () => {
     // a folder where the backup goes: the save refuses before it writes the manifest
     await rm(at('manifest.json.bak'), { force: true });
     await mkdir(at('manifest.json.bak'));
-    await expect(removeItems(root, [{ layer: `${RUN_DONE}-dsm` }], () => NOW)).rejects.toThrow();
+    await expect(removeItems(root, [{ layer: `${RUN_DONE}-dsm` }], () => NOW)).rejects.toThrow(
+      /Nothing was removed\.$/,
+    );
     expect(await tilesetIds()).toHaveLength(3);
     expect(await exists(at('rasters', `${RUN_DONE}-dsm`, 'tiles.json'))).toBe(true);
     expect(await exists(at('change', 'chg-1.json'))).toBe(true);
@@ -201,6 +222,59 @@ describe('removeItems', () => {
     } finally {
       await rm(outside, { recursive: true, force: true });
     }
+  });
+
+  it('keeps the removal when removed.json cannot be written after the save', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    try {
+      const rename = async (a: string, b: string) => {
+        await fsRename(a, b);
+        // the held entry takes its final name: a folder now sits where removed.json goes
+        if (basename(a).startsWith(HELD_PREFIX)) await mkdir(join(b, 'removed.json'));
+      };
+      const r = await removeItems(root, [{ layer: 'clip-1' }], () => NOW, { rename });
+      expect(r.trash).toBe('20261013T081530Z-clip-1');
+      expect((await readManifestFile(root)).layers.some((l) => l.id === 'clip-1')).toBe(false);
+      expect(await exists(at('.trash', r.trash ?? '', 'video', 'clip-1.mp4'))).toBe(true);
+      expect(warn).toHaveBeenCalledWith(expect.stringContaining('removed.json'));
+    } finally {
+      warn.mockRestore();
+    }
+  });
+
+  it('keeps the walk entry layout for a walk removed on its own', async () => {
+    const id = 'w1';
+    await mkdir(at('walks', id), { recursive: true });
+    await writeFile(
+      at('walks', id, 'walk.json'),
+      JSON.stringify({
+        schema: WALK_SCHEMA,
+        id,
+        name: 'Walk w1',
+        createdAt: '2026-10-10T08:00:00.000Z',
+        source: {
+          file: `${id}.insv`,
+          layout: 'insv-dual-stream',
+          streams: [{ width: 128, height: 128, codec: 'avc1', fps: 30 }],
+        },
+        video: {
+          src: `walks/${id}/playback.mp4`,
+          width: 256,
+          height: 128,
+          durationS: 12,
+          fps: 30,
+          audio: false,
+        },
+        poster: `walks/${id}/poster.jpg`,
+      } satisfies WalkFile),
+    );
+    await writeFile(at('walks', id, 'playback.mp4'), 'x');
+    await migrateWalks(root);
+    const r = await removeItems(root, [{ layer: `walk-${id}` }], () => NOW);
+    expect(r.trash).toBe(`20261013T081530Z-${id}`);
+    expect(await exists(at('.trash', r.trash ?? '', 'playback.mp4'))).toBe(true);
+    expect(await exists(at('.trash', r.trash ?? '', 'removed.json'))).toBe(true);
+    expect(await exists(at('walks', id))).toBe(false);
   });
 
   it('moves nothing when .trash is a junction', async () => {

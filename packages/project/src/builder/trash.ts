@@ -7,6 +7,12 @@ import { join } from 'node:path';
  */
 
 export const TRASH_DIR = '.trash';
+/**
+ * An entry holding files a failed removal could not put back while the manifest still lists them:
+ * not trash. It carries no stamp at the start of its name, so the sweep, the size and Empty project
+ * trash all pass it by; the person moves its files back by hand (`removed.json` lists them).
+ */
+export const HELD_PREFIX = 'held-';
 /** How long removed files are kept. */
 export const TRASH_KEEP_DAYS = 7;
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -77,7 +83,7 @@ async function entries(root: string): Promise<string[]> {
   try {
     // a link or a plain file named .trash is never followed: nothing is read or deleted through it
     if (!(await lstat(join(root, TRASH_DIR))).isDirectory()) return [];
-    return await readdir(join(root, TRASH_DIR));
+    return (await readdir(join(root, TRASH_DIR))).filter((n) => !n.startsWith(HELD_PREFIX));
   } catch {
     return [];
   }
