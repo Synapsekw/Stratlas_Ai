@@ -13,11 +13,14 @@ points at, and the mesh's primary engine is MeshLab (``pymeshlab``, ``mesh.py``)
 | ``PoissonRecon`` | ``AIO_POISSONRECON`` | ``tools/poissonrecon/``   | MIT (mkazhdan/PoissonRecon)              |
 | ``SurfaceTrimmer`` | ``AIO_SURFACETRIMMER`` | ``tools/poissonrecon/`` | MIT (same repository)                    |
 | ``pdal``      | ``AIO_PDAL``          | ``tools/pdal/`` (shipped)  | BSD-3 (conda-forge build, GPL/LGPL deps) |
+| ``untwine``   | ``AIO_UNTWINE``       | ``tools/pdal/`` (shipped)  | GPL-3.0-or-later (conda-forge build)     |
 
 ``run_tool`` runs one cancellably: output to files (a full pipe would block the child), stdin
 closed, no console window, and on cancel the whole process tree is killed (on Windows
 ``colmap_io.end_tree``: the tool's own descendants and nothing else), so no orphan keeps running
-after the job stops.
+after the job stops. ``on_output`` reads the tool's own progress: each new line it prints (stdout
+or stderr) goes to the hook, and a fraction the hook returns moves the bar instead of the time
+ramp.
 
 Memory: ``AIO_PHOTO_MEMORY_MB`` is the one memory cap of the photo jobs (the app sets it from
 Settings). ``photo.products`` plans within it (``memory_budget``; without it 40 % of the physical
@@ -29,11 +32,12 @@ from __future__ import annotations
 
 import ctypes
 import os
+import re
 import shutil
 import subprocess
 import sys
 import time
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from pathlib import Path
 
 from ..runtime import Cancelled, JobError, StepContext
@@ -43,6 +47,7 @@ TOOLS = {
     "PoissonRecon": ("AIO_POISSONRECON", "poissonrecon"),
     "SurfaceTrimmer": ("AIO_SURFACETRIMMER", "poissonrecon"),
     "ffmpeg": ("QUADRION_FFMPEG", "ffmpeg"),
+    "untwine": ("AIO_UNTWINE", "pdal"),
 }
 GB = 1024**3
 
@@ -83,6 +88,25 @@ class ToolMemoryExceeded(JobError):
     """A native tool passed its memory limit and was stopped."""
 
 
+class _Tail:
+    """The new complete lines of a file a running tool writes (``\\n`` or ``\\r`` ends a line)."""
+
+    def __init__(self, path: Path):
+        self.path, self.pos, self.rest = path, 0, b""
+
+    def lines(self) -> list[str]:
+        try:
+            with open(self.path, "rb") as f:
+                f.seek(self.pos)
+                data = f.read()
+        except OSError:
+            return []
+        self.pos += len(data)
+        parts = re.split(rb"[\r\n]", self.rest + data)
+        self.rest = parts.pop()
+        return [p.decode("utf-8", errors="replace") for p in parts if p.strip()]
+
+
 def run_tool(
     ctx: StepContext,
     args: Sequence[str],
@@ -92,10 +116,12 @@ def run_tool(
     progress: tuple[float, float] = (0.0, 0.95),
     memory_limit: int = 0,
     env: dict[str, str] | None = None,
+    on_output: Callable[[str], float | None] | None = None,
 ) -> str:
     """Run a native tool; return its stdout, or raise with the last line it printed. With
     ``memory_limit`` (bytes) the tool and its children are stopped above it
-    (``ToolMemoryExceeded``), so a tool never pushes the computer into swapping."""
+    (``ToolMemoryExceeded``), so a tool never pushes the computer into swapping. With
+    ``on_output`` the tool's own progress lines move the bar (see the module docstring)."""
     work.mkdir(parents=True, exist_ok=True)
     out_path, err_path = work / "tool.out", work / "tool.err"
     kw: dict = {"creationflags": getattr(subprocess, "CREATE_NO_WINDOW", 0)}
@@ -110,7 +136,9 @@ def run_tool(
             raise JobError(f"{what}: the tool {Path(args[0]).name} could not start ({e}).") from e
         t0 = time.monotonic()
         lo, hi = progress
-        last_mem = 0.0
+        last_mem = last_read = 0.0
+        tails = [_Tail(out_path), _Tail(err_path)] if on_output is not None else []
+        told: float | None = None
         while proc.poll() is None:
             if ctx.cancel_event.is_set():
                 _kill_tree(proc)
@@ -125,8 +153,18 @@ def run_tool(
                     raise ToolMemoryExceeded(
                         f"{what} stopped: it needed more than {memory_limit / 1e9:.1f} GB of memory."
                     )
-            frac = min(1.0, (time.monotonic() - t0) / max(1.0, expected_s))
-            ctx.progress(lo + (hi - lo) * frac * 0.95, what)
+            if tails and on_output is not None and time.monotonic() - last_read >= 0.2:
+                last_read = time.monotonic()
+                for tail in tails:
+                    for line in tail.lines():
+                        f = on_output(line)
+                        if f is not None:
+                            told = max(told or 0.0, min(1.0, f))
+            if told is not None:
+                frac = told
+            else:
+                frac = min(1.0, (time.monotonic() - t0) / max(1.0, expected_s)) * 0.95
+            ctx.progress(lo + (hi - lo) * frac, what)
             time.sleep(0.1)
     out = out_path.read_text("utf-8", errors="replace")
     if proc.returncode != 0:
