@@ -25,6 +25,7 @@ describe('removeText', () => {
         jobs: ['j1', 'j2'],
         touches: { issues: 2, walkPins: 0 },
         keptOutside: ['C:/Photos'],
+        files: ['photogrammetry/r3'],
         bytes: 2_400_000_000,
       }),
       t,
@@ -78,6 +79,32 @@ describe('removeText', () => {
     expect(x.asked).toEqual(['1 dataset filed under this date']);
     expect(x.keeps).toEqual(['The survey date 2 Nov 2026 stays: a volume uses it']);
     expect(x.space).toBeNull();
+  });
+
+  it('a date that goes: it says the date itself goes, first', () => {
+    const x = removeText(
+      [{ capture: 'c3' }],
+      plan({
+        layers: [{ id: 'dsm-c', name: 'DSM', kind: 'raster', why: { filedUnder: 'c3' } }],
+        captures: ['c3'],
+        files: ['rasters/dsm-c'],
+        bytes: 10,
+      }),
+      t,
+      o,
+    );
+    expect(x.asked).toEqual(['The survey date 2 Nov 2026', '1 dataset filed under this date']);
+    expect(x.note).toBe(
+      'Everything goes to the project trash and is deleted for good after seven days.',
+    );
+  });
+
+  it('an empty date: only the date goes, and nothing goes to the project trash', () => {
+    const x = removeText([{ capture: 'c3' }], plan({ captures: ['c3'] }), t, o);
+    expect(x.title).toBe('Delete everything from 2 Nov 2026?');
+    expect(x.asked).toEqual(['The survey date 2 Nov 2026']);
+    expect(x.space).toBeNull();
+    expect(x.note).toBeNull();
   });
 
   it('many rows: a counted title and at most eight names', () => {

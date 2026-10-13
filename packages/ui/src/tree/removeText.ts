@@ -20,7 +20,8 @@ export interface RemoveText {
   also: string[];
   keeps: string[];
   space: string | null;
-  note: string;
+  /** The trash note; null when nothing goes to the project trash (an empty date). */
+  note: string | null;
   refused: string | null;
 }
 
@@ -54,7 +55,9 @@ export function removeText(
             })
           : t('remove.title.many', { count: targets.length });
 
-  const askedLines: string[] = [];
+  const askedLines: string[] = plan.captures.map((c) =>
+    t('remove.line.date', { date: o.dateLabel(c) }),
+  );
   const filed = plan.layers.filter(
     (l) => typeof l.why === 'object' && 'filedUnder' in l.why,
   ).length;
@@ -112,8 +115,11 @@ export function removeText(
     asked: askedLines,
     also,
     keeps,
-    space: plan.bytes > 0 ? t('remove.space', { size: size(plan.bytes) }) : null,
-    note: t('remove.note'),
+    space:
+      plan.files.length > 0 && plan.bytes > 0
+        ? t('remove.space', { size: size(plan.bytes) })
+        : null,
+    note: plan.files.length > 0 ? t('remove.note') : null,
     refused: plan.refused ?? null,
   };
 }

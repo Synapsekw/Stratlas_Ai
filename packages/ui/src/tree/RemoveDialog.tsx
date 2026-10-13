@@ -1,5 +1,5 @@
 import type { RemovalPlan, RemoveTarget } from '@aio/schema';
-import { useRef } from 'react';
+import { useEffect, useRef } from 'react';
 import { useFocusTrap } from '../focus';
 import { useT } from '../i18n';
 import { Icon } from '../icons/Icon';
@@ -31,19 +31,34 @@ export function RemoveDialog(props: RemoveDialogProps) {
   const cancel = () => {
     if (!busy) props.onCancel();
   };
+  // Esc anywhere: the dialog is the only modal while it is open, and a button swap (Cancel to
+  // Close) or a disabled button while busy leaves focus on the page
   useFocusTrap(dlg, true, {
     onEscape: cancel,
+    escapeAnywhere: true,
     initial: () => cancelRef.current,
     ...(props.returnTo ? { returnTo: props.returnTo } : {}),
   });
   const text = plan ? removeText(props.targets, plan, t, { dateLabel: props.dateLabel }) : null;
+  /** The plan could not be worked out: the error and Close, nothing to confirm. */
+  const unplanned = !text && error !== null;
+  const closeOnly = text?.refused != null || unplanned;
+  // focus back on the button that is left when Close replaces Cancel or a Delete ends
+  useEffect(() => {
+    const root = dlg.current;
+    const active = document.activeElement;
+    if (busy || !root) return;
+    if (active === null || !root.contains(active) || active.matches(':disabled'))
+      cancelRef.current?.focus();
+  }, [closeOnly, busy]);
   const list = (label: string, lines: string[], id: string) =>
     lines.length > 0 && (
       <div data-testid={id}>
         <p className="rm-h">{label}</p>
         <ul className="rm-list">
-          {lines.map((l) => (
-            <li key={l}>{l}</li>
+          {lines.map((l, i) => (
+            // two marked layers can share a name
+            <li key={i}>{l}</li>
           ))}
         </ul>
       </div>
@@ -61,17 +76,18 @@ export function RemoveDialog(props: RemoveDialogProps) {
         role="alertdialog"
         aria-modal="true"
         aria-labelledby="remove-dialog-title"
-        {...(text?.refused === null ? { 'aria-describedby': 'remove-dialog-note' } : {})}
+        {...(text?.refused === null && text.note !== null
+          ? { 'aria-describedby': 'remove-dialog-note' }
+          : {})}
         data-testid="remove-dialog"
       >
         <div className="dlg-h">
           <Icon name="trash" size={16} />
           <h2 id="remove-dialog-title" data-testid="remove-dialog-title" dir="auto">
-            {text?.title ?? t('remove.loading')}
+            {unplanned ? t('remove.refusedTitle') : (text?.title ?? t('remove.loading'))}
           </h2>
         </div>
         <div className="dlg-b">
-          {!text && <p className="help">{t('remove.loading')}</p>}
           {text?.refused != null && (
             <p className="notice danger" role="alert" data-testid="remove-dialog-refused">
               <Icon name="warn" size={14} />
@@ -90,9 +106,11 @@ export function RemoveDialog(props: RemoveDialogProps) {
                   {text.space}
                 </p>
               )}
-              <p id="remove-dialog-note" className="help">
-                {text.note}
-              </p>
+              {text.note !== null && (
+                <p id="remove-dialog-note" className="help">
+                  {text.note}
+                </p>
+              )}
             </>
           )}
           {error && (
@@ -106,7 +124,7 @@ export function RemoveDialog(props: RemoveDialogProps) {
         </div>
         <div className="dlg-f">
           <span className="grow" />
-          {text?.refused != null ? (
+          {closeOnly ? (
             <button
               ref={cancelRef}
               type="button"
