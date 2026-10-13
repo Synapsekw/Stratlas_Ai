@@ -112,6 +112,33 @@ interface Where {
   takenAt?: string;
 }
 
+/**
+ * A wide panorama's coverage before it is stitched (so a restitch keeps its shape): the yaw range of
+ * its frames, clockwise from north (the arc left after dropping the widest gap), full height.
+ * A sphere gets none until it is stitched; `applyStitchOutcome` overwrites this with the result.
+ */
+function provisionalCov(s: PanoSphereGroup): PanoCov | undefined {
+  if (s.shape !== 'wide') return undefined;
+  const yaws = s.frames
+    .flatMap((f) => (f.gimbal ? [((f.gimbal.yaw % 360) + 360) % 360] : []))
+    .sort((a, b) => a - b);
+  const first = yaws[0];
+  if (first === undefined) return undefined;
+  let gap = first + 360 - (yaws[yaws.length - 1] ?? first);
+  let left = first;
+  for (let i = 1; i < yaws.length; i++) {
+    const d = (yaws[i] ?? 0) - (yaws[i - 1] ?? 0);
+    if (d > gap) {
+      gap = d;
+      left = yaws[i] ?? left;
+    }
+  }
+  const span = 360 - gap;
+  if (span <= 0) return undefined;
+  const r = (v: number) => Math.round(v * 10) / 10;
+  return { top: 90, bottom: 90, left: r(left), right: r(left + span) };
+}
+
 /** A pano item: position like a photo's camera; centre column true north, so heading = -convergence. */
 function panoRef(
   id: string,
@@ -120,6 +147,7 @@ function panoRef(
   w: Where,
   f: PhotoFrame,
   stitched: boolean,
+  cov?: PanoCov,
 ): PanoRef {
   const path = `${panoFolder(layerId, id)}/pano.jpg`;
   const cam = photoRef(
@@ -144,6 +172,7 @@ function panoRef(
     name: `Pano ${String(n)}`,
     ...(cam.takenAt ? { capturedAt: cam.takenAt } : {}),
     ...(stitched ? { stitch: { status: 'queued' as const } } : {}),
+    ...(cov ? { cov } : {}),
   };
 }
 
@@ -213,7 +242,9 @@ export async function importPanoGroups(
         await copyFile(f.file, join(dir, freeName(basename(f.file), used)));
         tick(f.file);
       }
-      items.push(panoRef(id, layerId, n, { ...s, takenAt: s.startedAt }, frame, true));
+      items.push(
+        panoRef(id, layerId, n, { ...s, takenAt: s.startedAt }, frame, true, provisionalCov(s)),
+      );
       stitch.push(id);
       shapes[id] = s.shape;
     }

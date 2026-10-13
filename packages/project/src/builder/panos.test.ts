@@ -243,6 +243,20 @@ describe('importPanoGroups', () => {
     expect(await readdir(join(orphan, 'p01', 'frames'))).toEqual(['keep.JPG']);
   });
 
+  it('writes a provisional yaw range on a wide panorama and none on a sphere', async () => {
+    const grp = await grouping();
+    // the wide one sweeps 340 to 100 degrees (across north), the sphere has no gimbal data here
+    grp.spheres[1]?.frames.forEach((f, i) => {
+      f.gimbal = { yaw: (340 + i * 20) % 360, pitch: -10, roll: 0 };
+    });
+    const r = await importPanoGroups(root, keyGrouping(grp), choice, deps());
+    const layer = (await readManifestFile(root)).layers.find((l) => l.id === r.layerId);
+    if (layer?.kind !== 'panoramas') throw new Error('no layer');
+    expect(layer.items[0]?.cov).toBeUndefined();
+    expect(layer.items[1]?.cov).toEqual({ top: 90, bottom: 90, left: 340, right: 480 });
+    expect(r.shapes).toEqual({ p01: 'sphere', p02: 'wide' });
+  });
+
   it('refuses an empty choice and gives a second import its own layer', async () => {
     const g = keyGrouping(await grouping());
     await expect(importPanoGroups(root, g, { ...choice, keys: [] }, deps())).rejects.toMatchObject({
