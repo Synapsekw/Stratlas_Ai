@@ -63,7 +63,7 @@ export {
   type PyramidIndex,
   type PyramidTile,
 } from './pyramid';
-export type { IssueColorBy, MapController } from './controller';
+export type { IssueColorBy, MapController, MapPointerSession } from './controller';
 // M8 C2: swipe and blend of two dates, the look of change results
 export * from './swipe';
 export * from './changeStyle';

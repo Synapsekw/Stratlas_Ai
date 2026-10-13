@@ -11,6 +11,12 @@ class FakeMap {
   readonly handlers = new Map<string, Handler[]>();
   readonly canvas = document.createElement('canvas');
   readonly doubleClickZoom = { enable: vi.fn(), disable: vi.fn() };
+  readonly dragPan = { enable: vi.fn(), disable: vi.fn() };
+  /** Screen px of a lon/lat: a fixed linear map, so tests can aim at handles. */
+  project(ll: [number, number] | { lng: number; lat: number }) {
+    const [lng, lat] = Array.isArray(ll) ? ll : [ll.lng, ll.lat];
+    return { x: lng * 1e5, y: -lat * 1e5 };
+  }
   readonly remove = vi.fn(() => {
     this.handlers.clear();
   });
@@ -168,31 +174,31 @@ describe('map controller dispose (T8 soak: maps kept alive after a project close
   });
 });
 
-describe('map point pick (placing a walk on the map)', () => {
-  /** A map with a UTM project open, so clicks have a local point. */
-  function startWithProject() {
-    const started = start();
-    const { frameProjection } = geo;
-    const manifest = {
-      crs: { epsg: 32633 },
-      origin: [500_000, 4_000_000, 0],
-      layers: [],
-    };
-    started.store.setState({
-      project: { id: 'p1', manifest } as unknown as ReturnType<
-        typeof started.store.getState
-      >['project'],
-    });
-    const proj = frameProjection({ epsg: 32633 }, [500_000, 4_000_000, 0]);
-    if (!proj) throw new Error('no projection');
-    return { ...started, proj };
-  }
-  const click = (lng: number, lat: number) => ({
-    point: { x: 10, y: 10 },
-    lngLat: { lng, lat },
-    originalEvent: { clientX: 10, clientY: 10, altKey: false },
+/** A map with a UTM project open, so clicks have a local point. */
+function startWithProject() {
+  const started = start();
+  const { frameProjection } = geo;
+  const manifest = {
+    crs: { epsg: 32633 },
+    origin: [500_000, 4_000_000, 0],
+    layers: [],
+  };
+  started.store.setState({
+    project: { id: 'p1', manifest } as unknown as ReturnType<
+      typeof started.store.getState
+    >['project'],
   });
+  const proj = frameProjection({ epsg: 32633 }, [500_000, 4_000_000, 0]);
+  if (!proj) throw new Error('no projection');
+  return { ...started, proj };
+}
+const click = (lng: number, lat: number) => ({
+  point: { x: 10, y: 10 },
+  lngLat: { lng, lat },
+  originalEvent: { clientX: 10, clientY: 10, altKey: false },
+});
 
+describe('map point pick (placing a walk on the map)', () => {
   it('map pick returns the local point of the click and disarms', () => {
     const { ctl, map, proj, store } = startWithProject();
     const [lng, lat] = proj.toLonLat([12, 0, -34]);
@@ -233,5 +239,97 @@ describe('map point pick (placing a walk on the map)', () => {
     window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
     expect(onPick).not.toHaveBeenCalled();
     expect(onCancel).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('map pointer session (placing a walk: hover, click, handles)', () => {
+  const ev = (
+    proj: { toLonLat(v: [number, number, number]): [number, number] },
+    local: [number, number, number],
+  ) => {
+    const [lng, lat] = proj.toLonLat(local);
+    return {
+      point: { x: lng * 1e5, y: -lat * 1e5 },
+      lngLat: { lng, lat },
+      originalEvent: { clientX: 0, clientY: 0, altKey: false },
+      preventDefault: vi.fn(),
+    };
+  };
+
+  it('reports hover points, null when the pointer leaves, and clicks without selecting', () => {
+    const { ctl, map, proj, store } = startWithProject();
+    const onMove = vi.fn();
+    const onClick = vi.fn();
+    ctl.pointerSession({ onMove, onClick });
+    expect(map.canvas.style.cursor).toBe('crosshair');
+    expect(map.doubleClickZoom.disable).toHaveBeenCalled();
+    map.fire('mousemove', ev(proj, [12, 0, -34]));
+    const moved = onMove.mock.calls[0]?.[0] as [number, number, number];
+    expect(moved[0]).toBeCloseTo(12, 3);
+    expect(moved[2]).toBeCloseTo(-34, 3);
+    map.fire('mouseout');
+    expect(onMove).toHaveBeenLastCalledWith(null);
+    const select = vi.spyOn(store.getState(), 'select');
+    map.fire('click', ev(proj, [1, 0, 2]));
+    map.fire('click', ev(proj, [3, 0, 4]));
+    // a session stays armed: both clicks are reported, nothing is selected
+    expect(onClick).toHaveBeenCalledTimes(2);
+    expect(select).not.toHaveBeenCalled();
+  });
+
+  it('a press on a handle drags it with panning off; a press elsewhere pans', () => {
+    const { ctl, map, proj } = startWithProject();
+    const onDrag = vi.fn();
+    const onDragEnd = vi.fn();
+    const onMove = vi.fn();
+    ctl.pointerSession({
+      onMove,
+      onDrag,
+      onDragEnd,
+      handles: () => [{ id: 'end', local: [40, 0, -30] }],
+    });
+    // far from the handle: no drag
+    map.fire('mousedown', ev(proj, [0, 0, 0]));
+    expect(map.dragPan.disable).not.toHaveBeenCalled();
+    map.fire('mouseup', ev(proj, [0, 0, 0]));
+    // on the handle
+    const down = ev(proj, [40, 0, -30]);
+    map.fire('mousedown', down);
+    expect(down.preventDefault).toHaveBeenCalled();
+    expect(map.dragPan.disable).toHaveBeenCalledTimes(1);
+    map.fire('mousemove', ev(proj, [41, 0, -29]));
+    expect(onDrag).toHaveBeenCalledWith('end', expect.any(Array));
+    expect(onMove).not.toHaveBeenCalled();
+    map.fire('mouseup', ev(proj, [41, 0, -29]));
+    expect(onDragEnd).toHaveBeenCalledWith('end', expect.any(Array));
+    expect(map.dragPan.enable).toHaveBeenCalledTimes(1);
+  });
+
+  it('a release outside the map ends the drag, and Escape cancels and ends it', () => {
+    const { ctl, map, proj } = startWithProject();
+    const onDragEnd = vi.fn();
+    const onCancel = vi.fn();
+    ctl.pointerSession({ onDragEnd, onCancel, handles: () => [{ id: 'start', local: [0, 0, 0] }] });
+    map.fire('mousedown', ev(proj, [0, 0, 0]));
+    window.dispatchEvent(new MouseEvent('mouseup'));
+    expect(onDragEnd).toHaveBeenCalledWith('start', null);
+    expect(map.dragPan.enable).toHaveBeenCalledTimes(1);
+    map.fire('mousedown', ev(proj, [0, 0, 0]));
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
+    expect(onCancel).toHaveBeenCalledTimes(1);
+    expect(map.dragPan.enable).toHaveBeenCalledTimes(2);
+  });
+
+  it('the returned function and dispose stop the session', () => {
+    const { ctl, map, proj } = startWithProject();
+    const onClick = vi.fn();
+    const stop = ctl.pointerSession({ onClick });
+    stop();
+    expect(map.canvas.style.cursor).toBe('');
+    map.fire('click', ev(proj, [1, 0, 1]));
+    expect(onClick).not.toHaveBeenCalled();
+    ctl.pointerSession({ onClick });
+    ctl.dispose();
+    expect(onClick).not.toHaveBeenCalled();
   });
 });
