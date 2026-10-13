@@ -62,30 +62,36 @@ test.describe('placing a walk on the map', () => {
     await rowAction(win, 'place');
     const strip = win.getByTestId('walk-place-strip');
     await expect(strip).toHaveAttribute('data-step', 'start', { timeout: 30_000 });
-    await expect(strip.getByTestId('walk-place-on')).toHaveValue('@model');
+    await expect(strip.getByTestId('walk-place-on')).toHaveValue('map');
 
-    // frame the walk: the middle of the L at zoom 18 (about 0.4 m a pixel here)
+    // frame the walk: the middle of the L at zoom 18 (about half a metre a pixel here); the
+    // session may still be fitting the map to the project, so jump until the zoom holds
     const centre = lonLat([20, -15]);
     await expect
-      .poll(() =>
-        win.evaluate((c) => {
-          const el = [...document.querySelectorAll('*')].find(
-            (e) => '__aioMap' in e && e.getBoundingClientRect().width > 0,
-          ) as
-            | (Element & {
-                __aioMap: {
-                  jumpTo(o: { center: [number, number]; zoom: number }): void;
-                  loaded(): boolean;
-                };
-              })
-            | undefined;
-          if (!el) return false;
-          el.__aioMap.jumpTo({ center: c, zoom: 18 });
-          return true;
-        }, centre),
+      .poll(
+        async () => {
+          const z = await win.evaluate((c) => {
+            const el = [...document.querySelectorAll('*')].find(
+              (e) => '__aioMap' in e && e.getBoundingClientRect().width > 0,
+            ) as
+              | (Element & {
+                  __aioMap: {
+                    jumpTo(o: { center: [number, number]; zoom: number }): void;
+                    getZoom(): number;
+                  };
+                })
+              | undefined;
+            if (!el) return 0;
+            if (Math.abs(el.__aioMap.getZoom() - 18) > 0.01)
+              el.__aioMap.jumpTo({ center: c, zoom: 18 });
+            return el.__aioMap.getZoom();
+          }, centre);
+          await win.waitForTimeout(400);
+          return z;
+        },
+        { timeout: 20_000 },
       )
-      .toBe(true);
-    await win.waitForTimeout(500);
+      .toBeCloseTo(18, 1);
 
     // the ghost follows the pointer
     const s = await mapPoint(win, WALK_START);

@@ -56,6 +56,12 @@ export interface WalkProjectOptions {
 }
 
 const IDENTITY = [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1];
+/**
+ * The unit quad stretched into a 60 x 60 m site ground under the walk (x -10 to 50, z -50 to 10),
+ * column major. Without a drawing the quad is the scene's only content, and the 3D view keeps the
+ * camera within 25 content radii: a 1 m quad would not let the whole 50 m walk on screen.
+ */
+const SITE_GROUND = [60, 0, 0, 0, 0, 1, 0, 0, 0, 0, 60, 0, -10, 0, 10, 1];
 const RAW_PATH = join(
   import.meta.dirname,
   '../../../packages/schema/src/__fixtures__/walk/raw-path.synthetic.json',
@@ -193,7 +199,7 @@ export async function createWalkProject(
         id: 'quad',
         name: 'Unit quad',
         src: { path: 'models/quad.glb' },
-        transform: IDENTITY,
+        transform: drawing ? IDENTITY : SITE_GROUND,
       },
       ...(drawing
         ? [
@@ -229,7 +235,8 @@ export async function poseBendM(dir: string): Promise<number> {
   const pose = JSON.parse(await readFile(join(dir, 'walks', WALK_ID, 'pose.json'), 'utf8')) as {
     samples: { t: number; pos: [number, number, number] }[];
   };
-  const s = pose.samples.filter((x) => x.t >= 4 && x.t <= 62);
+  // sample times are milliseconds (`aio.flight/1`); the walking runs from 4 s to 62 s
+  const s = pose.samples.filter((x) => x.t >= 4_000 && x.t <= 62_000);
   const a = s[0]?.pos;
   const b = s.at(-1)?.pos;
   if (!a || !b) return 0;

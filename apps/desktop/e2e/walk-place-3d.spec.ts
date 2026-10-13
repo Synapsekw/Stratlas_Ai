@@ -24,7 +24,11 @@ interface Probe {
   __stratlas: {
     stage(): {
       camera: {
+        updateMatrixWorld(): void;
         position: {
+          x: number;
+          y: number;
+          z: number;
           clone(): {
             set(
               x: number,
@@ -44,14 +48,27 @@ interface Probe {
   };
 }
 
-/** Look straight down on the middle of the L from 120 m, so the whole walk is on screen. */
+/**
+ * Look straight down on the middle of the L from 120 m, so the whole walk is on screen. The view
+ * may still be framing the project when the session starts, so ask until the camera stays there.
+ */
 async function lookDown(win: Page): Promise<void> {
-  await win.evaluate(() => {
-    (window as unknown as Probe).__stratlas
-      .stage()
-      ?.restoreView({ position: [20, 120, -14.9], target: [20, 0, -15] }, false);
-  });
-  await win.waitForTimeout(300);
+  await expect
+    .poll(
+      async () => {
+        const y = await win.evaluate(() => {
+          const st = (window as unknown as Probe).__stratlas.stage();
+          if (!st) return 0;
+          if (Math.abs(st.camera.position.y - 120) > 0.5)
+            st.restoreView({ position: [20, 120, -14.9], target: [20, 0, -15] }, false);
+          return st.camera.position.y;
+        });
+        await win.waitForTimeout(400);
+        return y;
+      },
+      { timeout: 20_000 },
+    )
+    .toBeCloseTo(120, 0);
 }
 
 /** The page point of a model point (x, height, z) in the 3D view. */
@@ -62,6 +79,7 @@ async function scenePoint(
   return win.evaluate((p) => {
     const st = (window as unknown as Probe).__stratlas.stage();
     if (!st) throw new Error('no stage');
+    st.camera.updateMatrixWorld();
     const v = st.camera.position.clone().set(p[0], p[1], p[2]).project(st.camera);
     const r = st.renderer.domElement.getBoundingClientRect();
     return { x: r.left + ((v.x + 1) / 2) * r.width, y: r.top + ((1 - v.y) / 2) * r.height };
@@ -91,7 +109,7 @@ test.describe('placing a walk in the 3D view', () => {
     await rowAction(win, 'place');
     const strip = win.getByTestId('walk-place-strip');
     await expect(strip).toHaveAttribute('data-step', 'start', { timeout: 30_000 });
-    await expect(strip.getByTestId('walk-place-on')).toHaveValue('@model');
+    await expect(strip.getByTestId('walk-place-on')).toHaveValue('3d');
     await expect(
       win
         .getByRole('toolbar', { name: 'Stage tools' })
