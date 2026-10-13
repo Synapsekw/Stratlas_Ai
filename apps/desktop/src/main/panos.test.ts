@@ -114,10 +114,13 @@ describe('scanPanoPaths', () => {
     expect(a.scan.scanId.length).toBeLessThanOrEqual(64);
   });
 
-  it('says so when there is nothing to read', async () => {
+  it('answers an empty scan when there are no JPEGs', async () => {
     await mkdir(join(dir, 'empty'));
-    expect(await scanPanoPaths(root, [join(dir, 'empty')], noThumb)).toEqual({
-      error: 'There are no JPEG files there.',
+    await writeFile(join(dir, 'empty', 'model.glb'), 'x');
+    const r = await scanPanoPaths(root, [join(dir, 'empty')], { ...noThumb, newId: () => 's1' });
+    expect(r).toEqual({
+      scan: { scanId: 's1', spheres: [], ready: [], skipped: [], files: 0, day: null },
+      grouping: { spheres: [], ready: [] },
     });
   });
 });

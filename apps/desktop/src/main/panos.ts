@@ -88,7 +88,19 @@ export async function scanPanoPaths(
       error: `${basename(ex.tooMany)} holds more than ${String(limit)} files. Choose a smaller folder.`,
     };
   const jpegs = ex.files.filter((f) => JPEG.test(f)).map((f) => resolve(f));
-  if (jpegs.length === 0) return { error: 'There are no JPEG files there.' };
+  // no JPEGs is not a failure: Add data scans every drop, models and videos too
+  if (jpegs.length === 0)
+    return {
+      scan: {
+        scanId: (deps.newId ?? randomUUID)(),
+        spheres: [],
+        ready: [],
+        skipped: [],
+        files: 0,
+        day: null,
+      },
+      grouping: { spheres: [], ready: [] },
+    };
   const metas = [];
   const now = deps.now ?? Date.now;
   let sentAt = now();
