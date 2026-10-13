@@ -106,6 +106,17 @@ export {
 } from './walkPose';
 export { removeWalk, type RemoveWalkOptions } from './walkRemove';
 export {
+  RUN_PRODUCTS,
+  layerRefs,
+  namesAny,
+  ownedPaths,
+  planRemoval,
+  valuesUnder,
+  type PlanJob,
+  type PlanOptions,
+} from './removePlan';
+export { MANIFEST_BEFORE, removeItems, type RemoveOptions, type RemoveResult } from './remove';
+export {
   TRASH_DIR,
   TRASH_KEEP_DAYS,
   emptyTrash,
