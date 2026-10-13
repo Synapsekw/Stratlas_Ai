@@ -107,6 +107,12 @@ describe('pano.stitch job', () => {
     expect(PanoStitchParams.safeParse({ layer: 'l', pano: 'p01', quality: 'ultra' }).success).toBe(
       false,
     );
+    expect(PanoStitchParams.safeParse({ layer: 'l', pano: 'p01', shape: 'wide' }).success).toBe(
+      true,
+    );
+    expect(PanoStitchParams.safeParse({ layer: 'l', pano: 'p01', shape: 'dome' }).success).toBe(
+      false,
+    );
     expect(PanoStitchParams.safeParse({ layer: 'l', pano: 'p01', width: 1024 }).success).toBe(
       false,
     );

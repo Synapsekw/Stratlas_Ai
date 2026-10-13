@@ -1123,6 +1123,9 @@ export const PanoStitchParams = z
     pano: PanoFolderId,
     /** Standard 8192 x 4096 (default) or High 16384 x 8192. */
     quality: PanoQuality.optional(),
+    /** The import's classification: a sphere is filled to the full sphere, a wide panorama is cropped.
+     * Absent: decided from the real-pixel coverage. */
+    shape: z.enum(['sphere', 'wide']).optional(),
   })
   .strict();
 export type PanoStitchParams = z.infer<typeof PanoStitchParams>;
