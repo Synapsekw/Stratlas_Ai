@@ -1085,7 +1085,29 @@ export function registerPhotogrammetryIpc({
         return { ok: false, error: `${rel} is not valid JSON.` };
       }
     }
-    return { ok: true, run: r.run, accuracy };
+    // Start over: the folders a run read in place that are gone now, spelled as run.json has them
+    const source = r.run.photos.source;
+    const missingFolders =
+      'folders' in source
+        ? (
+            await Promise.all(
+              source.folders.map(async (f) =>
+                (await stat(f).then(
+                  (s) => s.isDirectory(),
+                  () => false,
+                ))
+                  ? null
+                  : f,
+              ),
+            )
+          ).filter((f): f is string => f !== null)
+        : [];
+    return {
+      ok: true,
+      run: r.run,
+      accuracy,
+      ...(missingFolders.length > 0 ? { missingFolders } : {}),
+    };
   });
 
   handle('photo:readGcp', async ({ projectId, run }) => {

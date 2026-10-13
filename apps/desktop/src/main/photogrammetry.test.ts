@@ -730,6 +730,24 @@ describe('photo IPC', () => {
     });
   });
 
+  it('names the photo folders of a run that are gone, as run.json spells them', async () => {
+    const here = join(root, 'photos-here');
+    await mkdir(here);
+    const gone = join(root, 'photos-gone');
+    await writeFile(
+      join(root, 'photogrammetry', RUN, 'run.json'),
+      JSON.stringify(
+        sampleRun({ photos: { source: { folders: [here, gone] }, count: 3, registered: 3 } }),
+      ),
+    );
+    const r = await ipc.call('photo:readRun', { projectId: 'p', run: RUN });
+    expect(r).toMatchObject({ ok: true, missingFolders: [gone] });
+    await mkdir(gone);
+    expect(await ipc.call('photo:readRun', { projectId: 'p', run: RUN })).not.toHaveProperty(
+      'missingFolders',
+    );
+  });
+
   it('writes gcp.json atomically with a .bak and refuses packages', async () => {
     expect(await ipc.call('photo:readGcp', { projectId: 'p', run: RUN })).toEqual({
       ok: true,

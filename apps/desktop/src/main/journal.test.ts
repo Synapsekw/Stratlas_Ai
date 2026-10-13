@@ -12,7 +12,7 @@ import {
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { signerFromKey, verifyJournal } from '@aio/journal';
-import type { Issue, IpcChannel, JobRecord } from '@aio/schema';
+import { emptyRemovalPlan, type Issue, type IpcChannel, type JobRecord } from '@aio/schema';
 import { afterEach, describe, expect, it } from 'vitest';
 import { auditCsv, createAuditExport } from './exports/audit';
 import { writeJsonAtomic } from './fsutil';
@@ -509,6 +509,34 @@ describe('journal service', () => {
       });
     });
 
+    it('records a builder:remove on every journaled file its plan names, none when refused', async () => {
+      const { root, userData } = setup();
+      put(root, 'manifest.json', {
+        schema: 'aio.project/1',
+        layers: [{ id: 'ph', kind: 'photos' }],
+      });
+      put(root, 'tilesets.json', tilesFile(['keep', 'gone']));
+      const s = service(root, userData);
+      await s.open({ path: root });
+      const plan = { ...emptyRemovalPlan(), tilesets: ['gone'] };
+      const refused = s.journal.wrap('builder:remove', () =>
+        Promise.resolve({ ok: false as const, error: 'A file is in use.' }),
+      );
+      await refused({ projectId: 'p', targets: [{ layer: 'ph' }] });
+      expect(await hist(s)).toHaveLength(0);
+      const remove = s.journal.wrap('builder:remove', () => {
+        put(root, 'manifest.json', { schema: 'aio.project/1', layers: [] });
+        put(root, 'tilesets.json', tilesFile(['keep']));
+        return Promise.resolve({ ok: true as const, manifest: {} as never, plan });
+      });
+      await remove({ projectId: 'p', targets: [{ layer: 'ph' }] });
+      const e = await hist(s);
+      expect(e.map((x) => [x.kind, x.target])).toEqual([
+        ['record.external', { rec: 'file', id: 'tilesets.json' }],
+        ['manifest.entry', { rec: 'manifest', id: 'ph', in: 'layers' }],
+      ]);
+    });
+
     it('records photo:applyPoses with apply true as a manifest change, none for a preview', async () => {
       const { root, userData } = setup();
       const s = service(root, userData);
@@ -945,6 +973,8 @@ describe('journal service', () => {
       'blobs:status',
       'ai:project',
       'library:reveal',
+      'builder:removePlan',
+      'builder:trash',
     ];
     expect(reads.filter(waits)).toEqual([]);
     const writers: IpcChannel[] = [
@@ -954,6 +984,8 @@ describe('journal service', () => {
       'builder:ensureCapture',
       'builder:removeCapture',
       'walks:remove',
+      'builder:remove',
+      'builder:emptyTrash',
       'change:compute',
       'model:build',
       'library:rename',

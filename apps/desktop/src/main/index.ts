@@ -154,6 +154,14 @@ import { packArchivePlaces, registerPipelinePackIpc } from './jobs/packInstall';
 import { createKeyVault } from './keys';
 import { addToLibrary, createLibraryStore, listLibrary } from './library';
 import { registerLibraryActionsIpc, samePath } from './libraryActions';
+import {
+  emptyTrashAnswer,
+  removalPlanAnswer,
+  removeAnswer,
+  removeWalkAnswer,
+  trashAnswer,
+  type RemovalDeps,
+} from './removal';
 import { captureConsole, exportLogs } from './logs';
 import { openProjectSizes } from './diagnostics/bundle';
 import { createCrashStore } from './diagnostics/crash';
@@ -1303,23 +1311,24 @@ function registerIpc(): void {
     const walks = await packageWalks(pkg.archive);
     return walksListAnswer(walks, await packageWalkProcessing(pkg.archive, walks));
   });
+  // Delete datasets, runs and survey dates to the project trash (delete and start over); one
+  // removal or Empty project trash at a time per project, the walk removal included
+  const removalDeps: RemovalDeps = {
+    root: (id) => registry.root(id),
+    isPackage: (id) => registry.package(id) !== undefined,
+    jobs: () => jobStore.all(),
+    deleteJob: (id) => jobStore.delete(id),
+    flushJobs: () => jobStore.flush(),
+    log: (line) => {
+      appLog.write('warn', [line]);
+    },
+  };
   // Remove a walk: its layer leaves the manifest and its folder waits seven days in .trash/
-  handle('walks:remove', async (req) => {
-    const refused = packageRefusal(req.projectId);
-    if (refused) return refused;
-    const root = registry.root(req.projectId);
-    if (root === undefined)
-      return {
-        ok: false as const,
-        error: `Project "${req.projectId}" is not open. Open it, then try again.`,
-      };
-    try {
-      const { removeWalk } = await import('@aio/project/builder');
-      return { ok: true as const, manifest: await removeWalk(root, req.layerId) };
-    } catch (e) {
-      return { ok: false as const, error: e instanceof Error ? e.message : String(e) };
-    }
-  });
+  handle('walks:remove', (req) => removeWalkAnswer(req, removalDeps));
+  handle('builder:removePlan', (req) => removalPlanAnswer(req, removalDeps));
+  handle('builder:remove', (req) => removeAnswer(req, removalDeps));
+  handle('builder:trash', (req) => trashAnswer(req, removalDeps));
+  handle('builder:emptyTrash', (req) => emptyTrashAnswer(req, removalDeps));
   handle(
     'builder:updateLayers',
     (req) =>
