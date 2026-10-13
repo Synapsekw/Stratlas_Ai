@@ -147,6 +147,31 @@ function classify(
   return 'narrow-yaw';
 }
 
+/**
+ * Frames of one hover share one image size. A file of another size (a stitched output dumped
+ * beside its frames carries the same position, time and gimbal angles) is not a frame.
+ */
+function splitByImageSize(c: readonly PanoFrameMeta[]): {
+  same: PanoFrameMeta[];
+  odd: PanoFrameMeta[];
+} {
+  const counts = new Map<string, number>();
+  const key = (f: PanoFrameMeta) =>
+    f.width !== undefined && f.height !== undefined ? `${String(f.width)}x${String(f.height)}` : '';
+  for (const f of c) if (key(f)) counts.set(key(f), (counts.get(key(f)) ?? 0) + 1);
+  let major = '';
+  let best = 0;
+  for (const [k, n] of counts)
+    if (n > best) {
+      major = k;
+      best = n;
+    }
+  const same: PanoFrameMeta[] = [];
+  const odd: PanoFrameMeta[] = [];
+  for (const f of c) (key(f) && key(f) !== major ? odd : same).push(f);
+  return { same, odd };
+}
+
 export function groupPanoFrames(
   frames: readonly PanoFrameMeta[],
   t: PanoGroupingThresholds = PANO_GROUPING,
@@ -247,7 +272,8 @@ export function groupPanoFrames(
 
   const accepted: { shape: PanoShape; frames: PanoFrameMeta[] }[] = [];
   for (const entries of clusters) {
-    const c = entries.map((e) => e.f);
+    const { same: c, odd } = splitByImageSize(entries.map((e) => e.f));
+    for (const f of odd) skipped.push({ file: f.file, reason: 'different-size' });
     const k = classify(c, t);
     if (k === 'sphere' || k === 'wide') accepted.push({ shape: k, frames: c });
     else for (const f of c) skipped.push({ file: f.file, reason: k });

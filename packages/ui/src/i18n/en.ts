@@ -2061,6 +2061,7 @@ export const en = {
   'pano.skip.few-frames': 'Moving drone or single shot',
   'pano.skip.narrow-yaw': 'Does not turn far enough round',
   'pano.skip.one-pitch-row': 'Only one row of frames',
+  'pano.skip.different-size': 'Different camera or image size',
   'pano.layerName': 'Panoramas {date}',
   'pano.layerNameUndated': 'Panoramas',
   'pano.itemName': 'Pano {n}',

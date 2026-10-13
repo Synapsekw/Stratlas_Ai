@@ -322,6 +322,37 @@ describe('groupPanoFrames', () => {
     expect(g.spheres.map((s) => s.shape)).toEqual(['wide']);
   });
 
+  it('never takes a stitched output tagged GPano as a frame, whatever its aspect', () => {
+    const a = sphere({ start: t0, eastM: 0, northM: 0, firstNo: 1, pattern: 'rows' });
+    const twin = must(a[10]);
+    const full = { ...twin, file: 'D:/card/out_full.JPG', width: 14400, height: 7200, gpano: true };
+    const partial = {
+      ...twin,
+      file: 'D:/card/out_part.JPG',
+      width: 14400,
+      height: 6100,
+      gpano: true,
+    };
+    const g = groupPanoFrames([...a, full, partial]);
+    expect(g.spheres.map((s) => s.frames.length)).toEqual([25]);
+    expect(g.ready.map((f) => f.file)).toEqual(['D:/card/out_full.JPG', 'D:/card/out_part.JPG']);
+    expect(g.skipped).toEqual([]);
+  });
+
+  it('leaves a frame of another image size out of the group (untagged stitched output)', () => {
+    const a = sphere({ start: t0, eastM: 0, northM: 0, firstNo: 1, pattern: 'rows' });
+    const stitched = {
+      ...must(a[10]),
+      file: 'D:/card/out_untagged.JPG',
+      width: 14400,
+      height: 6100,
+    };
+    const g = groupPanoFrames([...a.slice(0, 12), stitched, ...a.slice(12)]);
+    expect(g.spheres.map((s) => s.frames.length)).toEqual([25]);
+    expect(g.spheres.some((s) => s.frames.some((f) => f.file === stitched.file))).toBe(false);
+    expect(g.skipped).toEqual([{ file: stitched.file, reason: 'different-size' }]);
+  });
+
   it('refuses a cluster that turns less than 150 degrees, or keeps one pitch', () => {
     const narrow = sphere({
       start: t0,

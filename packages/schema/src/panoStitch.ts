@@ -127,6 +127,7 @@ export const PanoSkipReason = z.enum([
   'few-frames',
   'narrow-yaw',
   'one-pitch-row',
+  'different-size',
 ]);
 export type PanoSkipReason = z.infer<typeof PanoSkipReason>;
 

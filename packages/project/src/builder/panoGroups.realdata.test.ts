@@ -31,11 +31,16 @@ describe.skipIf(pairs.length === 0)(
         const g = groupPanoFrames(metas);
         expect(g.spheres.filter((s) => s.shape === 'sphere')).toHaveLength(count);
         const seen = new Set<string>();
-        for (const s of g.spheres)
+        for (const s of g.spheres) {
+          const sizes = new Set(s.frames.map((f) => `${String(f.width)}x${String(f.height)}`));
+          expect([...sizes]).toHaveLength(1);
           for (const f of s.frames) {
+            // a stitched output is never a frame, whatever its aspect ratio
+            expect(f.gpano).toBeUndefined();
             expect(seen.has(f.file)).toBe(false);
             seen.add(f.file);
           }
+        }
       }, 120_000);
     });
   },
