@@ -10,6 +10,8 @@ import {
   rawUsable,
   rememberedSurface,
   surfaceFramesOf,
+  surfaceById,
+  surfaceId,
   surfaceKey,
   surfaceLabel,
   viewClickYawRad,
@@ -272,5 +274,18 @@ describe('walkPathState', () => {
     expect(rawUsable({ ...raw, stills: raw.stills.map((s) => ({ ...s, pos: undefined })) })).toBe(
       false,
     );
+  });
+});
+
+describe('surface ids', () => {
+  it('map and 3d differ in the UI though both are @model on disk', () => {
+    const list = placeSurfaces(manifest(), walk({ capture: 'c1' }), true);
+    const ids = list.map(surfaceId);
+    expect(new Set(ids).size).toBe(ids.length);
+    expect(surfaceId({ kind: 'map' })).toBe('map');
+    expect(surfaceId({ kind: '3d' })).toBe('3d');
+    expect(surfaceById(list, '3d')).toEqual({ kind: '3d' });
+    expect(surfaceById(list, 'sheet-own')).toMatchObject({ kind: 'drawing', id: 'sheet-own' });
+    expect(surfaceById(list, 'nope')).toBeUndefined();
   });
 });

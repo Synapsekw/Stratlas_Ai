@@ -34,7 +34,7 @@ import {
   placeSurfaces,
   rememberedSurface,
   surfaceFramesOf,
-  surfaceKey,
+  surfaceId,
   type DrawingLookup,
   type PlaceSurface,
 } from './placeModel';
@@ -237,7 +237,7 @@ export function createPlaceWalk(
   const enterHost = (): void => {
     const h = ui.getState().host;
     if (!h || session.getState().step !== 'surface') return;
-    if (surfacesOf().some((x) => surfaceKey(x) === surfaceKey(h)))
+    if (surfacesOf().some((x) => surfaceId(x) === surfaceId(h)))
       session.getState().chooseSurface(h);
   };
   /** After the answer to "Keep these pins?": the walk that was waiting is placed next. */

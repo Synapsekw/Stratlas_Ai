@@ -60,6 +60,19 @@ export function surfaceKey(s: PlaceSurface): string {
   return s.kind === 'drawing' ? s.id : MODEL_SURFACE;
 }
 
+/** The UI id of a surface (select value, option key): 'map', '3d' or the drawing's layer id. */
+export function surfaceId(s: PlaceSurface): string {
+  return s.kind === 'drawing' ? s.id : s.kind;
+}
+
+/** The surface in `surfaces` with this UI id (the inverse of `surfaceId`). */
+export function surfaceById(
+  surfaces: readonly PlaceSurface[],
+  id: string,
+): PlaceSurface | undefined {
+  return surfaces.find((s) => surfaceId(s) === id);
+}
+
 /** How the Place on select names a surface. */
 export function surfaceLabel(s: PlaceSurface): string {
   return s.kind === 'drawing' ? s.name : s.kind === 'map' ? 'Map' : '3D view';

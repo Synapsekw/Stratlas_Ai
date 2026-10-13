@@ -14,7 +14,13 @@ import { createStore } from 'zustand/vanilla';
 import { drawings as drawingsStore } from '../drawings/store';
 import type { RasterOverlayContext, RasterPick } from '../workspace/RasterPane';
 import { placeImagery } from './placeBasemap';
-import { surfaceFramesOf, surfaceKey, surfaceLabel, type PlaceSurface } from './placeModel';
+import {
+  surfaceById,
+  surfaceFramesOf,
+  surfaceId,
+  surfaceLabel,
+  type PlaceSurface,
+} from './placeModel';
 import type { PlaceState } from './placeStore';
 import {
   placeFlow,
@@ -259,7 +265,7 @@ export function PlaceWalkStrip({
   const orthos = onMap ? flow.orthos() : [];
   const orthosOff = orthos.filter((id) => hidden[id]);
   const orthosOn = orthos.length - orthosOff.length;
-  const value = st.surface ? surfaceKey(st.surface) : '';
+  const value = st.surface ? surfaceId(st.surface) : '';
   return (
     <div
       className="dplace wplace"
@@ -280,7 +286,7 @@ export function PlaceWalkStrip({
             data-testid="walk-place-on"
             value={value}
             onChange={(e) => {
-              const s = surfaces.find((x) => surfaceKey(x) === e.target.value);
+              const s = surfaceById(surfaces, e.target.value);
               if (s) flow.chooseSurface(s);
             }}
           >
@@ -290,7 +296,7 @@ export function PlaceWalkStrip({
               </option>
             )}
             {surfaces.map((s) => (
-              <option key={surfaceKey(s)} value={surfaceKey(s)}>
+              <option key={surfaceId(s)} value={surfaceId(s)}>
                 {surfaceName(s)}
               </option>
             ))}
@@ -489,7 +495,7 @@ export function PlaceWalkHere({ at }: { at: PlaceSurface | 'walk' }) {
   const host = useStore(placeUi, (s) => (s.layerId === null ? undefined : s.host));
   const showing = useStore(stripHosts, (s) => s.shown);
   const onSurface =
-    at !== 'walk' && host !== undefined && host !== null && surfaceKey(host) === surfaceKey(at);
+    at !== 'walk' && host !== undefined && host !== null && surfaceId(host) === surfaceId(at);
   useEffect(() => {
     if (!onSurface) return;
     stripHosts.setState((s) => ({ shown: s.shown + 1 }));

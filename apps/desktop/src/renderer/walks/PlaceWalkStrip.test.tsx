@@ -237,8 +237,15 @@ describe('PlaceWalkStrip', () => {
       expect.objectContaining({ kind: 'drawing', id: 'sheet-loose' }),
     );
     expect(ctx.ui.getState().host).toMatchObject({ kind: 'drawing', id: 'sheet-loose' });
-    choose('@model');
+    choose('map');
     expect(ctx.deps.openSurface).toHaveBeenLastCalledWith('walk-a', { kind: 'map' });
+    choose('3d');
+    expect(ctx.deps.openSurface).toHaveBeenLastCalledWith('walk-a', { kind: '3d' });
+    expect(ctx.ui.getState().host).toEqual({ kind: '3d' });
+    const values = [...host.querySelectorAll('[data-testid="walk-place-on"] option')].map(
+      (o) => (o as HTMLOptionElement).value,
+    );
+    expect(new Set(values).size).toBe(values.length);
   });
 
   it('offers no Map without a coordinate system', async () => {
@@ -355,7 +362,7 @@ describe('PlaceWalkStrip', () => {
     act(() => {
       placeImagery.setState({ imagery: false });
     });
-    choose('@model');
+    choose('map');
     expect(byTest('walk-place-no-imagery')?.textContent).toMatch(/Online satellite.*map type/);
     act(() => {
       placeImagery.setState({ imagery: true });
@@ -394,7 +401,7 @@ describe('PlaceWalkStrip', () => {
     act(() => {
       placeImagery.setState({ imagery: false });
     });
-    choose('@model');
+    choose('map');
     // the project's own imagery is there, only switched off: that is what the strip says
     expect(byTest('walk-place-no-imagery')).toBeNull();
     const note = byTest('walk-place-ortho-off');
