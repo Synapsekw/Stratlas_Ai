@@ -99,6 +99,10 @@ const CHANNELS = {
   'builder:closeDrawing': true,
   'walks:list': true,
   'walks:remove': true,
+  'builder:removePlan': true,
+  'builder:remove': true,
+  'builder:trash': true,
+  'builder:emptyTrash': true,
   'builder:cancelImport': true,
   // M8
   'change:list': true,

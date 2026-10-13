@@ -45,6 +45,15 @@ describe('version registry', () => {
       });
   });
 
+  it('registers the trash record of a removal', () => {
+    expect(SCHEMA_REGISTRY.find((e) => e.family === 'aio.trash')).toMatchObject({
+      version: 1,
+      home: 'project',
+      where: '.trash/<entry>/removed.json',
+      since: '0.12',
+    });
+  });
+
   // Every `aio.<name>/<n>` literal in the code is a registered file schema or a known non-file id
   // (protocols, signing domains, tool-only and test formats). A stream that adds a file schema
   // without a registry row fails here.
