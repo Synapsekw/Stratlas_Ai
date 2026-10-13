@@ -177,6 +177,48 @@ describe('panoramas layer', () => {
     host.remove();
   });
 
+  it('leaves the sphere when a queued pano is selected while immersed', async () => {
+    const { host, camera, h } = setup();
+    const store = createWorkspace();
+    const queued: PanoLayer = {
+      ...layer,
+      items: [
+        {
+          id: 'a',
+          src: { path: 'panoramas/a.jpg' },
+          pos: [0, 40, -100],
+          headingDeg: 90,
+          stitch: { status: 'queued' },
+        },
+        { id: 'b', src: { path: 'panoramas/b.jpg' }, pos: [300, 40, -100], headingDeg: 0 },
+      ],
+    };
+    const lh = await createPanoramasAdapter(store).create(queued, { url: () => '', scene: h });
+    store.getState().openPano('panos', 'b');
+    expect(camera.layers.mask).toBe(2 ** 31);
+    store.getState().select({ kind: 'pano', id: 'a', layer: 'panos' });
+    expect(camera.layers.mask).toBe(1);
+    lh.dispose();
+    host.remove();
+  });
+
+  it('stays in the sphere when the layer is rebuilt around it', async () => {
+    const { host, camera, h } = setup();
+    const store = createWorkspace();
+    const adapter = createPanoramasAdapter(store);
+    const first = await adapter.create(layer, { url: () => '', scene: h });
+    store.getState().openPano('panos', 'b');
+    expect(camera.layers.mask).toBe(2 ** 31);
+    first.dispose();
+    expect(camera.layers.mask).toBe(1);
+    const again = await adapter.create(layer, { url: () => '', scene: h });
+    expect(camera.layers.mask).toBe(2 ** 31);
+    expect(camera.position.toArray()).toEqual([300, 40, -100]);
+    again.dispose();
+    expect(camera.layers.mask).toBe(1);
+    host.remove();
+  });
+
   it('keeps the HUD below the app toolbars, not above the video window', () => {
     const stage = { top: 40, height: 700 };
     const toolbar = { top: 55, bottom: 85 };

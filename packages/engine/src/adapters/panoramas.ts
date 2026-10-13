@@ -222,6 +222,9 @@ class PanoHud {
   }
 }
 
+/** Where the user was when a layer rebuild disposed an adapter, for the next one to resume. */
+const immersions = new WeakMap<object, { layer: string; id: string; look: PanoLook; at: number }>();
+
 interface Saved {
   view: SavedView | null;
   position: Vector3;
@@ -396,7 +399,7 @@ export function createPanoramasAdapter(
 
       const show = (i: number) => {
         const p = items[i];
-        if (!p) return;
+        if (!p || !panoOpenable(p)) return;
         current = i;
         const cov = coverageOf(p);
         center.set(...p.pos);
@@ -407,7 +410,7 @@ export function createPanoramasAdapter(
           store.getState().project?.manifest ?? { captures: [], layers: [] },
           layer.id,
         );
-        hud?.set(p.id, date ? `${coverageLabel(cov)} · ${date}` : coverageLabel(cov));
+        hud?.set(p.name ?? p.id, date ? `${coverageLabel(cov)} · ${date}` : coverageLabel(cov));
         loadPano(p);
         applyLook();
       };
@@ -585,9 +588,30 @@ export function createPanoramasAdapter(
           sel?.kind === 'pano' && (sel.layer === undefined || sel.layer === layer.id)
             ? items.findIndex((p) => p.id === sel.id)
             : -1;
-        if (i < 0) leave();
+        const target = items[i];
+        if (!target || !panoOpenable(target)) leave();
         else if (i !== current) show(i);
       });
+
+      // The layer is rebuilt whenever an item changes (another sphere finished stitching): stay in
+      // the sphere the user was viewing, looking the same way.
+      const kept = immersions.get(scene);
+      immersions.delete(scene);
+      if (kept?.layer === layer.id && Date.now() - kept.at < 5000) {
+        const sel = store.getState().selection;
+        const i =
+          sel?.kind === 'pano' &&
+          sel.id === kept.id &&
+          (sel.layer === undefined || sel.layer === layer.id)
+            ? items.findIndex((p) => p.id === kept.id)
+            : -1;
+        const p = items[i];
+        if (p && panoOpenable(p)) {
+          enter(i);
+          look = kept.look;
+          applyLook();
+        }
+      }
 
       scene.requestRender();
       return {
@@ -598,6 +622,10 @@ export function createPanoramasAdapter(
           scene.requestRender();
         },
         dispose() {
+          if (immersed && current >= 0) {
+            const p = items[current];
+            if (p) immersions.set(scene, { layer: layer.id, id: p.id, look, at: Date.now() });
+          }
           leave();
           unsub();
           markers.dispose();
