@@ -49,6 +49,17 @@ export class JobStore {
     return this.jobs.get(id);
   }
 
+  /**
+   * Forget a job (the jobs of a removed run, after the manifest save). An active job is never
+   * forgotten; false for that and for an id the index does not hold. The caller flushes.
+   */
+  delete(id: string): boolean {
+    const job = this.jobs.get(id);
+    if (!job || ACTIVE.has(job.status)) return false;
+    this.jobs.delete(id);
+    return true;
+  }
+
   /** Store a job; writes are batched, terminal states are written at once. */
   put(job: Job, now = false): void {
     this.jobs.set(job.id, job);
