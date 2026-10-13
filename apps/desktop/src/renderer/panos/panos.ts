@@ -132,6 +132,7 @@ export function revealPanoLayer(layerId: string): void {
   const layer = workspace.getState().project?.manifest.layers.find((l) => l.id === layerId);
   if (layer?.kind !== 'panoramas') return;
   const capture = layer.capture;
+  const projectId = workspace.getState().project?.id;
   const fly = () => {
     const spots = layer.items.map((p) => p.pos);
     if (spots.length === 0) return;
@@ -154,11 +155,16 @@ export function revealPanoLayer(layerId: string): void {
     fly();
     return;
   }
+  /** true: finished (flew, or the project changed or the focus was refused); false: keep waiting */
+  let done = false;
   const focus = () => {
+    if (done) return true;
+    if (workspace.getState().project?.id !== projectId) return (done = true);
     const tl = timeline.getState();
     if (!tl.index?.captures.some((c) => c.id === capture)) return false;
+    done = true; // focusing notifies this very subscriber
     tl.focusSurvey(capture);
-    fly();
+    if (timeline.getState().focus === capture) fly();
     return true;
   };
   if (focus()) return;

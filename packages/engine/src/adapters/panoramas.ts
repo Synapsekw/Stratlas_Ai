@@ -620,6 +620,8 @@ export function createPanoramasAdapter(
         placed.expandByPoint(new Vector3(...p.pos));
         placed.expandByPoint(new Vector3(p.pos[0], Math.min(0, p.pos[1]), p.pos[2]));
       }
+      // a lone sphere would give a zero-size box, which pins the camera
+      placed.expandByScalar(1);
       const unbound = scene.addContentBounds(() =>
         group.visible && !placed.isEmpty() ? placed : null,
       );

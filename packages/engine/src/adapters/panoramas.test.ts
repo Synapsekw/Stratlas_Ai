@@ -133,8 +133,8 @@ describe('panoramas layer', () => {
     expect(providers).toHaveLength(1);
     const box = providers[0]?.();
     // both markers (x 0 and 300, 40 m up) and the stem feet on the ground
-    expect(box?.min.toArray()).toEqual([0, 0, -100]);
-    expect(box?.max.toArray()).toEqual([300, 40, -100]);
+    expect(box?.min.toArray()).toEqual([-1, -1, -101]);
+    expect(box?.max.toArray()).toEqual([301, 41, -99]);
     lh.setVisible(false);
     expect(providers[0]?.()).toBeNull();
     lh.setVisible(true);
@@ -142,6 +142,26 @@ describe('panoramas layer', () => {
     expect(off).not.toHaveBeenCalled();
     lh.dispose();
     expect(off).toHaveBeenCalledTimes(1);
+    host.remove();
+  });
+
+  it('gives a lone sphere a box with some size', async () => {
+    const { host, h } = setup();
+    let box: Box3 | null = null;
+    h.addContentBounds = (b) => {
+      box = b();
+      return () => undefined;
+    };
+    const lone: PanoLayer = { ...layer, items: layer.items.slice(0, 1) };
+    const lh = await createPanoramasAdapter(createWorkspace()).create(lone, {
+      url: () => '',
+      scene: h,
+    });
+    const size = (box as Box3 | null)?.getSize(new Vector3());
+    expect(size?.x).toBeGreaterThan(0);
+    expect(size?.y).toBeGreaterThan(0);
+    expect(size?.z).toBeGreaterThan(0);
+    lh.dispose();
     host.remove();
   });
 

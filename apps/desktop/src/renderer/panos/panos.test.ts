@@ -279,8 +279,10 @@ describe('revealPanoLayer', () => {
   });
 
   it('focuses the layer date once the timeline knows it, then flies', () => {
-    const focusSurvey = vi.fn();
-    timeline.setState({ index: null, focusSurvey } as never);
+    const focusSurvey = vi.fn((c: string) => {
+      timeline.setState({ focus: c });
+    });
+    timeline.setState({ index: null, focus: null, focusSurvey } as never);
     place('c1');
     const before = workspace.getState().lastCamera;
     revealPanoLayer('panos-1');
@@ -292,6 +294,30 @@ describe('revealPanoLayer', () => {
     // done: a later timeline change does not focus again
     timeline.setState({ index: { ...index } } as never);
     expect(focusSurvey).toHaveBeenCalledTimes(1);
+  });
+
+  it('drops the wait when another project opens, and does not fly', () => {
+    const focusSurvey = vi.fn();
+    timeline.setState({ index: null, focusSurvey } as never);
+    place('c1');
+    const before = workspace.getState().lastCamera;
+    revealPanoLayer('panos-1');
+    workspace
+      .getState()
+      .openProject({ ...(workspace.getState().project as object), id: 'p2' } as never);
+    timeline.setState({ index } as never);
+    expect(focusSurvey).not.toHaveBeenCalled();
+    expect(workspace.getState().lastCamera).toBe(before);
+  });
+
+  it('does not fly when the timeline refuses the focus', () => {
+    const focusSurvey = vi.fn();
+    timeline.setState({ index, focus: null, focusSurvey } as never);
+    place('c1');
+    const before = workspace.getState().lastCamera;
+    revealPanoLayer('panos-1');
+    expect(focusSurvey).toHaveBeenCalledWith('c1');
+    expect(workspace.getState().lastCamera).toBe(before);
   });
 
   it('does nothing for a layer that is not panoramas', () => {
