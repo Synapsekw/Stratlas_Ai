@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { overflight, panoAt, photoAt, track } from './__fixtures__/spotPoses';
 import { matchPano, matchPhoto, matchVideo, matchWalk } from './spotMatchers';
+import { SPOT_RULES } from './spotRules';
 import type { Spot } from './spotTypes';
 
 /** Standing at the origin, looking north at a point 15 m away. */
@@ -116,5 +117,29 @@ describe('videos', () => {
   it('do not match when the target is never in the frame, or the log is unreadable', () => {
     expect(matchVideo({ ...ground, target: [0, 0, 200] }, clip(overflight()))).toBeNull();
     expect(matchVideo(ground, clip(null))).toBeNull();
+  });
+});
+
+describe('tolerance boundaries', () => {
+  const eps = 0.01;
+  it('a ground photo is in just inside, out just outside the distance limit', () => {
+    expect(
+      matchPhoto(ground, photoAt('a', [SPOT_RULES.groundPhotoM - eps, 1.6, 0], 0)),
+    ).not.toBeNull();
+    expect(matchPhoto(ground, photoAt('a', [SPOT_RULES.groundPhotoM + eps, 1.6, 0], 0))).toBeNull();
+  });
+  it('a ground photo is in just inside, out just outside the facing limit', () => {
+    const at = (deg: number) => photoAt('a', [5, 1.6, 0], deg);
+    expect(matchPhoto(ground, at(SPOT_RULES.groundAngleDeg - eps))).not.toBeNull();
+    expect(matchPhoto(ground, at(SPOT_RULES.groundAngleDeg + eps))).toBeNull();
+  });
+  it('a camera is a ground photo just below the aerial height, a drone photo just above', () => {
+    const below = matchPhoto(ground, photoAt('a', [0, SPOT_RULES.aerialAboveM - eps, -5], 0));
+    expect(below?.kind).toBe('photo');
+    const above = matchPhoto(
+      ground,
+      photoAt('a', [0, SPOT_RULES.aerialAboveM + eps, -15], 0, { pitchDeg: -90 }),
+    );
+    expect(above?.kind).toBe('drone');
   });
 });
