@@ -209,9 +209,12 @@ export async function importPanos(choice: {
     if (mine === run) panoImport.setState({ busy: null, error });
     return error;
   }
-  // The files and the layer exist even if the dialog was cancelled meanwhile.
-  workspace.getState().replaceManifest(r.value.manifest);
-  revealPanoLayer(r.value.layerId);
+  // The files and the layer exist even if the dialog was cancelled meanwhile; the manifest is
+  // this project's, so it is not taken when another project opened in the meantime.
+  if (workspace.getState().project?.id === project.id) {
+    workspace.getState().replaceManifest(r.value.manifest);
+    revealPanoLayer(r.value.layerId);
+  }
   if (mine !== run) return null;
   if (r.value.notStarted) panoImport.setState({ busy: null, notStarted: r.value.notStarted });
   else panoImport.setState({ ...CLOSED });

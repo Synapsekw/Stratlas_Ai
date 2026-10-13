@@ -234,6 +234,27 @@ describe('stale results', () => {
     expect(panoImport.getState()).toMatchObject({ open: true, busy: null, error: null });
   });
 
+  it('leaves another project alone when an import answers after it opened', async () => {
+    panoImport.setState({ open: true, scan });
+    const imp = later<unknown>();
+    call.mockImplementation((channel: string) =>
+      channel === 'panos:import' ? imp.promise : Promise.resolve({ ok: true, value: {} }),
+    );
+    const pending = importPanos({ keys: ['s1'], layerName: 'P', quality: 'standard' });
+    await closePanoImport();
+    const other = { ...currentManifest(), id: 'p2', name: 'Other' };
+    workspace.getState().openProject({ id: 'p2', root: 'D:/projects/p2', manifest: other });
+    const manifest = {
+      ...currentManifest(),
+      id: 'p1',
+      layers: [{ kind: 'panoramas', id: 'late', name: 'L', visible: true, items: [] }],
+    };
+    imp.resolve({ ok: true, value: { ok: true, manifest, layerId: 'late', started: 1 } });
+    await pending;
+    expect(workspace.getState().project?.id).toBe('p2');
+    expect(currentManifest()).toEqual(other);
+  });
+
   it('clears busy and shows the error when the call throws', async () => {
     call.mockRejectedValue(new Error('boom'));
     await scanPanoPaths(['D:/a']);
