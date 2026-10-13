@@ -531,6 +531,29 @@ def test_a_merge_at_another_spacing_refuses_when_an_old_tile_cannot_be_deleted(t
     assert store.merging_voxel() == 0.1  # nothing claims the new spacing
 
 
+def test_a_folder_windows_still_holds_for_a_moment_is_tried_once_more(tmp_path, monkeypatch):
+    """Windows keeps a deleted folder pending for a moment: when only the empty folder is left,
+    one short wait and a second try."""
+    from aio_pipelines.photo import fuse
+
+    d = tmp_path / "fused"
+    d.mkdir()
+    (d / "0_0.npz").write_bytes(b"1")
+    real, calls, waits = shutil.rmtree, [], []
+
+    def rmtree(path, ignore_errors=False, **_):
+        calls.append(1)
+        for q in Path(path).iterdir():
+            q.unlink()
+        if len(calls) > 1:
+            real(path)
+
+    monkeypatch.setattr(shutil, "rmtree", rmtree)
+    monkeypatch.setattr(fuse.time, "sleep", waits.append)
+    fuse.remove_tree(d)
+    assert not d.exists() and len(calls) == 2 and waits == [0.2]
+
+
 def test_fusing_again_refuses_when_a_chunk_cannot_be_deleted(tmp_path, monkeypatch):
     store = PointTiles(tmp_path / "m", 4.0, chunks=tmp_path / "c" / "chunks")
     xyz = _sheet(3.0, 3.0)

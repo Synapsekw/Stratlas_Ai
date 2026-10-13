@@ -24,6 +24,7 @@ from __future__ import annotations
 import json
 import math
 import shutil
+import time
 from collections.abc import Callable, Iterator, Mapping
 from dataclasses import asdict, dataclass
 from pathlib import Path
@@ -170,8 +171,13 @@ SPARSE_RULE = MergeRule(min_count=1, outliers=False, collapse=False)
 
 def remove_tree(path: Path) -> None:
     """Delete a folder, or refuse naming a file that stayed (on Windows, one another program
-    holds open): a merge or fusion that carried on would take what is left as its own."""
+    holds open): a merge or fusion that carried on would take what is left as its own. When only
+    empty folders are left (Windows keeps a deleted folder pending for a moment), one short wait
+    and a second try."""
     shutil.rmtree(path, ignore_errors=True)
+    if path.exists() and not any(q.is_file() for q in path.rglob("*")):
+        time.sleep(0.2)
+        shutil.rmtree(path, ignore_errors=True)
     if not path.exists():
         return
     left = next((q for q in sorted(path.rglob("*")) if q.is_file()), path)

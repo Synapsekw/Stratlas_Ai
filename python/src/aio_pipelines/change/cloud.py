@@ -120,65 +120,85 @@ def c2c_distances(
     chunk: int = 200_000,
 ) -> np.ndarray:
     """Distance of each of ``pts`` to the cloud ``ref`` (float32, metres, at most ``cap``)."""
-    pts = np.asarray(pts, dtype=np.float64).reshape(-1, 3)
-    ref = np.asarray(ref, dtype=np.float64).reshape(-1, 3)
-    out = np.full(len(pts), cap, dtype=np.float32)
-    if not len(pts) or not len(ref):
-        return out
-    from scipy.spatial import cKDTree
+    return Distances(ref, cap=cap, signed=signed, k=k, chunk=chunk)(pts)
 
-    # work near the origin: project coordinates are large
-    centre = ref.mean(axis=0)
-    ref = ref - centre
-    pts = pts - centre
-    tree = cKDTree(ref)
-    mass = _voxel_mass(ref, 0.5) if signed else None
-    kk = min(k, len(ref))
-    for s in range(0, len(pts), chunk):
-        p = pts[s : s + chunk]
-        dist, idx = tree.query(p, k=kk, distance_upper_bound=cap)
-        if kk == 1:
-            dist, idx = dist[:, None], idx[:, None]
-        found = np.isfinite(dist[:, 0])
-        d = np.where(found, dist[:, 0], cap)
-        sign = np.ones(len(p))
-        full = np.isfinite(dist).all(axis=1) & (kk >= 4)
-        if full.any():
-            q = ref[idx[full]]
-            c = q.mean(axis=1)
-            dq = q - c[:, None, :]
-            w, v = np.linalg.eigh(np.einsum("fki,fkj->fij", dq, dq) / kk)
-            n = v[:, :, 0]
-            curv = w[:, 0] / np.maximum(w.sum(axis=1), 1e-12)
-            rel = p[full] - c
-            along = np.einsum("fi,fi->f", rel, n)
-            lateral = np.sqrt(np.maximum(np.einsum("fi,fi->f", rel, rel) - along**2, 0))
-            spread = np.sqrt(np.einsum("fki,fki->fk", dq, dq)).mean(axis=1)
-            planar = (curv < 0.05) & (lateral <= 2.5 * spread + 1e-9)
-            # elsewhere (edges, corners, rough ground) the nearest point is up to a sampling step
-            # away even where nothing changed: take off the local spacing (about spread / 1.1)
-            rough = np.maximum(d[full] - spread / 1.1, 0)
-            d[full] = np.where(planar, np.minimum(np.abs(along), d[full]), rough)
-            if signed and mass is not None:
-                # up for ground-like surfaces; out of objects (away from the nearby mass) for walls
-                up = np.abs(n[:, 2]) >= 0.3
-                n = np.where((up & (n[:, 2] < 0))[:, None], -n, n)
-                wall = ~up
-                if wall.any():
-                    away = c[wall] - _mass_centre(mass, c[wall], 0.5)
-                    flip = np.einsum("fi,fi->f", away, n[wall]) < 0
-                    nw = n[wall]
-                    nw[flip] = -nw[flip]
-                    n[wall] = nw
-                sg = np.sign(np.einsum("fi,fi->f", rel, n))
-                sign[full] = np.where(sg == 0, 1, sg)
-        if signed:
-            partial = found & ~full
-            if partial.any():
-                below = p[partial, 2] < ref[idx[partial, 0], 2]
-                sign[partial] = np.where(below, -1, 1)
-        out[s : s + len(p)] = (np.minimum(d, cap) * sign).astype(np.float32)
-    return out
+
+class Distances:
+    """``c2c_distances`` to one cloud ``ref``, its KD-tree built on the first call and kept for
+    the next (a tile's margin points are measured on the tree its own points were)."""
+
+    def __init__(
+        self, ref: np.ndarray, *, cap: float, signed: bool = False, k: int = NEIGHBOURS, chunk: int = 200_000
+    ):
+        self.ref = np.asarray(ref, dtype=np.float64).reshape(-1, 3)
+        self.cap, self.signed, self.k, self.chunk = cap, signed, k, chunk
+        self._built: tuple | None = None
+
+    def _build(self) -> tuple:
+        if self._built is None:
+            from scipy.spatial import cKDTree
+
+            # work near the origin: project coordinates are large
+            centre = self.ref.mean(axis=0)
+            ref = self.ref - centre
+            mass = _voxel_mass(ref, 0.5) if self.signed else None
+            self._built = (centre, ref, cKDTree(ref), mass)
+        return self._built
+
+    def __call__(self, pts: np.ndarray) -> np.ndarray:
+        cap, signed, chunk = self.cap, self.signed, self.chunk
+        pts = np.asarray(pts, dtype=np.float64).reshape(-1, 3)
+        out = np.full(len(pts), cap, dtype=np.float32)
+        if not len(pts) or not len(self.ref):
+            return out
+        centre, ref, tree, mass = self._build()
+        pts = pts - centre
+        kk = min(self.k, len(ref))
+        for s in range(0, len(pts), chunk):
+            p = pts[s : s + chunk]
+            dist, idx = tree.query(p, k=kk, distance_upper_bound=cap)
+            if kk == 1:
+                dist, idx = dist[:, None], idx[:, None]
+            found = np.isfinite(dist[:, 0])
+            d = np.where(found, dist[:, 0], cap)
+            sign = np.ones(len(p))
+            full = np.isfinite(dist).all(axis=1) & (kk >= 4)
+            if full.any():
+                q = ref[idx[full]]
+                c = q.mean(axis=1)
+                dq = q - c[:, None, :]
+                w, v = np.linalg.eigh(np.einsum("fki,fkj->fij", dq, dq) / kk)
+                n = v[:, :, 0]
+                curv = w[:, 0] / np.maximum(w.sum(axis=1), 1e-12)
+                rel = p[full] - c
+                along = np.einsum("fi,fi->f", rel, n)
+                lateral = np.sqrt(np.maximum(np.einsum("fi,fi->f", rel, rel) - along**2, 0))
+                spread = np.sqrt(np.einsum("fki,fki->fk", dq, dq)).mean(axis=1)
+                planar = (curv < 0.05) & (lateral <= 2.5 * spread + 1e-9)
+                # elsewhere (edges, corners, rough ground) the nearest point is up to a sampling step
+                # away even where nothing changed: take off the local spacing (about spread / 1.1)
+                rough = np.maximum(d[full] - spread / 1.1, 0)
+                d[full] = np.where(planar, np.minimum(np.abs(along), d[full]), rough)
+                if signed and mass is not None:
+                    # up for ground-like surfaces; out of objects (away from the nearby mass) for walls
+                    up = np.abs(n[:, 2]) >= 0.3
+                    n = np.where((up & (n[:, 2] < 0))[:, None], -n, n)
+                    wall = ~up
+                    if wall.any():
+                        away = c[wall] - _mass_centre(mass, c[wall], 0.5)
+                        flip = np.einsum("fi,fi->f", away, n[wall]) < 0
+                        nw = n[wall]
+                        nw[flip] = -nw[flip]
+                        n[wall] = nw
+                    sg = np.sign(np.einsum("fi,fi->f", rel, n))
+                    sign[full] = np.where(sg == 0, 1, sg)
+            if signed:
+                partial = found & ~full
+                if partial.any():
+                    below = p[partial, 2] < ref[idx[partial, 0], 2]
+                    sign[partial] = np.where(below, -1, 1)
+            out[s : s + len(p)] = (np.minimum(d, cap) * sign).astype(np.float32)
+        return out
 
 
 def registration(distances: np.ndarray | float, tolerance: float = TOLERANCE_M) -> dict[str, Any]:
@@ -252,12 +272,15 @@ def agreed(
     *,
     min_dist: float,
     k: int = AGREE_NEIGHBOURS,
+    block: int = 200_000,
 ) -> np.ndarray:
     """The distances ``d`` of ``cloud[inside]`` for the change regions: NaN (not changed) where the
     median of ``|d|`` over the point's ``k`` nearest points in ``cloud``, itself included, is below
     ``min_dist``, so a lone noisy point is not change. ``measure(points)`` gives the distances of
     neighbours outside ``inside`` (a tile's margin), so a tile answers as the whole cloud would.
-    The distances written and their statistics are not these: they stay every point's own."""
+    The neighbours are asked for ``block`` points at a time, so the memory stays bounded however
+    much of a tile changed. The distances written and their statistics are not these: they stay
+    every point's own."""
     out = np.asarray(d, dtype=np.float64).copy()
     cand = np.nonzero(np.abs(out) >= min_dist)[0]
     if not len(cand) or k <= 1:
@@ -268,16 +291,20 @@ def agreed(
     own = np.nonzero(inside)[0]
     centre = cloud[own].mean(axis=0)
     kk = min(k, len(cloud))
-    _, idx = cKDTree(cloud - centre).query(cloud[own[cand]] - centre, k=kk)
-    idx = np.asarray(idx).reshape(len(cand), kk)
+    tree = cKDTree(cloud - centre)
     dist = np.full(len(cloud), np.nan)
     dist[own] = out
-    need = np.unique(idx)
-    need = need[np.isnan(dist[need])]
-    if len(need):
-        dist[need] = measure(cloud[need])
-    med = np.median(np.abs(dist[idx]), axis=1)
-    out[cand[med < min_dist]] = np.nan
+    step = max(1, int(block))
+    for s in range(0, len(cand), step):
+        c = cand[s : s + step]
+        _, idx = tree.query(cloud[own[c]] - centre, k=kk)
+        idx = np.asarray(idx).reshape(len(c), kk)
+        need = np.unique(idx)
+        need = need[np.isnan(dist[need])]
+        if len(need):
+            dist[need] = measure(cloud[need])
+        med = np.median(np.abs(dist[idx]), axis=1)
+        out[c[med < min_dist]] = np.nan
     return out
 
 
@@ -506,19 +533,17 @@ def compare_tile(
     a, b = src_from.read(grown), src_to.read(grown)
     in_a, in_b = in_tile(a.xyz, tile), in_tile(b.xyz, tile)
     later = b.xyz[in_b]
-    fwd = c2c_distances(a.xyz, later, cap=cap, signed=signed)
-    rev = c2c_distances(b.xyz, a.xyz[in_a], cap=cap, signed=signed)
+    to_a, to_b = Distances(a.xyz, cap=cap, signed=signed), Distances(b.xyz, cap=cap, signed=signed)
+    fwd = to_a(later)
+    rev = to_b(a.xyz[in_a])
     if on_tile is not None and len(later):
         sub = replace(b.las, records=b.las.records[in_b]) if b.las is not None else None
         on_tile(index, np.nonzero(in_b)[0], later, fwd, sub)
     mag = np.abs(fwd)
     hist = np.bincount(np.minimum((mag / HIST_BIN_M).astype(np.int64), _bins(cap) - 1), minlength=_bins(cap))
-    fwd_agreed = agreed(
-        b.xyz, in_b, fwd, lambda q: c2c_distances(a.xyz, q, cap=cap, signed=signed), min_dist=min_dist
-    )
-    rev_agreed = agreed(
-        a.xyz, in_a, rev, lambda q: c2c_distances(b.xyz, q, cap=cap, signed=signed), min_dist=min_dist
-    )
+    # the margin's neighbours are measured on the trees just built
+    fwd_agreed = agreed(b.xyz, in_b, fwd, to_a, min_dist=min_dist)
+    rev_agreed = agreed(a.xyz, in_a, rev, to_b, min_dist=min_dist)
     return TileResult(
         points=len(later),
         changed=int((mag >= min_dist).sum()),

@@ -15,6 +15,7 @@ from aio_pipelines.change.changeset import validate_change_set
 from aio_pipelines.change.cloud import (
     ChangeCloud,
     MemorySource,
+    agreed,
     c2c_distances,
     cell_aggregates,
     compare_tiled,
@@ -209,6 +210,41 @@ def test_the_neighbour_agreement_is_the_same_tiled():
     for one, many in ((whole.forward, tiled.forward), (whole.reverse, tiled.reverse)):
         assert len(one.count) > 0
         assert np.array_equal(one.keys, many.keys) and np.array_equal(one.count, many.count)
+
+
+def test_the_neighbour_agreement_in_small_blocks_is_the_same_as_in_one():
+    a, b = _survey(1, 4.0, 0.03, half=10.0), _survey(2, 6.0, 0.03, half=10.0)
+    inside = (np.abs(b[:, 0] + 6) < 4) & (np.abs(b[:, 1] - 4) < 4)  # a tile over half the pile
+    d = c2c_distances(a, b[inside], cap=3.0)
+    measured: list = []
+
+    def measure(q):
+        measured.append(len(q))
+        return c2c_distances(a, q, cap=3.0)
+
+    one = agreed(b, inside, d, measure, min_dist=0.05)
+    small = agreed(b, inside, d, measure, min_dist=0.05, block=7)
+    assert np.isnan(one).any() and (np.abs(one) >= 0.05).any()
+    assert np.array_equal(one, small, equal_nan=True)
+    assert measured[0] > 0  # the tile's edge needed points from the margin
+
+
+def test_the_margin_is_measured_on_the_trees_already_built(monkeypatch):
+    import scipy.spatial
+
+    a, b = _survey(1, 4.0, 0.03, half=10.0), _survey(2, 6.0, 0.03, half=10.0)
+    built = []
+    tree = scipy.spatial.cKDTree
+
+    def counting(*args, **kw):
+        built.append(1)
+        return tree(*args, **kw)
+
+    monkeypatch.setattr(scipy.spatial, "cKDTree", counting)
+    compare_tiled(
+        MemorySource(a), MemorySource(b), [(-10.0, -2.0, 0.0, 8.0)], cap=3.0, min_dist=0.05, cell=0.25
+    )
+    assert len(built) == 4  # one per cloud for the distances, one per cloud for its neighbours
 
 
 # ---------------------------------------------------------------- registration and tiles

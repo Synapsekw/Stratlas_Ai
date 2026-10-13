@@ -373,6 +373,7 @@ def test_the_legacy_cleanup_keeps_the_depth_maps_layout_2_and_other_keys(tmp_pat
     }
     old = {
         key / "cloud" / "chunks" / "0_0" / "v1.npz": 100,
+        key / "cloud" / "chunks" / "1_0" / "v1.npz": 70,
         key / "cloud" / "fused" / "0_0.npz": 50,
         key / "cloud.las": 200,
         key / "dsm-raw.tmp.fill.tif": 10,
@@ -394,24 +395,63 @@ def test_the_legacy_cleanup_keeps_the_depth_maps_layout_2_and_other_keys(tmp_pat
         return unlink(self, *a, **k)
 
     monkeypatch.setattr(Path, "unlink", held)
+    from aio_pipelines.photo import products as P
+
     said: list = []
     steps: list = []
+    sized = P._bytes_in
+    monkeypatch.setattr(P, "_bytes_in", lambda q: (said.append(("size", q.name)), sized(q))[1])
+    tiles = key / "cloud" / "chunks" / "0_0", key / "cloud" / "chunks" / "1_0"
+    gone_between: list = []  # what the cancel check sees: the old tiles go one at a time
+
+    def check():
+        gone_between.append(tuple(t.exists() for t in tiles))
+
     freed = legacy_cleanup(
-        key, lambda m, level="info": said.append((level, m)), lambda f, m=None: steps.append((f, m))
+        key, lambda m, level="info": said.append((level, m)), lambda f, m=None: steps.append((f, m)), check
     )
     assert freed == sum(old.values()) - 5
     assert all(f.is_file() for f in keep) and (key / "dtm-pipeline.json").is_file()
     assert not any(f.exists() for f in old if f.name != "dtm-pipeline.json")
     assert not (key / "cloud").exists() and not (key / "texrecon-full").exists()
-    assert said == [
-        ("info", "Removing files of an older processing version (0 MB)."),
+    # said before anything is sized (sizing hundreds of GB takes a while)
+    assert said[0] == ("info", "Removing files of an older processing version.")
+    assert [x for x in said if x[0] != "size"] == [
+        said[0],
         ("warn", "Could not remove dtm-pipeline.json, which an older version left: The file is in use."),
     ]
-    # progress through the delete, from the first item to the last
+    # a large old folder goes one subfolder at a time: progress and the cancel check in between
+    assert (False, True) in gone_between or (True, False) in gone_between
     fractions = [f for f, _ in steps]
-    assert len(steps) == len(old) - 1 and fractions == sorted(fractions) and fractions[-1] == 1.0
+    assert len(steps) == len(gone_between) > len(old) and fractions == sorted(fractions)
+    assert fractions[-1] == pytest.approx(0.9)  # the rest of prepare still to come
     assert all(m.startswith("Removing files of an older processing version") for _, m in steps)
     assert legacy_cleanup(tmp_path / "missing") == 0
+
+
+def test_a_held_file_deep_in_an_old_folder_is_said_once(tmp_path, monkeypatch):
+    import os
+
+    key = tmp_path / "7bea1144efd8"
+    for t in ("0_0", "1_0"):
+        (key / "cloud" / "chunks" / t).mkdir(parents=True)
+        (key / "cloud" / "chunks" / t / "v1.npz").write_bytes(bytes(10))
+    stuck = key / "cloud" / "chunks" / "0_0" / "v1.npz"
+    unlink = os.unlink
+
+    def held(path, *a, **k):
+        if Path(path) == stuck:
+            raise PermissionError(13, "The file is in use", str(path))
+        return unlink(path, *a, **k)
+
+    monkeypatch.setattr(os, "unlink", held)
+    said: list = []
+    assert legacy_cleanup(key, lambda m, level="info": said.append((level, m))) == 10
+    assert said == [
+        ("info", "Removing files of an older processing version."),
+        ("warn", "Could not remove v1.npz, which an older version left: The file is in use."),
+    ]
+    assert stuck.is_file() and not (key / "cloud" / "chunks" / "1_0").exists()
 
 
 def test_a_new_point_budget_after_the_chunks_went_fuses_the_photos_again(monkeypatch):

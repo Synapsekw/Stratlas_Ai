@@ -142,45 +142,67 @@ def _bytes_in(p: Path) -> int:
         return 0
 
 
+def _legacy_items(p: Path) -> list[Path]:
+    """What to delete one at a time: a folder that holds folders goes one subfolder at a time
+    (its own loose files with it), the folder itself last; anything else as it is."""
+    if not p.is_dir() or p.is_symlink():
+        return [p]
+    try:
+        children = sorted(p.iterdir())
+    except OSError:
+        return [p]
+    if not any(c.is_dir() and not c.is_symlink() for c in children):
+        return [p]
+    return [q for c in children for q in _legacy_items(c)] + [p]
+
+
 def legacy_cleanup(
     folder: Path,
     log=lambda message, level="info": None,
     progress=lambda fraction, message=None: None,
     check=lambda: None,
+    span: tuple[float, float] = (0.0, 0.9),
 ) -> int:
     """Delete what a version before layout 2 left in a depth key's folder (the cloud tiles, the
-    LAS, the rasters, the mesh); ``depth/`` and layout 2's ``c-*`` folders stay. It says so with the
-    size first and reports progress as it goes (it can be hundreds of GB), and ``check`` may cancel
-    between items (what is left goes on the next run). What cannot be deleted (a file another
-    program holds open) is left with a warning. Answers the bytes freed."""
+    LAS, the rasters, the mesh); ``depth/`` and layout 2's ``c-*`` folders stay. It says so before
+    anything is sized (it can be hundreds of GB), then deletes a large old folder one subfolder at
+    a time, with progress (within ``span`` of the step: the rest of prepare is still to come) and
+    ``check``, which may cancel, between them (what is left goes on the next run). What cannot be
+    deleted (a file another program holds open) is left with a warning. Answers the bytes freed."""
     if not folder.is_dir():
         return 0
     found = [folder / n for n in LEGACY_NAMES] + [p for g in LEGACY_GLOBS for p in folder.glob(g)]
-    items = [p for p in dict.fromkeys(found) if p.is_dir() or p.is_file()]
-    if not items:
+    tops = [p for p in dict.fromkeys(found) if p.is_dir() or p.is_file()]
+    if not tops:
         return 0
-    sizes = [_bytes_in(p) for p in items]
-    total = sum(sizes)
     what = "Removing files of an older processing version"
-    log(f"{what} ({native._gb(total)}).")
-    freed = done = 0
-    for p, before in zip(items, sizes, strict=True):
+    log(f"{what}.")
+    items = [q for p in tops for q in _legacy_items(p)]
+    lo, hi = span
+    freed = 0
+    held: set[str] = set()  # a held file is said once, not again for each folder above it
+    for i, p in enumerate(items):
         check()
+        before = _bytes_in(p) if p.exists() else 0
         errors: list[OSError] = []
         try:
             if p.is_dir():
                 # past a file it cannot delete, on to the rest
                 shutil.rmtree(p, onexc=lambda _f, _path, e, errors=errors: errors.append(e))
-            else:
+            elif p.exists():
                 p.unlink()
         except OSError as e:
             errors.append(e)
-        if errors:
-            e = errors[0]
-            log(f"Could not remove {p.name}, which an older version left: {e.strerror or e}.", "warn")
+        # the files that stayed, not the folders above them that could not go for that reason
+        named = [(str(e.filename or p), e) for e in errors]
+        files = [(f, e) for f, e in named if Path(f).is_file()] or named
+        new = [(f, e) for f, e in files if f not in held]
+        held.update(f for f, _ in files)
+        if new:
+            f, e = new[0]
+            log(f"Could not remove {Path(f).name}, which an older version left: {e.strerror or e}.", "warn")
         freed += max(0, before - (_bytes_in(p) if p.exists() else 0))
-        done += before
-        progress(done / total if total else 1.0, f"{what}: {native._gb(done)} of {native._gb(total)}")
+        progress(lo + (hi - lo) * (i + 1) / len(items), f"{what}: {native._gb(freed)} freed")
     return freed
 
 
