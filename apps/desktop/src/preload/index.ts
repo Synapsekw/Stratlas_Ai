@@ -99,6 +99,9 @@ const CHANNELS = {
   'builder:closeDrawing': true,
   'walks:list': true,
   'walks:remove': true,
+  'panos:scan': true,
+  'panos:import': true,
+  'panos:cancelImport': true,
   'builder:cancelImport': true,
   // M8
   'change:list': true,
@@ -243,6 +246,7 @@ const EVENTS = {
   'packs:job': true,
   'jobs:event': true,
   'builder:progress': true,
+  'panos:progress': true,
   'change:progress': true,
   'inference:progress': true,
   // M9

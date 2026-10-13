@@ -27,6 +27,7 @@ import {
 } from './builder';
 import { ProjectManifest } from './manifest';
 import { HexColor, IsoDate } from './common';
+import { PanoQuality, PanoScan } from './panoStitch';
 import { AiPolicy, EditPolicy, ExportKind, PackageInfo, PackageOrigin } from './package';
 import { BoundaryEditsFile, VolumesFile } from './volumes';
 import { DetectionsFile } from './detections';
@@ -1380,6 +1381,11 @@ export const ipc = {
          * as a walk (`walks/<id>/`), not as a drone clip that needs its SRT.
          */
         as360: z.boolean().optional(),
+        /**
+         * Files to leave out, absolute (Add data leaves out the frames of drone panoramas that the
+         * person imports as panoramas instead).
+         */
+        exclude: z.array(z.string().min(1).max(2048)).max(20_000).optional(),
       })
       .strict(),
     response: z.discriminatedUnion('ok', [
@@ -2898,6 +2904,60 @@ export const ipc = {
     request: z.object({ projectId: z.string().min(1) }).strict(),
     response: z.object({ ok: z.boolean() }),
   },
+  // ---------------------------------------------------------------- drone panoramas (P1)
+  /**
+   * Read the JPEGs under `paths` (folders recursively) and group them into drone spheres, wide
+   * panoramas and ready-made panoramas; everything else is listed with its reason. Progress
+   * arrives as `panos:progress` (`phase: 'scan'`). Main keeps the result for `panos:import`.
+   */
+  'panos:scan': {
+    request: z
+      .object({
+        projectId: z.string().min(1),
+        paths: z.array(z.string().min(1).max(2048)).min(1).max(20_000),
+      })
+      .strict(),
+    response: z.discriminatedUnion('ok', [
+      z.object({ ok: z.literal(true), scan: PanoScan }),
+      z.object({ ok: z.literal(false), error: z.string() }),
+    ]),
+  },
+  /**
+   * Import the chosen spheres and ready-made panoramas of a scan as one `panoramas` layer: frames
+   * copied (progress `phase: 'copy'`), the layer saved with every sphere queued, one `pano.stitch`
+   * job started per sphere. `notStarted` says why no job started (no or an old pipeline pack).
+   */
+  'panos:import': {
+    request: z
+      .object({
+        projectId: z.string().min(1),
+        scanId: z.string().min(1).max(64),
+        keys: z.array(z.string().min(1).max(40)).min(1).max(1000),
+        layerName: z.string().min(1).max(120),
+        date: IsoDate.optional(),
+        quality: PanoQuality,
+      })
+      .strict(),
+    response: z.discriminatedUnion('ok', [
+      z.object({
+        ok: z.literal(true),
+        manifest: ProjectManifest,
+        layerId: z.string().min(1),
+        started: z.number().int().nonnegative(),
+        notStarted: z.string().optional(),
+      }),
+      z.object({
+        ok: z.literal(false),
+        error: z.string(),
+        code: z.enum(['space', 'cancelled', 'stale-scan']).optional(),
+      }),
+    ]),
+  },
+  /** Stop the copy of a running `panos:import`; what it copied is removed. */
+  'panos:cancelImport': {
+    request: z.object({ projectId: z.string().min(1) }).strict(),
+    response: z.object({ ok: z.boolean() }),
+  },
 } as const satisfies Record<string, { request: z.ZodType; response: z.ZodType }>;
 
 /** Events pushed from main to the renderer. */
@@ -2969,6 +3029,14 @@ export const ipcEvents = {
     file: z.string(),
     /** 0 to 1 inside the file being imported, for one long file (a 360 video playback copy). */
     part: z.number().min(0).max(1).optional(),
+  }),
+  /** Progress of `panos:scan` and of the frame copy of `panos:import`. */
+  'panos:progress': z.object({
+    projectId: z.string(),
+    phase: z.enum(['scan', 'copy']),
+    done: z.number().int().nonnegative(),
+    total: z.number().int().nonnegative(),
+    file: z.string(),
   }),
   /** Progress of a `change:compute` run (M8). */
   'change:progress': z.object({

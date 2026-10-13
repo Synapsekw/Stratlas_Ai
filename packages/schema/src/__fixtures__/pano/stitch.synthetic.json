@@ -1,0 +1,30 @@
+{
+  "schema": "aio.pano-stitch/1",
+  "run": "20261013-101500-pano-stitch-a1b2",
+  "layer": "panos-2026-09-10",
+  "pano": "p01",
+  "createdAt": "2026-10-13T10:16:00.000Z",
+  "engine": { "version": "0.7.0", "opencv": "5.0.0" },
+  "quality": "standard",
+  "shape": "sphere",
+  "size": { "width": 8192, "height": 4096 },
+  "frames": {
+    "used": ["SYN_0001.JPG", "SYN_0002.JPG"],
+    "dropped": [{ "file": "SYN_0003.JPG", "reason": "No gimbal angles" }]
+  },
+  "aligned": "features",
+  "residualPx": 0.84,
+  "maxDriftDeg": 1.7,
+  "focalScale": 1.014,
+  "coverage": { "topDeg": 21.5, "bottomDeg": 90 },
+  "timings": {
+    "read": 0.2,
+    "seed": 0.0,
+    "match": 5.7,
+    "adjust": 6.0,
+    "compose": 10.5,
+    "fill": 2.4,
+    "write": 1.0
+  },
+  "warnings": []
+}

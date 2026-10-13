@@ -86,6 +86,8 @@ const MANIFEST_WRITERS: ReadonlySet<string> = new Set([
   // Walks 360: walk.process writes only walks/<id>/, but reopening the manifest links the new
   // raw-path and orientation files into the walk's layer (`withWalkLayers` in main)
   'walk.process',
+  // Drone panoramas: main files each stitch outcome into the manifest, so the renderer reloads it
+  'pano.stitch',
 ]);
 
 /**
@@ -911,6 +913,8 @@ export const FORMS: Record<PipelineName, Field[]> = {
   // starts from the 360 video list (or by itself after a walk import), which fills the walk and
   // the original's path
   'walk.process': [],
+  // starts from the Datasets rows of a drone sphere (and by itself after a panorama import)
+  'pano.stitch': [],
 };
 
 /** Turn the form's text values into checked params, or say what is wrong. */

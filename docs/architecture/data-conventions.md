@@ -854,3 +854,14 @@ Hydrology (G10) and haul-road compliance (G11) are pipeline jobs over a prepared
 - **`pose.json`** (`aio.flight/1`, unchanged): written by the app from the raw path, the orientation, the placement and the current placement of every drawing a pin is on; lens `{ model: 'pinhole', hfovDeg: 90, aspect: 2 }` as a placeholder (the layer says the video is equirectangular); 30 samples a second with an orientation file, else 10. Rewritten when the placement is saved, when a drawing a pin is on is placed again and when `raw-path.json` changes. The new file is written as `pose.json.tmp` in the manifest's save turn and renamed into place only once the manifest is saved (a removal too), so a refused save leaves the old pose with the old layer.
 - **Migration on open, once per walk**: a walk with a folder and no layer gets one when the project opens, unless its folder holds the marker `.layer` (`WALK_LAYER_MARK`). The marker is written once the walk has a layer (the migration's save, a walk import, or an open that finds the layer already there, made on another copy), so a walk whose layer was removed is never added again: a hub merge rewrites the manifest but never deletes a walk's files, and another copy that still has the folder would otherwise bring the walk back and sync it out. A separate file, not a field of `walk.json`, so `aio.walk/1` stays as 0.11 reads it. A package's walk with the marker and no layer is not shown either.
 - **Removing**: `walks:remove` (`{ projectId, layerId }` to `{ ok: true, manifest }` or `{ ok: false, error }`) moves `walks/<id>/` to `.trash/` (kept seven days), then takes the layer out of the manifest. When the folder cannot be moved (a file held open) nothing changes; when the save fails, the folder is moved back.
+
+## 33. Drone panoramas (`panoramas/<layerId>/<panoId>/`)
+
+One import of drone sphere panoramas is one `panoramas` layer; each sphere is one `PanoRef`
+(`name`, `capturedAt`, `stitch`, `cov`). Its folder holds `frames/` (the source frames as copied,
+never map items), `pano.jpg` (equirect, 8192 x 4096 or 16384 x 8192, JPEG quality 90, centre column
+true north, level; a wide panorama is cropped to what it covers), `thumb.jpg` (512 x 256) and
+`stitch.json` (`aio.pano-stitch/1`, written last by `pano.stitch`). The pipeline never writes the
+manifest; the app files a run's outcome into the item's `stitch` and, when done, its `cov`.
+`headingDeg` starts at minus the grid convergence at the sphere (true north in the local frame).
+Older `panoramas/panoramas.json` coverage is still read for items without `cov`.

@@ -4,6 +4,7 @@ import { Id, ProjectPath, Vec3 } from './common';
 import { RasterPackId, TerrainDatum } from './globe';
 import { Crs } from './manifest';
 import { PhotoPreset, PhotoProduct, PhotoRunId, PhotoSource } from './photogrammetry';
+import { PanoFolderId, PanoQuality } from './panoStitch';
 import { ProcModelId, ProcPartKind } from './procmodel';
 import { TilesetId } from './tilesets';
 import { DesignFormat, DesignId, DesignSourceUnits } from './designs';
@@ -80,6 +81,8 @@ export const PipelineName = z.enum([
   'haul.analyse',
   // Walks 360 (pipeline pack 0.6.0)
   'walk.process',
+  // Drone panoramas (pipeline pack 0.7.0)
+  'pano.stitch',
 ]);
 export type PipelineName = z.infer<typeof PipelineName>;
 
@@ -307,6 +310,12 @@ export const PIPELINES: readonly { name: PipelineName; title: string; descriptio
     title: 'Process 360 walk',
     description:
       'Levelled playback copy, camera orientation, path from the video, sparse points and map stills for a 360 walk.',
+  },
+  {
+    name: 'pano.stitch',
+    title: 'Stitch drone panorama',
+    description:
+      'One level, north-up 360 panorama from the frames of a drone sphere, aligned from its gimbal angles and features.',
   },
 ];
 
@@ -1104,6 +1113,20 @@ export const WalkProcessParams = z
   .strict();
 export type WalkProcessParams = z.infer<typeof WalkProcessParams>;
 
+/**
+ * `pano.stitch` (python `aio_pipelines/pano/pipeline.py`; plan 2026-10-13-drone-panoramas-p1).
+ * Reads `panoramas/<layer>/<pano>/frames/`, writes `pano.jpg`, `thumb.jpg` and `stitch.json` beside.
+ */
+export const PanoStitchParams = z
+  .object({
+    layer: PanoFolderId,
+    pano: PanoFolderId,
+    /** Standard 8192 x 4096 (default) or High 16384 x 8192. */
+    quality: PanoQuality.optional(),
+  })
+  .strict();
+export type PanoStitchParams = z.infer<typeof PanoStitchParams>;
+
 const PARAMS = {
   'aik.cameras': AikCamerasParams,
   'aik.project': AikProjectParams,
@@ -1144,6 +1167,7 @@ const PARAMS = {
   'hydro.rainfall': HydroRainfallParams,
   'haul.analyse': HaulAnalyseParams,
   'walk.process': WalkProcessParams,
+  'pano.stitch': PanoStitchParams,
 } as const satisfies Record<PipelineName, z.ZodType>;
 
 export function pipelineParams(name: PipelineName): z.ZodType<Record<string, unknown>> {

@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { AssetRef, HexColor, Id, IsoTime, Mat4, Quat, Vec3 } from './common';
+import { PanoCov, PanoStitchState } from './panoStitch';
 import { WalkCalibration, WalkPathRefs } from './walks';
 
 export const LensModel = z.discriminatedUnion('model', [
@@ -59,6 +60,14 @@ export const PanoRef = z.object({
   src: AssetRef,
   pos: Vec3,
   headingDeg: z.number().default(0),
+  /** Display name, "Pano 1, 2 ..." in capture order (drone panoramas). */
+  name: z.string().min(1).max(120).optional(),
+  /** ISO time of the sphere's first frame. */
+  capturedAt: IsoTime.optional(),
+  /** A stitched sphere's run; absent for a ready-made panorama. */
+  stitch: PanoStitchState.optional(),
+  /** The part of the sphere the image shows; absent: from the image size (or panoramas.json). */
+  cov: PanoCov.optional(),
 });
 
 /**
