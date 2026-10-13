@@ -124,13 +124,15 @@ export function menuPoint(e: MouseEvent<HTMLElement>): MenuPoint {
   return { x: r.left + 24, y: r.bottom };
 }
 
-// 360 walks are open so a walk's "Needs placing" badge is seen without a click
+// 360 walks are open so a walk's "Needs placing" badge is seen without a click, and panoramas so
+// an import's stitch status shows
 const DEFAULT_OPEN: TreeGroupKind[] = [
   'models',
   'maps',
   'drawings',
   'video',
   'walks',
+  'panoramas',
   'annotations',
 ];
 /** Rows shown per group before a "more" row; selected and active rows always show. */

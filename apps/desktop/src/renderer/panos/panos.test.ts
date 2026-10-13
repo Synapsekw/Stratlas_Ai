@@ -5,6 +5,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 const { call } = vi.hoisted(() => ({ call: vi.fn() }));
 vi.mock('../shell', () => ({ bridge: { call } }));
 
+import { timeline } from '../workspace/timeline';
 import {
   canUseHigh,
   defaultKeys,
@@ -12,6 +13,7 @@ import {
   closePanoImport,
   importPanos,
   panoImport,
+  revealPanoLayer,
   pickAndScanPanos,
   scanPanoPaths,
   summaryText,
@@ -240,5 +242,73 @@ describe('stale results', () => {
 
   it('reads sensibly with nothing selected', () => {
     expect(summaryText(scan, [])).toBe('No panoramas selected');
+  });
+});
+
+describe('revealPanoLayer', () => {
+  const place = (capture?: string) => {
+    const item = (id: string, pos: [number, number, number]) => ({
+      id,
+      src: { path: `panoramas/${id}.jpg` },
+      pos,
+      headingDeg: 0,
+    });
+    const manifest = {
+      ...currentManifest(),
+      layers: [
+        {
+          kind: 'panoramas' as const,
+          id: 'panos-1',
+          name: 'Panoramas',
+          visible: true,
+          ...(capture ? { capture } : {}),
+          items: [item('a', [0, 40, 0]), item('b', [300, 40, 0])],
+        },
+      ],
+    };
+    workspace.getState().replaceManifest(manifest);
+  };
+  const index = { captures: [{ id: 'c1' }], layers: {}, of: {}, epochs: {}, slot: {} };
+
+  it('flies to the spheres of an undated layer', () => {
+    place();
+    revealPanoLayer('panos-1');
+    const target = workspace.getState().lastCamera?.target;
+    expect(target).toMatchObject({ kind: 'point', p: [150, 40, 0] });
+    expect((target as { distance: number }).distance).toBeGreaterThanOrEqual(375);
+  });
+
+  it('focuses the layer date once the timeline knows it, then flies', () => {
+    const focusSurvey = vi.fn();
+    timeline.setState({ index: null, focusSurvey } as never);
+    place('c1');
+    const before = workspace.getState().lastCamera;
+    revealPanoLayer('panos-1');
+    expect(focusSurvey).not.toHaveBeenCalled();
+    expect(workspace.getState().lastCamera).toBe(before);
+    timeline.setState({ index } as never);
+    expect(focusSurvey).toHaveBeenCalledWith('c1');
+    expect(workspace.getState().lastCamera?.target).toMatchObject({ kind: 'point' });
+    // done: a later timeline change does not focus again
+    timeline.setState({ index: { ...index } } as never);
+    expect(focusSurvey).toHaveBeenCalledTimes(1);
+  });
+
+  it('does nothing for a layer that is not panoramas', () => {
+    place();
+    const before = workspace.getState().lastCamera;
+    revealPanoLayer('missing');
+    expect(workspace.getState().lastCamera).toBe(before);
+  });
+
+  it('reveals the layer an import made', async () => {
+    place();
+    panoImport.setState({ open: true, scan });
+    call.mockResolvedValue({
+      ok: true,
+      value: { ok: true, manifest: currentManifest(), layerId: 'panos-1', started: 1 },
+    });
+    await importPanos({ keys: ['s1'], layerName: 'P', quality: 'standard' });
+    expect(workspace.getState().lastCamera?.target).toMatchObject({ kind: 'point' });
   });
 });

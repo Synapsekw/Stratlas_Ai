@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 import type { Layer } from '@aio/schema';
 import { createWorkspace } from '@aio/workspace';
+import type { Box3 } from 'three';
 import { PerspectiveCamera, Scene, Vector3, type Plane, type WebGLRenderer } from 'three';
 import { describe, expect, it, vi } from 'vitest';
 import type { SceneHandle } from '../types';
@@ -114,6 +115,33 @@ describe('panoramas layer', () => {
 
     lh.dispose();
     expect(h.scene.getObjectByName('panoramas:panos')).toBeUndefined();
+    host.remove();
+  });
+
+  it('bounds the camera by its markers and stems while visible, and lets go on dispose', async () => {
+    const { host, h } = setup();
+    const providers: (() => Box3 | null)[] = [];
+    const off = vi.fn();
+    h.addContentBounds = (b) => {
+      providers.push(b);
+      return off;
+    };
+    const lh = await createPanoramasAdapter(createWorkspace()).create(layer, {
+      url: () => '',
+      scene: h,
+    });
+    expect(providers).toHaveLength(1);
+    const box = providers[0]?.();
+    // both markers (x 0 and 300, 40 m up) and the stem feet on the ground
+    expect(box?.min.toArray()).toEqual([0, 0, -100]);
+    expect(box?.max.toArray()).toEqual([300, 40, -100]);
+    lh.setVisible(false);
+    expect(providers[0]?.()).toBeNull();
+    lh.setVisible(true);
+    expect(providers[0]?.()).not.toBeNull();
+    expect(off).not.toHaveBeenCalled();
+    lh.dispose();
+    expect(off).toHaveBeenCalledTimes(1);
     host.remove();
   });
 

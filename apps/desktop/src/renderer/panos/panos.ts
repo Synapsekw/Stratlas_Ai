@@ -4,6 +4,8 @@ import { workspace } from '@aio/workspace';
 import { useStore } from 'zustand';
 import { createStore } from 'zustand/vanilla';
 import { bridge } from '../shell';
+import { timeline } from '../workspace/timeline';
+import { PANO_FLY_DISTANCE_M } from './panoModel';
 
 export interface PanoImportState {
   open: boolean;
@@ -121,6 +123,54 @@ export async function pickAndScanPanos(): Promise<void> {
   await scanPanoPaths([r.value.path]);
 }
 
+/**
+ * Show what an import made: focus its survey date (the tree opens that date and its Panoramas
+ * group) and fly to the spheres. The timeline learns the new date a render after the manifest, so
+ * the focus waits for it.
+ */
+export function revealPanoLayer(layerId: string): void {
+  const layer = workspace.getState().project?.manifest.layers.find((l) => l.id === layerId);
+  if (layer?.kind !== 'panoramas') return;
+  const capture = layer.capture;
+  const fly = () => {
+    const spots = layer.items.map((p) => p.pos);
+    if (spots.length === 0) return;
+    const lo = [Infinity, Infinity, Infinity];
+    const hi = [-Infinity, -Infinity, -Infinity];
+    for (const p of spots)
+      for (let k = 0; k < 3; k++) {
+        lo[k] = Math.min(lo[k] ?? 0, p[k] ?? 0);
+        hi[k] = Math.max(hi[k] ?? 0, p[k] ?? 0);
+      }
+    const centre: [number, number, number] = [0, 1, 2].map(
+      (k) => ((lo[k] ?? 0) + (hi[k] ?? 0)) / 2,
+    ) as [number, number, number];
+    const reach = Math.hypot(...[0, 1, 2].map((k) => ((hi[k] ?? 0) - (lo[k] ?? 0)) / 2));
+    workspace
+      .getState()
+      .flyTo({ kind: 'point', p: centre, distance: Math.max(PANO_FLY_DISTANCE_M, reach * 2.5) });
+  };
+  if (!capture) {
+    fly();
+    return;
+  }
+  const focus = () => {
+    const tl = timeline.getState();
+    if (!tl.index?.captures.some((c) => c.id === capture)) return false;
+    tl.focusSurvey(capture);
+    fly();
+    return true;
+  };
+  if (focus()) return;
+  const off = timeline.subscribe(() => {
+    if (focus()) {
+      off();
+      clearTimeout(giveUp);
+    }
+  });
+  const giveUp = setTimeout(off, 10_000);
+}
+
 export async function importPanos(choice: {
   keys: string[];
   layerName: string;
@@ -155,6 +205,7 @@ export async function importPanos(choice: {
   }
   // The files and the layer exist even if the dialog was cancelled meanwhile.
   workspace.getState().replaceManifest(r.value.manifest);
+  revealPanoLayer(r.value.layerId);
   if (mine !== run) return null;
   if (r.value.notStarted) panoImport.setState({ busy: null, notStarted: r.value.notStarted });
   else panoImport.setState({ ...CLOSED });

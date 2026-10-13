@@ -3,6 +3,7 @@ import { layerDate, workspace as appWorkspace, type Workspace } from '@aio/works
 import type { Quaternion } from 'three';
 import {
   BufferAttribute,
+  Box3,
   BufferGeometry,
   Color,
   Group,
@@ -613,6 +614,16 @@ export function createPanoramasAdapter(
         }
       }
 
+      // where the markers stand (with their stems) bounds the camera while there is no model or cloud
+      const placed = new Box3();
+      for (const p of items) {
+        placed.expandByPoint(new Vector3(...p.pos));
+        placed.expandByPoint(new Vector3(p.pos[0], Math.min(0, p.pos[1]), p.pos[2]));
+      }
+      const unbound = scene.addContentBounds(() =>
+        group.visible && !placed.isEmpty() ? placed : null,
+      );
+
       scene.requestRender();
       return {
         setVisible(visible: boolean) {
@@ -628,6 +639,7 @@ export function createPanoramasAdapter(
           }
           leave();
           unsub();
+          unbound();
           markers.dispose();
           scene.scene.remove(group);
           stemGeo.dispose();
