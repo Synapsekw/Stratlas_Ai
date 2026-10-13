@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { ProjectManifest } from '@aio/schema';
+import { ProjectManifest, emptyRemovalPlan, type RemovalPlan } from '@aio/schema';
 import { workspace } from '@aio/workspace';
 import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
@@ -9,7 +9,7 @@ import type { WizardInitial } from './startOver';
 const { call, startAlign, removeNow } = vi.hoisted(() => ({
   call: vi.fn(),
   startAlign: vi.fn<(a: { run: string }) => Promise<string | null>>(),
-  removeNow: vi.fn<(targets: { run: string }[]) => Promise<string | null>>(),
+  removeNow: vi.fn<(targets: { run: string }[], shown?: unknown) => Promise<string | null>>(),
 }));
 vi.mock('../shell', () => ({
   bridge: { call },
@@ -49,6 +49,15 @@ const initial: WizardInitial = {
   replaces: OLD,
 };
 const answer = (value: Record<string, unknown>) => Promise.resolve({ ok: true, value });
+/** What goes with the old run, as main plans it: the run and its map layer. */
+const RUN_PLAN: RemovalPlan = {
+  ...emptyRemovalPlan(),
+  runs: [{ id: OLD, status: 'failed', why: 'asked' }],
+  layers: [{ id: 'ortho', name: 'Ortho', kind: 'raster', why: { madeBy: OLD } }],
+  files: [`photogrammetry/${OLD}`],
+  bytes: 10,
+};
+let oldPlan: RemovalPlan = RUN_PLAN;
 
 let host: HTMLDivElement;
 let root: Root | undefined;
@@ -82,6 +91,7 @@ beforeEach(() => {
   startAlign.mockReset();
   removeNow.mockReset();
   removeNow.mockResolvedValue(null);
+  oldPlan = RUN_PLAN;
   photoUi.setState({ view: null, held: [], notes: {}, pending: {}, dates: {} });
   // main has not listed the old run (its folder unreadable): the wizard still never reuses its id
   call.mockImplementation((channel: string) => {
@@ -105,6 +115,7 @@ beforeEach(() => {
         estimate: { minutes: [10, 20], diskBytes: GB, memoryBytes: GB },
       });
     if (channel === 'photo:runs') return answer({ ok: true, runs: [] });
+    if (channel === 'builder:removePlan') return answer({ ok: true, plan: oldPlan });
     throw new Error(`unexpected channel ${channel}`);
   });
   workspace.getState().openProject({ id: 'p1', root: '/site', manifest: manifest('p1') });
@@ -151,7 +162,7 @@ describe('Start over in the process wizard', () => {
     expect(run).toBeDefined();
     expect(run).not.toBe(OLD);
     expect(removeNow).toHaveBeenCalledTimes(1);
-    expect(removeNow).toHaveBeenCalledWith([{ run: OLD }]);
+    expect(removeNow).toHaveBeenCalledWith([{ run: OLD }], RUN_PLAN);
     expect(photoUi.getState().view).toEqual({ kind: 'run', run, tab: 'progress' });
   });
 
@@ -215,7 +226,7 @@ describe('Start over in the process wizard', () => {
       await Promise.resolve();
     });
     await flush();
-    expect(removeNow).toHaveBeenCalledWith([{ run: OLD }]);
+    expect(removeNow).toHaveBeenCalledWith([{ run: OLD }], RUN_PLAN);
     expect(photoUi.getState().view).toBeNull();
   });
 
@@ -245,5 +256,67 @@ describe('Start over in the process wizard', () => {
     expect(photoUi.getState().notes[run]).toBe(
       `Run ${OLD} is still there: Another project was opened meanwhile.`,
     );
+  });
+  it('says what goes with the old run, and removes by that plan', async () => {
+    oldPlan = {
+      ...RUN_PLAN,
+      changes: [{ id: 'chg-1', name: '12 Oct to 26 Oct', why: { usedBy: 'ortho' } }],
+    };
+    startAlign.mockResolvedValue(null);
+    await mount();
+    const line = host.querySelector('[data-testid="start-over-removes"]')?.textContent;
+    expect(line).toBe(
+      `Run ${OLD} and what it made go to the project trash when this run starts. Also removes: 1 comparison (12 Oct to 26 Oct).`,
+    );
+    expect(call).toHaveBeenCalledWith('builder:removePlan', {
+      projectId: 'p1',
+      targets: [{ run: OLD }],
+    });
+    act(() => {
+      startButton().click();
+    });
+    await flush();
+    expect(removeNow).toHaveBeenCalledWith([{ run: OLD }], oldPlan);
+  });
+
+  it('a refused plan: says the old run stays, and never removes it', async () => {
+    oldPlan = {
+      ...RUN_PLAN,
+      refused: `Creating maps for run ${OLD} is still running. Cancel it first.`,
+    };
+    startAlign.mockResolvedValue(null);
+    await mount();
+    expect(host.querySelector('[data-testid="start-over-removes"]')?.textContent).toBe(
+      `Run ${OLD} stays when this run starts: Creating maps for run ${OLD} is still running. Cancel it first.`,
+    );
+    act(() => {
+      startButton().click();
+    });
+    await flush();
+    expect(startAlign).toHaveBeenCalledTimes(1);
+    expect(removeNow).not.toHaveBeenCalled();
+    const run = startAlign.mock.calls[0]?.[0].run ?? '';
+    expect(photoUi.getState().notes[run]).toBe(
+      `Run ${OLD} is still there: Creating maps for run ${OLD} is still running. Cancel it first.`,
+    );
+  });
+
+  it('a start that throws leaves the wizard ready to try again', async () => {
+    startAlign.mockRejectedValueOnce(new Error('The channel to main closed.'));
+    startAlign.mockResolvedValueOnce(null);
+    await mount();
+    act(() => {
+      startButton().click();
+    });
+    await flush();
+    expect(host.textContent).toContain('The channel to main closed.');
+    expect(startButton().disabled).toBe(false);
+    expect(removeNow).not.toHaveBeenCalled();
+    act(() => {
+      startButton().click();
+    });
+    await flush();
+    expect(startAlign).toHaveBeenCalledTimes(2);
+    expect(removeNow).toHaveBeenCalledTimes(1);
   });
 });

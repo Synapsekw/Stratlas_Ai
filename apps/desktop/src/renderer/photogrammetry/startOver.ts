@@ -1,5 +1,6 @@
 import { PhotoProduct } from '@aio/schema';
-import type { Layer, PhotoPreset, PhotoRun, PhotoSource } from '@aio/schema';
+import type { Layer, PhotoPreset, PhotoRun, PhotoSource, RemovalPlan } from '@aio/schema';
+import { removeText, t } from '@aio/ui';
 import { defaultProducts } from './estimate';
 
 /*
@@ -83,6 +84,33 @@ export function wizardInitialOf(
     ...(run.capture !== undefined ? { capture: run.capture } : {}),
     replaces: run.id,
   };
+}
+
+/** What goes with the run Start over replaces, as main planned it when the wizard opened. */
+export type OldRunPlan = { plan: RemovalPlan } | { error: string };
+
+/**
+ * The one line under the wizard's title: the old run and what it made go to the project trash
+ * when the new run starts, plus anything else that goes with it (a comparison made from its maps);
+ * or why it stays. The dialog's own words (`removeText`) name the extras.
+ */
+export function startOverLine(
+  run: string,
+  old: OldRunPlan,
+  dateLabel: (captureId: string) => string,
+): string {
+  if ('error' in old) return `Run ${run} stays when this run starts: ${old.error}`;
+  const { plan } = old;
+  if (plan.refused !== undefined) return `Run ${run} stays when this run starts: ${plan.refused}`;
+  // the run's own map layers and job folders are "what it made"; only the rest is named
+  const own = plan.layers.filter(
+    (l) => !(typeof l.why === 'object' && 'madeBy' in l.why && l.why.madeBy === run),
+  );
+  const extra = removeText([{ run }], { ...plan, layers: own, jobs: [] }, t, {
+    dateLabel,
+  }).also;
+  const line = `Run ${run} and what it made go to the project trash when this run starts.`;
+  return extra.length > 0 ? `${line} Also removes: ${extra.join(', ')}.` : line;
 }
 
 /** After **Start**: remove the replaced run when the start went through; a note when it could not. */

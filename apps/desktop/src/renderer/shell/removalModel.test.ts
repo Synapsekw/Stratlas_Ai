@@ -15,6 +15,16 @@ const PLAN: RemovalPlan = {
   bytes: 10,
 };
 const MANIFEST = { layers: [] } as unknown as ProjectManifest;
+/** An answer that makes `bridge.call` reject (the channel to main failed). */
+const THROWS = Symbol('throws');
+/** Start over's old run as the wizard showed it: the run and its map layer. */
+const RUN_PLAN: RemovalPlan = {
+  ...emptyRemovalPlan(),
+  runs: [{ id: 'r3', status: 'failed', why: 'asked' }],
+  layers: [{ id: 'r3-ortho', name: 'Ortho', kind: 'raster', why: { madeBy: 'r3' } }],
+  files: ['photogrammetry/r3'],
+  bytes: 10,
+};
 
 function ports(
   answers: Partial<Record<IpcChannel, unknown>>,
@@ -25,6 +35,7 @@ function ports(
     call: (channel, req) => {
       log.push(`call ${channel} ${JSON.stringify(req)}`);
       const value = answers[channel];
+      if (value === THROWS) return Promise.reject(new Error('channel closed'));
       return Promise.resolve(
         value instanceof Error
           ? { ok: false, error: value.message }
@@ -280,5 +291,65 @@ describe('removal store', () => {
     expect(await done).toBe(false);
     expect(s.getState().busy).toBe(false);
     expect(s.getState().error).toBe('boom');
+  });
+  it('puts the layers back when builder:remove throws', async () => {
+    const log: string[] = [];
+    const s = createRemovalStore(
+      ports({ 'builder:removePlan': { ok: true, plan: PLAN }, 'builder:remove': THROWS }, log),
+    );
+    await s.getState().ask([{ layer: 'clip-1' }]);
+    expect(await s.getState().confirm()).toBe(false);
+    expect(s.getState().error).toBe('channel closed');
+    expect(log).toContain('put back clip-1');
+  });
+
+  it('removeNow with the plan that was shown releases its layers before main moves them', async () => {
+    const log: string[] = [];
+    const s = createRemovalStore(
+      ports(
+        {
+          'builder:removePlan': { ok: true, plan: RUN_PLAN },
+          'builder:remove': { ok: true, manifest: MANIFEST, plan: RUN_PLAN },
+          'builder:trash': { bytes: 10, entries: 1 },
+        },
+        log,
+      ),
+    );
+    expect(await s.getState().removeNow([{ run: 'r3' }], RUN_PLAN)).toBeNull();
+    const at = (prefix: string) => log.findIndex((l) => l.startsWith(prefix));
+    expect(at('release r3-ortho')).toBeGreaterThan(-1);
+    expect(at('release r3-ortho')).toBeLessThan(at('call builder:remove {'));
+  });
+
+  it('removeNow with a shown plan removes nothing when more would go now', async () => {
+    const log: string[] = [];
+    const more: RemovalPlan = {
+      ...RUN_PLAN,
+      changes: [{ id: 'chg-1', name: '12 Oct to 26 Oct', why: { usedBy: 'r3-ortho' } }],
+    };
+    const s = createRemovalStore(
+      ports(
+        {
+          'builder:removePlan': { ok: true, plan: more },
+          'builder:remove': { ok: true, manifest: MANIFEST, plan: more },
+        },
+        log,
+      ),
+    );
+    expect(await s.getState().removeNow([{ run: 'r3' }], RUN_PLAN)).toBe(
+      'More would go with it now than was shown. Delete it from the Processing drawer.',
+    );
+    expect(log.some((l) => l.startsWith('call builder:remove {'))).toBe(false);
+    expect(log.some((l) => l.startsWith('release'))).toBe(false);
+    expect(s.getState().busy).toBe(false);
+  });
+
+  it('removeNow with a refused shown plan answers its reason and asks nothing', async () => {
+    const log: string[] = [];
+    const s = createRemovalStore(ports({}, log));
+    expect(await s.getState().removeNow([{ run: 'r3' }], { ...RUN_PLAN, refused: 'busy' })).toBe(
+      'busy',
+    );
+    expect(log).toEqual([]);
   });
 });

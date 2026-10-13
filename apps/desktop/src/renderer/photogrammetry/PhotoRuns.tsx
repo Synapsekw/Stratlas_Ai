@@ -43,7 +43,8 @@ export function PhotoRuns({ selected }: { selected?: JobRecord | undefined }) {
   const canEdit = !pkg && !lookOnly;
   // a removal elsewhere (the Datasets tree, Start over) changes the list
   const removed = useRemoval((s) => s.removed);
-  // runs with a job still at work: their Delete run waits until the job is cancelled
+  // runs with a job still at work: their Delete run waits until the job is cancelled, and Start
+  // over is hidden (as in the run panel)
   const liveKey = useJobs((s) =>
     s.jobs
       .filter(
@@ -223,7 +224,7 @@ export function PhotoRuns({ selected }: { selected?: JobRecord | undefined }) {
                       Delete work files
                     </button>
                   ))}
-                {canEdit && START_OVER.has(r.status) && (
+                {canEdit && START_OVER.has(r.status) && !liveRuns.has(r.id) && (
                   <button
                     type="button"
                     className="btn sm ghost"

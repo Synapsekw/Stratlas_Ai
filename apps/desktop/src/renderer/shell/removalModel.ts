@@ -36,8 +36,11 @@ export interface RemovalUi {
   ask: (targets: RemoveTarget[]) => Promise<void>;
   cancel: () => void;
   confirm: () => Promise<boolean>;
-  /** Remove without the dialog (Start over's old run): null when done, else why not. */
-  removeNow: (targets: RemoveTarget[]) => Promise<string | null>;
+  /**
+   * Remove without the dialog (Start over's old run): null when done, else why not. With the plan
+   * that was shown, its layers are released first, and nothing goes when more would go now.
+   */
+  removeNow: (targets: RemoveTarget[], shown?: RemovalPlan) => Promise<string | null>;
   /** Read a project's trash without touching `trash` (the library menu asks for any project). */
   readTrash: (projectId: string) => Promise<{ bytes: number; entries: number } | null>;
   /** Read the open project's trash into `trash`; a reply for a project no longer open is dropped. */
@@ -48,6 +51,20 @@ export interface RemovalUi {
 
 const errorOf = <T extends { ok: boolean; error?: string }>(r: Res<T>): string | null =>
   !r.ok ? r.error : r.value.ok ? null : (r.value.error ?? 'Failed.');
+
+/** Everything `now` takes along was in `shown` (the plan the person saw). */
+function within(now: RemovalPlan, shown: RemovalPlan): boolean {
+  const ids = (xs: readonly { id: string }[]) => new Set(xs.map((x) => x.id));
+  const sub = (a: Iterable<string>, b: ReadonlySet<string>) => [...a].every((x) => b.has(x));
+  return (
+    sub(ids(now.layers), ids(shown.layers)) &&
+    sub(ids(now.runs), ids(shown.runs)) &&
+    sub(ids(now.changes), ids(shown.changes)) &&
+    sub(now.tilesets, new Set(shown.tilesets)) &&
+    sub(now.surfaces, new Set(shown.surfaces)) &&
+    sub(now.detections, new Set(shown.detections))
+  );
+}
 
 export function createRemovalStore(p: RemovalPorts): StoreApi<RemovalUi> {
   return createStore<RemovalUi>()((set, get) => {
@@ -65,15 +82,19 @@ export function createRemovalStore(p: RemovalPorts): StoreApi<RemovalUi> {
       const layerIds = plan
         ? plan.layers.map((l) => l.id)
         : targets.flatMap((t) => ('layer' in t ? [t.layer] : []));
+      /** Set while main has not answered: a throw then puts the layers back too. */
+      let putBack: (() => void) | null = null;
       try {
-        const putBack = await p.release(layerIds);
+        putBack = await p.release(layerIds);
         // another project may have been opened while the viewers let go
         if (p.projectId() !== projectId) return 'The project changed.';
         const r = await p.bridge.call('builder:remove', { projectId, targets });
+        const back = putBack;
+        putBack = null;
         // the files moved in the project asked about; a project opened since has its own manifest
         const same = p.projectId() === projectId;
         if (!r.ok || !r.value.ok) {
-          if (same) putBack();
+          if (same) back();
           return errorOf(r) ?? 'Failed.';
         }
         if (same) {
@@ -84,8 +105,25 @@ export function createRemovalStore(p: RemovalPorts): StoreApi<RemovalUi> {
         void get().loadTrash(projectId);
         return null;
       } catch (e) {
+        if (putBack && p.projectId() === projectId) putBack();
         return e instanceof Error ? e.message : 'Failed.';
       }
+    };
+    /** The plan to remove by: the one shown, if nothing more would go now; else why not. */
+    const recheck = async (
+      targets: RemoveTarget[],
+      shown: RemovalPlan,
+      projectId: string | null,
+    ): Promise<RemovalPlan | string> => {
+      if (shown.refused !== undefined) return shown.refused;
+      if (projectId === null) return 'No project is open.';
+      const r = await p.bridge.call('builder:removePlan', { projectId, targets });
+      if (!r.ok || !r.value.ok) return errorOf(r) ?? 'Failed.';
+      const now = r.value.plan;
+      if (now.refused !== undefined) return now.refused;
+      return within(now, shown)
+        ? now
+        : 'More would go with it now than was shown. Delete it from the Processing drawer.';
     };
     return {
       targets: null,
@@ -124,12 +162,19 @@ export function createRemovalStore(p: RemovalPorts): StoreApi<RemovalUi> {
         set({ targets: null, plan: null, busy: false });
         return true;
       },
-      removeNow: async (targets) => {
+      removeNow: async (targets, shown) => {
         if (get().busy) return 'Another removal is still running.';
         set({ busy: true });
-        const error = await run(targets, null, p.projectId());
-        set({ busy: false });
-        return error;
+        try {
+          const projectId = p.projectId();
+          const plan = shown ? await recheck(targets, shown, projectId) : null;
+          if (typeof plan === 'string') return plan;
+          return await run(targets, plan, projectId);
+        } catch (e) {
+          return e instanceof Error ? e.message : 'Failed.';
+        } finally {
+          set({ busy: false });
+        }
       },
       readTrash: async (projectId) => {
         const r = await p.bridge.call('builder:trash', { projectId });

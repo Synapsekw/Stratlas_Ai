@@ -50,7 +50,7 @@ import {
 } from './estimate';
 import { gpuLine, machineLine, processingLine } from './hardware';
 import { openProcessingTools } from '../processingTools';
-import { replaceAfterStart, type Gnss } from './startOver';
+import { replaceAfterStart, startOverLine, type Gnss, type OldRunPlan } from './startOver';
 import { photoUi } from './store';
 import {
   choiceOf,
@@ -144,6 +144,27 @@ export function ProcessWizard() {
   const [openedIn] = useState(() => workspace.getState().project?.id ?? null);
   /** A start is under way (set at once, so a second click cannot start a second run). */
   const starting = useRef(false);
+  // Start over: what goes with the old run, asked once as the dialog opens; the line shows it and
+  // the removal after the start goes by it (its layers let go first, nothing unseen goes)
+  const oldPlanReq = useRef<Promise<OldRunPlan> | null>(null);
+  const [oldPlan, setOldPlan] = useState<OldRunPlan | null>(null);
+  useEffect(() => {
+    if (!start || openedIn === null) return;
+    let live = true;
+    const req = bridge
+      .call('builder:removePlan', { projectId: openedIn, targets: [{ run: start.replaces }] })
+      .then((r): OldRunPlan =>
+        !r.ok ? { error: r.error } : r.value.ok ? { plan: r.value.plan } : r.value,
+      )
+      .catch((e: unknown): OldRunPlan => ({ error: e instanceof Error ? e.message : String(e) }));
+    oldPlanReq.current = req;
+    void req.then((v) => {
+      if (live) setOldPlan(v);
+    });
+    return () => {
+      live = false;
+    };
+  }, [start, openedIn]);
   const src = start?.source ?? null;
   const projectEpsg = project && 'epsg' in project.manifest.crs ? project.manifest.crs.epsg : null;
   const [kind, setKind] = useState<'layer' | 'folders'>(
@@ -316,28 +337,35 @@ export function ProcessWizard() {
     starting.current = true;
     setBusy(true);
     setError(null);
-    const runs = await bridge.call('photo:runs', { projectId: project.id });
-    const taken = runs.ok && runs.value.ok ? runs.value.runs.map((r) => r.id) : [];
-    // the run Start over replaces is still there: its id and folder are never handed out again
-    const run = newRunId(new Date(), [
-      ...taken,
-      ...photoUi.getState().held,
-      ...(start ? [start.replaces] : []),
-    ]);
-    photoUi.getState().holdRun(run, true);
-    const err = await startAlign({
-      root: project.root,
-      run,
-      photos,
-      preset,
-      gnss,
-      ...(epsg !== null && epsg !== projectEpsg ? { crs: { epsg } } : {}),
-    });
-    if (err) {
-      photoUi.getState().holdRun(run, false);
+    let run: string | null = null;
+    let err: string | null;
+    try {
+      const runs = await bridge.call('photo:runs', { projectId: project.id });
+      const taken = runs.ok && runs.value.ok ? runs.value.runs.map((r) => r.id) : [];
+      // the run Start over replaces is still there: its id and folder are never handed out again
+      run = newRunId(new Date(), [
+        ...taken,
+        ...photoUi.getState().held,
+        ...(start ? [start.replaces] : []),
+      ]);
+      photoUi.getState().holdRun(run, true);
+      err = await startAlign({
+        root: project.root,
+        run,
+        photos,
+        preset,
+        gnss,
+        ...(epsg !== null && epsg !== projectEpsg ? { crs: { epsg } } : {}),
+      });
+    } catch (e) {
+      // the channel to main failed: the wizard can be started again
+      err = e instanceof Error ? e.message : String(e);
+    }
+    if (err !== null || run === null) {
+      if (run !== null) photoUi.getState().holdRun(run, false);
       starting.current = false;
       setBusy(false);
-      setError(err);
+      setError(err ?? 'Failed.');
       return;
     }
     const ui = photoUi.getState();
@@ -349,11 +377,16 @@ export function ProcessWizard() {
     if (photoUi.getState().view?.kind === 'wizard') ui.openRun(run, 'progress');
     // the old run goes only now that the new one started (never on Cancel or a refused start),
     // and only in the project the dialog was opened in; the dialog stays busy until then
-    const note = await replaceAfterStart(true, start, (old) =>
-      workspace.getState().project?.id === openedIn
-        ? removal.getState().removeNow([{ run: old }])
-        : Promise.resolve('Another project was opened meanwhile.'),
-    );
+    const note = await replaceAfterStart(true, start, async (old) => {
+      const shown = await (oldPlanReq.current ??
+        Promise.resolve<OldRunPlan>({ error: 'What goes with it was not worked out.' }));
+      if (workspace.getState().project?.id !== openedIn)
+        return 'Another project was opened meanwhile.';
+      // a plan that could not be worked out or was refused: the old run stays, nothing unseen goes
+      if ('error' in shown) return shown.error;
+      if (shown.plan.refused !== undefined) return shown.plan.refused;
+      return removal.getState().removeNow([{ run: old }], shown.plan);
+    });
     if (note) photoUi.getState().setNote(run, note);
   };
 
@@ -424,6 +457,14 @@ export function ProcessWizard() {
             <p className="small" data-testid="photo-project">
               Project: <b>{project.manifest.name}</b>
             </p>
+            {start && oldPlan && (
+              <p className="small" data-testid="start-over-removes">
+                {startOverLine(start.replaces, oldPlan, (id) => {
+                  const c = project.manifest.captures.find((x) => x.id === id);
+                  return c ? formatDate(c.date) : id;
+                })}
+              </p>
+            )}
             {ready && (
               <p className="small faint">
                 Choose the photos, then start. They are read where they are and never changed.
