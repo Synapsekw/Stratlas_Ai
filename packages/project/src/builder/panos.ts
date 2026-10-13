@@ -174,8 +174,23 @@ export async function importPanoGroups(
       `Importing these panoramas needs ${size(bytes + PANO_COPY_HEADROOM)} free, and ${size(free)} is free.`,
       'space',
     );
-  const taken = (id: string) => atStart.layers.some((l) => l.id === id);
-  const layerId = uniqueId(choice.date ? `panos-${choice.date}` : 'panos', taken);
+  // reserve the layer folder on disk (a non-recursive mkdir), so a concurrent import or an orphan
+  // folder with the same id is never shared, written into or removed by our cleanup
+  await mkdir(join(root, 'panoramas'), { recursive: true });
+  const base = choice.date ? `panos-${choice.date}` : 'panos';
+  const busy = new Set<string>();
+  const reserve = async (): Promise<string> => {
+    const id = uniqueId(base, (x) => busy.has(x) || atStart.layers.some((l) => l.id === x));
+    try {
+      await mkdir(join(root, 'panoramas', id));
+      return id;
+    } catch (e) {
+      if ((e as NodeJS.ErrnoException).code !== 'EEXIST') throw e;
+      busy.add(id);
+      return reserve();
+    }
+  };
+  const layerId = await reserve();
   const layerDir = join(root, 'panoramas', layerId);
   const items: PanoRef[] = [];
   const stitch: string[] = [];
@@ -211,6 +226,7 @@ export async function importPanoGroups(
       tick(r.file);
       items.push(panoRef(id, layerId, n, r, frame, false));
     }
+    if (deps.signal?.aborted) throw new PanoImportError('The import was cancelled.', 'cancelled');
     const layer: PanoLayer = {
       kind: 'panoramas',
       id: layerId,
@@ -232,7 +248,8 @@ export async function importPanoGroups(
     });
     return { manifest: saved.manifest, layerId, stitch, shapes };
   } catch (e) {
-    await rm(layerDir, { recursive: true, force: true });
+    // a locked file (antivirus, indexer) must not replace the real error
+    await rm(layerDir, { recursive: true, force: true, maxRetries: 3 }).catch(() => undefined);
     throw e;
   }
 }
@@ -296,14 +313,14 @@ export function applyStitchOutcome(
   record?: PanoStitchFile | null,
 ): ProjectManifest | null {
   return mapItems(m, o.layer, (p) => {
-    if (p.id !== o.pano) return p;
-    const prev = p.stitch?.run;
+    if (p.id !== o.pano || !p.stitch) return p; // a ready-made panorama has no stitch
+    const prev = p.stitch.run;
     if (prev !== undefined && o.run < prev) return p;
     if (o.status === 'done') {
       if (record?.run !== o.run) return p;
       const cov = covOf(record);
       if (
-        p.stitch?.status === 'done' &&
+        p.stitch.status === 'done' &&
         p.stitch.run === o.run &&
         JSON.stringify(p.cov) === JSON.stringify(cov)
       )

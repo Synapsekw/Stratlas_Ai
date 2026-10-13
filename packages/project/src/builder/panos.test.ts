@@ -1,6 +1,7 @@
 import { gridConvergenceDeg, toWgs84 } from '@aio/geo';
 import type { PanoStitchFile } from '@aio/schema';
-import { mkdir, mkdtemp, readdir, readFile, rm, stat, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, open, readdir, readFile, rm, stat, writeFile } from 'node:fs/promises';
+import type { FileHandle } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
@@ -182,6 +183,66 @@ describe('importPanoGroups', () => {
     expect((await readManifestFile(root)).layers.some((l) => l.kind === 'panoramas')).toBe(false);
   });
 
+  it('keeps the cancel error when the cleanup cannot remove a locked file', async () => {
+    const ctl = new AbortController();
+    const g = keyGrouping(await grouping());
+    let handle: FileHandle | undefined;
+    const err = await importPanoGroups(
+      root,
+      g,
+      { ...choice, keys: ['s1'] },
+      deps({
+        signal: ctl.signal,
+        onProgress: (d) => {
+          if (d === 2) {
+            // hold the first copied frame open: on Windows its removal then fails
+            void open(join(root, 'panoramas', 'panos-2026-09-10', 'p01', 'frames', 'SYN_0001.JPG'))
+              .then((h) => (handle = h))
+              .catch(() => undefined);
+          }
+          if (d === 3) ctl.abort();
+        },
+      }),
+    ).catch((e: unknown) => e);
+    await handle?.close();
+    expect((err as PanoImportError).code).toBe('cancelled');
+    await rm(join(root, 'panoramas', 'panos-2026-09-10'), { recursive: true, force: true });
+  });
+
+  it('leaves no folder and no layer when a copy fails halfway, and reports that error', async () => {
+    const g = keyGrouping(await grouping());
+    const sphere = g.spheres[0];
+    if (!sphere) throw new Error('no sphere');
+    await rm(sphere.frames[4]?.file ?? '');
+    const err = await importPanoGroups(root, g, { ...choice, keys: ['s1'] }, deps()).catch(
+      (e: unknown) => e,
+    );
+    expect(err).not.toBeInstanceOf(PanoImportError);
+    expect((err as NodeJS.ErrnoException).code).toBe('ENOENT');
+    expect(await readdir(join(root, 'panoramas'))).toEqual([]);
+    expect((await readManifestFile(root)).layers.some((l) => l.kind === 'panoramas')).toBe(false);
+  });
+
+  it('never shares or removes a folder that already has the candidate id', async () => {
+    const orphan = join(root, 'panoramas', 'panos-2026-09-10');
+    await mkdir(join(orphan, 'p01', 'frames'), { recursive: true });
+    await writeFile(join(orphan, 'p01', 'frames', 'keep.JPG'), 'mine');
+    const g = keyGrouping(await grouping());
+    const r = await importPanoGroups(root, g, { ...choice, keys: ['s1'] }, deps());
+    expect(r.layerId).toBe('panos-2026-09-10-2');
+    expect(await readdir(join(orphan, 'p01', 'frames'))).toEqual(['keep.JPG']);
+    // and a failed import leaves that folder alone too
+    const ctl = new AbortController();
+    ctl.abort();
+    await importPanoGroups(
+      root,
+      g,
+      { ...choice, keys: ['s2'] },
+      deps({ signal: ctl.signal }),
+    ).catch(() => undefined);
+    expect(await readdir(join(orphan, 'p01', 'frames'))).toEqual(['keep.JPG']);
+  });
+
   it('refuses an empty choice and gives a second import its own layer', async () => {
     const g = keyGrouping(await grouping());
     await expect(importPanoGroups(root, g, { ...choice, keys: [] }, deps())).rejects.toMatchObject({
@@ -306,6 +367,10 @@ describe('filing stitch outcomes', () => {
     ).toBeNull();
     expect(
       applyStitchOutcome(newer, { layer, pano: 'p99', run: 'x', status: 'failed' }),
+    ).toBeNull();
+    // a ready-made panorama never had a stitch: no state is added to it
+    expect(
+      applyStitchOutcome(newer, { layer, pano: 'p03', run: 'x', status: 'failed' }),
     ).toBeNull();
     expect(
       applyStitchOutcome(newer, {
