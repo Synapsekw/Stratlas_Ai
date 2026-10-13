@@ -41,6 +41,22 @@ The founder settled four more points the same day (founder, 13 Oct 2026):
 7. **Hub peers**: a removal syncs as a manifest change only for now; cleaning up the files on
    peers is a follow-up.
 
+### Founder decisions, 13 Oct 2026 (after build)
+
+8. **Deleting a survey date removes all of it.** A date also takes every photogrammetry run whose
+   layers (by `outputs.layers` or the `<run>-*` convention) all go with it, or whose photos layer
+   goes, so the run folder and its job records go too and the dialog lists the run. A run read
+   from outside folders is taken the same way; those folders are never moved ("Your original
+   photos are not touched").
+9. **Keyboard multi-select in the Datasets tree.** Shift+ArrowUp/Down extends the marks from the
+   anchor (or the focused row) over the rows drawn and moves the focus; Ctrl+Space (Cmd+Space on
+   a Mac) toggles the focused row; Delete on a focused row with nothing marked asks to delete that
+   row, always through the confirm dialog. Keys typed in a field stay the field's.
+10. **The show and hide eye stays in the Datasets header while rows are marked**, beside
+    "N selected · Delete…", which gives way first at the 252 px sidebar.
+
+In-app Restore and peer file clean-up stay follow-ups.
+
 ## Who uses it, and what success looks like
 
 The person who processes drone photos in the office. A run failed at 80 % on a bad setting; they
