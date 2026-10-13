@@ -313,6 +313,40 @@ describe('the spot viewer', () => {
     expect(selectSpy).not.toHaveBeenCalled();
   });
 
+  it('Compare resolves a left side whose match is gone', () => {
+    render();
+    show(photoA);
+    act(() => {
+      spotViewer.getState().setCompare({
+        mode: 'side',
+        left: { capture: 'd2', i: 9 },
+        right: { capture: 'd1', i: 0 },
+        amount: 0.5,
+      });
+    });
+    expect(
+      q('frames-a')?.querySelector('[data-testid="spot-view"]')?.getAttribute('data-capture'),
+    ).toBe('d2');
+    expect(head()?.dataset.item).toBe('b');
+  });
+
+  it('leaves Compare when its left side cannot be resolved', () => {
+    entries = [photoAt('u', [0, 1.6, 0], 0, { layer: 'photos-u', capture: undefined })];
+    render();
+    show({ kind: 'photo', layer: 'photos-u', photo: 'u' });
+    act(() => {
+      spotViewer.getState().setCompare({
+        mode: 'side',
+        left: { capture: 'd1', i: 0 },
+        right: null,
+        amount: 0.5,
+      });
+    });
+    expect(q('spot-compare-view')).toBeNull();
+    expect(spotViewer.getState().compare).toBeNull();
+    expect(head()?.dataset.item).toBe('u');
+  });
+
   it('a strip pick in Compare sets the left side', () => {
     render();
     show(photoA);

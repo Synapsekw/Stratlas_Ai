@@ -102,3 +102,21 @@ export function defaultOther(h: SpotHistory, capture: string): SpotAt | null {
   const after = stepDate(h, here, 1);
   return after && after.capture !== capture ? after : null;
 }
+
+/**
+ * Compare's sides against a recomputed history (a layer or date removed, a clip read late): a
+ * side whose match is gone falls back on its date, else (left) the newest date or (right) the
+ * date next to the left one; a right side with no date stays so. Null when the left side has
+ * nothing left to show: leave Compare.
+ */
+export function resolveCompare(h: SpotHistory, c: SpotCompareState): SpotCompareState | null {
+  const left = resolveAt(h, c.left, c.left.capture);
+  if (!left) return null;
+  const right =
+    !c.right || matchAt(h, c.right)
+      ? c.right
+      : matchAt(h, { capture: c.right.capture, i: 0 })
+        ? { capture: c.right.capture, i: 0 }
+        : defaultOther(h, left.capture);
+  return left === c.left && right === c.right ? c : { ...c, left, right };
+}

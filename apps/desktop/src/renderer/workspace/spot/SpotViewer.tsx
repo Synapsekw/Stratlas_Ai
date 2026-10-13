@@ -8,7 +8,7 @@
 import type { Layer } from '@aio/schema';
 import { focusLost, Icon, matchShortcut, shortcutHint, useFocusTrap, useT } from '@aio/ui';
 import { useWorkspace } from '@aio/workspace';
-import { useEffect, useRef, type KeyboardEvent, type ReactNode } from 'react';
+import { useEffect, useMemo, useRef, type KeyboardEvent, type ReactNode } from 'react';
 import { useStore } from 'zustand';
 import { metres } from '../panoSurface';
 import { SpotCompare } from './SpotCompare';
@@ -21,6 +21,7 @@ import {
   defaultOther,
   matchAt,
   resolveAt,
+  resolveCompare,
   spotViewer,
   startAt,
   type SpotAt,
@@ -88,6 +89,20 @@ export function SpotViewer() {
   useEffect(() => {
     if (shown && dialog.current && focusLost(document)) dialog.current.focus();
   });
+
+  // Compare's sides resolved against the current history; null when the left side is gone (a
+  // layer or date removed), and then Compare is left
+  const compare = useMemo(
+    () =>
+      state.compare && result && 'history' in result
+        ? resolveCompare(result.history, state.compare)
+        : null,
+    [state.compare, result],
+  );
+  const compareGone = state.compare !== null && result !== null && compare === null;
+  useEffect(() => {
+    if (compareGone) spotViewer.getState().setCompare(null);
+  }, [compareGone]);
 
   if (!shown) return null;
   const layers = project.manifest.layers;
@@ -186,7 +201,6 @@ export function SpotViewer() {
     );
 
   const history = result.history;
-  const compare = state.compare;
   // an undated item has no slot: the viewer starts on the item itself (F8)
   const undated = origin === undefined;
   const at: SpotAt | null = compare

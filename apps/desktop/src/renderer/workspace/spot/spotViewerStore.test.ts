@@ -5,6 +5,7 @@ import {
   defaultOther,
   matchAt,
   resolveAt,
+  resolveCompare,
   startAt,
   stepDate,
 } from './spotViewerStore';
@@ -61,6 +62,40 @@ describe('stepping', () => {
       layer: 'photos-d3',
       photo: 'c',
     });
+  });
+});
+
+describe('resolveCompare', () => {
+  const c = {
+    mode: 'side',
+    left: { capture: 'd1', i: 0 },
+    right: { capture: 'd3', i: 1 },
+    amount: 0.5,
+  } as const;
+  it('keeps sides that still resolve, the same state', () => {
+    expect(resolveCompare(h, c)).toBe(c);
+  });
+  it('a side whose match is gone falls back on its date, then to another date', () => {
+    expect(resolveCompare(h, { ...c, right: { capture: 'd3', i: 7 } })?.right).toEqual({
+      capture: 'd3',
+      i: 0,
+    });
+    const gone = resolveCompare(h, {
+      ...c,
+      left: { capture: 'd9', i: 0 },
+      right: { capture: 'd2', i: 0 },
+    });
+    expect(gone?.left).toEqual({ capture: 'd3', i: 0 });
+    expect(gone?.right).toEqual({ capture: 'd1', i: 0 });
+    // a right side with no date stays so
+    expect(resolveCompare(h, { ...c, right: null })?.right).toBeNull();
+  });
+  it('is null when the left side cannot be resolved', () => {
+    const empty: SpotHistory = {
+      spot: h.spot,
+      dates: [{ capture: 'd1', matches: [], skipped: 0 }],
+    };
+    expect(resolveCompare(empty, c)).toBeNull();
   });
 });
 
