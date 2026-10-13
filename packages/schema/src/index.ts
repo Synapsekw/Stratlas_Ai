@@ -46,3 +46,5 @@ export * from './panoStitch';
 export * from './launch';
 // Online satellite imagery (ADR 0007, amendment of 10 Oct 2026)
 export * from './onlineImagery';
+// Delete and start over: removal targets, the removal plan and the trash record (aio.trash/1)
+export * from './removal';

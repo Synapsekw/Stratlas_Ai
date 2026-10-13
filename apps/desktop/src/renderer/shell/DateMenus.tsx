@@ -232,6 +232,8 @@ export interface DateFolderMenuProps {
   onSetVisible: (layerIds: string[], visible: boolean) => void;
   onRename: (capture: string) => void;
   onStyle: (capture: string, patch: { colour?: number | null; icon?: string | null }) => void;
+  /** Delete… for the date and everything filed under it (not on Every date). */
+  onDelete?: ((capture: string) => void) | undefined;
 }
 
 /**
@@ -254,13 +256,13 @@ export function DateFolderMenu(props: DateFolderMenuProps) {
     icon: IconName,
     label: string,
     run: () => void,
-    o: { disabled?: boolean } = {},
+    o: { disabled?: boolean; danger?: boolean } = {},
   ): ReactNode => (
     <button
       key={id}
       type="button"
       role="menuitem"
-      className="dmenu-item"
+      className={o.danger ? 'dmenu-item danger' : 'dmenu-item'}
       disabled={o.disabled}
       data-testid={`date-menu-${id}`}
       onClick={() => {
@@ -435,6 +437,20 @@ export function DateFolderMenu(props: DateFolderMenuProps) {
                 item('reset', 'undo', t('tree.dates.menu.reset'), () => {
                   props.onStyle(capture.id, { colour: null, icon: null });
                 })}
+              {props.onDelete && (
+                <>
+                  <div className="dmenu-sep" role="separator" />
+                  {item(
+                    'delete',
+                    'trash',
+                    t('tree.delete'),
+                    () => {
+                      props.onDelete?.(capture.id);
+                    },
+                    { danger: true },
+                  )}
+                </>
+              )}
             </>
           )}
         </>
@@ -455,11 +471,16 @@ export interface LayerDateMenuProps {
   canEdit: boolean;
   onClose: () => void;
   onMove: (layerIds: string[], capture: string | null) => void;
+  /** Delete… at the bottom (an editable project, rows that can be deleted). */
+  onDelete?: ((layerIds: string[]) => void) | undefined;
+  /** False with survey dates off: no "File under" list, only Compare and Delete. Default true. */
+  dateMoves?: boolean | undefined;
 }
 
 /**
  * Right-click (or the menu key) on a dataset or a group header: file it under another survey date,
- * or under none. The same move as dragging the row onto a date folder, for the keyboard.
+ * or under none (the same move as dragging the row onto a date folder, for the keyboard), compare
+ * it with another date, or delete it.
  */
 export function LayerDateMenu({
   menu,
@@ -469,6 +490,8 @@ export function LayerDateMenu({
   canEdit,
   onClose,
   onMove,
+  onDelete,
+  dateMoves,
 }: LayerDateMenuProps) {
   const t = useT();
   const list = useRef<HTMLDivElement>(null);
@@ -477,12 +500,20 @@ export function LayerDateMenu({
   useViewFocus(list, view);
   const ctx = useCompareContext();
   const compare = canCompare(ctx, menu.from);
-  // read-only and nothing to compare: there is nothing to show, so do not open an empty menu
-  const empty = !canEdit && !compare;
+  const moves = canEdit && dateMoves !== false;
+  const del = canEdit && onDelete !== undefined;
+  // nothing to compare, file or delete (read-only, or dates off on a row that cannot be deleted):
+  // there is nothing to show, so do not open an empty menu
+  const empty = !compare && !moves && !del;
   useEffect(() => {
     if (empty) onClose();
   }, [empty, onClose]);
-  const placed = usePlace(list, menu.x, menu.y, Math.min(90 + (captures.length + 1) * 30, 340));
+  const placed = usePlace(
+    list,
+    menu.x,
+    menu.y,
+    moves ? Math.min(90 + (captures.length + 1) * 30, 340) : 110,
+  );
   const newestFirst = [...captures].sort(
     (a, b) => b.date.localeCompare(a.date) || b.id.localeCompare(a.id),
   );
@@ -531,7 +562,7 @@ export function LayerDateMenu({
       ) : (
         <>
           <div className="dmenu-h faint">
-            {canEdit ? `${t('tree.dates.move.title')} · ${menu.name}` : menu.name}
+            {moves ? `${t('tree.dates.move.title')} · ${menu.name}` : menu.name}
           </div>
           {compare && (
             <button
@@ -547,7 +578,7 @@ export function LayerDateMenu({
               <span>{t('tree.dates.move.compare')}</span>
             </button>
           )}
-          {canEdit && (
+          {moves && (
             <>
               {compare && <div className="dmenu-sep" role="separator" />}
               <div className="dmenu-h faint">{t('tree.dates.move.fileUnder')}</div>
@@ -565,6 +596,24 @@ export function LayerDateMenu({
                   ),
                 )}
               </div>
+            </>
+          )}
+          {del && (
+            <>
+              {(compare || moves) && <div className="dmenu-sep" role="separator" />}
+              <button
+                type="button"
+                role="menuitem"
+                className="dmenu-item danger"
+                data-testid="menu-delete"
+                onClick={() => {
+                  onClose();
+                  onDelete(menu.layerIds);
+                }}
+              >
+                <Icon name="trash" size={14} />
+                <span>{t('tree.delete')}</span>
+              </button>
             </>
           )}
         </>

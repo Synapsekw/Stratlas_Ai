@@ -12,8 +12,9 @@
  * - `tilesets:write` and `photo:writeGcp` are wrapped too (one `record.external` op per save);
  * - `builder:updateLayers`, `builder:updateCapture`, `builder:removeCapture`, `walks:remove` and
  *   `builder:ensureCapture` are diffed after they write (their result is computed in the
- *   handler), and so are `tilesets:import` (the imported tileset's name as the label) and
- *   `photo:applyPoses` with `apply: true`;
+ *   handler), and so are `tilesets:import` (the imported tileset's name as the label),
+ *   `photo:applyPoses` with `apply: true` and `builder:remove` (every journaled file its plan
+ *   names: the manifest, `tilesets.json`, change sets and detections);
  * - on open, a half-done write is finished (crash recovery) and any other difference is recorded
  *   as attributed ops (`via.external`, "changed outside Quadrion AI"), except the open's own
  *   manifest write (walks made layers and their files linked), which is the app's change;
@@ -95,6 +96,7 @@ import { assertWritable } from './realDataGuard';
 import { type Handle } from './notYet';
 import { ISSUES_SCHEMA } from './project';
 import { createJournalStore, type JournalStore } from './sync/journalStore';
+import { journaledRemovals } from './removal';
 
 /** Who signs the journal on this machine: T2's identity service (`identityPorts.ts`). */
 export interface JournalIdentity {
@@ -261,6 +263,9 @@ const READS: ReadonlySet<IpcChannel> = new Set<IpcChannel>([
   'blobs:status',
   'thumbs:put',
   'library:reveal',
+  // a removal's plan and the trash size only read; the removal itself waits like any writer
+  'builder:removePlan',
+  'builder:trash',
 ]);
 
 /** Does a request schema of the contract have a `projectId` (an object, or any union member)? */
@@ -951,6 +956,24 @@ export function createJournalService(deps: JournalServiceDeps) {
           w.commands,
           async () => (await handler(req)) as IpcResponse<C> & { ok: boolean; error?: string },
         );
+      };
+    }
+    if (channel === 'builder:remove') {
+      // the removal moved files and rewrote side files: record each journaled one it names
+      return async (req) => {
+        const r = (await handler(req)) as IpcResponse<'builder:remove'>;
+        const { projectId } = req as IpcRequest<'builder:remove'>;
+        const root = deps.projects.root(projectId);
+        if (r.ok && root !== undefined && !deps.projects.package(projectId)) {
+          try {
+            const st = await load(root);
+            if (st.meta.journal === 'on')
+              await serial(st, () => reconcile(st, journaledRemovals(r.plan), undefined));
+          } catch (e) {
+            console.warn(`Journal: could not record builder:remove in ${root} (${String(e)}).`);
+          }
+        }
+        return r as IpcResponse<C>;
       };
     }
     if (

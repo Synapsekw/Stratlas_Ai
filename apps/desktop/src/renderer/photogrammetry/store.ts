@@ -5,10 +5,12 @@
  */
 import type { JobRecord, PhotoPreset, PhotoProduct, PipelineName } from '@aio/schema';
 import { createStore, useStore } from 'zustand';
+import type { WizardInitial } from './startOver';
 
 export type RunTab = 'progress' | 'gcp' | 'report' | 'poses';
 
-export type PhotoView = { kind: 'wizard' } | { kind: 'run'; run: string; tab: RunTab };
+export type PhotoView =
+  { kind: 'wizard'; initial?: WizardInitial } | { kind: 'run'; run: string; tab: RunTab };
 
 /** Products to start when a run's alignment finishes (the wizard's choice). */
 export interface PendingProducts {
@@ -46,9 +48,11 @@ export interface PhotoUi {
    * has read its photos, so a new id avoids these too and two starts never share a run folder.
    */
   held: string[];
+  /** A line under a run in its panel (Start over's old run that stayed). */
+  notes: Record<string, string>;
   /** Bumped after a write, so open panels read the run again. */
   version: number;
-  openWizard: () => void;
+  openWizard: (initial?: WizardInitial) => void;
   openRun: (run: string, tab?: RunTab) => void;
   setTab: (tab: RunTab) => void;
   close: () => void;
@@ -59,6 +63,7 @@ export interface PhotoUi {
   setDateWarning: (run: string, warning: DateWarning | null) => void;
   /** Hold a run id (true) or free it again after a refused start (false). */
   holdRun: (run: string, hold: boolean) => void;
+  setNote: (run: string, note: string | null) => void;
   bump: () => void;
 }
 
@@ -70,12 +75,13 @@ export const photoUi = createStore<PhotoUi>()((set) => ({
   startErrors: {},
   dateWarnings: {},
   held: [],
+  notes: {},
   version: 0,
   holdRun: (run, hold) => {
     set((s) => ({ held: [...s.held.filter((r) => r !== run), ...(hold ? [run] : [])] }));
   },
-  openWizard: () => {
-    set({ view: { kind: 'wizard' } });
+  openWizard: (initial) => {
+    set({ view: initial ? { kind: 'wizard', initial } : { kind: 'wizard' } });
   },
   openRun: (run, tab = 'progress') => {
     set({ view: { kind: 'run', run, tab } });
@@ -123,6 +129,13 @@ export const photoUi = createStore<PhotoUi>()((set) => ({
       );
       if (warning) dateWarnings[run] = warning;
       return { dateWarnings };
+    });
+  },
+  setNote: (run, note) => {
+    set((s) => {
+      const notes = Object.fromEntries(Object.entries(s.notes).filter(([k]) => k !== run));
+      if (note) notes[run] = note;
+      return { notes };
     });
   },
   bump: () => {

@@ -6,7 +6,7 @@ import { Id, IsoDate, IsoTime } from './common';
  * 2026-10-13-drone-panoramas-p1). One `panoramas` layer per import; each sphere is one `PanoRef`
  * whose files live in `panoramas/<layerId>/<panoId>/`: `frames/` (the source frames, never map
  * items), `pano.jpg`, `thumb.jpg` and the run record `stitch.json` (`aio.pano-stitch/1`).
- * Data-conventions section 33.
+ * Data-conventions section 34.
  */
 
 export const PANO_STITCH_SCHEMA = 'aio.pano-stitch/1';

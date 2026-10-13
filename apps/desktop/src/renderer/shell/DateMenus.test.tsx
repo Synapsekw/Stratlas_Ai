@@ -6,7 +6,12 @@ import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { compareWith, COMPARE_WITH_ACTIONS } from '../workspace/compareWith';
-import { DateFolderMenu, LayerDateMenu, type DateFolderMenuProps } from './DateMenus';
+import {
+  DateFolderMenu,
+  LayerDateMenu,
+  type DateFolderMenuProps,
+  type LayerDateMenuProps,
+} from './DateMenus';
 
 vi.mock('../workspace/compareWith', () => ({
   COMPARE_WITH_ACTIONS: [],
@@ -259,7 +264,7 @@ describe('DateFolderMenu: Compare with', () => {
 });
 
 describe('LayerDateMenu', () => {
-  const open = (from: string, canEdit = true) => {
+  const open = (from: string, canEdit = true, extra: Partial<LayerDateMenuProps> = {}) => {
     const onMove = vi.fn();
     const onClose = vi.fn();
     root = createRoot(host);
@@ -280,6 +285,7 @@ describe('LayerDateMenu', () => {
           onClose={onClose}
           onMove={onMove}
           canEdit={canEdit}
+          {...extra}
         />,
       ),
     );
@@ -379,5 +385,57 @@ describe('LayerDateMenu', () => {
       q('move-menu')?.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
     });
     expect(onClose).toHaveBeenCalledTimes(1);
+  });
+
+  it('offers Delete… that hands over its layers', () => {
+    const onDelete = vi.fn();
+    const { onClose } = open('oct', true, { onDelete });
+    click('menu-delete');
+    expect(onDelete).toHaveBeenCalledWith(['quad']);
+    expect(onClose).toHaveBeenCalledTimes(1);
+  });
+
+  it('has no Delete… in a read-only project, though the menu opens to compare', () => {
+    open('oct', false, { onDelete: vi.fn() });
+    expect(q('move-compare')).not.toBeNull();
+    expect(q('menu-delete')).toBeNull();
+  });
+
+  it('has no Delete… without the callback (rows that cannot be deleted)', () => {
+    open('oct');
+    expect(q('menu-delete')).toBeNull();
+  });
+
+  it('with dates off has no File under list, only Compare and Delete', () => {
+    open('oct', true, { onDelete: vi.fn(), dateMoves: false });
+    expect(document.body.querySelector('[data-testid^="move-to-"]')).toBeNull();
+    expect(document.body.textContent).not.toContain('File under');
+    expect(q('move-compare')).not.toBeNull();
+    expect(q('menu-delete')).not.toBeNull();
+  });
+
+  it('with dates off opens no empty menu on a row it cannot compare or delete', () => {
+    const { onClose } = open(EVERY_DATE, true, { dateMoves: false });
+    expect(q('move-menu')).toBeNull();
+    expect(onClose).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('DateFolderMenu: Delete…', () => {
+  it('a date folder offers Delete… for its date', () => {
+    const onDelete = vi.fn();
+    const p = folderMenu('sep', { onDelete });
+    click('date-menu-delete');
+    expect(onDelete).toHaveBeenCalledWith('sep');
+    expect(p.onClose).toHaveBeenCalledTimes(1);
+  });
+
+  it('Every date and a read-only project have no Delete… on the folder', () => {
+    folderMenu(EVERY_DATE, { onDelete: vi.fn() });
+    expect(q('date-menu-delete')).toBeNull();
+    act(() => root?.unmount());
+    folderMenu('sep', { canEdit: false, onDelete: vi.fn() });
+    expect(q('date-menu-view')).not.toBeNull();
+    expect(q('date-menu-delete')).toBeNull();
   });
 });

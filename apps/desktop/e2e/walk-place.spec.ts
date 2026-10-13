@@ -205,11 +205,9 @@ test.describe('placing a walk', () => {
       timeout: 60_000,
     });
     await rowAction(win, 'remove');
-    const confirm = win.getByTestId('walk-remove-confirm');
-    await expect(confirm).toContainText(
-      `Remove ${WALK_NAME}? Its files stay in the project trash for seven days.`,
-    );
-    await confirm.getByTestId('walk-remove-yes').click();
+    const confirm = win.getByTestId('remove-dialog');
+    await expect(confirm.getByTestId('remove-dialog-title')).toContainText(WALK_NAME);
+    await confirm.getByTestId('remove-dialog-confirm').click();
     await expect(win.getByTestId(`tree-row-${WALK_LAYER}`)).toHaveCount(0, { timeout: 30_000 });
     await expect.poll(() => readdir(join(dir, 'walks'))).toEqual([]);
     const trash = await readdir(join(dir, '.trash'));

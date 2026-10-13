@@ -3,9 +3,10 @@
  * (`jobs:start`, `jobs:cancel`), and reload the project's manifest when processing added layers.
  * Every function answers an error sentence, or null when it worked.
  */
-import type { PhotoPreset, PhotoSource, ProjectManifest } from '@aio/schema';
+import type { Layer, PhotoPreset, PhotoSource, ProjectManifest } from '@aio/schema';
 import { workspace } from '@aio/workspace';
 import { bridge, jobs } from '../shell';
+import { wizardInitialOf } from './startOver';
 import { photoUi, type PendingProducts } from './store';
 
 async function start(
@@ -185,6 +186,25 @@ export async function fileUnderDate(run: string): Promise<string | null> {
 /** **Export as OPF**: the run's cameras, calibration and outputs as an OPF project in `out`. */
 export function startOpfExport(root: string, run: string, out: string): Promise<string | null> {
   return start('opf.export', root, { run, out });
+}
+
+/** **Start over…**: read the run and open the wizard filled in from it; null, or why not. */
+export async function openStartOver(
+  projectId: string,
+  run: string,
+  layers: readonly Pick<Layer, 'id' | 'kind'>[],
+): Promise<string | null> {
+  try {
+    const r = await bridge.call('photo:readRun', { projectId, run });
+    if (!r.ok) return r.error;
+    if (!r.value.ok) return r.value.error;
+    photoUi
+      .getState()
+      .openWizard(wizardInitialOf(r.value.run, layers, r.value.missingFolders ?? []));
+    return null;
+  } catch (e) {
+    return e instanceof Error ? e.message : String(e);
+  }
 }
 
 /** Pause: the job stops at its current stage; **Resume** continues from there. */

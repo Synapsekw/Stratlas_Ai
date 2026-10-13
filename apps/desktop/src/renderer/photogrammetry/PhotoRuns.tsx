@@ -2,17 +2,23 @@
  * Maps from photos in the Jobs panel (G4): the project's runs with their status, quality, outputs
  * and accuracy, and per run **Open run**, **Create maps again** (`photo.products`) and
  * **Delete run's work files** (only `work/`, to the recycle bin, after asking) and **Export as OPF**
- * (`opf.export` into a folder the person picks). A photo job selected in the Jobs list opens its run.
+ * (`opf.export` into a folder the person picks), **Start over…** on a failed or cancelled run (the
+ * wizard filled in from it) and **Delete run** (to the project trash, after the confirm). A photo
+ * job selected in the Jobs list opens its run.
  */
 import type { JobRecord, PhotoRunSummary } from '@aio/schema';
+import { useAnnotateReadOnly } from '@aio/annotate';
 import { Icon } from '@aio/ui';
 import { useWorkspace } from '@aio/workspace';
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
+import { isActive } from '../jobs';
 import { bridge, useJobs, useShell } from '../shell';
-import { startOpfExport, startProducts } from './actions';
+import { askRemove, useRemoval } from '../shell/removal';
+import { openStartOver, startOpfExport, startProducts } from './actions';
 import { defaultProducts, formatBytes, PRESETS } from './estimate';
 import { RUN_STATUS } from './phases';
 import { formatResidual } from './report';
+import { START_OVER } from './startOver';
 import { photoUi, runOfJob, usePhotoUi } from './store';
 
 const STATUS: Record<PhotoRunSummary['status'], string> = RUN_STATUS;
@@ -33,6 +39,24 @@ export function PhotoRuns({ selected }: { selected?: JobRecord | undefined }) {
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [asking, setAsking] = useState<string | null>(null);
+  const lookOnly = useAnnotateReadOnly();
+  const canEdit = !pkg && !lookOnly;
+  // a removal elsewhere (the Datasets tree, Start over) changes the list
+  const removed = useRemoval((s) => s.removed);
+  // runs with a job still at work: their Delete run waits until the job is cancelled, and Start
+  // over is hidden (as in the run panel)
+  const liveKey = useJobs((s) =>
+    s.jobs
+      .filter(
+        (j) =>
+          isActive(j) &&
+          runOfJob(j) !== null &&
+          folderKey(j.project) === folderKey(project?.root ?? ''),
+      )
+      .map((j) => runOfJob(j))
+      .join(','),
+  );
+  const liveRuns = useMemo(() => new Set(liveKey.split(',').filter(Boolean)), [liveKey]);
 
   const projectId = project?.id;
   useEffect(() => {
@@ -50,7 +74,7 @@ export function PhotoRuns({ selected }: { selected?: JobRecord | undefined }) {
     return () => {
       live = false;
     };
-  }, [projectId, version, jobsKey]);
+  }, [projectId, version, jobsKey, removed]);
 
   if (!project) return null;
   const selectedRun =
@@ -200,6 +224,36 @@ export function PhotoRuns({ selected }: { selected?: JobRecord | undefined }) {
                       Delete work files
                     </button>
                   ))}
+                {canEdit && START_OVER.has(r.status) && !liveRuns.has(r.id) && (
+                  <button
+                    type="button"
+                    className="btn sm ghost"
+                    data-testid={`run-start-over-${r.id}`}
+                    onClick={() => {
+                      void openStartOver(project.id, r.id, project.manifest.layers).then(setError);
+                    }}
+                  >
+                    Start over…
+                  </button>
+                )}
+                {canEdit && (
+                  <button
+                    type="button"
+                    className="btn sm ghost danger"
+                    data-testid={`run-delete-${r.id}`}
+                    disabled={liveRuns.has(r.id)}
+                    title={
+                      liveRuns.has(r.id)
+                        ? `A job of run ${r.id} is still running. Cancel it first.`
+                        : undefined
+                    }
+                    onClick={() => {
+                      askRemove([{ run: r.id }]);
+                    }}
+                  >
+                    Delete run
+                  </button>
+                )}
               </div>
             </li>
           ))}

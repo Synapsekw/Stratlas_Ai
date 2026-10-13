@@ -853,9 +853,50 @@ Hydrology (G10) and haul-road compliance (G11) are pipeline jobs over a prepared
 - **`orientation.bin`**: `count` records of 20 bytes, five little-endian float32 values `[t, qx, qy, qz, qw]`, no header; `t` is seconds after `startOffsetS`, strictly increasing. `readWalkOrientationData` refuses a file whose length is not `count * 20` as a whole, drops a record that is not finite (or a zero quaternion) and normalises the rest. The records are used only as a relative rotation, anchored at the stills: at a moment between stills, the turn the records make since the nearest registered still of the same segment is applied to that still's `q`, so the records do not have to agree with the stills' `q`; only the turn between two moments is read from them. Without an orientation file, or with a refused one, the pose takes the stills' orientation, slerped.
 - **`pose.json`** (`aio.flight/1`, unchanged): written by the app from the raw path, the orientation, the placement and the current placement of every drawing a pin is on; lens `{ model: 'pinhole', hfovDeg: 90, aspect: 2 }` as a placeholder (the layer says the video is equirectangular); 30 samples a second with an orientation file, else 10. Rewritten when the placement is saved, when a drawing a pin is on is placed again and when `raw-path.json` changes. The new file is written as `pose.json.tmp` in the manifest's save turn and renamed into place only once the manifest is saved (a removal too), so a refused save leaves the old pose with the old layer.
 - **Migration on open, once per walk**: a walk with a folder and no layer gets one when the project opens, unless its folder holds the marker `.layer` (`WALK_LAYER_MARK`). The marker is written once the walk has a layer (the migration's save, a walk import, or an open that finds the layer already there, made on another copy), so a walk whose layer was removed is never added again: a hub merge rewrites the manifest but never deletes a walk's files, and another copy that still has the folder would otherwise bring the walk back and sync it out. A separate file, not a field of `walk.json`, so `aio.walk/1` stays as 0.11 reads it. A package's walk with the marker and no layer is not shown either.
-- **Removing**: `walks:remove` (`{ projectId, layerId }` to `{ ok: true, manifest }` or `{ ok: false, error }`) moves `walks/<id>/` to `.trash/` (kept seven days), then takes the layer out of the manifest. When the folder cannot be moved (a file held open) nothing changes; when the save fails, the folder is moved back.
+- **Removing**: `walks:remove` (`{ projectId, layerId }` to `{ ok: true, manifest }` or `{ ok: false, error }`) moves `walks/<id>/` to `.trash/` (kept seven days), then takes the layer out of the manifest. When the folder cannot be moved (a file held open) nothing changes; when the save fails, the folder is moved back (the trash: section 33).
 
-## 33. Drone panoramas (`panoramas/<layerId>/<panoId>/`)
+## 33. The project trash (`.trash/`)
+
+Removals (`builder:remove`, `walks:remove`; delete and start over, 13 Oct 2026) move files into
+`<project>/.trash/<stamp>-<slug>/`, one entry per removal. `<stamp>` is the UTC time without
+separators (`20261013T081530Z`); `<slug>` is the first target: a layer id, `run-<run id>`, or
+`date-<capture id>`; a taken name gets `-2`, `-3` and so on. The entry holds:
+
+- the moved files and folders **in their project layout** (`rasters/<id>/...`,
+  `photogrammetry/<run>/...`, `jobs/<jobId>/...`, `change/<id>.json`, `tiles/<id>/...`);
+- a copy of each side file the removal rewrote, at its project path (`tilesets.json`);
+- `manifest.before.json`, the manifest as it was before the removal;
+- `removed.json` (`TrashRecord`, `aio.trash/1`): `at` (ISO time), `targets` (`RemoveTarget[]`),
+  `plan` (`RemovalPlan`: what went and why) and `manifestBefore` (`manifest.before.json`).
+
+A walk removal keeps its own layout: the entry `<stamp>-<walk id>/` is the walk folder itself, with
+`removed.json` added. A removal that moves no file and rewrites no side file (layer files already
+gone) writes no entry; one that only rewrites `tilesets.json` writes an entry with the earlier copy.
+
+While a removal runs, its entry is named `held-<stamp>-<slug>/` and holds `not-removed.txt` from
+before the first move until the manifest is saved. Once the save succeeds the note goes and the
+entry is renamed to `<stamp>-<slug>/`. When the removal fails, the files are moved back and the
+held entry goes; a file that could not be moved back stays in the held entry, listed in its
+`removed.json`, with `not-removed.txt` still there, and the error names the folder. A held entry is
+never swept, never counted in the trash size and never deleted by **Empty project trash**. It
+becomes ordinary trash (renamed to its stamped name) only when the trash reads it and finds the
+removal took effect: no `not-removed.txt`, a valid `removed.json`, and none of the layers, dates
+or runs it names still in the project (a rename the system refused at the end of a removal). Any
+other held entry stays until the person moves its files back by hand and deletes it.
+
+Restoring by hand within seven days: copy the entry's folders back to the project folder, and
+replace `manifest.json` with `manifest.before.json` (or put back only the layers you need). The app
+has no Restore yet.
+
+Never moved: anything outside the project folder (photo folders a run reads in place, a DXF read
+from its own path), hash assets (`assets/sha256/`), and a file another remaining layer names. A path
+that leads outside the project (a link or junction) refuses the whole removal.
+
+Entries older than seven days (`TRASH_KEEP_DAYS`) are deleted when the project opens; **Empty
+project trash** deletes them all at once (an entry in use stays and is reported). `.trash/` never
+goes into a package, and hub peers receive only the manifest change.
+
+## 34. Drone panoramas (`panoramas/<layerId>/<panoId>/`)
 
 One import of drone sphere panoramas is one `panoramas` layer; each sphere is one `PanoRef`
 (`name`, `capturedAt`, `stitch`, `cov`). Its folder holds `frames/` (the source frames as copied,

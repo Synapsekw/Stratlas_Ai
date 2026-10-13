@@ -1,4 +1,4 @@
-import { ProjectManifest, SCHEMA_VERSION, type Issue } from '@aio/schema';
+import { ProjectManifest, SCHEMA_VERSION, type Issue, type Layer } from '@aio/schema';
 import { describe, expect, it } from 'vitest';
 import {
   evidenceKind,
@@ -9,6 +9,7 @@ import {
   overlayPath,
   photoEvidence,
   previewCrop,
+  removedLayersOf,
   splitWithEvidence,
   stepIssue,
   type LightboxState,
@@ -262,5 +263,21 @@ describe('evidence beside the 3D view', () => {
       left: '3d',
       right: 'photo',
     });
+  });
+});
+
+describe('removedLayersOf', () => {
+  it('names the layers an issue was seen on that the project no longer has', () => {
+    const issue = {
+      sightings: [
+        { on: 'map', layer: 'gone' },
+        { on: 'map', layer: 'here' },
+        { on: 'map', layer: 'gone' },
+      ],
+    } as Pick<Issue, 'sightings'>;
+    expect(removedLayersOf({ layers: [{ id: 'here' } as Layer] }, issue)).toEqual(['gone']);
+    expect(
+      removedLayersOf({ layers: [{ id: 'gone' } as Layer, { id: 'here' } as Layer] }, issue),
+    ).toEqual([]);
   });
 });

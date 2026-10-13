@@ -4,17 +4,26 @@
  * `report/accuracy.json`); the jobs of the run give the live progress.
  */
 import type { AccuracyReport, JobRecord, PhotoRun } from '@aio/schema';
+import { useAnnotateReadOnly } from '@aio/annotate';
 import { formatDate, Icon, useFocusTrap } from '@aio/ui';
 import { useWorkspace } from '@aio/workspace';
 import { useEffect, useRef, useState } from 'react';
 import { isActive } from '../jobs';
-import { bridge, shell, useJobs } from '../shell';
-import { cancelRun, fileUnderDate, pauseJob, resumeJob, startProducts } from './actions';
+import { bridge, shell, useJobs, useShell } from '../shell';
+import {
+  cancelRun,
+  fileUnderDate,
+  openStartOver,
+  pauseJob,
+  resumeJob,
+  startProducts,
+} from './actions';
 import { AccuracyReportView } from './AccuracyReport';
 import { defaultProducts, presetLabel } from './estimate';
 import { GcpPanel } from './GcpTable';
 import { RUN_STATUS, runView, type PhaseState } from './phases';
 import { RefinedPoses } from './RefinedPoses';
+import { START_OVER } from './startOver';
 import { captureOfRun, dateWarningPlace, dateWarningWords } from './surveyDate';
 import {
   jobsOfRun,
@@ -54,6 +63,7 @@ const PHASE_WORDS: Record<PhaseState, string> = {
 export function RunPanel({ run, tab }: { run: string; tab: RunTab }) {
   const project = useWorkspace((s) => s.project);
   const version = usePhotoUi((s) => s.version);
+  const note = usePhotoUi((s) => s.notes[run]);
   const allJobs = useJobs((s) => s.jobs);
   const dlg = useRef<HTMLDivElement>(null);
   const close = () => {
@@ -113,6 +123,11 @@ export function RunPanel({ run, tab }: { run: string; tab: RunTab }) {
                 ? `${RUN_STATUS[data.run.status]} · ${preset ? presetLabel(preset) : ''} · ${String(data.run.photos.count)} photos`
                 : 'Starting'}
             </p>
+            {note && (
+              <p className="small" role="status" data-testid="photo-run-note">
+                {note}
+              </p>
+            )}
           </div>
           <button type="button" className="btn ghost sm" onClick={close} aria-label="Close">
             <Icon name="x" size={14} />
@@ -161,6 +176,8 @@ function Progress({ run, data, jobs }: { run: string; data: PhotoRun | null; job
   const kept = usePhotoUi((s) => s.dates[run]);
   const startError = usePhotoUi((s) => s.startErrors[run]);
   const dateWarning = usePhotoUi((s) => s.dateWarnings[run]);
+  const pkg = useShell((s) => s.pkg);
+  const lookOnly = useAnnotateReadOnly();
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [filing, setFiling] = useState(false);
@@ -181,6 +198,22 @@ function Progress({ run, data, jobs }: { run: string; data: PhotoRun | null; job
     setBusy(false);
   };
   if (!project) return null;
+  // Start over: a failed or cancelled run, nothing of it at work, a project that can be changed
+  const canStartOver =
+    !pkg && !lookOnly && data !== null && START_OVER.has(data.status) && !jobs.some(isActive);
+  const startOverButton = canStartOver && (
+    <button
+      type="button"
+      className="btn sm"
+      data-testid="run-start-over"
+      disabled={busy}
+      onClick={() => {
+        void act(openStartOver(project.id, run, project.manifest.layers));
+      }}
+    >
+      Start over…
+    </button>
+  );
   // matching the photos and building the maps are two jobs: one run, one list of steps
   const view = runView(jobs, pending ? pending.products : null);
   const job = view.job;
@@ -432,9 +465,12 @@ function Progress({ run, data, jobs }: { run: string; data: PhotoRun | null; job
                 to continue from the stage it stopped at.
               </p>
             )}
+            {startOverButton}
           </div>
         </section>
       )}
+
+      {!job && startOverButton && <div className="ph-acts">{startOverButton}</div>}
 
       {warnAt === 'progress' && dateWarningNotice}
 

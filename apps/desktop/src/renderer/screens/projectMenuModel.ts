@@ -1,6 +1,7 @@
 import type { LibraryEntry } from '@aio/schema';
 
-export type ProjectActionId = 'open' | 'rename' | 'reveal' | 'export' | 'close' | 'delete';
+export type ProjectActionId =
+  'open' | 'rename' | 'reveal' | 'emptyTrash' | 'export' | 'close' | 'delete';
 
 /** Why an action is not offered for this project (shown under the greyed item). */
 export type WhyNot = 'package' | 'demo' | 'kit' | 'outside' | 'open';
@@ -57,6 +58,7 @@ export function projectActions(
     { id: 'open' },
     withWhy('rename', fixed),
     { id: 'reveal' },
+    withWhy('emptyTrash', entry.package ? 'package' : entry.kind !== 'native' ? 'kit' : undefined),
     ...(o.current && !entry.package ? [{ id: 'export' as const }] : []),
     ...(o.current ? [{ id: 'close' as const }] : []),
     withWhy('delete', fixed ?? (o.current ? 'open' : undefined)),

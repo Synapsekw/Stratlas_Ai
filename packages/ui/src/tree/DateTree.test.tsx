@@ -368,6 +368,36 @@ describe('DateTree: menus and renaming', () => {
     expect(onRename).toHaveBeenCalledWith('oct', '');
   });
 
+  it('marks reach the rows inside date folders', () => {
+    renderWith({ marked: new Set(['m-nov']) });
+    expect(q('tree-row-m-nov')?.className).toContain('marked');
+  });
+
+  it('a Shift range runs over the rows drawn, not those of a closed date folder', () => {
+    const orders: (readonly string[])[] = [];
+    renderWith({ onMark: (_id, _m, order) => orders.push(order) });
+    expect(q('date-folder-oct')?.getAttribute('aria-expanded')).toBe('false');
+    const row = q('tree-row-m-nov');
+    act(() => {
+      row?.dispatchEvent(new MouseEvent('click', { bubbles: true, shiftKey: true }));
+    });
+    expect(orders).toEqual([['site', 'm-nov']]);
+    expect(host.querySelector('[role="tree"]')?.getAttribute('aria-multiselectable')).toBe('true');
+  });
+
+  it('Shift+ArrowUp crosses from one date folder into the next one up', () => {
+    const calls: [string, string | undefined][] = [];
+    renderWith({ onMark: (id, m) => calls.push([id, m.from]) });
+    const row = q('tree-row-m-nov');
+    act(() => {
+      row?.dispatchEvent(
+        new KeyboardEvent('keydown', { key: 'ArrowUp', shiftKey: true, bubbles: true }),
+      );
+    });
+    expect(calls).toEqual([['site', 'm-nov']]);
+    expect(document.activeElement).toBe(q('tree-row-site'));
+  });
+
   it('F2 on a date name starts renaming it, never on Every date', () => {
     const onRenameStart = vi.fn();
     render('nov', {}, vi.fn(), { onRenameStart });

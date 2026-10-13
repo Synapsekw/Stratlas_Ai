@@ -41,7 +41,7 @@
 | ---------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------- | -------------------------------------------- | ---------------------- |
 | 2026-10-13 | Additive: `PanoRef` gains optional `name`, `capturedAt` (ISO), `stitch` (`PanoStitchState`: optional `run` job id, `status` `queued`, `running`, `done` or `failed`, optional `error`) and `cov` (`PanoCov`: `top`, `bottom`, optional `left` and `right` yaw range for a wide panorama). An older build parses the item and drops the fields when it saves; the pano stays a plain pano                            | Drone panoramas P1: one marker per sphere with its stitch status      | `@aio/schema`, engine, renderer, main        | pending founder review |
 | 2026-10-13 | Additive: `PipelineName` gains `pano.stitch` with `PanoStitchParams` (`layer`, `pano`, optional `quality` `standard` or `high`). Older builds' job index skips jobs of a pipeline they do not know, as for `walk.process`                                                                                                                                                                                           | Stitch one sphere per job                                             | `@aio/schema`, pipeline pack, main, renderer | pending founder review |
-| 2026-10-13 | Additive: new file family `aio.pano-stitch/1` (`PanoStitchFile`, `panoramas/<layer>/<pano>/stitch.json`: `run`, `layer`, `pano`, `createdAt`, `engine`, `quality`, `shape` `sphere` or `wide`, `size`, `frames` used and dropped, `aligned` `features` or `metadata`, `residualPx`, `maxDriftDeg`, `focalScale`, `coverage`, `timings`, `warnings`); `versions.ts` row `home: project`; data-conventions section 33 | The run record of a stitch                                            | `@aio/schema`, pipeline pack                 | pending founder review |
+| 2026-10-13 | Additive: new file family `aio.pano-stitch/1` (`PanoStitchFile`, `panoramas/<layer>/<pano>/stitch.json`: `run`, `layer`, `pano`, `createdAt`, `engine`, `quality`, `shape` `sphere` or `wide`, `size`, `frames` used and dropped, `aligned` `features` or `metadata`, `residualPx`, `maxDriftDeg`, `focalScale`, `coverage`, `timings`, `warnings`); `versions.ts` row `home: project`; data-conventions section 34 | The run record of a stitch                                            | `@aio/schema`, pipeline pack                 | pending founder review |
 | 2026-10-13 | Pipeline pack 0.7.0 is the minimum for `pano.stitch` (`PANO_STITCH_MIN_PACK`); `jobs:start` refuses `pano.stitch` on an older pack with the "update the processing tools" message walks use. The GPU add-on lock's `packRange` widens to `>=0.5.0 <0.8.0`                                                                                                                                                           | Ship the pipeline                                                     | pipeline pack, main, add-on                  | pending founder review |
 | 2026-10-13 | IPC additive: `panos:scan` (`{ projectId, paths }` to `{ ok, scan: PanoScan }`), `panos:import` (`{ projectId, scanId, keys, layerName, date?, quality }` to `{ ok, manifest, layerId, started, notStarted? }`), `panos:cancelImport`; event `panos:progress` (`{ projectId, phase: 'scan' or 'copy', done, total, file }`); `builder:import` request gains optional `exclude` (absolute files to leave out)        | Scan and import of drone panoramas; Add data leaves sphere frames out | `@aio/schema`, preload, main, renderer       | pending founder review |
 | 2026-10-13 | `@aio/workspace` additive: state `panoRequest` (`{ seq, layer, id } \| null`) and action `openPano(layer, id)`, which the panoramas adapter answers by entering that pano's sphere view                                                                                                                                                                                                                             | Open from a Datasets row                                              | `@aio/workspace`, engine, renderer           | pending founder review |
@@ -119,7 +119,7 @@ The P0 probe (13 Oct) set the values above; the spec's "P0 findings" section rec
 **Files:**
 
 - Create: `packages/schema/src/panoStitch.ts`, `packages/schema/src/panoStitch.test.ts`, `packages/schema/src/__fixtures__/pano/stitch.synthetic.json`, `tools/compat/pano-stitch-additive.test.mjs`
-- Modify: `packages/schema/src/layers.ts:57-62` (`PanoRef`), `packages/schema/src/jobs.ts` (`PipelineName` after `'walk.process'` at :82, `PIPELINES` after the `walk.process` entry at :306, `PanoStitchParams` after `WalkProcessParams` at ~:1104, `PARAMS` at :1146), `packages/schema/src/ipc.ts` (`builder:import` request at :1362, new channels after `'builder:cancelImport'` at ~:2898, new event after `'builder:progress'` at :2965), `packages/schema/src/versions.ts` (row after `aio.walk-process` at ~:519), `packages/schema/src/index.ts` (export after `./walkProcess` at :44), `packages/ui/src/i18n/en.ts` (a `pano.*` block after the `walk.*` block, and two `stage.markers.*` keys after :580), `apps/desktop/src/preload/index.ts` (`CHANNELS` :9-233, `EVENTS` :235-255), `docs/architecture/contract-changes.md` (the six rows above, appended), `docs/architecture/data-conventions.md` (new section 33)
+- Modify: `packages/schema/src/layers.ts:57-62` (`PanoRef`), `packages/schema/src/jobs.ts` (`PipelineName` after `'walk.process'` at :82, `PIPELINES` after the `walk.process` entry at :306, `PanoStitchParams` after `WalkProcessParams` at ~:1104, `PARAMS` at :1146), `packages/schema/src/ipc.ts` (`builder:import` request at :1362, new channels after `'builder:cancelImport'` at ~:2898, new event after `'builder:progress'` at :2965), `packages/schema/src/versions.ts` (row after `aio.walk-process` at ~:519), `packages/schema/src/index.ts` (export after `./walkProcess` at :44), `packages/ui/src/i18n/en.ts` (a `pano.*` block after the `walk.*` block, and two `stage.markers.*` keys after :580), `apps/desktop/src/preload/index.ts` (`CHANNELS` :9-233, `EVENTS` :235-255), `docs/architecture/contract-changes.md` (the six rows above, appended), `docs/architecture/data-conventions.md` (new section 34)
 
 **Interfaces:**
 
@@ -374,7 +374,7 @@ import { Id, IsoDate, IsoTime } from './common';
  * 2026-10-13-drone-panoramas-p1). One `panoramas` layer per import; each sphere is one `PanoRef`
  * whose files live in `panoramas/<layerId>/<panoId>/`: `frames/` (the source frames, never map
  * items), `pano.jpg`, `thumb.jpg` and the run record `stitch.json` (`aio.pano-stitch/1`).
- * Data-conventions section 33.
+ * Data-conventions section 34.
  */
 
 export const PANO_STITCH_SCHEMA = 'aio.pano-stitch/1';
@@ -4571,7 +4571,7 @@ import { photoRef, type PhotoFrame } from './photos';
 import type { ImageOps } from './raw';
 
 /*
- * Drone panoramas in a project (data-conventions section 33): the import copies each sphere's
+ * Drone panoramas in a project (data-conventions section 34): the import copies each sphere's
  * frames into `panoramas/<layerId>/<panoId>/frames/` and saves one `panoramas` layer whose spheres
  * are queued; `pano.stitch` writes the images and `stitch.json`; the app files the outcome here.
  */
@@ -8419,7 +8419,7 @@ Write the "How to test" walkthrough for the founder (in the closing message and 
 
 - `pnpm check` green; the Python suite green with the 43 new tests; `python -m aio_pipelines --list` shows `pano.stitch`.
 - `drone-panoramas.spec.ts` and `drone-panoramas-photos.spec.ts` green the CI way (1100 x 720, scale 1, WARP, every demo built), `--repeat-each=3` once; `processing-tools`, `builder` and `walk-360` specs unchanged and green.
-- Contract rows written; data-conventions section 33 written; the spec's P0 section matches the constants.
+- Contract rows written; data-conventions section 34 written; the spec's P0 section matches the constants.
 - No client, site, tester or person name, and no real image, anywhere in the diff.
 
 ## How to test (for the founder, after the build)

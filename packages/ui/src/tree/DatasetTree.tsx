@@ -1,12 +1,4 @@
-import {
-  Fragment,
-  useLayoutEffect,
-  useRef,
-  useState,
-  type DragEvent,
-  type MouseEvent,
-  type ReactNode,
-} from 'react';
+import { Fragment, useState, type DragEvent, type MouseEvent, type ReactNode } from 'react';
 import { useT } from '../i18n';
 import { Icon } from '../icons/Icon';
 import {
@@ -18,6 +10,7 @@ import {
   type TreeItem,
   type Visibility,
 } from './model';
+import type { MarkMods } from './marks';
 
 export interface DatasetTreeProps {
   groups: readonly TreeGroup[];
@@ -76,11 +69,32 @@ export interface DatasetTreeProps {
   /** The one badge a row carries (a walk's placing state), or null for none. */
   rowBadge?: ((item: TreeItem) => TreeRowBadge | null) | undefined;
   /**
-   * The actions of a walk row: open it in the 360 video pane, place it, remove it (after a confirm
-   * in the row). Place and Remove are left out where nothing may change (a package).
+   * The actions of a walk row: open it in the 360 video pane, place it, remove it (the caller
+   * asks first, in the shared removal dialog). Place and Remove are left out where nothing may
+   * change (a package, a reviewer who may only look).
    */
   walkActions?: WalkRowActions | undefined;
+  /** Layer ids marked for a group action (Delete). */
+  marked?: ReadonlySet<string> | undefined;
+  /**
+   * Ctrl+click or Shift+click on a layer row, Ctrl+Space or Shift+ArrowUp/Down on a focused one
+   * (the arrow marks the row it moves to); without it a modified click selects as before.
+   * `order` is the layer rows drawn in the whole tree, top to bottom: rows in a closed group,
+   * flight or date folder, or behind "more", are not in it (a Shift range runs over it).
+   */
+  onMark?: ((layerId: string, mods: MarkMods, order: readonly string[]) => void) | undefined;
 }
+
+/**
+ * The layer rows drawn under the tree around `row`, top to bottom. The trees are not virtualised,
+ * so every row drawn is in the DOM; a virtualised tree must pass its order another way.
+ */
+function drawnRows(row: HTMLElement): HTMLElement[] {
+  const tree = row.closest('[role="tree"]') ?? row.parentElement;
+  if (!tree) return [];
+  return [...tree.querySelectorAll<HTMLElement>('[data-mark]')].filter((el) => el.dataset.mark);
+}
+const drawnOrder = (row: HTMLElement) => drawnRows(row).map((el) => el.dataset.mark ?? '');
 
 /** A short state word on a row: `info` for a step still to take, `warn` for something to check. */
 export interface TreeRowBadge {
@@ -171,27 +185,10 @@ export function DatasetTree(props: DatasetTreeProps) {
   const [showAll, setShowAll] = useState<Partial<Record<TreeGroupKind, boolean>>>({});
   /** Flight rows the user opened or closed; others open while they hold the active clip. */
   const [flightOpen, setFlightOpen] = useState<Record<string, boolean>>({});
-  /** The walk row whose Remove waits for its confirm, shown under the row. */
-  const [removing, setRemoving] = useState<string | null>(null);
-  /** The rows drawn now, by item id: where focus goes back to when the confirm closes. */
-  const rowEls = useRef(new Map<string, HTMLDivElement>());
-  /** Focus a row again, or (Cancel) its Remove walk button, shown while the row holds focus. */
-  const refocus = (id: string, toRemove: boolean) => {
-    const el = rowEls.current.get(id);
-    if (!el) return;
-    el.focus();
-    if (toRemove) el.querySelector<HTMLElement>('.tact-remove')?.focus();
-  };
-  /** Where focus goes once the confirm has left the page (its buttons held focus till then). */
-  const pendingFocus = useRef<{ id: string; toRemove: boolean } | null>(null);
-  useLayoutEffect(() => {
-    const p = pendingFocus.current;
-    if (!p) return;
-    pendingFocus.current = null;
-    refocus(p.id, p.toRemove);
-  });
-
-  /** Open, Place walk and Remove walk on a walk row; they stand in for the length and badge on hover. */
+  /**
+   * Open, Place walk and Remove walk on a walk row; they stand in for the length and badge on
+   * hover. Remove only hands the row over: the caller asks in the shared removal dialog.
+   */
   const walkButtons = (it: TreeItem) => {
     const acts = it.layerKind === 'walk' ? props.walkActions : undefined;
     if (!acts) return null;
@@ -243,54 +240,10 @@ export function DatasetTree(props: DatasetTreeProps) {
             t('walk.row.remove', { name: it.name }),
             t('walk.row.removeTip'),
             () => {
-              setRemoving(it.id);
+              onRemove(it);
             },
           )}
       </span>
-    );
-  };
-
-  /** The inline confirm of a walk's Remove: no dialog, the row says what happens to the files. */
-  const removeConfirm = (it: TreeItem) => {
-    const onRemove = it.layerKind === 'walk' ? props.walkActions?.onRemove : undefined;
-    if (!onRemove || removing !== it.id) return null;
-    return (
-      <div className="trow-confirm" role="group" data-testid="walk-remove-confirm">
-        <span className="trow-confirm-q">{t('walk.row.confirm', { name: it.name })}</span>
-        <span className="trow-confirm-acts">
-          <button
-            type="button"
-            className="btn sm danger"
-            data-testid="walk-remove-yes"
-            onClick={() => {
-              setRemoving(null);
-              onRemove(it);
-              pendingFocus.current = { id: it.id, toRemove: false };
-            }}
-          >
-            {t('walk.row.confirmYes')}
-          </button>
-          <button
-            type="button"
-            className="btn sm ghost"
-            data-testid="walk-remove-cancel"
-            // focus stays in the row's neighbourhood: Escape cancels as the button does
-            autoFocus
-            onClick={() => {
-              setRemoving(null);
-              pendingFocus.current = { id: it.id, toRemove: true };
-            }}
-            onKeyDown={(e) => {
-              if (e.key === 'Escape') {
-                setRemoving(null);
-                pendingFocus.current = { id: it.id, toRemove: true };
-              }
-            }}
-          >
-            {t('walk.row.confirmNo')}
-          </button>
-        </span>
-      </div>
     );
   };
 
@@ -328,8 +281,8 @@ export function DatasetTree(props: DatasetTreeProps) {
   const row = (it: TreeItem, sub: boolean) => {
     const off = it.layerId ? hidden[it.layerId] === true : false;
     const sel = it.id === selectedId;
-    const confirm = removeConfirm(it);
-    const extra = confirm ?? props.rowExtra?.(it) ?? null;
+    const marked = it.layerId !== undefined && props.marked?.has(it.layerId) === true;
+    const extra = props.rowExtra?.(it) ?? null;
     const badge = props.rowBadge?.(it) ?? null;
     const walkActs = walkButtons(it);
     const drawingSettings = it.drawing === true ? props.onDrawingSettings : undefined;
@@ -337,22 +290,58 @@ export function DatasetTree(props: DatasetTreeProps) {
       <div
         key={it.id}
         role="treeitem"
-        aria-selected={sel}
+        aria-selected={sel || marked}
         // the badge hides behind the row actions on hover and focus; the name still carries it
         aria-label={badge ? [it.name, it.meta, badge.text].filter(Boolean).join(', ') : undefined}
-        ref={(el) => {
-          if (el) rowEls.current.set(it.id, el);
-          else rowEls.current.delete(it.id);
-        }}
         tabIndex={0}
-        className={`titem${sub ? ' sub' : ''}${sel ? ' sel' : ''}${off ? ' hidden' : ''}${walkActs ? ' has-acts' : ''}`}
+        className={`titem${sub ? ' sub' : ''}${sel ? ' sel' : ''}${marked ? ' marked' : ''}${off ? ' hidden' : ''}${walkActs ? ' has-acts' : ''}`}
         title={it.name}
         data-testid={it.layerId ? `tree-row-${it.layerId}` : undefined}
+        data-mark={props.onMark ? it.layerId : undefined}
         {...moving(it)}
-        onClick={() => {
+        onClick={(e) => {
+          const mods = { ctrl: e.ctrlKey || e.metaKey, shift: e.shiftKey };
+          if ((mods.ctrl || mods.shift) && props.onMark && it.layerId) {
+            e.preventDefault();
+            props.onMark(it.layerId, mods, drawnOrder(e.currentTarget));
+            return;
+          }
           props.onSelect(it);
         }}
         onKeyDown={(e) => {
+          // keys on a button inside the row are the button's
+          if (e.target !== e.currentTarget) return;
+          const onMark = props.onMark;
+          const id = it.layerId;
+          if (onMark && id !== undefined && e.key === ' ' && (e.ctrlKey || e.metaKey)) {
+            // Ctrl+Space (Meta+Space on a Mac) toggles this row's mark
+            e.preventDefault();
+            onMark(id, { ctrl: true, shift: false }, drawnOrder(e.currentTarget));
+            return;
+          }
+          if (
+            onMark &&
+            id !== undefined &&
+            e.shiftKey &&
+            !e.ctrlKey &&
+            !e.metaKey &&
+            (e.key === 'ArrowDown' || e.key === 'ArrowUp')
+          ) {
+            // Shift+ArrowUp/Down moves to the next drawn row and marks the range up to it
+            e.preventDefault();
+            const drawn = drawnRows(e.currentTarget);
+            const at = drawn.indexOf(e.currentTarget);
+            const to = at < 0 ? undefined : drawn[at + (e.key === 'ArrowDown' ? 1 : -1)];
+            const toId = to?.dataset.mark;
+            if (!to || toId === undefined) return;
+            to.focus();
+            onMark(
+              toId,
+              { ctrl: false, shift: true, from: id },
+              drawn.map((el) => el.dataset.mark ?? ''),
+            );
+            return;
+          }
           if (e.key === 'Enter' || e.key === ' ') {
             e.preventDefault();
             props.onSelect(it);
@@ -494,6 +483,7 @@ export function DatasetTree(props: DatasetTreeProps) {
       className={props.nested ? 'tree tree-nested' : 'tree'}
       role={props.nested ? 'group' : 'tree'}
       aria-label={props.nested ? undefined : 'Datasets'}
+      aria-multiselectable={!props.nested && props.onMark ? true : undefined}
     >
       {groups.map((g) => {
         const expanded = !collapsed && isOpen(g.kind);
@@ -546,6 +536,7 @@ export function DatasetTree(props: DatasetTreeProps) {
                 type="button"
                 className="tgroup-btn"
                 aria-expanded={expanded}
+                data-testid={`tree-group-toggle-${g.kind}`}
                 onClick={() => {
                   if (collapsed) {
                     setOpen((o) => ({ ...o, [g.kind]: true }));

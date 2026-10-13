@@ -105,6 +105,7 @@ import {
 import { TilesetEntry, TilesetsFile } from './tilesets';
 import { WalkFile } from './walks';
 import { WalkProcessSummary } from './walkProcess';
+import { RemovalPlan, RemoveTarget } from './removal';
 
 const Empty = z.object({}).strict();
 
@@ -1527,6 +1528,50 @@ export const ipc = {
       z.object({ ok: z.literal(false), error: z.string() }),
     ]),
   },
+  /**
+   * What removing `targets` takes along (delete and start over, 13 Oct 2026): read from disk, no
+   * change. `plan.refused` says why the removal cannot happen (a package, a live job, an unknown
+   * target).
+   */
+  'builder:removePlan': {
+    request: z
+      .object({ projectId: z.string().min(1), targets: z.array(RemoveTarget).min(1).max(5000) })
+      .strict(),
+    response: z.discriminatedUnion('ok', [
+      z.object({ ok: z.literal(true), plan: RemovalPlan }),
+      z.object({ ok: z.literal(false), error: z.string() }),
+    ]),
+  },
+  /** Remove `targets` and what they take along: files to `.trash/`, one manifest save. */
+  'builder:remove': {
+    request: z
+      .object({ projectId: z.string().min(1), targets: z.array(RemoveTarget).min(1).max(5000) })
+      .strict(),
+    response: z.discriminatedUnion('ok', [
+      z.object({ ok: z.literal(true), manifest: ProjectManifest, plan: RemovalPlan }),
+      z.object({ ok: z.literal(false), error: z.string() }),
+    ]),
+  },
+  /** What the project trash holds (0 and 0 for a package or an unknown project). */
+  'builder:trash': {
+    request: z.object({ projectId: z.string().min(1) }).strict(),
+    response: z.object({
+      bytes: z.number().int().nonnegative(),
+      entries: z.number().int().nonnegative(),
+    }),
+  },
+  /** Delete the project trash for good; `held` entries were in use and stay. */
+  'builder:emptyTrash': {
+    request: z.object({ projectId: z.string().min(1) }).strict(),
+    response: z.discriminatedUnion('ok', [
+      z.object({
+        ok: z.literal(true),
+        freed: z.number().int().nonnegative(),
+        held: z.number().int().nonnegative(),
+      }),
+      z.object({ ok: z.literal(false), error: z.string() }),
+    ]),
+  },
 
   // ---------------------------------------------------------------- M8 change (C1)
   /** Every change set of the project (`<project>/change/*.json`), newest first. */
@@ -2310,7 +2355,13 @@ export const ipc = {
   'photo:readRun': {
     request: z.object({ projectId: ProjectId, run: PhotoRunId }).strict(),
     response: z.discriminatedUnion('ok', [
-      z.object({ ok: z.literal(true), run: PhotoRun, accuracy: AccuracyReport.nullable() }),
+      z.object({
+        ok: z.literal(true),
+        run: PhotoRun,
+        accuracy: AccuracyReport.nullable(),
+        /** Folders of a `{ folders }` source that are not there any more (Start over). */
+        missingFolders: z.array(z.string()).optional(),
+      }),
       Failure,
     ]),
   },

@@ -5,11 +5,16 @@ import {
   buildDatasetTree,
   buildDateTree,
   captureLabelFor,
+  datableLayerIds,
   DatasetTree,
   DateTree,
   EVERY_DATE,
+  formatBytes,
   formatDate,
+  groupDatableLayerIds,
   Icon,
+  nextMarks,
+  NO_MARKS,
   t,
   treeLayerIds,
   useFocusTrap,
@@ -18,6 +23,8 @@ import {
   type DateFolderMenuRequest,
   type DateItemMenuRequest,
   type IconName,
+  type MarkMods,
+  type Marks,
   type MessageKey,
   type TreeGroup,
   type TreeItem,
@@ -32,7 +39,7 @@ import { drawings, unplacedOf, useDrawings } from '../drawings/store';
 import { useMedia } from '../media';
 import { shell, useShell } from '../shell';
 import { walkBadge, walkGroupAction } from '../walks/walkBadge';
-import { openWalk, placeWalk, removeWalk, useWalks } from '../walks/walks';
+import { openWalk, placeWalk, useWalks } from '../walks/walks';
 import { WalkRowProcess } from '../walks/WalkProcessLine';
 import { walkFilesMissing, walkRecordKey } from '../walks/walkStore';
 import { PANEL_ID, PanelHandle } from './PanelHandle';
@@ -45,6 +52,8 @@ import { moveLayersToDate, undoDateMove, updateCapture } from './dateFolders';
 import { AddSurveyDateButton } from './AddSurveyDate';
 import { DateFolderMenu, LayerDateMenu } from './DateMenus';
 import { DateNotes, type DateNote } from './DateNotes';
+import { askRemove, removal, useRemoval } from './removal';
+import { EmptyTrashDialog } from './RemoveHost';
 import './surveyDates.css';
 
 interface NavDef {
@@ -298,7 +307,13 @@ function Datasets({ collapsed }: { collapsed: boolean }) {
   const [itemMenu, setItemMenu] = useState<DateItemMenuRequest | null>(null);
   const [renaming, setRenaming] = useState<string | null>(null);
   const [note, setNote] = useState<DateNote | null>(null);
-  // menus, the name field and the note belong to the project they were opened in
+  // rows marked with Ctrl or Shift for one Delete
+  const [marks, setMarks] = useState<Marks>(NO_MARKS);
+  const removed = useRemoval((s) => s.removed);
+  const trash = useRemoval((s) => s.trash);
+  const held = useRemoval((s) => s.held);
+  const [emptying, setEmptying] = useState(false);
+  // menus, the name field, the note and the marks belong to the project they were opened in
   const projectId = project?.id;
   const [notedFor, setNotedFor] = useState(projectId);
   if (notedFor !== projectId) {
@@ -307,8 +322,43 @@ function Datasets({ collapsed }: { collapsed: boolean }) {
     setItemMenu(null);
     setRenaming(null);
     setNote(null);
+    setMarks(NO_MARKS);
+    setEmptying(false);
   }
+  // a removal went through: what was marked is gone; Empty could not delete everything: say so
+  // where the tree's notes go (adjusted during render, not in an effect)
+  const [seenRemoval, setSeenRemoval] = useState({ removed, held });
+  if (seenRemoval.removed !== removed || seenRemoval.held !== held) {
+    setSeenRemoval({ removed, held });
+    if (seenRemoval.removed !== removed) setMarks(NO_MARKS);
+    if (held > 0 && seenRemoval.held !== held)
+      setNote({ text: t('trash.held', { count: held }), danger: false });
+  }
+  // the footer reads the trash when the project opens (the store reads it again after a removal)
+  useEffect(() => {
+    if (projectId) void removal.getState().loadTrash(projectId);
+  }, [projectId]);
+  const kinds = useMemo(
+    () => new Map((project?.manifest.layers ?? []).map((l) => [l.id, l.kind])),
+    [project],
+  );
   if (!project) return null;
+
+  /** The rows that can be deleted: layers, not retired viewers or basemaps. */
+  const deletable = (ids: readonly string[]) =>
+    ids.filter((id) => {
+      const k = kinds.get(id);
+      return k !== undefined && k !== 'legacy' && k !== 'basemap';
+    });
+  /** Open the shared removal dialog on these rows (nothing when none can be deleted). */
+  const askLayers = (ids: readonly string[]) => {
+    const ok = deletable(ids);
+    if (ok.length > 0) askRemove(ok.map((layer) => ({ layer })));
+  };
+  const onMark = (id: string, mods: MarkMods, order: readonly string[]) => {
+    setMarks((m) => nextMarks(m, order, id, mods));
+  };
+  const marked = marks.marked.size > 0;
 
   const failed = (error: string | null) => {
     setNote(error ? { text: error, danger: true } : null);
@@ -370,6 +420,8 @@ function Datasets({ collapsed }: { collapsed: boolean }) {
   };
 
   const onSelect = (it: TreeItem) => {
+    // a plain click selects one row and lets go of the marks
+    setMarks(NO_MARKS);
     if (!it.layerId) {
       shell.getState().go('issues');
       return;
@@ -426,8 +478,8 @@ function Datasets({ collapsed }: { collapsed: boolean }) {
           }),
   };
 
-  // a walk row: its placing badge, and Open, Place walk and Remove walk (not in a package, nor
-  // for a reviewer who may only look)
+  // a walk row: its placing badge, and Open, Place walk and Remove walk (Place and Remove not in a
+  // package, nor for a reviewer who may only look)
   const walkProps = {
     rowBadge: (it: TreeItem) =>
       it.layerKind === 'walk' && it.layerId ? (walkBadges.get(it.layerId) ?? null) : null,
@@ -440,29 +492,66 @@ function Datasets({ collapsed }: { collapsed: boolean }) {
             if (it.layerId) placeWalk(it.layerId);
           }
         : undefined,
+      // the shared removal dialog asks first
       onRemove: canEdit
         ? (it: TreeItem) => {
-            if (it.layerId)
-              void removeWalk(it.layerId)
-                .then(failed)
-                .catch((e: unknown) => {
-                  failed(String(e));
-                });
+            if (it.layerId) askLayers([it.layerId]);
           }
         : undefined,
     },
   };
 
+  // Ctrl+click, Shift+click, Ctrl+Space and Shift+ArrowUp/Down mark rows (not in a package, nor
+  // for a reviewer who may only look)
+  const markProps = { marked: marks.marked, onMark: canEdit ? onMark : undefined };
+
+  // while rows are marked the header offers their Delete in place of the count and the add tools
+  // (the sidebar is too narrow for all of them); the eye stays (founder, 13 Oct 2026)
+  const marking = canEdit && marked;
+
   return (
-    <div className="sb-sec sb-tree">
+    <div
+      className="sb-sec sb-tree"
+      onKeyDown={(e) => {
+        // keys typed in a menu or dialog the tree opened (portals) are theirs, not the tree's
+        if (!(e.target instanceof Element) || !e.currentTarget.contains(e.target)) return;
+        // and keys typed in a field (a date's name) are the field's
+        if (e.target.closest('input, textarea, select, [contenteditable]')) return;
+        if (marked && e.key === 'Escape') {
+          e.stopPropagation();
+          setMarks(NO_MARKS);
+        } else if (e.key === 'Delete' && canEdit) {
+          // the marked rows, else the focused row; always through the shared dialog
+          const row = marked ? null : e.target.closest<HTMLElement>('[data-mark]')?.dataset.mark;
+          const ids = marked ? [...marks.marked] : row ? [row] : [];
+          if (ids.length === 0) return;
+          e.preventDefault();
+          askLayers(ids);
+        }
+      }}
+    >
       <div className="tree-h sb-hide">
         <span className="caps">Datasets</span>
         <span className="tree-h-end">
           {/* a retired viewer of an older project has no row, so it is not counted */}
-          <span className="mono faint">
-            {project.manifest.layers.filter((l) => l.kind !== 'legacy').length}
-          </span>
-          {!readOnly && (
+          {!marking && (
+            <span className="mono faint">
+              {project.manifest.layers.filter((l) => l.kind !== 'legacy').length}
+            </span>
+          )}
+          {marking && (
+            <button
+              type="button"
+              className="tree-marked"
+              data-testid="tree-marked-delete"
+              onClick={() => {
+                askLayers([...marks.marked]);
+              }}
+            >
+              {t('tree.marked', { count: marks.marked.size })} · {t('tree.delete')}
+            </button>
+          )}
+          {!readOnly && !marking && (
             <button
               type="button"
               className="tree-add"
@@ -474,7 +563,7 @@ function Datasets({ collapsed }: { collapsed: boolean }) {
               {t('tree.addData')}
             </button>
           )}
-          {!readOnly && (
+          {!readOnly && !marking && (
             <button
               type="button"
               className="eye"
@@ -486,7 +575,7 @@ function Datasets({ collapsed }: { collapsed: boolean }) {
               <Icon name="drawing" size={14} />
             </button>
           )}
-          {canEdit && (
+          {canEdit && !marking && (
             <AddSurveyDateButton
               onNote={(text) => {
                 setNote({ text, danger: false });
@@ -539,6 +628,7 @@ function Datasets({ collapsed }: { collapsed: boolean }) {
           onLayerSettings={onLayerSettings}
           {...drawingProps}
           {...walkProps}
+          {...markProps}
           onFolderMenu={setFolderMenu}
           onMove={canEdit ? onMove : undefined}
           onItemMenu={setItemMenu}
@@ -562,9 +652,52 @@ function Datasets({ collapsed }: { collapsed: boolean }) {
           onLayerSettings={onLayerSettings}
           {...drawingProps}
           {...walkProps}
+          {...markProps}
           onSelect={onSelect}
           onRailGroup={() => {
             void shell.getState().toggleSidebar();
+          }}
+          // survey dates off: rows and group headers still have a menu (Compare, Delete)
+          onItemMenu={(it, at) => {
+            const layerIds = datableLayerIds(it);
+            if (layerIds.length > 0)
+              setItemMenu({ name: it.name, item: it, layerIds, from: EVERY_DATE, ...at });
+          }}
+          dragGroupIds={groupDatableLayerIds}
+          onGroupMenu={(g, layerIds, at) => {
+            setItemMenu({
+              name: t('tree.dates.move.group', { group: g.label, count: layerIds.length }),
+              layerIds,
+              from: EVERY_DATE,
+              ...at,
+            });
+          }}
+        />
+      )}
+      {canEdit && !collapsed && trash !== null && trash.entries > 0 && (
+        <div className="tree-foot sb-hide" data-testid="tree-trash">
+          <Icon name="trash" size={12} />
+          <span>{t('tree.trash', { size: formatBytes(trash.bytes) })}</span>
+          <span aria-hidden="true">·</span>
+          <button
+            type="button"
+            className="tree-foot-btn"
+            data-testid="tree-trash-empty"
+            onClick={() => {
+              // what an earlier Empty held is forgotten, so this one's held entries note again
+              removal.setState({ held: 0 });
+              setEmptying(true);
+            }}
+          >
+            {t('tree.trash.empty')}
+          </button>
+        </div>
+      )}
+      {emptying && (
+        <EmptyTrashDialog
+          projectId={project.id}
+          onClose={() => {
+            setEmptying(false);
           }}
         />
       )}
@@ -587,19 +720,28 @@ function Datasets({ collapsed }: { collapsed: boolean }) {
           onStyle={(id, patch) => {
             void updateCapture(id, patch).then(failed);
           }}
+          onDelete={
+            canEdit
+              ? (capture) => {
+                  askRemove([{ capture }]);
+                }
+              : undefined
+          }
         />
       )}
-      {datesOn && itemMenu && (
+      {itemMenu && (
         <LayerDateMenu
           menu={itemMenu}
           captures={project.manifest.captures}
           tags={tags}
           every={EVERY_DATE}
           canEdit={canEdit}
+          dateMoves={datesOn}
           onClose={() => {
             setItemMenu(null);
           }}
           onMove={onMove}
+          onDelete={canEdit && deletable(itemMenu.layerIds).length > 0 ? askLayers : undefined}
         />
       )}
     </div>

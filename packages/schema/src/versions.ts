@@ -509,6 +509,14 @@ export const SCHEMA_REGISTRY: readonly SchemaEntry[] = [
     where: 'walks/<id>/orientation.json',
     since: '0.12',
   },
+  // what one removal moved to the project trash (delete and start over; founder, 13 Oct 2026)
+  {
+    family: 'aio.trash',
+    version: 1,
+    home: 'project',
+    where: '.trash/<entry>/removed.json',
+    since: '0.12',
+  },
   // the run record of walk.process (walkProcess.ts), beside the walk it processed
   {
     family: 'aio.walk-process',

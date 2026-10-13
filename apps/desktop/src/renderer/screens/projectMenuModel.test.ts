@@ -44,13 +44,21 @@ describe('inDataFolder', () => {
 
 describe('projectActions', () => {
   it('offers Open, Rename, Show in folder and Delete for a project in the data folder', () => {
-    expect(ids(entry())).toEqual(['open', 'rename', 'reveal', 'delete']);
+    expect(ids(entry())).toEqual(['open', 'rename', 'reveal', 'emptyTrash', 'delete']);
+  });
+  it('offers Empty project trash right after Show in folder, greyed for a package', () => {
+    const list = ids(entry());
+    expect(list.indexOf('emptyTrash')).toBe(list.indexOf('reveal') + 1);
+    expect(ids(entry({ package: { encrypted: false, readOnly: true } }))).toContain(
+      'emptyTrash:package',
+    );
   });
   it('adds Export package and Close project on the open project, and holds Delete back', () => {
     expect(ids(entry(), true)).toEqual([
       'open',
       'rename',
       'reveal',
+      'emptyTrash',
       'export',
       'close',
       'delete:open',
@@ -61,26 +69,42 @@ describe('projectActions', () => {
       path: `${DATA}\\projects\\handover.aio`,
       package: { encrypted: false, readOnly: true },
     });
-    expect(ids(pkg)).toEqual(['open', 'rename:package', 'reveal', 'delete:package']);
-    expect(ids(pkg, true)).toEqual(['open', 'rename:package', 'reveal', 'close', 'delete:package']);
+    expect(ids(pkg)).toEqual([
+      'open',
+      'rename:package',
+      'reveal',
+      'emptyTrash:package',
+      'delete:package',
+    ]);
+    expect(ids(pkg, true)).toEqual([
+      'open',
+      'rename:package',
+      'reveal',
+      'emptyTrash:package',
+      'close',
+      'delete:package',
+    ]);
   });
   it('greys Rename and Delete for a demo project, a kit export and a folder added from elsewhere', () => {
     expect(ids(entry({ demo: { primary: true } }))).toEqual([
       'open',
       'rename:demo',
       'reveal',
+      'emptyTrash',
       'delete:demo',
     ]);
     expect(ids(entry({ kind: 'volumetric' }))).toEqual([
       'open',
       'rename:kit',
       'reveal',
+      'emptyTrash:kit',
       'delete:kit',
     ]);
     expect(ids(entry({ path: 'C:\\Jobs\\north-yard' }))).toEqual([
       'open',
       'rename:outside',
       'reveal',
+      'emptyTrash',
       'delete:outside',
     ]);
   });

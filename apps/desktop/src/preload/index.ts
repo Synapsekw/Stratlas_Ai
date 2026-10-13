@@ -102,6 +102,10 @@ const CHANNELS = {
   'panos:scan': true,
   'panos:import': true,
   'panos:cancelImport': true,
+  'builder:removePlan': true,
+  'builder:remove': true,
+  'builder:trash': true,
+  'builder:emptyTrash': true,
   'builder:cancelImport': true,
   // M8
   'change:list': true,

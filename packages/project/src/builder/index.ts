@@ -104,13 +104,30 @@ export {
   type StagedWalkPose,
   type WalkPoseResult,
 } from './walkPose';
+export { removeWalk, type RemoveWalkOptions } from './walkRemove';
+export {
+  RUN_PRODUCTS,
+  layerRefs,
+  namesAny,
+  ownedPaths,
+  planRemoval,
+  valuesUnder,
+  type PlanJob,
+  type PlanOptions,
+} from './removePlan';
+export { MANIFEST_BEFORE, removeItems, type RemoveOptions, type RemoveResult } from './remove';
 export {
   TRASH_DIR,
   TRASH_KEEP_DAYS,
-  removeWalk,
+  emptyTrash,
+  freeTrashEntry,
+  pathBytes,
+  stampOf,
+  stampTime,
   sweepTrash,
-  type RemoveWalkOptions,
-} from './walkRemove';
+  trashSize,
+  type TrashOptions,
+} from './trash';
 export { WALK_ID, walkFolder, walkIdOfRecord } from './walkPaths';
 export {
   classifyWalkSource,

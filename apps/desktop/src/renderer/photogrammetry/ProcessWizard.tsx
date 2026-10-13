@@ -21,9 +21,10 @@ import type {
   PhotoSource,
 } from '@aio/schema';
 import { formatDate, Icon, useFocusTrap } from '@aio/ui';
-import { useWorkspace } from '@aio/workspace';
+import { useWorkspace, workspace } from '@aio/workspace';
 import { useEffect, useMemo, useRef, useState, type DragEvent } from 'react';
 import { bridge, useShell } from '../shell';
+import { removal } from '../shell/removal';
 import { startAlign } from './actions';
 import {
   cameraGroups,
@@ -49,6 +50,7 @@ import {
 } from './estimate';
 import { gpuLine, machineLine, processingLine } from './hardware';
 import { openProcessingTools } from '../processingTools';
+import { replaceAfterStart, startOverLine, type Gnss, type OldRunPlan } from './startOver';
 import { photoUi } from './store';
 import {
   choiceOf,
@@ -61,7 +63,6 @@ import {
   pickSurveyDate,
 } from './surveyDate';
 
-type Gnss = 'auto' | 'rtk' | 'standard' | 'ignore';
 const GNSS: readonly { id: Gnss; label: string; hint: string }[] = [
   {
     id: 'auto',
@@ -134,19 +135,57 @@ export function ProcessWizard() {
     () => (project?.manifest.layers ?? []).filter((l) => l.kind === 'photos'),
     [project],
   );
-  const [kind, setKind] = useState<'layer' | 'folders'>(layers.length ? 'layer' : 'folders');
-  const [layerId, setLayerId] = useState(layers[0]?.id ?? '');
-  const [folders, setFolders] = useState<string[]>([]);
+  // Start over: the values of the run it replaces, read once when the dialog opens
+  const [start] = useState(() => {
+    const v = photoUi.getState().view;
+    return v?.kind === 'wizard' ? v.initial : undefined;
+  });
+  // the project the dialog was opened in: Start over never removes a run of another project
+  const [openedIn] = useState(() => workspace.getState().project?.id ?? null);
+  /** A start is under way (set at once, so a second click cannot start a second run). */
+  const starting = useRef(false);
+  // Start over: what goes with the old run, asked once as the dialog opens; the line shows it and
+  // the removal after the start goes by it (its layers let go first, nothing unseen goes)
+  const oldPlanReq = useRef<Promise<OldRunPlan> | null>(null);
+  const [oldPlan, setOldPlan] = useState<OldRunPlan | null>(null);
+  useEffect(() => {
+    if (!start || openedIn === null) return;
+    let live = true;
+    const req = bridge
+      .call('builder:removePlan', { projectId: openedIn, targets: [{ run: start.replaces }] })
+      .then((r): OldRunPlan =>
+        !r.ok ? { error: r.error } : r.value.ok ? { plan: r.value.plan } : r.value,
+      )
+      .catch((e: unknown): OldRunPlan => ({ error: e instanceof Error ? e.message : String(e) }));
+    oldPlanReq.current = req;
+    void req.then((v) => {
+      if (live) setOldPlan(v);
+    });
+    return () => {
+      live = false;
+    };
+  }, [start, openedIn]);
+  const src = start?.source ?? null;
+  const projectEpsg = project && 'epsg' in project.manifest.crs ? project.manifest.crs.epsg : null;
+  const [kind, setKind] = useState<'layer' | 'folders'>(
+    src ? ('layer' in src ? 'layer' : 'folders') : layers.length ? 'layer' : 'folders',
+  );
+  // a Start over whose photos layer is gone picks nothing: the person chooses again
+  const [layerId, setLayerId] = useState(
+    src && 'layer' in src ? src.layer : start ? '' : (layers[0]?.id ?? ''),
+  );
+  const [folders, setFolders] = useState<string[]>(src && 'folders' in src ? src.folders : []);
   const [over, setOver] = useState(false);
   const [optionsOpen, setOptionsOpen] = useState(false);
-  const projectEpsg = project && 'epsg' in project.manifest.crs ? project.manifest.crs.epsg : null;
-  const [epsg, setEpsg] = useState<number | null>(projectEpsg);
+  const [epsg, setEpsg] = useState<number | null>(start?.crs?.epsg ?? projectEpsg);
   const [crsQuery, setCrsQuery] = useState('');
-  const [gnss, setGnss] = useState<Gnss>(SIMPLE_DEFAULTS.gnss);
-  const [preset, setPreset] = useState<PhotoPreset>(SIMPLE_DEFAULTS.preset);
-  const [products, setProducts] = useState<PhotoProduct[]>(defaultProducts(SIMPLE_DEFAULTS.preset));
+  const [gnss, setGnss] = useState<Gnss>(start?.gnss ?? SIMPLE_DEFAULTS.gnss);
+  const [preset, setPreset] = useState<PhotoPreset>(start?.preset ?? SIMPLE_DEFAULTS.preset);
+  const [products, setProducts] = useState<PhotoProduct[]>(
+    start?.products ?? defaultProducts(SIMPLE_DEFAULTS.preset),
+  );
   /** The person's own choice in Options ('' is None); null while the pick is automatic. */
-  const [dateChoice, setDateChoice] = useState<string | null>(null);
+  const [dateChoice, setDateChoice] = useState<string | null>(start?.capture ?? null);
   const [gcpFirst, setGcpFirst] = useState<boolean>(SIMPLE_DEFAULTS.groundControlFirst);
   /** `undefined` until this computer answered; null when it cannot say (the form then shows). */
   const [probe, setProbe] = useState<HardwareProbe | null | undefined>(undefined);
@@ -294,25 +333,39 @@ export function ProcessWizard() {
   };
 
   const go = async () => {
-    if (!photos || cannotStart || !ready) return;
+    if (!photos || cannotStart || !ready || starting.current) return;
+    starting.current = true;
     setBusy(true);
     setError(null);
-    const runs = await bridge.call('photo:runs', { projectId: project.id });
-    const taken = runs.ok && runs.value.ok ? runs.value.runs.map((r) => r.id) : [];
-    const run = newRunId(new Date(), [...taken, ...photoUi.getState().held]);
-    photoUi.getState().holdRun(run, true);
-    const err = await startAlign({
-      root: project.root,
-      run,
-      photos,
-      preset,
-      gnss,
-      ...(epsg !== null && epsg !== projectEpsg ? { crs: { epsg } } : {}),
-    });
-    setBusy(false);
-    if (err) {
-      photoUi.getState().holdRun(run, false);
-      setError(err);
+    let run: string | null = null;
+    let err: string | null;
+    try {
+      const runs = await bridge.call('photo:runs', { projectId: project.id });
+      const taken = runs.ok && runs.value.ok ? runs.value.runs.map((r) => r.id) : [];
+      // the run Start over replaces is still there: its id and folder are never handed out again
+      run = newRunId(new Date(), [
+        ...taken,
+        ...photoUi.getState().held,
+        ...(start ? [start.replaces] : []),
+      ]);
+      photoUi.getState().holdRun(run, true);
+      err = await startAlign({
+        root: project.root,
+        run,
+        photos,
+        preset,
+        gnss,
+        ...(epsg !== null && epsg !== projectEpsg ? { crs: { epsg } } : {}),
+      });
+    } catch (e) {
+      // the channel to main failed: the wizard can be started again
+      err = e instanceof Error ? e.message : String(e);
+    }
+    if (err !== null || run === null) {
+      if (run !== null) photoUi.getState().holdRun(run, false);
+      starting.current = false;
+      setBusy(false);
+      setError(err ?? 'Failed.');
       return;
     }
     const ui = photoUi.getState();
@@ -320,7 +373,21 @@ export function ProcessWizard() {
     // kept for every run: a cancelled run that is resumed later still builds its maps under it
     ui.setDate(run, date);
     if (!gcpFirst) ui.setPending(run, { root: project.root, preset, products, ...date });
-    ui.openRun(run, 'progress');
+    // the new run opens now (unless the dialog was closed meanwhile); its panel shows the note
+    if (photoUi.getState().view?.kind === 'wizard') ui.openRun(run, 'progress');
+    // the old run goes only now that the new one started (never on Cancel or a refused start),
+    // and only in the project the dialog was opened in; the dialog stays busy until then
+    const note = await replaceAfterStart(true, start, async (old) => {
+      const shown = await (oldPlanReq.current ??
+        Promise.resolve<OldRunPlan>({ error: 'What goes with it was not worked out.' }));
+      if (workspace.getState().project?.id !== openedIn)
+        return 'Another project was opened meanwhile.';
+      // a plan that could not be worked out or was refused: the old run stays, nothing unseen goes
+      if ('error' in shown) return shown.error;
+      if (shown.plan.refused !== undefined) return shown.plan.refused;
+      return removal.getState().removeNow([{ run: old }], shown.plan);
+    });
+    if (note) photoUi.getState().setNote(run, note);
   };
 
   // the one hint about time: beside the summary, or beside the quality choice while Options is open
@@ -377,7 +444,7 @@ export function ProcessWizard() {
       className="b-scrim"
       role="dialog"
       aria-modal="true"
-      aria-label={TITLE}
+      aria-label={start ? `Start run ${start.replaces} over` : TITLE}
       onMouseDown={(e) => {
         if (e.target === e.currentTarget) close();
       }}
@@ -386,10 +453,18 @@ export function ProcessWizard() {
       <div className="ph-simple" data-testid="photo-wizard">
         <header className="ph-head" role="none">
           <div>
-            <h2>{TITLE}</h2>
+            <h2>{start ? `Start run ${start.replaces} over` : TITLE}</h2>
             <p className="small" data-testid="photo-project">
               Project: <b>{project.manifest.name}</b>
             </p>
+            {start && oldPlan && (
+              <p className="small" data-testid="start-over-removes">
+                {startOverLine(start.replaces, oldPlan, (id) => {
+                  const c = project.manifest.captures.find((x) => x.id === id);
+                  return c ? formatDate(c.date) : id;
+                })}
+              </p>
+            )}
             {ready && (
               <p className="small faint">
                 Choose the photos, then start. They are read where they are and never changed.
@@ -437,6 +512,11 @@ export function ProcessWizard() {
         {ready && (
           <>
             <div className="b-body">
+              {start?.missing && (
+                <p className="small faint" data-testid="start-over-missing">
+                  {start.missing}
+                </p>
+              )}
               {layers.length > 0 && (
                 <div className="b-cards ph-source" role="group" aria-label="Photo source">
                   <button
@@ -475,6 +555,11 @@ export function ProcessWizard() {
                       setLayerId(e.target.value);
                     }}
                   >
+                    {layerId === '' && (
+                      <option value="" disabled>
+                        Choose a photos layer
+                      </option>
+                    )}
                     {layers.map((l) => (
                       <option key={l.id} value={l.id}>
                         {l.name} ({l.items.length} photos)

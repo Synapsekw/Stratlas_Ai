@@ -6,6 +6,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { mockManifest } from '../__fixtures__/project';
 import { DatasetTree, type DatasetTreeProps, type TreeRowBadge } from './DatasetTree';
 import { EVERY_DATE, buildDateTree } from './dateModel';
+import { NO_MARKS, nextMarks } from './marks';
 import { buildDatasetTree, type TreeGroup, type TreeItem } from './model';
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -148,30 +149,42 @@ describe('walk rows', () => {
     expect(log).toEqual(['open walk-a', 'place walk-a']);
   });
 
-  it('removes only after the inline confirm, and Cancel keeps the walk', () => {
-    const log: string[] = [];
+  it('Remove on a walk row calls onRemove at once (the shared dialog asks)', () => {
+    const removed: string[] = [];
     const { click, q } = mount({
-      walkActions: {
-        onOpen: () => undefined,
-        onRemove: (it) => log.push(`remove ${it.id}`),
-      },
+      walkActions: { onOpen: () => undefined, onRemove: (it) => removed.push(it.id) },
     });
     click('[data-testid="walk-remove-walk-a"]');
-    expect(log).toEqual([]);
-    expect(q('[data-testid="walk-remove-confirm"] .trow-confirm-q')?.textContent).toBe(
-      'Remove Ground floor? Its files stay in the project trash for seven days.',
-    );
-    expect(q('[role="dialog"]')).toBeNull();
-    click('[data-testid="walk-remove-cancel"]');
+    expect(removed).toEqual(['walk-a']);
     expect(q('[data-testid="walk-remove-confirm"]')).toBeNull();
-    // Cancel gives focus back to the Remove walk button it came from
-    expect(document.activeElement).toBe(q('[data-testid="walk-remove-walk-a"]'));
-    click('[data-testid="walk-remove-walk-a"]');
-    click('[data-testid="walk-remove-yes"]');
-    expect(log).toEqual(['remove walk-a']);
-    expect(q('[data-testid="walk-remove-confirm"]')).toBeNull();
-    // Remove gives focus to the row (the list takes it away when the walk goes)
-    expect(document.activeElement).toBe(q('[data-testid="tree-row-walk-a"]'));
+  });
+
+  it('Ctrl+click and Shift+click mark rows; a plain click selects', () => {
+    const marks: [string, boolean, boolean][] = [];
+    const selected: string[] = [];
+    const { q } = mount({
+      marked: new Set(['walk-a']),
+      onMark: (id, m) => marks.push([id, m.ctrl, m.shift]),
+      onSelect: (it) => selected.push(it.id),
+    });
+    const row = q('[data-testid="tree-row-walk-a"]');
+    if (!row) throw new Error('no row');
+    expect(row.className).toContain('marked');
+    expect(row.getAttribute('aria-selected')).toBe('true');
+    act(() => {
+      row.dispatchEvent(new MouseEvent('click', { bubbles: true, ctrlKey: true }));
+    });
+    act(() => {
+      row.dispatchEvent(new MouseEvent('click', { bubbles: true, shiftKey: true }));
+    });
+    act(() => {
+      row.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    });
+    expect(marks).toEqual([
+      ['walk-a', true, false],
+      ['walk-a', false, true],
+    ]);
+    expect(selected).toEqual(['walk-a']);
   });
 
   it('offers no Place or Remove without their callbacks (a package)', () => {
@@ -189,5 +202,134 @@ describe('walk rows', () => {
     expect(q('[data-testid="tree-group-add-walks"]')?.getAttribute('aria-label')).toBe(
       'Add 360 video',
     );
+  });
+});
+
+describe('marking rows in the order they are drawn', () => {
+  const rows = (kind: TreeGroup['kind'], ids: string[]): TreeGroup => ({
+    kind,
+    label: kind,
+    icon: 'scene',
+    count: ids.length,
+    items: ids.map((id) => ({ id, layerId: id, layerKind: 'mesh', name: id })),
+  });
+  const flight: TreeGroup = {
+    kind: 'video',
+    label: 'Video',
+    icon: 'video',
+    count: 2,
+    items: [
+      {
+        id: 'flight:f1',
+        flightId: 'f1',
+        name: 'Flight 1',
+        children: [
+          { id: 'c1', layerId: 'c1', layerKind: 'video', name: 'clip 1' },
+          { id: 'c2', layerId: 'c2', layerKind: 'video', name: 'clip 2' },
+        ],
+      },
+    ],
+  };
+  const shiftClick = (el: HTMLElement | null) => {
+    if (!el) throw new Error('no row');
+    act(() => {
+      el.dispatchEvent(new MouseEvent('click', { bubbles: true, shiftKey: true }));
+    });
+  };
+
+  it('a Shift range skips the rows of a closed group, a closed flight and behind "more"', () => {
+    const orders: (readonly string[])[] = [];
+    const many = Array.from({ length: 10 }, (_, i) => `p${String(i)}`);
+    const { q } = mount({
+      groups: [rows('walks', ['a', 'b']), rows('models', ['m1', 'm2']), flight, rows('maps', many)],
+      defaultOpen: ['walks', 'video', 'maps'],
+      onMark: (_it, _m, order) => orders.push(order),
+    });
+    shiftClick(q('[data-testid="tree-row-p0"]'));
+    // models is closed, the flight is closed, and maps draws 8 of its 10 rows
+    const order = orders[0] ?? [];
+    expect(orders).toEqual([['a', 'b', ...many.slice(0, 8)]]);
+    const from = nextMarks(NO_MARKS, order, 'a', { ctrl: true, shift: false });
+    const range = nextMarks(from, order, 'p0', { ctrl: false, shift: true });
+    expect([...range.marked]).toEqual(['a', 'b', 'p0']);
+  });
+
+  const key = (el: HTMLElement | null, k: string, mods: KeyboardEventInit = {}) => {
+    if (!el) throw new Error('no row');
+    const e = new KeyboardEvent('keydown', { key: k, bubbles: true, cancelable: true, ...mods });
+    act(() => {
+      el.dispatchEvent(e);
+    });
+    return e;
+  };
+
+  it('Shift+ArrowDown and Up extend the marks from the focused row and move the focus', () => {
+    const calls: [string, boolean, string | undefined, readonly string[]][] = [];
+    const { q } = mount({
+      groups: [rows('walks', ['a', 'b']), flight, rows('maps', ['p0'])],
+      defaultOpen: ['walks', 'video', 'maps'],
+      onMark: (id, m, order) => calls.push([id, m.shift, m.from, order]),
+    });
+    const a = q('[data-testid="tree-row-a"]');
+    a?.focus();
+    expect(key(a, 'ArrowDown', { shiftKey: true }).defaultPrevented).toBe(true);
+    expect(document.activeElement).toBe(q('[data-testid="tree-row-b"]'));
+    // the closed flight's clips are not drawn: the next row down is p0
+    key(q('[data-testid="tree-row-b"]'), 'ArrowDown', { shiftKey: true });
+    expect(document.activeElement).toBe(q('[data-testid="tree-row-p0"]'));
+    key(q('[data-testid="tree-row-p0"]'), 'ArrowUp', { shiftKey: true });
+    // nothing below the last row: no mark, the focus stays
+    key(q('[data-testid="tree-row-p0"]'), 'ArrowDown', { shiftKey: true });
+    const order = ['a', 'b', 'p0'];
+    expect(calls).toEqual([
+      ['b', true, 'a', order],
+      ['p0', true, 'b', order],
+      ['b', true, 'p0', order],
+    ]);
+  });
+
+  it('Ctrl+Space and Meta+Space toggle the focused row; Space alone still selects it', () => {
+    const marks: [string, boolean][] = [];
+    const selected: string[] = [];
+    const { q } = mount({
+      groups: [rows('walks', ['a', 'b'])],
+      onMark: (id, m) => marks.push([id, m.ctrl]),
+      onSelect: (it) => selected.push(it.id),
+    });
+    const b = q('[data-testid="tree-row-b"]');
+    expect(key(b, ' ', { ctrlKey: true }).defaultPrevented).toBe(true);
+    key(b, ' ', { metaKey: true });
+    key(b, ' ');
+    expect(marks).toEqual([
+      ['b', true],
+      ['b', true],
+    ]);
+    expect(selected).toEqual(['b']);
+  });
+
+  it('keys on a button inside a row stay with the button; no marks without onMark', () => {
+    const selected: string[] = [];
+    const marks: string[] = [];
+    const { q } = mount({ groups: [rows('walks', ['a', 'b'])], onMark: (id) => marks.push(id) });
+    key(q('[data-testid="tree-row-a"] button'), 'ArrowDown', { shiftKey: true });
+    key(q('[data-testid="tree-row-a"] button'), ' ', { ctrlKey: true });
+    expect(marks).toEqual([]);
+    act(() => root?.unmount());
+    root = null;
+    const plain = mount({
+      groups: [rows('walks', ['a', 'b'])],
+      onSelect: (it) => selected.push(it.id),
+    });
+    const e = key(plain.q('[data-testid="tree-row-a"]'), 'ArrowDown', { shiftKey: true });
+    expect(e.defaultPrevented).toBe(false);
+  });
+
+  it('says the tree takes many marks only when rows can be marked', () => {
+    const { q } = mount({ onMark: () => undefined });
+    expect(q('[role="tree"]')?.getAttribute('aria-multiselectable')).toBe('true');
+    act(() => root?.unmount());
+    root = null;
+    const plain = mount({});
+    expect(plain.q('[role="tree"]')?.getAttribute('aria-multiselectable')).toBeNull();
   });
 });
