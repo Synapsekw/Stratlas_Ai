@@ -33,8 +33,10 @@ export function SpotHistoryButton(p: { open: SpotOpen; label?: boolean }) {
 export function InlineSpotStrip(p: { open: SpotOpen }) {
   const t = useT();
   const project = useWorkspace((s) => s.project);
-  const { index, result, tags, origin } = useSpotHistory(p.open, true);
-  if (!project || !index || index.captures.length < 2 || !result) return null;
+  // the flight logs are read and the search run only when there are dates to compare
+  const dates = useCaptureIndex()?.captures.length ?? 0;
+  const { index, result, tags, origin } = useSpotHistory(p.open, dates >= 2);
+  if (!project || !index || dates < 2 || !result) return null;
   if ('error' in result)
     return (
       <p className="spot-nopos faint small" data-testid="spot-no-position">

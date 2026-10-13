@@ -11,8 +11,12 @@ import type { SpotEntry, SpotOpen } from './spotTypes';
 import { spotViewer } from './spotViewerStore';
 
 let entries: SpotEntry[] = [];
+const activeArgs = vi.hoisted(() => [] as boolean[]);
 vi.mock('./useSpotEntries', () => ({
-  useSpotEntries: () => ({ entries, reading: false }),
+  useSpotEntries: (active: boolean) => {
+    activeArgs.push(active);
+    return { entries, reading: false };
+  },
 }));
 vi.mock('./SpotThumb', () => ({ SpotThumb: () => <i /> }));
 
@@ -108,6 +112,20 @@ describe('other dates entry', () => {
     expect(q('spot-history-open')).toBeNull();
     expect(q('spot-inline')).toBeNull();
     expect(q('spot-no-position')).toBeNull();
+  });
+
+  it('reads no flight logs for the inline strip with one survey date', () => {
+    load(['d1']);
+    activeArgs.length = 0;
+    render(<InlineSpotStrip open={openA} />);
+    expect(activeArgs.length).toBeGreaterThan(0);
+    expect(activeArgs.every((a) => !a)).toBe(true);
+    act(() => root?.unmount());
+    root = undefined;
+    load(['d1', 'd2']);
+    activeArgs.length = 0;
+    render(<InlineSpotStrip open={openA} />);
+    expect(activeArgs.every((a) => a)).toBe(true);
   });
 
   it('the inline strip shows the dates and a slot opens the viewer there', () => {
