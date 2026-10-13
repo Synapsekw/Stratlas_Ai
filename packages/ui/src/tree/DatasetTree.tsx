@@ -77,24 +77,24 @@ export interface DatasetTreeProps {
   /** Layer ids marked for a group action (Delete). */
   marked?: ReadonlySet<string> | undefined;
   /**
-   * Ctrl+click or Shift+click on a layer row; without it a modified click selects as before.
+   * Ctrl+click or Shift+click on a layer row, Ctrl+Space or Shift+ArrowUp/Down on a focused one
+   * (the arrow marks the row it moves to); without it a modified click selects as before.
    * `order` is the layer rows drawn in the whole tree, top to bottom: rows in a closed group,
    * flight or date folder, or behind "more", are not in it (a Shift range runs over it).
    */
-  onMark?: ((item: TreeItem, mods: MarkMods, order: readonly string[]) => void) | undefined;
+  onMark?: ((layerId: string, mods: MarkMods, order: readonly string[]) => void) | undefined;
 }
 
 /**
  * The layer rows drawn under the tree around `row`, top to bottom. The trees are not virtualised,
  * so every row drawn is in the DOM; a virtualised tree must pass its order another way.
  */
-function drawnOrder(row: HTMLElement): string[] {
+function drawnRows(row: HTMLElement): HTMLElement[] {
   const tree = row.closest('[role="tree"]') ?? row.parentElement;
   if (!tree) return [];
-  return [...tree.querySelectorAll<HTMLElement>('[data-mark]')].flatMap((el) =>
-    el.dataset.mark ? [el.dataset.mark] : [],
-  );
+  return [...tree.querySelectorAll<HTMLElement>('[data-mark]')].filter((el) => el.dataset.mark);
 }
+const drawnOrder = (row: HTMLElement) => drawnRows(row).map((el) => el.dataset.mark ?? '');
 
 /** A short state word on a row: `info` for a step still to take, `warn` for something to check. */
 export interface TreeRowBadge {
@@ -303,12 +303,45 @@ export function DatasetTree(props: DatasetTreeProps) {
           const mods = { ctrl: e.ctrlKey || e.metaKey, shift: e.shiftKey };
           if ((mods.ctrl || mods.shift) && props.onMark && it.layerId) {
             e.preventDefault();
-            props.onMark(it, mods, drawnOrder(e.currentTarget));
+            props.onMark(it.layerId, mods, drawnOrder(e.currentTarget));
             return;
           }
           props.onSelect(it);
         }}
         onKeyDown={(e) => {
+          // keys on a button inside the row are the button's
+          if (e.target !== e.currentTarget) return;
+          const onMark = props.onMark;
+          const id = it.layerId;
+          if (onMark && id !== undefined && e.key === ' ' && (e.ctrlKey || e.metaKey)) {
+            // Ctrl+Space (Meta+Space on a Mac) toggles this row's mark
+            e.preventDefault();
+            onMark(id, { ctrl: true, shift: false }, drawnOrder(e.currentTarget));
+            return;
+          }
+          if (
+            onMark &&
+            id !== undefined &&
+            e.shiftKey &&
+            !e.ctrlKey &&
+            !e.metaKey &&
+            (e.key === 'ArrowDown' || e.key === 'ArrowUp')
+          ) {
+            // Shift+ArrowUp/Down moves to the next drawn row and marks the range up to it
+            e.preventDefault();
+            const drawn = drawnRows(e.currentTarget);
+            const at = drawn.indexOf(e.currentTarget);
+            const to = at < 0 ? undefined : drawn[at + (e.key === 'ArrowDown' ? 1 : -1)];
+            const toId = to?.dataset.mark;
+            if (!to || toId === undefined) return;
+            to.focus();
+            onMark(
+              toId,
+              { ctrl: false, shift: true, from: id },
+              drawn.map((el) => el.dataset.mark ?? ''),
+            );
+            return;
+          }
           if (e.key === 'Enter' || e.key === ' ') {
             e.preventDefault();
             props.onSelect(it);

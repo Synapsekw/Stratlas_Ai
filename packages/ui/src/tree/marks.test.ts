@@ -27,6 +27,21 @@ describe('nextMarks', () => {
     expect(m.anchor).toBe('c');
   });
 
+  it('Shift from the keyboard ranges from the focused row when nothing anchors yet', () => {
+    const one = nextMarks(NO_MARKS, order, 'c', { ...shift, from: 'b' });
+    expect([...one.marked]).toEqual(['b', 'c']);
+    expect(one.anchor).toBe('b');
+    const two = nextMarks(one, order, 'd', { ...shift, from: 'c' });
+    expect([...two.marked]).toEqual(['b', 'c', 'd']);
+    // back up past the anchor: the range turns round it
+    const back = nextMarks(nextMarks(two, order, 'b', { ...shift, from: 'c' }), order, 'a', {
+      ...shift,
+      from: 'b',
+    });
+    expect([...back.marked]).toEqual(['a', 'b']);
+    expect(back.anchor).toBe('b');
+  });
+
   it('a plain click clears the marks', () => {
     const m = nextMarks(nextMarks(NO_MARKS, order, 'a', ctrl), order, 'c', plain);
     expect(m).toEqual(NO_MARKS);

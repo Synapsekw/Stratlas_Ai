@@ -355,9 +355,8 @@ function Datasets({ collapsed }: { collapsed: boolean }) {
     const ok = deletable(ids);
     if (ok.length > 0) askRemove(ok.map((layer) => ({ layer })));
   };
-  const onMark = (it: TreeItem, mods: MarkMods, order: readonly string[]) => {
-    const id = it.layerId;
-    if (id !== undefined) setMarks((m) => nextMarks(m, order, id, mods));
+  const onMark = (id: string, mods: MarkMods, order: readonly string[]) => {
+    setMarks((m) => nextMarks(m, order, id, mods));
   };
   const marked = marks.marked.size > 0;
 
@@ -502,11 +501,12 @@ function Datasets({ collapsed }: { collapsed: boolean }) {
     },
   };
 
-  // Ctrl+click and Shift+click mark rows (not in a package, nor for a reviewer who may only look)
+  // Ctrl+click, Shift+click, Ctrl+Space and Shift+ArrowUp/Down mark rows (not in a package, nor
+  // for a reviewer who may only look)
   const markProps = { marked: marks.marked, onMark: canEdit ? onMark : undefined };
 
-  // while rows are marked the header offers their Delete in place of the count, the add tools and
-  // the eye (the sidebar is too narrow for all of them)
+  // while rows are marked the header offers their Delete in place of the count and the add tools
+  // (the sidebar is too narrow for all of them); the eye stays (founder, 13 Oct 2026)
   const marking = canEdit && marked;
 
   return (
@@ -514,16 +514,19 @@ function Datasets({ collapsed }: { collapsed: boolean }) {
       className="sb-sec sb-tree"
       onKeyDown={(e) => {
         // keys typed in a menu or dialog the tree opened (portals) are theirs, not the tree's
-        if (!marked || !(e.target instanceof Element) || !e.currentTarget.contains(e.target))
-          return;
+        if (!(e.target instanceof Element) || !e.currentTarget.contains(e.target)) return;
         // and keys typed in a field (a date's name) are the field's
         if (e.target.closest('input, textarea, select, [contenteditable]')) return;
-        if (e.key === 'Escape') {
+        if (marked && e.key === 'Escape') {
           e.stopPropagation();
           setMarks(NO_MARKS);
         } else if (e.key === 'Delete' && canEdit) {
+          // the marked rows, else the focused row; always through the shared dialog
+          const row = marked ? null : e.target.closest<HTMLElement>('[data-mark]')?.dataset.mark;
+          const ids = marked ? [...marks.marked] : row ? [row] : [];
+          if (ids.length === 0) return;
           e.preventDefault();
-          askLayers([...marks.marked]);
+          askLayers(ids);
         }
       }}
     >
@@ -579,18 +582,16 @@ function Datasets({ collapsed }: { collapsed: boolean }) {
               }}
             />
           )}
-          {!marking && (
-            <VisibilityEye
-              layerIds={treeLayerIds(groups)}
-              hidden={hidden}
-              onSet={setVisible}
-              labels={{
-                all: t('tree.eye.hideAll'),
-                none: t('tree.eye.showAll'),
-                mixed: t('tree.eye.showAllMixed'),
-              }}
-            />
-          )}
+          <VisibilityEye
+            layerIds={treeLayerIds(groups)}
+            hidden={hidden}
+            onSet={setVisible}
+            labels={{
+              all: t('tree.eye.hideAll'),
+              none: t('tree.eye.showAll'),
+              mixed: t('tree.eye.showAllMixed'),
+            }}
+          />
         </span>
       </div>
       <DateNotes

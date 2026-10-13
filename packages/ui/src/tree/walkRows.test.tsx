@@ -164,7 +164,7 @@ describe('walk rows', () => {
     const selected: string[] = [];
     const { q } = mount({
       marked: new Set(['walk-a']),
-      onMark: (it, m) => marks.push([it.id, m.ctrl, m.shift]),
+      onMark: (id, m) => marks.push([id, m.ctrl, m.shift]),
       onSelect: (it) => selected.push(it.id),
     });
     const row = q('[data-testid="tree-row-walk-a"]');
@@ -252,6 +252,76 @@ describe('marking rows in the order they are drawn', () => {
     const from = nextMarks(NO_MARKS, order, 'a', { ctrl: true, shift: false });
     const range = nextMarks(from, order, 'p0', { ctrl: false, shift: true });
     expect([...range.marked]).toEqual(['a', 'b', 'p0']);
+  });
+
+  const key = (el: HTMLElement | null, k: string, mods: KeyboardEventInit = {}) => {
+    if (!el) throw new Error('no row');
+    const e = new KeyboardEvent('keydown', { key: k, bubbles: true, cancelable: true, ...mods });
+    act(() => {
+      el.dispatchEvent(e);
+    });
+    return e;
+  };
+
+  it('Shift+ArrowDown and Up extend the marks from the focused row and move the focus', () => {
+    const calls: [string, boolean, string | undefined, readonly string[]][] = [];
+    const { q } = mount({
+      groups: [rows('walks', ['a', 'b']), flight, rows('maps', ['p0'])],
+      defaultOpen: ['walks', 'video', 'maps'],
+      onMark: (id, m, order) => calls.push([id, m.shift, m.from, order]),
+    });
+    const a = q('[data-testid="tree-row-a"]');
+    a?.focus();
+    expect(key(a, 'ArrowDown', { shiftKey: true }).defaultPrevented).toBe(true);
+    expect(document.activeElement).toBe(q('[data-testid="tree-row-b"]'));
+    // the closed flight's clips are not drawn: the next row down is p0
+    key(q('[data-testid="tree-row-b"]'), 'ArrowDown', { shiftKey: true });
+    expect(document.activeElement).toBe(q('[data-testid="tree-row-p0"]'));
+    key(q('[data-testid="tree-row-p0"]'), 'ArrowUp', { shiftKey: true });
+    // nothing below the last row: no mark, the focus stays
+    key(q('[data-testid="tree-row-p0"]'), 'ArrowDown', { shiftKey: true });
+    const order = ['a', 'b', 'p0'];
+    expect(calls).toEqual([
+      ['b', true, 'a', order],
+      ['p0', true, 'b', order],
+      ['b', true, 'p0', order],
+    ]);
+  });
+
+  it('Ctrl+Space and Meta+Space toggle the focused row; Space alone still selects it', () => {
+    const marks: [string, boolean][] = [];
+    const selected: string[] = [];
+    const { q } = mount({
+      groups: [rows('walks', ['a', 'b'])],
+      onMark: (id, m) => marks.push([id, m.ctrl]),
+      onSelect: (it) => selected.push(it.id),
+    });
+    const b = q('[data-testid="tree-row-b"]');
+    expect(key(b, ' ', { ctrlKey: true }).defaultPrevented).toBe(true);
+    key(b, ' ', { metaKey: true });
+    key(b, ' ');
+    expect(marks).toEqual([
+      ['b', true],
+      ['b', true],
+    ]);
+    expect(selected).toEqual(['b']);
+  });
+
+  it('keys on a button inside a row stay with the button; no marks without onMark', () => {
+    const selected: string[] = [];
+    const marks: string[] = [];
+    const { q } = mount({ groups: [rows('walks', ['a', 'b'])], onMark: (id) => marks.push(id) });
+    key(q('[data-testid="tree-row-a"] button'), 'ArrowDown', { shiftKey: true });
+    key(q('[data-testid="tree-row-a"] button'), ' ', { ctrlKey: true });
+    expect(marks).toEqual([]);
+    act(() => root?.unmount());
+    root = null;
+    const plain = mount({
+      groups: [rows('walks', ['a', 'b'])],
+      onSelect: (it) => selected.push(it.id),
+    });
+    const e = key(plain.q('[data-testid="tree-row-a"]'), 'ArrowDown', { shiftKey: true });
+    expect(e.defaultPrevented).toBe(false);
   });
 
   it('says the tree takes many marks only when rows can be marked', () => {

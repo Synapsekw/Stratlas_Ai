@@ -375,7 +375,7 @@ describe('DateTree: menus and renaming', () => {
 
   it('a Shift range runs over the rows drawn, not those of a closed date folder', () => {
     const orders: (readonly string[])[] = [];
-    renderWith({ onMark: (_it, _m, order) => orders.push(order) });
+    renderWith({ onMark: (_id, _m, order) => orders.push(order) });
     expect(q('date-folder-oct')?.getAttribute('aria-expanded')).toBe('false');
     const row = q('tree-row-m-nov');
     act(() => {
@@ -383,6 +383,19 @@ describe('DateTree: menus and renaming', () => {
     });
     expect(orders).toEqual([['site', 'm-nov']]);
     expect(host.querySelector('[role="tree"]')?.getAttribute('aria-multiselectable')).toBe('true');
+  });
+
+  it('Shift+ArrowUp crosses from one date folder into the next one up', () => {
+    const calls: [string, string | undefined][] = [];
+    renderWith({ onMark: (id, m) => calls.push([id, m.from]) });
+    const row = q('tree-row-m-nov');
+    act(() => {
+      row?.dispatchEvent(
+        new KeyboardEvent('keydown', { key: 'ArrowUp', shiftKey: true, bubbles: true }),
+      );
+    });
+    expect(calls).toEqual([['site', 'm-nov']]);
+    expect(document.activeElement).toBe(q('tree-row-site'));
   });
 
   it('F2 on a date name starts renaming it, never on Every date', () => {

@@ -84,8 +84,8 @@ const click = (id: string, init: MouseEventInit = {}) => {
     el.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, ...init }));
   });
 };
-const press = (id: string, key: string) => {
-  const e = new KeyboardEvent('keydown', { key, bubbles: true, cancelable: true });
+const press = (id: string, key: string, init: KeyboardEventInit = {}) => {
+  const e = new KeyboardEvent('keydown', { key, bubbles: true, cancelable: true, ...init });
   act(() => {
     q(id)?.dispatchEvent(e);
   });
@@ -142,6 +142,48 @@ describe('Datasets: Delete', () => {
     click('tree-row-walk-a', { ctrlKey: true });
     click('tree-row-walk-b');
     expect(q('tree-marked-delete')).toBeNull();
+  });
+
+  it('Ctrl+Space and Shift+ArrowDown mark rows from the keyboard; Delete asks for them', () => {
+    render(null);
+    press('tree-row-walk-a', ' ', { ctrlKey: true });
+    expect(q('tree-marked-delete')?.textContent).toBe('1 selected · Delete…');
+    press('tree-row-walk-a', 'ArrowDown', { shiftKey: true });
+    expect(document.activeElement).toBe(q('tree-row-walk-b'));
+    press('tree-row-walk-b', 'ArrowDown', { shiftKey: true });
+    expect(q('tree-marked-delete')?.textContent).toBe('3 selected · Delete…');
+    press('tree-row-walk-c', 'ArrowUp', { shiftKey: true });
+    expect(q('tree-marked-delete')?.textContent).toBe('2 selected · Delete…');
+    press('tree-row-walk-b', 'Delete');
+    expect(asked).toEqual([[{ layer: 'walk-a' }, { layer: 'walk-b' }]]);
+  });
+
+  it('Delete on a focused row with nothing marked asks for that row, in the dialog', () => {
+    render(null);
+    const del = press('tree-row-walk-c', 'Delete');
+    expect(del.defaultPrevented).toBe(true);
+    expect(asked).toEqual([[{ layer: 'walk-c' }]]);
+    // a group header is not a row: nothing is asked
+    press('tree-group-walks', 'Delete');
+    expect(asked).toHaveLength(1);
+  });
+
+  it('a reviewer who may only look deletes nothing from the keyboard', () => {
+    h.readOnly = true;
+    render(null);
+    press('tree-row-walk-a', ' ', { ctrlKey: true });
+    press('tree-row-walk-a', 'Delete');
+    expect(q('tree-marked-delete')).toBeNull();
+    expect(asked).toEqual([]);
+  });
+
+  it('keeps the show and hide eye in the header while rows are marked', () => {
+    render(null);
+    const eye = () => document.body.querySelector('.tree-h [data-visibility]');
+    expect(eye()?.getAttribute('aria-label')).toBe('Hide all layers');
+    click('tree-row-walk-a', { ctrlKey: true });
+    expect(q('tree-marked-delete')).not.toBeNull();
+    expect(eye()?.getAttribute('aria-label')).toBe('Hide all layers');
   });
 
   it("a walk row's Remove opens the shared dialog", () => {
@@ -215,6 +257,11 @@ describe('Datasets: Delete in the menus', () => {
     expect(asked).toEqual([]);
     press('date-rename', 'Escape');
     expect(q('tree-marked-delete')).not.toBeNull();
+    // with nothing marked, Delete in the field is still the field's
+    press('tree-row-walk-b', 'Escape');
+    press('date-name-c1', 'F2');
+    expect(press('date-rename', 'Delete').defaultPrevented).toBe(false);
+    expect(asked).toEqual([]);
   });
 
   it("a date folder's Delete… asks for the date", () => {
