@@ -2,6 +2,7 @@ import type { ProjectManifest } from '@aio/schema';
 import type { RenameOptions } from '../import/rename';
 import { readManifestFile } from './manifestFile';
 import { removeItems } from './remove';
+import type { PlanJob } from './removePlan';
 
 /*
  * Removing a walk (the walk layer and placing, "The smaller points"): one case of `removeItems`
@@ -14,6 +15,8 @@ export { sweepTrash, TRASH_DIR, TRASH_KEEP_DAYS } from './trash';
 
 export interface RemoveWalkOptions {
   rename?: RenameOptions['rename'];
+  /** This project's jobs: a live `walk.process` on the walk refuses the removal. */
+  jobs?: readonly PlanJob[];
 }
 
 export async function removeWalk(

@@ -21,7 +21,7 @@ import { lstat, readdir, readFile, realpath, stat } from 'node:fs/promises';
 import { isAbsolute, join, relative } from 'node:path';
 import { readManifestFile } from './manifestFile';
 import { pathBytes, TRASH_DIR } from './trash';
-import { walkFolder } from './walkPaths';
+import { walkFolder, walkIdOfRecord } from './walkPaths';
 
 /*
  * What a removal takes along (delete and start over, founder 13 Oct 2026; spec "Resolving
@@ -60,6 +60,7 @@ const JOB_WORDS: Readonly<Record<string, string>> = {
   'tiles.mesh': 'Making 3D tiles',
   'tiles.cloud': 'Making 3D tiles',
   'opf.export': 'Exporting as OPF',
+  'walk.process': 'Processing the walk',
 };
 /** Never moved, whatever names them. */
 const NEVER = ['manifest.json', TRASH_DIR, 'assets', 'journal'];
@@ -389,13 +390,22 @@ export async function planRemoval(
 
   const runIds = new Set(runWhy.keys());
   const layerIds = new Set(layerWhy.keys());
+  // `walk.process` names its walk by folder id (`params.walk`), not by the layer id `walk-<id>`
+  const walkLayers = new Map<string, string>();
+  for (const id of layerIds) {
+    const l = byId.get(id);
+    const walk = l?.kind === 'walk' && 'path' in l.record ? walkIdOfRecord(l.record.path) : null;
+    if (walk !== null) walkLayers.set(walk, id);
+  }
   for (const j of o.jobs ?? []) {
     if (!LIVE.has(j.status)) continue;
     const words = JOB_WORDS[j.pipeline] ?? `The ${j.pipeline} job`;
     const run = str(j.params.run);
     if (run !== undefined && runIds.has(run))
       return refuse(`${words} for run ${run} is still running. Cancel it first.`);
-    const hit = namesAny(j.params, layerIds);
+    const walk = j.pipeline === 'walk.process' ? str(j.params.walk) : undefined;
+    const hit =
+      (walk === undefined ? undefined : walkLayers.get(walk)) ?? namesAny(j.params, layerIds);
     if (hit !== null)
       return refuse(
         `${words} uses "${byId.get(hit)?.name ?? hit}" and is still running. Cancel it first.`,

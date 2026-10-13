@@ -160,6 +160,27 @@ describe('planRemoval', () => {
     expect(p.refused).toMatch(/still running\. Cancel it first\./);
   });
 
+  it('refuses while walk.process runs on a removed walk, naming the walk', async () => {
+    await addLayers({
+      kind: 'walk',
+      id: 'walk-w1',
+      name: 'Morning walk',
+      visible: true,
+      record: { path: 'walks/w1/walk.json' },
+      src: { path: 'walks/w1/playback.mp4' },
+      durationS: 10,
+    });
+    const job = { id: 'j3', pipeline: 'walk.process', status: 'running', params: { walk: 'w1' } };
+    const p = await planRemoval(root, [{ layer: 'walk-w1' }], { jobs: [job] });
+    expect(p.refused).toBe(
+      'Processing the walk uses "Morning walk" and is still running. Cancel it first.',
+    );
+    const other = [{ ...job, params: { walk: 'w2' } }];
+    expect((await planRemoval(root, [{ layer: 'walk-w1' }], { jobs: other })).refused).toBe(
+      undefined,
+    );
+  });
+
   it('a finished job never refuses', async () => {
     const p = await planRemoval(root, [{ layer: 'photos-a' }], { jobs: FIXTURE_JOBS });
     expect(p.refused).toBeUndefined();
