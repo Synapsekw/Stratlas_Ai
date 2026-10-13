@@ -21,3 +21,13 @@ export {
   WALK_POSE_HZ_STILLS,
 } from './pose';
 export { surfaceFrameFromCorners } from './surface';
+export {
+  GHOST_FALLBACK_M,
+  GHOST_M_PER_STEP,
+  ghostLengthM,
+  ghostPath,
+  outlineAt,
+  previewPath,
+  walkOutline,
+  type WalkOutline,
+} from './preview';
