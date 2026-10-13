@@ -47,7 +47,7 @@ Only what still needs testing. Each stage lists what to click and what you shoul
 | M10         | Photos to products: photo processing on the demo and on your own flight, ground control and the accuracy report, OPF, Globe, imagery and terrain packs, 3D Tiles, licence approvals                                                                                                                                         | Version 0.10.0, built 8 Oct 2026 from `integration/m10` at commit `3f07041` or later with the M10 fixes merged (the 24-photo demo), and the processing tools 0.4.0 or later; test it on 0.11.4 with the processing tools 0.5.4 (see M10, Before you start) | Built; not yet tested by the founder                 |
 | M11         | Surveying: site coordinates and calibration, the surface engine, measurement tools and templates, volumes and comparisons, cross-sections and terrain overlays, designs and alignments, survey exports and the interop matrix, QA and cleanup, survey reports and template sets, haul road, hydrology, your three real jobs | Version 0.11.4 with the processing tools 0.5.4 (both carry the local AI helpers), and the survey demos (see M11, Before you start)                                                                                                                         | Built; not yet tested by the founder                 |
 | Walks W1    | 360 video: a 360 camera file or a stitched 360 video comes in and plays beside the 3D view                                                                                                                                                                                                                                  | Version 0.12.0 with pipeline pack 0.6.0, which brings ffmpeg (see Walks W1, Before you start)                                                                                                                                                              | Built; not yet tested by the founder                 |
-| Walks W2    | Placing a 360 walk: walks in Datasets with their badge, Place walk on a drawing or the map, pins, Save, Remove walk                                                                                                                                                                                                         | Version 0.12.0 with pipeline pack 0.6.0, a 360 video and a drawing (see Walks W2, Before you start)                                                                                                                                                        | Built; not yet tested by the founder                 |
+| Walks W2    | Placing a 360 walk: the path notice, the shape following the pointer, Start and End on a drawing, the map or the 3D view, handles, Fine-tune, Save, Edit placement, Remove placement, Remove walk                                                                                                                           | Version 0.12.0 with pipeline pack 0.6.0, a 360 video and a drawing (see Walks W2, Before you start)                                                                                                                                                        | Built; not yet tested by the founder                 |
 
 ## Stage M5: your M4 feedback, fixed
 
@@ -213,7 +213,7 @@ Use the tank sample project or a new empty one.
 - [ ] Drag in a small LAS or LAZ: a job under **Processing** converts it (progress, log); the cloud appears when done.
 - [ ] Drag in a few hundred photos together with a small LAS or LAZ: the panel reads "Importing N of M", the cloud's row reads **Queued** and its job runs under **Processing**. When the import ends, the photos and the point cloud are both in **Datasets**, also when the cloud was converted before the last photo was in.
 - [ ] In a project with a survey date, drag in a few hundred photos. While the panel reads "Importing N of M", right-click the date folder in **Datasets**, **Rename**, type a new name and press Enter. Then right-click a group heading and pick another date under **Move to date**. When the import ends, the new name and the move are still there, and the photos are in.
-- [ ] **Import files**, pick a GeoTIFF over 300 MB (or over 12,000 x 12,000 pixels, or saved as a BigTIFF): the panel reads "Imported 0 of 1 files" and the file's row reads **Failed** with "This GeoTIFF is too large to import yet (over 300 MB, over 12,000 x 12,000 pixels, or a BigTIFF). Reduce or split it in other software, then import the parts." No job starts. In a batch, the other files still come in.
+- [ ] **Import files**, pick a GeoTIFF over 300 MB (or over 12,000 x 12,000 pixels, or saved as a BigTIFF): the panel reads "Nothing imported: 1 file failed" and the file's row reads **Failed** with "This GeoTIFF is too large to import yet (over 300 MB, over 12,000 x 12,000 pixels, or a BigTIFF). Reduce or split it in other software, then import the parts." No job starts. In a batch, the other files still come in.
 
 ### Camera heights in Import
 
@@ -656,7 +656,7 @@ Drawings are their own group in **Datasets**. Test it on 0.11.4. A drawing canno
 - [ ] Click **Add drawing** and pick the PNG. The import panel says "Imported 1 of 1 files" and "Added to Drawings, not placed yet. Open it side by side, or place it on the site to lay it over the model." A **Drawings** group appears in **Datasets** (inside **Every date** when the project has survey dates) with the file, marked "not placed". Its controls open under the row and start with "Not placed yet, so it is hidden in 3D and on the map. It opens side by side as it is."
 - [ ] Nothing new shows in the 3D view or on the map yet: the row's eye is crossed out. Click the eye: the drawing appears at the project origin a moment later (its picture is only loaded now). Click it again to hide it.
 - [ ] Click **Add data** and pick the PDF. A card "Pages of <file>" says "This PDF has <n> pages. Each page you import becomes one drawing, and a drawing cannot be removed again, so type only the pages you need." Its **Pages** field proposes `1`. Type `1-2` and click **Import 2 pages**. Two drawings appear, named "<file>, page 1" and "<file>, page 2". While the card is open, dropping another file on the window does nothing.
-- [ ] Drop the PDF on the window, type `99` in **Pages**: "This file has pages 1 to <n>." and **Import** is greyed out. Click **Cancel**: the panel says "Imported 0 of 1 files" and "No pages were imported. Import the file again to choose pages.", and the project folder has no new file under `drawings`.
+- [ ] Drop the PDF on the window, type `99` in **Pages**: "This file has pages 1 to <n>." and **Import** is greyed out. Click **Cancel**: the panel says "Nothing imported: 1 file skipped" and "No pages were imported. Import the file again to choose pages.", and the project folder has no new file under `drawings`.
 - [ ] A drawing cannot be removed yet: its row has only the settings button and the eye, and its controls have no remove button. Use a test project for this stage, and import only the files and pages you need.
 - [ ] Pick an OBJ model together with its MTL and its PNG textures through **Add data**: the model comes in with its textures, and the PNG files read "A texture of the model ..." instead of becoming drawings.
 - [ ] With a picture drawing called `site` in the project, drop a DXF called `site.dxf` (processing tools installed): its row says it comes in as `site-2`, and the picture drawing is untouched when the job ends.
@@ -1086,7 +1086,7 @@ A 360 camera file is stitched by the ffmpeg in pipeline pack 0.6.0, so check the
 - [ ] Open the project, then **Add data** (or drag the files onto the window) and pick the `.insv` and the `.lrv` together. The import panel counts the files ("Importing 1 of 2") and, under the bar, shows the file name with "playback copy" and a percentage that counts up; the bar moves with it.
 - [ ] When it ends the panel reads "Imported 1 of 2 files". The `.insv` line is **Imported**: "Stitched to 3840 x 1920 for playback from two lens streams of 2880 x 2880; the original stays where it is. Open it under 360 walks in Datasets." The `.lrv` line is **Skipped**: "The camera's low resolution copy of VID_..., which is imported in full."
 - [ ] A minute of footage takes about a minute or two to stitch. The app stays usable meanwhile, but a second import does not start until the first has ended or is cancelled.
-- [ ] Import the clip again and click **Cancel** in the panel while the percentage counts: the header reads "Cancelling the import", then "Imported 0 of 1 files", and the clip's line is **Skipped**: "The import was cancelled while this 360 video was made. Nothing of it was added." The **360 walks** group in **Datasets** has no new row, and in Task Manager no ffmpeg is left running.
+- [ ] Import the clip again and click **Cancel** in the panel while the percentage counts: the header reads "Cancelling the import", then "Nothing imported: 1 file skipped", and the clip's line is **Skipped**: "The import was cancelled while this 360 video was made. Nothing of it was added." The **360 walks** group in **Datasets** has no new row, and in Task Manager no ffmpeg is left running.
 - [ ] Drop the clip together with a few photos and click **Cancel** while the clip's percentage counts: the photos are kept ("Imported ... files", their lines **Imported**) and show in the scene and the dataset tree, and the clip is **Skipped**. Without Cancel the photos are saved in the project at once, but they show only when the whole import has ended, clip included.
 - [ ] Drop the clip together with a PDF of several pages and click **Cancel** while the clip's percentage counts: no page question appears, the PDF's line is **Skipped** ("The import was cancelled before this drawing was drawn. Nothing of it was added.") and the **Drawings** group has no new row.
 - [ ] Start an import of the clip and close the app while the percentage counts. In Task Manager no ffmpeg is left running. Open the app and import any 360 video: the project folder's `walks` folder holds no `.staging-...` folder afterwards.
@@ -1116,7 +1116,7 @@ A 360 camera file is stitched by the ffmpeg in pipeline pack 0.6.0, so check the
 
 ### Without ffmpeg
 
-- [ ] Optional, on a PC with no pipeline pack (or one older than 0.6.0) and no ffmpeg of its own: import an `.insv`. The panel reads "Imported 0 of 1 files" and the line is **Failed** with "ffmpeg was not found, and the app needs it to stitch the two lens pictures of a 360 camera file. Install a full ffmpeg build ..." ending in "Nothing was added to the project." No `walks` folder is made in the project folder (one that was there before gets no new folder).
+- [ ] Optional, on a PC with no pipeline pack (or one older than 0.6.0) and no ffmpeg of its own: import an `.insv`. The panel reads "Nothing imported: 1 file failed" and the line is **Failed** with "ffmpeg was not found, and the app needs it to stitch the two lens pictures of a 360 camera file. Install a full ffmpeg build ..." ending in "Nothing was added to the project." No `walks` folder is made in the project folder (one that was there before gets no new folder).
 
 ### Packages and older builds
 
@@ -1153,45 +1153,54 @@ Compare two survey dates from the sidebar tree, and two panoramas side by side. 
 
 ## Stage Walks W2: placing a 360 walk
 
-Test it on 0.12.0. A walk is placed on a drawing (or on the map, in a project with a coordinate system) by clicking where it started and where it ended, then correcting with pins. The path the camera walked is not computed from the video yet, so every walk is placed between your pins, and after Save its badge reads **Path not computed** (see KNOWN-LIMITS).
+Test it on 0.12.0. A walk is placed on a drawing, on the map (in a project with a coordinate system) or in the 3D view by clicking where it started and where it ended: the walk's shape, worked out from the video by **Process walk**, is laid between the two clicks. Start and End can then be dragged, and **Fine-tune** adds pins with the 360 video.
 
 ### Before you start
 
 - [ ] Pipeline pack 0.6.0 is installed (Stage Walks W1, Before you start).
 - [ ] Use a test project or a copy, with a 360 video in it (Stage Walks W1) and a drawing of the same area (Stage D). A drawing placed by points gives true distances; one that is not placed yet works too.
+- [ ] Process the walk once (**Process walk** under its row) and let it finish. Keep a second walk that is not processed for the notice below.
 - [ ] A project that had 360 videos in 0.11.4 opens with them as rows under **360 walks**, with nothing to do.
 
 ### The walk in Datasets
 
 - [ ] The **360 walks** group is open, in the folder of the walk's survey date or under **Every date**. The row shows the name, the length and **Needs placing**.
-- [ ] Point at the row: three buttons take the place of the length: **Open in the 360 video pane**, **Place walk** and **Remove walk**. The group header has **Add 360 video**.
-- [ ] There is no separate **360 video** list below the datasets any more.
+- [ ] Point at the row of a walk that is not placed: **Open in the 360 video pane**, **Place walk** and **Remove walk** take the place of the length. The group header has **Add 360 video**.
+- [ ] Point at the row of a placed walk: **Edit placement** takes the place of **Place walk**, and **Remove placement** is there too.
+
+### A walk that is not processed
+
+- [ ] Press **Place walk** on the walk that is not processed. The toolbar says "This walk is not processed yet, so its path is unknown." and offers **Process walk** and **Place between two points anyway**. No line is drawn.
+- [ ] While a walk processes, the notice reads "This walk is processing. Its shape appears here when it finishes." When it finishes, placing goes on to the start click by itself.
+- [ ] **Place between two points anyway**, then two clicks: the walk is a straight line between them, and the toolbar says "Path not computed: the walk is placed between your two points."
 
 ### Place on a drawing
 
-- [ ] Press **Place walk**. The **Scene** goes to **Split** with the 360 video on one side and the drawing on the other. A strip above the drawing (never over it) asks "Choose the survey date of this walk", with a button per survey date, or **Add survey date** with the camera's date.
-- [ ] Pick the date. The strip reads "Where did the walk start? Click the spot.", shows **Place on** with the drawing, and the steps **1 Start**, **2 End** and **3 Correct**; only the current step is highlighted. The video jumps to the start of the walk.
-- [ ] Click the drawing where the walk started: pin 1 appears, the video jumps to the end, and the strip reads "Where did it end? Click the spot."
-- [ ] Click where it ended: a line in the colour of the survey date joins the pins, and the step is **Correct**. The note "Path not computed: the walk is placed between your pins." shows in the strip.
-- [ ] Two pins less than 5 m apart are refused, and the strip says why.
-- [ ] Scrub the video to a moment in the middle, press **Pin here** ("Click the true spot for this moment.") and click the spot: pin 3 appears and the line passes through it. Each pin in the strip shows "set" or a distance in metres; its small cross removes it.
-- [ ] Drag a pin on the drawing: the line follows while you drag.
-- [ ] **Align view**: click a landmark in the 360 video ("Click a landmark in the 360 view"), then the same landmark on the drawing ("Now click the same landmark here"). The **Heading** field changes; the arrow keys in it turn by 1 degree, and by 10 with Shift.
-- [ ] Once placed, the 360 video shows a small **N** at its top edge where north is, at the edge and dimmed when north is out of view.
-- [ ] **Save**: the strip closes, the row's badge reads **Path not computed**, and the walk's folder in the project (`walks/<name>/`) holds a new `pose.json`.
-- [ ] **Place walk** again: it opens on the same drawing with the pins as saved.
-- [ ] With unsaved pins, press **Cancel**: the strip asks "Keep these pins?" with **Keep placing**, **Discard** and **Save**, inline, with no dialog.
-- [ ] Open another drawing of the same area in the split: the placed walk is drawn on it too, fainter and without pins.
+- [ ] Press **Place walk** on the processed walk and choose the drawing in **Place on**. The **Scene** goes to **Split** with the drawing on one side and the 3D view on the other (no 360 video). A slim toolbar sits above the drawing, never over it. A walk without a survey date has a **Survey date** field in it.
+- [ ] Move the pointer over the drawing: the hint reads "Click where the walk started. Its shape follows the pointer." and a faint copy of the walk's shape follows the pointer. Move off the drawing: the shape goes; move back: it comes back.
+- [ ] Click where the walk started. The shape now turns and scales between the start and the pointer, and the hint reads "Click where the walk ended."
+- [ ] Bring the pointer within 5 m of the start: the hint reads "Put the end at least 5 m from the start.", and a click there does nothing.
+- [ ] Click where it ended. The walk shows in the colour of the survey date with a round **Start** handle (hollow) and **End** handle (filled), and the hint reads "Drag Start or End to adjust the walk, then Save." The walk keeps its bends; it is not a straight line.
+- [ ] Drag **End**: the shape follows while you drag. Dragging it within 5 m of Start keeps it at its last allowed spot.
+- [ ] **Fine-tune**: the 360 video opens beside the drawing. Scrub to a moment in the middle, press **Pin here** ("Click the true spot for this moment.") and click the spot: a numbered pin appears and the walk passes through it. Each pin shows "set" or a distance in metres; its small cross removes it.
+- [ ] **Align view**: click a landmark in the 360 video ("Click a landmark in the 360 view"), then the same landmark on the drawing ("Now click the same landmark here"). The **Heading** field changes; the arrow keys in it turn by 1 degree, and by 10 with Shift. The 360 video shows a small **N** at its top edge where north is.
+- [ ] **Save**: the toolbar closes, the row's badge changes from **Needs placing**, and the walk's folder in the project (`walks/<name>/`) holds a new `pose.json`.
+- [ ] With changes not saved, press **Cancel**: the toolbar asks "Keep these changes?" inline, with no dialog.
+- [ ] **Edit placement** in the row: it opens on the same drawing with Start and End where they were saved.
+- [ ] Open another drawing of the same area in the split: the placed walk is drawn on it too, fainter and without handles.
 
-### Place on the map
+### Place on the map and in the 3D view
 
-- [ ] In a project with a coordinate system, **Place on** offers **Map** after the drawings. The strip sits above the map, and the same steps place the walk by clicks on the map. Map pins cannot be dragged: remove one with its cross and pin again (see KNOWN-LIMITS).
-- [ ] In a project on a local grid, **Map** is not offered.
+- [ ] In a project with a coordinate system, **Place on** offers **Map** after the drawings, and **3D view** last. On the map the same steps work: the shape follows the pointer, a click for the start and one for the end, then drag **Start** or **End**. While a handle is dragged the map does not pan; let go outside the map and the map pans again.
+- [ ] Choose **3D view**: the toolbar sits above the 3D view and the same steps work there; the shape follows the ground under the pointer. Dragging a handle does not turn the view. Escape during a drag ends the drag, not the placing.
+- [ ] Save on the map: the walk also shows faintly in the 3D view, and the other way round.
+- [ ] In a project on a local grid, **Map** is not offered; **3D view** is.
 
-### Remove a walk
+### Remove a placement and remove a walk
 
-- [ ] Point at the row and press **Remove walk**. Under the row: "Remove <name>? Its files stay in the project trash for seven days." with **Remove walk** and **Cancel**; Escape cancels. No dialog.
-- [ ] Press **Remove walk**, also with the walk open in the 360 video pane: the row goes, and the walk's folder moves to `.trash` in the project folder. It is deleted when the project is opened more than seven days later.
+- [ ] Point at a placed walk's row and press **Remove placement**. Under the row: "Remove the placement of <name>? The walk stays in the project." with **Remove placement** and **Cancel**. Confirm: the walk leaves the drawing, the map and the 3D view, its badge reads **Needs placing** again, and the row stays.
+- [ ] While placing, **Remove placement** in the toolbar asks "Remove this placement? The walk stays in the project." and does the same.
+- [ ] Point at the row and press **Remove walk**. It asks first; confirm: the row goes, also with the walk open in the 360 video pane, and the walk's folder moves to `.trash` in the project folder. It is deleted when the project is opened more than seven days later.
 
 ### Packages and older builds
 

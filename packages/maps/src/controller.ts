@@ -133,7 +133,30 @@ export interface MapController {
    * projection; until then clicks are ignored while armed.
    */
   pickPoint(onPick: (local: Vec3) => void, onCancel?: () => void): () => void;
+  /**
+   * A live pointer session (placing a walk): hover points, clicks and draggable handles, all in
+   * local coordinates. It stays armed until the returned function is called (it never disarms
+   * itself); the cursor is a crosshair (a grab hand over a handle) and a double click does not
+   * zoom. A press on a handle drags it with map panning off; Escape calls `onCancel`. A new
+   * session replaces the old one, and it replaces a waiting `pickPoint` (one owner of the pointer
+   * at a time). Needs a project with a map projection; events are ignored until there is one.
+   */
+  pointerSession(s: MapPointerSession): () => void;
   dispose(): void;
+}
+
+/** A live pointer session on the map (placing a walk): hover, clicks and draggable handles. */
+export interface MapPointerSession {
+  /** The pointer moved over the map (not dragging): its local point; null when it left the map. */
+  onMove?: (local: Vec3 | null) => void;
+  /** A click on the map (not on a handle being dragged): its local point. Stays armed. */
+  onClick?: (local: Vec3) => void;
+  /** The handles a press can grab, in local coordinates, read on every press. */
+  handles?: () => readonly { id: string; local: Vec3 }[];
+  onDrag?: (id: string, local: Vec3) => void;
+  onDragEnd?: (id: string, local: Vec3 | null) => void;
+  /** Escape. */
+  onCancel?: () => void;
 }
 
 /** Metres per screen pixel at a latitude and MapLibre zoom (512 px tiles). */
@@ -188,6 +211,16 @@ export function createMapController(
   });
   // Test hook: end-to-end tests query rendered features through the container.
   Object.assign(el, { __aioMap: map });
+  /** The camera as a comparable key (centre and zoom). */
+  const cameraKey = (): string => {
+    const c = map.getCenter();
+    return `${map.getZoom().toFixed(6)} ${c.lng.toFixed(7)} ${c.lat.toFixed(7)}`;
+  };
+  /**
+   * The camera the map itself last set (at creation, or framing the project). While a walk is
+   * placed on the map the person frames it: a camera that moved since is not framed over.
+   */
+  let ownCamera = cameraKey();
   map.addControl(new AttributionControl({ compact: true }), 'bottom-right');
   map.addControl(new NavigationControl({ showCompass: false }), 'top-right');
   map.addControl(new ScaleControl({ unit: 'metric' }), 'bottom-left');
@@ -501,6 +534,7 @@ export function createMapController(
     if (!drawing) map.doubleClickZoom.enable();
   }
   function pickPoint(onPick: (local: Vec3) => void, onCancel?: () => void): () => void {
+    stopSession();
     disarmPick();
     const armed = { onPick, onCancel };
     picking = armed;
@@ -513,9 +547,100 @@ export function createMapController(
     };
   }
 
+  // ----- a live pointer session (placing a walk) -----
+  /** A press this close to a handle (screen px) grabs it. */
+  const HANDLE_PX = 12;
+  let session: MapPointerSession | null = null;
+  let grabbed: { id: string; last: Vec3 | null } | null = null;
+  /**
+   * The press that ended was a handle grab: MapLibre still sends a click after a press that moved
+   * less than 3 px, and that click is part of the drag, not a click of its own. Reset on every
+   * press.
+   */
+  let swallowClick = false;
+
+  function handleAt(point: { x: number; y: number }): string | null {
+    if (!session?.handles || !proj) return null;
+    let best: string | null = null;
+    let bestD = HANDLE_PX;
+    for (const h of session.handles()) {
+      const p = map.project(proj.toLonLat(h.local));
+      const d = Math.hypot(p.x - point.x, p.y - point.y);
+      if (d <= bestD) {
+        best = h.id;
+        bestD = d;
+      }
+    }
+    return best;
+  }
+  function endGrab(): void {
+    const g = grabbed;
+    if (!g) return;
+    grabbed = null;
+    swallowClick = true;
+    window.removeEventListener('mouseup', onWindowUp);
+    map.dragPan.enable();
+    session?.onDragEnd?.(g.id, g.last);
+  }
+  const onWindowUp = (): void => {
+    endGrab();
+  };
+  function onSessionKey(e: KeyboardEvent): void {
+    if (e.key !== 'Escape' || !session) return;
+    // taken here: the placing strip's own Escape listener must not act on it a second time
+    e.preventDefault();
+    const s = session;
+    endGrab();
+    s.onCancel?.();
+  }
+  function stopSession(): void {
+    if (!session) return;
+    endGrab();
+    session = null;
+    swallowClick = false;
+    window.removeEventListener('keydown', onSessionKey);
+    const drawing = draw?.()?.mode != null || picking !== null;
+    map.getCanvas().style.cursor = drawing ? 'crosshair' : '';
+    if (!drawing) map.doubleClickZoom.enable();
+  }
+  function pointerSession(s: MapPointerSession): () => void {
+    disarmPick();
+    stopSession();
+    session = s;
+    window.addEventListener('keydown', onSessionKey);
+    map.getCanvas().style.cursor = 'crosshair';
+    // a double click while placing is two clicks at most, never a zoom
+    map.doubleClickZoom.disable();
+    return () => {
+      if (session === s) stopSession();
+    };
+  }
+  function onSessionDown(e: MapLayerMouseEvent): void {
+    if (!session) return;
+    swallowClick = false;
+    const id = handleAt(e.point);
+    if (id === null) return;
+    // the handle moves, the map does not
+    e.preventDefault();
+    grabbed = { id, last: null };
+    map.dragPan.disable();
+    window.addEventListener('mouseup', onWindowUp);
+  }
+  function onSessionMove(e: MapLayerMouseEvent): void {
+    if (!session || !proj) return;
+    const local = proj.toLocal(e.lngLat.lng, e.lngLat.lat);
+    if (grabbed) {
+      grabbed.last = local;
+      session.onDrag?.(grabbed.id, local);
+      return;
+    }
+    map.getCanvas().style.cursor = handleAt(e.point) === null ? 'crosshair' : 'grab';
+    session.onMove?.(local);
+  }
+
   function updateDraw(): void {
     const d = draw?.() ?? null;
-    const on = d?.mode != null || picking !== null;
+    const on = d?.mode != null || picking !== null || session !== null;
     if (map.getSource(SRC.draw)) setData(SRC.draw, drawPreview(d?.mode ?? null, d?.vertices ?? []));
     map.getCanvas().style.cursor = on ? 'crosshair' : '';
     if (on) map.doubleClickZoom.disable();
@@ -1116,6 +1241,8 @@ export function createMapController(
       followCamera(now);
       return;
     }
+    // a walk is being placed here and the person has framed the map: keep their view
+    if (session && cameraKey() !== ownCamera) return;
     if (box) {
       map.fitBounds(
         [
@@ -1127,6 +1254,7 @@ export function createMapController(
     } else {
       map.jumpTo({ center: proj.toLonLat([0, 0, 0]), zoom: 15 });
     }
+    ownCamera = cameraKey();
   }
 
   /** What the project covers (rasters, flights, issues, photos), for the home view. */
@@ -1200,6 +1328,16 @@ export function createMapController(
       p.onPick(proj.toLocal(e.lngLat.lng, e.lngLat.lat));
       return;
     }
+    if (session) {
+      // a session takes every click, except the one MapLibre sends after a handle grab that
+      // moved less than 3 px (that press was a drag)
+      if (swallowClick) {
+        swallowClick = false;
+        return;
+      }
+      if (proj) session.onClick?.(proj.toLocal(e.lngLat.lng, e.lngLat.lat));
+      return;
+    }
     const d = draw?.() ?? null;
     if (d?.mode) {
       const at = { x: e.point.x, y: e.point.y, t: performance.now() };
@@ -1263,7 +1401,7 @@ export function createMapController(
       e.preventDefault();
       d.onFinish();
     });
-    const drawing = () => picking !== null || draw?.()?.mode != null;
+    const drawing = () => picking !== null || session !== null || draw?.()?.mode != null;
     for (const id of [
       'aio-flights-line',
       'aio-drone-point',
@@ -1280,7 +1418,18 @@ export function createMapController(
     cleanups.push(() => {
       if (hoverRaf) cancelAnimationFrame(hoverRaf);
     });
+    map.on('mousedown', onSessionDown);
+    map.on('mouseup', () => {
+      endGrab();
+    });
+    map.on('mouseout', () => {
+      if (session && !grabbed) session.onMove?.(null);
+    });
     map.on('mousemove', (e) => {
+      if (session) {
+        onSessionMove(e);
+        return;
+      }
       if (drawing()) return;
       if (hoverRaf) cancelAnimationFrame(hoverRaf);
       hoverRaf = requestAnimationFrame(() => {
@@ -1430,8 +1579,10 @@ export function createMapController(
       applyWedge();
     },
     pickPoint,
+    pointerSession,
     dispose: () => {
       if (disposed) return;
+      stopSession();
       disarmPick();
       disposed = true;
       ready = false;

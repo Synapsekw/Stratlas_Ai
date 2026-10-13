@@ -1,55 +1,86 @@
-/* ---------- the Place walk strip (laid out as the drawing's .dplace strip) ---------- */
+/* ---------- the placing toolbar (laid out as the drawing's .dplace strip) ---------- */
 .wplace {
   flex: none;
 }
-.wplace-on,
-.wplace-yaw {
+/* the hint leads the line and takes the room left; the controls keep their size */
+.wplace-hint {
+  flex: 1 1 200px;
+  min-width: 0;
+}
+.wplace-field {
   display: inline-flex;
   align-items: center;
   gap: 6px;
+  min-width: 0;
 }
-.wplace-on .input {
-  max-width: 180px;
+.wplace-field select.input {
+  max-width: 170px;
+  text-overflow: ellipsis;
 }
 .wplace-yaw .input {
   width: 64px;
 }
-/* the steps are a real sequence: numbered, only the current one primary */
-.wplace-steps {
+/* the path notice: its sentence, then what can be done about it, on the one line */
+.wplace-notice {
   display: flex;
-  gap: 2px;
-  margin: 0;
-  padding: 0;
-  list-style: none;
+  flex: 1 1 auto;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 8px;
+  min-width: 0;
 }
-.wplace-steps b {
-  font: 600 11px var(--f-mono);
-  opacity: 0.7;
+.wplace-notice .wplace-hint {
+  color: var(--fg-1);
 }
-.wplace-steps .btn:disabled {
-  opacity: 0.45;
+.wplace-notice .wplace-hint.bad,
+.wplace-notice .wplace-problem {
+  color: var(--s5);
 }
-.wplace-swatch {
-  width: 8px;
-  height: 8px;
-  border-radius: var(--r-2);
-  background: var(--sw);
+/* Remove placement asks on its own line under the toolbar */
+.wplace-ask {
+  padding-top: 6px;
+  border-top: 1px solid var(--line-soft);
+}
+.wplace-ask .wplace-hint {
+  color: var(--fg-1);
+}
+.wplace .btn[aria-pressed='true'] {
+  color: var(--fg-0);
+  background: color-mix(in oklch, var(--acc) 22%, transparent);
 }
 .wplace-note {
   margin: 0;
   line-height: 1.4;
 }
 
-/* placing on the map: the strip above the map, below the stage toolbar, never over it */
-.pane-map.walk-placing {
-  display: flex;
-  flex-direction: column;
+/*
+ * Placing on the map or in the 3D view: the toolbar takes its own row above the view, below the
+ * stage toolbar, and the view is the second row. Everything else laid over the pane (the map type
+ * picker, legends, cards) is placed in that second row, so with the pane as the positioned grid
+ * container their offsets count from the top of the view, never from under the toolbar.
+ */
+.pane-map.walk-placing,
+.pane-3d.walk-placing {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  grid-template-columns: minmax(0, 1fr);
   padding-top: 90px;
 }
-.pane-map.walk-placing > .fill {
+.pane-map.walk-placing > .wplace,
+.pane-3d.walk-placing > .wplace {
+  grid-row: 1;
+  grid-column: 1;
+}
+/* the split's pane chooser keeps its place by the stage toolbar, above the placing toolbar */
+.pane-map.walk-placing > :not(.wplace, .pane-chooser),
+.pane-3d.walk-placing > :not(.wplace, .pane-chooser) {
+  grid-row: 2;
+  grid-column: 1;
+}
+.pane-map.walk-placing > .fill,
+.pane-3d.walk-placing > .fill {
   position: relative;
   inset: auto;
-  flex: 1;
   min-height: 0;
 }
 
@@ -80,12 +111,6 @@
 .walk-north.edge {
   opacity: 0.55;
 }
-/* the step in hand is a marker, not a control */
-.wplace-now {
-  cursor: default;
-  pointer-events: none;
-}
-
 /* a pin chip: the chip itself moves its pin (armed, the next click on the surface is its spot) */
 .dplace-pair.wplace-pin {
   padding-inline-start: 0;

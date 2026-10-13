@@ -431,7 +431,8 @@ describe('Stage', () => {
     // an always registration only widens how far the camera can zoom out and see
     const off = stage.addContentBounds(() => wide, { always: true });
     expect(stage.controls.maxDistance).toBeGreaterThan(400);
-    expect(stage.controls.maxDistance).toBeGreaterThan(range * 10);
+    // four times the farthest marker corner from the content centre (about 401 m)
+    expect(stage.controls.maxDistance).toBeGreaterThanOrEqual(400 * 4);
     const sizeOf = (b: Box3 | undefined) => b?.getSize(new Vector3()).length() ?? 0;
     expect(radius.mock.calls[0]?.[0]).toBeCloseTo(sizeOf(model) / 2);
     const sb = shadow.mock.calls[0]?.[0];
@@ -443,6 +444,56 @@ describe('Stage', () => {
     expect(fits().position).toEqual(home.position);
     off();
     expect(stage.controls.maxDistance).toBe(range);
+    stage.dispose();
+  });
+
+  it('a reach lets the camera back off far enough to see it, without reframing', async () => {
+    const { stage, store, resize } = make();
+    resize(800, 600);
+    store.getState().openProject(project([meshLayer('plant')]));
+    await flush();
+    const cap = stage.controls.maxDistance;
+    const target = stage.saveView().target;
+    // a walk far longer than the model: the cap grows to cover it
+    stage.setReach('walk', new Box3(new Vector3(-500, 0, -10), new Vector3(500, 2, 10)));
+    expect(stage.controls.maxDistance).toBeGreaterThanOrEqual(1000);
+    expect(stage.contentBounds()?.max.toArray()).toEqual([5, 10, 5]);
+    expect(stage.saveView().target).toEqual(target);
+    // a reach inside the content changes nothing; clearing it brings the old cap back
+    stage.setReach('walk', new Box3(new Vector3(0, 0, 0), new Vector3(1, 1, 1)));
+    expect(stage.controls.maxDistance).toBeCloseTo(cap);
+    stage.setReach('walk', null);
+    expect(stage.controls.maxDistance).toBeCloseTo(cap);
+    stage.dispose();
+  });
+
+  it('a reach that clears holds a backed-off camera, then tightens as it comes in', async () => {
+    const { stage, store, resize } = make();
+    resize(800, 600);
+    store.getState().openProject(project([meshLayer('plant')]));
+    await flush();
+    const cap = stage.controls.maxDistance;
+    const fog = stage.scene.fog as { far: number };
+    const fogBefore = fog.far;
+    stage.setReach('walk', new Box3(new Vector3(-500, 0, -10), new Vector3(500, 2, 10)));
+    // the walk's far end stays clear of the fog from the farthest the camera may stand
+    expect(fog.far).toBeGreaterThan(stage.controls.maxDistance);
+    // the camera backs off to see the walk
+    const t = stage.controls.target;
+    const away = (d: number) => {
+      stage.camera.position.copy(t).add(new Vector3(0, 0, d));
+      stage.controls.dispatchEvent({ type: 'change' });
+    };
+    away(1500);
+    stage.setReach('walk', null);
+    // no snap inward: the cap stays at the camera, the fog too
+    expect(stage.controls.maxDistance).toBeCloseTo(1500);
+    expect(fog.far).toBeGreaterThan(1500);
+    away(800);
+    expect(stage.controls.maxDistance).toBeCloseTo(800);
+    away(cap / 2);
+    expect(stage.controls.maxDistance).toBeCloseTo(cap);
+    expect(fog.far).toBeCloseTo(fogBefore);
     stage.dispose();
   });
 

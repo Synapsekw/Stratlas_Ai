@@ -138,6 +138,33 @@ def test_the_poisson_tool_is_called_and_its_mesh_read(tmp_path, monkeypatch):
     assert "--depth 11" in args and "--colors" in args
 
 
+def test_the_poisson_tools_run_within_the_memory_budget(tmp_path, monkeypatch):
+    monkeypatch.setenv("AIO_PHOTO_MEMORY_MB", "700")
+    src = str(ps.Path(M.__file__).parents[2])
+    monkeypatch.setenv(
+        "AIO_POISSONRECON",
+        str(ps.fake_tool(tmp_path / "tools", "PoissonRecon", FAKE_POISSON.replace("{src!r}", repr(src)))),
+    )
+    monkeypatch.setenv(
+        "AIO_SURFACETRIMMER", str(ps.fake_tool(tmp_path / "tools", "SurfaceTrimmer", FAKE_TRIMMER))
+    )
+    calls: list = []
+    real = M.native.run_tool
+    monkeypatch.setattr(M.native, "run_tool", lambda *a, **k: calls.append(k) or real(*a, **k))
+    rng = np.random.default_rng(2)
+    pts = np.column_stack([rng.uniform(0, 10, 3000), rng.uniform(0, 10, 3000), rng.uniform(0, 0.1, 3000)])
+    nrm, rgb = np.tile([0.0, 0.0, 1.0], (3000, 1)), np.zeros((3000, 3), np.uint8)  # the fake reads colours
+    M.poisson_tool(_ctx(tmp_path), tmp_path / "work", pts, nrm, 9, rgb)
+    assert [c.get("memory_limit") for c in calls] == [700 * 1024**2] * 2
+
+
+def test_the_mesh_input_sample_stays_within_the_cap():
+    assert M.mesh_sample([10, 7], 100) == (1, 17)
+    stride, total = M.mesh_sample([1000, 999, 5], 300)
+    assert total <= 300 and total == sum(-(-c // stride) for c in (1000, 999, 5))
+    assert M.meshlab_points(32 * 1024**2) == 100_000 and M.meshlab_points(4 * 10**9) == 10**7
+
+
 def _cap(n: int = 20_000, seed: int = 3):
     """Oriented points on a spherical cap of radius 5 m (normals outwards)."""
     rng = np.random.default_rng(seed)
@@ -359,7 +386,11 @@ Path(str(prefix) + ".obj").write_text("\n".join(lines) + "\n")
 
 
 def test_texrecon_output_becomes_a_textured_glb(tmp_path, monkeypatch):
+    monkeypatch.setenv("AIO_PHOTO_MEMORY_MB", "700")
     monkeypatch.setenv("AIO_TEXRECON", str(ps.fake_tool(tmp_path / "tools", "texrecon", FAKE_TEXRECON)))
+    calls: list = []
+    real = T.run_tool
+    monkeypatch.setattr(T, "run_tool", lambda *a, **k: calls.append(k) or real(*a, **k))
     s = ps.scene()
     views = []
     for v, img in list(zip(s.views, s.images, strict=True))[:3]:
@@ -373,6 +404,7 @@ def test_texrecon_output_becomes_a_textured_glb(tmp_path, monkeypatch):
     doc = T.glb_info(glb)
     assert info["textures"] == 1 and len(doc["images"]) == 1
     assert doc["materials"][0]["pbrMetallicRoughness"]["baseColorTexture"] == {"index": 0}
+    assert calls[0]["memory_limit"] == 700 * 1024**2
 
 
 @pytest.fixture(scope="module")

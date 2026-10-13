@@ -11,6 +11,9 @@
  * and the Globe lists the surface heat map in the site card, draws it when switched on (red over
  * the pile, which grew) and reaches no network. Needs the development pipeline Python
  * (QUADRION_E2E_PYTHON, or `uv sync` in python/) and PDAL; skipped without them.
+ * The cloud runs the DSM and DTM steps first (no DTM layer, none is asked for), classifies
+ * ground from the DTM and goes to COPC through untwine when AIO_UNTWINE names it, else
+ * through PDAL.
  */
 import { utmToWgs84 } from '@aio/geo';
 import type { Page } from '@playwright/test';
@@ -21,6 +24,7 @@ import {
   expect,
   hasPdal,
   hasPipelinePython,
+  hasUntwine,
   openProject,
   PDAL,
   PIPELINE_ENV,
@@ -110,6 +114,10 @@ interface ProjectRaster {
   ready: boolean;
   tiles: number;
   lastError: string | null;
+}
+interface ProductsReport {
+  engines: { ground?: string };
+  cloud: { points: number; budget: number; writer?: string; groundPoints?: number };
 }
 
 const twoSurveys = test.extend<{ surveys: Fixture & { root: string } }>({
@@ -358,6 +366,25 @@ twoSurveys(
         mine.some((l) => l.kind === 'pointcloud' && l.format === 'copc'),
         `cloud ${capture}`,
       ).toBe(true);
+    }
+
+    // 2b. the cloud's ground came from the DTM step, which published nothing, and the COPC went
+    // through untwine when this computer has it, else through PDAL
+    for (const capture of ['c1', 'c2'] as const) {
+      const report = JSON.parse(
+        await readFile(
+          join(root, 'photogrammetry', runs[capture], 'report', 'products.json'),
+          'utf8',
+        ),
+      ) as ProductsReport;
+      expect(report.engines.ground, `ground engine ${capture}`).toBe('smrf-grid');
+      expect(report.cloud.writer, `COPC writer ${capture}`).toBe(hasUntwine() ? 'untwine' : 'pdal');
+      expect(report.cloud.groundPoints ?? 0, `ground points ${capture}`).toBeGreaterThan(0);
+      expect(report.cloud.budget, `budget ${capture}`).toBe(150_000_000);
+      expect(
+        layers.some((l) => l.capture === capture && l.id.endsWith('-dtm')),
+        `no DTM layer ${capture}`,
+      ).toBe(false);
     }
 
     // 3. Changes for c1 to c2 offers all three runs

@@ -36,7 +36,7 @@ import numpy as np
 from ..runtime import JobError, StepContext
 from ..volumetric.terrain import encode_glb
 from .mesh import Mesh, enu_to_local, face_normals, vertex_normals
-from .native import find_tool, run_tool
+from .native import find_tool, memory_budget, run_tool
 from .scene import Camera, View, load_image
 
 GENERATOR = "Quadrion AI photo.products"
@@ -336,6 +336,7 @@ def texture_texrecon(
         work,
         expected_s=max(60.0, mesh.triangles / 5e4),
         progress=(0.3, 0.9),
+        memory_limit=memory_budget(),
     )
     obj = out / "textured.obj"
     if not obj.is_file():

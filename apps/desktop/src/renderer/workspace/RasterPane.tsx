@@ -42,6 +42,8 @@ export interface RasterPick {
    * pointer, on every move once it left a 4 px dead zone. A press that does not move is a pick.
    */
   onDrag?: ((index: number, px: [number, number]) => void) | undefined;
+  /** The pixel under the pointer while it moves over the picture without a press; null when it leaves. */
+  onHover?: ((px: [number, number] | null) => void) | undefined;
 }
 
 /** What an overlay drawn on the picture (the walk path) needs from the view. */
@@ -304,6 +306,13 @@ export function RasterView({
         };
       }}
       onPointerMove={(e) => {
+        if (!drag.current && e.buttons === 0 && pick?.onHover && src && view) {
+          const r = e.currentTarget.getBoundingClientRect();
+          const x = (e.clientX - r.left - view.x) / view.scale;
+          const y = (e.clientY - r.top - view.y) / view.scale;
+          const inside = x >= 0 && y >= 0 && x <= src.size.width && y <= src.size.height;
+          pick.onHover(inside ? [x, y] : null);
+        }
         const d = drag.current;
         if (d?.id !== e.pointerId) return;
         if (d.mark !== undefined) {
@@ -337,6 +346,9 @@ export function RasterView({
       }}
       onPointerCancel={() => {
         drag.current = null;
+      }}
+      onPointerLeave={() => {
+        pick?.onHover?.(null);
       }}
       onDoubleClick={() => {
         const el = host.current;

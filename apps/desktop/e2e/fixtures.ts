@@ -741,8 +741,8 @@ export interface DemoProject {
 
 /**
  * The development pipeline runtime for specs that run pipeline jobs: the venv Python
- * (`uv sync` in python/, or QUADRION_E2E_PYTHON) and PDAL (AIO_PDAL, else the workstation's
- * install). Pass `PIPELINE_ENV` as `appEnv` and skip with `hasPipelinePython` / `hasPdal`.
+ * (`uv sync` in python/, or QUADRION_E2E_PYTHON), PDAL (AIO_PDAL, else the workstation's
+ * install) and untwine (AIO_UNTWINE; without it the cloud goes through PDAL). Pass `PIPELINE_ENV` as `appEnv` and skip with `hasPipelinePython` / `hasPdal`.
  */
 const REPO = join(import.meta.dirname, '..', '..', '..');
 export const VENV_PYTHON =
@@ -753,11 +753,16 @@ export const VENV_PYTHON =
 export const PDAL =
   process.env.AIO_PDAL ??
   (process.platform === 'win32' ? 'E:/Dev/tools/pdal/Library/bin/pdal.exe' : '/usr/bin/pdal');
+export const UNTWINE =
+  process.env.AIO_UNTWINE ??
+  (process.platform === 'win32' ? 'E:/Dev/tools/pdal/Library/bin/untwine.exe' : '/usr/bin/untwine');
 export const hasPipelinePython = (): boolean => existsSync(VENV_PYTHON);
 export const hasPdal = (): boolean => existsSync(PDAL);
+export const hasUntwine = (): boolean => existsSync(UNTWINE);
 export const PIPELINE_ENV: Record<string, string> = {
   QUADRION_PIPELINE_PYTHON: VENV_PYTHON,
   AIO_PDAL: PDAL,
+  AIO_UNTWINE: UNTWINE,
 };
 
 interface Fixtures {

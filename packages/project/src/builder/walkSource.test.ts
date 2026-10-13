@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   classifyWalkSource,
   insta360Name,
+  isStitched360,
   isWalkFile,
   proxyOwner,
   type WalkTrack,
@@ -153,5 +154,33 @@ describe('classifyWalkSource', () => {
   it('other file types are not 360 video', () => {
     const r = classifyWalkSource({ name: 'clip.avi', tracks: [lens(3840, 1920)] });
     expect(r.ok).toBe(false);
+  });
+});
+
+describe('isStitched360', () => {
+  const v = (
+    width: number,
+    height: number,
+    spherical: WalkTrack['spherical'] = null,
+  ): WalkTrack => ({
+    handler: 'vide',
+    width,
+    height,
+    codec: 'hvc1',
+    fps: 30,
+    durationMs: 2000,
+    spherical,
+  });
+
+  it('an MP4 or MOV with equirectangular metadata or a 2:1 frame is a stitched 360 video', () => {
+    expect(isStitched360('VID_20261013_export.mp4', [v(5760, 2880, 'equirectangular')])).toBe(true);
+    expect(isStitched360('tour.MOV', [v(3840, 1920)])).toBe(true);
+  });
+
+  it('a 16:9 clip, a non equirectangular sphere, a camera file or no video is not', () => {
+    expect(isStitched360('flat-clip.mp4', [v(3840, 2160)])).toBe(false);
+    expect(isStitched360('cube.mp4', [v(3840, 1920, 'other')])).toBe(false);
+    expect(isStitched360('VID_1.insv', [v(2880, 2880), v(2880, 2880)])).toBe(false);
+    expect(isStitched360('audio.mp4', [])).toBe(false);
   });
 });

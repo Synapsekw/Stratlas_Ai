@@ -161,10 +161,10 @@ def test_a_broken_pool_finishes_in_process(monkeypatch):
     assert any("one photo at a time" in p.get("message", "") for p in seen.of("log"))
 
 
-def _fused(root):
-    d = next((root / "photogrammetry" / RUN / "work" / "products").glob("*/cloud/fused"))
+def _fused(root, job: str):
+    work = _step(root, job, "01-prepare.json")["work"]
     out = {}
-    for p in sorted(d.glob("*.npz")):
+    for p in sorted((root / work / "fused").glob("*.npz")):
         with np.load(p) as z:
             out[p.name] = {k: z[k] for k in z.files}
     return out
@@ -180,9 +180,9 @@ def _fuse_only(name: str, monkeypatch, workers: str):
 
 
 def test_two_workers_fuse_the_cloud_of_one(monkeypatch):
-    one = _fused(_fuse_only("fuse-one", monkeypatch, "1"))
+    one = _fused(_fuse_only("fuse-one", monkeypatch, "1"), "f1")
     root = _fuse_only("fuse-two", monkeypatch, "2")
-    two = _fused(root)
+    two = _fused(root, "f1")
     assert one.keys() == two.keys() and one
     for name in one:
         for key in one[name]:

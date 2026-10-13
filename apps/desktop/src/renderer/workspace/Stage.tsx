@@ -87,9 +87,11 @@ import {
   type Side,
 } from './splitModel';
 import { DatesOnScreen } from './DatesOnScreen';
-import { useWalkMapOverlays, useWalkMapPick } from '../walks/walkMapStore';
-import { PlaceWalkHere, usePlacingOnMap } from '../walks/PlaceWalkStrip';
-import { usePlacedWalksOnMap } from '../walks/placeWalk';
+import { useWalkMapOverlays, useWalkMapPointer } from '../walks/walkMapStore';
+import { PlaceWalkHere } from '../walks/PlaceWalkStrip';
+import { usePlacedWalksOnMap, usePlacingOn } from '../walks/placeWalk';
+import { MAP_SURFACE, SCENE_SURFACE } from '../walks/placeModel';
+import { WalkSceneMount } from '../walks/WalkSceneMount';
 import { useTimeline } from './timeline';
 import { hiddenPathClips, togglePaths } from './flightPaths';
 import { telemetryLabels, toggleTelemetry, useTelemetryOn } from './telemetryPref';
@@ -152,16 +154,19 @@ function ScenePane({
   // clouds (the other side of a comparison has its own legends)
   const epoch = useCaptureEpoch(capture);
   const view = capture ? engine : undefined;
+  const placing = usePlacingOn('3d');
 
   return (
     <FocusZone
       kind="scene3d"
-      className={`pane pane-3d${hidden ? ' is-hidden' : ''}`}
+      className={`pane pane-3d${hidden ? ' is-hidden' : ''}${placing ? ' walk-placing' : ''}`}
       data-side={side}
       onPointerMove={onMove}
       onPointerLeave={onLeave}
       aria-hidden={hidden}
     >
+      {/* the Place walk toolbar while a walk is placed in the 3D view (only while it shows) */}
+      {!hidden && <PlaceWalkHere at={SCENE_SURFACE} />}
       <div className="fill">
         {/* one date at a time while the split shows dates (compare.ts) */}
         <SceneView className="scene-fill" store={primaryScene} />
@@ -367,6 +372,7 @@ function StageToolbar({
       )}
       <span className="stbar-sp" />
       <MeasureMount stage={stage} />
+      <WalkSceneMount stage={stage} />
       <SurveyQaMount />
       <HydroMount />
       <HaulRoadMount stage={stage} />
@@ -536,8 +542,6 @@ function mapLayerId(layers: readonly { id: string; kind: string }[]): string {
   return layers.find((l) => l.kind === 'basemap' || l.kind === 'raster')?.id ?? 'basemap';
 }
 
-const MAP_SURFACE = { kind: 'map' } as const;
-
 export function Stage() {
   const mode = useShell((s) => s.stageMode);
   const docked = useShell((s) => s.videoDocked);
@@ -646,10 +650,10 @@ export function Stage() {
   const mapDraw = useMapDraw(mapLayer);
   const roadMap = useRoadMap();
   const roadSetup = useRoadSetupMap();
-  // the walks' path, stills and pins (and a point pick while placing one) on the main map
+  // the walks' path, stills and pins (and the pointer session while placing one) on the main map
   const walkOverlays = useWalkMapOverlays();
-  const walkPick = useWalkMapPick();
-  const placingOnMap = usePlacingOnMap();
+  const walkPointer = useWalkMapPointer();
+  const placingOnMap = usePlacingOn('map');
   // every visible, placed walk on the map at 60 % (the walk placed there draws itself)
   usePlacedWalksOnMap();
   const baseOverlays = roadMap ? roadMap.overlays : roadSetup?.overlays;
@@ -865,7 +869,7 @@ export function Stage() {
                 issues={mapIssues}
                 store={primaryMap}
                 onController={onMainMap}
-                pick={walkPick}
+                pointer={walkPointer}
                 {...(mapOverlays ? { overlays: mapOverlays } : {})}
                 {...(roadMap
                   ? {

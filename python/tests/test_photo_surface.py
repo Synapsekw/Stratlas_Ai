@@ -11,7 +11,7 @@ import rasterio
 import products_synth as ps
 from aio_pipelines.change.sources import grid_source
 from aio_pipelines.photo import surface as S
-from aio_pipelines.photo.fuse import PointTiles
+from aio_pipelines.photo.fuse import SPARSE_RULE, PointTiles
 
 
 def test_cell_statistics():
@@ -60,7 +60,7 @@ def _tiles(tmp_path):
     store.add(
         "a", xyz, np.zeros((len(xyz), 3), np.uint8), np.tile([0, 0, 1], (len(xyz), 1)).astype(np.float32)
     )
-    store.merge(0.1)
+    store.merge(0.1, rule=SPARSE_RULE)
     return store
 
 
@@ -126,13 +126,18 @@ def test_the_shaded_relief_is_rgba_with_empty_cells_clear(tmp_path):
     assert tuple(rgba[:3, 5, 2]) != tuple(rgba[:3, 5, 15])
 
 
-def test_the_pdal_ground_pipeline_classifies_then_grids(tmp_path):
-    spec = S.GridSpec(100.0, 50.0, 0.5, 40, 20)
-    p = S.pdal_dtm_pipeline(tmp_path / "c.las", tmp_path / "g.tif", spec, 32639)["pipeline"]
-    types = [s["type"] for s in p]
-    assert types == ["readers.las", "filters.assign", "filters.smrf", "filters.range", "writers.gdal"]
-    assert p[3]["limits"] == "Classification[2:2]" and p[4]["resolution"] == 0.5
-    assert p[0]["override_srs"] == "EPSG:32639"
+def test_the_dtm_reports_its_windows(tmp_path):
+    spec = S.GridSpec(0.0, 8.0, 0.5, 2100, 16)  # three windows of 1024 columns
+    z = np.full((16, 2100), 10.0, np.float32)
+    for name in ("dsm.tif", "zmin.tif"):
+        with S.write_tif(tmp_path / name, spec, None, 1, "float32", S.NODATA) as ds:
+            ds.write(z, 1)
+    seen: list = []
+    info = S.dtm_grid(tmp_path / "dsm.tif", tmp_path / "zmin.tif", spec, tmp_path / "dtm.tif", None,
+                      2**30, lambda: None, lambda f, m=None: seen.append((f, m)))  # fmt: skip
+    assert info["engine"] == "smrf-grid"
+    assert [m for _, m in seen] == [f"Terrain window {i} of 3" for i in (1, 2, 3)] and seen[-1][0] == 1.0
+    assert np.isfinite(S.read_grid(tmp_path / "dtm.tif")).all()
 
 
 @pytest.fixture(scope="module")
@@ -157,7 +162,13 @@ def test_the_processed_dsm_and_dtm_meet_the_targets(processed):
         edge = (x > x0 - b) & (x < x1 + b) & (y > y0 - b) & (y < y1 + b)
         edge &= ~((x > x0 + b) & (x < x1 - b) & (y > y0 + b) & (y < y1 - b))
         ok = inner & ~edge
+        # Fusion v2 is edge-aware (one agreeing neighbour is enough where fewer than two can
+        # check a pixel), so the edge of the photo block keeps its points.
         assert np.isfinite(z[ok]).mean() > 0.98
+        # Away from the coverage edge (6 m in x, 4 m in y; the building and most of the pile are
+        # inside) the site has no holes.
+        core = ok & (np.abs(x) < 18) & (np.abs(y) < 14)
+        assert np.isfinite(z[core]).mean() >= 0.995
         if name == "dsm":
             err = (z - (ps.dsm(x, y) + o[2]))[ok & np.isfinite(z)]
             assert np.sqrt(np.mean(err**2)) < 3 * ps.GSD

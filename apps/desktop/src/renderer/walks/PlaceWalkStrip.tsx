@@ -1,21 +1,31 @@
 import type { WalkLayer } from '@aio/schema';
-import { formatDate, Icon } from '@aio/ui';
+import { formatDate, Icon, t } from '@aio/ui';
 import { useWorkspace, workspace } from '@aio/workspace';
 import {
   useEffect,
+  useId,
   useMemo,
+  useRef,
   useState,
-  type CSSProperties,
   type KeyboardEvent,
   type ReactNode,
 } from 'react';
 import { useStore, type StoreApi } from 'zustand';
 import { createStore } from 'zustand/vanilla';
 import { drawings as drawingsStore } from '../drawings/store';
+import { useProcessingTools } from '../processingTools';
+import { useJobs } from '../shell';
 import type { RasterOverlayContext, RasterPick } from '../workspace/RasterPane';
 import { placeImagery } from './placeBasemap';
-import { surfaceFramesOf, surfaceKey, type PlaceSurface } from './placeModel';
-import type { PlaceState } from './placeStore';
+import {
+  surfaceById,
+  surfaceFramesOf,
+  surfaceId,
+  surfaceLabel,
+  type PlaceSurface,
+  type WalkPathState,
+} from './placeModel';
+import { canRemovePin, type PlaceState } from './placeStore';
 import {
   placeFlow,
   placeSession,
@@ -28,42 +38,65 @@ import {
   type PlaceUi,
   type PlaceWalkFlow,
 } from './placeWalk';
-import { walkNowOnSheet } from './walkOverlay';
+import { packOffersWalkProcess } from './walkModel';
+import { previewOnSheet, walkNowOnSheet } from './walkOverlay';
 import { WalkSheetOverlay } from './WalkSheetOverlay';
 import './placeWalk.css';
 
 /*
- * The Place walk strip (design "Placing a walk: the flow", "Visual direction"): over the surface
- * pane, laid out like the drawing's Place on the site strip. One line says what to do; the steps
- * Start, End and Correct are numbered and only the current one is primary; the date question and
- * the unsaved pins question are asked inline, never in a dialog.
+ * The placing toolbar (design "Walk placing by start and end"): one slim line over the surface,
+ * the current step's hint first and Save last. A walk without a computed path shows the path
+ * notice first; once placed, Start and End are dragged on the surface and Fine-tune opens the
+ * pin tools with the 360 video. Every question is asked inline, never in a dialog.
  */
 
-const STEPS = [
-  { id: 'start', label: 'Start' },
-  { id: 'end', label: 'End' },
-  { id: 'correct', label: 'Correct' },
-] as const;
-
 const SAY = {
-  date: 'Choose the survey date of this walk',
-  surface: 'Choose what to place the walk on.',
-  start: 'Where did the walk start? Click the spot.',
-  end: 'Where did it end? Click the spot.',
-  correct: 'Scrub to a moment, then Pin here and click the true spot.',
+  start: 'Click where the walk started. Its shape follows the pointer.',
+  end: 'Click where the walk ended. Esc moves the start.',
+  tooClose: 'Put the end at least 5 m from the start.',
+  placed: 'Drag Start or End to adjust the walk, then Save.',
+  dragRefused: 'Start and End stay at least 5 m apart.',
+  fineTune: 'Scrub to a moment, then Pin here and click the true spot.',
   pin: 'Click the true spot for this moment.',
   align360: 'Click a landmark in the 360 view',
   alignSurface: 'Now click the same landmark here',
-  pinsOnly: 'Path not computed: the walk is placed between your pins.',
+  pinsOnly: 'Path not computed: the walk is placed between your two points.',
+  keep: 'Keep these changes?',
+  removeAsk: 'Remove this placement? The walk stays in the project.',
   noImagery:
     'No satellite imagery here. Turn on Online satellite in the map type picker, or import an imagery pack.',
   orthoOff: 'Your orthomosaic is switched off.',
-  keep: 'Keep these pins?',
 } as const;
+
+const NOTICE: Record<Exclude<WalkPathState, 'ready'>, string> = {
+  none: 'This walk is not processed yet, so its path is unknown.',
+  running: 'This walk is processing. Its shape appears here when it finishes.',
+  failed: 'Processing this walk failed, so its path is unknown.',
+  interrupted: 'Processing stopped before the path was computed.',
+};
 
 const moveSay = (i: number): string => `Click the new spot for pin ${String(i + 1)}.`;
 
-const surfaceName = (s: PlaceSurface): string => (s.kind === 'map' ? 'Map' : s.name);
+/** What the hint line says for the session as it stands (a problem is said instead). */
+function hintFor(st: PlaceState, pathState: WalkPathState): string {
+  switch (st.step) {
+    case 'check':
+      return NOTICE[pathState === 'ready' ? 'none' : pathState];
+    case 'start':
+      return SAY.start;
+    case 'end':
+      return st.preview?.tooClose ? SAY.tooClose : SAY.end;
+    case 'placed':
+      return st.dragging?.refused ? SAY.dragRefused : SAY.placed;
+    case 'fine-tune':
+      if (st.dragging?.refused) return SAY.dragRefused;
+      if (st.armed === 'align-360') return SAY.align360;
+      if (st.armed === 'align-surface') return SAY.alignSurface;
+      if (st.armed === 'move' && st.moving !== null) return moveSay(st.moving);
+      if (st.armed === 'pin') return SAY.pin;
+      return SAY.fineTune;
+  }
+}
 
 export function PlaceWalkStrip({
   flow,
@@ -78,86 +111,87 @@ export function PlaceWalkStrip({
   const u = useStore(ui);
   const imagery = useStore(placeImagery, (s) => s.imagery);
   const hidden = useWorkspace((s) => s.hidden);
+  // re-render on job progress, so the notice and its button follow the walk's processing
+  useJobs((s) => s.jobs);
+  const offered = useProcessingTools((s) => packOffersWalkProcess(s.status));
+  const packId = useId();
   const [yawText, setYawText] = useState<string | null>(null);
-  // Esc lets go of a pin waiting to be moved; it stays where it is
-  const movingPin = st.armed === 'move' ? st.moving : null;
+  // Remove placement's question and its refusal belong to the walk they were asked for
+  const [askRemoveFor, setAskRemoveFor] = useState<string | null>(null);
+  const [removeRefused, setRemoveRefused] = useState<{ id: string; error: string } | null>(null);
+  const askRemove = askRemoveFor !== null && askRemoveFor === u.layerId;
+  const removeError = removeRefused?.id === u.layerId ? removeRefused.error : null;
+  const askId = useId();
+  const removeRef = useRef<HTMLButtonElement>(null);
+  const keepRef = useRef<HTMLButtonElement>(null);
+  // the question takes the focus when it opens, so a keyboard answers it at once
   useEffect(() => {
-    if (movingPin === null) return;
+    if (askRemove) keepRef.current?.focus();
+  }, [askRemove]);
+  const closeAsk = () => {
+    setAskRemoveFor(null);
+    removeRef.current?.focus();
+  };
+  // Esc lets go of a pin waiting to be moved (it stays where it is), and on End takes the start
+  // back (bubble phase: a 3D drag or an open question stops its own Escape before it gets here)
+  const movingPin = st.armed === 'move' ? st.moving : null;
+  const onEnd = st.step === 'end';
+  useEffect(() => {
+    if (movingPin === null && !onEnd) return;
     const onKey = (e: globalThis.KeyboardEvent) => {
-      if (e.key !== 'Escape') return;
+      if (e.key !== 'Escape' || e.defaultPrevented) return;
+      // an Escape typed in the yaw or date field only leaves the field
+      const el = e.target instanceof HTMLElement ? e.target : null;
+      if (
+        el?.closest('input, textarea, select, [contenteditable]:not([contenteditable="false"])')
+      ) {
+        return;
+      }
       e.preventDefault();
-      session.getState().armMove(movingPin);
+      if (movingPin !== null) session.getState().armMove(movingPin);
+      else session.getState().back();
     };
     window.addEventListener('keydown', onKey);
     return () => {
       window.removeEventListener('keydown', onKey);
     };
-  }, [movingPin, session]);
+  }, [movingPin, onEnd, session]);
   const walk = flow.walk();
   if (u.layerId === null || walk?.id !== u.layerId || st.layerId !== u.layerId) return null;
 
+  const pathState = flow.pathState();
   const pinsOnly = u.inputs.raw === null || u.inputs.raw.source === 'pins-only';
-  const placing = st.step === 'start' || st.step === 'end' || st.step === 'correct';
   const enough = st.pins.length >= 2;
-  const say =
-    st.step === 'date'
-      ? SAY.date
-      : st.step === 'surface'
-        ? SAY.surface
-        : st.armed === 'align-360'
-          ? SAY.align360
-          : st.armed === 'align-surface'
-            ? SAY.alignSurface
-            : st.armed === 'move' && st.moving !== null
-              ? moveSay(st.moving)
-              : st.armed === 'pin'
-                ? SAY.pin
-                : SAY[st.step];
-  const problem = u.note ?? st.error;
+  const problem = removeError ?? u.note ?? st.error;
+  const checking = st.step === 'check';
+  // on the check the notice's sentence stays beside a problem: why the path is unknown still holds
+  const hint = checking ? hintFor(st, pathState) : (problem ?? hintFor(st, pathState));
   // only the fit's own refusal stops a save; a passing note (a drawing not ready) does not
   const refused = (st.fit?.error ?? null) !== null;
-  const stepIndex = STEPS.findIndex((s) => s.id === st.step);
+  const fineTuning = st.step === 'fine-tune';
 
-  const seekTo = (time: number | undefined) => {
-    if (time === undefined) return;
-    session.getState().setTime(time);
-    ui.setState((s) => ({ seek: { t: time, n: (s.seek?.n ?? 0) + 1 } }));
-  };
-
-  const yawKey = (e: KeyboardEvent<HTMLInputElement>) => {
-    if (e.key !== 'ArrowUp' && e.key !== 'ArrowDown') return;
-    e.preventDefault();
-    const by = (e.shiftKey ? 10 : 1) * (e.key === 'ArrowUp' ? 1 : -1);
-    session.getState().setYaw(session.getState().yawOffsetDeg + by);
-    setYawText(null);
-  };
-
-  const cancelEnd = (
-    <span className="dplace-end">
-      <button
-        type="button"
-        className="btn ghost sm"
-        data-testid="walk-place-cancel"
-        onClick={() => {
-          flow.close();
-        }}
-      >
-        Cancel
-      </button>
-      {placing && (
-        <button
-          type="button"
-          className="btn sm"
-          data-testid="walk-place-save"
-          disabled={!enough || u.saving || refused}
-          onClick={() => void flow.save()}
-        >
-          <Icon name="check" size={14} />
-          Save
-        </button>
+  const hintLine = (
+    <p
+      className={problem && !checking ? 'dplace-say wplace-hint bad' : 'dplace-say wplace-hint'}
+      role="status"
+      data-testid="walk-place-hint"
+    >
+      {checking && problem ? (
+        <>
+          {hint} <span className="wplace-problem">{problem}</span>
+        </>
+      ) : (
+        hint
       )}
-    </span>
+    </p>
   );
+  const placedBefore =
+    walk.place !== undefined && walk.place.quality !== 'unplaced' && walk.place.pins.length >= 2;
+  // Save only when there is something to save: a placed walk with changes (pins, heading, or the
+  // survey date of an undated walk)
+  const changed = st.dirty || (walk.capture === undefined && u.date !== null);
+  const canSave =
+    (st.step === 'placed' || st.step === 'fine-tune') && enough && changed && !u.saving && !refused;
 
   if (u.asking)
     return (
@@ -166,10 +200,11 @@ export function PlaceWalkStrip({
         role="group"
         aria-label={`Place ${walk.name}`}
         data-testid="walk-place-strip"
+        data-step={st.step}
       >
         <div className="dplace-row" role="group" aria-label={SAY.keep}>
-          <p className="dplace-say" role="status">
-            {SAY.keep}
+          <p className="dplace-say wplace-hint" role="status" data-testid="walk-place-hint">
+            {problem ?? SAY.keep}
           </p>
           <span className="dplace-end">
             <button
@@ -195,7 +230,7 @@ export function PlaceWalkStrip({
               type="button"
               className="btn primary sm"
               data-testid="walk-place-keep"
-              disabled={!enough || u.saving || refused}
+              disabled={!enough || u.saving || refused || checking}
               onClick={() => void flow.save()}
             >
               <Icon name="check" size={14} />
@@ -206,60 +241,84 @@ export function PlaceWalkStrip({
       </div>
     );
 
-  if (st.step === 'date') {
-    const { pick, add } = flow.dates();
-    return (
-      <div
-        className="dplace wplace"
-        role="group"
-        aria-label={`Place ${walk.name}`}
-        data-testid="walk-place-strip"
-        data-step="date"
-      >
-        <p className={problem ? 'dplace-say bad' : 'dplace-say'} role="status">
-          {problem ?? SAY.date}
-        </p>
-        <div className="dplace-row" role="group" aria-label={SAY.date}>
-          {pick.map((c, i) => (
-            <button
-              key={c.id}
-              type="button"
-              className={i === 0 && add === undefined ? 'btn primary sm' : 'btn sm'}
-              data-testid="walk-place-date"
-              onClick={() => void flow.chooseDate(c.id)}
-            >
-              <span
-                className="wplace-swatch"
-                style={{ '--sw': c.colour } as CSSProperties}
-                aria-hidden="true"
-              />
-              {c.label}
-            </button>
-          ))}
-          {add !== undefined && (
-            <button
-              type="button"
-              className="btn primary sm"
-              data-testid="walk-place-add-date"
-              onClick={() => void flow.addDate(add)}
-            >
-              <Icon name="plus" size={14} />
-              Add survey date {formatDate(add)}
-            </button>
-          )}
-          {cancelEnd}
-        </div>
-      </div>
-    );
-  }
-
   const surfaces = flow.surfaces();
   // on the map the spots are found on imagery: the project's orthomosaics, else satellite
   const onMap = st.surface?.kind === 'map';
   const orthos = onMap ? flow.orthos() : [];
   const orthosOff = orthos.filter((id) => hidden[id]);
   const orthosOn = orthos.length - orthosOff.length;
-  const value = st.surface ? surfaceKey(st.surface) : '';
+  const value = st.surface ? surfaceId(st.surface) : '';
+  const dates = walk.capture === undefined ? flow.dates() : null;
+
+  const cancel = (
+    <button
+      type="button"
+      className="btn ghost sm"
+      data-testid="walk-place-cancel"
+      onClick={() => {
+        flow.close();
+      }}
+    >
+      Cancel
+    </button>
+  );
+
+  // the fields name themselves (aria-label, title): the toolbar stays two rows on a narrow pane
+  const placeOn = (
+    <span className="wplace-field">
+      <select
+        className="input"
+        aria-label="Place on"
+        title="Place on"
+        data-testid="walk-place-on"
+        value={value}
+        onChange={(e) => {
+          const s = surfaceById(surfaces, e.target.value);
+          if (s) flow.chooseSurface(s);
+        }}
+      >
+        {value === '' && (
+          <option value="" disabled>
+            {surfaces.length === 0 ? 'No placed drawing' : 'Choose'}
+          </option>
+        )}
+        {surfaces.map((s) => (
+          <option key={surfaceId(s)} value={surfaceId(s)}>
+            {surfaceLabel(s)}
+          </option>
+        ))}
+      </select>
+    </span>
+  );
+
+  const dateField = dates && (
+    <span className="wplace-field">
+      <select
+        className="input"
+        aria-label="Survey date"
+        title="Survey date"
+        data-testid="walk-place-date-field"
+        value={u.date ?? ''}
+        disabled={u.saving}
+        onChange={(e) => {
+          flow.setDate(e.target.value === '' ? null : e.target.value);
+        }}
+      >
+        {dates.pick.map((c) => (
+          <option key={c.id} value={c.id}>
+            {c.label}
+          </option>
+        ))}
+        {dates.add !== undefined && (
+          <option value={`add:${dates.add}`}>Add survey date {formatDate(dates.add)}</option>
+        )}
+        {(dates.pick.length === 0 && dates.add === undefined) || u.date === null ? (
+          <option value="">No survey date</option>
+        ) : null}
+      </select>
+    </span>
+  );
+
   return (
     <div
       className="dplace wplace"
@@ -268,76 +327,135 @@ export function PlaceWalkStrip({
       data-testid="walk-place-strip"
       data-step={st.step}
     >
-      <p className={problem ? 'dplace-say bad' : 'dplace-say'} role="status">
-        {problem ?? say}
-      </p>
-      <div className="dplace-row">
-        <label className="wplace-on">
-          <span className="faint">Place on</span>
-          <select
-            className="input"
-            aria-label="Place on"
-            data-testid="walk-place-on"
-            value={value}
-            onChange={(e) => {
-              const s = surfaces.find((x) => surfaceKey(x) === e.target.value);
-              if (s) flow.chooseSurface(s);
-            }}
+      {checking ? (
+        <div className="dplace-row">
+          <div
+            className="wplace-notice"
+            data-testid="walk-place-notice"
+            data-state={pathState === 'ready' ? 'none' : pathState}
           >
-            {value === '' && (
-              <option value="" disabled>
-                {surfaces.length === 0 ? 'No placed drawing' : 'Choose'}
-              </option>
+            {hintLine}
+            {pathState !== 'running' && (
+              <button
+                type="button"
+                className="btn primary sm"
+                data-testid="walk-place-process"
+                disabled={!offered || u.saving}
+                aria-describedby={offered ? undefined : packId}
+                onClick={() => void flow.process()}
+              >
+                <Icon name="play" size={14} />
+                {pathState === 'none' ? 'Process walk' : 'Process again'}
+              </button>
             )}
-            {surfaces.map((s) => (
-              <option key={surfaceKey(s)} value={surfaceKey(s)}>
-                {surfaceName(s)}
-              </option>
-            ))}
-          </select>
-        </label>
-        {st.surface && (
-          <ol className="wplace-steps" aria-label="Steps">
-            {STEPS.map((s, i) => {
-              const current = s.id === st.step;
-              const reached = i <= stepIndex;
-              const pinT =
-                s.id === 'start' ? st.pins[0]?.t : s.id === 'end' ? st.pins.at(-1)?.t : undefined;
-              return (
-                <li key={s.id}>
-                  {current ? (
-                    // the step in hand: a marker, not a button (it does nothing)
-                    <span
-                      className="btn primary sm wplace-now"
-                      aria-current="step"
-                      data-testid={`walk-place-step-${s.id}`}
-                    >
-                      <b>{i + 1}</b>
-                      {s.label}
-                    </span>
-                  ) : (
-                    <button
-                      type="button"
-                      className="btn ghost sm"
-                      data-testid={`walk-place-step-${s.id}`}
-                      disabled={!reached || pinT === undefined}
-                      title={pinT !== undefined ? 'Show this moment' : undefined}
-                      onClick={() => {
-                        seekTo(pinT);
-                      }}
-                    >
-                      <b>{i + 1}</b>
-                      {s.label}
-                    </button>
-                  )}
-                </li>
-              );
-            })}
-          </ol>
-        )}
-        {cancelEnd}
-      </div>
-      {st.surface && (
+            <button
+              type="button"
+              className="btn ghost sm"
+              data-testid="walk-place-anyway"
+              onClick={() => {
+                flow.placeAnyway();
+              }}
+            >
+              Place between two points anyway
+            </button>
+            {!offered && pathState !== 'running' && (
+              <span className="faint" id={packId}>
+                {t('walk.process.needsPack')}
+              </span>
+            )}
+          </div>
+          <span className="dplace-end">{cancel}</span>
+        </div>
+      ) : (
+        <>
+          <div className="dplace-row">
+            {hintLine}
+            <span className="dplace-end">
+              {cancel}
+              <button
+                type="button"
+                className="btn primary sm"
+                data-testid="walk-place-save"
+                disabled={!canSave}
+                onClick={() => void flow.save()}
+              >
+                <Icon name="check" size={14} />
+                Save
+              </button>
+            </span>
+          </div>
+          <div className="dplace-row wplace-tools">
+            {placeOn}
+            {dateField}
+            <button
+              type="button"
+              className="btn ghost sm"
+              data-testid="walk-place-finetune"
+              aria-pressed={fineTuning}
+              disabled={st.step !== 'placed' && !fineTuning}
+              title="Pin moments of the 360 video for a closer fit"
+              onClick={() => {
+                flow.fineTune(!fineTuning);
+              }}
+            >
+              <Icon name="target" size={14} />
+              Fine-tune
+            </button>
+            {placedBefore && (
+              <button
+                ref={removeRef}
+                type="button"
+                className="btn ghost sm"
+                data-testid="walk-place-remove"
+                aria-expanded={askRemove}
+                aria-controls={askRemove ? askId : undefined}
+                disabled={u.saving}
+                onClick={() => {
+                  setRemoveRefused(null);
+                  setAskRemoveFor(walk.id);
+                }}
+              >
+                Remove placement
+              </button>
+            )}
+          </div>
+        </>
+      )}
+      {askRemove && placedBefore && (
+        <div
+          id={askId}
+          className="dplace-row wplace-ask"
+          role="group"
+          aria-label={SAY.removeAsk}
+          onKeyDown={(e) => {
+            if (e.key !== 'Escape') return;
+            e.preventDefault();
+            closeAsk();
+          }}
+        >
+          <p className="dplace-say wplace-hint">{SAY.removeAsk}</p>
+          <span className="dplace-end">
+            <button ref={keepRef} type="button" className="btn ghost sm" onClick={closeAsk}>
+              Keep it
+            </button>
+            <button
+              type="button"
+              className="btn danger sm"
+              data-testid="walk-place-remove-yes"
+              onClick={() => {
+                const id = walk.id;
+                setAskRemoveFor(null);
+                void flow.removePlacement(id).then((error) => {
+                  if (error) setRemoveRefused({ id, error });
+                });
+              }}
+            >
+              Remove placement
+            </button>
+          </span>
+        </div>
+      )}
+      {fineTuning && (
         <div className="dplace-row">
           {st.pins.map((p, k) => {
             const r = st.fit?.pins.find((f) => f.index === k);
@@ -374,16 +492,18 @@ export function PlaceWalkStrip({
                   <b>{k + 1}</b>
                   {status}
                 </button>
-                <button
-                  type="button"
-                  aria-label={`Remove pin ${String(k + 1)}`}
-                  title="Remove this pin"
-                  onClick={() => {
-                    session.getState().removePin(k);
-                  }}
-                >
-                  <Icon name="x" size={12} />
-                </button>
+                {canRemovePin(st, k) && (
+                  <button
+                    type="button"
+                    aria-label={`Remove pin ${String(k + 1)}`}
+                    title="Remove this pin"
+                    onClick={() => {
+                      session.getState().removePin(k);
+                    }}
+                  >
+                    <Icon name="x" size={12} />
+                  </button>
+                )}
                 <span className="sr-only">at {p.t.toFixed(1)} s</span>
               </span>
             );
@@ -393,7 +513,7 @@ export function PlaceWalkStrip({
             className="btn sm"
             data-testid="walk-place-pin-here"
             aria-pressed={st.armed === 'pin'}
-            disabled={!enough || st.step !== 'correct'}
+            disabled={!enough || u.saving}
             onClick={() => {
               session.getState().pinHere();
             }}
@@ -406,7 +526,7 @@ export function PlaceWalkStrip({
             className="btn sm"
             data-testid="walk-place-align"
             aria-pressed={st.armed === 'align-360' || st.armed === 'align-surface'}
-            disabled={!enough || st.step !== 'correct'}
+            disabled={!enough || u.saving}
             onClick={() => {
               session.getState().armAlign();
             }}
@@ -414,32 +534,7 @@ export function PlaceWalkStrip({
             <Icon name="target" size={14} />
             Align view
           </button>
-          <label className="wplace-yaw">
-            <span className="faint">Heading</span>
-            <input
-              className="input mono"
-              type="number"
-              inputMode="decimal"
-              step={1}
-              min={-180}
-              max={180}
-              aria-label="Heading offset in degrees"
-              data-testid="walk-place-yaw"
-              disabled={!enough}
-              value={yawText ?? String(Math.round(st.yawOffsetDeg * 10) / 10)}
-              onKeyDown={yawKey}
-              onChange={(e) => {
-                setYawText(e.target.value);
-                const v = Number(e.target.value);
-                if (e.target.value.trim() !== '' && Number.isFinite(v))
-                  session.getState().setYaw(v);
-              }}
-              onBlur={() => {
-                setYawText(null);
-              }}
-            />
-            <span className="faint">deg</span>
-          </label>
+          <YawField session={session} st={st} text={yawText} setText={setYawText} />
         </div>
       )}
       {onMap && orthosOff.length > 0 && (
@@ -462,7 +557,7 @@ export function PlaceWalkStrip({
           {SAY.noImagery}
         </p>
       )}
-      {pinsOnly && (
+      {pinsOnly && !checking && (
         <p className="wplace-note faint" data-testid="walk-place-pins-only">
           {SAY.pinsOnly}
         </p>
@@ -470,6 +565,55 @@ export function PlaceWalkStrip({
     </div>
   );
 }
+
+/** Fine-tune's heading offset: arrows step 1 degree, Shift 10. */
+function YawField({
+  session,
+  st,
+  text,
+  setText,
+}: {
+  session: StoreApi<PlaceState>;
+  st: PlaceState;
+  text: string | null;
+  setText: (v: string | null) => void;
+}) {
+  const yawKey = (e: KeyboardEvent<HTMLInputElement>) => {
+    if (e.key !== 'ArrowUp' && e.key !== 'ArrowDown') return;
+    e.preventDefault();
+    const by = (e.shiftKey ? 10 : 1) * (e.key === 'ArrowUp' ? 1 : -1);
+    session.getState().setYaw(session.getState().yawOffsetDeg + by);
+    setText(null);
+  };
+  return (
+    <label className="wplace-field wplace-yaw">
+      <span className="faint">Heading</span>
+      <input
+        className="input mono"
+        type="number"
+        inputMode="decimal"
+        step={1}
+        min={-180}
+        max={180}
+        aria-label="Heading offset in degrees"
+        data-testid="walk-place-yaw"
+        disabled={st.pins.length < 2}
+        value={text ?? String(Math.round(st.yawOffsetDeg * 10) / 10)}
+        onKeyDown={yawKey}
+        onChange={(e) => {
+          setText(e.target.value);
+          const v = Number(e.target.value);
+          if (e.target.value.trim() !== '' && Number.isFinite(v)) session.getState().setYaw(v);
+        }}
+        onBlur={() => {
+          setText(null);
+        }}
+      />
+      <span className="faint">deg</span>
+    </label>
+  );
+}
+
 /** How many surface panes show the strip now (the 360 pane shows it when none does). */
 export const stripHosts = createStore<{ shown: number }>()(() => ({ shown: 0 }));
 
@@ -489,7 +633,7 @@ export function PlaceWalkHere({ at }: { at: PlaceSurface | 'walk' }) {
   const host = useStore(placeUi, (s) => (s.layerId === null ? undefined : s.host));
   const showing = useStore(stripHosts, (s) => s.shown);
   const onSurface =
-    at !== 'walk' && host !== undefined && host !== null && surfaceKey(host) === surfaceKey(at);
+    at !== 'walk' && host !== undefined && host !== null && surfaceId(host) === surfaceId(at);
   useEffect(() => {
     if (!onSurface) return;
     stripHosts.setState((s) => ({ shown: s.shown + 1 }));
@@ -507,8 +651,10 @@ const NO_MARKS: RasterPick['marks'] = [];
 
 /**
  * The walks on the drawing `layerId`: every visible, placed walk at 60 %, and while a walk is
- * being placed on this drawing its live path with draggable pins and the current position, plus
- * a pick for the armed pin. No overlay when the drawing has no frame (not placed, size unknown).
+ * being placed on this drawing its live path with the Start and End handles and the current
+ * position, the shape under the pointer (the ghost before the start, the live line before the
+ * end) and a pick for Start, End and the armed fine-tune click. No overlay when the drawing has
+ * no frame (not placed, size unknown).
  */
 export function useWalksOnDrawing(
   layerId: string,
@@ -524,6 +670,7 @@ export function useWalksOnDrawing(
   );
   const fit = useStore(placeSession, (s) => s.fit);
   const clickable = useStore(placeSession, wantsSurfaceClick);
+  const preview = useStore(placeSession, (s) => s.preview);
   const time = useStore(placeSession, (s) => s.timeS);
   const raw = useStore(placeUi, (s) => s.inputs.raw);
   const manifest = useWorkspace((s) => s.project?.manifest);
@@ -544,20 +691,27 @@ export function useWalksOnDrawing(
     [manifest, layerId, fits, placed, placing, hidden, size],
   );
   const frame = useMemo(
-    () =>
-      placing && manifest ? surfaceFramesOf(manifest, (id) => placed[id]).drawing(layerId) : null,
-    [placing, manifest, placed, layerId],
+    () => (on && manifest ? surfaceFramesOf(manifest, (id) => placed[id]).drawing(layerId) : null),
+    [on, manifest, placed, layerId],
   );
   const now =
     placing && frame && manifest
       ? walkNowOnSheet(placing, frame, (l) => walkColour(manifest, l), time, size)
       : null;
+  const shape = useMemo(
+    () =>
+      frame && preview ? previewOnSheet(preview.xz, frame, preview.ghost, preview.tooClose) : null,
+    [frame, preview],
+  );
   const pick = useMemo<RasterPick | undefined>(
     () =>
       on && clickable
         ? {
             onPick: (px) => {
               placeSession.getState().click(px);
+            },
+            onHover: (px) => {
+              placeSession.getState().hover(px);
             },
             marks: NO_MARKS,
           }
@@ -571,21 +725,19 @@ export function useWalksOnDrawing(
             drawings={sheet}
             scale={ctx.scale}
             now={now}
+            preview={on ? shape : null}
             size={ctx.size}
             toImage={ctx.toImage}
-            onPinDrag={(_id, i, px) => {
-              placeSession.getState().movePin(i, px);
+            onPinDrag={(_id, i, px, role) => {
+              if (role === 'pin') placeSession.getState().movePin(i, px);
+              else placeSession.getState().dragHandle(role, px);
             }}
-            onPinDragEnd={(_id, i, px) => {
-              placeSession.getState().movePin(i, px);
+            onPinDragEnd={(_id, i, px, role) => {
+              if (role === 'pin') placeSession.getState().movePin(i, px);
+              placeSession.getState().endDrag();
             }}
           />
         )
       : undefined;
   return { on, pick, overlay };
-}
-
-/** The Place walk strip sits over the map pane (its layout makes room for it). */
-export function usePlacingOnMap(): boolean {
-  return useStore(placeUi, (s) => s.layerId !== null && s.host?.kind === 'map');
 }

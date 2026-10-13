@@ -1997,9 +1997,20 @@ export const en = {
   'walk.noGraphics': 'The 360 view needs 3D graphics, which are not available right now.',
   // the walk on a drawing: a pin whose drawing was removed
   'walk.pin.gone': 'The drawing it was on is gone',
-  // a walk row in the Datasets list: its actions and the inline confirm of Remove walk
+  // Place walk's flow: why Process walk or Remove placement cannot go ahead
+  'walk.place.notListed': 'The walk is not listed yet.',
+  'walk.place.notReady': 'Place walk is not ready.',
+  'walk.place.busy': 'The walk is being saved. Try again in a moment.',
+  // a walk row in the Datasets list: its actions and the inline confirm of Remove placement
   'walk.row.open': 'Open in the 360 video pane',
-  'walk.row.place': 'Place {name} on a drawing or the map',
+  'walk.row.place': 'Place {name} on a drawing, the map or the 3D view',
+  'walk.row.edit': 'Edit the placement of {name}',
+  'walk.row.editTip': 'Edit placement',
+  'walk.row.unplace': 'Remove the placement of {name}',
+  'walk.row.unplaceTip': 'Remove placement',
+  'walk.row.unplaceConfirm': 'Remove the placement of {name}? The walk stays in the project.',
+  'walk.row.unplaceYes': 'Remove placement',
+  'walk.row.unplaceNo': 'Cancel',
   'walk.row.placeTip': 'Place walk',
   'walk.row.remove': 'Remove {name}',
   'walk.row.removeTip': 'Remove walk',
@@ -2082,7 +2093,6 @@ export const en = {
   'pano.offer.no': 'Import all as photos',
   'pano.offer.cancel': 'Cancel',
   'pano.offer.checking': 'Checking for drone panoramas…',
-  'pano.offer.busy': 'Finish the current import first.',
   'pano.offer.failed': 'Could not check these files for drone panoramas.',
   'pano.offer.anyway': 'Import as photos anyway',
   // M8 C4: same view on another date (Frames pane) and change in matched frames

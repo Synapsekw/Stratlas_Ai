@@ -317,7 +317,7 @@ function nativeSections(native, data, models, addon) {
 
 Generated from \`tools/release/native-libs.json\`, \`tools/pipeline-pack/pdal-lock.json\` and \`tools/pipeline-pack/ffmpeg-lock.json\`. Since the founder decision of 8 Oct 2026 (ADR 0008, amended) the pack is built from prebuilt binaries: COLMAP's, OpenCV's and MeshLab's PyPI wheels and conda-forge's PDAL, with their GPL and LGPL parts. The native licence report (\`tools/release/native-licences.mjs\`) lists every DLL, dylib and executable of each pack against these inventories; it never fails a build.
 
-**GPL.** Our pipeline code (MIT) runs in one process with GPL libraries: SuiteSparse CHOLMOD and SPQR inside pycolmap (GPL-2.0-or-later), MeshLab inside pymeshlab (GPL-3.0), the ffmpeg tool (\`tools/ffmpeg\`, a GPL build with x264 and x265) and, on macOS, the GPL FFmpeg build inside OpenCV's wheel. A pipeline pack as a whole is therefore distributed under the terms of the GNU General Public License, version 3; the source of each GPL component is available from its project (the sources below), and the source of our pipeline code is available on request. The desktop app and the Team Server do not link any of it: they start the pack as a separate program.
+**GPL.** Our pipeline code (MIT) runs in one process with GPL libraries: SuiteSparse CHOLMOD and SPQR inside pycolmap (GPL-2.0-or-later), MeshLab inside pymeshlab (GPL-3.0), the ffmpeg tool (\`tools/ffmpeg\`, a GPL build with x264 and x265), the untwine tool (\`tools/pdal\`, GPL-3.0-or-later) and, on macOS, the GPL FFmpeg build inside OpenCV's wheel. A pipeline pack as a whole is therefore distributed under the terms of the GNU General Public License, version 3; the source of each GPL component is available from its project (the sources below), and the source of our pipeline code is available on request. The desktop app and the Team Server do not link any of it: they start the pack as a separate program.
 
 ### Inside the Python wheels and CPython
 
@@ -333,7 +333,7 @@ ${table(native.bundled)}
 
 ### PDAL from conda-forge
 
-The \`pdal\` tool of the pack (\`tools/pdal\`), installed from conda-forge's \`libpdal-core\` with the packages it needs; ${String(native.pdal.length)} packages: ${counts(native.pdal)}. Each package's licence files ship in \`tools/pdal/licenses\`.
+The \`pdal\` and \`untwine\` tools of the pack (\`tools/pdal\`), installed from conda-forge's \`libpdal-core\` and \`untwine\` with the packages they need; ${String(native.pdal.length)} packages: ${counts(native.pdal)}. Each package's licence files ship in \`tools/pdal/licenses\`.
 
 ${table(native.pdal)}
 ${

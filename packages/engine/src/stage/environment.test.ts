@@ -72,3 +72,26 @@ describe('ground placement', () => {
     expect(env.grid.position.y).toBe(grid);
   });
 });
+
+describe('fog reach', () => {
+  it('pushes the fog out to the reach and gives it back when the reach clears', () => {
+    const scene = new Scene();
+    const env = new Environment(scene, fakeRenderer());
+    env.setContentRadius(5, new Vector3());
+    const fog = scene.fog as { near: number; far: number };
+    expect(fog.far).toBeCloseTo(120);
+    expect(fog.near).toBeCloseTo(20);
+    env.setFogReach(600);
+    expect(fog.far).toBeCloseTo(600);
+    expect(fog.near).toBeCloseTo(100);
+    // a content change keeps the reach
+    env.setContentRadius(6, new Vector3());
+    expect(fog.far).toBeCloseTo(600);
+    // a reach inside the fog changes nothing; none restores the content's fog
+    env.setFogReach(50);
+    expect(fog.far).toBeCloseTo(144);
+    env.setFogReach(0);
+    expect(fog.far).toBeCloseTo(144);
+    expect(fog.near).toBeCloseTo(24);
+  });
+});

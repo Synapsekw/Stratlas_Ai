@@ -16,6 +16,7 @@ import { drawings } from '../drawings/store';
 import { openPanoScan, panoImport } from '../panos/panos';
 import { bridge, shell } from '../shell';
 import { heightsPrompt, needsTakeoff, type HeightsPrompt } from './heights';
+import { DROPPED_NOTE, QUEUED_NOTE } from './importSummary';
 import { terrainHeightAt } from './pick';
 
 /** What an import read its survey date from (the import card's "Read from ..." line). */
@@ -59,9 +60,11 @@ export interface BuilderState {
   panoFailed: { paths: readonly string[]; altitude?: AltitudeChoice } | null;
   /** The files are being scanned for drone spheres. */
   panoScanning: boolean;
-  /** Shown in the card when a drop arrived while it was open or the scan ran. */
-  panoNote: string | null;
   align: AlignTool | null;
+  /** Drops and picks waiting for the running import, in order. */
+  queued: number;
+  /** Why a drop is waiting ("An import is running. ..."), or null. */
+  importNotice: string | null;
 }
 
 export interface BuilderActions {
@@ -193,11 +196,26 @@ export const IMPORT_360_FILTERS = [
 /**
  * A dropped batch whose camera heights are being read (`builder:altitudePlan`) and that shows
  * nothing yet: `importing` is set only when the import itself starts, since the panel must not
- * say "importing" while the heights prompt is open. Files dropped again in that time used to
- * start a second import into the same project next to the first; now that drop does nothing,
- * like a drop while an import runs.
+ * say "importing" while the heights prompt is open. Files dropped in that time used to start a
+ * second import into the same project next to the first; now that drop waits in the queue, like
+ * a drop while an import runs.
  */
 let preparing = false;
+
+/**
+ * Drops and picks that came while an import ran, was being prepared or waited for its heights,
+ * in the order they came, each with the project it was made in: it is only ever imported there.
+ */
+const waiting: {
+  projectId: string;
+  paths: string[];
+  altitude?: AltitudeChoice;
+  opts?: ImportOptions;
+}[] = [];
+/** The files of the imports being prepared or run, so the same drop is not queued again. */
+const current: (readonly string[])[] = [];
+const samePaths = (a: readonly string[], b: readonly string[]) =>
+  a.length === b.length && a.every((p, i) => p === b[i]);
 
 /** The project the running import was started in (it stays there when another one is opened). */
 let importingProject: string | null = null;
@@ -241,6 +259,273 @@ function dateSourceOf(
   return photos && video ? 'both' : photos ? 'photos' : video ? 'video' : null;
 }
 
+type OpenProject = NonNullable<ReturnType<typeof workspace.getState>['project']>;
+
+/**
+ * The drone panorama preview opened from an offer is up: the queue waits for it, as for a card
+ * (one question at a time).
+ */
+let previewing = false;
+
+/** Something asks or runs: a drop or pick now waits in the queue, and the queue holds. */
+function busyNow(altitude?: AltitudeChoice): boolean {
+  const s = builder.getState();
+  return (
+    s.importing !== null ||
+    s.heightsPrompt !== null ||
+    s.panoOffer !== null ||
+    s.panoFailed !== null ||
+    previewing ||
+    // the import confirmed in the heights prompt (it has its `altitude`) goes ahead of a drop
+    // still being prepared (its sphere scan or its heights)
+    (preparing && !altitude)
+  );
+}
+
+/**
+ * One import as it ran before the queue: the files are checked for drone sphere frames (and may
+ * stop at the panorama offer, or at the failed-check card), the heights are read (and may stop at
+ * the prompt), then main imports the files. True when an import confirmed in the heights prompt
+ * started (or a card opened) while this drop was prepared, so it must wait.
+ */
+async function runImport(
+  project: OpenProject,
+  paths: readonly string[],
+  altitude: AltitudeChoice | undefined,
+  opts: ImportOptions | undefined,
+): Promise<boolean> {
+  // drone sphere frames go to the panorama import, not into a photo layer (spec section 2); a
+  // queued drop is scanned when its turn comes, like any other. `exclude` says it was answered.
+  if (!opts?.drawings && !opts?.as360 && opts?.exclude === undefined) {
+    preparing = true;
+    builder.setState({ panoScanning: true, importResult: null });
+    let found: Awaited<ReturnType<typeof bridge.call<'panos:scan'>>> | null;
+    try {
+      found = await bridge.call('panos:scan', { projectId: project.id, paths: [...paths] });
+    } catch {
+      found = null;
+    } finally {
+      preparing = false;
+      builder.setState({ panoScanning: false });
+    }
+    if (builder.getState().importing || builder.getState().heightsPrompt) return true;
+    if (!found || !found.ok || !found.value.ok) {
+      // fail closed: sphere frames must not silently become map photos
+      builder.setState({ panoFailed: { paths, ...(altitude ? { altitude } : {}) } });
+      return false;
+    }
+    const offer = panoOfferFrom(paths, found.value.scan, altitude);
+    if (offer) {
+      builder.setState({ panoOffer: offer, importResult: null });
+      return false;
+    }
+  }
+  // a drawing has no camera and a 360 video is not placed: neither asks for camera heights
+  if (!altitude && !opts?.drawings && !opts?.as360) {
+    preparing = true;
+    const plan = await bridge
+      .call('builder:altitudePlan', { projectId: project.id, paths: [...paths] })
+      .finally(() => {
+        preparing = false;
+      });
+    // an import confirmed in the heights prompt started (or a prompt opened) while these heights
+    // were read: this drop waits for it
+    if (builder.getState().importing || builder.getState().heightsPrompt) return true;
+    if (plan.ok && plan.value.ok && needsTakeoff(plan.value.plan)) {
+      const p = plan.value.plan;
+      const y = p.takeoff ? terrainHeightAt(p.takeoff.x, p.takeoff.z) : null;
+      builder.setState({
+        importResult: null,
+        heightsPrompt: {
+          ...heightsPrompt(paths, p, project.manifest.origin[2], y),
+          // the sphere frames stay out of the photos after the heights card, too
+          ...(opts?.exclude ? { exclude: [...opts.exclude] } : {}),
+        },
+      });
+      return false;
+    }
+  }
+  importingProject = project.id;
+  builder.setState({
+    importing: { done: 0, total: paths.length, file: '' },
+    cancellable: true,
+    cancelling: false,
+    importResult: null,
+    heightsPrompt: null,
+  });
+  try {
+    await importNow(project, paths, altitude, opts);
+  } catch (e) {
+    // the bridge or a step after it threw: the import is over, so the next drop can run
+    importingProject = null;
+    builder.setState({
+      importing: null,
+      cancellable: false,
+      cancelling: false,
+    });
+    throw e;
+  }
+  return false;
+}
+
+/** Main imports the files (`importing` is set), then the drawing pages are drawn here. */
+async function importNow(
+  project: OpenProject,
+  paths: readonly string[],
+  altitude: AltitudeChoice | undefined,
+  opts: ImportOptions | undefined,
+): Promise<void> {
+  const aio = window.aio as AioBridge | undefined;
+  const off = aio?.on('builder:progress', (e: IpcEvent<'builder:progress'>) => {
+    if (e.projectId === project.id)
+      builder.setState({
+        importing: {
+          done: e.done,
+          total: e.total,
+          file: e.file,
+          ...(e.part !== undefined ? { part: e.part } : {}),
+        },
+      });
+  });
+  const r = await bridge
+    .call('builder:import', {
+      projectId: project.id,
+      paths: [...paths],
+      ...(altitude ? { altitude } : {}),
+      ...(opts?.drawings ? { drawings: true } : {}),
+      ...(opts?.as360 ? { as360: true } : {}),
+      ...(opts?.exclude?.length ? { exclude: [...opts.exclude] } : {}),
+    })
+    .finally(() => {
+      off?.();
+    });
+  // main has answered: what follows (drawing pages) is not main's import any more
+  const cancelled = builder.getState().cancelling;
+  importingProject = null;
+  builder.setState({ cancellable: false, cancelling: false });
+  if (!r.ok) {
+    builder.setState({ importing: null, importResult: { items: [], error: r.error } });
+    return;
+  }
+  if (!r.value.ok) {
+    builder.setState({
+      importing: null,
+      importResult: { items: r.value.items ?? [], error: r.value.error, paths: [...paths] },
+    });
+    return;
+  }
+  if (workspace.getState().project?.id === project.id)
+    workspace.getState().replaceManifest(r.value.manifest);
+  // the result of this import: its rows are only ever changed in it, never in a later one
+  let result: NonNullable<BuilderState['importResult']> = {
+    items: r.value.items,
+    error: null,
+    // the files a folder expanded to first: a walk inside it is processed from its original
+    paths: [...(r.value.files ?? []), ...paths],
+    ...(r.value.heights ? { heights: r.value.heights } : {}),
+    newDates: r.value.createdCaptures ?? [],
+    dateSource: dateSourceOf(r.value.items, r.value.manifest.layers),
+  };
+  // a cancelled import draws nothing more: the drawings it had only copied in are closed, so
+  // their copies are removed, and no page question is asked for them
+  if (cancelled) result = { ...result, items: await dropStaged(project.id, result.items) };
+  const staged = result.items.filter((i) => i.drawing).length;
+  // PDF, WebP and SVG were only copied in, their pages are drawn in this window. The import
+  // stays busy until they are in or cancelled, the page question included, so a pick or a drop
+  // made meanwhile waits in the queue, as during any import (the guard in `importFiles`).
+  builder.setState({
+    importing: staged > 0 ? { done: 0, total: staged, file: '' } : null,
+    importResult: result,
+  });
+  void shell.getState().loadLibrary();
+  if (staged > 0) {
+    await finishStagedDrawings(project.id, {
+      items: () => result.items,
+      setItem: (index, patch) => {
+        const shown = builder.getState().importResult === result;
+        result = {
+          ...result,
+          items: result.items.map((it, i) => (i === index ? { ...it, ...patch } : it)),
+        };
+        if (shown) builder.setState({ importResult: result });
+      },
+      progress: (importing) => {
+        builder.setState({ importing });
+      },
+    }).finally(() => {
+      builder.setState({ importing: null });
+    });
+  }
+  // the first drawing that came in shows its controls: side by side, place on the site
+  const drawn = result.items.find(
+    (i) => i.kind === 'drawing' && i.status === 'imported' && i.layerId,
+  );
+  if (drawn?.layerId && workspace.getState().project?.id === project.id)
+    drawings.setState({ controls: drawn.layerId });
+}
+
+/** A drop that came while an import ran or was prepared waits; the same files only once. */
+function queue(
+  projectId: string,
+  paths: readonly string[],
+  altitude: AltitudeChoice | undefined,
+  opts: ImportOptions | undefined,
+): void {
+  if (current.some((c) => samePaths(c, paths)) || waiting.some((w) => samePaths(w.paths, paths)))
+    return;
+  waiting.push({
+    projectId,
+    paths: [...paths],
+    ...(altitude ? { altitude } : {}),
+    ...(opts ? { opts } : {}),
+  });
+  builder.setState({ queued: waiting.length, importNotice: QUEUED_NOTE });
+}
+
+/**
+ * The next waiting drop, once nothing runs or is prepared. An open heights prompt, panorama offer
+ * or failed-check card, and the panorama preview, hold the queue: their answer drains it.
+ */
+async function next(): Promise<void> {
+  forgetOtherProjects(workspace.getState().project?.id ?? null);
+  const s = builder.getState();
+  if (busyNow()) return;
+  const w = waiting.shift();
+  if (!w) return;
+  builder.setState({
+    queued: waiting.length,
+    importNotice: waiting.length > 0 ? QUEUED_NOTE : null,
+  });
+  await s.importFiles(w.paths, w.altitude, w.opts);
+}
+
+/**
+ * `next()` where nobody awaits it: a waiting drop that throws says so in the import panel
+ * instead of becoming an unhandled rejection.
+ */
+function drain(): void {
+  next().catch((e: unknown) => {
+    builder.setState({
+      importing: null,
+      importResult: { items: [], error: e instanceof Error ? e.message : String(e) },
+    });
+  });
+}
+
+/**
+ * The waiting drops of a project that is no longer open are never imported (they would land in
+ * whichever project is open next): they are dropped, and the panel says so.
+ */
+function forgetOtherProjects(openId: string | null): void {
+  const kept = waiting.filter((w) => w.projectId === openId);
+  if (kept.length === waiting.length) return;
+  waiting.splice(0, waiting.length, ...kept);
+  builder.setState({
+    queued: waiting.length,
+    importNotice: waiting.length > 0 ? QUEUED_NOTE : DROPPED_NOTE,
+  });
+}
+
 export const builder = createStore<Builder>()((set, get) => ({
   wizardOpen: false,
   importing: null,
@@ -251,8 +536,9 @@ export const builder = createStore<Builder>()((set, get) => ({
   panoOffer: null,
   panoFailed: null,
   panoScanning: false,
-  panoNote: null,
   align: null,
+  queued: 0,
+  importNotice: null,
 
   openWizard: () => {
     shell.getState().setPalette(false);
@@ -274,154 +560,28 @@ export const builder = createStore<Builder>()((set, get) => ({
       set({ importResult: { items: [], error: 'Open or create a project first, then import.' } });
       return;
     }
-    if (!paths.length || get().importing) return;
-    // drone sphere frames go to the panorama import, not into a photo layer (spec section 2)
-    if (!opts?.drawings && !opts?.as360 && opts?.exclude === undefined) {
-      // one question at a time: a drop during the scan or while a card waits changes nothing
-      if (preparing || get().panoOffer || get().panoFailed) {
-        set({ panoNote: t('pano.offer.busy') });
-        return;
-      }
-      preparing = true;
-      set({ panoScanning: true, panoNote: null, importResult: null });
-      let found: Awaited<ReturnType<typeof bridge.call<'panos:scan'>>> | null;
-      try {
-        found = await bridge.call('panos:scan', { projectId: project.id, paths: [...paths] });
-      } catch {
-        found = null;
-      } finally {
-        preparing = false;
-        set({ panoScanning: false });
-      }
-      if (get().importing) return;
-      if (!found || !found.ok || !found.value.ok) {
-        // fail closed: sphere frames must not silently become map photos
-        set({ panoFailed: { paths, ...(altitude ? { altitude } : {}) } });
-        return;
-      }
-      const offer = panoOfferFrom(paths, found.value.scan, altitude);
-      if (offer) {
-        set({ panoOffer: offer, importResult: null });
-        return;
-      }
-    }
-    // a drawing has no camera and a 360 video is not placed: neither asks for camera heights
-    if (!altitude && !opts?.drawings && !opts?.as360) {
-      if (preparing) return;
-      preparing = true;
-      const plan = await bridge
-        .call('builder:altitudePlan', { projectId: project.id, paths: [...paths] })
-        .finally(() => {
-          preparing = false;
-        });
-      // an import confirmed in the heights prompt started while these heights were read
-      if (get().importing) return;
-      if (plan.ok && plan.value.ok && needsTakeoff(plan.value.plan)) {
-        const p = plan.value.plan;
-        const y = p.takeoff ? terrainHeightAt(p.takeoff.x, p.takeoff.z) : null;
-        set({
-          importResult: null,
-          heightsPrompt: {
-            ...heightsPrompt(paths, p, project.manifest.origin[2], y),
-            // the sphere frames stay out of the photos after the heights card, too
-            ...(opts?.exclude ? { exclude: [...opts.exclude] } : {}),
-          },
-        });
-        return;
-      }
-    }
-    importingProject = project.id;
-    set({
-      importing: { done: 0, total: paths.length, file: '' },
-      cancellable: true,
-      cancelling: false,
-      importResult: null,
-      heightsPrompt: null,
-    });
-    const aio = window.aio as AioBridge | undefined;
-    const off = aio?.on('builder:progress', (e: IpcEvent<'builder:progress'>) => {
-      if (e.projectId === project.id)
-        set({
-          importing: {
-            done: e.done,
-            total: e.total,
-            file: e.file,
-            ...(e.part !== undefined ? { part: e.part } : {}),
-          },
-        });
-    });
-    const r = await bridge.call('builder:import', {
-      projectId: project.id,
-      paths: [...paths],
-      ...(altitude ? { altitude } : {}),
-      ...(opts?.drawings ? { drawings: true } : {}),
-      ...(opts?.as360 ? { as360: true } : {}),
-      ...(opts?.exclude?.length ? { exclude: [...opts.exclude] } : {}),
-    });
-    off?.();
-    // main has answered: what follows (drawing pages) is not main's import any more
-    const cancelled = get().cancelling;
-    importingProject = null;
-    set({ cancellable: false, cancelling: false });
-    if (!r.ok) {
-      set({ importing: null, importResult: { items: [], error: r.error } });
+    if (!paths.length) return;
+    // one import at a time: a drop made meanwhile waits its turn (and is scanned for drone
+    // spheres when it comes). The import confirmed in the heights prompt (it has its `altitude`)
+    // goes ahead of a drop still being prepared. An open heights prompt, panorama offer or
+    // failed-check card is busy too: a drop now would clear it or replace it.
+    if (busyNow(altitude)) {
+      queue(project.id, paths, altitude, opts);
       return;
     }
-    if (!r.value.ok) {
-      set({
-        importing: null,
-        importResult: { items: r.value.items ?? [], error: r.value.error, paths: [...paths] },
-      });
-      return;
+    const mine = [...paths];
+    current.push(mine);
+    let busy: boolean;
+    try {
+      busy = await runImport(project, paths, altitude, opts);
+    } catch (e) {
+      drain();
+      throw e;
+    } finally {
+      current.splice(current.indexOf(mine), 1);
     }
-    if (workspace.getState().project?.id === project.id)
-      workspace.getState().replaceManifest(r.value.manifest);
-    // the result of this import: its rows are only ever changed in it, never in a later one
-    let result: NonNullable<BuilderState['importResult']> = {
-      items: r.value.items,
-      error: null,
-      // the files a folder expanded to first: a walk inside it is processed from its original
-      paths: [...(r.value.files ?? []), ...paths],
-      ...(r.value.heights ? { heights: r.value.heights } : {}),
-      newDates: r.value.createdCaptures ?? [],
-      dateSource: dateSourceOf(r.value.items, r.value.manifest.layers),
-    };
-    // a cancelled import draws nothing more: the drawings it had only copied in are closed, so
-    // their copies are removed, and no page question is asked for them
-    if (cancelled) result = { ...result, items: await dropStaged(project.id, result.items) };
-    const staged = result.items.filter((i) => i.drawing).length;
-    // PDF, WebP and SVG were only copied in, their pages are drawn in this window. The import
-    // stays busy until they are in or cancelled, the page question included, so a pick or a drop
-    // made meanwhile does nothing, as during any import (the guard at the top).
-    set({
-      importing: staged > 0 ? { done: 0, total: staged, file: '' } : null,
-      importResult: result,
-    });
-    void shell.getState().loadLibrary();
-    if (staged > 0) {
-      await finishStagedDrawings(project.id, {
-        items: () => result.items,
-        setItem: (index, patch) => {
-          const shown = get().importResult === result;
-          result = {
-            ...result,
-            items: result.items.map((it, i) => (i === index ? { ...it, ...patch } : it)),
-          };
-          if (shown) set({ importResult: result });
-        },
-        progress: (importing) => {
-          set({ importing });
-        },
-      }).finally(() => {
-        set({ importing: null });
-      });
-    }
-    // the first drawing that came in shows its controls: side by side, place on the site
-    const drawn = result.items.find(
-      (i) => i.kind === 'drawing' && i.status === 'imported' && i.layerId,
-    );
-    if (drawn?.layerId && workspace.getState().project?.id === project.id)
-      drawings.setState({ controls: drawn.layerId });
+    if (busy) queue(project.id, paths, altitude, opts);
+    await next();
   },
 
   pickAndAddDrawing: async () => {
@@ -473,7 +633,7 @@ export const builder = createStore<Builder>()((set, get) => ({
   },
 
   dismissImport: () => {
-    set({ importResult: null });
+    set({ importResult: null, ...(waiting.length === 0 ? { importNotice: null } : {}) });
   },
 
   confirmHeights: async (altitude) => {
@@ -484,36 +644,45 @@ export const builder = createStore<Builder>()((set, get) => ({
   },
   cancelHeights: () => {
     set({ heightsPrompt: null });
+    drain();
   },
 
   acceptPanoOffer: async () => {
     const o = get().panoOffer;
     if (!o) return;
-    set({ panoOffer: null, panoNote: null });
-    openPanoScan(o.scan);
-    // the preview is modal; the rest goes in as photos once it closes, imported or cancelled
-    await new Promise<void>((done) => {
-      const stop = panoImport.subscribe((s) => {
-        if (s.open) return;
-        stop();
-        done();
+    set({ panoOffer: null });
+    // the preview is modal; the rest goes in as photos once it closes, imported or cancelled.
+    // Drops meanwhile wait in the queue.
+    previewing = true;
+    try {
+      openPanoScan(o.scan);
+      await new Promise<void>((done) => {
+        const stop = panoImport.subscribe((s) => {
+          if (s.open) return;
+          stop();
+          done();
+        });
       });
-    });
+    } finally {
+      previewing = false;
+    }
     await get().importFiles(o.paths, o.altitude, { exclude: o.frames });
   },
   declinePanoOffer: async () => {
     const o = get().panoOffer;
     if (!o) return;
-    set({ panoOffer: null, panoNote: null });
+    set({ panoOffer: null });
     await get().importFiles(o.paths, o.altitude, { exclude: [] });
   },
   dismissPanoOffer: () => {
-    set({ panoOffer: null, panoFailed: null, panoNote: null });
+    set({ panoOffer: null, panoFailed: null });
+    // the drops that waited for the answer go on
+    drain();
   },
   importAnyway: async () => {
     const f = get().panoFailed;
     if (!f) return;
-    set({ panoFailed: null, panoNote: null });
+    set({ panoFailed: null });
     await get().importFiles(f.paths, f.altitude, { exclude: [] });
   },
 

@@ -232,8 +232,14 @@ export class Environment {
   private skyElevation = 45;
   private day: Daylight | null = null;
   private radius = 50;
-  /** Radius of what the camera may reach (content plus far-flung markers); 0: the content radius. */
+  /**
+   * How far from the content centre the camera may need to see (setCameraReach, the Stage's
+   * reach extents: panorama markers, a walk being placed), metres; 0: the content radius. Only the
+   * far plane follows it.
+   */
   private reach = 0;
+  /** A distance the fog must leave clear (`setFogReach`), metres; 0 for none. */
+  private fogReach = 0;
   /** Current drop of the grid and the ground below y = 0 (`groundDrop`). */
   private drop: GroundDrop = { grid: 0, ground: 0 };
   private readonly centre = new Vector3();
@@ -492,9 +498,41 @@ export class Environment {
 
   /* --------------------------------------------------------------------- content */
 
-  /** Content the camera can fly to but that does not size the scene: only the far plane follows. */
-  setCameraReach(radius: number) {
-    this.reach = Math.max(radius, 0);
+  /** What the camera may need to see beyond the content (see each): only the far plane follows. */
+  setCameraReach(distance: number): void {
+    this.reach = Number.isFinite(distance) && distance > 0 ? distance : 0;
+  }
+
+  /**
+   * Keep the fog clear out to `distance` metres (a walk the camera may back off to see, far
+   * beyond the content); 0 gives the fog back to the content's scale.
+   */
+  setFogReach(distance: number): void {
+    const d = Number.isFinite(distance) && distance > 0 ? distance : 0;
+    if (d === this.fogReach) return;
+    this.fogReach = d;
+    this.applyFog();
+  }
+
+  private applyFog(): void {
+    const r = this.radius;
+    let near: number;
+    let far: number;
+    if (this._mode === 'sky') {
+      // haze is about the air, not the asset: kilometres, whatever the content
+      near = Math.max(r * 3, 1500);
+      far = Math.max(r * 25, 22000);
+    } else {
+      near = r * 4;
+      far = r * 24;
+    }
+    // a reach beyond the fog pushes it out, keeping its near to far ratio
+    if (this.fogReach > far) {
+      near *= this.fogReach / far;
+      far = this.fogReach;
+    }
+    this.fog.near = near;
+    this.fog.far = far;
   }
 
   /** Rescale fog, ground, grid and water to the content (radius of its bounding sphere). */
@@ -502,14 +540,7 @@ export class Environment {
     this.radius = Math.max(radius, 5);
     this.centre.copy(centre);
     const r = this.radius;
-    if (this._mode === 'sky') {
-      // haze is about the air, not the asset: kilometres, whatever the content
-      this.fog.near = Math.max(r * 3, 1500);
-      this.fog.far = Math.max(r * 25, 22000);
-    } else {
-      this.fog.near = r * 4;
-      this.fog.far = r * 24;
-    }
+    this.applyFog();
     const groundSize = r * 60;
     this.ground.scale.set(groundSize, 1, groundSize);
     this.ground.position.set(centre.x, -this.drop.ground, centre.z);

@@ -1,8 +1,8 @@
-import { afterEach, describe, expect, it, vi } from 'vitest';
-import { setWalkMapOverlays, setWalkMapPick, walkMap } from './walkMapStore';
+import { afterEach, describe, expect, it } from 'vitest';
+import { setWalkMapOverlays, setWalkMapPointer, walkMap } from './walkMapStore';
 
 afterEach(() => {
-  setWalkMapPick(null);
+  setWalkMapPointer(null);
   setWalkMapOverlays([]);
 });
 
@@ -17,17 +17,14 @@ describe('walkMap', () => {
     expect(walkMap.getState().overlays).toHaveLength(1);
   });
 
-  it('a pick clears itself once it reports or is cancelled', () => {
-    const onPick = vi.fn();
-    const onCancel = vi.fn();
-    setWalkMapPick({ onPick, onCancel });
-    walkMap.getState().pick?.onPick([1, 0, 2]);
-    expect(onPick).toHaveBeenCalledWith([1, 0, 2]);
-    expect(walkMap.getState().pick).toBeNull();
-
-    setWalkMapPick({ onPick, onCancel });
-    walkMap.getState().pick?.onCancel?.();
-    expect(onCancel).toHaveBeenCalledTimes(1);
-    expect(walkMap.getState().pick).toBeNull();
+  it('the pointer session is replaced and cleared', () => {
+    const a = { onClick: () => undefined };
+    const b = { onMove: () => undefined };
+    setWalkMapPointer(a);
+    expect(walkMap.getState().pointer).toBe(a);
+    setWalkMapPointer(b);
+    expect(walkMap.getState().pointer).toBe(b);
+    setWalkMapPointer(null);
+    expect(walkMap.getState().pointer).toBeNull();
   });
 });

@@ -1,4 +1,4 @@
-import type { AioBridge, ImportItem } from '@aio/schema';
+import type { AioBridge, ImportItem, Layer } from '@aio/schema';
 import { Icon, useT, type IconName } from '@aio/ui';
 import { useWorkspace } from '@aio/workspace';
 import { useEffect, useState } from 'react';
@@ -7,6 +7,7 @@ import { useDrawings } from '../drawings/store';
 import { PhotoProcessLayer } from '../photogrammetry/PhotoProcessLayer';
 import { useShell } from '../shell';
 import { heightsLine, offsetFromTakeoff, promptChoice, type HeightsPrompt } from './heights';
+import { importDestination, importHeadline } from './importSummary';
 import { TilesetImportCard } from './ImportTileset';
 import { ProjectKindTag, ProjectStarter } from './ProjectStarter';
 import { builder, useBuilder, type PanoOffer } from './state';
@@ -82,8 +83,8 @@ export function ImportLayer() {
             <Icon name="import" size={20} />
             <h3>{projectName ? `Import into ${projectName}` : 'Open a project to import'}</h3>
             <p>
-              Photos, video with its SRT, 360 camera files (.insv), GLB or OBJ models, GeoTIFF
-              orthos and DSMs, point clouds
+              Photos, video with its SRT, stitched 360 MP4s and 360 camera files (.insv), GLB or OBJ
+              models, GeoTIFF orthos and DSMs, point clouds
             </p>
             <p>Drawings as PDF, PNG or DXF</p>
           </div>
@@ -95,6 +96,9 @@ export function ImportLayer() {
     </>
   );
 }
+
+/** A stable empty list, so the layers selector does not change on every render. */
+const NO_LAYERS: readonly Layer[] = [];
 
 const num = (v: string) => (v.trim() === '' ? Number.NaN : Number(v));
 
@@ -246,8 +250,9 @@ function PanoCardShell({ children }: { children: React.ReactNode }) {
   );
 }
 
+/** The queue's note in a panorama card: a drop made while it waits is imported after it. */
 function PanoNote() {
-  const note = useBuilder((s) => s.panoNote);
+  const note = useBuilder((s) => s.importNotice);
   return note ? (
     <p className="faint small" role="status" data-testid="pano-offer-note">
       {note}
@@ -345,6 +350,8 @@ function ImportStatus() {
   const result = useBuilder((s) => s.importResult);
   const prompt = useBuilder((s) => s.heightsPrompt);
   const offer = useBuilder((s) => s.panoOffer);
+  const importNotice = useBuilder((s) => s.importNotice);
+  const layers = useWorkspace((s) => s.project?.manifest.layers ?? NO_LAYERS);
   const pages = useDrawings((s) => s.pagePrompt);
   const failed = useBuilder((s) => s.panoFailed);
   const scanning = useBuilder((s) => s.panoScanning);
@@ -354,14 +361,9 @@ function ImportStatus() {
   if (prompt && !importing) return <HeightsCard p={prompt} />;
   // asked in the middle of an import, which stays busy until its drawings are in
   if (pages) return <PagesCard key={pages.name} p={pages} />;
-  if (!importing && !result) return null;
+  // a notice alone (files that waited for a closed project) still shows, until Close
+  if (!importing && !result && !importNotice) return null;
   const heights = result?.heights ? heightsLine(result.heights) : null;
-  const counts = result
-    ? result.items.reduce<Record<string, number>>(
-        (m, i) => ({ ...m, [i.status]: (m[i.status] ?? 0) + 1 }),
-        {},
-      )
-    : {};
   return (
     <section className="b-import" aria-label="Import" data-testid="import-panel">
       <header role="none">
@@ -372,7 +374,9 @@ function ImportStatus() {
             : `Importing ${String(importing.done)} of ${String(importing.total)}`
           : result?.error
             ? 'Import failed'
-            : `Imported ${String(counts.imported ?? 0)} of ${String(result?.items.length ?? 0)} files`}
+            : result
+              ? importHeadline(result.items)
+              : 'Import'}
         {importing ? (
           // while main imports the files; drawing pages finished afterwards have their own way out
           cancellable && (
@@ -401,6 +405,11 @@ function ImportStatus() {
           </button>
         )}
       </header>
+      {importNotice && (
+        <p className="notice small" style={{ margin: '0 12px 10px' }} data-testid="import-queued">
+          {importNotice}
+        </p>
+      )}
       {importing && (
         <>
           <div className="b-progress">
@@ -448,11 +457,15 @@ function ImportStatus() {
       {result && result.items.length > 0 && (
         <ul>
           {result.items.map((it, i) => (
-            <li key={`${it.file}-${String(i)}`} className={it.status}>
+            <li key={`${it.file}-${String(i)}`} className={it.status} data-testid="import-row">
               <Icon name={STATUS[it.status].icon} size={14} />
               <span>{it.file}</span>
               <span className="st">{STATUS[it.status].label}</span>
-              {it.message && <p>{it.message}</p>}
+              <p data-testid="import-where">{importDestination(it, layers)}</p>
+              {/* a skipped or failed row says why in its destination line already */}
+              {it.message && it.status !== 'skipped' && it.status !== 'error' && (
+                <p>{it.message}</p>
+              )}
             </li>
           ))}
         </ul>

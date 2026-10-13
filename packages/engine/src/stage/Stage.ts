@@ -162,8 +162,17 @@ export class Stage implements EngineStage {
   private readonly receivers = new Set<Mesh>();
   private readonly providers = new Set<RaycastProvider>();
   private readonly boundsProviders = new Set<() => Box3 | null>();
-  /** The providers of `boundsProviders` that widen the camera's reach beside a model too. */
+  /**
+   * The providers of `boundsProviders` that widen the camera's reach beside a model too
+   * (panorama markers): read as reach extents in `applyDistanceCap`, beside `reach`.
+   */
   private readonly alwaysBounds = new Set<() => Box3 | null>();
+  /** Extents the camera must be able to back off to see (`setReach`), by key. */
+  private readonly reach = new Map<string, Box3>();
+  /** The content's box as last framed (empty before content), for the camera's distance cap. */
+  private readonly lastContent = new Box3();
+  /** The distance cap is held out where the camera stood when a reach shrank. */
+  private capHeld = false;
   private readonly frameCbs = new Set<(dtMs: number) => void>();
   private readonly holders = new Map<symbol, string>();
   private readonly stateCbs = new Set<() => void>();
@@ -254,6 +263,7 @@ export class Stage implements EngineStage {
     this.controls.maxPolarAngle = MAX_POLAR;
     this.controls.addEventListener('change', () => {
       this.need = true;
+      if (this.capHeld) this.relaxCap();
     });
     this.controls.addEventListener('start', () => {
       this.flight = null;
@@ -363,6 +373,53 @@ export class Stage implements EngineStage {
       this.alwaysBounds.delete(bounds);
       if (this.boundsProviders.delete(bounds) && !this.disposed) this.contentChanged();
     };
+  }
+
+  setReach(key: string, box: Box3 | null): void {
+    if (box && !box.isEmpty()) this.reach.set(key, box.clone());
+    else if (!this.reach.delete(key)) return;
+    if (this.disposed) return;
+    this.applyDistanceCap(true);
+    this.need = true;
+  }
+
+  /**
+   * How far the camera may back off: 25 times the radius of the content, widened to cover what
+   * `setReach` added (a long walk next to a small model) and the `always` content bounds
+   * (panorama markers far from a small model), so it can all be brought into view. The one
+   * place the reach is turned into the distance cap, the fog's reach and the far plane;
+   * lighting, shadows, the ground, Home and auto-fit keep the plain content box.
+   */
+  private applyDistanceCap(hold = false): void {
+    if (this.lastContent.isEmpty()) return;
+    const radius = this.lastContent.getSize(new Vector3()).length() / 2;
+    // the reach is measured from the content's centre, where the orbit target sits; four times
+    // its farthest corner keeps all of it in a 30 degree view with room to spare
+    let far = 0;
+    for (const b of this.reach.values()) far = Math.max(far, farthestCorner(b, this.contentCentre));
+    for (const bounds of this.alwaysBounds) {
+      const b = bounds();
+      if (b && !b.isEmpty()) far = Math.max(far, farthestCorner(b, this.contentCentre));
+    }
+    // the far plane reaches it from wherever the camera stands near the content
+    this.env.setCameraReach(far);
+    let cap = Math.max(radius * 25, far * 4);
+    // a reach that shrinks (a walk saved or cancelled) does not pull a camera backed off to see
+    // it inward at once: the cap stays where the camera is, and tightens as it comes back in
+    const d = this.camera.position.distanceTo(this.controls.target);
+    this.capHeld = hold && d > cap;
+    if (this.capHeld) cap = d;
+    this.controls.maxDistance = cap;
+    // the fog stays clear of what the camera may reach: the far side of the reach from the
+    // farthest the camera may stand (none: the content's own fog)
+    this.env.setFogReach(cap > radius * 25 ? cap + Math.max(far, radius) : 0);
+  }
+
+  /** A held cap follows the camera in, and lets go once it is back inside the normal cap. */
+  private relaxCap(): void {
+    const d = this.camera.position.distanceTo(this.controls.target);
+    if (d < this.controls.maxDistance) this.controls.maxDistance = d;
+    this.applyDistanceCap(true);
   }
 
   addProjectionReceiver(mesh: Mesh): () => void {
@@ -945,9 +1002,8 @@ export class Stage implements EngineStage {
       this.env.setShadowBounds(sb);
       if (this.env.waterY !== null) this.maskDirty = true;
       this.controls.minDistance = Math.max(radius * 0.002, 0.05);
-      const reach = this.reachBox(box).getSize(new Vector3()).length() / 2;
-      this.env.setCameraReach(reach);
-      this.controls.maxDistance = Math.max(radius, reach) * 25;
+      this.lastContent.copy(box);
+      this.applyDistanceCap();
       applySection(this.clippingPlanes, this._section, this.contentCentre);
       if (this.autoFit) {
         const pose = poseForPreset(
@@ -989,20 +1045,6 @@ export class Stage implements EngineStage {
       for (const [root] of this.targets)
         if (visibleChain(root) && root.userData.aioGround !== true)
           box.union(tmp.setFromObject(root));
-    }
-    return box;
-  }
-
-  /**
-   * The content box widened by the providers that ask to count beside a model (panorama markers):
-   * how far the camera may zoom out and see. Lighting, shadows, fog, the ground, Home and
-   * auto-fit keep the plain content box.
-   */
-  private reachBox(content: Box3): Box3 {
-    const box = content.clone();
-    for (const bounds of this.alwaysBounds) {
-      const b = bounds();
-      if (b && !b.isEmpty()) box.union(b);
     }
     return box;
   }
@@ -1461,4 +1503,12 @@ export class Stage implements EngineStage {
     this.holders.clear();
     this.stateCbs.clear();
   }
+}
+
+/** The distance from `p` to the farthest corner of `box`. */
+function farthestCorner(box: Box3, p: Vector3): number {
+  const dx = Math.max(Math.abs(box.min.x - p.x), Math.abs(box.max.x - p.x));
+  const dy = Math.max(Math.abs(box.min.y - p.y), Math.abs(box.max.y - p.y));
+  const dz = Math.max(Math.abs(box.min.z - p.z), Math.abs(box.max.z - p.z));
+  return Math.hypot(dx, dy, dz);
 }

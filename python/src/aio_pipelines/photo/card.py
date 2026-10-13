@@ -268,13 +268,19 @@ def fuse_arrays(
         agree = xp.zeros(ok.shape, xp.int32)
         flat = pts[ok]
         got = xp.zeros(int(flat.shape[0]), xp.int32)
+        avail = xp.zeros(int(flat.shape[0]), xp.int32)
         for ov, oc, od in near:
             x, y, zz = oc.project_cam(to_cam(b, ov, flat[:, 0], flat[:, 1], flat[:, 2]))
             inside = (zz > 0) & (x >= 0) & (y >= 0) & (x < oc.width) & (y < oc.height)
             xi = xp.clip(xp.floor(x).astype(xp.int64), 0, oc.width - 1)
             yi = xp.clip(xp.floor(y).astype(xp.int64), 0, oc.height - 1)
             dz = od[yi, xi]
-            got += (inside & xp.isfinite(dz) & (xp.abs(dz - zz) <= settings.tolerance * zz)).astype(xp.int32)
+            limit = xp.minimum(settings.tolerance * zz, settings.abs_tol)
+            got += (inside & xp.isfinite(dz) & (xp.abs(dz - zz) <= limit)).astype(xp.int32)
+            avail += (inside & xp.isfinite(dz)).astype(xp.int32)
+        # edge-aware: with fewer than ``min_agree`` neighbours able to check a pixel, one agreeing
+        # neighbour is enough (same rule as ``fuse.consistent``)
+        got[(avail < settings.min_agree) & (got >= 1)] = settings.min_agree
         agree[ok] = got
         # normals from central differences; the photo's first and last row and column have none
         dx = xp.zeros_like(pts)
@@ -291,6 +297,6 @@ def fuse_arrays(
         keep[y0:y1] = b.to_host(good)
         xyz.append(b.to_host(pts[rows][good]))
         nrm.append(b.to_host(n[rows][good].astype(xp.float32)))
-        del pts, n, dx, dy, flat, agree, got
+        del pts, n, dx, dy, flat, agree, got, avail
     b.release()
     return np.concatenate(xyz), np.concatenate(nrm), keep

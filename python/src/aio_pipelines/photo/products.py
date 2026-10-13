@@ -11,9 +11,9 @@ skips finished steps) and cancellable, with progress per stage:
 | prepare   | settings (cell sizes, matching size), disk and tool checks                   |
 | dense     | a depth map per photo (``dense.py``, semi-global matching on the CPU)        |
 | fuse      | the dense cloud: consistent points, voxel-averaged, in ground tiles          |
-| cloud     | ``clouds/<run>.copc.laz`` through PDAL (ground classified by ``filters.smrf``) |
 | dsm       | ``dsm.tif`` (COG), a shaded ``kit-pyramid`` layer and its ``aio.grid/1`` heights |
-| dtm       | ``dtm.tif`` likewise (PDAL's SMRF, else the same filter on the grid)          |
+| dtm       | ``dtm.tif`` likewise (our SMRF on the grid); also for the cloud's ground class   |
+| cloud     | ``clouds/<run>.copc.laz``: ground from the DTM, COPC by untwine (else PDAL)      |
 | ortho     | ``ortho.tif`` (COG) and a ``kit-pyramid`` ortho layer                          |
 | mesh      | Poisson or 2.5D mesh (``mesh.py``)                                            |
 | texture   | the textured site-view GLB layer and the full mesh for 3D Tiles               |
@@ -22,9 +22,12 @@ skips finished steps) and cancellable, with progress per stage:
 
 Existing layer kinds only (``mesh``, ``pointcloud`` ``copc``, ``raster`` ``kit-pyramid``); their
 provenance is the run's ``outputs`` (data-conventions section 21). Intermediates live in
-``photogrammetry/<run>/work/products/<key>/`` (``key`` from the settings that change them), so a
-second job with other products reuses the depth maps and the cloud. Nothing a person delivered is
-replaced: a layer with one of this run's ids that the run did not make is refused.
+``photogrammetry/<run>/work/products/<dkey>/`` (layout 2, 13 Oct 2026): ``depth/`` there, the
+fusion chunks in ``c-<ckey>/chunks`` and the merged cloud, rasters, LAS and mesh in
+``c-<ckey>/m-<mkey>/``; each key hashes the settings that change what is under it, so a job with
+other products reuses the depth maps, and new fusion or merge rules never mix with old files.
+Nothing a person delivered is replaced: a layer with one of this run's ids that the run did not
+make is refused.
 
 The report is ``report/products.json`` (``aio.photo-products/1``). Memory: the stages plan their
 clusters within ``AIO_PHOTO_MEMORY_MB`` when the app sets it (the one cap of the photo jobs),
@@ -73,15 +76,25 @@ RUN_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,79}$")
 SCALE = {"fast": 0.0, "standard": 0.5, "high": 1.0}
 DEFAULT_TRIANGLES = 2_000_000
 IDENTITY = [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1]
-STAGES = ("dense", "fuse", "cloud", "dsm", "dtm", "ortho", "mesh", "texture", "commit", "tiles")
+STAGES = ("dense", "fuse", "dsm", "dtm", "cloud", "ortho", "mesh", "texture", "commit", "tiles")
 CUDA_MISSING = (
     "The GPU accelerator is not installed: install the GPU add-on in Settings, Processing tools, "
     "or use dense: auto or cpu."
 )
-PDAL_FOR_CLOUD = (
-    "The point cloud needs PDAL, which this pipeline pack does not have. Install the full "
-    "pipeline pack, or leave the point cloud out."
+NO_DENSE_POINTS = "Dense matching found no consistent points; the photos may not overlap enough."
+#: The per-photo fusion outputs when no photo was fused in this step (Fast, or merged already).
+NOTHING_FUSED = {"workers": 0, "device": "cpu", "fallbacks": 0}
+LAYOUT = 2
+OLD_LAYOUT = (
+    "This processing was started by an older version; use Create maps again on this run "
+    "(the depth maps are kept)."
 )
+#: What a depth key's folder held before layout 2; none of it is read any more.
+LEGACY_NAMES = (
+    "cloud", "cloud.las", ".cloud.las.tmp", "copc-pipeline.json", "dtm-pipeline.json", "ground-pdal.tif", "gains.json",
+    "poisson", "mesh-full.npz",
+)  # fmt: skip
+LEGACY_GLOBS = ("*-raw.tif", "*.tmp.tif", "*.fill.tif", "*-shaded.tif", "texrecon-*", ".mesh-full.tmp.npz")
 
 
 # ------------------------------------------------------------------------------------ helpers
@@ -89,6 +102,108 @@ PDAL_FOR_CLOUD = (
 
 def _hash(obj: Any) -> str:
     return hashlib.sha256(json.dumps(obj, sort_keys=True).encode()).hexdigest()[:12]
+
+
+def depth_key(scale: float, dense: str, region) -> str:
+    """The depth maps' key: unchanged since layout 1, so earlier depth maps are found."""
+    return _hash({"scale": scale, "dense": dense, "region": region, "v": 1})
+
+
+def fuse_key(dkey: str, settings, tile_m: float) -> str:
+    """The fusion chunks' key: the depth key, the fusion rule, the chunk format and tile size."""
+    from dataclasses import asdict
+
+    from .fuse import CHUNK_FORMAT
+
+    return _hash({"d": dkey, "fuse": asdict(settings), "chunk": CHUNK_FORMAT, "rule": 2, "tile": tile_m})
+
+
+def merge_key(ckey: str, voxel: float, budget: int, rule) -> str:
+    """The merged cloud's key: the chunks' key, the spacing, the point budget and the merge rule."""
+    from dataclasses import asdict
+
+    return _hash({"c": ckey, "voxel": voxel, "budget": budget, "merge": asdict(rule)})
+
+
+def _bytes_in(p: Path) -> int:
+    """The bytes of a file, or of the files under a folder; what cannot be read counts nothing."""
+    try:
+        if p.is_file():
+            return p.stat().st_size
+        total = 0
+        for q in p.rglob("*"):
+            try:
+                if q.is_file():
+                    total += q.stat().st_size
+            except OSError:
+                pass
+        return total
+    except OSError:
+        return 0
+
+
+def _legacy_items(p: Path) -> list[Path]:
+    """What to delete one at a time: a folder that holds folders goes one subfolder at a time
+    (its own loose files with it), the folder itself last; anything else as it is."""
+    if not p.is_dir() or p.is_symlink():
+        return [p]
+    try:
+        children = sorted(p.iterdir())
+    except OSError:
+        return [p]
+    if not any(c.is_dir() and not c.is_symlink() for c in children):
+        return [p]
+    return [q for c in children for q in _legacy_items(c)] + [p]
+
+
+def legacy_cleanup(
+    folder: Path,
+    log=lambda message, level="info": None,
+    progress=lambda fraction, message=None: None,
+    check=lambda: None,
+    span: tuple[float, float] = (0.0, 0.9),
+) -> int:
+    """Delete what a version before layout 2 left in a depth key's folder (the cloud tiles, the
+    LAS, the rasters, the mesh); ``depth/`` and layout 2's ``c-*`` folders stay. It says so before
+    anything is sized (it can be hundreds of GB), then deletes a large old folder one subfolder at
+    a time, with progress (within ``span`` of the step: the rest of prepare is still to come) and
+    ``check``, which may cancel, between them (what is left goes on the next run). What cannot be
+    deleted (a file another program holds open) is left with a warning. Answers the bytes freed."""
+    if not folder.is_dir():
+        return 0
+    found = [folder / n for n in LEGACY_NAMES] + [p for g in LEGACY_GLOBS for p in folder.glob(g)]
+    tops = [p for p in dict.fromkeys(found) if p.is_dir() or p.is_file()]
+    if not tops:
+        return 0
+    what = "Removing files of an older processing version"
+    log(f"{what}.")
+    items = [q for p in tops for q in _legacy_items(p)]
+    lo, hi = span
+    freed = 0
+    held: set[str] = set()  # a held file is said once, not again for each folder above it
+    for i, p in enumerate(items):
+        check()
+        before = _bytes_in(p) if p.exists() else 0
+        errors: list[OSError] = []
+        try:
+            if p.is_dir():
+                # past a file it cannot delete, on to the rest
+                shutil.rmtree(p, onexc=lambda _f, _path, e, errors=errors: errors.append(e))
+            elif p.exists():
+                p.unlink()
+        except OSError as e:
+            errors.append(e)
+        # the files that stayed, not the folders above them that could not go for that reason
+        named = [(str(e.filename or p), e) for e in errors]
+        files = [(f, e) for f, e in named if Path(f).is_file()] or named
+        new = [(f, e) for f, e in files if f not in held]
+        held.update(f for f, _ in files)
+        if new:
+            f, e = new[0]
+            log(f"Could not remove {Path(f).name}, which an older version left: {e.strerror or e}.", "warn")
+        freed += max(0, before - (_bytes_in(p) if p.exists() else 0))
+        progress(lo + (hi - lo) * (i + 1) / len(items), f"{what}: {native._gb(freed)} freed")
+    return freed
 
 
 def _region_poly(region: list[list[float]] | None, epsg: int | None):
@@ -292,16 +407,17 @@ class PhotoProducts:
     def plan(self, params: dict[str, Any]) -> list[Step]:
         want = set(params["products"])
         need_mesh = bool(want & {"mesh", "tiles"})
-        need_dsm = bool(want & {"dsm", "dtm", "ortho"}) or need_mesh
+        need_dtm = bool(want & {"dtm", "cloud"})  # the cloud's ground class comes from the DTM
+        need_dsm = bool(want & {"dsm", "ortho"}) or need_dtm or need_mesh
         steps = [Step("prepare", "Check the run and plan the products", _timed(self._prepare), 0.5)]
         steps.append(Step("dense", "Dense matching (depth maps)", _timed(self._dense), 10))
         steps.append(Step("fuse", "Fuse the depth maps into a cloud", _timed(self._fuse), 3))
-        if "cloud" in want:
-            steps.append(Step("cloud", "Point cloud to COPC", _timed(self._cloud), 2))
         if need_dsm:
             steps.append(Step("dsm", "Surface model (DSM)", _timed(self._dsm), 2))
-        if "dtm" in want:
+        if need_dtm:
             steps.append(Step("dtm", "Terrain model (DTM)", _timed(self._dtm), 1))
+        if "cloud" in want:
+            steps.append(Step("cloud", "Point cloud to COPC", _timed(self._cloud), 2))
         if "ortho" in want:
             steps.append(Step("ortho", "Orthomosaic", _timed(self._ortho), 6))
         if need_mesh:
@@ -323,17 +439,25 @@ class PhotoProducts:
         return cached
 
     def _settings(self, ctx: StepContext) -> dict[str, Any]:
-        return ctx.outputs("prepare")
+        """The prepare step's outputs; a job begun before layout 2 is refused (nothing of its
+        work folders is reused)."""
+        s = ctx.outputs("prepare")
+        if s.get("layout") != LAYOUT:
+            raise JobError(OLD_LAYOUT)
+        return s
 
     def _work(self, ctx: StepContext) -> Path:
-        s = self._settings(ctx)
-        return safe_project_path(ctx.project, s["work"])
+        """The merge key's folder: the merged cloud, the rasters, the LAS and the mesh."""
+        return safe_project_path(ctx.project, self._settings(ctx)["work"])
+
+    def _depth_dir(self, ctx: StepContext) -> Path:
+        return safe_project_path(ctx.project, self._settings(ctx)["depthWork"]) / "depth"
 
     def _tiles_store(self, ctx: StepContext):
         from .fuse import PointTiles
 
         s = self._settings(ctx)
-        return PointTiles(self._work(ctx) / "cloud", s["tileM"])
+        return PointTiles(self._work(ctx), s["tileM"], chunks=safe_project_path(ctx.project, s["chunks"]))
 
     # steps ---------------------------------------------------------------------------------------------
     def _prepare(self, ctx: StepContext) -> dict[str, Any]:
@@ -362,41 +486,57 @@ class PhotoProducts:
         n = len(model.views)
         cam = model.views[0].camera
         px = cam.width * cam.height
-        # disk: depth maps and their points (float32), the cloud tiles, rasters, pyramids, mesh
-        lo, hi = model.points.min(0), model.points.max(0)
-        area = max(1.0, float((hi[0] - lo[0]) * (hi[1] - lo[1])))
-        dense_points = area / (gsd / max(scale, 0.25)) ** 2 if scale else len(model.points)
-        need = (
-            n * px * scale**2 * 4 * 3
-            + dense_points * 48 * 2
-            + area / ortho_res**2 * 4 * 3
-            + area / dsm_res**2 * 4 * 6
-        )
-        need = int(need * 1.3 + 64 * 1024**2)
-        free = native.check_disk(ctx.project, need)
-        pdal = None
+        from .budget import BUDGET, budget_voxel, disk_need, site_area
+        from .fuse import DENSE_RULE, SPARSE_RULE, FuseSettings
+
+        poly = _region_poly(p.get("region"), run.epsg)
+        xy = model.points[:, :2] + np.asarray(run.offset[:2], np.float64)
+        area = max(1.0, site_area(xy, poly))
+        budget = BUDGET[preset] if scale else 0
+        voxel = round(budget_voxel(gsd, scale, area, budget), 6)
+        tile_m = max(16.0, 1024 * dsm_res)
+        dkey = depth_key(scale, p.get("dense", "auto"), p.get("region"))
+        ckey = fuse_key(dkey, FuseSettings.for_run(gsd, scale), tile_m)
+        mkey = merge_key(ckey, voxel, budget, DENSE_RULE if scale else SPARSE_RULE)
+        base = f"photogrammetry/{run.id}/work/products/{dkey}"
+        # before the disk check, so the space an older version took counts as free
+        freed = legacy_cleanup(safe_project_path(ctx.project, base), ctx.log, ctx.progress, ctx.check)
+        if freed:
+            ctx.log(f"Removed {native._gb(freed)} of intermediate files an older version left.")
         if "cloud" in p["products"]:
             from ..pointcloud import find_pdal
+            from .cloud_out import NO_COPC_TOOL
 
-            pdal = find_pdal()
-            if pdal is None:
-                raise JobError(PDAL_FOR_CLOUD)
-        key = _hash({"scale": scale, "dense": p.get("dense", "auto"), "region": p.get("region"), "v": 1})
-        work = f"photogrammetry/{run.id}/work/products/{key}"
+            if native.find_tool("untwine") is None and find_pdal() is None:
+                raise JobError(NO_COPC_TOOL)
+        need = disk_need(
+            photos=n, pixels=px, scale=scale, area=area, gsd=gsd, ortho_res=ortho_res, dsm_res=dsm_res,
+            voxel=voxel, budget=budget, sparse_points=len(model.points), cloud="cloud" in p["products"],
+        )  # fmt: skip
+        free = native.check_disk(ctx.project, need)
         nadir = nadir_share(model.views)
         ctx.log(
             f"{n} photos, GSD {gsd * 100:.1f} cm; ortho {ortho_res * 100:.1f} cm, DSM {dsm_res * 100:.1f} cm; "
             f"preset {preset}{' (no dense matching)' if not scale else f', matching at {scale:.0%} size'}."
         )
-        tile_m = max(16.0, 2048 * dsm_res)
+        if budget:
+            ctx.log(
+                f"Point budget {budget / 1e6:.0f} M over {area / 1e4:.2f} ha: cloud spacing {voxel * 100:.1f} cm."
+            )
         return {
+            "layout": LAYOUT,
             "preset": preset,
             "gsd": gsd,
             "orthoRes": ortho_res,
             "dsmRes": dsm_res,
             "scale": scale,
-            "work": work,
+            "depthWork": base,
+            "chunks": f"{base}/c-{ckey}/chunks",
+            "work": f"{base}/c-{ckey}/m-{mkey}",
             "tileM": tile_m,
+            "voxel": voxel,
+            "budget": budget,
+            "areaM2": round(area, 1),
             "photos": n,
             "nadirShare": round(nadir, 3),
             "groundZ": float(np.median(model.points[:, 2])) if len(model.points) else 0.0,
@@ -412,7 +552,7 @@ class PhotoProducts:
             ctx.log("Fast preset: no dense matching; the surface comes from the sparse points.")
             return {"engine": "sparse", "maps": 0}
         run = self._run(ctx)
-        out = self._work(ctx) / "depth"
+        out = self._depth_dir(ctx)
         out.mkdir(parents=True, exist_ok=True)
         budget = native.memory_budget()
         state = pool.dense_state(run.model, s["scale"], budget, out)
@@ -582,33 +722,97 @@ class PhotoProducts:
         return {"workers": workers, "device": "gpu" if on_card else "cpu", "fallbacks": fallbacks, **out}
 
     def _fuse(self, ctx: StepContext) -> dict[str, Any]:
+        from .fuse import DENSE_RULE, SPARSE_RULE
+        from .merge import RegionClip, merge_cloud
+
         s = self._settings(ctx)
         run = self._run(ctx)
         store = self._tiles_store(ctx)
+        source = "dense" if s["scale"] else "sparse"
+        done = store.info()
+        if done.get("complete"):  # a stopped job that had merged already: nothing is redone
+            if s["scale"] and not done.get("points"):
+                raise JobError(NO_DENSE_POINTS)
+            freed = store.drop_chunks()
+            ctx.log(
+                f"The {source} cloud was merged already: {int(done['points']):,} points at "
+                f"{done['voxel'] * 100:.1f} cm spacing; {native._gb(freed)} of fusion chunks removed."
+            )
+            extra = {**NOTHING_FUSED, "mergeWorkers": 0, "remerged": int(done.get("remerged", 0))}
+            return self._fused_outputs(done, s, source, extra)
+        if store.chunks_dropped():
+            # The chunks went after a complete merge under another merge key (another budget or
+            # spacing): this merge can only be made from new chunks, and starts afresh.
+            again = "fusing the photos again" if s["scale"] else "adding the sparse points again"
+            ctx.log(
+                f"The fused points of an earlier merge were removed and this one needs other settings; {again}."
+            )
+            store.clear_chunks()
+            (store.root / "merge.json").unlink(missing_ok=True)
         poly = _region_poly(ctx.params.get("region"), run.epsg)
-
-        def keep(xyz: np.ndarray) -> np.ndarray:
-            if poly is None:
-                return np.ones(len(xyz), bool)
-            import shapely
-
-            return shapely.contains_xy(poly, xyz[:, 0] + run.offset[0], xyz[:, 1] + run.offset[1])
-
+        keep = RegionClip(poly.wkt, float(run.offset[0]), float(run.offset[1])) if poly is not None else None
+        memory = native.memory_budget()
+        ran: dict[str, Any] = dict(NOTHING_FUSED)
         if not s["scale"]:
             pts = run.model.points
             nrm = np.tile(np.array([0, 0, 1], np.float32), (len(pts), 1))
             store.add("sparse", pts, run.model.colours, nrm)
-            info = store.merge(s["gsd"], keep, ctx.check)
-            return {"points": info["points"], "source": "sparse"}
-        from . import pool
+            info = merge_cloud(
+                store, s["voxel"], rule=SPARSE_RULE, keep=keep, memory=memory, check=ctx.check, log=ctx.log
+            )
+        else:
+            ran = self._fuse_photos(ctx, store)
+            info = merge_cloud(
+                store,
+                s["voxel"],
+                rule=DENSE_RULE,
+                keep=keep,
+                budget=s["budget"],
+                memory=memory,
+                check=ctx.check,
+                progress=lambda f, m=None: ctx.progress(0.7 + 0.3 * f, m),
+                log=ctx.log,
+            )
+            if not info["points"]:
+                raise JobError(NO_DENSE_POINTS)
+        # only now, after a complete merge (and any wider merge again)
+        freed = store.drop_chunks()
+        ctx.log(
+            f"{source.capitalize()} cloud: {info['points']:,} points at {info['voxel'] * 100:.1f} cm spacing"
+            + (f" (budget {s['budget']:,})" if s["budget"] else "")
+            + f"; {native._gb(freed)} of fusion chunks removed."
+        )
+        return self._fused_outputs(
+            info, s, source, {**ran, "mergeWorkers": info["workers"], "remerged": info["remerged"]}
+        )
 
+    @staticmethod
+    def _fused_outputs(info: dict, s: dict, source: str, extra: dict) -> dict[str, Any]:
+        return {
+            "points": int(info["points"]),
+            "voxel": info["voxel"],
+            "bounds": info["bounds"],
+            "source": source,
+            "budget": s["budget"],
+            **extra,
+        }
+
+    def _fuse_photos(self, ctx: StepContext, store) -> dict[str, Any]:
+        """Fuse every photo not yet fused into chunks: on the card, in workers or here."""
+        from . import pool
+        from .fuse import FuseSettings
+
+        s = self._settings(ctx)
+        run = self._run(ctx)
         views = run.model.views
-        depth_dir = self._work(ctx) / "depth"
-        state = pool.fuse_state(run.model, s["scale"], depth_dir, store.root, s["tileM"])
+        depth_dir = self._depth_dir(ctx)
+        abs_tol = FuseSettings.for_run(s["gsd"], s["scale"]).abs_tol
+        root = store.chunks_dir.parent
+        state = pool.fuse_state(run.model, s["scale"], depth_dir, root, s["tileM"], abs_tol)
         marks = state["marks"]
         todo = [v.id for v in views if not (marks / str(v.id)).exists()]
         cam = views[0].camera.scaled(s["scale"])
-        ran = self._each_photo(
+        return self._each_photo(
             ctx,
             todo=todo,
             photos=len(views),
@@ -620,8 +824,9 @@ class PhotoProducts:
                 ctx.params["run"],
                 s["scale"],
                 str(depth_dir),
-                str(store.root),
+                str(root),
                 s["tileM"],
+                abs_tol,
                 pool.worker_threads(n),
             ),
             task=pool.fuse_task,
@@ -630,57 +835,38 @@ class PhotoProducts:
             progress=lambda k, n: ctx.progress(0.7 * k / n, f"Fusing photo {k} of {n}"),
             words=("Fusion", "Fusing", "fusing the rest one photo at a time"),
         )
-        voxel = s["gsd"] / s["scale"]
-        info = store.merge(voxel, keep, ctx.check, lambda f: ctx.progress(0.7 + 0.3 * f, "Merging the cloud"))
-        if not info["points"]:
-            raise JobError("Dense matching found no consistent points; the photos may not overlap enough.")
-        ctx.log(f"Dense cloud: {info['points']:,} points at {voxel * 100:.1f} cm spacing.")
-        return {
-            "points": info["points"],
-            "voxel": voxel,
-            "bounds": info["bounds"],
-            "source": "dense",
-            **ran,
-        }
 
     def _cloud(self, ctx: StepContext) -> dict[str, Any]:
-        from ..pointcloud import _run as pdal_run
-        from ..pointcloud import find_pdal
-        from .fuse import write_las_tiles
+        from .cloud_out import write_copc, write_las
 
+        self._settings(ctx)
         run = self._run(ctx)
-        pdal = find_pdal()
-        if pdal is None:
-            raise JobError(PDAL_FOR_CLOUD)
         store = self._tiles_store(ctx)
         work = self._work(ctx)
-        las = work / "cloud.las"
-        if not las.exists():
-            write_las_tiles(las, store, run.offset)
-        staged = ctx.stage(f"clouds/{run.id}.copc.laz")
-        epsg = run.epsg
-        pipe = {
-            "pipeline": [
-                {
-                    "type": "readers.las",
-                    "filename": str(las),
-                    **({"override_srs": f"EPSG:{epsg}"} if epsg else {}),
-                },
-                {"type": "filters.smrf", "slope": 0.15, "window": 18.0, "threshold": 0.5, "scalar": 1.25},
-                {
-                    "type": "writers.copc",
-                    "filename": str(staged),
-                    **({"a_srs": f"EPSG:{epsg}"} if epsg else {}),
-                },
-            ]
+        las, meta = work / "cloud.las", work / "cloud-las.json"
+        if las.exists() and meta.exists():
+            counts = json.loads(meta.read_text("utf-8"))
+        else:
+            counts = write_las(
+                las, store, run.offset, work / "dtm-raw.tif", ctx.check,
+                lambda f, m=None: ctx.progress(0.3 * f, m),
+            )  # fmt: skip
+            atomic_write_json(meta, counts)
+        rel = f"clouds/{run.id}.copc.laz"
+        staged = ctx.stage(rel)
+        temp = ctx.staging / ".copc-tmp"
+        writer = write_copc(ctx, las, staged, counts["points"], run.epsg, temp, native.memory_budget())
+        shutil.rmtree(temp, ignore_errors=True)
+        ctx.log(
+            f"Point cloud: {counts['points']:,} points, {counts['ground']:,} of them ground; COPC by {writer}."
+        )
+        return {
+            "points": int(counts["points"]),
+            "ground": int(counts["ground"]),
+            "writer": writer,
+            "path": rel,
+            "bytes": staged.stat().st_size,
         }
-        pj = work / "copc-pipeline.json"
-        atomic_write_json(pj, pipe)
-        pdal_run(ctx, [pdal, "pipeline", str(pj)], "Write the COPC point cloud")
-        if not staged.is_file():
-            raise JobError("PDAL finished without writing the COPC file.")
-        n = store.info().get("points", 0)
-        return {"points": int(n), "path": f"clouds/{run.id}.copc.laz", "bytes": staged.stat().st_size}
 
     def _dsm(self, ctx: StepContext) -> dict[str, Any]:
         from .surface import GridSpec, grid_points, push_pull, read_grid, write_tif
@@ -775,33 +961,28 @@ class PhotoProducts:
         return {"layer": lid, "pyramid": pyr, "legend": legend["legend"]}
 
     def _dtm(self, ctx: StepContext) -> dict[str, Any]:
-        from ..pointcloud import _run as pdal_run
-        from ..pointcloud import find_pdal
-        from .surface import GridSpec, dtm_coarse, dtm_grid, pdal_dtm_pipeline
+        from .surface import GridSpec, dtm_grid
 
+        self._settings(ctx)
         run = self._run(ctx)
         spec = GridSpec(**ctx.outputs("dsm")["spec"])
         work = self._work(ctx)
         raw = work / "dtm-raw.tif"
-        engine = {}
+        publish = "dtm" in ctx.params["products"]
+        span = 0.4 if publish else 1.0  # _surface_layer reports from 0.4 on
+        out: dict[str, Any] = {"engine": "smrf-grid"}
         if not raw.exists():
-            pdal = find_pdal()
-            las = work / "cloud.las"
             tmp = raw.with_suffix(".tmp.tif")
-            budget = native.memory_budget()
-            ground = None
-            if pdal and las.exists():
-                ground = work / "ground-pdal.tif"
-                pj = work / "dtm-pipeline.json"
-                atomic_write_json(pj, pdal_dtm_pipeline(las, ground, dtm_coarse(spec, budget), run.epsg))
-                pdal_run(ctx, [pdal, "pipeline", str(pj)], "Classify the ground with PDAL")
-            engine = dtm_grid(
-                work / "dsm-raw.tif", work / "zmin-raw.tif", spec, tmp, run.epsg, budget, ctx.check, ground
-            )
+            out.update(
+                dtm_grid(
+                    work / "dsm-raw.tif", work / "zmin-raw.tif", spec, tmp, run.epsg, native.memory_budget(),
+                    ctx.check, lambda f, m=None: ctx.progress(span * f, m),
+                )
+            )  # fmt: skip
             replace_over(tmp, raw)
-            ctx.log(f"DTM: ground found by {engine['engine']}.")
-        out = {"engine": engine.get("engine", "reused"), **engine}
-        out.update(self._surface_layer(ctx, raw, spec, "dtm"))
+            ctx.log("DTM: ground found by smrf-grid.")
+        if publish:
+            out.update(self._surface_layer(ctx, raw, spec, "dtm"))
         return out
 
     def _ortho(self, ctx: StepContext) -> dict[str, Any]:
@@ -857,6 +1038,8 @@ class PhotoProducts:
             engine = "grid-25d"
             mesh = mesh_25d(work / "dsm-raw.tif", dspec, origin, full_tri)
         else:
+            from . import mesh as mesh_mod
+
             store = self._tiles_store(ctx)
             count = int(store.info().get("points") or 0)
             shift = run.offset - origin
@@ -873,8 +1056,17 @@ class PhotoProducts:
             if screened is not None:
                 depth = 11 if s["preset"] == "standard" else 12
                 src = work / "poisson" / "dense.ply"
+                # at most the points MeshLab keeps, taken by stride from every tile
+                step, total = mesh_mod.mesh_sample(
+                    store.counts(), mesh_mod.meshlab_points(native.memory_budget())
+                )
                 write_ply_chunks(
-                    src, ((p["xyz"] + shift, p["normal"], p["rgb"]) for _, p in store.fused()), count
+                    src,
+                    (
+                        (p["xyz"][::step] + shift, p["normal"][::step], p["rgb"][::step])
+                        for _, p in store.fused()
+                    ),
+                    total,
                 )
                 try:
                     mesh, engine = poisson_mesh(
@@ -884,7 +1076,7 @@ class PhotoProducts:
                         nrm,
                         depth,
                         src,
-                        count,
+                        total,
                         native.memory_budget(),
                         ctx.outputs("fuse").get("voxel"),
                     )
@@ -955,6 +1147,7 @@ class PhotoProducts:
         return out
 
     def _commit(self, ctx: StepContext) -> dict[str, Any]:
+        self._settings(ctx)  # an older version's job is refused before anything is moved
         run = self._run(ctx)
         p = ctx.params
         want = set(p["products"])
@@ -1123,6 +1316,7 @@ class PhotoProducts:
             "texture": ctx.outputs("texture").get("engine"),
         }
         fuse = ctx.outputs("fuse")
+        made = ctx.outputs("cloud")
         dsm = ctx.outputs("dsm")
         ortho = ctx.outputs("ortho")
         warnings = []
@@ -1157,6 +1351,12 @@ class PhotoProducts:
                 "points": int(fuse.get("points") or 0),
                 "spacingM": round(float(fuse.get("voxel") or s["gsd"]), 4),
                 "source": fuse.get("source"),
+                "budget": int(s.get("budget") or 0),
+                **(
+                    {"groundPoints": int(made["ground"]), "writer": made["writer"]}
+                    if made.get("writer")
+                    else {}
+                ),
             },
             "coverage": {
                 k: v
@@ -1179,6 +1379,7 @@ class PhotoProducts:
         """The full mesh to 3D Tiles through G7's ``tiles.mesh``, as a job inside this one."""
         from ..tiles.mesh import TilesMesh
 
+        self._settings(ctx)  # an older version's job is refused here too
         run = self._run(ctx)
         tid = f"{run.id}-mesh"[:80]
         params = {

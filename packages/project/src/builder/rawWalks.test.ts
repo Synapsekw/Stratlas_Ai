@@ -1,12 +1,12 @@
 import { copyFile, mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { encodePng } from '../import/png';
 import { createProject, updateCapture } from './create';
 import { imageSize } from './drawingPlacement';
 import { withExif } from './testing';
-import { NO_PIPELINE, importRawFiles, type ImportDeps } from './raw';
+import { NO_PIPELINE, NO_SRT_MESSAGE, importRawFiles, type ImportDeps } from './raw';
 import type { WalkTools } from './walks';
 import type { WalkTrack } from './walkSource';
 
@@ -20,14 +20,19 @@ afterEach(async () => {
   await rm(dir, { recursive: true, force: true });
 });
 
-const vide = (w: number, h: number, codec = 'hvc1'): WalkTrack => ({
+const vide = (
+  w: number,
+  h: number,
+  codec = 'hvc1',
+  spherical: WalkTrack['spherical'] = null,
+): WalkTrack => ({
   handler: 'vide',
   width: w,
   height: h,
   codec,
   fps: 30,
   durationMs: 2000,
-  spherical: null,
+  spherical,
 });
 
 function walkTools(tracksBy: Record<string, WalkTrack[]>): WalkTools {
@@ -162,20 +167,68 @@ describe('importRawFiles, 360 video', () => {
     expect(r.items[0]?.message).toContain('one video track');
   });
 
-  it('takes an MP4 as 360 video only when asked to', async () => {
+  it('a stitched 360 MP4 without an SRT is a walk on every route, not a skipped drone clip', async () => {
+    const root = await project();
+    const tools = walkTools({
+      'tour.mp4': [vide(256, 128, 'avc1')],
+      'export.mp4': [vide(5760, 2880, 'hvc1', 'equirectangular')],
+    });
+    const r = await importRawFiles(
+      root,
+      [await src('tour.mp4'), await src('export.mp4')],
+      deps({ walk: tools }),
+    );
+    expect(r.items).toEqual([
+      expect.objectContaining({ file: 'tour.mp4', kind: 'video', status: 'imported' }),
+      expect.objectContaining({ file: 'export.mp4', kind: 'video', status: 'imported' }),
+    ]);
+    expect((await readdir(join(root, 'walks'))).sort()).toEqual(['export', 'tour']);
+    expect(r.manifest.layers.filter((l) => l.kind === 'walk')).toHaveLength(2);
+  });
+
+  it('a 16:9 MP4 without an SRT is skipped, and the reason names Add 360 video', async () => {
+    const root = await project();
+    const tools = walkTools({ 'flat-clip.mp4': [vide(3840, 2160, 'avc1')] });
+    const r = await importRawFiles(root, [await src('flat-clip.mp4')], deps({ walk: tools }));
+    expect(r.items[0]).toMatchObject({ kind: 'video', status: 'skipped', message: NO_SRT_MESSAGE });
+    expect(r.items[0]?.message).toContain('Add 360 video');
+    expect(r.manifest.layers.some((l) => l.kind === 'walk')).toBe(false);
+  });
+
+  it('an MP4 that cannot be read is skipped as before', async () => {
+    const root = await project();
+    const r = await importRawFiles(root, [await src('broken.mp4')], deps({ walk: walkTools({}) }));
+    expect(r.items[0]).toMatchObject({ status: 'skipped', message: NO_SRT_MESSAGE });
+  });
+
+  it('an MP4 with its SRT stays a drone clip and is never read for 360', async () => {
+    const root = await project();
+    const tools = walkTools({ 'drone-clip.mp4': [vide(256, 128, 'avc1')] });
+    const tracks = vi.spyOn(tools, 'tracks');
+    await src('drone-clip.SRT');
+    const r = await importRawFiles(
+      root,
+      [await src('drone-clip.mp4'), join(dir, 'drone-clip.SRT')],
+      deps({ walk: tools }),
+    );
+    expect(tracks).not.toHaveBeenCalled();
+    // the drone branch: this test build has no video tools
+    expect(r.items[0]).toMatchObject({
+      file: 'drone-clip.mp4',
+      status: 'error',
+      message: 'Video import is not available in this build.',
+    });
+  });
+
+  it('Add 360 video still takes any MP4 as 360', async () => {
     const root = await project();
     const tools = walkTools({ 'tour.mp4': [vide(256, 128, 'avc1')] });
-    const plain = await importRawFiles(root, [await src('tour.mp4')], deps({ walk: tools }));
-    expect(plain.items[0]).toMatchObject({ kind: 'video', status: 'skipped' });
-    expect(plain.items[0]?.message).toContain('SRT');
-    const as360 = await importRawFiles(
+    const r = await importRawFiles(
       root,
-      [join(dir, 'tour.mp4')],
+      [await src('tour.mp4')],
       deps({ walk: tools, as360: true }),
     );
-    expect(as360.items[0]).toMatchObject({ file: 'tour.mp4', kind: 'video', status: 'imported' });
-    expect(as360.backup).not.toBe('');
-    expect(await readdir(join(root, 'walks'))).toEqual(['tour']);
+    expect(r.items[0]).toMatchObject({ status: 'imported' });
   });
 
   /** A tiny but valid GLB (an empty scene). */

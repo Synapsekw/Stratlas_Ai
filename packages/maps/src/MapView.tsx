@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from 'react';
 import type { StoreApi } from 'zustand/vanilla';
 import { setActiveMap } from './capture';
 import { MAP_SURFACE } from './ink';
-import type { IssueColorBy, MapController } from './controller';
+import type { IssueColorBy, MapController, MapPointerSession } from './controller';
 import type { MapDrawSeam } from './draw';
 import { ALL_ISSUES, type MapIssueDisplay } from './overlays';
 import type { MapOverlay } from './vector';
@@ -40,6 +40,11 @@ export interface MapViewProps {
    * keep its identity stable): a new object arms a new pick.
    */
   pick?: { onPick: (local: Vec3) => void; onCancel?: () => void } | null;
+  /**
+   * A live pointer session (`MapController.pointerSession`), kept while set; keep its identity
+   * stable: a new object starts a new session.
+   */
+  pointer?: MapPointerSession | null;
 }
 
 type Status = 'loading' | 'ready' | 'error';
@@ -77,6 +82,7 @@ export function MapView({
   primary = true,
   onController,
   pick = null,
+  pointer = null,
 }: MapViewProps) {
   const ref = useRef<HTMLDivElement>(null);
   // read when the map starts; later changes do not restart it
@@ -117,6 +123,11 @@ export function MapView({
     if (!pick || !ctl) return;
     return ctl.pickPoint(pick.onPick, pick.onCancel);
   }, [pick, started]);
+  useEffect(() => {
+    const ctl = ctlRef.current;
+    if (!pointer || !ctl) return;
+    return ctl.pointerSession(pointer);
+  }, [pointer, started]);
 
   useEffect(() => {
     const el = ref.current;

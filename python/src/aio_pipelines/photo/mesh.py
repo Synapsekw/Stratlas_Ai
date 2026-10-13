@@ -35,7 +35,7 @@ import importlib.util
 import math
 import os
 import sys
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -391,7 +391,10 @@ def poisson_tool(
     ]
     if colours is not None:
         args.append("--colors")
-    native.run_tool(ctx, args, "Poisson meshing", work, expected_s=max(30.0, n / 2e5), progress=(0.0, 0.8))
+    native.run_tool(
+        ctx, args, "Poisson meshing", work, expected_s=max(30.0, n / 2e5), progress=(0.0, 0.8),
+        memory_limit=native.memory_budget(),
+    )  # fmt: skip
     trimmer = native.find_tool("SurfaceTrimmer")
     if trimmer is not None:
         native.run_tool(
@@ -401,6 +404,7 @@ def poisson_tool(
             work,
             20.0,
             (0.8, 0.95),
+            memory_limit=native.memory_budget(),
         )
         return read_ply_mesh(out)
     ctx.log(
@@ -430,6 +434,23 @@ MESHLAB_BYTES_PER_POINT = 400
 #: solver). Measured on G8's mini set (1.5 M points, 230 m): 1.2 GB for 143 k vertices at depth 9,
 #: 20 GB for 2.5 M at depth 11; with margin.
 POISSON_BYTES_PER_VERTEX = 10_000
+
+
+def meshlab_points(memory_budget: int) -> int:
+    """The points MeshLab's Poisson keeps within ``memory_budget``."""
+    return max(100_000, memory_budget // MESHLAB_BYTES_PER_POINT)
+
+
+def mesh_sample(counts: Sequence[int], cap: int) -> tuple[int, int]:
+    """The stride to take every tile's points by, and the points that gives, so that at most
+    ``cap`` points of tiles holding ``counts`` points go to the mesher."""
+    n = sum(counts)
+    stride = max(1, -(-n // max(1, cap)))
+    while True:
+        total = sum(-(-c // stride) for c in counts)
+        if total <= cap or stride >= max(counts, default=1):
+            return stride, total
+        stride += 1
 
 
 def meshlab_available() -> bool:
@@ -584,7 +605,7 @@ def poisson_meshlab(
     has crashed nondeterministically before)."""
     work.mkdir(parents=True, exist_ok=True)
     out = work / "meshlab-poisson.npz"
-    max_points = max(100_000, memory_budget // MESHLAB_BYTES_PER_POINT)
+    max_points = meshlab_points(memory_budget)
     if count > max_points:
         ctx.log(f"MeshLab meshes {max_points:,} of the {count:,} dense points (memory budget).")
     last: JobError | None = None

@@ -42,7 +42,7 @@ import { pickAndScanPanos } from '../panos/panos';
 import { PanoSphereRows } from '../panos/PanoSphereRows';
 import { shell, useShell } from '../shell';
 import { walkBadge, walkGroupAction } from '../walks/walkBadge';
-import { openWalk, placeWalk, useWalks } from '../walks/walks';
+import { openWalk, placeWalk, removeWalkPlacement, useWalks } from '../walks/walks';
 import { WalkRowProcess } from '../walks/WalkProcessLine';
 import { walkFilesMissing, walkRecordKey } from '../walks/walkStore';
 import { PANEL_ID, PanelHandle } from './PanelHandle';
@@ -492,8 +492,8 @@ function Datasets({ collapsed }: { collapsed: boolean }) {
           }),
   };
 
-  // a walk row: its placing badge, and Open, Place walk and Remove walk (Place and Remove not in a
-  // package, nor for a reviewer who may only look)
+  // a walk row: its placing badge, and Open, Place walk (Edit placement once placed), Remove
+  // placement and Remove walk (all but Open not in a package, nor for a reviewer who may only look)
   const walkProps = {
     rowBadge: (it: TreeItem) =>
       it.layerKind === 'walk' && it.layerId ? (walkBadges.get(it.layerId) ?? null) : null,
@@ -504,6 +504,30 @@ function Datasets({ collapsed }: { collapsed: boolean }) {
       onPlace: canEdit
         ? (it: TreeItem) => {
             if (it.layerId) placeWalk(it.layerId);
+          }
+        : undefined,
+      // placed: two pins or more saved (Edit placement and Remove placement instead of Place walk)
+      placed: (it: TreeItem) =>
+        project.manifest.layers.some(
+          (w) =>
+            w.kind === 'walk' &&
+            w.id === it.layerId &&
+            w.place !== undefined &&
+            w.place.pins.length >= 2 &&
+            w.place.quality !== 'unplaced',
+        ),
+      // the row asks first; the walk stays, only its placement goes (a refusal shows as the note)
+      onRemovePlacement: canEdit
+        ? (it: TreeItem) => {
+            if (it.layerId)
+              // only a refusal touches the note (a removal leaves any other note alone)
+              void removeWalkPlacement(it.layerId)
+                .then((e) => {
+                  if (e) failed(e);
+                })
+                .catch((e: unknown) => {
+                  failed(String(e));
+                });
           }
         : undefined,
       // the shared removal dialog asks first

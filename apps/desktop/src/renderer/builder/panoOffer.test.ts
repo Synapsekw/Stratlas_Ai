@@ -30,6 +30,7 @@ vi.mock('../panos/panos', async () => {
 vi.stubGlobal('window', {});
 
 import { panoImport } from '../panos/panos';
+import { QUEUED_NOTE } from './importSummary';
 import { builder, panoOfferFrom } from './state';
 
 const frames = Array.from(
@@ -86,7 +87,6 @@ beforeEach(() => {
   builder.setState({
     panoFailed: null,
     panoScanning: false,
-    panoNote: null,
     panoOffer: null,
     importing: null,
     importResult: null,
@@ -212,17 +212,25 @@ describe('Add data and drone spheres', () => {
     expect(imports()).toEqual([]);
   });
 
-  it('refuses a drop while the offer shows, keeping the first files', async () => {
+  it('queues a drop while the offer shows, then scans it for spheres on its turn', async () => {
     main(scan);
     await builder.getState().importFiles(['D:/card']);
     call.mockClear();
     await builder.getState().importFiles(['D:/other']);
     expect(call).not.toHaveBeenCalled();
     expect(builder.getState().panoOffer?.paths).toEqual(['D:/card']);
-    expect(builder.getState().panoNote).toBe('Finish the current import first.');
+    expect(builder.getState().queued).toBe(1);
+    expect(builder.getState().importNotice).toBe(QUEUED_NOTE);
+    // answering the offer runs the first import, then the waiting drop is checked, not imported
+    await builder.getState().declinePanoOffer();
+    expect(imports()).toEqual([expect.objectContaining({ paths: ['D:/card'] })]);
+    expect(builder.getState().panoOffer?.paths).toEqual(['D:/other']);
+    expect(builder.getState().queued).toBe(0);
+    builder.getState().dismissPanoOffer();
+    expect(imports()).toHaveLength(1);
   });
 
-  it('refuses a drop while the scan runs, and shows the checking state', async () => {
+  it('queues a drop while the scan runs, and shows the checking state', async () => {
     let release: (v: unknown) => void = () => undefined;
     call.mockImplementation(
       () =>
@@ -234,11 +242,19 @@ describe('Add data and drone spheres', () => {
     expect(builder.getState().panoScanning).toBe(true);
     await builder.getState().importFiles(['D:/other']);
     expect(call).toHaveBeenCalledTimes(1);
-    expect(builder.getState().panoNote).toBe('Finish the current import first.');
+    expect(builder.getState().queued).toBe(1);
     release({ ok: true, value: { ok: true, scan } });
     await first;
     expect(builder.getState().panoScanning).toBe(false);
     expect(builder.getState().panoOffer?.paths).toEqual(['D:/card']);
+    // cancelling the offer lets the waiting drop go: scanned, no sphere, imported as photos
+    main(none);
+    builder.getState().dismissPanoOffer();
+    await vi.waitFor(() => {
+      expect(imports()).toEqual([expect.objectContaining({ paths: ['D:/other'] })]);
+    });
+    expect(call.mock.calls.filter(([c]) => c === 'panos:scan')).toHaveLength(2);
+    expect(imports()[0]?.exclude).toBeUndefined();
   });
 
   it('cancel on the offer imports nothing', async () => {
