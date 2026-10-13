@@ -16,7 +16,7 @@ import rasterio
 import products_synth as ps
 from aio_pipelines.photo import native
 from aio_pipelines.photo.mesh import meshlab_available
-from aio_pipelines.photo.products import PhotoProducts, depth_key
+from aio_pipelines.photo.products import PhotoProducts, depth_key, legacy_cleanup
 from aio_pipelines.pipelines import all_pipelines
 from aio_pipelines.runtime import Cancelled, Job, JobError
 from conftest import Recorder, run_job
@@ -330,6 +330,77 @@ def test_a_job_started_before_layout_2_is_refused_when_resumed():
     sf.write_text(json.dumps(rec), "utf-8")
     with pytest.raises(JobError, match=r"started by an older version; use Create maps again on this run"):
         Job("x2", PhotoProducts(), root, STANDARD, Recorder(), threading.Event()).run()
+
+
+def _files(folder: Path) -> dict[str, bytes]:
+    return {q.relative_to(folder).as_posix(): q.read_bytes() for q in folder.rglob("*") if q.is_file()}
+
+
+def test_an_old_job_resumed_at_commit_is_refused_before_anything_is_moved():
+    root = ps.project("old-commit")
+    emit, cancel = _after("dsm")
+    with pytest.raises(Cancelled):
+        Job("x3", PhotoProducts(), root, STANDARD, emit, cancel).run()
+    sf = root / "jobs" / "x3" / "steps" / "01-prepare.json"
+    rec = json.loads(sf.read_text("utf-8"))
+    rec["outputs"].pop("layout")
+    sf.write_text(json.dumps(rec), "utf-8")
+    staging = root / "jobs" / "x3" / "staging"
+    staged = _files(staging)
+    manifest = (root / "manifest.json").read_bytes()
+    run_doc = (root / "photogrammetry" / RUN / "run.json").read_bytes()
+    assert staged  # the dsm step staged its files
+    with pytest.raises(JobError, match=r"started by an older version; use Create maps again on this run"):
+        Job("x3", PhotoProducts(), root, STANDARD, Recorder(), threading.Event()).run()
+    assert _files(staging) == staged
+    assert (root / "manifest.json").read_bytes() == manifest
+    assert (root / "photogrammetry" / RUN / "run.json").read_bytes() == run_doc
+    assert not (root / "rasters").exists()  # no pyramid moved in
+
+
+def test_the_legacy_cleanup_keeps_the_depth_maps_layout_2_and_other_keys(tmp_path, monkeypatch):
+    products = tmp_path / "products"
+    key, other = products / "7bea1144efd8", products / "de395fb6663c"
+    keep = {
+        key / "depth" / "1.npy": 64,
+        key / "c-0123456789ab" / "chunks" / "0_0" / "v1.npz": 32,
+        key / "c-0123456789ab" / "m-ba9876543210" / "fused" / "0_0.npz": 32,
+        key / "c-0123456789ab" / "m-ba9876543210" / "dsm-raw.tif": 16,
+        other / "cloud.las": 8,
+        other / "dsm-raw.tif": 8,
+    }
+    old = {
+        key / "cloud" / "chunks" / "0_0" / "v1.npz": 100,
+        key / "cloud" / "fused" / "0_0.npz": 50,
+        key / "cloud.las": 200,
+        key / "dsm-raw.tmp.fill.tif": 10,
+        key / ".mesh-full.tmp.npz": 20,
+        key / "texrecon-full" / "a.obj": 30,
+        key / "ortho-shaded.tif": 40,
+        key / "dtm-pipeline.json": 5,
+    }
+    for f, n in {**keep, **old}.items():
+        f.parent.mkdir(parents=True, exist_ok=True)
+        f.write_bytes(bytes(n))
+    # a file another program holds open (a viewer, on Windows) stays, with a warning
+    unlink = Path.unlink
+
+    def held(self, *a, **k):
+        if self.name == "dtm-pipeline.json":
+            raise PermissionError(13, "The file is in use")
+        return unlink(self, *a, **k)
+
+    monkeypatch.setattr(Path, "unlink", held)
+    said: list = []
+    freed = legacy_cleanup(key, lambda m, level="info": said.append((level, m)))
+    assert freed == sum(old.values()) - 5
+    assert all(f.is_file() for f in keep) and (key / "dtm-pipeline.json").is_file()
+    assert not any(f.exists() for f in old if f.name != "dtm-pipeline.json")
+    assert not (key / "cloud").exists() and not (key / "texrecon-full").exists()
+    assert said == [
+        ("warn", "Could not remove dtm-pipeline.json, which an older version left: The file is in use.")
+    ]
+    assert legacy_cleanup(tmp_path / "missing") == 0
 
 
 def test_a_new_point_budget_after_the_chunks_went_fuses_the_photos_again(monkeypatch):

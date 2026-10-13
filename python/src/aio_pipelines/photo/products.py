@@ -85,6 +85,9 @@ PDAL_FOR_CLOUD = (
     "The point cloud needs PDAL, which this pipeline pack does not have. Install the full "
     "pipeline pack, or leave the point cloud out."
 )
+NO_DENSE_POINTS = "Dense matching found no consistent points; the photos may not overlap enough."
+#: The per-photo fusion outputs when no photo was fused in this step (Fast, or merged already).
+NOTHING_FUSED = {"workers": 0, "device": "cpu", "fallbacks": 0}
 LAYOUT = 2
 OLD_LAYOUT = (
     "This processing was started by an older version; use Create maps again on this run "
@@ -95,7 +98,7 @@ LEGACY_NAMES = (
     "cloud", "cloud.las", "copc-pipeline.json", "dtm-pipeline.json", "ground-pdal.tif", "gains.json",
     "poisson", "mesh-full.npz",
 )  # fmt: skip
-LEGACY_GLOBS = ("*-raw.tif", "*.tmp.tif", "*-shaded.tif", "texrecon-*")
+LEGACY_GLOBS = ("*-raw.tif", "*.tmp.tif", "*.fill.tif", "*-shaded.tif", "texrecon-*", ".mesh-full.tmp.npz")
 
 
 # ------------------------------------------------------------------------------------ helpers
@@ -126,21 +129,48 @@ def merge_key(ckey: str, voxel: float, budget: int, rule) -> str:
     return _hash({"c": ckey, "voxel": voxel, "budget": budget, "merge": asdict(rule)})
 
 
-def legacy_cleanup(folder: Path) -> int:
+def _bytes_in(p: Path) -> int:
+    """The bytes of a file, or of the files under a folder; what cannot be read counts nothing."""
+    try:
+        if p.is_file():
+            return p.stat().st_size
+        total = 0
+        for q in p.rglob("*"):
+            try:
+                if q.is_file():
+                    total += q.stat().st_size
+            except OSError:
+                pass
+        return total
+    except OSError:
+        return 0
+
+
+def legacy_cleanup(folder: Path, log=lambda message, level="info": None) -> int:
     """Delete what a version before layout 2 left in a depth key's folder (the cloud tiles, the
-    LAS, the rasters, the mesh); ``depth/`` and layout 2's ``c-*`` folders stay. Answers the bytes
-    freed."""
+    LAS, the rasters, the mesh); ``depth/`` and layout 2's ``c-*`` folders stay. What cannot be
+    deleted (a file another program holds open) is left with a warning. Answers the bytes freed."""
     if not folder.is_dir():
         return 0
     found = [folder / n for n in LEGACY_NAMES] + [p for g in LEGACY_GLOBS for p in folder.glob(g)]
     freed = 0
-    for p in found:
-        if p.is_dir():
-            freed += sum(q.stat().st_size for q in p.rglob("*") if q.is_file())
-            shutil.rmtree(p, ignore_errors=True)
-        elif p.is_file():
-            freed += p.stat().st_size
-            p.unlink(missing_ok=True)
+    for p in dict.fromkeys(found):
+        if not (p.is_dir() or p.is_file()):
+            continue
+        before = _bytes_in(p)
+        errors: list[OSError] = []
+        try:
+            if p.is_dir():
+                # past a file it cannot delete, on to the rest
+                shutil.rmtree(p, onexc=lambda _f, _path, e, errors=errors: errors.append(e))
+            else:
+                p.unlink()
+        except OSError as e:
+            errors.append(e)
+        if errors:
+            e = errors[0]
+            log(f"Could not remove {p.name}, which an older version left: {e.strerror or e}.", "warn")
+        freed += max(0, before - (_bytes_in(p) if p.exists() else 0))
     return freed
 
 
@@ -437,7 +467,7 @@ class PhotoProducts:
         mkey = merge_key(ckey, voxel, budget, DENSE_RULE if scale else SPARSE_RULE)
         base = f"photogrammetry/{run.id}/work/products/{dkey}"
         # before the disk check, so the space an older version took counts as free
-        freed = legacy_cleanup(safe_project_path(ctx.project, base))
+        freed = legacy_cleanup(safe_project_path(ctx.project, base), ctx.log)
         if freed:
             ctx.log(f"Removed {native._gb(freed)} of intermediate files an older version left.")
         if "cloud" in p["products"]:
@@ -667,22 +697,29 @@ class PhotoProducts:
         store = self._tiles_store(ctx)
         source = "dense" if s["scale"] else "sparse"
         done = store.info()
-        if done.get("complete"):  # a stopped job that had merged already
-            store.drop_chunks()
-            extra = {"mergeWorkers": 0, "remerged": int(done.get("remerged", 0))}
+        if done.get("complete"):  # a stopped job that had merged already: nothing is redone
+            if s["scale"] and not done.get("points"):
+                raise JobError(NO_DENSE_POINTS)
+            freed = store.drop_chunks()
+            ctx.log(
+                f"The {source} cloud was merged already: {int(done['points']):,} points at "
+                f"{done['voxel'] * 100:.1f} cm spacing; {native._gb(freed)} of fusion chunks removed."
+            )
+            extra = {**NOTHING_FUSED, "mergeWorkers": 0, "remerged": int(done.get("remerged", 0))}
             return self._fused_outputs(done, s, source, extra)
         if store.chunks_dropped():
             # The chunks went after a complete merge under another merge key (another budget or
-            # spacing): this merge can only be made from new chunks.
+            # spacing): this merge can only be made from new chunks, and starts afresh.
+            again = "fusing the photos again" if s["scale"] else "adding the sparse points again"
             ctx.log(
-                "The fused points of an earlier merge were removed and this one needs other "
-                "settings; fusing the photos again."
+                f"The fused points of an earlier merge were removed and this one needs other settings; {again}."
             )
             store.clear_chunks()
+            (store.root / "merge.json").unlink(missing_ok=True)
         poly = _region_poly(ctx.params.get("region"), run.epsg)
         keep = RegionClip(poly.wkt, float(run.offset[0]), float(run.offset[1])) if poly is not None else None
         memory = native.memory_budget()
-        ran: dict[str, Any] = {}
+        ran: dict[str, Any] = dict(NOTHING_FUSED)
         if not s["scale"]:
             pts = run.model.points
             nrm = np.tile(np.array([0, 0, 1], np.float32), (len(pts), 1))
@@ -704,9 +741,7 @@ class PhotoProducts:
                 log=ctx.log,
             )
             if not info["points"]:
-                raise JobError(
-                    "Dense matching found no consistent points; the photos may not overlap enough."
-                )
+                raise JobError(NO_DENSE_POINTS)
         # only now, after a complete merge (and any wider merge again)
         freed = store.drop_chunks()
         ctx.log(
@@ -1080,6 +1115,7 @@ class PhotoProducts:
         return out
 
     def _commit(self, ctx: StepContext) -> dict[str, Any]:
+        self._settings(ctx)  # an older version's job is refused before anything is moved
         run = self._run(ctx)
         p = ctx.params
         want = set(p["products"])
@@ -1304,6 +1340,7 @@ class PhotoProducts:
         """The full mesh to 3D Tiles through G7's ``tiles.mesh``, as a job inside this one."""
         from ..tiles.mesh import TilesMesh
 
+        self._settings(ctx)  # an older version's job is refused here too
         run = self._run(ctx)
         tid = f"{run.id}-mesh"[:80]
         params = {
