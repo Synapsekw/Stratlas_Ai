@@ -14,6 +14,7 @@ import {
   PACKAGE_EXTENSION,
   type IpcChannel,
   type IpcEvent,
+  type IpcRequest,
   type ReportBrandingSettings,
   type Settings,
 } from '@aio/schema';
@@ -72,7 +73,11 @@ import {
 } from './walks';
 import {
   PANO_PACK_FEATURE,
+  PANO_QUEUED,
+  fileLaneRun,
   fileThenSend,
+  laneSphere,
+  stitchLane,
   panoFiler,
   panoImportAnswer,
   panoImports,
@@ -712,8 +717,22 @@ const jobs = new JobRunner({
     void fileThenSend(panoFiler, safe, () => {
       const win = mainWindow ?? BrowserWindow.getAllWindows()[0];
       if (win && !win.isDestroyed()) win.webContents.send('jobs:event', safe);
-    }).then(() => journal.jobEvent(safe));
+    }).then(() =>
+      Promise.all([
+        journal.jobEvent(safe),
+        // the stitch that waits next starts when the running one has ended
+        panoLane.settled(safe),
+      ]),
+    );
     void surveyQaJobs(safe);
+  },
+});
+/** Drone panorama stitches run one at a time on this computer; the others wait in line. */
+const panoLane = stitchLane({
+  start: (req) => jobs.start(req as IpcRequest<'jobs:start'>),
+  started: fileLaneRun,
+  log: (line) => {
+    appLog.write('warn', [line]);
   },
 });
 
@@ -1176,6 +1195,12 @@ function registerIpc(): void {
         walkPackRefusal(req.pipeline, version) ?? panoPackRefusal(req.pipeline, version);
       if (tooOld) return { ok: false, error: tooOld };
     }
+    // a drone panorama stitch waits for the one running (one at a time on this computer)
+    const sphere = laneSphere(req, (id) => jobs.get(id));
+    if (sphere) {
+      const r = await panoLane.start(req, sphere);
+      return 'queued' in r ? { ok: false, error: PANO_QUEUED } : r;
+    }
     return jobs.start(req);
   });
   handle('jobs:cancel', ({ jobId }) => jobs.cancel(jobId));
@@ -1362,7 +1387,9 @@ function registerIpc(): void {
         root: (id) => registry.root(id),
         scans: panoScans,
         images: nativeImageOps,
-        jobs,
+        jobs: {
+          start: (r) => panoLane.start(r, laneSphere(r, () => undefined) ?? { project: r.project }),
+        },
         packVersion: async () =>
           (
             await findPack({
@@ -1398,6 +1425,11 @@ function registerIpc(): void {
     deleteJob: (id) => jobStore.delete(id),
     // a drone panorama stitch of a removed layer is stopped first
     cancelJob: (id) => jobs.cancel(id).ok,
+    // and its stitches still waiting in line are left out before that
+    queuedStitches: {
+      layers: (project) => panoLane.waitingLayers(project),
+      drop: (project, layers) => panoLane.drop(project, layers),
+    },
     flushJobs: () => jobStore.flush(),
     log: (line) => {
       appLog.write('warn', [line]);

@@ -7,7 +7,10 @@ import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   PANO_IMPORT_BUSY,
+  fileLaneRun,
   fileThenSend,
+  laneSphere,
+  stitchLane,
   panoImportAnswer,
   panoPackRefusal,
   panoScanCache,
@@ -166,7 +169,7 @@ describe('startPanoStitches', () => {
       jobs: { start },
       packVersion: () => Promise.resolve('0.7.0'),
     });
-    expect(r).toEqual({ runs: { p01: 'j1' }, refused: 'No processing tools.' });
+    expect(r).toEqual({ runs: { p01: 'j1' }, queued: 0, refused: 'No processing tools.' });
     expect(start).toHaveBeenCalledWith({
       pipeline: 'pano.stitch',
       project: root,
@@ -482,5 +485,146 @@ describe('withPanoStitches', () => {
     if (!r.ok) throw new Error(r.error);
     const l = r.value.layers.find((x) => x.id === imported.layerId);
     expect(l?.kind === 'panoramas' && l.items[0]?.stitch).toEqual({ run, status: 'done' });
+  });
+});
+
+describe('stitchLane: one drone panorama stitch at a time', () => {
+  const req = (pano: string, layer = 'l') => ({
+    pipeline: 'pano.stitch',
+    project: 'D:/p',
+    params: { layer, pano, quality: 'standard' },
+  });
+  const sphere = (pano: string, layer = 'l') => ({ project: 'D:/p', layer, pano });
+  const ended = (id: string, status: JobRecord['status']): JobEvent => ({
+    type: 'update',
+    job: job({ id, status }),
+  });
+
+  function lane(refuse: ReadonlySet<string> = new Set()) {
+    const started: string[] = [];
+    const filed: string[] = [];
+    const l = stitchLane({
+      start: (r) => {
+        const pano = 'params' in r ? String(r.params.pano) : r.resume;
+        started.push(pano);
+        if (refuse.has(pano)) return Promise.resolve({ ok: false as const, error: 'no tools' });
+        return Promise.resolve({
+          ok: true as const,
+          job: job({ id: `j-${pano}`, status: 'starting' }),
+        });
+      },
+      started: (s, j) => {
+        filed.push(`${String(s.pano)}:${j.id}`);
+      },
+      log: () => undefined,
+    });
+    return { l, started, filed };
+  }
+
+  it('runs three spheres one after the other, in order', async () => {
+    const { l, started, filed } = lane();
+    expect(await l.start(req('p01'), sphere('p01'))).toMatchObject({
+      ok: true,
+      job: { id: 'j-p01' },
+    });
+    expect(await l.start(req('p02'), sphere('p02'))).toEqual({ ok: true, queued: true });
+    expect(await l.start(req('p03'), sphere('p03'))).toEqual({ ok: true, queued: true });
+    expect(started).toEqual(['p01']);
+    // an update of the running job that is not an end, and another job's end: nothing moves
+    await l.settled({ type: 'update', job: job({ id: 'j-p01', status: 'running' }) });
+    await l.settled(ended('other', 'done'));
+    expect(started).toEqual(['p01']);
+    await l.settled(ended('j-p01', 'done'));
+    expect(started).toEqual(['p01', 'p02']);
+    expect(l.running()).toBe('j-p02');
+    // a failure moves on to the next
+    await l.settled(ended('j-p02', 'failed'));
+    expect(started).toEqual(['p01', 'p02', 'p03']);
+    await l.settled(ended('j-p03', 'cancelled'));
+    expect(l.running()).toBeNull();
+    // the waiting ones had their run filed when they started
+    expect(filed).toEqual(['p02:j-p02', 'p03:j-p03']);
+    // free again: the next start runs at once
+    expect(await l.start(req('p04'), sphere('p04'))).toMatchObject({
+      ok: true,
+      job: { id: 'j-p04' },
+    });
+  });
+
+  it('goes on past a waiting stitch that cannot start', async () => {
+    const { l, started } = lane(new Set(['p02']));
+    await l.start(req('p01'), sphere('p01'));
+    await l.start(req('p02'), sphere('p02'));
+    await l.start(req('p03'), sphere('p03'));
+    await l.settled(ended('j-p01', 'failed'));
+    expect(started).toEqual(['p01', 'p02', 'p03']);
+    expect(l.running()).toBe('j-p03');
+  });
+
+  it('cancels a waiting stitch, keeps a sphere asked twice in its place, and drops a layer', async () => {
+    const { l, started } = lane();
+    await l.start(req('p01'), sphere('p01'));
+    await l.start(req('p02'), sphere('p02'));
+    await l.start(req('p03'), sphere('p03'));
+    await l.start(req('p02'), sphere('p02'));
+    await l.start(req('q01', 'other'), sphere('q01', 'other'));
+    expect(l.waiting().map((r) => ('params' in r ? r.params.pano : r.resume))).toEqual([
+      'p02',
+      'p03',
+      'q01',
+    ]);
+    expect(l.waitingLayers('d:\\p')).toEqual(
+      process.platform === 'win32' ? ['l', 'l', 'other'] : [],
+    );
+    // the cancel of one waiting sphere
+    expect(l.drop('D:/p', new Set(['l']), 'p02')).toBe(1);
+    // a removed layer leaves the line
+    expect(l.drop('D:/p', new Set(['other']))).toBe(1);
+    await l.settled(ended('j-p01', 'done'));
+    expect(started).toEqual(['p01', 'p03']);
+  });
+
+  it('names the sphere of a request and of a resume', () => {
+    expect(laneSphere(req('p01'), () => undefined)).toEqual(sphere('p01'));
+    expect(laneSphere({ resume: 'j1' }, () => job({ project: 'D:/p' }))).toEqual(sphere('p01'));
+    expect(laneSphere({ resume: 'j1' }, () => undefined)).toBeNull();
+    expect(
+      laneSphere({ pipeline: 'walk.process', project: 'D:/p', params: {} }, () => undefined),
+    ).toBeNull();
+  });
+
+  it('files the run of a waiting sphere when it starts', async () => {
+    const scans = panoScanCache();
+    const r0 = await scanPanoPaths(root, [await card()], noThumb);
+    if ('error' in r0) throw new Error(r0.error);
+    scans.put('p', r0.scan, r0.grouping);
+    // another stitch runs: this import's sphere waits in line
+    const imported = await panoImportAnswer(
+      { projectId: 'p', scanId: r0.scan.scanId, keys: ['s1'], layerName: 'S', quality: 'standard' },
+      {
+        root: () => root,
+        scans,
+        images: { resizeJpeg: (src, dst) => copyFile(src, dst) },
+        jobs: { start: () => Promise.resolve({ ok: true as const, queued: true as const }) },
+        packVersion: () => Promise.resolve('0.7.0'),
+        progress: () => undefined,
+        freeBytes: () => Promise.resolve(1e15),
+      },
+    );
+    if (!imported.ok) throw new Error(imported.error);
+    expect(imported.started).toBe(1);
+    const itemOf = (m: ProjectManifest) => {
+      const l = m.layers.find((x) => x.id === imported.layerId);
+      return l?.kind === 'panoramas' ? l.items[0] : undefined;
+    };
+    expect(itemOf(imported.manifest)?.stitch).toEqual({ status: 'queued' });
+    await fileLaneRun(
+      { project: root, layer: imported.layerId, pano: 'p01' },
+      job({ id: '20261013-101500-pano-stitch-a1b2' }),
+    );
+    expect(itemOf(await readManifestFile(root))?.stitch).toEqual({
+      run: '20261013-101500-pano-stitch-a1b2',
+      status: 'queued',
+    });
   });
 });

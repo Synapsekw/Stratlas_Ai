@@ -173,12 +173,18 @@ export async function freeBytes(dir: string): Promise<number> {
   return s.bavail * s.bsize;
 }
 
+export interface StitchRequest {
+  pipeline: 'pano.stitch';
+  project: string;
+  params: Record<string, unknown>;
+}
+
+export type StitchStart =
+  { ok: true; job: { id: string } } | { ok: true; queued: true } | { ok: false; error: string };
+
 export interface StitchStarter {
-  start(req: {
-    pipeline: 'pano.stitch';
-    project: string;
-    params: Record<string, unknown>;
-  }): Promise<{ ok: true; job: { id: string } } | { ok: false; error: string }>;
+  /** Started now (`job`), waiting in the stitch queue (`queued`), or refused. */
+  start(req: StitchRequest): Promise<StitchStart>;
 }
 
 /** One `pano.stitch` job per sphere; the first refusal (no pack, an old pack) stops the rest. */
@@ -191,11 +197,12 @@ export async function startPanoStitches(o: {
   shapes?: Readonly<Record<string, PanoShape>>;
   jobs: StitchStarter;
   packVersion(): Promise<string | null>;
-}): Promise<{ runs: Record<string, string>; refused?: string }> {
+}): Promise<{ runs: Record<string, string>; queued: number; refused?: string }> {
   const runs: Record<string, string> = {};
-  if (o.panos.length === 0) return { runs };
+  let queued = 0;
+  if (o.panos.length === 0) return { runs, queued };
   const tooOld = panoPackRefusal('pano.stitch', await o.packVersion());
-  if (tooOld) return { runs, refused: tooOld };
+  if (tooOld) return { runs, queued, refused: tooOld };
   for (const pano of o.panos) {
     const shape = o.shapes?.[pano];
     const r = await o.jobs.start({
@@ -203,11 +210,181 @@ export async function startPanoStitches(o: {
       project: o.root,
       params: { layer: o.layerId, pano, quality: o.quality, ...(shape ? { shape } : {}) },
     });
-    if (!r.ok) return { runs, refused: r.error };
-    runs[pano] = r.job.id;
+    if (!r.ok) return { runs, queued, refused: r.error };
+    if ('job' in r) runs[pano] = r.job.id;
+    else queued++;
   }
-  return { runs };
+  return { runs, queued };
 }
+
+const rootKey = (root: string) =>
+  process.platform === 'win32' ? resolve(root).toLowerCase() : resolve(root);
+const sameFolder = (a: string, b: string) => rootKey(a) === rootKey(b);
+
+/** A start request of a `pano.stitch` job, new or a resume of one (`jobs:start`). */
+export type LaneRequest =
+  { pipeline: string; project: string; params: Record<string, unknown> } | { resume: string };
+
+/** Which sphere a lane request stitches (a resume names it through its job record). */
+export interface LaneSphere {
+  project: string;
+  layer?: string;
+  pano?: string;
+}
+
+interface Waiting extends LaneSphere {
+  req: LaneRequest;
+}
+
+const LANE_ENDED: ReadonlySet<string> = new Set(['done', 'failed', 'cancelled', 'interrupted']);
+
+/**
+ * Drone panorama stitches run one at a time on this computer (one peaks at about 3.4 GB at 8K):
+ * a start while one runs waits here, first in first out, and starts when the running one has
+ * finished, failed or was cancelled. The queue lives in memory only: after a quit its spheres stay
+ * queued with their Stitch action.
+ */
+export function stitchLane(deps: {
+  /** The job runner's start (behind the `jobs:start` gates). */
+  start(req: LaneRequest): Promise<{ ok: true; job: JobRecord } | { ok: false; error: string }>;
+  /** A queued stitch got its job: its run is filed into the manifest (`fileLaneRun`). */
+  started?(sphere: LaneSphere, job: JobRecord): void | Promise<void>;
+  log?(line: string): void;
+}) {
+  const waiting: Waiting[] = [];
+  let running: string | null = null;
+  let starting = false;
+
+  const same = (a: LaneSphere, b: LaneSphere) =>
+    a.layer !== undefined &&
+    a.layer === b.layer &&
+    a.pano === b.pano &&
+    sameFolder(a.project, b.project);
+
+  async function launch(w: Waiting) {
+    starting = true;
+    try {
+      const r = await deps.start(w.req);
+      if (r.ok) {
+        running = r.job.id;
+        // a job that ended within its start: the lane moves on
+        if (LANE_ENDED.has(r.job.status)) running = null;
+      }
+      return r;
+    } finally {
+      starting = false;
+    }
+  }
+
+  async function next(): Promise<void> {
+    while (running === null && !starting && waiting.length > 0) {
+      const w = waiting.shift();
+      if (!w) return;
+      const r = await launch(w);
+      if (!r.ok) {
+        deps.log?.(`A queued panorama stitch in ${w.project} did not start: ${r.error}`);
+        continue;
+      }
+      try {
+        await deps.started?.(w, r.job);
+      } catch (e) {
+        deps.log?.(
+          `The run of a queued panorama stitch was not filed: ${e instanceof Error ? e.message : String(e)}`,
+        );
+      }
+    }
+  }
+
+  return {
+    /** Start now when no stitch runs, else wait in line. */
+    async start(
+      req: LaneRequest,
+      sphere: LaneSphere,
+    ): Promise<
+      { ok: true; job: JobRecord } | { ok: true; queued: true } | { ok: false; error: string }
+    > {
+      const w: Waiting = { ...sphere, req };
+      if (running !== null || starting || waiting.length > 0) {
+        // Stitch twice on a waiting sphere: it keeps its place
+        if (!waiting.some((x) => same(x, w))) waiting.push(w);
+        return { ok: true, queued: true };
+      }
+      return launch(w);
+    },
+    /** A job event: the running stitch ended, the next one starts. */
+    settled(e: JobEvent): Promise<void> {
+      if (e.type === 'update' && e.job.id === running && LANE_ENDED.has(e.job.status)) {
+        running = null;
+        return next();
+      }
+      return Promise.resolve();
+    },
+    /**
+     * Leave out the waiting stitches of these layers of a project (of one sphere when `pano` is
+     * given: the cancel of a waiting stitch); how many there were.
+     */
+    drop(project: string, layers: ReadonlySet<string>, pano?: string): number {
+      const before = waiting.length;
+      const kept = waiting.filter(
+        (w) =>
+          !(
+            w.layer !== undefined &&
+            layers.has(w.layer) &&
+            (pano === undefined || w.pano === pano) &&
+            sameFolder(w.project, project)
+          ),
+      );
+      waiting.splice(0, waiting.length, ...kept);
+      return before - kept.length;
+    },
+    /** The layers with a waiting stitch in a project. */
+    waitingLayers(project: string): string[] {
+      return waiting.flatMap((w) =>
+        w.layer !== undefined && sameFolder(w.project, project) ? [w.layer] : [],
+      );
+    },
+    /** Waiting stitches, oldest first (tests, diagnostics). */
+    waiting(): readonly LaneRequest[] {
+      return waiting.map((w) => w.req);
+    },
+    running(): string | null {
+      return running;
+    },
+  };
+}
+
+export type StitchLane = ReturnType<typeof stitchLane>;
+
+/** The sphere a `pano.stitch` request stitches, from its params or its job record (a resume). */
+export function laneSphere(
+  req: LaneRequest,
+  job: (id: string) => Pick<JobRecord, 'pipeline' | 'project' | 'params'> | undefined,
+): LaneSphere | null {
+  const from =
+    'resume' in req
+      ? job(req.resume)
+      : { pipeline: req.pipeline, project: req.project, params: req.params };
+  if (from?.pipeline !== 'pano.stitch') return null;
+  const { layer, pano } = from.params;
+  return {
+    project: from.project,
+    ...(typeof layer === 'string' ? { layer } : {}),
+    ...(typeof pano === 'string' ? { pano } : {}),
+  };
+}
+
+/** A waiting stitch got its job: its run goes on the item still queued without one. */
+export async function fileLaneRun(sphere: LaneSphere, job: JobRecord): Promise<void> {
+  if (sphere.layer === undefined || sphere.pano === undefined) return;
+  const { layer, pano } = sphere;
+  const l = await lib();
+  await l.updateManifestFile(sphere.project, (m) => ({
+    manifest: l.setPanoRuns(m, layer, { [pano]: job.id }),
+  }));
+}
+
+export const PANO_QUEUED =
+  'This panorama waits for the stitch before it and starts when that one ends.';
 
 export type PanoImportLib = Pick<
   typeof Builder,
@@ -228,8 +405,6 @@ export interface PanoImportAnswerDeps {
 export const PANO_IMPORT_BUSY = 'A panorama import is already running for this project.';
 /** The projects (by folder) with a `panos:import` running: one at a time per project. */
 const importing = new Set<string>();
-const rootKey = (root: string) =>
-  process.platform === 'win32' ? resolve(root).toLowerCase() : resolve(root);
 
 /** `panos:import`: copy the chosen spheres, save the layer, start the stitches. */
 export async function panoImportAnswer(
@@ -280,6 +455,7 @@ export async function panoImportAnswer(
       packVersion: d.packVersion,
     });
     const ran = Object.keys(started.runs).length;
+    const going = ran + started.queued;
     const manifest = ran
       ? (
           await l.updateManifestFile(root, (m) => ({
@@ -291,7 +467,7 @@ export async function panoImportAnswer(
       ok: true,
       manifest,
       layerId: r.layerId,
-      started: ran,
+      started: going,
       ...(started.refused ? { notStarted: started.refused } : {}),
     };
   } catch (e) {

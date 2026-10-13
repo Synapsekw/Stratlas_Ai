@@ -368,3 +368,54 @@ describe('a removal stops the drone panorama stitches of its layers', () => {
     expect(cancelled).toEqual([]);
   });
 });
+
+describe('a removal drops the waiting drone panorama stitches of its layers', () => {
+  it('drops them before stopping the running one, even when none runs', async () => {
+    const order: string[] = [];
+    const plan: RemovalPlan = {
+      ...emptyRemovalPlan(),
+      layers: [{ id: 'panos-1', name: 'Spheres', kind: 'panoramas', why: 'asked' }],
+    };
+    const lib: Partial<RemovalLib> = {
+      planRemoval: () => Promise.resolve(plan),
+      removeItems: () => {
+        order.push('remove');
+        return Promise.resolve({ manifest: MANIFEST, plan, trash: 'x' });
+      },
+    };
+    const records: JobRecord[] = [];
+    const d: RemovalDeps = {
+      ...deps(lib),
+      jobs: () => records,
+      cancelJob: (id) => {
+        order.push(`cancel ${id}`);
+        const i = records.findIndex((r) => r.id === id);
+        const was = records[i];
+        if (was) records[i] = { ...was, status: 'cancelled' };
+        return true;
+      },
+      queuedStitches: {
+        layers: () => ['panos-1'],
+        drop: (_project, layers) => {
+          order.push(`drop ${[...layers].join(',')}`);
+          return 2;
+        },
+      },
+    };
+    expect((await removeAnswer({ projectId: 'p', targets: [{ layer: 'panos-1' }] }, d)).ok).toBe(
+      true,
+    );
+    expect(order).toEqual(['drop panos-1', 'remove']);
+    order.length = 0;
+    records.push({
+      ...job('s1', ROOT),
+      pipeline: 'pano.stitch',
+      params: { layer: 'panos-1', pano: 'p01' },
+      status: 'running',
+    });
+    expect((await removeAnswer({ projectId: 'p', targets: [{ layer: 'panos-1' }] }, d)).ok).toBe(
+      true,
+    );
+    expect(order).toEqual(['drop panos-1', 'cancel s1', 'remove']);
+  });
+});

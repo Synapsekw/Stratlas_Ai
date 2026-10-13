@@ -41,6 +41,11 @@ export interface RemovalDeps {
   log: (line: string) => void;
   /** Stop a running job (`jobs:cancel`); false when it is not running. */
   cancelJob?: (id: string) => boolean;
+  /** Drone panorama stitches waiting in line (not started yet), per project folder. */
+  queuedStitches?: {
+    layers: (project: string) => readonly string[];
+    drop: (project: string, layers: ReadonlySet<string>) => number;
+  };
   /** How long a removal waits for the stitches it stopped (ms). */
   stopWaitMs?: number;
   lib?: () => Promise<RemovalLib>;
@@ -106,11 +111,13 @@ async function stopStitches(
   d: RemovalDeps,
 ): Promise<string | null> {
   const live = planJobsFor(root, d.jobs()).filter(liveStitch);
-  if (live.length === 0) return null;
+  if (live.length === 0 && (d.queuedStitches?.layers(root).length ?? 0) === 0) return null;
   const plan = await lib.planRemoval(root, targets, { jobs: planJobs(root, d) });
   // a refused plan: the removal refuses with the same reason
   if (plan.refused !== undefined) return null;
   const layers = new Map(plan.layers.map((l) => [l.id, l.name]));
+  // the waiting ones first: stopping the running one would start the next in line
+  d.queuedStitches?.drop(root, new Set(layers.keys()));
   const hit = live.filter((j) => typeof j.params.layer === 'string' && layers.has(j.params.layer));
   if (hit.length === 0) return null;
   for (const j of hit) {
