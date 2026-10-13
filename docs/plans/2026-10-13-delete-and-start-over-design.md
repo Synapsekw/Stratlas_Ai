@@ -1,8 +1,8 @@
 # Delete datasets and runs, and start a failed run over
 
 Date: 13 Oct 2026. Branch: `feat/delete-and-start-over`. Status: spec written from the founder's
-decisions of 13 Oct; the choices the founder did not make are listed under "Decisions taken
-(founder to confirm)".
+decisions of 13 Oct, including the answers to its four open questions; the remaining design choices
+are listed under "Decisions taken in this spec".
 
 Builds on: `2026-10-12-walk-layer-and-placing-design.md` ("Remove walk", the `.trash/` folder and
 its seven-day sweep), which this design turns into the general case.
@@ -28,6 +28,18 @@ set of rows.
 3. **Start over…** on a failed or cancelled run opens the process wizard filled in with the same
    photos and settings; the failed run goes to the trash when the new run starts. **Resume**
    stays as it is.
+
+The founder settled four more points the same day (founder, 13 Oct 2026):
+
+4. **Issues are kept**, not taken along, when their dataset goes: they show "Dataset removed".
+   They are a person's records, and decision 2 is about computed things. Walk pins and survey
+   measurements likewise keep their existing missing-target behaviour.
+5. **Deleting a survey date removes the date too**, unless a volume or survey record still names
+   it; then the empty date stays and the dialog says why.
+6. **Empty project trash lives in a Datasets footer line and the library's project menu**, since
+   no per-project settings screen exists yet.
+7. **Hub peers**: a removal syncs as a manifest change only for now; cleaning up the files on
+   peers is a follow-up.
 
 ## Who uses it, and what success looks like
 
@@ -337,32 +349,28 @@ undone."
   without it, as the other photo specs are. `walk-place.spec.ts`'s remove test moves to the
   dialog's test ids.
 
-## Decisions taken (founder to confirm)
+## Decisions taken in this spec
 
-1. **Issues are kept**, not taken along, when their dataset goes: they show "Dataset removed".
-   They are a person's records, and decision 2 is about computed things. Walk pins and survey
-   measurements likewise keep their existing missing-target behaviour.
-2. **Deleting a survey date removes the date too**, unless a volume or survey record still names
-   it; then the empty date stays and the dialog says why.
-3. **Dependents are found by scanning the project's own files** (run.json, tilesets.json, change
+Decisions 4 to 7 above were asked as open questions and answered by the founder on 13 Oct 2026.
+The remaining design choices, taken here:
+
+1. **Dependents are found by scanning the project's own files** (run.json, tilesets.json, change
    sets, prepared surfaces, detection files), not by a new index. A run's layers are found by
    `outputs.layers` and by the `<run>-*` id convention, so a run that failed mid-commit is caught.
-4. **Live jobs are checked by `params.run` and by a deep scan of `params` for removed layer ids.**
-5. **One trash folder per removal**, holding paths in their project layout with `removed.json`, so
+2. **Live jobs are checked by `params.run` and by a deep scan of `params` for removed layer ids.**
+3. **One trash folder per removal**, holding paths in their project layout with `removed.json`, so
    a restore by hand is "copy the folder's contents back and restore the manifest backup it names".
-6. **Hash assets and files another remaining layer names are never moved.**
-7. **Job records leave `userData/jobs.json` only after the manifest save** (they cannot come back
+4. **Hash assets and files another remaining layer names are never moved.**
+5. **Job records leave `userData/jobs.json` only after the manifest save** (they cannot come back
    from the trash; the job folders can).
-8. **Start over removes the old run only after the new run's first job started**, and a failed
+6. **Start over removes the old run only after the new run's first job started**, and a failed
    removal there does not stop the new run.
-9. **Empty project trash lives in the Datasets footer and the library's project menu**: the
-   founder said "project settings", and no per-project settings screen exists yet.
-10. **Delete work files keeps using the recycle bin** (`shell.trashItem`), unchanged.
-11. **Hub peers**: the removal syncs as a manifest edit; the files on peers are left to the sync
-    layer's own clean-up. Worth a look when hubs are in daily use.
+7. **Delete work files keeps using the recycle bin** (`shell.trashItem`), unchanged.
 
 ## Follow-ups
 
 - **Restore** from `.trash/` in the app (reads `removed.json`).
+- **Peer file clean-up**: removing a deleted dataset's files on hub peers, not only the manifest
+  entry.
 - Removing single photos from a photos layer.
 - A per-project settings screen to hold the trash action and other project settings.
