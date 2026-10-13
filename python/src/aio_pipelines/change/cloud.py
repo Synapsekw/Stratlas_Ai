@@ -8,7 +8,8 @@ at ``cap`` (beyond that nothing is near). The later cloud is written again as a 
 distance as a LAS 1.4 extra-bytes dimension ``Distance`` (float32, metres), added to the project as
 a derived point cloud layer with ``scalar`` metadata, and summarised as ``region`` items of a change
 set: points beyond ``minDistM`` gathered on a ground grid and joined by touching cells (the forward
-pass gives what is new, the reverse pass what has gone).
+pass gives what is new, the reverse pass what has gone). A point counts towards a region only when
+its neighbours agree (``agreed``), so the lone noisy points of two surveys do not join up.
 
 Bounded memory: both clouds are read by PDAL (``readers.copc``, optional ``resolution``) one tile at
 a time, each with a margin of ``cap`` so the tiled result equals the untiled one. A cloud layer
@@ -64,6 +65,9 @@ MAX_TILE_POINTS = 4_000_000
 SAMPLE_SIDE_M = 40.0
 MIN_REGION_POINTS = 30
 NEIGHBOURS = 10
+#: A point counts towards a change region only when the median distance over this many of its
+#: nearest points in its own cloud (itself included) reaches the threshold (13 Oct 2026).
+AGREE_NEIGHBOURS = 8
 #: Histogram bin of the distances (for the median and the 95th percentile), metres.
 HIST_BIN_M = 0.001
 
@@ -238,6 +242,43 @@ class Cells:
         np.minimum.at(out.min_xyz, inv, lo)
         np.maximum.at(out.max_xyz, inv, hi)
         return out
+
+
+def agreed(
+    cloud: np.ndarray,
+    inside: np.ndarray,
+    d: np.ndarray,
+    measure: Callable[[np.ndarray], np.ndarray],
+    *,
+    min_dist: float,
+    k: int = AGREE_NEIGHBOURS,
+) -> np.ndarray:
+    """The distances ``d`` of ``cloud[inside]`` for the change regions: NaN (not changed) where the
+    median of ``|d|`` over the point's ``k`` nearest points in ``cloud``, itself included, is below
+    ``min_dist``, so a lone noisy point is not change. ``measure(points)`` gives the distances of
+    neighbours outside ``inside`` (a tile's margin), so a tile answers as the whole cloud would.
+    The distances written and their statistics are not these: they stay every point's own."""
+    out = np.asarray(d, dtype=np.float64).copy()
+    cand = np.nonzero(np.abs(out) >= min_dist)[0]
+    if not len(cand) or k <= 1:
+        return out
+    from scipy.spatial import cKDTree
+
+    cloud = np.asarray(cloud, dtype=np.float64).reshape(-1, 3)
+    own = np.nonzero(inside)[0]
+    centre = cloud[own].mean(axis=0)
+    kk = min(k, len(cloud))
+    _, idx = cKDTree(cloud - centre).query(cloud[own[cand]] - centre, k=kk)
+    idx = np.asarray(idx).reshape(len(cand), kk)
+    dist = np.full(len(cloud), np.nan)
+    dist[own] = out
+    need = np.unique(idx)
+    need = need[np.isnan(dist[need])]
+    if len(need):
+        dist[need] = measure(cloud[need])
+    med = np.median(np.abs(dist[idx]), axis=1)
+    out[cand[med < min_dist]] = np.nan
+    return out
 
 
 def cell_aggregates(xyz: np.ndarray, d: np.ndarray, *, min_dist: float, cell: float) -> Cells:
@@ -472,14 +513,20 @@ def compare_tile(
         on_tile(index, np.nonzero(in_b)[0], later, fwd, sub)
     mag = np.abs(fwd)
     hist = np.bincount(np.minimum((mag / HIST_BIN_M).astype(np.int64), _bins(cap) - 1), minlength=_bins(cap))
+    fwd_agreed = agreed(
+        b.xyz, in_b, fwd, lambda q: c2c_distances(a.xyz, q, cap=cap, signed=signed), min_dist=min_dist
+    )
+    rev_agreed = agreed(
+        a.xyz, in_a, rev, lambda q: c2c_distances(b.xyz, q, cap=cap, signed=signed), min_dist=min_dist
+    )
     return TileResult(
         points=len(later),
         changed=int((mag >= min_dist).sum()),
         far=int((mag >= far).sum()),
         sum_abs=float(mag.sum()),
         hist=hist,
-        forward=cell_aggregates(later, fwd, min_dist=min_dist, cell=cell),
-        reverse=cell_aggregates(a.xyz[in_a], rev, min_dist=min_dist, cell=cell),
+        forward=cell_aggregates(later, fwd_agreed, min_dist=min_dist, cell=cell),
+        reverse=cell_aggregates(a.xyz[in_a], rev_agreed, min_dist=min_dist, cell=cell),
     )
 
 
