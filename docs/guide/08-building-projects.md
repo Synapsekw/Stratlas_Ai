@@ -92,7 +92,7 @@ A drone's own panorama mode writes a set of photos for each sphere. {product} gr
 4. Click a stitched panorama's row, or its **Open** button, to look around inside it. **Fly to** moves the 3D view to where it was taken. A panorama that is not stitched says **Not stitched yet**; **Stitch** on its row starts it again.
 5. When you drop a folder of drone frames through **Add data** or on the window, {product} offers **Import as panoramas**, **Skip these frames** or, for a set that is not panorama frames, **Import as photos anyway**.
 
-- To remove a panorama, remove it from its layer in **Datasets**.
+- To remove drone panoramas, remove their layer in **Datasets**. The confirm lists what goes; any stitch still running stops first, then the panoramas, their source frames and stitched images move to the project's trash folder, where they stay seven days. Removing a single panorama from a layer comes later.
 - Stitching needs the processing tools (pipeline pack 0.7.0 or later, see [Settings](12-settings.md#processing-tools)).
 
 ## Drawings
