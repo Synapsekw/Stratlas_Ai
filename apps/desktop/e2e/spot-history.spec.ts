@@ -66,6 +66,18 @@ test('a photo shows its spot on both dates, steps with the keys and compares', a
   expect(Number(await head(win).getAttribute('data-distance'))).toBeLessThan(1.5);
   await win.keyboard.press('ArrowRight');
   await expect(head(win)).toHaveAttribute('data-capture', 'd2');
+  expect(await wsView(win)).toEqual(ws);
+  // founder decision 2, checked while the viewer stood on the other date: close it on d2, and the
+  // main view's date, selection and layers are still those of before
+  await win.keyboard.press('Escape');
+  await expect(dialog).toHaveCount(0);
+  expect(await mainView(win)).toEqual(before);
+
+  await goTo(win, 'Media');
+  await win.getByTestId('spot-history-open').first().click();
+  await expect(head(win)).toHaveAttribute('data-capture', 'd1');
+  await win.keyboard.press('ArrowRight');
+  await expect(head(win)).toHaveAttribute('data-capture', 'd2');
   await win.keyboard.press('ArrowLeft');
   await expect(head(win)).toHaveAttribute('data-capture', 'd1');
   expect(await wsView(win)).toEqual(ws);
@@ -109,6 +121,7 @@ test('a drone photo finds the drone photo of the other date', async ({ demoProje
   const count = Number(
     await win.getByTestId('spot-viewer').getByTestId('spot-slot-d2').getAttribute('data-count'),
   );
+  expect(count).toBeGreaterThan(0);
   const items: string[] = [];
   for (let i = 0; i < count; i++) {
     const item = await head(win).getAttribute('data-item');
@@ -131,14 +144,23 @@ async function openPanoDates(win: Page, id: string) {
   await expect.poll(async () => (await openProject(win)).id, { timeout: 30_000 }).toBe(id);
 }
 
+/** Other dates of the selection from its card in Scene's context panel (the Selection tab). */
+async function openFromSelection(win: Page) {
+  const tab = win.getByRole('tab', { name: 'Selection' });
+  await tab.click();
+  await expect(tab).toHaveAttribute('aria-selected', 'true');
+  const open = win.getByRole('region', { name: 'Selection' }).getByTestId('spot-history-open');
+  await expect(open).toBeVisible();
+  await open.click();
+  await expect(win.getByTestId('spot-viewer')).toBeVisible();
+}
+
 panoTest(
   'a 360 finds the nearest 360 of each date and shows the gaps',
   async ({ panoProject, win }) => {
     await openPanoDates(win, panoProject.id);
     await select(win, { kind: 'pano', id: 'p2', layer: 'pano-oct' });
-    if (!(await win.getByTestId('spot-history-open').first().isVisible()))
-      await win.getByRole('tab', { name: 'Selection' }).click();
-    await win.getByTestId('spot-history-open').first().click();
+    await openFromSelection(win);
     await expect(head(win)).toHaveAttribute('data-capture', 'oct');
     await expect(head(win)).toHaveAttribute('data-kind', 'pano');
     await win.keyboard.press('ArrowRight');
@@ -149,7 +171,7 @@ panoTest(
 
     // p3 of 6 Nov stands at x = 60: no 360 of September or October within 25 m
     await select(win, { kind: 'pano', id: 'p3', layer: 'pano-nov' });
-    await win.getByTestId('spot-history-open').first().click();
+    await openFromSelection(win);
     await expect(win.getByTestId('spot-viewer').getByTestId('spot-slot-sep')).toHaveAttribute(
       'data-empty',
       'true',
