@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import sys
 from pathlib import Path
 
@@ -13,18 +14,28 @@ import pytest
 
 from aio_pipelines import accel
 
+# the real add-on's lock: the fake manifests follow it, so a pack or add-on bump needs no test edit
+LOCK = json.loads(
+    (Path(__file__).resolve().parents[2] / "tools" / "pipeline-pack" / "accelerator-lock.json").read_text(
+        "utf-8"
+    )
+)
+ADDON_VERSION = LOCK["version"]
+PACK_RANGE = LOCK["packRange"]
+# a pack version the add-on fits, whatever pack is installed where the tests run
+PACK_INSIDE = re.search(r">=\s*([\d.]+)", PACK_RANGE).group(1)
 HERE = f"{sys.version_info[0]}.{sys.version_info[1]}"
 CARD = {"gpu": "Test Card", "capability": "8.9", "vramBytes": 8 << 30, "freeBytes": 6 << 30, "cupy": "14.2.0"}
 
 
-def _addon(root: Path, version: str = "0.1.0", **over) -> Path:
+def _addon(root: Path, version: str = ADDON_VERSION, **over) -> Path:
     d = root / f"pipeline-addon-cuda-{version}"
     (d / "site").mkdir(parents=True, exist_ok=True)
     doc = {
         "schema": "aio.pipeline-addon/1",
         "kind": "gpu-cuda",
         "version": version,
-        "packRange": ">=0.5.0 <0.7.0",
+        "packRange": PACK_RANGE,
         "python": HERE,
         "platform": "win32-x64",
         "runtime": {"cuda": "12.9", "minDriver": "528.33"},
@@ -40,6 +51,7 @@ def _addon(root: Path, version: str = "0.1.0", **over) -> Path:
 def _clean(monkeypatch):
     for name in (accel.ADDON_ENV, accel.GPU_ENV, accel.CACHE_ENV):
         monkeypatch.delenv(name, raising=False)
+    monkeypatch.setattr(accel, "__version__", PACK_INSIDE)
     monkeypatch.setattr(accel, "driver", lambda: {"name": "Test Card", "driver": "591.86"})
     monkeypatch.setattr(accel, "probe", lambda: dict(CARD))
     path = list(sys.path)
@@ -63,7 +75,7 @@ def test_pack_ranges(version, wanted, ok):
 
 def test_the_newest_add_on_with_a_manifest_is_found(tmp_path):
     assert accel.find_addon(tmp_path) is None
-    _addon(tmp_path, "0.1.0")
+    _addon(tmp_path, "0.0.1")
     newest = _addon(tmp_path, "0.10.0")
     _addon(tmp_path, "0.9.0")
     (tmp_path / "pipeline-addon-cuda-9.0.0").mkdir()  # no manifest: not an add-on
@@ -74,7 +86,7 @@ def test_the_newest_add_on_with_a_manifest_is_found(tmp_path):
 def test_a_ready_card_reports_what_it_is(tmp_path):
     out = accel.selftest(_addon(tmp_path))
     assert out["state"] == "ready" and "reason" not in out
-    assert out["version"] == "0.1.0" and out["cuda"] == "12.9"
+    assert out["version"] == ADDON_VERSION and out["cuda"] == "12.9"
     assert out["gpu"] == "Test Card" and out["driver"] == "591.86" and out["vramBytes"] == 8 << 30
     assert out["seconds"] >= 0
 
@@ -91,7 +103,7 @@ def test_the_add_on_comes_after_the_packs_own_libraries_on_the_path(tmp_path, mo
 
 def test_no_add_on_is_not_installed(tmp_path, monkeypatch):
     assert accel.selftest()["state"] == "not-installed"
-    assert accel.selftest(tmp_path / "pipeline-addon-cuda-0.1.0") == {
+    assert accel.selftest(tmp_path / f"pipeline-addon-cuda-{ADDON_VERSION}") == {
         "state": "not-installed",
         "reason": "The GPU add-on is not installed.",
         "seconds": pytest.approx(0, abs=5),
@@ -109,11 +121,11 @@ def test_switched_off_wins(tmp_path, monkeypatch):
 
 
 def test_an_add_on_for_another_pack_or_python_is_refused_in_words(tmp_path, monkeypatch):
-    monkeypatch.setattr(accel, "__version__", "0.7.1")
+    monkeypatch.setattr(accel, "__version__", "99.0.0")
     out = accel.selftest(_addon(tmp_path))
     assert out["state"] == "failed"
     assert out["reason"] == (
-        "GPU add-on 0.1.0 fits processing tools >=0.5.0 <0.7.0; this is 0.7.1. "
+        f"GPU add-on {ADDON_VERSION} fits processing tools {PACK_RANGE}; this is 99.0.0. "
         "Install the add-on made for this version."
     )
     with pytest.raises(accel.AddonProblem, match=r"is for Python 3\.99; the processing tools use"):
@@ -123,7 +135,7 @@ def test_an_add_on_for_another_pack_or_python_is_refused_in_words(tmp_path, monk
 
 
 def test_a_damaged_or_foreign_manifest_is_refused(tmp_path):
-    bad = _addon(tmp_path, "0.1.0")
+    bad = _addon(tmp_path)
     (bad / "manifest.json").write_text("{not json", "utf-8")
     assert accel.selftest(bad)["state"] == "failed"
     other = _addon(tmp_path, "0.2.0", schema="aio.pipeline-pack/1")
