@@ -542,6 +542,12 @@ export function createMapController(
   const HANDLE_PX = 12;
   let session: MapPointerSession | null = null;
   let grabbed: { id: string; last: Vec3 | null } | null = null;
+  /**
+   * The press that ended was a handle grab: MapLibre still sends a click after a press that moved
+   * less than 3 px, and that click is part of the drag, not a click of its own. Reset on every
+   * press.
+   */
+  let swallowClick = false;
 
   function handleAt(point: { x: number; y: number }): string | null {
     if (!session?.handles || !proj) return null;
@@ -561,6 +567,7 @@ export function createMapController(
     const g = grabbed;
     if (!g) return;
     grabbed = null;
+    swallowClick = true;
     window.removeEventListener('mouseup', onWindowUp);
     map.dragPan.enable();
     session?.onDragEnd?.(g.id, g.last);
@@ -578,6 +585,7 @@ export function createMapController(
     if (!session) return;
     endGrab();
     session = null;
+    swallowClick = false;
     window.removeEventListener('keydown', onSessionKey);
     const drawing = draw?.()?.mode != null || picking !== null;
     map.getCanvas().style.cursor = drawing ? 'crosshair' : '';
@@ -597,6 +605,7 @@ export function createMapController(
   }
   function onSessionDown(e: MapLayerMouseEvent): void {
     if (!session) return;
+    swallowClick = false;
     const id = handleAt(e.point);
     if (id === null) return;
     // the handle moves, the map does not
@@ -1305,8 +1314,12 @@ export function createMapController(
       return;
     }
     if (session) {
-      // a session takes every click; a drag of a handle never reaches here (MapLibre sends no
-      // click after a press that moved)
+      // a session takes every click, except the one MapLibre sends after a handle grab that
+      // moved less than 3 px (that press was a drag)
+      if (swallowClick) {
+        swallowClick = false;
+        return;
+      }
       if (proj) session.onClick?.(proj.toLocal(e.lngLat.lng, e.lngLat.lat));
       return;
     }

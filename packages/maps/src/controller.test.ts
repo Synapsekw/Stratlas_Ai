@@ -305,6 +305,24 @@ describe('map pointer session (placing a walk: hover, click, handles)', () => {
     expect(map.dragPan.enable).toHaveBeenCalledTimes(1);
   });
 
+  it('a press on a handle that barely moves is a drag, not a click', () => {
+    const { ctl, map, proj } = startWithProject();
+    const onClick = vi.fn();
+    const onDragEnd = vi.fn();
+    ctl.pointerSession({ onClick, onDragEnd, handles: () => [{ id: 'end', local: [40, 0, -30] }] });
+    // MapLibre still sends a click after a press that moved less than 3 px
+    map.fire('mousedown', ev(proj, [40, 0, -30]));
+    map.fire('mouseup', ev(proj, [40, 0, -30]));
+    map.fire('click', ev(proj, [40, 0, -30]));
+    expect(onDragEnd).toHaveBeenCalledTimes(1);
+    expect(onClick).not.toHaveBeenCalled();
+    // the next ordinary press and click is reported
+    map.fire('mousedown', ev(proj, [0, 0, 0]));
+    map.fire('mouseup', ev(proj, [0, 0, 0]));
+    map.fire('click', ev(proj, [0, 0, 0]));
+    expect(onClick).toHaveBeenCalledTimes(1);
+  });
+
   it('a release outside the map ends the drag, and Escape cancels and ends it', () => {
     const { ctl, map, proj } = startWithProject();
     const onDragEnd = vi.fn();
