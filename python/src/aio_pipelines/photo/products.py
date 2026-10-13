@@ -115,7 +115,7 @@ def fuse_key(dkey: str, settings, tile_m: float) -> str:
 
     from .fuse import CHUNK_FORMAT
 
-    return _hash({"d": dkey, "fuse": asdict(settings), "chunk": CHUNK_FORMAT, "tile": tile_m})
+    return _hash({"d": dkey, "fuse": asdict(settings), "chunk": CHUNK_FORMAT, "rule": 2, "tile": tile_m})
 
 
 def merge_key(ckey: str, voxel: float, budget: int, rule) -> str:

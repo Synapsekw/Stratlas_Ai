@@ -280,18 +280,24 @@ def test_fusion_v2_asks_two_photos_to_agree_within_three_gsd():
     assert FuseSettings().min_agree == 2
 
 
-def test_one_neighbour_alone_confirms_nothing():
-    from aio_pipelines.photo import card as K
-
+def test_fusion_is_edge_aware():
     s = ps.scene()
     a, b, c = s.views[5], s.views[6], s.views[4]
     cam = a.camera
     da = D.zbuffer(cam, a, s.points)
-    near = [(v, cam, D.zbuffer(cam, v, s.points)) for v in (b, c)]
-    b_np = K.numpy_backend()
-    _, _, keep_one = K.fuse_arrays(b_np, a, cam, da, near[:1], FuseSettings(), K.Rays(b_np))
-    _, _, keep_two = K.fuse_arrays(b_np, a, cam, da, near, FuseSettings(), K.Rays(b_np))
-    assert not keep_one.any() and keep_two.sum() > 1000
+    db, dc = D.zbuffer(cam, b, s.points), D.zbuffer(cam, c, s.points)
+    ok = np.isfinite(da)
+    # one neighbour with depth there, and it agrees: kept (the block's edge)
+    _, one = consistent(a, cam, da, [(b, cam, db)], FuseSettings())
+    assert (one[ok & (one >= 1)] >= 2).all() and (one >= 2).sum() > 1000
+    # two neighbours with depth there, only one agrees: dropped
+    far = np.where(np.isfinite(dc), dc * 1.3, dc)
+    _, two = consistent(a, cam, da, [(b, cam, db), (c, cam, far)], FuseSettings())
+    assert ((one >= 2) & (two < 2)).sum() > 1000  # where both can check, the disagreeing one vetoes
+    assert (two >= 2).sum() < (one >= 2).sum() and (two >= 2).any()  # but the edge pixels stay
+    # no neighbour sees it: dropped
+    _, agree = consistent(a, cam, da, [], FuseSettings())
+    assert agree.max() == 0
 
 
 def test_a_chunk_round_trips_within_a_tenth_of_a_millimetre():

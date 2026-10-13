@@ -162,12 +162,11 @@ def test_the_processed_dsm_and_dtm_meet_the_targets(processed):
         edge = (x > x0 - b) & (x < x1 + b) & (y > y0 - b) & (y < y1 + b)
         edge &= ~((x > x0 + b) & (x < x1 - b) & (y > y0 + b) & (y < y1 - b))
         ok = inner & ~edge
-        # Fusion v2 keeps a point only where two neighbouring photos agree, so the edge of the
-        # photo coverage (one corner, x 19 to 24 m, y -18 to -8 m) thins out: measured 0.9793
-        # with the old merge (voxel mean only) and 0.9721 with merge v2 (13 Oct 2026).
-        assert np.isfinite(z[ok]).mean() > 0.97
-        # Away from the coverage edge (6 m in x, 4 m in y; the building and most of the pile are inside)
-        # the site has no holes: measured 1.0 with merge v2.
+        # Fusion v2 is edge-aware (one agreeing neighbour is enough where fewer than two can
+        # check a pixel), so the edge of the photo block keeps its points.
+        assert np.isfinite(z[ok]).mean() > 0.98
+        # Away from the coverage edge (6 m in x, 4 m in y; the building and most of the pile are
+        # inside) the site has no holes.
         core = ok & (np.abs(x) < 18) & (np.abs(y) < 14)
         assert np.isfinite(z[core]).mean() >= 0.995
         if name == "dsm":

@@ -122,6 +122,8 @@ def consistent(
     ok = np.isfinite(depth)
     agree = np.zeros(depth.shape, np.int32)
     flat = pts[ok]
+    got = np.zeros(len(flat), np.int32)
+    avail = np.zeros(len(flat), np.int32)
     for ov, oc, od in others:
         x, y, z = ov.project(flat, oc)
         inside = (z > 0) & (x >= 0) & (y >= 0) & (x < oc.width) & (y < oc.height)
@@ -130,9 +132,12 @@ def consistent(
         dz = od[yi, xi]
         with np.errstate(invalid="ignore"):
             good = inside & np.isfinite(dz) & (np.abs(dz - z) <= agree_limit(z, settings))
-        a = agree[ok]
-        a += good.astype(np.int32)
-        agree[ok] = a
+        got += good.astype(np.int32)
+        avail += (inside & np.isfinite(dz)).astype(np.int32)
+    # edge-aware: where fewer than ``min_agree`` neighbours can check a pixel (the block's edge),
+    # one agreeing neighbour is enough; a pixel nobody confirms is never kept
+    got[(avail < settings.min_agree) & (got >= 1)] = settings.min_agree
+    agree[ok] = got
     return pts, agree
 
 

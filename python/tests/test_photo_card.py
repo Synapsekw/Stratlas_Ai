@@ -118,13 +118,17 @@ def test_a_photo_nothing_overlaps_is_empty_and_a_cancel_gets_through(backend):
         )
 
 
-@pytest.mark.parametrize("rule", ["default", "three-gsd"])
+@pytest.mark.parametrize("rule", ["default", "three-gsd", "one-neighbour", "one-disagrees"])
 def test_fusing_a_photo_keeps_the_points_of_the_reference(backend, rule):
     s = ps.scene()
     a, others = s.views[5], [s.views[4], s.views[6]]
     cam = a.camera
     da = D.zbuffer(cam, a, s.points)
     near = [(v, cam, D.zbuffer(cam, v, s.points)) for v in others]
+    if rule == "one-neighbour":  # the block's edge: one neighbour can check, and it agrees
+        near = near[:1]
+    elif rule == "one-disagrees":  # two can check, one is pushed 30 % further away
+        near[1] = (near[1][0], cam, near[1][2] * 1.3)
     settings = FuseSettings() if rule == "default" else FuseSettings.for_run(ps.GSD / 2, 1.0)
     pts, agree = consistent(a, cam, da, near, settings)
     nrm = normals_of(pts, a.centre)

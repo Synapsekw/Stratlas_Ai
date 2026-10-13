@@ -103,11 +103,13 @@ def test_targets_sit_where_they_were_surveyed(processed):
         assert ds.tags(ns="IMAGE_STRUCTURE").get("LAYOUT") == "COG"
         assert ds.count == 4 and ds.crs.to_epsg() == ps.EPSG and ds.overviews(1)
         grey = ds.read([1, 2, 3]).astype(float).mean(0)
+        alpha = ds.read(4)
         t = ds.transform
     o = np.array(ps.ORIGIN)
     for tx, ty in ps.TARGETS:
         c = (tx + o[0] - t.c) / t.a - 0.5
         r = (t.f - (ty + o[1])) / t.a - 0.5
+        assert alpha[round(r), round(c)] == 255, f"coverage hole at target {(tx, ty)}"
         rr, cc = _checker_centre(grey, r, c, t.a)
         assert np.hypot(rr - r, cc - c) * t.a < 2 * ps.GSD, (tx, ty)
 
