@@ -234,4 +234,25 @@ describe('WalkSheetOverlay', () => {
       'true',
     );
   });
+
+  it('a handle drag does not bubble its moves to the picture (no hover under the handle)', () => {
+    const parentMove = vi.fn();
+    render(
+      <div onPointerMove={parentMove}>
+        <WalkSheetOverlay
+          drawings={[
+            drawing({ pins: [{ at: [10, 10], n: 1, index: 0, active: true, role: 'start' }] }),
+          ]}
+          scale={1}
+          toImage={(): [number, number] => [5, 5]}
+          onPinDrag={vi.fn()}
+        />
+      </div>,
+    );
+    const h = host.querySelector('[data-testid="walk-handle-start"]');
+    if (!h) throw new Error('no handle');
+    pointer(h, 'pointerdown', 0, 0);
+    pointer(h, 'pointermove', 5, 5);
+    expect(parentMove).not.toHaveBeenCalled();
+  });
 });

@@ -123,6 +123,8 @@ export function WalkSheetOverlay({
           onPointerMove: (e: ReactPointerEvent<SVGGElement>) => {
             const d = drag.current;
             if (d?.id !== e.pointerId) return;
+            // the picture under the handle sees no hover while it is dragged
+            e.stopPropagation();
             const px = toImage(e.clientX, e.clientY, e.currentTarget);
             if (!px.every(Number.isFinite)) return;
             d.last = clamp(px);

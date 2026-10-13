@@ -306,7 +306,7 @@ export function RasterView({
         };
       }}
       onPointerMove={(e) => {
-        if (!drag.current && pick?.onHover && src && view) {
+        if (!drag.current && e.buttons === 0 && pick?.onHover && src && view) {
           const r = e.currentTarget.getBoundingClientRect();
           const x = (e.clientX - r.left - view.x) / view.scale;
           const y = (e.clientY - r.top - view.y) / view.scale;
