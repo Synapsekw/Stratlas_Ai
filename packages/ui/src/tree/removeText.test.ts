@@ -99,6 +99,25 @@ describe('removeText', () => {
     );
   });
 
+  it('a date that takes a run: the run is listed with what goes', () => {
+    const x = removeText(
+      [{ capture: 'c3' }],
+      plan({
+        layers: [{ id: 'r9-ortho', name: 'Ortho', kind: 'raster', why: { filedUnder: 'c3' } }],
+        runs: [{ id: 'r9', status: 'done', why: { filedUnder: 'c3' } }],
+        captures: ['c3'],
+        keptOutside: ['C:/Photos'],
+        files: ['photogrammetry/r9', 'rasters/r9-ortho'],
+        bytes: 10,
+      }),
+      t,
+      o,
+    );
+    expect(x.asked).toEqual(['The survey date 2 Nov 2026', '1 dataset filed under this date']);
+    expect(x.also).toEqual(['Run r9']);
+    expect(x.keeps).toEqual(['Your original photos are not touched.']);
+  });
+
   it('an empty date: only the date goes, and nothing goes to the project trash', () => {
     const x = removeText([{ capture: 'c3' }], plan({ captures: ['c3'] }), t, o);
     expect(x.title).toBe('Delete everything from 2 Nov 2026?');

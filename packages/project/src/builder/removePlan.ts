@@ -354,6 +354,11 @@ export async function planRemoval(
     }
   }
 
+  /** A run's layers: the ones it lists and the `<run>-<product>` ones it may not have listed. */
+  const runLayers = (id: string) => [
+    ...(pf.runs.find((r) => r.id === id)?.layers ?? []),
+    ...RUN_PRODUCTS.map((s) => `${id}-${s}`),
+  ];
   for (let grew = true; grew;) {
     grew = false;
     for (const r of pf.runs) {
@@ -363,10 +368,21 @@ export async function planRemoval(
         grew = true;
       }
     }
-    for (const id of [...runWhy.keys()]) {
-      const listed = pf.runs.find((r) => r.id === id)?.layers ?? [];
-      for (const l of [...listed, ...RUN_PRODUCTS.map((s) => `${id}-${s}`)])
-        if (take(l, { madeBy: id })) grew = true;
+    for (const id of [...runWhy.keys()])
+      for (const l of runLayers(id)) if (take(l, { madeBy: id })) grew = true;
+    // a date takes a run whose layers all go with it (founder, 13 Oct 2026: deleting the date
+    // removes all of it), also a run read from outside folders; the folders stay
+    for (const r of pf.runs) {
+      if (runWhy.has(r.id)) continue;
+      const own = runLayers(r.id).filter((l) => byId.has(l));
+      if (own.length === 0 || !own.every((l) => layerWhy.has(l))) continue;
+      const filed = own
+        .map((l) => layerWhy.get(l))
+        .find((why) => typeof why === 'object' && 'filedUnder' in why);
+      if (filed !== undefined) {
+        runWhy.set(r.id, filed);
+        grew = true;
+      }
     }
     for (const c of pf.changes) {
       if (changeWhy.has(c.id)) continue;

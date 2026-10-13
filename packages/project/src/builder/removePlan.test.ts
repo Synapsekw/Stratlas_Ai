@@ -104,6 +104,66 @@ describe('planRemoval', () => {
     expect(p.captures).not.toContain('c2');
   });
 
+  it('a date takes a run read from outside folders whose layers all go, never the folders', async () => {
+    // founder 13 Oct 2026: deleting the date removes all of it, the run folder and its jobs too
+    const run = '20261014-0700';
+    const other = '20261014-0800';
+    await put(
+      `photogrammetry/${run}/run.json`,
+      JSON.stringify({
+        id: run,
+        status: 'done',
+        photos: { source: { folders: [OUTSIDE] } },
+        outputs: { layers: [`${run}-ortho`], tilesets: [] },
+      }),
+    );
+    // a second run with one layer in c2 and one in c3: c3 stays, so the run stays
+    await put(
+      `photogrammetry/${other}/run.json`,
+      JSON.stringify({
+        id: other,
+        status: 'done',
+        photos: { source: { folders: [OUTSIDE] } },
+        outputs: { layers: [`${other}-ortho`, `${other}-dsm`], tilesets: [] },
+      }),
+    );
+    for (const id of [`${run}-ortho`, `${run}-dsm`, `${other}-ortho`, `${other}-dsm`])
+      await put(`rasters/${id}/tiles.json`, '{}');
+    await put(`jobs/job-out/job.log`);
+    const m = await readManifestFile(root);
+    const r = (id: string, capture: string): Layer => ({
+      kind: 'raster',
+      id,
+      name: id,
+      visible: true,
+      src: { path: `rasters/${id}/tiles.json` },
+      role: 'dsm',
+      format: 'kit-pyramid',
+      capture,
+    });
+    await writeManifestFile(root, {
+      ...m,
+      layers: [
+        ...m.layers,
+        r(`${run}-ortho`, 'c2'),
+        r(`${run}-dsm`, 'c2'), // not listed by the run: found by the <run>-* convention
+        r(`${other}-ortho`, 'c2'),
+        r(`${other}-dsm`, 'c3'),
+      ],
+    });
+    const jobs = [{ id: 'job-out', pipeline: 'photo.align', status: 'done', params: { run } }];
+    const p = await planRemoval(root, [{ capture: 'c2' }], { jobs });
+    expect(p.refused).toBeUndefined();
+    expect(p.runs).toEqual([{ id: run, status: 'done', why: { filedUnder: 'c2' } }]);
+    expect(p.files).toEqual(
+      expect.arrayContaining([`photogrammetry/${run}`, `rasters/${run}-dsm`, 'jobs/job-out']),
+    );
+    expect(p.files).not.toContain(`photogrammetry/${other}`);
+    expect(p.files).not.toContain(`photogrammetry/${RUN_FOLDERS}`); // it has no layers at all
+    expect(p.jobs).toEqual(['job-out']);
+    expect(p.keptOutside).toEqual([OUTSIDE]);
+  });
+
   it('keeps a date that a volume names, and says so', async () => {
     const p = await planRemoval(root, [{ capture: 'c3' }]);
     expect(ids(p.layers)).toEqual(['dsm-c']);
