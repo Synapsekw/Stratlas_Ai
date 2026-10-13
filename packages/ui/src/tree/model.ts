@@ -246,3 +246,5 @@ export function visibilityOf(
 export function eyeTarget(v: Visibility): boolean {
   return v !== 'all';
 }
+
+export { NO_MARKS, nextMarks, type MarkMods, type Marks } from './marks';

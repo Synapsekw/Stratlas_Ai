@@ -148,30 +148,42 @@ describe('walk rows', () => {
     expect(log).toEqual(['open walk-a', 'place walk-a']);
   });
 
-  it('removes only after the inline confirm, and Cancel keeps the walk', () => {
-    const log: string[] = [];
+  it('Remove on a walk row calls onRemove at once (the shared dialog asks)', () => {
+    const removed: string[] = [];
     const { click, q } = mount({
-      walkActions: {
-        onOpen: () => undefined,
-        onRemove: (it) => log.push(`remove ${it.id}`),
-      },
+      walkActions: { onOpen: () => undefined, onRemove: (it) => removed.push(it.id) },
     });
     click('[data-testid="walk-remove-walk-a"]');
-    expect(log).toEqual([]);
-    expect(q('[data-testid="walk-remove-confirm"] .trow-confirm-q')?.textContent).toBe(
-      'Remove Ground floor? Its files stay in the project trash for seven days.',
-    );
-    expect(q('[role="dialog"]')).toBeNull();
-    click('[data-testid="walk-remove-cancel"]');
+    expect(removed).toEqual(['walk-a']);
     expect(q('[data-testid="walk-remove-confirm"]')).toBeNull();
-    // Cancel gives focus back to the Remove walk button it came from
-    expect(document.activeElement).toBe(q('[data-testid="walk-remove-walk-a"]'));
-    click('[data-testid="walk-remove-walk-a"]');
-    click('[data-testid="walk-remove-yes"]');
-    expect(log).toEqual(['remove walk-a']);
-    expect(q('[data-testid="walk-remove-confirm"]')).toBeNull();
-    // Remove gives focus to the row (the list takes it away when the walk goes)
-    expect(document.activeElement).toBe(q('[data-testid="tree-row-walk-a"]'));
+  });
+
+  it('Ctrl+click and Shift+click mark rows; a plain click selects', () => {
+    const marks: [string, boolean, boolean][] = [];
+    const selected: string[] = [];
+    const { q } = mount({
+      marked: new Set(['walk-a']),
+      onMark: (it, m) => marks.push([it.id, m.ctrl, m.shift]),
+      onSelect: (it) => selected.push(it.id),
+    });
+    const row = q('[data-testid="tree-row-walk-a"]');
+    if (!row) throw new Error('no row');
+    expect(row.className).toContain('marked');
+    expect(row.getAttribute('aria-selected')).toBe('true');
+    act(() => {
+      row.dispatchEvent(new MouseEvent('click', { bubbles: true, ctrlKey: true }));
+    });
+    act(() => {
+      row.dispatchEvent(new MouseEvent('click', { bubbles: true, shiftKey: true }));
+    });
+    act(() => {
+      row.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    });
+    expect(marks).toEqual([
+      ['walk-a', true, false],
+      ['walk-a', false, true],
+    ]);
+    expect(selected).toEqual(['walk-a']);
   });
 
   it('offers no Place or Remove without their callbacks (a package)', () => {

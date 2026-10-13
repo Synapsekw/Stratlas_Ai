@@ -368,6 +368,11 @@ describe('DateTree: menus and renaming', () => {
     expect(onRename).toHaveBeenCalledWith('oct', '');
   });
 
+  it('marks reach the rows inside date folders', () => {
+    renderWith({ marked: new Set(['m-nov']) });
+    expect(q('tree-row-m-nov')?.className).toContain('marked');
+  });
+
   it('F2 on a date name starts renaming it, never on Every date', () => {
     const onRenameStart = vi.fn();
     render('nov', {}, vi.fn(), { onRenameStart });

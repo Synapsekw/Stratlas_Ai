@@ -1,12 +1,4 @@
-import {
-  Fragment,
-  useLayoutEffect,
-  useRef,
-  useState,
-  type DragEvent,
-  type MouseEvent,
-  type ReactNode,
-} from 'react';
+import { Fragment, useState, type DragEvent, type MouseEvent, type ReactNode } from 'react';
 import { useT } from '../i18n';
 import { Icon } from '../icons/Icon';
 import {
@@ -18,6 +10,7 @@ import {
   type TreeItem,
   type Visibility,
 } from './model';
+import type { MarkMods } from './marks';
 
 export interface DatasetTreeProps {
   groups: readonly TreeGroup[];
@@ -80,6 +73,10 @@ export interface DatasetTreeProps {
    * in the row). Place and Remove are left out where nothing may change (a package).
    */
   walkActions?: WalkRowActions | undefined;
+  /** Layer ids marked for a group action (Delete). */
+  marked?: ReadonlySet<string> | undefined;
+  /** Ctrl+click or Shift+click on a layer row; without it a modified click selects as before. */
+  onMark?: ((item: TreeItem, mods: MarkMods) => void) | undefined;
 }
 
 /** A short state word on a row: `info` for a step still to take, `warn` for something to check. */
@@ -171,26 +168,6 @@ export function DatasetTree(props: DatasetTreeProps) {
   const [showAll, setShowAll] = useState<Partial<Record<TreeGroupKind, boolean>>>({});
   /** Flight rows the user opened or closed; others open while they hold the active clip. */
   const [flightOpen, setFlightOpen] = useState<Record<string, boolean>>({});
-  /** The walk row whose Remove waits for its confirm, shown under the row. */
-  const [removing, setRemoving] = useState<string | null>(null);
-  /** The rows drawn now, by item id: where focus goes back to when the confirm closes. */
-  const rowEls = useRef(new Map<string, HTMLDivElement>());
-  /** Focus a row again, or (Cancel) its Remove walk button, shown while the row holds focus. */
-  const refocus = (id: string, toRemove: boolean) => {
-    const el = rowEls.current.get(id);
-    if (!el) return;
-    el.focus();
-    if (toRemove) el.querySelector<HTMLElement>('.tact-remove')?.focus();
-  };
-  /** Where focus goes once the confirm has left the page (its buttons held focus till then). */
-  const pendingFocus = useRef<{ id: string; toRemove: boolean } | null>(null);
-  useLayoutEffect(() => {
-    const p = pendingFocus.current;
-    if (!p) return;
-    pendingFocus.current = null;
-    refocus(p.id, p.toRemove);
-  });
-
   /** Open, Place walk and Remove walk on a walk row; they stand in for the length and badge on hover. */
   const walkButtons = (it: TreeItem) => {
     const acts = it.layerKind === 'walk' ? props.walkActions : undefined;
@@ -243,54 +220,10 @@ export function DatasetTree(props: DatasetTreeProps) {
             t('walk.row.remove', { name: it.name }),
             t('walk.row.removeTip'),
             () => {
-              setRemoving(it.id);
+              onRemove(it);
             },
           )}
       </span>
-    );
-  };
-
-  /** The inline confirm of a walk's Remove: no dialog, the row says what happens to the files. */
-  const removeConfirm = (it: TreeItem) => {
-    const onRemove = it.layerKind === 'walk' ? props.walkActions?.onRemove : undefined;
-    if (!onRemove || removing !== it.id) return null;
-    return (
-      <div className="trow-confirm" role="group" data-testid="walk-remove-confirm">
-        <span className="trow-confirm-q">{t('walk.row.confirm', { name: it.name })}</span>
-        <span className="trow-confirm-acts">
-          <button
-            type="button"
-            className="btn sm danger"
-            data-testid="walk-remove-yes"
-            onClick={() => {
-              setRemoving(null);
-              onRemove(it);
-              pendingFocus.current = { id: it.id, toRemove: false };
-            }}
-          >
-            {t('walk.row.confirmYes')}
-          </button>
-          <button
-            type="button"
-            className="btn sm ghost"
-            data-testid="walk-remove-cancel"
-            // focus stays in the row's neighbourhood: Escape cancels as the button does
-            autoFocus
-            onClick={() => {
-              setRemoving(null);
-              pendingFocus.current = { id: it.id, toRemove: true };
-            }}
-            onKeyDown={(e) => {
-              if (e.key === 'Escape') {
-                setRemoving(null);
-                pendingFocus.current = { id: it.id, toRemove: true };
-              }
-            }}
-          >
-            {t('walk.row.confirmNo')}
-          </button>
-        </span>
-      </div>
     );
   };
 
@@ -328,8 +261,8 @@ export function DatasetTree(props: DatasetTreeProps) {
   const row = (it: TreeItem, sub: boolean) => {
     const off = it.layerId ? hidden[it.layerId] === true : false;
     const sel = it.id === selectedId;
-    const confirm = removeConfirm(it);
-    const extra = confirm ?? props.rowExtra?.(it) ?? null;
+    const marked = it.layerId !== undefined && props.marked?.has(it.layerId) === true;
+    const extra = props.rowExtra?.(it) ?? null;
     const badge = props.rowBadge?.(it) ?? null;
     const walkActs = walkButtons(it);
     const drawingSettings = it.drawing === true ? props.onDrawingSettings : undefined;
@@ -337,19 +270,21 @@ export function DatasetTree(props: DatasetTreeProps) {
       <div
         key={it.id}
         role="treeitem"
-        aria-selected={sel}
+        aria-selected={sel || marked}
         // the badge hides behind the row actions on hover and focus; the name still carries it
         aria-label={badge ? [it.name, it.meta, badge.text].filter(Boolean).join(', ') : undefined}
-        ref={(el) => {
-          if (el) rowEls.current.set(it.id, el);
-          else rowEls.current.delete(it.id);
-        }}
         tabIndex={0}
-        className={`titem${sub ? ' sub' : ''}${sel ? ' sel' : ''}${off ? ' hidden' : ''}${walkActs ? ' has-acts' : ''}`}
+        className={`titem${sub ? ' sub' : ''}${sel ? ' sel' : ''}${marked ? ' marked' : ''}${off ? ' hidden' : ''}${walkActs ? ' has-acts' : ''}`}
         title={it.name}
         data-testid={it.layerId ? `tree-row-${it.layerId}` : undefined}
         {...moving(it)}
-        onClick={() => {
+        onClick={(e) => {
+          const mods = { ctrl: e.ctrlKey || e.metaKey, shift: e.shiftKey };
+          if ((mods.ctrl || mods.shift) && props.onMark && it.layerId) {
+            e.preventDefault();
+            props.onMark(it, mods);
+            return;
+          }
           props.onSelect(it);
         }}
         onKeyDown={(e) => {
