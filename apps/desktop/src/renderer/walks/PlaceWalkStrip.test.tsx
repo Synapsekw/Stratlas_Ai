@@ -281,6 +281,10 @@ describe('PlaceWalkStrip: the path check', () => {
     await open(walkWithoutPath(), { process });
     expect(byTest('walk-place-notice')?.getAttribute('data-state')).toBe('none');
     expect(byTest('walk-place-process')?.textContent).toBe('Process walk');
+    // the one way forward from the notice is the primary action
+    expect(
+      [...host.querySelectorAll('.primary')].map((b) => b.getAttribute('data-testid')),
+    ).toEqual(['walk-place-process']);
     click(byTest('walk-place-process'));
     expect(process).toHaveBeenCalledTimes(1);
   });
@@ -305,14 +309,18 @@ describe('PlaceWalkStrip: the path check', () => {
     );
   });
 
-  it('why Process walk did not start shows in the hint', async () => {
+  it('why Process walk did not start shows beside the notice sentence', async () => {
     await open(walkWithoutPath(), {
       process: () => Promise.resolve('The original video is not found'),
     });
     click(byTest('walk-place-process'));
     await flush();
-    expect(hint()).toBe('The original video is not found');
-    expect(byTest('walk-place-hint')?.className).toContain('bad');
+    expect(hint()).toBe(
+      'This walk is not processed yet, so its path is unknown. The original video is not found',
+    );
+    expect(q('[data-testid="walk-place-notice"] .wplace-problem')?.textContent).toBe(
+      'The original video is not found',
+    );
   });
 
   it('pins-only note once placed anyway, none for a walk with a path', async () => {
@@ -328,6 +336,30 @@ describe('PlaceWalkStrip: the path check', () => {
 });
 
 describe('PlaceWalkStrip: placing', () => {
+  it('Esc on End takes the start back', async () => {
+    const { session } = await open(walkWithPath());
+    act(() => {
+      session.getState().click([0, 0], 0);
+    });
+    expect(strip()?.getAttribute('data-step')).toBe('end');
+    act(() => {
+      window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', cancelable: true }));
+    });
+    expect(strip()?.getAttribute('data-step')).toBe('start');
+    expect(session.getState().pins).toEqual([]);
+    expect(hint()).toBe(SAY_START);
+    // an Escape another handler took (a 3D drag) leaves the start alone
+    act(() => {
+      session.getState().click([0, 0], 0);
+    });
+    act(() => {
+      const e = new KeyboardEvent('keydown', { key: 'Escape', cancelable: true });
+      e.preventDefault();
+      window.dispatchEvent(e);
+    });
+    expect(strip()?.getAttribute('data-step')).toBe('end');
+  });
+
   it('the hint follows the steps and says when the end is too close', async () => {
     const { session } = await open(walkWithPath());
     expect(strip()?.getAttribute('data-step')).toBe('start');
@@ -335,7 +367,7 @@ describe('PlaceWalkStrip: placing', () => {
     act(() => {
       session.getState().click([0, 0], 0);
     });
-    expect(hint()).toBe('Click where the walk ended.');
+    expect(hint()).toBe('Click where the walk ended. Esc moves the start.');
     act(() => {
       session.getState().hover([2, 0], 0);
     });
@@ -681,7 +713,7 @@ describe('PlaceWalkStrip: save, cancel, remove', () => {
     click(
       [...host.querySelectorAll('button')].find((b) => b.textContent === 'Keep placing') ?? null,
     );
-    expect(hint()).toBe('Click where the walk ended.');
+    expect(hint()).toBe('Click where the walk ended. Esc moves the start.');
     click(byTest('walk-place-cancel'));
     click(byTest('walk-place-discard'));
     expect(ctx.session.getState().layerId).toBeNull();
@@ -709,6 +741,40 @@ describe('PlaceWalkStrip: save, cancel, remove', () => {
     await flush();
     expect(save).toHaveBeenCalledWith('walk-a', { walk: null });
     expect(ctx.ui.getState().layerId).toBeNull();
+  });
+
+  it('Remove placement is not offered for an unplaced calibration', async () => {
+    await open(
+      placedWalk({
+        place: {
+          pins: [{ t: 0, surface: '@model', at: [0, 0] }],
+          yawOffsetDeg: 0,
+          heightM: 1.7,
+          quality: 'unplaced',
+        },
+      }),
+    );
+    expect(byTest('walk-place-remove')).toBeNull();
+  });
+
+  it('the Remove question takes the focus, and Esc gives it back', async () => {
+    await open(placedWalk());
+    const remove = byTest('walk-place-remove');
+    click(remove);
+    const keep = [...host.querySelectorAll('button')].find((b) => b.textContent === 'Keep it');
+    expect(document.activeElement).toBe(keep);
+    const controls = remove?.getAttribute('aria-controls');
+    expect(controls ? document.getElementById(controls)?.textContent : null).toContain(
+      'Remove this placement?',
+    );
+    act(() => {
+      keep?.dispatchEvent(
+        new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }),
+      );
+    });
+    expect(byTest('walk-place-remove-yes')).toBeNull();
+    expect(document.activeElement).toBe(byTest('walk-place-remove'));
+    expect(remove?.getAttribute('aria-expanded')).toBe('false');
   });
 
   it('Keep it closes the question; a refused remove says why', async () => {

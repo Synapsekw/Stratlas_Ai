@@ -1,7 +1,15 @@
 import type { WalkLayer } from '@aio/schema';
 import { formatDate, Icon, t } from '@aio/ui';
 import { useWorkspace, workspace } from '@aio/workspace';
-import { useEffect, useId, useMemo, useState, type KeyboardEvent, type ReactNode } from 'react';
+import {
+  useEffect,
+  useId,
+  useMemo,
+  useRef,
+  useState,
+  type KeyboardEvent,
+  type ReactNode,
+} from 'react';
 import { useStore, type StoreApi } from 'zustand';
 import { createStore } from 'zustand/vanilla';
 import { drawings as drawingsStore } from '../drawings/store';
@@ -44,7 +52,7 @@ import './placeWalk.css';
 
 const SAY = {
   start: 'Click where the walk started. Its shape follows the pointer.',
-  end: 'Click where the walk ended.',
+  end: 'Click where the walk ended. Esc moves the start.',
   tooClose: 'Put the end at least 5 m from the start.',
   placed: 'Drag Start or End to adjust the walk, then Save.',
   dragRefused: 'Start and End stay at least 5 m apart.',
@@ -113,21 +121,34 @@ export function PlaceWalkStrip({
   const [removeRefused, setRemoveRefused] = useState<{ id: string; error: string } | null>(null);
   const askRemove = askRemoveFor !== null && askRemoveFor === u.layerId;
   const removeError = removeRefused?.id === u.layerId ? removeRefused.error : null;
-  // Esc lets go of a pin waiting to be moved; it stays where it is (bubble phase: a 3D drag
-  // stops its own Escape before it gets here)
-  const movingPin = st.armed === 'move' ? st.moving : null;
+  const askId = useId();
+  const removeRef = useRef<HTMLButtonElement>(null);
+  const keepRef = useRef<HTMLButtonElement>(null);
+  // the question takes the focus when it opens, so a keyboard answers it at once
   useEffect(() => {
-    if (movingPin === null) return;
+    if (askRemove) keepRef.current?.focus();
+  }, [askRemove]);
+  const closeAsk = () => {
+    setAskRemoveFor(null);
+    removeRef.current?.focus();
+  };
+  // Esc lets go of a pin waiting to be moved (it stays where it is), and on End takes the start
+  // back (bubble phase: a 3D drag or an open question stops its own Escape before it gets here)
+  const movingPin = st.armed === 'move' ? st.moving : null;
+  const onEnd = st.step === 'end';
+  useEffect(() => {
+    if (movingPin === null && !onEnd) return;
     const onKey = (e: globalThis.KeyboardEvent) => {
       if (e.key !== 'Escape' || e.defaultPrevented) return;
       e.preventDefault();
-      session.getState().armMove(movingPin);
+      if (movingPin !== null) session.getState().armMove(movingPin);
+      else session.getState().back();
     };
     window.addEventListener('keydown', onKey);
     return () => {
       window.removeEventListener('keydown', onKey);
     };
-  }, [movingPin, session]);
+  }, [movingPin, onEnd, session]);
   const walk = flow.walk();
   if (u.layerId === null || walk?.id !== u.layerId || st.layerId !== u.layerId) return null;
 
@@ -135,21 +156,30 @@ export function PlaceWalkStrip({
   const pinsOnly = u.inputs.raw === null || u.inputs.raw.source === 'pins-only';
   const enough = st.pins.length >= 2;
   const problem = removeError ?? u.note ?? st.error;
-  const hint = problem ?? hintFor(st, pathState);
+  const checking = st.step === 'check';
+  // on the check the notice's sentence stays beside a problem: why the path is unknown still holds
+  const hint = checking ? hintFor(st, pathState) : (problem ?? hintFor(st, pathState));
   // only the fit's own refusal stops a save; a passing note (a drawing not ready) does not
   const refused = (st.fit?.error ?? null) !== null;
-  const checking = st.step === 'check';
   const fineTuning = st.step === 'fine-tune';
 
   const hintLine = (
     <p
-      className={problem ? 'dplace-say wplace-hint bad' : 'dplace-say wplace-hint'}
+      className={problem && !checking ? 'dplace-say wplace-hint bad' : 'dplace-say wplace-hint'}
       role="status"
       data-testid="walk-place-hint"
     >
-      {hint}
+      {checking && problem ? (
+        <>
+          {hint} <span className="wplace-problem">{problem}</span>
+        </>
+      ) : (
+        hint
+      )}
     </p>
   );
+  const placedBefore =
+    walk.place !== undefined && walk.place.quality !== 'unplaced' && walk.place.pins.length >= 2;
 
   if (u.asking)
     return (
@@ -295,7 +325,7 @@ export function PlaceWalkStrip({
             {pathState !== 'running' && (
               <button
                 type="button"
-                className="btn sm"
+                className="btn primary sm"
                 data-testid="walk-place-process"
                 disabled={!offered || u.saving}
                 aria-describedby={offered ? undefined : packId}
@@ -343,12 +373,14 @@ export function PlaceWalkStrip({
             Fine-tune
           </button>
           <span className="dplace-end">
-            {walk.place !== undefined && (
+            {placedBefore && (
               <button
+                ref={removeRef}
                 type="button"
                 className="btn ghost sm"
                 data-testid="walk-place-remove"
                 aria-expanded={askRemove}
+                aria-controls={askRemove ? askId : undefined}
                 disabled={u.saving}
                 onClick={() => {
                   setRemoveRefused(null);
@@ -372,17 +404,21 @@ export function PlaceWalkStrip({
           </span>
         </div>
       )}
-      {askRemove && (
-        <div className="dplace-row wplace-ask" role="group" aria-label={SAY.removeAsk}>
+      {askRemove && placedBefore && (
+        <div
+          id={askId}
+          className="dplace-row wplace-ask"
+          role="group"
+          aria-label={SAY.removeAsk}
+          onKeyDown={(e) => {
+            if (e.key !== 'Escape') return;
+            e.preventDefault();
+            closeAsk();
+          }}
+        >
           <p className="dplace-say wplace-hint">{SAY.removeAsk}</p>
           <span className="dplace-end">
-            <button
-              type="button"
-              className="btn ghost sm"
-              onClick={() => {
-                setAskRemoveFor(null);
-              }}
-            >
+            <button ref={keepRef} type="button" className="btn ghost sm" onClick={closeAsk}>
               Keep it
             </button>
             <button

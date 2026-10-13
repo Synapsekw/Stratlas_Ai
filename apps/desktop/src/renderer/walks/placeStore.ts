@@ -118,6 +118,8 @@ export interface PlaceState {
   /** A Start or End handle dragged to a spot: the pin moves there (keeping its time), live refit. */
   dragHandle(h: PlaceHandle, at: [number, number], y?: number): void;
   endDrag(): void;
+  /** Esc on End: the lone start pin goes, back to Start (nothing on any other step). */
+  back(): void;
   /** Fine-tune on (from placed) or off (back to placed). */
   setFineTune(on: boolean): void;
   pinHere(): void;
@@ -465,6 +467,14 @@ export function createPlaceStore(deps: {
 
       endDrag: () => {
         if (get().dragging) set({ dragging: null });
+      },
+
+      back: () => {
+        const st = get();
+        if (st.layerId === null || st.step !== 'end' || st.pins.length !== 1) return;
+        // nothing is left to keep: a walk on End never had two saved pins
+        setPins([], { error: null, dirty: false });
+        stepForPins(0);
       },
 
       setFineTune: (on) => {

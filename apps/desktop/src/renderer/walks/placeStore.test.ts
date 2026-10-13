@@ -804,3 +804,36 @@ it('a 3D pin keeps its height and saves on @model', () => {
     pins: [{ y: 0 }, { y: 0 }],
   });
 });
+
+describe('back', () => {
+  it('on End drops the lone start pin and goes back to Start', () => {
+    const k = setup();
+    k.s().chooseSurface(MAP);
+    k.s().click(truthXZ(4));
+    k.s().hover(truthXZ(30));
+    expect(k.s().step).toBe('end');
+    expect(k.s().preview).not.toBeNull();
+    k.store.setState({ error: 'something' });
+    k.s().back();
+    expect(k.s()).toMatchObject({
+      step: 'start',
+      pins: [],
+      preview: null,
+      error: null,
+      dirty: false,
+    });
+    expect(k.seek).toHaveBeenLastCalledWith(raw.walking?.startT ?? 0);
+  });
+
+  it('does nothing on any other step', () => {
+    const k = setup();
+    k.s().chooseSurface(MAP);
+    k.s().back();
+    expect(k.s().step).toBe('start');
+    k.s().click(truthXZ(4));
+    k.s().click(truthXZ(lastT));
+    const placed = k.s();
+    k.s().back();
+    expect(k.s()).toBe(placed);
+  });
+});

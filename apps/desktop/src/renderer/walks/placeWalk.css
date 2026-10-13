@@ -30,7 +30,8 @@
 .wplace-notice .wplace-hint {
   color: var(--fg-1);
 }
-.wplace-notice .wplace-hint.bad {
+.wplace-notice .wplace-hint.bad,
+.wplace-notice .wplace-problem {
   color: var(--s5);
 }
 /* Remove placement asks on its own line under the toolbar */
