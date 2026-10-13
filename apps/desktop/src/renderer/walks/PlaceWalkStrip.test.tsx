@@ -360,6 +360,25 @@ describe('PlaceWalkStrip: placing', () => {
     expect(strip()?.getAttribute('data-step')).toBe('end');
   });
 
+  it('Esc on End from inside a field leaves the start alone', async () => {
+    const { session } = await open(walkWithPath());
+    act(() => {
+      session.getState().click([0, 0], 0);
+    });
+    for (const tag of ['input', 'textarea', 'select'] as const) {
+      const field = document.createElement(tag);
+      document.body.append(field);
+      act(() => {
+        field.dispatchEvent(
+          new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }),
+        );
+      });
+      field.remove();
+    }
+    expect(strip()?.getAttribute('data-step')).toBe('end');
+    expect(session.getState().pins).toHaveLength(1);
+  });
+
   it('the hint follows the steps and says when the end is too close', async () => {
     const { session } = await open(walkWithPath());
     expect(strip()?.getAttribute('data-step')).toBe('start');

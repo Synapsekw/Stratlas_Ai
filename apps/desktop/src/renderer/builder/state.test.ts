@@ -315,6 +315,29 @@ describe('importFiles, one import at a time', () => {
     expect(b().cancellable).toBe(false);
     expect(b().queued).toBe(0);
   });
+
+  it('a waiting drop that throws as well after a failed import says so, not unhandled', async () => {
+    const failing = later<unknown>();
+    let imports = 0;
+    call.mockImplementation((channel: string) => {
+      if (channel === 'builder:altitudePlan') return Promise.resolve(planned(plan()));
+      imports++;
+      return imports === 1
+        ? failing.reply.then(() => Promise.reject(new Error('bridge gone')))
+        : Promise.reject(new Error('bridge still gone'));
+    });
+    const first = b().importFiles(['a.jpg']);
+    await vi.waitFor(() => {
+      expect(b().importing).not.toBeNull();
+    });
+    await b().importFiles(['b.jpg']);
+    failing.give(undefined);
+    await expect(first).rejects.toThrow('bridge gone');
+    await vi.waitFor(() => {
+      expect(b().importResult?.error).toBe('bridge still gone');
+    });
+    expect(b().importing).toBeNull();
+  });
 });
 
 describe('importFiles, the paths in the result', () => {

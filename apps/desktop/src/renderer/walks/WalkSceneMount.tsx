@@ -113,6 +113,20 @@ export function walkReach(
   return box.isEmpty() ? null : box;
 }
 
+/**
+ * The reach the placed walks add: only while a walk is placed on the 3D view, so the person can
+ * back off to see them; otherwise a placed walk far from a small model would widen the camera
+ * cap and push the fog out for good.
+ */
+export function placedReach(placed: readonly WalkSceneWalk[], placingIn3d: boolean): Box3 | null {
+  if (!placingIn3d) return null;
+  return walkReach(
+    placed.flatMap((w) => w.runs.flatMap((r) => r.pts)),
+    null,
+    0,
+  );
+}
+
 const placingPoints = (p: WalkScenePlacing): [number, number, number][] => [
   ...(p.walk?.runs.flatMap((r) => r.pts) ?? []),
   ...(p.preview?.pts ?? []),
@@ -156,6 +170,7 @@ export function WalkSceneMount({ stage }: { stage: EngineStage | null }): null {
   const hidden = useHiddenLayers();
   const { fits } = usePlacedWalkFits();
   const editing = useStore(placeSession, walkBeingEdited);
+  const placingIn3d = useStore(placeSession, (s) => s.layerId !== null && s.surface?.kind === '3d');
 
   useEffect(() => {
     if (!stage) return;
@@ -192,15 +207,10 @@ export function WalkSceneMount({ stage }: { stage: EngineStage | null }): null {
   );
   useEffect(() => {
     view.current?.setPlaced(placed);
-    stage?.setReach(
-      REACH_PLACED,
-      walkReach(
-        placed.flatMap((w) => w.runs.flatMap((r) => r.pts)),
-        null,
-        0,
-      ),
-    );
   }, [placed, stage]);
+  useEffect(() => {
+    stage?.setReach(REACH_PLACED, placedReach(placed, placingIn3d));
+  }, [placed, placingIn3d, stage]);
 
   return null;
 }

@@ -362,6 +362,16 @@ describe('map pointer session (placing a walk: hover, click, handles)', () => {
     expect(map.dragPan.enable).toHaveBeenCalledTimes(2);
   });
 
+  it('an Escape the session takes is marked handled, so no other listener acts on it too', () => {
+    const { ctl } = startWithProject();
+    const onCancel = vi.fn();
+    ctl.pointerSession({ onCancel });
+    const e = new KeyboardEvent('keydown', { key: 'Escape', cancelable: true });
+    window.dispatchEvent(e);
+    expect(onCancel).toHaveBeenCalledTimes(1);
+    expect(e.defaultPrevented).toBe(true);
+  });
+
   it('the returned function and dispose stop the session', () => {
     const { ctl, map, proj } = startWithProject();
     const onClick = vi.fn();

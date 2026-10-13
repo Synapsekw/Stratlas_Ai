@@ -587,6 +587,8 @@ export function createMapController(
   };
   function onSessionKey(e: KeyboardEvent): void {
     if (e.key !== 'Escape' || !session) return;
+    // taken here: the placing strip's own Escape listener must not act on it a second time
+    e.preventDefault();
     const s = session;
     endGrab();
     s.onCancel?.();

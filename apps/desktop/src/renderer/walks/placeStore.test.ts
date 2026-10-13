@@ -425,6 +425,23 @@ describe('handles', () => {
     expect(s.getState().pins[0]).toEqual({ t: 4, surface: '@model', at: [-5, 3], y: 1 });
   });
 
+  it('Start moves the pin its handle shows: the first active one', () => {
+    const pins = [
+      { t: 2, surface: 'gone-sheet', at: [5, 5] },
+      { t: 4, surface: '@model', at: [0, 0] },
+      { t: 62, surface: '@model', at: [40, -30] },
+    ] as WalkPin[];
+    const s = session({
+      layer: {
+        place: { pins, yawOffsetDeg: 0, heightM: 1.7, quality: 'good', placedOn: '@model' },
+      },
+    });
+    s.getState().chooseSurface({ kind: '3d' });
+    s.getState().dragHandle('start', [-5, 3], 1);
+    expect(s.getState().pins[0]).toEqual(pins[0]);
+    expect(s.getState().pins[1]).toEqual({ t: 4, surface: '@model', at: [-5, 3], y: 1 });
+  });
+
   it('handles do nothing before the walk is placed', () => {
     const s = session();
     s.getState().chooseSurface({ kind: '3d' });
@@ -492,6 +509,25 @@ describe('the path appears or goes', () => {
     expect(s.getState().step).toBe('check');
     expect(s.getState().pins).toHaveLength(0);
     expect(s.getState().dirty).toBe(false);
+  });
+
+  it('a walk placed anyway keeps its pins when the job changes (it never had a path)', () => {
+    const s = session({ raw: null, ready: false });
+    s.getState().chooseSurface({ kind: '3d' });
+    s.getState().placeAnyway();
+    s.getState().click([0, 0], 0);
+    s.getState().click([40, -30], 0);
+    s.getState().setInputs(null, null, false);
+    expect(s.getState().step).toBe('placed');
+    expect(s.getState().pins).toHaveLength(2);
+    expect(s.getState().dirty).toBe(true);
+    // a path that becomes ready later refits with it, the pins stay
+    s.getState().setInputs(raw, null, true);
+    expect(s.getState().pins).toHaveLength(2);
+    expect(s.getState().fit?.pinsOnly).toBe(false);
+    // and once on a ready path, the path going drops the draft again
+    s.getState().setInputs(null, null, false);
+    expect(s.getState().step).toBe('check');
   });
 
   it('a saved placement survives its path going', () => {

@@ -15,7 +15,7 @@ vi.mock('../builder/state', () => ({
   builder: { getState: () => ({ saveLayers: vi.fn() }), subscribe: () => () => undefined },
 }));
 
-const { scenePlacedWalks, scenePlacing, walkReach } = await import('./WalkSceneMount');
+const { placedReach, scenePlacedWalks, scenePlacing, walkReach } = await import('./WalkSceneMount');
 
 describe('scenePlacing', () => {
   const pins: WalkPin[] = [
@@ -124,5 +124,28 @@ describe('walkReach', () => {
     const placing = walkReach([[1, 0, 1]], new Vector3(0, 0, 0), 75);
     expect(placing?.min.toArray()).toEqual([-75, -75, -75]);
     expect(placing?.max.toArray()).toEqual([75, 75, 75]);
+  });
+});
+
+describe('placedReach', () => {
+  const placed = [
+    {
+      id: 'walk-a',
+      colour: '#fff',
+      runs: [
+        {
+          pts: [
+            [0, 0, 0],
+            [400, 1, 300],
+          ] as [number, number, number][],
+          dashed: false,
+        },
+      ],
+    },
+  ];
+
+  it('the placed walks widen the reach only while a walk is placed on the 3D view', () => {
+    expect(placedReach(placed, false)).toBeNull();
+    expect(placedReach(placed, true)?.max.toArray()).toEqual([400, 1, 300]);
   });
 });

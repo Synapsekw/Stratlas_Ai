@@ -48,7 +48,7 @@ import {
   type PlaceSurface,
   type WalkPathState,
 } from './placeModel';
-import { createPlaceStore, type PlaceHandle, type PlaceState } from './placeStore';
+import { createPlaceStore, handlePins, type PlaceHandle, type PlaceState } from './placeStore';
 import { walkMap, setWalkMapOverlays, setWalkMapPointer } from './walkMapStore';
 import {
   resolveCssColour,
@@ -563,16 +563,14 @@ export function sessionHandles(
   s: Pick<PlaceState, 'step' | 'fit' | 'pins'>,
 ): { handle: PlaceHandle; xz: XZ; y: number | null }[] {
   if ((s.step !== 'placed' && s.step !== 'fine-tune') || !s.fit) return [];
-  const active = [...s.fit.pins].filter((p) => p.active).sort((a, b) => a.t - b.t);
-  const first = active[0];
-  const last = active[active.length - 1];
-  if (!first || !last || first === last) return [];
-  const at = (handle: PlaceHandle, pin: typeof first) => ({
+  const shown = handlePins(s.fit);
+  if (!shown) return [];
+  const at = (handle: PlaceHandle, pin: typeof shown.start) => ({
     handle,
     xz: [pin.target[0], pin.target[1]] as XZ,
     y: s.pins[pin.index]?.y ?? null,
   });
-  return [at('start', first), at('end', last)];
+  return [at('start', shown.start), at('end', shown.end)];
 }
 
 /*

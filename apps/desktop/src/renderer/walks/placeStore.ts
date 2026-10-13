@@ -163,6 +163,20 @@ export function canRemovePin(state: Pick<PlaceState, 'pins'>, i: number): boolea
   return n >= 3 || (i !== 0 && i !== n - 1);
 }
 
+type FitPin = WalkFit['pins'][number];
+
+/**
+ * The pins the Start and End handles stand for: the first and the last active pin by time (a pin
+ * whose drawing went is inactive and has no handle). Null with fewer than two active pins.
+ */
+export function handlePins(fit: WalkFit | null): { start: FitPin; end: FitPin } | null {
+  if (!fit) return null;
+  const active = [...fit.pins].filter((p) => p.active).sort((a, b) => a.t - b.t);
+  const start = active[0];
+  const end = active[active.length - 1];
+  return start && end && start !== end ? { start, end } : null;
+}
+
 const byT = (pins: readonly WalkPin[]): WalkPin[] =>
   pins
     .map((p, i) => ({ p, i }))
@@ -198,6 +212,11 @@ export function createPlaceStore(deps: {
   let orientation: readonly Float64Array[] | null = null;
   /** The time a Pin here pin waiting for its click belongs to. */
   let armedT = 0;
+  /**
+   * The session stands on a ready path: only then does the path going drop the draft. A walk
+   * placed anyway never had one, so a job update keeps its pins.
+   */
+  let onPath = false;
 
   return createStore<PlaceState>()((set, get) => {
     const fitOf = (pins: readonly WalkPin[], yawOffsetDeg: number): WalkFit | null =>
@@ -318,6 +337,7 @@ export function createPlaceStore(deps: {
         const pins = byT(w.place?.pins ?? []);
         const yawOffsetDeg = w.place?.yawOffsetDeg ?? 0;
         const ready = opts.ready ?? outline !== null;
+        onPath = ready;
         set({
           ...idle,
           layerId: w.id,
@@ -336,7 +356,9 @@ export function createPlaceStore(deps: {
         orientation = o;
         const st = get();
         const saved = (walk?.place?.pins.length ?? 0) >= 2;
-        if (!ready && st.step !== 'check' && !saved) {
+        const wasOnPath = onPath;
+        onPath = ready;
+        if (!ready && wasOnPath && st.step !== 'check' && !saved) {
           toCheck();
           return;
         }
@@ -451,7 +473,10 @@ export function createPlaceStore(deps: {
         const st = get();
         if (st.layerId === null || (st.step !== 'placed' && st.step !== 'fine-tune')) return;
         if (st.pins.length < 2) return;
-        const i = h === 'start' ? 0 : st.pins.length - 1;
+        // the pin the handle shows (the first or last active one), not a gone drawing's pin
+        const shown = handlePins(st.fit);
+        if (!shown) return;
+        const i = shown[h].index;
         const old = st.pins[i];
         const pin = old ? pinAt(old.t, at, y) : null;
         if (!pin) return;

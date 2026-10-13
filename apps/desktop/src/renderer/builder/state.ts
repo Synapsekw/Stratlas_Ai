@@ -401,6 +401,19 @@ async function next(): Promise<void> {
 }
 
 /**
+ * `next()` where nobody awaits it: a waiting drop that throws says so in the import panel
+ * instead of becoming an unhandled rejection.
+ */
+function drain(): void {
+  next().catch((e: unknown) => {
+    builder.setState({
+      importing: null,
+      importResult: { items: [], error: e instanceof Error ? e.message : String(e) },
+    });
+  });
+}
+
+/**
  * The waiting drops of a project that is no longer open are never imported (they would land in
  * whichever project is open next): they are dropped, and the panel says so.
  */
@@ -459,7 +472,7 @@ export const builder = createStore<Builder>()((set, get) => ({
     try {
       busy = await runImport(project, paths, altitude, opts);
     } catch (e) {
-      void next();
+      drain();
       throw e;
     } finally {
       current.splice(current.indexOf(mine), 1);
@@ -528,7 +541,7 @@ export const builder = createStore<Builder>()((set, get) => ({
   },
   cancelHeights: () => {
     set({ heightsPrompt: null });
-    void next();
+    drain();
   },
 
   startAlign: (align) => {

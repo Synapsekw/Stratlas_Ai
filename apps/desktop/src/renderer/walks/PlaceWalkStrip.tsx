@@ -140,6 +140,13 @@ export function PlaceWalkStrip({
     if (movingPin === null && !onEnd) return;
     const onKey = (e: globalThis.KeyboardEvent) => {
       if (e.key !== 'Escape' || e.defaultPrevented) return;
+      // an Escape typed in the yaw or date field only leaves the field
+      const el = e.target instanceof HTMLElement ? e.target : null;
+      if (
+        el?.closest('input, textarea, select, [contenteditable]:not([contenteditable="false"])')
+      ) {
+        return;
+      }
       e.preventDefault();
       if (movingPin !== null) session.getState().armMove(movingPin);
       else session.getState().back();
