@@ -9,9 +9,10 @@ neighbours, turned towards the camera.
 Points go to square ground tiles on disk (``PointTiles``) as they come, one chunk (chunk format 2,
 18 bytes a point) per photo and tile. ``merge`` (merge v2) then makes each tile's share of the
 cloud in two passes: ``merge_tile`` averages the points per voxel (the point spacing asked for),
-drops the voxels seen fewer than twice and collapses each xy column to one point per two voxels of
-height in each of its clusters, so a surface seen by ten photos is one clean layer, not ten noisy
-ones; ``filter_tile`` then drops statistical outliers, judged over the tile and a one-voxel margin
+collapses each xy column to one point per two voxels of height in each of its clusters, so a
+surface seen by ten photos is one clean layer, not ten noisy ones, and drops the points seen fewer
+than twice in all (counted per collapsed bin, so depth noise that spreads a surface over two voxels
+of height does not empty its columns); ``filter_tile`` then drops statistical outliers, judged over the tile and a one-voxel margin
 of its neighbours so the seams are not thinned. Only a tile and its margin are ever in memory,
 whatever the size of the site.
 """
@@ -143,16 +144,17 @@ def consistent(
 
 @dataclass(frozen=True)
 class MergeRule:
-    """How a tile's fused points become the cloud (merge v2, 13 Oct 2026): voxels seen fewer than
-    ``min_count`` times go; with ``collapse``, each xy column keeps one point per ``2 x voxel`` of
-    height in each of its clusters; then, with ``outliers``, points whose mean distance to their
+    """How a tile's fused points become the cloud (merge v2, 13 Oct 2026; ``version`` 3 counts
+    after the collapse): with ``collapse``, each xy column keeps one point per ``2 x voxel`` of
+    height in each of its clusters; then the points seen fewer than ``min_count`` times in all go
+    (counted per collapsed bin, or per voxel without ``collapse``); then, with ``outliers``, points whose mean distance to their
     ``k`` nearest neighbours is more than ``sigma`` standard deviations above the tile's mean go."""
 
     min_count: int = 2
     outliers: bool = True
     k: int = 16
     sigma: float = 2.5
-    version: int = 2
+    version: int = 3
     collapse: bool = True
 
 
@@ -483,9 +485,9 @@ def merge_tile(
     rule: MergeRule,
     keep: Callable[[np.ndarray], np.ndarray] | None = None,
 ) -> dict:
-    """First pass for one tile: its chunks, clipped by ``keep``, averaged per voxel, the voxels
-    seen fewer than ``rule.min_count`` times dropped, the columns collapsed (with
-    ``rule.collapse``); into ``collapsed/<tile>.npz``. A tile whose first or second pass is on
+    """First pass for one tile: its chunks, clipped by ``keep``, averaged per voxel, the columns
+    collapsed (with ``rule.collapse``), then the points seen fewer than ``rule.min_count`` times
+    dropped, counted per collapsed bin (the raw points summed over its voxels); into ``collapsed/<tile>.npz``. A tile whose first or second pass is on
     disk is not done again."""
     dst = store.root / "collapsed" / f"{name}.npz"
     for done in (dst, store.root / "fused" / f"{name}.npz"):
@@ -507,10 +509,10 @@ def merge_tile(
         m = keep(xyz)
         xyz, rgb, nrm = xyz[m], rgb[m], nrm[m]
     p, c, n, cnt = voxel_mean(xyz, rgb, nrm, voxel)
-    ok = cnt >= rule.min_count
-    p, c, n, cnt = p[ok], c[ok], n[ok], cnt[ok]
     if rule.collapse:
         p, c, n, cnt = collapse_columns(p, c, n, cnt, voxel)
+    ok = cnt >= rule.min_count
+    p, c, n, cnt = p[ok], c[ok], n[ok], cnt[ok]
     _save_tile(dst, xyz=p, rgb=c, normal=n, count=cnt)
     return _tile_result(p)
 

@@ -382,7 +382,8 @@ def _up(n: int) -> np.ndarray:
 
 def test_the_merge_rules():
     assert MergeRule() == DENSE_RULE and DENSE_RULE.min_count == 2 and DENSE_RULE.outliers
-    assert (DENSE_RULE.k, DENSE_RULE.sigma, DENSE_RULE.version) == (16, 2.5, 2)
+    # version 3: seen twice is counted per collapsed column bin (a new merge key, nothing reused)
+    assert (DENSE_RULE.k, DENSE_RULE.sigma, DENSE_RULE.version) == (16, 2.5, 3)
     assert SPARSE_RULE.min_count == 1 and not SPARSE_RULE.outliers and not SPARSE_RULE.collapse
 
 
@@ -414,7 +415,24 @@ def test_voxels_seen_once_are_dropped(tmp_path):
     xyz = np.array([[0.01, 0.01, 0.0], [0.02, 0.03, 0.01], [0.03, 0.02, 0.02], [2.0, 2.0, 1.0]])
     store.add("a", xyz, np.zeros((4, 3), np.uint8), _up(4))
     info = store.merge(0.1, rule=MergeRule(outliers=False))
-    assert info["points"] == 1 and info["counts"] == {"0_0": 1} and info["rule"]["version"] == 2
+    assert info["points"] == 1 and info["counts"] == {"0_0": 1} and info["rule"]["version"] == 3
+
+
+def test_seen_twice_counts_per_column_bin(tmp_path):
+    """Depth noise spreads one surface over two voxels of height: each voxel is hit once, but each
+    column of the surface is seen twice, so every column stays. A column with one raw point goes."""
+    g = np.arange(20) * 0.1 + 0.05
+    gx, gy = np.meshgrid(g, g)
+    cols = np.column_stack([gx.ravel(), gy.ravel()])
+    low = np.column_stack([cols, np.full(len(cols), 0.02)])
+    high = np.column_stack([cols, np.full(len(cols), 0.12)])
+    xyz = np.concatenate([low, high, [[3.05, 3.05, 0.02]]])
+    store = PointTiles(tmp_path / "m", 4.0)
+    store.add("a", xyz, np.zeros((len(xyz), 3), np.uint8), _up(len(xyz)))
+    info = store.merge(0.1, rule=MergeRule(outliers=False))
+    assert info["points"] == 400
+    pts = store.fused_in(0, 0, 4, 4)
+    assert pts["xyz"][:, :2].max() < 2.0 and (pts["count"] == 2).all()
 
 
 def test_the_sparse_rule_keeps_every_point(tmp_path):
