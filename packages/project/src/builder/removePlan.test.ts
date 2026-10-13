@@ -360,6 +360,51 @@ describe('what a layer owns', () => {
   });
 });
 
+describe('panoramas layers', () => {
+  const panos = (id: string, srcs: string[]): Layer => ({
+    kind: 'panoramas',
+    id,
+    name: id,
+    visible: true,
+    items: srcs.map((path, i) => ({
+      id: `p${String(i)}`,
+      src: { path },
+      pos: [0, 0, 0],
+      headingDeg: 0,
+    })),
+  });
+
+  it('a drone import owns its whole folder: frames, images, thumbnails and run records', async () => {
+    const files = [
+      'panoramas/dr/p01/frames/a.JPG',
+      'panoramas/dr/p01/frames/b.JPG',
+      'panoramas/dr/p01/pano.jpg',
+      'panoramas/dr/p01/thumb.jpg',
+      'panoramas/dr/p01/stitch.json',
+      'panoramas/dr/p02/pano.jpg',
+      'panoramas/other/p01/pano.jpg',
+    ];
+    for (const f of files) await put(f, '12345');
+    await addLayers(
+      panos('dr', ['panoramas/dr/p01/pano.jpg', 'panoramas/dr/p02/pano.jpg']),
+      panos('other', ['panoramas/other/p01/pano.jpg']),
+    );
+    const p = await planRemoval(root, [{ layer: 'dr' }]);
+    expect(p.refused).toBeUndefined();
+    expect(p.files).toEqual(['panoramas/dr']);
+    expect(p.bytes).toBe(30);
+  });
+
+  it('an old panoramas layer still owns its images and thumbnails', async () => {
+    for (const f of ['panoramas/x1.jpg', 'panoramas/thumbs/x1.jpg', 'panoramas/x2.jpg'])
+      await put(f, '123');
+    await addLayers(panos('old', ['panoramas/x1.jpg']));
+    const p = await planRemoval(root, [{ layer: 'old' }]);
+    expect([...p.files].sort()).toEqual(['panoramas/thumbs/x1.jpg', 'panoramas/x1.jpg']);
+    expect(p.bytes).toBe(6);
+  });
+});
+
 describe('helpers', () => {
   it('owns a folder named after the layer, else the file, plus thumbs and sources', () => {
     expect(

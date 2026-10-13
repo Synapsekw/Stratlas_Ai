@@ -202,6 +202,17 @@ export function ownedPaths(layer: Layer): string[] {
   }
   for (const p of layerRefs(layer)) {
     const parts = p.split('/');
+    // a drone import keeps everything of a layer under `panoramas/<layer id>/` (frames, images,
+    // thumbnails and `stitch.json` of every sphere); old panoramas layers have `panoramas/<id>.jpg`
+    if (
+      layer.kind === 'panoramas' &&
+      parts.length >= 4 &&
+      parts[0] === 'panoramas' &&
+      parts[1] === layer.id
+    ) {
+      out.add(`panoramas/${layer.id}`);
+      continue;
+    }
     if (parts.length >= 3 && parts[parts.length - 2] === layer.id)
       out.add(parts.slice(0, -1).join('/'));
     else out.add(p);

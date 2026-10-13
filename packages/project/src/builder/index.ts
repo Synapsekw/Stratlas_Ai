@@ -169,3 +169,21 @@ export {
   type PanoSphereGroup,
 } from './panoGroups';
 export { PANO_HEAD_BYTES, panoFrameMeta, readPanoFrameMeta } from './panoScan';
+export {
+  PANO_COPY_HEADROOM,
+  PanoImportError,
+  applyStitchOutcome,
+  importPanoGroups,
+  keyGrouping,
+  knownPanoFrames,
+  markAlreadyImported,
+  readStitchRecord,
+  reconcilePanoStitches,
+  setPanoRuns,
+  type KeyedGrouping,
+  type PanoImportChoice,
+  type PanoImportDeps,
+  type PanoImportResult,
+  type PanoLayer,
+  type StitchOutcome,
+} from './panos';
