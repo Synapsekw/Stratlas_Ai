@@ -1,6 +1,22 @@
 import { describe, expect, it } from 'vitest';
 import { photoUi } from './store';
 
+it('opens the wizard with Start over values and closing forgets them', () => {
+  const initial = {
+    source: { layer: 'p' },
+    preset: 'fast' as const,
+    gnss: 'auto' as const,
+    products: [],
+    replaces: 'r1',
+  };
+  photoUi.getState().openWizard(initial);
+  expect(photoUi.getState().view).toEqual({ kind: 'wizard', initial });
+  photoUi.getState().close();
+  expect(photoUi.getState().view).toBeNull();
+  photoUi.getState().openWizard();
+  expect(photoUi.getState().view).toEqual({ kind: 'wizard' });
+});
+
 describe('why the maps of a run did not start', () => {
   it('is kept per run until it is cleared', () => {
     const ui = photoUi.getState();

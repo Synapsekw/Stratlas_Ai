@@ -5,10 +5,12 @@
  */
 import type { JobRecord, PhotoPreset, PhotoProduct, PipelineName } from '@aio/schema';
 import { createStore, useStore } from 'zustand';
+import type { WizardInitial } from './startOver';
 
 export type RunTab = 'progress' | 'gcp' | 'report' | 'poses';
 
-export type PhotoView = { kind: 'wizard' } | { kind: 'run'; run: string; tab: RunTab };
+export type PhotoView =
+  { kind: 'wizard'; initial?: WizardInitial } | { kind: 'run'; run: string; tab: RunTab };
 
 /** Products to start when a run's alignment finishes (the wizard's choice). */
 export interface PendingProducts {
@@ -48,7 +50,7 @@ export interface PhotoUi {
   held: string[];
   /** Bumped after a write, so open panels read the run again. */
   version: number;
-  openWizard: () => void;
+  openWizard: (initial?: WizardInitial) => void;
   openRun: (run: string, tab?: RunTab) => void;
   setTab: (tab: RunTab) => void;
   close: () => void;
@@ -74,8 +76,8 @@ export const photoUi = createStore<PhotoUi>()((set) => ({
   holdRun: (run, hold) => {
     set((s) => ({ held: [...s.held.filter((r) => r !== run), ...(hold ? [run] : [])] }));
   },
-  openWizard: () => {
-    set({ view: { kind: 'wizard' } });
+  openWizard: (initial) => {
+    set({ view: initial ? { kind: 'wizard', initial } : { kind: 'wizard' } });
   },
   openRun: (run, tab = 'progress') => {
     set({ view: { kind: 'run', run, tab } });
