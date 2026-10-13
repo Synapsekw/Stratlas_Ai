@@ -89,3 +89,59 @@ Two 3D views need more graphics memory than the **Low** tier allows. On Low, **C
 ## Swipe between dates (stockpiles)
 
 On a stockpile project, **Swipe** in the stage toolbar slides between the first and the last survey in one 3D view. Drag the divider, or use the Left and Right keys. See [Volumes](09-volumes-and-roads.md#volumes-stockpiles).
+
+## Other dates of one spot
+
+Pick any placed photo, drone photo, 360, walk frame or video frame and see the same spot on every other survey date, without leaving the screen you are on. The project needs two or more survey dates.
+
+1. Click the image. In **Media**, a strip under the photo shows one slot per survey date, oldest on the left, each in its date colour.
+2. Click **Other dates** (the clock-arrow button). A viewer opens on the image you clicked.
+
+The **Other dates** button is in:
+
+- the photo panel of **Media**, with the strip under the photo;
+- the photo pane of the **Split**;
+- the **Selection** card of a photo or a 360;
+- the **Frames** pane, for the frame on screen (pause the clip first);
+- the walk player, for the walk frame on screen.
+
+An image without a position has no other dates to match. The viewer says so instead of guessing.
+
+### What a slot shows
+
+- A thumbnail, the date colour and the kind: **Photo**, **Drone**, **360**, **Walk** or **Video**.
+- **+n** when that date has more than one image near the spot. The best match shows first.
+- A hatched slot when the date has nothing: **Nothing within 15 m** (or 25 m for a 360), or **Not seen** for a drone spot that no flight of that date saw.
+- A tooltip when items of that date were left out because they have no position.
+
+### In the viewer
+
+| Key         | What it does                                    |
+| ----------- | ----------------------------------------------- |
+| Left, Right | Previous or next date that has an image         |
+| Up, Down    | Other images of the same date (the **+n** ones) |
+| C           | Compare two dates                               |
+| Esc         | Close the viewer                                |
+
+The header shows the name, date and kind of the image, how far it is from the one you clicked, and the angle when it is turned. A 360 or a walk frame opens turned towards the spot. A video frame opens paused at the moment that saw the spot, and plays when you press play.
+
+### Compare
+
+**Compare...** shows two dates of the spot. Pick the dates with the chips above each side.
+
+- **Side by side** puts the two images next to each other. The mouse wheel zooms both on the same place, a drag pans both, and a double-click fits them. For 360s the two views look the same way.
+- **Swipe** puts one image over the other under a divider. Drag the handle, or focus it and use the arrow keys. The zoom and pan stay.
+
+**One image** goes back to the single viewer. The viewer only reads: the date bar, the layers and the selection behind it do not change.
+
+### How images are matched
+
+| Clicked image | The same spot on another date                                                       |
+| ------------- | ----------------------------------------------------------------------------------- |
+| Ground photo  | A photo within 15 m that looks the same way (within 45 degrees)                     |
+| Drone photo   | A drone photo, from any flight of that date, whose view covers the same ground      |
+| 360           | The nearest 360 of that date within 25 m, turned towards the same spot              |
+| Walk frame    | A walk frame within 15 m                                                            |
+| Video frame   | A frame of a video of that date, checked once a second, that looks at the same spot |
+
+A drone photo is told from a ground photo by its height: above 10 m over the spot it counts as aerial.
