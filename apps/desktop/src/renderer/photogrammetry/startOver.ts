@@ -92,6 +92,12 @@ export async function replaceAfterStart(
   remove: (run: string) => Promise<string | null>,
 ): Promise<string | null> {
   if (!started || initial === undefined) return null;
-  const error = await remove(initial.replaces);
+  let error: string | null;
+  try {
+    error = await remove(initial.replaces);
+  } catch (e) {
+    // a removal that throws (the channel to main failed) is a note too, never a stop
+    error = e instanceof Error ? e.message : String(e);
+  }
   return error === null ? null : `Run ${initial.replaces} is still there: ${error}`;
 }

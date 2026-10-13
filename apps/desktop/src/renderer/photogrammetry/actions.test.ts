@@ -24,7 +24,7 @@ vi.mock('@aio/workspace', () => ({
   workspace: { getState: () => ({ project: open.project, replaceManifest }) },
 }));
 
-import { fileUnderDate, startProducts } from './actions';
+import { fileUnderDate, openStartOver, startProducts } from './actions';
 import { photoUi, type PendingProducts } from './store';
 
 const base = { root: 'D:/Projects/site/', preset: 'standard', products: ['ortho'] } as const;
@@ -615,5 +615,43 @@ describe('fileUnderDate', () => {
     expect(await fileUnderDate('i1')).toBeNull();
     expect(photoUi.getState().dateWarnings.i1).toBe(newer);
     expect(photoUi.getState().dates.i1).toEqual({ captureDate: '2026-05-01' });
+  });
+});
+
+describe('Start over', () => {
+  it('openStartOver reads the run and opens the wizard with its values and missing folders', async () => {
+    call.mockResolvedValueOnce({
+      ok: true,
+      value: {
+        ok: true,
+        run: {
+          schema: 'aio.photo-run/1',
+          id: 'r9',
+          createdAt: '2026-10-13T07:00:00.000Z',
+          status: 'failed',
+          preset: 'fast',
+          photos: { source: { folders: ['C:/A'] }, count: 3 },
+          cameras: [],
+          crs: { epsg: 32639 },
+          stages: [],
+          outputs: { layers: [], tilesets: [], files: [] },
+          versions: {},
+        },
+        accuracy: null,
+        missingFolders: ['C:/A'],
+      },
+    });
+    expect(await openStartOver('p', 'r9', [])).toBeNull();
+    expect(call).toHaveBeenCalledWith('photo:readRun', { projectId: 'p', run: 'r9' });
+    const view = photoUi.getState().view;
+    expect(view?.kind === 'wizard' ? view.initial?.replaces : null).toBe('r9');
+    expect(view?.kind === 'wizard' ? view.initial?.source : undefined).toBeNull();
+  });
+
+  it('openStartOver answers why the run could not be read and opens nothing', async () => {
+    photoUi.getState().close();
+    call.mockResolvedValueOnce({ ok: true, value: { ok: false, error: 'No run r9.' } });
+    expect(await openStartOver('p', 'r9', [])).toBe('No run r9.');
+    expect(photoUi.getState().view).toBeNull();
   });
 });

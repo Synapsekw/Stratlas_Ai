@@ -93,4 +93,11 @@ describe('replaceAfterStart', () => {
       'Run 20261012-0930 is still there: Creating maps for run 20261012-0930 is still running. Cancel it first.',
     );
   });
+
+  it('a removal that throws is the same note, never an error', async () => {
+    const remove = () => Promise.reject(new Error('IPC channel closed'));
+    expect(await replaceAfterStart(true, wizardInitialOf(run(), layers), remove)).toBe(
+      'Run 20261012-0930 is still there: IPC channel closed',
+    );
+  });
 });

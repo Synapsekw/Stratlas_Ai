@@ -69,3 +69,10 @@ describe('a run whose maps were started without the survey date', () => {
     ui.setDateWarning('w3', null);
   });
 });
+
+it('keeps a note per run and clears it', () => {
+  photoUi.getState().setNote('r1', 'Run r0 is still there: held open');
+  expect(photoUi.getState().notes).toEqual({ r1: 'Run r0 is still there: held open' });
+  photoUi.getState().setNote('r1', null);
+  expect(photoUi.getState().notes).toEqual({});
+});
