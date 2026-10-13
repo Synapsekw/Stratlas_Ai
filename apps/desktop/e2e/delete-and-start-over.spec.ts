@@ -187,6 +187,9 @@ const exists = (p: string) =>
     () => false,
   );
 const entries = async (dir: string) => ((await exists(dir)) ? (await readdir(dir)).sort() : []);
+// a removal works in a `held-` entry and renames it once it is done: only the renamed one is finished
+const finished = async (trash: string) =>
+  (await entries(trash)).filter((e) => !e.startsWith('held-'));
 
 async function openTiny(win: Page): Promise<void> {
   await win.getByTestId('project-card').filter({ hasText: TINY }).first().click();
@@ -245,8 +248,8 @@ test('datasets go to the project trash with what was made from them, and Empty d
   await expect(win.getByTestId('tree-row-clip-1')).toHaveCount(0);
   await expect(win.getByTestId('tree-row-clip-2')).toHaveCount(0);
   await expect(win.getByTestId('tree-group-video')).toHaveCount(0);
-  await expect.poll(() => entries(trash)).toHaveLength(1);
-  const [first = ''] = await entries(trash);
+  await expect.poll(() => finished(trash), { timeout: 30_000 }).toHaveLength(1);
+  const [first = ''] = await finished(trash);
   for (const f of ['video/clip-1.mp4', 'video/clip-2.mp4', 'flights/f1.json'])
     expect(await exists(join(trash, first, f)), f).toBe(true);
   const record = JSON.parse(await readFile(join(trash, first, 'removed.json'), 'utf8')) as {
@@ -273,8 +276,8 @@ test('datasets go to the project trash with what was made from them, and Empty d
   await expect(second).toHaveCount(0, { timeout: 30_000 });
   await expect(win.getByTestId('tree-row-photos-a')).toHaveCount(0);
   await expect(win.getByTestId(`tree-row-${ORTHO}`)).toHaveCount(0);
-  await expect.poll(() => entries(trash)).toHaveLength(2);
-  const entry = (await entries(trash)).find((e) => e !== first) ?? '';
+  await expect.poll(() => finished(trash), { timeout: 30_000 }).toHaveLength(2);
+  const entry = (await finished(trash)).find((e) => e !== first) ?? '';
   for (const f of [`photogrammetry/${FAILED_RUN}/run.json`, `jobs/${JOB}/job.log`])
     expect(await exists(join(trash, entry, f)), f).toBe(true);
   expect(await exists(join(dir, 'photogrammetry', FAILED_RUN))).toBe(false);
@@ -390,11 +393,11 @@ photoTest.describe('Start over on the stand-in pipelines', () => {
       const panel = win.getByTestId('photo-run');
       await expect(panel).toBeVisible({ timeout: 30_000 });
       await expect
-        .poll(async () => (await entries(trash)).filter((e) => e.endsWith(`-run-${OLD_RUN}`)), {
+        .poll(async () => (await finished(trash)).filter((e) => e.endsWith(`-run-${OLD_RUN}`)), {
           timeout: 30_000,
         })
         .toHaveLength(1);
-      const [entry = ''] = (await entries(trash)).filter((e) => e.endsWith(`-run-${OLD_RUN}`));
+      const [entry = ''] = (await finished(trash)).filter((e) => e.endsWith(`-run-${OLD_RUN}`));
       expect(await exists(join(trash, entry, 'photogrammetry', OLD_RUN, 'run.json'))).toBe(true);
       // the old run's folder is gone; the new run has its own folder with its run.json
       expect(await exists(join(runs, OLD_RUN))).toBe(false);
