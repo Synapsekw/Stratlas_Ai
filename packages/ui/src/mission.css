@@ -1100,17 +1100,6 @@ select.input option {
   clip-path: inset(50%);
   white-space: nowrap;
 }
-/* the inline confirm under a row (Remove walk): the question, then the two buttons */
-.trow-confirm {
-  display: grid;
-  gap: 6px;
-  color: var(--fg-1);
-  white-space: normal;
-}
-.trow-confirm-acts {
-  display: flex;
-  gap: 6px;
-}
 
 .dfolder-row {
   display: flex;

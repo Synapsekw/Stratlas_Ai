@@ -2000,9 +2000,6 @@ export const en = {
   'walk.row.placeTip': 'Place walk',
   'walk.row.remove': 'Remove {name}',
   'walk.row.removeTip': 'Remove walk',
-  'walk.row.confirm': 'Remove {name}? Its files stay in the project trash for seven days.',
-  'walk.row.confirmYes': 'Remove walk',
-  'walk.row.confirmNo': 'Cancel',
   // walk.process: the status of a walk, Process walk and its locate choice, Level horizon
   'walk.status.none': 'Not processed',
   'walk.status.processing': 'Processing {pct} %',

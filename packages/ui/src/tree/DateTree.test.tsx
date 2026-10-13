@@ -373,6 +373,18 @@ describe('DateTree: menus and renaming', () => {
     expect(q('tree-row-m-nov')?.className).toContain('marked');
   });
 
+  it('a Shift range runs over the rows drawn, not those of a closed date folder', () => {
+    const orders: (readonly string[])[] = [];
+    renderWith({ onMark: (_it, _m, order) => orders.push(order) });
+    expect(q('date-folder-oct')?.getAttribute('aria-expanded')).toBe('false');
+    const row = q('tree-row-m-nov');
+    act(() => {
+      row?.dispatchEvent(new MouseEvent('click', { bubbles: true, shiftKey: true }));
+    });
+    expect(orders).toEqual([['site', 'm-nov']]);
+    expect(host.querySelector('[role="tree"]')?.getAttribute('aria-multiselectable')).toBe('true');
+  });
+
   it('F2 on a date name starts renaming it, never on Every date', () => {
     const onRenameStart = vi.fn();
     render('nov', {}, vi.fn(), { onRenameStart });

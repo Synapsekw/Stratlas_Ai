@@ -6,6 +6,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { mockManifest } from '../__fixtures__/project';
 import { DatasetTree, type DatasetTreeProps, type TreeRowBadge } from './DatasetTree';
 import { EVERY_DATE, buildDateTree } from './dateModel';
+import { NO_MARKS, nextMarks } from './marks';
 import { buildDatasetTree, type TreeGroup, type TreeItem } from './model';
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -201,5 +202,64 @@ describe('walk rows', () => {
     expect(q('[data-testid="tree-group-add-walks"]')?.getAttribute('aria-label')).toBe(
       'Add 360 video',
     );
+  });
+});
+
+describe('marking rows in the order they are drawn', () => {
+  const rows = (kind: TreeGroup['kind'], ids: string[]): TreeGroup => ({
+    kind,
+    label: kind,
+    icon: 'scene',
+    count: ids.length,
+    items: ids.map((id) => ({ id, layerId: id, layerKind: 'mesh', name: id })),
+  });
+  const flight: TreeGroup = {
+    kind: 'video',
+    label: 'Video',
+    icon: 'video',
+    count: 2,
+    items: [
+      {
+        id: 'flight:f1',
+        flightId: 'f1',
+        name: 'Flight 1',
+        children: [
+          { id: 'c1', layerId: 'c1', layerKind: 'video', name: 'clip 1' },
+          { id: 'c2', layerId: 'c2', layerKind: 'video', name: 'clip 2' },
+        ],
+      },
+    ],
+  };
+  const shiftClick = (el: HTMLElement | null) => {
+    if (!el) throw new Error('no row');
+    act(() => {
+      el.dispatchEvent(new MouseEvent('click', { bubbles: true, shiftKey: true }));
+    });
+  };
+
+  it('a Shift range skips the rows of a closed group, a closed flight and behind "more"', () => {
+    const orders: (readonly string[])[] = [];
+    const many = Array.from({ length: 10 }, (_, i) => `p${String(i)}`);
+    const { q } = mount({
+      groups: [rows('walks', ['a', 'b']), rows('models', ['m1', 'm2']), flight, rows('maps', many)],
+      defaultOpen: ['walks', 'video', 'maps'],
+      onMark: (_it, _m, order) => orders.push(order),
+    });
+    shiftClick(q('[data-testid="tree-row-p0"]'));
+    // models is closed, the flight is closed, and maps draws 8 of its 10 rows
+    const order = orders[0] ?? [];
+    expect(orders).toEqual([['a', 'b', ...many.slice(0, 8)]]);
+    const from = nextMarks(NO_MARKS, order, 'a', { ctrl: true, shift: false });
+    const range = nextMarks(from, order, 'p0', { ctrl: false, shift: true });
+    expect([...range.marked]).toEqual(['a', 'b', 'p0']);
+  });
+
+  it('says the tree takes many marks only when rows can be marked', () => {
+    const { q } = mount({ onMark: () => undefined });
+    expect(q('[role="tree"]')?.getAttribute('aria-multiselectable')).toBe('true');
+    act(() => root?.unmount());
+    root = null;
+    const plain = mount({});
+    expect(plain.q('[role="tree"]')?.getAttribute('aria-multiselectable')).toBeNull();
   });
 });

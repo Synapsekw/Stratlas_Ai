@@ -186,6 +186,7 @@ export function DateTree(props: DateTreeProps) {
       className={`tree dtree${drag ? ' dragging' : ''}`}
       role="tree"
       aria-label={t('tree.dates.label')}
+      aria-multiselectable={rest.onMark ? true : undefined}
     >
       {folders.map((f) => {
         const expanded = open[f.id] === true;

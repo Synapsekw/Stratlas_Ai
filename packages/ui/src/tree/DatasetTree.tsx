@@ -69,14 +69,28 @@ export interface DatasetTreeProps {
   /** The one badge a row carries (a walk's placing state), or null for none. */
   rowBadge?: ((item: TreeItem) => TreeRowBadge | null) | undefined;
   /**
-   * The actions of a walk row: open it in the 360 video pane, place it, remove it (after a confirm
-   * in the row). Place and Remove are left out where nothing may change (a package).
+   * The actions of a walk row: open it in the 360 video pane, place it, remove it (the caller
+   * asks first, in the shared removal dialog). Place and Remove are left out where nothing may
+   * change (a package, a reviewer who may only look).
    */
   walkActions?: WalkRowActions | undefined;
   /** Layer ids marked for a group action (Delete). */
   marked?: ReadonlySet<string> | undefined;
-  /** Ctrl+click or Shift+click on a layer row; without it a modified click selects as before. */
-  onMark?: ((item: TreeItem, mods: MarkMods) => void) | undefined;
+  /**
+   * Ctrl+click or Shift+click on a layer row; without it a modified click selects as before.
+   * `order` is the layer rows drawn in the whole tree, top to bottom: rows in a closed group,
+   * flight or date folder, or behind "more", are not in it (a Shift range runs over it).
+   */
+  onMark?: ((item: TreeItem, mods: MarkMods, order: readonly string[]) => void) | undefined;
+}
+
+/** The layer rows drawn under the tree around `row`, top to bottom. */
+function drawnOrder(row: HTMLElement): string[] {
+  const tree = row.closest('[role="tree"]') ?? row.parentElement;
+  if (!tree) return [];
+  return [...tree.querySelectorAll<HTMLElement>('[data-mark]')].flatMap((el) =>
+    el.dataset.mark ? [el.dataset.mark] : [],
+  );
 }
 
 /** A short state word on a row: `info` for a step still to take, `warn` for something to check. */
@@ -168,7 +182,10 @@ export function DatasetTree(props: DatasetTreeProps) {
   const [showAll, setShowAll] = useState<Partial<Record<TreeGroupKind, boolean>>>({});
   /** Flight rows the user opened or closed; others open while they hold the active clip. */
   const [flightOpen, setFlightOpen] = useState<Record<string, boolean>>({});
-  /** Open, Place walk and Remove walk on a walk row; they stand in for the length and badge on hover. */
+  /**
+   * Open, Place walk and Remove walk on a walk row; they stand in for the length and badge on
+   * hover. Remove only hands the row over: the caller asks in the shared removal dialog.
+   */
   const walkButtons = (it: TreeItem) => {
     const acts = it.layerKind === 'walk' ? props.walkActions : undefined;
     if (!acts) return null;
@@ -277,12 +294,13 @@ export function DatasetTree(props: DatasetTreeProps) {
         className={`titem${sub ? ' sub' : ''}${sel ? ' sel' : ''}${marked ? ' marked' : ''}${off ? ' hidden' : ''}${walkActs ? ' has-acts' : ''}`}
         title={it.name}
         data-testid={it.layerId ? `tree-row-${it.layerId}` : undefined}
+        data-mark={props.onMark ? it.layerId : undefined}
         {...moving(it)}
         onClick={(e) => {
           const mods = { ctrl: e.ctrlKey || e.metaKey, shift: e.shiftKey };
           if ((mods.ctrl || mods.shift) && props.onMark && it.layerId) {
             e.preventDefault();
-            props.onMark(it, mods);
+            props.onMark(it, mods, drawnOrder(e.currentTarget));
             return;
           }
           props.onSelect(it);
@@ -429,6 +447,7 @@ export function DatasetTree(props: DatasetTreeProps) {
       className={props.nested ? 'tree tree-nested' : 'tree'}
       role={props.nested ? 'group' : 'tree'}
       aria-label={props.nested ? undefined : 'Datasets'}
+      aria-multiselectable={!props.nested && props.onMark ? true : undefined}
     >
       {groups.map((g) => {
         const expanded = !collapsed && isOpen(g.kind);

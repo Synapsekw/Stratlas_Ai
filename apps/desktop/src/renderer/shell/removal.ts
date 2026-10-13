@@ -7,7 +7,7 @@ import { walks } from '../walks/walks';
 import { rasterPacks } from '../workspace/siteTiles';
 import { createRemovalStore, type RemovalUi } from './removalModel';
 
-/** How long viewers get to let go of a file before it moves (as `removeWalk` waits for the 360 pane). */
+/** How long viewers (the 360 pane above all) get to let go of a file before it moves. */
 const RELEASE_MS = 50;
 
 /** After a removal: photo runs, jobs and 3D tiles read again; an open view of a removed run closes. */
