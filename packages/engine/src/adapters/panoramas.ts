@@ -26,6 +26,10 @@ import {
   coverageFromImage,
   coverageLabel,
   dragLook,
+  imageCentreDeg,
+  itemCoverage,
+  panoMarkerStatus,
+  panoOpenable,
   parsePanoIndex,
   startLook,
   zoomLook,
@@ -284,13 +288,19 @@ export function createPanoramasAdapter(
         sites: items.map((p, i) => ({ pos: p.pos, members: [i] })),
         member: (i) => {
           const p = items[i];
-          return { id: p?.id ?? '', full: p ? ctx.url(p.src) : undefined };
+          if (!p) return { id: '' };
+          return {
+            id: p.id,
+            label: p.name,
+            status: panoMarkerStatus(p),
+            full: panoOpenable(p) ? ctx.url(p.src) : undefined,
+          };
         },
         open: (i) => {
           const p = items[i];
           if (!p) return;
           store.getState().select({ kind: 'pano', id: p.id, layer: layer.id });
-          enter(i);
+          if (panoOpenable(p)) enter(i);
         },
         selected: () => selectedIds,
       });
@@ -351,7 +361,8 @@ export function createPanoramasAdapter(
         scene.requestRender();
       };
 
-      const coverageOf = (p: PanoRef): PanoCoverage => coverage.get(p.id) ?? FULL_SPHERE;
+      const coverageOf = (p: PanoRef): PanoCoverage =>
+        itemCoverage(p.cov) ?? coverage.get(p.id) ?? FULL_SPHERE;
 
       const loadPano = (p: PanoRef) => {
         const token = ++loadToken;
@@ -367,10 +378,10 @@ export function createPanoramasAdapter(
             tex.colorSpace = SRGBColorSpace;
             tex.generateMipmaps = false;
             tex.minFilter = LinearFilter;
-            if (!coverage.has(p.id)) {
+            if (!p.cov && !coverage.has(p.id)) {
               const img = tex.image as { width?: number; height?: number } | undefined;
               const cov = coverageFromImage(img?.width ?? 0, img?.height ?? 0);
-              pano.setFrame(p.headingDeg, cov);
+              pano.setFrame(imageCentreDeg(p.headingDeg, p.cov), cov);
             }
             pano.setImage(tex);
             hud?.setHint('Drag to look around · scroll to zoom · Esc to return');
@@ -389,8 +400,9 @@ export function createPanoramasAdapter(
         current = i;
         const cov = coverageOf(p);
         center.set(...p.pos);
-        pano.setFrame(p.headingDeg, cov);
-        look = startLook(p.headingDeg, cov);
+        const centre = imageCentreDeg(p.headingDeg, p.cov);
+        pano.setFrame(centre, cov);
+        look = startLook(centre, cov);
         const date = layerDate(
           store.getState().project?.manifest ?? { captures: [], layers: [] },
           layer.id,
@@ -555,6 +567,16 @@ export function createPanoramasAdapter(
       }
 
       const unsub = store.subscribe((s, prev) => {
+        const ask = s.panoRequest;
+        if (ask && ask !== prev.panoRequest && ask.layer === layer.id) {
+          const i = items.findIndex((p) => p.id === ask.id);
+          const p = items[i];
+          if (p) {
+            store.getState().select({ kind: 'pano', id: p.id, layer: layer.id });
+            if (panoOpenable(p)) enter(i);
+          }
+          return;
+        }
         if (s.selection === prev.selection) return;
         paintSelection();
         if (!immersed) return;

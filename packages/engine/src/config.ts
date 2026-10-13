@@ -27,6 +27,8 @@ export type EngineTextKey =
   | 'stage.markers.pano'
   | 'stage.markers.panos'
   | 'stage.markers.open'
+  | 'stage.markers.stitching'
+  | 'stage.markers.stitchFailed'
   | 'stage.markers.list'
   | 'stage.markers.more'
   | 'stage.markers.timeRange';

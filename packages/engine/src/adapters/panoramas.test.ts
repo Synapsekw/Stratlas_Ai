@@ -133,6 +133,50 @@ describe('panoramas layer', () => {
     host.remove();
   });
 
+  it('badges a sphere still stitching and does not enter it', async () => {
+    const { host, canvas, camera, h, frames } = setup();
+    const store = createWorkspace();
+    const queued: PanoLayer = {
+      ...layer,
+      items: [
+        {
+          id: 'a',
+          src: { path: 'panoramas/a.jpg' },
+          pos: [0, 40, -100],
+          headingDeg: 90,
+          name: 'Pano 1',
+          stitch: { status: 'queued' },
+        },
+        { id: 'b', src: { path: 'panoramas/b.jpg' }, pos: [300, 40, -100], headingDeg: 0 },
+      ],
+    };
+    const lh = await createPanoramasAdapter(store).create(queued, { url: () => '', scene: h });
+    for (const f of frames) f(16);
+    const icon = [...host.querySelectorAll<HTMLElement>('[data-markers=pano] .aio-mk')].find(
+      (e) => e.style.display !== 'none',
+    );
+    expect(icon?.dataset.status).toBe('stitching');
+    click(canvas, 100, 100);
+    expect(store.getState().selection).toEqual({ kind: 'pano', id: 'a', layer: 'panos' });
+    expect(camera.layers.mask).toBe(1); // nothing to show yet
+    lh.dispose();
+    host.remove();
+  });
+
+  it('enters a panorama asked for by openPano', async () => {
+    const { host, camera, h } = setup();
+    const store = createWorkspace();
+    const lh = await createPanoramasAdapter(store).create(layer, { url: () => '', scene: h });
+    store.getState().openPano('other-layer', 'a');
+    expect(camera.layers.mask).toBe(1);
+    store.getState().openPano('panos', 'b');
+    expect(camera.layers.mask).toBe(2 ** 31);
+    expect(camera.position.toArray()).toEqual([300, 40, -100]);
+    expect(store.getState().selection).toEqual({ kind: 'pano', id: 'b', layer: 'panos' });
+    lh.dispose();
+    host.remove();
+  });
+
   it('keeps the HUD below the app toolbars, not above the video window', () => {
     const stage = { top: 40, height: 700 };
     const toolbar = { top: 55, bottom: 85 };

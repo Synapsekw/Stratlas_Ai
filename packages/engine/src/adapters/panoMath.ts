@@ -129,3 +129,41 @@ export function coverageLabel(cov: PanoCoverage): string {
   if (cov.hspanDeg >= 359.5 && cov.vtopDeg >= 89.5 && cov.vbotDeg >= 89.5) return '360°';
   return `Wide ${Math.round(cov.hspanDeg)}° x ${Math.round(cov.vtopDeg + cov.vbotDeg)}°`;
 }
+
+/** Coverage from a `PanoRef.cov` (drone panoramas), or null to fall back to panoramas.json. */
+export function itemCoverage(
+  cov:
+    | { top: number; bottom: number; left?: number | undefined; right?: number | undefined }
+    | undefined,
+): PanoCoverage | null {
+  if (!cov) return null;
+  const hspan = cov.left !== undefined && cov.right !== undefined ? cov.right - cov.left : 360;
+  return { hspanDeg: Math.min(360, Math.max(1, hspan)), vtopDeg: cov.top, vbotDeg: cov.bottom };
+}
+
+/**
+ * Where the image's centre column looks: `headingDeg` is where true north is (the north
+ * correction); a wide panorama's centre sits halfway between its yaw range from there.
+ */
+export function imageCentreDeg(
+  headingDeg: number,
+  cov?: { left?: number | undefined; right?: number | undefined },
+): number {
+  return cov?.left !== undefined && cov.right !== undefined
+    ? headingDeg + (cov.left + cov.right) / 2
+    : headingDeg;
+}
+
+/** The marker badge of a drone sphere: queued and running stitch, or failed. */
+export function panoMarkerStatus(p: {
+  stitch?: { status: string } | undefined;
+}): 'stitching' | 'failed' | undefined {
+  const s = p.stitch?.status;
+  if (s === 'queued' || s === 'running') return 'stitching';
+  return s === 'failed' ? 'failed' : undefined;
+}
+
+/** Whether there is an image to enter: ready-made, or stitched. */
+export function panoOpenable(p: { stitch?: { status: string } | undefined }): boolean {
+  return p.stitch === undefined || p.stitch.status === 'done';
+}

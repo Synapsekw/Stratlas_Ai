@@ -141,6 +141,16 @@ describe('workspace store', () => {
     expect(ws.getState().lastCamera?.target).toEqual({ kind: 'point', p: [1, 0, 2] });
     expect(seen).toHaveLength(1);
   });
+
+  it('asks to open a panorama, a new request every time', () => {
+    const ws = createWorkspace();
+    expect(ws.getState().panoRequest).toBeNull();
+    ws.getState().openPano('panos-1', 'p01');
+    const first = ws.getState().panoRequest;
+    expect(first).toMatchObject({ layer: 'panos-1', id: 'p01' });
+    ws.getState().openPano('panos-1', 'p01');
+    expect(ws.getState().panoRequest?.seq).toBe((first?.seq ?? 0) + 1);
+  });
 });
 
 describe('replaceManifest', () => {

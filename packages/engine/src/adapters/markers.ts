@@ -19,6 +19,10 @@ export interface MarkerSite {
 
 export interface MarkerMember {
   id: string;
+  /** Shown in the tooltip instead of `id` (a panorama's name). */
+  label?: string | undefined;
+  /** A drone sphere still stitching, or whose stitch failed. */
+  status?: 'stitching' | 'failed' | undefined;
   takenAt?: string | undefined;
   /** Image for the cluster list (a thumbnail first, the full image if that fails). */
   thumb?: string | undefined;
@@ -62,6 +66,8 @@ const CSS = `
 .aio-mk svg{width:12px;height:12px;fill:none;stroke:currentColor;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}
 .aio-mk.is-hover .aio-mk-p{transform:scale(1.18);border-color:var(--acc,oklch(0.79 0.115 172))}
 .aio-mk.is-sel .aio-mk-p{border-width:2px;border-color:var(--acc,oklch(0.79 0.115 172));background:oklch(0.22 0.04 172 / .92);color:var(--acc-strong,oklch(0.86 0.12 172))}
+.aio-mk[data-status='stitching'] .aio-mk-p{border-style:dashed;opacity:.82}
+.aio-mk[data-status='failed'] .aio-mk-p{border-color:var(--warn,oklch(0.75 0.15 60))}
 .aio-mk-n{position:absolute;left:18px;top:1px;box-sizing:border-box;min-width:15px;height:13px;padding:0 3px;border-radius:7px;background:var(--acc,oklch(0.79 0.115 172));color:var(--acc-ink,oklch(0.2 0.03 172));font:600 9.5px/13px var(--f-mono,'IBM Plex Mono',ui-monospace,monospace);text-align:center;font-variant-numeric:tabular-nums;box-shadow:0 0 0 1.5px oklch(0.15 0.01 250 / .85)}
 .aio-mk-tip{position:absolute;left:0;top:0;pointer-events:none;white-space:nowrap;padding:4px 8px 5px;border-radius:4px;background:var(--scrim,oklch(0.13 0.01 250 / .84));border:1px solid var(--line-strong,oklch(0.36 0.012 250));color:var(--ov,oklch(0.96 0.008 250));font:500 11px/15px var(--f-mono,'IBM Plex Mono',ui-monospace,monospace);z-index:2}
 .aio-mk-tip i{display:block;font-style:normal;color:var(--ov-dim,oklch(0.96 0.008 250 / .55))}
@@ -299,7 +305,7 @@ export class MarkerLayer {
     const head =
       members.length === 1 && first !== undefined
         ? t(this.o.kind === 'photo' ? 'stage.markers.photo' : 'stage.markers.pano', {
-            id: this.o.member(first).id,
+            id: this.o.member(first).label ?? this.o.member(first).id,
           })
         : t(this.o.kind === 'photo' ? 'stage.markers.photos' : 'stage.markers.panos', {
             count: members.length,
@@ -311,8 +317,18 @@ export class MarkerLayer {
         : typeof span === 'string'
           ? span
           : t('stage.markers.timeRange', { from: span[0], to: span[1] });
-    const action = t(members.length === 1 ? 'stage.markers.open' : 'stage.markers.list');
-    return [head, [when, action].filter(Boolean).join(' · ')];
+    const status =
+      members.length === 1 && first !== undefined ? this.o.member(first).status : undefined;
+    const state =
+      status === 'stitching'
+        ? t('stage.markers.stitching')
+        : status === 'failed'
+          ? t('stage.markers.stitchFailed')
+          : '';
+    const action = status
+      ? ''
+      : t(members.length === 1 ? 'stage.markers.open' : 'stage.markers.list');
+    return [head, [state, when, action].filter(Boolean).join(' · ')];
   }
 
   private openList(c: SiteCluster, members: number[]) {
@@ -478,6 +494,16 @@ export class MarkerLayer {
       if (m.count.textContent !== text) m.count.textContent = text;
       m.count.style.display = count > 1 ? '' : 'none';
       m.root.dataset.count = String(count);
+      const statuses = this.membersOf(c).map((i) => this.o.member(i).status);
+      const status = statuses.includes('failed')
+        ? 'failed'
+        : statuses.includes('stitching')
+          ? 'stitching'
+          : '';
+      if ((m.root.dataset.status ?? '') !== status) {
+        if (status) m.root.dataset.status = status;
+        else delete m.root.dataset.status;
+      }
       m.root.classList.toggle('is-hover', k === this.hovered);
       m.root.classList.toggle('is-sel', sel.size > 0 && this.membersOf(c).some((i) => sel.has(i)));
     });

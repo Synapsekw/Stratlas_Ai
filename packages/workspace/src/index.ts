@@ -49,6 +49,11 @@ export interface CameraRequest {
 export interface WorkspaceState {
   project: OpenProject | null;
   /**
+   * The latest ask to open a panorama's sphere view (a Datasets row's Open): the panoramas adapter
+   * of that layer enters it. `seq` makes the same pano asked twice a new request.
+   */
+  panoRequest: { seq: number; layer: string; id: string } | null;
+  /**
    * Counts `openProject` calls (never reset, not even by `closeProject`). A change means the
    * project was opened afresh and visibility was reset from its manifest; `replaceManifest`
    * and issue edits leave it alone.
@@ -123,6 +128,8 @@ export interface WorkspaceActions {
   removeIssue(issueId: string): void;
   focus(window: WindowKind | null): void;
   flyTo(target: CameraRequest['target']): void;
+  /** Ask the panoramas adapter of `layer` to enter panorama `id`. */
+  openPano(layer: string, id: string): void;
   consumeCamera(seq: number): void;
   /** Show a clip's camera from unsaved direction keyframes, or `null` for the saved ones. */
   setDirectionDraft(draft: DirectionDraft | null): void;
@@ -136,6 +143,7 @@ export interface WorkspaceActions {
 export type Workspace = WorkspaceState & WorkspaceActions;
 
 const initial: WorkspaceState = {
+  panoRequest: null,
   project: null,
   openSeq: 0,
   issues: [],
@@ -156,6 +164,7 @@ const initial: WorkspaceState = {
 
 export function createWorkspace(): StoreApi<Workspace> {
   let seq = 0;
+  let panoSeq = 0;
   return createStore<Workspace>()((set, get) => ({
     ...initial,
     openProject: (project, issues = []) => {
@@ -255,6 +264,10 @@ export function createWorkspace(): StoreApi<Workspace> {
       seq += 1;
       const camera = { seq, target };
       set({ camera, lastCamera: camera });
+    },
+    openPano: (layer, id) => {
+      panoSeq += 1;
+      set({ panoRequest: { seq: panoSeq, layer, id } });
     },
     consumeCamera: (s) => {
       if (get().camera?.seq === s) set({ camera: null });

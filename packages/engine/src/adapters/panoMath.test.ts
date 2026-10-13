@@ -7,6 +7,10 @@ import {
   coverageLabel,
   dirToAzEl,
   dragLook,
+  imageCentreDeg,
+  itemCoverage,
+  panoMarkerStatus,
+  panoOpenable,
   panoUv,
   parsePanoIndex,
   startLook,
@@ -86,5 +90,37 @@ describe('panorama maths', () => {
     expect(startLook(0, { hspanDeg: 210, vtopDeg: 45, vbotDeg: 43.8 }).pitchDeg).toBeCloseTo(-9.4);
     expect(coverageLabel(FULL_SPHERE)).toBe('360°');
     expect(coverageLabel({ hspanDeg: 210, vtopDeg: 45, vbotDeg: 43.8 })).toBe('Wide 210° x 89°');
+  });
+});
+
+describe('coverage and status from the item', () => {
+  it('reads a full sphere and a wide panorama', () => {
+    expect(itemCoverage(undefined)).toBeNull();
+    expect(itemCoverage({ top: 90, bottom: 90 })).toEqual({
+      hspanDeg: 360,
+      vtopDeg: 90,
+      vbotDeg: 90,
+    });
+    expect(itemCoverage({ top: 24, bottom: 55, left: -100, right: 93 })).toEqual({
+      hspanDeg: 193,
+      vtopDeg: 24,
+      vbotDeg: 55,
+    });
+  });
+
+  it('centres a wide panorama between its yaw range, after the north correction', () => {
+    expect(imageCentreDeg(-0.8)).toBe(-0.8);
+    expect(imageCentreDeg(-0.8, { left: -100, right: 93 })).toBeCloseTo(-4.3, 6);
+  });
+
+  it('badges queued, running and failed stitches and opens only stitched or ready-made ones', () => {
+    expect(panoMarkerStatus({ stitch: { status: 'queued' } })).toBe('stitching');
+    expect(panoMarkerStatus({ stitch: { status: 'running' } })).toBe('stitching');
+    expect(panoMarkerStatus({ stitch: { status: 'failed' } })).toBe('failed');
+    expect(panoMarkerStatus({ stitch: { status: 'done' } })).toBeUndefined();
+    expect(panoMarkerStatus({})).toBeUndefined();
+    expect(panoOpenable({})).toBe(true);
+    expect(panoOpenable({ stitch: { status: 'done' } })).toBe(true);
+    expect(panoOpenable({ stitch: { status: 'queued' } })).toBe(false);
   });
 });
