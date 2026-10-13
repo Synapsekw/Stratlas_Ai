@@ -5328,7 +5328,7 @@ import { withoutExcluded } from './builder';
 describe('withoutExcluded', () => {
   it('leaves out the excluded files, without case on Windows', () => {
     const files = ['D:\\card\\SYN_0001.JPG', 'D:\\card\\SYN_0002.JPG', 'D:\\card\\notes.las'];
-    const out = withoutExcluded(files, ['d:\\card\\dji_0001.jpg']);
+    const out = withoutExcluded(files, ['d:\\card\\syn_0001.jpg']);
     expect(out).toEqual(process.platform === 'win32' ? files.slice(1) : files);
     expect(withoutExcluded(files, undefined)).toBe(files);
   });
