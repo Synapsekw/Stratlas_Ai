@@ -125,6 +125,8 @@ def test_the_products_report(processed):
     assert r["gsdCm"]["dsm"] == pytest.approx(2 * r["gsdCm"]["ortho"])
     assert r["engines"]["dense"] in ("sgm-numpy", "sgm-opencv") and r["engines"]["ground"] == "smrf-grid"
     assert r["cloud"]["points"] > 100_000 and r["coverage"]["ortho"] > 0.5
+    assert r["cloud"]["budget"] == 400_000_000 and "writer" not in r["cloud"]
+    assert r["cloud"]["spacingM"] == pytest.approx(r["gsdCm"]["photos"] / 100, abs=1e-3)  # High: the GSD
     assert r["memoryPeakBytes"] > 0 and r["disk"]["neededBytes"] > 0
 
 
@@ -673,48 +675,55 @@ def test_the_full_mesh_goes_to_tiles_mesh(monkeypatch):
     )
 
 
-# ------------------------------------------------------------------------------ PDAL (fake)
+# ------------------------------------------------------------------- the cloud (fake untwine, PDAL)
+
+FAKE_UNTWINE = r"""
+import os, shutil, sys
+args = sys.argv[1:]
+open(os.environ["FAKE_UNTWINE_ARGS"], "w").write(" ".join(args))
+print("Untwine progress (50% done): Bulk", flush=True)
+shutil.copyfile(args[args.index("-i") + 1], args[args.index("-o") + 1])
+"""
 
 FAKE_PDAL = r"""
 import json, shutil, sys
-sys.path.insert(0, {src!r})
 args = sys.argv[1:]
 assert args[0] == "pipeline", args
 stages = json.load(open(args[1]))["pipeline"]
-types = [s["type"] for s in stages]
-open(args[1] + ".seen", "w").write(" ".join(types))
-src = stages[0]["filename"]
-out = stages[-1]
-if out["type"] == "writers.copc":
-    assert "filters.smrf" in types
-    shutil.copyfile(src, out["filename"])
-elif out["type"] == "writers.gdal":
-    import numpy as np, rasterio
-    from rasterio.transform import from_origin
-    from aio_pipelines.change.las import read_las
-    las = read_las(__import__("pathlib").Path(src))
-    xyz = las.xyz
-    res = float(out["resolution"])
-    x0, y1 = xyz[:, 0].min(), xyz[:, 1].max()
-    w = int((xyz[:, 0].max() - x0) / res) + 1
-    h = int((y1 - xyz[:, 1].min()) / res) + 1
-    z = np.full(h * w, np.inf)
-    ci = ((xyz[:, 0] - x0) / res).astype(int)
-    ri = ((y1 - xyz[:, 1]) / res).astype(int)
-    np.minimum.at(z, ri * w + ci, xyz[:, 2])
-    z = np.where(np.isinf(z), -9999, z).reshape(h, w).astype("float32")
-    with rasterio.open(out["filename"], "w", driver="GTiff", width=w, height=h, count=1, dtype="float32",
-                       transform=from_origin(x0, y1, res, res), nodata=-9999, crs="EPSG:32639") as ds:
-        ds.write(z, 1)
+assert [s["type"] for s in stages] == ["readers.las", "writers.copc"], stages
+shutil.copyfile(stages[0]["filename"], stages[-1]["filename"])
 """
 
 
-def test_the_cloud_and_dtm_go_through_pdal(tmp_path, monkeypatch):
-    import aio_pipelines
+def test_a_cloud_alone_runs_the_dsm_and_dtm_and_publishes_no_dtm(tmp_path, monkeypatch):
+    from aio_pipelines.change.las import read_las
 
-    src = str(Path(aio_pipelines.__file__).parents[1])
-    exe = ps.fake_tool(tmp_path / "tools", "pdal", FAKE_PDAL.replace("{src!r}", repr(src)))
-    monkeypatch.setenv("AIO_PDAL", str(exe))
+    monkeypatch.setenv("AIO_UNTWINE", str(ps.fake_tool(tmp_path / "tools", "untwine", FAKE_UNTWINE)))
+    monkeypatch.setenv("FAKE_UNTWINE_ARGS", str(tmp_path / "untwine.args"))
+    root = ps.project("cloud-only")
+    res, rec = run_job(PhotoProducts(), root, _params(preset="fast", products=["cloud"]))
+    assert list(res["outputs"]) == ["prepare", "dense", "fuse", "dsm", "dtm", "cloud", "commit"]
+    manifest = json.loads((root / "manifest.json").read_text("utf-8"))
+    assert [x["id"] for x in manifest["layers"]] == [f"{RUN}-cloud"]
+    assert not (root / "photogrammetry" / RUN / "dtm.tif").exists()
+    assert not (root / "rasters" / f"{RUN}-dtm").exists()
+    args = (tmp_path / "untwine.args").read_text().split()
+    assert args[args.index("--a_srs") + 1] == f"EPSG:{ps.EPSG}" and "--progress_debug" in args
+    las = read_las(root / "clouds" / f"{RUN}.copc.laz")  # the fake passes the LAS through
+    cls = las.field("Classification")
+    assert set(np.unique(cls).tolist()) <= {1, 2} and (cls == 2).any()
+    assert manifest["layers"][0]["pointCount"] == las.count
+    r = json.loads((root / "photogrammetry" / RUN / "report" / "products.json").read_text("utf-8"))
+    assert r["engines"]["ground"] == "smrf-grid" and r["cloud"]["writer"] == "untwine"
+    assert r["cloud"]["groundPoints"] == int((cls == 2).sum()) and r["cloud"]["budget"] == 0
+    messages = [p.get("message") for p in rec.of("progress") if p.get("step") == "cloud"]
+    assert any(m and m.startswith("Writing the cloud: tile") for m in messages)
+    assert not (root / "jobs" / "j1" / "staging" / ".copc-tmp").exists()
+
+
+def test_without_untwine_the_cloud_goes_through_pdal(tmp_path, monkeypatch):
+    monkeypatch.setenv("AIO_UNTWINE", str(tmp_path / "no-untwine.exe"))
+    monkeypatch.setenv("AIO_PDAL", str(ps.fake_tool(tmp_path / "tools", "pdal", FAKE_PDAL)))
     root = ps.project("pdal")
     res, _ = run_job(PhotoProducts(), root, _params(preset="fast", products=["cloud", "dsm", "dtm"]))
     manifest = json.loads((root / "manifest.json").read_text("utf-8"))
@@ -728,15 +737,33 @@ def test_the_cloud_and_dtm_go_through_pdal(tmp_path, monkeypatch):
         "format": "copc",
         "pointCount": res["outputs"]["cloud"]["points"],
     }
-    assert (root / "clouds" / f"{RUN}.copc.laz").is_file()
-    assert res["outputs"]["dtm"]["engine"] == "pdal-smrf"
-    work = next((root / "photogrammetry" / RUN / "work" / "products").iterdir())
-    seen = (work / "dtm-pipeline.json.seen").read_text()
-    assert seen == "readers.las filters.assign filters.smrf filters.range writers.gdal"
+    assert res["outputs"]["cloud"]["writer"] == "pdal" and res["outputs"]["dtm"]["engine"] == "smrf-grid"
+    assert {x["id"] for x in manifest["layers"]} == {f"{RUN}-cloud", f"{RUN}-dsm", f"{RUN}-dtm"}
     with rasterio.open(root / "photogrammetry" / RUN / "dtm.tif") as ds:
         assert (
             ds.crs.to_epsg() == ps.EPSG and np.isfinite(ds.read(1, masked=True).filled(np.nan)).mean() > 0.5
         )
+
+
+def test_the_mesh_input_is_capped_at_what_meshlab_keeps(tmp_path, monkeypatch):
+    import aio_pipelines
+    import aio_pipelines.photo.mesh as mesh_mod
+
+    src = str(Path(aio_pipelines.__file__).parents[1])
+    monkeypatch.setenv(
+        "AIO_POISSONRECON",
+        str(ps.fake_tool(tmp_path, "PoissonRecon", FAKE_POISSON.replace("{src!r}", repr(src)))),
+    )
+    monkeypatch.setenv("AIO_SURFACETRIMMER", str(tmp_path / "none.exe"))
+    monkeypatch.setattr(mesh_mod, "meshlab_points", lambda budget: 20_000)
+    root = ps.project("mesh-cap")
+    res, _ = run_job(
+        PhotoProducts(), root, _params(preset="standard", products=["mesh"], meshTriangles=10_000)
+    )
+    work = root / res["outputs"]["prepare"]["work"]
+    head = (work / "poisson" / "dense.ply").read_bytes()[:400].decode("ascii", errors="replace")
+    n = int(re.search(r"element vertex (\d+)", head).group(1))
+    assert res["outputs"]["fuse"]["points"] > 20_000 >= n > 10_000
 
 
 def test_a_cloud_without_pdal_is_refused_before_any_work(monkeypatch, tmp_path):

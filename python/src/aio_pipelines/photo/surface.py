@@ -4,11 +4,11 @@
   wall point in a roof cell), holes up to ``fill_m`` across filled from their nearest neighbours,
   larger gaps left empty (nodata). Written as a tiled GeoTIFF one window at a time, then copied to
   a Cloud Optimised GeoTIFF with overviews (GDAL's COG driver).
-- **DTM**: the ground under buildings, piles and vehicles. With PDAL (``filters.smrf`` on the
-  dense cloud, ground points gridded by ``writers.gdal``), else the same Simple Morphological
-  Filter (Pingel, Clarke and McBride 2013) on the minimum-height grid: progressively larger
-  openings mark cells that rise faster than the slope allows as objects; the ground left is
-  interpolated under them (push-pull). The DTM is then the DSM wherever the DSM is ground.
+- **DTM**: the ground under buildings, piles and vehicles, by a Simple Morphological Filter
+  (Pingel, Clarke and McBride 2013) on the minimum-height grid: progressively larger openings mark
+  cells that rise faster than the slope allows as objects; the ground left is interpolated under
+  them (push-pull). The DTM is then the DSM wherever the DSM is ground. No whole-cloud filter runs
+  (13 Oct 2026): the cloud's ground class comes from this DTM (``cloud_out.py``).
 - **Viewing**: a hypsometric colour ramp under a hillshade (RGBA GeoTIFF) for the ``kit-pyramid``
   layer, and the measured heights as an ``aio.grid/1`` 16-bit PNG in ``sources/<layer id>``, which
   ``change.surface`` and the volume tools read (``change/sources.py``).
@@ -356,13 +356,11 @@ def dtm_grid(
     epsg: int | None,
     budget: int,
     check: Callable[[], None],
-    ground_tif: Path | None = None,
+    progress: Callable[[float, str | None], None] = lambda f, m=None: None,
 ) -> dict[str, Any]:
-    """The DTM, found on a coarse grid (1 m cells or the DSM's, within the memory budget) and
-    written at the DSM's cell size: cells within 0.5 m of the ground keep the DSM's height, the
-    rest the ground interpolated beneath. The ground comes from PDAL's SMRF when ``ground_tif``
-    (its ground points gridded on the coarse grid, ``pdal_dtm_pipeline``) is given, else from
-    our own filter on the minimum-height grid."""
+    """The DTM, found on a coarse grid (1 m cells or the DSM's, within the memory budget) by our
+    filter on the minimum-height grid and written at the DSM's cell size window by window: cells
+    within 0.5 m of the ground keep the DSM's height, the rest the ground interpolated beneath."""
     from rasterio.windows import Window
     from scipy import ndimage
 
@@ -370,19 +368,11 @@ def dtm_grid(
     shape = (coarse.height, coarse.width)
     cell = coarse.res
     dsm_c = read_grid(dsm_path, shape)
-    if ground_tif is not None:
-        engine = "pdal-smrf"
-        ground_c = read_grid_on(ground_tif, coarse, epsg)
-        if not np.isfinite(ground_c).any():
-            raise JobError("PDAL found no ground points; the DTM cannot be made.")
-        dtm_c = harmonic_fill(ground_c)
-    else:
-        engine = "smrf-grid"
-        dtm_c = dtm_from(dsm_c, read_grid(zmin_path, shape), cell, check=check)
+    dtm_c = dtm_from(dsm_c, read_grid(zmin_path, shape), cell, check=check)
     ground_cells = int(np.sum(np.isfinite(dsm_c) & (np.abs(dsm_c - dtm_c) < 0.25)))
-
+    wins = list(spec.windows())
     with write_tif(out, spec, epsg, 1, "float32", NODATA) as ds:
-        for c0, r0, ww, hh in spec.windows():
+        for i, (c0, r0, ww, hh) in enumerate(wins):
             check()
             dsm = read_window(dsm_path, c0, r0, ww, hh)
             # the coarse DTM bilinearly at this window's cell centres
@@ -397,32 +387,13 @@ def dtm_grid(
             ds.write(
                 np.where(np.isfinite(dtm), dtm, NODATA).astype(np.float32), 1, window=Window(c0, r0, ww, hh)
             )
-    return {"engine": engine, "cell": round(cell, 4), "groundCells": ground_cells}
+            progress((i + 1) / len(wins), f"Terrain window {i + 1} of {len(wins)}")
+    return {"engine": "smrf-grid", "cell": round(cell, 4), "groundCells": ground_cells}
 
 
 def dtm_coarse(spec: GridSpec, budget: int) -> GridSpec:
-    """The coarse grid the ground is found on (shared by both engines)."""
+    """The coarse grid the ground is found on."""
     return coarse_spec(spec, max(1.0, spec.res), max(10_000, budget // 64))
-
-
-def read_grid_on(path: Path, spec: GridSpec, epsg: int | None) -> np.ndarray:
-    """A height GeoTIFF resampled onto ``spec`` (NaN where it has no data)."""
-    import rasterio
-    from rasterio.warp import Resampling, reproject
-
-    out = np.full((spec.height, spec.width), np.nan, np.float32)
-    with rasterio.open(path) as src:
-        crs = src.crs or (f"EPSG:{epsg}" if epsg else None)
-        reproject(
-            rasterio.band(src, 1),
-            out,
-            src_nodata=src.nodata,
-            dst_transform=spec.transform(),
-            dst_crs=crs,
-            dst_nodata=np.nan,
-            resampling=Resampling.bilinear,
-        )
-    return out.astype(np.float64)
 
 
 def read_window(path: Path, c0: int, r0: int, w: int, h: int, band: int = 1) -> np.ndarray:
@@ -432,38 +403,6 @@ def read_window(path: Path, c0: int, r0: int, w: int, h: int, band: int = 1) -> 
     with rasterio.open(path) as ds:
         a = ds.read(band, window=Window(c0, r0, w, h), masked=True, boundless=True)
     return np.where(np.ma.getmaskarray(a), np.nan, a.astype(np.float64))
-
-
-# ------------------------------------------------------------------------------ PDAL ground
-
-
-def pdal_dtm_pipeline(las: Path, out: Path, spec: GridSpec, epsg: int | None) -> dict[str, Any]:
-    """The PDAL pipeline for the DTM: SMRF ground points gridded on ``spec``, the coarse grid of
-    ``dtm_coarse`` (PDAL holds its raster in memory, so it stays small)."""
-    x0, y0, x1, y1 = spec.bounds
-    return {
-        "pipeline": [
-            {
-                "type": "readers.las",
-                "filename": str(las),
-                **({"override_srs": f"EPSG:{epsg}"} if epsg else {}),
-            },
-            {"type": "filters.assign", "value": "Classification = 1"},
-            {"type": "filters.smrf", "slope": 0.15, "window": 18.0, "threshold": 0.5, "scalar": 1.25},
-            {"type": "filters.range", "limits": "Classification[2:2]"},
-            {
-                "type": "writers.gdal",
-                "filename": str(out),
-                "resolution": spec.res,
-                "output_type": "idw",
-                "window_size": 6,
-                "nodata": NODATA,
-                "data_type": "float32",
-                "bounds": f"([{x0}, {x1 - spec.res / 2}], [{y0 + spec.res / 2}, {y1}])",
-                "gdalopts": "TILED=YES,COMPRESS=DEFLATE",
-            },
-        ]
-    }
 
 
 # ------------------------------------------------------------------------- viewing and measuring

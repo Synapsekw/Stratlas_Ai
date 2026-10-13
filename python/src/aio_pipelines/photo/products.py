@@ -11,9 +11,9 @@ skips finished steps) and cancellable, with progress per stage:
 | prepare   | settings (cell sizes, matching size), disk and tool checks                   |
 | dense     | a depth map per photo (``dense.py``, semi-global matching on the CPU)        |
 | fuse      | the dense cloud: consistent points, voxel-averaged, in ground tiles          |
-| cloud     | ``clouds/<run>.copc.laz`` through PDAL (ground classified by ``filters.smrf``) |
 | dsm       | ``dsm.tif`` (COG), a shaded ``kit-pyramid`` layer and its ``aio.grid/1`` heights |
-| dtm       | ``dtm.tif`` likewise (PDAL's SMRF, else the same filter on the grid)          |
+| dtm       | ``dtm.tif`` likewise (our SMRF on the grid); also for the cloud's ground class   |
+| cloud     | ``clouds/<run>.copc.laz``: ground from the DTM, COPC by untwine (else PDAL)      |
 | ortho     | ``ortho.tif`` (COG) and a ``kit-pyramid`` ortho layer                          |
 | mesh      | Poisson or 2.5D mesh (``mesh.py``)                                            |
 | texture   | the textured site-view GLB layer and the full mesh for 3D Tiles               |
@@ -76,14 +76,10 @@ RUN_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,79}$")
 SCALE = {"fast": 0.0, "standard": 0.5, "high": 1.0}
 DEFAULT_TRIANGLES = 2_000_000
 IDENTITY = [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1]
-STAGES = ("dense", "fuse", "cloud", "dsm", "dtm", "ortho", "mesh", "texture", "commit", "tiles")
+STAGES = ("dense", "fuse", "dsm", "dtm", "cloud", "ortho", "mesh", "texture", "commit", "tiles")
 CUDA_MISSING = (
     "The GPU accelerator is not installed: install the GPU add-on in Settings, Processing tools, "
     "or use dense: auto or cpu."
-)
-PDAL_FOR_CLOUD = (
-    "The point cloud needs PDAL, which this pipeline pack does not have. Install the full "
-    "pipeline pack, or leave the point cloud out."
 )
 NO_DENSE_POINTS = "Dense matching found no consistent points; the photos may not overlap enough."
 #: The per-photo fusion outputs when no photo was fused in this step (Fast, or merged already).
@@ -375,16 +371,17 @@ class PhotoProducts:
     def plan(self, params: dict[str, Any]) -> list[Step]:
         want = set(params["products"])
         need_mesh = bool(want & {"mesh", "tiles"})
-        need_dsm = bool(want & {"dsm", "dtm", "ortho"}) or need_mesh
+        need_dtm = bool(want & {"dtm", "cloud"})  # the cloud's ground class comes from the DTM
+        need_dsm = bool(want & {"dsm", "ortho"}) or need_dtm or need_mesh
         steps = [Step("prepare", "Check the run and plan the products", _timed(self._prepare), 0.5)]
         steps.append(Step("dense", "Dense matching (depth maps)", _timed(self._dense), 10))
         steps.append(Step("fuse", "Fuse the depth maps into a cloud", _timed(self._fuse), 3))
-        if "cloud" in want:
-            steps.append(Step("cloud", "Point cloud to COPC", _timed(self._cloud), 2))
         if need_dsm:
             steps.append(Step("dsm", "Surface model (DSM)", _timed(self._dsm), 2))
-        if "dtm" in want:
+        if need_dtm:
             steps.append(Step("dtm", "Terrain model (DTM)", _timed(self._dtm), 1))
+        if "cloud" in want:
+            steps.append(Step("cloud", "Point cloud to COPC", _timed(self._cloud), 2))
         if "ortho" in want:
             steps.append(Step("ortho", "Orthomosaic", _timed(self._ortho), 6))
         if need_mesh:
@@ -804,43 +801,36 @@ class PhotoProducts:
         )
 
     def _cloud(self, ctx: StepContext) -> dict[str, Any]:
-        from ..pointcloud import _run as pdal_run
-        from ..pointcloud import find_pdal
-        from .fuse import write_las_tiles
+        from .cloud_out import write_copc, write_las
 
+        self._settings(ctx)
         run = self._run(ctx)
-        pdal = find_pdal()
-        if pdal is None:
-            raise JobError(PDAL_FOR_CLOUD)
         store = self._tiles_store(ctx)
         work = self._work(ctx)
-        las = work / "cloud.las"
-        if not las.exists():
-            write_las_tiles(las, store, run.offset)
-        staged = ctx.stage(f"clouds/{run.id}.copc.laz")
-        epsg = run.epsg
-        pipe = {
-            "pipeline": [
-                {
-                    "type": "readers.las",
-                    "filename": str(las),
-                    **({"override_srs": f"EPSG:{epsg}"} if epsg else {}),
-                },
-                {"type": "filters.smrf", "slope": 0.15, "window": 18.0, "threshold": 0.5, "scalar": 1.25},
-                {
-                    "type": "writers.copc",
-                    "filename": str(staged),
-                    **({"a_srs": f"EPSG:{epsg}"} if epsg else {}),
-                },
-            ]
+        las, meta = work / "cloud.las", work / "cloud-las.json"
+        if las.exists() and meta.exists():
+            counts = json.loads(meta.read_text("utf-8"))
+        else:
+            counts = write_las(
+                las, store, run.offset, work / "dtm-raw.tif", ctx.check,
+                lambda f, m=None: ctx.progress(0.3 * f, m),
+            )  # fmt: skip
+            atomic_write_json(meta, counts)
+        rel = f"clouds/{run.id}.copc.laz"
+        staged = ctx.stage(rel)
+        temp = ctx.staging / ".copc-tmp"
+        writer = write_copc(ctx, las, staged, counts["points"], run.epsg, temp, native.memory_budget())
+        shutil.rmtree(temp, ignore_errors=True)
+        ctx.log(
+            f"Point cloud: {counts['points']:,} points, {counts['ground']:,} of them ground; COPC by {writer}."
+        )
+        return {
+            "points": int(counts["points"]),
+            "ground": int(counts["ground"]),
+            "writer": writer,
+            "path": rel,
+            "bytes": staged.stat().st_size,
         }
-        pj = work / "copc-pipeline.json"
-        atomic_write_json(pj, pipe)
-        pdal_run(ctx, [pdal, "pipeline", str(pj)], "Write the COPC point cloud")
-        if not staged.is_file():
-            raise JobError("PDAL finished without writing the COPC file.")
-        n = store.info().get("points", 0)
-        return {"points": int(n), "path": f"clouds/{run.id}.copc.laz", "bytes": staged.stat().st_size}
 
     def _dsm(self, ctx: StepContext) -> dict[str, Any]:
         from .surface import GridSpec, grid_points, push_pull, read_grid, write_tif
@@ -935,33 +925,28 @@ class PhotoProducts:
         return {"layer": lid, "pyramid": pyr, "legend": legend["legend"]}
 
     def _dtm(self, ctx: StepContext) -> dict[str, Any]:
-        from ..pointcloud import _run as pdal_run
-        from ..pointcloud import find_pdal
-        from .surface import GridSpec, dtm_coarse, dtm_grid, pdal_dtm_pipeline
+        from .surface import GridSpec, dtm_grid
 
+        self._settings(ctx)
         run = self._run(ctx)
         spec = GridSpec(**ctx.outputs("dsm")["spec"])
         work = self._work(ctx)
         raw = work / "dtm-raw.tif"
-        engine = {}
+        publish = "dtm" in ctx.params["products"]
+        span = 0.4 if publish else 1.0  # _surface_layer reports from 0.4 on
+        out: dict[str, Any] = {"engine": "smrf-grid"}
         if not raw.exists():
-            pdal = find_pdal()
-            las = work / "cloud.las"
             tmp = raw.with_suffix(".tmp.tif")
-            budget = native.memory_budget()
-            ground = None
-            if pdal and las.exists():
-                ground = work / "ground-pdal.tif"
-                pj = work / "dtm-pipeline.json"
-                atomic_write_json(pj, pdal_dtm_pipeline(las, ground, dtm_coarse(spec, budget), run.epsg))
-                pdal_run(ctx, [pdal, "pipeline", str(pj)], "Classify the ground with PDAL")
-            engine = dtm_grid(
-                work / "dsm-raw.tif", work / "zmin-raw.tif", spec, tmp, run.epsg, budget, ctx.check, ground
-            )
+            out.update(
+                dtm_grid(
+                    work / "dsm-raw.tif", work / "zmin-raw.tif", spec, tmp, run.epsg, native.memory_budget(),
+                    ctx.check, lambda f, m=None: ctx.progress(span * f, m),
+                )
+            )  # fmt: skip
             replace_over(tmp, raw)
-            ctx.log(f"DTM: ground found by {engine['engine']}.")
-        out = {"engine": engine.get("engine", "reused"), **engine}
-        out.update(self._surface_layer(ctx, raw, spec, "dtm"))
+            ctx.log("DTM: ground found by smrf-grid.")
+        if publish:
+            out.update(self._surface_layer(ctx, raw, spec, "dtm"))
         return out
 
     def _ortho(self, ctx: StepContext) -> dict[str, Any]:
@@ -1017,6 +1002,8 @@ class PhotoProducts:
             engine = "grid-25d"
             mesh = mesh_25d(work / "dsm-raw.tif", dspec, origin, full_tri)
         else:
+            from . import mesh as mesh_mod
+
             store = self._tiles_store(ctx)
             count = int(store.info().get("points") or 0)
             shift = run.offset - origin
@@ -1033,8 +1020,17 @@ class PhotoProducts:
             if screened is not None:
                 depth = 11 if s["preset"] == "standard" else 12
                 src = work / "poisson" / "dense.ply"
+                # at most the points MeshLab keeps, taken by stride from every tile
+                step, total = mesh_mod.mesh_sample(
+                    store.counts(), mesh_mod.meshlab_points(native.memory_budget())
+                )
                 write_ply_chunks(
-                    src, ((p["xyz"] + shift, p["normal"], p["rgb"]) for _, p in store.fused()), count
+                    src,
+                    (
+                        (p["xyz"][::step] + shift, p["normal"][::step], p["rgb"][::step])
+                        for _, p in store.fused()
+                    ),
+                    total,
                 )
                 try:
                     mesh, engine = poisson_mesh(
@@ -1044,7 +1040,7 @@ class PhotoProducts:
                         nrm,
                         depth,
                         src,
-                        count,
+                        total,
                         native.memory_budget(),
                         ctx.outputs("fuse").get("voxel"),
                     )
@@ -1284,6 +1280,7 @@ class PhotoProducts:
             "texture": ctx.outputs("texture").get("engine"),
         }
         fuse = ctx.outputs("fuse")
+        made = ctx.outputs("cloud")
         dsm = ctx.outputs("dsm")
         ortho = ctx.outputs("ortho")
         warnings = []
@@ -1318,6 +1315,12 @@ class PhotoProducts:
                 "points": int(fuse.get("points") or 0),
                 "spacingM": round(float(fuse.get("voxel") or s["gsd"]), 4),
                 "source": fuse.get("source"),
+                "budget": int(s.get("budget") or 0),
+                **(
+                    {"groundPoints": int(made["ground"]), "writer": made["writer"]}
+                    if made.get("writer")
+                    else {}
+                ),
             },
             "coverage": {
                 k: v
