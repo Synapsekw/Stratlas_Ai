@@ -54,6 +54,7 @@ import { BuilderLayer } from './builder/BuilderLayer';
 import { DrawingsLayer } from './drawings/DrawingsLayer';
 import { ModellerLayer } from './modeller/ModellerLayer';
 import { Lightbox } from './issueCard/Lightbox';
+import { RemoveHost } from './shell/RemoveHost';
 import { CrashNotice } from './diagnostics/CrashNotice';
 import { ReportProblemDialog } from './diagnostics/ReportProblem';
 import { saveDiagnostics } from './diagnostics/state';
@@ -429,6 +430,7 @@ export function App() {
       <DrawingsLayer />
       <ModellerLayer />
       <Lightbox />
+      <RemoveHost />
       <ReportProblemDialog />
       <CrashNotice />
       <HelpPanel />
