@@ -51,20 +51,21 @@ No row is added to `docs/architecture/contract-changes.md`.
 
 ## Package ownership
 
-| Task | Packages and areas touched                                                                                                                                          |
-| ---- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| T1   | `packages/geo` (`src/walk/preview.ts`, `src/walk/index.ts`)                                                                                                         |
-| T2   | `packages/maps` (`src/controller.ts`, `src/MapView.tsx`, `src/index.ts`)                                                                                            |
-| T3   | `apps/desktop` renderer: `walks/placeModel.ts`, one-line type fixes in `walks/PlaceWalkStrip.tsx` and `walks/placeWalk.ts`                                          |
-| T4   | `apps/desktop` renderer: `walks/walkOverlay.ts`, `walks/WalkSheetOverlay.tsx`, `walks/walkMapOverlay.ts`, `workspace/RasterPane.tsx`                                |
-| T5   | `apps/desktop` renderer: `walks/placeStore.ts`, `walks/placeModel.ts` (`PlaceStep`, `firstStep` removed)                                                            |
-| T6   | `packages/ui` (`src/tree/DatasetTree.tsx`, `src/i18n/en.ts`)                                                                                                        |
-| T7   | `apps/desktop` renderer: `walks/walkScene.ts` (new)                                                                                                                 |
-| T8   | `apps/desktop` renderer: `walks/placeWalk.ts`, `walks/walkMapStore.ts`, `walks/walks.ts`                                                                            |
-| T9   | `apps/desktop` renderer: `walks/PlaceWalkStrip.tsx`, `walks/placeWalk.css`                                                                                          |
-| T10  | `apps/desktop` renderer: `workspace/Stage.tsx`, `shell/Sidebar.tsx`, `walks/WalkSceneMount.tsx` (new); docs `docs/guide/08-building-projects.md`, `docs/TESTING.md` |
-| T11  | `apps/desktop/e2e`: `walkFixture.ts`, `walk-place.spec.ts`, `walk-place-map.spec.ts` (new), `walk-place-3d.spec.ts` (new)                                           |
-| T12  | none (verification)                                                                                                                                                 |
+| Task | Packages and areas touched                                                                                                                                                                                                              |
+| ---- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| T1   | `packages/geo` (`src/walk/preview.ts`, `src/walk/index.ts`)                                                                                                                                                                             |
+| T2   | `packages/maps` (`src/controller.ts`, `src/MapView.tsx`, `src/index.ts`)                                                                                                                                                                |
+| T3   | `apps/desktop` renderer: `walks/placeModel.ts`, one-line type fixes in `walks/PlaceWalkStrip.tsx` and `walks/placeWalk.ts`                                                                                                              |
+| T4   | `apps/desktop` renderer: `walks/walkOverlay.ts`, `walks/WalkSheetOverlay.tsx`, `walks/walkMapOverlay.ts`, `workspace/RasterPane.tsx`                                                                                                    |
+| T5   | `apps/desktop` renderer: `walks/placeStore.ts`, `walks/placeModel.ts` (`PlaceStep`, `firstStep` removed)                                                                                                                                |
+| T6   | `packages/ui` (`src/tree/DatasetTree.tsx`, `src/i18n/en.ts`)                                                                                                                                                                            |
+| T7   | `apps/desktop` renderer: `walks/walkScene.ts` (new)                                                                                                                                                                                     |
+| T8   | `apps/desktop` renderer: `walks/placeWalk.ts`, `walks/walkMapStore.ts`, `walks/walks.ts`                                                                                                                                                |
+| T9   | `apps/desktop` renderer: `walks/PlaceWalkStrip.tsx`, `walks/placeWalk.css`                                                                                                                                                              |
+| T10  | `apps/desktop` renderer: `workspace/Stage.tsx`, `shell/Sidebar.tsx`, `walks/WalkSceneMount.tsx` (new); docs `docs/guide/08-building-projects.md`, `docs/TESTING.md`                                                                     |
+| T11  | `apps/desktop/e2e`: `walkFixture.ts`, `walk-place.spec.ts`, `walk-place-map.spec.ts` (new), `walk-place-3d.spec.ts` (new)                                                                                                               |
+| T13  | `packages/project` (`src/builder/raw.ts`, `src/builder/walkSource.ts`); `apps/desktop` renderer: `builder/state.ts`, `builder/ImportPanel.tsx`, `builder/importSummary.ts` (new); `apps/desktop/e2e/walk-import-stitched.spec.ts` (new) |
+| T12  | none (verification)                                                                                                                                                                                                                     |
 
 ## Execution DAG
 
@@ -75,6 +76,7 @@ T2 maps session ────┼────────────────�
 T4 overlays ────────┘                  │            ├─> T10 wiring ──┼─> T12 verify
                        T6 tree ────────┤            └─> T11 e2e ─────┘
                        T7 walkScene ───┘
+T13 stitched 360 import (batch 1, no dependency) ───────────────────────> T12 verify
 ```
 
 | Task | Depends on                                                       |
@@ -90,29 +92,31 @@ T4 overlays ────────┘                  │            ├─> 
 | T9   | T5, T8                                                           |
 | T10  | T6, T7, T8                                                       |
 | T11  | T8 (test ids fixed in this plan; written in batch 4, run in T12) |
+| T13  | none                                                             |
 | T12  | all                                                              |
 
 **Parallel batches** (each dispatched in one message; tasks in a batch share no file):
 
-| Batch | Tasks          | Files they own (no overlap)                                                                                                                                                                                           |
-| ----- | -------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 1     | T1, T2, T3, T4 | geo `walk/preview*`; maps `controller*`, `MapView.tsx`, `index.ts`; `placeModel*` (+ one line each in `PlaceWalkStrip.tsx`, `placeWalk.ts`); `walkOverlay*`, `WalkSheetOverlay*`, `walkMapOverlay*`, `RasterPane.tsx` |
-| 2     | T5, T6, T7     | `placeStore*`, `placeModel*`; ui `DatasetTree*`, `walkRows.test.tsx`, `en.ts`; `walkScene*`                                                                                                                           |
-| 3     | T8             | `placeWalk*`, `walkMapStore*`, `walks.ts`                                                                                                                                                                             |
-| 4     | T9, T10, T11   | `PlaceWalkStrip*`, `placeWalk.css`; `Stage.tsx`, `Sidebar.tsx`, `WalkSceneMount*`, guide and TESTING docs; `e2e/walkFixture.ts`, three e2e specs                                                                      |
-| 5     | T12            | none                                                                                                                                                                                                                  |
+| Batch | Tasks               | Files they own (no overlap)                                                                                                                                                                                                                                                                                                                                                                      |
+| ----- | ------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| 1     | T1, T2, T3, T4, T13 | geo `walk/preview*`; maps `controller*`, `MapView.tsx`, `index.ts`; `placeModel*` (+ one line each in `PlaceWalkStrip.tsx`, `placeWalk.ts`); `walkOverlay*`, `WalkSheetOverlay*`, `walkMapOverlay*`, `RasterPane.tsx`; T13: project `raw*`, `walkSource*`, `rawWalks.test.ts`, desktop `builder/state*`, `builder/ImportPanel.tsx`, `builder/importSummary*`, `e2e/walk-import-stitched.spec.ts` |
+| 2     | T5, T6, T7          | `placeStore*`, `placeModel*`; ui `DatasetTree*`, `walkRows.test.tsx`, `en.ts`; `walkScene*`                                                                                                                                                                                                                                                                                                      |
+| 3     | T8                  | `placeWalk*`, `walkMapStore*`, `walks.ts`                                                                                                                                                                                                                                                                                                                                                        |
+| 4     | T9, T10, T11        | `PlaceWalkStrip*`, `placeWalk.css`; `Stage.tsx`, `Sidebar.tsx`, `WalkSceneMount*`, guide and TESTING docs; `e2e/walkFixture.ts`, three e2e specs                                                                                                                                                                                                                                                 |
+| 5     | T12                 | none                                                                                                                                                                                                                                                                                                                                                                                             |
 
-**Critical path:** T3 (or T1) -> T5 -> T8 -> T9 -> T12. T8 is the only single-task batch: it joins the store, the overlays and the map session into the flow.
+**Critical path:** T3 (or T1) -> T5 -> T8 -> T9 -> T12. T13 (founder's addition, 13 Oct) is independent of the placing work and lands in batch 1; its files overlap with no other task. T8 is the only single-task batch: it joins the store, the overlays and the map session into the flow.
 
 **Typecheck between batches.** Vitest does not typecheck and the commit hooks run only lint-staged and commitlint. T5 changes `PlaceStep`, so `pnpm --filter @aio/desktop typecheck` fails in `placeWalk.ts` and `PlaceWalkStrip.tsx` from batch 2 until T8 and T9 land. Each task keeps its own files type-clean and runs its own tests; batch 4 closes the gap and T12 proves the whole repo green.
 
 ## e2e specs
 
-| Spec                                      | Change    | What it proves                                                                                                                                                                                                                                                                               |
-| ----------------------------------------- | --------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `apps/desktop/e2e/walk-place.spec.ts`     | rewritten | Drawing: ghost on hover, start, a too-close end ignored, end, drag the End handle, Fine-tune opens the 360, Save, the pose has the L bend, Edit placement, Remove placement. Remove walk (kept). Unprocessed walk: notice, Process walk offered, no line. Smallest window (kept, new steps). |
-| `apps/desktop/e2e/walk-place-map.spec.ts` | new       | UTM project (fixture `crs: 'utm'`, no drawing): place on the map by start and end, drag a handle, Save, pose bend.                                                                                                                                                                           |
-| `apps/desktop/e2e/walk-place-3d.spec.ts`  | new       | Local grid, no drawing: place in the 3D view, preview object follows the pointer, drag a handle, Save, pose bend, `placedOn` `@model`.                                                                                                                                                       |
+| Spec                                            | Change    | What it proves                                                                                                                                                                                                                                                                               |
+| ----------------------------------------------- | --------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `apps/desktop/e2e/walk-place.spec.ts`           | rewritten | Drawing: ghost on hover, start, a too-close end ignored, end, drag the End handle, Fine-tune opens the 360, Save, the pose has the L bend, Edit placement, Remove placement. Remove walk (kept). Unprocessed walk: notice, Process walk offered, no line. Smallest window (kept, new steps). |
+| `apps/desktop/e2e/walk-place-map.spec.ts`       | new       | UTM project (fixture `crs: 'utm'`, no drawing): place on the map by start and end, drag a handle, Save, pose bend.                                                                                                                                                                           |
+| `apps/desktop/e2e/walk-import-stitched.spec.ts` | new (T13) | A 2:1 MP4 without an SRT added through Add data becomes a walk row; a 16:9 one is skipped with a reason naming Add 360 video; the panel says where each file went.                                                                                                                           |
+| `apps/desktop/e2e/walk-place-3d.spec.ts`        | new       | Local grid, no drawing: place in the 3D view, preview object follows the pointer, drag a handle, Save, pose bend, `placedOn` `@model`.                                                                                                                                                       |
 
 The walk fixture (`e2e/walkFixture.ts`) gains options `{ crs?: 'local' | 'utm'; drawing?: boolean; processed?: boolean }`. The bend check reads `walks/w1/pose.json`: the synthetic walk is an L (`tools/fixtures/walk-truth.mjs`: 40 m east, then 30 m north), so the corner sample lies 24 m from the start to end chord; every spec asserts more than 15 m.
 
@@ -3668,7 +3672,7 @@ $env:QUADRION_E2E_PYTHON = 'E:\Dev\AIO Software\python\.venv\Scripts\python.exe'
 $env:QUADRION_WINDOW_SIZE = '1100x720'
 $env:QUADRION_E2E_SCALE = '1'
 $env:QUADRION_E2E_SWGL = 'warp'
-npx playwright test e2e/walk-place.spec.ts e2e/walk-place-map.spec.ts e2e/walk-place-3d.spec.ts e2e/walk-360.spec.ts --workers=1
+npx playwright test e2e/walk-place.spec.ts e2e/walk-place-map.spec.ts e2e/walk-place-3d.spec.ts e2e/walk-import-stitched.spec.ts e2e/walk-360.spec.ts --workers=1
 ```
 
 Expected: every test passes; the log prints `[e2e] window 1100 x 720 px at display scale 1`. Run the three new or rewritten specs once more with `--repeat-each=3` to catch timing. `walk-360.spec.ts` is included because it shares the walk fixture and the 360 pane.
@@ -3686,6 +3690,500 @@ Dispatch one reviewer (strongest model, high effort) over `git diff main...HEAD`
 
 Report to the founder with the "How to test" walkthrough below. Merging follows `CLAUDE.md` ("Every session merges its own branch, one at a time").
 
+### Task 13: Stitched 360 videos on every import route, and where each file went
+
+Founder's addition (13 Oct). A stitched Insta360 export (HEVC 5760 x 2880 with "Spherical Mapping: projection equirectangular") dropped or added through Add data or a folder import was skipped without a word: only the **Add 360 video** picker sets `as360` (`packages/project/src/builder/raw.ts:472`), so the MP4 fell to the drone clip branch (`raw.ts:532-542`) and was skipped for want of an SRT, without being read. A drop made while another import ran or was being prepared was dropped silently (`apps/desktop/src/renderer/builder/state.ts:225`, `:228`, `:232`), and the import panel only said "Imported 0 of 1 files" (`ImportPanel.tsx:265`).
+
+**Files:**
+
+- Modify: `packages/project/src/builder/walkSource.ts` (add `isStitched360` after `classifyWalkSource`, `:106-160`)
+- Modify: `packages/project/src/builder/raw.ts` (`is360` `:472`, the skip message `:536-542`)
+- Modify: `apps/desktop/src/renderer/builder/state.ts` (`BuilderState` `:24-90`, `importFiles` `:219-340`, `confirmHeights` `:392-397`, `cancelHeights`)
+- Create: `apps/desktop/src/renderer/builder/importSummary.ts`, `apps/desktop/src/renderer/builder/importSummary.test.ts`
+- Modify: `apps/desktop/src/renderer/builder/ImportPanel.tsx` (drop overlay `:85-89`, header `:259-266`, rows `:338-347`)
+- Tests: `packages/project/src/builder/walkSource.test.ts`, `packages/project/src/builder/rawWalks.test.ts` (replace "takes an MP4 as 360 video only when asked to" `:165-179`), `apps/desktop/src/renderer/builder/state.test.ts`
+- Create: `apps/desktop/e2e/walk-import-stitched.spec.ts`
+
+No file is shared with T1 to T12 (checked against every task's file list). `walkFixture.ts` is only imported (`ffmpegReady`, `createWalkProject`, `WALK_PROJECT`, all there today), never edited here, so the spec does not wait for T11's fixture options or helpers.
+
+**Interfaces:**
+
+- Consumes: `classifyWalkSource`, `WalkTrack` (`walkSource.ts`); `WalkTools.tracks` (`walks.ts:51`); `ImportItem` (`@aio/schema` `builder.ts:161`, read only).
+- Produces:
+
+```ts
+// walkSource.ts
+/** A stitched 360 export: an MP4 or MOV whose picture is equirectangular (spherical metadata or a 2:1 frame). */
+export function isStitched360(name: string, tracks: readonly WalkTrack[]): boolean;
+// raw.ts
+export const NO_SRT_MESSAGE: string;
+// state.ts, BuilderState gains
+/** Drops and picks waiting for the running import, in order. */
+queued: number;
+/** Why a drop is waiting ("An import is running. ..."), or null. */
+importNotice: string | null;
+// importSummary.ts
+export function importDestination(item: ImportItem, layers: readonly Layer[]): string;
+export function importHeadline(items: readonly ImportItem[]): string;
+export const QUEUED_NOTE: string;
+```
+
+Copy (no dashes):
+
+```ts
+export const NO_SRT_MESSAGE =
+  'No DJI SRT telemetry with the same name next to the video; a drone clip needs it to be placed. A 360 video must be a stitched equirectangular export, or use Add 360 video.';
+export const QUEUED_NOTE = 'An import is running. These files are imported when it finishes.';
+```
+
+- [ ] **Step 1: Write the failing tests**
+
+`walkSource.test.ts`:
+
+```ts
+describe('isStitched360', () => {
+  const v = (
+    width: number,
+    height: number,
+    spherical: WalkTrack['spherical'] = null,
+  ): WalkTrack => ({
+    handler: 'vide',
+    width,
+    height,
+    codec: 'hvc1',
+    fps: 30,
+    durationMs: 2000,
+    spherical,
+  });
+
+  it('an MP4 or MOV with equirectangular metadata or a 2:1 frame is a stitched 360 video', () => {
+    expect(isStitched360('VID_20261013_export.mp4', [v(5760, 2880, 'equirectangular')])).toBe(true);
+    expect(isStitched360('tour.MOV', [v(3840, 1920)])).toBe(true);
+  });
+
+  it('a 16:9 clip, a non equirectangular sphere, a camera file or no video is not', () => {
+    expect(isStitched360('DJI_0001.mp4', [v(3840, 2160)])).toBe(false);
+    expect(isStitched360('cube.mp4', [v(3840, 1920, 'other')])).toBe(false);
+    expect(isStitched360('VID_1.insv', [v(2880, 2880), v(2880, 2880)])).toBe(false);
+    expect(isStitched360('audio.mp4', [])).toBe(false);
+  });
+});
+```
+
+`rawWalks.test.ts` (replaces the test at `:165-179`; `vide` gains an optional fourth argument `spherical`):
+
+```ts
+it('a stitched 360 MP4 without an SRT is a walk on every route, not a skipped drone clip', async () => {
+  const root = await project();
+  const tools = walkTools({
+    'tour.mp4': [vide(256, 128, 'avc1')],
+    'export.mp4': [vide(5760, 2880, 'hvc1', 'equirectangular')],
+  });
+  const r = await importRawFiles(
+    root,
+    [await src('tour.mp4'), await src('export.mp4')],
+    deps({ walk: tools }),
+  );
+  expect(r.items).toEqual([
+    expect.objectContaining({ file: 'tour.mp4', kind: 'video', status: 'imported' }),
+    expect.objectContaining({ file: 'export.mp4', kind: 'video', status: 'imported' }),
+  ]);
+  expect((await readdir(join(root, 'walks'))).sort()).toEqual(['export', 'tour']);
+  expect(r.manifest.layers.filter((l) => l.kind === 'walk')).toHaveLength(2);
+});
+
+it('a 16:9 MP4 without an SRT is skipped, and the reason names Add 360 video', async () => {
+  const root = await project();
+  const tools = walkTools({ 'DJI_0001.mp4': [vide(3840, 2160, 'avc1')] });
+  const r = await importRawFiles(root, [await src('DJI_0001.mp4')], deps({ walk: tools }));
+  expect(r.items[0]).toMatchObject({ kind: 'video', status: 'skipped', message: NO_SRT_MESSAGE });
+  expect(r.items[0]?.message).toContain('Add 360 video');
+  expect(r.manifest.layers.some((l) => l.kind === 'walk')).toBe(false);
+});
+
+it('an MP4 that cannot be read is skipped as before', async () => {
+  const root = await project();
+  const r = await importRawFiles(root, [await src('broken.mp4')], deps({ walk: walkTools({}) }));
+  expect(r.items[0]).toMatchObject({ status: 'skipped', message: NO_SRT_MESSAGE });
+});
+
+it('an MP4 with its SRT stays a drone clip and is never read for 360', async () => {
+  const root = await project();
+  const tools = walkTools({ 'DJI_0002.mp4': [vide(256, 128, 'avc1')] });
+  const tracks = vi.spyOn(tools, 'tracks');
+  await src('DJI_0002.SRT');
+  const r = await importRawFiles(
+    root,
+    [await src('DJI_0002.mp4'), join(dir, 'DJI_0002.SRT')],
+    deps({ walk: tools }),
+  );
+  expect(tracks).not.toHaveBeenCalled();
+  // the drone branch: this test build has no video tools
+  expect(r.items[0]).toMatchObject({
+    file: 'DJI_0002.mp4',
+    status: 'error',
+    message: 'Video import is not available in this build.',
+  });
+});
+
+it('Add 360 video still takes any MP4 as 360', async () => {
+  const root = await project();
+  const tools = walkTools({ 'tour.mp4': [vide(256, 128, 'avc1')] });
+  const r = await importRawFiles(root, [await src('tour.mp4')], deps({ walk: tools, as360: true }));
+  expect(r.items[0]).toMatchObject({ status: 'imported' });
+});
+```
+
+(Import `vi` from vitest and `NO_SRT_MESSAGE` from `./raw`.)
+
+`importSummary.test.ts`:
+
+```ts
+import type { ImportItem, Layer } from '@aio/schema';
+import { describe, expect, it } from 'vitest';
+import { importDestination, importHeadline } from './importSummary';
+
+const walk = { kind: 'walk', id: 'walk-tour', name: 'tour' } as Layer;
+const clip = { kind: 'video', id: 'clip-a', name: 'a' } as Layer;
+const row = (over: Partial<ImportItem>): ImportItem => ({
+  file: 'f.mp4',
+  kind: 'video',
+  status: 'imported',
+  ...over,
+});
+
+describe('where each file went', () => {
+  it('names the group a file was added to', () => {
+    expect(importDestination(row({ layerId: 'walk-tour' }), [walk, clip])).toBe(
+      'Added as a walk under 360 walks',
+    );
+    expect(importDestination(row({ layerId: 'clip-a' }), [walk, clip])).toBe(
+      'Added to Datasets, Video',
+    );
+    expect(importDestination(row({ kind: 'photo', layerId: 'photos' }), [])).toBe(
+      'Added to Datasets, Photos',
+    );
+  });
+
+  it('says why a file was skipped or failed, and what waits for processing', () => {
+    expect(importDestination(row({ status: 'skipped', message: 'No DJI SRT.' }), [])).toBe(
+      'Skipped: No DJI SRT.',
+    );
+    expect(importDestination(row({ status: 'error', message: 'Disk full.' }), [])).toBe(
+      'Failed: Disk full.',
+    );
+    expect(importDestination(row({ status: 'skipped' }), [])).toBe(
+      'Skipped: not a file this app reads',
+    );
+    expect(importDestination(row({ status: 'queued' }), [])).toBe(
+      'Processing; it appears when it is done',
+    );
+    expect(importDestination(row({ status: 'needs-pipeline' }), [])).toBe(
+      'Needs the processing tools',
+    );
+  });
+
+  it('the headline says when nothing came in', () => {
+    expect(importHeadline([row({}), row({ status: 'skipped' })])).toBe('Imported 1 of 2 files');
+    expect(importHeadline([row({ status: 'skipped' })])).toBe('Nothing imported: 1 file skipped');
+    expect(importHeadline([row({ status: 'error' }), row({ status: 'skipped' })])).toBe(
+      'Nothing imported: 1 file failed, 1 skipped',
+    );
+  });
+});
+```
+
+`state.test.ts` (in "importFiles, one import at a time"):
+
+```ts
+it('queues a drop made while an import runs, says so, and imports it next', async () => {
+  const running = later<unknown>();
+  call.mockImplementation((channel: string) =>
+    channel === 'builder:altitudePlan' ? Promise.resolve(planned(plan())) : running.reply,
+  );
+  const first = b().importFiles(['a.jpg']);
+  await Promise.resolve();
+  await vi.waitFor(() => expect(b().importing).not.toBeNull());
+  await b().importFiles(['b.mp4']);
+  expect(b().queued).toBe(1);
+  expect(b().importNotice).toBe('An import is running. These files are imported when it finishes.');
+  // the same files again are not queued twice
+  await b().importFiles(['b.mp4']);
+  expect(b().queued).toBe(1);
+  running.give(imported);
+  await first;
+  expect(calls('builder:import').map((c) => (c[1] as { paths: string[] }).paths)).toEqual([
+    ['a.jpg'],
+    ['b.mp4'],
+  ]);
+  expect(b().queued).toBe(0);
+  expect(b().importNotice).toBeNull();
+});
+
+it('queues a drop of other files made while the first is being prepared', async () => {
+  const reading = later<unknown>();
+  call.mockImplementation((channel: string) =>
+    channel === 'builder:altitudePlan' ? reading.reply : Promise.resolve(imported),
+  );
+  const first = b().importFiles(['a.jpg']);
+  await b().importFiles(['c.jpg']);
+  expect(b().queued).toBe(1);
+  reading.give(planned(plan()));
+  await first;
+  expect(calls('builder:import').map((c) => (c[1] as { paths: string[] }).paths)).toEqual([
+    ['a.jpg'],
+    ['c.jpg'],
+  ]);
+});
+```
+
+Update "runs the import confirmed in the heights prompt, not the drop prepared behind it" (`:131-163`): the drop prepared behind the prompt is no longer lost; it is queued and imported after the confirmed one. Its final expectation becomes the confirmed `a.jpg` import (with its altitude) followed by `{ projectId: 'p1', paths: ['b.jpg'] }`, and the test is renamed "runs the import confirmed in the heights prompt first, then the drop prepared behind it". The test of identical drops while preparing (`:75-98`) stays as it is (a duplicate is not queued).
+
+- [ ] **Step 2: Run the tests to see them fail**
+
+Run: `pnpm --filter @aio/project exec vitest run src/builder/walkSource.test.ts src/builder/rawWalks.test.ts` and `pnpm --filter @aio/desktop exec vitest run src/renderer/builder/importSummary.test.ts src/renderer/builder/state.test.ts`
+Expected: FAIL (`isStitched360`, `NO_SRT_MESSAGE`, `importSummary` missing; the queue tests see no second import).
+
+- [ ] **Step 3: Write the implementation**
+
+`walkSource.ts`:
+
+```ts
+/**
+ * A stitched 360 export (Insta360 Studio, a 360 editor): an MP4 or MOV whose picture is
+ * equirectangular, by its spherical metadata or a 2:1 frame. Read for every MP4 or MOV that comes
+ * without a drone's SRT, so it is taken as a walk on every import route, not only Add 360 video.
+ */
+export function isStitched360(name: string, tracks: readonly WalkTrack[]): boolean {
+  if (!STITCHED_EXT.test(name)) return false;
+  const kind = classifyWalkSource({ name, tracks });
+  return kind.ok && kind.layout === 'equirect';
+}
+```
+
+`raw.ts`: export `NO_SRT_MESSAGE` (copy above) and use it at `:536-542`. Before the loop:
+
+```ts
+/** An MP4 or MOV given without its SRT is read for a 360 picture: a stitched export is a walk. */
+const stitched360 = async (file: string): Promise<boolean> => {
+  if (!deps.walk) return false;
+  try {
+    return isStitched360(basename(file), await deps.walk.tracks(file));
+  } catch {
+    // not an MP4 the track reader knows: the drone clip branch says why it is skipped
+    return false;
+  }
+};
+```
+
+and `:472` becomes:
+
+```ts
+const is360 =
+  isWalkFile(name) ||
+  (VIDEO.has(ext) &&
+    (deps.as360 === true ||
+      (!deps.signal?.aborted &&
+        (await sibling(file, '.srt', paths)) === null &&
+        (await stitched360(file)))));
+```
+
+(`sibling` only looks the SRT up; the drone branch still marks it consumed.)
+
+`state.ts`:
+
+```ts
+/** Drops and picks that came while an import ran or was being prepared, in the order they came. */
+const waiting: { paths: string[]; altitude?: AltitudeChoice; opts?: ImportOptions }[] = [];
+/** The files of the import being prepared or run, so the same drop is not queued again. */
+let current: readonly string[] | null = null;
+const samePaths = (a: readonly string[], b: readonly string[]) =>
+  a.length === b.length && a.every((p, i) => p === b[i]);
+```
+
+(`ImportOptions` is the type of `importFiles`' third parameter; name it if it is inline today.)
+
+- Move today's body of `importFiles` (after the project check) into a local `runImport(project, paths, altitude, opts)`, unchanged except: the guard at `:225` goes; at `:228` and `:232`, instead of `return`, the drop is queued (`queue(paths, altitude, opts)`).
+- `queue(...)`: unless `current` or a waiting entry has the same paths, push it and `set({ queued: waiting.length, importNotice: QUEUED_NOTE })`.
+- `importFiles`: after the project and empty checks, `if (get().importing || preparing) { queue(paths, altitude, opts); return; }`, then `current = [...paths]; try { await runImport(...); } finally { current = null; } await next();`.
+- `next()`: returns while `get().importing`, `preparing` or `get().heightsPrompt` is set (the prompt's answer drains the queue); else shifts one entry, sets `queued` and `importNotice` (`null` when the queue is empty) and `await get().importFiles(...)` with it.
+- `cancelHeights` ends with `void next()`; `confirmHeights` already calls `importFiles`, which drains.
+- Initial state: `queued: 0`, `importNotice: null`.
+
+`importSummary.ts`:
+
+```ts
+import type { ImportItem, Layer } from '@aio/schema';
+
+/*
+ * What the import panel says about each file: where it went (the group of the Datasets list it
+ * was added to), or why it was skipped or failed. Founder, 13 Oct 2026: every import says where
+ * each file went.
+ */
+
+export const QUEUED_NOTE = 'An import is running. These files are imported when it finishes.';
+
+const GROUP: Record<Layer['kind'], string> = {
+  mesh: 'Models',
+  legacy: 'Models',
+  pointcloud: 'Point clouds',
+  basemap: 'Maps and rasters',
+  raster: 'Maps and rasters',
+  vector: 'Maps and rasters',
+  video: 'Video',
+  walk: '360 walks',
+  photos: 'Photos',
+  panoramas: 'Panoramas',
+};
+
+export function importDestination(item: ImportItem, layers: readonly Layer[]): string {
+  switch (item.status) {
+    case 'skipped':
+      return `Skipped: ${item.message ?? 'not a file this app reads'}`;
+    case 'error':
+      return `Failed: ${item.message ?? 'the import stopped with an error'}`;
+    case 'queued':
+      return 'Processing; it appears when it is done';
+    case 'needs-pipeline':
+      return 'Needs the processing tools';
+    case 'imported': {
+      const layer = layers.find((l) => l.id === item.layerId);
+      if (layer?.kind === 'walk') return 'Added as a walk under 360 walks';
+      if (layer?.kind === 'raster' && layer.role === 'plan') return 'Added to Datasets, Drawings';
+      if (layer) return `Added to Datasets, ${GROUP[layer.kind]}`;
+      if (item.kind === 'photo') return 'Added to Datasets, Photos';
+      return 'Imported';
+    }
+  }
+}
+
+export function importHeadline(items: readonly ImportItem[]): string {
+  const n = (s: ImportItem['status']) => items.filter((i) => i.status === s).length;
+  const imported = n('imported') + n('queued');
+  if (imported > 0 || items.length === 0)
+    return `Imported ${String(imported)} of ${String(items.length)} files`;
+  const failed = n('error');
+  const skipped = items.length - failed;
+  const plural = (k: number) => (k === 1 ? 'file' : 'files');
+  if (failed === 0) return `Nothing imported: ${String(skipped)} ${plural(skipped)} skipped`;
+  return skipped === 0
+    ? `Nothing imported: ${String(failed)} ${plural(failed)} failed`
+    : `Nothing imported: ${String(failed)} ${plural(failed)} failed, ${String(skipped)} skipped`;
+}
+```
+
+(If `photos` items carry `layerId: 'photos'` with no layer of that id, the `item.kind === 'photo'` line answers; check the photos layer id in `raw.ts` and keep the test in step with it.)
+
+`ImportPanel.tsx`:
+
+- The drop overlay's first line: "Photos, video with its SRT, stitched 360 MP4s and 360 camera files (.insv), GLB or OBJ models, GeoTIFF orthos and DSMs, point clouds".
+- The header's last branch: `importHeadline(result?.items ?? [])` (keeps "Imported 1 of 1 files" when something came in). An import that failed as a whole keeps "Import failed" and its danger notice.
+- Under the header, while `queued > 0`: `<p className="notice small" data-testid="import-queued">{importNotice}</p>`.
+- Each row: `<li data-testid="import-row" ...>` with, under the file and status, `<p data-testid="import-where">{importDestination(it, layers)}</p>` and the item's own message only for imported rows (skipped and failed rows carry it in the destination line already). `layers` comes from `useWorkspace((s) => s.project?.manifest.layers ?? [])`.
+- The panel stays until **Close**, as today, so a failure is never missed.
+
+- [ ] **Step 4: Run the tests to see them pass**
+
+Run: `pnpm --filter @aio/project exec vitest run src/builder/` then `pnpm --filter @aio/desktop exec vitest run src/renderer/builder/`, and `pnpm --filter @aio/project typecheck`, `pnpm --filter @aio/desktop typecheck` (the latter may show only the T5 to T9 gap described in "Typecheck between batches", never errors in T13's files).
+Expected: PASS.
+
+- [ ] **Step 5: Write the e2e case** (`apps/desktop/e2e/walk-import-stitched.spec.ts`)
+
+```ts
+/**
+ * Stitched 360 video on the normal import route: a small equirectangular MP4 (2:1, no SRT) added
+ * through Add data becomes a walk row under 360 walks, and a 16:9 MP4 without an SRT is skipped
+ * with a reason that names Add 360 video. The import panel says where each file went.
+ * Skipped when ffmpeg with libx264 is missing (CI installs it).
+ */
+import type { ElectronApplication } from '@playwright/test';
+import { spawnSync } from 'node:child_process';
+import { join } from 'node:path';
+import { expect, test } from './fixtures';
+import { createWalkProject, ffmpegReady, WALK_PROJECT } from './walkFixture';
+
+/** A `seconds` long test pattern of `size` (`WxH`), H.264, no audio. */
+function makeMp4(out: string, size: string, seconds: number): void {
+  const r = spawnSync(
+    process.env.FFMPEG ?? 'ffmpeg',
+    [
+      '-hide_banner',
+      '-loglevel',
+      'error',
+      '-y',
+      '-f',
+      'lavfi',
+      '-i',
+      `testsrc2=s=${size}:r=10:d=${String(seconds)}`,
+      '-c:v',
+      'libx264',
+      '-preset',
+      'ultrafast',
+      '-pix_fmt',
+      'yuv420p',
+      '-an',
+      '-f',
+      'mp4',
+      out,
+    ],
+    { encoding: 'utf8', windowsHide: true },
+  );
+  if (r.status !== 0) throw new Error(`ffmpeg failed: ${r.stderr}`);
+}
+
+async function answerOpenDialog(app: ElectronApplication, paths: string[]): Promise<void> {
+  await app.evaluate(({ dialog }, p) => {
+    dialog.showOpenDialog = () => Promise.resolve({ canceled: false, filePaths: p });
+  }, paths);
+}
+
+test.describe('stitched 360 video through Add data', () => {
+  test.skip(!ffmpegReady(), 'needs ffmpeg with libx264 on the PATH');
+
+  test('a 2:1 MP4 without an SRT becomes a walk; a 16:9 one is skipped with the reason', async ({
+    app,
+    win,
+    dataRoot,
+  }) => {
+    test.setTimeout(180_000);
+    // the walk project as it is in batch 1 (T11's options are not needed here)
+    await createWalkProject(dataRoot.root);
+    const stitched = join(dataRoot.root, 'Site tour 360.mp4');
+    const flat = join(dataRoot.root, 'DJI_0001.mp4');
+    makeMp4(stitched, '256x128', 4);
+    makeMp4(flat, '320x180', 2);
+    await win.reload();
+    await win.getByTestId('project-card').filter({ hasText: WALK_PROJECT.name }).first().click();
+    await expect(win.locator('[data-scene-view] canvas')).toBeVisible();
+    await answerOpenDialog(app, [stitched, flat]);
+    await win.getByTestId('add-data').click();
+    const panel = win.getByTestId('import-panel');
+    await expect(panel).toContainText('Imported 1 of 2 files', { timeout: 120_000 });
+    const rows = panel.getByTestId('import-row');
+    await expect(
+      rows.filter({ hasText: 'Site tour 360.mp4' }).getByTestId('import-where'),
+    ).toHaveText('Added as a walk under 360 walks');
+    await expect(
+      rows.filter({ hasText: 'DJI_0001.mp4' }).getByTestId('import-where'),
+    ).toContainText('Add 360 video');
+    await expect(win.getByTestId('tree-row-walk-site-tour-360')).toBeVisible({ timeout: 30_000 });
+  });
+});
+```
+
+Check the `add-data` button's route (`Sidebar.tsx`, `tree-add`) opens the file picker through `dialog.showOpenDialog` with several files (`pickAndImport`); if it opens a menu first, click its "Files" item. Check the walk id the slug gives (`walk-site-tour-360` from `Site tour 360.mp4`) against `walkLayerId` and adjust the test id. If the open walk folder lands the row inside a date folder, open it as `walkRow` in `walkFixture.ts` does.
+
+Run it the CI way (T12 Step 2 lists it).
+
+- [ ] **Step 6: Commit**
+
+```bash
+git add packages/project/src/builder/walkSource.ts packages/project/src/builder/walkSource.test.ts packages/project/src/builder/raw.ts packages/project/src/builder/rawWalks.test.ts apps/desktop/src/renderer/builder/state.ts apps/desktop/src/renderer/builder/state.test.ts apps/desktop/src/renderer/builder/importSummary.ts apps/desktop/src/renderer/builder/importSummary.test.ts apps/desktop/src/renderer/builder/ImportPanel.tsx apps/desktop/e2e/walk-import-stitched.spec.ts
+git commit -m "feat(import): stitched 360 videos become walks on every route, drops queue, rows say where files went" -m "Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
+```
+
+---
+
 ## How to test (for the founder, once built)
 
 1. Open a project with a 360 walk that is processed and a placed drawing. In **Datasets**, under **360 walks**, point at the walk and press **Place walk** (the pin). The drawing opens beside the 3D view with a slim toolbar above it.
@@ -3695,3 +4193,4 @@ Report to the founder with the "How to test" walkthrough below. Merging follows 
 5. **Place on** in the toolbar switches to **Map** (projects with a coordinate system) or **3D view**: the same start, end and handles work there, and the map or 3D view fills the stage.
 6. **Fine-tune** opens the 360 video beside the surface with **Pin here**, **Align view** and **Heading**, as before.
 7. Import a 360 video and press **Place walk** before processing it (or one whose processing was interrupted): the toolbar says why there is no path and offers **Process walk** (or **Process again**) and **Place between two points anyway**. Nothing is drawn until you choose.
+8. Export a stitched 360 MP4 from the camera app and drop it on the window (or use **Add data**): it is added as a walk under **360 walks**. The import panel says for each file where it went, or why it was skipped. Drop more files while an import runs: the panel says they wait, and they come in when it finishes.

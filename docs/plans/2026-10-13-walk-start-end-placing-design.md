@@ -63,6 +63,10 @@ No contract change.
 - e2e, new: `walk-place-map.spec.ts` (the walk fixture gains a coordinate system) and `walk-place-3d.spec.ts`. Each places the fixture walk and checks the saved pose has the fixture's known bend (the L shape of `tools/fixtures/walk-truth.mjs`), not a straight line.
 - e2e, new case: an unprocessed walk shows the path notice and offers Process walk, and draws no line.
 
+## Also in this branch: stitched 360 import
+
+Founder, 13 Oct 2026. A stitched 360 export (an equirectangular MP4 or MOV, by its spherical metadata or a 2:1 frame) is recognised as a walk on every import route (drop, Add data, folder import), not only through **Add 360 video**: an MP4 or MOV without a drone's SRT is read first, and a stitched one becomes a walk. A 16:9 video without an SRT is still skipped, and its reason now names Add 360 video. A drop made while an import runs or is being prepared is queued, with a note, instead of being dropped silently. Every import says for each file where it went ("Added as a walk under 360 walks", "Added to Datasets, Video", "Skipped: why") or why it failed. Task 13 of the plan; no contract change (`ImportItem` is unchanged).
+
 ## Out of scope
 
 - Restoring a removed walk's processed files from `.trash` when the same video is imported again (a follow-up).
