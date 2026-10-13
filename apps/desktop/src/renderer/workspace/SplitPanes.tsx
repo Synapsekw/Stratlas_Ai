@@ -46,6 +46,7 @@ import {
   type SplitDates,
   type SplitPref,
 } from './splitModel';
+import { SpotHistoryButton } from './spot/SpotHistoryEntry';
 import { stagePrefs, useStagePrefs } from './stagePrefs';
 import { useTimeline } from './timeline';
 
@@ -420,6 +421,7 @@ function SetPhotoPane() {
           <Icon name="fwd" size={14} />
         </button>
         <SameViewButton source={{ kind: 'photo', layer: set.id, photo: photo.id }} />
+        <SpotHistoryButton open={{ item: { kind: 'photo', layer: set.id, photo: photo.id } }} />
       </div>
       <PhotoViewer layerId={set.id} photoId={photo.id} className="fill-col" />
     </div>

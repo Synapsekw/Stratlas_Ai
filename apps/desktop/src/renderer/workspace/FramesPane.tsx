@@ -33,6 +33,8 @@ import {
   stepPhoto,
   type FramesSource,
 } from './framesModel';
+import { SpotHistoryButton } from './spot/SpotHistoryEntry';
+import type { SpotOpen } from './spot/spotTypes';
 import { paneOptions, resolveSplit } from './splitModel';
 import { stagePrefs } from './stagePrefs';
 
@@ -210,6 +212,16 @@ export function FramesPane() {
       aText = item.id;
     }
   }
+  // the spot viewer's entry for date A's photo, or for the video frame whose camera is known
+  const spotOpen: SpotOpen | null =
+    aSet && source.kind === 'photo'
+      ? { item: { kind: 'photo', layer: aLayer.id, photo: source.photo } }
+      : poseA && aTime !== undefined
+        ? {
+            item: { kind: 'video', layer: aLayer.id, t: aTime },
+            pose: { pos: poseA.pos, q: poseA.q },
+          }
+        : null;
   const reading = aLayer.kind === 'video' && !flights;
   const match = poseA && flights ? follow(poseA) : null;
   const warp = prefs.warp && match && poseA ? groundHomography(match.pose, poseA) : null;
@@ -293,6 +305,7 @@ export function FramesPane() {
             <Icon name="fwd" size={14} />
           </button>
         )}
+        {spotOpen && <SpotHistoryButton open={spotOpen} />}
         {index.captures.length > 2 && (
           <select
             className="input"

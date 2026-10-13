@@ -20,6 +20,8 @@ import { useEffect, type ReactNode } from 'react';
 import { alignCamera } from '../builder/alignSession';
 import { LayerDatePicker } from '../change/SurveyDate';
 import { loadFlight, useMedia } from '../media';
+import { SpotHistoryButton } from './spot/SpotHistoryEntry';
+import type { SpotOpen } from './spot/spotTypes';
 
 type VideoLayer = Extract<Layer, { kind: 'video' }>;
 
@@ -104,6 +106,19 @@ function firstPoint(issue: Issue): Vec3 | undefined {
     if (s.on === 'pointcloud' && s.geom.type === 'point3') return s.geom.p;
   }
   return undefined;
+}
+
+/** The spot viewer's entry for a selected photo or panorama (its layer resolved as the viewers do). */
+function spotOpenOf(sel: Selection | null, m: ProjectManifest): SpotOpen | null {
+  if (sel?.kind === 'photo') {
+    const layer = sel.layer ?? m.layers.find((l) => l.kind === 'photos')?.id;
+    return layer ? { item: { kind: 'photo', layer, photo: sel.id } } : null;
+  }
+  if (sel?.kind === 'pano') {
+    const layer = sel.layer ?? m.layers.find((l) => l.kind === 'panoramas')?.id;
+    return layer ? { item: { kind: 'pano', layer, pano: sel.id } } : null;
+  }
+  return null;
 }
 
 function describe(
@@ -260,6 +275,7 @@ export function SelectionCard() {
   const m = project.manifest;
 
   const card = describe(selection, m, issues, nowMs, durations, flights, orientation);
+  const spotOpen = spotOpenOf(selection, m);
   const clips = m.layers.filter((l) => l.kind === 'video').length;
   const open = issues.filter((i) => i.status !== 'closed');
   const photos = m.layers.reduce((n, l) => n + (l.kind === 'photos' ? l.items.length : 0), 0);
@@ -275,6 +291,7 @@ export function SelectionCard() {
         <h2>Selection</h2>
         <span className="sub">{card.kindLabel}</span>
         <div className="acts">
+          {spotOpen && <SpotHistoryButton open={spotOpen} />}
           <button
             type="button"
             className="btn icon sm ghost"
