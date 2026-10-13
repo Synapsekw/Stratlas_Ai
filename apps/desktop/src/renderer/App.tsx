@@ -38,6 +38,7 @@ import {
   mergeDiskIssues,
 } from './jobs';
 import { bridge, jobs, shell, useShell } from './shell';
+import { PanoImportDialog } from './panos/PanoImportDialog';
 import { PackageExportDialog } from './shell/PackageExport';
 import { Palette } from './shell/Palette';
 import { UnlockDialog } from './shell/UnlockDialog';
@@ -423,6 +424,7 @@ export function App() {
       <PipelineDialog />
       <UnlockDialog />
       <PackageExportDialog />
+      <PanoImportDialog />
       <Toasts />
       <LiveAnnouncer />
       <BuilderLayer />

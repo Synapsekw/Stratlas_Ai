@@ -1,0 +1,104 @@
+.pano-import .pano-head {
+  display: flex;
+  gap: 16px;
+  align-items: flex-start;
+  justify-content: space-between;
+}
+.pano-import .pano-head p {
+  margin: 0;
+  font-variant-numeric: tabular-nums;
+}
+.pano-map {
+  inline-size: 220px;
+  block-size: 120px;
+  flex: none;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--bg-2);
+}
+.pano-map circle {
+  fill: var(--bg-3);
+  stroke: var(--fg-3);
+  stroke-width: 1.25;
+}
+.pano-map .on circle {
+  fill: var(--acc);
+  stroke: var(--acc-strong);
+}
+.pano-map text {
+  font: 600 9px var(--f-mono);
+  text-anchor: middle;
+  fill: var(--fg-0);
+}
+.pano-map .on text {
+  fill: var(--acc-ink);
+}
+.pano-rows {
+  display: grid;
+  gap: 4px;
+  max-block-size: 300px;
+  overflow-y: auto;
+}
+.pano-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-block-size: 44px;
+  padding: 4px 6px;
+  border-radius: 4px;
+  cursor: pointer;
+}
+.pano-row:hover {
+  background: var(--bg-3);
+}
+.pano-row.off {
+  color: var(--fg-2);
+}
+.pano-row img,
+.pano-row .pano-thumb {
+  inline-size: 64px;
+  block-size: 43px;
+  object-fit: cover;
+  border-radius: 3px;
+  background: var(--bg-3);
+  flex: none;
+}
+.pano-row-t {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-inline-size: 0;
+  margin-inline-end: auto;
+}
+.pano-row-t small {
+  color: var(--fg-2);
+  font-variant-numeric: tabular-nums;
+}
+.pano-skipped ul {
+  margin: 6px 0;
+  padding-inline-start: 18px;
+  max-block-size: 120px;
+  overflow-y: auto;
+}
+.pano-fields {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 10px 16px;
+  align-items: end;
+}
+.pano-fields label {
+  display: grid;
+  gap: 4px;
+}
+.pano-fields fieldset {
+  grid-column: 1 / -1;
+  display: flex;
+  gap: 16px;
+  border: 0;
+  padding: 0;
+  margin: 0;
+}
+.pano-busy {
+  font-variant-numeric: tabular-nums;
+  color: var(--fg-1);
+}

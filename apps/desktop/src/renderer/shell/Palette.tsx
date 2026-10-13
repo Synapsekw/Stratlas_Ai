@@ -20,6 +20,7 @@ import { diagnostics } from '../diagnostics/state';
 import { help } from '../help/store';
 import { openModelBuilder } from '../modeller/ModellerLayer';
 import { processing } from '../processing/store';
+import { pickAndScanPanos } from '../panos/panos';
 import { openProcessingTools } from '../processingTools';
 import { shell, useShell } from '../shell';
 import type { Screen } from '../store';
@@ -481,6 +482,15 @@ export function Palette() {
           hint: 'A 360 camera file (.insv) or a stitched 360 video (MP4)',
           keywords: ['360', 'insta360', 'insv', 'lrv', 'equirectangular', 'walk', 'panorama'],
           run: () => void builder.getState().pickAndImport360(),
+        });
+        list.push({
+          id: 'panos:add',
+          title: t('pano.add'),
+          group: 'Actions',
+          icon: 'pano',
+          hint: t('pano.add.tip'),
+          keywords: ['pano', 'panorama', '360', 'sphere', 'drone', 'dji'],
+          run: () => void pickAndScanPanos(),
         });
         list.push({
           id: 'builder:import-tiles',
