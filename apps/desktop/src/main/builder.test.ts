@@ -18,6 +18,7 @@ import {
   createBuilderProject,
   drawingJobRefusal,
   photoGps,
+  withoutExcluded,
 } from './builder';
 import { ProjectRegistry } from './project';
 import { sampleManifest, writeProject } from './testing';
@@ -396,5 +397,74 @@ describe('folder imports and removeCapture', () => {
     expect(filed.ok).toBe(true);
     const refused = await builderRemoveCapture({ projectId, captureId: 'c1' }, registry);
     expect(refused.ok).toBe(false);
+  });
+});
+
+describe('withoutExcluded', () => {
+  it('leaves out the excluded files, without case on Windows', () => {
+    const files = ['D:\\card\\SYN_0001.JPG', 'D:\\card\\SYN_0002.JPG', 'D:\\card\\notes.las'];
+    const out = withoutExcluded(files, ['d:\\card\\syn_0001.jpg']);
+    expect(out).toEqual(process.platform === 'win32' ? files.slice(1) : files);
+    expect(withoutExcluded(files, ['D:\\card\\SYN_0001.JPG'])).toEqual(files.slice(1));
+    expect(withoutExcluded(files, undefined)).toBe(files);
+  });
+
+  it('matches forward and back slashes alike on Windows', () => {
+    if (process.platform !== 'win32') return;
+    const files = ['D:\\card\\100MEDIA\\SYN_0001.JPG', 'D:\\card\\100MEDIA\\SYN_0002.JPG'];
+    expect(withoutExcluded(files, ['d:/card/100media/syn_0002.JPG'])).toEqual(files.slice(0, 1));
+    expect(withoutExcluded(['d:/Card/100MEDIA/SYN_0001.jpg'], files.slice(0, 1))).toEqual([]);
+  });
+});
+
+describe('builder:import exclude', () => {
+  it('imports and counts only the files not handed to the panorama import', async () => {
+    const dir = join(base, 'projects', 'exclude');
+    await writeProject(dir, sampleManifest());
+    const registry = new ProjectRegistry();
+    const projectId = registry.register(dir);
+    const folder = join(base, 'excl');
+    await mkdir(folder);
+    for (const f of ['SYN_0001.MP4', 'SYN_0002.MP4']) await writeFile(join(folder, f), 'x');
+    const events: { total: number }[] = [];
+    const known = (ext: string): boolean => ext === '.mp4';
+    // the scan reports resolved paths; Add data may hold them in another spelling
+    const other =
+      process.platform === 'win32'
+        ? join(folder, 'syn_0002.mp4').replaceAll('\\', '/').toUpperCase()
+        : join(folder, 'SYN_0002.MP4');
+    const r = await builderImport(
+      { projectId, paths: [folder], exclude: [other] },
+      {
+        registry,
+        images: { resizeJpeg: () => Promise.resolve() },
+        emit: (e) => events.push(e),
+        known,
+      },
+    );
+    expect(r.ok).toBe(true);
+    expect(r.ok ? r.files : []).toEqual([join(folder, 'SYN_0001.MP4')]);
+    expect(r.ok ? r.items.map((i) => i.file) : []).toEqual(['SYN_0001.MP4']);
+    expect(events.length > 0 && events.every((e) => e.total === 1)).toBe(true);
+  });
+
+  it('answers an empty folder when every file is excluded', async () => {
+    const dir = join(base, 'projects', 'exclude-all');
+    await writeProject(dir, sampleManifest());
+    const registry = new ProjectRegistry();
+    const projectId = registry.register(dir);
+    const folder = join(base, 'excl-all');
+    await mkdir(folder);
+    await writeFile(join(folder, 'SYN_0001.MP4'), 'x');
+    const r = await builderImport(
+      { projectId, paths: [folder], exclude: [join(folder, 'SYN_0001.MP4')] },
+      {
+        registry,
+        images: { resizeJpeg: () => Promise.resolve() },
+        emit: () => undefined,
+        known: (ext) => ext === '.mp4',
+      },
+    );
+    expect(r).toEqual({ ok: false, error: 'The folder holds no files to import.' });
   });
 });

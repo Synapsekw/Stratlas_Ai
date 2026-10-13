@@ -286,6 +286,20 @@ export interface BuilderImportDeps {
   ffmpeg?: () => Promise<FfmpegBin | null>;
 }
 
+/**
+ * `files` without `exclude` (the frames Add data hands to the panorama import instead). Paths are
+ * compared resolved, without case on Windows, as `panos:scan` reports them.
+ */
+export function withoutExcluded(
+  files: readonly string[],
+  exclude: readonly string[] | undefined,
+): string[] {
+  if (!exclude?.length) return files as string[];
+  const key = (p: string) => (process.platform === 'win32' ? resolve(p).toLowerCase() : resolve(p));
+  const out = new Set(exclude.map(key));
+  return files.filter((f) => !out.has(key(f)));
+}
+
 export async function builderImport(
   req: IpcRequest<'builder:import'>,
   d: BuilderImportDeps,
@@ -298,15 +312,17 @@ export async function builderImport(
     ...(d.limit !== undefined ? { limit: d.limit } : {}),
   });
   if (ex.tooMany !== null) return { ok: false, error: tooManyError(ex.tooMany) };
-  if (ex.files.length === 0 && ex.leftOut.length === 0)
+  // the sphere frames the panorama import takes instead
+  const files = withoutExcluded(ex.files, req.exclude);
+  if (files.length === 0 && ex.leftOut.length === 0)
     return { ok: false, error: 'The folder holds no files to import.' };
   const run = importRuns.begin(req.projectId);
   try {
     const { importRawFiles, NO_PIPELINE } = await lib();
     const progress = stitchProgress((e) => {
       d.emit({ projectId: req.projectId, ...e });
-    }, ex.files.length);
-    const r = await importRawFiles(root, ex.files, {
+    }, files.length);
+    const r = await importRawFiles(root, files, {
       images: d.images,
       jobs: d.jobs ?? NO_PIPELINE,
       video: videoTools,
@@ -334,7 +350,7 @@ export async function builderImport(
       ],
       ...(r.heights ? { heights: r.heights } : {}),
       createdCaptures: r.createdCaptures,
-      files: ex.files,
+      files,
     };
   } catch (e) {
     return { ok: false, error: `Import failed: ${errorText(e)}` };

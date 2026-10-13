@@ -248,6 +248,9 @@ const READS: ReadonlySet<IpcChannel> = new Set<IpcChannel>([
   'walks:list',
   // stops a running import; it writes nothing itself and must never wait behind one
   'builder:cancelImport',
+  // the drone panorama scan reads the folder and the project's pano layers; its cancel as above
+  'panos:scan',
+  'panos:cancelImport',
   'orientation:read',
   'change:list',
   'change:read',
@@ -981,7 +984,8 @@ export function createJournalService(deps: JournalServiceDeps) {
       channel === 'builder:updateCapture' ||
       channel === 'builder:removeCapture' ||
       channel === 'walks:remove' ||
-      channel === 'builder:ensureCapture'
+      channel === 'builder:ensureCapture' ||
+      channel === 'panos:import'
     ) {
       return async (req) => {
         const r = await handler(req);
@@ -991,6 +995,7 @@ export function createJournalService(deps: JournalServiceDeps) {
           | 'builder:removeCapture'
           | 'walks:remove'
           | 'builder:ensureCapture'
+          | 'panos:import'
         >;
         const root = deps.projects.root(projectId);
         if ((r as { ok: boolean }).ok && root !== undefined) {

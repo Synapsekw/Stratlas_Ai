@@ -13,6 +13,7 @@ import {
 } from '@aio/schema';
 import { stat } from 'node:fs/promises';
 import { basename, join, resolve } from 'node:path';
+import { withPanoStitches } from './panos';
 import { walkLayersInMemory } from './walks';
 import { z } from 'zod';
 import {
@@ -242,6 +243,9 @@ export async function openProject(
   let manifest = await readManifest(root);
   if (!manifest.ok) return manifest;
   manifest = await withWalkLayers(root, manifest, log);
+  if (!manifest.ok) return manifest;
+  // drone panorama stitches that finished while the app was closed
+  manifest = await withPanoStitches(root, manifest, log, readManifest);
   if (!manifest.ok) return manifest;
   const issues = await readIssues(root, seenFiles);
   if (!issues.ok) return issues;

@@ -70,6 +70,16 @@ import {
   WALK_PACK_FEATURE,
   walkPackRefusal,
 } from './walks';
+import {
+  PANO_PACK_FEATURE,
+  fileThenSend,
+  panoFiler,
+  panoImportAnswer,
+  panoImports,
+  panoPackRefusal,
+  panoScanCache,
+  scanPanoPaths,
+} from './panos';
 import { registerChangeIpc } from './change';
 import { registerInferenceIpc } from './inference';
 import {
@@ -697,9 +707,12 @@ const jobs = new JobRunner({
       console.error(`Dropped an invalid jobs:event of type ${event.type}.`);
       return;
     }
-    const win = mainWindow ?? BrowserWindow.getAllWindows()[0];
-    if (win && !win.isDestroyed()) win.webContents.send('jobs:event', safe);
-    void journal.jobEvent(safe);
+    // a finished stitch is filed into the manifest before the renderer hears of it, and the
+    // journal records the job's changes after that filing
+    void fileThenSend(panoFiler, safe, () => {
+      const win = mainWindow ?? BrowserWindow.getAllWindows()[0];
+      if (win && !win.isDestroyed()) win.webContents.send('jobs:event', safe);
+    }).then(() => journal.jobEvent(safe));
     void surveyQaJobs(safe);
   },
 });
@@ -1150,14 +1163,17 @@ function registerIpc(): void {
     // a DXF must not be filed over a picture drawing of the same name
     const refused = await drawingJobRefusal(req);
     if (refused) return { ok: false, error: refused };
-    // walk.process on processing tools older than its first pack: the update path, not a failed job
-    if ('pipeline' in req && req.pipeline === 'walk.process') {
+    // walk.process and pano.stitch on processing tools older than their first pack: the update
+    // path, not a failed job
+    if ('pipeline' in req && (req.pipeline === 'walk.process' || req.pipeline === 'pano.stitch')) {
       const found = await findPack({
         dataRoot: settings.current().dataRoot,
         env: process.env,
         app: packApp,
       });
-      const tooOld = walkPackRefusal(req.pipeline, found.pack?.version ?? null);
+      const version = found.pack?.version ?? null;
+      const tooOld =
+        walkPackRefusal(req.pipeline, version) ?? panoPackRefusal(req.pipeline, version);
       if (tooOld) return { ok: false, error: tooOld };
     }
     return jobs.start(req);
@@ -1300,6 +1316,67 @@ function registerIpc(): void {
   handle('builder:altitudePlan', (req) => builderAltitudePlan(req, registry));
   // the import as a whole: a running 360 stitch is stopped, the rest is reported as skipped
   handle('builder:cancelImport', ({ projectId }) => ({ ok: importRuns.cancel(projectId) }));
+  // drone panoramas (P1): scan a folder, import the chosen spheres, start their stitches
+  const panoScans = panoScanCache();
+  const panoProgress = (e: IpcEvent<'panos:progress'>) => {
+    const parsed = ipcEvents['panos:progress'].safeParse(e);
+    if (parsed.success) targetWindow()?.webContents.send('panos:progress', parsed.data);
+  };
+  const panoThumb = (file: string): Promise<string | undefined> => {
+    const img = nativeImage.createFromPath(file);
+    if (img.isEmpty()) return Promise.resolve(undefined);
+    const jpeg = img.resize({ width: 160, quality: 'good' }).toJPEG(70);
+    return Promise.resolve(`data:image/jpeg;base64,${jpeg.toString('base64')}`);
+  };
+  handle('panos:scan', async ({ projectId, paths }) => {
+    const refused = packageRefusal(projectId);
+    if (refused) return refused;
+    const root = registry.root(projectId);
+    if (root === undefined)
+      return {
+        ok: false,
+        error: `Project "${projectId}" is not open. Open it, then add panoramas.`,
+      };
+    try {
+      const r = await scanPanoPaths(root, paths, {
+        thumb: panoThumb,
+        onProgress: (done, total, file) => {
+          panoProgress({ projectId, phase: 'scan', done, total, file });
+        },
+      });
+      if ('error' in r) return { ok: false, error: r.error };
+      panoScans.put(projectId, r.scan, r.grouping);
+      return { ok: true, scan: r.scan };
+    } catch (e) {
+      return {
+        ok: false,
+        error: `The folder could not be read: ${e instanceof Error ? e.message : String(e)}`,
+      };
+    }
+  });
+  handle(
+    'panos:import',
+    async (req) =>
+      packageRefusal(req.projectId) ??
+      panoImportAnswer(req, {
+        root: (id) => registry.root(id),
+        scans: panoScans,
+        images: nativeImageOps,
+        jobs,
+        packVersion: async () =>
+          (
+            await findPack({
+              dataRoot: settings.current().dataRoot,
+              env: process.env,
+              app: packApp,
+            })
+          ).pack?.version ?? null,
+        progress: (done, total, file) => {
+          panoProgress({ projectId: req.projectId, phase: 'copy', done, total, file });
+        },
+      }),
+  );
+  handle('panos:cancelImport', ({ projectId }) => ({ ok: panoImports.cancel(projectId) }));
   // 360 video kept beside the manifest (walks/<id>/); a package lists the ones it carries
   handle('walks:list', async ({ projectId }) => {
     const root = registry.root(projectId);
@@ -1319,6 +1396,8 @@ function registerIpc(): void {
     isPackage: (id) => registry.package(id) !== undefined,
     jobs: () => jobStore.all(),
     deleteJob: (id) => jobStore.delete(id),
+    // a drone panorama stitch of a removed layer is stopped first
+    cancelJob: (id) => jobs.cancel(id).ok,
     flushJobs: () => jobStore.flush(),
     log: (line) => {
       appLog.write('warn', [line]);
@@ -1580,7 +1659,11 @@ function registerIpc(): void {
     features:
       processingVerdict(process.platform, process.arch, null) === 'unsupported-platform'
         ? []
-        : [{ label: 'Creating maps from photos', minVersion: PHOTO_PACK }, WALK_PACK_FEATURE],
+        : [
+            { label: 'Creating maps from photos', minVersion: PHOTO_PACK },
+            WALK_PACK_FEATURE,
+            PANO_PACK_FEATURE,
+          ],
     places: () =>
       packArchivePlaces({
         exe: app.getPath('exe'),
@@ -1876,6 +1959,7 @@ app.on('will-quit', () => {
   jobs.shutdownSync();
   // a 360 stitch must not go on in an ffmpeg nobody is waiting for
   importRuns.cancelAll();
+  panoImports.cancelAll();
   // the journal keeps each chain's segment open between appends (T8 finding 4)
   void journal.closeAll();
 });

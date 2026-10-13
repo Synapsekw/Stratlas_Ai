@@ -282,3 +282,89 @@ describe('walks:remove', () => {
     );
   });
 });
+
+describe('a removal stops the drone panorama stitches of its layers', () => {
+  const stitch = (id: string, layer: string, status: JobRecord['status']): JobRecord => ({
+    ...job(id, ROOT),
+    pipeline: 'pano.stitch',
+    params: { layer, pano: 'p01', quality: 'standard' },
+    status,
+  });
+  const PANO_PLAN: RemovalPlan = {
+    ...emptyRemovalPlan(),
+    layers: [{ id: 'panos-1', name: 'Spheres', kind: 'panoramas', why: 'asked' }],
+  };
+
+  function stitchDeps(
+    records: JobRecord[],
+    o: { stops?: boolean } = {},
+  ): { d: RemovalDeps; cancelled: string[]; planned: string[][]; removedWith: string[][] } {
+    const cancelled: string[] = [];
+    const planned: string[][] = [];
+    const removedWith: string[][] = [];
+    const lib: Partial<RemovalLib> = {
+      planRemoval: (_root, _t, opts) => {
+        planned.push((opts?.jobs ?? []).map((j) => `${j.id}:${j.status}`));
+        return Promise.resolve(PANO_PLAN);
+      },
+      removeItems: (_root, _t, _now, opts) => {
+        removedWith.push((opts?.jobs ?? []).map((j) => `${j.id}:${j.status}`));
+        return Promise.resolve({ manifest: MANIFEST, plan: PANO_PLAN, trash: 'x' });
+      },
+    };
+    const d: RemovalDeps = {
+      ...deps(lib),
+      jobs: () => records,
+      stopWaitMs: 300,
+      cancelJob: (id) => {
+        cancelled.push(id);
+        const i = records.findIndex((r) => r.id === id);
+        const was = records[i];
+        if (o.stops !== false && was) records[i] = { ...was, status: 'cancelled' };
+        return true;
+      },
+    };
+    return { d, cancelled, planned, removedWith };
+  }
+
+  it('plans without refusing a running stitch of the layer', async () => {
+    const { d, planned } = stitchDeps([stitch('s1', 'panos-1', 'running')]);
+    const r = await removalPlanAnswer({ projectId: 'p', targets: [{ layer: 'panos-1' }] }, d);
+    expect(r).toEqual({ ok: true, plan: PANO_PLAN });
+    expect(planned).toEqual([[]]);
+  });
+
+  it('cancels the running and starting stitches of a removed layer, then removes', async () => {
+    const records = [
+      stitch('s1', 'panos-1', 'running'),
+      stitch('s2', 'panos-1', 'starting'),
+      stitch('s3', 'panos-other', 'running'),
+      stitch('s4', 'panos-1', 'done'),
+    ];
+    const { d, cancelled, removedWith } = stitchDeps(records);
+    const r = await removeAnswer({ projectId: 'p', targets: [{ layer: 'panos-1' }] }, d);
+    expect(r.ok).toBe(true);
+    expect(cancelled).toEqual(['s1', 's2']);
+    // the removal itself sees them stopped (a stitch of another layer still runs)
+    expect(removedWith).toEqual([['s1:cancelled', 's2:cancelled', 's3:running', 's4:done']]);
+  });
+
+  it('refuses, naming the layer, when a stitch does not stop', async () => {
+    const { d, removedWith } = stitchDeps([stitch('s1', 'panos-1', 'running')], { stops: false });
+    const r = await removeAnswer({ projectId: 'p', targets: [{ layer: 'panos-1' }] }, d);
+    expect(r).toEqual({
+      ok: false,
+      error:
+        'Stitching drone panoramas in "Spheres" did not stop. Try the removal again in a moment.',
+    });
+    expect(removedWith).toEqual([]);
+  });
+
+  it('leaves the stitches of layers that stay alone', async () => {
+    const { d, cancelled } = stitchDeps([stitch('s3', 'panos-other', 'running')]);
+    expect((await removeAnswer({ projectId: 'p', targets: [{ layer: 'panos-1' }] }, d)).ok).toBe(
+      true,
+    );
+    expect(cancelled).toEqual([]);
+  });
+});

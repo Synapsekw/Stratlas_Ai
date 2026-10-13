@@ -4,6 +4,8 @@
  * `@aio/project/builder`'s; main adds the package refusal, hands in this project's jobs (the
  * live-job refusal and the job folders of a removed run), and forgets the job records of removed
  * runs once the manifest is saved (they cannot come back from the trash; the job folders can).
+ * A running drone panorama stitch (`pano.stitch`) of a removed layer is stopped first instead of
+ * refusing the removal.
  * A project runs one removal or Empty project trash at a time: two in the same second could pick
  * the same trash entry name. The journal records the files the plan names (`journaledRemovals`,
  * used by `journal.ts`).
@@ -37,6 +39,10 @@ export interface RemovalDeps {
   deleteJob: (id: string) => boolean;
   flushJobs: () => Promise<void>;
   log: (line: string) => void;
+  /** Stop a running job (`jobs:cancel`); false when it is not running. */
+  cancelJob?: (id: string) => boolean;
+  /** How long a removal waits for the stitches it stopped (ms). */
+  stopWaitMs?: number;
   lib?: () => Promise<RemovalLib>;
 }
 
@@ -74,6 +80,59 @@ export function planJobsFor(root: string, all: readonly JobRecord[]): PlanJob[] 
     .map((j) => ({ id: j.id, pipeline: j.pipeline, status: j.status, params: j.params }));
 }
 
+/** A job that still runs (the plan's `LIVE`). */
+const LIVE: ReadonlySet<string> = new Set(['starting', 'running', 'cancelling']);
+const liveStitch = (j: PlanJob) => j.pipeline === 'pano.stitch' && LIVE.has(j.status);
+
+/**
+ * The jobs a plan weighs: a running drone panorama stitch does not refuse the removal of its
+ * layer, the removal stops it first (`stopStitches`).
+ */
+function planJobs(root: string, d: RemovalDeps): PlanJob[] {
+  return planJobsFor(root, d.jobs()).filter((j) => !liveStitch(j));
+}
+
+const STOP_WAIT_MS = 10_000;
+
+/**
+ * Stop the `pano.stitch` jobs of the panoramas layers a removal takes, and wait until they have
+ * stopped (the runner kills a runtime that does not stop within its grace). Null when nothing
+ * runs any more, else why the removal cannot go on.
+ */
+async function stopStitches(
+  root: string,
+  targets: IpcRequest<'builder:remove'>['targets'],
+  lib: RemovalLib,
+  d: RemovalDeps,
+): Promise<string | null> {
+  const live = planJobsFor(root, d.jobs()).filter(liveStitch);
+  if (live.length === 0) return null;
+  const plan = await lib.planRemoval(root, targets, { jobs: planJobs(root, d) });
+  // a refused plan: the removal refuses with the same reason
+  if (plan.refused !== undefined) return null;
+  const layers = new Map(plan.layers.map((l) => [l.id, l.name]));
+  const hit = live.filter((j) => typeof j.params.layer === 'string' && layers.has(j.params.layer));
+  if (hit.length === 0) return null;
+  for (const j of hit) {
+    try {
+      d.cancelJob?.(j.id);
+    } catch (e) {
+      d.log(`Removal: the stitch ${j.id} could not be stopped (${text(e)}).`);
+    }
+  }
+  const deadline = Date.now() + (d.stopWaitMs ?? STOP_WAIT_MS);
+  for (;;) {
+    const now = new Map(d.jobs().map((j) => [j.id, j.status]));
+    const still = hit.find((j) => LIVE.has(now.get(j.id) ?? ''));
+    if (still === undefined) return null;
+    if (Date.now() >= deadline) {
+      const name = layers.get(String(still.params.layer)) ?? String(still.params.layer);
+      return `Stitching drone panoramas in "${name}" did not stop. Try the removal again in a moment.`;
+    }
+    await new Promise((r) => setTimeout(r, 100));
+  }
+}
+
 export async function removalPlanAnswer(
   req: IpcRequest<'builder:removePlan'>,
   d: RemovalDeps,
@@ -86,7 +145,7 @@ export async function removalPlanAnswer(
     const lib = await load(d);
     return {
       ok: true,
-      plan: await lib.planRemoval(root, req.targets, { jobs: planJobsFor(root, d.jobs()) }),
+      plan: await lib.planRemoval(root, req.targets, { jobs: planJobs(root, d) }),
     };
   } catch (e) {
     return { ok: false, error: text(e) };
@@ -104,6 +163,8 @@ export async function removeAnswer(
     let done: Awaited<ReturnType<RemovalLib['removeItems']>>;
     try {
       const lib = await load(d);
+      const stuck = await stopStitches(root, req.targets, lib, d);
+      if (stuck !== null) return { ok: false as const, error: stuck };
       done = await lib.removeItems(root, req.targets, undefined, {
         jobs: planJobsFor(root, d.jobs()),
       });
