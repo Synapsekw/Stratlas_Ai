@@ -49,26 +49,20 @@ interface Probe {
 }
 
 /**
- * Look straight down on the middle of the L from 120 m, so the whole walk is on screen. The view
- * may still be framing the project when the session starts, so ask until the camera stays there.
+ * Look straight down on the middle of the L from 120 m, so the whole walk is on screen (the model
+ * is a 1 m quad: the view has to reach well past it), and check the camera stays there.
  */
 async function lookDown(win: Page): Promise<void> {
-  await expect
-    .poll(
-      async () => {
-        const y = await win.evaluate(() => {
-          const st = (window as unknown as Probe).__stratlas.stage();
-          if (!st) return 0;
-          if (Math.abs(st.camera.position.y - 120) > 0.5)
-            st.restoreView({ position: [20, 120, -14.9], target: [20, 0, -15] }, false);
-          return st.camera.position.y;
-        });
-        await win.waitForTimeout(400);
-        return y;
-      },
-      { timeout: 20_000 },
-    )
-    .toBeCloseTo(120, 0);
+  await win.evaluate(() => {
+    (window as unknown as Probe).__stratlas
+      .stage()
+      ?.restoreView({ position: [20, 120, -14.9], target: [20, 0, -15] }, false);
+  });
+  await win.waitForTimeout(500);
+  const y = await win.evaluate(
+    () => (window as unknown as Probe).__stratlas.stage()?.camera.position.y ?? 0,
+  );
+  expect(y).toBeCloseTo(120, 0);
 }
 
 /** The page point of a model point (x, height, z) in the 3D view. */
@@ -110,6 +104,8 @@ test.describe('placing a walk in the 3D view', () => {
     const strip = win.getByTestId('walk-place-strip');
     await expect(strip).toHaveAttribute('data-step', 'start', { timeout: 30_000 });
     await expect(strip.getByTestId('walk-place-on')).toHaveValue('3d');
+    // nothing to save before the start
+    await expect(strip.getByTestId('walk-place-save')).toBeDisabled();
     await expect(
       win
         .getByRole('toolbar', { name: 'Stage tools' })

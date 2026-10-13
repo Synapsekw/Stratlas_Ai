@@ -100,6 +100,8 @@ async function beginPlacing(win: Page): Promise<Locator> {
   const strip = win.getByTestId('walk-place-strip');
   await expect(strip).toHaveAttribute('data-step', 'start', { timeout: 30_000 });
   await expect(strip.getByTestId('walk-place-on')).toHaveValue(SHEET_LAYER);
+  // nothing to save before the start
+  await expect(strip.getByTestId('walk-place-save')).toBeDisabled();
   await win
     .getByTestId('raster-view')
     .getByRole('button', { name: 'Fit the whole raster' })

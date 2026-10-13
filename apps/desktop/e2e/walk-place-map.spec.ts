@@ -48,6 +48,16 @@ async function mapPoint(win: Page, local: [number, number]): Promise<{ x: number
   }, lonLat(local));
 }
 
+/** The main map's zoom. */
+async function mapZoom(win: Page): Promise<number> {
+  return win.evaluate(() => {
+    const el = [...document.querySelectorAll('*')].find(
+      (e) => '__aioMap' in e && e.getBoundingClientRect().width > 0,
+    ) as (Element & { __aioMap: { getZoom(): number } }) | undefined;
+    return el ? el.__aioMap.getZoom() : 0;
+  });
+}
+
 test.describe('placing a walk on the map', () => {
   test.skip(!ffmpegReady(), 'needs ffmpeg with libx264 on the PATH');
 
@@ -63,35 +73,23 @@ test.describe('placing a walk on the map', () => {
     const strip = win.getByTestId('walk-place-strip');
     await expect(strip).toHaveAttribute('data-step', 'start', { timeout: 30_000 });
     await expect(strip.getByTestId('walk-place-on')).toHaveValue('map');
+    // nothing to save before the start
+    await expect(strip.getByTestId('walk-place-save')).toBeDisabled();
 
-    // frame the walk: the middle of the L at zoom 18 (about half a metre a pixel here); the
-    // session may still be fitting the map to the project, so jump until the zoom holds
+    // frame the walk: the middle of the L at zoom 18 (about half a metre a pixel here), once; the
+    // session leaves a view the person moved alone
     const centre = lonLat([20, -15]);
-    await expect
-      .poll(
-        async () => {
-          const z = await win.evaluate((c) => {
-            const el = [...document.querySelectorAll('*')].find(
-              (e) => '__aioMap' in e && e.getBoundingClientRect().width > 0,
-            ) as
-              | (Element & {
-                  __aioMap: {
-                    jumpTo(o: { center: [number, number]; zoom: number }): void;
-                    getZoom(): number;
-                  };
-                })
-              | undefined;
-            if (!el) return 0;
-            if (Math.abs(el.__aioMap.getZoom() - 18) > 0.01)
-              el.__aioMap.jumpTo({ center: c, zoom: 18 });
-            return el.__aioMap.getZoom();
-          }, centre);
-          await win.waitForTimeout(400);
-          return z;
-        },
-        { timeout: 20_000 },
-      )
-      .toBeCloseTo(18, 1);
+    await win.evaluate((c) => {
+      const el = [...document.querySelectorAll('*')].find(
+        (e) => '__aioMap' in e && e.getBoundingClientRect().width > 0,
+      ) as
+        | (Element & { __aioMap: { jumpTo(o: { center: [number, number]; zoom: number }): void } })
+        | undefined;
+      if (!el) throw new Error('no map on screen');
+      el.__aioMap.jumpTo({ center: c, zoom: 18 });
+    }, centre);
+    await win.waitForTimeout(1_000);
+    expect(await mapZoom(win)).toBeCloseTo(18, 1);
 
     // the ghost follows the pointer
     const s = await mapPoint(win, WALK_START);
@@ -123,6 +121,8 @@ test.describe('placing a walk on the map', () => {
     await win.mouse.up();
     await expect(strip).toHaveAttribute('data-step', 'placed');
 
+    // the view stayed where it was put while the walk was placed
+    expect(await mapZoom(win)).toBeCloseTo(18, 1);
     await strip.getByTestId('walk-place-save').click();
     await expect(win.getByTestId('walk-place-strip')).toHaveCount(0, { timeout: 30_000 });
     await expect.poll(() => poseBendM(dir), { timeout: 30_000 }).toBeGreaterThan(15);
