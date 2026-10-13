@@ -9,7 +9,7 @@ import { useShell } from '../shell';
 import { heightsLine, offsetFromTakeoff, promptChoice, type HeightsPrompt } from './heights';
 import { TilesetImportCard } from './ImportTileset';
 import { ProjectKindTag, ProjectStarter } from './ProjectStarter';
-import { builder, useBuilder } from './state';
+import { builder, useBuilder, type PanoOffer } from './state';
 import { rawCameraImported } from './rawCamera';
 import { ImportSurveyDate } from './SurveyDate';
 
@@ -233,6 +233,37 @@ function HeightsCard({ p }: { p: HeightsPrompt }) {
   );
 }
 
+function PanoOfferCard({ o }: { o: PanoOffer }) {
+  const t = useT();
+  return (
+    <section className="b-import" aria-label={t('pano.add')} data-testid="pano-offer">
+      <header role="none">
+        <Icon name="pano" size={14} />
+        {t('pano.add')}
+      </header>
+      <p className="small">{t('pano.offer.text', { frames: o.frames.length, count: o.spheres })}</p>
+      <div className="b-heights-actions">
+        <button
+          type="button"
+          className="btn ghost sm"
+          data-testid="pano-offer-no"
+          onClick={() => void builder.getState().declinePanoOffer()}
+        >
+          {t('pano.offer.no')}
+        </button>
+        <button
+          type="button"
+          className="btn primary sm"
+          data-testid="pano-offer-yes"
+          onClick={() => void builder.getState().acceptPanoOffer()}
+        >
+          {t('pano.offer.yes')}
+        </button>
+      </div>
+    </section>
+  );
+}
+
 function ImportStatus() {
   const t = useT();
   const importing = useBuilder((s) => s.importing);
@@ -240,7 +271,9 @@ function ImportStatus() {
   const cancelling = useBuilder((s) => s.cancelling);
   const result = useBuilder((s) => s.importResult);
   const prompt = useBuilder((s) => s.heightsPrompt);
+  const offer = useBuilder((s) => s.panoOffer);
   const pages = useDrawings((s) => s.pagePrompt);
+  if (offer && !importing) return <PanoOfferCard o={offer} />;
   if (prompt && !importing) return <HeightsCard p={prompt} />;
   // asked in the middle of an import, which stays busy until its drawings are in
   if (pages) return <PagesCard key={pages.name} p={pages} />;

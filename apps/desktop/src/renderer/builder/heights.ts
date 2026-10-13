@@ -19,6 +19,8 @@ export interface HeightsPrompt {
   /** Proposed take-off height H: the model under the take-off point, else the origin height. */
   takeoffH: number;
   takeoffFrom: 'terrain' | 'origin';
+  /** Files left out of the import (drone sphere frames taken as panoramas). */
+  exclude?: string[];
 }
 
 /** The prompt for a plan, given the model height (local y) under its take-off point, if any. */

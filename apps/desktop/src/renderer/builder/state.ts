@@ -5,6 +5,7 @@ import type {
   ImportItem,
   IpcEvent,
   LayerPatch,
+  PanoScan,
 } from '@aio/schema';
 import { t } from '@aio/ui';
 import { workspace } from '@aio/workspace';
@@ -12,6 +13,7 @@ import { useStore } from 'zustand';
 import { createStore } from 'zustand/vanilla';
 import { finishStagedDrawings } from '../drawings/importFlow';
 import { drawings } from '../drawings/store';
+import { openPanoScan, panoImport } from '../panos/panos';
 import { bridge, shell } from '../shell';
 import { heightsPrompt, needsTakeoff, type HeightsPrompt } from './heights';
 import { terrainHeightAt } from './pick';
@@ -51,6 +53,8 @@ export interface BuilderState {
   } | null;
   /** Camera heights to confirm before the import runs (relative altitude needs a take-off H). */
   heightsPrompt: HeightsPrompt | null;
+  /** Drone sphere frames found in the files: import them as panoramas? Null when not asked. */
+  panoOffer: PanoOffer | null;
   align: AlignTool | null;
 }
 
@@ -73,6 +77,11 @@ export interface BuilderActions {
   /** Run the prompted import with the confirmed heights, or drop it. */
   confirmHeights: (altitude: AltitudeChoice) => Promise<void>;
   cancelHeights: () => void;
+  /** Import the offered spheres as panoramas (the preview opens) and the rest as photos. */
+  acceptPanoOffer: () => Promise<void>;
+  /** Import everything as photos. */
+  declinePanoOffer: () => Promise<void>;
+  dismissPanoOffer: () => void;
   pickAndImport: () => Promise<void>;
   /** Pick a flight folder and import it (Add survey date, Import a flight folder...). */
   pickAndImportFolder: () => Promise<void>;
@@ -93,6 +102,36 @@ export interface ImportOptions {
   drawings?: boolean;
   /** "Add 360 video": MP4 and MOV files are stitched 360 video, not drone clips. */
   as360?: boolean;
+  /**
+   * Files to leave out (the frames of drone spheres imported as panoramas instead). Present,
+   * even empty, it also says the panorama offer was answered.
+   */
+  exclude?: readonly string[];
+}
+
+export interface PanoOffer {
+  paths: readonly string[];
+  altitude?: AltitudeChoice;
+  scan: PanoScan;
+  /** The sphere frames, absolute: left out of the photo import when the offer is taken. */
+  frames: string[];
+  spheres: number;
+}
+
+/** The offer to import a scan's spheres as panoramas, or null when it found none. */
+export function panoOfferFrom(
+  paths: readonly string[],
+  scan: PanoScan,
+  altitude?: AltitudeChoice,
+): PanoOffer | null {
+  if (scan.spheres.length === 0) return null;
+  return {
+    paths,
+    ...(altitude ? { altitude } : {}),
+    scan,
+    frames: scan.spheres.flatMap((s) => s.files),
+    spheres: scan.spheres.length,
+  };
 }
 
 export type Builder = BuilderState & BuilderActions;
@@ -200,6 +239,7 @@ export const builder = createStore<Builder>()((set, get) => ({
   cancelling: false,
   importResult: null,
   heightsPrompt: null,
+  panoOffer: null,
   align: null,
 
   openWizard: () => {
@@ -223,6 +263,23 @@ export const builder = createStore<Builder>()((set, get) => ({
       return;
     }
     if (!paths.length || get().importing) return;
+    // drone sphere frames go to the panorama import, not into a photo layer (spec section 2)
+    if (!opts?.drawings && !opts?.as360 && opts?.exclude === undefined) {
+      if (preparing) return;
+      preparing = true;
+      const found = await bridge
+        .call('panos:scan', { projectId: project.id, paths: [...paths] })
+        .finally(() => {
+          preparing = false;
+        });
+      if (get().importing) return;
+      const offer =
+        found.ok && found.value.ok ? panoOfferFrom(paths, found.value.scan, altitude) : null;
+      if (offer) {
+        set({ panoOffer: offer, importResult: null });
+        return;
+      }
+    }
     // a drawing has no camera and a 360 video is not placed: neither asks for camera heights
     if (!altitude && !opts?.drawings && !opts?.as360) {
       if (preparing) return;
@@ -239,7 +296,11 @@ export const builder = createStore<Builder>()((set, get) => ({
         const y = p.takeoff ? terrainHeightAt(p.takeoff.x, p.takeoff.z) : null;
         set({
           importResult: null,
-          heightsPrompt: heightsPrompt(paths, p, project.manifest.origin[2], y),
+          heightsPrompt: {
+            ...heightsPrompt(paths, p, project.manifest.origin[2], y),
+            // the sphere frames stay out of the photos after the heights card, too
+            ...(opts?.exclude ? { exclude: [...opts.exclude] } : {}),
+          },
         });
         return;
       }
@@ -270,6 +331,7 @@ export const builder = createStore<Builder>()((set, get) => ({
       ...(altitude ? { altitude } : {}),
       ...(opts?.drawings ? { drawings: true } : {}),
       ...(opts?.as360 ? { as360: true } : {}),
+      ...(opts?.exclude?.length ? { exclude: [...opts.exclude] } : {}),
     });
     off?.();
     // main has answered: what follows (drawing pages) is not main's import any more
@@ -393,10 +455,35 @@ export const builder = createStore<Builder>()((set, get) => ({
     const p = get().heightsPrompt;
     if (!p) return;
     set({ heightsPrompt: null });
-    await get().importFiles(p.paths, altitude);
+    await get().importFiles(p.paths, altitude, { exclude: p.exclude ?? [] });
   },
   cancelHeights: () => {
     set({ heightsPrompt: null });
+  },
+
+  acceptPanoOffer: async () => {
+    const o = get().panoOffer;
+    if (!o) return;
+    set({ panoOffer: null });
+    openPanoScan(o.scan);
+    // the preview is modal; the rest goes in as photos once it closes, imported or cancelled
+    await new Promise<void>((done) => {
+      const stop = panoImport.subscribe((s) => {
+        if (s.open) return;
+        stop();
+        done();
+      });
+    });
+    await get().importFiles(o.paths, o.altitude, { exclude: o.frames });
+  },
+  declinePanoOffer: async () => {
+    const o = get().panoOffer;
+    if (!o) return;
+    set({ panoOffer: null });
+    await get().importFiles(o.paths, o.altitude, { exclude: [] });
+  },
+  dismissPanoOffer: () => {
+    set({ panoOffer: null });
   },
 
   startAlign: (align) => {
