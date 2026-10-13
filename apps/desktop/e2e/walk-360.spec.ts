@@ -332,7 +332,7 @@ test.describe('360 video', () => {
     await cancel.click();
 
     // the import ends with the clip's row saying why, and nothing of the walk is left
-    await expect(panel).toContainText('Imported 0 of 1 files', { timeout: 60_000 });
+    await expect(panel).toContainText('Nothing imported: 1 file skipped', { timeout: 60_000 });
     await expect(panel).toContainText('cancelled while this 360 video was made');
     // nothing of the raw file landed: no hint
     await expect(panel.getByTestId('import-raw-360-hint')).toHaveCount(0);
@@ -364,7 +364,7 @@ test.describe('360 video', () => {
     await nextOpenDialog(app, [flat]);
     await palette(win, 'Add 360 video');
     const panel = win.getByTestId('import-panel');
-    await expect(panel).toContainText('Imported 0 of 1 files', { timeout: 60_000 });
+    await expect(panel).toContainText('Nothing imported: 1 file skipped', { timeout: 60_000 });
     await expect(panel).toContainText('160 x 90, not a 2:1 equirectangular picture');
     await expect(walkRows(win)).toHaveCount(0);
     expect(await readdir(dataRoot.projectDir)).not.toContain('walks');

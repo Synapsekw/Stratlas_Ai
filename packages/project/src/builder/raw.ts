@@ -51,7 +51,7 @@ import {
 } from './tiff';
 import { CANCELLED_BEFORE, importWalk, type WalkTools } from './walks';
 import { NO_WALK_FILES, markWalkLayer, missingWalkLayers, walkLayerOf } from './walkLayers';
-import { isWalkFile, proxyOwner } from './walkSource';
+import { isStitched360, isWalkFile, proxyOwner } from './walkSource';
 
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 
@@ -75,6 +75,10 @@ export interface PipelineJobs {
   available(): Promise<boolean>;
   start(method: string, params: Record<string, unknown>): Promise<{ jobId: string }>;
 }
+
+/** Why an MP4 or MOV without its SRT, and not a stitched 360 export, is skipped. */
+export const NO_SRT_MESSAGE =
+  'No DJI SRT telemetry with the same name next to the video; a drone clip needs it to be placed. A 360 video must be a stitched equirectangular export, or use Add 360 video.';
 
 export const NO_PIPELINE: PipelineJobs = {
   available: () => Promise.resolve(false),
@@ -463,13 +467,30 @@ export async function importRawFiles(
       () => fallback,
     );
 
+  /** An MP4 or MOV given without its SRT is read for a 360 picture: a stitched export is a walk. */
+  const stitched360 = async (file: string): Promise<boolean> => {
+    if (!deps.walk) return false;
+    try {
+      return isStitched360(basename(file), await deps.walk.tracks(file));
+    } catch {
+      // not an MP4 the track reader knows: the drone clip branch says why it is skipped
+      return false;
+    }
+  };
+
   for (const file of paths) {
     const name = basename(file);
     const ext = extname(file).toLowerCase();
     let later = false;
     try {
       if (consumed.has(file)) continue;
-      const is360 = isWalkFile(name) || (deps.as360 === true && VIDEO.has(ext));
+      const is360 =
+        isWalkFile(name) ||
+        (VIDEO.has(ext) &&
+          (deps.as360 === true ||
+            (!deps.signal?.aborted &&
+              (await sibling(file, '.srt', paths)) === null &&
+              (await stitched360(file)))));
       if (deps.signal?.aborted) {
         // cancelled: this file's turn had not come
         const item: ImportItem = {
@@ -537,8 +558,7 @@ export async function importRawFiles(
             file: name,
             kind: 'video',
             status: 'skipped',
-            message:
-              'No DJI SRT telemetry with the same name next to the video; a clip needs it to be placed.',
+            message: NO_SRT_MESSAGE,
           });
         } else if (!deps.video) {
           items.push({

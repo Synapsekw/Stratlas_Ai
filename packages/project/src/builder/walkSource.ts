@@ -161,3 +161,14 @@ export function classifyWalkSource(i: {
     message: '360 video is read from .insv and .lrv camera files and from stitched .mp4 or .mov.',
   };
 }
+
+/**
+ * A stitched 360 export (Insta360 Studio, a 360 editor): an MP4 or MOV whose picture is
+ * equirectangular, by its spherical metadata or a 2:1 frame. Read for every MP4 or MOV that comes
+ * without a drone's SRT, so it is taken as a walk on every import route, not only Add 360 video.
+ */
+export function isStitched360(name: string, tracks: readonly WalkTrack[]): boolean {
+  if (!STITCHED_EXT.test(name)) return false;
+  const kind = classifyWalkSource({ name, tracks });
+  return kind.ok && kind.layout === 'equirect';
+}

@@ -128,7 +128,7 @@ describe('importFiles, one import at a time', () => {
     ]);
   });
 
-  it('runs the import confirmed in the heights prompt, not the drop prepared behind it', async () => {
+  it('runs the import confirmed in the heights prompt first, then the drop prepared behind it', async () => {
     call.mockImplementation((channel: string) =>
       Promise.resolve(channel === 'builder:altitudePlan' ? planned(asks) : imported),
     );
@@ -142,7 +142,7 @@ describe('importFiles, one import at a time', () => {
     const second = b().importFiles(['b.jpg']);
     const confirmed = b().confirmHeights({ source: 'auto', takeoffH: 31, takeoffFrom: 'typed' });
     expect(b().importing).toEqual({ done: 0, total: 1, file: '' });
-    // the second drop's heights arrive while the confirmed import runs: it starts no import
+    // the second drop's heights arrive while the confirmed import runs: it waits its turn
     reading.give(planned(plan()));
     await second;
     expect(b().heightsPrompt).toBeNull();
@@ -157,8 +157,53 @@ describe('importFiles, one import at a time', () => {
           altitude: { source: 'auto', takeoffH: 31, takeoffFrom: 'typed' },
         },
       ],
+      ['builder:import', { projectId: 'p1', paths: ['b.jpg'] }],
     ]);
     expect(b().importing).toBeNull();
+  });
+
+  it('queues a drop made while an import runs, says so, and imports it next', async () => {
+    const running = later<unknown>();
+    call.mockImplementation((channel: string) =>
+      channel === 'builder:altitudePlan' ? Promise.resolve(planned(plan())) : running.reply,
+    );
+    const first = b().importFiles(['a.jpg']);
+    await Promise.resolve();
+    await vi.waitFor(() => {
+      expect(b().importing).not.toBeNull();
+    });
+    await b().importFiles(['b.mp4']);
+    expect(b().queued).toBe(1);
+    expect(b().importNotice).toBe(
+      'An import is running. These files are imported when it finishes.',
+    );
+    // the same files again are not queued twice
+    await b().importFiles(['b.mp4']);
+    expect(b().queued).toBe(1);
+    running.give(imported);
+    await first;
+    expect(calls('builder:import').map((c) => (c[1] as { paths: string[] }).paths)).toEqual([
+      ['a.jpg'],
+      ['b.mp4'],
+    ]);
+    expect(b().queued).toBe(0);
+    expect(b().importNotice).toBeNull();
+  });
+
+  it('queues a drop of other files made while the first is being prepared', async () => {
+    const reading = later<unknown>();
+    call.mockImplementation((channel: string) =>
+      channel === 'builder:altitudePlan' ? reading.reply : Promise.resolve(imported),
+    );
+    const first = b().importFiles(['a.jpg']);
+    await b().importFiles(['c.jpg']);
+    expect(b().queued).toBe(1);
+    reading.give(planned(plan()));
+    await first;
+    expect(calls('builder:import').map((c) => (c[1] as { paths: string[] }).paths)).toEqual([
+      ['a.jpg'],
+      ['c.jpg'],
+    ]);
   });
 });
 
@@ -218,10 +263,12 @@ describe('importFiles with drawings whose pages are drawn in the window', () => 
     setItem(index: number, patch: Record<string, unknown>): void;
   }
 
-  it('stays busy until the pages are in, so a second import does nothing meanwhile', async () => {
+  it('stays busy until the pages are in, so a second import waits its turn', async () => {
     const drawing = later<undefined>();
     finishStaged.mockImplementation(() => drawing.reply);
-    call.mockImplementation(() => Promise.resolve(staged));
+    call.mockImplementation((channel: string) =>
+      Promise.resolve(channel === 'builder:altitudePlan' ? planned(plan()) : staged),
+    );
     const first = b().importFiles(['a.pdf'], undefined, { drawings: true });
     await vi.waitFor(() => {
       expect(finishStaged).toHaveBeenCalledTimes(1);
@@ -232,13 +279,18 @@ describe('importFiles with drawings whose pages are drawn in the window', () => 
     await b().importFiles(['c.jpg']);
     expect(calls('builder:import')).toHaveLength(1);
     expect(calls('builder:altitudePlan')).toHaveLength(0);
+    expect(b().queued).toBe(2);
+    // the pages are in: the waiting drops run in the order they came
+    finishStaged.mockImplementation(() => Promise.resolve());
     drawing.give(undefined);
     await first;
     expect(b().importing).toBeNull();
-    // and the next one runs
-    finishStaged.mockImplementation(() => Promise.resolve());
-    await b().importFiles(['b.pdf'], undefined, { drawings: true });
-    expect(calls('builder:import')).toHaveLength(2);
+    expect(calls('builder:import').map((c) => (c[1] as { paths: string[] }).paths)).toEqual([
+      ['a.pdf'],
+      ['b.pdf'],
+      ['c.jpg'],
+    ]);
+    expect(b().queued).toBe(0);
   });
 
   it('is free again when drawing the pages failed', async () => {
