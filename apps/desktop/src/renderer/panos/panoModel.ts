@@ -42,7 +42,7 @@ export function panoStatus(item: PanoRef, job: JobRecord | undefined): PanoStatu
       };
     if (job.status === 'done') return { kind: 'done' };
     if (job.status === 'failed' || job.status === 'interrupted')
-      return { kind: 'failed', message: job.error ?? 'The stitch failed.' };
+      return { kind: 'failed', message: job.error ?? t('pano.status.failedDefault') };
     if (job.status === 'cancelled') return { kind: 'queued' };
   }
   if (s.status === 'done') return { kind: 'done' };
@@ -61,7 +61,9 @@ export function panoStatusText(s: PanoStatus): string {
     case 'stitching':
       return t('pano.status.stitching', { pct: s.pct });
     case 'failed':
-      return t('pano.status.failed', { message: s.message });
+      return s.message
+        ? t('pano.status.failed', { message: s.message })
+        : t('pano.status.failedBare');
   }
 }
 

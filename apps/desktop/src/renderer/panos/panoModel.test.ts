@@ -64,6 +64,11 @@ describe('panoStatus', () => {
     expect(panoStatusText({ kind: 'stitching', pct: 42, jobId: 'j' })).toBe('Stitching 42 %');
     expect(panoStatusText({ kind: 'queued' })).toBe('Waiting to stitch');
     expect(panoStatusText({ kind: 'failed', message: 'x' })).toBe('Stitch failed: x');
+    expect(panoStatusText({ kind: 'failed', message: '' })).toBe('Stitch failed');
+    expect(panoStatus(item({ status: 'queued' }), job({ status: 'failed' }))).toEqual({
+      kind: 'failed',
+      message: 'The stitch failed.',
+    });
   });
 });
 

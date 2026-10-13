@@ -117,8 +117,96 @@ describe('PanoSphereRows', () => {
     expect(start).toHaveBeenCalledWith({
       pipeline: 'pano.stitch',
       project: 'D:/projects/p1',
-      params: { layer: 'panos-2026-09-10', pano: 'p02', quality: 'standard' },
+      params: { layer: 'panos-2026-09-10', pano: 'p02', quality: 'standard', shape: 'sphere' },
     });
+  });
+
+  it('stitches a wide panorama as wide and a never-stitched sphere as a sphere', () => {
+    const more: PanoLayer = {
+      ...layer,
+      items: [
+        {
+          id: 'p03',
+          src: { path: 'z' },
+          pos: [0, 70, 0],
+          headingDeg: 0,
+          stitch: { status: 'failed' },
+          cov: { top: 40, bottom: 40, left: -90, right: 90 },
+        },
+        {
+          id: 'p04',
+          src: { path: 'w' },
+          pos: [0, 70, 0],
+          headingDeg: 0,
+          stitch: { status: 'queued' },
+        },
+      ],
+    };
+    act(() => {
+      root.render(<PanoSphereRows layer={more} canEdit />);
+    });
+    expect(q('pano-status-p03')?.textContent).toBe('Stitch failed');
+    act(() => q('pano-stitch-p03')?.click());
+    act(() => q('pano-stitch-p04')?.click());
+    const sent = start.mock.calls.map(
+      (c) => (c[0] as { params: { pano: string; shape: string } }).params,
+    );
+    expect(sent.map((x) => [x.pano, x.shape])).toEqual([
+      ['p03', 'wide'],
+      ['p04', 'sphere'],
+    ]);
+  });
+
+  it('shows progress for a running job and no Open for a queued sphere', () => {
+    const queued: PanoLayer = {
+      ...layer,
+      items: [
+        {
+          id: 'p05',
+          src: { path: 'a' },
+          pos: [0, 70, 0],
+          headingDeg: 0,
+          stitch: { status: 'queued' },
+        },
+        {
+          id: 'p06',
+          src: { path: 'b' },
+          pos: [0, 70, 0],
+          headingDeg: 0,
+          stitch: { status: 'queued' },
+        },
+      ],
+    };
+    jobsList.jobs = [
+      {
+        id: '20261013-101500-pano-stitch-a1b2',
+        pipeline: 'pano.stitch',
+        project: 'D:/projects/p1',
+        params: { layer: 'panos-2026-09-10', pano: 'p05' },
+        status: 'running',
+        progress: 0.42,
+        steps: [],
+        artifacts: [],
+        createdAt: '2026-10-13T10:15:00Z',
+        updatedAt: '2026-10-13T10:16:00Z',
+      } as unknown as JobRecord,
+    ];
+    try {
+      act(() => {
+        root.render(<PanoSphereRows layer={queued} canEdit />);
+      });
+      expect(q('pano-status-p05')?.textContent).toBe('Stitching 42 %');
+      expect(
+        host.querySelector('[data-testid="pano-sphere-panos-2026-09-10-p05"] .walk-meter'),
+      ).not.toBeNull();
+      expect(q('pano-open-p05')).toBeNull();
+      expect(q('pano-stitch-p05')).toBeNull();
+      expect(q('pano-status-p06')?.textContent).toBe('Waiting to stitch');
+      expect(q('pano-open-p06')).toBeNull();
+      expect(q('pano-stitch-p06')).not.toBeNull();
+    } finally {
+      jobsList.jobs = [];
+    }
   });
 
   it('offers no Stitch to someone who may only look', () => {

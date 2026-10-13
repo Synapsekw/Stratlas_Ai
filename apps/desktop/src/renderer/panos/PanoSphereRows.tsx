@@ -1,4 +1,5 @@
 import type { Layer, PanoRef } from '@aio/schema';
+import { panoOpenable } from '@aio/engine';
 import { Icon, t } from '@aio/ui';
 import { workspace, useWorkspace } from '@aio/workspace';
 import { jobs, shell, useJobs } from '../shell';
@@ -7,8 +8,13 @@ import './panos.css';
 
 type PanoLayer = Extract<Layer, { kind: 'panoramas' }>;
 
-/** Same rule as the engine adapter (`panoOpenable`): queued, running and failed spheres have no image. */
-const openable = (p: PanoRef) => p.stitch === undefined || p.stitch.status === 'done';
+/**
+ * What a stitch from a row asks for. Import files no shape on the item, so only a wide panorama
+ * that was stitched before (its `cov` has left and right) is stitched as wide again; anything else
+ * is a sphere, so a sphere missing a frame is never cropped.
+ */
+const shapeOf = (p: PanoRef) =>
+  p.cov?.left !== undefined && p.cov.right !== undefined ? 'wide' : 'sphere';
 
 function open(layerId: string, p: PanoRef) {
   const ws = workspace.getState();
@@ -59,7 +65,7 @@ function SphereRow({
       className={`pano-sphere ${status.kind}`}
       data-testid={`pano-sphere-${layer.id}-${item.id}`}
     >
-      <span className="tn">{item.name ?? item.id}</span>
+      <span className="tn">{name}</span>
       <span className="pano-st" data-testid={`pano-status-${item.id}`}>
         {panoStatusText(status)}
       </span>
@@ -70,7 +76,7 @@ function SphereRow({
       )}
       <span className="tacts">
         {(status.kind === 'done' || status.kind === 'ready') &&
-          openable(item) &&
+          panoOpenable(item) &&
           act('open', 'pano', t('pano.action.open', { name }), () => {
             open(layer.id, item);
           })}
@@ -83,7 +89,7 @@ function SphereRow({
             void jobs.getState().start({
               pipeline: 'pano.stitch',
               project: root,
-              params: { layer: layer.id, pano: item.id, quality: 'standard' },
+              params: { layer: layer.id, pano: item.id, quality: 'standard', shape: shapeOf(item) },
             });
           })}
       </span>
