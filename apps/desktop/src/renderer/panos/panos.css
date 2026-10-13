@@ -127,3 +127,35 @@
   align-items: center;
   gap: 6px;
 }
+
+/* sphere rows under a panoramas layer in the Datasets tree */
+.pano-spheres {
+  display: grid;
+  gap: 1px;
+  padding-inline-start: 22px;
+}
+.pano-sphere {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-block-size: 28px;
+  font-size: 12px;
+}
+.pano-sphere .tn {
+  flex: 0 1 auto;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.pano-sphere .pano-st {
+  margin-inline-end: auto;
+  color: var(--fg-2);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.pano-sphere.failed .pano-st {
+  color: var(--warn);
+}
+.pano-sphere .walk-meter {
+  inline-size: 48px;
+}

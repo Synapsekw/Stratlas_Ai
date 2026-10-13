@@ -37,6 +37,9 @@ import { builder } from '../builder/state';
 import { DrawingControls } from '../drawings/DrawingControls';
 import { drawings, unplacedOf, useDrawings } from '../drawings/store';
 import { useMedia } from '../media';
+import { watchPanoStitches } from '../panos/panoJobs';
+import { pickAndScanPanos } from '../panos/panos';
+import { PanoSphereRows } from '../panos/PanoSphereRows';
 import { shell, useShell } from '../shell';
 import { walkBadge, walkGroupAction } from '../walks/walkBadge';
 import { openWalk, placeWalk, useWalks } from '../walks/walks';
@@ -55,6 +58,8 @@ import { DateNotes, type DateNote } from './DateNotes';
 import { askRemove, removal, useRemoval } from './removal';
 import { EmptyTrashDialog } from './RemoveHost';
 import './surveyDates.css';
+
+watchPanoStitches();
 
 interface NavDef {
   screen: Screen;
@@ -456,6 +461,15 @@ function Datasets({ collapsed }: { collapsed: boolean }) {
     return layer && walkRecordKey(layer) in walkRecords ? <WalkRowProcess layer={layer} /> : null;
   };
 
+  // a panoramas layer lists its spheres under itself (older layers of plain panos keep one row)
+  const panoLines = (it: TreeItem) => {
+    if (it.layerKind !== 'panoramas') return null;
+    const layer = project.manifest.layers.find((l) => l.id === it.layerId);
+    return layer?.kind === 'panoramas' && layer.items.some((p) => p.stitch !== undefined) ? (
+      <PanoSphereRows layer={layer} canEdit={canEdit} />
+    ) : null;
+  };
+
   // a drawing row opens its controls under itself; the Drawings header adds a drawing
   const drawingProps = {
     onDrawingSettings: (it: TreeItem) => {
@@ -465,7 +479,7 @@ function Datasets({ collapsed }: { collapsed: boolean }) {
       it.drawing && it.id === drawingOpen ? (
         <DrawingControls layerId={it.id} name={it.name} canEdit={canEdit} />
       ) : (
-        walkLine(it)
+        (walkLine(it) ?? panoLines(it))
       ),
     groupAction: (g: TreeGroup) =>
       g.kind === 'drawings' && !readOnly
@@ -561,6 +575,18 @@ function Datasets({ collapsed }: { collapsed: boolean }) {
             >
               <Icon name="import" size={14} />
               {t('tree.addData')}
+            </button>
+          )}
+          {!readOnly && !marking && (
+            <button
+              type="button"
+              className="eye"
+              data-testid="add-panos"
+              aria-label={t('pano.add')}
+              title={t('pano.add.tip')}
+              onClick={() => void pickAndScanPanos()}
+            >
+              <Icon name="pano" size={14} />
             </button>
           )}
           {!readOnly && !marking && (
