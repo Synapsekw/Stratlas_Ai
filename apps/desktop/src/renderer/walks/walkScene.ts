@@ -242,13 +242,29 @@ export function attachWalkScene(stage: EngineStage): WalkSceneView {
     dragging = h;
     stage.controls.enabled = false;
     e.stopImmediatePropagation();
+    // a release can be lost (alt-tab, a cancelled touch): these end the drag too, and only
+    // listen while it lasts
+    window.addEventListener('pointercancel', onUp);
+    window.addEventListener('blur', onUp);
+    window.addEventListener('keydown', onKey, { capture: true });
   };
-  const onUp = () => {
+  /** End a handle drag where it is (release, cancel, lost focus, Escape, end of the session). */
+  function onUp() {
     if (!dragging) return;
     dragging = null;
+    window.removeEventListener('pointercancel', onUp);
+    window.removeEventListener('blur', onUp);
+    window.removeEventListener('keydown', onKey, { capture: true });
     stage.controls.enabled = true;
     input?.endDrag();
-  };
+  }
+  /** Escape during a drag ends the drag only, not the placing session behind it. */
+  function onKey(e: KeyboardEvent) {
+    if (e.key !== 'Escape' || !dragging) return;
+    e.preventDefault();
+    e.stopImmediatePropagation();
+    onUp();
+  }
   const offClaim = stage.claimClicks((e) => {
     // the stage reports a handle grab that barely moved as a click before the window sees the
     // release: it belongs to the drag, so swallow it rather than place a pin there too

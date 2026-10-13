@@ -168,6 +168,53 @@ describe('walk in the 3D view', () => {
     view.dispose();
   });
 
+  it.each([
+    ['a cancelled pointer', () => window.dispatchEvent(new PointerEvent('pointercancel'))],
+    ['the window losing focus', () => window.dispatchEvent(new Event('blur'))],
+    ['Escape', () => window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }))],
+  ])('%s ends a handle drag where it is', (_name, lose) => {
+    const { stage, canvas } = fakeStage({ x: 5, y: 0, z: 5 });
+    const view = attachWalkScene(stage);
+    const inp = input();
+    view.setPlacing(
+      { walk: null, preview: null, handles: [{ id: 'end', at: [0, 0, 0] }], clicks: false },
+      inp,
+    );
+    canvas.dispatchEvent(new PointerEvent('pointerdown', { clientX: 100, clientY: 50, button: 0 }));
+    expect(stage.controls.enabled).toBe(false);
+    lose();
+    expect(stage.controls.enabled).toBe(true);
+    expect(inp.endDrag).toHaveBeenCalledTimes(1);
+    // the drag is over: a later move hovers, a later release ends nothing
+    canvas.dispatchEvent(new PointerEvent('pointermove', { clientX: 120, clientY: 50 }));
+    expect(inp.drag).not.toHaveBeenCalled();
+    expect(inp.hover).toHaveBeenCalledWith([5, 5], 0);
+    window.dispatchEvent(new PointerEvent('pointerup'));
+    expect(inp.endDrag).toHaveBeenCalledTimes(1);
+    view.dispose();
+  });
+
+  it('Escape, blur and cancel do nothing without a drag, and nothing after dispose', () => {
+    const { stage, canvas } = fakeStage({ x: 5, y: 0, z: 5 });
+    const view = attachWalkScene(stage);
+    const inp = input();
+    view.setPlacing(
+      { walk: null, preview: null, handles: [{ id: 'end', at: [0, 0, 0] }], clicks: false },
+      inp,
+    );
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
+    window.dispatchEvent(new Event('blur'));
+    expect(inp.endDrag).not.toHaveBeenCalled();
+    canvas.dispatchEvent(new PointerEvent('pointerdown', { clientX: 100, clientY: 50, button: 0 }));
+    view.dispose();
+    expect(inp.endDrag).toHaveBeenCalledTimes(1);
+    stage.controls.enabled = false;
+    window.dispatchEvent(new PointerEvent('pointercancel'));
+    window.dispatchEvent(new Event('blur'));
+    expect(stage.controls.enabled).toBe(false);
+    expect(inp.endDrag).toHaveBeenCalledTimes(1);
+  });
+
   it('a pointer leaving the view clears the hover, but not during a drag', () => {
     const { stage, canvas } = fakeStage({ x: 5, y: 0, z: 5 });
     const view = attachWalkScene(stage);
