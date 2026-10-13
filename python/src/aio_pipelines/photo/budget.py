@@ -35,26 +35,39 @@ RAW_PER_POINT = 4
 def site_area(xy: np.ndarray, region=None, cell: float = AREA_CELL_M) -> float:
     """Square metres the sparse points ``xy`` (n, 2) cover; ``region`` a shapely polygon in the
     same coordinates."""
-    from scipy import ndimage
-
+    xy = np.asarray(xy, float)
+    xy = xy[np.isfinite(xy).all(axis=1)] if len(xy) else xy
+    if len(xy) and region is not None:
+        x0, y0, x1, y1 = region.bounds
+        m = (AREA_DILATE + 1) * cell
+        keep = (xy[:, 0] >= x0 - m) & (xy[:, 0] <= x1 + m)
+        keep &= (xy[:, 1] >= y0 - m) & (xy[:, 1] <= y1 + m)
+        xy = xy[keep]
     if not len(xy):
         return 0.0
-    lo = np.floor(xy.min(0) / cell) - AREA_DILATE
-    idx = (np.floor(xy / cell) - lo).astype(np.int64)
-    w, h = (idx.max(0) + 1 + AREA_DILATE).tolist()
-    counts = np.zeros((h, w), np.int64)
-    np.add.at(counts, (idx[:, 1], idx[:, 0]), 1)
-    occ = ndimage.binary_dilation(
-        counts >= AREA_MIN_POINTS, structure=np.ones((3, 3), bool), iterations=AREA_DILATE
+    # Sparse: memory follows the occupied cells, not the bounding box of a stray point.
+    cells = np.floor(xy / cell).astype(np.int64)
+    lo = cells.min(0) - AREA_DILATE
+    cells -= lo
+    w = int(cells[:, 0].max()) + 1 + 2 * AREA_DILATE
+    keys, counts = np.unique(cells[:, 1] * w + cells[:, 0], return_counts=True)
+    keys = keys[counts >= AREA_MIN_POINTS]
+    if not len(keys):
+        return 0.0
+    cy, cx = np.divmod(keys, w)
+    d = np.arange(-AREA_DILATE, AREA_DILATE + 1)
+    dy, dx = np.meshgrid(d, d, indexing="ij")
+    occ = np.unique(
+        (cy[:, None] + dy.ravel()) * w + (cx[:, None] + dx.ravel()),
     )
     if region is not None:
         import shapely
 
-        cx = (lo[0] + np.arange(w) + 0.5) * cell
-        cy = (lo[1] + np.arange(h) + 0.5) * cell
-        gx, gy = np.meshgrid(cx, cy)
-        occ &= shapely.contains_xy(region, gx, gy)
-    return float(occ.sum()) * cell * cell
+        oy, ox = np.divmod(occ, w)
+        px = (ox + lo[0] + 0.5) * cell
+        py = (oy + lo[1] + 0.5) * cell
+        occ = occ[shapely.contains_xy(region, px, py)]
+    return float(len(occ)) * cell * cell
 
 
 def budget_voxel(gsd: float, scale: float, area: float, budget: int) -> float:
@@ -70,6 +83,8 @@ def needs_remerge(points: int, budget: int) -> bool:
 
 
 def remerge_voxel(voxel: float, points: int, budget: int) -> float:
+    if budget <= 0:
+        return voxel
     return voxel * math.sqrt(points / budget)
 
 

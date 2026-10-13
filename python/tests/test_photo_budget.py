@@ -64,3 +64,24 @@ def test_the_disk_estimate_reserves_twice_the_copc_for_untwine():
     assert with_cloud - without == pytest.approx(merged * (36 + 15 * 3) * 1.3, rel=1e-6)
     fast = B.disk_need(**{**kw, "scale": 0.0, "voxel": 0.02, "budget": 0}, cloud=False)
     assert 0 < fast < without
+
+
+def test_a_far_outlier_costs_nothing_and_changes_nothing():
+    xy = _block(0, 100, 0, 50)
+    far = np.array([[50_000.0, 50_000.0]] * 2)
+    base = B.site_area(xy)
+    assert B.site_area(np.concatenate([xy, far, far])) == pytest.approx(base + 5 * 5 * 4.0)
+    assert B.site_area(np.concatenate([xy, far]), box(0, 0, 100, 50)) == pytest.approx(
+        B.site_area(xy, box(0, 0, 100, 50))
+    )
+
+
+def test_points_that_are_not_finite_are_ignored():
+    xy = _block(0, 100, 0, 50)
+    bad = np.array([[np.nan, 1.0], [np.inf, 2.0], [3.0, -np.inf]])
+    assert B.site_area(np.concatenate([xy, bad])) == pytest.approx(B.site_area(xy))
+    assert B.site_area(bad) == 0.0
+
+
+def test_the_remerge_spacing_ignores_a_missing_budget():
+    assert B.remerge_voxel(0.04, 10, 0) == 0.04
