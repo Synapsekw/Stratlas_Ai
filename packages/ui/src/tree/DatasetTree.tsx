@@ -84,7 +84,10 @@ export interface DatasetTreeProps {
   onMark?: ((item: TreeItem, mods: MarkMods, order: readonly string[]) => void) | undefined;
 }
 
-/** The layer rows drawn under the tree around `row`, top to bottom. */
+/**
+ * The layer rows drawn under the tree around `row`, top to bottom. The trees are not virtualised,
+ * so every row drawn is in the DOM; a virtualised tree must pass its order another way.
+ */
 function drawnOrder(row: HTMLElement): string[] {
   const tree = row.closest('[role="tree"]') ?? row.parentElement;
   if (!tree) return [];

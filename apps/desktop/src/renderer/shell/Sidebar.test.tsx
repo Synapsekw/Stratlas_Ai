@@ -26,25 +26,42 @@ const walk = (id: string): WalkLayer => ({
   src: { path: `walks/${id}/playback.mp4` },
   durationS: 12,
 });
-const manifest = ProjectManifest.parse({
-  schema: 'aio.project/1',
-  id: 'p',
-  name: 'P',
-  crs: { epsg: 32633 },
-  origin: [500000, 4500000, 0],
-  captures: [],
-  layers: [walk('a'), walk('b'), walk('c')],
-  severityModels: [],
-  classCatalogues: [],
-});
+const project = (captures: unknown[], layers: unknown[]) =>
+  ProjectManifest.parse({
+    schema: 'aio.project/1',
+    id: 'p',
+    name: 'P',
+    crs: { epsg: 32633 },
+    origin: [500000, 4500000, 0],
+    captures,
+    layers,
+    severityModels: [],
+    classCatalogues: [],
+  });
+const manifest = project([], [walk('a'), walk('b'), walk('c')]);
+// a basemap and a retired viewer are never deleted from the tree
+const basemap = { kind: 'basemap', id: 'bm', name: 'Street map', pack: 'osm', style: 'dark' };
+const legacy = {
+  kind: 'legacy',
+  id: 'lg',
+  name: 'Old viewer',
+  viewer: 'aik',
+  entry: { path: 'legacy/index.html' },
+};
+const withKept = project([], [walk('a'), walk('b'), walk('c'), basemap, legacy]);
+// survey dates on: walk a under 12 Oct, walk b under Every date
+const dated = project(
+  [{ id: 'c1', label: 'Survey', date: '2026-10-12' }],
+  [{ ...walk('a'), capture: 'c1' }, walk('b')],
+);
 
 let host: HTMLDivElement;
 let root: Root | undefined;
 const asked: RemoveTarget[][] = [];
 const loadTrash = vi.fn(() => Promise.resolve());
 
-function render(trash: { bytes: number; entries: number } | null) {
-  workspace.getState().openProject({ id: 'p', root: 'C:/p', manifest });
+function render(trash: { bytes: number; entries: number } | null, m: ProjectManifest = manifest) {
+  workspace.getState().openProject({ id: 'p', root: 'C:/p', manifest: m });
   removal.setState({
     trash,
     held: 0,
@@ -68,8 +85,19 @@ const click = (id: string, init: MouseEventInit = {}) => {
   });
 };
 const press = (id: string, key: string) => {
+  const e = new KeyboardEvent('keydown', { key, bubbles: true, cancelable: true });
   act(() => {
-    q(id)?.dispatchEvent(new KeyboardEvent('keydown', { key, bubbles: true, cancelable: true }));
+    q(id)?.dispatchEvent(e);
+  });
+  return e;
+};
+const rightClick = (id: string) => {
+  const el = q(id);
+  if (!el) throw new Error(`no ${id}`);
+  act(() => {
+    el.dispatchEvent(
+      new MouseEvent('contextmenu', { bubbles: true, cancelable: true, clientX: 20, clientY: 20 }),
+    );
   });
 };
 
@@ -155,13 +183,74 @@ describe('Datasets: Delete', () => {
     expect(q('tree-marked-delete')).toBeNull();
   });
 
-  it('says so when Empty could not delete every removal', () => {
-    render(null);
+  it('says so each time Empty could not delete every removal', () => {
+    const text = '2 removals could not be deleted yet: something still uses them. Try again later.';
+    render({ bytes: 1024, entries: 2 });
     act(() => {
       removal.setState({ held: 2 });
     });
-    expect(document.body.textContent).toContain(
-      '2 removals could not be deleted yet: something still uses them. Try again later.',
-    );
+    expect(q('date-note')?.textContent).toContain(text);
+    const dismiss = q('date-note')?.querySelector('button');
+    act(() => dismiss?.click());
+    expect(q('date-note')).toBeNull();
+    // the second Empty leaves the same two removals held: the note comes back
+    click('tree-trash-empty');
+    click('trash-empty-cancel');
+    act(() => {
+      removal.setState({ held: 2 });
+    });
+    expect(q('date-note')?.textContent).toContain(text);
+  });
+});
+
+describe('Datasets: Delete in the menus', () => {
+  it('Delete and Escape typed in a date name field are the field’s, not the marks’', () => {
+    render(null, dated);
+    click('tree-row-walk-b', { ctrlKey: true });
+    expect(q('tree-marked-delete')).not.toBeNull();
+    press('date-name-c1', 'F2');
+    expect(q('date-rename')).not.toBeNull();
+    const del = press('date-rename', 'Delete');
+    expect(del.defaultPrevented).toBe(false);
+    expect(asked).toEqual([]);
+    press('date-rename', 'Escape');
+    expect(q('tree-marked-delete')).not.toBeNull();
+  });
+
+  it("a date folder's Delete… asks for the date", () => {
+    render(null, dated);
+    click('date-more-c1');
+    click('date-menu-delete');
+    expect(asked).toEqual([[{ capture: 'c1' }]]);
+  });
+
+  it("a group header's Delete… asks for its layers, survey dates on", () => {
+    render(null, dated);
+    rightClick('tree-group-walks');
+    click('menu-delete');
+    expect(asked).toEqual([[{ layer: 'walk-b' }]]);
+  });
+
+  it("a group header's Delete… asks for its layers, survey dates off", () => {
+    render(null);
+    rightClick('tree-group-walks');
+    expect(q('move-to-every')).toBeNull();
+    click('menu-delete');
+    expect(asked).toEqual([[{ layer: 'walk-a' }, { layer: 'walk-b' }, { layer: 'walk-c' }]]);
+  });
+
+  it('a basemap or a retired viewer offers no Delete…', () => {
+    render(null, withKept);
+    // a retired viewer has no row at all
+    expect(q('tree-row-lg')).toBeNull();
+    rightClick('tree-row-bm');
+    expect(q('menu-delete')).toBeNull();
+    // the Maps header holds only the basemap: nothing to carry, so no menu either
+    rightClick('tree-group-maps');
+    expect(q('menu-delete')).toBeNull();
+    click('tree-row-bm', { ctrlKey: true });
+    click('tree-row-walk-a', { ctrlKey: true });
+    click('tree-marked-delete');
+    expect(asked).toEqual([[{ layer: 'walk-a' }]]);
   });
 });

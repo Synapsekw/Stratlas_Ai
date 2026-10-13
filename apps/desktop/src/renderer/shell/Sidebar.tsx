@@ -514,7 +514,10 @@ function Datasets({ collapsed }: { collapsed: boolean }) {
       className="sb-sec sb-tree"
       onKeyDown={(e) => {
         // keys typed in a menu or dialog the tree opened (portals) are theirs, not the tree's
-        if (!marked || !(e.target instanceof Node) || !e.currentTarget.contains(e.target)) return;
+        if (!marked || !(e.target instanceof Element) || !e.currentTarget.contains(e.target))
+          return;
+        // and keys typed in a field (a date's name) are the field's
+        if (e.target.closest('input, textarea, select, [contenteditable]')) return;
         if (e.key === 'Escape') {
           e.stopPropagation();
           setMarks(NO_MARKS);
@@ -680,6 +683,8 @@ function Datasets({ collapsed }: { collapsed: boolean }) {
             className="tree-foot-btn"
             data-testid="tree-trash-empty"
             onClick={() => {
+              // what an earlier Empty held is forgotten, so this one's held entries note again
+              removal.setState({ held: 0 });
               setEmptying(true);
             }}
           >
