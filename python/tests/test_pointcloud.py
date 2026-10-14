@@ -1,10 +1,22 @@
 import json
 import subprocess
+import sys
+import threading
+import time
 
 import pytest
 
-from aio_pipelines.pointcloud import PDAL_MISSING, PointcloudToCopc, find_pdal, pdal_env
-from aio_pipelines.runtime import JobError
+from aio_pipelines.pointcloud import (
+    PDAL_MISSING,
+    PointcloudToCopc,
+    find_pdal,
+    las_record_length,
+    pdal_env,
+    source_epsg,
+    written_share,
+)
+from aio_pipelines.pointcloud import _run as pc_run
+from aio_pipelines.runtime import Cancelled, JobError
 from conftest import run_job
 
 PDAL = find_pdal()
@@ -118,3 +130,246 @@ def test_a_conda_style_pdal_runs_with_its_own_proj_and_gdal_data(tmp_path, monke
     assert env["PROJ_DATA"] == str((share / "proj").resolve())
     assert env["GDAL_DATA"] == str((share / "gdal").resolve())
     assert env["PROJ_NETWORK"] == "OFF"
+
+
+# ---------------------------------------------------------------- the shared COPC writer (untwine)
+
+UTM39 = {
+    "wkt": 'PROJCS["WGS 84 / UTM zone 39N",AUTHORITY["EPSG","32639"]]',
+    "horizontal": 'PROJCS["WGS 84 / UTM zone 39N",AUTHORITY["EPSG","32639"]]',
+    "json": {"type": "ProjectedCRS", "id": {"authority": "EPSG", "code": 32639}},
+}
+WGS84 = {
+    "wkt": 'GEOGCS["WGS 84",AUTHORITY["EPSG","4326"]]',
+    "json": {"id": {"authority": "EPSG", "code": 4326}},
+}
+
+
+def test_the_source_epsg_comes_from_the_header_crs():
+    assert source_epsg(UTM39) == 32639
+    compound = {
+        "wkt": "COMPD_CS[...]",
+        "json": {
+            "type": "CompoundCRS",
+            "components": [
+                {"type": "ProjectedCRS", "id": {"authority": "EPSG", "code": 32640}},
+                {"type": "VerticalCRS", "id": {"authority": "EPSG", "code": 5773}},
+            ],
+        },
+    }
+    assert source_epsg(compound) == 32640
+    # without PROJJSON the horizontal WKT's own authority counts, not an inner one
+    wkt1 = 'PROJCS["x",GEOGCS["y",AUTHORITY["EPSG","4326"]],AUTHORITY["EPSG","2056"]]'
+    assert source_epsg({"horizontal": wkt1}) == 2056
+    assert source_epsg({"wkt": 'PROJCRS["x",ID["EPSG",3857]]'}) == 3857
+    assert source_epsg({"wkt": 'LOCAL_CS["arbitrary"]'}) is None
+    assert source_epsg({}) is None
+
+
+class FakeWriter:
+    """Stands in for photo.cloud_out.write_copc: records its call, reports progress, writes out."""
+
+    def __init__(self, fractions=(0.5,)):
+        self.calls = []
+        self.fractions = fractions
+
+    def __call__(self, ctx, las, out, points, epsg, temp, budget, progress=(0.3, 0.95)):
+        self.calls.append(
+            {"las": las, "out": out, "points": points, "epsg": epsg, "budget": budget, "progress": progress}
+        )
+        lo, hi = progress
+        for f in self.fractions:
+            ctx.progress(lo + (hi - lo) * f, "Building the COPC (untwine)")
+            time.sleep(0.25)  # past the progress throttle
+        out.write_bytes(b"copc")
+        return "untwine"
+
+
+def fake_cloud(tmp_path, monkeypatch, srs, points=1000, untwine=True, writer=None, name="site.laz"):
+    """A cloud file with PDAL's summary, the COPC writer and untwine stubbed.
+    Gives (src, writer, prepared): ``prepared`` records each reprojection or copy to LAS."""
+    import aio_pipelines.pointcloud as pc
+    from aio_pipelines.photo import cloud_out, native
+
+    src = tmp_path / name
+    src.write_bytes(b"LASF")
+    monkeypatch.setattr(pc, "find_pdal", lambda: "pdal")
+    monkeypatch.setattr(pc, "read_summary", lambda ctx, pdal, path: {"num_points": points, "srs": srs})
+    prepared = []
+
+    def prepare(ctx, pdal, s, dst, epsg, n, band):
+        prepared.append({"src": s, "dst": dst, "epsg": epsg, "points": n})
+        dst.write_bytes(b"LASF")
+
+    monkeypatch.setattr(pc, "prepare_las", prepare)
+    writer = writer or FakeWriter()
+    monkeypatch.setattr(cloud_out, "write_copc", writer)
+    monkeypatch.setattr(native, "find_tool", lambda tool: "untwine" if untwine else None)
+    monkeypatch.setattr(native, "memory_budget", lambda: 8 * 1024**3)
+    return src, writer, prepared
+
+
+def test_a_cloud_already_in_the_project_crs_goes_straight_to_the_copc_writer(tmp_path, monkeypatch):
+    src, writer, prepared = fake_cloud(tmp_path, monkeypatch, UTM39)
+    root = project(tmp_path)
+    result, _ = run_job(PointcloudToCopc(), root, {"src": str(src), "epsg": 32639})
+    assert result["status"] == "done"
+    assert prepared == []  # no reprojection, no copy
+    (call,) = writer.calls
+    assert call["las"] == src
+    assert call["out"].name == "cloud.copc.laz" and call["out"].parent.name == "staging"
+    assert call["points"] == 1000 and call["epsg"] == 32639 and call["budget"] == 8 * 1024**3
+    assert (root / "clouds" / "site.copc.laz").read_bytes() == b"copc"
+    assert json.loads((root / "manifest.json").read_text())["layers"][0]["pointCount"] == 1000
+
+
+def test_a_cloud_in_another_crs_is_reprojected_first_then_written(tmp_path, monkeypatch):
+    src, writer, prepared = fake_cloud(tmp_path, monkeypatch, WGS84)
+    root = project(tmp_path)
+    result, _ = run_job(PointcloudToCopc(), root, {"src": str(src), "epsg": 32639})
+    assert result["status"] == "done"
+    (prep,) = prepared
+    assert prep["src"] == src and prep["epsg"] == 32639 and prep["points"] == 1000
+    (call,) = writer.calls
+    assert call["las"] == prep["dst"] and call["epsg"] == 32639
+    assert not prep["dst"].exists()  # the reprojected copy goes once the COPC is written
+
+
+def test_a_cloud_without_a_crs_or_without_a_target_is_not_reprojected(tmp_path, monkeypatch):
+    src, writer, prepared = fake_cloud(tmp_path, monkeypatch, {})
+    root = project(tmp_path)
+    run_job(PointcloudToCopc(), root, {"src": str(src), "epsg": 32639})
+    assert prepared == [] and writer.calls[0]["las"] == src and writer.calls[0]["epsg"] == 32639
+    src2, writer2, prepared2 = fake_cloud(tmp_path, monkeypatch, WGS84)
+    run_job(PointcloudToCopc(), root, {"src": str(src2)}, job_id="j2")
+    assert prepared2 == [] and writer2.calls[0]["epsg"] is None
+
+
+def test_an_e57_is_copied_to_las_first_without_reprojection(tmp_path, monkeypatch):
+    src, writer, prepared = fake_cloud(tmp_path, monkeypatch, UTM39, name="scan.e57")
+    root = project(tmp_path)
+    run_job(PointcloudToCopc(), root, {"src": str(src), "epsg": 32639})
+    (prep,) = prepared
+    assert prep["src"] == src and prep["epsg"] is None
+    assert writer.calls[0]["las"] == prep["dst"]
+
+
+def running(rec):
+    return [p for p in rec.of("progress") if p.get("step") == "convert" and p.get("state") == "running"]
+
+
+def test_the_writers_own_progress_reaches_the_job(tmp_path, monkeypatch):
+    src, writer, _ = fake_cloud(tmp_path, monkeypatch, UTM39, writer=FakeWriter(fractions=(0.42,)))
+    root = project(tmp_path)
+    _, rec = run_job(PointcloudToCopc(), root, {"src": str(src), "epsg": 32639})
+    lo, hi = writer.calls[0]["progress"]
+    hit = [p for p in running(rec) if p["stepFraction"] == round(lo + (hi - lo) * 0.42, 4)]
+    assert hit, running(rec)
+    assert hit[0]["message"] == "Building the viewable cloud"
+    for p in running(rec):
+        assert "–" not in p.get("message", "") and "—" not in p.get("message", "")
+
+
+def test_without_untwine_the_bar_holds_and_the_text_counts_the_time(tmp_path, monkeypatch):
+    src, writer, _ = fake_cloud(
+        tmp_path, monkeypatch, UTM39, untwine=False, writer=FakeWriter(fractions=(0.3, 0.6, 0.9))
+    )
+    root = project(tmp_path)
+    _, rec = run_job(PointcloudToCopc(), root, {"src": str(src), "epsg": 32639})
+    lo, _ = writer.calls[0]["progress"]
+    building = [p for p in running(rec) if p.get("message", "").startswith("Building the viewable cloud")]
+    assert len(building) >= 2 and all(p["stepFraction"] == round(lo, 4) for p in building)
+    assert building[-1]["message"].endswith("so far")
+
+
+def test_cancel_stops_the_copc_tool(tmp_path, monkeypatch):
+    """The job's cancel event still reaches the tool write_copc runs, and kills it."""
+    from aio_pipelines.photo import native
+
+    cancel = threading.Event()
+
+    def sleeping_writer(ctx, las, out, points, epsg, temp, budget, progress=(0.3, 0.95)):
+        threading.Timer(0.5, cancel.set).start()
+        native.run_tool(ctx, [sys.executable, "-c", "import time; time.sleep(60)"], "Building", temp)
+        return "untwine"
+
+    src, _, _ = fake_cloud(tmp_path, monkeypatch, UTM39, writer=sleeping_writer)
+    root = project(tmp_path)
+    t0 = time.monotonic()
+    with pytest.raises(Cancelled):
+        run_job(PointcloudToCopc(), root, {"src": str(src), "epsg": 32639}, cancel=cancel)
+    assert time.monotonic() - t0 < 20
+
+
+class BareCtx:
+    def __init__(self, folder):
+        self.job = type("J", (), {"dir": folder})()
+        self.cancel_event = threading.Event()
+        self.seen = []
+
+    def progress(self, f, m=None):
+        self.seen.append((f, m))
+
+    def check(self):
+        if self.cancel_event.is_set():
+            raise Cancelled()
+
+
+def test_pdal_runs_cancellably_and_reports_the_time_not_a_made_up_percentage(tmp_path):
+    ctx = BareCtx(tmp_path)
+    threading.Timer(1.5, ctx.cancel_event.set).start()
+    t0 = time.monotonic()
+    with pytest.raises(Cancelled):
+        pc_run(
+            ctx, [sys.executable, "-c", "import time; time.sleep(60)"], "Reprojecting the cloud", (0.1, 0.4)
+        )
+    assert time.monotonic() - t0 < 20
+    assert ctx.seen and all(f == 0.1 for f, _ in ctx.seen)
+    assert ctx.seen[-1][1].startswith("Reprojecting the cloud, ") and ctx.seen[-1][1].endswith("so far")
+
+
+def test_a_measured_pdal_run_reports_the_measure(tmp_path):
+    ctx = BareCtx(tmp_path)
+    shares = iter([0.2, 0.5] + [0.6] * 1000)
+    pc_run(ctx, [sys.executable, "-c", "import time; time.sleep(0.6)"], "Reprojecting the cloud", (0.1, 0.5),
+           measure=lambda: next(shares))  # fmt: skip
+    fractions = [f for f, _ in ctx.seen]
+    assert fractions[0] == pytest.approx(0.1 + 0.4 * 0.2)
+    assert max(fractions) == pytest.approx(0.1 + 0.4 * 0.6)
+
+
+def test_the_reprojection_progress_is_the_share_of_points_written(tmp_path):
+    header = bytearray(375)
+    header[0:4] = b"LASF"
+    header[104] = 0x80 | 7  # a compressed point format 7
+    header[105:107] = (36).to_bytes(2, "little")
+    src = tmp_path / "a.laz"
+    src.write_bytes(bytes(header))
+    assert las_record_length(src) == 36
+    assert las_record_length(tmp_path / "missing.laz") is None
+    (tmp_path / "x.e57").write_bytes(b"ASTM-E57")
+    assert las_record_length(tmp_path / "x.e57") is None
+    dst = tmp_path / "b.las"
+    measure = written_share(dst, 1000, 36)
+    assert measure() == 0.0
+    dst.write_bytes(b"\0" * (375 + 18000))
+    assert measure() == pytest.approx(0.5, abs=0.02)
+    dst.write_bytes(b"\0" * (375 + 72000))
+    assert measure() == 0.99
+
+
+@needs_pdal
+def test_a_cloud_in_another_crs_lands_in_the_project_crs(tmp_path):
+    laz = small_laz(tmp_path / "site.laz", epsg=32639)
+    root = project(tmp_path)
+    result, _ = run_job(PointcloudToCopc(), root, {"src": str(laz), "epsg": 32640})
+    assert result["status"] == "done"
+    out = root / "clouds" / "site.copc.laz"
+    info = json.loads(
+        subprocess.run([PDAL, "info", "--summary", str(out)], capture_output=True, check=True).stdout
+    )["summary"]
+    assert info["num_points"] == 200
+    assert info["srs"]["json"]["id"]["code"] == 32640
+    # UTM 39N easting 245700 lies far west of zone 40's central meridian
+    assert info["bounds"]["maxx"] < 0
+    assert not list((root / "jobs").rglob("source.las"))
