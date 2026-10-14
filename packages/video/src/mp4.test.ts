@@ -183,6 +183,39 @@ describe('readMp4Tracks', () => {
     expect((await readMp4Tracks(reader(cube), cube.length)).tracks[0]?.spherical).toBe('other');
   });
 
+  it('reads the creation time of the movie header (mvhd), UTC without a zone', async () => {
+    const MAC_EPOCH_S = 2_082_844_800; // 1904-01-01 to 1970-01-01
+    const at = Date.UTC(2026, 2, 5, 9, 30, 0) / 1000 + MAC_EPOCH_S;
+    const v = (created: number) =>
+      cat(
+        box('ftyp', ascii('isom'), u32(0)),
+        box(
+          'moov',
+          full('mvhd', u32(created), u32(created), u32(1000), u32(4000), new Uint8Array(80)),
+          track({ handler: 'vide', width: 3840, height: 1920 }),
+        ),
+      );
+    const b = v(at);
+    const r = await readMp4Tracks(reader(b), b.length);
+    expect(r.createdAt).toBe('2026-03-05T09:30:00');
+    expect(r.tracks).toHaveLength(1);
+    // version 1: 64-bit times
+    const v1 = cat(
+      box('ftyp', ascii('isom'), u32(0)),
+      box(
+        'moov',
+        box('mvhd', u32(1 << 24), u32(0), u32(at), u32(0), u32(at), new Uint8Array(96)),
+        track({ handler: 'vide', width: 3840, height: 1920 }),
+      ),
+    );
+    expect((await readMp4Tracks(reader(v1), v1.length)).createdAt).toBe('2026-03-05T09:30:00');
+    // an unset time (0, the 1904 epoch) or no movie header: no time
+    const unset = v(0);
+    expect((await readMp4Tracks(reader(unset), unset.length)).createdAt).toBeUndefined();
+    const none = file(track({ handler: 'vide', width: 3840, height: 1920 }));
+    expect((await readMp4Tracks(reader(none), none.length)).createdAt).toBeUndefined();
+  });
+
   it('says so when the file is not an MP4', async () => {
     const b = ascii('this is not a movie file at all, just text');
     await expect(readMp4Tracks(reader(b), b.length)).rejects.toThrow(/Not an MP4/);

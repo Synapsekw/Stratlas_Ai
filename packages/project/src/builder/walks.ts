@@ -45,12 +45,20 @@ export interface WalkCopyRequest {
   signal?: AbortSignal;
 }
 
+/** `capturedAt` as the schema takes it: `YYYY-MM-DDTHH:MM:SS`. */
+const STAMP = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}$/;
+
 /** Video reading and ffmpeg work for a walk import, injected by the app. */
 export interface WalkTools {
   /** Every track of an MP4-like file; rejects when the file is not one. */
   tracks(file: string): Promise<WalkTrack[]>;
   /** Whether the file ends with the Insta360 trailer mark. */
   trailer?(file: string): Promise<boolean>;
+  /**
+   * The movie's creation time (`mvhd`, ffprobe's `creation_time`), `YYYY-MM-DDTHH:MM:SS` UTC, or
+   * null: dates a walk whose file name carries no time.
+   */
+  createdAt?(file: string): Promise<string | null>;
   /** Is ffmpeg there, and can it stitch? */
   check(): Promise<FfmpegCheck>;
   /**
@@ -262,6 +270,11 @@ export async function importWalk(
 
   const durationS = first.durationMs / 1000;
   const named = insta360Name(name);
+  // a camera file's name gives its time; else the movie's own creation time, when it has one
+  // (UTC: a camera that writes local time there is off by its zone, as close as a date needs)
+  const created =
+    !named && o.tools.createdAt ? await o.tools.createdAt(file).catch(() => null) : null;
+  const capturedAt = named?.capturedAt ?? (created && STAMP.test(created) ? created : undefined);
   const streams: WalkStream[] = kind.video.map((t) => ({
     width: t.width,
     height: t.height,
@@ -287,7 +300,7 @@ export async function importWalk(
         bytes,
         layout: kind.layout,
         ...(extra.trailer !== undefined ? { trailer: extra.trailer } : {}),
-        ...(named ? { capturedAt: named.capturedAt } : {}),
+        ...(capturedAt ? { capturedAt } : {}),
         streams,
         ...(kind.lowRes ? { lowRes: true } : {}),
       },

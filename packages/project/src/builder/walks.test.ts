@@ -334,6 +334,26 @@ describe('importWalk', () => {
     expect((await listWalks(root)).map((w) => w.id)).toEqual([again.walk.id]);
   });
 
+  it("dates a stitched MP4 by its creation time; a camera file's name comes first", async () => {
+    const createdAt = (): Promise<string | null> => Promise.resolve('2026-03-05T09:30:00');
+    const { t } = tools({ tracksBy: { 'tour.mp4': [vide(1920, 960, 'avc1', 30)] }, createdAt });
+    const r = await importWalk(root, await src('tour.mp4'), { tools: t });
+    if (!r.ok) throw new Error(r.message);
+    expect(r.walk.source.capturedAt).toBe('2026-03-05T09:30:00');
+    const named = tools({ tracksBy: { [CLIP]: [vide(2880, 2880), vide(2880, 2880)] }, createdAt });
+    const c = await importWalk(root, await src(CLIP), { tools: named.t });
+    if (!c.ok) throw new Error(c.message);
+    expect(c.walk.source.capturedAt).toBe('2026-01-01T12:00:00');
+    // no creation time, or it cannot be read: no date, and the import still goes on
+    const none = tools({
+      tracksBy: { 'b.mp4': [vide(1920, 960, 'avc1', 30)] },
+      createdAt: () => Promise.reject(new Error('unreadable')),
+    });
+    const n = await importWalk(root, await src('b.mp4'), { tools: none.t });
+    if (!n.ok) throw new Error(n.message);
+    expect(n.walk.source.capturedAt).toBeUndefined();
+  });
+
   // ---- what an interrupted import leaves behind
 
   it('removes the half copy an interrupted import left, before the next import', async () => {

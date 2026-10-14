@@ -49,20 +49,31 @@ const encoders = new Map<string, Promise<ProxyEncoder>>();
  * one on the PATH); the poster step is added there.
  */
 export function walkToolsFor(bin?: FfmpegBin): WalkTools {
+  // the movie's creation time comes with its tracks: kept so the import does not read it twice
+  const created = new Map<string, string | null>();
+  const readMovie = async (file: string) => {
+    const fh = await open(file, 'r');
+    try {
+      const size = (await stat(file)).size;
+      const r = await readMp4Tracks(async (offset, length) => {
+        const b = new Uint8Array(length);
+        const got = await fh.read(b, 0, length, offset);
+        return b.subarray(0, got.bytesRead);
+      }, size);
+      created.clear();
+      created.set(file, r.createdAt ?? null);
+      return r;
+    } finally {
+      await fh.close();
+    }
+  };
   return {
     async tracks(file) {
-      const fh = await open(file, 'r');
-      try {
-        const size = (await stat(file)).size;
-        const r = await readMp4Tracks(async (offset, length) => {
-          const b = new Uint8Array(length);
-          const got = await fh.read(b, 0, length, offset);
-          return b.subarray(0, got.bytesRead);
-        }, size);
-        return r.tracks;
-      } finally {
-        await fh.close();
-      }
+      return (await readMovie(file)).tracks;
+    },
+    async createdAt(file) {
+      const known = created.get(file);
+      return known !== undefined ? known : ((await readMovie(file)).createdAt ?? null);
     },
     trailer: endsWithInsta360Mark,
     // asked again on every import: a person who installs ffmpeg and restarts is not told it is missing

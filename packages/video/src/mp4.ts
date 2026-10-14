@@ -215,15 +215,36 @@ function sphericalOf(moov: Uint8Array, trak: Box, stsd: Box | undefined): Mp4Sph
   return find(moov, proj, 'equi') ? 'equirectangular' : 'other';
 }
 
+/** Seconds from the MP4 epoch (1904-01-01 UTC) to the Unix epoch. */
+const MAC_EPOCH_S = 2_082_844_800;
+
+/**
+ * The movie header's creation time (`mvhd`, what ffprobe calls `creation_time`), UTC as
+ * `YYYY-MM-DDTHH:MM:SS`; undefined when there is no header or the time was never set.
+ */
+function movieCreatedAt(moov: Uint8Array): string | undefined {
+  const mvhd = find(moov, null, 'mvhd');
+  if (!mvhd || mvhd.size < 12) return undefined;
+  const v = view(moov);
+  const v1 = (moov[mvhd.start] ?? 0) === 1;
+  const s = v1 ? Number(v.getBigUint64(mvhd.start + 4)) : v.getUint32(mvhd.start + 4);
+  // 0 is "not set"; anything before 1990 is a camera clock that was never set either
+  const unix = s - MAC_EPOCH_S;
+  if (s === 0 || unix < Date.UTC(1990, 0, 1) / 1000) return undefined;
+  const d = new Date(unix * 1000);
+  return Number.isNaN(d.getTime()) ? undefined : d.toISOString().slice(0, 19);
+}
+
 /**
  * Every track of an MP4 or MOV file, in file order: what kind it is, its picture size, codec,
  * length and rate, and the spherical projection it declares. A 360 camera's own file can hold one
- * video track per lens, which `readMp4VideoInfo` (first video track only) does not show.
+ * video track per lens, which `readMp4VideoInfo` (first video track only) does not show. With
+ * them the movie's creation time (`createdAt`, UTC, no zone) when the file has one.
  */
 export async function readMp4Tracks(
   read: ReadAt,
   fileSize: number,
-): Promise<{ tracks: Mp4Track[] }> {
+): Promise<{ tracks: Mp4Track[]; createdAt?: string }> {
   const moov = await loadMoov(read, fileSize);
   const v = view(moov);
   const tracks: Mp4Track[] = [];
@@ -260,5 +281,6 @@ export async function readMp4Tracks(
       spherical: handler === 'vide' ? sphericalOf(moov, trak, stsd) : null,
     });
   }
-  return { tracks };
+  const createdAt = movieCreatedAt(moov);
+  return createdAt ? { tracks, createdAt } : { tracks };
 }
