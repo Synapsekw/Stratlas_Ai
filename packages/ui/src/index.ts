@@ -20,6 +20,8 @@ export * from './coords';
 export * from './timeline/model';
 export { generateTicks, pickTickStep, type Tick, type TickStep } from './timeline/ticks';
 export { Timeline, RATES, type TimelineProps } from './timeline/Timeline';
+export * from './timeline/lanes';
+export { LaneTimeline, type LaneTimelineProps } from './timeline/LaneTimeline';
 export * from './dates/calendarModel';
 export { Calendar, type CalendarDay } from './dates/Calendar';
 export { Popover, type PopoverProps } from './Popover';

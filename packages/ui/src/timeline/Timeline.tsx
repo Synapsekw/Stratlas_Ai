@@ -2,7 +2,7 @@ import { useRef, type PointerEvent as ReactPointerEvent, type ReactNode } from '
 import { formatCount } from '../format';
 import { Icon } from '../icons/Icon';
 import type { TimelineModel } from './model';
-import { HideButton, Ruler, Transport, ZoomControls, useTimeAxis } from './parts';
+import { HideButton, KeyframeDiamond, Ruler, Transport, ZoomControls, useTimeAxis } from './parts';
 
 export { RATES } from './parts';
 
@@ -43,7 +43,6 @@ export function Timeline(props: TimelineProps) {
   const { model, nowMs, playing, rate, activeClip, selectedIssue } = props;
   const { onSeek, onTogglePlay, onRate, onClip, onIssue, onStep } = props;
   const { onKeyframe, onKeyframeMove } = props;
-  const kfDrag = useRef<{ x: number; moved: boolean } | null>(null);
   const tracksRef = useRef<HTMLDivElement>(null);
   const hasTime = model.range !== null;
   const axis = useTimeAxis(tracksRef, model.range, nowMs, playing);
@@ -223,41 +222,15 @@ export function Timeline(props: TimelineProps) {
                       </span>
                     )}
                     {c.keys?.map((k, i) => (
-                      <button
+                      <KeyframeDiamond
                         key={`${String(i)}-${String(k)}`}
-                        type="button"
-                        data-hit
-                        className="kf"
+                        layerId={c.layerId}
+                        index={i}
+                        name={c.name}
                         style={{ left: `${x(k)}%` }}
-                        title={`Camera direction keyframe ${String(i + 1)} of ${c.name}`}
-                        aria-label={`Camera direction keyframe ${String(i + 1)} of ${c.name}`}
-                        data-testid="timeline-direction-key"
-                        onPointerDown={(e) => {
-                          if (e.button !== 0) return;
-                          e.stopPropagation();
-                          e.currentTarget.setPointerCapture(e.pointerId);
-                          kfDrag.current = { x: e.clientX, moved: false };
-                        }}
-                        onPointerMove={(e) => {
-                          const d = kfDrag.current;
-                          if (!d || !onKeyframeMove) return;
-                          if (!d.moved && Math.abs(e.clientX - d.x) < 3) return;
-                          d.moved = true;
-                          onKeyframeMove(c.layerId, i, timeAt(e.clientX), 'move');
-                        }}
-                        onPointerUp={(e) => {
-                          const d = kfDrag.current;
-                          kfDrag.current = null;
-                          if (!d) return;
-                          if (d.moved) onKeyframeMove?.(c.layerId, i, timeAt(e.clientX), 'end');
-                          else onKeyframe?.(c.layerId, i);
-                        }}
-                        onKeyDown={(e) => {
-                          if (e.key === 'Enter' || e.key === ' ') {
-                            e.preventDefault();
-                            onKeyframe?.(c.layerId, i);
-                          }
-                        }}
+                        timeAt={timeAt}
+                        onKeyframe={onKeyframe}
+                        onKeyframeMove={onKeyframeMove}
                       />
                     ))}
                   </span>

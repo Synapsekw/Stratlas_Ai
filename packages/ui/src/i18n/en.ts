@@ -235,6 +235,11 @@ export const en = {
   'timeline.noVideo': 'No video in this project',
   'timeline.clips_one': '{count} clip',
   'timeline.clips_other': '{count} clips',
+  'timeline.utc': 'UTC',
+  'timeline.siteTime': 'site time ≈ UTC{offset}',
+  'timeline.lanes.earlier': '+{count} earlier',
+  'timeline.lanes.later': '+{count} later',
+  'timeline.lanes.focus': 'Show {date}',
 
   // Library
   'library.count_one': '{count} project',

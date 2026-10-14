@@ -1,4 +1,13 @@
-import { useCallback, useEffect, useLayoutEffect, useMemo, useState, type RefObject } from 'react';
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+  type CSSProperties,
+  type RefObject,
+} from 'react';
 import { formatClock } from '../format';
 import { t } from '../i18n';
 import { Icon } from '../icons/Icon';
@@ -300,5 +309,62 @@ export function HideButton({
         {hideKeys && <span className="kbd">{hideKeys}</span>}
       </span>
     </button>
+  );
+}
+
+export interface KeyframeDiamondProps {
+  layerId: string;
+  /** Index into the clip's keyframes. */
+  index: number;
+  /** The clip's name, for the title. */
+  name: string;
+  style: CSSProperties;
+  /** Project time under a pointer x. */
+  timeAt: (clientX: number) => number;
+  onKeyframe?: ((layerId: string, index: number) => void) | undefined;
+  onKeyframeMove?:
+    ((layerId: string, index: number, tMs: number, phase: 'move' | 'end') => void) | undefined;
+}
+
+/** A camera direction keyframe: a click selects it, a drag past 3 px moves it. */
+export function KeyframeDiamond(p: KeyframeDiamondProps) {
+  const drag = useRef<{ x: number; moved: boolean } | null>(null);
+  const label = `Camera direction keyframe ${String(p.index + 1)} of ${p.name}`;
+  return (
+    <button
+      type="button"
+      data-hit
+      className="kf"
+      style={p.style}
+      title={label}
+      aria-label={label}
+      data-testid="timeline-direction-key"
+      onPointerDown={(e) => {
+        if (e.button !== 0) return;
+        e.stopPropagation();
+        e.currentTarget.setPointerCapture(e.pointerId);
+        drag.current = { x: e.clientX, moved: false };
+      }}
+      onPointerMove={(e) => {
+        const d = drag.current;
+        if (!d || !p.onKeyframeMove) return;
+        if (!d.moved && Math.abs(e.clientX - d.x) < 3) return;
+        d.moved = true;
+        p.onKeyframeMove(p.layerId, p.index, p.timeAt(e.clientX), 'move');
+      }}
+      onPointerUp={(e) => {
+        const d = drag.current;
+        drag.current = null;
+        if (!d) return;
+        if (d.moved) p.onKeyframeMove?.(p.layerId, p.index, p.timeAt(e.clientX), 'end');
+        else p.onKeyframe?.(p.layerId, p.index);
+      }}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
+          p.onKeyframe?.(p.layerId, p.index);
+        }
+      }}
+    />
   );
 }

@@ -1,3 +1,4 @@
+import { t } from '../i18n';
 import type { ClipBar, IssueMark, PhotoMark, TimelineModel } from './model';
 
 /** One day in ms. */
@@ -267,4 +268,11 @@ export function buildLaneModel(
     range: fitRange(visible),
     offsetMin,
   };
+}
+
+/** The clock the lanes run on: "site time ≈ UTC+3", or "UTC" when the site position is unknown. */
+export function offsetLabel(offsetMin: number | null): string {
+  if (offsetMin === null) return t('timeline.utc');
+  const h = offsetMin / 60;
+  return t('timeline.siteTime', { offset: `${h < 0 ? '-' : '+'}${String(Math.abs(h))}` });
 }

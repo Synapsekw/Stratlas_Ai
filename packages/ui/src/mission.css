@@ -806,6 +806,106 @@ select.input option {
   font-size: var(--t-12);
   color: var(--fg-3);
 }
+/* date lanes: one lane per survey date on a site time-of-day axis */
+.lt {
+  --lt-row: 8px;
+  --lt-row-on: 20px;
+}
+.lt-body {
+  max-height: 40vh;
+  overflow-y: auto;
+}
+.lt-label,
+.lt-lane {
+  height: calc(var(--rows, 1) * var(--lt-row) + 6px);
+}
+.lt-label.on,
+.lt-lane.on {
+  height: calc(var(--rows, 1) * var(--lt-row-on) + 16px);
+}
+.lt-label {
+  all: unset;
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding-inline: 12px 10px;
+  font-size: var(--t-12);
+  color: var(--fg-3);
+  border-bottom: 1px solid var(--line-soft);
+  cursor: pointer;
+  white-space: nowrap;
+}
+.lt-label.on {
+  color: var(--fg-0);
+  font-weight: 600;
+}
+.lt-label:hover {
+  color: var(--fg-1);
+}
+.lt-label:focus-visible {
+  outline: 2px solid var(--acc);
+  outline-offset: -2px;
+}
+.lt-label .tm {
+  margin-inline-start: auto;
+  font: 400 10.5px/1 var(--f-mono);
+  color: var(--fg-3);
+}
+.lt-fold {
+  all: unset;
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  width: 100%;
+  height: 18px;
+  padding-inline: 12px;
+  font-size: 11px;
+  color: var(--fg-3);
+  border-bottom: 1px solid var(--line-soft);
+  cursor: pointer;
+}
+.lt-fold:hover {
+  color: var(--fg-1);
+}
+.lt-fold-trk {
+  height: 18px;
+  border-bottom: 1px solid var(--line-soft);
+}
+.trk.lt-lane {
+  opacity: 0.55;
+}
+.trk.lt-lane.on {
+  opacity: 1;
+}
+.trk.lt-lane .seg-c {
+  top: calc(3px + var(--row, 0) * var(--lt-row));
+  height: calc(var(--lt-row) - 2px);
+  padding: 0;
+}
+.trk.lt-lane.on .seg-c {
+  top: calc(3px + var(--row, 0) * var(--lt-row-on));
+  height: calc(var(--lt-row-on) - 4px);
+  padding: 0 4px;
+}
+.trk.lt-lane.on .kf {
+  top: calc(3px + var(--row, 0) * var(--lt-row-on) + 4px);
+}
+.trk.lt-lane .dia,
+.trk.lt-lane .tick {
+  top: auto;
+  bottom: 2px;
+}
+.lt-ghost {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 0;
+  border-inline-start: 1px dashed var(--acc-a40);
+  pointer-events: none;
+}
 
 /* ---------- dataset tree ---------- */
 .tree-h {

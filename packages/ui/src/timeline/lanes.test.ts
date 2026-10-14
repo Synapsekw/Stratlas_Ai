@@ -6,6 +6,7 @@ import {
   laneClipAt,
   laneNeighbour,
   laneTodOf,
+  offsetLabel,
   siteMidnightUtc,
   todOf,
   utcAt,
@@ -299,5 +300,14 @@ describe('laneNeighbour', () => {
   it('starts at the first or last clip when the active clip is elsewhere', () => {
     expect(laneNeighbour(lane, null, 1)?.layerId).toBe('a1');
     expect(laneNeighbour(lane, 'b1', -1)?.layerId).toBe('a2');
+  });
+});
+
+describe('offsetLabel', () => {
+  it('names the site clock, or UTC without a position', () => {
+    expect(offsetLabel(180)).toBe('site time ≈ UTC+3');
+    expect(offsetLabel(-300)).toBe('site time ≈ UTC-5');
+    expect(offsetLabel(0)).toBe('site time ≈ UTC+0');
+    expect(offsetLabel(null)).toBe('UTC');
   });
 });
