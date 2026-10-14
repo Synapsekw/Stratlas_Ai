@@ -85,8 +85,11 @@ vi.mock('../graphics', () => ({
 }));
 vi.mock('../workspace/siteTiles', () => ({
   rasterPacks: { getState: () => ({ refresh: () => undefined }) },
-  useRasterPacks: (selector: (s: { prefs: { onlineSatellite: boolean } }) => unknown) =>
-    selector({ prefs: { onlineSatellite: false } }),
+  useRasterPacks: (selector: (s: object) => unknown) =>
+    selector({
+      prefs: { onlineSatellite: false },
+      online: { source: 'esri-world-imagery', keys: { esri: false, mapbox: false } },
+    }),
 }));
 vi.mock('./street', () => ({ GLOBE_PALETTE: {}, useStreetTiles: () => null }));
 
@@ -184,7 +187,8 @@ describe('the Globe screen', () => {
     // one heading names the screen (nothing on the Globe shows its name)
     expect([...host.querySelectorAll('h1')].map((h) => h.textContent)).toEqual(['Globe']);
     expect(field()?.getAttribute('aria-label')).toBe('Find a site');
-    expect(q('globe-map-button')?.textContent).toBe('Map');
+    // the chip names the map drawn now
+    expect(q('globe-map-button')?.textContent).toBe('Streets');
     expect(q('globe-notice')).toBeNull();
     expect(host.querySelector('aside')).toBeNull();
 
@@ -478,19 +482,26 @@ describe('the Globe screen', () => {
     });
   });
 
-  it('saves a look chosen in the Map dialog, and the screen follows it', async () => {
+  it('saves a base map chosen in the Map menu, and the screen follows it', async () => {
     await mount();
     expect(q('globe-screen')?.getAttribute('data-look')).toBe('street');
     act(() => q('globe-map-button')?.click());
-    expect(q('globe-look-street')?.getAttribute('aria-pressed')).toBe('true');
-
-    act(() => q('globe-look-satellite')?.click());
+    expect(q('map-tile-streets')?.getAttribute('aria-checked')).toBe('true');
+    act(() => q('map-tile-natural-earth')?.click());
     const saved = app.sent.filter((s) => s.channel === 'globe:setSettings');
     expect(saved).toHaveLength(1);
-    expect(saved[0]?.payload).toMatchObject({ settings: { style: 'satellite' } });
-    expect(q('globe-screen')?.getAttribute('data-look')).toBe('satellite');
-    expect(globe.props?.style).toBe('satellite');
-    expect(q('globe-look-satellite')?.getAttribute('aria-pressed')).toBe('true');
+    expect(saved[0]?.payload).toMatchObject({
+      settings: { base: 'natural-earth', style: 'natural-earth' },
+    });
+    expect(q('globe-screen')?.getAttribute('data-look')).toBe('natural-earth');
+    expect(globe.props?.style).toBe('natural-earth');
+    expect(q('map-tile-natural-earth')?.getAttribute('aria-checked')).toBe('true');
+  });
+
+  it('keeps the note that no street map pack is installed, inside the menu', async () => {
+    await mount();
+    act(() => q('globe-map-button')?.click());
+    expect(q('globe-map-menu')?.textContent).toContain('No street map pack is installed');
   });
 
   it('closes the card of an issue when its pin is no longer drawn', async () => {
@@ -504,7 +515,9 @@ describe('the Globe screen', () => {
 
     // "Show issues of the open project" switched off in the Map dialog: the pins go, and the card
     act(() => q('globe-map-button')?.click());
-    act(() => host.querySelector<HTMLInputElement>('.globe-check input')?.click());
+    act(() => {
+      q('map-ontop-issues')?.querySelector<HTMLElement>('[role="switch"]')?.click();
+    });
     expect(globe.props?.issuePins).toBeNull();
     expect(q('globe-card')).toBeNull();
     expect(globe.props?.cardPick).toBeNull();

@@ -3,7 +3,6 @@ import { reducedMotion } from '@aio/engine';
 import {
   formatArea,
   formatLength,
-  globeStyleOf,
   globeToSite,
   issuePins,
   lastCapture,
@@ -30,7 +29,6 @@ import {
 import {
   defaultGlobeSettings,
   type GlobeSettings,
-  onlineSatelliteAvailability,
   type GlobeSite,
   type MapPackInfo,
   type ProjectManifest,
@@ -41,11 +39,13 @@ import { Icon, t, useT } from '@aio/ui';
 import { useWorkspace, workspace } from '@aio/workspace';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useGraphics } from '../graphics';
+import { drawnBase } from '../maps/mapMenuModel';
 import { bridge, shell, useShell } from '../shell';
 import { BrandLoader } from '../shell/BrandMotion';
 import { rasterPacks, useRasterPacks } from '../workspace/siteTiles';
 import './globe.css';
-import { GlobeMapMenu } from './GlobeMapMenu';
+import { GlobeMenu } from './GlobeMenu';
+import { globeBaseOf, globeDraw, globePacksOf } from './globeBase';
 import { GlobeSearch, type GlobeSearchHandle } from './GlobeSearch';
 import { onGlobeRequest, takeGlobeRequest } from './request';
 import { SiteFacts } from './SiteFacts';
@@ -163,7 +163,6 @@ export default function GlobeScreen() {
   const search = useRef<GlobeSearchHandle>(null);
   const cardEl = useRef<HTMLDivElement>(null);
   const prefs = settings ?? loaded?.settings ?? defaultGlobeSettings();
-  const look = globeStyleOf(prefs);
 
   const imagery = useMemo(
     () => selectPacks(loaded?.imagery ?? [], prefs.imagery),
@@ -173,12 +172,16 @@ export default function GlobeScreen() {
     () => selectPacks(loaded?.terrain ?? [], prefs.terrain ?? 'auto'),
     [loaded, prefs.terrain],
   );
-  const street = useStreetTiles(loaded?.street ?? null, look, tier);
-  // online satellite: the person's one switch (the map type menu, Settings, the palette); main
-  // holds it and serves or refuses every tile, the Globe only draws the layer while it is on
+  // the base map (the Map menu, or 0.11's look), the packs switch, and what can be drawn now:
+  // main holds the online maps switch and serves or refuses every tile
   const offlineOnly = useShell((s) => s.settings.offlineOnly === true);
-  const satelliteOn = useRasterPacks((s) => s.prefs.onlineSatellite);
-  const online = onlineSatelliteAvailability({ satellite: satelliteOn, offlineOnly }) !== 'off';
+  const onlineOn = useRasterPacks((s) => s.prefs.onlineSatellite);
+  const onlineState = useRasterPacks((s) => s.online);
+  const base = globeBaseOf(prefs, { enabled: onlineOn, source: onlineState.source });
+  const packsOn = globePacksOf(prefs);
+  const drawn = drawnBase(base, { enabled: onlineOn, offlineOnly }, onlineState.keys);
+  const { style: look, online } = globeDraw(drawn.base, packsOn);
+  const street = useStreetTiles(loaded?.street ?? null, look, tier);
   useEffect(() => {
     rasterPacks.getState().refresh();
   }, []);
@@ -497,14 +500,14 @@ export default function GlobeScreen() {
           {notice}
         </p>
       )}
-      <GlobeMapMenu
+      <GlobeMenu
         prefs={prefs}
-        look={look}
+        base={base}
+        packsOn={packsOn}
         tier={tier}
         imagery={loaded.imagery}
-        terrain={loaded.terrain}
         streetPacks={loaded.street.length}
-        online={online}
+        streetCredit={street?.credit ?? '© OpenStreetMap contributors'}
         onSave={save}
       />
       <GlobeView
@@ -513,9 +516,9 @@ export default function GlobeScreen() {
         style={look}
         street={street}
         palette={GLOBE_PALETTE}
-        online={online ? 's2cloudless-2016' : null}
+        online={online}
         sites={loaded.sites}
-        imagery={imagery}
+        imagery={packsOn ? imagery : []}
         terrain={terrain}
         exaggeration={prefs.terrainExaggeration ?? 1}
         issuePins={pins}
