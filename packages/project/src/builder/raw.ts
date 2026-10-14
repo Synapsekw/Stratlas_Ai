@@ -13,6 +13,7 @@ import type {
   ImportHeights,
   ImportItem,
   LensModel,
+  Mat4,
   PhotoRef,
   ProjectManifest,
   Vec3,
@@ -41,6 +42,7 @@ import { modelTextures } from './modelTextures';
 import { mtlDiffuseMaps } from './mtl';
 import { readTiffHeaderFile } from './tiffFile';
 import { objToGlb } from './obj';
+import { findPix4dOffset, objPlacement, objShift } from './objPlacement';
 import { photoAltitude, photoHeight, photoRef } from './photos';
 import {
   decodeTiff,
@@ -673,6 +675,8 @@ export async function importRawFiles(
         const rel = `models/${id.slice(5)}.glb`;
         await mkdir(join(root, 'models'), { recursive: true });
         let message: string | undefined;
+        let transform: Mat4 = [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1];
+        let placedNote: string | null = null;
         if (ext === '.glb') {
           const head = await readHead(file, 4);
           if (new TextDecoder().decode(head) !== 'glTF') throw new Error('Not a GLB file.');
@@ -689,9 +693,25 @@ export async function importRawFiles(
               const p = join(dir, n);
               textures.set(n, (await exists(p)) ? new Uint8Array(await readFile(p)) : null);
             }
-          const r = objToGlb(text, mtl, (n) => textures.get(n) ?? null);
+          const pix4d = await findPix4dOffset(file);
+          const r = objToGlb(text, mtl, (n) => textures.get(n) ?? null, {
+            shift: (b) => objShift(pix4d, b),
+          });
+          const placed = objPlacement({
+            pix4d,
+            bounds: r.bounds,
+            shift: r.shift,
+            origin: m.origin,
+            epsg,
+          });
+          transform = placed.transform;
+          placedNote = placed.note;
           await writeFile(join(root, rel), r.glb);
-          message = [`${String(r.triangles)} triangles converted to GLB.`, ...r.warnings].join(' ');
+          message = [
+            `${String(r.triangles)} triangles converted to GLB.`,
+            ...placed.warnings,
+            ...r.warnings,
+          ].join(' ');
         }
         created.add(id);
         m.layers.push({
@@ -700,14 +720,23 @@ export async function importRawFiles(
           name: name.slice(0, -ext.length),
           visible: true,
           src: { path: rel },
-          transform: [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1],
+          transform,
         });
         items.push({
           file: name,
           kind: 'mesh',
           status: 'imported',
           layerId: id,
-          message: [message, 'Place it with Align, Georeference model.'].filter(Boolean).join(' '),
+          message: [
+            message,
+            placedNote ??
+              (ext === '.glb'
+                ? 'Place it with Align, Georeference model.'
+                : 'Place it with Align, Georeference model. If it lies on its side, set its Up axis to Z there.'),
+            placedNote ? 'Fine-tune it with Align, Georeference model.' : null,
+          ]
+            .filter(Boolean)
+            .join(' '),
         });
       } else if (RASTER.has(ext)) {
         const size = (await stat(file)).size;

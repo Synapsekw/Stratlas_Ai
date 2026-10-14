@@ -1195,3 +1195,49 @@ describe('model textures with spaces in their names', () => {
     expect(r.manifest.layers.some((l) => l.kind === 'photos')).toBe(false);
   });
 });
+
+describe('obj placement', () => {
+  it('stands a Pix4D OBJ export up and places it by its offset', async () => {
+    const root = await project();
+    const mesh = join(dir, 'tower', '2_densification', '3d_mesh');
+    const params = join(dir, 'tower', '1_initial', 'params');
+    await mkdir(mesh, { recursive: true });
+    await mkdir(params, { recursive: true });
+    const off = [ORIGIN[0] + 300, ORIGIN[1] - 200, 12];
+    await writeFile(join(params, 'tower_offset.xyz'), `${off.join(' ')}\n`);
+    const obj = join(mesh, 'tower.obj');
+    await writeFile(obj, 'v 0 0 0\nv 1 0 0\nv 0 0 10\nf 1 2 3\n');
+    const r = await importRawFiles(root, [obj], deps());
+    const layer = r.manifest.layers.find((l) => l.kind === 'mesh');
+    expect(layer?.kind === 'mesh' ? layer.transform : []).toEqual([
+      1,
+      0,
+      0,
+      0,
+      0,
+      0,
+      -1,
+      0,
+      0,
+      1,
+      0,
+      0,
+      300,
+      12 - ORIGIN[2],
+      200,
+      1,
+    ]);
+    expect(r.items[0]?.message).toContain('Pix4D export: stood upright (Z up)');
+  });
+  it('leaves a small OBJ outside a Pix4D layout as it is', async () => {
+    const root = await project();
+    const obj = join(dir, 'pad.obj');
+    await writeFile(obj, 'v 0 0 0\nv 1 0 0\nv 0 1 0\nf 1 2 3\n');
+    const r = await importRawFiles(root, [obj], deps());
+    const layer = r.manifest.layers.find((l) => l.kind === 'mesh');
+    expect(layer?.kind === 'mesh' ? layer.transform : []).toEqual([
+      1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1,
+    ]);
+    expect(r.items[0]?.message).toContain('Up axis');
+  });
+});

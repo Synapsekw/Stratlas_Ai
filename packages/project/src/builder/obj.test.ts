@@ -76,3 +76,19 @@ describe('objToGlb', () => {
     expect(r.warnings.join(' ')).toContain('Texture my tower.jpg was not found');
   });
 });
+
+describe('shift', () => {
+  it('reports the raw bounds and stores the vertices minus the shift', () => {
+    const far = 'v 500000 3200000 10\nv 500002 3200000 10\nv 500000 3200002 12\nf 1 2 3\n';
+    const r = objToGlb(far, null, () => null, { shift: () => [500000, 3200000, 10] });
+    expect(r.bounds).toEqual({ min: [500000, 3200000, 10], max: [500002, 3200002, 12] });
+    expect(r.shift).toEqual([500000, 3200000, 10]);
+    // the GLB's POSITION accessor max is small: the shift was taken off before float32
+    const json = JSON.parse(
+      new TextDecoder().decode(
+        r.glb.subarray(20, 20 + new DataView(r.glb.buffer, r.glb.byteOffset).getUint32(12, true)),
+      ),
+    ) as { accessors: { max?: number[] }[] };
+    expect(Math.max(...json.accessors.flatMap((a) => a.max ?? []))).toBeLessThanOrEqual(2);
+  });
+});

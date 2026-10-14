@@ -1,16 +1,27 @@
+import type { Vec3 } from '@aio/schema';
 import { encodeGlb, type GlbMaterial, type GlbPrimitive } from '../import/glb';
 import { mtlMapFile } from './mtl';
 
 /**
  * Wavefront OBJ (+ MTL) to GLB, so imported OBJ models load like any other mesh layer: polygons
  * are fan-triangulated, one primitive per material, diffuse colour and `map_Kd` texture (PNG or
- * JPEG next to the OBJ) kept, flat normals made when the file has none. Coordinates as given
- * (the alignment tool places the model).
+ * JPEG next to the OBJ) kept, flat normals made when the file has none. Coordinates as given,
+ * minus `shift` (the importer stands Z-up exports up through the layer transform,
+ * `objPlacement.ts`).
  */
+export interface ObjBounds {
+  min: Vec3;
+  max: Vec3;
+}
+
 export interface ObjResult {
   glb: Uint8Array;
   triangles: number;
   warnings: string[];
+  /** Raw vertex bounds, before the shift. */
+  bounds: ObjBounds;
+  /** What was taken off every vertex before it was stored. */
+  shift: Vec3;
 }
 
 interface Mtl {
@@ -52,6 +63,7 @@ export function objToGlb(
   objText: string,
   mtlText: string | null,
   loadFile: (name: string) => Uint8Array | null,
+  opts: { shift?: (b: ObjBounds) => Vec3 } = {},
 ): ObjResult {
   const warnings: string[] = [];
   const v: number[] = [];
@@ -89,6 +101,22 @@ export function objToGlb(
     } else if (key === 'usemtl') current = rest;
     else if (key === 'f') group(current).faces.push(rest.split(/\s+/));
   }
+  const lo: Vec3 = [Infinity, Infinity, Infinity];
+  const hi: Vec3 = [-Infinity, -Infinity, -Infinity];
+  for (let i = 0; i + 2 < v.length; i += 3) {
+    const x = v[i] ?? 0;
+    const y = v[i + 1] ?? 0;
+    const z = v[i + 2] ?? 0;
+    if (x < lo[0]) lo[0] = x;
+    if (y < lo[1]) lo[1] = y;
+    if (z < lo[2]) lo[2] = z;
+    if (x > hi[0]) hi[0] = x;
+    if (y > hi[1]) hi[1] = y;
+    if (z > hi[2]) hi[2] = z;
+  }
+  const bounds: ObjBounds = { min: lo, max: hi };
+  // map grid coordinates lose centimetres in float32: the caller's shift is taken off first
+  const s: Vec3 = v.length ? (opts.shift?.(bounds) ?? [0, 0, 0]) : [0, 0, 0];
   const nv = v.length / 3;
   const nt = vt.length / 2;
   const nn = vn.length / 3;
@@ -146,7 +174,7 @@ export function objToGlb(
       if (k === undefined) {
         k = pos.length / 3;
         seen.set(key, k);
-        pos.push(v[vi * 3] ?? 0, v[vi * 3 + 1] ?? 0, v[vi * 3 + 2] ?? 0);
+        pos.push((v[vi * 3] ?? 0) - s[0], (v[vi * 3 + 1] ?? 0) - s[1], (v[vi * 3 + 2] ?? 0) - s[2]);
         nor.push(...normal);
         if (hasUv)
           uv.push(ti === null ? 0 : (vt[ti * 2] ?? 0), ti === null ? 0 : (vt[ti * 2 + 1] ?? 0));
@@ -215,5 +243,5 @@ export function objToGlb(
     materials,
     images,
   });
-  return { glb, triangles, warnings };
+  return { glb, triangles, warnings, bounds, shift: s };
 }
