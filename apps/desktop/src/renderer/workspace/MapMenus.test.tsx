@@ -98,6 +98,22 @@ describe('the Map view menu', () => {
     });
   });
 
+  it('keeps the focus in the menu when the notice is answered, so Esc still closes it', () => {
+    act(() => {
+      root.render(<MapViewMenu />);
+    });
+    act(() => q('basemap-button')?.click());
+    act(() => q('map-tile-esri-world-imagery')?.click());
+    const cancel = [...(q('online-satellite-notice')?.querySelectorAll('button') ?? [])].find(
+      (b) => b.textContent === 'Cancel',
+    );
+    act(() => cancel?.focus());
+    act(() => cancel?.click());
+    expect(q('online-satellite-notice')).toBeNull();
+    // the focus went back to the map in use, inside the menu, not to the page
+    expect(document.activeElement).toBe(q('map-tile-streets'));
+  });
+
   it('the packs switch turns imagery packs on; Map sources opens Settings there', () => {
     act(() => {
       root.render(<MapViewMenu />);

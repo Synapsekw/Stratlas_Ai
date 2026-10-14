@@ -34,6 +34,14 @@ export function OnlineSatelliteNotice({ className = '' }: { className?: string }
     if (asking && el && typeof el.scrollIntoView === 'function')
       el.scrollIntoView({ block: 'nearest' });
   }, [asking]);
+  // inside a menu the answer's button goes away with the notice: the focus moves to the menu's
+  // map in use first, so it stays in the menu (and Esc still closes it) instead of the page
+  const keepFocus = () => {
+    box.current
+      ?.closest('[role="dialog"]')
+      ?.querySelector<HTMLElement>('[role="radio"][tabindex="0"]')
+      ?.focus();
+  };
   if (!asking)
     return error ? (
       <p className="prov-err" role="alert" data-testid="online-satellite-error">
@@ -56,6 +64,7 @@ export function OnlineSatelliteNotice({ className = '' }: { className?: string }
           type="button"
           className="btn sm primary"
           onClick={() => {
+            keepFocus();
             onlineSatelliteSwitch.getState().confirm();
           }}
         >
@@ -65,6 +74,7 @@ export function OnlineSatelliteNotice({ className = '' }: { className?: string }
           type="button"
           className="btn sm ghost"
           onClick={() => {
+            keepFocus();
             onlineSatelliteSwitch.getState().cancel();
           }}
         >

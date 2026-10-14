@@ -18,6 +18,8 @@ export const PROBE_SOURCE: Record<MapKeyProvider, OnlineSourceId> = {
 };
 
 const NAME: Record<MapKeyProvider, string> = { esri: 'Esri', mapbox: 'Mapbox' };
+/** The name with its article, for "That is not an Esri key." */
+const A_NAME: Record<MapKeyProvider, string> = { esri: 'an Esri', mapbox: 'a Mapbox' };
 
 export type MapKeyVault = Pick<KeyVault, 'setMapKey' | 'getMapKey' | 'clearMapKey'>;
 
@@ -93,7 +95,7 @@ export function registerMapKeysIpc({
   handle('mapKeys:status', () => keys.status());
   handle('mapKeys:set', async ({ provider, key }) => {
     const trimmed = key.trim();
-    if (trimmed.length < 8) return { ok: false, error: `That is not a ${NAME[provider]} key.` };
+    if (trimmed.length < 8) return { ok: false, error: `That is not ${A_NAME[provider]} key.` };
     const r = await tiles.probe(PROBE_SOURCE[provider], trimmed);
     if (r !== 'ok') return probeFailure(provider, r);
     const saved = await keys.store(provider, trimmed);

@@ -132,7 +132,11 @@ describe('map keys over IPC', () => {
     // the schema asks for 8 characters; blanks of that length pass it and are still no key
     expect(await ipc.call('mapKeys:set', { provider: 'esri', key: '          ' })).toEqual({
       ok: false,
-      error: 'That is not a Esri key.',
+      error: 'That is not an Esri key.',
+    });
+    expect(await ipc.call('mapKeys:set', { provider: 'mapbox', key: '          ' })).toEqual({
+      ok: false,
+      error: 'That is not a Mapbox key.',
     });
     vault.store.set('esri', '   ');
     expect(await ipc.call('mapKeys:test', { provider: 'esri' })).toEqual({

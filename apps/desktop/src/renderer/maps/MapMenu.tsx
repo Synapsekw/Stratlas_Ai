@@ -161,9 +161,9 @@ export function MapMenu(p: MapMenuProps) {
               const noteId = s.note ? `${ids}-${s.id}-note` : undefined;
               return (
                 <section key={s.id} className="mm-sec" aria-labelledby={`${ids}-${s.id}`}>
-                  <h3 className="mm-sec-t" id={`${ids}-${s.id}`}>
+                  <h2 className="mm-sec-t" id={`${ids}-${s.id}`}>
                     {t(s.title)}
-                  </h3>
+                  </h2>
                   <div className="mm-grid">
                     {s.tiles.map((tile) => (
                       <Tile
@@ -200,9 +200,9 @@ export function MapMenu(p: MapMenuProps) {
           </div>
           {p.notice}
           <section className="mm-sec mm-ontop" aria-labelledby={`${ids}-ontop`}>
-            <h3 className="mm-sec-t" id={`${ids}-ontop`}>
+            <h2 className="mm-sec-t" id={`${ids}-ontop`}>
               {t('mapMenu.section.onTop')}
-            </h3>
+            </h2>
             {model.onTop.map((r) => (
               <div
                 key={r.key}

@@ -114,4 +114,22 @@ describe('online maps switch and source (userData online.json)', () => {
     expect(r.ok).toBe(false);
     expect(await readFile(file, 'utf8')).toBe(newer);
   });
+
+  it('reads a broken or foreign file as off', async () => {
+    await writeFile(file, '{ not json');
+    expect(await createOnlineSettingsStore(file).get()).toEqual(OFF_ESRI);
+    await writeFile(file, JSON.stringify({ satellite: true }));
+    expect(await createOnlineSettingsStore(file).get()).toEqual(OFF_ESRI);
+    await writeFile(file, JSON.stringify({ schema: 'aio.online-settings/1', satellite: 'yes' }));
+    expect(await createOnlineSettingsStore(file).get()).toEqual(OFF_ESRI);
+    // an unknown source on a file that is on reads as absent: on, with Sentinel-2 as in 0.11
+    await writeFile(
+      file,
+      JSON.stringify({ schema: 'aio.online-settings/1', satellite: true, source: 'custom-url' }),
+    );
+    expect(await createOnlineSettingsStore(file).get()).toEqual({
+      enabled: true,
+      source: 's2cloudless-2016',
+    });
+  });
 });

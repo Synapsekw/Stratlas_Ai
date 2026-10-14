@@ -80,6 +80,14 @@ describe('the Map menu', () => {
     expect(document.activeElement).toBe(q('map-tile-streets'));
   });
 
+  it('titles its sections one level under the page heading', () => {
+    render();
+    open();
+    // the screen has one h1; an h3 straight under it breaks the heading order (axe)
+    const titles = [...(q('pop')?.querySelectorAll('.mm-sec-t') ?? [])];
+    expect(titles.map((h) => h.tagName)).toEqual(['H2', 'H2', 'H2', 'H2']);
+  });
+
   it('greys a Mapbox style without a key, with the reason in words and a way to Map sources', () => {
     const h = render();
     open();

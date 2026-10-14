@@ -70,6 +70,12 @@ const CESIUM_BASE = new URL('cesium/', document.baseURI).href;
  */
 const CARD_INSETS: Insets = { top: 56, right: 56, bottom: 44, left: 12 };
 
+/**
+ * No imagery packs (the packs switched off): one array for every render, since the Globe
+ * rebuilds its layers and terrain whenever it is handed a new one.
+ */
+const NO_PACKS: RasterPackInfo[] = [];
+
 /** The words on the chip of sites that gathered. */
 const clusterLabel = (count: number) => t('globe.siteCount', { count });
 
@@ -519,7 +525,7 @@ export default function GlobeScreen() {
         palette={GLOBE_PALETTE}
         online={online}
         sites={loaded.sites}
-        imagery={packsOn ? imagery : []}
+        imagery={packsOn ? imagery : NO_PACKS}
         terrain={terrain}
         exaggeration={prefs.terrainExaggeration ?? 1}
         issuePins={pins}

@@ -498,6 +498,17 @@ describe('the Globe screen', () => {
     expect(q('map-tile-natural-earth')?.getAttribute('aria-checked')).toBe('true');
   });
 
+  it('hands the Globe the same packs on every render while they are off, so it rebuilds nothing', async () => {
+    await mount();
+    // the street look: the packs are off
+    const before = globe.props?.imagery;
+    expect(before).toEqual([]);
+    // a render that changes nothing about the packs (a site picked in the field)
+    pickInField('Hill quarry');
+    expect(globe.props?.selected).toBe('quarry');
+    expect(globe.props?.imagery).toBe(before);
+  });
+
   it('keeps the note that no street map pack is installed, inside the menu', async () => {
     await mount();
     act(() => q('globe-map-button')?.click());
