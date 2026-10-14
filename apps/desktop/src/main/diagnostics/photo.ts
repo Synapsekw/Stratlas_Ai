@@ -6,7 +6,7 @@
  * run stays out until it is named here. Never copied: the photo source (folders and files), the
  * job settings, the region (lon/lat), the CRS (it can carry the project origin), the cameras, the
  * outputs (project paths), stage messages and warning texts (free text that can name a file),
- * rejected photo names and the accelerator's `reason`.
+ * rejected photo names and an old run's GPU add-on `accelerator` (not copied at all).
  */
 import type { HardwareProbe, PhotoRun } from '@aio/schema';
 
@@ -33,7 +33,7 @@ function pick(src: object, keys: readonly string[]): Out {
 }
 
 export function probeSummary(p: HardwareProbe): Out {
-  const out: Out = {
+  return {
     platform: p.platform,
     arch: p.arch,
     cpu: pick(p.cpu, ['model', 'cores', 'threads']),
@@ -43,8 +43,6 @@ export function probeSummary(p: HardwareProbe): Out {
     cuda: p.cuda,
     processing: p.processing,
   };
-  if (p.accelerator) out.accelerator = pick(p.accelerator, ['state', 'version', 'driver', 'gpu']);
-  return out;
 }
 
 function rmse(r: unknown): Out | undefined {

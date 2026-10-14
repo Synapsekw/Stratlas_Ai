@@ -224,6 +224,8 @@ export const SETTINGS_RULES = {
   reportContents: 'keep',
   change: 'keep',
   inference: { fields: { modelsDir: 'folder', provider: 'keep', memoryCapMb: 'keep' } },
+  // ODM's GPU setting (`auto` or `off`, ADR 0012); a later processing field stays out until named
+  processing: { fields: { odm: { fields: { gpu: 'keep' } } } },
   // M9: sync preferences only. Device keys, server enrolment and invite codes live in the vault
   // and never in settings; a field added to `team` stays out of bundles until listed here.
   team: {

@@ -39,11 +39,20 @@ function killTree(pid: number | undefined): void {
   else process.kill(pid, 'SIGKILL');
 }
 
-/** ODM's own environment: cmd.exe must find `winrun.bat` in the current folder (C1 probe). */
+/** Left out of ODM's environment: names compared in lower case, as Windows does. */
+const SMOKE_ENV_DROP: ReadonlySet<string> = new Set([
+  // cmd.exe must find `winrun.bat` in the current folder (C1 probe)
+  'nodefaultcurrentdirectoryinexepath',
+  // ODM runs its own Python, which must not load another one's standard library or packages
+  'pythonhome',
+  'pythonpath',
+]);
+
+/** ODM's own environment for its smoke test. */
 export function odmSmokeEnv(env: Record<string, string | undefined>): Record<string, string> {
   const out: Record<string, string> = {};
   for (const [k, v] of Object.entries(env))
-    if (v !== undefined && k.toLowerCase() !== 'nodefaultcurrentdirectoryinexepath') out[k] = v;
+    if (v !== undefined && !SMOKE_ENV_DROP.has(k.toLowerCase())) out[k] = v;
   out.ODM_NONINTERACTIVE = '1';
   return out;
 }

@@ -16,6 +16,13 @@ import { collectHandlers } from './notYet';
 import {
   estimateRun,
   gpusFromInfo,
+  guardOdmHandle,
+  nodePhotoSystem,
+  ODM_BUSY_PHOTO,
+  odmMemoryEnv,
+  PHOTO_BUSY,
+  PHOTO_ODM_BUSY,
+  photoBusyRefusal,
   latestAccuracyRun,
   listPhotoFiles,
   matchCameras,
@@ -28,7 +35,6 @@ import {
   sniffPhoto,
   summariseRun,
   utmEpsg,
-  withAccelerator,
   type PhotoProjects,
   type PhotoSet,
   type PhotoSystem,
@@ -45,7 +51,8 @@ const fakeSystem = (o: Partial<PhotoSystem> = {}): PhotoSystem => ({
   memoryBytes: () => 32 * GB,
   freeDiskBytes: () => Promise.resolve(500 * GB),
   gpus: () => Promise.resolve([]),
-  packVersion: () => Promise.resolve('0.4.0'),
+  packVersion: () => Promise.resolve('0.8.0'),
+  engine: () => Promise.resolve({ state: 'installed', version: '3.6.2', gpu: 'auto' }),
   ...o,
 });
 
@@ -165,19 +172,136 @@ describe('photo memory cap', () => {
   });
 });
 
-describe('processing verdict and GPUs', () => {
-  it('offers processing on Windows x64 and macOS arm64 with pack 0.4.0 or later only', () => {
-    expect(processingVerdict('win32', 'x64', '0.4.0')).toBe('available');
-    expect(processingVerdict('darwin', 'arm64', '0.4.2')).toBe('available');
-    expect(processingVerdict('win32', 'x64', 'dev')).toBe('available');
-    expect(processingVerdict('darwin', 'x64', '0.4.0')).toBe('unsupported-platform');
-    expect(processingVerdict('win32', 'arm64', '0.4.0')).toBe('unsupported-platform');
-    expect(processingVerdict('linux', 'x64', '0.4.0')).toBe('unsupported-platform');
-    expect(processingVerdict('win32', 'x64', '0.3.0')).toBe('pack-too-old');
-    expect(processingVerdict('win32', 'x64', '0.4.0-rc1')).toBe('pack-too-old');
-    expect(processingVerdict('win32', 'x64', null)).toBe('no-pack');
+describe('processing verdict with ODM', () => {
+  it('needs Windows x64, the pack 0.8.0 and the engine', () => {
+    expect(processingVerdict('darwin', 'arm64', '0.8.0', 'installed')).toBe('unsupported-platform');
+    expect(processingVerdict('win32', 'x64', null, 'installed')).toBe('no-pack');
+    expect(processingVerdict('win32', 'x64', '0.7.0', 'installed')).toBe('pack-too-old');
+    expect(processingVerdict('win32', 'x64', '0.8.0', 'not-installed')).toBe('no-engine');
+    expect(processingVerdict('win32', 'x64', '0.8.0', 'broken')).toBe('no-engine');
+    expect(processingVerdict('win32', 'x64', '0.8.0', 'update-available')).toBe('available');
+    expect(processingVerdict('win32', 'x64', 'dev', 'installed')).toBe('available');
   });
 
+  it('is Windows x64 only, and asks for pack 0.8.0 or later', () => {
+    expect(processingVerdict('win32', 'arm64', '0.8.0', 'installed')).toBe('unsupported-platform');
+    expect(processingVerdict('linux', 'x64', '0.8.0', 'installed')).toBe('unsupported-platform');
+    expect(processingVerdict('win32', 'x64', '0.8.0-rc1', 'installed')).toBe('pack-too-old');
+    expect(processingVerdict('win32', 'x64', '0.9.1', 'installing')).toBe('no-engine');
+    expect(processingVerdict('win32', 'x64', '0.9.1', 'unsupported')).toBe('no-engine');
+  });
+});
+
+describe('one photo job at a time', () => {
+  it('refuses a photo job while another runs', () => {
+    const running = [{ pipeline: 'photo.align', status: 'running' }];
+    expect(photoBusyRefusal('photo.products', running)).toBe(PHOTO_BUSY);
+    expect(
+      photoBusyRefusal('photo.products', [{ pipeline: 'photo.align', status: 'done' }]),
+    ).toBeNull();
+    expect(photoBusyRefusal('walk.process', running)).toBeNull();
+  });
+
+  it('counts starting and cancelling jobs as at work, and other pipelines not at all', () => {
+    for (const status of ['starting', 'cancelling'])
+      expect(photoBusyRefusal('photo.georef', [{ pipeline: 'photo.products', status }])).toBe(
+        PHOTO_BUSY,
+      );
+    for (const status of ['failed', 'cancelled', 'interrupted'])
+      expect(photoBusyRefusal('photo.align', [{ pipeline: 'photo.align', status }])).toBeNull();
+    expect(
+      photoBusyRefusal('photo.align', [{ pipeline: 'walk.process', status: 'running' }]),
+    ).toBeNull();
+    expect(photoBusyRefusal('photo.align', [])).toBeNull();
+  });
+});
+
+describe('the ODM memory cap', () => {
+  it('goes to the photo jobs only when the memory limit was set by hand', () => {
+    expect(odmMemoryEnv('photo.products', {})).toEqual({});
+    expect(odmMemoryEnv('photo.products', { QUADRION_PHOTO_MEMORY_MB: '49152' })).toEqual({
+      AIO_ODM_MEMORY_CAP_MB: '49152',
+    });
+    expect(odmMemoryEnv('walk.process', { QUADRION_PHOTO_MEMORY_MB: '49152' })).toEqual({});
+    expect(odmMemoryEnv('photo.align', { STRATLAS_PHOTO_MEMORY_MB: '8192' })).toEqual({
+      AIO_ODM_MEMORY_CAP_MB: '8192',
+    });
+    for (const v of ['0', '-5', '1.5', 'lots', ''])
+      expect(odmMemoryEnv('photo.georef', { QUADRION_PHOTO_MEMORY_MB: v }), v).toEqual({});
+  });
+});
+
+describe('ODM install and photo jobs keep out of each other', () => {
+  interface Reply {
+    ok: boolean;
+    error?: string;
+    code?: string;
+  }
+  const setup = () => {
+    let photoRunning = false;
+    const handlers = new Map<string, (req: unknown) => Promise<Reply>>();
+    let release: () => void = () => undefined;
+    const g = guardOdmHandle({
+      handle: (channel, handler) => {
+        handlers.set(channel, handler as unknown as (req: unknown) => Promise<Reply>);
+      },
+      photoRunning: () => Promise.resolve(photoRunning),
+    });
+    g.handle(
+      'odm:install',
+      () =>
+        new Promise((ok) => {
+          release = () => {
+            ok({ ok: false, error: 'stopped' });
+          };
+        }),
+    );
+    g.handle('odm:remove', () => Promise.resolve({ ok: false, error: 'removed' }));
+    g.handle('odm:cancel', () => ({ ok: true }));
+    const call = (c: string) => {
+      const h = handlers.get(c);
+      if (!h) throw new Error(`no handler for ${c}`);
+      return Promise.resolve(h({}));
+    };
+    return {
+      g,
+      call,
+      setPhoto: (v: boolean) => {
+        photoRunning = v;
+      },
+      release: () => {
+        release();
+      },
+    };
+  };
+
+  it('refuses install and remove while a photo job runs', async () => {
+    const t = setup();
+    t.setPhoto(true);
+    expect(await t.call('odm:install')).toEqual({ ok: false, error: ODM_BUSY_PHOTO, code: 'busy' });
+    expect(await t.call('odm:remove')).toEqual({ ok: false, error: ODM_BUSY_PHOTO, code: 'busy' });
+    // other ODM channels pass through
+    expect(await t.call('odm:cancel')).toEqual({ ok: true });
+    t.setPhoto(false);
+    expect(await t.call('odm:remove')).toEqual({ ok: false, error: 'removed' });
+  });
+
+  it('tells a photo job to wait while ODM is installed or removed', async () => {
+    const t = setup();
+    expect(t.g.busy('photo.align')).toBeNull();
+    const installing = t.call('odm:install');
+    await vi.waitFor(() => {
+      expect(t.g.busy('photo.products')).toBe(PHOTO_ODM_BUSY);
+    });
+    // jobs that do not run ODM are not held up
+    expect(t.g.busy('walk.process')).toBeNull();
+    t.release();
+    expect(await installing).toEqual({ ok: false, error: 'stopped' });
+    expect(t.g.busy('photo.products')).toBeNull();
+  });
+});
+
+describe('processing verdict and GPUs', () => {
   it('names GPUs from Electron basic info and leaves software renderers out', () => {
     expect(
       gpusFromInfo({
@@ -522,67 +646,69 @@ describe('photo IPC', () => {
     expect(free.mock.calls.length).toBeGreaterThanOrEqual(2);
   });
 
-  it('adds the GPU add-on to the probe, read again each time, and the memory of the card it names', async () => {
-    let state: Awaited<ReturnType<NonNullable<PhotoSystem['accelerator']>>> = {
+  it('adds the ODM engine to the probe, read again each time', async () => {
+    let engine: Awaited<ReturnType<NonNullable<PhotoSystem['engine']>>> = {
       state: 'not-installed',
+      gpu: 'auto',
     };
-    const gpus = () => Promise.resolve([{ name: 'NVIDIA GeForce RTX 5070 Ti', vendor: 'NVIDIA' }]);
     const probed = collectHandlers((handle) => {
       registerPhotogrammetryIpc({
         handle,
-        system: fakeSystem({ gpus, accelerator: () => Promise.resolve(state) }),
+        system: fakeSystem({ engine: () => Promise.resolve(engine) }),
       });
     });
     expect(await probed.call('photo:probe', {})).toMatchObject({
-      probe: { accelerator: { state: 'not-installed' }, cuda: false },
+      probe: { engine: { state: 'not-installed', gpu: 'auto' }, processing: 'no-engine' },
     });
-    state = {
-      state: 'ready',
-      version: '0.1.0',
-      gpu: 'NVIDIA GeForce RTX 5070 Ti',
-      driver: '591.86',
-      vramBytes: 16 * GB,
-      freeBytes: 12 * GB,
-    };
-    expect(await probed.call('photo:probe', {})).toMatchObject({
+    engine = { state: 'installed', version: '3.6.2', gpu: 'off' };
+    const r = (await probed.call('photo:probe', {})) as { probe: Record<string, unknown> };
+    expect(r).toMatchObject({
       probe: {
-        accelerator: {
-          state: 'ready',
-          version: '0.1.0',
-          driver: '591.86',
-          gpu: 'NVIDIA GeForce RTX 5070 Ti',
-        },
-        gpus: [{ name: 'NVIDIA GeForce RTX 5070 Ti', vendor: 'NVIDIA', vramBytes: 16 * GB }],
-        // the estimate and the wizard's wording do not change with the add-on yet
-        cuda: false,
+        engine: { state: 'installed', version: '3.6.2', gpu: 'off' },
+        processing: 'available',
       },
+    });
+    expect('accelerator' in r.probe).toBe(false);
+  });
+
+  it('without an engine probe, or when it fails, there is no engine to process with', async () => {
+    const bare = collectHandlers((handle) => {
+      const noEngine = fakeSystem();
+      delete noEngine.engine;
+      registerPhotogrammetryIpc({ handle, system: noEngine });
+    });
+    const r = (await bare.call('photo:probe', {})) as { probe: Record<string, unknown> };
+    expect(r.probe.processing).toBe('no-engine');
+    expect('engine' in r.probe).toBe(false);
+    const failing = collectHandlers((handle) => {
+      registerPhotogrammetryIpc({
+        handle,
+        system: fakeSystem({ engine: () => Promise.reject(new Error('registry')) }),
+      });
+    });
+    expect(await failing.call('photo:probe', {})).toMatchObject({
+      probe: { processing: 'no-engine' },
     });
   });
 
-  it('a card the add-on names that Chromium did not list is added; no add-on probe, no accelerator', async () => {
-    expect(
-      withAccelerator([{ name: 'Intel(R) UHD Graphics', vendor: 'Intel' }], {
-        state: 'ready',
-        gpu: 'NVIDIA GeForce RTX 4070',
-        vramBytes: 12 * GB,
-      }),
-    ).toEqual({
-      gpus: [
-        { name: 'Intel(R) UHD Graphics', vendor: 'Intel' },
-        { name: 'NVIDIA GeForce RTX 4070', vendor: 'NVIDIA', vramBytes: 12 * GB },
-      ],
-      accelerator: { state: 'ready', gpu: 'NVIDIA GeForce RTX 4070' },
+  it("the node system's CUDA check looks for NVIDIA's driver and passes the engine on", async () => {
+    const engine = () => Promise.resolve({ state: 'installed' as const, gpu: 'auto' as const });
+    const base = {
+      gpuInfo: () => Promise.resolve({}),
+      dataRoot: () => 'C:\\Data',
+      packVersion: () => Promise.resolve('0.8.0'),
+      env: { SYSTEMROOT: 'C:\\Windows' },
+    };
+    const sys = nodePhotoSystem({
+      ...base,
+      engine,
+      exists: (p) => Promise.resolve(p === 'C:\\Windows\\System32\\nvcuda.dll'),
     });
-    expect(withAccelerator([], { state: 'failed', reason: 'It does not fit.' })).toEqual({
-      gpus: [],
-      accelerator: { state: 'failed', reason: 'It does not fit.' },
-    });
-    expect(withAccelerator([{ name: 'x' }], null)).toEqual({ gpus: [{ name: 'x' }] });
-    const probed = collectHandlers((handle) => {
-      registerPhotogrammetryIpc({ handle, system: fakeSystem() });
-    });
-    const r = (await probed.call('photo:probe', {})) as { probe: Record<string, unknown> };
-    expect('accelerator' in r.probe).toBe(false);
+    expect(await sys.cuda?.()).toBe(true);
+    expect(await sys.engine?.()).toEqual({ state: 'installed', gpu: 'auto' });
+    const none = nodePhotoSystem({ ...base, exists: () => Promise.resolve(false) });
+    expect(await none.cuda?.()).toBe(false);
+    expect('engine' in none).toBe(false);
   });
 
   it('reads the processing tools again on each probe: an install shows without a restart', async () => {
@@ -597,11 +723,11 @@ describe('photo IPC', () => {
     expect(await probed.call('photo:probe', {})).toMatchObject({
       probe: { processing: 'no-pack' },
     });
-    installed = '0.2.0';
+    installed = '0.7.0';
     expect(await probed.call('photo:probe', {})).toMatchObject({
       probe: { processing: 'pack-too-old' },
     });
-    installed = '0.5.0';
+    installed = '0.8.0';
     expect(await probed.call('photo:probe', {})).toMatchObject({
       probe: { processing: 'available' },
     });

@@ -18,6 +18,12 @@ describe('the smoke test environment', () => {
       odmSmokeEnv({ PATH: 'p', NODEFAULTCURRENTDIRECTORYINEXEPATH: '1', Gone: undefined }),
     ).toEqual({ PATH: 'p', ODM_NONINTERACTIVE: '1' });
   });
+
+  it("drops the app's PYTHONHOME and PYTHONPATH whatever their case: ODM runs its own Python", () => {
+    expect(
+      odmSmokeEnv({ PATH: 'p', PYTHONHOME: 'C:\\Py', PythonPath: 'C:\\lib', PYTHONUTF8: '1' }),
+    ).toEqual({ PATH: 'p', PYTHONUTF8: '1', ODM_NONINTERACTIVE: '1' });
+  });
 });
 
 describe.skipIf(process.platform !== 'win32')('the real smoke test', () => {

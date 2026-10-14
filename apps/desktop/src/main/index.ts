@@ -137,13 +137,21 @@ import { createOnlineSettingsStore, onlineSettingsPath } from './onlineSettings'
 import { createMapKeys, registerMapKeysIpc } from './onlineMaps';
 import { createOnlineTiles, fakeTileFetch } from './onlineTiles';
 import {
+  gpusFromInfo,
+  guardOdmHandle,
   latestAccuracyRun,
   nodePhotoSystem,
+  odmMemoryEnv,
   PHOTO_PACK,
+  photoBusyRefusal,
+  photoJobAtWork,
   photoJobEnv,
   processingVerdict,
   registerPhotogrammetryIpc,
 } from './photogrammetry';
+import { currentOdm, odmJobEnv, odmStatus, type OdmDeps } from './odm/install';
+import { registerOdmIpc } from './odm/ipc';
+import { nodeOdmSystem } from './odm/system';
 import { registerTilesetsIpc } from './tilesets';
 import type { DraftOp } from '@aio/journal';
 import { registerGeodesyIpc } from './geodesy';
@@ -163,13 +171,6 @@ import { nativeImageOps } from './images';
 import { validated, type Handler } from './ipc';
 import { findPack, findPdal, JobRunner, JobStore, openTarget, safeJobEvent } from './jobs';
 import { findFfmpeg } from './jobs/pack';
-import {
-  AcceleratorProbe,
-  findAddon,
-  PHOTO_GPU_PIPELINES,
-  photoAddonEnv,
-  photoGpuOff,
-} from './jobs/addon';
 import { packArchivePlaces, registerPipelinePackIpc } from './jobs/packInstall';
 import { createKeyVault } from './keys';
 import { createClassLibraryStore } from './classLibrary';
@@ -427,10 +428,9 @@ function applyTheme(theme: Settings['theme']): void {
   }
 }
 
-function broadcast<E extends 'packs:job' | 'update:progress' | 'pipelinePack:progress'>(
-  event: E,
-  payload: IpcEvent<E>,
-): void {
+function broadcast<
+  E extends 'packs:job' | 'update:progress' | 'pipelinePack:progress' | 'odm:progress',
+>(event: E, payload: IpcEvent<E>): void {
   const parsed = ipcEvents[event].safeParse(payload);
   if (!parsed.success) return;
   for (const win of BrowserWindow.getAllWindows()) win.webContents.send(event, parsed.data);
@@ -684,33 +684,37 @@ const exportJobs = createExportJobs({
 // M11 G8: a survey.qa job that holds a survey is journaled as `survey.hold` when it finishes
 const surveyQaJobs = qaJobEvents({ journal: (root, drafts) => journal.appendEdits(root, drafts) });
 const jobStore = new JobStore(join(app.getPath('userData'), 'jobs.json'));
-// where the graphics card's compiled kernels are kept: the GPU add-on itself is never written to
-const gpuKernelCache = (): string => join(app.getPath('userData'), 'gpu-kernels');
-// the GPU add-on's state on this computer, for the hardware probe (tested in a process of its own)
-const accelerator = new AcceleratorProbe({
-  findPack: () =>
-    findPack({ dataRoot: settings.current().dataRoot, env: process.env, app: packApp }),
+// ADR 0012: the ODM engine the photo jobs run (Settings, Processing tools installs it). Its
+// downloads go through a session of their own: the default one blocks the network.
+const odmDeps: OdmDeps = {
   dataRoot: () => settings.current().dataRoot,
-  cacheDir: gpuKernelCache,
-  env: () => process.env,
-  off: () => photoGpuOff(process.env),
+  env: process.env,
+  platform: process.platform,
+  arch: process.arch,
+  fetch: (u, init) => session.fromPartition('quadrion-odm').fetch(u, init),
+  system: nodeOdmSystem(process.env),
+  gpus: async () => gpusFromInfo(await app.getGPUInfo('basic')),
+  gpuSetting: () => settings.current().processing?.odm?.gpu ?? 'auto',
+  offlineOnly: () => settings.current().offlineOnly === true,
+  now: () => new Date(),
+  log: (line) => {
+    appLog.write('warn', [line]);
+  },
+};
+// ODM's install and removal never run beside a photo job, and the other way round
+const odmGuard = guardOdmHandle({
+  handle,
+  photoRunning: () => Promise.resolve(photoJobAtWork(jobStore.all())),
 });
 const jobs = new JobRunner({
   store: jobStore,
-  // M10: the photo jobs' memory cap (75 % of this computer's memory; no Settings field in 0.10)
-  jobEnv: async (job, pack) => ({
+  // M10: the photo jobs' memory cap (75 % of this computer's memory; no Settings field)
+  jobEnv: async (job) => ({
     ...photoJobEnv(job.pipeline, totalmem(), process.env),
-    // the GPU add-on that fits this pack, when one is installed: the photo job tests the card
-    // itself and uses the CPU when it is not ready
-    ...(PHOTO_GPU_PIPELINES.has(job.pipeline)
-      ? photoAddonEnv(
-          job.pipeline,
-          (await findAddon({ dataRoot: settings.current().dataRoot, env: process.env, pack }))
-            .addon,
-          gpuKernelCache(),
-          photoGpuOff(process.env),
-        )
-      : {}),
+    // ADR 0012: ODM's folder, version and GPU setting; `AIO_ODM_OWNED` only for our own install
+    ...odmJobEnv(job.pipeline, await currentOdm(odmDeps), odmDeps.gpuSetting()),
+    // ODM's memory limit (and fewer threads) only when the photo memory was limited by hand
+    ...odmMemoryEnv(job.pipeline, process.env),
     // M11 G1: geoid packs for the site pipeline, and PROJ never on the network
     ...geoidJobEnv(settings.current().dataRoot),
   }),
@@ -1206,6 +1210,13 @@ function registerIpc(): void {
     // a DXF must not be filed over a picture drawing of the same name
     const refused = await drawingJobRefusal(req);
     if (refused) return { ok: false, error: refused };
+    // one photo processing job at a time on this computer, and none while ODM is installed
+    const pipeline = 'pipeline' in req ? req.pipeline : jobs.get(req.resume)?.pipeline;
+    if (pipeline) {
+      const others = jobStore.all().filter((j) => !('resume' in req) || j.id !== req.resume);
+      const busy = photoBusyRefusal(pipeline, others) ?? odmGuard.busy(pipeline);
+      if (busy) return { ok: false, error: busy };
+    }
     // walk.process and pano.stitch on processing tools older than their first pack: the update
     // path, not a failed job
     if ('pipeline' in req && (req.pipeline === 'walk.process' || req.pipeline === 'pano.stitch')) {
@@ -1638,10 +1649,26 @@ function registerIpc(): void {
       packVersion: async () =>
         (await findPack({ dataRoot: settings.current().dataRoot, env: process.env, app: packApp }))
           .pack?.version ?? null,
-      accelerator: () => accelerator.state(),
+      engine: async () => {
+        const s = await odmStatus(odmDeps, false);
+        return { state: s.state, ...(s.version ? { version: s.version } : {}), gpu: s.gpu.setting };
+      },
     }),
     trash: (p) => shell.trashItem(p),
   }).diagnostics;
+  // ADR 0012: Settings, Processing tools installs, removes and sets the GPU use of ODM
+  registerOdmIpc({
+    ...odmDeps,
+    handle: odmGuard.handle,
+    emit: (p) => {
+      broadcast('odm:progress', p);
+    },
+    setGpu: async (gpu) => {
+      await settings.update((s) => ({
+        processing: { ...s.processing, odm: { ...s.processing?.odm, gpu } },
+      }));
+    },
+  });
   registerGlobeIpc({
     handle,
     library: async () => {
@@ -1725,7 +1752,8 @@ function registerIpc(): void {
     app: packApp,
     platform: `${process.platform}-${process.arch}`,
     features:
-      processingVerdict(process.platform, process.arch, null) === 'unsupported-platform'
+      processingVerdict(process.platform, process.arch, null, 'installed') ===
+      'unsupported-platform'
         ? []
         : [
             { label: 'Creating maps from photos', minVersion: PHOTO_PACK },

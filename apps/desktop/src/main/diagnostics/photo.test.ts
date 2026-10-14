@@ -10,13 +10,6 @@ const probe = HardwareProbe.parse({
   freeDiskBytes: 512_000_000_000,
   gpus: [{ name: 'Test GPU', vendor: 'Test', vramBytes: 8_589_934_592 }],
   cuda: false,
-  accelerator: {
-    state: 'failed',
-    version: '0.1.0',
-    driver: '560.94',
-    gpu: 'Test GPU',
-    reason: 'could not load C:\\drivers\\x',
-  },
   processing: 'available',
 });
 
@@ -85,8 +78,12 @@ const full = run('20260314-1000', '2026-03-14T10:00:00Z', {
 });
 
 describe('probeSummary', () => {
-  it('keeps the machine facts and drops the accelerator reason', () => {
-    expect(probeSummary(probe)).toEqual({
+  it('keeps the machine facts and nothing of an old accelerator', () => {
+    const old = HardwareProbe.parse({
+      ...probe,
+      accelerator: { state: 'failed', reason: 'could not load C:\\drivers\\x' },
+    });
+    expect(probeSummary(old)).toEqual({
       platform: 'win32',
       arch: 'x64',
       cpu: { model: 'Test CPU', cores: 8, threads: 16 },
@@ -95,7 +92,6 @@ describe('probeSummary', () => {
       gpus: [{ name: 'Test GPU', vendor: 'Test', vramBytes: 8_589_934_592 }],
       cuda: false,
       processing: 'available',
-      accelerator: { state: 'failed', version: '0.1.0', driver: '560.94', gpu: 'Test GPU' },
     });
   });
 

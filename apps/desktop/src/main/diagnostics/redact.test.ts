@@ -192,6 +192,17 @@ describe('redactSettings', () => {
     expect(redactSettings({ inference: { modelsDir: '' } }).inference).toEqual({ modelsDir: '' });
   });
 
+  it("keeps ODM's GPU setting and nothing else a later processing field might carry", () => {
+    const out = redactSettings({
+      processing: { odm: { gpu: 'off', dir: 'C:\\Users\\jane\\odm' }, other: 1 },
+    });
+    expect(out.processing).toEqual({ odm: { gpu: 'off', _omitted: ['dir'] }, _omitted: ['other'] });
+    expect(JSON.stringify(out)).not.toContain('jane');
+    expect(redactSettings({ processing: { odm: { gpu: 'auto' } } }).processing).toEqual({
+      odm: { gpu: 'auto' },
+    });
+  });
+
   it('gives the team sync preferences and nothing a later field might carry (M9)', () => {
     const out = redactSettings({
       team: { autoSync: true, intervalMin: 15, blobCacheGb: 50, inviteCode: 'K7-ABCD-1234' },

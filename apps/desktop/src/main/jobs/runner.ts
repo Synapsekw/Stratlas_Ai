@@ -29,8 +29,8 @@ export interface JobRunnerDeps {
   /** How long a cancelled job may take to stop before its runtime is killed. */
   cancelGraceMs?: number;
   /**
-   * Extra environment for a job's runtime, worked out when the job starts: the photo jobs' memory
-   * cap (M10) and the GPU add-on that fits the pack the job runs in.
+   * Extra environment for a job's runtime, worked out when the job starts: the photo memory cap
+   * and ODM's folder and GPU setting.
    */
   jobEnv?: (
     job: JobRecord,
@@ -58,6 +58,24 @@ const ENV_DROP = new Set([
   'VIRTUAL_ENV',
   'CONDA_PREFIX',
 ]);
+
+/**
+ * Params a pipeline no longer takes, dropped from a saved job before it resumes and from a
+ * request before it is checked: `photo.products` lost `dense` when ODM took over (ADR 0012),
+ * and jobs saved before that still carry it.
+ */
+const RETIRED_PARAMS: Readonly<Record<string, readonly string[]>> = {
+  'photo.products': ['dense'],
+};
+
+function withoutRetired(
+  pipeline: string,
+  params: Record<string, unknown>,
+): Record<string, unknown> {
+  const retired = RETIRED_PARAMS[pipeline];
+  if (!retired?.some((k) => k in params)) return params;
+  return Object.fromEntries(Object.entries(params).filter(([k]) => !retired.includes(k)));
+}
 
 /** Where a job keeps its manifests, staging and log: `<project>/jobs/<jobId>/`. */
 export function jobDir(job: Pick<JobRecord, 'project' | 'id'>): string {
@@ -132,11 +150,18 @@ export class JobRunner {
       if (!RESUMABLE.has(prev.status)) {
         return { ok: false, error: `A ${prev.status} job cannot be resumed.` };
       }
-      job = { ...prev, status: 'starting', updatedAt: this.iso() };
+      job = {
+        ...prev,
+        params: withoutRetired(prev.pipeline, prev.params),
+        status: 'starting',
+        updatedAt: this.iso(),
+      };
       delete job.error;
       delete job.finishedAt;
     } else {
-      const parsed = pipelineParams(req.pipeline).safeParse(req.params);
+      const parsed = pipelineParams(req.pipeline).safeParse(
+        withoutRetired(req.pipeline, req.params),
+      );
       if (!parsed.success) {
         const first = parsed.error.issues[0];
         const where = first?.path.join('.') ?? '';
@@ -180,8 +205,9 @@ export class JobRunner {
     } catch (e) {
       return { ok: false, error: `Cannot write to ${jobDir(job)}: ${String(e)}` };
     }
-    // what the job's environment adds (the photo memory cap, the GPU add-on); never a reason to
-    // refuse the job: without it the job runs as it would on a computer that has none
+    // what the job's environment adds (the photo memory cap and ODM's folder and GPU setting);
+    // never a reason to refuse the job: without it the job runs as it would on a computer that
+    // has none
     let extra: Record<string, string>;
     try {
       extra = (await this.deps.jobEnv?.(job, pack)) ?? {};
@@ -318,7 +344,9 @@ export class JobRunner {
 
   private launch(job: JobRecord, pack: PackInfo, extra: Record<string, string>): void {
     const env: NodeJS.ProcessEnv = {
-      ...Object.fromEntries(Object.entries(process.env).filter(([k]) => !ENV_DROP.has(k))),
+      ...Object.fromEntries(
+        Object.entries(process.env).filter(([k]) => !ENV_DROP.has(k.toUpperCase())),
+      ),
       ...extra,
     };
     const child = this.spawn(pack.python, ['-I', '-u', '-X', 'utf8', '-m', 'aio_pipelines'], {

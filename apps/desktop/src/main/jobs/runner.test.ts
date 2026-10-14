@@ -3,7 +3,8 @@ import { spawn } from 'node:child_process';
 import { mkdtemp, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { odmJobEnv } from '../odm/install';
 import { JobRunner, jobDir } from './runner';
 import { JobStore } from './store';
 
@@ -173,17 +174,38 @@ describe('JobRunner', () => {
     expect(envs[0]?.AIO_PHOTO_MEMORY_MB).toBe('1234');
   });
 
-  it('works the job environment out for the pack the job runs in, and waits for it', async () => {
+  it("hands ODM's folder and GPU setting to the job, and waits for them", async () => {
     const { runner, envs } = setup('ok', {
-      jobEnv: async (_job, pack) => {
+      jobEnv: async () => {
         await new Promise((r) => setTimeout(r, 5));
-        return { AIO_PHOTO_ADDON: `${pack.dir}/pipeline-addon-cuda-${pack.version}` };
+        return odmJobEnv(
+          'photo.align',
+          { dir: 'C:\\Q\\odm-3.6.2', version: '3.6.2', owned: true },
+          'auto',
+        );
       },
     });
     const r = await runner.start({ ...START, project });
     if (!r.ok) throw new Error(r.error);
     await finished(runner, r.job.id);
-    expect(envs[0]?.AIO_PHOTO_ADDON).toBe(`${base}/pipeline-addon-cuda-0.1.0`);
+    expect(envs[0]?.AIO_ODM).toBe('C:\\Q\\odm-3.6.2');
+    expect(envs[0]?.AIO_ODM_GPU).toBe('auto');
+    expect(envs[0]?.AIO_ODM_OWNED).toBe('1');
+  });
+
+  it("never hands the app's PYTHONHOME or PYTHONPATH to a job (ODM's own Python inherits it)", async () => {
+    vi.stubEnv('PYTHONHOME', 'C:\\Elsewhere\\Python');
+    // Windows names are not case sensitive: a mixed-case name is the same variable
+    vi.stubEnv('PythonPath', 'C:\\Elsewhere\\lib');
+    try {
+      const { runner, envs } = setup('ok');
+      const r = await runner.start({ ...START, project });
+      if (!r.ok) throw new Error(r.error);
+      await finished(runner, r.job.id);
+      expect(Object.keys(envs[0] ?? {}).filter((k) => /^python(home|path)$/i.test(k))).toEqual([]);
+    } finally {
+      vi.unstubAllEnvs();
+    }
   });
 
   it('a job environment that cannot be worked out does not stop the job', async () => {
@@ -193,7 +215,7 @@ describe('JobRunner', () => {
     const r = await runner.start({ ...START, project });
     if (!r.ok) throw new Error(r.error);
     expect((await finished(runner, r.job.id)).status).toBe('done');
-    expect(envs[0]?.AIO_PHOTO_ADDON).toBeUndefined();
+    expect(envs[0]?.AIO_ODM).toBeUndefined();
   });
 
   it('refuses bad params, a missing project and a missing pack before spawning', async () => {
@@ -215,6 +237,42 @@ describe('JobRunner', () => {
     const nopack = await setup('ok', { pack: false }).runner.start({ ...START, project });
     expect(nopack).toEqual({ ok: false, error: 'No processing tools in X.' });
     expect(spawned).toEqual([]);
+  });
+
+  it('resumes a photo.products job saved with the retired dense choice, without it', async () => {
+    const file = join(base, 'jobs.json');
+    const old: JobRecord = {
+      id: 'p1',
+      pipeline: 'photo.products',
+      project,
+      params: { run: '20261007-0915', products: ['ortho'], dense: 'cpu' },
+      status: 'failed',
+      progress: 0.4,
+      steps: [],
+      artifacts: [],
+      createdAt: '2026-10-04T10:00:00.000Z',
+      updatedAt: '2026-10-04T10:00:00.000Z',
+    };
+    await import('node:fs/promises').then((fs) => fs.writeFile(file, JSON.stringify([old])));
+    const { store, runner } = setup('ok');
+    await store.load();
+    const r = await runner.start({ resume: 'p1' });
+    if (!r.ok) throw new Error(r.error);
+    expect(r.job.params).toEqual({ run: '20261007-0915', products: ['ortho'] });
+    await finished(runner, 'p1');
+    expect(store.get('p1')?.params).not.toHaveProperty('dense');
+  });
+
+  it('starts a photo.products job asked for with the retired dense choice, without it', async () => {
+    const { runner } = setup('ok');
+    const r = await runner.start({
+      pipeline: 'photo.products',
+      project,
+      params: { run: '20261007-0915', products: ['ortho'], dense: 'auto' },
+    });
+    if (!r.ok) throw new Error(r.error);
+    expect(r.job.params).toEqual({ run: '20261007-0915', products: ['ortho'] });
+    await finished(runner, r.job.id);
   });
 
   it('an index left with running jobs loads them as interrupted', async () => {

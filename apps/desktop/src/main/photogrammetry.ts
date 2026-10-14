@@ -21,6 +21,8 @@ import {
   PhotoRun,
   photoRunDir,
   type Layer,
+  type OdmGpuSetting,
+  type OdmState,
   type Quat,
   type Vec3,
   type PhotoCameraGroup,
@@ -37,9 +39,11 @@ import { basename, extname, isAbsolute, join, relative, resolve } from 'node:pat
 import { z } from 'zod';
 import { isChangedOnDisk, readBytesSeen, writeJsonAtomic, writeJsonSeen } from './fsutil';
 import { photoDiagnostics, type PhotoDiagnostics, type PhotoRunIn } from './diagnostics/photo';
-import type { AcceleratorState } from './jobs/addon';
+import type { Handler } from './ipc';
 import { compareVersions } from './jobs/pack';
 import type { Handle } from './notYet';
+import { nvcudaPresent } from './odm/detect';
+import type { OdmChannel } from './odm/ipc';
 
 type PhotosLayer = Extract<Layer, { kind: 'photos' }>;
 
@@ -81,13 +85,10 @@ export interface PhotoSystem {
   gpus(): Promise<ProbeGpu[]>;
   /** The pipeline pack's version (`dev` for a development interpreter), null without a pack. */
   packVersion(): Promise<string | null>;
-  /** Whether the pack's CUDA build is present and passes its self-test (decision 5: M10.1). */
+  /** NVIDIA's CUDA driver (`%SYSTEMROOT%\System32\nvcuda.dll`) is on this computer. */
   cuda?(): Promise<boolean>;
-  /**
-   * The optional GPU add-on's state on this computer (`jobs/addon.ts`): installed or not, and
-   * whether the graphics card passes its test. Absent in builds and tests without it.
-   */
-  accelerator?(): Promise<AcceleratorState>;
+  /** The ODM engine (ADR 0012): its state, version and the GPU setting. Absent: no engine. */
+  engine?(): Promise<{ state: OdmState; version?: string; gpu: OdmGpuSetting }>;
 }
 
 export interface PhotogrammetryIpcDeps {
@@ -107,23 +108,93 @@ const READ_ONLY = {
 const notOpen = (id: string) => ({ ok: false as const, error: `Project "${id}" is not open.` });
 const NO_PROJECTS = { ok: false as const, error: 'No project registry in this build.' };
 
-/** The first pack that processes photos (pack 0.4.0, M10). */
-export const PHOTO_PACK = '0.4.0';
+/** The first pack that processes photos with this app: pack 0.8.0 runs ODM (ADR 0012). */
+export const PHOTO_PACK = '0.8.0';
 
 // ---------------------------------------------------------------- probe
 
-/** Decision 8: photogrammetry on Windows x64 and macOS arm64 only. */
+/**
+ * Photogrammetry runs on Windows x64 only (ODM ships a Windows installer; macOS is parked), with
+ * pack 0.8.0 or later and an ODM engine that is installed (an update waiting still runs).
+ */
 export function processingVerdict(
   platform: string,
   arch: string,
   packVersion: string | null,
+  engine: OdmState,
 ): HardwareProbe['processing'] {
-  const supported =
-    (platform === 'win32' && arch === 'x64') || (platform === 'darwin' && arch === 'arm64');
-  if (!supported) return 'unsupported-platform';
+  if (platform !== 'win32' || arch !== 'x64') return 'unsupported-platform';
   if (packVersion === null) return 'no-pack';
   if (packVersion !== 'dev' && compareVersions(packVersion, PHOTO_PACK) < 0) return 'pack-too-old';
+  if (engine !== 'installed' && engine !== 'update-available') return 'no-engine';
   return 'available';
+}
+
+// ---------------------------------------------------------------- one photo job at a time
+
+/** Jobs that run ODM: one of them at a time on this computer. */
+const PHOTO_ODM_PIPELINES: ReadonlySet<string> = new Set([
+  'photo.align',
+  'photo.georef',
+  'photo.products',
+]);
+/** `JobStatus` values of a job at work (`interrupted` waits for a resume and holds nothing). */
+const AT_WORK: ReadonlySet<string> = new Set(['starting', 'running', 'cancelling']);
+
+export const PHOTO_BUSY =
+  'Another photo processing job is running on this computer. Wait for it to finish, or cancel it in Processing.';
+export const ODM_BUSY_PHOTO =
+  'A photo processing job is running. Wait for it to finish, or cancel it in Processing, then try again.';
+export const PHOTO_ODM_BUSY =
+  'The processing engine is being installed or removed. Wait for it to finish, then start the photo job again.';
+
+/** Why a photo job may not start while `running` holds another one at work, else null. */
+export function photoBusyRefusal(
+  pipeline: string,
+  running: readonly { pipeline: string; status: string }[],
+): string | null {
+  return PHOTO_ODM_PIPELINES.has(pipeline) && photoJobAtWork(running) ? PHOTO_BUSY : null;
+}
+
+/** Whether any job in the list is a photo job at work. */
+export function photoJobAtWork(jobs: readonly { pipeline: string; status: string }[]): boolean {
+  return jobs.some((j) => PHOTO_ODM_PIPELINES.has(j.pipeline) && AT_WORK.has(j.status));
+}
+
+/**
+ * Keeps ODM's install and removal and the photo jobs out of each other: `odm:install` and
+ * `odm:remove` are refused while a photo job runs, and `busy(pipeline)` says why a photo job must
+ * wait while one of them runs. The handlers are `odm/ipc.ts`'s; this only wraps the channels.
+ */
+export function guardOdmHandle(o: {
+  handle: <C extends OdmChannel>(channel: C, handler: Handler<C>) => void;
+  photoRunning: () => Promise<boolean>;
+}): {
+  handle: <C extends OdmChannel>(channel: C, handler: Handler<C>) => void;
+  busy: (pipeline: string) => string | null;
+} {
+  let changing = 0;
+  const handle = <C extends OdmChannel>(channel: C, handler: Handler<C>): void => {
+    if (channel !== 'odm:install' && channel !== 'odm:remove') {
+      o.handle(channel, handler);
+      return;
+    }
+    const guarded: Handler<'odm:install' | 'odm:remove'> = async (req) => {
+      // counted before the check, so no photo job starts while it is made
+      changing++;
+      try {
+        if (await o.photoRunning()) return { ok: false, error: ODM_BUSY_PHOTO, code: 'busy' };
+        return await (handler as Handler<'odm:install' | 'odm:remove'>)(req);
+      } finally {
+        changing--;
+      }
+    };
+    o.handle(channel, guarded as Handler<C>);
+  };
+  return {
+    handle,
+    busy: (pipeline) => (changing > 0 && PHOTO_ODM_PIPELINES.has(pipeline) ? PHOTO_ODM_BUSY : null),
+  };
 }
 
 const VENDORS: Readonly<Record<number, string>> = {
@@ -155,43 +226,24 @@ export function gpusFromInfo(info: unknown): ProbeGpu[] {
   return out.slice(0, 16);
 }
 
-/**
- * The probe's `accelerator` from the add-on's state, and the card's memory on the GPU it names:
- * Chromium does not report memory, the add-on's test does. A card Chromium did not list (it
- * lists the one that draws) is added.
- */
-export function withAccelerator(
-  gpus: HardwareProbe['gpus'],
-  state: AcceleratorState | null,
-): { gpus: HardwareProbe['gpus']; accelerator?: NonNullable<HardwareProbe['accelerator']> } {
-  if (!state) return { gpus };
-  const accelerator = {
-    state: state.state,
-    ...(state.version ? { version: state.version } : {}),
-    ...(state.driver ? { driver: state.driver } : {}),
-    ...(state.gpu ? { gpu: state.gpu } : {}),
-    ...(state.reason ? { reason: state.reason } : {}),
-  };
-  if (!state.gpu || state.vramBytes === undefined) return { gpus, accelerator };
-  const wanted = state.gpu.toLowerCase();
-  const vramBytes = state.vramBytes;
-  const at = gpus.findIndex((g) => g.name.toLowerCase().includes(wanted));
-  const out =
-    at >= 0
-      ? gpus.map((g, i) => (i === at ? { ...g, vramBytes } : g))
-      : [...gpus, { name: state.gpu, vendor: 'NVIDIA', vramBytes }].slice(0, 16);
-  return { gpus: out, accelerator };
-}
+type Engine = Awaited<ReturnType<NonNullable<PhotoSystem['engine']>>>;
+/** The probe without what is read again on each call (the verdict and the engine). */
+const Hardware = HardwareProbe.omit({ processing: true, engine: true });
+type Hardware = ReturnType<typeof Hardware.parse>;
 
-async function readProbe(system: PhotoSystem): Promise<HardwareProbe> {
-  const [freeDiskBytes, gpus, pack, cuda] = await Promise.all([
+/** The engine's state, null without an engine probe or when it fails (both: no engine). */
+const readEngine = (system: PhotoSystem): Promise<Engine | null> =>
+  system.engine ? system.engine().catch(() => null) : Promise.resolve(null);
+
+/** This computer's hardware, read once per app run. */
+async function readHardware(system: PhotoSystem): Promise<Hardware> {
+  const [freeDiskBytes, gpus, cuda] = await Promise.all([
     system.freeDiskBytes().catch(() => 0),
     system.gpus().catch(() => []),
-    system.packVersion().catch(() => null),
     system.cuda ? system.cuda().catch(() => false) : Promise.resolve(false),
   ]);
   const cpu = system.cpu();
-  return HardwareProbe.parse({
+  return Hardware.parse({
     platform: system.platform,
     arch: system.arch,
     cpu: {
@@ -203,22 +255,49 @@ async function readProbe(system: PhotoSystem): Promise<HardwareProbe> {
     freeDiskBytes: Math.max(0, Math.round(freeDiskBytes)),
     gpus,
     cuda,
-    processing: processingVerdict(system.platform, system.arch, pack),
   });
+}
+
+/** The hardware with the verdict for the pack and the engine, and the engine's state. */
+function withEngine(hw: Hardware, pack: string | null, engine: Engine | null): HardwareProbe {
+  return {
+    ...hw,
+    processing: processingVerdict(hw.platform, hw.arch, pack, engine?.state ?? 'not-installed'),
+    ...(engine
+      ? {
+          engine: {
+            state: engine.state,
+            ...(engine.version ? { version: engine.version.slice(0, 40) } : {}),
+            gpu: engine.gpu,
+          },
+        }
+      : {}),
+  };
 }
 
 /**
  * This computer through Node and Electron. `gpuInfo` is `app.getGPUInfo('basic')`; `dataRoot` the
- * data folder (free disk is measured on its drive); `packVersion` the pack `findPack` picks.
+ * data folder (free disk is measured on its drive); `packVersion` the pack `findPack` picks;
+ * `engine` ODM's state (`odm/install.ts`); `env` and `exists` find NVIDIA's driver.
  */
 export function nodePhotoSystem(o: {
   gpuInfo: () => Promise<unknown>;
   dataRoot: () => string;
   packVersion: () => Promise<string | null>;
-  accelerator?: () => Promise<AcceleratorState>;
+  engine?: PhotoSystem['engine'];
+  env?: Readonly<Record<string, string | undefined>>;
+  exists?: (p: string) => Promise<boolean>;
 }): PhotoSystem {
+  const exists =
+    o.exists ??
+    ((p: string) =>
+      stat(p).then(
+        () => true,
+        () => false,
+      ));
   return {
-    ...(o.accelerator ? { accelerator: o.accelerator } : {}),
+    ...(o.engine ? { engine: o.engine } : {}),
+    cuda: () => nvcudaPresent(o.env ?? process.env, exists),
     platform: process.platform,
     arch: process.arch,
     cpu: () => {
@@ -260,6 +339,21 @@ export function photoMemoryMb(
   const override = Number(envVar(env, 'PHOTO_MEMORY_MB'));
   if (Number.isInteger(override) && override > 0) return override;
   return Math.max(512, Math.floor((totalBytes * 0.75) / MB));
+}
+
+/**
+ * ODM's memory limit (`AIO_ODM_MEMORY_CAP_MB`, which also lowers its threads) for the photo jobs,
+ * only when the limit was set by hand (`QUADRION_PHOTO_MEMORY_MB`, or the legacy `STRATLAS_`
+ * name): the automatic 75 % cap never lowers ODM's threads (founder, 14 Oct). No Settings field.
+ */
+export function odmMemoryEnv(
+  pipeline: string,
+  env: Readonly<Record<string, string | undefined>>,
+): Record<string, string> {
+  if (!PHOTO_MEMORY_PIPELINES.has(pipeline)) return {};
+  const raw = envVar(env, 'PHOTO_MEMORY_MB');
+  const mb = Number(raw);
+  return raw && Number.isInteger(mb) && mb > 0 ? { AIO_ODM_MEMORY_CAP_MB: String(mb) } : {};
 }
 
 /** Extra environment of a pipeline job: the memory cap for the photo jobs, nothing for others. */
@@ -967,7 +1061,7 @@ export function registerPhotogrammetryIpc({
   /** `photo.json` of the diagnostics bundle: the probe and the latest runs of these projects. */
   diagnostics: (projectIds: Iterable<string>) => Promise<PhotoDiagnostics>;
 } {
-  let probe: Promise<HardwareProbe> | null = null;
+  let probe: Promise<Hardware> | null = null;
   /**
    * The probe, read once per session; free disk is measured again on each call, and so are the
    * processing tools: they can be installed or updated while the app runs (Settings, Processing
@@ -975,28 +1069,21 @@ export function registerPhotogrammetryIpc({
    */
   const currentProbe = async (): Promise<HardwareProbe | null> => {
     if (!system) return null;
-    probe ??= readProbe(system);
-    let p: HardwareProbe;
+    probe ??= readHardware(system);
+    let p: Hardware;
     try {
       p = await probe;
     } catch (e) {
       probe = null;
       throw e;
     }
-    // the pack and the GPU add-on are read again each time: an install shows without a restart
-    const [free, pack, card] = await Promise.all([
+    // the pack and the engine are read again each time: an install shows without a restart
+    const [free, pack, engine] = await Promise.all([
       system.freeDiskBytes().catch(() => p.freeDiskBytes),
       system.packVersion().catch(() => null),
-      system.accelerator ? system.accelerator().catch(() => null) : Promise.resolve(null),
+      readEngine(system),
     ]);
-    const { gpus, accelerator } = withAccelerator(p.gpus, card);
-    return {
-      ...p,
-      gpus,
-      ...(accelerator ? { accelerator } : {}),
-      freeDiskBytes: Math.max(0, Math.round(free)),
-      processing: processingVerdict(system.platform, system.arch, pack),
-    };
+    return withEngine({ ...p, freeDiskBytes: Math.max(0, Math.round(free)) }, pack, engine);
   };
 
   handle('photo:probe', async () => {
