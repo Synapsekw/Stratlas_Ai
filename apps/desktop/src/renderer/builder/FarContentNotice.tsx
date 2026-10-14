@@ -26,7 +26,7 @@ export function FarContentNotice() {
         {n.text}
       </div>
       {!n.done && (
-        <div className="toast-p acts">
+        <div className="toast-p pm-acts">
           {n.canRecentre && (
             <button
               type="button"

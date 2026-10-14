@@ -59,6 +59,25 @@ export function recentreTarget(far: readonly FarLayer[], origin: Vec3): [number,
   return [Math.round(p[0]), Math.round(p[1])];
 }
 
+/**
+ * The ids of layers added since the last look at the open project. A project just opened (or a
+ * different one) is its own baseline: nothing is fresh. `seen` is the state to pass next time.
+ */
+export interface SeenLayers {
+  projectId: string;
+  ids: ReadonlySet<string>;
+}
+export function freshLayerIds(
+  seen: SeenLayers | null,
+  project: { id: string; layerIds: readonly string[] } | null,
+): { seen: SeenLayers | null; fresh: Set<string> } {
+  if (!project) return { seen: null, fresh: new Set() };
+  const ids = new Set(project.layerIds);
+  const before = seen?.projectId === project.id ? seen.ids : null;
+  const fresh = before ? new Set([...ids].filter((id) => !before.has(id))) : new Set<string>();
+  return { seen: { projectId: project.id, ids }, fresh };
+}
+
 type Call = (channel: string, req: Record<string, unknown>) => Promise<unknown>;
 interface FarProject {
   id: string;
@@ -73,6 +92,8 @@ export interface FarNoticeState {
     target: [number, number] | null;
     busy: boolean;
     done: boolean;
+    /** The far layers this notice reports; later additions near them widen the target. */
+    far: FarLayer[];
   } | null;
   check(projectId: string, fresh: ReadonlySet<string> | 'all'): Promise<void>;
   recentre(): Promise<void>;
@@ -80,6 +101,10 @@ export interface FarNoticeState {
 }
 
 const km = (m: number) => `${(m / 1000).toFixed(1)} km`;
+const message = (e: unknown) => (e instanceof Error ? e.message : String(e));
+
+type ExtentsReply =
+  { ok: true; extents: Extent[]; recentre: { blockers: string[] } } | { ok: false; error: string };
 
 export function createFarNotice(deps: {
   call: Call;
@@ -87,19 +112,55 @@ export function createFarNotice(deps: {
   /** Reopen the project with this manifest: the local frame moved under every layer. */
   reopen: (manifest: unknown) => void;
 }): StoreApi<FarNoticeState> {
+  let latest = 0;
   return createStore<FarNoticeState>((set, get) => ({
     notice: null,
     async check(projectId, fresh) {
+      if (deps.project()?.id !== projectId) return;
+      const seq = ++latest;
+      let r: ExtentsReply;
+      try {
+        r = (await deps.call('builder:layerExtents', { projectId })) as ExtentsReply;
+      } catch (e) {
+        r = { ok: false, error: message(e) };
+      }
+      // only the latest check applies, and only to the project still open
       const p = deps.project();
-      if (p?.id !== projectId) return;
-      const r = (await deps.call('builder:layerExtents', { projectId })) as
-        | { ok: true; extents: Extent[]; recentre: { blockers: string[] } }
-        | { ok: false; error: string };
-      if (!r.ok) return;
+      if (seq !== latest || p?.id !== projectId) return;
+      const fail = (error: string) => {
+        if (fresh !== 'all') return;
+        set({
+          notice: {
+            projectId,
+            text: `Could not check where layers lie: ${error}`,
+            canRecentre: false,
+            target: null,
+            busy: false,
+            done: true,
+            far: [],
+          },
+        });
+      };
+      if (!r.ok) {
+        fail(r.error);
+        return;
+      }
+      // layers this notice already reports count as part of it, not as older layers
+      const prev = get().notice;
+      const reported =
+        fresh !== 'all' && prev?.projectId === projectId && !prev.done ? prev.far : [];
+      const reportedIds = new Set(reported.map((f) => f.layerId));
       const older = new Set(
-        fresh === 'all' ? [] : r.extents.map((e) => e.layerId).filter((id) => !fresh.has(id)),
+        fresh === 'all'
+          ? []
+          : r.extents.map((e) => e.layerId).filter((id) => !fresh.has(id) && !reportedIds.has(id)),
       );
-      const far = farLayers(r.extents, older);
+      const added = farLayers(r.extents, older).filter((f) => !reportedIds.has(f.layerId));
+      const kept = reported
+        .map((f) => r.extents.find((e) => e.layerId === f.layerId))
+        .filter((e): e is Extent => e !== undefined)
+        .map((e) => ({ ...e, distanceM: planGap({ min: [0, 0, 0], max: [0, 0, 0] }, e) }));
+      const far = [...kept, ...added].sort((a, b) => a.distanceM - b.distanceM);
       if (far.length === 0) {
         set({
           notice:
@@ -111,11 +172,15 @@ export function createFarNotice(deps: {
                   target: null,
                   busy: false,
                   done: true,
+                  far: [],
                 }
-              : null,
+              : prev?.projectId === projectId && !prev.done
+                ? prev
+                : null,
         });
         return;
       }
+      if (added.length === 0 && reported.length > 0 && prev) return; // nothing new: keep it as is
       const name = (id: string) => p.manifest.layers.find((l) => l.id === id)?.name ?? id;
       const lines = far.map(
         (f) => `${name(f.layerId)} lies ${km(f.distanceM)} from the project origin.`,
@@ -132,20 +197,40 @@ export function createFarNotice(deps: {
           target: recentreTarget(far, p.manifest.origin),
           busy: false,
           done: false,
+          far,
         },
       });
     },
     async recentre() {
       const n = get().notice;
-      if (!n?.canRecentre || !n.target) return;
-      set({ notice: { ...n, busy: true } });
-      const r = (await deps.call('builder:recentre', { projectId: n.projectId, at: n.target })) as
-        { ok: true; manifest: unknown } | { ok: false; error: string };
-      if (!r.ok) {
-        set({ notice: { ...n, busy: false, canRecentre: false, text: r.error } });
+      if (!n?.canRecentre || !n.target || n.busy) return;
+      // a notice that outlived its project must not touch the one open now
+      if (deps.project()?.id !== n.projectId) {
+        set({ notice: null });
         return;
       }
-      deps.reopen(r.manifest);
+      set({ notice: { ...n, busy: true } });
+      let r: { ok: true; manifest: unknown } | { ok: false; error: string };
+      try {
+        r = (await deps.call('builder:recentre', { projectId: n.projectId, at: n.target })) as
+          { ok: true; manifest: unknown } | { ok: false; error: string };
+      } catch (e) {
+        r = { ok: false, error: message(e) };
+      }
+      if (get().notice?.projectId !== n.projectId) return; // dismissed or replaced meanwhile
+      if (!r.ok) {
+        set({
+          notice: {
+            ...n,
+            busy: false,
+            canRecentre: false,
+            text: `Re-centring failed: ${r.error}`,
+          },
+        });
+        return;
+      }
+      // the move is on disk; show the new frame only while that project is still open
+      if (deps.project()?.id === n.projectId) deps.reopen(r.manifest);
       set({
         notice: {
           ...n,

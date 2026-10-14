@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { createFarNotice, farLayers, planGap, recentreTarget } from './farContent';
+import { createFarNotice, farLayers, freshLayerIds, planGap, recentreTarget } from './farContent';
 
 const box = (x: number, z: number, s = 50) =>
   ({ min: [x - s, 0, z - s], max: [x + s, 20, z + s] }) as const;
@@ -95,5 +95,120 @@ describe('notice', () => {
     const s = createFarNotice(deps());
     await s.getState().check('p', new Set(['photos']));
     expect(s.getState().notice).toBeNull();
+  });
+});
+
+describe('fresh layer ids', () => {
+  it('a project just opened is its own baseline, then only new ids are fresh', () => {
+    const a = freshLayerIds(null, { id: 'p', layerIds: ['a'] });
+    expect([...a.fresh]).toEqual([]);
+    const b = freshLayerIds(a.seen, { id: 'p', layerIds: ['a', 'b'] });
+    expect([...b.fresh]).toEqual(['b']);
+  });
+  it('a project switch resets the baseline', () => {
+    const a = freshLayerIds(null, { id: 'p', layerIds: ['a'] });
+    const b = freshLayerIds(a.seen, { id: 'q', layerIds: ['a', 'x'] });
+    expect([...b.fresh]).toEqual([]);
+    expect(freshLayerIds(b.seen, null).seen).toBeNull();
+  });
+});
+
+describe('notice lifecycle', () => {
+  const origin: [number, number, number] = [500_000, 3_200_000, 20];
+  const layers = [
+    { id: 'cloud', name: 'Cloud' },
+    { id: 'mesh', name: 'Mesh' },
+    { id: 'photos', name: 'Photos' },
+  ];
+  const ex = (ids: string[]) =>
+    ids.map((id) => ({
+      layerId: id,
+      ...(id === 'photos' ? box(0, 0) : id === 'cloud' ? box(30_000, 0) : box(30_020, 10, 5)),
+    }));
+  const make = (opts: { recentre?: unknown } = {}) => {
+    let open = 'p';
+    let extents = ex(['photos', 'cloud']);
+    const call = vi.fn((channel: string) =>
+      Promise.resolve(
+        channel === 'builder:layerExtents'
+          ? { ok: true, extents, recentre: { blockers: [] } }
+          : (opts.recentre ?? { ok: true, manifest: { m: 1 }, backup: 'b' }),
+      ),
+    );
+    const reopen = vi.fn();
+    const store = createFarNotice({
+      call,
+      reopen,
+      project: () => ({ id: open, manifest: { origin, layers } }),
+    });
+    return {
+      store,
+      call,
+      reopen,
+      switchTo: (id: string) => {
+        open = id;
+      },
+      setExtents: (ids: string[]) => {
+        extents = ex(ids);
+      },
+    };
+  };
+  it('a later nearby layer widens the notice instead of clearing it', async () => {
+    const t = make();
+    await t.store.getState().check('p', new Set(['cloud']));
+    expect(t.store.getState().notice?.text).toContain('Cloud');
+    t.setExtents(['photos', 'cloud', 'mesh']);
+    await t.store.getState().check('p', new Set(['mesh']));
+    const n = t.store.getState().notice;
+    expect(n?.done).toBe(false);
+    expect(n?.text).toContain('Cloud');
+    expect(n?.text).toContain('Mesh');
+    expect(n?.far.map((f) => f.layerId).sort()).toEqual(['cloud', 'mesh']);
+    // an unrelated near layer keeps the notice as it is
+    await t.store.getState().check('p', new Set(['photos']));
+    expect(t.store.getState().notice?.far).toHaveLength(2);
+  });
+  it('only the latest of two concurrent checks applies', async () => {
+    const t = make();
+    const first = t.store.getState().check('p', new Set(['photos']));
+    const second = t.store.getState().check('p', new Set(['cloud']));
+    await Promise.all([first, second]);
+    expect(t.store.getState().notice?.far.map((f) => f.layerId)).toEqual(['cloud']);
+  });
+  it('a result for a project that is no longer open is dropped', async () => {
+    const t = make();
+    const pending = t.store.getState().check('p', new Set(['cloud']));
+    t.switchTo('q');
+    await pending;
+    expect(t.store.getState().notice).toBeNull();
+  });
+  it('re-centre on a notice of another project does nothing and clears it', async () => {
+    const t = make();
+    await t.store.getState().check('p', new Set(['cloud']));
+    t.switchTo('q');
+    await t.store.getState().recentre();
+    expect(t.call).not.toHaveBeenCalledWith('builder:recentre', expect.anything());
+    expect(t.reopen).not.toHaveBeenCalled();
+    expect(t.store.getState().notice).toBeNull();
+  });
+  it('a refused re-centre says so and offers nothing more', async () => {
+    const t = make({ recentre: { ok: false, error: 'the project holds issues' } });
+    await t.store.getState().check('p', new Set(['cloud']));
+    await t.store.getState().recentre();
+    const n = t.store.getState().notice;
+    expect(n?.text).toBe('Re-centring failed: the project holds issues');
+    expect(n?.canRecentre).toBe(false);
+    expect(t.reopen).not.toHaveBeenCalled();
+  });
+  it('a failed check from the palette shows an error, a silent one stays quiet', async () => {
+    const store = createFarNotice({
+      call: () => Promise.reject(new Error('offline')),
+      reopen: vi.fn(),
+      project: () => ({ id: 'p', manifest: { origin, layers } }),
+    });
+    await store.getState().check('p', new Set(['cloud']));
+    expect(store.getState().notice).toBeNull();
+    await store.getState().check('p', 'all');
+    expect(store.getState().notice?.text).toContain('Could not check where layers lie: offline');
   });
 });
