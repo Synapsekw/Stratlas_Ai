@@ -74,6 +74,14 @@ describe('finding another ODM', () => {
         env: {},
       }),
     ).toBeNull();
+    expect(
+      await findOtherOdm({
+        regQuery: regFor(REG),
+        exists: () => Promise.resolve(false),
+        ours: [null, 'E:\\Data\\runtime\\odm-3.6.2', 'C:\\ODM\\'],
+        env: {},
+      }),
+    ).toBeNull();
   });
 
   it('finds C:\\ODM\\run.bat without a registry entry', async () => {

@@ -41,13 +41,36 @@ export function odmInstallDir(
   version: string,
 ): string {
   const name = `odm-${version}`;
-  const inData = win32.join(dataRoot, 'runtime', name);
-  if (isSafeOdmPath(inData)) return inData;
-  if (env.LOCALAPPDATA) {
-    const local = win32.join(env.LOCALAPPDATA, 'QuadrionODM', name);
-    if (isSafeOdmPath(local)) return local;
+  for (const parent of odmInstallParents(dataRoot, env)) {
+    const dir = win32.join(parent, name);
+    if (isSafeOdmPath(dir)) return dir;
   }
-  return win32.join(env.SystemDrive ?? 'C:', '\\', 'QuadrionODM', name);
+  return win32.join(LAST_RESORT, name);
+}
+
+const LAST_RESORT = 'C:\\QuadrionODM';
+
+/** The folders an ODM of ours can sit in, in the order `odmInstallDir` tries them. */
+export function odmInstallParents(
+  dataRoot: string,
+  env: Record<string, string | undefined>,
+): string[] {
+  const out = [win32.join(dataRoot, 'runtime')];
+  if (env.LOCALAPPDATA) out.push(win32.join(env.LOCALAPPDATA, 'QuadrionODM'));
+  out.push(win32.join(env.SystemDrive ?? 'C:', '\\', 'QuadrionODM'), LAST_RESORT);
+  return out;
+}
+
+/** A folder named like our install (`odm-<version>`) inside one of our parent folders. */
+export function isOurOdmFolder(
+  dir: string,
+  dataRoot: string,
+  env: Record<string, string | undefined>,
+): boolean {
+  const clean = dir.replace(/[\\/]+$/, '');
+  if (!/^odm-[0-9A-Za-z.+-]+$/.test(win32.basename(clean))) return false;
+  const parent = win32.dirname(clean).toLowerCase();
+  return odmInstallParents(dataRoot, env).some((p) => p.toLowerCase() === parent);
 }
 
 /** Beside the install folder: where project folders with unsafe paths get their junctions. */

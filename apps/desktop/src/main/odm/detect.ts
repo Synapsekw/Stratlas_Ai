@@ -53,28 +53,32 @@ const norm = (p: string) => p.replace(/[\\/]+$/, '').toLowerCase();
 
 /**
  * Another ODM on this computer, which ODM's setup would replace: an uninstall entry whose folder
- * is not ours, else `C:\ODM\run.bat`. In end to end tests `QUADRION_ODM_OTHER` stands for one.
+ * is not ours (`ours`: one folder or several), else `C:\ODM\run.bat`. In end to end tests `QUADRION_ODM_OTHER` stands for one.
  */
 export async function findOtherOdm(d: {
   regQuery(key: string): Promise<string>;
   exists(p: string): Promise<boolean>;
-  ours: string | null;
+  ours: string | readonly (string | null | undefined)[] | null;
   env: Record<string, string | undefined>;
 }): Promise<{ dir: string; version?: string } | null> {
   if (d.env.QUADRION_E2E === '1' && d.env.QUADRION_ODM_OTHER)
     return { dir: d.env.QUADRION_ODM_OTHER };
-  const ours = d.ours ? norm(d.ours) : null;
+  const ours = new Set(
+    (typeof d.ours === 'string' ? [d.ours] : (d.ours ?? []))
+      .filter((p) => !!p)
+      .map((p) => norm(p ?? '')),
+  );
   for (const key of UNINSTALL_KEYS) {
     for (const e of parseUninstallEntries(await d.regQuery(key))) {
       if (!UNINSTALL_MATCH.test(e.displayName) || !e.installLocation) continue;
       const dir = e.installLocation.replace(/[\\/]+$/, '');
-      if (norm(dir) === ours) continue;
+      if (ours.has(norm(dir))) continue;
       // `reg query /f ODM /d` prints only values holding "ODM": the version is in the name then
       const version = e.displayVersion ?? /\bversion\s+(\S+)/i.exec(e.displayName)?.[1];
       return version ? { dir, version } : { dir };
     }
   }
-  if (norm(DEFAULT_ODM_DIR) !== ours && (await d.exists(win32.join(DEFAULT_ODM_DIR, 'run.bat'))))
+  if (!ours.has(norm(DEFAULT_ODM_DIR)) && (await d.exists(win32.join(DEFAULT_ODM_DIR, 'run.bat'))))
     return { dir: DEFAULT_ODM_DIR };
   return null;
 }

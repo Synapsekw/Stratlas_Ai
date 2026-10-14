@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   downloadDir,
+  isOurOdmFolder,
   isSafeOdmPath,
   odmInstallDir,
   odmRecordPath,
@@ -38,6 +39,24 @@ describe('paths ODM can use', () => {
       ),
     ).toBe('D:\\QuadrionODM\\odm-3.6.2');
     expect(odmInstallDir('E:\\Stratlas Data', {}, '3.6.2')).toBe('C:\\QuadrionODM\\odm-3.6.2');
+    // an unsafe system drive value falls back to C:
+    expect(odmInstallDir('E:\\Stratlas Data', { SystemDrive: 'D:\\Program Files' }, '3.6.2')).toBe(
+      'C:\\QuadrionODM\\odm-3.6.2',
+    );
+  });
+
+  it('knows a folder of ours by its name and parent', () => {
+    const env = { LOCALAPPDATA: 'C:\\Users\\a\\AppData\\Local' };
+    expect(isOurOdmFolder('E:\\Data\\runtime\\odm-3.6.2', 'E:\\Data', env)).toBe(true);
+    expect(isOurOdmFolder('e:\\data\\runtime\\odm-3.5.6\\', 'E:\\Data', env)).toBe(true);
+    expect(
+      isOurOdmFolder('C:\\Users\\a\\AppData\\Local\\QuadrionODM\\odm-3.6.2', 'E:\\Data', env),
+    ).toBe(true);
+    expect(isOurOdmFolder('C:\\QuadrionODM\\odm-3.6.2', 'E:\\Data', {})).toBe(true);
+    expect(isOurOdmFolder('E:\\Data\\runtime', 'E:\\Data', env)).toBe(false);
+    expect(isOurOdmFolder('E:\\Data\\runtime\\photos', 'E:\\Data', env)).toBe(false);
+    expect(isOurOdmFolder('C:\\ODM', 'E:\\Data', env)).toBe(false);
+    expect(isOurOdmFolder('E:\\Other\\odm-3.6.2', 'E:\\Data', env)).toBe(false);
   });
 
   it('the record, downloads and work folders', () => {
