@@ -40,7 +40,7 @@ import {
   VerticalOrigin,
   type CesiumWidget,
 } from '@cesium/engine';
-import type { GlobeSite, RasterPackInfo } from '@aio/schema';
+import type { GlobeSite, OnlineSourceId, RasterPackInfo } from '@aio/schema';
 import { FetchSource, type Source } from 'pmtiles';
 import {
   padBounds,
@@ -91,7 +91,7 @@ import {
   siteChip,
   type PinState,
 } from './pins';
-import { createOnlineSatelliteProvider } from './onlineSatellite';
+import { createOnlineTileProvider } from './onlineTiles';
 import {
   DecodedTileCache,
   KitPyramidImageryProvider,
@@ -250,7 +250,7 @@ export class GlobeController {
   private readonly palette: GlobePalette;
   private style: GlobeStyle;
   private street: GlobeTileSource | null = null;
-  private onlineSatellite = false;
+  private online: OnlineSourceId | null = null;
   private imageryPacks: readonly Pack[] = [];
   private terrainPacks: readonly Pack[] = [];
   private sourceFor: SourceFor = packSource;
@@ -693,12 +693,12 @@ export class GlobeController {
   }
 
   /**
-   * Online satellite may be drawn (the person switched it on; main still decides tile by tile).
-   * It shows in the Satellite look only, under the imagery packs.
+   * The online source that may be drawn (online maps on and this source chosen; main still
+   * decides tile by tile), or null. It shows in the Satellite look only, under the imagery packs.
    */
-  setOnlineSatellite(on: boolean): void {
-    if (on === this.onlineSatellite) return;
-    this.onlineSatellite = on;
+  setOnline(source: OnlineSourceId | null): void {
+    if (source === this.online) return;
+    this.online = source;
     this.queueRebuild();
   }
 
@@ -763,7 +763,7 @@ export class GlobeController {
       style: this.style,
       street: street !== null,
       imagery: this.imageryPacks,
-      onlineSatellite: this.onlineSatellite,
+      online: this.online,
       projectRasters: this.outputs.order(),
     });
     // the project rasters stay out of the names: `setSiteOutputs` adds and drops them in place,
@@ -778,7 +778,9 @@ export class GlobeController {
                 ? `pack:${entry.pack.id}`
                 : entry.kind === 'natural-earth'
                   ? OFFLINE_CESIUM.naturalEarth
-                  : entry.kind,
+                  : entry.kind === 'online'
+                    ? `online:${entry.source}`
+                    : entry.kind,
           ],
     );
     const built = this.built;
@@ -822,8 +824,8 @@ export class GlobeController {
           }
         } else if (entry.kind === 'natural-earth') {
           layers.add(naturalEarthLayer());
-        } else if (entry.kind === 'online-satellite') {
-          layers.add(new ImageryLayer(createOnlineSatelliteProvider()));
+        } else if (entry.kind === 'online') {
+          layers.add(new ImageryLayer(createOnlineTileProvider(entry.source)));
         } else if (entry.kind === 'imagery-pack') {
           const provider = new PmtilesImageryProvider(entry.pack, this.sourceFor(entry.pack));
           this.imageryProviders.push(provider);

@@ -1,4 +1,4 @@
-import { ONLINE_SATELLITE, type RasterPackInfo } from '@aio/schema';
+import { onlineSource, type OnlineSourceId, type RasterPackInfo } from '@aio/schema';
 import type { GlobeLayerPlan } from './layers';
 
 /** The credit of the painted Natural Earth II raster (public domain; we credit it anyway). */
@@ -10,15 +10,16 @@ export const EARTH_SHAPES_CREDIT = 'Natural Earth (public domain)';
 type Credited = Pick<RasterPackInfo, 'attribution' | 'customerLicence'>;
 
 /**
- * The credit of the online satellite imagery (Sentinel-2 cloudless 2016 by EOX, CC BY 4.0; ADR
- * 0007, amendment of 10 Oct 2026). The licence asks for it wherever the imagery is drawn; About
- * lists it whether or not the imagery is switched on.
+ * The credit of an online source (ADR 0007, amendments of 10 and 14 Oct 2026), from the catalog:
+ * its terms ask for it wherever it is drawn.
  */
-export const ONLINE_SATELLITE_CREDIT: string = ONLINE_SATELLITE.attribution;
+export function onlineCredit(id: OnlineSourceId): string {
+  return onlineSource(id)?.attribution ?? '';
+}
 
 export interface CreditsShown {
-  /** The online satellite imagery is drawn: its credit comes right after the bundled Earth's. */
-  onlineSatellite?: boolean;
+  /** The online source drawn: its credit comes right after the bundled Earth's. */
+  online?: OnlineSourceId | null;
   /** What the Earth under the packs is drawn from (the Natural Earth II raster when left out). */
   base?: readonly string[];
 }
@@ -27,12 +28,12 @@ export interface CreditsShown {
  * The credit lines the Globe shows for the packs in view: the bundled Earth first (`base`, the
  * Natural Earth II raster unless told otherwise), then each pack's attribution once, in the order
  * given (decision 4: attribution shows wherever the data does). Customer imagery is marked so
- * nobody takes it for ours. With `onlineSatellite`, the online imagery's credit comes right after
+ * nobody takes it for ours. With `online`, the online source's credit comes right after
  * the bundled one (it is drawn right above it).
  */
 export function creditLines(packs: readonly Credited[], shown: CreditsShown = {}): string[] {
   const out = [...new Set(shown.base ?? [BUNDLED_CREDIT])];
-  if (shown.onlineSatellite) out.push(ONLINE_SATELLITE_CREDIT);
+  if (shown.online) out.push(onlineCredit(shown.online));
   for (const p of packs) {
     const line = p.customerLicence ? `${p.attribution} (customer licence)` : p.attribution;
     if (!out.includes(line)) out.push(line);
@@ -42,7 +43,7 @@ export function creditLines(packs: readonly Credited[], shown: CreditsShown = {}
 
 /**
  * The credit lines of a layer plan: what the Earth is drawn from (the shapes, the street packs,
- * the old raster), the online satellite imagery when the plan draws it, then the imagery packs
+ * the old raster), the online source when the plan draws it, then the imagery packs
  * in it and the terrain packs in use.
  */
 export function planCredits<P extends Credited>(
@@ -52,14 +53,14 @@ export function planCredits<P extends Credited>(
 ): string[] {
   const base: string[] = [];
   const packs: Credited[] = [];
-  let onlineSatellite = false;
+  let online: OnlineSourceId | null = null;
   for (const layer of plan) {
     if (layer.kind === 'earth-shapes') base.push(EARTH_SHAPES_CREDIT);
     else if (layer.kind === 'street') base.push(streetCredit);
     else if (layer.kind === 'natural-earth') base.push(BUNDLED_CREDIT);
-    else if (layer.kind === 'online-satellite') onlineSatellite = true;
+    else if (layer.kind === 'online') online = layer.source;
     else if (layer.kind === 'imagery-pack') packs.push(layer.pack);
     // a project raster is the project's own survey: no credit line
   }
-  return creditLines([...packs, ...terrain], { base, onlineSatellite });
+  return creditLines([...packs, ...terrain], { base, online });
 }

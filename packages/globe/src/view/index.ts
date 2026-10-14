@@ -29,12 +29,12 @@ export {
   packTerrainProvider,
   type PackTerrainOptions,
 } from './providers';
-// Online satellite (ADR 0007 amended 10 Oct 2026): the Globe's Satellite look draws it
+// Online sources (ADR 0007, amended 10 and 14 Oct 2026): the Globe's Satellite look draws one
 export {
-  OnlineSatelliteImageryProvider,
-  createOnlineSatelliteProvider,
+  OnlineTileImageryProvider,
+  createOnlineTileProvider,
   type OnlineTileRead,
-} from './onlineSatellite';
+} from './onlineTiles';
 export {
   EarthImageryProvider,
   TileSourceImageryProvider,

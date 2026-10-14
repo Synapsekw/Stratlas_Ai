@@ -15,8 +15,8 @@ export {
 export {
   BUNDLED_CREDIT,
   EARTH_SHAPES_CREDIT,
-  ONLINE_SATELLITE_CREDIT,
   creditLines,
+  onlineCredit,
   planCredits,
   type CreditsShown,
 } from './credits';

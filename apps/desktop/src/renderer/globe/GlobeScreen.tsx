@@ -513,7 +513,7 @@ export default function GlobeScreen() {
         style={look}
         street={street}
         palette={GLOBE_PALETTE}
-        onlineSatellite={online}
+        online={online ? 's2cloudless-2016' : null}
         sites={loaded.sites}
         imagery={imagery}
         terrain={terrain}

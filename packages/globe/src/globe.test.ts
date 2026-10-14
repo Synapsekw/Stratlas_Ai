@@ -5,9 +5,9 @@ import {
   BANNED_CESIUM_IMPORTS,
   OFFLINE_CESIUM,
   ONLINE_GLOBE_HOSTS,
-  ONLINE_SATELLITE_CREDIT,
   creditLines,
   offlineSource,
+  onlineCredit,
   onlineHostsIn,
   planGlobeLayers,
   type GlobeStyle,
@@ -69,27 +69,24 @@ describe('@aio/globe public API (G0)', () => {
     ]);
   });
 
-  it('credits the online satellite imagery when it is drawn, right above the bundled one', () => {
-    expect(ONLINE_SATELLITE_CREDIT).toBe(ONLINE_SATELLITE.attribution);
-    expect(ONLINE_SATELLITE_CREDIT).toContain('EOX IT Services GmbH');
-    expect(ONLINE_SATELLITE_CREDIT).toContain('Copernicus Sentinel data 2016');
+  it('credits the online source when it is drawn, right above the bundled one', () => {
+    expect(onlineCredit('s2cloudless-2016')).toBe(ONLINE_SATELLITE.attribution);
     const packs = [{ attribution: 'Customer aerial survey 2026', customerLicence: true }];
-    expect(creditLines(packs, { onlineSatellite: true })).toEqual([
+    expect(creditLines(packs, { online: 'mapbox-satellite' })).toEqual([
       'Natural Earth II (public domain)',
-      ONLINE_SATELLITE_CREDIT,
+      '© Mapbox © Maxar',
       'Customer aerial survey 2026 (customer licence)',
     ]);
-    expect(creditLines(packs, { onlineSatellite: false })).not.toContain(ONLINE_SATELLITE_CREDIT);
-    expect(creditLines(packs)).not.toContain(ONLINE_SATELLITE_CREDIT);
+    expect(creditLines(packs, { online: null })).toHaveLength(2);
+    expect(creditLines(packs)).toHaveLength(2);
   });
 
-  it('the online satellite source is read through the app, never from a server by name', () => {
-    // ADR 0007, amendment of 10 Oct 2026: main owns the address of the service
-    const provider = repoFile('packages/globe/src/view/onlineSatellite.ts');
-    expect(provider).toContain('onlineSatelliteTileUrl');
+  it('online tiles are read through the app, never from a server by name', () => {
+    // ADR 0007, amendments of 10 and 14 Oct 2026: main owns the address of every service
+    const provider = repoFile('packages/globe/src/view/onlineTiles.ts');
+    expect(provider).toContain('onlineTileUrl');
     expect(provider).not.toMatch(/https?:\/\//);
     expect(onlineHostsIn(provider)).toEqual([]);
-    // and it is one of our own providers, not a banned online one
     for (const name of BANNED_CESIUM_IMPORTS)
       expect(provider, name).not.toMatch(new RegExp(`\\b${name}\\b`));
   });
@@ -106,7 +103,7 @@ describe('project rasters in the layer plan', () => {
   const looks: GlobeStyle[] = ['street', 'satellite', 'natural-earth'];
 
   it.each(looks)('%s: the project rasters sit on top, in the order given', (style) => {
-    const input = { style, street: true, imagery: [pack], onlineSatellite: true };
+    const input = { style, street: true, imagery: [pack], online: 'esri-world-imagery' as const };
     const without = planGlobeLayers(input);
     const plan = planGlobeLayers({ ...input, projectRasters: [a, b] });
     expect(plan).toEqual([

@@ -1,6 +1,6 @@
 import '@cesium/engine/Source/Widget/CesiumWidget.css';
 import './globe-view.css';
-import type { GlobeSite, RasterPackInfo } from '@aio/schema';
+import type { GlobeSite, OnlineSourceId, RasterPackInfo } from '@aio/schema';
 import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
 import type { GlobeCamera } from '../camera';
 import type { Insets } from '../chips';
@@ -43,8 +43,8 @@ export interface GlobeViewProps {
   street?: GlobeTileSource | null;
   /** The street style's colours (the built-in copy of them when left out). */
   palette?: GlobePalette;
-  /** Online satellite may be drawn (Satellite look only): the person switched it on. */
-  onlineSatellite?: boolean;
+  /** The online source that may be drawn (Satellite look only), or null. */
+  online?: OnlineSourceId | null;
   sites: readonly GlobeSite[];
   imagery: readonly RasterPackInfo[];
   terrain: readonly RasterPackInfo[];
@@ -189,8 +189,8 @@ export function GlobeView(props: GlobeViewProps) {
     ctl?.setStreet(props.street ?? null);
   }, [ctl, props.street]);
   useEffect(() => {
-    ctl?.setOnlineSatellite(props.onlineSatellite === true);
-  }, [ctl, props.onlineSatellite]);
+    ctl?.setOnline(props.online ?? null);
+  }, [ctl, props.online]);
   useEffect(() => {
     ctl?.setPacks(props.imagery, props.terrain);
   }, [ctl, props.imagery, props.terrain]);

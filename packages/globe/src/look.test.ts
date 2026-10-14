@@ -1,11 +1,6 @@
 import { GlobeSettings, defaultGlobeSettings } from '@aio/schema';
 import { describe, expect, it } from 'vitest';
-import {
-  BUNDLED_CREDIT,
-  EARTH_SHAPES_CREDIT,
-  ONLINE_SATELLITE_CREDIT,
-  planCredits,
-} from './credits';
+import { BUNDLED_CREDIT, EARTH_SHAPES_CREDIT, onlineCredit, planCredits } from './credits';
 import { planGlobeLayers, planShowsPacks, styleZoomFor } from './layers';
 import {
   GLOBE_LOOKS,
@@ -80,43 +75,42 @@ describe('planGlobeLayers', () => {
     ]);
   });
 
-  it('online satellite: in the satellite look only, over the street globe and under the packs', () => {
-    const on = { street: true, imagery: [SITE, WIDE], onlineSatellite: true };
+  it('an online source: in the satellite look only, over the street globe and under the packs', () => {
+    const on = { street: true, imagery: [SITE, WIDE], online: 'esri-world-imagery' as const };
     const plan = planGlobeLayers({ style: 'satellite', ...on });
     expect(kinds(plan)).toEqual([
       'earth-shapes',
       'street',
-      'online-satellite',
+      'online',
       'imagery-pack',
       'imagery-pack',
     ]);
-    // without a pack the whole Earth still has imagery
+    expect(plan[2]).toEqual({ kind: 'online', source: 'esri-world-imagery' });
     expect(
       kinds(
-        planGlobeLayers({ style: 'satellite', street: false, imagery: [], onlineSatellite: true }),
+        planGlobeLayers({ style: 'satellite', street: false, imagery: [], online: 'mapbox-dark' }),
       ),
-    ).toEqual(['earth-shapes', 'online-satellite']);
-    // never in the other looks, and never unless it is switched on
+    ).toEqual(['earth-shapes', 'online']);
+    // never in the other looks, and never unless one is given
     expect(kinds(planGlobeLayers({ style: 'street', ...on }))).toEqual(['earth-shapes', 'street']);
-    expect(kinds(planGlobeLayers({ style: 'natural-earth', ...on }))).not.toContain(
-      'online-satellite',
-    );
+    expect(kinds(planGlobeLayers({ style: 'natural-earth', ...on }))).not.toContain('online');
     const off = { style: 'satellite' as const, street: true, imagery: [WIDE] };
-    for (const input of [off, { ...off, onlineSatellite: false }])
+    for (const input of [off, { ...off, online: null }])
       expect(kinds(planGlobeLayers(input))).toEqual(['earth-shapes', 'street', 'imagery-pack']);
   });
 
-  it('credits online satellite right after the Earth it lies on, while the plan draws it', () => {
+  it('credits the online source right after the Earth it lies on, while the plan draws it', () => {
     const osm = '© OpenStreetMap contributors';
-    const input = { street: true, imagery: [WIDE], onlineSatellite: true };
+    const input = { street: true, imagery: [WIDE], online: 'esri-world-imagery' as const };
     expect(planCredits(planGlobeLayers({ style: 'satellite', ...input }), osm)).toEqual([
       EARTH_SHAPES_CREDIT,
       osm,
-      ONLINE_SATELLITE_CREDIT,
+      onlineCredit('esri-world-imagery'),
       'wide imagery',
     ]);
+    expect(onlineCredit('esri-world-imagery')).toContain('Powered by Esri');
     expect(planCredits(planGlobeLayers({ style: 'street', ...input }), osm)).not.toContain(
-      ONLINE_SATELLITE_CREDIT,
+      onlineCredit('esri-world-imagery'),
     );
   });
 
