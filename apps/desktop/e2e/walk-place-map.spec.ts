@@ -161,9 +161,10 @@ test.describe('placing a walk on the map', () => {
     });
     // Save put the 3D view back on the left: show the map beside the 360 video
     await win.getByRole('combobox', { name: 'Left side shows' }).selectOption({ label: 'Map' });
+    // opened paused, the walk shows its dot before it plays or seeks
+    await expect.poll(() => nowDot(win), { timeout: 15_000 }).not.toBeNull();
     const scrub = win.getByTestId('walk-scrub');
     await scrub.fill('2');
-    await expect.poll(() => nowDot(win), { timeout: 15_000 }).not.toBeNull();
     const first = await nowDot(win);
     await scrub.fill(String(VIDEO_S - 4));
     await expect
@@ -172,5 +173,10 @@ test.describe('placing a walk on the map', () => {
         return at && first ? Math.hypot(at[0] - first[0], at[1] - first[1]) : 0;
       })
       .toBeGreaterThan(1e-4);
+
+    // the 360 pane closes: the dot goes with it
+    await win.getByRole('combobox', { name: 'Right side shows' }).selectOption('3d');
+    await expect(win.getByTestId('walk-view')).toHaveCount(0);
+    await expect.poll(() => nowDot(win), { timeout: 15_000 }).toBeNull();
   });
 });

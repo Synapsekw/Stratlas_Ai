@@ -19,7 +19,7 @@ import {
   walkKeyAction,
   walkUnstabilised,
 } from './walkModel';
-import { clearWalkPlayback, setWalkPlayback } from './walkPlayback';
+import { publishWalkPlayback } from './walkPlayback';
 import { useWalks, walks } from './walks';
 import { walkFolderId, walkRecordKey } from './walkStore';
 
@@ -124,7 +124,6 @@ function WalkPlayer({
     };
     const onTime = () => {
       setTime(v.currentTime);
-      setWalkPlayback(walk.id, v.currentTime);
       const place = placeSession.getState();
       if (place.layerId === walk.id) place.setTime(v.currentTime);
     };
@@ -146,6 +145,8 @@ function WalkPlayer({
     v.addEventListener('ended', onPlay);
     v.addEventListener('ratechange', onRate);
     v.addEventListener('error', onError);
+    // the map and the drawings show where this walk is, from the moment it has loaded
+    const stopPublish = publishWalkPlayback(v, walk.id);
 
     // the wheel zooms the view and must not scroll the page behind it
     const onWheel = (e: WheelEvent) => {
@@ -177,7 +178,7 @@ function WalkPlayer({
       v.removeEventListener('ended', onPlay);
       v.removeEventListener('ratechange', onRate);
       v.removeEventListener('error', onError);
-      clearWalkPlayback(walk.id);
+      stopPublish();
       resume.current = { time: v.currentTime, play: !v.paused && !v.ended };
       pano?.dispose();
       view.current = null;

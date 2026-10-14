@@ -29,6 +29,31 @@ export function clearWalkPlayback(layerId: string): void {
   if (walkPlayback.getState().layerId === layerId) walkPlayback.setState(NONE);
 }
 
+/** The part of the pane's video element the playback follows. */
+export interface PlaybackVideo {
+  readonly currentTime: number;
+  addEventListener(type: string, listener: () => void): void;
+  removeEventListener(type: string, listener: () => void): void;
+}
+
+const VIDEO_EVENTS = ['loadeddata', 'timeupdate', 'seeked'] as const;
+
+/**
+ * Publish where video `v` of walk `layerId` is: once it has loaded (a walk opened paused shows
+ * its dot at once), then on every time tick and seek. The returned stop clears it (the pane
+ * closed or switched walk).
+ */
+export function publishWalkPlayback(v: PlaybackVideo, layerId: string): () => void {
+  const write = () => {
+    setWalkPlayback(layerId, v.currentTime);
+  };
+  for (const e of VIDEO_EVENTS) v.addEventListener(e, write);
+  return () => {
+    for (const e of VIDEO_EVENTS) v.removeEventListener(e, write);
+    clearWalkPlayback(layerId);
+  };
+}
+
 /** `s` while it plays a walk `shown` keeps, else none: other walks' ticks change nothing. */
 export function playbackAmong(
   s: WalkPlaybackState,
