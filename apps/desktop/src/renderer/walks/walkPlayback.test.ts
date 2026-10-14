@@ -1,5 +1,11 @@
-import { afterEach, describe, expect, it } from 'vitest';
-import { clearWalkPlayback, setWalkPlayback, walkPlayback } from './walkPlayback';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import {
+  clearWalkPlayback,
+  setWalkPlayback,
+  walkPlayback,
+  watchWalkPlayback,
+  type WalkPlaybackState,
+} from './walkPlayback';
 
 afterEach(() => {
   walkPlayback.setState({ layerId: null, t: null });
@@ -27,5 +33,28 @@ describe('walkPlayback', () => {
     expect(walkPlayback.getState().layerId).toBe('walk-b');
     clearWalkPlayback('walk-b');
     expect(walkPlayback.getState()).toEqual({ layerId: null, t: null });
+  });
+});
+
+describe('watchWalkPlayback', () => {
+  it('draws only for the walks it shows, and once more when the walk stops', () => {
+    const draw = vi.fn<(p: WalkPlaybackState) => void>();
+    const stop = watchWalkPlayback((id) => id === 'walk-a', draw);
+    expect(draw).toHaveBeenCalledTimes(1);
+    expect(draw).toHaveBeenLastCalledWith({ layerId: null, t: null });
+    // another walk's ticks draw nothing
+    setWalkPlayback('walk-z', 1);
+    setWalkPlayback('walk-z', 2);
+    expect(draw).toHaveBeenCalledTimes(1);
+    setWalkPlayback('walk-a', 1);
+    setWalkPlayback('walk-a', 2);
+    expect(draw).toHaveBeenCalledTimes(3);
+    expect(draw).toHaveBeenLastCalledWith({ layerId: 'walk-a', t: 2 });
+    clearWalkPlayback('walk-a');
+    expect(draw).toHaveBeenCalledTimes(4);
+    expect(draw).toHaveBeenLastCalledWith({ layerId: null, t: null });
+    stop();
+    setWalkPlayback('walk-a', 5);
+    expect(draw).toHaveBeenCalledTimes(4);
   });
 });

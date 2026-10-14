@@ -41,7 +41,7 @@ import {
 } from './placeWalk';
 import { packOffersWalkProcess } from './walkModel';
 import { previewOnSheet, walkNowOnSheet } from './walkOverlay';
-import { useWalkPlayback } from './walkPlayback';
+import { useWalkPlaybackAmong } from './walkPlayback';
 import { WalkSheetOverlay } from './WalkSheetOverlay';
 import './placeWalk.css';
 
@@ -696,8 +696,13 @@ export function useWalksOnDrawing(
     () => (on && manifest ? surfaceFramesOf(manifest, (id) => placed[id]).drawing(layerId) : null),
     [on, manifest, placed, layerId],
   );
-  // a placed walk the 360 pane plays shows where it is now, as the walk being placed does
-  const playing = useWalkPlayback();
+  // a placed walk the 360 pane plays shows where it is now, as the walk being placed does; only
+  // the shown placed walks' ticks render the drawing again
+  const shownIds = useMemo(
+    () => new Set(fits.map((w) => w.layer.id).filter((id) => id !== placingId && !hidden.has(id))),
+    [fits, placingId, hidden],
+  );
+  const playing = useWalkPlaybackAmong(shownIds);
   const now =
     placing && frame && manifest
       ? walkNowOnSheet(placing, frame, (l) => walkColour(manifest, l), time, size)

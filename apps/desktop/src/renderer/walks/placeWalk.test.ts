@@ -4,6 +4,7 @@ import { join } from 'node:path';
 import { fitWalk } from '@aio/geo';
 import { ProjectManifest, WalkRawPath, type JobRecord, type WalkLayer } from '@aio/schema';
 import { t } from '@aio/ui';
+import type { MapOverlay } from '@aio/maps';
 import type { OpenProject } from '@aio/workspace';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
@@ -39,6 +40,7 @@ import {
   type PlaceWalkDeps,
 } from './placeWalk';
 import { setWalkMapOverlays, setWalkMapPointer, walkMap } from './walkMapStore';
+import { clearWalkPlayback, setWalkPlayback, watchWalkPlayback } from './walkPlayback';
 import { localToLonLat } from '../change/draw';
 
 const fixtures = join(import.meta.dirname, '../../../../../packages/schema/src/__fixtures__/walk');
@@ -956,6 +958,21 @@ describe('placed walks on every surface', () => {
     const playing = { layerId: 'walk-a', t: 5 };
     expect(placedNowMapOverlay(m, fits, new Set(['walk-a']), null, playing)).toBeNull();
     expect(placedNowMapOverlay(m, fits, new Set(), 'walk-a', playing)).toBeNull();
+  });
+
+  it('on the map: the dot follows the pane and goes when the pane clears', () => {
+    const m = projectWith([plan, other, placedOnOwn()]).manifest;
+    const fits = placedWalkFits(m, pinsOnly, lookup);
+    const drawn: (MapOverlay | null)[] = [];
+    const stop = watchWalkPlayback(
+      (id) => fits.some((w) => w.layer.id === id),
+      (playing) => drawn.push(placedNowMapOverlay(m, fits, new Set(), null, playing)),
+    );
+    setWalkPlayback('walk-a', 5);
+    expect(drawn.at(-1)?.id).toBe('walk-walk-a-now');
+    clearWalkPlayback('walk-a');
+    expect(drawn.at(-1)).toBeNull();
+    stop();
   });
 
   it('on a drawing: the walk the 360 pane plays gets a dot at its time', () => {

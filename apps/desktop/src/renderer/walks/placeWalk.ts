@@ -64,7 +64,7 @@ import {
   type WalkDrawing,
   type WalkNow,
 } from './walkOverlay';
-import { useWalkPlayback, type WalkPlaybackState } from './walkPlayback';
+import { watchWalkPlayback, type WalkPlaybackState } from './walkPlayback';
 import { jobForWalk, splitWithWalk } from './walkModel';
 import {
   locateOriginal,
@@ -1096,13 +1096,19 @@ export function usePlacedWalksOnMap(): void {
   useEffect(() => {
     setPlacedMapOverlays(manifest ? placedMapOverlays(manifest, fits, hidden, except) : []);
   }, [manifest, fits, hidden, except]);
-  // the dot of the walk the 360 pane plays goes apart: a time tick does not rebuild the paths
-  const playing = useWalkPlayback();
+  // the dot of the walk the 360 pane plays goes apart, outside React: a time tick neither
+  // rebuilds the paths nor renders the stage, and other walks' ticks do nothing
   useEffect(() => {
-    setPlacedNowMapOverlay(
-      manifest ? placedNowMapOverlay(manifest, fits, hidden, except, playing) : null,
-    );
-  }, [manifest, fits, hidden, except, playing]);
+    if (!manifest) {
+      setPlacedNowMapOverlay(null);
+      return;
+    }
+    const shown = (id: string) =>
+      id !== except && !hidden.has(id) && fits.some((w) => w.layer.id === id);
+    return watchWalkPlayback(shown, (playing) => {
+      setPlacedNowMapOverlay(placedNowMapOverlay(manifest, fits, hidden, except, playing));
+    });
+  }, [manifest, fits, hidden, except]);
   useEffect(
     () => () => {
       setPlacedMapOverlays([]);
