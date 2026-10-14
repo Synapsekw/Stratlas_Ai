@@ -27,6 +27,11 @@ export interface DrawerListProps {
   onPick: (id: string) => void;
   onCreateMaps: () => void;
   onUpdateTools: () => void;
+  /**
+   * Take finished jobs off the list (a row's remove, or **Clear finished**). Without it, finished
+   * rows have no remove.
+   */
+  onRemove?: (ids: string[]) => void;
   /** The project's maps from photos (`PhotoRuns`), shown under Finished. */
   children?: ReactNode;
 }
@@ -43,12 +48,13 @@ export function DrawerList({
   onPick,
   onCreateMaps,
   onUpdateTools,
+  onRemove,
   children,
 }: DrawerListProps) {
   const [older, setOlder] = useState(false);
   const own = projectName !== null;
   const shown = older ? finished : finished.slice(0, FINISHED_SHOWN);
-  const row = (job: JobRecord, project?: string) => (
+  const row = (job: JobRecord, project?: string, removable = false) => (
     <JobRow
       key={job.id}
       job={job}
@@ -58,6 +64,13 @@ export function DrawerList({
       onPick={() => {
         onPick(job.id);
       }}
+      onRemove={
+        removable && onRemove
+          ? () => {
+              onRemove([job.id]);
+            }
+          : undefined
+      }
     />
   );
   return (
@@ -97,9 +110,23 @@ export function DrawerList({
       )}
       {own && finished.length > 0 && (
         <section data-testid="proc-finished">
-          <h3 className="caps">{t('processing.finished')}</h3>
+          <div className="proc-sh">
+            <h3 className="caps">{t('processing.finished')}</h3>
+            {onRemove && (
+              <button
+                type="button"
+                className="btn sm ghost"
+                data-testid="proc-clear"
+                onClick={() => {
+                  onRemove(finished.map((j) => j.id));
+                }}
+              >
+                {t('processing.clearFinished')}
+              </button>
+            )}
+          </div>
           <div role="list" aria-label={t('processing.finished')}>
-            {shown.map((j) => row(j))}
+            {shown.map((j) => row(j, undefined, true))}
           </div>
           {!older && finished.length > FINISHED_SHOWN && (
             <button

@@ -148,6 +148,16 @@ export function ProcessingDrawer() {
               close();
               openProcessingTools();
             }}
+            onRemove={(ids) => {
+              // only the list entries go; a refusal shows where a list error shows (the next
+              // successful read clears it)
+              void jobs
+                .getState()
+                .remove(ids)
+                .then((e) => {
+                  if (e) jobs.setState({ error: e });
+                });
+            }}
           >
             <PhotoRuns />
           </DrawerList>

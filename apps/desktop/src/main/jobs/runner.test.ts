@@ -237,4 +237,35 @@ describe('JobRunner', () => {
     expect(store.get('j1')?.status).toBe('interrupted');
     expect(store.get('j1')?.steps[0]?.state).toBe('cancelled');
   });
+
+  it('remove forgets finished jobs for good, never a running one or any output', async () => {
+    const { runner, store } = setup('ok');
+    const r = await runner.start({ ...START, project });
+    if (!r.ok) throw new Error(r.error);
+    const done = await finished(runner, r.job.id);
+    const cancelled = { ...done, id: 'j-cancelled', status: 'cancelled' as const };
+    const running = { ...done, id: 'j-running', status: 'running' as const };
+    store.put(cancelled);
+    store.put(running);
+    const output = join(project, 'out', 'kept.txt');
+    await import('node:fs/promises').then(async (fs) => {
+      await fs.mkdir(join(project, 'out'), { recursive: true });
+      await fs.writeFile(output, 'a map');
+    });
+
+    expect(await runner.remove([done.id, 'j-running', 'j-unknown'])).toEqual({
+      removed: [done.id],
+    });
+    expect(runner.get(done.id)).toBeUndefined();
+    expect(runner.get('j-running')?.status).toBe('running');
+    expect(await runner.remove(['j-cancelled'])).toEqual({ removed: ['j-cancelled'] });
+
+    // the outputs and the job's own folder stay on disk
+    expect(await readFile(output, 'utf8')).toBe('a map');
+    expect(await readFile(join(jobDir(done), 'job.log'), 'utf8')).toContain('working');
+    // and the index on disk no longer holds them after a restart
+    const again = new JobStore(join(base, 'jobs.json'));
+    await again.load();
+    expect(again.all().map((j) => j.id)).toEqual(['j-running']);
+  });
 });

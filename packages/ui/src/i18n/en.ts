@@ -1153,6 +1153,8 @@ export const en = {
   'processing.running': 'Running',
   'processing.finished': 'Finished',
   'processing.older': 'Show older',
+  'processing.remove': 'Remove from list',
+  'processing.clearFinished': 'Clear finished',
   'processing.elsewhere': 'Running in other projects',
   'processing.empty': 'Nothing is processing in {name} and nothing has finished yet.',
   'processing.noProject': 'No project is open.',

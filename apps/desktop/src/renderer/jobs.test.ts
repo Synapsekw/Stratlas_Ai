@@ -96,6 +96,36 @@ describe('jobs store', () => {
     const store = createJobsStore(bridge, undefined);
     expect(await store.getState().start({ resume: 'j1' })).toBe('No pack.');
   });
+
+  it('remove drops finished jobs from the list through main, never a running one', async () => {
+    const list = [
+      job({ id: 'run' }),
+      job({ id: 'done', status: 'done' }),
+      job({ id: 'gone', status: 'cancelled' }),
+      job({ id: 'bad', status: 'failed' }),
+    ];
+    const { bridge, calls } = fakeBridge({
+      'jobs:list': () => ({ runtime: { found: true }, jobs: list }),
+      'jobs:log': () => ({ lines: [] }),
+      'jobs:remove': (req) => ({ removed: (req as { jobIds: string[] }).jobIds }),
+    });
+    const store = createJobsStore(bridge, undefined);
+    await store.getState().refresh();
+    await store.getState().select('done');
+
+    expect(await store.getState().remove(['done', 'run'])).toBeNull();
+    expect(calls.at(-1)).toEqual({ channel: 'jobs:remove', req: { jobIds: ['done'] } });
+    expect(store.getState().jobs.map((j) => j.id)).toEqual(['run', 'gone', 'bad']);
+    expect(store.getState().selected).toBeNull();
+    expect(store.getState().logs.done).toBeUndefined();
+
+    expect(await store.getState().remove(['gone', 'bad'])).toBeNull();
+    expect(store.getState().jobs.map((j) => j.id)).toEqual(['run']);
+    // nothing finished to remove: main is not asked
+    const before = calls.length;
+    expect(await store.getState().remove(['run'])).toBeNull();
+    expect(calls.length).toBe(before);
+  });
 });
 
 describe('buildParams', () => {

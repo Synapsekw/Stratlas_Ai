@@ -137,6 +137,7 @@ export function setupModeller(project: ProjectManifest = manifest) {
     refresh: () => Promise.resolve(),
     select: () => Promise.resolve(),
     cancel: () => Promise.resolve(null),
+    remove: () => Promise.resolve(null),
     open: () => Promise.resolve(null),
     prepare: () => undefined,
     start: (req) => {

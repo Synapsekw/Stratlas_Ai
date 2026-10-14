@@ -41,6 +41,11 @@ export interface JobsActions {
   /** Start a job; returns an error sentence or null. */
   start: (req: IpcRequest<'jobs:start'>) => Promise<string | null>;
   cancel: (id: string) => Promise<string | null>;
+  /**
+   * Take finished jobs off the list for good (main forgets them); a job still at work is left
+   * alone. Their outputs stay on disk. Returns an error sentence or null.
+   */
+  remove: (ids: readonly string[]) => Promise<string | null>;
   open: (id: string, what: 'output' | 'log' | 'project') => Promise<string | null>;
 }
 
@@ -302,6 +307,26 @@ export function createJobsStore(bridge: Bridge, on: AioBridge['on'] | undefined)
       const r = await bridge.call('jobs:cancel', { jobId: id });
       if (!r.ok) return r.error;
       return r.value.ok ? null : (r.value.error ?? 'The job could not be cancelled.');
+    },
+
+    remove: async (ids) => {
+      const wanted = new Set(ids);
+      const jobIds = get()
+        .jobs.filter((j) => wanted.has(j.id) && !isActive(j))
+        .map((j) => j.id);
+      if (jobIds.length === 0) return null;
+      const r = await bridge.call('jobs:remove', { jobIds });
+      if (!r.ok) return r.error;
+      const gone = new Set(r.value.removed);
+      set((s) => {
+        const logs = Object.fromEntries(Object.entries(s.logs).filter(([id]) => !gone.has(id)));
+        return {
+          jobs: s.jobs.filter((j) => !gone.has(j.id)),
+          logs,
+          selected: s.selected !== null && gone.has(s.selected) ? null : s.selected,
+        };
+      });
+      return null;
     },
 
     open: async (id, what) => {

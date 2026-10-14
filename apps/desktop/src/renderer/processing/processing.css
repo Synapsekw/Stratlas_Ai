@@ -59,6 +59,39 @@
 .proc-list h3 {
   margin: 0 0 6px;
 }
+/* a section heading with an action at its end (Finished, Clear finished) */
+.proc-sh {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin: 0 0 6px;
+}
+.proc-sh h3 {
+  margin: 0;
+}
+/* a finished row with its remove beside it, shown on hover or focus */
+.job-row-wrap {
+  position: relative;
+}
+.job-row-wrap .job-row {
+  padding-inline-end: 34px;
+}
+.job-row-wrap .job-remove {
+  position: absolute;
+  inset-block-start: 6px;
+  inset-inline-end: 4px;
+  opacity: 0;
+}
+.job-row-wrap:hover .job-remove,
+.job-row-wrap:focus-within .job-remove {
+  opacity: 1;
+}
+@media (hover: none) {
+  .job-row-wrap .job-remove {
+    opacity: 1;
+  }
+}
 .proc-go {
   justify-content: center;
 }

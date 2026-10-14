@@ -1345,6 +1345,14 @@ export const ipc = {
     request: z.object({ jobId: JobId }).strict(),
     response: z.object({ ok: z.boolean(), error: z.string().optional() }),
   },
+  /**
+   * Forget finished jobs: they leave the job index (`jobs.json`) for good. Their outputs and job
+   * folders stay on disk. A job still at work is never removed; `removed` names those that went.
+   */
+  'jobs:remove': {
+    request: z.object({ jobIds: z.array(JobId).min(1).max(500) }).strict(),
+    response: z.object({ removed: z.array(JobId) }),
+  },
   /** The last lines of a job's log (live lines also arrive as `jobs:event`). */
   'jobs:log': {
     request: z

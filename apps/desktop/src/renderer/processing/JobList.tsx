@@ -1,6 +1,6 @@
 /** One job as a row: its plain title, kind, status, times and progress. */
 import type { JobRecord } from '@aio/schema';
-import { t } from '@aio/ui';
+import { Icon, t } from '@aio/ui';
 import { Bar, clock, duration, StatusChip } from './JobParts';
 import { jobKind, jobTitle, KIND_LABEL } from './pipelines';
 import './processing.css';
@@ -11,6 +11,7 @@ export function JobRow({
   now,
   project,
   onPick,
+  onRemove,
 }: {
   job: JobRecord;
   selected: boolean;
@@ -18,12 +19,14 @@ export function JobRow({
   /** The project's name, where the list holds more than one project's jobs. */
   project?: string | undefined;
   onPick: () => void;
+  /** A finished job's **Remove from list** (only the list entry goes, never its outputs). */
+  onRemove?: (() => void) | undefined;
 }) {
   const kind = jobKind(job.pipeline);
-  return (
+  const row = (
     <button
       type="button"
-      role="listitem"
+      role={onRemove ? undefined : 'listitem'}
       className="job-row"
       aria-current={selected ? 'true' : undefined}
       data-job={job.id}
@@ -43,5 +46,21 @@ export function JobRow({
       </span>
       <Bar job={job} />
     </button>
+  );
+  if (!onRemove) return row;
+  return (
+    <div role="listitem" className="job-row-wrap">
+      {row}
+      <button
+        type="button"
+        className="btn ghost icon sm job-remove"
+        aria-label={t('processing.remove')}
+        title={t('processing.remove')}
+        data-testid="job-remove"
+        onClick={onRemove}
+      >
+        <Icon name="x" size={12} />
+      </button>
+    </div>
   );
 }

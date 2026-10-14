@@ -96,6 +96,43 @@ describe('the processing list of a project', () => {
     expect(q('proc-older')).toBeNull();
   });
 
+  it('removes one finished job from the list, and Clear finished removes them all', () => {
+    const run = job({ status: 'running', progress: 0.4 });
+    const finished = [
+      job({ status: 'done' }),
+      job({ status: 'cancelled' }),
+      job({ status: 'failed' }),
+      ...Array.from({ length: FINISHED_SHOWN }, () => job({})),
+    ];
+    const onRemove = vi.fn();
+    const props = show({ running: [run], finished, onRemove });
+    // the running job keeps its own cancel (in its details), and has no remove
+    expect(q('proc-running')?.querySelector('[data-testid="job-remove"]')).toBeNull();
+    const removes = [...(q('proc-finished')?.querySelectorAll('[data-testid="job-remove"]') ?? [])];
+    expect(removes).toHaveLength(FINISHED_SHOWN);
+    const second = removes[1] as HTMLButtonElement;
+    expect(second.getAttribute('aria-label')).toBe('Remove from list');
+    expect(second.title).toBe('Remove from list');
+    act(() => {
+      second.click();
+    });
+    expect(onRemove).toHaveBeenLastCalledWith([finished[1]?.id]);
+    expect(props.onPick).not.toHaveBeenCalled();
+
+    // every finished job, the ones under Show older too
+    const clear = q('proc-clear') as HTMLButtonElement;
+    expect(clear.textContent).toBe('Clear finished');
+    act(() => {
+      clear.click();
+    });
+    expect(onRemove).toHaveBeenLastCalledWith(finished.map((j) => j.id));
+  });
+
+  it('has no Clear finished while nothing has finished', () => {
+    show({ running: [job({ status: 'running' })], onRemove: vi.fn() });
+    expect(q('proc-clear')).toBeNull();
+  });
+
   it('says when the tools are missing and leads to the update', () => {
     const props = show({ toolsMissing: true });
     expect(q('proc-tools')?.textContent).toContain('Processing cannot run yet');

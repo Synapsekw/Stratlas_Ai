@@ -83,6 +83,7 @@ const CHANNELS = {
   'jobs:start': true,
   'jobs:list': true,
   'jobs:cancel': true,
+  'jobs:remove': true,
   'jobs:log': true,
   'jobs:open': true,
   'dialog:openFiles': true,

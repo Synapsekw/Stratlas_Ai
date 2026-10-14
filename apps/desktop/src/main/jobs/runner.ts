@@ -214,6 +214,22 @@ export class JobRunner {
     return { ok: true };
   }
 
+  /**
+   * Forget finished jobs from the index (the Processing drawer's remove and Clear finished). Only
+   * the index entry goes: outputs, the job folder and its log stay on disk. A job still at work
+   * is kept. The index is written before answering, so a restart does not bring them back.
+   */
+  async remove(jobIds: readonly string[]): Promise<IpcResponse<'jobs:remove'>> {
+    const removed: string[] = [];
+    for (const id of new Set(jobIds)) {
+      if (this.live.has(id) || !this.deps.store.delete(id)) continue;
+      this.logs.delete(id);
+      removed.push(id);
+    }
+    if (removed.length > 0) await this.deps.store.flush();
+    return { removed };
+  }
+
   async log(jobId: string, tail = 400): Promise<JobLogLine[]> {
     const mem = this.logs.get(jobId);
     if (mem) return mem.slice(-tail);

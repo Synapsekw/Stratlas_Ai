@@ -1204,6 +1204,7 @@ function registerIpc(): void {
     return jobs.start(req);
   });
   handle('jobs:cancel', ({ jobId }) => jobs.cancel(jobId));
+  handle('jobs:remove', ({ jobIds }) => jobs.remove(jobIds));
   handle('jobs:log', async ({ jobId, tail }) => ({ lines: await jobs.log(jobId, tail) }));
   handle('jobs:open', async ({ jobId, what }) => {
     const job = jobs.get(jobId);

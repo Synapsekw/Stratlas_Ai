@@ -6,6 +6,7 @@
  */
 import { PIPELINES } from '@aio/schema';
 import type { Page } from '@playwright/test';
+import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { expectAccessible } from './a11y';
 import {
@@ -78,6 +79,89 @@ test('Create maps from photos starts from the drawer, which makes way for it', a
   await drawer.getByTestId('create-maps').click();
   await expect(win.getByRole('dialog', { name: 'Create maps from photos' })).toBeVisible();
   await expect(drawer).toHaveCount(0);
+});
+
+test('finished jobs leave the list one by one or all at once, for good, and keep their outputs', async ({
+  dataRoot,
+  network,
+}) => {
+  // three finished jobs of the tiny project (done, cancelled, failed), with an output and a log
+  const dir = dataRoot.projectDir;
+  const record = (id: string, status: string, minute: number) => ({
+    id,
+    pipeline: 'system.selftest',
+    project: dir,
+    params: {},
+    status,
+    progress: status === 'done' ? 1 : 0.5,
+    steps: [],
+    artifacts: [],
+    createdAt: `2026-10-12T09:0${String(minute)}:00.000Z`,
+    updatedAt: `2026-10-12T09:0${String(minute)}:30.000Z`,
+  });
+  await mkdir(join(dir, 'out'), { recursive: true });
+  await writeFile(join(dir, 'out', 'map.txt'), 'a map');
+  await mkdir(join(dir, 'jobs', 'e2e-done'), { recursive: true });
+  await writeFile(join(dir, 'jobs', 'e2e-done', 'job.log'), 'a log\n');
+  await writeFile(
+    join(dataRoot.userData, 'jobs.json'),
+    JSON.stringify([
+      record('e2e-failed', 'failed', 3),
+      record('e2e-cancelled', 'cancelled', 2),
+      record('e2e-done', 'done', 1),
+    ]),
+  );
+  const index = async () =>
+    (JSON.parse(await readFile(join(dataRoot.userData, 'jobs.json'), 'utf8')) as { id: string }[])
+      .map((j) => j.id)
+      .sort();
+
+  let app = await launchApp(dataRoot);
+  await network.attach(app);
+  try {
+    let win = await app.firstWindow();
+    await openTiny(win);
+    let drawer = await openProcessing(win);
+    const finished = drawer.getByTestId('proc-finished');
+    await expect(finished.locator('.job-row')).toHaveCount(3);
+
+    // one row's remove takes only that job off the list
+    const cancelled = finished.locator('.job-row-wrap', {
+      has: win.locator('[data-job="e2e-cancelled"]'),
+    });
+    await cancelled.hover();
+    const remove = cancelled.getByRole('button', { name: 'Remove from list' });
+    await expect(remove).toBeVisible();
+    await remove.click();
+    await expect(finished.locator('.job-row')).toHaveCount(2);
+    await expect(finished.locator('[data-job="e2e-cancelled"]')).toHaveCount(0);
+    await expect.poll(index).toEqual(['e2e-done', 'e2e-failed']);
+    await expectAccessible(win, 'Processing drawer, finished jobs', {
+      include: '[data-testid="processing-drawer"]',
+    });
+    await shot(win, 'processing-finished-remove');
+
+    // Clear finished takes the rest; the empty list says so
+    await drawer.getByTestId('proc-clear').click();
+    await expect(drawer.getByTestId('proc-finished')).toHaveCount(0);
+    await expect(drawer.getByTestId('proc-empty')).toBeVisible();
+    await expect.poll(index).toEqual([]);
+    await app.close();
+
+    // after a restart they stay gone, and every output is still on disk
+    app = await launchApp(dataRoot);
+    await network.attach(app);
+    win = await app.firstWindow();
+    await openTiny(win);
+    drawer = await openProcessing(win);
+    await expect(drawer.getByTestId('proc-empty')).toBeVisible();
+    await expect(drawer.getByTestId('proc-finished')).toHaveCount(0);
+    expect(await readFile(join(dir, 'out', 'map.txt'), 'utf8')).toBe('a map');
+    expect(await readFile(join(dir, 'jobs', 'e2e-done', 'job.log'), 'utf8')).toBe('a log\n');
+    expect(await network.outbound()).toEqual([]);
+  } finally {
+    await app.close();
+  }
 });
 
 test('a project that is not an inspection has no Turn detections into issues', async ({ win }) => {
