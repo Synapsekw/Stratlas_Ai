@@ -456,18 +456,28 @@ export interface Surroundings extends Settled {
  * is: the stage's plain ground goes, which would otherwise lie a few centimetres over it and
  * cover it, or (seen from far off, when the plain ground drops lower) tie with it in the depth
  * buffer and cut the view off at a ragged line. A flat landscape (an online map, or imagery
- * without terrain) lies where the street map lies, under the lowest model. Returns the function
- * that takes it away (the caller disposes of the mesh).
+ * without terrain) lies where the street map lies, under the lowest model. Projected video lands
+ * on it, as on the ground it hides. Returns the function that takes it away (the caller disposes
+ * of the mesh).
  */
 export function showSurroundings(
-  stage: Pick<EngineStage, 'scene' | 'addRaycastTarget' | 'requestRender'>,
+  stage: Pick<
+    EngineStage,
+    'scene' | 'addRaycastTarget' | 'addProjectionReceiver' | 'requestRender'
+  >,
   mesh: Surroundings,
   floor: () => number | null,
 ): () => void {
   const obj = mesh as unknown as Parameters<EngineStage['addRaycastTarget']>[0];
   mesh.userData.aioGround = true;
   stage.scene.add(obj);
-  const offs = [stage.addRaycastTarget(obj, SITE_SURROUNDINGS_ID)];
+  const offs = [
+    stage.addRaycastTarget(obj, SITE_SURROUNDINGS_ID),
+    // the plain ground took the drone video's drape; with it hidden, the landscape takes it
+    stage.addProjectionReceiver(
+      mesh as unknown as Parameters<EngineStage['addProjectionReceiver']>[0],
+    ),
+  ];
   if (mesh.userData.flat === true) {
     const drop = typeof mesh.userData.dropM === 'number' ? mesh.userData.dropM : 0;
     offs.push(settleUnder(stage, floor, mesh, -drop));

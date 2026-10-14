@@ -209,6 +209,7 @@ describe('the landscape around the site in the scene', () => {
   function fakeStage() {
     const inScene = new Set<unknown>();
     const targets = new Map<unknown, string>();
+    const receivers = new Set<unknown>();
     const stage = {
       scene: {
         add: (o: unknown) => inScene.add(o),
@@ -218,9 +219,13 @@ describe('the landscape around the site in the scene', () => {
         targets.set(o, id);
         return () => targets.delete(o);
       },
+      addProjectionReceiver(o: unknown) {
+        receivers.add(o);
+        return () => receivers.delete(o);
+      },
       requestRender: vi.fn(),
     };
-    return { stage, inScene, targets };
+    return { stage, inScene, targets, receivers };
   }
 
   afterEach(() => {
@@ -228,18 +233,21 @@ describe('the landscape around the site in the scene', () => {
   });
 
   it('stands in for the plain ground, which would otherwise cover it', () => {
-    const { stage, inScene, targets } = fakeStage();
+    const { stage, inScene, targets, receivers } = fakeStage();
     const mesh = landscape(false);
     const remove = showSurroundings(stage as never, mesh, () => null);
     expect(inScene.has(mesh)).toBe(true);
     // the stage hides its plain ground (y = 0, over the landscape) while a ground target shows
     expect(targets.get(mesh)).toBe('site-surroundings');
     expect(mesh.userData.aioGround).toBe(true);
+    // the drone video's drape moves from the hidden plain ground onto it
+    expect(receivers.has(mesh)).toBe(true);
     // a landscape that follows the terrain keeps its own heights
     expect(mesh.position.y).toBe(0);
     remove();
     expect(inScene.has(mesh)).toBe(false);
     expect(targets.size).toBe(0);
+    expect(receivers.size).toBe(0);
   });
 
   it('lays a flat one (an online map, imagery without terrain) under the lowest model, as the street map', () => {

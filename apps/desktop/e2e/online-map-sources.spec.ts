@@ -239,24 +239,28 @@ test("the 3D scene's Map chip turns on imagery around the site from Esri", async
     )
     .toBeGreaterThan(0);
   // the landscape is the ground now: the plain ground goes, as it does for the street map (it
-  // lay over the imagery and, seen from far off, cut the view in half at a ragged line)
+  // lay over the imagery and, seen from far off, cut the view in half at a ragged line), and the
+  // drone video's drape lands on the landscape instead
   await expect
     .poll(() => sceneGround(win), { timeout: 60_000 })
-    .toEqual({ landscape: true, plain: false });
+    .toEqual({ landscape: true, plain: false, drape: true });
 
   // from far off and low, toward the horizon: the whole ground below the horizon is the map
-  await win.evaluate(() => {
+  const placed = await win.evaluate(() => {
     const s = (window as unknown as SceneProbe).__stratlas.stage();
-    if (!s) return;
+    if (!s) return 'no stage';
     // let the camera back off 300 m from the tiny model, as on a real site
     const box = s.contentBounds();
-    if (!box) return;
+    if (!box) return 'no content';
     const big = box.clone();
     big.min.set(-1500, 0, -1500);
     big.max.set(1500, 30, 1500);
     s.setReach('e2e-far', big);
     s.restoreView({ position: [0, 6, 300], target: [0, 0, 0] });
+    return 'placed';
   });
+  // the default camera would see the map below it whatever happens far off
+  expect(placed).toBe('placed');
   const canvas = win.locator('[data-scene-view] canvas').first();
   await expect
     .poll(
@@ -290,6 +294,16 @@ test("the 3D scene's Map chip turns on imagery around the site from Esri", async
       { timeout: 30_000 },
     )
     .toBe(0);
+
+  // back to the street map (no street pack covers this site): the landscape goes, and the plain
+  // ground and its drape come back
+  await chip.click();
+  await win.getByTestId('scene-map-pop').getByTestId('map-tile-streets').click();
+  await expect(chip).not.toContainText('Esri');
+  await closeMenu(win, 'scene-map-pop');
+  await expect
+    .poll(() => sceneGround(win), { timeout: 30_000 })
+    .toEqual({ landscape: false, plain: true, drape: false });
   expect(await network.outbound()).toEqual([]);
 });
 
@@ -301,18 +315,22 @@ interface SceneProbe {
         clone(): { min: { set(...v: number[]): void }; max: { set(...v: number[]): void } };
       } | null;
       setReach(key: string, box: unknown): void;
+      projectionReceivers(): readonly { name: string }[];
       restoreView(v: { position: number[]; target: number[] }): void;
     } | null;
   };
 }
 
-/** Whether the landscape around the site and the plain ground are drawn. */
+/** Whether the landscape around the site and the plain ground are drawn, and which takes video. */
 const sceneGround = (win: Page) =>
   win.evaluate(() => {
-    const scene = (window as unknown as SceneProbe).__stratlas.stage()?.scene;
+    const stage = (window as unknown as SceneProbe).__stratlas.stage();
+    const scene = stage?.scene;
     return {
       landscape: scene?.getObjectByName('site-surroundings')?.visible === true,
       plain: scene?.getObjectByName('env:ground')?.visible ?? null,
+      // projected video drapes onto the receivers: the landscape while it stands in for the ground
+      drape: stage?.projectionReceivers().some((m) => m.name === 'site-surroundings') ?? false,
     };
   });
 
