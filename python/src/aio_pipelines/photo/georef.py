@@ -1,19 +1,20 @@
-"""photo.georef: bundle adjustment with ground control points; checkpoints measured, never used.
+"""photo.georef: ODM aligns again with ground control; checkpoints measured by us, never used.
 
 Stages (resumable job steps): ``adjust``, ``report``, ``commit``.
 
-    adjust   the run's sparse model into its ENU frame; every confirmed mark of every point
-             triangulated through the current cameras; control points that disagree with the
-             others named and left out (``gcp.control_outliers``); without GNSS georeferencing,
-             a similarity to the control points first; then bundle adjustment with the control
-             points (weighted by their stated accuracy, observed through their marks) and, unless
-             ``useGnss`` is false, the GNSS priors of ``photo.align``
-    report   every point measured again through the adjusted cameras (control and check alike);
+    adjust   writes ``gcp_list.txt`` (confirmed marks of the control points that are not switched
+             off or outliers) and has ODM align again with it. Control points that disagree with
+             the others (triangulated through the run's current cameras) are named and left out
+             (``gcp.control_outliers``). With ``useGnss`` false, ``geo.txt`` gives every photo
+             position an accuracy of 100 m so it barely counts. ODM's own GCP errors go to the
+             job log.
+    report   measures every point, control and check, through ODM's adjusted cameras;
              report/accuracy.json (``checkpointsInAdjustment`` false), mark predictions, the
              adjusted ``sparse/`` and ``cameras-sfm.json``
-    commit   into ``photogrammetry/<run>/``; the GNSS-only model is kept as ``work/sparse-gnss/``
+    commit   into ``photogrammetry/<run>/``; the GNSS-only model is kept as ``work/sparse-gnss/``;
+             ODM's ``odm_report/stats.json``, when there is one, as ``report/odm-stats.json``
 
-Checkpoints never reach the adjustment: they are read only after it, so the adjusted cameras are
+Checkpoints never reach ODM: they are left out of ``gcp_list.txt``, so the adjusted cameras are
 identical with and without them (tested).
 """
 
@@ -21,6 +22,7 @@ from __future__ import annotations
 
 import json
 import shutil
+import time
 from typing import Any
 
 import numpy as np
@@ -53,6 +55,10 @@ from .align import (
     write_sparse,
 )
 from .model import SparseModel
+from .odm import flags as OF
+from .odm import project as OP
+from .odm import runner as OR
+from .odm.reconstruction import read_reconstruction
 
 #: A drone GNSS height this far from the control-adjusted cameras is flagged.
 GNSS_HEIGHT_LIMIT_M = A.GNSS_HEIGHT_LIMIT_M
@@ -77,10 +83,28 @@ def _measure(model: SparseModel, points: list[dict[str, Any]], by_name: dict[str
     return out, short
 
 
+def _fresh_odm_stats(ctx: StepContext, run: str) -> bool:
+    """Stage ODM's ``odm_report/stats.json`` when this georef's ODM run wrote it (not an earlier
+    products run); ODM writes it only in its report stage."""
+    try:
+        adj = json.loads(ctx.stage("work/adjust.json").read_text("utf-8"))
+        started = float(adj["odm"]["startedAt"])
+    except (OSError, ValueError, KeyError, TypeError):
+        return False
+    src = OP.odm_project_dir(ctx.project, run) / "odm_report" / "stats.json"
+    try:
+        if src.stat().st_mtime < started:
+            return False
+    except OSError:
+        return False
+    shutil.copyfile(src, ctx.stage("out/report/odm-stats.json"))
+    return True
+
+
 class PhotoGeoref:
     name = "photo.georef"
     title = "Adjust with ground control"
-    description = "Bundle adjustment with marked control points, and the accuracy report."
+    description = "ODM aligns the photos again with marked control points; then the accuracy report."
     keys = frozenset({"run", "gcp", "useGnss"})
 
     def validate(self, params: dict[str, Any]) -> dict[str, Any]:
@@ -127,33 +151,30 @@ class PhotoGeoref:
             photos = json.loads((base / "sparse" / "photos.json").read_text("utf-8"))["photos"]
         except (OSError, ValueError, KeyError):
             photos = {}
-        model = grid_to_enu_model(grid_model, enu, grid)
-        by_name = {im.name: im.id for im in model.images.values()}
         geo = G.points_to_geodetic(gcp)
         surveyed = {
             p["id"]: enu.from_geodetic([geo[p["id"]][0]], [geo[p["id"]][1]], [geo[p["id"]][2]])[0]
             for p in gcp.get("points") or []
         }
         control = [p for p in gcp.get("points") or [] if p["role"] == "control" and not p.get("disabled")]
+        odm_dir = OP.run_odm_dir(ctx.project, run)
+        names = OP.read_names(odm_dir)
+        links_by_key = {key: link for link, key in names.items()}
+        model = grid_to_enu_model(grid_model, enu, grid)
+        by_name = {im.name: im.id for im in model.images.values()}
         measured, short = _measure(model, control, by_name)
-        usable = [p for p in control if p["id"] in measured]
-        warnings: list[dict[str, Any]] = []
-        # a run aligned without GNSS sits in its SfM frame: place it on the control points first
-        georeferenced = frame.get("georeferenced", True)
-        if not georeferenced:
-            if len(usable) < 3:
-                raise JobError("This run has no GNSS georeferencing: mark at least three control points.")
-            ids = [p["id"] for p in usable]
-            sim, _ = B.similarity_ransac(
-                np.array([measured[i][0] for i in ids]), np.array([surveyed[i] for i in ids]), threshold=1.0
-            )
-            model.transform(*sim)
-            measured, short = _measure(model, control, by_name)
-        sigma = {p["id"]: (p["accuracy"]["horizontalM"], p["accuracy"]["verticalM"]) for p in usable}
-        outliers = G.control_outliers(
-            {i: measured[i][0] for i in sigma}, {i: surveyed[i] for i in sigma}, sigma
+        sigma = {
+            p["id"]: (p["accuracy"]["horizontalM"], p["accuracy"]["verticalM"])
+            for p in control
+            if p["id"] in measured
+        }
+        outliers = (
+            G.control_outliers({i: measured[i][0] for i in sigma}, {i: surveyed[i] for i in sigma}, sigma)
+            if len(sigma) >= 4
+            else []
         )
         out_ids = {o.id for o in outliers}
+        warnings: list[dict[str, Any]] = []
         for o in outliers:
             warnings.append(
                 {
@@ -164,81 +185,65 @@ class PhotoGeoref:
                 }
             )
             ctx.log(warnings[-1]["message"], "warn")
-        controls = [
-            B.ControlPoint(
-                p["id"],
-                surveyed[p["id"]],
-                float(p["accuracy"]["horizontalM"]),
-                float(p["accuracy"]["verticalM"]),
-                [(by_name[ph], xy) for ph, xy in G.usable_marks(p) if ph in by_name],
-            )
-            for p in usable
-            if p["id"] not in out_ids
-        ]
-        if len(controls) < 3 and not (params.get("useGnss", True) and georeferenced):
-            raise JobError(
-                "At least three usable control points are needed (each marked in two or more photos)."
-            )
-        priors: dict[int, B.CameraPrior] = {}
-        if params.get("useGnss", True) and georeferenced:
-            for iid, im in model.images.items():
-                g = (photos.get(im.name) or {}).get("gnss")
-                if g:
-                    pos = enu.from_geodetic([g["lon"]], [g["lat"]], [g["h"]])[0]
-                    priors[iid] = B.CameraPrior(pos, float(g["sigmaH"]), float(g["sigmaV"]))
-        # A systematic GNSS offset (the drone's altitude datum, a base station's shift) would leak
-        # into camera heights through the focal length; with enough control it is estimated
-        # (median camera-to-GNSS difference after a fit to the control points) and taken out.
-        gnss_shift = [0.0, 0.0, 0.0]
-        if priors and len(controls) >= 3:
-            ids = [c.id for c in controls]
-            sim = B.similarity(np.array([measured[i][0] for i in ids]), np.array([surveyed[i] for i in ids]))
-            keys = sorted(priors)
-            fitted = B.apply_similarity(sim, np.array([model.images[i].centre for i in keys]))
-            shift = np.median(fitted - np.array([priors[i].position for i in keys]), axis=0)
-            gnss_shift = [round(float(v), 4) for v in shift]
-            for i in keys:
-                priors[i] = B.CameraPrior(priors[i].position + shift, priors[i].sigma_h, priors[i].sigma_v)
-        pts = B.select_points(model, per_image=300)
-        res = B.bundle_adjust(
-            model,
-            pts,
-            priors=priors,
-            controls=controls,
-            check=ctx.check,
-            progress=lambda f: ctx.progress(0.9 * f, "Adjusting"),
-        )
-        B.refine_all_points(model)
-        model.save_npz(ctx.stage("work/adjusted-enu.npz"))
+        gcp_list = OP.write_gcp_list(odm_dir, gcp, links_by_key, out_ids)
+        use_gnss = params.get("useGnss", True) is not False
+        if not use_gnss:  # photo positions with an accuracy of 100 m barely count against the control
+            OP.write_geo(odm_dir, [
+                OP.GeoRow(links_by_key[k], g["gnss"]["lon"], g["gnss"]["lat"], g["gnss"]["h"], None, None, None, 100.0, 100.0)
+                for k, g in photos.items() if g.get("gnss") and k in links_by_key
+            ])  # fmt: skip
+        geo_txt = odm_dir / "geo.txt"
+        odm, mc = OR.find_odm(), OR.machine()
+        log_dir = ctx.project / run_dir(run) / "odm-logs" / f"{ctx.job.job_id}-adjust"
+        strategy = OF.GEOREF_STRATEGY
+        # C12: a first attempt removes the alignment so ODM runs it again (a resumed one keeps it)
+        if (
+            strategy == "invalidate"
+            and not (log_dir / "odm.log").exists()
+            and not (log_dir / "tool.out").exists()
+        ):
+            OP.invalidate(odm_dir, OP.GEOREF_INVALIDATE)
+        flags = OF.georef_flags(
+            state.get("preset") or "standard", mc.use_gpu, mc.threads, gcp_list.path,
+            geo_txt if geo_txt.is_file() else None,
+        )  # fmt: skip
+        odm_started = time.time()
+        res = OR.run_odm(
+            ctx, odm, odm_dir, flags, "opensfm", "opensfm", log_dir,
+            rerun=strategy == "rerun-from", use_gpu=mc.use_gpu, progress=(0.0, 0.9),
+        )  # fmt: skip
+        rec = read_reconstruction(odm_dir, names, enu)
+        rec.model.save_npz(ctx.stage("work/adjusted-enu.npz"))
+        gcp_stats = (rec.stats or {}).get("gcp_errors")
+        if gcp_stats:
+            ctx.log(f"ODM's own ground control errors: {json.dumps(gcp_stats)[:1500]}")
         atomic_write_json(
             ctx.stage("work/adjust.json"),
             {
                 "warnings": warnings,
                 "outliers": sorted(out_ids),
-                "used": [c.id for c in controls],
+                "used": gcp_list.points,
                 "short": short,
-                "gnss": bool(priors),
-                "gnssShiftEnuM": gnss_shift,
-                "iterations": res.iterations,
+                "gnss": use_gnss,
+                "gnssShiftEnuM": [0.0, 0.0, 0.0],
+                "iterations": 0,
+                "odm": {"gcpPoints": gcp_list.points, "stats": gcp_stats, "startedAt": odm_started},
+                "stats": {"reprojPx": rec.reproj_px, "gsdCm": rec.gsd_cm},
             },
         )
         st = RunState(ctx)
         data = st.load() or dict(state)
-        names = [s["name"] for s in data.get("stages", [])]
+        stage_names = [s["name"] for s in data.get("stages", [])]
         for s in ("adjust", "report"):
-            if s not in names:
+            if s not in stage_names:
                 data.setdefault("stages", []).append({"name": s, "state": "pending"})
         data["stages"] = [
             {**s, "state": "running", "startedAt": now_iso()} if s["name"] == "adjust" else s
             for s in data["stages"]
         ]
+        data["engine"] = OR.engine_record(odm, res.gpu)
         st.save(data)
-        return {
-            "controls": len(controls),
-            "outliers": len(outliers),
-            "gnss": bool(priors),
-            "iterations": res.iterations,
-        }
+        return {"controls": len(gcp_list.points), "outliers": len(outliers), "gnss": use_gnss}
 
     # ---- report
     def _report(self, ctx: StepContext) -> dict[str, Any]:
@@ -266,14 +271,15 @@ class PhotoGeoref:
             X, err, n = measured[p["id"]]
             d = grid.from_geodetic(*enu.to_geodetic(X[None]))[0] - grid.from_geodetic([lon], [lat], [h])[0]
             residuals.append(A.PointResidual(p["id"], p["role"], d, err, n, used=p["id"] in used))
-        gsd = A.gsd_cm(model)
+        stats = adj.get("stats") or {}  # ODM's model has no observations: its figures come from ODM
+        gsd = stats.get("gsdCm")
         warnings = [A.Warning_(w["code"], w["message"], w.get("point")) for w in adj["warnings"]]
         warnings += A.point_warnings(residuals, (gsd or 0) / 100)
         warnings += A.unmeasured_warnings(
             [A.PointResidual(i, "control", np.zeros(3), 0.0, n) for i, n in short.items()]
         )
         grid_model = enu_to_grid_model(model, enu, grid)
-        # cameras against their GNSS positions (and the Al-Zour check on heights)
+        # cameras against their GNSS positions (and the vertical datum check on heights)
         try:
             photos = json.loads((base / "sparse" / "photos.json").read_text("utf-8"))["photos"]
         except (OSError, ValueError, KeyError):
@@ -302,7 +308,7 @@ class PhotoGeoref:
                 heights=state.get("heights"),
                 images_total=int((state.get("photos") or {}).get("count", len(model.images))),
                 images_registered=len(model.images),
-                mean_reproj_px=model.mean_reprojection_error(),
+                mean_reproj_px=float(stats.get("reprojPx") or 0.0),
                 gsd_cm=gsd,
                 points=residuals,
                 cameras=cam_res,
@@ -339,13 +345,16 @@ class PhotoGeoref:
             keep.parent.mkdir(parents=True, exist_ok=True)
             shutil.copytree(project_sparse, keep)
         commit_tree(ctx, "out/sparse", f"{base}/sparse")
-        commit_files(
-            ctx,
-            [
-                ("out/report/accuracy.json", f"{base}/report/accuracy.json"),
-                ("out/cameras-sfm.json", f"{base}/cameras-sfm.json"),
-            ],
-        )
+        files = [
+            ("out/report/accuracy.json", f"{base}/report/accuracy.json"),
+            ("out/cameras-sfm.json", f"{base}/cameras-sfm.json"),
+        ]
+        if _fresh_odm_stats(ctx, run):  # ODM's own figures, its GCP errors among them
+            files.append(("out/report/odm-stats.json", f"{base}/report/odm-stats.json"))
+        else:  # a copy from before this adjustment would show errors of other cameras
+            ctx.out(f"{base}/report/odm-stats.json").unlink(missing_ok=True)
+            ctx.log("ODM's own ground control errors are not available until the maps are made (products).")
+        commit_files(ctx, files)
         commit_files(ctx, [("work/adjusted-enu.npz", f"{base}/work/adjusted-enu.npz")], announce=False)
         pred = ctx.stage("work/predictions.json")
         if pred.exists():

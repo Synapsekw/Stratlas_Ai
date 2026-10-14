@@ -58,6 +58,14 @@ def ground(x: np.ndarray, y: np.ndarray) -> np.ndarray:
     return 0.03 * x + 0.4 * np.sin(y / 9.0)
 
 
+#: Six surveyed ground positions (EPSG:32639) for ground control tests; each is seen by four or
+#: more photos of the default ``make_scene`` (a point 30 m from the centre is seen by one at most).
+TARGET_POSITIONS = [
+    (ORIGIN[0] + dx, ORIGIN[1] + dy, float(ground(np.float64(dx), np.float64(dy))) + ORIGIN[2])
+    for dx, dy in ((-22.0, -18.0), (22.0, -18.0), (22.0, 18.0), (-22.0, 18.0), (0.0, -10.0), (10.0, 5.0))
+]
+
+
 def pile(x: np.ndarray, y: np.ndarray, variant: Variant = DEFAULT) -> np.ndarray:
     cx, cy, r, h = variant.pile
     d = np.hypot(x - cx, y - cy)
@@ -309,6 +317,15 @@ def aligned_model(model: SparseModel, origin: np.ndarray):
     return out
 
 
+def _gnss(view: View) -> dict:
+    """The photo's GNSS position as ``photos.json`` keeps it: its true camera centre."""
+    from aio_pipelines.photo import crs as C
+
+    e, n, h = -view.r.T @ view.t
+    lon, lat = C.crs_to_geodetic(C.crs_of(EPSG), [e], [n])
+    return {"lon": float(lon[0]), "lat": float(lat[0]), "h": float(h), "sigmaH": 0.5, "sigmaV": 1.0}
+
+
 def write_project(
     root: Path,
     scene: Scene,
@@ -353,7 +370,8 @@ def write_project(
     heights = {"source": "orthometric", "geoid": "none", "note": "Synthetic."}
     write_sparse(rdir / "sparse", aligned_model(model, origin), grid, enu, heights)
     listing = {
-        v.name: {"name": v.name, "width": v.camera.width, "height": v.camera.height} for v in model.views
+        v.name: {"name": v.name, "width": v.camera.width, "height": v.camera.height, "gnss": _gnss(v)}
+        for v in model.views
     }
     (rdir / "sparse" / "photos.json").write_text(
         json.dumps({"schema": LIST_SCHEMA, "imageRoot": str(photos), "photos": listing}), "utf-8"

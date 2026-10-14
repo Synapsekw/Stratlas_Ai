@@ -17,6 +17,7 @@ from __future__ import annotations
 import json
 import math
 import shutil
+from dataclasses import dataclass
 from pathlib import Path
 
 import numpy as np
@@ -116,7 +117,8 @@ def write_odm_folder(
         shutil.copyfile(photos[key], images / link)
     (odm / "names.json").write_text(json.dumps({link: key for key, link in links.items()}, indent=1), "utf-8")
     recs, reference = opensfm_from_model(model_enu, enu, links)
-    truth = {**recs[0], "bias": [float(v) for v in bias_enu]}
+    # the reference too: an invalidation (photo.georef) removes reference_lla.json and the fake writes it again
+    truth = {**recs[0], "bias": [float(v) for v in bias_enu], "reference": reference}
     moved = shifted(recs[0], bias_enu)
     sfm = odm / "opensfm"
     (sfm / "stats").mkdir(parents=True, exist_ok=True)
@@ -135,3 +137,74 @@ def write_odm_folder(
     for stage in ("dataset", "opensfm"):
         (fake / f"{stage}.done").write_text("")
     return odm
+
+
+# ------------------------------------------------------------------------------ ground control
+
+
+@dataclass
+class TruthModel:
+    """The unbiased model of a synthetic ODM folder, in the ENU frame of its ``reference_lla.json``."""
+
+    model: SparseModel
+    enu: C.EnuFrame
+
+
+def truth_model(odm_dir: Path) -> TruthModel:
+    """``.fake/truth.json`` read back with the conventions of ODM's reconstruction reader (Task 6)."""
+    from aio_pipelines.photo.model import Image, rodrigues
+    from aio_pipelines.photo.odm.reconstruction import opensfm_camera
+
+    odm_dir = Path(odm_dir)
+    truth = json.loads((odm_dir / ".fake" / "truth.json").read_text("utf-8"))
+    ref = json.loads((odm_dir / "opensfm" / "reference_lla.json").read_text("utf-8"))
+    names = json.loads((odm_dir / "names.json").read_text("utf-8"))
+    model = SparseModel()
+    cam_ids: dict[str, int] = {}
+    for link in sorted(truth["shots"]):
+        shot = truth["shots"][link]
+        if shot["camera"] not in cam_ids:
+            cid = cam_ids[shot["camera"]] = len(cam_ids) + 1
+            model.cameras[cid] = opensfm_camera(cid, truth["cameras"][shot["camera"]])
+        iid = len(model.images) + 1
+        r = rodrigues(np.array(shot["rotation"], dtype=np.float64))[0]
+        model.images[iid] = Image(iid, names[link], cam_ids[shot["camera"]], r, shot["translation"])
+    pts = list(truth["points"].values())
+    model.set_points(range(1, len(pts) + 1), [p["coordinates"] for p in pts], [p["color"] for p in pts])
+    enu = C.EnuFrame(float(ref["longitude"]), float(ref["latitude"]), float(ref["altitude"]))
+    return TruthModel(model, enu)
+
+
+def gcp_doc(
+    model_enu: SparseModel,
+    enu: C.EnuFrame,
+    epsg: int,
+    points: dict[str, tuple[float, float, float]],
+    roles: dict[str, str],
+) -> dict:
+    """An ``aio.gcp/1`` document: each point (``epsg`` coordinates, heights as they are) marked by
+    a person, confirmed, at its true projection in every image that sees it inside the frame."""
+    from aio_pipelines.photo.model import project_points
+
+    out = []
+    for pid, (x, y, z) in points.items():
+        lon, lat = C.crs_to_geodetic(C.crs_of(epsg), [x], [y])
+        X = enu.from_geodetic(lon, lat, [z])
+        marks = []
+        for im in sorted(model_enu.images.values(), key=lambda i: i.name):
+            cam = model_enu.cameras[im.camera_id]
+            uv, depth = project_points(cam, im.R, im.centre, X)
+            u, v = float(uv[0, 0]), float(uv[0, 1])
+            if depth[0] > 0 and 0 <= u < cam.width and 0 <= v < cam.height:
+                mark = {"photo": im.name, "px": [u, v], "by": "person", "at": "2026-10-07T09:00:00Z"}
+                marks.append({**mark, "state": "confirmed"})
+        out.append(
+            {
+                "id": pid,
+                "role": roles[pid],
+                "xyz": [float(x), float(y), float(z)],
+                "accuracy": {"horizontalM": 0.01, "verticalM": 0.02},
+                "marks": marks,
+            }
+        )
+    return {"schema": "aio.gcp/1", "crs": {"epsg": int(epsg)}, "points": out}

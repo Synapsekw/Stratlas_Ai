@@ -176,6 +176,8 @@ def stage_opensfm(project: Path, a: argparse.Namespace, gpu_bad: str) -> None:
         rec = _moved_truth(truth, bool(a.gcp))
         for name in ("reconstruction.topocentric.json", "reconstruction.json"):
             (sfm / name).write_text(json.dumps([rec]), "utf-8")
+        if not (sfm / "reference_lla.json").is_file() and truth.get("reference"):  # after an invalidation
+            (sfm / "reference_lla.json").write_text(json.dumps(truth["reference"]), "utf-8")
         write_stats(project)
         epsg, utm, _ = utm_points(project)
         write_coords(project, epsg, utm)
