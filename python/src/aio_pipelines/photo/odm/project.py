@@ -66,6 +66,11 @@ def odm_path(real: Path, work_root: Path | None) -> Path:
     link = work_root / hashlib.sha1(str(real).lower().encode("utf-8")).hexdigest()[:16]
     if link.exists():
         return link
+    if os.path.lexists(link):  # a dangling junction (its target is gone): replace it
+        try:
+            os.rmdir(link)
+        except OSError:
+            link.unlink()
     work_root.mkdir(parents=True, exist_ok=True)
     real.mkdir(parents=True, exist_ok=True)
     import _winapi  # Windows only: a directory junction needs no administrator rights
@@ -81,6 +86,20 @@ def run_odm_dir(project: Path, run: str, env: Mapping[str, str] | None = None) -
     return odm_path(odm_project_dir(project, run), Path(work) if work else None)
 
 
+def _same_photo(src: Path, dst: Path) -> bool:
+    if not dst.is_file():
+        return False
+    try:
+        if os.path.samefile(src, dst):  # a hard link of this very photo
+            return True
+        a, b = src.stat(), dst.stat()
+    except OSError:
+        return False
+    if b.st_nlink > 1:  # a hard link, but of another file
+        return False
+    return a.st_size == b.st_size and int(a.st_mtime) == int(b.st_mtime)  # a copy (copy2 keeps mtime)
+
+
 def link_images(odm_dir: Path, photos: list[tuple[str, Path]]) -> tuple[dict[str, str], int]:
     """Hard-link (or copy) the photos into ``images/``; returns ``({link name: key}, copies)``."""
     images = odm_dir / "images"
@@ -91,16 +110,23 @@ def link_images(odm_dir: Path, photos: list[tuple[str, Path]]) -> tuple[dict[str
         name = f"{i:05d}{path.suffix.lower()}"
         names[name] = key
         dst = images / name
-        size = path.stat().st_size
-        if dst.exists() and dst.stat().st_size == size:
+        if _same_photo(path, dst):
             continue
-        if dst.exists():
+        if os.path.lexists(dst):
             dst.unlink()
         try:
             os.link(path, dst)
         except OSError:
-            shutil.copy2(path, dst)
+            try:
+                shutil.copy2(path, dst)
+            except OSError as e:
+                raise JobError(
+                    f"Could not link or copy a photo into the ODM project: {e.strerror or e}"
+                ) from e
             copies += 1
+    for stale in images.iterdir():  # only links inside this project's images/, never source photos
+        if stale.name not in names and (stale.is_file() or stale.is_symlink()):
+            stale.unlink()
     atomic_write_json(odm_dir / "names.json", names)
     return names, copies
 

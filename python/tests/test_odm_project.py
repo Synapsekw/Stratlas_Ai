@@ -151,3 +151,43 @@ def test_boundary_invalidate_and_cleanup(tmp_path):
     assert (tmp_path / "opensfm" / "features" / "a.npz").exists()  # alignment kept for later products
     P.invalidate(tmp_path, ("opensfm/reconstruction.json", "missing/thing"))
     assert not P.has_alignment(tmp_path)
+
+
+def test_link_images_prunes_stale_links_and_keeps_sources(tmp_path):
+    a = _photo(tmp_path / "in" / "a.jpg", b"a" * 10)
+    b = _photo(tmp_path / "in" / "b.jpg", b"b" * 10)
+    odm = tmp_path / "odm"
+    P.link_images(odm, [("a", a), ("b", b)])
+    names, _ = P.link_images(odm, [("a", a)])
+    assert names == {"00000.jpg": "a"}
+    assert sorted(p.name for p in (odm / "images").iterdir()) == ["00000.jpg"]
+    assert b.read_bytes() == b"b" * 10  # the source photo is untouched
+
+
+def test_link_images_replaces_a_different_photo_of_the_same_size(tmp_path):
+    a = _photo(tmp_path / "in" / "a.jpg", b"a" * 10)
+    c = _photo(tmp_path / "in" / "c.jpg", b"c" * 10)
+    odm = tmp_path / "odm"
+    P.link_images(odm, [("a", a)])
+    P.link_images(odm, [("c", c)])
+    assert (odm / "images" / "00000.jpg").read_bytes() == b"c" * 10
+
+
+def test_link_images_raises_a_plain_error_when_link_and_copy_both_fail(tmp_path, monkeypatch):
+    a = _photo(tmp_path / "in" / "x.jpg")
+    monkeypatch.setattr(os, "link", lambda *_: (_ for _ in ()).throw(OSError("no")))
+    monkeypatch.setattr(P.shutil, "copy2", lambda *_: (_ for _ in ()).throw(OSError("disk full")))
+    with pytest.raises(JobError, match="Could not link or copy"):
+        P.link_images(tmp_path / "odm", [("k", a)])
+
+
+@pytest.mark.skipif(os.name != "nt", reason="directory junctions are Windows'")
+def test_odm_path_replaces_a_dangling_junction(tmp_path):
+    real = tmp_path / "é" / "odm"
+    real.mkdir(parents=True)
+    work = tmp_path / "work"
+    got = P.odm_path(real, work)
+    real.rmdir()
+    assert not got.exists()
+    again = P.odm_path(real, work)
+    assert again == got and again.is_dir()
