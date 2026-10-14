@@ -136,12 +136,14 @@ When a date chip (a select) or a video has the focus, the arrow keys are left to
 
 ### How images are matched
 
-| Clicked image | The same spot on another date                                                       |
-| ------------- | ----------------------------------------------------------------------------------- |
-| Ground photo  | A photo within 15 m that looks the same way (within 45 degrees)                     |
-| Drone photo   | A drone photo, from any flight of that date, whose view covers the same ground      |
-| 360           | The nearest 360 of that date within 25 m, turned towards the same spot              |
-| Walk frame    | A walk frame within 15 m                                                            |
-| Video frame   | A frame of a video of that date, checked once a second, that looks at the same spot |
+Only the same kind of image is matched: a photo with photos, a 360 with 360s, a walk frame with walk frames and a video frame with video frames. A date that has only other kinds near the spot shows an empty slot.
 
-A drone photo is told from a ground photo by its height: above 10 m over the spot it counts as aerial.
+| Clicked image | The same spot on another date                                                                         |
+| ------------- | ----------------------------------------------------------------------------------------------------- |
+| Ground photo  | A photo within 15 m that looks the same way (within 45 degrees)                                       |
+| Drone photo   | A drone photo, from any flight of that date, taken within 50 m whose view covers the same ground      |
+| 360           | The nearest 360 of that date within 25 m, turned towards the same spot                                |
+| Walk frame    | A walk frame within 15 m                                                                              |
+| Video frame   | A frame of a video of that date, checked once a second, taken within 50 m that looks at the same spot |
+
+A drone photo is told from a ground photo by its height: above 10 m over the spot it counts as aerial. Both are photos, so a ground photo can also be matched by a drone photo taken within 50 m that sees the spot.

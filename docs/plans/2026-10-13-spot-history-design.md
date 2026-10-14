@@ -39,8 +39,11 @@ recommended mix:
 
 Founder decisions (13 Oct 2026):
 
-1. All kinds of capture take part: drone photos, ground photos, 360 panoramas, walk frames and
-   videos that pass the spot.
+1. ~~All kinds of capture take part.~~ Reversed on 14 Oct 2026: only the clicked kind takes part,
+   and only nearby. A photo (ground or drone) is matched with photos, a 360 with 360s, a walk frame
+   with walk frames and a video frame with video frames; an aerial match must also have its camera
+   within 50 m (horizontal) of the clicked camera. A date with nothing of that kind near is empty
+   rather than filled with another kind.
 2. Stepping through dates in the viewer **does not change the main view's date**. The viewer is a
    side trip; the date bar, the focused date and the visible layers stay as they were.
 
@@ -92,8 +95,13 @@ Rules (starting tolerances, constants in one place so they can be tuned later):
 | Drone photo  | its view on the ground covers the target point                       | target inside the footprint | the photo                                                                     |
 | Video        | at some moment, sampled every second, the target is inside the frame | target inside the frame     | the moment with the target nearest the frame centre (ties: the closer camera) |
 
+- Only entries of the clicked item's kind are searched (decision 1, 14 Oct); a ground photo and a
+  drone photo are both photos.
 - Ground-level kinds (ground photo, 360, walk frame) are split from aerial kinds (drone photo, video)
   by the camera's height above the target: above 10 m counts as aerial. A photo layer can hold both.
+- An aerial match (drone photo, video moment) must also have its camera within 50 m, horizontal, of
+  the spot's camera (of its target when it has none): a far-off oblique view that still sees the
+  target is a different picture.
 - When the spot has no camera (map click), ground-level kinds match on the target instead: the
   camera within the distance of the target and, for ground photos and walk frames, facing it within
   the angle.
