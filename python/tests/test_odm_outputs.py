@@ -125,3 +125,83 @@ def test_glb_stands_alone():
 def test_the_25d_model_is_used_when_there_is_no_3d_one(tmp_path):
     _textured_obj(tmp_path, "odm_texturing_25d")
     assert O.mesh_to_glb(tmp_path, UTM39, np.array([412000.0, 3245000.0, 20.0]))[1]["source"] == "2.5d"
+
+
+def _coords(odm: Path, line1: str = "WGS84 UTM 39N"):
+    (odm / "odm_georeferencing").mkdir(parents=True, exist_ok=True)
+    (odm / "odm_georeferencing" / "coords.txt").write_text(f"{line1}\n412000 3245000\n")
+
+
+def _las_header(path: Path, count: int):
+    head = bytearray(227)
+    head[0:4] = b"LASF"
+    head[24:26] = bytes([1, 2])
+    struct.pack_into("<I", head, 107, count)
+    path.write_bytes(bytes(head))
+
+
+def test_a_copc_in_the_project_crs_is_copied(tmp_path):
+    _coords(tmp_path)
+    _las_header(tmp_path / "odm_georeferencing" / "odm_georeferenced_model.copc.laz", 77)
+    dst = tmp_path / "out" / "cloud.copc.laz"
+    info = O.cloud_to_copc(None, tmp_path, dst, UTM39, tmp_path / "tmp", 1)
+    assert info == {"points": 77, "writer": "odm", "source": "odm_georeferenced_model.copc.laz"}
+    assert dst.is_file()
+
+
+def test_a_cloud_in_another_crs_goes_through_pdal(tmp_path, monkeypatch):
+    import json
+
+    from aio_pipelines import pointcloud
+    from aio_pipelines.photo import cloud_out, native
+
+    _coords(tmp_path)
+    _las_header(tmp_path / "odm_georeferencing" / "odm_georeferenced_model.laz", 5)
+    calls = []
+
+    def fake_run_tool(ctx, args, what, work, **kw):
+        calls.append(list(args))
+        stages = json.loads(Path(args[2]).read_text())
+        _las_header(Path(stages[-1]["filename"]), 5)
+        return ""
+
+    def fake_copc(ctx, las, out, points, epsg, temp, budget, **kw):
+        calls.append(("copc", las.name, points, epsg))
+        return "fake"
+
+    monkeypatch.setattr(pointcloud, "find_pdal", lambda: "pdal.exe")
+    monkeypatch.setattr(pointcloud, "pdal_env", lambda exe: {})
+    monkeypatch.setattr(native, "run_tool", fake_run_tool)
+    monkeypatch.setattr(cloud_out, "write_copc", fake_copc)
+    info = O.cloud_to_copc(None, tmp_path, tmp_path / "c.copc.laz", 32640, tmp_path / "tmp", 1)
+    assert info == {"points": 5, "writer": "fake", "source": "odm_georeferenced_model.laz"}
+    assert calls[0][:2] == ["pdal.exe", "pipeline"] and calls[1] == ("copc", "cloud.las", 5, 32640)
+    stages = json.loads(Path(calls[0][2]).read_text())
+    assert [s["type"] for s in stages] == ["readers.las", "filters.reprojection", "writers.las"]
+    assert stages[1]["in_srs"] == "EPSG:32639" and stages[1]["out_srs"] == "EPSG:32640"
+
+
+def test_no_pdal_is_a_plain_error(tmp_path, monkeypatch):
+    from aio_pipelines import pointcloud
+
+    _coords(tmp_path)
+    _las_header(tmp_path / "odm_georeferencing" / "odm_georeferenced_model.las", 5)
+    monkeypatch.setattr(pointcloud, "find_pdal", lambda: None)
+    with pytest.raises(JobError):
+        O.cloud_to_copc(None, tmp_path, tmp_path / "c.copc.laz", UTM39, tmp_path / "tmp", 1)
+
+
+def test_a_texture_name_with_spaces_and_options(tmp_path):
+    _textured_obj(tmp_path)
+    d = tmp_path / "odm_texturing"
+    Image.new("RGB", (4, 4)).save(d / "my tex.png")
+    (d / "odm_textured_model_geo.mtl").write_text("newmtl material0000\nmap_Kd -s 1 1 1 my tex.png\n")
+    parts = O.read_obj(d / "odm_textured_model_geo.obj")
+    assert parts[0].texture.name == "my tex.png"
+
+
+def test_a_missing_texture_is_grey_with_a_warning(tmp_path):
+    _textured_obj(tmp_path)
+    (tmp_path / "odm_texturing" / "tex.png").unlink()
+    _, info = O.mesh_to_glb(tmp_path, UTM39, np.array([412000.0, 3245000.0, 20.0]))
+    assert info["textures"] == 0 and "tex.png is missing" in info["warnings"][0]

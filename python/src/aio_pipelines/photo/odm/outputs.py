@@ -204,6 +204,20 @@ class ObjPart:
     texture: Path | None
 
 
+_MAP_OPTION_ARGS = {"-s": 3, "-o": 3, "-t": 3, "-mm": 2, "-bm": 1, "-boost": 1, "-texres": 1, "-blendu": 1,
+                    "-blendv": 1, "-cc": 1, "-clamp": 1, "-imfchan": 1, "-type": 1}  # fmt: skip
+
+
+def _map_file(rest: str) -> str:
+    """The file name of a ``map_Kd`` line: what follows its options (it may hold spaces)."""
+    toks = rest.strip().split()
+    i = 0
+    while i < len(toks) and toks[i].startswith("-") and toks[i] in _MAP_OPTION_ARGS:
+        i += 1 + _MAP_OPTION_ARGS[toks[i]]
+    name = " ".join(toks[i:])
+    return name or rest.strip()
+
+
 def _mtl_textures(mtl: Path) -> dict[str, Path]:
     out: dict[str, Path] = {}
     if not mtl.is_file():
@@ -216,7 +230,7 @@ def _mtl_textures(mtl: Path) -> dict[str, Path]:
         if tok[0] == "newmtl":
             name = tok[1].strip()
         elif tok[0] == "map_Kd" and name is not None and name not in out:
-            out[name] = mtl.parent / tok[1].strip().split()[-1]
+            out[name] = mtl.parent / _map_file(tok[1])
     return out
 
 
@@ -282,6 +296,7 @@ def mesh_to_glb(
         transformer = pyproj.Transformer.from_crs(utm, epsg, always_xy=True)
     parts: list[dict] = []
     images: list[bytes] = []
+    warnings: list[str] = []
     triangles = 0
     for part in read_obj(obj):
         e = part.positions[:, 0] + ox
@@ -301,8 +316,13 @@ def mesh_to_glb(
                 images.append(glb.jpeg_bytes(np.asarray(im)))
             item["uvs"] = np.column_stack([part.uvs[:, 0], 1.0 - part.uvs[:, 1]])
             item["texture"] = len(images) - 1
+        elif part.texture is not None and not part.texture.is_file():
+            warnings.append(f"ODM's texture {part.texture.name} is missing; that part of the model is grey.")
         parts.append(item)
     if not parts:
         raise JobError("ODM's textured model has no faces.")
     source = "2.5d" if obj.parent.name == "odm_texturing_25d" else "3d"
-    return glb.glb_bytes(parts, images), {"triangles": triangles, "textures": len(images), "source": source}
+    info: dict = {"triangles": triangles, "textures": len(images), "source": source}
+    if warnings:
+        info["warnings"] = warnings
+    return glb.glb_bytes(parts, images), info
