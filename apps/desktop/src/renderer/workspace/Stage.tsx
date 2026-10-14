@@ -875,7 +875,6 @@ export function Stage() {
                   ? {
                       issueFilter: roadMap.issueFilter,
                       issueColorBy: roadMap.issueColorBy,
-                      cameraWedge: mode === 'split',
                     }
                   : {})}
               />

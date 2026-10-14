@@ -65,8 +65,10 @@ class FakeMap {
   setPaintProperty(): void {
     /* style only */
   }
-  setLayoutProperty(): void {
-    /* style only */
+  /** The layout properties set, per layer (`visibility` and the like). */
+  readonly layout = new Map<string, Record<string, unknown>>();
+  setLayoutProperty(id: string, name: string, value: unknown): void {
+    this.layout.set(id, { ...this.layout.get(id), [name]: value });
   }
   getCanvas(): HTMLCanvasElement {
     return this.canvas;
@@ -142,6 +144,18 @@ function start() {
   map.fire('load');
   return { el, store, ctl, map };
 }
+
+describe('the 3D camera wedge', () => {
+  it('is hidden on the map unless asked for', () => {
+    const { ctl, map } = start();
+    for (const id of ['aio-view3d-fill', 'aio-view3d-line'])
+      expect(map.layout.get(id)?.visibility).toBe('none');
+    ctl.setCameraWedge(true);
+    for (const id of ['aio-view3d-fill', 'aio-view3d-line'])
+      expect(map.layout.get(id)?.visibility).toBe('visible');
+    ctl.dispose();
+  });
+});
 
 describe('map controller dispose (T8 soak: maps kept alive after a project closed)', () => {
   it('removes the map and lets go of the workspace, the 3D view and its container', () => {

@@ -123,7 +123,7 @@ export interface MapController {
   /** Show only these issues (null: all). */
   setIssueFilter(only: ReadonlySet<string> | null): void;
   setIssueColor(by: IssueColorBy): void;
-  /** Show the 3D camera's view wedge (default on). */
+  /** Show the 3D camera's view wedge (default off). */
   setCameraWedge(on: boolean): void;
   /**
    * A one-shot point pick (placing a walk on the map): the next click on the map reports its
@@ -951,7 +951,7 @@ export function createMapController(
   }
 
   // ----- issues -----
-  let wedge = true;
+  let wedge = false;
   function applyWedge(): void {
     for (const id of ['aio-view3d-fill', 'aio-view3d-line'])
       if (map.getLayer(id)) map.setLayoutProperty(id, 'visibility', wedge ? 'visible' : 'none');

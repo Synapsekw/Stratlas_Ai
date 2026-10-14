@@ -168,7 +168,6 @@ export function CompareMap({
           store={store}
           primary={false}
           onController={onMap}
-          cameraWedge={false}
         />
       </div>
       <ChangeLegends store={store} />
