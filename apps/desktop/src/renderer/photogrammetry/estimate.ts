@@ -11,19 +11,19 @@ export const PRESETS: readonly {
     id: 'fast',
     label: 'Quick',
     hint: 'A quick photo map and surface, for flat sites.',
-    detail: 'Photos at a quarter of their size; the surface comes from the matched points only.',
+    detail: 'Orthophoto and elevation from the matched points; no 3D model. The fastest.',
   },
   {
     id: 'standard',
     label: 'Standard',
     hint: 'Maps, point cloud and 3D model for most surveys and inspections.',
-    detail: 'Photos at half size; depth from every photo.',
+    detail: 'A dense point cloud at medium quality.',
   },
   {
     id: 'high',
     label: 'High',
     hint: 'Close-range inspection and fine detail. Much slower.',
-    detail: 'Photos at full size.',
+    detail: 'A dense point cloud at high quality and the finest features. The slowest.',
   },
 ];
 
@@ -48,6 +48,14 @@ export const PRODUCTS: readonly { id: PhotoProduct; label: string; hint: string 
 /** The products a preset makes unless the person changes them. */
 export function defaultProducts(preset: PhotoPreset): PhotoProduct[] {
   return preset === 'fast' ? ['ortho', 'dsm'] : ['ortho', 'dsm', 'dtm', 'cloud', 'mesh'];
+}
+
+/** Quick builds no 3D model, so a Quick run never carries a mesh or 3D Tiles. */
+export function productsFor(
+  preset: PhotoPreset,
+  products: readonly PhotoProduct[],
+): PhotoProduct[] {
+  return preset === 'fast' ? products.filter((p) => p !== 'mesh' && p !== 'tiles') : [...products];
 }
 
 /** "About 30 to 60 min", "About 3 to 6 h", "About 1 to 2 days". */

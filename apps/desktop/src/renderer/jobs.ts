@@ -654,18 +654,9 @@ export const FORMS: Record<PipelineName, Field[]> = {
       kind: 'select',
       options: [
         { value: '', label: "The run's own" },
-        { value: 'fast', label: 'Fast (no dense matching)' },
-        { value: 'standard', label: 'Standard (half-size photos)' },
-        { value: 'high', label: 'High (full-size photos)' },
-      ],
-    },
-    {
-      key: 'dense',
-      label: 'Dense matching',
-      kind: 'select',
-      options: [
-        { value: '', label: 'Automatic' },
-        { value: 'cpu', label: 'Processor (CPU)' },
+        { value: 'fast', label: 'Fast (no 3D model)' },
+        { value: 'standard', label: 'Standard' },
+        { value: 'high', label: 'High (slowest)' },
       ],
     },
     { key: 'gsdCm', label: 'Ortho pixel (cm)', kind: 'number', placeholder: 'From the photos' },

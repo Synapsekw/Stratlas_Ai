@@ -1,19 +1,19 @@
-import type { HardwareProbe, PhotoPreset } from '@aio/schema';
+import type { HardwareProbe } from '@aio/schema';
 import { formatBytes } from './estimate';
 
-/** The first version of the processing tools that turns photos into maps (pack 0.4.0, M10). */
-const TOOLS_VERSION = '0.4.0';
+/** The first version of the processing tools that turns photos into maps (pack 0.8.0, ODM). */
+const TOOLS_VERSION = '0.8.0';
 
 /**
  * Whether this computer can create maps from photos. When it cannot: a title and one sentence in
  * plain words, and `fix` names what puts it right (`tools`: install or update the processing
- * tools; null: nothing on this computer does).
+ * tools; `engine`: install ODM in Settings; null: nothing on this computer does).
  */
 export interface ProcessingVerdict {
   ok: boolean;
   title: string;
   text: string;
-  fix: 'tools' | null;
+  fix: 'tools' | 'engine' | null;
 }
 
 export function processingLine(p: HardwareProbe): ProcessingVerdict {
@@ -39,28 +39,31 @@ export function processingLine(p: HardwareProbe): ProcessingVerdict {
         text: `The processing tools on this computer are too old to create maps from photos. Update them to version ${TOOLS_VERSION} or later.`,
         fix: 'tools',
       };
+    case 'no-engine':
+      return {
+        ok: false,
+        title: 'Install the processing engine first',
+        text: 'Creating maps from photos uses ODM, the processing engine. Install it once in Settings, Processing tools (a 234 MB download).',
+        fix: 'engine',
+      };
     case 'unsupported-platform':
       return {
         ok: false,
         title: 'This computer cannot create maps from photos',
-        text: 'Creating maps from photos runs on Windows x64 and on Macs with Apple silicon. This computer can open the results.',
+        text: 'Creating maps from photos runs on Windows x64. This computer can open the results.',
         fix: null,
       };
   }
 }
 
-/**
- * What does the work, as quiet detail: "NVIDIA GeForce RTX 4070: used for High" when the pack's
- * CUDA build is present, else the processor. Graphics card acceleration does not exist yet
- * (ADR 0008 decision 5), so its absence is information, never something the person missed.
- */
-export function gpuLine(p: HardwareProbe, preset: PhotoPreset): string {
+/** What does the work, as quiet detail: the NVIDIA card when ODM can use it, else the processor. */
+export function gpuLine(p: HardwareProbe): string {
   const nvidia = p.gpus.find((g) => g.vendor === 'NVIDIA' || /nvidia/i.test(g.name));
-  const vram = (g: { vramBytes?: number | undefined }) =>
-    g.vramBytes ? `, ${formatBytes(g.vramBytes)}` : '';
   if (p.cuda && nvidia)
-    return `${nvidia.name}${vram(nvidia)}: ${preset === 'high' ? 'used for High' : 'used for High only'}`;
-  return 'Runs on the processor. Graphics card acceleration is not available yet.';
+    return p.engine?.gpu === 'off'
+      ? `${nvidia.name}: switched off in Settings; processing uses the CPU`
+      : `${nvidia.name}: used for processing`;
+  return 'No NVIDIA graphics card found; processing uses the CPU';
 }
 
 /** "Synthetic 8-core CPU, 8 cores, 32 GB memory, 512 GB free". */

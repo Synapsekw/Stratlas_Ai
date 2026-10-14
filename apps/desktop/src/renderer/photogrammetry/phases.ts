@@ -41,18 +41,14 @@ const ORDER: readonly PhaseId[] = ['read', 'match', 'control', 'map', 'model', '
 /** The phase each stage of the photo pipelines belongs to; a stage not listed joins its job's. */
 const PHASE_OF_STAGE: Readonly<Record<string, PhaseId>> = {
   inspect: 'read',
-  features: 'match',
-  match: 'match',
   sfm: 'match',
   georef: 'match',
   report: 'match',
   adjust: 'control',
   prepare: 'map',
   dense: 'map',
-  fuse: 'map',
   cloud: 'map',
   dsm: 'map',
-  dtm: 'map',
   ortho: 'map',
   mesh: 'model',
   texture: 'model',

@@ -10,6 +10,8 @@ export interface EngineView {
   tone: 'ok' | 'warn' | 'plain';
   title: MessageKey;
   detail: string | null;
+  /** A problem the installed engine still works with (for example dense matching on the CPU). */
+  warning: string | null;
   hardware: string;
   gpuOn: boolean;
   gpuDisabled: boolean;
@@ -68,6 +70,7 @@ export function processingEngineView(
       tone: 'plain',
       title: 'tools.looking',
       detail: null,
+      warning: null,
       hardware: '',
       gpuOn: false,
       gpuDisabled: true,
@@ -110,6 +113,10 @@ export function processingEngineView(
     tone: TONE[state],
     title: TITLE[state],
     detail,
+    warning:
+      (state === 'installed' || state === 'update-available') && status.problem
+        ? status.problem
+        : null,
     hardware,
     gpuOn: usable && status.gpu.setting === 'auto',
     gpuDisabled: !usable,

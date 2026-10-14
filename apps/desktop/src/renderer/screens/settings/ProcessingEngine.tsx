@@ -237,6 +237,13 @@ export function ProcessingEngine() {
         .
       </p>
 
+      {view.warning && (
+        <div className="notice warn" role="status" data-testid="engine-warning">
+          <Icon name="warn" size={14} />
+          <span>{view.warning}</span>
+        </div>
+      )}
+
       {view.detail && (
         <p className="help pe-detail" data-testid="engine-detail">
           {view.detail}

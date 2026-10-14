@@ -6,6 +6,7 @@
 import type { JobRecord, PhotoPreset, PhotoProduct, PipelineName } from '@aio/schema';
 import { createStore, useStore } from 'zustand';
 import type { WizardInitial } from './startOver';
+import { productsFor } from './estimate';
 
 export type RunTab = 'progress' | 'gcp' | 'report' | 'poses';
 
@@ -95,7 +96,7 @@ export const photoUi = createStore<PhotoUi>()((set) => ({
   setPending: (run, p) => {
     set((s) => {
       const pending = Object.fromEntries(Object.entries(s.pending).filter(([k]) => k !== run));
-      if (p) pending[run] = p;
+      if (p) pending[run] = { ...p, products: productsFor(p.preset, p.products) };
       return { pending };
     });
   },
@@ -172,20 +173,16 @@ export function jobsOfRun(jobs: readonly JobRecord[], root: string, run: string)
 /** Stage titles in the words of the progress view (the pipeline's own titles win). */
 export const STAGE_WORDS: Readonly<Record<string, string>> = {
   inspect: 'Read photos',
-  features: 'Find features',
-  match: 'Match photos',
-  sfm: 'Place cameras',
-  georef: 'Georeference',
-  adjust: 'Adjust with control',
+  sfm: 'Align the photos (ODM)',
+  georef: 'Place the model',
+  adjust: 'Adjust with ground control (ODM)',
   report: 'Report',
-  dense: 'Depth maps',
-  fuse: 'Fuse points',
+  dense: 'Dense point cloud',
   cloud: 'Point cloud',
-  dsm: 'Surface model',
-  dtm: 'Terrain model',
-  ortho: 'Orthomosaic',
-  mesh: 'Mesh',
-  texture: 'Texture',
+  dsm: 'Elevation models',
+  ortho: 'Orthophoto',
+  mesh: '3D mesh',
+  texture: 'Texture the mesh',
   tiles: '3D Tiles',
   commit: 'Add layers',
 };

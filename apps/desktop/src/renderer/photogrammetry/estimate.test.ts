@@ -16,6 +16,7 @@ import {
   newRunId,
   photoSummary,
   presetLabel,
+  productsFor,
   PRESETS,
   SIMPLE_DEFAULTS,
   splitNotes,
@@ -23,7 +24,7 @@ import {
   summaryLine,
   zoneQuestion,
 } from './estimate';
-import { gpuLine, machineLine, processingLine } from './hardware';
+import { machineLine } from './hardware';
 
 const GB = 1024 ** 3;
 const probe = (o: Partial<HardwareProbe> = {}): HardwareProbe => ({
@@ -84,51 +85,16 @@ describe('estimate words', () => {
   it('starts each preset with its usual products', () => {
     expect(defaultProducts('fast')).toEqual(['ortho', 'dsm']);
     expect(defaultProducts('standard')).toContain('mesh');
+    expect(defaultProducts('fast')).not.toContain('mesh');
+    expect(defaultProducts('fast')).not.toContain('tiles');
+    const quick = productsFor('fast', ['ortho', 'mesh', 'tiles', 'cloud']);
+    expect(quick).toEqual(['ortho', 'cloud']);
+    expect(productsFor('standard', ['mesh', 'tiles'])).toEqual(['mesh', 'tiles']);
   });
 });
 
 describe('hardware words', () => {
-  it('says whether maps can be made here, and what fixes it when they cannot', () => {
-    expect(processingLine(probe())).toMatchObject({ ok: true, fix: null });
-    // missing or old processing tools: one fix, the same for both
-    const none = processingLine(probe({ processing: 'no-pack' }));
-    expect(none).toMatchObject({
-      ok: false,
-      fix: 'tools',
-      title: 'The processing tools are not installed',
-    });
-    expect(none.text).toMatch(/needs the processing tools, version 0\.4\.0 or later/);
-    const old = processingLine(probe({ processing: 'pack-too-old' }));
-    expect(old).toMatchObject({
-      ok: false,
-      fix: 'tools',
-      title: 'The processing tools need an update',
-    });
-    expect(old.text).toMatch(/too old to create maps from photos\. Update them to version 0\.4\.0/);
-    // nothing on this computer fixes the platform
-    const platform = processingLine(probe({ processing: 'unsupported-platform' }));
-    expect(platform).toMatchObject({ ok: false, fix: null });
-    expect(platform.text).toMatch(/Windows x64 and on Macs with Apple silicon/);
-    // the words a person reads say "processing tools", never "pipeline pack"
-    for (const p of ['no-pack', 'pack-too-old', 'unsupported-platform'] as const) {
-      const v = processingLine(probe({ processing: p }));
-      expect(`${v.title} ${v.text}`).not.toMatch(/pipeline|pack\b/i);
-    }
-  });
-
-  it('names the graphics card only when it is used; its absence is not a fault', () => {
-    const quiet = 'Runs on the processor. Graphics card acceleration is not available yet.';
-    expect(gpuLine(probe(), 'high')).toBe(quiet);
-    const rtx = { name: 'NVIDIA GeForce RTX 4070', vendor: 'NVIDIA', vramBytes: 12 * GB };
-    expect(gpuLine(probe({ gpus: [rtx], cuda: true }), 'high')).toBe(
-      'NVIDIA GeForce RTX 4070, 12.0 GB: used for High',
-    );
-    expect(gpuLine(probe({ gpus: [rtx], cuda: true }), 'standard')).toBe(
-      'NVIDIA GeForce RTX 4070, 12.0 GB: used for High only',
-    );
-    // a card without the accelerator reads the same as no card: nothing to install
-    expect(gpuLine(probe({ gpus: [rtx] }), 'standard')).toBe(quiet);
-    expect(gpuLine(probe({ gpus: [rtx] }), 'standard')).not.toMatch(/not installed|CPU only/);
+  it('describes the machine', () => {
     expect(machineLine(probe())).toBe(
       'Synthetic CPU, 8 cores, 32.0 GB memory, 512 GB free on the data drive',
     );

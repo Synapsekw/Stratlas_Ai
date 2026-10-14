@@ -25,7 +25,7 @@ function job(
   };
 }
 
-const ALIGN = ['inspect', 'features', 'match', 'sfm', 'georef', 'report'];
+const ALIGN = ['inspect', 'sfm', 'georef', 'report'];
 const align = (states: JobStep['state'][], status: JobRecord['status'], progress = 0) =>
   job(
     'photo.align',
@@ -33,7 +33,7 @@ const align = (states: JobStep['state'][], status: JobRecord['status'], progress
     ALIGN.map((n, i) => step(n, states[i] ?? 'pending')),
     { progress },
   );
-const allDone: JobStep['state'][] = ['done', 'done', 'done', 'done', 'done', 'done'];
+const allDone: JobStep['state'][] = ['done', 'done', 'done', 'done'];
 
 describe('one phase from its stages', () => {
   it('follows the stages in it', () => {
@@ -86,7 +86,7 @@ describe('a run as one list of phases', () => {
       [
         step('prepare', 'done'),
         step('dense', 'done'),
-        step('fuse', 'done'),
+        step('cloud', 'done'),
         step('ortho', 'done'),
         step('mesh', 'running'),
         step('texture', 'pending'),

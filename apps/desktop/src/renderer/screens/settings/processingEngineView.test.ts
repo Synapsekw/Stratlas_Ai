@@ -90,6 +90,19 @@ describe('the Processing engine card', () => {
     expect(processingEngineView(null, null, false).state).toBe('loading');
   });
 
+  it('shows a problem as a warning while installed or update-available', () => {
+    const problem = 'The GPU stub could not be renamed; dense matching will use the CPU.';
+    const ok = processingEngineView({ ...base, state: 'installed', problem }, null, false);
+    expect(ok.warning).toBe(problem);
+    expect(ok.detail).toBeNull();
+    const up = processingEngineView({ ...base, state: 'update-available', problem }, null, false);
+    expect(up.warning).toBe(problem);
+    expect(processingEngineView({ ...base, state: 'installed' }, null, false).warning).toBeNull();
+    expect(
+      processingEngineView({ ...base, state: 'broken', problem }, null, false).warning,
+    ).toBeNull();
+  });
+
   it('update, broken, no card, switched off, development', () => {
     expect(
       processingEngineView({ ...base, state: 'update-available', version: '3.5.6' }, null, false)

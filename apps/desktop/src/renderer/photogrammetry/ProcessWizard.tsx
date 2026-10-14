@@ -47,7 +47,9 @@ import {
   suggestedEpsg,
   summaryLine,
   zoneQuestion,
+  productsFor,
 } from './estimate';
+import { openProcessingEngine } from '../odm';
 import { gpuLine, machineLine, processingLine } from './hardware';
 import { openProcessingTools } from '../processingTools';
 import { replaceAfterStart, startOverLine, type Gnss, type OldRunPlan } from './startOver';
@@ -227,7 +229,12 @@ export function ProcessWizard() {
     if (!photos || !project || !ready) return;
     let live = true;
     void bridge
-      .call('photo:estimate', { projectId: project.id, photos, preset, products })
+      .call('photo:estimate', {
+        projectId: project.id,
+        photos,
+        preset,
+        products: productsFor(preset, products),
+      })
       .then((r) => {
         if (!live) return;
         if (!r.ok) setError(r.error);
@@ -322,6 +329,7 @@ export function ProcessWizard() {
     setPreset(p);
     setProducts(defaultProducts(p));
   };
+  const noModel = preset === 'fast';
   const addFolders = (paths: readonly string[]) => {
     if (!paths.length) return;
     setKind('folders');
@@ -372,7 +380,13 @@ export function ProcessWizard() {
     const date = pickParams(pick);
     // kept for every run: a cancelled run that is resumed later still builds its maps under it
     ui.setDate(run, date);
-    if (!gcpFirst) ui.setPending(run, { root: project.root, preset, products, ...date });
+    if (!gcpFirst)
+      ui.setPending(run, {
+        root: project.root,
+        preset,
+        products: productsFor(preset, products),
+        ...date,
+      });
     // the new run opens now (unless the dialog was closed meanwhile); its panel shows the note
     if (photoUi.getState().view?.kind === 'wizard') ui.openRun(run, 'progress');
     // the old run goes only now that the new one started (never on Cancel or a refused start),
@@ -491,6 +505,16 @@ export function ProcessWizard() {
               <h3>{blocked.title}</h3>
               <p>{blocked.text}</p>
               <div className="ph-acts">
+                {blocked.fix === 'engine' && (
+                  <button
+                    type="button"
+                    className="btn primary"
+                    data-testid="photo-fix"
+                    onClick={openProcessingEngine}
+                  >
+                    Install the processing engine
+                  </button>
+                )}
                 {blocked.fix === 'tools' && (
                   <button
                     type="button"
@@ -765,6 +789,7 @@ export function ProcessWizard() {
                         <input
                           type="checkbox"
                           checked={products.includes(p.id)}
+                          disabled={noModel && (p.id === 'mesh' || p.id === 'tiles')}
                           onChange={(e) => {
                             setProducts((x) =>
                               e.target.checked
@@ -781,6 +806,7 @@ export function ProcessWizard() {
                         </span>
                       </label>
                     ))}
+                    {noModel && <p className="small faint">Quick makes no 3D model.</p>}
                   </fieldset>
 
                   <div className="b-field">
@@ -902,7 +928,7 @@ export function ProcessWizard() {
                     )}
                     {probe && (
                       <p className="small faint" data-testid="photo-gpu">
-                        {gpuLine(probe, preset)}
+                        {gpuLine(probe)}
                       </p>
                     )}
                     {estimate && memoryNote(estimate) && (
