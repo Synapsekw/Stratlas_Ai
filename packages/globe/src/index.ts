@@ -107,6 +107,7 @@ export {
   headingPitch,
   padBounds,
   siteToGlobe,
+  wholeEarthDistance,
   type Bounds,
   type GlobeCamera,
   type SiteCamera,

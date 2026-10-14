@@ -12,6 +12,15 @@ import { GlobeController, type GlobeHover, type GlobePick } from './controller';
 import type { GlobeTier } from './setup';
 import type { SiteOutputs } from './siteOutputs';
 
+/** The middle of the opening view without any site: the Old World, as **Show all sites** has it. */
+const HOME_CENTRE: readonly [number, number] = [40, 15];
+
+/** The place the opening view is centred over: the middle of the sites' box. */
+function middleOf(sites: readonly GlobeSite[]): readonly [number, number] {
+  const box = sitesBounds(sites);
+  return box ? [(box[0] + box[2]) / 2, (box[1] + box[3]) / 2] : HOME_CENTRE;
+}
+
 export interface GlobeIssuePins {
   projectId: string;
   georef: SiteGeoref;
@@ -46,8 +55,11 @@ export interface GlobeViewProps {
    * (bottom first). Kept stable between renders: a new array is a new set to draw.
    */
   outputs: readonly SiteOutputs[];
-  /** Where to start: a remembered camera, a site to fly to, or every site. */
-  start: { camera: GlobeCamera } | { site: readonly [number, number] } | null;
+  /**
+   * Where to start: a remembered camera, or the whole Earth centred over a place (a site), or
+   * with nothing given over the middle of the sites (or the Globe's own middle without any).
+   */
+  start: { camera: GlobeCamera } | { centre: readonly [number, number] } | null;
   reducedMotion: () => boolean;
   onPick: (pick: GlobePick | null) => void;
   /**
@@ -67,7 +79,7 @@ export interface GlobeViewProps {
   cardPick?: GlobePick | null;
   /**
    * The room the screen's own controls take at each edge: the card stays clear of it, and so do
-   * the chips of the sites a flight frames (the opening view, every site, a gathered chip's).
+   * the chips of the sites a flight frames (every site, a gathered chip's).
    */
   cardInsets?: Insets;
   /** The words on the chip of sites that gathered, in the app's language. */
@@ -153,14 +165,7 @@ export function GlobeView(props: GlobeViewProps) {
       setCtl(c);
       const start = latest.current.start;
       if (start && 'camera' in start) c.setCamera(start.camera);
-      else if (start && 'site' in start) void c.flyToSite(start.site);
-      else {
-        // the opening view frames the sites' chips, clear of the screen's controls: the Globe
-        // has to know both before it flies (the effects below hand them over again, to no effect)
-        c.setCardInsets(latest.current.cardInsets ?? null);
-        c.setSites(latest.current.sites);
-        c.flyHome(sitesBounds(latest.current.sites));
-      }
+      else c.showWholeEarth(start ? start.centre : middleOf(latest.current.sites));
       latest.current.onReady?.(c);
     });
     return () => {

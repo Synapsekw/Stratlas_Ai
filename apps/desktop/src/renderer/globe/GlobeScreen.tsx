@@ -66,7 +66,7 @@ const CESIUM_BASE = new URL('cesium/', document.baseURI).href;
 /**
  * The room the screen's own pieces take at each edge: the card of a pin keeps clear of the top
  * row, the view buttons at the right and the credits, and so do the chips of the sites a flight
- * frames (the opening view, **Show all sites**, a click on a gathered chip).
+ * frames (**Show all sites**, a click on a gathered chip).
  */
 const CARD_INSETS: Insets = { top: 56, right: 56, bottom: 44, left: 12 };
 
@@ -80,16 +80,17 @@ let handedTo: string | null = null;
 
 /**
  * Where the Globe starts: the camera it was left at when the same project is still open (or none
- * is), else the open project's site, else the camera it was left at, else its own default.
+ * is), else the whole Earth centred over the open project's site, else the camera it was left
+ * at, else the whole Earth over the middle of the sites (the Globe's own default).
  */
 function startOf(
   projectId: string | null,
   sites: readonly GlobeSite[],
-): { camera: GlobeCamera } | { site: GlobeSite['lonLat'] } | null {
+): { camera: GlobeCamera } | { centre: GlobeSite['lonLat'] } | null {
   const last = lastCamera;
   if (last?.projectId === projectId) return { camera: last.camera };
   const own = projectId === null ? undefined : sites.find((s) => s.projectId === projectId);
-  if (own) return { site: own.lonLat };
+  if (own) return { centre: own.lonLat };
   return last ? { camera: last.camera } : null;
 }
 

@@ -529,7 +529,7 @@ describe('the Globe screen', () => {
     expect(globe.props?.cardInsets).toBe(insets);
   });
 
-  it('starts at the open project site once another project is open, and at the remembered camera for the same one', async () => {
+  it('starts on the whole Earth over the open project site once another project is open, and at the remembered camera for the same one', async () => {
     const camera = { position: [1, 2, 3], direction: [0, 0, -1] } as unknown as GlobeCamera;
     app.project = QUARRY_PROJECT;
     await mount();
@@ -541,11 +541,11 @@ describe('the Globe screen', () => {
     expect(globe.props?.start).toEqual({ camera });
     act(() => root?.unmount());
     root = undefined;
-    // another project: its own site
+    // another project: the whole Earth centred over its own site
     app.project = { ...QUARRY_PROJECT, id: 'yard' };
     app.sites = [QUARRY, { ...YARD, lonLat: [20, 60] }];
     await mount();
-    expect(globe.props?.start).toEqual({ site: [20, 60] });
+    expect(globe.props?.start).toEqual({ centre: [20, 60] });
   });
 });
 

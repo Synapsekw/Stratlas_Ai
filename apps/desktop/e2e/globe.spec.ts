@@ -10,7 +10,13 @@
  * are a dialog behind the **Map** button: the tests reach a site and a look the way a person does.
  */
 import { utmToWgs84 } from '@aio/geo';
-import { CHIP, enuToEcefMatrix } from '@aio/globe';
+import {
+  CHIP,
+  enuToEcefMatrix,
+  headingPitch,
+  WHOLE_EARTH_HEIGHT_M,
+  type GlobeCamera,
+} from '@aio/globe';
 import type { GlobeStyle } from '@aio/globe';
 import type { GlobeInspection } from '@aio/globe/view';
 import {
@@ -600,6 +606,37 @@ async function flyToSite(win: Page, name: string) {
   await settle(win, `the flight to ${name} ended`, (s) => !s.flying && s.cameraHeight < 5000);
 }
 
+/**
+ * Show every site (the view button) and wait for the flight to end: the Globe opens on the whole
+ * Earth, where the chips of nearby sites gather, so a test about chips starts from here.
+ */
+async function showAllSites(win: Page) {
+  await settle(win, 'the Globe stood still', (s) => !s.flying);
+  const from = (await inspect(win))?.cameraHeight ?? 0;
+  await win.getByRole('button', { name: 'Show all sites' }).click();
+  await settle(
+    win,
+    'the flight to every site ended',
+    (s) => !s.flying && Math.abs(s.cameraHeight - from) > 1000,
+  );
+}
+
+/** The Globe shows the whole Earth, looking straight down at it. */
+async function expectWholeEarth(win: Page, when: string) {
+  await settle(
+    win,
+    `the whole Earth in view (${when})`,
+    (s) => !s.flying && s.cameraHeight >= WHOLE_EARTH_HEIGHT_M,
+  );
+  const cam = await win.evaluate(() => {
+    const el = document.querySelector('[data-testid="globe-canvas"]');
+    const c = (el as { __aioGlobe?: { camera(): GlobeCamera } } | null)?.__aioGlobe;
+    return c?.camera() ?? null;
+  });
+  if (!cam) throw new Error(`no Globe camera (${when})`);
+  expect(headingPitch(cam).pitch, `the camera looks straight down (${when})`).toBeLessThan(-89);
+}
+
 /** Open the Map dialog (the Map button at the top right), unless it is open; the dialog. */
 async function openMap(win: Page) {
   const menu = win.getByTestId('globe-map-menu');
@@ -1012,8 +1049,8 @@ test('street packs draw as the street map of the Globe, offline under the app CS
 
 test('a site lights up under the pointer and when it is selected', async ({ win }) => {
   await openGlobe(win);
-  // the chips stand still once the opening flight ends; site A has one of its own
-  await settle(win, 'the opening flight ended', (s) => !s.flying);
+  // the chips stand still once the flight to every site ends; site A has one of its own
+  await showAllSites(win);
   await standAlone(win, SITE_A);
   // The dot of the chip is the site: at the site's own place the chip is drawn in the amber of
   // a site with an open issue.
@@ -1074,7 +1111,7 @@ test('a site lights up under the pointer and when it is selected', async ({ win 
 
 test('chips that overlap gather into one, at any heading, and part again', async ({ win }) => {
   await openGlobe(win);
-  await settle(win, 'the opening flight ended', (s) => !s.flying);
+  await showAllSites(win);
   // the tiny project and site A lie some 250 km apart, site B far to the south-west of both
   const pair = [TINY_PROJECT_ID, SITE_A.id];
   /** The one chip drawn for both of them (and for whatever else it took in), if there is one. */
@@ -1361,10 +1398,11 @@ test.describe('with a long-named site at the east end of the library', () => {
     await writeGlobeProject(dataRoot, SITE_EAST, []);
   });
 
-  test('the opening view and Show all sites show every chip whole, clear of the controls', async ({
+  test('the Globe opens on the whole Earth; Show all sites shows every chip whole, clear of the controls', async ({
     win,
   }) => {
     await openGlobe(win);
+    await expectWholeEarth(win, 'the opening view');
     const everySite = [TINY_PROJECT_ID, SITE_A.id, SITE_B.id, SITE_EAST.id].sort();
     /** The view shows every site, each chip (its own or a gathered one) whole and in the clear. */
     const expectFramed = async (when: string) => {
@@ -1384,7 +1422,9 @@ test.describe('with a long-named site at the east end of the library', () => {
       await expectDotAtPin(win, SITE_EAST, mint);
       return chips;
     };
-    await expectFramed('the opening view');
+    // from the whole Earth, Show all sites frames them
+    await showAllSites(win);
+    await expectFramed('Show all sites from the whole Earth');
 
     // from near one site, Show all sites frames them the same way
     await flyToSite(win, SITE_A.name);
@@ -1450,7 +1490,8 @@ test.describe('with sites too near each other to tell apart from far out', () =>
 
   test('one click on the chip of two sites 150 m apart parts them', async ({ win }) => {
     await openGlobe(win);
-    await settle(win, 'the opening flight ended', (s) => !s.flying && s.sites.length === 7);
+    await settle(win, 'the Globe placed every site', (s) => s.sites.length === 7);
+    await showAllSites(win);
     const pair = [NEAR_EAST, NEAR_WEST];
     await clickChipOfBoth(win, pair);
     // one flight, to a few hundred metres above the two
@@ -1487,7 +1528,8 @@ test.describe('with sites too near each other to tell apart from far out', () =>
     win,
   }) => {
     await openGlobe(win);
-    await settle(win, 'the opening flight ended', (s) => !s.flying && s.sites.length === 7);
+    await settle(win, 'the Globe placed every site', (s) => s.sites.length === 7);
+    await showAllSites(win);
     const twins = [TWIN_ONE, TWIN_TWO];
     await clickChipOfBoth(win, twins);
     // The flight ends over them and they still stand as one chip: the field lists exactly the

@@ -3,11 +3,12 @@
  * tileset and a customer-licensed imagery pack installed over its site is shared as a package.
  * The export dialog offers the imagery pack unticked with its licence reminder (and not a terrain
  * pack far away); ticked, the pack travels cut to the site, beside the run's records and reports,
- * never its work files. On another machine with no pack installed, the player's Globe flies to
- * the package's site and draws the imagery from inside the package; processing stays closed and
+ * never its work files. On another machine with no pack installed, the player's Globe opens on
+ * the whole Earth over the package's site and, flown there, draws the imagery from inside the package; processing stays closed and
  * nothing is written. Synthetic data only; the zero-network guard runs on both apps.
  */
 import { utmToWgs84 } from '@aio/geo';
+import { headingPitch, WHOLE_EARTH_HEIGHT_M, type GlobeCamera } from '@aio/globe';
 import type { GlobeInspection } from '@aio/globe/view';
 import { pmtilesOf, solidPng, syntheticPackMeta } from '@aio/globe/testing';
 import { openZip } from '@aio/project/package';
@@ -206,6 +207,16 @@ async function openGlobe(win: Page) {
   await settle(win, 'the Globe placed the sites', (s) => s.sites.length > 0);
 }
 
+/** The pitch of the Globe's camera, degrees (-90 looks straight down); null without a Globe. */
+const cameraPitch = async (win: Page) => {
+  const cam = await win.evaluate(() => {
+    const el = document.querySelector('[data-testid="globe-canvas"]');
+    const c = (el as { __aioGlobe?: { camera(): GlobeCamera } } | null)?.__aioGlobe;
+    return c?.camera() ?? null;
+  });
+  return cam ? headingPitch(cam).pitch : null;
+};
+
 /** Where a site's pin is drawn and the canvas size, in CSS pixels; null when not on screen. */
 const pinOf = (win: Page, projectId: string) =>
   win.evaluate((id) => {
@@ -313,18 +324,37 @@ test('a processed project travels as a package with its ticked imagery; the play
       timeout: 60_000,
     });
 
-    // the Globe flies to the package's site, not where it was left
+    // the Globe opens on the whole Earth centred over the package's site, not where it was left
     await openGlobe(pw);
     await settle(
       pw,
-      "the flight to the package's site ended",
-      (s) => !s.flying && s.cameraHeight < 5000 && s.sites.includes(PACKAGE_ID),
+      "the whole Earth over the package's site",
+      (s) => !s.flying && s.cameraHeight >= WHOLE_EARTH_HEIGHT_M && s.sites.includes(PACKAGE_ID),
     );
+    expect(await cameraPitch(pw), 'the camera looks straight down').toBeLessThan(-89);
     const pin = await pinOf(pw, PACKAGE_ID);
     expect(pin, 'the package site is on screen').not.toBeNull();
     if (pin) {
-      expect(Math.abs(pin.at[0] - pin.width / 2)).toBeLessThan(pin.width * 0.2);
-      expect(Math.abs(pin.at[1] - pin.height / 2)).toBeLessThan(pin.height * 0.2);
+      expect(Math.abs(pin.at[0] - pin.width / 2)).toBeLessThan(pin.width * 0.05);
+      expect(Math.abs(pin.at[1] - pin.height / 2)).toBeLessThan(pin.height * 0.05);
+    }
+    // picked in the field, the site is flown to (its card closed again to keep the view clear)
+    {
+      await pw.getByRole('combobox', { name: 'Find a site' }).click();
+      const sites = pw.getByTestId('globe-sites');
+      await sites
+        .getByRole('option', { name: new RegExp(SITE.name.replace(/[()]/g, '\\$&')) })
+        .click();
+      await expect(sites).toHaveCount(0);
+      const card = pw.getByTestId('globe-card');
+      await expect(card).toContainText(SITE.name);
+      await settle(
+        pw,
+        "the flight to the package's site ended",
+        (s) => !s.flying && s.cameraHeight < 5000,
+      );
+      await card.getByRole('button', { name: 'Close' }).click();
+      await expect(card).toHaveCount(0);
     }
 
     // the imagery menu lists the package's pack (listed under its package id)

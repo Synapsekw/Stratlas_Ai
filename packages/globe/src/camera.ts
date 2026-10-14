@@ -80,8 +80,8 @@ const MIN_FRAME_SPAN_DEG = 0.01;
 
 /**
  * The least the box of a click on a gathered chip spans, degrees of latitude: some 55 m, so that
- * sites a stone's throw apart are flown to by their own span and part. (By the kilometre of the
- * opening view they would land less than a chip apart and gather again.)
+ * sites a stone's throw apart are flown to by their own span and part. (By the kilometre a flight
+ * to one site has they would land less than a chip apart and gather again.)
  */
 export const PARTING_SPAN_DEG = 0.0005;
 
@@ -255,4 +255,24 @@ export function padBounds(
   }
   // (the rounds ran out with room still missing)
   return around ? plain : box;
+}
+
+// ---------------------------------------------------------------- the whole Earth
+
+/** The Earth's equatorial radius, metres (WGS84): its disc is no wider than this from afar. */
+const EARTH_RADIUS_M = 6378137;
+
+/**
+ * How far from the Earth's centre the camera stands, looking straight down, for the whole disc
+ * of the Earth to fit the view with `margin` of it left free at the tighter side (the opening
+ * view of the Globe). `fovDeg` is the view's angle along its longer side, as CesiumJS has it.
+ */
+export function wholeEarthDistance(view: ViewSize, fovDeg = 60, margin = 0.1): number {
+  const tan = Math.tan((fovDeg / 2) * RAD);
+  const longer = Math.max(view.width, view.height, 1);
+  const shorter = Math.max(Math.min(view.width, view.height), 1);
+  // the tangent of the half angle along the shorter side, less the margin
+  const fit = ((tan * shorter) / longer) * (1 - margin);
+  // the disc's edge is seen at asin(R / d) from the middle, whose tangent is R / sqrt(d² - R²)
+  return EARTH_RADIUS_M * Math.sqrt(1 + 1 / (fit * fit));
 }

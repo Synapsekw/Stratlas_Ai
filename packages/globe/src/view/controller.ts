@@ -46,6 +46,7 @@ import {
   padBounds,
   PARTING_SPAN_DEG,
   siteToGlobe,
+  wholeEarthDistance,
   type Bounds,
   type GlobeCamera,
   type PadOptions,
@@ -1375,6 +1376,27 @@ export class GlobeController {
       duration: this.duration(1.8),
       easingFunction: EasingFunction.QUINTIC_IN_OUT,
     });
+  }
+
+  /**
+   * The whole Earth in view, centred over `lonLat`: straight down, north up, just far enough out
+   * for the disc to fit the view with a margin (the opening view). A jump, not a flight.
+   */
+  showWholeEarth(lonLat: readonly [number, number]): void {
+    this.touch();
+    const { clientWidth: width, clientHeight: height } = this.scene.canvas;
+    const frustum = this.scene.camera.frustum;
+    const fov = frustum instanceof PerspectiveFrustum ? frustum.fov : undefined;
+    const distance = wholeEarthDistance(
+      { width, height },
+      fov === undefined ? undefined : CMath.toDegrees(fov),
+    );
+    this.scene.camera.setView({
+      // above the ellipsoid by the distance less the radius it was worked out with
+      destination: Cartesian3.fromDegrees(lonLat[0], lonLat[1], distance - 6378137),
+      orientation: { heading: 0, pitch: CMath.toRadians(-90), roll: 0 },
+    });
+    this.scene.requestRender();
   }
 
   /**
