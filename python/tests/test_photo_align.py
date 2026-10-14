@@ -2,6 +2,7 @@
 
 import json
 import os
+import re
 import sys
 import threading
 import time
@@ -10,12 +11,20 @@ from pathlib import Path
 import numpy as np
 import pytest
 
+import odm_synth
 from aio_pipelines.photo import align as A
-from aio_pipelines.photo.model import qvec_to_rotmat
+from aio_pipelines.photo.model import Camera, Image, SparseModel, project_points, qvec_to_rotmat
 from aio_pipelines.photo.odm import runner as R
 from aio_pipelines.runtime import INPUTS_CHANGED, Cancelled, JobError
-from conftest import run_job
-from photo_g2_synth import make_scene, synthetic_jpeg, write_scene_photos
+from conftest import offset_latlon, run_job
+from photo_g2_synth import (
+    SITE_LAT,
+    SITE_LON,
+    make_scene,
+    synthetic_jpeg,
+    write_gcp_files,
+    write_scene_photos,
+)
 
 FAKE = Path(__file__).parent / "fake_odm"
 
@@ -136,6 +145,114 @@ def test_parameters_are_checked():
     assert (
         p.validate({"photos": {"folders": ["x"]}, "preset": "fast", "mapper": "global"})["mapper"] == "global"
     )
+
+
+def _text(base: Path) -> str:
+    return "\n".join(
+        (base / rel).read_text() for rel in ("run.json", "report/align.json", "report/accuracy.json")
+    )
+
+
+def test_ignored_gnss_is_said_plainly_and_no_nan_is_written(odm, project, photo_mini):
+    result, _ = run_job(A.PhotoAlign(), project, _params(photo_mini.photos, gnss="ignore"))
+    assert result["status"] == "done"
+    base = project / "photogrammetry" / "r1"
+    rows = (base / "odm" / "geo.txt").read_text().splitlines()[1:]
+    assert rows and all(r.endswith(" 50.000 50.000") for r in rows)  # a loose guide only
+    assert not re.search(r"\bnan\b", _text(base), re.IGNORECASE)
+    align = json.loads((base / "report" / "align.json").read_text())
+    assert any(w.startswith("GNSS was ignored") for w in align["warnings"])
+
+
+def _scene_model(scene) -> SparseModel:
+    m = SparseModel()
+    m.cameras[1] = scene.camera
+    for i, (name, r, c) in enumerate(zip(scene.names, scene.rotations, scene.centres, strict=True)):
+        m.images[i + 1] = Image(i + 1, name, 1, r, -r @ c)
+    m.set_points(range(1, len(scene.points) + 1), scene.points, np.full((len(scene.points), 3), 128))
+    return m
+
+
+def test_gcp_marks_are_predicted_on_odms_poses(odm, project, tmp_path):
+    scene = make_scene(rows=4, cols=6, points=3000)
+    folder = tmp_path / "flight"
+    write_scene_photos(scene, folder, rtk=True)
+    path = write_gcp_files(scene, project, "r1", noise_px=0.0)
+    # ODM's reconstruction is the truth (in the scene's own ENU frame, not the run's)
+    links = {name: f"{i:05d}.jpg" for i, name in enumerate(sorted(scene.names))}
+    recs, reference = odm_synth.opensfm_from_model(_scene_model(scene), scene.enu, links)
+    fake = project / "photogrammetry" / "r1" / "odm" / ".fake"
+    fake.mkdir(parents=True)
+    (fake / "truth.json").write_text(json.dumps({**recs[0], "bias": [0, 0, 0], "reference": reference}))
+    run_job(A.PhotoAlign(), project, _params(folder))
+    gcp = json.loads(path.read_text())
+    cam, seen = scene.camera, 0
+    for g in scene.gcps:
+        predicted = {q["photo"]: q for q in next(p for p in gcp["points"] if p["id"] == g.id)["predicted"]}
+        for i, name in enumerate(scene.names):
+            uv, z = project_points(cam, scene.rotations[i], scene.centres[i], g.enu[None])
+            x, y = uv[0]
+            if not (z[0] > 0 and 60 <= x < cam.width - 60 and 60 <= y < cam.height - 60):
+                continue
+            assert name in predicted, (g.id, name)
+            off = float(np.hypot(predicted[name]["px"][0] - x, predicted[name]["px"][1] - y))
+            assert off < 2.0, (g.id, name, off)
+            seen += 1
+    assert seen > 10
+
+
+def test_camera_ids_follow_our_camera_groups():
+    def cam(cid, w):
+        return Camera(cid, "RADIAL", w, 100, [100.0, w / 2, 50.0, 0.0, 0.0])
+
+    m = SparseModel()
+    m.cameras = {1: cam(1, 300), 2: cam(2, 200)}  # ODM met the 300 px camera first
+    eye = np.eye(3)
+    m.images = {1: Image(1, "b.jpg", 1, eye, [0, 0, 0]), 2: Image(2, "a.jpg", 2, eye, [1, 0, 0])}
+    A.group_cameras(m, {"a.jpg": 1, "b.jpg": 2})  # our group 1 is the 200 px camera
+    assert m.cameras[1].width == 200 and m.cameras[2].width == 300
+    assert {im.name: im.camera_id for im in m.images.values()} == {"a.jpg": 1, "b.jpg": 2}
+    assert all(c.id == cid for cid, c in m.cameras.items())
+
+
+def test_the_same_file_name_in_two_folders_stays_two_photos(odm, project, tmp_path):
+    folders = [tmp_path / "flight" / "100MEDIA", tmp_path / "flight" / "101MEDIA"]
+    for f, folder in enumerate(folders):
+        for k in range(3):
+            lat, lon = offset_latlon(SITE_LAT, SITE_LON, 20.0 * k, 20.0 * f)
+            synthetic_jpeg(folder / f"DJI_000{k + 1}.JPG", lat=lat, lon=lon, time=f"2026:01:02 10:0{f}:0{k}")
+    params = {"photos": {"folders": [str(f) for f in folders]}, "preset": "standard", "run": "r1"}
+    result, _ = run_job(A.PhotoAlign(), project, params)
+    assert result["status"] == "done"
+    base = project / "photogrammetry" / "r1"
+    keys = set(json.loads((base / "odm" / "names.json").read_text()).values())
+    assert {"100MEDIA/DJI_0001.JPG", "101MEDIA/DJI_0001.JPG"} <= keys and len(keys) == 6
+    assert set(json.loads((base / "sparse" / "photos.json").read_text())["photos"]) == keys
+    assert json.loads((base / "report" / "align.json").read_text())["images"]["registered"] == 6
+
+
+def test_a_changed_geo_txt_makes_odm_read_the_photos_again(odm, project, photo_mini):
+    run_job(A.PhotoAlign(), project, _params(photo_mini.photos, gnss="standard"))
+    odm_dir = project / "photogrammetry" / "r1" / "odm"
+    rec = odm_dir / "opensfm" / "reconstruction.json"
+    (odm_dir / "images.json").write_text("[]")  # ODM's photo database from the first run
+    before = rec.stat().st_mtime_ns
+    run_job(A.PhotoAlign(), project, _params(photo_mini.photos, gnss="standard"), job_id="j2")
+    assert (odm_dir / "images.json").exists() and rec.stat().st_mtime_ns == before  # nothing changed
+    run_job(A.PhotoAlign(), project, _params(photo_mini.photos, gnss="rtk"), job_id="j3")
+    assert not (odm_dir / "images.json").exists() and rec.stat().st_mtime_ns != before
+
+
+def test_a_geo_txt_with_no_rows_is_not_left_from_an_earlier_attempt(odm, project, tmp_path):
+    folder = tmp_path / "f"
+    for k in range(3):
+        synthetic_jpeg(folder / f"IMG_000{k}.JPG", lat=None, lon=None, time=f"2026:01:02 10:00:0{k}")
+    stale = project / "photogrammetry" / "r1" / "odm" / "geo.txt"
+    stale.parent.mkdir(parents=True)
+    stale.write_text("EPSG:4326\n00000.jpg 51 25 100 nan nan nan 1 1\n")
+    with pytest.raises(JobError):  # nothing to place the photos by; the run needs a CRS
+        run_job(A.PhotoAlign(), project, _params(folder, gnss="rtk", crs={"epsg": 32639}))
+    assert not stale.exists()
 
 
 # ------------------------------------------------------------------------------- kept from the old engine

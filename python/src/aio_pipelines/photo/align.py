@@ -43,6 +43,7 @@ import re
 import shutil
 import sys
 import time
+from dataclasses import replace
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -523,6 +524,21 @@ def grid_to_enu_model(model: SparseModel, enu: C.EnuFrame, grid: C.GridFrame) ->
     return m
 
 
+def group_cameras(model: SparseModel, group_of: dict[str, int]) -> None:
+    """Number ODM's cameras by our camera groups (``cam<id>`` in run.json, align.json and
+    cameras-sfm.json name the same lens), in place. Left as ODM numbered them when its cameras
+    and our groups are not one to one."""
+    ours: dict[int, set[int]] = {}
+    for im in model.images.values():
+        ours.setdefault(im.camera_id, set()).add(group_of.get(im.name, 0))
+    new = {cid: next(iter(g)) for cid, g in ours.items() if len(g) == 1}
+    if len(new) != len(model.cameras) or 0 in new.values() or len(set(new.values())) != len(new):
+        return
+    model.cameras = {new[cid]: replace(cam, id=new[cid]) for cid, cam in model.cameras.items()}
+    for im in model.images.values():
+        im.camera_id = new[im.camera_id]
+
+
 def _convert_model(m: SparseModel, conv) -> None:
     convert_model(m, conv)
 
@@ -704,10 +720,20 @@ class PhotoAlign:
                 f"{copies} photos were copied into the ODM project (a link was not possible, e.g. another drive)."
             )
         geo = odm_dir / "geo.txt"
-        if needs_geo(ok, H, params):
-            OP.write_geo(odm_dir, geo_rows(ok, H, {key: link for link, key in links.items()}, gnss))
-        elif geo.exists():  # an earlier attempt of this run wrote one; ODM reads the photos now
+        before = geo.read_bytes() if geo.is_file() else None
+        rows = (
+            geo_rows(ok, H, {key: link for link, key in links.items()}, gnss)
+            if needs_geo(ok, H, params)
+            else []
+        )
+        if not rows and geo.exists():  # from an earlier attempt of this run: ODM reads the photos now
             geo.unlink()
+        OP.write_geo(odm_dir, rows)
+        after = geo.read_bytes() if geo.is_file() else None
+        if after != before and ((odm_dir / "images.json").exists() or OP.has_alignment(odm_dir)):
+            # ODM would reuse its photo database and alignment and never read the new positions
+            OP.invalidate(odm_dir, ["images.json", *OP.GEOREF_INVALIDATE])
+            ctx.log("The photo positions changed: ODM reads the photos and aligns them again.")
         ignored = [k for k in self.IGNORED if k in params]
         if ignored:
             ctx.log(f"ODM chooses matching and mapping itself; {', '.join(ignored)} are ignored.")
@@ -788,6 +814,8 @@ class PhotoAlign:
         enu = C.EnuFrame(fr["enu"]["lon"], fr["enu"]["lat"], fr["enu"]["h"])
         odm_dir = OP.run_odm_dir(ctx.project, state["id"])
         rec = read_reconstruction(odm_dir, OP.read_names(odm_dir), enu)
+        info = json.loads(ctx.stage("work/photos.json").read_text("utf-8"))
+        group_cameras(rec.model, info["groupOf"])
         warnings: list[str] = []
         if rec.groups > 1:
             warnings.append(
@@ -835,12 +863,7 @@ class PhotoAlign:
         rejected = list(state["photos"].get("rejected") or [])
         for m in metas:
             if m.key not in registered:
-                reason = (
-                    "Could not be joined to the other photos."
-                    if m.key in geo["leftOut"]
-                    else "Not enough matches with other photos."
-                )
-                rejected.append({"name": m.key, "reason": reason})
+                rejected.append({"name": m.key, "reason": "Not enough matches with other photos."})
         grid_model = enu_to_grid_model(model, enu, grid) if geo["georeferenced"] else model
         # ODM's model carries no observations: its own statistics stand in for ours
         mean_err = float(geo["stats"]["reprojPx"] or 0.0)
@@ -878,15 +901,22 @@ class PhotoAlign:
             points, predictions, unmeasured = measure_points(model, gcp, enu, grid, cam_res)
             warnings += A.point_warnings(points, (gsd or 0) / 100) + A.unmeasured_warnings(unmeasured)
             warnings.append(A.Warning_("other", "No ground control was used in this adjustment (GNSS only)."))
-        if geo["georeferenced"] and not points:
-            sh = np.nanmedian(
-                [(m.gnss_sigma(ctx.params.get("gnss", "auto")) or (np.nan, np.nan))[0] for m in metas]
+        gnss = ctx.params.get("gnss", "auto")
+        sigmas = [s[0] for s in (m.gnss_sigma(gnss) for m in metas) if s]
+        if geo["georeferenced"] and gnss == "ignore":
+            warnings.append(
+                A.Warning_(
+                    "other",
+                    f"GNSS was ignored: ODM had the photo positions only as a rough guide "
+                    f"({IGNORED_GNSS_SIGMA_M[0]:g} m), so the model's position and heights are approximate until ground control adjusts it.",
+                )
             )
+        elif geo["georeferenced"] and not points and sigmas:
             warnings.append(
                 A.Warning_(
                     "gnss-height" if (state.get("heights") or {}).get("geoid") == "none" else "other",
-                    f"No ground control: absolute accuracy is the GNSS accuracy (about {sh:.2f} m horizontally), "
-                    "and heights follow the drone's altitude datum.",
+                    f"No ground control: absolute accuracy is the GNSS accuracy (about {float(np.median(sigmas)):.2f} m "
+                    "horizontally), and heights follow the drone's altitude datum.",
                 )
             )
         rep = A.report(
