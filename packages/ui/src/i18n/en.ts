@@ -149,6 +149,50 @@ export const en = {
   'basemap.online.tip':
     'Satellite imagery of the whole world, requested from EOX for the areas you look at',
   'basemap.online.or': 'or turn on',
+  // The Map menu (plan 2026-10-14-satellite-providers): one menu for the Map view, the Globe and
+  // the 3D scene
+  'mapMenu.title': 'Map',
+  'mapMenu.button': 'Map: {name}',
+  'mapMenu.fallback': 'Offline map',
+  'mapMenu.fallback.tip': 'The chosen map cannot be drawn now, so the offline map is shown',
+  'mapMenu.section.offline': 'Offline',
+  'mapMenu.section.satellite': 'Online satellite',
+  'mapMenu.section.mapbox': 'Mapbox styles',
+  'mapMenu.section.onTop': 'On top',
+  'mapMenu.tile.streets': 'Streets',
+  'mapMenu.tile.naturalEarth': 'Natural Earth',
+  'mapMenu.tile.esri': 'Esri',
+  'mapMenu.tile.mapboxSatellite': 'Mapbox',
+  'mapMenu.tile.sentinel': 'Sentinel-2',
+  'mapMenu.tile.mapboxStreets': 'Streets',
+  'mapMenu.tile.mapboxOutdoors': 'Outdoors',
+  'mapMenu.tile.mapboxLight': 'Light',
+  'mapMenu.tile.mapboxDark': 'Dark',
+  'mapMenu.tile.mapboxSatelliteStreets': 'Satellite streets',
+  'mapMenu.badge.needsKey': 'Key',
+  'mapMenu.badge.offline': 'Offline',
+  'mapMenu.badge.tier': 'Medium',
+  'mapMenu.reason.needsKey': 'Add a key in Map sources',
+  'mapMenu.reason.offline': 'This workstation is offline-only',
+  'mapMenu.reason.tier': 'Needs Medium graphics or higher',
+  'mapMenu.reason.noImagery': 'No imagery pack covers this site',
+  'mapMenu.reason.noTerrain': 'No terrain pack covers this site',
+  'mapMenu.reason.labelsInBase': 'This map has its own street names',
+  'mapMenu.reason.noImageryUnder': 'Shown over imagery only',
+  'mapMenu.reason.lowTier': 'Terrain is off on the Low graphics preset',
+  'mapMenu.onTop.streets': 'Street names and roads',
+  'mapMenu.onTop.hillshade': 'Terrain shading',
+  'mapMenu.onTop.packs': 'Imagery packs and orthos',
+  'mapMenu.onTop.terrain': 'Terrain',
+  'mapMenu.onTop.aroundImagery': 'Imagery packs around the site',
+  'mapMenu.onTop.aroundTerrain': 'Terrain around the site',
+  'mapMenu.onTop.issues': 'Issues of the open project',
+  'mapMenu.pack': 'Imagery pack',
+  'mapMenu.pack.best': 'Best available',
+  'mapMenu.sources': 'Map sources',
+  'mapMenu.improve': 'Improve this map',
+  'mapMenu.sources.tip': 'Online maps and their keys, in Settings',
+  'palette.mapBase': 'Map: {name}',
   'ground.imagery': 'Imagery around the site',
   'ground.imagery.tip': 'The imagery packs draped on the land around the site in 3D',
   'ground.terrain': 'Terrain around the site',
@@ -703,6 +747,7 @@ export const en = {
   'settings.page.privacy': 'Privacy and cloud',
   'settings.page.data': 'Data folder',
   'settings.page.maps': 'Offline maps',
+  'settings.page.mapSources': 'Map sources',
   'settings.page.severity': 'Severity models',
   'settings.page.appearance': 'Appearance',
   'settings.page.about': 'About and updates',
@@ -1016,6 +1061,8 @@ export const en = {
     'The project was created, but the volumetric build did not start: {error}',
 
   // Maps
+  'settings.mapSources.text':
+    'Online maps from named providers, and the keys this computer uses for them. Keys stay on this computer.',
   'settings.maps.text':
     'Vector map packs render with no network. They are shared by every project on this workstation.',
   'settings.maps.installed': '{count} · {size}',
@@ -3048,6 +3095,44 @@ export const en = {
   'g7.online.cancel': 'Cancel',
   'g7.online.credit': 'Imagery: {attribution}, CC BY 4.0.',
   'g7.online.clearCache': 'Clear cached satellite tiles ({size})',
+  // Online maps, one notice per provider (ADR 0007, amendment of 14 Oct 2026)
+  'online.notice.eox':
+    "Sentinel-2 imagery is requested from EOX's servers for the areas you look at, so the areas you view are visible to that service. Nothing else is sent. The imagery is from 2016, at about 10 m per pixel, and the tiles are kept on this computer.",
+  'online.notice.esri':
+    "Esri World Imagery is requested from Esri's servers for the areas you look at, so the areas you view are visible to Esri. Nothing else is sent. The tiles are not kept on this computer.",
+  'online.notice.mapbox':
+    "Mapbox maps are requested from Mapbox's servers with your key for the areas you look at, so the areas you view are visible to Mapbox. Nothing else is sent. The tiles are not kept on this computer.",
+  'online.confirm': 'Switch on',
+  'online.cancel': 'Cancel',
+  // Settings, Map sources
+  'mapSources.master': 'Online maps',
+  'mapSources.master.help':
+    'Off by default. When on, the Map menu offers the online maps below in the Map view, the Globe and the 3D scene. The tiles for the areas you look at are requested from that provider.',
+  'mapSources.offlineOnly':
+    'This workstation is offline-only, so online maps cannot be switched on. Turn off offline-only in Privacy and cloud.',
+  'mapSources.provider.eox': 'Sentinel-2 (EOX)',
+  'mapSources.provider.esri': 'Esri World Imagery',
+  'mapSources.provider.mapbox': 'Mapbox',
+  'mapSources.status.keyless': 'Works without a key',
+  'mapSources.status.noKey': 'No key',
+  'mapSources.status.saved': 'Key saved',
+  'mapSources.key': '{provider} key',
+  'mapSources.key.placeholder': 'Paste the key',
+  'mapSources.save': 'Save key',
+  'mapSources.test': 'Test',
+  'mapSources.remove': 'Remove',
+  'mapSources.checking': 'Checking the key with one tile',
+  'mapSources.tested': 'The key works.',
+  'mapSources.saved': 'The key is saved on this computer.',
+  'mapSources.removed': 'The key is removed from this computer.',
+  'mapSources.terms.eox':
+    'Sentinel-2 cloudless 2016 by EOX, CC BY 4.0. No key and no cost. Tiles are kept on this computer, up to 300 MB.',
+  'mapSources.terms.esri':
+    'Works without a key. A key from an ArcGIS Location Platform account uses that account and its free monthly allowance. Tiles are not kept on this computer.',
+  'mapSources.terms.mapbox':
+    'Mapbox Satellite and the Mapbox styles. Needs a public access token from a Mapbox account; requests beyond the free monthly allowance are billed to that account. Tiles are not kept on this computer.',
+  'mapSources.clear': 'Clear saved satellite tiles ({size})',
+  'mapSources.credit': 'Credit: {attribution}',
   // Align camera to map, Align photo to map, the drone and photo right-click menus
   'align.direction.title': 'Align camera to map',
   'align.direction.cancel': 'Cancel',
