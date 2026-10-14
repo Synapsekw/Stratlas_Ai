@@ -254,6 +254,64 @@ def test_an_e57_is_copied_to_las_first_without_reprojection(tmp_path, monkeypatc
     assert writer.calls[0]["las"] == prep["dst"]
 
 
+@pytest.mark.parametrize("error", [JobError("untwine failed: disk error"), Cancelled()])
+def test_the_intermediate_las_goes_when_the_build_fails_or_is_cancelled(tmp_path, monkeypatch, error):
+    def failing_writer(ctx, las, out, points, epsg, temp, budget, progress=(0.3, 0.95)):
+        assert las.is_file()
+        raise error
+
+    src, _, prepared = fake_cloud(tmp_path, monkeypatch, WGS84, writer=failing_writer)
+    root = project(tmp_path)
+    with pytest.raises(type(error)):
+        run_job(PointcloudToCopc(), root, {"src": str(src), "epsg": 32639})
+    (prep,) = prepared
+    assert not prep["dst"].exists()
+
+
+def test_disk_needed_counts_the_las_untwine_and_the_copc():
+    from aio_pipelines.pointcloud import COPC_BYTES_PER_POINT, UNTWINE_TEMP_BYTES_PER_POINT, disk_needed
+
+    per = UNTWINE_TEMP_BYTES_PER_POINT + COPC_BYTES_PER_POINT
+    assert disk_needed(1000, 36) == 1000 * (36 + per)
+    assert disk_needed(1000, None) == 1000 * per
+    # the 243 M point case reprojected: well over 30 GB
+    assert disk_needed(243_537_742, 36) > 30 * 1024**3
+
+
+def test_a_full_drive_is_refused_before_any_work_with_both_numbers(tmp_path, monkeypatch):
+    import shutil
+    from collections import namedtuple
+
+    usage = namedtuple("usage", "total used free")
+    monkeypatch.setattr(shutil, "disk_usage", lambda p: usage(100 * 1024**3, 99 * 1024**3, 1024**3))
+    src, writer, prepared = fake_cloud(tmp_path, monkeypatch, WGS84, points=243_537_742)
+    root = project(tmp_path)
+    with pytest.raises(JobError) as e:
+        run_job(PointcloudToCopc(), root, {"src": str(src), "epsg": 32639})
+    msg = str(e.value)
+    assert msg.startswith("Importing this point cloud needs about ")
+    assert "which has 1.0 GB" in msg and "Creating these products" not in msg
+    assert prepared == [] and writer.calls == []
+
+
+def test_without_untwine_a_too_large_cloud_is_refused_in_import_words(tmp_path, monkeypatch):
+    import shutil
+    from collections import namedtuple
+
+    from aio_pipelines.photo.cloud_out import write_copc
+    from aio_pipelines.pointcloud import TOO_BIG_WITHOUT_UNTWINE
+
+    usage = namedtuple("usage", "total used free")
+    monkeypatch.setattr(shutil, "disk_usage", lambda p: usage(10 * 1024**4, 0, 10 * 1024**4))
+    src, _, _ = fake_cloud(
+        tmp_path, monkeypatch, UTM39, points=1_000_000_000, untwine=False, writer=write_copc
+    )
+    root = project(tmp_path)
+    with pytest.raises(JobError) as e:
+        run_job(PointcloudToCopc(), root, {"src": str(src), "epsg": 32639})
+    assert str(e.value) == TOO_BIG_WITHOUT_UNTWINE
+
+
 def running(rec):
     return [p for p in rec.of("progress") if p.get("step") == "convert" and p.get("state") == "running"]
 

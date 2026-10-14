@@ -44,6 +44,15 @@ BUILDING = "Building the viewable cloud"
 #: The convert step's progress: reading the header, then the reprojection (when needed), then the
 #: COPC build up to the end.
 READ_END, PREPARE_END, BUILD_END = 0.02, 0.35, 0.99
+#: untwine's temporary folder, bytes a point (photo.cloud_out measured about 92).
+UNTWINE_TEMP_BYTES_PER_POINT = 92
+#: A COPC (LAZ) file, bytes a point, generously (colour and classes compress to about 10).
+COPC_BYTES_PER_POINT = 16
+#: An intermediate LAS whose record length the source cannot tell (E57, PLY): point format 7.
+DEFAULT_RECORD = 36
+TOO_BIG_WITHOUT_UNTWINE = (
+    "This point cloud is too large to convert without untwine. Install pipeline pack 0.6.1 or later."
+)
 
 
 def find_pdal() -> str | None:
@@ -232,7 +241,28 @@ def prepare_las(
     finally:
         pipe.unlink(missing_ok=True)
     if not dst.is_file():
-        raise JobError("PDAL finished without writing the reprojected cloud.")
+        raise JobError("PDAL finished without writing the intermediate LAS file.")
+
+
+def disk_needed(points: int, record: int | None) -> int:
+    """Bytes the conversion holds on the staging drive at once: the intermediate LAS when there
+    is one (``record`` bytes a point), untwine's temporary files and the COPC itself."""
+    return points * ((record or 0) + UNTWINE_TEMP_BYTES_PER_POINT + COPC_BYTES_PER_POINT)
+
+
+def check_space(folder: Path, needed: int) -> None:
+    """Refuse up front, with both numbers, when the staging drive cannot hold the conversion."""
+    from .photo import native
+
+    try:
+        native.check_disk(folder, needed)
+    except JobError:
+        free = shutil.disk_usage(folder).free
+        drive = Path(folder).resolve().anchor.rstrip("\\/") or str(folder)
+        raise JobError(
+            f"Importing this point cloud needs about {needed / 1024**3:.1f} GB free on {drive}, "
+            f"which has {free / 1024**3:.1f} GB. Free some space or move the project to a larger drive."
+        ) from None
 
 
 class _BuildProgress:
@@ -320,8 +350,11 @@ class PointcloudToCopc:
             las, start = src, READ_END
             prepared: Path | None = None
             staged = ctx.stage("cloud.copc.laz")
+            needs_las = bool(reproject) or src.suffix.lower() not in LAS_EXTENSIONS
+            record = (las_record_length(src) or DEFAULT_RECORD) if needs_las else None
+            check_space(ctx.staging, disk_needed(count, record))
             try:
-                if reproject or src.suffix.lower() not in LAS_EXTENSIONS:
+                if needs_las:
                     prepared = ctx.stage("source.las")
                     prepare_las(ctx, pdal, src, prepared, reproject, count, (READ_END, PREPARE_END))
                     las, start = prepared, PREPARE_END
@@ -337,6 +370,12 @@ class PointcloudToCopc:
                     native.memory_budget(),
                     progress=(start, BUILD_END),
                 )
+            except JobError as e:
+                # the shared writer's refusal of PDAL over the memory budget speaks of photo
+                # products; an import says it in its own words
+                if "memory budget" in str(e) and "untwine" in str(e):
+                    raise JobError(TOO_BIG_WITHOUT_UNTWINE) from None
+                raise
             finally:
                 if prepared is not None:
                     prepared.unlink(missing_ok=True)  # as big as the cloud: never keep it
