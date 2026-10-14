@@ -10,6 +10,7 @@ import {
 } from '@aio/schema';
 import { mkdir, mkdtemp, readdir, readFile, rm, stat, utimes, writeFile } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
+import type * as FsPromises from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -28,6 +29,19 @@ import { ONLINE_SATELLITE_HOST } from './onlineUpstream';
 import { createAioHandler } from './protocol/handler';
 import { createOnlineSettingsStore, onlineSettingsPath } from './onlineSettings';
 import { createSettingsStore, defaultSettings } from './settings';
+
+/** Writes to disk wait for `held` while a test sets it: a slow disk, as on a busy CI runner. */
+const disk = vi.hoisted(() => ({ held: null as Promise<void> | null }));
+vi.mock('node:fs/promises', async (importOriginal) => {
+  const real = await importOriginal<typeof FsPromises>();
+  return {
+    ...real,
+    writeFile: async (...a: Parameters<typeof real.writeFile>) => {
+      if (disk.held) await disk.held;
+      return real.writeFile(...a);
+    },
+  };
+});
 
 /** A JPEG as far as the cache checks one: the SOI marker and `size` bytes in all. */
 const jpeg = (size = 64, fill = 7) => {
@@ -78,7 +92,9 @@ beforeEach(async () => {
 });
 
 afterEach(async () => {
-  await rm(dir, { recursive: true, force: true });
+  disk.held = null;
+  // retries too: Windows can still hold a just-closed file for a moment
+  await rm(dir, { recursive: true, force: true, maxRetries: 5, retryDelay: 50 });
 });
 
 function service(fetch: TileFetch | null, extra: Partial<OnlineTilesOptions> = {}) {
@@ -519,6 +535,31 @@ describe('when the service fails', () => {
     await expect.poll(() => open.length).toBe(2); // the service is back: the rest go together
     for (const ok of open.splice(0)) ok(await tile()());
     expect((await all).map((r) => r.status)).toEqual([200, 200, 200]);
+  });
+
+  it('a slow cache write does not hold back the tiles waiting for the service', async () => {
+    const { fetch, state } = recorder(down);
+    const s = service(fetch, { concurrency: 4 });
+    await ask(s, `${ID}/3/4/2.jpg`);
+    clock += BACKOFF_BASE_MS;
+    const open: ((r: Response) => void)[] = [];
+    state.answer = () =>
+      new Promise<Response>((ok) => {
+        open.push(ok);
+      });
+    let write: () => void = () => undefined;
+    disk.held = new Promise<void>((ok) => {
+      write = ok;
+    });
+    const all = Promise.all([0, 1, 2].map((y) => ask(s, `${ID}/3/0/${String(y)}.jpg`)));
+    await expect.poll(() => open.length).toBe(1);
+    open.shift()?.(await tile()());
+    // the probe's tile is still being written: the service answered, so the rest go at once
+    await expect.poll(() => open.length).toBe(2);
+    for (const ok of open.splice(0)) ok(await tile()());
+    write();
+    expect((await all).map((r) => r.status)).toEqual([200, 200, 200]);
+    for (const y of [0, 1, 2]) expect(existsSync(cacheFile(3, 0, y))).toBe(true);
   });
 
   it('gives up the tiles that were waiting when it fails', async () => {

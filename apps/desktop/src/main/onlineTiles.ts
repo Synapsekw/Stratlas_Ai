@@ -462,14 +462,24 @@ export function createOnlineTiles(o: OnlineTilesOptions): OnlineTiles {
       l.missing.set(w.key, now() + MISSING_TTL_MS);
       return 'missing';
     }
-    if (source.diskCache) {
+    return { data: r.data, type: r.type };
+  }
+
+  /**
+   * Keeps a tile the service sent, on disk or in memory. Called once the request's slot is free:
+   * a slow disk must not hold back the tiles waiting for the service, least of all the ones a
+   * probe after a failure lets go.
+   */
+  async function keep(w: Waiting, got: Got): Promise<Got> {
+    if (typeof got === 'string') return got;
+    if (onlineSource(w.tile.id)?.diskCache) {
       // `w.key` names the tile, never the upstream address
-      if (isJpeg(r.data))
-        await store.put(diskKey(w.tile), r.data).catch((e: unknown) => {
+      if (isJpeg(got.data))
+        await store.put(diskKey(w.tile), got.data).catch((e: unknown) => {
           console.warn(`Online tile ${w.key} was not cached: ${String(e)}`);
         });
-    } else memory.put(w.key, { data: r.data, type: r.type });
-    return { data: r.data, type: r.type };
+    } else memory.put(w.key, got);
+    return got;
   }
 
   function pump(fetchTile: TileFetch): void {
@@ -486,11 +496,14 @@ export function createOnlineTiles(o: OnlineTilesOptions): OnlineTiles {
       void run(fetchTile, w)
         .catch((): Refusal => 'backoff')
         .then((r) => {
+          // the service has answered: its slot goes to the next tile before this one is kept
           active -= 1;
           activeBy.set(w.tile.id, (activeBy.get(w.tile.id) ?? 1) - 1);
-          w.done(r);
           pump(fetchTile);
-        });
+          return keep(w, r);
+        })
+        .catch((): Refusal => 'backoff')
+        .then(w.done);
     }
   }
 
