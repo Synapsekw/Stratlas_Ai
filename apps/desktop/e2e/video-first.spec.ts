@@ -12,9 +12,9 @@ import { cameraQuatFromGimbal, fromWgs84 } from '@aio/geo';
 import { ProjectManifest, SCHEMA_VERSION, type ProjectManifestInput } from '@aio/schema';
 import { mkdir, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
-import { pathToFileURL } from 'node:url';
 import { pmtilesArchive, tilesOver } from '../src/main/testing';
 import { expect, test as base, type DataRoot } from './fixtures';
+import { tinyMp4 } from './tinyVideo';
 
 const ID = 'e2e-video-first';
 const NAME = 'E2E video first';
@@ -60,17 +60,6 @@ function legacyHeadings(pos: readonly V3[], t: readonly number[]): number[] {
     out.push(last);
   }
   return out;
-}
-
-/** A tiny real MP4 (two 32 x 32 frames) from the demo's own H.264 writer. */
-async function tinyMp4(): Promise<Buffer> {
-  const url = pathToFileURL(join(import.meta.dirname, '../../../tools/demo/h264.mjs')).href;
-  const h264 = (await import(url)) as {
-    encodeH264Pcm(frames: Uint8Array[], w: number, h: number): unknown;
-    muxMp4(enc: unknown, o: { fps: number }): Buffer;
-  };
-  const frame = () => new Uint8Array(32 * 32 * 3).fill(96);
-  return h264.muxMp4(h264.encodeH264Pcm([frame(), frame()], 32, 32), { fps: 2 });
 }
 
 async function writeProject(data: DataRoot): Promise<void> {

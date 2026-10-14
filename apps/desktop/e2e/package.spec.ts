@@ -185,10 +185,11 @@ test.describe('@realdata HCl as a customer package', () => {
         await fh.close();
         expect(range.head).toEqual([...src]);
 
-        // Play a clip from the timeline, then seek it far into the clip.
+        // Pick a clip on the timeline and play it, then seek it far into the clip.
         const bar = win.locator('.seg-c[title^="Flight 101"]').first();
         await expect(bar).toBeVisible();
         await bar.click();
+        await win.getByRole('button', { name: 'Play', exact: true }).click();
         const video = win.locator('[data-video-window] video');
         await expect
           .poll(() => video.evaluate((v: HTMLVideoElement) => v.currentTime), {

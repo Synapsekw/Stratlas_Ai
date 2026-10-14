@@ -76,14 +76,14 @@ test('open a project, drive the shell and keep the sidebar state', async () => {
     await tree.getByRole('button', { name: 'Hide Plant model' }).click();
     await expect(tree.getByRole('button', { name: 'Show Plant model' })).toBeVisible();
 
-    // Timeline: the first clip is active and the clock sits at its start.
-    await expect(win.getByTestId('timecode')).toContainText('09:00:00');
+    // Timeline: the first clip is active and the clock sits at its start (site time, UTC+3).
+    await expect(win.getByTestId('timecode')).toContainText('12:00:00');
     // Pause once the clock has moved, however slowly this machine draws frames.
     await win.getByRole('button', { name: 'Play', exact: true }).click();
-    await expect(win.getByTestId('timecode')).not.toContainText('09:00:00.00');
+    await expect(win.getByTestId('timecode')).not.toContainText('12:00:00.00');
     await win.getByRole('button', { name: 'Pause', exact: true }).click();
     await expect(win.getByRole('button', { name: 'Play', exact: true })).toBeVisible();
-    await expect(win.getByTestId('timecode')).not.toContainText('09:00:00.00');
+    await expect(win.getByTestId('timecode')).not.toContainText('12:00:00.00');
 
     // Ctrl+B collapses the sidebar and persists through settings.
     await win.keyboard.press('Control+B');
