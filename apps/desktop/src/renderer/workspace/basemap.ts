@@ -1,12 +1,11 @@
 /**
- * What the map of a project draws under its layers, and what the map type picker offers
- * (`BasemapPicker.tsx`): the dark street map alone, the installed imagery packs with the streets
- * and names over them (Satellite), or the imagery alone (Satellite only), plus relief shading from
- * a terrain pack. All of it comes from packs on this computer, with one exception the person
- * switches on: online satellite (Sentinel-2, `ONLINE_SATELLITE`; ADR 0007 amended 10 Oct 2026),
- * which main streams and which then counts as imagery everywhere, under the packs.
+ * What the map of a project draws under its layers: the base map chosen in the Map menu
+ * (`MapMenus.tsx`; the street map, an online source, or what 0.11's map type showed), the
+ * installed imagery packs on top of it, relief shading from a terrain pack and the streets and
+ * names over imagery. An online source is drawn only when main can serve it (`drawnBase`);
+ * otherwise the saved Sentinel-2 tiles or the street map take its place.
  *
- * One model for the picker, the Settings checkboxes, the command palette and the map itself
+ * One model for the Map menu, the Settings checkboxes, the command palette and the map itself
  * (`useSatelliteMap`), so they cannot disagree: a choice that has no pack to draw from is not
  * offered, and the map then shows the streets whatever was chosen before.
  */
@@ -14,21 +13,14 @@ import { frameProjection, orderPacks, packCovers } from '@aio/maps';
 import {
   DEFAULT_ONLINE_SOURCE,
   isOnlineBase,
-  onlineSatelliteAvailability,
   onlineSource,
   type BaseMapId,
   type MapKeysStatus,
-  type OnlineSatelliteAvailability,
   type OnlineSourceId,
   type ProjectManifest,
   type RasterPackInfo,
 } from '@aio/schema';
 import { drawnBase } from '../maps/mapMenuModel';
-
-export type Basemap = 'streets' | 'satellite' | 'imagery';
-
-/** In the order the picker shows them. */
-export const BASEMAPS: readonly Basemap[] = ['streets', 'satellite', 'imagery'];
 
 /** The remembered choices this model reads (`RasterPrefs` of `siteTiles.ts`). */
 export interface BasemapPrefs {
@@ -109,8 +101,6 @@ export interface BasemapDraw {
 }
 
 export interface BasemapModel {
-  /** What the map shows now. */
-  choice: Basemap;
   /**
    * Satellite and Satellite only can be chosen: an imagery pack covers the site, or online
    * satellite is switched on (it has imagery everywhere).
@@ -167,14 +157,7 @@ export function basemapModel(
   const imageryUnder = packsOn || (drawnSource?.imagery ?? false);
   // a map with its own street names hides ours; over imagery they follow the switch
   const streets = drawnSource?.labels ? false : imageryUnder ? prefs.streets : true;
-  // 0.11's map type, for the picker and the palette until they move to the Map menu (Task 12)
-  const choice: Basemap = !(prefs.satellite && satellite)
-    ? 'streets'
-    : prefs.streets
-      ? 'satellite'
-      : 'imagery';
   return {
-    choice,
     satellite,
     online: onlineOn,
     packs,
@@ -193,12 +176,6 @@ export function basemapModel(
       online: drawnSource ? drawnSource.id : null,
     },
   };
-}
-
-/** The choices to remember when a map type is picked. */
-export function basemapPatch(choice: Basemap): Partial<BasemapPrefs> {
-  if (choice === 'streets') return { satellite: false };
-  return { satellite: true, streets: choice === 'satellite' };
 }
 
 /** What the 3D view can draw around the site, and why not when it cannot. */
@@ -224,25 +201,5 @@ export function groundModel(
     imagery: site !== null && coveringPacks(imagery, site).length > 0,
     terrain: site !== null && coveringPacks(terrain, site).length > 0,
     online: offered && site !== null && online,
-  };
-}
-
-/** The Online satellite row of the picker: what it shows under each pair of switches. */
-export interface OnlineRow {
-  availability: OnlineSatelliteAvailability;
-  checked: boolean;
-  /** Offline only and not on: it cannot be switched on. Once on it can always be switched off. */
-  disabled: boolean;
-  /** The second line: what it is, why it is greyed, or that only saved tiles are drawn. */
-  note: 'detail' | 'offline' | 'saved';
-}
-
-export function onlineRow(on: boolean, offlineOnly: boolean): OnlineRow {
-  const availability = onlineSatelliteAvailability({ satellite: on, offlineOnly });
-  return {
-    availability,
-    checked: on,
-    disabled: offlineOnly && !on,
-    note: !offlineOnly ? 'detail' : on ? 'saved' : 'offline',
   };
 }

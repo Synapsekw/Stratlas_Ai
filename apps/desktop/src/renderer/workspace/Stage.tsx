@@ -125,7 +125,7 @@ import { SurveyQaMount } from '../survey/Qa';
 import { useSiteBasemapLayer, wantsSiteBasemap } from './siteBasemap';
 import { useStreetMap3d } from './streetMap3d';
 import { StreetMapTool } from './StreetMapTool';
-import { BasemapPicker } from './BasemapPicker';
+import { MapViewMenu, SceneMapMenu } from './MapMenus';
 import { useSiteTiles } from './siteTiles';
 
 const MODES: { mode: StageMode; label: string; icon: IconName; keys: string }[] = [
@@ -177,6 +177,7 @@ function ScenePane({
       <StageClassLegend view={view} />
       <CloudChangeLegend view={view} />
       <ChangeLegends />
+      {!hidden && <SceneMapMenu />}
       {corner}
     </FocusZone>
   );
@@ -879,7 +880,7 @@ export function Stage() {
                   : {})}
               />
             </div>
-            <BasemapPicker />
+            <MapViewMenu />
             {roadMap && <RoadLegend />}
             <ChangeLegends />
             {roadMap && <PciUnitCard />}

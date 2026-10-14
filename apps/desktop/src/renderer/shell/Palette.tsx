@@ -24,11 +24,11 @@ import { pickAndScanPanos } from '../panos/panos';
 import { openProcessingTools } from '../processingTools';
 import { shell, useShell } from '../shell';
 import type { Screen } from '../store';
-import { BASEMAPS, basemapPatch } from '../workspace/basemap';
 import { PATH_MODES, setPathMode, togglePaths } from '../workspace/flightPaths';
 import { updateFlightPaths } from '../workspace/pathModel';
-import { onlineSatelliteSwitch } from '../workspace/onlineSatellite';
-import { rasterPacks, useBasemap } from '../workspace/siteTiles';
+import { useMapViewMenuModel } from '../workspace/MapMenus';
+import { onlineSatelliteSwitch, pickBase } from '../workspace/onlineSatellite';
+import { rasterPacks } from '../workspace/siteTiles';
 import { toggleTelemetry } from '../workspace/telemetryPref';
 import { timeline, useTimeline } from '../workspace/timeline';
 import { toggleTimeline } from '../workspace/timelinePref';
@@ -87,8 +87,8 @@ export function Palette() {
   const rightCollapsed = useShell((s) => s.rightCollapsed);
   const surveys = useTimeline((s) => s.index);
   const lookOnly = useAnnotateReadOnly();
-  // the map type commands follow the packs on this computer: list them as the palette opens
-  const basemap = useBasemap();
+  // the map commands follow the Map menu of the Map view (packs, keys, online maps)
+  const mapMenu = useMapViewMenuModel();
   const hasProject = project !== null;
   useEffect(() => {
     if (open && hasProject) rasterPacks.getState().refresh();
@@ -240,49 +240,55 @@ export function Palette() {
           ws.flyTo({ kind: 'home' });
         }),
       );
-      // the map type, as the picker on the map offers it (a type with no pack is not listed)
+      // the base maps, as the Map menu on the map offers them (a greyed one is not listed)
       const onMap = (fn: () => void) =>
         scene(() => {
           if (shell.getState().stageMode === '3d') s.setStageMode('map');
           fn();
         });
-      for (const b of BASEMAPS) {
-        if (b !== 'streets' && !basemap.satellite) continue;
+      for (const tile of mapMenu.sections.flatMap((sec) => sec.tiles)) {
+        if (tile.state !== 'available') continue;
         list.push({
-          id: `basemap:${b}`,
-          title: t('palette.basemap', { name: t(`basemap.${b}`).toLowerCase() }),
+          id: `map:base:${tile.id}`,
+          title: t('palette.mapBase', { name: t(tile.label) }),
           group: 'Actions',
           icon: 'map',
-          keywords: ['basemap', 'map type', 'imagery', 'aerial', 'streets', 'satellite'],
-          ...(basemap.choice === b ? { hint: t('palette.basemap.current') } : {}),
+          keywords: ['basemap', 'map type', 'imagery', 'aerial', 'streets', 'satellite', tile.id],
+          ...(mapMenu.chosen === tile.id ? { hint: t('palette.basemap.current') } : {}),
           run: onMap(() => {
-            rasterPacks.getState().set(basemapPatch(b));
+            pickBase(tile.id, (b) => {
+              rasterPacks.getState().set({ mapBase: b });
+            });
+            // a first use of a provider asks first, in Settings, where the notice says what is sent
+            if (onlineSatelliteSwitch.getState().asking) s.openSettingsPage('map-sources');
           }),
         });
       }
-      if (basemap.hillshade)
+      const shade = mapMenu.onTop.find((r) => r.key === 'hillshade');
+      if (shade && !shade.disabled)
         list.push({
           id: 'basemap:hillshade',
-          title: t(basemap.hillshadeOn ? 'palette.hillshade.off' : 'palette.hillshade.on'),
+          title: t(shade.on ? 'palette.hillshade.off' : 'palette.hillshade.on'),
           group: 'Actions',
           icon: 'map',
           keywords: ['hillshade', 'relief', 'terrain', 'map type'],
           run: onMap(() => {
-            rasterPacks.getState().set({ hillshade: !basemap.hillshadeOn });
+            rasterPacks.getState().set({ hillshade: !shade.on });
           }),
         });
-      // online satellite: the same switch as the picker's row, not offered offline only. The
+      // online maps: the same switch as Settings, Map sources, not offered offline only. The
       // first time it asks first, in Settings, where the notice says what is requested.
+      const onlineOn = rasterPacks.getState().prefs.onlineSatellite;
       if (!offlineOnly)
         list.push({
           id: 'basemap:online',
-          title: t(basemap.online ? 'palette.online.off' : 'palette.online.on'),
+          title: t(onlineOn ? 'palette.online.off' : 'palette.online.on'),
           group: 'Actions',
           icon: 'globe',
           keywords: ['satellite', 'sentinel', 'imagery', 'online', 'map type', 'basemap'],
           run: () => {
-            onlineSatelliteSwitch.getState().request(!basemap.online);
-            if (onlineSatelliteSwitch.getState().asking) s.openSettings('raster-packs');
+            onlineSatelliteSwitch.getState().request(!rasterPacks.getState().prefs.onlineSatellite);
+            if (onlineSatelliteSwitch.getState().asking) s.openSettingsPage('map-sources');
           },
         });
       if (!pkg)
@@ -616,7 +622,7 @@ export function Palette() {
     surveys,
     leftCollapsed,
     rightCollapsed,
-    basemap,
+    mapMenu,
   ]);
 
   if (!open) return null;

@@ -2,11 +2,9 @@ import type { RasterPackInfo } from '@aio/schema';
 import { describe, expect, it } from 'vitest';
 import {
   basemapModel,
-  basemapPatch,
   coveringPacks,
   groundModel,
   NO_ONLINE,
-  onlineRow,
   resolveMapBase,
   siteLonLat,
   type BasemapPrefs,
@@ -70,7 +68,6 @@ describe('where the site is', () => {
 describe('the basemap of a site', () => {
   it('is the streets when no imagery pack covers the site, whatever was chosen', () => {
     const m = basemapModel(prefs(), [elsewhere], [], SITE);
-    expect(m.choice).toBe('streets');
     expect(m.satellite).toBe(false);
     expect(m.hillshade).toBe(false);
     expect(m.draw).toEqual({
@@ -85,7 +82,6 @@ describe('the basemap of a site', () => {
 
   it('Satellite draws every installed pack, so the map stays covered away from the site', () => {
     const m = basemapModel(prefs(), [world, elsewhere, here], [dem], SITE);
-    expect(m.choice).toBe('satellite');
     expect(m.packs.map((p) => p.id)).toEqual(['here', 'world']);
     expect(m.pack).toBeNull();
     expect(m.draw.imagery.map((p) => p.id)).toEqual(['world', 'elsewhere', 'here']);
@@ -95,11 +91,9 @@ describe('the basemap of a site', () => {
 
   it('Satellite only hides the streets; Streets shows them again', () => {
     const only = basemapModel(prefs({ streets: false }), [world], [], SITE);
-    expect(only.choice).toBe('imagery');
     expect(only.draw).toMatchObject({ satellite: true, streets: false });
     // the streets are never hidden without imagery under them
     const off = basemapModel(prefs({ streets: false, satellite: false }), [world], [], SITE);
-    expect(off.choice).toBe('streets');
     expect(off.draw).toMatchObject({ satellite: false, streets: true, imagery: [] });
     const none = basemapModel(prefs({ streets: false }), [], [], SITE);
     expect(none.draw.streets).toBe(true);
@@ -140,7 +134,6 @@ describe('the basemap of a site', () => {
       expect(m.satellite).toBe(true);
       expect(m.online).toBe(true);
       expect(m.packs).toEqual([]);
-      expect(m.choice).toBe('satellite');
       // a pack that does not reach the site is not drawn, online or not
       expect(m.draw).toEqual({
         imagery: [],
@@ -158,7 +151,6 @@ describe('the basemap of a site', () => {
 
     it('Satellite only keeps it and hides the streets', () => {
       const m = basemapModel(on({ streets: false }), [], [], SITE, S2);
-      expect(m.choice).toBe('imagery');
       expect(m.draw).toMatchObject({
         satellite: false,
         streets: false,
@@ -168,7 +160,6 @@ describe('the basemap of a site', () => {
 
     it('is imagery like the packs: Streets draws none of it', () => {
       const m = basemapModel(on({ satellite: false }), [here], [], SITE, S2);
-      expect(m.choice).toBe('streets');
       expect(m.satellite).toBe(true);
       expect(m.draw).toMatchObject({ satellite: false, online: null, imagery: [], streets: true });
     });
@@ -185,41 +176,6 @@ describe('the basemap of a site', () => {
       expect(m.online).toBe(false);
       expect(m.draw.online).toBeNull();
     });
-  });
-
-  it('the Online satellite row: what it is, greyed offline, or saved tiles only', () => {
-    expect(onlineRow(false, false)).toEqual({
-      availability: 'off',
-      checked: false,
-      disabled: false,
-      note: 'detail',
-    });
-    expect(onlineRow(true, false)).toEqual({
-      availability: 'online',
-      checked: true,
-      disabled: false,
-      note: 'detail',
-    });
-    // offline only: it cannot be switched on
-    expect(onlineRow(false, true)).toEqual({
-      availability: 'off',
-      checked: false,
-      disabled: true,
-      note: 'offline',
-    });
-    // already on: saved tiles still draw, and it can be switched off to hide them
-    expect(onlineRow(true, true)).toEqual({
-      availability: 'cached',
-      checked: true,
-      disabled: false,
-      note: 'saved',
-    });
-  });
-
-  it('remembers a map type as the choices the Settings checkboxes read', () => {
-    expect(basemapPatch('streets')).toEqual({ satellite: false });
-    expect(basemapPatch('satellite')).toEqual({ satellite: true, streets: true });
-    expect(basemapPatch('imagery')).toEqual({ satellite: true, streets: false });
   });
 });
 

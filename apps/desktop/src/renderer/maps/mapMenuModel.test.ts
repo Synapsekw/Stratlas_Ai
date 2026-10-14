@@ -136,6 +136,35 @@ describe('the menu of each view', () => {
     });
   });
 
+  it('below Medium a saved online base in the 3D scene falls back to the street map', () => {
+    const m = mapMenuModel(
+      'scene',
+      prefs({ base: 'mapbox-satellite' }),
+      ONLINE_SOURCES,
+      PACKS,
+      ON,
+      KEYS,
+      { aroundOffered: false },
+    );
+    expect(m).toMatchObject({
+      chosen: 'mapbox-satellite',
+      drawn: 'streets',
+      fallback: true,
+      credit: '© OpenStreetMap contributors',
+    });
+    expect(m.credit).not.toMatch(/mapbox/i);
+    // the Map view has no tier: the same choice is drawn there
+    const map = mapMenuModel(
+      'map',
+      prefs({ base: 'mapbox-satellite' }),
+      ONLINE_SOURCES,
+      PACKS,
+      ON,
+      KEYS,
+    );
+    expect(map).toMatchObject({ drawn: 'mapbox-satellite', fallback: false });
+  });
+
   it('Map view On top: street names over imagery only, shading and packs need a pack', () => {
     const streets = mapMenuModel('map', prefs(), ONLINE_SOURCES, NONE, ON, NO_KEYS);
     expect(streets.onTop.map((r) => r.key)).toEqual(['streets', 'hillshade', 'packs']);

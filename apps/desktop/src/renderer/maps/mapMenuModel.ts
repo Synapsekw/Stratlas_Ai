@@ -222,7 +222,11 @@ export function mapMenuModel(
     { id: 'mapbox', title: 'mapMenu.section.mapbox', tiles: mapbox, note: firstReason(mapbox) },
   ];
 
-  const drawn = drawnBase(prefs.base, online, keys);
+  // below Medium the 3D scene draws nothing online: a saved online base shows as the street map
+  const drawn =
+    view === 'scene' && !aroundOffered && isOnlineBase(prefs.base)
+      ? { base: 'streets' as BaseMapId, fallback: true }
+      : drawnBase(prefs.base, online, keys);
   const drawnSource = isOnlineBase(drawn.base) ? onlineSource(drawn.base) : undefined;
   const hasImagery = packs.imagery.length > 0;
   const packsOn = hasImagery && (prefs.onTop.packs ?? false);
