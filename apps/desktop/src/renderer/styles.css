@@ -1382,6 +1382,17 @@ button.chip-status:hover {
   inset-inline-start: 8px;
   z-index: 40;
 }
+.dpick {
+  position: relative;
+  display: inline-flex;
+}
+.dbar-pop {
+  inset-inline-start: 0;
+}
+.dbar-pop.up {
+  top: auto;
+  bottom: calc(100% + 4px);
+}
 .stage {
   grid-area: stage;
   position: relative;

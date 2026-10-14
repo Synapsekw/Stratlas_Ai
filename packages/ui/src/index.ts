@@ -22,6 +22,7 @@ export { generateTicks, pickTickStep, type Tick, type TickStep } from './timelin
 export { Timeline, RATES, type TimelineProps } from './timeline/Timeline';
 export * from './dates/calendarModel';
 export { Calendar, type CalendarDay } from './dates/Calendar';
+export { Popover, type PopoverProps } from './Popover';
 export * from './tree/model';
 export * from './tree/dateModel';
 export {
