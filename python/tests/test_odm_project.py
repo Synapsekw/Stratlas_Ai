@@ -41,7 +41,9 @@ def test_run_odm_dir_is_the_run_folder_when_its_path_is_safe(tmp_path, monkeypat
 
 def test_safe_paths():
     assert P.is_safe_path(Path(r"E:\Data\proj\photogrammetry\run-1\odm"))
-    assert P.is_safe_path(Path(r"E:\Stratlas Data\proj"))  # spaces work (C5)
+    assert not P.is_safe_path(
+        Path(r"E:\Stratlas Data\proj")
+    )  # a space breaks ODM's ground classification (C5)
     assert not P.is_safe_path(Path(r"E:\Média\proj"))
     assert not P.is_safe_path(Path(r"E:\a&b\proj"))
     assert P.is_safe_path(Path(r"C:\Users\RUNNER~1\AppData\Local\Temp\odm"))  # an 8.3 short name
@@ -191,3 +193,11 @@ def test_odm_path_replaces_a_dangling_junction(tmp_path):
     assert not got.exists()
     again = P.odm_path(real, work)
     assert again == got and again.is_dir()
+
+
+@pytest.mark.skipif(os.name != "nt", reason="directory junctions are Windows'")
+def test_odm_path_routes_a_path_with_a_space_through_a_junction(tmp_path):
+    real = tmp_path / "Data Folder" / "odm"
+    real.mkdir(parents=True)
+    got = P.odm_path(real, tmp_path / "work")
+    assert got != real and " " not in str(got) and got.is_dir()

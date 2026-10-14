@@ -1,7 +1,7 @@
 """The ODM project of a run: ``photogrammetry/<run>/odm/`` (ADR 0012).
 
-ODM sees only ASCII paths without cmd.exe metacharacters (C5: spaces are fine, a non-ASCII letter
-breaks OpenSfM): a run folder below any other path is reached through a directory junction under
+ODM sees only ASCII paths without cmd.exe metacharacters (C5: a space breaks ground classification,
+a non-ASCII letter breaks OpenSfM): a run folder below any other path is reached through a directory junction under
 ``AIO_ODM_WORK``. ``images/`` holds hard links to the source photos (copies when a link fails, e.g.
 across drives), named ``00000.jpg``... in photo order so names never collide; ``names.json`` maps
 them back to the photo keys. The folder lives between the jobs of a run; ``clean_intermediates``
@@ -26,7 +26,7 @@ from .. import gcp as G
 
 ODM_DIR = "odm"
 WORK_ENV = "AIO_ODM_WORK"  # a safe folder for junctions, set by the app
-SPACES_OK = True  # C5: spaces work; non-ASCII letters do not
+SPACES_OK = False  # C5 (amended): ODM's ground classification leaves a space in the path unquoted
 #: what cmd.exe treats specially; ODM's command line passes through it
 _CMD_SPECIAL = re.compile(r'[&^%!()<>|"]')
 GEOREF_INVALIDATE = (
@@ -47,8 +47,8 @@ def odm_project_dir(project: Path, run: str) -> Path:
 
 
 def is_safe_path(p: Path) -> bool:
-    """ASCII and nothing cmd.exe treats specially; spaces are fine when ``SPACES_OK`` (C5, measured).
-    A non-ASCII letter breaks OpenSfM. 8.3 short names (``C:\\Users\\RUNNER~1``) are safe."""
+    """ASCII, no space (``SPACES_OK``) and nothing cmd.exe treats specially (C5, measured).
+    A space breaks ODM's unquoted PDAL command; a non-ASCII letter breaks OpenSfM. 8.3 short names (``C:\\Users\\RUNNER~1``) are safe."""
     s = str(p)
     if not s.isascii() or _CMD_SPECIAL.search(s):
         return False
@@ -60,7 +60,7 @@ def odm_path(real: Path, work_root: Path | None) -> Path:
         return real
     if work_root is None or not is_safe_path(work_root):
         raise JobError(
-            "The project folder's path has letters ODM cannot use, and no safe working "
+            "The project folder's path has spaces or letters ODM cannot use, and no safe working "
             "folder was given. Reinstall the processing engine in Settings, Processing tools."
         )
     link = work_root / hashlib.sha1(str(real).lower().encode("utf-8")).hexdigest()[:16]
