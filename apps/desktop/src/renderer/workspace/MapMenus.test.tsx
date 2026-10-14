@@ -124,7 +124,13 @@ describe('the Map view menu', () => {
     act(() => {
       root.render(<MapViewMenu />);
     });
+    // a Mapbox style is named in full on the chip and on its tile, never just "Streets"
+    expect(q('basemap-button')?.textContent).toContain('Mapbox Streets');
+    expect(q('basemap-button')?.getAttribute('aria-label')).toBe('Map: Mapbox Streets');
     act(() => q('basemap-button')?.click());
+    expect(q('map-tile-mapbox-streets')?.getAttribute('aria-label')).toBe('Mapbox Streets');
+    expect(q('map-tile-mapbox-streets')?.textContent).toBe('Streets');
+    expect(q('map-tile-streets')?.getAttribute('aria-label')).toBe('Streets');
     act(() => q('map-menu-improve')?.click());
     expect(invoke).toHaveBeenCalledWith('onlineTiles:openFeedback', { provider: 'mapbox' });
   });

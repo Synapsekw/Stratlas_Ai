@@ -102,8 +102,9 @@ export interface BasemapDraw {
 
 export interface BasemapModel {
   /**
-   * Satellite and Satellite only can be chosen: an imagery pack covers the site, or online
-   * satellite is switched on (it has imagery everywhere).
+   * Imagery can be drawn at the site: an imagery pack covers it, or online maps are switched on
+   * (an online satellite has imagery everywhere). Place walk reads it before it turns the map to
+   * imagery for a placement.
    */
   satellite: boolean;
   /** Online maps are switched on. */
@@ -126,11 +127,10 @@ export interface BasemapModel {
 }
 
 /**
- * The basemap of a site from the remembered choices and the installed packs. Satellite draws every
- * installed imagery pack (detailed over coarse, so the map stays covered when panned away from the
- * site), or the one pack chosen; the hillshade draws the most detailed terrain pack at the site.
- * Online satellite, when switched on, is imagery too: it makes Satellite a choice at any site and
- * draws under the packs. Like them it is drawn only when the map type shows imagery.
+ * The basemap of a site from the remembered choices and the installed packs. Imagery packs on top
+ * draw every installed imagery pack (detailed over coarse, so the map stays covered when panned
+ * away from the site), or the one pack chosen; the hillshade draws the most detailed terrain pack
+ * at the site. The base map under them is the one chosen in the Map menu, when it can be drawn.
  */
 export function basemapModel(
   prefs: BasemapPrefs,

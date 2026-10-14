@@ -250,7 +250,7 @@ describe('the menu of each view', () => {
       chosen: 'mapbox-dark',
       drawn: 'streets',
       fallback: true,
-      chip: 'mapMenu.tile.mapboxDark',
+      chip: 'mapMenu.name.mapboxDark',
       chipSwatch: 'dark',
       credit: '© OpenStreetMap contributors',
     });

@@ -971,14 +971,14 @@ describe('journal service', () => {
   it('leaves channels that are not writers untouched', () => {
     const { root, userData } = setup();
     const s = service(root, userData);
-    const h: Handler<IpcChannel> = () => ({}) as never;
+    const h: Handler<IpcChannel> = () => ({});
     expect(s.journal.wrap('app:getInfo', h as Handler<'app:getInfo'>)).toBe(h);
   });
 
   it('holds project writers for the open check, never the reads a shown project makes', () => {
     const { root, userData } = setup();
     const s = service(root, userData);
-    const h: Handler<IpcChannel> = () => ({}) as never;
+    const h: Handler<IpcChannel> = () => ({});
     const waits = (c: IpcChannel) => s.journal.wrap(c, h) !== h;
     // what the renderer asks right after an open: never held up by the journal
     const reads: IpcChannel[] = [

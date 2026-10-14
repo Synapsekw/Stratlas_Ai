@@ -32,6 +32,8 @@ export type MenuSectionId = 'offline' | 'satellite' | 'mapbox';
 export interface MenuTile {
   id: BaseMapId;
   label: MessageKey;
+  /** The name where it stands alone (its accessible name): a Mapbox style in full. */
+  name: MessageKey;
   state: TileState;
   /** Why it cannot be picked (the section note shows it in full). */
   reason: MessageKey | null;
@@ -98,6 +100,7 @@ export interface MapMenuModel {
   drawn: BaseMapId;
   /** The chosen map cannot be drawn: the chip notes "Offline map". */
   fallback: boolean;
+  /** The chosen map's name, in full (a Mapbox style is "Mapbox Streets", not "Streets"). */
   chip: MessageKey;
   chipSwatch: SwatchKind;
   credit: string;
@@ -116,6 +119,20 @@ export const BASE_LABEL: Record<BaseMapId, MessageKey> = {
   'mapbox-light': 'mapMenu.tile.mapboxLight',
   'mapbox-dark': 'mapMenu.tile.mapboxDark',
   'mapbox-satellite-streets': 'mapMenu.tile.mapboxSatelliteStreets',
+};
+
+/**
+ * A base map's name where it stands alone: the chip, the palette, a tile's accessible name. Inside
+ * the Mapbox section the short label is enough; alone, "Streets" would read as the street map.
+ */
+export const BASE_NAME: Record<BaseMapId, MessageKey> = {
+  ...BASE_LABEL,
+  'mapbox-satellite': 'mapMenu.name.mapboxSatellite',
+  'mapbox-streets': 'mapMenu.name.mapboxStreets',
+  'mapbox-outdoors': 'mapMenu.name.mapboxOutdoors',
+  'mapbox-light': 'mapMenu.name.mapboxLight',
+  'mapbox-dark': 'mapMenu.name.mapboxDark',
+  'mapbox-satellite-streets': 'mapMenu.name.mapboxSatelliteStreets',
 };
 
 const SWATCH: Record<BaseMapId, SwatchKind> = {
@@ -195,6 +212,7 @@ export function mapMenuModel(
   const tile = (id: BaseMapId, state: TileState): MenuTile => ({
     id,
     label: BASE_LABEL[id],
+    name: BASE_NAME[id],
     state,
     reason: state === 'available' ? null : REASON[state],
     badge: state === 'available' ? null : BADGE[state],
@@ -311,7 +329,7 @@ export function mapMenuModel(
     chosen: prefs.base,
     drawn: drawn.base,
     fallback: drawn.fallback,
-    chip: BASE_LABEL[prefs.base],
+    chip: BASE_NAME[prefs.base],
     chipSwatch: SWATCH[prefs.base],
     credit,
   };

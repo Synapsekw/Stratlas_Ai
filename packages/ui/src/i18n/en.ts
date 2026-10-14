@@ -169,6 +169,13 @@ export const en = {
   'mapMenu.tile.mapboxLight': 'Light',
   'mapMenu.tile.mapboxDark': 'Dark',
   'mapMenu.tile.mapboxSatelliteStreets': 'Satellite streets',
+  // where one name stands alone (the chip, the palette, a tile's accessible name)
+  'mapMenu.name.mapboxSatellite': 'Mapbox Satellite',
+  'mapMenu.name.mapboxStreets': 'Mapbox Streets',
+  'mapMenu.name.mapboxOutdoors': 'Mapbox Outdoors',
+  'mapMenu.name.mapboxLight': 'Mapbox Light',
+  'mapMenu.name.mapboxDark': 'Mapbox Dark',
+  'mapMenu.name.mapboxSatelliteStreets': 'Mapbox Satellite Streets',
   'mapMenu.badge.needsKey': 'Key',
   'mapMenu.badge.offline': 'Offline',
   'mapMenu.badge.tier': 'Medium',
@@ -207,8 +214,8 @@ export const en = {
   'palette.hillshade.on': 'Turn terrain shading on the map on',
   'palette.hillshade.off': 'Turn terrain shading on the map off',
   'palette.basemap.packs': 'Import imagery and terrain packs (Settings, Offline maps)',
-  'palette.online.on': 'Turn online satellite on',
-  'palette.online.off': 'Turn online satellite off',
+  'palette.online.on': 'Turn online maps on',
+  'palette.online.off': 'Turn online maps off',
 
   // Volumes (stockpile workspace)
   'vol.baseShort.tin': 'toe TIN base',

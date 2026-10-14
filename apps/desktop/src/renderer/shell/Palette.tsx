@@ -250,7 +250,7 @@ export function Palette() {
         if (tile.state !== 'available') continue;
         list.push({
           id: `map:base:${tile.id}`,
-          title: t('palette.mapBase', { name: t(tile.label) }),
+          title: t('palette.mapBase', { name: t(tile.name) }),
           group: 'Actions',
           icon: 'map',
           keywords: ['basemap', 'map type', 'imagery', 'aerial', 'streets', 'satellite', tile.id],

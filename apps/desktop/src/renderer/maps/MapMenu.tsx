@@ -312,9 +312,10 @@ function Tile({
       role="radio"
       className="mm-tile"
       aria-checked={tile.selected}
+      aria-label={t(tile.name)}
       disabled={off}
       tabIndex={roving ? 0 : -1}
-      title={tile.reason ? t(tile.reason) : t(tile.label)}
+      title={tile.reason ? t(tile.reason) : t(tile.name)}
       aria-describedby={off ? noteId : undefined}
       data-base={tile.id}
       data-state={tile.state}
