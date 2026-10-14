@@ -1,7 +1,7 @@
 import type { AdapterContext, SceneHandle } from '@aio/engine';
 import { clearAdapters, getAdapter } from '@aio/engine';
 import type { Layer } from '@aio/schema';
-import type { BufferGeometry, Vector2 } from 'three';
+import type { BufferGeometry, Vector2, Box3 } from 'three';
 import { PerspectiveCamera, Plane, Points, Scene, Vector3 } from 'three';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createPointcloudAdapter, registerPointcloudAdapters } from './adapter';
@@ -28,6 +28,7 @@ function fakeHandle() {
     domElement: { clientWidth: 800, clientHeight: 600 },
   };
   const requestRender = vi.fn();
+  const bounds: { get: () => Box3 | null; solid: boolean }[] = [];
   const handle = {
     scene,
     camera,
@@ -43,11 +44,16 @@ function fakeHandle() {
     raycast: () => null,
     clippingPlanes: [],
     addRaycastProvider: () => () => undefined,
+    addContentBounds: (get: () => Box3 | null, o?: { solid?: boolean }) => {
+      const entry = { get, solid: o?.solid === true };
+      bounds.push(entry);
+      return () => bounds.splice(bounds.indexOf(entry), 1);
+    },
   } as unknown as SceneHandle;
   const frame = () => {
     for (const f of frames) f(16);
   };
-  return { handle, frame, requestRender, frames };
+  return { handle, frame, requestRender, frames, bounds };
 }
 
 function fakeDecoder(points = 10) {
@@ -380,6 +386,7 @@ describe('COPC layers', () => {
     layout,
     // a 64 m cube whose local frame (origin E 0, N 64, H 0) spans x 0..64, y 0..64, z 0..64
     cube: { min: [0, 0, 0], max: [64, 64, 64] },
+    bounds: { min: [10, 20, 0], max: [30, 60, 5] },
     spacing: 1,
     pointCount: 1000,
     rootPage: { pageOffset: 10, pageLength: 64 },
@@ -445,7 +452,7 @@ describe('COPC layers', () => {
     eye: [number, number, number],
     heights?: (offset: number) => Float32Array,
   ) {
-    const { handle, frame } = fakeHandle();
+    const { handle, frame, bounds } = fakeHandle();
     handle.camera.position.set(...eye);
     handle.camera.lookAt(32, 32, 32);
     handle.camera.updateMatrixWorld();
@@ -461,7 +468,7 @@ describe('COPC layers', () => {
       scene: handle,
       url: (r) => ('path' in r ? `aio://project/p/${r.path}` : 'x'),
     });
-    return { handle, frame, d, layer, settings };
+    return { handle, frame, d, layer, settings, bounds };
   }
 
   /** The elevation uniform of every drawn node. */
@@ -474,6 +481,22 @@ describe('COPC layers', () => {
     });
     return out;
   }
+
+  it('frames Home by the header bounds in the local frame while shown', async () => {
+    const { bounds, layer } = await open(
+      { 10: { nodes: { '0-0-0-0': info(500, 1000) }, pages: {} } },
+      [32, 500, 32],
+    );
+    expect(bounds).toHaveLength(1);
+    expect(bounds[0]?.solid).toBe(true);
+    // origin E 0, N 64, H 0: x = E, y = H, z = 64 - N
+    expect(bounds[0]?.get()?.min.toArray()).toEqual([10, 0, 4]);
+    expect(bounds[0]?.get()?.max.toArray()).toEqual([30, 5, 44]);
+    layer.setVisible(false);
+    expect(bounds[0]?.get()).toBeNull();
+    layer.dispose();
+    expect(bounds).toHaveLength(0);
+  });
 
   it('reads the header and root page in the decoder, then loads the root node first', async () => {
     const { frame, d } = await open(

@@ -28,6 +28,12 @@ describe('COPC reading', () => {
     expect(src.layout.pointDataRecordLength).toBe(36);
     expect(src.cube.max[0] - src.cube.min[0]).toBeCloseTo(2 * 19.996, 3);
     expect(src.spacing).toBeGreaterThan(0);
+    expect(src.bounds).toBeDefined();
+    for (let k = 0; k < 3; k++) {
+      // the cube is stored as floats: allow a micrometre of rounding
+      expect(src.bounds?.min[k]).toBeGreaterThanOrEqual((src.cube.min[k] ?? NaN) - 1e-6);
+      expect(src.bounds?.max[k]).toBeLessThanOrEqual((src.cube.max[k] ?? NaN) + 1e-6);
+    }
     expect(src.epsg).toBe(32639);
     const page = await readCopcPage(await fileGetter(), src.rootPage);
     const keys = Object.keys(page.nodes);

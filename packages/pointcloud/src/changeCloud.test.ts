@@ -41,6 +41,7 @@ function fakeHandle() {
     raycast: () => null,
     clippingPlanes: [],
     addRaycastProvider: () => () => undefined,
+    addContentBounds: () => () => undefined,
   } as unknown as SceneHandle;
   return {
     handle,

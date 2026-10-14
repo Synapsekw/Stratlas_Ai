@@ -99,9 +99,13 @@ export interface SceneHandle {
    * read whenever the stage frames, in the local frame; null while hidden or empty. Returns an
    * unsubscribe function. With `always`, the bounds widen the view even while a model or cloud is
    * shown (panorama markers can stand far outside a small model); without it they only count when
-   * there is none.
+   * there is none. With `solid`, the bounds count as content like a model (a point cloud): Home,
+   * auto-fit, the shadows and the zoom-out cap include them; return null while hidden.
    */
-  addContentBounds(bounds: () => Box3 | null, opts?: { always?: boolean }): () => void;
+  addContentBounds(
+    bounds: () => Box3 | null,
+    opts?: { always?: boolean; solid?: boolean },
+  ): () => void;
   /** Register a mesh that should receive projected video. */
   addProjectionReceiver(mesh: Mesh): () => void;
   /**

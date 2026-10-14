@@ -1,6 +1,7 @@
 import { getAdapter, registerAdapter, type LayerAdapter, type SceneHandle } from '@aio/engine';
 import type { PointcloudScalar } from '@aio/schema';
 import { workspace } from '@aio/workspace';
+import { Box3, Vector3 } from 'three';
 import type { StoreApi } from 'zustand/vanilla';
 import { withScalar } from './copc';
 import { copcChunkSeeds } from './copcLayer';
@@ -119,6 +120,7 @@ export function createPointcloudAdapter(
       let baseSize: number;
       let copc: CopcLayerInfo | null = null;
       let scalar: PointcloudScalar | null = null;
+      let box: Box3 | null = null;
       const url = ctx.url(layer.src);
       const handle = ctx.scene;
       if (layer.format === 'kit-packed') {
@@ -146,6 +148,7 @@ export function createPointcloudAdapter(
           lod: c.lod,
         }));
         baseSize = pngBaseSize(idx);
+        box = new Box3(new Vector3(...idx.bounds.min), new Vector3(...idx.bounds.max));
       } else if (layer.format === 'copc') {
         const origin = originOf();
         if (!origin) throw new Error('A COPC layer needs the project origin');
@@ -173,6 +176,12 @@ export function createPointcloudAdapter(
           chunks = copcChunkSeeds(layer.id, url, source, root, origin);
           baseSize = source.spacing;
           copc = { url, source, origin };
+          const b = source.bounds ?? source.cube;
+          // CRS to the local frame (data-conventions section 1): z = origin N - N
+          box = new Box3(
+            new Vector3(b.min[0] - origin[0], b.min[2] - origin[2], origin[1] - b.max[1]),
+            new Vector3(b.max[0] - origin[0], b.max[2] - origin[2], origin[1] - b.min[1]),
+          );
         } catch (e) {
           release(handle, m);
           throw e;
@@ -188,11 +197,19 @@ export function createPointcloudAdapter(
         (copc !== null && copc.source.layout.pointDataRecordFormat !== 6);
       m.addLayer(layer.id, chunks, baseSize, rgbHint, copc, scalar);
       if (!layer.visible) m.setVisible(layer.id, false);
+      let shown = layer.visible;
+      const framed = box;
+      const unframe = framed
+        ? handle.addContentBounds(() => (shown ? framed : null), { solid: true })
+        : () => undefined;
       return {
         setVisible: (v) => {
+          shown = v;
           m.setVisible(layer.id, v);
+          (handle as Partial<{ contentUpdated(): void }>).contentUpdated?.();
         },
         dispose: () => {
+          unframe();
           m.removeLayer(layer.id);
           release(handle, m);
         },

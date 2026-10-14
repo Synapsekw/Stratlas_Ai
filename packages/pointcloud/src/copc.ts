@@ -35,6 +35,8 @@ export interface CopcSource {
   layout: LasLayout;
   /** Octree cube in the file CRS (x east, y north, z up). */
   cube: { min: [number, number, number]; max: [number, number, number] };
+  /** The points' bounds from the LAS header, file CRS (x east, y north, z up); tighter than `cube`. */
+  bounds?: { min: [number, number, number]; max: [number, number, number] };
   /** Point spacing of the root node, CRS units. */
   spacing: number;
   pointCount: number;
@@ -86,6 +88,10 @@ export async function readCopcSource(get: Getter): Promise<CopcSource> {
       offset: c.header.offset,
     },
     cube: { min: [x0, y0, z0], max: [x1, y1, z1] },
+    bounds: {
+      min: [c.header.min[0], c.header.min[1], c.header.min[2]],
+      max: [c.header.max[0], c.header.max[1], c.header.max[2]],
+    },
     spacing: c.info.spacing,
     pointCount: c.header.pointCount,
     rootPage: c.info.rootHierarchyPage,

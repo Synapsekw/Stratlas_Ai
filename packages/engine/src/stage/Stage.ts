@@ -167,6 +167,8 @@ export class Stage implements EngineStage {
    * (panorama markers): read as reach extents in `applyDistanceCap`, beside `reach`.
    */
   private readonly alwaysBounds = new Set<() => Box3 | null>();
+  /** The providers of `boundsProviders` that frame like a model (point clouds), model or not. */
+  private readonly solidBounds = new Set<() => Box3 | null>();
   /** Extents the camera must be able to back off to see (`setReach`), by key. */
   private readonly reach = new Map<string, Box3>();
   /** The content's box as last framed (empty before content), for the camera's distance cap. */
@@ -365,12 +367,17 @@ export class Stage implements EngineStage {
     };
   }
 
-  addContentBounds(bounds: () => Box3 | null, opts?: { always?: boolean }): () => void {
+  addContentBounds(
+    bounds: () => Box3 | null,
+    opts?: { always?: boolean; solid?: boolean },
+  ): () => void {
     this.boundsProviders.add(bounds);
     if (opts?.always) this.alwaysBounds.add(bounds);
+    if (opts?.solid) this.solidBounds.add(bounds);
     this.contentChanged();
     return () => {
       this.alwaysBounds.delete(bounds);
+      this.solidBounds.delete(bounds);
       if (this.boundsProviders.delete(bounds) && !this.disposed) this.contentChanged();
     };
   }
@@ -1034,9 +1041,14 @@ export class Stage implements EngineStage {
       if (root.userData.aioRaster === true || root.userData.aioGround === true) continue;
       expandWithoutTerrain(root, box, tmp);
     }
+    for (const bounds of this.solidBounds) {
+      const b = bounds();
+      if (b && !b.isEmpty()) box.union(b);
+    }
     // no model or cloud yet: what the flights and photos cover (a video-first project)
     if (box.isEmpty()) {
       for (const bounds of this.boundsProviders) {
+        if (this.solidBounds.has(bounds)) continue;
         const b = bounds();
         if (b && !b.isEmpty()) box.union(b);
       }

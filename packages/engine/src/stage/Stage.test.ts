@@ -447,6 +447,28 @@ describe('Stage', () => {
     stage.dispose();
   });
 
+  it('solid bounds frame like a model, and a hidden cloud leaves the framing to the rest', async () => {
+    const { stage, store, resize } = make();
+    resize(800, 600);
+    store.getState().openProject(project([meshLayer('plant')]));
+    await flush();
+    const range = stage.controls.maxDistance;
+    let shown = true;
+    const cloud = new Box3(new Vector3(300, 0, -20), new Vector3(400, 30, 20));
+    const off = stage.addContentBounds(() => (shown ? cloud : null), { solid: true });
+    expect(stage.contentBounds()?.max.x).toBe(400);
+    expect(stage.controls.maxDistance).toBeGreaterThan(range);
+    stage.setViewPreset('home');
+    expect(stage.saveView().target[0]).toBeGreaterThan(100);
+    shown = false;
+    stage.contentUpdated();
+    // hidden: Home and the bounds follow the model again (the cap may stay held where the
+    // camera stands, as `applyDistanceCap` does for a reach that shrinks)
+    expect(stage.contentBounds()?.max.toArray()).toEqual([5, 10, 5]);
+    off();
+    stage.dispose();
+  });
+
   it('a reach lets the camera back off far enough to see it, without reframing', async () => {
     const { stage, store, resize } = make();
     resize(800, 600);

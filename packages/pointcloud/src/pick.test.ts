@@ -31,6 +31,7 @@ function setup(clippingPlanes: Plane[] = [], fields: Fields = {}) {
     projectId: 'p',
     clippingPlanes,
     addRaycastProvider: () => () => undefined,
+    addContentBounds: () => () => undefined,
     requestRender: () => undefined,
     onFrame: (cb: () => void) => {
       frames.add(cb);
