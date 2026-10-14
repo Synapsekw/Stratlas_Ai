@@ -1379,15 +1379,12 @@ button.chip-status:hover {
 .dbar-pop {
   position: absolute;
   top: calc(100% + 4px);
-  inset-inline-start: 8px;
+  inset-inline-start: 0;
   z-index: 40;
 }
 .dpick {
   position: relative;
   display: inline-flex;
-}
-.dbar-pop {
-  inset-inline-start: 0;
 }
 .dbar-pop.up {
   top: auto;
