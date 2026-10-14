@@ -2588,6 +2588,12 @@ export const ipc = {
     response: OkOrFailure,
   },
 
+  /** Open the provider's own feedback page in the browser (main uses a fixed address). */
+  'onlineTiles:openFeedback': {
+    request: z.object({ provider: z.literal('mapbox') }).strict(),
+    response: Empty,
+  },
+
   // ---------------------------------------------------------------- M11 surveying (G0 stubs)
   /**
    * The site's `survey/settings.json`; `exists: false` with the defaults when there is none (G1).

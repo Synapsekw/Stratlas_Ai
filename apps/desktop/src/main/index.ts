@@ -131,6 +131,7 @@ import { globeProjectReader, registerGlobeIpc } from './globe';
 import { listRasterPacks, registerRasterPacksIpc } from './packs/raster';
 import { embeddedRasterPacks, findEmbeddedRaster } from './packs/rasterEmbed';
 import { createOnlineSettingsStore, onlineSettingsPath } from './onlineSettings';
+import { createMapKeys, registerMapKeysIpc } from './onlineMaps';
 import { createOnlineTiles, fakeTileFetch } from './onlineTiles';
 import {
   latestAccuracyRun,
@@ -469,12 +470,13 @@ const fakeOnlineTiles =
 const onlineTileRequests: string[] = [];
 if (fakeOnlineTiles)
   Object.defineProperty(globalThis, '__aioOnlineTileRequests', { value: onlineTileRequests });
+const mapKeys = createMapKeys(keys);
 const onlineTiles = createOnlineTiles({
   switches: () => ({
     enabled: onlineSettings.current().enabled,
     offlineOnly: settings.current().offlineOnly === true,
   }),
-  key: (provider) => keys.getMapKey(provider),
+  key: (provider) => mapKeys.get(provider),
   cacheDir: () => join(app.getPath('userData'), 'cache', 'online-tiles'),
   // an e2e run never reaches the service: there is no fetcher at all unless the spec asks for
   // the fake one
@@ -1645,6 +1647,12 @@ function registerIpc(): void {
   }));
   handle('onlineTiles:set', (patch) => onlineSettings.set(patch));
   handle('onlineTiles:clearCache', () => onlineTiles.clear());
+  registerMapKeysIpc({
+    handle,
+    keys: mapKeys,
+    tiles: onlineTiles,
+    openExternal: (url) => void shell.openExternal(url),
+  });
 
   // M11: one module per stream (G1 geodesy and geoid packs; G2, G3 and G6 survey; G12 survey AI).
   const survey = {

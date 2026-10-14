@@ -96,4 +96,28 @@ describe('map keys', () => {
     expect(warn.mock.calls.flat().join(' ')).not.toContain('pk.still-here');
     warn.mockRestore();
   });
+
+  it('a read that fails after the delete is not "removed"', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    const vault = createKeyVault('svc', () => ({
+      setPassword: () => undefined,
+      getPassword: () => {
+        throw new Error('vault locked');
+      },
+      deletePassword: () => {
+        throw new Error('vault locked');
+      },
+    }));
+    expect(await vault.clearMapKey('mapbox')).toEqual({ ok: false });
+    warn.mockRestore();
+  });
+
+  it('a vault entry that cannot be opened reports a failure instead of throwing', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    const vault = createKeyVault('svc', () => {
+      throw new Error('no backend');
+    });
+    expect(await vault.clearMapKey('esri')).toEqual({ ok: false });
+    warn.mockRestore();
+  });
 });

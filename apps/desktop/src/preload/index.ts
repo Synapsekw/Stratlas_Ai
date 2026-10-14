@@ -207,6 +207,7 @@ const CHANNELS = {
   'mapKeys:set': true,
   'mapKeys:test': true,
   'mapKeys:clear': true,
+  'onlineTiles:openFeedback': true,
   'orientation:read': true,
   'orientation:write': true,
   // M11

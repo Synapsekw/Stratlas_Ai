@@ -32,14 +32,23 @@ export function createKeyVault(
   service: string,
   entry: (service: string, account: string) => KeyEntry,
 ): KeyVault {
-  function read(account: string): string | null {
+  /** `null` is "no key"; `'failed'` is "could not read", which is not the same. */
+  function look(account: string): { failed: boolean; value: string | null } {
     try {
       const v = entry(service, account).getPassword();
-      return v === null || v === '' ? null : v;
+      return { failed: false, value: v === null || v === '' ? null : v };
     } catch (e) {
       console.warn(`Key vault: could not read the ${account} key (${errorName(e)}).`);
-      return null;
+      return { failed: true, value: null };
     }
+  }
+  function read(account: string): string | null {
+    return look(account).value;
+  }
+  /** True only when a read worked and found nothing. */
+  function isAbsent(account: string): boolean {
+    const r = look(account);
+    return !r.failed && r.value === null;
   }
   function write(account: string, key: string): { ok: boolean } {
     try {
@@ -51,19 +60,26 @@ export function createKeyVault(
     }
   }
   function remove(account: string): { ok: boolean } {
-    const e = entry(service, account);
+    let e: KeyEntry;
+    try {
+      e = entry(service, account);
+    } catch (err) {
+      console.warn(`Key vault: could not open the ${account} key (${errorName(err)}).`);
+      return { ok: false };
+    }
     try {
       e.deletePassword?.();
     } catch {
-      // no entry to delete, or a backend that refuses: the empty password below decides
+      // no entry to delete, or a backend that refuses: the read-back below decides
     }
-    if (read(account) === null) return { ok: true };
+    // only a read that worked and found nothing means the key is gone
+    if (isAbsent(account)) return { ok: true };
     try {
       e.setPassword('');
     } catch (err) {
       console.warn(`Key vault: could not remove the ${account} key (${errorName(err)}).`);
     }
-    return { ok: read(account) === null };
+    return { ok: isAbsent(account) };
   }
   return {
     setKey: (provider, key) => Promise.resolve(write(provider, key)),

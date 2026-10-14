@@ -27,6 +27,8 @@ export const ESRI_PUBLIC_HOST = 'server.arcgisonline.com';
 export const ESRI_KEY_HOST = 'ibasemaps-api.arcgis.com';
 /** Mapbox Raster Tiles and Static Tiles APIs. */
 export const MAPBOX_HOST = 'api.mapbox.com';
+/** Mapbox's feedback page, opened in the person's browser from the map credit (fixed). */
+export const MAPBOX_FEEDBACK_URL = 'https://apps.mapbox.com/feedback/';
 
 /** The hosts each source may reach; nothing outside this table is ever asked. */
 export const ONLINE_HOSTS: Readonly<Record<OnlineSourceId, readonly string[]>> = {
