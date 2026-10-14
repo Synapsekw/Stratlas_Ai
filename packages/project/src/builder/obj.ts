@@ -1,4 +1,5 @@
 import { encodeGlb, type GlbMaterial, type GlbPrimitive } from '../import/glb';
+import { mtlMapFile } from './mtl';
 
 /**
  * Wavefront OBJ (+ MTL) to GLB, so imported OBJ models load like any other mesh layer: polygons
@@ -28,10 +29,8 @@ function parseMtl(text: string): Map<string, Mtl> {
     } else if (cur && t.startsWith('Kd ')) {
       const [r = 1, g = 1, b = 1] = t.slice(3).trim().split(/\s+/).map(Number);
       cur.color = [r, g, b];
-    } else if (cur && t.startsWith('map_Kd ')) {
-      // options like -s 1 1 1 come before the file name
-      const parts = t.slice(7).trim().split(/\s+/);
-      const file = parts.at(-1);
+    } else if (cur && /^map_Kd\s/.test(t)) {
+      const file = mtlMapFile(t.slice(6));
       if (file) cur.map = file;
     }
   }

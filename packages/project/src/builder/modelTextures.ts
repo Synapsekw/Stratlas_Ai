@@ -1,5 +1,6 @@
 import { open, readFile } from 'node:fs/promises';
 import { basename, dirname, extname, resolve } from 'node:path';
+import { mtlMapFile } from './mtl';
 
 /**
  * The pictures the models of one pick use. An OBJ names its material file (`mtllib`), and the
@@ -19,12 +20,11 @@ const key = (file: string) => resolve(file).toLowerCase();
 
 const TEXTURE_LINE = /^\s*(?:map_\w+|bump|disp|decal|refl)\s+(.+?)\s*$/gim;
 
-/** The texture files a material file names, as written (the last word of each texture line). */
+/** The texture files a material file names, as written (options skipped, spaces kept). */
 export function mtlTextures(mtl: string): string[] {
   const out: string[] = [];
   for (const m of mtl.matchAll(TEXTURE_LINE)) {
-    // options come first (`-bm 0.5`, `-s 1 1 1`); the file is the last word
-    const file = (m[1] ?? '').split(/\s+/).pop();
+    const file = mtlMapFile(m[1] ?? '');
     if (file) out.push(file);
   }
   return out;

@@ -53,4 +53,26 @@ describe('objToGlb', () => {
   it('rejects a file with no faces', () => {
     expect(() => objToGlb('v 0 0 0\n', null, () => null)).toThrow(/no faces/i);
   });
+
+  const spaced =
+    'v 0 0 0\nv 1 0 0\nv 1 1 0\nv 0 1 0\nvt 0 0\nvt 1 0\nvt 1 1\nvt 0 1\nf 1/1 2/2 3/3 4/4\n';
+
+  it('embeds a texture whose name has spaces', () => {
+    const jpeg = new Uint8Array([0xff, 0xd8, 0xff, 0xe0, 0, 0]);
+    const r = objToGlb(
+      `mtllib m.mtl\nusemtl a\n${spaced}`,
+      'newmtl a\nmap_Kd my tower.jpg\n',
+      (n) => (n === 'my tower.jpg' ? jpeg : null),
+    );
+    expect(r.warnings).toEqual([]);
+  });
+
+  it('warns with the whole name when a spaced texture is missing', () => {
+    const r = objToGlb(
+      `mtllib m.mtl\nusemtl a\n${spaced}`,
+      'newmtl a\nmap_Kd my tower.jpg\n',
+      () => null,
+    );
+    expect(r.warnings.join(' ')).toContain('Texture my tower.jpg was not found');
+  });
 });

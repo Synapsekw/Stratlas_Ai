@@ -38,6 +38,7 @@ import {
 import { readPhotoMeta } from './exif';
 import { mergeImport } from './importMerge';
 import { modelTextures } from './modelTextures';
+import { mtlDiffuseMaps } from './mtl';
 import { readTiffHeaderFile } from './tiffFile';
 import { objToGlb } from './obj';
 import { photoAltitude, photoHeight, photoRef } from './photos';
@@ -503,7 +504,7 @@ export async function importRawFiles(
         items.push(item);
       } else if (is360) {
         later = walk(file);
-      } else if (isDrawingFile(ext, deps.drawings === true) && textures.has(file)) {
+      } else if (textures.has(file)) {
         // picked with its model: part of the model, not a sheet to look at
         items.push({
           file: name,
@@ -684,8 +685,7 @@ export async function importRawFiles(
           const mtl = mtlPath && (await exists(mtlPath)) ? await readFile(mtlPath, 'utf8') : null;
           const textures = new Map<string, Uint8Array | null>();
           if (mtl)
-            for (const t of mtl.matchAll(/^\s*map_Kd\s+(?:.*\s)?(\S+)\s*$/gm)) {
-              const n = t[1] ?? '';
+            for (const n of mtlDiffuseMaps(mtl)) {
               const p = join(dir, n);
               textures.set(n, (await exists(p)) ? new Uint8Array(await readFile(p)) : null);
             }

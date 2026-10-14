@@ -1,6 +1,6 @@
 import { fromWgs84 } from '@aio/geo';
 import { parseManifest, type ProjectManifest } from '@aio/schema';
-import { copyFile, mkdtemp, open, readFile, readdir, rm, writeFile } from 'node:fs/promises';
+import { copyFile, mkdir, mkdtemp, open, readFile, readdir, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { deflateSync } from 'node:zlib';
@@ -1171,5 +1171,27 @@ describe('one import is one survey date', () => {
     expect(m.captures.map((c) => c.date)).toEqual(['2019-01-24']);
     expect(photosOf(m)[0]).toMatchObject({ id: 'photos-2019-01-24', capture: m.captures[0]?.id });
     expect(photosOf(m)[0]?.items.map((p) => p.id)).toEqual(['a']);
+  });
+});
+
+describe('model textures with spaces in their names', () => {
+  it('imports an OBJ with a spaced texture and does not file its JPEG as a photo', async () => {
+    const root = await project();
+    const src = join(dir, 'src');
+    await mkdir(src, { recursive: true });
+    const quad = 'v 0 0 0\nv 1 0 0\nv 1 1 0\nv 0 1 0\nvt 0 0\nvt 1 0\nvt 1 1\nvt 0 1\n';
+    await writeFile(
+      join(src, 'tower.obj'),
+      `mtllib tower.mtl\nusemtl a\n${quad}f 1/1 2/2 3/3 4/4\n`,
+    );
+    await writeFile(join(src, 'tower.mtl'), 'newmtl a\nmap_Kd tower stack_texture.jpg\n');
+    const tex = join(src, 'tower stack_texture.jpg');
+    await writeFile(tex, new Uint8Array([0xff, 0xd8, 0xff, 0xe0, 0, 0]));
+    const r = await importRawFiles(root, [join(src, 'tower.obj'), tex], deps());
+    const mesh = r.items.find((i) => i.kind === 'mesh');
+    expect(mesh?.status).toBe('imported');
+    expect(mesh?.message).not.toContain('not found');
+    expect(r.items.find((i) => i.file === 'tower stack_texture.jpg')?.status).toBe('skipped');
+    expect(r.manifest.layers.some((l) => l.kind === 'photos')).toBe(false);
   });
 });
