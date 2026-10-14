@@ -30,8 +30,8 @@ describe('searchSpot', () => {
     expect(h.dates.map((d) => d.capture)).toEqual(captures);
     expect(h.dates[2]?.matches).toEqual([]);
   });
-  it('counts what cannot match on its date', () => {
-    expect(h.dates[2]?.skipped).toBe(2);
+  it('counts what cannot match on its date, of the clicked kind only', () => {
+    expect(h.dates[2]?.skipped).toBe(1);
     expect(h.dates[1]?.skipped).toBe(0);
   });
   it('ranks within a date: the spot class first, then the score', () => {
@@ -89,6 +89,28 @@ describe('searchSpot', () => {
     expect(v.dates[0]?.matches.map((m) => m.item)).toEqual([
       { kind: 'video', layer: 'clip', t: 3.2 },
     ]);
+  });
+  it('matches only the kind of the clicked item', () => {
+    const clip: SpotEntry = {
+      kind: 'video',
+      layer: 'clip-d2',
+      capture: 'd2',
+      samples: overflight(),
+    };
+    const fromPhoto = searchSpot({
+      spot,
+      captures: ['d1', 'd2'],
+      entries: [d1('self', 0), clip],
+      origin: { item: { kind: 'photo', layer: 'photos-d1', photo: 'self' }, capture: 'd1' },
+    });
+    expect(fromPhoto.dates[1]?.matches).toEqual([]);
+    const fromClip = searchSpot({
+      spot,
+      captures: ['d1', 'd2'],
+      entries: [d1('near', 2), clip],
+      origin: { item: { kind: 'video', layer: 'clip-d2', t: 5 }, capture: 'd2' },
+    });
+    expect(fromClip.dates[0]?.matches).toEqual([]);
   });
   it('searches 10,000 photos over 20 dates quickly', () => {
     const dates = Array.from({ length: 20 }, (_, i) => `s${i}`);

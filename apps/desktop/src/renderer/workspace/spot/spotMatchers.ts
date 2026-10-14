@@ -41,9 +41,13 @@ const groundScore = (d: number, angle: number | null) =>
 const facing = (a: number | undefined, b: number | undefined): number | null =>
   a === undefined || b === undefined ? null : angleDiffDeg(a, b);
 
-/** How central the target sits in an aerial camera's frame, or null when it does not see it. */
+/**
+ * How central the target sits in an aerial camera's frame, or null when it does not see it or
+ * flies too far off the spot.
+ */
 function aerialSees(pose: ViewPose, spot: Spot): number | null {
   if (distance3(pose.pos, spot.target) > SPOT_RULES.aerialRangeM) return null;
+  if (groundDistance(pose.pos, spot.camera ?? spot.target) > SPOT_RULES.aerialNearM) return null;
   const uv = imagePointOf(pose, spot.target);
   return uv && inFrame(uv) ? centreOffset(uv) : null;
 }

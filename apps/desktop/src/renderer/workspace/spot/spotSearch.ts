@@ -13,9 +13,9 @@ import type {
 } from './spotTypes';
 
 /**
- * The spot search (spec Part S1): every survey date, oldest first, with its matches ranked
- * (the spot's class first, ground-level or aerial, then the score) and the items that cannot
- * match counted. One linear pass; nothing is indexed or stored.
+ * The spot search (spec Part S1): every survey date, oldest first, with its matches of the
+ * clicked kind ranked (the spot's class first, ground-level or aerial, then the score) and the
+ * items of that kind that cannot match counted. One linear pass; nothing is indexed or stored.
  */
 export interface SearchInput {
   spot: Spot;
@@ -84,7 +84,11 @@ export function searchSpot(input: SearchInput): SpotHistory {
   const { spot } = input;
   const dates = input.captures.map((capture): SpotDate => ({ capture, matches: [], skipped: 0 }));
   const byCapture = new Map(dates.map((d) => [d.capture, d]));
+  // Only the clicked kind takes part: a photo is compared with photos (ground or drone), a
+  // panorama with panoramas, a walk with walks, a clip with clips (founder, 14 Oct).
+  const kind = input.origin?.item.kind;
   for (const e of input.entries) {
+    if (kind && e.kind !== kind) continue;
     const date = e.capture === undefined ? undefined : byCapture.get(e.capture);
     if (!date) continue;
     if (unplaced(e)) {

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { overflight, panoAt, photoAt, track } from './__fixtures__/spotPoses';
+import { LENS, lookQuat, overflight, panoAt, photoAt, track } from './__fixtures__/spotPoses';
 import { matchPano, matchPhoto, matchVideo, matchWalk } from './spotMatchers';
 import { SPOT_RULES } from './spotRules';
 import type { Spot } from './spotTypes';
@@ -57,6 +57,41 @@ describe('drone photos', () => {
     expect(
       matchPhoto(ground, photoAt('d', [0, 40, -15], 0, { pitchDeg: -90, lens: false })),
     ).toBeNull();
+  });
+});
+
+describe('aerial vicinity', () => {
+  // A drone 40 m up, `east` metres east of the target, aiming its centre line at the target.
+  const oblique = (east: number) =>
+    ({ pos: [east, 40, -15], pitchDeg: (-Math.atan2(40, east) * 180) / Math.PI }) as const;
+  it('a drone photo far off the spot is rejected though it sees the target', () => {
+    const at = (east: number) => {
+      const o = oblique(east);
+      return photoAt('d', [...o.pos], 270, { pitchDeg: o.pitchDeg });
+    };
+    expect(matchPhoto(ground, at(30))?.kind).toBe('drone');
+    expect(matchPhoto(ground, at(120))).toBeNull();
+  });
+  it('a video frame far off the spot is rejected though it sees the target', () => {
+    const at = (east: number) => {
+      const o = oblique(east);
+      const pose = { pos: [...o.pos] as [number, number, number], q: lookQuat(270, o.pitchDeg) };
+      return {
+        kind: 'video',
+        layer: 'clip',
+        capture: 'd2',
+        samples: [{ t: 0, pose: { ...pose, lens: LENS } }],
+      } as const;
+    };
+    expect(matchVideo(ground, at(30))?.kind).toBe('video');
+    expect(matchVideo(ground, at(120))).toBeNull();
+  });
+  it(`keeps aerial matches within ${SPOT_RULES.aerialNearM} m of the spot's camera`, () => {
+    const eps = 0.01;
+    const near = photoAt('d', [0, 40, -15], 0, { pitchDeg: -90 });
+    const spotAt = (x: number): Spot => ({ ...ground, camera: [x, 1.6, -15] });
+    expect(matchPhoto(spotAt(SPOT_RULES.aerialNearM - eps), near)).not.toBeNull();
+    expect(matchPhoto(spotAt(SPOT_RULES.aerialNearM + eps), near)).toBeNull();
   });
 });
 

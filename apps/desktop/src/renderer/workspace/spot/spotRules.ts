@@ -26,6 +26,11 @@ export const SPOT_RULES = {
   aerialTie: 0.01,
   /** An aerial camera sees a target up to this far, metres (as `groundFootprint`). */
   aerialRangeM: 300,
+  /**
+   * ...and only a drone camera this close to the spot's camera (its target without one), metres
+   * horizontal, is the same spot: a far-off oblique view is a different picture (founder, 14 Oct).
+   */
+  aerialNearM: 50,
   /** Height of the ground under aerial views: the project origin's, as `@aio/video` pairing. */
   groundY: 0,
   /** A hand-held camera (photo, 360) stands this high above its ground. */
