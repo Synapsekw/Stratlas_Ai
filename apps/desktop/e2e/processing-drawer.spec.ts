@@ -106,6 +106,7 @@ test('finished jobs leave the list one by one or all at once, for good, and keep
   await writeFile(
     join(dataRoot.userData, 'jobs.json'),
     JSON.stringify([
+      record('e2e-interrupted', 'interrupted', 4),
       record('e2e-failed', 'failed', 3),
       record('e2e-cancelled', 'cancelled', 2),
       record('e2e-done', 'done', 1),
@@ -123,7 +124,7 @@ test('finished jobs leave the list one by one or all at once, for good, and keep
     await openTiny(win);
     let drawer = await openProcessing(win);
     const finished = drawer.getByTestId('proc-finished');
-    await expect(finished.locator('.job-row')).toHaveCount(3);
+    await expect(finished.locator('.job-row')).toHaveCount(4);
 
     // one row's remove takes only that job off the list
     const cancelled = finished.locator('.job-row-wrap', {
@@ -133,29 +134,37 @@ test('finished jobs leave the list one by one or all at once, for good, and keep
     const remove = cancelled.getByRole('button', { name: 'Remove from list' });
     await expect(remove).toBeVisible();
     await remove.click();
-    await expect(finished.locator('.job-row')).toHaveCount(2);
+    await expect(finished.locator('.job-row')).toHaveCount(3);
     await expect(finished.locator('[data-job="e2e-cancelled"]')).toHaveCount(0);
-    await expect.poll(index).toEqual(['e2e-done', 'e2e-failed']);
+    await expect.poll(index).toEqual(['e2e-done', 'e2e-failed', 'e2e-interrupted']);
     await expectAccessible(win, 'Processing drawer, finished jobs', {
       include: '[data-testid="processing-drawer"]',
     });
     await shot(win, 'processing-finished-remove');
 
-    // Clear finished takes the rest; the empty list says so
+    // Clear finished takes the rest but the interrupted job, which waits for Resume
     await drawer.getByTestId('proc-clear').click();
-    await expect(drawer.getByTestId('proc-finished')).toHaveCount(0);
-    await expect(drawer.getByTestId('proc-empty')).toBeVisible();
-    await expect.poll(index).toEqual([]);
+    await expect(finished.locator('.job-row')).toHaveCount(1);
+    await expect(finished.locator('[data-job="e2e-interrupted"]')).toHaveCount(1);
+    await expect(drawer.getByTestId('proc-clear')).toHaveCount(0);
+    await expect.poll(index).toEqual(['e2e-interrupted']);
     await app.close();
 
-    // after a restart they stay gone, and every output is still on disk
+    // after a restart the cleared jobs stay gone; the interrupted one goes on its own remove
     app = await launchApp(dataRoot);
     await network.attach(app);
     win = await app.firstWindow();
     await openTiny(win);
     drawer = await openProcessing(win);
+    const left = drawer.getByTestId('proc-finished').locator('.job-row-wrap');
+    await expect(left).toHaveCount(1);
+    await expect(left.locator('[data-job="e2e-interrupted"]')).toHaveCount(1);
+    await left.hover();
+    await left.getByRole('button', { name: 'Remove from list' }).click();
     await expect(drawer.getByTestId('proc-empty')).toBeVisible();
     await expect(drawer.getByTestId('proc-finished')).toHaveCount(0);
+    await expect.poll(index).toEqual([]);
+    // every output is still on disk
     expect(await readFile(join(dir, 'out', 'map.txt'), 'utf8')).toBe('a map');
     expect(await readFile(join(dir, 'jobs', 'e2e-done', 'job.log'), 'utf8')).toBe('a log\n');
     expect(await network.outbound()).toEqual([]);

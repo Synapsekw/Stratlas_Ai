@@ -128,9 +128,27 @@ describe('the processing list of a project', () => {
     expect(onRemove).toHaveBeenLastCalledWith(finished.map((j) => j.id));
   });
 
-  it('has no Clear finished while nothing has finished', () => {
+  it('Clear finished keeps interrupted jobs, which still have their own remove', () => {
+    const waiting = job({ status: 'interrupted' });
+    const done = job({ status: 'done' });
+    const onRemove = vi.fn();
+    show({ finished: [waiting, done], onRemove });
+    act(() => q('proc-clear')?.click());
+    expect(onRemove).toHaveBeenLastCalledWith([done.id]);
+    const own = q('proc-finished')?.querySelector<HTMLButtonElement>(
+      `[data-job="${waiting.id}"] ~ [data-testid="job-remove"]`,
+    );
+    act(() => own?.click());
+    expect(onRemove).toHaveBeenLastCalledWith([waiting.id]);
+  });
+
+  it('has no Clear finished while nothing has finished, or only interrupted jobs', () => {
     show({ running: [job({ status: 'running' })], onRemove: vi.fn() });
     expect(q('proc-clear')).toBeNull();
+    act(() => root?.unmount());
+    show({ finished: [job({ status: 'interrupted' })], onRemove: vi.fn() });
+    expect(q('proc-clear')).toBeNull();
+    expect(q('proc-finished')?.querySelector('[data-testid="job-remove"]')).not.toBeNull();
   });
 
   it('says when the tools are missing and leads to the update', () => {

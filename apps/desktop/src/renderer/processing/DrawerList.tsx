@@ -54,6 +54,8 @@ export function DrawerList({
   const [older, setOlder] = useState(false);
   const own = projectName !== null;
   const shown = older ? finished : finished.slice(0, FINISHED_SHOWN);
+  // Clear finished leaves interrupted jobs: they wait for Resume (each keeps its own remove)
+  const clearable = finished.filter((j) => j.status !== 'interrupted').map((j) => j.id);
   const row = (job: JobRecord, project?: string, removable = false) => (
     <JobRow
       key={job.id}
@@ -112,13 +114,13 @@ export function DrawerList({
         <section data-testid="proc-finished">
           <div className="proc-sh">
             <h3 className="caps">{t('processing.finished')}</h3>
-            {onRemove && (
+            {onRemove && clearable.length > 0 && (
               <button
                 type="button"
                 className="btn sm ghost"
                 data-testid="proc-clear"
                 onClick={() => {
-                  onRemove(finished.map((j) => j.id));
+                  onRemove(clearable);
                 }}
               >
                 {t('processing.clearFinished')}
