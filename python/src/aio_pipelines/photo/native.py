@@ -17,14 +17,14 @@ points at, and the mesh's primary engine is MeshLab (``pymeshlab``, ``mesh.py``)
 
 ``run_tool`` runs one cancellably: output to files (a full pipe would block the child), stdin
 closed, no console window, and on cancel the whole process tree is killed (on Windows
-``colmap_io.end_tree``: the tool's own descendants and nothing else), so no orphan keeps running
+``proctree.end_tree``: the tool's own descendants and nothing else), so no orphan keeps running
 after the job stops. ``on_output`` reads the tool's own progress: each new line it prints (stdout
 or stderr) goes to the hook, and a fraction the hook returns moves the bar instead of the time
 ramp.
 
 Memory: ``AIO_PHOTO_MEMORY_MB`` is the one memory cap of the photo jobs (the app sets it from
 Settings). ``photo.products`` plans within it (``memory_budget``; without it 40 % of the physical
-memory) and ``photo.align`` stops a COLMAP stage above it (``colmap_io.memory_limit``; without it
+memory) and ``photo.align`` stops a COLMAP stage above it (``proctree.memory_limit``; without it
 75 % of the memory and 90 % of what is free).
 """
 
@@ -69,7 +69,7 @@ def find_tool(name: str) -> str | None:
 
 def _kill_tree(proc: subprocess.Popen) -> None:
     if os.name == "nt":
-        from .colmap_io import end_tree
+        from .proctree import end_tree
 
         end_tree(proc)
     else:
@@ -109,7 +109,7 @@ class _Tail:
 
 def run_tool(
     ctx: StepContext,
-    args: Sequence[str],
+    args: Sequence[str] | str,
     what: str,
     work: Path,
     expected_s: float = 60.0,
@@ -117,8 +117,11 @@ def run_tool(
     memory_limit: int = 0,
     env: dict[str, str] | None = None,
     on_output: Callable[[str], float | None] | None = None,
+    fail: Callable[[int, list[str]], JobError] | None = None,
 ) -> str:
-    """Run a native tool; return its stdout, or raise with the last line it printed. With
+    """Run a native tool; return its stdout, or raise with the last line it printed. A ``str`` is
+    one command line, passed on as is (Windows: how ``run.bat`` starts). With ``fail`` a non-zero
+    exit raises ``fail(returncode, last 40 non-empty lines of stderr then stdout)``. With
     ``memory_limit`` (bytes) the tool and its children are stopped above it
     (``ToolMemoryExceeded``), so a tool never pushes the computer into swapping. With
     ``on_output`` the tool's own progress lines move the bar (see the module docstring)."""
@@ -131,9 +134,17 @@ def run_tool(
         kw["env"] = env
     with open(out_path, "wb") as out_f, open(err_path, "wb") as err_f:
         try:
-            proc = subprocess.Popen(list(args), stdin=subprocess.DEVNULL, stdout=out_f, stderr=err_f, **kw)
+            proc = subprocess.Popen(
+                args if isinstance(args, str) else list(args),
+                stdin=subprocess.DEVNULL,
+                stdout=out_f,
+                stderr=err_f,
+                **kw,
+            )
         except OSError as e:
-            raise JobError(f"{what}: the tool {Path(args[0]).name} could not start ({e}).") from e
+            first = args.split('"')[1] if isinstance(args, str) and args.startswith('"') else args
+            first = first if isinstance(first, str) else first[0]
+            raise JobError(f"{what}: the tool {Path(first).name} could not start ({e}).") from e
         t0 = time.monotonic()
         lo, hi = progress
         last_mem = last_read = 0.0
@@ -146,7 +157,7 @@ def run_tool(
                     _kill_tree(proc)
                     raise Cancelled()
                 if memory_limit and time.monotonic() - last_mem >= 0.5:
-                    from .colmap_io import tree_memory
+                    from .proctree import tree_memory
 
                     last_mem = time.monotonic()
                     used = tree_memory(proc.pid)
@@ -177,6 +188,9 @@ def run_tool(
     out = out_path.read_text("utf-8", errors="replace")
     if proc.returncode != 0:
         err = err_path.read_text("utf-8", errors="replace")
+        if fail is not None:
+            last = [ln for ln in (err + "\n" + out).splitlines() if ln.strip()][-40:]
+            raise fail(proc.returncode, last)
         lines = (err or out or "").strip().splitlines()
         raise JobError(f"{what} failed: {lines[-1] if lines else f'exit {proc.returncode}'}")
     return out
@@ -221,7 +235,7 @@ def memory_cap() -> int | None:
 
     One setting for every photo job: the app sets it from Settings. ``photo.products`` plans its
     clusters within it (``memory_budget``) and ``photo.align``'s memory guard stops a COLMAP stage
-    that goes above it (``colmap_io.memory_limit``)."""
+    that goes above it (``proctree.memory_limit``)."""
     env = os.environ.get(MEMORY_ENV)
     if not env:
         return None

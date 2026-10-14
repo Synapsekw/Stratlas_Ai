@@ -44,10 +44,11 @@ from typing import Any
 
 import numpy as np
 
-from ..photo import colmap_io as cio
+from ..photo import proctree
 from ..photo.model import qvec_to_rotmat, rotmat_to_qvec
 from ..photo.native import memory_cap, tool_threads
 from ..runtime import Cancelled, JobError, atomic_write_bytes
+from . import colmap_child as cc
 
 #: Stills two chunk models must share (registered in both) to be joined.
 MIN_SHARED = 5
@@ -298,8 +299,8 @@ class _Stages:
     def __init__(self, work: Path, check: Callable[[], None]):
         self.work = work
         self.check = check
-        self.python = os.environ.get(cio.PYTHON_ENV) or sys.executable
-        self.memory_limit = cio.memory_limit(*cio.memory_status(), memory_cap())
+        self.python = os.environ.get(cc.PYTHON_ENV) or sys.executable
+        self.memory_limit = proctree.memory_limit(*proctree.memory_status(), memory_cap())
 
     def run(self, stage: str, req: dict[str, Any], progress: Callable[[float], None]) -> dict[str, Any]:
         req_path = self.work / f"{stage}.request.json"
@@ -308,7 +309,7 @@ class _Stages:
         req_path.write_text(json.dumps(req), "utf-8")
         prog.write_text("", "utf-8")
         env = dict(os.environ)
-        env["PYTHONPATH"] = str(cio._src_root()) + (
+        env["PYTHONPATH"] = str(cc.src_root()) + (
             os.pathsep + env["PYTHONPATH"] if env.get("PYTHONPATH") else ""
         )
         env["AIO_COLMAP_PROGRESS"] = str(prog)
@@ -331,10 +332,10 @@ class _Stages:
                     self.check()
                     if self.memory_limit and not done and time.monotonic() - last_mem >= 0.5:
                         last_mem = time.monotonic()
-                        used = cio.tree_memory(proc.pid)
+                        used = proctree.tree_memory(proc.pid)
                         if used > self.memory_limit:
-                            cio.kill(proc)
-                            raise cio.MemoryExceeded(
+                            proctree.kill(proc)
+                            raise proctree.MemoryExceeded(
                                 f"Walk path stopped during {stage}: COLMAP needed more than "
                                 f"{self.memory_limit / 1e9:.1f} GB of memory. Close other programs, "
                                 "or raise the memory limit in Settings."
@@ -360,7 +361,7 @@ class _Stages:
                     time.sleep(0.1)
             finally:
                 if proc.poll() is None:
-                    cio.kill(proc)
+                    proctree.kill(proc)
         if error:
             raise JobError(error)
         if proc.returncode != 0 or result is None:
@@ -432,7 +433,6 @@ def run_sfm(
 
     stages = _Stages(work, check)
     threads = tool_threads(cap=16)
-    from ..photo.align import first_octave
 
     base = {"database": str(work / "database.db"), "imageRoot": str(root), "threads": threads, "seed": 0}
     t0 = time.monotonic()
@@ -446,7 +446,7 @@ def run_sfm(
             "width": width,
             "height": height,
             "maxImageSize": MAX_IMAGE_SIZE,
-            "firstOctave": first_octave(min(MAX_IMAGE_SIZE, max(width, height))),
+            "firstOctave": cc.first_octave(min(MAX_IMAGE_SIZE, max(width, height))),
             "overlap": SEQ_OVERLAP,
         },
         lambda f: report(P_FEATURES * f),
@@ -472,7 +472,7 @@ def run_sfm(
             try:
                 res = stages.run(stage, req, lambda f, lo=lo, hi=hi: report(lo + (hi - lo) * f))
                 break
-            except (Cancelled, cio.MemoryExceeded):
+            except (Cancelled, proctree.MemoryExceeded):
                 raise
             except JobError as e:
                 if attempt == 1:
@@ -593,7 +593,7 @@ def _op_map(pc, req: dict[str, Any], out) -> dict[str, Any]:
         req["database"], req["imageRoot"], str(dest), opts, next_image_callback=next_image
     )
     models = [
-        cio._export(pc, rec, dest / f"model-{k}.npz")
+        cc.export_model(pc, rec, dest / f"model-{k}.npz")
         for k, rec in sorted(recs.items(), key=lambda kv: -kv[1].num_reg_images())
     ]
     out.send(progress=1.0, message=f"{len(models)} models")
@@ -601,15 +601,15 @@ def _op_map(pc, req: dict[str, Any], out) -> dict[str, Any]:
 
 
 def worker_main(argv: list[str]) -> int:
-    out = cio._Out()
+    out = cc.Out()
     try:
         req = json.loads(Path(argv[0]).read_text("utf-8"))
-        pc = cio._import_pycolmap(out)
+        pc = cc.import_pycolmap(out)
         if hasattr(pc, "set_random_seed"):
             pc.set_random_seed(int(req.get("seed", 0)))
         op = {"features": _op_features, "map": _op_map}[req["op"]]
         result = op(pc, req, out)
-        out.send(memoryPeakBytes=cio.peak_memory_bytes())
+        out.send(memoryPeakBytes=proctree.peak_memory_bytes())
         out.send(result=result)
         return 0
     except JobError as e:
