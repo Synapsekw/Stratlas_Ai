@@ -99,7 +99,8 @@ async function shot(win: Page, testInfo: TestInfo, name: string): Promise<void> 
   await win.evaluate(
     () => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r))),
   );
-  await win.screenshot({ path: testInfo.outputPath(`${name}.png`) });
+  // the menu fades in over 160 ms: finished animations, so it is shot opaque
+  await win.screenshot({ path: testInfo.outputPath(`${name}.png`), animations: 'disabled' });
 }
 
 test('the Map menu works on the map, keeps the camera and survives a relaunch', async ({

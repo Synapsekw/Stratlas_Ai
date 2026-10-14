@@ -297,7 +297,8 @@ export function sceneOnline(
     { enabled: prefs.onlineSatellite, offlineOnly },
     online.keys,
   );
-  return isOnlineBase(d.base) ? d.base : null;
+  // a source that cannot be drawn gives way to the street map, never to another online map
+  return isOnlineBase(d.base) && !d.fallback ? d.base : null;
 }
 
 /** What the 3D view can draw around the open project's site. */

@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import type { RasterPackInfo } from '@aio/schema';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { rasterPacks, unchanged } from './siteTiles';
+import { rasterPacks, sceneOnline, unchanged } from './siteTiles';
 
 const pack = (id: string): RasterPackInfo =>
   ({
@@ -164,5 +164,32 @@ describe('raster packs store', () => {
       mapBase: 'esri-world-imagery',
       sceneBase: 'mapbox-dark',
     });
+  });
+});
+
+describe('the online map of the 3D scene', () => {
+  const NO_KEYS = { esri: false, mapbox: false };
+
+  it('is the picked source when main can serve it', () => {
+    expect(
+      sceneOnline(
+        { sceneBase: 'esri-world-imagery', onlineSatellite: true },
+        { keys: NO_KEYS },
+        false,
+      ),
+    ).toBe('esri-world-imagery');
+  });
+
+  it('offline-only: none, so the street map stays (no fallback to saved Sentinel-2)', () => {
+    expect(
+      sceneOnline(
+        { sceneBase: 'esri-world-imagery', onlineSatellite: true },
+        { keys: NO_KEYS },
+        true,
+      ),
+    ).toBeNull();
+    expect(
+      sceneOnline({ sceneBase: 'mapbox-dark', onlineSatellite: true }, { keys: NO_KEYS }, false),
+    ).toBeNull();
   });
 });

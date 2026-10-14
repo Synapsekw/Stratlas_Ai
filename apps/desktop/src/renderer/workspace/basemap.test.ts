@@ -5,6 +5,7 @@ import {
   coveringPacks,
   groundModel,
   NO_ONLINE,
+  placeLook,
   resolveMapBase,
   siteLonLat,
   type BasemapPrefs,
@@ -243,7 +244,7 @@ describe('the base map of the Map menu', () => {
     expect(m.draw.streets).toBe(true);
   });
 
-  it('offline-only with online maps on draws the saved Sentinel-2 tiles', () => {
+  it('offline-only with online maps on falls back to the offline street map', () => {
     const m = basemapModel(
       prefs({ onlineSatellite: true, mapBase: 'esri-world-imagery' }),
       [],
@@ -251,8 +252,9 @@ describe('the base map of the Map menu', () => {
       SITE,
       { ...NO_ONLINE, offlineOnly: true },
     );
-    expect(m).toMatchObject({ drawn: 's2cloudless-2016', fallback: true });
-    expect(m.draw.online).toBe('s2cloudless-2016');
+    expect(m).toMatchObject({ drawn: 'streets', fallback: true });
+    expect(m.draw.online).toBeNull();
+    expect(m.draw.streets).toBe(true);
   });
 
   it('packs on top of Esri; street names over imagery follow the switch', () => {
@@ -277,6 +279,68 @@ describe('the base map of the Map menu', () => {
     );
     expect(m.satellite).toBe(true);
     expect(m.draw.online).toBe('esri-world-imagery');
+  });
+});
+
+describe('imagery for Place walk', () => {
+  const ESRI = NO_ONLINE;
+
+  it('a picked street base, online maps on, no pack: turns the base to the online satellite', () => {
+    const look = placeLook(
+      prefs({ satellite: true, onlineSatellite: true, mapBase: 'streets' }),
+      [elsewhere],
+      [],
+      SITE,
+      ESRI,
+    );
+    expect(look).toEqual({
+      imagery: true,
+      switchTo: { mapBase: 'esri-world-imagery', streets: true },
+    });
+  });
+
+  it('online imagery already drawn, or 0.11 Satellite with online on: nothing to switch', () => {
+    expect(
+      placeLook(
+        prefs({ onlineSatellite: true, mapBase: 'esri-world-imagery' }),
+        [],
+        [],
+        SITE,
+        ESRI,
+      ),
+    ).toEqual({ imagery: true, switchTo: null });
+    expect(placeLook(prefs({ onlineSatellite: true }), [], [], SITE, ESRI)).toEqual({
+      imagery: true,
+      switchTo: null,
+    });
+  });
+
+  it('a pack covers the site: imagery packs on top, whatever the base', () => {
+    expect(
+      placeLook(prefs({ satellite: false, streets: false, mapBase: 'streets' }), [here], [], SITE),
+    ).toEqual({ imagery: true, switchTo: { satellite: true, streets: true } });
+    expect(placeLook(prefs({ satellite: true }), [here], [], SITE)).toEqual({
+      imagery: true,
+      switchTo: null,
+    });
+  });
+
+  it('respects offline-only and keys: no imagery when the online satellite cannot be drawn', () => {
+    const on = prefs({ onlineSatellite: true, mapBase: 'streets' });
+    expect(placeLook(on, [], [], SITE, { ...ESRI, offlineOnly: true })).toEqual({
+      imagery: false,
+      switchTo: null,
+    });
+    expect(placeLook(on, [], [], SITE, { ...ESRI, source: 'mapbox-satellite' })).toEqual({
+      imagery: false,
+      switchTo: null,
+    });
+    expect(placeLook(prefs({ mapBase: 'streets' }), [], [], SITE, ESRI)).toEqual({
+      imagery: false,
+      switchTo: null,
+    });
+    // the model agrees: Place walk reads the same answer
+    expect(basemapModel(on, [], [], SITE, { ...ESRI, offlineOnly: true }).satellite).toBe(false);
   });
 });
 

@@ -2,7 +2,12 @@ import { fitWalk } from '@aio/geo';
 import { ProjectManifest, type WalkLayer } from '@aio/schema';
 import { describe, expect, it } from 'vitest';
 import { createStore } from 'zustand/vanilla';
-import { createPlaceImagery, followPlaceBasemap, type PlaceBasemapPrefs } from './placeBasemap';
+import {
+  createPlaceImagery,
+  followPlaceBasemap,
+  type PlaceBasemapPrefs,
+  type PlaceLook,
+} from './placeBasemap';
 import { createPlaceStore } from './placeStore';
 
 const walk: WalkLayer = {
@@ -28,7 +33,17 @@ const m = ProjectManifest.parse({
   classCatalogues: [],
 });
 
-function setup(prefs: PlaceBasemapPrefs, imagery: { on: boolean }) {
+/** Packs at the site, as `placeLook` reports them: Satellite turns the packs on top. */
+const packsLook = (imagery: { on: boolean }, prefs: () => PlaceBasemapPrefs) => (): PlaceLook => ({
+  imagery: imagery.on,
+  switchTo: imagery.on && !prefs().satellite ? { satellite: true, streets: true } : null,
+});
+
+function setup(
+  prefs: PlaceBasemapPrefs,
+  imagery: { on: boolean },
+  look?: (prefs: () => PlaceBasemapPrefs) => () => PlaceLook,
+) {
   const session = createPlaceStore({ fit: fitWalk, seek: () => undefined });
   const raster = createStore<{
     prefs: PlaceBasemapPrefs;
@@ -49,7 +64,13 @@ function setup(prefs: PlaceBasemapPrefs, imagery: { on: boolean }) {
   }));
   const stored: Partial<PlaceBasemapPrefs>[] = [];
   const out = createPlaceImagery();
-  const stop = followPlaceBasemap(session, raster, () => imagery.on, out);
+  const current = () => raster.getState().prefs;
+  const stop = followPlaceBasemap(
+    session,
+    raster,
+    (look ?? ((p) => packsLook(imagery, p)))(current),
+    out,
+  );
   const startOnMap = () => {
     session.getState().start(walk, m);
     session.getState().chooseSurface({ kind: 'map' });
@@ -112,6 +133,26 @@ describe('followPlaceBasemap', () => {
     k.raster.getState().set({});
     expect(k.prefs().satellite).toBe(true);
     expect(k.out.getState().imagery).toBe(true);
+    k.stop();
+  });
+
+  it('no pack, a street base picked, online maps on: the base turns to the online satellite', () => {
+    // what placeLook says for a site with no pack and online maps on
+    const online = (p: () => PlaceBasemapPrefs) => (): PlaceLook => ({
+      imagery: true,
+      switchTo:
+        p().mapBase === 'esri-world-imagery'
+          ? null
+          : { mapBase: 'esri-world-imagery', streets: true },
+    });
+    const k = setup({ satellite: true, streets: false, mapBase: 'streets' }, { on: true }, online);
+    k.startOnMap();
+    expect(k.prefs()).toEqual({ satellite: true, streets: true, mapBase: 'esri-world-imagery' });
+    expect(k.out.getState().imagery).toBe(true);
+    k.session.getState().cancel();
+    // the picked base comes back when placing ends, and nothing is stored
+    expect(k.prefs()).toEqual({ satellite: true, streets: false, mapBase: 'streets' });
+    expect(k.stored).toEqual([]);
     k.stop();
   });
 

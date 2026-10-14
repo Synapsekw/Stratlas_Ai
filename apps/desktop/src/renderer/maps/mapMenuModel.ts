@@ -176,9 +176,8 @@ export function tileState(
 }
 
 /**
- * What a view draws for the chosen base map. A source that cannot be drawn gives way: to the
- * saved Sentinel-2 tiles on an offline-only workstation with online maps on, otherwise to the
- * offline street map.
+ * What a view draws for the chosen base map. A source that cannot be drawn (no key, online maps
+ * off, or an offline-only workstation) gives way to the offline street map, in every view.
  */
 export function drawnBase(
   chosen: BaseMapId,
@@ -189,7 +188,6 @@ export function drawnBase(
   const source = onlineSource(chosen);
   if (source && online.enabled && tileState(source, online, keys) === 'available')
     return { base: chosen, fallback: false };
-  if (online.enabled && online.offlineOnly) return { base: 's2cloudless-2016', fallback: true };
   return { base: 'streets', fallback: true };
 }
 

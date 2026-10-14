@@ -3,7 +3,7 @@
  * (`MapMenus.tsx`; the street map, an online source, or what 0.11's map type showed), the
  * installed imagery packs on top of it, relief shading from a terrain pack and the streets and
  * names over imagery. An online source is drawn only when main can serve it (`drawnBase`);
- * otherwise the saved Sentinel-2 tiles or the street map take its place.
+ * otherwise the street map takes its place.
  *
  * One model for the Map menu, the Settings checkboxes, the command palette and the map itself
  * (`useSatelliteMap`), so they cannot disagree: a choice that has no pack to draw from is not
@@ -63,6 +63,16 @@ export function resolveMapBase(
   return prefs.satellite && prefs.onlineSatellite ? online.source : 'streets';
 }
 
+const onlineOf = (prefs: Pick<BasemapPrefs, 'onlineSatellite'>, online: BasemapOnline) => ({
+  enabled: prefs.onlineSatellite,
+  offlineOnly: online.offlineOnly,
+});
+
+/** The workstation's online satellite can be drawn now. */
+function onlineImagery(prefs: Pick<BasemapPrefs, 'onlineSatellite'>, online: BasemapOnline) {
+  return !drawnBase(online.source, onlineOf(prefs, online), online.keys).fallback;
+}
+
 export type LonLat = readonly [number, number];
 
 /** Where the site is on the Earth (its origin), or null for a project in a local grid. */
@@ -102,16 +112,16 @@ export interface BasemapDraw {
 
 export interface BasemapModel {
   /**
-   * Imagery can be drawn at the site: an imagery pack covers it, or online maps are switched on
-   * (an online satellite has imagery everywhere). Place walk reads it before it turns the map to
-   * imagery for a placement.
+   * Imagery can be drawn at the site: an imagery pack covers it, or the workstation's online
+   * satellite can be drawn (online maps on, its key held, not offline-only; it has imagery
+   * everywhere). Place walk reads it (`placeLook`) before it turns the map to imagery.
    */
   satellite: boolean;
   /** Online maps are switched on. */
   online: boolean;
   /** The base map chosen (or derived from 0.11's choices). */
   base: BaseMapId;
-  /** The base map drawn: the chosen one, or saved Sentinel-2 or the street map in its place. */
+  /** The base map drawn: the chosen one, or the street map in its place. */
   drawn: BaseMapId;
   /** The chosen base cannot be drawn now. */
   fallback: boolean;
@@ -142,16 +152,12 @@ export function basemapModel(
   const packs = coveringPacks(imagery, site);
   const relief = coveringPacks(terrain, site);
   const onlineOn = prefs.onlineSatellite;
-  const satellite = packs.length > 0 || onlineOn;
+  const satellite = packs.length > 0 || onlineImagery(prefs, online);
   const hillshade = relief.length > 0;
   const one = packs.find((p) => p.id === prefs.imageryPack) ?? null;
   const hillshadeOn = prefs.hillshade && hillshade;
   const base = resolveMapBase(prefs, online);
-  const drawn = drawnBase(
-    base,
-    { enabled: onlineOn, offlineOnly: online.offlineOnly },
-    online.keys,
-  );
+  const drawn = drawnBase(base, onlineOf(prefs, online), online.keys);
   const drawnSource = isOnlineBase(drawn.base) ? onlineSource(drawn.base) : undefined;
   const packsOn = prefs.satellite && packs.length > 0;
   const imageryUnder = packsOn || (drawnSource?.imagery ?? false);
@@ -175,6 +181,38 @@ export function basemapModel(
       streets,
       online: drawnSource ? drawnSource.id : null,
     },
+  };
+}
+
+/** What Place walk needs to show imagery under a walk placed on the map. */
+export interface PlaceLook {
+  /** Any imagery can be drawn at the site (`BasemapModel.satellite`). */
+  imagery: boolean;
+  /** The choices that show it, or null when it is shown already or there is none. */
+  switchTo: Partial<Pick<BasemapPrefs, 'satellite' | 'streets' | 'mapBase'>> | null;
+}
+
+/**
+ * Imagery under a walk placed on the map: the imagery packs on top when one covers the site,
+ * otherwise the workstation's online satellite as the base map, when it can be drawn.
+ */
+export function placeLook(
+  prefs: BasemapPrefs,
+  imagery: readonly RasterPackInfo[],
+  terrain: readonly RasterPackInfo[],
+  site: LonLat | null,
+  online: BasemapOnline = NO_ONLINE,
+): PlaceLook {
+  const m = basemapModel(prefs, imagery, terrain, site, online);
+  const drawnImagery = isOnlineBase(m.drawn) && (onlineSource(m.drawn)?.imagery ?? false);
+  if (!m.satellite) return { imagery: false, switchTo: null };
+  if (m.draw.satellite || drawnImagery) return { imagery: true, switchTo: null };
+  return {
+    imagery: true,
+    switchTo:
+      m.packs.length > 0
+        ? { satellite: true, streets: true }
+        : { mapBase: online.source, streets: true },
   };
 }
 

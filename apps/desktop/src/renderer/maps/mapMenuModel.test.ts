@@ -60,9 +60,9 @@ describe('what is drawn', () => {
     });
   });
 
-  it('offline-only draws saved Sentinel-2 when online maps are on', () => {
+  it('offline-only falls back to the street map; a picked Sentinel-2 draws its saved tiles', () => {
     expect(drawnBase('esri-world-imagery', OFFLINE_ONLY, NO_KEYS)).toEqual({
-      base: 's2cloudless-2016',
+      base: 'streets',
       fallback: true,
     });
     expect(drawnBase('s2cloudless-2016', OFFLINE_ONLY, NO_KEYS)).toEqual({

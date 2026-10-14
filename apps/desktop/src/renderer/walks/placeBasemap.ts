@@ -1,20 +1,23 @@
 import type { StoreApi } from 'zustand';
 import { createStore } from 'zustand/vanilla';
-import type { BasemapPrefs } from '../workspace/basemap';
+import type { BasemapPrefs, PlaceLook } from '../workspace/basemap';
 import type { PlaceState } from './placeStore';
 
 /*
- * Satellite under a walk placed on the map: the spots a walk starts and ends at are found on
- * imagery, not on the street map. While a session places a walk on the map, the map type turns to
- * Satellite when any imagery can be drawn (an imagery pack at the site, or online satellite), and
- * back to what it was when placing ends, unless the person chose another type meanwhile. The switch
- * is for the session only (`setForSession`): a quit while placing leaves the stored choice. Nothing
- * here knows the packs: the app hands in whether imagery is available (`walkMounts.tsx`), so the
- * strip can read `placeImagery` without loading the map's tile code.
+ * Imagery under a walk placed on the map: the spots a walk starts and ends at are found on
+ * imagery, not on the street map. While a session places a walk on the map, the map turns to
+ * imagery when any can be drawn (the imagery packs on top when one covers the site, else the
+ * online satellite as the base map), and back to what it was when placing ends, unless the person
+ * chose another map meanwhile. The switch is for the session only (`setForSession`): a quit while
+ * placing leaves the stored choice. Nothing here knows the packs: the app hands in what to switch
+ * to (`placeLook`, wired in `walkMounts.tsx`), so the strip can read `placeImagery` without
+ * loading the map's tile code.
  */
 
-/** The map type choices this follows (`RasterPrefs` of `siteTiles.ts`). */
-export type PlaceBasemapPrefs = Pick<BasemapPrefs, 'satellite' | 'streets'>;
+export type { PlaceLook };
+
+/** The map choices this follows (`RasterPrefs` of `siteTiles.ts`). */
+export type PlaceBasemapPrefs = Pick<BasemapPrefs, 'satellite' | 'streets' | 'mapBase'>;
 
 export interface PlaceImagery {
   /** While placing on the map: whether any imagery can be drawn there; null when not placing on the map. */
@@ -28,9 +31,6 @@ export function createPlaceImagery(): StoreApi<PlaceImagery> {
 /** What the Place walk strip reads to say that no imagery can be shown. */
 export const placeImagery = createPlaceImagery();
 
-/** Satellite: imagery with the streets and names over it (`basemapPatch('satellite')`). */
-const SATELLITE: PlaceBasemapPrefs = { satellite: true, streets: true };
-
 /** Follow the session and the map type choices; returns the unsubscribe. */
 export function followPlaceBasemap(
   session: StoreApi<PlaceState>,
@@ -40,11 +40,11 @@ export function followPlaceBasemap(
     chosen: number;
     setForSession(patch: Partial<PlaceBasemapPrefs>): void;
   }>,
-  available: () => boolean,
+  look: () => PlaceLook,
   out: StoreApi<PlaceImagery> = placeImagery,
 ): () => void {
   /** The choices before the switch, while switched (null: not switched this session). */
-  let before: PlaceBasemapPrefs | null = null;
+  let before: Partial<PlaceBasemapPrefs> | null = null;
   /** `chosen` when the switch was made: a pick since then is the person's and stays. */
   let pickedAt = 0;
   /** This session's switch is settled (made, or not needed): a later choice is the person's. */
@@ -68,15 +68,17 @@ export function followPlaceBasemap(
         tell(null);
         return;
       }
-      const imagery = available();
+      const { imagery, switchTo } = look();
       tell(imagery);
-      if (settled) return;
-      if (prefs.satellite) settled = true;
-      else if (imagery) {
-        settled = true;
-        before = { satellite: prefs.satellite, streets: prefs.streets };
+      if (settled || !imagery) return;
+      settled = true;
+      if (switchTo) {
+        // what the switch changes, as it was, to restore when placing ends
+        before = Object.fromEntries(
+          Object.keys(switchTo).map((k) => [k, prefs[k as keyof PlaceBasemapPrefs] ?? null]),
+        );
         pickedAt = raster.getState().chosen;
-        raster.getState().setForSession(SATELLITE);
+        raster.getState().setForSession(switchTo);
       }
     } finally {
       busy = false;

@@ -3073,6 +3073,7 @@ export const en = {
   'mapSources.status.saved': 'Key saved',
   'mapSources.key': '{provider} key',
   'mapSources.key.placeholder': 'Paste the key',
+  'mapSources.key.check': 'Saving or testing a key asks {provider} for one tile to check it.',
   'mapSources.save': 'Save key',
   'mapSources.test': 'Test',
   'mapSources.remove': 'Remove',

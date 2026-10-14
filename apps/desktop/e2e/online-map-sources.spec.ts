@@ -135,6 +135,10 @@ test('a Mapbox style without a key is greyed with the reason; a key in Map sourc
   await expect(win.locator('.set-page h1')).toHaveText('Map sources');
   const row = win.getByTestId('map-source-mapbox');
   await expect(row.getByTestId('map-source-status-mapbox')).toHaveText('No key');
+  // the key check is disclosed beside the key: it asks the provider for one tile
+  await expect(row.getByTestId('map-key-mapbox')).toHaveAccessibleDescription(
+    'Saving or testing a key asks Mapbox for one tile to check it.',
+  );
   await row.getByTestId('map-key-mapbox').fill(TOKEN);
   await row.getByTestId('map-key-save-mapbox').click();
   await expect(row.getByTestId('map-key-msg-mapbox')).toHaveText(

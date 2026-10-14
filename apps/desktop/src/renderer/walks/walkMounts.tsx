@@ -1,11 +1,12 @@
 /**
  * The 360 video pane on the split's mount point (`EXTRA_PANES`), registered once (imported by
  * `workspace/m8Mounts.tsx`, which the stage loads). Kept in its own module so the pane and the
- * mount point never import each other. Satellite under a walk placed on the map is wired here too
+ * mount point never import each other. Imagery under a walk placed on the map is wired here too
  * (`placeBasemap.ts`), where the map's packs are already loaded.
  */
 import { workspace } from '@aio/workspace';
-import { basemapModel, siteLonLat } from '../workspace/basemap';
+import { getShell } from '../store';
+import { placeLook, siteLonLat } from '../workspace/basemap';
 import { rasterPacks } from '../workspace/siteTiles';
 import { EXTRA_PANES } from '../workspace/SplitPanes';
 import { followPlaceBasemap } from './placeBasemap';
@@ -22,5 +23,6 @@ EXTRA_PANES.walk360 = {
 followPlaceBasemap(placeSession, rasterPacks, () => {
   const r = rasterPacks.getState();
   const site = siteLonLat(workspace.getState().project?.manifest ?? null);
-  return basemapModel(r.prefs, r.imagery, r.terrain, site).satellite;
+  const offlineOnly = getShell(workspace).getState().settings.offlineOnly === true;
+  return placeLook(r.prefs, r.imagery, r.terrain, site, { ...r.online, offlineOnly });
 });

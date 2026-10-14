@@ -149,6 +149,7 @@ function ProviderRow({ row, onChanged }: { row: SourceRow; onChanged: () => void
             autoComplete="off"
             spellCheck={false}
             placeholder={t('mapSources.key.placeholder')}
+            aria-describedby={`${inputId}-check`}
             value={draft}
             data-testid={inputId}
             onChange={(e) => {
@@ -183,6 +184,11 @@ function ProviderRow({ row, onChanged }: { row: SourceRow; onChanged: () => void
             {t('mapSources.remove')}
           </button>
         </div>
+      )}
+      {provider && (
+        <p className="help" id={`${inputId}-check`}>
+          {t('mapSources.key.check', { provider: name })}
+        </p>
       )}
       {msg && (
         <p
