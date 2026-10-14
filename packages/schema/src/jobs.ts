@@ -684,8 +684,6 @@ export const PhotoProductsParams = z
     products: z.array(PhotoProduct).min(1),
     /** Default the run's preset. */
     preset: PhotoPreset.optional(),
-    /** `cuda` only with the GPU accelerator (decision 5: M10.1 at the earliest). */
-    dense: z.enum(['auto', 'cpu', 'cuda']).optional(),
     /** Ortho ground sample distance, cm; default the median GSD of the photos. */
     gsdCm: z.number().min(0.1).max(1000).optional(),
     region: LonLatRing.optional(),

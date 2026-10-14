@@ -135,6 +135,7 @@ describe('M11 additive rule: no layer kind, raster role, project type, setting o
         'localModel',
         'motion',
         'offlineOnly',
+        'processing',
         'reportBranding',
         'reportContents',
         'routes',

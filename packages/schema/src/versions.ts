@@ -492,6 +492,14 @@ export const SCHEMA_REGISTRY: readonly SchemaEntry[] = [
     where: 'GPU add-on manifest.json (runtime/pipeline-addon-cuda-<version>/)',
     since: '0.11',
   },
+  // the ODM install record beside the pipeline packs (odm.ts; ADR 0012, 14 Oct 2026)
+  {
+    family: 'aio.odm-install',
+    version: 1,
+    home: 'pack',
+    where: 'runtime/odm.json (the ODM install record beside the pipeline packs)',
+    since: '0.14',
+  },
   // 360 video from a 360 camera's own file (walks.ts): a side folder older builds never read
   { family: 'aio.walk', version: 1, home: 'project', where: 'walks/<id>/walk.json', since: '0.11' },
   // the walk's path and camera orientation from walk.process (walks.ts; founder, 12 Oct 2026)

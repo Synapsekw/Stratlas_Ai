@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { LonLatRing } from './change';
 import { Id, IsoDate, IsoTime, ProjectPath, Vec3 } from './common';
+import { OdmGpuSetting, OdmState } from './odm';
 import { Crs } from './manifest';
 
 /**
@@ -48,8 +49,9 @@ export const PhotoSource = z.union([
 
 /**
  * Stage names of the three jobs (`photo.align`, `photo.georef`, `photo.products`): a list of
- * names, not the order they run in. `photo.products` runs prepare, dense, fuse, dsm, dtm, cloud,
- * ortho, mesh, texture, commit, tiles.
+ * names, not the order they run in. `photo.align` runs inspect, sfm, georef, report, commit;
+ * `photo.products` runs prepare, dense, mesh, texture, cloud, dsm, ortho, commit, tiles (`fuse`
+ * and `dtm` are no longer run; they stay here for old runs).
  */
 export const PhotoStageName = z.enum([
   'inspect',
@@ -158,10 +160,11 @@ export const HardwareProbe = z.looseObject({
       }),
     )
     .max(16),
-  /** The pack's CUDA build is present and works (decision 5: M10.1 at the earliest). */
+  /** NVIDIA's CUDA driver (`nvcuda.dll`) is on this computer: ODM can use the card for features. */
   cuda: z.boolean(),
   /**
-   * The optional GPU add-on on this computer (`aio.pipeline-addon/1`): `ready` when it is
+   * No longer written (the GPU add-on is gone with our own engine); kept so old `run.json` files
+   * still read. The optional GPU add-on on this computer (`aio.pipeline-addon/1`): `ready` when it is
    * installed, fits the processing tools and the graphics card passes its test; else why not,
    * with `reason` in plain words. Absent in builds before the add-on. Photo jobs use the card
    * when it is `ready`; nothing else changes without it.
@@ -186,7 +189,11 @@ export const HardwareProbe = z.looseObject({
    * Whether processing can run here: `available`, or why not (decision 8: Windows x64 and macOS
    * arm64 only; the pack must be 0.4.0 or later).
    */
-  processing: z.enum(['available', 'unsupported-platform', 'pack-too-old', 'no-pack']),
+  processing: z.enum(['available', 'unsupported-platform', 'pack-too-old', 'no-pack', 'no-engine']),
+  /** The ODM engine on this computer: its state, version and the GPU setting. */
+  engine: z
+    .object({ state: OdmState, version: z.string().max(40).optional(), gpu: OdmGpuSetting })
+    .optional(),
 });
 
 /** The wizard's estimate before a run starts (`photo:estimate`). */
@@ -248,6 +255,14 @@ export const PhotoRun = z.looseObject({
   /** Component versions: `pack`, `colmap`, `pdal`, `opencv` and so on. */
   versions: z.record(z.string().min(1).max(40), z.string().max(80)),
   hardware: HardwareProbe.optional(),
+  /** The engine that made the run (ODM); absent in runs of earlier packs. */
+  engine: z
+    .looseObject({
+      name: z.literal('odm'),
+      version: z.string().max(40),
+      gpu: z.object({ features: z.boolean().optional(), dense: z.boolean().optional() }).optional(),
+    })
+    .optional(),
   warnings: z.array(z.string().max(500)).max(1000).optional(),
 });
 

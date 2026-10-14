@@ -110,6 +110,7 @@ describe('M10 additive rule: no layer kind, raster format, derived kind or recor
         'localModel',
         'motion',
         'offlineOnly',
+        'processing',
         'reportBranding',
         'reportContents',
         'routes',
@@ -546,7 +547,12 @@ describe('M10 IPC channels', () => {
       const r = ipc[c].response.safeParse({ ok: false, error: 'x', code: 'not-implemented' });
       expect(r.success, c).toBe(true);
     }
-    expect(Object.keys(ipc).filter((c) => c.startsWith('odm:'))).toEqual([]);
+    // ODM came with ADR 0012 (14 Oct 2026); before it there were none
+    expect(
+      Object.keys(ipc)
+        .filter((c) => c.startsWith('odm:'))
+        .sort(),
+    ).toEqual(['odm:cancel', 'odm:install', 'odm:remove', 'odm:setGpu', 'odm:status']);
   });
 });
 

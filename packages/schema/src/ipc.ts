@@ -113,6 +113,13 @@ import { TilesetEntry, TilesetsFile } from './tilesets';
 import { WalkFile } from './walks';
 import { WalkProcessSummary } from './walkProcess';
 import { RemovalPlan, RemoveTarget } from './removal';
+import {
+  OdmGpuSetting,
+  OdmInstallProgress,
+  OdmInstallResult,
+  OdmStatus,
+  ProcessingSettings,
+} from './odm';
 
 const Empty = z.object({}).strict();
 
@@ -348,6 +355,8 @@ export const Settings = z.object({
   inference: InferenceSettings.optional(),
   /** Sync preferences (M9). Never keys, tokens or invite codes: those live in the vault. */
   team: TeamSettings.optional(),
+  /** Settings, Processing tools: the photogrammetry engine (ODM). Absent: GPU auto. */
+  processing: ProcessingSettings.optional(),
 });
 
 /** West, south, east, north in WGS84 degrees. */
@@ -3033,6 +3042,24 @@ export const ipc = {
     ]),
   },
 
+  // ---------------------------------------------------------------- ODM engine (Settings, Processing tools)
+  /** What is installed: the pinned ODM, another ODM on this computer, the GPU line (ADR 0012). */
+  'odm:status': { request: Empty, response: OdmStatus },
+  /**
+   * Download, verify and install the pinned ODM per user. `replaceOther` lets ODM's setup replace
+   * another ODM it finds. Progress: `odm:progress`.
+   */
+  'odm:install': {
+    request: z.object({ replaceOther: z.boolean().optional() }).strict(),
+    response: OdmInstallResult,
+  },
+  /** Stop the running install; its temporary files are removed. */
+  'odm:cancel': { request: Empty, response: z.object({ ok: z.boolean() }) },
+  /** Uninstall the ODM this app installed. */
+  'odm:remove': { request: Empty, response: OdmInstallResult },
+  /** Write `settings.processing.odm.gpu`. */
+  'odm:setGpu': { request: z.object({ gpu: OdmGpuSetting }).strict(), response: OdmInstallResult },
+
   // ---------------------------------------------------------------- 360 video (walks, W1 front)
   /**
    * The 360 videos of an open project or package: every `walks/<id>/walk.json` that reads, newest
@@ -3279,6 +3306,8 @@ export const ipcEvents = {
   }),
   /** Progress of `pipelinePack:install` (Settings, Processing tools). */
   'pipelinePack:progress': PackInstallProgress,
+  /** Progress of `odm:install` (Settings, Processing tools). */
+  'odm:progress': OdmInstallProgress,
 } as const satisfies Record<string, z.ZodType>;
 
 export type IpcChannel = keyof typeof ipc;

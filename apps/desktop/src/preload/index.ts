@@ -249,6 +249,11 @@ const CHANNELS = {
   'pipelinePack:install': true,
   'pipelinePack:cancel': true,
   'pipelinePack:remove': true,
+  'odm:status': true,
+  'odm:install': true,
+  'odm:cancel': true,
+  'odm:remove': true,
+  'odm:setGpu': true,
 } as const satisfies Record<IpcChannel, true>;
 
 const EVENTS = {
@@ -272,6 +277,7 @@ const EVENTS = {
   'blobs:progress': true,
   'sync:notice': true,
   'pipelinePack:progress': true,
+  'odm:progress': true,
 } as const satisfies Record<IpcEventName, true>;
 
 const known = <K extends string>(table: Record<K, true>, key: string): key is K =>

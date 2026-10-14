@@ -48,3 +48,5 @@ export * from './launch';
 export * from './onlineImagery';
 // Delete and start over: removal targets, the removal plan and the trash record (aio.trash/1)
 export * from './removal';
+// The ODM photogrammetry engine: install status, GPU setting, install record (ADR 0012)
+export * from './odm';

@@ -92,9 +92,12 @@ describe('existing files 0.10 writes stay readable by 0.9', () => {
 
   it('settings written by 0.10 parse with the 0.9 schema (globe settings have their own file)', () => {
     const settings = current.Settings.parse(load('0.9', 'userData/settings.json'));
-    expect(Object.keys(current.Settings.shape).sort()).toEqual(
-      Object.keys(v09.Settings.shape).sort(),
-    );
+    // `processing` (the ODM engine, 14 Oct 2026) is additive: the older schema drops it on read
+    expect(
+      Object.keys(current.Settings.shape)
+        .filter((k) => k !== 'processing')
+        .sort(),
+    ).toEqual(Object.keys(v09.Settings.shape).sort());
     expect(v09.Settings.safeParse(settings).success).toBe(true);
   });
 
