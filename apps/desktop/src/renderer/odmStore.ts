@@ -23,10 +23,13 @@ export interface OdmUi {
   setGpu(on: boolean): Promise<void>;
   /** Close the replace question. */
   keep(): void;
+  /** Stop following install progress (the next `load` follows it again). */
+  dispose(): void;
 }
 
 export function createOdmStore(b: Bridge, on: AioBridge['on'] | undefined): StoreApi<OdmUi> {
-  let following = false;
+  /** The one subscription to `odm:progress`, kept for the life of the app (see `dispose`). */
+  let unfollow: (() => void) | null = null;
   return createStore<OdmUi>()((set, get) => {
     /** Take an answer that carries the new status; a refusal shows its reason (a cancel is silent). */
     const take = (v: OdmInstallResult) => {
@@ -41,12 +44,12 @@ export function createOdmStore(b: Bridge, on: AioBridge['on'] | undefined): Stor
       askReplace: false,
 
       load: async () => {
-        if (!following && on) {
-          following = true;
-          on('odm:progress', (p) => {
+        // an install can end with the card closed, so the store follows progress from the first
+        // load on, once; a second load never adds a second listener
+        unfollow ??=
+          on?.('odm:progress', (p) => {
             if (get().installing) set({ progress: p });
-          });
-        }
+          }) ?? null;
         const r = await b.call('odm:status', {});
         if (!r.ok) {
           set({ error: r.error });
@@ -69,6 +72,10 @@ export function createOdmStore(b: Bridge, on: AioBridge['on'] | undefined): Stor
           return;
         }
         take(r.value);
+        // a refusal (no Windows x64, a development folder, offline only, no disk space, an install
+        // already running) or a failed or cancelled install: show what main says now, so the card
+        // offers what is possible (a running install shows up with its Cancel)
+        if (!r.value.ok) await get().load();
       },
 
       cancel: async () => {
@@ -92,6 +99,11 @@ export function createOdmStore(b: Bridge, on: AioBridge['on'] | undefined): Stor
 
       keep: () => {
         set({ askReplace: false });
+      },
+
+      dispose: () => {
+        unfollow?.();
+        unfollow = null;
       },
     };
   });

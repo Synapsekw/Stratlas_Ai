@@ -49,6 +49,14 @@ function progressOf(p: OdmInstallProgress | null): { label: string; pct: number 
   return { label: t('engine.progress.install'), pct: null };
 }
 
+/** The phase in words alone, with no figures: what a screen reader is told as the install moves on. */
+export function phaseLabel(p: OdmInstallProgress | null): string {
+  if (p?.phase === 'download') return t('engine.phase.download');
+  if (p?.phase === 'verify') return t('engine.progress.verify');
+  if (p?.phase === 'check') return t('engine.progress.check');
+  return t('engine.progress.install');
+}
+
 export function processingEngineView(
   status: OdmStatus | null,
   progress: OdmInstallProgress | null,
@@ -90,7 +98,7 @@ export function processingEngineView(
   } else if (state === 'broken' || state === 'unsupported') detail = status.problem ?? null;
 
   let actions: EngineAction[] = [];
-  if (installing) actions = progress?.phase === 'download' ? ['cancel'] : [];
+  if (installing) actions = !progress || progress.phase === 'download' ? ['cancel'] : [];
   else if (status.dev) actions = [];
   else if (state === 'not-installed') actions = ['install'];
   else if (state === 'installed') actions = ['remove'];

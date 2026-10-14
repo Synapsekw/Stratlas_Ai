@@ -860,7 +860,7 @@ export const en = {
   'engine.gpu.none': 'No NVIDIA graphics card found; processing uses the CPU',
   'engine.gpu.switch': 'Use the graphics card',
   'engine.gpu.help':
-    'With an NVIDIA driver and this switch on, the graphics card finds features in the photos and matches them into the dense point cloud. Switch it off to keep processing on the CPU.',
+    'When on, ODM uses your NVIDIA graphics card for finding features and for dense matching.',
   'engine.install': 'Download and install',
   'engine.update': 'Update',
   'engine.reinstall': 'Reinstall',
@@ -870,7 +870,9 @@ export const en = {
   'engine.remove.keep': 'Keep',
   'engine.other': 'Another ODM is installed in {dir}. Installing replaces it.',
   'engine.other.yes': 'Install and replace it',
+  'engine.other.no': 'Keep it',
   'engine.admin': "Windows may ask once for permission to install Microsoft's C++ runtime.",
+  'engine.phase.download': 'Downloading',
   'engine.progress.download': 'Downloading {done} of {total}',
   'engine.progress.verify': 'Checking the download',
   'engine.progress.install': 'Installing',

@@ -6,12 +6,12 @@
  *
  * Other screens get here with `openProcessingEngine()` (renderer/odm.ts).
  */
-import { formatBytes, Icon, t, type IconName } from '@aio/ui';
+import { Icon, t, type IconName } from '@aio/ui';
 import { useEffect, useRef, useState } from 'react';
 import { odm, useOdm } from '../../odm';
 import { resumeAfterTools, useProcessingTools } from '../../processingTools';
 import { shell, useShell } from '../../shell';
-import { processingEngineView } from './processingEngineView';
+import { phaseLabel, processingEngineView } from './processingEngineView';
 import './processingEngine.css';
 
 const LICENCE_URL = 'https://github.com/OpenDroneMap/ODM/blob/master/LICENSE';
@@ -33,9 +33,20 @@ export function ProcessingEngine() {
   const resume = useProcessingTools((s) => s.resume);
   const [confirm, setConfirm] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [gpuBusy, setGpuBusy] = useState(false);
+  /** An install was started here: how it ended is worth saying. */
+  const [ran, setRan] = useState(false);
   const card = useRef<HTMLElement>(null);
+  const removeBtn = useRef<HTMLButtonElement>(null);
+  const confirmBtn = useRef<HTMLButtonElement>(null);
+  const replaceYes = useRef<HTMLButtonElement>(null);
+  /** The person has used the card: only then may it move the focus when a button goes away. */
+  const touched = useRef(false);
   const view = processingEngineView(status, progress, installing);
   const has = (a: (typeof view.actions)[number]) => view.actions.includes(a);
+  const loaded = view.state !== 'loading';
+  const phase = installing ? phaseLabel(progress) : null;
+  const done = status?.state === 'installed' ? t('engine.state.installed') : '';
 
   // the data folder holds the install record: read again when it changes
   useEffect(() => {
@@ -43,13 +54,48 @@ export function ProcessingEngine() {
   }, [dataRoot]);
 
   // asked for by openProcessingEngine(): bring the card into view and focus its first button
+  // (once the status is in, so there are buttons to focus)
   const asked = useShell((s) => s.settingsFocus === 'processing-engine');
   useEffect(() => {
     if (!asked) return;
     card.current?.scrollIntoView({ block: 'start' });
-    card.current?.querySelector<HTMLElement>('button:not(:disabled)')?.focus();
+    if (!loaded) return;
+    card.current?.querySelector<HTMLElement>('.pe-acts button:not(:disabled)')?.focus();
     shell.getState().clearSettingsFocus();
-  }, [asked]);
+  }, [asked, loaded]);
+
+  // the live region speaks the phase (not every megabyte) and how the install ended
+  const live = phase ?? (ran ? (error ?? done) : '');
+  const install = (replaceOther?: boolean) => {
+    setRan(true);
+    void odm.getState().install(replaceOther);
+  };
+
+  // a button that had the focus went away (Install became Cancel, Cancel gave way to Remove):
+  // the focus goes to the button that took its place
+  const actionKey = view.actions.join();
+  useEffect(() => {
+    const a = document.activeElement;
+    if (!touched.current || (a && a !== document.body)) return;
+    card.current?.querySelector<HTMLElement>('.pe-acts button:not(:disabled)')?.focus();
+  }, [actionKey]);
+
+  // Remove asks inline: the confirm takes the focus, and Keep gives it back to Remove
+  const wasConfirm = useRef(false);
+  useEffect(() => {
+    if (confirm) confirmBtn.current?.focus();
+    else if (wasConfirm.current) removeBtn.current?.focus();
+    wasConfirm.current = confirm;
+  }, [confirm]);
+
+  // the question about another ODM takes the focus; answering Keep it returns it to Install
+  const wasAsking = useRef(false);
+  useEffect(() => {
+    if (askReplace) replaceYes.current?.focus();
+    else if (wasAsking.current)
+      card.current?.querySelector<HTMLElement>('.pe-acts button:not(:disabled)')?.focus();
+    wasAsking.current = askReplace;
+  }, [askReplace]);
 
   const installed = status?.state === 'installed' || status?.state === 'update-available';
   const icon = STATE_ICON[view.tone];
@@ -59,6 +105,12 @@ export function ProcessingEngine() {
     setBusy(false);
     setConfirm(false);
   };
+  const switchGpu = async () => {
+    if (gpuBusy) return;
+    setGpuBusy(true);
+    await odm.getState().setGpu(!view.gpuOn);
+    setGpuBusy(false);
+  };
 
   return (
     <section
@@ -66,6 +118,9 @@ export function ProcessingEngine() {
       className="opt-card processing-engine"
       data-testid="engine"
       aria-labelledby="engine-title"
+      onClickCapture={() => {
+        touched.current = true;
+      }}
     >
       <div className="oc-head">
         <div>
@@ -97,7 +152,9 @@ export function ProcessingEngine() {
               type="button"
               className="btn sm primary"
               data-testid="engine-install"
-              onClick={() => void odm.getState().install()}
+              onClick={() => {
+                install();
+              }}
             >
               <Icon name="download" size={14} />
               {t('engine.install')}
@@ -108,7 +165,9 @@ export function ProcessingEngine() {
               type="button"
               className="btn sm primary"
               data-testid="engine-update"
-              onClick={() => void odm.getState().install()}
+              onClick={() => {
+                install();
+              }}
             >
               {t('engine.update')}
             </button>
@@ -118,7 +177,9 @@ export function ProcessingEngine() {
               type="button"
               className="btn sm"
               data-testid="engine-reinstall"
-              onClick={() => void odm.getState().install()}
+              onClick={() => {
+                install();
+              }}
             >
               {t('engine.reinstall')}
             </button>
@@ -129,6 +190,7 @@ export function ProcessingEngine() {
                 <button
                   type="button"
                   className="btn sm danger"
+                  ref={confirmBtn}
                   data-testid="engine-remove-confirm"
                   disabled={busy}
                   onClick={() => void remove()}
@@ -151,6 +213,7 @@ export function ProcessingEngine() {
               <button
                 type="button"
                 className="btn sm ghost"
+                ref={removeBtn}
                 data-testid="engine-remove"
                 onClick={() => {
                   setConfirm(true);
@@ -172,18 +235,9 @@ export function ProcessingEngine() {
           {t('engine.site')}
         </a>
         .
-        {status && !installed && (
-          <>
-            {' '}
-            {t('engine.size', {
-              download: formatBytes(status.pinned.downloadBytes),
-              installed: formatBytes(status.pinned.installedBytes),
-            })}
-          </>
-        )}
       </p>
 
-      {view.detail && view.state !== 'not-installed' && (
+      {view.detail && (
         <p className="help pe-detail" data-testid="engine-detail">
           {view.detail}
         </p>
@@ -213,8 +267,8 @@ export function ProcessingEngine() {
             aria-checked={view.gpuOn}
             aria-label={t('engine.gpu.switch')}
             aria-describedby="engine-gpu-l"
-            disabled={view.gpuDisabled || !installed}
-            onClick={() => void odm.getState().setGpu(!view.gpuOn)}
+            disabled={view.gpuDisabled || !installed || gpuBusy}
+            onClick={() => void switchGpu()}
           />
         </div>
       )}
@@ -227,11 +281,11 @@ export function ProcessingEngine() {
 
       {view.progress && (
         <div className="pe-progress" data-testid="engine-progress">
-          <span role="status">{view.progress.label}</span>
+          <span>{view.progress.label}</span>
           <div
             className={`toast-bar${view.progress.pct === null ? ' busy' : ''}`}
             role="progressbar"
-            aria-label={t('engine.progress.install')}
+            aria-label={phase ?? ''}
             aria-valuemin={0}
             aria-valuemax={100}
             {...(view.progress.pct === null ? {} : { 'aria-valuenow': view.progress.pct })}
@@ -254,13 +308,16 @@ export function ProcessingEngine() {
                 odm.getState().keep();
               }}
             >
-              {t('engine.remove.keep')}
+              {t('engine.other.no')}
             </button>
             <button
               type="button"
               className="btn sm primary"
+              ref={replaceYes}
               data-testid="engine-replace-yes"
-              onClick={() => void odm.getState().install(true)}
+              onClick={() => {
+                install(true);
+              }}
             >
               {t('engine.other.yes')}
             </button>
@@ -286,6 +343,9 @@ export function ProcessingEngine() {
           </button>
         </div>
       )}
+      <div className="sr-only" role="status" data-testid="engine-live">
+        {live}
+      </div>
     </section>
   );
 }
