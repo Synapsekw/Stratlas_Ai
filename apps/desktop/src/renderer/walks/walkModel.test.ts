@@ -409,7 +409,7 @@ describe('originalCheck', () => {
 
   it('says which file was picked when it is another one', () => {
     expect(originalCheck('D:\\cam\\VID_2.insv', 'VID_1.insv')).toBe(
-      'VID_2.insv is not VID_1.insv. Pick the original file, or process without it.',
+      'VID_2.insv is not VID_1.insv. Pick the camera file, or process without levelling.',
     );
   });
 });
