@@ -107,6 +107,7 @@ export function wgs84ToUtm(lon: number, lat: number, zone = 39): [number, number
 
 export * from './crs';
 export * from './similarity';
+export * from './meshUp';
 export * from './camera';
 export * from './altitude';
 export * from './flight';
