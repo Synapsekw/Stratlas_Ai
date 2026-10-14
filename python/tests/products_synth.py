@@ -271,6 +271,13 @@ def sparse_points(scene: Scene, n: int = 2500, seed: int = 5) -> SparseModel:
     return SparseModel(scene.views, p, c, tracks)
 
 
+def _dense_points(scene: Scene, n: int, seed: int = 5) -> SparseModel:
+    """``n`` scene points (all of them when there are fewer) without tracks."""
+    rng = np.random.default_rng(seed)
+    pick = rng.choice(len(scene.points), size=min(n, len(scene.points)), replace=False)
+    return SparseModel(scene.views, scene.points[pick], scene.colours[pick], [[] for _ in pick])
+
+
 def aligned_model(model: SparseModel, origin: np.ndarray):
     """The scene's model as ``photo.align`` keeps it (``photo.model.SparseModel``), shifted into
     the grid frame (minus ``origin``), each track an observation at the point's projection."""
@@ -309,12 +316,16 @@ def write_project(
     frame_origin: tuple[float, float, float] | None = None,
     photos_dir: str = "photos-in",
     captures: list[dict] | None = None,
+    odm_bias: tuple[float, float, float] = (0.0, 0.0, 0.0),
 ) -> Path:
     """A project folder with photos, a manifest and an aligned run as ``photo.align`` writes it:
     ``run.json`` and ``sparse/`` in the grid frame (project CRS minus ``frame_origin``, the
-    manifest origin by default) with ``frame.json`` and ``photos.json``."""
+    manifest origin by default) with ``frame.json`` and ``photos.json``, and the run's ``odm/``
+    folder as ODM leaves it after its sparse stage (``odm_synth``; ``odm_bias`` moves its
+    reconstruction in the local east, north, up frame, as an unreferenced ODM run would)."""
+    import odm_synth
     from aio_pipelines.photo import crs as C
-    from aio_pipelines.photo.align import LIST_SCHEMA, write_sparse
+    from aio_pipelines.photo.align import LIST_SCHEMA, grid_to_enu_model, write_sparse
 
     photos = root / photos_dir
     photos.mkdir(parents=True, exist_ok=True)
@@ -347,6 +358,9 @@ def write_project(
     (rdir / "sparse" / "photos.json").write_text(
         json.dumps({"schema": LIST_SCHEMA, "imageRoot": str(photos), "photos": listing}), "utf-8"
     )
+    dense = _dense_points(scene, 20_000)  # dense enough for the fake ODM's DSM
+    enu_model = grid_to_enu_model(aligned_model(dense, origin), enu, grid)
+    odm_synth.write_odm_folder(rdir, enu_model, enu, {v.name: photos / v.name for v in model.views}, odm_bias)
     doc = {
         "schema": "aio.photo-run/1",
         "id": run,
