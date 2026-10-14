@@ -215,6 +215,22 @@ describe('buildLaneModel', () => {
     expect(m.range[1]).toBeCloseTo(11 * H + pad);
   });
 
+  it('covers the photos and issues of a lane without video', () => {
+    const [d1, d2] = [DATES[0] ?? '', DATES[1] ?? ''];
+    const m = buildLaneModel(
+      tm({
+        clips: [clip('a', at(d1, 9), H)],
+        photos: [{ layerId: 'ph', photoId: 'p1', tMs: at(d2, 20) }],
+        issues: [issue('i1', at(d2, 6))],
+      }),
+      index([d1, d2], { a: 'd1', ph: 'd2' }),
+      'd2',
+      OFF,
+    );
+    expect(m.range[0]).toBeLessThanOrEqual(6 * H);
+    expect(m.range[1]).toBeGreaterThanOrEqual(20 * H);
+  });
+
   it('spans the whole day when no visible lane carries time', () => {
     expect(buildLaneModel(tm({}), index(DATES.slice(0, 2)), 'd1', OFF).range).toEqual([0, DAY_MS]);
   });
@@ -238,6 +254,17 @@ describe('ghostAt and utcAt', () => {
   it('finds nothing in a gap or past the end', () => {
     expect(ghostAt(lane, 8 * H)).toBeUndefined();
     expect(ghostAt(lane, 9 * H + 11 * MIN)).toBeUndefined();
+  });
+  it('resolves a touching clip boundary to the clip that starts there', () => {
+    const touching = buildLaneModel(
+      tm({ clips: [clip('a', at(d, 9), 10 * MIN), clip('b', at(d, 9, 10), 10 * MIN)] }),
+      index([d], { a: 'd1', b: 'd1' }),
+      'd1',
+      OFF,
+    ).lanes[0] ?? { clips: [] };
+    expect(ghostAt(touching, 9 * H + 10 * MIN)?.clip.layerId).toBe('b');
+    expect(ghostAt(touching, 9 * H + 10 * MIN)?.mediaMs).toBe(0);
+    expect(laneClipAt(touching, 9 * H + 10 * MIN)?.layerId).toBe('b');
   });
   it('maps a time of day back to UTC on the lane date', () => {
     expect(utcAt(lane, 9 * H + 2 * MIN, OFF)).toBe(at(d, 9, 2));

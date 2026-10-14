@@ -144,7 +144,7 @@ export function ghostAt(
   lane: Pick<Lane, 'clips'>,
   tod: number,
 ): { clip: LaneClip; mediaMs: number; utcMs: number } | undefined {
-  const clip = lane.clips.find((c) => tod >= c.startTod && tod <= c.endTod);
+  const clip = lane.clips.find((c) => tod >= c.startTod && tod < c.endTod);
   if (!clip) return undefined;
   const mediaMs = tod - clip.startTod;
   return { clip, mediaMs, utcMs: clip.startMs + mediaMs };
@@ -185,11 +185,11 @@ export function laneWindow(
 }
 
 function fitRange(lanes: readonly Lane[]): [number, number] {
-  const times = lanes.flatMap((l) => l.clips.flatMap((c) => [c.startTod, c.endTod]));
-  if (times.length === 0)
-    times.push(
-      ...lanes.flatMap((l) => [...l.photos.map((p) => p.tod), ...l.issues.map((i) => i.tod)]),
-    );
+  const times = lanes.flatMap((l) => [
+    ...l.clips.flatMap((c) => [c.startTod, c.endTod]),
+    ...l.photos.map((p) => p.tod),
+    ...l.issues.map((i) => i.tod),
+  ]);
   if (times.length === 0) return [0, DAY_MS];
   let a = Math.min(...times);
   let b = Math.max(...times);
