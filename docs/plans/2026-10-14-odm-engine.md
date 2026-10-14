@@ -13,11 +13,13 @@
 ## Global Constraints
 
 - ODM release **3.6.2**: `https://github.com/OpenDroneMap/ODM/releases/download/v3.6.2/ODM_Setup_3.6.2.exe`, **244,864,104** bytes, SHA-256 **`c9dbfabf0d066529a7b6c753fd45bf3366a0314266160cd677373bab4caff294`**. The pin lives in one file, `apps/desktop/src/main/odm/pin.ts`. Never a floating "latest".
-- ODM is never linked or modified: it is started as `run.bat` with `ODM_NONINTERACTIVE=1`, by the pipelines only. The app and the Team Server never import it.
+- ODM is never linked, and its program code is never modified: it is started as `run.bat` with `ODM_NONINTERACTIVE=1`, by the pipelines only. The app and the Team Server never import it. One exception, founder 14 Oct: in the ODM folder the app installed itself (`odm.json`'s `dir`), the placeholder `SuperBuild\install\bin\nvcuda.dll` (a 19 KB stub) is renamed to `nvcuda.dll.odm-stub` when `%SYSTEMROOT%\System32\nvcuda.dll` exists and the GPU setting is `auto`, and renamed back when the setting is `off` or before the uninstaller runs; never deleted (deviation 17).
 - Source photos are never written: `odm/images/` holds hard links (copies when a hard link fails).
 - Presets: Fast `--fast-orthophoto --skip-3dmodel --pc-quality low --feature-quality medium`; Standard `--pc-quality medium --feature-quality high`; High `--pc-quality high --feature-quality ultra`. Products runs always add `--dsm --dtm --cog --pc-copc --build-overviews --orthophoto-resolution <cm> --dem-resolution <cm> --max-concurrency <n>` (not `--optimize-disk-space`: it deletes OpenSfM's features, matches and tracks, which a later georeference reuses; our own cleanup after commit removes the heavy folders instead), and `--skip-3dmodel` when no mesh was asked for. Matcher and SfM stay ODM's defaults.
 - GPU: setting `processing.odm.gpu` = `auto` (default) or `off`. `auto` and `%SYSTEMROOT%\System32\nvcuda.dll` present: `--feature-type sift`; otherwise `--no-gpu`. A GPU fallback is a warning, never a failure.
-- Threads: `max-concurrency = clamp(min(logical CPUs - 2, floor(RAM GB / 3)), 2, 32)` (21 on a 24-thread, 64 GB machine), lowered further only by a memory limit set by hand: the app passes `AIO_ODM_MEMORY_CAP_MB` only when the existing hand-set override `QUADRION_PHOTO_MEMORY_MB` is set (`floor(cap GB / 3)`, same clamp; the same value is ODM's memory kill limit, none otherwise). There is no memory field in Settings today, and this plan adds none. The automatic 75 % `AIO_PHOTO_MEMORY_MB` does not lower ODM's threads (founder, 14 Oct). Task 4's `odm_memory_cap()` reads `AIO_ODM_MEMORY_CAP_MB` (Task 2's `odm_threads` only takes the number); Task 14 sets it in `jobEnv`.
+- Threads: `max-concurrency = clamp(min(logical CPUs - 2, floor(RAM GB / 3)), 2, 32)` (21 on a 24-thread, 64 GB machine; every ODM call passes this computed `--max-concurrency`, never ODM's own default), lowered further only by a memory limit set by hand: the app passes `AIO_ODM_MEMORY_CAP_MB` only when the existing hand-set override `QUADRION_PHOTO_MEMORY_MB` is set (`floor(cap GB / 3)`, same clamp; the same value is ODM's memory kill limit, none otherwise). There is no memory field in Settings today, and this plan adds none. The automatic 75 % `AIO_PHOTO_MEMORY_MB` does not lower ODM's threads (founder, 14 Oct). Task 4's `odm_memory_cap()` reads `AIO_ODM_MEMORY_CAP_MB` (Task 2's `odm_threads` only takes the number); Task 14 sets it in `jobEnv`.
+- Paths ODM sees are ASCII, without spaces and without `cmd.exe` metacharacters (C5 `false`): a space breaks ODM's unquoted SMRF ground command (zero ground points, then the DTM loops forever) and a non-ASCII letter breaks OpenSfM. Other paths are reached through a junction (project folders) or avoided (the install folder).
+- A DTM is never added by `--rerun-from odm_dem` or later on a point cloud that was not made with `--dtm`; the runner starts from `odm_georeferencing` instead (Task 4).
 - One photo processing job at a time on the computer (a new gate in `jobs:start`; there is no existing heavy-job gate, see "Spec deviations").
 - Exit codes: 137 and 3221226505 "ODM ran out of memory; try the Fast preset or close other programs."; 132 "This computer's processor is not supported by ODM."; 3 "ODM is missing a program; reinstall the processing engine in Settings, Processing tools."; 1, 134, 139, 3221225477 "ODM could not process these photos: <last ODM line>"; the last 20 ODM lines always go to the job log.
 - Our own engine is deleted in this branch (no fallback). Old runs keep their committed layers; products on a run without an ODM project are refused with a plain message.
@@ -29,7 +31,7 @@
 
 ## Review Focus
 
-1. **A data folder or project path with a space or a non-ASCII letter** (the founder's data root is `E:\Stratlas Data`; new installs default to `Documents\Quadrion AI Data`). ODM must still install and run: spaces work (Task 0), but a non-ASCII letter breaks OpenSfM, so the install folder and ODM's project folder are chosen or reached through a junction whenever the path has one. Pinned in Task 5 (`odm_path reaches an unsafe folder through a junction`) and Task 12 (`install folder avoids non-ASCII letters in the data root`).
+1. **A data folder or project path with a space or a non-ASCII letter** (the founder's data root is `E:\Stratlas Data`; new installs default to `Documents\Quadrion AI Data`). ODM must still install and run, and the DTM must finish: a space breaks ODM's SMRF ground step and a non-ASCII letter breaks OpenSfM, so the install folder is chosen safe and ODM's project folder is reached through a junction whenever the path has either. Pinned in Task 5 (`odm_path reaches an unsafe folder through a junction`) and Task 12 (`install folder avoids spaces and non-ASCII letters in the data root`).
 2. **Another ODM already installed** (an Inno uninstall entry or `C:\ODM\run.bat`). ODM's setup silently removes it, so the install refuses until the person confirms. Pinned in Task 12 (`refuses while another ODM is installed until replaceOther`) and Task 18 (`another ODM asks before installing`).
 3. **Cancel in the middle of an ODM stage, then Resume.** No ODM process may survive the cancel, and the resumed products step must restart from the stage after the last finished one, not from the beginning. Pinned in Task 4 (`cancel kills the whole ODM tree` and `products resume starts after the last finished stage`).
 4. **Two photos with the same file name in different folders** (DJI `100MEDIA` and `101MEDIA` both hold `IMG_0001.JPG`). Each must get its own link name in `odm/images/` and map back to its own photo key. Pinned in Task 5 (`same file names in two folders get distinct links`).
@@ -50,32 +52,32 @@
 11. **Test-only overrides in main**, all gated to `QUADRION_E2E=1`: `QUADRION_ODM_PIN_FILE` (a JSON pin for a local fake setup), running a setup file ending in `.mjs` with Electron as Node, and `QUADRION_ODM_OTHER` (a folder that stands for another ODM install). `QUADRION_ODM_DIR` (and `QUADRION_ODM_VERSION`) names an ODM folder without installing, like `QUADRION_PIPELINE_PACK` for the pack.
 12. **The mesh layer always comes from ODM's textured OBJ** (`odm_texturing/odm_textured_model_geo.obj`, else the 2.5D one), converted to GLB by us (C8 has no GLB path); the spec allowed ODM's own GLB first. One converter, one frame rule (C9).
 13. **The fake ODM writes LAS and OBJ**, not COPC and GLB: our import's fallbacks (LAS to COPC through PDAL and untwine, OBJ to GLB) are what it exercises.
-14. **Safe paths for ODM** are ASCII (spaces allowed since Task 0, C5) without the characters `cmd.exe` treats specially (`& ^ % ! ( ) < > | "`), because ODM's command line passes through `cmd.exe`. 8.3 short names such as `C:\Users\RUNNER~1` are safe.
+14. **Safe paths for ODM** are ASCII without spaces (C5 is back to `false`: a space in the project path gives ODM's SMRF command a truncated path, zero ground points and a DTM that never finishes; root-caused 14 Oct) and without the characters `cmd.exe` treats specially (`& ^ % ! ( ) < > | "`), because ODM's command line passes through `cmd.exe`. 8.3 short names such as `C:\Users\RUNNER~1` are safe.
 15. **No `--optimize-disk-space`** (the spec asked for it during the run): it deletes `opensfm/features`, `matches` and `tracks.csv` in every products call, so a georeference after products would extract and match again. `clean_intermediates` after commit removes the heavy folders and keeps those.
 16. **No observations are imported** from ODM: its `tracks.csv` is binary (C10). Reprojection error, track length and GSD come from ODM's `opensfm/stats/stats.json` and from the points each camera sees; `sparse/` keeps cameras and points without tracks.
-17. **Dense matching on the GPU** is not used by ODM 3.6.2 on Windows (Task 0, C11). The job log says so plainly; the card still offers the graphics card (features use it).
+17. **Dense matching on the GPU needs one file renamed in ODM's folder** (founder, 14 Oct). ODM 3.6.2 for Windows ships a placeholder `SuperBuild\install\bin\nvcuda.dll` (19 KB, every export a bare `ret`) beside `DensifyPointCloud.exe`; Windows loads it before the real driver, so OpenMVS silently densifies on the CPU. With it renamed to `nvcuda.dll.odm-stub`, OpenMVS loads the real driver: dense matching ran about 6x faster (204.8 s to 32.7 s at medium quality on 24 photos). ODM's program code is untouched; only that placeholder is renamed, only in our own install, only when the real driver exists and the GPU setting is `auto`; it is put back for `off` and before uninstalling; the Python runner checks before every ODM run (a repair or reinstall brings it back) and the installer once after install. ODM's log never shows OpenMVS's CUDA line (it runs it at `-v 0`), so "dense on the GPU" is reported when the stub is parked, the driver exists, the openmvs stage ran and no `OpenMVS failed with GPU` line appeared (a `CUDA device N initialized` line, if one ever shows, also counts).
 
 ## Probe-fed constants (measured by Task 0; amended 14 Oct 2026)
 
 The values below are the plan's defaults from desk research. Task 0 measures each on this machine with the real 3.6.2 install. **Before dispatching Batch 2 the controller compares Task 0's findings with this table, edits any value that differs here and in the owning task's code block (a C6 change also goes into the copy in `python/tests/fake_odm/fake_odm.py`, Task 3), and commits the plan amendment** (`docs(plans): odm probe findings`). Implementers use the table as amended.
 
-| #   | Constant                         | Value (measured by Task 0 on ODM 3.6.2, 14 Oct 2026)                                                                                                                                                                                                                                                                                                                                                                    | Lives in (task)                                                    |
-| --- | -------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------ |
-| C1  | `SETUP_ARGS`                     | `/VERYSILENT /SUPPRESSMSGBOXES /NORESTART /CURRENTUSER` plus `/DIR=<dir>` (confirmed: per user, exit 0 in 70 s; `/LOG=<file>` also accepted)                                                                                                                                                                                                                                                                            | `main/odm/pin.ts` (12)                                             |
-| C2  | `SETUP_MAY_ASK_ADMIN`            | `false` (no vc_redist step in 3.6.2; non-admin, unattended install finished)                                                                                                                                                                                                                                                                                                                                            | `main/odm/pin.ts` (12)                                             |
-| C3  | `ODM_PIN.installedBytes`         | `1_100_000_000` (measured 1,006,316,511 bytes, 11,935 files)                                                                                                                                                                                                                                                                                                                                                            | `main/odm/pin.ts` (12)                                             |
-| C4  | `REQUIRED_FILES`                 | `['run.bat', 'winrun.bat', 'win32env.bat', 'VERSION', 'venv\\Scripts\\python.exe']`                                                                                                                                                                                                                                                                                                                                     | `main/odm/pin.ts` (12)                                             |
-| C5  | `SPACES_OK` (desktop and Python) | `true`: spaces work in the project path (full pipeline). Non-ASCII letters fail (OpenSfM's C++ file I/O: "Can't write tracks manager file"), so a path with a non-ASCII letter or a `cmd.exe` metacharacter still goes through the safe-path and junction rule. The install folder with a space was not tested; the same rule applies to it                                                                             | `main/odm/paths.ts` (12), `photo/odm/project.py` (5)               |
-| C6  | `STAGE_END`                      | dataset 5, opensfm 25, openmvs 50, odm_filterpoints 52, odm_meshing 60, mvs_texturing 70, **odm_georeferencing 80**, odm_dem 90, odm_orthophoto 98, odm_report 99, odm_postprocess 100 (floats such as `25.0`; stages also send mid-stage values; skipped stages still send theirs; `split` and `merge` send 5 and 0)                                                                                                   | `photo/odm/flags.py` (2), copy in `tests/fake_odm/fake_odm.py` (3) |
-| C7  | UDP datagram form and port       | `PGUP/<pid>/<project name>/<percent>` to 127.0.0.1:6367 (confirmed; pid is ODM's Python, not cmd's)                                                                                                                                                                                                                                                                                                                     | `photo/odm/runner.py` (4)                                          |
-| C8  | Output paths                     | `odm_orthophoto/odm_orthophoto.tif`; `odm_dem/dsm.tif`; `odm_dem/dtm.tif`; `odm_georeferencing/odm_georeferenced_model.copc.laz` (and `.laz` beside it); `odm_texturing/odm_textured_model_geo.obj`, else **`odm_texturing_25d/`**`odm_textured_model_geo.obj`; `odm_georeferencing/coords.txt`; `odm_report/report.pdf`; `odm_report/stats.json`                                                                       | `photo/odm/outputs.py` (7)                                         |
-| C9  | OBJ vertex frame                 | UTM of `coords.txt` line 1, minus the offset on line 2 (x, y); z absolute (confirmed; `coords.txt` has one more line per camera after line 2)                                                                                                                                                                                                                                                                           | `photo/odm/outputs.py` (7)                                         |
-| C10 | Reconstruction files             | `opensfm/reconstruction.topocentric.json`, else `opensfm/reconstruction.json`; frame from `opensfm/reference_lla.json`; statistics from `opensfm/stats/stats.json` (written in the opensfm stage; `reconstruction_statistics.reprojection_error_pixels`, `average_track_length`). **`tracks.csv` is binary** (`OPENSFM_TRACKS_VERSION_v102`, C++ `TracksManager`): not read. Observations are not imported (see Task 6) | `photo/odm/reconstruction.py` (6)                                  |
-| C11 | GPU log lines                    | features yes: `Using GPU for extracting SIFT features`; features fallback: `GPU SIFT extraction failed`; dense fallback: `OpenMVS failed with GPU`. **No dense "yes" line exists** (DensifyPointCloud runs with `-v 0`) and in 3.6.2 on Windows dense matching ran on the CPU (OpenMVS loads ODM's bundled stub `nvcuda.dll`). Dense is reported "no" unless `CUDA device \d+ initialized` appears                      | `photo/odm/runner.py` (4)                                          |
-| C12 | `GEOREF_STRATEGY`                | `"invalidate"` (`--rerun-from opensfm` extracts features again; invalidation with the list in `GEOREF_INVALIDATE` reruns metadata and reconstruction only, 37 s against 58 s on 24 photos)                                                                                                                                                                                                                              | `photo/odm/flags.py` (2), `photo/odm/project.py` (5)               |
-| C13 | `FAST_FIRST_STAGE`               | `"odm_filterpoints"` (confirmed after a normal align)                                                                                                                                                                                                                                                                                                                                                                   | `photo/odm/flags.py` (2)                                           |
-| C14 | `UNINSTALL_MATCH`, uninstaller   | `/^ODM\b/i` (DisplayName `ODM version 3.6.2`, InstallLocation with a trailing backslash); `unins000.exe`. Uninstall timing not measured: poll for `run.bat` to go                                                                                                                                                                                                                                                       | `main/odm/detect.ts`, `main/odm/install.ts` (12)                   |
-| C15 | `geo.txt` columns                | `EPSG:4326` header; **always 9 columns** `name lon lat h yaw pitch roll hAcc vAcc`, `nan` for an unknown yaw, pitch or roll (a row with fewer than 9 columns clears the photo's EXIF RTK accuracy)                                                                                                                                                                                                                      | `photo/odm/project.py` (5)                                         |
+| #   | Constant                         | Value (measured by Task 0 on ODM 3.6.2, 14 Oct 2026)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  | Lives in (task)                                                    |
+| --- | -------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------ |
+| C1  | `SETUP_ARGS`                     | `/VERYSILENT /SUPPRESSMSGBOXES /NORESTART /CURRENTUSER` plus `/DIR=<dir>` (confirmed: per user, exit 0 in 70 s; `/LOG=<file>` also accepted)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          | `main/odm/pin.ts` (12)                                             |
+| C2  | `SETUP_MAY_ASK_ADMIN`            | `false` (no vc_redist step in 3.6.2; non-admin, unattended install finished)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          | `main/odm/pin.ts` (12)                                             |
+| C3  | `ODM_PIN.installedBytes`         | `1_100_000_000` (measured 1,006,316,511 bytes, 11,935 files)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          | `main/odm/pin.ts` (12)                                             |
+| C4  | `REQUIRED_FILES`                 | `['run.bat', 'winrun.bat', 'win32env.bat', 'VERSION', 'venv\\Scripts\\python.exe']`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   | `main/odm/pin.ts` (12)                                             |
+| C5  | `SPACES_OK` (desktop and Python) | `false` (amended 14 Oct after a root-cause run): spaces pass OpenSfM, ortho and DSM, but ODM's SMRF ground command is unquoted, so a space gives zero ground points and a DTM that never finishes. Non-ASCII letters fail in OpenSfM ("Can't write tracks manager file"). Such paths go through the junction rule; the install folder must be safe too                                                                                                                                                                                                                                                                                | `main/odm/paths.ts` (12), `photo/odm/project.py` (5)               |
+| C6  | `STAGE_END`                      | dataset 5, opensfm 25, openmvs 50, odm_filterpoints 52, odm_meshing 60, mvs_texturing 70, **odm_georeferencing 80**, odm_dem 90, odm_orthophoto 98, odm_report 99, odm_postprocess 100 (floats such as `25.0`; stages also send mid-stage values; skipped stages still send theirs; `split` and `merge` send 5 and 0)                                                                                                                                                                                                                                                                                                                 | `photo/odm/flags.py` (2), copy in `tests/fake_odm/fake_odm.py` (3) |
+| C7  | UDP datagram form and port       | `PGUP/<pid>/<project name>/<percent>` to 127.0.0.1:6367 (confirmed; pid is ODM's Python, not cmd's)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   | `photo/odm/runner.py` (4)                                          |
+| C8  | Output paths                     | `odm_orthophoto/odm_orthophoto.tif`; `odm_dem/dsm.tif`; `odm_dem/dtm.tif`; `odm_georeferencing/odm_georeferenced_model.copc.laz` (and `.laz` beside it); `odm_texturing/odm_textured_model_geo.obj`, else **`odm_texturing_25d/`**`odm_textured_model_geo.obj`; `odm_georeferencing/coords.txt`; `odm_report/report.pdf`; `odm_report/stats.json`                                                                                                                                                                                                                                                                                     | `photo/odm/outputs.py` (7)                                         |
+| C9  | OBJ vertex frame                 | UTM of `coords.txt` line 1, minus the offset on line 2 (x, y); z absolute (confirmed; `coords.txt` has one more line per camera after line 2)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         | `photo/odm/outputs.py` (7)                                         |
+| C10 | Reconstruction files             | `opensfm/reconstruction.topocentric.json`, else `opensfm/reconstruction.json`; frame from `opensfm/reference_lla.json`; statistics from `opensfm/stats/stats.json` (written in the opensfm stage; `reconstruction_statistics.reprojection_error_pixels`, `average_track_length`). **`tracks.csv` is binary** (`OPENSFM_TRACKS_VERSION_v102`, C++ `TracksManager`): not read. Observations are not imported (see Task 6)                                                                                                                                                                                                               | `photo/odm/reconstruction.py` (6)                                  |
+| C11 | GPU log lines                    | features yes: `Using GPU for extracting SIFT features`; features fallback: `GPU SIFT extraction failed`; dense fallback: `OpenMVS failed with GPU`. **No dense "yes" line exists** (DensifyPointCloud runs with `-v 0`) and in 3.6.2 on Windows dense matching ran on the CPU (OpenMVS loads ODM's bundled stub `nvcuda.dll`). With the placeholder `SuperBuild\install\bin\nvcuda.dll` renamed (deviation 17), OpenMVS uses the GPU but still logs nothing; dense is reported "yes" when the stub is parked, the driver exists, openmvs ran and no fallback line appeared (or a `CUDA device \d+ initialized` line shows), else "no" | `photo/odm/runner.py` (4)                                          |
+| C12 | `GEOREF_STRATEGY`                | `"invalidate"` (`--rerun-from opensfm` extracts features again; invalidation with the list in `GEOREF_INVALIDATE` reruns metadata and reconstruction only, 37 s against 58 s on 24 photos)                                                                                                                                                                                                                                                                                                                                                                                                                                            | `photo/odm/flags.py` (2), `photo/odm/project.py` (5)               |
+| C13 | `FAST_FIRST_STAGE`               | `"odm_filterpoints"` (confirmed after a normal align)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 | `photo/odm/flags.py` (2)                                           |
+| C14 | `UNINSTALL_MATCH`, uninstaller   | `/^ODM\b/i` (DisplayName `ODM version 3.6.2`, InstallLocation with a trailing backslash); `unins000.exe`. Uninstall timing not measured: poll for `run.bat` to go                                                                                                                                                                                                                                                                                                                                                                                                                                                                     | `main/odm/detect.ts`, `main/odm/install.ts` (12)                   |
+| C15 | `geo.txt` columns                | `EPSG:4326` header; **always 9 columns** `name lon lat h yaw pitch roll hAcc vAcc`, `nan` for an unknown yaw, pitch or roll (a row with fewer than 9 columns clears the photo's EXIF RTK accuracy)                                                                                                                                                                                                                                                                                                                                                                                                                                    | `photo/odm/project.py` (5)                                         |
 
 ## File structure
 
@@ -134,7 +136,7 @@ Parallel batches (tasks in a batch share no file and have every dependency met; 
 - **Batch 4:** Task 13.
 - **Batch 5:** Tasks 17, 18.
 
-File ownership inside batches (checked): Batch 1: Task 1 owns `photo/proctree.py`, `photo/native.py`, `photo/colmap_io.py`, `walk/colmap_child.py`, `walk/sfm.py`, `tests/conftest.py`, `tests/test_proctree.py`, `tests/test_photo_align.py` (moved tests out); Task 2 `photo/odm/__init__.py`, `photo/odm/flags.py`, `tests/test_odm_flags.py`; Task 3 `tests/fake_odm/**`, `tests/odm_synth.py`, `tests/test_fake_odm.py`, `tests/products_synth.py`, `tests/two_surveys_synth.py`; Task 5 `photo/odm/project.py`, `tests/test_odm_project.py`; Task 6 `photo/odm/reconstruction.py`, `tests/test_odm_reconstruction.py`; Task 7 `photo/odm/outputs.py`, `photo/glb.py`, `tests/test_odm_outputs.py`; Task 11 `packages/schema/src/{odm,odm.test,index,ipc,jobs,photogrammetry,versions,m10.test}.ts`, `tools/compat/odm-additive.test.mjs`, `apps/desktop/src/preload/index.ts`, `docs/architecture/contract-changes.md`. Batch 2: Task 4 `photo/odm/runner.py`, `tests/test_odm_runner.py`; Task 12 `apps/desktop/src/main/odm/**`; Task 15 `renderer/{odmStore,odmStore.test,odm}.ts`, `renderer/screens/settings/{ProcessingEngine.tsx,processingEngine.css,processingEngineView.ts,processingEngineView.test.ts,ProcessingTools.tsx}`, `renderer/store.ts`, `packages/ui/src/i18n/en.ts`. Batch 3: Task 8 `photo/align.py`, `tests/test_photo_align.py`, `tests/fake_odm/fake_odm.py` (one addition); Task 9 `photo/georef.py`, `tests/test_photo_georef.py`, `tests/odm_synth.py`, `tests/products_synth.py` (additions); Task 10 `photo/products.py`, `tests/test_photo_products.py`, `tests/test_odm_real.py`, `tests/test_opf.py`; Task 14 `main/index.ts`, `main/photogrammetry.ts` (+ test), `main/jobs/runner.ts` (+ test), `main/jobs/addon.ts` (deleted), `main/diagnostics/photo.ts` (+ test); Task 16 `renderer/photogrammetry/{hardware,ProcessWizard,estimate,phases,store}.ts(x)` and their tests, `renderer/jobs.ts`. Batch 4: Task 13 also owns `tests/test_proctree.py`, `tools/ci/pytest-parts.test.mjs` and the python-parts lines of `.github/workflows/ci.yml` (the `photo-chain` part). Batch 5: Task 17 `docs/**` (including the lines of `docs/KNOWN-LIMITS.md` and `docs/release/README.md` that name `photo-real.spec.ts`), `tools/release/**`, `tools/pipeline-pack/accelerator*`, `.github/workflows/{ci,release}.yml` (the add-on job and the `photo-real` comment of `ci.yml`); Task 18 `apps/desktop/e2e/**`, `tools/ci/e2e-timings.json`, `.github/workflows/nightly.yml`, `.gitignore`. In Batch 1 only Task 2 creates `photo/odm/__init__.py`: Tasks 5, 6 and 7 must not (the folder imports as a namespace package until Task 2 commits).
+File ownership inside batches (checked): Batch 1: Task 1 owns `photo/proctree.py`, `photo/native.py`, `photo/colmap_io.py`, `walk/colmap_child.py`, `walk/sfm.py`, `tests/conftest.py`, `tests/test_proctree.py`, `tests/test_photo_align.py` (moved tests out); Task 2 `photo/odm/__init__.py`, `photo/odm/flags.py`, `tests/test_odm_flags.py`; Task 3 `tests/fake_odm/**`, `tests/odm_synth.py`, `tests/test_fake_odm.py`, `tests/products_synth.py`, `tests/two_surveys_synth.py`; Task 5 `photo/odm/project.py`, `tests/test_odm_project.py`; Task 6 `photo/odm/reconstruction.py`, `tests/test_odm_reconstruction.py`; Task 7 `photo/odm/outputs.py`, `photo/glb.py`, `tests/test_odm_outputs.py`; Task 11 `packages/schema/src/{odm,odm.test,index,ipc,jobs,photogrammetry,versions,m10.test}.ts`, `tools/compat/odm-additive.test.mjs`, `apps/desktop/src/preload/index.ts`, `docs/architecture/contract-changes.md`. Batch 2: Task 4 `photo/odm/runner.py`, `tests/test_odm_runner.py`, `tests/fake_odm/fake_odm.py` (two additions); Task 12 `apps/desktop/src/main/odm/**`; Task 15 `renderer/{odmStore,odmStore.test,odm}.ts`, `renderer/screens/settings/{ProcessingEngine.tsx,processingEngine.css,processingEngineView.ts,processingEngineView.test.ts,ProcessingTools.tsx}`, `renderer/store.ts`, `packages/ui/src/i18n/en.ts`. Batch 3: Task 8 `photo/align.py`, `tests/test_photo_align.py`, `tests/fake_odm/fake_odm.py` (one addition); Task 9 `photo/georef.py`, `tests/test_photo_georef.py`, `tests/odm_synth.py`, `tests/products_synth.py` (additions); Task 10 `photo/products.py`, `tests/test_photo_products.py`, `tests/test_odm_real.py`, `tests/test_opf.py`; Task 14 `main/index.ts`, `main/photogrammetry.ts` (+ test), `main/jobs/runner.ts` (+ test), `main/jobs/addon.ts` (deleted), `main/diagnostics/photo.ts` (+ test), `main/diagnostics/redact.ts` (+ test); Task 16 `renderer/photogrammetry/{hardware,ProcessWizard,estimate,phases,store}.ts(x)` and their tests, `renderer/jobs.ts`. Batch 4: Task 13 also owns `tests/test_proctree.py`, `tools/ci/pytest-parts.test.mjs` and the python-parts lines of `.github/workflows/ci.yml` (the `photo-chain` part). Batch 5: Task 17 `docs/**` (including the lines of `docs/KNOWN-LIMITS.md` and `docs/release/README.md` that name `photo-real.spec.ts`), `tools/release/**`, `tools/pipeline-pack/accelerator*`, `.github/workflows/{ci,release}.yml` (the add-on job and the `photo-real` comment of `ci.yml`); Task 18 `apps/desktop/e2e/**`, `tools/ci/e2e-timings.json`, `.github/workflows/nightly.yml`, `.gitignore`. In Batch 1 only Task 2 creates `photo/odm/__init__.py`: Tasks 5, 6 and 7 must not (the folder imports as a namespace package until Task 2 commits).
 
 **Critical path:** Task 0 → Task 1 → Task 4 → Task 10 → Task 13 → Task 18 (six batches; Tasks 4 and 10 are the longest). The desktop line Task 0 → 11 → 12 → 14 → 18 runs beside it with slack.
 
@@ -149,26 +151,26 @@ All in `@aio/schema` (Task 11) unless named. Rows to append to the table in `doc
 
 ## Tests per task
 
-| Task | Unit tests                                                                                                                                                |
-| ---- | --------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 0    | none (a manual probe; its output is the findings JSON)                                                                                                    |
-| 1    | `python/tests/test_proctree.py` (new), `test_walk_sfm.py` and `test_walk_stitch.py` stay green                                                            |
-| 2    | `python/tests/test_odm_flags.py`                                                                                                                          |
-| 3    | `python/tests/test_fake_odm.py`                                                                                                                           |
-| 4    | `python/tests/test_odm_runner.py`                                                                                                                         |
-| 5    | `python/tests/test_odm_project.py`                                                                                                                        |
-| 6    | `python/tests/test_odm_reconstruction.py`                                                                                                                 |
-| 7    | `python/tests/test_odm_outputs.py`                                                                                                                        |
-| 8    | `python/tests/test_photo_align.py` (rewritten)                                                                                                            |
-| 9    | `python/tests/test_photo_georef.py` (rewritten), `test_gcp.py` stays green                                                                                |
-| 10   | `python/tests/test_photo_products.py` (rewritten), `test_opf.py` (updated: products refuse an imported run), `test_odm_real.py` (opt-in, real ODM)        |
-| 11   | `packages/schema/src/odm.test.ts`, `m10.test.ts` (updated), `tools/compat/odm-additive.test.mjs`, `tools/compat/settings-0.8.test.mjs` stays green        |
-| 12   | `apps/desktop/src/main/odm/{pin,paths,detect,install,ipc}.test.ts`                                                                                        |
-| 13   | the whole `python/tests` suite (`test_photo_runs.py`, `test_proctree.py` updated); `tools/pipeline-pack/build.test.mjs`; `tools/ci/pytest-parts.test.mjs` |
-| 14   | `apps/desktop/src/main/photogrammetry.test.ts`, `apps/desktop/src/main/jobs/runner.test.ts`, `apps/desktop/src/main/diagnostics/photo.test.ts`            |
-| 15   | `apps/desktop/src/renderer/odmStore.test.ts`, `renderer/screens/settings/processingEngineView.test.ts`, `packages/ui/src/i18n/i18n.test.ts`               |
-| 16   | `renderer/photogrammetry/{hardware,phases,estimate}.test.ts`                                                                                              |
-| 17   | `tools/release/notices.test.mjs`, `tools/release/budgets.test.mjs`, `node tools/release/notices.mjs --check`                                              |
+| Task | Unit tests                                                                                                                                                                                         |
+| ---- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 0    | none (a manual probe; its output is the findings JSON)                                                                                                                                             |
+| 1    | `python/tests/test_proctree.py` (new), `test_walk_sfm.py` and `test_walk_stitch.py` stay green                                                                                                     |
+| 2    | `python/tests/test_odm_flags.py`                                                                                                                                                                   |
+| 3    | `python/tests/test_fake_odm.py`                                                                                                                                                                    |
+| 4    | `python/tests/test_odm_runner.py`                                                                                                                                                                  |
+| 5    | `python/tests/test_odm_project.py`                                                                                                                                                                 |
+| 6    | `python/tests/test_odm_reconstruction.py`                                                                                                                                                          |
+| 7    | `python/tests/test_odm_outputs.py`                                                                                                                                                                 |
+| 8    | `python/tests/test_photo_align.py` (rewritten)                                                                                                                                                     |
+| 9    | `python/tests/test_photo_georef.py` (rewritten), `test_gcp.py` stays green                                                                                                                         |
+| 10   | `python/tests/test_photo_products.py` (rewritten), `test_opf.py` (updated: products refuse an imported run), `test_odm_real.py` (opt-in, real ODM)                                                 |
+| 11   | `packages/schema/src/odm.test.ts`, `m10.test.ts` (updated), `tools/compat/odm-additive.test.mjs`, `tools/compat/settings-0.8.test.mjs` stays green                                                 |
+| 12   | `apps/desktop/src/main/odm/{pin,paths,detect,install,ipc}.test.ts`                                                                                                                                 |
+| 13   | the whole `python/tests` suite (`test_photo_runs.py`, `test_proctree.py` updated); `tools/pipeline-pack/build.test.mjs`; `tools/ci/pytest-parts.test.mjs`                                          |
+| 14   | `apps/desktop/src/main/photogrammetry.test.ts`, `apps/desktop/src/main/jobs/runner.test.ts`, `apps/desktop/src/main/diagnostics/photo.test.ts`, `apps/desktop/src/main/diagnostics/redact.test.ts` |
+| 15   | `apps/desktop/src/renderer/odmStore.test.ts`, `renderer/screens/settings/processingEngineView.test.ts`, `packages/ui/src/i18n/i18n.test.ts`                                                        |
+| 16   | `renderer/photogrammetry/{hardware,phases,estimate}.test.ts`                                                                                                                                       |
+| 17   | `tools/release/notices.test.mjs`, `tools/release/budgets.test.mjs`, `node tools/release/notices.mjs --check`                                                                                       |
 
 **End to end specs.** Changed: `processing-tools.spec.ts` (the Processing engine card: install from a local fake setup, progress, installed state, switch, remove, another ODM), `photo-process.spec.ts` (step words, the "Install the processing engine first" block, the GPU line), `photo-products.spec.ts` and `photo-change.spec.ts` (real `photo.products` on the fake ODM), `photoPack.ts` (COLMAP helpers removed, `QUADRION_ODM_DIR`), `photo-fake/aio_photo_fake.py` (step names), `photo-fixture.py` and `photo-two-surveys-fixture.py` (unchanged scripts; their projects now carry an ODM folder through `products_synth`). Removed: `photo-real.spec.ts` (COLMAP; the real-engine check is Task 0 and `test_odm_real.py`). Must stay green unchanged: `gcp-marking.spec.ts`, `agent-photo.spec.ts`, `processing-drawer.spec.ts`, `walk-360.spec.ts`. All run in Task 18 the way CI runs them, after `pnpm demo:build --quick`.
 
@@ -1276,17 +1278,20 @@ git commit -m "test(pipelines): fake odm and synthetic odm projects" -m "Co-Auth
 **Files:**
 
 - Create: `python/src/aio_pipelines/photo/odm/runner.py`, `python/tests/test_odm_runner.py`
+- Modify: `python/tests/fake_odm/fake_odm.py` (two additions, see the end of Step 3)
 
 **Interfaces:**
 
 - Consumes: Task 1 `native.run_tool(..., fail=...)` with a `str` command, `native.ToolMemoryExceeded`, `native.total_memory()` (not `native.memory_cap()`: see the amendment); Task 2 `flags.STAGE_END`, `stage_start`, `stage_window`, `stage_after`, `stage_index`, `odm_threads`, `gpu_wanted`; Task 3 fake ODM and `products_synth.write_project` for tests.
 - Founder amendment (14 Oct, overrides any code below): ODM's thread cap and its memory kill limit come only from `odm_memory_cap() -> int | None`, which reads `AIO_ODM_MEMORY_CAP_MB` (set by the app only when the person set a memory limit by hand); never from `native.memory_cap()` / `AIO_PHOTO_MEMORY_MB`. Test: with `AIO_PHOTO_MEMORY_MB=49152` and no `AIO_ODM_MEMORY_CAP_MB`, a 24-thread 64 GB machine gets `--max-concurrency 21` and no memory limit; with `AIO_ODM_MEMORY_CAP_MB=49152` it gets 16 and a 48 GB limit.
 - Produces (`aio_pipelines.photo.odm.runner`):
+  - `OWNED_ENV = "AIO_ODM_OWNED"` (set to `1` by the app only for the ODM it installed), `STUB = Path("SuperBuild/install/bin/nvcuda.dll")`, `PARKED = Path("SuperBuild/install/bin/nvcuda.dll.odm-stub")`, `STUB_MAX_BYTES = 100_000`; `ensure_dense_gpu(odm: OdmInstall, use_gpu: bool, env: Mapping[str, str] | None = None) -> bool`: with `env[OWNED_ENV] == "1"`, `use_gpu` and `nvcuda_present(env)`, renames `STUB` (only if smaller than `STUB_MAX_BYTES`) to `PARKED`; otherwise (and only when owned) renames `PARKED` back to `STUB` if `STUB` is absent; never deletes; logs nothing itself; returns whether dense matching can use the GPU (`PARKED` exists, `STUB` does not, owned, `use_gpu`, driver present). `run_odm` calls it before every start and passes the result to `gpu_use`.
+  - `GROUND_FAIL = re.compile(r"Cannot determine reader|Error creating classified file")`, `class OdmGroundFailed(JobError)`, `DTM_MARK = "odm_georeferencing/.aio-dtm"`; `dtm_cloud_ok(project_dir: Path) -> bool` (the mark exists and holds the current `mtime_ns` of `odm_georeferencing/odm_georeferenced_model.laz`).
   - `STALL_ENV = "AIO_ODM_STALL_MIN"`, `stall_seconds(env=None) -> float` (minutes from `AIO_ODM_STALL_MIN`, default 30, times 60), `class OdmStalled(JobError)`, `DENSE_CPU_NOTE` (message).
   - `odm_memory_cap() -> int | None` (bytes, from `AIO_ODM_MEMORY_CAP_MB`), `ODM_ENV = "AIO_ODM"`, `VERSION_ENV = "AIO_ODM_VERSION"`, `GPU_ENV = "AIO_ODM_GPU"`, `WORK_ENV = "AIO_ODM_WORK"`, `UDP_PORT = 6367`, `NO_ODM` (message).
   - `@dataclass(frozen=True) class OdmInstall: dir: Path; version: str`; `find_odm(env: Mapping[str, str] | None = None) -> OdmInstall` (raises `JobError(NO_ODM)`).
   - `@dataclass(frozen=True) class Machine: threads: int; use_gpu: bool`; `machine(env: Mapping[str, str] | None = None) -> Machine`; `nvcuda_present(env: Mapping[str, str] | None = None) -> bool` (a module-level function that `machine` looks up at call time, so tests can patch it).
-  - `@dataclass class GpuUse: features: bool | None; dense: bool | None; fallbacks: list[str]` with `summary() -> str` and `merge(other: GpuUse) -> GpuUse`; `gpu_use(text: str, requested: bool, window: tuple[str, str] = ("dataset", "odm_postprocess")) -> GpuUse` (a stage outside `window` was skipped by ODM, so its absence of GPU lines says nothing).
+  - `@dataclass class GpuUse: features: bool | None; dense: bool | None; fallbacks: list[str]` with `summary() -> str` and `merge(other: GpuUse) -> GpuUse`; `gpu_use(text: str, requested: bool, window: tuple[str, str] = ("dataset", "odm_postprocess"), dense_capable: bool = False) -> GpuUse` (a stage outside `window` was skipped by ODM, so its absence of GPU lines says nothing; `dense_capable` is `ensure_dense_gpu`'s answer).
   - `engine_record(odm: OdmInstall, gpu: GpuUse) -> dict` (`{"name": "odm", "version": ..., "gpu": {"features"?: bool, "dense"?: bool}}`).
   - `@dataclass class OdmRun: log: Path; gpu: GpuUse; started_from: str | None`.
   - `run_odm(ctx: StepContext, odm: OdmInstall, project_dir: Path, flags: Sequence[str], first: str, last: str, log_dir: Path, *, rerun: bool, use_gpu: bool, progress: tuple[float, float] = (0.0, 1.0), port: int = UDP_PORT) -> OdmRun`.
@@ -1495,8 +1500,68 @@ def test_dense_on_the_cpu_is_said_plainly(odm, aligned, tmp_path):
     ctx = Ctx()
     run = R.run_odm(ctx, odm, aligned, [], "openmvs", "odm_filterpoints", tmp_path / "l", rerun=True,
                     use_gpu=True, port=_free_port())  # fmt: skip
-    assert run.gpu.dense is False
+    assert run.gpu.dense is False  # the fake ODM folder has no parked stub
     assert (R.DENSE_CPU_NOTE, "info") in ctx.logs
+
+
+def _install(tmp_path: Path, stub_bytes: int = 19_968) -> R.OdmInstall:
+    bin_dir = tmp_path / "odm-3.6.2" / "SuperBuild" / "install" / "bin"
+    bin_dir.mkdir(parents=True)
+    (bin_dir / "nvcuda.dll").write_bytes(b"\0" * stub_bytes)
+    return R.OdmInstall(tmp_path / "odm-3.6.2", "3.6.2")
+
+
+def test_the_stub_is_parked_when_the_driver_is_there_and_back_when_off(tmp_path, monkeypatch):
+    inst = _install(tmp_path)
+    stub, parked = inst.dir / R.STUB, inst.dir / R.PARKED
+    monkeypatch.setattr(R, "nvcuda_present", lambda env=None: True)
+    owned = {R.OWNED_ENV: "1"}
+    assert R.ensure_dense_gpu(inst, True, owned) is True
+    assert not stub.exists() and parked.stat().st_size == 19_968  # renamed, never deleted
+    assert R.ensure_dense_gpu(inst, True, owned) is True  # idempotent
+    assert R.ensure_dense_gpu(inst, False, owned) is False  # GPU off: the stub goes back
+    assert stub.exists() and not parked.exists()
+
+
+def test_the_stub_stays_without_a_driver_or_outside_our_install(tmp_path, monkeypatch):
+    inst = _install(tmp_path)
+    monkeypatch.setattr(R, "nvcuda_present", lambda env=None: False)
+    assert R.ensure_dense_gpu(inst, True, {R.OWNED_ENV: "1"}) is False
+    assert (inst.dir / R.STUB).exists()  # without the real driver OpenMVS would not even start
+    monkeypatch.setattr(R, "nvcuda_present", lambda env=None: True)
+    assert R.ensure_dense_gpu(inst, True, {}) is False  # not the ODM the app installed (QUADRION_ODM_DIR)
+    assert (inst.dir / R.STUB).exists()
+    big = _install(tmp_path / "big", stub_bytes=2_000_000)
+    assert R.ensure_dense_gpu(big, True, {R.OWNED_ENV: "1"}) is False  # a real driver someone copied: left alone
+    assert (big.dir / R.STUB).exists()
+
+
+def test_dense_counts_as_gpu_when_the_stub_is_parked():
+    text = "Running openmvs stage\nFinished openmvs stage\n"
+    assert R.gpu_use(text, True, ("openmvs", "odm_filterpoints"), dense_capable=True).dense is True
+    assert R.gpu_use(text + "OpenMVS failed with GPU\n", True, ("openmvs", "odm_filterpoints"), dense_capable=True).dense is False
+    assert R.gpu_use(text, True, ("openmvs", "odm_filterpoints"), dense_capable=False).dense is False
+
+
+def test_a_dtm_is_never_added_from_odm_dem_on_a_cloud_made_without_it(odm, aligned, tmp_path, monkeypatch):
+    log = tmp_path / "args.jsonl"
+    monkeypatch.setenv("FAKE_ODM_ARGS_LOG", str(log))
+    R.run_odm(Ctx(), odm, aligned, ["--dsm", "--dtm"], "odm_dem", "odm_dem", tmp_path / "a", rerun=True,
+              use_gpu=False, port=_free_port())  # fmt: skip
+    first = json.loads(log.read_text().splitlines()[-1])
+    assert first[first.index("--rerun-from") + 1] == "odm_georeferencing"  # no mark: reclassify first
+    assert R.dtm_cloud_ok(aligned)  # that run made the cloud with --dtm and left the mark
+    R.run_odm(Ctx(), odm, aligned, ["--dsm", "--dtm"], "odm_dem", "odm_dem", tmp_path / "b", rerun=True,
+              use_gpu=False, port=_free_port())  # fmt: skip
+    second = json.loads(log.read_text().splitlines()[-1])
+    assert second[second.index("--rerun-from") + 1] == "odm_dem"
+
+
+def test_a_failed_ground_classification_stops_the_dtm_at_once(odm, aligned, tmp_path, monkeypatch):
+    monkeypatch.setenv("FAKE_ODM_SAY", "odm_georeferencing:[WARNING] Error creating classified file x: PDAL: Cannot determine reader for input file: E:\\x\\Probe")
+    with pytest.raises(JobError, match="could not find the ground"):
+        R.run_odm(Ctx(), odm, aligned, ["--dsm", "--dtm"], "odm_georeferencing", "odm_dem", tmp_path / "g",
+                  rerun=True, use_gpu=False, port=_free_port())  # fmt: skip
 
 
 def test_cancel_kills_the_whole_odm_tree(odm, aligned, tmp_path, monkeypatch):
@@ -1663,7 +1728,7 @@ def parse_datagram(data: bytes, project_name: str) -> float | None:
 
 `UdpProgress(port, project_name, on_percent)` is a context manager: binds a `SOCK_DGRAM` socket to `("127.0.0.1", port)` (on Windows with `SO_EXCLUSIVEADDRUSE` first, so another listener cannot share it); on `OSError` sets `available = False` and does nothing else; otherwise reads in a daemon thread with a 0.2 s timeout until `__exit__`, passing each `parse_datagram` result that is not `None` to `on_percent`.
 
-`gpu_use(text, requested, window)`: `features = True` if `FEATURES_YES` in text, `False` if `FEATURES_NO` in text (fallback message "The graphics card could not extract features; ODM used the CPU."), `False` if not `requested` and `opensfm` lies inside `window`, else `None`; `dense = True` if `DENSE_YES` matches, `False` if `DENSE_NO` in text (fallback "The graphics card could not run dense matching; ODM used the CPU."), `False` if `openmvs` lies inside `window` and `Running openmvs stage` is in the text (C11: ODM 3.6.2 on Windows prints no dense line and runs this step on the CPU), else `None`. (ODM prints `Running <stage> stage` for the stages before `--rerun-from` too, and skips their work.) `summary()` joins the known parts: `"Graphics card used for features: yes; for dense matching: yes."` (only the parts that are not `None`; `"no"` for `False`). `merge` keeps, per field, `True` over `False` over `None`, and concatenates fallbacks.
+`gpu_use(text, requested, window, dense_capable)`: `features = True` if `FEATURES_YES` in text, `False` if `FEATURES_NO` in text (fallback message "The graphics card could not extract features; ODM used the CPU."), `False` if not `requested` and `opensfm` lies inside `window`, else `None`; `dense = True` if `DENSE_YES` matches, or if `dense_capable` and `requested` and `openmvs` lies inside `window` and `Running openmvs stage` is in the text and `DENSE_NO` is not (deviation 17: ODM never logs OpenMVS's CUDA line); `False` if `DENSE_NO` in text (fallback "The graphics card could not run dense matching; ODM used the CPU."), `False` if `openmvs` lies inside `window` and `Running openmvs stage` is in the text (C11: ODM 3.6.2 on Windows prints no dense line and runs this step on the CPU), else `None`. (ODM prints `Running <stage> stage` for the stages before `--rerun-from` too, and skips their work.) `summary()` joins the known parts: `"Graphics card used for features: yes; for dense matching: yes."` (only the parts that are not `None`; `"no"` for `False`). `merge` keeps, per field, `True` over `False` over `None`, and concatenates fallbacks.
 
 `find_odm`: folder from `env[ODM_ENV]`; it must hold `run.bat` (Windows) or `run.sh` (other systems), else `JobError(NO_ODM)`; version from `env[VERSION_ENV]`, else the `VERSION` file, else `"unknown"`. `odm_memory_cap(env=None)`: `AIO_ODM_MEMORY_CAP_MB` in MB to bytes (at least 64 MB), `None` when unset or not a number. `machine(env)`: `threads = odm_threads(os.cpu_count() or 2, native.total_memory(), odm_memory_cap(env))`, `use_gpu = gpu_wanted(env.get(GPU_ENV, "auto"), nvcuda_present(env))`, where `nvcuda_present` is `os.name == "nt"` and `Path(env.get("SYSTEMROOT", r"C:\Windows")) / "System32" / "nvcuda.dll"` exists.
 
@@ -1684,8 +1749,14 @@ def run_odm(ctx, odm, project_dir, flags, first, last, log_dir, *, rerun, use_gp
     earlier = log.read_text("utf-8", errors="replace") if log.exists() else ""
     start = resume_from(earlier, first, last) if rerun else None
     args = [*flags, *(["--rerun-from", start] if start else []), "--end-with", last]
+    if start and "--dtm" in flags and stage_index(start) >= stage_index("odm_dem") and not dtm_cloud_ok(project_dir):
+        # ODM would reuse a cloud without ground points and renderdem would never finish (14 Oct root cause)
+        ctx.log("The point cloud was not classified for a terrain model; ODM starts again from georeferencing.")
+        start = "odm_georeferencing"
+        args = [*flags, "--rerun-from", start, "--end-with", last]
     if start and start != first:
         ctx.log(f"Resuming ODM from the {STAGE_WORDS.get(start, start).lower()} stage.")
+    dense_capable = ensure_dense_gpu(odm, use_gpu)
     sp = StageProgress(first, last)
     lo, hi = progress
 
@@ -1711,6 +1782,15 @@ def run_odm(ctx, odm, project_dir, flags, first, last, log_dir, *, rerun, use_gp
             ctx.log(f"ODM: {ANSI.sub('', line)}", "warn")
         return exit_error(code, lines)
 
+    def watch(line: str) -> float | None:
+        # ODM swallows a failed SMRF ground classification and its DTM would then spin for ever
+        if "--dtm" in flags and GROUND_FAIL.search(line):
+            raise OdmGroundFailed(
+                "ODM could not find the ground points, so it cannot make the terrain model (DTM). "
+                "Look at the job log; untick DTM to make the other products."
+            )
+        return sp.feed_line(line)
+
     with UdpProgress(port, project_dir.name, sp.feed_udp) as udp:
         if not udp.available:
             ctx.log(f"Port {port} is in use; ODM's progress comes from its stage lines.")
@@ -1718,7 +1798,7 @@ def run_odm(ctx, odm, project_dir, flags, first, last, log_dir, *, rerun, use_gp
             native.run_tool(
                 _Bar, odm_command(odm, project_dir, args), "ODM", log_dir, expected_s=3600.0,
                 progress=(0.0, 1.0), memory_limit=odm_memory_cap() or 0,
-                env=odm_env(os.environ, use_gpu), on_output=sp.feed_line, fail=fail,
+                env=odm_env(os.environ, use_gpu), on_output=watch, fail=fail,
             )  # fmt: skip
         except native.ToolMemoryExceeded:
             raise JobError(OOM) from None
@@ -1726,7 +1806,11 @@ def run_odm(ctx, odm, project_dir, flags, first, last, log_dir, *, rerun, use_gp
     with open(log, "a", encoding="utf-8") as f:
         f.write(text)
     last_out.unlink(missing_ok=True)
-    gpu = gpu_use(text, use_gpu, (first, last))
+    gpu = gpu_use(text, use_gpu, (first, last), dense_capable)
+    if "--dtm" in flags and stage_index(start or first) <= stage_index("odm_georeferencing") <= stage_index(last):
+        laz = project_dir / "odm_georeferencing" / "odm_georeferenced_model.laz"
+        if laz.exists():  # this cloud was classified for a DTM: a later --rerun-from odm_dem may use it
+            (project_dir / DTM_MARK).write_text(str(laz.stat().st_mtime_ns))
     if gpu.summary():
         ctx.log(gpu.summary())
     for msg in gpu.fallbacks:
@@ -1737,7 +1821,11 @@ def run_odm(ctx, odm, project_dir, flags, first, last, log_dir, *, rerun, use_gp
     return OdmRun(log, gpu, start)
 ```
 
-(`run_tool` keeps `tool.out` and `tool.err` in `log_dir`; a `Cancelled` or `JobError` leaves `tool.out` there for the next attempt.)
+(`run_tool` keeps `tool.out` and `tool.err` in `log_dir`; a `Cancelled` or `JobError` leaves `tool.out` there for the next attempt. Raising from `watch` or from `_Bar.progress` ends ODM's whole tree through `run_tool`'s `BaseException` path.)
+
+Callers pass the stage window they run: the products `dense` step passes `first=dense_first(preset)` (`odm_filterpoints` on Fast), so `StageProgress`'s window and the resume both start where Fast's ODM call starts.
+
+Follow-ups owned here for Task 3's fake (already built): add `FAKE_ODM_SAY=<stage>:<line>` (prints that line during that stage, for the ground-failure test) and make the `odm_georeferencing` stage write `odm_georeferencing/odm_georeferenced_model.laz` (a copy of the `.las` bytes is enough) so `DTM_MARK` has a file to point at. These two lines in `python/tests/fake_odm/fake_odm.py` are this task's edit.
 
 - [ ] **Step 4: Run the tests**
 
@@ -1747,7 +1835,7 @@ Expected: PASS. On Windows the cancel test checks with `process_started` that bo
 - [ ] **Step 5: Lint and commit**
 
 ```bash
-git add python/src/aio_pipelines/photo/odm/runner.py python/tests/test_odm_runner.py
+git add python/src/aio_pipelines/photo/odm/runner.py python/tests/test_odm_runner.py python/tests/fake_odm/fake_odm.py
 git commit -m "feat(pipelines): run odm with progress, cancel and resume" -m "Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
 ```
 
@@ -2906,6 +2994,16 @@ def test_fast_and_resolution_flags(site):
     assert "--skip-3dmodel" in dense
 
 
+def test_fast_leaves_the_3d_model_out(site):
+    root, _ = site
+    names = [s.name for s in P.PhotoProducts().plan({"run": ps.RUN, "products": ["ortho", "mesh"], "preset": "fast"})]
+    assert "mesh" not in names and "texture" not in names
+    result, rec = run_job(P.PhotoProducts(), root, {"run": ps.RUN, "products": ["ortho", "mesh"], "preset": "fast"})
+    assert result["status"] == "done"
+    assert not (root / "models" / f"{ps.RUN}-mesh.glb").exists()
+    assert any("makes no 3D model" in m.get("message", "") for m in rec.of("log"))
+
+
 @NO_PDAL
 def test_the_point_cloud_becomes_copc(site):
     root, _ = site
@@ -2992,6 +3090,7 @@ Expected: FAIL (the old steps run).
 - Constants: `LAYOUT = 3`; `STAGES = ("dense", "mesh", "texture", "cloud", "dsm", "ortho", "commit", "tiles")` (the stages `run.json` records; `prepare` stays out, as today, because `PhotoStageName` has no `prepare`); `OLD_RUN = "This run was aligned by an earlier version or imported; use Create maps again to process the photos with ODM."`; `DISK_FACTOR = {"fast": 3, "standard": 6, "high": 10}` (free space needed, times the bytes of `odm/images/`).
 - `validate`: today's body without `dense` (`known_keys` refuses it, naming it).
 - `plan`: `[Step("prepare", "Check the run and plan the products", _timed(self._prepare), 0.5), *[Step(s.name, s.title, _timed(self._odm_step(s)), s.weight) for s in OF.product_steps(set(params["products"]))], Step("commit", ...), *([Step("tiles", ...)] if "tiles" in want else [])]`.
+- Fast makes no 3D model (founder ruling, 14 Oct): when the preset is `fast` and `mesh` or `tiles` was asked, `plan` (preset given in params) and `_prepare` (preset from `run.json`) drop them, with the job-log line "The Fast preset makes no 3D model; mesh and 3D Tiles are left out."; `_prepare` stores the products it will make as `s["products"]` and every import and `_commit` read that, not `ctx.params["products"]`.
 - `_prepare`: read `run.json` (status in `aligned`, `adjusted`, `done`, else `JobError(f'Run "{run}" is not aligned yet.')`); `odm_dir = OP.run_odm_dir(ctx.project, run)`; `not OP.has_alignment(odm_dir)` gives `JobError(OLD_RUN)`; `odm = OR.find_odm()`; `mc = OR.machine()`; `preset = p.get("preset") or doc.get("preset") or "standard"`; `epsg = C.crs_of(doc["crs"]).to_epsg()`; `origin = manifest["origin"]` (`JobError("The project has no origin, so the products cannot be placed.")` without one); `ortho_cm = p.get("gsdCm") or align.json "gsdCm" or 5.0`; `dem_cm = 2 * ortho_cm`; boundary via `OP.write_boundary(odm_dir, p["region"])` when `region`; `need = images_bytes * DISK_FACTOR[preset]`, `native.check_disk(ctx.project, need)`; `args = OF.products_flags(preset, set(p["products"]), mc.use_gpu, mc.threads, ortho_cm, dem_cm, p.get("meshTriangles"), boundary)`; log `f"ODM {odm.version}, preset {preset}: ortho {ortho_cm:g} cm, DEM {dem_cm:g} cm, {mc.threads} threads, graphics card {'on' if mc.use_gpu else 'off'}."`; return `{"layout": LAYOUT, "preset", "odmDir": str(odm_dir), "epsg", "origin", "orthoResCm", "demResCm", "threads", "gpu": mc.use_gpu, "args": args, "disk": {...}, "memoryBudgetBytes": native.memory_budget(), "version": odm.version}`.
 - `_settings(ctx)`: the prepare outputs; `layout != LAYOUT` gives `JobError(OLD_LAYOUT)` (kept message).
 - `_odm_step(step)` returns the step function:
@@ -3017,8 +3116,8 @@ Expected: FAIL (the old steps run).
 
 with `IMPORTS = {"texture": _import_mesh, "cloud": _import_cloud, "dsm": _import_dems, "ortho": _import_ortho}`, each `(self, ctx, s, odm_dir) -> dict` doing its work only when its product was asked for (`"mesh"`/`"tiles"`, `"cloud"`, `"dsm"`/`"dtm"`, `"ortho"`), progress from 0.7 to 1.0:
 
-- `_import_mesh`: `data, info = OU.mesh_to_glb(odm_dir, s["epsg"], np.array(s["origin"]))`; stage `models/<run>-mesh.glb` when `mesh` was asked, and `photogrammetry/<run>/mesh/full.glb` when `tiles` was; return `{"triangles": info["triangles"], "meshSource": info["source"]}`.
-- `_import_cloud`: `OU.cloud_to_copc(ctx, odm_dir, ctx.stage(f"clouds/{run}.copc.laz"), s["epsg"], work / "cloud", native.memory_budget())`; return `{"points", "writer"}`.
+- `_import_mesh`: `data, info = OU.mesh_to_glb(odm_dir, s["epsg"], np.array(s["origin"]))`; each of `info.get("warnings", [])` goes to the job log as a warning; stage `models/<run>-mesh.glb` when `mesh` was asked, and `photogrammetry/<run>/mesh/full.glb` when `tiles` was; return `{"triangles": info["triangles"], "meshSource": info["source"]}`.
+- `_import_cloud`: first, always: the ground check. With PDAL found (`pointcloud.find_pdal()`), `pdal info --stats --enumerate Classification <odm_georeferencing/odm_georeferenced_model.laz>`; when class 2 is not among the values, `ground = 0`, a warning "ODM found no ground points in this cloud, so no terrain model (DTM) is made." and the step output `{"ground": 0}`; the `dsm` step then runs with `[a for a in s["args"] if a != "--dtm"]` and makes no DTM layer (renderdem would never finish on zero ground points). Without PDAL the check is skipped (the runner's watchdog and ground-failure guard remain). Then, when the cloud was asked: `OU.cloud_to_copc(ctx, odm_dir, ctx.stage(f"clouds/{run}.copc.laz"), s["epsg"], work / "cloud", native.memory_budget())`; return `{"points", "writer", "ground"}`.
 - `_import_dems`: always `groundZ = OU.ground_height(proj)` of the DSM; for each of `dsm`, `dtm` asked: `spec = OU.dem_to_project(OU.output_path(odm_dir, OU.DSM or OU.DTM), work / f"{which}.tif", s["epsg"])`, then exactly today's `_surface_layer` body with `run.epsg` replaced by `s["epsg"]`, `run.origin` by `np.array(s["origin"])`, `run.id` by `ctx.params["run"]`, `self._work(ctx)` by `work`, `y = groundZ - origin[2]` and `raw = work / f"{which}.tif"`; return `{"groundZ", "layers": [...]}`.
 - `_import_ortho`: when `ortho` was asked: `src = OU.ortho_to_project(OU.output_path(odm_dir, OU.ORTHO), work / "ortho.tif", s["epsg"])`, `to_cog(src, ctx.stage(f"photogrammetry/{run}/ortho.tif"))`, `_pyramid(ctx, src, f"rasters/{run}-ortho", origin, epsg, y, res, {"source": "ortho.tif"})` with `y = ctx.outputs("dsm")["groundZ"] - origin[2]` and `res` the ortho's pixel size; always: copy `OU.REPORT_PDF` and `OU.STATS`, when present, to staged `photogrammetry/<run>/report/odm-report.pdf` and `report/odm-stats.json`.
   `work = ctx.project / f"photogrammetry/{run}/work/products"`.
@@ -3369,16 +3468,24 @@ git commit -m "feat(schema): odm engine contract" -m "Co-Authored-By: Claude Opu
 - Consumes: Task 11 types (`OdmStatus`, `OdmInstallProgress`, `OdmInstallRecord`, `OdmInstallResult`, `OdmGpuSetting`, `IpcChannel`); `update/download.ts` `downloadVerified`, `FetchLike`. GPUs are typed inline as `{ name: string; vendor?: string }`.
 - Produces:
   - `pin.ts`: `interface OdmPin { version: string; url: string; size: number; sha256: string; installedBytes: number; file: string }`; `ODM_PIN: OdmPin` (Global Constraints values, `installedBytes` C3, `file: 'ODM_Setup_3.6.2.exe'`); `SETUP_ARGS` (C1, without `/DIR=`); `UNINSTALL_ARGS = ['/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART']`; `REQUIRED_FILES` (C4); `SETUP_MAY_ASK_ADMIN` (C2); `pinFrom(env): Promise<OdmPin>` (`ODM_PIN`, or the JSON file named by `QUADRION_ODM_PIN_FILE` when `QUADRION_E2E === '1'`).
-  - `paths.ts`: `SPACES_OK` (C5); `isSafeOdmPath(p: string): boolean`; `odmRecordPath(dataRoot: string): string` (`<dataRoot>/runtime/odm.json`); `downloadDir(dataRoot: string): string` (`<dataRoot>/runtime/downloads`); `odmInstallDir(dataRoot: string, env: Record<string, string | undefined>, version: string): string`; `odmWorkRoot(installDir: string): string` (`path.win32.join(path.win32.dirname(installDir), 'odm-work')`: Windows paths whatever the host).
+  - `paths.ts`: `SPACES_OK = false` (C5); `isSafeOdmPath(p: string): boolean`; `odmRecordPath(dataRoot: string): string` (`<dataRoot>/runtime/odm.json`); `downloadDir(dataRoot: string): string` (`<dataRoot>/runtime/downloads`); `odmInstallDir(dataRoot: string, env: Record<string, string | undefined>, version: string): string`; `odmWorkRoot(installDir: string): string` (`path.win32.join(path.win32.dirname(installDir), 'odm-work')`: Windows paths whatever the host).
   - `detect.ts`: `interface UninstallEntry { key: string; displayName: string; installLocation?: string; displayVersion?: string }`; `parseUninstallEntries(text: string): UninstallEntry[]`; `UNINSTALL_MATCH` (C14); `findOtherOdm(d: { regQuery(key: string): Promise<string>; exists(p: string): Promise<boolean>; ours: string | null; env: Record<string, string | undefined> }): Promise<{ dir: string; version?: string } | null>`; `nvcudaPresent(env, exists): Promise<boolean>`; `nvidiaName(gpus: readonly { name: string; vendor?: string }[]): string | null`.
   - `system.ts`: `interface OdmSystem { runSetup(file: string, args: string[]): Promise<number>; runSmoke(dir: string): Promise<{ code: number; out: string }>; runUninstaller(file: string, args: string[]): Promise<number>; regQuery(key: string): Promise<string>; exists(p: string): Promise<boolean>; rm(p: string): Promise<void>; freeBytes(dir: string): Promise<number>; sleep(ms: number): Promise<void> }`; `nodeOdmSystem(env): OdmSystem` (spawn with `windowsHide: true`; a setup ending in `.mjs` runs as `process.execPath` with `ELECTRON_RUN_AS_NODE=1` only when `QUADRION_E2E === '1'`; `runSmoke` is `cmd.exe /d /c "<dir>\run.bat" --help` with `ODM_NONINTERACTIVE=1`, without `NoDefaultCurrentDirectoryInExePath` in its environment, and a 120 s timeout (the first call takes about 26 s); `regQuery` is `reg query <key> /s /f ODM /d`, an exit 1 (nothing found) answering `''`).
-  - `install.ts`: `interface OdmDeps { dataRoot(): string; env: Record<string, string | undefined>; platform: string; arch: string; fetch: FetchLike; system: OdmSystem; gpus(): Promise<readonly { name: string; vendor?: string }[]>; gpuSetting(): OdmGpuSetting; offlineOnly(): boolean; now(): Date }`; `readRecord(dataRoot): Promise<OdmInstallRecord | null>`; `odmStatus(d: OdmDeps, installing: boolean): Promise<OdmStatus>`; `installOdm(d: OdmDeps, o: { replaceOther: boolean; signal: AbortSignal; onProgress(p: OdmInstallProgress): void }): Promise<OdmInstallResult>`; `removeOdm(d: OdmDeps): Promise<OdmInstallResult>`; `odmJobEnv(pipeline: string, odm: { dir: string; version: string } | null, gpu: OdmGpuSetting): Record<string, string>` (for `photo.align`, `photo.georef`, `photo.products`: `AIO_ODM`, `AIO_ODM_VERSION`, `AIO_ODM_GPU`, `AIO_ODM_WORK`); `currentOdm(d: Pick<OdmDeps, 'dataRoot' | 'env' | 'system'>): Promise<{ dir: string; version: string } | null>` (`QUADRION_ODM_DIR` first, else the record when its files are there).
+  - `install.ts`: `interface OdmDeps { dataRoot(): string; env: Record<string, string | undefined>; platform: string; arch: string; fetch: FetchLike; system: OdmSystem; gpus(): Promise<readonly { name: string; vendor?: string }[]>; gpuSetting(): OdmGpuSetting; offlineOnly(): boolean; now(): Date }`; `readRecord(dataRoot): Promise<OdmInstallRecord | null>`; `odmStatus(d: OdmDeps, installing: boolean): Promise<OdmStatus>`; `installOdm(d: OdmDeps, o: { replaceOther: boolean; signal: AbortSignal; onProgress(p: OdmInstallProgress): void }): Promise<OdmInstallResult>`; `removeOdm(d: OdmDeps): Promise<OdmInstallResult>`; `odmJobEnv(pipeline: string, odm: { dir: string; version: string; owned: boolean } | null, gpu: OdmGpuSetting): Record<string, string>` (for `photo.align`, `photo.georef`, `photo.products`: `AIO_ODM`, `AIO_ODM_VERSION`, `AIO_ODM_GPU`, `AIO_ODM_WORK`, and `AIO_ODM_OWNED: '1'` when `owned`); `currentOdm(d: Pick<OdmDeps, 'dataRoot' | 'env' | 'system'>): Promise<{ dir: string; version: string; owned: boolean } | null>` (`QUADRION_ODM_DIR` first, `owned: false`; else the record when its files are there, `owned: true`); `parkOdmStub(dir: string, gpu: OdmGpuSetting, env, system): Promise<void>` (the desktop twin of Task 4's `ensure_dense_gpu`: renames `SuperBuild\install\bin\nvcuda.dll`, if smaller than 100,000 bytes, to `nvcuda.dll.odm-stub` when `gpu === 'auto'` and `<SYSTEMROOT>\System32\nvcuda.dll` exists; otherwise renames it back; each rename only when its source exists; never deletes). `OdmSystem` gains `rename(from: string, to: string): Promise<void>` and `fileBytes(p: string): Promise<number | null>`.
   - `ipc.ts`: `type OdmChannel = Extract<IpcChannel, `odm:${string}`>`; `registerOdmIpc(d: OdmDeps & { handle: <C extends OdmChannel>(channel: C, handler: Handler<C>) => void; emit(p: OdmInstallProgress): void; setGpu(gpu: OdmGpuSetting): Promise<void> }): void`.
 
 - [ ] **Step 1: Write the failing tests.** `install.test.ts` (the core; the others test their pure functions the same way):
 
 ```ts
-import { mkdtemp, mkdir, readFile, rm, writeFile } from 'node:fs/promises';
+import {
+  mkdtemp,
+  mkdir,
+  readFile,
+  rename as renameFile,
+  rm,
+  stat,
+  writeFile,
+} from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 import { createServer, type Server } from 'node:http';
 import { tmpdir } from 'node:os';
@@ -3386,7 +3493,7 @@ import { join } from 'node:path';
 import { createHash } from 'node:crypto';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { OdmInstallProgress } from '@aio/schema';
-import { installOdm, odmJobEnv, odmStatus, removeOdm, type OdmDeps } from './install';
+import { installOdm, odmJobEnv, odmStatus, parkOdmStub, removeOdm, type OdmDeps } from './install';
 import type { OdmSystem } from './system';
 
 const SETUP = Buffer.from('fake setup bytes');
@@ -3438,6 +3545,10 @@ function fakeSystem(over: Partial<OdmSystem> = {}): OdmSystem & { calls: string[
       return 0;
     },
     regQuery: async () => '',
+    rename: async (from, to) => {
+      await renameFile(from, to);
+    },
+    fileBytes: async (p) => (existsSync(p) ? (await stat(p)).size : null),
     exists: async (p) => existsSync(p),
     rm: (p) => rm(p, { recursive: true, force: true }),
     freeBytes: async () => 10e12,
@@ -3505,14 +3616,44 @@ describe('installing ODM', () => {
     expect(record.dir.startsWith(join(dir, 'local'))).toBe(true);
   });
 
-  it('a data root with a space is fine (C5)', async () => {
+  it('install folder avoids spaces and non-ASCII letters in the data root', async () => {
     const d = deps(fakeSystem(), { dataRoot: () => join(dir, 'Stratlas Data') });
     const { r } = await run(d);
     expect(r.ok).toBe(true);
     const record = JSON.parse(
       await readFile(join(dir, 'Stratlas Data', 'runtime', 'odm.json'), 'utf8'),
     );
-    expect(record.dir.startsWith(join(dir, 'Stratlas Data', 'runtime'))).toBe(true);
+    expect(record.dir).not.toMatch(/\s/); // C5 false: ODM's SMRF command breaks on a space
+    expect(record.dir.startsWith(join(dir, 'local'))).toBe(true);
+  });
+
+  it('parks the placeholder nvcuda.dll after install when the driver is there, and puts it back for off and remove', async () => {
+    const system = fakeSystem({
+      runSetup: async (file, args) => {
+        const target = args.find((a) => a.startsWith('/DIR='))?.slice(5) ?? '';
+        await mkdir(join(target, 'SuperBuild', 'install', 'bin'), { recursive: true });
+        await writeFile(
+          join(target, 'SuperBuild', 'install', 'bin', 'nvcuda.dll'),
+          Buffer.alloc(19_968),
+        );
+        for (const f of ['run.bat', 'winrun.bat', 'win32env.bat', 'VERSION', 'unins000.exe'])
+          await writeFile(join(target, f), '');
+        await mkdir(join(target, 'venv', 'Scripts'), { recursive: true });
+        await writeFile(join(target, 'venv', 'Scripts', 'python.exe'), '');
+        return 0;
+      },
+    });
+    const d = deps(system, { env: { ...deps().env, SYSTEMROOT: join(dir, 'win') } });
+    await mkdir(join(dir, 'win', 'System32'), { recursive: true });
+    await writeFile(join(dir, 'win', 'System32', 'nvcuda.dll'), 'driver');
+    const { r } = await run(d);
+    expect(r.ok).toBe(true);
+    const rec = JSON.parse(await readFile(join(dir, 'data', 'runtime', 'odm.json'), 'utf8'));
+    const bin = join(rec.dir, 'SuperBuild', 'install', 'bin');
+    expect(existsSync(join(bin, 'nvcuda.dll'))).toBe(false);
+    expect(existsSync(join(bin, 'nvcuda.dll.odm-stub'))).toBe(true);
+    await parkOdmStub(rec.dir, 'off', d.env, system);
+    expect(existsSync(join(bin, 'nvcuda.dll'))).toBe(true);
   });
 
   it('an ODM that does not print its usage is broken, whatever its exit code', async () => {
@@ -3594,20 +3735,31 @@ describe('installing ODM', () => {
 
 describe('the job environment', () => {
   it('names ODM, its version, the GPU setting and the work folder for photo jobs only', () => {
-    const env = odmJobEnv('photo.products', { dir: 'C:\\Q\\odm-3.6.2', version: '3.6.2' }, 'off');
+    const env = odmJobEnv(
+      'photo.products',
+      { dir: 'C:\\Q\\odm-3.6.2', version: '3.6.2', owned: true },
+      'off',
+    );
     expect(env).toEqual({
       AIO_ODM: 'C:\\Q\\odm-3.6.2',
       AIO_ODM_VERSION: '3.6.2',
       AIO_ODM_GPU: 'off',
       AIO_ODM_WORK: join('C:\\Q', 'odm-work'),
+      AIO_ODM_OWNED: '1',
     });
-    expect(odmJobEnv('walk.process', { dir: 'x', version: 'y' }, 'auto')).toEqual({});
+    const dev = odmJobEnv(
+      'photo.products',
+      { dir: 'C:\\Q\\odm-3.6.2', version: '3.6.2', owned: false },
+      'off',
+    );
+    expect(dev.AIO_ODM_OWNED).toBeUndefined(); // QUADRION_ODM_DIR: never touch its files
+    expect(odmJobEnv('walk.process', { dir: 'x', version: 'y', owned: true }, 'auto')).toEqual({});
     expect(odmJobEnv('photo.align', null, 'auto')).toEqual({});
   });
 });
 ```
 
-`paths.test.ts` pins `isSafeOdmPath('E:\\Data\\runtime\\odm-3.6.2') === true`, `isSafeOdmPath('E:\\Stratlas Data\\runtime') === true` (C5), `isSafeOdmPath('C:\\Users\\Zoë\\x') === false`, `isSafeOdmPath('C:\\Users\\RUNNER~1\\AppData\\Local\\Temp\\aio-odm-1') === true` (an 8.3 short name, as on CI), `isSafeOdmPath('E:\\a&b') === false`, and `odmInstallDir` choosing `<dataRoot>\runtime\odm-<v>`, else `<LOCALAPPDATA>\QuadrionODM\odm-<v>`, else `<SystemDrive or C:>\QuadrionODM\odm-<v>`. `detect.test.ts` pins `parseUninstallEntries` on the registry text above (and on `''`), `findOtherOdm` finding `C:\ODM\run.bat` through `exists`, ignoring an entry whose `InstallLocation` is `ours`, and `nvidiaName`. `pin.test.ts` pins `ODM_PIN` against the Global Constraints values and that `QUADRION_ODM_PIN_FILE` is ignored without `QUADRION_E2E=1`. `ipc.test.ts` registers through a fake `handle` (as `packInstall.test.ts` does), checks that a second `odm:install` while one runs answers `code: 'busy'`, that `odm:cancel` during the download aborts it (`code: 'cancelled'`, phase `cancelled` emitted) and answers `{ ok: false }` during the setup, and that `odm:setGpu` calls `setGpu` and answers the new status.
+`paths.test.ts` pins `isSafeOdmPath('E:\\Data\\runtime\\odm-3.6.2') === true`, `isSafeOdmPath('E:\\Stratlas Data\\runtime') === false` (C5), `isSafeOdmPath('C:\\Users\\Zoë\\x') === false`, `isSafeOdmPath('C:\\Users\\RUNNER~1\\AppData\\Local\\Temp\\aio-odm-1') === true` (an 8.3 short name, as on CI), `isSafeOdmPath('E:\\a&b') === false`, and `odmInstallDir` choosing `<dataRoot>\runtime\odm-<v>`, else `<LOCALAPPDATA>\QuadrionODM\odm-<v>`, else `<SystemDrive or C:>\QuadrionODM\odm-<v>`. `detect.test.ts` pins `parseUninstallEntries` on the registry text above (and on `''`), `findOtherOdm` finding `C:\ODM\run.bat` through `exists`, ignoring an entry whose `InstallLocation` is `ours`, and `nvidiaName`. `pin.test.ts` pins `ODM_PIN` against the Global Constraints values and that `QUADRION_ODM_PIN_FILE` is ignored without `QUADRION_E2E=1`. `ipc.test.ts` registers through a fake `handle` (as `packInstall.test.ts` does), checks that a second `odm:install` while one runs answers `code: 'busy'`, that `odm:cancel` during the download aborts it (`code: 'cancelled'`, phase `cancelled` emitted) and answers `{ ok: false }` during the setup, and that `odm:setGpu` calls `setGpu` and answers the new status.
 
 - [ ] **Step 2: Run to see them fail**
 
@@ -3622,15 +3774,15 @@ Expected: FAIL (modules missing).
 4. `onProgress({ phase: 'download', bytesDone: 0, bytesTotal: pin.size })`; `downloadVerified({ url: pin.url, sha256: pin.sha256, size: pin.size, dest: join(downloadDir(dataRoot), pin.file), fetch, signal, onProgress: (n, t) => onProgress(n === t ? { phase: 'verify', bytesDone: n, bytesTotal: t } : { phase: 'download', bytesDone: n, bytesTotal: t }) })`; an abort answers `code: 'cancelled'` (the partial file stays for the next try) and emits phase `cancelled`; another error `code: 'failed'` with its message.
 5. Phase `install` (cancel is refused from here on): `code = await system.runSetup(file, [...SETUP_ARGS, `/DIR=${target}`])`; non-zero: `2` or `5` give "The installation was cancelled (a Windows permission prompt may have been declined)."; others "ODM's setup stopped with exit code <n>."
 6. Phase `check`: every `REQUIRED_FILES` exists under `target`, else "ODM's setup finished but <file> is missing."; `runSmoke(target)` code 0 **and** its output contains `usage: run` (run.bat exits 0 even when it fails to start ODM), else `ODM installed but does not start: <last non-empty line of out>`.
-7. Write `odm.json` (`{ schema: 'aio.odm-install/1', version, dir: target, installedAt: now().toISOString() }`, atomically: temp file then rename); when an older record named another folder that still exists, `rm` it; `rm` the downloaded setup; phase `done`; answer `{ ok: true, status: await odmStatus(d, false) }`. Any failure emits phase `failed` with `error`.
+7. `parkOdmStub(target, gpuSetting(), env, system)` (deviation 17: dense matching on the GPU), then write `odm.json` (`{ schema: 'aio.odm-install/1', version, dir: target, installedAt: now().toISOString() }`, atomically: temp file then rename); when an older record named another folder that still exists, `rm` it; `rm` the downloaded setup; phase `done`; answer `{ ok: true, status: await odmStatus(d, false) }`. Any failure emits phase `failed` with `error`.
 
-`removeOdm`: `dev` refused; no record: `{ ok: true, status }`; `uninstaller = join(dir, 'unins000.exe')` when it exists: `runUninstaller(uninstaller, UNINSTALL_ARGS)`, then poll `exists(join(dir, 'run.bat'))` every second for up to 300 s (Inno's uninstaller returns before it has finished, C14); then `rm(dir)` if it is still there; delete `odm.json`.
+`removeOdm`: `dev` refused; no record: `{ ok: true, status }`; first `parkOdmStub(dir, 'off', ...)` (the uninstaller only knows `nvcuda.dll`); `uninstaller = join(dir, 'unins000.exe')` when it exists: `runUninstaller(uninstaller, UNINSTALL_ARGS)`, then poll `exists(join(dir, 'run.bat'))` every second for up to 300 s (Inno's uninstaller returns before it has finished, C14); then `rm(dir)` if it is still there; delete `odm.json`.
 
 `odmStatus`: `unsupported` off Windows x64 (`problem: 'ODM installs on Windows x64 only.'`); `QUADRION_ODM_DIR`: `installed`, `dev: true`, version from `QUADRION_ODM_VERSION` or `'dev'`; `installing`: `installing`; no record: `not-installed`; a required file missing: `broken` (`problem: 'Files of the processing engine are missing. Reinstall it.'`); record version below the pin (`compareVersions` from `@aio/schema`): `update-available`; else `installed`. Always `pinned`, `other` (`findOtherOdm`, `null` for our own folder), `gpu: { setting: gpuSetting(), nvidia: nvidiaName(await gpus()), cuda: await nvcudaPresent(env, system.exists) }`, `mayAskAdmin: SETUP_MAY_ASK_ADMIN`.
 
-`odmInstallDir(dataRoot, env, version)`: `join(dataRoot, 'runtime', `odm-${version}`)` when `isSafeOdmPath` of it; else `join(env.LOCALAPPDATA, 'QuadrionODM', `odm-${version}`)` when that is safe; else `join(env.SystemDrive ?? 'C:', '\\', 'QuadrionODM', `odm-${version}`)`. `isSafeOdmPath(p)`: a drive path (`/^[A-Za-z]:\\/`) of printable ASCII (`/^[\x21-\x7e]*$/`, plus the space when `SPACES_OK`) without `& ^ % ! ( ) < > | "` (the Python rule of Task 5); `~` is fine, so 8.3 short names such as `RUNNER~1` pass. `findOtherOdm`: for `HKCU\Software\Microsoft\Windows\CurrentVersion\Uninstall`, `HKLM\Software\Microsoft\Windows\CurrentVersion\Uninstall` and `HKLM\Software\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall`, entries whose `displayName` matches `UNINSTALL_MATCH` and whose `installLocation` (trailing backslash removed, case-insensitive) is not `ours`; else `C:\ODM\run.bat` when it exists and `C:\ODM` is not `ours`; with `QUADRION_E2E === '1'` and `QUADRION_ODM_OTHER` set, that folder (tests only).
+`odmInstallDir(dataRoot, env, version)` (the install folder must be a safe path too, C5: Inno's setup takes `/DIR=` as given and ODM's own commands run from there): `join(dataRoot, 'runtime', `odm-${version}`)` when `isSafeOdmPath` of it; else `join(env.LOCALAPPDATA, 'QuadrionODM', `odm-${version}`)` when that is safe; else `join(env.SystemDrive ?? 'C:', '\\', 'QuadrionODM', `odm-${version}`)`. `isSafeOdmPath(p)`: a drive path (`/^[A-Za-z]:\\/`) of printable ASCII (`/^[\x21-\x7e]*$/`, plus the space when `SPACES_OK`) without `& ^ % ! ( ) < > | "` (the Python rule of Task 5); `~` is fine, so 8.3 short names such as `RUNNER~1` pass. `findOtherOdm`: for `HKCU\Software\Microsoft\Windows\CurrentVersion\Uninstall`, `HKLM\Software\Microsoft\Windows\CurrentVersion\Uninstall` and `HKLM\Software\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall`, entries whose `displayName` matches `UNINSTALL_MATCH` and whose `installLocation` (trailing backslash removed, case-insensitive) is not `ours`; else `C:\ODM\run.bat` when it exists and `C:\ODM` is not `ours`; with `QUADRION_E2E === '1'` and `QUADRION_ODM_OTHER` set, that folder (tests only).
 
-`registerOdmIpc`: one `AbortController` and a `phase` while installing (`odm:install` while running answers `code: 'busy'`); `odm:cancel` aborts only while `phase` is `download` or `verify` (`{ ok: true }`), else `{ ok: false }`; `odm:status` passes `installing`; `odm:setGpu` awaits `setGpu(gpu)` then answers `{ ok: true, status }`; `odm:remove` refused while installing.
+`odm:setGpu` also calls `parkOdmStub(record dir, gpu, ...)` for an owned install, so `off` puts the stub back at once (the runner checks again before every ODM run). `registerOdmIpc`: one `AbortController` and a `phase` while installing (`odm:install` while running answers `code: 'busy'`); `odm:cancel` aborts only while `phase` is `download` or `verify` (`{ ok: true }`), else `{ ok: false }`; `odm:status` passes `installing`; `odm:setGpu` awaits `setGpu(gpu)` then answers `{ ok: true, status }`; `odm:remove` refused while installing.
 
 - [ ] **Step 4: Run the tests**
 
@@ -3650,7 +3802,7 @@ git commit -m "feat(desktop): install the pinned odm from settings" -m "Co-Autho
 
 **Files:**
 
-- Modify: `apps/desktop/src/main/index.ts` (imports at 139 and 164-169; `broadcast` type at 425-432; `gpuKernelCache` and `AcceleratorProbe` at 683-692; `jobEnv` at 693-711; `jobs:start` at ~1189-1209; `accelerator:` at ~1612; pack features at ~1691-1730), `apps/desktop/src/main/photogrammetry.ts` (`PHOTO_PACK` at 111, `processingVerdict` 116-127, `withAccelerator` 163-184 deleted, `readProbe` ~186-210, `PhotoSystem` 80-90, `nodePhotoSystem` ~214-221, ~990-996), `apps/desktop/src/main/photogrammetry.test.ts`, `apps/desktop/src/main/jobs/runner.ts:32-34,183` (comments), `apps/desktop/src/main/jobs/runner.test.ts:180-196`, `apps/desktop/src/main/diagnostics/photo.ts:9,46` (the accelerator line goes) and `diagnostics/photo.test.ts`
+- Modify: `apps/desktop/src/main/index.ts` (imports at 139 and 164-169; `broadcast` type at 425-432; `gpuKernelCache` and `AcceleratorProbe` at 683-692; `jobEnv` at 693-711; `jobs:start` at ~1189-1209; `accelerator:` at ~1612; pack features at ~1691-1730), `apps/desktop/src/main/photogrammetry.ts` (`PHOTO_PACK` at 111, `processingVerdict` 116-127, `withAccelerator` 163-184 deleted, `readProbe` ~186-210, `PhotoSystem` 80-90, `nodePhotoSystem` ~214-221, ~990-996), `apps/desktop/src/main/photogrammetry.test.ts`, `apps/desktop/src/main/jobs/runner.ts:32-34,183` (comments), `apps/desktop/src/main/jobs/runner.test.ts:180-196`, `apps/desktop/src/main/diagnostics/photo.ts:9,46` (the accelerator line goes) and `diagnostics/photo.test.ts`, `apps/desktop/src/main/diagnostics/redact.ts` (+ `redact.test.ts`: the new `Settings.processing` gets the rule `processing: { fields: { odm: { fields: { gpu: 'keep' } } } }` beside `inference` at ~226, and a test that a diagnostics bundle keeps `processing.odm.gpu`)
 - Delete: `apps/desktop/src/main/jobs/addon.ts`, `apps/desktop/src/main/jobs/addon.test.ts`
 
 **Interfaces:**
@@ -3687,7 +3839,7 @@ describe('one photo job at a time', () => {
 
 Also in `photogrammetry.test.ts`: `odmMemoryEnv('photo.products', {})` is `{}`; `odmMemoryEnv('photo.products', { QUADRION_PHOTO_MEMORY_MB: '49152' })` is `{ AIO_ODM_MEMORY_CAP_MB: '49152' }`; `odmMemoryEnv('walk.process', { QUADRION_PHOTO_MEMORY_MB: '49152' })` is `{}`; and delete the accelerator cases (~526-585) with `withAccelerator`. In `diagnostics/photo.test.ts` drop the accelerator fixture fields and the case "keeps the machine facts and drops the accelerator reason" (l.13, 88-98) to match `photo.ts`.
 
-In `runner.test.ts:180-196`, replace the `AIO_PHOTO_ADDON` case with one that passes a `jobEnv` returning `odmJobEnv('photo.align', { dir: 'C:\\Q\\odm-3.6.2', version: '3.6.2' }, 'auto')` and checks the spawned job's environment has `AIO_ODM` and `AIO_ODM_GPU`.
+In `runner.test.ts:180-196`, replace the `AIO_PHOTO_ADDON` case with one that passes a `jobEnv` returning `odmJobEnv('photo.align', { dir: 'C:\\Q\\odm-3.6.2', version: '3.6.2', owned: true }, 'auto')` and checks the spawned job's environment has `AIO_ODM` and `AIO_ODM_GPU`.
 
 - [ ] **Step 2: Run to see them fail**
 
@@ -3709,7 +3861,7 @@ Expected: PASS (renderer type errors from Task 16's files are Task 16's; report 
 - [ ] **Step 5: Lint and commit**
 
 ```bash
-git add apps/desktop/src/main/index.ts apps/desktop/src/main/photogrammetry.ts apps/desktop/src/main/photogrammetry.test.ts apps/desktop/src/main/jobs/runner.ts apps/desktop/src/main/jobs/runner.test.ts apps/desktop/src/main/diagnostics/photo.ts apps/desktop/src/main/diagnostics/photo.test.ts
+git add apps/desktop/src/main/index.ts apps/desktop/src/main/photogrammetry.ts apps/desktop/src/main/photogrammetry.test.ts apps/desktop/src/main/jobs/runner.ts apps/desktop/src/main/jobs/runner.test.ts apps/desktop/src/main/diagnostics/photo.ts apps/desktop/src/main/diagnostics/photo.test.ts apps/desktop/src/main/diagnostics/redact.ts apps/desktop/src/main/diagnostics/redact.test.ts
 git rm apps/desktop/src/main/jobs/addon.ts apps/desktop/src/main/jobs/addon.test.ts
 git commit -m "feat(desktop): odm in the job environment and the photo gate; gpu add-on removed" -m "Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
 ```
@@ -3946,6 +4098,8 @@ Expected: FAIL.
 - [ ] **Step 3: Implement.**
 
 - `hardware.ts`: `TOOLS_VERSION = '0.8.0'`; a `no-engine` case `{ ok: false, title: 'Install the processing engine first', text: 'Creating maps from photos uses ODM, the processing engine. Install it once in Settings, Processing tools (a 234 MB download).', fix: 'engine' }`; `unsupported-platform` text "Creating maps from photos runs on Windows x64. This computer can open the results."; `gpuLine` as tested.
+- The new `HardwareProbe.processing` value `'no-engine'` (Task 11) is handled in `hardware.ts` `processingLine` (the case above; the `switch` must stay exhaustive, so the type check fails until it is there).
+- The wizard does not offer mesh or 3D Tiles with Fast: choosing Quick unticks and disables those two checkboxes with the note "Quick makes no 3D model." (`photogrammetry/estimate.ts` `defaultProducts('fast')` already leaves them out; also filter them out of `PendingProducts` when the preset is `fast`). A test in `estimate.test.ts` pins that `defaultProducts('fast')` and the filter never contain `mesh` or `tiles`.
 - `ProcessWizard.tsx`: in the blocked section, when `blocked.fix === 'engine'` the button is `<button className="btn primary" data-testid="photo-fix" onClick={openProcessingEngine}>Install the processing engine</button>`; `fix === 'tools'` unchanged; update the `gpuLine` call (no preset).
 - `estimate.ts` preset texts: `fast` "Quick": "Orthophoto and elevation from the matched points; no 3D model. The fastest."; `standard` "Standard": "A dense point cloud at medium quality."; `high` "High": "A dense point cloud at high quality and the finest features. The slowest."
 - `photogrammetry/store.ts` `STAGE_WORDS`: `sfm` "Align the photos (ODM)", `georef` "Place the model", `adjust` "Adjust with ground control (ODM)", `dense` "Dense point cloud", `mesh` "3D mesh", `texture` "Texture the mesh", `cloud` "Point cloud", `dsm` "Elevation models", `ortho` "Orthophoto", keep the others; drop `features`, `match`, `fuse`, `dtm`.
@@ -3999,8 +4153,9 @@ The first real 1,000-photo run (995 photos, 15.27 ha, pack 0.7.0) ran 7.5 hours 
 2. **Our own engine is deleted**, not kept as a fallback. COLMAP stays only for walks.
 3. **ODM is downloaded by the app from ODM's GitHub release, a pinned version** (3.6.2) checked against its size and SHA-256, and installed per user with its own silent setup, from Settings, Processing tools. It is never bundled in the installer or the pipeline pack.
 4. **GPU auto, with a switch**: ODM uses an NVIDIA card when its driver is present and it works, else the CPU; a Settings switch keeps it on the CPU. Threads: `clamp(min(CPUs - 2, floor(RAM GB / 3)), 2, 32)`, lowered only by a memory limit set by hand (never by the automatic photo memory cap).
-5. **Arm's length**: ODM runs as a separate, unmodified program (`run.bat`); the app and the pipeline pack never link it. One ODM run at a time on a computer.
+5. **Arm's length**: ODM runs as a separate program (`run.bat`); the app and the pipeline pack never link it and never change its program code. One exception: in the ODM folder the app installed, the placeholder `SuperBuild\install\bin\nvcuda.dll` (a 19 KB stub that makes OpenMVS densify on the CPU) is renamed to `nvcuda.dll.odm-stub` when NVIDIA's driver is present and the GPU setting is `auto`, and renamed back otherwise and before uninstalling (founder, 14 Oct; dense matching about 6x faster). One ODM run at a time on a computer.
 6. **Windows x64 only** for photogrammetry from this decision (ODM ships a Windows installer; macOS is parked, 10 Oct 2026).
+7. **Paths ODM sees have no spaces and no non-ASCII letters**: ODM's SMRF ground command is unquoted (a space gives zero ground points and a DTM that never finishes) and OpenSfM fails on non-ASCII letters; such project folders are reached through a junction and the install folder is chosen safe.
 
 ## Consequences
 
@@ -4173,20 +4328,21 @@ git commit -m "test(e2e): processing engine card and photo specs on the fake odm
 ## How to test (for the founder, once merged)
 
 1. Open Settings, Processing tools. The new **Processing engine** card is at the top: it explains ODM, its AGPL-3.0 licence, and shows "Download 234 MB, about N GB installed".
-2. Click **Download and install**. The bar shows the download in MB, then "Checking the download", "Installing", "Checking the installation". Windows may ask once for permission (Microsoft's C++ runtime). The card then says "Installed", ODM 3.6.2 and its folder, and "Graphics card: NVIDIA GeForce RTX 5070 Ti, used for processing".
+2. Click **Download and install**. The bar shows the download in MB, then "Checking the download", "Installing", "Checking the installation". No Windows permission prompt is expected. The card then says "Installed", ODM 3.6.2 and its folder, and "Graphics card: NVIDIA GeForce RTX 5070 Ti, used for processing".
 3. Open a project with drone photos, **Create maps from photos**, choose Quick and start. The run panel walks through Read, Match, Map and Add; "Every step" shows "Align the photos (ODM)", "Dense point cloud", "Elevation models", "Orthophoto". The orthophoto, DSM and DTM layers appear on the map when it finishes.
-4. Open the job log in Processing: it says how many threads ODM used and "Graphics card used for features: yes; for dense matching: yes" (or "no", with a warning, if the card fell back to the CPU).
+4. Open the job log in Processing: it says how many threads ODM used (21 on the workstation) and "Graphics card used for features: yes; for dense matching: yes" (or "no", with a warning, if the card fell back to the CPU). In ODM's folder (Settings, Processing tools, the folder line), `SuperBuild\install\bin\nvcuda.dll.odm-stub` exists and `nvcuda.dll` does not: that is the renamed placeholder that lets dense matching use the card. Task Manager shows the GPU busy during "Dense point cloud".
 5. Cancel a run in the middle of dense matching, then Resume: the log says it resumes from the stage after the last finished one.
-6. Switch **Use the graphics card** off in the card, run again: the log says the card was not used.
-7. Remove the engine with **Remove**, then **Remove ODM from this computer**: the card says "Not installed", and **Create maps from photos** shows "Install the processing engine first" with a button that leads back to the card.
-8. When a window is free: the 995-photo run, timed, against the 7.5 h partial run.
+6. Switch **Use the graphics card** off in the card, run again: the log says the card was not used, and `nvcuda.dll` is back in ODM's `SuperBuild\install\bin` folder.
+7. Make a project in a folder whose name has a space (for example `E:\Stratlas Data\Test site`), create maps with a DTM: the DTM finishes (ODM works on it through a junction).
+8. Remove the engine with **Remove**, then **Remove ODM from this computer**: the card says "Not installed", and **Create maps from photos** shows "Install the processing engine first" with a button that leads back to the card.
+9. When a window is free: the 995-photo run, timed, against the 7.5 h partial run.
 
 ## Risks and open points for the founder
 
 - **Admin prompt**: none seen (Task 0, unattended); nobody watched the screen during that install.
-- **Paths**: spaces are fine (Task 0); a non-ASCII letter in the data folder or project path breaks OpenSfM, so those go through a junction, and the install then lives under `%LOCALAPPDATA%\QuadrionODM`. An install folder with a space was not tested.
-- **Dense matching on the GPU**: ODM 3.6.2 on Windows runs it on the CPU (its OpenMVS loads a stub CUDA driver). Features do use the RTX 5070 Ti. Investigated separately; the log says it plainly.
-- **A DTM step can hang** on a tiny or degenerate set (seen on 10 photos, 19 minutes on one core); the runner's watchdog (`AIO_ODM_STALL_MIN`, default 30 minutes) stops it with a plain message.
+- **Paths**: a space breaks ODM's DTM (unquoted SMRF command) and a non-ASCII letter breaks OpenSfM, so such project folders go through a junction and the install lives under `%LOCALAPPDATA%\QuadrionODM` when the data folder is not safe (as `E:\Stratlas Data` is not). Worth reporting upstream: a two-character quoting fix in ODM's `run_pdaltranslate_smrf`.
+- **Dense matching on the GPU** depends on renaming ODM's placeholder `nvcuda.dll` (deviation 17). A very old NVIDIA driver could make OpenMVS fail CUDA start-up; ODM then retries on the CPU ("OpenMVS failed with GPU"), not tested here. A repair of ODM brings the placeholder back; the runner renames it again before the next run.
+- **A DTM can hang** when ODM finds no ground points (root cause of the 10-photo hang: a space in the path). Guards: safe paths, never `--rerun-from odm_dem` on an unclassified cloud, a ground check before the DTM, ODM's ground warning stops the step at once, and the watchdog (`AIO_ODM_STALL_MIN`, default 30 minutes) as the last resort.
 - **Threads** (deviation 4): 21 on the 64 GB machine; a hand-set memory limit lowers it (founder, 14 Oct).
 - **Time estimates** in the wizard still come from our old engine's measurements; recalibrate after the 995-photo run.
 - **Georef after products**: features, matches and tracks stay (no `--optimize-disk-space`), so a later georeference does not extract again. Disk: `opensfm/features` and `matches` stay with the run until the person removes it.
