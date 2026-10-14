@@ -1,21 +1,10 @@
-import {
-  useCallback,
-  useEffect,
-  useLayoutEffect,
-  useMemo,
-  useRef,
-  useState,
-  type PointerEvent as ReactPointerEvent,
-  type ReactNode,
-} from 'react';
-import { formatClock, formatCount } from '../format';
-import { t } from '../i18n';
+import { useRef, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react';
+import { formatCount } from '../format';
 import { Icon } from '../icons/Icon';
-import { platformKeys } from '../shortcut';
 import type { TimelineModel } from './model';
-import { generateTicks, pickTickStep } from './ticks';
+import { HideButton, Ruler, Transport, ZoomControls, useTimeAxis } from './parts';
 
-export const RATES = [0.25, 0.5, 1, 2, 4, 8] as const;
+export { RATES } from './parts';
 
 export interface TimelineProps {
   model: TimelineModel;
@@ -43,18 +32,8 @@ export interface TimelineProps {
   className?: string;
 }
 
-const MIN_SPAN = 2_000;
 /** Below this average clip width (px) a flight's clips draw as one bar. */
 const GROUP_BELOW_PX = 28;
-
-function tickLabel(t: number, major: number): string {
-  const d = new Date(t);
-  if (major >= 86_400_000) return `${d.getUTCDate()}/${d.getUTCMonth() + 1}`;
-  const clock = formatClock(t);
-  if (major >= 60_000) return clock.slice(0, 5);
-  if (major >= 1_000) return clock;
-  return `${clock}.${String(d.getUTCMilliseconds()).padStart(3, '0').slice(0, 1)}`;
-}
 
 /**
  * Mission timeline: transport, ruler, a clips track, issue diamonds, timed photos and captures,
@@ -66,65 +45,9 @@ export function Timeline(props: TimelineProps) {
   const { onKeyframe, onKeyframeMove } = props;
   const kfDrag = useRef<{ x: number; moved: boolean } | null>(null);
   const tracksRef = useRef<HTMLDivElement>(null);
-  const [width, setWidth] = useState(800);
   const hasTime = model.range !== null;
-  const rangeKey = model.range ? `${model.range[0]}:${model.range[1]}` : 'none';
-  const [manual, setManual] = useState<{ key: string; view: [number, number] } | null>(null);
-  // A new project or new clip durations reset the view to fit.
-  const view = manual?.key === rangeKey ? manual.view : model.range;
-  const setView = useCallback(
-    (v: [number, number] | null) => {
-      setManual(v ? { key: rangeKey, view: v } : null);
-    },
-    [rangeKey],
-  );
-  // Keep the playhead in view while playing (state adjusted during render, no effect needed).
-  if (playing && view && (nowMs > view[1] || nowMs < view[0])) {
-    const s = view[1] - view[0];
-    setManual({ key: rangeKey, view: [nowMs - s * 0.1, nowMs + s * 0.9] });
-  }
-
-  useLayoutEffect(() => {
-    const el = tracksRef.current;
-    if (!el) return;
-    const ro = new ResizeObserver(([entry]) => {
-      if (entry) setWidth(Math.max(1, entry.contentRect.width));
-    });
-    ro.observe(el);
-    setWidth(Math.max(1, el.clientWidth));
-    return () => {
-      ro.disconnect();
-    };
-  }, [hasTime]);
-
-  const [v0, v1] = view ?? [0, 1];
-  const span = Math.max(v1 - v0, 1);
-  const x = useCallback((t: number) => ((t - v0) / span) * 100, [v0, span]);
-  const pct = (t: number) => `${x(t).toFixed(3)}%`;
-
-  const step = useMemo(() => pickTickStep(span, width), [span, width]);
-  const ticks = useMemo(() => generateTicks(v0, v1, step), [v0, v1, step]);
-
-  const timeAt = useCallback(
-    (clientX: number) => {
-      const el = tracksRef.current;
-      if (!el) return v0;
-      const r = el.getBoundingClientRect();
-      return v0 + ((clientX - r.left) / Math.max(r.width, 1)) * span;
-    },
-    [v0, span],
-  );
-
-  const zoom = useCallback(
-    (factor: number, anchor: number) => {
-      if (!view) return;
-      const [a, b] = view;
-      const next = Math.max(MIN_SPAN, (b - a) * factor);
-      const f = (anchor - a) / (b - a);
-      setView([anchor - next * f, anchor + next * (1 - f)]);
-    },
-    [view, setView],
-  );
+  const axis = useTimeAxis(tracksRef, model.range, nowMs, playing);
+  const { x, pct, timeAt, width } = axis;
 
   const scrubbing = useRef(false);
   const onPointerDown = (e: ReactPointerEvent<HTMLDivElement>) => {
@@ -143,34 +66,6 @@ export function Timeline(props: TimelineProps) {
     if (e.currentTarget.hasPointerCapture(e.pointerId))
       e.currentTarget.releasePointerCapture(e.pointerId);
   };
-
-  // Ctrl + wheel zooms at the cursor, wheel pans. Registered natively to allow preventDefault.
-  useEffect(() => {
-    const el = tracksRef.current;
-    if (!el || !view) return;
-    const onWheel = (e: WheelEvent) => {
-      e.preventDefault();
-      if (e.ctrlKey || e.metaKey) {
-        zoom(e.deltaY > 0 ? 1.25 : 0.8, timeAt(e.clientX));
-      } else {
-        const d = ((e.deltaX || e.deltaY) / Math.max(width, 1)) * span;
-        setView([v0 + d, v1 + d]);
-      }
-    };
-    el.addEventListener('wheel', onWheel, { passive: false });
-    return () => {
-      el.removeEventListener('wheel', onWheel);
-    };
-  }, [view, setView, zoom, timeAt, width, span, v0, v1]);
-
-  const frames = String(Math.floor(((((nowMs % 1000) + 1000) % 1000) / 1000) * 30)).padStart(
-    2,
-    '0',
-  );
-  const nextRate = () => {
-    const i = RATES.findIndex((r) => r === rate);
-    onRate(RATES[(i + 1) % RATES.length] ?? 1);
-  };
   const active = model.clips.find((c) => c.layerId === activeClip);
 
   return (
@@ -181,116 +76,21 @@ export function Timeline(props: TimelineProps) {
       dir="ltr"
     >
       <div className="tl-h">
-        <div className="transport">
-          <button
-            className="tool tip-up"
-            type="button"
-            onClick={() => {
-              onStep(-1);
-            }}
-            disabled={model.clips.length === 0}
-            aria-label="Previous clip"
-          >
-            <Icon name="back" />
-            <span className="tip">Previous clip</span>
-          </button>
-          <button
-            className="tool play"
-            type="button"
-            onClick={onTogglePlay}
-            disabled={!hasTime}
-            aria-label={playing ? 'Pause' : 'Play'}
-            aria-keyshortcuts="Space"
-          >
-            <Icon name={playing ? 'pause' : 'play'} />
-          </button>
-          <button
-            className="tool tip-up"
-            type="button"
-            onClick={() => {
-              onStep(1);
-            }}
-            disabled={model.clips.length === 0}
-            aria-label="Next clip"
-          >
-            <Icon name="fwd" />
-            <span className="tip">Next clip</span>
-          </button>
-        </div>
-        <div className="tc" data-testid="timecode">
-          {hasTime ? (
-            <>
-              {formatClock(nowMs)}
-              <small>.{frames}</small>
-            </>
-          ) : (
-            '--:--:--'
-          )}
-        </div>
-        <button
-          className="rate"
-          type="button"
-          onClick={nextRate}
-          title="Playback rate"
-          aria-label={`Playback rate ${rate}x`}
-        >
-          {rate.toFixed(rate < 1 ? 2 : 1)}×
-        </button>
-        {active && (
-          <span className="tag">
-            <Icon name="video" size={12} />
-            {active.name}
-          </span>
-        )}
+        <Transport
+          canStep={model.clips.length > 0}
+          canPlay={hasTime}
+          playing={playing}
+          clockMs={hasTime ? nowMs : null}
+          rate={rate}
+          activeName={active?.name}
+          onStep={onStep}
+          onTogglePlay={onTogglePlay}
+          onRate={onRate}
+        />
         <span className="sp" />
         {props.context && <span className="ctx">{props.context}</span>}
-        <div className="seg icons" role="group" aria-label="Timeline zoom">
-          <button
-            type="button"
-            aria-label="Zoom out"
-            title={`Zoom out (${platformKeys('Ctrl')} + wheel)`}
-            onClick={() => {
-              zoom(1.6, nowMs);
-            }}
-          >
-            <Icon name="minus" size={14} />
-          </button>
-          <button
-            type="button"
-            aria-label="Fit"
-            title="Fit everything"
-            onClick={() => {
-              setView(model.range);
-            }}
-          >
-            <Icon name="maximize" size={14} />
-          </button>
-          <button
-            type="button"
-            aria-label="Zoom in"
-            title={`Zoom in (${platformKeys('Ctrl')} + wheel)`}
-            onClick={() => {
-              zoom(0.625, nowMs);
-            }}
-          >
-            <Icon name="plus" size={14} />
-          </button>
-        </div>
-        {props.onHide && (
-          <button
-            className="tool tip-up tl-hide"
-            type="button"
-            onClick={props.onHide}
-            aria-label={t('timeline.hide')}
-            aria-keyshortcuts={props.hideKeys}
-          >
-            <Icon name="chevdown" />
-            <span className="tip tip-end">
-              {t('timeline.hide')}
-              {props.hideKeys && <span className="kbd">{props.hideKeys}</span>}
-            </span>
-          </button>
-        )}
+        <ZoomControls axis={axis} anchor={nowMs} />
+        {props.onHide && <HideButton onHide={props.onHide} hideKeys={props.hideKeys} />}
       </div>
       {hasTime ? (
         <div className="tl-body">
@@ -324,18 +124,7 @@ export function Timeline(props: TimelineProps) {
             onPointerCancel={onPointerUp}
             data-testid="timeline-tracks"
           >
-            <div className="tl-ruler" aria-hidden="true">
-              {ticks.map((tk) => (
-                <span key={tk.t}>
-                  <i className={`tk ${tk.major ? 'maj' : 'min'}`} style={{ left: pct(tk.t) }} />
-                  {tk.major && (
-                    <span className="tkl" style={{ left: pct(tk.t) }}>
-                      {tickLabel(tk.t, step.major)}
-                    </span>
-                  )}
-                </span>
-              ))}
-            </div>
+            <Ruler axis={axis} />
             <div className="trk">
               {model.groups.map((g) => {
                 const left = x(g.startMs);
