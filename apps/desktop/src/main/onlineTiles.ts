@@ -24,33 +24,7 @@
 import { ONLINE_SATELLITE, onlineSatelliteAvailability, type OnlineTileCache } from '@aio/schema';
 import { mkdir, readdir, readFile, rename, rm, stat, utimes, writeFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
-
-/** The one server this module ever asks. */
-export const ONLINE_SATELLITE_HOST = 'tiles.maps.eox.at';
-
-/**
- * The WMTS layer: Sentinel-2 cloudless **2016** in Web Mercator. In the service's capabilities
- * document (`https://tiles.maps.eox.at/wmts/1.0.0/WMTSCapabilities.xml`, read 10 Oct 2026) the
- * 2016 layer is the one without a year in its identifier; `s2cloudless-2016_3857` does not exist.
- *
- * 2016 only, on purpose: it is released under CC BY 4.0 (commercial use, use of the hosted tiles
- * in applications and keeping tiles are allowed, with attribution). The 2018 to 2025 layers
- * (`s2cloudless-<year>_3857`) are CC BY-NC-SA 4.0, non-commercial, and must never be used here;
- * 2017 is not cleared for use either. Do not change this id without the founder's decision and
- * an amendment to ADR 0007.
- */
-export const ONLINE_SATELLITE_LAYER = 's2cloudless_3857';
-
-/** Web Mercator tiles, 256 px, zoom 0 at the top (the service's `GoogleMapsCompatible` set). */
-const MATRIX_SET = 'GoogleMapsCompatible';
-
-/**
- * The service's address of a tile. WMTS REST counts TileMatrix, TileRow, TileCol, so the path is
- * z/y/x (the app's own address is z/x/y).
- */
-export function upstreamTileUrl(z: number, x: number, y: number): string {
-  return `https://${ONLINE_SATELLITE_HOST}/wmts/1.0.0/${ONLINE_SATELLITE_LAYER}/default/${MATRIX_SET}/${String(z)}/${String(y)}/${String(x)}.jpg`;
-}
+import { upstreamTileUrl } from './onlineUpstream';
 
 /** 300 MB: about 15 000 tiles, a few towns at full detail or a country at overview. */
 export const DEFAULT_CACHE_CAP_BYTES = 300 * 2 ** 20;
@@ -330,7 +304,7 @@ export function createOnlineTiles(o: OnlineTilesOptions): OnlineTiles {
   const missing = new Map<string, number>();
 
   async function ask(fetchTile: TileFetch, t: TileAddress): Promise<Fetched> {
-    const url = upstreamTileUrl(t.z, t.x, t.y);
+    const url = upstreamTileUrl(ONLINE_SATELLITE.id, t.z, t.x, t.y, null);
     let res: Response;
     try {
       res = await fetchTile(url, {

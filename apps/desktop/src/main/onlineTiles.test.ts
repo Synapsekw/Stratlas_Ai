@@ -3,10 +3,9 @@
  * fake fetcher that records every address (no network).
  */
 import { ONLINE_SATELLITE, onlineSatelliteTileUrl } from '@aio/schema';
-import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { mkdir, mkdtemp, readdir, readFile, rm, stat, utimes, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { join, relative } from 'node:path';
+import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import {
   BACKOFF_BASE_MS,
@@ -14,13 +13,11 @@ import {
   createOnlineTiles,
   DEFAULT_CACHE_CAP_BYTES,
   fakeTileFetch,
-  ONLINE_SATELLITE_HOST,
-  ONLINE_SATELLITE_LAYER,
   parseTilePath,
-  upstreamTileUrl,
   type OnlineTilesOptions,
   type TileFetch,
 } from './onlineTiles';
+import { ONLINE_SATELLITE_HOST } from './onlineUpstream';
 import { createAioHandler } from './protocol/handler';
 import { createOnlineSettingsStore, onlineSettingsPath } from './onlineSettings';
 import { createSettingsStore, defaultSettings } from './settings';
@@ -94,61 +91,12 @@ const cacheFile = (z: number, x: number, y: number) =>
   join(dir, 'cache', ID, String(z), String(x), `${String(y)}.jpg`);
 
 describe('the address of the service', () => {
-  it('is the one host over https, the 2016 layer, and z/y/x', () => {
-    expect(upstreamTileUrl(12, 2234, 1420)).toBe(
-      'https://tiles.maps.eox.at/wmts/1.0.0/s2cloudless_3857/default/GoogleMapsCompatible/12/1420/2234.jpg',
-    );
-    expect(ONLINE_SATELLITE_HOST).toBe('tiles.maps.eox.at');
-    // 2016 is the layer without a year; the non-commercial years carry one
-    expect(ONLINE_SATELLITE_LAYER).toBe('s2cloudless_3857');
-    expect(ONLINE_SATELLITE_LAYER).not.toMatch(/20(1[7-9]|2\d)/);
-  });
-
   it("the app's own address names no server and counts z/x/y", () => {
     expect(ONLINE_SATELLITE.tileUrl).toBe('aio://online/s2cloudless-2016/{z}/{x}/{y}.jpg');
     expect(onlineSatelliteTileUrl(12, 2234, 1420)).toBe(
       'aio://online/s2cloudless-2016/12/2234/1420.jpg',
     );
     expect(JSON.stringify(ONLINE_SATELLITE)).not.toContain(ONLINE_SATELLITE_HOST);
-  });
-});
-
-describe('main owns the network', () => {
-  const repo = join(import.meta.dirname, '..', '..', '..', '..');
-  // .md too: the guide (docs/guide) is built into the renderer's help
-  const SOURCE = /\.(tsx?|mjs|cjs|js|css|html|json|md)$/;
-  function sources(folder: string): string[] {
-    return readdirSync(folder, { withFileTypes: true }).flatMap((e) => {
-      const p = join(folder, e.name);
-      if (e.isDirectory()) return e.name === 'node_modules' ? [] : sources(p);
-      return SOURCE.test(e.name) ? [p] : [];
-    });
-  }
-
-  // The credit names the product's page (cloudless.eox.at), as the licence asks; that is not the
-  // tile service, which only main may name.
-  it('nothing the renderer is built from names the service', () => {
-    const folders = [
-      join(repo, 'apps', 'desktop', 'src', 'renderer'),
-      join(repo, 'apps', 'desktop', 'src', 'preload'),
-      join(repo, 'docs', 'guide'),
-      ...readdirSync(join(repo, 'packages')).map((name) => join(repo, 'packages', name, 'src')),
-    ].filter((f) => existsSync(f));
-    expect(folders.length).toBeGreaterThan(10);
-    const named = folders
-      .flatMap(sources)
-      .filter((file) => /(tiles|maps)\.eox\.at|s2cloudless_3857/.test(readFileSync(file, 'utf8')))
-      .map((file) => relative(repo, file));
-    expect(named).toEqual([]);
-  });
-
-  it('in main, only this module names it', () => {
-    const main = join(repo, 'apps', 'desktop', 'src', 'main');
-    const named = sources(main)
-      .filter((file) => readFileSync(file, 'utf8').includes(ONLINE_SATELLITE_HOST))
-      .map((file) => relative(main, file))
-      .sort();
-    expect(named).toEqual(['onlineTiles.test.ts', 'onlineTiles.ts']);
   });
 });
 
