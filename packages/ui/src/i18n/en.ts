@@ -2024,13 +2024,14 @@ export const en = {
   'walk.process': 'Process walk',
   'walk.process.needsPack': 'Needs a newer pipeline pack',
   'walk.process.noProject': 'Open the project first.',
-  'walk.locate.title': 'Locate the original of {name}',
+  'walk.locate.title': 'Find the camera file to level {name}',
   'walk.locate.note':
-    'The camera file {file} gives the motion data that levels the horizon. Without it, the walk is processed from its playback copy and is not levelled.',
-  'walk.locate.pick': 'Locate...',
-  'walk.locate.without': 'Without the original',
+    'The camera file {file} holds the motion data that keeps the horizon level. Without it, the walk is still processed from its playback copy, only not levelled.',
+  'walk.locate.pick': 'Find camera file...',
+  'walk.locate.without': 'Process without levelling',
   'walk.locate.cancel': 'Cancel',
-  'walk.locate.wrong': '{picked} is not {file}. Pick the original file, or process without it.',
+  'walk.locate.wrong':
+    '{picked} is not {file}. Pick the camera file, or process without levelling.',
   'walk.level': 'Level horizon',
   'walk.level.tip': 'Play the copy with the horizon kept level',
   // drone panoramas (panoramas/<layer>/<pano>/): the import preview, the Datasets rows, the offer

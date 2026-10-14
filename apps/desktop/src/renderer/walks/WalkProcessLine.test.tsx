@@ -114,11 +114,14 @@ describe('WalkProcessLine', () => {
     expect(q('walk-locate-walk-vid-1')).toBeNull();
   });
 
-  it('asks for the original of a camera file, or processes without it', async () => {
+  it('asks for the camera file to level the horizon, or processes without it', async () => {
     const { q, props } = mount();
     await click(q('walk-process-walk-vid-1'));
     const choice = q('walk-locate-walk-vid-1');
-    expect(choice?.textContent).toContain('Locate the original of Site tour');
+    // it is about levelling the horizon, not about where the walk is
+    expect(choice?.textContent).toContain('Find the camera file to level Site tour');
+    expect(choice?.textContent).not.toMatch(/locate|original/i);
+    expect(q('walk-locate-without')?.textContent).toBe('Process without levelling');
     await click(q('walk-locate-without'));
     expect(props.onProcess).toHaveBeenCalledWith(undefined);
     expect(q('walk-locate-walk-vid-1')).toBeNull();
