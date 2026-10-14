@@ -1,23 +1,20 @@
 import { IssueRegister } from '@aio/annotate';
 import {
   ariaKeys,
-  buildTimelineModel,
   formatDate,
   Icon,
   neighbourClip,
   Timeline,
+  type TimelineModel,
   useT,
 } from '@aio/ui';
 import { useVolumetric, VolumesPanel } from '@aio/volumetric';
 import { canCompare, useWorkspace, workspace } from '@aio/workspace';
-import { useMemo, useState } from 'react';
+import { useState } from 'react';
 import { ChangesTab, useChangesTabSeq } from '../change';
-import { jumpToKeyframe, moveKeyframe, timelineKeys } from '../builder/alignSession';
 import { IssueCard } from '../issueCard/IssueCard';
 import { useCardFocusSeq } from '../issueCard/state';
-import { useMedia } from '../media';
 import { PANEL_ID, PanelHandle } from '../shell/PanelHandle';
-import { selectClip } from '../shell/Sidebar';
 import { AgentHost } from '../agent/AgentHost';
 import { useModeller } from '../modeller';
 import { shell, useShell } from '../shell';
@@ -29,80 +26,58 @@ import { NoProject } from '../screens/NoProject';
 import { useCaptureIndex } from './compare';
 import { agentWindow } from './agentWindow';
 import { DateBar } from './DateBar';
+import { DateRow } from './DateRow';
+import { usesLanes } from './lanes';
 import { LayerPlaceholder } from './LayerPlaceholder';
+import { pickClip, selectClip } from './pickClip';
 import { SelectionCard } from './SelectionCard';
 import { Stage } from './Stage';
+import { useTimeline } from './timeline';
+import { timelineActions, useTimelineBinding } from './timelineBinding';
 import { toggleTimeline, useTimelineShown } from './timelinePref';
+import { WorkspaceLanes } from './WorkspaceLanes';
+
+const EMPTY_MODEL: TimelineModel = {
+  clips: [],
+  groups: [],
+  issues: [],
+  photos: [],
+  captures: [],
+  range: null,
+};
 
 function WorkspaceTimeline() {
-  const project = useWorkspace((s) => s.project);
-  const issues = useWorkspace((s) => s.issues);
-  const nowMs = useWorkspace((s) => s.nowMs);
-  const playing = useWorkspace((s) => s.playing);
-  const rate = useWorkspace((s) => s.rate);
-  const activeClip = useWorkspace((s) => s.activeClip);
-  const selection = useWorkspace((s) => s.selection);
-  const directionDraft = useWorkspace((s) => s.directionDraft);
-  const orientation = useWorkspace((s) => s.orientation);
-  const { durations } = useMedia(project);
-  const model = useMemo(
-    () =>
-      project
-        ? buildTimelineModel(
-            project.manifest,
-            issues,
-            durations,
-            timelineKeys(orientation, directionDraft),
-          )
-        : { clips: [], groups: [], issues: [], photos: [], captures: [], range: null },
-    [project, issues, durations, orientation, directionDraft],
-  );
+  const {
+    project,
+    nowMs,
+    playing,
+    rate,
+    activeClip,
+    selectedIssue,
+    model: built,
+  } = useTimelineBinding();
+  const model = built ?? EMPTY_MODEL;
   const capture = project?.manifest.captures.at(-1);
 
   return (
     <Timeline
+      {...timelineActions}
       className="ws-tl"
       model={model}
       nowMs={nowMs}
       playing={playing}
       rate={rate}
       activeClip={activeClip}
-      selectedIssue={selection?.kind === 'issue' ? selection.id : null}
+      selectedIssue={selectedIssue}
       context={`${capture ? `${formatDate(capture.date)} · ` : ''}UTC`}
       hideKeys="T"
-      onHide={() => {
-        toggleTimeline(workspace.getState().project);
-      }}
-      onSeek={(t) => {
-        workspace.getState().setTime(t);
-      }}
-      onKeyframe={(layerId, index) => {
-        jumpToKeyframe(layerId, index);
-      }}
-      onKeyframeMove={(layerId, index, tMs, phase) => {
-        moveKeyframe(layerId, index, tMs, phase);
-      }}
-      onTogglePlay={() => {
-        const ws = workspace.getState();
-        if (ws.playing) ws.pause();
-        else ws.play();
-      }}
-      onRate={(r) => {
-        workspace.getState().setRate(r);
-      }}
       onClip={(id, atMs) => {
-        // A clip bar plays its clip: from the clicked time, else (keyboard) from the playhead
-        // when it is inside the clip, else from the clip start.
-        selectClip(id);
-        const ws = workspace.getState();
-        const clip = model.clips.find((c) => c.layerId === id);
-        if (atMs !== undefined) ws.setTime(atMs);
-        else if (clip && (ws.nowMs < clip.startMs || ws.nowMs >= clip.endMs - 250))
-          ws.setTime(clip.startMs);
-        ws.play();
-      }}
-      onIssue={(id) => {
-        workspace.getState().select({ kind: 'issue', id });
+        // A clip bar selects its clip and seeks; Space or Play plays.
+        pickClip(
+          id,
+          atMs,
+          model.clips.find((c) => c.layerId === id),
+        );
       }}
       onStep={(dir) => {
         const c = neighbourClip(model, workspace.getState().activeClip, dir);
@@ -252,6 +227,8 @@ export function WorkspaceScreen() {
   const volumes = useVolumetric((s) => s.status === 'ready');
   const project = useWorkspace((s) => s.project);
   const timeline = useTimelineShown(project);
+  const dateIndex = useTimeline((s) => s.index);
+  const lanes = !road && project !== null && usesLanes(project.manifest, dateIndex);
   if (!hasProject) return <NoProject view="Scene" />;
 
   return (
@@ -260,11 +237,23 @@ export function WorkspaceScreen() {
       aria-label="Scene"
     >
       <h1 className="sr-only">{t('nav.scene')}</h1>
-      <DateBar />
+      {!lanes && <DateBar />}
       <Stage />
       <LayerPlaceholder />
       <div className="tl-wrap">
-        {road ? <ChainageRuler /> : timeline ? <WorkspaceTimeline /> : <TimelineBar />}
+        {road ? (
+          <ChainageRuler />
+        ) : lanes ? (
+          timeline ? (
+            <WorkspaceLanes />
+          ) : (
+            <DateRow />
+          )
+        ) : timeline ? (
+          <WorkspaceTimeline />
+        ) : (
+          <TimelineBar />
+        )}
       </div>
       <PanelHandle
         side="right"

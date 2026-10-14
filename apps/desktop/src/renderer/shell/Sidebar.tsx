@@ -30,7 +30,7 @@ import {
   type TreeItem,
   shortcutHint,
 } from '@aio/ui';
-import { clipStartMs, dateTags, useWorkspace, workspace } from '@aio/workspace';
+import { dateTags, useWorkspace, workspace } from '@aio/workspace';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { openAuditTrail } from '../audit/auditView';
 import { builder } from '../builder/state';
@@ -50,6 +50,7 @@ import type { Screen } from '../store';
 import { useCaptureIndex } from '../workspace/compare';
 import { flightPathShown, toggleFlightPath } from '../workspace/flightPaths';
 import { updateFlightPaths, useFlightPathModel } from '../workspace/pathModel';
+import { selectClip } from '../workspace/pickClip';
 import { timeline, useTimeline } from '../workspace/timeline';
 import { moveLayersToDate, undoDateMove, updateCapture } from './dateFolders';
 import { AddSurveyDateButton } from './AddSurveyDate';
@@ -58,6 +59,8 @@ import { DateNotes, type DateNote } from './DateNotes';
 import { askRemove, removal, useRemoval } from './removal';
 import { EmptyTrashDialog } from './RemoveHost';
 import './surveyDates.css';
+
+export { selectClip };
 
 watchPanoStitches();
 
@@ -101,18 +104,6 @@ function NavItem({
       <span className="tip">{t(def.label)}</span>
     </button>
   );
-}
-
-/** Select a clip: make it active and move the clock into it if the playhead is elsewhere. */
-export function selectClip(layerId: string) {
-  const ws = workspace.getState();
-  const layer = ws.project?.manifest.layers.find((l) => l.id === layerId);
-  ws.select({ kind: 'clip', id: layerId, layer: layerId });
-  ws.setActiveClip(layerId);
-  if (layer?.kind === 'video') {
-    const start = clipStartMs(layer);
-    if (ws.nowMs < start) ws.setTime(start);
-  }
 }
 
 function ProjectSwitcher({ collapsed }: { collapsed: boolean }) {
