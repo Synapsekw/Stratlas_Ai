@@ -86,7 +86,10 @@ describe('the Map menu', () => {
     const tile = q('map-tile-mapbox-streets') as HTMLButtonElement;
     expect(tile.disabled).toBe(true);
     expect(tile.textContent).toContain('Key');
-    expect(q('map-menu-note-mapbox')?.textContent).toContain('Add a key in Map sources');
+    // the note reads once: the words lead into the Map sources button
+    expect(q('map-menu-note-mapbox')?.textContent).toBe('Add a key in Map sources');
+    // the greyed tile's own tip is a full sentence
+    expect(tile.title).toBe('Add a key in Map sources');
     expect(tile.getAttribute('aria-describedby')).toBe(q('map-menu-note-mapbox')?.id);
     act(() => q('map-menu-add-key-mapbox')?.click());
     expect(h.onOpenSources).toHaveBeenCalledOnce();
@@ -112,6 +115,20 @@ describe('the Map menu', () => {
       );
     });
     expect(h.onPick).toHaveBeenLastCalledWith('s2cloudless-2016');
+  });
+
+  it('leaves the map alone when an arrow key is pressed on the Map sources button of a note', () => {
+    const h = render();
+    open();
+    const add = q('map-menu-add-key-mapbox');
+    add?.focus();
+    for (const key of ['ArrowDown', 'ArrowRight', 'ArrowUp', 'ArrowLeft', 'Home', 'End']) {
+      act(() => {
+        add?.dispatchEvent(new KeyboardEvent('keydown', { key, bubbles: true }));
+      });
+    }
+    expect(h.onPick).not.toHaveBeenCalled();
+    expect(document.activeElement).toBe(add);
   });
 
   it('has the On top switches with their reasons, the pack picker, the credit and Map sources', () => {

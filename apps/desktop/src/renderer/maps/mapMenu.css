@@ -145,7 +145,7 @@
 .mm-tile:hover:not(:disabled) {
   color: var(--fg-1);
 }
-.mm-tile:hover:not(:disabled) .mm-pic {
+.mm-tile:hover:not(:disabled, [aria-checked='true']) .mm-pic {
   box-shadow: 0 0 0 1px var(--line-strong);
   transform: translateY(-1px);
 }
@@ -327,6 +327,11 @@
   }
   .mm-tile[aria-checked='true'] .mm-pic {
     outline: 2px solid Highlight;
+    outline-offset: 2px;
+  }
+  /* the shadow rings vanish here: focus is a dashed outline, distinct from the chosen map */
+  .mm-tile:focus-visible .mm-pic {
+    outline: 2px dashed CanvasText;
     outline-offset: 2px;
   }
   .mm-tile:disabled .mm-tile-l,

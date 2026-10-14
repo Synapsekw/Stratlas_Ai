@@ -173,6 +173,8 @@ export const en = {
   'mapMenu.badge.offline': 'Offline',
   'mapMenu.badge.tier': 'Medium',
   'mapMenu.reason.needsKey': 'Add a key in Map sources',
+  // leads into the Map sources button of the note under greyed tiles
+  'mapMenu.reason.needsKey.lead': 'Add a key in',
   'mapMenu.reason.offline': 'This workstation is offline-only',
   'mapMenu.reason.tier': 'Needs Medium graphics or higher',
   'mapMenu.reason.noImagery': 'No imagery pack covers this site',

@@ -89,6 +89,8 @@ export function MapMenu(p: MapMenuProps) {
           ? -1
           : 0;
     const current = (e.target as HTMLElement).dataset.base;
+    // keys on the Map sources button of a note belong to that button, not to the tiles
+    if (!current) return;
     const at = pickable.findIndex((x) => x.id === current);
     const next =
       e.key === 'Home'
@@ -175,10 +177,9 @@ export function MapMenu(p: MapMenuProps) {
                   </div>
                   {s.note && (
                     <p className="mm-note" id={noteId} data-testid={`map-menu-note-${s.id}`}>
-                      {t(s.note)}
-                      {s.note === 'mapMenu.reason.needsKey' && (
+                      {s.note === 'mapMenu.reason.needsKey' ? (
                         <>
-                          {' '}
+                          {t('mapMenu.reason.needsKey.lead')}{' '}
                           <button
                             type="button"
                             className="mm-link"
@@ -188,6 +189,8 @@ export function MapMenu(p: MapMenuProps) {
                             {t('mapMenu.sources')}
                           </button>
                         </>
+                      ) : (
+                        t(s.note)
                       )}
                     </p>
                   )}
