@@ -96,6 +96,16 @@ const emptyText: CSSProperties = {
   textAlign: 'center',
 };
 
+/**
+ * The width of a box of width over height `aspect` that fits inside `box` both ways, in pixels;
+ * null until the box is measured. CSS alone (width 100%, max-height 100%) breaks the ratio in a
+ * box wider than the frame.
+ */
+export function fitWidth(box: { w: number; h: number }, aspect: number): number | null {
+  if (!(box.w > 0 && box.h > 0 && aspect > 0)) return null;
+  return Math.min(box.w, box.h * aspect);
+}
+
 /** The size of an element, followed (a callback ref, so a box mounted later is measured too). */
 function useSize(): [(el: HTMLDivElement | null) => void, { w: number; h: number }] {
   const [el, setEl] = useState<HTMLDivElement | null>(null);
@@ -131,6 +141,7 @@ export function FramesCompare({
   className,
 }: FramesCompareProps) {
   const [boxRef, size] = useSize();
+  const [outerRef, outer] = useSize();
   const dragging = useRef<number | null>(null);
   const v = clamp01(amount);
 
@@ -154,6 +165,8 @@ export function FramesCompare({
     );
   }
 
+  const ratio = aspect > 0 ? aspect : 16 / 9;
+  const fitW = fitWidth(outer, ratio);
   const warpCss = warp && size.w > 0 && size.h > 0 ? homographyCss(warp, size.w, size.h) : null;
   const top: CSSProperties = {
     ...fill,
@@ -186,6 +199,7 @@ export function FramesCompare({
 
   return (
     <div
+      ref={outerRef}
       className={className}
       data-testid="frames-compare"
       data-mode={mode}
@@ -209,10 +223,10 @@ export function FramesCompare({
         onPointerCancel={onUp}
         style={{
           position: 'relative',
-          aspectRatio: String(aspect > 0 ? aspect : 16 / 9),
+          aspectRatio: String(ratio),
           maxWidth: '100%',
           maxHeight: '100%',
-          width: '100%',
+          width: fitW ?? '100%',
           overflow: 'hidden',
           cursor: mode === 'swipe' ? 'ew-resize' : undefined,
           touchAction: 'none',
@@ -266,7 +280,7 @@ export interface FrameImageProps {
 }
 
 /**
- * One frame, filling its box: a photo, or a paused video seeked to `t` (exact-frame decode, not
+ * One frame, fitted to its box at its own shape (letterboxed, never stretched): a photo, or a paused video seeked to `t` (exact-frame decode, not
  * playback, so two clips never play at once).
  */
 export function FrameImage({ src, kind, t, missing, alt }: FrameImageProps) {
@@ -298,7 +312,7 @@ export function FrameImage({ src, kind, t, missing, alt }: FrameImageProps) {
     seek();
   }, [t]);
 
-  const style: CSSProperties = { ...fill, width: '100%', height: '100%', objectFit: 'fill' };
+  const style: CSSProperties = { ...fill, width: '100%', height: '100%', objectFit: 'contain' };
   if (state === 'error')
     return (
       <div style={emptyText} data-testid="frame-missing">

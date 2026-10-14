@@ -4,7 +4,7 @@
  * panorama of `e2e-pano-dates` (panoFixtures.ts), the viewer shows the spot on every date, steps
  * with the arrow keys, compares side by side and swiped, and leaves the main view alone.
  */
-import type { Page } from '@playwright/test';
+import type { Locator, Page } from '@playwright/test';
 import { expect, openProject, test } from './fixtures';
 import { createPanoDateProject, PANO_DATE_PROJECT_NAME } from './panoFixtures';
 
@@ -40,6 +40,28 @@ async function mainView(win: Page) {
 }
 const head = (win: Page) => win.getByTestId('spot-head');
 
+/**
+ * Width over height of a loaded photo as drawn (its content box under its object-fit) and as
+ * decoded, and of the box that holds it: a stretched photo draws at the box's shape.
+ */
+async function drawnRatio(img: Locator, box?: Locator) {
+  await expect(img).toHaveAttribute('data-state', 'ready');
+  const r = await img.evaluate((el) => {
+    const i = el as HTMLImageElement;
+    const natural = i.naturalWidth / i.naturalHeight;
+    const own = i.clientWidth / i.clientHeight;
+    const fit = getComputedStyle(i).objectFit;
+    const drawn = fit === 'contain' || fit === 'scale-down' ? natural : own;
+    return { natural, drawn };
+  });
+  const held = box
+    ? await box.evaluate(
+        (el) => el.getBoundingClientRect().width / el.getBoundingClientRect().height,
+      )
+    : r.drawn;
+  return { ...r, held };
+}
+
 test('a photo shows its spot on both dates, steps with the keys and compares', async ({
   demoProject,
 }) => {
@@ -59,6 +81,9 @@ test('a photo shows its spot on both dates, steps with the keys and compares', a
   await expect(dialog).toBeVisible();
   await expect(head(win)).toHaveAttribute('data-capture', 'd1');
   await expect(head(win)).toHaveAttribute('data-item', 'p05');
+  // the photo keeps its own shape in the dialog, whatever the dialog's
+  const one = await drawnRatio(dialog.locator('.spot-view img').first());
+  expect(Math.abs(one.drawn / one.natural - 1)).toBeLessThan(0.01);
 
   await win.keyboard.press('ArrowRight');
   await expect(head(win)).toHaveAttribute('data-capture', 'd2');
@@ -89,6 +114,11 @@ test('a photo shows its spot on both dates, steps with the keys and compares', a
   await expect(win.getByTestId('spot-compare-date-right')).toHaveValue('d2');
   await win.getByTestId('spot-mode-swipe').click();
   await expect(cmp).toHaveAttribute('data-mode', 'swipe');
+  // stacked, the two dates share a box of the photo's shape (the swipe and the warp line up in it)
+  const stack = cmp.getByTestId('frames-stack');
+  const two = await drawnRatio(stack.getByTestId('frames-a').locator('img').first(), stack);
+  expect(Math.abs(two.drawn / two.natural - 1)).toBeLessThan(0.01);
+  expect(Math.abs(two.held / two.natural - 1)).toBeLessThan(0.01);
   const handle = win.getByTestId('frames-swipe');
   const was = Number(await handle.getAttribute('aria-valuenow'));
   await handle.focus();

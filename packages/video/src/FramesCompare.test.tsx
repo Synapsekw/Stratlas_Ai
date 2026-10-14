@@ -1,6 +1,13 @@
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
-import { FrameImage, FramesCompare, swipeAt, swipeKey, type FramesMode } from './FramesCompare';
+import {
+  FrameImage,
+  FramesCompare,
+  fitWidth,
+  swipeAt,
+  swipeKey,
+  type FramesMode,
+} from './FramesCompare';
 
 const labels = { a: '1 Jan 2026', b: '1 Jun 2026', handle: 'Swipe', empty: 'No view' };
 
@@ -84,5 +91,24 @@ describe('FrameImage', () => {
     expect(video).toContain('<video');
     expect(video).toContain('data-t="12.5"');
     expect(video).not.toContain('autoplay');
+  });
+  it('keeps the picture at its own shape, never stretched to the box', () => {
+    for (const kind of ['photo', 'video'] as const) {
+      const h = renderToStaticMarkup(<FrameImage kind={kind} src="aio://x" missing="No footage" />);
+      expect(h).toContain('object-fit:contain');
+      expect(h).not.toContain('object-fit:fill');
+    }
+  });
+});
+
+describe('fitWidth', () => {
+  it('fits the frame inside the box both ways', () => {
+    // a wide box: the height limits, so the frame is narrower than the box
+    expect(fitWidth({ w: 1000, h: 400 }, 1.5)).toBeCloseTo(600);
+    // a tall box: the width limits
+    expect(fitWidth({ w: 300, h: 900 }, 1.5)).toBeCloseTo(300);
+  });
+  it('waits for a measured box', () => {
+    expect(fitWidth({ w: 0, h: 0 }, 1.5)).toBeNull();
   });
 });
