@@ -1,7 +1,7 @@
 import { fromWgs84, toWgs84 } from '@aio/geo';
 import { withExif } from '@aio/project/builder/testing';
 import type { ElectronApplication, Page } from '@playwright/test';
-import { readFile, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import sharp from 'sharp';
 import { expect, test, tinyGlb } from './fixtures';
@@ -82,6 +82,30 @@ function spread<T extends { p: [number, number, number] }>(hits: T[]): T[] {
     out.push(best);
   }
   return out;
+}
+
+/** A Pix4D folder layout: a 10 m tall Z-up quad with a spaced texture name and its offset file. */
+async function writePix4dExport(base: string, name: string, offset: number[]): Promise<string> {
+  const mesh = join(base, name, '2_densification', '3d_mesh');
+  const params = join(base, name, '1_initial', 'params');
+  await mkdir(mesh, { recursive: true });
+  await mkdir(params, { recursive: true });
+  await writeFile(join(params, `${name}_offset.xyz`), `${offset.join(' ')}\n`);
+  const tex = await sharp({ create: { width: 8, height: 8, channels: 3, background: '#b06030' } })
+    .jpeg()
+    .toBuffer();
+  await writeFile(join(mesh, `${name} stack_texture.jpg`), tex);
+  await writeFile(
+    join(mesh, `${name}.mtl`),
+    `newmtl a\nKd 1 1 1\nmap_Kd ${name} stack_texture.jpg\n`,
+  );
+  const obj = join(mesh, `${name}.obj`);
+  await writeFile(
+    obj,
+    `mtllib ${name}.mtl\nusemtl a\nv -2 0 0\nv 2 0 0\nv 2 0 10\nv -2 0 10\n` +
+      'vt 0 0\nvt 1 0\nvt 1 1\nvt 0 1\nf 1/1 2/2 3/3 4/4\n',
+  );
+  return obj;
 }
 
 test('a new project from the wizard, raw photos and a model, georeferenced by typed points', async ({
@@ -207,6 +231,122 @@ test('a new project from the wizard, raw photos and a model, georeferenced by ty
   expect(Math.hypot(tr[0] ?? 0, tr[2] ?? 0)).toBeCloseTo(2, 1);
   expect(tr[12]).toBeCloseTo(5, 0);
   expect(tr[14]).toBeCloseTo(-3, 0);
+});
+
+test('a Pix4D export stands up with its texture, and a far one offers to re-centre', async ({
+  app,
+  win,
+  dataRoot,
+}) => {
+  await win.getByTestId('new-project').first().click();
+  const wiz = win.getByTestId('new-project-wizard');
+  await wiz.getByLabel('Project name').fill('Tower e2e');
+  await wiz.getByRole('button', { name: 'Next' }).click();
+  await wiz.getByRole('button', { name: 'Typed coordinate' }).click();
+  await wiz.getByLabel('Origin coordinate').fill('29.0276, 48.1352, 30');
+  await wiz.getByRole('button', { name: 'Next' }).click();
+  await wiz.getByRole('button', { name: 'Next' }).click();
+  await wiz.getByRole('button', { name: 'Create project' }).click();
+  await expect(win.getByTestId('empty-project')).toBeVisible({ timeout: 30_000 });
+  const root = join(dataRoot.root, 'projects', 'tower-e2e');
+  const o = JSON.parse(await readFile(join(root, 'manifest.json'), 'utf8')) as { origin: number[] };
+  const [oe = 0, on = 0, oh = 0] = o.origin;
+  // the export's offset lies 30 km east of the origin
+  const offset = [Math.round(oe) + 30_000, Math.round(on), 12];
+  const obj = await writePix4dExport(dataRoot.base, 'tower', offset);
+
+  await nextOpenDialog(app, [obj]);
+  await win.getByRole('button', { name: 'Import files' }).click();
+  const panel = win.getByTestId('import-panel');
+  await expect(panel).toContainText('Imported 1 of 1 files', { timeout: 30_000 });
+  await expect(panel).toContainText('stood upright (Z up)');
+  await expect(panel).not.toContainText('was not found');
+  interface M {
+    origin: number[];
+    layers: { id: string; kind: string; transform?: number[]; src?: { path: string } }[];
+  }
+  const read = async () => JSON.parse(await readFile(join(root, 'manifest.json'), 'utf8')) as M;
+  const mesh = (m: M) => m.layers.find((l) => l.kind === 'mesh');
+  const t = mesh(await read())?.transform ?? [];
+  expect(t.slice(0, 12)).toEqual([1, 0, 0, 0, 0, 0, -1, 0, 0, 1, 0, 0]);
+  expect(t[12]).toBeCloseTo(offset[0] - oe, 3);
+  expect(t[13]).toBeCloseTo(12 - oh, 3);
+  // the texture is inside the GLB
+  const glb = await readFile(join(root, mesh(await read())?.src?.path ?? ''));
+  const json = JSON.parse(glb.subarray(20, 20 + glb.readUInt32LE(12)).toString('utf8')) as {
+    images?: unknown[];
+  };
+  expect(json.images).toHaveLength(1);
+  await panel.getByRole('button', { name: 'Close' }).click();
+
+  // far from the origin: the notice offers to move it
+  const notice = win.getByTestId('far-content-notice');
+  await expect(notice).toContainText('lies 30.0 km from the project origin', { timeout: 30_000 });
+  await notice.getByRole('button', { name: 'Re-centre project here' }).click();
+  await expect(notice).toContainText('Re-centred');
+  const after = await read();
+  expect(after.origin[0]).toBe(offset[0]);
+  expect(after.origin[1]).toBe(offset[1]);
+  expect(Math.abs(mesh(after)?.transform?.[12] ?? NaN)).toBeLessThan(5);
+  expect(Math.abs(mesh(after)?.transform?.[14] ?? NaN)).toBeLessThan(5);
+  // the project reloaded and the tower is in view at its new place
+  const meshId = mesh(after)?.id ?? '';
+  await win.evaluate(() => {
+    (window as unknown as Inspect).__stratlas.workspace.getState().flyTo({ kind: 'home' });
+  });
+  await expect
+    .poll(() => layerHits(win, meshId).then((h) => h.length), { timeout: 30_000 })
+    .toBeGreaterThan(5);
+
+  // the person flips the up axis in Georeference model, and back
+  await notice.getByRole('button', { name: 'Dismiss' }).click();
+  await win.keyboard.press('Control+K');
+  await win.keyboard.type('Georeference');
+  await win.keyboard.press('Enter');
+  const align = win.getByTestId('align-model');
+  await expect(align.getByRole('button', { name: 'Z up' })).toHaveAttribute('aria-pressed', 'true');
+  await align.getByRole('button', { name: 'Y up' }).click();
+  await expect(align).toContainText('Saved.');
+  expect(mesh(await read())?.transform?.[5]).toBeCloseTo(1, 6);
+  await align.getByRole('button', { name: 'Z up' }).click();
+  await expect
+    .poll(async () => (mesh(await read())?.transform?.[9] ?? 0) > 0.99, { timeout: 15_000 })
+    .toBe(true);
+  await expect(align.getByRole('button', { name: 'Z up' })).toHaveAttribute('aria-pressed', 'true');
+
+  // a Level fit shifts the tower 2 m east, 3 m north and 1 m up, and it stays upright
+  await expect
+    .poll(() => layerHits(win, meshId).then((h) => h.length), { timeout: 30_000 })
+    .toBeGreaterThan(5);
+  const cur = mesh(await read())?.transform ?? [];
+  const worldOf = (s: number[]) => {
+    const [x = 0, y = 0, z = 0] = s;
+    return [
+      (cur[0] ?? 0) * x + (cur[4] ?? 0) * y + (cur[8] ?? 0) * z + (cur[12] ?? 0),
+      (cur[1] ?? 0) * x + (cur[5] ?? 0) * y + (cur[9] ?? 0) * z + (cur[13] ?? 0),
+      (cur[2] ?? 0) * x + (cur[6] ?? 0) * y + (cur[10] ?? 0) * z + (cur[14] ?? 0),
+    ];
+  };
+  const [ne = 0, nn = 0, nh = 0] = after.origin;
+  for (const h of spread(await layerHits(win, meshId))) {
+    await align.getByTestId('pick-model').click();
+    await win.mouse.click(h.x, h.y);
+    const text = (await align.getByTestId('align-pending').textContent()) ?? '';
+    const src = text.replace('Model point', '').trim().split(/\s+/).map(Number);
+    const [wx = 0, wy = 0, wz = 0] = worldOf(src);
+    const target = [ne + wx + 2, nn - wz + 3, nh + wy + 1];
+    await align.getByRole('button', { name: 'Typed' }).click();
+    await align.getByLabel('Target coordinate').fill(target.map((v) => v.toFixed(3)).join(' '));
+    await align.getByLabel('Target coordinate').press('Enter');
+  }
+  await expect(align.getByTestId('align-stats')).toContainText('Scale');
+  await align.getByTestId('align-save').click();
+  await expect(align).toContainText('Saved.');
+  const fit = mesh(await read())?.transform ?? [];
+  // still Z up: the model's own z axis points up, not along the scene's z
+  expect(fit[9] ?? 0).toBeGreaterThan(Math.max(fit[5] ?? 0, 0));
+  expect(fit[13]).toBeCloseTo((cur[13] ?? 0) + 1, 1);
+  await expect(align.getByRole('button', { name: 'Z up' })).toHaveAttribute('aria-pressed', 'true');
 });
 
 test('camera heights: relative altitude asks for the take-off height, proposed from the model', async ({
