@@ -77,7 +77,7 @@ describe('the basemap of a site', () => {
       satellite: false,
       hillshade: false,
       streets: true,
-      online: false,
+      online: null,
     });
   });
 
@@ -145,35 +145,38 @@ describe('the basemap of a site', () => {
         satellite: true,
         hillshade: false,
         streets: true,
-        online: true,
+        online: 's2cloudless-2016',
       });
-      expect(basemapModel(on(), [], [], SITE).draw).toMatchObject({ online: true, imagery: [] });
+      expect(basemapModel(on(), [], [], SITE).draw).toMatchObject({
+        online: 's2cloudless-2016',
+        imagery: [],
+      });
     });
 
     it('Satellite only keeps it and hides the streets', () => {
       const m = basemapModel(on({ streets: false }), [], [], SITE);
       expect(m.choice).toBe('imagery');
-      expect(m.draw).toMatchObject({ satellite: true, streets: false, online: true });
+      expect(m.draw).toMatchObject({ satellite: true, streets: false, online: 's2cloudless-2016' });
     });
 
     it('is imagery like the packs: Streets draws none of it', () => {
       const m = basemapModel(on({ satellite: false }), [here], [], SITE);
       expect(m.choice).toBe('streets');
       expect(m.satellite).toBe(true);
-      expect(m.draw).toMatchObject({ satellite: false, online: false, imagery: [], streets: true });
+      expect(m.draw).toMatchObject({ satellite: false, online: null, imagery: [], streets: true });
     });
 
     it('draws under the one pack chosen as under all of them', () => {
       const one = basemapModel(on({ imageryPack: 'here' }), [world, here], [], SITE);
       expect(one.draw.imagery.map((p) => p.id)).toEqual(['here']);
-      expect(one.draw.online).toBe(true);
+      expect(one.draw.online).toBe('s2cloudless-2016');
     });
 
     it('off, nothing changes: no pack, no Satellite', () => {
       const m = basemapModel(prefs(), [], [], SITE);
       expect(m.satellite).toBe(false);
       expect(m.online).toBe(false);
-      expect(m.draw.online).toBe(false);
+      expect(m.draw.online).toBeNull();
     });
   });
 

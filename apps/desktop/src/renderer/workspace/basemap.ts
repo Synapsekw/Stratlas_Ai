@@ -14,6 +14,7 @@ import { frameProjection, orderPacks, packCovers } from '@aio/maps';
 import {
   onlineSatelliteAvailability,
   type OnlineSatelliteAvailability,
+  type OnlineSourceId,
   type ProjectManifest,
   type RasterPackInfo,
 } from '@aio/schema';
@@ -68,7 +69,7 @@ export interface BasemapDraw {
   /** The streets and names of the basemap over the imagery. */
   streets: boolean;
   /** Online satellite under the packs: imagery everywhere, also where no pack reaches. */
-  online: boolean;
+  online: OnlineSourceId | null;
 }
 
 export interface BasemapModel {
@@ -128,7 +129,7 @@ export function basemapModel(
       satellite: satelliteOn,
       hillshade: hillshadeOn,
       streets: choice !== 'imagery',
-      online: satelliteOn && online,
+      online: satelliteOn && online ? 's2cloudless-2016' : null,
     },
   };
 }

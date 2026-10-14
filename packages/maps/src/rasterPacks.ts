@@ -1,4 +1,10 @@
-import { ONLINE_SATELLITE, type RasterPackInfo, type RasterPackKind } from '@aio/schema';
+import {
+  onlineSource,
+  onlineTileTemplate,
+  type OnlineSourceId,
+  type RasterPackInfo,
+  type RasterPackKind,
+} from '@aio/schema';
 import type {
   GetResourceResponse,
   HillshadeLayerSpecification,
@@ -96,31 +102,38 @@ export function hillshadeLayer(pack: Pack): HillshadeLayerSpecification {
 }
 
 /**
- * Online satellite (ADR 0007, amendment of 10 Oct 2026): Sentinel-2 cloudless 2016, streamed by
- * main through `aio://online/...` while the person has it switched on. The description
- * (`ONLINE_SATELLITE` in `@aio/schema`) names no server; the source carries the credit the licence
- * asks for, so the map's attribution control shows it while the layer is on.
+ * Online sources (ADR 0007, amendments of 10 and 14 Oct 2026): Sentinel-2, Esri World Imagery and
+ * the Mapbox maps, streamed by main through `aio://online/<id>/...`. The catalog
+ * (`ONLINE_SOURCES` in `@aio/schema`) names no server; each source carries the credit its terms
+ * ask for, so the map's attribution control shows it while the layer is on.
  */
-export const ONLINE_SATELLITE_SOURCE = `${PREFIX}online-${ONLINE_SATELLITE.id}`;
-export const ONLINE_SATELLITE_LAYER = `${ONLINE_SATELLITE_SOURCE}-layer`;
+export function onlineMapSourceId(id: OnlineSourceId): string {
+  return `${PREFIX}online-${id}`;
+}
 
-export function onlineSatelliteSource(): RasterSourceSpecification {
+export function onlineMapLayerId(id: OnlineSourceId): string {
+  return `${onlineMapSourceId(id)}-layer`;
+}
+
+export function onlineRasterSource(id: OnlineSourceId): RasterSourceSpecification {
+  const s = onlineSource(id);
+  if (!s) throw new Error(`Unknown online source "${id}"`);
   return {
     type: 'raster',
-    tiles: [ONLINE_SATELLITE.tileUrl],
-    tileSize: ONLINE_SATELLITE.tileSize,
-    minzoom: ONLINE_SATELLITE.minZoom,
-    // the imagery's own detail: a closer view stretches these tiles, no deeper one is asked for
-    maxzoom: ONLINE_SATELLITE.maxZoom,
-    attribution: ONLINE_SATELLITE.attribution,
+    tiles: [onlineTileTemplate(id)],
+    tileSize: s.tileSize,
+    minzoom: s.minZoom,
+    // the source's own detail: a closer view stretches these tiles, no deeper one is asked for
+    maxzoom: s.maxZoom,
+    attribution: s.attribution,
   };
 }
 
-export function onlineSatelliteLayer(): RasterLayerSpecification {
+export function onlineRasterLayer(id: OnlineSourceId): RasterLayerSpecification {
   return {
-    id: ONLINE_SATELLITE_LAYER,
+    id: onlineMapLayerId(id),
     type: 'raster',
-    source: ONLINE_SATELLITE_SOURCE,
+    source: onlineMapSourceId(id),
     paint: { 'raster-fade-duration': 0 },
   };
 }
@@ -154,10 +167,10 @@ export interface RasterPackDisplay {
   /** Shade the relief of the most detailed terrain pack. */
   hillshade: boolean;
   /**
-   * Draw the online satellite imagery at the bottom of the stack: under the imagery packs (which
-   * are sharper and win where they have tiles) and under the project's own orthos.
+   * The online source to draw at the bottom of the stack, under the imagery packs (sharper where
+   * they have tiles) and the project's own orthos; null or absent for none.
    */
-  online?: boolean;
+  online?: OnlineSourceId | null;
 }
 
 /**
@@ -179,8 +192,8 @@ export function applyRasterPacks(map: RasterMap, d: RasterPackDisplay): () => vo
   };
   if (d.online) {
     // first, so every pack layer added below draws over it
-    addSource(ONLINE_SATELLITE_SOURCE, onlineSatelliteSource());
-    addLayer(onlineSatelliteLayer());
+    addSource(onlineMapSourceId(d.online), onlineRasterSource(d.online));
+    addLayer(onlineRasterLayer(d.online));
   }
   if (d.satellite) {
     for (const p of d.imagery) addSource(rasterSourceId(p), imagerySource(p));
@@ -211,8 +224,8 @@ export function syncRasterPacks(map: RasterMap, d: RasterPackDisplay): void {
   const layers: (RasterLayerSpecification | HillshadeLayerSpecification)[] = [];
   if (d.online) {
     // the bottom of the stack: every pack layer draws over it
-    sources.set(ONLINE_SATELLITE_SOURCE, onlineSatelliteSource());
-    layers.push(onlineSatelliteLayer());
+    sources.set(onlineMapSourceId(d.online), onlineRasterSource(d.online));
+    layers.push(onlineRasterLayer(d.online));
   }
   if (d.satellite) {
     const imagery = d.imagery.filter((p) => p.kind === 'imagery');
