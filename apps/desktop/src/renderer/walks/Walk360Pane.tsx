@@ -19,6 +19,7 @@ import {
   walkKeyAction,
   walkUnstabilised,
 } from './walkModel';
+import { clearWalkPlayback, setWalkPlayback } from './walkPlayback';
 import { useWalks, walks } from './walks';
 import { walkFolderId, walkRecordKey } from './walkStore';
 
@@ -123,6 +124,7 @@ function WalkPlayer({
     };
     const onTime = () => {
       setTime(v.currentTime);
+      setWalkPlayback(walk.id, v.currentTime);
       const place = placeSession.getState();
       if (place.layerId === walk.id) place.setTime(v.currentTime);
     };
@@ -175,6 +177,7 @@ function WalkPlayer({
       v.removeEventListener('ended', onPlay);
       v.removeEventListener('ratechange', onRate);
       v.removeEventListener('error', onError);
+      clearWalkPlayback(walk.id);
       resume.current = { time: v.currentTime, play: !v.paused && !v.ended };
       pano?.dispose();
       view.current = null;

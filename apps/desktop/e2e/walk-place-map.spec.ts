@@ -15,6 +15,7 @@ import {
   poseBendM,
   rowAction,
   UTM,
+  VIDEO_S,
   WALK_END,
   WALK_LAYER,
   WALK_START,
@@ -56,6 +57,25 @@ async function mapZoom(win: Page): Promise<number> {
     ) as (Element & { __aioMap: { getZoom(): number } }) | undefined;
     return el ? el.__aioMap.getZoom() : 0;
   });
+}
+
+/** Lon/lat of the playing walk's dot on the main map (`walk-<id>-now`), or null while none. */
+async function nowDot(win: Page): Promise<[number, number] | null> {
+  return win.evaluate(async (id) => {
+    interface MapEl extends Element {
+      __aioMap: { getSource(id: string): { getData(): Promise<unknown> } | undefined };
+    }
+    const el = [...document.querySelectorAll('*')].find(
+      (e) => '__aioMap' in e && e.getBoundingClientRect().width > 0,
+    ) as MapEl | undefined;
+    const data = (await el?.__aioMap.getSource(id)?.getData()) as
+      | {
+          features: { properties: { kind?: string }; geometry: { coordinates: unknown } }[];
+        }
+      | undefined;
+    const dot = data?.features.find((f) => f.properties.kind === 'now');
+    return dot ? (dot.geometry.coordinates as [number, number]) : null;
+  }, `aio-ov-walk-${WALK_LAYER}-now`);
 }
 
 test.describe('placing a walk on the map', () => {
@@ -133,5 +153,24 @@ test.describe('placing a walk on the map', () => {
     expect(layer?.place?.placedOn).toBe('@model');
     // the End pin moved south with the drag (z grows southward)
     expect(layer?.place?.pins[1]?.at[1]).toBeGreaterThan(-28);
+
+    // the placed walk plays in the 360 pane: its dot on the map follows the video
+    await rowAction(win, 'open');
+    await expect(win.getByTestId('walk-view')).toHaveAttribute('data-status', 'ready', {
+      timeout: 30_000,
+    });
+    // Save put the 3D view back on the left: show the map beside the 360 video
+    await win.getByRole('combobox', { name: 'Left side shows' }).selectOption({ label: 'Map' });
+    const scrub = win.getByTestId('walk-scrub');
+    await scrub.fill('2');
+    await expect.poll(() => nowDot(win), { timeout: 15_000 }).not.toBeNull();
+    const first = await nowDot(win);
+    await scrub.fill(String(VIDEO_S - 4));
+    await expect
+      .poll(async () => {
+        const at = await nowDot(win);
+        return at && first ? Math.hypot(at[0] - first[0], at[1] - first[1]) : 0;
+      })
+      .toBeGreaterThan(1e-4);
   });
 });

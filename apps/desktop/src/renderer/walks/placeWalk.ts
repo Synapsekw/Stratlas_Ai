@@ -56,7 +56,15 @@ import {
   walkNowMapOverlay,
   walkPreviewMapOverlay,
 } from './walkMapOverlay';
-import { walkDrawingsForSheet, type SheetWalk, type WalkDrawing } from './walkOverlay';
+import {
+  walkDrawingsForSheet,
+  walkNowOnSheet,
+  walkShown,
+  type SheetWalk,
+  type WalkDrawing,
+  type WalkNow,
+} from './walkOverlay';
+import { useWalkPlayback, type WalkPlaybackState } from './walkPlayback';
 import { jobForWalk, splitWithWalk } from './walkModel';
 import {
   locateOriginal,
@@ -578,15 +586,25 @@ export function sessionHandles(
  * the stage) and the session placing a walk on the map (`followMap`). Both go out together.
  */
 let placedMap: readonly MapOverlay[] = [];
+let placedNow: MapOverlay | null = null;
 let sessionMap: readonly MapOverlay[] = [];
 const publishMap = (): void => {
-  setWalkMapOverlays([...placedMap, ...sessionMap]);
+  setWalkMapOverlays(
+    placedNow ? [...placedMap, placedNow, ...sessionMap] : [...placedMap, ...sessionMap],
+  );
 };
 
 /** The placed walks' map overlays (every visible, placed walk at 60 %). */
 export function setPlacedMapOverlays(overlays: readonly MapOverlay[]): void {
   if (overlays.length === 0 && placedMap.length === 0) return;
   placedMap = overlays;
+  publishMap();
+}
+
+/** Where the placed walk the 360 pane plays is now (`placedNowMapOverlay`), or null. */
+export function setPlacedNowMapOverlay(overlay: MapOverlay | null): void {
+  if (overlay === null && placedNow === null) return;
+  placedNow = overlay;
   publishMap();
 }
 
@@ -943,6 +961,59 @@ export function placedMapOverlays(
   );
 }
 
+/** The placed walk the 360 pane is playing, when it is shown (null: none to mark). */
+function playingPlaced(
+  placed: readonly SheetWalk[],
+  playing: WalkPlaybackState,
+  hidden: ReadonlySet<string> | undefined,
+  except: string | null,
+): { walk: SheetWalk; t: number } | null {
+  const { layerId, t: nowT } = playing;
+  if (layerId === null || nowT === null || layerId === except) return null;
+  const walk = placed.find((w) => w.layer.id === layerId);
+  if (!walk || !walkShown(walk.layer, { placingId: null, ...(hidden ? { hidden } : {}) }))
+    return null;
+  return { walk, t: nowT };
+}
+
+/**
+ * Where the placed walk the 360 pane plays is now, on the map (`walk-<id>-now`): its own small
+ * overlay so a time tick does not rebuild the paths. Null when no shown placed walk plays, or a
+ * session edits it (the session draws its own).
+ */
+export function placedNowMapOverlay(
+  m: ProjectManifest,
+  placed: readonly SheetWalk[],
+  hidden: ReadonlySet<string>,
+  except: string | null,
+  playing: WalkPlaybackState,
+): MapOverlay | null {
+  const toLonLat = localToLonLat(m);
+  const p = playingPlaced(placed, playing, hidden, except);
+  if (!toLonLat || !p) return null;
+  return walkNowMapOverlay(p.walk, { toLonLat }, (l) => resolveCssColour(walkColour(m, l)), p.t);
+}
+
+/** Where the placed walk the 360 pane plays is now, on the drawing `sheetId` (null: not there). */
+export function placedNowOnSheet(
+  m: ProjectManifest,
+  sheetId: string,
+  placed: readonly SheetWalk[],
+  lookup: DrawingLookup,
+  playing: WalkPlaybackState,
+  opts: {
+    except?: string | null;
+    hidden?: ReadonlySet<string>;
+    size?: { width: number; height: number } | undefined;
+  } = {},
+): WalkNow | null {
+  const p = playingPlaced(placed, playing, opts.hidden, opts.except ?? null);
+  if (!p) return null;
+  const frame = surfaceFramesOf(m, lookup).drawing(sheetId);
+  if (!frame) return null;
+  return walkNowOnSheet(p.walk, frame, (l) => walkColour(m, l), p.t, opts.size);
+}
+
 /** The workspace's switched-off layers as a set (stable while they do not change). */
 export function useHiddenLayers(): ReadonlySet<string> {
   const hidden = useWorkspace((s) => s.hidden);
@@ -1025,9 +1096,17 @@ export function usePlacedWalksOnMap(): void {
   useEffect(() => {
     setPlacedMapOverlays(manifest ? placedMapOverlays(manifest, fits, hidden, except) : []);
   }, [manifest, fits, hidden, except]);
+  // the dot of the walk the 360 pane plays goes apart: a time tick does not rebuild the paths
+  const playing = useWalkPlayback();
+  useEffect(() => {
+    setPlacedNowMapOverlay(
+      manifest ? placedNowMapOverlay(manifest, fits, hidden, except, playing) : null,
+    );
+  }, [manifest, fits, hidden, except, playing]);
   useEffect(
     () => () => {
       setPlacedMapOverlays([]);
+      setPlacedNowMapOverlay(null);
     },
     [],
   );

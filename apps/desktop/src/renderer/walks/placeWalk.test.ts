@@ -26,6 +26,8 @@ import {
   loadWalkInputs,
   orientationDataRef,
   placedMapOverlays,
+  placedNowMapOverlay,
+  placedNowOnSheet,
   placedWalkFits,
   sessionHandles,
   surfaceLayout,
@@ -37,6 +39,7 @@ import {
   type PlaceWalkDeps,
 } from './placeWalk';
 import { setWalkMapOverlays, setWalkMapPointer, walkMap } from './walkMapStore';
+import { localToLonLat } from '../change/draw';
 
 const fixtures = join(import.meta.dirname, '../../../../../packages/schema/src/__fixtures__/walk');
 const file = (name: string) => readFileSync(join(fixtures, name));
@@ -921,5 +924,59 @@ describe('placed walks on every surface', () => {
     expect(placedMapOverlays(m, fits, new Set(['walk-a']), null)).toEqual([]);
     const local = { ...m, crs: { wkt: 'LOCAL_CS["local"]' } };
     expect(placedMapOverlays(local, fits, new Set(), null)).toEqual([]);
+  });
+
+  it('on the map: the walk the 360 pane plays gets a dot at its time, apart from its path', () => {
+    const m = projectWith([plan, other, placedOnOwn()]).manifest;
+    const fits = placedWalkFits(m, pinsOnly, lookup);
+    const fit = fits[0]?.fit;
+    const toLonLat = localToLonLat(m);
+    if (!fit || !toLonLat) throw new Error('fixture');
+    const dotAt = (t: number) => {
+      const ov = placedNowMapOverlay(m, fits, new Set(), null, { layerId: 'walk-a', t });
+      expect(ov?.id).toBe('walk-walk-a-now');
+      if (!ov || typeof ov.data === 'string') throw new Error('no dot');
+      const f = ov.data.features.find((x) => x.properties?.kind === 'now');
+      return f?.geometry.type === 'Point' ? f.geometry.coordinates : null;
+    };
+    const want = (t: number) => {
+      const a = fit.at(t);
+      if (!a) throw new Error('fixture');
+      return toLonLat([a.xz[0], 0, a.xz[1]]);
+    };
+    const early = dotAt(5);
+    const late = dotAt(50);
+    expect(early?.[0]).toBeCloseTo(want(5)[0], 9);
+    expect(early?.[1]).toBeCloseTo(want(5)[1], 9);
+    expect(late?.[0]).toBeCloseTo(want(50)[0], 9);
+    expect(late).not.toEqual(early);
+    // nothing plays, another walk plays, the walk is hidden or a session edits it: no dot
+    expect(placedNowMapOverlay(m, fits, new Set(), null, { layerId: null, t: null })).toBeNull();
+    expect(placedNowMapOverlay(m, fits, new Set(), null, { layerId: 'walk-z', t: 5 })).toBeNull();
+    const playing = { layerId: 'walk-a', t: 5 };
+    expect(placedNowMapOverlay(m, fits, new Set(['walk-a']), null, playing)).toBeNull();
+    expect(placedNowMapOverlay(m, fits, new Set(), 'walk-a', playing)).toBeNull();
+  });
+
+  it('on a drawing: the walk the 360 pane plays gets a dot at its time', () => {
+    const m = projectWith([plan, other, placedOnOwn()]).manifest;
+    const fits = placedWalkFits(m, pinsOnly, lookup);
+    const at = (t: number) =>
+      placedNowOnSheet(m, 'sheet-own', fits, lookup, { layerId: 'walk-a', t })?.at;
+    expect(at(5)).toBeDefined();
+    expect(at(50)).not.toEqual(at(5));
+    expect(placedNowOnSheet(m, 'sheet-own', fits, lookup, { layerId: null, t: null })).toBeNull();
+    expect(
+      placedNowOnSheet(
+        m,
+        'sheet-own',
+        fits,
+        lookup,
+        { layerId: 'walk-a', t: 5 },
+        {
+          hidden: new Set(['walk-a']),
+        },
+      ),
+    ).toBeNull();
   });
 });

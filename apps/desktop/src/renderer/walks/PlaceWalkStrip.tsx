@@ -27,6 +27,7 @@ import {
 } from './placeModel';
 import { canRemovePin, type PlaceState } from './placeStore';
 import {
+  placedNowOnSheet,
   placeFlow,
   placeSession,
   placeUi,
@@ -40,6 +41,7 @@ import {
 } from './placeWalk';
 import { packOffersWalkProcess } from './walkModel';
 import { previewOnSheet, walkNowOnSheet } from './walkOverlay';
+import { useWalkPlayback } from './walkPlayback';
 import { WalkSheetOverlay } from './WalkSheetOverlay';
 import './placeWalk.css';
 
@@ -694,10 +696,18 @@ export function useWalksOnDrawing(
     () => (on && manifest ? surfaceFramesOf(manifest, (id) => placed[id]).drawing(layerId) : null),
     [on, manifest, placed, layerId],
   );
+  // a placed walk the 360 pane plays shows where it is now, as the walk being placed does
+  const playing = useWalkPlayback();
   const now =
     placing && frame && manifest
       ? walkNowOnSheet(placing, frame, (l) => walkColour(manifest, l), time, size)
-      : null;
+      : manifest
+        ? placedNowOnSheet(manifest, layerId, fits, (id) => placed[id], playing, {
+            except: placingId,
+            hidden,
+            size,
+          })
+        : null;
   const shape = useMemo(
     () =>
       frame && preview ? previewOnSheet(preview.xz, frame, preview.ghost, preview.tooClose) : null,
