@@ -356,7 +356,7 @@ test.describe('Online satellite', () => {
   const credit = (win: Page) => win.locator('.pane-map .maplibregl-ctrl-attrib');
   /** Whether main has it switched on. */
   const switchedOn = async (win: Page) =>
-    (await win.evaluate(() => window.aio.invoke('onlineTiles:status', {}))).satellite;
+    (await win.evaluate(() => window.aio.invoke('onlineTiles:status', {}))).enabled;
   /** The addresses main's stand-in for the service was asked for. */
   const asked = (app: ElectronApplication) =>
     app.evaluate(

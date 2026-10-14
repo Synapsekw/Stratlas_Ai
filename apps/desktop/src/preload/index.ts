@@ -201,8 +201,12 @@ const CHANNELS = {
   'terrainPacks:import': true,
   'terrainPacks:remove': true,
   'onlineTiles:status': true,
-  'onlineTiles:setSatellite': true,
+  'onlineTiles:set': true,
   'onlineTiles:clearCache': true,
+  'mapKeys:status': true,
+  'mapKeys:set': true,
+  'mapKeys:test': true,
+  'mapKeys:clear': true,
   'orientation:read': true,
   'orientation:write': true,
   // M11

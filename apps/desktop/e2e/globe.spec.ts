@@ -2005,10 +2005,8 @@ test.describe('online satellite on the Globe', () => {
 
     // The person's switch (the map type menu, Settings, the palette) is held by main: switch it
     // on there and come back to the Globe, which asks main how it stands when it opens.
-    const on = await win.evaluate(() =>
-      window.aio.invoke('onlineTiles:setSatellite', { on: true }),
-    );
-    expect(on).toMatchObject({ ok: true, satellite: true });
+    const on = await win.evaluate(() => window.aio.invoke('onlineTiles:set', { enabled: true }));
+    expect(on).toMatchObject({ ok: true, enabled: true });
     await win.locator('.sb-nav .nav-item', { hasText: 'Projects' }).click();
     await expect(win.getByTestId('globe-canvas')).toHaveCount(0);
     await openGlobe(win);

@@ -470,7 +470,7 @@ if (fakeOnlineTiles)
   Object.defineProperty(globalThis, '__aioOnlineTileRequests', { value: onlineTileRequests });
 const onlineTiles = createOnlineTiles({
   switches: () => ({
-    satellite: onlineSettings.satellite(),
+    satellite: onlineSettings.current().enabled,
     offlineOnly: settings.current().offlineOnly === true,
   }),
   cacheDir: () => join(app.getPath('userData'), 'cache', 'online-tiles'),
@@ -1638,10 +1638,10 @@ function registerIpc(): void {
     startJob: (req) => jobs.start(req),
   });
   handle('onlineTiles:status', async () => ({
-    satellite: await onlineSettings.get(),
+    ...(await onlineSettings.get()),
     cache: await onlineTiles.cache(),
   }));
-  handle('onlineTiles:setSatellite', ({ on }) => onlineSettings.set(on));
+  handle('onlineTiles:set', (patch) => onlineSettings.set(patch));
   handle('onlineTiles:clearCache', () => onlineTiles.clear());
 
   // M11: one module per stream (G1 geodesy and geoid packs; G2, G3 and G6 survey; G12 survey AI).

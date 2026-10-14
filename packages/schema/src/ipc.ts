@@ -56,7 +56,13 @@ import { Id, Sha256Hex } from './common';
 import { ExchangeKind, ExchangePreview, Heads, TeamProjectId } from './exchange';
 import { ActorId, DeviceId, Identity, Initials, Member, PersonName, Role } from './identity';
 import { LaunchSettings } from './launch';
-import { OnlineTileCache, OnlineTilesStatus } from './onlineImagery';
+import {
+  MapKeyProvider,
+  MapKeysStatus,
+  OnlineSourceId,
+  OnlineTileCache,
+  OnlineTilesStatus,
+} from './onlineImagery';
 import { DesignFormat, DesignsFile, DesignSourceUnits } from './designs';
 import { HydroRun } from './hydro';
 import { HaulRun } from './haul';
@@ -2545,23 +2551,42 @@ export const ipc = {
     response: OkOrFailure,
   },
 
-  // ------------------------------------------- Online satellite (ADR 0007, amended 10 Oct 2026)
+  // ------------------------------------------- Online maps (ADR 0007, amended 10 and 14 Oct 2026)
   /**
-   * Whether **Online satellite** is switched on (userData `online.json`, `OnlineSettings`), and
-   * the cache of its tiles on this computer. Whether tiles are requested also depends on
-   * `Settings.offlineOnly` (`onlineSatelliteAvailability`); main enforces both.
+   * Whether online maps are switched on and which online satellite this workstation uses
+   * (userData `online.json`), and the Sentinel-2 cache. Whether tiles are requested also depends
+   * on `Settings.offlineOnly`; main enforces both.
    */
   'onlineTiles:status': { request: Empty, response: OnlineTilesStatus },
-  /** Switch **Online satellite** on or off. Off counts at once; on once it is saved. */
-  'onlineTiles:setSatellite': {
-    request: z.object({ on: z.boolean() }).strict(),
+  /** Switch online maps on or off, or choose the online satellite. Off counts at once. */
+  'onlineTiles:set': {
+    request: z
+      .object({ enabled: z.boolean().optional(), source: OnlineSourceId.optional() })
+      .strict(),
     response: z.discriminatedUnion('ok', [
-      z.object({ ok: z.literal(true), satellite: z.boolean() }),
+      z.object({ ok: z.literal(true), enabled: z.boolean(), source: OnlineSourceId }),
       Failure,
     ]),
   },
-  /** **Clear cached satellite tiles**: deletes every cached tile; answers the empty cache. */
+  /** **Clear saved satellite tiles**: deletes every Sentinel-2 tile on disk; answers the empty cache. */
   'onlineTiles:clearCache': { request: Empty, response: OnlineTileCache },
+  /** Which map keys this computer holds (never a key). */
+  'mapKeys:status': { request: Empty, response: MapKeysStatus },
+  /** Check a key with one tile request through main, then keep it in the OS credential store. */
+  'mapKeys:set': {
+    request: z.object({ provider: MapKeyProvider, key: z.string().min(8).max(512) }).strict(),
+    response: OkOrFailure,
+  },
+  /** Check the saved key with one tile request through main. */
+  'mapKeys:test': {
+    request: z.object({ provider: MapKeyProvider }).strict(),
+    response: OkOrFailure,
+  },
+  /** Remove the saved key from the OS credential store. */
+  'mapKeys:clear': {
+    request: z.object({ provider: MapKeyProvider }).strict(),
+    response: OkOrFailure,
+  },
 
   // ---------------------------------------------------------------- M11 surveying (G0 stubs)
   /**

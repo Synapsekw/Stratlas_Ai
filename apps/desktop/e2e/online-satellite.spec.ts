@@ -50,7 +50,7 @@ const asked = (app: ElectronApplication) =>
 
 /** Whether main has online satellite switched on. */
 const switchedOn = async (win: Page) =>
-  (await win.evaluate(() => window.aio.invoke('onlineTiles:status', {}))).satellite;
+  (await win.evaluate(() => window.aio.invoke('onlineTiles:status', {}))).enabled;
 
 /** What a page gets for one tile of the app's own address. */
 const tileStatus = (win: Page, path: string) =>
@@ -246,8 +246,8 @@ test('offline only: the switch is disabled with the reason, and main asks nobody
   // Even with the setting forced on behind the page's back, an offline-only workstation asks for
   // nothing: no tile, no request to the stand-in, nothing on the network.
   expect(
-    await win.evaluate(() => window.aio.invoke('onlineTiles:setSatellite', { on: true })),
-  ).toEqual({ ok: true, satellite: true });
+    await win.evaluate(() => window.aio.invoke('onlineTiles:set', { enabled: true })),
+  ).toMatchObject({ ok: true, enabled: true });
   expect(await tileStatus(win, 's2cloudless-2016/3/4/2.jpg')).toEqual({
     status: 404,
     why: 'offline-only',

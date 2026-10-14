@@ -236,13 +236,13 @@ describe('the gate', () => {
     const { calls, fetch } = recorder();
     const s = service(fetch, {
       switches: () => ({
-        satellite: online.satellite(),
+        satellite: online.current().enabled,
         offlineOnly: settings.current().offlineOnly === true,
       }),
     });
     // off by default
     expect((await ask(s, `${ID}/3/4/2.jpg`)).status).toBe(403);
-    expect(await online.set(true)).toEqual({ ok: true, satellite: true });
+    expect(await online.set({ enabled: true })).toMatchObject({ ok: true, enabled: true });
     expect((await ask(s, `${ID}/3/4/2.jpg`)).status).toBe(200);
     // offline only counts before the settings file is written
     void settings.set({ offlineOnly: true });
@@ -250,7 +250,7 @@ describe('the gate', () => {
     expect(calls).toHaveLength(1);
     await settings.settled();
     // switched off: refused from the moment it is asked for, before the file is written
-    const off = online.set(false);
+    const off = online.set({ enabled: false });
     expect((await ask(s, `${ID}/3/4/2.jpg`)).status).toBe(403);
     await off;
     expect(calls).toHaveLength(1);

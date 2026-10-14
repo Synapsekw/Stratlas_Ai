@@ -52,17 +52,18 @@ describe('raster packs store', () => {
     const asked: unknown[] = [];
     let stored = false;
     g.aio = {
-      invoke: vi.fn((channel: string, req: { on?: boolean }) => {
-        if (channel === 'onlineTiles:setSatellite') {
+      invoke: vi.fn((channel: string, req: { enabled?: boolean }) => {
+        if (channel === 'onlineTiles:set') {
           asked.push(req);
           // the layer must not be on before main has answered
           expect(rasterPacks.getState().prefs.onlineSatellite).toBe(stored);
-          stored = req.on === true;
-          return Promise.resolve({ ok: true, satellite: stored });
+          stored = req.enabled === true;
+          return Promise.resolve({ ok: true, enabled: stored, source: 'esri-world-imagery' });
         }
         if (channel === 'onlineTiles:status')
           return Promise.resolve({
-            satellite: stored,
+            enabled: stored,
+            source: 'esri-world-imagery',
             cache: { bytes: 0, tiles: 0, capBytes: 1 },
           });
         // the app's settings carry no such switch: only main's own answer counts
@@ -71,7 +72,7 @@ describe('raster packs store', () => {
       }),
     };
     expect(await rasterPacks.getState().setOnlineSatellite(true)).toBeNull();
-    expect(asked).toEqual([{ on: true }]);
+    expect(asked).toEqual([{ enabled: true }]);
     expect(rasterPacks.getState().prefs.onlineSatellite).toBe(true);
 
     // main is the one that decides: a refresh follows what it has stored

@@ -167,9 +167,9 @@ export const rasterPacks = createStore<RasterState>()((set, get) => ({
     const bridge = aio();
     if (!bridge) return 'Settings are not available.';
     try {
-      const r = await bridge.invoke('onlineTiles:setSatellite', { on });
+      const r = await bridge.invoke('onlineTiles:set', { enabled: on });
       if (!r.ok) return r.error;
-      get().set({ onlineSatellite: r.satellite });
+      get().set({ onlineSatellite: r.enabled });
       return null;
     } catch (e) {
       return e instanceof Error ? e.message : String(e);
@@ -190,7 +190,7 @@ export const rasterPacks = createStore<RasterState>()((set, get) => ({
         rev: cur.rev + 1,
       });
       // main decides whether online satellite is on; the layer follows it
-      const online = status?.satellite === true;
+      const online = status?.enabled === true;
       if (status && online !== get().prefs.onlineSatellite) get().set({ onlineSatellite: online });
     });
   },

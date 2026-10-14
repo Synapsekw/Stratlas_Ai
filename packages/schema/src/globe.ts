@@ -2,6 +2,7 @@ import { z } from 'zod';
 import { LonLatRing } from './change';
 import { Id, IsoDate, IsoTime, ProjectPath, Vec3 } from './common';
 import { Crs } from './manifest';
+import { BaseMapId } from './onlineImagery';
 import { TilesetId, TilesetKind } from './tilesets';
 
 /**
@@ -162,6 +163,13 @@ export const GlobeSettings = z.looseObject({
    * build does not know reads as absent, so a newer file never resets the other preferences.
    */
   style: z.enum(['street', 'satellite', 'natural-earth']).optional().catch(undefined),
+  /**
+   * The Globe's base map (14 Oct 2026, additive): the street map, Natural Earth or an online
+   * source. Absent: from `style`. `style` is still written, so 0.11 keeps a look it knows.
+   */
+  base: BaseMapId.optional().catch(undefined),
+  /** Imagery packs on top of the base (14 Oct 2026, additive). Absent: on unless `style` is street. */
+  packs: z.boolean().optional().catch(undefined),
   /** `auto`: the best covering imagery pack per tile (Satellite and Natural Earth); or one pack. */
   imagery: z.union([z.literal('auto'), RasterPackId]).optional(),
   /** `auto`: the best covering terrain pack; `off`: the ellipsoid. */

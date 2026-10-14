@@ -3,37 +3,39 @@ import {
   defaultOnlineSettings,
   newerRefusal,
   ONLINE_SETTINGS_FILE,
-  onlineSatelliteOn,
   OnlineSettings,
+  onlineState,
+  type IpcRequest,
   type IpcResponse,
+  type OnlineState,
 } from '@aio/schema';
 import { join } from 'node:path';
 import { readJson, writeJsonAtomic } from './fsutil';
 
 /**
- * Whether the person switched online satellite on (ADR 0007, amendment of 10 Oct 2026), in
- * userData `online.json` (`aio.online-settings/1`), beside settings.json and not in it: older
- * builds read settings.json with their own schema, so it keeps exactly the keys they know (as
- * `launch.json` and `globe.json` do). A missing or unreadable file is off; a file from a newer
- * build is read as off and never overwritten.
+ * Whether the person switched online maps on, and which online satellite this workstation uses
+ * (ADR 0007, amendments of 10 and 14 Oct 2026), in userData `online.json`
+ * (`aio.online-settings/1`), beside settings.json and not in it. A missing or unreadable file is
+ * off; a file from a newer build is read as off and never overwritten.
  *
- * The tile gate (`onlineTiles.ts`) asks `satellite()` for every tile, so it must answer at once:
+ * The tile gate (`onlineTiles.ts`) asks `current()` for every tile, so it answers at once:
  * - off until the file has been read;
  * - switching **off** counts from the moment it is asked for, before the file is written;
  * - switching **on** counts once the file is written, so a switch that could not be saved never
  *   lets a request out.
+ * The source is written with every change: a file that says on without a source reads as
+ * Sentinel-2 (what 0.11 streamed), which must only happen for files 0.11 wrote.
  */
 export function onlineSettingsPath(userData: string): string {
   return join(userData, ONLINE_SETTINGS_FILE);
 }
 
 export function createOnlineSettingsStore(file: string) {
-  let on = false;
+  let state: OnlineState = onlineState({});
   let loaded: Promise<void> | null = null;
   /** The newest change asked for; an older one still being written does not undo it. */
   let asked = 0;
 
-  // One change at a time: two quick switches must not interleave their writes.
   let queue: Promise<unknown> = Promise.resolve();
   function serial<T>(run: () => Promise<T>): Promise<T> {
     const next = queue.then(run, run);
@@ -55,45 +57,50 @@ export function createOnlineSettingsStore(file: string) {
     return { settings: parsed.success ? parsed.data : defaultOnlineSettings(), newer: null };
   }
 
-  /** Read the file once (at start); until then the answer is off. */
   function load(): Promise<void> {
     loaded ??= serial(async () => {
       const { settings } = await read();
-      // a switch made while the file was being read wins over what the file said
-      if (asked === 0) on = onlineSatelliteOn(settings);
+      // a change made while the file was being read wins over what the file said
+      if (asked === 0) state = onlineState(settings);
     });
     return loaded;
   }
 
   return {
     load,
-    /** For the tile gate: whether online satellite is switched on, right now. */
-    satellite: (): boolean => on,
-    /** The switch once every change asked for so far is written. */
-    async get(): Promise<boolean> {
+    /** For the tile gate: the switch and the source, right now. */
+    current: (): OnlineState => state,
+    /** The state once every change asked for so far is written. */
+    async get(): Promise<OnlineState> {
       await load();
       await queue;
-      return on;
+      return state;
     },
-    set(next: boolean): Promise<IpcResponse<'onlineTiles:setSatellite'>> {
+    set(patch: IpcRequest<'onlineTiles:set'>): Promise<IpcResponse<'onlineTiles:set'>> {
       asked += 1;
       const mine = asked;
       // off at once: nothing more is requested from this moment
-      if (!next) on = false;
+      if (patch.enabled === false) state = { ...state, enabled: false };
       void load();
       return serial(async () => {
+        let next: OnlineState;
         try {
           const { settings, newer } = await read();
           if (newer) return { ok: false, error: newer };
-          await writeJsonAtomic(file, OnlineSettings.parse({ ...settings, satellite: next }));
+          const was = onlineState(settings);
+          next = { enabled: patch.enabled ?? was.enabled, source: patch.source ?? was.source };
+          await writeJsonAtomic(
+            file,
+            OnlineSettings.parse({ ...settings, satellite: next.enabled, source: next.source }),
+          );
         } catch (e) {
           return {
             ok: false,
-            error: `The online satellite setting was not saved: ${e instanceof Error ? e.message : String(e)}`,
+            error: `The online maps setting was not saved: ${e instanceof Error ? e.message : String(e)}`,
           };
         }
-        if (mine === asked) on = next;
-        return { ok: true, satellite: next };
+        if (mine === asked) state = next;
+        return { ok: true, enabled: next.enabled, source: next.source };
       });
     },
   };
