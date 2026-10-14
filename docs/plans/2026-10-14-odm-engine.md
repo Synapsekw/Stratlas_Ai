@@ -17,7 +17,7 @@
 - Source photos are never written: `odm/images/` holds hard links (copies when a hard link fails).
 - Presets: Fast `--fast-orthophoto --skip-3dmodel --pc-quality low --feature-quality medium`; Standard `--pc-quality medium --feature-quality high`; High `--pc-quality high --feature-quality ultra`. Products runs always add `--dsm --dtm --cog --pc-copc --build-overviews --optimize-disk-space --orthophoto-resolution <cm> --dem-resolution <cm> --max-concurrency <n>`, and `--skip-3dmodel` when no mesh was asked for. Matcher and SfM stay ODM's defaults.
 - GPU: setting `processing.odm.gpu` = `auto` (default) or `off`. `auto` and `%SYSTEMROOT%\System32\nvcuda.dll` present: `--feature-type sift`; otherwise `--no-gpu`. A GPU fallback is a warning, never a failure.
-- Threads: `max-concurrency = clamp(min(logical CPUs - 2, floor(RAM GB / 3)), 2, 32)` (21 on a 24-thread, 64 GB machine), lowered further only by a memory limit the person set by hand in Settings: the app passes it as `AIO_ODM_MEMORY_CAP_MB` only then (`floor(cap GB / 3)`, same clamp). The automatic 75 % `AIO_PHOTO_MEMORY_MB` does not lower ODM's threads (founder, 14 Oct). Task 2 reads `AIO_ODM_MEMORY_CAP_MB`; Task 14 sets it in `jobEnv` only when the memory setting is not automatic.
+- Threads: `max-concurrency = clamp(min(logical CPUs - 2, floor(RAM GB / 3)), 2, 32)` (21 on a 24-thread, 64 GB machine), lowered further only by a memory limit set by hand: the app passes `AIO_ODM_MEMORY_CAP_MB` only when the existing hand-set override `QUADRION_PHOTO_MEMORY_MB` is set (`floor(cap GB / 3)`, same clamp; the same value is ODM's memory kill limit, none otherwise). There is no memory field in Settings today, and this plan adds none. The automatic 75 % `AIO_PHOTO_MEMORY_MB` does not lower ODM's threads (founder, 14 Oct). Task 4's `odm_memory_cap()` reads `AIO_ODM_MEMORY_CAP_MB` (Task 2's `odm_threads` only takes the number); Task 14 sets it in `jobEnv`.
 - One photo processing job at a time on the computer (a new gate in `jobs:start`; there is no existing heavy-job gate, see "Spec deviations").
 - Exit codes: 137 and 3221226505 "ODM ran out of memory; try the Fast preset or close other programs."; 132 "This computer's processor is not supported by ODM."; 3 "ODM is missing a program; reinstall the processing engine in Settings, Processing tools."; 1, 134, 139, 3221225477 "ODM could not process these photos: <last ODM line>"; the last 20 ODM lines always go to the job log.
 - Our own engine is deleted in this branch (no fallback). Old runs keep their committed layers; products on a run without an ODM project are refused with a plain message.
@@ -48,10 +48,13 @@
 9. **`odm:setGpu`** writes `settings.processing.odm.gpu` (spec's channel kept).
 10. **`HardwareProbe.cuda`** now means "NVIDIA's CUDA driver (`nvcuda.dll`) is on this computer"; `HardwareProbe.accelerator` stays optional in the schema (old `run.json` files carry it) but nothing writes it. `PipelineAddonManifest` (`aio.pipeline-addon/1`) stays in the schema for the frozen compat corpus; nothing reads or writes it.
 11. **Test-only overrides in main**, all gated to `QUADRION_E2E=1`: `QUADRION_ODM_PIN_FILE` (a JSON pin for a local fake setup), running a setup file ending in `.mjs` with Electron as Node, and `QUADRION_ODM_OTHER` (a folder that stands for another ODM install). `QUADRION_ODM_DIR` (and `QUADRION_ODM_VERSION`) names an ODM folder without installing, like `QUADRION_PIPELINE_PACK` for the pack.
+12. **The mesh layer always comes from ODM's textured OBJ** (`odm_texturing/odm_textured_model_geo.obj`, else the 2.5D one), converted to GLB by us (C8 has no GLB path); the spec allowed ODM's own GLB first. One converter, one frame rule (C9).
+13. **The fake ODM writes LAS and OBJ**, not COPC and GLB: our import's fallbacks (LAS to COPC through PDAL and untwine, OBJ to GLB) are what it exercises.
+14. **Safe paths for ODM** are ASCII without spaces and without the characters `cmd.exe` treats specially (`& ^ % ! ( ) < > | "`), because ODM's command line passes through `cmd.exe`. 8.3 short names such as `C:\Users\RUNNER~1` are safe.
 
 ## Probe-fed constants (Task 0 sets or confirms these before Batch 2)
 
-The values below are the plan's defaults from desk research. Task 0 measures each on this machine with the real 3.6.2 install. **Before dispatching Batch 2 the controller compares Task 0's findings with this table, edits any value that differs here and in the owning task's code block, and commits the plan amendment** (`docs(plans): odm probe findings`). Implementers use the table as amended.
+The values below are the plan's defaults from desk research. Task 0 measures each on this machine with the real 3.6.2 install. **Before dispatching Batch 2 the controller compares Task 0's findings with this table, edits any value that differs here and in the owning task's code block (a C6 change also goes into the copy in `python/tests/fake_odm/fake_odm.py`, Task 3), and commits the plan amendment** (`docs(plans): odm probe findings`). Implementers use the table as amended.
 
 | #   | Constant                                                                   | Default                                                                                                                                                                                                                                                                                                     | Lives in (task)                                      | Task 0 step |
 | --- | -------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------- | ----------- |
@@ -89,7 +92,7 @@ Created (Python, `python/src/aio_pipelines/`):
 
 Created (tests): `python/tests/test_proctree.py`, `test_odm_flags.py`, `test_fake_odm.py`, `test_odm_runner.py`, `test_odm_project.py`, `test_odm_reconstruction.py`, `test_odm_outputs.py`, `test_odm_real.py` (opt-in), `odm_synth.py`, `fake_odm/run.bat`, `fake_odm/run.sh`, `fake_odm/fake_odm.py`.
 
-Created (desktop): `apps/desktop/src/main/odm/{pin,paths,detect,install,ipc}.ts` with tests; `packages/schema/src/odm.ts` (+ `odm.test.ts`); `apps/desktop/src/renderer/odmStore.ts` (+ test), `renderer/odm.ts`, `renderer/screens/settings/ProcessingEngine.tsx`, `processingEngine.css`, `processingEngineView.ts` (+ test); `tools/odm/probe.mjs`; `docs/architecture/adr/0012-odm-engine.md`.
+Created (desktop): `apps/desktop/src/main/odm/{pin,paths,detect,system,install,ipc}.ts` with tests (`system.ts` has none: it only starts programs); `packages/schema/src/odm.ts` (+ `odm.test.ts`); `apps/desktop/src/renderer/odmStore.ts` (+ test), `renderer/odm.ts`, `renderer/screens/settings/ProcessingEngine.tsx`, `processingEngine.css`, `processingEngineView.ts` (+ test); `tools/odm/probe.mjs`; `docs/architecture/adr/0012-odm-engine.md`.
 
 Rewritten: `photo/align.py`, `photo/georef.py`, `photo/products.py` and their tests; `apps/desktop/e2e/photo-fake/aio_photo_fake.py`.
 
@@ -97,27 +100,27 @@ Deleted: `photo/colmap_io.py`, `dense.py`, `fuse.py`, `ortho.py`, `mesh.py`, `te
 
 ## Execution DAG
 
-| Task                                  | Depends on               | Packages touched                                                                                        |
-| ------------------------------------- | ------------------------ | ------------------------------------------------------------------------------------------------------- |
-| 0 Real ODM probe                      | none                     | `tools/odm`                                                                                             |
-| 1 Process tree and tool runner        | 0                        | pipelines (`photo/proctree.py`, `photo/native.py`, `photo/colmap_io.py`, `walk/`), python tests         |
-| 2 ODM flags                           | 0                        | pipelines (`photo/odm/flags.py`)                                                                        |
-| 3 Fake ODM and ODM fixtures           | 0                        | python tests (`fake_odm/`, `odm_synth.py`, `products_synth.py`, `two_surveys_synth.py`)                 |
-| 5 ODM project folder and GCP list     | 0                        | pipelines (`photo/odm/project.py`)                                                                      |
-| 6 Reconstruction reader               | 0                        | pipelines (`photo/odm/reconstruction.py`)                                                               |
-| 7 Output import and GLB               | 0                        | pipelines (`photo/odm/outputs.py`, `photo/glb.py`)                                                      |
-| 11 Schema contract                    | 0                        | `@aio/schema`, `tools/compat`, preload, docs (`contract-changes.md`)                                    |
-| 4 ODM runner                          | 1, 2, 3                  | pipelines (`photo/odm/runner.py`)                                                                       |
-| 12 ODM installer in main              | 11                       | desktop main (`main/odm/`)                                                                              |
-| 15 Processing engine card             | 11                       | renderer (`odmStore`, `odm.ts`, settings card, `store.ts`, `ProcessingTools.tsx`), `@aio/ui` (`en.ts`)  |
-| 8 photo.align on ODM                  | 3, 4, 5, 6               | pipelines (`photo/align.py`)                                                                            |
-| 9 photo.georef on ODM                 | 3, 4, 5, 6               | pipelines (`photo/georef.py`)                                                                           |
-| 10 photo.products on ODM              | 2, 3, 4, 5, 7            | pipelines (`photo/products.py`)                                                                         |
-| 14 Main wiring and add-on removal     | 12                       | desktop main (`index.ts`, `photogrammetry.ts`, `jobs/runner.ts`, `jobs/addon.ts` deleted)               |
-| 16 Wizard, run panel and job forms    | 11, 15                   | renderer (`photogrammetry/`, `jobs.ts`)                                                                 |
-| 13 Delete the old engine              | 1, 8, 9, 10              | pipelines, python tests, `pyproject.toml`, `uv.lock`, `tools/pipeline-pack/build.mjs`                   |
-| 17 Paperwork, add-on tooling, notices | 13, 14                   | docs (ADR 0012, ADR 0008, data-conventions, release README), `tools/release`, `tools/pipeline-pack`, CI |
-| 18 End to end                         | 8, 9, 10, 13, 14, 15, 16 | `apps/desktop/e2e`                                                                                      |
+| Task                                  | Depends on               | Packages touched                                                                                                                                                   |
+| ------------------------------------- | ------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| 0 Real ODM probe                      | none                     | `tools/odm`                                                                                                                                                        |
+| 1 Process tree and tool runner        | 0                        | pipelines (`photo/proctree.py`, `photo/native.py`, `photo/colmap_io.py`, `walk/`), python tests                                                                    |
+| 2 ODM flags                           | 0                        | pipelines (`photo/odm/flags.py`)                                                                                                                                   |
+| 3 Fake ODM and ODM fixtures           | 0                        | python tests (`fake_odm/`, `odm_synth.py`, `products_synth.py`, `two_surveys_synth.py`)                                                                            |
+| 5 ODM project folder and GCP list     | 0                        | pipelines (`photo/odm/project.py`)                                                                                                                                 |
+| 6 Reconstruction reader               | 0                        | pipelines (`photo/odm/reconstruction.py`)                                                                                                                          |
+| 7 Output import and GLB               | 0                        | pipelines (`photo/odm/outputs.py`, `photo/glb.py`)                                                                                                                 |
+| 11 Schema contract                    | 0                        | `@aio/schema`, `tools/compat`, preload, docs (`contract-changes.md`)                                                                                               |
+| 4 ODM runner                          | 1, 2, 3                  | pipelines (`photo/odm/runner.py`)                                                                                                                                  |
+| 12 ODM installer in main              | 11                       | desktop main (`main/odm/`)                                                                                                                                         |
+| 15 Processing engine card             | 11                       | renderer (`odmStore`, `odm.ts`, settings card, `store.ts`, `ProcessingTools.tsx`), `@aio/ui` (`en.ts`)                                                             |
+| 8 photo.align on ODM                  | 3, 4, 5, 6               | pipelines (`photo/align.py`)                                                                                                                                       |
+| 9 photo.georef on ODM                 | 3, 4, 5, 6               | pipelines (`photo/georef.py`)                                                                                                                                      |
+| 10 photo.products on ODM              | 2, 3, 4, 5, 7            | pipelines (`photo/products.py`)                                                                                                                                    |
+| 14 Main wiring and add-on removal     | 12                       | desktop main (`index.ts`, `photogrammetry.ts`, `jobs/runner.ts`, `jobs/addon.ts` deleted)                                                                          |
+| 16 Wizard, run panel and job forms    | 11, 15                   | renderer (`photogrammetry/`, `jobs.ts`)                                                                                                                            |
+| 13 Delete the old engine              | 1, 8, 9, 10              | pipelines, python tests, `pyproject.toml`, `uv.lock`, `tools/pipeline-pack/build.mjs`, `tools/ci/pytest-parts.test.mjs`, `.github/workflows/ci.yml` (python parts) |
+| 17 Paperwork, add-on tooling, notices | 13, 14                   | docs (ADR 0012, ADR 0008, data-conventions, release README), `tools/release`, `tools/pipeline-pack`, CI                                                            |
+| 18 End to end                         | 8, 9, 10, 13, 14, 15, 16 | `apps/desktop/e2e`, `tools/ci/e2e-timings.json`, `.github/workflows/nightly.yml`, `.gitignore` (one line)                                                          |
 
 Parallel batches (tasks in a batch share no file and have every dependency met; dispatch each batch in one message):
 
@@ -128,7 +131,7 @@ Parallel batches (tasks in a batch share no file and have every dependency met; 
 - **Batch 4:** Task 13.
 - **Batch 5:** Tasks 17, 18.
 
-File ownership inside batches (checked): Batch 1: Task 1 owns `photo/proctree.py`, `photo/native.py`, `photo/colmap_io.py`, `walk/colmap_child.py`, `walk/sfm.py`, `tests/conftest.py`, `tests/test_proctree.py`, `tests/test_photo_align.py` (moved tests out); Task 2 `photo/odm/__init__.py`, `photo/odm/flags.py`, `tests/test_odm_flags.py`; Task 3 `tests/fake_odm/**`, `tests/odm_synth.py`, `tests/test_fake_odm.py`, `tests/products_synth.py`, `tests/two_surveys_synth.py`; Task 5 `photo/odm/project.py`, `tests/test_odm_project.py`; Task 6 `photo/odm/reconstruction.py`, `tests/test_odm_reconstruction.py`; Task 7 `photo/odm/outputs.py`, `photo/glb.py`, `tests/test_odm_outputs.py`; Task 11 `packages/schema/src/{odm,odm.test,index,ipc,jobs,photogrammetry,m10.test}.ts`, `tools/compat/odm-additive.test.mjs`, `apps/desktop/src/preload/index.ts`, `docs/architecture/contract-changes.md`. Batch 2: Task 4 `photo/odm/runner.py`, `tests/test_odm_runner.py`; Task 12 `apps/desktop/src/main/odm/**`; Task 15 `renderer/{odmStore,odmStore.test,odm}.ts`, `renderer/screens/settings/{ProcessingEngine.tsx,processingEngine.css,processingEngineView.ts,processingEngineView.test.ts,ProcessingTools.tsx}`, `renderer/store.ts`, `packages/ui/src/i18n/en.ts`. Batch 3: Task 8 `photo/align.py`, `tests/test_photo_align.py`, `tests/fake_odm/fake_odm.py` (one addition); Task 9 `photo/georef.py`, `tests/test_photo_georef.py`, `tests/odm_synth.py`, `tests/products_synth.py` (additions); Task 10 `photo/products.py`, `tests/test_photo_products.py`; Task 14 `main/index.ts`, `main/photogrammetry.ts` (+ test), `main/jobs/runner.ts` (+ test), `main/jobs/addon.ts` (deleted), `main/diagnostics/photo.ts`; Task 16 `renderer/photogrammetry/{hardware,ProcessWizard,estimate,phases,store}.ts(x)` and their tests, `renderer/jobs.ts`. Batch 5: Task 17 `docs/**`, `tools/release/**`, `tools/pipeline-pack/accelerator*`, `.github/workflows/{ci,release}.yml`; Task 18 `apps/desktop/e2e/**`.
+File ownership inside batches (checked): Batch 1: Task 1 owns `photo/proctree.py`, `photo/native.py`, `photo/colmap_io.py`, `walk/colmap_child.py`, `walk/sfm.py`, `tests/conftest.py`, `tests/test_proctree.py`, `tests/test_photo_align.py` (moved tests out); Task 2 `photo/odm/__init__.py`, `photo/odm/flags.py`, `tests/test_odm_flags.py`; Task 3 `tests/fake_odm/**`, `tests/odm_synth.py`, `tests/test_fake_odm.py`, `tests/products_synth.py`, `tests/two_surveys_synth.py`; Task 5 `photo/odm/project.py`, `tests/test_odm_project.py`; Task 6 `photo/odm/reconstruction.py`, `tests/test_odm_reconstruction.py`; Task 7 `photo/odm/outputs.py`, `photo/glb.py`, `tests/test_odm_outputs.py`; Task 11 `packages/schema/src/{odm,odm.test,index,ipc,jobs,photogrammetry,versions,m10.test}.ts`, `tools/compat/odm-additive.test.mjs`, `apps/desktop/src/preload/index.ts`, `docs/architecture/contract-changes.md`. Batch 2: Task 4 `photo/odm/runner.py`, `tests/test_odm_runner.py`; Task 12 `apps/desktop/src/main/odm/**`; Task 15 `renderer/{odmStore,odmStore.test,odm}.ts`, `renderer/screens/settings/{ProcessingEngine.tsx,processingEngine.css,processingEngineView.ts,processingEngineView.test.ts,ProcessingTools.tsx}`, `renderer/store.ts`, `packages/ui/src/i18n/en.ts`. Batch 3: Task 8 `photo/align.py`, `tests/test_photo_align.py`, `tests/fake_odm/fake_odm.py` (one addition); Task 9 `photo/georef.py`, `tests/test_photo_georef.py`, `tests/odm_synth.py`, `tests/products_synth.py` (additions); Task 10 `photo/products.py`, `tests/test_photo_products.py`, `tests/test_odm_real.py`, `tests/test_opf.py`; Task 14 `main/index.ts`, `main/photogrammetry.ts` (+ test), `main/jobs/runner.ts` (+ test), `main/jobs/addon.ts` (deleted), `main/diagnostics/photo.ts` (+ test); Task 16 `renderer/photogrammetry/{hardware,ProcessWizard,estimate,phases,store}.ts(x)` and their tests, `renderer/jobs.ts`. Batch 4: Task 13 also owns `tests/test_proctree.py`, `tools/ci/pytest-parts.test.mjs` and the python-parts lines of `.github/workflows/ci.yml` (the `photo-chain` part). Batch 5: Task 17 `docs/**` (including the lines of `docs/KNOWN-LIMITS.md` and `docs/release/README.md` that name `photo-real.spec.ts`), `tools/release/**`, `tools/pipeline-pack/accelerator*`, `.github/workflows/{ci,release}.yml` (the add-on job and the `photo-real` comment of `ci.yml`); Task 18 `apps/desktop/e2e/**`, `tools/ci/e2e-timings.json`, `.github/workflows/nightly.yml`, `.gitignore`. In Batch 1 only Task 2 creates `photo/odm/__init__.py`: Tasks 5, 6 and 7 must not (the folder imports as a namespace package until Task 2 commits).
 
 **Critical path:** Task 0 → Task 1 → Task 4 → Task 10 → Task 13 → Task 18 (six batches; Tasks 4 and 10 are the longest). The desktop line Task 0 → 11 → 12 → 14 → 18 runs beside it with slack.
 
@@ -143,26 +146,26 @@ All in `@aio/schema` (Task 11) unless named. Rows to append to the table in `doc
 
 ## Tests per task
 
-| Task | Unit tests                                                                                                                                          |
-| ---- | --------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 0    | none (a manual probe; its output is the findings JSON)                                                                                              |
-| 1    | `python/tests/test_proctree.py` (new), `test_walk_sfm.py` and `test_walk_stitch.py` stay green                                                      |
-| 2    | `python/tests/test_odm_flags.py`                                                                                                                    |
-| 3    | `python/tests/test_fake_odm.py`                                                                                                                     |
-| 4    | `python/tests/test_odm_runner.py`                                                                                                                   |
-| 5    | `python/tests/test_odm_project.py`                                                                                                                  |
-| 6    | `python/tests/test_odm_reconstruction.py`                                                                                                           |
-| 7    | `python/tests/test_odm_outputs.py`                                                                                                                  |
-| 8    | `python/tests/test_photo_align.py` (rewritten)                                                                                                      |
-| 9    | `python/tests/test_photo_georef.py` (rewritten), `test_gcp.py` stays green                                                                          |
-| 10   | `python/tests/test_photo_products.py` (rewritten), `test_photo_runs.py` (updated), `test_opf.py` stays green, `test_odm_real.py` (opt-in, real ODM) |
-| 11   | `packages/schema/src/odm.test.ts`, `m10.test.ts` (updated), `tools/compat/odm-additive.test.mjs`, `tools/compat/settings-0.8.test.mjs` stays green  |
-| 12   | `apps/desktop/src/main/odm/{pin,paths,detect,install,ipc}.test.ts`                                                                                  |
-| 13   | the whole `python/tests` suite; `tools/pipeline-pack/build.test.mjs`                                                                                |
-| 14   | `apps/desktop/src/main/photogrammetry.test.ts`, `apps/desktop/src/main/jobs/runner.test.ts`                                                         |
-| 15   | `apps/desktop/src/renderer/odmStore.test.ts`, `renderer/screens/settings/processingEngineView.test.ts`, `packages/ui/src/i18n/i18n.test.ts`         |
-| 16   | `renderer/photogrammetry/{hardware,phases,estimate}.test.ts`                                                                                        |
-| 17   | `tools/release/notices.test.mjs`, `tools/release/budgets.test.mjs`, `node tools/release/notices.mjs --check`                                        |
+| Task | Unit tests                                                                                                                                                |
+| ---- | --------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 0    | none (a manual probe; its output is the findings JSON)                                                                                                    |
+| 1    | `python/tests/test_proctree.py` (new), `test_walk_sfm.py` and `test_walk_stitch.py` stay green                                                            |
+| 2    | `python/tests/test_odm_flags.py`                                                                                                                          |
+| 3    | `python/tests/test_fake_odm.py`                                                                                                                           |
+| 4    | `python/tests/test_odm_runner.py`                                                                                                                         |
+| 5    | `python/tests/test_odm_project.py`                                                                                                                        |
+| 6    | `python/tests/test_odm_reconstruction.py`                                                                                                                 |
+| 7    | `python/tests/test_odm_outputs.py`                                                                                                                        |
+| 8    | `python/tests/test_photo_align.py` (rewritten)                                                                                                            |
+| 9    | `python/tests/test_photo_georef.py` (rewritten), `test_gcp.py` stays green                                                                                |
+| 10   | `python/tests/test_photo_products.py` (rewritten), `test_opf.py` (updated: products refuse an imported run), `test_odm_real.py` (opt-in, real ODM)        |
+| 11   | `packages/schema/src/odm.test.ts`, `m10.test.ts` (updated), `tools/compat/odm-additive.test.mjs`, `tools/compat/settings-0.8.test.mjs` stays green        |
+| 12   | `apps/desktop/src/main/odm/{pin,paths,detect,install,ipc}.test.ts`                                                                                        |
+| 13   | the whole `python/tests` suite (`test_photo_runs.py`, `test_proctree.py` updated); `tools/pipeline-pack/build.test.mjs`; `tools/ci/pytest-parts.test.mjs` |
+| 14   | `apps/desktop/src/main/photogrammetry.test.ts`, `apps/desktop/src/main/jobs/runner.test.ts`, `apps/desktop/src/main/diagnostics/photo.test.ts`            |
+| 15   | `apps/desktop/src/renderer/odmStore.test.ts`, `renderer/screens/settings/processingEngineView.test.ts`, `packages/ui/src/i18n/i18n.test.ts`               |
+| 16   | `renderer/photogrammetry/{hardware,phases,estimate}.test.ts`                                                                                              |
+| 17   | `tools/release/notices.test.mjs`, `tools/release/budgets.test.mjs`, `node tools/release/notices.mjs --check`                                              |
 
 **End to end specs.** Changed: `processing-tools.spec.ts` (the Processing engine card: install from a local fake setup, progress, installed state, switch, remove, another ODM), `photo-process.spec.ts` (step words, the "Install the processing engine first" block, the GPU line), `photo-products.spec.ts` and `photo-change.spec.ts` (real `photo.products` on the fake ODM), `photoPack.ts` (COLMAP helpers removed, `QUADRION_ODM_DIR`), `photo-fake/aio_photo_fake.py` (step names), `photo-fixture.py` and `photo-two-surveys-fixture.py` (unchanged scripts; their projects now carry an ODM folder through `products_synth`). Removed: `photo-real.spec.ts` (COLMAP; the real-engine check is Task 0 and `test_odm_real.py`). Must stay green unchanged: `gcp-marking.spec.ts`, `agent-photo.spec.ts`, `processing-drawer.spec.ts`, `walk-360.spec.ts`. All run in Task 18 the way CI runs them, after `pnpm demo:build --quick`.
 
@@ -200,7 +203,7 @@ Installs the pinned ODM 3.6.2 for real, once, into a scratch folder, runs it on 
     "pythonExe": [],
     "versionFile": "3.6.2",
     "uninstaller": "unins000.exe",
-    "uninstallEntry": { "key": "", "displayName": "", "installLocation": "", "displayVersion": "" }
+    "uninstallEntry": "<the raw reg query text, at most 4000 characters>"
   },
   "help": { "exitCode": 0, "seconds": 0 },
   "runs": {
@@ -327,6 +330,7 @@ function odm(dir, project, flags) {
   udp.on('message', (m) => samples.push({ t: Date.now(), m: String(m) }));
   udp.bind(6367, '127.0.0.1');
   const lines = [];
+  const finished = [];
   return run(
     process.env.ComSpec ?? 'cmd.exe',
     [
@@ -338,7 +342,13 @@ function odm(dir, project, flags) {
     {
       windowsVerbatimArguments: true,
       env: { ...process.env, ODM_NONINTERACTIVE: '1' },
-      onLine: (s) => lines.push(...s.split(/\r?\n/)),
+      onLine: (s) => {
+        for (const l of s.split(/\r?\n/)) {
+          lines.push(l);
+          const m = /Finished (\w+) stage/.exec(l);
+          if (m) finished.push({ stage: m[1], t: Date.now() });
+        }
+      },
     },
   ).then((r) => {
     udp.close();
@@ -354,11 +364,18 @@ function odm(dir, project, flags) {
       const pct = Number(String(s.m).split('/').pop());
       if (Number.isFinite(pct)) ends[s.t] = pct;
     }
+    // ODM's percent at each stage's end: the last datagram before its Finished line
+    for (const f of finished) {
+      const last = samples.filter((s) => s.t <= f.t).pop();
+      if (last) F.udp.stageEndPercent[f.stage] = Number(String(last.m).split('/').pop());
+    }
     return {
       code: r.code,
       seconds: r.seconds,
       stages,
       tail: r.out.split(/\r?\n/).slice(-40),
+      // feature extraction anywhere in the output, not only in the tail
+      features: (r.out.match(/detect_features|Extracting/gi) ?? []).length,
       percents: Object.values(ends),
     };
   });
@@ -445,8 +462,7 @@ async function main() {
     '--end-with',
     'opensfm',
   ]);
-  F.runs.rerunOpensfm.featuresAgain =
-    F.runs.rerunOpensfm.tail.join('\n').match(/detect_features|Extracting/gi)?.length ?? 0;
+  F.runs.rerunOpensfm.featuresAgain = F.runs.rerunOpensfm.features;
   for (const rel of [
     'opensfm/reconstruction.json',
     'opensfm/reconstruction.topocentric.json',
@@ -551,7 +567,7 @@ Expected: no errors (fix formatting with `npx prettier --write tools/odm/probe.m
 
 - [ ] **Step 8: Outputs.** From `outputs`, `coords`, `objFirstVertex`, `tracksHeader`, `statsKeys`: confirm C8, C9 (the OBJ's first vertex should be small numbers near the offset on `coords.txt` line 2; if the vertices are full UTM coordinates, C9 becomes "absolute UTM, no offset") and C10.
 
-- [ ] **Step 9: Reruns.** `runs.rerunOpensfm.featuresAgain > 0` means `--rerun-from opensfm` extracts features again; if `runs.invalidate.code` is 0 and its log shows no feature extraction, set C12 `GEOREF_STRATEGY = "invalidate"`, else keep `"rerun-from"`. `runs.fastAfterAlign.code` 0 confirms C13; otherwise set C13 to `"openmvs"` and rerun that one call to confirm.
+- [ ] **Step 9: Reruns.** `runs.rerunOpensfm.featuresAgain > 0` means `--rerun-from opensfm` extracts features again; if `runs.invalidate.code` is 0 and its log shows no feature extraction, set C12 `GEOREF_STRATEGY = "invalidate"`, else keep `"rerun-from"`. `runs.fastAfterAlign.code` 0 confirms C13; otherwise set C13 to `"openmvs"` and rerun that one call to confirm. C15 (`geo.txt` columns) is not measured by the probe: the default stays (ODM documents the format), and Task 10's opt-in real run is the check.
 
 - [ ] **Step 10: Uninstall.** Confirm C14 from `uninstall` (`secondsUntilRunBatGone` above a few seconds means the uninstaller returns early, which the poll in Task 12 covers).
 
@@ -871,7 +887,8 @@ def stage_after(stage: str) -> str | None:
 
 
 def odm_threads(logical_cpus: int, ram_bytes: int, cap_bytes: int | None) -> int:
-    """``clamp(min(CPUs - 2, floor(RAM GB / 3)), 2, 32)``; the photo memory cap lowers it."""
+    """``clamp(min(CPUs - 2, floor(RAM GB / 3)), 2, 32)``; a memory limit set by hand lowers it
+    (``cap_bytes``: ``runner.odm_memory_cap()``, never the automatic photo memory cap)."""
     n = min(logical_cpus - 2, math.floor(ram_bytes / GB / 3))
     if cap_bytes:
         n = min(n, math.floor(cap_bytes / GB / 3))
@@ -1011,16 +1028,17 @@ OpenSfM conventions the fake and `odm_synth` write (and Task 6 reads):
 ```python
 import json
 import os
+import signal
 import socket
 import subprocess
 import sys
+import time
 from pathlib import Path
 
 import numpy as np
 import pytest
 import rasterio
 
-import odm_synth
 import products_synth as ps
 
 FAKE = Path(__file__).parent / "fake_odm"
@@ -1084,14 +1102,15 @@ def test_fail_and_hang_on_request(aligned, tmp_path):
         for _ in range(100):
             if pids.exists() and len(pids.read_text().split()) == 2:
                 break
-            import time
-
             time.sleep(0.1)
         assert len(pids.read_text().split()) == 2
     finally:
-        from aio_pipelines.photo.proctree import kill
-
-        kill(p)
+        p.kill()
+        for pid in map(int, pids.read_text().split()) if pids.exists() else []:
+            try:
+                os.kill(pid, signal.SIGTERM)  # the fake and its sleeping child (TerminateProcess on Windows)
+            except OSError:
+                pass
 
 
 def test_gpu_lines_and_udp(aligned):
@@ -1129,7 +1148,7 @@ def test_gcp_gives_the_truth_and_no_gcp_the_bias(tmp_path):
 Run: `uv run --frozen pytest tests/test_fake_odm.py -q`
 Expected: FAIL (`ModuleNotFoundError: No module named 'odm_synth'`).
 
-- [ ] **Step 3: Write `odm_synth.py`.** `opensfm_from_model` converts each camera of the model (the synthetic set uses `PINHOLE`, `SIMPLE_PINHOLE`, `SIMPLE_RADIAL` or `RADIAL`) to `brown` with `focal_x = fx / s`, `focal_y = fy / s`, `c_x = (cx - w / 2) / s`, `c_y = (cy - h / 2) / s` and its radial terms (`k1`, `k2`; zero otherwise), each image to a shot (`rotation` = axis-angle of `R` from `scipy.spatial.transform.Rotation.from_matrix(R).as_rotvec()`, `translation` = `t`), each point to `points[str(id)]`, and each observation to a tracks line (`x = (u - w / 2) / s`, `y = (v - h / 2) / s`, feature id = its index, scale 0.001, the point's colour, segmentation 0, instance -1). `write_odm_folder` applies `bias_enu` by moving every camera centre and point by it (rotations unchanged), writes the files listed under Interfaces, and `coords.txt` as `WGS84 UTM <zone><N|S>` then `<offset x> <offset y>` (the floor of the smallest UTM easting and northing of the points). In `products_synth.write_project`, add `odm_bias: tuple[float, float, float] = (0.0, 0.0, 0.0)` and, after `sparse/` is written, call `odm_synth.write_odm_folder(run_dir, enu_model, enu, photos_by_key, odm_bias)` where `enu_model` is the run's model in its ENU frame (`align.grid_to_enu_model`) with its points replaced by `sparse_points(scene, n=20_000)` in the same frame (dense enough for the fake DSM), and `photos_by_key` maps each photo key to its file in `photos_dir`.
+- [ ] **Step 3: Write `odm_synth.py`.** `opensfm_from_model` converts each camera of the model (`PINHOLE`, `SIMPLE_PINHOLE`, `SIMPLE_RADIAL`, `RADIAL`, and `OPENCV`, which `products_synth.make_scene` uses, with its `p1`, `p2` kept) to `brown` with `focal_x = fx / s`, `focal_y = fy / s`, `c_x = (cx - w / 2) / s`, `c_y = (cy - h / 2) / s` and its radial terms (`k1`, `k2`; zero otherwise), each image to a shot (`rotation` = axis-angle of `R` from `scipy.spatial.transform.Rotation.from_matrix(R).as_rotvec()`, `translation` = `t`), each point to `points[str(id)]`, and each observation to a tracks line (`x = (u - w / 2) / s`, `y = (v - h / 2) / s`, feature id = its index, scale 0.001, the point's colour, segmentation 0, instance -1). `write_odm_folder` applies `bias_enu` by moving every camera centre and point by it (rotations unchanged), writes the files listed under Interfaces (`.fake/truth.json` is one reconstruction dict, `{"cameras", "shots", "points"}` as below, plus a `"bias": [e, n, u]` key; not a list, not an npz), and `coords.txt` as `WGS84 UTM <zone><N|S>` then `<offset x> <offset y>` (the floor of the smallest UTM easting and northing of the points). In `products_synth.write_project`, add `odm_bias: tuple[float, float, float] = (0.0, 0.0, 0.0)` and, after `sparse/` is written, call `odm_synth.write_odm_folder(run_dir, enu_model, enu, photos_by_key, odm_bias)` where `enu_model` is the run's model in its ENU frame (`align.grid_to_enu_model`) with its points replaced by `sparse_points(scene, n=20_000)` in the same frame (dense enough for the fake DSM), and `photos_by_key` maps each photo key to its file in `photos_dir`.
 
 - [ ] **Step 4: Write `fake_odm.py`.** Structure (all of it in this one file; it may import `aio_pipelines.photo.crs` for frames):
 
@@ -1205,9 +1224,11 @@ def main(argv: list[str]) -> int:
             Path(os.environ["FAKE_ODM_PIDS"]).write_text(f"{os.getpid()}\n{child.pid}\n")
             time.sleep(3600)
         if forced or not (fake / f"{stage}.done").exists():
+            half = float(os.environ.get("FAKE_ODM_STAGE_S", "0")) / 2
+            time.sleep(half)  # the Running line is read before the midpoint datagram arrives
             STAGE_FNS[stage](project, a, gpu_bad)
             udp(a.name, (END[stage] + (END[STAGES[STAGES.index(stage) - 1]] if stage != "dataset" else 0)) / 2)
-            time.sleep(float(os.environ.get("FAKE_ODM_STAGE_S", "0")))
+            time.sleep(half)  # and the midpoint holds long enough to be seen
             (fake / f"{stage}.done").write_text("")
         udp(a.name, END[stage])
         print(f"[INFO]    Finished {stage} stage", flush=True)
@@ -1221,7 +1242,7 @@ if __name__ == "__main__":
 `STAGE_FNS` maps each stage to a function writing that stage's outputs:
 
 - `dataset`: nothing beyond the marker.
-- `opensfm`: when `--feature-type sift` and not `--no-gpu`, print `Using GPU for extracting SIFT features` (or `GPU SIFT extraction failed, fallback to CPU` when `FAKE_ODM_GPU` contains `features-fallback`). With `.fake/truth.json`: write `reconstruction.topocentric.json` and `reconstruction.json` from the truth when `--gcp` is given, else from the truth moved by its `bias`; keep `tracks.csv` and `reference_lla.json`. Without a truth file: place each image of `images/` straight down (`R = [[1,0,0],[0,-1,0],[0,0,-1]]`) at its GPS position (from `--geo` when given, else EXIF GPS through PIL), reference at the mean position, a `perspective` camera with `focal` 0.85, a 10 x 10 grid of points 40 m below the mean camera height, and tracks for every point inside each image; write `coords.txt`.
+- `opensfm`: when `--feature-type sift` and not `--no-gpu`, print `Using GPU for extracting SIFT features` (or `GPU SIFT extraction failed, fallback to CPU` when `FAKE_ODM_GPU` contains `features-fallback`). With `.fake/truth.json`: write `reconstruction.topocentric.json` and `reconstruction.json` from the truth when `--gcp` is given, else from the truth moved by its `bias`; keep `tracks.csv` and `reference_lla.json`. Without a truth file: place each image of `images/` straight down (`R = [[1,0,0],[0,-1,0],[0,0,-1]]`) at its GPS position (from `--geo` when given, else EXIF GPS through PIL), reference at the mean position, a `perspective` camera with `focal` 0.85, a 10 x 10 grid of points 40 m below the mean camera height, and tracks for every point inside each image; an image with neither a `--geo` row nor EXIF GPS is left out of the reconstruction (ODM cannot place it either); write `coords.txt`.
 - `openmvs`: unless `--fast-orthophoto`: write `openmvs/scene_dense.mvs` (a few bytes) and print `CUDA device 0 initialized: Fake GPU` when the GPU is on (or `OpenMVS failed with GPU, Falling back to CPU` on `dense-fallback`).
 - `odm_filterpoints`, `odm_meshing`: marker only.
 - `mvs_texturing`: an OBJ of two triangles over the points' extent at their median height, in UTM minus the `coords.txt` offset, with `odm_textured_model_geo.mtl` (`newmtl material0000`, `map_Kd odm_textured_model_geo_material0000_map_Kd.png`) and a 64 x 64 PNG; into `odm_25dtexturing/` when `--skip-3dmodel` or `--fast-orthophoto`, else `odm_texturing/`.
@@ -1253,12 +1274,12 @@ git commit -m "test(pipelines): fake odm and synthetic odm projects" -m "Co-Auth
 
 **Interfaces:**
 
-- Consumes: Task 1 `native.run_tool(..., fail=...)` with a `str` command, `native.ToolMemoryExceeded`, `native.total_memory()`, `native.memory_cap()`; Task 2 `flags.STAGE_END`, `stage_start`, `stage_window`, `stage_after`, `stage_index`, `odm_threads`, `gpu_wanted`; Task 3 fake ODM and `products_synth.write_project` for tests.
+- Consumes: Task 1 `native.run_tool(..., fail=...)` with a `str` command, `native.ToolMemoryExceeded`, `native.total_memory()` (not `native.memory_cap()`: see the amendment); Task 2 `flags.STAGE_END`, `stage_start`, `stage_window`, `stage_after`, `stage_index`, `odm_threads`, `gpu_wanted`; Task 3 fake ODM and `products_synth.write_project` for tests.
 - Founder amendment (14 Oct, overrides any code below): ODM's thread cap and its memory kill limit come only from `odm_memory_cap() -> int | None`, which reads `AIO_ODM_MEMORY_CAP_MB` (set by the app only when the person set a memory limit by hand); never from `native.memory_cap()` / `AIO_PHOTO_MEMORY_MB`. Test: with `AIO_PHOTO_MEMORY_MB=49152` and no `AIO_ODM_MEMORY_CAP_MB`, a 24-thread 64 GB machine gets `--max-concurrency 21` and no memory limit; with `AIO_ODM_MEMORY_CAP_MB=49152` it gets 16 and a 48 GB limit.
 - Produces (`aio_pipelines.photo.odm.runner`):
   - `odm_memory_cap() -> int | None` (bytes, from `AIO_ODM_MEMORY_CAP_MB`), `ODM_ENV = "AIO_ODM"`, `VERSION_ENV = "AIO_ODM_VERSION"`, `GPU_ENV = "AIO_ODM_GPU"`, `WORK_ENV = "AIO_ODM_WORK"`, `UDP_PORT = 6367`, `NO_ODM` (message).
   - `@dataclass(frozen=True) class OdmInstall: dir: Path; version: str`; `find_odm(env: Mapping[str, str] | None = None) -> OdmInstall` (raises `JobError(NO_ODM)`).
-  - `@dataclass(frozen=True) class Machine: threads: int; use_gpu: bool`; `machine(env: Mapping[str, str] | None = None) -> Machine`.
+  - `@dataclass(frozen=True) class Machine: threads: int; use_gpu: bool`; `machine(env: Mapping[str, str] | None = None) -> Machine`; `nvcuda_present(env: Mapping[str, str] | None = None) -> bool` (a module-level function that `machine` looks up at call time, so tests can patch it).
   - `@dataclass class GpuUse: features: bool | None; dense: bool | None; fallbacks: list[str]` with `summary() -> str` and `merge(other: GpuUse) -> GpuUse`; `gpu_use(text: str, requested: bool, window: tuple[str, str] = ("dataset", "odm_postprocess")) -> GpuUse` (a stage outside `window` was skipped by ODM, so its absence of GPU lines says nothing).
   - `engine_record(odm: OdmInstall, gpu: GpuUse) -> dict` (`{"name": "odm", "version": ..., "gpu": {"features"?: bool, "dense"?: bool}}`).
   - `@dataclass class OdmRun: log: Path; gpu: GpuUse; started_from: str | None`.
@@ -1269,7 +1290,6 @@ git commit -m "test(pipelines): fake odm and synthetic odm projects" -m "Co-Auth
 
 ```python
 import json
-import os
 import socket
 import sys
 import threading
@@ -1279,6 +1299,7 @@ from pathlib import Path
 import pytest
 
 import products_synth as ps
+from aio_pipelines.photo import native
 from aio_pipelines.photo.odm import runner as R
 from aio_pipelines.runtime import Cancelled, JobError
 
@@ -1387,13 +1408,36 @@ def test_the_environment_is_odms_own():
     assert "ODM_NO_GPU" not in R.odm_env({}, use_gpu=True)
 
 
-def test_threads_and_gpu_from_the_environment(monkeypatch):
+def test_the_gpu_setting_from_the_environment(monkeypatch):
     monkeypatch.setenv(R.GPU_ENV, "off")
     assert R.machine().use_gpu is False
-    assert 2 <= R.machine().threads <= 32
+
+
+def test_threads_and_memory_limit_come_only_from_the_hand_set_cap(odm, aligned, tmp_path, monkeypatch):
+    GB = 1024**3
+    monkeypatch.setattr(R.os, "cpu_count", lambda: 24)
+    monkeypatch.setattr(native, "total_memory", lambda: 64 * GB)
+    monkeypatch.setenv("AIO_PHOTO_MEMORY_MB", "49152")  # the app's automatic 75 %: ignored by ODM
+    monkeypatch.delenv("AIO_ODM_MEMORY_CAP_MB", raising=False)
+    assert R.odm_memory_cap() is None and R.machine().threads == 21
+    seen: dict[str, int] = {}
+    real = native.run_tool
+
+    def spy(*a, **kw):
+        seen["limit"] = kw["memory_limit"]
+        return real(*a, **kw)
+
+    monkeypatch.setattr(native, "run_tool", spy)
+    R.run_odm(Ctx(), odm, aligned, [], "openmvs", "odm_filterpoints", tmp_path / "a", rerun=True, use_gpu=False, port=_free_port())
+    assert seen["limit"] == 0
+    monkeypatch.setenv("AIO_ODM_MEMORY_CAP_MB", "49152")  # set by hand
+    assert R.odm_memory_cap() == 48 * GB and R.machine().threads == 16
+    R.run_odm(Ctx(), odm, aligned, [], "openmvs", "odm_filterpoints", tmp_path / "b", rerun=True, use_gpu=False, port=_free_port())
+    assert seen["limit"] == 48 * GB
 
 
 def test_align_runs_to_opensfm_with_progress_and_the_gpu_line(odm, aligned, tmp_path, monkeypatch):
+    (aligned / ".fake" / "opensfm.done").unlink()  # a fresh alignment: the fake runs opensfm again
     log = tmp_path / "args.jsonl"
     monkeypatch.setenv("FAKE_ODM_ARGS_LOG", str(log))
     ctx = Ctx()
@@ -1411,7 +1455,7 @@ def test_align_runs_to_opensfm_with_progress_and_the_gpu_line(odm, aligned, tmp_
 def test_udp_refines_progress_and_stdout_takes_over_when_the_port_is_taken(odm, aligned, tmp_path, monkeypatch):
     port = _free_port()
     monkeypatch.setenv("FAKE_ODM_UDP_PORT", str(port))
-    monkeypatch.setenv("FAKE_ODM_STAGE_S", "0.5")
+    monkeypatch.setenv("FAKE_ODM_STAGE_S", "1.0")
     ctx = Ctx()
     R.run_odm(ctx, odm, aligned, [], "openmvs", "odm_filterpoints", tmp_path / "a", rerun=True, use_gpu=False, port=port)
     assert any(0.3 < f < 0.7 for f, _ in ctx.bar)  # openmvs's midpoint datagram: (25 + 50) / 2 in 25..52
@@ -1509,7 +1553,9 @@ from ...runtime import JobError, StepContext
 from .. import native
 from .flags import STAGE_END, STAGES, gpu_wanted, odm_threads, stage_after, stage_index, stage_start, stage_window
 
-ODM_ENV, VERSION_ENV, GPU_ENV, WORK_ENV = "AIO_ODM", "AIO_ODM_VERSION", "AIO_ODM_GPU", "AIO_ODM_WORK"
+ODM_ENV, VERSION_ENV, GPU_ENV = "AIO_ODM", "AIO_ODM_VERSION", "AIO_ODM_GPU"
+WORK_ENV = "AIO_ODM_WORK"  # the same name as project.WORK_ENV (Task 5); kept here so this module stands alone
+MEMORY_CAP_ENV = "AIO_ODM_MEMORY_CAP_MB"  # set by the app only for a memory limit set by hand
 UDP_PORT = 6367
 NO_ODM = "The processing engine (ODM) is not installed. Install it in Settings, Processing tools."
 OOM = "ODM ran out of memory; try the Fast preset or close other programs."
@@ -1570,7 +1616,7 @@ def parse_datagram(data: bytes, project_name: str) -> float | None:
 
 `gpu_use(text, requested, window)`: `features = True` if `FEATURES_YES` in text, `False` if `FEATURES_NO` in text (fallback message "The graphics card could not extract features; ODM used the CPU."), `False` if not `requested` and `opensfm` lies inside `window`, else `None`; `dense = True` if `DENSE_YES` matches, `False` if `DENSE_NO` in text (fallback "The graphics card could not run dense matching; ODM used the CPU."), `False` if `openmvs` lies inside `window` and `Running openmvs stage` is in the text, else `None`. (ODM prints `Running <stage> stage` for the stages before `--rerun-from` too, and skips their work.) `summary()` joins the known parts: `"Graphics card used for features: yes; for dense matching: yes."` (only the parts that are not `None`; `"no"` for `False`). `merge` keeps, per field, `True` over `False` over `None`, and concatenates fallbacks.
 
-`find_odm`: folder from `env[ODM_ENV]`; it must hold `run.bat` (Windows) or `run.sh` (other systems), else `JobError(NO_ODM)`; version from `env[VERSION_ENV]`, else the `VERSION` file, else `"unknown"`. `machine(env)`: `threads = odm_threads(os.cpu_count() or 2, native.total_memory(), native.memory_cap())`, `use_gpu = gpu_wanted(env.get(GPU_ENV, "auto"), nvcuda_present(env))`, where `nvcuda_present` is `os.name == "nt"` and `Path(env.get("SYSTEMROOT", r"C:\Windows")) / "System32" / "nvcuda.dll"` exists.
+`find_odm`: folder from `env[ODM_ENV]`; it must hold `run.bat` (Windows) or `run.sh` (other systems), else `JobError(NO_ODM)`; version from `env[VERSION_ENV]`, else the `VERSION` file, else `"unknown"`. `odm_memory_cap(env=None)`: `AIO_ODM_MEMORY_CAP_MB` in MB to bytes (at least 64 MB), `None` when unset or not a number. `machine(env)`: `threads = odm_threads(os.cpu_count() or 2, native.total_memory(), odm_memory_cap(env))`, `use_gpu = gpu_wanted(env.get(GPU_ENV, "auto"), nvcuda_present(env))`, where `nvcuda_present` is `os.name == "nt"` and `Path(env.get("SYSTEMROOT", r"C:\Windows")) / "System32" / "nvcuda.dll"` exists.
 
 `odm_env(base, use_gpu)`: a copy of `base` without keys starting with `PYTHON`, `VIRTUAL_ENV`, `CONDA_PREFIX`, `CONDA_DEFAULT_ENV`, plus `ODM_NONINTERACTIVE=1`, plus `ODM_NO_GPU=1` when not `use_gpu`.
 
@@ -1718,6 +1764,7 @@ def test_safe_paths():
     assert not P.is_safe_path(Path(r"E:\Stratlas Data\proj"))
     assert not P.is_safe_path(Path(r"E:\Média\proj"))
     assert not P.is_safe_path(Path(r"E:\a&b\proj"))
+    assert P.is_safe_path(Path(r"C:\Users\RUNNER~1\AppData\Local\Temp\odm"))  # an 8.3 short name
 
 
 @pytest.mark.skipif(os.name != "nt", reason="directory junctions are Windows'")
@@ -1726,7 +1773,7 @@ def test_odm_path_reaches_an_unsafe_folder_through_a_junction(tmp_path):
     (real / "images").mkdir(parents=True)
     work = tmp_path / "work"
     got = P.odm_path(real, work)
-    assert P.is_safe_path(got) or " " not in str(got)
+    assert P.is_safe_path(got)
     assert (got / "images").is_dir() and got.parent == work
     assert P.odm_path(real, work) == got  # reused
     with pytest.raises(JobError):
@@ -1835,7 +1882,8 @@ from .. import gcp as G
 ODM_DIR = "odm"
 WORK_ENV = "AIO_ODM_WORK"  # a safe folder for junctions, set by the app
 SPACES_OK = False  # C5
-_SAFE = re.compile(r"^[A-Za-z0-9_.:\\/-]+$")
+#: what cmd.exe treats specially; ODM's command line passes through it
+_CMD_SPECIAL = re.compile(r'[&^%!()<>|"]')
 GEOREF_INVALIDATE = (
     "opensfm/reconstruction.json", "opensfm/reconstruction.topocentric.json", "opensfm/config.yaml",
     "opensfm/gcp_list.txt", "opensfm/undistorted", "odm_georeferencing",
@@ -1853,8 +1901,12 @@ def odm_project_dir(project: Path, run: str) -> Path:
 
 
 def is_safe_path(p: Path) -> bool:
+    """ASCII, no spaces (unless C5 says ODM copes), nothing cmd.exe treats specially. 8.3 short
+    names (``C:\\Users\\RUNNER~1``) are safe."""
     s = str(p)
-    return bool(_SAFE.match(s)) or (SPACES_OK and bool(re.match(r"^[\w .:\\/-]+$", s, re.ASCII)))
+    if not s.isascii() or _CMD_SPECIAL.search(s):
+        return False
+    return SPACES_OK or not any(ch.isspace() for ch in s)
 
 
 def odm_path(real: Path, work_root: Path | None) -> Path:
@@ -1913,6 +1965,7 @@ git commit -m "feat(pipelines): odm project folder, geo.txt and gcp list" -m "Co
   - `@dataclass class OdmModel: model: SparseModel; reference: C.EnuFrame; unregistered: list[str]; groups: int; stats: dict | None`.
   - `read_reconstruction(odm_dir: Path, names: dict[str, str], run_enu: C.EnuFrame, tracks: bool = True) -> OdmModel`: every reconstruction's shots (image names mapped to photo keys through `names`), cameras, points and (with `tracks`) observations, converted from ODM's topocentric frame to `run_enu`; `unregistered` lists the photo keys with no shot; `groups` counts the reconstructions with shots; `stats` is `odm_report/stats.json` when present.
   - `opensfm_camera(cid: int, cam: dict) -> Camera`.
+  - `convert_model(m: SparseModel, conv: Callable[[np.ndarray], np.ndarray]) -> None`: moves every camera (centre and rotation, through `C.transform_rotations`) and point by `conv`, in place (Task 8 makes `align._convert_model` call it).
 
 - [ ] **Step 1: Write the failing tests** (`python/tests/test_odm_reconstruction.py`). The expected pixels are computed by hand from OpenSfM's formulas, not from our code:
 
@@ -2045,14 +2098,14 @@ from .. import crs as C
 from ..model import Camera, Image, SparseModel, rodrigues
 
 
-def _px(cam: dict) -> tuple[float, float, float, float]:
+def _px(cam: dict) -> tuple[float, float, float]:
     w, h = float(cam["width"]), float(cam["height"])
-    return w, h, max(w, h), 0.0
+    return w, h, max(w, h)
 
 
 def opensfm_camera(cid: int, cam: dict) -> Camera:
     kind = cam.get("projection_type")
-    w, h, s, _ = _px(cam)
+    w, h, s = _px(cam)
     if kind == "perspective":
         f = cam["focal"] * s
         return Camera(cid, "RADIAL", int(w), int(h), [f, w / 2, h / 2, cam.get("k1", 0.0), cam.get("k2", 0.0)])
@@ -2075,7 +2128,7 @@ def opensfm_camera(cid: int, cam: dict) -> Camera:
 4. Points of every reconstruction: ids `int(track_id)` when it is digits, else a running number from 10,000,000 kept in a map; `xyz`, `rgb` (uint8), `error` zeros: `model.set_points(...)`.
 5. With `tracks` and `tracks.csv` present: read it with `csv.reader(..., delimiter="\t")` after the header line; keep rows whose image has a shot and whose track has a point; per image, `xys = [x * s + w / 2, y * s + h / 2]` (its camera's `w`, `h`, `s`) and `point3D_ids` = the point ids.
 6. No image at all: `JobError("ODM placed no photos: they may not overlap enough, or have no usable features.")`.
-7. Convert to `run_enu` when it differs from `odm_ref`: `conv = lambda p: run_enu.from_geodetic(*odm_ref.to_geodetic(p))`; centres and rotations through `C.transform_rotations(conv, centres, rotations)` (as `align._convert_model` does, written here again so this module does not import `align`), points through `conv`.
+7. Convert to `run_enu` when it differs from `odm_ref`: `conv = lambda p: run_enu.from_geodetic(*odm_ref.to_geodetic(p))`; through the public `convert_model(model, conv)` (centres and rotations by `C.transform_rotations(conv, centres, rotations)`, points by `conv`; this module does not import `align`).
 8. `unregistered` = photo keys of `names` with no image, sorted; `stats` = `json.loads(odm_report/stats.json)` or `None`.
 
 - [ ] **Step 4: Run the tests**
@@ -2102,7 +2155,7 @@ git commit -m "feat(pipelines): read odm's opensfm reconstruction into the spars
 
 - Consumes: `photo.surface` (`GridSpec`, `write_tif`, `read_grid`), `photo.cloud_out.write_copc`, `photo.native` (`run_tool`), `pointcloud` (`find_pdal`, `pdal_env`), `photo.crs` (`crs_of`), rasterio, pyproj, PIL.
 - Produces:
-  - `aio_pipelines.photo.glb`: `glb_bytes(parts: list[dict], images: list[bytes], name: str = "mesh") -> bytes`, `glb_info(data: bytes) -> dict`, `jpeg_bytes(img: np.ndarray, quality: int = 88) -> bytes`, `enu_to_local(v: np.ndarray) -> np.ndarray`, copied verbatim from `texture.py` (`glb_bytes`, `glb_info`, `_jpeg` renamed `jpeg_bytes`) and `mesh.py` (`enu_to_local`).
+  - `aio_pipelines.photo.glb` (self-contained: Task 13 deletes `texture.py` and `mesh.py`): `glb_bytes(parts: list[dict], images: list[bytes], name: str = "mesh") -> bytes`, `glb_info(data: bytes) -> dict`, `jpeg_bytes(img: np.ndarray, quality: int = JPEG_QUALITY) -> bytes`, `enu_to_local(v: np.ndarray) -> np.ndarray`, `vertex_normals(vertices, faces) -> np.ndarray`, and the constants `GENERATOR` and `JPEG_QUALITY`: copied from `texture.py` (`glb_bytes`, `glb_info`, `_jpeg` as `jpeg_bytes` with the quality as a parameter, `GENERATOR`, `JPEG_QUALITY`) and `mesh.py` (`enu_to_local`, `vertex_normals` and whatever it calls). Its only project import is `..volumetric.terrain.encode_glb` (which stays); never `.mesh` or `.texture`.
   - `aio_pipelines.photo.odm.outputs`: path constants `ORTHO`, `DSM`, `DTM`, `CLOUDS` (tuple, preferred first), `MESHES` (tuple), `COORDS`, `REPORT_PDF`, `STATS` (C8); `output_path(odm_dir: Path, rel: str | tuple[str, ...]) -> Path` (the first that exists, else `JobError(f"ODM did not write {name}; look at the job log.")`); `read_coords(odm_dir: Path) -> tuple[int, tuple[float, float]]` (UTM EPSG and offset); `dem_to_project(src: Path, dst: Path, epsg: int) -> GridSpec` (float32, NaN for no data, north-up in the project CRS at the source's resolution); `ortho_to_project(src: Path, dst: Path, epsg: int) -> Path` (`src` itself when already in `epsg`, else an RGBA GeoTIFF warped into it); `ground_height(dem: Path) -> float` (median of the valid heights on a grid of at most 1024 x 1024); `las_point_count(path: Path) -> int`; `cloud_to_copc(ctx: StepContext, odm_dir: Path, dst: Path, epsg: int, temp: Path, budget: int) -> dict` (`{"points", "writer", "source"}`); `@dataclass class ObjPart: positions: np.ndarray; uvs: np.ndarray | None; texture: Path | None`; `read_obj(path: Path) -> list[ObjPart]`; `mesh_to_glb(odm_dir: Path, epsg: int, origin: np.ndarray, max_texture_px: int = 8192) -> tuple[bytes, dict]` (`{"triangles", "textures", "source": "3d" | "2.5d"}`).
 
 - [ ] **Step 1: Write the failing tests** (`python/tests/test_odm_outputs.py`)
@@ -2219,6 +2272,11 @@ def test_mesh_to_glb_is_in_the_scene_frame(tmp_path):
     assert acc["min"] == pytest.approx([10.0, 5.0, -21.0]) and acc["max"] == pytest.approx([11.0, 6.0, -20.0])
 
 
+def test_glb_stands_alone():
+    src = Path(glb.__file__).read_text(encoding="utf-8")
+    assert "from .mesh" not in src and "from .texture" not in src and "from . import mesh" not in src
+
+
 def test_the_25d_model_is_used_when_there_is_no_3d_one(tmp_path):
     _textured_obj(tmp_path, "odm_25dtexturing")
     assert O.mesh_to_glb(tmp_path, UTM39, np.array([412000.0, 3245000.0, 20.0]))[1]["source"] == "2.5d"
@@ -2229,7 +2287,7 @@ def test_the_25d_model_is_used_when_there_is_no_3d_one(tmp_path):
 Run: `uv run --frozen pytest tests/test_odm_outputs.py -q`
 Expected: FAIL (`ImportError`).
 
-- [ ] **Step 3: Implement.** `photo/glb.py`: the four helpers copied verbatim (keep `texture.py` and `mesh.py` untouched; Task 13 deletes them). `photo/odm/outputs.py`:
+- [ ] **Step 3: Implement.** `photo/glb.py`: the helpers and constants listed under Interfaces, copied (keep `texture.py` and `mesh.py` untouched; Task 13 deletes them), with no import of either. `photo/odm/outputs.py`:
 
 - Constants as C8: `ORTHO = "odm_orthophoto/odm_orthophoto.tif"`, `DSM = "odm_dem/dsm.tif"`, `DTM = "odm_dem/dtm.tif"`, `CLOUDS = ("odm_georeferencing/odm_georeferenced_model.copc.laz", "odm_georeferencing/odm_georeferenced_model.laz", "odm_georeferencing/odm_georeferenced_model.las")`, `MESHES = ("odm_texturing/odm_textured_model_geo.obj", "odm_25dtexturing/odm_textured_model_geo.obj")`, `COORDS = "odm_georeferencing/coords.txt"`, `REPORT_PDF = "odm_report/report.pdf"`, `STATS = "odm_report/stats.json"`.
 - `read_coords`: line 1 `WGS84 UTM <zone><N|S>` gives `32600 + zone` or `32700 + zone`; line 2 two numbers; anything else `JobError("ODM's coords.txt is not WGS84 UTM; this build cannot place its outputs.")`.
@@ -2296,6 +2354,7 @@ def odm(monkeypatch, tmp_path):
     monkeypatch.setenv("FAKE_ODM_PYTHON", sys.executable)
     monkeypatch.setenv(R.ODM_ENV, str(FAKE))
     monkeypatch.setenv("FAKE_ODM_UDP_PORT", "0")
+    monkeypatch.setattr(R, "nvcuda_present", lambda env=None: False)  # the same on a GPU workstation
     log = tmp_path / "odm-args.jsonl"
     monkeypatch.setenv("FAKE_ODM_ARGS_LOG", str(log))
     return log
@@ -2305,8 +2364,18 @@ def _params(folder: Path, **kw) -> dict:
     return {"photos": {"folders": [str(folder)]}, "preset": "standard", "run": "r1", **kw}
 
 
+def _linked(project: Path) -> set[str]:
+    """File names of the photos inspection kept (they are the ones linked into the ODM project)."""
+    names = json.loads((project / "photogrammetry" / "r1" / "odm" / "names.json").read_text())
+    return {Path(k).name for k in names.values()}
+
+
+def _no_gps(photo_set) -> set[str]:
+    return {p["name"] for p in photo_set.truth["photos"] if "geotag" not in p}
+
+
 def test_align_a_folder_end_to_end(odm, project, photo_mini):
-    result, rec = run_job(A.PhotoAlign(), project, _params(photo_mini.folder))
+    result, rec = run_job(A.PhotoAlign(), project, _params(photo_mini.photos))
     assert result["status"] == "done"
     base = project / "photogrammetry" / "r1"
     run = json.loads((base / "run.json").read_text())
@@ -2317,7 +2386,8 @@ def test_align_a_folder_end_to_end(odm, project, photo_mini):
     assert run["versions"]["odm"] == "3.6.2"
     assert (base / "sparse" / "frame.json").is_file() and (base / "cameras-sfm.json").is_file()
     align = json.loads((base / "report" / "align.json").read_text())
-    assert align["mapper"] == "opensfm" and align["images"]["registered"] == len(photo_mini.photos)
+    assert align["mapper"] == "opensfm"
+    assert align["images"]["registered"] == len(_linked(project) - _no_gps(photo_mini))
     names = json.loads((base / "odm" / "names.json").read_text())
     assert sorted(names.values()) == sorted(run_key for run_key in json.loads((base / "sparse" / "photos.json").read_text())["photos"])
     args = json.loads(odm.read_text().splitlines()[-1])
@@ -2326,29 +2396,29 @@ def test_align_a_folder_end_to_end(odm, project, photo_mini):
 
 
 def test_source_photos_are_linked_never_written(odm, project, photo_mini):
-    before = {p: p.read_bytes() for p in photo_mini.folder.iterdir()}
-    run_job(A.PhotoAlign(), project, _params(photo_mini.folder))
-    assert {p: p.read_bytes() for p in photo_mini.folder.iterdir()} == before
+    before = {p: p.read_bytes() for p in photo_mini.photos.iterdir()}
+    run_job(A.PhotoAlign(), project, _params(photo_mini.photos))
+    assert {p: p.read_bytes() for p in photo_mini.photos.iterdir()} == before
 
 
 def test_rtk_mode_writes_geo_txt_with_the_rtk_accuracy(odm, project, photo_mini):
-    run_job(A.PhotoAlign(), project, _params(photo_mini.folder, gnss="rtk"))
+    run_job(A.PhotoAlign(), project, _params(photo_mini.photos, gnss="rtk"))
     geo = (project / "photogrammetry" / "r1" / "odm" / "geo.txt").read_text().splitlines()
-    assert geo[0] == "EPSG:4326" and len(geo) == 1 + len(photo_mini.photos)
+    assert geo[0] == "EPSG:4326" and len(geo) == 1 + len(_linked(project) - _no_gps(photo_mini))
     args = json.loads(odm.read_text().splitlines()[-1])
     assert args[args.index("--geo") + 1].endswith("geo.txt")
 
 
 def test_photos_odm_could_not_place_are_named(odm, project, photo_mini, monkeypatch):
     monkeypatch.setenv("FAKE_ODM_DROP", "00001.jpg")
-    run_job(A.PhotoAlign(), project, _params(photo_mini.folder))
+    run_job(A.PhotoAlign(), project, _params(photo_mini.photos))
     align = json.loads((project / "photogrammetry" / "r1" / "report" / "align.json").read_text())
     assert any(r["reason"] == "Not enough matches with other photos." for r in align["rejected"])
 
 
 def test_the_gpu_used_is_recorded(odm, project, photo_mini, monkeypatch):
     monkeypatch.setattr(R, "nvcuda_present", lambda env=None: True)
-    run_job(A.PhotoAlign(), project, _params(photo_mini.folder))
+    run_job(A.PhotoAlign(), project, _params(photo_mini.photos))
     run = json.loads((project / "photogrammetry" / "r1" / "run.json").read_text())
     assert run["engine"]["gpu"] == {"features": True}
 
@@ -2368,9 +2438,9 @@ def test_resume_after_a_cancel_in_odm_runs_odm_again_plainly(odm, project, photo
 
     threading.Thread(target=stop, daemon=True).start()
     with pytest.raises(Cancelled):
-        run_job(A.PhotoAlign(), project, _params(photo_mini.folder), cancel=cancel)
+        run_job(A.PhotoAlign(), project, _params(photo_mini.photos), cancel=cancel)
     monkeypatch.delenv("FAKE_ODM_HANG")
-    result, _ = run_job(A.PhotoAlign(), project, _params(photo_mini.folder))
+    result, _ = run_job(A.PhotoAlign(), project, _params(photo_mini.photos))
     assert result["status"] == "done"
     assert "--rerun-from" not in json.loads(odm.read_text().splitlines()[-1])
 
@@ -2378,7 +2448,7 @@ def test_resume_after_a_cancel_in_odm_runs_odm_again_plainly(odm, project, photo
 def test_no_odm_is_a_plain_message_before_any_work(project, photo_mini, monkeypatch):
     monkeypatch.delenv(R.ODM_ENV, raising=False)
     with pytest.raises(JobError, match="Install it in Settings, Processing tools"):
-        run_job(A.PhotoAlign(), project, _params(photo_mini.folder))
+        run_job(A.PhotoAlign(), project, _params(photo_mini.photos))
     assert not (project / "photogrammetry" / "r1" / "odm").exists()
 
 
@@ -2392,7 +2462,7 @@ def test_parameters_are_checked():
     assert p.validate({"photos": {"folders": ["x"]}, "preset": "fast", "mapper": "global"})["mapper"] == "global"
 ```
 
-(`run_job(..., cancel=...)` is conftest's existing parameter; `photo_mini` gives `.folder` and `.photos`; check the fixture's attribute names in `photo_synth.py` and adapt the two names if they differ.)
+(`run_job(..., cancel=...)` is conftest's existing parameter. `photo_mini` is a `photo_synth.PhotoSet`: `.photos` is the photos folder and `.truth["photos"]` lists every shot with its `kind` (`nadir`, `blurred`, `duplicate`, `outlier`, `corrupt`, `no-gps`) and a `geotag` unless it is `no-gps`. Counts come from what inspection kept (`names.json`) minus the photos without GPS, which the fake cannot place.)
 
 - [ ] **Step 2: Run to see it fail**
 
@@ -2402,6 +2472,7 @@ Expected: FAIL (the old engine runs; `run["engine"]` is missing).
 - [ ] **Step 3: Rewrite the engine parts of `align.py`.**
 
 - Imports: drop `colmap_io` and the `B.bundle_adjust` use; keep `from . import bundle as B` for `B.triangulate` in `measure_points`; add `from .proctree import memory_status`, `from .odm import flags as OF`, `from .odm import project as OP`, `from .odm import runner as OR`, `from .odm.reconstruction import read_reconstruction`. Copy `engine_alias` from `colmap_io.py` into `align.py` (used by `encode_name`).
+- `_convert_model(m, conv)`: its body becomes `reconstruction.convert_model(m, conv)` (Task 6), so the frame rule lives in one place.
 - Delete: `PRESETS` (feature sizes), `MIN_REGISTERED_GLOBAL`, `GNSS_ADJUST_SIGMA_M`, `MAX_EXHAUSTIVE`, `FEATURE_*`, `MAX_FEATURE_THREADS`, `first_octave`, `feature_threads`, `initial_params`, `footprint_radius`, `choose_pairs`, `combine_models`, `engine_factory`, `_engine`, `_engine_job`, `_features`, `_match`, `_sfm` (old), `_georef` (old), `_names`.
 - `STAGES = ("inspect", "sfm", "georef", "report", "commit")`; `plan()` weights `inspect 0.5, sfm 10, georef 0.5, report 0.5, commit 0.2`; titles `Read the photos`, `Align the photos (ODM)`, `Place the model`, `Report`, `Save the run`.
 - `validate`: unchanged keys and checks; `matching`, `mapper`, `maxImageSize` accepted as before.
@@ -2439,7 +2510,7 @@ Expected: FAIL (the old engine runs; `run["engine"]` is missing).
 
 - [ ] **Step 4: Run the tests**
 
-Run: `uv run --frozen pytest tests/test_photo_align.py tests/test_opf.py tests/test_gcp.py -q`
+Run: `uv run --frozen pytest tests/test_photo_align.py tests/test_gcp.py -q`
 Expected: PASS.
 
 - [ ] **Step 5: Lint and commit**
@@ -2479,8 +2550,8 @@ import pytest
 
 import odm_synth
 import products_synth as ps
-from aio_pipelines.photo import align as A
 from aio_pipelines.photo.georef import PhotoGeoref
+from aio_pipelines.photo.model import SparseModel
 from aio_pipelines.photo.odm import runner as R
 from aio_pipelines.runtime import JobError
 from conftest import run_job
@@ -2531,12 +2602,15 @@ def test_the_gcp_list_holds_control_points_only(run):
 def test_check_points_never_change_the_adjustment(run, tmp_path):
     root, base = run
     run_job(PhotoGeoref(), root, {"run": ps.RUN}, job_id="with")
-    with_checks = (base / "work" / "adjusted-enu.npz").read_bytes()
+    with_checks = SparseModel.load(base / "work" / "adjusted-enu.npz")
     gcp = json.loads((base / "gcp.json").read_text())
     gcp["points"] = [p for p in gcp["points"] if p["role"] == "control"]
     (base / "gcp.json").write_text(json.dumps(gcp))
     run_job(PhotoGeoref(), root, {"run": ps.RUN}, job_id="without")
-    assert (base / "work" / "adjusted-enu.npz").read_bytes() == with_checks
+    without = SparseModel.load(base / "work" / "adjusted-enu.npz")  # compared by value: npz files carry times
+    for iid, im in with_checks.images.items():
+        assert np.array_equal(im.R, without.images[iid].R) and np.array_equal(im.t, without.images[iid].t)
+    assert np.array_equal(with_checks.xyz, without.xyz)
 
 
 def test_a_control_point_far_off_the_others_is_left_out_and_named(run):
@@ -2573,7 +2647,7 @@ def test_too_few_control_points_fail_plainly(run):
         run_job(PhotoGeoref(), root, {"run": ps.RUN})
 ```
 
-Add to `odm_synth.py`: `truth_model(odm_dir) -> TruthModel(model, enu)` (reads `.fake/truth.json` back through `read_reconstruction`'s conventions; it may import Task 6's reader) and to `products_synth.py` the constant `TARGET_POSITIONS` (six positions inside the scene, on its ground: `[(ORIGIN[0] + dx, ORIGIN[1] + dy, ground(dx, dy) + ORIGIN[2])` for `(dx, dy)` in `(-30, -30), (30, -30), (30, 30), (-30, 30), (0, -10), (10, 5)`]; check the scene's extent in `make_scene` and keep the points inside it).
+Add to `products_synth.write_project` (Task 9 owns these additions): each photo of `sparse/photos.json` gets `"gnss": {"lon", "lat", "h", "sigmaH": 0.5, "sigmaV": 1.0}` from its true camera centre (so `useGnss` has positions to weaken). Add to `odm_synth.py`: `truth_model(odm_dir) -> TruthModel(model, enu)` (reads `.fake/truth.json` back through `read_reconstruction`'s conventions; it may import Task 6's reader) and to `products_synth.py` the constant `TARGET_POSITIONS` (six positions inside the scene, on its ground: `[(ORIGIN[0] + dx, ORIGIN[1] + dy, ground(dx, dy) + ORIGIN[2])` for `(dx, dy)` in `(-30, -30), (30, -30), (30, 30), (-30, 30), (0, -10), (10, 5)`]; check the scene's extent in `make_scene` and keep the points inside it).
 
 - [ ] **Step 2: Run to see it fail**
 
@@ -2643,6 +2717,7 @@ git commit -m "feat(pipelines): photo.georef has odm adjust with ground control"
 
 - Modify: `python/src/aio_pipelines/photo/products.py` (rewrite; keep `pyramid_index`, `_pyramid`, the layer building and manifest code of `_commit`, `_tiles`, `_note_run`, `_timed`)
 - Rewrite: `python/tests/test_photo_products.py`
+- Modify: `python/tests/test_opf.py:282` (an imported run is now refused by products: `pytest.raises(JobError, match="use Create maps again")`, deviation 8)
 - Create: `python/tests/test_odm_real.py` (opt-in)
 
 **Interfaces:**
@@ -2833,7 +2908,7 @@ Expected: FAIL (the old steps run).
 
 - Module docstring: the step table becomes `prepare` (run and ODM checks, resolutions, threads, GPU, disk, boundary), `dense` (ODM openmvs to odm_filterpoints; Fast from `FAST_FIRST_STAGE`), `mesh` and `texture` (ODM odm_meshing, mvs_texturing; the GLB layer), `cloud` (ODM to odm_georeferencing; the COPC layer), `dsm` (ODM odm_dem; the DSM and DTM layers), `ortho` (ODM to the end; the ortho layer and ODM's report), `commit`, `tiles`; intermediates in `photogrammetry/<run>/work/products/`.
 - Remove: `SCALE`, `DEFAULT_TRIANGLES`, `CUDA_MISSING`, `NO_DENSE_POINTS`, `NOTHING_FUSED`, `LEGACY_*`, `depth_key`, `fuse_key`, `merge_key`, `legacy_cleanup`, `_Images`, `_region_poly`, `_run`, `_work`, `_depth_dir`, `_tiles_store`, `_dense`, `_fuse`, `_dsm`, `_dtm`, `_cloud`, `_ortho`, `_mesh`, `_texture`, `_surface_layer` and every import of `dense`, `fuse`, `mesh`, `texture`, `budget`, `pool`, `ortho`, `scene`.
-- Constants: `LAYOUT = 3`; `STAGES = ("prepare", "dense", "mesh", "texture", "cloud", "dsm", "ortho", "commit", "tiles")`; `OLD_RUN = "This run was aligned by an earlier version or imported; use Create maps again to process the photos with ODM."`; `DISK_FACTOR = {"fast": 3, "standard": 6, "high": 10}` (free space needed, times the bytes of `odm/images/`).
+- Constants: `LAYOUT = 3`; `STAGES = ("dense", "mesh", "texture", "cloud", "dsm", "ortho", "commit", "tiles")` (the stages `run.json` records; `prepare` stays out, as today, because `PhotoStageName` has no `prepare`); `OLD_RUN = "This run was aligned by an earlier version or imported; use Create maps again to process the photos with ODM."`; `DISK_FACTOR = {"fast": 3, "standard": 6, "high": 10}` (free space needed, times the bytes of `odm/images/`).
 - `validate`: today's body without `dense` (`known_keys` refuses it, naming it).
 - `plan`: `[Step("prepare", "Check the run and plan the products", _timed(self._prepare), 0.5), *[Step(s.name, s.title, _timed(self._odm_step(s)), s.weight) for s in OF.product_steps(set(params["products"]))], Step("commit", ...), *([Step("tiles", ...)] if "tiles" in want else [])]`.
 - `_prepare`: read `run.json` (status in `aligned`, `adjusted`, `done`, else `JobError(f'Run "{run}" is not aligned yet.')`); `odm_dir = OP.run_odm_dir(ctx.project, run)`; `not OP.has_alignment(odm_dir)` gives `JobError(OLD_RUN)`; `odm = OR.find_odm()`; `mc = OR.machine()`; `preset = p.get("preset") or doc.get("preset") or "standard"`; `epsg = C.crs_of(doc["crs"]).to_epsg()`; `origin = manifest["origin"]` (`JobError("The project has no origin, so the products cannot be placed.")` without one); `ortho_cm = p.get("gsdCm") or align.json "gsdCm" or 5.0`; `dem_cm = 2 * ortho_cm`; boundary via `OP.write_boundary(odm_dir, p["region"])` when `region`; `need = images_bytes * DISK_FACTOR[preset]`, `native.check_disk(ctx.project, need)`; `args = OF.products_flags(preset, set(p["products"]), mc.use_gpu, mc.threads, ortho_cm, dem_cm, p.get("meshTriangles"), boundary)`; log `f"ODM {odm.version}, preset {preset}: ortho {ortho_cm:g} cm, DEM {dem_cm:g} cm, {mc.threads} threads, graphics card {'on' if mc.use_gpu else 'off'}."`; return `{"layout": LAYOUT, "preset", "odmDir": str(odm_dir), "epsg", "origin", "orthoResCm", "demResCm", "threads", "gpu": mc.use_gpu, "args": args, "disk": {...}, "memoryBudgetBytes": native.memory_budget(), "version": odm.version}`.
@@ -2851,7 +2926,8 @@ Expected: FAIL (the old steps run).
                 ctx.project / f"photogrammetry/{ctx.params['run']}/odm-logs/{ctx.job.job_id}-{step.name}",
                 rerun=True, use_gpu=s["gpu"], progress=(0.0, 0.7),
             )  # fmt: skip
-            out = {"gpu": {"features": res.gpu.features, "dense": res.gpu.dense}, "fallbacks": res.gpu.fallbacks}
+            # "gpuFallbacks", never "fallbacks": a PhotoStage's "fallbacks" is a number in the schema
+            out = {"gpu": {"features": res.gpu.features, "dense": res.gpu.dense}, "gpuFallbacks": res.gpu.fallbacks}
             out.update(IMPORTS.get(step.name, _nothing)(self, ctx, s, odm_dir))
             return out
 
@@ -2862,17 +2938,17 @@ with `IMPORTS = {"texture": _import_mesh, "cloud": _import_cloud, "dsm": _import
 
 - `_import_mesh`: `data, info = OU.mesh_to_glb(odm_dir, s["epsg"], np.array(s["origin"]))`; stage `models/<run>-mesh.glb` when `mesh` was asked, and `photogrammetry/<run>/mesh/full.glb` when `tiles` was; return `{"triangles": info["triangles"], "meshSource": info["source"]}`.
 - `_import_cloud`: `OU.cloud_to_copc(ctx, odm_dir, ctx.stage(f"clouds/{run}.copc.laz"), s["epsg"], work / "cloud", native.memory_budget())`; return `{"points", "writer"}`.
-- `_import_dems`: always `groundZ = OU.ground_height(proj)` of the DSM; for each of `dsm`, `dtm` asked: `spec = OU.dem_to_project(OU.output_path(odm_dir, OU.DSM or OU.DTM), work / f"{which}.tif", s["epsg"])`, then exactly today's `_surface_layer` body with `run.epsg` replaced by `s["epsg"]`, `run.origin` by `np.array(s["origin"])`, `y = groundZ - origin[2]` and `raw = work / f"{which}.tif"`; return `{"groundZ", "layers": [...]}`.
+- `_import_dems`: always `groundZ = OU.ground_height(proj)` of the DSM; for each of `dsm`, `dtm` asked: `spec = OU.dem_to_project(OU.output_path(odm_dir, OU.DSM or OU.DTM), work / f"{which}.tif", s["epsg"])`, then exactly today's `_surface_layer` body with `run.epsg` replaced by `s["epsg"]`, `run.origin` by `np.array(s["origin"])`, `run.id` by `ctx.params["run"]`, `self._work(ctx)` by `work`, `y = groundZ - origin[2]` and `raw = work / f"{which}.tif"`; return `{"groundZ", "layers": [...]}`.
 - `_import_ortho`: when `ortho` was asked: `src = OU.ortho_to_project(OU.output_path(odm_dir, OU.ORTHO), work / "ortho.tif", s["epsg"])`, `to_cog(src, ctx.stage(f"photogrammetry/{run}/ortho.tif"))`, `_pyramid(ctx, src, f"rasters/{run}-ortho", origin, epsg, y, res, {"source": "ortho.tif"})` with `y = ctx.outputs("dsm")["groundZ"] - origin[2]` and `res` the ortho's pixel size; always: copy `OU.REPORT_PDF` and `OU.STATS`, when present, to staged `photogrammetry/<run>/report/odm-report.pdf` and `report/odm-stats.json`.
   `work = ctx.project / f"photogrammetry/{run}/work/products"`.
 - `_commit`: today's code with `self._run(ctx)` replaced by values from `_settings` and `run.json`; `files` also gets `report/odm-report.pdf` and `report/odm-stats.json` when staged; `run.json` gets `doc["engine"] = OR.engine_record(OR.OdmInstall(Path(), s["version"]), gpu)` where `gpu` merges the steps' `gpu` (`GpuUse.merge`), `doc["versions"]["odm"] = s["version"]`, no `accelerator`/`opencv`; after `run.json` is written, `freed = OP.clean_intermediates(odm_dir)` and log `f"Removed {native._gb(freed)} of ODM's intermediate files."`.
-- `_report`: `schema`, `run`, `createdAt`, `preset`, `products`, `layers`, `gsdCm: {"ortho": s["orthoResCm"], "dsm": s["demResCm"]}`, `engines: {"odm": s["version"]}`, `gpu` (merged), `cloud: {"points", "writer"}` when made, `mesh: {"triangles", "source"}` when made, `stages` (as today, from `_timed`), `memoryPeakBytes`, `memoryBudgetBytes`, `disk`, `warnings` (every fallback message of the steps, once each).
+- `_report`: `schema`, `run`, `createdAt`, `preset`, `products`, `layers`, `gsdCm: {"ortho": s["orthoResCm"], "dsm": s["demResCm"]}`, `engines: {"odm": s["version"]}`, `gpu` (merged), `cloud: {"points", "writer"}` when made, `mesh: {"triangles", "source"}` when made, `stages` (as today, from `_timed`, over `STAGES`; copy no `fallbacks` or `device` key into a stage record), `memoryPeakBytes`, `memoryBudgetBytes`, `disk`, `warnings` (every `gpuFallbacks` message of the steps, once each).
 - `_tiles`, `_note_run`: unchanged except that the run id comes from `ctx.params["run"]` and the run folder from `ctx.project`.
 - `inputs`: unchanged (`photogrammetry/<run>/sparse`).
 
 - [ ] **Step 4: Run the tests**
 
-Run: `uv run --frozen pytest tests/test_photo_products.py tests/test_odm_real.py tests/test_tiles.py -q`
+Run: `uv run --frozen pytest tests/test_photo_products.py tests/test_opf.py tests/test_odm_real.py tests/test_tiles.py -q`
 Expected: PASS (`test_odm_real.py` skipped; the cloud test skipped without PDAL).
 
 - [ ] **Step 5: Real run (opt-in, when Task 0 left ODM installed or with the founder's go).** With `AIO_ODM` set to an installed ODM and `AIO_ODM_REAL_PHOTOS` to a folder of about 30 public sample photos (Task 0's scratch `proj/aukerman/images`): `uv run --frozen pytest tests/test_odm_real.py -q -s`. Expected: PASS, and the printed `engine.gpu` says what the RTX 5070 Ti did. Report it in the hand-off.
@@ -2880,7 +2956,7 @@ Expected: PASS (`test_odm_real.py` skipped; the cloud test skipped without PDAL)
 - [ ] **Step 6: Lint and commit**
 
 ```bash
-git add python/src/aio_pipelines/photo/products.py python/tests/test_photo_products.py python/tests/test_odm_real.py
+git add python/src/aio_pipelines/photo/products.py python/tests/test_photo_products.py python/tests/test_odm_real.py python/tests/test_opf.py
 git commit -m "feat(pipelines): photo.products runs odm and imports its outputs" -m "Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
 ```
 
@@ -2891,7 +2967,7 @@ git commit -m "feat(pipelines): photo.products runs odm and imports its outputs"
 **Files:**
 
 - Delete: `python/src/aio_pipelines/photo/{colmap_io,dense,fuse,ortho,mesh,texture,pool,card,gpu_match,merge,budget}.py`, `python/src/aio_pipelines/accel.py`; `python/tests/{test_photo_dense,test_photo_card,test_photo_card_job,test_photo_pool,test_photo_merge,test_photo_mesh,test_photo_ortho,test_photo_gpu_match,test_photo_engine,test_photo_budget,test_accel,test_photo_chain}.py`
-- Modify: `python/src/aio_pipelines/photo/bundle.py` (keep `similarity`, `apply_similarity`, `similarity_ransac`, `triangulate` and what they call; delete `refine_points`, `CameraPrior`, `ControlPoint`, `AdjustResult`, `select_points`, `_Problem`, `_solve_reduced`, `bundle_adjust`, `refine_all_points`, `supported`, `REFINE_BLOCK`), `photo/surface.py` (delete `cell_stat`, `fill_near`, `push_pull`, `harmonic_fill`, `smrf_ground`, `dtm_from`, `grid_points`, `coarse_spec`, `dtm_grid`, `dtm_coarse` and the top-level `from .fuse import PointTiles`), `photo/cloud_out.py` (delete `classify`, `DtmSampler`, `_las_header`, `write_las` and the `.fuse` import; keep `untwine_args`, `pdal_copc_pipeline`, `untwine_progress`, `write_copc`, `_run_copc`, `NO_COPC_TOOL`), `photo/native.py` (drop `texrecon`, `PoissonRecon`, `SurfaceTrimmer` from `TOOLS` and the docstring table), `python/tests/{test_photo_bundle,test_photo_model,test_photo_surface,test_photo_cloud_out,test_photo_runs,test_opf}.py`, `python/tests/photo_g2_synth.py`, `python/tests/products_synth.py` (imports only), `python/pyproject.toml` (version `0.8.0`; remove the `pymeshlab` line), `python/uv.lock` (`uv lock`), `tools/pipeline-pack/build.mjs` (remove `MESH_PROBE` and its use, l.91-125, 430, the pymeshlab parts of the summary l.455-506; keep `COLMAP_PROBE`, walks need it), `tools/pipeline-pack/build.test.mjs`
+- Modify: `python/src/aio_pipelines/photo/bundle.py` (keep `similarity`, `apply_similarity`, `similarity_ransac`, `triangulate` and what they call; delete `refine_points`, `CameraPrior`, `ControlPoint`, `AdjustResult`, `select_points`, `_Problem`, `_solve_reduced`, `bundle_adjust`, `refine_all_points`, `supported`, `REFINE_BLOCK`), `photo/surface.py` (delete `cell_stat`, `fill_near`, `push_pull`, `harmonic_fill`, `smrf_ground`, `dtm_from`, `grid_points`, `coarse_spec`, `dtm_grid`, `dtm_coarse` and the top-level `from .fuse import PointTiles`), `photo/cloud_out.py` (delete `classify`, `DtmSampler`, `_las_header`, `write_las` and the `.fuse` import; keep `untwine_args`, `pdal_copc_pipeline`, `untwine_progress`, `write_copc`, `_run_copc`, `NO_COPC_TOOL`), `photo/native.py` (drop `texrecon`, `PoissonRecon`, `SurfaceTrimmer` from `TOOLS` and the docstring table), `python/tests/{test_photo_bundle,test_photo_model,test_photo_surface,test_photo_cloud_out,test_photo_runs,test_proctree}.py` (in `test_proctree.py`, delete `test_colmap_io_still_offers_the_moved_names`), `.github/workflows/ci.yml` (python matrix ~319-390: drop the part `photo-chain`, its `case` line and the comment about `test_photo_chain.py`), `tools/ci/pytest-parts.test.mjs` (parts `photo` and `rest` only), `python/tests/photo_g2_synth.py`, `python/tests/products_synth.py` (imports only), `python/pyproject.toml` (version `0.8.0`; remove the `pymeshlab` line), `python/uv.lock` (`uv lock`), `tools/pipeline-pack/build.mjs` (remove `MESH_PROBE` and its use, l.91-125, 430, the pymeshlab parts of the summary l.455-506; keep `COLMAP_PROBE`, walks need it), `tools/pipeline-pack/build.test.mjs`
 
 **Interfaces:**
 
@@ -2901,21 +2977,21 @@ git commit -m "feat(pipelines): photo.products runs odm and imports its outputs"
 - [ ] **Step 1: Find every remaining use**
 
 Run (from the worktree): `git grep -nE "colmap_io|photo\.(dense|fuse|ortho|mesh|texture|pool|card|gpu_match|merge|budget)\b|from \.(dense|fuse|ortho|mesh|texture|pool|card|gpu_match|merge|budget) |aio_pipelines\.accel|from \.\.accel|pymeshlab|SyntheticEngine|FakeJob" -- python tools apps/desktop/e2e`
-Expected: hits only in the files listed above (and `apps/desktop/e2e/photoPack.ts`, which Task 18 owns). Any other hit: stop and report it.
+Expected: hits only in the files listed above, in `apps/desktop/e2e/photoPack.ts` (Task 18), and these known, harmless ones: `road/pipeline.py`, `road/units.py`, `volumetric/build.py` (their own packages' `.ortho`), `tests/test_licences.py`, `tools/release/{licence-exceptions.json,native-libs.json,native-licences.test.mjs,notices.mjs}` (licence text; Task 17 regenerates the notices). Any other hit: stop and report it.
 
-- [ ] **Step 2: Rewrite the synthetic engine fixture.** In `photo_g2_synth.py` replace `SyntheticEngine` and `FakeJob` with one function `synthetic_model(scene, noise_px: float = 0.3, seed: int = 0) -> SparseModel` (the reconstruction `SyntheticEngine.map` returned: true cameras and points, observations with Gaussian pixel noise, in the scene's frame); keep `synthetic_jpeg`, `make_scene`, `write_gcp_files`, `render_nadir_set`. Change `test_photo_model.py` and `test_photo_bundle.py` to build their models with it; delete from `test_photo_bundle.py` the tests of the deleted functions (keep `similarity`, `similarity_ransac`, `triangulate`). In `test_photo_surface.py` and `test_photo_cloud_out.py` delete the tests of deleted functions and keep the rest. In `test_photo_runs.py` keep the run-file tests (`encode_name`/`decode_name`, `read_sparse`, run ids, `load_run`) and delete those that drive `ColmapEngine` or `MemoryExceeded`. In `test_opf.py` line 283: replace the products run on an imported run with `pytest.raises(JobError, match="use Create maps again")` (deviation 8).
+- [ ] **Step 2: Rewrite the synthetic engine fixture.** In `photo_g2_synth.py` replace `SyntheticEngine` and `FakeJob` with one function `synthetic_model(scene, noise_px: float = 0.3, seed: int = 0) -> SparseModel` (the reconstruction `SyntheticEngine.map` returned: true cameras and points, observations with Gaussian pixel noise, in the scene's frame); keep `synthetic_jpeg`, `make_scene`, `write_gcp_files`, `render_nadir_set`. Change `test_photo_model.py` and `test_photo_bundle.py` to build their models with it; delete from `test_photo_bundle.py` the tests of the deleted functions (keep `similarity`, `similarity_ransac`, `triangulate`). In `test_photo_surface.py` and `test_photo_cloud_out.py` delete the tests of deleted functions and keep the rest. In `test_photo_runs.py` keep the run-file tests (`encode_name`/`decode_name`, `read_sparse`, run ids, `load_run`) and delete those that drive `ColmapEngine` or `MemoryExceeded`. (`test_opf.py` was changed by Task 10.)
 
 - [ ] **Step 3: Delete, trim, bump.** Delete the files; trim the modules as listed; `pyproject.toml` `version = "0.8.0"` and remove `"pymeshlab==2025.7.post1; ..."`; run `uv lock` in `python/` (commit the lock); edit `build.mjs` and its test.
 
 - [ ] **Step 4: Run the whole Python suite and the pack build test**
 
-Run: `uv run --frozen pytest -q` (from `python/`) and `node --test tools/pipeline-pack/build.test.mjs`
+Run: `uv run --frozen pytest -q` (from `python/`), `node --test tools/pipeline-pack/build.test.mjs` and `pnpm exec vitest run tools/ci/pytest-parts.test.mjs`
 Expected: PASS. Then `git grep` of Step 1 finds nothing outside `apps/desktop/e2e/photoPack.ts`.
 
 - [ ] **Step 5: Lint and commit**
 
 ```bash
-git add -u python tools/pipeline-pack/build.mjs tools/pipeline-pack/build.test.mjs
+git add -u python tools/pipeline-pack/build.mjs tools/pipeline-pack/build.test.mjs tools/ci/pytest-parts.test.mjs .github/workflows/ci.yml
 git add python/uv.lock python/pyproject.toml
 git commit -m "chore(pipelines): delete our own photogrammetry engine" -m "Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
 ```
@@ -3209,14 +3285,14 @@ git commit -m "feat(schema): odm engine contract" -m "Co-Authored-By: Claude Opu
 
 **Interfaces:**
 
-- Consumes: Task 11 types (`OdmStatus`, `OdmInstallProgress`, `OdmInstallRecord`, `OdmInstallResult`, `OdmGpuSetting`, `ProbeGpu` from `HardwareProbe`); `update/download.ts` `downloadVerified`, `FetchLike`.
+- Consumes: Task 11 types (`OdmStatus`, `OdmInstallProgress`, `OdmInstallRecord`, `OdmInstallResult`, `OdmGpuSetting`, `IpcChannel`); `update/download.ts` `downloadVerified`, `FetchLike`. GPUs are typed inline as `{ name: string; vendor?: string }`.
 - Produces:
   - `pin.ts`: `interface OdmPin { version: string; url: string; size: number; sha256: string; installedBytes: number; file: string }`; `ODM_PIN: OdmPin` (Global Constraints values, `installedBytes` C3, `file: 'ODM_Setup_3.6.2.exe'`); `SETUP_ARGS` (C1, without `/DIR=`); `UNINSTALL_ARGS = ['/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART']`; `REQUIRED_FILES` (C4); `SETUP_MAY_ASK_ADMIN` (C2); `pinFrom(env): Promise<OdmPin>` (`ODM_PIN`, or the JSON file named by `QUADRION_ODM_PIN_FILE` when `QUADRION_E2E === '1'`).
-  - `paths.ts`: `SPACES_OK` (C5); `isSafeOdmPath(p: string): boolean`; `odmRecordPath(dataRoot: string): string` (`<dataRoot>/runtime/odm.json`); `downloadDir(dataRoot: string): string` (`<dataRoot>/runtime/downloads`); `odmInstallDir(dataRoot: string, env: Record<string, string | undefined>, version: string): string`; `odmWorkRoot(installDir: string): string` (`<parent of installDir>/odm-work`).
+  - `paths.ts`: `SPACES_OK` (C5); `isSafeOdmPath(p: string): boolean`; `odmRecordPath(dataRoot: string): string` (`<dataRoot>/runtime/odm.json`); `downloadDir(dataRoot: string): string` (`<dataRoot>/runtime/downloads`); `odmInstallDir(dataRoot: string, env: Record<string, string | undefined>, version: string): string`; `odmWorkRoot(installDir: string): string` (`path.win32.join(path.win32.dirname(installDir), 'odm-work')`: Windows paths whatever the host).
   - `detect.ts`: `interface UninstallEntry { key: string; displayName: string; installLocation?: string; displayVersion?: string }`; `parseUninstallEntries(text: string): UninstallEntry[]`; `UNINSTALL_MATCH` (C14); `findOtherOdm(d: { regQuery(key: string): Promise<string>; exists(p: string): Promise<boolean>; ours: string | null; env: Record<string, string | undefined> }): Promise<{ dir: string; version?: string } | null>`; `nvcudaPresent(env, exists): Promise<boolean>`; `nvidiaName(gpus: readonly { name: string; vendor?: string }[]): string | null`.
   - `system.ts`: `interface OdmSystem { runSetup(file: string, args: string[]): Promise<number>; runSmoke(dir: string): Promise<{ code: number; out: string }>; runUninstaller(file: string, args: string[]): Promise<number>; regQuery(key: string): Promise<string>; exists(p: string): Promise<boolean>; rm(p: string): Promise<void>; freeBytes(dir: string): Promise<number>; sleep(ms: number): Promise<void> }`; `nodeOdmSystem(env): OdmSystem` (spawn with `windowsHide: true`; a setup ending in `.mjs` runs as `process.execPath` with `ELECTRON_RUN_AS_NODE=1` only when `QUADRION_E2E === '1'`; `runSmoke` is `cmd.exe /d /c "<dir>\run.bat" --help` with `ODM_NONINTERACTIVE=1` and a 120 s timeout; `regQuery` is `reg query <key> /s /f ODM /d`, an exit 1 (nothing found) answering `''`).
   - `install.ts`: `interface OdmDeps { dataRoot(): string; env: Record<string, string | undefined>; platform: string; arch: string; fetch: FetchLike; system: OdmSystem; gpus(): Promise<readonly { name: string; vendor?: string }[]>; gpuSetting(): OdmGpuSetting; offlineOnly(): boolean; now(): Date }`; `readRecord(dataRoot): Promise<OdmInstallRecord | null>`; `odmStatus(d: OdmDeps, installing: boolean): Promise<OdmStatus>`; `installOdm(d: OdmDeps, o: { replaceOther: boolean; signal: AbortSignal; onProgress(p: OdmInstallProgress): void }): Promise<OdmInstallResult>`; `removeOdm(d: OdmDeps): Promise<OdmInstallResult>`; `odmJobEnv(pipeline: string, odm: { dir: string; version: string } | null, gpu: OdmGpuSetting): Record<string, string>` (for `photo.align`, `photo.georef`, `photo.products`: `AIO_ODM`, `AIO_ODM_VERSION`, `AIO_ODM_GPU`, `AIO_ODM_WORK`); `currentOdm(d: Pick<OdmDeps, 'dataRoot' | 'env' | 'system'>): Promise<{ dir: string; version: string } | null>` (`QUADRION_ODM_DIR` first, else the record when its files are there).
-  - `ipc.ts`: `registerOdmIpc(d: OdmDeps & { handle: <C extends OdmChannel>(channel: C, handler: Handler<C>) => void; emit(p: OdmInstallProgress): void; setGpu(gpu: OdmGpuSetting): Promise<void> }): void`.
+  - `ipc.ts`: `type OdmChannel = Extract<IpcChannel, `odm:${string}`>`; `registerOdmIpc(d: OdmDeps & { handle: <C extends OdmChannel>(channel: C, handler: Handler<C>) => void; emit(p: OdmInstallProgress): void; setGpu(gpu: OdmGpuSetting): Promise<void> }): void`.
 
 - [ ] **Step 1: Write the failing tests.** `install.test.ts` (the core; the others test their pure functions the same way):
 
@@ -3433,7 +3509,7 @@ describe('the job environment', () => {
 });
 ```
 
-`paths.test.ts` pins `isSafeOdmPath('E:\\Data\\runtime\\odm-3.6.2') === true`, `isSafeOdmPath('E:\\Stratlas Data\\runtime') === false`, `isSafeOdmPath('C:\\Users\\Zoë\\x') === false`, and `odmInstallDir` choosing `<dataRoot>\runtime\odm-<v>`, else `<LOCALAPPDATA>\QuadrionODM\odm-<v>`, else `<SystemDrive or C:>\QuadrionODM\odm-<v>`. `detect.test.ts` pins `parseUninstallEntries` on the registry text above (and on `''`), `findOtherOdm` finding `C:\ODM\run.bat` through `exists`, ignoring an entry whose `InstallLocation` is `ours`, and `nvidiaName`. `pin.test.ts` pins `ODM_PIN` against the Global Constraints values and that `QUADRION_ODM_PIN_FILE` is ignored without `QUADRION_E2E=1`. `ipc.test.ts` registers through a fake `handle` (as `packInstall.test.ts` does), checks that a second `odm:install` while one runs answers `code: 'busy'`, that `odm:cancel` during the download aborts it (`code: 'cancelled'`, phase `cancelled` emitted) and answers `{ ok: false }` during the setup, and that `odm:setGpu` calls `setGpu` and answers the new status.
+`paths.test.ts` pins `isSafeOdmPath('E:\\Data\\runtime\\odm-3.6.2') === true`, `isSafeOdmPath('E:\\Stratlas Data\\runtime') === false`, `isSafeOdmPath('C:\\Users\\Zoë\\x') === false`, `isSafeOdmPath('C:\\Users\\RUNNER~1\\AppData\\Local\\Temp\\aio-odm-1') === true` (an 8.3 short name, as on CI), `isSafeOdmPath('E:\\a&b') === false`, and `odmInstallDir` choosing `<dataRoot>\runtime\odm-<v>`, else `<LOCALAPPDATA>\QuadrionODM\odm-<v>`, else `<SystemDrive or C:>\QuadrionODM\odm-<v>`. `detect.test.ts` pins `parseUninstallEntries` on the registry text above (and on `''`), `findOtherOdm` finding `C:\ODM\run.bat` through `exists`, ignoring an entry whose `InstallLocation` is `ours`, and `nvidiaName`. `pin.test.ts` pins `ODM_PIN` against the Global Constraints values and that `QUADRION_ODM_PIN_FILE` is ignored without `QUADRION_E2E=1`. `ipc.test.ts` registers through a fake `handle` (as `packInstall.test.ts` does), checks that a second `odm:install` while one runs answers `code: 'busy'`, that `odm:cancel` during the download aborts it (`code: 'cancelled'`, phase `cancelled` emitted) and answers `{ ok: false }` during the setup, and that `odm:setGpu` calls `setGpu` and answers the new status.
 
 - [ ] **Step 2: Run to see them fail**
 
@@ -3454,7 +3530,7 @@ Expected: FAIL (modules missing).
 
 `odmStatus`: `unsupported` off Windows x64 (`problem: 'ODM installs on Windows x64 only.'`); `QUADRION_ODM_DIR`: `installed`, `dev: true`, version from `QUADRION_ODM_VERSION` or `'dev'`; `installing`: `installing`; no record: `not-installed`; a required file missing: `broken` (`problem: 'Files of the processing engine are missing. Reinstall it.'`); record version below the pin (`compareVersions` from `@aio/schema`): `update-available`; else `installed`. Always `pinned`, `other` (`findOtherOdm`, `null` for our own folder), `gpu: { setting: gpuSetting(), nvidia: nvidiaName(await gpus()), cuda: await nvcudaPresent(env, system.exists) }`, `mayAskAdmin: SETUP_MAY_ASK_ADMIN`.
 
-`odmInstallDir(dataRoot, env, version)`: `join(dataRoot, 'runtime', `odm-${version}`)` when `isSafeOdmPath` of it; else `join(env.LOCALAPPDATA, 'QuadrionODM', `odm-${version}`)` when that is safe; else `join(env.SystemDrive ?? 'C:', '\\', 'QuadrionODM', `odm-${version}`)`. `isSafeOdmPath(p)`: `/^[A-Za-z]:\\[A-Za-z0-9_.\\-]*$/` (and, when `SPACES_OK`, spaces allowed). `findOtherOdm`: for `HKCU\Software\Microsoft\Windows\CurrentVersion\Uninstall`, `HKLM\Software\Microsoft\Windows\CurrentVersion\Uninstall` and `HKLM\Software\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall`, entries whose `displayName` matches `UNINSTALL_MATCH` and whose `installLocation` (trailing backslash removed, case-insensitive) is not `ours`; else `C:\ODM\run.bat` when it exists and `C:\ODM` is not `ours`; with `QUADRION_E2E === '1'` and `QUADRION_ODM_OTHER` set, that folder (tests only).
+`odmInstallDir(dataRoot, env, version)`: `join(dataRoot, 'runtime', `odm-${version}`)` when `isSafeOdmPath` of it; else `join(env.LOCALAPPDATA, 'QuadrionODM', `odm-${version}`)` when that is safe; else `join(env.SystemDrive ?? 'C:', '\\', 'QuadrionODM', `odm-${version}`)`. `isSafeOdmPath(p)`: a drive path (`/^[A-Za-z]:\\/`) of printable ASCII (`/^[\x21-\x7e]*$/`, plus the space when `SPACES_OK`) without `& ^ % ! ( ) < > | "` (the Python rule of Task 5); `~` is fine, so 8.3 short names such as `RUNNER~1` pass. `findOtherOdm`: for `HKCU\Software\Microsoft\Windows\CurrentVersion\Uninstall`, `HKLM\Software\Microsoft\Windows\CurrentVersion\Uninstall` and `HKLM\Software\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall`, entries whose `displayName` matches `UNINSTALL_MATCH` and whose `installLocation` (trailing backslash removed, case-insensitive) is not `ours`; else `C:\ODM\run.bat` when it exists and `C:\ODM` is not `ours`; with `QUADRION_E2E === '1'` and `QUADRION_ODM_OTHER` set, that folder (tests only).
 
 `registerOdmIpc`: one `AbortController` and a `phase` while installing (`odm:install` while running answers `code: 'busy'`); `odm:cancel` aborts only while `phase` is `download` or `verify` (`{ ok: true }`), else `{ ok: false }`; `odm:status` passes `installing`; `odm:setGpu` awaits `setGpu(gpu)` then answers `{ ok: true, status }`; `odm:remove` refused while installing.
 
@@ -3476,13 +3552,13 @@ git commit -m "feat(desktop): install the pinned odm from settings" -m "Co-Autho
 
 **Files:**
 
-- Modify: `apps/desktop/src/main/index.ts` (imports at 139 and 164-169; `broadcast` type at 425-432; `gpuKernelCache` and `AcceleratorProbe` at 683-692; `jobEnv` at 693-711; `jobs:start` at ~1189-1209; `accelerator:` at ~1612; pack features at ~1691-1730), `apps/desktop/src/main/photogrammetry.ts` (`PHOTO_PACK` at 111, `processingVerdict` 116-127, `withAccelerator` 163-184 deleted, `readProbe` ~186-210, `PhotoSystem` 80-90, `nodePhotoSystem` ~214-221, ~990-996), `apps/desktop/src/main/photogrammetry.test.ts`, `apps/desktop/src/main/jobs/runner.ts:32-34,183` (comments), `apps/desktop/src/main/jobs/runner.test.ts:180-196`, `apps/desktop/src/main/diagnostics/photo.ts:9,46` (the accelerator line goes)
+- Modify: `apps/desktop/src/main/index.ts` (imports at 139 and 164-169; `broadcast` type at 425-432; `gpuKernelCache` and `AcceleratorProbe` at 683-692; `jobEnv` at 693-711; `jobs:start` at ~1189-1209; `accelerator:` at ~1612; pack features at ~1691-1730), `apps/desktop/src/main/photogrammetry.ts` (`PHOTO_PACK` at 111, `processingVerdict` 116-127, `withAccelerator` 163-184 deleted, `readProbe` ~186-210, `PhotoSystem` 80-90, `nodePhotoSystem` ~214-221, ~990-996), `apps/desktop/src/main/photogrammetry.test.ts`, `apps/desktop/src/main/jobs/runner.ts:32-34,183` (comments), `apps/desktop/src/main/jobs/runner.test.ts:180-196`, `apps/desktop/src/main/diagnostics/photo.ts:9,46` (the accelerator line goes) and `diagnostics/photo.test.ts`
 - Delete: `apps/desktop/src/main/jobs/addon.ts`, `apps/desktop/src/main/jobs/addon.test.ts`
 
 **Interfaces:**
 
 - Consumes: Task 12 `registerOdmIpc`, `odmJobEnv`, `currentOdm`, `odmStatus`, `nodeOdmSystem`; Task 11 types.
-- Produces: `processingVerdict(platform: string, arch: string, packVersion: string | null, engine: OdmState): HardwareProbe['processing']`; `PHOTO_PACK = '0.8.0'`; `photoBusyRefusal(pipeline: string, running: readonly { pipeline: string; status: string }[]): string | null`; `PHOTO_BUSY` (message); `PhotoSystem.engine?(): Promise<{ state: OdmState; version?: string; gpu: OdmGpuSetting }>`; `PhotoSystem.cuda?()` now checks `nvcuda.dll`.
+- Produces: `odmMemoryEnv(pipeline: string, env: Readonly<Record<string, string | undefined>>): Record<string, string>` (`{ AIO_ODM_MEMORY_CAP_MB }` for the three photo pipelines only when the hand-set override `QUADRION_PHOTO_MEMORY_MB` (or its legacy `STRATLAS_` name, through `envVar`) is a number; `{}` otherwise; there is no Settings field for it); `processingVerdict(platform: string, arch: string, packVersion: string | null, engine: OdmState): HardwareProbe['processing']`; `PHOTO_PACK = '0.8.0'`; `photoBusyRefusal(pipeline: string, running: readonly { pipeline: string; status: string }[]): string | null`; `PHOTO_BUSY` (message); `PhotoSystem.engine?(): Promise<{ state: OdmState; version?: string; gpu: OdmGpuSetting }>`; `PhotoSystem.cuda?()` now checks `nvcuda.dll`.
 
 - [ ] **Step 1: Write the failing tests** (in `photogrammetry.test.ts`)
 
@@ -3511,6 +3587,8 @@ describe('one photo job at a time', () => {
 });
 ```
 
+Also in `photogrammetry.test.ts`: `odmMemoryEnv('photo.products', {})` is `{}`; `odmMemoryEnv('photo.products', { QUADRION_PHOTO_MEMORY_MB: '49152' })` is `{ AIO_ODM_MEMORY_CAP_MB: '49152' }`; `odmMemoryEnv('walk.process', { QUADRION_PHOTO_MEMORY_MB: '49152' })` is `{}`; and delete the accelerator cases (~526-585) with `withAccelerator`. In `diagnostics/photo.test.ts` drop the accelerator fixture fields and the case "keeps the machine facts and drops the accelerator reason" (l.13, 88-98) to match `photo.ts`.
+
 In `runner.test.ts:180-196`, replace the `AIO_PHOTO_ADDON` case with one that passes a `jobEnv` returning `odmJobEnv('photo.align', { dir: 'C:\\Q\\odm-3.6.2', version: '3.6.2' }, 'auto')` and checks the spawned job's environment has `AIO_ODM` and `AIO_ODM_GPU`.
 
 - [ ] **Step 2: Run to see them fail**
@@ -3521,7 +3599,7 @@ Expected: FAIL (`processingVerdict` takes three arguments; `photoBusyRefusal` mi
 - [ ] **Step 3: Implement.**
 
 - `photogrammetry.ts`: `PHOTO_PACK = '0.8.0'` with the comment "pack 0.8.0 runs ODM (ADR 0012)"; `processingVerdict` as tested (only `win32`/`x64` is supported; `no-engine` unless the state is `installed` or `update-available`); `PHOTO_BUSY = 'Another photo processing job is running on this computer. Wait for it to finish, or cancel it in Processing.'` and `photoBusyRefusal` (pipelines starting with `photo.` other than `photo.estimate`-like read-only ones; a running job is status `running` or `queued`; check `JobRecord`'s status values in `@aio/schema` and use those meaning "at work"); delete `withAccelerator` and `AcceleratorState` uses; `PhotoSystem.accelerator` removed, `engine?()` added; `readProbe` adds `engine` from `system.engine?.()` and passes its `state` to `processingVerdict`; `nodePhotoSystem` gets `cuda: () => nvcudaPresent(process.env, exists)` and `engine` from its options.
-- `index.ts`: remove the add-on imports, `gpuKernelCache`, `accelerator`, `accelerator: () => accelerator.state()`; widen `broadcast` to `'odm:progress'`; build `odmDeps: OdmDeps` (`dataRoot: () => settings.current().dataRoot`, `env: process.env`, `platform: process.platform`, `arch: process.arch`, `fetch: (u, init) => session.fromPartition('quadrion-odm').fetch(u, init)`, `system: nodeOdmSystem(process.env)`, `gpus: async () => gpusFromInfo(await app.getGPUInfo('basic'))`, `gpuSetting: () => settings.current().processing?.odm?.gpu ?? 'auto'`, `offlineOnly: () => settings.current().offlineOnly === true`, `now: () => new Date()`); `registerOdmIpc({ ...odmDeps, handle, emit: (p) => broadcast('odm:progress', p), setGpu: (gpu) => settings.update((s) => ({ ...s, processing: { ...s.processing, odm: { ...s.processing?.odm, gpu } } })) })` (use the settings store's own update call; check its signature in `settings.ts`); `jobEnv` becomes `{ ...photoJobEnv(...), ...odmJobEnv(job.pipeline, await currentOdm(odmDeps), odmDeps.gpuSetting()), ...geoidJobEnv(...) }`; in `jobs:start`, before the pack checks, `const busy = photoBusyRefusal(req.pipeline, (await jobs.list()).jobs ?? []); if (busy) return { ok: false, error: busy };` (adapt to the shape `jobs:list` answers); the photo probe's `engine: async () => { const s = await odmStatus(odmDeps, false); return { state: s.state, ...(s.version ? { version: s.version } : {}), gpu: s.gpu.setting }; }`; the pack feature for photos keeps `minVersion: PHOTO_PACK` (now 0.8.0).
+- `index.ts`: remove the add-on imports, `gpuKernelCache`, `accelerator`, `accelerator: () => accelerator.state()`; widen `broadcast` to `'odm:progress'`; build `odmDeps: OdmDeps` (`dataRoot: () => settings.current().dataRoot`, `env: process.env`, `platform: process.platform`, `arch: process.arch`, `fetch: (u, init) => session.fromPartition('quadrion-odm').fetch(u, init)`, `system: nodeOdmSystem(process.env)`, `gpus: async () => gpusFromInfo(await app.getGPUInfo('basic'))`, `gpuSetting: () => settings.current().processing?.odm?.gpu ?? 'auto'`, `offlineOnly: () => settings.current().offlineOnly === true`, `now: () => new Date()`); `registerOdmIpc({ ...odmDeps, handle, emit: (p) => broadcast('odm:progress', p), setGpu: (gpu) => settings.update((s) => ({ ...s, processing: { ...s.processing, odm: { ...s.processing?.odm, gpu } } })) })` (use the settings store's own update call; check its signature in `settings.ts`); `jobEnv` becomes `{ ...photoJobEnv(...), ...odmJobEnv(job.pipeline, await currentOdm(odmDeps), odmDeps.gpuSetting()), ...odmMemoryEnv(job.pipeline, process.env), ...geoidJobEnv(...) }` (`AIO_ODM_MEMORY_CAP_MB` only when the memory limit was set by hand; `odmJobEnv` stays the four keys); in `jobs:start`, before the pack checks, `const busy = photoBusyRefusal(req.pipeline, (await jobs.list()).jobs ?? []); if (busy) return { ok: false, error: busy };` (adapt to the shape `jobs:list` answers); the photo probe's `engine: async () => { const s = await odmStatus(odmDeps, false); return { state: s.state, ...(s.version ? { version: s.version } : {}), gpu: s.gpu.setting }; }`; the pack feature for photos keeps `minVersion: PHOTO_PACK` (now 0.8.0).
 - `runner.ts`: comments at 32-34 and 183 say "the photo memory cap and ODM's folder and GPU setting".
 - Delete `addon.ts` and `addon.test.ts`; `diagnostics/photo.ts` drops the `accelerator` line (and its doc mention).
 
@@ -3533,7 +3611,7 @@ Expected: PASS (renderer type errors from Task 16's files are Task 16's; report 
 - [ ] **Step 5: Lint and commit**
 
 ```bash
-git add apps/desktop/src/main/index.ts apps/desktop/src/main/photogrammetry.ts apps/desktop/src/main/photogrammetry.test.ts apps/desktop/src/main/jobs/runner.ts apps/desktop/src/main/jobs/runner.test.ts apps/desktop/src/main/diagnostics/photo.ts
+git add apps/desktop/src/main/index.ts apps/desktop/src/main/photogrammetry.ts apps/desktop/src/main/photogrammetry.test.ts apps/desktop/src/main/jobs/runner.ts apps/desktop/src/main/jobs/runner.test.ts apps/desktop/src/main/diagnostics/photo.ts apps/desktop/src/main/diagnostics/photo.test.ts
 git rm apps/desktop/src/main/jobs/addon.ts apps/desktop/src/main/jobs/addon.test.ts
 git commit -m "feat(desktop): odm in the job environment and the photo gate; gpu add-on removed" -m "Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
 ```
@@ -3795,7 +3873,7 @@ git commit -m "feat(desktop): create maps waits for the processing engine; odm s
 **Files:**
 
 - Create: `docs/architecture/adr/0012-odm-engine.md`
-- Modify: `docs/architecture/adr/0008-photogrammetry-engine.md` (status line), `docs/architecture/data-conventions.md` (section 21 run files: `odm/`, `odm-logs/`, `engine`; line ~453 and section 31 at ~785-805: the GPU add-on retired, and a new subsection "ODM install record" for `runtime/odm.json`), `docs/release/README.md:146-154,176` (the add-on steps go; one paragraph on ODM: downloaded by the app from ODM's GitHub release, pinned version and SHA-256 in `apps/desktop/src/main/odm/pin.ts`, never bundled), `tools/release/notices.mjs` (`addonInventory` and its section go; a fixed "Downloaded at run time" section names ODM 3.6.2, AGPL-3.0, `https://github.com/OpenDroneMap/ODM`, installed by the person from Settings, run as a separate program, not bundled), `tools/release/notices.test.mjs:134-149`, `tools/release/budgets.mjs:8,48,86-95,271` and `budgets.test.mjs` (add-on budget goes), `docs/release/THIRD-PARTY-NOTICES.md` (regenerated), `.github/workflows/ci.yml:410,423-424,469-514` (the `addon` filter and job go), `.github/workflows/release.yml:440-480` (the add-on steps go)
+- Modify: `docs/architecture/adr/0008-photogrammetry-engine.md` (status line), `docs/architecture/data-conventions.md` (section 21 run files: `odm/`, `odm-logs/`, `engine`; line ~453 and section 31 at ~785-805: the GPU add-on retired, and a new subsection "ODM install record" for `runtime/odm.json`), `docs/release/README.md:146-154,176` (the add-on steps go; one paragraph on ODM: downloaded by the app from ODM's GitHub release, pinned version and SHA-256 in `apps/desktop/src/main/odm/pin.ts`, never bundled), `tools/release/notices.mjs` (`addonInventory` and its section go; a fixed "Downloaded at run time" section names ODM 3.6.2, AGPL-3.0, `https://github.com/OpenDroneMap/ODM`, installed by the person from Settings, run as a separate program, not bundled), `tools/release/notices.test.mjs:134-149`, `tools/release/budgets.mjs:8,48,86-95,271` and `budgets.test.mjs` (add-on budget goes), `docs/release/THIRD-PARTY-NOTICES.md` (regenerated), `.github/workflows/ci.yml:410,423-424,469-514` (the `addon` filter and job go), `.github/workflows/release.yml:440-480` (the add-on steps go), `.github/workflows/ci.yml:293` (the comment about `photo-real.spec.ts` goes), `docs/KNOWN-LIMITS.md:230` (the real-engine e2e sentence: the real check is now `tools/odm/probe.mjs` and `python/tests/test_odm_real.py`, both opt-in)
 - Delete: `tools/pipeline-pack/accelerator.mjs`, `accelerator.test.mjs`, `accelerator-lock.json`
 
 **Interfaces:**
@@ -3822,7 +3900,7 @@ The first real 1,000-photo run (995 photos, 15.27 ha, pack 0.7.0) ran 7.5 hours 
 1. **ODM does everything from the photos**: alignment, dense cloud, DSM, DTM, orthophoto, point cloud, textured mesh. Our pipelines lay out one ODM project per run, start ODM and import what it writes into the existing layer kinds.
 2. **Our own engine is deleted**, not kept as a fallback. COLMAP stays only for walks.
 3. **ODM is downloaded by the app from ODM's GitHub release, a pinned version** (3.6.2) checked against its size and SHA-256, and installed per user with its own silent setup, from Settings, Processing tools. It is never bundled in the installer or the pipeline pack.
-4. **GPU auto, with a switch**: ODM uses an NVIDIA card when its driver is present and it works, else the CPU; a Settings switch keeps it on the CPU. Threads: `clamp(min(CPUs - 2, floor(RAM GB / 3)), 2, 32)`, lowered by the photo memory cap.
+4. **GPU auto, with a switch**: ODM uses an NVIDIA card when its driver is present and it works, else the CPU; a Settings switch keeps it on the CPU. Threads: `clamp(min(CPUs - 2, floor(RAM GB / 3)), 2, 32)`, lowered only by a memory limit set by hand (never by the automatic photo memory cap).
 5. **Arm's length**: ODM runs as a separate, unmodified program (`run.bat`); the app and the pipeline pack never link it. One ODM run at a time on a computer.
 6. **Windows x64 only** for photogrammetry from this decision (ODM ships a Windows installer; macOS is parked, 10 Oct 2026).
 
@@ -3852,7 +3930,7 @@ Expected: PASS.
 - [ ] **Step 5: Commit**
 
 ```bash
-git add docs/architecture/adr/0012-odm-engine.md docs/architecture/adr/0008-photogrammetry-engine.md docs/architecture/data-conventions.md docs/release/README.md docs/release/THIRD-PARTY-NOTICES.md tools/release/notices.mjs tools/release/notices.test.mjs tools/release/budgets.mjs tools/release/budgets.test.mjs .github/workflows/ci.yml .github/workflows/release.yml
+git add docs/architecture/adr/0012-odm-engine.md docs/architecture/adr/0008-photogrammetry-engine.md docs/architecture/data-conventions.md docs/KNOWN-LIMITS.md docs/release/README.md docs/release/THIRD-PARTY-NOTICES.md tools/release/notices.mjs tools/release/notices.test.mjs tools/release/budgets.mjs tools/release/budgets.test.mjs .github/workflows/ci.yml .github/workflows/release.yml
 git rm tools/pipeline-pack/accelerator.mjs tools/pipeline-pack/accelerator.test.mjs tools/pipeline-pack/accelerator-lock.json
 git commit -m "docs(adr): odm as the photogrammetry engine; gpu add-on tooling removed" -m "Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
 ```
@@ -3864,13 +3942,13 @@ git commit -m "docs(adr): odm as the photogrammetry engine; gpu add-on tooling r
 **Files:**
 
 - Create: `apps/desktop/e2e/odm-fake/fake-setup.mjs`
-- Modify: `apps/desktop/e2e/processing-tools.spec.ts`, `photo-process.spec.ts`, `photo-products.spec.ts`, `photo-change.spec.ts`, `photoPack.ts`, `photo-fake/aio_photo_fake.py`, `m10Fixtures.ts` (only if it imports what is removed)
+- Modify: `apps/desktop/e2e/processing-tools.spec.ts`, `photo-process.spec.ts`, `photo-products.spec.ts`, `photo-change.spec.ts`, `photoPack.ts`, `photo-fake/aio_photo_fake.py`, `m10Fixtures.ts` (only if it imports what is removed), `tools/ci/e2e-timings.json:69` (drop `photo-real`), `.github/workflows/nightly.yml:239-247` (drop the photo-real step), `.gitignore` (add `python/tests/odm-work/`)
 - Delete: `apps/desktop/e2e/photo-real.spec.ts`
 
 **Interfaces:**
 
 - Consumes: everything app-side (Tasks 8 to 16); the fake ODM (`python/tests/fake_odm`, Task 3).
-- Produces: e2e helpers `ODM_FAKE_DIR` (absolute path of `python/tests/fake_odm`) and `odmEnv(): Record<string, string>` (`{ QUADRION_ODM_DIR: ODM_FAKE_DIR, QUADRION_ODM_VERSION: '3.6.2', FAKE_ODM_PYTHON: VENV_PYTHON, FAKE_ODM_UDP_PORT: '0' }`) exported from `photoPack.ts`.
+- Produces: e2e helpers `ODM_FAKE_DIR` (absolute path of `python/tests/fake_odm`) and `odmEnv(): Record<string, string>` (`{ QUADRION_ODM_DIR: ODM_FAKE_DIR, QUADRION_ODM_VERSION: '3.6.2', FAKE_ODM_PYTHON: VENV_PYTHON, FAKE_ODM_UDP_PORT: '0', AIO_ODM_WORK: <a temp folder without spaces, made per run> }`, so no junction lands in the repository) exported from `photoPack.ts`.
 
 `fake-setup.mjs` (run by main as Electron-as-Node in e2e only; deviation 11):
 
@@ -3922,6 +4000,8 @@ test('installs the engine from Settings and removes it again', async ({ win }) =
         win.evaluate(() => window.aio.invoke('odm:status', {}).then((s) => s.gpu.setting)),
       )
       .toBe('off');
+  } else {
+    await expect(gpu).toBeDisabled(); // no NVIDIA card here (CI): the switch cannot be used
   }
   await card.getByTestId('engine-remove').click();
   await card.getByTestId('engine-remove-confirm').click();
@@ -3968,7 +4048,7 @@ Expected: first FAIL where the new expectations meet old behaviour; after Step 3
 
 - [ ] **Step 3: Make them pass** (spec code, helpers and the e2e fake only; a product bug found here goes back to its task's owner through the controller).
 
-- [ ] **Step 4: Delete `photo-real.spec.ts`**, then `git grep -n "photo-real\|colmapPython\|PHOTO_REAL" apps tools docs` and fix what remains (documentation lines that list e2e specs).
+- [ ] **Step 4: Delete `photo-real.spec.ts`**, drop it from `tools/ci/e2e-timings.json` and `nightly.yml`, then `git grep -n "photo-real\|colmapPython\|PHOTO_REAL" apps tools .github` and fix what remains in your files. Documentation lines (`docs/**`) and `ci.yml` belong to Task 17: list any you find in the hand-off instead of editing them.
 
 - [ ] **Step 5: Whole check**
 
@@ -3978,7 +4058,7 @@ Expected: PASS.
 - [ ] **Step 6: Commit**
 
 ```bash
-git add apps/desktop/e2e/odm-fake/fake-setup.mjs apps/desktop/e2e/processing-tools.spec.ts apps/desktop/e2e/photo-process.spec.ts apps/desktop/e2e/photo-products.spec.ts apps/desktop/e2e/photo-change.spec.ts apps/desktop/e2e/photoPack.ts apps/desktop/e2e/photo-fake/aio_photo_fake.py
+git add apps/desktop/e2e/odm-fake/fake-setup.mjs apps/desktop/e2e/processing-tools.spec.ts apps/desktop/e2e/photo-process.spec.ts apps/desktop/e2e/photo-products.spec.ts apps/desktop/e2e/photo-change.spec.ts apps/desktop/e2e/photoPack.ts apps/desktop/e2e/photo-fake/aio_photo_fake.py tools/ci/e2e-timings.json .github/workflows/nightly.yml .gitignore
 git rm apps/desktop/e2e/photo-real.spec.ts
 git commit -m "test(e2e): processing engine card and photo specs on the fake odm" -m "Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
 ```
