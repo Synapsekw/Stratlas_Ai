@@ -171,16 +171,24 @@ describe('waiting for the scene', () => {
 });
 
 describe('the street map and the landscape from packs', () => {
-  const ground = { offered: true, imagery: true, terrain: true };
+  const ground = { offered: true, imagery: true, terrain: true, online: false };
   it('gives way while imagery or terrain around the site is drawn', () => {
     expect(landscapeOn({ aroundTerrain: false, aroundImagery: false }, ground)).toBe(false);
     expect(landscapeOn({ aroundTerrain: true, aroundImagery: false }, ground)).toBe(true);
     expect(landscapeOn({ aroundTerrain: false, aroundImagery: true }, ground)).toBe(true);
   });
+  it('gives way for an online map as the 3D base, when the preset offers it', () => {
+    const none = { aroundTerrain: false, aroundImagery: false };
+    const nothing = { offered: true, imagery: false, terrain: false, online: true };
+    expect(landscapeOn(none, nothing)).toBe(true);
+    expect(landscapeOn(none, { ...nothing, offered: false })).toBe(false);
+  });
   it('stays when the choice is on but nothing can be drawn', () => {
     const chosen = { aroundTerrain: true, aroundImagery: true };
     expect(landscapeOn(chosen, { ...ground, offered: false })).toBe(false);
-    expect(landscapeOn(chosen, { offered: true, imagery: false, terrain: false })).toBe(false);
+    expect(
+      landscapeOn(chosen, { offered: true, imagery: false, terrain: false, online: false }),
+    ).toBe(false);
     expect(landscapeOn({ ...chosen, aroundImagery: false }, { ...ground, terrain: false })).toBe(
       false,
     );

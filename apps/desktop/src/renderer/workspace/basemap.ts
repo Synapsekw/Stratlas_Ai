@@ -12,12 +12,18 @@
  */
 import { frameProjection, orderPacks, packCovers } from '@aio/maps';
 import {
+  DEFAULT_ONLINE_SOURCE,
+  isOnlineBase,
   onlineSatelliteAvailability,
+  onlineSource,
+  type BaseMapId,
+  type MapKeysStatus,
   type OnlineSatelliteAvailability,
   type OnlineSourceId,
   type ProjectManifest,
   type RasterPackInfo,
 } from '@aio/schema';
+import { drawnBase } from '../maps/mapMenuModel';
 
 export type Basemap = 'streets' | 'satellite' | 'imagery';
 
@@ -26,14 +32,43 @@ export const BASEMAPS: readonly Basemap[] = ['streets', 'satellite', 'imagery'];
 
 /** The remembered choices this model reads (`RasterPrefs` of `siteTiles.ts`). */
 export interface BasemapPrefs {
+  /** Imagery packs on top of the base map. */
   satellite: boolean;
   hillshade: boolean;
   /** Streets and names over the imagery (off: Satellite only). */
   streets: boolean;
   /** The one imagery pack to draw, or null for the best available. */
   imageryPack: string | null;
-  /** Online satellite (Sentinel-2) is switched on (main holds the switch). */
+  /** Online maps are switched on (main holds the switch). */
   onlineSatellite: boolean;
+  /** The base map chosen in the Map menu; null until one is chosen there. */
+  mapBase?: BaseMapId | null;
+}
+
+/** What the model needs to know about online maps beside the switch. */
+export interface BasemapOnline {
+  /** The online satellite main has for this workstation. */
+  source: OnlineSourceId;
+  keys: MapKeysStatus;
+  offlineOnly: boolean;
+}
+
+export const NO_ONLINE: BasemapOnline = {
+  source: DEFAULT_ONLINE_SOURCE,
+  keys: { esri: false, mapbox: false },
+  offlineOnly: false,
+};
+
+/**
+ * The Map view's base map: the one chosen in the Map menu, or, never chosen there, what 0.11's map
+ * type showed: the online satellite under Satellite once online maps were on, else the street map.
+ */
+export function resolveMapBase(
+  prefs: Pick<BasemapPrefs, 'mapBase' | 'satellite' | 'onlineSatellite'>,
+  online: Pick<BasemapOnline, 'source'>,
+): BaseMapId {
+  if (prefs.mapBase) return prefs.mapBase;
+  return prefs.satellite && prefs.onlineSatellite ? online.source : 'streets';
 }
 
 export type LonLat = readonly [number, number];
@@ -64,11 +99,12 @@ export function coveringPacks<P extends Pick<RasterPackInfo, 'bbox' | 'maxZoom'>
 export interface BasemapDraw {
   imagery: RasterPackInfo[];
   terrain: RasterPackInfo[];
+  /** Imagery packs are drawn. */
   satellite: boolean;
   hillshade: boolean;
   /** The streets and names of the basemap over the imagery. */
   streets: boolean;
-  /** Online satellite under the packs: imagery everywhere, also where no pack reaches. */
+  /** The online source drawn under the packs, or null. */
   online: OnlineSourceId | null;
 }
 
@@ -80,8 +116,14 @@ export interface BasemapModel {
    * satellite is switched on (it has imagery everywhere).
    */
   satellite: boolean;
-  /** Online satellite is switched on. */
+  /** Online maps are switched on. */
   online: boolean;
+  /** The base map chosen (or derived from 0.11's choices). */
+  base: BaseMapId;
+  /** The base map drawn: the chosen one, or saved Sentinel-2 or the street map in its place. */
+  drawn: BaseMapId;
+  /** The chosen base cannot be drawn now. */
+  fallback: boolean;
   /** The imagery packs that cover the site, most detailed first. */
   packs: RasterPackInfo[];
   /** The one pack drawn, or null for the best available. */
@@ -105,31 +147,50 @@ export function basemapModel(
   imagery: readonly RasterPackInfo[],
   terrain: readonly RasterPackInfo[],
   site: LonLat | null,
+  online: BasemapOnline = NO_ONLINE,
 ): BasemapModel {
   const packs = coveringPacks(imagery, site);
   const relief = coveringPacks(terrain, site);
-  const online = prefs.onlineSatellite;
-  const satellite = packs.length > 0 || online;
+  const onlineOn = prefs.onlineSatellite;
+  const satellite = packs.length > 0 || onlineOn;
   const hillshade = relief.length > 0;
   const one = packs.find((p) => p.id === prefs.imageryPack) ?? null;
-  const satelliteOn = prefs.satellite && satellite;
   const hillshadeOn = prefs.hillshade && hillshade;
-  const choice: Basemap = !satelliteOn ? 'streets' : prefs.streets ? 'satellite' : 'imagery';
+  const base = resolveMapBase(prefs, online);
+  const drawn = drawnBase(
+    base,
+    { enabled: onlineOn, offlineOnly: online.offlineOnly },
+    online.keys,
+  );
+  const drawnSource = isOnlineBase(drawn.base) ? onlineSource(drawn.base) : undefined;
+  const packsOn = prefs.satellite && packs.length > 0;
+  const imageryUnder = packsOn || (drawnSource?.imagery ?? false);
+  // a map with its own street names hides ours; over imagery they follow the switch
+  const streets = drawnSource?.labels ? false : imageryUnder ? prefs.streets : true;
+  // 0.11's map type, for the picker and the palette until they move to the Map menu (Task 12)
+  const choice: Basemap = !(prefs.satellite && satellite)
+    ? 'streets'
+    : prefs.streets
+      ? 'satellite'
+      : 'imagery';
   return {
     choice,
     satellite,
-    online,
+    online: onlineOn,
     packs,
     pack: one?.id ?? null,
     hillshade,
     hillshadeOn,
+    base,
+    drawn: drawn.base,
+    fallback: drawn.fallback,
     draw: {
-      imagery: !satelliteOn ? [] : one ? [one] : [...imagery],
+      imagery: !packsOn ? [] : one ? [one] : [...imagery],
       terrain: hillshadeOn ? relief : [],
-      satellite: satelliteOn,
+      satellite: packsOn,
       hillshade: hillshadeOn,
-      streets: choice !== 'imagery',
-      online: satelliteOn && online ? 's2cloudless-2016' : null,
+      streets,
+      online: drawnSource ? drawnSource.id : null,
     },
   };
 }
@@ -147,6 +208,8 @@ export interface GroundModel {
   /** A pack covers the site. */
   imagery: boolean;
   terrain: boolean;
+  /** An online map is drawn around the site (the 3D scene's base map). */
+  online: boolean;
 }
 
 export function groundModel(
@@ -154,11 +217,13 @@ export function groundModel(
   terrain: readonly RasterPackInfo[],
   site: LonLat | null,
   offered: boolean,
+  online = false,
 ): GroundModel {
   return {
     offered,
     imagery: site !== null && coveringPacks(imagery, site).length > 0,
     terrain: site !== null && coveringPacks(terrain, site).length > 0,
+    online: offered && site !== null && online,
   };
 }
 

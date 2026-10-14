@@ -214,9 +214,9 @@ export function settledBox<B extends BoxLike>(
 }
 
 /**
- * Imagery or terrain around the site is drawn (the landscape from packs, `siteTiles.ts`): the
- * street map gives way, because the landscape follows the terrain and a flat map would cut
- * through it.
+ * Imagery or terrain around the site is drawn (from packs, or an online map as the 3D scene's
+ * base, `siteTiles.ts`): the street map gives way, because the landscape follows the terrain and
+ * a flat map would cut through it.
  */
 export function landscapeOn(
   prefs: { aroundTerrain: boolean; aroundImagery: boolean },
@@ -224,7 +224,9 @@ export function landscapeOn(
 ): boolean {
   return (
     ground.offered &&
-    ((prefs.aroundTerrain && ground.terrain) || (prefs.aroundImagery && ground.imagery))
+    (ground.online ||
+      (prefs.aroundTerrain && ground.terrain) ||
+      (prefs.aroundImagery && ground.imagery))
   );
 }
 

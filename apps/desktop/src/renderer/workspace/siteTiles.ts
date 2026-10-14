@@ -22,10 +22,21 @@ import {
   syncRasterPacks,
   type MapController,
 } from '@aio/maps';
-import type { AioBridge, ProjectManifest, RasterPackInfo, TilesetEntry } from '@aio/schema';
+import {
+  BaseMapId,
+  DEFAULT_ONLINE_SOURCE,
+  isOnlineBase,
+  type AioBridge,
+  type MapKeysStatus,
+  type OnlineSourceId,
+  type ProjectManifest,
+  type RasterPackInfo,
+  type TilesetEntry,
+} from '@aio/schema';
 import {
   attachTileset,
   buildSurroundings,
+  createOnlineTileSource,
   createRasterTileSource,
   siteFrame,
   tilesBudget,
@@ -35,12 +46,14 @@ import {
   type TilesetStats,
   type TilesTier,
 } from '@aio/tiles';
-import { assetUrl, useWorkspace } from '@aio/workspace';
+import { assetUrl, useWorkspace, workspace } from '@aio/workspace';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useStore } from 'zustand';
 import { createStore } from 'zustand/vanilla';
 import { useGraphics } from '../graphics';
 import { TILESET_WRITERS } from '../jobs';
+import { drawnBase } from '../maps/mapMenuModel';
+import { getShell, useShellStore } from '../store';
 import {
   basemapModel,
   groundModel,
@@ -65,12 +78,14 @@ export interface RasterPrefs {
   aroundTerrain: boolean;
   aroundImagery: boolean;
   /**
-   * Online satellite (Sentinel-2) at the bottom of the map's satellite stack. Main holds and
-   * enforces the switch (userData `online.json`, ADR 0007 amended 10 Oct 2026); this copy says
-   * what to draw and follows main on every refresh. Change it with `setOnlineSatellite`, which
-   * asks main first.
+   * Online maps are switched on (main's `online.json`, ADR 0007 amended 10 and 14 Oct 2026); this
+   * copy follows main on every refresh. Change it with `setOnline`, which asks main first.
    */
   onlineSatellite: boolean;
+  /** The Map view's base map chosen in the Map menu (null until chosen: 0.11's choices decide). */
+  mapBase: BaseMapId | null;
+  /** The 3D scene's base map chosen in its Map menu (null: the street map under the site). */
+  sceneBase: BaseMapId | null;
 }
 
 const DEFAULTS: RasterPrefs = {
@@ -81,6 +96,8 @@ const DEFAULTS: RasterPrefs = {
   aroundTerrain: false,
   aroundImagery: false,
   onlineSatellite: false,
+  mapBase: null,
+  sceneBase: null,
 };
 
 function storage(): Storage | null {
@@ -96,7 +113,7 @@ function readPrefs(): RasterPrefs {
     const v = JSON.parse(storage()?.getItem(KEY) ?? '{}') as Partial<
       Record<keyof RasterPrefs, unknown>
     >;
-    type Flag = Exclude<keyof RasterPrefs, 'imageryPack'>;
+    type Flag = Exclude<keyof RasterPrefs, 'imageryPack' | 'mapBase' | 'sceneBase'>;
     const pick = (k: Flag) => (typeof v[k] === 'boolean' ? v[k] : DEFAULTS[k]);
     return {
       satellite: pick('satellite'),
@@ -107,6 +124,8 @@ function readPrefs(): RasterPrefs {
       aroundImagery: pick('aroundImagery'),
       // main says (the first refresh): until then nothing online is drawn or asked for
       onlineSatellite: false,
+      mapBase: BaseMapId.safeParse(v.mapBase).success ? (v.mapBase as BaseMapId) : null,
+      sceneBase: BaseMapId.safeParse(v.sceneBase).success ? (v.sceneBase as BaseMapId) : null,
     };
   } catch {
     return { ...DEFAULTS };
@@ -131,11 +150,13 @@ interface RasterState {
    * while a walk is placed on it): a quit leaves the stored choices as the person made them.
    */
   setForSession(patch: Partial<RasterPrefs>): void;
+  /** The online source main has and which map keys this computer holds (never a key). */
+  online: { source: OnlineSourceId; keys: MapKeysStatus };
   /**
-   * Switch online satellite on or off: main first (it refuses every tile until its switch is on),
-   * then the layer. Answers an error message, or null when it is done.
+   * Switch online maps on or off, or choose the online satellite: main first (it refuses every
+   * tile until its switch is on), then the layer. Answers an error message, or null when done.
    */
-  setOnlineSatellite(on: boolean): Promise<string | null>;
+  setOnline(patch: { enabled?: boolean; source?: OnlineSourceId }): Promise<string | null>;
   refresh(): void;
 }
 
@@ -148,10 +169,11 @@ export const rasterPacks = createStore<RasterState>()((set, get) => ({
   terrain: [],
   rev: 0,
   chosen: 0,
+  online: { source: DEFAULT_ONLINE_SOURCE, keys: { esri: false, mapbox: false } },
   set(patch) {
     const prefs = { ...get().prefs, ...patch };
     chosen = { ...chosen, ...patch };
-    const picked = 'satellite' in patch || 'streets' in patch;
+    const picked = 'satellite' in patch || 'streets' in patch || 'mapBase' in patch;
     set(picked ? { prefs, chosen: get().chosen + 1 } : { prefs });
     try {
       storage()?.setItem(KEY, JSON.stringify(chosen));
@@ -163,12 +185,13 @@ export const rasterPacks = createStore<RasterState>()((set, get) => ({
   setForSession(patch) {
     set({ prefs: { ...get().prefs, ...patch } });
   },
-  async setOnlineSatellite(on) {
+  async setOnline(patch) {
     const bridge = aio();
     if (!bridge) return 'Settings are not available.';
     try {
-      const r = await bridge.invoke('onlineTiles:set', { enabled: on });
+      const r = await bridge.invoke('onlineTiles:set', patch);
       if (!r.ok) return r.error;
+      set({ online: { ...get().online, source: r.source } });
       get().set({ onlineSatellite: r.enabled });
       return null;
     } catch (e) {
@@ -182,7 +205,8 @@ export const rasterPacks = createStore<RasterState>()((set, get) => ({
       bridge.invoke('imageryPacks:list', {}).catch(() => null),
       bridge.invoke('terrainPacks:list', {}).catch(() => null),
       bridge.invoke('onlineTiles:status', {}).catch(() => null),
-    ]).then(([i, t, status]) => {
+      bridge.invoke('mapKeys:status', {}).catch(() => null),
+    ]).then(([i, t, status, keys]) => {
       const cur = get();
       set({
         imagery: unchanged(cur.imagery, i?.ok ? i.packs : []),
@@ -192,6 +216,13 @@ export const rasterPacks = createStore<RasterState>()((set, get) => ({
       // main decides whether online satellite is on; the layer follows it
       const online = status?.enabled === true;
       if (status && online !== get().prefs.onlineSatellite) get().set({ onlineSatellite: online });
+      if (status || keys)
+        set({
+          online: {
+            source: status?.source ?? get().online.source,
+            keys: keys ?? get().online.keys,
+          },
+        });
     });
   },
 }));
@@ -246,11 +277,27 @@ export function useBasemap(): BasemapModel {
   const prefs = useRasterPacks((s) => s.prefs);
   const imagery = useRasterPacks((s) => s.imagery);
   const terrain = useRasterPacks((s) => s.terrain);
+  const online = useRasterPacks((s) => s.online);
+  const offlineOnly = useShellStore(getShell(workspace), (s) => s.settings.offlineOnly === true);
   const site = useSiteKey();
   return useMemo(
-    () => basemapModel(prefs, imagery, terrain, siteOf(site)),
-    [prefs, imagery, terrain, site],
+    () => basemapModel(prefs, imagery, terrain, siteOf(site), { ...online, offlineOnly }),
+    [prefs, imagery, terrain, site, online, offlineOnly],
   );
+}
+
+/** The online source the 3D scene draws around the site, or null (street map or packs). */
+export function sceneOnline(
+  prefs: Pick<RasterPrefs, 'sceneBase' | 'onlineSatellite'>,
+  online: { keys: MapKeysStatus },
+  offlineOnly: boolean,
+): OnlineSourceId | null {
+  const d = drawnBase(
+    prefs.sceneBase ?? 'streets',
+    { enabled: prefs.onlineSatellite, offlineOnly },
+    online.keys,
+  );
+  return isOnlineBase(d.base) ? d.base : null;
 }
 
 /** What the 3D view can draw around the open project's site. */
@@ -258,11 +305,15 @@ export function useGround(): GroundModel {
   const tier = useGraphics((s) => s.tier);
   const imagery = useRasterPacks((s) => s.imagery);
   const terrain = useRasterPacks((s) => s.terrain);
+  const prefs = useRasterPacks((s) => s.prefs);
+  const online = useRasterPacks((s) => s.online);
+  const offlineOnly = useShellStore(getShell(workspace), (s) => s.settings.offlineOnly === true);
   const site = useSiteKey();
   const offered = tilesBudget(tier).surroundings;
+  const drawnOnline = sceneOnline(prefs, online, offlineOnly) !== null;
   return useMemo(
-    () => groundModel(imagery, terrain, siteOf(site), offered),
-    [imagery, terrain, site, offered],
+    () => groundModel(imagery, terrain, siteOf(site), offered, drawnOnline),
+    [imagery, terrain, site, offered, drawnOnline],
   );
 }
 
@@ -396,10 +447,13 @@ export function useSiteSurroundings(stage: EngineStage | null, project: Project)
   const prefs = useRasterPacks((s) => s.prefs);
   const imagery = useRasterPacks((s) => s.imagery);
   const terrain = useRasterPacks((s) => s.terrain);
+  const online = useRasterPacks((s) => s.online);
+  const offlineOnly = useShellStore(getShell(workspace), (s) => s.settings.offlineOnly === true);
   const manifest = project?.manifest ?? null;
   const offered = tilesBudget(tier).surroundings;
+  const onlineId = offered ? sceneOnline(prefs, online, offlineOnly) : null;
   const wantTerrain = offered && prefs.aroundTerrain && terrain.length > 0;
-  const wantImagery = offered && prefs.aroundImagery && imagery.length > 0;
+  const wantImagery = offered && (onlineId !== null || (prefs.aroundImagery && imagery.length > 0));
 
   useEffect(() => {
     if (!stage || !manifest || (!wantTerrain && !wantImagery)) return;
@@ -410,7 +464,11 @@ export function useSiteSurroundings(stage: EngineStage | null, project: Project)
     void buildSurroundings({
       frame,
       terrain: wantTerrain ? createRasterTileSource('terrain', terrain) : null,
-      imagery: wantImagery ? createRasterTileSource('imagery', imagery) : null,
+      imagery: onlineId
+        ? createOnlineTileSource(onlineId)
+        : wantImagery
+          ? createRasterTileSource('imagery', imagery)
+          : null,
       signal: abort.signal,
     }).then(
       (m) => {
@@ -437,7 +495,7 @@ export function useSiteSurroundings(stage: EngineStage | null, project: Project)
         stage.requestRender();
       }
     };
-  }, [stage, manifest, wantTerrain, wantImagery, imagery, terrain]);
+  }, [stage, manifest, wantTerrain, wantImagery, onlineId, imagery, terrain]);
 }
 
 /** Maps whose streets over the imagery are hidden (Satellite only). */

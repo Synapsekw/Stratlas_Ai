@@ -1,3 +1,4 @@
+// @vitest-environment jsdom
 import type { RasterPackInfo } from '@aio/schema';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { rasterPacks, unchanged } from './siteTiles';
@@ -71,7 +72,7 @@ describe('raster packs store', () => {
         return Promise.resolve({ ok: true, packs: [] });
       }),
     };
-    expect(await rasterPacks.getState().setOnlineSatellite(true)).toBeNull();
+    expect(await rasterPacks.getState().setOnline({ enabled: true })).toBeNull();
     expect(asked).toEqual([{ enabled: true }]);
     expect(rasterPacks.getState().prefs.onlineSatellite).toBe(true);
 
@@ -86,7 +87,7 @@ describe('raster packs store', () => {
     await vi.waitFor(() => {
       expect(rasterPacks.getState().prefs.onlineSatellite).toBe(true);
     });
-    expect(await rasterPacks.getState().setOnlineSatellite(false)).toBeNull();
+    expect(await rasterPacks.getState().setOnline({ enabled: false })).toBeNull();
     expect(rasterPacks.getState().prefs.onlineSatellite).toBe(false);
   });
 
@@ -96,12 +97,12 @@ describe('raster packs store', () => {
         Promise.resolve({ ok: false, error: 'The online satellite setting was not saved.' }),
       ),
     };
-    expect(await rasterPacks.getState().setOnlineSatellite(true)).toBe(
+    expect(await rasterPacks.getState().setOnline({ enabled: true })).toBe(
       'The online satellite setting was not saved.',
     );
     expect(rasterPacks.getState().prefs.onlineSatellite).toBe(false);
     g.aio = { invoke: vi.fn(() => Promise.reject(new Error('No answer.'))) };
-    expect(await rasterPacks.getState().setOnlineSatellite(true)).toBe('No answer.');
+    expect(await rasterPacks.getState().setOnline({ enabled: true })).toBe('No answer.');
     expect(rasterPacks.getState().prefs.onlineSatellite).toBe(false);
   });
   it('a session-only switch shows on the map but is never stored; a choice stores what was chosen', () => {
@@ -133,5 +134,35 @@ describe('raster packs store', () => {
     } finally {
       vi.unstubAllGlobals();
     }
+  });
+
+  it('reads the source and which map keys this computer holds on refresh', async () => {
+    g.aio = {
+      invoke: vi.fn((channel: string) => {
+        if (channel === 'onlineTiles:status')
+          return Promise.resolve({
+            enabled: true,
+            source: 'mapbox-satellite',
+            cache: { bytes: 0, tiles: 0, capBytes: 1 },
+          });
+        if (channel === 'mapKeys:status') return Promise.resolve({ esri: false, mapbox: true });
+        return Promise.resolve({ ok: true, packs: [] });
+      }),
+    };
+    rasterPacks.getState().refresh();
+    await vi.waitFor(() => {
+      expect(rasterPacks.getState().online).toEqual({
+        source: 'mapbox-satellite',
+        keys: { esri: false, mapbox: true },
+      });
+    });
+  });
+
+  it('keeps the base maps chosen in the Map menus', () => {
+    rasterPacks.getState().set({ mapBase: 'esri-world-imagery', sceneBase: 'mapbox-dark' });
+    expect(JSON.parse(localStorage.getItem('stratlas.rasterPacks') ?? '{}')).toMatchObject({
+      mapBase: 'esri-world-imagery',
+      sceneBase: 'mapbox-dark',
+    });
   });
 });

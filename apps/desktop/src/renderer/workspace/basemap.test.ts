@@ -5,7 +5,9 @@ import {
   basemapPatch,
   coveringPacks,
   groundModel,
+  NO_ONLINE,
   onlineRow,
+  resolveMapBase,
   siteLonLat,
   type BasemapPrefs,
 } from './basemap';
@@ -131,43 +133,48 @@ describe('the basemap of a site', () => {
 
   describe('with online satellite switched on', () => {
     const on = (over: Partial<BasemapPrefs> = {}) => prefs({ onlineSatellite: true, ...over });
+    const S2 = { ...NO_ONLINE, source: 's2cloudless-2016' as const };
 
     it('Satellite can be chosen where no pack covers the site, and draws the online imagery', () => {
-      const m = basemapModel(on(), [elsewhere], [], SITE);
+      const m = basemapModel(on(), [elsewhere], [], SITE, S2);
       expect(m.satellite).toBe(true);
       expect(m.online).toBe(true);
       expect(m.packs).toEqual([]);
       expect(m.choice).toBe('satellite');
-      // the packs elsewhere still draw (over it), so the map stays sharp where they are
+      // a pack that does not reach the site is not drawn, online or not
       expect(m.draw).toEqual({
-        imagery: [elsewhere],
+        imagery: [],
         terrain: [],
-        satellite: true,
+        satellite: false,
         hillshade: false,
         streets: true,
         online: 's2cloudless-2016',
       });
-      expect(basemapModel(on(), [], [], SITE).draw).toMatchObject({
+      expect(basemapModel(on(), [], [], SITE, S2).draw).toMatchObject({
         online: 's2cloudless-2016',
         imagery: [],
       });
     });
 
     it('Satellite only keeps it and hides the streets', () => {
-      const m = basemapModel(on({ streets: false }), [], [], SITE);
+      const m = basemapModel(on({ streets: false }), [], [], SITE, S2);
       expect(m.choice).toBe('imagery');
-      expect(m.draw).toMatchObject({ satellite: true, streets: false, online: 's2cloudless-2016' });
+      expect(m.draw).toMatchObject({
+        satellite: false,
+        streets: false,
+        online: 's2cloudless-2016',
+      });
     });
 
     it('is imagery like the packs: Streets draws none of it', () => {
-      const m = basemapModel(on({ satellite: false }), [here], [], SITE);
+      const m = basemapModel(on({ satellite: false }), [here], [], SITE, S2);
       expect(m.choice).toBe('streets');
       expect(m.satellite).toBe(true);
       expect(m.draw).toMatchObject({ satellite: false, online: null, imagery: [], streets: true });
     });
 
     it('draws under the one pack chosen as under all of them', () => {
-      const one = basemapModel(on({ imageryPack: 'here' }), [world, here], [], SITE);
+      const one = basemapModel(on({ imageryPack: 'here' }), [world, here], [], SITE, S2);
       expect(one.draw.imagery.map((p) => p.id)).toEqual(['here']);
       expect(one.draw.online).toBe('s2cloudless-2016');
     });
@@ -222,6 +229,7 @@ describe('the ground around the site in 3D', () => {
       offered: true,
       imagery: true,
       terrain: true,
+      online: false,
     });
     expect(groundModel([elsewhere], [demFar], SITE, true)).toMatchObject({
       imagery: false,
@@ -233,5 +241,92 @@ describe('the ground around the site in 3D', () => {
       imagery: false,
       terrain: false,
     });
+  });
+});
+
+describe('the base map of the Map menu', () => {
+  const S2 = { ...NO_ONLINE, source: 's2cloudless-2016' as const };
+
+  it('legacy Satellite with online on draws the preferred source; Streets draws none', () => {
+    const m = basemapModel(prefs({ onlineSatellite: true }), [], [], SITE, S2);
+    expect(m.base).toBe('s2cloudless-2016');
+    expect(m.draw.online).toBe('s2cloudless-2016');
+    expect(resolveMapBase(prefs({ satellite: false, onlineSatellite: true }), S2)).toBe('streets');
+    expect(
+      basemapModel(prefs({ satellite: false, onlineSatellite: true }), [], [], SITE, S2).draw
+        .online,
+    ).toBeNull();
+  });
+
+  it('an explicit base wins; a map with its own labels hides the street overlay', () => {
+    const keys = { esri: false, mapbox: true };
+    const m = basemapModel(
+      prefs({ onlineSatellite: true, mapBase: 'mapbox-satellite-streets' }),
+      [here],
+      [],
+      SITE,
+      { ...NO_ONLINE, keys },
+    );
+    expect(m.draw).toMatchObject({
+      online: 'mapbox-satellite-streets',
+      streets: false,
+      satellite: true,
+    });
+  });
+
+  it('falls back to the street map when the key goes', () => {
+    const m = basemapModel(
+      prefs({ onlineSatellite: true, mapBase: 'mapbox-dark' }),
+      [],
+      [],
+      SITE,
+      NO_ONLINE,
+    );
+    expect(m).toMatchObject({ base: 'mapbox-dark', drawn: 'streets', fallback: true });
+    expect(m.draw.online).toBeNull();
+    expect(m.draw.streets).toBe(true);
+  });
+
+  it('offline-only with online maps on draws the saved Sentinel-2 tiles', () => {
+    const m = basemapModel(
+      prefs({ onlineSatellite: true, mapBase: 'esri-world-imagery' }),
+      [],
+      [],
+      SITE,
+      { ...NO_ONLINE, offlineOnly: true },
+    );
+    expect(m).toMatchObject({ drawn: 's2cloudless-2016', fallback: true });
+    expect(m.draw.online).toBe('s2cloudless-2016');
+  });
+
+  it('packs on top of Esri; street names over imagery follow the switch', () => {
+    const m = basemapModel(
+      prefs({ onlineSatellite: true, mapBase: 'esri-world-imagery', streets: false }),
+      [here],
+      [],
+      SITE,
+      NO_ONLINE,
+    );
+    expect(m.draw).toMatchObject({ online: 'esri-world-imagery', satellite: true, streets: false });
+    expect(m.draw.imagery.map((p) => p.id)).toEqual(['here']);
+  });
+
+  it('Place walk on a site without packs still shows imagery (Satellite for the session)', () => {
+    const m = basemapModel(
+      prefs({ satellite: true, onlineSatellite: true }),
+      [],
+      [],
+      SITE,
+      NO_ONLINE,
+    );
+    expect(m.satellite).toBe(true);
+    expect(m.draw.online).toBe('esri-world-imagery');
+  });
+});
+
+describe('the ground with an online base in 3D', () => {
+  it('says when an online map is drawn around the site', () => {
+    expect(groundModel([], [], SITE, true, true)).toMatchObject({ online: true, imagery: false });
+    expect(groundModel([here], [dem], SITE, true)).toMatchObject({ online: false });
   });
 });

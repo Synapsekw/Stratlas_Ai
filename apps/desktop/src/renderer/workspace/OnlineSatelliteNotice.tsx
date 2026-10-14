@@ -1,14 +1,21 @@
 /**
- * The one-time notice of online satellite (`onlineSatellite.ts`): what is requested, from whom,
- * how old and how coarse the imagery is, with **Switch on** and **Cancel**. Rendered by every
- * place that offers the switch (Settings, the map type picker); it shows only while a first
- * "switch on" waits for the person's answer, and closes without switching anything on when the
- * place it is shown in goes away.
+ * The one-time notice of each provider (`onlineSatellite.ts`): what is requested, from whom, how
+ * old and how coarse the imagery is, with **Switch on** and **Cancel**. Rendered by every place
+ * that offers the switch (Settings, the Map menus); it shows only while a first "switch on" of a
+ * provider waits for the person's answer, and closes without switching anything on when the place
+ * it is shown in goes away.
  */
-import { Icon, useT } from '@aio/ui';
+import { onlineSource, type OnlineProvider } from '@aio/schema';
+import { Icon, useT, type MessageKey } from '@aio/ui';
 import { useEffect, useRef } from 'react';
 import { useStore } from 'zustand';
 import { onlineSatelliteSwitch } from './onlineSatellite';
+
+const NOTICE: Record<OnlineProvider, MessageKey> = {
+  eox: 'online.notice.eox',
+  esri: 'online.notice.esri',
+  mapbox: 'online.notice.mapbox',
+};
 
 export function OnlineSatelliteNotice({ className = '' }: { className?: string }) {
   const t = useT();
@@ -33,15 +40,17 @@ export function OnlineSatelliteNotice({ className = '' }: { className?: string }
         {error}
       </p>
     ) : null;
+  const provider = onlineSource(asking)?.provider ?? 'eox';
   return (
     <div
       ref={box}
       className={`notice warn os-notice ${className}`.trim()}
       role="alert"
       data-testid="online-satellite-notice"
+      data-provider={provider}
     >
       <Icon name="warn" size={14} />
-      <span>{t('g7.online.notice')}</span>
+      <span>{t(NOTICE[provider])}</span>
       <span className="os-acts">
         <button
           type="button"
@@ -50,7 +59,7 @@ export function OnlineSatelliteNotice({ className = '' }: { className?: string }
             onlineSatelliteSwitch.getState().confirm();
           }}
         >
-          {t('g7.online.confirm')}
+          {t('online.confirm')}
         </button>
         <button
           type="button"
@@ -59,7 +68,7 @@ export function OnlineSatelliteNotice({ className = '' }: { className?: string }
             onlineSatelliteSwitch.getState().cancel();
           }}
         >
-          {t('g7.online.cancel')}
+          {t('online.cancel')}
         </button>
       </span>
     </div>
