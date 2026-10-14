@@ -1,6 +1,7 @@
 /**
  * Date lanes (timeline phase L1): one lane per survey date on a site time-of-day axis. A synthetic
- * project with six dates, two short clips on each of the last three, none on the first three.
+ * project with seven dates (d0 to d6), two short clips on each of the last three, none on the first
+ * four. Seven, so that a middle date shows a fold on both sides.
  */
 import { cameraQuatFromGimbal, fromWgs84 } from '@aio/geo';
 import { ProjectManifest, SCHEMA_VERSION, type ProjectManifestInput } from '@aio/schema';
@@ -14,12 +15,20 @@ const ID = 'e2e-date-lanes';
 const NAME = 'E2E date lanes';
 /** A synthetic place at about 48 degrees east: site time is UTC+3. */
 const SITE: [number, number] = [48.1, 29.0];
-const DATES = ['2026-09-05', '2026-09-12', '2026-09-19', '2026-09-26', '2026-10-03', '2026-10-10'];
-const VIDEO_FROM = 3; // d4, d5, d6 have video
+const DATES = [
+  '2026-08-29',
+  '2026-09-05',
+  '2026-09-12',
+  '2026-09-19',
+  '2026-09-26',
+  '2026-10-03',
+  '2026-10-10',
+];
+const VIDEO_FROM = 4; // d4, d5, d6 have video
 
 interface Probe {
   __stratlas: {
-    workspace: { getState(): { activeClip: string | null; playing: boolean } };
+    workspace: { getState(): { activeClip: string | null; playing: boolean; nowMs: number } };
   };
 }
 
@@ -36,7 +45,7 @@ async function writeProject(data: DataRoot): Promise<void> {
       ['a', 0],
       ['b', 30],
     ] as const) {
-      const id = `v${String(i + 1)}${k}`;
+      const id = `v${String(i)}${k}`;
       // 06:00 UTC is 09:00 at the site
       const startUtcMs = Date.parse(`${date}T06:00:00Z`) + second * 1000;
       await writeFile(
@@ -56,7 +65,7 @@ async function writeProject(data: DataRoot): Promise<void> {
         kind: 'video',
         id,
         name: `Clip ${id}`,
-        capture: `d${String(i + 1)}`,
+        capture: `d${String(i)}`,
         src: { path: `video/${id}.mp4` },
         flight: { src: { path: `flights/${id}.json` }, startUtcMs },
         lens,
@@ -73,7 +82,7 @@ async function writeProject(data: DataRoot): Promise<void> {
     site: 'Synthetic site',
     crs: { epsg: 32639 },
     origin: [o[0], o[1], 0],
-    captures: DATES.map((date, i) => ({ id: `d${String(i + 1)}`, label: `Survey ${date}`, date })),
+    captures: DATES.map((date, i) => ({ id: `d${String(i)}`, label: `Survey ${date}`, date })),
     layers,
     severityModels: [],
     classCatalogues: [],
@@ -101,7 +110,7 @@ async function openLanes(win: Page) {
 const state = (win: Page) =>
   win.evaluate(() => {
     const s = (window as unknown as Probe).__stratlas.workspace.getState();
-    return { activeClip: s.activeClip, playing: s.playing };
+    return { activeClip: s.activeClip, playing: s.playing, nowMs: s.nowMs };
   });
 
 test('lanes show the focused date and its neighbours, the rest folded', async ({ win }) => {
@@ -121,7 +130,7 @@ test('+N earlier expands the folded dates, and a date without video has a lane',
 }) => {
   await openLanes(win);
   const tl = win.getByTestId('lane-timeline');
-  await expect(tl.getByTestId('lane-fold-earlier')).toContainText('+3 earlier');
+  await expect(tl.getByTestId('lane-fold-earlier')).toContainText('+4 earlier');
   await tl.getByTestId('lane-fold-earlier').click();
   await expect(tl.getByTestId('lane-label-d1')).toBeVisible();
   await expect(tl.getByTestId('lane-fold-earlier')).toHaveCount(0);
@@ -141,7 +150,14 @@ test('a clip click selects it without playing', async ({ win }) => {
   const bar = win.getByTestId('lane-d6').getByTestId('lane-clip').nth(1);
   await bar.click();
   await expect.poll(async () => (await state(win)).activeClip).toBe('v6b');
-  expect((await state(win)).playing).toBe(false);
+  // a delayed play() would still pass one read: watch the whole window, the clock must stay put
+  const at = (await state(win)).nowMs;
+  for (let i = 0; i < 15; i++) {
+    const s = await state(win);
+    expect(s.playing).toBe(false);
+    expect(s.nowMs).toBe(at);
+    await win.waitForTimeout(100);
+  }
   await expect(
     win.getByTestId('lane-timeline').getByRole('button', { name: 'Play', exact: true }),
   ).toBeVisible();
@@ -150,11 +166,17 @@ test('a clip click selects it without playing', async ({ win }) => {
 test('the other lanes show a ghost line at the playhead time', async ({ win }) => {
   await openLanes(win);
   await expect(win.getByTestId('lane-d6').getByTestId('playhead')).toHaveCount(1);
-  await expect(win.getByTestId('lane-timeline').getByTestId('ghost-line')).toHaveCount(2);
+  const ghosts = win.getByTestId('lane-timeline').getByTestId('ghost-line');
+  await expect(ghosts).toHaveCount(2);
+  // the ghost sits at the same time of day as the playhead
+  const head = await win.getByTestId('lane-d6').getByTestId('playhead').boundingBox();
+  const ghost = await ghosts.first().boundingBox();
+  expect(head && ghost && Math.abs(head.x - ghost.x)).toBeLessThanOrEqual(2);
 });
 
 test('T folds the timeline to the date row, and Alt+Left still steps', async ({ win }) => {
   await openLanes(win);
+  // the clicked project card keeps focus; the window-level shortcuts skip keys aimed at a control
   await win.evaluate(() => {
     (document.activeElement as HTMLElement | null)?.blur();
   });
@@ -166,4 +188,46 @@ test('T folds the timeline to the date row, and Alt+Left still steps', async ({ 
   await expect(win.getByTestId('date-bar-open')).toContainText('3 Oct 2026');
   await win.keyboard.press('t');
   await expect(win.getByTestId('lane-timeline')).toBeVisible();
+});
+
+test.describe('at the CI window size', () => {
+  test.use({ appEnv: { QUADRION_WINDOW_SIZE: '1100x720' } });
+
+  test('the header keeps one row and nothing spills out of the bar', async ({ win }) => {
+    await openLanes(win);
+    const tl = win.getByTestId('lane-timeline');
+    // focus a middle date so both folds show
+    await win.evaluate(() => {
+      (document.activeElement as HTMLElement | null)?.blur();
+    });
+    for (let i = 0; i < 3; i++) await win.keyboard.press('Alt+ArrowLeft');
+    await expect(tl.getByTestId('date-bar-open')).toContainText('19 Sep 2026');
+    await expect(tl.getByTestId('lane-fold-later')).toBeVisible();
+    await expect(tl.getByTestId('lane-fold-earlier')).toBeVisible();
+    const m = await tl.evaluate((el) => {
+      const h = el.querySelector<HTMLElement>('.tl-h');
+      const corner = el.querySelector<HTMLElement>('.lt-corner');
+      const date = el.querySelector<HTMLElement>('[data-testid="date-bar-open"]');
+      const clock = el.querySelector<HTMLElement>('[data-testid="lane-clock"]');
+      if (!h || !corner || !date || !clock) throw new Error('lane header parts missing');
+      const hb = h.getBoundingClientRect();
+      const cb = corner.getBoundingClientRect();
+      const db = date.getBoundingClientRect();
+      const kids = [...h.children].map((k) => k.getBoundingClientRect());
+      return {
+        header: { scroll: h.scrollWidth, client: h.clientWidth, height: hb.height },
+        corner: { scroll: corner.scrollWidth, client: corner.clientWidth },
+        kidsInside: kids.every((k) => k.right <= hb.right + 0.5 && k.bottom <= hb.bottom + 0.5),
+        date: { height: db.height, inside: db.top >= cb.top - 0.5 && db.bottom <= cb.bottom + 0.5 },
+        clockTitle: clock.title,
+      };
+    });
+    expect(m.header.scroll).toBeLessThanOrEqual(m.header.client);
+    expect(m.kidsInside).toBe(true);
+    expect(m.corner.scroll).toBeLessThanOrEqual(m.corner.client);
+    // one line: the date never wraps
+    expect(m.date.height).toBeLessThanOrEqual(24);
+    expect(m.date.inside).toBe(true);
+    expect(m.clockTitle).toBe('site time ≈ UTC+3');
+  });
 });

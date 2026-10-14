@@ -810,6 +810,39 @@ select.input option {
 .lt {
   --lt-row: 8px;
   --lt-row-on: 20px;
+  container-type: inline-size;
+}
+/* The header holds one row at the narrowest bar (about 490 px at 1100 x 720): the controls keep
+   their size, the active clip tag and the clock label give way, the date sits in the corner. */
+.lt .tl-h {
+  gap: 8px;
+}
+.lt .tl-h > * {
+  flex: none;
+}
+.lt .tc {
+  min-width: 0;
+}
+.lt .tl-h .tag {
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+}
+.lt .tl-h .lt-clock {
+  flex: 0 1 auto;
+  min-width: 0;
+  margin-inline-start: auto;
+}
+@container (max-width: 600px) {
+  .lt .tl-h .tag {
+    display: none;
+  }
+}
+.lt-corner {
+  display: flex;
+  align-items: center;
+  padding-inline: 4px;
+  white-space: nowrap;
 }
 .lt-body {
   max-height: 40vh;
@@ -884,6 +917,13 @@ select.input option {
   top: calc(3px + var(--row, 0) * var(--lt-row));
   height: calc(var(--lt-row) - 2px);
   padding: 0;
+}
+/* a dimmed lane draws its clips as plain bars: an outlined bar a few pixels wide reads as a "0" */
+.trk.lt-lane:not(.on) .seg-c:not(.on) {
+  min-width: 4px;
+  border: 0;
+  border-radius: 1px;
+  background: var(--fg-3);
 }
 .trk.lt-lane.on .seg-c {
   top: calc(3px + var(--row, 0) * var(--lt-row-on));

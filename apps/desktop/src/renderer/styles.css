@@ -1362,7 +1362,13 @@ button.chip-status:hover {
   padding: 3px 10px;
   border-radius: var(--r-4);
   font-weight: 600;
+  white-space: nowrap;
   cursor: pointer;
+}
+/* in the lane timeline's corner, above the lane labels */
+.lt-corner .dbar-date {
+  padding: 1px 8px;
+  font-size: var(--t-12);
 }
 .dbar-date:hover,
 .dbar-date[aria-expanded='true'] {

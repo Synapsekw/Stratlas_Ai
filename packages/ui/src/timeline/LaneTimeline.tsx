@@ -20,7 +20,10 @@ export interface LaneTimelineProps {
   selectedIssue?: string | null | undefined;
   /** Date tag colour by capture id. */
   colours?: Readonly<Record<string, string>> | undefined;
-  /** The focused date control (date in full, opens the calendar), placed in the header. */
+  /**
+   * The focused date control (date in full, opens the calendar), placed in the corner above the
+   * lane labels so the header row keeps room for the transport at the narrowest window.
+   */
   dateSlot?: ReactNode | undefined;
   /** "site time ≈ UTC+3" or "UTC". */
   clockLabel: string;
@@ -217,9 +220,8 @@ export function LaneTimeline(props: LaneTimelineProps) {
           onTogglePlay={props.onTogglePlay}
           onRate={props.onRate}
         />
-        {props.dateSlot}
-        <span className="sp" />
-        <span className="ctx" data-testid="lane-clock">
+        {/* shrinks to an ellipsis when the bar is narrow; the title keeps it readable */}
+        <span className="ctx lt-clock" data-testid="lane-clock" title={props.clockLabel}>
           {props.clockLabel}
         </span>
         <ZoomControls axis={axis} anchor={headTod ?? (model.range[0] + model.range[1]) / 2} />
@@ -227,7 +229,7 @@ export function LaneTimeline(props: LaneTimelineProps) {
       </div>
       <div className="tl-body lt-body">
         <div className="tl-labels">
-          <div className="tl-ruler-l" />
+          <div className="tl-ruler-l lt-corner">{props.dateSlot}</div>
           {fold('earlier', model.folds.earlier)}
           {model.visible.map((l) => {
             const on = l.captureId === model.focus;
