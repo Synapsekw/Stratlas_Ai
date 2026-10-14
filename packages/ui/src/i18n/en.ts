@@ -124,31 +124,6 @@ export const en = {
     'The street map is hidden while imagery or terrain around the site is on (Layers)',
 
   // Map type picker on the map (streets, satellite, terrain shading) and the ground in 3D
-  'basemap.button': 'Map type: {name}',
-  'basemap.title': 'Map type',
-  'basemap.streets': 'Streets',
-  'basemap.satellite': 'Satellite',
-  'basemap.imagery': 'Satellite only',
-  'basemap.streets.tip': 'The street map alone',
-  'basemap.satellite.tip': 'Imagery with the streets and names over it',
-  'basemap.imagery.tip': 'Imagery alone, without streets and names',
-  'basemap.pack': 'Imagery',
-  'basemap.pack.best': 'Best available',
-  'basemap.pack.tip': 'Draw one imagery pack, or the best of all that are installed',
-  'basemap.hillshade': 'Terrain shading',
-  'basemap.hillshade.tip': 'Relief shading from the terrain pack that covers the site',
-  'basemap.noImagery': 'No imagery pack covers this site.',
-  'basemap.noTerrain': 'No terrain pack covers this site.',
-  'basemap.noPacks': 'No imagery or terrain pack covers this site.',
-  'basemap.openPacks': 'Offline maps',
-  'basemap.openPacks.tip': 'Import imagery and terrain in Settings, Offline maps',
-  'basemap.online': 'Online satellite',
-  'basemap.online.detail': 'Sentinel-2, 2016, about 10 m per pixel',
-  'basemap.online.offline': 'Go online to use it',
-  'basemap.online.saved': 'Showing saved tiles only',
-  'basemap.online.tip':
-    'Satellite imagery of the whole world, requested from EOX for the areas you look at',
-  'basemap.online.or': 'or turn on',
   // The Map menu (plan 2026-10-14-satellite-providers): one menu for the Map view, the Globe and
   // the 3D scene
   'mapMenu.title': 'Map',
@@ -202,14 +177,8 @@ export const en = {
   'mapMenu.improve': 'Improve this map',
   'mapMenu.sources.tip': 'Online maps and their keys, in Settings',
   'palette.mapBase': 'Map: {name}',
-  'ground.imagery': 'Imagery around the site',
-  'ground.imagery.tip': 'The imagery packs draped on the land around the site in 3D',
-  'ground.terrain': 'Terrain around the site',
-  'ground.terrain.tip': 'The relief of the land around the site in 3D, from the terrain packs',
-  'ground.tier': 'Imagery and terrain around the site need Medium graphics or higher.',
   'palette.addSurveyDate': 'Add survey date...',
   'palette.importFlightFolder': 'Import a flight folder...',
-  'palette.basemap': 'Map type: {name}',
   'palette.basemap.current': 'Current',
   'palette.hillshade.on': 'Turn terrain shading on the map on',
   'palette.hillshade.off': 'Turn terrain shading on the map off',
@@ -3006,13 +2975,10 @@ export const en = {
   'globe.openIssues_other': '{count} open issues',
   'globe.tilesets_one': '{count} tileset',
   'globe.tilesets_other': '{count} tilesets',
-  'globe.imagery': 'Imagery',
-  'globe.imageryAuto': 'Best available',
   'globe.terrain': 'Terrain',
   'globe.terrainAuto': 'Best available',
   'globe.terrainOff': 'Off (smooth Earth)',
   'globe.lowTier': 'Terrain is off on the Low graphics preset.',
-  'globe.showIssues': 'Show issues of the open project',
   'globe.issueMeta': 'Severity {severity} · {status}',
   'globe.openIssue': 'Open issue',
   'globe.flyTo': 'Fly to',
@@ -3025,13 +2991,8 @@ export const en = {
   // the street map Globe (10 Oct 2026): looks, map controls, the pins' key and labels
   'globe.siteCount_one': '{count} site',
   'globe.siteCount_other': '{count} sites',
-  'globe.look': 'Map type',
-  'globe.lookStreet': 'Street map',
-  'globe.lookSatellite': 'Satellite',
-  'globe.lookNaturalEarth': 'Natural Earth',
   'globe.noStreetPacks':
     'No street map pack is installed, so the Globe shows land and borders only. Add packs in Settings, Offline maps.',
-  'globe.satelliteHint': 'Turn on Online satellite in the map type menu to see imagery everywhere.',
   'globe.zoomIn': 'Zoom in',
   'globe.zoomOut': 'Zoom out',
   'globe.allSites': 'Show all sites',
@@ -3043,8 +3004,6 @@ export const en = {
   // project chips on the Globe (11 Oct 2026): the field that finds a site, the Map dialog
   'globe.find': 'Find a site',
   'globe.findNone': 'No site with that name',
-  'globe.mapMenu': 'Map',
-  'globe.mapMenuTitle': 'Map settings',
   // processed outputs of the sites in focus (12 Oct 2026): the site card's switches
   'globe.outputs.title': 'On the Globe',
   'globe.outputs.ortho': 'Orthophoto {date}',
@@ -3091,19 +3050,6 @@ export const en = {
   'g7.packs.aroundTerrain': 'Terrain around the site in 3D (Medium graphics and up)',
   'g7.packs.aroundImagery': 'Imagery around the site in 3D (Medium graphics and up)',
   // Online satellite (ADR 0007, amendment of 10 Oct 2026)
-  'g7.online.toggle': 'Online satellite (Sentinel-2)',
-  'g7.online.help':
-    'Off by default. When on, the Satellite map types draw Sentinel-2 imagery from 2016 (about 10 m per pixel) under your imagery packs and orthos, also where no pack covers the site. The tiles for the areas you look at are requested from EOX and kept on this computer.',
-  'g7.online.offlineOnly':
-    'This workstation is offline-only, so online satellite cannot be switched on. Turn off offline-only in Privacy and cloud.',
-  'g7.online.offlineOnlyCached':
-    'This workstation is offline-only: nothing is requested, and only the areas you viewed before are drawn, from this computer.',
-  'g7.online.notice':
-    "Online satellite requests the imagery tiles for the areas you look at from EOX's servers, so the areas you view are visible to that service. Nothing else is sent. The imagery is from 2016, at about 10 m per pixel.",
-  'g7.online.confirm': 'Switch on',
-  'g7.online.cancel': 'Cancel',
-  'g7.online.credit': 'Imagery: {attribution}, CC BY 4.0.',
-  'g7.online.clearCache': 'Clear cached satellite tiles ({size})',
   // Online maps, one notice per provider (ADR 0007, amendment of 14 Oct 2026)
   'online.notice.eox':
     "Sentinel-2 imagery is requested from EOX's servers for the areas you look at, so the areas you view are visible to that service. Nothing else is sent. The imagery is from 2016, at about 10 m per pixel, and the tiles are kept on this computer.",

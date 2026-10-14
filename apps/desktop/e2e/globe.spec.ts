@@ -656,12 +656,21 @@ async function closeMap(win: Page) {
   await expect(menu).toHaveCount(0);
 }
 
-/** Choose a map type in the Map dialog, which stays open to show what the look needs; the dialog. */
+/**
+ * Choose a look in the Map menu, which stays open: the street map or Natural Earth as the base,
+ * and the imagery packs on top for the Satellite and Natural Earth looks; the menu.
+ */
 async function chooseLook(win: Page, style: GlobeStyle) {
   const menu = await openMap(win);
-  const look = win.getByTestId(`globe-look-${style}`);
-  await look.click();
-  await expect(look).toHaveAttribute('aria-pressed', 'true');
+  const tile = menu.getByTestId(
+    style === 'natural-earth' ? 'map-tile-natural-earth' : 'map-tile-streets',
+  );
+  await tile.click();
+  await expect(tile).toHaveAttribute('aria-checked', 'true');
+  const packs = menu.getByTestId('map-ontop-packs').getByRole('switch');
+  const want = style !== 'street' ? 'true' : 'false';
+  if ((await packs.isEnabled()) && (await packs.getAttribute('aria-checked')) !== want)
+    await packs.click();
   return menu;
 }
 
@@ -888,7 +897,7 @@ test('every library project is a site; packs draw with their credits', async ({
   // the street map is the default look: the bundled land shapes, and no imagery pack drawn
   const credits = win.getByTestId('globe-credits');
   const map = await openMap(win);
-  await expect(win.getByTestId('globe-look-street')).toHaveAttribute('aria-pressed', 'true');
+  await expect(win.getByTestId('map-tile-streets')).toHaveAttribute('aria-checked', 'true');
   await expect
     .poll(async () => (await inspect(win))?.layers, { timeout: SETTLE_MS })
     .toEqual(['earth-shapes:whole']);
@@ -902,9 +911,7 @@ test('every library project is a site; packs draw with their credits', async ({
   await expect
     .poll(async () => (await inspect(win))?.layers, { timeout: SETTLE_MS })
     .toEqual(['earth-shapes:whole', 'pack:syn-imagery']);
-  await expect(map.locator('.globe-field select').first()).toContainText(
-    'Synthetic imagery (syn-imagery)',
-  );
+  await expect(map.getByTestId('map-pack')).toContainText('Synthetic imagery (syn-imagery)');
   await closeMap(win);
   await drawn(win, 'before the field is clicked');
   await flyToSite(win, SITE_A.name);
@@ -988,7 +995,7 @@ test('every library project is a site; packs draw with their credits', async ({
     (s) => s.layers[0] === 'natural-earth-ii' && s.tilesLoaded,
   );
   await openMap(win);
-  await expect(win.getByTestId('globe-look-natural-earth')).toHaveAttribute('aria-pressed', 'true');
+  await expect(win.getByTestId('map-tile-natural-earth')).toHaveAttribute('aria-checked', 'true');
 });
 
 test('street packs draw as the street map of the Globe, offline under the app CSP', async ({
@@ -1020,7 +1027,7 @@ test('street packs draw as the street map of the Globe, offline under the app CS
   // the Map dialog has no word about a missing street pack
   await drawn(win, 'before the Map button is clicked');
   const map = await openMap(win);
-  await expect(win.getByTestId('globe-look-street')).toHaveAttribute('aria-pressed', 'true');
+  await expect(win.getByTestId('map-tile-streets')).toHaveAttribute('aria-checked', 'true');
   await expect(map.getByText(/No street map pack is installed/)).toHaveCount(0);
   await closeMap(win);
   await drawn(win, 'before the field is clicked');
@@ -1969,9 +1976,9 @@ test('closing the Globe gives its WebGL context back', async ({ app, win }) => {
   console.log(`globe GPU process: ${String(before)} MiB, open ${seen.join(', ')} MiB`);
 });
 
-// ---------------------------------------------------------------- online satellite
+// ---------------------------------------------------------------- online maps
 
-test.describe('online satellite on the Globe', () => {
+test.describe('online maps on the Globe', () => {
   // No test reaches the network: main answers with its stand-in (flat green tiles made in main,
   // the addresses it would have asked for kept in `__aioOnlineTileRequests`), as in
   // online-satellite.spec.ts. The zero-network guard of the fixtures runs as on every test.
@@ -1984,9 +1991,8 @@ test.describe('online satellite on the Globe', () => {
         (globalThis as { __aioOnlineTileRequests?: string[] }).__aioOnlineTileRequests?.length ?? 0,
     );
   const layers = async (win: Page) => (await inspect(win))?.layers ?? null;
-  const HINT = 'Turn on Online satellite in the map type menu to see imagery everywhere.';
 
-  test('the Satellite look draws it once it is switched on, under the packs, and only then', async ({
+  test('Sentinel-2 from the Map menu lies over the Earth and under the packs, and only there', async ({
     app,
     win,
     dataRoot,
@@ -1995,7 +2001,7 @@ test.describe('online satellite on the Globe', () => {
     await installSyntheticPacks(dataRoot);
     await openGlobe(win);
     const credits = win.getByTestId('globe-credits');
-    // switched off (as a new profile is): the Satellite look is the packs alone
+    // online maps off (as a new profile is): the Satellite look is the packs alone
     await setLook(win, 'satellite');
     await expect
       .poll(() => layers(win), { timeout: SETTLE_MS })
@@ -2003,24 +2009,24 @@ test.describe('online satellite on the Globe', () => {
     await expect(credits).not.toContainText(ONLINE_SATELLITE.attribution);
     expect(await asked(app)).toBe(0);
 
-    // The person's switch (the map type menu, Settings, the palette) is held by main: switch it
-    // on there and come back to the Globe, which asks main how it stands when it opens.
-    const on = await win.evaluate(() => window.aio.invoke('onlineTiles:set', { enabled: true }));
-    expect(on).toMatchObject({ ok: true, enabled: true });
-    await win.locator('.sb-nav .nav-item', { hasText: 'Projects' }).click();
-    await expect(win.getByTestId('globe-canvas')).toHaveCount(0);
-    await openGlobe(win);
-    // the look was remembered; the online imagery lies over the Earth and under the pack
+    // Sentinel-2 as the base, picked in the menu: its notice first, then it is drawn
+    const map = await openMap(win);
+    await map.getByTestId('map-tile-s2cloudless-2016').click();
+    await map
+      .getByTestId('online-satellite-notice')
+      .getByRole('button', { name: 'Switch on' })
+      .click();
+    await expect(map.getByTestId('map-tile-s2cloudless-2016')).toHaveAttribute(
+      'aria-checked',
+      'true',
+    );
+    await closeMap(win);
+    // the online imagery lies over the Earth and under the pack
     await expect
       .poll(() => layers(win), { timeout: SETTLE_MS })
-      .toEqual(['earth-shapes:whole', 'online-satellite', 'pack:syn-imagery']);
+      .toEqual(['earth-shapes:whole', 'online:s2cloudless-2016', 'pack:syn-imagery']);
     await expect(credits).toContainText(ONLINE_SATELLITE.attribution);
     await expect(credits).toContainText('Synthetic imagery test pack');
-    // the Map dialog opens on the look that was remembered, with no hint to switch it on
-    const map = await openMap(win);
-    await expect(win.getByTestId('globe-look-satellite')).toHaveAttribute('aria-pressed', 'true');
-    await expect(map.getByText(HINT)).toHaveCount(0);
-    await closeMap(win);
     // its tiles come through main (the stand-in here) and draw: green well over red and blue,
     // whatever the GPU and the Globe's light make of the exact shade
     await expect.poll(() => asked(app), { timeout: SETTLE_MS }).toBeGreaterThan(0);
@@ -2034,7 +2040,7 @@ test.describe('online satellite on the Globe', () => {
       )
       .toBe(true);
 
-    // never in the other looks
+    // never under the other looks
     await setLook(win, 'street');
     await expect.poll(() => layers(win), { timeout: SETTLE_MS }).toEqual(['earth-shapes:whole']);
     await expect(credits).not.toContainText(ONLINE_SATELLITE.attribution);
@@ -2047,19 +2053,17 @@ test.describe('online satellite on the Globe', () => {
     expect(await network.outbound()).toEqual([]);
   });
 
-  test('without it and without a pack, the Satellite look says where to switch it on', async ({
+  test('a Mapbox map without a key is greyed in the Globe menu, Esri is not', async ({
     app,
     win,
   }) => {
     await openGlobe(win);
-    // the Map dialog stays open after a choice, and says what the look lacks
-    const map = await chooseLook(win, 'satellite');
-    await expect
-      .poll(async () => (await inspect(win))?.style, { timeout: SETTLE_MS })
-      .toBe('satellite');
-    await expect.poll(() => layers(win), { timeout: SETTLE_MS }).toEqual(['earth-shapes:whole']);
-    await expect(map.getByText(HINT)).toBeVisible();
-    await expect(win.getByTestId('globe-credits')).not.toContainText(ONLINE_SATELLITE.attribution);
+    const map = await openMap(win);
+    await expect(map.getByTestId('map-tile-mapbox-satellite')).toBeDisabled();
+    await expect(map.getByTestId('map-menu-note-satellite')).toContainText(
+      'Add a key in Map sources',
+    );
+    await expect(map.getByTestId('map-tile-esri-world-imagery')).toBeEnabled();
     expect(await asked(app)).toBe(0);
   });
 });

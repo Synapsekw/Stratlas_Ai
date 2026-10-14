@@ -362,18 +362,18 @@ test('the scale bar, the no pack note and the credits keep apart at the foot of 
   await shot(win, info, 'map-foot-no-pack.png');
 });
 
-/** Switch online satellite on in the map type picker: the map draws it, with its long credit. */
+/** Pick Sentinel-2 in the Map menu: the map draws it, with its long credit. */
 async function switchOnSatellite(win: Page): Promise<void> {
   const chip = win.getByTestId('basemap-button');
   await chip.click();
-  await win.getByTestId('basemap-online').click();
+  await win.getByTestId('map-tile-s2cloudless-2016').click();
   await win
     .getByTestId('basemap-pop')
     .getByTestId('online-satellite-notice')
     .getByRole('button', { name: 'Switch on' })
     .click();
-  await expect(chip).toHaveText('Satellite');
-  // the picker's own button closes it again
+  await expect(chip).toContainText('Sentinel-2');
+  // the menu's own chip closes it again
   await chip.click();
   await expect(chip).toHaveAttribute('aria-expanded', 'false');
   await expect(win.getByTestId('basemap-pop')).toHaveCount(0);
@@ -394,6 +394,33 @@ test.describe('with online satellite', () => {
     await switchOnSatellite(win);
     await expectFootApart(win, 'online satellite on');
     await shot(win, info, 'map-foot-online-satellite.png');
+  });
+
+  test('the Map menu fits the smallest window: it scrolls inside, and nothing of it is cut off', async ({
+    win,
+  }, info) => {
+    await openMapWithoutPacks(win);
+    const chip = win.getByTestId('basemap-button');
+    await chip.click();
+    const pop = win.getByTestId('basemap-pop');
+    await expect(pop).toBeVisible();
+    const box = await pop.boundingBox();
+    // an Electron window has no Playwright viewport: the page's own size
+    const size = await win.evaluate(() => ({ width: innerWidth, height: innerHeight }));
+    expect(box).toBeTruthy();
+    if (box) {
+      expect(box.y).toBeGreaterThanOrEqual(0);
+      expect(box.y + box.height).toBeLessThanOrEqual(size.height);
+      expect(box.x + box.width).toBeLessThanOrEqual(size.width);
+    }
+    // the footer is reachable by scrolling inside the pop
+    const link = pop.getByTestId('map-sources-link');
+    await link.scrollIntoViewIfNeeded();
+    await expect(link).toBeInViewport({ ratio: 1 });
+    await shot(win, info, 'map-menu-small-window.png');
+    await win.keyboard.press('Escape');
+    await expect(pop).toHaveCount(0);
+    await expect(chip).toBeFocused();
   });
 
   test('in Compare dates the open satellite credit keeps clear of each scale bar', async ({

@@ -357,17 +357,18 @@ test('a processed project travels as a package with its ticked imagery; the play
       await expect(card).toHaveCount(0);
     }
 
-    // the imagery menu lists the package's pack (listed under its package id)
+    // the Map menu lists the package's pack (listed under its package id)
     await pw.getByTestId('globe-map-button').click();
     const menu = pw.getByTestId('globe-map-menu');
     await expect(menu).toBeVisible();
-    const look = pw.getByTestId('globe-look-satellite');
-    await look.click();
-    await expect(look).toHaveAttribute('aria-pressed', 'true');
-    const option = menu.locator(`option[value="${PACKAGE_RASTER_ID}"]`);
+    const packsOn = menu.getByTestId('map-ontop-packs').getByRole('switch');
+    if ((await packsOn.getAttribute('aria-checked')) !== 'true') await packsOn.click();
+    await expect(packsOn).toHaveAttribute('aria-checked', 'true');
+    const option = menu.getByTestId('map-pack').locator(`option[value="${PACKAGE_RASTER_ID}"]`);
     await expect(option).toHaveCount(1);
     await expect(option).toHaveText(IMAGERY_LABEL);
-    await expect(menu.locator('.globe-field select').first().locator('option')).toHaveCount(2);
+    await expect(menu.getByTestId('map-pack').locator('option')).toHaveCount(2);
+    await packsOn.focus();
     await pw.keyboard.press('Escape');
     await expect(menu).toHaveCount(0);
 

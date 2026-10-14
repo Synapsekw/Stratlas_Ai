@@ -1,6 +1,7 @@
 /**
- * Online satellite (ADR 0007, amendment of 10 Oct 2026): Sentinel-2 imagery streamed by main when
- * the person switches it on, and never on an offline-only workstation.
+ * Online satellite (ADR 0007, amendments of 10 and 14 Oct 2026): Sentinel-2 imagery streamed by
+ * main when the person switches online maps on in Settings, Map sources, and never on an
+ * offline-only workstation.
  *
  * No test here reaches the network. An e2e app has no way to the service at all; these tests ask
  * main for its stand-in (QUADRION_ONLINE_TILES_TEST=1: flat green tiles made in main, with the
@@ -95,14 +96,16 @@ test('switched on, the Map draws Sentinel-2 under everything, credited, through 
   expect((await mainMap(win))?.sources[SOURCE]).toBeUndefined();
   expect(await asked(app)).toEqual([]);
 
-  // Settings, Offline maps: the switch, and what it sends the first time
-  await openSettings(win, 'Offline maps');
-  const section = win.getByTestId('raster-packs');
-  const box = section.getByRole('checkbox', { name: 'Online satellite (Sentinel-2)' });
+  // Sentinel-2 as this workstation's online satellite (a fresh one starts on Esri)
+  await win.evaluate(() => window.aio.invoke('onlineTiles:set', { source: 's2cloudless-2016' }));
+  // Settings, Map sources: the switch, and what it sends the first time
+  await openSettings(win, 'Map sources');
+  const section = win.getByTestId('map-sources');
+  const box = section.getByTestId('map-sources-master').getByRole('switch');
   await expect(box).toBeEnabled();
-  await expect(box).not.toBeChecked();
-  const clear = section.getByTestId('online-satellite-clear');
-  await expect(clear).toHaveText('Clear cached satellite tiles (0 B)');
+  await expect(box).toHaveAttribute('aria-checked', 'false');
+  const clear = section.getByTestId('map-sources-clear');
+  await expect(clear).toHaveText('Clear saved satellite tiles (0 B)');
   await expect(clear).toBeDisabled();
   await box.click();
   const notice = section.getByTestId('online-satellite-notice');
@@ -110,21 +113,24 @@ test('switched on, the Map draws Sentinel-2 under everything, credited, through 
   await expect(notice).toContainText('the areas you view are visible to that service');
   await expect(notice).toContainText('from 2016, at about 10 m per pixel');
   // nothing is on until the person says yes
-  await expect(box).not.toBeChecked();
+  await expect(box).toHaveAttribute('aria-checked', 'false');
   expect(await switchedOn(win)).toBe(false);
   await notice.getByRole('button', { name: 'Switch on' }).click();
-  await expect(box).toBeChecked();
+  await expect(box).toHaveAttribute('aria-checked', 'true');
   await expect(notice).toHaveCount(0);
   expect(await switchedOn(win)).toBe(true);
   // the switch has its own file in the profile; settings.json keeps the keys older builds read
   expect(JSON.parse(await readFile(join(dataRoot.userData, 'online.json'), 'utf8'))).toEqual({
     schema: 'aio.online-settings/1',
     satellite: true,
+    source: 's2cloudless-2016',
   });
   expect(await win.evaluate(() => window.aio.invoke('settings:get', {}))).not.toHaveProperty(
     'onlineSatellite',
   );
-  await expect(section.getByTestId('online-satellite')).toContainText(ONLINE_SATELLITE.attribution);
+  await expect(section.getByTestId('map-sources-credits')).toContainText(
+    ONLINE_SATELLITE.attribution,
+  );
 
   // the project's Map: the layer at the bottom of the satellite stack, with its credit
   await openMap(win);
@@ -137,7 +143,7 @@ test('switched on, the Map draws Sentinel-2 under everything, credited, through 
     .toBe(true);
   const style = await mainMap(win);
   expect(style?.sources[SOURCE]).toMatchObject({
-    tiles: ['aio://online/s2cloudless-2016/{z}/{x}/{y}.jpg'],
+    tiles: ['aio://online/s2cloudless-2016/{z}/{x}/{y}'],
     maxzoom: 14,
   });
   const ids = style?.layers.map((l) => l.id) ?? [];
@@ -202,11 +208,11 @@ test('switched on, the Map draws Sentinel-2 under everything, credited, through 
   // the tiles are kept under the profile, and Settings can clear them
   const cached = join(dataRoot.userData, 'cache', 'online-tiles', 's2cloudless-2016');
   expect((await readdir(cached)).length).toBeGreaterThan(0);
-  await openSettings(win, 'Offline maps');
+  await openSettings(win, 'Map sources');
   await expect(clear).toBeEnabled();
-  await expect(clear).not.toHaveText('Clear cached satellite tiles (0 B)');
+  await expect(clear).not.toHaveText('Clear saved satellite tiles (0 B)');
   await clear.click();
-  await expect(clear).toHaveText('Clear cached satellite tiles (0 B)');
+  await expect(clear).toHaveText('Clear saved satellite tiles (0 B)');
   await expect(clear).toBeDisabled();
   expect(
     (await win.evaluate(() => window.aio.invoke('onlineTiles:status', {}))).cache,
@@ -214,7 +220,7 @@ test('switched on, the Map draws Sentinel-2 under everything, credited, through 
 
   // switched off again: no notice this time, the layer goes and main refuses
   await box.click();
-  await expect(box).not.toBeChecked();
+  await expect(box).toHaveAttribute('aria-checked', 'false');
   expect(await tileStatus(win, 's2cloudless-2016/3/4/2.jpg')).toEqual({ status: 403, why: 'off' });
   await openMap(win);
   await expect.poll(async () => (await mainMap(win))?.layers.length ?? 0).toBeGreaterThan(0);
@@ -231,23 +237,21 @@ test('offline only: the switch is disabled with the reason, and main asks nobody
   await offline.click();
   await expect(offline).toHaveAttribute('aria-checked', 'true');
 
-  await openSettings(win, 'Offline maps');
-  const section = win.getByTestId('raster-packs');
-  const box = section.getByRole('checkbox', { name: 'Online satellite (Sentinel-2)' });
+  await openSettings(win, 'Map sources');
+  const box = win.getByTestId('map-sources-master').getByRole('switch');
   await expect(box).toBeDisabled();
-  await expect(box).not.toBeChecked();
-  await expect(section.getByTestId('online-satellite')).toContainText(
-    'This workstation is offline-only, so online satellite cannot be switched on.',
+  await expect(box).toHaveAttribute('aria-checked', 'false');
+  await expect(win.getByTestId('map-sources')).toContainText(
+    'This workstation is offline-only, so online maps cannot be switched on.',
   );
-  await expect(box).toHaveAttribute('aria-describedby', 'online-satellite-help');
 
   // main is the one that enforces it. Off: refused.
   expect(await tileStatus(win, 's2cloudless-2016/3/4/2.jpg')).toEqual({ status: 403, why: 'off' });
   // Even with the setting forced on behind the page's back, an offline-only workstation asks for
   // nothing: no tile, no request to the stand-in, nothing on the network.
-  expect(
-    await win.evaluate(() => window.aio.invoke('onlineTiles:set', { enabled: true })),
-  ).toMatchObject({ ok: true, enabled: true });
+  expect(await win.evaluate(() => window.aio.invoke('onlineTiles:set', { enabled: true }))).toEqual(
+    { ok: true, enabled: true, source: 'esri-world-imagery' },
+  );
   expect(await tileStatus(win, 's2cloudless-2016/3/4/2.jpg')).toEqual({
     status: 404,
     why: 'offline-only',

@@ -1,13 +1,14 @@
 /**
- * The map type picker on the Map view: Streets, Satellite and Satellite only, the imagery pack
- * and terrain shading, chosen on the map itself. On a synthetic site with imagery and terrain
- * packs (the globe library, `m10Fixtures.ts`) the pack layers come and go as the map type
- * changes, the camera stays where it was and the choice survives a relaunch; on a site no pack
- * covers, Satellite is greyed out with the reason and a way to Settings, Offline maps.
+ * The Map menu on the Map view (plan 2026-10-14-satellite-providers): the base maps as small
+ * pictures, and On top the imagery packs, terrain shading and street names, chosen on the map
+ * itself. On a synthetic site with imagery and terrain packs (the globe library, `m10Fixtures.ts`)
+ * the pack layers come and go as the switches change, the camera stays where it was and the
+ * choice survives a relaunch; on a site no pack covers, the pack switches are greyed with the
+ * reason and the menu has a way to Settings, Map sources.
  * Zero network: the packs are files in the data root, and both launches are checked.
  *
- * Online satellite is a row of the picker too (the last two tests): switched on, Satellite is a
- * choice where no pack covers the site. Main stands in for the service there; nothing is fetched.
+ * Online maps are tiles of the same menu (the last two tests): Sentinel-2 draws where no pack
+ * covers the site. Main stands in for the service there; nothing is fetched.
  */
 import { ONLINE_SATELLITE } from '@aio/schema';
 import type { ElectronApplication, Page, TestInfo } from '@playwright/test';
@@ -51,10 +52,19 @@ const mapState = (win: Page) =>
 
 const packs = (win: Page) => mapState(win).then((s) => s?.packs ?? null);
 
+/** How many street lines and names are drawn (not hidden). */
+const shownStreets = async (win: Page) => {
+  const s = await mapState(win);
+  return s ? s.streets - s.hidden : -1;
+};
+
 /** A map that was just created (a view change, back from Settings) loads its style first. */
 const MAP_READY = { timeout: 30_000 };
 
 const stageBar = (win: Page) => win.getByRole('toolbar', { name: 'Stage tools' });
+
+/** One On top switch of the open Map menu. */
+const onTop = (win: Page, key: string) => win.getByTestId(`map-ontop-${key}`).getByRole('switch');
 
 /** Switch the stage with its view switch (the one control of that name on the toolbar). */
 async function showView(win: Page, view: '3D' | 'Map'): Promise<void> {
@@ -73,34 +83,15 @@ async function openMap(win: Page, project: string): Promise<void> {
 }
 
 /**
- * The Layers popover of the 3D view. The 3D toolbar holds more tools than the map's, and what
- * does not fit the window folds into More tools, the Labels and layers group first: on a small
- * display (a CI runner's 1024 x 768) the Layers tool is not on the bar at all. The bar fits
- * itself again once the 3D scene runs (its environment tool takes room), so wait for that, then
- * open Layers from wherever it is.
+ * Close an open Map menu with Esc. Esc belongs to the menu while the focus is inside it; a
+ * notice's button that was just pressed is gone, so the focus goes back to the picked tile first.
  */
-async function openLayers3d(win: Page): Promise<void> {
-  const bar = stageBar(win);
-  await expect(win.locator('[data-scene-view] canvas').first()).toBeVisible(MAP_READY);
-  await expect(bar.getByRole('button', { name: 'Environment and time of day' })).toBeVisible(
-    MAP_READY,
-  );
-  const layers = bar.getByRole('button', { name: 'Layers and issue pins', exact: true });
-  const more = bar.getByRole('button', { name: 'More tools', exact: true });
-  await expect(layers.or(more).first()).toBeVisible();
-  if (!(await layers.isVisible())) {
-    await more.click();
-    await expect(win.getByRole('dialog', { name: 'More tools' })).toBeVisible();
-  }
-  await layers.click();
-  await expect(win.getByRole('dialog', { name: 'Layers and issue pins' })).toBeVisible();
-}
-
-/** Close every stage popover (Layers, and More tools around it when the tool was folded). */
-async function closeStagePopovers(win: Page): Promise<void> {
-  const open = win.locator('.stage-pop');
-  for (let i = 0; i < 3 && (await open.count()) > 0; i++) await win.keyboard.press('Escape');
-  await expect(open).toHaveCount(0);
+async function closeMenu(win: Page, pop: string): Promise<void> {
+  const menu = win.getByTestId(pop);
+  if (!(await menu.locator(':focus').count()))
+    await menu.locator('[role="radio"][tabindex="0"]').focus();
+  await win.keyboard.press('Escape');
+  await expect(menu).toHaveCount(0);
 }
 
 async function shot(win: Page, testInfo: TestInfo, name: string): Promise<void> {
@@ -111,7 +102,7 @@ async function shot(win: Page, testInfo: TestInfo, name: string): Promise<void> 
   await win.screenshot({ path: testInfo.outputPath(`${name}.png`) });
 }
 
-test('the map type is chosen on the map, keeps the camera and survives a relaunch', async ({
+test('the Map menu works on the map, keeps the camera and survives a relaunch', async ({
   dataRoot,
   globeLibrary,
 }, testInfo) => {
@@ -125,9 +116,9 @@ test('the map type is chosen on the map, keeps the camera and survives a relaunc
     await win.waitForLoadState('domcontentloaded');
     await openMap(win, SITE_A);
 
-    // packs cover the site: Satellite from the start, imagery under the hillshade
+    // packs cover the site: the street map as the base, the packs on top under the hillshade
     const chip = win.getByTestId('basemap-button');
-    await expect(chip).toHaveText('Satellite');
+    await expect(chip).toHaveText('Streets');
     await expect.poll(() => packs(win), { timeout: 30_000 }).toEqual([WORLD, DETAIL, HILLSHADE]);
     // the map has gone to the site and stopped there
     let last = '';
@@ -146,33 +137,30 @@ test('the map type is chosen on the map, keeps the camera and survives a relaunc
     await chip.click();
     const pop = win.getByTestId('basemap-pop');
     await expect(pop).toBeVisible();
-    await expect(win.getByTestId('basemap-satellite')).toHaveAttribute('aria-checked', 'true');
-    await expect(win.getByTestId('basemap-satellite')).toBeFocused();
-    await expect(win.getByTestId('basemap-note')).toHaveCount(0);
-    await shot(win, testInfo, 'picker-satellite');
-    await expectAccessible(win, 'Map with the map type picker open');
+    await expect(win.getByTestId('map-tile-streets')).toHaveAttribute('aria-checked', 'true');
+    await expect(win.getByTestId('map-tile-streets')).toBeFocused();
+    await expect(onTop(win, 'packs')).toHaveAttribute('aria-checked', 'true');
+    await shot(win, testInfo, 'menu-packs');
+    await expectAccessible(win, 'Map with the Map menu open');
 
-    // Streets: the imagery goes, the hillshade and the camera stay
-    await win.getByTestId('basemap-streets').click();
-    await expect(chip).toHaveText('Streets');
+    // imagery packs off: the imagery goes, the hillshade and the camera stay
+    await onTop(win, 'packs').click();
+    await expect(onTop(win, 'packs')).toHaveAttribute('aria-checked', 'false');
     await expect.poll(() => packs(win)).toEqual([HILLSHADE]);
     expect((await mapState(win))?.camera).toBe(before?.camera);
-    await shot(win, testInfo, 'picker-streets');
+    await expect(chip).toHaveText('Streets');
+    await shot(win, testInfo, 'menu-streets');
 
-    // Satellite only: the imagery is back and the streets over it are hidden
-    await win.getByTestId('basemap-imagery').click();
-    await expect(chip).toHaveText('Satellite only');
+    // packs on and the street names off: the imagery is back and the streets over it are hidden
+    await onTop(win, 'packs').click();
     await expect.poll(() => packs(win)).toEqual([WORLD, DETAIL, HILLSHADE]);
-    await expect
-      .poll(async () => {
-        const s = await mapState(win);
-        return s ? s.streets - s.hidden : -1;
-      })
-      .toBe(0);
-    await shot(win, testInfo, 'picker-satellite-only');
+    await onTop(win, 'streets').click();
+    await expect(onTop(win, 'streets')).toHaveAttribute('aria-checked', 'false');
+    await expect.poll(() => shownStreets(win)).toBe(0);
+    await shot(win, testInfo, 'menu-packs-only');
 
     // one pack of the two that cover the site, then the best available again
-    const pack = win.getByTestId('basemap-pack');
+    const pack = win.getByTestId('map-pack');
     await expect(pack.locator('option')).toHaveText([
       'Best available',
       'Synthetic imagery, site A (test)',
@@ -184,30 +172,39 @@ test('the map type is chosen on the map, keeps the camera and survives a relaunc
     await expect.poll(() => packs(win)).toEqual([WORLD, DETAIL, HILLSHADE]);
 
     // terrain shading off and on leaves the imagery alone
-    const shading = win.getByTestId('basemap-hillshade');
-    await expect(shading).toBeChecked();
-    await shading.uncheck();
+    const shading = onTop(win, 'hillshade');
+    await expect(shading).toHaveAttribute('aria-checked', 'true');
+    await shading.click();
     await expect.poll(() => packs(win)).toEqual([WORLD, DETAIL]);
-    await shading.check();
+    await shading.click();
+    await expect(shading).toHaveAttribute('aria-checked', 'true');
     await expect.poll(() => packs(win)).toEqual([WORLD, DETAIL, HILLSHADE]);
 
-    // back to Satellite by keyboard: the streets return; Escape closes and focus goes to the chip
-    await win.getByTestId('basemap-imagery').focus();
-    await win.keyboard.press('ArrowLeft');
-    await expect(win.getByTestId('basemap-satellite')).toBeFocused();
-    await expect(chip).toHaveText('Satellite');
+    // the street names back on: they return, the camera stays
+    await onTop(win, 'streets').click();
     await expect.poll(async () => (await mapState(win))?.hidden).toBe(0);
     expect((await mapState(win))?.camera).toBe(before?.camera);
+
+    // by keyboard: the next map is Esri, which asks first in the menu; Cancel keeps the streets
+    await win.getByTestId('map-tile-streets').focus();
+    await win.keyboard.press('ArrowRight');
+    const notice = pop.getByTestId('online-satellite-notice');
+    await expect(notice).toHaveAttribute('data-provider', 'esri');
+    await notice.getByRole('button', { name: 'Cancel' }).click();
+    await expect(notice).toHaveCount(0);
+    await expect(chip).toHaveText('Streets');
+    await expect(win.getByTestId('map-tile-streets')).toHaveAttribute('aria-checked', 'true');
+    // Escape closes and focus goes to the chip
+    await win.getByTestId('map-tile-streets').focus();
     await win.keyboard.press('Escape');
     await expect(pop).toBeHidden();
     await expect(chip).toBeFocused();
 
-    // Settings shows the same choice, and its checkbox moves the map type
+    // Settings shows the same choice, and its checkbox moves the packs switch
     await chip.click();
-    await win.getByTestId('basemap-streets').click();
-    await expect(chip).toHaveText('Streets');
-    await win.keyboard.press('Escape');
-    await expect(pop).toBeHidden();
+    await onTop(win, 'packs').click();
+    await expect.poll(() => packs(win)).toEqual([HILLSHADE]);
+    await closeMenu(win, 'basemap-pop');
     await win.locator('.nav-item', { hasText: 'Settings' }).click();
     await win.locator('.set-nav button', { hasText: 'Offline maps' }).click();
     await expect(win.locator('.set-page h1')).toHaveText('Offline maps');
@@ -217,43 +214,45 @@ test('the map type is chosen on the map, keeps the camera and survives a relaunc
     await expect(satellite).not.toBeChecked();
     await satellite.check();
     await win.locator('.nav-item', { hasText: 'Scene' }).click();
-    await expect(chip).toHaveText('Satellite');
     await expect.poll(() => packs(win), MAP_READY).toEqual([WORLD, DETAIL, HILLSHADE]);
+    await chip.click();
+    await expect(onTop(win, 'packs')).toHaveAttribute('aria-checked', 'true');
+    await closeMenu(win, 'basemap-pop');
 
-    // the 3D view's part: imagery and terrain around the site, in Layers
+    // the 3D view's part: imagery and terrain around the site, in its own Map menu
     await showView(win, '3D');
     await expect(chip).toHaveCount(0);
-    await openLayers3d(win);
-    await expect(win.getByTestId('ground-aroundImagery')).toBeVisible();
-    await expect(win.getByTestId('ground-aroundTerrain')).toBeVisible();
-    await shot(win, testInfo, 'layers-3d-ground');
-    await closeStagePopovers(win);
+    await expect(win.locator('[data-scene-view] canvas').first()).toBeVisible(MAP_READY);
+    await win.getByTestId('scene-map-button').click();
+    const scenePop = win.getByTestId('scene-map-pop');
+    await expect(scenePop.getByTestId('map-ontop-aroundImagery')).toBeVisible();
+    await expect(scenePop.getByTestId('map-ontop-aroundTerrain')).toBeVisible();
+    await shot(win, testInfo, 'scene-map-menu');
+    await closeMenu(win, 'scene-map-pop');
 
-    // the command search has the map types too, and shows the map it changes
+    // the command search has the base maps too; an online one asks first, in Map sources
     await win.keyboard.press('Control+K');
     const palette = win.getByRole('dialog', { name: 'Command search' });
     await expect(palette).toBeVisible();
-    await win.keyboard.type('map type satellite only');
-    await expect(palette.getByText('Map type: satellite only')).toBeVisible();
+    await win.keyboard.type('map: sentinel');
+    await expect(palette.getByText('Map: Sentinel-2')).toBeVisible();
     await win.keyboard.press('Enter');
     await expect(palette).toBeHidden();
+    await expect(win.locator('.set-page h1')).toHaveText('Map sources');
+    const eox = win.getByTestId('map-sources').getByTestId('online-satellite-notice');
+    await expect(eox).toHaveAttribute('data-provider', 'eox');
+    await eox.getByRole('button', { name: 'Cancel' }).click();
+    await expect(eox).toHaveCount(0);
+    await win.locator('.nav-item', { hasText: 'Scene' }).click();
     await expect(win.locator('.stage')).toHaveAttribute('data-mode', 'map');
-    await expect(chip).toHaveText('Satellite only');
-    await expect
-      .poll(async () => {
-        const s = await mapState(win);
-        return s ? s.streets - s.hidden : -1;
-      }, MAP_READY)
-      .toBe(0);
+    await expect(chip).toHaveText('Streets');
 
-    // leave it on Streets for the relaunch
+    // leave the packs off for the relaunch
     await chip.click();
     await expect(pop).toBeVisible();
-    await win.getByTestId('basemap-streets').click();
-    await expect(chip).toHaveText('Streets');
+    await onTop(win, 'packs').click();
     await expect.poll(() => packs(win), MAP_READY).toEqual([HILLSHADE]);
-    await win.keyboard.press('Escape');
-    await expect(pop).toBeHidden();
+    await closeMenu(win, 'basemap-pop');
     expect(await guard.outbound(), 'the app made network requests').toEqual([]);
   } finally {
     await first.close();
@@ -272,14 +271,15 @@ test('the map type is chosen on the map, keeps the camera and survives a relaunc
     await win.waitForTimeout(1500);
     expect(await packs(win)).toEqual([HILLSHADE]);
     await win.getByTestId('basemap-button').click();
-    await expect(win.getByTestId('basemap-streets')).toHaveAttribute('aria-checked', 'true');
+    await expect(win.getByTestId('map-tile-streets')).toHaveAttribute('aria-checked', 'true');
+    await expect(onTop(win, 'packs')).toHaveAttribute('aria-checked', 'false');
     expect(await guard2.outbound(), 'the app made network requests').toEqual([]);
   } finally {
     await second.close();
   }
 });
 
-test('Satellite is greyed out with the reason when no imagery pack covers the site', async ({
+test('imagery packs and shading are greyed with the reason when no pack covers the site', async ({
   win,
 }, testInfo) => {
   // the tiny project's data root has no imagery or terrain pack
@@ -287,29 +287,28 @@ test('Satellite is greyed out with the reason when no imagery pack covers the si
   const chip = win.getByTestId('basemap-button');
   await expect(chip).toHaveText('Streets');
   await chip.click();
-  await expect(win.getByTestId('basemap-streets')).toHaveAttribute('aria-checked', 'true');
-  await expect(win.getByTestId('basemap-satellite')).toBeDisabled();
-  await expect(win.getByTestId('basemap-imagery')).toBeDisabled();
-  await expect(win.getByTestId('basemap-hillshade')).toBeDisabled();
-  await expect(win.getByTestId('basemap-note')).toContainText(
-    'No imagery or terrain pack covers this site.',
+  await expect(win.getByTestId('map-tile-streets')).toHaveAttribute('aria-checked', 'true');
+  await expect(onTop(win, 'packs')).toBeDisabled();
+  await expect(onTop(win, 'hillshade')).toBeDisabled();
+  await expect(win.getByTestId('map-ontop-packs')).toContainText(
+    'No imagery pack covers this site',
   );
-  await expect(win.getByTestId('basemap-pack')).toHaveCount(0);
+  await expect(win.getByTestId('map-ontop-hillshade')).toContainText(
+    'No terrain pack covers this site',
+  );
+  await expect(win.getByTestId('map-pack')).toHaveCount(0);
   // the style may still be loading on a slow renderer: wait for it, then no pack layer is drawn
   await expect.poll(() => packs(win), MAP_READY).toEqual([]);
-  await shot(win, testInfo, 'picker-no-packs');
-  await expectAccessible(win, 'Map type picker without packs');
+  await shot(win, testInfo, 'menu-no-packs');
+  await expectAccessible(win, 'Map menu without packs');
 
-  // never an error: the way to the packs is one click
-  await win.getByTestId('basemap-open-packs').click();
-  await expect(win.locator('.set-page h1')).toHaveText('Offline maps');
-  await expect(win.getByTestId('raster-packs')).toBeInViewport();
-  await expect(
-    win.getByTestId('raster-packs').getByRole('button', { name: 'Import imagery' }),
-  ).toBeFocused();
+  // never an error: the way to the map sources is one click
+  await win.getByTestId('map-sources-link').click();
+  await expect(win.locator('.set-page h1')).toHaveText('Map sources');
+  await expect(win.getByTestId('map-sources')).toBeInViewport();
 });
 
-test('a site covered by imagery but no terrain pack offers Satellite without shading', async ({
+test('a site covered by imagery but no terrain pack offers the packs without shading', async ({
   globeLibrary,
   win,
 }, testInfo) => {
@@ -317,17 +316,20 @@ test('a site covered by imagery but no terrain pack offers Satellite without sha
   const site = globeLibrary.sites.find((s) => s.id === 'globe-site-b');
   await openMap(win, site?.name ?? '');
   const chip = win.getByTestId('basemap-button');
-  await expect(chip).toHaveText('Satellite');
+  await expect(chip).toHaveText('Streets');
   await expect.poll(() => packs(win), { timeout: 30_000 }).toEqual([WORLD, DETAIL]);
   await chip.click();
-  await expect(win.getByTestId('basemap-satellite')).toBeEnabled();
-  await expect(win.getByTestId('basemap-hillshade')).toBeDisabled();
-  await expect(win.getByTestId('basemap-note')).toContainText('No terrain pack covers this site.');
-  // one covering pack: nothing to choose between
-  await expect(win.getByTestId('basemap-pack')).toHaveCount(0);
+  await expect(onTop(win, 'packs')).toBeEnabled();
+  await expect(onTop(win, 'packs')).toHaveAttribute('aria-checked', 'true');
+  await expect(onTop(win, 'hillshade')).toBeDisabled();
+  await expect(win.getByTestId('map-ontop-hillshade')).toContainText(
+    'No terrain pack covers this site',
+  );
+  // one covering pack: the best available or that one
+  await expect(win.getByTestId('map-pack').locator('option')).toHaveCount(2);
 
-  // in the light theme the picker stays dark, as everything that sits on the map, and readable
-  await win.keyboard.press('Escape');
+  // in the light theme the menu stays dark, as everything that sits on the map, and readable
+  await closeMenu(win, 'basemap-pop');
   await win.locator('.nav-item', { hasText: 'Settings' }).click();
   await win.locator('.set-nav button', { hasText: 'Appearance' }).click();
   await win.getByRole('radio', { name: 'Light', exact: true }).click();
@@ -336,25 +338,27 @@ test('a site covered by imagery but no terrain pack offers Satellite without sha
   await shot(win, testInfo, 'chip-light-theme');
   await chip.click();
   await expect(win.getByTestId('basemap-pop')).toBeVisible();
-  await shot(win, testInfo, 'picker-light-theme');
-  await expectAccessible(win, 'Map type picker in the light theme');
+  await shot(win, testInfo, 'menu-light-theme');
+  await expectAccessible(win, 'Map menu in the light theme');
 });
 
-// ------------------------------------------------------------------ Online satellite in the picker
+// ------------------------------------------------------------------ Online maps in the menu
 
 /**
- * Online satellite (ADR 0007, amendment of 10 Oct 2026) as a row of the picker. No test reaches
- * the network: main stands in for the service (QUADRION_ONLINE_TILES_TEST=1, flat green tiles made
- * in main), and the zero-network guard of the fixtures still fails the test on any real request.
+ * Online maps (ADR 0007, amendments of 10 and 14 Oct 2026) as tiles of the Map menu. No test
+ * reaches the network: main stands in for the service (QUADRION_ONLINE_TILES_TEST=1, flat green
+ * tiles made in main), and the zero-network guard of the fixtures still fails the test on any
+ * real request.
  */
-test.describe('Online satellite', () => {
+test.describe('Online maps in the menu', () => {
   test.use({ appEnv: { QUADRION_ONLINE_TILES_TEST: '1' } });
 
   const ONLINE = 'g7-raster-online-s2cloudless-2016-layer';
-  const row = (win: Page) => win.getByTestId('basemap-online');
-  const rowNote = (win: Page) => win.getByTestId('basemap-online-note');
+  const EOX =
+    /^https:\/\/tiles\.maps\.eox\.at\/wmts\/1\.0\.0\/s2cloudless_3857\/default\/GoogleMapsCompatible\/\d+\/\d+\/\d+\.jpg$/;
+  const sentinel = (win: Page) => win.getByTestId('map-tile-s2cloudless-2016');
   const credit = (win: Page) => win.locator('.pane-map .maplibregl-ctrl-attrib');
-  /** Whether main has it switched on. */
+  /** Whether main has online maps switched on. */
   const switchedOn = async (win: Page) =>
     (await win.evaluate(() => window.aio.invoke('onlineTiles:status', {}))).enabled;
   /** The addresses main's stand-in for the service was asked for. */
@@ -380,7 +384,18 @@ test.describe('Online satellite', () => {
     await expect(win.locator('.set-page h1')).toHaveText(page);
   }
 
-  test('switched on in the picker, Satellite is a choice where no pack covers the site', async ({
+  /** Pick Sentinel-2 in the open menu the first time, and say yes to its notice. */
+  async function switchOnSentinel(win: Page): Promise<void> {
+    await sentinel(win).click();
+    await win
+      .getByTestId('basemap-pop')
+      .getByTestId('online-satellite-notice')
+      .getByRole('button', { name: 'Switch on' })
+      .click();
+    await expect(sentinel(win)).toHaveAttribute('aria-checked', 'true');
+  }
+
+  test('Sentinel-2 asks once, then draws where no pack covers the site', async ({
     app,
     win,
     network,
@@ -391,111 +406,84 @@ test.describe('Online satellite', () => {
     await expect(chip).toHaveText('Streets');
     await chip.click();
     const pop = win.getByTestId('basemap-pop');
-
-    // off: the row says what it is, and the reason line has a second way out
-    await expect(row(win)).not.toBeChecked();
-    await expect(row(win)).toBeEnabled();
-    await expect(pop.getByText('Online satellite', { exact: true }).first()).toBeVisible();
-    await expect(rowNote(win)).toHaveText('Sentinel-2, 2016, about 10 m per pixel');
-    await expect(rowNote(win)).toBeInViewport({ ratio: 1 });
-    await expect(win.getByTestId('basemap-satellite')).toBeDisabled();
-    await expect(win.getByTestId('basemap-note')).toHaveText(
-      'No imagery or terrain pack covers this site. Offline maps or turn on Online satellite',
-    );
-    await shot(win, testInfo, 'picker-online-off');
-    await expectAccessible(win, 'Map type picker, online satellite off');
+    await expect(sentinel(win)).toBeEnabled();
+    await shot(win, testInfo, 'menu-online-off');
+    await expectAccessible(win, 'Map menu, online maps off');
 
     // the first time: the notice, and nothing is on or asked for until the person says yes
-    await row(win).click();
+    await sentinel(win).click();
     const notice = pop.getByTestId('online-satellite-notice');
+    await expect(notice).toHaveAttribute('data-provider', 'eox');
     await expect(notice).toContainText("from EOX's servers");
     await expect(notice).toContainText('the areas you view are visible to that service');
-    // the whole question is on screen, also in the smallest window (the popover scrolls there)
+    // the whole question is on screen, also in the smallest window (the menu scrolls there)
     await expect(notice).toBeInViewport({ ratio: 1 });
     await expect(notice.getByRole('button', { name: 'Switch on' })).toBeInViewport({ ratio: 1 });
-    await expect(row(win)).not.toBeChecked();
-    await expect(win.getByTestId('basemap-satellite')).toBeDisabled();
+    await expect(sentinel(win)).toHaveAttribute('aria-checked', 'false');
     expect(await switchedOn(win)).toBe(false);
     expect(await asked(app)).toEqual([]);
-    await shot(win, testInfo, 'picker-online-notice');
-    await expectAccessible(win, 'Map type picker with the online satellite notice');
+    await shot(win, testInfo, 'menu-online-notice');
+    await expectAccessible(win, 'Map menu with the Sentinel-2 notice');
     await notice.getByRole('button', { name: 'Cancel' }).click();
     await expect(notice).toHaveCount(0);
     expect(await switchedOn(win)).toBe(false);
 
-    // the second way out of the reason line asks the same question
-    await win.getByTestId('basemap-turn-on-online').click();
-    await expect(notice).toBeVisible();
+    // the second time: yes
+    await sentinel(win).click();
     await notice.getByRole('button', { name: 'Switch on' }).click();
-    await expect(row(win)).toBeChecked();
     await expect(notice).toHaveCount(0);
+    await expect(sentinel(win)).toHaveAttribute('aria-checked', 'true');
     expect(await switchedOn(win)).toBe(true);
-
-    // Satellite is a choice now and, being the remembered type, what the map shows
-    await expect(win.getByTestId('basemap-satellite')).toBeEnabled();
-    await expect(win.getByTestId('basemap-imagery')).toBeEnabled();
-    await expect(win.getByTestId('basemap-satellite')).toHaveAttribute('aria-checked', 'true');
-    await expect(chip).toHaveText('Satellite');
+    await expect(chip).toHaveText('Sentinel-2');
     await expect.poll(() => packs(win), { timeout: 30_000 }).toEqual([ONLINE]);
-    // no imagery line any more: only what is still missing
-    await expect(win.getByTestId('basemap-note')).toHaveText(
-      'No terrain pack covers this site. Offline maps',
-    );
+    await expect(win.getByTestId('map-menu-credit')).toContainText(ONLINE_SATELLITE.attribution);
     await expect(credit(win)).toContainText(ONLINE_SATELLITE.attribution);
-    await shot(win, testInfo, 'picker-online-on');
-    await expectAccessible(win, 'Map type picker, online satellite on');
+    await shot(win, testInfo, 'menu-online-on');
+    await expectAccessible(win, 'Map menu, Sentinel-2 drawn');
 
-    // Satellite only: the imagery stays, credited, and the streets over it are hidden
-    await win.getByTestId('basemap-imagery').click();
-    await expect(chip).toHaveText('Satellite only');
-    await expect
-      .poll(async () => {
-        const s = await mapState(win);
-        return s ? s.streets - s.hidden : -1;
-      })
-      .toBe(0);
+    // the street names off: the imagery stays, credited, and the streets over it are hidden
+    await onTop(win, 'streets').click();
+    await expect.poll(() => shownStreets(win)).toBe(0);
     expect(await packs(win)).toEqual([ONLINE]);
     await expect(credit(win)).toContainText(ONLINE_SATELLITE.attribution);
 
-    // Streets: it is imagery like the packs, so none of it is drawn, and it stays switched on
-    await win.getByTestId('basemap-streets').click();
+    // the street map: none of the imagery is drawn, and online maps stay switched on
+    await win.getByTestId('map-tile-streets').click();
     await expect.poll(() => packs(win)).toEqual([]);
     await expect(credit(win)).not.toContainText(ONLINE_SATELLITE.attribution);
-    await expect(row(win)).toBeChecked();
-    await win.getByTestId('basemap-satellite').click();
+    expect(await switchedOn(win)).toBe(true);
+    // back to Sentinel-2: no notice the second time
+    await sentinel(win).click();
+    await expect(notice).toHaveCount(0);
     await expect.poll(() => packs(win)).toEqual([ONLINE]);
-    await win.keyboard.press('Escape');
+    await closeMenu(win, 'basemap-pop');
 
     // the stand-in was asked for the one service only; nothing left the computer
     await expect.poll(async () => ((await asked(app)) ?? []).length).toBeGreaterThan(0);
-    for (const url of (await asked(app)) ?? [])
-      expect(url).toMatch(
-        /^https:\/\/tiles\.maps\.eox\.at\/wmts\/1\.0\.0\/s2cloudless_3857\/default\/GoogleMapsCompatible\/\d+\/\d+\/\d+\.jpg$/,
-      );
+    for (const url of (await asked(app)) ?? []) expect(url).toMatch(EOX);
     expect(await network.outbound()).toEqual([]);
 
-    // Settings shows the same switch, and switching it off there takes Satellite away again
-    await settingsPage(win, 'Offline maps');
-    const box = win
-      .getByTestId('raster-packs')
-      .getByRole('checkbox', { name: 'Online satellite (Sentinel-2)' });
-    await expect(box).toBeChecked();
+    // Settings shows the same switch, and switching it off there takes Sentinel-2 away again
+    await settingsPage(win, 'Map sources');
+    const box = win.getByTestId('map-sources-master').getByRole('switch');
+    await expect(box).toHaveAttribute('aria-checked', 'true');
     await box.click();
-    await expect(box).not.toBeChecked();
+    await expect(box).toHaveAttribute('aria-checked', 'false');
     expect(await switchedOn(win)).toBe(false);
     await win.locator('.nav-item', { hasText: 'Scene' }).click();
-    await expect(chip).toHaveText('Streets');
-    await expect.poll(() => packs(win)).toEqual([]);
+    // the choice is kept, but the offline map is drawn in its place
+    await expect(chip).toContainText('Sentinel-2');
+    await expect(win.getByTestId('map-chip-fallback')).toHaveText('Offline map');
+    await expect.poll(() => packs(win), MAP_READY).toEqual([]);
 
     // the command search has it too; the notice was read, so it switches at once
-    const palette = await search(win, 'online satellite');
-    await expect(palette.getByRole('option').first()).toHaveText(/^Turn online satellite on/);
+    const palette = await search(win, 'map: sentinel');
+    await expect(palette.getByText('Map: Sentinel-2')).toBeVisible();
     await win.keyboard.press('Enter');
     await expect(palette).toBeHidden();
-    await expect(chip).toHaveText('Satellite');
     await expect.poll(() => switchedOn(win)).toBe(true);
-    await chip.click();
-    await expect(row(win)).toBeChecked();
+    await expect.poll(() => packs(win), MAP_READY).toEqual([ONLINE]);
+    await expect(win.getByTestId('map-chip-fallback')).toHaveCount(0);
   });
 
   test('offline only: saved tiles while it is on, greyed with the reason once it is off', async ({
@@ -506,15 +494,10 @@ test.describe('Online satellite', () => {
     await openMap(win, 'E2E tiny project');
     const chip = win.getByTestId('basemap-button');
     await chip.click();
-    await row(win).click();
-    await win
-      .getByTestId('online-satellite-notice')
-      .getByRole('button', { name: 'Switch on' })
-      .click();
-    await expect(row(win)).toBeChecked();
+    await switchOnSentinel(win);
     await expect.poll(() => packs(win), { timeout: 30_000 }).toEqual([ONLINE]);
     await expect.poll(async () => ((await asked(app)) ?? []).length).toBeGreaterThan(0);
-    await win.keyboard.press('Escape');
+    await closeMenu(win, 'basemap-pop');
 
     // the workstation goes offline only
     await settingsPage(win, 'Privacy and cloud');
@@ -524,35 +507,39 @@ test.describe('Online satellite', () => {
     await win.locator('.nav-item', { hasText: 'Scene' }).click();
     const before = ((await asked(app)) ?? []).length;
 
-    // still on: the layer stays for the tiles kept on this computer, and it can be switched off
+    // still on: Sentinel-2 stays for the tiles kept on this computer; the others are greyed
     await chip.click();
-    await expect(row(win)).toBeChecked();
-    await expect(row(win)).toBeEnabled();
-    await expect(rowNote(win)).toHaveText('Showing saved tiles only');
-    await expect(win.getByTestId('basemap-satellite')).toBeEnabled();
-    await expect.poll(() => packs(win), MAP_READY).toEqual([ONLINE]);
-    await shot(win, testInfo, 'picker-online-offline-only-on');
-    await expectAccessible(win, 'Map type picker, online satellite on and offline only');
-
-    await row(win).click();
-    await expect(row(win)).not.toBeChecked();
-    await expect(row(win)).toBeDisabled();
-    await expect(rowNote(win)).toHaveText('Go online to use it');
-    await expect(win.getByTestId('basemap-satellite')).toBeDisabled();
-    await expect(chip).toHaveText('Streets');
-    await expect.poll(() => packs(win)).toEqual([]);
-    // no second way out while offline only
-    await expect(win.getByTestId('basemap-note')).toHaveText(
-      'No imagery or terrain pack covers this site. Offline maps',
+    await expect(sentinel(win)).toBeEnabled();
+    await expect(sentinel(win)).toHaveAttribute('aria-checked', 'true');
+    await expect(win.getByTestId('map-tile-esri-world-imagery')).toBeDisabled();
+    await expect(win.getByTestId('map-menu-note-satellite')).toContainText(
+      'This workstation is offline-only',
     );
-    await expect(win.getByTestId('basemap-turn-on-online')).toHaveCount(0);
-    await shot(win, testInfo, 'picker-online-offline-only');
-    await expectAccessible(win, 'Map type picker, offline only');
-    await win.keyboard.press('Escape');
+    await expect.poll(() => packs(win), MAP_READY).toEqual([ONLINE]);
+    await shot(win, testInfo, 'menu-online-offline-only-on');
+    await expectAccessible(win, 'Map menu, online maps on and offline only');
+    await closeMenu(win, 'basemap-pop');
+
+    // switched off in Settings it cannot be switched on again
+    await settingsPage(win, 'Map sources');
+    const box = win.getByTestId('map-sources-master').getByRole('switch');
+    await expect(box).toBeEnabled();
+    await box.click();
+    await expect(box).toHaveAttribute('aria-checked', 'false');
+    await expect(box).toBeDisabled();
+    await win.locator('.nav-item', { hasText: 'Scene' }).click();
+    await expect(chip).toContainText('Sentinel-2');
+    await expect(win.getByTestId('map-chip-fallback')).toHaveText('Offline map');
+    await expect.poll(() => packs(win), MAP_READY).toEqual([]);
+    await chip.click();
+    await expect(sentinel(win)).toBeDisabled();
+    await shot(win, testInfo, 'menu-online-offline-only');
+    await expectAccessible(win, 'Map menu, offline only');
+    await closeMenu(win, 'basemap-pop');
 
     // nor in the command search
-    const palette = await search(win, 'online satellite');
-    await expect(palette.getByText(/Turn online satellite/)).toHaveCount(0);
+    const palette = await search(win, 'map: sentinel');
+    await expect(palette.getByText('Map: Sentinel-2')).toHaveCount(0);
     await win.keyboard.press('Escape');
 
     // offline only asked the service for nothing
