@@ -1,0 +1,336 @@
+/* The Map menu (MapMenu.tsx): the founder's Gallery layout of 14 Oct 2026. A chip with the
+   map's picture, and a 312 px pop: sections of 44 px pictures in four columns split by hairlines,
+   the On top switches, and a footer strip with the credit and Map sources. Over the map and the
+   3D view the anchor carries data-surface="dark" and is dark in every theme; the pictures keep
+   the maps' own colours. Each view places the anchor with its own class (the anchor sets no
+   position). */
+
+.mm-anchor[data-open] {
+  z-index: 21;
+}
+
+.mm-chip {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  height: 32px;
+  padding: 3px 8px 3px 3px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-6);
+  background: var(--bg-1);
+  color: var(--fg-0);
+  font: 500 var(--t-12) / 1 var(--f-ui);
+  white-space: nowrap;
+  box-shadow: 0 4px 12px var(--shadow);
+  transition:
+    border-color 120ms var(--ease),
+    background-color 120ms var(--ease);
+}
+.mm-chip:hover {
+  border-color: var(--line-strong);
+}
+.mm-chip:active {
+  transform: translateY(0.5px);
+}
+.mm-chip[aria-expanded='true'] {
+  border-color: var(--acc-a40);
+}
+.mm-chip-pic {
+  width: 38px;
+  height: 24px;
+  border-radius: var(--r-2);
+  box-shadow: 0 0 0 1px var(--line-strong);
+}
+.mm-chip-note {
+  padding: 2px 5px;
+  border-radius: var(--r-2);
+  background: var(--acc-a12);
+  color: var(--fg-1);
+  font-size: var(--t-11);
+  font-weight: 400;
+}
+.mm-swatch {
+  display: block;
+  flex: none;
+}
+
+/* the sections run edge to edge with hairlines between them, as in the mockup; the footer is a
+   strip on the deepest surface */
+.mm-pop {
+  position: absolute;
+  top: calc(100% + 8px);
+  inset-inline-end: 0;
+  z-index: 20;
+  display: flex;
+  flex-direction: column;
+  width: 312px;
+  max-height: min(620px, calc(100vh - 120px));
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-6);
+  background: var(--bg-1);
+  color: var(--fg-1);
+  font: 400 var(--t-12) / 1.35 var(--f-ui);
+  box-shadow: 0 12px 32px var(--shadow);
+  animation: mm-in 160ms var(--ease);
+  transform-origin: top right;
+}
+/* the pop scrolls inside itself at 1100 x 700: its blocks keep their height */
+.mm-pop > * {
+  flex: none;
+}
+@keyframes mm-in {
+  from {
+    opacity: 0;
+    transform: translateY(-4px) scale(0.98);
+  }
+}
+
+.mm-tiles {
+  display: flex;
+  flex-direction: column;
+}
+.mm-sec {
+  display: grid;
+  gap: 8px;
+  padding: 12px;
+}
+.mm-sec + .mm-sec,
+.mm-pop > * + .mm-sec {
+  border-top: 1px solid var(--line-soft);
+}
+.mm-sec-t {
+  margin: 0;
+  color: var(--fg-3);
+  font: 600 var(--t-11) / 1 var(--f-ui);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+.mm-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px 6px;
+}
+
+.mm-tile {
+  display: grid;
+  justify-items: center;
+  align-content: start;
+  gap: 5px;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--fg-2);
+  font: inherit;
+  font-size: var(--t-11);
+  text-align: center;
+  cursor: pointer;
+}
+.mm-pic {
+  position: relative;
+  width: 44px;
+  height: 44px;
+  overflow: hidden;
+  border-radius: var(--r-4);
+  box-shadow: 0 0 0 1px var(--line);
+  transition:
+    box-shadow 120ms var(--ease),
+    transform 120ms var(--ease);
+}
+.mm-pic .mm-swatch {
+  width: 44px;
+  height: 44px;
+}
+.mm-tile:hover:not(:disabled) {
+  color: var(--fg-1);
+}
+.mm-tile:hover:not(:disabled) .mm-pic {
+  box-shadow: 0 0 0 1px var(--line-strong);
+  transform: translateY(-1px);
+}
+.mm-tile[aria-checked='true'] {
+  color: var(--fg-0);
+}
+.mm-tile[aria-checked='true'] .mm-pic {
+  /* the founder's mockup: a 2 px teal outline on the chosen map */
+  box-shadow:
+    0 0 0 1px var(--bg-1),
+    0 0 0 3px var(--acc);
+}
+.mm-tile:focus-visible {
+  outline: none;
+}
+.mm-tile:focus-visible .mm-pic {
+  box-shadow:
+    0 0 0 1px var(--bg-1),
+    0 0 0 3px var(--acc-strong);
+}
+.mm-tile:disabled {
+  cursor: default;
+}
+.mm-tile:disabled .mm-pic,
+.mm-tile:disabled .mm-tile-l {
+  opacity: 0.45;
+}
+.mm-tile-l {
+  display: -webkit-box;
+  max-width: 100%;
+  overflow: hidden;
+  overflow-wrap: anywhere;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-height: 1.2;
+}
+/* the word on a greyed picture: a dark plate at full strength, so it reads over any map */
+.mm-badge {
+  position: absolute;
+  inset-inline: 3px;
+  bottom: 3px;
+  padding: 1px 0;
+  border-radius: var(--r-2);
+  background: oklch(0.17 0.01 250 / 0.88);
+  color: oklch(0.96 0.005 250);
+  font-size: 9.5px;
+  font-weight: 600;
+  line-height: 1.2;
+}
+.mm-tile:disabled .mm-pic:has(.mm-badge) {
+  opacity: 0.7;
+}
+.mm-tile:disabled .mm-pic:has(.mm-badge) .mm-swatch {
+  opacity: 0.55;
+}
+.mm-note {
+  margin: 0;
+  color: var(--fg-3);
+  font-size: var(--t-11);
+}
+
+.mm-ontop {
+  gap: 2px;
+}
+.mm-ontop .mm-sec-t {
+  margin-bottom: 4px;
+}
+.mm-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 30px;
+}
+.mm-row > .switch {
+  flex: none;
+}
+.mm-row-l {
+  display: grid;
+  flex: 1;
+  gap: 1px;
+  min-width: 0;
+  color: var(--fg-1);
+  font-size: var(--t-12);
+}
+.mm-row[data-disabled] .mm-row-l > span:first-child {
+  color: var(--fg-3);
+}
+.mm-row-why {
+  color: var(--fg-3);
+  font-size: var(--t-11);
+}
+.mm-pack {
+  justify-content: space-between;
+  margin-top: 4px;
+}
+.mm-pack .mm-row-l {
+  flex: none;
+}
+.mm-pack select {
+  min-width: 0;
+  max-width: 170px;
+}
+
+.mm-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 8px 12px;
+  border-top: 1px solid var(--line-soft);
+  background: var(--bg-0);
+}
+.mm-foot-l {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+  justify-items: start;
+}
+.mm-credit-line {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  min-width: 0;
+  max-width: 100%;
+}
+.mm-wordmark {
+  flex: none;
+  color: var(--fg-1);
+  font: 700 var(--t-11) / 1 var(--f-ui);
+  letter-spacing: -0.01em;
+}
+.mm-credit {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--fg-3);
+  font-size: var(--t-11);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.mm-link {
+  flex: none;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--acc-strong);
+  font: inherit;
+  font-size: var(--t-11);
+  cursor: pointer;
+}
+.mm-link:hover {
+  text-decoration: underline;
+}
+.mm-sources {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+}
+.mm-sources-go {
+  transition: transform 120ms var(--ease);
+}
+.mm-sources:hover .mm-sources-go {
+  transform: translateX(2px);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .mm-pop {
+    animation: none;
+  }
+  .mm-chip,
+  .mm-pic,
+  .mm-sources-go {
+    transition: none;
+  }
+}
+@media (forced-colors: active) {
+  .mm-chip,
+  .mm-pop {
+    border: 1px solid CanvasText;
+  }
+  .mm-tile[aria-checked='true'] .mm-pic {
+    outline: 2px solid Highlight;
+    outline-offset: 2px;
+  }
+  .mm-tile:disabled .mm-tile-l,
+  .mm-badge {
+    color: GrayText;
+  }
+}
