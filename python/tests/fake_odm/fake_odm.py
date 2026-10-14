@@ -185,8 +185,11 @@ def stage_opensfm(project: Path, a: argparse.Namespace, gpu_bad: str) -> None:
 
     C = _crs()
     geo = _geo_positions(a.geo) if a.geo else {}
+    drop = {n for n in os.environ.get("FAKE_ODM_DROP", "").split(",") if n}  # images ODM cannot place
     placed = {}
     for img in sorted((project / "images").iterdir()):
+        if img.name in drop:
+            continue
         pos = geo.get(img.name) or _exif_position(img)
         if pos is not None:
             placed[img.name] = pos

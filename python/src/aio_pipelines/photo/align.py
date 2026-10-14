@@ -4,21 +4,16 @@ Stages (``PhotoStageName``; each a resumable job step):
 
     inspect   EXIF and DJI XMP of every photo (GPS, altitudes, gimbal, RTK flag and accuracy,
               camera); reject what cannot be used, warn about what may hurt; camera groups;
-              the run's CRS, height rule and frames; ``run.json`` (status ``aligning``)
-    features  SIFT on CPU through the engine, image size from the preset (resumes per photo)
-    match     pairs from GPS neighbours (footprint from altitude and field of view; oblique
-              views paired by where they look), sequential neighbours, exhaustive for small sets;
-              geometric verification (resumes per pair)
-    sfm       global mapper by default; incremental when the global one registers under 95 %
-    georef    every model to the GNSS positions (robust similarity in a local ENU frame), then
-              bundle adjustment with GNSS priors weighted by RTK accuracy; disconnected models
-              join through GNSS; models without enough GNSS are reported by name
+              the run's CRS, height rule and frames; ``run.json`` (status ``aligning``); the ODM
+              project ``photogrammetry/<run>/odm/`` (hard links to the photos, and ``geo.txt``
+              when our positions or heights differ from what ODM would read itself)
+    sfm       ODM (ADR 0012) from its first stage to the end of OpenSfM
+    georef    ODM's reconstruction into our model, in the run's local ENU frame
     report    report/align.json, report/accuracy.json (GNSS only, checkpoints measured when a
               gcp.json is there), mark predictions, cameras-sfm.json
     commit    everything into ``photogrammetry/<run>/``; ``run.json`` last
 
-The engine is an adapter (``colmap_io.SfmEngine``); ``PhotoAlign.engine_factory`` picks it.
-Photos are read in place and never written. Nothing leaves the project except reading photos.
+Photos are read in place and never written: ODM sees hard links (or copies) of them.
 
 Run files (data-conventions section 21), every JSON file with its ``schema``:
 
@@ -35,9 +30,7 @@ Run files (data-conventions section 21), every JSON file with its ``schema``:
 Photo keys are the photos layer's photo ids, or the path below the chosen folder (the folder's
 own name first when there are several); names may hold spaces and any letters.
 
-Memory: ``AIO_PHOTO_MEMORY_MB`` (set by the app) caps every COLMAP stage; the guard stops a stage
-above it. Without it the limit is 75 % of the memory and 90 % of what is free
-(``colmap_io.memory_limit``).
+Threads, GPU and memory for ODM: ``odm.runner.machine`` (ADR 0012).
 """
 
 from __future__ import annotations
@@ -73,19 +66,13 @@ from . import accuracy as A
 from . import bundle as B
 from . import crs as C
 from . import gcp as G
-from .colmap_io import (
-    EngineGroup,
-    EngineImage,
-    EngineJob,
-    SfmEngine,
-    engine_alias,
-    load_engine,
-    memory_limit,
-    memory_status,
-)
 from .exif import PhotoMeta, apply_ppk, inspect_photos, list_folder_photos, read_photo, read_ppk
 from .model import SparseModel, rotmat_to_qvec
-from .native import memory_cap
+from .odm import flags as OF
+from .odm import project as OP
+from .odm import runner as OR
+from .odm.reconstruction import convert_model, read_reconstruction
+from .proctree import memory_status
 
 RUN_SCHEMA = "aio.photo-run/1"
 ALIGN_SCHEMA = "aio.photo-align/1"
@@ -93,18 +80,9 @@ CAMERAS_SCHEMA = "aio.photo-cameras/1"
 FRAME_SCHEMA = "aio.photo-frame/1"
 LIST_SCHEMA = "aio.photo-list/1"
 RUN_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,79}$")
-PRESETS = {
-    # share of the longest image side used for features, and SIFT features per photo
-    "fast": (0.25, 4096),
-    "standard": (0.5, 8192),
-    "high": (1.0, 12288),
-}
-MIN_REGISTERED_GLOBAL = 0.95
-#: GNSS priors at most this accurate (one sigma, metres) refine the model in a bundle adjustment;
-#: less accurate ones only place it (similarity).
-GNSS_ADJUST_SIGMA_M = 0.5
-MAX_EXHAUSTIVE = 400
-STAGES = ("inspect", "features", "match", "sfm", "georef", "report", "commit")
+STAGES = ("inspect", "sfm", "georef", "report", "commit")
+#: one-sigma accuracy (metres) written to geo.txt when GNSS is ignored: ODM barely weighs it
+IGNORED_GNSS_SIGMA_M = (50.0, 50.0)
 
 
 # ------------------------------------------------------------------------------- run files
@@ -132,7 +110,7 @@ def hardware_probe(project: Path) -> dict[str, Any]:
         machine, machine or "unknown"
     )
     plat = sys.platform
-    supported = (plat, arch) in (("win32", "x64"), ("darwin", "arm64"))
+    supported = (plat, arch) == ("win32", "x64")  # ODM ships for Windows x64 only
     return {
         "platform": plat,
         "arch": arch,
@@ -140,7 +118,7 @@ def hardware_probe(project: Path) -> dict[str, Any]:
         "memoryBytes": mem,
         "freeDiskBytes": int(shutil.disk_usage(project).free),
         "gpus": [],
-        "cuda": False,
+        "cuda": OR.nvcuda_present(),
         "processing": "available" if supported else "unsupported-platform",
     }
 
@@ -257,43 +235,6 @@ def layer_meta(meta: PhotoMeta, item: dict[str, Any], manifest: dict[str, Any]) 
     lens = item.get("lens") or {}
     if not meta.focal35 and lens.get("hfovDeg"):
         meta.focal35 = 18.0 / math.tan(math.radians(float(lens["hfovDeg"])) / 2)
-
-
-#: Measured on a 20 MP flight (COLMAP 4.2 CPU SIFT, first octave 0): about 0.5 GB plus 0.3 GB per
-#: extraction thread at 2736 px, growing with the square of the image size (1.4 GB per thread at
-#: full size). SIFT's first octave -1 (doubling the image first) quadruples it: 1.4 GB per thread
-#: at 2736 px, which is how 24 threads once took 33 GB.
-FEATURE_BASE_GB = 0.5
-FEATURE_GB_PER_THREAD_AT_2736 = 0.3
-#: Extraction is limited by decoding and disk beyond this many threads (16 threads were no faster
-#: than 4 on the measured flight).
-MAX_FEATURE_THREADS = 8
-#: Feature extraction stays within this, whatever the machine (a 16 GB laptop runs other things).
-FEATURE_BUDGET_GB = 4.0
-
-
-def first_octave(max_image_size: int) -> int:
-    """SIFT's first octave: -1 (upsample) only for small images, where fine detail needs it."""
-    return -1 if max_image_size < 1600 else 0
-
-
-def feature_threads(info: dict[str, Any], memory_limit_bytes: int) -> int:
-    """Feature threads whose memory fits in ``FEATURE_BUDGET_GB`` and half the stage limit."""
-    cores = os.cpu_count() or 4
-    size = int(info.get("maxImageSize") or 2736)
-    per = FEATURE_GB_PER_THREAD_AT_2736 * (size / 2736) ** 2 * (4 if first_octave(size) < 0 else 1)
-    budget = FEATURE_BUDGET_GB
-    if memory_limit_bytes > 0:
-        budget = min(budget, 0.5 * memory_limit_bytes / 1e9)
-    fit = int((budget - FEATURE_BASE_GB) / max(per, 0.02))
-    return max(1, min(cores, MAX_FEATURE_THREADS, fit))
-
-
-def initial_params(meta: PhotoMeta) -> list[float]:
-    """OPENCV start calibration: focal from the 35 mm equivalent, else 1.2 x the long side."""
-    w, h = meta.width, meta.height
-    f = float(meta.focal35) / 36.0 * max(w, h) if meta.focal35 else 1.2 * max(w, h)
-    return [f, f, w / 2, h / 2, 0.0, 0.0, 0.0, 0.0]
 
 
 def meta_record(m: PhotoMeta) -> dict[str, Any]:
@@ -432,128 +373,37 @@ def choose_crs(params: dict[str, Any], manifest: dict[str, Any], metas: list[Pho
     return C.crs_of(C.utm_epsg(lon, lat))
 
 
-# ------------------------------------------------------------------------------- pairs
+def needs_geo(metas: list[PhotoMeta], H: np.ndarray, params: dict[str, Any]) -> bool:
+    """Whether ODM must be told the positions (``geo.txt``): PPK positions, a GNSS mode other than
+    ``auto``, or heights that are not the photos' own altitudes (RTK ellipsoidal heights converted,
+    the project's vertical datum, relative heights filled in)."""
+    if params.get("ppk") or params.get("gnss", "auto") != "auto":
+        return True
+    for i, m in enumerate(metas):
+        if not m.has_gps or np.isnan(H[i]):
+            continue
+        if m.altitude is None or abs(float(H[i]) - float(m.altitude)) > 0.001:
+            return True
+    return False
 
 
-def footprint_radius(m: PhotoMeta, agl: float) -> float:
-    """Half the diagonal of the photo's ground footprint, metres."""
-    f35 = m.focal35 or 24.0
-    half_diag = math.hypot(36.0, 24.0) / 2
-    return max(5.0, agl * half_diag / f35)
-
-
-def choose_pairs(
-    metas: list[PhotoMeta], H: np.ndarray, mode: str, names: dict[str, str]
-) -> tuple[list[tuple[str, str]], str]:
-    """Image pairs to match (engine names) and how they were chosen."""
-    n = len(metas)
-    pairs: set[tuple[int, int]] = set()
-
-    def add(i: int, j: int) -> None:
-        if i != j:
-            pairs.add((min(i, j), max(i, j)))
-
-    order = sorted(range(n), key=lambda i: (metas[i].time or "", metas[i].key))
-    has_gps = np.array([m.has_gps and not np.isnan(H[i]) for i, m in enumerate(metas)])
-    if mode == "auto":
-        mode = "exhaustive" if n <= 40 else ("gps" if has_gps.mean() >= 0.5 else "sequential")
-    if mode == "exhaustive":
-        if n > MAX_EXHAUSTIVE:
-            raise JobError(
-                f"Exhaustive matching is limited to {MAX_EXHAUSTIVE} photos; use GPS or sequential matching."
-            )
-        for i in range(n):
-            for j in range(i + 1, n):
-                add(i, j)
-        how = "exhaustive"
-    else:
-        if mode == "sequential" or has_gps.sum() < 2:  # GPS mode pairs by footprint only
-            for k, i in enumerate(order):
-                for j in order[k + 1 : k + 11]:
-                    add(i, j)
-        how = "sequential"
-        if mode == "gps" and has_gps.sum() >= 2:
-            idx = np.nonzero(has_gps)[0]
-            lon0 = float(np.median([metas[i].lon for i in idx]))
-            lat0 = float(np.median([metas[i].lat for i in idx]))
-            frame = C.EnuFrame(lon0, lat0, 0.0)
-            xyz = frame.from_geodetic([metas[i].lon for i in idx], [metas[i].lat for i in idx], H[idx])
-            rel = np.array([metas[i].rel_alt if metas[i].rel_alt is not None else np.nan for i in idx])
-            ground = (
-                float(np.nanmedian(xyz[:, 2] - rel))
-                if not np.isnan(rel).all()
-                else float(xyz[:, 2].min() - 50)
-            )
-            agl = np.maximum(xyz[:, 2] - ground, 5.0)
-            # where each photo looks: oblique views are paired by their ground target
-            target = xyz[:, :2].copy()
-            look = np.zeros((len(idx), 2))
-            reach = agl.copy()  # distance along the view to the ground
-            # views lower than 50 degrees below the horizon see facades and sides: two of them
-            # facing each other share little; steeper views (a -65 degree mapping flight whose
-            # lines alternate direction) still share most of their ground
-            shallow = np.array([metas[i].pitch is not None and -50 < metas[i].pitch < -5 for i in idx])
-            for k, i in enumerate(idx):
-                m = metas[i]
-                if m.pitch is not None and m.yaw is not None and -80 < m.pitch < -5:
-                    d = agl[k] / math.tan(math.radians(-m.pitch))
-                    look[k] = [math.sin(math.radians(m.yaw)), math.cos(math.radians(m.yaw))]
-                    target[k] += look[k] * d
-                    reach[k] = agl[k] / math.sin(math.radians(-m.pitch))
-            radius = np.array([footprint_radius(metas[i], reach[k]) for k, i in enumerate(idx)])
-            from scipy.spatial import cKDTree
-
-            tree = cKDTree(target)
-            for k in range(len(idx)):
-                cand = tree.query_ball_point(target[k], r=2.0 * radius[k])
-                cand = sorted(cand, key=lambda c: float(np.linalg.norm(target[c] - target[k])))[:40]
-                for c in cand:
-                    if c == k:
-                        continue
-                    if shallow[k] and shallow[c] and float(look[k] @ look[c]) < -0.2:
-                        continue  # low views facing each other across the site: little in common
-                    add(int(idx[k]), int(idx[c]))
-            how = "gps"
-            # photos without GPS: their sequence neighbours on a wider window
-            for k, i in enumerate(order):
-                if not has_gps[i]:
-                    for j in order[max(0, k - 10) : k + 11]:
-                        add(i, j)
-    out = sorted(pairs)
-    return [(names[metas[i].key], names[metas[j].key]) for i, j in out], how
-
-
-# ------------------------------------------------------------------------------- models
-
-
-def combine_models(models: list[SparseModel]) -> SparseModel:
-    """Models already in one frame as one model (point ids renumbered, first model's cameras)."""
-    out = SparseModel()
-    ids, xyz, rgb, err = [], [], [], []
-    next_id = 1
-    for m in models:
-        for cid, cam in m.cameras.items():
-            out.cameras.setdefault(cid, cam)
-        order = np.argsort(m.point_ids, kind="stable")
-        sorted_ids = m.point_ids[order]
-        new_ids = np.arange(next_id, next_id + len(m.point_ids), dtype=np.int64)
-        ids.append(new_ids)
-        next_id += len(m.point_ids)
-        xyz.append(m.xyz)
-        rgb.append(m.rgb)
-        err.append(m.error)
-        for iid, im in m.images.items():
-            old = im.point3D_ids
-            if len(sorted_ids) == 0:
-                im.point3D_ids = np.full(len(old), -1, np.int64)
-            else:
-                pos = np.clip(np.searchsorted(sorted_ids, old), 0, len(sorted_ids) - 1)
-                hit = (old >= 0) & (sorted_ids[pos] == old)
-                im.point3D_ids = np.where(hit, new_ids[order[pos]], -1).astype(np.int64)
-            out.images[iid] = im
-    if ids:
-        out.set_points(np.concatenate(ids), np.concatenate(xyz), np.concatenate(rgb), np.concatenate(err))
-    return out
+def geo_rows(
+    metas: list[PhotoMeta], H: np.ndarray, links_by_key: dict[str, str], gnss: str
+) -> list[OP.GeoRow]:
+    """One ``geo.txt`` row per photo with a GPS position and a height, by its link name in the ODM
+    project; the accuracy is the GNSS prior's (very loose when GNSS is ignored)."""
+    rows: list[OP.GeoRow] = []
+    for i, m in enumerate(metas):
+        if not m.has_gps or np.isnan(H[i]) or m.key not in links_by_key:
+            continue
+        sig = IGNORED_GNSS_SIGMA_M if gnss == "ignore" else m.gnss_sigma(gnss)
+        if sig is None:
+            continue
+        link, h_acc, v_acc = links_by_key[m.key], float(sig[0]), float(sig[1])
+        rows.append(
+            OP.GeoRow(link, float(m.lon), float(m.lat), float(H[i]), m.yaw, m.pitch, m.roll, h_acc, v_acc)
+        )
+    return rows
 
 
 def three_quaternion(R_grid: np.ndarray) -> list[float]:
@@ -580,6 +430,15 @@ def write_sparse(
         im.name = encode_name(im.name)
     m.write_text(folder)
     atomic_write_json(folder / "frame.json", frame_record(grid, enu, heights, georeferenced))
+
+
+def engine_alias(name: str) -> str:
+    """A photo name as a list split at white space can hold it: the percent sign and every white
+    space or control character percent-encoded (UTF-8), so a space is ``%20`` and a percent sign
+    ``%25``. Unique, and ``urllib.parse.unquote`` reverses it."""
+    from urllib.parse import quote
+
+    return "".join(quote(ch, safe="") if ch == "%" or ch.isspace() or ord(ch) < 32 else ch for ch in name)
 
 
 def encode_name(name: str) -> str:
@@ -665,15 +524,7 @@ def grid_to_enu_model(model: SparseModel, enu: C.EnuFrame, grid: C.GridFrame) ->
 
 
 def _convert_model(m: SparseModel, conv) -> None:
-    ids = sorted(m.images)
-    if ids:
-        cs = np.array([m.images[i].centre for i in ids])
-        rs = np.array([m.images[i].R for i in ids])
-        c2, r2 = C.transform_rotations(conv, cs, rs)
-        for k, i in enumerate(ids):
-            m.images[i].set_pose(r2[k], c2[k])
-    if len(m.xyz):
-        m.xyz = conv(m.xyz)
+    convert_model(m, conv)
 
 
 def nadir_only_warning(model: SparseModel) -> str | None:
@@ -708,8 +559,8 @@ class PhotoAlign:
         "mapper": frozenset({"auto", "global", "incremental"}),
         "gnss": frozenset({"auto", "rtk", "standard", "ignore"}),
     }
-    #: The alignment engine; tests replace it with an engine over a known scene.
-    engine_factory = staticmethod(load_engine)
+    #: accepted from older saved settings and ignored: ODM chooses matching and mapping itself
+    IGNORED = ("matching", "mapper", "maxImageSize")
 
     def validate(self, params: dict[str, Any]) -> dict[str, Any]:
         known_keys(params, set(self.keys), self.name)
@@ -752,19 +603,9 @@ class PhotoAlign:
         return out
 
     def plan(self, params: dict[str, Any]) -> list[Step]:
-        weights = {
-            "inspect": 0.5,
-            "features": 3,
-            "match": 4,
-            "sfm": 3,
-            "georef": 1,
-            "report": 0.5,
-            "commit": 0.2,
-        }
+        weights = {"inspect": 0.5, "sfm": 10, "georef": 0.5, "report": 0.5, "commit": 0.2}
         fns = {
             "inspect": self._inspect,
-            "features": self._features,
-            "match": self._match,
             "sfm": self._sfm,
             "georef": self._georef,
             "report": self._report,
@@ -772,18 +613,12 @@ class PhotoAlign:
         }
         titles = {
             "inspect": "Read the photos",
-            "features": "Find features",
-            "match": "Match photos",
-            "sfm": "Structure from motion",
-            "georef": "Georeference",
+            "sfm": "Align the photos (ODM)",
+            "georef": "Place the model",
             "report": "Report",
             "commit": "Save the run",
         }
         return [Step(s, titles[s], staged(s, fns[s]), weights[s]) for s in STAGES]
-
-    # ---- helpers shared by the steps
-    def _engine(self, ctx: StepContext) -> SfmEngine:
-        return self.engine_factory()
 
     def _state(self, ctx: StepContext) -> dict[str, Any]:
         return RunState(ctx).load()
@@ -792,26 +627,9 @@ class PhotoAlign:
         data = json.loads(ctx.stage("work/photos.json").read_text("utf-8"))
         return [meta_from(r) for r in data["photos"]]
 
-    def _engine_job(self, ctx: StepContext, metas: list[PhotoMeta]) -> EngineJob:
-        info = json.loads(ctx.stage("work/photos.json").read_text("utf-8"))
-        limit = memory_limit(*memory_status(), cap=memory_cap())
-        return EngineJob(
-            work=ctx.stage("work/engine/.keep").parent,
-            image_root=Path(info["imageRoot"]),
-            images=[EngineImage(m.key, info["names"][m.key], info["groupOf"][m.key]) for m in metas],
-            groups=[EngineGroup(**g) for g in info["groups"]],
-            max_image_size=int(info["maxImageSize"]),
-            max_features=int(info["maxFeatures"]),
-            threads=feature_threads(info, limit),
-            first_octave=first_octave(int(info["maxImageSize"])),
-            memory_limit_bytes=limit,
-            seed=0,
-            check=ctx.check,
-            log=lambda msg: ctx.log(msg),
-        )
-
     # ---- inspect
     def _inspect(self, ctx: StepContext) -> dict[str, Any]:
+        OR.find_odm()  # a missing ODM fails before any work
         params = ctx.params
         manifest = read_manifest(ctx.project)
         listed, extra = photo_list(ctx, params)
@@ -850,7 +668,7 @@ class PhotoAlign:
             origin = (round(float(e[0])), round(float(n[0])), round(h0))
         else:
             origin = (0.0, 0.0, 0.0)
-        # camera groups and engine names
+        # camera groups and photo names
         groups: dict[tuple, dict[str, Any]] = {}
         group_of: dict[str, int] = {}
         for m in ok:
@@ -862,7 +680,6 @@ class PhotoAlign:
                     "model": "OPENCV",
                     "width": m.width,
                     "height": m.height,
-                    "params": initial_params(m),
                     "photos": 0,
                     "make": m.make,
                     "camModel": m.model,
@@ -875,15 +692,25 @@ class PhotoAlign:
             root = Path(os.path.commonpath([str(p.parent) for p in paths]))
         except ValueError:
             raise JobError("The photos of one run must be on one drive.") from None
-        # engine names: the path below the common folder (spaces and any letters are fine: the
-        # engine escapes what COLMAP's own lists cannot hold, colmap_io.engine_alias)
+        # names: the path below the common folder (sparse/photos.json); ODM sees link names
         names = {m.key: p.relative_to(root).as_posix() for m, p in zip(ok, paths, strict=True)}
-        longest = max(max(m.width, m.height) for m in ok)
-        share, feats = PRESETS[params["preset"]]
-        max_size = int(params.get("maxImageSize") or max(640, round(longest * share)))
         run = params.get("run") or datetime.now(UTC).strftime("%Y%m%d-%H%M")
         if (ctx.project / run_dir(run) / "run.json").exists() and not params.get("run"):
             run = datetime.now(UTC).strftime("%Y%m%d-%H%M%S")
+        odm_dir = OP.run_odm_dir(ctx.project, run)
+        links, copies = OP.link_images(odm_dir, [(m.key, m.path) for m in ok])
+        if copies:
+            ctx.log(
+                f"{copies} photos were copied into the ODM project (a link was not possible, e.g. another drive)."
+            )
+        geo = odm_dir / "geo.txt"
+        if needs_geo(ok, H, params):
+            OP.write_geo(odm_dir, geo_rows(ok, H, {key: link for link, key in links.items()}, gnss))
+        elif geo.exists():  # an earlier attempt of this run wrote one; ODM reads the photos now
+            geo.unlink()
+        ignored = [k for k in self.IGNORED if k in params]
+        if ignored:
+            ctx.log(f"ODM chooses matching and mapping itself; {', '.join(ignored)} are ignored.")
         atomic_write_json(
             ctx.stage("work/photos.json"),
             {
@@ -891,12 +718,8 @@ class PhotoAlign:
                 "heights": [None if np.isnan(h) else float(h) for h in H],
                 "names": names,
                 "groupOf": group_of,
-                "groups": [
-                    {k: g[k] for k in ("id", "model", "width", "height", "params")} for g in groups.values()
-                ],
+                "groups": [{k: g[k] for k in ("id", "model", "width", "height")} for g in groups.values()],
                 "imageRoot": str(root),
-                "maxImageSize": max_size,
-                "maxFeatures": feats,
             },
         )
         state = {
@@ -936,171 +759,64 @@ class PhotoAlign:
             ctx.log(w, "warn")
         return {"run": run, "photos": len(ok), "rejected": len(insp.rejected), "groups": len(groups)}
 
-    # ---- features
-    def _features(self, ctx: StepContext) -> dict[str, Any]:
-        metas = self._metas(ctx)
-        job = self._engine_job(ctx, metas)
-        need = len(metas) * job.max_features * 160 * 2
-        free = shutil.disk_usage(job.work).free
-        if free < need:
-            raise JobError(
-                f"Finding features needs {need / 1e9:.1f} GB free on {job.work.anchor or job.work}, has {free / 1e9:.1f} GB."
-            )
-        eng = self._engine(ctx)
-        res = eng.features(job, lambda f, msg=None: ctx.progress(f, msg))
-        st = RunState(ctx)
-        data = st.load()
-        data.setdefault("versions", {}).update({k: str(v)[:80] for k, v in eng.versions().items()})
-        st.save(data)
-        return {**res, "_memoryPeakBytes": job.memory_peak.get("features", 0)}
-
-    # ---- match
-    def _match(self, ctx: StepContext) -> dict[str, Any]:
-        metas = self._metas(ctx)
-        info = json.loads(ctx.stage("work/photos.json").read_text("utf-8"))
-        H = np.array([np.nan if h is None else h for h in info["heights"]], dtype=np.float64)
-        pairs, how = choose_pairs(metas, H, ctx.params.get("matching", "auto"), info["names"])
-        ctx.log(f"{len(pairs)} photo pairs chosen by {how}.")
-        job = self._engine_job(ctx, metas)
-        res = self._engine(ctx).match(job, pairs, lambda f, msg=None: ctx.progress(f, msg))
-        return {**res, "how": how, "_memoryPeakBytes": job.memory_peak.get("match", 0)}
-
     # ---- sfm
     def _sfm(self, ctx: StepContext) -> dict[str, Any]:
-        metas = self._metas(ctx)
-        job = self._engine_job(ctx, metas)
-        eng = self._engine(ctx)
-        mapper = ctx.params.get("mapper", "auto")
-        first = "incremental" if mapper == "incremental" else "global"
-        res = eng.map(job, first, lambda f, msg=None: ctx.progress(0.9 * f if mapper == "auto" else f, msg))
-        best = max((m.get("images", 0) for m in res.get("models", [])), default=0)
-        used = first
-        if mapper == "auto" and best < MIN_REGISTERED_GLOBAL * len(metas):
-            ctx.log(f"The global mapper placed {best} of {len(metas)} photos; trying the incremental mapper.")
-            res2 = eng.map(job, "incremental", lambda f, msg=None: ctx.progress(0.9 + 0.1 * f, msg))
-            best2 = max((m.get("images", 0) for m in res2.get("models", [])), default=0)
-            if best2 > best:
-                res, used = res2, "incremental"
-        mem = max(job.memory_peak.values(), default=0)
-        models = [m["path"] if isinstance(m, dict) else m for m in res.get("models", [])]
-        if not models:
-            raise JobError("Structure from motion found no model: the photos do not overlap enough.")
-        return {"models": models, "mapper": used, "_memoryPeakBytes": mem}
+        state = self._state(ctx)
+        run = state["id"]
+        odm = OR.find_odm()
+        mc = OR.machine()
+        odm_dir = OP.run_odm_dir(ctx.project, run)
+        geo = odm_dir / "geo.txt"
+        flags = OF.align_flags(state["preset"], mc.use_gpu, mc.threads, geo if geo.is_file() else None)
+        ctx.log(f"ODM {odm.version}: {mc.threads} threads, graphics card {'on' if mc.use_gpu else 'off'}.")
+        res = OR.run_odm(
+            ctx, odm, odm_dir, flags, "dataset", "opensfm",
+            ctx.project / run_dir(run) / "odm-logs" / f"{ctx.job.job_id}-sfm",
+            rerun=False, use_gpu=mc.use_gpu,
+        )  # fmt: skip
+        data = RunState(ctx).load()
+        data["engine"] = OR.engine_record(odm, res.gpu)
+        data.setdefault("versions", {})["odm"] = odm.version
+        RunState(ctx).save(data)
+        return {"threads": mc.threads, "gpu": data["engine"]["gpu"]}
 
     # ---- georef
     def _georef(self, ctx: StepContext) -> dict[str, Any]:
         metas = self._metas(ctx)
-        info = json.loads(ctx.stage("work/photos.json").read_text("utf-8"))
         state = self._state(ctx)
-        H = np.array([np.nan if h is None else h for h in info["heights"]], dtype=np.float64)
-        by_name = {info["names"][m.key]: (i, m) for i, m in enumerate(metas)}
         fr = state["frames"]
         enu = C.EnuFrame(fr["enu"]["lon"], fr["enu"]["lat"], fr["enu"]["h"])
-        gnss_mode = ctx.params.get("gnss", "auto")
-        located = np.array([m.has_gps and not np.isnan(H[i]) for i, m in enumerate(metas)])
-        gnss_enu = np.full((len(metas), 3), np.nan)
-        if located.any():
-            idx = np.nonzero(located)[0]
-            gnss_enu[idx] = enu.from_geodetic(
-                [metas[i].lon for i in idx], [metas[i].lat for i in idx], H[idx]
-            )
-        sig = np.array([m.gnss_sigma(gnss_mode) or (np.nan, np.nan) for m in metas], dtype=np.float64)
-        placed: list[SparseModel] = []
+        odm_dir = OP.run_odm_dir(ctx.project, state["id"])
+        rec = read_reconstruction(odm_dir, OP.read_names(odm_dir), enu)
         warnings: list[str] = []
-        left_out: list[str] = []
-        models = ctx.outputs("sfm")["models"]
-        for k, path in enumerate(models):
-            ctx.check()
-            m = SparseModel.load(Path(path))
-            for im in m.images.values():  # engine names to photo keys
-                if im.name in by_name:
-                    im.name = by_name[im.name][1].key
-            keys = {m_.key: i for i, m_ in enumerate(metas)}
-            ims = [
-                im
-                for im in m.images.values()
-                if im.name in keys and located[keys[im.name]] and gnss_mode != "ignore"
-            ]
-            if len(ims) < 3:
-                if k == 0 and gnss_mode == "ignore":
-                    placed.append(m)  # not georeferenced: the SfM frame, for photo.georef with GCPs
-                    warnings.append(
-                        "GNSS positions were ignored: the model is not georeferenced until ground control adjusts it."
-                    )
-                    continue
-                left_out += [im.name for im in m.images.values()]
-                warnings.append(
-                    f"{len(m.images)} photos ({_names(m)}) could not be joined to the others or placed by GNSS."
-                )
-                continue
-            src = np.array([im.centre for im in ims])
-            dst = gnss_enu[[keys[im.name] for im in ims]]
-            s_h = sig[[keys[im.name] for im in ims], 0]
-            thr = max(1.0, 4.0 * float(np.nanmedian(s_h)))
-            sim, inl = B.similarity_ransac(src, dst, threshold=thr, sigma=np.nan_to_num(s_h, nan=3.0), seed=k)
-            if (~inl).any():
-                bad = [ims[j].name for j in np.nonzero(~inl)[0]]
-                warnings.append(
-                    f"{len(bad)} photos have a GPS position that disagrees with the model ({', '.join(bad[:5])})."
-                )
-            m.transform(*sim)
-            placed.append(m)
-            if k > 0:
-                warnings.append(
-                    f"{len(m.images)} photos ({_names(m)}) form a separate group, joined to the rest by GNSS only."
-                )
-        if not placed:
-            raise JobError("No group of photos could be placed: too few photos with GPS positions aligned.")
-        model = combine_models(placed)
-        georeferenced = gnss_mode != "ignore"
-        stats: dict[str, Any] = {}
-        if georeferenced:
-            keys = {m_.key: i for i, m_ in enumerate(metas)}
-            priors = {}
-            for iid, im in model.images.items():
-                i = keys.get(im.name)
-                if i is not None and located[i] and not np.isnan(sig[i, 0]):
-                    priors[iid] = B.CameraPrior(gnss_enu[i], float(sig[i, 0]), float(sig[i, 1]))
-            # GNSS priors sharpen the model only when they are precise (RTK, PPK); metre-level
-            # positions cannot improve what the engine's own adjustment found, and adjusting a
-            # subset of a large block against them costs more than it brings (measured on a
-            # 1,000-photo flight: median reprojection 0.88 px before, 1.07 px after)
-            precise = (
-                bool(priors) and float(np.median([p.sigma_h for p in priors.values()])) <= GNSS_ADJUST_SIGMA_M
+        if rec.groups > 1:
+            warnings.append(
+                f"ODM aligned the photos in {rec.groups} separate groups; they are placed by GNSS only."
             )
-            if precise:
-                pts = B.select_points(model, per_image=300)
-                res = B.bundle_adjust(
-                    model,
-                    pts,
-                    priors=priors,
-                    check=ctx.check,
-                    progress=lambda f: ctx.progress(0.9 * f, "Adjusting"),
-                )
-                B.refine_all_points(model)
-                stats = {
-                    "adjusted": True,
-                    "iterations": res.iterations,
-                    "tiePoints": len(pts),
-                    "seconds": round(res.seconds, 1),
-                }
-            else:
-                stats = {"adjusted": False}
-        w = nadir_only_warning(model)
+        w = nadir_only_warning(rec.model)
         if w:
             warnings.append(w)
-        model.save_npz(ctx.stage("work/aligned-enu.npz"))
+        georeferenced = any(m.has_gps for m in metas)
+        if not georeferenced:
+            warnings.append(
+                "The photos have no GPS positions: the model is not georeferenced until ground control adjusts it."
+            )
+        rec.model.save_npz(ctx.stage("work/aligned-enu.npz"))
         atomic_write_json(
             ctx.stage("work/georef.json"),
-            {"leftOut": left_out, "warnings": warnings, "georeferenced": georeferenced},
+            {
+                "leftOut": [],
+                "warnings": warnings,
+                "georeferenced": georeferenced,
+                "stats": {"reprojPx": rec.reproj_px, "trackLength": rec.track_length, "gsdCm": rec.gsd_cm},
+            },
         )
         for msg in warnings:
             ctx.log(msg, "warn")
         return {
-            "registered": len(model.images),
-            "points": len(model.point_ids),
+            "registered": len(rec.model.images),
+            "points": len(rec.model.point_ids),
             "georeferenced": georeferenced,
-            **stats,
         }
 
     # ---- report
@@ -1126,8 +842,9 @@ class PhotoAlign:
                 )
                 rejected.append({"name": m.key, "reason": reason})
         grid_model = enu_to_grid_model(model, enu, grid) if geo["georeferenced"] else model
-        mean_err = model.mean_reprojection_error()
-        gsd = A.gsd_cm(model)
+        # ODM's model carries no observations: its own statistics stand in for ours
+        mean_err = float(geo["stats"]["reprojPx"] or 0.0)
+        gsd = geo["stats"]["gsdCm"]
         # camera residuals to GNSS (grid frame)
         cam_res = None
         if geo["georeferenced"]:
@@ -1191,16 +908,15 @@ class PhotoAlign:
             "schema": ALIGN_SCHEMA,
             "run": state["id"],
             "createdAt": now_iso(),
-            "engine": state.get("versions", {}),
-            "mapper": ctx.outputs("sfm").get("mapper"),
-            "matching": ctx.outputs("match").get("how"),
-            "pairs": {k: ctx.outputs("match").get(k) for k in ("pairs", "matched", "verified")},
+            "engine": state.get("engine"),
+            "mapper": "opensfm",
+            "matching": "odm",
             "images": {"total": int(state["photos"]["count"]), "registered": len(model.images)},
             "registered": sorted(registered),
             "rejected": rejected,
             "meanReprojPx": round(mean_err, 4),
             "points": len(model.point_ids),
-            "meanTrackLength": round(float(model.track_lengths().mean()), 2) if len(model.point_ids) else 0,
+            "meanTrackLength": round(geo["stats"]["trackLength"] or 0, 2),
             "gsdCm": gsd,
             "cameraResiduals": cam_res,
             "calibration": [
@@ -1259,9 +975,6 @@ class PhotoAlign:
         ]
         commit_files(ctx, moves)
         files += [p for _, p in moves]
-        db = ctx.stage("work/engine/database.db")
-        if db.exists():
-            commit_files(ctx, [("work/engine/database.db", f"{base}/work/database.db")], announce=False)
         commit_files(ctx, [("work/aligned-enu.npz", f"{base}/work/aligned-enu.npz")], announce=False)
         pred = ctx.stage("work/predictions.json")
         if pred.exists():
@@ -1281,11 +994,6 @@ class PhotoAlign:
 def _clean_run(data: dict[str, Any]) -> dict[str, Any]:
     """``run.json`` without the job's private keys."""
     return {k: v for k, v in data.items() if not k.startswith("_")}
-
-
-def _names(m: SparseModel, n: int = 3) -> str:
-    names = sorted(im.name for im in m.images.values())
-    return ", ".join(names[:n]) + (" and others" if len(names) > n else "")
 
 
 def cameras_sfm(grid_model: SparseModel, state: dict[str, Any], info: dict[str, Any]) -> dict[str, Any]:
