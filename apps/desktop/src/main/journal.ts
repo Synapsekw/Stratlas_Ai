@@ -10,6 +10,9 @@
  *   `project:writeBoundaries`, `report:writeNarrative`) are wrapped: ops first, then the write;
  *   a write the handler refuses is undone by ops, never by editing the journal;
  * - `tilesets:write` and `photo:writeGcp` are wrapped too (one `record.external` op per save);
+ * - `builder:recentre` is diffed after it writes too, but as ONE `record.external` step for
+ *   `manifest.json` (label "Project re-centred"): the origin and every layer moved together, so no
+ *   per-record undo may restore part of it;
  * - `builder:updateLayers`, `builder:updateCapture`, `builder:removeCapture`, `walks:remove` and
  *   `builder:ensureCapture` are diffed after they write (their result is computed in the
  *   handler), and so are `tilesets:import` (the imported tileset's name as the label),
@@ -45,6 +48,7 @@ import {
   auditEntries,
   createChainWriter,
   diffRecordFile,
+  externalOp,
   isJournaledFile,
   JOURNALED_DIRS,
   loadJournal,
@@ -753,6 +757,20 @@ export function createJournalService(deps: JournalServiceDeps) {
   }
 
   /**
+   * The whole-file change of `rel` as one `record.external` op (hashes only, nothing to undo
+   * piecemeal), for a write whose parts only make sense together.
+   */
+  async function reconcileWhole(st: ProjectState, rel: string, label: string) {
+    const now = await readText(join(st.root, ...rel.split('/')));
+    const known = st.meta.files[rel];
+    if ((now === null ? undefined : textHash(now)) === known) return;
+    const before = known === undefined ? null : await snapText(st, rel);
+    await append(st, [externalOp(rel, parse(before), parse(now), label)]);
+    await snapshot(st, rel, now);
+    await saveMeta(st);
+  }
+
+  /**
    * The manifest as the open found it (`before`, read before the open's handler ran) against the
    * manifest now: what changed in between is the open's own write (walks made layers, their files
    * linked, `withWalkLayers`), recorded as the app's change, as `library:rename` is. What changed
@@ -977,6 +995,20 @@ export function createJournalService(deps: JournalServiceDeps) {
           }
         }
         return r as IpcResponse<C>;
+      };
+    }
+    if (channel === 'builder:recentre') {
+      return async (req) => {
+        const r = await handler(req);
+        const { projectId } = req as IpcRequest<'builder:recentre'>;
+        const root = deps.projects.root(projectId);
+        if ((r as { ok: boolean }).ok && root !== undefined) {
+          const st = await load(root);
+          if (st.meta.journal === 'on') {
+            await serial(st, () => reconcileWhole(st, 'manifest.json', 'Project re-centred'));
+          }
+        }
+        return r;
       };
     }
     if (

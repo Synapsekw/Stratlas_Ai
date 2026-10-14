@@ -57,6 +57,8 @@ import {
   builderTemplates,
   builderUpdateCapture,
   builderRemoveCapture,
+  builderLayerExtents,
+  builderRecentre,
   builderUpdateLayers,
   createBuilderProject,
   photoGps,
@@ -1449,6 +1451,11 @@ function registerIpc(): void {
       builderUpdateLayers(req, registry, (line) => {
         appLog.write('warn', [line]);
       }),
+  );
+  handle('builder:layerExtents', (req) => builderLayerExtents(req, registry));
+  handle(
+    'builder:recentre',
+    (req) => packageRefusal(req.projectId) ?? builderRecentre(req, registry),
   );
   handle(
     'builder:updateCapture',

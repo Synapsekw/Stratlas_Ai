@@ -12,7 +12,13 @@ import {
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { signerFromKey, verifyJournal } from '@aio/journal';
-import { emptyRemovalPlan, type Issue, type IpcChannel, type JobRecord } from '@aio/schema';
+import {
+  emptyRemovalPlan,
+  type Issue,
+  type IpcChannel,
+  type IpcResponse,
+  type JobRecord,
+} from '@aio/schema';
 import { afterEach, describe, expect, it } from 'vitest';
 import { auditCsv, createAuditExport } from './exports/audit';
 import { writeJsonAtomic } from './fsutil';
@@ -587,6 +593,30 @@ describe('journal service', () => {
       expect(e[0]?.target).toEqual({ rec: 'manifest', id: 'ph', in: 'layers' });
     });
 
+    it('records builder:recentre as one external manifest step, never a per-layer undo', async () => {
+      const { root, userData } = setup();
+      const s = service(root, userData);
+      await s.open({ path: root });
+      const recentre = s.journal.wrap('builder:recentre', () => {
+        put(root, 'manifest.json', {
+          schema: 'aio.project/1',
+          origin: [10, 20, 0],
+          layers: [
+            { id: 'm', kind: 'mesh', transform: [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 5, 0, 5, 1] },
+          ],
+        });
+        return Promise.resolve({
+          ok: true as const,
+          backup: 'b',
+        } as IpcResponse<'builder:recentre'>);
+      });
+      await recentre({ projectId: 'p', at: [10, 20] });
+      const e = await hist(s);
+      expect(e).toHaveLength(1);
+      expect(e[0]?.kind).toBe('record.external');
+      expect(e[0]?.label).toBe('Project re-centred');
+    });
+
     it('attributes a photo.align job run.json and gcp.json to the pipeline', async () => {
       const { root, userData } = setup();
       put(root, 'photogrammetry/r1/run.json', { schema: 'aio.photo-run/1', state: 'new' });
@@ -1004,6 +1034,7 @@ describe('journal service', () => {
     const writers: IpcChannel[] = [
       'project:writeCentreline',
       'builder:updateLayers',
+      'builder:recentre',
       'builder:updateCapture',
       'builder:ensureCapture',
       'builder:removeCapture',

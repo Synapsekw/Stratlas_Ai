@@ -459,6 +459,42 @@ export async function builderUpdateLayers(
   }
 }
 
+/** Where each layer lies and what would stop a re-centre. Reads only. */
+export async function builderLayerExtents(
+  req: IpcRequest<'builder:layerExtents'>,
+  registry: ProjectRegistry,
+): Promise<IpcResponse<'builder:layerExtents'>> {
+  const root = registry.root(req.projectId);
+  if (root === undefined) return { ok: false, error: `Project "${req.projectId}" is not open.` };
+  try {
+    const l = await lib();
+    const m = await l.readManifestFile(root);
+    return {
+      ok: true,
+      extents: await l.layerExtents(root, m),
+      recentre: { blockers: await l.recentreBlockers(root, m) },
+    };
+  } catch (e) {
+    return { ok: false, error: errorText(e) };
+  }
+}
+
+/** Move the project origin; the check and the save happen in one manifest turn. */
+export async function builderRecentre(
+  req: IpcRequest<'builder:recentre'>,
+  registry: ProjectRegistry,
+): Promise<IpcResponse<'builder:recentre'>> {
+  const root = registry.root(req.projectId);
+  if (root === undefined)
+    return { ok: false, error: `Project "${req.projectId}" is not open. Open it, then try again.` };
+  try {
+    const r = await (await lib()).recentreProject(root, req.at);
+    return { ok: true, manifest: r.manifest, backup: r.backup };
+  } catch (e) {
+    return { ok: false, error: errorText(e) };
+  }
+}
+
 /** Rename a survey date or set its folder colour and icon: only `manifest.captures` changes. */
 export async function builderUpdateCapture(
   req: IpcRequest<'builder:updateCapture'>,

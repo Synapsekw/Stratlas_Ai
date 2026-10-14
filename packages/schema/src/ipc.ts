@@ -26,7 +26,7 @@ import {
   SeverityTemplate,
 } from './builder';
 import { ProjectManifest } from './manifest';
-import { HexColor, IsoDate } from './common';
+import { HexColor, IsoDate, Vec3 } from './common';
 import { PanoQuality, PanoScan } from './panoStitch';
 import { AiPolicy, EditPolicy, ExportKind, PackageInfo, PackageOrigin } from './package';
 import { BoundaryEditsFile, VolumesFile } from './volumes';
@@ -1496,6 +1496,35 @@ export const ipc = {
         layerIds: z.array(z.string().min(1)).min(1),
         patch: LayerPatch,
       })
+      .strict(),
+    response: z.discriminatedUnion('ok', [
+      z.object({ ok: z.literal(true), manifest: ProjectManifest, backup: z.string() }),
+      z.object({ ok: z.literal(false), error: z.string() }),
+    ]),
+  },
+  /**
+   * Where each placed layer lies, read from its files (local frame boxes), and what would stop a
+   * re-centre (`builder:recentre`). Layers without an extent are left out. Reads only.
+   */
+  'builder:layerExtents': {
+    request: z.object({ projectId: z.string().min(1) }).strict(),
+    response: z.discriminatedUnion('ok', [
+      z.object({
+        ok: z.literal(true),
+        extents: z.array(z.object({ layerId: z.string().min(1), min: Vec3, max: Vec3 })),
+        recentre: z.object({ blockers: z.array(z.string()) }),
+      }),
+      z.object({ ok: z.literal(false), error: z.string() }),
+    ]),
+  },
+  /**
+   * Move the project origin to `at` (E, N in the project CRS; height kept) and shift the local
+   * positions the manifest holds so nothing moves on the ground (data-conventions section 1).
+   * Refused, writing nothing, while the project holds anything else placed against the origin.
+   */
+  'builder:recentre': {
+    request: z
+      .object({ projectId: z.string().min(1), at: z.tuple([z.number(), z.number()]) })
       .strict(),
     response: z.discriminatedUnion('ok', [
       z.object({ ok: z.literal(true), manifest: ProjectManifest, backup: z.string() }),

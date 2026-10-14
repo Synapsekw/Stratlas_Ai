@@ -14,6 +14,8 @@ import {
   builderEnsureCapture,
   builderTemplates,
   builderUpdateCapture,
+  builderLayerExtents,
+  builderRecentre,
   builderUpdateLayers,
   createBuilderProject,
   drawingJobRefusal,
@@ -527,5 +529,19 @@ describe("builder:import leaves the project's panorama frames out", () => {
       },
     );
     expect(r).toMatchObject({ ok: true, items: [], files: [] });
+  });
+});
+
+it('answers layer extents and the re-centre blockers, and re-centres an open project', async () => {
+  const dir = join(base, 'projects', 'placed');
+  await writeProject(dir, sampleManifest({ layers: [] }));
+  const registry = new ProjectRegistry();
+  const projectId = registry.register(dir);
+  const ex = await builderLayerExtents({ projectId }, registry);
+  expect(ex).toEqual({ ok: true, extents: [], recentre: { blockers: [] } });
+  const r = await builderRecentre({ projectId, at: [245984.4, 3179697.6] }, registry);
+  expect(r.ok && r.manifest.origin).toEqual([245984, 3179698, 0]);
+  expect(await builderRecentre({ projectId: 'nope', at: [0, 0] }, registry)).toMatchObject({
+    ok: false,
   });
 });

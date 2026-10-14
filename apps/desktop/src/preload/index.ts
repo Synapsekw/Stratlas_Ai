@@ -93,6 +93,8 @@ const CHANNELS = {
   'builder:import': true,
   'builder:altitudePlan': true,
   'builder:updateLayers': true,
+  'builder:layerExtents': true,
+  'builder:recentre': true,
   'builder:updateCapture': true,
   'builder:removeCapture': true,
   'builder:ensureCapture': true,
