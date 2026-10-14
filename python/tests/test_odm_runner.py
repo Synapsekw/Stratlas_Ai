@@ -140,7 +140,58 @@ def test_every_conda_variable_is_left_out():
         "CONDA_SHLVL": "1",
         "conda_python_exe": "d",
     }
-    assert R.odm_env({**base, "PATH": "x"}, use_gpu=True).keys() == {"PATH", "ODM_NONINTERACTIVE"}
+    assert R.odm_env({**base, "PATH": "x"}, use_gpu=True).keys() == {
+        "PATH",
+        "ODM_NONINTERACTIVE",
+        "PYTHONUNBUFFERED",
+    }
+
+
+def test_odm_prints_unbuffered():
+    # stdout to a file is block-buffered: without this ODM's stage lines would arrive only at exit
+    env = R.odm_env({"PYTHONUNBUFFERED": "0", "PYTHONPATH": "y"}, use_gpu=True)
+    assert env["PYTHONUNBUFFERED"] == "1" and "PYTHONPATH" not in env
+
+
+QUIET_ODM = """
+import sys, time
+from pathlib import Path
+print("[INFO]    Running opensfm stage")  # no flush: as ODM, which never flushes its log lines
+go, seen = Path(sys.argv[1]) / "go", Path(sys.argv[1]) / "seen-while-running"
+for _ in range(80):
+    if go.exists():
+        seen.write_text("")
+        break
+    time.sleep(0.1)
+print("[INFO]    Finished opensfm stage")
+"""
+
+
+def test_stage_lines_reach_the_runner_while_odm_runs(tmp_path, monkeypatch):
+    odm_dir = tmp_path / "odm"
+    odm_dir.mkdir()
+    (odm_dir / "quiet.py").write_text(QUIET_ODM, "utf-8")
+    (odm_dir / "run.bat").write_text(
+        '@echo off\r\n"%FAKE_ODM_PYTHON%" "%~dp0quiet.py" "%QUIET_DIR%"\r\n', "utf-8"
+    )
+    (odm_dir / "run.sh").write_text(
+        '#!/bin/sh\nexec "$FAKE_ODM_PYTHON" "$(dirname "$0")/quiet.py" "$QUIET_DIR"\n'
+    )
+    monkeypatch.setenv("FAKE_ODM_PYTHON", sys.executable)
+    monkeypatch.setenv("QUIET_DIR", str(tmp_path))
+    monkeypatch.delenv("PYTHONUNBUFFERED", raising=False)
+    project = tmp_path / "work" / "odm"
+    project.mkdir(parents=True)
+
+    class Watching(Ctx):
+        def progress(self, f, m=None):
+            super().progress(f, m)
+            if m == "Aligning the photos":  # the Running line was read: let the stand-in finish
+                (tmp_path / "go").touch()
+
+    R.run_odm(Watching(), R.OdmInstall(odm_dir, "3.6.2"), project, [], "opensfm", "opensfm", tmp_path / "logs",
+              rerun=False, use_gpu=False, port=_free_port())  # fmt: skip
+    assert (tmp_path / "seen-while-running").exists()
 
 
 @pytest.mark.parametrize("bad", ["", "abc", "0", "-5", "inf", "-inf", "nan"])

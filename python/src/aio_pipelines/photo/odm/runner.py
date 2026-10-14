@@ -374,6 +374,9 @@ def odm_env(base: Mapping[str, str], use_gpu: bool) -> dict[str, str]:
     # with NoDefaultCurrentDirectoryInExePath set, run.bat cannot find winrun.bat and still exits 0
     env = {k: v for k, v in base.items() if not k.upper().startswith(_DROP_ENV)}
     env["ODM_NONINTERACTIVE"] = "1"
+    # ODM's stdout goes to a file, which Python block-buffers: its stage lines (progress, the stall
+    # watchdog, GPU and ground-failure lines) would otherwise arrive only when it exits
+    env["PYTHONUNBUFFERED"] = "1"
     if not use_gpu:
         env["ODM_NO_GPU"] = "1"
     return env
