@@ -54,6 +54,7 @@ import { useGraphics } from '../graphics';
 import { TILESET_WRITERS } from '../jobs';
 import { drawnBase } from '../maps/mapMenuModel';
 import { getShell, useShellStore } from '../store';
+import { contentFloor, settleUnder, type Settled } from './siteBasemap';
 import {
   basemapModel,
   groundModel,
@@ -442,6 +443,43 @@ export function useSiteTilesets(stage: EngineStage | null, project: Project, rev
   }, [stage, projectId, manifest, entries]);
 }
 
+/** Id of the landscape around the site as the stage's ground (never a manifest layer id). */
+export const SITE_SURROUNDINGS_ID = 'site-surroundings';
+
+/** The landscape around the site as `buildSurroundings` made it. */
+export interface Surroundings extends Settled {
+  userData: Record<string, unknown>;
+}
+
+/**
+ * Put the landscape around the site in the scene as its ground, as the street map it replaces
+ * is: the stage's plain ground goes, which would otherwise lie a few centimetres over it and
+ * cover it, or (seen from far off, when the plain ground drops lower) tie with it in the depth
+ * buffer and cut the view off at a ragged line. A flat landscape (an online map, or imagery
+ * without terrain) lies where the street map lies, under the lowest model. Returns the function
+ * that takes it away (the caller disposes of the mesh).
+ */
+export function showSurroundings(
+  stage: Pick<EngineStage, 'scene' | 'addRaycastTarget' | 'requestRender'>,
+  mesh: Surroundings,
+  floor: () => number | null,
+): () => void {
+  const obj = mesh as unknown as Parameters<EngineStage['addRaycastTarget']>[0];
+  mesh.userData.aioGround = true;
+  stage.scene.add(obj);
+  const offs = [stage.addRaycastTarget(obj, SITE_SURROUNDINGS_ID)];
+  if (mesh.userData.flat === true) {
+    const drop = typeof mesh.userData.dropM === 'number' ? mesh.userData.dropM : 0;
+    offs.push(settleUnder(stage, floor, mesh, -drop));
+  }
+  stage.requestRender();
+  return () => {
+    for (const off of offs) off();
+    stage.scene.remove(obj);
+    stage.requestRender();
+  };
+}
+
 /** Terrain and imagery around the site in 3D, when chosen and the tier offers it. */
 export function useSiteSurroundings(stage: EngineStage | null, project: Project): void {
   const tier = useGraphics((s) => s.tier);
@@ -462,6 +500,7 @@ export function useSiteSurroundings(stage: EngineStage | null, project: Project)
     if (!frame) return;
     const abort = new AbortController();
     let mesh: Awaited<ReturnType<typeof buildSurroundings>> = null;
+    let hide: (() => void) | null = null;
     void buildSurroundings({
       frame,
       terrain: wantTerrain ? createRasterTileSource('terrain', terrain) : null,
@@ -478,8 +517,7 @@ export function useSiteSurroundings(stage: EngineStage | null, project: Project)
           return;
         }
         mesh = m;
-        stage.scene.add(m);
-        stage.requestRender();
+        hide = showSurroundings(stage, m, () => contentFloor(stage, manifest));
       },
       (e: unknown) => {
         console.warn('Terrain around the site not drawn', e);
@@ -487,13 +525,12 @@ export function useSiteSurroundings(stage: EngineStage | null, project: Project)
     );
     return () => {
       abort.abort();
+      hide?.();
       if (mesh) {
-        stage.scene.remove(mesh);
         mesh.geometry.dispose();
         const mat = mesh.material as { map?: { dispose(): void } | null; dispose(): void };
         mat.map?.dispose();
         mat.dispose();
-        stage.requestRender();
       }
     };
   }, [stage, manifest, wantTerrain, wantImagery, onlineId, imagery, terrain]);

@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { siteFrame, type V3 } from './frame';
+import { createOnlineTileSource } from './online';
 import { createRasterTileSource, type RasterPack } from './packs';
 import { buildSurroundings, type Pixels } from './surroundings';
 
@@ -47,10 +48,34 @@ describe('terrain and imagery around the site', () => {
     expect(pos.getX(0)).toBe(-1000);
     expect(pos.getZ(80)).toBe(1000);
     expect(mesh.userData.credits).toEqual(['CC0 test fixture']);
+    // it follows the terrain: the app leaves its heights as they are
+    expect(mesh.userData.flat).toBe(false);
     // not pickable: clicks go to the ground
     const hits: unknown[] = [];
     mesh.raycast.call(mesh, {} as never, hits as never);
     expect(hits).toEqual([]);
+  });
+
+  it('says an imagery-only landscape is flat, built at the drop under the origin', async () => {
+    const tile = (w: number): Pixels => ({ width: w, height: w, data: new Uint8Array(w * w * 4) });
+    const mesh = await buildSurroundings({
+      frame,
+      terrain: null,
+      imagery: createOnlineTileSource('esri-world-imagery', () =>
+        Promise.resolve(new Response(new Uint8Array(8))),
+      ),
+      radiusM: 500,
+      grid: 5,
+      decode: () => Promise.resolve(tile(256)),
+      compose: () => null,
+    });
+    expect(mesh).not.toBeNull();
+    if (!mesh) return;
+    const pos = mesh.geometry.getAttribute('position');
+    for (let i = 0; i < pos.count; i++) expect(pos.getY(i)).toBeCloseTo(-0.3, 5);
+    // a flat picture: the app lays it under the site's lowest point, as the street map
+    expect(mesh.userData.flat).toBe(true);
+    expect(mesh.userData.dropM).toBe(0.3);
   });
 
   it('draws nothing without packs or tiles', async () => {

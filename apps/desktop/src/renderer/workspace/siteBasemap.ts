@@ -307,7 +307,7 @@ interface WithBox {
 }
 
 /** Lowest point of the project's mesh layers in the scene (the street map goes just under it). */
-function contentFloor(stage: EngineStage, manifest: ProjectManifest): number | null {
+export function contentFloor(stage: EngineStage, manifest: ProjectManifest): number | null {
   let min = Infinity;
   for (const l of manifest.layers) {
     if (l.kind !== 'mesh') continue;
@@ -323,6 +323,48 @@ function contentFloor(stage: EngineStage, manifest: ProjectManifest): number | n
     });
   }
   return Number.isFinite(min) ? min : null;
+}
+
+/**
+ * Where a map laid flat under the site lies (the street map, and a landscape without heights,
+ * `siteTiles.ts`): just under the lowest model (`floor`), and never above 0.25 m under the origin.
+ */
+export function groundLevel(floor: number | null): number {
+  return Math.min(-0.25, (floor ?? 0) - 0.4);
+}
+
+/** What `settleUnder` moves: a scene object with a height. */
+export interface Settled {
+  position: { y: number };
+  updateMatrixWorld(force?: boolean): void;
+}
+
+/**
+ * Lay `object`, built with its ground at `builtAt` (local y), at `groundLevel` of `floor()`: now,
+ * and again every 1.5 s for 30 s, as terrain loads in its own time. Returns the function that
+ * stops it.
+ */
+export function settleUnder(
+  stage: Pick<EngineStage, 'requestRender'>,
+  floor: () => number | null,
+  object: Settled,
+  builtAt: number,
+): () => void {
+  let tries = 0;
+  const place = () => {
+    const y = groundLevel(floor()) - builtAt;
+    if (object.position.y !== y) {
+      object.position.y = y;
+      object.updateMatrixWorld(true);
+      stage.requestRender();
+    }
+    if (++tries > 20) clearInterval(timer);
+  };
+  const timer = setInterval(place, 1500);
+  place();
+  return () => {
+    clearInterval(timer);
+  };
 }
 
 /**
@@ -403,7 +445,6 @@ export function useSiteBasemapLayer(
     if (!active || !rings) return;
     let handle: GroundRingsHandle | null = null;
     let disposed = false;
-    let timer: ReturnType<typeof setInterval> | null = null;
     const offs: (() => void)[] = [];
     const layer = {
       kind: 'basemap',
@@ -431,21 +472,10 @@ export function useSiteBasemapLayer(
         // it is the ground now, from the first ring on: the plain ground goes
         group.userData.aioGround = true;
         offs.push(stage.addRaycastTarget(group, SITE_BASEMAP_ID));
-        // terrain loads in its own time: settle under it as it arrives
-        let tries = 0;
-        const place = () => {
-          const floor = manifestNow.current ? contentFloor(stage, manifestNow.current) : null;
-          const y = Math.min(-0.25, (floor ?? 0) - 0.4);
-          if (group.position.y !== y + 0.2) {
-            // the rings are built at y = -0.2
-            group.position.y = y + 0.2;
-            group.updateMatrixWorld(true);
-            stage.requestRender();
-          }
-          if (++tries > 20 && timer) clearInterval(timer);
-        };
-        place();
-        timer = setInterval(place, 1500);
+        // terrain loads in its own time: settle under it as it arrives (the rings are built at
+        // y = -0.2)
+        const floor = () => (manifestNow.current ? contentFloor(stage, manifestNow.current) : null);
+        offs.push(settleUnder(stage, floor, group, -0.2));
       },
     }).then(
       (h) => {
@@ -458,7 +488,6 @@ export function useSiteBasemapLayer(
     );
     return () => {
       disposed = true;
-      if (timer) clearInterval(timer);
       for (const off of offs) off();
       handle?.dispose();
     };

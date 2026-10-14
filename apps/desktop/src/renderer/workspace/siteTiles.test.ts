@@ -1,7 +1,8 @@
 // @vitest-environment jsdom
 import type { RasterPackInfo } from '@aio/schema';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { rasterPacks, sceneOnline, unchanged } from './siteTiles';
+import { groundLevel } from './siteBasemap';
+import { rasterPacks, sceneOnline, showSurroundings, unchanged } from './siteTiles';
 
 const pack = (id: string): RasterPackInfo =>
   ({
@@ -191,5 +192,75 @@ describe('the online map of the 3D scene', () => {
     expect(
       sceneOnline({ sceneBase: 'mapbox-dark', onlineSatellite: true }, { keys: NO_KEYS }, false),
     ).toBeNull();
+  });
+});
+
+describe('the landscape around the site in the scene', () => {
+  interface Obj {
+    position: { y: number };
+    userData: Record<string, unknown>;
+    updateMatrixWorld(): void;
+  }
+  const landscape = (flat: boolean): Obj => ({
+    position: { y: 0 },
+    userData: { flat, dropM: 0.3 },
+    updateMatrixWorld: () => undefined,
+  });
+  function fakeStage() {
+    const inScene = new Set<unknown>();
+    const targets = new Map<unknown, string>();
+    const stage = {
+      scene: {
+        add: (o: unknown) => inScene.add(o),
+        remove: (o: unknown) => inScene.delete(o),
+      },
+      addRaycastTarget(o: unknown, id: string) {
+        targets.set(o, id);
+        return () => targets.delete(o);
+      },
+      requestRender: vi.fn(),
+    };
+    return { stage, inScene, targets };
+  }
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it('stands in for the plain ground, which would otherwise cover it', () => {
+    const { stage, inScene, targets } = fakeStage();
+    const mesh = landscape(false);
+    const remove = showSurroundings(stage as never, mesh, () => null);
+    expect(inScene.has(mesh)).toBe(true);
+    // the stage hides its plain ground (y = 0, over the landscape) while a ground target shows
+    expect(targets.get(mesh)).toBe('site-surroundings');
+    expect(mesh.userData.aioGround).toBe(true);
+    // a landscape that follows the terrain keeps its own heights
+    expect(mesh.position.y).toBe(0);
+    remove();
+    expect(inScene.has(mesh)).toBe(false);
+    expect(targets.size).toBe(0);
+  });
+
+  it('lays a flat one (an online map, imagery without terrain) under the lowest model, as the street map', () => {
+    vi.useFakeTimers();
+    const { stage } = fakeStage();
+    const mesh = landscape(true);
+    let floor: number | null = null;
+    const remove = showSurroundings(stage as never, mesh, () => floor);
+    // nothing under the origin: just under it, where the street map lies
+    expect(mesh.position.y - 0.3).toBeCloseTo(groundLevel(null), 6);
+    expect(groundLevel(null)).toBeCloseTo(-0.4, 6);
+    expect(groundLevel(5)).toBe(-0.25);
+    // a model that runs 12 m under the origin (a slope, a pit) loads: the picture goes under it,
+    // instead of cutting through it at the origin's height
+    floor = -12;
+    vi.advanceTimersByTime(1500);
+    expect(mesh.position.y - 0.3).toBeCloseTo(groundLevel(-12), 6);
+    expect(groundLevel(-12)).toBeCloseTo(-12.4, 6);
+    remove();
+    floor = -40;
+    vi.advanceTimersByTime(3000);
+    expect(mesh.position.y - 0.3).toBeCloseTo(-12.4, 6);
   });
 });

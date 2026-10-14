@@ -238,8 +238,83 @@ test("the 3D scene's Map chip turns on imagery around the site from Esri", async
       { timeout: 60_000 },
     )
     .toBeGreaterThan(0);
+  // the landscape is the ground now: the plain ground goes, as it does for the street map (it
+  // lay over the imagery and, seen from far off, cut the view in half at a ragged line)
+  await expect
+    .poll(() => sceneGround(win), { timeout: 60_000 })
+    .toEqual({ landscape: true, plain: false });
+
+  // from far off and low, toward the horizon: the whole ground below the horizon is the map
+  await win.evaluate(() => {
+    const s = (window as unknown as SceneProbe).__stratlas.stage();
+    if (!s) return;
+    // let the camera back off 300 m from the tiny model, as on a real site
+    const box = s.contentBounds();
+    if (!box) return;
+    const big = box.clone();
+    big.min.set(-1500, 0, -1500);
+    big.max.set(1500, 30, 1500);
+    s.setReach('e2e-far', big);
+    s.restoreView({ position: [0, 6, 300], target: [0, 0, 0] });
+  });
+  const canvas = win.locator('[data-scene-view] canvas').first();
+  await expect
+    .poll(
+      async () => {
+        const png = (await canvas.screenshot()).toString('base64');
+        // a column left of the model, from just under the horizon down to above the readouts
+        return win.evaluate(async (b64) => {
+          const bytes = Uint8Array.from(atob(b64), (c) => c.charCodeAt(0));
+          const bmp = await createImageBitmap(new Blob([bytes], { type: 'image/png' }));
+          const c = new OffscreenCanvas(bmp.width, bmp.height);
+          const ctx = c.getContext('2d');
+          if (!ctx) return -1;
+          ctx.drawImage(bmp, 0, 0);
+          const x = Math.round(bmp.width * 0.35);
+          let notMap = 0;
+          for (let y = Math.round(bmp.height * 0.5); y < bmp.height * 0.88; y++) {
+            const [r, g, b] = ctx.getImageData(x, y, 1, 1).data;
+            // main's stand-in tiles are green; the plain ground is a dark grey
+            if (!(
+              g !== undefined &&
+              r !== undefined &&
+              b !== undefined &&
+              g > r + 40 &&
+              g > b + 40
+            ))
+              notMap++;
+          }
+          return notMap;
+        }, png);
+      },
+      { timeout: 30_000 },
+    )
+    .toBe(0);
   expect(await network.outbound()).toEqual([]);
 });
+
+interface SceneProbe {
+  __stratlas: {
+    stage(): {
+      scene: { getObjectByName(n: string): { visible: boolean } | undefined };
+      contentBounds(): {
+        clone(): { min: { set(...v: number[]): void }; max: { set(...v: number[]): void } };
+      } | null;
+      setReach(key: string, box: unknown): void;
+      restoreView(v: { position: number[]; target: number[] }): void;
+    } | null;
+  };
+}
+
+/** Whether the landscape around the site and the plain ground are drawn. */
+const sceneGround = (win: Page) =>
+  win.evaluate(() => {
+    const scene = (window as unknown as SceneProbe).__stratlas.stage()?.scene;
+    return {
+      landscape: scene?.getObjectByName('site-surroundings')?.visible === true,
+      plain: scene?.getObjectByName('env:ground')?.visible ?? null,
+    };
+  });
 
 test('offline-only: online maps are greyed in the menu and main asks nobody', async ({
   app,

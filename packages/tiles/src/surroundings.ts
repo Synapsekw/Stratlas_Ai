@@ -202,6 +202,7 @@ export async function buildSurroundings(opts: SurroundingsOptions): Promise<Mesh
 
   const pos = new Float32Array(n * n * 3);
   const uv = new Float32Array(n * n * 2);
+  let followsTerrain = false;
   for (let j = 0; j < n; j++) {
     for (let i = 0; i < n; i++) {
       const x = -radius + (2 * radius * i) / (n - 1);
@@ -210,6 +211,7 @@ export async function buildSurroundings(opts: SurroundingsOptions): Promise<Mesh
       const h = tMosaic ? heightAt(tMosaic, heights, lon, lat) : NaN;
       const k = j * n + i;
       pos[k * 3] = x;
+      if (Number.isFinite(h)) followsTerrain = true;
       pos[k * 3 + 1] = (Number.isFinite(h) ? h - oz : 0) - drop;
       pos[k * 3 + 2] = z;
       if (iMosaic) {
@@ -254,6 +256,10 @@ export async function buildSurroundings(opts: SurroundingsOptions): Promise<Mesh
   mesh.renderOrder = -1;
   // never pickable: a click on the landscape is a click on empty ground
   mesh.raycast = () => undefined;
+  // no heights (imagery only): a flat picture at y = -drop, which the app lays under the site's
+  // lowest point like the street map, so it never cuts through a model that runs below the origin
+  mesh.userData.flat = !followsTerrain;
+  mesh.userData.dropM = drop;
   mesh.userData.credits = [...(terrain?.credits() ?? []), ...(imagery?.credits() ?? [])];
   return mesh;
 }
