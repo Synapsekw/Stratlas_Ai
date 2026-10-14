@@ -25,7 +25,7 @@ function job(
   };
 }
 
-const ALIGN = ['inspect', 'sfm', 'georef', 'report'];
+const ALIGN = ['inspect', 'sfm', 'georef', 'report', 'commit'];
 const align = (states: JobStep['state'][], status: JobRecord['status'], progress = 0) =>
   job(
     'photo.align',
@@ -33,7 +33,7 @@ const align = (states: JobStep['state'][], status: JobRecord['status'], progress
     ALIGN.map((n, i) => step(n, states[i] ?? 'pending')),
     { progress },
   );
-const allDone: JobStep['state'][] = ['done', 'done', 'done', 'done'];
+const allDone: JobStep['state'][] = ['done', 'done', 'done', 'done', 'done'];
 
 describe('one phase from its stages', () => {
   it('follows the stages in it', () => {
@@ -59,6 +59,7 @@ describe('a run as one list of phases', () => {
     expect(v.phases.map((p) => [p.label, p.state])).toEqual([
       ['Reading photos', 'done'],
       ['Matching photos', 'running'],
+      ['Adding to the project', 'pending'], // the align job's own save step
       ['Building the map', 'pending'],
       ['Building the 3D model', 'pending'],
       ['Adding to the project', 'pending'],
@@ -76,7 +77,7 @@ describe('a run as one list of phases', () => {
     expect(v.headline).toBe('Building the map');
     expect(v.percent).toBe(30);
     // a quick run without a 3D model has no such phase
-    expect(v.phases.map((p) => p.id)).toEqual(['read', 'match', 'map', 'add']);
+    expect(v.phases.map((p) => p.id)).toEqual(['read', 'match', 'add', 'map', 'add']);
   });
 
   it('carries on into the maps job', () => {
@@ -99,6 +100,7 @@ describe('a run as one list of phases', () => {
     expect(v.phases.map((p) => [p.id, p.state])).toEqual([
       ['read', 'done'],
       ['match', 'done'],
+      ['add', 'done'],
       ['map', 'done'],
       ['model', 'running'],
       ['add', 'pending'],
@@ -132,7 +134,7 @@ describe('a run as one list of phases', () => {
 
   it('drops the maps to come when they are no longer queued', () => {
     const v = runView([align(['done', 'cancelled'], 'cancelled', 0.2)], null);
-    expect(v.phases.map((p) => p.id)).toEqual(['read', 'match']);
+    expect(v.phases.map((p) => p.id)).toEqual(['read', 'match', 'add']);
     expect(v.percent).toBe(20);
   });
 

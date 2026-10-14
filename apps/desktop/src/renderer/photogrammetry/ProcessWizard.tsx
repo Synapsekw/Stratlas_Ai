@@ -184,7 +184,10 @@ export function ProcessWizard() {
   const [gnss, setGnss] = useState<Gnss>(start?.gnss ?? SIMPLE_DEFAULTS.gnss);
   const [preset, setPreset] = useState<PhotoPreset>(start?.preset ?? SIMPLE_DEFAULTS.preset);
   const [products, setProducts] = useState<PhotoProduct[]>(
-    start?.products ?? defaultProducts(SIMPLE_DEFAULTS.preset),
+    productsFor(
+      start?.preset ?? SIMPLE_DEFAULTS.preset,
+      start?.products ?? defaultProducts(SIMPLE_DEFAULTS.preset),
+    ),
   );
   /** The person's own choice in Options ('' is None); null while the pick is automatic. */
   const [dateChoice, setDateChoice] = useState<string | null>(start?.capture ?? null);

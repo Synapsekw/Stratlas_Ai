@@ -6,8 +6,9 @@ import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { WizardInitial } from './startOver';
 
-const { call, startAlign, removeNow } = vi.hoisted(() => ({
+const { call, startAlign, removeNow, openProcessingEngine } = vi.hoisted(() => ({
   call: vi.fn(),
+  openProcessingEngine: vi.fn(),
   startAlign: vi.fn<(a: { run: string }) => Promise<string | null>>(),
   removeNow: vi.fn<(targets: { run: string }[], shown?: unknown) => Promise<string | null>>(),
 }));
@@ -18,6 +19,7 @@ vi.mock('../shell', () => ({
 vi.mock('../shell/removal', () => ({ removal: { getState: () => ({ removeNow }) } }));
 vi.mock('../processingTools', () => ({ openProcessingTools: vi.fn() }));
 vi.mock('./actions', () => ({ startAlign }));
+vi.mock('../odm', () => ({ openProcessingEngine }));
 
 import { ProcessWizard } from './ProcessWizard';
 import { photoUi } from './store';
@@ -58,6 +60,7 @@ const RUN_PLAN: RemovalPlan = {
   bytes: 10,
 };
 let oldPlan: RemovalPlan = RUN_PLAN;
+let probeOver: Record<string, unknown> = {};
 
 let host: HTMLDivElement;
 let root: Root | undefined;
@@ -67,8 +70,8 @@ const flush = async () => {
       await Promise.resolve();
     });
 };
-const mount = async () => {
-  photoUi.getState().openWizard(initial);
+const mount = async (start: WizardInitial = initial) => {
+  photoUi.getState().openWizard(start);
   root = createRoot(host);
   await act(async () => {
     root?.render(<ProcessWizard />);
@@ -92,6 +95,7 @@ beforeEach(() => {
   removeNow.mockReset();
   removeNow.mockResolvedValue(null);
   oldPlan = RUN_PLAN;
+  probeOver = {};
   photoUi.setState({ view: null, held: [], notes: {}, pending: {}, dates: {} });
   // main has not listed the old run (its folder unreadable): the wizard still never reuses its id
   call.mockImplementation((channel: string) => {
@@ -107,6 +111,7 @@ beforeEach(() => {
           gpus: [],
           cuda: false,
           processing: 'available',
+          ...probeOver,
         },
       });
     if (channel === 'photo:estimate')
@@ -318,5 +323,33 @@ describe('Start over in the process wizard', () => {
     await flush();
     expect(startAlign).toHaveBeenCalledTimes(2);
     expect(removeNow).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('the wizard with the processing engine and Quick', () => {
+  it('blocks with an install button until the engine is installed', async () => {
+    probeOver = { processing: 'no-engine' };
+    await mount();
+    expect(host.querySelector('[data-testid="photo-blocked"]')?.textContent).toContain(
+      'Install the processing engine first',
+    );
+    const fix = host.querySelector<HTMLButtonElement>('[data-testid="photo-fix"]');
+    expect(fix?.textContent).toBe('Install the processing engine');
+    act(() => fix?.click());
+    expect(openProcessingEngine).toHaveBeenCalledTimes(1);
+  });
+
+  it('shows 3D mesh and 3D Tiles unchecked and disabled with Quick, with a note', async () => {
+    await mount({ ...initial, preset: 'fast', products: ['ortho', 'mesh', 'tiles'] });
+    const box = (label: string) =>
+      [...host.querySelectorAll<HTMLLabelElement>('.ph-check')]
+        .find((l) => l.textContent.includes(label))
+        ?.querySelector('input');
+    for (const label of ['Textured mesh', '3D Tiles']) {
+      expect(box(label)?.checked).toBe(false);
+      expect(box(label)?.disabled).toBe(true);
+    }
+    expect(box('Orthomosaic')?.checked).toBe(true);
+    expect(host.textContent).toContain('Quick makes no 3D model.');
   });
 });

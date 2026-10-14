@@ -16,7 +16,7 @@ import { workspace } from '@aio/workspace';
 import type { Res } from '../bridge';
 import { bridge } from '../shell';
 import { startAlign } from './actions';
-import { diskNeed, formatMinutes, newRunId } from './estimate';
+import { diskNeed, formatMinutes, newRunId, productsFor } from './estimate';
 import { processingLine } from './hardware';
 import { photoUi } from './store';
 import { daysOfItems, pickParams, pickSurveyDate } from './surveyDate';
@@ -52,7 +52,7 @@ export async function agentProcessPhotos(req: ProcessPhotosRequest): Promise<Pro
       projectId: project.id,
       photos,
       preset: req.preset,
-      products: req.products,
+      products: productsFor(req.preset, req.products),
     }),
   );
   const disk = diskNeed(estimate);

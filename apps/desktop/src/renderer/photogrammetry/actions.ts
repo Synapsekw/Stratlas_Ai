@@ -6,6 +6,7 @@
 import type { Layer, PhotoPreset, PhotoSource, ProjectManifest } from '@aio/schema';
 import { workspace } from '@aio/workspace';
 import { bridge, jobs } from '../shell';
+import { productsFor } from './estimate';
 import { wizardInitialOf } from './startOver';
 import { photoUi, type PendingProducts } from './store';
 
@@ -80,14 +81,15 @@ async function requestProducts(
   run: string,
   p: PendingProducts,
 ): Promise<{ err: string | null; dateFailed: boolean }> {
-  if (!p.products.length) return { err: 'Choose at least one product.', dateFailed: false };
+  const products = productsFor(p.preset, p.products);
+  if (!products.length) return { err: 'Choose at least one product.', dateFailed: false };
   let dateFailed = false;
   try {
     const c = await captureOf(p);
     dateFailed = c.dateFailed;
     const err = await start('photo.products', p.root, {
       run,
-      products: p.products,
+      products,
       preset: p.preset,
       ...(c.capture ? { capture: c.capture } : {}),
     });

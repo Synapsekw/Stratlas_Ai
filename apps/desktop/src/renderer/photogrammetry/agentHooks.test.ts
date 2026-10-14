@@ -83,6 +83,13 @@ describe('agentProcessPhotos', () => {
     expect(photoUi.getState().dates[RUN]).toEqual({ captureDate: '2026-03-14' });
   });
 
+  it('estimates a Quick run without a 3D model', async () => {
+    answer();
+    await agentProcessPhotos({ ...req, preset: 'fast', products: ['ortho', 'mesh', 'tiles'] });
+    const est = call.mock.calls.find((c) => c[0] === 'photo:estimate');
+    expect(est?.[1]).toMatchObject({ preset: 'fast', products: ['ortho'] });
+  });
+
   it('picks the next free run id', async () => {
     answer({ 'photo:runs': await ok({ runs: [{ id: RUN }] }) });
     expect((await agentProcessPhotos(req)).run).toBe(`${RUN}-2`);

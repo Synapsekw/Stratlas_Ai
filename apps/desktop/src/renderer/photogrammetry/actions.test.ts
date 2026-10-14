@@ -39,6 +39,20 @@ beforeEach(() => {
   open.project = { id: 'p1', root: 'D:\\Projects\\site', manifest: { layers: [] } };
 });
 
+describe('startProducts with the Quick preset', () => {
+  it('never asks for a mesh or 3D Tiles', async () => {
+    call.mockResolvedValue(started);
+    await startProducts('q1', { ...base, preset: 'fast', products: ['ortho', 'mesh', 'tiles'] });
+    expect(paramsOfStart()).toMatchObject({ run: 'q1', preset: 'fast', products: ['ortho'] });
+  });
+
+  it('refuses when only the 3D model was asked for', async () => {
+    const err = await startProducts('q2', { ...base, preset: 'fast', products: ['mesh'] });
+    expect(err).toBe('Choose at least one product.');
+    expect(call).not.toHaveBeenCalled();
+  });
+});
+
 describe('startProducts and the survey date', () => {
   it('adds the date of a new day first, then starts the maps under its id', async () => {
     call.mockImplementation((channel: string) =>
