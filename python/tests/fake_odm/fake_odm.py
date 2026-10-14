@@ -296,6 +296,7 @@ def stage_georeferencing(project: Path, a: argparse.Namespace, gpu_bad: str) -> 
     out = project / "odm_georeferencing"
     out.mkdir(parents=True, exist_ok=True)
     (out / "odm_georeferenced_model.las").write_bytes(header + rec.tobytes())
+    (out / "odm_georeferenced_model.laz").write_bytes(header + rec.tobytes())  # what the DTM mark points at
 
 
 def _raster_grid(utm: np.ndarray, res_cm: float):
@@ -395,9 +396,12 @@ def main(argv: list[str]) -> int:
     fail = os.environ.get("FAKE_ODM_FAIL", "")
     hang = os.environ.get("FAKE_ODM_HANG", "")
     gpu_bad = os.environ.get("FAKE_ODM_GPU", "ok")
+    say = os.environ.get("FAKE_ODM_SAY", "")  # <stage>:<line>, printed during that stage
     for stage in STAGES[: STAGES.index(a.end_with) + 1]:
         forced = a.rerun_from is not None and STAGES.index(stage) >= STAGES.index(a.rerun_from)
         print(f"[INFO]    Running {stage} stage", flush=True)
+        if say.startswith(f"{stage}:"):
+            print(say.split(":", 1)[1], flush=True)
         if fail.startswith(f"{stage}:"):
             print(f"[ERROR]   fake failure in {stage}", flush=True)
             return int(fail.split(":")[1])
