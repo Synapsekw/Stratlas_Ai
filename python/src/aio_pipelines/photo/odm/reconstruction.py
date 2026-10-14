@@ -22,8 +22,6 @@ from ...runtime import JobError
 from .. import crs as C
 from ..model import Camera, Image, SparseModel, project_points, rodrigues
 
-_FIRST_NAMED_POINT = 10_000_000
-
 
 @dataclass
 class OdmModel:
@@ -51,10 +49,7 @@ def opensfm_camera(cid: int, cam: dict) -> Camera:
             cid, "RADIAL", int(w), int(h), [f, w / 2, h / 2, cam.get("k1", 0.0), cam.get("k2", 0.0)]
         )
     if kind in ("brown", "radial", "simple_radial"):
-        if kind == "brown":
-            fx, fy = cam["focal_x"] * s, cam["focal_y"] * s
-        else:
-            fx = fy = cam["focal"] * s
+        fx, fy = cam["focal_x"] * s, cam["focal_y"] * s
         cx, cy = w / 2 + cam.get("c_x", 0.0) * s, h / 2 + cam.get("c_y", 0.0) * s
         k1, k2 = cam.get("k1", 0.0), cam.get("k2", 0.0)
         if kind == "brown":
@@ -116,7 +111,6 @@ def read_reconstruction(odm_dir: Path, names: dict[str, str], run_enu: C.EnuFram
 
     model = SparseModel()
     cam_ids: dict[str, int] = {}
-    point_numbers: dict[str, int] = {}
     ids: list[int] = []
     xyz: list[list[float]] = []
     rgb: list[list[int]] = []
@@ -136,12 +130,9 @@ def read_reconstruction(odm_dir: Path, names: dict[str, str], run_enu: C.EnuFram
             R = rodrigues(np.array(shot["rotation"], dtype=np.float64))[0]
             iid = len(model.images) + 1
             model.images[iid] = Image(iid, names[key], cam_ids[cam_key], R, shot["translation"])
-        for track_id, pt in (rec.get("points") or {}).items():
-            if track_id.isdigit():
-                pid = int(track_id)
-            else:
-                pid = point_numbers.setdefault(track_id, _FIRST_NAMED_POINT + len(point_numbers))
-            ids.append(pid)
+        for pt in (rec.get("points") or {}).values():
+            # track ids repeat across reconstructions, so the points are numbered afresh
+            ids.append(len(ids) + 1)
             xyz.append(pt["coordinates"])
             rgb.append(pt.get("color", [0, 0, 0]))
     if not model.images:

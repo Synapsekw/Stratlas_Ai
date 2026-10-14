@@ -58,6 +58,41 @@ def test_a_perspective_camera():
     assert (u, v) == pytest.approx((0.85 * x * d * S + W / 2, 0.85 * y * d * S + H / 2), abs=1e-6)
 
 
+def _opensfm_pixel(cam, Xc):
+    x, y = Xc[0] / Xc[2], Xc[1] / Xc[2]
+    r2 = x * x + y * y
+    rad = 1 + cam["k1"] * r2 + cam.get("k2", 0.0) * r2**2
+    return (cam["focal_x"] * x * rad + cam["c_x"]) * S + W / 2, (
+        cam["focal_y"] * y * rad + cam["c_y"]
+    ) * S + H / 2
+
+
+@pytest.mark.parametrize("kind", ["radial", "simple_radial"])
+def test_radial_cameras_project_like_opensfm(kind):
+    raw = {"projection_type": kind, "width": W, "height": H, "focal_x": 0.8, "focal_y": 0.81, "c_x": 0.01,
+           "c_y": -0.02, "k1": -0.1}  # fmt: skip
+    if kind == "radial":
+        raw["k2"] = 0.02
+    Xc = np.array([0.3, -0.2, 10.0])
+    u, v = project_points(opensfm_camera(4, raw), np.eye(3), np.zeros(3), Xc[None])[0][0]
+    assert (u, v) == pytest.approx(_opensfm_pixel(raw, Xc), abs=1e-6)
+
+
+def test_points_with_the_same_id_in_two_reconstructions_stay_apart(tmp_path):
+    shot = {"camera": "c", "rotation": [0, 0, 0], "translation": [0, 0, 0]}
+    rec = [{"cameras": {"c": BROWN}, "shots": {"00000.jpg": shot}, "points": {"7": {"coordinates": [1, 2, 3]}}},
+           {"cameras": {"c": BROWN}, "shots": {"00001.jpg": shot}, "points": {"7": {"coordinates": [4, 5, 6]}}}]  # fmt: skip
+    odm = tmp_path / "odm"
+    _write(odm, rec)
+    got = read_reconstruction(odm, {"00000.jpg": "a", "00001.jpg": "b"}, C.EnuFrame(55.0, 25.0, 10.0))
+    assert len(got.model.xyz) == 2 and len(set(got.model.point_ids.tolist())) == 2
+
+
+def test_a_missing_alignment_is_named(tmp_path):
+    with pytest.raises(JobError, match="ODM wrote no alignment"):
+        read_reconstruction(tmp_path / "odm", {}, C.EnuFrame(55.0, 25.0, 10.0))
+
+
 def test_an_unknown_camera_model_is_named():
     with pytest.raises(JobError, match="fisheye"):
         opensfm_camera(
@@ -96,8 +131,11 @@ def test_shots_and_points_land_in_the_runs_frame(tmp_path):
 
 def test_reconstruction_json_is_read_when_there_is_no_topocentric_file(tmp_path):
     odm = tmp_path / "odm"
-    _write(odm, [{"cameras": {"c": BROWN}, "shots": {}, "points": {}}])
+    shot = {"camera": "c", "rotation": [0, 0, 0], "translation": [0, 0, 0]}
+    _write(odm, [{"cameras": {"c": BROWN}, "shots": {"00000.jpg": shot}, "points": {}}])
     (odm / "opensfm" / "reconstruction.topocentric.json").rename(odm / "opensfm" / "reconstruction.json")
+    got = read_reconstruction(odm, {"00000.jpg": "a"}, C.EnuFrame(55.0, 25.0, 10.0))
+    assert [im.name for im in got.model.images.values()] == ["a"]
     with pytest.raises(JobError, match="ODM placed no photos"):
         read_reconstruction(odm, {}, C.EnuFrame(55.0, 25.0, 10.0))
 
