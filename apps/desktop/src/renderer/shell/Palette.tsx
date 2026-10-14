@@ -522,7 +522,17 @@ export function Palette() {
             title: 'Georeference a model by point pairs',
             group: 'Actions',
             icon: 'target',
-            keywords: ['align', 'gcp', 'control points', 'place model', 'transform'],
+            keywords: [
+              'align',
+              'gcp',
+              'control points',
+              'place model',
+              'transform',
+              'up axis',
+              'z up',
+              'y up',
+              'lying down',
+            ],
             run: () => {
               builder.getState().startAlign({ kind: 'mesh', layerId: first.id });
             },

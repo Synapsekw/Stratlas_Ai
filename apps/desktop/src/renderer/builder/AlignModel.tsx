@@ -1,4 +1,12 @@
-import { fitSimilarity3D, fromWgs84, toWgs84, type SimilarityFit } from '@aio/geo';
+import {
+  fitModelPlacement,
+  fromWgs84,
+  toWgs84,
+  upAxisOf,
+  withUpAxis,
+  type SimilarityFit,
+  type UpAxis,
+} from '@aio/geo';
 import { LocationPicker } from '@aio/maps';
 import type { Layer, Vec3 } from '@aio/schema';
 import { Icon } from '@aio/ui';
@@ -44,6 +52,7 @@ export function AlignModel({ layerId }: { layerId: string }) {
     [project],
   );
   const layer = layers.find((l) => l.id === layerId) ?? layers[0];
+  const up: UpAxis = layer ? upAxisOf(layer.transform) : 'y';
   const [pairs, setPairs] = useState<Pair[]>([]);
   const [pending, setPending] = useState<Vec3 | null>(null);
   const [source, setSource] = useState<TargetSource>('scene');
@@ -61,15 +70,18 @@ export function AlignModel({ layerId }: { layerId: string }) {
     if (pairs.length < 3) return { fit: null, error: null };
     try {
       return {
-        fit: fitSimilarity3D(pairs, mode, {
-          heightOffset: layer ? (layer.transform[13] ?? 0) : 0,
-        }),
+        fit: fitModelPlacement(
+          pairs,
+          mode,
+          { heightOffset: layer ? (layer.transform[13] ?? 0) : 0 },
+          up,
+        ),
         error: null,
       };
     } catch (e) {
       return { fit: null, error: e instanceof Error ? e.message : String(e) };
     }
-  }, [pairs, mode, layer]);
+  }, [pairs, mode, layer, up]);
 
   // while picking the target on the scene, hide the model so the ortho under it is reachable
   useEffect(() => {
@@ -242,6 +254,28 @@ export function AlignModel({ layerId }: { layerId: string }) {
             {mode === 'upright'
               ? 'Turn about the vertical, scale and shift; the model stays level. Map targets fix the plan only.'
               : 'Any rotation, scale and shift; every target needs a height.'}
+          </p>
+          <div className="b-inline">
+            <span className="faint">Up axis</span>
+            <div className="seg" role="group" aria-label="Up axis">
+              {(['y', 'z'] as const).map((a) => (
+                <button
+                  key={a}
+                  type="button"
+                  aria-pressed={up === a}
+                  disabled={saving}
+                  onClick={() => {
+                    if (up !== a) void save(withUpAxis(layer.transform, a));
+                  }}
+                >
+                  {a === 'y' ? 'Y up' : 'Z up'}
+                </button>
+              ))}
+            </div>
+          </div>
+          <p className="say">
+            Z up for survey and photogrammetry exports, Y up for most 3D apps. Switching turns the
+            model about its own origin.
           </p>
         </div>
 
