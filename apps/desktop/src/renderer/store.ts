@@ -45,7 +45,7 @@ export const DEFAULT_SETTINGS: Settings = {
  * A Settings field to focus when Settings opens: the agent panel's "Open AI settings", and
  * "Offline maps" of the map type picker (Imagery and terrain, where packs are imported).
  */
-export type SettingsFocus = 'anthropic-workspace' | 'raster-packs';
+export type SettingsFocus = 'anthropic-workspace' | 'raster-packs' | 'processing-engine';
 
 /** The pages of the Settings screen. */
 export type SettingsPage =
@@ -69,6 +69,7 @@ export type SettingsPage =
 const FOCUS_PAGE: Record<SettingsFocus, SettingsPage> = {
   'anthropic-workspace': 'ai',
   'raster-packs': 'maps',
+  'processing-engine': 'tools',
 };
 
 export interface ShellState {

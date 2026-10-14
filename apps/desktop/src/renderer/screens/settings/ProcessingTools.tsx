@@ -14,6 +14,7 @@ import { useEffect, useRef, useState } from 'react';
 import { AdvancedPipelines } from '../../processing/AdvancedPipelines';
 import { processingTools, resumeAfterTools, useProcessingTools } from '../../processingTools';
 import { useShell } from '../../shell';
+import { ProcessingEngine } from './ProcessingEngine';
 import './processingTools.css';
 
 const fileName = (p: string) => p.split(/[\\/]/).pop() ?? p;
@@ -342,6 +343,7 @@ export function ProcessingTools() {
   }, [asked]);
   return (
     <>
+      <ProcessingEngine />
       <div className="sblock processing-tools" data-testid="processing-tools">
         <h2 ref={heading} tabIndex={-1}>
           {t('tools.title')}

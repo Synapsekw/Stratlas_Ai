@@ -1,0 +1,86 @@
+/* Settings, Processing tools: the Processing engine card (ODM). Tokens as processingTools.css. */
+.processing-engine {
+  margin-bottom: 14px;
+}
+.processing-engine .pe-title {
+  margin: 0;
+  color: var(--fg-0);
+  font-size: var(--t-13);
+  font-weight: 600;
+}
+.processing-engine .pe-title:focus-visible {
+  outline: 2px solid var(--acc);
+  outline-offset: 4px;
+  border-radius: var(--r-4);
+}
+.processing-engine .oc-head > div .pe-state {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--fg-1);
+  font-weight: 600;
+}
+.processing-engine .pe-state.ok svg {
+  color: var(--ok);
+}
+.processing-engine .pe-state.warn svg {
+  color: var(--s3);
+}
+.processing-engine .pe-acts {
+  display: flex;
+  flex: none;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 6px;
+  margin-inline-start: auto;
+}
+.processing-engine p {
+  margin: 0;
+}
+.processing-engine .pe-about,
+.processing-engine .pe-detail {
+  max-width: 72ch;
+}
+.processing-engine .pe-version {
+  overflow: hidden;
+  color: var(--fg-1);
+  font-size: var(--t-12);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.processing-engine .pe-gpu {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding-top: 10px;
+  border-top: 1px solid var(--line-soft);
+}
+.processing-engine .pe-gpu-t {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+  color: var(--fg-1);
+  font-size: var(--t-12);
+  line-height: 1.5;
+}
+.processing-engine .pe-gpu-t .faint {
+  max-width: 64ch;
+}
+.processing-engine .pe-gpu .switch {
+  flex: none;
+}
+.processing-engine .pe-progress {
+  display: grid;
+  gap: 8px;
+  color: var(--fg-1);
+  font-size: var(--t-12);
+  font-variant-numeric: tabular-nums;
+}
+.processing-engine .notice .btn {
+  flex: none;
+}
+.processing-engine .pe-back {
+  display: flex;
+}
