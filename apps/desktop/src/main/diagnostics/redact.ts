@@ -58,6 +58,10 @@ const TOKEN_PATTERNS: RegExp[] = [
   /\bsk-[A-Za-z0-9_-]{12,}/g,
   // Google API keys
   /\bAIza[0-9A-Za-z_-]{20,}/g,
+  // Mapbox access tokens (pk. public, sk. secret, tk. temporary)
+  /\b[pst]k\.eyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}/g,
+  // ArcGIS API keys (AAPK legacy, AAPT and AAPE access tokens)
+  /\bAAP[KTE][A-Za-z0-9_-]{20,}/g,
   // GitHub tokens
   /\bgh[pousr]_[A-Za-z0-9]{20,}/g,
   /\bgithub_pat_[A-Za-z0-9_]{20,}/g,

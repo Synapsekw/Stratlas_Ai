@@ -210,3 +210,16 @@ describe('redactSettings', () => {
     expect(redactSettings('x')).toEqual({});
   });
 });
+
+describe('map keys', () => {
+  it('removes Mapbox and Esri keys from text and from tile addresses', () => {
+    const mapbox = 'pk.eyJ1IjoiZXhhbXBsZSIsImEiOiJjbHh5ejEyMyJ9.AbCdEfGhIjKlMnOpQr';
+    const esri = 'AAPTxy1wnqcmgL9a5bXFYzJtL0mN2oP3qR4sT5uV6wX7yZ8';
+    const line = `fetch https://tiles.example/x?access_token=${mapbox} and ?token=${esri}; key ${mapbox} ${esri}`;
+    const out = redactText(line);
+    expect(out).not.toContain(mapbox);
+    expect(out).not.toContain(esri);
+    expect(out).toContain('access_token=[redacted]');
+    expect(out).toContain('token=[redacted]');
+  });
+});

@@ -48,6 +48,13 @@ export function createTestVault(userData: string): (service: string, account: st
       setPassword: (value: string) => {
         save({ ...load(), [key]: value });
       },
+      deletePassword: () => {
+        const values = load();
+        const had = key in values;
+        Reflect.deleteProperty(values, key);
+        save(values);
+        return had;
+      },
     };
   };
 }
