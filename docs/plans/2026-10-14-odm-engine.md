@@ -17,7 +17,7 @@
 - Source photos are never written: `odm/images/` holds hard links (copies when a hard link fails).
 - Presets: Fast `--fast-orthophoto --skip-3dmodel --pc-quality low --feature-quality medium`; Standard `--pc-quality medium --feature-quality high`; High `--pc-quality high --feature-quality ultra`. Products runs always add `--dsm --dtm --cog --pc-copc --build-overviews --optimize-disk-space --orthophoto-resolution <cm> --dem-resolution <cm> --max-concurrency <n>`, and `--skip-3dmodel` when no mesh was asked for. Matcher and SfM stay ODM's defaults.
 - GPU: setting `processing.odm.gpu` = `auto` (default) or `off`. `auto` and `%SYSTEMROOT%\System32\nvcuda.dll` present: `--feature-type sift`; otherwise `--no-gpu`. A GPU fallback is a warning, never a failure.
-- Threads: `max-concurrency = clamp(min(logical CPUs - 2, floor(RAM GB / 3)), 2, 32)`, lowered further by `AIO_PHOTO_MEMORY_MB` (`floor(cap GB / 3)`, same clamp).
+- Threads: `max-concurrency = clamp(min(logical CPUs - 2, floor(RAM GB / 3)), 2, 32)` (21 on a 24-thread, 64 GB machine), lowered further only by a memory limit the person set by hand in Settings: the app passes it as `AIO_ODM_MEMORY_CAP_MB` only then (`floor(cap GB / 3)`, same clamp). The automatic 75 % `AIO_PHOTO_MEMORY_MB` does not lower ODM's threads (founder, 14 Oct). Task 2 reads `AIO_ODM_MEMORY_CAP_MB`; Task 14 sets it in `jobEnv` only when the memory setting is not automatic.
 - One photo processing job at a time on the computer (a new gate in `jobs:start`; there is no existing heavy-job gate, see "Spec deviations").
 - Exit codes: 137 and 3221226505 "ODM ran out of memory; try the Fast preset or close other programs."; 132 "This computer's processor is not supported by ODM."; 3 "ODM is missing a program; reinstall the processing engine in Settings, Processing tools."; 1, 134, 139, 3221225477 "ODM could not process these photos: <last ODM line>"; the last 20 ODM lines always go to the job log.
 - Our own engine is deleted in this branch (no fallback). Old runs keep their committed layers; products on a run without an ODM project are refused with a plain message.
@@ -40,7 +40,7 @@
 1. **New ADR number is 0012**, not 0009: `docs/architecture/adr/0009-survey-engine.md` exists (0010 and 0011 too).
 2. **`pycolmap` stays in the pack.** Walks (`walk/sfm.py`) run their own COLMAP structure from motion through `photo/colmap_io.py`. This plan moves what walks need into `walk/colmap_child.py` and the process-tree code into `photo/proctree.py`, then deletes `colmap_io.py`. `pymeshlab` is dropped; `opencv-python-headless` stays (walks and panoramas import `cv2`).
 3. **No heavy-job gate exists today** (the spec says one covers photo jobs). Only drone panorama stitches have a lane. This plan adds a refusal in `jobs:start`: a photo job does not start while another photo job runs (Task 14).
-4. **Thread example.** The spec's "20 on a 24-thread, 64 GB machine" does not follow from its formula: `min(24 - 2, floor(64 / 3)) = 21`. And the app always sets `AIO_PHOTO_MEMORY_MB` to 75 % of RAM (48 GB there), which lowers it to `floor(48 / 3) = 16`. The plan implements the formula as written; the founder may want the cap to count only when set by hand.
+4. **Thread example.** The spec's "20 on a 24-thread, 64 GB machine" does not follow from its formula: `min(24 - 2, floor(64 / 3)) = 21`. And the app always sets `AIO_PHOTO_MEMORY_MB` to 75 % of RAM (48 GB there), which lowers it to `floor(48 / 3) = 16`. **Founder, 14 Oct: 21; the cap counts only when set by hand** (see Global Constraints, `AIO_ODM_MEMORY_CAP_MB`). This overrides any `AIO_PHOTO_MEMORY_MB` use for threads in Tasks 2 and 14 below.
 5. **Products run ODM in several calls, one per job step** (`dense`, `mesh`, `texture`, `cloud`, `dsm`, `ortho`), each `--rerun-from <its first stage> --end-with <its last stage>`. This keeps the run panel's phases, gives a resume point per step, and imports each output right after ODM makes it. The extra ODM start-ups cost seconds on runs of hours.
 6. **Align keeps our photo reading and writes `geo.txt`** when it changes what ODM would read from EXIF (PPK positions, RTK ellipsoidal heights converted to EGM2008, the project's vertical datum, `gnss` other than `auto`), so these settings keep working.
 7. **ODM's own GCP errors** are written to the job log and kept as `report/odm-stats.json`; `report/accuracy.json` keeps its schema (our check-point measurement).
@@ -1254,8 +1254,9 @@ git commit -m "test(pipelines): fake odm and synthetic odm projects" -m "Co-Auth
 **Interfaces:**
 
 - Consumes: Task 1 `native.run_tool(..., fail=...)` with a `str` command, `native.ToolMemoryExceeded`, `native.total_memory()`, `native.memory_cap()`; Task 2 `flags.STAGE_END`, `stage_start`, `stage_window`, `stage_after`, `stage_index`, `odm_threads`, `gpu_wanted`; Task 3 fake ODM and `products_synth.write_project` for tests.
+- Founder amendment (14 Oct, overrides any code below): ODM's thread cap and its memory kill limit come only from `odm_memory_cap() -> int | None`, which reads `AIO_ODM_MEMORY_CAP_MB` (set by the app only when the person set a memory limit by hand); never from `native.memory_cap()` / `AIO_PHOTO_MEMORY_MB`. Test: with `AIO_PHOTO_MEMORY_MB=49152` and no `AIO_ODM_MEMORY_CAP_MB`, a 24-thread 64 GB machine gets `--max-concurrency 21` and no memory limit; with `AIO_ODM_MEMORY_CAP_MB=49152` it gets 16 and a 48 GB limit.
 - Produces (`aio_pipelines.photo.odm.runner`):
-  - `ODM_ENV = "AIO_ODM"`, `VERSION_ENV = "AIO_ODM_VERSION"`, `GPU_ENV = "AIO_ODM_GPU"`, `WORK_ENV = "AIO_ODM_WORK"`, `UDP_PORT = 6367`, `NO_ODM` (message).
+  - `odm_memory_cap() -> int | None` (bytes, from `AIO_ODM_MEMORY_CAP_MB`), `ODM_ENV = "AIO_ODM"`, `VERSION_ENV = "AIO_ODM_VERSION"`, `GPU_ENV = "AIO_ODM_GPU"`, `WORK_ENV = "AIO_ODM_WORK"`, `UDP_PORT = 6367`, `NO_ODM` (message).
   - `@dataclass(frozen=True) class OdmInstall: dir: Path; version: str`; `find_odm(env: Mapping[str, str] | None = None) -> OdmInstall` (raises `JobError(NO_ODM)`).
   - `@dataclass(frozen=True) class Machine: threads: int; use_gpu: bool`; `machine(env: Mapping[str, str] | None = None) -> Machine`.
   - `@dataclass class GpuUse: features: bool | None; dense: bool | None; fallbacks: list[str]` with `summary() -> str` and `merge(other: GpuUse) -> GpuUse`; `gpu_use(text: str, requested: bool, window: tuple[str, str] = ("dataset", "odm_postprocess")) -> GpuUse` (a stage outside `window` was skipped by ODM, so its absence of GPU lines says nothing).
@@ -1612,7 +1613,7 @@ def run_odm(ctx, odm, project_dir, flags, first, last, log_dir, *, rerun, use_gp
         try:
             native.run_tool(
                 _Bar, odm_command(odm, project_dir, args), "ODM", log_dir, expected_s=3600.0,
-                progress=(0.0, 1.0), memory_limit=native.memory_cap() or 0,
+                progress=(0.0, 1.0), memory_limit=odm_memory_cap() or 0,
                 env=odm_env(os.environ, use_gpu), on_output=sp.feed_line, fail=fail,
             )  # fmt: skip
         except native.ToolMemoryExceeded:
@@ -4006,7 +4007,7 @@ git commit -m "test(e2e): processing engine card and photo specs on the fake odm
 
 - **Admin prompt and RTX 5070 Ti kernels** are only known after Task 0's real install; a CPU fallback is handled (warning, not failure).
 - **Paths with spaces** (`E:\Stratlas Data`): handled by junctions and a safe install folder unless Task 0 shows ODM copes; the install may then live under `%LOCALAPPDATA%\QuadrionODM` instead of the data folder.
-- **Threads with the memory cap** (deviation 4): 16 on the 64 GB machine, not 20.
+- **Threads** (deviation 4): 21 on the 64 GB machine; a hand-set memory limit lowers it (founder, 14 Oct).
 - **Time estimates** in the wizard still come from our old engine's measurements; recalibrate after the 995-photo run.
 - **Georef reruns feature extraction** if Task 0 shows `--rerun-from opensfm` does so and the invalidate path does not work; it costs minutes on 1,000 photos, not hours.
 - **macOS** loses photogrammetry with this branch (parked anyway).
