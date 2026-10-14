@@ -140,3 +140,57 @@ def test_gcp_counts_only_when_odm_sets_opensfm_up_again(tmp_path):
     _run(odm, "--gcp", str(odm / "gcp_list.txt"), "--end-with", "opensfm")
     assert (sfm / "gcp_list.txt").is_file() and "bundle_use_gcp: yes" in (sfm / "config.yaml").read_text()
     assert json.loads((sfm / "reference_lla.json").read_text()) != ref  # centred on the control points
+
+
+def _las_classes(path: Path) -> set[int]:
+    data = path.read_bytes()
+    start = int.from_bytes(data[96:100], "little")
+    length = int.from_bytes(data[105:107], "little")
+    return set(np.frombuffer(data[start:], np.uint8).reshape(-1, length)[:, 15].tolist())
+
+
+@pytest.mark.parametrize(
+    ("flags", "env", "ground"),
+    [
+        (("--dtm",), {}, True),
+        (("--pc-classify",), {}, True),
+        ((), {}, False),
+        (("--dtm",), {"FAKE_ODM_NO_GROUND": "1"}, False),
+    ],
+)
+def test_ground_is_classified_under_dtm_or_pc_classify(aligned, flags, env, ground):
+    r = _run(
+        aligned, *flags, "--rerun-from", "odm_georeferencing", "--end-with", "odm_georeferencing", env=env
+    )
+    assert r.returncode == 0, r.stdout + r.stderr
+    classes = _las_classes(aligned / "odm_georeferencing" / "odm_georeferenced_model.laz")
+    assert (2 in classes) is ground
+    if ground:
+        assert classes - {2}  # not every point is ground
+
+
+def test_the_opensfm_stage_undistorts_again_only_when_needed(aligned, tmp_path):
+    """Like ODM 3.6.2: a --rerun-from openmvs with opensfm/undistorted gone undistorts again in the
+    (otherwise skipped) opensfm stage; with it kept, it does not; dense and texturing need it."""
+    import shutil
+
+    odm = tmp_path / "odm"
+    shutil.copytree(aligned, odm)
+    und = odm / "opensfm" / "undistorted"
+    shutil.rmtree(und, ignore_errors=True)
+    r = _run(odm, "--rerun-from", "openmvs", "--end-with", "mvs_texturing")
+    assert r.returncode == 0, r.stdout + r.stderr
+    assert "Undistorting" in r.stdout and (und / "reconstruction.nvm").is_file()
+    assert (und / "openmvs" / "scene_dense.mvs").is_file()  # where ODM keeps OpenMVS's work
+    r = _run(odm, "--rerun-from", "openmvs", "--end-with", "openmvs")
+    assert r.returncode == 0 and "Undistorting" not in r.stdout
+    import importlib.util
+
+    spec = importlib.util.spec_from_file_location("fake_odm_module", FAKE / "fake_odm.py")
+    F = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(F)
+    shutil.rmtree(und)
+    args = F.parse(["--project-path", str(odm.parent), odm.name])
+    for stage in (F.stage_openmvs, F.stage_texturing):  # without them ODM's stages fail
+        with pytest.raises(SystemExit):
+            stage(odm, args, "ok")

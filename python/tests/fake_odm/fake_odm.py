@@ -35,6 +35,8 @@ def parse(argv: list[str]) -> argparse.Namespace:
     p.add_argument("--no-gpu", action="store_true")
     p.add_argument("--fast-orthophoto", action="store_true")
     p.add_argument("--skip-3dmodel", action="store_true")
+    p.add_argument("--dtm", action="store_true")
+    p.add_argument("--pc-classify", action="store_true")
     p.add_argument("--orthophoto-resolution", type=float, default=5.0)
     p.add_argument("--dem-resolution", type=float, default=5.0)
     # the project name is the last argument, as in ODM; every other ODM flag is accepted and ignored
@@ -335,11 +337,39 @@ def stage_opensfm(project: Path, a: argparse.Namespace, gpu_bad: str) -> None:
     write_coords(project, epsg, utm)
 
 
+UNDISTORTED = "opensfm/undistorted"
+
+
+def undistorted_ok(project: Path) -> bool:
+    return (project / UNDISTORTED / "reconstruction.nvm").is_file()
+
+
+def undistort(project: Path) -> None:
+    """Like ODM's opensfm stage: the undistorted photos and reconstruction, written again whenever
+    they are missing, even when the stage itself is not rerun (seen on ODM 3.6.2, 14 Oct 2026)."""
+    print(f"[INFO]    Undistorting {project / 'opensfm'} ...", flush=True)
+    und = project / UNDISTORTED
+    (und / "images").mkdir(parents=True, exist_ok=True)
+    for img in sorted((project / "images").iterdir()):
+        (und / "images" / f"{img.name}.jpg").write_bytes(b"undistorted")
+    (und / "reconstruction.json").write_bytes((project / "opensfm" / "reconstruction.json").read_bytes())
+    (und / "reconstruction.nvm").write_text("NVM_V3\n", "utf-8")
+
+
+def need_undistorted(project: Path, stage: str) -> None:
+    if not undistorted_ok(project):
+        print(f"[ERROR]   fake: {stage} needs {UNDISTORTED}, which is missing", flush=True)
+        raise SystemExit(1)
+
+
 def stage_openmvs(project: Path, a: argparse.Namespace, gpu_bad: str) -> None:
     if a.fast_orthophoto:
         return
-    (project / "openmvs").mkdir(exist_ok=True)
-    (project / "openmvs" / "scene_dense.mvs").write_bytes(b"MVSI-fake")
+    need_undistorted(project, "openmvs")
+    out = project / UNDISTORTED / "openmvs"  # where ODM keeps OpenMVS's scene and depth maps
+    (out / "depthmaps").mkdir(parents=True, exist_ok=True)
+    (out / "depthmaps" / "00000.dmap").write_bytes(b"DMAP-fake")
+    (out / "scene_dense.mvs").write_bytes(b"MVSI-fake")
     if gpu_on(a):
         if "dense-fallback" in gpu_bad:
             print("[WARNING] OpenMVS failed with GPU, Falling back to CPU", flush=True)
@@ -350,6 +380,7 @@ def stage_openmvs(project: Path, a: argparse.Namespace, gpu_bad: str) -> None:
 def stage_texturing(project: Path, a: argparse.Namespace, gpu_bad: str) -> None:
     from PIL import Image
 
+    need_undistorted(project, "mvs_texturing")
     _, utm, _ = utm_points(project)
     ox, oy = read_offset(project)
     x0, x1 = utm[:, 0].min() - ox, utm[:, 0].max() - ox
@@ -388,6 +419,10 @@ def stage_georeferencing(project: Path, a: argparse.Namespace, gpu_bad: str) -> 
     rec = np.zeros(n, dtype=[("xyz", "<i4", 3), ("i", "<u2"), ("f", "u1"), ("c", "u1"), ("a", "i1"), ("u", "u1"),
                              ("p", "<u2"), ("rgb", "<u2", 3)])  # fmt: skip
     rec["xyz"], rec["f"], rec["rgb"] = xyz, 0x09, cols.astype(np.uint16) * 257
+    rec["c"] = 1  # unclassified
+    if (a.dtm or a.pc_classify) and os.environ.get("FAKE_ODM_NO_GROUND") != "1":
+        # ground classification (ODM runs SMRF under --dtm or --pc-classify): the lowest third
+        rec["c"][utm[:, 2] <= np.percentile(utm[:, 2], 33)] = 2
     assert rec.dtype.itemsize == 26
     out = project / "odm_georeferencing"
     out.mkdir(parents=True, exist_ok=True)
@@ -514,6 +549,8 @@ def main(argv: list[str]) -> int:
             )
             time.sleep(half)  # and the midpoint holds long enough to be seen
             (fake / f"{stage}.done").write_text("")
+        if stage == "opensfm" and not undistorted_ok(project):
+            undistort(project)
         udp(a.name, END[stage])
         print(f"[INFO]    Finished {stage} stage", flush=True)
     return 0

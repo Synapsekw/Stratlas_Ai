@@ -18,7 +18,6 @@ from conftest import run_job
 
 FAKE = Path(__file__).parent / "fake_odm"
 NO_PDAL = pytest.mark.skipif(find_pdal() is None, reason="PDAL is not on this machine")
-REAL_GROUND_FOUND = getattr(P, "ground_found", None)
 
 
 @pytest.fixture
@@ -27,8 +26,6 @@ def site(tmp_path, monkeypatch):
     monkeypatch.setenv(R.ODM_ENV, str(FAKE))
     monkeypatch.setenv("FAKE_ODM_UDP_PORT", "0")
     monkeypatch.setenv("FAKE_ODM_ARGS_LOG", str(tmp_path / "args.jsonl"))
-    # the fake ODM's cloud has no ground class; real ODM classifies ground under --dtm
-    monkeypatch.setattr(P, "ground_found", lambda ctx, laz: True)
     root = tmp_path / "p"
     ps.write_project(root, ps.make_scene(step=0.1))
     return root, tmp_path / "args.jsonl"
@@ -172,7 +169,6 @@ def test_an_unreadable_pdal_answer_keeps_the_dtm(site, monkeypatch, tmp_path):
     from aio_pipelines import pointcloud
 
     root, _ = site
-    monkeypatch.setattr(P, "ground_found", REAL_GROUND_FOUND)
     pdal = ps.fake_tool(tmp_path / "tools", "pdal", "import time\ntime.sleep(0.3)\nprint('not json')\n")
     monkeypatch.setattr(pointcloud, "find_pdal", lambda: str(pdal))
     result, rec = run_job(P.PhotoProducts(), root, {"run": ps.RUN, "products": ["dtm"], "preset": "standard"})
@@ -300,11 +296,32 @@ def test_no_ground_points_leave_the_dtm_out_with_a_warning(site, monkeypatch):
 @NO_PDAL
 def test_pdal_finds_no_ground_class_in_the_fake_cloud(site, monkeypatch):
     root, _ = site
-    monkeypatch.setattr(P, "ground_found", REAL_GROUND_FOUND)  # the real check: the fake classifies nothing
+    monkeypatch.setenv("FAKE_ODM_NO_GROUND", "1")  # the real check on a cloud with no class 2
     result, _ = run_job(P.PhotoProducts(), root, {"run": ps.RUN, "products": ["dtm"], "preset": "standard"})
     assert result["status"] == "done"
     ids = {x["id"] for x in json.loads((root / "manifest.json").read_text())["layers"]}
     assert f"{ps.RUN}-dtm" not in ids
+
+
+def test_a_second_products_job_on_the_same_run_works(site):
+    root, log = site
+    first, _ = run_job(P.PhotoProducts(), root, {"run": ps.RUN, "products": ["ortho"], "preset": "standard"})
+    assert first["status"] == "done"
+    # the first job's cleanup must leave what ODM's openmvs and mvs_texturing read (the fake fails without it)
+    again, _ = run_job(
+        P.PhotoProducts(),
+        root,
+        {"run": ps.RUN, "products": ["dsm", "mesh"], "preset": "standard"},
+        job_id="j2",
+    )
+    assert again["status"] == "done"
+    assert _arg(_calls(log)[-6], "--rerun-from") == "openmvs"
+    logs = root / "photogrammetry" / ps.RUN / "odm-logs"
+    assert "Undistorting" in (logs / "j1-dense" / "odm.log").read_text()  # the synthetic folder had none
+    assert "Undistorting" not in (logs / "j2-dense" / "odm.log").read_text()  # kept by the cleanup
+    assert not (root / "photogrammetry" / ps.RUN / "odm" / "opensfm" / "undistorted" / "openmvs").exists()
+    ids = {x["id"] for x in json.loads((root / "manifest.json").read_text())["layers"]}
+    assert {f"{ps.RUN}-ortho", f"{ps.RUN}-dsm", f"{ps.RUN}-mesh"} <= ids
 
 
 def test_a_run_without_an_odm_project_is_refused_plainly(site):

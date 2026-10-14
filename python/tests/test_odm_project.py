@@ -141,7 +141,7 @@ def test_boundary_invalidate_and_cleanup(tmp_path):
     assert ring[0] == ring[-1] == [55.0, 25.0]  # closed
     for rel in (
         "opensfm/reconstruction.json",
-        "openmvs/scene.mvs",
+        "opensfm/undistorted/openmvs/scene.mvs",
         "odm_meshing/x.ply",
         "opensfm/features/a.npz",
     ):
@@ -149,10 +149,25 @@ def test_boundary_invalidate_and_cleanup(tmp_path):
         (tmp_path / rel).write_bytes(b"x" * 100)
     assert P.has_alignment(tmp_path)
     assert P.clean_intermediates(tmp_path) >= 200
-    assert not (tmp_path / "openmvs").exists() and not (tmp_path / "odm_meshing").exists()
+    assert not (tmp_path / "opensfm/undistorted/openmvs").exists() and not (tmp_path / "odm_meshing").exists()
     assert (tmp_path / "opensfm" / "features" / "a.npz").exists()  # alignment kept for later products
     P.invalidate(tmp_path, ("opensfm/reconstruction.json", "missing/thing"))
     assert not P.has_alignment(tmp_path)
+
+
+def test_cleanup_keeps_what_the_opensfm_stage_made_for_later_products(tmp_path):
+    # ODM's opensfm stage writes the undistorted photos and reconstruction that openmvs and
+    # mvs_texturing read; a later products job reruns from openmvs and needs them
+    kept = ("opensfm/undistorted/images/00000.jpg.jpg", "opensfm/undistorted/reconstruction.json",
+            "opensfm/undistorted/reconstruction.nvm", "opensfm/reconstruction.json")  # fmt: skip
+    gone = ("opensfm/undistorted/openmvs/depthmaps/00000.dmap", "opensfm/undistorted/openmvs/scene_dense.ply",
+            "odm_dem/dsm.tif", "odm_georeferencing/odm_georeferenced_model.laz")  # fmt: skip
+    for rel in (*kept, *gone):
+        (tmp_path / rel).parent.mkdir(parents=True, exist_ok=True)
+        (tmp_path / rel).write_bytes(b"x" * 100)
+    assert P.clean_intermediates(tmp_path) == 100 * len(gone)
+    assert all((tmp_path / rel).is_file() for rel in kept)
+    assert not any((tmp_path / rel).exists() for rel in gone)
 
 
 def test_georef_invalidation_has_odm_set_opensfm_up_again():

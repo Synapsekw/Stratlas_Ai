@@ -37,8 +37,11 @@ GEOREF_INVALIDATE = (
     "opensfm/gcp_list.txt", "opensfm/undistorted", "opensfm/exif", "opensfm/camera_models.json",
     "opensfm/reference_lla.json", "opensfm/stats", "odm_georeferencing",
 )  # fmt: skip
+#: What products leave that no later job reads. ``opensfm/undistorted`` itself stays (the opensfm
+#: stage's undistorted photos and reconstruction, read by openmvs and mvs_texturing of a later
+#: products job); only OpenMVS's scene and depth maps inside it go.
 INTERMEDIATES = (
-    "opensfm/undistorted", "openmvs", "odm_filterpoints", "odm_meshing", "odm_texturing", "odm_25dmeshing",
+    "opensfm/undistorted/openmvs", "odm_filterpoints", "odm_meshing", "odm_texturing", "odm_25dmeshing",
     "odm_texturing_25d", "odm_dem", "odm_orthophoto", "odm_georeferencing/odm_georeferenced_model.laz",
     "odm_georeferencing/odm_georeferenced_model.copc.laz", "odm_georeferencing/odm_georeferenced_model.las",
 )  # fmt: skip
