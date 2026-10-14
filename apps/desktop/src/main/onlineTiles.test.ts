@@ -2,11 +2,17 @@
  * Online satellite tiles in main: the gate, the one host, the cache and the back-off, against a
  * fake fetcher that records every address (no network).
  */
-import { ONLINE_SATELLITE, onlineSatelliteTileUrl } from '@aio/schema';
+import {
+  ONLINE_SATELLITE,
+  onlineSatelliteTileUrl,
+  onlineTileUrl,
+  type MapKeyProvider,
+} from '@aio/schema';
 import { mkdir, mkdtemp, readdir, readFile, rm, stat, utimes, writeFile } from 'node:fs/promises';
+import { existsSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   BACKOFF_BASE_MS,
   BACKOFF_MAX_MS,
@@ -14,6 +20,7 @@ import {
   DEFAULT_CACHE_CAP_BYTES,
   fakeTileFetch,
   parseTilePath,
+  sniffImage,
   type OnlineTilesOptions,
   type TileFetch,
 } from './onlineTiles';
@@ -59,12 +66,14 @@ function recorder(first: Answer = tile()) {
 }
 
 let dir = '';
-let flags: { satellite: boolean; offlineOnly: boolean };
+let flags: { enabled: boolean; offlineOnly: boolean };
+let keys: Partial<Record<MapKeyProvider, string>> = {};
 let clock = 0;
 
 beforeEach(async () => {
   dir = await mkdtemp(join(tmpdir(), 'aio-online-tiles-'));
-  flags = { satellite: true, offlineOnly: false };
+  flags = { enabled: true, offlineOnly: false };
+  keys = {};
   clock = 1_000_000;
 });
 
@@ -75,6 +84,7 @@ afterEach(async () => {
 function service(fetch: TileFetch | null, extra: Partial<OnlineTilesOptions> = {}) {
   return createOnlineTiles({
     switches: () => flags,
+    key: (p) => Promise.resolve(keys[p] ?? null),
     cacheDir: () => join(dir, 'cache'),
     fetch,
     userAgent: 'Quadrion AI/0.0.0 (test)',
@@ -102,9 +112,20 @@ describe('the address of the service', () => {
 
 describe('parseTilePath', () => {
   it('reads a tile of the one source', () => {
-    expect(parseTilePath([ID, '12', '2234', '1420.jpg'])).toEqual({ z: 12, x: 2234, y: 1420 });
-    expect(parseTilePath([ID, '0', '0', '0.jpg'])).toEqual({ z: 0, x: 0, y: 0 });
-    expect(parseTilePath([ID, '14', '16383', '16383.jpg'])).toEqual({ z: 14, x: 16383, y: 16383 });
+    expect(parseTilePath([ID, '12', '2234', '1420.jpg'])).toEqual({
+      id: ID,
+      z: 12,
+      x: 2234,
+      y: 1420,
+    });
+    expect(parseTilePath([ID, '0', '0', '0.jpg'])).toEqual({ id: ID, z: 0, x: 0, y: 0 });
+    expect(parseTilePath([ID, '14', '16383', '16383.jpg'])).toEqual({
+      id: ID,
+      z: 14,
+      x: 16383,
+      y: 16383,
+    });
+    expect(parseTilePath([ID, '3', '4', '2'])).toEqual({ id: ID, z: 3, x: 4, y: 2 });
   });
 
   it('refuses anything else', () => {
@@ -118,7 +139,6 @@ describe('parseTilePath', () => {
       [ID, '3', '04', '2.jpg'], // one spelling per tile
       [ID, '3', '4.5', '2.jpg'],
       [ID, '3', '4', '2.png'],
-      [ID, '3', '4', '2'],
       [ID, '3', '4', '..jpg'],
       [ID, '3', '..', '2.jpg'],
       [ID, '3', '4'],
@@ -132,7 +152,7 @@ describe('parseTilePath', () => {
 
 describe('the gate', () => {
   it('refuses while the switch is off: no request, nothing read or written', async () => {
-    flags = { satellite: false, offlineOnly: false };
+    flags = { enabled: false, offlineOnly: false };
     const { calls, fetch } = recorder();
     // even a tile that is in the cache stays there
     await mkdir(join(dir, 'cache', ID, '3', '4'), { recursive: true });
@@ -145,14 +165,14 @@ describe('the gate', () => {
   });
 
   it('refuses when the switch is off and offline only is on', async () => {
-    flags = { satellite: false, offlineOnly: true };
+    flags = { enabled: false, offlineOnly: true };
     const { calls, fetch } = recorder();
     expect((await ask(service(fetch), `${ID}/3/4/2.jpg`)).status).toBe(403);
     expect(calls).toEqual([]);
   });
 
   it('makes no request on an offline-only workstation', async () => {
-    flags = { satellite: true, offlineOnly: true };
+    flags = { enabled: true, offlineOnly: true };
     const { calls, fetch } = recorder();
     const res = await ask(service(fetch), `${ID}/3/4/2.jpg`);
     expect(res.status).toBe(404);
@@ -167,7 +187,7 @@ describe('the gate', () => {
     expect((await ask(s, `${ID}/3/4/2.jpg`)).status).toBe(200);
     expect(calls).toHaveLength(1);
 
-    flags = { satellite: true, offlineOnly: true };
+    flags = { enabled: true, offlineOnly: true };
     const res = await ask(s, `${ID}/3/4/2.jpg`);
     expect(res.status).toBe(200);
     expect(res.headers.get('x-aio-online')).toBe('cache');
@@ -184,7 +204,7 @@ describe('the gate', () => {
     const { calls, fetch } = recorder();
     const s = service(fetch, {
       switches: () => ({
-        satellite: online.current().enabled,
+        enabled: online.current().enabled,
         offlineOnly: settings.current().offlineOnly === true,
       }),
     });
@@ -564,11 +584,272 @@ describe('through the aio:// handler', () => {
   });
 
   it('is off by default, and absent without the service', async () => {
-    flags = { satellite: false, offlineOnly: false };
+    flags = { enabled: false, offlineOnly: false };
     const log: string[] = [];
     const h = handler(service(fakeTileFetch(() => jpeg(), log)));
     expect((await h(new Request(onlineSatelliteTileUrl(3, 4, 2)))).status).toBe(403);
     expect(log).toEqual([]);
     expect((await handler()(new Request(onlineSatelliteTileUrl(3, 4, 2)))).status).toBe(404);
+  });
+});
+
+const png = (size = 80) => {
+  const b = Buffer.alloc(size, 9);
+  b.set([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
+  return b;
+};
+const webp = (size = 80) => {
+  const b = Buffer.alloc(size, 3);
+  b.set([0x52, 0x49, 0x46, 0x46, 0, 0, 0, 0, 0x57, 0x45, 0x42, 0x50]);
+  return b;
+};
+const answer =
+  (body: Buffer, type: string, status = 200): Answer =>
+  () =>
+    new Response(new Uint8Array(body), { status, headers: { 'Content-Type': type } });
+
+describe('every source of the catalog', () => {
+  it('parses each source with its own zoom range, and the old .jpg only for Sentinel-2', () => {
+    expect(parseTilePath(['esri-world-imagery', '19', '0', '0'])).toEqual({
+      id: 'esri-world-imagery',
+      z: 19,
+      x: 0,
+      y: 0,
+    });
+    expect(parseTilePath(['esri-world-imagery', '20', '0', '0'])).toBeNull();
+    expect(parseTilePath(['mapbox-dark', '20', '0', '0'])).not.toBeNull();
+    expect(parseTilePath(['esri-world-imagery', '3', '4', '2.jpg'])).toBeNull();
+    expect(parseTilePath(['mapbox-standard', '3', '4', '2'])).toBeNull();
+  });
+
+  it('sniffs JPEG, PNG and WebP, and nothing else', () => {
+    expect(sniffImage(jpeg())).toBe('image/jpeg');
+    expect(sniffImage(png())).toBe('image/png');
+    expect(sniffImage(webp())).toBe('image/webp');
+    expect(sniffImage(Buffer.from('{"error":{"code":498}}'))).toBeNull();
+    expect(sniffImage(Buffer.from('<html></html>'))).toBeNull();
+  });
+
+  it('asks Esri without a key on the public host, with the key on the key host', async () => {
+    const { calls, fetch } = recorder();
+    const s = service(fetch);
+    expect((await ask(s, 'esri-world-imagery/15/21000/13000')).status).toBe(200);
+    keys = { esri: 'AAPTkey-0123456789' };
+    expect((await ask(s, 'esri-world-imagery/15/21001/13000')).status).toBe(200);
+    expect(calls.map((c) => c.url)).toEqual([
+      'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/15/13000/21000',
+      'https://ibasemaps-api.arcgis.com/arcgis/rest/services/World_Imagery/MapServer/tile/15/13000/21001?token=AAPTkey-0123456789',
+    ]);
+    for (const c of calls) {
+      expect(c.redirect).toBe('error');
+      expect(c.credentials).toBe('omit');
+    }
+  });
+
+  it('a Mapbox tile without a key is refused with 401, without a request', async () => {
+    const { calls, fetch } = recorder();
+    const res = await ask(service(fetch), 'mapbox-streets/4/9/6');
+    expect(res.status).toBe(401);
+    expect(res.headers.get('x-aio-online')).toBe('no-key');
+    expect(calls).toEqual([]);
+  });
+
+  it('adds the Mapbox key in main and never answers with it', async () => {
+    keys = { mapbox: 'pk.secret-token-123' };
+    const { calls, fetch } = recorder(answer(png(), 'image/png'));
+    const res = await ask(service(fetch), 'mapbox-streets/4/9/6');
+    expect(res.status).toBe(200);
+    expect(res.headers.get('content-type')).toBe('image/png');
+    expect(calls[0]?.url).toBe(
+      'https://api.mapbox.com/styles/v1/mapbox/streets-v12/tiles/512/4/9/6@2x?access_token=pk.secret-token-123',
+    );
+    expect(JSON.stringify([...res.headers])).not.toContain('pk.secret');
+  });
+
+  it('serves WebP with its own content type', async () => {
+    keys = { mapbox: 'pk.secret-token-123' };
+    const { fetch } = recorder(answer(webp(), 'image/webp'));
+    const res = await ask(service(fetch), 'mapbox-light/2/1/1');
+    expect(res.headers.get('content-type')).toBe('image/webp');
+  });
+
+  it('keeps Esri and Mapbox tiles in memory only: nothing on disk, no second request', async () => {
+    keys = { mapbox: 'pk.secret-token-123' };
+    const { calls, fetch } = recorder(answer(png(), 'image/png'));
+    const s = service(fetch);
+    await ask(s, 'mapbox-outdoors/5/10/12');
+    const again = await ask(s, 'mapbox-outdoors/5/10/12');
+    expect(again.status).toBe(200);
+    expect(again.headers.get('x-aio-online')).toBe('memory');
+    expect(calls).toHaveLength(1);
+    expect(existsSync(join(dir, 'cache', 'mapbox-outdoors'))).toBe(false);
+    expect(existsSync(join(dir, 'cache', 'esri-world-imagery'))).toBe(false);
+    expect((await s.cache()).tiles).toBe(0);
+  });
+
+  it('bounds the memory: the tile used longest ago is asked again', async () => {
+    const { calls, fetch } = recorder();
+    const s = service(fetch, { memoryCapBytes: 200 });
+    for (const x of [1, 2, 3, 4]) await ask(s, `esri-world-imagery/10/${String(x)}/1`);
+    await ask(s, 'esri-world-imagery/10/1/1');
+    expect(calls).toHaveLength(5);
+  });
+
+  it('a removed key stops tiles at once, even ones in memory', async () => {
+    keys = { mapbox: 'pk.secret-token-123' };
+    const { calls, fetch } = recorder(answer(png(), 'image/png'));
+    const s = service(fetch);
+    expect((await ask(s, 'mapbox-dark/3/1/1')).status).toBe(200);
+    keys = {};
+    const res = await ask(s, 'mapbox-dark/3/1/1');
+    expect(res.status).toBe(401);
+    expect(calls).toHaveLength(1);
+  });
+
+  it('offline-only refuses Esri even from memory, and still serves Sentinel-2 from disk', async () => {
+    const { calls, fetch } = recorder();
+    const s = service(fetch);
+    await ask(s, 'esri-world-imagery/10/1/1');
+    await ask(s, `${ID}/3/4/2`);
+    flags = { enabled: true, offlineOnly: true };
+    const esri = await ask(s, 'esri-world-imagery/10/1/1');
+    expect(esri.status).toBe(404);
+    expect(esri.headers.get('x-aio-online')).toBe('offline-only');
+    const s2 = await ask(s, `${ID}/3/4/2`);
+    expect(s2.status).toBe(200);
+    expect(s2.headers.get('x-aio-online')).toBe('cache');
+    expect(calls).toHaveLength(2);
+  });
+
+  it('keeps the gate order: off, then the address, then the key', async () => {
+    const { calls, fetch } = recorder();
+    const s = service(fetch);
+    flags = { enabled: false, offlineOnly: false };
+    expect((await ask(s, 'mapbox-streets/99/0/0')).status).toBe(403);
+    flags = { enabled: true, offlineOnly: false };
+    expect((await ask(s, 'mapbox-streets/99/0/0')).status).toBe(400);
+    expect((await ask(s, 'mapbox-streets/3/0/0')).status).toBe(401);
+    flags = { enabled: true, offlineOnly: true };
+    expect((await ask(s, 'mapbox-streets/3/0/0')).status).toBe(401);
+    expect(calls).toEqual([]);
+  });
+
+  it('a 200 that is not an image is a failure: nothing cached, the source backs off', async () => {
+    const { calls, fetch, state } = recorder(answer(Buffer.from('<html>busy</html>'), 'image/png'));
+    const s = service(fetch);
+    const res = await ask(s, 'esri-world-imagery/10/1/1');
+    expect(res.status).toBe(404);
+    expect(res.headers.get('x-aio-online')).toBe('backoff');
+    state.answer = tile();
+    expect((await ask(s, 'esri-world-imagery/10/1/2')).headers.get('x-aio-online')).toBe('backoff');
+    expect(calls).toHaveLength(1);
+  });
+
+  it('backs off per source: a failing Esri does not stop Mapbox', async () => {
+    keys = { mapbox: 'pk.secret-token-123' };
+    const fetch: TileFetch = (url) =>
+      Promise.resolve(
+        url.includes('arcgisonline')
+          ? new Response(null, { status: 503 })
+          : new Response(new Uint8Array(png()), { headers: { 'Content-Type': 'image/png' } }),
+      );
+    const s = service(fetch);
+    expect((await ask(s, 'esri-world-imagery/10/1/1')).headers.get('x-aio-online')).toBe('backoff');
+    expect((await ask(s, 'esri-world-imagery/10/1/2')).headers.get('x-aio-online')).toBe('backoff');
+    expect((await ask(s, 'mapbox-dark/3/1/1')).status).toBe(200);
+  });
+});
+
+describe('a key check (probe)', () => {
+  it('asks one tile with the key given, and keeps nothing', async () => {
+    const { calls, fetch } = recorder(answer(png(), 'image/png'));
+    const s = service(fetch);
+    expect(await s.probe('mapbox-streets', 'pk.new-token-123')).toBe('ok');
+    expect(calls.map((c) => c.url)).toEqual([
+      'https://api.mapbox.com/styles/v1/mapbox/streets-v12/tiles/512/0/0/0@2x?access_token=pk.new-token-123',
+    ]);
+    expect((await s.cache()).tiles).toBe(0);
+  });
+
+  it('calls a 401 and a JSON 200 refused, a server error unreachable', async () => {
+    const { fetch, state } = recorder(answer(Buffer.alloc(0), 'text/plain', 401));
+    const s = service(fetch);
+    expect(await s.probe('mapbox-streets', 'pk.bad-token-123')).toBe('refused');
+    state.answer = answer(Buffer.from('{"error":{"code":498}}'), 'application/json');
+    expect(await s.probe('esri-world-imagery', 'AAPTbad-0123456789')).toBe('refused');
+    state.answer = answer(Buffer.alloc(0), 'text/plain', 500);
+    expect(await s.probe('esri-world-imagery', 'AAPTbad-0123456789')).toBe('unreachable');
+  });
+
+  it('works while online maps are off, never on an offline-only workstation or without a fetcher', async () => {
+    const { calls, fetch } = recorder();
+    flags = { enabled: false, offlineOnly: false };
+    expect(await service(fetch).probe('esri-world-imagery', 'AAPTkey-0123456789')).toBe('ok');
+    flags = { enabled: true, offlineOnly: true };
+    expect(await service(fetch).probe('esri-world-imagery', 'AAPTkey-0123456789')).toBe(
+      'offline-only',
+    );
+    expect(await service(null).probe('esri-world-imagery', 'AAPTkey-0123456789')).toBe(
+      'offline-only',
+    );
+    flags = { enabled: true, offlineOnly: false };
+    expect(await service(null).probe('esri-world-imagery', 'AAPTkey-0123456789')).toBe(
+      'no-network',
+    );
+    expect(calls).toHaveLength(1);
+  });
+
+  it('serves the app own new address for Sentinel-2 too', async () => {
+    const log: string[] = [];
+    const s = service(fakeTileFetch(() => jpeg(60), log));
+    const res = await s.serve(
+      onlineTileUrl(ID, 11, 1117, 710).slice('aio://online/'.length).split('/'),
+      new Request(onlineTileUrl(ID, 11, 1117, 710)),
+    );
+    expect(res.status).toBe(200);
+    expect(log).toHaveLength(1);
+  });
+});
+
+describe('the key never leaves main', () => {
+  const SECRET = 'pk.leak-canary-0123456789';
+  const text = (a: unknown) => (a instanceof Error ? `${a.message} ${String(a.stack)}` : String(a));
+
+  it('a failing keyed fetch puts the key in no log line, answer or thrown error', async () => {
+    const lines: string[] = [];
+    const spies = (['log', 'info', 'warn', 'error', 'debug'] as const).map((m) =>
+      vi.spyOn(console, m).mockImplementation((...args: unknown[]) => {
+        lines.push(args.map(text).join(' '));
+      }),
+    );
+    try {
+      keys = { mapbox: SECRET, esri: SECRET };
+      // a fetcher that fails the way some do, with the address it was given in the error
+      const failing: TileFetch = (url) => Promise.reject(new TypeError(`fetch failed: ${url}`));
+      const thrower: TileFetch = (url) => {
+        throw new Error(`bad request to ${url}`);
+      };
+      const seen: string[] = [];
+      for (const fetch of [failing, thrower]) {
+        const s = service(fetch);
+        for (const path of [
+          'mapbox-streets/4/9/6',
+          'mapbox-satellite/4/9/6',
+          'esri-world-imagery/4/9/6',
+        ]) {
+          const res = await ask(s, path);
+          expect(res.status).toBe(404);
+          seen.push(JSON.stringify([...res.headers]), await res.text());
+        }
+        for (const id of ['mapbox-streets', 'esri-world-imagery'] as const)
+          expect(await s.probe(id, SECRET)).toBe('unreachable');
+      }
+      for (const t of [...lines, ...seen]) {
+        expect(t).not.toContain(SECRET);
+        expect(t).not.toContain(encodeURIComponent(SECRET));
+      }
+    } finally {
+      for (const spy of spies) spy.mockRestore();
+    }
   });
 });

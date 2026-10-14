@@ -449,11 +449,12 @@ const packs = createPackManager({
   latestBuild: (signal) => findLatestBuild(mapFetch, signal, planetBuilds),
 });
 
-// Online satellite (ADR 0007, amendment of 10 Oct 2026): a network path that, like the others,
+// Online maps (ADR 0007, amendments of 10 and 14 Oct 2026): a network path that, like the others,
 // runs only on the person's say. Off by default; `onlineTiles.ts` refuses every tile unless the
-// person switched it on (userData online.json, not a settings.json field: onlineSettings.ts),
-// asks the one service only while the workstation is not offline-only, and keeps what it fetched
-// in <userData>/cache/online-tiles.
+// person switched online maps on (userData online.json, not a settings.json field:
+// onlineSettings.ts), adds a provider's key from the vault in main only, asks the services only
+// while the workstation is not offline-only, keeps Sentinel-2 tiles in
+// <userData>/cache/online-tiles and holds Esri and Mapbox tiles in memory only.
 const onlineSettings = createOnlineSettingsStore(onlineSettingsPath(app.getPath('userData')));
 const e2eRun = process.env.QUADRION_E2E === '1';
 /**
@@ -470,9 +471,10 @@ if (fakeOnlineTiles)
   Object.defineProperty(globalThis, '__aioOnlineTileRequests', { value: onlineTileRequests });
 const onlineTiles = createOnlineTiles({
   switches: () => ({
-    satellite: onlineSettings.current().enabled,
+    enabled: onlineSettings.current().enabled,
     offlineOnly: settings.current().offlineOnly === true,
   }),
+  key: (provider) => keys.getMapKey(provider),
   cacheDir: () => join(app.getPath('userData'), 'cache', 'online-tiles'),
   // an e2e run never reaches the service: there is no fetcher at all unless the spec asks for
   // the fake one
@@ -487,7 +489,7 @@ const onlineTiles = createOnlineTiles({
     : e2eRun
       ? null
       : (url, init) => mapFetch(url, init),
-  userAgent: `${brand.productName}/${app.getVersion()} (desktop app; online satellite imagery)`,
+  userAgent: `${brand.productName}/${app.getVersion()} (desktop app; online maps)`,
 });
 
 // Updates (ADR 0003): from a file, or from the optional feed only when the person presses Check

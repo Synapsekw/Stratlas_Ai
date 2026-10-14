@@ -1,29 +1,48 @@
 /**
- * Online satellite imagery (ADR 0007, amendment of 10 Oct 2026, founder: "not everybody wants to
- * work completely offline"). One named, keyless, openly licensed source, off by default:
- * Sentinel-2 cloudless 2016 by EOX (CC BY 4.0).
+ * Online maps (ADR 0007, amendments of 10 and 14 Oct 2026, founder: "not everybody wants to work
+ * completely offline"): every source of the catalog (`ONLINE_SOURCES` in `@aio/schema`), off by
+ * default. Sentinel-2 cloudless 2016 by EOX needs no key; Esri World Imagery takes an optional
+ * key; Mapbox needs one.
  *
  * Main owns the network. The renderer asks the app's own protocol,
- * `aio://online/s2cloudless-2016/{z}/{x}/{y}.jpg` (`ONLINE_SATELLITE.tileUrl`), and never names
- * the service. For every tile this module:
+ * `aio://online/<sourceId>/<z>/<x>/<y>` (`onlineTileUrl`), and never names a service or holds a
+ * key. For every tile this module passes one gate, in this order:
  *
- * - refuses with 403, without touching the disk or the network, unless the person switched
- *   **Online satellite** on (userData `online.json`, `onlineSettings.ts`);
- * - checks the address: the one source id, whole numbers, zoom 0 to 14, x and y inside the zoom;
- * - answers from the cache on this computer when the tile is there (a local file, so also on an
- *   offline-only workstation);
- * - asks the service only when the workstation is not offline-only: the one host below over
- *   https, no redirect followed, a few requests at a time, a User-Agent that names the app;
- * - keeps what it fetched in a bounded cache (the tiles used longest ago go first), so areas
- *   already viewed stay available and cost the service nothing the second time;
- * - backs off when the service fails, and answers 404 meanwhile so the map falls back to the
- *   coarser tiles it has, quietly.
+ * 1. online maps off (userData `online.json`, `onlineSettings.ts`): 403, without touching the
+ *    disk, the memory or the network;
+ * 2. a bad address or an unknown source: 400 (a catalog id, whole numbers, a zoom the source
+ *    has, x and y inside the zoom; 0.11's `<y>.jpg` is still answered for Sentinel-2 only);
+ * 3. a source that needs a key without one in the vault: 401 (the key is read here, in main, for
+ *    every tile, so a removed key stops tiles at once, even those held in memory);
+ * 4. a Sentinel-2 tile on disk: served, also on an offline-only workstation;
+ * 5. offline-only: 404, and nothing more (not even the tiles held in memory);
+ * 6. the service: the source's own hosts (`onlineUpstream.ts`) over https, no redirect followed,
+ *    no cookie, a few requests at a time in total, a User-Agent that names the app, and the key
+ *    added only to the request to its own provider.
+ *
+ * Only Sentinel-2 is kept on disk (a bounded cache, the tiles used longest ago go first). Esri
+ * and Mapbox forbid offline storage: their tiles are held in a bounded memory for this session
+ * only (`onlineMemory.ts`). Each source backs off on its own when it fails, and 404 is answered
+ * meanwhile so the map falls back to the coarser tiles it has, quietly. An answer is a tile only
+ * when its bytes are a picture of a type the source serves (an ArcGIS error comes back as a 200
+ * with a JSON body).
+ *
+ * An upstream address can carry a key: it is never logged, never a cache key and never part of
+ * an answer or an error that leaves this module.
  *
  * Nothing is fetched ahead of a view: a tile is requested only because a view asked for it.
  */
-import { ONLINE_SATELLITE, onlineSatelliteAvailability, type OnlineTileCache } from '@aio/schema';
+import {
+  onlineAvailability,
+  onlineSource,
+  type MapKeyProvider,
+  type OnlineSource,
+  type OnlineSourceId,
+  type OnlineTileCache,
+} from '@aio/schema';
 import { mkdir, readdir, readFile, rename, rm, stat, utimes, writeFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
+import { createMemoryTiles, DEFAULT_MEMORY_CAP_BYTES } from './onlineMemory';
 import { upstreamTileUrl } from './onlineUpstream';
 
 /** 300 MB: about 15 000 tiles, a few towns at full detail or a country at overview. */
@@ -57,36 +76,44 @@ export type TileFetch = (
 
 export interface OnlineTilesOptions {
   /**
-   * The two switches, read for every tile: `satellite` (the person switched online satellite on,
-   * `onlineSettings.ts`) and `offlineOnly` (`settings.current()`, so offline-only counts from the
-   * moment it is asked for).
+   * The two switches, read for every tile: `enabled` (online maps on, `onlineSettings.ts`) and
+   * `offlineOnly` (`settings.current()`, so offline-only counts from the moment it is asked for).
    */
-  switches: () => { satellite: boolean; offlineOnly: boolean };
-  /** The folder of the tile cache (`<userData>/cache/online-tiles`). */
+  switches: () => { enabled: boolean; offlineOnly: boolean };
+  /** A provider's key from the vault, or null. Main only: never logged, never answered. */
+  key: (provider: MapKeyProvider) => Promise<string | null>;
+  /** The folder of the Sentinel-2 tile cache (`<userData>/cache/online-tiles`). */
   cacheDir: () => string;
   /**
-   * How to reach the service, or null where the app must never do so (an e2e run without a fake
-   * fetcher): cached tiles still serve, everything else is a 404.
+   * How to reach the services, or null where the app must never do so (an e2e run without a
+   * fake fetcher): Sentinel-2 tiles on disk still serve, everything else is a 404.
    */
   fetch: TileFetch | null;
-  /** Names the app to the service, e.g. `Quadrion AI/0.11.0 (...)`. */
+  /** Names the app to the services, e.g. `Quadrion AI/0.13.0 (...)`. */
   userAgent: string;
   capBytes?: number;
+  memoryCapBytes?: number;
   concurrency?: number;
   timeoutMs?: number;
   now?: () => number;
 }
 
+/** The answer of a key check: one tile asked with the key given. */
+export type ProbeResult = 'ok' | 'refused' | 'unreachable' | 'offline-only' | 'no-network';
+
 export interface OnlineTiles {
   /** Answer `aio://online/<segments>` (the path after the host, decoded). */
   serve(segments: readonly string[], req: Request): Promise<Response>;
-  /** The size of the cache and its cap. */
+  /** The size of the Sentinel-2 cache on disk and its cap. */
   cache(): Promise<OnlineTileCache>;
-  /** Delete every cached tile. */
+  /** Delete every saved tile (disk and memory). */
   clear(): Promise<OnlineTileCache>;
+  /** Check a key before it is stored (`mapKeys:set`) or again (`mapKeys:test`). */
+  probe(id: OnlineSourceId, key: string): Promise<ProbeResult>;
 }
 
 export interface TileAddress {
+  id: OnlineSourceId;
   z: number;
   x: number;
   y: number;
@@ -95,24 +122,39 @@ export interface TileAddress {
 const WHOLE = /^(0|[1-9]\d{0,8})$/;
 
 /**
- * The tile a path names, or null when it is not one of ours: `<id>/<z>/<x>/<y>.jpg` with the one
- * source id, whole numbers without leading zeros, a zoom the source has and x, y inside it.
+ * The tile a path names, or null: `<id>/<z>/<x>/<y>` with a catalog id, whole numbers without
+ * leading zeros, a zoom the source has and x, y inside it. 0.11's address of Sentinel-2,
+ * `<y>.jpg`, is still answered for that source only.
  */
 export function parseTilePath(segments: readonly string[]): TileAddress | null {
   if (segments.length !== 4) return null;
-  const [id, zs, xs, file] = segments;
-  if (id !== ONLINE_SATELLITE.id || zs === undefined || xs === undefined || file === undefined)
-    return null;
-  if (!file.endsWith('.jpg')) return null;
-  const ys = file.slice(0, -4);
+  const [id, zs, xs, last] = segments;
+  if (id === undefined || zs === undefined || xs === undefined || last === undefined) return null;
+  const source = onlineSource(id);
+  if (!source) return null;
+  const ys = source.id === 's2cloudless-2016' && last.endsWith('.jpg') ? last.slice(0, -4) : last;
   if (!WHOLE.test(zs) || !WHOLE.test(xs) || !WHOLE.test(ys)) return null;
   const z = Number(zs);
   const x = Number(xs);
   const y = Number(ys);
-  if (z < ONLINE_SATELLITE.minZoom || z > ONLINE_SATELLITE.maxZoom) return null;
+  if (z < source.minZoom || z > source.maxZoom) return null;
   const n = 2 ** z;
   if (x >= n || y >= n) return null;
-  return { z, x, y };
+  return { id: source.id, z, x, y };
+}
+
+export type ImageType = 'image/jpeg' | 'image/png' | 'image/webp';
+
+/** The picture's own type from its first bytes; null for anything that is not a tile. */
+export function sniffImage(b: Uint8Array): ImageType | null {
+  if (b.byteLength > 3 && b[0] === 0xff && b[1] === 0xd8 && b[2] === 0xff) return 'image/jpeg';
+  const sig = [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a];
+  if (b.byteLength > 8 && sig.every((v, i) => b[i] === v)) return 'image/png';
+  const riff = [0x52, 0x49, 0x46, 0x46];
+  const wbp = [0x57, 0x45, 0x42, 0x50];
+  if (b.byteLength > 12 && riff.every((v, i) => b[i] === v) && wbp.every((v, i) => b[8 + i] === v))
+    return 'image/webp';
+  return null;
 }
 
 // Only the app itself can reach aio://, so a wildcard origin is safe and lets MapLibre and
@@ -124,16 +166,22 @@ const COMMON = {
 };
 
 /** Why a tile was or was not served, readable by the page and the tests (`x-aio-online`). */
-type Refusal = 'off' | 'bad-address' | 'offline-only' | 'no-network' | 'backoff' | 'missing';
+type Refusal =
+  'off' | 'bad-address' | 'no-key' | 'offline-only' | 'no-network' | 'backoff' | 'missing';
 
 function refuse(code: number, why: Refusal): Response {
   return new Response(null, { status: code, headers: { ...COMMON, 'x-aio-online': why } });
 }
 
-function tileResponse(data: Buffer, req: Request, from: 'cache' | 'network'): Response {
+function tileResponse(
+  data: Buffer,
+  type: string,
+  req: Request,
+  from: 'cache' | 'memory' | 'network',
+): Response {
   const headers = {
     ...COMMON,
-    'Content-Type': 'image/jpeg',
+    'Content-Type': type,
     'Content-Length': String(data.byteLength),
     'x-aio-online': from,
   };
@@ -143,7 +191,7 @@ function tileResponse(data: Buffer, req: Request, from: 'cache' | 'network'): Re
   });
 }
 
-const isJpeg = (b: Buffer) => b.byteLength > 3 && b[0] === 0xff && b[1] === 0xd8 && b[2] === 0xff;
+const isJpeg = (b: Buffer) => sniffImage(b) === 'image/jpeg';
 
 interface Entry {
   size: number;
@@ -272,12 +320,23 @@ function createTileStore(dir: () => string, capBytes: number, now: () => number)
 }
 
 type Fetched =
-  { kind: 'tile'; data: Buffer } | { kind: 'missing' } | { kind: 'failed'; retryAfterMs?: number };
+  | { kind: 'tile'; data: Buffer; type: ImageType }
+  | { kind: 'missing' }
+  | { kind: 'failed'; retryAfterMs?: number };
+
+type Got = { data: Buffer; type: ImageType } | Refusal;
 
 interface Waiting {
   key: string;
   tile: TileAddress;
-  done: (r: Buffer | Refusal) => void;
+  done: (r: Got) => void;
+}
+
+/** One source's own state: failures in a row, the wait they caused, tiles it does not have. */
+interface Lane {
+  failures: number;
+  blockedUntil: number;
+  missing: Map<string, number>;
 }
 
 /** Seconds of a `Retry-After` header as ms, or undefined (a date form is not worth parsing). */
@@ -286,35 +345,64 @@ function retryAfter(res: Response): number | undefined {
   return Number.isFinite(v) && v > 0 ? v * 1000 : undefined;
 }
 
+const accept = (s: OnlineSource) => s.formats.map((f) => `image/${f}`).join(', ');
+
 export function createOnlineTiles(o: OnlineTilesOptions): OnlineTiles {
   const now = o.now ?? Date.now;
   const capBytes = o.capBytes ?? DEFAULT_CACHE_CAP_BYTES;
   const concurrency = Math.max(1, o.concurrency ?? DEFAULT_CONCURRENCY);
   const timeoutMs = o.timeoutMs ?? DEFAULT_TIMEOUT_MS;
-  const store = createTileStore(() => join(o.cacheDir(), ONLINE_SATELLITE.id), capBytes, now);
-  const state = () => onlineSatelliteAvailability(o.switches());
+  const store = createTileStore(() => join(o.cacheDir(), 's2cloudless-2016'), capBytes, now);
+  const memory = createMemoryTiles(o.memoryCapBytes ?? DEFAULT_MEMORY_CAP_BYTES);
 
   /** One request per tile however many views ask for it at once. */
-  const pending = new Map<string, Promise<Buffer | Refusal>>();
+  const pending = new Map<string, Promise<Got>>();
   const waiting: Waiting[] = [];
+  /** Requests open in total (the polite limit is for the app, not per source). */
   let active = 0;
-  /** Failures in a row; a success clears it. */
-  let failures = 0;
-  let blockedUntil = 0;
-  const missing = new Map<string, number>();
+  const activeBy = new Map<OnlineSourceId, number>();
+  const lanes = new Map<OnlineSourceId, Lane>();
+  const lane = (id: OnlineSourceId): Lane => {
+    let l = lanes.get(id);
+    if (!l) {
+      l = { failures: 0, blockedUntil: 0, missing: new Map() };
+      lanes.set(id, l);
+    }
+    return l;
+  };
 
-  async function ask(fetchTile: TileFetch, t: TileAddress): Promise<Fetched> {
-    const url = upstreamTileUrl(ONLINE_SATELLITE.id, t.z, t.x, t.y, null);
+  /**
+   * The source's key from the vault, or null; a vault that fails reads as no key. Read for every
+   * tile, never kept here, so a removed key counts at once.
+   */
+  const secretOf = (source: OnlineSource): Promise<string | null> =>
+    source.keyProvider ? o.key(source.keyProvider).catch(() => null) : Promise.resolve(null);
+
+  const init = (source: OnlineSource, signal: AbortSignal) => ({
+    headers: { 'User-Agent': o.userAgent, Accept: accept(source) },
+    // a redirect would let the service send us to another host: an error instead
+    redirect: 'error' as const,
+    // no cookie is kept or sent: a tile request carries the address of the tile and no more
+    credentials: 'omit' as const,
+    signal,
+  });
+
+  /**
+   * One request to the service. The address may carry a key, so nothing here keeps, logs or
+   * rethrows it or an error made from it: every failure is only `failed`.
+   */
+  async function ask(
+    fetchTile: TileFetch,
+    source: OnlineSource,
+    t: TileAddress,
+    secret: string | null,
+  ): Promise<Fetched> {
     let res: Response;
     try {
-      res = await fetchTile(url, {
-        headers: { 'User-Agent': o.userAgent, Accept: 'image/jpeg' },
-        // a redirect would let the service send us to another host: an error instead
-        redirect: 'error',
-        // no cookie is kept or sent: a tile request carries the address of the tile and no more
-        credentials: 'omit',
-        signal: AbortSignal.timeout(timeoutMs),
-      });
+      res = await fetchTile(
+        upstreamTileUrl(t.id, t.z, t.x, t.y, secret),
+        init(source, AbortSignal.timeout(timeoutMs)),
+      );
     } catch {
       return { kind: 'failed' };
     }
@@ -324,12 +412,14 @@ export function createOnlineTiles(o: OnlineTilesOptions): OnlineTiles {
         const wait = retryAfter(res);
         return wait === undefined ? { kind: 'failed' } : { kind: 'failed', retryAfterMs: wait };
       }
-      const type = (res.headers.get('content-type') ?? '').toLowerCase();
+      const header = (res.headers.get('content-type') ?? '').toLowerCase();
       const length = Number(res.headers.get('content-length') ?? '0');
-      if (!type.startsWith('image/jpeg') || length > MAX_TILE_BYTES) return { kind: 'failed' };
+      if (!header.startsWith('image/') || length > MAX_TILE_BYTES) return { kind: 'failed' };
       const data = Buffer.from(await res.arrayBuffer());
-      if (data.byteLength > MAX_TILE_BYTES || !isJpeg(data)) return { kind: 'failed' };
-      return { kind: 'tile', data };
+      const type = sniffImage(data);
+      if (data.byteLength > MAX_TILE_BYTES || !type) return { kind: 'failed' };
+      if (!source.formats.some((f) => type === `image/${f}`)) return { kind: 'failed' };
+      return { kind: 'tile', data, type };
     } catch {
       return { kind: 'failed' };
     } finally {
@@ -337,48 +427,67 @@ export function createOnlineTiles(o: OnlineTilesOptions): OnlineTiles {
     }
   }
 
-  function failed(retryAfterMs: number | undefined): void {
-    failures += 1;
-    const step = Math.min(BACKOFF_MAX_MS, BACKOFF_BASE_MS * 2 ** Math.min(failures - 1, 16));
+  function failed(id: OnlineSourceId, retryAfterMs: number | undefined): void {
+    const l = lane(id);
+    l.failures += 1;
+    const step = Math.min(BACKOFF_MAX_MS, BACKOFF_BASE_MS * 2 ** Math.min(l.failures - 1, 16));
     const wait = Math.min(Math.max(step, retryAfterMs ?? 0), 2 * BACKOFF_MAX_MS);
-    blockedUntil = Math.max(blockedUntil, now() + wait);
-    // nothing that was waiting goes to a service that just failed
-    for (const w of waiting.splice(0)) w.done('backoff');
+    l.blockedUntil = Math.max(l.blockedUntil, now() + wait);
+    // nothing of this source that was waiting goes to a service that just failed
+    for (let i = waiting.length - 1; i >= 0; i--)
+      if (waiting[i]?.tile.id === id) waiting.splice(i, 1)[0]?.done('backoff');
   }
 
-  async function run(fetchTile: TileFetch, w: Waiting): Promise<Buffer | Refusal> {
+  async function run(fetchTile: TileFetch, w: Waiting): Promise<Got> {
+    const source = onlineSource(w.tile.id);
+    if (!source) return 'bad-address';
     // a switch may have changed while the tile waited: offline-only stops it here
-    if (state() !== 'online') return state() === 'off' ? 'off' : 'offline-only';
-    if (now() < blockedUntil) return 'backoff';
-    const r = await ask(fetchTile, w.tile);
+    const availability = onlineAvailability(source, o.switches());
+    if (availability === 'off') return 'off';
+    if (availability !== 'online') return 'offline-only';
+    // and so may the key: read again, so a key removed meanwhile is not sent
+    const secret = await secretOf(source);
+    if (source.keyPolicy === 'required' && !secret) return 'no-key';
+    const l = lane(source.id);
+    if (now() < l.blockedUntil) return 'backoff';
+    const r = await ask(fetchTile, source, w.tile, secret);
     if (r.kind === 'failed') {
-      failed(r.retryAfterMs);
+      failed(source.id, r.retryAfterMs);
       return 'backoff';
     }
-    failures = 0;
-    blockedUntil = 0;
+    l.failures = 0;
+    l.blockedUntil = 0;
     if (r.kind === 'missing') {
-      if (missing.size >= MAX_MISSING) missing.clear();
-      missing.set(w.key, now() + MISSING_TTL_MS);
+      if (l.missing.size >= MAX_MISSING) l.missing.clear();
+      l.missing.set(w.key, now() + MISSING_TTL_MS);
       return 'missing';
     }
-    await store.put(w.key, r.data).catch((e: unknown) => {
-      console.warn(`Online satellite tile ${w.key} was not cached: ${String(e)}`);
-    });
-    return r.data;
+    if (source.diskCache) {
+      // `w.key` names the tile, never the upstream address
+      if (isJpeg(r.data))
+        await store.put(diskKey(w.tile), r.data).catch((e: unknown) => {
+          console.warn(`Online tile ${w.key} was not cached: ${String(e)}`);
+        });
+    } else memory.put(w.key, { data: r.data, type: r.type });
+    return { data: r.data, type: r.type };
   }
 
   function pump(fetchTile: TileFetch): void {
-    // after a failure one request at a time finds out whether the service is back
-    const limit = failures > 0 ? 1 : concurrency;
-    while (active < limit) {
-      const w = waiting.shift();
+    while (active < concurrency) {
+      // after a failure a source sends one request at a time until it answers again
+      const i = waiting.findIndex(
+        (w) => lane(w.tile.id).failures === 0 || (activeBy.get(w.tile.id) ?? 0) === 0,
+      );
+      if (i < 0) return;
+      const [w] = waiting.splice(i, 1);
       if (!w) return;
       active += 1;
+      activeBy.set(w.tile.id, (activeBy.get(w.tile.id) ?? 0) + 1);
       void run(fetchTile, w)
         .catch((): Refusal => 'backoff')
         .then((r) => {
           active -= 1;
+          activeBy.set(w.tile.id, (activeBy.get(w.tile.id) ?? 1) - 1);
           w.done(r);
           pump(fetchTile);
         });
@@ -388,7 +497,7 @@ export function createOnlineTiles(o: OnlineTilesOptions): OnlineTiles {
   function request(fetchTile: TileFetch, key: string, tile: TileAddress) {
     let p = pending.get(key);
     if (p) return p;
-    p = new Promise<Buffer | Refusal>((done) => {
+    p = new Promise<Got>((done) => {
       waiting.push({ key, tile, done });
       pump(fetchTile);
       // the view moved on from the tile waiting longest: give it up rather than ask for more
@@ -402,42 +511,86 @@ export function createOnlineTiles(o: OnlineTilesOptions): OnlineTiles {
 
   const stats = async (): Promise<OnlineTileCache> => ({ ...(await store.stats()), capBytes });
 
+  const status = (got: Refusal): number => (got === 'off' ? 403 : got === 'no-key' ? 401 : 404);
+
   return {
     async serve(segments, req) {
       if (req.method !== 'GET' && req.method !== 'HEAD') return refuse(405, 'bad-address');
-      // the switch first: while it is off nothing is read, cached or asked
-      const availability = state();
-      if (availability === 'off') return refuse(403, 'off');
+      const switches = o.switches();
+      // 1. the switch first: while it is off nothing is read, held or asked
+      if (!switches.enabled) return refuse(403, 'off');
+      // 2. the address
       const tile = parseTilePath(segments);
-      if (!tile) return refuse(400, 'bad-address');
-      const key = `${String(tile.z)}/${String(tile.x)}/${String(tile.y)}`;
-
-      const cached = await store.get(key).catch(() => null);
-      if (cached) return tileResponse(cached, req, 'cache');
-      // offline-only: what is on this computer and nothing more
-      if (availability !== 'online') return refuse(404, 'offline-only');
+      const source = tile ? onlineSource(tile.id) : undefined;
+      if (!tile || !source) return refuse(400, 'bad-address');
+      // 3. the key, from the vault, in main only
+      if (source.keyPolicy === 'required' && !(await secretOf(source)))
+        return refuse(401, 'no-key');
+      const key = `${tile.id}/${String(tile.z)}/${String(tile.x)}/${String(tile.y)}`;
+      // 4. Sentinel-2 on disk: a local file, so also on an offline-only workstation
+      if (source.diskCache) {
+        const cached = await store.get(diskKey(tile)).catch(() => null);
+        if (cached) return tileResponse(cached, 'image/jpeg', req, 'cache');
+      }
+      // 5. offline-only: what is on disk and nothing more
+      if (switches.offlineOnly) return refuse(404, 'offline-only');
+      const held = memory.get(key);
+      if (held) return tileResponse(held.data, held.type, req, 'memory');
+      // 6. the service
       if (!o.fetch) return refuse(404, 'no-network');
-      const gone = missing.get(key);
+      const l = lane(tile.id);
+      const gone = l.missing.get(key);
       if (gone !== undefined) {
         if (now() < gone) return refuse(404, 'missing');
-        missing.delete(key);
+        l.missing.delete(key);
       }
-      if (now() < blockedUntil) return refuse(404, 'backoff');
-
+      if (now() < l.blockedUntil) return refuse(404, 'backoff');
       const got = await request(o.fetch, key, tile);
-      // 404 for every "no tile now": MapLibre then draws the coarser tile it has, without an error
+      // 404 for every "no tile now": the client then draws the coarser tile it has, quietly
       return typeof got === 'string'
-        ? refuse(got === 'off' ? 403 : 404, got)
-        : tileResponse(got, req, 'network');
+        ? refuse(status(got), got)
+        : tileResponse(got.data, got.type, req, 'network');
     },
     cache: stats,
     async clear() {
       await store.clear();
-      missing.clear();
+      memory.clear();
+      for (const l of lanes.values()) l.missing.clear();
       return stats();
+    },
+    async probe(id, secret) {
+      if (o.switches().offlineOnly) return 'offline-only';
+      if (!o.fetch) return 'no-network';
+      const source = onlineSource(id);
+      if (!source) return 'refused';
+      if (source.keyPolicy === 'required' && !secret) return 'refused';
+      // like `ask`: the address carries the key, so no error made from it leaves here
+      let res: Response;
+      try {
+        res = await o.fetch(
+          upstreamTileUrl(id, 0, 0, 0, secret),
+          init(source, AbortSignal.timeout(timeoutMs)),
+        );
+      } catch {
+        return 'unreachable';
+      }
+      try {
+        if ([401, 403, 498, 499].includes(res.status)) return 'refused';
+        if (res.status !== 200) return 'unreachable';
+        const data = Buffer.from(await res.arrayBuffer());
+        // an ArcGIS error comes back as 200 with a JSON body
+        return data.byteLength <= MAX_TILE_BYTES && sniffImage(data) ? 'ok' : 'refused';
+      } catch {
+        return 'unreachable';
+      } finally {
+        if (!res.bodyUsed) await res.body?.cancel().catch(() => undefined);
+      }
     },
   };
 }
+
+/** The Sentinel-2 file of a tile on disk, `<z>/<x>/<y>` (the layout 0.11 wrote). */
+const diskKey = (t: TileAddress) => `${String(t.z)}/${String(t.x)}/${String(t.y)}`;
 
 /**
  * A stand-in for the service in end-to-end tests: answers every tile with `jpeg` and writes the
