@@ -132,6 +132,29 @@ def test_the_environment_is_odms_own():
     assert "ODM_NO_GPU" not in R.odm_env({}, use_gpu=True)
 
 
+def test_every_conda_variable_is_left_out():
+    base = {
+        "CONDA_PREFIX": "a",
+        "CONDA_PREFIX_1": "b",
+        "CONDA_EXE": "c",
+        "CONDA_SHLVL": "1",
+        "conda_python_exe": "d",
+    }
+    assert R.odm_env({**base, "PATH": "x"}, use_gpu=True).keys() == {"PATH", "ODM_NONINTERACTIVE"}
+
+
+@pytest.mark.parametrize("bad", ["", "abc", "0", "-5", "inf", "-inf", "nan"])
+def test_bad_limits_count_as_unset(bad):
+    assert R.odm_memory_cap({R.MEMORY_CAP_ENV: bad}) is None
+    assert R.stall_seconds({R.STALL_ENV: bad}) == 60 * 60
+
+
+def test_the_stall_limit_defaults_to_an_hour_and_can_be_set():
+    assert R.stall_seconds({}) == 60 * 60
+    assert R.stall_seconds({R.STALL_ENV: "0.5"}) == 30
+    assert R.odm_memory_cap({R.MEMORY_CAP_ENV: "1"}) == 64 * 1024 * 1024  # at least 64 MB
+
+
 def test_the_gpu_setting_from_the_environment(monkeypatch):
     monkeypatch.setenv(R.GPU_ENV, "off")
     assert R.machine().use_gpu is False
@@ -318,14 +341,44 @@ def test_a_dtm_is_never_added_from_odm_dem_on_a_cloud_made_without_it(odm, align
     assert second[second.index("--rerun-from") + 1] == "odm_dem"
 
 
-def test_a_failed_ground_classification_stops_the_dtm_at_once(odm, aligned, tmp_path, monkeypatch):
-    monkeypatch.setenv(
-        "FAKE_ODM_SAY",
-        "odm_georeferencing:[WARNING] Error creating classified file x: PDAL: Cannot determine reader for input file: E:\\x\\Probe",
-    )
-    with pytest.raises(JobError, match="could not find the ground"):
-        R.run_odm(Ctx(), odm, aligned, ["--dsm", "--dtm"], "odm_georeferencing", "odm_dem", tmp_path / "g",
+SMRF_FAIL = (
+    "[WARNING] Error creating classified file x: PDAL: Cannot determine reader for input file: E:\\x\\Probe"
+)
+
+
+@pytest.mark.parametrize(
+    ("said_in", "first", "last"),
+    [("odm_georeferencing", "odm_georeferencing", "odm_dem"),  # georeferencing and DEM in one call
+     ("odm_georeferencing", "odm_meshing", "odm_georeferencing"),  # the cloud step: exits 0 right after SMRF
+     ("odm_georeferencing", "odm_georeferencing", "odm_georeferencing"),
+     ("odm_dem", "odm_dem", "odm_dem")],  # a later step
+)  # fmt: skip
+def test_a_failed_ground_classification_stops_the_dtm_at_once(
+    odm, aligned, tmp_path, monkeypatch, said_in, first, last
+):
+    monkeypatch.setenv("FAKE_ODM_SAY", f"{said_in}:{SMRF_FAIL}")
+    ctx = Ctx()
+    with pytest.raises(
+        R.OdmGroundFailed, match="ODM found no ground points, so it cannot make a terrain model"
+    ):
+        R.run_odm(ctx, odm, aligned, ["--dsm", "--dtm"], first, last, tmp_path / "g",
                   rerun=True, use_gpu=False, port=_free_port())  # fmt: skip
+    assert any("Cannot determine reader" in m and level == "warn" for m, level in ctx.logs)  # the ODM tail
+
+
+def test_resume_reports_gpu_use_only_for_the_stages_that_ran(odm, aligned, tmp_path, monkeypatch):
+    monkeypatch.setenv("FAKE_ODM_FAIL", "odm_meshing:1")
+    logs = tmp_path / "logs"
+    with pytest.raises(JobError):
+        R.run_odm(Ctx(), odm, aligned, [], "openmvs", "odm_georeferencing", logs, rerun=True, use_gpu=True,
+                  port=_free_port())  # fmt: skip
+    monkeypatch.delenv("FAKE_ODM_FAIL")
+    ctx = Ctx()
+    run = R.run_odm(ctx, odm, aligned, [], "openmvs", "odm_georeferencing", logs, rerun=True, use_gpu=True,
+                    port=_free_port())  # fmt: skip
+    assert run.started_from == "odm_meshing"
+    assert run.gpu.dense is None  # ODM printed "Running openmvs stage" but skipped it
+    assert (R.DENSE_CPU_NOTE, "info") not in ctx.logs
 
 
 def test_cancel_kills_the_whole_odm_tree(odm, aligned, tmp_path, monkeypatch):

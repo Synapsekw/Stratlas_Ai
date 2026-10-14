@@ -16,6 +16,7 @@ dense matching can use the real NVIDIA driver (``ensure_dense_gpu``).
 from __future__ import annotations
 
 import contextlib
+import math
 import os
 import re
 import socket
@@ -64,11 +65,11 @@ GROUND_FAIL = re.compile(r"Cannot determine reader|Error creating classified fil
 DTM_MARK = "odm_georeferencing/.aio-dtm"
 GEOREF_LAZ = "odm_georeferencing/odm_georeferenced_model.laz"
 TAIL_LINES = 20
+STALL_DEFAULT_MIN = 60.0
 _DROP_ENV = (
     "PYTHON",
     "VIRTUAL_ENV",
-    "CONDA_PREFIX",
-    "CONDA_DEFAULT_ENV",
+    "CONDA_",
     "NODEFAULTCURRENTDIRECTORYINEXEPATH",
 )
 
@@ -139,14 +140,20 @@ class Machine:
     use_gpu: bool
 
 
+def _positive(value: str | None) -> float | None:
+    """A finite number above zero, else None (unset, not a number, zero, negative, inf, nan)."""
+    try:
+        v = float(value or "")
+    except ValueError:
+        return None
+    return v if math.isfinite(v) and v > 0 else None
+
+
 def odm_memory_cap(env: Mapping[str, str] | None = None) -> int | None:
     """The memory limit set by hand, bytes (``AIO_ODM_MEMORY_CAP_MB``); None when there is none."""
     env = os.environ if env is None else env
-    try:
-        mb = float(env.get(MEMORY_CAP_ENV, ""))
-    except ValueError:
-        return None
-    return int(max(64.0, mb) * 1024 * 1024)
+    mb = _positive(env.get(MEMORY_CAP_ENV))
+    return None if mb is None else int(max(64.0, mb) * 1024 * 1024)
 
 
 def machine(env: Mapping[str, str] | None = None) -> Machine:
@@ -159,12 +166,10 @@ def machine(env: Mapping[str, str] | None = None) -> Machine:
 
 
 def stall_seconds(env: Mapping[str, str] | None = None) -> float:
+    """How long ODM may stay silent before it is stopped (``AIO_ODM_STALL_MIN``, default 60 minutes)."""
     env = os.environ if env is None else env
-    try:
-        minutes = float(env.get(STALL_ENV, "30"))
-    except ValueError:
-        minutes = 30.0
-    return max(0.01, minutes) * 60.0
+    minutes = _positive(env.get(STALL_ENV))
+    return (STALL_DEFAULT_MIN if minutes is None else minutes) * 60.0
 
 
 def exit_error(code: int, lines: list[str]) -> JobError:
@@ -456,8 +461,7 @@ def run_odm(
 
     def ground_failed() -> OdmGroundFailed:
         return OdmGroundFailed(
-            "ODM could not find the ground points, so it cannot make the terrain model (DTM). "
-            "Look at the job log; untick DTM to make the other products."
+            "ODM found no ground points, so it cannot make a terrain model (DTM) for this run."
         )
 
     def watch(line: str) -> float | None:
@@ -492,7 +496,8 @@ def run_odm(
     with open(log, "a", encoding="utf-8") as f:
         f.write(text)
     last_out.unlink(missing_ok=True)
-    gpu = gpu_use(text + err, use_gpu, (first, last), dense_capable)
+    # ODM prints Running/Finished for the stages before --rerun-from too: only the stages that ran count
+    gpu = gpu_use(text + err, use_gpu, (start or first, last), dense_capable)
     if dtm and stage_index(start or first) <= stage_index("odm_georeferencing") <= stage_index(last):
         laz = project_dir / GEOREF_LAZ
         if laz.exists():  # this cloud was classified for a DTM: a later --rerun-from odm_dem may use it
