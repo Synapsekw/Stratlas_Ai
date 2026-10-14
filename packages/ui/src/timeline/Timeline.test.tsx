@@ -1,8 +1,9 @@
 // @vitest-environment jsdom
-import { act } from 'react';
+import { act, useState } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { TimelineModel } from './model';
+import { dragKeyframe } from './testPointer';
 import { tickLabel } from './parts';
 import { Timeline, type TimelineProps } from './Timeline';
 
@@ -123,6 +124,29 @@ describe('Timeline', () => {
     render(props({ model: { ...model, clips: [], groups: [], range: null } }));
     expect(host.querySelector('.tl-empty')).not.toBeNull();
     expect(host.querySelector('[data-testid="timecode"]')?.textContent).toBe('--:--:--');
+  });
+});
+
+describe('Timeline keyframe drag', () => {
+  it('keeps the drag while the binding moves the key live: move, move, end', () => {
+    const phases: string[] = [];
+    function Live() {
+      const [key, setKey] = useState(T0 + 30_000);
+      const clips = model.clips.map((c) => (c.layerId === 'a' ? { ...c, keys: [key] } : c));
+      return (
+        <Timeline
+          {...props({ model: { ...model, clips } })}
+          onKeyframeMove={(_id, _i, tMs, phase) => {
+            phases.push(phase);
+            if (phase === 'move') setKey(tMs);
+          }}
+        />
+      );
+    }
+    root = createRoot(host);
+    act(() => root?.render(<Live />));
+    dragKeyframe(host, [0, 10, 20]);
+    expect(phases).toEqual(['move', 'move', 'end']);
   });
 });
 

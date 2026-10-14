@@ -1,10 +1,11 @@
 // @vitest-environment jsdom
-import { act } from 'react';
+import { act, useState } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { LaneTimeline, type LaneTimelineProps } from './LaneTimeline';
 import { buildLaneModel, siteMidnightUtc, type LaneIndex } from './lanes';
 import type { ClipBar, TimelineModel } from './model';
+import { dragKeyframe } from './testPointer';
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 beforeAll(() => {
@@ -196,5 +197,37 @@ describe('LaneTimeline', () => {
     expect(bars?.[1]?.style.getPropertyValue('--row')).toBe('1');
     click(bars?.[1]);
     expect(p.onClip).toHaveBeenCalledWith('g2', at(d6, 9, 2));
+  });
+  it('keeps a keyframe drag while the binding moves the key live: move, move, end', () => {
+    const phases: string[] = [];
+    function Live() {
+      const [key, setKey] = useState(at(d6, 9, 8));
+      const clips = tm.clips.map((c) => (c.layerId === 'f1' ? { ...c, keys: [key] } : c));
+      return (
+        <LaneTimeline
+          {...props({ model: buildLaneModel({ ...tm, clips }, index, 'd6', OFF) })}
+          onKeyframeMove={(_id, _i, utcMs, phase) => {
+            phases.push(phase);
+            if (phase === 'move') setKey(utcMs);
+          }}
+        />
+      );
+    }
+    root = createRoot(host);
+    act(() => root?.render(<Live />));
+    dragKeyframe(host, [0, 10, 20]);
+    expect(phases).toEqual(['move', 'move', 'end']);
+  });
+  it('clamps a click into a clip shorter than 250 ms at its start', () => {
+    const short = buildLaneModel(
+      { ...tm, clips: [{ ...clip('s1', at(d6, 9)), endMs: at(d6, 9) + 100 }] },
+      { ...index, of: { s1: 'd6' } },
+      'd6',
+      OFF,
+    );
+    const p = props({ model: short, activeClip: null });
+    render(p);
+    click(q('lane-d6')?.querySelector('[data-testid="lane-clip"]'));
+    expect(p.onClip).toHaveBeenCalledWith('s1', at(d6, 9));
   });
 });

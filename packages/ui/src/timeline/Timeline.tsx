@@ -223,7 +223,8 @@ export function Timeline(props: TimelineProps) {
                     )}
                     {c.keys?.map((k, i) => (
                       <KeyframeDiamond
-                        key={`${String(i)}-${String(k)}`}
+                        // keyed by index: a drag moves the key time live, and a remount would drop the drag
+                        key={i}
                         layerId={c.layerId}
                         index={i}
                         name={c.name}
