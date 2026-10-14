@@ -419,3 +419,67 @@ test('camera heights: relative altitude asks for the take-off height, proposed f
   // H = 7.5 + 3.5, origin H 0
   expect(pos[1]).toBeCloseTo(11, 3);
 });
+
+test('camera photos far from the survey data can drop their GPS', async ({
+  app,
+  win,
+  dataRoot,
+}) => {
+  await win.getByTestId('new-project').first().click();
+  const wiz = win.getByTestId('new-project-wizard');
+  await wiz.getByLabel('Project name').fill('Tower photos e2e');
+  await wiz.getByRole('button', { name: 'Next' }).click();
+  await wiz.getByRole('button', { name: 'Typed coordinate' }).click();
+  await wiz.getByLabel('Origin coordinate').fill('29.0276, 48.1352, 30');
+  await wiz.getByRole('button', { name: 'Next' }).click();
+  await wiz.getByRole('button', { name: 'Next' }).click();
+  await wiz.getByRole('button', { name: 'Create project' }).click();
+  await expect(win.getByTestId('empty-project')).toBeVisible({ timeout: 30_000 });
+  const root = join(dataRoot.root, 'projects', 'tower-photos-e2e');
+  const o = JSON.parse(await readFile(join(root, 'manifest.json'), 'utf8')) as { origin: number[] };
+  const [oe = 0, on = 0] = o.origin;
+
+  // a handheld camera photo whose GPS puts it 40 km east, and the Pix4D export at the origin
+  const jpeg = await sharp({
+    create: { width: 64, height: 48, channels: 3, background: '#808080' },
+  })
+    .jpeg()
+    .toBuffer();
+  const photo = join(dataRoot.base, 'DSC00001.JPG');
+  const far = toWgs84([oe + 40_000, on, 30], 32639);
+  await writeFile(
+    photo,
+    withExif(
+      { make: 'SONY', lat: far[1], lon: far[0], alt: 30, focal35: 35, width: 64, height: 48 },
+      jpeg,
+    ),
+  );
+  const obj = await writePix4dExport(dataRoot.base, 'tower', [Math.round(oe), Math.round(on), 12]);
+
+  // the model first (older, near the origin: no notice), then the photo (fresh, far)
+  const panel = win.getByTestId('import-panel');
+  await nextOpenDialog(app, [obj]);
+  await win.getByRole('button', { name: 'Import files' }).click();
+  await expect(panel).toContainText('Imported 1 of 1 files', { timeout: 30_000 });
+  await panel.getByRole('button', { name: 'Close' }).click();
+  await nextOpenDialog(app, [photo]);
+  await win.keyboard.press('Control+K');
+  await win.keyboard.type('Import raw data');
+  await win.keyboard.press('Enter');
+  await expect(panel).toContainText('Imported 1 of 1 files', { timeout: 30_000 });
+  await panel.getByRole('button', { name: 'Close' }).click();
+
+  const notice = win.getByTestId('far-content-notice');
+  await expect(notice).toContainText("a camera's GPS can be kilometres out", { timeout: 30_000 });
+  await expect(notice.getByRole('button', { name: 'Re-centre project here' })).toHaveCount(0);
+  await notice.getByRole('button', { name: 'Ignore their GPS' }).click();
+  await expect(notice).toContainText('stay in Media');
+  const m = JSON.parse(await readFile(join(root, 'manifest.json'), 'utf8')) as {
+    origin: number[];
+    layers: { kind: string; items?: { pos?: number[] }[] }[];
+  };
+  const photos = m.layers.find((l) => l.kind === 'photos');
+  expect(photos?.items).toHaveLength(1);
+  expect(photos?.items?.every((p) => !p.pos)).toBe(true);
+  expect(m.origin[0]).toBe(oe);
+});

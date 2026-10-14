@@ -212,3 +212,110 @@ describe('notice lifecycle', () => {
     expect(store.getState().notice?.text).toContain('Could not check where layers lie: offline');
   });
 });
+
+describe('handheld camera GPS', () => {
+  const origin: [number, number, number] = [500_000, 3_200_000, 20];
+  const layers = [
+    { kind: 'pointcloud', id: 'cloud', name: 'Cloud' },
+    { kind: 'photos', id: 'photos', name: 'Photos' },
+  ];
+  type Ex = { layerId: string; min: readonly number[]; max: readonly number[] }[];
+  /** Task 8's deps with the extents answers given in turn (the last one repeats). */
+  const depsWith = (...answers: Ex[]) => {
+    let n = 0;
+    const call = vi.fn((channel: string): Promise<unknown> => {
+      if (channel === 'builder:layerExtents') {
+        const extents = answers[Math.min(n, answers.length - 1)] ?? [];
+        n += 1;
+        return Promise.resolve({ ok: true, extents, recentre: { blockers: [] } });
+      }
+      return Promise.resolve({ ok: true, manifest: { origin, layers }, backup: 'b' });
+    });
+    const reopen = vi.fn();
+    return { call, reopen, project: () => ({ id: 'p', manifest: { origin, layers } }) };
+  };
+  const photosFar: Ex = [
+    { layerId: 'cloud', ...box(0, 0) },
+    { layerId: 'photos', ...box(91_000, 0) },
+  ];
+  const cloudFar: Ex = [
+    { layerId: 'photos', ...box(0, 0) },
+    { layerId: 'cloud', ...box(91_000, 0) },
+  ];
+
+  it('a far photos layer beside survey data offers to ignore its GPS, not to re-centre', async () => {
+    // cloud near the origin (older), photos 91 km away (fresh)
+    const d = depsWith(photosFar);
+    const s = createFarNotice(d);
+    await s.getState().check('p', new Set(['photos']));
+    expect(s.getState().notice?.canRecentre).toBe(false);
+    expect(s.getState().notice?.photoLayers).toEqual(['photos']);
+    expect(s.getState().notice?.text).toContain("a camera's GPS can be kilometres out");
+    await s.getState().ignorePhotoGps();
+    expect(d.call).toHaveBeenCalledWith('builder:updateLayers', {
+      projectId: 'p',
+      layerIds: ['photos'],
+      patch: { photoPositions: 'clear' },
+    });
+    expect(d.reopen).toHaveBeenCalled();
+    expect(s.getState().notice?.done).toBe(true);
+    expect(s.getState().notice?.text).toContain('they stay in Media');
+  });
+
+  it('a far survey layer when only photos placed the origin says survey data is better', async () => {
+    const s = createFarNotice(depsWith(cloudFar));
+    await s.getState().check('p', new Set(['cloud']));
+    const n = s.getState().notice;
+    expect(n?.canRecentre).toBe(true);
+    expect(n?.photoLayers).toEqual([]);
+    expect(n?.text).toContain('Only photos placed this project so far');
+  });
+
+  it('after a re-centre on survey data, photos left far away are offered the same', async () => {
+    // photos near the old origin, cloud fresh and far; re-centre; the second extents answer has
+    // the photos 91 km from the new origin
+    const d = depsWith(cloudFar, [
+      { layerId: 'photos', ...box(-91_000, 0) },
+      { layerId: 'cloud', ...box(0, 0) },
+    ]);
+    const s = createFarNotice(d);
+    await s.getState().check('p', new Set(['cloud']));
+    await s.getState().recentre();
+    expect(d.reopen).toHaveBeenCalled();
+    const n = s.getState().notice;
+    expect(n?.photoLayers).toEqual(['photos']);
+    expect(n?.done).toBe(false);
+    expect(n?.canRecentre).toBe(false);
+    expect(n?.text).toContain('Re-centred');
+    expect(n?.text).toContain("a camera's GPS can be kilometres out");
+  });
+
+  it('a re-centre that leaves no photos far ends as before', async () => {
+    const d = depsWith(cloudFar, [
+      { layerId: 'photos', ...box(10, 0) },
+      { layerId: 'cloud', ...box(0, 0) },
+    ]);
+    const s = createFarNotice(d);
+    await s.getState().check('p', new Set(['cloud']));
+    await s.getState().recentre();
+    expect(s.getState().notice?.done).toBe(true);
+    expect(s.getState().notice?.photoLayers).toEqual([]);
+  });
+
+  it('a failed clear says so and keeps the photos', async () => {
+    const d = depsWith(photosFar);
+    d.call.mockImplementation((channel: string) =>
+      Promise.resolve(
+        channel === 'builder:layerExtents'
+          ? { ok: true, extents: photosFar, recentre: { blockers: [] } }
+          : { ok: false, error: 'disk full' },
+      ),
+    );
+    const s = createFarNotice(d);
+    await s.getState().check('p', new Set(['photos']));
+    await s.getState().ignorePhotoGps();
+    expect(s.getState().notice?.text).toBe('Clearing the GPS places failed: disk full');
+    expect(s.getState().notice?.photoLayers).toEqual([]);
+    expect(d.reopen).not.toHaveBeenCalled();
+  });
+});

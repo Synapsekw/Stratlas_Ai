@@ -227,6 +227,8 @@ export const LayerPatch = z.union([
   z.object({ corners: RasterCorners }).strict(),
   /** The placement of a `walk` layer (its pins and corrections); `null` clears it. */
   z.object({ walk: WalkCalibration.nullable() }).strict(),
+  /** Forget the GPS places of a photos layer (a camera whose GPS is wrong): they stay in Media. */
+  z.object({ photoPositions: z.literal('clear') }).strict(),
 ]);
 
 /**

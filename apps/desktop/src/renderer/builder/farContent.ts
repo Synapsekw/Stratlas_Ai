@@ -81,7 +81,7 @@ export function freshLayerIds(
 type Call = (channel: string, req: Record<string, unknown>) => Promise<unknown>;
 interface FarProject {
   id: string;
-  manifest: { origin: Vec3; layers: readonly { id: string; name: string }[] };
+  manifest: { origin: Vec3; layers: readonly { id: string; name: string; kind?: string }[] };
 }
 
 export interface FarNoticeState {
@@ -94,17 +94,39 @@ export interface FarNoticeState {
     done: boolean;
     /** The far layers this notice reports; later additions near them widen the target. */
     far: FarLayer[];
+    /**
+     * Photos layers far from the survey data (a camera's GPS, often from a linked phone): offered
+     * "Ignore their GPS" instead of a re-centre.
+     */
+    photoLayers: string[];
   } | null;
   check(projectId: string, fresh: ReadonlySet<string> | 'all'): Promise<void>;
   recentre(): Promise<void>;
+  /** Clear the GPS places of `photoLayers`; the photos stay in Media. */
+  ignorePhotoGps(): Promise<void>;
   dismiss(): void;
 }
 
 const km = (m: number) => `${(m / 1000).toFixed(1)} km`;
+const PHOTOS_FAR =
+  "These photos are far from the survey data: a camera's GPS can be kilometres out. Ignore their" +
+  ' GPS to keep them in Media without a place.';
+const PHOTOS_ONLY =
+  ' Only photos placed this project so far; survey data is the better place for the origin.';
 const message = (e: unknown) => (e instanceof Error ? e.message : String(e));
 
 type ExtentsReply =
   { ok: true; extents: Extent[]; recentre: { blockers: string[] } } | { ok: false; error: string };
+
+const isPhotos = (p: FarProject, id: string) =>
+  p.manifest.layers.find((l) => l.id === id)?.kind === 'photos';
+const farLines = (p: FarProject, far: readonly FarLayer[]) =>
+  far
+    .map(
+      (f) =>
+        `${p.manifest.layers.find((l) => l.id === f.layerId)?.name ?? f.layerId} lies ${km(f.distanceM)} from the project origin.`,
+    )
+    .join(' ');
 
 export function createFarNotice(deps: {
   call: Call;
@@ -138,6 +160,7 @@ export function createFarNotice(deps: {
             busy: false,
             done: true,
             far: [],
+            photoLayers: [],
           },
         });
       };
@@ -173,6 +196,7 @@ export function createFarNotice(deps: {
                   busy: false,
                   done: true,
                   far: [],
+                  photoLayers: [],
                 }
               : prev?.projectId === projectId && !prev.done
                 ? prev
@@ -181,10 +205,27 @@ export function createFarNotice(deps: {
         return;
       }
       if (added.length === 0 && reported.length > 0 && prev) return; // nothing new: keep it as is
-      const name = (id: string) => p.manifest.layers.find((l) => l.id === id)?.name ?? id;
-      const lines = far.map(
-        (f) => `${name(f.layerId)} lies ${km(f.distanceM)} from the project origin.`,
-      );
+      const lines = farLines(p, far);
+      // survey data over a camera's GPS: far photos beside survey data are not a new origin
+      const olderIds = [...older];
+      const surveyOlder = olderIds.some((id) => !isPhotos(p, id));
+      if (surveyOlder && far.every((f) => isPhotos(p, f.layerId))) {
+        set({
+          notice: {
+            projectId,
+            text: `${lines} ${PHOTOS_FAR}`,
+            canRecentre: false,
+            target: null,
+            busy: false,
+            done: false,
+            far,
+            photoLayers: far.map((f) => f.layerId),
+          },
+        });
+        return;
+      }
+      const photosOnly =
+        olderIds.length > 0 && !surveyOlder && far.some((f) => !isPhotos(p, f.layerId));
       const blockers = r.recentre.blockers;
       const why = blockers.length
         ? ` Re-centring is not offered: this project holds ${blockers.join(', ')}.`
@@ -192,12 +233,13 @@ export function createFarNotice(deps: {
       set({
         notice: {
           projectId,
-          text: `${lines.join(' ')}${why}`,
+          text: `${lines}${photosOnly ? PHOTOS_ONLY : ''}${why}`,
           canRecentre: blockers.length === 0,
           target: recentreTarget(far, p.manifest.origin),
           busy: false,
           done: false,
           far,
+          photoLayers: [],
         },
       });
     },
@@ -231,13 +273,79 @@ export function createFarNotice(deps: {
       }
       // the move is on disk; show the new frame only while that project is still open
       if (deps.project()?.id === n.projectId) deps.reopen(r.manifest);
+      const moved = `Re-centred: the project origin is now E ${String(n.target[0])}, N ${String(n.target[1])}. The previous manifest is kept as manifest.json.bak.`;
+      set({
+        notice: { ...n, busy: false, done: true, canRecentre: false, text: moved, photoLayers: [] },
+      });
+      // photos placed by a camera's GPS may now lie far from the survey data at the new origin
+      if (deps.project()?.id !== n.projectId) return;
+      const seq = ++latest;
+      let x: ExtentsReply;
+      try {
+        x = (await deps.call('builder:layerExtents', { projectId: n.projectId })) as ExtentsReply;
+      } catch {
+        return; // the re-centre itself stands; the photo check is a courtesy
+      }
+      const now = deps.project();
+      const after = get().notice;
+      if (!x.ok || seq !== latest || now?.id !== n.projectId) return;
+      if (after?.projectId !== n.projectId || !after.done) return;
+      const survey = x.extents.map((e) => e.layerId).filter((id) => !isPhotos(now, id));
+      if (survey.length === 0) return;
+      const far = farLayers(x.extents, new Set(survey));
+      if (far.length === 0) return;
+      set({
+        notice: {
+          projectId: n.projectId,
+          text: `${moved} ${farLines(now, far)} ${PHOTOS_FAR}`,
+          canRecentre: false,
+          target: null,
+          busy: false,
+          done: false,
+          far,
+          photoLayers: far.map((f) => f.layerId),
+        },
+      });
+    },
+    async ignorePhotoGps() {
+      const n = get().notice;
+      if (!n || n.photoLayers.length === 0 || n.busy) return;
+      // a notice that outlived its project must not touch the one open now
+      if (deps.project()?.id !== n.projectId) {
+        set({ notice: null });
+        return;
+      }
+      set({ notice: { ...n, busy: true } });
+      let r: { ok: true; manifest: unknown } | { ok: false; error: string };
+      try {
+        r = (await deps.call('builder:updateLayers', {
+          projectId: n.projectId,
+          layerIds: n.photoLayers,
+          patch: { photoPositions: 'clear' },
+        })) as { ok: true; manifest: unknown } | { ok: false; error: string };
+      } catch (e) {
+        r = { ok: false, error: message(e) };
+      }
+      if (get().notice?.projectId !== n.projectId) return; // dismissed or replaced meanwhile
+      if (!r.ok) {
+        set({
+          notice: {
+            ...n,
+            busy: false,
+            photoLayers: [],
+            text: `Clearing the GPS places failed: ${r.error}`,
+          },
+        });
+        return;
+      }
+      if (deps.project()?.id === n.projectId) deps.reopen(r.manifest);
       set({
         notice: {
           ...n,
           busy: false,
           done: true,
-          canRecentre: false,
-          text: `Re-centred: the project origin is now E ${String(n.target[0])}, N ${String(n.target[1])}. The previous manifest is kept as manifest.json.bak.`,
+          photoLayers: [],
+          text: 'GPS places of the photos were cleared; they stay in Media.',
         },
       });
     },

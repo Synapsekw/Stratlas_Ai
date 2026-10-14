@@ -162,7 +162,11 @@ function Wizard() {
           : g.altFrom === 'takeoff'
             ? ', height of its take-off point (absolute altitude minus height above take-off)'
             : ', height from its GPS altitude (the camera, not the ground: check it)'
-      }.`,
+      }.${
+        g.handheld
+          ? " Not a drone photo: a camera's GPS (often from a linked phone) can be kilometres out. A drone photo or a typed survey coordinate is safer."
+          : ''
+      }`,
     );
     setDatumFrom(g.alt !== undefined ? name : null);
     setHeight(String(Math.round((g.alt ?? 0) * 10) / 10));

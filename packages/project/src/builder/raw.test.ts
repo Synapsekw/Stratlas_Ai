@@ -742,6 +742,29 @@ describe('updateLayers', () => {
     await expect(updateLayers(root, ['nope'], { transform: t })).rejects.toThrow(/nope/);
   });
 
+  it('clears the positions of a photos layer and refuses it on other layers', async () => {
+    const root = await project();
+    const a = join(dir, 'DSC00001.JPG');
+    await writeFile(
+      a,
+      withExif({ make: 'SONY', focal35: 35, width: 64, height: 48, lat: 29.0276, lon: 48.1352 }),
+    );
+    await writeFile(join(dir, 'm.glb'), glb());
+    await importRawFiles(root, [a, join(dir, 'm.glb')], deps());
+    const before = (await readManifest(root)).layers.find((l) => l.kind === 'photos');
+    expect(before?.kind === 'photos' && before.items.every((p) => p.pos)).toBe(true);
+    const id = before?.id ?? '';
+    const r = await updateLayers(root, [id], { photoPositions: 'clear' });
+    const l = r.manifest.layers.find((x) => x.id === id);
+    expect(l?.kind === 'photos' && l.items.length > 0 && l.items.every((p) => !p.pos && !p.q)).toBe(
+      true,
+    );
+    expect(r.backup).toMatch(/manifest\.json\.bak$/);
+    await expect(updateLayers(root, ['mesh-m'], { photoPositions: 'clear' })).rejects.toThrow(
+      /not photos/,
+    );
+  });
+
   it('saves and clears a video orientation bias without touching the other fields', async () => {
     const root = await project();
     const m = await readManifest(root);

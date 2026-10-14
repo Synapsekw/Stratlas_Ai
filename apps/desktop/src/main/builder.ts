@@ -91,7 +91,8 @@ export async function photoGps(path: string): Promise<IpcResponse<'builder:photo
     const b = new Uint8Array(512 * 1024);
     const { bytesRead } = await fh.read(b, 0, b.length, 0);
     await fh.close();
-    const meta = (await lib()).readPhotoMeta(b.subarray(0, bytesRead));
+    const project = await lib();
+    const meta = project.readPhotoMeta(b.subarray(0, bytesRead));
     const lat = meta.dji?.lat ?? meta.gps?.lat;
     const lon = meta.dji?.lon ?? meta.gps?.lon;
     if (lat === undefined || lon === undefined)
@@ -110,6 +111,7 @@ export async function photoGps(path: string): Promise<IpcResponse<'builder:photo
         ? { alt, altFrom: takeoff ? ('takeoff' as const) : ('photo' as const) }
         : {}),
       ...(meta.takenAt ? { takenAt: meta.takenAt } : {}),
+      ...(project.isDronePhoto(meta) ? {} : { handheld: true }),
     };
   } catch (e) {
     return { ok: false, error: `Could not read the photo: ${errorText(e)}` };

@@ -1,7 +1,7 @@
 import { fromWgs84 } from '@aio/geo';
 import type { Vec3 } from '@aio/schema';
 import { describe, expect, it } from 'vitest';
-import { photoAltitude, photoHeight, photoRef, photoLens } from './photos';
+import { isDronePhoto, photoAltitude, photoHeight, photoRef, photoLens } from './photos';
 
 const origin = (lon: number, lat: number, h: number): Vec3 => {
   const p = fromWgs84([lon, lat, 0], 32639);
@@ -118,5 +118,13 @@ describe('photoLens', () => {
   it('uses the image aspect for non-DJI cameras and needs a focal length', () => {
     expect(photoLens({ focal35: 50, width: 6000, height: 4000 })?.aspect).toBeCloseTo(1.5, 4);
     expect(photoLens({ width: 6000, height: 4000 })).toBeUndefined();
+  });
+});
+
+describe('isDronePhoto', () => {
+  it('tells drone photos from other cameras', () => {
+    expect(isDronePhoto({ make: 'DJI' })).toBe(true);
+    expect(isDronePhoto({ make: 'Hasselblad', dji: { lat: 1, lon: 2 } })).toBe(true);
+    expect(isDronePhoto({ make: 'SONY', gps: { lat: 1, lon: 2 } })).toBe(false);
   });
 });

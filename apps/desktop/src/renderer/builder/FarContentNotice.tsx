@@ -1,7 +1,10 @@
 import { Icon } from '@aio/ui';
 import { farNotice, useFarNotice } from './farSession';
 
-/** A layer far from the project origin, with "Re-centre project here" and "Keep". */
+/**
+ * A layer far from the project origin, with "Re-centre project here" and "Keep"; photos far from
+ * the survey data get "Ignore their GPS" instead.
+ */
 export function FarContentNotice() {
   const n = useFarNotice((s) => s.notice);
   if (!n) return null;
@@ -35,6 +38,16 @@ export function FarContentNotice() {
               onClick={() => void farNotice.getState().recentre()}
             >
               Re-centre project here
+            </button>
+          )}
+          {n.photoLayers.length > 0 && (
+            <button
+              type="button"
+              className="btn sm primary"
+              disabled={n.busy}
+              onClick={() => void farNotice.getState().ignorePhotoGps()}
+            >
+              Ignore their GPS
             </button>
           )}
           <button

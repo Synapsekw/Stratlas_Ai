@@ -1143,6 +1143,8 @@ export const ipc = {
         /** `takeoff`: `alt` is the take-off point; `photo`: the camera's own altitude. */
         altFrom: z.enum(['takeoff', 'photo']).optional(),
         takenAt: z.string().optional(),
+        /** Not a drone photo: its GPS may come from a linked phone and be kilometres out. */
+        handheld: z.boolean().optional(),
       }),
       z.object({ ok: z.literal(false), error: z.string() }),
     ]),

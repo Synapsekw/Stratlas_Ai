@@ -43,14 +43,21 @@ export function photoHeight(meta: PhotoMeta, f: PhotoFrame): { h: number; source
 const DJI_MAKES = /^(dji|hasselblad)/i;
 
 /**
+ * A photo from a drone camera (DJI or Hasselblad make, or DJI XMP tags). Other cameras often take
+ * their GPS from a linked phone, which can be kilometres out.
+ */
+export function isDronePhoto(meta: PhotoMeta): boolean {
+  return DJI_MAKES.test(meta.make ?? '') || meta.dji !== undefined;
+}
+
+/**
  * Pinhole lens from the 35 mm equivalent focal length. DJI cameras crop wide photo modes (16:9)
  * from a 4:3 sensor at full width; other cameras use their own frame.
  */
 export function photoLens(meta: PhotoMeta): LensModel | undefined {
   if (!meta.focal35 || !meta.width || !meta.height) return undefined;
   const aspect = meta.width / meta.height;
-  const dji = DJI_MAKES.test(meta.make ?? '') || meta.dji !== undefined;
-  const sensor = dji && aspect > 1.6 ? 4 / 3 : aspect;
+  const sensor = isDronePhoto(meta) && aspect > 1.6 ? 4 / 3 : aspect;
   return lensFromFocal35(meta.focal35, aspect, sensor);
 }
 

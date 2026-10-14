@@ -203,6 +203,19 @@ function patchLayers(
       else next.capture = patch.capture;
       return next;
     }
+    if ('photoPositions' in patch) {
+      if (l.kind !== 'photos')
+        throw new Error(`"${l.name}" is not photos; only photos have GPS places.`);
+      return {
+        ...l,
+        items: l.items.map((p) => {
+          const next = { ...p };
+          delete next.pos;
+          delete next.q;
+          return next;
+        }),
+      };
+    }
     if ('transform' in patch) {
       if (l.kind !== 'mesh')
         throw new Error(`"${l.name}" is not a model; only models take a transform.`);
