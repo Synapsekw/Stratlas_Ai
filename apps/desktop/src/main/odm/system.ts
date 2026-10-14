@@ -1,0 +1,138 @@
+import { execFile, spawn, spawnSync, type SpawnOptions } from 'node:child_process';
+import { access, rename, rm, stat, statfs } from 'node:fs/promises';
+import { dirname, win32 } from 'node:path';
+
+/** What the ODM installer needs of the computer; the tests pass a fake. */
+export interface OdmSystem {
+  /** Run ODM's setup and answer its exit code. */
+  runSetup(file: string, args: string[]): Promise<number>;
+  /** `run.bat --help` in an ODM folder: its exit code and everything it printed. */
+  runSmoke(dir: string): Promise<{ code: number; out: string }>;
+  runUninstaller(file: string, args: string[]): Promise<number>;
+  /** `reg query` output for one key, `''` when nothing is found. */
+  regQuery(key: string): Promise<string>;
+  exists(p: string): Promise<boolean>;
+  rm(p: string): Promise<void>;
+  rename(from: string, to: string): Promise<void>;
+  /** Size of a file, null when it is not there. */
+  fileBytes(p: string): Promise<number | null>;
+  freeBytes(dir: string): Promise<number>;
+  sleep(ms: number): Promise<void>;
+}
+
+/** The first `--help` of a fresh ODM takes about 26 s. */
+const SMOKE_TIMEOUT_MS = 120_000;
+
+function exitCode(child: ReturnType<typeof spawn>): Promise<number> {
+  return new Promise((ok, fail) => {
+    child.once('error', fail);
+    child.once('close', (code) => {
+      ok(code ?? 1);
+    });
+  });
+}
+
+function killTree(pid: number | undefined): void {
+  if (pid === undefined) return;
+  if (process.platform === 'win32')
+    spawnSync('taskkill', ['/pid', String(pid), '/T', '/F'], { windowsHide: true });
+  else process.kill(pid, 'SIGKILL');
+}
+
+/** ODM's own environment: cmd.exe must find `winrun.bat` in the current folder (C1 probe). */
+export function odmSmokeEnv(env: Record<string, string | undefined>): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (const [k, v] of Object.entries(env))
+    if (v !== undefined && k.toLowerCase() !== 'nodefaultcurrentdirectoryinexepath') out[k] = v;
+  out.ODM_NONINTERACTIVE = '1';
+  return out;
+}
+
+export function nodeOdmSystem(env: Record<string, string | undefined>): OdmSystem {
+  const run = (file: string, args: string[]): Promise<number> => {
+    const opts: SpawnOptions = { windowsHide: true, stdio: 'ignore' };
+    // End to end tests stand a Node script in for ODM's setup, run by Electron as Node.
+    if (env.QUADRION_E2E === '1' && file.endsWith('.mjs'))
+      return exitCode(
+        spawn(process.execPath, [file, ...args], {
+          ...opts,
+          env: { ...env, ELECTRON_RUN_AS_NODE: '1' },
+        }),
+      );
+    return exitCode(spawn(file, args, opts));
+  };
+
+  return {
+    runSetup: run,
+    runUninstaller: run,
+    runSmoke: (dir) =>
+      new Promise((ok, fail) => {
+        const bat = win32.join(dir, 'run.bat');
+        const child = spawn('cmd.exe', ['/d', '/s', '/c', `""${bat}" --help"`], {
+          cwd: dir,
+          env: odmSmokeEnv(env),
+          windowsHide: true,
+          windowsVerbatimArguments: true,
+          stdio: ['ignore', 'pipe', 'pipe'],
+        });
+        let out = '';
+        child.stdout.on('data', (c: Buffer) => (out += c.toString('utf8')));
+        child.stderr.on('data', (c: Buffer) => (out += c.toString('utf8')));
+        const timer = setTimeout(() => {
+          killTree(child.pid);
+        }, SMOKE_TIMEOUT_MS);
+        exitCode(child).then(
+          (code) => {
+            clearTimeout(timer);
+            ok({ code, out });
+          },
+          (e: unknown) => {
+            clearTimeout(timer);
+            fail(e instanceof Error ? e : new Error(String(e)));
+          },
+        );
+      }),
+    regQuery: (key) =>
+      new Promise((ok, fail) => {
+        execFile(
+          'reg',
+          ['query', key, '/s', '/f', 'ODM', '/d'],
+          { windowsHide: true, maxBuffer: 16 * 1024 * 1024 },
+          (err, stdout) => {
+            // exit 1: nothing found (or no such key)
+            if (err && err.code !== 1) fail(new Error(err.message));
+            else ok(err ? '' : stdout);
+          },
+        );
+      }),
+    exists: (p) =>
+      access(p).then(
+        () => true,
+        () => false,
+      ),
+    rm: (p) => rm(p, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 }),
+    rename: (from, to) => rename(from, to),
+    fileBytes: (p) =>
+      stat(p).then(
+        (s) => (s.isFile() ? s.size : null),
+        () => null,
+      ),
+    freeBytes: async (dir) => {
+      // the nearest folder that exists; unknown counts as enough
+      for (let p = dir; ;) {
+        try {
+          const s = await statfs(p);
+          return s.bavail * s.bsize;
+        } catch {
+          const up = dirname(p);
+          if (up === p) return Number.POSITIVE_INFINITY;
+          p = up;
+        }
+      }
+    },
+    sleep: (ms) =>
+      new Promise((ok) => {
+        setTimeout(ok, ms);
+      }),
+  };
+}
