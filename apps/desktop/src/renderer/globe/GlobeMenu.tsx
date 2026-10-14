@@ -28,6 +28,7 @@ export interface GlobeMenuProps {
   packsOn: boolean;
   tier: GlobeTierName;
   imagery: readonly RasterPackInfo[];
+  terrain: readonly RasterPackInfo[];
   /** How many street map packs are installed: none shows the note that the Globe has no streets. */
   streetPacks: number;
   streetCredit: string;
@@ -40,6 +41,7 @@ export function GlobeMenu({
   packsOn,
   tier,
   imagery,
+  terrain,
   streetPacks,
   streetCredit,
   onSave,
@@ -99,7 +101,29 @@ export function GlobeMenu({
       notice={<OnlineSatelliteNotice className="mm-notice" />}
       extra={
         <>
-          {streetPacks === 0 && <p className="mm-note">{t('globe.noStreetPacks')}</p>}
+          {base === 'streets' && streetPacks === 0 && (
+            <p className="mm-note">{t('globe.noStreetPacks')}</p>
+          )}
+          <label className="globe-field">
+            <span>{t('globe.terrain')}</span>
+            <select
+              className="input"
+              value={prefs.terrain ?? 'auto'}
+              disabled={tier === 'low'}
+              onChange={(e) => {
+                onSave({ ...prefs, terrain: e.target.value });
+              }}
+            >
+              <option value="auto">{t('globe.terrainAuto')}</option>
+              <option value="off">{t('globe.terrainOff')}</option>
+              {terrain.map((p) => (
+                <option key={p.id} value={p.id}>
+                  {p.label}
+                </option>
+              ))}
+            </select>
+          </label>
+          {tier === 'low' && <p className="mm-note">{t('globe.lowTier')}</p>}
           <ul className="globe-key" aria-label={t('globe.key')}>
             <li data-tone="clear">
               <span className="globe-dot" aria-hidden="true" />

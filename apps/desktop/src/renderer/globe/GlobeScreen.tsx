@@ -506,6 +506,7 @@ export default function GlobeScreen() {
         packsOn={packsOn}
         tier={tier}
         imagery={loaded.imagery}
+        terrain={loaded.terrain}
         streetPacks={loaded.street.length}
         streetCredit={street?.credit ?? '© OpenStreetMap contributors'}
         onSave={save}
