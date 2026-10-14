@@ -98,4 +98,21 @@ describe('the data inventory', () => {
     expect(out.problems.join('\n')).toMatch(/bad\.json.*CC-BY-NC-4.0/);
     expect(out.problems).toHaveLength(1);
   });
+
+  it('lists the online providers for their terms, never judged as packs; a pack from them is still ruled out', () => {
+    const sources = loadSources();
+    const online = sources.filter((s) => s.kind.startsWith('online imagery'));
+    expect(online.map((s) => s.name)).toEqual([
+      'Sentinel-2 cloudless 2016 (EOX)',
+      'Esri World Imagery (online)',
+      'Mapbox maps (online)',
+    ]);
+    for (const s of online) expect(s.attribution, s.name).toBeTruthy();
+    expect(checkSources(sources, dataPolicy())).toEqual([]);
+    const fromEsri = checkPackMeta(
+      { licence: 'CC-BY-4.0', attribution: 'x', provenance: 'Esri World Imagery tiles' },
+      dataPolicy(),
+    );
+    expect(fromEsri).toContain('Esri data is ruled out by decision 4');
+  });
 });

@@ -1,5 +1,5 @@
 {
-  "$comment": "Map and imagery data Stratlas distributes or ships (M10 decision 4), the data inventory behind docs/release/THIRD-PARTY-NOTICES.md. Imagery and terrain sources are checked by data-licences.mjs like the pack metadata built from them; street maps (vector PMTiles, MapPackInfo) predate M10 and are listed for the inventory only. Packs a customer imports under their own licence are never listed here and never redistributed by us. The online satellite source (ADR 0007, amendment of 10 Oct 2026) is streamed on request and never shipped; it is listed for its licence and attribution.",
+  "$comment": "Map and imagery data Stratlas distributes or ships (M10 decision 4), the data inventory behind docs/release/THIRD-PARTY-NOTICES.md. Imagery and terrain sources are checked by data-licences.mjs like the pack metadata built from them; street maps (vector PMTiles, MapPackInfo) predate M10 and are listed for the inventory only. Packs a customer imports under their own licence are never listed here and never redistributed by us. The online sources (ADR 0007, amendments of 10 and 14 Oct 2026) are streamed on request and never shipped; they are listed for their licences and attributions.",
   "schema": "data-sources/1",
   "sources": [
     {
@@ -50,11 +50,29 @@
     {
       "name": "Sentinel-2 cloudless 2016 (EOX)",
       "kind": "online imagery (optional)",
-      "use": "Online satellite on the map, streamed from EOX's tile service for the areas in view when the person switches it on (ADR 0007, amendment of 10 Oct 2026); never shipped, never written into a pack, a project or a package. The 2016 layer only: later years are CC BY-NC-SA and are not used",
+      "use": "Online satellite in the Map view, the Globe and the 3D scene, streamed from EOX's tile service for the areas in view when the person switches it on (ADR 0007, amendment of 10 Oct 2026); never shipped, never written into a pack, a project or a package. The 2016 layer only: later years are CC BY-NC-SA and are not used",
       "licence": "CC-BY-4.0",
       "attribution": "EOxCloudless https://cloudless.eox.at by EOX IT Services GmbH (Contains modified Copernicus Sentinel data 2016)",
       "provenance": "EOX::Maps WMTS, layer s2cloudless_3857 (Sentinel-2 cloudless 2016, Web Mercator)",
       "source": "https://tiles.maps.eox.at/wmts/1.0.0/WMTSCapabilities.xml"
+    },
+    {
+      "name": "Esri World Imagery (online)",
+      "kind": "online imagery (optional, provider terms)",
+      "use": "Online satellite in the Map view, the Globe and the 3D scene, streamed through the app's main process for the areas in view when the person switches online maps on and picks it (ADR 0007, amendment of 14 Oct 2026). Without a key the public ArcGIS Online service; with the person's ArcGIS Location Platform key, the basemap service. Kept in memory for the session only: never written to disk, a pack, a project or a package",
+      "licence": "LicenseRef-Esri-Terms-of-Use",
+      "attribution": "Powered by Esri. Source: Esri, Maxar, Earthstar Geographics, and the GIS User Community",
+      "provenance": "Esri World Imagery map service (Web Mercator tiles)",
+      "source": "https://www.esri.com/en-us/legal/terms/full-master-agreement"
+    },
+    {
+      "name": "Mapbox maps (online)",
+      "kind": "online imagery (optional, provider terms)",
+      "use": "Mapbox Satellite and the Mapbox styles (Streets, Outdoors, Light, Dark, Satellite Streets) as raster tiles, streamed through the app's main process with the person's own Mapbox access token when they switch online maps on and pick one (ADR 0007, amendment of 14 Oct 2026). Kept in memory for the session only: never written to disk, a pack, a project or a package",
+      "licence": "LicenseRef-Mapbox-Terms-of-Service",
+      "attribution": "© Mapbox © OpenStreetMap © Maxar",
+      "provenance": "Mapbox Raster Tiles API (mapbox.satellite) and Static Tiles API (mapbox styles)",
+      "source": "https://www.mapbox.com/legal/tos"
     },
     {
       "name": "Copernicus DEM GLO-30",

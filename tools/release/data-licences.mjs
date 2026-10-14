@@ -13,7 +13,9 @@
 // packs/terrain, or a pack build's output). Refuses non-commercial (NC), share-alike (SA),
 // no-derivatives (ND) and unknown licences, a missing attribution or provenance, a pack marked
 // with the customer's own licence (never redistributed by us, decision 12), and the providers
-// decision 4 rules out (Cesium ion, Bing, Google, Esri, Mapbox, EOX cloudless 2018 to 2025).
+// decision 4 rules out for packs (Cesium ion, Bing, Google, Esri, Mapbox, EOX cloudless 2018 to
+// 2025); Esri and Mapbox may still be streamed online (ADR 0007, amendment of 14 Oct 2026), which
+// this report does not judge.
 // Allowed licences: `allowed.data` in licence-exceptions.json.
 import { readFileSync, readdirSync } from 'node:fs';
 import { join, resolve } from 'node:path';
