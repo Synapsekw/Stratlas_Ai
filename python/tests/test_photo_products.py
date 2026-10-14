@@ -83,7 +83,9 @@ def test_ortho_dsm_dtm_and_mesh_become_layers(site):
     report = json.loads((root / "photogrammetry" / ps.RUN / "report" / "products.json").read_text())
     assert report["engines"] == {"odm": "3.6.2"}
     odm = root / "photogrammetry" / ps.RUN / "odm"
-    assert not (odm / "openmvs").exists() and (odm / "opensfm").is_dir()  # intermediates gone, alignment kept
+    # ODM's heavy outputs gone after commit, the alignment kept
+    assert not (odm / "odm_dem").exists() and not (odm / "odm_orthophoto").exists()
+    assert (odm / "opensfm" / "reconstruction.json").is_file()
     calls = _calls(log)
     dense = next(c for c in calls if _arg(c, "--end-with") == "odm_filterpoints")
     assert _arg(dense, "--rerun-from") == "openmvs" and "--skip-3dmodel" not in dense
@@ -111,10 +113,108 @@ def test_every_odm_call_has_the_threads_gpu_and_no_disk_optimising(site):
     assert sorted(p.name for p in logs.iterdir()) == ["j1-cloud", "j1-dense", "j1-dsm", "j1-ortho"]
 
 
+@pytest.mark.parametrize(
+    ("products", "dtm", "classify"),
+    [
+        (["dtm"], True, False),
+        (["cloud"], False, True),
+        (["cloud", "dtm"], True, False),
+        (["ortho", "dsm"], False, False),
+    ],
+)
+def test_terrain_flags_follow_the_products(products, dtm, classify):
+    base = OF.products_flags("standard", set(products), False, 4, 5.0, 10.0, None, None)
+    args = P.terrain_args(base, products)
+    assert ("--dtm" in args) is dtm and ("--pc-classify" in args) is classify
+    assert "--dsm" in args
+
+
 def test_no_dtm_flag_when_no_terrain_is_wanted(site):
     root, log = site
     run_job(P.PhotoProducts(), root, {"run": ps.RUN, "products": ["ortho"], "preset": "standard"})
-    assert all("--dtm" not in c for c in _calls(log))
+    assert all("--dtm" not in c and "--pc-classify" not in c for c in _calls(log))
+
+
+def test_a_failed_ground_classification_does_not_fail_a_job_without_a_dtm(site, monkeypatch):
+    root, _ = site
+    monkeypatch.setenv("FAKE_ODM_SAY", "odm_georeferencing:Error creating classified file")
+    result, _ = run_job(P.PhotoProducts(), root, {"run": ps.RUN, "products": ["ortho"], "preset": "standard"})
+    assert result["status"] == "done"
+
+
+@NO_PDAL
+def test_a_cloud_without_a_dtm_is_classified_but_makes_no_dtm(site):
+    root, log = site
+    result, rec = run_job(
+        P.PhotoProducts(), root, {"run": ps.RUN, "products": ["cloud"], "preset": "standard"}
+    )
+    assert result["status"] == "done"
+    calls = _calls(log)
+    assert all("--dtm" not in c and "--pc-classify" in c for c in calls)
+    assert not any("no ground points" in m["message"] for m in rec.of("log"))
+
+
+def _step_fractions(rec, step: str) -> list[float]:
+    return [
+        m["stepFraction"]
+        for m in rec.of("progress")
+        if m.get("step") == step and m.get("state") not in ("start", "done", "skipped")
+    ]
+
+
+def test_a_step_with_nothing_to_import_ends_at_its_end(site):
+    root, _ = site
+    _, rec = run_job(P.PhotoProducts(), root, {"run": ps.RUN, "products": ["ortho"], "preset": "standard"})
+    assert max(_step_fractions(rec, "dense")) == 1.0
+
+
+def test_an_unreadable_pdal_answer_keeps_the_dtm(site, monkeypatch, tmp_path):
+    from aio_pipelines import pointcloud
+
+    root, _ = site
+    monkeypatch.setattr(P, "ground_found", REAL_GROUND_FOUND)
+    pdal = ps.fake_tool(tmp_path / "tools", "pdal", "import time\ntime.sleep(0.3)\nprint('not json')\n")
+    monkeypatch.setattr(pointcloud, "find_pdal", lambda: str(pdal))
+    result, rec = run_job(P.PhotoProducts(), root, {"run": ps.RUN, "products": ["dtm"], "preset": "standard"})
+    assert result["status"] == "done"
+    assert any("could not be read" in m["message"] for m in rec.of("log"))
+    ids = {x["id"] for x in json.loads((root / "manifest.json").read_text())["layers"]}
+    assert f"{ps.RUN}-dtm" in ids
+    cloud = _step_fractions(rec, "cloud")
+    assert cloud == sorted(cloud)  # the ground check does not move the bar back
+
+
+def test_a_cancelled_products_job_resumes_where_it_stopped(site, monkeypatch):
+    import threading
+
+    from aio_pipelines.runtime import Cancelled
+
+    root, log = site
+    cancel = threading.Event()
+    real = P.IMPORTS["dsm"]
+    first = [True]
+
+    def stop_once(self, ctx, s, odm_dir):
+        if first[0]:
+            first[0] = False
+            cancel.set()
+            ctx.check()
+        return real(self, ctx, s, odm_dir)
+
+    monkeypatch.setitem(P.IMPORTS, "dsm", stop_once)
+    params = {"run": ps.RUN, "products": ["dsm", "dtm"], "preset": "standard"}
+    with pytest.raises(Cancelled):
+        run_job(P.PhotoProducts(), root, params, cancel=cancel)
+    before = len(_calls(log))
+    result, _ = run_job(P.PhotoProducts(), root, params, cancel=threading.Event())
+    assert result["status"] == "done"
+    again = _calls(log)[before:]
+    assert [_arg(c, "--end-with") for c in again] == ["odm_dem", "odm_postprocess"]  # earlier steps kept
+    assert _arg(again[0], "--rerun-from") == "odm_dem" and "--dtm" in again[0]
+    dsm_log = root / "photogrammetry" / ps.RUN / "odm-logs" / "j1-dsm" / "odm.log"
+    assert dsm_log.read_text().count("Running odm_dem stage") == 2  # the same log folder, both attempts
+    ids = {x["id"] for x in json.loads((root / "manifest.json").read_text())["layers"]}
+    assert {f"{ps.RUN}-dsm", f"{ps.RUN}-dtm"} <= ids
 
 
 def test_the_dsm_has_the_scenes_heights(site):

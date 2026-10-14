@@ -118,6 +118,35 @@ def made_products(preset: str | None, products: list[str]) -> list[str]:
     return list(products)
 
 
+def terrain_args(args: list[str], products: list[str] | set[str]) -> list[str]:
+    """``--dtm`` only when a terrain model is asked for; a cloud without one gets ``--pc-classify``
+    (ground classified in georeferencing, no DTM rendered, so the runner's DTM guard stays off)."""
+    want = set(products)
+    swap = ["--dtm"] if "dtm" in want else ["--pc-classify"] if "cloud" in want else []
+    out: list[str] = []
+    for a in args:
+        if a in ("--dtm", "--pc-classify"):
+            out += [x for x in swap if x not in out]
+        else:
+            out.append(a)
+    return out
+
+
+class _Within:
+    """A step context whose progress moves only within ``lo``..``hi`` of the step, never back."""
+
+    def __init__(self, ctx: StepContext, lo: float, hi: float):
+        self._ctx, self._lo, self._hi = ctx, lo, hi
+        self._shown = 0.0
+
+    def progress(self, fraction: float, message: str | None = None) -> None:
+        self._shown = max(self._shown, min(1.0, max(0.0, float(fraction))))
+        self._ctx.progress(self._lo + (self._hi - self._lo) * self._shown, message)
+
+    def __getattr__(self, name: str) -> Any:
+        return getattr(self._ctx, name)
+
+
 def ground_found(ctx: StepContext, laz: Path) -> bool | None:
     """Whether ODM classified any ground points (class 2) in its georeferenced cloud, read with
     ``pdal info``; None when there is no PDAL or it cannot tell (the runner's guards remain)."""
@@ -129,7 +158,17 @@ def ground_found(ctx: StepContext, laz: Path) -> bool | None:
     try:
         out = pointcloud._run(
             ctx,
-            [pdal, "info", "--stats", "--enumerate", "Classification", str(laz)],
+            # statistics of the one dimension only (PDAL still reads every point once)
+            [
+                pdal,
+                "info",
+                "--stats",
+                "--dimensions",
+                "Classification",
+                "--enumerate",
+                "Classification",
+                str(laz),
+            ],
             "Read the ground classes",
         )
         stats = json.loads(out)["stats"]["statistic"]
@@ -265,16 +304,21 @@ def _import_mesh(self: PhotoProducts, ctx: StepContext, s: dict, odm_dir: Path) 
 
 def _import_cloud(self: PhotoProducts, ctx: StepContext, s: dict, odm_dir: Path) -> dict[str, Any]:
     out: dict[str, Any] = {}
-    if "--dtm" in s["args"] and ground_found(ctx, odm_dir / OR.GEOREF_LAZ) is False:
+    if "dtm" in s["products"] and ground_found(_Within(ctx, 0.7, 0.75), odm_dir / OR.GEOREF_LAZ) is False:
         # ODM's terrain model would never finish on a cloud without ground points
         ctx.log(NO_GROUND, "warn")
         out["ground"] = 0
     if "cloud" in s["products"]:
         run = ctx.params["run"]
         temp = self._work(ctx) / "cloud"
-        ctx.progress(0.7, "Point cloud to COPC")
+        ctx.progress(0.75, "Point cloud to COPC")
         info = OU.cloud_to_copc(
-            ctx, odm_dir, ctx.stage(f"clouds/{run}.copc.laz"), s["epsg"], temp, native.memory_budget()
+            _Within(ctx, 0.75, 1.0),
+            odm_dir,
+            ctx.stage(f"clouds/{run}.copc.laz"),
+            s["epsg"],
+            temp,
+            native.memory_budget(),
         )
         shutil.rmtree(temp, ignore_errors=True)
         ctx.log(f"Point cloud: {info['points']:,} points; COPC by {info['writer']}.")
@@ -330,6 +374,16 @@ def _import_ortho(self: PhotoProducts, ctx: StepContext, s: dict, odm_dir: Path)
 
 
 IMPORTS = {"texture": _import_mesh, "cloud": _import_cloud, "dsm": _import_dems, "ortho": _import_ortho}
+
+
+def imports(step: str, s: dict) -> bool:
+    """Whether a step has work after ODM (its bar then gives ODM 0 to 0.7 of the step)."""
+    want = set(s["products"])
+    if step == "texture":
+        return bool(want & OF.MESH_PRODUCTS)
+    if step == "cloud":
+        return bool(want & {"cloud", "dtm"})
+    return step in ("dsm", "ortho")
 
 
 # ------------------------------------------------------------------------------------ pipeline
@@ -467,9 +521,7 @@ class PhotoProducts:
         args = OF.products_flags(
             preset, set(products), mc.use_gpu, mc.threads, ortho_cm, dem_cm, p.get("meshTriangles"), boundary
         )
-        if not {"dtm", "cloud"} & set(products):
-            # no terrain model and no ground class wanted: ODM's DTM is not made
-            args = [a for a in args if a != "--dtm"]
+        args = terrain_args(args, products)
         ctx.log(
             f"ODM {odm.version}, preset {preset}: ortho {ortho_cm:g} cm, DEM {dem_cm:g} cm, "
             f"{mc.threads} threads, graphics card {'on' if mc.use_gpu else 'off'}."
@@ -511,7 +563,7 @@ class PhotoProducts:
             res = OR.run_odm(
                 ctx, OR.find_odm(), odm_dir, args, first, step.last,
                 self._run_dir(ctx) / "odm-logs" / f"{ctx.job.job_id}-{step.name}",
-                rerun=True, use_gpu=s["gpu"], progress=(0.0, 0.7),
+                rerun=True, use_gpu=s["gpu"], progress=(0.0, 0.7 if imports(step.name, s) else 1.0),
             )  # fmt: skip
             # "gpuFallbacks", never "fallbacks": a PhotoStage's "fallbacks" is a number in the schema
             out: dict[str, Any] = {
