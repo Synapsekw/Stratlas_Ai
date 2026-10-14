@@ -299,14 +299,22 @@ export function SpotMatchView(p: {
     const photo = layer.items.find((x) => x.id === item.photo);
     const src = photo && safeAssetUrl(p.projectId, photo.src);
     if (photo && src)
-      body = <FrameImage kind="photo" src={src} missing={t('spot.missing')} alt={photo.id} />;
+      body = (
+        <FrameImage
+          kind="photo"
+          src={src}
+          missing={t('spot.missing')}
+          alt={photo.id}
+          fit="contain"
+        />
+      );
   } else if (item.kind === 'video' && layer?.kind === 'video') {
     const src = safeAssetUrl(p.projectId, layer.src);
     if (src)
       body = p.playable ? (
         <SpotVideo src={src} t={item.t} label={layer.name} />
       ) : (
-        <FrameImage kind="video" src={src} t={item.t} missing={t('spot.missing')} />
+        <FrameImage kind="video" src={src} t={item.t} missing={t('spot.missing')} fit="contain" />
       );
   } else if (item.kind === 'pano' && layer?.kind === 'panoramas') {
     const pano = layer.items.find((x) => x.id === item.pano);

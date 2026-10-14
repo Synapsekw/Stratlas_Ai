@@ -277,13 +277,18 @@ export interface FrameImageProps {
   /** Text when the footage cannot be shown. */
   missing: string;
   alt?: string;
+  /**
+   * `fill` (default) stretches the picture over its box, so a ground warp computed over the box
+   * (the Frames pane) lines up; `contain` keeps its own shape, letterboxed (spot history).
+   */
+  fit?: 'fill' | 'contain';
 }
 
 /**
- * One frame, fitted to its box at its own shape (letterboxed, never stretched): a photo, or a paused video seeked to `t` (exact-frame decode, not
+ * One frame, filling its box (or fitted at its own shape, `fit`): a photo, or a paused video seeked to `t` (exact-frame decode, not
  * playback, so two clips never play at once).
  */
-export function FrameImage({ src, kind, t, missing, alt }: FrameImageProps) {
+export function FrameImage({ src, kind, t, missing, alt, fit = 'fill' }: FrameImageProps) {
   const [state, setState] = useState<'loading' | 'ready' | 'error'>('loading');
   const video = useRef<HTMLVideoElement>(null);
   const seeking = useRef(false);
@@ -312,7 +317,7 @@ export function FrameImage({ src, kind, t, missing, alt }: FrameImageProps) {
     seek();
   }, [t]);
 
-  const style: CSSProperties = { ...fill, width: '100%', height: '100%', objectFit: 'contain' };
+  const style: CSSProperties = { ...fill, width: '100%', height: '100%', objectFit: fit };
   if (state === 'error')
     return (
       <div style={emptyText} data-testid="frame-missing">

@@ -52,8 +52,8 @@ vi.mock('@aio/video', async (orig) => ({
       dispose: () => undefined,
     };
   },
-  FrameImage: ({ src, kind, t }: { src: string; kind: string; t?: number }) => (
-    <i data-src={src} data-kind={kind} data-t={t} />
+  FrameImage: ({ src, kind, t, fit }: { src: string; kind: string; t?: number; fit?: string }) => (
+    <i data-src={src} data-kind={kind} data-t={t} data-fit={fit} />
   ),
 }));
 
@@ -145,6 +145,8 @@ describe('SpotMatchView', () => {
     const img = only(q('i'));
     expect(img.dataset.kind).toBe('photo');
     expect(img.dataset.src).toBe(assetUrl('p', { path: 'photos/a.jpg' }));
+    // fitted at its own shape, never stretched to the dialog
+    expect(img.dataset.fit).toBe('contain');
   });
 
   it('shows a drone photo the same way', () => {
@@ -165,6 +167,7 @@ describe('SpotMatchView', () => {
     const frame = only(q('i'));
     expect(frame.dataset.kind).toBe('video');
     expect(frame.dataset.t).toBe('4.5');
+    expect(frame.dataset.fit).toBe('contain');
     expect(q('video')).toBeNull();
 
     render(<SpotMatchView projectId="p" layers={layers} match={m} playable />);

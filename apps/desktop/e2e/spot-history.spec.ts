@@ -41,25 +41,27 @@ async function mainView(win: Page) {
 const head = (win: Page) => win.getByTestId('spot-head');
 
 /**
- * Width over height of a loaded photo as drawn (its content box under its object-fit) and as
- * decoded, and of the box that holds it: a stretched photo draws at the box's shape.
+ * Whether a loaded photo is drawn at its decoded shape: its element box has the photo's width over
+ * height (within 1%), or the browser letterboxes it (object-fit contain or scale-down). A stretched
+ * photo (fill in a box of another shape) is neither. `held`: width over height of `box`, measured.
  */
-async function drawnRatio(img: Locator, box?: Locator) {
+async function shapeOf(img: Locator, box?: Locator) {
   await expect(img).toHaveAttribute('data-state', 'ready');
   const r = await img.evaluate((el) => {
     const i = el as HTMLImageElement;
     const natural = i.naturalWidth / i.naturalHeight;
     const own = i.clientWidth / i.clientHeight;
     const fit = getComputedStyle(i).objectFit;
-    const drawn = fit === 'contain' || fit === 'scale-down' ? natural : own;
-    return { natural, drawn };
+    return { natural, own, fit };
   });
+  const keepsShape =
+    Math.abs(r.own / r.natural - 1) < 0.01 || r.fit === 'contain' || r.fit === 'scale-down';
   const held = box
     ? await box.evaluate(
         (el) => el.getBoundingClientRect().width / el.getBoundingClientRect().height,
       )
-    : r.drawn;
-  return { ...r, held };
+    : undefined;
+  return { ...r, keepsShape, held };
 }
 
 test('a photo shows its spot on both dates, steps with the keys and compares', async ({
@@ -82,8 +84,8 @@ test('a photo shows its spot on both dates, steps with the keys and compares', a
   await expect(head(win)).toHaveAttribute('data-capture', 'd1');
   await expect(head(win)).toHaveAttribute('data-item', 'p05');
   // the photo keeps its own shape in the dialog, whatever the dialog's
-  const one = await drawnRatio(dialog.locator('.spot-view img').first());
-  expect(Math.abs(one.drawn / one.natural - 1)).toBeLessThan(0.01);
+  const one = await shapeOf(dialog.locator('.spot-view img').first());
+  expect(one.keepsShape, JSON.stringify(one)).toBe(true);
 
   await win.keyboard.press('ArrowRight');
   await expect(head(win)).toHaveAttribute('data-capture', 'd2');
@@ -116,9 +118,9 @@ test('a photo shows its spot on both dates, steps with the keys and compares', a
   await expect(cmp).toHaveAttribute('data-mode', 'swipe');
   // stacked, the two dates share a box of the photo's shape (the swipe and the warp line up in it)
   const stack = cmp.getByTestId('frames-stack');
-  const two = await drawnRatio(stack.getByTestId('frames-a').locator('img').first(), stack);
-  expect(Math.abs(two.drawn / two.natural - 1)).toBeLessThan(0.01);
-  expect(Math.abs(two.held / two.natural - 1)).toBeLessThan(0.01);
+  const two = await shapeOf(stack.getByTestId('frames-a').locator('img').first(), stack);
+  expect(two.keepsShape, JSON.stringify(two)).toBe(true);
+  expect(Math.abs((two.held ?? 0) / two.natural - 1)).toBeLessThan(0.01);
   const handle = win.getByTestId('frames-swipe');
   const was = Number(await handle.getAttribute('aria-valuenow'));
   await handle.focus();

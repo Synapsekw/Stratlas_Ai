@@ -92,9 +92,17 @@ describe('FrameImage', () => {
     expect(video).toContain('data-t="12.5"');
     expect(video).not.toContain('autoplay');
   });
-  it('keeps the picture at its own shape, never stretched to the box', () => {
+  it('fills its box by default, so a ground warp over the box lines up (the Frames pane)', () => {
     for (const kind of ['photo', 'video'] as const) {
       const h = renderToStaticMarkup(<FrameImage kind={kind} src="aio://x" missing="No footage" />);
+      expect(h).toContain('object-fit:fill');
+    }
+  });
+  it('keeps the picture at its own shape when asked to contain (spot history)', () => {
+    for (const kind of ['photo', 'video'] as const) {
+      const h = renderToStaticMarkup(
+        <FrameImage kind={kind} src="aio://x" missing="No footage" fit="contain" />,
+      );
       expect(h).toContain('object-fit:contain');
       expect(h).not.toContain('object-fit:fill');
     }
