@@ -279,7 +279,9 @@ def test_a_legacy_run_in_the_project_crs_exports_the_same_cameras(tmp_path):
         assert ia == ib and np.allclose(pa, pb, atol=1e-6)
 
 
-def test_an_imported_opf_run_goes_through_photo_products(tmp_path, monkeypatch):
+def test_an_imported_opf_run_is_refused_by_photo_products(tmp_path, monkeypatch):
+    """An imported run has a sparse model but no ODM project: products asks for Create maps again
+    (deviation 8 of the ODM plan)."""
     from aio_pipelines.photo.products import PhotoProducts
 
     _no_pdal(monkeypatch)
@@ -293,16 +295,9 @@ def test_an_imported_opf_run_goes_through_photo_products(tmp_path, monkeypatch):
     assert listing["schema"] == "aio.photo-list/1" and len(listing["photos"]) == 6
     for rec in listing["photos"].values():
         assert (Path(listing["imageRoot"]) / rec["name"]).is_file()
-    res, _ = run_job(PhotoProducts(), proj, {"run": run, "products": ["dsm"], "preset": "fast"}, job_id="p1")
-    assert res["status"] == "done"
-    layers = {layer["id"] for layer in _manifest(proj)["layers"]}
-    assert f"{run}-dsm" in layers
-    import rasterio
-
-    with rasterio.open(proj / "photogrammetry" / run / "dsm.tif") as ds:
-        b = ds.bounds  # in the project CRS, over the site (tie points 0..80 E, 0..60 N of the origin)
-        assert ds.crs.to_epsg() == 32639
-        assert 500000 - 5 < b.left < b.right < 500000 + 85 and 3200000 - 5 < b.bottom < b.top < 3200000 + 65
+    with pytest.raises(JobError, match="use Create maps again"):
+        run_job(PhotoProducts(), proj, {"run": run, "products": ["dsm"], "preset": "fast"}, job_id="p1")
+    assert f"{run}-dsm" not in {layer["id"] for layer in _manifest(proj)["layers"]}
 
 
 def _link_dir(link: Path, target: Path) -> None:
