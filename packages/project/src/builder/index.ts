@@ -24,6 +24,8 @@ export {
 } from './create';
 export * from './altitude';
 export * from './drawingPlacement';
+export { glbBounds, lasBounds, layerExtent, layerExtents, type LocalExtent } from './extents';
+export { recentreBlockers, recentreProject, recentred } from './recentre';
 export {
   DRAWING_ADDED,
   addDrawingPage,
