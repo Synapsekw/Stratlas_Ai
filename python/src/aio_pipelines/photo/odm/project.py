@@ -29,7 +29,10 @@ WORK_ENV = "AIO_ODM_WORK"  # a safe folder for junctions, set by the app
 SPACES_OK = False  # C5 (amended): ODM's ground classification leaves a space in the path unquoted
 #: what cmd.exe treats specially; ODM's command line passes through it
 _CMD_SPECIAL = re.compile(r'[&^%!()<>|"]')
+#: C12. ``opensfm/image_list.txt`` goes too: ODM's OpenSfM setup (config.yaml with
+#: ``bundle_use_gcp``, the copy of gcp_list.txt) runs only when it is missing.
 GEOREF_INVALIDATE = (
+    "opensfm/image_list.txt",
     "opensfm/reconstruction.json", "opensfm/reconstruction.topocentric.json", "opensfm/config.yaml",
     "opensfm/gcp_list.txt", "opensfm/undistorted", "opensfm/exif", "opensfm/camera_models.json",
     "opensfm/reference_lla.json", "opensfm/stats", "odm_georeferencing",

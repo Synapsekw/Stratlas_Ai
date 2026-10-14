@@ -155,6 +155,15 @@ def test_boundary_invalidate_and_cleanup(tmp_path):
     assert not P.has_alignment(tmp_path)
 
 
+def test_georef_invalidation_has_odm_set_opensfm_up_again():
+    # ODM's OpenSfM setup (config.yaml with bundle_use_gcp, the gcp_list.txt copy) runs only when
+    # opensfm/image_list.txt is missing; features, matches and tracks stay
+    assert "opensfm/image_list.txt" in P.GEOREF_INVALIDATE
+    assert not any(
+        r.startswith(("opensfm/features", "opensfm/matches", "opensfm/tracks")) for r in P.GEOREF_INVALIDATE
+    )
+
+
 def test_link_images_prunes_stale_links_and_keeps_sources(tmp_path):
     a = _photo(tmp_path / "in" / "a.jpg", b"a" * 10)
     b = _photo(tmp_path / "in" / "b.jpg", b"b" * 10)

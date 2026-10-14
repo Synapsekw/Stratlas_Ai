@@ -30,6 +30,7 @@ def parse(argv: list[str]) -> argparse.Namespace:
     p.add_argument("--rerun-from")
     p.add_argument("--gcp")
     p.add_argument("--geo")
+    p.add_argument("--force-gps", action="store_true")
     p.add_argument("--feature-type", default="dspsift")
     p.add_argument("--no-gpu", action="store_true")
     p.add_argument("--fast-orthophoto", action="store_true")
@@ -101,8 +102,12 @@ def read_offset(project: Path) -> tuple[float, float]:
     return float(ox), float(oy)
 
 
-def write_stats(project: Path) -> None:
-    stats = {"reconstruction_statistics": {"reprojection_error_pixels": 0.5, "average_track_length": 3.0}}
+def write_stats(project: Path, gcp_errors: dict | None = None) -> None:
+    stats: dict = {
+        "reconstruction_statistics": {"reprojection_error_pixels": 0.5, "average_track_length": 3.0}
+    }
+    if gcp_errors is not None:
+        stats["gcp_errors"] = gcp_errors
     (project / "opensfm" / "stats").mkdir(parents=True, exist_ok=True)
     (project / "opensfm" / "stats" / "stats.json").write_text(json.dumps(stats), "utf-8")
 
@@ -134,6 +139,64 @@ def _moved_truth(truth: dict, with_gcp: bool) -> dict:
         k: {**p, "coordinates": [float(x) for x in np.asarray(p["coordinates"]) + b]}
         for k, p in rec["points"].items()
     }
+    return {"cameras": rec["cameras"], "shots": shots, "points": points}
+
+
+#: How far the fake moves the reference from the control points' mean (east, north, up, metres).
+REFERENCE_SHIFT = (3.0, -2.0, 1.0)
+
+
+def _gcp_points(path: str) -> dict[str, tuple[float, float, float]]:
+    """Longitude, latitude and height of each control point in a gcp_list.txt."""
+    from pyproj import CRS, Transformer
+
+    lines = [ln for ln in Path(path).read_text("utf-8").splitlines() if ln.strip()]
+    if len(lines) < 2:
+        return {}
+    to_ll = Transformer.from_crs(CRS.from_user_input(lines[0].strip()), CRS.from_epsg(4326), always_xy=True)
+    out = {}
+    for ln in lines[1:]:
+        f = ln.split()
+        lon, lat = to_ll.transform(float(f[0]), float(f[1]))
+        out[f[6] if len(f) > 6 else f"{f[0]},{f[1]}"] = (lon, lat, float(f[2]))
+    return out
+
+
+def _gcp_reference(gcps: dict[str, tuple[float, float, float]]) -> dict:
+    C = _crs()
+    lon, lat, h = (float(np.mean([p[i] for p in gcps.values()])) for i in range(3))
+    lon2, lat2, h2 = C.EnuFrame(lon, lat, h).to_geodetic(np.array([REFERENCE_SHIFT]))
+    return {"latitude": float(lat2[0]), "longitude": float(lon2[0]), "altitude": float(h2[0])}
+
+
+def _reframed(rec: dict, old: dict, new: dict) -> dict:
+    """The reconstruction moved from the topocentric frame of ``old`` to that of ``new``."""
+    if old == new:
+        return rec
+    from scipy.spatial.transform import Rotation
+
+    C = _crs()
+    f_old = C.EnuFrame(old["longitude"], old["latitude"], old["altitude"])
+    f_new = C.EnuFrame(new["longitude"], new["latitude"], new["altitude"])
+
+    def conv(p):
+        return f_new.from_geodetic(*f_old.to_geodetic(np.asarray(p, dtype=np.float64).reshape(-1, 3)))
+
+    names = list(rec["shots"])
+    rs = np.array([_rotvec_matrix(rec["shots"][n]["rotation"]) for n in names])
+    cs = np.array([-r.T @ np.asarray(rec["shots"][n]["translation"]) for n, r in zip(names, rs, strict=True)])
+    c2, r2 = C.transform_rotations(conv, cs, rs)
+    shots = {}
+    for i, n in enumerate(names):
+        shots[n] = {
+            **rec["shots"][n],
+            "rotation": [float(v) for v in Rotation.from_matrix(r2[i]).as_rotvec()],
+            "translation": [float(v) for v in -r2[i] @ c2[i]],
+            "gps_position": [float(v) for v in conv(rec["shots"][n]["gps_position"])[0]],
+        }
+    pts = list(rec["points"])
+    xyz = conv([rec["points"][k]["coordinates"] for k in pts]) if pts else np.zeros((0, 3))
+    points = {k: {**rec["points"][k], "coordinates": [float(v) for v in xyz[i]]} for i, k in enumerate(pts)}
     return {"cameras": rec["cameras"], "shots": shots, "points": points}
 
 
@@ -173,12 +236,40 @@ def stage_opensfm(project: Path, a: argparse.Namespace, gpu_bad: str) -> None:
     truth_file = project / ".fake" / "truth.json"
     if truth_file.is_file():
         truth = json.loads(truth_file.read_text("utf-8"))
-        rec = _moved_truth(truth, bool(a.gcp))
+        # ODM's OpenSfM setup runs only without image_list.txt (or with --rerun-from up to opensfm);
+        # only then are config.yaml and the GCP copy written, so only then does --gcp count
+        setup = not (sfm / "image_list.txt").is_file() or (
+            a.rerun_from is not None and STAGES.index(a.rerun_from) <= STAGES.index("opensfm")
+        )
+        with_gcp = bool(a.gcp) and setup
+        gcps = _gcp_points(a.gcp) if with_gcp else {}
+        ref_file = sfm / "reference_lla.json"
+        old_ref = truth.get("reference") or json.loads(ref_file.read_text("utf-8"))
+        if gcps:  # centred on the control points (ODM rounds to its UTM offset; the fake moves it more)
+            ref = _gcp_reference(gcps)
+        elif ref_file.is_file():
+            ref = json.loads(ref_file.read_text("utf-8"))
+        else:  # rewritten after an invalidation
+            ref = old_ref
+        rec = _reframed(_moved_truth(truth, with_gcp), old_ref, ref)
         for name in ("reconstruction.topocentric.json", "reconstruction.json"):
             (sfm / name).write_text(json.dumps([rec]), "utf-8")
-        if not (sfm / "reference_lla.json").is_file() and truth.get("reference"):  # after an invalidation
-            (sfm / "reference_lla.json").write_text(json.dumps(truth["reference"]), "utf-8")
-        write_stats(project)
+        ref_file.write_text(json.dumps(ref), "utf-8")
+        if setup:
+            (sfm / "image_list.txt").write_text(
+                "".join(f"{p}\n" for p in sorted((project / "images").iterdir())), "utf-8"
+            )
+            yes = {True: "yes", False: "no"}
+            (sfm / "config.yaml").write_text(
+                f"bundle_use_gcp: {yes[with_gcp]}\nbundle_use_gps: {yes[not with_gcp or a.force_gps]}\n",
+                "utf-8",
+            )
+            if with_gcp:
+                (sfm / "gcp_list.txt").write_bytes(Path(a.gcp).read_bytes())
+        errors = None
+        if gcps and not os.environ.get("FAKE_ODM_NO_GCP_ERRORS"):
+            errors = {"average_error": 0.0, "points": {pid: {"error": 0.0} for pid in gcps}}
+        write_stats(project, errors)
         epsg, utm, _ = utm_points(project)
         write_coords(project, epsg, utm)
         return

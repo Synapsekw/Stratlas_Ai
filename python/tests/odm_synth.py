@@ -122,6 +122,8 @@ def write_odm_folder(
     moved = shifted(recs[0], bias_enu)
     sfm = odm / "opensfm"
     (sfm / "stats").mkdir(parents=True, exist_ok=True)
+    # ODM's OpenSfM setup leaves the list of images; while it exists the setup is not run again
+    (sfm / "image_list.txt").write_text("".join(f"{images / link}\n" for link in links.values()), "utf-8")
     for name in ("reconstruction.topocentric.json", "reconstruction.json"):
         (sfm / name).write_text(json.dumps([moved]), "utf-8")
     (sfm / "reference_lla.json").write_text(json.dumps(reference), "utf-8")

@@ -5,14 +5,15 @@ Stages (resumable job steps): ``adjust``, ``report``, ``commit``.
     adjust   writes ``gcp_list.txt`` (confirmed marks of the control points that are not switched
              off or outliers) and has ODM align again with it. Control points that disagree with
              the others (triangulated through the run's current cameras) are named and left out
-             (``gcp.control_outliers``). With ``useGnss`` false, ``geo.txt`` gives every photo
-             position an accuracy of 100 m so it barely counts. ODM's own GCP errors go to the
-             job log.
+             (``gcp.control_outliers``). ``useGnss`` (default) passes ``--force-gps`` so the photo
+             positions count beside the control points; without it ODM uses the control points
+             only. Align's ``geo.txt`` is never changed. ODM's own GCP errors (OpenSfM's
+             ``stats/stats.json``) go to the job log.
     report   measures every point, control and check, through ODM's adjusted cameras;
              report/accuracy.json (``checkpointsInAdjustment`` false), mark predictions, the
              adjusted ``sparse/`` and ``cameras-sfm.json``
     commit   into ``photogrammetry/<run>/``; the GNSS-only model is kept as ``work/sparse-gnss/``;
-             ODM's ``odm_report/stats.json``, when there is one, as ``report/odm-stats.json``
+             ODM's GCP errors of this adjustment as ``report/odm-stats.json`` (an older copy goes)
 
 Checkpoints never reach ODM: they are left out of ``gcp_list.txt``, so the adjusted cameras are
 identical with and without them (tested).
@@ -20,9 +21,9 @@ identical with and without them (tested).
 
 from __future__ import annotations
 
+import hashlib
 import json
 import shutil
-import time
 from typing import Any
 
 import numpy as np
@@ -83,22 +84,8 @@ def _measure(model: SparseModel, points: list[dict[str, Any]], by_name: dict[str
     return out, short
 
 
-def _fresh_odm_stats(ctx: StepContext, run: str) -> bool:
-    """Stage ODM's ``odm_report/stats.json`` when this georef's ODM run wrote it (not an earlier
-    products run); ODM writes it only in its report stage."""
-    try:
-        adj = json.loads(ctx.stage("work/adjust.json").read_text("utf-8"))
-        started = float(adj["odm"]["startedAt"])
-    except (OSError, ValueError, KeyError, TypeError):
-        return False
-    src = OP.odm_project_dir(ctx.project, run) / "odm_report" / "stats.json"
-    try:
-        if src.stat().st_mtime < started:
-            return False
-    except OSError:
-        return False
-    shutil.copyfile(src, ctx.stage("out/report/odm-stats.json"))
-    return True
+def _sha1(path) -> str:
+    return hashlib.sha1(path.read_bytes()).hexdigest()
 
 
 class PhotoGeoref:
@@ -147,10 +134,6 @@ class PhotoGeoref:
         gcp = G.read_gcp_file(safe_project_path(ctx.project, self._gcp_rel(params)))
         grid_model, frame = read_sparse(base / "sparse")
         enu, grid = _frames(frame)
-        try:
-            photos = json.loads((base / "sparse" / "photos.json").read_text("utf-8"))["photos"]
-        except (OSError, ValueError, KeyError):
-            photos = {}
         geo = G.points_to_geodetic(gcp)
         surveyed = {
             p["id"]: enu.from_geodetic([geo[p["id"]][0]], [geo[p["id"]][1]], [geo[p["id"]][2]])[0]
@@ -186,28 +169,31 @@ class PhotoGeoref:
             )
             ctx.log(warnings[-1]["message"], "warn")
         gcp_list = OP.write_gcp_list(odm_dir, gcp, links_by_key, out_ids)
+        # with ground control ODM leaves the photo positions out of its adjustment unless forced;
+        # align's geo.txt (PPK positions, converted heights) is passed as it is either way
         use_gnss = params.get("useGnss", True) is not False
-        if not use_gnss:  # photo positions with an accuracy of 100 m barely count against the control
-            OP.write_geo(odm_dir, [
-                OP.GeoRow(links_by_key[k], g["gnss"]["lon"], g["gnss"]["lat"], g["gnss"]["h"], None, None, None, 100.0, 100.0)
-                for k, g in photos.items() if g.get("gnss") and k in links_by_key
-            ])  # fmt: skip
         geo_txt = odm_dir / "geo.txt"
         odm, mc = OR.find_odm(), OR.machine()
         log_dir = ctx.project / run_dir(run) / "odm-logs" / f"{ctx.job.job_id}-adjust"
         strategy = OF.GEOREF_STRATEGY
-        # C12: a first attempt removes the alignment so ODM runs it again (a resumed one keeps it)
-        if (
-            strategy == "invalidate"
-            and not (log_dir / "odm.log").exists()
-            and not (log_dir / "tool.out").exists()
-        ):
+        # C12: a first attempt removes the alignment so ODM runs it again; a resumed one keeps it,
+        # unless the control it would use changed since (the stamp of the gcp_list.txt it was given)
+        stamp, digest = log_dir / "gcp_list.sha1", _sha1(gcp_list.path)
+        resumed = (log_dir / "odm.log").exists() or (log_dir / "tool.out").exists()
+        same = resumed and stamp.is_file() and stamp.read_text("utf-8").strip() == digest
+        if strategy == "invalidate" and not same:
             OP.invalidate(odm_dir, OP.GEOREF_INVALIDATE)
+            if resumed:  # ODM's earlier stages would count as done for this attempt
+                (log_dir / "odm.log").unlink(missing_ok=True)
+                (log_dir / "tool.out").unlink(missing_ok=True)
+        log_dir.mkdir(parents=True, exist_ok=True)
+        stamp.write_text(digest, "utf-8")
         flags = OF.georef_flags(
             state.get("preset") or "standard", mc.use_gpu, mc.threads, gcp_list.path,
             geo_txt if geo_txt.is_file() else None,
         )  # fmt: skip
-        odm_started = time.time()
+        if use_gnss:
+            flags.append("--force-gps")
         res = OR.run_odm(
             ctx, odm, odm_dir, flags, "opensfm", "opensfm", log_dir,
             rerun=strategy == "rerun-from", use_gpu=mc.use_gpu, progress=(0.0, 0.9),
@@ -217,6 +203,9 @@ class PhotoGeoref:
         gcp_stats = (rec.stats or {}).get("gcp_errors")
         if gcp_stats:
             ctx.log(f"ODM's own ground control errors: {json.dumps(gcp_stats)[:1500]}")
+            atomic_write_json(ctx.stage("out/report/odm-stats.json"), {"gcp_errors": gcp_stats})
+        else:
+            ctx.stage("out/report/odm-stats.json").unlink(missing_ok=True)  # from an earlier attempt
         atomic_write_json(
             ctx.stage("work/adjust.json"),
             {
@@ -227,7 +216,7 @@ class PhotoGeoref:
                 "gnss": use_gnss,
                 "gnssShiftEnuM": [0.0, 0.0, 0.0],
                 "iterations": 0,
-                "odm": {"gcpPoints": gcp_list.points, "stats": gcp_stats, "startedAt": odm_started},
+                "odm": {"gcpPoints": gcp_list.points, "stats": gcp_stats},
                 "stats": {"reprojPx": rec.reproj_px, "gsdCm": rec.gsd_cm},
             },
         )
@@ -349,11 +338,11 @@ class PhotoGeoref:
             ("out/report/accuracy.json", f"{base}/report/accuracy.json"),
             ("out/cameras-sfm.json", f"{base}/cameras-sfm.json"),
         ]
-        if _fresh_odm_stats(ctx, run):  # ODM's own figures, its GCP errors among them
+        if ctx.stage("out/report/odm-stats.json").is_file():  # ODM's GCP errors of this adjustment
             files.append(("out/report/odm-stats.json", f"{base}/report/odm-stats.json"))
-        else:  # a copy from before this adjustment would show errors of other cameras
+        else:  # a copy from an earlier adjustment would show errors of other cameras
             ctx.out(f"{base}/report/odm-stats.json").unlink(missing_ok=True)
-            ctx.log("ODM's own ground control errors are not available until the maps are made (products).")
+            ctx.log("ODM reported no ground control errors for this adjustment.")
         commit_files(ctx, files)
         commit_files(ctx, [("work/adjusted-enu.npz", f"{base}/work/adjusted-enu.npz")], announce=False)
         pred = ctx.stage("work/predictions.json")

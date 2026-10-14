@@ -114,3 +114,29 @@ def test_gcp_gives_the_truth_and_no_gcp_the_bias(tmp_path):
     _run(odm, "--gcp", str(odm / "gcp_list.txt"), "--rerun-from", "opensfm", "--end-with", "opensfm")
     rec = json.loads((odm / "opensfm" / "reconstruction.topocentric.json").read_text())[0]
     assert rec["shots"][shot]["translation"] == pytest.approx(truth["shots"][shot]["translation"])
+
+
+def test_gcp_counts_only_when_odm_sets_opensfm_up_again(tmp_path):
+    """Like ODM: with opensfm/image_list.txt kept, the setup (config.yaml, the GCP copy) is skipped."""
+    root = tmp_path / "p"
+    ps.write_project(root, ps.make_scene(step=0.2), odm_bias=(0.0, 0.0, 2.0))
+    odm = root / "photogrammetry" / ps.RUN / "odm"
+    sfm = odm / "opensfm"
+    assert (sfm / "image_list.txt").is_file()
+
+    def first_shot() -> list[float]:
+        rec = json.loads((sfm / "reconstruction.topocentric.json").read_text())[0]
+        return rec["shots"][min(rec["shots"])]["translation"]
+
+    before = first_shot()
+    (odm / "gcp_list.txt").write_text(f"EPSG:{ps.EPSG}\n412000.0 3245000.0 21.0 10.0 10.0 00000.jpg G1\n")
+    (sfm / "reconstruction.json").unlink()  # the alignment is invalidated, the setup is not
+    _run(odm, "--gcp", str(odm / "gcp_list.txt"), "--end-with", "opensfm")
+    assert first_shot() == pytest.approx(before)  # still the biased alignment
+    assert not (sfm / "gcp_list.txt").exists() and not (sfm / "config.yaml").exists()
+    (sfm / "image_list.txt").unlink()
+    (sfm / "reconstruction.json").unlink()
+    ref = json.loads((sfm / "reference_lla.json").read_text())
+    _run(odm, "--gcp", str(odm / "gcp_list.txt"), "--end-with", "opensfm")
+    assert (sfm / "gcp_list.txt").is_file() and "bundle_use_gcp: yes" in (sfm / "config.yaml").read_text()
+    assert json.loads((sfm / "reference_lla.json").read_text()) != ref  # centred on the control points
