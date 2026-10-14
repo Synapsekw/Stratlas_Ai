@@ -204,8 +204,8 @@ export function Timeline(props: TimelineProps) {
                       title={`${c.name}${c.estimated ? ' (length not known yet)' : ''}`}
                       aria-pressed={on}
                       onClick={(e) => {
-                        // a click plays from the clicked point; keyboard activation (no
-                        // pointer position) from the playhead or the clip start
+                        // a click selects the clip at the clicked point (it does not play);
+                        // keyboard activation (no pointer position) lets the binding pick the time
                         if (e.detail === 0) onClip(c.layerId);
                         else
                           onClip(

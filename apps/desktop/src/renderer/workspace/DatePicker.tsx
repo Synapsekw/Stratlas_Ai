@@ -5,7 +5,8 @@ import { timeline, useTimeline } from './timeline';
 
 /**
  * The focused survey date as a button that opens the calendar. `up` opens the calendar above the
- * button (the timeline and the date row sit at the bottom of the window).
+ * button (the timeline and the date row sit at the bottom of the window), rendered on the page
+ * body so a scrolling box around the button (the lane timeline's body) does not clip it.
  */
 export function DatePicker({ up = false }: { up?: boolean }) {
   const t = useT();
@@ -52,6 +53,7 @@ export function DatePicker({ up = false }: { up?: boolean }) {
         }}
         opener={opener}
         className={up ? 'dbar-pop up' : 'dbar-pop'}
+        anchor={up ? 'above' : undefined}
       >
         <Calendar
           days={days}

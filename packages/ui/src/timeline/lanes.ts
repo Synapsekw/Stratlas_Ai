@@ -156,6 +156,22 @@ export function utcAt(lane: Pick<Lane, 'clips' | 'date'>, tod: number, offsetMin
   return ghostAt(lane, tod)?.utcMs ?? siteMidnightUtc(lane.date, offsetMin) + tod;
 }
 
+/**
+ * Where the clock goes when the focus moves from lane `from` to lane `to`: the same site time of
+ * day on the new date, in the new lane's clip there when it has one. `from` reads a time past
+ * midnight inside a clip that crossed it; without it the clock is read as plain site time.
+ */
+export function laneFocusTarget(
+  from: Pick<Lane, 'clips'> | undefined,
+  to: Pick<Lane, 'clips' | 'date'>,
+  nowMs: number,
+  offsetMin: number,
+): { utcMs: number; clip?: LaneClip } {
+  const tod = from ? laneTodOf(from, nowMs, offsetMin) : todOf(nowMs, offsetMin);
+  const hit = ghostAt(to, tod);
+  return hit ? { utcMs: hit.utcMs, clip: hit.clip } : { utcMs: utcAt(to, tod, offsetMin) };
+}
+
 /** The lane's clip at a time of day. */
 export function laneClipAt(lane: Pick<Lane, 'clips'>, tod: number): LaneClip | undefined {
   return ghostAt(lane, tod)?.clip;

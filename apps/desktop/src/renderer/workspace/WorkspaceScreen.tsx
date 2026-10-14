@@ -35,7 +35,7 @@ import { Stage } from './Stage';
 import { useTimeline } from './timeline';
 import { timelineActions, useTimelineBinding } from './timelineBinding';
 import { toggleTimeline, useTimelineShown } from './timelinePref';
-import { WorkspaceLanes } from './WorkspaceLanes';
+import { LaneFocusFollow, WorkspaceLanes } from './WorkspaceLanes';
 
 const EMPTY_MODEL: TimelineModel = {
   clips: [],
@@ -238,6 +238,7 @@ export function WorkspaceScreen() {
     >
       <h1 className="sr-only">{t('nav.scene')}</h1>
       {!lanes && <DateBar />}
+      {lanes && <LaneFocusFollow />}
       <Stage />
       <LayerPlaceholder />
       <div className="tl-wrap">

@@ -35,7 +35,7 @@ import { toggleTimeline } from '../workspace/timelinePref';
 import { farNotice } from '../builder/farSession';
 import { addDateMenu } from './AddSurveyDate';
 import { panelHandleLabel } from './PanelHandle';
-import { selectClip } from './Sidebar';
+import { selectClip } from '../workspace/pickClip';
 
 /** The layer kinds the palette lists: a retired viewer of an older project is not offered. */
 type ListedKind = Exclude<Layer['kind'], 'legacy'>;

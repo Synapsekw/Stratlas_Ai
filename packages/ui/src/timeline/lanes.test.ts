@@ -4,6 +4,7 @@ import {
   buildLaneModel,
   ghostAt,
   laneClipAt,
+  laneFocusTarget,
   laneNeighbour,
   laneTodOf,
   offsetLabel,
@@ -274,6 +275,50 @@ describe('ghostAt and utcAt', () => {
   it('returns the clip at a time of day, or nothing in a gap', () => {
     expect(laneClipAt(lane, 9 * H + MIN)?.layerId).toBe('c');
     expect(laneClipAt(lane, 8 * H)).toBeUndefined();
+  });
+});
+
+describe('laneFocusTarget', () => {
+  const [d1 = '', d2 = '', d3 = ''] = DATES;
+  const m = buildLaneModel(
+    tm({
+      clips: [
+        clip('a', at(d1, 9), 10 * MIN),
+        clip('b', at(d2, 9, 5), 10 * MIN),
+        // crosses midnight on the second date
+        clip('late', at(d2, 23, 50), 20 * MIN),
+      ],
+    }),
+    index([d1, d2, d3], { a: 'd1', b: 'd2', late: 'd2' }),
+    'd1',
+    OFF,
+  );
+  const [l1, l2, l3] = m.lanes;
+  if (!l1 || !l2 || !l3) throw new Error('three lanes');
+  it('lands in the clip at the same time of day on the new date', () => {
+    const t = laneFocusTarget(l1, l2, at(d1, 9, 7), OFF);
+    expect(t.clip?.layerId).toBe('b');
+    expect(t.utcMs).toBe(at(d2, 9, 7));
+  });
+  it('lands on the same time of day in a gap, with no clip', () => {
+    const t = laneFocusTarget(l1, l2, at(d1, 9, 2), OFF);
+    expect(t.clip).toBeUndefined();
+    expect(t.utcMs).toBe(at(d2, 9, 2));
+  });
+  it('lands on a date without video at the same time of day', () => {
+    const t = laneFocusTarget(l2, l3, at(d2, 9, 7), OFF);
+    expect(t.clip).toBeUndefined();
+    expect(t.utcMs).toBe(at(d3, 9, 7));
+  });
+  it('keeps a time past midnight inside a clip that crossed it', () => {
+    // 00:05 the next day is 24:05 on the second date's lane
+    const t = laneFocusTarget(l2, l1, at(d2, 24, 5), OFF);
+    expect(t.utcMs).toBe(at(d1, 24, 5));
+  });
+  it('reads the old clock as plain site time without an old lane', () => {
+    const t = laneFocusTarget(undefined, l2, at(d1, 9, 7), OFF);
+    expect(t.clip?.layerId).toBe('b');
+    expect(t.utcMs).toBe(at(d2, 9, 7));
   });
 });
 

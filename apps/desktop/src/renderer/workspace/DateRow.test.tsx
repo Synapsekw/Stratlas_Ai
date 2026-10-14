@@ -41,17 +41,23 @@ describe('DateRow', () => {
     act(() => q('date-bar-prev')?.click());
     expect(timeline.getState().focus).toBe('oct');
   });
-  it('opens the calendar above itself', () => {
+  it('opens the calendar above itself, outside any box that clips', () => {
     render();
     act(() => q('date-bar-open')?.click());
-    expect(host.querySelector('.dbar-pop.up [data-testid="calendar"]')).not.toBeNull();
+    const pop = document.body.querySelector<HTMLElement>('.dbar-pop');
+    expect(pop?.querySelector('[data-testid="calendar"]')).not.toBeNull();
+    // portalled to the body, fixed above the button
+    expect(host.contains(pop)).toBe(false);
+    expect(pop?.style.position).toBe('fixed');
+    expect(pop?.style.top).toBe('auto');
   });
   it('brings the timeline back', () => {
+    // the row shows only while the timeline is hidden
+    timelinePref.getState().set('p3', false);
     render();
     act(() =>
       host.querySelector<HTMLButtonElement>('button[aria-label="Show the timeline"]')?.click(),
     );
-    // the project has video, so the timeline was shown by default: the button flips the choice
-    expect(timelinePref.getState().byProject.p3).toBe(false);
+    expect(timelinePref.getState().byProject.p3).toBe(true);
   });
 });

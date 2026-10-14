@@ -60,8 +60,6 @@ import { askRemove, removal, useRemoval } from './removal';
 import { EmptyTrashDialog } from './RemoveHost';
 import './surveyDates.css';
 
-export { selectClip };
-
 watchPanoStitches();
 
 interface NavDef {

@@ -25,6 +25,7 @@ const DATES = [
   '2026-10-10',
 ];
 const VIDEO_FROM = 4; // d4, d5, d6 have video
+const DAY_MS = 86_400_000;
 
 interface Probe {
   __stratlas: {
@@ -137,12 +138,40 @@ test('+N earlier expands the folded dates, and a date without video has a lane',
   await expect(tl.getByTestId('lane-d1').getByTestId('lane-clip')).toHaveCount(0);
 });
 
-test('a lane label focuses its date and the sidebar follows', async ({ win }) => {
+test('a lane label focuses its date, the playhead follows and the sidebar too', async ({ win }) => {
   await openLanes(win);
+  const before = await state(win);
   await win.getByTestId('lane-label-d5').click();
   await expect(win.getByTestId('date-bar-open')).toContainText('3 Oct 2026');
   await expect(win.getByTestId('lane-label-d5')).toHaveAttribute('aria-pressed', 'true');
   await expect(win.getByTestId('date-folder-d5')).toHaveAttribute('aria-expanded', 'true');
+  // the same site time of day a week earlier, in that date's own clip, not playing
+  await expect.poll(async () => (await state(win)).nowMs).toBe(before.nowMs - 7 * DAY_MS);
+  const after = await state(win);
+  expect(after.activeClip).toMatch(/^v5/);
+  expect(after.playing).toBe(false);
+  await expect(win.getByTestId('lane-d5').getByTestId('playhead')).toHaveCount(1);
+});
+
+test('the calendar opens from the lanes and picks a date', async ({ win }) => {
+  await openLanes(win);
+  await win.getByTestId('lane-timeline').getByTestId('date-bar-open').click();
+  const cal = win.getByTestId('calendar');
+  await expect(cal).toBeVisible();
+  // wholly inside the window and on top, not clipped by the lanes' scrolling body
+  const m = await cal.evaluate((el) => {
+    const r = el.getBoundingClientRect();
+    return {
+      inside: r.left >= 0 && r.top >= 0 && r.right <= innerWidth && r.bottom <= innerHeight,
+      onTop: el.contains(document.elementFromPoint(r.left + r.width / 2, r.top + 8)),
+    };
+  });
+  expect(m.inside).toBe(true);
+  expect(m.onTop).toBe(true);
+  await cal.getByTestId('cal-day-2026-10-03').click();
+  await expect(cal).toHaveCount(0);
+  await expect(win.getByTestId('lane-label-d5')).toHaveAttribute('aria-pressed', 'true');
+  expect((await state(win)).activeClip).toMatch(/^v5/);
 });
 
 test('a clip click selects it without playing', async ({ win }) => {
@@ -176,10 +205,6 @@ test('the other lanes show a ghost line at the playhead time', async ({ win }) =
 
 test('T folds the timeline to the date row, and Alt+Left still steps', async ({ win }) => {
   await openLanes(win);
-  // the clicked project card keeps focus; the window-level shortcuts skip keys aimed at a control
-  await win.evaluate(() => {
-    (document.activeElement as HTMLElement | null)?.blur();
-  });
   await win.keyboard.press('t');
   await expect(win.getByTestId('date-row')).toBeVisible();
   await expect(win.getByTestId('lane-timeline')).toHaveCount(0);
@@ -197,9 +222,6 @@ test.describe('at the CI window size', () => {
     await openLanes(win);
     const tl = win.getByTestId('lane-timeline');
     // focus a middle date so both folds show
-    await win.evaluate(() => {
-      (document.activeElement as HTMLElement | null)?.blur();
-    });
     for (let i = 0; i < 3; i++) await win.keyboard.press('Alt+ArrowLeft');
     await expect(tl.getByTestId('date-bar-open')).toContainText('19 Sep 2026');
     await expect(tl.getByTestId('lane-fold-later')).toBeVisible();

@@ -18,7 +18,7 @@ import { Mark } from '../issueCard/Marks';
 import { useMedia } from '../media';
 import { InlineSpotStrip, SpotHistoryButton } from '../workspace/spot/SpotHistoryEntry';
 import { shell } from '../shell';
-import { selectClip } from '../shell/Sidebar';
+import { selectClip } from '../workspace/pickClip';
 import { photoSize } from '../thumbs/photoSize';
 import { MediaThumb } from '../thumbs/Thumb';
 import {
