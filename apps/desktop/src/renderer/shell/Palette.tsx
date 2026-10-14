@@ -32,6 +32,7 @@ import { rasterPacks } from '../workspace/siteTiles';
 import { toggleTelemetry } from '../workspace/telemetryPref';
 import { timeline, useTimeline } from '../workspace/timeline';
 import { toggleTimeline } from '../workspace/timelinePref';
+import { farNotice } from '../builder/farSession';
 import { addDateMenu } from './AddSurveyDate';
 import { panelHandleLabel } from './PanelHandle';
 import { selectClip } from './Sidebar';
@@ -513,6 +514,14 @@ export function Palette() {
             'mesh',
           ],
           run: () => void pickTileset(),
+        });
+        list.push({
+          id: 'builder:check-placement',
+          title: 'Check where layers lie against the project origin',
+          group: 'Actions',
+          icon: 'target',
+          keywords: ['origin', 're-centre', 'recenter', 'far', 'placement', 'out of view'],
+          run: () => void farNotice.getState().check(ws.project?.id ?? '', 'all'),
         });
         const meshes = layers.filter((l) => l.kind === 'mesh');
         if (meshes[0]) {

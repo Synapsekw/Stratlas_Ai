@@ -18,6 +18,7 @@ import { IssuesScreen } from './screens/Issues';
 import { jobTitle } from './processing/pipelines';
 import { PipelineDialog } from './processing/PipelineDialog';
 import { ProcessingDrawer } from './processing/ProcessingDrawer';
+import { startFarWatch } from './builder/farSession';
 import { MediaScreen } from './screens/Media';
 import { DetectionsScreen } from './screens/Detections';
 import { ProjectsScreen } from './screens/Projects';
@@ -257,6 +258,7 @@ export function App() {
     // the change producers of the Changes panel (C2 to C4), once
     registerAppChangeProducers();
     // a finished conversion (point cloud to COPC) adds a layer: reload the open manifest
+    const stopFarWatch = startFarWatch();
     const stopJobReload = jobs.subscribe((s, prev) => {
       const project = workspace.getState().project;
       if (!project || !finishedManifestJob(prev.jobs, s.jobs, project.root)) return;
@@ -371,6 +373,7 @@ export function App() {
       stopJournal();
       stopPeople();
       stopJobReload();
+      stopFarWatch();
       stopChangeReload();
       stopIssueReload();
       stopRoad();
