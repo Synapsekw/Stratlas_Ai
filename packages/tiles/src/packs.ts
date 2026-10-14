@@ -89,6 +89,8 @@ export interface RasterTileSource {
   readonly packs: readonly RasterPack[];
   readonly minZoom: number;
   readonly maxZoom: number;
+  /** Pixels along a tile's edge (absent: 256). Online Mapbox tiles are 512 or 1024. */
+  readonly tilePx?: number;
   /** The tile bytes (WebP, PNG or JPEG) and the pack they came from. */
   getTile(
     z: number,

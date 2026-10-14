@@ -21,6 +21,7 @@ export {
   type TilesetOptions,
   type TilesetStats,
 } from './adapter';
+export { createOnlineTileSource } from './online';
 export {
   createRasterTileSource,
   decodeTerrarium,

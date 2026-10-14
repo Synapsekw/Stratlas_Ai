@@ -157,8 +157,9 @@ export async function browserDecode(data: ArrayBuffer): Promise<Pixels> {
 
 /** Choose the deepest zoom whose span stays within `maxPx` pixels (and within the source). */
 export function zoomFor(spanDeg: number, maxPx: number, source: RasterTileSource): number {
+  const px = source.tilePx ?? 256;
   for (let z = Math.min(source.maxZoom, 18); z > source.minZoom; z--) {
-    if ((spanDeg / 360) * 2 ** z * 256 <= maxPx) return z;
+    if ((spanDeg / 360) * 2 ** z * px <= maxPx) return z;
   }
   return source.minZoom;
 }
