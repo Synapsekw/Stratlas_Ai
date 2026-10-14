@@ -2750,6 +2750,51 @@ svg.flip {
 .sblock {
   margin-bottom: 26px;
 }
+/* Settings, Map sources */
+.ms-master,
+.ms-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.ms-text {
+  display: grid;
+  gap: 2px;
+}
+.ms-row {
+  padding-block: 12px;
+  border-top: 1px solid var(--line-soft);
+  display: grid;
+  gap: 6px;
+}
+.ms-key {
+  display: flex;
+  gap: 6px;
+}
+.ms-key .input {
+  flex: 1;
+  min-width: 0;
+}
+.ms-label {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+.ms-status {
+  color: var(--fg-3);
+  font-size: var(--t-12);
+}
+.ms-foot {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding-block: 12px;
+  border-top: 1px solid var(--line-soft);
+}
 .sblock > h2 {
   display: flex;
   align-items: center;

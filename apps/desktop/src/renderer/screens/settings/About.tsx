@@ -1,5 +1,5 @@
 import { brand } from '@aio/brand';
-import { ONLINE_SATELLITE, type AioBridge, type IpcEvent, type IpcResponse } from '@aio/schema';
+import { ONLINE_SOURCES, type AioBridge, type IpcEvent, type IpcResponse } from '@aio/schema';
 import { formatBytes, formatDate, Icon, Switch, t } from '@aio/ui';
 import { useEffect, useMemo, useState } from 'react';
 import { build, formatBuildTime } from '../../buildStamp';
@@ -401,8 +401,8 @@ function Licences() {
         built. Map data © OpenStreetMap contributors (ODbL), basemap by Protomaps.
       </p>
       <p className="help" data-testid="about-online-satellite">
-        Online satellite imagery (off unless you switch it on in Offline maps):{' '}
-        <span dir="ltr">{ONLINE_SATELLITE.attribution}</span>, licensed CC BY 4.0.
+        Online maps (off unless you switch them on in Map sources):{' '}
+        <span dir="ltr">{[...new Set(ONLINE_SOURCES.map((s) => s.attribution))].join('; ')}</span>.
       </p>
       {list && !list.ok && <p className="prov-err">{list.error}</p>}
       {/* scrolls on its own: focusable so the keyboard can scroll it */}

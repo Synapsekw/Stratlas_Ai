@@ -36,6 +36,7 @@ import { Appearance } from './settings/Appearance';
 import { Keyboard } from './settings/Keyboard';
 import { LocalModel } from './settings/LocalModel';
 import { MapPacks } from './settings/MapPacks';
+import { MapSources } from './settings/MapSources';
 import { ProcessingTools } from './settings/ProcessingTools';
 import { ProviderConnection } from './settings/ProviderConnection';
 import { ReportBranding } from './settings/ReportBranding';
@@ -61,6 +62,12 @@ const PAGES: { page: Page; label: MessageKey; icon: IconName; group: MessageKey 
   { page: 'data', label: 'settings.page.data', icon: 'layers', group: 'settings.group.data' },
   { page: 'tools', label: 'settings.page.tools', icon: 'download', group: 'settings.group.data' },
   { page: 'maps', label: 'settings.page.maps', icon: 'map', group: 'settings.group.data' },
+  {
+    page: 'map-sources',
+    label: 'settings.page.mapSources',
+    icon: 'globe',
+    group: 'settings.group.data',
+  },
   {
     page: 'severity',
     label: 'settings.page.severity',
@@ -790,6 +797,7 @@ const HEAD: Record<Page, { title: MessageKey; text: MessageKey }> = {
   data: { title: 'settings.page.data', text: 'settings.data.text' },
   tools: { title: 'settings.page.tools', text: 'settings.tools.text' },
   maps: { title: 'settings.page.maps', text: 'settings.maps.text' },
+  'map-sources': { title: 'settings.page.mapSources', text: 'settings.mapSources.text' },
   severity: { title: 'settings.page.severity', text: 'settings.severity.text' },
   branding: { title: 'settings.page.branding', text: 'settings.branding.text' },
   graphics: { title: 'settings.page.graphics', text: 'settings.graphics.text' },
@@ -868,6 +876,7 @@ export function SettingsScreen() {
           {page === 'data' && <TeamServer />}
           {page === 'tools' && <ProcessingTools />}
           {page === 'maps' && <MapPacks />}
+          {page === 'map-sources' && <MapSources />}
           {page === 'severity' && <Severity />}
           {page === 'branding' && <ReportBranding />}
           {page === 'graphics' && <Graphics />}

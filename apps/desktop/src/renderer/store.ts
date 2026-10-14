@@ -56,6 +56,7 @@ export type SettingsPage =
   | 'data'
   | 'tools'
   | 'maps'
+  | 'map-sources'
   | 'severity'
   | 'branding'
   | 'graphics'
