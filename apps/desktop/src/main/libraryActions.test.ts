@@ -96,6 +96,19 @@ describe('deletableTarget', () => {
     expect(await target(kit)).toEqual({ ok: true, path: kit, what: 'folder' });
   });
 
+  it('names a kit export sitting directly in the data folder, listed or not', async () => {
+    const kit = await roadKit(join(projects, 'ring-road'));
+    expect(await target(kit)).toEqual({ ok: true, path: kit, what: 'folder' });
+    expect(await target(kit, { listed: [] })).toEqual({ ok: true, path: kit, what: 'folder' });
+  });
+
+  it('refuses a folder in the data folder that holds no project', async () => {
+    const empty = join(projects, 'empty');
+    await mkdir(empty);
+    const r = await target(empty, { listed: [] });
+    expect(r.ok).toBe(false);
+  });
+
   it('refuses a folder that is not in library.json', async () => {
     const added = await writeProject(join(base, 'elsewhere', 'added'), sampleManifest());
     const r = await target(added, { listed: [join(base, 'elsewhere', 'other')] });

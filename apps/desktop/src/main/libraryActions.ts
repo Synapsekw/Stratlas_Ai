@@ -147,7 +147,8 @@ async function packageFile(path: string): Promise<DeleteTarget> {
  * What a delete of the library entry at `path` moves to the recycle bin, checked on disk now.
  *
  * A demo (`demoCopy` not undefined): its working copy in userData, or nothing when there is none.
- * Directly in `<dataRoot>/projects`: a `.aio` file, or a folder `managedProjectFolder` accepts.
+ * Directly in `<dataRoot>/projects`: a `.aio` file, a folder `managedProjectFolder` accepts, or a
+ * kit export (checked as below, without the `library.json` listing).
  * Anywhere else the path must be listed in `library.json`, must not be a link or a drive root,
  * must not be or hold the data folder or a guard root, and must be a `.aio` file or a folder
  * that holds a project (`detectFolder`: our manifest or a known kit export).
@@ -179,13 +180,19 @@ export async function deletableTarget(o: {
     return { ok: true, path: copy, what: 'demo-copy' };
   }
 
-  if (o.dataRoot.trim() !== '' && samePath(dirname(path), resolve(o.dataRoot, 'projects'))) {
+  const inProjects =
+    o.dataRoot.trim() !== '' && samePath(dirname(path), resolve(o.dataRoot, 'projects'));
+  if (inProjects) {
     if (isPackagePath(path)) return packageFile(path);
-    const m = await managedProjectFolder(o.dataRoot, path);
-    return m.ok ? { ok: true, path: m.root, what: 'folder' } : m;
+    // a kit export there has no manifest.json: it is checked below like an added folder
+    const kind = await detectFolder(path).catch(() => null);
+    if (kind === null || kind === 'native') {
+      const m = await managedProjectFolder(o.dataRoot, path);
+      return m.ok ? { ok: true, path: m.root, what: 'folder' } : m;
+    }
   }
 
-  if (!o.listed.some((l) => samePath(l, path)))
+  if (!inProjects && !o.listed.some((l) => samePath(l, path)))
     return fail(
       `${path} is not in the data folder and was not added to the library, so it is not deleted here. Reload the library.`,
     );
