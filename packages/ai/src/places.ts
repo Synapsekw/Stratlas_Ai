@@ -11,12 +11,14 @@ import {
   clipCamera,
   clipKeys,
   clipPoseAt,
+  correctedPhoto,
   fromWgs84,
+  photoCorrection,
   localToProject,
   projectToLocal,
   toWgs84,
 } from '@aio/geo';
-import type { Issue, Quat, Vec3 } from '@aio/schema';
+import type { Issue, PhotoRef, Quat, Vec3 } from '@aio/schema';
 import { assetUrl } from '@aio/workspace';
 import { Box3, Vector3, type Object3D } from 'three';
 import { clipStartUtcMs } from './context';
@@ -495,6 +497,9 @@ export function placeIndex(ctx: RendererToolContext, opts: IndexOptions = {}): P
   }
 
   const scene = ctx.scene();
+  const orientation = ctx.workspace.getState().orientation;
+  const drawn = (layerId: string, p: PhotoRef) =>
+    correctedPhoto(p, photoCorrection(orientation, layerId, p.id));
   for (const l of m.layers) {
     const place: Place = {
       id: `layer:${l.id}`,
@@ -509,7 +514,12 @@ export function placeIndex(ctx: RendererToolContext, opts: IndexOptions = {}): P
       const br: Vec3 = [tr[0] + bl[0] - tl[0], tr[1] + bl[1] - tl[1], tr[2] + bl[2] - tl[2]];
       box = boxOfPoints([tl, tr, bl, br]);
     } else if (l.kind === 'photos') {
-      box = boxOfPoints(l.items.flatMap((i) => (i.pos ? [i.pos] : [])));
+      box = boxOfPoints(
+        l.items.flatMap((i) => {
+          const c = drawn(l.id, i);
+          return c.pos ? [c.pos] : [];
+        }),
+      );
     } else if (l.kind === 'panoramas') {
       box = boxOfPoints(l.items.map((i) => i.pos));
     } else if (opts.measureLayers && scene && (l.kind === 'mesh' || l.kind === 'pointcloud')) {
@@ -523,7 +533,8 @@ export function placeIndex(ctx: RendererToolContext, opts: IndexOptions = {}): P
     out.push(place);
 
     if (l.kind === 'photos') {
-      for (const i of l.items) {
+      for (const raw of l.items) {
+        const i = drawn(l.id, raw);
         out.push({
           id: `photo:${i.id}`,
           kind: 'photo',
@@ -588,7 +599,10 @@ function photoEye(ctx: RendererToolContext, id: string | undefined): Eye | undef
   if (!id) return undefined;
   for (const l of project(ctx).manifest.layers) {
     if (l.kind !== 'photos') continue;
-    const i = l.items.find((x) => x.id === id);
+    const raw = l.items.find((x) => x.id === id);
+    const i = raw
+      ? correctedPhoto(raw, photoCorrection(ctx.workspace.getState().orientation, l.id, raw.id))
+      : undefined;
     if (i?.pos) return { pos: i.pos, ...(i.q ? { q: i.q } : {}) };
   }
   return undefined;

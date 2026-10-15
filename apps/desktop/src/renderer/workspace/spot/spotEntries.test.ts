@@ -56,6 +56,20 @@ describe('spotEntries', () => {
     expect(c).toMatchObject({ pos: [4, 5, 6], hasLens: false });
     expect(e.find((x) => x.kind === 'photo' && x.id === 'b')).not.toHaveProperty('pos');
   });
+  it('moves a photo by its correction', () => {
+    const moved = spotEntries({
+      layers: manifest.layers,
+      index,
+      videoSamples: () => null,
+      correction: (l, p) =>
+        l === 'photos-d1' && p === 'a'
+          ? { yawDeg: 0, pitchDeg: 0, rollDeg: 0, offsetM: [5, 0, 0] }
+          : null,
+    });
+    expect(moved.find((x) => x.kind === 'photo' && x.id === 'a')).toMatchObject({
+      pos: [6, 2, 3],
+    });
+  });
   it('keeps undated layers, without a date', () => {
     expect(e.find((x) => x.kind === 'photo' && x.id === 'u')?.capture).toBeUndefined();
   });
