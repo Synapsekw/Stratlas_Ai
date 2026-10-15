@@ -1,8 +1,10 @@
 import {
-  composePlacement,
+  basisShape,
   createPlaceGizmo,
-  decomposePlacement,
   getActiveStage,
+  placeOnBasis,
+  placementOnBasis,
+  splitPlacement,
   type GizmoMode,
   type PlaceGizmoHandle,
 } from '@aio/engine';
@@ -12,13 +14,12 @@ import {
   localToProject,
   projectToLocal,
   toWgs84,
-  upAxisOf,
-  type UpAxis,
 } from '@aio/geo';
 import { LocationPicker } from '@aio/maps';
-import type { Layer, Mat4, Vec3 } from '@aio/schema';
+import type { Georef, Layer, LayerPatch, Mat4, Placement, Vec3 } from '@aio/schema';
 import { Icon, useT, type MessageKey } from '@aio/ui';
 import { useWorkspace, workspace } from '@aio/workspace';
+import { Box3 } from 'three';
 import {
   useCallback,
   useEffect,
@@ -53,6 +54,34 @@ const FIELDS: { id: Field; label: MessageKey }[] = [
 ];
 
 const num = (v: number) => String(Number(v.toFixed(3)));
+
+/** What a saved placement was before, for Undo after Done: all of it goes back in one write. */
+interface Saved {
+  transform: Mat4;
+  georef?: Georef | undefined;
+  placement?: Placement | undefined;
+}
+
+const patchOf = (s: Saved): LayerPatch =>
+  s.georef !== undefined || s.placement !== undefined
+    ? {
+        transform: s.transform,
+        ...(s.georef !== undefined ? { georef: s.georef } : {}),
+        ...(s.placement !== undefined ? { placement: s.placement } : {}),
+      }
+    : { transform: s.transform };
+
+/**
+ * How far the model's lowest point lies below its origin, as drawn now (the layer's bounds in the
+ * 3D view); 0 without a 3D view. Drop to ground lands that point, not the origin.
+ */
+function originAboveBase(layerId: string, originY: number): number {
+  const group = getActiveStage()?.scene.getObjectByName(`layer:${layerId}`);
+  if (!group) return 0;
+  group.updateMatrixWorld(true);
+  const box = new Box3().setFromObject(group);
+  return box.isEmpty() ? 0 : originY - box.min.y;
+}
 
 /**
  * Height under a plan point for Drop to ground: the top of the other models and clouds there
@@ -96,12 +125,14 @@ export function PlaceModel({
   );
   const origin = project?.manifest.origin;
   const epsg = project && 'epsg' in project.manifest.crs ? project.manifest.crs.epsg : null;
-  const up: UpAxis = layer ? upAxisOf(layer.transform) : 'y';
-
+  // what the edits keep (the up axis, the model's own scale, a mirroring), fixed at open
+  const [basis, setBasis] = useState<Mat4 | null>(() =>
+    layer ? splitPlacement(layer.transform).basis : null,
+  );
   const [start, setStart] = useState<Mat4 | null>(layer ? [...layer.transform] : null);
   const [current, setCurrent] = useState<Mat4 | null>(layer ? [...layer.transform] : null);
   const [history, setHistory] = useState<Mat4[]>([]);
-  const [previous, setPrevious] = useState<Mat4 | null>(null);
+  const [previous, setPrevious] = useState<Saved | null>(null);
   const [mode, setMode] = useState<GizmoMode>('move');
   const [armed, setArmed] = useState(false);
   const [mapOpen, setMapOpen] = useState(false);
@@ -119,6 +150,10 @@ export function PlaceModel({
   useLayoutEffect(() => {
     currentRef.current = current;
   }, [current]);
+  const basisRef = useRef(basis);
+  useLayoutEffect(() => {
+    basisRef.current = basis;
+  }, [basis]);
   const readOnly = pkg !== null;
 
   // A moved origin (a re-centre) changes the local frame: everything held belongs to the old one.
@@ -126,6 +161,7 @@ export function PlaceModel({
   const [heldFrame, setHeldFrame] = useState(frame);
   if (heldFrame !== frame) {
     setHeldFrame(frame);
+    setBasis(layer ? splitPlacement(layer.transform).basis : null);
     setStart(layer ? [...layer.transform] : null);
     setCurrent(layer ? [...layer.transform] : null);
     setHistory([]);
@@ -139,7 +175,7 @@ export function PlaceModel({
     if (!stage) return;
     const g = createPlaceGizmo(stage);
     gizmo.current = g;
-    g.attach(layer.id, currentRef.current ?? layer.transform);
+    g.attach(layer.id, currentRef.current ?? layer.transform, basisRef.current ?? undefined);
     g.setMode('move');
     const offChange = g.onChange((next) => {
       keep(next);
@@ -170,6 +206,42 @@ export function PlaceModel({
     [keep],
   );
 
+  // a re-centre moves the local frame: the handle and the model follow the manifest at once
+  const shownFrame = useRef(frame);
+  useEffect(() => {
+    if (shownFrame.current === frame) return;
+    shownFrame.current = frame;
+    const at = currentRef.current;
+    if (at) gizmo.current?.attach(layerId, at, basisRef.current ?? undefined);
+  }, [frame, layerId]);
+
+  // Escape: a pick that is armed lets go; otherwise the panel closes as Cancel does
+  const manifestTransform = layer?.transform;
+  useEffect(() => {
+    const onKey = (e: globalThis.KeyboardEvent) => {
+      if (e.key !== 'Escape' || e.defaultPrevented) return;
+      const el = e.target;
+      if (
+        el instanceof HTMLElement &&
+        (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.isContentEditable)
+      )
+        return;
+      if (armed) {
+        setArmed(false);
+        setSay(null);
+        return;
+      }
+      if (manifestTransform) gizmo.current?.set(manifestTransform);
+      gizmo.current?.detach();
+      gizmo.current = null;
+      builder.getState().stopAlign();
+    };
+    window.addEventListener('keydown', onKey);
+    return () => {
+      window.removeEventListener('keydown', onKey);
+    };
+  }, [armed, manifestTransform]);
+
   // while picking in the scene, hide the model so what is under it can be clicked
   useEffect(() => {
     if (!armed || !layer) return;
@@ -180,14 +252,16 @@ export function PlaceModel({
     };
   }, [armed, layer]);
 
-  const placement = current ? decomposePlacement(current, up) : null;
-  const base = start ? decomposePlacement(start, up) : null;
+  const placement = current && basis ? placementOnBasis(current, basis) : null;
+  const base = start && basis ? placementOnBasis(start, basis) : null;
   const moveTo = (anchor: Vec3) => {
-    if (!placement) return;
-    apply(composePlacement({ ...placement, anchor, up }));
+    if (!placement || !basis) return;
+    apply(placeOnBasis({ ...placement, anchor }, basis));
   };
 
   useStagePick(armed, (hit) => {
+    // a click on the handle is the handle's
+    if (gizmo.current?.busy()) return;
     if (!hit) {
       setSay({ text: t('place.pickNothing'), tone: 'bad' });
       return;
@@ -197,7 +271,7 @@ export function PlaceModel({
     moveTo([hit.point.x, hit.point.y, hit.point.z]);
   });
 
-  if (!project || !layer || !origin || epsg === null || !current || !placement || !base)
+  if (!project || !layer || !origin || epsg === null || !current || !placement || !base || !basis)
     return (
       <Shell t={t}>
         <div className="sec say">{t('place.noModel')}</div>
@@ -246,7 +320,7 @@ export function PlaceModel({
     else if (f === 'tiltX') p.tiltXDeg = v;
     else if (f === 'tiltZ') p.tiltZDeg = v;
     else p.scale = v;
-    apply(composePlacement({ ...p, up }));
+    apply(placeOnBasis(p, basis));
   };
   const enterCommits = (f: Field) => (e: KeyboardEvent) => {
     if (e.key === 'Enter') {
@@ -255,38 +329,42 @@ export function PlaceModel({
     }
   };
 
-  const save = async (transform: Mat4, after: () => void) => {
+  /** One manifest write; `after` runs once it is saved. */
+  const save = async (patch: LayerPatch, after: () => void) => {
     setSaving(true);
-    const b = builder.getState();
-    let err = await b.saveLayers([layer.id], { transform });
-    // a georeferenced model keeps a record of where it sits, now set by the person; a model that
-    // waited for placing is placed
-    if (!err && (layer.georef || (layer.placement && layer.placement !== 'placed'))) {
-      const georef = layer.georef
-        ? layerTransformToGeoref(
-            transform,
-            { crs: project.manifest.crs, origin },
-            layer.georef,
-            'place-model',
-          )
-        : undefined;
-      err = await b.saveLayers([layer.id], {
-        ...(georef ? { georef } : {}),
-        placement: 'placed',
-      });
-    }
+    const err = await builder.getState().saveLayers([layer.id], patch);
     setSaving(false);
     if (err) setSay({ text: err, tone: 'bad' });
     else after();
   };
   const done = () => {
-    const before = start ?? layer.transform;
-    void save(current, () => {
-      setPrevious(before);
-      setStart(current);
-      setHistory([]);
-      setSay({ text: t('place.saved') });
-    });
+    const before: Saved = {
+      transform: start ?? layer.transform,
+      georef: layer.georef,
+      placement: layer.placement,
+    };
+    // a georeferenced model keeps a record of where it sits, now set by the person; a model that
+    // waited for placing is placed; all with the transform, in one write
+    const placing = layer.georef !== undefined || (layer.placement ?? 'placed') !== 'placed';
+    const georef = layer.georef
+      ? layerTransformToGeoref(
+          current,
+          { crs: project.manifest.crs, origin },
+          layer.georef,
+          'place-model',
+        )
+      : undefined;
+    void save(
+      placing
+        ? patchOf({ transform: current, georef, placement: 'placed' })
+        : patchOf({ transform: current }),
+      () => {
+        setPrevious(before);
+        setStart(current);
+        setHistory([]);
+        setSay({ text: t('place.saved') });
+      },
+    );
   };
   const undo = () => {
     const last = history.at(-1);
@@ -297,10 +375,10 @@ export function PlaceModel({
     }
     if (previous) {
       const back = previous;
-      void save(back, () => {
+      void save(patchOf(back), () => {
         setPrevious(null);
-        setStart(back);
-        apply(back, false);
+        setStart(back.transform);
+        apply(back.transform, false);
         setSay(null);
       });
     }
@@ -319,6 +397,7 @@ export function PlaceModel({
     return [ll[0], ll[1]];
   };
   const changed = current.some((v, i) => v !== start?.[i]);
+  const shape = basisShape(basis);
 
   return (
     <Shell t={t} onClose={close}>
@@ -380,8 +459,10 @@ export function PlaceModel({
                   placement.anchor[0],
                   placement.anchor[2],
                 );
+                // the model's lowest point lands on the ground, not its origin
+                const lift = originAboveBase(layer.id, placement.anchor[1]);
                 if (h === null) setSay({ text: t('place.dropNothing'), tone: 'bad' });
-                else moveTo([placement.anchor[0], h, placement.anchor[2]]);
+                else moveTo([placement.anchor[0], h + lift, placement.anchor[2]]);
               }}
             >
               <Icon name="chevdown" size={14} />
@@ -410,9 +491,15 @@ export function PlaceModel({
                 setSay({ text: t('place.typedBad'), tone: 'bad' });
                 return;
               }
+              // without a height the model keeps the one it has
+              const numbers = typed
+                .trim()
+                .split(/[\s,;]+/)
+                .filter(Boolean).length;
+              const h = numbers < 3 ? world[2] : p[2];
               setSay(null);
               setTyped('');
-              moveTo(projectToLocal(p, origin));
+              moveTo(projectToLocal([p[0], p[1], h], origin));
             }}
           >
             <input
@@ -438,6 +525,11 @@ export function PlaceModel({
           </p>
         </div>
 
+        {(shape.mirrored || shape.stretched) && (
+          <p className="sec say" data-testid="place-kept">
+            {t('place.keptBasis')}
+          </p>
+        )}
         <div className="sec b-place-fields">
           {FIELDS.map((f) => (
             <label key={f.id}>
@@ -461,7 +553,7 @@ export function PlaceModel({
 
         <div className="sec">
           {say && (
-            <p className={`say ${say.tone ?? ''}`} data-testid="place-say">
+            <p className={`say ${say.tone ?? ''}`} role="status" data-testid="place-say">
               {say.text}
             </p>
           )}

@@ -7,7 +7,7 @@ import { workspace } from '@aio/workspace';
 import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import type { Intersection } from 'three';
+import { BoxGeometry, Group, Mesh, type Intersection, type Object3D } from 'three';
 
 vi.mock('@aio/maps', () => ({ LocationPicker: () => null }));
 
@@ -19,7 +19,9 @@ const gizmo = {
   change: null as ((t: Mat4) => void) | null,
   drag: null as ((d: boolean) => void) | null,
   detached: 0,
+  busy: false,
   reset() {
+    gizmo.busy = false;
     gizmo.attached = [];
     gizmo.shown = [];
     gizmo.modes = [];
@@ -28,7 +30,9 @@ const gizmo = {
     gizmo.detached = 0;
   },
 };
-const fakeStage = { scene: { getObjectByName: () => undefined } };
+/** The layer's group in the 3D view, when a test gives one (Drop to ground reads its bounds). */
+let layerGroup: Object3D | undefined;
+const fakeStage = { scene: { getObjectByName: () => layerGroup } };
 let stageOn = true;
 vi.mock('@aio/engine', async (importOriginal) => ({
   ...(await importOriginal<typeof Engine>()),
@@ -48,6 +52,7 @@ vi.mock('@aio/engine', async (importOriginal) => ({
     detach: () => {
       gizmo.detached++;
     },
+    busy: () => gizmo.busy,
   }),
 }));
 
@@ -122,6 +127,7 @@ beforeEach(() => {
   document.body.append(host);
   gizmo.reset();
   stageOn = true;
+  layerGroup = undefined;
   saved = [];
   builder.setState({
     saveLayers: (ids, patch) => {
@@ -173,6 +179,28 @@ describe('Place model', () => {
     expect(scenePick).toBeNull();
   });
 
+  it('leaves a click on the handle to the handle while picking, and Escape lets the pick go', () => {
+    open();
+    act(() => q('place-pick-scene')?.click());
+    gizmo.busy = true;
+    act(() => {
+      scenePick?.({ point: { x: 12, y: 4, z: -7 } } as unknown as Intersection);
+    });
+    expect(placed().anchor).toEqual([0, 0, 0]);
+    expect(scenePick).not.toBeNull();
+    act(() => {
+      window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
+    });
+    expect(scenePick).toBeNull();
+    // a second Escape closes the panel like Cancel
+    builder.setState({ align: { kind: 'place', layerId: 'tower' } });
+    act(() => {
+      window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
+    });
+    expect(builder.getState().align).toBeNull();
+    expect(gizmo.detached).toBeGreaterThan(0);
+  });
+
   it('takes E N H in the project CRS and latitude, longitude through WGS84', () => {
     open();
     type('place-typed', '500020 4000030 15', 'enter');
@@ -184,6 +212,13 @@ describe('Place model', () => {
     expect(got.every((v, i) => near(v, want[i] ?? NaN))).toBe(true);
   });
 
+  it('keeps the height it has when the typed position has none', () => {
+    open();
+    type('place-up', '7');
+    type('place-typed', '500020 4000030', 'enter');
+    expect(placed().anchor).toEqual([20, 7, -30]);
+  });
+
   it('drops to the ground only when asked, once', () => {
     const groundAt = open();
     type('place-east', '5');
@@ -192,6 +227,18 @@ describe('Place model', () => {
     expect(groundAt).toHaveBeenCalledTimes(1);
     expect(groundAt).toHaveBeenCalledWith(5, 0);
     expect(placed().anchor[1]).toBe(3);
+  });
+
+  it('lands the lowest point of the model on the ground, not its origin', () => {
+    // a 2 m box whose bottom sits 1.5 m under the model origin, as drawn now
+    const box = new Mesh(new BoxGeometry(2, 2, 2));
+    box.position.set(0, -0.5, 0);
+    layerGroup = new Group();
+    layerGroup.add(box);
+    open();
+    act(() => q('place-drop')?.click());
+    // ground at 3: the bottom lands there, the origin 1.5 m above it
+    expect(placed().anchor[1]).toBeCloseTo(4.5, 9);
   });
 
   it('moves with the fields and the handle; Undo steps back, Reset starts over', () => {
@@ -252,9 +299,11 @@ describe('Place model', () => {
       await Promise.resolve();
       await Promise.resolve();
     });
-    expect(saved).toHaveLength(2);
+    // one write: the transform, the georeference set by the person and the placement
+    expect(saved).toHaveLength(1);
     const t = (saved[0]?.patch as { transform: Mat4 }).transform;
-    expect(saved[1]?.patch).toEqual({
+    expect(saved[0]?.patch).toEqual({
+      transform: t,
       georef: layerTransformToGeoref(
         t,
         { crs: { epsg: EPSG }, origin: ORIGIN },
@@ -263,12 +312,43 @@ describe('Place model', () => {
       ),
       placement: 'placed',
     });
-    const g = (saved[1]?.patch as { georef: Georef }).georef;
+    const g = (saved[0]?.patch as { georef: Georef }).georef;
     expect([g.heading.status, g.scale.status, g.horizontal.status]).toEqual([
       'user',
       'user',
       'user',
     ]);
+    // Undo after Done puts all three back, in one write
+    await act(async () => {
+      q('place-undo')?.click();
+      await Promise.resolve();
+    });
+    expect(saved).toHaveLength(2);
+    expect(saved[1]?.patch).toEqual({ transform: I, georef: GEOREF, placement: 'needed' });
+  });
+
+  it('keeps a mirrored import mirrored and says so; Scale multiplies it', () => {
+    const mirrored = [-2, 0, 0, 0, 0, 2, 0, 0, 0, 0, 2, 0, 0, 0, 0, 1];
+    open(mesh({ transform: mirrored }));
+    expect(q('place-kept')?.textContent).toContain('mirrored or stretched');
+    expect(field('place-scale').value).toBe('1');
+    type('place-scale', '1.5');
+    const t = last();
+    expect(t[0]).toBeCloseTo(-3, 9);
+    expect(t[5]).toBeCloseTo(3, 9);
+  });
+
+  it('follows a re-centre: the handle is put on the model in the new frame', () => {
+    open();
+    const before = gizmo.attached.length;
+    act(() => {
+      workspace.getState().openProject({
+        id: 'p',
+        root: 'E:/p',
+        manifest: { ...manifest(mesh()), origin: [500100, 4000000, 10] },
+      });
+    });
+    expect(gizmo.attached.length).toBe(before + 1);
   });
 
   it('refuses a read-only package: the extract message and no handle', () => {

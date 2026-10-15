@@ -25,7 +25,8 @@ export interface Placement {
 }
 
 export interface PlaceGizmo {
-  attach(layerId: string, transform: Mat4): void;
+  /** `basis`: what the edits keep (`splitPlacement`); by default split from `transform`. */
+  attach(layerId: string, transform: Mat4, basis?: Mat4): void;
   setMode(m: GizmoMode): void;
   onChange(cb: (t: Mat4) => void): () => void;
   detach(): void;
@@ -35,6 +36,8 @@ export interface PlaceGizmo {
 export interface PlaceGizmoHandle extends PlaceGizmo {
   /** Show a transform typed in the panel (moves the model and the handle; no onChange). */
   set(transform: Mat4): void;
+  /** The pointer is on a handle or dragging one (a click there is the handle's). */
+  busy(): boolean;
   /** A drag on a handle starts (true) or ends (false): one Undo step per drag. */
   onDrag(cb: (dragging: boolean) => void): () => void;
   /** The object the handle drags (a stand-in for the layer, at its placement). */
@@ -99,6 +102,50 @@ export function decomposePlacement(t: Mat4, up: UpAxis = upAxisOf(t)): Placement
   };
 }
 
+/**
+ * A layer transform split into what Place model edits and what it keeps: `placement` (anchor,
+ * heading, tilts, and a scale of 1) and `basis`, the rest of the transform as imported (the
+ * model's up axis, its own scale, a mirroring or a stretch). `transform = place(placement) · basis`
+ * with the placement's scale a multiplier on the model's own. Splitting once, when the panel
+ * opens, keeps the up axis and any mirroring fixed whatever is turned or tilted later.
+ */
+export function splitPlacement(
+  t: Mat4,
+  up: UpAxis = upAxisOf(t),
+): { placement: Placement; basis: Mat4 } {
+  const p = decomposePlacement(t, up);
+  const placement = { ...p, scale: 1 };
+  const basis = new Matrix4()
+    .fromArray(composePlacement({ ...placement, up: 'y' }))
+    .invert()
+    .multiply(new Matrix4().fromArray([...t]));
+  return { placement, basis: basis.toArray() };
+}
+
+/** The transform of a placement on a basis (`splitPlacement`). */
+export function placeOnBasis(p: Placement, basis: Mat4): Mat4 {
+  return new Matrix4()
+    .fromArray(composePlacement({ ...p, up: 'y' }))
+    .multiply(new Matrix4().fromArray([...basis]))
+    .toArray();
+}
+
+/** The placement of a transform on a basis (`splitPlacement`); its scale is the multiplier. */
+export function placementOnBasis(t: Mat4, basis: Mat4): Placement {
+  const m = new Matrix4().fromArray([...t]).multiply(new Matrix4().fromArray([...basis]).invert());
+  return decomposePlacement(m.toArray(), 'y');
+}
+
+/** Whether a basis mirrors the model or stretches it unevenly (Place model keeps both). */
+export function basisShape(basis: Mat4): { mirrored: boolean; stretched: boolean } {
+  const m = new Matrix4().fromArray([...basis]);
+  const e = m.elements;
+  const len = [0, 4, 8].map((c) => Math.hypot(e[c] ?? 0, e[c + 1] ?? 0, e[c + 2] ?? 0));
+  const lo = Math.min(...len);
+  const hi = Math.max(...len);
+  return { mirrored: m.determinant() < 0, stretched: lo > 0 && hi / lo > 1 + 1e-6 };
+}
+
 interface StageExtras {
   invalidateShadows(): void;
 }
@@ -116,14 +163,19 @@ export function createPlaceGizmo(stage: EngineStage): PlaceGizmoHandle {
   target.name = 'engine:place-target';
   let controls: TransformControls | null = null;
   let layer: Object3D | null = null;
-  let up: UpAxis = 'y';
+  let basis: Mat4 = new Matrix4().toArray();
+  /** The placement when a drag started: what the mode does not change stays as it was. */
+  let held: Placement | null = null;
   let mode: GizmoMode = 'move';
   let unclaim: (() => void) | null = null;
   let lastScale = 1;
 
   const transformOf = (): Mat4 => {
     target.updateMatrix();
-    return target.matrix.clone().multiply(UP_MATRIX[up]).toArray();
+    return target.matrix
+      .clone()
+      .multiply(new Matrix4().fromArray([...basis]))
+      .toArray();
   };
   let layerName = '';
   /** The layer's group; a layer loaded again (after a save) is a new group, found by name. */
@@ -139,13 +191,15 @@ export function createPlaceGizmo(stage: EngineStage): PlaceGizmoHandle {
     (stage as unknown as Partial<StageExtras>).invalidateShadows?.();
     stage.requestRender();
   };
-  const place = (t: Mat4) => {
-    const p = decomposePlacement(t, up);
+  const setTarget = (p: Placement) => {
     target.position.set(...p.anchor);
     target.quaternion.copy(rotationOf(p));
     target.scale.setScalar(p.scale);
     lastScale = p.scale;
     target.updateMatrixWorld(true);
+  };
+  const place = (t: Mat4) => {
+    setTarget(placementOnBasis(t, basis));
   };
   const applyMode = () => {
     if (!controls) return;
@@ -160,8 +214,9 @@ export function createPlaceGizmo(stage: EngineStage): PlaceGizmoHandle {
       c.setMode('rotate');
       c.setSpace('world');
     } else if (mode === 'tilt') {
+      // about the level axes (east and north); the heading is held while tilting
       c.setMode('rotate');
-      c.setSpace('local');
+      c.setSpace('world');
     } else {
       c.setMode('scale');
       c.setSpace('local');
@@ -179,6 +234,21 @@ export function createPlaceGizmo(stage: EngineStage): PlaceGizmoHandle {
       s.setScalar(v);
       lastScale = v;
     }
+    if (held) {
+      // a mode changes only its own numbers: no heading drift from a tilt, no tilt from a turn
+      target.updateMatrix();
+      const now = decomposePlacement(target.matrix.toArray(), 'y');
+      const h = held;
+      setTarget(
+        mode === 'move'
+          ? { ...h, anchor: now.anchor }
+          : mode === 'rotate'
+            ? { ...h, headingDeg: now.headingDeg }
+            : mode === 'tilt'
+              ? { ...h, tiltXDeg: now.tiltXDeg, tiltZDeg: now.tiltZDeg }
+              : { ...h, scale: now.scale },
+      );
+    }
     const t = transformOf();
     show(t);
     for (const l of listeners) l(t);
@@ -186,6 +256,8 @@ export function createPlaceGizmo(stage: EngineStage): PlaceGizmoHandle {
   const onDragging = (e: { value: unknown }) => {
     const dragging = e.value === true;
     stage.controls.enabled = !dragging;
+    target.updateMatrix();
+    held = dragging ? decomposePlacement(target.matrix.toArray(), 'y') : null;
     for (const l of dragListeners) l(dragging);
   };
   const onRender = () => {
@@ -200,11 +272,14 @@ export function createPlaceGizmo(stage: EngineStage): PlaceGizmoHandle {
       if (!controls) throw new Error('The place gizmo is not attached');
       return controls;
     },
-    attach(layerId, transform) {
+    busy() {
+      return controls !== null && (controls.axis !== null || controls.dragging);
+    },
+    attach(layerId, transform, keep) {
       handle.detach();
       layerName = `layer:${layerId}`;
       layer = stage.scene.getObjectByName(layerName) ?? null;
-      up = upAxisOf(transform);
+      basis = keep ?? splitPlacement(transform).basis;
       place(transform);
       stage.scene.add(target);
       const c = new TransformControls(stage.camera, stage.renderer.domElement);

@@ -494,6 +494,13 @@ engTest(
       'E 500010.00 N 3200020.00 H 0.00',
     );
 
+    // lifted 5 m, then dropped: the quad's underside lands on the ground again
+    await panel.getByTestId('place-up').fill('5');
+    await panel.getByTestId('place-up').press('Enter');
+    await expect(panel.getByTestId('place-position')).toContainText('H 5.00');
+    await panel.getByTestId('place-drop').click();
+    await expect(panel.getByTestId('place-position')).toContainText('H 0.00');
+
     // drag the move handle's centre in the real 3D view
     const anchor: V3 = [10, 0, -20];
     await look(win, anchor, 12, [0.3, 1, 0.6]);

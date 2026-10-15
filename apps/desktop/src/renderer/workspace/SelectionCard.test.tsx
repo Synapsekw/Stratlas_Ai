@@ -199,6 +199,16 @@ describe('SelectionCard for an engineering component', () => {
     expect(q('component-list')).not.toBeNull();
   });
 
+  it('offers Place model on the card of a model layer', async () => {
+    const { builder } = await import('../builder/state');
+    act(() => {
+      workspace.getState().select({ kind: 'layer', id: 'chimney' });
+    });
+    act(() => q('layer-place-model')?.click());
+    expect(builder.getState().align).toEqual({ kind: 'place', layerId: 'chimney' });
+    builder.getState().stopAlign();
+  });
+
   it('keeps the plain asset card for a node without a component record', () => {
     act(() => {
       workspace.getState().select({ kind: 'asset', id: 'Pipe_3', layer: 'chimney' });

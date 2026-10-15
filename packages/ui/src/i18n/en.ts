@@ -3520,7 +3520,10 @@ export const en = {
   'place.heading': 'Heading (°)',
   'place.tiltX': 'Tilt forward (°)',
   'place.tiltZ': 'Tilt sideways (°)',
-  'place.scale': 'Scale',
+  'place.scale': 'Scale (times)',
+  'place.keptBasis':
+    'This model came in mirrored or stretched. That stays as it is; Scale multiplies it evenly.',
+  'place.layerCard': 'Place model',
   'place.position': 'Origin at E {e} N {n} H {h}',
   'place.undo': 'Undo',
   'place.reset': 'Reset',

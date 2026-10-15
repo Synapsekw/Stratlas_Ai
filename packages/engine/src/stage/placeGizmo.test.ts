@@ -2,7 +2,15 @@
 import { Group, Matrix4, PerspectiveCamera, Scene, Vector3 } from 'three';
 import { describe, expect, it, vi } from 'vitest';
 import type { EngineStage } from '../types';
-import { composePlacement, createPlaceGizmo, decomposePlacement } from './placeGizmo';
+import {
+  basisShape,
+  composePlacement,
+  createPlaceGizmo,
+  decomposePlacement,
+  placeOnBasis,
+  placementOnBasis,
+  splitPlacement,
+} from './placeGizmo';
 
 const close = (a: number, b: number, eps = 1e-9) => Math.abs(a - b) < eps;
 const apply = (t: readonly number[], p: [number, number, number]) =>
@@ -149,6 +157,61 @@ describe('createPlaceGizmo', () => {
     expect([g.controls.showX, g.controls.showY, g.controls.showZ]).toEqual([true, false, true]);
     g.setMode('move');
     expect(g.controls.mode).toBe('translate');
+    g.detach();
+    canvas.remove();
+  });
+
+  it('keeps a mirrored, stretched or Z-up import as it is: edits act on top of it', () => {
+    // mirrored in x, twice as tall, Z up, then placed
+    const imported = new Matrix4()
+      .fromArray(start)
+      .multiply(new Matrix4().makeScale(-1, 2, 1))
+      .multiply(new Matrix4().fromArray([1, 0, 0, 0, 0, 0, -1, 0, 0, 1, 0, 0, 0, 0, 0, 1]))
+      .toArray();
+    const { placement, basis } = splitPlacement(imported);
+    expect(placement.scale).toBe(1);
+    const back = placeOnBasis(placement, basis);
+    back.forEach((v, i) => {
+      expect(close(v, imported[i] ?? NaN, 1e-9)).toBe(true);
+    });
+    // a turn and a doubled scale keep the mirroring and the stretch
+    const turned = placeOnBasis({ ...placement, headingDeg: 75, scale: 2 }, basis);
+    expect(new Matrix4().fromArray(turned).determinant()).toBeLessThan(0);
+    expect(basisShape(basis)).toEqual({ mirrored: true, stretched: true });
+    expect(basisShape(splitPlacement(start).basis)).toEqual({ mirrored: false, stretched: false });
+    const p = placementOnBasis(turned, basis);
+    expect(close(p.headingDeg, 75)).toBe(true);
+    expect(close(p.scale, 2)).toBe(true);
+  });
+
+  it('a tilt drag leaves the heading, a turn leaves the tilts', () => {
+    const { stage, canvas } = fakeStage();
+    const g = createPlaceGizmo(stage);
+    const seen: number[][] = [];
+    g.onChange((t) => seen.push([...t]));
+    g.attach('m1', start);
+    g.setMode('tilt');
+    g.controls.dispatchEvent({ type: 'dragging-changed', value: true });
+    // a world-space turn about east and north that would also swing the heading
+    g.target.rotateOnWorldAxis(new Vector3(1, 0, 0), 0.3);
+    g.target.rotateOnWorldAxis(new Vector3(0, 1, 0), 0.4);
+    g.controls.dispatchEvent({ type: 'objectChange' });
+    const tilted = decomposePlacement(seen.at(-1) ?? [], 'y');
+    expect(close(tilted.headingDeg, 30)).toBe(true);
+    expect(Math.abs(tilted.tiltXDeg) + Math.abs(tilted.tiltZDeg)).toBeGreaterThan(1);
+    g.controls.dispatchEvent({ type: 'dragging-changed', value: false });
+    g.setMode('rotate');
+    g.controls.dispatchEvent({ type: 'dragging-changed', value: true });
+    g.target.rotateOnWorldAxis(new Vector3(0, 0, 1), 0.2);
+    g.target.rotateOnWorldAxis(new Vector3(0, 1, 0), 0.5);
+    g.controls.dispatchEvent({ type: 'objectChange' });
+    const turned = decomposePlacement(seen.at(-1) ?? [], 'y');
+    expect(close(turned.tiltXDeg, tilted.tiltXDeg)).toBe(true);
+    expect(close(turned.tiltZDeg, tilted.tiltZDeg)).toBe(true);
+    expect(close(turned.headingDeg, 30)).toBe(false);
+    // no pointer on a handle here (a real drag sets the controls' axis): a click is not the handle's
+    expect(g.busy()).toBe(false);
+    g.controls.dispatchEvent({ type: 'dragging-changed', value: false });
     g.detach();
     canvas.remove();
   });

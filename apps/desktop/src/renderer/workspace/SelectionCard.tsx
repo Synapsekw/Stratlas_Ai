@@ -21,6 +21,8 @@ import { interpolatePose } from '@aio/video';
 import { useWorkspace, workspace, type Selection } from '@aio/workspace';
 import { useEffect, type KeyboardEvent as ReactKeyboardEvent, type ReactNode } from 'react';
 import { alignCamera } from '../builder/alignSession';
+import { builder } from '../builder/state';
+import { useShell } from '../shell';
 import { LayerDatePicker } from '../change/SurveyDate';
 import { loadFlight, useMedia } from '../media';
 import {
@@ -527,6 +529,7 @@ export function SelectionCard() {
     selection?.kind === 'asset' ? components.find((c) => c.id === selection.id) : undefined;
   const t = useT();
   const issues = useWorkspace((s) => s.issues);
+  const pkg = useShell((s) => s.pkg);
   const nowMs = useWorkspace((s) => (s.selection?.kind === 'clip' ? s.nowMs : 0));
   const orientation = useWorkspace((s) => s.orientation);
   const { durations, flights } = useMedia(project);
@@ -669,6 +672,21 @@ export function SelectionCard() {
               </div>
             ))}
           </dl>
+          {selection?.kind === 'layer' && meshLayer && !pkg && (
+            <div className="acts">
+              <button
+                type="button"
+                className="btn sm"
+                data-testid="layer-place-model"
+                onClick={() => {
+                  builder.getState().startAlign({ kind: 'place', layerId: meshLayer.id });
+                }}
+              >
+                <Icon name="target" size={12} />
+                {t('place.layerCard')}
+              </button>
+            </div>
+          )}
         </div>
       </section>
       {list}
