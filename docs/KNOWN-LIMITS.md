@@ -304,3 +304,18 @@ Current limits only; each is removed from this list when fixed.
 - Hydrology runs read at most a bounded number of cells: flood to level 25 million, runoff and catchment 4 million, direct rainfall 4 million. A larger surface needs a **Region** (an area or volume measurement); the region is its bounding box clipped to the surface, so cells outside the polygon but inside its box count too.
 - Hydrology is checked against analytic truths (a bowl, a V-shaped catchment, a tilted plane); WhiteboxTools is not used as a second opinion.
 - A haul-road centreline is a design alignment, a design polyline or a drawn line; proposing one from the surface is not built.
+
+## Engineering models
+
+- An engineering model is a review aid: not fabrication-ready and not an as-built survey. Rules fill what the sources do not show, and every value says whether it was measured, observed, inferred or entered by you.
+- A model made from photos only, without a known dimension, has a provisional scale: its lengths are not true metres until you enter one dimension. Photo GPS positions are camera positions and are never taken as the asset's position; such a model is placed provisionally.
+- The assemblers and the measuring were tuned on synthetic assets only.
+- Point clouds in COPC format are read through PDAL; that path is not tested on a computer without the PDAL tools.
+- The check that photos show the same asset uses colour and camera distance only; two similar structures can pass it.
+- Meshes used as a source are sampled for their shape only, without their colours.
+- In the 3D view an engineering model draws its components separately (about 1.7 draw calls per component); merging them into one batched mesh is not built.
+- Warning light lenses are red only. Joint rings on a shaft are drawn with flat facets. On lattice towers and monopoles the ladder follows the nearest axis of the structure, not the leg or the face.
+- Placement through Web Mercator (EPSG:3857) is approximate away from the anchor (about 3 mm at 100 m at mid latitudes); the app says so. Between other coordinate systems the scale change of the projection is always applied, however small.
+- A height of unknown datum stays unknown; a model with a different known height datum from the project's needs placing by hand.
+- The project journal records an engineering model change as the whole model, not one entry per component.
+- The AI step's request and token limits per run are fixed per detail level; a run that reaches them stops with the best result so far and needs a new run for more.
