@@ -18,14 +18,8 @@
 import { brand } from '@aio/brand';
 import { layerTransformToGeoref } from '@aio/geo';
 import { exportBundle } from '@aio/modelling';
-import {
-  EngineerProposal,
-  EngineerRun,
-  EvidencePack,
-  type Mat4,
-  type ProjectManifest,
-} from '@aio/schema';
-import { readFile, realpath, stat } from 'node:fs/promises';
+import { EngineerProposal, EngineerRun, EvidencePack, type ProjectManifest } from '@aio/schema';
+import { open, readFile, realpath } from 'node:fs/promises';
 import { extname, isAbsolute, join, relative, resolve, sep } from 'node:path';
 import type { z } from 'zod';
 import { isChangedOnDisk, readBytesSeen, writeJsonSeen } from './fsutil';
@@ -40,7 +34,6 @@ export const ENGINEERING_DIR = 'engineering';
 export const EVIDENCE_IMAGE_MAX_PX = 1568;
 /** An evidence image file larger than this is not read at all. */
 const EVIDENCE_IMAGE_MAX_BYTES = 32 * 1024 * 1024;
-const IDENTITY: Mat4 = [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1];
 const MIME: Record<string, string> = {
   '.png': 'image/png',
   '.jpg': 'image/jpeg',
@@ -159,12 +152,21 @@ export function registerEngineeringIpc({
         (l) => l.kind === 'mesh' && l.id === modelLayerId(modelId, false),
       );
       const mesh = layer?.kind === 'mesh' ? layer : undefined;
-      const georef = layerTransformToGeoref(
-        mesh?.transform ?? IDENTITY,
-        { crs: manifest.crs, origin: manifest.origin },
-        mesh?.georef ?? model.georef ?? null,
-        'engineer',
-      );
+      // Where the model is: its built layer in the project, else the model's own record as it
+      // is. With neither there is no placement to export.
+      const georef = mesh
+        ? layerTransformToGeoref(
+            mesh.transform,
+            { crs: manifest.crs, origin: manifest.origin },
+            mesh.georef ?? model.georef ?? null,
+            'engineer',
+          )
+        : (model.georef ?? null);
+      if (!georef)
+        return {
+          ok: false,
+          error: 'Build the model first, then export it: it has no place in the project yet.',
+        };
       const bundle = exportBundle(model, { detail, generator, georef });
       const files: Record<string, Uint8Array | string> = {
         [`${modelId}.glb`]: bundle.glb,
@@ -269,15 +271,30 @@ export function registerEngineeringIpc({
     } catch {
       return { ok: false, error: `The evidence image "${image.file}" is missing.` };
     }
-    if ((await stat(real)).size > EVIDENCE_IMAGE_MAX_BYTES) return refused;
-    let bytes: Uint8Array = new Uint8Array(await readFile(real));
+    // one open, read with a bound: the file cannot grow between a size check and the read
+    let bytes: Uint8Array;
+    const fh = await open(real, 'r');
+    try {
+      const buf = new Uint8Array(EVIDENCE_IMAGE_MAX_BYTES + 1);
+      let n = 0;
+      for (;;) {
+        const { bytesRead } = await fh.read(buf, n, buf.length - n, n);
+        if (bytesRead === 0) break;
+        n += bytesRead;
+        if (n > EVIDENCE_IMAGE_MAX_BYTES) return refused;
+      }
+      bytes = buf.slice(0, n);
+    } finally {
+      await fh.close();
+    }
     let type = mime;
-    const size = imageSize(bytes) ?? { w: image.w, h: image.h };
-    if (Math.max(size.w, size.h, image.w, image.h) > EVIDENCE_IMAGE_MAX_PX) {
+    const size = imageSize(bytes);
+    // a size the header does not tell (WebP) is never taken on trust: it is always scaled
+    if (!size || Math.max(size.w, size.h) > EVIDENCE_IMAGE_MAX_PX) {
       if (!images)
         return {
           ok: false,
-          error: `The evidence image "${image.file}" is larger than ${String(EVIDENCE_IMAGE_MAX_PX)} px.`,
+          error: `The evidence image "${image.file}" is larger than ${String(EVIDENCE_IMAGE_MAX_PX)} px or its size cannot be read.`,
         };
       const small = await images.downscale(bytes, EVIDENCE_IMAGE_MAX_PX);
       bytes = small.bytes;

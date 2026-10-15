@@ -1946,7 +1946,15 @@ export const ipc = {
       .object({
         projectId: ProjectId,
         modelId: ProcModelId,
-        folder: z.string().min(1).max(1000),
+        /** An absolute folder (a drive or UNC path on Windows, `/...` elsewhere). */
+        folder: z
+          .string()
+          .min(1)
+          .max(1000)
+          .regex(
+            /^(?:[A-Za-z]:[\\/]|\\\\[^\\/]|\/)/,
+            'The export folder must be an absolute path.',
+          ),
         detail: Detail,
         replace: z.boolean().optional(),
       })

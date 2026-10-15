@@ -364,6 +364,35 @@ describe('georefToLayerTransform', () => {
 });
 
 describe('layerTransformToGeoref', () => {
+  it('saving again and again after a cross-CRS placement never drifts the scale', () => {
+    const geo = g({
+      modelToCrs: enhMatrix([400010, 5600020, 15], 0, 1.25),
+      scale: { factor: 1.25, status: 'measured' },
+    });
+    const C: ProjectGeo = {
+      crs: { epsg: 32634 },
+      origin: transformPoint([400000, 5600000, 0], 32633, 32634),
+    };
+    let rec = geo;
+    const first = placed(georefToLayerTransform(geo, C));
+    for (let i = 0; i < 3; i++) {
+      const r = placed(georefToLayerTransform(rec, C));
+      rec = layerTransformToGeoref(r.transform, C, rec, i === 0 ? 'place-model' : 'engineer');
+      expect(Math.abs(rec.scale.factor - 1.25), `save ${String(i + 1)}`).toBeLessThan(1e-6);
+      for (const p of probe)
+        expectClose(
+          worldOfModelPoint(placed(georefToLayerTransform(rec, C)).transform, C, p),
+          worldOfModelPoint(first.transform, C, p),
+          0.001,
+        );
+    }
+    // a real change of size is kept: the layer made twice as large records twice the scale
+    const r = placed(georefToLayerTransform(rec, C));
+    const doubled = r.transform.map((v, i) => (i < 12 && i % 4 !== 3 ? v * 2 : v));
+    const big = layerTransformToGeoref(doubled, C, rec, 'place-model');
+    expect(Math.abs(big.scale.factor - 2.5)).toBeLessThan(1e-6);
+  });
+
   it('keeps the model scale apart from the projection scale after a cross-CRS placement', () => {
     const geo = g({
       modelToCrs: enhMatrix([400010, 5600020, 15], 20, 1.25),

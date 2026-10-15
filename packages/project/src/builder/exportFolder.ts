@@ -1,5 +1,5 @@
 import { randomBytes } from 'node:crypto';
-import { mkdir, rm, stat, writeFile as fsWriteFile } from 'node:fs/promises';
+import { mkdir, readdir, rm, stat, writeFile as fsWriteFile } from 'node:fs/promises';
 import { basename, dirname, join } from 'node:path';
 import { renameWhenFree, type RenameOptions } from '../import/rename';
 
@@ -13,6 +13,8 @@ export interface ExportFolderOptions {
    * file in them open) with these options; tests hand in their own rename and sleep.
    */
   rename?: RenameOptions;
+  /** The clock for the age of leftovers (tests). */
+  now?: () => number;
 }
 
 const exists = async (p: string) => {
@@ -30,6 +32,31 @@ async function sweep(p: string): Promise<void> {
     await rm(p, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 });
   } catch {
     // a reader still holds it; the next export of this name sweeps nothing it needs
+  }
+}
+
+/** A staging or replaced folder this old was left by an export that did not finish. */
+export const LEFTOVER_AGE_MS = 10 * 60 * 1000;
+
+/**
+ * Remove what an earlier export of the same name left beside the target (`.<name>.partial-*`,
+ * `.<name>.old-*`) when it is older than `LEFTOVER_AGE_MS`, so one still being written is spared.
+ */
+async function sweepLeftovers(parent: string, name: string, now: () => number): Promise<void> {
+  let entries: string[];
+  try {
+    entries = await readdir(parent);
+  } catch {
+    return;
+  }
+  for (const e of entries) {
+    if (!e.startsWith(`.${name}.partial-`) && !e.startsWith(`.${name}.old-`)) continue;
+    try {
+      if (now() - (await stat(join(parent, e))).mtimeMs >= LEFTOVER_AGE_MS)
+        await sweep(join(parent, e));
+    } catch {
+      // gone already
+    }
   }
 }
 
@@ -57,6 +84,7 @@ export async function writeExportFolder(
   const write = o.writeFile ?? ((p: string, d: Uint8Array | string) => fsWriteFile(p, d));
   const move = (from: string, to: string) => renameWhenFree(from, to, o.rename);
   await mkdir(parent, { recursive: true });
+  await sweepLeftovers(parent, basename(target), o.now ?? Date.now);
   await mkdir(staging);
   try {
     for (const [name, data] of Object.entries(files)) await write(join(staging, name), data);

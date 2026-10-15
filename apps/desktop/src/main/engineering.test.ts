@@ -10,6 +10,7 @@ import {
   type ProcModel,
   type ProjectManifest,
 } from '@aio/schema';
+import { existsSync } from 'node:fs';
 import { mkdir, mkdtemp, readdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -51,10 +52,25 @@ function flue(id: string, centre: [number, number, number]): Assembly {
     params: { centre, rOuter: 0.9, rInner: 0.8, height: 6 },
   };
 }
+/** The model's own record (synthetic): 7 m east and 9 m north of the origin, heading 0. */
+const MODEL_GEOREF: Georef = {
+  schema: 'aio.georef/1',
+  crs: { epsg: 32640 },
+  anchor: [400007, 2800009, 1],
+  axes: 'x-east,y-up,z-south',
+  units: 'm',
+  modelToCrs: [1, 0, 0, 0, 0, 0, 1, 0, 0, -1, 0, 0, 400007, 2800009, 1, 1],
+  heading: { deg: 0, status: 'measured' },
+  scale: { factor: 1, status: 'measured' },
+  horizontal: { status: 'from-source' },
+  vertical: { datum: 'unknown', status: 'unknown' },
+  provenance: { by: 'engineer', runId: 'run-1' },
+};
 const model: ProcModel = {
   ...newProcModel({ id: 'stack', name: 'Stack', now: '2026-10-15T00:00:00.000Z' }),
   materials: [...DEFAULT_MATERIALS],
   assemblies: [flue('flue-1', [3, 20, -4]), flue('flue-2', [-6, 40, 5])],
+  georef: MODEL_GEOREF,
 };
 
 const RUN: EngineerRun = {
@@ -183,9 +199,8 @@ describe('model:exportEngineering', () => {
     const g = Georef.parse(
       JSON.parse(await readFile(join(out, 'stack', 'stack.georeference.json'), 'utf8')),
     );
-    expect(g.crs).toEqual({ epsg: 32640 });
-    // no built layer: the model sits in the local frame as it is (origin at the project origin)
-    expect(g.anchor).toEqual([400000, 2800000, 0]);
+    // no built layer: the model's own record goes out as it is
+    expect(g).toEqual(MODEL_GEOREF);
     const glb = new Uint8Array(await readFile(join(out, 'stack', 'stack.glb')));
     expect(
       (readGlb(glb).json.asset as { extras?: { aioGeoref?: unknown } }).extras?.aioGeoref,
@@ -272,6 +287,31 @@ describe('model:exportEngineering', () => {
       detail: 'fast',
     });
     expect(r).toMatchObject({ ok: true });
+  });
+
+  it('refuses a model with neither a built layer nor a georeference', async () => {
+    const plain: ProcModel = { ...model };
+    delete plain.georef;
+    await writeFile(join(root, 'models', 'stack.procmodel.json'), JSON.stringify(plain));
+    const r = await ipc().call('model:exportEngineering', {
+      projectId: 'site',
+      modelId: 'stack',
+      folder: out,
+      detail: 'fast',
+    });
+    expect(!r.ok && r.error).toMatch(/Build the model first/);
+    expect(existsSync(out)).toBe(false);
+  });
+
+  it('takes only an absolute export folder', async () => {
+    await expect(
+      ipc().call('model:exportEngineering', {
+        projectId: 'site',
+        modelId: 'stack',
+        folder: 'relative/out',
+        detail: 'fast',
+      }),
+    ).rejects.toThrow();
   });
 
   it('says when the model is not there', async () => {
@@ -376,6 +416,22 @@ describe('engineer:evidenceImage', () => {
       });
       expect(r.ok, imageId).toBe(false);
     }
+  });
+
+  it('always scales an image whose header gives no size, whatever evidence.json says', async () => {
+    await setup([{ id: 'img-w', file: 'img/w.webp', w: 10, h: 10 }]);
+    await writeFile(join(runDir(), 'img', 'w.webp'), new Uint8Array([0x52, 0x49, 0x46, 0x46]));
+    const calls: number[] = [];
+    const r = await ipc({
+      images: {
+        downscale: (_b, maxPx) => {
+          calls.push(maxPx);
+          return Promise.resolve({ bytes: new Uint8Array([3]), mime: 'image/jpeg' });
+        },
+      },
+    }).call('engineer:evidenceImage', { projectId: 'site', runId: 'run-1', imageId: 'img-w' });
+    expect(calls).toEqual([1568]);
+    expect(r).toEqual({ ok: true, dataUrl: 'data:image/jpeg;base64,Aw==' });
   });
 
   it('scales a larger image down to 1568 px', async () => {

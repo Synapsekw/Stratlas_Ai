@@ -89,6 +89,19 @@ describe('writeExportFolder', () => {
     expect(await readdir(dir)).toEqual(['stack']);
   });
 
+  it('sweeps an old staging or replaced folder an earlier export left, but not a fresh one', async () => {
+    const target = join(dir, 'stack');
+    for (const left of ['.stack.partial-aaaa', '.stack.old-bbbb', '.other.partial-cccc'])
+      await mkdir(join(dir, left));
+    // an hour later: the stack leftovers are stale, another name's are not ours to sweep
+    await writeExportFolder(target, FILES, { now: () => Date.now() + 60 * 60 * 1000 });
+    expect((await readdir(dir)).sort()).toEqual(['.other.partial-cccc', 'stack']);
+    await mkdir(join(dir, '.stack.partial-dddd'));
+    await writeExportFolder(target, FILES, { replace: true });
+    // a fresh one may still be another export at work
+    expect(await readdir(dir)).toContain('.stack.partial-dddd');
+  });
+
   it('refuses file names that are not plain names', async () => {
     for (const bad of ['../x.json', 'a/b.json', 'a\\b.json', '..', ''])
       await expect(writeExportFolder(join(dir, 'x'), { [bad]: 'x' })).rejects.toThrow(/file name/);

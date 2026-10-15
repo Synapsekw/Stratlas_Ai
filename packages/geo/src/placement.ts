@@ -316,12 +316,10 @@ function headingOf(m: readonly number[]): number {
 }
 
 /**
- * The model's own scale: the mean length of the three axis columns, with the horizontal (E, N)
- * parts divided by the projection scale `kh` they carry (heights never scale with a projection).
- */
-function scaleOf(m: readonly number[], kh = 1): number {
+/** The mean length of a matrix's three axis columns. */
+function scaleOf(m: readonly number[]): number {
   let s = 0;
-  for (let c = 0; c < 3; c++) s += Math.hypot(at(m, 0, c) / kh, at(m, 1, c) / kh, at(m, 2, c));
+  for (let c = 0; c < 3; c++) s += Math.hypot(at(m, 0, c), at(m, 1, c), at(m, 2, c));
   return s / 3;
 }
 
@@ -343,15 +341,19 @@ export function layerTransformToGeoref(
     : null) ?? [0, 0, 0];
   const anchor = apply(modelToCrs, modelAnchor);
   const deg = headingOf(modelToCrs);
-  // A layer placed from a record in another CRS carries that change's projection scale in its
-  // matrix; the record's scale is the model's own, so the projection part is taken back out.
-  const prevEpsg = prev ? metricEpsg(prev.crs) : null;
-  const toEpsg = metricEpsg(project.crs);
-  const kProj =
-    prev && prevEpsg !== null && toEpsg !== null && isAffine(prev.modelToCrs)
-      ? projectionScaleBetween(apply(prev.modelToCrs, [0, 0, 0]), prevEpsg, toEpsg)
-      : 1;
-  const factor = scaleOf(modelToCrs, kProj);
+  // The record's scale is the model's own. A layer placed from a record (in another CRS, or from
+  // a record that was itself saved after such a placement) can carry a projection scale in its
+  // matrix, so the scale is carried over from `prev` and changed only by how much the layer was
+  // scaled since `prev` placed it here: saving again never drifts.
+  const factor = (() => {
+    const own = scaleOf(modelToCrs);
+    if (!prev) return own;
+    const placed = georefToLayerTransform(prev, project);
+    const before = placed.kind === 'placed' ? placed.transform : (placed.horizontalOnly ?? null);
+    if (!before) return own;
+    const was = scaleOf(localToEnh(before, project.origin));
+    return was > 0 ? (prev.scale.factor * own) / was : own;
+  })();
   const projectDatum = knownDatum(project.verticalDatum);
   const user = by === 'place-model';
   const vertical: Georef['vertical'] = user
