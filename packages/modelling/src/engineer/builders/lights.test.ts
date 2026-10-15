@@ -10,8 +10,9 @@ import {
   normalsAgree,
   normalsUnit,
 } from '../testGeom';
-import { LIGHT_BUILDERS } from './lights';
-import { build, countComponents, registerBuilders, shaft } from './testFixtures';
+import { ctxFor } from './ctx';
+import { LIGHT_BUILDERS, warningLightSurface } from './lights';
+import { build, countComponents, model, registerBuilders, shaft } from './testFixtures';
 
 registerBuilders(LIGHT_BUILDERS);
 
@@ -77,24 +78,51 @@ describe('warningLight', () => {
     expect(lenses('beacon')).toBe(1);
   });
 
-  it('the mount starts at the shaft surface and the lamp stands out along outward', () => {
-    const out = build('warningLight', light('single'), {
-      with: [
-        shaft('shaft-1', [
-          { y: 0, r: 8 },
-          { y: 100, r: 4 },
-        ]),
-      ],
-    }).out();
+  it.each(FIXTURES)(
+    '%s: the lens is centred on centre, whichever way outward points',
+    (fixture) => {
+      const outs: [number, number, number][] = [
+        [1, 0, 0],
+        [0, 0, -2],
+        [1, 0.3, 1],
+        [0, 1, 0],
+      ];
+      for (const outward of outs) {
+        const centre: [number, number, number] = [3, 40, -2];
+        const lens = bounds(
+          prim(build('warningLight', light(fixture, { centre, outward })).out(), 'lamp-lens-red'),
+        );
+        centre.forEach((c, k) => {
+          expect(Math.abs((must(lens.min[k]) + must(lens.max[k])) / 2 - c)).toBeLessThan(1e-3);
+        });
+      }
+    },
+  );
+
+  it('the bracket runs back along outward and reaches the shaft surface', () => {
+    const host = shaft('shaft-1', [
+      { y: 0, r: 6 },
+      { y: 100, r: 6 },
+    ]);
+    const p = light('single', { centre: [6.4, 50, 0] });
+    const surface = warningLightSurface(p);
+    expect(surface[0]).toBeCloseTo(6, 9);
+    expect(surface[2]).toBeCloseTo(0, 9);
+    expect(Math.hypot(surface[0], surface[2])).toBeCloseTo(
+      ctxFor(model([host])).radiusAt('shaft-1', surface[1]),
+      9,
+    );
+    const out = build('warningLight', p, { with: [host] }).out();
     const mount = bounds(prim(out, 'steel-galv'));
-    expect(mount.min[0]).toBeLessThanOrEqual(6);
-    expect(mount.min[0]).toBeGreaterThan(5.9);
+    // starts 2 cm inside the shaft and ends under the housing
+    expect(mount.min[0]).toBeCloseTo(6 - 0.02, 9);
+    expect(mount.max[0]).toBeCloseTo(6.4, 9);
     const housing = bounds(prim(out, 'lamp-housing'));
     expect(housing.min[0]).toBeGreaterThan(6);
-    // nothing of the lamp sits inside the shaft or far beyond the fixture size
-    for (const p of out) {
-      const b = bounds(p);
-      expect(b.max[0]).toBeLessThan(6 + 3 * 0.4);
+    expect(housing.min[1]).toBeCloseTo(mount.max[1], 9);
+    for (const q of out) {
+      const b = bounds(q);
+      expect(b.max[0]).toBeLessThan(6.4 + 0.2 + 1e-9);
       expect(Math.abs(b.max[2])).toBeLessThan(0.4);
     }
   });
@@ -120,13 +148,16 @@ describe('warningLight', () => {
   it('follows any outward direction, including straight up', () => {
     const turned = build(
       'warningLight',
-      light('single', { centre: [0, 50, -6], outward: [0, 0, -2] }),
+      light('single', { centre: [0, 50, -6.4], outward: [0, 0, -2] }),
     );
-    expect(bounds(prim(turned.out(), 'lamp-housing')).max[2]).toBeLessThan(-6);
-    const top = build('warningLight', light('beacon', { centre: [0, 100, 0], outward: [0, 1, 0] }));
-    for (const p of top.out()) {
-      expectSolid(p);
-      expect(bounds(p).min[1]).toBeGreaterThan(99.9);
+    expect(bounds(prim(turned.out(), 'steel-galv')).max[2]).toBeCloseTo(-6 + 0.02, 9);
+    // a beacon on a shaft top at y 100: lens half height 0.08, housing 0.12, bracket 0.4
+    const p = light('beacon', { centre: [0, 100.6, 0], outward: [0, 1, 0] });
+    expect(warningLightSurface(p).map((v) => +v.toFixed(9) + 0)).toEqual([0, 100, 0]);
+    const top = build('warningLight', p);
+    for (const q of top.out()) {
+      expectSolid(q);
+      expect(bounds(q).min[1]).toBeGreaterThanOrEqual(100 - 0.02 - 1e-9);
     }
   });
 

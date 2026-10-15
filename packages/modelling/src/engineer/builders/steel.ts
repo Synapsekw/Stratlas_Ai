@@ -64,6 +64,16 @@ export function latticeLegAt(p: AssemblyParams<'lattice'>, y: number): V3[] {
   });
 }
 
+/** Centreline offset of an X's second diagonal, in brace sections (clear of the first). */
+const X_OFFSET = 1.1;
+
+/** Horizontal unit vector from the middle of face `i`-`j` of a bay towards the lattice axis. */
+function faceInward(p: AssemblyParams<'lattice'>, lo: V3[], hi: V3[], i: number, j: number): V3 {
+  const mid = scale(add(add(at(lo, i), at(lo, j)), add(at(hi, i), at(hi, j))), 0.25);
+  const toAxis: V3 = [p.base[0] - mid[0], 0, p.base[2] - mid[2]];
+  return norm(toAxis);
+}
+
 /**
  * Lattice: one round leg per corner from base to top, a horizontal on every face at each bay top
  * and the bay's bracing on every face. X crosses both diagonals of the face; K runs two half
@@ -73,6 +83,7 @@ export function latticeLegAt(p: AssemblyParams<'lattice'>, y: number): V3[] {
 export function buildLattice(sink: MeshSink, a: AssemblyOf<'lattice'>, ctx: BuildCtx): void {
   const p = a.params;
   const m = ctx.material(a.material, 'steel-galv');
+  if (p.braceSection > p.legSection) fail('lattice braces cannot be thicker than its legs');
   const total = p.bays.reduce((s, b) => s + b.height, 0);
   if (total > p.height * (1 + 1e-9) + 1e-6)
     fail(
@@ -95,8 +106,12 @@ export function buildLattice(sink: MeshSink, a: AssemblyOf<'lattice'>, ctx: Buil
       const j = (i + 1) % n;
       sink.beam(m, at(hi, i), at(hi, j), p.braceSection);
       if (bay.bracing === 'X') {
+        // bolted back to back: the second diagonal sits clear inside the first, so the two
+        // never share a face plane where they cross
+        const inward = faceInward(p, lo, hi, i, j);
+        const off = scale(inward, X_OFFSET * p.braceSection);
         sink.beam(m, at(lo, i), at(hi, j), p.braceSection);
-        sink.beam(m, at(lo, j), at(hi, i), p.braceSection);
+        sink.beam(m, add(at(lo, j), off), add(at(hi, i), off), p.braceSection);
       } else if (bay.bracing === 'K') {
         sink.beam(m, at(lo, j), at(mid, i), p.braceSection);
         sink.beam(m, at(hi, j), at(mid, i), p.braceSection);
@@ -119,11 +134,15 @@ function planAxes(yawDeg: number): { x: V3; z: V3 } {
   return { x, z: norm(cross(x, [0, 1, 0])) };
 }
 
+/** Beam section as a share of the column section. */
+const BEAM_SHARE = 0.9;
+
 /**
  * Frame: `bays + 1` columns spaced along the span (local x, turned by `yawDeg`) round `base`.
- * Portal: one beam across the column tops (flush with them); `braced` adds a knee brace at both
+ * Portal: one beam across the column tops (just below them); `braced` adds a knee brace at both
  * top corners of every bay. Rack: a beam along the whole span at mid-height and one at the top; `braced` adds
- * one diagonal per bay from the column foot to the mid-height tier, alternating direction.
+ * one diagonal per bay from a column foot to the mid-height tier, alternating direction;
+ * braces run from column face to column face.
  */
 export function buildFrame(sink: MeshSink, a: AssemblyOf<'frame'>, ctx: BuildCtx): void {
   const p = a.params;
@@ -138,8 +157,9 @@ export function buildFrame(sink: MeshSink, a: AssemblyOf<'frame'>, ctx: BuildCtx
     const f = foot(i);
     sink.box(m, { centre: up(f, p.height / 2), size: [s, p.height, s], yawDeg: p.yawDeg });
   }
+  // beams a little slimmer than the columns, so no beam face lies in a column face at a joint
   const beamAt = (h: number, i0: number, i1: number) => {
-    sink.beam(m, up(foot(i0), h), up(foot(i1), h), s);
+    sink.beam(m, up(foot(i0), h), up(foot(i1), h), s * BEAM_SHARE);
   };
   if (p.kind === 'portal') {
     const hb = p.height - s / 2;
@@ -150,8 +170,10 @@ export function buildFrame(sink: MeshSink, a: AssemblyOf<'frame'>, ctx: BuildCtx
       const a0 = foot(i);
       const a1 = foot(i + 1);
       const dir = norm(sub(a1, a0));
-      sink.beam(m, up(a0, hb - knee), up(add(a0, scale(dir, knee)), hb), s * 0.7);
-      sink.beam(m, up(a1, hb - knee), up(sub(a1, scale(dir, knee)), hb), s * 0.7);
+      // braces start on the column faces, so the two meeting a middle column stay apart
+      const half = scale(dir, s / 2);
+      sink.beam(m, up(add(a0, half), hb - knee), up(add(a0, scale(dir, knee)), hb), s * 0.7);
+      sink.beam(m, up(sub(a1, half), hb - knee), up(sub(a1, scale(dir, knee)), hb), s * 0.7);
     }
     return;
   }
@@ -160,7 +182,9 @@ export function buildFrame(sink: MeshSink, a: AssemblyOf<'frame'>, ctx: BuildCtx
   for (let i = 0; i < p.bays; i++) {
     if (p.braced) {
       const [f0, f1] = i % 2 === 0 ? [i, i + 1] : [i + 1, i];
-      sink.beam(m, up(foot(f0), s), up(foot(f1), p.height / 2), s * 0.7);
+      // from column face to column face, so diagonals meeting one column stay apart
+      const half = scale(norm(sub(foot(f1), foot(f0))), s / 2);
+      sink.beam(m, up(add(foot(f0), half), s), up(sub(foot(f1), half), p.height / 2), s * 0.7);
     }
   }
 }

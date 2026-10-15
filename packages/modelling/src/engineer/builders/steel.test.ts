@@ -1,6 +1,6 @@
 import type { AssemblyParams } from '@aio/schema';
 import { describe, expect, it } from 'vitest';
-import type { Prim } from '../geom';
+import type { Prim, V3 } from '../geom';
 import {
   bounds,
   boundaryLoops,
@@ -9,6 +9,7 @@ import {
   must,
   normalsAgree,
   normalsUnit,
+  vertexAt,
 } from '../testGeom';
 import { braceCount, latticeLegAt, STEEL_BUILDERS } from './steel';
 import { build, countComponents, registerBuilders } from './testFixtures';
@@ -22,6 +23,92 @@ function expectSolid(p: Prim): void {
   expect(normalsUnit(p)).toBe(true);
   expect(degenerateTriangles(p)).toBe(0);
   expect(boundaryLoops(p)).toEqual([]);
+}
+
+interface Tri {
+  pts: V3[];
+  n: V3;
+  piece: number;
+}
+
+const sub3 = (a: V3, b: V3): V3 => [a[0] - b[0], a[1] - b[1], a[2] - b[2]];
+const dot3 = (a: V3, b: V3) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
+const cross3 = (a: V3, b: V3): V3 => [
+  a[1] * b[2] - a[2] * b[1],
+  a[2] * b[0] - a[0] * b[2],
+  a[0] * b[1] - a[1] * b[0],
+];
+
+/** Triangles of `p` labelled with the connected piece (member) they belong to. */
+function trianglesByPiece(p: Prim): Tri[] {
+  const key = (i: number) =>
+    vertexAt(p, i)
+      .map((x) => Math.round(x * 1e4))
+      .join(',');
+  const parent = new Map<string, string>();
+  const find = (k: string): string => {
+    let r = k;
+    for (let up = parent.get(r); up !== undefined && up !== r; up = parent.get(r)) r = up;
+    return r;
+  };
+  const tris: number[][] = [];
+  for (let t = 0; t + 2 < p.indices.length; t += 3) {
+    const ids = [0, 1, 2].map((e) => must(p.indices[t + e]));
+    tris.push(ids);
+    const [a, ...rest] = ids.map(key);
+    for (const b of rest) parent.set(find(must(b)), find(must(a)));
+  }
+  const pieces = new Map<string, number>();
+  return tris.map((ids) => {
+    const root = find(key(must(ids[0])));
+    if (!pieces.has(root)) pieces.set(root, pieces.size);
+    const pts = ids.map((i) => vertexAt(p, i));
+    const n = cross3(sub3(must(pts[1]), must(pts[0])), sub3(must(pts[2]), must(pts[0])));
+    const l = Math.hypot(...n);
+    return { pts, n: [n[0] / l, n[1] / l, n[2] / l], piece: must(pieces.get(root)) };
+  });
+}
+
+/** Whether two coplanar triangles overlap with some area (separating axis test in their plane). */
+function overlapInPlane(a: Tri, b: Tri): boolean {
+  const ax = a.n.map(Math.abs);
+  const drop = ax.indexOf(Math.max(...ax));
+  const flat = (q: V3): [number, number] => {
+    const r = [q[0], q[1], q[2]].filter((_, k) => k !== drop);
+    return [must(r[0]), must(r[1])];
+  };
+  const A = a.pts.map(flat);
+  const B = b.pts.map(flat);
+  for (const poly of [A, B]) {
+    for (let e = 0; e < 3; e++) {
+      const p0 = must(poly[e]);
+      const p1 = must(poly[(e + 1) % 3]);
+      const axis = [p0[1] - p1[1], p1[0] - p0[0]];
+      const proj = (q: [number, number]) => must(axis[0]) * q[0] + must(axis[1]) * q[1];
+      const pa = A.map(proj);
+      const pb = B.map(proj);
+      if (Math.max(...pa) <= Math.min(...pb) + 1e-9 || Math.max(...pb) <= Math.min(...pa) + 1e-9)
+        return false;
+    }
+  }
+  return true;
+}
+
+/** Pairs of triangles from different members that lie in one plane and overlap (z-fighting). */
+function coplanarOverlaps(p: Prim): number {
+  const tris = trianglesByPiece(p);
+  let n = 0;
+  for (let i = 0; i < tris.length; i++) {
+    const a = must(tris[i]);
+    for (let j = i + 1; j < tris.length; j++) {
+      const b = must(tris[j]);
+      if (a.piece === b.piece) continue;
+      if (Math.hypot(...cross3(a.n, b.n)) > 1e-9) continue;
+      if (Math.abs(dot3(a.n, sub3(must(b.pts[0]), must(a.pts[0])))) > 1e-7) continue;
+      if (overlapInPlane(a, b)) n++;
+    }
+  }
+  return n;
 }
 
 const only = (prims: Prim[]): Prim => {
@@ -139,6 +226,21 @@ describe('lattice', () => {
     expect(build('lattice', p).triangles()).toBeLessThan(150_000);
   });
 
+  it('X diagonals cross clear of each other, no faces fighting where they cross', () => {
+    for (const legs of [3, 4] as const) {
+      // the second diagonal of an X adds no coplanar overlap to what a single diagonal (Z) has
+      const x = only(build('lattice', { ...lattice(1, 'X', legs), widthTop: 8 }).out());
+      const z = only(build('lattice', { ...lattice(1, 'Z', legs), widthTop: 8 }).out());
+      expectSolid(x);
+      expect(coplanarOverlaps(x)).toBe(coplanarOverlaps(z));
+    }
+  });
+
+  it('refuses braces thicker than the legs', () => {
+    const p = { ...lattice(2, 'X'), braceSection: 0.3 };
+    expect(() => build('lattice', p)).toThrow(/^geometry: /);
+  });
+
   it('refuses bays taller than the lattice', () => {
     const p = { ...lattice(8, 'X'), height: 30 };
     expect(() => build('lattice', p)).toThrow(/^geometry: /);
@@ -162,6 +264,14 @@ describe('frame', () => {
     braced: false,
     member: 0.3,
   };
+
+  it('frame members meet without coplanar faces at the joints', () => {
+    for (const kind of ['portal', 'rack'] as const)
+      for (const braced of [false, true]) {
+        const prim = only(build('frame', { ...portal, kind, braced, bays: 2 }).out());
+        expect([kind, braced, coplanarOverlaps(prim)]).toEqual([kind, braced, 0]);
+      }
+  });
 
   it('portal is two columns and a beam, braced adds two knee braces', () => {
     const plain = only(build('frame', portal).out());

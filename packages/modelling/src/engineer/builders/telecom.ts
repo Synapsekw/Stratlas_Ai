@@ -134,11 +134,15 @@ export function buildAntenna(sink: MeshSink, a: AssemblyOf<'antenna'>, ctx: Buil
 }
 
 /**
- * Antenna mount round `centre`, `size` = width, height, depth, facing `azimuthDeg`. Pipe: one
- * vertical pipe, diameter `size[0]`, length `size[1]`. Sector frame: three vertical pipes spread
- * over the width at the front (`size[2] / 2` out along the azimuth), two face beams just behind
- * them and two arms running back `size[2]` towards the tower. Standoff: a vertical pipe (diameter
- * `size[0]`) at `centre` on two arms reaching back `size[2]` to the leg or shaft it hangs from.
+ * Antenna mount, `size` = width, height, depth, facing `azimuthDeg`; `centre` is always at
+ * mid-height, and per kind it means:
+ * - pipe: a point on the pipe axis. One vertical pipe, diameter `size[0]`, length `size[1]`.
+ * - sector-frame: the middle of the frame's depth, half way between the tower side and the pipe
+ *   face. Three vertical pipes spread over the width at the front (`size[2] / 2` out along the
+ *   azimuth), two face beams just behind them and two arms running back `size[2]` from the face
+ *   to the tower side.
+ * - standoff: a point on the pipe axis. A vertical pipe (diameter `size[0]`) on two arms reaching
+ *   back `size[2]` from it to the leg or shaft it hangs from.
  */
 export function buildAntennaMount(
   sink: MeshSink,
