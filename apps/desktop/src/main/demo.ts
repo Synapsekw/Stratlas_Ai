@@ -128,28 +128,40 @@ export async function demoWorkingCopy(path: string, copyRoot: string): Promise<s
 export async function demoLibraryPaths(
   demos: DemoSet | null,
   copyRoot: string,
-): Promise<{ path: string; primary: boolean }[]> {
+): Promise<DemoLibraryPath[]> {
   if (!demos) return [];
-  const out: { path: string; primary: boolean }[] = [];
+  const out: DemoLibraryPath[] = [];
   for (const p of demos.projects) {
     const id = p.split(sep).pop();
     out.push({
       path: (await currentCopy(demos, p, copyRoot)) ?? p,
       primary: id === demos.primary,
+      copy: await demoWorkingCopy(p, copyRoot),
     });
   }
   return out;
 }
 
+/**
+ * A demo in the library: the path it is listed by, whether the welcome opens it, and its working
+ * copy of any build (what a delete moves to the recycle bin), or null when there is none.
+ */
+export interface DemoLibraryPath {
+  path: string;
+  primary: boolean;
+  copy: string | null;
+}
+
 /** Mark the library entries that are demo projects (bundled or their working copies). */
-export function markDemoEntries(
-  entries: LibraryEntry[],
-  paths: { path: string; primary: boolean }[],
-): LibraryEntry[] {
-  const byKey = new Map(paths.map((p) => [key(p.path), p.primary]));
+export function markDemoEntries(entries: LibraryEntry[], paths: DemoLibraryPath[]): LibraryEntry[] {
+  const byKey = new Map(paths.map((p) => [key(p.path), p]));
   return entries.map((e) => {
-    const primary = byKey.get(key(e.path));
-    return primary === undefined ? e : { ...e, demo: { primary } };
+    const d = byKey.get(key(e.path));
+    if (d === undefined) return e;
+    return {
+      ...e,
+      demo: d.copy === null ? { primary: d.primary } : { primary: d.primary, copy: d.copy },
+    };
   });
 }
 

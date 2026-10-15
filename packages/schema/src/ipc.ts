@@ -186,9 +186,10 @@ export const LibraryEntry = z.object({
   package: z.object({ encrypted: z.boolean(), readOnly: z.boolean() }).optional(),
   /**
    * Set on the demo projects that ship with the app (synthetic data, `resources/demo/`); `primary`
-   * is the one the first-start welcome opens.
+   * is the one the first-start welcome opens. `copy`: its working copy on this computer, the folder
+   * a delete moves to the recycle bin; absent when there is none.
    */
-  demo: z.object({ primary: z.boolean() }).optional(),
+  demo: z.object({ primary: z.boolean(), copy: z.string().optional() }).optional(),
   /** M9: a shared project's badge (mode, unread comments, conflicts, ops not yet sent). */
   team: z
     .object({

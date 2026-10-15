@@ -60,9 +60,16 @@ export function DeleteDialog({ entry, onClose, returnTo }: EntryDialogProps) {
             {t(what.text)}
           </p>
           <dl className="kv" style={{ margin: 0 }}>
-            <dt>{t(what.label)}</dt>
-            <dd className="mono pm-path">{entry.path}</dd>
-            {entry.sizeBytes !== undefined && (
+            {what.path !== null && (
+              <>
+                <dt>{t(what.label)}</dt>
+                <dd className="mono pm-path" data-testid="project-delete-path">
+                  {what.path}
+                </dd>
+              </>
+            )}
+            {/* the size is of the listed path: not shown for a demo copy other than the card's */}
+            {entry.sizeBytes !== undefined && what.path === entry.path && (
               <>
                 <dt>{t('library.delete.size')}</dt>
                 <dd className="mono">{formatBytes(entry.sizeBytes)}</dd>

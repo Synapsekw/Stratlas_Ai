@@ -274,6 +274,13 @@ test.describe('a demo card', () => {
     try {
       const { app, win } = run;
       await expect(card(win, CHANGE_DEMO.name)).toBeVisible();
+      // never opened: no working copy, so the confirm names no folder and says so
+      await pickFromMenu(win, CHANGE_DEMO.name, 'delete');
+      const dlg = win.getByRole('alertdialog', { name: `Delete ${CHANGE_DEMO.name}?` });
+      await expect(dlg).toContainText('Nothing of this demo is on disk outside the app.');
+      await expect(dlg.getByTestId('project-delete-path')).toHaveCount(0);
+      await dlg.getByTestId('project-delete-cancel').click();
+      await expect(dlg).toBeHidden();
       await pickFromMenu(win, CHANGE_DEMO.name, 'remove');
       await expect(card(win, CHANGE_DEMO.name)).toHaveCount(0);
       await expect(win.getByTestId('library-notice')).toContainText('was removed from the library');
@@ -321,6 +328,9 @@ test.describe('a demo card', () => {
       await pickFromMenu(win, CHANGE_DEMO.name, 'delete');
       const dlg = win.getByRole('alertdialog', { name: `Delete ${CHANGE_DEMO.name}?` });
       await expect(dlg).toBeVisible();
+      // the confirm names the working copy, never the folder that ships with the app
+      const shown = (await dlg.getByTestId('project-delete-path').textContent()) ?? '';
+      expect(sameFile(shown, copy)).toBe(true);
       await dlg.getByTestId('project-delete-confirm').click();
       await expect(dlg).toBeHidden();
       await expect(card(win, CHANGE_DEMO.name)).toHaveCount(0);

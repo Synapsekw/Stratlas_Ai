@@ -89,8 +89,8 @@ describe('demo working copies', () => {
     const copies = join(base, 'user', 'demo');
     const demos = await findDemos(root);
     expect(await demoLibraryPaths(demos, copies)).toEqual([
-      { path: join(root, 'demo-road'), primary: false },
-      { path: join(root, 'demo-site'), primary: true },
+      { path: join(root, 'demo-road'), primary: false, copy: null },
+      { path: join(root, 'demo-site'), primary: true, copy: null },
     ]);
 
     const opened = await demoOpenPath(join(root, 'demo-site'), demos, copies);
@@ -98,8 +98,8 @@ describe('demo working copies', () => {
     expect(await readFile(join(opened, 'manifest.json'), 'utf8')).toBe('{}');
     // the library now lists the copy, still marked primary
     expect(await demoLibraryPaths(demos, copies)).toEqual([
-      { path: join(root, 'demo-road'), primary: false },
-      { path: join(copies, 'demo-site'), primary: true },
+      { path: join(root, 'demo-road'), primary: false, copy: null },
+      { path: join(copies, 'demo-site'), primary: true, copy: join(copies, 'demo-site') },
     ]);
     // edits in the copy survive the next open of the same build
     await writeFile(join(opened, 'issues.json'), '["edited"]');
@@ -122,6 +122,8 @@ describe('demo working copies', () => {
     expect((await demoLibraryPaths(demos, copies))[1]?.path).toBe(
       join(base, 'resources', 'demo', 'demo-site'),
     );
+    // the old build's copy is still what a delete would move to the recycle bin
+    expect((await demoLibraryPaths(demos, copies))[1]?.copy).toBe(opened);
     expect(await demoOpenPath(join(base, 'resources', 'demo', 'demo-site'), demos, copies)).toBe(
       opened,
     );
@@ -133,10 +135,14 @@ describe('demo working copies', () => {
     const marked = markDemoEntries(
       [entry(join(base, 'a')), entry(join(base, 'b')), entry(join(base, 'own'))],
       [
-        { path: join(base, 'a'), primary: true },
-        { path: join(base, 'b'), primary: false },
+        { path: join(base, 'a'), primary: true, copy: null },
+        { path: join(base, 'b'), primary: false, copy: join(base, 'copy', 'b') },
       ],
     );
-    expect(marked.map((e) => e.demo)).toEqual([{ primary: true }, { primary: false }, undefined]);
+    expect(marked.map((e) => e.demo)).toEqual([
+      { primary: true },
+      { primary: false, copy: join(base, 'copy', 'b') },
+      undefined,
+    ]);
   });
 });
