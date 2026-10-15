@@ -17,13 +17,34 @@
  */
 import { brand } from '@aio/brand';
 import { layerTransformToGeoref } from '@aio/geo';
-import { exportBundle } from '@aio/modelling';
-import { EngineerProposal, EngineerRun, EvidencePack, type ProjectManifest } from '@aio/schema';
-import { open, readFile, realpath } from 'node:fs/promises';
+import {
+  componentRegister,
+  exportBundle,
+  validateGlb,
+  type KhronosValidator,
+} from '@aio/modelling';
+import {
+  DETAIL_BUDGETS,
+  EngineerProposal,
+  EngineerRun,
+  EvidencePack,
+  PROCMODEL_DIR,
+  type ProjectManifest,
+} from '@aio/schema';
+import { mkdir, open, readFile, realpath } from 'node:fs/promises';
 import { extname, isAbsolute, join, relative, resolve, sep } from 'node:path';
 import type { z } from 'zod';
 import { isChangedOnDisk, readBytesSeen, writeJsonSeen } from './fsutil';
-import { modelFile, modelLayerId, parseModel, type ModelProjects } from './modelBuilder';
+import {
+  buildModelLayer,
+  modelFile,
+  modelGlb,
+  modelLayerId,
+  parseModel,
+  readModelFile,
+  writeBytesAtomic,
+  type ModelProjects,
+} from './modelBuilder';
 import type { Handle } from './notYet';
 
 /** The builder library loads on first use (see modelBuilder.ts). */
@@ -58,7 +79,29 @@ export interface EngineeringIpcDeps {
   writeFile?: (path: string, data: Uint8Array | string) => Promise<void>;
   /** The GLB generator string. */
   generator?: string;
+  /** The Khronos glTF validator (default: `gltf-validator`, loaded on first use). */
+  khronos?: KhronosValidator;
+  /** The clock of a build (tests). */
+  now?: () => Date;
 }
+
+const SEVERITY = ['error', 'warning', 'information', 'hint'];
+
+/** The Khronos glTF validator as `validateGlb` takes it, loaded the first time a file is checked. */
+export const khronosValidator: KhronosValidator = async (glb) => {
+  const { validateBytes } = await import('gltf-validator');
+  const r = await validateBytes(glb, { format: 'glb', maxIssues: 50, writeTimestamp: false });
+  return {
+    errors: r.issues.numErrors,
+    warnings: r.issues.numWarnings,
+    messages: r.issues.messages
+      .filter((m) => m.severity <= 1)
+      .map(
+        (m) =>
+          `${SEVERITY[m.severity] ?? 'issue'} ${m.code}: ${m.message}${m.pointer ? ` (${m.pointer})` : ''}`,
+      ),
+  };
+};
 
 /** Width and height from a PNG or JPEG header, or null when it cannot tell. */
 export function imageSize(b: Uint8Array): { w: number; h: number } | null {
@@ -119,8 +162,11 @@ export function registerEngineeringIpc({
   images,
   writeFile,
   generator = `${brand.productName} engineering model`,
+  khronos,
+  now = () => new Date(),
 }: EngineeringIpcDeps): void {
   const notOpen = (id: string) => ({ ok: false as const, error: `Project "${id}" is not open.` });
+  const errText = (e: unknown) => (e instanceof Error ? e.message : String(e));
 
   handle('model:exportEngineering', async ({ projectId, modelId, folder, detail, replace }) => {
     const pkg = projects.package(projectId);
@@ -216,14 +262,19 @@ export function registerEngineeringIpc({
     return { ok: true, run: run.value, evidence: evidence.value, proposal: proposal.value };
   });
 
-  handle('engineer:runWrite', async ({ projectId, run }) => {
+  handle('engineer:runWrite', async ({ projectId, run, proposal }) => {
     if (projects.package(projectId)) return READ_ONLY;
     const root = projects.root(projectId);
     if (root === undefined) return notOpen(projectId);
-    const { mkdir } = await import('node:fs/promises');
     const dir = join(root, ENGINEERING_DIR, run.id);
     await mkdir(dir, { recursive: true });
     try {
+      // the proposal first: a run.json that says identify is done always has its proposal
+      if (proposal)
+        await writeJsonSeen(join(dir, 'proposal.json'), proposal, {
+          backup: true,
+          name: `${ENGINEERING_DIR}/${run.id}/proposal.json`,
+        });
       await writeJsonSeen(join(dir, 'run.json'), run, {
         backup: true,
         name: `${ENGINEERING_DIR}/${run.id}/run.json`,
@@ -233,6 +284,65 @@ export function registerEngineeringIpc({
       throw e;
     }
     return { ok: true };
+  });
+
+  handle('engineer:validate', async ({ projectId, modelId, draft, detail }) => {
+    const pkg = projects.package(projectId);
+    const root = pkg ? undefined : projects.root(projectId);
+    if (!pkg && root === undefined) return notOpen(projectId);
+    const rel = modelGlb(modelId, draft);
+    let glb: Uint8Array | null;
+    if (pkg)
+      glb = pkg.archive.entries.has(rel) ? new Uint8Array(await pkg.archive.read(rel)) : null;
+    else
+      glb = await readFile(join(root ?? '', ...rel.split('/')))
+        .then((b) => new Uint8Array(b))
+        .catch(() => null);
+    if (!glb) return { ok: false, error: `${rel} is not there: build the model first.` };
+    try {
+      const report = await validateGlb(glb, {
+        budget: DETAIL_BUDGETS[detail].triangles,
+        khronos: khronos ?? khronosValidator,
+      });
+      return { ok: true, report: { ...report, messages: report.messages.slice(0, 200) } };
+    } catch (e) {
+      return { ok: false, error: `${rel} could not be checked: ${errText(e)}` };
+    }
+  });
+
+  handle('engineer:accept', async ({ projectId, modelId }) => {
+    if (projects.package(projectId)) return READ_ONLY;
+    const root = projects.root(projectId);
+    if (root === undefined) return notOpen(projectId);
+    const read = await readModelFile(root, modelId);
+    if (!read.ok) return read;
+    const georef = read.model.georef;
+    // a model with no defensible place sits at the project origin, provisionally (spec 5.6)
+    const placement = !georef || georef.horizontal.status === 'unplaced' ? 'provisional' : 'placed';
+    const built = await buildModelLayer(root, modelId, {
+      draft: false,
+      now: now(),
+      placement: { ...(georef ? { georef } : {}), placement },
+    });
+    if (!built.ok) return built;
+    const files: string[] = [];
+    const register = `${JSON.stringify(componentRegister(built.model), null, 2)}\n`;
+    const write = async (rel: string, text: string) => {
+      await writeBytesAtomic(join(root, ...rel.split('/')), new TextEncoder().encode(text));
+      files.push(rel);
+    };
+    if (georef)
+      await write(
+        `${PROCMODEL_DIR}/${modelId}.georeference.json`,
+        `${JSON.stringify(georef, null, 2)}\n`,
+      );
+    await write(`${PROCMODEL_DIR}/${modelId}.components.json`, register);
+    return {
+      ok: true,
+      layer: built.layer,
+      files,
+      ...(built.report ? { report: built.report } : {}),
+    };
   });
 
   handle('engineer:evidenceImage', async ({ projectId, runId, imageId }) => {

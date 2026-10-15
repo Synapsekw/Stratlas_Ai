@@ -335,7 +335,113 @@ describe('model:build report', () => {
   });
 });
 
+describe('engineer:validate and engineer:accept', () => {
+  it('checks the written draft GLB with the Khronos validator in main', async () => {
+    const r = ipc();
+    expect(
+      await r.call('model:build', { projectId: 'site', id: 'stack', draft: true }),
+    ).toMatchObject({ ok: true, layer: 'model-draft-stack' });
+    const v = await r.call('engineer:validate', {
+      projectId: 'site',
+      modelId: 'stack',
+      draft: true,
+      detail: 'standard',
+    });
+    if (!v.ok) throw new Error(v.error);
+    expect(v.report.messages).toEqual([]);
+    expect(v.report.validatorErrors).toBe(0);
+    expect(v.report.finite && v.report.indicesValid && v.report.withinBudget).toBe(true);
+    expect(v.report.triangles).toBeGreaterThan(100);
+    // a validator error is reported, not hidden
+    const failing = await ipc({
+      khronos: () => Promise.resolve({ errors: 2, warnings: 0, messages: ['error X: broken'] }),
+    }).call('engineer:validate', {
+      projectId: 'site',
+      modelId: 'stack',
+      draft: true,
+      detail: 'fast',
+    });
+    expect(failing).toMatchObject({ ok: true, report: { validatorErrors: 2 } });
+    expect(
+      await r.call('engineer:validate', {
+        projectId: 'site',
+        modelId: 'stack',
+        draft: false,
+        detail: 'fast',
+      }),
+    ).toMatchObject({ ok: false });
+  });
+
+  it('accepting twice leaves one layer with the placement and writes the sidecars', async () => {
+    const r = ipc();
+    await r.call('model:build', { projectId: 'site', id: 'stack', draft: true });
+    for (let i = 0; i < 2; i++) {
+      const a = await r.call('engineer:accept', { projectId: 'site', modelId: 'stack' });
+      if (!a.ok) throw new Error(a.error);
+      expect(a.layer).toBe('model-stack');
+      expect(a.files).toEqual(['models/stack.georeference.json', 'models/stack.components.json']);
+    }
+    const m = await readManifestFile(root);
+    expect(m.layers.map((l) => l.id)).toEqual(['model-stack']);
+    const layer = m.layers[0];
+    if (layer?.kind !== 'mesh') throw new Error('no mesh layer');
+    expect(layer.georef).toEqual(MODEL_GEOREF);
+    expect(layer.placement).toBe('placed');
+    expect(layer.derived).toMatchObject({ kind: 'model', source: ['stack'] });
+    expect(
+      Georef.parse(
+        JSON.parse(await readFile(join(root, 'models', 'stack.georeference.json'), 'utf8')),
+      ),
+    ).toEqual(MODEL_GEOREF);
+    const rows = JSON.parse(
+      await readFile(join(root, 'models', 'stack.components.json'), 'utf8'),
+    ) as { id: string }[];
+    expect(rows.map((x) => x.id)).toEqual(['flue-1', 'flue-2']);
+    expect(existsSync(join(root, 'models', 'draft-stack.glb'))).toBe(false);
+    // a rebuild from the Model builder keeps the placement
+    await r.call('model:build', { projectId: 'site', id: 'stack' });
+    const again = (await readManifestFile(root)).layers[0];
+    expect(again?.kind === 'mesh' && again.placement).toBe('placed');
+    expect(again?.kind === 'mesh' && again.georef).toEqual(MODEL_GEOREF);
+  });
+
+  it('an unplaced model is accepted provisionally, and a package refuses', async () => {
+    const unplaced: ProcModel = {
+      ...model,
+      georef: { ...MODEL_GEOREF, horizontal: { status: 'unplaced' } },
+    };
+    await writeFile(join(root, 'models', 'stack.procmodel.json'), JSON.stringify(unplaced));
+    expect(
+      await ipc().call('engineer:accept', { projectId: 'site', modelId: 'stack' }),
+    ).toMatchObject({ ok: true });
+    const layer = (await readManifestFile(root)).layers[0];
+    expect(layer?.kind === 'mesh' && layer.placement).toBe('provisional');
+    expect(
+      await ipc({}, true).call('engineer:accept', { projectId: 'site', modelId: 'stack' }),
+    ).toMatchObject({ ok: false, code: 'read-only' });
+  });
+});
+
 describe('engineer run files', () => {
+  it('writes the proposal beside run.json and reads it back', async () => {
+    const proposal = {
+      family: { value: 'chimney' as const, reasons: ['tall round shaft'] },
+      identity: { sameAsset: true, conflicts: [] },
+      components: [],
+      unresolved: [],
+      notes: '',
+    };
+    const r = ipc();
+    expect(await r.call('engineer:runWrite', { projectId: 'site', run: RUN, proposal })).toEqual({
+      ok: true,
+    });
+    expect(await r.call('engineer:runRead', { projectId: 'site', runId: 'run-1' })).toMatchObject({
+      ok: true,
+      run: { id: 'run-1' },
+      proposal,
+    });
+  });
+
   it('reads nulls for a run that is not there', async () => {
     expect(await ipc().call('engineer:runRead', { projectId: 'site', runId: 'run-1' })).toEqual({
       ok: true,

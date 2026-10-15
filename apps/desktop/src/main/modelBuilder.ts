@@ -22,6 +22,7 @@ import {
 import {
   PROCMODEL_DIR,
   type GlbBuildReport,
+  type Georef,
   type Layer,
   type ProcModel,
   type ProcModelSummary,
@@ -131,7 +132,7 @@ export async function readCloudDrawings(root: string): Promise<boolean> {
   }
 }
 
-async function writeBytesAtomic(file: string, data: Uint8Array): Promise<void> {
+export async function writeBytesAtomic(file: string, data: Uint8Array): Promise<void> {
   const tmp = `${file}.${String(process.pid)}.${String(Date.now())}.tmp`;
   await writeFile(tmp, data);
   try {
@@ -226,6 +227,131 @@ function trianglesIn(glb: Uint8Array): number {
   return n;
 }
 
+/** A model's file read and checked from a project folder, or the reason it cannot be. */
+export async function readModelFile(
+  root: string,
+  id: string,
+): Promise<{ ok: true; model: ProcModel } | { ok: false; error: string }> {
+  const text = await readFile(join(root, PROCMODEL_DIR, `${id}${SUFFIX}`), 'utf8').catch(
+    () => null,
+  );
+  if (text === null) return { ok: false, error: `There is no model "${id}" in this project.` };
+  return parseModel(text, modelFile(id));
+}
+
+export type BuildResult =
+  | {
+      ok: true;
+      layer: string;
+      glb: string;
+      triangles: number;
+      report?: GlbBuildReport;
+      model: ProcModel;
+    }
+  | { ok: false; error: string };
+
+/**
+ * Mesh a model into `models/<id>.glb` (or the draft) and add or replace its one layer. A rebuilt
+ * layer keeps its visibility and, unless `placement` gives new ones, its `georef` and
+ * `placement`. The real build replaces the draft preview.
+ */
+export async function buildModelLayer(
+  root: string,
+  id: string,
+  o: {
+    draft: boolean;
+    now: Date;
+    placement?: { georef?: Georef; placement: NonNullable<MeshLayer['placement']> };
+  },
+): Promise<BuildResult> {
+  const draft = o.draft;
+  const parsed = await readModelFile(root, id);
+  if (!parsed.ok) return parsed;
+  const model = parsed.model;
+  const problem = checkProcModel(model)
+    .filter((p) => {
+      const part = model.parts.find((q) => q.id === p.partId);
+      return !part || (draft ? part.status !== 'rejected' : part.status === 'accepted');
+    })
+    .find((p) => p.partId !== undefined);
+  if (problem) return { ok: false, error: problem.message };
+  const meshed = meshModel(model, draft);
+  if (!draft && meshed.nodes.length === 0) {
+    return {
+      ok: false,
+      error:
+        model.assemblies.length > 0
+          ? 'Accept at least one part or component, then build the model.'
+          : 'Accept at least one part, then build the model.',
+    };
+  }
+  const glbRel = modelGlb(id, draft);
+  await mkdir(join(root, PROCMODEL_DIR), { recursive: true });
+  await writeBytesAtomic(join(root, ...glbRel.split('/')), meshed.glb);
+
+  const tags: NonNullable<MeshLayer['tags']> = meshed.tags;
+  const layerId = modelLayerId(id, draft);
+  const layer: MeshLayer = {
+    kind: 'mesh',
+    id: layerId,
+    name: draft ? `${model.name} (draft)` : model.name,
+    visible: true,
+    src: { path: glbRel },
+    transform: IDENTITY,
+    ...(tags.length ? { tags } : {}),
+    ...(model.capture ? { capture: model.capture } : {}),
+    derived: {
+      kind: 'model',
+      source: [id],
+      runId: stamp(o.now),
+      ...(draft ? { draft: true } : {}),
+    },
+  };
+  const draftId = modelLayerId(id, true);
+  await updateManifest(root, (manifest) => {
+    let placed = false;
+    const layers: Layer[] = [];
+    for (const l of manifest.layers) {
+      if (l.id === layerId) {
+        const keep = o.placement
+          ? {
+              ...(o.placement.georef ? { georef: o.placement.georef } : {}),
+              placement: o.placement.placement,
+            }
+          : l.kind === 'mesh'
+            ? {
+                ...(l.georef ? { georef: l.georef } : {}),
+                ...(l.placement ? { placement: l.placement } : {}),
+              }
+            : {};
+        layers.push({ ...layer, ...keep, visible: l.visible });
+        placed = true;
+      } else if (!draft && l.id === draftId) {
+        // the real build replaces the preview
+        continue;
+      } else {
+        layers.push(l);
+      }
+    }
+    if (!placed)
+      layers.push({
+        ...layer,
+        ...(o.placement?.georef ? { georef: o.placement.georef } : {}),
+        ...(o.placement ? { placement: o.placement.placement } : {}),
+      });
+    return { ...manifest, layers };
+  });
+  if (!draft) await rm(join(root, ...modelGlb(id, true).split('/')), { force: true });
+  return {
+    ok: true,
+    layer: layerId,
+    glb: glbRel,
+    triangles: meshed.triangles,
+    ...(meshed.report ? { report: meshed.report } : {}),
+    model,
+  };
+}
+
 export function registerModelBuilderIpc({
   handle,
   projects,
@@ -317,78 +443,14 @@ export function registerModelBuilderIpc({
     if (projects.package(projectId)) return READ_ONLY;
     const root = projects.root(projectId);
     if (root === undefined) return notOpen(projectId);
-    const rel = modelFile(id);
-    const text = await readFile(join(root, PROCMODEL_DIR, `${id}${SUFFIX}`), 'utf8').catch(
-      () => null,
-    );
-    if (text === null) return { ok: false, error: `There is no model "${id}" in this project.` };
-    const parsed = parseModel(text, rel);
-    if (!parsed.ok) return parsed;
-    const model = parsed.model;
-    const problem = checkProcModel(model)
-      .filter((p) => {
-        const part = model.parts.find((q) => q.id === p.partId);
-        return !part || (draft ? part.status !== 'rejected' : part.status === 'accepted');
-      })
-      .find((p) => p.partId !== undefined);
-    if (problem) return { ok: false, error: problem.message };
-    const meshed = meshModel(model, draft);
-    if (!draft && meshed.nodes.length === 0) {
-      return {
-        ok: false,
-        error:
-          model.assemblies.length > 0
-            ? 'Accept at least one part or component, then build the model.'
-            : 'Accept at least one part, then build the model.',
-      };
-    }
-    const glbRel = modelGlb(id, draft);
-    await mkdir(join(root, PROCMODEL_DIR), { recursive: true });
-    await writeBytesAtomic(join(root, ...glbRel.split('/')), meshed.glb);
-
-    const tags: NonNullable<MeshLayer['tags']> = meshed.tags;
-    const layerId = modelLayerId(id, draft);
-    const layer: MeshLayer = {
-      kind: 'mesh',
-      id: layerId,
-      name: draft ? `${model.name} (draft)` : model.name,
-      visible: true,
-      src: { path: glbRel },
-      transform: IDENTITY,
-      ...(tags.length ? { tags } : {}),
-      ...(model.capture ? { capture: model.capture } : {}),
-      derived: {
-        kind: 'model',
-        source: [id],
-        runId: stamp(now()),
-        ...(draft ? { draft: true } : {}),
-      },
-    };
-    const draftId = modelLayerId(id, true);
-    await updateManifest(root, (manifest) => {
-      let placed = false;
-      const layers: Layer[] = [];
-      for (const l of manifest.layers) {
-        if (l.id === layerId) {
-          layers.push({ ...layer, visible: l.visible });
-          placed = true;
-        } else if (!draft && l.id === draftId) {
-          // the real build replaces the preview
-          continue;
-        } else {
-          layers.push(l);
-        }
-      }
-      if (!placed) layers.push(layer);
-      return { ...manifest, layers };
-    });
-    if (!draft) await rm(join(root, ...modelGlb(id, true).split('/')), { force: true });
+    const r = await buildModelLayer(root, id, { draft, now: now() });
+    if (!r.ok) return r;
     return {
       ok: true,
-      layer: layerId,
-      glb: glbRel,
-      triangles: meshed.triangles,
-      ...(meshed.report ? { report: meshed.report } : {}),
+      layer: r.layer,
+      glb: r.glb,
+      triangles: r.triangles,
+      ...(r.report ? { report: r.report } : {}),
     };
   });
 
