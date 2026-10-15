@@ -1,0 +1,200 @@
+/* The Clean up panel on the stage (dark in every theme), its selection bar and its notice. */
+/* Top left under the toolbar: the class and elevation legends and the compass sit on the right,
+   and at most half the stage wide so the middle of the view stays free for the box handles. */
+.cleanup-panel {
+  position: absolute;
+  top: 52px;
+  inset-inline-start: 12px;
+  z-index: 20;
+  width: clamp(220px, calc(50% - 24px), 300px);
+  max-height: calc(100% - 140px);
+  overflow: hidden auto;
+  overscroll-behavior: contain;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 10px;
+  padding: 10px 12px 8px;
+  scrollbar-gutter: stable;
+  background: var(--bg-1);
+  border-color: var(--line-strong);
+  box-shadow: 0 12px 32px var(--shadow);
+  font-size: var(--t-12);
+  color: var(--fg-1);
+}
+.cleanup-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-block-end: -4px;
+}
+/* sections separated like the menus' separators */
+.cleanup-sec {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  min-width: 0;
+  gap: 8px;
+  padding-block-start: 10px;
+  border-block-start: 1px solid var(--line);
+}
+.cleanup-sec .pop-note {
+  margin: 0;
+}
+.cleanup-btns {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.cleanup-grow {
+  flex: 1;
+  min-width: 0;
+}
+.cleanup-pair {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 8px;
+}
+.cleanup-field {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+.cleanup-field > span {
+  font-size: var(--t-11);
+  color: var(--fg-3);
+}
+.cleanup-field .input {
+  height: 26px;
+  width: 100%;
+}
+.cleanup-size {
+  color: var(--fg-2);
+  font-size: var(--t-11);
+}
+.cleanup-result {
+  color: var(--fg-1);
+  font-size: var(--t-11);
+}
+.cleanup-error {
+  margin: 0;
+  color: var(--danger-ink);
+}
+/* two thumbs over one track: the inputs let pointers through except on their thumbs */
+.cleanup-range {
+  position: relative;
+  height: 20px;
+}
+.cleanup-range::before {
+  content: '';
+  position: absolute;
+  inset-inline: 7px;
+  top: 50%;
+  height: 2px;
+  margin-top: -1px;
+  border-radius: 1px;
+  background: var(--line-strong);
+}
+.cleanup-range input[type='range'] {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  margin: 0;
+  background: none;
+  pointer-events: none;
+  appearance: none;
+  accent-color: var(--acc);
+}
+.cleanup-range input[type='range']::-webkit-slider-runnable-track {
+  height: 20px;
+  background: none;
+}
+.cleanup-range input[type='range']::-webkit-slider-thumb {
+  appearance: none;
+  pointer-events: auto;
+  width: 14px;
+  height: 14px;
+  margin-top: 3px;
+  border-radius: 50%;
+  border: 2px solid var(--bg-1);
+  background: var(--acc);
+  cursor: pointer;
+}
+.cleanup-range input[type='range']:focus-visible::-webkit-slider-thumb {
+  box-shadow: 0 0 0 3px var(--acc-a12);
+}
+.cleanup-range input[type='range']:disabled::-webkit-slider-thumb {
+  background: var(--fg-3);
+  cursor: default;
+}
+.cleanup-details > summary {
+  cursor: pointer;
+  color: var(--fg-2);
+  font-size: var(--t-11);
+}
+.cleanup-details > summary:hover {
+  color: var(--fg-0);
+}
+.cleanup-settings {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 8px;
+  padding-block-start: 8px;
+}
+.cleanup-foot {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding-block-start: 8px;
+  border-block-start: 1px solid var(--line);
+}
+.flip-x {
+  transform: scaleX(-1);
+}
+/* the drawn selection's actions, bottom centre of the stage */
+.cleanup-bar {
+  position: absolute;
+  bottom: 16px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 21;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  max-width: calc(100% - 24px);
+  padding: 6px 8px;
+  background: var(--bg-1);
+  border-color: var(--line-strong);
+  box-shadow: 0 12px 32px var(--shadow);
+  font-size: var(--t-12);
+  color: var(--fg-1);
+}
+.cleanup-bar-count {
+  padding-inline: 4px;
+  white-space: nowrap;
+}
+.cleanup-class-anchor {
+  position: relative;
+}
+.cleanup-class-list {
+  position: absolute;
+  bottom: calc(100% + 8px);
+  left: 0;
+  z-index: 22;
+  width: 200px;
+  max-height: 240px;
+  overflow: auto;
+  padding: 4px;
+  background: var(--bg-1);
+  border-color: var(--line-strong);
+  box-shadow: 0 12px 32px var(--shadow);
+}
+.cleanup-class-list .pop-item {
+  grid-template-columns: 10px 1fr;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+}
+.cleanup-swatch {
+  width: 10px;
+  height: 10px;
+  border-radius: 2px;
+}

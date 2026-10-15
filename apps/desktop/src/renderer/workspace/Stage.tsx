@@ -72,6 +72,7 @@ import { CompareScene } from './CompareScene';
 import { ChangeLegends } from './MapSwipe';
 import { CursorReadout, useSceneCursor } from './SceneCursor';
 import { StageClassLegend, StageElevationLegend } from './StageLegends';
+import { CleanupHost } from '../pointcloud/CleanupHost';
 import { DesignsMount } from '../survey/Designs';
 import { HaulRoadMount } from '../survey/HaulRoad';
 import { HydroMount } from '../survey/Hydro';
@@ -175,6 +176,7 @@ function ScenePane({
       <StageElevationLegend view={view} />
       <VolumetricStage stage={engine} epoch={epoch} />
       <StageClassLegend view={view} />
+      {!hidden && <CleanupHost engine={engine} />}
       <CloudChangeLegend view={view} />
       <ChangeLegends />
       {!hidden && <SceneMapMenu />}

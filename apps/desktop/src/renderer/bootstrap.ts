@@ -11,9 +11,16 @@ import {
   getActiveStage,
   meshTemplates,
   registerEngineAdapters,
+  type BoxHandle,
 } from '@aio/engine';
 import { captureMap, registerMapAdapters } from '@aio/maps';
-import { pointcloudSettings, registerPointcloudAdapters } from '@aio/pointcloud';
+import {
+  cloudSourceUrl,
+  countDrawn,
+  pointcloudCleanup,
+  pointcloudSettings,
+  registerPointcloudAdapters,
+} from '@aio/pointcloud';
 import { t } from '@aio/ui';
 import { loadFlight, registerVideoAdapters, videoRig } from '@aio/video';
 import { volumetric } from '@aio/volumetric';
@@ -28,6 +35,9 @@ import { graphicsReport, memoryWatch } from './memoryWatch';
 import { requestGlobe } from './globe/request';
 import { mediaView } from './screens/mediaView';
 import { agentPhotoRuns, agentProcessPhotos } from './photogrammetry/agentHooks';
+import { closeCleanupWithProject } from './pointcloud/CleanupHost';
+import { cleanupDebug } from './pointcloud/cleanupScene';
+import { cleanup } from './pointcloud/cleanupStore';
 import { bridge, shell } from './shell';
 import { COMPARE_GPU_BYTES, compareRuntime } from './workspace/compare';
 import { tilesDebug } from './workspace/siteTiles';
@@ -124,6 +134,20 @@ export function bootstrap(): void {
       /** Tier, detection facts and memory now (diagnostics, the performance tests). */
       memory: graphicsReport,
       pointcloud: pointcloudSettings,
+      /** Point cloud cleanup (e2e): the store, the live recipes, drawn points, the stream, a handle. */
+      pointcloudCleanup: {
+        store: cleanup.store,
+        recipes: pointcloudCleanup,
+        drawn: (layerId?: string) => {
+          const s = getActiveStage();
+          return s ? countDrawn(s, layerId) : null;
+        },
+        source: (layerId: string) => {
+          const s = getActiveStage();
+          return s ? cloudSourceUrl(s, layerId) : null;
+        },
+        handle: (h: BoxHandle) => cleanupDebug.handleScreen(h),
+      },
       /** 3D Tiles on screen: cache, budget and a test-only cache scale (the performance tests). */
       tiles: tilesDebug(),
       /** The video rig of the live stage (calibration tests: logged pose, model view). */
@@ -159,6 +183,8 @@ export function bootstrap(): void {
       },
     },
   });
+  // the cleanup history belongs to one open project
+  closeCleanupWithProject();
   shareFlightPoses(workspace.getState().project);
   workspace.subscribe((s, prev) => {
     if (s.project !== prev.project) shareFlightPoses(s.project);
