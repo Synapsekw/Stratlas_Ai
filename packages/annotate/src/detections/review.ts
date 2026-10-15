@@ -19,12 +19,17 @@ export type DetectionPatch = Partial<
   Pick<Detection, 'geom' | 'classId' | 'severity' | 'uncertain' | 'note'>
 >;
 
-interface Change {
+export interface ReviewChange {
   label: string;
   before: Readonly<Record<string, Detection | null>>;
   after: Readonly<Record<string, Detection | null>>;
   /** An acceptance: undo cannot step back past it. */
   final?: boolean;
+  /**
+   * An Accept all: the issue editor holds a command of the same label that made the issues.
+   * The app undoes and redoes both together (`undoReview` in the desktop store).
+   */
+  issues?: true;
 }
 
 export interface ReviewState {
@@ -34,8 +39,8 @@ export interface ReviewState {
   /** Proposals (AI, pipeline) under this confidence are hidden; a person's are always shown. */
   minConfidence: number;
   currentId: string | null;
-  past: readonly Change[];
-  future: readonly Change[];
+  past: readonly ReviewChange[];
+  future: readonly ReviewChange[];
   /** Bumped on every change of `detections` or `runs`: the saver writes when it moves. */
   revision: number;
   lastError: ReviewError | null;
@@ -61,6 +66,18 @@ export type ReviewAction =
    */
   | { type: 'reopen'; id: string; now: string; issueGone?: boolean }
   | { type: 'accepted'; id: string; issueId: string; by: string; now: string }
+  /** Accept all: many detections accepted at once, one undoable step (see `ReviewChange.issues`). */
+  | {
+      type: 'acceptedMany';
+      items: readonly { id: string; issueId: string }[];
+      label: string;
+      by: string;
+      now: string;
+    }
+  /** Reject all: the waiting detections among `ids` rejected as one step. */
+  | { type: 'rejectMany'; ids: readonly string[]; label: string; by: string; now: string }
+  /** A class was deleted: its waiting and rejected detections move to class `to`, one step. */
+  | { type: 'reclass'; from: string; to: string; now: string }
   | { type: 'undo' }
   | { type: 'redo' }
   | { type: 'clearError' };
@@ -186,7 +203,7 @@ export function sourceCounts(detections: readonly Detection[]): SourceCounts[] {
 
 // ---- reducer ----
 
-function apply(list: readonly Detection[], after: Change['after']): Detection[] {
+function apply(list: readonly Detection[], after: ReviewChange['after']): Detection[] {
   const out: Detection[] = [];
   const seen = new Set<string>();
   for (const d of list) {
@@ -224,7 +241,7 @@ function followOn(state: ReviewState, nextDetections: readonly Detection[]): str
   return after[0]?.id ?? null;
 }
 
-function commit(state: ReviewState, change: Change, currentId?: string | null): ReviewState {
+function commit(state: ReviewState, change: ReviewChange, currentId?: string | null): ReviewState {
   const detections = apply(state.detections, change.after);
   const cur = currentId === undefined ? followOn(state, detections) : currentId;
   return {
@@ -282,7 +299,7 @@ function changeOne(
   if (!d) return fail(state, 'missing');
   const next = fn(d);
   if (typeof next === 'string') return fail(state, next);
-  const change: Change = {
+  const change: ReviewChange = {
     label,
     before: { [id]: d },
     after: { [id]: next },
@@ -416,6 +433,59 @@ export function reviewReducer(state: ReviewState, action: ReviewAction): ReviewS
         },
         { final: true },
       );
+    case 'acceptedMany': {
+      const byId = new Map(state.detections.map((d) => [d.id, d]));
+      const before: Record<string, Detection> = {};
+      const after: Record<string, Detection> = {};
+      for (const it of action.items) {
+        const d = byId.get(it.id);
+        if (!d || d.status === 'accepted') continue;
+        before[d.id] = d;
+        after[d.id] = {
+          ...d,
+          status: 'accepted',
+          issueId: it.issueId,
+          reviewedBy: action.by,
+          reviewedAt: action.now,
+          updatedAt: action.now,
+        };
+      }
+      if (Object.keys(after).length === 0) return state;
+      return commit(state, { label: action.label, before, after, issues: true });
+    }
+    case 'rejectMany': {
+      const wanted = new Set(action.ids);
+      const before: Record<string, Detection> = {};
+      const after: Record<string, Detection> = {};
+      for (const d of state.detections) {
+        if (!wanted.has(d.id) || d.status !== 'draft') continue;
+        before[d.id] = d;
+        after[d.id] = {
+          ...d,
+          status: 'rejected',
+          reviewedBy: action.by,
+          reviewedAt: action.now,
+          updatedAt: action.now,
+        };
+      }
+      if (Object.keys(after).length === 0) return state;
+      return commit(state, { label: action.label, before, after });
+    }
+    case 'reclass': {
+      const before: Record<string, Detection> = {};
+      const after: Record<string, Detection> = {};
+      for (const d of state.detections) {
+        if (d.classId !== action.from || d.status === 'accepted') continue;
+        before[d.id] = d;
+        after[d.id] = { ...d, classId: action.to, updatedAt: action.now };
+      }
+      if (Object.keys(after).length === 0) return state;
+      return commit(
+        state,
+        { label: 'Move detections to another class', before, after },
+        state.currentId,
+      );
+    }
     case 'undo': {
       const c = state.past.at(-1);
       if (!c) return state;

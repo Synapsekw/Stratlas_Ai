@@ -10,6 +10,7 @@ import {
   newId as randomId,
   STATUS_ORDER,
   findClass,
+  findModel,
   removeSighting,
   replaceSighting,
   setStatus,
@@ -21,6 +22,7 @@ import {
 } from './ops';
 import type { IssueSaver, SaveState } from './persist';
 import { compareCodes } from './query';
+import { mapSeverity } from './severityMap';
 
 export interface AuditEntry {
   at: string;
@@ -71,6 +73,13 @@ export interface IssueEditor {
   setClassMany(ids: readonly string[], classId: string): BulkResult;
   /** Bulk: merge duplicates into the most severe (then lowest code) issue, in one undo step. */
   mergeMany(ids: readonly string[]): Result<Issue>;
+  /** Create many issues as one undo step (Accept all); nothing is created when one is refused. */
+  createMany(inputs: readonly CreateInput[], label: string): Result<Issue[]>;
+  /**
+   * Move every issue of class `fromId` to class `toId` in one undo step (a class is deleted),
+   * mapping each severity onto the new class's model (`mapSeverity`).
+   */
+  reassignClass(fromId: string, toId: string): BulkResult;
   undo(): boolean;
   redo(): boolean;
   audit(id: string): readonly AuditEntry[];
@@ -387,6 +396,60 @@ export function createIssueEditor(opts: IssueEditorOptions): IssueEditor {
       if (sel?.kind === 'issue' && sources.some((x) => x.id === sel.id))
         store.getState().select({ kind: 'issue', id: target.id });
       return ok(merged);
+    },
+    createMany(inputs, label) {
+      if (readOnly()) return fail(READ_ONLY_ERROR);
+      if (inputs.length === 0) return ok([]);
+      const now = clock();
+      const ctx = context();
+      const list: Issue[] = [...store.getState().issues];
+      const after: Record<string, Issue> = {};
+      const out: Issue[] = [];
+      for (const input of inputs) {
+        const r = createIssue(
+          list,
+          { ...input, id: input.id ?? makeId(), author: input.author ?? author(), now },
+          ctx,
+        );
+        if (!r.ok) return fail(r.error);
+        const issue = withDerived(r.value, input.sighting);
+        list.push(issue);
+        after[issue.id] = issue;
+        out.push(issue);
+      }
+      const c = commit(label, after);
+      return c.ok ? ok(out) : err(c.error);
+    },
+    reassignClass(fromId, toId) {
+      const ctx = context();
+      const to = findClass(ctx, toId);
+      const ids = store
+        .getState()
+        .issues.filter((i) => i.classId === fromId)
+        .map((i) => i.id);
+      if (!to) {
+        const error = `Class "${toId}" is not in any class catalogue`;
+        return {
+          changed: 0,
+          skipped: ids.map((id) => ({ id, code: get(id)?.code ?? id, error })),
+        };
+      }
+      const toModel = findModel(ctx, to.severityModel);
+      const fromName = findClass(ctx, fromId)?.label ?? fromId;
+      return bulk(
+        ids,
+        (n) => `Move ${plural(n)} from ${fromName} to ${to.label}`,
+        (i, now) =>
+          toModel
+            ? ok({
+                ...i,
+                classId: to.id,
+                severityModelId: to.severityModel,
+                severity: mapSeverity(i.severity, toModel),
+                updatedAt: now,
+              })
+            : err(`Class ${to.label} has no severity model in this project`),
+      );
     },
     undo() {
       if (readOnly()) return false;

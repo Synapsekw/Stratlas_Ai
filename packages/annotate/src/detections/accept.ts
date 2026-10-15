@@ -160,3 +160,28 @@ export function linkCandidates(d: Detection, issues: readonly Issue[]): Issue[] 
   const rest = issues.filter((i) => !here(i) && i.classId !== d.classId);
   return [...near, ...sameClass, ...rest];
 }
+
+export interface AcceptManyResult {
+  accepted: { detection: Detection; input: AcceptAsNew }[];
+  skipped: { detection: Detection; problem: AcceptProblem }[];
+}
+
+/**
+ * Accept all (ANN-7): the waiting detections of a list as new-issue inputs, in list order; the
+ * waiting ones that cannot be accepted yet are skipped with the reason. Accepted and rejected
+ * detections are left out. Pure: the app runs `inputs` through `issueEditor.createMany`.
+ */
+export function acceptMany(
+  list: readonly Detection[],
+  ctx: IssueContext,
+  sizeOf: (d: Detection) => readonly [number, number] | undefined = () => undefined,
+): AcceptManyResult {
+  const out: AcceptManyResult = { accepted: [], skipped: [] };
+  for (const d of list) {
+    if (d.status !== 'draft') continue;
+    const r = newIssueInput(d, ctx, sizeOf(d));
+    if (r.ok) out.accepted.push({ detection: d, input: r.value });
+    else out.skipped.push({ detection: d, problem: r.error });
+  }
+  return out;
+}
