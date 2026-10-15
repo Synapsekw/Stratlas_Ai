@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import type { Prim } from '../geom';
+import { add, cross, len, norm, scale, sub, type Prim, type V3 } from '../geom';
 import {
   bounds,
   boundaryLoops,
@@ -12,7 +12,7 @@ import {
   vertexAt,
 } from '../testGeom';
 import { ACCESS_BUILDERS } from './access';
-import { build, countComponents, registerBuilders } from './testFixtures';
+import { build, countComponents, registerBuilders, shaft } from './testFixtures';
 
 registerBuilders(ACCESS_BUILDERS);
 
@@ -46,6 +46,27 @@ const prim = (prims: Prim[], material: string): Prim =>
   );
 const totalVolume = (p: Prim) => componentVolumes(p).reduce((s, v) => s + v, 0);
 
+/** Smallest distance of the primitive's vertices from the line through `base` along `axis`. */
+function nearestToAxis(p: Prim, base: V3, axis: V3): number {
+  const a = norm(axis);
+  let best = Infinity;
+  for (let i = 0; i < p.positions.length / 3; i++)
+    best = Math.min(best, len(cross(sub(vertexAt(p, i), base), a)));
+  return best;
+}
+
+const TILT = (5 * Math.PI) / 180;
+/** A straight 5 m radius shaft at `base`, 60 m long along `axis`. */
+const pillar = (base: V3, axis: V3 = [0, 1, 0]) =>
+  shaft(
+    'shaft-1',
+    [
+      { y: 0, r: 5 },
+      { y: 60, r: 5 },
+    ],
+    { base, axis },
+  );
+
 describe('ringPlatform', () => {
   it('a full ring is one closed annular slab of grating at its level', () => {
     const s = build('ringPlatform', { y: 40, rInner: 6, rOuter: 7.5, thickness: 0.1 });
@@ -74,6 +95,58 @@ describe('ringPlatform', () => {
     expectBounds(p, [0, 39.9, 0], [7.5, 40, 7.5]);
     const exact = (Math.PI * (7.5 ** 2 - 6 ** 2) * 0.1) / 4;
     expect(Math.abs(totalVolume(p) - exact) / exact).toBeLessThan(0.01);
+  });
+
+  it('a platform on a shaft rings its axis and refuses to cut into it', () => {
+    const on = { with: [pillar([20, 0, -10])] };
+    const p = only(
+      build(
+        'ringPlatform',
+        { y: 40, rInner: 5.2, rOuter: 6.5, thickness: 0.1, shaft: 'shaft-1' },
+        on,
+      ).out(),
+    );
+    expectSolid(p);
+    expectBounds(p, [13.5, 39.9, -16.5], [26.5, 40, -3.5]);
+    const part = only(
+      build(
+        'ringPlatform',
+        { y: 40, rInner: 5.2, rOuter: 6.5, thickness: 0.1, arcDeg: 90, shaft: 'shaft-1' },
+        on,
+      ).out(),
+    );
+    expectSolid(part);
+    expectBounds(part, [20, 39.9, -10], [26.5, 40, -3.5]);
+    expect(() =>
+      build(
+        'ringPlatform',
+        { y: 40, rInner: 4.9, rOuter: 6.5, thickness: 0.1, shaft: 'shaft-1' },
+        on,
+      ),
+    ).toThrow(/^geometry: platform would cut into shaft "shaft-1"/);
+  });
+
+  it('a platform on a tilted shaft is centred where the axis crosses its level', () => {
+    const axis: V3 = [Math.sin(TILT), Math.cos(TILT), 0];
+    const on = { with: [pillar([0, 0, 0], axis)] };
+    const p = only(
+      build(
+        'ringPlatform',
+        { y: 40, rInner: 5.2, rOuter: 6.5, thickness: 0.1, shaft: 'shaft-1' },
+        on,
+      ).out(),
+    );
+    expectSolid(p);
+    const cx = 40 * Math.tan(TILT);
+    expectBounds(p, [cx - 6.5, 39.9, -6.5], [cx + 6.5, 40, 6.5]);
+    // the level section of a tilted shaft is wider than its radius: 5 / cos 5 = 5.019
+    expect(() =>
+      build(
+        'ringPlatform',
+        { y: 40, rInner: 5.01, rOuter: 6.5, thickness: 0.1, shaft: 'shaft-1' },
+        on,
+      ),
+    ).toThrow(/^geometry: /);
   });
 
   it('uses the assembly material when it names one', () => {
@@ -134,6 +207,72 @@ describe('guardrail', () => {
     expect(countComponents(p)).toBe(4 * 3 + 1); // 3 intervals per 4 m side, one rail
     expectSolid(p);
     expectBounds(p, [-0.024, 20, -0.024], [4.024, 21.1 + 0.021, 4.024], 2);
+  });
+
+  it('a circular guardrail on a shaft rings its axis, clear of it', () => {
+    const on = { with: [pillar([20, 0, -10])] };
+    const p = only(
+      build(
+        'guardrail',
+        { path: { y: 40, r: 6.4, shaft: 'shaft-1' }, height: 1.1, posts: 1.5, rails: 2 },
+        on,
+      ).out(),
+    );
+    expectSolid(p);
+    expect(countComponents(p)).toBe(Math.ceil((2 * Math.PI * 6.4) / 1.5) + 2);
+    const b = bounds(p);
+    expect(b.max[0]).toBeCloseTo(26.424, 3);
+    expect(b.min[1]).toBeCloseTo(40, 9);
+    expect(nearestToAxis(p, [20, 0, -10], [0, 1, 0])).toBeGreaterThan(6.3);
+    expect(() =>
+      build(
+        'guardrail',
+        { path: { y: 40, r: 5, shaft: 'shaft-1' }, height: 1.1, posts: 1.5, rails: 2 },
+        on,
+      ),
+    ).toThrow(/^geometry: guardrail would cut into shaft "shaft-1"/);
+  });
+
+  it('a closed loop starts its rails at a post on a leg that has one', () => {
+    const rect: [number, number, number][] = [
+      [0, 0, 0],
+      [1, 0, 0],
+      [1, 0, 4],
+      [0, 0, 4],
+      [0, 0, 0],
+    ];
+    const p = only(build('guardrail', { path: rect, height: 1, posts: 1.5, rails: 1 }).out());
+    expectSolid(p);
+    expect(countComponents(p)).toBe(1 + 3 + 1 + 3 + 1);
+    // the rail's end caps face along the 4 m leg (x 1), at its first post (z 4/3)
+    const caps: V3[] = [];
+    for (let i = 0; i < p.normals.length / 3; i++) {
+      const v = vertexAt(p, i);
+      // post sides facing z stand 24 mm off their post's z; a rail cap's vertices do not
+      const offPost = Math.min(...[4 / 3, 8 / 3].map((z) => Math.abs(v[2] - z)));
+      if (Math.abs(p.normals[3 * i + 2] ?? 0) > 0.999999 && offPost < 0.02) caps.push(v);
+    }
+    expect(caps.length).toBeGreaterThan(0);
+    for (const v of caps) {
+      expect(Math.abs(v[2] - 4 / 3)).toBeLessThan(0.001);
+      expect(Math.abs(v[0] - 1)).toBeLessThan(0.022);
+      expect(v[1]).toBeGreaterThan(0.97); // the rail, not a post
+    }
+    // posts reach the top of the rail, hiding its seam
+    expect(bounds(p).max[1]).toBeCloseTo(1 + 0.021, 9);
+  });
+
+  it('a closed loop of legs shorter than the spacing seams its rails at a corner post', () => {
+    const square: [number, number, number][] = [
+      [0, 0, 0],
+      [1, 0, 0],
+      [1, 0, 1],
+      [0, 0, 1],
+      [0, 0, 0],
+    ];
+    const p = only(build('guardrail', { path: square, height: 1, posts: 1.5, rails: 2 }).out());
+    expectSolid(p);
+    expect(countComponents(p)).toBe(4 + 2);
   });
 
   it('a path with a repeated point is refused', () => {
@@ -200,6 +339,38 @@ describe('ladder', () => {
     expectBounds(p, [2.975, 10, -0.25], [3.025, 13, 0.25], 6);
   });
 
+  it('a ladder on an off-origin shaft faces away from that shaft', () => {
+    const s = build(
+      'ladder',
+      { bottom: [5.15, 0, 50], top: [5.15, 30, 50], width: 0.5, rungSpacing: 0.3, cage: true },
+      { with: [pillar([0, 0, 50])] },
+    );
+    for (const p of s.out()) expectSolid(p);
+    // stile surfaces are 5.125 from the axis at the nearest; the cage stands further out
+    expect(nearestToAxis(prim(s.out(), 'steel-galv'), [0, 0, 50], [0, 1, 0])).toBeGreaterThan(
+      5.124,
+    );
+    expect(nearestToAxis(prim(s.out(), 'steel-galv-cage'), [0, 0, 50], [0, 1, 0])).toBeGreaterThan(
+      5.1,
+    );
+    expect(bounds(prim(s.out(), 'steel-galv-cage')).max[0]).toBeGreaterThan(5.6);
+  });
+
+  it('a ladder up a tilted shaft stays outside it', () => {
+    const axis: V3 = [Math.sin(TILT), Math.cos(TILT), 0];
+    const out: V3 = [Math.cos(TILT), -Math.sin(TILT), 0];
+    const bottom = scale(out, 5.15);
+    const top = add(bottom, scale(axis, 30));
+    const s = build(
+      'ladder',
+      { bottom, top, width: 0.5, rungSpacing: 0.3, cage: true },
+      { with: [pillar([0, 0, 0], axis)] },
+    );
+    for (const p of s.out()) expectSolid(p);
+    expect(nearestToAxis(prim(s.out(), 'steel-galv'), [0, 0, 0], axis)).toBeGreaterThan(5.124);
+    expect(nearestToAxis(prim(s.out(), 'steel-galv-cage'), [0, 0, 0], axis)).toBeGreaterThan(5.1);
+  });
+
   it('a ladder with more than 2000 rungs is refused', () => {
     expect(() =>
       build('ladder', { bottom: [0, 0, 5], top: [0, 900, 5], width: 0.5, rungSpacing: 0.3 }),
@@ -230,7 +401,14 @@ describe('hatch', () => {
     const o = must(openings[0]);
     expect(o.centre).toEqual([2, 30.05, -1]);
     expect(o.normal).toEqual([0, 1, 0]);
-    expect(o.r).toBeCloseTo(0.3, 9);
+    expect(o.r).toBeCloseTo(Math.hypot(0.4, 0.3), 9);
+    // the real rectangle of the opening, inside the frame
+    expect(must(o.outline).map((q) => q.map((x) => +x.toFixed(9)))).toEqual([
+      [2.4, 30.05, -1.3],
+      [2.4, 30.05, -0.7],
+      [1.6, 30.05, -0.7],
+      [1.6, 30.05, -1.3],
+    ]);
   });
 });
 
@@ -265,8 +443,7 @@ describe('louvre', () => {
     let lowest = { y: Infinity, z: 0 };
     for (let i = 0; i < p.positions.length / 3; i++) {
       const v = vertexAt(p, i);
-      if (Math.abs(v[0]) < 0.449 && Math.abs(v[1]) < 0.449 && v[1] < lowest.y)
-        lowest = { y: v[1], z: v[2] };
+      if (Math.abs(v[1]) < 0.449 && v[1] < lowest.y) lowest = { y: v[1], z: v[2] };
     }
     expect(lowest.y).toBeLessThan(-0.39); // the bottom blade
     expect(lowest.z).toBeGreaterThan(0);
@@ -282,6 +459,20 @@ describe('louvre', () => {
     const p = only(s.out());
     expectSolid(p);
     expect(countComponents(p)).toBe(5);
+  });
+
+  it('blades run into the frame sides', () => {
+    const p = only(
+      build('louvre', { centre: [5, 20, 0], normal: [1, 0, 0], size: [1.2, 0.9], blades: 8 }).out(),
+    );
+    // the frame's sides are 0.55 to 0.6 from the middle; blade ends sit half way into them
+    const ends = new Set<string>();
+    for (let i = 0; i < p.positions.length / 3; i++) {
+      const v = vertexAt(p, i);
+      if (Math.abs(v[2]) > 0.551 && Math.abs(v[2]) < 0.599) ends.add(Math.abs(v[2]).toFixed(6));
+    }
+    expect([...ends]).toEqual(['0.575000']);
+    expect(countComponents(p)).toBe(9);
   });
 
   it('more blades than fit are refused', () => {

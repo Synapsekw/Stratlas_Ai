@@ -49,6 +49,24 @@ describe('Assembly', () => {
       Assembly.safeParse({ ...base, id: 'shaft-1', kind: 'shaft', params: closed }).success,
     ).toBe(true);
   });
+  it('a pipe run may leave its ends open', () => {
+    const pipe = (openEnds: unknown) =>
+      Assembly.safeParse({
+        ...base,
+        id: 'pipe-1',
+        kind: 'pipeRun',
+        params: {
+          path: [
+            [0, 0, 0],
+            [4, 0, 0],
+          ],
+          diameter: 0.2,
+          ...(openEnds === undefined ? {} : { openEnds }),
+        },
+      }).success;
+    for (const ends of [undefined, 'none', 'start', 'end', 'both']) expect(pipe(ends)).toBe(true);
+    expect(pipe('middle')).toBe(false);
+  });
   it('refuses a profile whose heights do not increase', () => {
     const r = Assembly.safeParse({
       ...base,

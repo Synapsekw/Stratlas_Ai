@@ -23,11 +23,15 @@ export interface Prim {
   openings?: Opening[];
 }
 
-/** A declared, intended opening: a circle of radius `r` at `centre`, facing `normal`. */
+/**
+ * A declared, intended opening: a circle of radius `r` at `centre`, facing `normal`; or, with
+ * `outline`, that polygon (an open hatch), `r` then the radius of the circle round it.
+ */
 export interface Opening {
   centre: V3;
   normal: V3;
   r: number;
+  outline?: V3[];
 }
 
 /** A circular hole in a flat face, centred at `c` in the face's own 2D coordinates. */
@@ -99,7 +103,7 @@ function circle2(c: V2, r: number, n: number): V2[] {
 }
 
 /** Rotates `x` by the smallest rotation that takes unit `t0` to unit `t1`. */
-function transport(x: V3, t0: V3, t1: V3): V3 {
+export function transport(x: V3, t0: V3, t1: V3): V3 {
   const k = cross(t0, t1);
   const s = len(k);
   const c = dot(t0, t1);
@@ -112,6 +116,70 @@ function nth<T>(xs: readonly T[], i: number): T {
   const x = xs[i];
   if (x === undefined) throw new Error(`index ${String(i)} out of range`);
   return x;
+}
+
+// ---------------------------------------------------------------------------------------------
+// sweep frames and bends, shared by the sweeps and by builders that join pieces to them
+
+/** Unit directions of the legs of `path`. */
+export const legDirs = (path: readonly V3[]): V3[] =>
+  path.slice(1).map((q, i) => norm(sub(q, nth(path, i))));
+
+/**
+ * The section x direction a sweep starts with along unit `t0`: `startU` made square to `t0`,
+ * else level and across the path (so a rectangle's height is as near up as it goes).
+ */
+export function sweepStartU(t0: V3, startU?: V3): V3 {
+  if (startU) {
+    const u = sub(startU, scale(t0, dot(startU, t0)));
+    if (len(u) > 1e-9) return norm(u);
+  }
+  return Math.abs(t0[1]) < 0.999 ? norm(cross(t0, [0, 1, 0])) : norm(cross(t0, [0, 0, 1]));
+}
+
+/**
+ * The section frame (`u` = section x, `v` = section y, `t` = path direction) of a sweep along
+ * `path` on leg `leg`: the start frame carried round each corner by the smallest rotation, the
+ * same whatever the bend radius. `path` must have distinct consecutive points.
+ */
+export function sweepFrame(path: readonly V3[], leg: number, startU?: V3): { u: V3; v: V3; t: V3 } {
+  const dirs = legDirs(path);
+  let t = nth(dirs, 0);
+  let u = sweepStartU(t, startU);
+  for (let i = 1; i <= leg; i++) {
+    const next = nth(dirs, i);
+    u = norm(transport(u, t, next));
+    u = norm(sub(u, scale(next, dot(u, next))));
+    t = next;
+  }
+  return { u, v: cross(u, t), t };
+}
+
+/**
+ * How far back from each point of `path` a sweep with bend radius `r0` starts its bend: the
+ * tangent length, shrunk where the legs are too short (a corner may use the whole of its last
+ * leg, half of any other, and what the previous bend left of the leg before it); 0 at the ends,
+ * where the path runs straight on, and for `r0` 0 (mitred corners).
+ */
+export function bendStarts(path: readonly V3[], r0: number): number[] {
+  const dirs = legDirs(path);
+  const lens = path.slice(1).map((q, i) => len(sub(q, nth(path, i))));
+  const out = path.map(() => 0);
+  let used = 0;
+  for (let i = 1; i + 1 < path.length; i++) {
+    const dIn = nth(dirs, i - 1);
+    const theta = Math.acos(Math.max(-1, Math.min(1, dot(dIn, nth(dirs, i)))));
+    if (theta < 1e-6 || r0 <= 0) {
+      used = 0;
+      continue;
+    }
+    const availIn = nth(lens, i - 1) - used;
+    const availOut = i + 2 === path.length ? nth(lens, i) : nth(lens, i) / 2;
+    const t = Math.max(0, Math.min(r0 * Math.tan(theta / 2), availIn, availOut));
+    used = t;
+    out[i] = t;
+  }
+  return out;
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -425,8 +493,15 @@ export class MeshSink {
     need(finiteV(o.centre), 'opening centre must be finite');
     needDir(o.normal, 'opening normal');
     needPos(o.r, 'opening radius');
+    if (o.outline)
+      need(
+        o.outline.length >= 3 && finiteV(...o.outline),
+        'opening outline needs 3 or more finite points',
+      );
     const p = this.prim(material);
-    (p.openings ??= []).push({ centre: clean(o.centre), normal: clean(norm(o.normal)), r: o.r });
+    const decl: Opening = { centre: clean(o.centre), normal: clean(norm(o.normal)), r: o.r };
+    if (o.outline) decl.outline = o.outline.map(clean);
+    (p.openings ??= []).push(decl);
   }
 
   /** Triangles so far, over every material. */
@@ -853,21 +928,23 @@ export class MeshSink {
 
   /**
    * A round section of radius `r` swept along `path`. Each corner becomes an arc of `bendRadius`
-   * (default 1.5 r, shrunk where the legs are too short); `bendRadius: 0` mitres the corners.
+   * (default 1.5 r, shrunk where the legs are too short, see `bendStarts`); `bendRadius: 0`
+   * mitres the corners. `startU` sets the section's start orientation (see `sweepFrame`).
    */
   sweep(
     m: string,
     path: V3[],
     r: number,
-    o: { bendRadius?: number; capStart: boolean; capEnd: boolean },
+    o: { bendRadius?: number; capStart: boolean; capEnd: boolean; startU?: V3 },
   ): void {
     needPos(r, 'sweep radius');
     this.sweepSection(m, path, circleSection(r, this.segmentsFor(r)), o);
   }
 
   /**
-   * A `w` x `h` rectangle swept along `path` (`h` along the frame's up-most direction), corners
-   * as in `sweep` with a default bend radius of 1.5 x the larger half-side.
+   * A `w` x `h` rectangle swept along `path` (`h` along the frame's up-most direction, or `w`
+   * along `startU` when given), corners as in `sweep` with a default bend radius of 1.5 x the
+   * larger half-side.
    */
   rectSweep(
     m: string,
@@ -875,7 +952,7 @@ export class MeshSink {
     w: number,
     h: number,
     caps: boolean,
-    o: { bendRadius?: number } = {},
+    o: { bendRadius?: number; startU?: V3 } = {},
   ): void {
     needPos(w, 'rect sweep width');
     needPos(h, 'rect sweep height');
@@ -984,9 +1061,10 @@ export class MeshSink {
     m: string,
     path: V3[],
     sec: Section,
-    o: { bendRadius?: number; capStart: boolean; capEnd: boolean },
+    o: { bendRadius?: number; capStart: boolean; capEnd: boolean; startU?: V3 },
   ): void {
     need(finiteV(...path), 'sweep path points must be finite');
+    if (o.startU) need(finiteV(o.startU), 'sweep start direction must be finite');
     need(
       o.bendRadius === undefined || (Number.isFinite(o.bendRadius) && o.bendRadius >= 0),
       'sweep bend radius must be finite and not negative',
@@ -998,9 +1076,9 @@ export class MeshSink {
     }
     need(pts.length >= 2, 'sweep path needs 2 or more distinct points');
     const p = this.prim(m);
-    const dirs = pts.slice(1).map((q, i) => norm(sub(q, nth(pts, i))));
-    const lens = pts.slice(1).map((q, i) => len(sub(q, nth(pts, i))));
+    const dirs = legDirs(pts);
     const R0 = o.bendRadius ?? 1.5 * sec.reach;
+    const starts = bendStarts(pts, R0);
     const first = nth(dirs, 0);
     const stations: Station[] = [{ c: nth(pts, 0), tIn: first, tOut: first }];
     const push = (s: Station) => {
@@ -1008,27 +1086,15 @@ export class MeshSink {
       if (last && len(sub(s.c, last.c)) < 1e-9) return;
       stations.push(s);
     };
-    let used = 0; // length of the incoming leg taken by the previous bend
     for (let i = 1; i + 1 < pts.length; i++) {
       const dIn = nth(dirs, i - 1);
       const dOut = nth(dirs, i);
       const P = nth(pts, i);
       const theta = Math.acos(Math.max(-1, Math.min(1, dot(dIn, dOut))));
       need(theta < Math.PI - 1e-3, 'sweep path doubles back on itself');
-      if (theta < 1e-6) {
-        used = 0;
-        continue;
-      }
-      if (R0 <= 0) {
-        push({ c: P, tIn: dIn, tOut: dOut });
-        used = 0;
-        continue;
-      }
+      if (theta < 1e-6) continue;
       const tanHalf = Math.tan(theta / 2);
-      const availIn = nth(lens, i - 1) - used;
-      const availOut = i + 2 === pts.length ? nth(lens, i) : nth(lens, i) / 2;
-      const t = Math.max(0, Math.min(R0 * tanHalf, availIn, availOut));
-      used = t;
+      const t = nth(starts, i);
       if (t < 1e-9) {
         push({ c: P, tIn: dIn, tOut: dOut });
         continue;
@@ -1050,7 +1116,7 @@ export class MeshSink {
 
     // frames by parallel transport; rings and normals on both sides of each station
     const t0 = nth(stations, 0).tOut;
-    let u = Math.abs(t0[1]) < 0.999 ? norm(cross(t0, [0, 1, 0])) : norm(cross(t0, [0, 0, 1]));
+    let u = sweepStartU(t0, o.startU);
     let prevT = t0;
     const ringOf = (uu: V3, vv: V3, c: V3) =>
       sec.pts.map((q) => add(c, add(scale(uu, q[0]), scale(vv, q[1]))));

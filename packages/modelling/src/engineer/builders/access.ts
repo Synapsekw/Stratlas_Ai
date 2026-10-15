@@ -8,7 +8,7 @@
  * `steel-galv`, a ladder's cage always `steel-galv-cage`.
  */
 import { add, basis, cross, dot, len, norm, scale, sub, type MeshSink, type V3 } from '../geom';
-import type { AssemblyOf, BuildCtx, BuilderTable } from './ctx';
+import { shaftAxis, shaftHeightAt, type AssemblyOf, type BuildCtx, type BuilderTable } from './ctx';
 
 const UP: V3 = [0, 1, 0];
 const X: V3 = [1, 0, 0];
@@ -19,7 +19,7 @@ const MAX_PIECES = 2000;
 /** Guardrail post and rail radii (48 and 42 mm tube). */
 const POST_R = 0.024;
 const RAIL_R = 0.021;
-/** Gap where a closed rail loop meets itself, hidden in a post. */
+/** Gap where a closed rail loop meets itself, inside a post. */
 const RAIL_SEAM = 0.001;
 
 /** Ladder stiles and rungs; the cage's hoops (tube radius), bars, radius and spacing. */
@@ -37,12 +37,11 @@ const HATCH_FRAME_W = 0.05;
 const HATCH_FRAME_H = 0.05;
 const HATCH_LID_T = 0.01;
 
-/** Louvre frame depth and largest frame width; blade thickness, tilt and end clearance. */
+/** Louvre frame depth and largest frame width; blade thickness and tilt. */
 const LOUVRE_DEPTH = 0.1;
 const LOUVRE_FRAME = 0.05;
 const BLADE_T = 0.003;
 const BLADE_TILT = (40 * Math.PI) / 180;
-const BLADE_CLEAR = 0.002;
 
 function fail(what: string): never {
   throw new Error(`geometry: ${what}`);
@@ -59,6 +58,29 @@ export function checkPath(path: readonly V3[], what: string): void {
   for (let i = 1; i < path.length; i++)
     if (len(sub(pick(path, i), pick(path, i - 1))) < 1e-9)
       fail(`${what} path has two equal points in a row`);
+}
+
+/**
+ * Where a ring round a shaft sits at world height `y`: the point where shaft `shaftId`'s axis
+ * crosses that level (the vertical through the origin when there is no shaft), and the shaft's
+ * half-width across that level at any height (its radius, widened by a tilted axis), so a ring
+ * can be kept clear of it.
+ */
+function ringRound(
+  ctx: BuildCtx,
+  shaftId: string | undefined,
+  y: number,
+): { centre: V3; halfWidth: (yw: number) => number } {
+  if (shaftId === undefined) return { centre: [0, y, 0], halfWidth: () => 0 };
+  const s = ctx.model.assemblies.find((x) => x.id === shaftId);
+  if (s?.kind !== 'shaft') fail(`shaft "${shaftId}" is not a shaft in the model`);
+  const a = shaftAxis(s.params);
+  const lean = Math.abs(a[1]);
+  if (lean < 0.1) fail(`shaft "${shaftId}" is too far from upright to ring`);
+  return {
+    centre: add(s.params.base, scale(a, shaftHeightAt(s.params, y))),
+    halfWidth: (yw) => ctx.radiusAt(shaftId, yw) / lean,
+  };
 }
 
 /**
@@ -155,9 +177,17 @@ export function buildRingPlatform(
   const nFull = sink.segmentsFor(r.rOuter);
   const y0 = r.y - r.thickness;
   const y1 = r.y;
+  const round = ringRound(ctx, r.shaft, y1);
+  const shaftHalf = Math.max(round.halfWidth(y0), round.halfWidth(y1));
+  if (r.shaft !== undefined && r.rInner <= shaftHalf)
+    fail(
+      `platform would cut into shaft "${r.shaft}": inner radius ${r.rInner.toFixed(3)} m, ` +
+        `shaft ${shaftHalf.toFixed(3)} m`,
+    );
+  const [cx, , cz] = round.centre;
   if (arc >= 360 - 1e-9) {
     sink.annulusTube(m, {
-      centre: [0, 0, 0],
+      centre: [cx, 0, cz],
       axis: UP,
       rOuter: r.rOuter,
       rInner: r.rInner,
@@ -175,7 +205,7 @@ export function buildRingPlatform(
     const t = (span * k) / n;
     return [Math.cos(t), 0, Math.sin(t)];
   };
-  const at = (k: number, rad: number, y: number): V3 => add(scale(dir(k), rad), [0, y, 0]);
+  const at = (k: number, rad: number, y: number): V3 => add(scale(dir(k), rad), [cx, y, cz]);
   for (let k = 0; k < n; k++) {
     for (const [y, nrm] of [
       [y1, UP],
@@ -212,24 +242,35 @@ export function buildRingPlatform(
   end(n, [-Math.sin(span), 0, Math.cos(span)]);
 }
 
-/** Posts at the requested spacing (at most) and 1 to 3 rails, the top one over the post tops. */
+/**
+ * Posts at the requested spacing (at most) and 1 to 3 rails, the top one at `height`; posts
+ * reach the top of that rail. A circle rings `shaft`'s axis when it names one (kept clear of it).
+ */
 export function buildGuardrail(sink: MeshSink, a: AssemblyOf<'guardrail'>, ctx: BuildCtx): void {
   const g = a.params;
   const m = ctx.material(a.material, 'steel-galv');
   const railHeights = Array.from({ length: g.rails }, (_, k) => (g.height * (k + 1)) / g.rails);
   const post = (foot: V3) => {
-    sink.rod(m, foot, add(foot, [0, g.height, 0]), POST_R, true);
+    sink.rod(m, foot, add(foot, [0, g.height + RAIL_R, 0]), POST_R, true);
   };
   if (!Array.isArray(g.path)) {
-    const { y, r } = g.path;
+    const { y, r, shaft } = g.path;
+    const round = ringRound(ctx, shaft, y);
+    const shaftHalf = Math.max(round.halfWidth(y), round.halfWidth(y + g.height));
+    if (shaft !== undefined && r - POST_R <= shaftHalf)
+      fail(
+        `guardrail would cut into shaft "${shaft}": radius ${r.toFixed(3)} m, ` +
+          `shaft ${shaftHalf.toFixed(3)} m`,
+      );
+    const [cx, , cz] = round.centre;
     const n = Math.max(3, Math.ceil((2 * Math.PI * r) / g.posts - 1e-9));
     if (n > MAX_PIECES) fail(`guardrail posts are too close (over ${String(MAX_PIECES)})`);
     for (let k = 0; k < n; k++) {
       const t = (2 * Math.PI * k) / n;
-      post([r * Math.cos(t), y, r * Math.sin(t)]);
+      post([cx + r * Math.cos(t), y, cz + r * Math.sin(t)]);
     }
     for (const h of railHeights)
-      sink.torus(m, { centre: [0, y + h, 0], axis: UP, R: r, r: RAIL_R });
+      sink.torus(m, { centre: [cx, y + h, cz], axis: UP, R: r, r: RAIL_R });
     return;
   }
   const path = g.path;
@@ -247,16 +288,36 @@ export function buildGuardrail(sink: MeshSink, a: AssemblyOf<'guardrail'>, ctx: 
   for (const l of legs)
     for (let j = 0; j < l.n; j++) post(add(l.from, scale(l.d, (l.l * j) / l.n)));
   if (!closed) post(last);
-  // a closed loop starts and ends its rails at a post on the first leg (its middle if it has none)
-  const leg0 = pick(legs, 0);
-  const seam = leg0.n >= 2 ? leg0.l / leg0.n : leg0.l / 2;
-  const railPath: V3[] = closed
-    ? [
-        add(first, scale(leg0.d, seam + RAIL_SEAM / 2)),
-        ...path.slice(1),
-        add(first, scale(leg0.d, seam - RAIL_SEAM / 2)),
-      ]
-    : path;
+  let railPath: V3[] = path;
+  if (closed) {
+    // the rails of a closed loop start and end inside a post: the first post along a leg that has
+    // one between its corners, else a corner post
+    const ring = path.slice(0, -1);
+    const k = Math.max(
+      0,
+      legs.findIndex((l) => l.n >= 2),
+    );
+    const turned = [...ring.slice(k), ...ring.slice(0, k)];
+    const leg = pick(legs, k);
+    const start = pick(turned, 0);
+    const half = RAIL_SEAM / 2;
+    if (leg.n >= 2) {
+      const seam = add(start, scale(leg.d, leg.l / leg.n));
+      railPath = [
+        add(seam, scale(leg.d, half)),
+        ...turned.slice(1),
+        start,
+        sub(seam, scale(leg.d, half)),
+      ];
+    } else {
+      const inbound = pick(legs, (k + legs.length - 1) % legs.length).d;
+      railPath = [
+        add(start, scale(leg.d, half)),
+        ...turned.slice(1),
+        sub(start, scale(inbound, half)),
+      ];
+    }
+  }
   for (const h of railHeights)
     sink.sweep(
       m,
@@ -267,9 +328,30 @@ export function buildGuardrail(sink: MeshSink, a: AssemblyOf<'guardrail'>, ctx: 
 }
 
 /**
+ * The direction from the axis of the shaft nearest `at` (the vertical through the origin when
+ * the model has no shaft) out through `at`, square to that axis; +z when `at` is on the axis.
+ */
+function awayFromShaft(ctx: BuildCtx, at: V3): V3 {
+  let best: V3 | undefined;
+  let bestD = Infinity;
+  for (const s of ctx.model.assemblies) {
+    if (s.kind !== 'shaft') continue;
+    const a = shaftAxis(s.params);
+    const rel = sub(at, s.params.base);
+    const perp = sub(rel, scale(a, dot(rel, a)));
+    if (len(perp) < bestD) {
+      bestD = len(perp);
+      best = perp;
+    }
+  }
+  const v = best ?? [at[0], 0, at[2]];
+  return len(v) > 1e-6 ? norm(v) : Z;
+}
+
+/**
  * Two stiles and rungs at `rungSpacing` (none at the bottom or the top). The ladder's face is
- * across the horizontal line from the shaft axis (the vertical through the origin; +z when it
- * stands on it); the cage, when there is one, stands out on that side in its own material.
+ * square to the line from the nearest shaft's axis through the ladder; the cage, when there is
+ * one, stands out on that side, away from the shaft, in its own material.
  */
 export function buildLadder(sink: MeshSink, a: AssemblyOf<'ladder'>, ctx: BuildCtx): void {
   const l = a.params;
@@ -278,9 +360,7 @@ export function buildLadder(sink: MeshSink, a: AssemblyOf<'ladder'>, ctx: BuildC
   const length = len(along);
   if (length < 1e-6) fail('ladder top and bottom must be apart');
   const d = norm(along);
-  const mid = scale(add(l.bottom, l.top), 0.5);
-  const radial: V3 = [mid[0], 0, mid[2]];
-  let out = len(radial) > 1e-6 ? norm(radial) : Z;
+  let out = awayFromShaft(ctx, scale(add(l.bottom, l.top), 0.5));
   let side = cross(d, out);
   if (len(side) < 1e-6) side = basis(d)[0];
   side = norm(side);
@@ -338,7 +418,8 @@ export function buildLadder(sink: MeshSink, a: AssemblyOf<'ladder'>, ctx: BuildC
 
 /**
  * A deck hatch: a frame round the `size` opening standing on the deck at `centre`, and a lid
- * resting on it, or stood upright on its +x hinge when `open` (the opening is then declared).
+ * resting on it, or stood upright on its +x hinge when `open` (the opening is then declared
+ * with its rectangle as the outline).
  */
 export function buildHatch(sink: MeshSink, a: AssemblyOf<'hatch'>, ctx: BuildCtx): void {
   const h = a.params;
@@ -366,13 +447,21 @@ export function buildHatch(sink: MeshSink, a: AssemblyOf<'hatch'>, ctx: BuildCtx
     return;
   }
   orientedBox(sink, m, [c[0] + lw / 2 + t / 2, top + lw / 2, c[2]], axes, [t / 2, lw / 2, ld / 2]);
-  sink.opening(m, { centre: [c[0], top, c[2]], normal: UP, r: Math.min(w, dz) / 2 });
+  const outline: V3[] = (
+    [
+      [1, -1],
+      [1, 1],
+      [-1, 1],
+      [-1, -1],
+    ] as const
+  ).map(([sx, sz]) => [c[0] + (sx * w) / 2, top, c[2] + (sz * dz) / 2]);
+  sink.opening(m, { centre: [c[0], top, c[2]], normal: UP, r: Math.hypot(w, dz) / 2, outline });
 }
 
 /**
  * A louvre facing `normal`: a frame `size` across (width horizontal, height up the wall) and
- * `blades` thin blades tilted 40 degrees, sloping down outwards, clear of the frame and of each
- * other.
+ * `blades` thin blades tilted 40 degrees, sloping down outwards, clear of each other, their ends
+ * run half way into the frame sides.
  */
 export function buildLouvre(sink: MeshSink, a: AssemblyOf<'louvre'>, ctx: BuildCtx): void {
   const lv = a.params;
@@ -388,8 +477,7 @@ export function buildLouvre(sink: MeshSink, a: AssemblyOf<'louvre'>, ctx: BuildC
   const pitch = hi / lv.blades;
   const cos = Math.cos(BLADE_TILT);
   const sin = Math.sin(BLADE_TILT);
-  if (pitch * cos <= 2 * BLADE_T || wi <= 4 * BLADE_CLEAR)
-    fail('louvre is too small for that many blades');
+  if (pitch * cos <= 2 * BLADE_T) fail('louvre is too small for that many blades');
   rectFrame(sink, m, {
     c: lv.centre,
     a: s,
@@ -404,7 +492,7 @@ export function buildLouvre(sink: MeshSink, a: AssemblyOf<'louvre'>, ctx: BuildC
   const bladeN = norm(cross(across, s));
   for (let k = 0; k < lv.blades; k++) {
     const c = add(lv.centre, scale(e, -hi / 2 + pitch * (k + 0.5)));
-    orientedBox(sink, m, c, [s, bladeN, across], [wi / 2 - BLADE_CLEAR, BLADE_T / 2, chord / 2]);
+    orientedBox(sink, m, c, [s, bladeN, across], [wi / 2 + f / 2, BLADE_T / 2, chord / 2]);
   }
 }
 

@@ -140,12 +140,18 @@ export const AssemblyParamsByKind = {
       rOuter: L,
       thickness: L,
       arcDeg: z.number().min(10).max(360).optional(),
+      /** The shaft it rings (centred on its axis); absent: round the vertical through the origin. */
+      shaft: z.string().min(1).max(80).optional(),
     })
     .strict()
     .refine((p) => p.rInner < p.rOuter, 'Inner radius must be below outer radius.'),
   guardrail: z
     .object({
-      path: z.union([Path3, z.object({ y: Y, r: L }).strict()]),
+      /** A polyline, or a circle at `y` round `shaft`'s axis (absent: the origin's vertical). */
+      path: z.union([
+        Path3,
+        z.object({ y: Y, r: L, shaft: z.string().min(1).max(80).optional() }).strict(),
+      ]),
       height: L,
       posts: L,
       rails: z.number().int().min(1).max(3),
@@ -179,6 +185,8 @@ export const AssemblyParamsByKind = {
       path: Path3,
       diameter: L,
       bendRadius: L.optional(),
+      /** Ends left open (declared openings) instead of capped; default 'none'. */
+      openEnds: z.enum(['none', 'start', 'end', 'both']).optional(),
       flanges: z.array(z.number().int().min(0)).max(64).optional(),
     })
     .strict(),

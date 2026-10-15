@@ -1,5 +1,15 @@
 import { describe, expect, it } from 'vitest';
-import { MeshSink, SEGMENTS, ringPoints, triangulateWithHoles, type Prim, type V3 } from './geom';
+import {
+  MeshSink,
+  SEGMENTS,
+  bendStarts,
+  ringPoints,
+  sweepFrame,
+  transport,
+  triangulateWithHoles,
+  type Prim,
+  type V3,
+} from './geom';
 import {
   boundaryLoops,
   bounds,
@@ -525,6 +535,115 @@ describe('geom kernel', () => {
   });
 });
 
+describe('sweep frames and bends', () => {
+  const std = () => new MeshSink(SEGMENTS.standard);
+  const riser: V3[] = [
+    [0, 0, 0],
+    [0, 5, 0],
+    [10, 5, 0],
+  ];
+  /** The corner positions of a rect sweep at the plane x = `x`. */
+  const cornersAt = (p: Prim, x: number) => {
+    const set = new Set<string>();
+    for (let i = 0; i < p.positions.length / 3; i++) {
+      const v = vertexAt(p, i);
+      if (Math.abs(v[0] - x) < 1e-9) set.add(v.map((c) => c.toFixed(6)).join(','));
+    }
+    return [...set].sort();
+  };
+
+  it('sweepFrame gives the frame the sweep itself ends with', () => {
+    const s = std();
+    s.rectSweep('d', riser, 1, 0.6, true);
+    const f = sweepFrame(riser, 1);
+    const end = must(riser[2]);
+    const at = (a: number, b: number): V3 => [
+      end[0] + f.u[0] * a + f.v[0] * b,
+      end[1] + f.u[1] * a + f.v[1] * b,
+      end[2] + f.u[2] * a + f.v[2] * b,
+    ];
+    const expected = [-1, 1]
+      .flatMap((a) => [-1, 1].map((b) => at(a * 0.5, b * 0.3)))
+      .map((v) => v.map((c) => c.toFixed(6)).join(','))
+      .sort();
+    expect(cornersAt(only(s), 10)).toEqual(expected);
+    expect(f.t).toEqual([1, 0, 0]);
+  });
+
+  it('startU turns the section; a sweep started on another frame continues it', () => {
+    const s = std();
+    s.rectSweep(
+      'd',
+      [
+        [0, 0, 0],
+        [0, 4, 0],
+      ],
+      1,
+      0.6,
+      true,
+      { startU: [1, 0, 0] },
+    );
+    const b = bounds(only(s));
+    expect(b.max[0]).toBeCloseTo(0.5, 9); // width along +x
+    expect(b.max[2]).toBeCloseTo(0.3, 9);
+    // a second rect sweep starting where the riser's frame leaves off has the same corners
+    const f = sweepFrame(riser, 1);
+    const a = std();
+    a.rectSweep('d', riser, 1, 0.6, true);
+    const c = std();
+    c.rectSweep(
+      'd',
+      [
+        [10, 5, 0],
+        [12, 5, 0],
+      ],
+      1,
+      0.6,
+      true,
+      { startU: f.u },
+    );
+    expect(cornersAt(only(c), 10)).toEqual(cornersAt(only(a), 10));
+  });
+
+  it('bendStarts gives each corner its tangent length, shrunk on short legs', () => {
+    const r = bendStarts(riser, 0.4);
+    expect(r[0]).toBe(0);
+    expect(r[1]).toBeCloseTo(0.4, 12); // a right angle: R tan 45
+    expect(r[2]).toBe(0);
+    const short = bendStarts(
+      [
+        [0, 0, 0],
+        [0.1, 0, 0],
+        [0.1, 1, 0],
+      ],
+      0.4,
+    );
+    expect(short[1]).toBeCloseTo(0.1, 12);
+    expect(bendStarts(riser, 0)).toEqual([0, 0, 0]);
+  });
+
+  it('an opening may carry its polygon outline', () => {
+    const s = std();
+    const outline: V3[] = [
+      [1, 0, -0.5],
+      [1, 0, 0.5],
+      [-1, 0, 0.5],
+      [-1, 0, -0.5],
+    ];
+    s.opening('o', { centre: [0, 0, 0], normal: [0, 2, 0], r: Math.hypot(1, 0.5), outline });
+    expect(s.out()[0]?.openings).toEqual([
+      { centre: [0, 0, 0], normal: [0, 1, 0], r: Math.hypot(1, 0.5), outline },
+    ]);
+  });
+
+  it('transport turns a vector by the rotation between two directions', () => {
+    const v = transport([0, 0, 1], [1, 0, 0], [0, 1, 0]);
+    expect(v.map((x) => +x.toFixed(12))).toEqual([0, 0, 1]);
+    const w = transport([0, 1, 0], [1, 0, 0], [0, 1, 0]);
+    expect(w.map((x) => +x.toFixed(12) + 0)).toEqual([-1, 0, 0]);
+  });
+});
+
 describe('geom kernel input checks and robustness', () => {
   const std = () => new MeshSink(SEGMENTS.standard);
   const square: [number, number][] = [
@@ -822,6 +941,13 @@ describe('geom kernel input checks and robustness', () => {
           std().opening('o', { centre: base, normal: axis, r: -1 });
         },
         /opening radius/,
+      ],
+      [
+        'opening outline of two points',
+        () => {
+          std().opening('o', { centre: base, normal: axis, r: 1, outline: [base, [1, 0, 0]] });
+        },
+        /opening outline/,
       ],
     ];
     for (const [name, run, message] of cases) {

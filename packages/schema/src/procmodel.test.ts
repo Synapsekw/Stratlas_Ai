@@ -210,6 +210,34 @@ describe('procedural models (aio.procmodel/2)', () => {
     expect(parse([flue, band('flue-1')]).success).toBe(false);
   });
 
+  it('a platform or circular guardrail shaft must be a shaft in the model', () => {
+    const platform = (on?: string) => ({
+      ...shaft('platform-1'),
+      kind: 'ringPlatform',
+      params: { y: 40, rInner: 8, rOuter: 9.5, thickness: 0.1, ...(on ? { shaft: on } : {}) },
+    });
+    const rail = (on?: string) => ({
+      ...shaft('guardrail-1'),
+      kind: 'guardrail',
+      params: {
+        path: { y: 40, r: 9.4, ...(on ? { shaft: on } : {}) },
+        height: 1.1,
+        posts: 1.5,
+        rails: 2,
+      },
+    });
+    const parse = (assemblies: unknown[]) => ProcModel.safeParse({ ...model, assemblies });
+    expect(parse([shaft('shaft-1'), platform('shaft-1'), rail('shaft-1')]).success).toBe(true);
+    expect(parse([platform(), rail()]).success).toBe(true);
+    const bad = parse([shaft('shaft-1'), platform('shaft-9'), rail('platform-1')]);
+    expect(bad.success).toBe(false);
+    expect(bad.error?.issues.map((i) => i.message)).toEqual([
+      'Platform shaft "shaft-9" is not a shaft in the model',
+      'Guardrail shaft "platform-1" is not a shaft in the model',
+    ]);
+    expect(bad.error?.issues[1]?.path).toEqual(['assemblies', 2, 'params', 'path', 'shaft']);
+  });
+
   it('refuses an empty run id', () => {
     expect(ProcModel.safeParse({ ...model, run: { id: '', detail: 'fast' } }).success).toBe(false);
   });

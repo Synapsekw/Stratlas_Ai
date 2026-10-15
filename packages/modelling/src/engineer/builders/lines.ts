@@ -11,13 +11,24 @@
  * `copper`.
  */
 import type { AssemblyParams } from '@aio/schema';
-import { add, cross, dot, len, norm, scale, sub, type MeshSink, type V2, type V3 } from '../geom';
+import {
+  add,
+  bendStarts,
+  dot,
+  legDirs,
+  len,
+  scale,
+  sub,
+  sweepFrame,
+  type MeshSink,
+  type V2,
+  type V3,
+} from '../geom';
 import { checkPath, orientedBox } from './access';
 import type { AssemblyOf, BuildCtx, BuilderTable } from './ctx';
 
 type Section = AssemblyParams<'duct'>['section'];
 
-const UP: V3 = [0, 1, 0];
 /** Duct collar and flange thickness. */
 const DUCT_FLANGE_T = 0.03;
 
@@ -31,43 +42,7 @@ function pick<T>(xs: readonly T[], i: number): T {
   return x;
 }
 
-/** Rotates `x` by the smallest rotation that takes unit `t0` to unit `t1`. */
-function transport(x: V3, t0: V3, t1: V3): V3 {
-  const k = cross(t0, t1);
-  const s = len(k);
-  const c = dot(t0, t1);
-  if (s < 1e-12) return x;
-  const kk = scale(k, 1 / s);
-  return add(add(scale(x, c), scale(cross(kk, x), s)), scale(kk, dot(kk, x) * (1 - c)));
-}
-
-const legDirs = (path: readonly V3[]): V3[] =>
-  path.slice(1).map((q, i) => norm(sub(q, pick(path, i))));
-
-interface Frame {
-  /** Section x (a rectangle's width) and y (its height) directions, and the path direction. */
-  u: V3;
-  v: V3;
-  t: V3;
-}
-
-/**
- * The section frame of a kernel sweep along `path` on leg `leg`: the sweep starts with x across
- * the path and level (y as near up as it goes) and carries it round each corner by the smallest
- * rotation, so the frame is the same whatever the bend radius.
- */
-function sweepFrame(path: readonly V3[], leg: number): Frame {
-  const dirs = legDirs(path);
-  let t = pick(dirs, 0);
-  let u = Math.abs(t[1]) < 0.999 ? norm(cross(t, UP)) : norm(cross(t, [0, 0, 1]));
-  for (let i = 1; i <= leg; i++) {
-    const next = pick(dirs, i);
-    u = norm(transport(u, t, next));
-    u = norm(sub(u, scale(next, dot(u, next))));
-    t = next;
-  }
-  return { u, v: cross(u, t), t };
-}
+type Frame = ReturnType<typeof sweepFrame>;
 
 const reachOf = (s: Section) => ('rect' in s ? Math.max(s.rect[0], s.rect[1]) / 2 : s.round);
 /** How far a duct flange or collar stands proud of the section. */
@@ -156,9 +131,10 @@ export function buildDuct(sink: MeshSink, a: AssemblyOf<'duct'>, ctx: BuildCtx):
   const path = d.path;
   checkPath(path, 'duct');
   const tf = DUCT_FLANGE_T;
-  const sweep = (s: Section, pts: V3[]) => {
-    if ('rect' in s) sink.rectSweep(m, pts, s.rect[0], s.rect[1], true);
-    else sink.sweep(m, pts, s.round, { capStart: true, capEnd: true });
+  const sweep = (s: Section, pts: V3[], startU?: V3) => {
+    const o = startU ? { startU } : {};
+    if ('rect' in s) sink.rectSweep(m, pts, s.rect[0], s.rect[1], true, o);
+    else sink.sweep(m, pts, s.round, { capStart: true, capEnd: true, ...o });
   };
   /** A collar or flange `tf` thick centred at `c`, square to the frame's path direction. */
   const collar = (s: Section, c: V3, f: Frame) => {
@@ -172,8 +148,8 @@ export function buildDuct(sink: MeshSink, a: AssemblyOf<'duct'>, ctx: BuildCtx):
     const f = sweepFrame(pts, 0);
     collar(s, add(pick(pts, 0), scale(f.t, tf / 4)), f);
   };
-  const endFlange = (s: Section, pts: V3[]) => {
-    const f = sweepFrame(pts, pts.length - 2);
+  const endFlange = (s: Section, pts: V3[], startU?: V3) => {
+    const f = sweepFrame(pts, pts.length - 2, startU);
     collar(s, sub(pick(pts, pts.length - 1), scale(f.t, tf / 4)), f);
   };
   const tr = d.transition;
@@ -210,57 +186,35 @@ export function buildDuct(sink: MeshSink, a: AssemblyOf<'duct'>, ctx: BuildCtx):
   const j2 = along(s0 + 2 * gap + length);
   const after: V3[] = [along(s0 + 3 * gap + length), ...path.slice(at + 1)];
   const before: V3[] = [...path.slice(0, at + 1), j1];
+  // the duct after the transition starts on the frame the duct before it arrives with, so a
+  // rectangle at either end (or both) lines up and nothing rolls
   const fA = sweepFrame(path, at);
-  const fB = sweepFrame(after, 0);
+  const fB = sweepFrame(after, 0, fA.u);
   if (at > 0) {
     sweep(A, before);
     if (d.flanges) startFlange(A, before);
   }
+  // The collars stay even with `flanges` false: welding the loft straight onto a swept duct would
+  // leave T-junctions (a rect sweep's end ring has 4 corners, the loft ring n points), so the
+  // pieces end inside the collars instead, each a closed solid with no shared faces.
   collar(A, j1, fA);
-  // a rectangle keeps its own duct's frame; a circle takes the other end's so nothing twists
   const n = sink.segmentsFor(Math.max(reachOf(A), reachOf(B)));
   const [ra, rb] = transitionRings(A, B, n);
-  const frameA = 'rect' in A || !('rect' in B) ? fA : fB;
-  const frameB = 'rect' in B || !('rect' in A) ? fB : fA;
-  const ringA = ra.map((q) => place(t0, frameA, q));
-  const ringB = rb.map((q) => place(t1, frameB, q));
+  const ringA = ra.map((q) => place(t0, fA, q));
+  const ringB = rb.map((q) => place(t1, fB, q));
   sink.loft(m, ringA, ringB);
   capRing(sink, m, ringA, t0, scale(dir, -1));
   capRing(sink, m, ringB, t1, dir);
   collar(B, j2, fB);
-  sweep(B, after);
-  if (d.flanges) endFlange(B, after);
+  sweep(B, after, fA.u);
+  if (d.flanges) endFlange(B, after, fA.u);
 }
 
 /**
- * The distance back from each corner of `path` at which the kernel's sweep starts its bend
- * (0 where the path runs straight on), for bend radius `r0`.
- */
-function bendStarts(path: readonly V3[], r0: number): number[] {
-  const dirs = legDirs(path);
-  const lens = path.slice(1).map((q, i) => len(sub(q, pick(path, i))));
-  const out = path.map(() => 0);
-  let used = 0;
-  for (let i = 1; i + 1 < path.length; i++) {
-    const dIn = pick(dirs, i - 1);
-    const theta = Math.acos(Math.max(-1, Math.min(1, dot(dIn, pick(dirs, i)))));
-    if (theta < 1e-6) {
-      used = 0;
-      continue;
-    }
-    const availIn = pick(lens, i - 1) - used;
-    const availOut = i + 2 === path.length ? pick(lens, i) : pick(lens, i) / 2;
-    const t = Math.max(0, Math.min(r0 * Math.tan(theta / 2), availIn, availOut));
-    used = t;
-    out[i] = t;
-  }
-  return out;
-}
-
-/**
- * A pipe of `diameter` along `path`, bends of `bendRadius` (default 1.5 x the pipe radius) and
- * capped ends; a flange disc at each listed point index: at an end with its face just past the
- * pipe end, at a corner where the bend starts, so every flange sits on the pipe.
+ * A pipe of `diameter` along `path`, bends of `bendRadius` (default 1.5 x the pipe radius),
+ * ends capped unless `openEnds` leaves them open (each open end is declared as an opening); a
+ * flange disc at each listed point index: at an end with its face just past the pipe end, at a
+ * corner where the bend starts, so every flange sits on the pipe.
  */
 export function buildPipeRun(sink: MeshSink, a: AssemblyOf<'pipeRun'>, ctx: BuildCtx): void {
   const pr = a.params;
@@ -273,11 +227,17 @@ export function buildPipeRun(sink: MeshSink, a: AssemblyOf<'pipeRun'>, ctx: Buil
   for (const i of flanges)
     if (i > lastIndex) fail(`pipe flange at point ${String(i)} is past the end of the path`);
   const bendRadius = pr.bendRadius ?? 1.5 * r; // the kernel's default, named for the flanges
-  sink.sweep(m, path, r, { bendRadius, capStart: true, capEnd: true });
+  const open = pr.openEnds ?? 'none';
+  const openStart = open === 'start' || open === 'both';
+  const openEnd = open === 'end' || open === 'both';
+  sink.sweep(m, path, r, { bendRadius, capStart: !openStart, capEnd: !openEnd });
+  const dirs = legDirs(path);
+  if (openStart) sink.opening(m, { centre: pick(path, 0), normal: scale(pick(dirs, 0), -1), r });
+  if (openEnd)
+    sink.opening(m, { centre: pick(path, lastIndex), normal: pick(dirs, lastIndex - 1), r });
   const rf = 1.6 * r;
   const tf = Math.max(0.02, 0.25 * r);
   const starts = bendStarts(path, bendRadius);
-  const dirs = legDirs(path);
   for (const i of flanges) {
     const P = pick(path, i);
     let c: V3;

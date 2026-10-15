@@ -177,6 +177,17 @@ export const ProcModel = z
           'params',
           'shaft',
         ]);
+      const ringed =
+        a.kind === 'ringPlatform'
+          ? a.params.shaft
+          : a.kind === 'guardrail' && !Array.isArray(a.params.path)
+            ? a.params.path.shaft
+            : undefined;
+      if (ringed !== undefined && kindOf.get(ringed) !== 'shaft')
+        issue(
+          `${a.kind === 'ringPlatform' ? 'Platform' : 'Guardrail'} shaft "${ringed}" is not a shaft in the model`,
+          ['assemblies', i, 'params', ...(a.kind === 'ringPlatform' ? [] : ['path']), 'shaft'],
+        );
       if (a.material !== undefined && !materials.has(a.material))
         issue(`Material "${a.material}" is not in the model`, ['assemblies', i, 'material']);
       if (a.kind === 'band' && !materials.has(a.params.material))

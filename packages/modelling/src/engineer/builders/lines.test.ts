@@ -5,6 +5,7 @@ import {
   boundaryLoops,
   closedAndWound,
   degenerateTriangles,
+  loopCentreRadius,
   must,
   normalsAgree,
   normalsUnit,
@@ -203,6 +204,53 @@ describe('duct', () => {
     }
   });
 
+  it('a rect to rect transition after a riser does not roll', () => {
+    const p = only(
+      build('duct', {
+        path: [
+          [0, 0, 0],
+          [0, 5, 0],
+          [10, 5, 0],
+        ],
+        section: { rect: [1, 0.6] },
+        transition: { at: 1, to: { rect: [0.6, 0.4] } },
+      }).out(),
+    );
+    expectSolid(p);
+    expect(countComponents(p)).toBe(5);
+    const ps = pieces(p);
+    const extent = (pts: V3[], k: 1 | 2) =>
+      Math.max(...pts.map((q) => q[k])) - Math.min(...pts.map((q) => q[k]));
+    const atX = (q: Piece, x: number) => q.points.filter((v) => Math.abs(v[0] - x) < 1e-9);
+    const rect = must(ps.find((q) => q.min[1] < 1));
+    const t = must(ps.find((q) => q.min[0] > rect.max[0] && q.min[0] < rect.max[0] + 0.015));
+    const after = must(ps.find((q) => q.max[0] > 9.99 && q.max[0] < 10.0001));
+    // the riser's width comes round the bend vertical; every ring keeps it so
+    const ends = [
+      atX(rect, rect.max[0]),
+      atX(t, t.min[0]),
+      atX(t, t.max[0]),
+      atX(after, after.min[0]),
+    ];
+    expect(ends.map((e) => [extent(e, 1), extent(e, 2)].map((x) => +x.toFixed(9)))).toEqual([
+      [1, 0.6],
+      [1, 0.6],
+      [0.6, 0.4],
+      [0.6, 0.4],
+    ]);
+    // the outgoing duct starts on the transition's end corners (moved along the path)
+    const yz = (pts: V3[]) =>
+      [...new Set(pts.map((q) => `${q[1].toFixed(6)},${q[2].toFixed(6)}`))].sort();
+    const corners = yz(atX(after, after.min[0]));
+    expect(corners).toEqual([
+      '4.700000,-0.200000',
+      '4.700000,0.200000',
+      '5.300000,-0.200000',
+      '5.300000,0.200000',
+    ]);
+    expect(yz(atX(t, t.max[0]))).toEqual(expect.arrayContaining(corners));
+  });
+
   it('round to rect and rect to rect transitions are closed too', () => {
     const path: V3[] = [
       [0, 1, 0],
@@ -347,6 +395,34 @@ describe('pipeRun', () => {
       [4, 3 - tf / 4, 0],
     ];
     for (const e of expected) expect(centres.some((c) => near(c, e))).toBe(true);
+  });
+
+  it('open ends are left uncapped and declared', () => {
+    for (const [openEnds, ends] of [
+      ['start', [0]],
+      ['end', [2]],
+      ['both', [0, 2]],
+    ] as const) {
+      const p = only(build('pipeRun', { path, diameter: 0.2, bendRadius: 0.4, openEnds }).out());
+      expect(normalsAgree(p)).toBe(true);
+      expect(normalsUnit(p)).toBe(true);
+      expect(degenerateTriangles(p)).toBe(0);
+      const loops = boundaryLoops(p).map((l) => loopCentreRadius(p, l));
+      expect(loops).toHaveLength(ends.length);
+      const openings = must(p.openings);
+      expect(openings).toHaveLength(ends.length);
+      ends.forEach((i, k) => {
+        const at = must(path[i]);
+        const o = must(openings[k]);
+        expect(o.centre).toEqual(at);
+        expect(o.normal).toEqual(i === 0 ? [-1, 0, 0] : [0, 1, 0]);
+        expect(o.r).toBeCloseTo(0.1, 12);
+        // the boundary loop is the open end itself
+        expect(loops.some((l) => near(l.centre, at, 1e-9) && Math.abs(l.r - 0.1) < 1e-9)).toBe(
+          true,
+        );
+      });
+    }
   });
 
   it('a flange index past the path is refused', () => {
