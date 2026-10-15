@@ -231,6 +231,8 @@ def test_commit_appends_to_v2_model(tmp_path):
         "parts": [],
         "materials": [brick],
         "assemblies": [SHAFT],
+        # a key this fitter does not know (a later field) is carried over as it is
+        "georef": {"later": True},
     }
     (tmp_path / "models" / "stack.procmodel.json").write_text(json.dumps(existing), "utf-8")
     run_job(ModelFitCloud(), tmp_path, {"layer": "scan", "kinds": ["cylinder"], "model": "stack"})
@@ -241,7 +243,13 @@ def test_commit_appends_to_v2_model(tmp_path):
     assert m["family"] == "chimney" and m["run"] == {"id": "run-1", "detail": "standard"}
     assert [p["kind"] for p in m["parts"]] == ["cylinder"]
     assert m["parts"][0]["id"] != "shaft-1"
-    assert (tmp_path / "models" / "stack.procmodel.json.bak").is_file()
+    assert m["georef"] == {"later": True}
+    bak = json.loads((tmp_path / "models" / "stack.procmodel.json.bak").read_text("utf-8"))
+    assert bak == existing
+    assert sorted(p.name for p in (tmp_path / "models").iterdir()) == [
+        "stack.procmodel.json",
+        "stack.procmodel.json.bak",
+    ]
 
 
 def test_commit_refuses_a_newer_model_untouched(tmp_path):

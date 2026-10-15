@@ -181,6 +181,8 @@ test('the demo plot plan: units, a broken file, placed by control points, parts 
   const mmParts = await json<ProcModel>(
     join(root, 'drawings', 'plot-plan-unitless', 'parts.procmodel.json'),
   );
+  // the drawing pipeline writes the current model format
+  expect(mmParts).toMatchObject({ schema: 'aio.procmodel/2', materials: [], assemblies: [] });
   const mmTank = mmParts.parts.find((p) => p.tag === 'T-201');
   expect(mmTank?.kind === 'cylinder' && mmTank.radius).toBe(
     t201?.kind === 'cylinder' && t201.radius,
@@ -374,7 +376,10 @@ test('primitives fitted to the demo scan where truth puts them, one rejected, bu
   await panel.getByLabel('Point cloud').selectOption(scan.layer);
   await panel.getByRole('button', { name: 'From point cloud' }).click();
   await expect(say).toContainText('draft parts fitted', { timeout: 120_000 });
-  const fitted = (await json<ProcModel>(join(root, 'models', 'site-model.procmodel.json'))).parts;
+  const fittedModel = await json<ProcModel>(join(root, 'models', 'site-model.procmodel.json'));
+  // the fit pipeline writes the current model format
+  expect(fittedModel).toMatchObject({ schema: 'aio.procmodel/2', materials: [], assemblies: [] });
+  const fitted = fittedModel.parts;
   await expect(parts(panel)).toHaveCount(fitted.length);
   expect(fitted.every((p) => p.origin.by === 'fit' && p.status === 'draft')).toBe(true);
 

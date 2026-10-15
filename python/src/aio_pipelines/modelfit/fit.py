@@ -17,6 +17,7 @@ Parameters as ``ModelFitParams`` in ``@aio/schema``. Steps (each resumable):
 from __future__ import annotations
 
 import json
+import os
 import re
 import shutil
 from pathlib import Path
@@ -246,7 +247,14 @@ class ModelFitCloud:
                 sources.append({"kind": "pointcloud", "ref": params["layer"]})
             model["updatedAt"] = now
             if path.is_file():
-                shutil.copyfile(path, path.with_name(path.name + ".bak"))
+                # the backup is written whole or not at all: a copy beside it, then a rename
+                bak = path.with_name(path.name + ".bak")
+                tmp = path.with_name(f"{path.name}.bak.{os.getpid()}.tmp")
+                try:
+                    shutil.copyfile(path, tmp)
+                    os.replace(tmp, bak)
+                finally:
+                    tmp.unlink(missing_ok=True)
             atomic_write_json(path, model, indent=2)
             ctx.artifact(rel)
             added = sum(by_kind.values())
