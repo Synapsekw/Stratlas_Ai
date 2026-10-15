@@ -150,7 +150,12 @@ def process_started(pid: int) -> float | None:
 
 def process_links() -> list[tuple[int, int]]:
     """Every process of this computer as (PID, parent PID)."""
-    links: list[tuple[int, int]] = []
+    return [(p, parent) for p, parent, _ in process_table()]
+
+
+def process_table() -> list[tuple[int, int, str]]:
+    """Every process of this computer as (PID, parent PID, program name such as ``renderdem.exe``)."""
+    links: list[tuple[int, int, str]] = []
     if os.name == "nt":
         import ctypes
         from ctypes import wintypes
@@ -179,16 +184,89 @@ def process_links() -> list[tuple[int, int]]:
             pe.dwSize = ctypes.sizeof(PE)
             ok = k32.Process32First(snap, ctypes.byref(pe))
             while ok:
-                links.append((int(pe.th32ProcessID), int(pe.th32ParentProcessID)))
+                name = pe.szExeFile.decode("mbcs", errors="replace")
+                links.append((int(pe.th32ProcessID), int(pe.th32ParentProcessID), name))
                 ok = k32.Process32Next(snap, ctypes.byref(pe))
         finally:
             k32.CloseHandle(snap)
     else:
-        out = subprocess.run(["ps", "-A", "-o", "pid=,ppid="], capture_output=True, text=True, timeout=5)
+        out = subprocess.run(
+            ["ps", "-A", "-o", "pid=,ppid=,comm="], capture_output=True, text=True, timeout=5
+        )
         for line in out.stdout.splitlines():
-            a, b = line.split()
-            links.append((int(a), int(b)))
+            parts = line.split(None, 2)
+            if len(parts) >= 2:
+                links.append((int(parts[0]), int(parts[1]), parts[2] if len(parts) > 2 else ""))
     return links
+
+
+def process_cpu_seconds(pid: int) -> float | None:
+    """The CPU time (user and kernel) a process has used so far, seconds; None when unknown."""
+    try:
+        if os.name == "nt":
+            from ctypes import wintypes
+
+            k32 = _kernel32()
+            h = k32.OpenProcess(0x1000, False, pid)  # PROCESS_QUERY_LIMITED_INFORMATION
+            if not h:
+                return None
+            try:
+                made, ended, kernel, user = (wintypes.FILETIME() for _ in range(4))
+                if not k32.GetProcessTimes(
+                    h, ctypes.byref(made), ctypes.byref(ended), ctypes.byref(kernel), ctypes.byref(user)
+                ):
+                    return None
+                ticks = sum((t.dwHighDateTime << 32) | t.dwLowDateTime for t in (kernel, user))
+                return ticks / 1e7
+            finally:
+                k32.CloseHandle(h)
+        out = subprocess.run(["ps", "-o", "time=", "-p", str(pid)], capture_output=True, text=True, timeout=5)
+        text = out.stdout.strip()
+        if not text:
+            return None
+        days, _, clock = text.rpartition("-")
+        seconds = 0.0
+        for part in clock.split(":"):
+            seconds = seconds * 60 + float(part)
+        return seconds + (int(days) * 86400 if days else 0)
+    except Exception:
+        return None
+
+
+class TreeCpu:
+    """The CPU time a process tree has used since the first ``sample``, seconds. Only growth is
+    added up per process, so a process that ends does not take its time back out; a process that
+    started since the last sample counts in full."""
+
+    def __init__(self) -> None:
+        self.total = 0.0
+        self._last: dict[int, float] = {}
+        self._sampled = False
+
+    def sample(self, pid: int) -> float:
+        for p in process_tree(pid):
+            used = process_cpu_seconds(p)
+            if used is None:
+                continue
+            before = self._last.get(p, 0.0 if self._sampled else used)
+            if used > before:
+                self.total += used - before
+            self._last[p] = used
+        self._sampled = True
+        return self.total
+
+
+def tree_programs(pid: int) -> list[tuple[int, str]]:
+    """``pid`` and every process below it (``descendants``), each with its program name."""
+    try:
+        table = process_table()
+    except Exception:
+        return []
+    names = {p: name for p, _, name in table}
+    tree = descendants(
+        pid, [(p, parent) for p, parent, _ in table], process_started if os.name == "nt" else None
+    )
+    return [(p, names.get(p, "")) for p in tree]
 
 
 #: A child starts after its parent. The slack is for a clock that was set back in between.

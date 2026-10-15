@@ -249,3 +249,24 @@ def test_a_pid_given_to_another_process_since_the_walk_is_not_ended():
     finally:
         child.kill()
         child.wait()
+
+
+def test_the_cpu_time_of_a_tree_counts_a_busy_child_and_keeps_what_ended():
+    from aio_pipelines.photo.proctree import TreeCpu, process_cpu_seconds, tree_programs
+
+    busy = "import time\nend = time.monotonic() + 1.5\nwhile time.monotonic() < end:\n    pass\n"
+    child = subprocess.Popen(
+        [sys.executable, "-c", busy], creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0)
+    )
+    try:
+        cpu = TreeCpu()
+        assert cpu.sample(child.pid) == 0.0  # the first sample is the baseline
+        names = [Path(name).stem.lower() for _, name in tree_programs(child.pid)]
+        assert names[0] == Path(sys.executable).stem.lower()  # the tool first (Windows may add conhost)
+        time.sleep(1.0)
+        assert cpu.sample(child.pid) > 0.3
+        child.wait(timeout=10)
+        assert cpu.sample(child.pid) > 0.3  # an ended process keeps the time it used
+        assert process_cpu_seconds(0x7FFFFFFC) is None
+    finally:
+        kill(child)

@@ -4,7 +4,11 @@ Progress: ODM prints ``Running <stage> stage`` and ``Finished <stage> stage``; i
 ``PGUP/<pid>/<project>/<percent>`` datagrams to 127.0.0.1:6367 (what NodeODM listens to). A step
 covers a window of ODM's stages; stage lines move the bar to each stage's start and end, and a
 datagram inside the running stage's own range refines it. When the port is taken, stage lines alone
-drive the bar. Cancel ends ODM's whole process tree (``native.run_tool``). Resume: each step keeps
+drive the bar. Cancel ends ODM's whole process tree (``native.run_tool``). The watchdog
+(``Watchdog``) stops ODM only when, over the whole stall window, it printed nothing, sent no
+progress and its process tree used almost no CPU (OpenMVS densifies silently for hours on a large
+set); and, for a DTM, when the terrain program ran silently past its own limit (the 14 Oct hang:
+one busy core for ever). Resume: each step keeps
 ODM's output in ``<log_dir>/odm.log``; with ``rerun`` the next attempt starts ``--rerun-from`` the
 stage after the last one finished (without it ODM's own rerun skips what is done).
 
@@ -23,12 +27,13 @@ import socket
 import subprocess
 import threading
 import time
+from collections import deque
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
 
 from ...runtime import JobError, StepContext, replace_over
-from .. import native
+from .. import native, proctree
 from .flags import STAGE_END, gpu_wanted, odm_threads, stage_after, stage_index, stage_start, stage_window
 
 ODM_ENV, VERSION_ENV, GPU_ENV = "AIO_ODM", "AIO_ODM_VERSION", "AIO_ODM_GPU"
@@ -66,6 +71,11 @@ DTM_MARK = "odm_georeferencing/.aio-dtm"
 GEOREF_LAZ = "odm_georeferencing/odm_georeferenced_model.laz"
 TAIL_LINES = 20
 STALL_DEFAULT_MIN = 60.0
+#: Below this share of one core over the whole stall window, ODM's tree counts as idle.
+BUSY_SHARE = 0.01
+DEM_ENV = "AIO_ODM_DEM_MIN"
+DEM_DEFAULT_MIN = 30.0
+DEM_PROGRAM = "renderdem"  # ODM's DSM and DTM program; with no ground points it never finishes
 _DROP_ENV = (
     "PYTHON",
     "VIRTUAL_ENV",
@@ -75,7 +85,8 @@ _DROP_ENV = (
 
 
 class OdmStalled(JobError):
-    """ODM printed nothing and sent no progress for ``stall_seconds()``: its tree is ended."""
+    """ODM printed nothing, sent no progress and used almost no CPU for ``stall_seconds()``: its
+    tree is ended."""
 
 
 class OdmGroundFailed(JobError):
@@ -166,10 +177,19 @@ def machine(env: Mapping[str, str] | None = None) -> Machine:
 
 
 def stall_seconds(env: Mapping[str, str] | None = None) -> float:
-    """How long ODM may stay silent before it is stopped (``AIO_ODM_STALL_MIN``, default 60 minutes)."""
+    """How long ODM may stay silent and idle before it is stopped (``AIO_ODM_STALL_MIN``, default
+    60 minutes)."""
     env = os.environ if env is None else env
     minutes = _positive(env.get(STALL_ENV))
     return (STALL_DEFAULT_MIN if minutes is None else minutes) * 60.0
+
+
+def dem_seconds(env: Mapping[str, str] | None = None) -> float:
+    """How long the terrain program may run silently in a DTM run (``AIO_ODM_DEM_MIN``, default 30
+    minutes; the real DTM of 24 photos takes 10 to 25 seconds)."""
+    env = os.environ if env is None else env
+    minutes = _positive(env.get(DEM_ENV))
+    return (DEM_DEFAULT_MIN if minutes is None else minutes) * 60.0
 
 
 def exit_error(code: int, lines: list[str]) -> JobError:
@@ -353,6 +373,53 @@ def gpu_use(
     return GpuUse(features, dense, fallbacks)
 
 
+class Watchdog:
+    """``native.run_tool``'s ``on_poll`` for ODM: samples the CPU time of ODM's process tree and
+    raises when ODM has stalled. Stalled: over the whole stall window no output line, no progress
+    and less than ``BUSY_SHARE`` of one core. A DTM run also fails when ``DEM_PROGRAM`` has run
+    silently for ``dem_seconds()`` (it spins on one core when there are no ground points)."""
+
+    def __init__(self, sp: StageProgress, stall: float, dem: float | None):
+        self.sp, self.stall, self.dem = sp, stall, dem
+        self.every = min(30.0, max(0.5, min(stall, dem or stall) / 10))
+        self.cpu = proctree.TreeCpu()
+        self.samples: deque[tuple[float, float]] = deque()
+        self.next = 0.0
+
+    def __call__(self, proc: subprocess.Popen) -> None:
+        now = time.monotonic()
+        if now < self.next:
+            return
+        self.next = now + self.every
+        self.samples.append((now, self.cpu.sample(proc.pid)))
+        while len(self.samples) > 1 and self.samples[1][0] <= now - self.stall:
+            self.samples.popleft()  # the first sample left is the newest one a whole window old
+        quiet = now - self.sp.last_activity
+        if self.dem is not None and quiet > self.dem and self._dem_since(time.time() - self.dem, proc.pid):
+            raise OdmGroundFailed(
+                f"ODM's terrain model (DTM) made no progress for {self.dem / 60:g} minutes; this happens "
+                "when ODM finds no ground points. Create maps again without the DTM."
+            )
+        t0, used0 = self.samples[0]
+        busy = self.samples[-1][1] - used0 >= BUSY_SHARE * (now - t0)
+        if quiet > self.stall and now - t0 >= self.stall and not busy:
+            words = STAGE_WORDS.get(self.sp.stage or "", self.sp.stage or "current").lower()
+            raise OdmStalled(
+                f"ODM stopped making progress in the {words} stage: nothing for {self.stall / 60:g} minutes. "
+                "Start the job again, or try the Fast preset."
+            )
+
+    @staticmethod
+    def _dem_since(before: float, pid: int) -> bool:
+        """The terrain program is in ODM's tree and started no later than ``before``."""
+        for p, name in proctree.tree_programs(pid):
+            if Path(name).stem.lower() == DEM_PROGRAM:
+                started = proctree.process_started(p)
+                if started is None or started <= before:
+                    return True
+        return False
+
+
 def engine_record(odm: OdmInstall, gpu: GpuUse) -> dict:
     g = {k: v for k, v in (("features", gpu.features), ("dense", gpu.dense)) if v is not None}
     return {"name": "odm", "version": odm.version, "gpu": g}
@@ -443,21 +510,15 @@ def run_odm(
     dense_capable = ensure_dense_gpu(odm, use_gpu)
     sp = StageProgress(first, last)
     lo, hi = progress
-    stall = stall_seconds()
+    # run_tool calls it every 0.1 s; raising there ends ODM's whole tree (its BaseException path)
+    watchdog = Watchdog(sp, stall_seconds(), dem_seconds() if dtm else None)
     shown = [0.0]
 
-    class _Bar:  # run_tool's view of the context: ODM's stage words, ODM's own fraction, the watchdog
+    class _Bar:  # run_tool's view of the context: ODM's stage words and ODM's own fraction
         cancel_event = ctx.cancel_event
 
         @staticmethod
         def progress(f: float, m: str | None = None) -> None:
-            # run_tool calls this every 0.1 s; raising here ends ODM's whole tree (its BaseException path)
-            if time.monotonic() - sp.last_activity > stall:
-                words = STAGE_WORDS.get(sp.stage or "", sp.stage or "current").lower()
-                raise OdmStalled(
-                    f"ODM stopped making progress in the {words} stage: nothing for {stall / 60:g} minutes. "
-                    "Start the job again, or try the Fast preset."
-                )
             real = sp.fraction if sp.fraction is not None else 0.2 * f
             shown[0] = max(shown[0], real)
             ctx.progress(lo + (hi - lo) * shown[0], sp.message or m)
@@ -480,7 +541,7 @@ def run_odm(
             native.run_tool(
                 _Bar, odm_command(odm, project_dir, args), "ODM", log_dir, expected_s=3600.0,
                 progress=(0.0, 1.0), memory_limit=odm_memory_cap() or 0,
-                env=odm_env(os.environ, use_gpu), on_output=watch, fail=exit_error,
+                env=odm_env(os.environ, use_gpu), on_output=watch, fail=exit_error, on_poll=watchdog,
             )  # fmt: skip
         except JobError as e:
             for line in _tail(log_dir)[-TAIL_LINES:]:  # the last ODM lines always go to the job log

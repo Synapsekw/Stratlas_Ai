@@ -528,6 +528,7 @@ def main(argv: list[str]) -> int:
     hang = os.environ.get("FAKE_ODM_HANG", "")
     gpu_bad = os.environ.get("FAKE_ODM_GPU", "ok")
     say = os.environ.get("FAKE_ODM_SAY", "")  # <stage>:<line>, printed during that stage
+    busy = os.environ.get("FAKE_ODM_BUSY", "")  # a stage that works silently (OpenMVS's densify, -v 0)
     for stage in STAGES[: STAGES.index(a.end_with) + 1]:
         forced = a.rerun_from is not None and STAGES.index(stage) >= STAGES.index(a.rerun_from)
         print(f"[INFO]    Running {stage} stage", flush=True)
@@ -540,6 +541,10 @@ def main(argv: list[str]) -> int:
             child = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(3600)"])
             Path(os.environ["FAKE_ODM_PIDS"]).write_text(f"{os.getpid()}\n{child.pid}\n")
             time.sleep(3600)
+        if busy == stage:  # one core busy, no line and no datagram for FAKE_ODM_BUSY_S seconds
+            end = time.monotonic() + float(os.environ.get("FAKE_ODM_BUSY_S", "10"))
+            while time.monotonic() < end:
+                pass
         if forced or not (fake / f"{stage}.done.json").exists() or missing_output(project, stage):
             half = float(os.environ.get("FAKE_ODM_STAGE_S", "0")) / 2
             time.sleep(half)  # the Running line is read before the midpoint datagram arrives

@@ -158,7 +158,7 @@ import sys, time
 from pathlib import Path
 print("[INFO]    Running opensfm stage")  # no flush: as ODM, which never flushes its log lines
 go, seen = Path(sys.argv[1]) / "go", Path(sys.argv[1]) / "seen-while-running"
-for _ in range(80):
+for _ in range(300):  # 30 s: a busy computer may read the line late
     if go.exists():
         seen.write_text("")
         break
@@ -323,6 +323,33 @@ def test_a_stalled_odm_is_stopped_with_a_plain_message(odm, aligned, tmp_path, m
     time.sleep(1.0)
     for pid in map(int, pids.read_text().split()):
         assert process_started(pid) is None, f"process {pid} survived the stall"
+
+
+def test_a_silent_but_busy_odm_is_not_stopped(odm, aligned, tmp_path, monkeypatch):
+    # OpenMVS densifies a large set without a word for hours (C1): the CPU time of ODM's tree counts
+    monkeypatch.setenv("FAKE_ODM_BUSY", "openmvs")  # prints its stage line, then works silently
+    monkeypatch.setenv("FAKE_ODM_BUSY_S", "8")
+    monkeypatch.setenv(R.STALL_ENV, "0.05")  # three seconds
+    run = R.run_odm(Ctx(), odm, aligned, [], "openmvs", "odm_filterpoints", tmp_path / "logs",
+                    rerun=True, use_gpu=False, port=_free_port())  # fmt: skip
+    assert "Finished odm_filterpoints stage" in run.log.read_text()
+
+
+def test_a_silent_terrain_program_fails_the_dtm_plainly(odm, aligned, tmp_path, monkeypatch):
+    # the DTM hang (14 Oct): renderdem spins on one core for ever, so CPU time alone never stops it
+    monkeypatch.setattr(R, "DEM_PROGRAM", Path(sys.executable).stem.lower())  # the fake runs as Python
+    monkeypatch.setenv("FAKE_ODM_BUSY", "odm_dem")
+    monkeypatch.setenv("FAKE_ODM_BUSY_S", "60")
+    monkeypatch.setenv(R.DEM_ENV, "0.05")  # three seconds
+    t0 = time.monotonic()
+    with pytest.raises(R.OdmGroundFailed, match=r"terrain model \(DTM\) made no progress"):
+        R.run_odm(Ctx(), odm, aligned, ["--dsm", "--dtm"], "odm_dem", "odm_dem", tmp_path / "a",
+                  rerun=True, use_gpu=False, port=_free_port())  # fmt: skip
+    assert time.monotonic() - t0 < 40
+    # without a DTM the same silence is not that hang: the DSM alone always finishes
+    monkeypatch.setenv("FAKE_ODM_BUSY_S", "6")
+    R.run_odm(Ctx(), odm, aligned, ["--dsm"], "odm_dem", "odm_dem", tmp_path / "b",
+              rerun=True, use_gpu=False, port=_free_port())  # fmt: skip
 
 
 def test_dense_on_the_cpu_is_said_plainly(odm, aligned, tmp_path):

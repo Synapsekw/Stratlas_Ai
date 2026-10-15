@@ -112,13 +112,16 @@ def run_tool(
     env: dict[str, str] | None = None,
     on_output: Callable[[str], float | None] | None = None,
     fail: Callable[[int, list[str]], JobError] | None = None,
+    on_poll: Callable[[subprocess.Popen], object] | None = None,
 ) -> str:
     """Run a native tool; return its stdout, or raise with the last line it printed. A ``str`` is
     one command line, passed on as is (Windows: how ``run.bat`` starts). With ``fail`` a non-zero
     exit raises ``fail(returncode, last 40 non-empty lines of stderr then stdout)``. With
     ``memory_limit`` (bytes) the tool and its children are stopped above it
     (``ToolMemoryExceeded``), so a tool never pushes the computer into swapping. With
-    ``on_output`` the tool's own progress lines move the bar (see the module docstring)."""
+    ``on_output`` the tool's own progress lines move the bar (see the module docstring).
+    ``on_poll`` gets the running process every tenth of a second (a watchdog: raising ends the
+    tool's tree)."""
     work.mkdir(parents=True, exist_ok=True)
     out_path, err_path = work / "tool.out", work / "tool.err"
     kw: dict = {"creationflags": getattr(subprocess, "CREATE_NO_WINDOW", 0)}
@@ -167,6 +170,8 @@ def run_tool(
                             f = on_output(line)
                             if f is not None:
                                 told = max(told or 0.0, min(1.0, f))
+                if on_poll is not None:
+                    on_poll(proc)
                 if told is not None:
                     frac = told
                 else:
