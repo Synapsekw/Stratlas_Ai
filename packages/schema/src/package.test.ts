@@ -5,6 +5,7 @@ import {
   exportKindForFile,
   ipc,
   LibraryEntry,
+  LibraryFolder,
   PACKAGE_HEADER_FILE,
   PackageExportOptions,
   packageEditAllowed,
@@ -174,5 +175,30 @@ describe('raster packs in packages', () => {
   it('names the embedded directories', () => {
     expect(EMBEDDED_RASTER_DIRS.imagery).toBe('packs/imagery');
     expect(EMBEDDED_RASTER_DIRS.terrain).toBe('packs/terrain');
+  });
+});
+
+describe('library contract', () => {
+  it('reads an entry with a folder, a purpose and a custom cover', () => {
+    const e = LibraryEntry.parse({
+      id: 'a',
+      name: 'A',
+      path: 'x',
+      kind: 'native',
+      folderId: 'f_abcdefghij',
+      purpose: 'survey',
+      customCover: true,
+    });
+    expect(e.folderId).toBe('f_abcdefghij');
+  });
+  it('refuses a folder id of another shape', () => {
+    expect(LibraryFolder.safeParse({ id: '../x', name: 'A' }).success).toBe(false);
+  });
+  it('takes a null cover (back to the project picture) and refuses one over 512 KB', () => {
+    const req = ipc['library:setThumbnail'].request;
+    expect(req.safeParse({ projectId: 'a', data: null }).success).toBe(true);
+    expect(req.safeParse({ projectId: 'a', data: new Uint8Array(512 * 1024 + 1) }).success).toBe(
+      false,
+    );
   });
 });

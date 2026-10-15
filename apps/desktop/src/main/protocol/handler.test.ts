@@ -10,6 +10,7 @@ import { openZip, writeZip, type ZipArchive } from '@aio/project/package';
 let base: string;
 let PKG: ZipArchive;
 const BODY = '0123456789abcdef';
+const COVER_HASH = 'a'.repeat(64);
 
 beforeAll(async () => {
   base = await mkdtemp(join(tmpdir(), 'aio-proto-'));
@@ -29,6 +30,9 @@ beforeAll(async () => {
   await mkdir(join(base, 'packs', 'imagery'));
   await writeFile(join(base, 'packs', 'imagery', 'site.pmtiles'), 'RasterPM');
   await writeFile(join(base, 'packs', 'imagery', 'site.json'), '{}');
+  await mkdir(join(base, 'covers'));
+  await writeFile(join(base, 'covers', `${COVER_HASH}.jpg`), 'CoverJpeg');
+  await writeFile(join(base, 'covers', 'abc.png'), 'png');
   await writeZip(join(base, 'pkg.aio'), [
     { name: 'packs/imagery/site.pmtiles', data: Buffer.from('PkgRasterBytes') },
   ]);
@@ -43,6 +47,7 @@ function handler() {
   return createAioHandler({
     projectRoot: (id) => (id === 'p1' ? join(base, 'p1') : undefined),
     packsDir: () => join(base, 'packs'),
+    coversDir: () => join(base, 'covers'),
     embeddedRaster: (kind, id) =>
       kind === 'imagery' && id === 'pkg-p1-site'
         ? { archive: PKG, member: 'packs/imagery/site.pmtiles' }
@@ -156,6 +161,19 @@ describe('aio:// handler', () => {
     expect(res.headers.get('content-type')).toBe('text/javascript; charset=utf-8');
     expect(res.headers.get('content-security-policy')).toBeNull();
     expect(await res.text()).toBe('window.SITE=1;');
+  });
+
+  it('serves a library cover by its hash, with a cache-busting query', async () => {
+    const res = await get(`aio://cover/${COVER_HASH}.jpg?v=7`);
+    expect(res.status).toBe(200);
+    expect(res.headers.get('content-type')).toBe('image/jpeg');
+    expect(await res.text()).toBe('CoverJpeg');
+  });
+
+  it('refuses a cover name that is not a 64 hex .jpg', async () => {
+    expect((await get('aio://cover/../x.jpg')).status).toBe(404);
+    expect((await get('aio://cover/abc.png')).status).toBe(404);
+    expect((await get(`aio://cover/x/${COVER_HASH}.jpg`)).status).toBe(404);
   });
 
   it('answers 404 for unknown hosts', async () => {

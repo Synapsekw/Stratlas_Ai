@@ -3,6 +3,7 @@ import { PURPOSE_TYPE, type Layer, type SeverityTemplate } from '@aio/schema';
 import { describe, expect, it } from 'vitest';
 import {
   clipVideoTime,
+  DEFAULT_COVER,
   defaultTemplateFor,
   invertMat4,
   kindLabel,
@@ -165,7 +166,12 @@ describe('wizardProblems', () => {
     epsg: 32639,
     origin: [221029, 3214462, 31.7],
     severityTemplate: 'aik-stack',
+    cover: DEFAULT_COVER,
   };
+
+  it('starts on a built-in cover, so a new project never shows the blank placeholder', () => {
+    expect(DEFAULT_COVER).toEqual({ kind: 'builtin', id: 'contours' });
+  });
 
   it('accepts a complete form', () => {
     expect(wizardProblems(ok)).toEqual({});

@@ -184,7 +184,10 @@ test('a project card has a menu: rename keeps after a restart, delete moves the 
       'Open',
       'Rename',
       'Show in folder',
+      'Change thumbnail',
+      'Move to folder',
       'Empty project trash',
+      'Remove from library',
       'Delete',
     ]);
     expect((await openProject(win)).id).toBeNull();
@@ -246,6 +249,11 @@ test('a project card has a menu: rename keeps after a restart, delete moves the 
     const del = win.getByTestId('project-menu-delete');
     await expect(del).toHaveAttribute('aria-disabled', 'true');
     await expect(del).toContainText('Close the project first');
+    // Remove from library stays available on the open project: it touches no file
+    await expect(win.getByTestId('project-menu-remove')).not.toHaveAttribute(
+      'aria-disabled',
+      'true',
+    );
     // (forced: Playwright itself will not click an item marked disabled)
     await del.click({ force: true });
     await expect(win.getByRole('alertdialog')).toHaveCount(0);

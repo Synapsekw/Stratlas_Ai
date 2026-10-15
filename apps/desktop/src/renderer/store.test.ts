@@ -418,6 +418,7 @@ describe('shell store', () => {
       'dialog:openFolder',
       'library:add',
       'library:list',
+      'library:folders',
     ]);
     expect(s.getState().library).toEqual([entry]);
   });
@@ -480,6 +481,7 @@ describe('shell store', () => {
     expect(calls).toEqual([
       { channel: 'library:delete', req: { projectId: entry.id } },
       { channel: 'library:list', req: {} },
+      { channel: 'library:folders', req: {} },
     ]);
     expect(s.getState().library).toEqual([]);
   });
@@ -494,6 +496,79 @@ describe('shell store', () => {
     expect(s.getState().library).toEqual([entry]);
   });
 
+  it('fills the folders with the library', async () => {
+    const folders = [{ id: 'f_abcdefghij', name: 'Site A' }];
+    const { bridge } = fakeBridge({
+      'library:list': () => [entry],
+      'library:folders': () => ({ ok: true, folders }),
+    });
+    const s = createShellStore(bridge, createWorkspace());
+    await s.getState().loadLibrary();
+    expect(s.getState().folders).toEqual(folders);
+  });
+
+  it('keeps the library and says why when the folders cannot be read', async () => {
+    const { bridge } = fakeBridge({
+      'library:list': () => [entry],
+      'library:folders': () => ({ ok: false, error: 'folders.json is broken' }),
+    });
+    const s = createShellStore(bridge, createWorkspace());
+    await s.getState().loadLibrary();
+    expect(s.getState().library).toEqual([entry]);
+    expect(s.getState().libraryError).toBe('folders.json is broken');
+  });
+
+  it('removes a package by its id, reads the library again and sets the notice', async () => {
+    const pkg: LibraryEntry = {
+      ...entry,
+      path: 'E:\\data\\handover.aio',
+      package: { encrypted: false, readOnly: true },
+    };
+    const { bridge, calls } = fakeBridge({
+      'library:remove': () => ({ ok: true }),
+      'library:list': () => [],
+      'library:folders': () => ({ ok: true, folders: [] }),
+    });
+    const s = createShellStore(bridge, createWorkspace());
+    expect(await s.getState().removeProject(pkg)).toBeNull();
+    expect(calls[0]).toEqual({ channel: 'library:remove', req: { projectId: pkg.id } });
+    expect(calls.map((c) => c.channel)).toContain('library:list');
+    expect(s.getState().library).toEqual([]);
+    expect(s.getState().libraryNotice).toBe(
+      `${pkg.name} was removed from the library. The file stays in ${pkg.path}. Open package brings it back.`,
+    );
+    s.getState().dismissLibraryNotice();
+    expect(s.getState().libraryNotice).toBeNull();
+  });
+
+  it('sets no notice when the removal failed', async () => {
+    const { bridge } = fakeBridge({ 'library:remove': () => ({ ok: false, error: 'No.' }) });
+    const s = createShellStore(bridge, createWorkspace());
+    expect(await s.getState().removeProject(entry)).toBe('No.');
+    expect(s.getState().libraryNotice).toBeNull();
+  });
+
+  it('moves a project out of its folder with folderId null', async () => {
+    const { bridge, calls } = fakeBridge({ 'library:move': () => ({ ok: true }) });
+    const s = createShellStore(bridge, createWorkspace());
+    expect(await s.getState().moveToFolder(entry, null)).toBeNull();
+    expect(calls[0]).toEqual({
+      channel: 'library:move',
+      req: { projectId: entry.id, folderId: null },
+    });
+    expect(calls.map((c) => c.channel)).toContain('library:folders');
+  });
+
+  it('answers why a folder or thumbnail change did not work', async () => {
+    const { bridge } = fakeBridge({
+      'library:createFolder': () => ({ ok: false, error: 'That name is taken.' }),
+      'library:setThumbnail': () => ({ ok: true, thumbnail: null }),
+    });
+    const s = createShellStore(bridge, createWorkspace());
+    expect(await s.getState().createFolder('Site A')).toBe('That name is taken.');
+    expect(await s.getState().setThumbnail(entry.id, null)).toBeNull();
+  });
+
   it('never asks main to delete the open project', async () => {
     const { bridge, calls } = fakeBridge({
       'project:open': () => ({ ok: true, id: entry.id, root: entry.path, manifest, issues: [] }),
@@ -505,6 +580,49 @@ describe('shell store', () => {
     expect(await s.getState().deleteProject(entry)).toContain('Close it first');
     expect(calls.map((c) => c.channel)).not.toContain('library:delete');
     expect(ws.getState().project).not.toBeNull();
+  });
+
+  it('knows the open project whatever case or slashes its path is written in', async () => {
+    const { bridge, calls } = fakeBridge({
+      'project:open': () => ({
+        ok: true,
+        id: entry.id,
+        root: 'e:/DATA/projects/HCL/',
+        manifest,
+        issues: [],
+      }),
+      'library:delete': () => ({ ok: true }),
+    });
+    const s = createShellStore(bridge, createWorkspace());
+    await s.getState().openProject(entry.path);
+    expect(await s.getState().deleteProject(entry)).toContain('Close it first');
+    expect(calls.map((c) => c.channel)).not.toContain('library:delete');
+  });
+
+  it('drops a library answer that comes back after a newer one', async () => {
+    const waiting: ((v: LibraryEntry[]) => void)[] = [];
+    const bridge: Bridge = {
+      call: (channel) => {
+        if (channel === 'library:list')
+          return new Promise((done) => {
+            waiting.push((value) => {
+              done({ ok: true, value } as Res<never>);
+            });
+          });
+        if (channel === 'library:folders')
+          return Promise.resolve({ ok: true, value: { ok: true, folders: [] } } as Res<never>);
+        return Promise.resolve({ ok: false, error: `no ${channel}` } as Res<never>);
+      },
+    };
+    const s = createShellStore(bridge, createWorkspace());
+    const first = s.getState().loadLibrary();
+    const second = s.getState().loadLibrary();
+    const renamed = { ...entry, name: 'Renamed' };
+    waiting[1]?.([renamed]);
+    await second;
+    waiting[0]?.([entry]);
+    await first;
+    expect(s.getState().library).toEqual([renamed]);
   });
 
   it('shows a project in its folder, and says so in the library when that fails', async () => {
@@ -527,6 +645,73 @@ describe('shell store', () => {
     await s.getState().openProject(entry.path);
     s.getState().closeProject();
     expect(ws.getState().project).toBeNull();
+    expect(s.getState().screen).toBe('projects');
+  });
+
+  it('keeps a picture of the last 3D view per project, in memory', () => {
+    const { bridge } = fakeBridge({});
+    const s = createShellStore(bridge, createWorkspace());
+    expect(s.getState().lastViews).toEqual({});
+    const a = new Uint8Array([0xff, 0xd8, 0xff, 1]);
+    const b = new Uint8Array([0xff, 0xd8, 0xff, 2]);
+    s.getState().setLastView('hcl', a);
+    s.getState().setLastView('river', a);
+    s.getState().setLastView('hcl', b);
+    expect(s.getState().lastViews).toEqual({ hcl: b, river: a });
+  });
+
+  it('asks for a picture of the 3D view whenever the scene of an open project is left', async () => {
+    const other = { ...manifest, id: 'river', name: 'River Bridge' };
+    const { bridge } = fakeBridge({
+      'project:open': (req) =>
+        (req as { path: string }).path === 'E:/river'
+          ? { ok: true, id: 'river', root: 'E:/river', manifest: other, issues: [] }
+          : { ok: true, id: 'hcl', root: entry.path, manifest, issues: [] },
+    });
+    const left: string[] = [];
+    const s = createShellStore(bridge, createWorkspace(), {
+      storage: null,
+      onLeaveView: (id) => {
+        left.push(id);
+      },
+    });
+    // no project open: nothing to take
+    s.getState().go('scene');
+    s.getState().go('projects');
+    expect(left).toEqual([]);
+    await s.getState().openProject(entry.path);
+    expect(s.getState().screen).toBe('scene');
+    expect(left).toEqual([]);
+    s.getState().go('scene'); // staying is not leaving
+    s.getState().go('projects');
+    expect(left).toEqual(['hcl']);
+    s.getState().go('issues'); // not from the scene
+    expect(left).toEqual(['hcl']);
+    s.getState().go('scene');
+    s.getState().openSettings();
+    s.getState().go('scene');
+    s.getState().openSettingsPage('maps');
+    expect(left).toEqual(['hcl', 'hcl', 'hcl']);
+    // another project opened from the scene: the one on screen until now
+    s.getState().go('scene');
+    await s.getState().openProject('E:/river');
+    expect(left).toEqual(['hcl', 'hcl', 'hcl', 'hcl']);
+    s.getState().closeProject();
+    expect(left).toEqual(['hcl', 'hcl', 'hcl', 'hcl', 'river']);
+  });
+
+  it('leaves the scene even when taking the picture throws', async () => {
+    const { bridge } = fakeBridge({
+      'project:open': () => ({ ok: true, id: 'hcl', root: entry.path, manifest, issues: [] }),
+    });
+    const s = createShellStore(bridge, createWorkspace(), {
+      storage: null,
+      onLeaveView: () => {
+        throw new Error('lost context');
+      },
+    });
+    await s.getState().openProject(entry.path);
+    s.getState().go('projects');
     expect(s.getState().screen).toBe('projects');
   });
 

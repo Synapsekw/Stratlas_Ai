@@ -1,20 +1,21 @@
 import type { LibraryEntry } from '@aio/schema';
-import {
-  arrowFocus,
-  formatBytes,
-  Icon,
-  useFocusTrap,
-  useT,
-  type IconName,
-  type MessageKey,
-} from '@aio/ui';
+import { arrowFocus, Icon, useFocusTrap, useT, type IconName, type MessageKey } from '@aio/ui';
 import { workspace } from '@aio/workspace';
 import { useEffect, useRef, useState, type KeyboardEvent, type SyntheticEvent } from 'react';
 import { createPortal } from 'react-dom';
-import { shell, useShell } from '../shell';
+import { isActive } from '../jobs';
+import { shell, useJobs, useShell } from '../shell';
 import { removal } from '../shell/removal';
 import { EmptyTrashDialog } from '../shell/RemoveHost';
-import { projectActions, type ProjectActionId, type WhyNot } from './projectMenuModel';
+import { CoverDialog } from './CoverDialog';
+import { DeleteDialog } from './DeleteDialog';
+import { MoveToFolderDialog } from './MoveToFolderDialog';
+import {
+  projectActions,
+  samePathText,
+  type ProjectActionId,
+  type WhyNot,
+} from './projectMenuModel';
 
 export interface MenuAt {
   x: number;
@@ -27,9 +28,12 @@ const ICON: Record<ProjectActionId, IconName> = {
   open: 'chev-r',
   rename: 'anno',
   reveal: 'folder',
+  thumbnail: 'photo',
+  move: 'folder',
   emptyTrash: 'trash',
   export: 'download',
   close: 'x',
+  remove: 'x',
   delete: 'trash',
 };
 
@@ -37,9 +41,12 @@ const LABEL: Record<ProjectActionId, MessageKey> = {
   open: 'library.menu.open',
   rename: 'library.menu.rename',
   reveal: 'library.menu.reveal',
+  thumbnail: 'library.menu.thumbnail',
+  move: 'library.menu.move',
   emptyTrash: 'library.menu.emptyTrash',
   export: 'library.menu.export',
   close: 'library.menu.close',
+  remove: 'library.menu.remove',
   delete: 'library.menu.delete',
 };
 
@@ -49,6 +56,7 @@ const WHY: Record<WhyNot, MessageKey> = {
   kit: 'library.menu.why.kit',
   outside: 'library.menu.why.outside',
   open: 'library.menu.why.open',
+  job: 'library.menu.why.job',
 };
 
 /** The last part of a path, whichever slash it uses. */
@@ -164,118 +172,6 @@ function RenameDialog({
   );
 }
 
-function DeleteDialog({
-  entry,
-  onClose,
-  returnTo,
-}: {
-  entry: LibraryEntry;
-  onClose: () => void;
-  returnTo: () => HTMLElement | null;
-}) {
-  const t = useT();
-  const dlg = useRef<HTMLDivElement>(null);
-  const keep = useRef<HTMLButtonElement>(null);
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const cancel = () => {
-    if (!busy) onClose();
-  };
-  // the safe choice has focus first: Enter on a dialog that just opened deletes nothing
-  useFocusTrap(dlg, true, { onEscape: cancel, returnTo, initial: () => keep.current });
-
-  const confirm = () => {
-    if (busy) return;
-    setBusy(true);
-    setError(null);
-    void shell
-      .getState()
-      .deleteProject(entry)
-      .then((failed) => {
-        if (failed === null) onClose();
-        else {
-          setBusy(false);
-          setError(failed);
-        }
-      });
-  };
-
-  return (
-    <div
-      className="dlg-scrim"
-      onMouseDown={(e) => {
-        if (e.target === e.currentTarget) cancel();
-      }}
-    >
-      <div
-        ref={dlg}
-        className="dlg"
-        role="alertdialog"
-        aria-modal="true"
-        aria-labelledby="project-delete-title"
-        aria-describedby="project-delete-text"
-        data-testid="project-delete"
-      >
-        <div className="dlg-h">
-          <Icon name="trash" size={16} />
-          <h2 id="project-delete-title" dir="auto">
-            {t('library.delete.title', { project: entry.name })}
-          </h2>
-        </div>
-        <div className="dlg-b">
-          <p id="project-delete-text" style={{ margin: 0 }}>
-            {t('library.delete.text')}
-          </p>
-          <dl className="kv" style={{ margin: 0 }}>
-            <dt>{t('library.delete.folder')}</dt>
-            <dd className="mono pm-path">{entry.path}</dd>
-            {entry.sizeBytes !== undefined && (
-              <>
-                <dt>{t('library.delete.size')}</dt>
-                <dd className="mono">{formatBytes(entry.sizeBytes)}</dd>
-              </>
-            )}
-          </dl>
-          <p className="help" style={{ margin: 0 }}>
-            {t('library.delete.restore')}
-          </p>
-          {error && (
-            <p className="notice danger" role="alert" style={{ margin: 0 }}>
-              <Icon name="warn" size={14} />
-              <span>
-                <b>{t('library.delete.failed')}</b> {error}
-              </span>
-            </p>
-          )}
-        </div>
-        <div className="dlg-f">
-          <span className="grow" />
-          <button
-            ref={keep}
-            type="button"
-            className="btn ghost"
-            onClick={cancel}
-            disabled={busy}
-            data-testid="project-delete-cancel"
-          >
-            {t('library.cancel')}
-          </button>
-          <button
-            type="button"
-            className="btn danger"
-            onClick={confirm}
-            disabled={busy}
-            data-testid="project-delete-confirm"
-          >
-            <Icon name="trash" size={14} />
-            {busy ? t('library.delete.busy') : t('library.delete.confirm')}
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-}
-
 /**
  * The three dots of a project card and the menu they open (also on a right-click of the card,
  * through `at`): Open, Rename, Show in folder, Export package and Close project for the open
@@ -302,7 +198,12 @@ export function ProjectMenu({
   const dataRoot = useShell((s) => s.settings.dataRoot);
   const more = useRef<HTMLButtonElement>(null);
   const list = useRef<HTMLDivElement>(null);
-  const [dialog, setDialog] = useState<'rename' | 'delete' | 'emptyTrash' | null>(null);
+  const [dialog, setDialog] = useState<
+    'rename' | 'delete' | 'emptyTrash' | 'thumbnail' | 'move' | null
+  >(null);
+  const jobRunning = useJobs((s) =>
+    s.jobs.some((j) => isActive(j) && samePathText(j.project, entry.path)),
+  );
   const open = at !== null;
 
   // a click elsewhere, a resize, or a scroll that moves the card closes the menu
@@ -356,7 +257,9 @@ export function ProjectMenu({
     const s = shell.getState();
     if (id === 'open') {
       if (!opening) void s.openProject(entry.path);
-    } else if (id === 'rename' || id === 'delete') setDialog(id);
+    } else if (id === 'remove') void s.removeProject(entry);
+    else if (id === 'rename' || id === 'delete' || id === 'thumbnail' || id === 'move')
+      setDialog(id);
     else if (id === 'emptyTrash') {
       // what an earlier Empty held is forgotten, so this one's held entries note again
       removal.setState({ held: 0 });
@@ -369,7 +272,7 @@ export function ProjectMenu({
     }
   };
 
-  const actions = projectActions(entry, { dataRoot, current });
+  const actions = projectActions(entry, { dataRoot, current, jobRunning });
   const height = 40 + actions.length * 34 + actions.filter((a) => a.why).length * 14;
   const style = at
     ? {
@@ -470,6 +373,31 @@ export function ProjectMenu({
         createPortal(
           <DeleteDialog
             entry={entry}
+            current={current}
+            onClose={() => {
+              setDialog(null);
+            }}
+            returnTo={() => more.current}
+          />,
+          document.body,
+        )}
+      {dialog === 'thumbnail' &&
+        createPortal(
+          <CoverDialog
+            entry={entry}
+            current={current}
+            onClose={() => {
+              setDialog(null);
+            }}
+            returnTo={() => more.current}
+          />,
+          document.body,
+        )}
+      {dialog === 'move' &&
+        createPortal(
+          <MoveToFolderDialog
+            entry={entry}
+            current={current}
             onClose={() => {
               setDialog(null);
             }}

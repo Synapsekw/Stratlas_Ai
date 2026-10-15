@@ -129,22 +129,40 @@ function drawLegend(g: CanvasRenderingContext2D, w: number, h: number): void {
   }
 }
 
-/** PNG of the 3D view at the current camera, with an optional severity legend. */
-export async function captureSnapshot(legend: boolean): Promise<Uint8Array<ArrayBuffer> | null> {
-  const stage = await stageForSnapshot();
-  if (!stage) return null;
+/**
+ * The 3D view at its current camera drawn into a canvas of its own, now: synchronous, so it can
+ * run as the scene is left, before the stage goes. `maxSide` draws it scaled down so its longest
+ * side is at most that many pixels (a cover), never a full-size copy first.
+ */
+export function renderSnapshot(
+  stage: EngineStage,
+  legend: boolean,
+  maxSide?: number,
+): HTMLCanvasElement | null {
   // Render and read in the same task, so the drawing buffer still holds the frame.
   stage.renderer.render(stage.scene, stage.camera);
   const src = stage.renderer.domElement;
+  if (!src.width || !src.height) return null;
+  const k = maxSide === undefined ? 1 : Math.min(1, maxSide / Math.max(src.width, src.height));
   const c = document.createElement('canvas');
-  c.width = src.width;
-  c.height = src.height;
+  c.width = Math.max(1, Math.round(src.width * k));
+  c.height = Math.max(1, Math.round(src.height * k));
   const g = c.getContext('2d');
   if (!g) return null;
   g.fillStyle = '#0f1318';
   g.fillRect(0, 0, c.width, c.height);
-  g.drawImage(src, 0, 0);
+  g.imageSmoothingQuality = 'high';
+  g.drawImage(src, 0, 0, c.width, c.height);
   if (legend) drawLegend(g, c.width, c.height);
+  return c;
+}
+
+/** PNG of the 3D view at the current camera, with an optional severity legend. */
+export async function captureSnapshot(legend: boolean): Promise<Uint8Array<ArrayBuffer> | null> {
+  const stage = await stageForSnapshot();
+  if (!stage) return null;
+  const c = renderSnapshot(stage, legend);
+  if (!c) return null;
   const blob = await new Promise<Blob | null>((r) => {
     c.toBlob(r, 'image/png');
   });

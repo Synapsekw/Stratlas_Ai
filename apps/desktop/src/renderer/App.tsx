@@ -46,6 +46,7 @@ import {
   mergeDiskIssues,
 } from './jobs';
 import { bridge, jobs, shell, useShell } from './shell';
+import { installLastView } from './library/lastView';
 import { PanoImportDialog } from './panos/PanoImportDialog';
 import { PackageExportDialog } from './shell/PackageExport';
 import { Palette } from './shell/Palette';
@@ -241,6 +242,8 @@ export function App() {
   const agentDockOpen = useAgentDockOpen();
   // the date bar follows the open project whichever screen shows
   useTimelineSync();
+  // a picture of the 3D view as a project's scene is left, for Change thumbnail
+  useEffect(() => installLastView(), []);
   // stockpile projects: the volumes own the survey layers, the date bar mirrors them
   useEffect(
     () =>

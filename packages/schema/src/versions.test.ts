@@ -56,6 +56,14 @@ describe('version registry', () => {
     });
   });
 
+  it('registers the per-computer library view file', () => {
+    expect(SCHEMA_REGISTRY.find((e) => e.family === 'aio.library-view')).toMatchObject({
+      version: 1,
+      home: 'userData',
+      since: '0.14',
+    });
+  });
+
   // Every `aio.<name>/<n>` literal in the code is a registered file schema or a known non-file id
   // (protocols, signing domains, tool-only and test formats). A stream that adds a file schema
   // without a registry row fails here.

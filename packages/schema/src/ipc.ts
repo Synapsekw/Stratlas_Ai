@@ -22,6 +22,7 @@ import {
   ImportItem,
   LayerPatch,
   NewProjectRequest,
+  ProjectPurpose,
   ReportBrand,
   SeverityTemplate,
 } from './builder';
@@ -161,6 +162,13 @@ export const AiDetectionResult = z.object({
   note: z.string().optional(),
 });
 
+export const LibraryFolderId = z.string().regex(/^f_[a-z0-9]{10}$/);
+export const LibraryFolder = z.object({
+  id: LibraryFolderId,
+  name: z.string().trim().min(1).max(60),
+});
+export type LibraryFolder = z.infer<typeof LibraryFolder>;
+
 export const LibraryEntry = z.object({
   id: z.string(),
   name: z.string(),
@@ -178,9 +186,10 @@ export const LibraryEntry = z.object({
   package: z.object({ encrypted: z.boolean(), readOnly: z.boolean() }).optional(),
   /**
    * Set on the demo projects that ship with the app (synthetic data, `resources/demo/`); `primary`
-   * is the one the first-start welcome opens.
+   * is the one the first-start welcome opens. `copy`: its working copy on this computer, the folder
+   * a delete moves to the recycle bin; absent when there is none.
    */
-  demo: z.object({ primary: z.boolean() }).optional(),
+  demo: z.object({ primary: z.boolean(), copy: z.string().optional() }).optional(),
   /** M9: a shared project's badge (mode, unread comments, conflicts, ops not yet sent). */
   team: z
     .object({
@@ -190,7 +199,22 @@ export const LibraryEntry = z.object({
       pending: z.number().int().nonnegative(),
     })
     .optional(),
+  /** Per computer: the library folder the card is in; absent when loose. */
+  folderId: LibraryFolderId.optional(),
+  /** The manifest's purpose when this build knows it (cover colours). */
+  purpose: ProjectPurpose.optional(),
+  /**
+   * The card shows a changed cover: a per-computer one (userData covers/), or Change thumbnail
+   * wrote the folder's `thumbnail.jpg` and kept its own picture as `thumbnail.original.jpg`.
+   */
+  customCover: z.boolean().optional(),
 });
+
+const CoverJpeg = z
+  .instanceof(Uint8Array)
+  .refine((d) => d.byteLength > 3 && d.byteLength <= 512 * 1024, {
+    message: 'A cover is a JPEG of at most 512 KB',
+  });
 
 /** Per-machine sync preferences (M9). Absent: no auto-sync, every 15 minutes, 50 GB of blobs. */
 export const TeamSettings = z.object({
@@ -674,11 +698,48 @@ export const ipc = {
     ]),
   },
   /**
-   * Move a project folder to the recycle bin (never a permanent delete). Only for a project
-   * folder directly inside `<data folder>/projects`; refuses while a job runs in it.
+   * Move a library entry to the recycle bin (never a permanent delete): a project or package in
+   * the data folder, a folder or package added to the library, or a demo's working copy. Refuses
+   * while a job runs in it.
    */
   'library:delete': {
     request: z.object({ projectId: ProjectId }).strict(),
+    response: OkOrFailure,
+  },
+  'library:remove': { request: z.object({ projectId: ProjectId }).strict(), response: OkOrFailure },
+  'library:setThumbnail': {
+    request: z.object({ projectId: ProjectId, data: CoverJpeg.nullable() }).strict(),
+    response: z.discriminatedUnion('ok', [
+      z.object({ ok: z.literal(true), thumbnail: z.string().nullable() }),
+      Failure,
+    ]),
+  },
+  'library:folders': {
+    request: Empty,
+    response: z.discriminatedUnion('ok', [
+      z.object({ ok: z.literal(true), folders: z.array(LibraryFolder) }),
+      Failure,
+    ]),
+  },
+  'library:createFolder': {
+    request: z.object({ name: z.string().trim().min(1).max(60) }).strict(),
+    response: z.discriminatedUnion('ok', [
+      z.object({ ok: z.literal(true), folder: LibraryFolder }),
+      Failure,
+    ]),
+  },
+  'library:renameFolder': {
+    request: z
+      .object({ folderId: LibraryFolderId, name: z.string().trim().min(1).max(60) })
+      .strict(),
+    response: OkOrFailure,
+  },
+  'library:deleteFolder': {
+    request: z.object({ folderId: LibraryFolderId }).strict(),
+    response: OkOrFailure,
+  },
+  'library:move': {
+    request: z.object({ projectId: ProjectId, folderId: LibraryFolderId.nullable() }).strict(),
     response: OkOrFailure,
   },
   'project:open': {

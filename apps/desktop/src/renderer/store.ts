@@ -4,16 +4,19 @@ import { volumetric } from '@aio/volumetric';
 import type { LabelMode, SavedView } from '@aio/engine';
 import {
   type LibraryEntry,
+  type LibraryFolder,
   type PackageInfo,
   type PackageOrigin,
   type Settings,
 } from '@aio/schema';
+import { t } from '@aio/ui';
 import type { Workspace } from '@aio/workspace';
 import { useStore } from 'zustand';
 import { createStore, type StoreApi } from 'zustand/vanilla';
 import { createBridge, type Bridge } from './bridge';
 import { browserStorage, readPanelPrefs, writePanelPrefs, type PanelStorage } from './panelPrefs';
 import { isPlayer } from './player';
+import { samePathText } from './screens/projectMenuModel';
 import { videoFirst } from './stageDefault';
 
 export type Screen =
@@ -86,6 +89,10 @@ export interface ShellState {
   /** null until the first library:list answer. */
   library: LibraryEntry[] | null;
   libraryError: string | null;
+  /** The folders of the library, in the order they were made; empty until the first answer. */
+  folders: LibraryFolder[];
+  /** One sentence after a project was removed from the library; the Projects screen shows it. */
+  libraryNotice: string | null;
   /** Path of the project being opened. */
   opening: string | null;
   openError: string | null;
@@ -111,6 +118,11 @@ export interface ShellState {
   annotating: boolean;
   /** Last 3D view per project id, so leaving and returning to Scene keeps the camera. */
   views: Record<string, SavedView>;
+  /**
+   * A cover-sized JPEG of the 3D view per library id, taken as its scene was left: Change
+   * thumbnail offers it as "Use the last 3D view". In memory only.
+   */
+  lastViews: Record<string, Uint8Array<ArrayBuffer>>;
   /** The point cloud panel (colour, size, budget, EDL) under the stage toolbar is open. */
   cloudPanelOpen: boolean;
   /** The open project came from a `.aio` package (never written to). */
@@ -160,6 +172,16 @@ export interface ShellActions {
   renameProject: (entry: LibraryEntry, name: string) => Promise<string | null>;
   /** Moves the project folder to the recycle bin; refused while the project is open. */
   deleteProject: (entry: LibraryEntry) => Promise<string | null>;
+  /** Takes the project out of the library; its files stay. Sets `libraryNotice` on success. */
+  removeProject: (entry: LibraryEntry) => Promise<string | null>;
+  dismissLibraryNotice: () => void;
+  /** A JPEG for the card, or null to go back to the project's own picture. */
+  setThumbnail: (projectId: string, data: Uint8Array<ArrayBuffer> | null) => Promise<string | null>;
+  createFolder: (name: string) => Promise<string | null>;
+  renameFolder: (folderId: string, name: string) => Promise<string | null>;
+  deleteFolder: (folderId: string) => Promise<string | null>;
+  /** Puts the project in a folder, or in none (null). */
+  moveToFolder: (entry: LibraryEntry, folderId: string | null) => Promise<string | null>;
   chooseDataRoot: () => Promise<void>;
   setPalette: (open: boolean) => void;
   setStageMode: (mode: StageMode) => void;
@@ -178,6 +200,7 @@ export interface ShellActions {
   setLabelMode: (mode: LabelMode) => void;
   setAnnotating: (on: boolean) => void;
   saveView: (projectId: string, view: SavedView) => void;
+  setLastView: (projectId: string, data: Uint8Array<ArrayBuffer>) => void;
   setCloudPanel: (open: boolean) => void;
   /** Show the point cloud panel from anywhere: the scene, in a mode with the 3D view. */
   openCloudPanel: () => void;
@@ -194,6 +217,19 @@ export interface ShellOptions {
    * storage by default.
    */
   storage?: PanelStorage | null;
+  /**
+   * The scene of this project is being left (another screen, another project, closed) while its
+   * 3D view is still on screen. Called synchronously, before the view goes; must not block.
+   */
+  onLeaveView?: (projectId: string) => void;
+}
+
+/** The answer of a library change: null when it worked, else the sentence to show. */
+function failure(
+  answer: { ok: true; value: { ok: boolean; error?: string } } | { ok: false; error: string },
+): string | null {
+  if (!answer.ok) return answer.error;
+  return answer.value.ok ? null : (answer.value.error ?? t('library.failed'));
 }
 
 export function createShellStore(
@@ -208,12 +244,14 @@ export function createShellStore(
    * one (a local model chosen meanwhile went back to the default address, localhost:11434).
    */
   let settingsRev = 0;
+  /** Counts library reads started here; only the answer to the latest one is kept. */
+  let libraryRev = 0;
   const setReadOnly = (on: boolean) => {
     options.onReadOnly?.(on);
   };
   const storage = options.storage === undefined ? browserStorage() : options.storage;
   const panels = readPanelPrefs(storage);
-  return createStore<Shell>()((set, get) => ({
+  const store = createStore<Shell>()((set, get) => ({
     screen: 'projects',
     settingsFocus: null,
     settingsPage: null,
@@ -221,6 +259,8 @@ export function createShellStore(
     settingsError: null,
     library: null,
     libraryError: null,
+    folders: [],
+    libraryNotice: null,
     opening: null,
     openError: null,
     paletteOpen: false,
@@ -233,6 +273,7 @@ export function createShellStore(
     labelMode: 'key',
     annotating: false,
     views: {},
+    lastViews: {},
     cloudPanelOpen: false,
     pkg: null,
     unlock: null,
@@ -247,11 +288,13 @@ export function createShellStore(
     },
 
     go: (screen) => {
+      leaveScene(screen);
       // leaving Settings forgets the page asked for: it opens on AI providers next time
       set(screen === 'settings' ? { screen } : { screen, settingsPage: null });
     },
 
     openSettings: (focus) => {
+      leaveScene('settings');
       set({
         screen: 'settings',
         settingsFocus: focus ?? null,
@@ -260,6 +303,7 @@ export function createShellStore(
     },
 
     openSettingsPage: (page) => {
+      leaveScene('settings');
       set({ screen: 'settings', settingsPage: page });
     },
 
@@ -272,9 +316,16 @@ export function createShellStore(
     },
 
     loadLibrary: async () => {
+      // two quick changes read the library twice: an answer older than the latest is dropped
+      const req = ++libraryRev;
       const r = await bridge.call('library:list', {});
+      if (req !== libraryRev) return;
       if (r.ok) set({ library: r.value, libraryError: null });
       else set({ library: get().library ?? [], libraryError: r.error });
+      const f = await bridge.call('library:folders', {});
+      if (req !== libraryRev) return;
+      if (f.ok && f.value.ok) set({ folders: f.value.folders });
+      else if (r.ok) set({ libraryError: f.ok ? (f.value.ok ? null : f.value.error) : f.error });
     },
 
     updateSettings: async (patch) => {
@@ -326,6 +377,7 @@ export function createShellStore(
       const player = isPlayer(pkg);
       // Every package is opened in place and never written: no annotation, no issue edits.
       setReadOnly(pkg !== null);
+      if (workspace.getState().project?.id !== id) leaveScene(null);
       workspace.getState().openProject({ id, root, manifest }, issues);
       // drone video first, nothing 3D yet: the flights on the map beside the 3D view
       const first = videoFirst(manifest);
@@ -365,6 +417,7 @@ export function createShellStore(
     },
 
     closeProject: () => {
+      leaveScene(null);
       workspace.getState().closeProject();
       setReadOnly(false);
       set({ screen: 'projects', pkg: null, origin: null });
@@ -410,13 +463,62 @@ export function createShellStore(
     },
 
     deleteProject: async (entry) => {
-      if (workspace.getState().project?.root === entry.path)
+      const open = workspace.getState().project;
+      if (open && samePathText(open.root, entry.path))
         return 'This project is open. Close it first, then delete it.';
       const r = await bridge.call('library:delete', { projectId: entry.id });
       // read the folder again either way: what is still on disk stays in the list
       await get().loadLibrary();
       if (!r.ok) return r.error;
       return r.value.ok ? null : r.value.error;
+    },
+
+    removeProject: async (entry) => {
+      const r = await bridge.call('library:remove', { projectId: entry.id });
+      await get().loadLibrary();
+      const error = !r.ok ? r.error : r.value.ok ? null : r.value.error;
+      if (error !== null) return error;
+      const key = entry.package
+        ? 'library.removed.package'
+        : entry.demo
+          ? 'library.removed.demo'
+          : 'library.removed';
+      set({ libraryNotice: t(key, { project: entry.name, path: entry.path }) });
+      return null;
+    },
+
+    dismissLibraryNotice: () => {
+      set({ libraryNotice: null });
+    },
+
+    setThumbnail: async (projectId, data) => {
+      const r = await bridge.call('library:setThumbnail', { projectId, data });
+      await get().loadLibrary();
+      return failure(r);
+    },
+
+    createFolder: async (name) => {
+      const r = await bridge.call('library:createFolder', { name });
+      await get().loadLibrary();
+      return failure(r);
+    },
+
+    renameFolder: async (folderId, name) => {
+      const r = await bridge.call('library:renameFolder', { folderId, name });
+      await get().loadLibrary();
+      return failure(r);
+    },
+
+    deleteFolder: async (folderId) => {
+      const r = await bridge.call('library:deleteFolder', { folderId });
+      await get().loadLibrary();
+      return failure(r);
+    },
+
+    moveToFolder: async (entry, folderId) => {
+      const r = await bridge.call('library:move', { projectId: entry.id, folderId });
+      await get().loadLibrary();
+      return failure(r);
     },
 
     chooseDataRoot: async () => {
@@ -469,6 +571,9 @@ export function createShellStore(
     saveView: (projectId, view) => {
       set({ views: { ...get().views, [projectId]: view } });
     },
+    setLastView: (projectId, data) => {
+      set({ lastViews: { ...get().lastViews, [projectId]: data } });
+    },
     setCloudPanel: (cloudPanelOpen) => {
       set({ cloudPanelOpen });
     },
@@ -484,9 +589,31 @@ export function createShellStore(
       set({ openError: null });
     },
   }));
+
+  /** Before the scene of the open project goes: let the caller take a picture of its 3D view. */
+  function leaveScene(next: Screen | null): void {
+    const id = workspace.getState().project?.id;
+    if (!id || store.getState().screen !== 'scene' || next === 'scene') return;
+    try {
+      options.onLeaveView?.(id);
+    } catch {
+      // a picture that cannot be taken never holds anything up
+    }
+  }
+
+  return store;
 }
 
 let shellStore: StoreApi<Shell> | null = null;
+let leaveViewHook: ((projectId: string) => void) | null = null;
+
+/**
+ * What the app shell does as the scene of a project is left (library/lastView.ts takes a picture
+ * of the 3D view). Set at start-up, so this module does not load the 3D export code.
+ */
+export function onLeaveView(hook: ((projectId: string) => void) | null): void {
+  leaveViewHook = hook;
+}
 
 /** The app-wide shell store, bound to window.aio and the app workspace. */
 export function getShell(workspace: StoreApi<Workspace>): StoreApi<Shell> {
@@ -494,6 +621,9 @@ export function getShell(workspace: StoreApi<Workspace>): StoreApi<Shell> {
     onReadOnly: (on) => {
       setAnnotateReadOnly(on);
       volumetric.getState().setReadOnly(on);
+    },
+    onLeaveView: (id) => {
+      leaveViewHook?.(id);
     },
   });
   return shellStore;

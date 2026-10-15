@@ -1,4 +1,4 @@
-import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, readFile, rm, stat, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
@@ -39,10 +39,34 @@ describe('listLibrary', () => {
       site: 'Al-Zour',
       kind: 'native',
       captureDate: '2024-01-10',
-      thumbnail: 'aio://project/alzour/thumbnail.jpg',
+      thumbnail: expect.stringMatching(
+        new RegExp(`^aio://project/${e?.id ?? ''}/thumbnail\\.jpg\\?v=\\d+$`),
+      ) as string,
       layerCounts: { mesh: 1, video: 2 },
     });
     expect(e?.sizeBytes).toBeGreaterThanOrEqual(13);
+  });
+
+  it('carries the purpose and a thumbnail URL that changes with the file', async () => {
+    const dir = await writeProject(
+      join(dataRoot, 'projects', 'yard'),
+      sampleManifest({ purpose: 'survey' }),
+      { 'thumbnail.jpg': 'jpg' },
+    );
+    const [e] = await listLibrary({ dataRoot, extraPaths: [], registry: new ProjectRegistry() });
+    const { mtimeMs } = await stat(join(dir, 'thumbnail.jpg'));
+    expect(e?.purpose).toBe('survey');
+    expect(e?.thumbnail).toBe(`aio://project/yard/thumbnail.jpg?v=${String(Math.round(mtimeMs))}`);
+    expect(e?.customCover).toBeUndefined();
+  });
+
+  it("marks a changed cover when the project's own picture is kept beside it", async () => {
+    await writeProject(join(dataRoot, 'projects', 'yard'), sampleManifest(), {
+      'thumbnail.jpg': 'new',
+      'thumbnail.original.jpg': 'own',
+    });
+    const [e] = await listLibrary({ dataRoot, extraPaths: [], registry: new ProjectRegistry() });
+    expect(e?.customCover).toBe(true);
   });
 
   it('registers listed projects so their thumbnails resolve', async () => {
@@ -141,6 +165,17 @@ describe('library store and addToLibrary', () => {
     expect(await createLibraryStore(file).paths()).toEqual([old, dir]);
   });
 
+  it('keeps both an add and a remove made at once', async () => {
+    const file = join(base, 'library.json');
+    const a = join(base, 'a');
+    const b = join(base, 'b');
+    const c = join(base, 'c');
+    await writeFile(file, JSON.stringify({ schema: 'aio.library/1', paths: [a, b] }));
+    const store = createLibraryStore(file);
+    await Promise.all([store.remove(a), store.add(c), store.remove(b)]);
+    expect(await store.paths()).toEqual([c]);
+  });
+
   it('refuses a list saved by a newer version and never saves over it', async () => {
     const file = join(base, 'library.json');
     const newer = `${JSON.stringify({ schema: 'aio.library/2', folders: [{ path: 'x' }] })}\n`;
@@ -155,6 +190,18 @@ describe('library store and addToLibrary', () => {
     });
     await expect(store.add(dir)).rejects.toThrow(/newer version of Quadrion AI/);
     expect(await readFile(file, 'utf8')).toBe(newer);
+  });
+
+  it('removes a path, case ignored on Windows', async () => {
+    const store = createLibraryStore(join(base, 'library.json'));
+    const a = await writeProject(join(base, 'a'));
+    const b = await writeProject(join(base, 'b'));
+    await store.add(a);
+    await store.add(b);
+    await store.remove(process.platform === 'win32' ? a.toUpperCase() : a);
+    expect(await store.paths()).toEqual([b]);
+    await store.remove(join(base, 'never-added'));
+    expect(await store.paths()).toEqual([b]);
   });
 
   it('refuses a missing folder', async () => {

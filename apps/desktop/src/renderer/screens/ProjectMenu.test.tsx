@@ -30,6 +30,7 @@ const actions = {
   revealProject: vi.fn(() => Promise.resolve<string | null>(null)),
   renameProject: vi.fn(() => Promise.resolve<string | null>(null)),
   deleteProject: vi.fn(() => Promise.resolve<string | null>(null)),
+  removeProject: vi.fn(() => Promise.resolve<string | null>(null)),
   closeProject: vi.fn(),
 };
 
@@ -120,7 +121,16 @@ describe('the three dots of a project card', () => {
     expect(menu?.getAttribute('aria-label')).toBe('Project North yard');
     expect(
       [...(menu?.querySelectorAll('[role="menuitem"]') ?? [])].map((i) => i.textContent),
-    ).toEqual(['Open', 'Rename', 'Show in folder', 'Empty project trash', 'Delete']);
+    ).toEqual([
+      'Open',
+      'Rename',
+      'Show in folder',
+      'Change thumbnail',
+      'Move to folder',
+      'Empty project trash',
+      'Remove from library',
+      'Delete',
+    ]);
     // a second click on the dots closes it again
     click(dots());
     expect(q('project-menu')).toBeNull();
@@ -209,19 +219,28 @@ describe('the three dots of a project card', () => {
     expect(q('project-delete')).toBeNull();
   });
 
-  it('greys Rename and Delete for a package and says why', () => {
+  it('greys Rename for a package and says why, but offers Remove from library and Delete', () => {
     render(pkg);
     click(dots());
-    for (const id of ['rename', 'delete']) {
-      expect(item(id)?.getAttribute('aria-disabled')).toBe('true');
-      expect(item(id)?.textContent).toContain('A package is a read-only file');
-      click(item(id));
-    }
+    expect(item('rename')?.getAttribute('aria-disabled')).toBe('true');
+    expect(item('rename')?.textContent).toContain('A package is a read-only file');
+    click(item('rename'));
     // nothing ran, and the menu is still there to read
     expect(q('project-menu')).not.toBeNull();
     expect(q('project-rename')).toBeNull();
-    expect(q('project-delete')).toBeNull();
+    expect(item('remove')?.textContent).toBe('Remove from library');
+    expect(item('remove')?.getAttribute('aria-disabled')).toBeNull();
+    expect(item('delete')?.getAttribute('aria-disabled')).toBeNull();
     expect(item('open')?.getAttribute('aria-disabled')).toBeNull();
+  });
+
+  it('Remove from library calls the store and closes the menu', () => {
+    render(pkg);
+    click(dots());
+    click(item('remove'));
+    expect(actions.removeProject).toHaveBeenCalledWith(pkg);
+    expect(q('project-menu')).toBeNull();
+    expect(q('project-delete')).toBeNull();
   });
 });
 
