@@ -37,6 +37,14 @@ export {
   type MeshAssembliesResult,
 } from './engineer/meshAssemblies';
 export { DEFAULT_MATERIALS, resolveMaterials } from './engineer/materials';
+/** Synthetic whole models (no real asset), for tests, end to end specs and demos. */
+export {
+  FIXTURE_MODELS,
+  flareModel,
+  latticeModel,
+  monopoleModel,
+  stackModel,
+} from './engineer/fixtures';
 export {
   ASSUMED_HEIGHT_M,
   assemble,
