@@ -152,6 +152,11 @@ export const EngineerRun = z
       })
       .strict(),
     reconstruction: z.enum(['not-needed', 'queued', 'done', 'unavailable']).optional(),
+    /** Evidence images the person dropped (an identity conflict): never sent again in this run. */
+    excludedImages: z
+      .array(z.string().regex(/^img-[a-z0-9-]{1,40}$/))
+      .max(64)
+      .optional(),
   })
   .strict();
 

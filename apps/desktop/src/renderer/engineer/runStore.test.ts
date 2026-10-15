@@ -573,6 +573,15 @@ describe('engineering run store', () => {
       images: { id: string }[];
     };
     expect(last.images.map((i) => i.id)).toEqual(['img-side-n']);
+    // the dropped image stays dropped after a reopen: kept in run.json
+    expect(p.runs.get('run-test-1')?.excludedImages).toEqual(['img-photo-1']);
+    const asked = p.engineerCalls;
+    const reopened = store(p);
+    await reopened.getState().resume('run-test-1');
+    expect(reopened.getState().excludedImages).toEqual(['img-photo-1']);
+    // nothing changed, so identify is not asked again; a new pass would still leave it out
+    expect(p.engineerCalls).toBe(asked);
+    expect(statuses(reopened.getState())).toEqual(['done', 'done', 'done', 'done', 'done', 'done']);
   });
 
   it('accepting twice leaves one model layer', async () => {

@@ -154,11 +154,19 @@ const SPDX = {
 export function pythonInventory() {
   const python = join(repo, 'python');
   const venv = join(python, '.venv');
-  if (!existsSync(venv)) throw new Error('No python/.venv: run uv sync --frozen in python/ first.');
-  const out = execFileSync('uv', ['run', '--frozen', '--offline', 'python', '-c', PY], {
-    cwd: python,
-    encoding: 'utf8',
-  });
+  // A worktree has no venv of its own: AIO_NOTICES_PYTHON names another checkout's interpreter,
+  // only read (no uv, so nothing is synced or re-pointed in that environment).
+  const interpreter = process.env.AIO_NOTICES_PYTHON;
+  if (!interpreter && !existsSync(venv))
+    throw new Error(
+      'No python/.venv: run uv sync --frozen in python/ first, or set AIO_NOTICES_PYTHON.',
+    );
+  const out = interpreter
+    ? execFileSync(interpreter, ['-I', '-c', PY], { encoding: 'utf8' })
+    : execFileSync('uv', ['run', '--frozen', '--offline', 'python', '-c', PY], {
+        cwd: python,
+        encoding: 'utf8',
+      });
   return JSON.parse(out).map((d) => ({
     name: d.name,
     version: d.version,

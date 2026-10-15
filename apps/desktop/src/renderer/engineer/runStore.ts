@@ -693,6 +693,7 @@ export function createRunStore(deps: RunDeps): StoreApi<RunState> {
           evidence: r.evidence,
           proposal: r.proposal,
           model: await deps.ipc.modelRead(r.run.modelId),
+          excludedImages: r.run.excludedImages ?? [],
           conflicts: [],
           notice: null,
         });
@@ -747,11 +748,11 @@ export function createRunStore(deps: RunDeps): StoreApi<RunState> {
 
       async dropImages(ids) {
         if (driving) await get().cancel();
-        set({
-          excludedImages: [...new Set([...get().excludedImages, ...ids])],
-          conflicts: [],
-          error: null,
-        });
+        const excluded = [...new Set([...get().excludedImages, ...ids])].slice(0, 64);
+        set({ excludedImages: excluded, conflicts: [], error: null });
+        // kept in run.json, so the dropped images stay dropped after a reopen
+        const run = get().run;
+        if (run) await saveRun({ ...run, excludedImages: excluded });
         await go();
       },
     };
