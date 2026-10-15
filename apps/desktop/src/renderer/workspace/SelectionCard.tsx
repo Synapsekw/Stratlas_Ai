@@ -1,3 +1,4 @@
+import type { ComponentInfo } from '@aio/engine';
 import { clipKeys, correctedPhoto, looksEstimated, photoCorrection } from '@aio/geo';
 import type { Issue, Layer, OrientationFile, PoseSample, ProjectManifest, Vec3 } from '@aio/schema';
 import {
@@ -12,14 +13,22 @@ import {
   localToProject,
   SevChip,
   severityColor,
+  useT,
   type IconName,
+  type MessageKey,
 } from '@aio/ui';
 import { interpolatePose } from '@aio/video';
 import { useWorkspace, workspace, type Selection } from '@aio/workspace';
-import { useEffect, type ReactNode } from 'react';
+import { useEffect, type KeyboardEvent as ReactKeyboardEvent, type ReactNode } from 'react';
 import { alignCamera } from '../builder/alignSession';
 import { LayerDatePicker } from '../change/SurveyDate';
 import { loadFlight, useMedia } from '../media';
+import {
+  LayerComponents,
+  setComponentVisible,
+  useHiddenComponents,
+  useLayerComponents,
+} from './ComponentList';
 import { SpotHistoryButton } from './spot/SpotHistoryEntry';
 import type { SpotOpen } from './spot/spotTypes';
 
@@ -259,9 +268,230 @@ function describe(
   };
 }
 
+const BASIS: Record<string, MessageKey> = {
+  measured: 'component.basis.measured',
+  observed: 'component.basis.observed',
+  inferred: 'component.basis.inferred',
+  user: 'component.basis.user',
+};
+const STATUS: Record<string, MessageKey> = {
+  draft: 'component.status.draft',
+  accepted: 'component.status.accepted',
+  rejected: 'component.status.rejected',
+};
+const SURFACE: Record<string, MessageKey> = {
+  back: 'component.surface.back',
+  top: 'component.surface.top',
+  interior: 'component.surface.interior',
+  base: 'component.surface.base',
+};
+
+/** "lensDiameter", "lens_diameter" and "lens-diameter" read "Lens diameter". */
+export function paramLabel(key: string): string {
+  const words = key
+    .replace(/([a-z0-9])([A-Z])/g, '$1 $2')
+    .replace(/[_-]+/g, ' ')
+    .trim()
+    .toLowerCase();
+  return words.charAt(0).toUpperCase() + words.slice(1);
+}
+
+/** Coverage in words: the panel never shows a share as a percentage. */
+function coverageKey(c: number): MessageKey {
+  return c >= 0.8
+    ? 'component.coverage.good'
+    : c >= 0.4
+      ? 'component.coverage.partial'
+      : 'component.coverage.sparse';
+}
+
+/** Escape in the card clears the selection (a text field keeps its own Escape). */
+function clearOnEscape(e: ReactKeyboardEvent) {
+  if (e.key !== 'Escape' || e.defaultPrevented) return;
+  const el = e.target as HTMLElement;
+  if (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.isContentEditable) return;
+  if (!workspace.getState().selection) return;
+  e.preventDefault();
+  workspace.getState().select(null);
+}
+
+/**
+ * The selection card of an engineering model component: what it is, how each value is known, the
+ * fit and coverage of the evidence (in words), the sides no evidence saw, and Focus, Clear and
+ * the layer's component list.
+ */
+function ComponentCard({
+  info,
+  layer,
+  selection,
+  all,
+}: {
+  info: ComponentInfo;
+  layer: Layer;
+  selection: Selection;
+  all: readonly ComponentInfo[];
+}) {
+  const t = useT();
+  const hidden = useHiddenComponents(layer.id).has(info.id);
+  const q = info.quality;
+  const params = q ? Object.entries(q.params) : [];
+  const parent = info.parent ? (all.find((c) => c.id === info.parent)?.name ?? info.parent) : null;
+  const label = (keys: Record<string, MessageKey>, v: string) => {
+    const key = keys[v];
+    return key ? t(key) : paramLabel(v);
+  };
+  const basis = (b: string | undefined) => (b ? label(BASIS, b) : '');
+  const status = info.status ? STATUS[info.status] : undefined;
+  return (
+    <section
+      className="ctx comp-card"
+      aria-label={t('component.card.kind')}
+      data-testid="component-card"
+      onKeyDown={clearOnEscape}
+    >
+      <div className="panel-h">
+        <h2>Selection</h2>
+        <span className="sub">{t('component.card.kind')}</span>
+      </div>
+      <div className="ctx-body">
+        <div className="ent-h">
+          <div className="ent-ic">
+            <Icon name="box" size={20} />
+          </div>
+          <div className="et">
+            <b>{info.name}</b>
+            <span>{[info.category, layer.name].filter(Boolean).join(' · ')}</span>
+          </div>
+        </div>
+        {info.description && <p className="comp-desc">{info.description}</p>}
+        <div className="comp-acts">
+          <button
+            type="button"
+            className="btn sm"
+            data-testid="component-focus"
+            onClick={() => {
+              workspace.getState().flyTo({ kind: 'selection', selection });
+            }}
+          >
+            <Icon name="target" size={12} />
+            {t('component.card.focus')}
+          </button>
+          <button
+            type="button"
+            className="btn sm ghost"
+            data-testid="component-clear"
+            onClick={() => {
+              workspace.getState().select(null);
+            }}
+          >
+            <Icon name="x" size={12} />
+            {t('component.card.clear')}
+          </button>
+        </div>
+        {hidden && (
+          <div className="comp-hidden">
+            <span>{t('component.card.hidden')}</span>
+            <button
+              type="button"
+              className="btn sm"
+              data-testid="component-show"
+              onClick={() => {
+                setComponentVisible(layer.id, info.id, true);
+              }}
+            >
+              <Icon name="eye" size={12} />
+              {t('component.card.show')}
+            </button>
+          </div>
+        )}
+        <dl className="kv">
+          <div className="kv-row">
+            <dt>{t('component.card.id')}</dt>
+            <dd className="mono" data-testid="component-id">
+              {info.id}
+            </dd>
+          </div>
+          {info.tag && (
+            <div className="kv-row">
+              <dt>{t('component.card.tag')}</dt>
+              <dd className="mono">{info.tag}</dd>
+            </div>
+          )}
+          {info.basis && (
+            <div className="kv-row">
+              <dt>{t('component.card.basis')}</dt>
+              <dd data-testid="component-basis">{basis(info.basis)}</dd>
+            </div>
+          )}
+          {status && (
+            <div className="kv-row">
+              <dt>{t('component.card.status')}</dt>
+              <dd>{t(status)}</dd>
+            </div>
+          )}
+          {parent && (
+            <div className="kv-row">
+              <dt>{t('component.card.mountedOn')}</dt>
+              <dd>{parent}</dd>
+            </div>
+          )}
+          {params.length > 0 && (
+            <div className="kv-row">
+              <dt>{t('component.card.values')}</dt>
+              <dd>
+                <ul className="comp-values">
+                  {params.map(([k, b]) => (
+                    <li key={k} data-testid="component-value">
+                      <span>{paramLabel(k)}</span>
+                      <span>{basis(b)}</span>
+                    </li>
+                  ))}
+                </ul>
+              </dd>
+            </div>
+          )}
+          {q?.residualM !== undefined && (
+            <div className="kv-row">
+              <dt>{t('component.card.fit')}</dt>
+              <dd>
+                {t('component.card.fitValue', {
+                  mm: String(Math.max(1, Math.round(q.residualM * 1000))),
+                })}
+              </dd>
+            </div>
+          )}
+          {q?.coverage !== undefined && (
+            <div className="kv-row">
+              <dt>{t('component.card.coverage')}</dt>
+              <dd>{t(coverageKey(q.coverage))}</dd>
+            </div>
+          )}
+          {info.unobserved && info.unobserved.length > 0 && (
+            <div className="kv-row">
+              <dt>{t('component.card.unobserved')}</dt>
+              <dd>{info.unobserved.map((s) => label(SURFACE, s)).join(', ')}</dd>
+            </div>
+          )}
+        </dl>
+        <LayerComponents layerId={layer.id} selected={info.id} />
+      </div>
+    </section>
+  );
+}
+
 export function SelectionCard() {
   const project = useWorkspace((s) => s.project);
   const selection = useWorkspace((s) => s.selection);
+  // an engineering model's components (empty for any other selection)
+  const meshLayer = project?.manifest.layers.find(
+    (l) =>
+      l.kind === 'mesh' &&
+      ((selection?.kind === 'asset' && l.id === selection.layer) ||
+        (selection?.kind === 'layer' && l.id === selection.id)),
+  );
+  const components = useLayerComponents(meshLayer?.id ?? '');
+  const component =
+    selection?.kind === 'asset' ? components.find((c) => c.id === selection.id) : undefined;
   const issues = useWorkspace((s) => s.issues);
   const nowMs = useWorkspace((s) => (s.selection?.kind === 'clip' ? s.nowMs : 0));
   const orientation = useWorkspace((s) => s.orientation);
@@ -273,6 +503,10 @@ export function SelectionCard() {
   }, [project, selection]);
   if (!project) return null;
   const m = project.manifest;
+  if (component && meshLayer && selection)
+    return (
+      <ComponentCard info={component} layer={meshLayer} selection={selection} all={components} />
+    );
 
   const card = describe(selection, m, issues, nowMs, durations, flights, orientation);
   const spotOpen = spotOpenOf(selection, m);
@@ -286,7 +520,7 @@ export function SelectionCard() {
     .reverse();
 
   return (
-    <section className="ctx" aria-label="Selection">
+    <section className="ctx" aria-label="Selection" onKeyDown={clearOnEscape}>
       <div className="panel-h">
         <h2>Selection</h2>
         <span className="sub">{card.kindLabel}</span>
@@ -380,6 +614,7 @@ export function SelectionCard() {
             </div>
           ))}
         </dl>
+        {meshLayer && selection?.kind === 'layer' && <LayerComponents layerId={meshLayer.id} />}
       </div>
     </section>
   );

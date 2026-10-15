@@ -345,6 +345,14 @@ describe('engineering components', () => {
       category: 'lighting',
       description: 'Warning light 2 of the test chimney',
       basis: 'measured',
+      status: 'accepted',
+      parent: 'flue-1',
+      unobserved: ['back'],
+      quality: {
+        params: { height: 'measured', lensDiameter: 'inferred' },
+        residualM: 0.012,
+        coverage: 0.6,
+      },
     });
     expect(nodeId(light)).toBe('light-l1-2');
     expect(nodeById(root, 'light-l1-2')).toBe(light);

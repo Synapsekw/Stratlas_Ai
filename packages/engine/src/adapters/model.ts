@@ -12,7 +12,7 @@ import {
   type Plane,
   type Raycaster,
 } from 'three';
-import type { ComponentInfo } from '../types';
+import type { ComponentInfo, ComponentQuality } from '../types';
 
 /** Type guard; `isMesh` is typed as always true on Mesh, so check it on a partial. */
 export const isMesh = (o: Object3D): o is Mesh => (o as Partial<Mesh>).isMesh === true;
@@ -53,7 +53,35 @@ export function componentOf(node: Object3D): ComponentInfo | null {
   if (description !== undefined) info.description = description;
   if (tag !== undefined) info.tag = tag;
   if (basis !== undefined) info.basis = basis;
+  const status = str(ud.status);
+  const parent = str(ud.parent);
+  if (status !== undefined) info.status = status;
+  if (parent !== undefined) info.parent = parent;
+  if (Array.isArray(ud.unobserved)) {
+    const sides = (ud.unobserved as unknown[]).filter((s): s is string => typeof s === 'string');
+    if (sides.length) info.unobserved = sides;
+  }
+  const quality = qualityOf(ud.quality);
+  if (quality) info.quality = quality;
   return info;
+}
+
+const num = (v: unknown): number | undefined =>
+  typeof v === 'number' && Number.isFinite(v) ? v : undefined;
+
+function qualityOf(v: unknown): ComponentQuality | null {
+  if (!v || typeof v !== 'object') return null;
+  const q = v as { params?: unknown; residualM?: unknown; coverage?: unknown };
+  const params: Record<string, string> = {};
+  if (q.params && typeof q.params === 'object')
+    for (const [k, b] of Object.entries(q.params as Record<string, unknown>))
+      if (typeof b === 'string') params[k] = b;
+  const out: ComponentQuality = { params };
+  const residualM = num(q.residualM);
+  const coverage = num(q.coverage);
+  if (residualM !== undefined) out.residualM = residualM;
+  if (coverage !== undefined) out.coverage = coverage;
+  return out;
 }
 
 /**

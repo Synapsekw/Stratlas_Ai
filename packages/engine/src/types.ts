@@ -256,6 +256,22 @@ export interface ComponentInfo {
   description?: string;
   tag?: string;
   basis?: string;
+  /** `draft`, `accepted` or `rejected` (a draft is shown while a model is reviewed). */
+  status?: string;
+  /** The component id it is mounted on. */
+  parent?: string;
+  /** Surfaces no evidence saw (`back`, `top`, `interior`, `base`). */
+  unobserved?: string[];
+  /** How each parameter is known, the worst fit residual and the least coverage. */
+  quality?: ComponentQuality;
+}
+
+export interface ComponentQuality {
+  /** Parameter name to its basis (`measured`, `observed`, `inferred`, `user`). */
+  params: Record<string, string>;
+  residualM?: number;
+  /** 0..1, the share of the surface the evidence covers. */
+  coverage?: number;
 }
 
 /**

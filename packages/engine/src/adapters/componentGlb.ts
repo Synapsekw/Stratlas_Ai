@@ -149,6 +149,12 @@ export function chimneyGlb(): ArrayBuffer {
         extras: component('light-l1-2', 'Warning light 2', {
           category: 'lighting',
           parent: 'flue-1',
+          unobserved: ['back'],
+          quality: {
+            params: { height: 'measured', lensDiameter: 'inferred' },
+            residualM: 0.012,
+            coverage: 0.6,
+          },
         }),
         prims: [
           { material: STEEL, size: [1, 1, 1] },
