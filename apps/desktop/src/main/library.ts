@@ -59,24 +59,33 @@ export function createLibraryStore(file: string): LibraryStore {
       return { paths: [], newer: null };
     }
   }
+  // add and remove read, change and write the file one at a time, so neither drops the other's
+  let chain: Promise<unknown> = Promise.resolve();
+  const serial = (run: () => Promise<void>): Promise<void> => {
+    const next = chain.then(run);
+    chain = next.catch(() => undefined);
+    return next;
+  };
   return {
     paths: async () => (await load()).paths,
-    async add(path) {
-      const current = await load();
-      if (current.newer) throw new Error(current.newer);
-      if (current.paths.some((p) => sameKey(p) === sameKey(path))) return;
-      await writeJsonAtomic(file, {
-        schema: LIBRARY_SCHEMA,
-        paths: [...current.paths, resolve(path)],
-      });
-    },
-    async remove(path) {
-      const current = await load();
-      if (current.newer) throw new Error(current.newer);
-      const paths = current.paths.filter((p) => sameKey(p) !== sameKey(path));
-      if (paths.length === current.paths.length) return;
-      await writeJsonAtomic(file, { schema: LIBRARY_SCHEMA, paths });
-    },
+    add: (path) =>
+      serial(async () => {
+        const current = await load();
+        if (current.newer) throw new Error(current.newer);
+        if (current.paths.some((p) => sameKey(p) === sameKey(path))) return;
+        await writeJsonAtomic(file, {
+          schema: LIBRARY_SCHEMA,
+          paths: [...current.paths, resolve(path)],
+        });
+      }),
+    remove: (path) =>
+      serial(async () => {
+        const current = await load();
+        if (current.newer) throw new Error(current.newer);
+        const paths = current.paths.filter((p) => sameKey(p) !== sameKey(path));
+        if (paths.length === current.paths.length) return;
+        await writeJsonAtomic(file, { schema: LIBRARY_SCHEMA, paths });
+      }),
   };
 }
 

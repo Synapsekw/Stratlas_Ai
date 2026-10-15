@@ -165,6 +165,17 @@ describe('library store and addToLibrary', () => {
     expect(await createLibraryStore(file).paths()).toEqual([old, dir]);
   });
 
+  it('keeps both an add and a remove made at once', async () => {
+    const file = join(base, 'library.json');
+    const a = join(base, 'a');
+    const b = join(base, 'b');
+    const c = join(base, 'c');
+    await writeFile(file, JSON.stringify({ schema: 'aio.library/1', paths: [a, b] }));
+    const store = createLibraryStore(file);
+    await Promise.all([store.remove(a), store.add(c), store.remove(b)]);
+    expect(await store.paths()).toEqual([c]);
+  });
+
   it('refuses a list saved by a newer version and never saves over it', async () => {
     const file = join(base, 'library.json');
     const newer = `${JSON.stringify({ schema: 'aio.library/2', folders: [{ path: 'x' }] })}\n`;
