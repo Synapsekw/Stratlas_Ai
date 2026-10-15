@@ -58,6 +58,7 @@ export type SettingsPage =
   | 'maps'
   | 'map-sources'
   | 'severity'
+  | 'classes'
   | 'branding'
   | 'graphics'
   | 'appearance'

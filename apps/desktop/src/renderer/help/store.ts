@@ -43,6 +43,7 @@ export const SETTINGS_HELP: Record<string, HelpTopic> = {
   identity: { chapter: 'identity-and-team' },
   maps: { chapter: 'maps', anchor: 'offline-map-packs' },
   severity: { chapter: 'annotation-and-issues', anchor: 'severity-models' },
+  classes: { chapter: 'annotation-and-issues', anchor: 'classes' },
   branding: { chapter: 'reports-and-exports', anchor: 'report-branding' },
   graphics: { chapter: 'settings', anchor: 'graphics-quality' },
   appearance: { chapter: 'settings', anchor: 'appearance' },

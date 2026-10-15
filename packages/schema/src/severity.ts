@@ -45,6 +45,20 @@ export const ClassCatalogue = z.object({
   classes: z.array(IssueClass),
 });
 
+/**
+ * A class kept in the class library on this computer (`userData/class-library.json`,
+ * `aio.classLibrary/1`). New projects offer these; `severityLevels` are the level names of the
+ * model it was saved from, shown for orientation only (a class takes the new project's model).
+ */
+export const LibraryClass = z.object({
+  label: z.string().trim().min(1).max(80),
+  color: HexColor,
+  hotkey: z.string().length(1).optional(),
+  severityLevels: z.array(z.string().min(1)).optional(),
+});
+
+export type LibraryClass = z.infer<typeof LibraryClass>;
+
 export type SeverityLevel = z.infer<typeof SeverityLevel>;
 export type SeverityModel = z.infer<typeof SeverityModel>;
 export type IssueClass = z.infer<typeof IssueClass>;

@@ -26,6 +26,7 @@ import {
   SeverityTemplate,
 } from './builder';
 import { ProjectManifest } from './manifest';
+import { ClassCatalogue, LibraryClass } from './severity';
 import { HexColor, IsoDate, Vec3 } from './common';
 import { PanoQuality, PanoScan } from './panoStitch';
 import { AiPolicy, EditPolicy, ExportKind, PackageInfo, PackageOrigin } from './package';
@@ -620,6 +621,24 @@ export const ipc = {
     request: z.object({ path: z.string().min(1) }).strict(),
     response: z.discriminatedUnion('ok', [
       z.object({ ok: z.literal(true), entry: LibraryEntry }),
+      z.object({ ok: z.literal(false), error: z.string() }),
+    ]),
+  },
+  /** Classes saved to the class library on this computer (`userData/class-library.json`). */
+  'classLibrary:list': { request: Empty, response: z.array(LibraryClass) },
+  /** Save a class to the library; one with the same label (any case) is replaced. */
+  'classLibrary:save': {
+    request: z.object({ cls: LibraryClass }).strict(),
+    response: z.discriminatedUnion('ok', [
+      z.object({ ok: z.literal(true), classes: z.array(LibraryClass) }),
+      z.object({ ok: z.literal(false), error: z.string() }),
+    ]),
+  },
+  /** Remove a class from the library by label (any case). */
+  'classLibrary:remove': {
+    request: z.object({ label: z.string().min(1) }).strict(),
+    response: z.discriminatedUnion('ok', [
+      z.object({ ok: z.literal(true), classes: z.array(LibraryClass) }),
       z.object({ ok: z.literal(false), error: z.string() }),
     ]),
   },
@@ -1544,6 +1563,24 @@ export const ipc = {
         projectId: z.string().min(1),
         captureId: z.string().min(1),
         patch: CapturePatch,
+      })
+      .strict(),
+    response: z.discriminatedUnion('ok', [
+      z.object({ ok: z.literal(true), manifest: ProjectManifest, backup: z.string() }),
+      z.object({ ok: z.literal(false), error: z.string() }),
+    ]),
+  },
+  /**
+   * Replace the project's class catalogues: add, rename, recolour, set a hotkey or a severity
+   * model, delete (ANN-7). Validated in main (unique catalogue and class ids, unique hotkeys,
+   * `a` and `u` reserved, known severity models, no class removed while `issues.json` uses it),
+   * backed up and journaled like `builder:updateCapture`.
+   */
+  'builder:updateClasses': {
+    request: z
+      .object({
+        projectId: z.string().min(1),
+        catalogues: z.array(ClassCatalogue),
       })
       .strict(),
     response: z.discriminatedUnion('ok', [

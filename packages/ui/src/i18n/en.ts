@@ -339,6 +339,20 @@ export const en = {
   'det.note': 'Note (N)',
   'det.accept': 'Accept',
   'det.accept.tip': 'Accept as a new draft issue (A or Enter)',
+  'det.class.new': '+ New class...',
+  'det.createClass': "Create class '{label}'",
+  'det.suggestedClass': 'Suggested class: {label}',
+  'det.acceptAll': 'Accept all ({count})',
+  'det.rejectAll': 'Reject all ({count})',
+  'det.acceptAll.confirm_one': 'Accept 1 detection as an issue?',
+  'det.acceptAll.confirm_other': 'Accept {count} detections as issues?',
+  'det.acceptAll.skip_one': '1 has no class or severity and will be skipped.',
+  'det.acceptAll.skip_other': '{count} have no class or severity and will be skipped.',
+  'det.rejectAll.confirm_one': 'Reject 1 detection?',
+  'det.rejectAll.confirm_other': 'Reject {count} detections?',
+  'det.batch.cancel': 'Cancel',
+  'det.error.batchUndoMoved':
+    'The issues of this Accept all were changed since. Undo those changes in the issue register first.',
   'det.link': 'Link',
   'det.link.tip': 'Add as a sighting of an existing issue (L)',
   'det.link.title': 'Link to an issue',
@@ -732,6 +746,7 @@ export const en = {
   'settings.page.maps': 'Offline maps',
   'settings.page.mapSources': 'Map sources',
   'settings.page.severity': 'Severity models',
+  'settings.page.classes': 'Classes',
   'settings.page.appearance': 'Appearance',
   'settings.page.about': 'About and updates',
   'settings.page.graphics': 'Graphics quality',
@@ -828,6 +843,37 @@ export const en = {
   'tools.notice.dismiss': 'Dismiss',
   'settings.severity.text':
     'Each project grades issues with its own model. Levels carry a colour, criteria and a recommended action.',
+  'settings.classes.text':
+    'The classes this project sorts findings into: name, colour, hotkey and severity scale. Changes are saved in the project; Ctrl+Z undoes them.',
+
+  // Classes (ANN-7)
+  'classes.noProject': 'Open a project to edit its classes.',
+  'classes.readOnly': 'This project is read-only, so its classes cannot be changed.',
+  'classes.notSaved': 'Classes not saved: {error}',
+  'classes.created': 'Class {label} created.',
+  'classes.deleted': 'Class {label} deleted.',
+  'classes.savedToLibrary': '{label} saved to your class library.',
+  'classes.undo': 'Undo',
+  'classes.dismiss': 'Dismiss',
+  'classes.empty': 'This project has no classes yet. Create one below.',
+  'classes.col.colour': 'Colour',
+  'classes.col.name': 'Name',
+  'classes.col.hotkey': 'Hotkey',
+  'classes.col.severity': 'Severity scale',
+  'classes.col.issues': 'Issues',
+  'classes.name': 'Name of {label}',
+  'classes.hotkey': 'Hotkey of {label}',
+  'classes.severity': 'Severity scale of {label}',
+  'classes.colour': 'Colour of {label}',
+  'classes.severityLocked':
+    'Issues use this class. Move them to another class to change its severity scale.',
+  'classes.saveToLibrary': 'Save to my class library',
+  'classes.delete': 'Delete {label}',
+  'classes.delete.title': 'Delete {label}',
+  'classes.delete.used': '{issues} issues and {detections} detections use {label}. Move them to:',
+  'classes.delete.move': 'Move and delete',
+  'classes.delete.cancel': 'Cancel',
+  'classes.delete.pickTarget': 'Pick the class that takes over its issues.',
 
   // Appearance
   'settings.appearance.text':
@@ -1022,6 +1068,11 @@ export const en = {
     'Carries your company name and logo from Settings, Report branding. Without them it is neutral.',
   'builder.reportBranding':
     'Reports carry your own company name and logo from Settings, Report branding.',
+  'builder.library.title': 'From your class library',
+  'builder.library.lead': 'Ticked classes are added with this severity model.',
+  'builder.library.inTemplate': 'in the template',
+  'builder.library.notAdded':
+    'The project was created, but the library classes were not added: {error}',
   'builder.surveys.title': 'Survey data',
   'builder.surveys.text':
     'Optional. One or two survey dates, each with a DSM GeoTIFF or a point cloud, and an orthomosaic for the photo texture. Once the project exists the Volumetric Survey Kit runs as a job: piles, toe lines, four bases, volumes and the change between the dates.',

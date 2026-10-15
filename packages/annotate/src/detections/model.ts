@@ -54,6 +54,8 @@ export interface Detection {
   classId: string;
   /** The proposer's own word, kept for review. */
   label?: string;
+  /** The proposer suggests a new class named `label` (AI Detect `new:<name>`). */
+  suggestedNew?: boolean;
   severity: number | 'uncertain' | null;
   /** Marked uncertain: accepted as the model's uncertain level. */
   uncertain: boolean;
@@ -162,7 +164,7 @@ function fromPass(
   else if (raw.width && raw.height) size = [raw.width, raw.height];
   else size = source.kind === 'photo' ? ctx.photoSize(source.layer, source.photo) : null;
   if (!size) return null;
-  const classId = ctx.classId(raw.class) ?? '';
+  const classId = ctx.classId(raw.class) ?? (raw.label ? ctx.classId(raw.label) : null) ?? '';
   const d: Detection = {
     id,
     pass: name,
@@ -178,6 +180,7 @@ function fromPass(
   };
   const label = raw.label ?? (classId ? undefined : raw.class);
   if (label) d.label = label;
+  if (raw.suggestedNew && classId === '') d.suggestedNew = true;
   if (raw.confidence !== undefined) d.confidence = raw.confidence;
   if (raw.issueId) d.issueId = raw.issueId;
   if (raw.component) d.component = raw.component;
@@ -290,6 +293,7 @@ export function toPassDetection(
   else out.frame = { layer: d.source.layer, t: d.source.t };
   out.class = d.classId !== '' ? d.classId : (d.label ?? 'unclassified');
   if (d.label) out.label = d.label;
+  if (d.suggestedNew && d.classId === '') out.suggestedNew = true;
   if (d.severity !== null) out.severity = d.severity;
   if (d.uncertain) out.uncertain = true;
   if (d.confidence !== undefined) out.confidence = d.confidence;

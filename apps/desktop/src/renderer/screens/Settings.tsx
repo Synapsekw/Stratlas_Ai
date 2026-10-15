@@ -37,6 +37,7 @@ import { Keyboard } from './settings/Keyboard';
 import { LocalModel } from './settings/LocalModel';
 import { MapPacks } from './settings/MapPacks';
 import { MapSources } from './settings/MapSources';
+import { Classes } from './settings/Classes';
 import { ProcessingTools } from './settings/ProcessingTools';
 import { ProviderConnection } from './settings/ProviderConnection';
 import { ReportBranding } from './settings/ReportBranding';
@@ -71,6 +72,12 @@ const PAGES: { page: Page; label: MessageKey; icon: IconName; group: MessageKey 
   {
     page: 'severity',
     label: 'settings.page.severity',
+    icon: 'issues',
+    group: 'settings.group.data',
+  },
+  {
+    page: 'classes',
+    label: 'settings.page.classes',
     icon: 'issues',
     group: 'settings.group.data',
   },
@@ -799,6 +806,7 @@ const HEAD: Record<Page, { title: MessageKey; text: MessageKey }> = {
   maps: { title: 'settings.page.maps', text: 'settings.maps.text' },
   'map-sources': { title: 'settings.page.mapSources', text: 'settings.mapSources.text' },
   severity: { title: 'settings.page.severity', text: 'settings.severity.text' },
+  classes: { title: 'settings.page.classes', text: 'settings.classes.text' },
   branding: { title: 'settings.page.branding', text: 'settings.branding.text' },
   graphics: { title: 'settings.page.graphics', text: 'settings.graphics.text' },
   appearance: { title: 'settings.page.appearance', text: 'settings.appearance.text' },
@@ -878,6 +886,7 @@ export function SettingsScreen() {
           {page === 'maps' && <MapPacks />}
           {page === 'map-sources' && <MapSources />}
           {page === 'severity' && <Severity />}
+          {page === 'classes' && <Classes />}
           {page === 'branding' && <ReportBranding />}
           {page === 'graphics' && <Graphics />}
           {page === 'appearance' && <Appearance />}

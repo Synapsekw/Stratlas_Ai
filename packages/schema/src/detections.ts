@@ -92,6 +92,11 @@ export const Detection = z
     geom: DetectionGeom.optional(),
     /** The proposer's own word for the class when it matched no class of the project. */
     label: z.string().optional(),
+    /**
+     * The proposer suggests a new class named `label` (AI Detect answered `new:<name>`). Nothing
+     * is created until a person clicks Create class.
+     */
+    suggestedNew: z.boolean().optional(),
     /** Marked uncertain by the reviewer or the model. */
     uncertain: z.boolean().optional(),
     origin: DetectionOrigin.optional(),
