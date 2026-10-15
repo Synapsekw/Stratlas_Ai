@@ -1,5 +1,5 @@
 /**
- * @aio/modelling (M8 stream C5, BLD-11): procedural models (`aio.procmodel/1`) made from DXF
+ * @aio/modelling (M8 stream C5, BLD-11): procedural models (`aio.procmodel/2`) made from DXF
  * drawings, point cloud fits, the agent or by hand, meshed into a GLB with one node per part; and
  * the engineering model (`aio.procmodel/2` assemblies): builders, PBR component GLB, file checks.
  */
@@ -51,6 +51,8 @@ export {
 export { assignIds, azimuthDeg, type IdItem } from './engineer/assemble/ids';
 export { mergeModels, type MergeResult } from './engineer/assemble/merge';
 export { deckOpenings } from './engineer/assemble/chimney';
+export { assembleFlare, SERVICE_LINE_OFFSET } from './engineer/assemble/flare';
+export { assembleLattice, assembleMonopole, SECTOR_GAP_DEG } from './engineer/assemble/telecom';
 export {
   validateGlb,
   type GlbReport,
