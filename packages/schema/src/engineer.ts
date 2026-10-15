@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { ModelFamily } from './assemblies';
+import { IsoTime, Vec2, Vec3 } from './common';
 
 /**
  * Engineering model run contracts: the setup a person chooses, the bounded proposal the AI returns
@@ -16,6 +17,22 @@ export const DETAIL_BUDGETS = {
   standard: { triangles: 400_000, costUsd: 2, passes: 2 },
   detailed: { triangles: 900_000, costUsd: 5, passes: 3 },
 } as const satisfies Record<Detail, { triangles: number; costUsd: number; passes: number }>;
+
+/** An engineering run id; the run folder is `engineering/<run>/`. */
+export const RunId = z.string().regex(/^run-[a-z0-9-]{1,60}$/);
+
+/** A layer reference in a run setup or job params. */
+const LayerRef = z.object({ layer: z.string().min(1).max(128) }).strict();
+
+/**
+ * The region of interest, in project local metres: a circle around a plan centre or a box. Lives
+ * here rather than in modelEvidence.ts so the two modules do not import each other.
+ */
+export const EvidenceRegion = z.union([
+  z.object({ centre: Vec2, radiusM: z.number().positive().max(2000) }).strict(),
+  z.object({ min: Vec3, max: Vec3 }).strict(),
+]);
+export type EvidenceRegion = z.infer<typeof EvidenceRegion>;
 
 export const EngineerStage = z.enum([
   'inspect',
@@ -38,6 +55,11 @@ export const ProposalComponent = z
     /** Validated against `AssemblyKind` by the assembler; unknown kinds become unresolved. */
     kind: z.string().max(40),
     count: z.number().int().min(0).max(64),
+    /**
+     * What the length values in `params` are: `ratio` of the asset height (scale unknown) or `m`
+     * (metres, scale known). Required so the assembler never guesses.
+     */
+    units: z.enum(['ratio', 'm']),
     params: z
       .record(z.string().regex(/^[A-Za-z][A-Za-z0-9]{0,39}$/), Scalar)
       .refine((p) => Object.keys(p).length <= 24, 'At most 24 parameters per component.'),
@@ -77,27 +99,12 @@ export const EngineerSetup = z
   .object({
     sources: z
       .object({
-        clouds: z.array(z.object({ layer: z.string() }).strict()).max(4),
-        meshes: z.array(z.object({ layer: z.string() }).strict()).max(2),
-        photos: z.array(z.object({ path: z.string().max(1000) }).strict()).max(400),
+        clouds: z.array(LayerRef).max(4),
+        meshes: z.array(LayerRef).max(2),
+        photos: z.array(z.object({ path: z.string().min(1).max(1000) }).strict()).max(400),
       })
       .strict(),
-    region: z
-      .union([
-        z
-          .object({
-            centre: z.tuple([z.number(), z.number()]),
-            radiusM: z.number().positive().max(2000),
-          })
-          .strict(),
-        z
-          .object({
-            min: z.tuple([z.number(), z.number(), z.number()]),
-            max: z.tuple([z.number(), z.number(), z.number()]),
-          })
-          .strict(),
-      ])
-      .optional(),
+    region: EvidenceRegion.optional(),
     family: z.union([z.literal('auto'), ModelFamily]),
     scope: z.enum(['asset', 'asset-and-surroundings']),
     detail: Detail,
@@ -110,9 +117,14 @@ export const EngineerSetup = z
       .strict()
       .optional(),
     placement: z.enum(['from-source', 'anchor', 'unplaced']),
-    anchor: z.tuple([z.number(), z.number(), z.number()]).optional(),
+    /** Project local anchor point; required when `placement` is `anchor`. */
+    anchor: Vec3.optional(),
   })
-  .strict();
+  .strict()
+  .refine((s) => s.placement !== 'anchor' || s.anchor !== undefined, {
+    message: 'Placement at an anchor needs the anchor point.',
+    path: ['anchor'],
+  });
 
 const StageState = z
   .object({
@@ -126,9 +138,9 @@ const StageState = z
 export const EngineerRun = z
   .object({
     schema: z.literal('aio.engineer-run/1'),
-    id: z.string().regex(/^run-[a-z0-9-]{1,60}$/),
-    modelId: z.string().max(80),
-    createdAt: z.string(),
+    id: RunId,
+    modelId: z.string().min(1).max(80),
+    createdAt: IsoTime,
     setup: EngineerSetup,
     /** Only the stages reached so far are recorded. */
     stages: z.partialRecord(EngineerStage, StageState),

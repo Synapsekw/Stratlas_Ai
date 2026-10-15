@@ -6,6 +6,7 @@ const comp = {
   role: 'flue',
   kind: 'flue',
   count: 4,
+  units: 'ratio',
   params: { heightRatio: 0.03 },
   imageIds: ['img-3'],
   observed: true,
@@ -39,6 +40,13 @@ describe('EngineerProposal', () => {
     expect(
       EngineerProposal.safeParse(proposal([{ ...comp, params: { vertices: [1, 2, 3] } }])).success,
     ).toBe(false);
+  });
+  it('refuses a component without units and accepts metres', () => {
+    const noUnits: Record<string, unknown> = { ...comp };
+    delete noUnits.units;
+    expect(EngineerProposal.safeParse(proposal([noUnits])).success).toBe(false);
+    expect(EngineerProposal.safeParse(proposal([{ ...comp, units: 'm' }])).success).toBe(true);
+    expect(EngineerProposal.safeParse(proposal([{ ...comp, units: 'ft' }])).success).toBe(false);
   });
   it('refuses more than 24 params on one component', () => {
     const params = Object.fromEntries(Array.from({ length: 25 }, (_, i) => [`p${String(i)}`, i]));
@@ -78,6 +86,27 @@ describe('EngineerRun', () => {
   });
   it('refuses an unknown stage name', () => {
     expect(EngineerRun.safeParse(run({ polish: { status: 'done' } })).success).toBe(false);
+  });
+  it('needs an anchor point when placement is anchor', () => {
+    const r = run({});
+    const anchored = (anchor?: number[]) => ({
+      ...r,
+      setup: { ...r.setup, placement: 'anchor', ...(anchor ? { anchor } : {}) },
+    });
+    expect(EngineerRun.safeParse(anchored()).success).toBe(false);
+    expect(EngineerRun.safeParse(anchored([1, 0, 2])).success).toBe(true);
+  });
+  it('bounds ids, times and layer names', () => {
+    const r = run({});
+    expect(EngineerRun.safeParse({ ...r, id: 'nope' }).success).toBe(false);
+    expect(EngineerRun.safeParse({ ...r, createdAt: 'yesterday' }).success).toBe(false);
+    const clouds = [{ layer: 'x'.repeat(129) }];
+    expect(
+      EngineerRun.safeParse({
+        ...r,
+        setup: { ...r.setup, sources: { ...r.setup.sources, clouds } },
+      }).success,
+    ).toBe(false);
   });
   it('refuses more than 4 clouds in the setup', () => {
     const r = run({});

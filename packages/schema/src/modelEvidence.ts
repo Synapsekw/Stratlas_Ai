@@ -1,7 +1,6 @@
 import { z } from 'zod';
 import { ModelFamily } from './assemblies';
-import { Vec2, Vec3 } from './common';
-import { Detail } from './engineer';
+import { Detail, EvidenceRegion, RunId } from './engineer';
 
 /**
  * The `model.evidence` job: measures an asset locally and writes a bounded evidence pack under
@@ -24,16 +23,17 @@ export const EvidenceLimits = z
   })
   .strict();
 
-export const EvidenceRegion = z.union([
-  z.object({ centre: Vec2, radiusM: z.number().positive().max(2000) }).strict(),
-  z.object({ min: Vec3, max: Vec3 }).strict(),
-]);
+/** An 8-bit sRGB channel. */
+const Channel = z.number().min(0).max(255);
+
+/** A photo id: the sha1 of the original file, lower-case hex. */
+const PhotoId = z.string().regex(/^[0-9a-f]{40}$/);
 
 /** Params of `model.evidence`. `limits` defaults from `EVIDENCE_LIMITS[detail]`. */
 export const ModelEvidenceParams = z
   .object({
     /** Run id; the job writes under `engineering/<run>/`. */
-    run: z.string().regex(/^run-[a-z0-9-]{1,60}$/),
+    run: RunId,
     /** 0..4 pointcloud layers. */
     clouds: z.array(z.object({ layer: z.string().min(1).max(128) }).strict()).max(4),
     /** 0..2 mesh layers (reference evidence). */
@@ -86,13 +86,14 @@ export const MemberGroup = z
 /** A photo in the inventory. `gpsCamera` is the camera position only, never a subject position. */
 export const PhotoItem = z
   .object({
-    id: z.string().regex(/^[0-9a-f]{40}$/),
-    original: z.string().max(1000),
+    id: PhotoId,
+    original: z.string().min(1).max(1000),
     w: z.number().int().positive(),
     h: z.number().int().positive(),
     orientationApplied: z.boolean(),
     blur: z.number().nonnegative(),
-    dupOf: z.string().optional(),
+    /** Id of the kept photo this one nearly duplicates. */
+    dupOf: PhotoId.optional(),
     gpsCamera: z.tuple([z.number(), z.number(), z.number()]).optional(),
     review: z.string().max(200).optional(),
   })
@@ -107,7 +108,7 @@ export const EvidenceImage = z
     w: z.number().int().positive(),
     h: z.number().int().positive(),
     bytes: z.number().int().nonnegative(),
-    sha1: z.string().length(40),
+    sha1: z.string().regex(/^[0-9a-f]{40}$/),
   })
   .strict();
 
@@ -115,14 +116,16 @@ export const EvidenceImage = z
 export const EvidencePack = z
   .object({
     schema: z.literal('aio.evidence/1'),
-    run: z.string(),
+    run: RunId,
     crs: z
       .union([
-        z.object({ epsg: z.number().int() }).strict(),
-        z.object({ wkt: z.string() }).strict(),
+        z.object({ epsg: z.number().int().min(1024).max(999999) }).strict(),
+        z.object({ wkt: z.string().min(1).max(20_000) }).strict(),
       ])
       .nullable(),
     units: z.literal('m'),
+    /** The region the job cropped to, or null when it kept the whole source. */
+    crop: EvidenceRegion.nullable(),
     bounds: z
       .object({
         min: z.tuple([z.number(), z.number(), z.number()]),
@@ -171,7 +174,8 @@ export const EvidencePack = z
           .object({
             y0: z.number(),
             y1: z.number(),
-            rgb: z.tuple([z.number(), z.number(), z.number()]),
+            /** Mean sRGB colour of the band, 8-bit channels 0..255. */
+            rgb: z.tuple([Channel, Channel, Channel]),
           })
           .strict(),
       )
@@ -184,7 +188,6 @@ export const EvidencePack = z
   .strict();
 
 export type EvidenceLimits = z.infer<typeof EvidenceLimits>;
-export type EvidenceRegion = z.infer<typeof EvidenceRegion>;
 /** The parsed params (limits filled in). */
 export type ModelEvidenceParams = z.output<typeof ModelEvidenceParams>;
 export type ModelEvidenceParamsInput = z.input<typeof ModelEvidenceParams>;

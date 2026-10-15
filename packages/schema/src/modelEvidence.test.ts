@@ -56,6 +56,7 @@ const pack = (slices: unknown[]) => ({
   run: 'run-1',
   crs: { epsg: 32633 },
   units: 'm',
+  crop: { centre: [0, 0], radiusM: 20 },
   bounds: { min: [-4, 0, -4], max: [4, 80, 4] },
   samples: { read: 1_200_000, kept: 1_000_000, ground: 40_000 },
   axis: { point: [0, 0, 0], dir: [0, 1, 0], tiltDeg: 0.2 },
@@ -110,5 +111,35 @@ describe('EvidencePack', () => {
   it('refuses slice coverage outside 0..1', () => {
     expect(EvidencePack.safeParse(pack([slice(10, 1.2)])).success).toBe(false);
     expect(EvidencePack.safeParse(pack([slice(10, -0.1)])).success).toBe(false);
+  });
+  it('needs the crop key and accepts null for an uncropped source', () => {
+    const noCrop: Record<string, unknown> = pack([]);
+    delete noCrop.crop;
+    expect(EvidencePack.safeParse(noCrop).success).toBe(false);
+    expect(EvidencePack.safeParse({ ...pack([]), crop: null }).success).toBe(true);
+  });
+  it('bounds run, sha1, dupOf and colour channels', () => {
+    const p = pack([]);
+    const img = must(p.images[0]);
+    expect(EvidencePack.safeParse({ ...p, run: 'x'.repeat(5000) }).success).toBe(false);
+    expect(EvidencePack.safeParse({ ...p, crs: { wkt: 'x'.repeat(20_001) } }).success).toBe(false);
+    expect(
+      EvidencePack.safeParse({ ...p, images: [{ ...img, sha1: 'A'.repeat(40) }] }).success,
+    ).toBe(false);
+    expect(
+      EvidencePack.safeParse({ ...p, colours: [{ y0: 0, y1: 1, rgb: [256, 0, 0] }] }).success,
+    ).toBe(false);
+    const photo = {
+      id: 'b'.repeat(40),
+      original: 'photos/a.jpg',
+      w: 4000,
+      h: 3000,
+      orientationApplied: true,
+      blur: 0.1,
+    };
+    expect(EvidencePack.safeParse({ ...p, photos: [photo] }).success).toBe(true);
+    expect(
+      EvidencePack.safeParse({ ...p, photos: [{ ...photo, dupOf: 'not-an-id' }] }).success,
+    ).toBe(false);
   });
 });
