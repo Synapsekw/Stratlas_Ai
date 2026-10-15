@@ -9,7 +9,8 @@ import { drawingStemOf } from './drawingPlacement';
  * Moving the project origin (data-conventions section 1). The COPC clouds are in the project CRS
  * and follow by themselves; models, photo places and pictures laid on the ground are in the
  * local frame and are shifted so they stay where they are. Anything else placed against the
- * origin (issues, flights, walks, drawings, survey files, runs, tilesets) refuses the move.
+ * origin (issues, flights, walks, drawings, survey files, runs, tilesets, procedural models, a job
+ * that has not finished) refuses the move.
  */
 const SHIFTABLE_TOP = new Set([
   'manifest.json',
@@ -22,7 +23,56 @@ const SHIFTABLE_TOP = new Set([
   'journal',
   '.trash',
   'report',
+  'jobs',
 ]);
+
+/** The point cloud import: its output is a COPC in the project CRS, whatever its status. */
+const CLOUD_IMPORT = 'pointcloud.to_copc';
+
+/**
+ * Job folders stay in `jobs/<id>/` after they run. A finished job has committed what it made (and
+ * that is checked where it landed); a point cloud import works in the project CRS. Any other job
+ * (running, stopped, failed, or with no readable job.json) may still write against the origin.
+ */
+async function jobBlockers(root: string): Promise<string[]> {
+  let entries;
+  try {
+    entries = await readdir(join(root, 'jobs'), { withFileTypes: true });
+  } catch {
+    return []; // no jobs folder: no job ran here
+  }
+  const out: string[] = [];
+  for (const e of entries) {
+    if (!e.isDirectory()) continue;
+    let ok = false;
+    try {
+      const j = JSON.parse(await readFile(join(root, 'jobs', e.name, 'job.json'), 'utf8')) as {
+        pipeline?: unknown;
+        status?: unknown;
+      };
+      ok = j.status === 'done' || j.pipeline === CLOUD_IMPORT;
+    } catch {
+      // unreadable or missing: it may be a job that has not finished
+    }
+    if (!ok) out.push(`a job that has not finished ("${e.name}")`);
+  }
+  return out;
+}
+
+/**
+ * Procedural models (`models/<id>.procmodel.json`) hold their parts in the local frame and their
+ * mesh layer is written with an identity transform: a shift would be undone by the next build.
+ */
+async function procModelBlockers(root: string): Promise<string[]> {
+  try {
+    return (await readdir(join(root, 'models')))
+      .filter((f) => f.endsWith('.procmodel.json'))
+      .sort()
+      .map((f) => `the procedural model "${f}"`);
+  } catch {
+    return [];
+  }
+}
 
 function shiftable(l: Layer): boolean {
   if (l.kind === 'mesh' || l.kind === 'photos' || l.kind === 'basemap') return true;
@@ -60,6 +110,7 @@ export async function recentreBlockers(root: string, m: ProjectManifest): Promis
       if ((await readdir(join(root, e.name))).length > 0) out.push(`files in "${e.name}"`);
     } else out.push(`"${e.name}"`);
   }
+  out.push(...(await procModelBlockers(root)), ...(await jobBlockers(root)));
   return out;
 }
 

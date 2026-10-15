@@ -140,3 +140,40 @@ it('refuses a layer of a kind a newer build wrote, which it could not shift', as
   const m = await readManifestFile(root);
   expect(await recentreBlockers(root, m)).toEqual(['the layer "Future thing"']);
 });
+
+/** A job folder as the pipeline runner leaves it: `jobs/<id>/job.json` with its status. */
+async function job(root: string, id: string, pipeline: string, status: string): Promise<void> {
+  await mkdir(join(root, 'jobs', id, 'steps'), { recursive: true });
+  await writeFile(join(root, 'jobs', id, 'job.json'), JSON.stringify({ pipeline, status }));
+  await writeFile(join(root, 'jobs', id, 'job.log'), 'log\n');
+}
+
+it('lets finished jobs and point cloud imports stay: they placed nothing against the origin', async () => {
+  const root = await withModelAndCloud();
+  await job(root, 'import-cloud', 'pointcloud.to_copc', 'done');
+  // a cloud import is in the project CRS even while it runs or after it stopped
+  await job(root, 'import-cloud-2', 'pointcloud.to_copc', 'failed');
+  await job(root, 'mesh-build', 'photo.process', 'done');
+  const m = await readManifestFile(root);
+  expect(await recentreBlockers(root, m)).toEqual([]);
+});
+
+it('refuses while a job of another pipeline has not finished, or cannot be read', async () => {
+  const root = await withModelAndCloud();
+  await job(root, 'busy', 'photo.process', 'running');
+  await job(root, 'stopped', 'walk.process', 'cancelled');
+  await mkdir(join(root, 'jobs', 'blank'), { recursive: true });
+  const m = await readManifestFile(root);
+  expect((await recentreBlockers(root, m)).sort()).toEqual([
+    'a job that has not finished ("blank")',
+    'a job that has not finished ("busy")',
+    'a job that has not finished ("stopped")',
+  ]);
+});
+
+it('refuses a procedural model: its parts are in the local frame and a rebuild resets it', async () => {
+  const root = await withModelAndCloud();
+  await writeFile(join(root, 'models', 'pump.procmodel.json'), '{}');
+  const m = await readManifestFile(root);
+  expect(await recentreBlockers(root, m)).toEqual(['the procedural model "pump.procmodel.json"']);
+});
