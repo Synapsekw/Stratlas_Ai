@@ -1,5 +1,7 @@
 """bentley/blocks.py: BlocksExchange 3.x read on the synthetic block (no client data)."""
 
+import re
+
 import numpy as np
 import pytest
 
@@ -65,6 +67,67 @@ def test_a_rotation_that_is_not_a_rotation_is_refused_with_the_photo(tmp_path):
     p.write_text(xml[:start] + "3.0" + xml[xml.index("</M_00>") :], "utf-8")
     with pytest.raises(JobError, match="IMG_0001"):
         read_block(p)
+
+
+def _first(xml: str, tag: str, value: str) -> str:
+    """xml with the first <tag>'s text replaced by value."""
+    return re.sub(rf"<{tag}>[^<]*</{tag}>", f"<{tag}>{value}</{tag}>", xml, count=1)
+
+
+@pytest.mark.parametrize("bad", ["nan", "inf", "-inf", "NaN"])
+@pytest.mark.parametrize(("tag", "named"), [("x", "IMG_0001"), ("M_11", "IMG_0001"), ("cx", None)])
+def test_a_number_that_is_not_finite_is_refused_with_its_photo(tmp_path, bad, tag, named):
+    bs.make_block(tmp_path)
+    p = tmp_path / "at.xml"
+    xml = p.read_text("utf-8")
+    if tag == "cx":  # the principal point's x, inside the photogroup
+        tag, named = "x", "Photogroup 1"
+        start = xml.index("<PrincipalPoint>")
+        xml = xml[:start] + _first(xml[start:], "x", bad)
+    else:  # the first photo's centre or rotation: after the photogroup's principal point
+        start = xml.index("<Pose>")
+        xml = xml[:start] + _first(xml[start:], tag, bad)
+    p.write_text(xml, "utf-8")
+    with pytest.raises(JobError, match=rf"{named}.*{tag} is not a finite number") as e:
+        read_block(p)
+    assert "–" not in str(e.value) and "—" not in str(e.value)
+
+
+@pytest.mark.parametrize(
+    ("tag", "value", "message"),
+    [
+        ("FocalLength", "0", "focal length must be more than 0"),
+        ("FocalLength", "-35", "focal length must be more than 0"),
+        ("SensorSize", "0", "sensor size must be more than 0"),
+        ("Width", "0", "image size must be more than 0"),
+        ("Height", "-1", "image size must be more than 0"),
+    ],
+)
+def test_a_size_or_focal_of_zero_or_less_is_refused_in_words(tmp_path, tag, value, message):
+    bs.make_block(tmp_path)
+    p = tmp_path / "at.xml"
+    p.write_text(_first(p.read_text("utf-8"), tag, value), "utf-8")
+    with pytest.raises(JobError, match=rf'The photogroup "Photogroup 1".*{message}'):
+        read_block(p)
+
+
+def test_a_focal_in_pixels_of_zero_is_refused(tmp_path):
+    bs.make_block(tmp_path)
+    p = tmp_path / "at.xml"
+    xml = p.read_text("utf-8").replace("<SensorSize>", "<FocalLengthPixels>0</FocalLengthPixels><SensorSize>")
+    p.write_text(xml, "utf-8")
+    with pytest.raises(JobError, match="focal length must be more than 0"):
+        read_block(p)
+
+
+def test_a_blank_focal_in_pixels_falls_back_to_millimetres(tmp_path):
+    bs.make_block(tmp_path)
+    p = tmp_path / "at.xml"
+    xml = p.read_text("utf-8").replace(
+        "<SensorSize>", "<FocalLengthPixels>  </FocalLengthPixels><SensorSize>"
+    )
+    p.write_text(xml, "utf-8")
+    assert read_block(p).groups[0].focal_px == pytest.approx(bs.FOCAL_PX)
 
 
 def test_other_xml_is_not_a_block(tmp_path):

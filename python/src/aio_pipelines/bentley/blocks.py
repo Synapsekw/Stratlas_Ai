@@ -14,6 +14,7 @@ Python's expat refuses entity expansion attacks and ElementTree resolves no exte
 
 from __future__ import annotations
 
+import math
 import xml.etree.ElementTree as ET
 from dataclasses import dataclass
 from pathlib import Path
@@ -91,9 +92,19 @@ def _num(el: ET.Element, tag: str, what: str, default: float | None = None) -> f
             return default
         raise JobError(f"{what} has no {tag}.")
     try:
-        return float(v)
+        n = float(v)
     except ValueError:
         raise JobError(f"{what}: {tag} is not a number ({v[:40]}).") from None
+    # a NaN or infinite centre would be written into manifest.json, which JSON cannot read back
+    if not math.isfinite(n):
+        raise JobError(f"{what}: {tag} is not a finite number ({v.strip()[:40]}).")
+    return n
+
+
+def _positive(n: float, what: str, name: str) -> float:
+    if n <= 0:
+        raise JobError(f"{what}: its {name} must be more than 0 (it is {n:g}).")
+    return n
 
 
 def _group(i: int, g: ET.Element) -> Photogroup:
@@ -106,13 +117,14 @@ def _group(i: int, g: ET.Element) -> Photogroup:
     if dims is None:
         raise JobError(f"{what} has no image size.")
     w, h = int(_num(dims, "Width", what)), int(_num(dims, "Height", what))
-    if g.findtext("FocalLengthPixels"):
-        focal = _num(g, "FocalLengthPixels", what)
+    _positive(min(w, h), what, "image size")
+    if (g.findtext("FocalLengthPixels") or "").strip():
+        focal = _positive(_num(g, "FocalLengthPixels", what), what, "focal length")
     else:
-        mm = _num(g, "FocalLength", what)
+        mm = _positive(_num(g, "FocalLength", what), what, "focal length")
         if not (g.findtext("SensorSize") or "").strip():
             raise JobError(f"{what} gives its focal length in mm but no sensor size.")
-        focal = mm * max(w, h) / _num(g, "SensorSize", what)
+        focal = mm * max(w, h) / _positive(_num(g, "SensorSize", what), what, "sensor size")
     pp = g.find("PrincipalPoint")
     cx = _num(pp, "x", what) if pp is not None else w / 2
     cy = _num(pp, "y", what) if pp is not None else h / 2
