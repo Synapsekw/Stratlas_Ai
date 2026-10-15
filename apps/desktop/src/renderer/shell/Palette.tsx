@@ -16,6 +16,7 @@ import { runExportAction } from '../exports/exports';
 import { alignCamera } from '../builder/alignSession';
 import { pickTileset } from '../builder/ImportTileset';
 import { builder } from '../builder/state';
+import { createEngineeringModel, ENGINEERING_SOURCES, engineeringUiOn } from '../engineer/ui';
 import { diagnostics } from '../diagnostics/state';
 import { help } from '../help/store';
 import { openModelBuilder } from '../modeller/ModellerLayer';
@@ -566,6 +567,26 @@ export function Palette() {
             keywords: ['place', 'move', 'rotate', 'turn', 'tilt', 'scale', 'gizmo', 'position'],
             run: () => {
               builder.getState().startAlign({ kind: 'place', layerId: chosen.id });
+            },
+          });
+        }
+        if (engineeringUiOn()) {
+          // the selected source layer (or the layer of a selected component) starts chosen
+          const sel = ws.selection;
+          const from = layers.find(
+            (l) =>
+              ENGINEERING_SOURCES.includes(l.kind) &&
+              sel !== null &&
+              (l.id === sel.id || l.id === sel.layer),
+          );
+          list.push({
+            id: 'engineer:create',
+            title: t('eng.entry.palette'),
+            group: 'Actions',
+            icon: 'box',
+            keywords: ['engineering', 'chimney', 'flare', 'tower', 'stack', 'component', 'model'],
+            run: () => {
+              createEngineeringModel(from ? [from.id] : []);
             },
           });
         }

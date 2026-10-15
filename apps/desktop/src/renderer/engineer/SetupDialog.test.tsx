@@ -215,6 +215,23 @@ describe('SetupDialog', () => {
     });
   });
 
+  it('says why Start is off when the known dimension is not a number of metres', () => {
+    show({ initial: ['scan'] });
+    expect((q('eng-source-scan') as HTMLInputElement).checked).toBe(true);
+    expect((q('eng-start') as HTMLButtonElement).disabled).toBe(false);
+    const value = q('eng-ref-value') as HTMLInputElement;
+    act(() => {
+      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set?.call(
+        value,
+        'tall',
+      );
+      value.dispatchEvent(new Event('input', { bubbles: true }));
+    });
+    expect((q('eng-start') as HTMLButtonElement).disabled).toBe(true);
+    expect(q('eng-ref-invalid')?.textContent).toContain('metres');
+    expect(value.getAttribute('aria-invalid')).toBe('true');
+  });
+
   it('asks for the anchor before an anchored start, and closes on Escape', () => {
     const p = show();
     check('eng-source-mesh');

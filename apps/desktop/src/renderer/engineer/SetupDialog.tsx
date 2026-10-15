@@ -78,6 +78,8 @@ export interface SetupDialogProps {
   /** "Preview what is sent": the data-sharing preview for this setup (EvidencePreview). */
   onPreview: (setup: Setup) => void;
   onClose: () => void;
+  /** Layers chosen as sources when the dialog opens (the layer it was opened from). */
+  initial?: readonly string[] | undefined;
 }
 
 /**
@@ -93,7 +95,9 @@ export function SetupDialog(props: SetupDialogProps) {
   const dlg = useRef<HTMLDivElement>(null);
   useFocusTrap(dlg, true);
   const sources = props.layers.filter(isSource);
-  const [chosen, setChosen] = useState<ReadonlySet<string>>(new Set());
+  const [chosen, setChosen] = useState<ReadonlySet<string>>(
+    () => new Set((props.initial ?? []).filter((id) => sources.some((l) => l.id === id))),
+  );
   const [files, setFiles] = useState<string[]>([]);
   const [region, setRegion] = useState<Region | null>(null);
   // a circle (centre and radius) or a box around the picked centre: width east, depth north,
@@ -156,6 +160,10 @@ export function SetupDialog(props: SetupDialogProps) {
   };
   const ready = setup();
   const anchorMissing = placement === 'anchor' && !anchor;
+  // a known dimension that is not a number of metres stops the start, and says why
+  const refNumber = Number(refValue.replace(',', '.'));
+  const refInvalid =
+    refValue.trim() !== '' && !(Number.isFinite(refNumber) && refNumber > 0 && refNumber <= 1000);
 
   const toggle = (layerId: string) => {
     setChosen((s) => {
@@ -459,12 +467,18 @@ export function SetupDialog(props: SetupDialogProps) {
                   aria-label={t('eng.setup.refValue')}
                   placeholder={t('eng.setup.refValue')}
                   data-testid="eng-ref-value"
+                  aria-invalid={refInvalid}
                   value={refValue}
                   onChange={(e) => {
                     setRefValue(e.target.value);
                   }}
                 />
               </div>
+              {refInvalid && (
+                <p className="eng-bad" role="alert" data-testid="eng-ref-invalid">
+                  {t('eng.setup.refInvalid')}
+                </p>
+              )}
               {refWhat === 'other' && (
                 <input
                   className="input"
@@ -565,7 +579,7 @@ export function SetupDialog(props: SetupDialogProps) {
             type="button"
             className="btn primary"
             data-testid="eng-start"
-            disabled={!ready || anchorMissing || starting}
+            disabled={!ready || anchorMissing || refInvalid || starting}
             onClick={() => void start()}
           >
             {t('eng.setup.start')}

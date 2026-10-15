@@ -143,3 +143,34 @@
   display: flex;
   gap: 6px;
 }
+.eng-bad {
+  margin: 0;
+  font-size: var(--t-12);
+  color: var(--s5);
+}
+
+/* the run panel: stages, what stopped it, the identity conflicts, the views and Accept */
+.eng-run {
+  width: 360px;
+}
+.eng-run .sec p {
+  margin: 0;
+}
+.eng-conflict {
+  display: grid;
+  gap: 6px;
+  padding: 8px 10px;
+  border: 1px solid var(--warn-line);
+  border-radius: var(--r-4);
+  font-size: var(--t-12);
+}
+.eng-scores {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-size: var(--t-12);
+  color: var(--fg-2);
+}

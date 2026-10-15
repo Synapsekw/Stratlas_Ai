@@ -7,7 +7,8 @@ import { useDrawings } from '../drawings/store';
 import { PhotoProcessLayer } from '../photogrammetry/PhotoProcessLayer';
 import { useShell } from '../shell';
 import { heightsLine, offsetFromTakeoff, promptChoice, type HeightsPrompt } from './heights';
-import { importDestination, importHeadline } from './importSummary';
+import { engineeringAction, importDestination, importHeadline } from './importSummary';
+import { createEngineeringModel } from '../engineer/ui';
 import { TilesetImportCard } from './ImportTileset';
 import { ProjectKindTag, ProjectStarter } from './ProjectStarter';
 import { builder, useBuilder, type PanoOffer } from './state';
@@ -361,6 +362,7 @@ function ImportStatus() {
   const pages = useDrawings((s) => s.pagePrompt);
   const failed = useBuilder((s) => s.panoFailed);
   const scanning = useBuilder((s) => s.panoScanning);
+  const pkg = useShell((s) => s.pkg);
   if (scanning) return <PanoCheckingCard />;
   if (failed && !importing) return <PanoFailedCard />;
   if (offer && !importing) return <PanoOfferCard o={offer} />;
@@ -486,6 +488,21 @@ function ImportStatus() {
                   {t('place.import')}
                 </button>
               )}
+              {!pkg &&
+                ((action) =>
+                  action && (
+                    <button
+                      type="button"
+                      className="btn sm"
+                      data-testid="import-create-engineering"
+                      onClick={() => {
+                        createEngineeringModel([action.layerId]);
+                      }}
+                    >
+                      <Icon name="box" size={12} />
+                      {t('eng.entry.import')}
+                    </button>
+                  ))(engineeringAction(it, layers))}
             </li>
           ))}
         </ul>
