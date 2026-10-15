@@ -69,6 +69,14 @@ export {
   type BoxHandle,
   type ClipBoxLocal,
 } from './tools/clipbox';
+export {
+  MAX_LASSO_VERTICES,
+  PointSelectTool,
+  rectPolygon,
+  simplifyPath,
+  type PointSelection,
+  type SelectShape,
+} from './tools/pcselect';
 export { PALETTE } from './palette';
 export { reducedMotion } from './motion';
 export { solarPosition, skyDirection, utcOffsetHours, type SolarPosition } from './stage/solar';
