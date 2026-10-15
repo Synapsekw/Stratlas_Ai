@@ -220,7 +220,7 @@ describe('create maps from photos: the simple start', () => {
 
   it('reads the reduced copies note out of the estimate', () => {
     const copies =
-      'The maps come from the reduced copies in the project, so they will be coarser than from the original photos; for full detail, choose the folder of original photos.';
+      'These look like reduced copies of the photos, so the maps may be coarser than from the originals; for full detail, choose the folder of original photos.';
     expect(reducedNote(est({ notes: ['Times are a range.', copies] }))).toBe(copies);
     expect(reducedNote(est())).toBeNull();
   });

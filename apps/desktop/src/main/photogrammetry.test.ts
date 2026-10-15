@@ -74,6 +74,9 @@ const photoSet = (o: Partial<PhotoSet> = {}): PhotoSet => ({
   ...o,
 });
 
+const REDUCED_NOTE =
+  'These look like reduced copies of the photos, so the maps may be coarser than from the originals; for full detail, choose the folder of original photos.';
+
 /** A JPEG head with only its frame size: a review copy whose EXIF and XMP were stripped. */
 function bareJpeg(width: number, height: number): Uint8Array {
   const hi = (n: number) => n >> 8;
@@ -837,9 +840,7 @@ describe('photo IPC', () => {
     expect(notes.some((n) => n.includes('no GPS position'))).toBe(false);
     expect(notes[0]).toBe('The photos are in UTM zone 39N (EPSG:32639).');
     expect(layer.estimate.suggestedEpsg).toBe(32639);
-    expect(notes[1]).toBe(
-      'The maps come from the reduced copies in the project, so they will be coarser than from the original photos; for full detail, choose the folder of original photos.',
-    );
+    expect(notes[1]).toBe(REDUCED_NOTE);
     // the same files read as a folder have no position at all
     const folder = await ipc.call('photo:estimate', {
       photos: { folders: [join(root, 'photos')] },
@@ -851,7 +852,43 @@ describe('photo IPC', () => {
       '3 photos have no GPS position; they are placed by matching only.',
     );
     expect(folder.estimate.suggestedEpsg).toBeUndefined();
-    expect(folder.estimate.notes?.some((n) => n.includes('reduced copies'))).toBe(false);
+    expect(folder.estimate.notes).not.toContain(REDUCED_NOTE);
+  });
+
+  it('says nothing of reduced copies when a photo of the layer has its EXIF', async () => {
+    await mkdir(join(root, 'photos'));
+    await writeFile(join(root, 'photos', 'p1.jpg'), withExif({ make: 'DJI', model: 'M3E' }));
+    for (const n of ['p2', 'p3'])
+      await writeFile(join(root, 'photos', `${n}.jpg`), bareJpeg(2560, 1920));
+    const layer = await ipc.call('photo:estimate', {
+      projectId: 'p',
+      photos: { layer: 'photos' },
+      preset: 'fast',
+      products: ['ortho'],
+    });
+    if (!layer.ok) throw new Error(layer.error);
+    expect(layer.estimate.notes).not.toContain(REDUCED_NOTE);
+  });
+
+  it('places review copies in a project on a WKT grid, with no EPSG code to suggest', async () => {
+    const m = photosManifest();
+    await writeFile(
+      join(root, 'manifest.json'),
+      JSON.stringify({ ...m, crs: { wkt: 'PROJCS["Local grid"]' } }),
+    );
+    await mkdir(join(root, 'photos'));
+    for (const n of ['p1', 'p2', 'p3'])
+      await writeFile(join(root, 'photos', `${n}.jpg`), bareJpeg(2560, 1920));
+    const layer = await ipc.call('photo:estimate', {
+      projectId: 'p',
+      photos: { layer: 'photos' },
+      preset: 'fast',
+      products: ['ortho'],
+    });
+    if (!layer.ok) throw new Error(layer.error);
+    expect(layer.estimate.notes?.some((n) => n.includes('no GPS position'))).toBe(false);
+    expect(layer.estimate.notes?.some((n) => n.includes('UTM zone'))).toBe(false);
+    expect(layer.estimate.suggestedEpsg).toBeUndefined();
   });
 
   it('lists runs newest first, skipping a broken one, in folders and packages', async () => {

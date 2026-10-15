@@ -1144,7 +1144,7 @@ export function registerPhotogrammetryIpc({
     }
     if ('layer' in photos && reducedCopies(set))
       lead.push(
-        'The maps come from the reduced copies in the project, so they will be coarser than from the original photos; for full detail, choose the folder of original photos.',
+        'These look like reduced copies of the photos, so the maps may be coarser than from the originals; for full detail, choose the folder of original photos.',
       );
     if (lead.length) estimate.notes = [...lead, ...(estimate.notes ?? [])].slice(0, 20);
     return { ok: true, estimate };
@@ -1179,6 +1179,8 @@ export function registerPhotogrammetryIpc({
       return { ok: false, error: `There is no photos layer "${photos.layer}" in this project.` };
     const files: string[] = [];
     const located = new Set<string>();
+    // align.py layer_meta places a pose only in a project with a CRS (EPSG or WKT) and an origin;
+    // the manifest schema requires both, so every pose counts
     for (const it of layer.items) {
       if (!('path' in it.src)) continue;
       const p = resolve(root, it.src.path);
