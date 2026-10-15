@@ -1,77 +1,25 @@
-"""photo.products (G3): DSM and DTM gridding, ground filtering, COGs and the measurable heights."""
+"""photo/surface.py: height grids written by windows, COGs, the shaded relief and the measurable
+heights."""
 
 from __future__ import annotations
 
 import json
 
 import numpy as np
-import pytest
 import rasterio
+from rasterio.windows import Window
 
-import products_synth as ps
 from aio_pipelines.change.sources import grid_source
 from aio_pipelines.photo import surface as S
-from aio_pipelines.photo.fuse import SPARSE_RULE, PointTiles
 
 
-def test_cell_statistics():
-    xyz = np.array([[0.5, 9.5, 1.0], [0.6, 9.4, 3.0], [0.7, 9.3, 2.0], [1.5, 9.5, 7.0]])
-    for stat, want in (("median", 2.0), ("min", 1.0), ("max", 3.0)):
-        z = S.cell_stat(xyz, 0.0, 10.0, 1.0, 3, 2, stat)
-        assert z[0, 0] == want and z[0, 1] == 7.0 and np.isnan(z[1]).all()
-
-
-def test_holes_fill_only_near_data():
-    a = np.full((20, 20), np.nan)
-    a[:, :5] = 1.0
-    out = S.fill_near(a, 3)
-    assert np.isfinite(out[:, :8]).all() and np.isnan(out[:, 9:]).all()
-
-
-def test_harmonic_fill_restores_a_plane():
-    yy, xx = np.mgrid[0:60, 0:80].astype(float)
-    plane = 0.2 * xx - 0.1 * yy + 5
-    a = plane.copy()
-    a[20:40, 30:55] = np.nan
-    out = S.harmonic_fill(a)
-    assert np.allclose(out, plane, atol=1e-6)
-    assert np.isfinite(S.push_pull(a)).all()
-
-
-def test_the_ground_filter_removes_a_building_and_a_pile():
-    cell = 1.0
-    yy, xx = np.mgrid[0:80, 0:100].astype(float)
-    ground = 0.03 * xx + 0.4 * np.sin(yy / 9.0)
-    dsm = ground.copy()
-    dsm[20:30, 60:72] += 6.0  # a building
-    d = np.hypot(xx - 30, yy - 50)
-    dsm += np.clip(4 * (1 - d / 7), 0, None)  # a stockpile
-    dtm = S.dtm_from(dsm, dsm, cell)
-    assert abs(float(np.mean(dtm[22:28, 62:70] - ground[22:28, 62:70]))) < 0.2
-    assert float(np.mean(dtm[d < 4] - ground[d < 4])) < 0.6
-    assert float(np.mean(np.abs(dtm - ground)[(d > 12) & (dsm == ground)])) < 0.05
-
-
-def _tiles(tmp_path):
-    xs, ys = np.meshgrid(np.arange(0, 30, 0.1), np.arange(0, 20, 0.1))
-    z = 10 + 0.1 * xs
-    xyz = np.column_stack([xs.ravel() + 500000, ys.ravel() + 3000000, z.ravel()])
-    store = PointTiles(tmp_path / "cloud", 8.0)
-    store.add(
-        "a", xyz, np.zeros((len(xyz), 3), np.uint8), np.tile([0, 0, 1], (len(xyz), 1)).astype(np.float32)
-    )
-    store.merge(0.1, rule=SPARSE_RULE)
-    return store
-
-
-def test_a_dsm_is_written_by_windows_and_copied_to_a_cog(tmp_path):
-    store = _tiles(tmp_path)
+def test_a_grid_is_written_by_windows_and_copied_to_a_cog(tmp_path):
     spec = S.GridSpec.around((500000, 3000000), (500030, 3000020), 0.25)
     raw = tmp_path / "dsm-raw.tif"
-    info = S.grid_points(
-        store, spec, raw, 32639, 1.0, lambda: None, lambda f, m=None: None, tmp_path / "zmin.tif"
-    )
-    assert info["coverage"] > 0.95
+    with S.write_tif(raw, spec, 32639, 1, "float32", S.NODATA) as ds:
+        for c0, r0, w, h in spec.windows(17):  # windows that do not divide the grid
+            xs, _ = spec.centres(c0, r0, w, h)
+            ds.write((10 + 0.1 * (xs - 500000)).astype(np.float32), 1, window=Window(c0, r0, w, h))
     cog = tmp_path / "dsm.tif"
     S.to_cog(raw, cog)
     with rasterio.open(cog) as ds:
@@ -79,17 +27,6 @@ def test_a_dsm_is_written_by_windows_and_copied_to_a_cog(tmp_path):
         assert ds.tags(ns="IMAGE_STRUCTURE").get("LAYOUT") == "COG"
         z = ds.read(1, masked=True)
         assert abs(float(z[40, 60]) - (10 + 0.1 * (60.5 * 0.25))) < 0.06
-
-
-def test_small_windows_give_the_same_surface(tmp_path, monkeypatch):
-    store = _tiles(tmp_path)
-    spec = S.GridSpec.around((500000, 3000000), (500030, 3000020), 0.25)
-    S.grid_points(store, spec, tmp_path / "a.tif", None, 1.0, lambda: None, lambda f, m=None: None)
-    monkeypatch.setattr(S, "BLOCK", 17)
-    S.grid_points(store, spec, tmp_path / "b.tif", None, 1.0, lambda: None, lambda f, m=None: None)
-    a, b = S.read_grid(tmp_path / "a.tif"), S.read_grid(tmp_path / "b.tif")
-    ok = np.isfinite(a)
-    assert np.array_equal(ok, np.isfinite(b)) and np.allclose(a[ok], b[ok])
 
 
 def test_heights_are_measurable_by_the_change_pipelines(tmp_path):
@@ -124,62 +61,3 @@ def test_the_shaded_relief_is_rgba_with_empty_cells_clear(tmp_path):
         rgba = ds.read()
     assert rgba.shape == (4, 20, 20) and rgba[3, 0, 0] == 0 and rgba[3, 5, 5] == 255
     assert tuple(rgba[:3, 5, 2]) != tuple(rgba[:3, 5, 15])
-
-
-def test_the_dtm_reports_its_windows(tmp_path):
-    spec = S.GridSpec(0.0, 8.0, 0.5, 2100, 16)  # three windows of 1024 columns
-    z = np.full((16, 2100), 10.0, np.float32)
-    for name in ("dsm.tif", "zmin.tif"):
-        with S.write_tif(tmp_path / name, spec, None, 1, "float32", S.NODATA) as ds:
-            ds.write(z, 1)
-    seen: list = []
-    info = S.dtm_grid(tmp_path / "dsm.tif", tmp_path / "zmin.tif", spec, tmp_path / "dtm.tif", None,
-                      2**30, lambda: None, lambda f, m=None: seen.append((f, m)))  # fmt: skip
-    assert info["engine"] == "smrf-grid"
-    assert [m for _, m in seen] == [f"Terrain window {i} of 3" for i in (1, 2, 3)] and seen[-1][0] == 1.0
-    assert np.isfinite(S.read_grid(tmp_path / "dtm.tif")).all()
-
-
-@pytest.fixture(scope="module")
-def processed():
-    return ps.processed()
-
-
-def test_the_processed_dsm_and_dtm_meet_the_targets(processed):
-    root, _, _ = processed
-    rd = root / "photogrammetry" / ps.RUN
-    o = np.array(ps.ORIGIN)
-    for name in ("dsm", "dtm"):
-        with rasterio.open(rd / f"{name}.tif") as ds:
-            z = ds.read(1, masked=True).filled(np.nan).astype(float)
-            t = ds.transform
-        rows, cols = np.mgrid[0 : z.shape[0], 0 : z.shape[1]]
-        x = t.c + (cols + 0.5) * t.a - o[0]
-        y = t.f + (rows + 0.5) * t.e - o[1]
-        inner = (np.abs(x) < 24) & (np.abs(y) < 18)
-        x0, x1, y0, y1, _ = ps.BOX
-        b = 2 * t.a  # building edges buffered by two cells
-        edge = (x > x0 - b) & (x < x1 + b) & (y > y0 - b) & (y < y1 + b)
-        edge &= ~((x > x0 + b) & (x < x1 - b) & (y > y0 + b) & (y < y1 - b))
-        ok = inner & ~edge
-        # Fusion v2 is edge-aware (one agreeing neighbour is enough where fewer than two can
-        # check a pixel), so the edge of the photo block keeps its points.
-        assert np.isfinite(z[ok]).mean() > 0.98
-        # Away from the coverage edge (6 m in x, 4 m in y; the building and most of the pile are
-        # inside) the site has no holes.
-        core = ok & (np.abs(x) < 18) & (np.abs(y) < 14)
-        assert np.isfinite(z[core]).mean() >= 0.995
-        if name == "dsm":
-            err = (z - (ps.dsm(x, y) + o[2]))[ok & np.isfinite(z)]
-            assert np.sqrt(np.mean(err**2)) < 3 * ps.GSD
-            # the stockpile's volume from the new DSM, over the true ground
-            cx, cy, r, _ = ps.PILE
-            m = np.hypot(x - cx, y - cy) < r + 1
-            vol = np.nansum(np.clip(z[m] - (ps.ground(x[m], y[m]) + o[2]), 0, None)) * t.a * t.a
-            assert abs(vol / ps.pile_volume() - 1) < 0.02
-        else:
-            g = ps.ground(x, y) + o[2]
-            assert abs(float(np.nanmean((z - g)[ps.in_box(x, y) & ok]))) < 0.2  # the building is gone
-            cx, cy, r, h = ps.PILE
-            centre = (np.hypot(x - cx, y - cy) < r / 2) & ok
-            assert float(np.nanmean((z - g)[centre])) < 0.25 * h  # most of the pile is gone

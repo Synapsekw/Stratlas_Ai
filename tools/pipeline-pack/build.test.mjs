@@ -156,37 +156,16 @@ describe('pipeline pack tar', () => {
   });
 });
 
-describe('pipeline pack photogrammetry smoke test', () => {
-  const full = {
-    pycolmap: '4.0.1',
-    colmapBuild: 'Commit abc without CUDA',
-    opencv: '4.12.0',
-    pymeshlab: '2025.7',
-    poissonFaces: 2000,
-    pymeshlabInParent: false,
-  };
+describe('pipeline pack native engines smoke test', () => {
+  const full = { pycolmap: '4.0.1', colmapBuild: 'Commit abc without CUDA', opencv: '4.12.0' };
 
-  it('passes a pack whose engines each run in their own process', () => {
+  it('passes a pack with pycolmap and OpenCV, or with neither', () => {
     expect(photogrammetryProblem(full)).toBeNull();
     expect(photogrammetryProblem({})).toBeNull(); // the Intel Mac pack has none (decision 8)
   });
 
-  it("fails a pack whose MeshLab child crashed, with the child's output", () => {
-    const problem = photogrammetryProblem({
-      ...full,
-      poissonFaces: undefined,
-      meshlabExit: -6,
-      meshlabOutput: 'OMP: Error #15: Initializing libomp.dylib',
-    });
-    expect(problem).toMatch(/screened Poisson failed/);
-    expect(problem).toMatch(/OMP: Error #15/);
-  });
-
-  it('fails a pack with missing wheels or MeshLab in the probing process', () => {
+  it('fails a pack with pycolmap but no OpenCV', () => {
     expect(photogrammetryProblem({ ...full, opencv: undefined })).toMatch(/incomplete/);
-    expect(photogrammetryProblem({ ...full, pymeshlabInParent: true })).toMatch(
-      /outside its child/,
-    );
   });
 });
 

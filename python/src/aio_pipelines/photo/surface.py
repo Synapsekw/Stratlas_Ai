@@ -1,14 +1,10 @@
-"""DSM and DTM: the dense cloud gridded at the chosen cell size, written window by window.
+"""Height grids for ``photo.products``: north-up grids, GeoTIFF and COG writing, and viewing.
 
-- **DSM**: per cell the median height of the fused points (robust to stray points and to the odd
-  wall point in a roof cell), holes up to ``fill_m`` across filled from their nearest neighbours,
-  larger gaps left empty (nodata). Written as a tiled GeoTIFF one window at a time, then copied to
-  a Cloud Optimised GeoTIFF with overviews (GDAL's COG driver).
-- **DTM**: the ground under buildings, piles and vehicles, by a Simple Morphological Filter
-  (Pingel, Clarke and McBride 2013) on the minimum-height grid: progressively larger openings mark
-  cells that rise faster than the slope allows as objects; the ground left is interpolated under
-  them (push-pull). The DTM is then the DSM wherever the DSM is ground. No whole-cloud filter runs
-  (13 Oct 2026): the cloud's ground class comes from this DTM (``cloud_out.py``).
+ODM makes the DSM and DTM (``odm/outputs.py`` imports them onto these grids).
+
+- **Grids**: ``GridSpec`` (a north-up grid in the project CRS), ``write_tif`` window by window,
+  ``read_grid`` and ``read_window``, and ``to_cog`` (a Cloud Optimised GeoTIFF with overviews,
+  GDAL's COG driver).
 - **Viewing**: a hypsometric colour ramp under a hillshade (RGBA GeoTIFF) for the ``kit-pyramid``
   layer, and the measured heights as an ``aio.grid/1`` 16-bit PNG in ``sources/<layer id>``, which
   ``change.surface`` and the volume tools read (``change/sources.py``).
@@ -18,7 +14,6 @@ from __future__ import annotations
 
 import json
 import math
-from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -26,7 +21,6 @@ from typing import Any
 import numpy as np
 
 from ..runtime import JobError, replace_over
-from .fuse import PointTiles
 
 NODATA = -9999.0
 BLOCK = 1024
@@ -70,168 +64,6 @@ class GridSpec:
         xs = self.x0 + (np.arange(c0, c0 + w) + 0.5) * self.res
         ys = self.y1 - (np.arange(r0, r0 + h) + 0.5) * self.res
         return np.meshgrid(xs, ys)
-
-
-def cell_stat(
-    xyz: np.ndarray, x0: float, y1: float, res: float, w: int, h: int, stat: str = "median"
-) -> np.ndarray:
-    """Per-cell statistic of point heights over a (h, w) grid; NaN where no point falls."""
-    out = np.full(h * w, np.nan)
-    if not len(xyz):
-        return out.reshape(h, w)
-    ci = np.floor((xyz[:, 0] - x0) / res).astype(np.int64)
-    ri = np.floor((y1 - xyz[:, 1]) / res).astype(np.int64)
-    ok = (ci >= 0) & (ci < w) & (ri >= 0) & (ri < h)
-    key, z = ri[ok] * w + ci[ok], xyz[ok, 2]
-    if stat == "max":
-        acc = np.full(h * w, -np.inf)
-        np.maximum.at(acc, key, z)
-        out = np.where(np.isfinite(acc), acc, np.nan)
-    elif stat == "min":
-        acc = np.full(h * w, np.inf)
-        np.minimum.at(acc, key, z)
-        out = np.where(np.isfinite(acc), acc, np.nan)
-    else:
-        order = np.lexsort((z, key))
-        key, z = key[order], z[order]
-        starts = np.r_[0, np.nonzero(np.diff(key))[0] + 1]
-        ends = np.r_[starts[1:], len(key)]
-        mid = (starts + ends - 1) / 2
-        lo, hi = np.floor(mid).astype(np.int64), np.ceil(mid).astype(np.int64)
-        out[key[starts]] = (z[lo] + z[hi]) / 2
-    return out.reshape(h, w)
-
-
-def fill_near(a: np.ndarray, radius_cells: float) -> np.ndarray:
-    """Fill NaN cells within ``radius_cells`` of data with the nearest value."""
-    from scipy import ndimage
-
-    hole = ~np.isfinite(a)
-    if not hole.any() or hole.all():
-        return a
-    dist, (iy, ix) = ndimage.distance_transform_edt(hole, return_indices=True)
-    out = a[iy, ix]
-    out[dist > radius_cells] = np.nan
-    return out
-
-
-def push_pull(a: np.ndarray) -> np.ndarray:
-    """Fill every NaN with a smooth interpolation of the values around it (pyramid push-pull)."""
-    ok = np.isfinite(a)
-    if ok.all() or not ok.any():
-        return a
-    levels = [(np.where(ok, a, 0.0), ok.astype(np.float64))]
-    while min(levels[-1][0].shape) > 1:
-        v, w = levels[-1]
-        h2, w2 = math.ceil(v.shape[0] / 2), math.ceil(v.shape[1] / 2)
-        pv = np.zeros((h2 * 2, w2 * 2))
-        pw = np.zeros((h2 * 2, w2 * 2))
-        pv[: v.shape[0], : v.shape[1]] = v * w
-        pw[: v.shape[0], : v.shape[1]] = w
-        sv = pv.reshape(h2, 2, w2, 2).sum((1, 3))
-        sw = pw.reshape(h2, 2, w2, 2).sum((1, 3))
-        with np.errstate(invalid="ignore", divide="ignore"):
-            mv = np.where(sw > 0, sv / sw, 0.0)
-        levels.append((mv, np.minimum(sw, 1.0)))
-    v = levels[-1][0]
-    for lv, lw in reversed(levels[:-1]):
-        up = np.repeat(np.repeat(v, 2, 0), 2, 1)[: lv.shape[0], : lv.shape[1]]
-        v = lw * lv + (1 - lw) * up
-    return v
-
-
-def harmonic_fill(a: np.ndarray, max_unknowns: int = 2_000_000) -> np.ndarray:
-    """Fill NaN cells with the smoothest surface through the known ones (Laplace's equation, a
-    membrane over each hole); push-pull when there are too many unknowns for a direct solve."""
-    from scipy.sparse import coo_matrix
-    from scipy.sparse.linalg import spsolve
-
-    hole = ~np.isfinite(a)
-    n = int(hole.sum())
-    if n == 0 or n == a.size:
-        return a
-    if n > max_unknowns:
-        return push_pull(a)
-    h, w = a.shape
-    idx = np.full(a.shape, -1, np.int64)
-    idx[hole] = np.arange(n)
-    rows, cols, vals = [], [], []
-    rhs = np.zeros(n)
-    deg = np.zeros(n)
-    hy, hx = np.nonzero(hole)
-    me = idx[hy, hx]
-    for dy, dx in ((-1, 0), (1, 0), (0, -1), (0, 1)):
-        ny, nx = hy + dy, hx + dx
-        inside = (ny >= 0) & (ny < h) & (nx >= 0) & (nx < w)
-        deg[me[inside]] += 1
-        ny, nx, mi = ny[inside], nx[inside], me[inside]
-        unknown = hole[ny, nx]
-        rows.append(mi[unknown])
-        cols.append(idx[ny[unknown], nx[unknown]])
-        vals.append(-np.ones(int(unknown.sum())))
-        np.add.at(rhs, mi[~unknown], a[ny[~unknown], nx[~unknown]])
-    rows.append(np.arange(n))
-    cols.append(np.arange(n))
-    vals.append(deg)
-    m = coo_matrix((np.concatenate(vals), (np.concatenate(rows), np.concatenate(cols))), shape=(n, n)).tocsr()
-    # a hole region touching no known cell has no boundary: anchor it with the push-pull guess
-    guess = push_pull(a)[hole]
-    lonely = rhs == 0
-    m = m + coo_matrix((lonely * 1e-6, (np.arange(n), np.arange(n))), shape=(n, n)).tocsr()
-    rhs = rhs + lonely * 1e-6 * guess
-    out = a.copy()
-    out[hole] = spsolve(m, rhs)
-    return out
-
-
-def smrf_ground(
-    zmin: np.ndarray,
-    cell: float,
-    slope: float = 0.15,
-    window_m: float = 18.0,
-    check: Callable[[], None] = lambda: None,
-) -> np.ndarray:
-    """Progressive morphological filter: True where a cell of the minimum surface is ground.
-
-    As SMRF, openings grow one cell at a time up to ``window_m``; a cell is an object when it
-    stands above the opening by more than the slope allows over that radius. Unlike SMRF's
-    step-to-step difference, the height is measured from the original surface (as in Zhang's
-    PMF), so smooth piles steeper than ``slope`` are found whole, not only their tops.
-    """
-    from scipy import ndimage
-
-    have = np.isfinite(zmin)
-    z = push_pull(zmin)
-    is_object = np.zeros(z.shape, bool)
-    last = z
-    for r in range(1, max(1, math.ceil(window_m / cell / 2)) + 1):
-        check()
-        last = ndimage.grey_opening(last, size=(2 * r + 1, 2 * r + 1))
-        is_object |= (z - last) > slope * r * cell
-    # an object's foot rises less than the threshold of the widest window: take a margin of
-    # about a metre around every object so the ground under it is interpolated from real ground
-    is_object = ndimage.binary_dilation(is_object, iterations=max(1, round(1.5 / cell)))
-    return have & ~is_object
-
-
-def dtm_from(
-    dsm: np.ndarray,
-    zmin: np.ndarray,
-    cell: float,
-    threshold: float = 0.5,
-    scalar: float = 1.25,
-    slope: float = 0.15,
-    window_m: float = 18.0,
-    check: Callable[[], None] = lambda: None,
-) -> np.ndarray:
-    """A DTM on the grid of ``dsm``: SMRF ground cells kept, the rest interpolated beneath."""
-    ground0 = smrf_ground(zmin, cell, slope, window_m, check)
-    provisional = harmonic_fill(np.where(ground0, zmin, np.nan))
-    gy, gx = np.gradient(provisional, cell)
-    grade = np.hypot(gx, gy)
-    with np.errstate(invalid="ignore"):
-        ground = np.isfinite(dsm) & (dsm - provisional < threshold + scalar * grade)
-    return harmonic_fill(np.where(ground, dsm, np.nan))
 
 
 # --------------------------------------------------------------------------------- files
@@ -279,53 +111,6 @@ def to_cog(src: Path, dst: Path, resampling: str = "average") -> None:
     replace_over(tmp, dst)
 
 
-def grid_points(
-    tiles: PointTiles,
-    spec: GridSpec,
-    out: Path,
-    epsg: int | None,
-    fill_m: float,
-    check: Callable[[], None],
-    progress: Callable[[float, str | None], None],
-    zmin_out: Path | None = None,
-) -> dict[str, Any]:
-    """DSM (median) and optionally the minimum-height grid, window by window, as GeoTIFFs."""
-    from rasterio.windows import Window
-
-    margin = max(2, math.ceil(fill_m / spec.res))
-    wins = list(spec.windows())
-    cells = 0
-    zmin_ds = write_tif(zmin_out, spec, epsg, 1, "float32", NODATA) if zmin_out else None
-    try:
-        with write_tif(out, spec, epsg, 1, "float32", NODATA) as ds:
-            for i, (c0, r0, w, h) in enumerate(wins):
-                check()
-                bx0 = spec.x0 + (c0 - margin) * spec.res
-                by1 = spec.y1 - (r0 - margin) * spec.res
-                bw, bh = w + 2 * margin, h + 2 * margin
-                pts = tiles.fused_in(bx0, by1 - bh * spec.res, bx0 + bw * spec.res, by1)["xyz"]
-                z = cell_stat(pts, bx0, by1, spec.res, bw, bh, "median")
-                z = fill_near(z, fill_m / spec.res)[margin : margin + h, margin : margin + w]
-                cells += int(np.isfinite(z).sum())
-                ds.write(
-                    np.where(np.isfinite(z), z, NODATA).astype(np.float32), 1, window=Window(c0, r0, w, h)
-                )
-                if zmin_ds is not None:
-                    zm = cell_stat(pts, bx0, by1, spec.res, bw, bh, "min")[
-                        margin : margin + h, margin : margin + w
-                    ]
-                    zmin_ds.write(
-                        np.where(np.isfinite(zm), zm, NODATA).astype(np.float32),
-                        1,
-                        window=Window(c0, r0, w, h),
-                    )
-                progress((i + 1) / len(wins), f"Surface window {i + 1} of {len(wins)}")
-    finally:
-        if zmin_ds is not None:
-            zmin_ds.close()
-    return {"cells": cells, "coverage": round(cells / max(1, spec.width * spec.height), 4)}
-
-
 def read_grid(path: Path, out_shape: tuple[int, int] | None = None) -> np.ndarray:
     """A single-band height GeoTIFF as float64 with NaN for nodata (optionally resampled)."""
     import rasterio
@@ -337,63 +122,6 @@ def read_grid(path: Path, out_shape: tuple[int, int] | None = None) -> np.ndarra
             kw = {"out_shape": out_shape, "resampling": Resampling.average}
         a = ds.read(1, masked=True, **kw)
     return np.where(np.ma.getmaskarray(a), np.nan, a.astype(np.float64))
-
-
-def coarse_spec(spec: GridSpec, cell: float, max_cells: int) -> GridSpec:
-    """A coarser grid over the same ground (cells of at least ``cell``, at most ``max_cells``)."""
-    f = max(1.0, cell / spec.res)
-    while (spec.width / f) * (spec.height / f) > max_cells:
-        f *= 1.25
-    w, h = max(1, round(spec.width / f)), max(1, round(spec.height / f))
-    return GridSpec(spec.x0, spec.y1, spec.res * spec.width / w, w, h)
-
-
-def dtm_grid(
-    dsm_path: Path,
-    zmin_path: Path,
-    spec: GridSpec,
-    out: Path,
-    epsg: int | None,
-    budget: int,
-    check: Callable[[], None],
-    progress: Callable[[float, str | None], None] = lambda f, m=None: None,
-) -> dict[str, Any]:
-    """The DTM, found on a coarse grid (1 m cells or the DSM's, within the memory budget) by our
-    filter on the minimum-height grid and written at the DSM's cell size window by window: cells
-    within 0.5 m of the ground keep the DSM's height, the rest the ground interpolated beneath."""
-    from rasterio.windows import Window
-    from scipy import ndimage
-
-    coarse = dtm_coarse(spec, budget)
-    shape = (coarse.height, coarse.width)
-    cell = coarse.res
-    dsm_c = read_grid(dsm_path, shape)
-    dtm_c = dtm_from(dsm_c, read_grid(zmin_path, shape), cell, check=check)
-    ground_cells = int(np.sum(np.isfinite(dsm_c) & (np.abs(dsm_c - dtm_c) < 0.25)))
-    wins = list(spec.windows())
-    with write_tif(out, spec, epsg, 1, "float32", NODATA) as ds:
-        for i, (c0, r0, ww, hh) in enumerate(wins):
-            check()
-            dsm = read_window(dsm_path, c0, r0, ww, hh)
-            # the coarse DTM bilinearly at this window's cell centres
-            ry = (np.arange(r0, r0 + hh) + 0.5) * spec.res / cell - 0.5
-            rx = (np.arange(c0, c0 + ww) + 0.5) * spec.res / cell - 0.5
-            gy, gx = np.meshgrid(ry, rx, indexing="ij")
-            base = ndimage.map_coordinates(dtm_c, [gy, gx], order=1, mode="nearest")
-            with np.errstate(invalid="ignore"):
-                ground = np.isfinite(dsm) & (dsm - base < 0.5)
-            dtm = np.where(ground, dsm, base)
-            dtm[~np.isfinite(dsm)] = np.nan
-            ds.write(
-                np.where(np.isfinite(dtm), dtm, NODATA).astype(np.float32), 1, window=Window(c0, r0, ww, hh)
-            )
-            progress((i + 1) / len(wins), f"Terrain window {i + 1} of {len(wins)}")
-    return {"engine": "smrf-grid", "cell": round(cell, 4), "groundCells": ground_cells}
-
-
-def dtm_coarse(spec: GridSpec, budget: int) -> GridSpec:
-    """The coarse grid the ground is found on."""
-    return coarse_spec(spec, max(1.0, spec.res), max(10_000, budget // 64))
 
 
 def read_window(path: Path, c0: int, r0: int, w: int, h: int, band: int = 1) -> np.ndarray:

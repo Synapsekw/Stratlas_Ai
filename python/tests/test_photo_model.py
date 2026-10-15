@@ -14,7 +14,7 @@ from aio_pipelines.photo.model import (
     rotmat_to_qvec,
     undistort_pixels,
 )
-from photo_g2_synth import FakeJob, SyntheticEngine, make_scene
+from photo_g2_synth import make_scene, synthetic_model
 
 
 def test_quaternions_round_trip():
@@ -47,13 +47,12 @@ def test_a_point_on_the_axis_projects_to_the_principal_point():
 
 def _scene_model(tmp_path):
     scene = make_scene(rows=3, cols=4, points=800)
-
-    out = SyntheticEngine(scene).map(FakeJob(tmp_path, scene.names), "global", lambda *a: None)
-    return scene, SparseModel.load(tmp_path / "sfm" / "0"), out
+    synthetic_model(scene).write_text(tmp_path / "sfm" / "0")
+    return scene, SparseModel.load(tmp_path / "sfm" / "0")
 
 
 def test_text_and_npz_files_round_trip(tmp_path):
-    scene, m, _ = _scene_model(tmp_path)
+    scene, m = _scene_model(tmp_path)
     assert len(m.images) == 12 and len(m.point_ids) > 300
     m.save_npz(tmp_path / "model.npz")
     m2 = SparseModel.load(tmp_path / "model.npz")
@@ -73,7 +72,7 @@ def test_text_and_npz_files_round_trip(tmp_path):
 def test_a_loaded_model_holds_one_copy_of_its_observations(tmp_path):
     # a slice of the file's whole array per photo kept every photo's copy alive: 75 GB on a
     # 1,000-photo flight
-    _, m, _ = _scene_model(tmp_path)
+    _, m = _scene_model(tmp_path)
     m.save_npz(tmp_path / "model.npz")
     loaded = SparseModel.load(tmp_path / "model.npz")
     total = sum(len(im.xys) for im in loaded.images.values())
@@ -83,7 +82,7 @@ def test_a_loaded_model_holds_one_copy_of_its_observations(tmp_path):
 
 
 def test_similarity_transform_keeps_the_reprojection_error(tmp_path):
-    _, m, _ = _scene_model(tmp_path)
+    _, m = _scene_model(tmp_path)
     before = m.mean_reprojection_error()
     m.transform(3.2, rodrigues([0.3, -0.2, 1.0])[0], np.array([10.0, -4.0, 2.0]))
     assert m.mean_reprojection_error() == pytest.approx(before, abs=1e-6)

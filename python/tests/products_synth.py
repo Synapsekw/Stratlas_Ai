@@ -434,28 +434,6 @@ def project(name: str, **kw) -> Path:
     return write_project(root, scene(), **kw)
 
 
-@functools.cache
-def processed() -> tuple[Path, dict, list]:
-    """The project after one ``photo.products`` job (high preset: dense at full size), once."""
-    import threading
-
-    from aio_pipelines.photo.products import PhotoProducts
-    from aio_pipelines.runtime import Job
-
-    root = project("processed")
-    messages: list = []
-    params = {
-        "run": RUN,
-        "products": ["dsm", "dtm", "ortho", "mesh", "tiles"],
-        "preset": "high",
-        "capture": "c1",
-    }
-    res = Job(
-        "p1", PhotoProducts(), root, params, lambda m, p: messages.append((m, p)), threading.Event()
-    ).run()
-    return root, res, messages
-
-
 def fake_tool(folder: Path, name: str, script: str) -> Path:
     """An executable ``name`` (a .cmd on Windows) running ``script`` with this Python."""
     folder.mkdir(parents=True, exist_ok=True)

@@ -34,7 +34,7 @@ const appRange = first(
 /** What this app needs of a pack by its number alone (index.ts passes the same to `packStatus`). */
 const features = [{ label: 'Creating maps from photos', minVersion: PHOTO_PACK }];
 /** The pack handed over before this one, with the range it declared. */
-const BEFORE = { version: '0.5.0', appRange: '>=0.11.0 <2.0.0' };
+const BEFORE = { version: '0.7.0', appRange: '>=0.11.0 <2.0.0' };
 
 const archive = (version: string): PackArchive => ({
   path: `pipeline-pack-${version}-win-x64.tar.gz`,
@@ -54,9 +54,12 @@ describe('the app and the pipeline pack of this repository', () => {
     expect(packNeeds(pack, undefined, features)).toEqual([]);
   });
 
-  it('do not turn away the pack handed over before, by its number', () => {
+  it('do not turn away the pack handed over before, but photos need this one (ODM)', () => {
     expect(packRangeRefusal(BEFORE.appRange, app, 'Quadrion AI')).toBeNull();
-    expect(packNeeds(BEFORE.version, undefined, features)).toEqual([]);
+    expect(PHOTO_PACK).toBe('0.8.0');
+    expect(packNeeds(BEFORE.version, undefined, features)).toEqual([
+      'Creating maps from photos needs version 0.8.0 or later.',
+    ]);
   });
 
   it('offer this pack as newer than the one handed over before, and not the other way', () => {

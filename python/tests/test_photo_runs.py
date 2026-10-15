@@ -1,6 +1,7 @@
 """The files of a photogrammetry run as the app reads them (M10 integration): schema ids and keys,
 ``usedInAdjustment``, photo names with spaces and other letters below the common folder, and the
-one memory cap of the photo jobs. Synthetic photos only (``photo_g2_synth``); no COLMAP needed."""
+one memory cap of the photo jobs. Synthetic photos only (``photo_g2_synth``), on the fake ODM
+(``tests/fake_odm``)."""
 
 from __future__ import annotations
 
@@ -8,6 +9,7 @@ import json
 import math
 import re
 import shutil
+import sys
 from pathlib import Path
 
 import pytest
@@ -15,23 +17,15 @@ import pytest
 from aio_pipelines.photo import crs as C
 from aio_pipelines.photo import native
 from aio_pipelines.photo.align import PhotoAlign, decode_name, encode_name, read_sparse
-from aio_pipelines.photo.colmap_io import (
-    ColmapEngine,
-    EngineJob,
-    alias_names,
-    engine_alias,
-    memory_limit,
-    memory_status,
-    restore_names,
-)
 from aio_pipelines.photo.georef import PhotoGeoref
+from aio_pipelines.photo.odm import runner as R
+from aio_pipelines.photo.proctree import memory_limit, memory_status
 from aio_pipelines.photo.products import PhotoProducts
 from aio_pipelines.photo.scene import load_run
 from conftest import run_job
 from photo_g2_synth import (
     SITE_LAT,
     SITE_LON,
-    SyntheticEngine,
     make_scene,
     write_gcp_files,
     write_scene_photos,
@@ -92,8 +86,15 @@ def _manifest(project: Path) -> None:
     (project / "manifest.json").write_text(json.dumps(manifest), "utf-8")
 
 
-def _align(monkeypatch, project, folder, engine, **kw):
-    monkeypatch.setattr(PhotoAlign, "engine_factory", staticmethod(lambda: engine))
+FAKE = Path(__file__).parent / "fake_odm"
+
+
+def _align(monkeypatch, project, folder, **kw):
+    """``photo.align`` of ``folder`` on the fake ODM."""
+    monkeypatch.setenv("FAKE_ODM_PYTHON", sys.executable)
+    monkeypatch.setenv(R.ODM_ENV, str(FAKE))
+    monkeypatch.setenv("FAKE_ODM_UDP_PORT", "0")
+    monkeypatch.setattr(R, "nvcuda_present", lambda env=None: False)
     params = {"photos": {"folders": [str(folder)]}, "preset": "standard", "run": RUN, **kw}
     return run_job(PhotoAlign(), project, params, job_id="align")
 
@@ -102,10 +103,10 @@ def _align(monkeypatch, project, folder, engine, **kw):
 
 
 def test_the_run_files_carry_their_schema_ids_and_keys(monkeypatch, project, tmp_path):
-    scene = make_scene(rows=4, cols=6, points=3000, gnss_sigma=(2.5, 4.0), seed=9, bad_gcp=True)
+    scene = make_scene(rows=4, cols=6, points=3000, gnss_sigma=(2.5, 4.0), seed=9)
     write_scene_photos(scene, tmp_path / "flight", rtk=False)
     write_gcp_files(scene, project, RUN)
-    _align(monkeypatch, project, tmp_path / "flight", SyntheticEngine(scene))
+    _align(monkeypatch, project, tmp_path / "flight")
     base = project / "photogrammetry" / RUN
 
     def read(rel: str) -> dict:
@@ -138,14 +139,14 @@ def test_the_run_files_carry_their_schema_ids_and_keys(monkeypatch, project, tmp
     assert read("sparse/photos.json")["schema"] == "aio.photo-list/1"
     acc = read("report/accuracy.json")
     used = {p["id"]: p["usedInAdjustment"] for p in acc["points"]}
-    # control points that constrained the adjustment: true; the outlier and every checkpoint: false
+    # control points that constrained the adjustment: true; every checkpoint: false (a control point
+    # far off the others: test_photo_georef)
     assert used == {
         "GCP1": True,
         "GCP2": True,
         "GCP3": True,
         "GCP4": True,
         "GCP5": True,
-        "GCP6": False,
         "CHK1": False,
         "CHK2": False,
         "CHK3": False,
@@ -158,7 +159,7 @@ def test_a_disabled_point_is_not_used_and_not_listed(monkeypatch, project, tmp_p
     scene = make_scene(rows=4, cols=6, points=2000, gnss_sigma=(2.5, 4.0), seed=9)
     write_scene_photos(scene, tmp_path / "flight", rtk=False)
     path = write_gcp_files(scene, project, RUN)
-    _align(monkeypatch, project, tmp_path / "flight", SyntheticEngine(scene))
+    _align(monkeypatch, project, tmp_path / "flight")
     data = json.loads(path.read_text("utf-8"))
     next(p for p in data["points"] if p["id"] == "GCP5")["disabled"] = True
     path.write_text(json.dumps(data), "utf-8")
@@ -192,36 +193,6 @@ def _spaced_flight(scene, root: Path) -> dict[str, str]:
     return keys
 
 
-class RenamedEngine(SyntheticEngine):
-    """The synthetic engine for photos renamed on disk: it finds each scene photo by its new name."""
-
-    def __init__(self, scene, keys: dict[str, str], **kw):
-        super().__init__(scene, **kw)
-        self.to_scene = {Path(new).name: old for old, new in keys.items()}
-        self.names_seen: list[str] = []
-
-    def map(self, job, mapper, progress):
-        self.names_seen = [im.name for im in job.images]
-        images = [type("I", (), {"key": im.key, "name": im.name, "group": im.group})() for im in job.images]
-        renamed = {self.to_scene[Path(im.name).name]: im.name for im in images}
-        saved = job.images
-        job.images = [type("I", (), {"key": k, "name": k})() for k in renamed]
-        try:
-            res = super().map(job, mapper, progress)
-        finally:
-            job.images = saved
-        from aio_pipelines.photo.model import SparseModel
-
-        out = Path(res["models"][0]["path"])
-        model = SparseModel.read_text(out)
-        for im in model.images.values():
-            im.name = renamed[decode_name(im.name)]
-        shutil.rmtree(out)
-        model.save_npz(out.with_suffix(".npz"))
-        res["models"][0]["path"] = str(out.with_suffix(".npz"))
-        return res
-
-
 def test_photo_names_with_spaces_and_accents_below_the_common_folder(monkeypatch, project, tmp_path):
     scene = make_scene(rows=4, cols=6, points=3000, gnss_sigma=(0.02, 0.03), seed=9)
     flight = tmp_path / "Asset Inspections" / "Site A"
@@ -233,12 +204,12 @@ def test_photo_names_with_spaces_and_accents_below_the_common_folder(monkeypatch
         for m in p["marks"]:
             m["photo"] = keys[m["photo"]]
     gcp.write_text(json.dumps(data), "utf-8")
-    engine = RenamedEngine(scene, keys)
-    result, _ = _align(monkeypatch, project, flight, engine)
+    result, _ = _align(monkeypatch, project, flight)
     assert result["status"] == "done"
-    # the engine reads the photos below the common folder: spaces and accents as they are
-    assert sorted(engine.names_seen) == sorted(k.split("/", 2)[2] for k in keys.values())
     base = project / "photogrammetry" / RUN
+    # ODM reads safe links; each one names its photo's key, spaces and accents as they are
+    links = json.loads((base / "odm" / "names.json").read_text("utf-8"))
+    assert sorted(links.values()) == sorted(keys.values())
     run = json.loads((base / "run.json").read_text("utf-8"))
     assert run["photos"]["registered"] == len(scene.names) and run["photos"]["rejected"] == []
     # the COLMAP text model holds no raw space; read back, the names are the keys again
@@ -280,53 +251,10 @@ def test_names_are_escaped_reversibly():
     assert decode_name("a%2520b%20c") == "a%20b c"
 
 
-def test_the_engine_pairs_photos_with_spaces_by_their_aliases(tmp_path, monkeypatch):
-    eng = ColmapEngine(python="unused")
-    seen = {}
-
-    def fake_run(job, op, payload, progress, stage):
-        seen["pairs"] = Path(payload["pairs"]).read_text("utf-8")
-        return {"pairs": 1}
-
-    monkeypatch.setattr(eng, "_run", fake_run)
-    job = EngineJob(work=tmp_path, image_root=tmp_path, images=[], groups=[])
-    eng.match(job, [("100 MEDIA/DJI 0001.JPG", "101 Média/50% b.JPG")], lambda f, m=None: None)
-    a, b = seen["pairs"].split()
-    assert (a, b) == (engine_alias("100 MEDIA/DJI 0001.JPG"), engine_alias("101 Média/50% b.JPG"))
-    assert a == "100%20MEDIA/DJI%200001.JPG" and b == "101%20Média/50%25%20b.JPG"
-
-
-class FakeDb:
-    """The two methods of pycolmap's Database the name aliasing uses."""
-
-    def __init__(self, names):
-        self.images = [type("Im", (), {"image_id": i + 1, "name": n})() for i, n in enumerate(names)]
-
-    def read_all_images(self):
-        return [type("Im", (), {"image_id": im.image_id, "name": im.name})() for im in self.images]
-
-    def update_image(self, im):
-        next(x for x in self.images if x.image_id == im.image_id).name = im.name
-
-
-def test_match_renames_images_to_aliases_and_back(tmp_path):
-    names = ["100 MEDIA/a b.JPG", "plain/c.JPG", "x%y/d e.JPG"]
-    db = FakeDb(names)
-    assert alias_names(db, tmp_path) == 2
-    assert [im.name for im in db.images] == [engine_alias(n) for n in names]
-    assert (tmp_path / "names.alias.json").is_file()
-    # a stage stopped half way: the next one puts the names back first (never aliases twice)
-    assert alias_names(db, tmp_path) == 2
-    assert [im.name for im in db.images] == [engine_alias(n) for n in names]
-    assert restore_names(db, tmp_path) == 2
-    assert [im.name for im in db.images] == names and not (tmp_path / "names.alias.json").exists()
-    assert restore_names(db, tmp_path) == 0
-
-
 # ------------------------------------------------------------------------------- memory cap
 
 
-def test_one_memory_setting_caps_alignment_and_products(monkeypatch, project, tmp_path):
+def test_one_memory_setting_caps_the_colmap_guard_and_products(monkeypatch):
     gb = 10**9
     monkeypatch.delenv(native.MEMORY_ENV, raising=False)
     assert native.memory_cap() is None
@@ -339,39 +267,9 @@ def test_one_memory_setting_caps_alignment_and_products(monkeypatch, project, tm
     assert memory_limit(*memory_status(), cap=native.memory_cap()) == cap
     monkeypatch.setenv(native.MEMORY_ENV, "not a number")
     assert native.memory_cap() is None
-    # photo.align hands the cap to the engine's memory guard
-    monkeypatch.setenv(native.MEMORY_ENV, "3000")
-    scene = make_scene(rows=3, cols=4, points=800, seed=9)
-    write_scene_photos(scene, tmp_path / "flight", rtk=True)
-    limits: list[int] = []
-
-    class Recording(SyntheticEngine):
-        def features(self, job, progress):
-            limits.append(job.memory_limit_bytes)
-            return super().features(job, progress)
-
-    _align(monkeypatch, project, tmp_path / "flight", Recording(scene))
-    assert limits == [cap]
 
 
 @pytest.mark.parametrize("value, expected", [("64", 64), ("10", 64), ("2048.5", 2048)])
 def test_the_memory_cap_has_a_floor(monkeypatch, value, expected):
     monkeypatch.setenv(native.MEMORY_ENV, value)
     assert native.memory_cap() == expected * 2**20
-
-
-def test_a_cap_stops_the_engine_above_it(tmp_path, monkeypatch):
-    """The guard of a COLMAP stage stops at the cap, not at 75 % of the memory."""
-    import sys
-
-    monkeypatch.setenv(native.MEMORY_ENV, "300")
-    eng = ColmapEngine(python=sys.executable)
-    limit = memory_limit(*memory_status(), cap=native.memory_cap())
-    job = EngineJob(work=tmp_path / "w", image_root=tmp_path, images=[], groups=[], memory_limit_bytes=limit)
-    from aio_pipelines.photo.colmap_io import MemoryExceeded
-
-    with pytest.raises(MemoryExceeded, match=r"more than 0.3 GB"):
-        eng._run(
-            job, "probe-alloc", {"steps": 30, "stepBytes": 50 * 2**20}, lambda f, m=None: None, "features"
-        )
-    assert limit == 300 * 2**20 < job.memory_peak["features"]

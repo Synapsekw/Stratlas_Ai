@@ -1,9 +1,8 @@
-"""photo/cloud_out.py: the fused tiles as a classified LAS, then a COPC through untwine or PDAL;
-and native.run_tool's progress hook."""
+"""photo/cloud_out.py: a LAS as a COPC through untwine or PDAL; and native.run_tool's progress
+hook."""
 
 from __future__ import annotations
 
-import json
 import os
 import sys
 import threading
@@ -16,9 +15,7 @@ import pytest
 import products_synth as ps
 from aio_pipelines.photo import cloud_out as C
 from aio_pipelines.photo import native
-from aio_pipelines.photo import surface as S
-from aio_pipelines.photo.fuse import PointTiles
-from aio_pipelines.runtime import Cancelled, Job, JobError, Step, StepContext
+from aio_pipelines.runtime import Job, JobError, Step, StepContext
 from conftest import Recorder
 
 
@@ -27,107 +24,6 @@ def _ctx(tmp_path):
     job = Job("t1", None, tmp_path, {}, rec, threading.Event())  # type: ignore[arg-type]
     job.steps, job.weights = [Step("cloud", "Cloud", lambda c: None)], [1.0]
     return StepContext(job, 0, job.steps[0]), rec
-
-
-def _fused(root: Path, tiles: dict[str, np.ndarray], tile: float = 10.0) -> PointTiles:
-    """A store with these fused tiles (as ``merge`` leaves them), without fusing anything."""
-    out = root / "fused"
-    out.mkdir(parents=True)
-    lo, hi, n = np.full(3, np.inf), np.full(3, -np.inf), 0
-    for name, xyz in tiles.items():
-        k = len(xyz)
-        np.savez(out / f"{name}.npz", xyz=xyz, rgb=np.full((k, 3), 90, np.uint8),
-                 normal=np.tile(np.float32([0, 0, 1]), (k, 1)), count=np.ones(k, np.int32))  # fmt: skip
-        lo, hi, n = np.minimum(lo, xyz.min(0)), np.maximum(hi, xyz.max(0)), n + k
-    (out / "index.json").write_text(json.dumps({"points": n, "bounds": [lo.tolist(), hi.tolist()]}), "utf-8")
-    return PointTiles(root, tile)
-
-
-def _flat_dtm(path: Path, z: float = 10.0, hole: tuple[int, int] | None = None) -> Path:
-    """A 20 m x 20 m DTM at 0.5 m in the project CRS (x 412000.., y 3245000..)."""
-    spec = S.GridSpec(412000.0, 3245020.0, 0.5, 40, 40)
-    a = np.full((40, 40), z, np.float32)
-    if hole:
-        a[hole] = S.NODATA
-    with S.write_tif(path, spec, ps.EPSG, 1, "float32", S.NODATA) as ds:
-        ds.write(a, 1)
-    return path
-
-
-SHIFT = np.array([412000.0, 3245000.0, 0.0])
-
-
-def test_points_are_ground_from_half_a_metre_below_to_twenty_cm_above_the_dtm():
-    z = np.array([9.49, 9.5, 10.0, 10.2, 10.21, 10.0])
-    g = np.array([10.0, 10.0, 10.0, 10.0, 10.0, np.nan])
-    assert C.classify(z, g).tolist() == [1, 2, 2, 2, 1, 1]
-
-
-def test_the_dtm_is_sampled_bilinearly(tmp_path):
-    spec = S.GridSpec(0.0, 10.0, 1.0, 10, 10)
-    gx, gy = spec.centres(0, 0, 10, 10)
-    with S.write_tif(tmp_path / "p.tif", spec, None, 1, "float32", S.NODATA) as ds:
-        ds.write((gx + 2 * gy).astype(np.float32), 1)
-    sample = C.DtmSampler(tmp_path / "p.tif")
-    try:
-        x, y = np.array([2.0, 5.25, 7.9]), np.array([3.0, 4.75, 1.6])
-        np.testing.assert_allclose(sample(x, y), x + 2 * y, atol=1e-5)
-    finally:
-        sample.close()
-
-
-def test_points_where_the_dtm_has_no_height_are_not_ground(tmp_path):
-    dtm = _flat_dtm(tmp_path / "dtm.tif", hole=(10, 10))  # the cell of x 5..5.5, y 14.5..15
-    sample = C.DtmSampler(dtm)
-    try:
-        g = sample(np.array([412005.2, 412015.0, 412050.0]), np.array([3245014.7, 3245005.0, 3245005.0]))
-    finally:
-        sample.close()
-    assert np.isnan(g[0]) and g[1] == pytest.approx(10.0) and np.isnan(g[2])  # in the hole, inside, outside
-    assert C.classify(np.array([10.0, 10.0, 10.0]), g).tolist() == [1, 2, 1]
-
-
-def test_the_las_is_written_tile_by_tile_with_the_classes(tmp_path):
-    from aio_pipelines.change.las import read_las
-
-    rng = np.random.default_rng(3)
-    ground = np.column_stack([rng.uniform(0, 20, 3000), rng.uniform(0, 20, 3000), rng.normal(10, 0.02, 3000)])
-    roof = np.column_stack([rng.uniform(4, 8, 400), rng.uniform(4, 8, 400), np.full(400, 15.0)])
-    pts = np.concatenate([ground, roof])
-    tiles = {f"{i}_{j}": pts[(np.floor(pts[:, 0] / 10) == i) & (np.floor(pts[:, 1] / 10) == j)]
-             for i in range(2) for j in range(2)}  # fmt: skip
-    store = _fused(tmp_path / "m", tiles)
-    seen = []
-    got = C.write_las(tmp_path / "c.las", store, SHIFT, _flat_dtm(tmp_path / "dtm.tif"),
-                      progress=lambda f, m=None: seen.append(m))  # fmt: skip
-    las = read_las(tmp_path / "c.las")
-    assert got == {"points": 3400, "ground": 3000} and las.count == 3400 and las.pdrf == 7
-    cls = las.field("Classification")
-    assert (cls[las.xyz[:, 2] > 14] == 1).all() and (cls[las.xyz[:, 2] < 11] == 2).all()
-    want = np.concatenate([p["xyz"] for _, p in store.fused()]) + SHIFT
-    assert np.abs(las.xyz - want).max() <= 0.0005 + 1e-9  # millimetres, in the tiles' order
-    assert las.field("Red").max() > 255  # 16-bit colour
-    assert seen[-1] == "Writing the cloud: tile 4 of 4"
-
-
-def test_a_cancelled_or_empty_las_leaves_no_file(tmp_path):
-    pts = np.array([[1.0, 1.0, 10.0], [2.0, 2.0, 10.0]])
-    store = _fused(tmp_path / "m", {"0_0": pts})
-
-    def cancel():
-        raise Cancelled()
-
-    with pytest.raises(Cancelled):
-        C.write_las(tmp_path / "c.las", store, SHIFT, None, check=cancel)
-    assert sorted(p.name for p in tmp_path.iterdir()) == ["m"]
-    empty = tmp_path / "e" / "fused"
-    empty.mkdir(parents=True)
-    np.savez(empty / "0_0.npz", xyz=np.zeros((0, 3)), rgb=np.zeros((0, 3), np.uint8),
-             normal=np.zeros((0, 3), np.float32), count=np.zeros(0, np.int32))  # fmt: skip
-    (empty / "index.json").write_text(json.dumps({"points": 0, "bounds": [[0, 0, 0], [1, 1, 1]]}), "utf-8")
-    with pytest.raises(JobError, match="empty"):
-        C.write_las(tmp_path / "c.las", PointTiles(tmp_path / "e", 10.0), SHIFT, None)
-    assert sorted(p.name for p in tmp_path.iterdir()) == ["e", "m"]
 
 
 def test_the_copc_command_lines():
@@ -320,7 +216,7 @@ def _real_tools():
 
 @pytest.mark.skipif(not all(_real_tools()), reason="needs untwine and PDAL (AIO_UNTWINE, AIO_PDAL)")
 def test_real_untwine_keeps_the_classes(tmp_path):
-    from aio_pipelines.change.las import read_las
+    from aio_pipelines.change.las import read_las, write_las
     from aio_pipelines.pointcloud import find_pdal, pdal_env
 
     rng = np.random.default_rng(5)
@@ -328,33 +224,30 @@ def test_real_untwine_keeps_the_classes(tmp_path):
         [rng.uniform(0, 20, 20_000), rng.uniform(0, 20, 20_000), rng.normal(10, 0.02, 20_000)]
     )
     pts[:5000, 2] = 14.0
-    store = _fused(tmp_path / "m", {"0_0": pts})
-    counts = C.write_las(tmp_path / "c.las", store, SHIFT, _flat_dtm(tmp_path / "dtm.tif"))
+    cls = np.where(pts[:, 2] < 12.0, 2, 1).astype(np.uint8)
+    write_las(tmp_path / "c.las", pts + np.array([412000.0, 3245000.0, 0.0]), classification=cls)
     ctx, _ = _ctx(tmp_path)
     out = tmp_path / "c.copc.laz"
-    assert (
-        C.write_copc(ctx, tmp_path / "c.las", out, counts["points"], ps.EPSG, tmp_path / ".t", 2**31)
-        == "untwine"
-    )
+    assert C.write_copc(ctx, tmp_path / "c.las", out, len(pts), ps.EPSG, tmp_path / ".t", 2**31) == "untwine"
     pdal = find_pdal()
     native.run_tool(ctx, [pdal, "translate", str(out), str(tmp_path / "back.las")], "Read the COPC back",
                     tmp_path / "w", env=pdal_env(pdal))  # fmt: skip
     back = read_las(tmp_path / "back.las")
-    cls = back.field("Classification")
-    assert back.count == 20_000 and int((cls == 2).sum()) == counts["ground"] == 15_000
+    assert back.count == 20_000 and int((back.field("Classification") == 2).sum()) == 15_000
 
 
 @pytest.mark.skipif(_real_tools()[1] is None, reason="needs PDAL (AIO_PDAL)")
 def test_real_pdal_writes_the_copc_and_its_rate_is_printed(tmp_path, monkeypatch):
+    from aio_pipelines.change.las import write_las
+
     monkeypatch.setenv("AIO_UNTWINE", str(tmp_path / "no-untwine.exe"))
     rng = np.random.default_rng(6)
     n = 2_000_000
     pts = np.column_stack([rng.uniform(0, 20, n), rng.uniform(0, 20, n), rng.normal(10, 0.05, n)])
-    store = _fused(tmp_path / "m", {"0_0": pts})
-    counts = C.write_las(tmp_path / "c.las", store, SHIFT, None)
+    write_las(tmp_path / "c.las", pts + np.array([412000.0, 3245000.0, 0.0]))
     ctx, _ = _ctx(tmp_path)
     t0 = time.monotonic()
-    assert C.write_copc(ctx, tmp_path / "c.las", tmp_path / "c.copc.laz", counts["points"], ps.EPSG,
+    assert C.write_copc(ctx, tmp_path / "c.las", tmp_path / "c.copc.laz", n, ps.EPSG,
                         tmp_path / ".t", 2**33) == "pdal"  # fmt: skip
     rate = n / (time.monotonic() - t0)
     print(f"\nPDAL writers.copc: {rate:,.0f} points a second", file=sys.stderr)

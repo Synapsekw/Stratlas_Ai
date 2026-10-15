@@ -310,15 +310,13 @@ jobs:
           retention-days: 14
           if-no-files-found: ignore
 
-  # The pipeline Python as the pack has it: `uv sync` installs the prebuilt wheels (pycolmap,
-  # opencv-python-headless and pymeshlab from PyPI, founder decision of 8 Oct 2026) and pdal.mjs
-  # conda-forge's PDAL, so the real engines run here: COLMAP alignment, OpenCV's SGBM, MeshLab's
-  # Poisson and PDAL's COPC, SMRF and reprojection. Nothing is compiled.
+  # The pipeline Python as the pack has it: `uv sync` installs the prebuilt wheels (pycolmap and
+  # opencv-python-headless from PyPI, founder decision of 8 Oct 2026) and pdal.mjs conda-forge's
+  # PDAL, so the real engines run here: COLMAP for walks, OpenCV, and PDAL's COPC and reprojection.
+  # Photogrammetry runs in OpenDroneMap, which the tests stand in for with a fake (tests/fake_odm).
+  # Nothing is compiled.
   #
-  # On the Windows runner the suite took 18.5 min in one job, and it was the longest job of a run:
-  # tests/test_photo_chain.py alone took 409 s there (101 s on macOS), the other photo tests 326 s
-  # and the rest 374 s (run 38051445110). So the suite runs in those three parts, a job each
-  # (6.0 to 6.9 min on Windows, run 38059448343).
+  # The suite runs in two parts, a job each: the photo tests and the rest.
   python:
     name: pipelines (${{ matrix.os }}, ${{ matrix.part }})
     needs: gate
@@ -327,7 +325,7 @@ jobs:
       fail-fast: false
       matrix:
         os: ${{ fromJSON(needs.gate.outputs.systems) }}
-        part: [photo-chain, photo, rest]
+        part: [photo, rest]
     runs-on: ${{ matrix.os }}
     timeout-minutes: 30
     defaults:
@@ -382,12 +380,11 @@ jobs:
       # and the slowest tests at the end. A test over its pytest-timeout limit (300 s by default,
       # pyproject.toml) fails with the stacks of its threads.
       # The parts: the test files sit directly in python/tests (tools/ci/pytest-parts.test.mjs
-      # checks that), so photo-chain, photo and rest together are every one of them.
+      # checks that), so photo and rest together are every one of them.
       - name: Pytest (${{ matrix.part }})
         run: |
           case "${{ matrix.part }}" in
-            photo-chain) tests=(tests/test_photo_chain.py) ;;
-            photo) tests=($(ls tests/test_photo_*.py | grep -v '^tests/test_photo_chain\.py$')) ;;
+            photo) tests=($(ls tests/test_photo_*.py)) ;;
             rest) tests=(tests "--ignore-glob=tests/test_photo_*.py") ;;
             *) echo "Unknown part ${{ matrix.part }}" >&2 && exit 1 ;;
           esac
@@ -407,7 +404,6 @@ jobs:
       pull-requests: read
     outputs:
       pack: ${{ steps.filter.outputs.pack }}
-      addon: ${{ steps.filter.outputs.addon }}
     steps:
       - uses: actions/checkout@v5
       - uses: dorny/paths-filter@v3
@@ -420,10 +416,6 @@ jobs:
               - 'python/uv.lock'
               - 'python/src/aio_pipelines/photo/**'
               - '.github/workflows/ci.yml'
-            addon:
-              - 'tools/pipeline-pack/accelerator*'
-              - 'python/src/aio_pipelines/accel.py'
-              - 'tools/release/budgets.mjs'
 
   # The pipeline pack as the nightly and the release build it, with its built-in smoke test (the
   # photogrammetry engines each in the process the product runs them in). Only when the pack's
@@ -465,54 +457,6 @@ jobs:
         env:
           QUADRION_CONDA_ROOT: ${{ runner.temp }}/conda
         run: node tools/pipeline-pack/build.mjs --out "$RUNNER_TEMP/runtime"
-
-  # The optional GPU add-on beside the pack: built from its pinned wheels (nothing is compiled, no
-  # graphics card is needed), held to its own size budget, and loaded once so that a computer
-  # without an NVIDIA card gets an answer in words. Only when its build, its lock or its loader
-  # change. The card itself is tested by hand on a workstation (plan "GPU acceleration").
-  addon:
-    name: GPU add-on (windows)
-    needs: [gate, changes]
-    if: >-
-      needs.gate.outputs.run == 'true' &&
-      (needs.changes.outputs.addon == 'true' || github.event_name == 'workflow_dispatch')
-    runs-on: windows-latest
-    timeout-minutes: 20
-    defaults:
-      run:
-        shell: bash
-    steps:
-      - uses: actions/checkout@v5
-      - uses: actions/setup-node@v5
-        with:
-          node-version: 24
-          package-manager-cache: false
-      - uses: astral-sh/setup-uv@v6
-        with:
-          enable-cache: true
-          cache-dependency-glob: python/uv.lock
-      - name: Cache the add-on's wheels
-        uses: actions/cache@v4
-        with:
-          path: addon-cache
-          key: gpu-addon-${{ hashFiles('tools/pipeline-pack/accelerator-lock.json') }}
-      - name: The pipelines' Python (compiles the add-on, runs its loader)
-        working-directory: python
-        run: uv sync --frozen
-      - name: Build the GPU add-on and its archive
-        run: >-
-          node tools/pipeline-pack/accelerator.mjs --out runtime --cache addon-cache
-          --python python/.venv/Scripts/python.exe --archive .
-      - name: Size budget
-        run: >-
-          node tools/release/budgets.mjs --addon "$(ls -d runtime/pipeline-addon-cuda-* | head -n 1)"
-          --addon-archive "$(ls pipeline-addon-cuda-*.tar.gz)"
-      - name: The loader answers in words without an NVIDIA card
-        working-directory: python
-        run: |
-          addon="$(ls -d ../runtime/pipeline-addon-cuda-* | head -n 1)"
-          uv run --frozen python -m aio_pipelines.accel --selftest --addon "$addon" | tee selftest.json
-          node -e "const s = JSON.parse(require('node:fs').readFileSync('selftest.json', 'utf8').trim().split('\n').pop()); if (s.state !== 'unsupported-gpu') { console.error('expected unsupported-gpu on a runner without a card'); process.exit(1); }"
 
   licenses:
     name: licence check

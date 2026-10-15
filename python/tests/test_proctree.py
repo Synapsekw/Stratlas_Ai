@@ -59,12 +59,6 @@ def test_the_old_failure_message_stays_without_fail(tmp_path: Path):
         )
 
 
-def test_colmap_io_still_offers_the_moved_names():
-    from aio_pipelines.photo import colmap_io
-
-    assert colmap_io.end_tree is proctree.end_tree and colmap_io.kill is proctree.kill
-
-
 def test_the_memory_limit_is_at_most_three_quarters_and_respects_free_memory():
     gb = 10**9
     assert memory_limit(64 * gb, 60 * gb) == 48 * gb

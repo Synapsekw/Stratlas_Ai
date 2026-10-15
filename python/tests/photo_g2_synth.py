@@ -4,11 +4,11 @@ shared set and replaces these where it can).
 - ``synthetic_jpeg``: a JPEG with EXIF (make, model, focal, GPS) and a DJI-style XMP packet (gimbal,
   altitudes, RTK flag and standard deviations), written with Pillow only.
 - ``SceneTruth`` and ``make_scene``: a nadir grid of pinhole cameras with OPENCV distortion over a
-  gently rolling ground with GCPs and tie points, the exact projections, and a ``SyntheticEngine``
-  (the alignment engine adapter of ``photo/colmap_io.py``) that "reconstructs" it in an arbitrary
-  frame with noise, so ``photo.align`` and ``photo.georef`` run end to end in CI without COLMAP.
+  gently rolling ground with GCPs and tie points, and the exact projections.
+- ``synthetic_model``: the scene's reconstruction as a sparse model (true cameras and points,
+  noisy observations), for the model and georeferencing maths tests.
 - ``render_nadir_set``: real rendered images of a textured height field for alignment experiments
-  with an actual SfM engine (used by the opt-in engine tests and the engine comparison).
+  with an actual SfM engine.
 
 Everything is seeded. The site is the fictional desert location of the other fixtures (UTM 39N);
 ``Make`` is "Stratlas Synthetic", ``Model`` "SYN-20", and there is no serial number.
@@ -369,123 +369,28 @@ def write_scene_photos(
     return out
 
 
-class SyntheticEngine:
-    """The engine adapter of ``photo/colmap_io.py`` over a known scene (no images are matched).
-
-    ``map`` returns the true reconstruction seen through an arbitrary similarity (scale, rotation,
-    offset: SfM has no datum) with small pose noise and noisy keypoints, as a COLMAP text model.
-    It fails to register the names in ``unregistered``.
-    """
-
-    name = "synthetic"
-
-    def __init__(
-        self,
-        scene: SceneTruth,
-        seed: int = 3,
-        pose_noise=(0.03, 0.05),
-        unregistered=(),
-        distortion_error: float = 0.0,
-    ):
-        self.scene = scene
-        self.seed = seed
-        self.pose_noise = pose_noise
-        #: Added to the first radial coefficient: a self-calibrated lens bends the heights.
-        self.distortion_error = distortion_error
-        self.unregistered = set(unregistered)
-        self.calls: list[str] = []
-        self.pairs: list[tuple[str, str]] = []
-        #: A cancel event to set in the middle of matching (once).
-        self.cancel_in_match = None
-
-    def versions(self) -> dict[str, str]:
-        return {"engine": "synthetic"}
-
-    def features(self, job, progress) -> dict:
-        self.calls.append("features")
-        for k in range(len(job.images)):
-            job.check()
-            progress((k + 1) / len(job.images), None)
-        return {"images": len(job.images), "seconds": 0.0}
-
-    def match(self, job, pairs, progress) -> dict:
-        self.calls.append("match")
-        self.pairs = pairs
-        if self.cancel_in_match is not None:
-            ev, self.cancel_in_match = self.cancel_in_match, None
-            ev.set()  # as a person pressing Cancel (or a kill) in the middle of matching
-            job.check()
-        progress(1.0, None)
-        return {"pairs": len(pairs), "verified": len(pairs)}
-
-    def map(self, job, mapper, progress) -> dict:
-        self.calls.append(f"map:{mapper}")
-        sc = self.scene
-        rng = np.random.default_rng(self.seed)
-        # an arbitrary SfM frame: X_sfm = s * Q @ X_enu + t
-        s = 0.37
-        q, _ = np.linalg.qr(rng.normal(size=(3, 3)))
-        if np.linalg.det(q) < 0:
-            q[:, 0] *= -1
-        t = rng.normal(0, 5, 3)
-        name_to_index = {n: i for i, n in enumerate(sc.names)}
-        model = SparseModel()
-        cam = Camera(1, "OPENCV", sc.camera.width, sc.camera.height, sc.camera.params.copy())
-        cam.params[0] *= 1.01  # self-calibration is not perfect
-        cam.params[1] *= 1.01
-        cam.params[4] += self.distortion_error
-        model.cameras[1] = cam
-        obs = sc.observations(rng)
-        point_tracks: dict[int, list[tuple[int, int]]] = {}
-        image_id = 0
-        for img_in in job.images:
-            key = getattr(img_in, "name", img_in.key)  # the engine's own name for the photo
-            name = key.split("/")[-1]
-            if name in self.unregistered or name not in name_to_index:
-                continue
-            i = name_to_index[name]
-            image_id += 1
-            rot = sc.rotations[i]
-            dr = rng.normal(0, math.radians(self.pose_noise[1]), 3)
-            rot = _rodrigues(dr) @ rot
-            centre = sc.centres[i] + rng.normal(0, self.pose_noise[0], 3)
-            r_sfm = rot @ q.T
-            c_sfm = s * q @ centre + t
-            idx, uv = obs[i]
-            img = MImage(image_id, key, 1, r_sfm, -r_sfm @ c_sfm, uv.copy(), np.full(len(idx), -1, np.int64))
-            model.images[image_id] = img
-            for k, p in enumerate(idx):
-                point_tracks.setdefault(int(p), []).append((image_id, k))
-        for p, track in point_tracks.items():
-            if len(track) < 2:
-                continue
-            pid = p + 1
-            xyz = s * q @ (sc.points[p] + rng.normal(0, 0.01, 3)) + t
-            model.add_point(pid, xyz, (128, 128, 128), 0.5, track)
-        progress(1.0, None)
-        out = job.work / "sfm" / "0"
-        model.write_text(out)
-        return {"models": [{"path": str(out), "images": len(model.images)}], "mapper": mapper}
-
-
-class FakeJob:
-    """The parts of ``EngineJob`` the synthetic engine reads (model tests)."""
-
-    def __init__(self, work: Path, names: list[str]):
-        self.work = work
-        self.images = [type("I", (), {"key": n, "name": n})() for n in names]
-
-    def check(self):
-        pass
-
-
-def _rodrigues(w: np.ndarray) -> np.ndarray:
-    th = float(np.linalg.norm(w))
-    if th < 1e-12:
-        return np.eye(3)
-    k = w / th
-    kx = np.array([[0, -k[2], k[1]], [k[2], 0, -k[0]], [-k[1], k[0], 0]])
-    return np.eye(3) + math.sin(th) * kx + (1 - math.cos(th)) * kx @ kx
+def synthetic_model(scene: SceneTruth, noise_px: float = 0.3, seed: int = 0) -> SparseModel:
+    """The scene's reconstruction as a sparse model, in the scene's ENU frame: the true camera and
+    poses, every tie point two or more photos see at its true position, and its observations with
+    Gaussian pixel noise (``noise_px``). No images are matched."""
+    rng = np.random.default_rng(seed)
+    model = SparseModel()
+    cam = scene.camera
+    model.cameras[1] = Camera(1, cam.model, cam.width, cam.height, np.array(cam.params, dtype=np.float64))
+    tracks: dict[int, list[tuple[int, int]]] = {}
+    for i, (name, (idx, uv)) in enumerate(zip(scene.names, scene.observations(rng, noise_px), strict=True)):
+        image_id = i + 1
+        rot = scene.rotations[i]
+        t = -rot @ scene.centres[i]
+        model.images[image_id] = MImage(
+            image_id, name, 1, rot.copy(), t, uv.copy(), np.full(len(idx), -1, np.int64)
+        )
+        for k, p in enumerate(idx):
+            tracks.setdefault(int(p), []).append((image_id, k))
+    for p, track in sorted(tracks.items()):
+        if len(track) >= 2:
+            model.add_point(p + 1, scene.points[p], (128, 128, 128), noise_px, track)
+    return model
 
 
 def write_gcp_files(

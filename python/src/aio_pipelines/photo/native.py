@@ -3,17 +3,14 @@
 Native tools are optional command-line programs in the pipeline pack's ``tools/`` folder or on
 this machine; each is found like PDAL (``pointcloud.find_pdal``): an environment variable, then
 ``<pack>/tools/<name>/``, then the PATH. Every caller has a pure-Python path when a tool is
-missing, so a pack without the tool still produces the product (and says which engine ran). Since
-8 Oct 2026 the pack ships only PDAL (conda-forge's build); the others are local builds a person
-points at, and the mesh's primary engine is MeshLab (``pymeshlab``, ``mesh.py``).
+missing, so a pack without the tool still produces the product (and says which engine ran). The
+photogrammetry itself runs in OpenDroneMap (``odm/``), not through these tools.
 
 | Tool          | Variable              | Pack folder                | Licence                                  |
 | ------------- | --------------------- | -------------------------- | ---------------------------------------- |
-| ``texrecon``  | ``AIO_TEXRECON``      | ``tools/texrecon/``        | BSD-3 (mvs-texturing, mapMAP not gco)    |
-| ``PoissonRecon`` | ``AIO_POISSONRECON`` | ``tools/poissonrecon/``   | MIT (mkazhdan/PoissonRecon)              |
-| ``SurfaceTrimmer`` | ``AIO_SURFACETRIMMER`` | ``tools/poissonrecon/`` | MIT (same repository)                    |
 | ``pdal``      | ``AIO_PDAL``          | ``tools/pdal/`` (shipped)  | BSD-3 (conda-forge build, GPL/LGPL deps) |
 | ``untwine``   | ``AIO_UNTWINE``       | ``tools/pdal/`` (shipped)  | GPL-3.0-or-later (conda-forge build)     |
+| ``ffmpeg``    | ``QUADRION_FFMPEG``   | ``tools/ffmpeg/`` (shipped) | conda-forge build (``walk/ffmpeg.py``)  |
 
 ``run_tool`` runs one cancellably: output to files (a full pipe would block the child), stdin
 closed, no console window, and on cancel the whole process tree is killed (on Windows
@@ -43,9 +40,6 @@ from pathlib import Path
 from ..runtime import Cancelled, JobError, StepContext
 
 TOOLS = {
-    "texrecon": ("AIO_TEXRECON", "texrecon"),
-    "PoissonRecon": ("AIO_POISSONRECON", "poissonrecon"),
-    "SurfaceTrimmer": ("AIO_SURFACETRIMMER", "poissonrecon"),
     "ffmpeg": ("QUADRION_FFMPEG", "ffmpeg"),
     "untwine": ("AIO_UNTWINE", "pdal"),
 }

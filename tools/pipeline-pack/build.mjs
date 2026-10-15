@@ -6,7 +6,7 @@
 //   node tools/pipeline-pack/build.mjs [--out "E:/Stratlas Data/runtime"] [--force] [--no-pdal] [--no-ffmpeg] [--no-sam]
 //
 // Everything is prebuilt (founder decision of 8 Oct 2026, ADR 0008 amended): the photogrammetry
-// engines are wheels in uv.lock (pycolmap, opencv-python-headless and pymeshlab, for Windows x64
+// engines are wheels in uv.lock (pycolmap and opencv-python-headless, for Windows x64
 // and Apple silicon; the Intel Mac pack has none, decision 8) and PDAL is conda-forge's build,
 // installed into tools/pdal by pdal.mjs from its lock. A pack builds in a few minutes; nothing is
 // compiled. The native licence report (tools/release/native-licences.mjs) prints a summary and
@@ -57,11 +57,10 @@ const TARGETS = {
 
 const repo = resolve(import.meta.dirname, '..', '..');
 
-// The photogrammetry smoke test runs each engine in the process the product runs it in. pycolmap and
-// pymeshlab each bundle their own libomp, and two copies in one process abort on macOS ("OMP: Error
-// #15", nightly of 9 Oct 2026), so they never share one: pycolmap runs in the COLMAP child
-// (photo/colmap_io.py), OpenCV in the pipeline process (dense matching), and MeshLab in a child that
-// pipeline process starts (photo/mesh.py).
+// The native engines' smoke test runs each in the process the product runs it in: pycolmap in the
+// COLMAP child of the walk pipeline (walk/colmap_child.py), OpenCV in the pipeline process (walks
+// and panoramas). Photogrammetry itself runs in OpenDroneMap, which the app installs; the pack
+// carries none of it.
 
 /** Run with the pack's Python, like the COLMAP child: pycolmap alone (none on an Intel Mac). */
 const COLMAP_PROBE = `
@@ -73,57 +72,23 @@ except ImportError:
     print("{}")
 `;
 
-/**
- * Run with the pack's Python, like the pipeline process: OpenCV loaded, then MeshLab's screened
- * Poisson on a small sphere through the product's own child command and environment (photo/mesh.py),
- * so its Qt and plugins load in the pack.
- */
-const MESH_PROBE = `
-import importlib.metadata as md, json, subprocess, sys, tempfile
-from pathlib import Path
-out = {}
+/** Run with the pack's Python, like the pipeline process: OpenCV. */
+const OPENCV_PROBE = `
+import json
 try:
     import cv2
-    out["opencv"] = cv2.__version__
+    print(json.dumps({"opencv": cv2.__version__}))
 except ImportError:
-    pass
-try:
-    out["pymeshlab"] = md.version("pymeshlab")
-except md.PackageNotFoundError:
-    pass
-if "pymeshlab" in out:
-    import numpy as np
-    from aio_pipelines.photo import mesh as M
-    p = np.random.default_rng(0).normal(size=(3000, 3))
-    p /= np.linalg.norm(p, axis=1, keepdims=True)
-    with tempfile.TemporaryDirectory() as d:
-        src, dst = Path(d) / "sphere.ply", Path(d) / "sphere.npz"
-        M.write_ply_chunks(src, [(p, p, np.zeros((len(p), 3), np.uint8))], len(p))
-        r = subprocess.run(M.meshlab_command(src, dst, 5, 1, 0), env=M.meshlab_env(1),
-                           capture_output=True, text=True, timeout=600)
-        if r.returncode == 0 and dst.is_file():
-            with np.load(dst) as z:
-                out["poissonFaces"] = int(len(z["faces"]))
-        else:
-            out["meshlabExit"] = r.returncode
-            out["meshlabOutput"] = (r.stderr + r.stdout)[-3000:]
-    out["pymeshlabInParent"] = "pymeshlab" in sys.modules
-print(json.dumps(out))
+    print("{}")
 `;
 
 /**
- * What is wrong with the photogrammetry smoke test's result (COLMAP_PROBE and MESH_PROBE merged),
- * or null. A pack with pycolmap needs OpenCV and pymeshlab too; MeshLab, where it is, must mesh the
- * sphere in its own process.
+ * What is wrong with the native engines' smoke test result (COLMAP_PROBE and OPENCV_PROBE merged),
+ * or null. A pack with pycolmap needs OpenCV too.
  */
 export function photogrammetryProblem(photo) {
-  const { meshlabOutput, ...summary } = photo;
-  const detail = `${JSON.stringify(summary)}${meshlabOutput ? `\n${meshlabOutput}` : ''}`;
-  if (photo.pycolmap && (!photo.opencv || !photo.pymeshlab))
-    return `photogrammetry wheels incomplete: ${detail}`;
-  if (!photo.pymeshlab) return null;
-  if (photo.pymeshlabInParent) return `pymeshlab was imported outside its child process: ${detail}`;
-  if (!(photo.poissonFaces > 100)) return `MeshLab's screened Poisson failed: ${detail}`;
+  if (photo.pycolmap && !photo.opencv)
+    return `photogrammetry wheels incomplete: ${JSON.stringify(photo)}`;
   return null;
 }
 
@@ -425,9 +390,8 @@ async function main() {
     if (!values['keep-tests']) {
       for (const d of ['test', 'idlelib', 'tkinter', 'turtledemo', 'ensurepip'])
         rmSync(join(lib, d), { recursive: true, force: true });
-      // pymeshlab's own test meshes, and import libraries and debug symbols no program loads
+      // import libraries and debug symbols no program loads
       const site = join(lib, 'site-packages');
-      rmSync(join(site, 'pymeshlab', 'tests'), { recursive: true, force: true });
       if (existsSync(site))
         for (const f of walk(site)) if (/\.(lib|pdb)$/i.test(f)) rmSync(f, { force: true });
     }
@@ -453,11 +417,11 @@ async function main() {
     say(`  ${pipelines.length} pipelines; GDAL ${libs}`);
     const photo = {
       ...JSON.parse(run(python, ['-I', '-c', COLMAP_PROBE], { capture: true })),
-      ...JSON.parse(run(python, ['-I', '-c', MESH_PROBE], { capture: true })),
+      ...JSON.parse(run(python, ['-I', '-c', OPENCV_PROBE], { capture: true })),
     };
     say(
       photo.pycolmap
-        ? `  photogrammetry: pycolmap ${photo.pycolmap} (${photo.colmapBuild}); OpenCV ${photo.opencv}; pymeshlab ${photo.pymeshlab}, MeshLab Poisson ${photo.poissonFaces} faces in its own process`
+        ? `  native engines: pycolmap ${photo.pycolmap} (${photo.colmapBuild}); OpenCV ${photo.opencv}`
         : '  no photogrammetry wheels on this platform (decision 8)',
     );
     const photoProblem = photogrammetryProblem(photo);
@@ -502,9 +466,7 @@ async function main() {
       python: { version: CPYTHON, build: PBS_RELEASE, executable: target.exe },
       platform,
       prebuilt: {
-        photogrammetry: photo.pycolmap
-          ? { pycolmap: photo.pycolmap, opencv: photo.opencv, pymeshlab: photo.pymeshlab }
-          : null,
+        photogrammetry: photo.pycolmap ? { pycolmap: photo.pycolmap, opencv: photo.opencv } : null,
         pdal: pdal ? 'tools/pdal (conda-forge libpdal-core, tools/pdal/conda-packages.json)' : null,
         sam: sam
           ? `models/sam (${SAM_MODEL.name} ${SAM_MODEL.version}, ${SAM_MODEL.licence})`

@@ -1,12 +1,12 @@
 [project]
 name = "aio-pipelines"
-version = "0.7.0"
+version = "0.8.0"
 description = "Quadrion AI pipeline pack: data pipelines run by the desktop app over JSON-RPC 2.0 on stdio."
 requires-python = ">=3.13,<3.14"
 license = "MIT"
 # Founder decision of 8 Oct 2026 (ADR 0008, amended): the pack takes ready-made wheels, GPL parts
-# included (pycolmap bundles CHOLMOD and SPQR, pymeshlab is GPL-3.0). THIRD-PARTY-NOTICES.md lists
-# every one with its licence. The photogrammetry wheels are for Windows x64 and Apple silicon only
+# included (pycolmap bundles CHOLMOD and SPQR). THIRD-PARTY-NOTICES.md lists every one with its
+# licence. The photogrammetry wheels are for Windows x64 and Apple silicon only
 # (decision 8: the Intel Mac pack has no photogrammetry; pycolmap has no Intel Mac wheel).
 dependencies = [
   "numpy>=2.1",
@@ -22,11 +22,10 @@ dependencies = [
   "pyopf>=1.4.1,<2",
   # designs and DXF linework (M11 G6): MIT, a prebuilt wheel, no extras
   "ezdxf>=1.4",
-  # photogrammetry (M10): COLMAP's own wheels, OpenCV's headless wheels and MeshLab's screened
-  # Poisson; one marker for all three, the platforms of decision 8
+  # COLMAP's own wheels (walks' structure from motion) and OpenCV's headless wheels (walks and
+  # panoramas); one marker for both, the platforms of decision 8. Photogrammetry runs in ODM.
   "pycolmap==4.2.1; sys_platform == 'win32' or (sys_platform == 'darwin' and platform_machine == 'arm64')",
   "opencv-python-headless==5.0.0.93; sys_platform == 'win32' or (sys_platform == 'darwin' and platform_machine == 'arm64')",
-  "pymeshlab==2025.7.post1; sys_platform == 'win32' or (sys_platform == 'darwin' and platform_machine == 'arm64')",
   "pyproj>=3.7",
 ]
 
