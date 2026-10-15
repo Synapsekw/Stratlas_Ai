@@ -62,6 +62,7 @@ export default tseslint.config(
             'packages/*/vitest.config.ts',
             'apps/*/vitest.config.ts',
             'tools/vitest.config.ts',
+            'tools/pointcloud/synthetic-cloud.d.mts',
           ],
         },
         tsconfigRootDir: import.meta.dirname,
