@@ -7,7 +7,7 @@
  * show as accepted and are never changed. Acceptance runs through the app's issue editor
  * (validated, saved, undoable in the register like any other issue change).
  */
-import { issueEditor } from '@aio/annotate';
+import { issueEditor, rememberImageSize } from '@aio/annotate';
 import {
   acceptMany,
   currentOf,
@@ -33,6 +33,7 @@ import { useStore } from 'zustand';
 import { createStore } from 'zustand/vanilla';
 import { authorName } from '../author';
 import { beforeJobStart } from '../bridge';
+import { offerPlacement } from '../placement';
 import { bridge } from '../shell';
 import { acceptLabel, planBatch, rejectLabel, undoStep, type BatchPlan } from './batch';
 
@@ -306,6 +307,11 @@ export async function loadDetections(projectId: string, force = false): Promise<
     return;
   }
   const res = r.value;
+  // the photos' pixel sizes: the crossview pin and placing findings on a model need them
+  for (const [key, size] of Object.entries(res.sizes)) {
+    const cut = key.indexOf('/');
+    if (cut > 0) rememberImageSize(key.slice(0, cut), key.slice(cut + 1), [size[0], size[1]]);
+  }
   const ws = workspace.getState();
   const manifest = ws.project?.manifest;
   if (!manifest) return;
@@ -395,6 +401,7 @@ export function acceptCurrent(mode: AcceptMode): { ok: true; issueId: string } |
       by: authorName() || 'user',
       now,
     });
+    offerPlacement([created.value.id], 'detections');
     return { ok: true, issueId: created.value.id };
   }
   const sighting = sightingOf(d, size);
@@ -408,6 +415,7 @@ export function acceptCurrent(mode: AcceptMode): { ok: true; issueId: string } |
     return { ok: false };
   }
   dispatch({ type: 'accepted', id: d.id, issueId: mode.issueId, by: authorName() || 'user', now });
+  offerPlacement([mode.issueId], 'detections');
   return { ok: true, issueId: mode.issueId };
 }
 
@@ -449,7 +457,54 @@ export function acceptAll(
     by: authorName() || 'user',
     now: new Date().toISOString(),
   });
+  offerPlacement(
+    items.map((x) => x.issueId),
+    'detections',
+  );
   return { accepted: items.length, skipped: r.skipped.length };
+}
+
+/**
+ * Accept the named detections for the assistant (`place_on_model`): waiting ones become draft
+ * issues as one editor step (as Accept all does); already accepted ones answer their issue.
+ * No offer: the assistant places them itself.
+ */
+export function acceptByIds(
+  ids: readonly string[],
+):
+  | { accepted: { id: string; issueId: string }[]; skipped: { id: string; problem: string }[] }
+  | { error: string } {
+  const s = detections.getState();
+  if (s.readOnly) return { error: t('det.save.readOnly') };
+  const want = new Set(ids);
+  const list = s.review.detections.filter((d) => want.has(d.id));
+  const done = list.flatMap((d) =>
+    d.status === 'accepted' && d.issueId ? [{ id: d.id, issueId: d.issueId }] : [],
+  );
+  const skipped = list
+    .filter((d) => d.status !== 'draft' && !(d.status === 'accepted' && d.issueId))
+    .map((d) => ({ id: d.id, problem: 'not-waiting' }));
+  const r = acceptMany(list, issueEditor.context(), sizeOf);
+  skipped.push(...r.skipped.map((x) => ({ id: x.detection.id, problem: x.problem })));
+  if (r.accepted.length === 0) return { accepted: done, skipped };
+  const label = acceptLabel(r.accepted.length);
+  const created = issueEditor.createMany(
+    r.accepted.map((a) => a.input),
+    label,
+  );
+  if (!created.ok) return { error: created.error };
+  const items = r.accepted.flatMap((a, i) => {
+    const issue = created.value[i];
+    return issue ? [{ id: a.detection.id, issueId: issue.id }] : [];
+  });
+  dispatch({
+    type: 'acceptedMany',
+    items,
+    label,
+    by: authorName() || 'user',
+    now: new Date().toISOString(),
+  });
+  return { accepted: [...done, ...items], skipped };
 }
 
 /** Reject all: every waiting detection of `list`, one undo step. */

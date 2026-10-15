@@ -23,6 +23,7 @@ import type {
 } from '@aio/schema';
 import { assetUrl, workspace } from '@aio/workspace';
 import { authorName } from '../author';
+import { offerPlacement } from '../placement';
 
 const READ_ONLY = 'This project is a read-only package. Issues cannot be changed.';
 
@@ -163,6 +164,8 @@ export function createChangeActions(): ChangeRowActions {
       });
       if (!r.ok) return r.error;
       saveIssues([r.issue]);
+      // a finding from a later photo can be placed on the later model (spec section 6)
+      offerPlacement([r.issue.id], 'change');
       return markReviewed(row, r.issue.id);
     },
   };
