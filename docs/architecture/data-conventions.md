@@ -936,3 +936,14 @@ true north, level; a wide panorama is cropped to what it covers), `thumb.jpg` (5
 manifest; the app files a run's outcome into the item's `stitch` and, when done, its `cov`.
 `headingDeg` starts at minus the grid convergence at the sphere (true north in the local frame).
 Older `panoramas/panoramas.json` coverage is still read for items without `cov`.
+
+## 35. Findings placed on a model (`selections/`)
+
+An issue found in a photo or video frame can be placed on a mesh or point-cloud layer (plan `2026-10-15-findings-on-model`). The placed sightings carry `from: { sighting }`, the index of the image or video sighting they were projected from:
+
+- on a mesh, an `spolygon` outline on the surface;
+- on a point cloud, a `polygon3` prism (plan-view ring at the base height, `height` up) and a second sighting, a `selection` of the loaded points inside the prism, with `lod` the octree depth the points were cut at (the selection covers only the detail loaded then).
+
+The automatic crossview pin (ANN-9) is a mesh `spoint` with `from`; placing an area on a layer removes that layer's automatic pin and any earlier area there. Hand-placed pins have no `from`.
+
+`selections/<name>.sel` (name: letters, digits, dash, underscore; the app uses `<issue id>-<layer id>-<timestamp digits>`, the digits of the placing time, cut so the name stays within 120 characters), little-endian: 8 bytes ASCII magic `AIOSEL01`, uint32 point count, uint32 lod, then count x 3 float32 x, y, z in the project local frame (metres). Written by `project:writeSelection` (temporary file and rename; refused on a package; not journalled).

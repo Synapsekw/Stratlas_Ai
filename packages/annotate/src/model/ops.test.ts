@@ -1,3 +1,4 @@
+import type { Sighting } from '@aio/schema';
 import { describe, expect, it } from 'vitest';
 import { LATER, NOW, ctx, makeIssue, meshSighting, photoSighting, videoSighting } from '../testing';
 import {
@@ -160,6 +161,56 @@ describe('sightings', () => {
     const merged = mergeIssues(a, b, LATER);
     expect(merged.sightings).toEqual([meshSighting, photoSighting, videoSighting]);
     expect(merged.note).toContain('Merged F02');
+  });
+
+  const areaFrom = (i: number): Sighting => ({
+    on: 'mesh',
+    layer: 'tank',
+    geom: {
+      type: 'spolygon',
+      points: [
+        [0, 0, 0],
+        [1, 0, 0],
+        [1, 0, 1],
+      ],
+    },
+    from: { sighting: i },
+  });
+
+  it('removeSighting reindexes from', () => {
+    const issue = makeIssue({ sightings: [meshSighting, photoSighting, areaFrom(1)] });
+    const r = removeSighting(issue, 0, LATER);
+    expect(r.ok && r.value.sightings).toEqual([photoSighting, areaFrom(0)]);
+  });
+
+  it('mergeIssues shifts from by the sightings already there', () => {
+    const target = makeIssue({ id: 't', sightings: [meshSighting, videoSighting] });
+    const source = makeIssue({ id: 's', code: 'F02', sightings: [photoSighting, areaFrom(0)] });
+    expect(mergeIssues(target, source, LATER).sightings.slice(2)).toEqual([
+      photoSighting,
+      areaFrom(2),
+    ]);
+  });
+
+  it('moveSighting drops from on the moved sighting and reindexes the rest', () => {
+    const from = makeIssue({ id: 'a', sightings: [videoSighting, photoSighting, areaFrom(1)] });
+    const to = makeIssue({ id: 'b', code: 'F02', sightings: [meshSighting] });
+    const plain: Sighting = {
+      on: 'mesh',
+      layer: 'tank',
+      geom: {
+        type: 'spolygon',
+        points: [
+          [0, 0, 0],
+          [1, 0, 0],
+          [1, 0, 1],
+        ],
+      },
+    };
+    const r = moveSighting(from, 2, to, LATER);
+    expect(r.ok && r.value.to.sightings[1]).toEqual(plain);
+    const moved = moveSighting(from, 0, to, LATER);
+    expect(moved.ok && moved.value.from?.sightings).toEqual([photoSighting, areaFrom(0)]);
   });
 });
 

@@ -154,3 +154,36 @@ describe('surfacePointFromHit', () => {
     expect(s.n[1]).toBeCloseTo(1);
   });
 });
+
+describe('placed areas', () => {
+  it('prefer a placed area for the best anchor', () => {
+    const issue = makeIssue({
+      sightings: [
+        photoSighting,
+        { on: 'mesh', layer: 'm', geom: { type: 'spoint', p: [9, 9, 9], n: [0, 1, 0] } },
+        {
+          on: 'pointcloud',
+          layer: 'c',
+          geom: {
+            type: 'polygon3',
+            points: [
+              [0, 0, 0],
+              [3, 0, 0],
+              [3, 0, 3],
+            ],
+          },
+          from: { sighting: 0 },
+        },
+      ],
+    });
+    expect(bestAnchor(issue)).toEqual([2, 0, 1]);
+  });
+
+  it('leave out the pins of issues whose area is drawn', () => {
+    const a = makeIssue({ id: 'a' });
+    const b = makeIssue({ id: 'b', code: 'F02' });
+    expect(
+      issuePins([a, b], [tankModel], null, 'all', new Set(['a'])).map((p) => p.issueId),
+    ).toEqual(['b']);
+  });
+});

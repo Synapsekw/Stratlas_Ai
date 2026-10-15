@@ -26,6 +26,7 @@ import {
   ReportBrand,
   SeverityTemplate,
 } from './builder';
+import { SELECTION_MAX_POINTS, SelectionName, selectionByteLength } from './selection';
 import { ProjectManifest } from './manifest';
 import { ClassCatalogue, LibraryClass } from './severity';
 import { HexColor, IsoDate, Vec3 } from './common';
@@ -890,6 +891,28 @@ export const ipc = {
       })
       .strict(),
     response: z.object({ ok: z.boolean(), error: z.string().optional() }),
+  },
+  /**
+   * Write the points of a placed finding (`selections/<name>.sel`, data-conventions section 35),
+   * replacing a file of that name. Refused on a package and for bytes that are not a selection
+   * file. Not journalled (a binary asset, like a thumbnail). Answers the project path.
+   */
+  'project:writeSelection': {
+    request: z
+      .object({
+        projectId: z.string().min(1),
+        name: SelectionName,
+        data: z
+          .instanceof(Uint8Array)
+          .refine((d) => d.byteLength <= selectionByteLength(SELECTION_MAX_POINTS), {
+            message: 'A selection is at most 2 million points',
+          }),
+      })
+      .strict(),
+    response: z.discriminatedUnion('ok', [
+      z.object({ ok: z.literal(true), path: z.string() }),
+      z.object({ ok: z.literal(false), error: z.string() }),
+    ]),
   },
   /**
    * The stockpile volumes of an open project (`volumes.json`) and the toe lines corrected by hand

@@ -54,6 +54,7 @@ import { printReport } from './exports/reportWindow';
 import { hasSurveyMeasurements, surveyRunIds, surveySurfaceIds } from './exports/survey';
 import { readNarrative, readPackageNarrative, writeNarrative } from './narrative';
 import { readOrientation, readPackageOrientation, writeOrientation } from './orientation';
+import { writeSelection } from './selection';
 import { listReports } from './exports/reports';
 import { runInUtility } from './exports/utility';
 import {
@@ -1024,6 +1025,16 @@ function registerIpc(): void {
       return { ok: false, error: `Project "${projectId}" is not open. Open it, then save again.` };
     }
     return writeBoundaries(root, file);
+  });
+  handle('project:writeSelection', ({ projectId, name, data }) => {
+    if (registry.package(projectId))
+      return {
+        ok: false,
+        error: 'This project is a read-only package. Its findings cannot be changed.',
+      };
+    const root = registry.root(projectId);
+    if (root === undefined) return { ok: false, error: `Project "${projectId}" is not open.` };
+    return writeSelection(root, name, data);
   });
   handle('project:writeCentreline', ({ projectId, coordinates }) => {
     if (registry.package(projectId))

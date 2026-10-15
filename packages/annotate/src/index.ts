@@ -41,6 +41,34 @@ export {
   type RaySurface,
 } from './crossview/backproject';
 export { createDeriver, type DeriverSources } from './crossview/derive';
+export { sightingCamera, type CameraSources, type SightingCamera } from './crossview/camera';
+export { photoFrustum, type PhotoFrustum, type Plane4 } from './crossview/frustum';
+export {
+  GRID,
+  MIN_HIT_RATE,
+  placeCandidates,
+  placeOnLayer,
+  selectionName,
+  selectionSighting,
+  STEP_PX,
+  type CloudPlaceOps,
+  type PendingSelection,
+  type PlaceCandidate,
+  type PlaceFailure,
+  type PlaceResult,
+  type PlaceScene,
+  type PrismQuery,
+} from './crossview/place';
+export {
+  dropFrom,
+  hasPlacedArea,
+  isAutoPin,
+  isPlacedArea,
+  keepSightings,
+  placedFrom,
+  shiftFrom,
+  withPlacedArea,
+} from './model/placed';
 
 // Tools
 export * from './video/track';
@@ -102,10 +130,13 @@ export * from './import';
 export {
   annotateUi,
   beginSighting,
+  cameraSources,
   cancelSighting,
   confirmSighting,
   focusIssue,
   getFlightPoses,
+  getIssueListActions,
+  imageSizeOf,
   issueEditor,
   issueSaver,
   isAnnotateReadOnly,
@@ -113,6 +144,7 @@ export {
   rememberImageSize,
   setAnnotateReadOnly,
   setAnnotationAuthor,
+  setIssueListActions,
   setAnnotationPeople,
   initialsFromName,
   type AnnotationPeople,
@@ -120,7 +152,9 @@ export {
   useAnnotateReadOnly,
   useAnnotateUi,
   useIssueEditorState,
+  useIssueListActions,
   type AnnotateUiState,
+  type IssueListActions,
   type ImageTool,
   type PendingSighting,
 } from './runtime';

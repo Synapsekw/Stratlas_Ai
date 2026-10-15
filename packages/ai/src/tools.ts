@@ -252,6 +252,44 @@ export const toolInputs = {
       severity: Severity,
       classId: z.string().min(1).optional().describe('Issue class from the project catalogue'),
       at: Target.optional().describe('Where the issue is; defaults to the current selection'),
+      layer: z
+        .string()
+        .min(1)
+        .optional()
+        .describe(
+          'Mesh or point cloud layer id or name to put the issue on; default the first mesh',
+        ),
+    })
+    .strict(),
+  place_on_model: z
+    .object({
+      ids: z
+        .array(z.string().min(1))
+        .min(1)
+        .max(200)
+        .describe(
+          'Issue codes or ids, or detection ids from the detection review (waiting ones are accepted first)',
+        ),
+      layer: z.string().min(1).describe('Mesh or point cloud layer id or name, from list_layers'),
+    })
+    .strict(),
+  add_sighting: z
+    .object({
+      issue: z.string().min(1).describe('Issue code or id, e.g. F05'),
+      layer: z.string().min(1).describe('Mesh or point cloud layer id or name, from list_layers'),
+      at: z
+        .union([
+          Target,
+          z
+            .object({
+              photo: z.string().min(1).describe('Photo id'),
+              box: z
+                .tuple([z.number(), z.number(), z.number().positive(), z.number().positive()])
+                .describe('[x, y, width, height] in photo pixels'),
+            })
+            .strict(),
+        ])
+        .describe('A place, or a box on a named photo to project onto the layer'),
     })
     .strict(),
   propose_class: z
@@ -454,6 +492,26 @@ const BUILT_IN: ToolSpec[] = [
     {
       description:
         'Create a draft issue (finding) at an asset, issue or point, or at the current selection. Always a draft for a person to review; the app asks for approval first.',
+      scope: 'project',
+      risk: 'write',
+    },
+    true,
+  ),
+  spec(
+    'place_on_model',
+    {
+      description:
+        'Place findings on a mesh or point cloud layer as a real area projected from the photo boxes they were found in: an outline on a mesh, a prism with the points inside on a point cloud. Waiting detections named by id are accepted first. Answers per id what was placed or why it missed. The app asks for approval first.',
+      scope: 'project',
+      risk: 'write',
+    },
+    true,
+  ),
+  spec(
+    'add_sighting',
+    {
+      description:
+        'Add a place on a mesh or point cloud layer to an existing issue: at a place or point, or projected from a box on a named photo. The app asks for approval first.',
       scope: 'project',
       risk: 'write',
     },

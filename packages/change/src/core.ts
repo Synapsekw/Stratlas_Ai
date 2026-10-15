@@ -5,7 +5,25 @@
  */
 export { ChangeCancelled, computeInApp, inAppKinds, type ComputeSources } from './compute';
 export { detectionChanges, SITE_ZONE, type DetectionPass } from './detections';
-export { issueChanges, issueDate, issuePosition, issueSize, seenOn } from './issues';
+export {
+  isTracked,
+  issueChanges,
+  issueDate,
+  issuePosition,
+  issueSize,
+  seenOn,
+  suggestMatches,
+  type MatchSuggestion,
+} from './issues';
+export {
+  areaXZ,
+  clipConvex,
+  convexHullXZ,
+  footprintOf,
+  footprintOverlap,
+  MIN_OVERLAP,
+  type XZ,
+} from './footprint';
 export {
   canMakeIssue,
   closeResolved,

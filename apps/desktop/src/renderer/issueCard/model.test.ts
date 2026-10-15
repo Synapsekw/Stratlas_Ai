@@ -2,6 +2,7 @@ import { ProjectManifest, SCHEMA_VERSION, type Issue, type Layer } from '@aio/sc
 import { describe, expect, it } from 'vitest';
 import {
   evidenceKind,
+  evidenceStart,
   issueEvidence,
   issueFacts,
   issueOrder,
@@ -92,6 +93,42 @@ function issue(over: Partial<Issue> = {}): Issue {
 }
 
 describe('issue evidence', () => {
+  it('starts on the photo a placed area was projected from', () => {
+    const big = {
+      on: 'image' as const,
+      layer: 'photos',
+      photo: 'p1',
+      geom: { type: 'box' as const, x: 0, y: 0, w: 90, h: 90 },
+    };
+    const small = {
+      on: 'image' as const,
+      layer: 'photos',
+      photo: 'p2',
+      geom: { type: 'box' as const, x: 0, y: 0, w: 9, h: 9 },
+    };
+    const area = {
+      on: 'mesh' as const,
+      layer: 'm',
+      geom: {
+        type: 'spolygon' as const,
+        points: [
+          [0, 0, 0],
+          [1, 0, 0],
+          [1, 0, 1],
+        ] as [number, number, number][],
+      },
+      from: { sighting: 1 },
+    };
+    const placed = issue({ sightings: [big, small, area] });
+    // p1 is the largest mark and comes first; the area came from p2
+    expect(photoEvidence(issueEvidence(manifest, placed)).map((e) => e.photo)).toEqual([
+      'p1',
+      'p2',
+    ]);
+    expect(evidenceStart(manifest, placed)).toBe(1);
+    expect(evidenceStart(manifest, issue({ sightings: [big, small] }))).toBe(0);
+  });
+
   it('groups the sightings per photo, largest marked region first, then video frames', () => {
     const list = issueEvidence(
       manifest,

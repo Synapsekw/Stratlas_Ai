@@ -105,4 +105,46 @@ describe('make an issue from a change', () => {
       error: 'This change has no place on the later date to put an issue.',
     });
   });
+
+  it('writes a point-cloud sighting when the later model is a point cloud', () => {
+    const manifest = {
+      ...SITE,
+      layers: [
+        ...SITE.layers,
+        {
+          kind: 'pointcloud' as const,
+          id: 'cloud-d2',
+          name: 'Cloud',
+          visible: true,
+          capture: 'd2',
+          src: { path: 'clouds/d2.json' },
+          format: 'png-packed' as const,
+        },
+      ],
+    };
+    const at = draftFromChange(
+      { kind: 'region', id: 'r', verdict: 'added', at: [1, 2, 3] },
+      { ...ctx, manifest, meshLayer: 'cloud-d2' },
+    );
+    expect(at.ok && at.issue.sightings[0]).toEqual({
+      on: 'pointcloud',
+      layer: 'cloud-d2',
+      geom: { type: 'point3', p: [1, 2, 3] },
+    });
+    const outlineLocal: [number, number, number][] = [
+      [0, 0, 0],
+      [1, 0, 0],
+      [1, 0, 1],
+    ];
+    const ring = draftFromChange(
+      { kind: 'region', id: 'r', verdict: 'added', outlineLocal },
+      { ...ctx, manifest, meshLayer: 'cloud-d2' },
+    );
+    expect(ring.ok && ring.issue.sightings[0]).toEqual({
+      on: 'pointcloud',
+      layer: 'cloud-d2',
+      geom: { type: 'polygon3', points: outlineLocal },
+    });
+    expect(ring.ok && IssueSchema.safeParse(ring.issue).success).toBe(true);
+  });
 });

@@ -5,6 +5,7 @@ import { assetUrl, workspace } from '@aio/workspace';
 import { useSyncExternalStore } from 'react';
 import { createStore } from 'zustand/vanilla';
 import { useStore } from 'zustand';
+import type { CameraSources } from './crossview/camera';
 import { createDeriver } from './crossview/derive';
 import { createIssueEditor, type EditorState, type IssueEditor } from './model/editor';
 import { createIssueSaver, ipcWriteIssues } from './model/persist';
@@ -49,6 +50,19 @@ export async function loadFlightPoses(
 export function rememberImageSize(layerId: string, photoId: string | null, size: Vec2): void {
   sizes.set(sizeKey(layerId, photoId), size);
 }
+
+/** The pixel size remembered for a photo (or a video frame when `photoId` is null). */
+export function imageSizeOf(layerId: string, photoId: string | null): Vec2 | null {
+  return sizes.get(sizeKey(layerId, photoId)) ?? null;
+}
+
+/** Cameras of the open project's photos and frames, for projecting their shapes. */
+export const cameraSources: CameraSources = {
+  layers: () => workspace.getState().project?.manifest.layers ?? [],
+  flight: getFlightPoses,
+  imageSize: imageSizeOf,
+  orientation: () => workspace.getState().orientation,
+};
 
 // ---- the app-wide issue editor ----
 
@@ -110,6 +124,31 @@ export function useTeamPolicy(): boolean {
   return useStore(peopleStore, (s) => s.teamPolicy);
 }
 
+/** Actions the app adds to the issue list's right-click menu (it owns what they do). */
+export interface IssueListActions {
+  /** "Place on model...": the ids of the issues right-clicked (the checked ones, else one). */
+  placeOnModel?: (ids: readonly string[]) => void;
+}
+
+const listActions = createStore<IssueListActions>()(() => ({}));
+
+/** Set the issue list actions; returns a function that removes them. */
+export function setIssueListActions(actions: IssueListActions): () => void {
+  listActions.setState(actions, true);
+  return () => {
+    if (listActions.getState() === actions) listActions.setState({}, true);
+  };
+}
+
+/** The issue list actions set now (outside React). */
+export function getIssueListActions(): IssueListActions {
+  return listActions.getState();
+}
+
+export function useIssueListActions(): IssueListActions {
+  return useStore(listActions, (s) => s);
+}
+
 let author = 'user';
 /** Name written into new issues and the audit trail (the shell sets it from Settings). */
 export function setAnnotationAuthor(name: string): void {
@@ -121,13 +160,7 @@ export const issueEditor: IssueEditor = createIssueEditor({
   saver: issueSaver,
   author: () => author,
   readOnly: isAnnotateReadOnly,
-  derive: createDeriver({
-    layers: () => workspace.getState().project?.manifest.layers ?? [],
-    scene: () => getActiveScene(),
-    flight: getFlightPoses,
-    imageSize: (layer, photo) => sizes.get(sizeKey(layer, photo)) ?? null,
-    orientation: () => workspace.getState().orientation,
-  }),
+  derive: createDeriver({ ...cameraSources, scene: () => getActiveScene() }),
 });
 
 export function useIssueEditorState(): EditorState {

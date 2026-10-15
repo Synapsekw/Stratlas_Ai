@@ -155,6 +155,28 @@ describe('IssueEditor', () => {
     store.getState().openProject({ id: 'other', root: 'y', manifest }, []);
     expect(editor.state.canUndo).toBe(false);
   });
+
+  it('commits computed issues as one undo step, and refuses unknown or invalid ones', () => {
+    const a = makeIssue({ id: 'a', code: 'F01' });
+    const b = makeIssue({ id: 'b', code: 'F02' });
+    const { store, editor, calls } = setup([a, b]);
+    const r = editor.commitIssues(
+      [
+        { ...a, title: 'Placed', track: 't1' },
+        { ...b, track: 't1' },
+      ],
+      'Match F01 and F02',
+    );
+    expect(r.ok).toBe(true);
+    expect(store.getState().issues.map((i) => i.track)).toEqual(['t1', 't1']);
+    expect(editor.state.undoLabel).toBe('Match F01 and F02');
+    expect(calls).toHaveLength(1);
+    expect(editor.undo()).toBe(true);
+    expect(store.getState().issues.map((i) => i.track)).toEqual([undefined, undefined]);
+    expect(editor.commitIssues([makeIssue({ id: 'zz' })], 'x').ok).toBe(false);
+    expect(editor.commitIssues([{ ...a, severity: 99 }], 'x').ok).toBe(false);
+    expect(editor.commitIssues([], 'x')).toEqual({ ok: true, value: null });
+  });
 });
 
 describe('IssueEditor in a read-only package', () => {

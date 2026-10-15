@@ -56,6 +56,8 @@ import type {
   PickEvent,
   PickInfo,
   RaycastProvider,
+  RayOptions,
+  RayProvider,
   SavedView,
   StageTool,
 } from '../types';
@@ -188,6 +190,7 @@ export class Stage implements EngineStage {
   private readonly targets = new Map<Object3D, string>();
   private readonly receivers = new Set<Mesh>();
   private readonly providers = new Set<RaycastProvider>();
+  private readonly rayProviders = new Set<RayProvider>();
   private readonly boundsProviders = new Set<() => Box3 | null>();
   /**
    * The providers of `boundsProviders` that widen the camera's reach beside a model too
@@ -497,18 +500,26 @@ export class Stage implements EngineStage {
     return this.groundHit();
   }
 
-  raycastRay(origin: Vector3, dir: Vector3): Intersection | null {
+  raycastRay(origin: Vector3, dir: Vector3, opts: RayOptions = {}): Intersection | null {
     this.raycaster.set(origin, dir.clone().normalize());
     this.raycaster.layers.mask = 1 | (1 << PICK_LAYER);
     const hits: Intersection[] = [];
-    for (const [root] of this.targets) {
+    for (const [root, layerId] of this.targets) {
+      if (opts.layer !== undefined && layerId !== opts.layer) continue;
       if (!visibleChain(root)) continue;
       this.raycaster.intersectObject(root, true, hits);
     }
-    const hit = hits
-      .filter((h) => visibleChain(h.object))
-      .sort((a, b) => a.distance - b.distance)[0];
-    return hit ?? this.groundHit();
+    let hit: Intersection | null =
+      hits.filter((h) => visibleChain(h.object)).sort((a, b) => a.distance - b.distance)[0] ?? null;
+    if (opts.layer === undefined) return hit ?? this.groundHit();
+    const o = this.raycaster.ray.origin.clone();
+    const d = this.raycaster.ray.direction.clone();
+    for (const p of this.rayProviders) {
+      if (!p.layers().includes(opts.layer)) continue;
+      const h = p.cast(o, d, opts.layer, opts);
+      if (h && (!hit || h.distance < hit.distance)) hit = h;
+    }
+    return hit;
   }
 
   addRaycastProvider(provider: RaycastProvider): () => void {
@@ -516,6 +527,20 @@ export class Stage implements EngineStage {
     return () => {
       this.providers.delete(provider);
     };
+  }
+
+  addRayProvider(provider: RayProvider): () => void {
+    this.rayProviders.add(provider);
+    return () => {
+      this.rayProviders.delete(provider);
+    };
+  }
+
+  rayLayers(): ReadonlySet<string> {
+    const out = new Set<string>();
+    for (const [root, id] of this.targets) if (visibleChain(root)) out.add(id);
+    for (const p of this.rayProviders) for (const id of p.layers()) out.add(id);
+    return out;
   }
 
   /** The current raycaster ray against the ground plane y = 0. */

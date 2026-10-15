@@ -763,6 +763,15 @@ export function describeStep(step: Pick<Step, 'name' | 'input'>): string {
   }
   if (step.name === 'capture_frame') return 'Sends the current frame to the AI provider';
   if (step.name === 'export_issues') return 'Writes the matching issues to a CSV file you choose';
+  const layer = typeof input.layer === 'string' ? input.layer : 'the model';
+  if (step.name === 'place_on_model') {
+    const n = Array.isArray(input.ids) ? input.ids.length : 0;
+    return `Place ${String(n)} ${n === 1 ? 'finding' : 'findings'} on ${layer}`;
+  }
+  if (step.name === 'add_sighting') {
+    const issue = typeof input.issue === 'string' ? input.issue : 'the issue';
+    return `Add a place to ${issue} on ${layer}`;
+  }
   const description = getToolSpec(step.name)?.meta.description;
   return description ?? `Runs ${step.name}`;
 }

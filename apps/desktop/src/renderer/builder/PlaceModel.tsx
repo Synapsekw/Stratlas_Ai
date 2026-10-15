@@ -519,7 +519,7 @@ export function PlaceModel({
               }}
             />
             <button type="submit" className="btn">
-              {t('place.go')}
+              {t('place.typedGo')}
             </button>
           </form>
           <p className="say mono" data-testid="place-position">

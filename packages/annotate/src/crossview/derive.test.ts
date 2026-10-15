@@ -111,4 +111,18 @@ describe('createDeriver', () => {
     };
     expect(blind(p, makeIssue({ sightings: [p] }))).toEqual([]);
   });
+
+  it('marks its pin with the photo sighting it was projected from', () => {
+    const s: Sighting = {
+      on: 'image',
+      layer: 'photos',
+      photo: 'F01',
+      geom: { type: 'point', x: 600, y: 450 },
+    };
+    const other: Sighting = { ...s, geom: { type: 'point', x: 10, y: 10 } };
+    expect(deriver()(s, makeIssue({ sightings: [s] }))[0]).toMatchObject({ from: { sighting: 0 } });
+    expect(deriver()(s, makeIssue({ sightings: [other, s] }))[0]).toMatchObject({
+      from: { sighting: 1 },
+    });
+  });
 });

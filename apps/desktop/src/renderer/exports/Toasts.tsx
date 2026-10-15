@@ -6,6 +6,8 @@ import { DiskChangedNotice } from '../DiskChangedNotice';
 import { GraphicsNotice } from '../GraphicsNotice';
 import { FarContentNotice } from '../builder/FarContentNotice';
 import { ProjectMapNotice } from '../mapCoverage/ProjectMapNotice';
+import { placement } from '../placement';
+import { PlaceOnModelNotice } from '../placement/PlaceOnModelNotice';
 import { ProcessingToolsNotice } from '../ProcessingToolsNotice';
 import { SyncNotices } from '../team/SyncNotices';
 import { cancelExport, toasts } from './exports';
@@ -24,6 +26,7 @@ export function Toasts() {
       <SyncNotices />
       <AlignNotice />
       <PhotoAlignNotice />
+      <PlaceOnModelNotice store={placement} />
       <ProjectMapNotice />
       <FarContentNotice />
       {list.map((t) => {
