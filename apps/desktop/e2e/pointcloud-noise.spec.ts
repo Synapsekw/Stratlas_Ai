@@ -2,8 +2,8 @@
  * Point cloud cleanup, Remove noise (pointcloud.clean, noise mode) on the noisy synthetic COPC: the
  * 60 planted outliers are marked as class 7, the count shows, class 7 is hidden in the legend and
  * the view draws every other point of the working copy, and Undo returns to the original stream
- * and its full count. Needs the pipeline Python and PDAL (skipped without them, as on the CI e2e
- * runners).
+ * and its full count. Needs the pipeline Python and PDAL, which the CI e2e job installs (skipped
+ * without them).
  */
 import { PIPELINE_ENV, PDAL, expect, hasPdal, hasPipelinePython, test } from './fixtures';
 import {

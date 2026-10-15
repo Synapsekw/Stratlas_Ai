@@ -330,4 +330,3 @@ Current limits only; each is removed from this list when fixed.
 - **Selections reach through the cloud.** A box or lasso selects every point that falls inside it in the view it was drawn in, near and far, also the points not loaded at the time. Undo a selection that caught too much.
 - **Packages carry recipes, not working copies.** A package of a project keeps each cloud's cleanup recipe but not the noise working copy, so noise marks are not shown there; save a cleaned copy before packaging.
 - **Cleanup of a large cloud is not shared in a team folder as one step.** Each step rewrites the layer's recipe file (last writer wins, like other whole-file records).
-- **Remove noise and clean exports in tests.** The end to end specs for noise removal and the clean export skip on the CI runners, which have no PDAL; they run on a computer with the processing tools.
