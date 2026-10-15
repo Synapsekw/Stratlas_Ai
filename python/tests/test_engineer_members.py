@@ -64,7 +64,15 @@ def test_stack_flues_and_light_levels():
         assert len({round(i.azimuth_deg / 120) % 3 for i in at}) == 3
         assert all(abs(i.size - STACK["lightSize"]) < 0.15 for i in at)
     d = flues.to_dict()
-    assert d["kind"] == "flue" and set(d["items"][0]) == {"centre", "size", "support", "azimuthDeg"}
+    assert d["kind"] == "flue" and set(d["items"][0]) == {
+        "centre",
+        "size",
+        "support",
+        "azimuthDeg",
+        "residualM",
+        "coverage",
+    }
+    assert lights.to_dict()["levels"] == lights.levels
 
 
 def test_partial_stack_does_not_invent_the_flue_in_the_gap():

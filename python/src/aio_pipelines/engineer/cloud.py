@@ -107,31 +107,43 @@ class _Reservoir:
         self.cap = max(1, int(cap))
         self.rng = np.random.default_rng(seed)
         self.pts: list[np.ndarray] = []
+        self.cols: list[np.ndarray] = []  # uint8 colours, parallel to pts, when the source has them
         self.keys: list[np.ndarray] = []
         self.size = 0
         self.threshold = 1.0
+        self.coloured = True
 
-    def add(self, xyz: np.ndarray) -> None:
+    def add(self, xyz: np.ndarray, rgb: np.ndarray | None = None) -> None:
         if len(xyz) == 0:
             return
+        if rgb is None:
+            self.coloured = False
         u = self.rng.random(len(xyz))
         keep = u < self.threshold
         self.pts.append(xyz[keep])
+        if rgb is not None:
+            self.cols.append(rgb[keep])
         self.keys.append(u[keep])
         self.size += int(keep.sum())
         while self.size > 2 * self.cap:
             self.threshold *= 0.5
-            pts, keys = np.concatenate(self.pts), np.concatenate(self.keys)
+            keys = np.concatenate(self.keys)
             m = keys < self.threshold
-            self.pts, self.keys, self.size = [pts[m]], [keys[m]], int(m.sum())
+            self.pts = [np.concatenate(self.pts)[m]]
+            if self.coloured and self.cols:
+                self.cols = [np.concatenate(self.cols)[m]]
+            self.keys, self.size = [keys[m]], int(m.sum())
 
-    def result(self) -> np.ndarray:
+    def result(self) -> tuple[np.ndarray, np.ndarray | None]:
         if not self.pts:
-            return np.zeros((0, 3))
+            return np.zeros((0, 3)), None
         pts, keys = np.concatenate(self.pts), np.concatenate(self.keys)
+        cols = np.concatenate(self.cols) if self.coloured and self.cols else None
         if len(pts) > self.cap:
-            pts = pts[np.argsort(keys, kind="stable")[: self.cap]]
-        return pts
+            order = np.argsort(keys, kind="stable")[: self.cap]
+            pts = pts[order]
+            cols = cols[order] if cols is not None else None
+        return pts, cols
 
 
 def _stream_las(
@@ -140,12 +152,21 @@ def _stream_las(
     """Crop every chunk of a plain LAS to the region into `res`; return how many points were inside."""
     ox, oy, oz = origin
     inside = 0
-    for x, y, z, _rgb in read_las_chunks(las, check):
+    for x, y, z, rgb in read_las_chunks(las, check):
         local = np.column_stack([x - ox, z - oz, oy - y])
-        local = local[_inside(local, region)]
+        inside_mask = _inside(local, region)
+        local = local[inside_mask]
         inside += len(local)
-        res.add(local)
+        res.add(local, None if rgb is None else _to_uint8(rgb[inside_mask]))
     return inside
+
+
+def _to_uint8(rgb: np.ndarray) -> np.ndarray:
+    """LAS colours (16-bit; some writers fill only the low 8 bits) as 8-bit channels."""
+    c = np.asarray(rgb)
+    if len(c) and c.max() > 255:
+        c = np.floor(c / 256.0)
+    return np.clip(c, 0, 255).astype(np.uint8)
 
 
 def read_region(
@@ -161,8 +182,9 @@ def read_region(
 
     `origin` is the project origin `[E, N, H]`. Returns the local xyz and
     `{"read": points inside the region, "kept": points returned, "crs": {...} | None,
-    "bounds": {"min", "max"} of the kept points | None}`. `read` counts what the region holds, not
-    what the sample keeps. COPC and LAZ need PDAL (the region is the reader's `bounds`, or a
+    "bounds": {"min", "max"} of the kept points | None, "rgb": uint8 (N, 3) | None}`. `rgb` is the
+    colour of the kept points when the source has it (LAS colour formats), None otherwise: absent
+    colour is never invented. `read` counts what the region holds, not what the sample keeps. COPC and LAZ need PDAL (the region is the reader's `bounds`, or a
     `filters.crop` for LAZ). kit-packed and png-packed clouds are loaded whole before the crop
     (their readers have no bounded mode), so they are not memory-bounded by the region.
     """
@@ -198,13 +220,13 @@ def read_region(
         pts = pts[_inside(pts, region)]
         read = len(pts)
         res.add(pts)
-    xyz = res.result()
+    xyz, rgb = res.result()
     bounds = (
         {"min": [float(v) for v in xyz.min(axis=0)], "max": [float(v) for v in xyz.max(axis=0)]}
         if len(xyz)
         else None
     )
-    return xyz, {"read": int(read), "kept": len(xyz), "crs": crs, "bounds": bounds}
+    return xyz, {"read": int(read), "kept": len(xyz), "crs": crs, "bounds": bounds, "rgb": rgb}
 
 
 @dataclass
@@ -212,6 +234,7 @@ class GroundSplit:
     kept: np.ndarray  # points at least `dist` above the ground surface
     ground: np.ndarray  # the points removed
     surface: Callable[[np.ndarray], np.ndarray]  # ground height at local (x, z) rows
+    mask: np.ndarray | None = None  # over the input rows: True where kept (to carry colours along)
 
     @property
     def removed(self) -> int:
@@ -221,10 +244,10 @@ class GroundSplit:
 def split_ground(xyz: np.ndarray, dist: float) -> GroundSplit:
     """Split a cloud at the ground surface (`modelfit.segment.ground_surface`) plus `dist`."""
     if len(xyz) == 0:
-        return GroundSplit(xyz, xyz, lambda xz: np.zeros(len(xz)))
+        return GroundSplit(xyz, xyz, lambda xz: np.zeros(len(xz)), np.ones(0, dtype=bool))
     surface = ground_surface(xyz)
     keep = xyz[:, 1] >= surface(xyz[:, [0, 2]]) + dist
-    return GroundSplit(xyz[keep], xyz[~keep], surface)
+    return GroundSplit(xyz[keep], xyz[~keep], surface, keep)
 
 
 def remove_ground(xyz: np.ndarray, dist: float) -> tuple[np.ndarray, int]:
@@ -262,7 +285,13 @@ def isolate_asset(
     `{"components", "kept", "dropped": [{"points", "min", "max"}, ...] (at most 8, over 50 points),
     "droppedPoints"}` so the caller can say what was excluded.
     """
-    info: dict[str, Any] = {"components": 0, "kept": len(xyz), "dropped": [], "droppedPoints": 0}
+    info: dict[str, Any] = {
+        "components": 0,
+        "kept": len(xyz),
+        "dropped": [],
+        "droppedPoints": 0,
+        "mask": np.ones(len(xyz), dtype=bool),
+    }
     if len(xyz) < 10:
         return xyz, info
     keys = np.floor(xyz / voxel).astype(np.int64)
@@ -303,6 +332,7 @@ def isolate_asset(
                 mask |= sel
     others = ~mask
     info["kept"] = int(mask.sum())
+    info["mask"] = mask  # over the input rows, to carry colours along; not JSON
     info["droppedPoints"] = int(others.sum())
     if others.any():
         # the dropped parts, grouped into structures (parts within 2 m of each other are one)

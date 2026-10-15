@@ -111,6 +111,30 @@ def test_read_region_las_crop_and_cap(tmp_path):
     assert winfo["read"] == len(cloud) == len(whole)
 
 
+def test_read_region_carries_colour_when_the_cloud_has_it(tmp_path):
+    cloud, _ = monopole_cloud(seed=1)
+    rgb = np.column_stack(
+        [
+            (cloud[:, 1] * 8).astype(np.uint8),
+            np.full(len(cloud), 90, np.uint8),
+            np.zeros(len(cloud), np.uint8),
+        ]
+    )
+    origin = (400000.0, 5600000.0, 10.0)
+    las = write_las(cloud, tmp_path / "c.las", offset=origin, rgb=rgb)
+    region = {"centre": [0.0, 0.0], "radiusM": 3.0}
+    xyz, info = read_region(las, "las", region, 1_000_000, CTX, origin=origin)
+    assert info["rgb"] is not None and info["rgb"].dtype == np.uint8 and info["rgb"].shape == (len(xyz), 3)
+    # the colour belongs to its point: red follows height
+    assert np.abs(info["rgb"][:, 0].astype(float) - np.clip(xyz[:, 1] * 8, 0, 255)).max() <= 9
+    assert (info["rgb"][:, 1] == 90).all()
+    capped, info2 = read_region(las, "las", region, 400, CTX, origin=origin, seed=2)
+    assert info2["rgb"].shape == (400, 3)
+    assert np.abs(info2["rgb"][:, 0].astype(float) - np.clip(capped[:, 1] * 8, 0, 255)).max() <= 9
+    plain = write_las(cloud, tmp_path / "p.las", offset=origin)
+    assert read_region(plain, "las", region, 1000, CTX, origin=origin)[1]["rgb"] is None
+
+
 def test_read_region_without_crs_or_las_is_an_error(tmp_path):
     bad = tmp_path / "x.las"
     bad.write_bytes(b"not a las file" * 40)

@@ -53,13 +53,20 @@ class MemberGroup:
             }
             if i.azimuth_deg is not None:
                 d["azimuthDeg"] = float(i.azimuth_deg) % 360.0
+            if i.residual_m is not None:
+                d["residualM"] = float(i.residual_m)
+            if i.coverage is not None:
+                d["coverage"] = float(min(1.0, max(0.0, i.coverage)))
             items.append(d)
         metrics: dict[str, float] = {}
         if self.residual_m is not None:
             metrics["residualM"] = float(self.residual_m)
         if self.regularity is not None:
             metrics["regularity"] = float(min(1.0, max(0.0, self.regularity)))
-        return {"kind": self.kind, "items": items, "metrics": metrics}
+        out: dict[str, Any] = {"kind": self.kind, "items": items, "metrics": metrics}
+        if self.levels:
+            out["levels"] = [float(v) for v in self.levels]
+        return out
 
 
 @dataclass
@@ -76,6 +83,7 @@ class FamilyHints:
             "slenderness": self.slenderness,
             "topFeatures": self.top_features,
             "suggested": self.suggested,
+            "reasons": [r[:200] for r in self.reasons[:8]],
         }
 
 

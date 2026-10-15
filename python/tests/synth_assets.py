@@ -306,8 +306,9 @@ def monopole_cloud(seed=1, noise=0.005, ground=True, points=25_000):
     return cloud, truth
 
 
-def write_las(points, path, crs_epsg=32633, offset=(400000, 5600000, 0)):
-    """Write local points (x east, y up, z south) as a LAS 1.2, point format 0 file.
+def write_las(points, path, crs_epsg=32633, offset=(400000, 5600000, 0), rgb=None):
+    """Write local points (x east, y up, z south) as a LAS 1.2, point format 0 file (format 2 with
+    `rgb`, uint8 (N, 3), stored as 16-bit channels).
 
     World = offset + (x, -z, y): east, north, up. The scale is 1 mm. A GeoTIFF key directory VLR
     carries `crs_epsg` as the projected CRS. Returns the path.
@@ -327,9 +328,12 @@ def write_las(points, path, crs_epsg=32633, offset=(400000, 5600000, 0)):
             ("angle", "i1"),
             ("user", "u1"),
             ("source", "<u2"),
+            *([("rgb", "<u2", 3)] if rgb is not None else []),
         ]
     )
     data = np.zeros(len(local), dtype=rec)
+    if rgb is not None:
+        data["rgb"] = np.asarray(rgb, dtype=np.uint16) * 257
     for i, k in enumerate("xyz"):
         data[k] = np.round(local[:, i] / scale).astype(np.int32)
     data["flags"] = 0b00001001  # return 1 of 1
@@ -353,7 +357,7 @@ def write_las(points, path, crs_epsg=32633, offset=(400000, 5600000, 0)):
         head,
         head + len(vlr),
         1,
-        0,
+        2 if rgb is not None else 0,
         rec.itemsize,
         len(local),
         len(local),
