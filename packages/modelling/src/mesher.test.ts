@@ -1,7 +1,10 @@
 import { ProcModel, type ProcPart } from '@aio/schema';
 import { describe, expect, it } from 'vitest';
+import type { Prim } from './engineer/geom';
+import { stackModel } from './engineer/fixtures';
+import { closedAndWound, normalsAgree, vertexAt, volume } from './engineer/testGeom';
 import { readGlb } from './glb';
-import { meshPart, meshProcModel, partNodeName, type PartMesh } from './index';
+import { buildEngineeringGlb, meshPart, meshProcModel, partNodeName, type PartMesh } from './index';
 
 const origin = { by: 'manual' } as const;
 
@@ -91,87 +94,20 @@ const PARTS = {
   },
 } satisfies Record<string, ProcPart>;
 
-const pos = (m: PartMesh, i: number): [number, number, number] => [
-  (m.positions[3 * i] ?? 0) + m.translation[0],
-  (m.positions[3 * i + 1] ?? 0) + m.translation[1],
-  (m.positions[3 * i + 2] ?? 0) + m.translation[2],
-];
-
-/** Every edge of the welded mesh is used once in each direction: closed and consistently wound. */
-function closedAndWound(m: PartMesh): boolean {
-  const key = (p: number[]) => p.map((v) => Math.round(v * 1e4)).join(',');
-  const ids = new Map<string, number>();
-  const weld = (i: number) => {
-    const k = key(pos(m, i));
-    let id = ids.get(k);
-    if (id === undefined) {
-      id = ids.size;
-      ids.set(k, id);
-    }
-    return id;
-  };
-  const directed = new Map<string, number>();
-  for (let t = 0; t < m.indices.length; t += 3) {
-    const v = [0, 1, 2].map((k) => weld(m.indices[t + k] ?? 0));
-    for (let e = 0; e < 3; e++) {
-      const a = v[e] ?? 0;
-      const b = v[(e + 1) % 3] ?? 0;
-      if (a === b) continue;
-      const k = `${String(a)}>${String(b)}`;
-      directed.set(k, (directed.get(k) ?? 0) + 1);
-    }
-  }
-  for (const [k, n] of directed) {
-    const [a, b] = k.split('>');
-    if (n !== 1 || directed.get(`${b ?? ''}>${a ?? ''}`) !== 1) return false;
-  }
-  return directed.size > 0;
-}
-
-/** Signed volume by the divergence theorem (positive when the faces point outwards). */
-function volume(m: PartMesh): number {
-  let v = 0;
-  for (let t = 0; t < m.indices.length; t += 3) {
-    const [a, b, c] = [0, 1, 2].map((k) => pos(m, m.indices[t + k] ?? 0)) as unknown as [
-      number[],
-      number[],
-      number[],
-    ];
-    v +=
-      ((a[0] ?? 0) * ((b[1] ?? 0) * (c[2] ?? 0) - (b[2] ?? 0) * (c[1] ?? 0)) -
-        (a[1] ?? 0) * ((b[0] ?? 0) * (c[2] ?? 0) - (b[2] ?? 0) * (c[0] ?? 0)) +
-        (a[2] ?? 0) * ((b[0] ?? 0) * (c[1] ?? 0) - (b[1] ?? 0) * (c[0] ?? 0))) /
-      6;
-  }
-  return v;
-}
-
-/** Each triangle's winding agrees with its vertex normals. */
-function normalsAgree(m: PartMesh): boolean {
-  for (let t = 0; t < m.indices.length; t += 3) {
-    const i = [0, 1, 2].map((k) => m.indices[t + k] ?? 0);
-    const [a, b, c] = i.map((j) => pos(m, j)) as unknown as [number[], number[], number[]];
-    const u = [0, 1, 2].map((k) => (b[k] ?? 0) - (a[k] ?? 0));
-    const w = [0, 1, 2].map((k) => (c[k] ?? 0) - (a[k] ?? 0));
-    const n = [
-      (u[1] ?? 0) * (w[2] ?? 0) - (u[2] ?? 0) * (w[1] ?? 0),
-      (u[2] ?? 0) * (w[0] ?? 0) - (u[0] ?? 0) * (w[2] ?? 0),
-      (u[0] ?? 0) * (w[1] ?? 0) - (u[1] ?? 0) * (w[0] ?? 0),
-    ];
-    if (Math.hypot(...n) < 1e-9) continue;
-    const vn = [0, 1, 2].map((k) => i.reduce((s, j) => s + (m.normals[3 * j + k] ?? 0), 0));
-    if ((n[0] ?? 0) * (vn[0] ?? 0) + (n[1] ?? 0) * (vn[1] ?? 0) + (n[2] ?? 0) * (vn[2] ?? 0) <= 0)
-      return false;
-  }
-  return true;
-}
+/** A part mesh as a kernel primitive in the model frame, for the shared mesh checks. */
+const primOf = (m: PartMesh): Prim => ({
+  material: 'part',
+  positions: Array.from(m.positions, (v, i) => v + (m.translation[i % 3] ?? 0)),
+  normals: Array.from(m.normals),
+  indices: Array.from(m.indices),
+});
 
 describe('meshPart', () => {
   it.each(Object.entries(PARTS))('%s is closed, wound outwards and has unit normals', (_, p) => {
     const m = meshPart(p);
-    expect(closedAndWound(m)).toBe(true);
-    expect(normalsAgree(m)).toBe(true);
-    expect(volume(m)).toBeGreaterThan(0);
+    expect(closedAndWound(primOf(m))).toBe(true);
+    expect(normalsAgree(primOf(m))).toBe(true);
+    expect(volume(primOf(m))).toBeGreaterThan(0);
     for (let i = 0; i < m.normals.length; i += 3) {
       const len = Math.hypot(m.normals[i] ?? 0, m.normals[i + 1] ?? 0, m.normals[i + 2] ?? 0);
       expect(len).toBeCloseTo(1, 4);
@@ -179,17 +115,21 @@ describe('meshPart', () => {
   });
 
   it('gives the right volumes and places parts where they stand', () => {
-    expect(volume(meshPart(PARTS.flatTank)) / (Math.PI * 36 * 12.5)).toBeCloseTo(1, 2);
-    expect(volume(meshPart(PARTS.box))).toBeCloseTo(6 * 2.5 * 3, 3);
-    expect(volume(meshPart(PARTS.building))).toBeCloseTo((10 * 4 + 6 * 4) * 5, 3);
-    const cone = volume(meshPart(PARTS.coneTank));
+    expect(volume(primOf(meshPart(PARTS.flatTank))) / (Math.PI * 36 * 12.5)).toBeCloseTo(1, 2);
+    expect(volume(primOf(meshPart(PARTS.box)))).toBeCloseTo(6 * 2.5 * 3, 3);
+    expect(volume(primOf(meshPart(PARTS.building)))).toBeCloseTo((10 * 4 + 6 * 4) * 5, 3);
+    const cone = volume(primOf(meshPart(PARTS.coneTank)));
     expect(cone / (Math.PI * 16 * 8 + (Math.PI * 16 * 1.5) / 3)).toBeCloseTo(1, 2);
-    const pipe = volume(meshPart(PARTS.pipe));
+    const pipe = volume(primOf(meshPart(PARTS.pipe)));
     // straight length 10 + 6 + 2.5, mitred joints add and remove the same wedge
     expect(pipe / (Math.PI * 0.15 ** 2 * 18.5)).toBeCloseTo(1, 1);
     // the tank stands on its base centre, 12.5 m tall
     const tank = meshPart(PARTS.flatTank);
-    const ys = Array.from({ length: tank.positions.length / 3 }, (_, i) => pos(tank, i)[1]);
+    const tankPrim = primOf(tank);
+    const ys = Array.from(
+      { length: tank.positions.length / 3 },
+      (_, i) => vertexAt(tankPrim, i)[1],
+    );
     expect(Math.min(...ys)).toBeCloseTo(0, 6);
     expect(Math.max(...ys)).toBeCloseTo(12.5, 6);
     expect(tank.translation).toEqual([10, 0, -5]);
@@ -197,7 +137,8 @@ describe('meshPart', () => {
 
   it('turns a box counter-clockwise seen from above', () => {
     const b = meshPart({ ...PARTS.box, yawDeg: 90 });
-    const pts = Array.from({ length: b.positions.length / 3 }, (_, i) => pos(b, i));
+    const prim = primOf(b);
+    const pts = Array.from({ length: b.positions.length / 3 }, (_, i) => vertexAt(prim, i));
     const xs = pts.map((p) => p[0]);
     const zs = pts.map((p) => p[2]);
     // 6 m along x turned 90 degrees towards north (-z): now 6 m along z, 3 m along x
@@ -263,6 +204,18 @@ describe('meshProcModel', () => {
     const none = meshProcModel({ ...model, parts: [] });
     expect(none.nodes).toEqual([]);
     expect(readGlb(none.glb).json.nodes).toEqual([{ name: 'site', children: [] }]);
+  });
+
+  it('a mixed model: parts mesh as before, the engineering GLB holds parts and assemblies', () => {
+    const mixed: ProcModel = { ...stackModel(), id: 'site', parts: model.parts };
+    const parts = meshProcModel(mixed);
+    expect(parts.nodes).toEqual(['T-101', 'Line_7']);
+    expect(parts.glb).toEqual(meshProcModel(model).glb);
+    const built = buildEngineeringGlb(mixed, { detail: 'fast', drafts: false, generator: 't' });
+    const names = (readGlb(built.glb).json.nodes as { name: string }[]).map((n) => n.name);
+    // the accepted shaft, then the accepted parts, then the root
+    expect(names).toEqual(['shaft-1', 'T-101', 'Line_7', 'site']);
+    expect(built.nodes.map((n) => n.node)).toEqual(['shaft-1', 'T-101', 'Line_7']);
   });
 
   it('makes two parts with one tag two distinct node names', () => {

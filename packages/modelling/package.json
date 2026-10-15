@@ -14,5 +14,8 @@
     "@aio/schema": "workspace:*",
     "@aio/ui": "workspace:*",
     "react": "^19.3.0"
+  },
+  "devDependencies": {
+    "gltf-validator": "2.0.0-dev.3.10"
   }
 }

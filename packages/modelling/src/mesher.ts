@@ -447,37 +447,62 @@ export function glbNodeName(name: string): string {
  * Mesh the parts of a model into a GLB, one node per part: `accepted` parts (the default), or
  * `all` but the rejected ones for the draft preview, where drafts are drawn in amber. Node names
  * come from `partNodeName` made safe by `glbNodeName`; a name two parts share gets the part id
- * added to the second.
+ * added to the second. Assemblies are not meshed here: `buildEngineeringGlb` writes models that
+ * have them.
  */
 export function meshProcModel(
   model: ProcModel,
   opts: { parts?: 'accepted' | 'all' } = {},
 ): MeshedModel {
+  const meshed = meshParts(model, opts);
+  const glbParts: GlbPart[] = meshed.map(({ part, name, extras, mesh }) => {
+    const rgb = partColour(part).rgb;
+    const colors = new Float32Array(mesh.positions.length);
+    for (let i = 0; i < colors.length; i += 3) colors.set(rgb, i);
+    return { name, extras, ...mesh, colors };
+  });
+  const glb = writeGlb(glbParts, { root: model.id, generator: 'Quadrion AI model builder' });
+  return { glb, nodes: meshed.map((m) => m.name), partIds: meshed.map((m) => m.part.id) };
+}
+
+/** The colour a part is drawn in (linear RGB): amber for a draft, else by class. */
+export function partColour(part: ProcPart): { name: string; rgb: V3 } {
+  if (part.status === 'draft') return { name: 'part-draft', rgb: linearRgb(DRAFT_COLOUR) };
+  const hex = part.class === undefined ? undefined : CLASS_COLOURS[part.class];
+  return hex === undefined
+    ? { name: 'part-default', rgb: linearRgb(DEFAULT_COLOUR) }
+    : { name: `part-${part.class ?? ''}`, rgb: linearRgb(hex) };
+}
+
+/** One meshed part ready for a GLB node: its unique node name, extras and triangles. */
+export interface PartNode {
+  part: ProcPart;
+  name: string;
+  /** `{ tag, part, type? }`: the tag falls back to the node name. */
+  extras: Record<string, string>;
+  mesh: PartMesh;
+}
+
+/**
+ * Meshes the `accepted` parts of a model (the default), or `all` but the rejected ones. Node names
+ * come from `partNodeName` made safe by `glbNodeName`; a name already in `used` (another part's,
+ * or one the caller reserved) gets the part id added, and every name taken joins `used`.
+ */
+export function meshParts(
+  model: ProcModel,
+  opts: { parts?: 'accepted' | 'all'; used?: Set<string> } = {},
+): PartNode[] {
   const which = opts.parts ?? 'accepted';
-  const parts = model.parts.filter((p) =>
-    which === 'accepted' ? p.status === 'accepted' : p.status !== 'rejected',
-  );
-  const used = new Set<string>();
-  const glbParts: GlbPart[] = [];
-  const nodes: string[] = [];
-  const partIds: string[] = [];
-  for (const p of parts) {
+  const used = opts.used ?? new Set<string>();
+  const out: PartNode[] = [];
+  for (const p of model.parts) {
+    if (which === 'accepted' ? p.status !== 'accepted' : p.status === 'rejected') continue;
     let name = glbNodeName(partNodeName(p));
     if (used.has(name)) name = glbNodeName(`${name}_${p.id}`);
     used.add(name);
-    const m = meshPart(p);
-    const rgb = linearRgb(
-      p.status === 'draft' ? DRAFT_COLOUR : (CLASS_COLOURS[p.class ?? ''] ?? DEFAULT_COLOUR),
-    );
-    const colors = new Float32Array(m.positions.length);
-    for (let i = 0; i < colors.length; i += 3) colors.set(rgb, i);
-    const extras: Record<string, string> = { part: p.id };
-    if (p.tag) extras.tag = p.tag;
+    const extras: Record<string, string> = { tag: p.tag ?? name, part: p.id };
     if (p.class) extras.type = p.class;
-    glbParts.push({ name, extras: { tag: p.tag ?? name, ...extras }, ...m, colors });
-    nodes.push(name);
-    partIds.push(p.id);
+    out.push({ part: p, name, extras, mesh: meshPart(p) });
   }
-  const glb = writeGlb(glbParts, { root: model.id, generator: 'Quadrion AI model builder' });
-  return { glb, nodes, partIds };
+  return out;
 }
