@@ -282,8 +282,9 @@ function reset(): void {
 function classResolver(manifest: ProjectManifest): (raw: string) => string | null {
   const classes = manifest.classCatalogues.flatMap((c) => c.classes);
   const ids = new Set(classes.map((c) => c.id));
-  const byLabel = new Map(classes.map((c) => [c.label.trim().toLowerCase(), c.id]));
-  return (raw) => (ids.has(raw) ? raw : (byLabel.get(raw.trim().toLowerCase()) ?? null));
+  const norm = (s: string) => s.trim().replace(/\s+/g, ' ').toLowerCase();
+  const byLabel = new Map(classes.map((c) => [norm(c.label), c.id]));
+  return (raw) => (ids.has(raw) ? raw : (byLabel.get(norm(raw)) ?? null));
 }
 
 /** Read every pass of a project (once per project; `force` reads again). */

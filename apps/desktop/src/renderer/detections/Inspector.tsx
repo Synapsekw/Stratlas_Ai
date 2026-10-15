@@ -169,14 +169,22 @@ export function Inspector(p: InspectorProps) {
   const d = p.detection;
   const [note, setNote] = useState(d?.note ?? '');
   const [noteFor, setNoteFor] = useState(d?.id ?? null);
-  if ((d?.id ?? null) !== noteFor) {
-    setNoteFor(d?.id ?? null);
-    setNote(d?.note ?? '');
-  }
   const { create, disabledReason } = useNewClass();
   const [newOpen, setNewOpen] = useState(false);
   const [creating, setCreating] = useState(false);
   const [createError, setCreateError] = useState<string | null>(null);
+  // the detection on screen now, so a create that finishes after a move does not land on the next one
+  const shownId = useRef<string | null>(d?.id ?? null);
+  useEffect(() => {
+    shownId.current = d?.id ?? null;
+  }, [d?.id]);
+  if ((d?.id ?? null) !== noteFor) {
+    setNoteFor(d?.id ?? null);
+    setNote(d?.note ?? '');
+    setNewOpen(false);
+    setCreating(false);
+    setCreateError(null);
+  }
   const noteRef = useRef<HTMLTextAreaElement>(null);
   useEffect(() => {
     if (p.noteFocus > 0) noteRef.current?.focus();
@@ -266,8 +274,10 @@ export function Inspector(p: InspectorProps) {
                 onClick={() => {
                   const word = d.label;
                   if (!word) return;
+                  const forId = d.id;
                   setCreating(true);
                   void createClassFromLabel(word).then((e) => {
+                    if (shownId.current !== forId) return;
                     setCreating(false);
                     setCreateError(e);
                   });
@@ -318,6 +328,7 @@ export function Inspector(p: InspectorProps) {
               setNewOpen(false);
             }}
             onCreated={(cls) => {
+              if (shownId.current !== d.id) return;
               setNewOpen(false);
               p.onPatch({ classId: cls.id });
             }}

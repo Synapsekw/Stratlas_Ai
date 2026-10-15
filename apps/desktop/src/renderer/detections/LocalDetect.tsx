@@ -9,7 +9,7 @@ import type { DetectorModelInfo, IpcEvent } from '@aio/schema';
 import { NEW_CLASS_OPTION, NewClassRow, useNewClass } from '@aio/annotate';
 import { Icon, t, useFocusTrap } from '@aio/ui';
 import { useWorkspace } from '@aio/workspace';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
 import { providerLabel } from '../screens/settings/DetectionModels';
 import '../screens/settings/detectionModels.css';
 import { bridge, useCall } from '../shell';
@@ -472,44 +472,48 @@ export function LocalDetectDialog({
                 <p className="ann-faint">{t('infer.dlg.classesLead')}</p>
                 <div className="infer-classes">
                   {model.card.classes.map((c) => (
-                    <label key={c} className="ann-check" style={{ display: 'contents' }}>
-                      <span className="mono">{c}</span>
-                      <select
-                        className="ann-select"
-                        aria-label={c}
-                        value={classMap[c] ?? ''}
-                        onChange={(e) => {
-                          if (e.target.value === NEW_CLASS_OPTION) {
-                            setNewFor(c);
-                            return;
-                          }
-                          setClass(c, e.target.value);
-                        }}
-                      >
-                        <option value="">{t('infer.dlg.keepName')}</option>
-                        {projectClasses.map((pc) => (
-                          <option key={pc.id} value={pc.id}>
-                            {pc.label}
-                          </option>
-                        ))}
-                        {create && <option value={NEW_CLASS_OPTION}>{t('det.class.new')}</option>}
-                      </select>
+                    <Fragment key={c}>
+                      <label className="ann-check" style={{ display: 'contents' }}>
+                        <span className="mono">{c}</span>
+                        <select
+                          className="ann-select"
+                          aria-label={c}
+                          value={classMap[c] ?? ''}
+                          onChange={(e) => {
+                            if (e.target.value === NEW_CLASS_OPTION) {
+                              setNewFor(c);
+                              return;
+                            }
+                            setClass(c, e.target.value);
+                          }}
+                        >
+                          <option value="">{t('infer.dlg.keepName')}</option>
+                          {projectClasses.map((pc) => (
+                            <option key={pc.id} value={pc.id}>
+                              {pc.label}
+                            </option>
+                          ))}
+                          {create && <option value={NEW_CLASS_OPTION}>{t('det.class.new')}</option>}
+                        </select>
+                      </label>
                       {newFor === c && create && (
-                        <NewClassRow
-                          startOpen
-                          onCreate={create}
-                          disabledReason={disabledReason}
-                          testId="det-local-new-class"
-                          onCancel={() => {
-                            setNewFor(null);
-                          }}
-                          onCreated={(cls) => {
-                            setNewFor(null);
-                            setClass(c, cls.id);
-                          }}
-                        />
+                        <div style={{ gridColumn: '1 / -1' }}>
+                          <NewClassRow
+                            startOpen
+                            onCreate={create}
+                            disabledReason={disabledReason}
+                            testId="det-local-new-class"
+                            onCancel={() => {
+                              setNewFor(null);
+                            }}
+                            onCreated={(cls) => {
+                              setNewFor(null);
+                              setClass(c, cls.id);
+                            }}
+                          />
+                        </div>
                       )}
-                    </label>
+                    </Fragment>
                   ))}
                 </div>
               </section>
