@@ -4,7 +4,7 @@ How Quadrion AI 1.x treats files written by older and newer versions, and how it
 
 ## The rules
 
-1. **Every `/1` file stays readable by every 1.x build.** All file schemas are at version 1 in 1.0 (the registry lists 49 families). A file written by 0.4 or later opens in 1.0 with nothing lost.
+1. **Every `/1` file stays readable by every 1.x build.** All file schemas are at version 1 in 1.0 (the registry lists 88 families). A file written by 0.4 or later opens in 1.0 with nothing lost.
 2. **New data goes into new files, never into existing records** (M9 global constraint). Fields are only ever added as optional, and never inside `Issue`, `ChangeReview`, `Detection`, `BoundaryEdit`, `ProcPart` or `NarrativeFile`, so an older build keeps reading what a newer one writes.
 3. **A file from a newer build is refused, never rewritten.** The message names the file and says what to do: "issues.json was saved by a newer version of Quadrion AI (aio.issues/2). Update the app to open it. The file was not changed."
 4. **A future `/2` comes with**:
@@ -43,6 +43,7 @@ An audit of every reader (7 Oct 2026) found that only the manifest, the package 
 | `launch.json` (userData)                   | `main/launchSettings.ts`                           | shown (defaults); a change gets the update message          | No                 |
 | `online.json` (userData)                   | `main/onlineSettings.ts`                           | off (defaults); a change gets the update message            | No                 |
 | `library.json` (userData, `aio.library/1`) | `main/library.ts`                                  | refused with the update message; a file without an id is /1 | No (fixed in M9)   |
+| `library-view.json` (userData)             | `main/libraryView.ts`                              | read as empty; a change gets the update message             | No                 |
 | `issues.json`                              | `main/project.ts`                                  | project does not open; message says "invalid"               | No                 |
 | `volumes.json`, `edits/boundaries.json`    | `main/boundaries.ts`                               | error                                                       | No in practice     |
 | `models/*.procmodel.json`                  | `main/modelBuilder.ts`                             | left out of the list silently                               | Low                |

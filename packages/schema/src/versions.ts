@@ -282,6 +282,14 @@ export const SCHEMA_REGISTRY: readonly SchemaEntry[] = [
   },
   // library.json had no schema id before 0.9; files without one read as /1.
   { family: 'aio.library', version: 1, home: 'userData', where: 'library.json', since: '0.9' },
+  // per computer library state beside library.json: hidden cards, folders (library organise, 15 Oct 2026)
+  {
+    family: 'aio.library-view',
+    version: 1,
+    home: 'userData',
+    where: 'library-view.json',
+    since: '0.14',
+  },
   // M10: every new file lives beside the manifest or in a new folder, so 0.9 never reads it.
   {
     family: 'aio.photo-run',
