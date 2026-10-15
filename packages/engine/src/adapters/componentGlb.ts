@@ -24,6 +24,7 @@ export function writeComponentGlb(
   root: string,
   nodes: readonly FixtureNode[],
   materials: readonly string[],
+  assetExtras?: Record<string, unknown>,
 ): ArrayBuffer {
   const chunks: Uint8Array[] = [];
   let offset = 0;
@@ -60,7 +61,11 @@ export function writeComponentGlb(
     }),
   }));
   const json = {
-    asset: { version: '2.0', generator: 'engine test fixture' },
+    asset: {
+      version: '2.0',
+      generator: 'engine test fixture',
+      ...(assetExtras ? { extras: assetExtras } : {}),
+    },
     scene: 0,
     scenes: [{ nodes: [0] }],
     nodes: [
@@ -127,14 +132,17 @@ export const PAINT = 2;
  * `light-l1-2` is a warning light of three primitives (housing in steel, lens, bracket in paint)
  * off to the side.
  */
-export function chimneyGlb(): ArrayBuffer {
+export function chimneyGlb(marked = true): ArrayBuffer {
   return writeComponentGlb(
     'test-chimney',
     [
       {
         name: 'flue-1',
         translation: [0, 0, -5],
-        extras: component('flue-1', 'Flue 1', { tag: 'F-1' }),
+        extras: component('flue-1', 'Flue 1', {
+          tag: 'F-1',
+          dimensions: { height: { value: 10, unit: 'm' }, rOuter: { value: 1, unit: 'm' } },
+        }),
         prims: [{ material: STEEL, size: [2, 10, 2] }],
       },
       {
@@ -164,6 +172,7 @@ export function chimneyGlb(): ArrayBuffer {
       },
     ],
     ['steel', 'lens', 'paint'],
+    marked ? { aioEngineering: 1 } : undefined,
   );
 }
 

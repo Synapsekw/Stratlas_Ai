@@ -1,49 +1,64 @@
-import { getActiveStage, type ComponentInfo } from '@aio/engine';
+import { getActiveStage, onActiveScene, type ComponentInfo } from '@aio/engine';
 import { Icon, useT } from '@aio/ui';
 import { workspace } from '@aio/workspace';
-import { useEffect, useMemo, useState } from 'react';
-import { useStore } from 'zustand';
-import { createStore } from 'zustand/vanilla';
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  useSyncExternalStore,
+  type KeyboardEvent as ReactKeyboardEvent,
+} from 'react';
 import './components.css';
 
 /**
- * Components hidden in the 3D view, by layer. The stage keeps the real visibility; this mirrors it
- * so the list and the card can show it, and puts it back when a view of the layer is made again.
+ * Show or hide one component of a layer. The engine keeps which components are hidden (per
+ * project and layer, for every view of it, also after the layer loads again); the UI reads it back.
  */
-export const componentVisibility = createStore<{ hidden: Record<string, string[]> }>(() => ({
-  hidden: {},
-}));
-// layer ids belong to a project: another project starts with everything shown
-workspace.subscribe((s, prev) => {
-  if (s.project?.id !== prev.project?.id) componentVisibility.setState({ hidden: {} });
-});
-
-/** Show or hide one component of a layer in the 3D view. */
 export function setComponentVisible(layerId: string, id: string, visible: boolean): void {
   getActiveStage()?.setNodeVisible(layerId, id, visible);
-  componentVisibility.setState((s) => {
-    const was = s.hidden[layerId] ?? [];
-    const next = visible ? was.filter((x) => x !== id) : [...new Set([...was, id])];
-    return { hidden: { ...s.hidden, [layerId]: next } };
-  });
 }
 
-const NONE: readonly string[] = [];
-const NO_COMPONENTS: ComponentInfo[] = [];
-
-/** The components hidden in a layer, as a set. */
+/** The components the engine has hidden in a layer, kept up to date. */
 export function useHiddenComponents(layerId: string): ReadonlySet<string> {
-  const ids = useStore(componentVisibility, (s) => s.hidden[layerId] ?? NONE);
-  return useMemo(() => new Set(ids), [ids]);
+  const subscribe = useCallback(
+    (cb: () => void) => {
+      let offStage: (() => void) | undefined;
+      const watch = () => {
+        offStage?.();
+        offStage = getActiveStage()?.onHiddenNodes((id) => {
+          if (id === layerId) cb();
+        });
+      };
+      watch();
+      // another view became active: read its record
+      const offScene = onActiveScene(() => {
+        watch();
+        cb();
+      });
+      return () => {
+        offScene();
+        offStage?.();
+      };
+    },
+    [layerId],
+  );
+  const key = useSyncExternalStore(subscribe, () =>
+    (getActiveStage()?.hiddenNodes(layerId) ?? []).join('\n'),
+  );
+  return useMemo(() => new Set(key ? key.split('\n') : []), [key]);
 }
 
-/** How often and how long to look for the components of a layer that is still loading. */
+const NO_COMPONENTS: ComponentInfo[] = [];
+/** How often and how long to look again while the layer is still loading. */
 const POLL_MS = 400;
 const POLL_TRIES = 25;
 
 /**
- * The engineering components of a mesh layer in the active 3D view (empty for other layers).
- * A layer still loading is looked at again for a few seconds.
+ * The engineering components of a mesh layer in the active 3D view (empty for other layers). A
+ * layer still loading is looked at again until it has loaded (for a few seconds at most); a
+ * loaded layer without components is not asked again.
  */
 export function useLayerComponents(layerId: string): ComponentInfo[] {
   const [state, setState] = useState<{ layerId: string; list: ComponentInfo[] }>(() => ({
@@ -55,7 +70,8 @@ export function useLayerComponents(layerId: string): ComponentInfo[] {
     let tries = 0;
     let timer: ReturnType<typeof setTimeout> | undefined;
     const look = () => {
-      const found = getActiveStage()?.components(layerId) ?? [];
+      const stage = getActiveStage();
+      const found = stage?.components(layerId) ?? [];
       setState((prev) =>
         prev.layerId === layerId &&
         prev.list.length === found.length &&
@@ -63,12 +79,7 @@ export function useLayerComponents(layerId: string): ComponentInfo[] {
           ? prev
           : { layerId, list: found },
       );
-      if (found.length) {
-        // a new view of the layer draws everything: hide again what was hidden
-        for (const id of componentVisibility.getState().hidden[layerId] ?? [])
-          getActiveStage()?.setNodeVisible(layerId, id, false);
-        return;
-      }
+      if (stage?.layerLoaded(layerId)) return;
       if (++tries < POLL_TRIES) timer = setTimeout(look, POLL_MS);
     };
     look();
@@ -117,7 +128,8 @@ function grouped(list: readonly ComponentInfo[], other: string): Group[] {
 /**
  * The components of an engineering model: a search over name, id, category, tag and
  * description, rows grouped by category that select on a click or tap, and a show or hide
- * toggle per component.
+ * toggle per component. The rows are one Tab stop: Up, Down, Home and End move between them,
+ * Right goes to the row's show or hide toggle and Left back.
  */
 export function ComponentList({
   layerId,
@@ -136,10 +148,47 @@ export function ComponentList({
 }) {
   const t = useT();
   const [query, setQuery] = useState('');
+  const [active, setActive] = useState<string | null>(null);
+  const listRef = useRef<HTMLDivElement>(null);
   const q = query.trim().toLowerCase();
   const shown = q ? components.filter((c) => matches(c, q)) : components;
   const groups = grouped(shown, t('component.list.other'));
+  const order = groups.flatMap((g) => g.rows.map((r) => r.info.id));
+  // the row that takes Tab: the one last focused, else the selection, else the first
+  const current =
+    (active && order.includes(active) ? active : null) ??
+    (selected && order.includes(selected) ? selected : null) ??
+    order[0];
   const names = new Map(components.map((c) => [c.id, c.name]));
+
+  const onKeyDown = (e: ReactKeyboardEvent<HTMLDivElement>) => {
+    const root = listRef.current;
+    const el = e.target as HTMLElement;
+    const row = el.closest<HTMLElement>('[data-testid="component-row"]');
+    if (!root || !row) return;
+    const id = row.dataset.id ?? '';
+    let to: string | undefined;
+    const at = order.indexOf(id);
+    if (e.key === 'ArrowDown') to = order[Math.min(at + 1, order.length - 1)];
+    else if (e.key === 'ArrowUp') to = order[Math.max(at - 1, 0)];
+    else if (e.key === 'Home') to = order[0];
+    else if (e.key === 'End') to = order[order.length - 1];
+    else if (e.key === 'ArrowRight' && el.classList.contains('cl-name')) {
+      row.querySelector<HTMLElement>('.cl-eye')?.focus();
+      e.preventDefault();
+      return;
+    } else if (e.key === 'ArrowLeft' && el.classList.contains('cl-eye')) {
+      row.querySelector<HTMLElement>('.cl-name')?.focus();
+      e.preventDefault();
+      return;
+    }
+    if (to === undefined) return;
+    e.preventDefault();
+    setActive(to);
+    for (const r of root.querySelectorAll<HTMLElement>('[data-testid="component-row"]'))
+      if (r.dataset.id === to) r.querySelector<HTMLElement>('.cl-name')?.focus();
+  };
+
   return (
     <section className="comp-list" data-testid="component-list" data-layer={layerId}>
       <div className="cl-head">
@@ -160,57 +209,63 @@ export function ComponentList({
       {groups.length === 0 && (
         <p className="faint cl-empty">{t('component.list.empty', { query: query.trim() })}</p>
       )}
-      {groups.map((g) => (
-        <div className="cl-group" data-testid="component-group" key={g.label}>
-          <h3>{g.label}</h3>
-          <ul>
-            {g.rows.map(({ info, depth }) => {
-              const visible = !hidden.has(info.id);
-              const on = info.parent ? names.get(info.parent) : undefined;
-              return (
-                <li
-                  key={info.id}
-                  data-testid="component-row"
-                  data-id={info.id}
-                  className={visible ? undefined : 'is-hidden'}
-                  style={depth ? { paddingInlineStart: `${String(depth * 14)}px` } : undefined}
-                >
-                  <button
-                    type="button"
-                    className="cl-name"
-                    aria-current={selected === info.id ? 'true' : undefined}
-                    onClick={() => {
-                      onSelect(info.id);
-                    }}
+      <div ref={listRef} onKeyDown={onKeyDown}>
+        {groups.map((g) => (
+          <div className="cl-group" data-testid="component-group" key={g.label}>
+            <h3>{g.label}</h3>
+            <ul>
+              {g.rows.map(({ info, depth }) => {
+                const visible = !hidden.has(info.id);
+                const on = info.parent ? names.get(info.parent) : undefined;
+                const toggle = t(visible ? 'component.list.hide' : 'component.list.show', {
+                  name: info.name,
+                });
+                return (
+                  <li
+                    key={info.id}
+                    data-testid="component-row"
+                    data-id={info.id}
+                    className={visible ? undefined : 'is-hidden'}
+                    style={depth ? { paddingInlineStart: `${String(depth * 14)}px` } : undefined}
                   >
-                    <span>{info.name}</span>
-                    <span className="cl-sub mono">
-                      {info.tag ?? info.id}
-                      {depth === 0 && on ? ` · ${on}` : ''}
-                    </span>
-                  </button>
-                  <button
-                    type="button"
-                    className="btn icon sm ghost cl-eye"
-                    aria-pressed={visible}
-                    aria-label={t(visible ? 'component.list.hide' : 'component.list.show', {
-                      name: info.name,
-                    })}
-                    title={t(visible ? 'component.list.hide' : 'component.list.show', {
-                      name: info.name,
-                    })}
-                    onClick={() => {
-                      onToggle(info.id, !visible);
-                    }}
-                  >
-                    <Icon name={visible ? 'eye' : 'eye-off'} size={14} />
-                  </button>
-                </li>
-              );
-            })}
-          </ul>
-        </div>
-      ))}
+                    <button
+                      type="button"
+                      className="cl-name"
+                      tabIndex={info.id === current ? 0 : -1}
+                      aria-current={selected === info.id ? 'true' : undefined}
+                      onFocus={() => {
+                        setActive(info.id);
+                      }}
+                      onClick={() => {
+                        onSelect(info.id);
+                      }}
+                    >
+                      <span>{info.name}</span>
+                      <span className="cl-sub mono">
+                        {info.tag ?? info.id}
+                        {depth === 0 && on ? ` · ${on}` : ''}
+                      </span>
+                    </button>
+                    <button
+                      type="button"
+                      className="btn icon sm ghost cl-eye"
+                      tabIndex={-1}
+                      aria-pressed={visible}
+                      aria-label={toggle}
+                      title={toggle}
+                      onClick={() => {
+                        onToggle(info.id, !visible);
+                      }}
+                    >
+                      <Icon name={visible ? 'eye' : 'eye-off'} size={14} />
+                    </button>
+                  </li>
+                );
+              })}
+            </ul>
+          </div>
+        ))}
+      </div>
     </section>
   );
 }
@@ -219,11 +274,9 @@ export function ComponentList({
 export function LayerComponents({
   layerId,
   selected,
-  onSelect,
 }: {
   layerId: string;
   selected?: string | undefined;
-  onSelect?: (id: string) => void;
 }) {
   const components = useLayerComponents(layerId);
   const hidden = useHiddenComponents(layerId);
@@ -235,8 +288,7 @@ export function LayerComponents({
       hidden={hidden}
       selected={selected}
       onSelect={(id) => {
-        if (onSelect) onSelect(id);
-        else workspace.getState().select({ kind: 'asset', id, layer: layerId });
+        workspace.getState().select({ kind: 'asset', id, layer: layerId });
       }}
       onToggle={(id, visible) => {
         setComponentVisible(layerId, id, visible);

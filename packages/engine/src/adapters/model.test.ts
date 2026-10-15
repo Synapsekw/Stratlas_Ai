@@ -12,7 +12,7 @@ import {
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { describe, expect, it, vi } from 'vitest';
 import { chimneyGlb, legacyGlb } from './componentGlb';
-import { buildTemplate, instantiate, nodeControls } from './mesh';
+import { buildTemplate, instantiate, isEngineeringAsset, nodeControls } from './mesh';
 import {
   PICK_LAYER,
   attributeSignature,
@@ -302,6 +302,7 @@ async function placed(glb: ArrayBuffer) {
     gltf.scene,
     IDENTITY,
     (o) => gltf.parser.associations.get(o)?.nodes !== undefined,
+    { engineering: isEngineeringAsset((gltf.asset as { extras?: unknown }).extras) },
   );
   return { t, ...instantiate(t) };
 }
@@ -379,6 +380,23 @@ describe('engineering components', () => {
     expect(controls.setNodeVisible('no-such-part', false)).toBe(false);
     expect(controls.components().map((c) => c.id)).toEqual(['flue-1', 'flue-2', 'light-l1-2']);
     expect(controls.components()[0]).toMatchObject({ id: 'flue-1', name: 'Flue 1', tag: 'F-1' });
+  });
+
+  it('reads the dimensions of a component with their units', async () => {
+    const { root } = await placed(chimneyGlb());
+    const flue = must(root.getObjectByName('flue-1'), 'flue-1');
+    expect(componentOf(flue)?.dimensions).toEqual({
+      height: { value: 10, unit: 'm' },
+      rOuter: { value: 1, unit: 'm' },
+    });
+  });
+
+  it('merges a GLB with component records but no engineering marker, like any other', async () => {
+    const { root, merged } = await placed(chimneyGlb(false));
+    expect(merged.length).toBeGreaterThan(0);
+    expect(nodeControls(root)).toBeNull();
+    // picking still names the component
+    expect(clickAt(root, 0, 0)?.name).toBe('flue-2');
   });
 
   it('keeps picking and merging a /1 parts GLB as before', async () => {

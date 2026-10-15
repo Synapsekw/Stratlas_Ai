@@ -6,7 +6,13 @@ import { describe, expect, it } from 'vitest';
 import { readGlb } from '../glb';
 import { FIXTURE_MODELS, component, flareModel, stackModel } from './fixtures';
 import { DEFAULT_MATERIALS, resolveMaterials } from './materials';
-import { BUILDERS, buildEngineeringGlb, componentExtras, meshAssemblies } from './meshAssemblies';
+import {
+  BUILDERS,
+  buildEngineeringGlb,
+  componentExtras,
+  dimensionsOf,
+  meshAssemblies,
+} from './meshAssemblies';
 import { SEGMENTS, type Opening, type V3 } from './geom';
 import { must } from './testGeom';
 
@@ -99,6 +105,7 @@ describe('buildEngineeringGlb', () => {
         coverage: 0.75,
       },
       openings: [{ centre: [0, 120, 0], normal: [0, 1, 0], r: 6, depth: 120 }],
+      dimensions: { wall: { value: 0.5, unit: 'm' } },
     });
     expect(nodes).toContainEqual({ node: 'shaft-1', tag: 'STK-1' });
     expect(nodes).toContainEqual({ node: 'flue-1' });
@@ -384,6 +391,37 @@ describe('meshAssemblies', () => {
 describe('componentExtras', () => {
   const base = must(stackModel().assemblies.find((a) => a.id === 'flue-1'));
   const withQuality = (quality: Assembly['quality']): Assembly => ({ ...base, quality });
+
+  it('carries the dimensions with units, never positions, counts or bookkeeping', () => {
+    const e = componentExtras(base);
+    if (base.kind !== 'flue') throw new Error('fixture changed');
+    expect(e.dimensions).toEqual({
+      rOuter: { value: base.params.rOuter, unit: 'm' },
+      rInner: { value: base.params.rInner, unit: 'm' },
+      height: { value: base.params.height, unit: 'm' },
+    });
+    expect(dimensionsOf({ y: 12.3456, levelFoundAt: 3, blades: 7, arcDeg: 270 })).toEqual({
+      y: { value: 12.346, unit: 'm' },
+      arcDeg: { value: 270, unit: 'deg' },
+    });
+    expect(dimensionsOf({ centre: [1, 2, 3], size: [1.2, 0.8], yawDeg: -15 })).toEqual({
+      size: { value: [1.2, 0.8], unit: 'm' },
+      yawDeg: { value: -15, unit: 'deg' },
+    });
+  });
+
+  it('round trips the dimensions through the GLB and marks the file as an engineering model', () => {
+    const { glb } = buildEngineeringGlb(stackModel(), {
+      detail: 'fast',
+      drafts: true,
+      generator: 't',
+    });
+    const flue = node(glb, 'flue-1');
+    expect(flue.extras?.dimensions).toEqual(componentExtras(base).dimensions);
+    expect((readGlb(glb).json.asset as { extras?: unknown }).extras).toEqual({
+      aioEngineering: 1,
+    });
+  });
 
   it('basis is the most common, ties go to the weaker basis so the label never overstates', () => {
     expect(componentExtras(withQuality({})).basis).toBe('inferred');

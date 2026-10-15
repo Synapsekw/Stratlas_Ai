@@ -41,6 +41,9 @@ void main() {
 
 type Mode = 'hover' | 'select';
 
+/** Tinted material copies kept for reuse before the cache is emptied. */
+export const MAX_TINTS = 64;
+
 const shown = (o: Object3D): boolean => {
   for (let p: Object3D | null = o; p; p = p.parent) if (!p.visible) return false;
   return true;
@@ -124,6 +127,12 @@ export class Highlighter {
 
   private rebuild() {
     this.group.clear();
+    // tinted copies are kept per source material; hovering across a large site would keep
+    // adding them, so past a bound they are dropped (nothing draws them once the group is clear)
+    if (this.tints.size > MAX_TINTS) {
+      for (const m of this.tints.values()) m.dispose();
+      this.tints.clear();
+    }
     const add = (node: Object3D | null, mode: Mode) => {
       if (!node || !shown(node)) return;
       node.updateWorldMatrix(true, true);

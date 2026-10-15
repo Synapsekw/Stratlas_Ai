@@ -69,16 +69,26 @@ export function StageComponentBrief({ engine }: { engine: EngineStage | null }) 
   useEffect(() => {
     if (!engine) return;
     const canvas = engine.renderer.domElement;
+    // the pointer is remembered on every move, but only re-renders while a brief shows
+    const last = { x: 0, y: 0 };
+    let showing = false;
     const move = (e: PointerEvent) => {
-      setAt({ x: e.clientX, y: e.clientY });
+      last.x = e.clientX;
+      last.y = e.clientY;
+      if (showing) setAt({ x: last.x, y: last.y });
     };
     const leave = () => {
+      showing = false;
       setHover(null);
     };
     canvas.addEventListener('pointermove', move);
     canvas.addEventListener('pointerleave', leave);
     const off = engine.onPick((e) => {
-      if (e.kind === 'hover') setHover(e.pick?.component ?? null);
+      if (e.kind !== 'hover') return;
+      const c = e.pick?.component ?? null;
+      showing = c !== null;
+      if (c) setAt({ x: last.x, y: last.y });
+      setHover(c);
     });
     return () => {
       off();

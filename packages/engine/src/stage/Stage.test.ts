@@ -19,6 +19,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { LayerAdapter, LayerHandle } from '../types';
 import type { Environment } from './environment';
 import { fakeWarmRenderer } from './fakeWarmRenderer';
+import { clearHiddenNodes } from './nodeVisibility';
 import { dampingFor, Stage } from './Stage';
 
 type ROCallback = (entries: { contentRect: { width: number; height: number } }[]) => void;
@@ -363,6 +364,7 @@ describe('Stage', () => {
 
   describe('engineering components', () => {
     async function open() {
+      clearHiddenNodes();
       const made = make(componentAdapter());
       made.resize(800, 600);
       made.store.getState().openProject(project([meshLayer('chimney')]));
@@ -439,6 +441,8 @@ describe('Stage', () => {
         expect(stage.hovered).toEqual(casing);
       });
       expect(events).toContainEqual({ kind: 'hover', pick: casing });
+      // the hover brief tells about a component: no callout beside it
+      expect(container.querySelector('[data-callout]')).toBeNull();
       canvas.dispatchEvent(new MouseEvent('pointerleave'));
       expect(stage.hovered).toBeNull();
       expect(events).toContainEqual({ kind: 'hover', pick: null });
@@ -455,9 +459,38 @@ describe('Stage', () => {
       const overlays = () => stage.scene.getObjectByName('engine:highlight')?.children.length;
       expect(stage.selected?.node).toBe('casing-1');
       expect(overlays()).toBe(0);
+      // nor a callout
+      expect(container.querySelector('[data-callout="Node_2"]')).toBeNull();
+      expect(stage.hiddenNodes('chimney')).toEqual(['casing-1']);
       expect(stage.setNodeVisible('chimney', 'casing-1', true)).toBe(true);
       expect(overlays()).toBeGreaterThan(0);
+      expect(container.querySelector('[data-callout="Node_2"]')).not.toBeNull();
+      expect(stage.hiddenNodes('chimney')).toEqual([]);
       expect(stage.setNodeVisible('no-layer', 'casing-1', false)).toBe(false);
+      stage.dispose();
+    });
+
+    it('keeps a component hidden when its layer loads again, in every view of it', async () => {
+      const { stage, store } = await open();
+      const other = make(componentAdapter());
+      other.resize(800, 600);
+      other.store.getState().openProject(project([meshLayer('chimney')]));
+      await flush();
+      const changes: string[] = [];
+      other.stage.onHiddenNodes((id) => changes.push(id));
+      expect(stage.setNodeVisible('chimney', 'casing-1', false)).toBe(true);
+      // the second view (comparing dates) follows
+      expect(other.stage.pickAt(0, 0)?.node).toBe('flue-1');
+      expect(changes).toEqual(['chimney']);
+      // the layer is made again (its definition changed): the new copy starts hidden too
+      store.getState().openProject(project([{ ...meshLayer('chimney'), name: 'renamed' }]));
+      await flush();
+      expect(stage.pickAt(0, 0)?.node).toBe('flue-1');
+      expect(stage.hiddenNodes('chimney')).toEqual(['casing-1']);
+      stage.setNodeVisible('chimney', 'casing-1', true);
+      expect(stage.pickAt(0, 0)?.node).toBe('casing-1');
+      expect(other.stage.pickAt(0, 0)?.node).toBe('casing-1');
+      other.stage.dispose();
       stage.dispose();
     });
   });

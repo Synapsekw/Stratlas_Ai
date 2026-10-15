@@ -27,13 +27,19 @@ interface StageHooks {
   refreshHighlight(): void;
 }
 
-const hasComponents = (root: Object3D): boolean => {
-  let found = false;
-  root.traverse((o) => {
-    found ||= componentOf(o) !== null;
-  });
-  return found;
-};
+/**
+ * Whether a GLB's `asset.extras` mark it as an engineering model (`aioEngineering`, written by
+ * the engineering model writer): its nodes are components, drawn and hidden one by one.
+ */
+export function isEngineeringAsset(assetExtras: unknown): boolean {
+  return (
+    typeof assetExtras === 'object' &&
+    assetExtras !== null &&
+    (assetExtras as { aioEngineering?: unknown }).aioEngineering === 1
+  );
+}
+
+const isEngineering = (root: Object3D): boolean => root.userData.aioEngineering === true;
 
 /** Whether a mesh belongs to a node of an engineering model (a component or a `/1` part). */
 const engineered = (mesh: Object3D, root: Object3D): boolean => {
@@ -53,7 +59,7 @@ export function nodeControls(root: Object3D): {
   setNodeVisible(node: string, visible: boolean): boolean;
   components(): ComponentInfo[];
 } | null {
-  if (!hasComponents(root)) return null;
+  if (!isEngineering(root)) return null;
   return {
     setNodeVisible(node, visible) {
       const target = nodeById(root, node);
@@ -130,7 +136,9 @@ export function buildTemplate(
   root: Object3D,
   transform: readonly number[],
   isNode: (o: Object3D) => boolean,
+  opts: { engineering?: boolean } = {},
 ): MeshTemplate {
+  if (opts.engineering) root.userData.aioEngineering = true;
   const group = new Group();
   group.matrixAutoUpdate = false;
   group.matrix.copy(layerMatrix(transform));
@@ -175,7 +183,7 @@ export function buildTemplate(
   // An engineering model's nodes stay separate draws so each hides on its own: the writer gives
   // every node one mesh with one primitive per material, inside the triangle budget, so this is
   // about one draw per component and material (a few hundred at most). Other content still merges.
-  const merged = hasComponents(root)
+  const merged = isEngineering(root)
     ? mergeByMaterial(root, group, (m) => engineered(m, root))
     : mergeByMaterial(root, group);
   for (const m of merged) group.add(m);
@@ -241,6 +249,7 @@ async function loadTemplate(url: string, transform: readonly number[]): Promise<
     gltf.scene,
     transform,
     (o) => gltf.parser.associations.get(o)?.nodes !== undefined,
+    { engineering: isEngineeringAsset((gltf.asset as { extras?: unknown }).extras) },
   );
 }
 

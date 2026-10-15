@@ -12,7 +12,7 @@ import {
   type Plane,
   type Raycaster,
 } from 'three';
-import type { ComponentInfo, ComponentQuality } from '../types';
+import type { ComponentDimension, ComponentInfo, ComponentQuality } from '../types';
 
 /** Type guard; `isMesh` is typed as always true on Mesh, so check it on a partial. */
 export const isMesh = (o: Object3D): o is Mesh => (o as Partial<Mesh>).isMesh === true;
@@ -63,7 +63,24 @@ export function componentOf(node: Object3D): ComponentInfo | null {
   }
   const quality = qualityOf(ud.quality);
   if (quality) info.quality = quality;
+  const dimensions = dimensionsOf(ud.dimensions);
+  if (dimensions) info.dimensions = dimensions;
   return info;
+}
+
+/** The `{param: {value, unit}}` dimensions of node extras; malformed entries are left out. */
+function dimensionsOf(v: unknown): Record<string, ComponentDimension> | null {
+  if (!v || typeof v !== 'object') return null;
+  const out: Record<string, ComponentDimension> = {};
+  for (const [k, d] of Object.entries(v as Record<string, unknown>)) {
+    if (!d || typeof d !== 'object') continue;
+    const { value, unit } = d as { value?: unknown; unit?: unknown };
+    if (typeof unit !== 'string') continue;
+    if (num(value) !== undefined) out[k] = { value: value as number, unit };
+    else if (Array.isArray(value) && value.length && value.every((x) => num(x) !== undefined))
+      out[k] = { value: value as number[], unit };
+  }
+  return Object.keys(out).length ? out : null;
 }
 
 const num = (v: unknown): number | undefined =>

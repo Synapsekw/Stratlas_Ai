@@ -22,41 +22,46 @@ const light: ComponentInfo = {
     residualM: 0.012,
     coverage: 0.3,
   },
+  dimensions: {
+    height: { value: 32.4, unit: 'm' },
+    size: { value: [1.2, 0.8], unit: 'm' },
+    yawDeg: { value: 270, unit: 'deg' },
+  },
 };
 const flue: ComponentInfo = { id: 'flue-1', name: 'Flue 1', category: 'Structure' };
-const stage = {
-  components: vi.fn((layerId: string) => (layerId === 'chimney' ? [flue, light] : [])),
-  setNodeVisible: vi.fn(() => true),
-};
+import { fakeComponentStage } from './__fixtures__/fakeComponentStage';
+
+const stage = fakeComponentStage({ chimney: [flue, light] });
 vi.mock('@aio/engine', async (importOriginal) => ({
   ...(await importOriginal<typeof Engine>()),
   getActiveStage: () => stage,
 }));
 
 const { SelectionCard } = await import('./SelectionCard');
-const { componentVisibility } = await import('./ComponentList');
 
 const I = [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1];
-const manifest = {
-  schema: 'aio.project/1',
-  id: 'p',
-  name: 'P',
-  crs: { epsg: 32640 },
-  origin: [0, 0, 0],
-  captures: [],
-  layers: [
-    {
-      kind: 'mesh',
-      id: 'chimney',
-      name: 'Chimney model',
-      visible: true,
-      src: { path: 'models/chimney.glb' },
-      transform: I,
-    },
-  ],
-  severityModels: [],
-  classCatalogues: [],
-} as ProjectManifest;
+const manifest = (georef?: unknown) =>
+  ({
+    schema: 'aio.project/1',
+    id: 'p',
+    name: 'P',
+    crs: { epsg: 32640 },
+    origin: [0, 0, 0],
+    captures: [],
+    layers: [
+      {
+        kind: 'mesh',
+        id: 'chimney',
+        name: 'Chimney model',
+        visible: true,
+        src: { path: 'models/chimney.glb' },
+        transform: I,
+        ...(georef ? { georef } : {}),
+      },
+    ],
+    severityModels: [],
+    classCatalogues: [],
+  }) as unknown as ProjectManifest;
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 let host: HTMLDivElement;
@@ -64,8 +69,8 @@ let root: Root | undefined;
 beforeEach(() => {
   host = document.createElement('div');
   document.body.append(host);
-  componentVisibility.setState({ hidden: {} });
-  workspace.getState().openProject({ id: 'p', root: '/p', manifest });
+  stage.reset();
+  workspace.getState().openProject({ id: 'p', root: '/p', manifest: manifest() });
   root = createRoot(host);
   act(() => root?.render(<SelectionCard />));
 });
@@ -96,7 +101,14 @@ describe('SelectionCard for an engineering component', () => {
     const values = [...host.querySelectorAll('[data-testid="component-value"]')].map(
       (v) => v.textContent,
     );
-    expect(values).toEqual(['HeightMeasured', 'Lens diameterInferred', 'ColourSet by you']);
+    expect(values).toEqual([
+      'Height32.4 m · Measured',
+      'Size1.2 × 0.8 m',
+      'Yaw270°',
+      'Lens diameterInferred',
+      'ColourSet by you',
+    ]);
+    expect(q('component-scale')).toBeNull();
     expect(text).toContain('Within 12 mm of the measured points');
     expect(text).toContain('Sparsely covered by the evidence');
     expect(text).not.toMatch(/\d+ ?%/);
@@ -127,13 +139,57 @@ describe('SelectionCard for an engineering component', () => {
     expect(workspace.getState().selection).toBeNull();
   });
 
-  it('says when the component is hidden and shows it again', () => {
-    componentVisibility.setState({ hidden: { chimney: ['light-l1-2'] } });
+  it('labels lengths provisional, never measured metres, while the scale is provisional', () => {
+    act(() => {
+      workspace.getState().openProject({
+        id: 'p',
+        root: '/p',
+        manifest: manifest({ scale: { factor: 1, status: 'provisional' } }),
+      });
+    });
+    selectLight();
+    const values = [...host.querySelectorAll('[data-testid="component-value"]')].map(
+      (v) => v.textContent,
+    );
+    expect(values[0]).toBe('Height32.4 m (provisional scale) · Measured, provisional scale');
+    // an angle does not depend on the scale
+    expect(values[2]).toBe('Yaw270°');
+    expect(q('component-scale')?.textContent).toBe('Provisional: lengths are not yet true metres');
+    expect(q('component-basis')?.textContent).toBe('Measured, provisional scale');
+  });
+
+  it('says when the engine hides the component and shows it again', () => {
+    stage.setNodeVisible('chimney', 'light-l1-2', false);
     selectLight();
     expect(q('component-card')?.textContent).toContain('Hidden in the 3D view');
     act(() => q('component-show')?.click());
-    expect(stage.setNodeVisible).toHaveBeenCalledWith('chimney', 'light-l1-2', true);
-    expect(componentVisibility.getState().hidden.chimney).toEqual([]);
+    expect(stage.setNodeVisible).toHaveBeenLastCalledWith('chimney', 'light-l1-2', true);
+    expect(q('component-card')?.textContent).not.toContain('Hidden in the 3D view');
+  });
+
+  it('keeps the list, its search and the focused row from the layer card to a component', () => {
+    act(() => {
+      workspace.getState().select({ kind: 'layer', id: 'chimney' });
+    });
+    const search = q('component-search') as HTMLInputElement;
+    act(() => {
+      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set?.call(
+        search,
+        'light',
+      );
+      search.dispatchEvent(new Event('input', { bubbles: true }));
+    });
+    const rowButton = host.querySelector<HTMLButtonElement>(
+      '[data-testid="component-row"][data-id="light-l1-2"] .cl-name',
+    );
+    act(() => {
+      rowButton?.focus();
+      rowButton?.click();
+    });
+    expect(q('component-card')).not.toBeNull();
+    expect(q('component-search')).toBe(search);
+    expect(search.value).toBe('light');
+    expect(document.activeElement).toBe(rowButton);
   });
 
   it('lists the components when the engineering layer itself is selected', () => {

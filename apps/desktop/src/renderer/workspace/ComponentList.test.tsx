@@ -5,16 +5,15 @@ import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-const stage = {
-  components: vi.fn<(layerId: string) => ComponentInfo[]>(() => []),
-  setNodeVisible: vi.fn<(layerId: string, node: string, visible: boolean) => boolean>(() => true),
-};
+import { fakeComponentStage } from './__fixtures__/fakeComponentStage';
+
+const stage = fakeComponentStage();
 vi.mock('@aio/engine', async (importOriginal) => ({
   ...(await importOriginal<typeof Engine>()),
   getActiveStage: () => stage,
 }));
 
-const { ComponentList, LayerComponents, componentVisibility } = await import('./ComponentList');
+const { ComponentList, LayerComponents } = await import('./ComponentList');
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 let host: HTMLDivElement;
@@ -23,9 +22,8 @@ beforeEach(() => {
   host = document.createElement('div');
   document.body.append(host);
   root = createRoot(host);
-  componentVisibility.setState({ hidden: {} });
-  stage.components.mockReset();
-  stage.setNodeVisible.mockClear();
+  stage.reset();
+  stage.byLayer = {};
 });
 afterEach(() => {
   act(() => root?.unmount());
@@ -128,21 +126,103 @@ describe('ComponentList', () => {
   });
 });
 
+describe('ComponentList keyboard', () => {
+  it('is one Tab stop: arrows, Home and End move between rows, Right to the toggle', () => {
+    const onSelect = vi.fn<(id: string) => void>();
+    act(() =>
+      root?.render(
+        <ComponentList
+          layerId="chimney"
+          components={components}
+          hidden={new Set()}
+          selected="flue-1"
+          onSelect={onSelect}
+          onToggle={() => undefined}
+        />,
+      ),
+    );
+    const names = [...host.querySelectorAll<HTMLButtonElement>('button.cl-name')];
+    // only the selected row takes Tab; the toggles never do
+    expect(names.filter((b) => b.tabIndex === 0).map((b) => b.closest('li')?.dataset.id)).toEqual([
+      'flue-1',
+    ]);
+    expect(
+      [...host.querySelectorAll<HTMLButtonElement>('button.cl-eye')].every(
+        (b) => b.tabIndex === -1,
+      ),
+    ).toBe(true);
+    const key = (k: string) => {
+      act(() => {
+        document.activeElement?.dispatchEvent(
+          new KeyboardEvent('keydown', { key: k, bubbles: true }),
+        );
+      });
+    };
+    act(() => row('flue-1').querySelector<HTMLButtonElement>('.cl-name')?.focus());
+    key('ArrowDown');
+    expect(document.activeElement?.closest('li')?.dataset.id).toBe('flue-2');
+    key('Home');
+    expect(document.activeElement?.closest('li')?.dataset.id).toBe('light-l1-1');
+    key('End');
+    expect(document.activeElement?.closest('li')?.dataset.id).toBe('flue-2');
+    key('ArrowUp');
+    expect(document.activeElement?.closest('li')?.dataset.id).toBe('flue-1');
+    key('ArrowRight');
+    expect(document.activeElement?.classList.contains('cl-eye')).toBe(true);
+    key('ArrowLeft');
+    expect(document.activeElement?.classList.contains('cl-name')).toBe(true);
+    // the focused row is now the Tab stop
+    expect(names.filter((b) => b.tabIndex === 0)).toHaveLength(1);
+    expect(row('flue-1').querySelector<HTMLButtonElement>('.cl-name')?.tabIndex).toBe(0);
+  });
+});
+
 describe('LayerComponents', () => {
-  it('lists the components of a loaded layer and hides them in the 3D view', () => {
-    stage.components.mockReturnValue(components);
+  it('lists the components of a loaded layer and shows what the engine hides', () => {
+    stage.byLayer = { chimney: components };
     act(() => root?.render(<LayerComponents layerId="chimney" />));
     expect(rows()).toHaveLength(4);
     const eye = row('flue-2').querySelector<HTMLButtonElement>('button.cl-eye');
     act(() => eye?.click());
     expect(stage.setNodeVisible).toHaveBeenCalledWith('chimney', 'flue-2', false);
-    expect(componentVisibility.getState().hidden.chimney).toEqual(['flue-2']);
     expect(eye?.getAttribute('aria-pressed')).toBe('false');
+    // hidden elsewhere (the card, another view): the list follows the engine
+    act(() => {
+      stage.setNodeVisible('chimney', 'flue-1', false);
+    });
+    expect(row('flue-1').querySelector('button.cl-eye')?.getAttribute('aria-pressed')).toBe(
+      'false',
+    );
   });
 
-  it('shows nothing for a layer without components', () => {
-    stage.components.mockReturnValue([]);
-    act(() => root?.render(<LayerComponents layerId="plant" />));
-    expect(host.querySelector('[data-testid="component-list"]')).toBeNull();
+  it('asks a loaded layer without components once, and looks again while one loads', () => {
+    vi.useFakeTimers();
+    try {
+      act(() => root?.render(<LayerComponents layerId="plant" />));
+      expect(host.querySelector('[data-testid="component-list"]')).toBeNull();
+      const asked = stage.components.mock.calls.length;
+      act(() => {
+        vi.advanceTimersByTime(5000);
+      });
+      expect(stage.components.mock.calls.length).toBe(asked);
+      stage.loaded = false;
+      act(() => root?.render(<LayerComponents layerId="chimney" />));
+      act(() => {
+        vi.advanceTimersByTime(1000);
+      });
+      stage.byLayer = { chimney: components };
+      stage.loaded = true;
+      act(() => {
+        vi.advanceTimersByTime(1000);
+      });
+      expect(rows()).toHaveLength(4);
+      const calls = stage.components.mock.calls.length;
+      act(() => {
+        vi.advanceTimersByTime(5000);
+      });
+      expect(stage.components.mock.calls.length).toBe(calls);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });

@@ -3485,6 +3485,11 @@ export const en = {
   'component.basis.observed': 'Observed in photos',
   'component.basis.inferred': 'Inferred',
   'component.basis.user': 'Set by you',
+  'component.basis.measuredProvisional': 'Measured, provisional scale',
+  'component.card.provisionalValue': '{value} (provisional scale)',
+  'component.card.scale': 'Scale',
+  'component.card.scaleProvisional': 'Provisional: lengths are not yet true metres',
+  'selection.title': 'Selection',
 } as const satisfies Record<string, string>;
 
 /** Every key in the catalogue, plural forms included. */

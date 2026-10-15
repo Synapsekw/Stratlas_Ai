@@ -65,6 +65,7 @@ import type { GroundUniforms } from './groundShading';
 import { skyDirection, solarPosition } from './solar';
 import { estimateGpuBytes, formatPerf, type PerfStats } from './perf';
 import { Highlighter } from './highlight';
+import { hiddenNodesOf, onHiddenNodes, setNodeHidden } from './nodeVisibility';
 import { drawnObjects, ProgramWarmup } from './programWarmup';
 import { moduleTextures } from './sharedTextures';
 import { reducedMotion } from '../motion';
@@ -207,6 +208,12 @@ export class Stage implements EngineStage {
   private readonly holders = new Map<symbol, string>();
   private readonly stateCbs = new Set<() => void>();
   private readonly pickCbs = new Set<(e: PickEvent) => void>();
+  private readonly hiddenCbs = new Set<(layerId: string) => void>();
+  /** The hidden nodes applied to each loaded layer's handle (see `applyHidden`). */
+  private readonly appliedHidden = new Map<string, Set<string>>();
+  private readonly offHidden = onHiddenNodes((projectId, layerId) => {
+    if (!this.disposed && projectId === this.projectId) this.applyHidden(layerId);
+  });
   private readonly anchors = new WeakMap<Object3D, Vector3>();
   private readonly volumes = new WeakMap<Object3D, number>();
   private readonly nodeCache = new WeakMap<Object3D, Map<string, Object3D | null>>();
@@ -648,14 +655,54 @@ export class Stage implements EngineStage {
     for (const [root, lid] of this.targets)
       if (lid === layerId && nodeById(root, node)) found = true;
     if (!found) return false;
-    handle.setNodeVisible(node, visible);
-    this.refreshHighlight();
-    this.shadowDirty = true;
+    // the shared record: every stage showing the layer applies it (applyHidden)
+    setNodeHidden(this.projectId, layerId, node, !visible);
     return true;
+  }
+
+  hiddenNodes(layerId: string): string[] {
+    return [...hiddenNodesOf(this.projectId, layerId)];
+  }
+
+  onHiddenNodes(cb: (layerId: string) => void): () => void {
+    this.hiddenCbs.add(cb);
+    return () => {
+      this.hiddenCbs.delete(cb);
+    };
   }
 
   components(layerId: string): ComponentInfo[] {
     return this.sync?.handle(layerId)?.components?.() ?? [];
+  }
+
+  layerLoaded(layerId: string): boolean {
+    return this.sync?.handle(layerId) !== undefined;
+  }
+
+  /**
+   * Bring a layer's drawn nodes in line with the hidden record: hide what it lists, show again
+   * what it no longer lists. A layer loaded again starts from nothing applied.
+   */
+  private applyHidden(layerId: string, handle = this.sync?.handle(layerId)) {
+    if (!handle?.setNodeVisible) return;
+    const want = hiddenNodesOf(this.projectId, layerId);
+    const done = this.appliedHidden.get(layerId) ?? new Set<string>();
+    let changed = false;
+    for (const id of done)
+      if (!want.has(id)) {
+        handle.setNodeVisible(id, true);
+        changed = true;
+      }
+    for (const id of want)
+      if (!done.has(id)) {
+        handle.setNodeVisible(id, false);
+        changed = true;
+      }
+    this.appliedHidden.set(layerId, new Set(want));
+    if (!changed) return;
+    this.refreshHighlight();
+    this.shadowDirty = true;
+    for (const cb of this.hiddenCbs) cb(layerId);
   }
 
   /**
@@ -1047,6 +1094,7 @@ export class Stage implements EngineStage {
     this.sync?.dispose();
     this.sync = null;
     this.project = project;
+    this.appliedHidden.clear();
     this.setHighlight('select', null);
     this.setHighlight('hover', null);
     this.clearMeasure();
@@ -1063,7 +1111,10 @@ export class Stage implements EngineStage {
       const sync = new LayerSync({
         getAdapter: this.getAdapter,
         ctx: { url: (ref) => this.opts.resolveUrl(project.id, ref), scene: this },
-        onLoaded: () => {
+        onLoaded: (layer, handle) => {
+          // a layer made again draws every node: hide again what the record hides
+          this.appliedHidden.delete(layer.id);
+          this.applyHidden(layer.id, handle);
           this.contentChanged();
         },
         onError: (layer, e) => {
@@ -1434,8 +1485,12 @@ export class Stage implements EngineStage {
    */
   private rebuildCallouts() {
     const specs: CalloutSpec[] = [];
-    const selected = this.highlight.selected;
-    const hovered = this.highlight.hovered;
+    // a hidden component has no callout; a hovered component has the hover brief instead
+    const shownSel = this.highlight.selected;
+    const selected = shownSel && visibleChain(shownSel) ? shownSel : null;
+    const shownHover = this.highlight.hovered;
+    const hovered =
+      shownHover && visibleChain(shownHover) && !componentOf(shownHover) ? shownHover : null;
     const mode = this._labelMode;
     const groups = new Map<string, { nodes: Object3D[]; tags: AssetTag[] }>();
     let hoverListed = false;
@@ -1692,6 +1747,8 @@ export class Stage implements EngineStage {
     this.holders.clear();
     this.stateCbs.clear();
     this.pickCbs.clear();
+    this.hiddenCbs.clear();
+    this.offHidden();
   }
 }
 

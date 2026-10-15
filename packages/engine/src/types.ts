@@ -237,6 +237,15 @@ export interface EngineStage extends SceneHandle {
   setNodeVisible(layerId: string, node: string, visible: boolean): boolean;
   /** The engineering components of a loaded layer (empty for other layers). */
   components(layerId: string): ComponentInfo[];
+  /** Whether a layer's content has loaded in this view (false while loading or missing). */
+  layerLoaded(layerId: string): boolean;
+  /**
+   * The hidden nodes of a layer. The engine keeps them per project and layer: every view of the
+   * layer applies them, also when the layer loads again.
+   */
+  hiddenNodes(layerId: string): string[];
+  /** Listen for nodes of a layer being shown or hidden in this view. Returns an unsubscribe. */
+  onHiddenNodes(cb: (layerId: string) => void): () => void;
 }
 
 export interface AdapterContext {
@@ -264,6 +273,14 @@ export interface ComponentInfo {
   unobserved?: string[];
   /** How each parameter is known, the worst fit residual and the least coverage. */
   quality?: ComponentQuality;
+  /** The component's dimensions by parameter, with units (`m`, `deg`). */
+  dimensions?: Record<string, ComponentDimension>;
+}
+
+export interface ComponentDimension {
+  /** A number, or the sides of a size (width, height, depth). */
+  value: number | number[];
+  unit: string;
 }
 
 export interface ComponentQuality {

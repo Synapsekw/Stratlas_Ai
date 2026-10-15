@@ -8,7 +8,7 @@ import {
   type Object3D,
 } from 'three';
 import { describe, expect, it } from 'vitest';
-import { Highlighter } from './highlight';
+import { Highlighter, MAX_TINTS } from './highlight';
 
 /** Two components sharing the steel material: a three-mesh warning light and a flue. */
 function scene() {
@@ -76,6 +76,23 @@ describe('Highlighter', () => {
     expect(h.group.children).toHaveLength(0);
     for (const [m, mat] of own) expect(m.material).toBe(mat);
     expect(s.steel.color.getHex()).toBe(before);
+    h.dispose();
+  });
+
+  it('keeps a bounded number of tinted material copies', () => {
+    const h = new Highlighter([]);
+    const disposed: string[] = [];
+    for (let i = 0; i < MAX_TINTS + 10; i++) {
+      const g = new Group();
+      const mat = new MeshStandardMaterial({ name: `m${String(i)}` });
+      g.add(new Mesh(new BoxGeometry(1, 1, 1), mat));
+      h.set('hover', g);
+      const tinted = drawn(h)[0]?.material as Material | undefined;
+      tinted?.addEventListener('dispose', () => disposed.push(String(i)));
+    }
+    // the cache was emptied once it passed the bound: the early copies were freed
+    expect(disposed.length).toBeGreaterThan(0);
+    expect(disposed.length).toBeLessThanOrEqual(MAX_TINTS + 1);
     h.dispose();
   });
 

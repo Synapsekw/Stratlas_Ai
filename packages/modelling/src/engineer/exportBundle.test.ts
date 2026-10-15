@@ -141,7 +141,8 @@ describe('exportBundle', () => {
     expect(JSON.parse(b.procmodel)).not.toHaveProperty('georef');
     expect(b.georeference).toBeNull();
     const asset = readGlb(b.glb).json.asset as { extras?: unknown };
-    expect(asset.extras).toBeUndefined();
+    // only the engineering marker, no georeference
+    expect(asset.extras).toEqual({ aioEngineering: 1 });
   });
 
   it('refuses an invalid georeference', () => {
