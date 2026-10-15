@@ -114,6 +114,32 @@ describe('SetupDialog', () => {
     expect(q('eng-region-radius')).toBeNull();
   });
 
+  it('offers a box around the picked centre instead of a circle', async () => {
+    const start = vi.fn<(setup: EngineerSetup) => Promise<void>>(() => Promise.resolve());
+    show({ run: { start } });
+    check('eng-source-scan');
+    act(() => q('eng-region-pick')?.click());
+    await flush();
+    act(() => q('eng-region-box')?.click());
+    expect(q('eng-region-radius')).toBeNull();
+    const set = (id: string, v: string) => {
+      const el = q(id) as HTMLInputElement;
+      act(() => {
+        Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set?.call(el, v);
+        el.dispatchEvent(new Event('input', { bubbles: true }));
+      });
+    };
+    set('eng-box-width', '20');
+    set('eng-box-depth', '10');
+    set('eng-box-bottom', '-2');
+    set('eng-box-top', '90');
+    act(() => q('eng-start')?.click());
+    await flush();
+    const setup = start.mock.calls[0]?.[0];
+    expect(EngineerSetup.safeParse(setup).success).toBe(true);
+    expect(setup?.region).toEqual({ min: [2, -2, -35], max: [22, 90, -25] });
+  });
+
   it('suggests the family from the evidence, and the person overrides it', () => {
     show({ familyHint: { suggested: 'chimney', reasons: ['tall, round, hollow'] } });
     expect(q('eng-family-hint')?.textContent).toContain('Chimney');

@@ -411,7 +411,7 @@ function ProviderRow({ provider }: { provider: AiProvider }) {
   );
 }
 
-function Routing() {
+export function Routing() {
   const routes = useShell((s) => s.settings.routes);
   const localModel = useShell((s) => s.settings.localModel);
   const [draft, setDraft] = useState<Record<string, string>>({});

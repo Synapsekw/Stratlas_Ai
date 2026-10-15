@@ -16,6 +16,28 @@ interface Region {
   centre: [number, number];
   radiusM: number;
 }
+interface BoxSize {
+  width: number;
+  depth: number;
+  bottom: number;
+  top: number;
+}
+const BOX_FIELDS: { key: keyof BoxSize; label: MessageKey }[] = [
+  { key: 'width', label: 'eng.setup.boxWidth' },
+  { key: 'depth', label: 'eng.setup.boxDepth' },
+  { key: 'bottom', label: 'eng.setup.boxBottom' },
+  { key: 'top', label: 'eng.setup.boxTop' },
+];
+
+/** The schema's region: the circle, or the box around the picked centre (local frame). */
+function regionOf(r: Region, shape: 'circle' | 'box', b: BoxSize): Setup['region'] {
+  if (shape === 'circle') return { centre: r.centre, radiusM: r.radiusM };
+  const [x, z] = r.centre;
+  return {
+    min: [x - b.width / 2, Math.min(b.bottom, b.top), z - b.depth / 2],
+    max: [x + b.width / 2, Math.max(b.bottom, b.top), z + b.depth / 2],
+  };
+}
 type Family = Setup['family'];
 type Scope = Setup['scope'];
 type PlacementMode = Setup['placement'];
@@ -74,6 +96,10 @@ export function SetupDialog(props: SetupDialogProps) {
   const [chosen, setChosen] = useState<ReadonlySet<string>>(new Set());
   const [files, setFiles] = useState<string[]>([]);
   const [region, setRegion] = useState<Region | null>(null);
+  // a circle (centre and radius) or a box around the picked centre: width east, depth north,
+  // and the height range it spans
+  const [shape, setShape] = useState<'circle' | 'box'>('circle');
+  const [box, setBox] = useState<BoxSize>({ width: 40, depth: 40, bottom: 0, top: 150 });
   const [family, setFamily] = useState<Family>('auto');
   const [scope, setScope] = useState<Scope>('asset');
   const [detail, setDetail] = useState<Detail>('standard');
@@ -106,7 +132,7 @@ export function SetupDialog(props: SetupDialogProps) {
           .map((l) => ({ layer: l.id })),
         photos,
       },
-      ...(region ? { region } : {}),
+      ...(region ? { region: regionOf(region, shape, box) } : {}),
       family,
       scope,
       detail,
@@ -286,21 +312,56 @@ export function SetupDialog(props: SetupDialogProps) {
                       r: fmt(region.radiusM),
                     })}
                   </span>
-                  <label className="eng-num">
-                    <span>{t('eng.setup.regionRadius')}</span>
-                    <input
-                      className="input mono"
-                      type="number"
-                      min={1}
-                      max={2000}
-                      value={region.radiusM}
-                      data-testid="eng-region-radius"
-                      onChange={(e) => {
-                        const v = Number(e.target.value);
-                        if (v > 0) setRegion({ ...region, radiusM: Math.min(2000, v) });
-                      }}
-                    />
-                  </label>
+                  <span className="seg" role="group" aria-label={t('eng.setup.regionShape')}>
+                    {(['circle', 'box'] as const).map((k) => (
+                      <button
+                        key={k}
+                        type="button"
+                        aria-pressed={shape === k}
+                        data-testid={`eng-region-${k}`}
+                        onClick={() => {
+                          setShape(k);
+                        }}
+                      >
+                        {t(k === 'circle' ? 'eng.setup.regionCircle' : 'eng.setup.regionBox')}
+                      </button>
+                    ))}
+                  </span>
+                  {shape === 'circle' && (
+                    <label className="eng-num">
+                      <span>{t('eng.setup.regionRadius')}</span>
+                      <input
+                        className="input mono"
+                        type="number"
+                        min={1}
+                        max={2000}
+                        value={region.radiusM}
+                        data-testid="eng-region-radius"
+                        onChange={(e) => {
+                          const v = Number(e.target.value);
+                          if (v > 0) setRegion({ ...region, radiusM: Math.min(2000, v) });
+                        }}
+                      />
+                    </label>
+                  )}
+                  {shape === 'box' &&
+                    BOX_FIELDS.map((f) => (
+                      <label key={f.key} className="eng-num">
+                        <span>{t(f.label)}</span>
+                        <input
+                          className="input mono"
+                          type="number"
+                          value={box[f.key]}
+                          data-testid={`eng-box-${f.key}`}
+                          onChange={(e) => {
+                            const v = Number(e.target.value);
+                            const sized = f.key === 'width' || f.key === 'depth';
+                            if (Number.isFinite(v) && (!sized || v > 0))
+                              setBox({ ...box, [f.key]: v });
+                          }}
+                        />
+                      </label>
+                    ))}
                   <button
                     type="button"
                     className="btn ghost icon sm"

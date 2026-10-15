@@ -1,5 +1,6 @@
 import { routeFor, type ModelRoute } from '@aio/ai';
 import type { EngineerRun, EngineerSetup, EvidencePack, Vec3 } from '@aio/schema';
+import { t } from '@aio/ui';
 import { useWorkspace } from '@aio/workspace';
 import { useStore } from 'zustand';
 import { createStore } from 'zustand/vanilla';
@@ -97,8 +98,13 @@ export function EngineerLayer({
           run={controls}
           onPickPhotos={async () => {
             const r = await bridge.call('dialog:openFiles', {
-              title: 'Photos of the asset',
-              filters: [{ name: 'Photos', extensions: ['jpg', 'jpeg', 'png', 'tif', 'tiff'] }],
+              title: t('eng.setup.photoPicker'),
+              filters: [
+                {
+                  name: t('eng.setup.photoFilter'),
+                  extensions: ['jpg', 'jpeg', 'png', 'tif', 'tiff'],
+                },
+              ],
               multi: true,
             });
             return r.ok ? r.value.paths : [];
