@@ -118,3 +118,4 @@ export * from './catalogue/search';
 export * from './siteTransform';
 export * from './clock';
 export * from './walk/index';
+export * from './placement';
