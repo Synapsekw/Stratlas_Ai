@@ -167,7 +167,7 @@ function build(ctx: FamilyCtx, shaftOnly: boolean): Assembly[] {
   const flueGroup = shaftOnly ? undefined : group(ctx, 'flue');
   const userFlues = shaftOnly ? undefined : ctx.userCount('flue');
   const flueChoice = shaftOnly
-    ? { n: 0, basis: 'inferred' as ValueBasis }
+    ? { n: 0, basis: 'inferred' as ValueBasis, prior: { n: 0, basis: 'inferred' as ValueBasis } }
     : chooseCount(ctx, {
         what: 'flues',
         user: userFlues,
@@ -176,7 +176,17 @@ function build(ctx: FamilyCtx, shaftOnly: boolean): Assembly[] {
       });
   const flueCount = flueChoice.n;
   const openTop = flueCount > 0 || bool(shaftC, 'openTop') === true;
-  const openTopBasis: ValueBasis = flueCount > 0 ? flueChoice.basis : 'inferred';
+  // derived from the count, never the person's own value: with the person's count it keeps the
+  // basis it had without it, or is inferred when their count changed it
+  const priorOpen = flueChoice.prior.n > 0 || bool(shaftC, 'openTop') === true;
+  const openTopBasis: ValueBasis =
+    flueChoice.basis !== 'user'
+      ? flueCount > 0
+        ? flueChoice.basis
+        : 'inferred'
+      : priorOpen === openTop && flueChoice.prior.n > 0
+        ? flueChoice.prior.basis
+        : 'inferred';
   const aiWall = ctx.len(shaftC, 'wall');
   const wall =
     openTop || aiWall !== undefined

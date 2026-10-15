@@ -120,19 +120,14 @@ describe('engineering model correction tools', () => {
       expect(byId(after, a.id)).toEqual(a);
     }
     const changed = (r.result as { changed: string[] }).changed;
-    // only the flues change, and the shaft's open top, which the flue count decides: its value is
-    // the same, its basis now the person's count
-    // (and the deck at the top, which has an opening per flue)
-    expect(changed.filter((id) => !id.startsWith('flue-')).sort()).toEqual(['deck-1', 'shaft-1']);
+    // only the flues change, and the deck at the top, which has an opening per flue; the shaft
+    // (whose open top the count decides) keeps its values and how they are known
+    expect(changed.filter((id) => !id.startsWith('flue-'))).toEqual(['deck-1']);
+    expect(byId(after, 'shaft-1')).toBe(byId(before, 'shaft-1'));
     const deck = byId(after, 'deck-1');
     expect({ ...deck, params: { ...deck.params, openings: null } }).toEqual({
       ...byId(before, 'deck-1'),
       params: { ...byId(before, 'deck-1').params, openings: null },
-    });
-    const shaft = byId(after, 'shaft-1');
-    expect(shaft).toEqual({
-      ...byId(before, 'shaft-1'),
-      quality: { ...byId(before, 'shaft-1').quality, openTop: { basis: 'user' } },
     });
     expect(byId(after, 'ladder-1')).toEqual(byId(before, 'ladder-1'));
     // the accepted flue stays accepted; the person's values on flue-1 stay

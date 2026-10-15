@@ -20,6 +20,8 @@ import type { ModelProvider } from './providers';
 export const SCRIPT: readonly { when: string; tool: string; input: Record<string, unknown> }[] = [
   // engineering model corrections (e2e): "there are four flues, not three"
   { when: 'four flues', tool: 'set_count', input: { role: 'flue', count: 4 } },
+  // fixed test heights, here in the scripted test model only (e2e on a synthetic chimney): a real
+  // model works the heights out from the evidence, the product code has no default levels
   {
     when: 'intermediate warning lights',
     tool: 'set_levels',
