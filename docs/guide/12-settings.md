@@ -150,6 +150,13 @@ The same list is in **Settings**, **Keyboard**. On a Mac, Ctrl is ⌘ (Command) 
 | Enter             | Save the outline                  |
 | Ctrl Z            | Undo the last outline change      |
 
+### Cleaning up a point cloud
+
+| Keys                 | Does                       |
+| -------------------- | -------------------------- |
+| Ctrl Z               | Undo the last cleanup step |
+| Ctrl Y, Ctrl Shift Z | Redo the cleanup step      |
+
 ### Issue edits
 
 | Keys                 | Does                     |
