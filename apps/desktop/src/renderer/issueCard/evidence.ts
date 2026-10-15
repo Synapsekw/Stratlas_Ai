@@ -17,7 +17,7 @@ import { shell } from '../shell';
 import type { StageMode } from '../store';
 import { paneOptions, resolveSplit, type SplitPref } from '../workspace/splitModel';
 import { stagePrefs } from '../workspace/stagePrefs';
-import { evidenceKind, splitWithEvidence, type EvidenceKind } from './model';
+import { evidenceKind, evidenceStart, splitWithEvidence, type EvidenceKind } from './model';
 import { lightbox } from './state';
 
 export interface EvidenceOpen {
@@ -80,7 +80,15 @@ export function openEvidence(issueId: string): boolean {
   // two survey dates side by side (compare): the evidence replaces the comparison
   const compared = saved !== undefined && saved.left === saved.right;
   stagePrefs.getState().update(project.id, { split: splitWithEvidence(sides, kind, compared) });
-  evidence.setState({ open: { projectId: project.id, issueId, kind, index: 0, restore } });
+  evidence.setState({
+    open: {
+      projectId: project.id,
+      issueId,
+      kind,
+      index: evidenceStart(project.manifest, issue),
+      restore,
+    },
+  });
   if (sh.stageMode !== 'split') sh.setStageMode('split');
   if (kind === 'video') {
     const s = issue.sightings.find((x) => x.on === 'video');

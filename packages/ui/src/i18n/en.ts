@@ -3462,6 +3462,12 @@ export const en = {
   'place.noPhoto_one': '{count} has no photo outline to place.',
   'place.noPhoto_other': '{count} have no photo outline to place.',
   'place.notLoaded': '{layer} did not load in the 3D view. Open the 3D view and try again.',
+  'place.changed_one': '{count} changed while placing and was left as it is.',
+  'place.changed_other': '{count} changed while placing and were left as they are.',
+  'place.selectionFailed_one': 'The points of {count} finding could not be saved: {error}',
+  'place.selectionFailed_other': 'The points of {count} findings could not be saved: {error}',
+  'place.undoStale':
+    'Not undone: another change came after the placement. Ctrl+Z undoes one step at a time.',
   'place.noLayers': 'This project has no mesh or point cloud to place findings on.',
   'place.undo': 'Undo',
   'place.dismiss': 'Dismiss',

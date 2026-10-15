@@ -7,6 +7,7 @@
  * first keyframe, with its box). The photo with the largest marked region comes first: it shows
  * the defect closest and clearest (the house report picks the same photo).
  */
+import { placedFrom } from '@aio/annotate';
 import {
   compareCodes,
   imageBox,
@@ -219,6 +220,20 @@ export function evidenceKind(manifest: ProjectManifest, issue: Issue): EvidenceK
   if (photoEvidence(list).length > 0) return 'photo';
   if (list.some((e) => e.kind === 'video')) return 'video';
   return null;
+}
+
+/**
+ * Where the evidence opens: the photo a placed area was projected from (findings on a model,
+ * "click opens the photos it was found in, starting with the from sighting"), else the best one.
+ */
+export function evidenceStart(manifest: ProjectManifest, issue: Issue): number {
+  const from = placedFrom(issue);
+  const s = from === null ? undefined : issue.sightings[from];
+  if (s?.on !== 'image') return 0;
+  const k = photoEvidence(issueEvidence(manifest, issue)).findIndex(
+    (e) => e.key === `${s.layer}/${s.photo}`,
+  );
+  return k >= 0 ? k : 0;
 }
 
 /**

@@ -118,6 +118,19 @@ describe('the English catalogue', () => {
     );
     expect(t('place.menu', { count: 1 })).toBe('Place on model...');
     expect(t('place.menu', { count: 3 })).toBe('Place 3 on model...');
+    expect(t('place.changed', { count: 1 })).toBe('1 changed while placing and was left as it is.');
+    expect(t('place.changed', { count: 2 })).toBe(
+      '2 changed while placing and were left as they are.',
+    );
+    expect(t('place.selectionFailed', { count: 1, error: 'disk full' })).toBe(
+      'The points of 1 finding could not be saved: disk full',
+    );
+    expect(t('place.selectionFailed', { count: 3, error: 'disk full' })).toBe(
+      'The points of 3 findings could not be saved: disk full',
+    );
+    expect(t('place.undoStale')).toBe(
+      'Not undone: another change came after the placement. Ctrl+Z undoes one step at a time.',
+    );
     for (const [k, v] of Object.entries(en))
       if (k.startsWith('place.')) expect(v, k).not.toMatch(/\p{Extended_Pictographic}/u);
   });
