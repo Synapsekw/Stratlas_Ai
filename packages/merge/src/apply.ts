@@ -146,13 +146,25 @@ export function applyDetections(
     : { value: file, problems: [`Detections ${name}: ${r.error.issues[0]?.message ?? ''}`] };
 }
 
-/** `models/<id>.procmodel.json`: per part field. Parts made on another copy are added. */
+/**
+ * `models/<id>.procmodel.json`: the model's own fields (assemblies, georeference, name and the rest
+ * besides `parts`) by last writer per field, then per part field. Parts made on another copy are
+ * added.
+ */
 export function applyProcModel(
   model: ProcModel,
   p: Pick<Projection, 'subRecords'>,
 ): Applied<ProcModel> {
+  const own = p.subRecords.find((r) => r.ref.rec === 'model' && r.ref.id === model.id);
   const byId = new Map(overlaysFor(p, 'part', model.id).map((r) => [r.ref.id, r]));
-  if (byId.size === 0) return { value: model, problems: [] };
+  if (byId.size === 0 && !own) return { value: model, problems: [] };
+  const base = own
+    ? overlay(
+        obj(model),
+        Object.fromEntries(Object.entries(own.set).filter(([k]) => k !== 'parts')),
+        own.unset.filter((k) => k !== 'parts'),
+      )
+    : obj(model);
   const seen = new Set<string>();
   const parts: unknown[] = model.parts.map((part) => {
     seen.add(part.id);
@@ -163,11 +175,28 @@ export function applyProcModel(
     if (!seen.has(o.ref.id) && typeof o.set.kind === 'string')
       parts.push({ id: o.ref.id, ...o.set });
   }
-  const r = ProcModel.safeParse({ ...model, parts });
+  const r = ProcModel.safeParse({ ...base, id: model.id, parts });
   return r.success
     ? { value: r.data, problems: [] }
     : { value: model, problems: [`Model ${model.id}: ${r.error.issues[0]?.message ?? ''}`] };
 }
+
+/**
+ * A model made on another copy: its own fields as the journal holds them, without parts (its parts
+ * are added by `applyProcModel`). Null when the ops do not make a whole model (a removed one, or
+ * only some of its fields).
+ */
+function newProcModel(id: string, p: Pick<Projection, 'subRecords'>): ProcModel | null {
+  const own = p.subRecords.find((r) => r.ref.rec === 'model' && r.ref.id === id);
+  if (!own || typeof own.set.schema !== 'string') return null;
+  const r = readVersioned(
+    { ...own.set, id, parts: [] },
+    { family: 'aio.procmodel', schema: ProcModel },
+  );
+  return r.ok ? r.value : null;
+}
+
+const PROCMODEL_FILE = /^models\/([^/]+)\.procmodel\.json$/;
 
 /** `edits/boundaries.json`: the last writer per pile and survey date. */
 export function applyBoundaries(
@@ -234,6 +263,7 @@ export function stateFiles(
     if (r.ref.rec === 'part' && r.ref.in) {
       files.add(`${PROCMODEL_DIR}/${r.ref.in}.procmodel.json`);
     }
+    if (r.ref.rec === 'model') files.add(`${PROCMODEL_DIR}/${r.ref.id}.procmodel.json`);
   }
   if (p.boundaries.length > 0) files.add(BOUNDARIES_PATH);
   if (p.narrative.length > 0) files.add(NARRATIVE_PATH);
@@ -268,7 +298,12 @@ function applyOne(
     const r = json === null ? null : NarrativeFile.safeParse(json);
     return r === null || r.success ? applyNarrative(r?.data ?? null, p) : null;
   }
-  if (json === null) return null;
+  if (json === null) {
+    // an engineering model made on another copy is written whole from its own record
+    const id = PROCMODEL_FILE.exec(path)?.[1];
+    const made = id === undefined ? null : newProcModel(id, p);
+    return made ? applyProcModel(made, p) : null;
+  }
   if (path.startsWith(`${CHANGE_DIR}/`)) {
     const r = ChangeSet.safeParse(json);
     return r.success ? applyChangeSet(r.data, p) : null;
@@ -288,8 +323,8 @@ function applyOne(
 /**
  * Every state file the projection decides, merged: reads each through `read` (project-relative,
  * null when absent) and returns those whose text changes. Files that are missing or no longer
- * parse are reported in `problems` and left alone (a change set, pass or model is never made from
- * ops alone).
+ * parse are reported in `problems` and left alone (a change set or pass is never made from ops
+ * alone; a model is, when the copy that made it journalled its own fields whole).
  */
 export async function mergeStateFiles(
   p: Pick<Projection, 'issues' | 'subRecords' | 'boundaries' | 'narrative'>,

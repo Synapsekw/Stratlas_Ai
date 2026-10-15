@@ -7,15 +7,16 @@ import { OWNER_ONLY_MANIFEST_FIELDS } from '../rules';
 
 /**
  * Records inside other files, merged per field by last writer: change items (`change.review`),
- * detections and whole detection passes (`detection.review`), model parts (`procmodel.part`) and
- * manifest entries (`manifest.entry`). Boundary edits are last writer per pile and survey date;
- * narrative versions only grow.
+ * detections and whole detection passes (`detection.review`), model parts and a model's own fields
+ * (its assemblies, georeference and the rest besides `parts`: `procmodel.part`) and manifest
+ * entries (`manifest.entry`). Boundary edits are last writer per pile and survey date; narrative
+ * versions only grow.
  */
 
 const KIND_REC: Record<string, readonly string[]> = {
   'change.review': ['change-item'],
   'detection.review': ['detection', 'detection-pass'],
-  'procmodel.part': ['part'],
+  'procmodel.part': ['part', 'model'],
   'manifest.entry': ['manifest'],
 };
 
@@ -28,6 +29,7 @@ const GROUPS: Record<string, readonly (readonly string[])[]> = {
 const QUIET: Record<string, readonly string[]> = {
   detection: ['reviewedBy', 'reviewedAt', 'updatedAt'],
   part: ['updatedAt'],
+  model: ['updatedAt'],
 };
 /** Fields whose conflicts are status conflicts (confirm against dismiss, accept against reject). */
 const STATUS_FIELDS = new Set(['status']);

@@ -242,6 +242,114 @@ describe('applyProcModel, applyBoundaries, applyNarrative', () => {
     expect(merged.parts[0]?.status).toBe('accepted');
   });
 
+  const engineering = {
+    schema: 'aio.procmodel/2',
+    id: 'eng',
+    name: 'Shaft',
+    createdAt: '2026-10-06T08:00:00Z',
+    updatedAt: '2026-10-06T08:00:00Z',
+    sources: [],
+    parts: [],
+    materials: [],
+    assemblies: [
+      {
+        id: 'shaft-1',
+        kind: 'shaft',
+        name: 'Shaft',
+        description: 'Tapered shaft',
+        category: 'Shaft',
+        status: 'draft',
+        origin: { by: 'engineer', runId: 'r1' },
+        quality: {},
+        sources: [],
+        params: {
+          base: [0, 0, 0],
+          profile: [
+            { y: 0, r: 10 },
+            { y: 100, r: 7 },
+          ],
+          wall: 0.4,
+          openTop: true,
+        },
+      },
+    ],
+  };
+
+  it("lands another device's component edit on an engineering model (last writer wins)", async () => {
+    const shaft = engineering.assemblies[0];
+    const sim = new TeamSim();
+    sim.write(
+      0,
+      'procmodel.part',
+      { rec: 'model', id: 'eng' },
+      { set: { assemblies: [{ ...shaft, name: 'First' }] } },
+    );
+    sim.advance();
+    sim.write(
+      1,
+      'procmodel.part',
+      { rec: 'model', id: 'eng' },
+      {
+        set: { assemblies: [{ ...shaft, name: 'Main shaft' }], updatedAt: '2026-10-07T08:00:00Z' },
+      },
+    );
+    sim.syncAll();
+    const p = project(sim.all());
+    expect(stateFiles(p)).toEqual(['models/eng.procmodel.json']);
+    const out = await mergeStateFiles(p, (path) =>
+      Promise.resolve(path === 'models/eng.procmodel.json' ? stateFileText(engineering) : null),
+    );
+    expect(out.problems).toEqual([]);
+    const merged = ProcModel.parse(JSON.parse(out.files[0]?.text ?? '{}'));
+    expect(merged.assemblies[0]?.name).toBe('Main shaft');
+    expect(merged.updatedAt).toBe('2026-10-07T08:00:00Z');
+  });
+
+  it('creates an engineering model made on another device', async () => {
+    const rest = Object.fromEntries(Object.entries(engineering).filter(([k]) => k !== 'parts'));
+    const sim = new TeamSim();
+    sim.write(1, 'procmodel.part', { rec: 'model', id: 'eng' }, { set: rest });
+    sim.syncAll();
+    const out = await mergeStateFiles(project(sim.all()), () => Promise.resolve(null));
+    expect(out.problems).toEqual([]);
+    expect(out.files.map((f) => f.path)).toEqual(['models/eng.procmodel.json']);
+    const made = ProcModel.parse(JSON.parse(out.files[0]?.text ?? '{}'));
+    expect(made).toEqual(ProcModel.parse(engineering));
+    expect(out.files[0]?.text).toBe(stateFileText(ProcModel.parse(engineering)));
+  });
+
+  it('leaves a model with only part changes as it was outside its parts', async () => {
+    const withPart = ProcModel.parse({
+      ...engineering,
+      parts: [
+        {
+          kind: 'box',
+          id: 's1',
+          status: 'draft',
+          origin: { by: 'manual' },
+          base: [5, 0, 5],
+          size: [4, 2.5, 6],
+        },
+      ],
+    });
+    const sim = new TeamSim();
+    sim.write(
+      0,
+      'procmodel.part',
+      { rec: 'part', id: 's1', in: 'eng' },
+      { set: { status: 'accepted' } },
+    );
+    const out = await mergeStateFiles(project(sim.all()), (path) =>
+      Promise.resolve(path === 'models/eng.procmodel.json' ? stateFileText(withPart) : null),
+    );
+    const merged = ProcModel.parse(JSON.parse(out.files[0]?.text ?? '{}'));
+    expect({ ...merged, parts: [] }).toEqual({ ...withPart, parts: [] });
+    expect(merged.parts[0]?.status).toBe('accepted');
+    // part ops alone never make a model that is not here
+    const none = await mergeStateFiles(project(sim.all()), () => Promise.resolve(null));
+    expect(none.files).toEqual([]);
+  });
+
   it('takes the last boundary edit per pile and date', () => {
     const edit = (net: number) => ({
       pile: 'P1',
