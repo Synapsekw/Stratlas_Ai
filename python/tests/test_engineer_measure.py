@@ -115,6 +115,9 @@ def test_pdal_arguments_apply_the_region_for_every_compressed_format():
         "translate",
         "a.laz",
         "o.las",
+        "--writers.las.forward=all",
     ]
+    # the source header's scale and offset carry over, so no precision is lost on the way
+    assert all("--writers.las.forward=all" in a for a in (copc, laz, box))
     assert region_centre(region) == (5.0, -3.0) and region_centre(None) is None
     assert region_centre({"min": [0, 0, 0], "max": [2, 1, 4]}) == (1.0, 2.0)

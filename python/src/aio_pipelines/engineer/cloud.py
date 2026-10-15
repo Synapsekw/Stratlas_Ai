@@ -58,8 +58,9 @@ def pdal_translate_args(
 ) -> list[str]:
     """`pdal translate` to a plain LAS with the region applied at the source: a COPC reader takes
     `bounds` (only that part is decompressed); LAZ and LAS have no spatial index, so `filters.crop`
-    with the same bounds runs on the stream and only the region reaches the file."""
-    args = [pdal, "translate", str(src), str(dst)]
+    with the same bounds runs on the stream and only the region reaches the file. The source
+    header (scale, offset, CRS) is forwarded, so the coordinates keep their precision."""
+    args = [pdal, "translate", str(src), str(dst), "--writers.las.forward=all"]
     if region is not None:
         bounds = _world_bounds(region, origin)
         if fmt == "copc":

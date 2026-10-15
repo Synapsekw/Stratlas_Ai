@@ -460,7 +460,8 @@ def test_photos_only_with_photogrammetry_points_to_reconstruct_first(tmp_path, m
     photos = [{"path": f"photos/synth_0{i}.jpg"} for i in (1, 2, 3)]
     run_job(ModelEvidence(), tmp_path, params(clouds=[], photos=photos, region=None))
     pack = read_pack(tmp_path)
-    assert pack["reconstruction"] == "not-needed" and pack["taper"] is None
+    # photogrammetry is there but was not run: the pack says so, not "not needed"
+    assert pack["reconstruction"] == "available-not-run" and pack["taper"] is None
     assert any("Reconstruct first" in w for w in pack["warnings"])
 
 

@@ -640,6 +640,7 @@ class ModelEvidence:
         if not has_cloud:
             if photogrammetry_available():
                 # nothing is reconstructed here: the person is pointed at the step that does it
+                doc["reconstruction"] = "available-not-run"
                 warnings.append(
                     "Photos only: no point cloud was measured. Reconstruct first (process the photos into a point cloud), then measure it."
                 )

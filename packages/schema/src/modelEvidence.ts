@@ -194,7 +194,11 @@ export const EvidencePack = z
       .max(64),
     photos: z.array(PhotoItem).max(400),
     images: z.array(EvidenceImage).max(64),
-    reconstruction: z.enum(['not-needed', 'unavailable', 'used']),
+    /**
+     * `available-not-run`: photos only, photogrammetry is installed but nothing was reconstructed
+     * (the warnings point at reconstructing first).
+     */
+    reconstruction: z.enum(['not-needed', 'unavailable', 'available-not-run', 'used']),
     warnings: z.array(z.string().max(300)).max(50),
     /** How the base was found (absent in a photos-only pack). */
     baseInfo: z

@@ -91,7 +91,7 @@ def all_pipelines() -> dict[str, Pipeline]:
         WalkProcess(),
         # Drone panoramas (pipeline pack 0.7.0)
         PanoStitch(),
-        # Engineering model (pipeline pack 0.9.0)
+        # Engineering model (pipeline pack 0.10.0)
         ModelEvidence(),
     ]
     return {p.name: p for p in items}

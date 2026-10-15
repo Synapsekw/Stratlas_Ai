@@ -1,5 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
+import { EngineerRun } from './engineer';
 import {
   EVIDENCE_LIMITS,
   EvidencePack,
@@ -113,6 +114,12 @@ describe('EvidencePack', () => {
     expect(p.slices).toHaveLength(2);
     expect(must(p.slices[0]).shape).toBe('circle');
     expect(must(p.members[0]).items).toHaveLength(2);
+  });
+  it('says when photogrammetry is there but was not run, and the run keeps that', () => {
+    const p = { ...pack([]), reconstruction: 'available-not-run' };
+    expect(EvidencePack.safeParse(p).success).toBe(true);
+    expect(EngineerRun.shape.reconstruction.safeParse('available-not-run').success).toBe(true);
+    expect(EvidencePack.safeParse({ ...p, reconstruction: 'maybe' }).success).toBe(false);
   });
   it('refuses slice coverage outside 0..1', () => {
     expect(EvidencePack.safeParse(pack([slice(10, 1.2)])).success).toBe(false);

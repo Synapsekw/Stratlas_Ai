@@ -173,7 +173,9 @@ export const EngineerRun = z
         outputTokens: z.number().int().nonnegative(),
       })
       .strict(),
-    reconstruction: z.enum(['not-needed', 'queued', 'done', 'unavailable']).optional(),
+    reconstruction: z
+      .enum(['not-needed', 'queued', 'done', 'unavailable', 'available-not-run'])
+      .optional(),
     /**
      * The person's corrections the model was last assembled with (`UserOverrides` of
      * `@aio/modelling`), so a reopened run rebuilds with them, never without.
