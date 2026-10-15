@@ -137,6 +137,8 @@ const CHANNELS = {
   'engineer:runWrite': true,
   'engineer:evidenceImage': true,
   'ai:setCloudEvidence': true,
+  'ai:engineerPreview': true,
+  'ai:engineer': true,
   'inference:models': true,
   'inference:importModel': true,
   'inference:removeModel': true,

@@ -38,7 +38,7 @@ import { OrientationFile } from './orientation';
 import { ReleaseNotes, UpdateStatus } from './update';
 import { ChangeKind, ChangeSet, ChangeSetId, ChangeSetSummary, ChangeThresholds } from './change';
 import { ProcModel, ProcModelId, ProcModelSummary } from './procmodel';
-import { Detail, EngineerProposal, EngineerRun, RunId } from './engineer';
+import { Detail, EngineerProposal, EngineerRun, EngineerSetup, RunId } from './engineer';
 import { EvidencePack } from './modelEvidence';
 import {
   DetectorModelId,
@@ -303,6 +303,88 @@ export const ModelRouteSchema = z.object({
    */
   treatAsVision: z.boolean().optional(),
 });
+
+/** One evidence image of an engineer request: a pack image id, never a path. */
+const EngineerImageKind = z.enum(['photo', 'side', 'top', 'slice', 'crop', 'generated']);
+const EngineerCallImage = z
+  .object({
+    id: z.string().regex(/^[A-Za-z0-9][A-Za-z0-9._-]{0,39}$/),
+    kind: EngineerImageKind,
+    dataUrl: z
+      .string()
+      .max(40_000_000)
+      .regex(/^data:image\/(?:png|jpeg|webp);base64,[A-Za-z0-9+/]+={0,2}$/),
+    bytes: z.number().int().nonnegative(),
+    view: z.string().max(40).optional(),
+  })
+  .strict();
+
+/** The engineer request of one pass of a run (`ai:engineerPreview`, `ai:engineer`). */
+const EngineerCallRequest = z
+  .object({
+    projectId: z.string().min(1),
+    /** The engineering run (`engineering/<run>/`): cache folder, cost cap and AI time. */
+    engineerRun: RunId,
+    pass: z.number().int().min(1).max(3),
+    images: z.array(EngineerCallImage).max(64),
+    /** The evidence pack's measurement summary (JSON text); main refuses one over 40 000. */
+    summary: z.string().max(200_000),
+    setup: EngineerSetup,
+    previous: EngineerProposal.optional(),
+  })
+  .strict();
+
+/** The send preview's content: exactly the request text and images. */
+const EvidencePreviewContent = z.object({
+  text: z.string(),
+  images: z.array(
+    z.object({
+      id: z.string(),
+      kind: EngineerImageKind,
+      label: z.string(),
+      thumb: z.string(),
+      bytes: z.number().int().nonnegative(),
+      width: z.number().int().positive(),
+      height: z.number().int().positive(),
+      resized: z.boolean(),
+    }),
+  ),
+  leftOut: z.array(z.string()),
+  bytes: z.number().int().nonnegative(),
+});
+
+/** The outcome of one engineer request. */
+const EngineerOutcomeSchema = z.discriminatedUnion('kind', [
+  z.object({
+    kind: z.literal('proposal'),
+    proposal: EngineerProposal,
+    cached: z.boolean(),
+    costUsd: z.number().nonnegative(),
+    identityConflict: z.literal(true).optional(),
+    stopped: z.literal('budget').optional(),
+  }),
+  z.object({
+    kind: z.literal('refused'),
+    reason: z.string(),
+    code: z.enum([
+      'offline',
+      'policy',
+      'no-key',
+      'capability',
+      'budget',
+      'identity',
+      /** Another request of this engineering run is in flight. */
+      'busy',
+      /** The run's 10 minutes of AI time are used up. */
+      'time',
+    ]),
+  }),
+  z.object({
+    kind: z.literal('failed'),
+    error: z.string(),
+    code: z.enum(['invalid', 'rate-limit', 'network', 'provider', 'cancelled']),
+  }),
+]);
 
 /** Tokens and estimated cost for one provider. */
 export const ProviderUsage = z.object({
@@ -1930,6 +2012,47 @@ export const ipc = {
         message: 'Give photos or scans',
       }),
     response: OkOrFailure,
+  },
+  /**
+   * What the engineer step would send for this request, built in main by the same function as
+   * the request (images cut to the model's limit, downscaled, metadata stripped; the request
+   * text), with the route, the project's photo and scan consents read from disk, the cost
+   * estimate (absent when the model has no price) and a one-time consent token for exactly this
+   * content. Nothing is sent and no key is read.
+   */
+  'ai:engineerPreview': {
+    request: EngineerCallRequest,
+    response: z.discriminatedUnion('ok', [
+      z.object({
+        ok: z.literal(true),
+        route: ModelRouteSchema,
+        cloud: z.boolean(),
+        flags: z.object({ photos: z.boolean(), scans: z.boolean() }),
+        estimateUsd: z.number().nonnegative().optional(),
+        content: EvidencePreviewContent,
+        /** Valid once, for this project and this content, for a few minutes. */
+        consent: z.string().max(100),
+      }),
+      Failure,
+    ]),
+  },
+  /**
+   * One engineer request (structured, cached, budgeted). Gates in main: offline-only, the model's
+   * capabilities, the project policy, the photo and scan consents re-read from the manifest (a
+   * one-time consent counts only with a token from `ai:engineerPreview` for the same content),
+   * key, cache, the run's cost cap and its 10 minute AI time, one request in flight per run.
+   * `runId` is the IPC run, cancelled with `ai:cancel`; usage goes out as `ai:event` usage.
+   */
+  'ai:engineer': {
+    request: EngineerCallRequest.extend({
+      runId: z.string().min(1).max(100),
+      costConfirmed: z.boolean().optional(),
+      consent: z
+        .object({ token: z.string().max(100), photos: z.boolean(), scans: z.boolean() })
+        .strict()
+        .optional(),
+    }).strict(),
+    response: EngineerOutcomeSchema,
   },
 
   // ---------------------------------------------------------------- M8 local detection (C6)
