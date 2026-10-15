@@ -562,28 +562,41 @@ def convert_zpc(ctx: StepContext, pdal: str, src: Path, epsg: int | None) -> dic
     try:
         files = zpc.extract_tiles(ctx, src, tiles, raw, (0.0, ZPC_UNPACK_END))
         counts: list[int] = []
-        crss: set[int | None] = set()
+        # per tile: None when it declares no CRS, else its EPSG code, else its own WKT or PROJJSON
+        # (a custom or local CRS has a CRS all the same, and PDAL reprojects from it)
+        crss: set[tuple[str, Any] | None] = set()
+        tile_epsg: int | None = None
         for t, f in zip(tiles, files, strict=True):
             try:
                 s = read_summary(ctx, pdal, f)
             except JobError as e:
                 raise JobError(f"Tile {t.name} of {src.name} could not be read: {e}") from None
             srs = s.get("srs") or {}
-            crss.add(source_epsg(srs) if (srs.get("wkt") or srs.get("json")) else None)
+            if srs.get("wkt") or srs.get("json"):
+                tile_epsg = source_epsg(srs)
+                own = srs.get("wkt") or json.dumps(srs.get("json"), sort_keys=True)
+                crss.add(("epsg", tile_epsg) if tile_epsg else ("crs", own))
+            else:
+                crss.add(None)
             counts.append(int(s.get("num_points") or 0))
             ctx.log(f"{t.name}: {counts[-1]:,} points")
+        if len(crss) > 1 and None in crss:
+            raise JobError(
+                f"Some tiles of {src.name} declare no CRS and others declare one; export them all in one CRS."
+            )
         if len(crss) > 1:
             raise JobError(f"The tiles of {src.name} are in different CRSs; export them in one CRS.")
-        count, tile_epsg = sum(counts), next(iter(crss))
-        reproject = epsg if epsg and tile_epsg and tile_epsg != epsg else None
-        if epsg and tile_epsg is None:
+        count, has_crs = sum(counts), next(iter(crss)) is not None
+        reproject = epsg if epsg and has_crs and tile_epsg != epsg else None
+        if epsg and not has_crs:
             ctx.log(f"The tiles declare no CRS; they are taken as EPSG:{epsg} already.", "warn")
         ctx.log(f"{src.name}: {len(tiles)} tiles, {count:,} points")
         record = max((las_record_length(f) or DEFAULT_RECORD) for f in files)
         check_space(ctx.staging, disk_needed(count, record if reproject else None))
         folder, start = raw, ZPC_UNPACK_END
         if reproject:
-            ctx.log(f"Reprojecting the tiles from EPSG:{tile_epsg} to EPSG:{epsg}.")
+            found = f"EPSG:{tile_epsg}" if tile_epsg else "their own CRS"
+            ctx.log(f"Reprojecting the tiles from {found} to EPSG:{epsg}.")
             las_dir.mkdir(parents=True, exist_ok=True)
             step = (PREPARE_END - ZPC_UNPACK_END) / len(files)
             for i, (f, n) in enumerate(zip(files, counts, strict=True)):

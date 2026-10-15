@@ -208,3 +208,72 @@ def test_a_two_tile_zpc_becomes_one_cloud_with_every_point(tmp_path):
     (layer,) = json.loads((root / "manifest.json").read_text())["layers"]
     assert layer["name"] == "Mast cloud.zpc" and layer["pointCount"] == z["points"] and "capture" not in layer
     assert not list((root / "jobs").rglob("tile-*"))
+
+
+LOCAL_WKT = 'LOCAL_CS["Block local",LOCAL_DATUM["Local",0],UNIT["metre",1]]'
+
+
+def _fake_build(monkeypatch, pc, srs, calls):
+    """read_summary answers with each tile's srs; prepare_las and build_copc only record."""
+    monkeypatch.setattr(pc, "find_pdal", lambda: "pdal")
+    monkeypatch.setattr(pc, "read_summary", lambda ctx, pdal, p: {"num_points": 500, "srs": srs[p.name]})
+
+    def prepare(ctx, pdal, src, dst, reproject, count, band):
+        calls.append(reproject)
+        dst.write_bytes(src.read_bytes())
+
+    def build(ctx, folder, staged, count, epsg, start):
+        staged.write_bytes(b"copc")
+        return "untwine"
+
+    monkeypatch.setattr(pc, "prepare_las", prepare)
+    monkeypatch.setattr(pc, "build_copc", build)
+
+
+def test_tiles_in_a_crs_without_an_epsg_code_are_reprojected(tmp_path, monkeypatch):
+    from aio_pipelines import pointcloud as pc
+
+    bs.make_zpc(tmp_path / "c.zpc", tiles=2)
+    calls: list = []
+    srs = {"tile-001.las": {"wkt": LOCAL_WKT}, "tile-002.las": {"wkt": LOCAL_WKT}}
+    _fake_build(monkeypatch, pc, srs, calls)
+    root = project(tmp_path)
+    result, _ = run_job(PointcloudToCopc(), root, {"src": str(tmp_path / "c.zpc"), "epsg": bs.EPSG})
+    assert result["status"] == "done", result
+    assert calls == [bs.EPSG, bs.EPSG]
+    assert not list((root / "jobs").rglob("tile-*"))
+
+
+def test_tiles_with_and_without_a_crs_are_refused_in_words(tmp_path, monkeypatch):
+    from aio_pipelines import pointcloud as pc
+
+    bs.make_zpc(tmp_path / "c.zpc", tiles=2)
+    _fake_build(monkeypatch, pc, {"tile-001.las": {"wkt": LOCAL_WKT}, "tile-002.las": {}}, [])
+    root = project(tmp_path)
+    with pytest.raises(JobError, match=r"Some tiles of c\.zpc declare no CRS"):
+        run_job(PointcloudToCopc(), root, {"src": str(tmp_path / "c.zpc"), "epsg": bs.EPSG})
+    assert json.loads((root / "manifest.json").read_text())["layers"] == []
+
+
+def test_tiles_in_two_crss_without_epsg_codes_are_refused(tmp_path, monkeypatch):
+    from aio_pipelines import pointcloud as pc
+
+    bs.make_zpc(tmp_path / "c.zpc", tiles=2)
+    other = LOCAL_WKT.replace("Block local", "Other local")
+    _fake_build(monkeypatch, pc, {"tile-001.las": {"wkt": LOCAL_WKT}, "tile-002.las": {"wkt": other}}, [])
+    with pytest.raises(JobError, match="different CRSs"):
+        run_job(PointcloudToCopc(), project(tmp_path), {"src": str(tmp_path / "c.zpc"), "epsg": bs.EPSG})
+
+
+def test_tiles_already_in_the_project_crs_are_not_reprojected(tmp_path, monkeypatch):
+    from aio_pipelines import pointcloud as pc
+
+    bs.make_zpc(tmp_path / "c.zpc", tiles=2)
+    calls: list = []
+    srs = {"json": {"id": {"authority": "EPSG", "code": bs.EPSG}}}
+    _fake_build(monkeypatch, pc, {"tile-001.las": srs, "tile-002.las": srs}, calls)
+    result, _ = run_job(
+        PointcloudToCopc(), project(tmp_path), {"src": str(tmp_path / "c.zpc"), "epsg": bs.EPSG}
+    )
+    assert result["status"] == "done", result
+    assert calls == []
