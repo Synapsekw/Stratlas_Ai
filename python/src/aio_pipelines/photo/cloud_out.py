@@ -5,7 +5,8 @@
 keeping the classes, its progress read from ``--progress_debug``; its temporary files go where the
 caller says (the job's staging area). Without untwine, PDAL's ``writers.copc`` does it in memory,
 refused up front, naming untwine, when the cloud would not fit the memory budget. Both run through
-``native.run_tool`` with the memory budget as their limit.
+``native.run_tool`` with the memory budget as their limit. ``las`` may be a folder of tiles:
+untwine reads the folder, PDAL merges one reader per tile.
 """
 
 from __future__ import annotations
@@ -30,6 +31,20 @@ NO_COPC_TOOL = (
     "pipeline pack, or leave the point cloud out."
 )
 
+#: What a folder of tiles may hold for the COPC writers.
+TILE_SUFFIXES = (".las", ".laz")
+
+
+def las_inputs(las: Path) -> list[Path]:
+    """The LAS/LAZ files a COPC is built from: ``las`` itself, or, when it is a folder (the tiles
+    of a Bentley ``.zpc``), every LAS or LAZ file in it, sorted. untwine reads the folder itself."""
+    if not las.is_dir():
+        return [las]
+    files = sorted(p for p in las.iterdir() if p.is_file() and p.suffix.lower() in TILE_SUFFIXES)
+    if not files:
+        raise JobError(f"The folder {las.name} holds no LAS or LAZ files to build the COPC from.")
+    return files
+
 
 def untwine_args(exe: str, las: Path, out: Path, temp: Path, epsg: int | None) -> list[str]:
     args = [exe, "-i", str(las), "-o", str(out), "--temp_dir", str(temp), "--progress_debug"]
@@ -38,12 +53,13 @@ def untwine_args(exe: str, las: Path, out: Path, temp: Path, epsg: int | None) -
 
 def pdal_copc_pipeline(las: Path, out: Path, epsg: int | None) -> dict[str, Any]:
     srs = f"EPSG:{epsg}" if epsg else None
-    return {
-        "pipeline": [
-            {"type": "readers.las", "filename": str(las), **({"override_srs": srs} if srs else {})},
-            {"type": "writers.copc", "filename": str(out), **({"a_srs": srs} if srs else {})},
-        ]
-    }
+    readers = [
+        {"type": "readers.las", "filename": str(f), **({"override_srs": srs} if srs else {})}
+        for f in las_inputs(las)
+    ]
+    merge = [{"type": "filters.merge"}] if len(readers) > 1 else []
+    writer = {"type": "writers.copc", "filename": str(out), **({"a_srs": srs} if srs else {})}
+    return {"pipeline": [*readers, *merge, writer]}
 
 
 def untwine_progress(line: str) -> float | None:

@@ -251,3 +251,59 @@ def test_real_pdal_writes_the_copc_and_its_rate_is_printed(tmp_path, monkeypatch
                         tmp_path / ".t", 2**33) == "pdal"  # fmt: skip
     rate = n / (time.monotonic() - t0)
     print(f"\nPDAL writers.copc: {rate:,.0f} points a second", file=sys.stderr)
+
+
+def _tiles(tmp_path, n=2, points=1000, junk=True):
+    from aio_pipelines.change.las import write_las
+
+    folder = tmp_path / "tiles"
+    folder.mkdir()
+    rng = np.random.default_rng(3)
+    for i in range(n):
+        xyz = np.column_stack(
+            [rng.uniform(0, 10, points) + 10 * i, rng.uniform(0, 10, points), rng.uniform(0, 5, points)]
+        )
+        write_las(folder / f"tile-{i + 1:03d}.las", xyz + np.array([412000.0, 3245000.0, 0.0]))
+    if junk:
+        (folder / "readme.txt").write_text("not a tile")
+    return folder
+
+
+def test_a_folder_of_tiles_is_every_las_in_it_sorted(tmp_path):
+    folder = _tiles(tmp_path)
+    assert [p.name for p in C.las_inputs(folder)] == ["tile-001.las", "tile-002.las"]
+    assert C.las_inputs(tmp_path / "one.las") == [tmp_path / "one.las"]
+    empty = tmp_path / "empty"
+    empty.mkdir()
+    with pytest.raises(JobError, match="no LAS or LAZ"):
+        C.las_inputs(empty)
+
+
+def test_pdal_merges_every_tile_of_a_folder(tmp_path):
+    folder = _tiles(tmp_path)
+    pipe = C.pdal_copc_pipeline(folder, tmp_path / "o.copc.laz", 32639)["pipeline"]
+    assert [s["type"] for s in pipe] == ["readers.las", "readers.las", "filters.merge", "writers.copc"]
+    assert pipe[0]["override_srs"] == "EPSG:32639"
+    one = C.pdal_copc_pipeline(tmp_path / "c.las", tmp_path / "o.copc.laz", None)["pipeline"]
+    assert [s["type"] for s in one] == ["readers.las", "writers.copc"]
+
+
+@pytest.mark.skipif(not all(_real_tools()), reason="needs untwine and PDAL (AIO_UNTWINE, AIO_PDAL)")
+def test_real_untwine_merges_a_folder_of_tiles(tmp_path):
+    import json
+    import subprocess
+
+    from aio_pipelines.pointcloud import find_pdal, pdal_env
+
+    folder = _tiles(tmp_path, n=2, points=5000, junk=False)  # a zpc folder holds tiles only
+    ctx, _ = _ctx(tmp_path)
+    out = tmp_path / "m.copc.laz"
+    assert C.write_copc(ctx, folder, out, 10_000, ps.EPSG, tmp_path / ".t", 2**31) == "untwine"
+    pdal = find_pdal()
+    info = json.loads(
+        subprocess.run(
+            [pdal, "info", "--summary", str(out)], capture_output=True, check=True, env=pdal_env(pdal)
+        ).stdout
+    )["summary"]
+    assert info["num_points"] == 10_000
+    assert info["bounds"]["maxx"] - info["bounds"]["minx"] > 19.0  # both tiles
