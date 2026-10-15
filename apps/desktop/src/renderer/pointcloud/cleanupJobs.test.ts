@@ -126,6 +126,52 @@ describe('noise runs', () => {
     expect(cleanup.recipeOf('a')).toBeNull();
   });
 
+  it('a run that returns after another project opened writes nothing anywhere', async () => {
+    const { d, cleanup, call } = deps(60);
+    await cleanup.load('p', [layer]);
+    const job = d.waitForJob.bind(d);
+    d.waitForJob = async (id) => {
+      cleanup.close();
+      await cleanup.load('q', [layer]);
+      return job(id);
+    };
+    expect(await runNoise(d, layer, { outlier: { meanK: 8, multiplier: 2 } })).toBeNull();
+    const channels = call.mock.calls.map(([ch]) => ch);
+    expect(channels).not.toContain('pointcloud:writeCleanup');
+    expect(call).not.toHaveBeenCalledWith('pointcloud:readCleanup', {
+      projectId: 'p',
+      noiseRun: { layerId: 'a', runId: 'job1' },
+    });
+    expect(cleanup.store.getState().projectId).toBe('q');
+    expect(cleanup.recipeOf('a')).toBeNull();
+    expect(cleanup.store.getState().notice).toBeNull();
+  });
+
+  it('a project switch while the record is read still commits nothing', async () => {
+    const { d, cleanup, call } = deps(60);
+    await cleanup.load('p', [layer]);
+    const inner = d.call;
+    d.call = (async (channel: string, req: unknown) => {
+      const r = await (inner as (c: string, q: unknown) => Promise<unknown>)(channel, req);
+      if (channel === 'pointcloud:readCleanup' && (req as { noiseRun?: unknown }).noiseRun) {
+        cleanup.close();
+        await cleanup.load('q', [layer]);
+      }
+      return r;
+    }) as never;
+    expect(await runNoise(d, layer, { outlier: { meanK: 8, multiplier: 2 } })).toBeNull();
+    expect(call.mock.calls.map(([ch]) => ch)).not.toContain('pointcloud:writeCleanup');
+    expect(cleanup.recipeOf('a')).toBeNull();
+  });
+
+  it('a project that is not open refuses the run with that reason', async () => {
+    const { d } = deps(60);
+    d.project = () => null;
+    expect(await runNoise(d, layer, { outlier: { meanK: 8, multiplier: 2 } })).toBe(
+      'No project is open.',
+    );
+  });
+
   it('an old pipeline pack refuses the run with the pack update wording', async () => {
     const { d, cleanup } = deps(60, 'done', PACK_REFUSAL);
     await cleanup.load('p', [layer]);

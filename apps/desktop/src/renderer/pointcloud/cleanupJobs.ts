@@ -95,7 +95,10 @@ export async function runNoise(
 ): Promise<string | null> {
   const src = srcOf(layer);
   const p = d.project();
-  if (!src || !p) return 'This cloud has no file in the project.';
+  if (!p) return 'No project is open.';
+  if (!src) return 'This cloud has no file in the project.';
+  // a project switched while the job ran: its result belongs to the other project, never here
+  const here = () => d.cleanup.store.getState().projectId === p.id;
   d.cleanup.setBusy('noise');
   try {
     const started = await start(d, {
@@ -107,12 +110,14 @@ export async function runNoise(
     });
     if ('error' in started) return started.error;
     const { job } = started;
+    if (!here()) return null;
     if (job.status !== 'done') return job.error ?? 'The noise run did not finish.';
     // the record the job wrote beside its working copy (marked, total)
     const r = await d.call('pointcloud:readCleanup', {
       projectId: p.id,
       noiseRun: { layerId: layer.id, runId: job.id },
     });
+    if (!here()) return null;
     if (!r.ok) return r.error;
     if (!r.value.ok) return r.value.error;
     const run = r.value.noise ?? null;
@@ -130,7 +135,7 @@ export async function runNoise(
     await d.cleanup.commit(layer.id, next, { kind: 'noise', count: run.marked });
     return null;
   } finally {
-    d.cleanup.setBusy(null);
+    if (here()) d.cleanup.setBusy(null);
   }
 }
 
@@ -142,6 +147,8 @@ export async function saveCleaned(
   const src = srcOf(layer);
   if (!src) return 'This cloud has no file in the project.';
   const recipe = d.cleanup.recipeOf(layer.id) ?? emptyCleanup(layer.id);
+  const projectId = d.cleanup.store.getState().projectId;
+  const here = () => d.cleanup.store.getState().projectId === projectId;
   d.cleanup.setBusy('save');
   try {
     const started = await start(
@@ -155,6 +162,7 @@ export async function saveCleaned(
       },
       () => {
         // only once the job is accepted: an old pack's refusal is the only message
+        if (!here()) return;
         d.cleanup.notify({
           text: t('cleanup.save.started'),
           undo: false,
@@ -166,6 +174,6 @@ export async function saveCleaned(
     if ('error' in started) return started.error;
     return started.job.status === 'done' ? null : (started.job.error ?? 'The save did not finish.');
   } finally {
-    d.cleanup.setBusy(null);
+    if (here()) d.cleanup.setBusy(null);
   }
 }

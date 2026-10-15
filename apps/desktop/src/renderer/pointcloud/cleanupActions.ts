@@ -28,9 +28,8 @@ export interface CleanupAction {
   label: MessageKey;
   applies(target: CleanupTarget): boolean;
   multi: false;
-  // the shared action registry's shape: a menu item may or may not wait on its action
-  // eslint-disable-next-line @typescript-eslint/no-invalid-void-type
-  run(target: CleanupTarget, ctx: CleanupActionContext): void | Promise<unknown>;
+  /** The menu may await the result (a promise) or ignore it. */
+  run(target: CleanupTarget, ctx: CleanupActionContext): unknown;
 }
 
 const editable = (t: CleanupTarget) => isCleanable(t.layer) && !t.readOnly;
