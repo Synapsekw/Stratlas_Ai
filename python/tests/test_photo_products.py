@@ -257,6 +257,59 @@ def test_the_dsm_has_the_scenes_heights(site):
     assert float(np.nanmedian(np.abs(got - want))) < 0.2
 
 
+#: UTM zone 39 moved 1 km east: a site grid with no EPSG code
+SITE_GRID = "+proj=tmerc +lat_0=0 +lon_0=51 +k=0.9996 +x_0=501000 +y_0=0 +datum=WGS84 +units=m +no_defs"
+
+
+def _site_grid(root: Path) -> str:
+    """The project and the run in ``SITE_GRID`` (as WKT), the origin moved with it."""
+    from rasterio.crs import CRS
+
+    wkt = CRS.from_proj4(SITE_GRID).to_wkt()
+    assert CRS.from_wkt(wkt).to_epsg() is None
+    for rel in ("manifest.json", f"photogrammetry/{ps.RUN}/run.json"):
+        doc = json.loads((root / rel).read_text())
+        doc["crs"] = {"wkt": wkt}
+        if rel == "manifest.json":
+            doc["origin"] = [ps.ORIGIN[0] + 1000.0, ps.ORIGIN[1], ps.ORIGIN[2]]
+        (root / rel).write_text(json.dumps(doc))
+    return wkt
+
+
+def test_a_project_crs_without_an_epsg_code_gets_its_products(site):
+    import rasterio
+    from rasterio.crs import CRS
+
+    root, _ = site
+    wkt = _site_grid(root)
+    result, _ = run_job(
+        P.PhotoProducts(), root, {"run": ps.RUN, "products": ["ortho", "dsm", "mesh"], "preset": "standard"}
+    )
+    assert result["status"] == "done"
+    for name in ("dsm.tif", "ortho.tif"):
+        with rasterio.open(root / "photogrammetry" / ps.RUN / name) as ds:
+            assert ds.crs == CRS.from_wkt(wkt), name
+    with rasterio.open(root / "photogrammetry" / ps.RUN / "dsm.tif") as ds:
+        z = ds.read(1)
+        rows, cols = np.mgrid[ds.height // 4 : 3 * ds.height // 4 : 7, ds.width // 4 : 3 * ds.width // 4 : 7]
+        xs, ys = rasterio.transform.xy(ds.transform, rows.ravel(), cols.ravel())
+    got = z[rows.ravel(), cols.ravel()]
+    want = ps.dsm(np.array(xs) - (ps.ORIGIN[0] + 1000.0), np.array(ys) - ps.ORIGIN[1]) + ps.ORIGIN[2]
+    assert (
+        float(np.nanmedian(np.abs(got - want))) < 0.2
+    )  # reprojected into the site grid, not just relabelled
+    assert (root / "models" / f"{ps.RUN}-mesh.glb").is_file()
+
+
+@NO_PDAL
+def test_the_point_cloud_goes_into_a_crs_without_an_epsg_code(site):
+    root, _ = site
+    _site_grid(root)
+    result, _ = run_job(P.PhotoProducts(), root, {"run": ps.RUN, "products": ["cloud"], "preset": "standard"})
+    assert result["status"] == "done"
+    assert (root / "clouds" / f"{ps.RUN}.copc.laz").is_file()
+
+
 def test_fast_and_resolution_flags(site):
     root, log = site
     run_job(P.PhotoProducts(), root, {"run": ps.RUN, "products": ["ortho"], "preset": "fast", "gsdCm": 3.0})

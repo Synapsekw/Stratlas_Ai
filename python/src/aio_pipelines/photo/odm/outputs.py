@@ -3,6 +3,9 @@
 Paths and frames are the ones measured on ODM 3.6.2 (see the plan's constants C8 and C9): the
 georeferenced cloud and the textured OBJ hold UTM easting and northing minus the offset on line 2
 of ``coords.txt`` (x and y), and absolute heights.
+
+The project CRS (``target``) is an EPSG code, or WKT for a CRS that has none (a site grid):
+GDAL, PDAL and PROJ take either.
 """
 
 from __future__ import annotations
@@ -67,14 +70,36 @@ def read_coords(odm_dir: Path) -> tuple[int, tuple[float, float]]:
     return base + int(m.group(1)), (x, y)
 
 
-def dem_to_project(src: Path, dst: Path, epsg: int) -> GridSpec:
+Target = int | str  # the project CRS: an EPSG code, or WKT
+
+
+def target_crs(target: Target):
+    """The rasterio CRS of a project CRS given as an EPSG code or WKT."""
+    from rasterio.crs import CRS
+
+    return CRS.from_epsg(target) if isinstance(target, int) else CRS.from_wkt(target)
+
+
+def _srs(target: Target) -> str:
+    """The project CRS as GDAL, PDAL and PROJ read it."""
+    return f"EPSG:{target}" if isinstance(target, int) else target
+
+
+def _in_target(crs, target: Target) -> bool:
+    if crs is None:
+        return False
+    return crs.to_epsg() == target if isinstance(target, int) else crs == target_crs(target)
+
+
+def dem_to_project(src: Path, dst: Path, target: Target) -> GridSpec:
     """A height raster as float32 with NaN for no data, north-up in the project CRS."""
     import rasterio
     from rasterio.enums import Resampling
     from rasterio.warp import calculate_default_transform, reproject
 
+    dst_crs = target_crs(target)
     with rasterio.open(src) as ds:
-        if ds.crs is not None and ds.crs.to_epsg() == epsg:
+        if _in_target(ds.crs, target):
             spec = GridSpec(ds.transform.c, ds.transform.f, ds.transform.a, ds.width, ds.height)
             data = ds.read(1).astype(np.float32)
             if ds.nodata is not None:
@@ -82,7 +107,7 @@ def dem_to_project(src: Path, dst: Path, epsg: int) -> GridSpec:
         else:
             res = abs(ds.transform.a)
             transform, width, height = calculate_default_transform(
-                ds.crs, f"EPSG:{epsg}", ds.width, ds.height, *ds.bounds, resolution=res
+                ds.crs, dst_crs, ds.width, ds.height, *ds.bounds, resolution=res
             )
             spec = GridSpec(transform.c, transform.f, transform.a, width, height)
             data = np.full((height, width), np.nan, np.float32)
@@ -93,25 +118,25 @@ def dem_to_project(src: Path, dst: Path, epsg: int) -> GridSpec:
                 src_crs=ds.crs,
                 src_nodata=ds.nodata,
                 dst_transform=transform,
-                dst_crs=f"EPSG:{epsg}",
+                dst_crs=dst_crs,
                 dst_nodata=np.nan,
                 resampling=Resampling.bilinear,
             )
-    with surface.write_tif(dst, spec, epsg, 1, "float32", nodata=np.nan) as out:
+    with surface.write_tif(dst, spec, target, 1, "float32", nodata=np.nan) as out:
         out.write(data[None])
     return spec
 
 
-def ortho_to_project(src: Path, dst: Path, epsg: int) -> Path:
-    """``src`` when it is already in ``epsg``, else an RGBA GeoTIFF warped into it at ``dst``."""
+def ortho_to_project(src: Path, dst: Path, target: Target) -> Path:
+    """``src`` when it is already in ``target``, else an RGBA GeoTIFF warped into it at ``dst``."""
     import rasterio
     from rasterio.enums import Resampling
     from rasterio.vrt import WarpedVRT
 
     with rasterio.open(src) as ds:
-        if ds.crs is not None and ds.crs.to_epsg() == epsg:
+        if _in_target(ds.crs, target):
             return src
-        with WarpedVRT(ds, crs=f"EPSG:{epsg}", resampling=Resampling.bilinear) as vrt:
+        with WarpedVRT(ds, crs=target_crs(target), resampling=Resampling.bilinear) as vrt:
             profile = {
                 "driver": "GTiff",
                 "width": vrt.width,
@@ -162,14 +187,30 @@ def las_point_count(path: Path) -> int:
     return int(struct.unpack_from("<I", head, 107)[0])
 
 
-def cloud_to_copc(ctx: StepContext, odm_dir: Path, dst: Path, epsg: int, temp: Path, budget: int) -> dict:
+def cloud_pipeline(src: Path, las: Path, utm: int, target: Target) -> list[dict]:
+    """PDAL's stages from ODM's cloud (``utm``) to a LAS file in the project CRS."""
+    srs = _srs(target)
+    stages: list[dict] = [{"type": "readers.las", "filename": str(src)}]
+    if utm != target:
+        stages.append({"type": "filters.reprojection", "in_srs": f"EPSG:{utm}", "out_srs": srs})
+    # LAS 1.4 keeps any CRS as WKT (1.2 has GeoTIFF keys only, which cannot hold every site grid)
+    las_opts = {} if isinstance(target, int) else {"minor_version": 4}
+    stages.append(
+        {"type": "writers.las", "filename": str(las), "compression": False, "a_srs": srs, **las_opts}
+    )
+    return stages
+
+
+def cloud_to_copc(
+    ctx: StepContext, odm_dir: Path, dst: Path, target: Target, temp: Path, budget: int
+) -> dict:
     """ODM's georeferenced cloud as the project's COPC: copied when ODM's already fits, else PDAL
     reprojects (when the CRS differs) and untwine or PDAL writes it. Answers points, writer, source."""
     from ... import pointcloud
 
     src = output_path(odm_dir, CLOUDS)
     utm, _ = read_coords(odm_dir)
-    if src.name.endswith(".copc.laz") and utm == epsg:
+    if src.name.endswith(".copc.laz") and utm == target:
         dst.parent.mkdir(parents=True, exist_ok=True)
         shutil.copyfile(src, dst)
         return {"points": las_point_count(dst), "writer": "odm", "source": src.name}
@@ -178,19 +219,16 @@ def cloud_to_copc(ctx: StepContext, odm_dir: Path, dst: Path, epsg: int, temp: P
         raise JobError(cloud_out.NO_COPC_TOOL)
     temp.mkdir(parents=True, exist_ok=True)
     las = temp / "cloud.las"
-    stages: list[dict] = [{"type": "readers.las", "filename": str(src)}]
-    if utm != epsg:
-        stages.append({"type": "filters.reprojection", "in_srs": f"EPSG:{utm}", "out_srs": f"EPSG:{epsg}"})
-    stages.append(
-        {"type": "writers.las", "filename": str(las), "compression": False, "a_srs": f"EPSG:{epsg}"}
-    )
     pipeline = temp / "odm-cloud-pipeline.json"
-    pipeline.write_text(json.dumps(stages), encoding="utf-8")
+    pipeline.write_text(json.dumps(cloud_pipeline(src, las, utm, target)), encoding="utf-8")
     native.run_tool(
         ctx, [pdal, "pipeline", str(pipeline)], "Point cloud", temp, env=pointcloud.pdal_env(pdal)
     )
     points = las_point_count(las)
-    writer = cloud_out.write_copc(ctx, las, dst, points, epsg, temp, budget)
+    # a WKT CRS is already in the LAS file, where untwine and PDAL read it
+    writer = cloud_out.write_copc(
+        ctx, las, dst, points, target if isinstance(target, int) else None, temp, budget
+    )
     return {"points": points, "writer": writer, "source": src.name}
 
 
@@ -282,7 +320,7 @@ def read_obj(path: Path) -> list[ObjPart]:
 
 
 def mesh_to_glb(
-    odm_dir: Path, epsg: int, origin: np.ndarray, max_texture_px: int = 8192
+    odm_dir: Path, target: Target, origin: np.ndarray, max_texture_px: int = 8192
 ) -> tuple[bytes, dict]:
     """ODM's textured OBJ as a GLB in the scene frame around ``origin`` (easting, northing, height)."""
     from PIL import Image
@@ -290,10 +328,12 @@ def mesh_to_glb(
     obj = output_path(odm_dir, MESHES)
     utm, (ox, oy) = read_coords(odm_dir)
     transformer = None
-    if utm != epsg:
+    if utm != target:
         import pyproj
 
-        transformer = pyproj.Transformer.from_crs(utm, epsg, always_xy=True)
+        transformer = pyproj.Transformer.from_crs(
+            utm, pyproj.CRS.from_user_input(_srs(target)), always_xy=True
+        )
     parts: list[dict] = []
     images: list[bytes] = []
     warnings: list[str] = []

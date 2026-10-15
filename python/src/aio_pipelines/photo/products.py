@@ -279,6 +279,11 @@ def _pyramid(
 # ------------------------------------------------------------------------------------ imports
 
 
+def _target(s: dict) -> int | str:
+    """The project CRS ODM's outputs go into: its EPSG code, or its WKT when it has none."""
+    return s.get("crs") or s["epsg"]
+
+
 def _nothing(self: PhotoProducts, ctx: StepContext, s: dict, odm_dir: Path) -> dict[str, Any]:
     return {}
 
@@ -289,7 +294,7 @@ def _import_mesh(self: PhotoProducts, ctx: StepContext, s: dict, odm_dir: Path) 
         return {}
     run = ctx.params["run"]
     ctx.progress(0.7, "Mesh to GLB")
-    data, info = OU.mesh_to_glb(odm_dir, s["epsg"], np.array(s["origin"], dtype=np.float64))
+    data, info = OU.mesh_to_glb(odm_dir, _target(s), np.array(s["origin"], dtype=np.float64))
     warnings = list(info.get("warnings", []))
     for w in warnings:
         ctx.log(w, "warn")
@@ -316,7 +321,7 @@ def _import_cloud(self: PhotoProducts, ctx: StepContext, s: dict, odm_dir: Path)
             _Within(ctx, 0.75, 1.0),
             odm_dir,
             ctx.stage(f"clouds/{run}.copc.laz"),
-            s["epsg"],
+            _target(s),
             temp,
             native.memory_budget(),
         )
@@ -336,7 +341,9 @@ def _import_dems(self: PhotoProducts, ctx: StepContext, s: dict, odm_dir: Path) 
         lo, hi = 0.7 + 0.3 * i / len(which), 0.7 + 0.3 * (i + 1) / len(which)
         ctx.progress(lo, "Elevation model into the project")
         raw = self._work(ctx) / f"{name}.tif"
-        spec = OU.dem_to_project(OU.output_path(odm_dir, OU.DSM if name == "dsm" else OU.DTM), raw, s["epsg"])
+        spec = OU.dem_to_project(
+            OU.output_path(odm_dir, OU.DSM if name == "dsm" else OU.DTM), raw, _target(s)
+        )
         layers.append(self._surface_layer(ctx, s, raw, spec, name, ground_z, (lo, hi)))
     ctx.progress(1.0)
     return {"groundZ": ground_z, "layers": layers}
@@ -351,7 +358,9 @@ def _import_ortho(self: PhotoProducts, ctx: StepContext, s: dict, odm_dir: Path)
         import rasterio
 
         ctx.progress(0.7, "Orthophoto into the project")
-        src = OU.ortho_to_project(OU.output_path(odm_dir, OU.ORTHO), self._work(ctx) / "ortho.tif", s["epsg"])
+        src = OU.ortho_to_project(
+            OU.output_path(odm_dir, OU.ORTHO), self._work(ctx) / "ortho.tif", _target(s)
+        )
         to_cog(src, ctx.stage(f"photogrammetry/{run}/ortho.tif"), "average")
         with rasterio.open(src) as ds:
             res = abs(ds.transform.a)
@@ -504,11 +513,8 @@ class PhotoProducts:
             raise JobError(
                 "The Fast preset makes no 3D model; choose Standard or High for a mesh or 3D Tiles."
             )
-        epsg = C.crs_of(doc.get("crs")).to_epsg()
-        if not epsg:
-            raise JobError(
-                "The run's coordinate system has no EPSG code, so ODM's products cannot be placed."
-            )
+        crs = C.crs_of(doc.get("crs"))
+        epsg = crs.to_epsg()  # None for a site grid: its WKT then (GDAL, PDAL and PROJ take either)
         manifest = json.loads(safe_project_path(ctx.project, "manifest.json").read_text("utf-8-sig"))
         origin = manifest.get("origin")
         if not origin:
@@ -531,7 +537,8 @@ class PhotoProducts:
             "preset": preset,
             "products": products,
             "odmDir": str(odm_dir),
-            "epsg": int(epsg),
+            "epsg": int(epsg) if epsg else None,
+            "crs": int(epsg) if epsg else crs.to_wkt(),
             "origin": [float(v) for v in origin],
             "orthoResCm": float(ortho_cm),
             "demResCm": float(dem_cm),

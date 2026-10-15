@@ -181,6 +181,41 @@ def test_a_cloud_in_another_crs_goes_through_pdal(tmp_path, monkeypatch):
     assert stages[1]["in_srs"] == "EPSG:32639" and stages[1]["out_srs"] == "EPSG:32640"
 
 
+def test_a_cloud_goes_into_a_crs_without_an_epsg_code(tmp_path):
+    from rasterio.crs import CRS
+
+    wkt = CRS.from_proj4("+proj=tmerc +lon_0=51 +k=0.9996 +x_0=501000 +datum=WGS84 +units=m").to_wkt()
+    stages = O.cloud_pipeline(tmp_path / "in.laz", tmp_path / "out.las", 32639, wkt)
+    assert stages[1] == {"type": "filters.reprojection", "in_srs": "EPSG:32639", "out_srs": wkt}
+    assert stages[2]["a_srs"] == wkt and stages[2]["minor_version"] == 4  # LAS 1.4 keeps the WKT
+    assert "minor_version" not in O.cloud_pipeline(tmp_path / "a", tmp_path / "b", 32639, 32640)[2]
+
+
+def test_rasters_go_into_a_crs_without_an_epsg_code(tmp_path):
+    import rasterio
+    from rasterio.crs import CRS
+
+    wkt = CRS.from_proj4("+proj=tmerc +lon_0=51 +k=0.9996 +x_0=501000 +datum=WGS84 +units=m").to_wkt()
+    _tif(
+        tmp_path / "dsm.tif",
+        np.full((20, 20), 7.0, np.float32),
+        UTM39,
+        412000.0,
+        3245020.0,
+        1.0,
+        nodata=-9999.0,
+    )
+    spec = O.dem_to_project(tmp_path / "dsm.tif", tmp_path / "out.tif", wkt)
+    with rasterio.open(tmp_path / "out.tif") as ds:
+        assert ds.crs == CRS.from_wkt(wkt)
+        assert np.nanmax(ds.read(1)) == pytest.approx(7.0)
+    assert abs(spec.x0 - (412000.0 + 1000.0)) < 2  # the same place, 1 km further east in this grid
+    rgba = np.zeros((4, 8, 8), np.uint8)
+    _tif(tmp_path / "o.tif", rgba, UTM39, 412000.0, 3245010.0, 0.1)
+    with rasterio.open(O.ortho_to_project(tmp_path / "o.tif", tmp_path / "x.tif", wkt)) as ds:
+        assert ds.crs == CRS.from_wkt(wkt) and ds.count == 4
+
+
 def test_no_pdal_is_a_plain_error(tmp_path, monkeypatch):
     from aio_pipelines import pointcloud
 

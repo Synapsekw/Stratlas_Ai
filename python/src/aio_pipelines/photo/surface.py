@@ -69,7 +69,8 @@ class GridSpec:
 # --------------------------------------------------------------------------------- files
 
 
-def write_tif(path: Path, spec: GridSpec, epsg: int | None, bands: int, dtype: str, nodata=None):
+def write_tif(path: Path, spec: GridSpec, epsg: int | str | None, bands: int, dtype: str, nodata=None):
+    """A tiled GeoTIFF for writing; ``epsg`` is an EPSG code, or WKT for a CRS without one."""
     import rasterio
 
     profile = {
@@ -86,7 +87,7 @@ def write_tif(path: Path, spec: GridSpec, epsg: int | None, bands: int, dtype: s
         "BIGTIFF": "IF_SAFER",
     }
     if epsg:
-        profile["crs"] = f"EPSG:{epsg}"
+        profile["crs"] = f"EPSG:{epsg}" if isinstance(epsg, int) else epsg
     if nodata is not None:
         profile["nodata"] = nodata
     path.parent.mkdir(parents=True, exist_ok=True)
