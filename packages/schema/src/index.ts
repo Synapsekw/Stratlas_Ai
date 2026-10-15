@@ -43,6 +43,7 @@ export * from './walks';
 // the run record of walk.process (walks/<id>/process.json)
 export * from './walkProcess';
 export * from './panoStitch';
+export * from './pointcloudCleanup';
 export * from './launch';
 // Online satellite imagery (ADR 0007, amendment of 10 Oct 2026)
 export * from './onlineImagery';

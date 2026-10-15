@@ -93,6 +93,9 @@ const MANIFEST_WRITERS: ReadonlySet<string> = new Set([
   'walk.process',
   // Drone panoramas: main files each stitch outcome into the manifest, so the renderer reloads it
   'pano.stitch',
+  // Point cloud cleanup: a cleaned copy is a new layer (the noise run writes edits/ only, and the
+  // reload is harmless for it)
+  'pointcloud.clean',
 ]);
 
 /**
@@ -931,6 +934,8 @@ export const FORMS: Record<PipelineName, Field[]> = {
   'walk.process': [],
   // starts from the Datasets rows of a drone sphere (and by itself after a panorama import)
   'pano.stitch': [],
+  // started from the Clean up panel only
+  'pointcloud.clean': [],
 };
 
 /** Turn the form's text values into checked params, or say what is wrong. */

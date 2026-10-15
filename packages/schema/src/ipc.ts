@@ -28,7 +28,8 @@ import {
 } from './builder';
 import { ProjectManifest } from './manifest';
 import { ClassCatalogue, LibraryClass } from './severity';
-import { HexColor, IsoDate, Vec3 } from './common';
+import { HexColor, IsoDate, ProjectPath, Vec3 } from './common';
+import { NoiseRun, PointcloudCleanup } from './pointcloudCleanup';
 import { PanoQuality, PanoScan } from './panoStitch';
 import { AiPolicy, EditPolicy, ExportKind, PackageInfo, PackageOrigin } from './package';
 import { BoundaryEditsFile, VolumesFile } from './volumes';
@@ -2864,6 +2865,48 @@ export const ipc = {
   'survey:writeTerrainEdits': {
     request: z.object({ projectId: ProjectId, file: TerrainEditsFile }).strict(),
     response: OkOrFailure,
+  },
+  /**
+   * Every cleanup recipe of a project (`edits/pointcloud/<layer>.json`, `aio.pccleanup/1`); with
+   * `noiseRun`, also the record a `pointcloud.clean` noise job wrote beside its working copy
+   * (null when it is missing). `readOnly` for a package.
+   */
+  'pointcloud:readCleanup': {
+    request: z
+      .object({
+        projectId: ProjectId,
+        noiseRun: z.object({ layerId: Id, runId: JobId }).strict().optional(),
+      })
+      .strict(),
+    response: z.discriminatedUnion('ok', [
+      z.object({
+        ok: z.literal(true),
+        recipes: z.array(PointcloudCleanup),
+        noise: NoiseRun.nullable().optional(),
+        readOnly: z.boolean(),
+      }),
+      Failure,
+    ]),
+  },
+  /**
+   * Write one layer's recipe atomically (`.bak`, journaled), or with `recipe: null` remove it
+   * (kept as `.bak`). Noise working copies of the layer named neither by the recipe nor in `keep`
+   * (the renderer's undo history) move to the project trash; `trashed` names them. Refused for
+   * packages.
+   */
+  'pointcloud:writeCleanup': {
+    request: z
+      .object({
+        projectId: ProjectId,
+        layerId: Id,
+        recipe: PointcloudCleanup.nullable(),
+        keep: z.array(ProjectPath).max(200).optional(),
+      })
+      .strict(),
+    response: z.discriminatedUnion('ok', [
+      z.object({ ok: z.literal(true), trashed: z.array(z.string()) }),
+      Failure,
+    ]),
   },
   /** `survey/overlays.json`; an empty list when there is none; `readOnly` for a package (G5). */
   'survey:readOverlays': {

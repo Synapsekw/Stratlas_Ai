@@ -1,0 +1,377 @@
+{
+  "about": "Shared cases for the point cloud cleanup evaluators (aio.pccleanup/1): packages/pointcloud/src/cleanup/evaluate.test.ts and python/tests/test_pccleanup_evaluate.py. States: kept, hidden, classHidden, deleted, dropped (that precedence, the last wins).",
+  "points": [
+    {
+      "id": "P0",
+      "xyz": [500050, 3200050, 10],
+      "cls": 2
+    },
+    {
+      "id": "P1",
+      "xyz": [500010, 3200010, 10],
+      "cls": 2
+    },
+    {
+      "id": "P2",
+      "xyz": [500090, 3200090, 30],
+      "cls": 6
+    },
+    {
+      "id": "P3",
+      "xyz": [500050, 3200090, 45],
+      "cls": 5
+    },
+    {
+      "id": "P4",
+      "xyz": [500022, 3200078, -5],
+      "cls": 7
+    },
+    {
+      "id": "P5",
+      "xyz": [500078, 3200022, 2],
+      "cls": 1
+    }
+  ],
+  "cases": [
+    {
+      "name": "an empty recipe keeps every point",
+      "recipe": {
+        "schema": "aio.pccleanup/1",
+        "layerId": "v",
+        "hiddenClasses": [],
+        "regions": []
+      },
+      "expect": {
+        "state": ["kept", "kept", "kept", "kept", "kept", "kept"],
+        "cls": [2, 2, 6, 5, 7, 1]
+      }
+    },
+    {
+      "name": "a hidden class",
+      "recipe": {
+        "schema": "aio.pccleanup/1",
+        "layerId": "v",
+        "hiddenClasses": [7],
+        "regions": []
+      },
+      "expect": {
+        "state": ["kept", "kept", "kept", "kept", "classHidden", "kept"],
+        "cls": [2, 2, 6, 5, 7, 1]
+      }
+    },
+    {
+      "name": "a clip box keeps what is inside",
+      "recipe": {
+        "schema": "aio.pccleanup/1",
+        "layerId": "v",
+        "hiddenClasses": [],
+        "regions": [],
+        "clipBox": {
+          "center": [500050, 3200050, 20],
+          "size": [60, 60, 40],
+          "yaw": 0,
+          "keep": "inside"
+        }
+      },
+      "expect": {
+        "state": ["kept", "dropped", "dropped", "dropped", "dropped", "kept"],
+        "cls": [2, 2, 6, 5, 7, 1]
+      }
+    },
+    {
+      "name": "a clip box keeps what is outside",
+      "recipe": {
+        "schema": "aio.pccleanup/1",
+        "layerId": "v",
+        "hiddenClasses": [],
+        "regions": [],
+        "clipBox": {
+          "center": [500050, 3200050, 20],
+          "size": [60, 60, 40],
+          "yaw": 0,
+          "keep": "outside"
+        }
+      },
+      "expect": {
+        "state": ["dropped", "kept", "kept", "kept", "kept", "dropped"],
+        "cls": [2, 2, 6, 5, 7, 1]
+      }
+    },
+    {
+      "name": "a clip box turned 45 degrees",
+      "recipe": {
+        "schema": "aio.pccleanup/1",
+        "layerId": "v",
+        "hiddenClasses": [],
+        "regions": [],
+        "clipBox": {
+          "center": [500050, 3200050, 20],
+          "size": [20, 100, 100],
+          "yaw": 0.7853981633974483,
+          "keep": "inside"
+        }
+      },
+      "expect": {
+        "state": ["kept", "dropped", "dropped", "dropped", "kept", "kept"],
+        "cls": [2, 2, 6, 5, 7, 1]
+      }
+    },
+    {
+      "name": "a height range",
+      "recipe": {
+        "schema": "aio.pccleanup/1",
+        "layerId": "v",
+        "hiddenClasses": [],
+        "regions": [],
+        "height": {
+          "min": 0,
+          "max": 20
+        }
+      },
+      "expect": {
+        "state": ["kept", "kept", "dropped", "dropped", "dropped", "kept"],
+        "cls": [2, 2, 6, 5, 7, 1]
+      }
+    },
+    {
+      "name": "only a lowest height",
+      "recipe": {
+        "schema": "aio.pccleanup/1",
+        "layerId": "v",
+        "hiddenClasses": [],
+        "regions": [],
+        "height": {
+          "min": 5
+        }
+      },
+      "expect": {
+        "state": ["kept", "kept", "kept", "kept", "dropped", "dropped"],
+        "cls": [2, 2, 6, 5, 7, 1]
+      }
+    },
+    {
+      "name": "a deleted box selection",
+      "recipe": {
+        "schema": "aio.pccleanup/1",
+        "layerId": "v",
+        "hiddenClasses": [],
+        "regions": [
+          {
+            "id": "a",
+            "shape": "box",
+            "viewProj": [0.02, 0, 0, 0, 0, 0.02, 0, 0, 0, 0, 0, 0, -10001, -64001, 0, 1],
+            "polygon": [
+              [-1, -1],
+              [0.2, -1],
+              [0.2, 0.2],
+              [-1, 0.2]
+            ],
+            "action": {
+              "kind": "delete"
+            }
+          }
+        ]
+      },
+      "expect": {
+        "state": ["deleted", "deleted", "kept", "kept", "kept", "kept"],
+        "cls": [2, 2, 6, 5, 7, 1]
+      }
+    },
+    {
+      "name": "a lasso sets a class that is hidden",
+      "recipe": {
+        "schema": "aio.pccleanup/1",
+        "layerId": "v",
+        "hiddenClasses": [7],
+        "regions": [
+          {
+            "id": "a",
+            "shape": "lasso",
+            "viewProj": [0.02, 0, 0, 0, 0, 0.02, 0, 0, 0, 0, 0, 0, -10001, -64001, 0, 1],
+            "polygon": [
+              [-1, -1],
+              [0.9, -1],
+              [-1, 0.9]
+            ],
+            "action": {
+              "kind": "class",
+              "value": 7
+            }
+          }
+        ]
+      },
+      "expect": {
+        "state": ["kept", "classHidden", "kept", "kept", "classHidden", "kept"],
+        "cls": [2, 7, 6, 5, 7, 1]
+      }
+    },
+    {
+      "name": "the later selection wins on class",
+      "recipe": {
+        "schema": "aio.pccleanup/1",
+        "layerId": "v",
+        "hiddenClasses": [],
+        "regions": [
+          {
+            "id": "a",
+            "shape": "box",
+            "viewProj": [0.02, 0, 0, 0, 0, 0.02, 0, 0, 0, 0, 0, 0, -10001, -64001, 0, 1],
+            "polygon": [
+              [-1, -1],
+              [1, -1],
+              [1, 1],
+              [-1, 1]
+            ],
+            "action": {
+              "kind": "class",
+              "value": 3
+            }
+          },
+          {
+            "id": "b",
+            "shape": "box",
+            "viewProj": [0.02, 0, 0, 0, 0, 0.02, 0, 0, 0, 0, 0, 0, -10001, -64001, 0, 1],
+            "polygon": [
+              [-1, -1],
+              [0.2, -1],
+              [0.2, 0.2],
+              [-1, 0.2]
+            ],
+            "action": {
+              "kind": "class",
+              "value": 4
+            }
+          }
+        ]
+      },
+      "expect": {
+        "state": ["kept", "kept", "kept", "kept", "kept", "kept"],
+        "cls": [4, 4, 3, 3, 3, 3]
+      }
+    },
+    {
+      "name": "hidden selections are kept and deletions win over them",
+      "recipe": {
+        "schema": "aio.pccleanup/1",
+        "layerId": "v",
+        "hiddenClasses": [],
+        "regions": [
+          {
+            "id": "a",
+            "shape": "box",
+            "viewProj": [0.02, 0, 0, 0, 0, 0.02, 0, 0, 0, 0, 0, 0, -10001, -64001, 0, 1],
+            "polygon": [
+              [-1, -1],
+              [1, -1],
+              [1, 1],
+              [-1, 1]
+            ],
+            "action": {
+              "kind": "hide"
+            }
+          },
+          {
+            "id": "b",
+            "shape": "box",
+            "viewProj": [0.02, 0, 0, 0, 0, 0.02, 0, 0, 0, 0, 0, 0, -10001, -64001, 0, 1],
+            "polygon": [
+              [-1, -1],
+              [0.2, -1],
+              [0.2, 0.2],
+              [-1, 0.2]
+            ],
+            "action": {
+              "kind": "delete"
+            }
+          }
+        ]
+      },
+      "expect": {
+        "state": ["deleted", "deleted", "hidden", "hidden", "hidden", "hidden"],
+        "cls": [2, 2, 6, 5, 7, 1]
+      }
+    },
+    {
+      "name": "a perspective selection skips points behind the camera",
+      "recipe": {
+        "schema": "aio.pccleanup/1",
+        "layerId": "v",
+        "hiddenClasses": [],
+        "regions": [
+          {
+            "id": "a",
+            "shape": "box",
+            "viewProj": [0.02, 0, 0, 0, 0, 0.02, 0, 0, 0, 0, 0, 0.1, -10001, -64001, 0, -2],
+            "polygon": [
+              [-1, -1],
+              [1, -1],
+              [1, 1],
+              [-1, 1]
+            ],
+            "action": {
+              "kind": "delete"
+            }
+          }
+        ]
+      },
+      "expect": {
+        "state": ["kept", "kept", "deleted", "deleted", "kept", "kept"],
+        "cls": [2, 2, 6, 5, 7, 1]
+      }
+    },
+    {
+      "name": "a dropped point wins over a deletion",
+      "recipe": {
+        "schema": "aio.pccleanup/1",
+        "layerId": "v",
+        "hiddenClasses": [],
+        "regions": [
+          {
+            "id": "a",
+            "shape": "box",
+            "viewProj": [0.02, 0, 0, 0, 0, 0.02, 0, 0, 0, 0, 0, 0, -10001, -64001, 0, 1],
+            "polygon": [
+              [-1, -1],
+              [1, -1],
+              [1, 1],
+              [-1, 1]
+            ],
+            "action": {
+              "kind": "delete"
+            }
+          }
+        ],
+        "clipBox": {
+          "center": [500050, 3200050, 20],
+          "size": [60, 60, 40],
+          "yaw": 0,
+          "keep": "inside"
+        }
+      },
+      "expect": {
+        "state": ["deleted", "dropped", "dropped", "dropped", "dropped", "deleted"],
+        "cls": [2, 2, 6, 5, 7, 1]
+      }
+    },
+    {
+      "name": "every class hidden",
+      "recipe": {
+        "schema": "aio.pccleanup/1",
+        "layerId": "v",
+        "hiddenClasses": [1, 2, 5, 6, 7],
+        "regions": []
+      },
+      "expect": {
+        "state": [
+          "classHidden",
+          "classHidden",
+          "classHidden",
+          "classHidden",
+          "classHidden",
+          "classHidden"
+        ],
+        "cls": [2, 2, 6, 5, 7, 1]
+      }
+    }
+  ]
+}

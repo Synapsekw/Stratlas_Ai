@@ -5,6 +5,7 @@ import { RasterPackId, TerrainDatum } from './globe';
 import { Crs } from './manifest';
 import { PhotoPreset, PhotoProduct, PhotoRunId, PhotoSource } from './photogrammetry';
 import { PanoFolderId, PanoQuality, PanoShape } from './panoStitch';
+import { PointcloudCleanParams, PointcloudCleanup } from './pointcloudCleanup';
 import { ProcModelId, ProcPartKind } from './procmodel';
 import { TilesetId } from './tilesets';
 import { DesignFormat, DesignId, DesignSourceUnits } from './designs';
@@ -83,6 +84,8 @@ export const PipelineName = z.enum([
   'walk.process',
   // Drone panoramas (pipeline pack 0.7.0)
   'pano.stitch',
+  // Point cloud cleanup (pipeline pack POINTCLOUD_CLEAN_MIN_PACK)
+  'pointcloud.clean',
 ]);
 export type PipelineName = z.infer<typeof PipelineName>;
 
@@ -316,6 +319,12 @@ export const PIPELINES: readonly { name: PipelineName; title: string; descriptio
     title: 'Stitch drone panorama',
     description:
       'One level, north-up 360 panorama from the frames of a drone sphere, aligned from its gimbal angles and features.',
+  },
+  {
+    name: 'pointcloud.clean',
+    title: 'Clean up a point cloud',
+    description:
+      'Marks noise with PDAL outlier filters, or writes a cleaned copy of a COPC cloud as a new layer.',
   },
 ];
 
@@ -904,6 +913,8 @@ export const SurveyExportParams = z
     layer: Id.optional(),
     overlay: SurveyId.optional(),
     measurements: z.array(SurveyId).max(20_000).optional(),
+    /** `what: 'cloud'`: the layer's cleanup recipe, applied before writing (python checks the layer). */
+    cleanup: PointcloudCleanup.optional(),
     /** Absolute output file or folder, chosen by main. */
     out: z.string().min(1).max(MAX_PATH),
   })
@@ -1169,6 +1180,7 @@ const PARAMS = {
   'haul.analyse': HaulAnalyseParams,
   'walk.process': WalkProcessParams,
   'pano.stitch': PanoStitchParams,
+  'pointcloud.clean': PointcloudCleanParams,
 } as const satisfies Record<PipelineName, z.ZodType>;
 
 export function pipelineParams(name: PipelineName): z.ZodType<Record<string, unknown>> {

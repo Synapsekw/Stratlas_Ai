@@ -74,11 +74,12 @@ export const PanoRef = z.object({
 /**
  * Provenance of a layer Stratlas computed from other layers (M8): a change heat map, change
  * polygons, a cloud-to-cloud distance cloud or a deviation model (`change`), or a model built from
- * a procedural model (`model`). Builds that do not know the field show the layer as an ordinary one.
+ * a procedural model (`model`), or a cleaned copy of a point cloud (`cleanup`: `source` is the
+ * cleaned layer, `runId` the save job). Builds that do not know the field show the layer as an ordinary one.
  */
 export const LayerDerived = z
   .object({
-    kind: z.enum(['change', 'model']),
+    kind: z.enum(['change', 'model', 'cleanup']),
     /** Capture ids of the earlier and later date (change layers). */
     from: Id.optional(),
     to: Id.optional(),

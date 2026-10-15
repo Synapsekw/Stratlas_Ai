@@ -238,6 +238,8 @@ const CHANNELS = {
   'survey:releaseHold': true,
   'survey:readTerrainEdits': true,
   'survey:writeTerrainEdits': true,
+  'pointcloud:readCleanup': true,
+  'pointcloud:writeCleanup': true,
   'survey:readOverlays': true,
   'survey:writeOverlays': true,
   'survey:readHydroRuns': true,

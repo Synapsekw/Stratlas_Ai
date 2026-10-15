@@ -571,6 +571,15 @@ export const SCHEMA_REGISTRY: readonly SchemaEntry[] = [
     where: 'panoramas/<layer>/<pano>/stitch.json',
     since: '0.12',
   },
+  // the cleanup recipe of a point cloud layer (pointcloudCleanup.ts); its noise run records and
+  // working copies sit beside it
+  {
+    family: 'aio.pccleanup',
+    version: 1,
+    home: 'project',
+    where: 'edits/pointcloud/<layer>.json',
+    since: '0.16',
+  },
 ];
 
 /**
