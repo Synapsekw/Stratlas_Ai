@@ -1,4 +1,4 @@
-﻿import { describe, expect, it } from 'vitest';
+import { describe, expect, it } from 'vitest';
 import { ImportItem } from './builder';
 import { ipc } from './ipc';
 import {
