@@ -224,6 +224,9 @@ export function registerEngineeringIpc({
   const errText = (e: unknown) => (e instanceof Error ? e.message : String(e));
 
   handle('model:exportEngineering', async ({ projectId, modelId, folder, detail, replace }) => {
+    // the contract refuses a relative folder; main checks again with the platform's own rule
+    if (!isAbsolute(folder))
+      return { ok: false, error: 'The export folder must be an absolute path.' };
     const pkg = projects.package(projectId);
     const root = pkg ? undefined : projects.root(projectId);
     if (!pkg && root === undefined) return notOpen(projectId);
