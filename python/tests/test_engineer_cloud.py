@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import math
+import threading
 import tracemalloc
 from types import SimpleNamespace
 
@@ -172,7 +173,9 @@ def test_read_region_copc_through_pdal(tmp_path):  # pragma: no cover - needs PD
     copc = tmp_path / "m.copc.laz"
     subprocess.run([find_pdal(), "translate", str(las), str(copc), "--writers.copc.forward=all"], check=True)
     job = SimpleNamespace(dir=tmp_path)
-    ctx = SimpleNamespace(check=lambda: None, job=job)
+    ctx = SimpleNamespace(
+        check=lambda: None, job=job, cancel_event=threading.Event(), progress=lambda *_a: None
+    )
     region = {"centre": [0.0, 0.0], "radiusM": 3.0}
     xyz, info = read_region(copc, "copc", region, 1_000_000, ctx, origin=(400000.0, 5600000.0, 0.0))
     assert info["read"] == len(xyz) > 0

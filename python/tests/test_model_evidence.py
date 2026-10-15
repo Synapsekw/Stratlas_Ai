@@ -12,7 +12,6 @@ from __future__ import annotations
 
 import json
 import os
-import shutil
 import subprocess
 import threading
 from pathlib import Path
@@ -593,7 +592,6 @@ def test_copc_pack_through_pdal(tmp_path):  # pragma: no cover - needs PDAL
     las = tmp_path / "clouds" / "scan.las"
     copc = tmp_path / "clouds" / "scan.copc.laz"
     subprocess.run([find_pdal(), "translate", str(las), str(copc), "--writers.copc.forward=all"], check=True)
-    shutil.copy(copc, copc)
     manifest = json.loads((tmp_path / "manifest.json").read_text("utf-8"))
     manifest["layers"][0].update({"src": {"path": "clouds/scan.copc.laz"}, "format": "copc"})
     (tmp_path / "manifest.json").write_text(json.dumps(manifest), "utf-8")
