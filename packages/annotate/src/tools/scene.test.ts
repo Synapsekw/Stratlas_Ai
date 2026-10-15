@@ -1,7 +1,13 @@
 import { setActiveScene, type SceneHandle } from '@aio/engine';
-import type { ProjectManifest } from '@aio/schema';
+import type { Issue, ProjectManifest, Vec3 } from '@aio/schema';
 import { captureIndex, createWorkspace, scopedStore } from '@aio/workspace';
-import { PerspectiveCamera, Scene, type Points, type WebGLRenderer } from 'three';
+import {
+  PerspectiveCamera,
+  Scene,
+  type BufferGeometry,
+  type Points,
+  type WebGLRenderer,
+} from 'three';
 import { afterEach, describe, expect, it } from 'vitest';
 import { catalogue, makeIssue, photoSighting, tankModel } from '../testing';
 import type { OcclusionFactory } from './occlusion';
@@ -312,6 +318,58 @@ describe('installIssueOverlay', () => {
     left.setScope({ capture: 'oct', index: captureIndex(dated), mode: 'hide', camera: true });
     expect(pinned()).toEqual(['oct-1']);
     offLeft();
+  });
+
+  it('draws a placed area instead of its pin, hovers and picks its issue', () => {
+    // a 4 x 4 m outline facing the camera, centred on the view (0, 2, 0)
+    const ring: Vec3[] = [
+      [-2, 0, 0],
+      [2, 0, 0],
+      [2, 4, 0],
+      [-2, 4, 0],
+    ];
+    const placed: Issue = makeIssue({
+      id: 'placed',
+      title: 'Crack on the shell',
+      sightings: [
+        photoSighting,
+        {
+          on: 'mesh',
+          layer: 'tank',
+          geom: { type: 'spolygon', points: ring },
+          from: { sighting: 0 },
+        },
+      ],
+    });
+    const store = createWorkspace();
+    store.getState().openProject({ id: 'p', root: 'r', manifest }, [placed]);
+    const uninstall = installIssueOverlay(store, createPinDisplay(null));
+    const { handle, frames } = fakeHandle();
+    setActiveScene(handle);
+    frame(frames);
+    expect(layoutOf(handle)?.items).toEqual([]);
+    const areas = pinGroup(handle)?.getObjectByName('annotate-issue-areas');
+    expect(areas?.visible).toBe(true);
+    const lines = areas?.getObjectByName('annotate-area-lines') as
+      { geometry: BufferGeometry } | undefined;
+    expect(lines?.geometry.getAttribute('position').count).toBe(8);
+    const at = (pinGroup(handle)?.userData.areas as { issueId: string; x: number; y: number }[])[0];
+    expect(at?.issueId).toBe('placed');
+    expect(at?.x).toBeCloseTo(400, 0);
+    expect(at?.y).toBeCloseTo(300, 0);
+    const el = handle.renderer.domElement as unknown as EventTarget & { title: string };
+    const ev = (type: string) =>
+      Object.assign(new Event(type), { button: 0, buttons: 0, clientX: 400, clientY: 300 });
+    el.dispatchEvent(ev('pointermove'));
+    expect(el.title).toBe('Crack on the shell');
+    el.dispatchEvent(ev('pointerdown'));
+    el.dispatchEvent(ev('pointerup'));
+    expect(store.getState().selection).toEqual({ kind: 'issue', id: 'placed' });
+    // its layer hidden: the area goes and the pin comes back
+    store.getState().setLayerVisible('tank', false);
+    frame(frames);
+    expect(layoutOf(handle)?.items.map((i) => i.kind)).toEqual(['pin']);
+    uninstall();
   });
 
   it('attaches to a scene that was already active', () => {

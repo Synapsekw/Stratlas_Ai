@@ -2,12 +2,13 @@ import type { SceneHandle } from '@aio/engine';
 import type { Issue, SeverityModel, Sighting, Vec3 } from '@aio/schema';
 import { Vector3, type Intersection } from 'three';
 import { layerOf } from '../crossview/backproject';
+import { isPlacedArea } from '../model/placed';
 import { pinPasses, sevRank, type PinFilter } from './declutter';
 
 /** Mesh annotation (ANN-1): point, polyline and polygon placed on surfaces with the scene ray. */
 export type MeshSighting = Extract<Sighting, { on: 'mesh' }>;
 
-const centroid = (pts: readonly Vec3[]): Vec3 => {
+export const centroid = (pts: readonly Vec3[]): Vec3 => {
   const s = pts.reduce<Vec3>((a, p) => [a[0] + p[0], a[1] + p[1], a[2] + p[2]], [0, 0, 0]);
   const n = pts.length || 1;
   return [s[0] / n, s[1] / n, s[2] / n];
@@ -43,6 +44,12 @@ export function sightingAnchor(s: Sighting): Vec3 | null {
 
 /** The issue's best 3D anchor: mesh sightings first, then point clouds. */
 export function bestAnchor(issue: Issue): Vec3 | null {
+  // a placed area stands for the issue first (its centre), then the pins as before
+  for (const s of issue.sightings) {
+    if (!isPlacedArea(s)) continue;
+    const a = sightingAnchor(s);
+    if (a) return a;
+  }
   for (const kind of ['mesh', 'pointcloud'] as const) {
     for (const s of issue.sightings) {
       if (s.on !== kind) continue;
@@ -73,15 +80,20 @@ export interface IssuePin {
   rank: number;
 }
 
+const NONE: ReadonlySet<string> = new Set();
+
 /** Pins of the issues with a 3D anchor that pass `filter`; the selected issue always shows. */
 export function issuePins(
   issues: readonly Issue[],
   models: readonly SeverityModel[],
   selectedId: string | null,
   filter: PinFilter = 'all',
+  /** Issues drawn as areas instead (findings on a model): no pin. */
+  skip: ReadonlySet<string> = NONE,
 ): IssuePin[] {
   const out: IssuePin[] = [];
   for (const i of issues) {
+    if (skip.has(i.id)) continue;
     if (i.id !== selectedId && !pinPasses(i.severity, filter)) continue;
     const p = bestAnchor(i);
     if (!p) continue;

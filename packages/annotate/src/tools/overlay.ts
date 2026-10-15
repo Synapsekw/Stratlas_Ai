@@ -6,8 +6,11 @@ import {
   BufferAttribute,
   BufferGeometry,
   Color,
+  DoubleSide,
   Group,
+  LineSegments,
   Matrix4,
+  Mesh,
   Points,
   Raycaster,
   SRGBColorSpace,
@@ -16,6 +19,14 @@ import {
   Vector3,
 } from 'three';
 import type { StoreApi } from 'zustand/vanilla';
+import {
+  areaBuffers,
+  hitArea,
+  issueAreas,
+  screenAreas,
+  type AreaHit,
+  type IssueArea,
+} from './areas';
 import { hitItem, layoutPins, pinPasses, type PinItem, type PinLabel } from './declutter';
 import { mapToLocal, type MapToLocal } from './drape';
 import { createDrapeLayer } from './drapeLayer';
@@ -90,6 +101,27 @@ void main() {
   if (r2 > 1.0) discard;
   float w = exp(-r2 * 3.5) * vWeight;
   gl_FragColor = vec4(vec3(0.95, 0.26, 0.07) * w * 0.16, 1.0);
+}`;
+
+// Placed areas (findings on a model): pulled towards the camera by a share of the distance so
+// the outline stays in front of the surface it lies on, depth-tested against everything else.
+const AREA_VERT = /* glsl */ `
+attribute vec3 color;
+uniform float uPull;
+varying vec3 vColor;
+void main() {
+  vColor = color;
+  vec4 mv = modelViewMatrix * vec4(position, 1.0);
+  float d = max(-mv.z, 0.001);
+  mv.xyz -= normalize(mv.xyz) * min(uPull * d, d * 0.5);
+  gl_Position = projectionMatrix * mv;
+}`;
+
+const AREA_FRAG = /* glsl */ `
+uniform float uAlpha;
+varying vec3 vColor;
+void main() {
+  gl_FragColor = vec4(vColor, uAlpha);
 }`;
 
 const srgb = new Color();
@@ -362,6 +394,54 @@ export function installIssueOverlay(
     let lastW = 0;
     let lastH = 0;
     let closeList: (() => void) | null = null;
+
+    // placed areas: one line draw and one fill draw for all of them
+    const areaGroup = new Group();
+    areaGroup.name = 'annotate-issue-areas';
+    areaGroup.visible = false;
+    group.add(areaGroup);
+    const areaMaterial = (alpha: number) =>
+      new ShaderMaterial({
+        vertexShader: AREA_VERT,
+        fragmentShader: AREA_FRAG,
+        uniforms: { uPull: { value: 0.003 }, uAlpha: { value: alpha } },
+        transparent: true,
+        depthTest: true,
+        depthWrite: false,
+        side: DoubleSide,
+      });
+    const lineMat = areaMaterial(0.95);
+    const fillMat = areaMaterial(0.16);
+    const areaLines = new LineSegments(new BufferGeometry(), lineMat);
+    areaLines.name = 'annotate-area-lines';
+    areaLines.frustumCulled = false;
+    areaLines.renderOrder = 998;
+    const areaFill = new Mesh(new BufferGeometry(), fillMat);
+    areaFill.name = 'annotate-area-fill';
+    areaFill.frustumCulled = false;
+    areaFill.renderOrder = 997;
+    areaGroup.add(areaFill, areaLines);
+    let areas: IssueArea[] = [];
+    let areaHits: AreaHit[] = [];
+    const writeAreas = () => {
+      const s = store.getState();
+      const lit = new Set<string>();
+      if (s.selection?.kind === 'issue') lit.add(s.selection.id);
+      if (hoverId) lit.add(hoverId);
+      const b = areaBuffers(areas, lit, rgbOf);
+      const lineGeo = new BufferGeometry();
+      lineGeo.setAttribute('position', new BufferAttribute(b.lines, 3));
+      lineGeo.setAttribute('color', new BufferAttribute(b.lineColors, 3));
+      const fillGeo = new BufferGeometry();
+      fillGeo.setAttribute('position', new BufferAttribute(b.fill, 3));
+      fillGeo.setAttribute('color', new BufferAttribute(b.fillColors, 3));
+      // a fresh geometry frees the old buffers on the GPU
+      areaLines.geometry.dispose();
+      areaFill.geometry.dispose();
+      areaLines.geometry = lineGeo;
+      areaFill.geometry = fillGeo;
+      areaGroup.visible = areas.length > 0;
+    };
     const occlusion = occlusionOf(handle, group, () => {
       dirty = true;
       handle.requestRender();
@@ -404,7 +484,9 @@ export function installIssueOverlay(
       const d = display.getState();
       const sel = s.selection?.kind === 'issue' ? s.selection.id : null;
       const models = s.project?.manifest.severityModels ?? [];
-      pins = issuePins(shown, models, sel, d.filter);
+      areas = issueAreas(shown, models, sel, d.filter, s.hidden);
+      pins = issuePins(shown, models, sel, d.filter, new Set(areas.map((a) => a.issueId)));
+      writeAreas();
       // the heat map follows a severity threshold, and still shows with the pins off
       const heatPins = d.heat
         ? issuePins(shown, models, null, d.filter === 'off' ? 'all' : d.filter)
@@ -464,6 +546,25 @@ export function installIssueOverlay(
         height: h,
         visible: (pin) => occlusion.clear(pin.p),
       });
+      areaHits = screenAreas(areas, project(w, h));
+      const areaLabels: PinLabel[] = [];
+      areas.forEach((a, k) => {
+        const c = areaHits[k]?.centre;
+        if (c && occlusion.clear(a.centre))
+          areaLabels.push({
+            key: a.issueId,
+            kind: 'code',
+            text: a.code,
+            x: c.x,
+            y: c.y,
+            color: a.color,
+          });
+      });
+      group.userData.areas = areaHits.map((hit) => ({
+        issueId: hit.issueId,
+        x: hit.centre?.x ?? null,
+        y: hit.centre?.y ?? null,
+      }));
       items = out.items;
       group.userData.layout = out;
       discBuf.ensure(items.length);
@@ -479,7 +580,7 @@ export function installIssueOverlay(
       });
       discBuf.commit(items.length);
       obstacles = items.map((it) => new Vector3(...it.world));
-      labels.render(out.labels);
+      labels.render([...out.labels, ...areaLabels]);
       const dpr = typeof window === 'undefined' ? 1 : window.devicePixelRatio || 1;
       (discMat.uniforms.uDpr as { value: number }).value = dpr;
       (heatMat.uniforms.uScale as { value: number }).value =
@@ -518,7 +619,13 @@ export function installIssueOverlay(
         issues = !sameItems(next, shown);
         shown = next;
       }
-      if (issues || s.selection !== prev.selection || s.project !== prev.project) rebuild();
+      if (
+        issues ||
+        s.hidden !== prev.hidden ||
+        s.selection !== prev.selection ||
+        s.project !== prev.project
+      )
+        rebuild();
       if (issues || s.project !== prev.project) drapeAll();
       if (issues || s.selection !== prev.selection || s.project !== prev.project) drapeSelection();
     });
@@ -582,6 +689,11 @@ export function installIssueOverlay(
         return;
       }
       if (!hit) {
+        const areaId = hitArea(areaHits, at.x, at.y);
+        if (areaId) {
+          store.getState().select({ kind: 'issue', id: areaId });
+          return;
+        }
         // a draped map shape under the click
         const r = (el as Partial<HTMLElement>).getBoundingClientRect?.();
         if (!r?.width || !r.height) return;
@@ -605,21 +717,26 @@ export function installIssueOverlay(
       const hit = hitItem(items, at.x, at.y);
       // over a code label: keep its pin hovered (the label stays) and show it can be clicked
       const labelled = hit ? null : labels.hitCode(e.clientX, e.clientY);
-      const id = hit?.kind === 'pin' ? (hit.members[0]?.issueId ?? null) : labelled;
+      const areaId = hit || labelled ? null : hitArea(areaHits, at.x, at.y);
+      const id = hit?.kind === 'pin' ? (hit.members[0]?.issueId ?? null) : (labelled ?? areaId);
       const style = (el as Partial<HTMLElement>).style;
       if (style) {
-        if ((hit || labelled) && (style.cursor === '' || hoverCursor)) {
+        const over = hit !== null || labelled !== null || areaId !== null;
+        if (over && (style.cursor === '' || hoverCursor)) {
           style.cursor = 'pointer';
           hoverCursor = true;
-        } else if (!hit && !labelled && hoverCursor) {
+        } else if (!over && hoverCursor) {
           style.cursor = '';
           hoverCursor = false;
         }
         (el as Partial<HTMLElement>).title =
-          hit?.kind === 'cluster' ? `${hit.members.length} issues: click to expand` : '';
+          hit?.kind === 'cluster'
+            ? `${hit.members.length} issues: click to expand`
+            : (areas.find((a) => a.issueId === (areaId ?? labelled))?.title ?? '');
       }
       if (id !== hoverId) {
         hoverId = id;
+        writeAreas();
         dirty = true;
         handle.requestRender();
       }
@@ -643,6 +760,10 @@ export function installIssueOverlay(
       el.removeEventListener('pointermove', onMove as EventListener);
       labels.dispose();
       drape.dispose();
+      areaLines.geometry.dispose();
+      areaFill.geometry.dispose();
+      lineMat.dispose();
+      fillMat.dispose();
       handle.scene.remove(group);
       discBuf.geometry.dispose();
       heatBuf.geometry.dispose();
