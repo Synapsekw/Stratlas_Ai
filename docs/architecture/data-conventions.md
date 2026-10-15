@@ -937,4 +937,4 @@ An issue found in a photo or video frame can be placed on a mesh or point-cloud 
 
 The automatic crossview pin (ANN-9) is a mesh `spoint` with `from`; placing an area on a layer removes that layer's automatic pin and any earlier area there. Hand-placed pins have no `from`.
 
-`selections/<name>.sel` (name: letters, digits, dash, underscore; the app uses `<issue id>-<layer id>`), little-endian: 8 bytes ASCII magic `AIOSEL01`, uint32 point count, uint32 lod, then count x 3 float32 x, y, z in the project local frame (metres). Written by `project:writeSelection` (temporary file and rename; refused on a package; not journalled).
+`selections/<name>.sel` (name: letters, digits, dash, underscore; the app uses `<issue id>-<layer id>-<timestamp digits>`, the digits of the placing time, cut so the name stays within 120 characters), little-endian: 8 bytes ASCII magic `AIOSEL01`, uint32 point count, uint32 lod, then count x 3 float32 x, y, z in the project local frame (metres). Written by `project:writeSelection` (temporary file and rename; refused on a package; not journalled).
