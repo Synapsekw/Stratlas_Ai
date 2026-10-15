@@ -8,7 +8,8 @@
  * stays removed after an update moves the app.
  *
  * Every write reads the file again and runs one at a time, so two quick moves both land. A file
- * saved by a newer build reads as empty and is never written over.
+ * saved by a newer build, or one that cannot be read or parsed, reads as empty and is never
+ * written over. A missing file is empty and writable.
  */
 import { LibraryFolder, type LibraryEntry } from '@aio/schema';
 import { randomBytes } from 'node:crypto';
@@ -27,8 +28,19 @@ export interface LibraryView {
   placed: Record<string, string>;
 }
 
+/**
+ * `newer`: saved by a newer build. `broken`: there but unreadable or not in the format (a lock
+ * that outlasts one retry, cut-off JSON, a hand edit). Either way the view reads as empty and every
+ * write is refused with that message, so the hidden list and the folders are never written over.
+ */
+export interface ViewRead {
+  view: LibraryView;
+  newer: string | null;
+  broken: string | null;
+}
+
 export interface LibraryViewStore {
-  read(): Promise<{ view: LibraryView; newer: string | null }>;
+  read(): Promise<ViewRead>;
   hide(key: string): Promise<void>;
   unhide(key: string): Promise<void>;
   /** After a delete: drop the key from hidden and placed. */
@@ -62,40 +74,58 @@ function checkName(view: LibraryView, name: string, except?: string): string {
   return next;
 }
 
+const BROKEN =
+  'The library view file (library-view.json) could not be read, so folders and removed cards ' +
+  'are not shown and cannot be changed. Close any program using it and reload the library.';
+
+/** Codes Windows gives a read of a file another process holds at that moment. */
+const LOCKED = new Set(['EBUSY', 'EPERM', 'EACCES']);
+
 const GONE = 'That folder is no longer in the library. Reload the library.';
 
 export function createLibraryViewStore(file: string): LibraryViewStore {
   let chain: Promise<unknown> = Promise.resolve();
 
-  async function load(): Promise<{ view: LibraryView; newer: string | null }> {
+  /** Once more after a short wait when Windows has the file locked (antivirus, indexer). */
+  async function readOnce(): Promise<unknown> {
     try {
-      const raw = await readJson(file);
-      if (raw === undefined) return { view: empty(), newer: null };
-      const newer = newerThanThisBuild(raw, 'aio.library-view', 'library-view.json');
-      if (newer) {
-        console.warn(newer);
-        return { view: empty(), newer };
-      }
-      const r = ViewFile.safeParse(raw);
-      if (!r.success) {
-        console.warn(
-          `Library view file ${file} is invalid, ignoring it: ${r.error.issues[0]?.message ?? ''}`,
-        );
-        return { view: empty(), newer: null };
-      }
-      const { hidden, folders, placed } = r.data;
-      return { view: { hidden, folders, placed }, newer: null };
+      return await readJson(file);
     } catch (e) {
-      console.warn(`Library view file ${file} is unreadable, ignoring it: ${String(e)}`);
-      return { view: empty(), newer: null };
+      if (!LOCKED.has((e as NodeJS.ErrnoException).code ?? '')) throw e;
+      await new Promise((r) => setTimeout(r, 150));
+      return readJson(file);
     }
+  }
+
+  async function load(): Promise<ViewRead> {
+    const brokenRead = (why: string): ViewRead => {
+      console.warn(`Library view file ${file} ${why}; it is left as it is.`);
+      return { view: empty(), newer: null, broken: BROKEN };
+    };
+    let raw: unknown;
+    try {
+      raw = await readOnce();
+    } catch (e) {
+      return brokenRead(`is unreadable (${String(e)})`);
+    }
+    if (raw === undefined) return { view: empty(), newer: null, broken: null };
+    const newer = newerThanThisBuild(raw, 'aio.library-view', 'library-view.json');
+    if (newer) {
+      console.warn(newer);
+      return { view: empty(), newer, broken: null };
+    }
+    const r = ViewFile.safeParse(raw);
+    if (!r.success) return brokenRead(`is invalid (${r.error.issues[0]?.message ?? ''})`);
+    const { hidden, folders, placed } = r.data;
+    return { view: { hidden, folders, placed }, newer: null, broken: null };
   }
 
   /** One read-change-write at a time, each on the file as the previous one left it. */
   function write<T>(change: (v: LibraryView) => { view: LibraryView; result: T }): Promise<T> {
     const next = chain.then(async () => {
-      const { view, newer } = await load();
+      const { view, newer, broken } = await load();
       if (newer) throw new Error(newer);
+      if (broken) throw new Error(broken);
       const out = change(view);
       await writeJsonAtomic(file, { schema: LIBRARY_VIEW_SCHEMA, ...out.view });
       return out.result;
@@ -212,8 +242,8 @@ export function registerLibraryFoldersIpc(d: {
   };
 
   handle('library:folders', async () => {
-    const { view: v, newer } = await view.read();
-    if (newer) return { ok: false, error: newer };
+    const { view: v, newer, broken } = await view.read();
+    if (newer ?? broken) return { ok: false, error: newer ?? broken ?? '' };
     return { ok: true, folders: v.folders };
   });
 

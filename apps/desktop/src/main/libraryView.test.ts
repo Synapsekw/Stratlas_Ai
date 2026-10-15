@@ -12,6 +12,21 @@ import {
   type LibraryViewStore,
 } from './libraryView';
 import { collectHandlers } from './notYet';
+import type * as FsUtil from './fsutil';
+
+/** Error codes the next reads of the view file throw, one per read (a Windows lock). */
+const readFails: string[] = [];
+vi.mock('./fsutil', async (importOriginal) => {
+  const real = await importOriginal<typeof FsUtil>();
+  return {
+    ...real,
+    readJson: (f: string) => {
+      const code = readFails.shift();
+      if (code === undefined) return real.readJson(f);
+      return Promise.reject(Object.assign(new Error(`${code}: locked`), { code }));
+    },
+  };
+});
 
 let dir: string;
 let file: string;
@@ -25,6 +40,7 @@ beforeEach(async () => {
 
 afterEach(async () => {
   vi.restoreAllMocks();
+  readFails.length = 0;
   await rm(dir, { recursive: true, force: true });
 });
 
@@ -104,11 +120,54 @@ describe('LibraryViewStore', () => {
     expect(r.newer).toMatch(/newer version/);
   });
 
-  it('reads a broken file as empty and says so in the log', async () => {
+  it('reads a broken file as empty, says so in the log and refuses to write over it', async () => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
     await writeFile(file, '{ not json');
-    expect((await store.read()).view).toEqual(empty);
+    const r = await store.read();
+    expect(r.view).toEqual(empty);
+    expect(r.broken).toMatch(/library-view\.json/);
     expect(warn).toHaveBeenCalledWith(expect.stringContaining('library-view.json'));
+    await expect(store.hide('k')).rejects.toThrow(/could not be read/);
+    await expect(store.createFolder('A')).rejects.toThrow(/could not be read/);
+    expect(await readFile(file, 'utf8')).toBe('{ not json');
+  });
+
+  it('refuses to write over a file that does not match the format', async () => {
+    vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    const text = JSON.stringify({ schema: 'aio.library-view/1', folders: [{ id: 'x', name: '' }] });
+    await writeFile(file, text);
+    expect((await store.read()).broken).toMatch(/library-view\.json/);
+    await expect(store.move('k', null)).rejects.toThrow(/could not be read/);
+    expect(await readFile(file, 'utf8')).toBe(text);
+  });
+
+  it('tries a locked file once more before calling it broken', async () => {
+    await store.hide('k1');
+    readFails.push('EBUSY');
+    expect((await store.read()).view.hidden).toEqual(['k1']);
+    vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    readFails.push('EPERM', 'EPERM');
+    expect((await store.read()).broken).toMatch(/library-view\.json/);
+    readFails.push('EBUSY', 'EBUSY');
+    await expect(store.hide('k2')).rejects.toThrow(/could not be read/);
+    expect((await store.read()).view.hidden).toEqual(['k1']);
+  });
+
+  it('lists folders as an error while the file is broken', async () => {
+    vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    await writeFile(file, '{ not json');
+    const h = collectHandlers((handle) => {
+      registerLibraryFoldersIpc({
+        handle,
+        view: store,
+        projects: { path: () => undefined },
+        isDemo: () => Promise.resolve(false),
+      });
+    });
+    expect(await h.call('library:folders', {})).toMatchObject({
+      ok: false,
+      error: expect.stringContaining('could not be read') as string,
+    });
   });
 
   it('keys a demo by its folder name, so the bundled folder and the working copy are one card', () => {
