@@ -90,6 +90,13 @@ describe('version registry', () => {
 });
 
 describe('readerFor', () => {
+  it('registry knows aio.georef, aio.evidence, aio.engineer-run', () => {
+    expect(readerFor('aio.georef/1').kind).toBe('current');
+    expect(readerFor('aio.evidence/1').kind).toBe('current');
+    expect(readerFor('aio.engineer-run/1').kind).toBe('current');
+    expect(readerFor('aio.procmodel/2').kind).toBe('current');
+    expect(readerFor('aio.procmodel/1').kind).toBe('older');
+  });
   it('classifies current, older, newer and unknown ids', () => {
     expect(readerFor('aio.issues/1').kind).toBe('current');
     expect(readerFor('aio.nothing/1').kind).toBe('unknown');

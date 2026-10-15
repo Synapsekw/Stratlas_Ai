@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { Assembly, EvidenceInventory, Material, ModelFamily, ScaleRecord } from './assemblies';
 import { Id, IsoTime, Vec2, Vec3 } from './common';
+import { Georef } from './georef';
 import { PartOrigin } from './partOrigin';
 
 // The engineering assemblies and the part origin live in their own modules (no load-time cycle);
@@ -127,8 +128,7 @@ export const ProcModel = z
     materials: z.array(Material).max(64),
     assemblies: z.array(Assembly).max(2000),
     scale: ScaleRecord.optional(),
-    // aio.georef/1 (georef.ts) takes this place once both contracts have landed
-    georef: z.unknown().optional(),
+    georef: Georef.optional(),
     evidence: EvidenceInventory.optional(),
     /** The engineering model run that last wrote the assemblies. */
     run: z

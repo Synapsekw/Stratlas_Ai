@@ -53,3 +53,6 @@ export * from './odm';
 // Engineering model: aio.georef/1 and the older embedded georeference adapter
 export * from './georef';
 export * from './georefCompat';
+// Engineering model: the engineer's proposal and run record, and the local evidence pack
+export * from './engineer';
+export * from './modelEvidence';

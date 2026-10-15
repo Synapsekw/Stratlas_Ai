@@ -272,7 +272,7 @@ Models made from drawings, point cloud fits, the agent or by hand (schema in `@a
 
 ```
 <project>/
-  models/<id>.procmodel.json  aio.procmodel/1: parts (extrusion, cylinder, box, pipe, sphere), each draft, accepted or rejected
+  models/<id>.procmodel.json  aio.procmodel/2: parts, assemblies, materials, family, scale, georef, evidence; each draft, accepted or rejected (a /1 file is migrated on open)
   models/<id>.glb             built from the accepted parts by the TypeScript mesher, one node per part
   models/draft-<id>.glb       preview of every part, shown as a draft layer (derived.draft), left out of reports
   drawings/<stem>.dxf                    DXF plans copied in by drawing.import (DWG is not supported)
@@ -299,6 +299,22 @@ Models made from drawings, point cloud fits, the agent or by hand (schema in `@a
 - The GLB node of a part is named by its `tag`, else its `name`, else its `id` (`@aio/modelling` `partNodeName`), so issues, tags and part matching across dates (section 13) work on built models.
 - The built mesh layer carries `derived: { kind: 'model', source: [<model id>] }` and the model's `capture`.
 - The manifest flag `aiCloudDrawings` (default off) is the project policy for sending plan images and drawings to a cloud model from the model builder (founder decision 5).
+- The manifest flags `aiCloudPhotos` and `aiCloudScans` (default off) are the matching policies for photos and scan renders sent to a cloud model from an engineering run.
+
+**Engineering models and georeference.** An engineering model (a chimney, flare stack or telecom tower) adds these files beside the model (schemas in `@aio/schema`: `assemblies.ts`, `georef.ts`, `engineer.ts`, `modelEvidence.ts`):
+
+```
+<project>/
+  models/<id>.georeference.json  aio.georef/1: where the model lies on the earth
+  models/<id>.components.json    the component register exported with the GLB
+  engineering/<run>/             one run: evidence.json (aio.evidence/1), img/*.png, the AI cache, run.json (aio.engineer-run/1); not packaged
+```
+
+- **Georeference record** (`aio.georef/1`): `crs` (`epsg` or `wkt`), `anchor` (E, N, H of the model origin in that CRS), `axes` (`x-east,y-up,z-south`), `units` (`m`), `modelToCrs` (a 4x4 matrix), `heading` (`deg` and a status of measured, user or assumed-grid), `scale` (`factor` and a status), `horizontal` and `vertical` (datum or `unknown`, each with a status, so a provisional placement is never taken for a surveyed one), `provenance` (engineer, place-model, import or compat) and an optional `deviation`. The same record is carried in the GLB (`asset.extras.aioGeoref`), in the sidecar file and on the mesh layer (`georef`). The older embedded structure (`chimney.georeference/1`) is read by an adapter; a GLB whose extras are neither is imported as before, with no `placement`. A height of unknown datum stays unknown and is never assumed to be mean sea level.
+- **Placement field** on a mesh layer: `placed` (the layer transform comes from the georeference), `needed` (the person must place the model: unsupported CRS, an invalid record or a different known height datum) or `provisional` (put at the project origin to look at). Absent means the layer behaves as it always did.
+- **Placement formula.** With the project origin (E0, N0, H0) in the same CRS, the layer translation is `[E - E0, H - H0, -(N - N0)]` composed with the rotation and scale of `modelToCrs`. For a different supported CRS the anchor is transformed first and the heading is turned by the difference in grid convergence at the anchor. The transform is applied once on the layer; the GLB vertices are never rewritten. Re-centring the project shifts the layer transform once and leaves the georeference anchor untouched, so the model keeps its world E, N, H. Test tolerances: 1 mm in position, 0.01 degree in heading, 1e-6 in scale.
+- **Node extras** in the GLB keep the string `tag`, `type` and `part` and may add JSON values: `component`, `name`, `description`, `category`, `parent`, `basis`, `unobserved`, `quality` and `openings`.
+- **Stable ids.** An assembly id is `<role>-<index>` (for example `flue-1`, `light-l2`, `antenna-s1`): the role comes from the family assembler and the index is 1-based in a deterministic order (azimuth from north clockwise, then height). A regeneration merges by id: an accepted component keeps its id and user values; a component whose role and index disappear (the count was lowered) is removed only if it is still a draft, otherwise it is kept and flagged. The GLB node name is the id and the node extras carry the full record.
 
 ## 16. Detector models (BLD-10, M8)
 

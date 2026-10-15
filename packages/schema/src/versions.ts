@@ -117,6 +117,27 @@ export const SCHEMA_REGISTRY: readonly SchemaEntry[] = [
     since: '0.8',
   },
   {
+    family: 'aio.georef',
+    version: 1,
+    home: 'project',
+    where: 'models/*.georeference.json',
+    since: '0.14',
+  },
+  {
+    family: 'aio.evidence',
+    version: 1,
+    home: 'project',
+    where: 'engineering/*/evidence.json',
+    since: '0.14',
+  },
+  {
+    family: 'aio.engineer-run',
+    version: 1,
+    home: 'project',
+    where: 'engineering/*/run.json',
+    since: '0.14',
+  },
+  {
     family: 'aio.drawingplacement',
     version: 1,
     home: 'project',
