@@ -157,14 +157,181 @@ function metricEpsg(crs: { epsg: number } | { wkt: string }): number | null {
   return crs.epsg !== 4326 && isKnownCrs(crs.epsg) ? crs.epsg : null;
 }
 
+/** A node of WKT text: its keyword, its quoted or bare values, and its child nodes. */
+interface WktNode {
+  key: string;
+  values: string[];
+  children: WktNode[];
+}
+
+/** WKT (1 or 2) read into nodes; null when it is not well formed. */
+function parseWkt(text: string): WktNode | null {
+  let i = 0;
+  const s = text.trim();
+  const space = () => {
+    while (i < s.length && /\s/.test(s.charAt(i))) i++;
+  };
+  const node = (): WktNode | null => {
+    space();
+    const m = /^[A-Za-z_][A-Za-z0-9_]*/.exec(s.slice(i));
+    if (!m) return null;
+    const out: WktNode = { key: m[0].toUpperCase(), values: [], children: [] };
+    i += m[0].length;
+    space();
+    const open = s.charAt(i);
+    if (open !== '[' && open !== '(') return out;
+    const close = open === '[' ? ']' : ')';
+    i++;
+    for (;;) {
+      space();
+      const c = s.charAt(i);
+      if (c === '"') {
+        // a quoted value; "" inside is one quote
+        let v = '';
+        i++;
+        for (;;) {
+          if (i >= s.length) return null;
+          const q = s.charAt(i);
+          if (q === '"' && s.charAt(i + 1) === '"') {
+            v += '"';
+            i += 2;
+          } else if (q === '"') {
+            i++;
+            break;
+          } else {
+            v += q;
+            i++;
+          }
+        }
+        out.values.push(v);
+      } else if (/[A-Za-z_]/.test(c)) {
+        const save = i;
+        const child = node();
+        if (!child) return null;
+        // a bare word without brackets is a value (east, Cartesian), not a node
+        if (
+          i > save &&
+          child.values.length === 0 &&
+          child.children.length === 0 &&
+          !/[[(]/.test(s.slice(save, i))
+        )
+          out.values.push(child.key.toLowerCase());
+        else out.children.push(child);
+      } else {
+        const n = /^[-+0-9.eE]+/.exec(s.slice(i));
+        if (!n) return null;
+        out.values.push(n[0]);
+        i += n[0].length;
+      }
+      space();
+      const sep = s.charAt(i);
+      if (sep === ',') {
+        i++;
+        continue;
+      }
+      if (sep === close) {
+        i++;
+        return out;
+      }
+      return null;
+    }
+  };
+  const root = node();
+  space();
+  return root && i === s.length ? root : null;
+}
+
+/** Nodes whose subtrees hold units of something other than the CRS's own axes. */
+const NOT_AXIS_UNITS = new Set([
+  'GEOGCS',
+  'GEOCCS',
+  'BASEGEOGCRS',
+  'BASEGEODCRS',
+  'BASEPROJCRS',
+  'DATUM',
+  'TRF',
+  'ELLIPSOID',
+  'SPHEROID',
+  'PRIMEM',
+  'PRIMEMERIDIAN',
+  'PROJECTION',
+  'CONVERSION',
+  'METHOD',
+  'PARAMETER',
+  'TOWGS84',
+  'ABRIDGEDTRANSFORMATION',
+  'USAGE',
+  'BBOX',
+  'ID',
+  'AUTHORITY',
+]);
+const GEOGRAPHIC = new Set(['GEOGCS', 'GEOGCRS', 'GEOGRAPHICCRS', 'GEODCRS', 'GEODETICCRS']);
+const COMPOUND = new Set(['COMPD_CS', 'COMPOUNDCRS']);
+const VERTICAL = new Set(['VERT_CS', 'VERTCRS', 'VERTICALCRS']);
+
 /**
- * One metric CRS on both sides: the same EPSG code (not 4326, which is in degrees), or WKT text
- * that is identical. Such a pair needs no registry.
+ * True when a WKT's horizontal axes are in metres: every unit of the CRS's own axes (a UNIT or
+ * LENGTHUNIT on the CRS, on its CS or on an AXIS) is a metre. A geographic CRS is in degrees, and
+ * a WKT that names no unit for its axes has units that are not known: neither is in metres. A
+ * compound CRS answers for its horizontal part.
  */
-function sameCrs(a: { epsg: number } | { wkt: string }, b: { epsg: number } | { wkt: string }) {
-  if ('epsg' in a && 'epsg' in b) return a.epsg === b.epsg && a.epsg !== 4326;
-  if ('wkt' in a && 'wkt' in b) return a.wkt.trim() !== '' && a.wkt === b.wkt;
-  return false;
+function wktInMetres(text: string): boolean {
+  const root = parseWkt(text);
+  if (!root) return false;
+  let crs: WktNode | undefined = root;
+  if (COMPOUND.has(root.key)) crs = root.children.find((c) => !VERTICAL.has(c.key));
+  if (!crs || GEOGRAPHIC.has(crs.key)) return false;
+  const units: WktNode[] = [];
+  const walk = (n: WktNode) => {
+    for (const c of n.children) {
+      if (NOT_AXIS_UNITS.has(c.key)) continue;
+      if (c.key === 'UNIT' || c.key === 'LENGTHUNIT' || c.key === 'ANGLEUNIT') units.push(c);
+      else walk(c);
+    }
+  };
+  walk(crs);
+  if (units.length === 0) return false;
+  return units.every((u) => {
+    if (u.key === 'ANGLEUNIT') return false;
+    const name = (u.values[0] ?? '').trim().toLowerCase();
+    const factor = Number(u.values[1]);
+    return (name === 'metre' || name === 'meter' || name === 'm') && factor === 1;
+  });
+}
+
+/**
+ * One CRS on both sides that needs no registry: the same EPSG code, or WKT text that is identical.
+ * Placement copies the record's matrix as it is, so the CRS must be in metres: a code the registry
+ * knows is (4326, in degrees, is not a placement frame), a WKT says so in its units, and a code
+ * the registry does not know has units that are not known. Null when the two differ.
+ */
+function sameCrs(
+  a: { epsg: number } | { wkt: string },
+  b: { epsg: number } | { wkt: string },
+): { metres: true } | { metres: false; reason: string } | null {
+  if ('epsg' in a && 'epsg' in b) {
+    if (a.epsg !== b.epsg) return null;
+    if (metricEpsg(a) !== null) return { metres: true };
+    const label = crsLabel(a);
+    return {
+      metres: false,
+      reason:
+        a.epsg === 4326
+          ? `${label} is in degrees, not in metres: place the model with Place model.`
+          : `${label} is not one this app can read, so its units are not known: place the model with Place model.`,
+    };
+  }
+  if ('wkt' in a && 'wkt' in b) {
+    if (a.wkt.trim() === '' || a.wkt !== b.wkt) return null;
+    return wktInMetres(a.wkt)
+      ? { metres: true }
+      : {
+          metres: false,
+          reason:
+            'The coordinate system is not in metres (or its units are not known): place the model with Place model.',
+        };
+  }
+  return null;
 }
 
 const crsLabel = (crs: { epsg: number } | { wkt: string }) =>
@@ -175,8 +342,9 @@ const knownDatum = (d: string | undefined): string | null =>
 
 /**
  * The layer transform that puts a georeferenced model in a project, or why it cannot be placed.
- * Same CRS (one EPSG code, or identical WKT, even one the registry does not read): the record's
- * matrix moved into the local frame. Another supported CRS: the model
+ * Same CRS (one EPSG code the registry knows, or identical WKT in metres, even one the registry
+ * does not read): the record's matrix moved into the local frame; one in feet, in degrees or in
+ * units that are not known is never placed. Another supported CRS: the model
  * origin's image (the pivot) is carried through WGS84 and the horizontal Jacobian of the CRS change
  * there is applied about it, always: the convergence turn, the projection scale difference
  * (`projectionScale`) and, for EPSG:3857, its east/north difference. The record's own scale is
@@ -192,7 +360,9 @@ export function georefToLayerTransform(
   o: PlacementOptions = {},
 ): PlacementResult {
   // within one CRS no registry is needed: the record's matrix moves into the local frame as it is
-  const same = sameCrs(g.crs, project.crs);
+  const pair = sameCrs(g.crs, project.crs);
+  if (pair && !pair.metres) return { kind: 'needed', reason: pair.reason };
+  const same = pair !== null;
   const to = same ? null : metricEpsg(project.crs);
   if (!same && to === null)
     return {

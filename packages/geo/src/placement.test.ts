@@ -267,9 +267,9 @@ describe('georefToLayerTransform', () => {
     expect(Math.abs(r.projectionScale - 1.573)).toBeLessThan(0.01);
   });
 
-  it('places within one CRS the registry does not know: identical WKT or the same EPSG', () => {
+  it('places within one metric CRS the registry does not know, given as identical WKT', () => {
     const wkt = 'LOCAL_CS["site grid",LOCAL_DATUM["x",0],UNIT["metre",1]]';
-    for (const crs of [{ wkt }, { epsg: 2056 }]) {
+    for (const crs of [{ wkt }]) {
       const project: ProjectGeo = { ...A, crs };
       const r = placed(georefToLayerTransform(g({ crs }), project));
       expect(r.headingDeltaDeg).toBe(0);
@@ -288,6 +288,55 @@ describe('georefToLayerTransform', () => {
     expect(
       georefToLayerTransform(g({ crs: { epsg: 4326 } }), { ...A, crs: { epsg: 4326 } }).kind,
     ).toBe('needed');
+  });
+
+  describe('one CRS on both sides that the registry does not know: only in metres', () => {
+    const GEOG =
+      'GEOGCS["NAD83",DATUM["North_American_Datum_1983",SPHEROID["GRS 1980",6378137,298.257222101]],PRIMEM["Greenwich",0],UNIT["degree",0.0174532925199433]]';
+    const tm = (unit: string) =>
+      `PROJCS["test grid",${GEOG},PROJECTION["Transverse_Mercator"],PARAMETER["latitude_of_origin",0],PARAMETER["central_meridian",-120],PARAMETER["scale_factor",0.9996],PARAMETER["false_easting",500000],PARAMETER["false_northing",0],${unit},AXIS["Easting",EAST],AXIS["Northing",NORTH]]`;
+    const wkt2 = (unit: string) =>
+      `PROJCRS["test grid",BASEGEOGCRS["NAD83",DATUM["North American Datum 1983",ELLIPSOID["GRS 1980",6378137,298.257222101,LENGTHUNIT["metre",1]]],PRIMEM["Greenwich",0,ANGLEUNIT["degree",0.0174532925199433]]],CONVERSION["test",METHOD["Transverse Mercator"],PARAMETER["False easting",500000,LENGTHUNIT["metre",1]]],CS[Cartesian,2],AXIS["easting (X)",east,ORDER[1],${unit}],AXIS["northing (Y)",north,ORDER[2],${unit}]]`;
+    const at = (crs: { epsg: number } | { wkt: string }) =>
+      georefToLayerTransform(g({ crs }), { ...A, crs });
+
+    it('places a projected WKT in metres (WKT1 and WKT2)', () => {
+      for (const wkt of [tm('UNIT["metre",1]'), wkt2('LENGTHUNIT["metre",1]')]) {
+        const r = placed(at({ wkt }));
+        expect(r.transform).toEqual(placed(georefToLayerTransform(g(), A)).transform);
+      }
+    });
+
+    it('does not place a WKT in feet', () => {
+      for (const wkt of [
+        tm('UNIT["US survey foot",0.3048006096012192]'),
+        tm('UNIT["foot",0.3048]'),
+        wkt2('LENGTHUNIT["US survey foot",0.304800609601219]'),
+      ]) {
+        const r = at({ wkt });
+        expect(r.kind).toBe('needed');
+        expect(r.kind === 'needed' && r.reason).toMatch(/not in metres/);
+      }
+    });
+
+    it('does not place a WKT in degrees', () => {
+      for (const wkt of [
+        GEOG,
+        'GEOGCRS["WGS 84",DATUM["World Geodetic System 1984",ELLIPSOID["WGS 84",6378137,298.257223563]],CS[ellipsoidal,2],AXIS["latitude",north],AXIS["longitude",east],ANGLEUNIT["degree",0.0174532925199433]]',
+      ]) {
+        const r = at({ wkt });
+        expect(r.kind).toBe('needed');
+        expect(r.kind === 'needed' && r.reason).toMatch(/not in metres/);
+      }
+    });
+
+    it('does not place an EPSG code the registry does not know: its units are unknown', () => {
+      const r = at({ epsg: 2056 });
+      expect(r.kind).toBe('needed');
+      expect(r.kind === 'needed' && r.reason).toMatch(/EPSG:2056.*units are not known/);
+      // a WKT without any unit is not taken for metres either
+      expect(at({ wkt: 'LOCAL_CS["x"]' }).kind).toBe('needed');
+    });
   });
 
   it('unsupported CRS gives placement needed', () => {
