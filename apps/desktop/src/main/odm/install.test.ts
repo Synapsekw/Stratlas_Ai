@@ -520,6 +520,35 @@ describe.skipIf(process.platform !== 'win32')('installing ODM', () => {
     expect(existsSync(older)).toBe(false);
   });
 
+  it('an update removes what ODM`s setup left of the older version, and a failed delete is a warning', async () => {
+    // ODM's setup uninstalls the older version itself; the parked placeholder (unknown to it) stays
+    const recPath = join(dir, 'data', 'runtime', 'odm.json');
+    const older = join(dir, 'data', 'runtime', 'odm-3.5.6');
+    const bin = join(older, 'SuperBuild', 'install', 'bin');
+    const rec = {
+      schema: 'aio.odm-install/1',
+      version: '3.5.6',
+      dir: older,
+      installedAt: '2026-10-01T00:00:00.000Z',
+    };
+    await mkdir(bin, { recursive: true });
+    await writeFile(join(bin, 'nvcuda.dll.odm-stub'), Buffer.alloc(19_968));
+    await writeFile(recPath, JSON.stringify(rec));
+    expect((await run(deps(), true)).r.ok).toBe(true);
+    expect(existsSync(older)).toBe(false);
+    // a folder that cannot be deleted does not fail an install that worked
+    await mkdir(bin, { recursive: true });
+    await writeFile(recPath, JSON.stringify(rec));
+    const lines: string[] = [];
+    const base = fakeSystem();
+    const system = fakeSystem({
+      rm: (p) => (p === older ? Promise.reject(new Error('EBUSY: locked')) : base.rm(p)),
+    });
+    const { r } = await run(deps(system, { log: (l) => lines.push(l) }), true);
+    expect(r).toMatchObject({ ok: true, status: { state: 'installed' } });
+    expect(lines.join('\n')).toMatch(/odm-3\.5\.6.*EBUSY/);
+  });
+
   it('QUADRION_ODM_DIR names an ODM without installing it', async () => {
     const d = deps(fakeSystem(), {
       env: { QUADRION_ODM_DIR: join(dir, 'fake'), QUADRION_ODM_VERSION: '3.6.2' },
@@ -551,6 +580,16 @@ describe('the job environment', () => {
       'off',
     );
     expect(dev.AIO_ODM_OWNED).toBeUndefined(); // QUADRION_ODM_DIR: never touch its files
+    // a dev ODM (QUADRION_ODM_DIR) keeps the junction folder the app was given (end to end tests)
+    const devOdm = { dir: 'C:\\Q\\odm-3.6.2', version: '3.6.2', owned: false };
+    expect(
+      odmJobEnv('photo.products', devOdm, 'off', { AIO_ODM_WORK: 'C:\\T\\w' }).AIO_ODM_WORK,
+    ).toBe('C:\\T\\w');
+    expect(odmJobEnv('photo.products', devOdm, 'off', {}).AIO_ODM_WORK).toBe('C:\\Q\\odm-work');
+    expect(
+      odmJobEnv('photo.products', { ...devOdm, owned: true }, 'off', { AIO_ODM_WORK: 'C:\\T\\w' })
+        .AIO_ODM_WORK,
+    ).toBe('C:\\Q\\odm-work');
     const odm = { dir: 'x', version: 'y', owned: true };
     expect(odmJobEnv('photo.align', odm, 'auto')).toMatchObject({ AIO_ODM: 'x' });
     expect(odmJobEnv('photo.georef', odm, 'auto')).toMatchObject({ AIO_ODM: 'x' });

@@ -359,13 +359,15 @@ export async function installOdm(
       dir: target,
       installedAt: d.now().toISOString(),
     });
-    if (
-      old &&
-      !sameDir(old.dir, target) &&
-      isOurOdmFolder(old.dir, dataRoot, env) &&
-      (await system.exists(win32.join(old.dir, 'run.bat')))
-    )
-      await system.rm(old.dir);
+    if (old && !sameDir(old.dir, target) && isOurOdmFolder(old.dir, dataRoot, env)) {
+      // ODM's setup may have uninstalled it already; the parked placeholder (unknown to its
+      // uninstaller) keeps the folder. A folder that cannot go does not fail a good install.
+      try {
+        await system.rm(old.dir);
+      } catch (e) {
+        d.log?.(`ODM: the earlier version in ${old.dir} could not be removed: ${message(e)}`);
+      }
+    }
     await system.rm(setup);
   } catch (e) {
     return failed(message(e));
@@ -400,18 +402,23 @@ export async function removeOdm(d: OdmDeps): Promise<OdmInstallResult> {
 
 const ODM_PIPELINES = new Set(['photo.align', 'photo.georef', 'photo.products']);
 
-/** What a photo job is told about ODM; `AIO_ODM_OWNED` lets the runner park the stub (dev. 17). */
+/**
+ * What a photo job is told about ODM; `AIO_ODM_OWNED` lets the runner park the stub (dev. 17).
+ * The junctions go beside our own install; a dev ODM (`QUADRION_ODM_DIR`, such as the fake in the
+ * repository) keeps an `AIO_ODM_WORK` the app itself was given, so they never land in its folder.
+ */
 export function odmJobEnv(
   pipeline: string,
   odm: { dir: string; version: string; owned: boolean } | null,
   gpu: OdmGpuSetting,
+  appEnv: Record<string, string | undefined> = {},
 ): Record<string, string> {
   if (!odm || !ODM_PIPELINES.has(pipeline)) return {};
   return {
     AIO_ODM: odm.dir,
     AIO_ODM_VERSION: odm.version,
     AIO_ODM_GPU: gpu,
-    AIO_ODM_WORK: odmWorkRoot(odm.dir),
+    AIO_ODM_WORK: (odm.owned ? undefined : appEnv.AIO_ODM_WORK) ?? odmWorkRoot(odm.dir),
     ...(odm.owned ? { AIO_ODM_OWNED: '1' } : {}),
   };
 }

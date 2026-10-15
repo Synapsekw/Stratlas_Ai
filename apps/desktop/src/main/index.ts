@@ -712,7 +712,7 @@ const jobs = new JobRunner({
   jobEnv: async (job) => ({
     ...photoJobEnv(job.pipeline, totalmem(), process.env),
     // ADR 0012: ODM's folder, version and GPU setting; `AIO_ODM_OWNED` only for our own install
-    ...odmJobEnv(job.pipeline, await currentOdm(odmDeps), odmDeps.gpuSetting()),
+    ...odmJobEnv(job.pipeline, await currentOdm(odmDeps), odmDeps.gpuSetting(), process.env),
     // ODM's memory limit (and fewer threads) only when the photo memory was limited by hand
     ...odmMemoryEnv(job.pipeline, process.env),
     // M11 G1: geoid packs for the site pipeline, and PROJ never on the network
