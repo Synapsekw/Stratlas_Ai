@@ -3,7 +3,9 @@ import { EdlPass, edlNeighbours } from './edl';
 import {
   FLIGHT_PALETTE,
   MODE_INDEX,
+  NO_CLEANUP,
   applyChangeUniforms,
+  applyCleanupUniforms,
   createPointMaterial,
   pointSizePx,
 } from './material';
@@ -126,5 +128,32 @@ describe('EDL', () => {
     pass.quad.raycast({} as never, hits as never);
     expect(hits).toHaveLength(0);
     pass.dispose();
+  });
+});
+
+describe('cleanup uniforms', () => {
+  it('read the mask only when asked and start with nothing clipped', () => {
+    const base = { hasRgb: false, hasIntensity: true, hasClass: true, baseSize: 1, tint: '#000' };
+    expect(createPointMaterial(base).defines).not.toHaveProperty('HAS_MASK');
+    const m = createPointMaterial({ ...base, hasMask: true });
+    expect(m.defines).toHaveProperty('HAS_MASK', '');
+    expect(m.vertexShader).toContain('attribute float aMask');
+    expect(m.vertexShader).toContain('uBoxInv * world');
+    expect(m.uniforms.uBoxOn.value).toBe(0);
+    expect(m.uniforms.uZMin.value).toBe(-1e30);
+    expect(m.uniforms.uZMax.value).toBe(1e30);
+  });
+
+  it('applies a box and a height range, and clears them', () => {
+    const m = createPointMaterial({ hasRgb: false, hasIntensity: true, baseSize: 1, tint: '#000' });
+    const inv = [0.5, 0, 0, 0, 0, 0.5, 0, 0, 0, 0, 0.5, 0, 0, 0, 0, 1];
+    applyCleanupUniforms(m, { boxInv: inv, keepInside: false, zMin: 1, zMax: 9 });
+    expect(m.uniforms.uBoxOn.value).toBe(1);
+    expect(m.uniforms.uBoxKeepInside.value).toBe(0);
+    expect(m.uniforms.uBoxInv.value.elements[0]).toBe(0.5);
+    expect([m.uniforms.uZMin.value, m.uniforms.uZMax.value]).toEqual([1, 9]);
+    applyCleanupUniforms(m, NO_CLEANUP);
+    expect(m.uniforms.uBoxOn.value).toBe(0);
+    expect(m.uniforms.uZMin.value).toBe(-1e30);
   });
 });

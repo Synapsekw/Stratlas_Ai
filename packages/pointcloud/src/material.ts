@@ -1,4 +1,4 @@
-import { Color, ShaderMaterial, Vector2 } from 'three';
+import { Color, Matrix4, ShaderMaterial, Vector2 } from 'three';
 import { CHANGE_RAMP_GLSL } from './changeRamp';
 import { classColour } from './classes';
 import { ELEVATION_RAMP_GLSL } from './ramp';
@@ -63,6 +63,14 @@ uniform float uScalarRange;
 uniform float uThreshold;
 uniform float uDiverging;
 uniform float uHideNoScalar;
+#ifdef HAS_MASK
+attribute float aMask;
+#endif
+uniform mat4 uBoxInv;
+uniform float uBoxOn;
+uniform float uBoxKeepInside;
+uniform float uZMin;
+uniform float uZMax;
 varying vec3 vC;
 
 ${ELEVATION_RAMP_GLSL}
@@ -92,7 +100,27 @@ void main() {
     gl_PointSize = 0.0;
     return;
   }
+#ifdef HAS_MASK
+  if (aMask > 0.5) {
+    // hidden or deleted by a cleanup selection
+    gl_Position = vec4(2.0, 2.0, 2.0, 1.0);
+    gl_PointSize = 0.0;
+    return;
+  }
+#endif
   vec4 world = modelMatrix * vec4(position, 1.0);
+  // cleanup height range and clip box, in the local frame (independent of the section planes)
+  bool cut = world.y < uZMin || world.y > uZMax;
+  if (!cut && uBoxOn > 0.5) {
+    vec3 b = (uBoxInv * world).xyz;
+    bool inside = abs(b.x) <= 0.5 && abs(b.y) <= 0.5 && abs(b.z) <= 0.5;
+    cut = inside != (uBoxKeepInside > 0.5);
+  }
+  if (cut) {
+    gl_Position = vec4(2.0, 2.0, 2.0, 1.0);
+    gl_PointSize = 0.0;
+    return;
+  }
   vec4 mvPosition = viewMatrix * world;
   gl_Position = projectionMatrix * mvPosition;
   // the user's size scale multiplies the on-screen size after the clamp (see pointSizePx)
@@ -163,6 +191,8 @@ export interface PointMaterialOptions {
   hasClass?: boolean;
   /** One float per point to colour by in the change mode (COPC extra bytes, `Distance`). */
   hasScalar?: boolean;
+  /** A per-point cleanup mask (`aMask`, 1 = not drawn); COPC layers. */
+  hasMask?: boolean;
   /** World size of a point in metres (the user's size scale applies on screen, uScale). */
   baseSize: number;
   tint: string;
@@ -189,6 +219,13 @@ export type PointMaterial = ShaderMaterial & {
     uDiverging: { value: number };
     /** Change mode: 1 hides clouds without a scalar (a change cloud is shown). */
     uHideNoScalar: { value: number };
+    /** Cleanup clip box: local frame to the unit box (|x|, |y|, |z| <= 0.5 is inside). */
+    uBoxInv: { value: Matrix4 };
+    uBoxOn: { value: number };
+    uBoxKeepInside: { value: number };
+    /** Cleanup height range, local y. */
+    uZMin: { value: number };
+    uZMax: { value: number };
   };
   userData: { baseSize: number };
 };
@@ -239,6 +276,7 @@ export function createPointMaterial(o: PointMaterialOptions): PointMaterial {
   if (o.hasIntensity) defines.HAS_INTENSITY = '';
   if (o.hasClass) defines.HAS_CLASS = '';
   if (o.hasScalar) defines.HAS_SCALAR = '';
+  if (o.hasMask) defines.HAS_MASK = '';
   const m = new ShaderMaterial({
     defines,
     vertexShader,
@@ -259,6 +297,11 @@ export function createPointMaterial(o: PointMaterialOptions): PointMaterial {
       uThreshold: { value: 0 },
       uDiverging: { value: 0 },
       uHideNoScalar: { value: 0 },
+      uBoxInv: { value: new Matrix4() },
+      uBoxOn: { value: 0 },
+      uBoxKeepInside: { value: 1 },
+      uZMin: { value: -1e30 },
+      uZMax: { value: 1e30 },
     },
   }) as PointMaterial;
   m.userData.baseSize = o.baseSize;
@@ -270,4 +313,28 @@ export function applyHiddenClasses(m: PointMaterial, hidden: readonly number[]):
   const shown = m.uniforms.uClassShown.value;
   shown.fill(1);
   for (const c of hidden) shown[Math.min(c, CLASS_SLOTS - 1)] = 0;
+}
+
+/** The cleanup's share of a layer's material (local frame); see cleanup/evaluate.ts `cleanupUniformsOf`. */
+export interface CleanupUniforms {
+  boxInv: readonly number[] | null;
+  keepInside: boolean;
+  zMin: number;
+  zMax: number;
+}
+
+export const NO_CLEANUP: CleanupUniforms = {
+  boxInv: null,
+  keepInside: true,
+  zMin: -1e30,
+  zMax: 1e30,
+};
+
+/** Sets the clip box and height range; the depth materials share these uniform objects. */
+export function applyCleanupUniforms(m: PointMaterial, c: CleanupUniforms): void {
+  m.uniforms.uBoxOn.value = c.boxInv ? 1 : 0;
+  if (c.boxInv) m.uniforms.uBoxInv.value.fromArray(c.boxInv);
+  m.uniforms.uBoxKeepInside.value = c.keepInside ? 1 : 0;
+  m.uniforms.uZMin.value = c.zMin;
+  m.uniforms.uZMax.value = c.zMax;
 }

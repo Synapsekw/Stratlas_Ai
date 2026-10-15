@@ -22,7 +22,7 @@ export {
   registerPointcloudAdapters,
   type PointcloudAdapterOptions,
 } from './adapter';
-export { pickPoint, type PointPick } from './pick';
+export { drawnPoints, pickPoint, type PointPick } from './pick';
 export { budgetShareOf, setBudgetShare, splitBudget } from './budgetShare';
 export {
   BUDGETS,
@@ -36,7 +36,17 @@ export {
   type PointcloudSettings,
 } from './settings';
 export { countsOf, pointcloudStats, usePointcloudCounts, type CloudCounts } from './stats';
-export { DEFAULT_CHANGE_RANGE, FLIGHT_PALETTE, MODE_INDEX } from './material';
+export {
+  DEFAULT_CHANGE_RANGE,
+  FLIGHT_PALETTE,
+  MODE_INDEX,
+  NO_CLEANUP,
+  applyCleanupUniforms,
+  createPointMaterial,
+  type CleanupUniforms,
+  type PointMaterial,
+} from './material';
+export { countDrawn } from './cleanup/count';
 export { CHANGE_STOPS, changeColour, changeGradient, isNeutral, isWarm } from './changeRamp';
 export {
   ChangeLegend,

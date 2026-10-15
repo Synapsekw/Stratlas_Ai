@@ -23,7 +23,8 @@ const world = new Vector3();
 /**
  * Which points of a chunk its material draws, as the vertex shader decides (material.ts): not
  * those of a hidden class and, coloured by change, not those under the change threshold, and none
- * of a cloud without the change field while a change cloud shows. `false` when no point is drawn,
+ * of a cloud without the change field while a change cloud shows, and not those a cleanup mask,
+ * height range or clip box removes. `false` when no point is drawn,
  * `undefined` when every point is.
  */
 export function drawnPoints(obj: Points): ((index: number) => boolean) | false | undefined {
@@ -45,11 +46,44 @@ export function drawnPoints(obj: Points): ((index: number) => boolean) | false |
   if (!hasClass && (shown[1] ?? 1) < 0.5) return false;
   const byClass = hasClass && shown.some((v) => v < 0.5);
   const threshold = change && hasScalar ? u.uThreshold.value : 0;
-  if (!byClass && threshold <= 0) return undefined;
+  // cleanup (material.ts): the mask, the height range and the clip box, as the shader decides
+  const mask =
+    'HAS_MASK' in defines
+      ? (obj.geometry.getAttribute('aMask') as BufferAttribute | undefined)
+      : undefined;
+  const zMin = u.uZMin?.value ?? -1e30;
+  const zMax = u.uZMax?.value ?? 1e30;
+  const boxOn = (u.uBoxOn?.value ?? 0) > 0.5;
+  const keepInside = (u.uBoxKeepInside?.value ?? 1) > 0.5;
+  const bounded = zMin > -1e29 || zMax < 1e29 || boxOn;
+  if (!byClass && threshold <= 0 && !mask && !bounded) return undefined;
+  obj.updateMatrixWorld();
+  const e = obj.matrixWorld.elements;
+  const b = u.uBoxInv?.value.elements ?? [];
+  const pos = obj.geometry.getAttribute('position');
+  const at = (k: number) => e[k] ?? 0;
+  const bt = (k: number) => b[k] ?? 0;
   return (i) => {
     if (byClass) {
       const c = Math.round(Math.min(cls?.getX(i) ?? 0, CLASS_SLOTS - 1));
       if ((shown[c] ?? 1) < 0.5) return false;
+    }
+    if (mask && mask.getX(i) > 0.5) return false;
+    if (bounded) {
+      const px = pos.getX(i);
+      const py = pos.getY(i);
+      const pz = pos.getZ(i);
+      const wy = at(1) * px + at(5) * py + at(9) * pz + at(13);
+      if (wy < zMin || wy > zMax) return false;
+      if (boxOn) {
+        const wx = at(0) * px + at(4) * py + at(8) * pz + at(12);
+        const wz = at(2) * px + at(6) * py + at(10) * pz + at(14);
+        const inside =
+          Math.abs(bt(0) * wx + bt(4) * wy + bt(8) * wz + bt(12)) <= 0.5 &&
+          Math.abs(bt(1) * wx + bt(5) * wy + bt(9) * wz + bt(13)) <= 0.5 &&
+          Math.abs(bt(2) * wx + bt(6) * wy + bt(10) * wz + bt(14)) <= 0.5;
+        if (inside !== keepInside) return false;
+      }
     }
     return threshold <= 0 || Math.abs(scalar?.getX(i) ?? 0) >= threshold;
   };
