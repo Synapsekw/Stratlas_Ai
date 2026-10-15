@@ -3,11 +3,14 @@
  * bridge behind it, the offer the review and the Changes panel make, and the issue list's
  * right-click action. `startPlacement` runs once at start-up (bootstrap.ts).
  */
+import { registerAppHooks } from '@aio/ai';
 import { cameraSources, issueEditor, setIssueListActions } from '@aio/annotate';
 import { getActiveScene } from '@aio/engine';
 import { workspace } from '@aio/workspace';
 import { useStore } from 'zustand';
+import { acceptByIds } from '../detections/store';
 import { bridge } from '../shell';
+import { createPlacementHooks } from './agentHooks';
 import { ensureSizes, layerReady, placeOnScene } from './controller';
 import {
   createPlacementStore,
@@ -64,8 +67,17 @@ export function startPlacement(): () => void {
     },
   });
   const stopProject = followProject(placement, workspace);
+  const stopHooks = registerAppHooks(
+    createPlacementHooks({
+      workspace,
+      placeIds: (ids, layerId) => placement.getState().placeIds(ids, layerId),
+      acceptByIds,
+      editor: issueEditor,
+    }),
+  );
   return () => {
     stopList();
+    stopHooks();
     stopProject();
   };
 }
