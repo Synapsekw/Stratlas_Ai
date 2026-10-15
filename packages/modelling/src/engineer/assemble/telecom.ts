@@ -60,6 +60,8 @@ const PIPE_D = 0.076;
 const MOUNT_EMBED = 0.05;
 /** An inferred antenna stands this far off the host surface (to the pipe axis). */
 const STANDOFF = 0.6;
+/** A platform moved off the antennas keeps this clear of them (metres). */
+const CLEAR = 0.05;
 
 const ANTENNA_KINDS = ['panel', 'dish', 'rru', 'omni'] as const;
 type AntennaKind = (typeof ANTENNA_KINDS)[number];
@@ -562,6 +564,8 @@ function towerExtras(
   reach: HostReach,
   around: (y: number) => number,
   busy: readonly number[],
+  /** World height ranges the antennas and their mounts take up. */
+  spans: readonly (readonly [number, number])[],
 ): Assembly[] {
   const H = ctx.height;
   const b = ctx.base;
@@ -631,7 +635,31 @@ function towerExtras(
       : aiLevels.length
         ? aiLevels.map((r) => ({ h: r * H, basis: c?.observed ? 'observed' : 'inferred' }))
         : Array.from({ length: n }, (_, k) => ({ h: ((k + 1) * H) / (n + 1), basis: 'inferred' }));
-    const levels = hs.filter((l) => l.h > 0.5 && l.h < H).slice(0, user ? undefined : n);
+    // a deck inside the antennas' height would cut them: it moves just below the lowest it meets
+    const thickness = 0.1;
+    const clearOf = (h: number): number => {
+      let y = b[1] + h;
+      for (let guard = 0; guard < 40; guard++) {
+        const hits = spans.filter(([lo, hi]) => y > lo - CLEAR && y - thickness < hi + CLEAR);
+        if (!hits.length) break;
+        y = Math.min(...hits.map(([lo]) => lo)) - CLEAR;
+      }
+      return y - b[1];
+    };
+    const levels = hs
+      .filter((l) => l.h > 0.5 && l.h < H)
+      .slice(0, user ? undefined : n)
+      .map((l): { h: number; basis: ValueBasis; note?: string } => {
+        // the person's own level is kept as they set it
+        const h = l.basis === 'user' ? l.h : clearOf(l.h);
+        if (Math.abs(h - l.h) < 1e-9) return l;
+        const note = `Moved from ${l.h.toFixed(2)} m to clear the antennas.`;
+        ctx.note(
+          `A platform at ${l.h.toFixed(1)} m would cut the antennas: moved below the antennas, to ${h.toFixed(1)} m.`,
+        );
+        return { h, basis: 'inferred', note };
+      })
+      .filter((l) => l.h > 0.5);
     const ids = ctx.ids(
       'platform',
       levels.map((l) => ({ y: b[1] + l.h })),
@@ -644,7 +672,6 @@ function towerExtras(
     levels.forEach((l, i) => {
       const id = ids[i] ?? `platform-${String(i + 1)}`;
       const y = b[1] + l.h;
-      const thickness = 0.1;
       const hole = Math.max(around(y), around(y - thickness)) + 0.05;
       const width = ctx.value(id, 'outline', ai(c, ctx.len(c, 'width'), 1.2));
       const rOut = hole + width.v;
@@ -669,7 +696,7 @@ function towerExtras(
             description: c?.description ?? 'Platform round the structure.',
             parent: hostId,
             quality: {
-              y: { basis: l.basis },
+              y: l.note === undefined ? { basis: l.basis } : { basis: l.basis, note: l.note },
               outline: width.q,
               thickness: inferred,
               openings: inferred,
@@ -743,6 +770,13 @@ const PLACED = new Set<string>([
 /** Bearings the antennas face (to keep ladders and cabinets clear of them). */
 const facingsIn = (list: readonly Assembly[]) =>
   list.flatMap((a) => (a.kind === 'antenna' ? [a.params.azimuthDeg] : []));
+/** Height ranges of the antennas and mounts in `list`. */
+const spansIn = (list: readonly Assembly[]) =>
+  list.flatMap((a): (readonly [number, number])[] =>
+    a.kind === 'antenna' || a.kind === 'antennaMount'
+      ? [[a.params.centre[1] - a.params.size[1] / 2, a.params.centre[1] + a.params.size[1] / 2]]
+      : [],
+  );
 
 export const assembleLattice: FamilyAssembler = (ctx) => {
   const b = ctx.base;
@@ -761,7 +795,7 @@ export const assembleLattice: FamilyAssembler = (ctx) => {
   const ants = antennas(ctx, id, reach);
   const out: Assembly[] = [lattice, ...ants];
   out.push(...lights(ctx, id, { reach, description: 'Aviation warning light on the tower.' }));
-  out.push(...towerExtras(ctx, id, reach, around, facingsIn(ants)));
+  out.push(...towerExtras(ctx, id, reach, around, facingsIn(ants), spansIn(ants)));
   noteUnplaced(ctx, new Set([...PLACED, 'lattice']), 'lattice tower');
   return out;
 };
@@ -799,7 +833,7 @@ export const assembleMonopole: FamilyAssembler = (ctx) => {
   const ants = antennas(ctx, id, reach);
   const out: Assembly[] = [pole, ...ants];
   out.push(...lights(ctx, id, { reach, description: 'Aviation warning light on the pole.' }));
-  out.push(...towerExtras(ctx, id, reach, (y) => ctx.radiusAt(y), facingsIn(ants)));
+  out.push(...towerExtras(ctx, id, reach, (y) => ctx.radiusAt(y), facingsIn(ants), spansIn(ants)));
   noteUnplaced(ctx, new Set([...PLACED, 'monopole', 'shaft']), 'monopole');
   return out;
 };

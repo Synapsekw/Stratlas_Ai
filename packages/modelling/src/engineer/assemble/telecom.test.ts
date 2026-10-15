@@ -6,7 +6,10 @@ import {
   type ProposalComponent,
 } from '@aio/schema';
 import { describe, expect, it } from 'vitest';
-import { profileRadiusAt } from '../builders/ctx';
+import { ctxFor, profileRadiusAt } from '../builders/ctx';
+import { MeshSink, SEGMENTS } from '../geom';
+import { buildAssembly } from '../meshAssemblies';
+import { vertexAt } from '../testGeom';
 import {
   LATTICE_TRUTH,
   MONOPOLE_TRUTH,
@@ -335,6 +338,86 @@ describe('telecom lattice family', () => {
       expect(Math.abs(((az - s + 540) % 360) - 180)).toBeGreaterThan(30);
     expect(byKind(r.model, 'guardrail')).toHaveLength(1);
     expect(ProcModel.safeParse(r.model).success).toBe(true);
+  });
+});
+
+describe('tower access placement', () => {
+  type P = [number, number, number];
+  const anchored = (family: ModelFamily, B: P): AssembleInput => ({
+    ...base(family),
+    evidence: null,
+    setup: { ...setupFor(family), placement: 'anchor', anchor: B },
+  });
+  const ladderProp = seen({ role: 'ladder', kind: 'ladder', count: 1, params: { cage: true } });
+  /** Compass bearing the built ladder's cage stands out to, square to the ladder line. */
+  function cageBearing(model: ProcModel, B: P): { az: number; bearing: number } {
+    const l = must(byKind(model, 'ladder')[0]);
+    const sink = new MeshSink(SEGMENTS.standard);
+    buildAssembly(sink, l, ctxFor(model));
+    const cage = must(sink.out().find((p) => p.material === 'steel-galv-cage'));
+    const n = cage.positions.length / 3;
+    const c = [0, 0, 0];
+    for (let i = 0; i < n; i++) {
+      const v = vertexAt(cage, i);
+      for (let k = 0; k < 3; k++) c[k] = (c[k] ?? 0) + (v[k] ?? 0) / n;
+    }
+    const { bottom, top } = l.params;
+    const d = [top[0] - bottom[0], top[1] - bottom[1], top[2] - bottom[2]];
+    const dl = Math.hypot(d[0] ?? 0, d[1] ?? 0, d[2] ?? 0);
+    const rel = [0, 1, 2].map((k) => (c[k] ?? 0) - (bottom[k] ?? 0));
+    const t = rel.reduce((s, r, k) => s + (r * (d[k] ?? 0)) / dl, 0);
+    const v = rel.map((r, k) => r - (t * (d[k] ?? 0)) / dl);
+    const bearing = (Math.atan2(v[0] ?? 0, -(v[2] ?? 0)) * 180) / Math.PI;
+    const az = (Math.atan2(bottom[0] - B[0], -(bottom[2] - B[2])) * 180) / Math.PI;
+    return { az, bearing };
+  }
+  const angle = (a: number, b: number) => {
+    const d = Math.abs((((a - b) % 360) + 360) % 360);
+    return Math.min(d, 360 - d);
+  };
+
+  const ANCHORS: P[] = [
+    [50, 0, -30],
+    [-40, 0, 25],
+  ];
+  it.each(
+    (['telecom-lattice', 'telecom-monopole'] as const).flatMap((f) =>
+      ANCHORS.map((B): [ModelFamily, P] => [f, B]),
+    ),
+  )('a ladder on an off-origin %s at %j faces out along its bearing', (family, B) => {
+    const p = family === 'telecom-lattice' ? latticeProposal() : monopoleProposal();
+    const m = assemble({ ...anchored(family, B), proposal: plus(p, ladderProp) }).model;
+    const tower = must(m.assemblies.find((a) => a.kind === 'lattice' || a.kind === 'monopole'));
+    expect(tower.params.base).toEqual(B);
+    const { az, bearing } = cageBearing(m, B);
+    expect(angle(az, bearing)).toBeLessThan(1);
+  });
+
+  it('a proposed platform inside the antennas moves just below the lowest one, noted', () => {
+    const r = lattice({
+      proposal: plus(
+        latticeProposal(),
+        seen({ role: 'platform', kind: 'ringPlatform', count: 1, params: {}, levels: [0.95] }),
+      ),
+    });
+    const deck = must(byKind(r.model, 'deck')[0]);
+    const bottoms = [...byKind(r.model, 'antenna'), ...byKind(r.model, 'antennaMount')].map(
+      (a) => a.params.centre[1] - a.params.size[1] / 2,
+    );
+    const lowest = Math.min(...bottoms);
+    expect(deck.params.y).toBeLessThan(lowest);
+    expect(deck.params.y).toBeGreaterThan(lowest - 0.2);
+    expect(deck.quality.y?.basis).toBe('inferred');
+    expect(r.unresolved.some((u) => u.includes('moved below the antennas'))).toBe(true);
+    // a level clear of the antennas stays where it was proposed, without a note
+    const clear = lattice({
+      proposal: plus(
+        latticeProposal(),
+        seen({ role: 'platform', kind: 'ringPlatform', count: 1, params: {}, levels: [0.5] }),
+      ),
+    });
+    expect(must(byKind(clear.model, 'deck')[0]).params.y).toBeCloseTo(20, 6);
+    expect(clear.unresolved.some((u) => u.includes('moved below the antennas'))).toBe(false);
   });
 });
 

@@ -328,15 +328,18 @@ export function buildGuardrail(sink: MeshSink, a: AssemblyOf<'guardrail'>, ctx: 
 }
 
 /**
- * The direction from the axis of the shaft nearest `at` (the vertical through the origin when
- * the model has no shaft) out through `at`, square to that axis; +z when `at` is on the axis.
+ * The direction from the nearest host axis to `at` out through `at`, square to that axis; +z when
+ * `at` is on the axis. Host axes: each shaft's axis, and the vertical through the base of each
+ * lattice tower and monopole; the vertical through the origin when the model has none.
  */
 function awayFromShaft(ctx: BuildCtx, at: V3): V3 {
   let best: V3 | undefined;
   let bestD = Infinity;
   for (const s of ctx.model.assemblies) {
-    if (s.kind !== 'shaft') continue;
-    const a = shaftAxis(s.params);
+    let a: V3;
+    if (s.kind === 'shaft') a = shaftAxis(s.params);
+    else if (s.kind === 'lattice' || s.kind === 'monopole') a = UP;
+    else continue;
     const rel = sub(at, s.params.base);
     const perp = sub(rel, scale(a, dot(rel, a)));
     if (len(perp) < bestD) {
