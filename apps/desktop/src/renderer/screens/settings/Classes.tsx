@@ -28,7 +28,13 @@ export function Classes() {
   const issues = useWorkspace((s) => s.issues);
   // the detection review of this project, or null while it is not read yet (usage unknown)
   const loaded = useDetections((s) =>
-    s.projectId !== null && s.projectId === project?.id && !s.loading ? s.review.detections : null,
+    s.projectId !== null && s.projectId === project?.id && !s.loading && !s.loadError
+      ? s.review.detections
+      : null,
+  );
+  // the review could not be read (a project without detections reads as an empty review)
+  const unreadable = useDetections(
+    (s) => s.projectId !== null && s.projectId === project?.id && !s.loading && !!s.loadError,
   );
   const projectId = project?.id ?? null;
   // Settings may be the first screen opened: read the review so delete counts its detections
@@ -131,6 +137,7 @@ export function Classes() {
         <DeleteDialog
           row={deleting}
           known={usageKnown}
+          unreadable={unreadable}
           targets={moveTargets(rows, deleting.cls.id)}
           returnTo={() => panel.current}
           onCancel={() => {
@@ -400,6 +407,7 @@ function Swatch({
 function DeleteDialog({
   row,
   known,
+  unreadable,
   targets,
   returnTo,
   onDelete,
@@ -408,6 +416,8 @@ function DeleteDialog({
   row: ClassRow;
   /** False while the detection review is still being read (counts unknown). */
   known: boolean;
+  /** The detection review failed to load: the class cannot be deleted safely. */
+  unreadable: boolean;
   targets: readonly { id: string; label: string }[];
   returnTo: () => HTMLElement | null;
   /** Delete, moving what uses the class to `to` (null when nothing uses it). */
@@ -430,7 +440,8 @@ function DeleteDialog({
     label,
   };
   let text: string;
-  if (!known) text = t('classes.delete.checking', { label });
+  if (unreadable) text = t('classes.delete.unreadable');
+  else if (!known) text = t('classes.delete.checking', { label });
   else if (!used) text = t('classes.delete.unused', { label });
   else if (targets.length === 0) text = t('classes.delete.usedOnly', counts);
   else text = t('classes.delete.used', counts);

@@ -878,6 +878,8 @@ export const en = {
     '{label} is the only class, so there is nothing to move its issues and detections to. Create another class here first.',
   'classes.delete.checking': 'Checking which issues and detections use {label}.',
   'classes.delete.unused': 'Nothing uses {label}.',
+  'classes.delete.unreadable':
+    'The detections could not be read, so this class cannot be deleted safely.',
   'classes.delete.confirm': 'Delete',
   'classes.delete.move': 'Move and delete',
   'classes.delete.cancel': 'Cancel',

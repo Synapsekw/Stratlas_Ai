@@ -22,6 +22,7 @@ const h = vi.hoisted(() => ({
 interface DetState {
   projectId: string | null;
   loading: boolean;
+  loadError?: string | null;
   review: { detections: { classId: string; status: string }[] };
 }
 vi.mock('../../classes/store', () => ({
@@ -114,7 +115,12 @@ beforeEach(() => {
   h.redoClassEdit.mockClear();
   h.createClass.mockReset();
   h.loadDetections.mockClear();
-  detStore.setState({ projectId: 'p', loading: false, review: { detections: [] } });
+  detStore.setState({
+    projectId: 'p',
+    loading: false,
+    loadError: null,
+    review: { detections: [] },
+  });
   workspace.setState({ project: { id: 'p', root: '/p', manifest }, issues: [issue, issue] });
   mount();
 });
@@ -275,6 +281,27 @@ describe('Classes panel', () => {
     expect(h.deleteClass).toHaveBeenCalledWith('rust', 'stain');
   });
 
+  it('will not delete a class while the detections could not be read', () => {
+    setDetections({ loadError: 'detections/pass-1.json: permission denied' });
+    act(() => {
+      btn('[data-testid="classes-delete-crack"]')?.click();
+    });
+    expect(q('[data-testid="classes-delete-dialog"]')?.textContent).toContain(
+      'The detections could not be read, so this class cannot be deleted safely.',
+    );
+    expect(btn('[data-testid="classes-move-delete"]')?.disabled).toBe(true);
+    const cancel = [...(host?.querySelectorAll('button') ?? [])].find(
+      (b) => b.textContent === 'Cancel',
+    );
+    act(() => {
+      cancel?.click();
+    });
+    expect(q('[data-testid="classes-delete-dialog"]')).toBeNull();
+    expect(h.deleteClass).not.toHaveBeenCalled();
+  });
+
+  // a project without a detections folder reads as an empty review (no loadError), see
+  // folderFiles().passNames in main/detections.ts: its unused classes stay deletable
   it('deletes an unused class without asking and keeps focus in the panel', async () => {
     await act(async () => {
       btn('[data-testid="classes-delete-crack"]')?.click();
