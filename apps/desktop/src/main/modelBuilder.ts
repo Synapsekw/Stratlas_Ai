@@ -29,6 +29,7 @@ import {
 import { mkdir, readdir, readFile, rename, rm, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { isChangedOnDisk, readBytesSeen, writeJsonSeen } from './fsutil';
+import { newerOnDisk } from './newer';
 import type { Handle } from './notYet';
 
 type MeshLayer = Extract<Layer, { kind: 'mesh' }>;
@@ -266,8 +267,12 @@ export function registerModelBuilderIpc({
     const root = projects.root(projectId);
     if (root === undefined) return notOpen(projectId);
     await mkdir(join(root, PROCMODEL_DIR), { recursive: true });
+    const file = join(root, PROCMODEL_DIR, `${model.id}${SUFFIX}`);
+    // never write over a file a newer build saved
+    const newer = await newerOnDisk(file, 'aio.procmodel', modelFile(model.id));
+    if (newer) return { ok: false, error: newer };
     try {
-      await writeJsonSeen(join(root, PROCMODEL_DIR, `${model.id}${SUFFIX}`), model, {
+      await writeJsonSeen(file, model, {
         backup: true,
         name: modelFile(model.id),
       });
