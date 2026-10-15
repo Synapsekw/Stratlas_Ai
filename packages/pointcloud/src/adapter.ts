@@ -248,37 +248,42 @@ export function createPointcloudAdapter(
       // COPC: a recipe's noise run streams its working copy; the layer is removed and added again
       let disposed = false;
       let swap = 0;
-      const offNoise =
-        layer.format === 'copc'
-          ? cleanup.subscribe((s) => {
-              const want = s.recipes[layer.id]?.noise?.path ?? null;
-              if (want === noisePath) return;
-              noisePath = want;
-              const mine = ++swap;
-              const origin = originOf();
-              if (!origin) return;
-              const streams = (u: string) => m.layers.get(layer.id)?.copc?.url === u;
-              const show = (r: LoadedCopc) => {
-                if (mine !== swap || disposed) return;
-                m.removeLayer(layer.id);
-                m.addLayer(layer.id, r.chunks, r.baseSize, rgbHint, r.copc, r.scalar);
-                if (!shown) m.setVisible(layer.id, false);
-              };
-              const target = want ? ctx.url({ path: want }) : url;
-              if (streams(target)) return;
-              loadCopc(layer, target, origin, m)
-                .then(show)
-                .catch((e: unknown) => {
-                  if (!want) return;
-                  // noisePath keeps the failed copy, so later edits of the recipe do not retry it
-                  noiseFailed(want, e);
-                  if (mine !== swap || disposed || streams(url)) return;
-                  void loadCopc(layer, url, origin, m)
-                    .then(show)
-                    .catch(() => undefined);
-                });
-            })
-          : () => undefined;
+      const followNoise = (s: CleanupRecipes) => {
+        const want = s.recipes[layer.id]?.noise?.path ?? null;
+        if (want === noisePath) return;
+        noisePath = want;
+        const mine = ++swap;
+        const origin = originOf();
+        if (!origin) return;
+        const streams = (u: string) => m.layers.get(layer.id)?.copc?.url === u;
+        const show = (r: LoadedCopc) => {
+          if (mine !== swap || disposed) return;
+          const tint = m.layers.get(layer.id)?.tint;
+          m.removeLayer(layer.id);
+          m.addLayer(layer.id, r.chunks, r.baseSize, rgbHint, r.copc, r.scalar, tint);
+          if (!shown) m.setVisible(layer.id, false);
+        };
+        const target = want ? ctx.url({ path: want }) : url;
+        if (streams(target)) return;
+        loadCopc(layer, target, origin, m)
+          .then(show)
+          .catch((e: unknown) => {
+            // a later swap or the layer's removal made this one moot: nothing to say
+            if (!want || mine !== swap || disposed) return;
+            // noisePath keeps the failed copy, so later edits of the recipe do not retry it
+            noiseFailed(want, e);
+            if (streams(url)) return;
+            void loadCopc(layer, url, origin, m)
+              .then(show)
+              .catch(() => undefined);
+          });
+      };
+      let offNoise: () => void = () => undefined;
+      if (layer.format === 'copc') {
+        offNoise = cleanup.subscribe(followNoise);
+        // a recipe that arrived while the file was loading (a saved noise run at project open)
+        followNoise(cleanup.getState());
+      }
       return {
         setVisible: (v) => {
           shown = v;

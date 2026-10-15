@@ -259,6 +259,8 @@ export class CloudManager {
     rgbHint = false,
     copc: CopcLayerInfo | null = null,
     scalar: PointcloudScalar | null = null,
+    /** Keep a colour the layer already had (the noise copy swap); default the next palette entry. */
+    tint?: string,
   ) {
     const group = new Group();
     group.name = `pointcloud:${id}`;
@@ -271,7 +273,7 @@ export class CloudManager {
       chunks: states,
       byKey: new Map(states.map((c) => [c.key, c])),
       material: null,
-      tint: FLIGHT_PALETTE[this.created++ % FLIGHT_PALETTE.length] ?? '#5ab0ff',
+      tint: tint ?? FLIGHT_PALETTE[this.created++ % FLIGHT_PALETTE.length] ?? '#5ab0ff',
       baseSize,
       hasRgb: false,
       hasIntensity: false,
@@ -772,20 +774,35 @@ export class CloudManager {
   private applyRecipe(l: CloudLayerState, r: PointcloudCleanup | null): void {
     // png-packed and kit-packed clouds have no COPC source to save from: no cleanup (the panel says so)
     if (!l.copc) return;
-    const before = l.cleanup?.regionsKey ?? '';
-    l.cleanup = r
-      ? {
-          recipe: r,
-          compiled: compileCleanup(r, { origin: l.copc.origin }),
-          regionsKey: JSON.stringify(r.regions),
-        }
-      : null;
+    const prev = l.cleanup;
+    // a clip box drag or a height change keeps the regions array: no recompile, no re-mask
+    let regionsKey = '';
+    let sameRegions: boolean;
+    if (!r) {
+      sameRegions = (prev?.regionsKey ?? '') === '';
+    } else if (prev?.recipe.regions === r.regions) {
+      regionsKey = prev.regionsKey;
+      sameRegions = true;
+    } else {
+      regionsKey = r.regions.length ? JSON.stringify(r.regions) : '';
+      sameRegions = regionsKey === (prev?.regionsKey ?? '');
+    }
+    if (r) {
+      const reuse = sameRegions && prev ? prev.compiled.regions : null;
+      const compiled = compileCleanup(reuse ? { ...r, regions: [] } : r, {
+        origin: l.copc.origin,
+      });
+      if (reuse) compiled.regions = reuse;
+      l.cleanup = { recipe: r, compiled, regionsKey };
+    } else {
+      l.cleanup = null;
+    }
     if (l.material) {
       // the depth materials share these uniform objects
       applyCleanupUniforms(l.material, cleanupUniformsOf(l.cleanup?.compiled ?? null));
       applyHiddenClasses(l.material, this.hiddenFor(l));
     }
-    if ((l.cleanup?.regionsKey ?? '') !== before) {
+    if (!sameRegions) {
       l.maskVersion++;
       for (const c of l.loaded) this.maskChunk(l, c);
     }

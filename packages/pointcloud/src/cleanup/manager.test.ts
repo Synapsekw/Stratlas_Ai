@@ -151,6 +151,13 @@ async function scene(n = 10, failNoise = false, preset: PointcloudCleanup | null
   };
   return { handle, settings, recipes, settle, pts, d };
 }
+const noiseRun = {
+  path: 'edits/pointcloud/a.noise-j1.copc.laz',
+  params: { outlier: { meanK: 8, multiplier: 2 } },
+  marked: 3,
+  total: 10,
+  runId: 'j1',
+};
 const maskOf = (p: Points) => [...(p.geometry.getAttribute('aMask') as BufferAttribute).array];
 
 describe('the cleanup in the viewer', () => {
@@ -314,6 +321,125 @@ describe('the cleanup in the viewer', () => {
     await broken.settle();
     expect(reads).not.toHaveBeenCalled();
     expect(cloudSourceUrl(broken.handle, 'a')).toBe('aio://project/p/clouds/a.copc.laz');
+  });
+
+  it('follows a recipe that arrives while the layer is still loading', async () => {
+    const { handle, frame } = fakeHandle();
+    const settings = createPointcloudSettings(null);
+    settings.getState().setEdl(false);
+    const recipes = createCleanupRecipes();
+    const d = decoderFor(10);
+    const created = createPointcloudAdapter({
+      decoder: () => d.decoder,
+      settings,
+      cleanup: recipes,
+      origin: () => [0, 64, 0],
+    }).create(
+      {
+        kind: 'pointcloud',
+        id: 'a',
+        name: 'a',
+        visible: true,
+        src: { path: 'clouds/a.copc.laz' },
+        format: 'copc',
+      },
+      { scene: handle, url: (r) => ('path' in r ? `aio://project/p/${r.path}` : 'x') },
+    );
+    // the saved recipe is loaded while the COPC header is read
+    recipes.getState().set('a', {
+      ...emptyCleanup('a'),
+      noise: { ...noiseRun, path: 'edits/pointcloud/a.noise-j3.copc.laz', runId: 'j3' },
+      regions: [{ id: 'r', shape: 'box', viewProj: VP, polygon: left, action: { kind: 'hide' } }],
+    });
+    await created;
+    for (let i = 0; i < 3; i++) {
+      frame();
+      await flush();
+    }
+    frame();
+    expect(cloudSourceUrl(handle, 'a')).toBe(
+      'aio://project/p/edits/pointcloud/a.noise-j3.copc.laz',
+    );
+    const out: Points[] = [];
+    handle.scene.traverse((o) => {
+      if ((o as Partial<Points>).isPoints) out.push(o as Points);
+    });
+    const [p] = out;
+    if (!p) throw new Error('no points');
+    expect(maskOf(p)).toEqual([1, 1, 1, 1, 1, 0, 0, 0, 0, 0]);
+  });
+
+  it('keeps the layer colour when the noise copy is swapped in', async () => {
+    const s = await scene();
+    const tint = getCloudManager(s.handle)?.layers.get('a')?.tint;
+    s.recipes.getState().set('a', { ...emptyCleanup('a'), noise: noiseRun });
+    await s.settle();
+    expect(cloudSourceUrl(s.handle, 'a')).toContain('.noise-');
+    expect(getCloudManager(s.handle)?.layers.get('a')?.tint).toBe(tint);
+  });
+
+  it('says nothing about a failed swap that a later change made moot', async () => {
+    const s = await scene(10, true);
+    const path = 'edits/pointcloud/a.noise-j9.copc.laz';
+    s.recipes.getState().set('a', { ...emptyCleanup('a'), noise: { ...noiseRun, path } });
+    s.recipes.getState().set('a', emptyCleanup('a'));
+    await s.settle();
+    expect(pointcloudStats.getState().errors.some((e) => e.includes('a.noise-j9'))).toBe(false);
+    expect(cloudSourceUrl(s.handle, 'a')).toBe('aio://project/p/clouds/a.copc.laz');
+  });
+
+  it('drops a worker mask that a newer selection overtook', async () => {
+    const s = await scene(60_000);
+    const pending: ((r: { mask: Uint8Array; cls: null; classes: null }) => void)[] = [];
+    s.d.decoder.mask = (job) =>
+      new Promise((resolve) => {
+        pending.push(() => {
+          resolve({ mask: new Uint8Array(job.count).fill(1), cls: null, classes: null });
+        });
+      });
+    s.recipes.getState().set('a', {
+      ...emptyCleanup('a'),
+      regions: [{ id: 'r', shape: 'box', viewProj: VP, polygon: left, action: { kind: 'hide' } }],
+    });
+    expect(pending).toHaveLength(1);
+    // the selection is undone before the worker answers: the mask is cleared at once
+    s.recipes.getState().set('a', emptyCleanup('a'));
+    pending[0]?.({ mask: new Uint8Array(0), cls: null, classes: null });
+    await flush();
+    const [p] = s.pts();
+    expect(p && maskOf(p).every((v) => v === 0)).toBe(true);
+  });
+
+  it('moves the clip box and heights without masking the chunks again', async () => {
+    const s = await scene(60_000);
+    const r: PointcloudCleanup = {
+      ...emptyCleanup('a'),
+      regions: [{ id: 'r', shape: 'box', viewProj: VP, polygon: left, action: { kind: 'hide' } }],
+    };
+    s.recipes.getState().set('a', r);
+    await flush();
+    expect(s.d.mask).toHaveBeenCalledTimes(1);
+    const compiled = getCloudManager(s.handle)?.layers.get('a')?.cleanup?.compiled.regions;
+    const box = (x: number) => ({
+      center: [x, 64, 0] as [number, number, number],
+      size: [5, 5, 5] as [number, number, number],
+      yaw: 0,
+      keep: 'inside' as const,
+    });
+    // the regions are compared by identity first: a drag does not serialise them
+    const stringify = vi.spyOn(JSON, 'stringify');
+    s.recipes.getState().set('a', { ...r, clipBox: box(4.5) });
+    s.recipes.getState().set('a', { ...r, clipBox: box(5) });
+    s.recipes.getState().set('a', { ...r, height: { min: -1 } });
+    expect(stringify).not.toHaveBeenCalled();
+    stringify.mockRestore();
+    await flush();
+    expect(s.d.mask).toHaveBeenCalledTimes(1);
+    expect(getCloudManager(s.handle)?.layers.get('a')?.cleanup?.compiled.regions).toBe(compiled);
+    // equal regions in a new array (an undo snapshot) do not mask again either
+    s.recipes.getState().set('a', { ...r, regions: structuredClone(r.regions) });
+    await flush();
+    expect(s.d.mask).toHaveBeenCalledTimes(1);
   });
 
   it('gives the layer bounds in the project CRS', async () => {
