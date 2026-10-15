@@ -111,6 +111,7 @@ describe('M9 additive rule: no new field inside existing records', () => {
       'provider',
       'runId',
     ]);
+    // suggestedNew (2026-10-15) is display-only and safe for an 0.8 build to strip.
     expect(keysOf(Detection)).toMatchInlineSnapshot(`
       [
         "bbox",
@@ -134,6 +135,7 @@ describe('M9 additive rule: no new field inside existing records', () => {
         "source",
         "space",
         "status",
+        "suggestedNew",
         "uncertain",
         "updatedAt",
         "width",
