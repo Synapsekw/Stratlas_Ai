@@ -1,6 +1,7 @@
 import type { PartStatus, ProcModel, ProcModelSummary, ProcPart } from '@aio/schema';
 import { Icon } from '@aio/ui';
 import { useRef, useState, type KeyboardEvent, type ReactNode } from 'react';
+import { ComponentsSection, type ComponentsPanel } from './ComponentsSection';
 import { partNodeName } from './mesher';
 import { partDimensions, partSummary, type DimensionKey } from './procmodel';
 
@@ -23,6 +24,8 @@ export interface ModelBuilderProps {
   cloudDrawings: boolean;
   /** Extra content under the sources (the place-by-points tool). */
   children?: ReactNode;
+  /** Review of an engineering model's components; shown when the model has any. */
+  components?: ComponentsPanel;
   onClose: () => void;
   onSelect: (partId: string | null) => void;
   onOpenModel: (id: string) => void;
@@ -383,6 +386,13 @@ export function ModelBuilder(p: ModelBuilderProps) {
             </>
           )}
         </div>
+
+        {p.model && p.model.assemblies.length > 0 && p.components && (
+          <ComponentsSection
+            model={p.model}
+            panel={{ ...p.components, locked: p.components.locked ?? locked }}
+          />
+        )}
 
         {selected && (
           <div className="mb-sec" aria-label={`Edit ${partNodeName(selected)}`}>

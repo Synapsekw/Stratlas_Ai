@@ -114,3 +114,24 @@ export {
   type DrawingPlacement,
 } from './drawing';
 export { fitQuality, ModelBuilder, type ModelBuilderProps } from './ModelBuilder';
+export {
+  addAssembly,
+  applyAssemblyField,
+  assemblyFields,
+  kindLabel,
+  newAssembly,
+  nextAssemblyId,
+  removeAssembly,
+  removeAssemblyOverrides,
+  roleOfKind,
+  type AssemblyField,
+} from './assemblyEdit';
+export {
+  ComponentCard,
+  coverageWords,
+  residualWords,
+  type ComponentCardProps,
+  type ComponentEvidence,
+} from './ComponentCard';
+export { ComponentTree, type ComponentTreeProps } from './ComponentTree';
+export { ComponentsSection, type ComponentsPanel } from './ComponentsSection';
