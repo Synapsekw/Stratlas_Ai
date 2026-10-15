@@ -165,7 +165,7 @@ interface RunFile {
   setup: {
     placement: string;
     anchor?: number[];
-    region?: { kind: string; centre: number[] };
+    region?: { centre: number[]; radiusM: number };
     detail: string;
   };
   usage: { costUsd: number; inputTokens: number };
@@ -331,7 +331,7 @@ engTest(
       .poll(async () => (await readRun(eng.dir).catch(() => null))?.setup ?? null, {
         timeout: 30_000,
       })
-      .toMatchObject({ placement: 'anchor', detail: 'fast', region: { kind: 'circle' } });
+      .toMatchObject({ placement: 'anchor', detail: 'fast', region: { radiusM: 30 } });
     const run = await readRun(eng.dir);
     expect(run.setup.anchor).toHaveLength(3);
     if (await win.getByTestId('eng-cancel').isVisible())
@@ -469,26 +469,17 @@ test('D: corrections regenerate only what they touch, keep ids and survive a res
     const before = await readModel(eng.dir);
     const flueIds = before.assemblies.filter((a) => a.kind === 'flue').map((a) => a.id);
     const shaftBefore = before.assemblies.find((a) => a.kind === 'shaft');
-    // the draft layer's component list, open before the correction: it follows the rebuild
-    await win.evaluate((id) => {
-      (
-        window as unknown as {
-          __stratlas: { workspace: { getState(): { select(s: unknown): void } } };
-        }
-      ).__stratlas.workspace
-        .getState()
-        .select({ kind: 'layer', id });
-    }, `model-draft-${before.id}`);
-    /** How many rows of the list are flues of the model as saved now. */
+    /** How many rows of the review's component list are flues of the model as saved now. */
     const flueRows = async () => {
       const ids = (await readModel(eng.dir)).assemblies
         .filter((a) => a.kind === 'flue')
         .map((a) => a.id);
       return win
-        .getByTestId('component-list')
-        .locator('[data-testid="component-row"]')
+        .getByTestId('component-tree')
+        .locator('[data-component]')
         .evaluateAll(
-          (rows, want) => rows.filter((r) => want.includes(r.getAttribute('data-id') ?? '')).length,
+          (rows, want) =>
+            rows.filter((r) => want.includes(r.getAttribute('data-component') ?? '')).length,
           ids,
         );
     };
@@ -504,7 +495,7 @@ test('D: corrections regenerate only what they touch, keep ids and survive a res
         },
       )
       .toBe(4);
-    // the list shows the four flues without selecting the layer again
+    // the component list shows the four flues without opening anything again
     await expect.poll(flueRows, { timeout: 60_000 }).toBe(4);
     const after = await readModel(eng.dir);
     for (const id of flueIds) expect(after.assemblies.map((a) => a.id)).toContain(id);

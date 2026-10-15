@@ -228,7 +228,8 @@ export function SetupDialog(props: SetupDialogProps) {
         data-testid="eng-setup"
         onKeyDown={(e) => {
           e.stopPropagation();
-          if (e.key === 'Escape') props.onClose();
+          // an Escape that let a pick go (the dialog hidden meanwhile) does not close it too
+          if (e.key === 'Escape' && !e.defaultPrevented && !hidden) props.onClose();
         }}
       >
         <div className="dlg-h">

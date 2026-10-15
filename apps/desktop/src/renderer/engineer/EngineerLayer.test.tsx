@@ -243,8 +243,9 @@ describe('EngineerLayer', () => {
         engineerUi.getState().show(['scan']);
       });
       act(() => q('eng-region-pick')?.click());
+      // the key comes from the pick button, still focused inside the hidden setup
       act(() => {
-        document.body.dispatchEvent(
+        must(q('eng-region-pick')).dispatchEvent(
           new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }),
         );
       });
