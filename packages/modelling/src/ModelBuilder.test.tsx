@@ -98,6 +98,21 @@ const button = (el: HTMLElement, text: string) => {
 };
 
 describe('ModelBuilder', () => {
+  it('offers Create engineering model only when the host gives it', () => {
+    const plain = render();
+    expect(plain.el.querySelector('[data-testid="mb-engineer"]')).toBeNull();
+    act(() => {
+      root?.unmount();
+    });
+    host?.remove();
+    const onEngineer = vi.fn();
+    const { el } = render({ onEngineer });
+    const b = el.querySelector<HTMLButtonElement>('[data-testid="mb-engineer"]');
+    expect(b?.textContent.trim()).toBe('Create engineering model');
+    act(() => b?.click());
+    expect(onEngineer).toHaveBeenCalled();
+  });
+
   it('lists the parts with status, size and origin', () => {
     const { el } = render();
     const items = [...el.querySelectorAll('[role="option"]')].map((x) => x.textContent);

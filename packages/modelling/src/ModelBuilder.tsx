@@ -1,5 +1,5 @@
 import type { PartStatus, ProcModel, ProcModelSummary, ProcPart } from '@aio/schema';
-import { Icon } from '@aio/ui';
+import { Icon, t } from '@aio/ui';
 import { useRef, useState, type KeyboardEvent, type ReactNode } from 'react';
 import { ComponentsSection, type ComponentsPanel } from './ComponentsSection';
 import { partNodeName } from './mesher';
@@ -40,6 +40,8 @@ export interface ModelBuilderProps {
   onBuild: () => void;
   onCloudDrawings: (allow: boolean) => void;
   onDismiss: () => void;
+  /** "Create engineering model": the setup from point clouds, models or photos (when offered). */
+  onEngineer?: (() => void) | undefined;
 }
 
 const KIND_LABEL: Record<ProcPart['kind'], string> = {
@@ -236,6 +238,17 @@ export function ModelBuilder(p: ModelBuilderProps) {
             <button type="button" className="btn sm" disabled={locked} onClick={p.onImport}>
               <Icon name="import" size={12} /> Import drawing (DXF)
             </button>
+            {p.onEngineer && (
+              <button
+                type="button"
+                className="btn sm"
+                disabled={locked}
+                data-testid="mb-engineer"
+                onClick={p.onEngineer}
+              >
+                <Icon name="box" size={12} /> {t('eng.entry.builder')}
+              </button>
+            )}
           </div>
           {p.drawings.length > 0 && (
             <div className="mb-row">
