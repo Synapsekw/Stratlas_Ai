@@ -188,17 +188,45 @@ describe('validateGlb', () => {
     // its rim lies 5 mm below the mouth plane, so it is no intended opening either
     expect(below.unintendedHoles).toEqual([{ node: 'flue-1', loops: 1 }]);
     expect((await checkFlue(flue(false, disc(10.005, 1)))).intendedOpenOk).toBe(false);
-    // a plug 1 m down: past the default depth, found when the opening declares its depth
+    // a plug 1 m down: the tube declares its 6 m passage, so it is found; without a declared
+    // depth only the default half radius behind the mouth is checked
     const plugged = flue(false, disc(9, 0.9));
-    expect((await checkFlue(plugged)).intendedOpenOk).toBe(true);
-    const deep = plugged.openings.map((o) => ({ ...o, depth: 6 }));
-    const r = await checkFlue(plugged, deep);
+    expect(plugged.openings.map((o) => o.depth)).toEqual([6]);
+    const shallow = plugged.openings.map((o) => ({ centre: o.centre, normal: o.normal, r: o.r }));
+    expect((await checkFlue(plugged, shallow)).intendedOpenOk).toBe(true);
+    const r = await checkFlue(plugged);
     expect(r.intendedOpenOk).toBe(false);
     expect(r.openingProblems).toEqual([
       { node: 'flue-1', problem: 'opening 1: the passage behind or in front of it is blocked' },
     ]);
     // a few triangles across part of the mouth
     expect((await checkFlue(flue(false, disc(10, 0.1, 0.3)))).intendedOpenOk).toBe(false);
+  });
+
+  it('finds a plug 80 percent down a 10 m flue liner from the depth in the file', async () => {
+    const liner = (plug: boolean) => {
+      const s = sink();
+      s.annulusTube('grey', {
+        centre: [0, 50, 0],
+        axis: [0, 1, 0],
+        rOuter: 0.5,
+        rInner: 0.45,
+        y0: -10,
+        y1: 0,
+        openings: 'top',
+      });
+      if (plug) s.disc('grey', { centre: [0, 42, 0], normal: [0, 1, 0], r: 0.45 });
+      const prims = s.out();
+      const openings = prims.flatMap((p) => p.openings ?? []);
+      expect(openings.map((o) => o.depth)).toEqual([10]);
+      return glbOf([{ name: 'liner-1', prims, extras: { openings } }]);
+    };
+    expect((await validateGlb(liner(false), { budget: 1e6, khronos })).intendedOpenOk).toBe(true);
+    const r = await validateGlb(liner(true), { budget: 1e6, khronos });
+    expect(r.intendedOpenOk).toBe(false);
+    expect(r.openingProblems).toEqual([
+      { node: 'liner-1', problem: 'opening 1: the passage behind or in front of it is blocked' },
+    ]);
   });
 
   it('detects a capped annular passage when both bores are declared', async () => {

@@ -76,7 +76,8 @@ describe('geom kernel', () => {
     const p = only(s);
     // the tube itself is a closed annular solid (rim faces), the bore is open space
     expect(boundaryLoops(p)).toHaveLength(0);
-    expect(p.openings).toEqual([{ centre: [0, 10, 0], normal: [0, 1, 0], r: 1.3 }]);
+    // the passage runs the length of the tube
+    expect(p.openings).toEqual([{ centre: [0, 10, 0], normal: [0, 1, 0], r: 1.3, depth: 10 }]);
     expect(solidOk(p)).toBe(true);
     const n = SEGMENTS.standard(1.5);
     const exact = 10 * (ngon(1.5, n) - ngon(1.3, n));
@@ -129,8 +130,8 @@ describe('geom kernel', () => {
     expect(b.min[1]).toBeCloseTo(9.7, 9);
     expect(b.max[1]).toBeCloseTo(10, 9);
     expect(p.openings).toEqual([
-      { centre: [2, 9.85, 0], normal: [0, 1, 0], r: 1 },
-      { centre: [-2, 9.85, 0], normal: [0, 1, 0], r: 1 },
+      { centre: [2, 9.85, 0], normal: [0, 1, 0], r: 1, depth: 0.15 },
+      { centre: [-2, 9.85, 0], normal: [0, 1, 0], r: 1, depth: 0.15 },
     ]);
     // genus 2: V - E + F = 2 - 2g = -2 on the welded mesh
     expect(eulerCharacteristic(p)).toBe(-2);

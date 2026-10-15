@@ -93,7 +93,8 @@ export function buildShaft(sink: MeshSink, a: AssemblyOf<'shaft'>, ctx: BuildCtx
     });
     if (p.openTop) {
       rim(sink, m, { centre: at(top.y), normal: axis, rOut: top.r, rIn: boreTop.r, n });
-      sink.opening(m, { centre: at(top.y), normal: axis, r: boreTop.r });
+      // the bore runs the whole shaft
+      sink.opening(m, { centre: at(top.y), normal: axis, r: boreTop.r, depth: top.y - bottom.y });
     }
   }
   if (p.joints) {

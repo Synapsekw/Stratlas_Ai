@@ -98,7 +98,7 @@ describe('buildEngineeringGlb', () => {
         residualM: 0.035,
         coverage: 0.75,
       },
-      openings: [{ centre: [0, 120, 0], normal: [0, 1, 0], r: 6 }],
+      openings: [{ centre: [0, 120, 0], normal: [0, 1, 0], r: 6, depth: 120 }],
     });
     expect(nodes).toContainEqual({ node: 'shaft-1', tag: 'STK-1' });
     expect(nodes).toContainEqual({ node: 'flue-1' });
@@ -375,7 +375,9 @@ describe('meshAssemblies', () => {
     const ys = shaft.prims.flatMap((p) => p.positions.filter((_, i) => i % 3 === 1));
     expect(Math.min(...ys)).toBeCloseTo(0, 9);
     expect(Math.max(...ys)).toBeCloseTo(120, 9);
-    expect(shaft.openings).toEqual([{ centre: [500, 130, -800], normal: [0, 1, 0], r: 6 }]);
+    expect(shaft.openings).toEqual([
+      { centre: [500, 130, -800], normal: [0, 1, 0], r: 6, depth: 120 },
+    ]);
   });
 });
 

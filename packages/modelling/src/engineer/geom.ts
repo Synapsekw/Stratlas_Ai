@@ -25,13 +25,15 @@ export interface Prim {
 
 /**
  * A declared, intended opening: a circle of radius `r` at `centre`, facing `normal`; or, with
- * `outline`, that polygon (an open hatch), `r` then the radius of the circle round it.
+ * `outline`, that polygon (an open hatch), `r` then the radius of the circle round it. `depth`,
+ * when known, is how far the passage runs behind it (against `normal`) and must stay clear.
  */
 export interface Opening {
   centre: V3;
   normal: V3;
   r: number;
   outline?: V3[];
+  depth?: number;
 }
 
 /** A circular hole in a flat face, centred at `c` in the face's own 2D coordinates. */
@@ -498,9 +500,11 @@ export class MeshSink {
         o.outline.length >= 3 && finiteV(...o.outline),
         'opening outline needs 3 or more finite points',
       );
+    if (o.depth !== undefined) needPos(o.depth, 'opening depth');
     const p = this.prim(material);
     const decl: Opening = { centre: clean(o.centre), normal: clean(norm(o.normal)), r: o.r };
     if (o.outline) decl.outline = o.outline.map(clean);
+    if (o.depth !== undefined) decl.depth = o.depth;
     (p.openings ??= []).push(decl);
   }
 
@@ -713,11 +717,13 @@ export class MeshSink {
     const opt = { r: o.rOuter, segments: n, holes: hole, declareHoles: false };
     this.disc(m, { centre: top, normal: a, ...opt });
     this.disc(m, { centre: bottom, normal: scale(a, -1), ...opt });
+    // the bore runs the whole tube: a passage `y1 - y0` long behind either mouth
     const which = o.openings ?? 'top';
+    const depth = o.y1 - o.y0;
     if (which === 'top' || which === 'both')
-      this.opening(m, { centre: top, normal: a, r: o.rInner });
+      this.opening(m, { centre: top, normal: a, r: o.rInner, depth });
     if (which === 'bottom' || which === 'both')
-      this.opening(m, { centre: bottom, normal: scale(a, -1), r: o.rInner });
+      this.opening(m, { centre: bottom, normal: scale(a, -1), r: o.rInner, depth });
   }
 
   /**
@@ -844,7 +850,13 @@ export class MeshSink {
     }
     o.holes.forEach((h, i) => {
       roundWall(nth(rings, i), h.c, -1);
-      this.opening(m, { centre: [h.c[0], (y0 + y1) / 2, h.c[1]], normal: [0, 1, 0], r: h.r });
+      // declared at mid-thickness: the hole runs half the thickness on below it
+      this.opening(m, {
+        centre: [h.c[0], (y0 + y1) / 2, h.c[1]],
+        normal: [0, 1, 0],
+        r: h.r,
+        depth: o.thickness / 2,
+      });
     });
   }
 
