@@ -94,7 +94,8 @@ describe('M10 additive rule: no layer kind, raster format, derived kind or recor
     expect(enumOf('raster', 'format')).toEqual(['cog', 'pmtiles', 'kit-pyramid', 'image']);
     expect(enumOf('raster', 'role')).toEqual(['ortho', 'dsm', 'plan']);
     expect(enumOf('pointcloud', 'format')).toEqual(['copc', 'potree2', 'kit-packed', 'png-packed']);
-    expect(LayerDerived.shape.kind.options).toEqual(['change', 'model']);
+    // 'cleanup' is the break the founder accepted on 15 Oct 2026: a project holding a cleaned copy needs 0.16+ (contract-changes.md).
+    expect(LayerDerived.shape.kind.options).toEqual(['change', 'model', 'cleanup']);
   });
 
   it('keeps the 0.9 key sets of Settings and MapPackInfo (globe settings and raster packs have their own files)', () => {
