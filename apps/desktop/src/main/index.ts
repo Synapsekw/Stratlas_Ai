@@ -109,6 +109,7 @@ import {
 } from './inference/electron';
 import { registerLocalModelsIpc, type LocalServerSeen } from './localModels';
 import { readCloudDrawings, registerModelBuilderIpc } from './modelBuilder';
+import { registerEngineeringIpc } from './engineering';
 import { createBlobService, registerBlobsIpc } from './blobs';
 import { houseSignOff, registerCollabIpc } from './collab';
 import {
@@ -1610,6 +1611,23 @@ function registerIpc(): void {
     thresholds: () => ChangeThresholds.parse(settings.current().change ?? {}),
   });
   registerModelBuilderIpc({ handle, projects: registry });
+  registerEngineeringIpc({
+    handle,
+    projects: registry,
+    images: {
+      // evidence images over the preview size, scaled down with Electron's own codec
+      downscale(bytes, maxPx) {
+        const img = nativeImage.createFromBuffer(Buffer.from(bytes));
+        if (img.isEmpty()) return Promise.reject(new Error('The image could not be decoded.'));
+        const { width, height } = img.getSize();
+        const out =
+          Math.max(width, height) > maxPx
+            ? img.resize(width >= height ? { width: maxPx } : { height: maxPx })
+            : img;
+        return Promise.resolve({ bytes: new Uint8Array(out.toJPEG(85)), mime: 'image/jpeg' });
+      },
+    },
+  });
   registerInferenceIpc({
     handle,
     ...electronInference({

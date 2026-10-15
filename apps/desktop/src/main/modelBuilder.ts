@@ -21,6 +21,7 @@ import {
 } from '@aio/modelling';
 import {
   PROCMODEL_DIR,
+  type GlbBuildReport,
   type Layer,
   type ProcModel,
   type ProcModelSummary,
@@ -81,7 +82,7 @@ export const modelGlb = (id: string, draft: boolean) =>
 export const modelLayerId = (id: string, draft: boolean) => `model-${draft ? 'draft-' : ''}${id}`;
 
 /** Read and check a model file's JSON; the error names the file. */
-function parseModel(
+export function parseModel(
   text: string,
   rel: string,
 ): { ok: true; model: ProcModel } | { ok: false; error: string } {
@@ -149,7 +150,13 @@ async function writeBytesAtomic(file: string, data: Uint8Array): Promise<void> {
 function meshModel(
   model: ProcModel,
   draft: boolean,
-): { glb: Uint8Array; nodes: string[]; tags: NonNullable<MeshLayer['tags']> } {
+): {
+  glb: Uint8Array;
+  nodes: string[];
+  tags: NonNullable<MeshLayer['tags']>;
+  triangles: number;
+  report?: GlbBuildReport;
+} {
   if (model.assemblies.length > 0) {
     const built = buildEngineeringGlb(model, {
       detail: model.run?.detail ?? 'standard',
@@ -179,7 +186,20 @@ function meshModel(
       if (part?.tag)
         tags.push({ node: n.node, tag: part.tag, ...(part.class ? { area: part.class } : {}) });
     }
-    return { glb: built.glb, nodes: built.nodes.map((n) => n.node), tags };
+    return {
+      glb: built.glb,
+      nodes: built.nodes.map((n) => n.node),
+      tags,
+      triangles: built.triangles,
+      report: {
+        triangles: built.triangles,
+        overBudget: built.overBudget,
+        detail: built.detail,
+        simplified: built.simplified,
+        failed: built.failed,
+        notes: built.notes,
+      },
+    };
   }
   const meshed = meshProcModel(model, { parts: draft ? 'all' : 'accepted' });
   const tags: NonNullable<MeshLayer['tags']> = [];
@@ -188,7 +208,22 @@ function meshModel(
     if (!part?.tag) return;
     tags.push({ node, tag: part.tag, ...(part.class ? { area: part.class } : {}) });
   });
-  return { glb: meshed.glb, nodes: meshed.nodes, tags };
+  return { glb: meshed.glb, nodes: meshed.nodes, tags, triangles: trianglesIn(meshed.glb) };
+}
+
+/** Triangles of a GLB: index counts of its triangle primitives, a third each. */
+function trianglesIn(glb: Uint8Array): number {
+  const { json } = readGlb(glb);
+  const accessors = (Array.isArray(json.accessors) ? json.accessors : []) as { count?: number }[];
+  const meshes = (Array.isArray(json.meshes) ? json.meshes : []) as {
+    primitives?: { indices?: number; mode?: number }[];
+  }[];
+  let n = 0;
+  for (const m of meshes)
+    for (const p of m.primitives ?? [])
+      if ((p.mode ?? 4) === 4 && p.indices !== undefined)
+        n += Math.floor((accessors[p.indices]?.count ?? 0) / 3);
+  return n;
 }
 
 export function registerModelBuilderIpc({
@@ -348,7 +383,13 @@ export function registerModelBuilderIpc({
       return { ...manifest, layers };
     });
     if (!draft) await rm(join(root, ...modelGlb(id, true).split('/')), { force: true });
-    return { ok: true, layer: layerId, glb: glbRel };
+    return {
+      ok: true,
+      layer: layerId,
+      glb: glbRel,
+      triangles: meshed.triangles,
+      ...(meshed.report ? { report: meshed.report } : {}),
+    };
   });
 
   handle('ai:setCloudDrawings', async ({ projectId, allow }) => {

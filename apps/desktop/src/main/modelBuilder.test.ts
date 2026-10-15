@@ -143,7 +143,7 @@ describe('model builder IPC', () => {
     const r = ipc();
     await r.call('model:write', { projectId: 'site', model });
     const built = await r.call('model:build', { projectId: 'site', id: 'plant' });
-    expect(built).toEqual({ ok: true, layer: 'model-plant', glb: 'models/plant.glb' });
+    expect(built).toMatchObject({ ok: true, layer: 'model-plant', glb: 'models/plant.glb' });
     const glb = new Uint8Array(await readFile(join(root, 'models', 'plant.glb')));
     expect((readGlb(glb).json.nodes as { name: string }[]).map((n) => n.name)).toEqual([
       'T-101',
@@ -173,7 +173,9 @@ describe('model builder IPC', () => {
   it('builds a draft preview of every part as a draft layer, and a real build replaces it', async () => {
     const r = ipc();
     await r.call('model:write', { projectId: 'site', model });
-    expect(await r.call('model:build', { projectId: 'site', id: 'plant', draft: true })).toEqual({
+    expect(
+      await r.call('model:build', { projectId: 'site', id: 'plant', draft: true }),
+    ).toMatchObject({
       ok: true,
       layer: 'model-draft-plant',
       glb: 'models/draft-plant.glb',
@@ -259,7 +261,7 @@ describe('model builder IPC', () => {
     expect(await readFile(`${file}.bak`, 'utf8')).toBe(v1Text);
     // a /1 file builds as before
     await writeFile(file, v1Text);
-    expect(await r.call('model:build', { projectId: 'site', id: 'plant' })).toEqual({
+    expect(await r.call('model:build', { projectId: 'site', id: 'plant' })).toMatchObject({
       ok: true,
       layer: 'model-plant',
       glb: 'models/plant.glb',
@@ -328,7 +330,7 @@ describe('model builder IPC', () => {
     });
     const r = ipc();
     await r.call('model:write', { projectId: 'site', model: eng });
-    expect(await r.call('model:build', { projectId: 'site', id: 'plant' })).toEqual({
+    expect(await r.call('model:build', { projectId: 'site', id: 'plant' })).toMatchObject({
       ok: true,
       layer: 'model-plant',
       glb: 'models/plant.glb',
@@ -432,7 +434,7 @@ describe('model builder IPC', () => {
       r.call('ai:setCloudDrawings', { projectId: 'site', allow: true }),
     ]);
     await slow;
-    expect(built).toEqual({ ok: true, layer: 'model-plant', glb: 'models/plant.glb' });
+    expect(built).toMatchObject({ ok: true, layer: 'model-plant', glb: 'models/plant.glb' });
     expect(policy).toEqual({ ok: true });
     const m = await readManifestFile(root);
     expect(m.name).toBe('Renamed meanwhile');
