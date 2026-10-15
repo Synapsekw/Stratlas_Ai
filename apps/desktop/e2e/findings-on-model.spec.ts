@@ -2,8 +2,9 @@
  * Findings on a model end to end, on the change demo (synthetic; pnpm demo:change --quick): two
  * detections of the oil stain on the yard, one per survey date, accepted in the review (the stain
  * is a decal of the model and lies in the clouds, while the survey markers are painted on the
- * rendered ground only, which no mesh holds); the offer to connect them to a model; the later one placed on the later mesh (an outline drawn instead of its pin, a click on
- * it opening its photo) and on the later point cloud (a prism and a point selection file); the
+ * rendered ground only, which no mesh holds); the offer to connect them to a model; the later one
+ * placed on the later mesh (an outline drawn instead of its pin, a click on it opening the photo
+ * it was projected from) and on the later point cloud (a prism and a point selection file); the
  * earlier one on the earlier mesh, the match suggestion, and Same giving both one track.
  */
 import { access, readFile, writeFile } from 'node:fs/promises';
@@ -39,6 +40,7 @@ interface Inspect {
       getState(): {
         issues: IssueLite[];
         select(s: null): void;
+        upsertIssue(i: IssueLite): void;
         flyTo(t: { kind: 'point'; p: [number, number, number]; distance: number }): void;
       };
     };
@@ -69,8 +71,10 @@ async function draftPass(root: string, date: 'd1' | 'd2', issueId: string): Prom
   const seen = issue?.sightings.find((x) => x.on === 'image' && x.layer === `photos-${date}`);
   const box = seen?.geom as { x: number; y: number; w: number; h: number } | undefined;
   if (!issue || !seen?.photo || !box) throw new Error(`${issueId} has no photo box on ${date}`);
+  const template = src.detections[0];
+  if (!template) throw new Error(`the ${date} marker pass has no detection to copy`);
   const d = {
-    ...src.detections[0],
+    ...template,
     id: `e2e-${date}`,
     photo: seen.photo,
     class: issue.classId,
@@ -173,6 +177,26 @@ test('places accepted findings on the mesh and the cloud, and matches them acros
   const earlier = fresh.find((i) => i.sightings.some((s) => s.layer === 'photos-d1'));
   if (!later || !earlier) throw new Error('the two accepted findings are not there');
 
+  // the later finding is also marked on another photo of its date, with a box larger than the
+  // stain's along the top edge, where the photo looks past the model (so it misses the mesh and
+  // the stain's box stays the one placed). The evidence ranks the largest box first, so the
+  // photo the area came from is the second of its photos: opening the first one fails below.
+  await win.evaluate((id) => {
+    const ws = (window as unknown as Inspect).__stratlas.workspace.getState();
+    const issue = ws.issues.find((x) => x.id === id);
+    if (!issue) return;
+    const other = {
+      on: 'image',
+      layer: 'photos-d2',
+      photo: 'p01',
+      geom: { type: 'box', x: 2, y: 2, w: 200, h: 20 },
+    };
+    ws.upsertIssue({ ...issue, sightings: [other, ...issue.sightings] });
+  }, later.id);
+  await expect
+    .poll(async () => (await issues(win)).find((i) => i.id === later.id)?.sightings[0]?.photo)
+    .toBe('p01');
+
   // 2. the later finding on the later mesh: an outline instead of its pin
   await win.locator('.nav-item', { hasText: 'Scene' }).first().click();
   await expect(win.locator('[data-scene-view] canvas')).toBeVisible({ timeout: 60_000 });
@@ -206,9 +230,10 @@ test('places accepted findings on the mesh and the cloud, and matches them acros
   const box = await canvas.boundingBox();
   if (!box) throw new Error('no 3D canvas');
   const centre = await areaOnScreen(win, later.id);
-  // the demo's own pin of the stain stands on the outline's centre (a pin wins over an area), so
-  // point between the centre and the outline's farthest corner on screen
-  const at = await win.evaluate(
+  // the demo's own pin of the stain stands on the outline's centre (a pin wins over an area):
+  // try points from the centre out towards each outline corner on screen, and take the first
+  // the overlay itself reports as over the area (the canvas title is the finding's)
+  const tries = await win.evaluate(
     ({ id, c }) => {
       const st = (window as unknown as Inspect).__stratlas.stage();
       const ws = (window as unknown as Inspect).__stratlas.workspace.getState();
@@ -218,29 +243,46 @@ test('places accepted findings on the mesh and the cloud, and matches them acros
           ws.issues.find((x) => x.id === id)?.sightings.find((s) => s.geom?.type === 'spolygon')
             ?.geom as { points?: [number, number, number][] } | undefined
         )?.points ?? [];
-      if (!st || !el) return c;
+      if (!st || !el) return [c];
       const corners = pts.map((p) => {
         const v = st.camera.position.clone().set(p[0], p[1], p[2]).project(st.camera);
         return { x: ((v.x + 1) / 2) * el.clientWidth, y: ((1 - v.y) / 2) * el.clientHeight };
       });
-      const far = corners.reduce(
-        (a, p) => (Math.hypot(p.x - c.x, p.y - c.y) > Math.hypot(a.x - c.x, a.y - c.y) ? p : a),
-        c,
-      );
-      return { x: c.x + 0.7 * (far.x - c.x), y: c.y + 0.7 * (far.y - c.y) };
+      const out = [c];
+      for (const f of [0.3, 0.5, 0.7, 0.85])
+        for (const k of corners) out.push({ x: c.x + f * (k.x - c.x), y: c.y + f * (k.y - c.y) });
+      return out;
     },
     { id: later.id, c: centre },
   );
-  await win.mouse.move(box.x + at.x, box.y + at.y);
+  let at: { x: number; y: number } | null = null;
+  for (const p of tries) {
+    await win.mouse.move(box.x + p.x, box.y + p.y);
+    if ((await canvas.getAttribute('title')) === later.title) {
+      at = p;
+      break;
+    }
+  }
+  if (!at) throw new Error(`no point over ${later.code}'s outline shows its title on hover`);
   await expect(canvas).toHaveAttribute('title', later.title);
   await win.mouse.click(box.x + at.x, box.y + at.y);
+  // it opens the photo the outline was projected from, not the finding's first photo
+  const now = (await issues(win)).find((i) => i.id === later.id);
+  const fromIndex = now?.sightings.find((s) => s.geom?.type === 'spolygon')?.from?.sighting;
+  const source = fromIndex === undefined ? undefined : now?.sightings[fromIndex];
+  expect(source).toMatchObject({ on: 'image', layer: 'photos-d2', photo: 'p03' });
+  // the evidence steps through the finding's photos largest box first: p01 (200 x 20), then p03
+  const area = (p: string) =>
+    (now?.sightings ?? [])
+      .filter((s) => s.on === 'image' && s.photo === p)
+      .map((s) => s.geom as unknown as { w: number; h: number })
+      .reduce((a, g) => Math.max(a, g.w * g.h), 0);
+  expect(area('p01')).toBeGreaterThan(area('p03'));
   await expect
     .poll(() =>
-      win.evaluate(
-        () => (window as unknown as Inspect).__stratlas.evidence.getState().open?.issueId ?? null,
-      ),
+      win.evaluate(() => (window as unknown as Inspect).__stratlas.evidence.getState().open),
     )
-    .toBe(later.id);
+    .toMatchObject({ issueId: later.id, index: 1 });
   await win.keyboard.press('Escape');
 
   // 4. the same finding on the later point cloud: a prism and its point selection file
@@ -253,6 +295,13 @@ test('places accepted findings on the mesh and the cloud, and matches them acros
   const sel = onCloud.find((s) => s.geom?.type === 'selection')?.geom?.src?.path ?? '';
   expect(sel).toMatch(/^selections\/.+\.sel$/);
   await access(join(root, sel));
+  // the mesh outline is untouched by the cloud placement
+  expect(
+    (await issues(win))
+      .find((i) => i.id === later.id)
+      ?.sightings.filter((s) => s.layer === 'model-d2')
+      .map((s) => s.geom?.type),
+  ).toEqual(['spolygon']);
   await win.getByTestId('place-dismiss').click();
 
   // 5. the earlier finding on the earlier mesh: "looks like" the later one; Same tracks both
@@ -260,7 +309,17 @@ test('places accepted findings on the mesh and the cloud, and matches them acros
   await expect(win.getByTestId('place-match')).toContainText(
     `${earlier.code} looks like ${later.code} from`,
   );
+  const tracks = async () => {
+    const list = await issues(win);
+    return [
+      list.find((i) => i.id === earlier.id)?.track,
+      list.find((i) => i.id === later.id)?.track,
+    ];
+  };
+  const [a0, b0] = await tracks();
+  expect(a0 !== undefined && a0 === b0).toBe(false);
   await win.getByTestId('place-same').click();
+  await expect(win.getByTestId('place-matched')).toBeVisible();
   await expect
     .poll(async () => {
       const list = await issues(win);
