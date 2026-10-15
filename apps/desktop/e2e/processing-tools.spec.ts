@@ -16,7 +16,7 @@
  */
 import type { ElectronApplication, Locator, Page } from '@playwright/test';
 import { createHash } from 'node:crypto';
-import { existsSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { mkdir, readdir, readFile, writeFile } from 'node:fs/promises';
 import { createServer } from 'node:http';
 import type { AddressInfo } from 'node:net';
@@ -32,6 +32,17 @@ import {
   type DataRoot,
 } from './fixtures';
 import { ODM_FAKE_DIR, PHOTO_PLATFORM, PHOTO_PLATFORM_ONLY } from './photoPack';
+
+/** The pipeline pack version this repository builds (python/pyproject.toml): the newest the app asks for. */
+const PACK_VERSION = ((): string => {
+  const toml = readFileSync(
+    join(import.meta.dirname, '..', '..', '..', 'python', 'pyproject.toml'),
+    'utf8',
+  );
+  const found = /^version\s*=\s*"([^"]+)"/m.exec(toml)?.[1];
+  if (!found) throw new Error('python/pyproject.toml has no version');
+  return found;
+})();
 
 /** This computer as a pack manifest and a pack archive name it. */
 const PLATFORM = `${process.platform}-${process.arch}`;
@@ -115,7 +126,7 @@ test('the start notice leads to Settings, where a pack file installs and process
   network,
 }, testInfo) => {
   await writeOldPack(dataRoot, '0.2.0');
-  const archive = await writeArchive(join(dataRoot.base, 'kit'), '0.11.0');
+  const archive = await writeArchive(join(dataRoot.base, 'kit'), PACK_VERSION);
   const app = await launchApp(dataRoot, ENV);
   await network.attach(app);
   try {
@@ -148,19 +159,21 @@ test('the start notice leads to Settings, where a pack file installs and process
     // install from the file the dialog answers
     await page.getByTestId('tools-choose').click();
     await expect(page.getByTestId('tools-note')).toContainText(
-      'Processing tools 0.11.0 are installed.',
+      `Processing tools ${PACK_VERSION} are installed.`,
     );
     await expect(page.getByTestId('tools-state')).toHaveAttribute('data-state', 'ok');
     await expect(page.getByTestId('tools-state')).toContainText('Up to date');
-    await expect(page.getByTestId('tools-version')).toHaveText('0.11.0');
+    await expect(page.getByTestId('tools-version')).toHaveText(PACK_VERSION);
     await expect(page.getByTestId('tools-needs')).toHaveCount(0);
     // the pack is in place, with nothing half-unpacked beside it
     const runtime = join(dataRoot.root, 'runtime');
     expect((await readdir(runtime)).sort()).toEqual([
-      'pipeline-pack-0.11.0',
+      `pipeline-pack-${PACK_VERSION}`,
       'pipeline-pack-0.2.0',
     ]);
-    expect(existsSync(join(runtime, 'pipeline-pack-0.11.0', 'python', 'python.exe'))).toBe(true);
+    expect(existsSync(join(runtime, `pipeline-pack-${PACK_VERSION}`, 'python', 'python.exe'))).toBe(
+      true,
+    );
 
     // the old pack is listed with its size and stays until removed
     const others = win.getByTestId('tools-others');
@@ -171,13 +184,13 @@ test('the start notice leads to Settings, where a pack file installs and process
     // the same file again asks before replacing
     await page.getByTestId('tools-choose').click();
     const replace = page.getByTestId('tools-replace');
-    await expect(replace).toContainText('Version 0.11.0 is already installed.');
+    await expect(replace).toContainText(`Version ${PACK_VERSION} is already installed.`);
     await expectFits(win, 'tools-replace', 'tools-replace-yes');
     await replace.getByRole('button', { name: 'Keep it' }).click();
     await expect(replace).toHaveCount(0);
 
     // processing follows without a restart: nothing says the tools are missing, the notice is gone
-    await expect.poll(() => runtimeVersion(win)).toBe('0.11.0');
+    await expect.poll(() => runtimeVersion(win)).toBe(PACK_VERSION);
     await win.locator('.sb-nav .nav-item', { hasText: 'Scene' }).click();
     const drawer = await openProcessing(win);
     await expect(drawer.getByTestId('proc-tools')).toHaveCount(0);
@@ -196,7 +209,7 @@ test('the start notice leads to Settings, where a pack file installs and process
     await win.getByTestId('tools-remove-confirm-0.2.0').click();
     await expect(win.getByTestId('tools-others')).toHaveCount(0);
     await expect(win.getByTestId('tools-note')).toContainText('pipeline-pack-0.2.0 was moved');
-    expect(await readdir(runtime)).toEqual(['pipeline-pack-0.11.0']);
+    expect(await readdir(runtime)).toEqual([`pipeline-pack-${PACK_VERSION}`]);
     expect(await network.outbound()).toEqual([]);
   } finally {
     await app.close();
@@ -295,7 +308,7 @@ test('Update processing tools is one way in from Create maps and from the Proces
 }) => {
   test.skip(!PHOTO_PLATFORM, PHOTO_PLATFORM_ONLY);
   // no processing tools at all; the processing engine is there (named, as in development)
-  const archive = await writeArchive(join(dataRoot.base, 'kit'), '0.11.0');
+  const archive = await writeArchive(join(dataRoot.base, 'kit'), PACK_VERSION);
   const app = await launchApp(dataRoot, {
     ...ENV,
     QUADRION_ODM_DIR: ODM_FAKE_DIR,
@@ -329,7 +342,7 @@ test('Update processing tools is one way in from Create maps and from the Proces
     await expect(win.getByTestId('tools-state')).toHaveAttribute('data-state', 'missing');
     await win.getByTestId('tools-choose').click();
     const note = win.getByTestId('tools-note');
-    await expect(note).toContainText('Processing tools 0.11.0 are installed.');
+    await expect(note).toContainText(`Processing tools ${PACK_VERSION} are installed.`);
     await expect(win.getByTestId('tools-state')).toHaveAttribute('data-state', 'ok');
     await expectFits(win, 'tools-note', 'tools-resume');
 
@@ -339,7 +352,7 @@ test('Update processing tools is one way in from Create maps and from the Proces
     await expect(wizard.getByTestId('photo-blocked')).toHaveCount(0);
     await expect(wizard.getByTestId('photo-drop')).toBeVisible();
     await wizard.getByRole('button', { name: 'Close' }).first().click();
-    await expect.poll(() => runtimeVersion(win)).toBe('0.11.0');
+    await expect.poll(() => runtimeVersion(win)).toBe(PACK_VERSION);
     const after = await openProcessing(win);
     await expect(after.getByTestId('proc-tools')).toHaveCount(0);
     await closeProcessing(win);
