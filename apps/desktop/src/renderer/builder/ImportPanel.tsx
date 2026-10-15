@@ -6,6 +6,7 @@ import { PagesCard } from '../drawings/PagesCard';
 import { useDrawings } from '../drawings/store';
 import { PhotoProcessLayer } from '../photogrammetry/PhotoProcessLayer';
 import { useShell } from '../shell';
+import { CloudDatesCard } from './CloudDates';
 import { heightsLine, offsetFromTakeoff, promptChoice, type HeightsPrompt } from './heights';
 import { engineeringAction, importDestination, importHeadline } from './importSummary';
 import { createEngineeringModel } from '../engineer/ui';
@@ -356,6 +357,7 @@ function ImportStatus() {
   const cancelling = useBuilder((s) => s.cancelling);
   const result = useBuilder((s) => s.importResult);
   const prompt = useBuilder((s) => s.heightsPrompt);
+  const cloudDates = useBuilder((s) => s.cloudDatesPrompt);
   const offer = useBuilder((s) => s.panoOffer);
   const importNotice = useBuilder((s) => s.importNotice);
   const layers = useWorkspace((s) => s.project?.manifest.layers ?? NO_LAYERS);
@@ -367,6 +369,8 @@ function ImportStatus() {
   if (failed && !importing) return <PanoFailedCard />;
   if (offer && !importing) return <PanoOfferCard o={offer} />;
   if (prompt && !importing) return <HeightsCard p={prompt} />;
+  if (cloudDates && !importing)
+    return <CloudDatesCard key={cloudDates.paths.join('\n')} p={cloudDates} />;
   // asked in the middle of an import, which stays busy until its drawings are in
   if (pages) return <PagesCard key={pages.name} p={pages} />;
   // a notice alone (files that waited for a closed project) still shows, until Close

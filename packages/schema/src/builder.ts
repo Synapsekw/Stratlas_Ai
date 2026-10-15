@@ -176,6 +176,8 @@ export const ImportItem = z.object({
     'opf',
     // M11 (G6): a design (LandXML, 12da), imported by the `design.import` pipeline into `survey/designs/`
     'design',
+    // Bentley iTwin Capture Modeler (15 Oct 2026): a BlocksExchange AT export, by `bentley.import`
+    'bentley',
   ]),
   /**
    * `needs-pipeline`: the conversion runs in the pipeline pack (LAS/LAZ/E57 to COPC, large

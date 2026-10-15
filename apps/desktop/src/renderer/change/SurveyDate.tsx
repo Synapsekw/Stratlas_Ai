@@ -72,6 +72,126 @@ function today(): string {
 /** The select's value for New survey date... (capture ids start with `capture-`). */
 const NEW = 'new';
 
+/** What the survey date options show: a date of the project ('' is Not dated), or a new day. */
+export type SurveyDateChoice = { kind: 'capture'; id: string } | { kind: 'new'; day: string };
+
+/**
+ * The survey date options themselves, controlled: Not dated, each date oldest first, then New
+ * survey date... (an inline day field). `onAdd` gives the day field an Add button and submits it;
+ * without it the day is only reported through `onChange`. `onCloseNew` goes back to the list.
+ */
+export function SurveyDateOptions({
+  captures,
+  value,
+  onChange,
+  onAdd,
+  onCloseNew,
+  suggestedDay,
+  testId,
+  label,
+  noneLabel,
+  busy = false,
+  disabled = false,
+  tagged,
+}: {
+  captures: readonly { id: string; date: string; label: string }[];
+  value: SurveyDateChoice;
+  onChange: (next: SurveyDateChoice) => void;
+  onAdd?: () => void;
+  onCloseNew: () => void;
+  /** Prefill of New survey date, else today. */
+  suggestedDay?: string | undefined;
+  testId: string;
+  label: string;
+  noneLabel: string;
+  busy?: boolean;
+  /** The select only (a read-only project). */
+  disabled?: boolean;
+  /** Dates shown with "(new)": the ones an import made. */
+  tagged?: ReadonlySet<string> | null;
+}) {
+  const t = useT();
+  const sorted = [...captures].sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0));
+  if (value.kind === 'capture')
+    return (
+      <label className="small">
+        <span className="faint" title={t('change.surveyDateTip')}>
+          {label}
+        </span>{' '}
+        <select
+          className="input"
+          value={value.id}
+          disabled={busy || disabled}
+          onChange={(e) => {
+            const next = e.target.value;
+            onChange(
+              next === NEW
+                ? { kind: 'new', day: suggestedDay ?? today() }
+                : { kind: 'capture', id: next },
+            );
+          }}
+        >
+          <option value="">{noneLabel}</option>
+          {sorted.map((c) => (
+            <option key={c.id} value={c.id}>
+              {tagged?.has(c.id)
+                ? t('change.surveyDateNewTag', { date: formatDate(c.date), label: c.label })
+                : `${formatDate(c.date)} · ${c.label}`}
+            </option>
+          ))}
+          <option value={NEW}>{t('change.surveyDateNew')}</option>
+        </select>
+      </label>
+    );
+  return (
+    <form
+      className="small"
+      aria-label={t('change.surveyDateNew')}
+      onSubmit={(e) => {
+        e.preventDefault();
+        onAdd?.();
+      }}
+      onKeyDown={(e) => {
+        if (e.key === 'Escape') {
+          e.stopPropagation();
+          onCloseNew();
+        }
+      }}
+    >
+      <label>
+        <span className="faint">{t('change.surveyDateNewDay')}</span>{' '}
+        <input
+          type="date"
+          className="input"
+          value={value.day}
+          required
+          autoFocus
+          disabled={busy}
+          data-testid={`${testId}-new`}
+          onChange={(e) => {
+            onChange({ kind: 'new', day: e.target.value });
+          }}
+        />
+      </label>{' '}
+      {onAdd && (
+        <>
+          <button
+            type="submit"
+            className="btn primary sm"
+            disabled={busy || !value.day}
+            data-testid={`${testId}-add`}
+          >
+            {t('change.surveyDateAdd')}
+          </button>{' '}
+        </>
+      )}
+      <button type="button" className="btn ghost sm" disabled={busy} onClick={onCloseNew}>
+        {t('change.surveyDateCancel')}
+      </button>
+    </form>
+  );
+}
+
 /**
  * The survey date of some layers, with any number of dates in the project: Not dated, each date
  * oldest first, then New survey date... (an inline day field, Add and Cancel).
@@ -115,7 +235,6 @@ export function SurveyDateSelect({
   const mine = layers.filter((l) => layerIds.includes(l.id));
   const values = new Set(mine.map((l) => l.capture ?? ''));
   const value = values.size === 1 ? ([...values][0] ?? '') : '';
-  const sorted = [...captures].sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0));
 
   /** File the layers under `capture`, then remove the dates made here that are left empty. */
   const fileUnder = async (capture: string | null, made: readonly string[] = []) => {
@@ -155,79 +274,27 @@ export function SurveyDateSelect({
 
   return (
     <div className="survey-date" data-testid={testId}>
-      {day === null ? (
-        <label className="small">
-          <span className="faint" title={t('change.surveyDateTip')}>
-            {label}
-          </span>{' '}
-          <select
-            className="input"
-            value={value}
-            disabled={busy || readOnly}
-            onChange={(e) => {
-              const next = e.target.value;
-              if (next === NEW) {
-                setError(null);
-                setDay(suggestedDay ?? today());
-                return;
-              }
-              run(() => fileUnder(next || null));
-            }}
-          >
-            <option value="">{noneLabel}</option>
-            {sorted.map((c) => (
-              <option key={c.id} value={c.id}>
-                {tidy?.has(c.id)
-                  ? t('change.surveyDateNewTag', { date: formatDate(c.date), label: c.label })
-                  : `${formatDate(c.date)} · ${c.label}`}
-              </option>
-            ))}
-            <option value={NEW}>{t('change.surveyDateNew')}</option>
-          </select>
-        </label>
-      ) : (
-        <form
-          className="small"
-          aria-label={t('change.surveyDateNew')}
-          onSubmit={(e) => {
-            e.preventDefault();
-            add();
-          }}
-          onKeyDown={(e) => {
-            if (e.key === 'Escape') {
-              e.stopPropagation();
-              close();
-            }
-          }}
-        >
-          <label>
-            <span className="faint">{t('change.surveyDateNewDay')}</span>{' '}
-            <input
-              type="date"
-              className="input"
-              value={day}
-              required
-              autoFocus
-              disabled={busy}
-              data-testid={`${testId}-new`}
-              onChange={(e) => {
-                setDay(e.target.value);
-              }}
-            />
-          </label>{' '}
-          <button
-            type="submit"
-            className="btn primary sm"
-            disabled={busy || !day}
-            data-testid={`${testId}-add`}
-          >
-            {t('change.surveyDateAdd')}
-          </button>{' '}
-          <button type="button" className="btn ghost sm" disabled={busy} onClick={close}>
-            {t('change.surveyDateCancel')}
-          </button>
-        </form>
-      )}
+      <SurveyDateOptions
+        captures={captures}
+        value={day === null ? { kind: 'capture', id: value } : { kind: 'new', day }}
+        onChange={(next) => {
+          if (next.kind === 'new') {
+            setError(null);
+            setDay(next.day);
+            return;
+          }
+          run(() => fileUnder(next.id || null));
+        }}
+        onAdd={add}
+        onCloseNew={close}
+        suggestedDay={suggestedDay}
+        testId={testId}
+        label={label}
+        noneLabel={noneLabel}
+        busy={busy}
+        disabled={readOnly}
+        tagged={tidy}
+      />
       {source && <p className="faint small">{t(`change.surveyDateFrom.${source}`)}</p>}
       {error && (
         <p className="notice danger small" role="alert">

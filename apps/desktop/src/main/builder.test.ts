@@ -8,6 +8,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import {
   builderAddDrawingPage,
   builderAltitudePlan,
+  builderCloudDates,
   builderRemoveCapture,
   FOLDER_LIMIT_TEXT,
   builderCloseDrawing,
@@ -549,6 +550,65 @@ describe('builder:import exclude', () => {
       { known },
     );
     expect(rest.ok ? rest.plan.files : -1).toBe(1);
+  });
+});
+
+/** A ZIP whose one stored member is a LAS header created on `day` of `year`. */
+function zpcOf(year: number, day: number): Buffer {
+  const las = Buffer.alloc(227);
+  las.write('LASF', 0, 'latin1');
+  las.writeUInt16LE(day, 90);
+  las.writeUInt16LE(year, 92);
+  const name = Buffer.from('tile.las', 'latin1');
+  const local = Buffer.alloc(30);
+  local.writeUInt32LE(0x04034b50, 0);
+  local.writeUInt32LE(las.length, 18);
+  local.writeUInt32LE(las.length, 22);
+  local.writeUInt16LE(name.length, 26);
+  const central = Buffer.alloc(46);
+  central.writeUInt32LE(0x02014b50, 0);
+  central.writeUInt32LE(las.length, 20);
+  central.writeUInt32LE(las.length, 24);
+  central.writeUInt16LE(name.length, 28);
+  const cdOffset = local.length + name.length + las.length;
+  const end = Buffer.alloc(22);
+  end.writeUInt32LE(0x06054b50, 0);
+  end.writeUInt16LE(1, 8);
+  end.writeUInt16LE(1, 10);
+  end.writeUInt32LE(central.length + name.length, 12);
+  end.writeUInt32LE(cdOffset, 16);
+  return Buffer.concat([local, name, las, central, name, end]);
+}
+
+describe('builder:cloudDates', () => {
+  it('lists the .zpc clouds of an import with their LAS header day', async () => {
+    const dir = join(base, 'projects', 'clouds');
+    await writeProject(dir, sampleManifest());
+    const registry = new ProjectRegistry();
+    const projectId = registry.register(dir);
+    const folder = join(base, 'export');
+    await mkdir(folder);
+    const block = join(folder, 'Block.zpc');
+    await writeFile(block, zpcOf(2026, 285));
+    const broken = join(folder, 'Other.zpc');
+    await writeFile(broken, 'not a zip');
+    await writeFile(join(folder, 'scan.laz'), 'x');
+    const known = (ext: string): boolean => ext === '.zpc' || ext === '.laz';
+    const r = await builderCloudDates({ projectId, paths: [folder] }, registry, { known });
+    expect(r.ok && [...r.clouds].sort((a, b) => a.name.localeCompare(b.name))).toEqual([
+      { path: block, name: 'Block.zpc', headerDay: '2026-10-12' },
+      { path: broken, name: 'Other.zpc', headerDay: null },
+    ]);
+    const rest = await builderCloudDates(
+      { projectId, paths: [folder], exclude: [broken] },
+      registry,
+      { known },
+    );
+    expect(rest.ok && rest.clouds.map((c) => c.name)).toEqual(['Block.zpc']);
+    expect(await builderCloudDates({ projectId: 'nope', paths: [folder] }, registry)).toEqual({
+      ok: false,
+      error: 'Project "nope" is not open. Open it, then import.',
+    });
   });
 });
 

@@ -15,11 +15,22 @@ function openOther(p: OpenProject): void {
   openProject = p;
 }
 
+/** The clouds whose survey day an import asks for (`builder:cloudDates`); none by default. */
+const noClouds = () => Promise.resolve({ ok: true, value: { ok: true, clouds: [] } });
+let cloudScan: (req: unknown) => Promise<unknown> = noClouds;
+/** The `builder:cloudDates` requests, apart from `call` so the other tests count as before. */
+const cloudCalls: unknown[] = [];
+
 vi.mock('../shell', () => ({
   bridge: {
-    // an import scans for drone spheres first; these tests have none, and do not count the scan
-    call: (channel: string, ...a: unknown[]) =>
-      channel === 'panos:scan'
+    // an import scans for drone spheres first; these tests have none, and do not count the scan.
+    // It reads the dates of its .zpc clouds last; the tests of that card give clouds.
+    call: (channel: string, ...a: unknown[]) => {
+      if (channel === 'builder:cloudDates') {
+        cloudCalls.push(a[0]);
+        return cloudScan(a[0]);
+      }
+      return channel === 'panos:scan'
         ? Promise.resolve({
             ok: true,
             value: {
@@ -27,7 +38,8 @@ vi.mock('../shell', () => ({
               scan: { scanId: 's', spheres: [], ready: [], skipped: [], files: 0 },
             },
           })
-        : (call(channel, ...a) as unknown),
+        : (call(channel, ...a) as unknown);
+    },
   },
   shell: {
     getState: () => ({ loadLibrary: () => Promise.resolve(), setPalette: () => undefined }),
@@ -89,10 +101,13 @@ beforeEach(() => {
   replaceManifest.mockReset();
   finishStaged.mockReset();
   openProject = P1;
+  cloudScan = noClouds;
+  cloudCalls.length = 0;
   builder.setState({
     importing: null,
     importResult: null,
     heightsPrompt: null,
+    cloudDatesPrompt: null,
     queued: 0,
     importNotice: null,
   });
@@ -353,6 +368,111 @@ describe('importFiles, one import at a time', () => {
       expect(b().importResult?.error).toBe('bridge still gone');
     });
     expect(b().importing).toBeNull();
+  });
+});
+
+describe('importFiles, the survey day of a .zpc cloud', () => {
+  const cloud = { path: 'D:/export/block.zpc', name: 'block.zpc', headerDay: '2026-10-12' };
+  const withCloud = () => Promise.resolve({ ok: true, value: { ok: true, clouds: [cloud] } });
+  const imports = () => calls('builder:import').map((c) => c[1] as Record<string, unknown>);
+
+  it('asks before the import, and passes the confirmed day to main', async () => {
+    cloudScan = withCloud;
+    call.mockImplementation((channel: string) =>
+      Promise.resolve(channel === 'builder:altitudePlan' ? planned(plan()) : imported),
+    );
+    await b().importFiles(['D:/export']);
+    expect(b().cloudDatesPrompt?.clouds).toEqual([cloud]);
+    expect(b().importing).toBeNull();
+    expect(imports()).toEqual([]);
+    // a drop while the card is open waits behind it
+    await b().importFiles(['b.jpg']);
+    expect(b().queued).toBe(1);
+    cloudScan = noClouds;
+    await b().confirmCloudDates({ [cloud.path]: '2026-03-04' });
+    expect(b().cloudDatesPrompt).toBeNull();
+    expect(imports()[0]).toEqual({
+      projectId: 'p1',
+      paths: ['D:/export'],
+      cloudDates: { [cloud.path]: '2026-03-04' },
+    });
+    // the confirmed import is not asked again; the waiting drop is (and has no cloud here)
+    expect(imports().map((r) => r.paths)).toEqual([['D:/export'], ['b.jpg']]);
+    expect(cloudCalls).toHaveLength(2);
+    // the heights of the confirmed drop were read once, before its card
+    const planned1 = calls('builder:altitudePlan').map((c) => (c[1] as { paths: string[] }).paths);
+    expect(planned1).toEqual([['D:/export'], ['b.jpg']]);
+  });
+
+  it('starts the confirmed import at once: the heights are not read again, the days kept', async () => {
+    cloudScan = withCloud;
+    // the heights could not be read before the card; read again they would ask for a take-off
+    let plans = 0;
+    call.mockImplementation((channel: string) => {
+      if (channel !== 'builder:altitudePlan') return Promise.resolve(imported);
+      plans++;
+      return Promise.resolve(plans === 1 ? { ok: false, error: 'busy' } : planned(asks));
+    });
+    await b().importFiles(['D:/export']);
+    expect(b().cloudDatesPrompt?.clouds).toEqual([cloud]);
+    await b().confirmCloudDates({ [cloud.path]: '2026-03-04' });
+    expect(calls('builder:altitudePlan')).toHaveLength(1);
+    expect(b().heightsPrompt).toBeNull();
+    expect(imports()).toEqual([
+      { projectId: 'p1', paths: ['D:/export'], cloudDates: { [cloud.path]: '2026-03-04' } },
+    ]);
+  });
+
+  it('asks after the heights card, with the confirmed heights', async () => {
+    cloudScan = withCloud;
+    call.mockImplementation((channel: string) =>
+      Promise.resolve(channel === 'builder:altitudePlan' ? planned(asks) : imported),
+    );
+    await b().importFiles(['D:/export']);
+    expect(b().heightsPrompt?.paths).toEqual(['D:/export']);
+    expect(b().cloudDatesPrompt).toBeNull();
+    const altitude = { source: 'auto', takeoffH: 31, takeoffFrom: 'typed' } as const;
+    await b().confirmHeights(altitude);
+    expect(b().heightsPrompt).toBeNull();
+    expect(b().cloudDatesPrompt?.altitude).toEqual(altitude);
+    expect(imports()).toEqual([]);
+    await b().confirmCloudDates({ [cloud.path]: null });
+    expect(imports()).toEqual([
+      { projectId: 'p1', paths: ['D:/export'], altitude, cloudDates: { [cloud.path]: null } },
+    ]);
+  });
+
+  it('imports nothing when the card is cancelled, and the next drop runs', async () => {
+    cloudScan = withCloud;
+    call.mockImplementation((channel: string) =>
+      Promise.resolve(channel === 'builder:altitudePlan' ? planned(plan()) : imported),
+    );
+    await b().importFiles(['D:/export']);
+    cloudScan = noClouds;
+    await b().importFiles(['b.jpg']);
+    b().cancelCloudDates();
+    await vi.waitFor(() => {
+      expect(imports().map((r) => r.paths)).toEqual([['b.jpg']]);
+    });
+    expect(b().cloudDatesPrompt).toBeNull();
+  });
+
+  it('imports the clouds not dated when their dates cannot be read, and says so', async () => {
+    cloudScan = () => Promise.reject(new Error('bridge gone'));
+    call.mockImplementation((channel: string) =>
+      Promise.resolve(channel === 'builder:altitudePlan' ? planned(plan()) : imported),
+    );
+    await b().importFiles(['D:/export']);
+    expect(b().cloudDatesPrompt).toBeNull();
+    expect(imports()).toEqual([{ projectId: 'p1', paths: ['D:/export'] }]);
+    expect(b().importNotice).toMatch(/not dated/);
+  });
+
+  it('does not read cloud dates for drawings or 360 video', async () => {
+    call.mockImplementation(() => Promise.resolve(imported));
+    await b().importFiles(['plan.pdf'], undefined, { drawings: true });
+    await b().importFiles(['walk.insv'], undefined, { as360: true });
+    expect(cloudCalls).toEqual([]);
   });
 });
 

@@ -325,10 +325,12 @@ class SceneFrame:
     """OPF processing coordinates to the project's E, N, H (and camera axes with them).
 
     ``arbitrary`` frames (no reference frame, or an engineering CRS) are placed with the processing
-    origin on the project origin, unscaled and unrotated, and the report says so.
+    origin on the project origin, unscaled and unrotated, and the report says so. ``label`` names
+    the source in the notes and messages ("OPF", or "block" for a Bentley block).
     """
 
-    def __init__(self, srf: Any | None, project: Any, origin) -> None:
+    def __init__(self, srf: Any | None, project: Any, origin, label: str = "OPF") -> None:
+        self.label = label
         self.origin = np.asarray(origin, dtype=np.float64)
         self.project = project
         self.notes: list[str] = []
@@ -344,22 +346,23 @@ class SceneFrame:
             self.scale = np.asarray(b2c.scale, dtype=np.float64)
             self.swap = bool(b2c.swap_xy)
         if np.any(self.scale == 0) or not np.all(np.isfinite(self.scale)):
-            raise JobError("The OPF scene reference frame has a zero scale.")
+            raise JobError(f"The {label} scene reference frame has a zero scale.")
         self.arbitrary = self.info.arbitrary
         self.same = not self.arbitrary and same_crs(self.info.horizontal, project)
         self.base_north_first = north_first(self.info.horizontal)
         if self.arbitrary:
             self.notes.append(
-                "The OPF has no georeference (an arbitrary or unknown frame): its cameras and points "
+                f"The {label} has no georeference (an arbitrary or unknown frame): its cameras and points "
                 "are placed with their processing origin on the project origin, unrotated."
             )
         elif not self.same:
             self.notes.append(
-                f"The OPF CRS ({_short(self.info.definition)}) differs from the project CRS: positions "
+                f"The {label} CRS ({_short(self.info.definition)}) differs from the project CRS: positions "
                 "are reprojected horizontally, heights are kept as they are."
             )
         if self.info.vertical:
-            self.notes.append(f"OPF heights refer to {self.info.vertical}; they are used as they are.")
+            heights = f"{label[:1].upper()}{label[1:]} heights"
+            self.notes.append(f"{heights} refer to {self.info.vertical}; they are used as they are.")
 
     def _base(self, p: np.ndarray) -> np.ndarray:
         q = p - self.shift
@@ -381,7 +384,7 @@ class SceneFrame:
         xs, ys = transform(self.info.horizontal, self.project, trad[:, 0].tolist(), trad[:, 1].tolist())
         out = np.column_stack([np.asarray(xs), np.asarray(ys), trad[:, 2]])
         if not np.all(np.isfinite(out)):
-            raise JobError("Some OPF coordinates could not be reprojected into the project CRS.")
+            raise JobError(f"Some {self.label} coordinates could not be reprojected into the project CRS.")
         return out
 
     def axes_at(self, proc_point) -> np.ndarray:

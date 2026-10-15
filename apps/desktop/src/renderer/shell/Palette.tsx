@@ -479,7 +479,21 @@ export function Palette() {
           title: 'Import raw data into this project',
           group: 'Actions',
           icon: 'import',
-          keywords: ['photos', 'video', 'srt', 'glb', 'obj', 'geotiff', 'las', 'laz', 'add data'],
+          keywords: [
+            'photos',
+            'video',
+            'srt',
+            'glb',
+            'obj',
+            'geotiff',
+            'las',
+            'laz',
+            'add data',
+            'zpc',
+            'bentley',
+            'contextcapture',
+            'xml',
+          ],
           run: () => void builder.getState().pickAndImport(),
         });
         list.push({

@@ -13,7 +13,9 @@ import {
   writeManifestFile,
 } from './create';
 import {
+  BENTLEY_NO_FOLDER,
   NO_PIPELINE,
+  UNSUPPORTED_XML,
   importDay,
   importRawFiles,
   isImportableExtension,
@@ -284,6 +286,137 @@ describe('importRawFiles', () => {
       ['design.import', xml],
       ['design.import', twelve],
     ]);
+  });
+
+  it('hands a Bentley block to bentley.import with the photos folder the person picks', async () => {
+    const root = await project();
+    const at = join(dir, 'at.xml');
+    await writeFile(
+      at,
+      '<?xml version="1.0" encoding="utf-8"?>\n<BlocksExchange version="3.2"></BlocksExchange>\n',
+    );
+    const started: { method: string; params: Record<string, unknown> }[] = [];
+    const titles: string[] = [];
+    const jobs: PipelineJobs = {
+      available: () => Promise.resolve(true),
+      start: (method, params) => {
+        started.push({ method, params });
+        return Promise.resolve({ jobId: 'job-b' });
+      },
+    };
+    const pickFolder = (title: string) => {
+      titles.push(title);
+      return Promise.resolve('D:/jobs/photos');
+    };
+    const r = await importRawFiles(root, [at], { ...deps({ jobs }), pickFolder });
+    expect(r.items).toEqual([
+      expect.objectContaining({ kind: 'bentley', status: 'queued', jobId: 'job-b' }),
+    ]);
+    expect(started).toHaveLength(1);
+    expect(started[0]).toMatchObject({
+      method: 'bentley.import',
+      params: { xml: at, photos: 'D:/jobs/photos' },
+    });
+    expect(titles).toEqual(['Choose the photos folder of at.xml']);
+  });
+
+  it('skips a Bentley block when no folder is chosen, and other XML in words', async () => {
+    const root = await project();
+    const at = join(dir, 'at.xml');
+    const other = join(dir, 'notes.xml');
+    await writeFile(at, '<BlocksExchange version="3.2"/>');
+    await writeFile(other, '<?xml version="1.0"?>\n<notes/>\n');
+    const started: string[] = [];
+    const jobs: PipelineJobs = {
+      available: () => Promise.resolve(true),
+      start: (method) => {
+        started.push(method);
+        return Promise.resolve({ jobId: 'j' });
+      },
+    };
+    const r = await importRawFiles(root, [at, other], {
+      ...deps({ jobs }),
+      pickFolder: () => Promise.resolve(null),
+    });
+    expect(r.items).toEqual([
+      expect.objectContaining({ kind: 'bentley', status: 'skipped', message: BENTLEY_NO_FOLDER }),
+      expect.objectContaining({ kind: 'unknown', status: 'skipped', message: UNSUPPORTED_XML }),
+    ]);
+    expect(started).toEqual([]);
+  });
+
+  it('skips a Bentley block when the host cannot ask for a folder', async () => {
+    const root = await project();
+    const at = join(dir, 'at.xml');
+    await writeFile(at, '<BlocksExchange version="3.2"/>');
+    const jobs: PipelineJobs = {
+      available: () => Promise.resolve(true),
+      start: () => Promise.resolve({ jobId: 'j' }),
+    };
+    const r = await importRawFiles(root, [at], deps({ jobs }));
+    expect(r.items).toEqual([
+      expect.objectContaining({ kind: 'bentley', status: 'skipped', message: BENTLEY_NO_FOLDER }),
+    ]);
+  });
+
+  it('reports a Bentley block as needing the pipeline without asking for the folder', async () => {
+    const root = await project();
+    const at = join(dir, 'at.xml');
+    await writeFile(at, '<BlocksExchange version="3.2"/>');
+    let asked = 0;
+    const pickFolder = () => {
+      asked += 1;
+      return Promise.resolve('D:/jobs/photos');
+    };
+    const r = await importRawFiles(root, [at], { ...deps(), pickFolder });
+    expect(r.items).toEqual([
+      expect.objectContaining({ kind: 'bentley', status: 'needs-pipeline' }),
+    ]);
+    expect(asked).toBe(0);
+  });
+
+  it('converts a .zpc like any point cloud, filed under the day Add data chose', async () => {
+    const root = await project();
+    const zpcFile = join(dir, 'Mast cloud.zpc');
+    await writeFile(zpcFile, 'PK\u0003\u0004');
+    const started: { method: string; params: Record<string, unknown> }[] = [];
+    const jobs: PipelineJobs = {
+      available: () => Promise.resolve(true),
+      start: (method, params) => {
+        started.push({ method, params });
+        return Promise.resolve({ jobId: 'j' });
+      },
+    };
+    const r = await importRawFiles(
+      root,
+      [zpcFile],
+      deps({ jobs, cloudDates: { [zpcFile]: '2026-03-04' } }),
+    );
+    expect(r.items[0]).toMatchObject({ kind: 'pointcloud', status: 'queued' });
+    expect(started[0]).toMatchObject({
+      method: 'pointcloud.toCopc',
+      params: { src: zpcFile, out: 'clouds/mast-cloud.copc.laz', surveyDate: '2026-03-04' },
+    });
+    expect(isImportableExtension('.zpc')).toBe(true);
+  });
+
+  it('a cloud marked Not dated gets no surveyDate', async () => {
+    const root = await project();
+    const zpcFile = join(dir, 'a.zpc');
+    const lasFile = join(dir, 'b.las');
+    await writeFile(zpcFile, 'PK\u0003\u0004');
+    await writeFile(lasFile, 'LASF');
+    const started: Record<string, unknown>[] = [];
+    const jobs: PipelineJobs = {
+      available: () => Promise.resolve(true),
+      start: (_method, params) => {
+        started.push(params);
+        return Promise.resolve({ jobId: 'j' });
+      },
+    };
+    await importRawFiles(root, [zpcFile, lasFile], deps({ jobs, cloudDates: { [zpcFile]: null } }));
+    expect(started).toHaveLength(2);
+    for (const p of started) expect(p).not.toHaveProperty('surveyDate');
   });
 
   it('hands an OPF project to opf.import', async () => {

@@ -50,7 +50,9 @@ export {
 export { modelTextures, mtlTextures, type ModelTextures } from './modelTextures';
 export { readTiffHeaderFile } from './tiffFile';
 export {
+  BENTLEY_NO_FOLDER,
   NO_PIPELINE,
+  UNSUPPORTED_XML,
   importDay,
   importRawFiles,
   isImportableExtension,
@@ -197,3 +199,4 @@ export {
   type PanoLayer,
   type StitchOutcome,
 } from './panos';
+export { lasHeaderDay, zpcHeaderDay } from './zpc';
