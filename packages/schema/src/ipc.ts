@@ -22,12 +22,12 @@ import {
   ImportItem,
   LayerPatch,
   NewProjectRequest,
+  ProjectPurpose,
   ReportBrand,
   SeverityTemplate,
 } from './builder';
 import { ProjectManifest } from './manifest';
 import { ClassCatalogue, LibraryClass } from './severity';
-import { ProjectPurpose } from './builder';
 import { HexColor, IsoDate, Vec3 } from './common';
 import { PanoQuality, PanoScan } from './panoStitch';
 import { AiPolicy, EditPolicy, ExportKind, PackageInfo, PackageOrigin } from './package';
