@@ -57,7 +57,7 @@ const noiseOf = (id: string) => ({
 
 function setup(
   recipes: PointcloudCleanup[] = [],
-  opts: { readOnly?: boolean; fail?: boolean } = {},
+  opts: { readOnly?: boolean; fail?: boolean; globalHidden?: number[] } = {},
 ) {
   const writes: {
     projectId: string;
@@ -82,7 +82,12 @@ function setup(
     return Promise.resolve({ ok: false, error: `unexpected ${channel}` });
   });
   const live = createCleanupRecipes();
-  const c = createCleanup({ call: call as never, recipes: live, now: () => 1 });
+  const c = createCleanup({
+    call: call as never,
+    recipes: live,
+    now: () => 1,
+    globalHidden: () => opts.globalHidden ?? [],
+  });
   return { c, live, writes, call };
 }
 
@@ -274,6 +279,26 @@ describe('the cleanup store', () => {
     expect(s.c.store.getState()).toMatchObject({ panelOpen: true, active: 'a', section: 'noise' });
     s.c.closePanel();
     expect(s.c.store.getState().panelOpen).toBe(false);
+  });
+
+  it("a cloud's first recipe starts with the globally hidden classes", async () => {
+    const s = setup([], { globalHidden: [2, 7] });
+    await s.c.load('p', [cloud('a')]);
+    const box = { center: [0, 0, 0], size: [1, 1, 1], yaw: 0, keep: 'inside' } as const;
+    // a drag preview of the first recipe keeps them hidden too
+    s.c.preview('a', { ...emptyCleanup('a'), clipBox: box });
+    expect(s.live.getState().recipes.a?.hiddenClasses).toEqual([2, 7]);
+    await s.c.commit('a', { ...emptyCleanup('a'), clipBox: box });
+    expect(s.c.recipeOf('a')?.hiddenClasses).toEqual([2, 7]);
+    expect(s.writes[0]?.recipe?.hiddenClasses).toEqual([2, 7]);
+    // what the step adds itself (a noise run hides 7) joins them
+    const t = setup([], { globalHidden: [2] });
+    await t.c.load('p', [cloud('a')]);
+    await t.c.commit('a', { ...emptyCleanup('a'), hiddenClasses: [7] });
+    expect(t.c.recipeOf('a')?.hiddenClasses).toEqual([2, 7]);
+    // later steps are the recipe's own: showing class 2 on this cloud sticks
+    await s.c.commit('a', { ...emptyCleanup('a'), clipBox: box, hiddenClasses: [7] });
+    expect(s.c.recipeOf('a')?.hiddenClasses).toEqual([7]);
   });
 });
 

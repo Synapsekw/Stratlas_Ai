@@ -10,7 +10,7 @@
  * noise copy the recipe names (a noise run, Reset, undo, redo) sends the copies the whole history
  * still names. Loading a recipe also writes it once, unchanged, to sweep earlier sessions' leftovers.
  */
-import { pointcloudCleanup, type CleanupRecipes } from '@aio/pointcloud';
+import { pointcloudCleanup, pointcloudSettings, type CleanupRecipes } from '@aio/pointcloud';
 import type { Layer, PointcloudCleanup } from '@aio/schema';
 import { t } from '@aio/ui';
 import { workspace } from '@aio/workspace';
@@ -58,6 +58,8 @@ interface Deps {
   call: Bridge['call'];
   recipes: StoreApi<CleanupRecipes>;
   now?: () => number;
+  /** The global hidden classes (`pointcloudSettings`), the start of a cloud's first recipe. */
+  globalHidden?: () => readonly number[];
 }
 
 function noticeText(n: { kind: NoticeKind; name?: string; count?: number }): string {
@@ -150,6 +152,17 @@ export function createCleanup(deps: Deps) {
     return false;
   };
   const historyOf = (layerId: string) => store.getState().layers[layerId] ?? initial(null);
+  /**
+   * A cloud with no recipe shows the global hidden classes; its first recipe starts from them, so
+   * starting a cleanup never shows classes the person had hidden. Later steps are the recipe's own.
+   */
+  const seeded = (layerId: string, next: PointcloudCleanup | null): PointcloudCleanup | null => {
+    if (!next || historyOf(layerId).present !== null) return next;
+    const global = deps.globalHidden?.() ?? [];
+    if (global.length === 0) return next;
+    const hidden = [...new Set([...global, ...next.hiddenClasses])].sort((a, b) => a - b);
+    return { ...next, hiddenClasses: hidden };
+  };
   const writable = () => {
     const s = store.getState();
     return s.projectId !== null && !s.readOnly;
@@ -218,7 +231,7 @@ export function createCleanup(deps: Deps) {
     ): Promise<boolean> {
       if (!writable()) return false;
       const h = historyOf(layerId);
-      const n = push(h, next);
+      const n = push(h, seeded(layerId, next));
       if (n === h) return true;
       const ok = await step(layerId, h, n);
       if (ok && notice) notify({ text: noticeText(notice), undo: true, error: false, layerId });
@@ -226,7 +239,7 @@ export function createCleanup(deps: Deps) {
     },
 
     preview(layerId: string, recipe: PointcloudCleanup | null): void {
-      deps.recipes.getState().set(layerId, recipe);
+      deps.recipes.getState().set(layerId, seeded(layerId, recipe));
     },
 
     async undo(layerId?: string): Promise<boolean> {
@@ -304,6 +317,7 @@ export type Cleanup = ReturnType<typeof createCleanup>;
 export const cleanup: Cleanup = createCleanup({
   call: (channel, req) => bridge.call(channel, req),
   recipes: pointcloudCleanup,
+  globalHidden: () => pointcloudSettings.getState().hiddenClasses,
 });
 
 /**
