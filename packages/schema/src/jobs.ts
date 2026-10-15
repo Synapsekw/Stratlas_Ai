@@ -1351,10 +1351,11 @@ export const PipelinePackManifest = z.object({
 export type PipelinePackManifest = z.infer<typeof PipelinePackManifest>;
 
 /**
- * `manifest.json` at the root of the GPU add-on, the optional folder
- * `runtime/pipeline-addon-cuda-<version>/` beside the pipeline pack (written by
- * tools/pipeline-pack/accelerator.mjs; read by `aio_pipelines.accel`). It has no interpreter of
- * its own: `packRange` names the pipeline packs whose Python it fits.
+ * `manifest.json` at the root of the retired GPU add-on, the folder
+ * `runtime/pipeline-addon-cuda-<version>/` beside the pipeline pack that pack 0.7.0 could use. The
+ * tooling that made it and the code that read it were removed with ADR 0012 (ODM uses the
+ * graphics card itself); the schema stays so an add-on left on disk still reads. `packRange`
+ * named the pipeline packs whose Python it fitted.
  */
 export const PipelineAddonManifest = z.object({
   schema: z.literal('aio.pipeline-addon/1'),

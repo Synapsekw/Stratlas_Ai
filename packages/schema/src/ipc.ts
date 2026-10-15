@@ -3053,7 +3053,7 @@ export const ipc = {
     request: z.object({ replaceOther: z.boolean().optional() }).strict(),
     response: OdmInstallResult,
   },
-  /** Stop the running install; its temporary files are removed. */
+  /** Stop the running install; a partial download is kept for the next try. */
   'odm:cancel': { request: Empty, response: z.object({ ok: z.boolean() }) },
   /** Uninstall the ODM this app installed. */
   'odm:remove': { request: Empty, response: OdmInstallResult },

@@ -22,9 +22,10 @@ or stderr) goes to the hook, and a fraction the hook returns moves the bar inste
 ramp.
 
 Memory: ``AIO_PHOTO_MEMORY_MB`` is the one memory cap of the photo jobs (the app sets it from
-Settings). ``photo.products`` plans within it (``memory_budget``; without it 40 % of the physical
-memory) and ``photo.align`` stops a COLMAP stage above it (``proctree.memory_limit``; without it
-75 % of the memory and 90 % of what is free).
+Settings). ``photo.products`` gives it to the COPC writers (``memory_budget``; without it 40 % of
+the physical memory) and ``walk.process`` stops a COLMAP stage above it (``proctree.memory_limit``;
+without it 75 % of the memory and 90 % of what is free). ODM itself is limited only by a memory
+cap set by hand (``odm.runner.odm_memory_cap``).
 """
 
 from __future__ import annotations
@@ -262,8 +263,8 @@ def memory_cap() -> int | None:
     """The photo jobs' memory cap in bytes from ``AIO_PHOTO_MEMORY_MB`` (at least 64 MB), or None
     when it is not set (or not a number).
 
-    One setting for every photo job: the app sets it from Settings. ``photo.products`` plans its
-    clusters within it (``memory_budget``) and ``photo.align``'s memory guard stops a COLMAP stage
+    One setting for every photo job: the app sets it from Settings. ``photo.products`` gives it to
+    the COPC writers (``memory_budget``) and ``walk.process``'s memory guard stops a COLMAP stage
     that goes above it (``proctree.memory_limit``)."""
     env = os.environ.get(MEMORY_ENV)
     if not env:

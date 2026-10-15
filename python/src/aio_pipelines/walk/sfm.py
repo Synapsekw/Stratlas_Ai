@@ -293,8 +293,8 @@ def _write_masks(folder: Path, names: list[str], width: int, height: int, mask_b
 
 
 class _Stages:
-    """Runs ``python -m aio_pipelines.walk.sfm`` stages as ``ColmapEngine._run`` runs its own:
-    progress and results through a file, the memory guard, cancel by killing the tree."""
+    """Runs ``python -m aio_pipelines.walk.sfm`` stages in a child process: progress and results
+    through a file, the memory guard, cancel by killing the tree."""
 
     def __init__(self, work: Path, check: Callable[[], None]):
         self.work = work

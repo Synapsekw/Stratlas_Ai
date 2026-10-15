@@ -498,7 +498,7 @@ export const SCHEMA_REGISTRY: readonly SchemaEntry[] = [
     version: 1,
     home: 'pack',
     where: 'runtime/odm.json (the ODM install record beside the pipeline packs)',
-    since: '0.14',
+    since: '0.15', // 0.14.0 shipped without ODM
   },
   // 360 video from a 360 camera's own file (walks.ts): a side folder older builds never read
   { family: 'aio.walk', version: 1, home: 'project', where: 'walks/<id>/walk.json', since: '0.11' },
