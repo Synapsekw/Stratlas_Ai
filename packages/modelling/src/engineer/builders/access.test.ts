@@ -12,7 +12,7 @@ import {
   vertexAt,
 } from '../testGeom';
 import { ACCESS_BUILDERS } from './access';
-import { build, countComponents, registerBuilders, shaft } from './testFixtures';
+import { assembly, build, countComponents, registerBuilders, shaft } from './testFixtures';
 
 registerBuilders(ACCESS_BUILDERS);
 
@@ -369,6 +369,92 @@ describe('ladder', () => {
     for (const p of s.out()) expectSolid(p);
     expect(nearestToAxis(prim(s.out(), 'steel-galv'), [0, 0, 0], axis)).toBeGreaterThan(5.124);
     expect(nearestToAxis(prim(s.out(), 'steel-galv-cage'), [0, 0, 0], axis)).toBeGreaterThan(5.1);
+  });
+
+  describe('on an off-origin tower (no shaft in the model)', () => {
+    const B: V3 = [50, 0, -30];
+    const tower = assembly('lattice', 'lattice-1', {
+      base: B,
+      legs: 4,
+      widthBase: 6,
+      widthTop: 1.5,
+      height: 40,
+      bays: Array.from({ length: 8 }, () => ({ height: 5, bracing: 'X' as const })),
+      legSection: 0.2,
+      braceSection: 0.1,
+    });
+    const pole = assembly('monopole', 'pole-1', {
+      base: B,
+      profile: [
+        { y: 0, r: 0.8 },
+        { y: 30, r: 0.4 },
+      ],
+      sides: 0,
+    });
+    const at = (az: number, r: number, y: number): V3 => {
+      const t = (az * Math.PI) / 180;
+      return [B[0] + r * Math.sin(t), y, B[2] - r * Math.cos(t)];
+    };
+    /** The compass bearing the cage stands out to, square to the ladder line. */
+    function cageBearing(s: ReturnType<typeof build>, bottom: V3, top: V3): number {
+      const cage = prim(s.out(), 'steel-galv-cage');
+      const n = cage.positions.length / 3;
+      let c: V3 = [0, 0, 0];
+      for (let i = 0; i < n; i++) c = add(c, vertexAt(cage, i));
+      c = scale(c, 1 / n);
+      const d = norm(sub(top, bottom));
+      const rel = sub(c, bottom);
+      const v = sub(rel, scale(d, rel[0] * d[0] + rel[1] * d[1] + rel[2] * d[2]));
+      return ((((Math.atan2(v[0], -v[2]) * 180) / Math.PI) % 360) + 360) % 360;
+    }
+    const angle = (a: number, b: number) => {
+      const d = Math.abs((((a - b) % 360) + 360) % 360);
+      return Math.min(d, 360 - d);
+    };
+
+    it.each([90, 60, 200])('a ladder on a lattice at bearing %i faces out along it', (az) => {
+      const face = (y: number) => {
+        const w = 6 - (4.5 * y) / 40;
+        const t = (az * Math.PI) / 180;
+        return w / 2 / Math.max(Math.abs(Math.sin(t)), Math.abs(Math.cos(t))) + 0.1;
+      };
+      const bottom = at(az, face(0) + 0.3, 0);
+      const top = at(az, face(40) + 0.3, 40);
+      const s = build(
+        'ladder',
+        { bottom, top, width: 0.5, rungSpacing: 0.3, cage: true },
+        { with: [tower] },
+      );
+      for (const p of s.out()) expectSolid(p);
+      expect(angle(cageBearing(s, bottom, top), az)).toBeLessThan(1);
+      // no stile, rung or cage vertex inside the tower's member envelope at its height
+      for (const p of s.out())
+        for (let i = 0; i < p.positions.length / 3; i++) {
+          const q = vertexAt(p, i);
+          const half = (6 - (4.5 * Math.min(40, Math.max(0, q[1]))) / 40) / 2 + 0.1;
+          const inside = Math.abs(q[0] - B[0]) < half && Math.abs(q[2] - B[2]) < half;
+          expect(inside).toBe(false);
+        }
+    });
+
+    it('a ladder on an off-origin monopole faces out from the pole', () => {
+      const az = 135;
+      const bottom = at(az, 0.8 + 0.3, 0);
+      const top = at(az, 0.4 + 0.3, 30);
+      const s = build(
+        'ladder',
+        { bottom, top, width: 0.5, rungSpacing: 0.3, cage: true },
+        { with: [pole] },
+      );
+      for (const p of s.out()) expectSolid(p);
+      expect(angle(cageBearing(s, bottom, top), az)).toBeLessThan(1);
+      for (const p of s.out())
+        for (let i = 0; i < p.positions.length / 3; i++) {
+          const q = vertexAt(p, i);
+          const r = 0.8 - (0.4 * Math.min(30, Math.max(0, q[1]))) / 30;
+          expect(Math.hypot(q[0] - B[0], q[2] - B[2])).toBeGreaterThan(r);
+        }
+    });
   });
 
   it('a ladder with more than 2000 rungs is refused', () => {
