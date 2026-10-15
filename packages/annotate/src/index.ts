@@ -6,6 +6,8 @@ export * from './model/ops';
 export * from './model/query';
 export * from './model/register';
 export * from './model/view';
+export * from './model/catalogueOps';
+export * from './model/palette';
 export { History, applyChange, invert, type Change } from './model/history';
 export {
   createIssueEditor,
