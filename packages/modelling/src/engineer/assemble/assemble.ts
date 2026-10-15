@@ -33,8 +33,10 @@ import { newProcModel } from '../../procmodel';
 import { profileRadiusAt } from '../builders/ctx';
 import { DEFAULT_MATERIALS } from '../materials';
 import { chimney, deckOpenings, genericShaft } from './chimney';
+import { assembleFlare } from './flare';
 import { assignIds, azimuthDeg, type IdItem } from './ids';
 import { mergeModels, roleOf } from './merge';
+import { assembleLattice, assembleMonopole } from './telecom';
 
 /** The person's corrections, keyed by assembly id or by role (`flue`, `light-l1`). */
 export interface UserOverrides {
@@ -122,6 +124,9 @@ export type FamilyAssembler = (ctx: FamilyCtx) => Assembly[];
 export const FAMILIES: Partial<Record<ModelFamily, FamilyAssembler>> = {
   chimney,
   generic: genericShaft,
+  flare: assembleFlare,
+  'telecom-lattice': assembleLattice,
+  'telecom-monopole': assembleMonopole,
 };
 
 /** Height a provisional model is built round when nothing gives the scale. */
@@ -426,8 +431,12 @@ function reconcileDecks(next: Assembly[], previous: ProcModel | null): Assembly[
       (p) => !nextIds.has(p.id) && p.status === 'accepted' && p.origin.by === 'engineer',
     ),
   ].filter((a) => a.kind === 'flue');
+  // only a deck in a shaft (a chimney's, under its flues) opens over flues; a tower platform's
+  // one opening is the tower's own passage
+  const shafts = new Set(next.filter((a) => a.kind === 'shaft').map((a) => a.id));
   return next.map((d) => {
     if (d.kind !== 'deck' || d.quality.openings?.basis === 'user') return d;
+    if (d.parent === undefined || !shafts.has(d.parent)) return d;
     const openings = deckOpenings(final.filter((f) => f.parent === d.parent));
     return Assembly.safeParse({ ...d, params: { ...d.params, openings } }).data ?? d;
   });

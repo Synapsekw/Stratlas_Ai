@@ -700,7 +700,7 @@ export function stackProposal(o: { flues?: number; levels?: number[] } = {}): En
   ]);
 }
 
-/** A synthetic flare stack: a tapered steel shaft, a tip, a caged ladder and one platform. */
+/** A synthetic flare stack: a tapered riser, a tip, a caged ladder, a platform and a gas line. */
 export const FLARE_TRUTH = {
   height: 60,
   profile: [
@@ -712,6 +712,7 @@ export const FLARE_TRUTH = {
   pilots: 3,
   platformLevels: [57],
   ladder: true,
+  serviceLines: 1,
 };
 
 export function flareEvidence(): EvidencePack {
@@ -760,10 +761,19 @@ export function flareProposal(): EngineerProposal {
       params: { guardrail: true },
       levels: T.platformLevels.map((y) => y / H),
     }),
+    proposed({
+      role: 'gas-line',
+      kind: 'pipeRun',
+      count: T.serviceLines,
+      params: { diameter: 0.15 / H, azimuthDeg: 270 },
+    }),
   ]);
 }
 
-/** A synthetic four-legged lattice tower with three panel antennas on sector frames. */
+/**
+ * A synthetic four-legged lattice tower with three antenna sectors, two panels side by side in
+ * each (`antennaSpread` apart across the sector, `antennaR` out from the axis).
+ */
 export const LATTICE_TRUTH = {
   height: 40,
   legs: 4 as const,
@@ -771,6 +781,9 @@ export const LATTICE_TRUTH = {
   widthTop: 1.5,
   bays: 8,
   sectors: [0, 120, 240],
+  antennasPerSector: 2,
+  antennaSpread: 0.8,
+  antennaR: 2.1,
   antennaY: 38,
 };
 
@@ -801,7 +814,13 @@ export function latticeEvidence(): EvidencePack {
       },
       {
         kind: 'antenna-candidate',
-        items: T.sectors.map((az) => item(toward(b, az, 2.1, T.antennaY), 1.4, az)),
+        items: T.sectors.flatMap((az) =>
+          [-1, 1].map((side) => {
+            const c = toward(b, az, T.antennaR, T.antennaY);
+            const across = toward([0, 0, 0], az + 90, (side * T.antennaSpread) / 2, 0);
+            return item([c[0] + across[0], c[1], c[2] + across[2]], 1.4, az);
+          }),
+        ),
         metrics: { regularity: 0.9 },
       },
     ],
@@ -831,11 +850,16 @@ export function latticeProposal(): EngineerProposal {
     proposed({
       role: 'antenna',
       kind: 'antenna',
-      count: T.sectors.length,
-      params: { type: 'panel' },
+      count: T.sectors.length * T.antennasPerSector,
+      params: { type: 'panel', sectors: T.sectors.length },
       levels: [T.antennaY / H],
     }),
-    proposed({ role: 'mount', kind: 'antennaMount', count: T.sectors.length, params: {} }),
+    proposed({
+      role: 'mount',
+      kind: 'antennaMount',
+      count: T.sectors.length * T.antennasPerSector,
+      params: {},
+    }),
     proposed({ role: 'cabinet', kind: 'cabinet', count: 1, params: {} }),
   ]);
 }
