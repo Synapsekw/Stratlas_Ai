@@ -132,7 +132,9 @@ def test_validate_takes_the_ids_main_takes(lid):
     assert PointcloudClean().validate({**NOISE, "layerId": lid})["layerId"] == lid
 
 
-@pytest.mark.parametrize("lid", [" lead", "-x", "a/b", "a*b", "a..b", "x" * 129])
+@pytest.mark.parametrize(
+    "lid", [" lead", "-x", "a/b", "a\\b", "a*b", "a..b", "..", "../x", ".hidden", "x" * 129]
+)
 def test_validate_refuses_ids_main_refuses(lid):
     with pytest.raises(JobError, match="layer id"):
         PointcloudClean().validate({**NOISE, "layerId": lid})

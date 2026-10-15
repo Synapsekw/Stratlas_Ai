@@ -15,6 +15,7 @@ import {
   POINTCLOUD_CLEAN_FEATURE,
   POINTCLOUD_CLEAN_MIN_PACK,
   PointcloudCleanup,
+  isSafeLayerId,
   noiseCopyPath,
   noiseRunPath,
   type IpcResponse,
@@ -45,8 +46,6 @@ export function cleanPackRefusal(pipeline: string, packVersion: string | null): 
   return `${POINTCLOUD_CLEAN_FEATURE} needs processing tools ${POINTCLOUD_CLEAN_MIN_PACK} or later (these are ${packVersion}). Update them in Settings, Processing tools.`;
 }
 
-/** A layer id that can name a file in edits/pointcloud. */
-const SAFE_ID = /^[A-Za-z0-9][A-Za-z0-9._ -]{0,127}$/;
 const isRecipeName = (n: string) => n.endsWith('.json') && !n.includes('.noise-');
 const why = (e: unknown) => (e instanceof Error ? e.message : String(e));
 
@@ -77,7 +76,7 @@ export async function readNoiseRun(
   layerId: string,
   runId: string,
 ): Promise<NoiseRun | null> {
-  if (!SAFE_ID.test(layerId)) return null;
+  if (!isSafeLayerId(layerId)) return null;
   try {
     const r = NoiseRun.safeParse(await readJsonSeen(join(root, noiseRunPath(layerId, runId))));
     return r.success && r.data.runId === runId && r.data.path === noiseCopyPath(layerId, runId)
@@ -96,7 +95,7 @@ export async function writeCleanup(
   now: Date = new Date(),
   active: ReadonlySet<string> = new Set(),
 ): Promise<IpcResponse<'pointcloud:writeCleanup'>> {
-  if (!SAFE_ID.test(layerId) || layerId.includes('..'))
+  if (!isSafeLayerId(layerId))
     return { ok: false, error: `The layer id "${layerId}" cannot name a cleanup file.` };
   if (recipe && recipe.layerId !== layerId)
     return { ok: false, error: 'The cleanup belongs to another layer.' };

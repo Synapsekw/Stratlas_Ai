@@ -23,6 +23,19 @@ export const POINTCLOUD_CLEAN_FEATURE = 'Point cloud noise removal and cleaned c
 export const DEFAULT_OUTLIER = { meanK: 8, multiplier: 2 } as const;
 export const DEFAULT_ELM = { cell: 10, threshold: 1 } as const;
 
+/**
+ * A layer id that can name a file in edits/pointcloud: starts with a letter or digit, then letters,
+ * digits, dot, underscore, space or hyphen, at most 128 characters; no path separator, no leading
+ * dot, and (checked by `CleanupLayerId` and `isSafeLayerId`) no `..`. Main and the pipeline
+ * (python `pointcloud_cleanup/pipeline.py`, `SAFE_ID`) apply the same rule.
+ */
+export const SAFE_LAYER_ID = /^[A-Za-z0-9][A-Za-z0-9._ -]{0,127}$/;
+export const isSafeLayerId = (id: string): boolean => SAFE_LAYER_ID.test(id) && !id.includes('..');
+export const CleanupLayerId = Id.regex(SAFE_LAYER_ID, 'Not a valid layer id').refine(
+  (id) => !id.includes('..'),
+  'Not a valid layer id',
+);
+
 export const pccleanupPath = (layerId: string): string => `${PCCLEANUP_DIR}/${layerId}.json`;
 export const noiseCopyPath = (layerId: string, runId: string): string =>
   `${PCCLEANUP_DIR}/${layerId}.noise-${runId}.copc.laz`;
@@ -111,7 +124,7 @@ export type NoiseRun = z.infer<typeof NoiseRun>;
 export const PointcloudCleanup = z
   .object({
     schema: z.literal(PCCLEANUP_SCHEMA),
-    layerId: Id,
+    layerId: CleanupLayerId,
     clipBox: ClipBox.optional(),
     height: HeightRange.optional(),
     hiddenClasses: z
@@ -161,7 +174,7 @@ export const PointcloudCleanParams = z.discriminatedUnion('mode', [
   z
     .object({
       mode: z.literal('noise'),
-      layerId: Id,
+      layerId: CleanupLayerId,
       /** The layer's COPC file, project-relative (checked against the manifest). */
       src: ProjectPath,
       outlier: OutlierParams,
@@ -171,7 +184,7 @@ export const PointcloudCleanParams = z.discriminatedUnion('mode', [
   z
     .object({
       mode: z.literal('save'),
-      layerId: Id,
+      layerId: CleanupLayerId,
       src: ProjectPath,
       recipe: PointcloudCleanup,
       /** The new layer is named "<name> (cleaned)". */

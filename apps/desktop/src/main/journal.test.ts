@@ -23,7 +23,7 @@ import {
 import { afterEach, describe, expect, it } from 'vitest';
 import { auditCsv, createAuditExport } from './exports/audit';
 import { writeJsonAtomic } from './fsutil';
-import type { Handler } from './ipc';
+import { validated, type Handler } from './ipc';
 import {
   createJournalService,
   readJournalFiles,
@@ -503,6 +503,33 @@ describe('journal service', () => {
       const e = await hist(s);
       expect(e).toHaveLength(1);
       expect(e[0]).toMatchObject({ kind: 'record.external', label: 'Point cloud cleanup edited' });
+    });
+
+    it('refuses a cleanup layer id that leaves edits/pointcloud before the journal sees it', async () => {
+      const { root, userData } = setup();
+      // what '../../outside' would name: a JSON file outside edits/pointcloud
+      put(root, 'outside.json', { secret: true });
+      const s = service(root, userData);
+      await s.open({ path: root });
+      const files = (d: string) => readdirSync(d, { recursive: true }).map(String).sort();
+      const before = { root: files(root), userData: files(userData) };
+      let ran = false;
+      // as main's handle() composes it: validated, then the journal, then the handler
+      const write = validated(
+        'pointcloud:writeCleanup',
+        s.journal.wrap('pointcloud:writeCleanup', () => {
+          ran = true;
+          return { ok: true as const, trashed: [] };
+        }),
+      );
+      for (const layerId of ['../../outside', '../x', '..'])
+        await expect(write({ projectId: 'p', layerId, recipe: null })).rejects.toThrow(
+          /Invalid request/,
+        );
+      await s.journal.flush(root);
+      expect(ran).toBe(false);
+      expect(await hist(s)).toHaveLength(0);
+      expect({ root: files(root), userData: files(userData) }).toEqual(before);
     });
 
     it('records a tilesets:import after it went through, none after a refused one', async () => {

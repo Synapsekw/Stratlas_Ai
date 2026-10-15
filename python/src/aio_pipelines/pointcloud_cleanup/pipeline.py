@@ -42,7 +42,8 @@ NOISE_DIR = "edits/pointcloud"
 # the spec's noise defaults; a missing setting takes these, a missing elm is off
 OUTLIER_DEFAULTS = {"meanK": 8, "multiplier": 2.0}
 ELM_DEFAULTS = {"cell": 10.0, "threshold": 1.0}
-# the layer ids main accepts for cleanup files (SAFE_ID in apps/desktop/src/main/pointcloudCleanup.ts)
+# the layer ids the contract accepts for cleanup files (SAFE_LAYER_ID and isSafeLayerId in
+# packages/schema/src/pointcloudCleanup.ts): this pattern, and no ".." anywhere
 SAFE_ID = re.compile(r"[A-Za-z0-9][A-Za-z0-9._ -]{0,127}")
 
 

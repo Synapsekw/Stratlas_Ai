@@ -30,7 +30,7 @@ import { SELECTION_MAX_POINTS, SelectionName, selectionByteLength } from './sele
 import { ProjectManifest } from './manifest';
 import { ClassCatalogue, LibraryClass } from './severity';
 import { HexColor, IsoDate, ProjectPath, Vec3 } from './common';
-import { NoiseRun, PointcloudCleanup } from './pointcloudCleanup';
+import { CleanupLayerId, NoiseRun, PointcloudCleanup } from './pointcloudCleanup';
 import { PanoQuality, PanoScan } from './panoStitch';
 import { AiPolicy, EditPolicy, ExportKind, PackageInfo, PackageOrigin } from './package';
 import { BoundaryEditsFile, VolumesFile } from './volumes';
@@ -2927,7 +2927,7 @@ export const ipc = {
     request: z
       .object({
         projectId: ProjectId,
-        noiseRun: z.object({ layerId: Id, runId: JobId }).strict().optional(),
+        noiseRun: z.object({ layerId: CleanupLayerId, runId: JobId }).strict().optional(),
       })
       .strict(),
     response: z.discriminatedUnion('ok', [
@@ -2950,7 +2950,7 @@ export const ipc = {
     request: z
       .object({
         projectId: ProjectId,
-        layerId: Id,
+        layerId: CleanupLayerId,
         recipe: PointcloudCleanup.nullable(),
         keep: z.array(ProjectPath).max(200).optional(),
       })

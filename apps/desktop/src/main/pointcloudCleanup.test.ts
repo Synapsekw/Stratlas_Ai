@@ -5,7 +5,12 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { collectHandlers } from './notYet';
-import { cleanPackRefusal, registerPointcloudCleanupIpc } from './pointcloudCleanup';
+import {
+  cleanPackRefusal,
+  readNoiseRun,
+  registerPointcloudCleanupIpc,
+  writeCleanup,
+} from './pointcloudCleanup';
 
 const NOW = new Date('2026-10-15T09:00:00.000Z');
 const run = (layerId: string, runId: string) => ({
@@ -107,12 +112,14 @@ describe('point cloud cleanup IPC', () => {
       recipe: emptyCleanup('b'),
     });
     expect(other.ok).toBe(false);
-    const unsafe = await ipc.call('pointcloud:writeCleanup', {
-      projectId: 'p',
-      layerId: '../a',
-      recipe: emptyCleanup('../a'),
-    });
-    expect(unsafe.ok).toBe(false);
+    // the contract refuses it before any handler (or the journal) runs
+    await expect(
+      ipc.call('pointcloud:writeCleanup', { projectId: 'p', layerId: '../a', recipe: null }),
+    ).rejects.toThrow(/Not a valid layer id/);
+    // and the handler's own check stays as a second line
+    expect(await writeCleanup(root, '../a', null, undefined, NOW)).toMatchObject({ ok: false });
+    expect(await readNoiseRun(root, '../a', 'j1')).toBeNull();
+    expect(await readdir(root)).toEqual([]);
     const pkg = await ipc.call('pointcloud:writeCleanup', {
       projectId: 'pkg',
       layerId: 'a',

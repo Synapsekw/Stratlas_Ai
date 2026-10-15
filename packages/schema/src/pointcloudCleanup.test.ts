@@ -5,11 +5,13 @@ import { ipc } from './ipc';
 import { LayerDerived } from './layers';
 import { PIPELINES, PipelineName, SurveyExportParams, pipelineParams } from './jobs';
 import {
+  CleanupLayerId,
   MAX_LASSO_VERTICES,
   NoiseRun,
   POINTCLOUD_CLEAN_MIN_PACK,
   PointcloudCleanParams,
   PointcloudCleanup,
+  SAFE_LAYER_ID,
   cleanupRemoves,
   emptyCleanup,
   isEmptyCleanup,
@@ -212,6 +214,48 @@ describe('the cleanup channels and registry', () => {
         .success,
     ).toBe(true);
     expect(write.safeParse({ projectId: 'p', layerId: 'a' }).success).toBe(false);
+  });
+
+  it('refuses a layer id that could leave edits/pointcloud', () => {
+    const bad = ['../x', 'a/b', 'a\\b', '..', 'a..b', '.hidden', '', ' a', 'a'.repeat(129)];
+    const good = ['a', 'cloud-a', 'Scan 2026_10.v2', 'a'.repeat(128)];
+    for (const id of bad) {
+      expect(CleanupLayerId.safeParse(id).success, id).toBe(false);
+      expect(SAFE_LAYER_ID.test(id) && !id.includes('..'), id).toBe(false);
+    }
+    for (const id of good) expect(CleanupLayerId.safeParse(id).success, id).toBe(true);
+    // the pipeline repeats the rule (python pointcloud_cleanup/pipeline.py, SAFE_ID + no "..")
+    const py = readFileSync(
+      join(import.meta.dirname, '../../../python/src/aio_pipelines/pointcloud_cleanup/pipeline.py'),
+      'utf8',
+    );
+    expect(/^SAFE_ID = re\.compile\(r"(.*)"\)$/m.exec(py)?.[1]).toBe(
+      SAFE_LAYER_ID.source.slice(1, -1),
+    );
+    expect(py).toContain('or ".." in lid');
+    const write = ipc['pointcloud:writeCleanup'].request;
+    const read = ipc['pointcloud:readCleanup'].request;
+    for (const id of ['../x', 'a/b', 'a\\b', '..']) {
+      expect(write.safeParse({ projectId: 'p', layerId: id, recipe: null }).success, id).toBe(
+        false,
+      );
+      expect(
+        read.safeParse({ projectId: 'p', noiseRun: { layerId: id, runId: 'j1' } }).success,
+        id,
+      ).toBe(false);
+      expect(PointcloudCleanup.safeParse({ ...emptyCleanup('a'), layerId: id }).success, id).toBe(
+        false,
+      );
+      expect(
+        PointcloudCleanParams.safeParse({
+          mode: 'noise',
+          layerId: id,
+          src: 'clouds/a.copc.laz',
+          outlier: { meanK: 8, multiplier: 2 },
+        }).success,
+        id,
+      ).toBe(false);
+    }
   });
 
   it('registers aio.pccleanup/1 under edits/pointcloud since 0.16', () => {
