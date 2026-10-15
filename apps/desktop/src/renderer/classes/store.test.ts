@@ -159,7 +159,9 @@ describe('class store', () => {
   });
 
   it('deletes a used class: moves issues and detections, flushes the issue saver before writing', async () => {
-    expect(await deleteClass('rust', null)).toBe('Pick the class that takes over its issues.');
+    expect(await deleteClass('rust', null)).toBe(
+      'Pick the class that takes over its issues and detections.',
+    );
     expect(await deleteClass('rust', 'crack')).toBeNull();
     expect(workspace.getState().issues.map((i) => i.classId)).toEqual(['crack', 'crack']);
     expect(labels()).toEqual(['Crack']);
