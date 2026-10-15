@@ -42,6 +42,7 @@ import {
   presetLabel,
   PRESETS,
   PRODUCTS,
+  reducedNote,
   SIMPLE_DEFAULTS,
   splitNotes,
   suggestedEpsg,
@@ -645,6 +646,11 @@ export function ProcessWizard() {
                       <p className="ph-sum-line" data-testid="photo-summary">
                         {summaryLine(summary)}
                       </p>
+                      {reducedNote(estimate) && (
+                        <p className="small faint" data-testid="photo-reduced">
+                          {reducedNote(estimate)}
+                        </p>
+                      )}
                       <p className="ph-sum-time" data-testid="photo-estimate">
                         {fresh
                           ? `${formatMinutes(estimate.minutes)} on this computer`

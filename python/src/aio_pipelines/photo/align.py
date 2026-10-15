@@ -237,7 +237,11 @@ def layer_meta(meta: PhotoMeta, item: dict[str, Any], manifest: dict[str, Any]) 
         o = manifest["origin"]
         x, y, z = item["pos"]
         lon, lat = C.crs_to_geodetic(C.crs_of(manifest["crs"]), [o[0] + x], [o[1] - z])
-        meta.lon, meta.lat, meta.abs_alt = float(lon[0]), float(lat[0]), float(o[2] + y)
+        meta.lon, meta.lat = float(lon[0]), float(lat[0])
+        # the pose height is the project height (datum offset or take-off rule already applied):
+        # kept apart from the photo's own altitudes so heights_rule does not convert it again
+        meta.layer_h = float(o[2] + y)
+        meta.from_layer = True  # ODM cannot read it from the photo: geo.txt must carry it
     lens = item.get("lens") or {}
     if not meta.focal35 and lens.get("hfovDeg"):
         meta.focal35 = 18.0 / math.tan(math.radians(float(lens["hfovDeg"])) / 2)
@@ -267,6 +271,8 @@ def meta_record(m: PhotoMeta) -> dict[str, Any]:
             "rtk_std",
             "blur",
             "ppk",
+            "from_layer",
+            "layer_h",
         )
     }
     rec["path"] = str(m.path)
@@ -310,6 +316,28 @@ def heights_rule(
     metas: list[PhotoMeta], manifest: dict[str, Any], gnss: str
 ) -> tuple[np.ndarray, dict[str, Any], list[str]]:
     """Each photo's height in the run's height system, the ``PhotoHeights`` record and warnings.
+
+    A photo the photos layer placed (a review copy without GPS) takes its pose's height as it is:
+    that is a project height already, in the project's height system. The photos with their own
+    altitudes follow :func:`own_heights`.
+    """
+    placed = np.array([m.layer_h is not None for m in metas], dtype=bool)
+    if not placed.any():
+        return own_heights(metas, manifest, gnss)
+    H = np.array([np.nan if m.layer_h is None else float(m.layer_h) for m in metas], dtype=np.float64)
+    own = [m for m, p in zip(metas, placed, strict=True) if not p]
+    if not own:
+        rec = {"source": "orthometric", "geoid": "none", "note": "Heights of the project's photos layer."}
+        return H, rec, []
+    H_own, rec, warnings = own_heights(own, manifest, gnss)
+    H[~placed] = H_own
+    return H, rec, warnings
+
+
+def own_heights(
+    metas: list[PhotoMeta], manifest: dict[str, Any], gnss: str
+) -> tuple[np.ndarray, dict[str, Any], list[str]]:
+    """The heights of photos from their own altitudes, the ``PhotoHeights`` record and warnings.
 
     1. RTK photos (fixed solutions) log ellipsoidal heights: converted to orthometric with the
        EGM2008 grid when it is installed, else kept ellipsoidal (and said so).
@@ -403,9 +431,12 @@ def choose_crs(params: dict[str, Any], manifest: dict[str, Any], metas: list[Pho
 
 def needs_geo(metas: list[PhotoMeta], H: np.ndarray, params: dict[str, Any]) -> bool:
     """Whether ODM must be told the positions (``geo.txt``): PPK positions, a GNSS mode other than
-    ``auto``, or heights that are not the photos' own altitudes (RTK ellipsoidal heights converted,
-    the project's vertical datum, relative heights filled in)."""
+    ``auto``, positions from the photos layer (review copies carry no GPS of their own), or heights
+    that are not the photos' own altitudes (RTK ellipsoidal heights converted, the project's
+    vertical datum, relative heights filled in)."""
     if params.get("ppk") or params.get("gnss", "auto") != "auto":
+        return True
+    if any(m.from_layer and m.has_gps for m in metas):
         return True
     for i, m in enumerate(metas):
         if not m.has_gps or np.isnan(H[i]):

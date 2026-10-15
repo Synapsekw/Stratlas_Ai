@@ -66,6 +66,10 @@ class PhotoMeta:
     sha1: str | None = None
     error: str | None = None
     ppk: bool = False
+    #: the position came from the project's photos layer (a review copy without GPS), not the photo
+    from_layer: bool = False
+    #: with `from_layer`: the project height of the layer's pose (already in the project's height system)
+    layer_h: float | None = None
     extra: dict[str, Any] = field(default_factory=dict)
 
     @property

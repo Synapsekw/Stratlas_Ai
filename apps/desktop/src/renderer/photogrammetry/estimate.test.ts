@@ -17,6 +17,7 @@ import {
   photoSummary,
   presetLabel,
   productsFor,
+  reducedNote,
   PRESETS,
   SIMPLE_DEFAULTS,
   splitNotes,
@@ -215,6 +216,13 @@ describe('create maps from photos: the simple start', () => {
     expect(memoryNote(short)).toMatch(/^Standard on 16\.0 GB/);
     expect(diskNeed(est())).toBeNull();
     expect(memoryNote(est())).toBeNull();
+  });
+
+  it('reads the reduced copies note out of the estimate', () => {
+    const copies =
+      'These look like reduced copies of the photos, so the maps may be coarser than from the originals; for full detail, choose the folder of original photos.';
+    expect(reducedNote(est({ notes: ['Times are a range.', copies] }))).toBe(copies);
+    expect(reducedNote(est())).toBeNull();
   });
 
   it('gives one hint about time, and only for a very long run', () => {

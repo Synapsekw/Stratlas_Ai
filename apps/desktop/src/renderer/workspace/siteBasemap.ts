@@ -19,9 +19,9 @@ import {
 import type { AioBridge, Layer, MapPackInfo, ProjectManifest, Vec3 } from '@aio/schema';
 import type { MessageKey } from '@aio/ui';
 import { loadFlight } from '@aio/video';
-import { assetUrl } from '@aio/workspace';
+import { assetUrl, type Workspace } from '@aio/workspace';
 import { useEffect, useRef } from 'react';
-import { useStore } from 'zustand';
+import { useStore, type StoreApi } from 'zustand';
 import { createStore } from 'zustand/vanilla';
 import { useGraphics } from '../graphics';
 import type { GroundModel } from './basemap';
@@ -317,13 +317,23 @@ interface WithBox {
   };
 }
 
-/** Lowest point of the project's mesh layers in the scene (the street map goes just under it). */
+/** Whether a scene object is drawn: it and every parent visible. */
+function drawn(o: { visible: boolean; parent: unknown }): boolean {
+  for (let p: typeof o | null = o; p; p = p.parent as typeof o | null) if (!p.visible) return false;
+  return true;
+}
+
+/**
+ * Lowest point of the project's shown mesh layers in the scene (the street map goes just under
+ * it). A model hidden in the sidebar, or by the date shown, is left out: its group in the scene
+ * is not visible.
+ */
 export function contentFloor(stage: EngineStage, manifest: ProjectManifest): number | null {
   let min = Infinity;
   for (const l of manifest.layers) {
     if (l.kind !== 'mesh') continue;
     const root = stage.scene.getObjectByName(`layer:${l.id}`);
-    if (!root) continue;
+    if (!root || !drawn(root)) continue;
     root.updateMatrixWorld(true);
     root.traverse((o) => {
       const m = o as Partial<WithBox>;
@@ -350,10 +360,18 @@ export interface Settled {
   updateMatrixWorld(force?: boolean): void;
 }
 
+/** The grounds laid under each stage's models, to place again when a model is shown or hidden. */
+const grounds = new WeakMap<object, Set<() => void>>();
+
+/** Place every ground laid under `stage`'s models again (a model was shown or hidden). */
+export function resettle(stage: object): void {
+  for (const place of grounds.get(stage) ?? []) place();
+}
+
 /**
  * Lay `object`, built with its ground at `builtAt` (local y), at `groundLevel` of `floor()`: now,
- * and again every 1.5 s for 30 s, as terrain loads in its own time. Returns the function that
- * stops it.
+ * and again every 1.5 s for 30 s, as terrain loads in its own time, and on `resettle`. Returns
+ * the function that stops it.
  */
 export function settleUnder(
   stage: Pick<EngineStage, 'requestRender'>,
@@ -369,13 +387,44 @@ export function settleUnder(
       object.updateMatrixWorld(true);
       stage.requestRender();
     }
-    if (++tries > 20) clearInterval(timer);
   };
-  const timer = setInterval(place, 1500);
+  const timer = setInterval(() => {
+    place();
+    if (++tries > 20) clearInterval(timer);
+  }, 1500);
   place();
+  const placed = grounds.get(stage) ?? new Set<() => void>();
+  grounds.set(stage, placed);
+  placed.add(place);
   return () => {
     clearInterval(timer);
+    placed.delete(place);
   };
+}
+
+/**
+ * Place the grounds under `stage`'s models again whenever `store` (the store that drives this
+ * stage) shows or hides layers, or changes them (a date dropping a model). After the stage has
+ * applied the change: the stage hears the store first, and the placing waits a microtask.
+ */
+export function useGroundFollowsLayers(
+  stage: EngineStage | null,
+  store: Pick<StoreApi<Workspace>, 'subscribe'>,
+): void {
+  useEffect(() => {
+    if (!stage) return;
+    let live = true;
+    const off = store.subscribe((s, prev) => {
+      if (s.hidden === prev.hidden && s.project === prev.project) return;
+      queueMicrotask(() => {
+        if (live) resettle(stage);
+      });
+    });
+    return () => {
+      live = false;
+      off();
+    };
+  }, [stage, store]);
 }
 
 /**
