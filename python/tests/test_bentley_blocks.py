@@ -90,7 +90,7 @@ def test_a_number_that_is_not_finite_is_refused_with_its_photo(tmp_path, bad, ta
     p.write_text(xml, "utf-8")
     with pytest.raises(JobError, match=rf"{named}.*{tag} is not a finite number") as e:
         read_block(p)
-    assert "–" not in str(e.value) and "—" not in str(e.value)
+    assert not {chr(0x2013), chr(0x2014)} & set(str(e.value))  # no en or em dash
 
 
 @pytest.mark.parametrize(
