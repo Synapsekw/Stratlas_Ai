@@ -16,6 +16,7 @@ import {
   NO_OVERRIDES,
   OFFLINE_IDENTIFY,
   STAGES,
+  type RunDeps,
   type RunIpc,
   type RunState,
 } from './runStore';
@@ -335,8 +336,18 @@ class FakeProject {
 type IpcRequestOutcome = Awaited<ReturnType<RunIpc['engineer']>>;
 
 let clock = 0;
-function store(p: FakeProject, o: { online?: boolean; autoSend?: boolean } = {}) {
+function store(
+  p: FakeProject,
+  o: {
+    online?: boolean;
+    autoSend?: boolean;
+    renderViews?: RunDeps['renderViews'];
+    silhouette?: RunDeps['silhouette'];
+  } = {},
+) {
   const s = createRunStore({
+    ...(o.renderViews ? { renderViews: o.renderViews } : {}),
+    ...(o.silhouette ? { silhouette: o.silhouette } : {}),
     ipc: p.ipc(),
     project: { crs: { epsg: 32639 }, origin: [500000, 3200000, 0] },
     now: () => new Date(Date.UTC(2026, 9, 15, 10, 0, clock++)).toISOString(),
@@ -591,6 +602,87 @@ describe('engineering run store', () => {
     // nothing changed, so identify is not asked again; a new pass would still leave it out
     expect(p.engineerCalls).toBe(asked);
     expect(statuses(reopened.getState())).toEqual(['done', 'done', 'done', 'done', 'done', 'done']);
+  });
+
+  it('a local identity conflict in the evidence stops identify before anything is sent', async () => {
+    const p = new FakeProject();
+    p.makeEvidence = (run) =>
+      cloudEvidence(run, {
+        identity: {
+          sameAsset: false,
+          conflicts: [{ imageIds: ['img-photo-1'], reason: 'colours differ' }],
+        },
+      });
+    const s = store(p);
+    await s.getState().start(setup());
+    let st = s.getState();
+    expect(st.run?.stages.identify?.status).toBe('failed');
+    expect(st.error).toContain('img-photo-1');
+    expect(st.conflicts).toEqual([{ imageIds: ['img-photo-1'], reason: 'colours differ' }]);
+    expect(p.engineerCalls).toBe(0);
+    expect(p.calls.some((c) => c.channel === 'ai:engineerPreview')).toBe(false);
+    // dropping the flagged image lets the run go on
+    await s.getState().dropImages(['img-photo-1']);
+    st = s.getState();
+    expect(statuses(st)).toEqual(['done', 'done', 'done', 'done', 'done', 'done']);
+    expect(p.engineerCalls).toBe(1);
+  });
+
+  describe('passes 2 and 3 keep a correction only when the silhouettes do not get worse', () => {
+    /** Pass 1 answers two flues, later passes three; the silhouette scores by flue count. */
+    function twoPasses(scores: Record<number, number>) {
+      const p = new FakeProject();
+      p.answer = (req) => ({
+        kind: 'proposal',
+        proposal:
+          req.pass === 1
+            ? PROPOSAL
+            : {
+                ...PROPOSAL,
+                components: PROPOSAL.components.map((c) => ({ ...c, count: 3 })),
+                notes: `pass ${String(req.pass)}`,
+              },
+        cached: false,
+        costUsd: 0.01,
+      });
+      const s = store(p, {
+        renderViews: (_m, views) =>
+          Promise.resolve(
+            views.map((v) => ({
+              id: v.id,
+              kind: 'generated' as const,
+              dataUrl: PNG,
+              bytes: 8,
+              view: v.view,
+            })),
+          ),
+        silhouette: (m) => {
+          const flues = m.assemblies.filter((a) => a.kind === 'flue').length;
+          return Promise.resolve({ n: scores[flues] ?? 0, e: scores[flues] ?? 0 });
+        },
+      });
+      return { p, s };
+    }
+
+    it('a correction that fits better is kept', async () => {
+      const { p, s } = twoPasses({ 2: 0.6, 3: 0.8 });
+      await s.getState().start(setup({ detail: 'standard' }));
+      const st = s.getState();
+      expect(p.engineerCalls).toBe(2);
+      expect(st.proposal?.notes).toBe('pass 2');
+      expect(st.unresolved.some((u) => u.includes('earlier draft'))).toBe(false);
+    });
+
+    it('a correction that fits worse is dropped with a note, the earlier proposal kept', async () => {
+      const { p, s } = twoPasses({ 2: 0.8, 3: 0.5 });
+      await s.getState().start(setup({ detail: 'standard' }));
+      const st = s.getState();
+      expect(p.engineerCalls).toBe(2);
+      expect(st.proposal?.notes).toBe('');
+      expect(st.proposal?.components[0]?.count).toBe(2);
+      expect(st.unresolved.some((u) => u.includes('earlier draft'))).toBe(true);
+      expect(statuses(st)).toEqual(['done', 'done', 'done', 'done', 'done', 'done']);
+    });
   });
 
   it('accepting twice leaves one model layer', async () => {

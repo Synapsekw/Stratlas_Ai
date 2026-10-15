@@ -78,6 +78,8 @@ export const runText = {
   notPrepared: () => t('eng.msg.notPrepared'),
   costCap: () => t('eng.msg.costCap'),
   conflict: (ids: string) => t('eng.msg.conflict', { ids }),
+  correctionDropped: (pass: number, after: string, before: string) =>
+    t('eng.msg.correctionDropped', { pass, after, before }),
   noDraft: () => t('eng.msg.noDraft'),
   validatorErrors: (n: number) => t('eng.msg.validatorErrors', { count: n }),
   notFinite: () => t('eng.msg.notFinite'),
@@ -392,6 +394,40 @@ export function createRunStore(deps: RunDeps): StoreApi<RunState> {
       await saveStage('estimate', { status: 'done', hash, ...(m ? { message: m } : {}) });
     }
 
+    /** The mean silhouette overlap of `proposal`'s draft, or null when it cannot be measured. */
+    async function fitOf(proposal: EngineerProposal): Promise<number | null> {
+      const evidence = get().evidence;
+      if (!deps.silhouette || !evidence) return null;
+      const v = Object.values(await deps.silhouette(draftFor(proposal), evidence)).filter((x) =>
+        Number.isFinite(x),
+      );
+      return v.length ? v.reduce((a, b) => a + b, 0) / v.length : null;
+    }
+
+    /**
+     * A correction of pass 2 or 3 against the proposal it corrects: the new one when its draft
+     * overlaps the evidence silhouettes no worse (or that cannot be measured), else the previous
+     * one with a note in its unresolved list.
+     */
+    async function judge(
+      previous: EngineerProposal,
+      previousFit: number | null,
+      next: EngineerProposal,
+      pass: number,
+    ): Promise<{ proposal: EngineerProposal; fit: number | null }> {
+      const before = previousFit ?? (await fitOf(previous));
+      const after = await fitOf(next);
+      if (before === null || after === null || after >= before)
+        return { proposal: next, fit: after };
+      const note = runText
+        .correctionDropped(pass, after.toFixed(2), before.toFixed(2))
+        .slice(0, 200);
+      return {
+        proposal: { ...previous, unresolved: [...previous.unresolved, note].slice(-40) },
+        fit: before,
+      };
+    }
+
     /** The draft for `proposal` (not written): what generated views are rendered from. */
     function draftFor(proposal: EngineerProposal | null): ProcModel {
       const run = mustRun();
@@ -500,6 +536,20 @@ export function createRunStore(deps: RunDeps): StoreApi<RunState> {
         if (!get().proposal) set({ proposal: (await deps.ipc.runRead(run.id)).proposal });
         return;
       }
+      // photos the measuring job flagged as another asset (colours, far cameras) stop here, as an
+      // AI-reported conflict does, until the person drops them
+      const local = get().evidence?.identity;
+      if (local && !local.sameAsset) {
+        const excluded = new Set(get().excludedImages);
+        const open = local.conflicts.filter((c) => c.imageIds.some((id) => !excluded.has(id)));
+        if (open.length) {
+          const ids = [...new Set(open.flatMap((x) => x.imageIds))].filter(
+            (id) => !excluded.has(id),
+          );
+          set({ conflicts: open });
+          throw new StageFailed(runText.conflict(ids.join(', ')));
+        }
+      }
       if (!deps.online()) {
         set({ notice: runText.offline(), proposal: null });
         await saveStage('identify', { status: 'skipped', hash, message: runText.offline() });
@@ -511,6 +561,8 @@ export function createRunStore(deps: RunDeps): StoreApi<RunState> {
       const evidenceImages = await packImages();
       check(t);
       let proposal: EngineerProposal | null = null;
+      /** The mean silhouette overlap of `proposal`'s draft, once computed. */
+      let proposalFit: number | null = null;
       let skipped: string | null = null;
       for (let pass = 1; pass <= passes; pass++) {
         let images = evidenceImages;
@@ -576,7 +628,14 @@ export function createRunStore(deps: RunDeps): StoreApi<RunState> {
           set({ conflicts });
           throw new StageFailed(runText.conflict(ids.join(', ')));
         }
-        proposal = out.proposal;
+        // passes 2 and 3: the local silhouette overlap decides whether a correction is kept
+        const kept: { proposal: EngineerProposal; fit: number | null } | null =
+          pass > 1 && proposal ? await judge(proposal, proposalFit, out.proposal, pass) : null;
+        check(t);
+        if (kept) {
+          proposal = kept.proposal;
+          proposalFit = kept.fit;
+        } else proposal = out.proposal;
         if (out.stopped === 'budget') {
           skipped = null;
           set({ notice: runText.costCap() });

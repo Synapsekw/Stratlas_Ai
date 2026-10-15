@@ -3645,6 +3645,8 @@ export const en = {
   'eng.msg.notPrepared': 'The request could not be prepared.',
   'eng.msg.costCap': 'The cost cap of this run is reached: the best draft so far is kept.',
   'eng.msg.conflict': 'These images may show a different asset: {ids}. Drop them, then run again.',
+  'eng.msg.correctionDropped':
+    'Pass {pass}: the correction fitted the silhouettes worse ({after} against {before}), so the earlier draft is kept.',
   'eng.msg.noDraft': 'There is no draft model to check.',
   'eng.msg.validatorErrors_one': '{count} validator error',
   'eng.msg.validatorErrors_other': '{count} validator errors',
