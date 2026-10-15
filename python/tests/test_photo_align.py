@@ -372,14 +372,11 @@ def test_three_quaternion_of_a_nadir_camera_looks_down():
     assert np.allclose(M @ [0, 1, 0], [0, 0, -1], atol=1e-9)
 
 
-def test_review_copies_of_a_photos_layer_are_placed_by_the_layer_poses(odm, project):
-    """Review copies carry no EXIF: their positions come from the layer's poses, and ODM is told
-    them in geo.txt (it would otherwise see photos with no GPS and leave the model unplaced)."""
+def _layer_run(odm, project, poses, origin, datum=None, exif=()):
+    """A photos layer of review copies (no EXIF) at ``poses``, plus photos with their own GPS
+    (``exif``: synthetic_jpeg keyword sets), run through photo.align; geo.txt rows by photo id."""
     from PIL import Image as PILImage
-    from pyproj import Transformer
 
-    origin = [245884.9, 3179597.1, 0.0]
-    poses = [[0.0, 60.0, 0.0], [10.0, 60.0, -5.0], [20.0, 61.0, -10.0]]
     items = []
     for k, pos in enumerate(poses):
         pixels = np.random.default_rng(k + 7).integers(0, 255, (120, 160, 3), dtype=np.uint8)
@@ -395,12 +392,16 @@ def test_review_copies_of_a_photos_layer_are_placed_by_the_layer_poses(odm, proj
                 "lens": {"model": "pinhole", "hfovDeg": 84},
             }
         )
+    for k, kw in enumerate(exif):
+        synthetic_jpeg(project / "photos" / f"e{k}.jpg", **kw)
+        # the layer has a pose for these too: the photo's own GPS wins
+        items.append({"id": f"e{k}", "src": {"path": f"photos/e{k}.jpg"}, "pos": [0.0, 999.0, 0.0]})
     manifest = {
         "schema": "aio.project/1",
         "crs": {"epsg": 32639},
         "origin": origin,
-        "verticalDatum": {"absAltOffsetM": 0},
         "layers": [{"kind": "photos", "id": "photos", "name": "Flight", "visible": True, "items": items}],
+        **({"verticalDatum": datum} if datum is not None else {}),
     }
     (project / "manifest.json").write_text(json.dumps(manifest), "utf-8")
     result, _ = run_job(
@@ -409,16 +410,60 @@ def test_review_copies_of_a_photos_layer_are_placed_by_the_layer_poses(odm, proj
     assert result["status"] == "done"
     base = project / "photogrammetry" / "r1"
     geo = (base / "odm" / "geo.txt").read_text().splitlines()
-    assert geo[0] == "EPSG:4326" and len(geo) == 1 + len(poses)
-    to_ll = Transformer.from_crs(32639, 4326, always_xy=True)
+    assert geo[0] == "EPSG:4326" and len(geo) == 1 + len(poses) + len(exif)
     names = json.loads((base / "odm" / "names.json").read_text())
-    rows = {names[r.split()[0]]: [float(v) for v in r.split()[1:4]] for r in geo[1:]}
-    for k, (x, y, z) in enumerate(poses):
-        lon, lat = to_ll.transform(origin[0] + x, origin[1] - z)
-        got = rows[f"p{k}"]
-        assert got[0] == pytest.approx(lon, abs=1e-7) and got[1] == pytest.approx(lat, abs=1e-7)
-        assert got[2] == pytest.approx(origin[2] + y, abs=1e-3)
     args = json.loads(odm.read_text().splitlines()[0])
     assert args[args.index("--geo") + 1].endswith("geo.txt")
     run = json.loads((base / "run.json").read_text("utf-8"))
     assert not any("no GPS" in w for w in run.get("warnings", []))
+    return {names[r.split()[0]]: [float(v) for v in r.split()[1:4]] for r in geo[1:]}, run
+
+
+POSES = [[0.0, 60.0, 0.0], [10.0, 60.0, -5.0], [20.0, 61.0, -10.0]]
+
+
+# None: no vertical datum, so the project placed the photos by its take-off rule
+@pytest.mark.parametrize("datum", [{"absAltOffsetM": 0}, {"absAltOffsetM": -31.5}, None])
+def test_review_copies_of_a_photos_layer_are_placed_by_the_layer_poses(odm, project, datum):
+    """Review copies carry no EXIF: their positions come from the layer's poses, and ODM is told
+    them in geo.txt (it would otherwise see photos with no GPS and leave the model unplaced). The
+    pose height is already the project height: no datum offset or geoid is applied to it again."""
+    from pyproj import Transformer
+
+    origin = [245884.9, 3179597.1, 12.5]
+    rows, run = _layer_run(odm, project, POSES, origin, datum)
+    to_ll = Transformer.from_crs(32639, 4326, always_xy=True)
+    for k, (x, y, z) in enumerate(POSES):
+        lon, lat = to_ll.transform(origin[0] + x, origin[1] - z)
+        got = rows[f"p{k}"]
+        assert got[0] == pytest.approx(lon, abs=1e-7) and got[1] == pytest.approx(lat, abs=1e-7)
+        assert got[2] == pytest.approx(origin[2] + y, abs=1e-3)
+    assert not any("no altitude" in w or "as logged" in w for w in run.get("warnings", []))
+
+
+def test_a_mixed_layer_keeps_each_photos_own_height_rule(odm, project):
+    """Photos with their own GPS take the datum offset; the layer-placed copies keep their pose height."""
+    origin = [245884.9, 3179597.1, 12.5]
+    exif = [{"lat": SITE_LAT + k * 1e-4, "lon": SITE_LON, "alt": 90.0 + k} for k in range(3)]
+    rows, _ = _layer_run(odm, project, POSES[:2], origin, {"absAltOffsetM": -31.5}, exif)
+    for k, (_, y, _) in enumerate(POSES[:2]):
+        assert rows[f"p{k}"][2] == pytest.approx(origin[2] + y, abs=1e-3)
+    for k in range(3):
+        assert rows[f"e{k}"][1] == pytest.approx(SITE_LAT + k * 1e-4, abs=1e-6)
+        assert rows[f"e{k}"][2] == pytest.approx(90.0 + k - 31.5, abs=1e-3)
+
+
+def test_rtk_photos_in_a_layer_leave_the_layer_heights_unconverted(odm, project, monkeypatch):
+    """Mostly RTK photos and no datum: their ellipsoidal heights go through the geoid, but the
+    layer-placed copies' heights are project heights already and stay as they are."""
+    monkeypatch.setattr(A.C, "geoid_grid", lambda name: Path("geoid.tif"))
+    monkeypatch.setattr(
+        A.C, "ellipsoidal_to_orthometric", lambda lon, lat, h, grid: np.asarray(h, dtype=float) - 20.0
+    )
+    origin = [245884.9, 3179597.1, 12.5]
+    rtk = {"rtk_flag": 50, "rtk_std": (0.01, 0.01, 0.02)}
+    exif = [{"lat": SITE_LAT + k * 1e-4, "lon": SITE_LON, "alt": 90.0 + k, **rtk} for k in range(3)]
+    rows, _ = _layer_run(odm, project, POSES[:1], origin, None, exif)
+    assert rows["p0"][2] == pytest.approx(origin[2] + POSES[0][1], abs=1e-3)
+    for k in range(3):
+        assert rows[f"e{k}"][2] == pytest.approx(90.0 + k - 20.0, abs=1e-3)
