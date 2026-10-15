@@ -100,11 +100,14 @@ export interface SceneHandle {
    * unsubscribe function. With `always`, the bounds widen the view even while a model or cloud is
    * shown (panorama markers can stand far outside a small model); without it they only count when
    * there is none. With `solid`, the bounds count as content like a model (a point cloud): Home,
-   * auto-fit, the shadows and the zoom-out cap include them; return null while hidden.
+   * auto-fit, the shadows and the zoom-out cap include them; return null while hidden. `near` is
+   * the part of the content within FAR_M of the origin (photo places a bad GPS put far away left
+   * out), framed by Centre on project; without it the bounds count there whole when their centre
+   * lies within FAR_M.
    */
   addContentBounds(
     bounds: () => Box3 | null,
-    opts?: { always?: boolean; solid?: boolean },
+    opts?: { always?: boolean; solid?: boolean; near?: () => Box3 | null },
   ): () => void;
   /** Register a mesh that should receive projected video. */
   addProjectionReceiver(mesh: Mesh): () => void;
@@ -183,6 +186,12 @@ export interface EngineStage extends SceneHandle {
    * has loaded.
    */
   contentBounds(): Box3 | null;
+  /**
+   * What Centre on project frames, in the local frame: the visible models and clouds; without
+   * them the flights and photos within FAR_M of the origin (photo places a bad GPS put far away
+   * left out); null when there is neither.
+   */
+  siteBounds(): Box3 | null;
   /**
    * An extent the camera must be able to back off far enough to see (a walk being placed), under
    * `key`; null removes it. It widens the camera's distance cap only: Home and framing still

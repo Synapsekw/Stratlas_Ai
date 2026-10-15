@@ -1,12 +1,14 @@
+import { FAR_M } from '@aio/engine';
 import { localToProject } from '@aio/geo';
 import type { Vec3 } from '@aio/schema';
 import { createStore, type StoreApi } from 'zustand/vanilla';
 
 /**
  * Data that lands far from the project origin (a cloud in the right place, an origin from a
- * camera's wrong GPS): named in a notice that offers to move the origin there.
+ * camera's wrong GPS): named in a notice that offers to move the origin there. The engine's
+ * threshold, shared with Centre on project and the street map.
  */
-export const FAR_M = 10_000;
+export { FAR_M };
 
 export interface Extent {
   layerId: string;

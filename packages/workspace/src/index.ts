@@ -43,7 +43,12 @@ export interface CameraRequest {
         dir?: Vec3;
       }
     | { kind: 'selection'; selection: Selection }
-    | { kind: 'home' };
+    | { kind: 'home' }
+    /**
+     * Centre on project: the models and clouds, else what lies within FAR_M of the origin
+     * (photo places a bad GPS put far away left out), else the origin.
+     */
+    | { kind: 'site' };
 }
 
 export interface WorkspaceState {

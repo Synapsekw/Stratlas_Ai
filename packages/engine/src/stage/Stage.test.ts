@@ -184,7 +184,7 @@ describe('Stage', () => {
     container.remove();
   });
 
-  function make(adapter?: LayerAdapter) {
+  function make(adapter?: LayerAdapter, others: LayerAdapter[] = []) {
     const store = createWorkspace();
     const { renderer, calls } = fakeRenderer();
     const handles: { visible: boolean; disposed: boolean }[] = [];
@@ -193,7 +193,8 @@ describe('Stage', () => {
       store,
       resolveUrl: (_id, ref) => ('path' in ref ? ref.path : ref.hash),
       createRenderer: () => renderer,
-      getAdapter: (kind) => (kind === 'mesh' ? (adapter ?? boxAdapter(handles)) : undefined),
+      getAdapter: (kind) =>
+        kind === 'mesh' ? (adapter ?? boxAdapter(handles)) : others.find((a) => a.kind === kind),
     });
     const resize = (width: number, height: number) => {
       for (const cb of observers) cb([{ contentRect: { width, height } }]);
@@ -483,6 +484,136 @@ describe('Stage', () => {
     expect(stage.contentBounds()?.max.toArray()).toEqual([5, 10, 5]);
     off();
     stage.dispose();
+  });
+
+  describe('a removed layer the camera looked at', () => {
+    // photo places frame like the photos adapter: bounds while there is no model
+    const placesAdapter: LayerAdapter = {
+      kind: 'photos',
+      create: async (layer, ctx) => {
+        await Promise.resolve();
+        const items = layer.kind === 'photos' ? layer.items : [];
+        const box = new Box3().setFromPoints(
+          items.map((p) => new Vector3(...(p.pos ?? [0, 0, 0]))),
+        );
+        const off = ctx.scene.addContentBounds(() => box);
+        return { setVisible: () => undefined, dispose: off };
+      },
+    };
+    const places = (id: string, x: number): Layer => ({
+      kind: 'photos',
+      id,
+      name: id,
+      visible: true,
+      items: [
+        { id: `${id}-a`, src: { path: `photos/${id}-a.jpg` }, pos: [x - 100, 2, -100] },
+        { id: `${id}-b`, src: { path: `photos/${id}-b.jpg` }, pos: [x + 100, 2, 100] },
+      ],
+    });
+    const plan = (v: { target: number[] }) => Math.hypot(v.target[0] ?? 0, v.target[2] ?? 0);
+
+    async function opened() {
+      vi.stubGlobal('matchMedia', () => ({ matches: true }));
+      const made = make(undefined, [placesAdapter]);
+      made.resize(800, 600);
+      made.store.getState().openProject(project([places('drone', 0), places('phone', 91_000)]));
+      await flush();
+      return made;
+    }
+    const without = (store: ReturnType<typeof make>['store'], id: string) => {
+      const m = store.getState().project?.manifest;
+      if (!m) throw new Error('no project');
+      store.getState().replaceManifest({ ...m, layers: m.layers.filter((l) => l.id !== id) });
+    };
+
+    it('frames the project again when the layer the camera looked at goes', async () => {
+      const { stage, store } = await opened();
+      store.getState().flyTo({ kind: 'point', p: [91_000, 0, 0], distance: 300 });
+      expect(plan(stage.saveView())).toBeGreaterThan(90_000);
+      without(store, 'phone');
+      await flush();
+      expect(plan(stage.saveView())).toBeLessThan(200);
+      stage.dispose();
+    });
+
+    it('leaves the view alone when the camera still looks at the project', async () => {
+      const { stage, store } = await opened();
+      store.getState().flyTo({ kind: 'point', p: [91_050, 0, 20], distance: 300 });
+      const before = stage.saveView();
+      without(store, 'drone');
+      await flush();
+      expect(stage.saveView()).toEqual(before);
+      stage.dispose();
+    });
+  });
+
+  describe('centre on project', () => {
+    const plan = (v: { target: number[] }) => Math.hypot(v.target[0] ?? 0, v.target[2] ?? 0);
+
+    it('frames the photos near the origin and leaves out photos a bad GPS put far away', async () => {
+      vi.stubGlobal('matchMedia', () => ({ matches: true }));
+      const { stage, store, resize } = make();
+      resize(800, 600);
+      store.getState().openProject(project([]));
+      await flush();
+      // a drone survey around the origin, and a layer of phone photos 91 km away
+      const drone = new Box3(new Vector3(-150, 0, -100), new Vector3(150, 60, 100));
+      const phones = new Box3(new Vector3(91_000, 0, 0), new Vector3(91_200, 5, 300));
+      const offA = stage.addContentBounds(() => drone);
+      const offB = stage.addContentBounds(() => phones);
+      // one layer mixing near and far photos says which part is near
+      const mixed = new Box3(new Vector3(-50, 0, -50), new Vector3(90_000, 5, 50));
+      const mixedNear = new Box3(new Vector3(-50, 0, -50), new Vector3(50, 5, 50));
+      const offC = stage.addContentBounds(() => mixed, { near: () => mixedNear });
+      // Home still frames everything
+      stage.setViewPreset('home');
+      expect(plan(stage.saveView())).toBeGreaterThan(10_000);
+      store.getState().flyTo({ kind: 'site' });
+      const v = stage.saveView();
+      expect(plan(v)).toBeLessThan(200);
+      const range = Math.hypot(...v.position.map((p, i) => p - (v.target[i] ?? 0)));
+      expect(range).toBeLessThan(2_000);
+      expect(stage.controls.minDistance).toBeLessThan(5);
+      expect(store.getState().camera).toBeNull();
+      offA();
+      offB();
+      offC();
+      stage.dispose();
+    });
+
+    it('frames the models and clouds when there are any', async () => {
+      vi.stubGlobal('matchMedia', () => ({ matches: true }));
+      const { stage, store, resize } = make();
+      resize(800, 600);
+      store.getState().openProject(project([]));
+      await flush();
+      const cloud = new Box3(new Vector3(300, 0, -20), new Vector3(400, 30, 20));
+      const photos = new Box3(new Vector3(-500, 0, -500), new Vector3(-400, 5, -400));
+      const offA = stage.addContentBounds(() => cloud, { solid: true });
+      const offB = stage.addContentBounds(() => photos);
+      store.getState().flyTo({ kind: 'site' });
+      expect(stage.saveView().target[0]).toBeCloseTo(350, 0);
+      offA();
+      offB();
+      stage.dispose();
+    });
+
+    it('looks at the origin of an empty project', async () => {
+      vi.stubGlobal('matchMedia', () => ({ matches: true }));
+      const { stage, store, resize } = make();
+      resize(800, 600);
+      store.getState().openProject(project([]));
+      await flush();
+      // somewhere else first
+      store.getState().flyTo({ kind: 'point', p: [5_000, 0, 5_000], distance: 50 });
+      store.getState().flyTo({ kind: 'site' });
+      const v = stage.saveView();
+      expect(plan(v)).toBeLessThan(1);
+      const range = Math.hypot(...v.position.map((p, i) => p - (v.target[i] ?? 0)));
+      expect(range).toBeGreaterThan(100);
+      expect(range).toBeLessThan(2_000);
+      stage.dispose();
+    });
   });
 
   it('a reach lets the camera back off far enough to see it, without reframing', async () => {

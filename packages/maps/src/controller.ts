@@ -1274,6 +1274,9 @@ export function createMapController(
           ],
           { padding: 40, maxZoom: 17, duration: ms(500) },
         );
+    } else if (t.kind === 'site') {
+      // Centre on project: the origin, close enough to see the site
+      map.easeTo({ center: proj.toLonLat([0, 0, 0]), zoom: 16, duration: ms(500) });
     } else if (t.kind === 'point') {
       const at = proj.toLonLat(t.p);
       const d = t.distance;

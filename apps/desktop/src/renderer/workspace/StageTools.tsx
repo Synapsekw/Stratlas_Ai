@@ -204,7 +204,7 @@ const PRESETS: { preset: ViewPreset; label: string }[] = [
   { preset: 'north', label: 'North' },
 ];
 
-/** Whole site, fly to the selection and the view presets (north-up top, north, isometric). */
+/** Whole site, centre on project, fly to the selection and the view presets (north-up top, north, isometric). */
 export function ViewTools({ stage, map }: { stage: EngineStage | null; map: boolean }) {
   const selection = useWorkspace((s) => s.selection);
   return (
@@ -215,6 +215,14 @@ export function ViewTools({ stage, map }: { stage: EngineStage | null; map: bool
         shortcut="scene.home"
         onClick={() => {
           workspace.getState().flyTo({ kind: 'home' });
+        }}
+      />
+      <Tool
+        icon="crosshair"
+        label="Centre on project"
+        shortcut="scene.site"
+        onClick={() => {
+          workspace.getState().flyTo({ kind: 'site' });
         }}
       />
       <Tool

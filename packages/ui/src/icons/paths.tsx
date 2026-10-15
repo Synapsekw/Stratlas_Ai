@@ -351,6 +351,13 @@ export const ICONS = {
       <path d="M10 2v3.5M10 14.5V18M2 10h3.5M14.5 10H18" />
     </>
   ),
+  crosshair: (
+    <>
+      <circle cx="10" cy="10" r="6.5" />
+      <path d="M10 1.5v5M10 13.5v5M1.5 10h5M13.5 10h5" />
+      <circle cx="10" cy="10" r="1" fill="currentColor" />
+    </>
+  ),
   download: (
     <>
       <path d="M10 3v10M6 9l4 4 4-4M4 16.5h12" />

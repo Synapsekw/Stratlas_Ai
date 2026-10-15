@@ -897,6 +897,7 @@ export const en = {
   'keys.scene.modeMap': 'Show the map',
   'keys.scene.modeSplit': 'Show 3D and map side by side',
   'keys.scene.home': 'Whole site',
+  'keys.scene.site': 'Centre on project',
   'keys.scene.flySelection': 'Fly to the selection',
   'keys.scene.measure': 'Measure on or off',
   'keys.scene.section': 'Section on or off',

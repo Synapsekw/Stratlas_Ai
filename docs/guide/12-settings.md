@@ -114,6 +114,7 @@ The same list is in **Settings**, **Keyboard**. On a Mac, Ctrl is ⌘ (Command) 
 | 2            | Show the map                                              |
 | 3            | Show 3D and map side by side                              |
 | H            | Whole site                                                |
+| G            | Centre on project                                         |
 | F            | Fly to the selection                                      |
 | M            | Measure on or off                                         |
 | X            | Section on or off                                         |

@@ -241,6 +241,14 @@ export function Palette() {
           ws.flyTo({ kind: 'home' });
         }),
       );
+      action(
+        'site',
+        'Centre on project',
+        'crosshair',
+        scene(() => {
+          ws.flyTo({ kind: 'site' });
+        }),
+      );
       // the base maps, as the Map menu on the map offers them (a greyed one is not listed)
       const onMap = (fn: () => void) =>
         scene(() => {

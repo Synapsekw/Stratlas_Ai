@@ -30,7 +30,7 @@ import {
   type CameraPose,
   type ViewPreset,
 } from '../camera/cameraMath';
-import { engineConfig, type StageQuality } from '../config';
+import { FAR_M, engineConfig, type StageQuality } from '../config';
 import { LayerSync } from '../layers/layerSync';
 import { FrameStats } from '../overlay/declutter';
 import { Overlay, type CalloutSpec } from '../overlay/Overlay';
@@ -83,6 +83,8 @@ const FLY_MS = 900;
  * the usual margin, so the asset fills the stage on first open.
  */
 const HOME_MARGIN = 1.05;
+/** Centre on project with nothing near the origin to frame: a view this far around it, metres. */
+const SITE_DEFAULT_RADIUS = 200;
 /** The orbit stays above the horizon (a little below, to look along the ground). */
 const MAX_POLAR = Math.PI * 0.53;
 const CLICK_SLOP_PX = 5;
@@ -173,6 +175,8 @@ export class Stage implements EngineStage {
   private readonly alwaysBounds = new Set<() => Box3 | null>();
   /** The providers of `boundsProviders` that frame like a model (point clouds), model or not. */
   private readonly solidBounds = new Set<() => Box3 | null>();
+  /** The part of a `boundsProviders` entry within FAR_M of the origin, where it says. */
+  private readonly nearBounds = new Map<() => Box3 | null, () => Box3 | null>();
   /** Extents the camera must be able to back off to see (`setReach`), by key. */
   private readonly reach = new Map<string, Box3>();
   /** The content's box as last framed (empty before content), for the camera's distance cap. */
@@ -198,6 +202,8 @@ export class Stage implements EngineStage {
   private height = 0;
   private flight: Flight | null = null;
   private autoFit = true;
+  /** A layer went: frame the project again if the camera now looks at nothing (`contentChanged`). */
+  private refitIfStrayed = false;
   private shadowDirty = true;
   private pendingCamera: CameraRequest | null = null;
   private pendingSelection: Selection | null = null;
@@ -373,15 +379,17 @@ export class Stage implements EngineStage {
 
   addContentBounds(
     bounds: () => Box3 | null,
-    opts?: { always?: boolean; solid?: boolean },
+    opts?: { always?: boolean; solid?: boolean; near?: () => Box3 | null },
   ): () => void {
     this.boundsProviders.add(bounds);
     if (opts?.always) this.alwaysBounds.add(bounds);
     if (opts?.solid) this.solidBounds.add(bounds);
+    if (opts?.near) this.nearBounds.set(bounds, opts.near);
     this.contentChanged();
     return () => {
       this.alwaysBounds.delete(bounds);
       this.solidBounds.delete(bounds);
+      this.nearBounds.delete(bounds);
       if (this.boundsProviders.delete(bounds) && !this.disposed) this.contentChanged();
     };
   }
@@ -926,8 +934,13 @@ export class Stage implements EngineStage {
     ) {
       // Same project, edited manifest (import, alignment): only changed layers reload. A moved
       // origin (a re-centre) opens it afresh: adapters read the origin when they create a layer.
+      const kept = new Set(s.project.manifest.layers.map((l) => l.id));
+      const removed = this.project.manifest.layers.some((l) => !kept.has(l.id));
       this.project = s.project;
+      // a layer the camera looked at may go (far photos deleted): checked once the bounds follow
+      if (removed) this.refitIfStrayed = true;
       this.sync.sync(s.project.manifest.layers, s.hidden);
+      if (this.refitIfStrayed) this.contentChanged();
     } else if (s.project !== prev.project) this.openProject(s.project);
     else if (s.hidden !== prev.hidden && s.project) {
       this.sync?.sync(s.project.manifest.layers, s.hidden);
@@ -1031,6 +1044,10 @@ export class Stage implements EngineStage {
         this.controls.update();
       }
     }
+    if (this.refitIfStrayed) {
+      this.refitIfStrayed = false;
+      if (this.strayed(box)) this.fly(this.siteFrame());
+    }
     if (this.pendingSelection) this.applySelection(this.pendingSelection);
     if (this.pendingCamera) this.handleCamera(this.pendingCamera);
     this.rebuildCallouts();
@@ -1038,7 +1055,8 @@ export class Stage implements EngineStage {
     this.need = true;
   }
 
-  private contentBox(): Box3 {
+  /** The visible models and clouds (without ground imagery or modelled terrain). */
+  private solidBox(): Box3 {
     const box = new Box3();
     const tmp = new Box3();
     for (const [root] of this.targets) {
@@ -1051,6 +1069,12 @@ export class Stage implements EngineStage {
       const b = bounds();
       if (b && !b.isEmpty()) box.union(b);
     }
+    return box;
+  }
+
+  private contentBox(): Box3 {
+    const box = this.solidBox();
+    const tmp = new Box3();
     // no model or cloud yet: what the flights and photos cover (a video-first project)
     if (box.isEmpty()) {
       for (const bounds of this.boundsProviders) {
@@ -1069,6 +1093,20 @@ export class Stage implements EngineStage {
 
   contentBounds(): Box3 | null {
     const box = this.contentBox();
+    return box.isEmpty() ? null : box;
+  }
+
+  siteBounds(): Box3 | null {
+    const box = this.solidBox();
+    if (!box.isEmpty()) return box;
+    const centre = new Vector3();
+    for (const bounds of this.boundsProviders) {
+      const near = this.nearBounds.get(bounds);
+      const b = near ? near() : bounds();
+      if (!b || b.isEmpty()) continue;
+      b.getCenter(centre);
+      if (near || Math.hypot(centre.x, centre.z) <= FAR_M) box.union(b);
+    }
     return box.isEmpty() ? null : box;
   }
 
@@ -1121,6 +1159,34 @@ export class Stage implements EngineStage {
     this.need = true;
   }
 
+  /**
+   * The Centre on project view (`siteBounds`, else around the origin). Zooming closes in on the
+   * site from there, however far the rest of the content reaches.
+   */
+  private siteFrame(): CameraPose {
+    const box = this.siteBounds();
+    const sphere = box
+      ? { center: box.getCenter(new Vector3()), radius: box.getSize(new Vector3()).length() / 2 }
+      : { center: new Vector3(), radius: SITE_DEFAULT_RADIUS };
+    this.controls.minDistance = Math.max(sphere.radius * 0.002, 0.05);
+    this.autoFit = false;
+    return poseForPreset('iso', sphere, this.camera.fov, this.aspect, HOME_MARGIN);
+  }
+
+  /**
+   * The orbit target lies more than twice their radius away from both the content and the site
+   * bounds: the camera looks at empty ground (the layer it looked at went).
+   */
+  private strayed(content: Box3): boolean {
+    const target = this.controls.target;
+    const near = (box: Box3 | null) => {
+      if (!box || box.isEmpty()) return false;
+      const radius = Math.max(box.getSize(new Vector3()).length() / 2, SITE_DEFAULT_RADIUS);
+      return box.distanceToPoint(target) <= 2 * radius;
+    };
+    return !near(content) && !near(this.siteBounds());
+  }
+
   private handleCamera(req: CameraRequest) {
     const store = this.opts.store.getState();
     const current: CameraPose = { position: this.camera.position, target: this.controls.target };
@@ -1129,6 +1195,9 @@ export class Stage implements EngineStage {
     if (t.kind === 'home') {
       const sphere = this.contentSphere();
       if (sphere) pose = poseForPreset('iso', sphere, this.camera.fov, this.aspect, HOME_MARGIN);
+    } else if (t.kind === 'site') {
+      if (this.siteBounds() || !this.sync || this.sync.pendingCount() === 0)
+        pose = this.siteFrame();
     } else if (t.kind === 'point') {
       pose = poseForPoint(
         new Vector3(...t.p),

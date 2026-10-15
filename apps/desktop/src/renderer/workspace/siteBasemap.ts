@@ -8,7 +8,7 @@
  * and terrain around the site from packs. Nothing is drawn, and nothing fails, when no installed
  * pack covers the site.
  */
-import type { EngineStage } from '@aio/engine';
+import { FAR_M, type EngineStage } from '@aio/engine';
 import {
   createStreetRings,
   frameProjection,
@@ -259,12 +259,23 @@ export function streetMapTool(
   };
 }
 
-/** Every tenth flight pose and every photo place of the project's video and photo layers. */
-async function contentPoints(projectId: string, manifest: ProjectManifest): Promise<Vec3[]> {
+/**
+ * The photo places of the project's photo layers within FAR_M of the origin: photos a bad GPS put
+ * far away would pull the street map off the site.
+ */
+export function photoPlaces(manifest: ProjectManifest): Vec3[] {
   const points: Vec3[] = [];
   for (const l of manifest.layers) {
-    if (l.kind === 'photos') for (const p of l.items) if (p.pos) points.push(p.pos);
+    if (l.kind !== 'photos') continue;
+    for (const p of l.items)
+      if (p.pos && Math.hypot(p.pos[0], p.pos[2]) <= FAR_M) points.push(p.pos);
   }
+  return points;
+}
+
+/** Every tenth flight pose and the photo places near the origin (`photoPlaces`). */
+async function contentPoints(projectId: string, manifest: ProjectManifest): Promise<Vec3[]> {
+  const points = photoPlaces(manifest);
   const videos = manifest.layers.filter((l) => l.kind === 'video');
   await Promise.all(
     videos.map(async (l) => {
@@ -424,7 +435,8 @@ export function useSiteBasemapLayer(
     let live = true;
     const points = contentPoints(projectId, manifest).catch((): Vec3[] => []);
     const stop = settledBox(
-      () => stage.contentBounds(),
+      // the models and clouds, else the flights and photos near the origin (not the far ones)
+      () => stage.siteBounds(),
       (box) => {
         void points.then((p) => {
           if (!live) return;

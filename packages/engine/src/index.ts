@@ -11,6 +11,7 @@ export {
 } from './registry';
 export { SceneView, type SceneViewProps } from './SceneView';
 export {
+  FAR_M,
   configureEngine,
   type EngineConfig,
   type EngineMemory,

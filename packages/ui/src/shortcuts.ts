@@ -105,6 +105,7 @@ export const SHORTCUTS = [
   { id: 'scene.modeMap', scope: 'scene', keys: ['2'], label: 'keys.scene.modeMap' },
   { id: 'scene.modeSplit', scope: 'scene', keys: ['3'], label: 'keys.scene.modeSplit' },
   { id: 'scene.home', scope: 'scene', keys: ['H'], label: 'keys.scene.home' },
+  { id: 'scene.site', scope: 'scene', keys: ['G'], label: 'keys.scene.site' },
   { id: 'scene.flySelection', scope: 'scene', keys: ['F'], label: 'keys.scene.flySelection' },
   { id: 'scene.measure', scope: 'scene', keys: ['M'], label: 'keys.scene.measure' },
   { id: 'scene.section', scope: 'scene', keys: ['X'], label: 'keys.scene.section' },

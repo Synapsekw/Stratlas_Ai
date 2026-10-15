@@ -8,6 +8,7 @@
 
 - Drag with the left mouse button to orbit, with the right button to pan; the wheel zooms.
 - **H** or **Whole site**: frame the whole project.
+- **G** or **Centre on project**: frame the models and clouds, or without them what lies within 10 km of the project origin, so photos with a wrong GPS far away do not pull the view off the site.
 - **F** or **Fly to selection**: fly to what you picked.
 - **View presets**: **Iso**, **Top** or **North**. Clicking the compass also turns the view north-up from the top.
 - **Esc**, or clicking the active tool again, returns to the pointer.

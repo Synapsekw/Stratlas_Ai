@@ -1,6 +1,13 @@
 import type { AssetRef } from '@aio/schema';
 import { assetUrl } from '@aio/workspace';
 
+/**
+ * Plan distance from the project origin past which data counts as far away (a camera's wrong GPS,
+ * a cloud placed elsewhere), metres: Centre on project and the street map leave it out, and the
+ * builder names it in a notice.
+ */
+export const FAR_M = 10_000;
+
 /** Renderer quality the graphics preset sets (see the app's GPU tiers). */
 export interface StageQuality {
   /** Upper bound on the device pixel ratio the canvas renders at. */

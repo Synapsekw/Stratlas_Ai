@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   boxPoints,
   landscapeOn,
+  photoPlaces,
   settledBox,
   siteBasemap,
   siteBasemapOn,
@@ -81,6 +82,33 @@ describe('site street map', () => {
     expect(small.maxX - small.minX).toBe(800);
     const huge = streetMapExtent([[40_000, 0, 0]]);
     expect(huge.maxX - huge.minX).toBe(12_000);
+  });
+
+  it('stays on the site when a photo layer sits 91 km away', () => {
+    const photos = (id: string, at: (i: number) => [number, number, number], n: number) =>
+      ({
+        kind: 'photos',
+        id,
+        name: id,
+        visible: true,
+        items: Array.from({ length: n }, (_, i) => ({
+          id: `${id}-${i}`,
+          src: { path: `photos/${id}-${i}.jpg` },
+          pos: at(i),
+        })),
+      }) as Layer;
+    const m = manifest([
+      photos('drone', (i) => [(i % 20) * 10 - 100, 60, Math.floor(i / 20) * 10 - 100], 420),
+      // phone photos with a wrong GPS
+      photos('phone', (i) => [91_000 + i, 2, 500], 104),
+    ]);
+    const e = streetMapExtent(photoPlaces(m));
+    expect(Math.abs((e.minX + e.maxX) / 2)).toBeLessThan(200);
+    expect(Math.abs((e.minZ + e.maxZ) / 2)).toBeLessThan(200);
+    expect(e.minX).toBeLessThan(-100);
+    expect(e.maxX).toBeGreaterThan(100);
+    expect(e.minZ).toBeLessThan(-100);
+    expect(e.maxZ).toBeGreaterThan(100);
   });
 
   it('measures a model or a cloud by the corners of its box', () => {

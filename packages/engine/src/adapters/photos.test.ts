@@ -2,7 +2,14 @@
 import type { Layer } from '@aio/schema';
 import { createWorkspace } from '@aio/workspace';
 import type { InstancedMesh, LineSegments } from 'three';
-import { PerspectiveCamera, Scene, Vector3, type Plane, type WebGLRenderer } from 'three';
+import {
+  PerspectiveCamera,
+  Scene,
+  Vector3,
+  type Box3,
+  type Plane,
+  type WebGLRenderer,
+} from 'three';
 import { describe, expect, it } from 'vitest';
 import type { SceneHandle } from '../types';
 import {
@@ -150,6 +157,33 @@ describe('photo frustums', () => {
     if (!p) throw new Error('no photo');
     const tip = new Vector3(0, 0, -1).applyMatrix4(photoMatrix(p, 0.5));
     expect(tip.toArray()).toEqual([0, 2, -0.5]);
+  });
+
+  it('tells Centre on project which photos lie near the origin', async () => {
+    const canvas = document.createElement('canvas');
+    const h = handle(canvas);
+    let near: (() => Box3 | null) | undefined;
+    let whole: (() => Box3 | null) | undefined;
+    h.addContentBounds = (b, opts) => {
+      whole = b;
+      near = opts?.near;
+      return () => undefined;
+    };
+    const mixed: PhotosLayer = {
+      ...layer,
+      items: [
+        ...layer.items,
+        // a phone's wrong GPS, 91 km away
+        { id: 'far', src: { path: 'photos/far.jpg' }, pos: [91_000, 2, 0], q: [0, 0, 0, 1] },
+      ],
+    };
+    const lh = await createPhotosAdapter(createWorkspace()).create(mixed, {
+      url: () => '',
+      scene: h,
+    });
+    expect(whole?.()?.max.x).toBe(91_000);
+    expect(near?.()?.max.x).toBe(2);
+    lh.dispose();
   });
 
   it('selects the clicked photo and paints it in the accent colour', async () => {

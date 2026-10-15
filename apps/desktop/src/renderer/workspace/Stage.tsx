@@ -780,6 +780,7 @@ export function Stage() {
       else if (k === 'scene.modeMap') sh.setStageMode('map');
       else if (k === 'scene.modeSplit') sh.setStageMode('split');
       else if (k === 'scene.home') ws.flyTo({ kind: 'home' });
+      else if (k === 'scene.site') ws.flyTo({ kind: 'site' });
       else if (k === 'scene.flySelection' && ws.selection)
         ws.flyTo({ kind: 'selection', selection: ws.selection });
       else if (k === 'scene.measure' && three)

@@ -18,6 +18,7 @@ import {
   Vector3,
 } from 'three';
 import type { StoreApi } from 'zustand/vanilla';
+import { FAR_M } from '../config';
 import { PALETTE } from '../palette';
 import type { LayerAdapter, LayerHandle } from '../types';
 import { MarkerLayer } from './markers';
@@ -370,8 +371,15 @@ export function createPhotosAdapter(
       el.addEventListener('pointerup', onUp);
       // where the photos were taken frames the view while there is no model or cloud
       const placed = new Box3().setFromPoints(located.map((p) => new Vector3(...p.pos)));
-      const unbound = scene.addContentBounds(() =>
-        group.visible && !placed.isEmpty() ? placed : null,
+      // Centre on project leaves out the photos a bad GPS put far from the origin
+      const near = new Box3().setFromPoints(
+        located
+          .filter((p) => Math.hypot(p.pos[0], p.pos[2]) <= FAR_M)
+          .map((p) => new Vector3(...p.pos)),
+      );
+      const unbound = scene.addContentBounds(
+        () => (group.visible && !placed.isEmpty() ? placed : null),
+        { near: () => (group.visible && !near.isEmpty() ? near : null) },
       );
       scene.requestRender();
 
