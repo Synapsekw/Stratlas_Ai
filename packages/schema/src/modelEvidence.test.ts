@@ -1,5 +1,11 @@
+import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
-import { EVIDENCE_LIMITS, EvidencePack, ModelEvidenceParams } from './modelEvidence';
+import {
+  EVIDENCE_LIMITS,
+  EvidencePack,
+  MODEL_EVIDENCE_MIN_PACK,
+  ModelEvidenceParams,
+} from './modelEvidence';
 
 function must<T>(x: T | undefined | null): T {
   if (x === undefined || x === null) throw new Error('expected a value');
@@ -141,5 +147,63 @@ describe('EvidencePack', () => {
     expect(
       EvidencePack.safeParse({ ...p, photos: [{ ...photo, dupOf: 'not-an-id' }] }).success,
     ).toBe(false);
+  });
+  it('takes the additive fields: levels, item residual and coverage, reasons, base, isolation', () => {
+    const p = pack([]);
+    const group = {
+      kind: 'light-candidate',
+      items: [{ centre: [1, 40, 2], size: 0.4, support: 60, residualM: 0.01, coverage: 0.5 }],
+      levels: [40],
+      metrics: {},
+    };
+    const extra = {
+      members: [group],
+      familyHints: {
+        fillRatio: 1,
+        slenderness: 6,
+        topFeatures: 3,
+        suggested: 'chimney',
+        reasons: ['x'],
+      },
+      baseInfo: { observed: false, basis: 'ground', gapM: 20 },
+      isolation: {
+        components: 2,
+        droppedPoints: 900,
+        dropped: [{ points: 900, min: [10, 0, -1], max: [12, 30, 1] }],
+      },
+      identity: {
+        sameAsset: false,
+        conflicts: [{ imageIds: ['img-photo-1'], reason: 'other asset' }],
+      },
+      rejectedSlices: { noFit: 1, radiusJump: 2, offAxis: 0 },
+    };
+    expect(EvidencePack.safeParse({ ...p, ...extra }).success).toBe(true);
+    expect(EvidencePack.safeParse(p).success).toBe(true); // all optional
+    const bad = { ...extra, baseInfo: { observed: true, basis: 'sea', gapM: 0 } };
+    expect(EvidencePack.safeParse({ ...p, ...bad }).success).toBe(false);
+    expect(
+      EvidencePack.safeParse({
+        ...p,
+        members: [{ ...group, items: [{ ...must(group.items[0]), coverage: 2 }] }],
+      }).success,
+    ).toBe(false);
+  });
+  it('names the first pack with model.evidence', () => {
+    expect(MODEL_EVIDENCE_MIN_PACK).toBe('0.9.0');
+  });
+  it('parses the pack the pipeline wrote for the partial synthetic stack', () => {
+    const raw: unknown = JSON.parse(
+      readFileSync(
+        new URL('./__fixtures__/engineering/evidence.partial-stack.json', import.meta.url),
+        'utf8',
+      ),
+    );
+    const r = EvidencePack.safeParse(raw);
+    expect(r.success, JSON.stringify(r.error?.issues.slice(0, 3))).toBe(true);
+    const p = must(r.data);
+    expect(p.members.some((g) => g.kind === 'flue')).toBe(true);
+    expect(p.taper?.profile.length).toBeGreaterThan(1);
+    expect(p.familyHints?.suggested).toBe('chimney');
+    expect(p.photos.length).toBeGreaterThan(0);
   });
 });

@@ -931,6 +931,8 @@ export const FORMS: Record<PipelineName, Field[]> = {
   'walk.process': [],
   // starts from the Datasets rows of a drone sphere (and by itself after a panorama import)
   'pano.stitch': [],
+  // starts from the engineering model wizard (a run id, the sources and the region), never from a form
+  'model.evidence': [],
 };
 
 /** Turn the form's text values into checked params, or say what is wrong. */

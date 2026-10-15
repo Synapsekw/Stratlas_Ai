@@ -100,6 +100,7 @@ describe('pipeline params', () => {
       'haul.analyse',
       'walk.process',
       'pano.stitch',
+      'model.evidence',
     ]);
     for (const p of PIPELINES) expect(p.title.length).toBeGreaterThan(3);
   });

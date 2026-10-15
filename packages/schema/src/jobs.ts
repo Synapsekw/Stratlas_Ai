@@ -4,6 +4,7 @@ import { Id, ProjectPath, Vec3 } from './common';
 import { RasterPackId, TerrainDatum } from './globe';
 import { Crs } from './manifest';
 import { PhotoPreset, PhotoProduct, PhotoRunId, PhotoSource } from './photogrammetry';
+import { ModelEvidenceParams } from './modelEvidence';
 import { PanoFolderId, PanoQuality, PanoShape } from './panoStitch';
 import { ProcModelId, ProcPartKind } from './procmodel';
 import { TilesetId } from './tilesets';
@@ -83,6 +84,8 @@ export const PipelineName = z.enum([
   'walk.process',
   // Drone panoramas (pipeline pack 0.7.0)
   'pano.stitch',
+  // Engineering model (pipeline pack 0.9.0)
+  'model.evidence',
 ]);
 export type PipelineName = z.infer<typeof PipelineName>;
 
@@ -316,6 +319,12 @@ export const PIPELINES: readonly { name: PipelineName; title: string; descriptio
     title: 'Stitch drone panorama',
     description:
       'One level, north-up 360 panorama from the frames of a drone sphere, aligned from its gimbal angles and features.',
+  },
+  {
+    name: 'model.evidence',
+    title: 'Measure an engineered asset',
+    description:
+      'Crop, ground, axis, sections and repeated members of a chimney, flare stack or tower from a point cloud and photos, as a bounded evidence pack.',
   },
 ];
 
@@ -1169,6 +1178,7 @@ const PARAMS = {
   'haul.analyse': HaulAnalyseParams,
   'walk.process': WalkProcessParams,
   'pano.stitch': PanoStitchParams,
+  'model.evidence': ModelEvidenceParams,
 } as const satisfies Record<PipelineName, z.ZodType>;
 
 export function pipelineParams(name: PipelineName): z.ZodType<Record<string, unknown>> {
