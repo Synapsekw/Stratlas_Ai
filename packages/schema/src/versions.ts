@@ -143,7 +143,7 @@ export const SCHEMA_REGISTRY: readonly SchemaEntry[] = [
     version: 1,
     home: 'project',
     where: 'engineering/*/ai/spend.json',
-    since: '0.16',
+    since: '0.17',
   },
   {
     family: 'aio.drawingplacement',

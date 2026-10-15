@@ -84,6 +84,7 @@ Choose a full folder path for the export. Only accepted components are written. 
 - Joint rings on a shaft are drawn with flat facets.
 - On towers the ladder follows the nearest axis of the structure.
 - Placement through Web Mercator (EPSG:3857) is approximate away from the anchor, about 3 mm at 100 m at mid latitudes; the app says so.
-- The project journal records model changes as whole models, not one entry per component.
+- When two people change components of the same model at the same time on different computers, the later change keeps the whole component list and the other change is lost: the project journal records the list as one value, not one entry per component.
+- Heights are taken as the model gives them: a project does not name a height datum to compare with. Check the height, and set it with **Place model** when it is off.
 
 The full list is in the known limits that come with the app's documentation.

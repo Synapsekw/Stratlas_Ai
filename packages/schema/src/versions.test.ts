@@ -105,6 +105,13 @@ describe('readerFor', () => {
     expect(readerFor('aio.procmodel/2').kind).toBe('current');
     expect(readerFor('aio.procmodel/1').kind).toBe('older');
   });
+  it('dates each engineering file by the build that first wrote it', () => {
+    const since = (family: string) => SCHEMA_REGISTRY.find((e) => e.family === family)?.since;
+    // 0.16.0 shipped stage 1 (the records); the AI allowance file came after it
+    for (const f of ['aio.georef', 'aio.evidence', 'aio.engineer-run'])
+      expect(since(f)).toBe('0.16');
+    expect(since('aio.engineer-spend')).toBe('0.17');
+  });
   it('classifies current, older, newer and unknown ids', () => {
     expect(readerFor('aio.issues/1').kind).toBe('current');
     expect(readerFor('aio.nothing/1').kind).toBe('unknown');

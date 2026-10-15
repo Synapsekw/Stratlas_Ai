@@ -316,6 +316,6 @@ Current limits only; each is removed from this list when fixed.
 - In the 3D view an engineering model draws its components separately (about 1.7 draw calls per component); merging them into one batched mesh is not built.
 - Warning light lenses are red only. Joint rings on a shaft are drawn with flat facets. On lattice towers and monopoles the ladder follows the nearest axis of the structure, not the leg or the face.
 - Placement through Web Mercator (EPSG:3857) is approximate away from the anchor (about 3 mm at 100 m at mid latitudes); the app says so. Between other coordinate systems the scale change of the projection is always applied, however small.
-- A height of unknown datum stays unknown; a model with a different known height datum from the project's needs placing by hand.
-- The project journal records an engineering model change as the whole model, not one entry per component.
+- A project does not name a height datum, so a model's heights are taken as they are, whatever datum the model names, and the placement says so; a height of unknown datum stays unknown. Check the height of a model from another source, and set it with Place model when it is off.
+- The project journal records an engineering model's component list as one value, not one entry per component: when two copies change components of the same model at the same time, the merge keeps the later list whole and the other copy's component change is lost.
 - The AI step's request and token limits per run are fixed per detail level; a run that reaches them stops with the best result so far and needs a new run for more.
