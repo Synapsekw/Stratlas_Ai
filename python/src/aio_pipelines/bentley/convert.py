@@ -1,4 +1,4 @@
-"""Bentley's camera model and poses in Quadrion AI's conventions (data-conventions 1, 21, 35).
+"""Bentley's camera model and poses in Quadrion AI's conventions (data-conventions 1, 21, 36).
 
 - **Rotation**: BlocksExchange ``M`` maps the block SRS to the camera, camera axes x right,
   y down, z forward: COLMAP's own convention, so ``R_colmap = M`` (``x_cam = M (X - C)``). The
@@ -29,7 +29,7 @@ from .blocks import Block, BlockPhoto, Photogroup
 #: so its P1 is OpenCV's p2 and its P2 OpenCV's p1. Known limit: this swap is an assumption from
 #: the documentation, not verified against tie points (no export with tie points is available).
 #: For the reference camera a wrong order moves image points by under half a pixel at the corners,
-#: and by more for longer focal lengths (data-conventions section 35).
+#: and by more for longer focal lengths (data-conventions section 36).
 TANGENTIAL_SWAP = True
 
 #: How the frame's notes and messages name the source.

@@ -4,7 +4,7 @@ Parameters as ``BentleyImportParams`` in ``@aio/schema``: ``xml`` (the AT export
 ``photos`` (the folder holding its photos, searched with its subfolders, read only) and ``name``
 (the photos layer's name; default the XML file's name plus "photos").
 
-What comes in (data-conventions section 35, the same shapes as ``opf.import``, section 21):
+What comes in (data-conventions section 36, the same shapes as ``opf.import``, section 21):
 
 - a **processing run** ``photogrammetry/<run>/``: ``run.json`` (``aio.photo-run/1``, status
   ``aligned``, ``settings.bentley``), ``sparse/`` (COLMAP text in the grid frame, cameras as

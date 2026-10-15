@@ -1,6 +1,6 @@
 """BlocksExchange 3.x, the AT export of Bentley iTwin Capture Modeler (formerly ContextCapture).
 
-What is read (data-conventions section 35): the SRS list and the block's ``SRSId``; per
+What is read (data-conventions section 36): the SRS list and the block's ``SRSId``; per
 photogroup the image size, the focal length (``FocalLengthPixels``, else ``FocalLength`` in mm
 over ``SensorSize``, the sensor's largest side in mm), the principal point (pixels from the
 top-left corner), the distortion ``K1 K2 K3 P1 P2`` as written, ``AspectRatio`` and ``Skew``;
