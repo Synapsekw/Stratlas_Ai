@@ -6,8 +6,9 @@
  * and the notice says why.
  *
  * Noise working copies: main sweeps unreferenced copies only on a null write or when the request
- * carries `keep`. Ordinary steps omit `keep`; a step that changes which noise copy the recipe names
- * (a finished noise run, or its undo and redo) sends the copies the whole history still names.
+ * carries `keep`. Ordinary steps omit `keep`; every null write and every step that changes which
+ * noise copy the recipe names (a noise run, Reset, undo, redo) sends the copies the whole history
+ * still names. Loading a recipe also writes it once, unchanged, to sweep earlier sessions' leftovers.
  */
 import { pointcloudCleanup, type CleanupRecipes } from '@aio/pointcloud';
 import type { Layer, PointcloudCleanup } from '@aio/schema';
@@ -102,24 +103,41 @@ export function createCleanup(deps: Deps) {
     store.setState((s) => ({ layers: { ...s.layers, [layerId]: h } }));
     deps.recipes.getState().set(layerId, h.present);
   };
-  const write = (layerId: string, back: History, h: History): Promise<string | null> => {
+  /** Queue one write for the layer; resolves to an error text or null. */
+  const send = (
+    layerId: string,
+    recipe: PointcloudCleanup | null,
+    keep: string[] | undefined,
+  ): Promise<string | null> => {
     const projectId = store.getState().projectId;
     if (!projectId) return Promise.resolve('No project is open.');
-    const noiseChanged = (back.present?.noise?.path ?? null) !== (h.present?.noise?.path ?? null);
     const run = async (): Promise<string | null> => {
-      const r = await deps.call('pointcloud:writeCleanup', {
-        projectId,
-        layerId,
-        recipe: h.present,
-        // a null write sweeps by itself; ordinary steps send no keep, so nothing is swept
-        ...(noiseChanged && h.present ? { keep: referencedCopies(h) } : {}),
-      });
-      if (!r.ok) return r.error;
-      return r.value.ok ? null : r.value.error;
+      try {
+        const r = await deps.call('pointcloud:writeCleanup', {
+          projectId,
+          layerId,
+          recipe,
+          ...(keep ? { keep } : {}),
+        });
+        if (!r.ok) return r.error;
+        return r.value.ok ? null : r.value.error;
+      } catch (e) {
+        return e instanceof Error ? e.message : String(e);
+      }
     };
     const next = (queues.get(layerId) ?? Promise.resolve()).then(run, run);
     queues.set(layerId, next);
     return next;
+  };
+  /**
+   * Main sweeps unnamed noise copies on a null write and whenever `keep` is present, so every null
+   * write and every step that changes the noise copy names all copies the history still holds
+   * (undo and redo must never point at a trashed file). Ordinary steps send no keep.
+   */
+  const write = (layerId: string, back: History, h: History): Promise<string | null> => {
+    const noiseChanged = (back.present?.noise?.path ?? null) !== (h.present?.noise?.path ?? null);
+    const sweep = noiseChanged || h.present === null;
+    return send(layerId, h.present, sweep ? referencedCopies(h) : undefined);
   };
   /** Show `next`, write it; on a refusal show `back` again. */
   const step = async (layerId: string, back: History, next: History): Promise<boolean> => {
@@ -173,14 +191,23 @@ export function createCleanup(deps: Deps) {
         } else if (!known.has(recipe.layerId) && !readOnly) {
           // its layer was deleted: remove the recipe (kept as .bak); a null write also sweeps
           // the layer's noise copies, so no keep is sent
-          void deps.call('pointcloud:writeCleanup', {
-            projectId,
-            layerId: recipe.layerId,
-            recipe: null,
+          void send(recipe.layerId, null, undefined).then((error) => {
+            if (error)
+              console.warn(`Cleanup of removed layer "${recipe.layerId}" not removed`, error);
           });
         }
       }
       store.setState({ layers: next, readOnly });
+      // The history is empty: write each loaded recipe unchanged with keep naming only its own
+      // copy, so copies left by an earlier session go to the trash. Not an undo step.
+      if (!readOnly) {
+        for (const [id, h] of Object.entries(next)) {
+          const own = h.present?.noise?.path;
+          void send(id, h.present, own ? [own] : []).then((error) => {
+            if (error) console.warn(`Cleanup sweep of layer "${id}" failed`, error);
+          });
+        }
+      }
     },
 
     async commit(
@@ -225,6 +252,22 @@ export function createCleanup(deps: Deps) {
       const ok = await step(layerId, h, n);
       if (ok) notify({ text: noticeText({ kind: 'reset' }), undo: true, error: false, layerId });
       return ok;
+    },
+
+    /** The project closed: the next `load` reads again, even for the same project id. */
+    close: () => {
+      loadedFor = null;
+      queues.clear();
+      deps.recipes.getState().clear();
+      store.setState({
+        projectId: null,
+        readOnly: false,
+        layers: {},
+        active: null,
+        pending: null,
+        busy: null,
+        notice: null,
+      });
     },
 
     setActive: (id: string | null) => {

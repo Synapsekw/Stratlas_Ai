@@ -18,6 +18,14 @@ const cloud = (id: string, format: 'copc' | 'png-packed' = 'copc'): Layer => ({
   format,
 });
 
+const noiseOf = (id: string) => ({
+  path: noiseCopyPath('a', id),
+  params: { outlier: { meanK: 8, multiplier: 2 } },
+  marked: 1,
+  total: 2,
+  runId: id,
+});
+
 function setup(
   recipes: PointcloudCleanup[] = [],
   opts: { readOnly?: boolean; fail?: boolean } = {},
@@ -61,7 +69,60 @@ describe('the cleanup store', () => {
     expect(Object.keys(s.c.store.getState().layers)).toEqual(['a']);
     expect(s.live.getState().recipes.a).toEqual(emptyCleanup('a'));
     // the recipe of a deleted layer is removed; a png-packed cloud's is only ignored
-    expect(s.writes).toEqual([{ projectId: 'p', layerId: 'gone', recipe: null }]);
+    expect(s.writes[0]).toEqual({ projectId: 'p', layerId: 'gone', recipe: null });
+  });
+
+  it('load writes each loaded recipe once, unchanged, to sweep old noise copies', async () => {
+    const noise = noiseOf('j1');
+    const loaded = { ...emptyCleanup('a'), noise };
+    const s = setup([loaded, emptyCleanup('b')]);
+    await s.c.load('p', [cloud('a'), cloud('b')]);
+    expect(s.writes).toEqual([
+      { projectId: 'p', layerId: 'a', recipe: loaded, keep: [noise.path] },
+      { projectId: 'p', layerId: 'b', recipe: emptyCleanup('b'), keep: [] },
+    ]);
+    expect(s.c.store.getState().layers.a?.past).toEqual([]);
+  });
+
+  it('close lets the same project id load again', async () => {
+    const s = setup([emptyCleanup('a')]);
+    await s.c.load('p', [cloud('a')]);
+    s.c.close();
+    await s.c.load('p', [cloud('a')]);
+    expect(s.call.mock.calls.filter((c) => c[0] === 'pointcloud:readCleanup')).toHaveLength(2);
+  });
+
+  it('a rejecting bridge call is a failed write and rolls the step back', async () => {
+    const s = setup();
+    await s.c.load('p', [cloud('a')]);
+    s.call.mockImplementation(() => Promise.reject(new Error('ipc gone')));
+    expect(await s.c.commit('a', emptyCleanup('a'))).toBe(false);
+    expect(s.c.recipeOf('a')).toBeNull();
+    expect(s.c.store.getState().notice?.text).toContain('ipc gone');
+  });
+
+  it('keeps the copy on the write of undo and redo after a first noise run', async () => {
+    const s = setup();
+    await s.c.load('p', [cloud('a')]);
+    const noise = noiseOf('j1');
+    const r1 = { ...emptyCleanup('a'), noise };
+    await s.c.commit('a', r1, { kind: 'noise', count: 1 });
+    await s.c.undo('a');
+    await s.c.redo('a');
+    expect(s.writes.map((w) => w.recipe)).toEqual([r1, null, r1]);
+    expect(s.writes.map((w) => w.keep)).toEqual([[noise.path], [noise.path], [noise.path]]);
+  });
+
+  it('keeps the copy on the Reset write, so Undo of Reset finds it', async () => {
+    const s = setup();
+    await s.c.load('p', [cloud('a')]);
+    const noise = noiseOf('j1');
+    const r1 = { ...emptyCleanup('a'), noise };
+    await s.c.commit('a', r1);
+    await s.c.reset('a');
+    await s.c.undo('a');
+    expect(s.writes[1]).toMatchObject({ recipe: null, keep: [noise.path] });
+    expect(s.writes[2]).toMatchObject({ recipe: r1 });
   });
 
   it('loads the recipes once per project id', async () => {
@@ -77,7 +138,7 @@ describe('the cleanup store', () => {
     const s = setup();
     await s.c.load('p', [cloud('a')]);
     const r1 = { ...emptyCleanup('a'), hiddenClasses: [7] };
-    expect(await s.c.commit('a', r1, { kind: 'reset' })).toBe(true);
+    expect(await s.c.commit('a', r1, { kind: 'deleted' })).toBe(true);
     expect(s.live.getState().recipes.a).toEqual(r1);
     expect(s.c.store.getState().notice).toMatchObject({ undo: true, error: false, layerId: 'a' });
     expect(await s.c.undo('a')).toBe(true);
