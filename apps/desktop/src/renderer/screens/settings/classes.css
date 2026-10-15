@@ -41,6 +41,24 @@
 .cls-row select.input:disabled {
   cursor: not-allowed;
 }
+.cls-sev {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+.cls-lock {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: var(--t-11);
+  color: var(--fg-3);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.cls-lock svg {
+  flex: none;
+}
 .cls-num {
   text-align: end;
   font-variant-numeric: tabular-nums;

@@ -11,7 +11,7 @@ import {
   saveToLibrary,
   undoClassEdit,
 } from '../../classes/store';
-import { useDetections } from '../../detections/store';
+import { loadDetections, useDetections } from '../../detections/store';
 import { useShell } from '../../shell';
 import { classRows, moveTargets, type ClassRow } from './classesView';
 import './classes.css';
@@ -26,28 +26,49 @@ export function Classes() {
   const t = useT();
   const project = useWorkspace((s) => s.project);
   const issues = useWorkspace((s) => s.issues);
-  const detections = useDetections((s) =>
-    s.projectId !== null && s.projectId === project?.id ? s.review.detections : NO_DETECTIONS,
+  // the detection review of this project, or null while it is not read yet (usage unknown)
+  const loaded = useDetections((s) =>
+    s.projectId !== null && s.projectId === project?.id && !s.loading ? s.review.detections : null,
   );
+  const projectId = project?.id ?? null;
+  // Settings may be the first screen opened: read the review so delete counts its detections
+  useEffect(() => {
+    if (projectId) void loadDetections(projectId);
+  }, [projectId]);
   const pkg = useShell((s) => s.pkg);
   const annotateReadOnly = useAnnotateReadOnly();
-  const [error, setError] = useState<{ id: string; text: string } | null>(null);
-  const [deleting, setDeleting] = useState<ClassRow | null>(null);
+  const [errors, setErrors] = useState<Readonly<Record<string, string>>>({});
+  const [deletingId, setDeletingId] = useState<string | null>(null);
+  const panel = useRef<HTMLDivElement>(null);
 
   if (!project) return <p className="help">{t('classes.noProject')}</p>;
   const readOnly = pkg || annotateReadOnly ? t('classes.readOnly') : null;
   const models = project.manifest.severityModels;
-  const rows = classRows(project.manifest.classCatalogues, models, issues, detections);
+  const usageKnown = loaded !== null;
+  const rows = classRows(project.manifest.classCatalogues, models, issues, loaded ?? NO_DETECTIONS);
+  // the dialog shows the class as it is now (an undo or a reload may change its usage)
+  const deleting = deletingId === null ? null : (rows.find((r) => r.cls.id === deletingId) ?? null);
+  if (deletingId !== null && !deleting) setDeletingId(null);
 
   /** Run a store call for class `id`; its error shows under that row. Resolves to the error. */
   const run = async (id: string, p: Promise<string | null>): Promise<string | null> => {
     const e = await p;
-    setError(e ? { id, text: e } : null);
+    setErrors((prev) => {
+      const rest = Object.fromEntries(Object.entries(prev).filter(([k]) => k !== id));
+      return e ? { ...rest, [id]: e } : rest;
+    });
     return e;
+  };
+  /** Delete class `id`; focus stays in the panel so Ctrl+Z undoes it at once. */
+  const remove = (id: string, to: string | null) => {
+    void run(id, deleteClass(id, to)).then(() => {
+      panel.current?.focus();
+    });
   };
 
   return (
     <div
+      ref={panel}
       className="cls-ed"
       data-testid="classes-panel"
       tabIndex={-1}
@@ -87,12 +108,13 @@ export function Classes() {
             row={r}
             models={models}
             disabled={readOnly !== null}
-            error={error?.id === r.cls.id ? error.text : null}
+            error={errors[r.cls.id] ?? null}
             onEdit={(patch) => run(r.cls.id, editClass(r.cls.id, patch))}
             onSave={() => void run(r.cls.id, saveToLibrary(r.cls))}
             onDelete={() => {
-              if (r.issues + r.detections > 0) setDeleting(r);
-              else void run(r.cls.id, deleteClass(r.cls.id, null));
+              // unknown usage (review still loading) asks too: the dialog waits for the counts
+              if (!usageKnown || r.issues + r.detections > 0) setDeletingId(r.cls.id);
+              else remove(r.cls.id, null);
             }}
           />
         ))}
@@ -108,14 +130,15 @@ export function Classes() {
       {deleting && (
         <DeleteDialog
           row={deleting}
+          known={usageKnown}
           targets={moveTargets(rows, deleting.cls.id)}
+          returnTo={() => panel.current}
           onCancel={() => {
-            setDeleting(null);
+            setDeletingId(null);
           }}
-          onMove={(to) => {
-            const id = deleting.cls.id;
-            setDeleting(null);
-            void run(id, deleteClass(id, to));
+          onDelete={(to) => {
+            setDeletingId(null);
+            remove(deleting.cls.id, to);
           }}
         />
       )}
@@ -152,17 +175,30 @@ function ClassRowView({
     if (shown.hotkey !== cls.hotkey) setHotkey(cls.hotkey ?? '');
   }
 
+  // the name being saved: Enter then blur must not save it twice
+  const saving = useRef<string | null>(null);
   const commitName = () => {
     const next = name.trim();
+    if (next === saving.current) return;
     if (!next || next === cls.label) {
       setName(cls.label);
       return;
     }
+    saving.current = next;
     void onEdit({ label: next }).then((e) => {
+      saving.current = null;
       if (e) setName(cls.label);
     });
   };
+  const setKey = (v: string) => {
+    setHotkey(v);
+    if (v === (cls.hotkey ?? '')) return;
+    void onEdit({ hotkey: v === '' ? null : v }).then((err) => {
+      if (err) setHotkey(cls.hotkey ?? '');
+    });
+  };
   const locked = row.issues > 0;
+  const lockId = `classes-lock-${cls.id}`;
 
   return (
     <div className="cls-row" role="row" data-testid={`classes-row-${cls.id}`}>
@@ -196,30 +232,31 @@ function ClassRowView({
           className="input mono cls-key"
           aria-label={t('classes.hotkey', { label: cls.label })}
           value={hotkey}
-          maxLength={1}
           disabled={disabled}
           spellCheck={false}
           autoComplete="off"
-          onFocus={(e) => {
-            e.currentTarget.select();
+          onKeyDown={(e) => {
+            // a key press replaces the hotkey wherever the caret is
+            if (e.ctrlKey || e.metaKey || e.altKey) return;
+            if (e.key.length === 1) {
+              e.preventDefault();
+              setKey(e.key.toLowerCase());
+            } else if (e.key === 'Backspace' || e.key === 'Delete') {
+              e.preventDefault();
+              setKey('');
+            }
           }}
           onChange={(e) => {
-            const v = e.target.value.slice(-1).toLowerCase();
-            if (v === (cls.hotkey ?? '')) {
-              setHotkey(v);
-              return;
-            }
-            setHotkey(v);
-            void onEdit({ hotkey: v === '' ? null : v }).then((err) => {
-              if (err) setHotkey(cls.hotkey ?? '');
-            });
+            // paste and input methods: the last character typed
+            setKey(e.target.value.slice(-1).toLowerCase());
           }}
         />
       </span>
-      <span role="cell">
+      <span role="cell" className="cls-sev">
         <select
           className="input"
           aria-label={t('classes.severity', { label: cls.label })}
+          aria-describedby={locked ? lockId : undefined}
           value={cls.severityModel}
           disabled={disabled || locked}
           title={locked ? t('classes.severityLocked') : ''}
@@ -236,6 +273,13 @@ function ClassRowView({
             </option>
           ))}
         </select>
+        {locked && (
+          <span id={lockId} className="cls-lock">
+            <Icon name="lock" size={12} />
+            <span aria-hidden="true">{t('classes.severityLockedShort')}</span>
+            <span className="sr-only">{t('classes.severityLocked')}</span>
+          </span>
+        )}
       </span>
       <span role="cell" className={`mono cls-num${row.issues === 0 ? ' faint' : ''}`}>
         {row.issues}
@@ -349,24 +393,47 @@ function Swatch({
   );
 }
 
+/**
+ * Delete a class that something may use: waits while the detection review is read, moves what
+ * uses the class to the picked one, and when it is the only class offers to create the target.
+ */
 function DeleteDialog({
   row,
+  known,
   targets,
-  onMove,
+  returnTo,
+  onDelete,
   onCancel,
 }: {
   row: ClassRow;
+  /** False while the detection review is still being read (counts unknown). */
+  known: boolean;
   targets: readonly { id: string; label: string }[];
-  onMove: (to: string) => void;
+  returnTo: () => HTMLElement | null;
+  /** Delete, moving what uses the class to `to` (null when nothing uses it). */
+  onDelete: (to: string | null) => void;
   onCancel: () => void;
 }) {
   const t = useT();
   const ref = useRef<HTMLDivElement>(null);
   const keep = useRef<HTMLButtonElement>(null);
-  const [to, setTo] = useState(targets[0]?.id ?? '');
+  const [picked, setPicked] = useState<string | null>(null);
   // the safe choice has focus first: Enter on a dialog that just opened deletes nothing
-  useFocusTrap(ref, true, { onEscape: onCancel, initial: () => keep.current });
-  const title = t('classes.delete.title', { label: row.cls.label });
+  useFocusTrap(ref, true, { onEscape: onCancel, returnTo, initial: () => keep.current });
+  const label = row.cls.label;
+  const title = t('classes.delete.title', { label });
+  const used = row.issues + row.detections > 0;
+  const to = targets.some((c) => c.id === picked) ? picked : (targets[0]?.id ?? null);
+  const counts = {
+    issues: t('classes.delete.issues', { count: row.issues }),
+    detections: t('classes.delete.detections', { count: row.detections }),
+    label,
+  };
+  let text: string;
+  if (!known) text = t('classes.delete.checking', { label });
+  else if (!used) text = t('classes.delete.unused', { label });
+  else if (targets.length === 0) text = t('classes.delete.usedOnly', counts);
+  else text = t('classes.delete.used', counts);
   return (
     <div
       className="dlg-scrim"
@@ -390,21 +457,17 @@ function DeleteDialog({
           </h2>
         </div>
         <div className="dlg-b">
-          <p id="classes-delete-text" style={{ margin: 0 }}>
-            {t('classes.delete.used', {
-              issues: row.issues,
-              detections: row.detections,
-              label: row.cls.label,
-            })}
+          <p id="classes-delete-text" style={{ margin: 0 }} aria-live="polite">
+            {text}
           </p>
-          {targets.length > 0 ? (
+          {known && used && targets.length > 0 && (
             <select
               className="input"
               data-testid="classes-move-to"
               aria-label={t('classes.delete.pickTarget')}
-              value={to}
+              value={to ?? ''}
               onChange={(e) => {
-                setTo(e.target.value);
+                setPicked(e.target.value);
               }}
             >
               {targets.map((c) => (
@@ -413,10 +476,22 @@ function DeleteDialog({
                 </option>
               ))}
             </select>
-          ) : (
-            <p className="help" style={{ margin: 0 }}>
-              {t('classes.delete.pickTarget')}
-            </p>
+          )}
+          {known && used && targets.length === 0 && (
+            <>
+              <p className="help" style={{ margin: 0 }}>
+                {t('classes.delete.only', { label })}
+              </p>
+              <div className="cls-new">
+                <NewClassRow
+                  onCreate={(name) => createClass(name)}
+                  onCreated={(cls) => {
+                    setPicked(cls.id);
+                  }}
+                  testId="classes-delete-new"
+                />
+              </div>
+            </>
           )}
         </div>
         <div className="dlg-f">
@@ -428,13 +503,13 @@ function DeleteDialog({
             type="button"
             className="btn danger"
             data-testid="classes-move-delete"
-            disabled={!to}
+            disabled={!known || (used && !to)}
             onClick={() => {
-              onMove(to);
+              onDelete(used ? to : null);
             }}
           >
             <Icon name="trash" size={14} />
-            {t('classes.delete.move')}
+            {used || !known ? t('classes.delete.move') : t('classes.delete.confirm')}
           </button>
         </div>
       </div>

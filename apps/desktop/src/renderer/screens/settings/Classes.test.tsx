@@ -1,9 +1,10 @@
 // @vitest-environment jsdom
-import type { Issue, ProjectManifest } from '@aio/schema';
+import type { Issue, IssueClass, ProjectManifest } from '@aio/schema';
 import { workspace } from '@aio/workspace';
 import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import type { StoreApi } from 'zustand';
 
 const h = vi.hoisted(() => ({
   editClass: vi.fn<(id: string, patch: unknown) => Promise<string | null>>(() =>
@@ -15,26 +16,49 @@ const h = vi.hoisted(() => ({
   saveToLibrary: vi.fn(() => Promise.resolve(null as string | null)),
   undoClassEdit: vi.fn(() => Promise.resolve(true)),
   redoClassEdit: vi.fn(() => Promise.resolve(true)),
-  detections: [] as { classId: string; status: string }[],
+  createClass: vi.fn<(label: string) => Promise<IssueClass>>(),
+  loadDetections: vi.fn<(projectId: string) => Promise<void>>(() => Promise.resolve()),
 }));
+interface DetState {
+  projectId: string | null;
+  loading: boolean;
+  review: { detections: { classId: string; status: string }[] };
+}
 vi.mock('../../classes/store', () => ({
-  createClass: vi.fn(),
+  createClass: h.createClass,
   editClass: h.editClass,
   deleteClass: h.deleteClass,
   saveToLibrary: h.saveToLibrary,
   undoClassEdit: h.undoClassEdit,
   redoClassEdit: h.redoClassEdit,
 }));
-vi.mock('../../detections/store', () => ({
-  useDetections: <T,>(
-    sel: (s: { projectId: string | null; review: { detections: typeof h.detections } }) => T,
-  ) => sel({ projectId: 'p', review: { detections: h.detections } }),
-}));
+vi.mock('../../detections/store', async () => {
+  const { createStore } = await import('zustand/vanilla');
+  const { useStore } = await import('zustand');
+  const detStore = createStore<DetState>()(() => ({
+    projectId: 'p',
+    loading: false,
+    review: { detections: [] },
+  }));
+  return {
+    detStore,
+    loadDetections: h.loadDetections,
+    useDetections: <T,>(selector: (s: DetState) => T) => useStore(detStore, selector),
+  };
+});
 vi.mock('../../shell', () => ({
-  useShell: <T,>(sel: (s: { pkg: null }) => T) => sel({ pkg: null }),
+  useShell: <T,>(selector: (s: { pkg: null }) => T) => selector({ pkg: null }),
 }));
 
 const { Classes } = await import('./Classes');
+const { detStore } = (await import('../../detections/store')) as unknown as {
+  detStore: StoreApi<DetState>;
+};
+function setDetections(state: Partial<DetState>) {
+  act(() => {
+    detStore.setState(state);
+  });
+}
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -88,7 +112,9 @@ beforeEach(() => {
   h.deleteClass.mockClear();
   h.undoClassEdit.mockClear();
   h.redoClassEdit.mockClear();
-  h.detections = [];
+  h.createClass.mockReset();
+  h.loadDetections.mockClear();
+  detStore.setState({ projectId: 'p', loading: false, review: { detections: [] } });
   workspace.setState({ project: { id: 'p', root: '/p', manifest }, issues: [issue, issue] });
   mount();
 });
@@ -160,26 +186,141 @@ describe('Classes panel', () => {
     expect(h.deleteClass).toHaveBeenCalledWith('rust', 'crack');
   });
 
-  it('asks too when only detections use the class', () => {
-    unmount();
-    h.detections = [{ classId: 'crack', status: 'draft' }];
-    mount();
+  it('asks too when only detections use the class, in the singular for one', () => {
+    setDetections({ review: { detections: [{ classId: 'crack', status: 'draft' }] } });
     act(() => {
       btn('[data-testid="classes-delete-crack"]')?.click();
     });
     expect(q('[data-testid="classes-delete-dialog"]')?.textContent).toContain(
-      '0 issues and 1 detections use Crack. Move them to:',
+      '0 issues and 1 detection use Crack. Move them to:',
     );
     expect(h.deleteClass).not.toHaveBeenCalled();
   });
 
-  it('deletes an unused class without asking', async () => {
+  it('reads the detections and waits for them before deleting a class', async () => {
+    unmount();
+    detStore.setState({ projectId: null, loading: false, review: { detections: [] } });
+    mount();
+    expect(h.loadDetections).toHaveBeenCalledWith('p');
+    act(() => {
+      btn('[data-testid="classes-delete-crack"]')?.click();
+    });
+    expect(h.deleteClass).not.toHaveBeenCalled();
+    expect(q('[data-testid="classes-delete-dialog"]')?.textContent).toContain(
+      'Checking which issues and detections use Crack.',
+    );
+    expect(btn('[data-testid="classes-move-delete"]')?.disabled).toBe(true);
+    // the review arrives: a waiting detection uses Crack
+    setDetections({
+      projectId: 'p',
+      loading: false,
+      review: { detections: [{ classId: 'crack', status: 'draft' }] },
+    });
+    expect(q('[data-testid="classes-delete-dialog"]')?.textContent).toContain(
+      '0 issues and 1 detection use Crack. Move them to:',
+    );
+    expect(sel('[data-testid="classes-move-to"]')?.value).toBe('rust');
+    await act(async () => {
+      btn('[data-testid="classes-move-delete"]')?.click();
+      await Promise.resolve();
+    });
+    expect(h.deleteClass).toHaveBeenCalledWith('crack', 'rust');
+  });
+
+  it('offers to create the target when the used class is the only one', async () => {
+    unmount();
+    const rust: IssueClass = { id: 'rust', label: 'Rust', color: '#f08a3e', severityModel: 'sev' };
+    const cat = { id: 'cat', name: 'Classes', assetType: 'asset' as const, classes: [rust] };
+    const only: ProjectManifest = { ...manifest, classCatalogues: [cat] };
+    workspace.setState({ project: { id: 'p', root: '/p', manifest: only }, issues: [issue] });
+    h.createClass.mockImplementation((label) => {
+      const cls: IssueClass = { id: 'stain', label, color: '#34a6d9', severityModel: 'sev' };
+      workspace.setState({
+        project: {
+          id: 'p',
+          root: '/p',
+          manifest: { ...only, classCatalogues: [{ ...cat, classes: [...cat.classes, cls] }] },
+        },
+      });
+      return Promise.resolve(cls);
+    });
+    mount();
+    act(() => {
+      btn('[data-testid="classes-delete-rust"]')?.click();
+    });
+    const dlg = q('[data-testid="classes-delete-dialog"]');
+    expect(dlg?.textContent).toContain('1 issue and 0 detections use Rust.');
+    expect(dlg?.textContent).toContain('Rust is the only class');
+    expect(sel('[data-testid="classes-move-to"]')).toBeNull();
+    expect(btn('[data-testid="classes-move-delete"]')?.disabled).toBe(true);
+    act(() => {
+      btn('[data-testid="classes-delete-new"]')?.click();
+    });
+    const field = inp('[aria-label="New class name"]');
+    if (!field) throw new Error('no new class field');
+    act(() => {
+      type(field, 'Stain');
+    });
+    await act(async () => {
+      field.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    expect(h.createClass).toHaveBeenCalledWith('Stain');
+    expect(sel('[data-testid="classes-move-to"]')?.value).toBe('stain');
+    await act(async () => {
+      btn('[data-testid="classes-move-delete"]')?.click();
+      await Promise.resolve();
+    });
+    expect(h.deleteClass).toHaveBeenCalledWith('rust', 'stain');
+  });
+
+  it('deletes an unused class without asking and keeps focus in the panel', async () => {
     await act(async () => {
       btn('[data-testid="classes-delete-crack"]')?.click();
+      await Promise.resolve();
       await Promise.resolve();
     });
     expect(h.deleteClass).toHaveBeenCalledWith('crack', null);
     expect(q('[data-testid="classes-delete-dialog"]')).toBeNull();
+    expect(document.activeElement).toBe(q('[data-testid="classes-panel"]'));
+  });
+
+  it('shows why the severity scale is locked, linked to the select', () => {
+    const rust = sel('[aria-label="Severity scale of Rust"]');
+    const id = rust?.getAttribute('aria-describedby');
+    expect(id).toBeTruthy();
+    const note = id ? document.getElementById(id) : null;
+    expect(note?.textContent).toContain('Locked while issues use it');
+    expect(note?.textContent).toContain('Move them to another class');
+    expect(sel('[aria-label="Severity scale of Crack"]')?.hasAttribute('aria-describedby')).toBe(
+      false,
+    );
+  });
+
+  it('saves a name once when Enter is followed by a blur', async () => {
+    const name = inp('[aria-label="Name of Crack"]');
+    if (!name) throw new Error('no name field');
+    act(() => {
+      type(name, 'Wide crack');
+    });
+    await act(async () => {
+      name.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+      name.dispatchEvent(new FocusEvent('focusout', { bubbles: true }));
+      await Promise.resolve();
+    });
+    expect(h.editClass).toHaveBeenCalledTimes(1);
+  });
+
+  it('takes a typed letter as the hotkey wherever the caret is', async () => {
+    const key = inp('[aria-label="Hotkey of Crack"]');
+    if (!key) throw new Error('no hotkey field');
+    await act(async () => {
+      key.dispatchEvent(new KeyboardEvent('keydown', { key: 'K', bubbles: true }));
+      await Promise.resolve();
+    });
+    expect(h.editClass).toHaveBeenCalledWith('crack', { hotkey: 'k' });
+    expect(key.value).toBe('k');
   });
 
   it('undoes with Ctrl+Z and redoes with Ctrl+Y in the panel', () => {

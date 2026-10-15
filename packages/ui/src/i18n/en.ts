@@ -868,10 +868,21 @@ export const en = {
   'classes.saveToLibrary': 'Save to my class library',
   'classes.delete': 'Delete {label}',
   'classes.delete.title': 'Delete {label}',
-  'classes.delete.used': '{issues} issues and {detections} detections use {label}. Move them to:',
+  'classes.delete.used': '{issues} and {detections} use {label}. Move them to:',
+  'classes.delete.issues_one': '{count} issue',
+  'classes.delete.issues_other': '{count} issues',
+  'classes.delete.detections_one': '{count} detection',
+  'classes.delete.detections_other': '{count} detections',
+  'classes.delete.usedOnly': '{issues} and {detections} use {label}.',
+  'classes.delete.only':
+    '{label} is the only class, so there is nothing to move its issues and detections to. Create another class here first.',
+  'classes.delete.checking': 'Checking which issues and detections use {label}.',
+  'classes.delete.unused': 'Nothing uses {label}.',
+  'classes.delete.confirm': 'Delete',
   'classes.delete.move': 'Move and delete',
   'classes.delete.cancel': 'Cancel',
-  'classes.delete.pickTarget': 'Pick the class that takes over its issues.',
+  'classes.delete.pickTarget': 'Pick the class that takes over its issues and detections.',
+  'classes.severityLockedShort': 'Locked while issues use it',
 
   // Appearance
   'settings.appearance.text':
