@@ -12,7 +12,7 @@ const entry = (over: Partial<LibraryEntry> = {}): LibraryEntry => ({
 
 describe('deleteText', () => {
   it('names the package file for a package', () => {
-    expect(deleteText(entry({ package: true }))).toEqual({
+    expect(deleteText(entry({ package: { encrypted: false, readOnly: true } }))).toEqual({
       text: 'library.delete.text.package',
       label: 'library.delete.file',
     });
@@ -24,7 +24,7 @@ describe('deleteText', () => {
     });
   });
   it('names the working copy for a demo', () => {
-    expect(deleteText(entry({ demo: true }))).toEqual({
+    expect(deleteText(entry({ demo: { primary: false } }))).toEqual({
       text: 'library.delete.text.demo',
       label: 'library.delete.folder',
     });
