@@ -231,14 +231,24 @@ describe('saves of one manifest take turns', () => {
   it('lets another project save while one project is busy', async () => {
     const root = await project();
     const second = await project('Second site');
+    // the first project's turn is held until the test lets it go, not for a while: a save of the
+    // other project under load can take longer than any fixed wait. Were the two projects in one
+    // queue, the save below would wait for the release and the test would time out.
+    let release: () => void = () => undefined;
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
     let busy = true;
     const held = withManifest(root, async () => {
-      await sleep(60);
+      await gate;
       busy = false;
     });
     await updateCapture(second, 'c1', { label: 'Baseline' });
     expect(busy).toBe(true);
+    expect((await readManifest(second)).captures[0]?.label).toBe('Baseline');
+    release();
     await held;
+    expect(busy).toBe(false);
   });
 });
 
