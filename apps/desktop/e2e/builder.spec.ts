@@ -252,7 +252,7 @@ test('a Pix4D export stands up with its texture, and a far one offers to re-cent
   const o = JSON.parse(await readFile(join(root, 'manifest.json'), 'utf8')) as { origin: number[] };
   const [oe = 0, on = 0, oh = 0] = o.origin;
   // the export's offset lies 30 km east of the origin
-  const offset = [Math.round(oe) + 30_000, Math.round(on), 12];
+  const offset: [number, number, number] = [Math.round(oe) + 30_000, Math.round(on), 12];
   const obj = await writePix4dExport(dataRoot.base, 'tower', offset);
 
   await nextOpenDialog(app, [obj]);
@@ -345,7 +345,9 @@ test('a Pix4D export stands up with its texture, and a far one offers to re-cent
   const fit = mesh(await read())?.transform ?? [];
   // still Z up: the model's own z axis points up, not along the scene's z
   expect(fit[9] ?? 0).toBeGreaterThan(Math.max(fit[5] ?? 0, 0));
+  expect(fit[12]).toBeCloseTo((cur[12] ?? 0) + 2, 1);
   expect(fit[13]).toBeCloseTo((cur[13] ?? 0) + 1, 1);
+  expect(fit[14]).toBeCloseTo((cur[14] ?? 0) - 3, 1);
   await expect(align.getByRole('button', { name: 'Z up' })).toHaveAttribute('aria-pressed', 'true');
 });
 
