@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from .aik.pipelines import AikCameras, AikProject, AikRecords
+from .bentley.importer import BentleyImport
 from .change.cloud import ChangeCloud
 from .change.frames import ChangeFrames
 from .change.mesh import ChangeMesh
@@ -69,6 +70,7 @@ def all_pipelines() -> dict[str, Pipeline]:
         PhotoProducts(),
         OpfImport(),
         OpfExport(),
+        BentleyImport(),
         TilesMesh(),
         TilesCloud(),
         ImageryPack(),

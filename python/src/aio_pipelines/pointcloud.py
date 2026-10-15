@@ -1,4 +1,4 @@
-"""pointcloud.to_copc: LAS, LAZ or E57 to a COPC file in the project CRS, with PDAL.
+"""pointcloud.to_copc: LAS, LAZ, E57, PLY or a Bentley .zpc to a COPC file in the project CRS, with PDAL.
 
 PDAL runs as its command-line tool (``pdal``), found in this order: the ``AIO_PDAL`` environment
 variable, ``tools/pdal`` inside the pipeline pack, then the PATH. The pack's PDAL is conda-forge's
@@ -14,6 +14,12 @@ folder (its progress is the share of points written), which is also how an E57 o
 the LAS the writer reads. A source without a CRS is taken as already in the project CRS. The
 layer is added to the project manifest last (data-conventions section 4: ``format: "copc"``,
 project CRS).
+
+A Bentley ``.zpc`` (a ZIP of LAS/LAZ tiles) is unpacked into the staging folder, each tile
+reprojected when needed, and the folder of tiles becomes one COPC (``convert_zpc``).
+
+A ``surveyDate`` (YYYY-MM-DD) files a newly added layer under the project's date of that day,
+adding one when there is none (``captures.capture_for_date``), in the same manifest write.
 """
 
 from __future__ import annotations
@@ -28,9 +34,11 @@ import sys
 import threading
 import time
 from collections.abc import Callable
+from datetime import date
 from pathlib import Path
 from typing import Any
 
+from .captures import capture_for_date
 from .params import known_keys, number, numbers, text
 from .runtime import JobError, Step, StepContext, atomic_write_json, commit_files, safe_project_path
 
@@ -38,7 +46,7 @@ PDAL_MISSING = (
     "PDAL is not available: the pipeline pack has no tools/pdal and none is on the PATH. "
     "Install the full pipeline pack, or set AIO_PDAL to pdal.exe."
 )
-CLOUD_EXTENSIONS = {".las", ".laz", ".e57", ".ply"}
+CLOUD_EXTENSIONS = {".las", ".laz", ".e57", ".ply", ".zpc"}
 #: What the COPC writer reads directly; anything else becomes a LAS first.
 LAS_EXTENSIONS = {".las", ".laz"}
 LAS_HEADER = 375  # a LAS 1.4 header; its few VLRs are noise next to the points
@@ -258,6 +266,12 @@ def disk_needed(points: int, record: int | None) -> int:
     """Bytes the conversion holds on the staging drive at once: the intermediate LAS when there
     is one (``record`` bytes a point), untwine's temporary files and the COPC itself."""
     return points * ((record or 0) + UNTWINE_TEMP_BYTES_PER_POINT + COPC_BYTES_PER_POINT)
+
+
+#: A ``.zpc``'s progress: unpacking the tiles up to here, then as any cloud.
+ZPC_UNPACK_END = 0.10
+#: How many names of a ``.zpc``'s ignored (non-tile) files the log lists.
+IGNORED_SHOWN = 5
 
 
 def check_space(folder: Path, needed: int, what: str = "Importing") -> None:
@@ -500,6 +514,105 @@ class _BuildProgress:
         pass
 
 
+def build_copc(ctx: StepContext, las: Path, staged: Path, count: int, epsg: int | None, start: float) -> str:
+    """``las`` (a LAS/LAZ file or a folder of tiles) as the COPC ``staged``, with the shared
+    writer under ``BuildWatch`` from ``start`` to ``BUILD_END``. Answers which writer built it."""
+    # the photo pipeline's shared COPC writer (numpy and friends load only when needed)
+    from .photo import cloud_out, native
+
+    ctx.check()
+    work = ctx.stage("copc-work")
+    (work / "tool.out").unlink(missing_ok=True)  # an earlier run's percentage
+    try:
+        with BuildWatch(ctx, (start, BUILD_END), ctx.staging, work / "tool.out"):
+            return cloud_out.write_copc(
+                _BuildProgress(ctx),  # type: ignore[arg-type]  # a StepContext in all it uses
+                las,
+                staged,
+                count,
+                epsg,
+                work,
+                native.memory_budget(),
+                progress=(start, BUILD_END),
+            )
+    except JobError as e:
+        # the shared writer's refusal of PDAL over the memory budget speaks of photo products;
+        # an import says it in its own words
+        if "memory budget" in str(e) and "untwine" in str(e):
+            raise JobError(TOO_BIG_WITHOUT_UNTWINE) from None
+        raise
+
+
+def convert_zpc(ctx: StepContext, pdal: str, src: Path, epsg: int | None) -> dict[str, Any]:
+    """A ``.zpc``'s tiles as one COPC in ``staging/cloud.copc.laz``: unpacked, read, reprojected
+    tile by tile when they declare another CRS, then built from the folder of tiles. The unpacked
+    and reprojected tiles go whatever happens."""
+    from . import zpc
+
+    ignored: list[str] = []
+    tiles = zpc.list_tiles(src, ignored)
+    if ignored:
+        shown = ", ".join(n[:120] for n in ignored[:IGNORED_SHOWN])
+        more = f" and {len(ignored) - IGNORED_SHOWN} more" if len(ignored) > IGNORED_SHOWN else ""
+        ctx.log(f"Ignored {len(ignored)} other file(s) in {src.name}: {shown}{more}")
+    check_space(ctx.staging, sum(t.size for t in tiles))
+    raw, las_dir = ctx.stage("zpc-tiles"), ctx.stage("zpc-las")
+    for d in (raw, las_dir):
+        shutil.rmtree(d, ignore_errors=True)
+    staged = ctx.stage("cloud.copc.laz")
+    try:
+        files = zpc.extract_tiles(ctx, src, tiles, raw, (0.0, ZPC_UNPACK_END))
+        counts: list[int] = []
+        # per tile: None when it declares no CRS, else its EPSG code, else its own WKT or PROJJSON
+        # (a custom or local CRS has a CRS all the same, and PDAL reprojects from it)
+        crss: set[tuple[str, Any] | None] = set()
+        tile_epsg: int | None = None
+        for t, f in zip(tiles, files, strict=True):
+            try:
+                s = read_summary(ctx, pdal, f)
+            except JobError as e:
+                raise JobError(f"Tile {t.name} of {src.name} could not be read: {e}") from None
+            srs = s.get("srs") or {}
+            if srs.get("wkt") or srs.get("json"):
+                tile_epsg = source_epsg(srs)
+                own = srs.get("wkt") or json.dumps(srs.get("json"), sort_keys=True)
+                crss.add(("epsg", tile_epsg) if tile_epsg else ("crs", own))
+            else:
+                crss.add(None)
+            counts.append(int(s.get("num_points") or 0))
+            ctx.log(f"{t.name}: {counts[-1]:,} points")
+        if len(crss) > 1 and None in crss:
+            raise JobError(
+                f"Some tiles of {src.name} declare no CRS and others declare one; export them all in one CRS."
+            )
+        if len(crss) > 1:
+            raise JobError(f"The tiles of {src.name} are in different CRSs; export them in one CRS.")
+        count, has_crs = sum(counts), next(iter(crss)) is not None
+        reproject = epsg if epsg and has_crs and tile_epsg != epsg else None
+        if epsg and not has_crs:
+            ctx.log(f"The tiles declare no CRS; they are taken as EPSG:{epsg} already.", "warn")
+        ctx.log(f"{src.name}: {len(tiles)} tiles, {count:,} points")
+        record = max((las_record_length(f) or DEFAULT_RECORD) for f in files)
+        check_space(ctx.staging, disk_needed(count, record if reproject else None))
+        folder, start = raw, ZPC_UNPACK_END
+        if reproject:
+            found = f"EPSG:{tile_epsg}" if tile_epsg else "their own CRS"
+            ctx.log(f"Reprojecting the tiles from {found} to EPSG:{epsg}.")
+            las_dir.mkdir(parents=True, exist_ok=True)
+            step = (PREPARE_END - ZPC_UNPACK_END) / len(files)
+            for i, (f, n) in enumerate(zip(files, counts, strict=True)):
+                band = (ZPC_UNPACK_END + i * step, ZPC_UNPACK_END + (i + 1) * step)
+                prepare_las(ctx, pdal, f, las_dir / f"tile-{i + 1:03d}.las", reproject, n, band)
+                f.unlink()  # one copy of each tile on the drive at a time
+            folder, start = las_dir, PREPARE_END
+        writer = build_copc(ctx, folder, staged, count, epsg, start)
+    finally:
+        for d in (raw, las_dir):
+            shutil.rmtree(d, ignore_errors=True)
+    ctx.log(f"Built the viewable cloud with {writer}.")
+    return {"points": count, "bytes": staged.stat().st_size, "tiles": len(tiles)}
+
+
 def _layer_id(out_rel: str, taken: set[str]) -> str:
     stem = Path(out_rel).name.split(".")[0]
     base = "cloud-" + (re.sub(r"[^a-z0-9]+", "-", stem.lower()).strip("-") or "points")
@@ -512,20 +625,33 @@ def _layer_id(out_rel: str, taken: set[str]) -> str:
 class PointcloudToCopc:
     name = "pointcloud.to_copc"
     title = "Point cloud to COPC"
-    description = "Converts LAS, LAZ or E57 to a COPC file in the project CRS and adds it as a layer."
+    description = (
+        "Converts LAS, LAZ, E57, PLY or a Bentley .zpc (a ZIP of LAS/LAZ tiles) to a COPC file in "
+        "the project CRS and adds it as a layer."
+    )
 
     def validate(self, params: dict[str, Any]) -> dict[str, Any]:
-        known_keys(params, {"src", "out", "epsg", "origin"}, self.name)
+        known_keys(params, {"src", "out", "epsg", "origin", "surveyDate"}, self.name)
         src = text(params, "src", required=True)
         assert src is not None
         if Path(src).suffix.lower() not in CLOUD_EXTENSIONS:
-            raise JobError("src must be a LAS, LAZ, E57 or PLY file.")
+            raise JobError("src must be a LAS, LAZ, E57, PLY or ZPC file.")
+        day = params.get("surveyDate")
+        if day is not None:
+            try:
+                ok = isinstance(day, str) and bool(re.fullmatch(r"\d{4}-\d{2}-\d{2}", day))
+                ok = ok and bool(date.fromisoformat(day))
+            except ValueError:
+                ok = False
+            if not ok:
+                raise JobError("surveyDate must be a day as YYYY-MM-DD.")
         stem = re.sub(r"[^a-z0-9]+", "-", Path(src).name.split(".")[0].lower()).strip("-") or "cloud"
         out = {
             "src": src,
             "out": text(params, "out", f"clouds/{stem}.copc.laz"),
             "epsg": number(params, "epsg", None, 1024, 999999, integer=True),
             "origin": numbers(params, "origin", 3),
+            "surveyDate": day,
         }
         assert out["out"] is not None
         if not str(out["out"]).lower().endswith(".copc.laz"):
@@ -540,10 +666,9 @@ class PointcloudToCopc:
             pdal = find_pdal()
             if not pdal:
                 raise JobError(PDAL_MISSING)
-            # the photo pipeline's shared COPC writer (numpy and friends load only when needed)
-            from .photo import cloud_out, native
-
             src = ctx.input(params["src"])
+            if src.suffix.lower() == ".zpc":
+                return convert_zpc(ctx, pdal, src, params.get("epsg"))
             summary = read_summary(ctx, pdal, src)
             srs = summary.get("srs") or {}
             has_crs = bool(srs.get("wkt") or srs.get("json"))
@@ -574,26 +699,7 @@ class PointcloudToCopc:
                     prepared = ctx.stage("source.las")
                     prepare_las(ctx, pdal, src, prepared, reproject, count, (READ_END, PREPARE_END))
                     las, start = prepared, PREPARE_END
-                ctx.check()
-                work = ctx.stage("copc-work")
-                (work / "tool.out").unlink(missing_ok=True)  # an earlier run's percentage
-                with BuildWatch(ctx, (start, BUILD_END), ctx.staging, work / "tool.out"):
-                    writer = cloud_out.write_copc(
-                        _BuildProgress(ctx),  # type: ignore[arg-type]  # a StepContext in all it uses
-                        las,
-                        staged,
-                        count,
-                        epsg,
-                        work,
-                        native.memory_budget(),
-                        progress=(start, BUILD_END),
-                    )
-            except JobError as e:
-                # the shared writer's refusal of PDAL over the memory budget speaks of photo
-                # products; an import says it in its own words
-                if "memory budget" in str(e) and "untwine" in str(e):
-                    raise JobError(TOO_BIG_WITHOUT_UNTWINE) from None
-                raise
+                writer = build_copc(ctx, las, staged, count, epsg, start)
             finally:
                 if prepared is not None:
                     prepared.unlink(missing_ok=True)  # as big as the cloud: never keep it
@@ -615,8 +721,11 @@ class PointcloudToCopc:
                 None,
             )
             points = int(ctx.outputs("convert").get("points") or 0)
+            capture: str | None = None
             if existing is None:
                 lid = _layer_id(out_rel, {str(layer.get("id")) for layer in layers})
+                if params.get("surveyDate"):
+                    capture = capture_for_date(manifest, params["surveyDate"])
                 layers.append(
                     {
                         "kind": "pointcloud",
@@ -626,6 +735,7 @@ class PointcloudToCopc:
                         "src": {"path": out_rel},
                         "format": "copc",
                         **({"pointCount": points} if points else {}),
+                        **({"capture": capture} if capture else {}),
                     }
                 )
                 # keep the previous manifest beside it, as the app's own saves do
@@ -633,8 +743,8 @@ class PointcloudToCopc:
                 atomic_write_json(mpath, manifest, indent=2)
                 ctx.log(f"Added layer {lid} ({out_rel}).")
             else:
-                lid = str(existing.get("id"))
-            return {"layer": lid, "path": out_rel}
+                lid = str(existing.get("id"))  # a re-run leaves the layer, and its date, as they are
+            return {"layer": lid, "path": out_rel, "capture": capture}
 
         return [
             Step("convert", "Convert with PDAL", convert, weight=10),

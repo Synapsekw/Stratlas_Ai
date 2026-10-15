@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { FrameRef, LonLatRing } from './change';
-import { Id, ProjectPath, Vec3 } from './common';
+import { Id, IsoDate, ProjectPath, Vec3 } from './common';
 import { RasterPackId, TerrainDatum } from './globe';
 import { Crs } from './manifest';
 import { PhotoPreset, PhotoProduct, PhotoRunId, PhotoSource } from './photogrammetry';
@@ -62,6 +62,8 @@ export const PipelineName = z.enum([
   'photo.products',
   'opf.import',
   'opf.export',
+  // Bentley iTwin Capture Modeler AT export (15 Oct 2026)
+  'bentley.import',
   'tiles.mesh',
   'tiles.cloud',
   'packs.imagery',
@@ -210,6 +212,12 @@ export const PIPELINES: readonly { name: PipelineName; title: string; descriptio
     title: 'OPF export',
     description:
       'A processing run as an OPF project: cameras, calibration, control points, CRS and the sparse cloud.',
+  },
+  {
+    name: 'bentley.import',
+    title: 'Bentley import',
+    description:
+      'A Bentley iTwin Capture Modeler (ContextCapture) AT export with its photos: a run and a photos layer placed by the calibrated poses.',
   },
   {
     name: 'tiles.mesh',
@@ -424,13 +432,18 @@ export const VolumetricBuildParams = z
 
 export const PointcloudToCopcParams = z
   .object({
-    /** LAS, LAZ, E57 or PLY file (absolute). Read only. */
+    /** LAS, LAZ, E57 or PLY file, or a Bentley .zpc (a ZIP of LAS/LAZ tiles), absolute. Read only. */
     src: z.string().min(1),
     /** Project-relative COPC file; default `clouds/<name>.copc.laz`. */
     out: ProjectPath.optional(),
     /** Project CRS: the cloud is reprojected to it when the file declares its own. */
     epsg: z.number().int().min(1024).max(999999).optional(),
     origin: z.tuple([z.number(), z.number(), z.number()]).optional(),
+    /**
+     * Survey day of the cloud (YYYY-MM-DD): the job files the layer under the project's date of
+     * that day, adding one when there is none (15 Oct 2026).
+     */
+    surveyDate: IsoDate.optional(),
   })
   .strict();
 
@@ -712,6 +725,18 @@ export const OpfImportParams = z
     products: z.array(z.enum(['cloud', 'ortho', 'dsm', 'mesh'])).optional(),
     /** Where the photos are when the OPF's own paths do not resolve (absolute). */
     photosRoot: z.string().min(1).max(MAX_PATH).optional(),
+  })
+  .strict();
+
+/** `bentley.import` (python `aio_pipelines/bentley/importer.py`, 15 Oct 2026). */
+export const BentleyImportParams = z
+  .object({
+    /** The BlocksExchange AT export (`.xml`, absolute). Read only. */
+    xml: z.string().min(1).max(MAX_PATH),
+    /** The folder that holds the block's photos (absolute), searched with its subfolders. Read only. */
+    photos: z.string().min(1).max(MAX_PATH),
+    /** Name of the photos layer; default the XML file's name. */
+    name: z.string().min(1).max(120).optional(),
   })
   .strict();
 
@@ -1070,6 +1095,7 @@ export type PhotoAlignParams = z.infer<typeof PhotoAlignParams>;
 export type PhotoGeorefParams = z.infer<typeof PhotoGeorefParams>;
 export type PhotoProductsParams = z.infer<typeof PhotoProductsParams>;
 export type OpfImportParams = z.infer<typeof OpfImportParams>;
+export type BentleyImportParams = z.infer<typeof BentleyImportParams>;
 export type OpfExportParams = z.infer<typeof OpfExportParams>;
 export type TilesMeshParams = z.infer<typeof TilesMeshParams>;
 export type TilesCloudParams = z.infer<typeof TilesCloudParams>;
@@ -1161,6 +1187,7 @@ const PARAMS = {
   'photo.products': PhotoProductsParams,
   'opf.import': OpfImportParams,
   'opf.export': OpfExportParams,
+  'bentley.import': BentleyImportParams,
   'tiles.mesh': TilesMeshParams,
   'tiles.cloud': TilesCloudParams,
   'packs.imagery': ImageryPackParams,

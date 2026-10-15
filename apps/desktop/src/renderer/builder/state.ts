@@ -53,7 +53,9 @@ export interface BuilderState {
     paths?: string[];
   } | null;
   /** Camera heights to confirm before the import runs (relative altitude needs a take-off H). */
-  heightsPrompt: HeightsPrompt | null;
+  heightsPrompt: (HeightsPrompt & { clouds?: readonly CloudToDate[] }) | null;
+  /** The survey day of the clouds to confirm before the import runs (after the heights). */
+  cloudDatesPrompt: CloudDatesPrompt | null;
   /** Drone sphere frames found in the files: import them as panoramas? Null when not asked. */
   panoOffer: PanoOffer | null;
   /** The drone panorama check failed: nothing imports until the user picks (fail closed). */
@@ -86,6 +88,9 @@ export interface BuilderActions {
   /** Run the prompted import with the confirmed heights, or drop it. */
   confirmHeights: (altitude: AltitudeChoice) => Promise<void>;
   cancelHeights: () => void;
+  /** Run the prompted import with each cloud's survey day (null = Not dated), or drop it. */
+  confirmCloudDates: (dates: Readonly<Record<string, string | null>>) => Promise<void>;
+  cancelCloudDates: () => void;
   /** Import the offered spheres as panoramas (the preview opens) and the rest as photos. */
   acceptPanoOffer: () => Promise<void>;
   /** Skip the sphere frames: import only the other files, the frames left out. */
@@ -119,6 +124,26 @@ export interface ImportOptions {
    * even empty, it also says the panorama offer was answered.
    */
   exclude?: readonly string[];
+  /**
+   * The survey day chosen for each cloud (absolute path to `YYYY-MM-DD`, null = Not dated).
+   * Present, even empty, it also says the cloud dates card was answered.
+   */
+  cloudDates?: Readonly<Record<string, string | null>>;
+}
+
+/** A cloud whose survey day is asked, with the day its file header carries (the export day). */
+export interface CloudToDate {
+  path: string;
+  name: string;
+  headerDay: string | null;
+}
+
+/** Clouds of an import whose survey day is asked before it runs (a Bentley `.zpc`). */
+export interface CloudDatesPrompt {
+  paths: readonly string[];
+  altitude?: AltitudeChoice;
+  opts?: ImportOptions;
+  clouds: readonly CloudToDate[];
 }
 
 export interface PanoOffer {
@@ -166,8 +191,11 @@ export const IMPORT_FILTERS = [
       'las',
       'laz',
       'e57',
+      // a Bentley .zpc cloud; .xml: LandXML designs and Bentley AT exports
+      'zpc',
       'dxf',
       'opf',
+      'xml',
       // drawings (a JPEG or a georeferenced TIFF is a drawing only through Add drawing)
       'pdf',
       'png',
@@ -273,6 +301,7 @@ function busyNow(altitude?: AltitudeChoice): boolean {
   return (
     s.importing !== null ||
     s.heightsPrompt !== null ||
+    s.cloudDatesPrompt !== null ||
     s.panoOffer !== null ||
     s.panoFailed !== null ||
     previewing ||
@@ -280,6 +309,36 @@ function busyNow(altitude?: AltitudeChoice): boolean {
     // still being prepared (its sphere scan or its heights)
     (preparing && !altitude)
   );
+}
+
+/**
+ * The `.zpc` clouds of an import with the day their header carries (`builder:cloudDates`); null
+ * when they could not be read (the import then goes on, its clouds not dated).
+ */
+async function cloudsToDate(
+  projectId: string,
+  paths: readonly string[],
+  opts: ImportOptions | undefined,
+): Promise<CloudToDate[] | null> {
+  try {
+    const r = await bridge.call('builder:cloudDates', {
+      projectId,
+      paths: [...paths],
+      ...(opts?.exclude?.length ? { exclude: [...opts.exclude] } : {}),
+    });
+    return r.ok && r.value.ok ? r.value.clouds : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * While a drop was prepared, an import confirmed in a card started, or a card that asks before
+ * an import (heights, cloud dates) opened: the drop waits for it.
+ */
+function askedOrRunning(): boolean {
+  const s = builder.getState();
+  return s.importing !== null || s.heightsPrompt !== null || s.cloudDatesPrompt !== null;
 }
 
 /**
@@ -308,7 +367,7 @@ async function runImport(
       preparing = false;
       builder.setState({ panoScanning: false });
     }
-    if (builder.getState().importing || builder.getState().heightsPrompt) return true;
+    if (askedOrRunning()) return true;
     if (!found || !found.ok || !found.value.ok) {
       // fail closed: sphere frames must not silently become map photos
       builder.setState({ panoFailed: { paths, ...(altitude ? { altitude } : {}) } });
@@ -320,22 +379,30 @@ async function runImport(
       return false;
     }
   }
-  // a drawing has no camera and a 360 video is not placed: neither asks for camera heights
-  if (!altitude && !opts?.drawings && !opts?.as360) {
+  // a drawing has no camera and a 360 video is not placed: neither asks for camera heights. The
+  // survey day of each Bentley .zpc cloud is read with the heights (its file only carries the
+  // export day, ruling of 15 Oct 2026) and asked after them: an import that comes with its
+  // `altitude` was confirmed in a card and starts at once. `cloudDates` says the dates card was
+  // answered, so the heights were settled before it (asked, or not needed): reading them again
+  // would only wait, and a heights card opened then would drop the chosen days.
+  if (!altitude && !opts?.drawings && !opts?.as360 && opts?.cloudDates === undefined) {
     preparing = true;
-    const plan = await bridge
-      .call('builder:altitudePlan', {
+    const [plan, clouds] = await Promise.all([
+      bridge.call('builder:altitudePlan', {
         projectId: project.id,
         paths: [...paths],
         // the sphere frames go to the panorama import: they ask for no camera heights
         ...(opts?.exclude?.length ? { exclude: [...opts.exclude] } : {}),
-      })
-      .finally(() => {
-        preparing = false;
-      });
+      }),
+      cloudsToDate(project.id, paths, opts),
+    ]).finally(() => {
+      preparing = false;
+    });
     // an import confirmed in the heights prompt started (or a prompt opened) while these heights
     // were read: this drop waits for it
-    if (builder.getState().importing || builder.getState().heightsPrompt) return true;
+    if (askedOrRunning()) return true;
+    if (clouds === null) builder.setState({ importNotice: t('builder.cloudDate.failed') });
+    const asked = clouds?.length ? clouds : undefined;
     if (plan.ok && plan.value.ok && needsTakeoff(plan.value.plan)) {
       const p = plan.value.plan;
       const y = p.takeoff ? terrainHeightAt(p.takeoff.x, p.takeoff.z) : null;
@@ -345,7 +412,16 @@ async function runImport(
           ...heightsPrompt(paths, p, project.manifest.origin[2], y),
           // the sphere frames stay out of the photos after the heights card, too
           ...(opts?.exclude ? { exclude: [...opts.exclude] } : {}),
+          // the cloud dates card follows the heights card
+          ...(asked ? { clouds: asked } : {}),
         },
+      });
+      return false;
+    }
+    if (asked) {
+      builder.setState({
+        importResult: null,
+        cloudDatesPrompt: { paths, ...(opts ? { opts } : {}), clouds: asked },
       });
       return false;
     }
@@ -357,6 +433,7 @@ async function runImport(
     cancelling: false,
     importResult: null,
     heightsPrompt: null,
+    cloudDatesPrompt: null,
   });
   try {
     await importNow(project, paths, altitude, opts);
@@ -400,6 +477,9 @@ async function importNow(
       ...(opts?.drawings ? { drawings: true } : {}),
       ...(opts?.as360 ? { as360: true } : {}),
       ...(opts?.exclude?.length ? { exclude: [...opts.exclude] } : {}),
+      ...(opts?.cloudDates && Object.keys(opts.cloudDates).length
+        ? { cloudDates: { ...opts.cloudDates } }
+        : {}),
     })
     .finally(() => {
       off?.();
@@ -543,6 +623,7 @@ export const builder = createStore<Builder>()((set, get) => ({
   cancelling: false,
   importResult: null,
   heightsPrompt: null,
+  cloudDatesPrompt: null,
   panoOffer: null,
   panoFailed: null,
   panoScanning: false,
@@ -649,11 +730,35 @@ export const builder = createStore<Builder>()((set, get) => ({
   confirmHeights: async (altitude) => {
     const p = get().heightsPrompt;
     if (!p) return;
+    const opts = { exclude: p.exclude ?? [] };
+    // the clouds read with the heights ask for their survey day next
+    if (p.clouds?.length) {
+      set({
+        heightsPrompt: null,
+        cloudDatesPrompt: { paths: p.paths, altitude, opts, clouds: p.clouds },
+      });
+      return;
+    }
     set({ heightsPrompt: null });
-    await get().importFiles(p.paths, altitude, { exclude: p.exclude ?? [] });
+    await get().importFiles(p.paths, altitude, opts);
   },
   cancelHeights: () => {
     set({ heightsPrompt: null });
+    drain();
+  },
+  confirmCloudDates: async (dates) => {
+    const p = get().cloudDatesPrompt;
+    if (!p) return;
+    set({ cloudDatesPrompt: null });
+    await get().importFiles(p.paths, p.altitude, {
+      ...p.opts,
+      exclude: p.opts?.exclude ?? [],
+      cloudDates: dates,
+    });
+  },
+  cancelCloudDates: () => {
+    // nothing is imported, as when the heights are cancelled
+    set({ cloudDatesPrompt: null });
     drain();
   },
 

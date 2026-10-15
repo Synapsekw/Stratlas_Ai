@@ -81,6 +81,7 @@ describe('pipeline params', () => {
       'photo.products',
       'opf.import',
       'opf.export',
+      'bentley.import',
       'tiles.mesh',
       'tiles.cloud',
       'packs.imagery',

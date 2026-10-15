@@ -9,6 +9,18 @@ export const LensModel = z.discriminatedUnion('model', [
     model: z.literal('pinhole'),
     hfovDeg: z.number().gt(0).lt(180),
     aspect: z.number().positive(),
+    /**
+     * Principal point and distortion of a calibrated camera (Bentley import, 15 Oct 2026), all
+     * optional and read by nothing yet: `cx`, `cy` in pixels from the image's top-left corner;
+     * `k1`, `k2`, `k3`, `p1`, `p2` in the OpenCV convention on normalised coordinates.
+     */
+    cx: z.number().optional(),
+    cy: z.number().optional(),
+    k1: z.number().optional(),
+    k2: z.number().optional(),
+    k3: z.number().optional(),
+    p1: z.number().optional(),
+    p2: z.number().optional(),
   }),
   z.object({
     model: z.literal('ftheta'),

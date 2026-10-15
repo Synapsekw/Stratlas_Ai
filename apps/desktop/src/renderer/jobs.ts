@@ -84,6 +84,8 @@ const MANIFEST_WRITERS: ReadonlySet<string> = new Set([
   'model.fit_cloud',
   // M10 OPF: a photos layer, point clouds and rasters from an OPF project
   'opf.import',
+  // Bentley: a run and a photos layer
+  'bentley.import',
   // M10 photo products: ortho, DSM, DTM, cloud and mesh layers of a run. `photo.align` and
   // `photo.georef` write only their run folder, the tiles jobs `tilesets.json` (TILESET_WRITERS)
   // and the pack jobs the data folder, so none of them reloads the manifest.
@@ -431,7 +433,7 @@ export const FORMS: Record<PipelineName, Field[]> = {
       kind: 'text',
       required: true,
       placeholder: 'D:/scans/site.laz',
-      help: 'LAS, LAZ, E57 or PLY. Read only.',
+      help: 'LAS, LAZ, E57, PLY or a Bentley .zpc. Read only.',
     },
     { key: 'epsg', label: 'Project EPSG', kind: 'number', placeholder: 'From the project' },
     { key: 'out', label: 'COPC file', kind: 'text', placeholder: 'clouds/<name>.copc.laz' },
@@ -693,6 +695,24 @@ export const FORMS: Record<PipelineName, Field[]> = {
       kind: 'folder',
       help: 'Where the photos are when the OPF names them by absolute paths or they moved. Read only.',
     },
+  ],
+  'bentley.import': [
+    {
+      key: 'xml',
+      label: 'AT export',
+      kind: 'file',
+      required: true,
+      help: 'The BlocksExchange .xml that Bentley iTwin Capture Modeler (ContextCapture) exported. Read only.',
+      filters: [{ name: 'BlocksExchange AT export', extensions: ['xml'] }],
+    },
+    {
+      key: 'photos',
+      label: 'Photos folder',
+      kind: 'folder',
+      required: true,
+      help: 'The folder that holds the photos of the block; its subfolders are searched. Read only.',
+    },
+    { key: 'name', label: 'Layer name', kind: 'text', placeholder: 'The XML file name' },
   ],
   'opf.export': [
     {
