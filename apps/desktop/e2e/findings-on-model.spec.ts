@@ -2,7 +2,8 @@
  * Findings on a model end to end, on the change demo (synthetic; pnpm demo:change --quick): two
  * detections of the oil stain on the yard, one per survey date, accepted in the review (the stain
  * is a decal of the model and lies in the clouds, while the survey markers are painted on the
- * rendered ground only, which no mesh holds); the offer to connect them to a model; the later one
+ * rendered ground only, which no mesh holds); the offer to connect them to a model, whose Place
+ * takes the app from the review to the 3D view (that placing is undone); the later one
  * placed on the later mesh (an outline drawn instead of its pin, a click on it opening the photo
  * it was projected from) and on the later point cloud (a prism and a point selection file); the
  * earlier one on the earlier mesh, the match suggestion, and Same giving both one track.
@@ -164,18 +165,34 @@ test('places accepted findings on the mesh and the cloud, and matches them acros
   await draftPass(root, 'd2', stain.to);
   const before = new Set((await issues(win)).map((i) => i.id));
 
-  // 1. accept both in the review: the offer to connect them appears
+  // 1. accept both in the review: the offer to connect them appears, and Place there takes the
+  // app to the 3D view with the later finding's outline on the later mesh (undone after, so the
+  // steps below start from the accepted findings as they were)
   await win.locator('.nav-item', { hasText: 'Detections' }).click();
   await expect(win.getByTestId('det-counts')).toContainText('2 waiting', { timeout: 60_000 });
   await win.getByTestId('det-accept-all').click();
   await win.getByTestId('det-batch-ok').click();
   await expect(win.getByTestId('place-offer')).toContainText('Connect 2 findings to a model?');
-  await win.getByTestId('place-not-now').click();
-  await expect(win.getByTestId('place-offer')).toHaveCount(0);
   const fresh = (await issues(win)).filter((i) => !before.has(i.id));
   const later = fresh.find((i) => i.sightings.some((s) => s.layer === 'photos-d2'));
   const earlier = fresh.find((i) => i.sightings.some((s) => s.layer === 'photos-d1'));
   if (!later || !earlier) throw new Error('the two accepted findings are not there');
+  const outlinesOnD2 = async () =>
+    (await issues(win))
+      .find((i) => i.id === later.id)
+      ?.sightings.filter((s) => s.layer === 'model-d2' && s.geom?.type === 'spolygon').length ?? 0;
+  await expect(win.locator('[data-screen="scene"]')).toHaveCount(0);
+  await win.getByTestId('place-layer').selectOption('model-d2');
+  await win.getByTestId('place-go').click();
+  await expect(win.locator('[data-screen="scene"]')).toBeVisible({ timeout: 60_000 });
+  await expect(win.locator('[data-scene-view] canvas')).toBeVisible({ timeout: 60_000 });
+  await expect(win.getByTestId('place-result-text')).toContainText('of 2 on', {
+    timeout: 120_000,
+  });
+  await expect.poll(outlinesOnD2).toBe(1);
+  await win.getByTestId('place-undo').click();
+  await expect.poll(outlinesOnD2).toBe(0);
+  await expect(win.getByTestId('place-offer')).toHaveCount(0);
 
   // the later finding is also marked on another photo of its date, with a box larger than the
   // stain's along the top edge, where the photo looks past the model (so it misses the mesh and

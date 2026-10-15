@@ -4,12 +4,12 @@
  * right-click action. `startPlacement` runs once at start-up (bootstrap.ts).
  */
 import { registerAppHooks } from '@aio/ai';
-import { cameraSources, issueEditor, setIssueListActions } from '@aio/annotate';
+import { cameraSources, isAnnotateReadOnly, issueEditor, setIssueListActions } from '@aio/annotate';
 import { getActiveScene } from '@aio/engine';
 import { workspace } from '@aio/workspace';
 import { useStore } from 'zustand';
 import { acceptByIds } from '../detections/store';
-import { bridge } from '../shell';
+import { bridge, shell } from '../shell';
 import { createPlacementHooks } from './agentHooks';
 import { ensureSizes, layerReady, placeOnScene } from './controller';
 import {
@@ -40,7 +40,12 @@ function liveDeps(): PlacementDeps {
       if (!r.ok) return { error: r.error };
       return r.value.ok ? { path: r.value.path } : { error: r.value.error };
     },
-    ready: (id) => layerReady(workspace, id),
+    ready: (id) => {
+      // only the Scene screen mounts a 3D view: placing from the review or the issue list goes there
+      const s = shell.getState();
+      if (s.screen !== 'scene') s.go('scene');
+      return layerReady(workspace, id);
+    },
     now: () => new Date().toISOString(),
     newId: () => globalThis.crypto.randomUUID(),
   };
@@ -73,6 +78,8 @@ export function startPlacement(): () => void {
       placeIds: (ids, layerId) => placement.getState().placeIds(ids, layerId),
       acceptByIds,
       editor: issueEditor,
+      readOnly: isAnnotateReadOnly,
+      placeError: () => placement.getState().error,
     }),
   );
   return () => {

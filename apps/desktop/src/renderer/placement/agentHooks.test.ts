@@ -1,5 +1,5 @@
 import { ToolError } from '@aio/ai';
-import type { EditorState } from '@aio/annotate';
+import { READ_ONLY_ERROR, type EditorState } from '@aio/annotate';
 import { ok, type Issue, type ProjectManifest } from '@aio/schema';
 import { createWorkspace } from '@aio/workspace';
 import { describe, expect, it, vi } from 'vitest';
@@ -106,13 +106,16 @@ function setup() {
     addSighting: vi.fn(() => ok(F01)),
     undo: vi.fn(() => true),
   };
+  const flags: { readOnly: boolean; error: string | null } = { readOnly: false, error: null };
   const deps: PlacementHookDeps = {
     workspace: ws,
     placeIds: m.placeIds,
     acceptByIds: m.acceptByIds,
     editor: { state, addSighting: m.addSighting, undo: m.undo },
+    readOnly: () => flags.readOnly,
+    placeError: () => flags.error,
   };
-  return { ws, m, hooks: createPlacementHooks(deps) };
+  return { ws, m, flags, hooks: createPlacementHooks(deps) };
 }
 
 describe('assistant placement hooks', () => {
@@ -236,5 +239,34 @@ describe('assistant placement hooks', () => {
     vi.mocked(m.placeIds).mockResolvedValueOnce(null);
     const n = await hooks.placeOnModel({ ids: ['F01'], layer: 'model' });
     expect(n.outcomes[0]?.reason).toMatch(/did not run/);
+  });
+
+  it('refuses both tools on a read-only package, before accepting or placing anything', async () => {
+    const { m, flags, hooks } = setup();
+    flags.readOnly = true;
+    await expect(hooks.placeOnModel({ ids: ['F01', 'det-1'], layer: 'model' })).rejects.toThrow(
+      READ_ONLY_ERROR,
+    );
+    await expect(
+      hooks.addSighting({ issue: 'F01', layer: 'model', at: { kind: 'point', p: [0, 0, 0] } }),
+    ).rejects.toThrow(READ_ONLY_ERROR);
+    expect(m.acceptByIds).not.toHaveBeenCalled();
+    expect(m.placeIds).not.toHaveBeenCalled();
+    expect(m.addSighting).not.toHaveBeenCalled();
+  });
+
+  it('passes the refusal on when placing did not run because it failed', async () => {
+    const { m, flags, hooks } = setup();
+    flags.error = 'Refused: the issues file is locked';
+    vi.mocked(m.placeIds).mockResolvedValueOnce(null);
+    const r = await hooks.placeOnModel({ ids: ['F01'], layer: 'model' });
+    expect(r.outcomes[0]?.reason).toBe('Refused: the issues file is locked');
+    vi.mocked(m.placeIds).mockResolvedValueOnce(null);
+    const s = await hooks.addSighting({
+      issue: 'F01',
+      layer: 'model',
+      at: { kind: 'photo', photo: 'P7', box: [1, 2, 3, 4] },
+    });
+    expect(s.reason).toBe('Refused: the issues file is locked');
   });
 });

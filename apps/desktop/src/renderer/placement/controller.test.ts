@@ -75,14 +75,41 @@ describe('layerReady', () => {
     expect(await layerReady(ws, 'cloud', never, 30, 5)).toBe(false);
   });
 
-  it('answers at once when no 3D view is mounted, without waiting out the timeout', async () => {
-    const ws = createWorkspace();
-    ws.getState().openProject({ id: 'p', root: 'r', manifest }, []);
-    const started = Date.now();
-    expect(await layerReady(ws, 'cloud', () => null, 10_000, 5)).toBe(false);
-    expect(Date.now() - started).toBeLessThan(500);
-    // the layer is shown all the same, for when the view opens
-    expect(ws.getState().hidden.cloud).toBeUndefined();
+  it('waits for a 3D view to mount, then for the layer, within the timeout', async () => {
+    vi.useFakeTimers();
+    try {
+      const ws = createWorkspace();
+      ws.getState().openProject({ id: 'p', root: 'r', manifest }, []);
+      let mounted: SceneHandle | null = null;
+      const answer = layerReady(ws, 'cloud', () => mounted, 10_000, 100);
+      // the layer is shown at once, for when the view opens
+      expect(ws.getState().hidden.cloud).toBeUndefined();
+      await vi.advanceTimersByTimeAsync(2_000);
+      mounted = { rayLayers: () => new Set(['cloud']) } as unknown as SceneHandle;
+      await vi.advanceTimersByTimeAsync(200);
+      expect(await answer).toBe(true);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('answers false once the timeout passes with no 3D view mounted', async () => {
+    vi.useFakeTimers();
+    try {
+      const ws = createWorkspace();
+      ws.getState().openProject({ id: 'p', root: 'r', manifest }, []);
+      let done = false;
+      const answer = layerReady(ws, 'cloud', () => null, 10_000, 100).then((r) => {
+        done = true;
+        return r;
+      });
+      await vi.advanceTimersByTimeAsync(9_000);
+      expect(done).toBe(false);
+      await vi.advanceTimersByTimeAsync(1_200);
+      expect(await answer).toBe(false);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });
 

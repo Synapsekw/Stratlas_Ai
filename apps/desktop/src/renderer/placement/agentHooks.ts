@@ -4,7 +4,7 @@
  * same detection acceptance and the same issue editor as the person's own clicks.
  */
 import { ToolError, type AppHooks, type PlaceOutcome } from '@aio/ai';
-import type { IssueEditor } from '@aio/annotate';
+import { READ_ONLY_ERROR, type IssueEditor } from '@aio/annotate';
 import type { Issue, Layer, Sighting } from '@aio/schema';
 import type { Workspace } from '@aio/workspace';
 import type { StoreApi } from 'zustand/vanilla';
@@ -16,6 +16,10 @@ export interface PlacementHookDeps {
   placeIds(ids: readonly string[], layerId: string): Promise<PlaceSummary | null>;
   acceptByIds: typeof acceptByIds;
   editor: Pick<IssueEditor, 'addSighting' | 'undo' | 'state'>;
+  /** True while the open project is a read-only package: both tools are refused up front. */
+  readOnly?: () => boolean;
+  /** The placement's own error (an editor refusal, a throw) after a run that gave no summary. */
+  placeError?: () => string | null;
 }
 
 const NOT_RUN = 'placing did not run (another project opened, or it failed)';
@@ -62,12 +66,18 @@ export function createPlacementHooks(
   };
   const issueOf = (ref: string): Issue | undefined =>
     deps.workspace.getState().issues.find((i) => i.id === ref || i.code === ref);
+  const writable = () => {
+    if (deps.readOnly?.()) throw new ToolError(READ_ONLY_ERROR);
+  };
+  /** Why a run gave no summary: the placement's error when it has one. */
+  const notRun = () => deps.placeError?.() ?? NOT_RUN;
   const undoIf = (label: string | undefined) => {
     if (label && deps.editor.state.undoLabel === label) deps.editor.undo();
   };
 
   return {
     async placeOnModel(req) {
+      writable();
       const layer = layerOf(req.layer);
       const issueIds = new Map<string, string>();
       const rest: string[] = [];
@@ -92,7 +102,7 @@ export function createPlacementHooks(
         if (o) return { id, code: o.code, reason: o.changed ? 'changed' : (o.reason ?? 'missed') };
         if (issueId) {
           const code = issueOf(issueId)?.code;
-          return { id, ...(code ? { code } : {}), reason: NOT_RUN };
+          return { id, ...(code ? { code } : {}), reason: summary ? NOT_RUN : notRun() };
         }
         return early.get(id) ?? { id, reason: 'unknown' };
       });
@@ -111,6 +121,7 @@ export function createPlacementHooks(
     },
 
     async addSighting(req) {
+      writable();
       const layer = layerOf(req.layer);
       const issue = issueOf(req.issue);
       if (!issue) throw new ToolError(`No issue "${req.issue}". Use list_issues for the codes.`);
@@ -148,7 +159,7 @@ export function createPlacementHooks(
       const first = deps.editor.state.undoLabel ?? undefined;
       const summary = await deps.placeIds([issue.id], layer.id);
       const o = summary?.outcomes.find((x) => x.id === issue.id);
-      const reason = o?.ok ? undefined : o ? `the photo box: ${reasonOf(o)}` : NOT_RUN;
+      const reason = o?.ok ? undefined : o ? `the photo box: ${reasonOf(o)}` : notRun();
       const second = summary && summary.placed > 0 ? summary.label : undefined;
       return {
         code: issue.code,

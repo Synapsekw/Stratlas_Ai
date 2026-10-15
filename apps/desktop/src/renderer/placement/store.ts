@@ -342,7 +342,8 @@ export function createPlacementStore(deps: PlacementDeps): StoreApi<PlacementSta
         if (!offer || !layerId) return null;
         set({ offer: null });
         const r = await placeIds(offer.ids, layerId);
-        if (!r && get().error) {
+        const notLoaded = r !== null && r.total > 0 && r.notLoaded === r.total;
+        if ((!r && get().error) || notLoaded) {
           // offered again, together with anything offered while it ran
           const now = get().offer;
           set({

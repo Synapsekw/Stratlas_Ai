@@ -473,6 +473,14 @@ describe('placing', () => {
     expect(store.getState().offer).toEqual({ ids: ['a', 'b'], source: 'change' });
   });
 
+  it('offers again when the layer did not load for any of them', async () => {
+    const { store } = setup({ ready: vi.fn(() => Promise.resolve(false)) });
+    store.getState().offerIds(['a', 'b'], 'detections');
+    const r = await store.getState().place();
+    expect(r).toMatchObject({ placed: 0, notLoaded: 2 });
+    expect(store.getState().offer).toEqual({ ids: ['a', 'b'], source: 'detections' });
+  });
+
   it('names each selection write apart, within the file name rule', () => {
     const long = 'x'.repeat(200);
     const name = stepSelectionName(long, 'cloud', '2026-10-15T12:00:00.000Z');

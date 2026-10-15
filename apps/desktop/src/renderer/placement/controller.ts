@@ -101,8 +101,8 @@ export async function ensureSizes(
 }
 
 /**
- * Show the layer when hidden, then wait until the 3D view can cast rays at it. With no 3D view
- * mounted there is nothing to wait for: false at once.
+ * Show the layer when hidden, then wait until the 3D view can cast rays at it. A 3D view that is
+ * still mounting (the app has just switched to it) is waited for within the same timeout.
  */
 export async function layerReady(
   ws: StoreApi<Workspace>,
@@ -113,7 +113,6 @@ export async function layerReady(
 ): Promise<boolean> {
   const s = ws.getState();
   if (s.hidden[layerId]) s.setLayerVisible(layerId, true);
-  if (!scene()) return false;
   const end = Date.now() + timeoutMs;
   const has = () => scene()?.rayLayers?.().has(layerId) === true;
   while (Date.now() < end) {
