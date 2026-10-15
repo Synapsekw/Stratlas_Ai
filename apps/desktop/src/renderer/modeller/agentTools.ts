@@ -2,6 +2,11 @@ import { registerRendererTool, ToolError, type ToolRunResult } from '@aio/ai';
 import { findDrawing, findPart, partSummary, type DimensionKey } from '@aio/modelling';
 import type { PartStatus, ProcModel, ProcPart, ProcPartKind, Vec3 } from '@aio/schema';
 import type { StoreApi } from 'zustand';
+import {
+  activeEngineerSession,
+  registerEngineerTools,
+  type EngineerModelSession,
+} from './engineerTools';
 import type { Modeller } from './store';
 
 /** Inputs as `@aio/ai` `modellingToolInputs` checks them before an executor runs. */
@@ -53,6 +58,8 @@ export interface ModellingToolHost {
   dataUrl: (path: string) => Promise<string>;
   /** Point cloud layers of the open project, for `fit_primitives`. */
   clouds: () => { id: string; name: string }[];
+  /** The engineering model the correction tools act on; default the one set as active. */
+  engineer?: () => EngineerModelSession | null;
 }
 
 const DIMENSIONS: readonly DimensionKey[] = [
@@ -91,6 +98,8 @@ function describePart(p: ProcPart, share: boolean): Record<string, unknown> {
 
 export function registerModellingTools(host: ModellingToolHost): void {
   const { modeller } = host;
+  // the engineering model's corrections (list, edit, counts, levels, add, remove)
+  registerEngineerTools(host.engineer ?? activeEngineerSession);
   const share = async () => !(await host.cloudRoute()) || host.cloudDrawings();
 
   async function model(id: string | undefined): Promise<ProcModel> {

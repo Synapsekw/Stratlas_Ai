@@ -7,6 +7,7 @@
  * Executors run in the desktop renderer (`apps/desktop/src/renderer/modeller/agentTools.ts`).
  */
 import {
+  AssemblyKind,
   PartStatus,
   ProcModelId,
   ProcPart,
@@ -36,6 +37,30 @@ const ModelRef = ProcModelId.optional().describe(
 );
 
 const LocalBox = z.object({ min: Vec3, max: Vec3 }).strict();
+
+/** A component of the engineering model: its id (`flue-2`) or its role (`flue`, `light-l1`). */
+const Component = z
+  .string()
+  .regex(/^[a-z][a-z0-9-]{0,79}$/)
+  .describe('Component id such as flue-2, or a role such as flue or light-l1 (all of them)');
+const Role = z
+  .string()
+  .regex(/^[a-z][a-z0-9-]{0,39}$/)
+  .describe('Component role, such as flue, ladder, light-l1');
+const ParamName = z.string().regex(/^[A-Za-z][A-Za-z0-9]{0,39}$/);
+/** A correction is a scalar: geometry comes from the assembler, never from the agent. */
+const ParamValue = z.union([
+  z.number().min(-100_000).max(100_000),
+  z.string().max(80),
+  z.boolean(),
+]);
+/** A new component's parameters: scalars, points and short lists, all bounded. */
+const AddValue = z.union([
+  ParamValue,
+  z.array(z.number().min(-100_000).max(100_000)).max(64),
+  z.array(z.array(z.number().min(-100_000).max(100_000)).max(4)).max(64),
+  z.array(z.record(z.string().max(20), z.number().min(-100_000).max(100_000))).max(64),
+]);
 
 export const modellingToolInputs = {
   list_model_parts: z
@@ -129,6 +154,69 @@ export const modellingToolInputs = {
       drawing: z.string().min(1).optional().describe('Imported drawing name; default the newest'),
     })
     .strict(),
+
+  // ---------------------------------------------------------------- engineering model corrections
+  list_components: z
+    .object({
+      kind: AssemblyKind.optional().describe('Only components of this kind'),
+      status: PartStatus.optional().describe('Only components with this status'),
+    })
+    .strict(),
+  edit_component: z
+    .object({
+      component: Component,
+      set: z
+        .record(ParamName, ParamValue)
+        .refine((s) => Object.keys(s).length >= 1 && Object.keys(s).length <= 12, {
+          message: 'Set 1 to 12 parameters.',
+        })
+        .optional()
+        .describe(
+          'Parameter values by name (numbers in metres or degrees, words, true or false), e.g. {"rOuter": 0.6}',
+        ),
+      status: PartStatus.optional().describe('accepted, rejected or draft'),
+    })
+    .strict()
+    .refine((v) => v.status !== undefined || v.set !== undefined, {
+      message: 'Give a status or parameters to set.',
+    }),
+  set_count: z
+    .object({
+      role: Role,
+      count: z.number().int().min(0).max(64).describe('How many there are'),
+    })
+    .strict(),
+  set_levels: z
+    .object({
+      role: Role.describe(
+        'light: every intermediate warning light level; light-l1: one level; platform, band, antenna',
+      ),
+      levels: z
+        .array(z.number().min(0).max(2000))
+        .max(16)
+        .describe('Heights in metres above the asset base'),
+    })
+    .strict(),
+  add_component: z
+    .object({
+      kind: AssemblyKind,
+      role: Role,
+      name: z.string().min(1).max(200).optional(),
+      params: z
+        .record(ParamName, AddValue)
+        .refine((p) => Object.keys(p).length <= 24, 'At most 24 parameters.')
+        .describe('The parameters of that kind, in the local frame, metres'),
+    })
+    .strict(),
+  remove_component: z
+    .object({
+      component: Component,
+      confirm: z
+        .boolean()
+        .optional()
+        .describe('true to remove a component a person accepted (ask them first)'),
+    })
+    .strict(),
 };
 
 export type ModellingToolName = keyof typeof modellingToolInputs;
@@ -176,5 +264,35 @@ export const MODELLING_TOOL_SPECS: readonly ToolSpec[] = [
     'view_plan',
     'Send the picture of an imported plan to you, to read it. Only when the project allows drawings to go to a cloud model, or the model runs on this computer; the app asks first.',
     'send',
+  ),
+  spec(
+    'list_components',
+    'List the components of the engineering model open in the Model builder (chimney, flare or telecom tower): id, role, kind, status, parameters and how each value is known (measured, observed, inferred or the person).',
+    'read',
+  ),
+  spec(
+    'edit_component',
+    'Correct an engineering model component (by id) or every component of a role: set parameter values or accept, reject or reopen it. The model is assembled again; ids stay, accepted components are kept. The app asks for approval first.',
+    'write',
+  ),
+  spec(
+    'set_count',
+    'Correct how many components of a role there are ("there are four flues, not three"). Only that role is assembled again; the others and every accepted component stay. The app asks for approval first.',
+    'write',
+  ),
+  spec(
+    'set_levels',
+    'Set the heights of a role in metres above the asset base: `light` for every intermediate warning light level, `light-l1` to move one level, or platform, band, antenna. The app asks for approval first.',
+    'write',
+  ),
+  spec(
+    'add_component',
+    'Add a component the evidence missed, with its kind, role and parameters. It is kept as given (a draft for a person to accept). The app asks for approval first.',
+    'write',
+  ),
+  spec(
+    'remove_component',
+    'Leave a component (by id) or a role out of the engineering model. A component a person accepted needs confirm: true, after you asked them. The app asks for approval first.',
+    'write',
   ),
 ];

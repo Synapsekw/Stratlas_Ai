@@ -18,6 +18,13 @@ import type { ModelProvider } from './providers';
 
 /** Keyword (lower case, in the user's message) to the tool call the script makes. */
 export const SCRIPT: readonly { when: string; tool: string; input: Record<string, unknown> }[] = [
+  // engineering model corrections (e2e): "there are four flues, not three"
+  { when: 'four flues', tool: 'set_count', input: { role: 'flue', count: 4 } },
+  {
+    when: 'intermediate warning lights',
+    tool: 'set_levels',
+    input: { role: 'light', levels: [25, 50, 75] },
+  },
   {
     when: 'draft',
     tool: 'create_issue_draft',

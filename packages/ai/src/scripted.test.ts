@@ -2,7 +2,8 @@ import { EngineerProposal, type EngineerSetup } from '@aio/schema';
 import { describe, expect, it } from 'vitest';
 import { runEngineer, type EngineerCall, type EngineerHost } from './engineer';
 import { createProviderRegistry } from './providers';
-import { createScriptedProvider, SCRIPTED_ENGINEER } from './scripted';
+import { createScriptedProvider, SCRIPT, SCRIPTED_ENGINEER, scriptedTurn } from './scripted';
+import { getToolSpec } from './tools';
 
 const PNG =
   'data:image/png;base64,' +
@@ -60,6 +61,32 @@ function host(provider: 'anthropic' | 'openai'): EngineerHost & { requests: () =
     requests: () => requests,
   };
 }
+
+describe('scripted corrections', () => {
+  const user = (text: string) => [
+    { role: 'user' as const, content: [{ type: 'text' as const, text }] },
+  ];
+  it('"there are four flues, not three" sets the flue count', () => {
+    expect(scriptedTurn(user('There are four flues, not three.'))).toEqual({
+      kind: 'tool',
+      tool: 'set_count',
+      input: { role: 'flue', count: 4 },
+    });
+  });
+  it('"add the intermediate warning lights" sets the light levels', () => {
+    expect(scriptedTurn(user('Please add the intermediate warning lights'))).toEqual({
+      kind: 'tool',
+      tool: 'set_levels',
+      input: { role: 'light', levels: [25, 50, 75] },
+    });
+  });
+  it('the inputs pass the tools own checks', () => {
+    for (const s of SCRIPT.slice(0, 2)) {
+      const spec = getToolSpec(s.tool);
+      expect(spec?.input.safeParse(s.input).success, s.tool).toBe(true);
+    }
+  });
+});
 
 describe('scripted engineer replies', () => {
   it.each(['anthropic', 'openai'] as const)(
