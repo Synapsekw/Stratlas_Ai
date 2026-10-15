@@ -311,6 +311,7 @@ describe('runEngineer', () => {
       if (r.kind !== 'proposal') return;
       expect(r.proposal).toEqual(stackProposal());
       expect(r.costUsd).toBeGreaterThan(0);
+      expect(r.usage).toEqual({ inputTokens: 3000, outputTokens: 900 });
       // both use the provider's native JSON schema output, no tool-call convention
       expect(JSON.stringify(bodies[0])).toContain('"type":"json_schema"');
       expect(calls.length).toBe(1);
@@ -404,7 +405,11 @@ describe('runEngineer', () => {
   it('a repaired reply is accepted', async () => {
     const bad = { ...stackProposal(), family: { value: 'windmill', reasons: [] } };
     const t = mockHost({ replies: [wire(bad), wire(stackProposal())] });
-    expect(await runEngineer(call(), t.host)).toMatchObject({ kind: 'proposal' });
+    // the usage counts both requests, the repair included
+    expect(await runEngineer(call(), t.host)).toMatchObject({
+      kind: 'proposal',
+      usage: { inputTokens: 6000, outputTokens: 1800 },
+    });
     expect(t.calls.length).toBe(2);
     expect(t.cache.size).toBe(1);
   });
@@ -437,6 +442,7 @@ describe('runEngineer', () => {
     const again = mockHost({ cache });
     const r = await runEngineer(call(), again.host);
     expect(r).toMatchObject({ kind: 'proposal', cached: true, costUsd: 0 });
+    expect(r.kind === 'proposal' && r.usage).toBeUndefined();
     expect(again.calls.length).toBe(0);
     expect(again.usage).toHaveLength(0);
   });

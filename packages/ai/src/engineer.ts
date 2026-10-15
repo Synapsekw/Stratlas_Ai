@@ -150,6 +150,11 @@ export type EngineerOutcome =
       identityConflict?: true;
       /** The cost cap stopped this pass: `proposal` is the previous pass's, with a note. */
       stopped?: 'budget';
+      /**
+       * Tokens of the requests this call made (a repair included); absent for a cached reply
+       * and when the cost cap stopped the pass. The cost is `costUsd`.
+       */
+      usage?: { inputTokens: number; outputTokens: number };
     }
   | {
       kind: 'refused';
@@ -745,12 +750,16 @@ export async function runEngineer(c: EngineerCall, host: EngineerHost): Promise<
   const model = provider.languageModel(route.model, key);
   const instructions = engineerSystem();
   let costUsd = 0;
+  /** Tokens of every metered request of this call (the repair included). */
+  const tokens = { inputTokens: 0, outputTokens: 0 };
   const meter = (u: LanguageModelUsage | undefined) => {
     const cost = costOf(route, u);
     if (cost.costUsd !== undefined) {
       costUsd += cost.costUsd;
       spent += cost.costUsd;
     }
+    tokens.inputTokens += cost.inputTokens;
+    tokens.outputTokens += cost.outputTokens;
     host.usage({
       projectId: c.projectId,
       runId: c.runId,
@@ -824,9 +833,16 @@ export async function runEngineer(c: EngineerCall, host: EngineerHost): Promise<
     }
     const conflict = !proposal.identity.sameAsset || proposal.identity.conflicts.length > 0;
     if (conflict)
-      return { kind: 'proposal', proposal, cached: false, costUsd, identityConflict: true };
+      return {
+        kind: 'proposal',
+        proposal,
+        cached: false,
+        costUsd,
+        usage: { ...tokens },
+        identityConflict: true,
+      };
     await host.cache.put(cacheKey, proposal).catch(() => undefined);
-    return { kind: 'proposal', proposal, cached: false, costUsd };
+    return { kind: 'proposal', proposal, cached: false, costUsd, usage: { ...tokens } };
   } catch (e) {
     return failure(e, { host, timeout, label, route, key });
   }

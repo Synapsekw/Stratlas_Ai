@@ -1,5 +1,11 @@
 import type { LanguageModelV4 } from '@ai-sdk/provider';
-import type { AiProvider, EngineerSetup, IpcEvent, IpcRequest } from '@aio/schema';
+import {
+  ipc,
+  type AiProvider,
+  type EngineerSetup,
+  type IpcEvent,
+  type IpcRequest,
+} from '@aio/schema';
 import { mkdir, mkdtemp, readdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -162,6 +168,12 @@ describe('ai:engineer', () => {
         kind: 'proposal',
         cached: false,
         proposal: { family: { value: 'chimney' } },
+        // the outcome carries the tokens, so the run can add them up
+        usage: { inputTokens: 1200, outputTokens: 150 },
+      });
+      // and passes the IPC contract with them (the schema keeps the field)
+      expect(ipc['ai:engineer'].response.parse(r)).toMatchObject({
+        usage: { inputTokens: 1200, outputTokens: 150 },
       });
       expect(t.requests()).toBe(1);
       expect(t.events).toEqual([
