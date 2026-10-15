@@ -7,7 +7,7 @@
 //   - The pipeline pack: the runtime dependency tree of `aio-pipelines` in python/.venv (uv.lock),
 //     licence from each distribution's metadata.
 //   - The pack's native libraries (M10 G1): tools/release/native-libs.json (libraries inside the
-//     wheels and CPython, and what the prebuilt pycolmap, OpenCV and pymeshlab wheels bundle) and
+//     wheels and CPython, and what the prebuilt pycolmap and OpenCV wheels bundle) and
 //     tools/pipeline-pack/pdal-lock.json (conda-forge's PDAL and its libraries). Since the founder
 //     decision of 8 Oct 2026 these carry GPL parts; their licences are listed as they are.
 //   - Map and imagery data: tools/release/data-sources.json.
@@ -278,27 +278,6 @@ export function modelInventory(models = [SAM_MODEL]) {
   }));
 }
 
-/**
- * The optional GPU add-on beside the pipeline pack, from its lock: `{ version, cuda, packages }`,
- * each package once whatever the platforms it is on.
- */
-export function addonInventory(lockDoc = readJson('tools/pipeline-pack/accelerator-lock.json')) {
-  const seen = new Map();
-  for (const wheels of Object.values(lockDoc.platforms ?? {}))
-    for (const w of wheels)
-      seen.set(w.name, {
-        name: w.name,
-        version: w.version,
-        license: w.license,
-        homepage: `https://pypi.org/project/${w.name}/${w.version}/`,
-      });
-  return {
-    version: lockDoc.version,
-    cuda: lockDoc.runtime?.cuda ?? '',
-    packages: [...seen.values()].sort((a, b) => a.name.localeCompare(b.name)),
-  };
-}
-
 function modelTable(entries) {
   return [
     '| Model | Version | Licence | Used for | Source | Files |',
@@ -310,14 +289,26 @@ function modelTable(entries) {
   ].join('\n');
 }
 
-function nativeSections(native, data, models, addon) {
+/** The program the app downloads at run time (ODM): fixed text, the pin is in the app's main process. */
+const DOWNLOADED_AT_RUN_TIME = `## Downloaded at run time
+
+Software that is not part of the installer, the Team Server image or the pipeline pack: the person downloads it from its own project through the app, and it is never redistributed by us.
+
+| Program | Version | Licence | Source |
+| ------- | ------- | ------- | ------ |
+| ODM (OpenDroneMap) | 3.6.2 | AGPL-3.0 | https://github.com/OpenDroneMap/ODM |
+
+ODM (OpenDroneMap) 3.6.2 makes the orthomosaic, the surfaces, the point cloud and the textured mesh from photos. It is installed by the person from Settings, Processing tools: the app downloads ODM's Windows setup from ODM's GitHub release, checks its size and SHA-256 against the pin in \`apps/desktop/src/main/odm/pin.ts\` and runs it with its own silent switches. ODM is a separate program, started by the pipelines as its own process; the app, the Team Server and the pipeline pack never link it and never change its program code, and it is not bundled. Its source is available from the project above.
+`;
+
+function nativeSections(native, data, models) {
   const out = [];
   if (native) {
     out.push(`## Pipeline pack native libraries
 
-Generated from \`tools/release/native-libs.json\`, \`tools/pipeline-pack/pdal-lock.json\` and \`tools/pipeline-pack/ffmpeg-lock.json\`. Since the founder decision of 8 Oct 2026 (ADR 0008, amended) the pack is built from prebuilt binaries: COLMAP's, OpenCV's and MeshLab's PyPI wheels and conda-forge's PDAL, with their GPL and LGPL parts. The native licence report (\`tools/release/native-licences.mjs\`) lists every DLL, dylib and executable of each pack against these inventories; it never fails a build.
+Generated from \`tools/release/native-libs.json\`, \`tools/pipeline-pack/pdal-lock.json\` and \`tools/pipeline-pack/ffmpeg-lock.json\`. Since the founder decision of 8 Oct 2026 (ADR 0008, amended) the pack is built from prebuilt binaries: COLMAP's and OpenCV's PyPI wheels and conda-forge's PDAL, with their GPL and LGPL parts. The native licence report (\`tools/release/native-licences.mjs\`) lists every DLL, dylib and executable of each pack against these inventories; it never fails a build.
 
-**GPL.** Our pipeline code (MIT) runs in one process with GPL libraries: SuiteSparse CHOLMOD and SPQR inside pycolmap (GPL-2.0-or-later), MeshLab inside pymeshlab (GPL-3.0), the ffmpeg tool (\`tools/ffmpeg\`, a GPL build with x264 and x265), the untwine tool (\`tools/pdal\`, GPL-3.0-or-later) and, on macOS, the GPL FFmpeg build inside OpenCV's wheel. A pipeline pack as a whole is therefore distributed under the terms of the GNU General Public License, version 3; the source of each GPL component is available from its project (the sources below), and the source of our pipeline code is available on request. The desktop app and the Team Server do not link any of it: they start the pack as a separate program.
+**GPL.** Our pipeline code (MIT) runs in one process with GPL libraries: SuiteSparse CHOLMOD and SPQR inside pycolmap (GPL-2.0-or-later), the ffmpeg tool (\`tools/ffmpeg\`, a GPL build with x264 and x265), the untwine tool (\`tools/pdal\`, GPL-3.0-or-later) and, on macOS, the GPL FFmpeg build inside OpenCV's wheel. A pipeline pack as a whole is therefore distributed under the terms of the GNU General Public License, version 3; the source of each GPL component is available from its project (the sources below), and the source of our pipeline code is available on request. The desktop app and the Team Server do not link any of it: they start the pack as a separate program.
 
 ### Inside the Python wheels and CPython
 
@@ -327,7 +318,7 @@ ${table(native.libs)}
 
 ### Bundled in the photogrammetry wheels (Windows x64 and macOS arm64)
 
-What the pycolmap, opencv-python-headless and pymeshlab wheels carry, as their projects state it.
+What the pycolmap and opencv-python-headless wheels carry, as their projects state it.
 
 ${table(native.bundled)}
 
@@ -356,16 +347,6 @@ Model weights the pipeline pack carries, from \`tools/pipeline-pack/sam.mjs\`: f
 ${modelTable(models)}
 `);
   }
-  if (addon?.packages.length) {
-    out.push(`## GPU add-on (optional)
-
-The GPU add-on ${addon.version} is a separate file for computers with an NVIDIA graphics card. It is not part of the installer or of the pipeline pack, and nothing here applies to a computer without it. Generated from \`tools/pipeline-pack/accelerator-lock.json\`: ready-made wheels from PyPI, each refused unless its SHA-256 matches; nothing is compiled.
-
-CuPy is MIT. NVIDIA's CUDA ${addon.cuda} runtime, runtime compiler and cuBLAS are proprietary: they are redistributed unchanged under NVIDIA's CUDA end user licence agreement (https://docs.nvidia.com/cuda/eula/), for use by this software only, and each keeps its licence file in its folder of the add-on. They are loaded only in the processes that use the graphics card.
-
-${table(addon.packages)}
-`);
-  }
   if (data) {
     out.push(`## Map and imagery data
 
@@ -378,7 +359,7 @@ ${dataTable(data)}
 }
 
 /** The Markdown inventory. */
-export function render(js, py, native = null, data = null, models = null, addon = null) {
+export function render(js, py, native = null, data = null, models = null) {
   return `# Third-party notices
 
 Inventory of the third-party software that ships with Quadrion AI 1.0: the desktop app, the Team Server image and the pipeline pack. Generated by \`node tools/release/notices.mjs\` from the installed trees of \`pnpm-lock.yaml\` and \`python/uv.lock\` and the native and data inventories; do not edit by hand. CI's licence reports list what they find and never fail a build (founder decision of 8 Oct 2026): \`pnpm license:check\` (npm), \`python/tests/test_licences.py\` (Python), \`tools/release/native-licences.mjs\` (native libraries) and \`tools/release/data-licences.mjs\` (data packs). The desktop app and the Team Server stay permissive; the pipeline pack has GPL parts (below).
@@ -393,10 +374,17 @@ ${table(js)}
 
 ## Pipeline pack (Python)
 
-${String(py.length)} packages: ${counts(py)}. The pack also bundles CPython (PSF licence) from python-build-standalone; rasterio's wheel bundles GDAL (MIT) and its dependencies, and the pycolmap, opencv-python-headless and pymeshlab wheels bundle the native libraries listed below, GPL parts included.
+${String(py.length)} packages: ${counts(py)}. The pack also bundles CPython (PSF licence) from python-build-standalone; rasterio's wheel bundles GDAL (MIT) and its dependencies, and the pycolmap and opencv-python-headless wheels bundle the native libraries listed below, GPL parts included.
 
 ${table(py)}
-${native || data || models || addon ? `\n${nativeSections(native, data, models, addon)}` : ''}`;
+${
+  native || data || models
+    ? `
+${nativeSections(native, data, models)}`
+    : ''
+}
+
+${DOWNLOADED_AT_RUN_TIME}`;
 }
 
 if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
@@ -406,7 +394,6 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
     nativeInventory(),
     dataInventory(),
     modelInventory(),
-    addonInventory(),
   );
   const { format, resolveConfig } = await import('prettier');
   const pretty = await format(text, {

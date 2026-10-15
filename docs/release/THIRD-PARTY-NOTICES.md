@@ -187,58 +187,57 @@ The full licence texts ship with the software: the app lists every package with 
 
 ## Pipeline pack (Python)
 
-38 packages: MIT (16), BSD-3-Clause (8), Apache-2.0 (2), BSD (classifier) (2), BSD-2-Clause (2), Apache-2.0 AND BSD-3-Clause (1), Apache-2.0 OR BSD-2-Clause (1), BSD-3-Clause AND 0BSD AND MIT AND Zlib AND CC0-1.0 (1), GPL-3.0-only (1), MIT OR AFL-2.1 (1), MIT-CMU (1), MPL-2.0 (1), PSF-2.0 (1). The pack also bundles CPython (PSF licence) from python-build-standalone; rasterio's wheel bundles GDAL (MIT) and its dependencies, and the pycolmap, opencv-python-headless and pymeshlab wheels bundle the native libraries listed below, GPL parts included.
+37 packages: MIT (16), BSD-3-Clause (8), Apache-2.0 (2), BSD (classifier) (2), BSD-2-Clause (2), Apache-2.0 AND BSD-3-Clause (1), Apache-2.0 OR BSD-2-Clause (1), BSD-3-Clause AND 0BSD AND MIT AND Zlib AND CC0-1.0 (1), MIT OR AFL-2.1 (1), MIT-CMU (1), MPL-2.0 (1), PSF-2.0 (1). The pack also bundles CPython (PSF licence) from python-build-standalone; rasterio's wheel bundles GDAL (MIT) and its dependencies, and the pycolmap and opencv-python-headless wheels bundle the native libraries listed below, GPL parts included.
 
-| Package                | Version      | Licence                                            |
-| ---------------------- | ------------ | -------------------------------------------------- |
-| affine                 | 3.0.1        | BSD-3-Clause                                       |
-| attrs                  | 26.1.0       | MIT                                                |
-| certifi                | 2026.7.22    | MPL-2.0                                            |
-| click                  | 8.5.0        | BSD-3-Clause                                       |
-| dataclasses-json       | 0.6.7        | MIT                                                |
-| Deprecated             | 3.0.0        | MIT                                                |
-| ezdxf                  | 1.4.4        | MIT                                                |
-| fonttools              | 4.66.1       | MIT                                                |
-| ImageIO                | 2.38.0       | BSD-2-Clause                                       |
-| lazy-loader            | 0.6          | BSD-3-Clause                                       |
-| marshmallow            | 3.26.2       | MIT                                                |
-| mypy_extensions        | 1.1.0        | MIT                                                |
-| networkx               | 3.7          | BSD-3-Clause                                       |
-| numpy                  | 2.5.3        | BSD-3-Clause AND 0BSD AND MIT AND Zlib AND CC0-1.0 |
-| opencv-python-headless | 5.0.0.93     | Apache-2.0                                         |
-| packaging              | 26.3         | Apache-2.0 OR BSD-2-Clause                         |
-| pillow                 | 12.3.0       | MIT-CMU                                            |
-| pycolmap               | 4.2.1        | BSD-3-Clause                                       |
-| pygltflib              | 1.16.5       | MIT                                                |
-| pymeshlab              | 2025.7.post1 | GPL-3.0-only                                       |
-| pyopf                  | 1.4.1        | Apache-2.0                                         |
-| pyparsing              | 3.3.3        | MIT                                                |
-| pyproj                 | 3.8.0        | MIT                                                |
-| pyshp                  | 3.1.6        | MIT                                                |
-| python-dateutil        | 2.9.0.post0  | Apache-2.0 AND BSD-3-Clause                        |
-| PyYAML                 | 6.0.3        | MIT                                                |
-| rasterio               | 1.5.2        | BSD-3-Clause                                       |
-| rtree                  | 1.4.1        | MIT                                                |
-| scikit-image           | 0.26.0       | BSD (classifier)                                   |
-| scipy                  | 1.18.1       | BSD (classifier)                                   |
-| shapely                | 2.1.2        | BSD-3-Clause                                       |
-| simplejson             | 4.2.0        | MIT OR AFL-2.1                                     |
-| six                    | 1.17.0       | MIT                                                |
-| tifffile               | 2026.9.20    | BSD-3-Clause                                       |
-| trimesh                | 5.1.1        | MIT                                                |
-| typing-inspect         | 0.9.0        | MIT                                                |
-| typing_extensions      | 4.16.0       | PSF-2.0                                            |
-| wrapt                  | 2.5.0        | BSD-2-Clause                                       |
+| Package                | Version     | Licence                                            |
+| ---------------------- | ----------- | -------------------------------------------------- |
+| affine                 | 3.0.1       | BSD-3-Clause                                       |
+| attrs                  | 26.1.0      | MIT                                                |
+| certifi                | 2026.7.22   | MPL-2.0                                            |
+| click                  | 8.5.0       | BSD-3-Clause                                       |
+| dataclasses-json       | 0.6.7       | MIT                                                |
+| Deprecated             | 3.0.0       | MIT                                                |
+| ezdxf                  | 1.4.4       | MIT                                                |
+| fonttools              | 4.66.1      | MIT                                                |
+| ImageIO                | 2.38.0      | BSD-2-Clause                                       |
+| lazy-loader            | 0.6         | BSD-3-Clause                                       |
+| marshmallow            | 3.26.2      | MIT                                                |
+| mypy_extensions        | 1.1.0       | MIT                                                |
+| networkx               | 3.7         | BSD-3-Clause                                       |
+| numpy                  | 2.5.3       | BSD-3-Clause AND 0BSD AND MIT AND Zlib AND CC0-1.0 |
+| opencv-python-headless | 5.0.0.93    | Apache-2.0                                         |
+| packaging              | 26.3        | Apache-2.0 OR BSD-2-Clause                         |
+| pillow                 | 12.3.0      | MIT-CMU                                            |
+| pycolmap               | 4.2.1       | BSD-3-Clause                                       |
+| pygltflib              | 1.16.5      | MIT                                                |
+| pyopf                  | 1.4.1       | Apache-2.0                                         |
+| pyparsing              | 3.3.3       | MIT                                                |
+| pyproj                 | 3.8.0       | MIT                                                |
+| pyshp                  | 3.1.6       | MIT                                                |
+| python-dateutil        | 2.9.0.post0 | Apache-2.0 AND BSD-3-Clause                        |
+| PyYAML                 | 6.0.3       | MIT                                                |
+| rasterio               | 1.5.2       | BSD-3-Clause                                       |
+| rtree                  | 1.4.1       | MIT                                                |
+| scikit-image           | 0.26.0      | BSD (classifier)                                   |
+| scipy                  | 1.18.1      | BSD (classifier)                                   |
+| shapely                | 2.1.2       | BSD-3-Clause                                       |
+| simplejson             | 4.2.0       | MIT OR AFL-2.1                                     |
+| six                    | 1.17.0      | MIT                                                |
+| tifffile               | 2026.9.20   | BSD-3-Clause                                       |
+| trimesh                | 5.1.1       | MIT                                                |
+| typing-inspect         | 0.9.0       | MIT                                                |
+| typing_extensions      | 4.16.0      | PSF-2.0                                            |
+| wrapt                  | 2.5.0       | BSD-2-Clause                                       |
 
 ## Pipeline pack native libraries
 
-Generated from `tools/release/native-libs.json`, `tools/pipeline-pack/pdal-lock.json` and `tools/pipeline-pack/ffmpeg-lock.json`. Since the founder decision of 8 Oct 2026 (ADR 0008, amended) the pack is built from prebuilt binaries: COLMAP's, OpenCV's and MeshLab's PyPI wheels and conda-forge's PDAL, with their GPL and LGPL parts. The native licence report (`tools/release/native-licences.mjs`) lists every DLL, dylib and executable of each pack against these inventories; it never fails a build.
+Generated from `tools/release/native-libs.json`, `tools/pipeline-pack/pdal-lock.json` and `tools/pipeline-pack/ffmpeg-lock.json`. Since the founder decision of 8 Oct 2026 (ADR 0008, amended) the pack is built from prebuilt binaries: COLMAP's and OpenCV's PyPI wheels and conda-forge's PDAL, with their GPL and LGPL parts. The native licence report (`tools/release/native-licences.mjs`) lists every DLL, dylib and executable of each pack against these inventories; it never fails a build.
 
-**GPL.** Our pipeline code (MIT) runs in one process with GPL libraries: SuiteSparse CHOLMOD and SPQR inside pycolmap (GPL-2.0-or-later), MeshLab inside pymeshlab (GPL-3.0), the ffmpeg tool (`tools/ffmpeg`, a GPL build with x264 and x265), the untwine tool (`tools/pdal`, GPL-3.0-or-later) and, on macOS, the GPL FFmpeg build inside OpenCV's wheel. A pipeline pack as a whole is therefore distributed under the terms of the GNU General Public License, version 3; the source of each GPL component is available from its project (the sources below), and the source of our pipeline code is available on request. The desktop app and the Team Server do not link any of it: they start the pack as a separate program.
+**GPL.** Our pipeline code (MIT) runs in one process with GPL libraries: SuiteSparse CHOLMOD and SPQR inside pycolmap (GPL-2.0-or-later), the ffmpeg tool (`tools/ffmpeg`, a GPL build with x264 and x265), the untwine tool (`tools/pdal`, GPL-3.0-or-later) and, on macOS, the GPL FFmpeg build inside OpenCV's wheel. A pipeline pack as a whole is therefore distributed under the terms of the GNU General Public License, version 3; the source of each GPL component is available from its project (the sources below), and the source of our pipeline code is available on request. The desktop app and the Team Server do not link any of it: they start the pack as a separate program.
 
 ### Inside the Python wheels and CPython
 
-56 libraries: MIT (14), BSD-3-Clause (5), BSD-2-Clause (3), LGPL-2.1-or-later (3), Zlib (3), Apache-2.0 (2), GPL-3.0-or-later WITH GCC-exception-3.1 (2), MPL-1.1 OR GPL-2.0-or-later OR LGPL-2.1-or-later (2), 0BSD (1), Apache-2.0 AND GPL-2.0-or-later AND LGPL-2.1-or-later AND (LGPL-3.0-or-later OR GPL-2.0-or-later) AND BSD-3-Clause AND ISC AND MIT AND (FTL OR GPL-2.0-or-later) AND HPND AND (LGPL-2.1-or-later OR MPL-2.0 OR GPL-2.0-or-later) AND Zlib AND LGPL-2.0-or-later AND LGPL-3.0-or-later AND MPL-2.0 AND X11 AND BSD-2-Clause AND BSD-3-Clause-Clear AND WTFPL AND BSD-2-Clause-Patent AND CC0-1.0 AND IJG AND libpng-2.0 AND libtiff AND 0BSD (1), Apache-2.0 WITH LLVM-exception (1), blessing (1), BSD-3-Clause AND GPL-3.0-or-later WITH GCC-exception-3.1 (1), BSD-3-Clause AND LGPL-2.1-or-later AND GPL-2.0-or-later AND BSL-1.0 AND Apache-2.0 AND BSD-2-Clause AND MIT AND BSD-3-Clause-Open-MPI AND GPL-3.0-or-later WITH GCC-exception-3.1 AND curl AND blessing AND IJG AND Zlib AND libpng-2.0 AND libtiff AND bzip2-1.0.6 AND 0BSD AND (BSD-3-Clause OR GPL-2.0-only) AND Apache-2.0 WITH LLVM-exception (1), BSD-3-Clause AND MIT AND Apache-2.0 AND LGPL-2.1-only AND GPL-2.0-or-later AND MPL-1.1 AND Zlib AND curl AND blessing AND HPND AND 0BSD AND BSD-2-Clause AND ISC AND bzip2-1.0.6 AND IJG AND libpng-2.0 AND (Apache-2.0 WITH LLVM-exception) (1), BSD-3-Clause OR GPL-2.0-only (1), curl (1), FTL OR GPL-2.0-or-later (1), GPL-3.0-only AND LGPL-3.0-only AND BSD-3-Clause AND MIT AND Apache-2.0 AND BSD-2-Clause AND BSL-1.0 AND LGPL-2.1-or-later AND (LGPL-3.0-or-later OR GPL-2.0-or-later) AND LGPL-3.0-or-later AND Apache-2.0 WITH LLVM-exception AND (FTL OR GPL-2.0-or-later) AND IJG AND libpng-2.0 AND libtiff AND 0BSD (1), GPL-3.0-or-later AND GPL-2.0-or-later AND LGPL-2.1-or-later AND LGPL-2.1-only AND LGPL-2.0-only AND BSD-2-Clause AND BSD-3-Clause AND MIT AND Apache-2.0 AND Zlib AND 0BSD AND bzip2-1.0.6 AND IJG AND libpng-2.0 AND HPND AND (GPL-2.0-only OR FTL) AND (LGPL-2.1-only OR MPL-1.1) (1), IJG AND BSD-3-Clause AND Zlib (1), LGPL-2.1-only (1), libpng-2.0 (1), libtiff (1), LicenseRef-Microsoft-VC-Redist (1), PostgreSQL (1), PSF-2.0 (1), Qhull (1), TCL (1), X11 (1).
+55 libraries: MIT (14), BSD-3-Clause (5), BSD-2-Clause (3), LGPL-2.1-or-later (3), Zlib (3), Apache-2.0 (2), GPL-3.0-or-later WITH GCC-exception-3.1 (2), MPL-1.1 OR GPL-2.0-or-later OR LGPL-2.1-or-later (2), 0BSD (1), Apache-2.0 AND GPL-2.0-or-later AND LGPL-2.1-or-later AND (LGPL-3.0-or-later OR GPL-2.0-or-later) AND BSD-3-Clause AND ISC AND MIT AND (FTL OR GPL-2.0-or-later) AND HPND AND (LGPL-2.1-or-later OR MPL-2.0 OR GPL-2.0-or-later) AND Zlib AND LGPL-2.0-or-later AND LGPL-3.0-or-later AND MPL-2.0 AND X11 AND BSD-2-Clause AND BSD-3-Clause-Clear AND WTFPL AND BSD-2-Clause-Patent AND CC0-1.0 AND IJG AND libpng-2.0 AND libtiff AND 0BSD (1), Apache-2.0 WITH LLVM-exception (1), blessing (1), BSD-3-Clause AND GPL-3.0-or-later WITH GCC-exception-3.1 (1), BSD-3-Clause AND LGPL-2.1-or-later AND GPL-2.0-or-later AND BSL-1.0 AND Apache-2.0 AND BSD-2-Clause AND MIT AND BSD-3-Clause-Open-MPI AND GPL-3.0-or-later WITH GCC-exception-3.1 AND curl AND blessing AND IJG AND Zlib AND libpng-2.0 AND libtiff AND bzip2-1.0.6 AND 0BSD AND (BSD-3-Clause OR GPL-2.0-only) AND Apache-2.0 WITH LLVM-exception (1), BSD-3-Clause AND MIT AND Apache-2.0 AND LGPL-2.1-only AND GPL-2.0-or-later AND MPL-1.1 AND Zlib AND curl AND blessing AND HPND AND 0BSD AND BSD-2-Clause AND ISC AND bzip2-1.0.6 AND IJG AND libpng-2.0 AND (Apache-2.0 WITH LLVM-exception) (1), BSD-3-Clause OR GPL-2.0-only (1), curl (1), FTL OR GPL-2.0-or-later (1), GPL-3.0-or-later AND GPL-2.0-or-later AND LGPL-2.1-or-later AND LGPL-2.1-only AND LGPL-2.0-only AND BSD-2-Clause AND BSD-3-Clause AND MIT AND Apache-2.0 AND Zlib AND 0BSD AND bzip2-1.0.6 AND IJG AND libpng-2.0 AND HPND AND (GPL-2.0-only OR FTL) AND (LGPL-2.1-only OR MPL-1.1) (1), IJG AND BSD-3-Clause AND Zlib (1), LGPL-2.1-only (1), libpng-2.0 (1), libtiff (1), LicenseRef-Microsoft-VC-Redist (1), PostgreSQL (1), PSF-2.0 (1), Qhull (1), TCL (1), X11 (1).
 
 | Package                                    | Version                                               | Licence                                                                                                                                                                                                                                                                                                                                                                                                                                     |
 | ------------------------------------------ | ----------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -268,7 +267,7 @@ Generated from `tools/release/native-libs.json`, `tools/pipeline-pack/pdal-lock.
 | libiconv                                   | 1.17 (rasterio Windows)                               | LGPL-2.1-or-later                                                                                                                                                                                                                                                                                                                                                                                                                           |
 | libjpeg-turbo                              | 3.x (rasterio, Pillow)                                | IJG AND BSD-3-Clause AND Zlib                                                                                                                                                                                                                                                                                                                                                                                                               |
 | liblzma                                    | 5.x (rasterio, Pillow)                                | 0BSD                                                                                                                                                                                                                                                                                                                                                                                                                                        |
-| libomp                                     | LLVM (pycolmap and pymeshlab on macOS)                | Apache-2.0 WITH LLVM-exception                                                                                                                                                                                                                                                                                                                                                                                                              |
+| libomp                                     | LLVM (pycolmap on macOS)                              | Apache-2.0 WITH LLVM-exception                                                                                                                                                                                                                                                                                                                                                                                                              |
 | libpng                                     | 1.6 (rasterio, Pillow)                                | libpng-2.0                                                                                                                                                                                                                                                                                                                                                                                                                                  |
 | libpq                                      | 17 (rasterio Windows)                                 | PostgreSQL                                                                                                                                                                                                                                                                                                                                                                                                                                  |
 | libquadmath                                | GCC (numpy and scipy macOS wheels)                    | LGPL-2.1-or-later                                                                                                                                                                                                                                                                                                                                                                                                                           |
@@ -290,7 +289,6 @@ Generated from `tools/release/native-libs.json`, `tools/pipeline-pack/pdal-lock.
 | pdal (conda-forge)                         | 2.10.2 (libpdal-core, conda-forge) with untwine 1.5.1 | BSD-3-Clause AND MIT AND Apache-2.0 AND LGPL-2.1-only AND GPL-2.0-or-later AND MPL-1.1 AND Zlib AND curl AND blessing AND HPND AND 0BSD AND BSD-2-Clause AND ISC AND bzip2-1.0.6 AND IJG AND libpng-2.0 AND (Apache-2.0 WITH LLVM-exception)                                                                                                                                                                                                |
 | proj                                       | 9.7 (rasterio 1.5), 9.8 (pyproj 3.8)                  | MIT                                                                                                                                                                                                                                                                                                                                                                                                                                         |
 | pycolmap (bundled libraries)               | 4.2.1 (PyPI wheel)                                    | BSD-3-Clause AND LGPL-2.1-or-later AND GPL-2.0-or-later AND BSL-1.0 AND Apache-2.0 AND BSD-2-Clause AND MIT AND BSD-3-Clause-Open-MPI AND GPL-3.0-or-later WITH GCC-exception-3.1 AND curl AND blessing AND IJG AND Zlib AND libpng-2.0 AND libtiff AND bzip2-1.0.6 AND 0BSD AND (BSD-3-Clause OR GPL-2.0-only) AND Apache-2.0 WITH LLVM-exception                                                                                          |
-| pymeshlab (bundled libraries)              | 2025.7.post1 (PyPI wheel)                             | GPL-3.0-only AND LGPL-3.0-only AND BSD-3-Clause AND MIT AND Apache-2.0 AND BSD-2-Clause AND BSL-1.0 AND LGPL-2.1-or-later AND (LGPL-3.0-or-later OR GPL-2.0-or-later) AND LGPL-3.0-or-later AND Apache-2.0 WITH LLVM-exception AND (FTL OR GPL-2.0-or-later) AND IJG AND libpng-2.0 AND libtiff AND 0BSD                                                                                                                                    |
 | qhull                                      | 8.0 (rasterio Windows)                                | Qhull                                                                                                                                                                                                                                                                                                                                                                                                                                       |
 | scipy-openblas                             | 0.3.31 (scipy), 0.3.34 (numpy)                        | BSD-3-Clause AND GPL-3.0-or-later WITH GCC-exception-3.1                                                                                                                                                                                                                                                                                                                                                                                    |
 | sqlite                                     | 3.x (CPython, rasterio)                               | blessing                                                                                                                                                                                                                                                                                                                                                                                                                                    |
@@ -301,7 +299,7 @@ Generated from `tools/release/native-libs.json`, `tools/pipeline-pack/pdal-lock.
 
 ### Bundled in the photogrammetry wheels (Windows x64 and macOS arm64)
 
-What the pycolmap, opencv-python-headless and pymeshlab wheels carry, as their projects state it.
+What the pycolmap and opencv-python-headless wheels carry, as their projects state it.
 
 | Package                                                                                                                                                             | Version                        | Licence                                                                           |
 | ------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------ | --------------------------------------------------------------------------------- |
@@ -392,25 +390,6 @@ What the pycolmap, opencv-python-headless and pymeshlab wheels carry, as their p
 | Little CMS (in opencv-python-headless)                                                                                                                              | 5.0.0.93 (PyPI wheel, macOS)   | MIT                                                                               |
 | OpenSSL (in opencv-python-headless)                                                                                                                                 | 5.0.0.93 (PyPI wheel, macOS)   | Apache-2.0                                                                        |
 | libjpeg-turbo, libpng, libtiff, giflib, zstd, xz, libdeflate, Brotli and PCRE2 (in opencv-python-headless)                                                          | 5.0.0.93 (PyPI wheel, macOS)   | IJG AND libpng-2.0 AND libtiff AND MIT AND BSD-3-Clause AND 0BSD AND BSD-3-Clause |
-| MeshLab and VCGlib (pymeshlab) (in pymeshlab)                                                                                                                       | 2025.7.post1 (PyPI wheel)      | GPL-3.0-only                                                                      |
-| Qt 5 (Core, Gui, Widgets, OpenGL, Network, Svg, Xml and plugins) (in pymeshlab)                                                                                     | 2025.7.post1 (PyPI wheel)      | LGPL-3.0-only                                                                     |
-| ANGLE (libEGL, libGLESv2) (in pymeshlab, Windows)                                                                                                                   | 2025.7.post1 (PyPI wheel)      | BSD-3-Clause                                                                      |
-| Mesa llvmpipe (opengl32sw) (in pymeshlab, Windows)                                                                                                                  | 2025.7.post1 (PyPI wheel)      | MIT                                                                               |
-| Embree (in pymeshlab)                                                                                                                                               | 2025.7.post1 (PyPI wheel)      | Apache-2.0                                                                        |
-| oneTBB (in pymeshlab)                                                                                                                                               | 2025.7.post1 (PyPI wheel)      | Apache-2.0                                                                        |
-| lib3mf (in pymeshlab)                                                                                                                                               | 2025.7.post1 (PyPI wheel)      | BSD-2-Clause                                                                      |
-| libE57Format (in pymeshlab)                                                                                                                                         | 2025.7.post1 (PyPI wheel)      | BSL-1.0                                                                           |
-| Xerces-C++ (in pymeshlab)                                                                                                                                           | 2025.7.post1 (PyPI wheel)      | Apache-2.0                                                                        |
-| U3D (IFXCore, IFXExporting, IFXScheduling) (in pymeshlab)                                                                                                           | 2025.7.post1 (PyPI wheel)      | Apache-2.0                                                                        |
-| lib3ds (in pymeshlab)                                                                                                                                               | 2025.7.post1 (PyPI wheel)      | LGPL-2.1-or-later                                                                 |
-| GLEW (in pymeshlab)                                                                                                                                                 | 2025.7.post1 (PyPI wheel)      | BSD-3-Clause AND MIT                                                              |
-| muparser (in pymeshlab)                                                                                                                                             | 2025.7.post1 (PyPI wheel)      | BSD-2-Clause                                                                      |
-| GMP (in pymeshlab)                                                                                                                                                  | 2025.7.post1 (PyPI wheel)      | LGPL-3.0-or-later OR GPL-2.0-or-later                                             |
-| MPFR (in pymeshlab)                                                                                                                                                 | 2025.7.post1 (PyPI wheel)      | LGPL-3.0-or-later                                                                 |
-| Boost (atomic, chrono, container, date_time, thread) (in pymeshlab, macOS)                                                                                          | 2025.7.post1 (PyPI wheel)      | BSL-1.0                                                                           |
-| LLVM OpenMP (libomp) (in pymeshlab, macOS)                                                                                                                          | 2025.7.post1 (PyPI wheel)      | Apache-2.0 WITH LLVM-exception                                                    |
-| FreeType, GLib, gettext (libintl), md4c, PCRE2 (in pymeshlab, macOS)                                                                                                | 2025.7.post1 (PyPI wheel)      | (FTL OR GPL-2.0-or-later) AND LGPL-2.1-or-later AND MIT AND BSD-3-Clause          |
-| libjpeg-turbo, libpng, libtiff, libwebp, zstd, xz (in pymeshlab, macOS)                                                                                             | 2025.7.post1 (PyPI wheel)      | IJG AND libpng-2.0 AND libtiff AND BSD-3-Clause AND 0BSD                          |
 | FFmpeg libraries (built with --enable-gpl --enable-version3) (in ffmpeg)                                                                                            | 9.0.2 (GPL build, conda-forge) | GPL-3.0-or-later                                                                  |
 | x264 (in ffmpeg)                                                                                                                                                    | 9.0.2 (GPL build, conda-forge) | GPL-2.0-or-later                                                                  |
 | x265 (in ffmpeg)                                                                                                                                                    | 9.0.2 (GPL build, conda-forge) | GPL-2.0-or-later                                                                  |
@@ -610,20 +589,6 @@ Model weights the pipeline pack carries, from `tools/pipeline-pack/sam.mjs`: fet
 | --------- | ------- | ---------- | ------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------ |
 | MobileSAM | 1.0     | Apache-2.0 | Suggest boundaries, snapping cut and fill regions and the Review mask assist (`models/sam`) | MobileSAM (https://github.com/ChaoningZhang/MobileSAM, Apache-2.0), ONNX export https://huggingface.co/PulpCut/mobilesam-onnx at 1e774d85 | `encoder.onnx` 28.2 MB, SHA-256 `4125037c5e24d6ea...`; `decoder.onnx` 16.5 MB, SHA-256 `b0735abf07c7affd...` |
 
-## GPU add-on (optional)
-
-The GPU add-on 0.1.1 is a separate file for computers with an NVIDIA graphics card. It is not part of the installer or of the pipeline pack, and nothing here applies to a computer without it. Generated from `tools/pipeline-pack/accelerator-lock.json`: ready-made wheels from PyPI, each refused unless its SHA-256 matches; nothing is compiled.
-
-CuPy is MIT. NVIDIA's CUDA 12.9 runtime, runtime compiler and cuBLAS are proprietary: they are redistributed unchanged under NVIDIA's CUDA end user licence agreement (https://docs.nvidia.com/cuda/eula/), for use by this software only, and each keeps its licence file in its folder of the add-on. They are loaded only in the processes that use the graphics card.
-
-| Package                  | Version   | Licence                       |
-| ------------------------ | --------- | ----------------------------- |
-| cuda-pathfinder          | 1.8.3     | Apache-2.0                    |
-| cupy-cuda12x             | 14.2.0    | MIT                           |
-| nvidia-cublas-cu12       | 12.9.2.10 | LicenseRef-NVIDIA-Proprietary |
-| nvidia-cuda-nvrtc-cu12   | 12.9.86   | LicenseRef-NVIDIA-Proprietary |
-| nvidia-cuda-runtime-cu12 | 12.9.79   | LicenseRef-NVIDIA-Proprietary |
-
 ## Map and imagery data
 
 From `tools/release/data-sources.json`; every imagery and terrain pack we build carries its licence, attribution and provenance, checked by `tools/release/data-licences.mjs`. The attribution shows in the Globe, the map and every export that contains the data. Imagery a customer imports under their own licence is never redistributed by us.
@@ -647,3 +612,13 @@ From `tools/release/data-sources.json`; every imagery and terrain pack we build 
 | OSTN15                                 | horizontal grid pack (optional)           | BSD-2-Clause                       | © Ordnance Survey, OSTN15 (BSD 2-Clause licence)                                                                                                                                                      |
 | NZGeoid2016                            | geoid pack (optional)                     | CC-BY-4.0                          | Land Information New Zealand (LINZ), NZGeoid2016, CC BY 4.0                                                                                                                                           |
 | CGG2013a                               | geoid pack (optional)                     | Open Government Licence - Canada   | Contains information licensed under the Open Government Licence - Canada (NRCan, CGG2013a)                                                                                                            |
+
+## Downloaded at run time
+
+Software that is not part of the installer, the Team Server image or the pipeline pack: the person downloads it from its own project through the app, and it is never redistributed by us.
+
+| Program            | Version | Licence  | Source                              |
+| ------------------ | ------- | -------- | ----------------------------------- |
+| ODM (OpenDroneMap) | 3.6.2   | AGPL-3.0 | https://github.com/OpenDroneMap/ODM |
+
+ODM (OpenDroneMap) 3.6.2 makes the orthomosaic, the surfaces, the point cloud and the textured mesh from photos. It is installed by the person from Settings, Processing tools: the app downloads ODM's Windows setup from ODM's GitHub release, checks its size and SHA-256 against the pin in `apps/desktop/src/main/odm/pin.ts` and runs it with its own silent switches. ODM is a separate program, started by the pipelines as its own process; the app, the Team Server and the pipeline pack never link it and never change its program code, and it is not bundled. Its source is available from the project above.

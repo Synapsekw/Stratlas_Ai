@@ -1,7 +1,7 @@
 """Licence report of the pack's Python distributions; it never fails (founder decision of 8 Oct 2026).
 
 Since that decision (ADR 0008, amended) the pipeline pack takes prebuilt wheels with their GPL parts
-(pycolmap bundles CHOLMOD and SPQR, pymeshlab is GPL-3.0) and every licence check is a report. This
+(pycolmap bundles CHOLMOD and SPQR) and every licence check is a report. This
 file still classifies every runtime distribution of ``aio-pipelines`` against
 ``tools/release/licence-exceptions.json`` (the file the npm and native reports read; ``copyleft``
 accepts the GPL family for ``python``) and prints what it finds as warnings: copyleft
@@ -182,7 +182,7 @@ def test_classifies_metadata_like_the_native_gate():
     assert judge("MPL-2.0", "certifi", doc)
     # since 8 Oct 2026 the copyleft families are accepted in the pack
     assert judge("MIT AND GPL-3.0-only", "x", doc)
-    assert judge("GPL-3.0", "pymeshlab", doc)
+    assert judge("GPL-3.0", "pycolmap", doc)
     strict = {**doc, "copyleft": {"ecosystems": []}}
     assert not judge("MIT AND GPL-3.0-only", "x", strict)
     assert not judge("MPL-2.0", "somethingelse", strict)

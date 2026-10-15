@@ -1,6 +1,6 @@
 # ADR 0008: Photogrammetry engine and licence policy
 
-- Status: **Accepted, 7 Oct 2026 (founder: go with the recommendations)**. M10 decisions 1, 2, 5 and 8. **Amended 8 Oct 2026** (founder, directly): prebuilt binaries, GPL accepted in the pipeline pack; decision 1 and the own-build parts of decisions 2 and 6 are superseded for the pack (see "Amendment" below).
+- Status: **Accepted, 7 Oct 2026 (founder: go with the recommendations)**. M10 decisions 1, 2, 5 and 8. **Amended 8 Oct 2026** (founder, directly): prebuilt binaries, GPL accepted in the pipeline pack; decision 1 and the own-build parts of decisions 2 and 6 are superseded for the pack (see "Amendment" below). **Decision 2 (our own pipeline on COLMAP) and decision 4 (no ODM adapter) are superseded by [ADR 0012](0012-odm-engine.md) (14 Oct 2026): ODM is the engine.**
 - Deciders: founder; integration lead (M10)
 - Plan: `docs/plans/2026-10-07-m10-globe-and-photogrammetry.md`, "Licence policy and inventory" and "Photogrammetry: options and recommendation"
 - Contracts: `@aio/schema` `photogrammetry.ts`, `jobs.ts` (`photo.*`, `opf.*`); code: `python/src/aio_pipelines/photo/` (G2, G3), `opf/` (G5), `tools/pipeline-pack/pdal.mjs` and `python/pyproject.toml` (since 8 Oct 2026; `tools/pipeline-pack/native/` before), `tools/release/licence-exceptions.json`

@@ -316,7 +316,6 @@ describe('the committed inventory', () => {
         `${site}/pycolmap.libs/cholmod-efaefa147ec003190b879b0614ef982a.dll`,
         `${site}/pycolmap.libs/spqr-807a879857ee822a86bc8000e067d70f.dll`,
         'python/lib/python3.13/site-packages/cv2/.dylibs/libx264.164.dylib',
-        `${site}/pymeshlab/Qt5Core.dll`,
         'tools/pdal/Library/bin/pdal.exe',
         'tools/pdal/Library/bin/pdalcpp.dll',
         'tools/pdal/lib/libgeos.3.14.1.dylib',
@@ -331,7 +330,6 @@ describe('the committed inventory', () => {
       'opencv-python-headless (bundled libraries)',
       'pdal (conda-forge)',
       'pycolmap (bundled libraries)',
-      'pymeshlab (bundled libraries)',
     ]);
   });
 

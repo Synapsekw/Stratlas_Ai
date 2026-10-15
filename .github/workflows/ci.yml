@@ -290,9 +290,6 @@ jobs:
         run: pnpm demo:check
 
       # Built above; no retries, and a test reported flaky fails the run (playwright.config.ts).
-      # photo-real.spec.ts stays opt-in (QUADRION_E2E_PHOTO_REAL=1): one COLMAP run through the
-      # app takes 4 to 7 min. The nightly's stability job runs it; the pipelines job runs the real
-      # engines here.
       # The shard's spec files come from tools/ci/e2e-shards.mjs (its test checks that the shards
       # of the matrix above hold every spec file once).
       - name: E2E (Playwright + Electron, zero-network guard, shard ${{ matrix.shard }}/${{ matrix.of }})

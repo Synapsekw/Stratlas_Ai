@@ -2,7 +2,6 @@ import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import {
   NOTICES,
-  addonInventory,
   dataInventory,
   jsEntries,
   jsInventory,
@@ -131,24 +130,16 @@ describe('licence inventory', () => {
     expect(readFileSync(NOTICES, 'utf8')).toMatch(/\| MobileSAM\s+\| 1\.0\s+\| Apache-2\.0\s+\|/);
   });
 
-  it('lists the optional GPU add-on apart from the pack, with every package of its lock', () => {
-    const addon = addonInventory();
-    expect(addon.packages.map((p) => [p.name, p.license])).toEqual([
-      ['cuda-pathfinder', 'Apache-2.0'],
-      ['cupy-cuda12x', 'MIT'],
-      ['nvidia-cublas-cu12', 'LicenseRef-NVIDIA-Proprietary'],
-      ['nvidia-cuda-nvrtc-cu12', 'LicenseRef-NVIDIA-Proprietary'],
-      ['nvidia-cuda-runtime-cu12', 'LicenseRef-NVIDIA-Proprietary'],
-    ]);
-    const md = render([], [], null, null, null, addon);
-    expect(md).toContain('## GPU add-on (optional)');
-    expect(md).toContain('not part of the installer or of the pipeline pack');
-    expect(md).toContain('| cupy-cuda12x | 14.2.0 | MIT |');
-    expect(render([], [])).not.toContain('GPU add-on');
-    const committed = readFileSync(NOTICES, 'utf8');
-    expect(addon.packages.map((p) => p.name).filter((n) => !committed.includes(`| ${n} `))).toEqual(
-      [],
-    );
+  it('names ODM as a program downloaded at run time, not bundled', () => {
+    const md = render([], []);
+    expect(md).toContain('## Downloaded at run time');
+    expect(md).toContain('ODM (OpenDroneMap) 3.6.2');
+    expect(md).toContain('AGPL-3.0');
+    expect(md).toContain('https://github.com/OpenDroneMap/ODM');
+    expect(md).toContain('not bundled');
+    expect(md).not.toContain('pipeline-addon');
+    expect(md).not.toContain('GPU add-on');
+    expect(readFileSync(NOTICES, 'utf8')).toContain('## Downloaded at run time');
   });
 
   it('lists every native library and data source of the inventories', () => {

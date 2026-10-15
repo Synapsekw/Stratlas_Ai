@@ -453,10 +453,10 @@
     },
     {
       "name": "libomp",
-      "version": "LLVM (pycolmap and pymeshlab on macOS)",
+      "version": "LLVM (pycolmap on macOS)",
       "spdx": "Apache-2.0 WITH LLVM-exception",
       "source": "https://openmp.llvm.org/",
-      "files": ["**/.dylibs/libomp*.dylib", "**/pymeshlab/Frameworks/libomp*.dylib"],
+      "files": ["**/.dylibs/libomp*.dylib"],
       "linkage": "shared"
     },
     {
@@ -848,99 +848,6 @@
         {
           "name": "libjpeg-turbo, libpng, libtiff, giflib, zstd, xz, libdeflate, Brotli and PCRE2",
           "spdx": "IJG AND libpng-2.0 AND libtiff AND MIT AND BSD-3-Clause AND 0BSD AND BSD-3-Clause"
-        }
-      ]
-    },
-    {
-      "name": "pymeshlab (bundled libraries)",
-      "version": "2025.7.post1 (PyPI wheel)",
-      "spdx": "GPL-3.0-only AND LGPL-3.0-only AND BSD-3-Clause AND MIT AND Apache-2.0 AND BSD-2-Clause AND BSL-1.0 AND LGPL-2.1-or-later AND (LGPL-3.0-or-later OR GPL-2.0-or-later) AND LGPL-3.0-or-later AND Apache-2.0 WITH LLVM-exception AND (FTL OR GPL-2.0-or-later) AND IJG AND libpng-2.0 AND libtiff AND 0BSD",
-      "source": "https://github.com/cnr-isti-vclab/PyMeshLab",
-      "files": ["**/pymeshlab/**"],
-      "linkage": "shared",
-      "note": "MeshLab's screened Poisson for photo/mesh.py; the wheel carries MeshLab, its plugins and Qt 5",
-      "includes": [
-        {
-          "name": "MeshLab and VCGlib (pymeshlab)",
-          "spdx": "GPL-3.0-only"
-        },
-        {
-          "name": "Qt 5 (Core, Gui, Widgets, OpenGL, Network, Svg, Xml and plugins)",
-          "spdx": "LGPL-3.0-only"
-        },
-        {
-          "name": "ANGLE (libEGL, libGLESv2)",
-          "spdx": "BSD-3-Clause",
-          "where": "Windows"
-        },
-        {
-          "name": "Mesa llvmpipe (opengl32sw)",
-          "spdx": "MIT",
-          "where": "Windows"
-        },
-        {
-          "name": "Embree",
-          "spdx": "Apache-2.0"
-        },
-        {
-          "name": "oneTBB",
-          "spdx": "Apache-2.0"
-        },
-        {
-          "name": "lib3mf",
-          "spdx": "BSD-2-Clause"
-        },
-        {
-          "name": "libE57Format",
-          "spdx": "BSL-1.0"
-        },
-        {
-          "name": "Xerces-C++",
-          "spdx": "Apache-2.0"
-        },
-        {
-          "name": "U3D (IFXCore, IFXExporting, IFXScheduling)",
-          "spdx": "Apache-2.0"
-        },
-        {
-          "name": "lib3ds",
-          "spdx": "LGPL-2.1-or-later"
-        },
-        {
-          "name": "GLEW",
-          "spdx": "BSD-3-Clause AND MIT"
-        },
-        {
-          "name": "muparser",
-          "spdx": "BSD-2-Clause"
-        },
-        {
-          "name": "GMP",
-          "spdx": "LGPL-3.0-or-later OR GPL-2.0-or-later"
-        },
-        {
-          "name": "MPFR",
-          "spdx": "LGPL-3.0-or-later"
-        },
-        {
-          "name": "Boost (atomic, chrono, container, date_time, thread)",
-          "spdx": "BSL-1.0",
-          "where": "macOS"
-        },
-        {
-          "name": "LLVM OpenMP (libomp)",
-          "spdx": "Apache-2.0 WITH LLVM-exception",
-          "where": "macOS"
-        },
-        {
-          "name": "FreeType, GLib, gettext (libintl), md4c, PCRE2",
-          "spdx": "(FTL OR GPL-2.0-or-later) AND LGPL-2.1-or-later AND MIT AND BSD-3-Clause",
-          "where": "macOS"
-        },
-        {
-          "name": "libjpeg-turbo, libpng, libtiff, libwebp, zstd, xz",
-          "spdx": "IJG AND libpng-2.0 AND libtiff AND BSD-3-Clause AND 0BSD",
-          "where": "macOS"
         }
       ]
     },

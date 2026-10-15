@@ -55,7 +55,7 @@
     ]
   },
   "copyleft": {
-    "$comment": "Copyleft licences (the GPL, LGPL, AGPL, MPL and similar families; never non-commercial or proprietary terms) accepted in these ecosystems: the pipeline pack's Python distributions and native libraries. pycolmap bundles CHOLMOD and SPQR (GPL-2.0-or-later), pymeshlab is GPL-3.0, OpenCV's macOS wheel bundles a GPL FFmpeg build, and PDAL's conda-forge environment has GEOS (LGPL) and lzo and librttopo (GPL). Our pipeline code runs in one process with these GPL libraries, so a distributed pipeline pack as a whole is offered under the GPL's terms (ADR 0008, amended).",
+    "$comment": "Copyleft licences (the GPL, LGPL, AGPL, MPL and similar families; never non-commercial or proprietary terms) accepted in these ecosystems: the pipeline pack's Python distributions and native libraries. pycolmap bundles CHOLMOD and SPQR (GPL-2.0-or-later), OpenCV's macOS wheel bundles a GPL FFmpeg build, and PDAL's conda-forge environment has GEOS (LGPL) and lzo and librttopo (GPL). Our pipeline code runs in one process with these GPL libraries, so a distributed pipeline pack as a whole is offered under the GPL's terms (ADR 0008, amended).",
     "ecosystems": ["python", "native"],
     "approved": "2026-10-08"
   },

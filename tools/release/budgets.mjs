@@ -5,7 +5,6 @@
 // Size budgets of M10 decision 6, checked in CI after a build:
 //   node tools/release/budgets.mjs --pack <pipeline-pack folder> [--archive <its .tar.gz>]
 //   node tools/release/budgets.mjs --installers <apps/desktop/dist>
-//   node tools/release/budgets.mjs --addon <GPU add-on folder> [--addon-archive <its .tar.gz>]
 //
 // The journal budgets run through an adapter, so the journal (T1) and merge (T4) streams plug in
 // their real code without touching the test: export `journalBench` (a JournalBench) from
@@ -42,15 +41,10 @@ export const BUDGETS = Object.freeze({
    * on 12 Oct 2026. The archive budget was 450 MB: the founder approved 500 MB on 12 Oct 2026,
    * as the 0.6.0 archive is 448.7 MB. Pack 0.6.1 adds conda-forge's untwine to `tools/pdal`.
    * Pack 0.7.0 (drone panoramas, pano.stitch) adds Python sources only; the budget is unchanged.
+   * Pack 0.8.0 drops pymeshlab and our own photogrammetry; ODM is downloaded by the app, never
+   * packed, so the budget stays.
    */
   pack: Object.freeze({ unpackedBytes: 1_300_000_000, compressedBytes: 500_000_000 }),
-  /**
-   * The optional GPU add-on beside the pack (tools/pipeline-pack/accelerator.mjs), with a budget
-   * of its own so the pack's does not move (founder, 11 Oct 2026: one add-on that carries cuBLAS,
-   * 1,200 MB installed). Add-on 0.1.0 is 1,123 MB unpacked and 729 MB as an archive; its wheels
-   * are compressed already, so the archive is about the size of the downloads.
-   */
-  addon: Object.freeze({ unpackedBytes: 1_200_000_000, compressedBytes: 800_000_000 }),
   /**
    * Installer growth over the 0.9.0 installer, per installer file: 15 MB for CesiumJS and
    * 3DTilesRendererJS (M10 decision 6) plus 5 MB for the M11 survey tools (founder, 10 Oct 2026).
@@ -79,20 +73,6 @@ export function packBudgetProblems(size, budget = BUDGETS.pack) {
   if (size.compressedBytes !== undefined && size.compressedBytes > budget.compressedBytes)
     out.push(
       `pack archive is ${mb(size.compressedBytes)}, the budget is ${mb(budget.compressedBytes)}`,
-    );
-  return out;
-}
-
-/** Problems with the GPU add-on's size: `{ unpackedBytes, compressedBytes? }`. */
-export function addonBudgetProblems(size, budget = BUDGETS.addon) {
-  const out = [];
-  if (size.unpackedBytes > budget.unpackedBytes)
-    out.push(
-      `GPU add-on is ${mb(size.unpackedBytes)} unpacked, the budget is ${mb(budget.unpackedBytes)}`,
-    );
-  if (size.compressedBytes !== undefined && size.compressedBytes > budget.compressedBytes)
-    out.push(
-      `GPU add-on archive is ${mb(size.compressedBytes)}, the budget is ${mb(budget.compressedBytes)}`,
     );
   return out;
 }
@@ -245,8 +225,6 @@ if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.ur
     options: {
       pack: { type: 'string' },
       archive: { type: 'string' },
-      addon: { type: 'string' },
-      'addon-archive': { type: 'string' },
       installers: { type: 'string' },
     },
   });
@@ -260,17 +238,6 @@ if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.ur
       `pack: ${mb(size.unpackedBytes)} unpacked${size.compressedBytes === undefined ? '' : `, ${mb(size.compressedBytes)} archived`} (budget ${mb(BUDGETS.pack.unpackedBytes)} and ${mb(BUDGETS.pack.compressedBytes)})\n`,
     );
     problems.push(...packBudgetProblems(size));
-  }
-  if (values.addon) {
-    const archive = values['addon-archive'];
-    const size = {
-      unpackedBytes: folderBytes(values.addon),
-      compressedBytes: archive ? statSync(archive).size : undefined,
-    };
-    process.stdout.write(
-      `GPU add-on: ${mb(size.unpackedBytes)} unpacked${size.compressedBytes === undefined ? '' : `, ${mb(size.compressedBytes)} archived`} (budget ${mb(BUDGETS.addon.unpackedBytes)} and ${mb(BUDGETS.addon.compressedBytes)})\n`,
-    );
-    problems.push(...addonBudgetProblems(size));
   }
   if (values.installers) {
     const files = readdirSync(values.installers)
