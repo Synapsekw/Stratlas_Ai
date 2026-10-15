@@ -58,9 +58,11 @@ Coordinates are world (project CRS) like the layer's COPC header, not the viewer
 **Evaluation, per point, in order:**
 
 1. Read class `c`: the point's class from the noise copy if present, else the original.
-2. Apply regions in order: if the point projects (`viewProj`, `w > 0`) inside the polygon, `class` sets `c`, `hide` marks it hidden, `delete` marks it deleted. Later regions win over earlier ones on class.
+2. Apply regions in order: if the point projects (`viewProj`, `w > 0`) inside the polygon, `class` sets `c`, `hide` marks it hidden, `delete` marks it deleted. Later regions win over earlier ones on class. `hide` and `delete` marks accumulate and never undo each other: a point deleted by any region stays deleted, whatever the order of regions (a `hide` drawn over an earlier `delete` does not bring the point back).
 3. Outside the clip box (or inside, for `keep: 'outside'`), or outside the height range: dropped.
 4. `c` in `hiddenClasses`: hidden.
+
+Boundaries are inclusive: a point exactly on a face of the clip box is inside it, and a point at exactly `height.min` or `height.max` is inside the range (polygon edges in NDC are not pinned). One outcome per point, by precedence: dropped, then deleted, then hidden by class, then hidden by a `hide` region, then kept. A point in a hidden class or hidden by class is therefore removed on save and export even when a `hide` region also covers it.
 
 Viewer: dropped, hidden and deleted points are not drawn. Save and export: dropped, deleted and hidden-class points are removed. Points hidden by a `hide` region are kept. Set-class points are written with their new class.
 

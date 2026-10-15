@@ -239,6 +239,9 @@ describe('the shared evaluator vectors', () => {
       expect(r.success, `${c.name}: ${r.success ? '' : r.error.message}`).toBe(true);
       expect(c.expect.state).toHaveLength(v.points.length);
       expect(c.expect.cls).toHaveLength(v.points.length);
+      for (const s of c.expect.state) {
+        expect(['kept', 'hidden', 'classHidden', 'deleted', 'dropped'], c.name).toContain(s);
+      }
     }
   });
 });
