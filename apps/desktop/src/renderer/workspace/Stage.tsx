@@ -122,7 +122,7 @@ import {
 import { VolumeTools } from './VolumeTools';
 import { MeasureMount, MeasureToolbar } from '../survey/MeasureToolbar';
 import { SurveyQaMount } from '../survey/Qa';
-import { useSiteBasemapLayer, wantsSiteBasemap } from './siteBasemap';
+import { useGroundFollowsLayers, useSiteBasemapLayer, wantsSiteBasemap } from './siteBasemap';
 import { useStreetMap3d } from './streetMap3d';
 import { StreetMapTool } from './StreetMapTool';
 import { MapViewMenu, SceneMapMenu } from './MapMenus';
@@ -691,6 +691,8 @@ export function Stage() {
   const project = useWorkspace((s) => s.project);
   const streetMap = useStreetMap3d();
   useSiteBasemapLayer(engine, project, streetMap.shown);
+  // the street map and a flat landscape lie under the shown models: placed again as they change
+  useGroundFollowsLayers(engine, primaryScene);
   // M10 G7: 3D Tiles, terrain and imagery around the site, the Satellite map
   useSiteTiles(engine, project, maps[0], maps[1]);
 

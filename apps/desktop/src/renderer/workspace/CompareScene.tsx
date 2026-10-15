@@ -27,7 +27,7 @@ import { compareRuntime, drapeAllowed, useCaptureEpoch } from './compare';
 import { ChangeLegends } from './MapSwipe';
 import { CursorReadout, useSceneCursor } from './SceneCursor';
 import { StageClassLegend, StageElevationLegend } from './StageLegends';
-import { useSiteBasemapLayer } from './siteBasemap';
+import { useGroundFollowsLayers, useSiteBasemapLayer } from './siteBasemap';
 import type { Side } from './splitModel';
 import { useStreetMap3d } from './streetMap3d';
 
@@ -136,6 +136,7 @@ export function CompareScene({
   const project = useWorkspace((s) => s.project);
   const streetMap = useStreetMap3d();
   useSiteBasemapLayer(stage, project, streetMap.shown, false);
+  useGroundFollowsLayers(stage, store);
 
   // the volumes overlay of this view's date (VolumetricStage below), as the main view has it:
   // it also keeps the survey's flat ortho out of 3D. Its surface colours add a texture to this

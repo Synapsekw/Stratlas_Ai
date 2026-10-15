@@ -1,10 +1,16 @@
+import type { EngineStage } from '@aio/engine';
 import type { Layer, ProjectManifest } from '@aio/schema';
+import { BoxGeometry, Group, Mesh, Scene } from 'three';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   boxPoints,
+  contentFloor,
+  groundLevel,
   landscapeOn,
   photoPlaces,
+  resettle,
   settledBox,
+  settleUnder,
   siteBasemap,
   siteBasemapOn,
   streetMapExtent,
@@ -274,5 +280,66 @@ describe('the rings kept for the second view', () => {
     expect(siteBasemap.getState().rings).toBe(kept);
     siteBasemap.getState().setRings('b', '[2]');
     expect(siteBasemap.getState().rings).toEqual({ projectId: 'b', json: '[2]' });
+  });
+});
+
+describe('the ground under the models', () => {
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  const meshLayer = {
+    kind: 'mesh',
+    name: 'Model',
+    visible: true,
+    src: { path: 'models/m.glb' },
+    transform: [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1],
+  };
+  /** A mesh layer in the scene whose lowest point is `y`. */
+  const model = (id: string, y: number) => {
+    const root = new Group();
+    root.name = `layer:${id}`;
+    const box = new Mesh(new BoxGeometry(2, 2, 2));
+    box.position.y = y + 1;
+    root.add(box);
+    return { root, layer: { ...meshLayer, id } as Layer };
+  };
+  const stageWith = (...roots: Group[]) => {
+    const scene = new Scene();
+    for (const r of roots) scene.add(r);
+    return { scene, requestRender: vi.fn() } as unknown as EngineStage;
+  };
+  const manifestOf = (...layers: Layer[]) => ({ layers }) as unknown as ProjectManifest;
+
+  it('counts a shown model, and leaves out a hidden one', () => {
+    const low = model('low', -24);
+    const high = model('high', -1);
+    const stage = stageWith(low.root, high.root);
+    const manifest = manifestOf(low.layer, high.layer);
+    expect(contentFloor(stage, manifest)).toBeCloseTo(-24, 6);
+    // the sidebar (or a date) hides the low model: the ground comes up under the shown one
+    low.root.visible = false;
+    expect(contentFloor(stage, manifest)).toBeCloseTo(-1, 6);
+    high.root.visible = false;
+    expect(contentFloor(stage, manifest)).toBeNull();
+  });
+
+  it('places the ground again when a model is shown or hidden, long after it settled', () => {
+    vi.useFakeTimers();
+    const low = model('low', -24);
+    const stage = stageWith(low.root);
+    const manifest = manifestOf(low.layer);
+    const ground = new Group();
+    const stop = settleUnder(stage, () => contentFloor(stage, manifest), ground, 0);
+    expect(ground.position.y).toBeCloseTo(groundLevel(-24), 6);
+    vi.advanceTimersByTime(60_000);
+    low.root.visible = false;
+    resettle(stage);
+    expect(ground.position.y).toBeCloseTo(groundLevel(null), 6);
+    // a ground taken away is left alone
+    stop();
+    low.root.visible = true;
+    resettle(stage);
+    expect(ground.position.y).toBeCloseTo(groundLevel(null), 6);
   });
 });
