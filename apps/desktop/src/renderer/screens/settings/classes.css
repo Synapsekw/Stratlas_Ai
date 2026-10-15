@@ -1,0 +1,133 @@
+/* Settings, Data, Classes (ANN-7): one dense table, styled like the severity levels table. */
+.cls-ed {
+  display: grid;
+  gap: 12px;
+  outline: none;
+}
+.cls-ed .notice {
+  margin: 0;
+}
+.cls-grid {
+  display: grid;
+  border: 1px solid var(--line-soft);
+  border-radius: var(--r-4);
+  background: var(--bg-1);
+}
+.cls-h,
+.cls-row {
+  display: grid;
+  grid-template-columns: 32px minmax(0, 1fr) 48px minmax(120px, 180px) 52px 64px;
+  gap: 10px;
+  align-items: center;
+  padding: 6px 10px;
+  border-bottom: 1px solid var(--line-soft);
+}
+.cls-row:last-child {
+  border-bottom: 0;
+}
+.cls-h {
+  padding-block: 8px;
+}
+.cls-h span {
+  font: 500 11px/1 var(--f-cond);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--fg-3);
+}
+.cls-row .input {
+  width: 100%;
+  min-width: 0;
+}
+.cls-row select.input:disabled {
+  cursor: not-allowed;
+}
+.cls-num {
+  text-align: end;
+  font-variant-numeric: tabular-nums;
+}
+.cls-empty {
+  margin: 0;
+  padding: 12px 10px;
+}
+.cls-sw-cell {
+  position: relative;
+  display: inline-grid;
+}
+.cls-sw {
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border-radius: var(--r-4);
+  border: 1px solid var(--line-strong);
+  cursor: pointer;
+  transition: transform 150ms var(--ease);
+}
+.cls-sw:hover:not(:disabled) {
+  transform: scale(1.08);
+}
+.cls-sw:disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+.cls-sw:focus-visible,
+.cls-palette button:focus-visible {
+  outline: 2px solid var(--acc);
+  outline-offset: 2px;
+}
+.cls-palette {
+  position: absolute;
+  top: calc(100% + 6px);
+  inset-inline-start: 0;
+  z-index: 5;
+  display: grid;
+  grid-template-columns: repeat(6, 20px);
+  gap: 6px;
+  padding: 8px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-6);
+  background: var(--bg-2);
+  box-shadow: 0 8px 24px var(--shadow);
+}
+.cls-palette button {
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  border-radius: var(--r-4);
+  border: 1px solid var(--line-strong);
+  cursor: pointer;
+}
+.cls-palette button[aria-selected='true'] {
+  outline: 2px solid var(--fg-0);
+  outline-offset: 1px;
+}
+.cls-key {
+  text-align: center;
+  text-transform: lowercase;
+}
+.cls-acts {
+  display: flex;
+  gap: 2px;
+  justify-content: flex-end;
+}
+.cls-acts .cls-del:hover:not(:disabled) {
+  color: var(--danger-ink);
+}
+.cls-err {
+  grid-column: 2 / -1;
+  margin: 0;
+  font-size: var(--t-12);
+  color: var(--danger-ink);
+}
+.cls-new {
+  display: flex;
+}
+.cls-dlg .input {
+  width: 100%;
+}
+@media (max-width: 900px) {
+  .cls-h,
+  .cls-row {
+    grid-template-columns: 28px minmax(0, 1fr) 40px minmax(96px, 140px) 40px 60px;
+    gap: 8px;
+  }
+}
