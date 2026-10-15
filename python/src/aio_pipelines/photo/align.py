@@ -238,6 +238,7 @@ def layer_meta(meta: PhotoMeta, item: dict[str, Any], manifest: dict[str, Any]) 
         x, y, z = item["pos"]
         lon, lat = C.crs_to_geodetic(C.crs_of(manifest["crs"]), [o[0] + x], [o[1] - z])
         meta.lon, meta.lat, meta.abs_alt = float(lon[0]), float(lat[0]), float(o[2] + y)
+        meta.from_layer = True  # ODM cannot read it from the photo: geo.txt must carry it
     lens = item.get("lens") or {}
     if not meta.focal35 and lens.get("hfovDeg"):
         meta.focal35 = 18.0 / math.tan(math.radians(float(lens["hfovDeg"])) / 2)
@@ -267,6 +268,7 @@ def meta_record(m: PhotoMeta) -> dict[str, Any]:
             "rtk_std",
             "blur",
             "ppk",
+            "from_layer",
         )
     }
     rec["path"] = str(m.path)
@@ -403,9 +405,12 @@ def choose_crs(params: dict[str, Any], manifest: dict[str, Any], metas: list[Pho
 
 def needs_geo(metas: list[PhotoMeta], H: np.ndarray, params: dict[str, Any]) -> bool:
     """Whether ODM must be told the positions (``geo.txt``): PPK positions, a GNSS mode other than
-    ``auto``, or heights that are not the photos' own altitudes (RTK ellipsoidal heights converted,
-    the project's vertical datum, relative heights filled in)."""
+    ``auto``, positions from the photos layer (review copies carry no GPS of their own), or heights
+    that are not the photos' own altitudes (RTK ellipsoidal heights converted, the project's
+    vertical datum, relative heights filled in)."""
     if params.get("ppk") or params.get("gnss", "auto") != "auto":
+        return True
+    if any(m.from_layer and m.has_gps for m in metas):
         return True
     for i, m in enumerate(metas):
         if not m.has_gps or np.isnan(H[i]):

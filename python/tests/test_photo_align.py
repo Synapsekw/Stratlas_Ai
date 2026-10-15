@@ -370,3 +370,55 @@ def test_three_quaternion_of_a_nadir_camera_looks_down():
     # three.js: the camera's -Z (view) maps to world -Y (down), its +Y (image up) to north (-Z)
     assert np.allclose(M @ [0, 0, -1], [0, -1, 0], atol=1e-9)
     assert np.allclose(M @ [0, 1, 0], [0, 0, -1], atol=1e-9)
+
+
+def test_review_copies_of_a_photos_layer_are_placed_by_the_layer_poses(odm, project):
+    """Review copies carry no EXIF: their positions come from the layer's poses, and ODM is told
+    them in geo.txt (it would otherwise see photos with no GPS and leave the model unplaced)."""
+    from PIL import Image as PILImage
+    from pyproj import Transformer
+
+    origin = [245884.9, 3179597.1, 0.0]
+    poses = [[0.0, 60.0, 0.0], [10.0, 60.0, -5.0], [20.0, 61.0, -10.0]]
+    items = []
+    for k, pos in enumerate(poses):
+        pixels = np.random.default_rng(k + 7).integers(0, 255, (120, 160, 3), dtype=np.uint8)
+        path = project / "photos" / f"p{k}.jpg"
+        path.parent.mkdir(exist_ok=True)
+        PILImage.fromarray(pixels).save(path, "JPEG", quality=90)  # no EXIF, no XMP
+        items.append(
+            {
+                "id": f"p{k}",
+                "src": {"path": f"photos/p{k}.jpg"},
+                "pos": pos,
+                "q": [0, 0, 0, 1],
+                "lens": {"model": "pinhole", "hfovDeg": 84},
+            }
+        )
+    manifest = {
+        "schema": "aio.project/1",
+        "crs": {"epsg": 32639},
+        "origin": origin,
+        "verticalDatum": {"absAltOffsetM": 0},
+        "layers": [{"kind": "photos", "id": "photos", "name": "Flight", "visible": True, "items": items}],
+    }
+    (project / "manifest.json").write_text(json.dumps(manifest), "utf-8")
+    result, _ = run_job(
+        A.PhotoAlign(), project, {"photos": {"layer": "photos"}, "preset": "fast", "run": "r1"}
+    )
+    assert result["status"] == "done"
+    base = project / "photogrammetry" / "r1"
+    geo = (base / "odm" / "geo.txt").read_text().splitlines()
+    assert geo[0] == "EPSG:4326" and len(geo) == 1 + len(poses)
+    to_ll = Transformer.from_crs(32639, 4326, always_xy=True)
+    names = json.loads((base / "odm" / "names.json").read_text())
+    rows = {names[r.split()[0]]: [float(v) for v in r.split()[1:4]] for r in geo[1:]}
+    for k, (x, y, z) in enumerate(poses):
+        lon, lat = to_ll.transform(origin[0] + x, origin[1] - z)
+        got = rows[f"p{k}"]
+        assert got[0] == pytest.approx(lon, abs=1e-7) and got[1] == pytest.approx(lat, abs=1e-7)
+        assert got[2] == pytest.approx(origin[2] + y, abs=1e-3)
+    args = json.loads(odm.read_text().splitlines()[0])
+    assert args[args.index("--geo") + 1].endswith("geo.txt")
+    run = json.loads((base / "run.json").read_text("utf-8"))
+    assert not any("no GPS" in w for w in run.get("warnings", []))
