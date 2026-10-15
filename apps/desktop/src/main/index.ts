@@ -84,6 +84,7 @@ import {
   WALK_PACK_FEATURE,
   walkPackRefusal,
 } from './walks';
+import { EVIDENCE_PACK_FEATURE, evidencePackRefusal } from './evidencePack';
 import {
   PANO_PACK_FEATURE,
   PANO_QUEUED,
@@ -1289,7 +1290,12 @@ function registerIpc(): void {
     }
     // walk.process and pano.stitch on processing tools older than their first pack: the update
     // path, not a failed job
-    if ('pipeline' in req && (req.pipeline === 'walk.process' || req.pipeline === 'pano.stitch')) {
+    if (
+      'pipeline' in req &&
+      (req.pipeline === 'walk.process' ||
+        req.pipeline === 'pano.stitch' ||
+        req.pipeline === 'model.evidence')
+    ) {
       const found = await findPack({
         dataRoot: settings.current().dataRoot,
         env: process.env,
@@ -1297,7 +1303,9 @@ function registerIpc(): void {
       });
       const version = found.pack?.version ?? null;
       const tooOld =
-        walkPackRefusal(req.pipeline, version) ?? panoPackRefusal(req.pipeline, version);
+        walkPackRefusal(req.pipeline, version) ??
+        panoPackRefusal(req.pipeline, version) ??
+        evidencePackRefusal(req.pipeline, version);
       if (tooOld) return { ok: false, error: tooOld };
     }
     // a drone panorama stitch waits for the one running (one at a time on this computer)
@@ -1843,6 +1851,7 @@ function registerIpc(): void {
             { label: 'Creating maps from photos', minVersion: PHOTO_PACK },
             WALK_PACK_FEATURE,
             PANO_PACK_FEATURE,
+            EVIDENCE_PACK_FEATURE,
           ],
     places: () =>
       packArchivePlaces({
