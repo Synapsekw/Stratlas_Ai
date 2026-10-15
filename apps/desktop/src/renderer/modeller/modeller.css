@@ -229,3 +229,204 @@
   padding: 10px 12px;
   border-top: 1px solid var(--line-soft);
 }
+
+/* Components review (engineering model): the tree, the card, notes and the file check. */
+.mb-cmp {
+  display: grid;
+  gap: 8px;
+}
+.mb-cmp-list {
+  display: grid;
+  gap: 8px;
+  max-height: 260px;
+  overflow: auto;
+}
+.mb-cmp-group h4,
+.mb-cmp-card h4,
+.mb-cmp-note h4 {
+  margin: 0 0 4px;
+  font: 500 11px var(--f-ui);
+  color: var(--fg-2);
+}
+.mb-cmp-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 6px;
+  padding-inline-start: calc(6px + var(--depth, 0) * 14px);
+  border: 0;
+  border-radius: var(--r-4, 6px);
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: start;
+  cursor: pointer;
+}
+.mb-cmp-row[data-depth='1'] {
+  --depth: 1;
+}
+.mb-cmp-row[data-depth='2'] {
+  --depth: 2;
+}
+.mb-cmp-row[data-depth='3'] {
+  --depth: 3;
+}
+.mb-cmp-row:hover {
+  background: var(--bg-2, oklch(0.25 0.01 250));
+}
+.mb-cmp-row[aria-pressed='true'] {
+  background: oklch(from var(--acc) l c h / 0.16);
+}
+.mb-cmp-row:focus-visible {
+  outline: 2px solid var(--acc);
+  outline-offset: -2px;
+}
+.mb-cmp-row[data-status='rejected'] .mb-name,
+.mb-cmp-row[data-hidden] .mb-name {
+  opacity: 0.55;
+}
+.mb-cmp-row[data-status='rejected'] .mb-name b {
+  text-decoration: line-through;
+}
+.mb-cmp-flag {
+  color: var(--fg-3);
+  display: inline-flex;
+}
+.mb-cmp-confirm {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.mb-cmp-card {
+  display: grid;
+  gap: 6px;
+  padding-top: 8px;
+  border-top: 1px solid var(--line-soft);
+}
+.mb-cmp-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.mb-cmp-head h3 {
+  flex: 1;
+  min-width: 0;
+  margin: 0;
+}
+.mb-cmp-head h3 span {
+  color: var(--fg-2);
+  font-weight: 400;
+}
+.mb-cmp-values {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+}
+.mb-cmp-value {
+  display: grid;
+  grid-template-columns: 9em 1fr;
+  gap: 4px 10px;
+  align-items: baseline;
+}
+.mb-cmp-value dt {
+  color: var(--fg-2);
+}
+.mb-cmp-value dd {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 8px;
+  margin: 0;
+}
+.mb-cmp-value input[type='text'] {
+  width: 6.5em;
+}
+.mb-cmp-value em {
+  font-style: normal;
+  color: var(--fg-3);
+}
+.mb-cmp-basis {
+  font: 500 10px var(--f-ui);
+  padding: 2px 6px;
+  border-radius: 99px;
+  border: 1px solid var(--line-strong);
+  color: var(--fg-2);
+}
+.mb-cmp-basis.measured {
+  color: var(--ok, #5cc28a);
+  border-color: currentColor;
+}
+.mb-cmp-basis.user {
+  color: var(--acc);
+  border-color: currentColor;
+}
+.mb-cmp-basis.inferred {
+  border-style: dashed;
+}
+.mb-cmp-q {
+  flex-basis: 100%;
+  color: var(--fg-2);
+}
+.mb-cmp-scale,
+.mb-cmp-unseen {
+  margin: 0;
+  padding: 6px 8px;
+  border-radius: var(--r-4, 6px);
+  background: oklch(from var(--s3, #f0a030) l c h / 0.14);
+}
+.mb-cmp-sources {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 6px;
+}
+.mb-cmp-sources li {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.mb-cmp-sources li span {
+  display: grid;
+  min-width: 0;
+}
+.mb-cmp-sources small {
+  color: var(--fg-2);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.mb-cmp-sources img,
+.mb-cmp-nothumb {
+  width: 56px;
+  height: 42px;
+  flex: none;
+  border-radius: var(--r-4, 6px);
+  object-fit: cover;
+  background: var(--bg-2, oklch(0.25 0.01 250));
+}
+.mb-cmp-note {
+  padding: 6px 8px;
+  border-radius: var(--r-4, 6px);
+  background: var(--bg-2, oklch(0.25 0.01 250));
+}
+.mb-cmp-note.bad {
+  background: oklch(from var(--s1, #e2412b) l c h / 0.16);
+}
+.mb-cmp-note ul {
+  margin: 0;
+  padding-inline-start: 1.1em;
+}
+.mb-cmp-note p {
+  margin: 0 0 4px;
+}
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
