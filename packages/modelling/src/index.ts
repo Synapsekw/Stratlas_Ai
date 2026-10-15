@@ -43,7 +43,10 @@ export {
   flareModel,
   latticeModel,
   monopoleModel,
+  setupFor,
+  stackEvidence,
   stackModel,
+  stackProposal,
 } from './engineer/fixtures';
 export {
   ASSUMED_HEIGHT_M,

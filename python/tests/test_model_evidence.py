@@ -34,6 +34,7 @@ FIXTURE = (
     Path(__file__).resolve().parents[2]
     / "packages/schema/src/__fixtures__/engineering/evidence.partial-stack.json"
 )
+FIXTURE_PHOTO = FIXTURE.with_name("evidence.single-photo.json")
 
 
 def make_project(
@@ -183,13 +184,13 @@ def _shape(v):
     return type(v).__name__ if not isinstance(v, int | float) else "number"
 
 
-def _compare_with_fixture(pack: dict) -> None:
+def _compare_with_fixture(pack: dict, fixture: Path = FIXTURE) -> None:
     if os.environ.get("AIO_UPDATE_FIXTURES"):
-        FIXTURE.parent.mkdir(parents=True, exist_ok=True)
-        FIXTURE.write_text(json.dumps(pack, indent=1) + "\n", "utf-8")
+        fixture.parent.mkdir(parents=True, exist_ok=True)
+        fixture.write_text(json.dumps(pack, indent=1) + "\n", "utf-8")
         return
-    assert FIXTURE.is_file(), "run with AIO_UPDATE_FIXTURES=1 to write the schema fixture"
-    old = json.loads(FIXTURE.read_text("utf-8"))
+    assert fixture.is_file(), "run with AIO_UPDATE_FIXTURES=1 to write the schema fixture"
+    old = json.loads(fixture.read_text("utf-8"))
     why = _differs(old, pack, "pack")
     assert why is None, f"the committed fixture has drifted ({why}): regenerate it (see the module docstring)"
 
@@ -233,6 +234,75 @@ def test_photos_only_pack(tmp_path, monkeypatch):
     assert pack["reconstruction"] == "unavailable" and pack["bounds"] is None
     assert len(pack["photos"]) == 3 and all(i["kind"] == "photo" for i in pack["images"])
     assert any("photogrammetry is not available" in w for w in pack["warnings"])
+
+
+def test_single_photo_pack(tmp_path, monkeypatch):
+    """One ordinary photo and nothing else (acceptance C): a usable pack that claims no measurement.
+
+    Its pack is the committed fixture `evidence.single-photo.json`, which the TypeScript acceptance
+    tests assemble, mesh and place.
+    """
+    make_project(tmp_path, None, photos=1)
+    monkeypatch.setattr(pipe, "photogrammetry_available", lambda: False)
+    run_job(
+        ModelEvidence(),
+        tmp_path,
+        params(clouds=[], photos=[{"path": "photos/synth_01.jpg"}], region=None),
+    )
+    pack = read_pack(tmp_path)
+    assert (
+        pack["crs"] is None
+        and pack["bounds"] is None
+        and pack["samples"] == {"read": 0, "kept": 0, "ground": 0}
+    )
+    assert pack["axis"] is None and pack["base"] is None and pack["height"] is None
+    assert pack["taper"] is None and pack["slices"] == [] and pack["members"] == []
+    assert pack["reconstruction"] == "unavailable"
+    assert len(pack["photos"]) == 1 and [i["kind"] for i in pack["images"]] == ["photo"]
+    assert pack["photos"][0]["orientationApplied"] is False
+    assert any("not available" in w for w in pack["warnings"])
+    _compare_with_fixture(pack, FIXTURE_PHOTO)
+
+
+def test_a_large_cloud_is_processed_with_bounded_memory_and_nothing_raw_leaves(tmp_path):
+    """Acceptance I at the job level: 2.5 million points on disk, a few hundred thousand read, a
+    pack that holds measurements only."""
+    import tracemalloc
+
+    rng = np.random.default_rng(1)
+    n = 2_500_000
+    a = rng.uniform(0, 2 * np.pi, n)
+    y = rng.uniform(0, 80, n)
+    r = 6.0 - 1.5 * y / 80 + rng.normal(0, 0.02, n)
+    cloud = np.column_stack([r * np.sin(a), y, -r * np.cos(a)])
+    ground = np.column_stack(
+        [rng.uniform(-40, 40, 200_000), rng.normal(0, 0.02, 200_000), rng.uniform(-40, 40, 200_000)]
+    )
+    make_project(tmp_path, np.vstack([cloud, ground]), colour=False)
+    del cloud, ground, a, y, r
+    limits = {"maxPoints": 150_000, "maxImages": 12, "maxPx": 512}
+    tracemalloc.start()
+    run_job(ModelEvidence(), tmp_path, params(limits=limits, region={"centre": [0.0, 0.0], "radiusM": 60.0}))
+    _, peak = tracemalloc.get_traced_memory()
+    tracemalloc.stop()
+    pack = read_pack(tmp_path)
+    assert pack["samples"]["read"] > 2_000_000 and pack["samples"]["kept"] <= 150_000
+    assert peak < 600 * 1024 * 1024, f"{peak / 2**20:.0f} MB"
+    prof = pack["taper"]["profile"]
+    assert abs(float(np.interp(40.0, [p["y"] for p in prof], [p["r"] for p in prof])) - 5.25) < 0.1
+
+    # nothing raw: no list in the pack is longer than its schema limits, and no point file is kept
+    def longest(v):
+        if isinstance(v, list):
+            return max([len(v), *[longest(x) for x in v]])
+        if isinstance(v, dict):
+            return max([0, *[longest(x) for x in v.values()]])
+        return 0
+
+    assert longest(pack) <= 256
+    folder = tmp_path / "engineering" / "run-test"
+    assert (folder / "evidence.json").stat().st_size < 200_000
+    assert not any(p.suffix in (".npy", ".las", ".laz", ".bin", ".csv") for p in folder.rglob("*"))
 
 
 def test_neighbour_and_no_colour(tmp_path):
