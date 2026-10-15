@@ -229,7 +229,7 @@ function failure(
   answer: { ok: true; value: { ok: boolean; error?: string } } | { ok: false; error: string },
 ): string | null {
   if (!answer.ok) return answer.error;
-  return answer.value.ok ? null : (answer.value.error ?? 'It did not work.');
+  return answer.value.ok ? null : (answer.value.error ?? t('library.failed'));
 }
 
 export function createShellStore(

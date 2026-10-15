@@ -162,6 +162,9 @@ describe('FolderRow', () => {
       );
     });
     expect(q('folder-menu')).not.toBeNull();
+    // never inside the tile's role=button: the items are not read as part of the button
+    expect(tile.contains(q('folder-menu'))).toBe(false);
+    expect(tile.querySelector('[role="menuitem"]')).toBeNull();
     act(() => q('folder-menu-rename')?.click());
     expect(q('folder-menu')).toBeNull();
     const field = must(q('folder-name')) as HTMLInputElement;

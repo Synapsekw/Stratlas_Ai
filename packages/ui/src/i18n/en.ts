@@ -295,7 +295,10 @@ export const en = {
     '{project} was removed from the library. The file stays in {path}. Open package brings it back.',
   'library.removed.demo':
     '{project} was removed from the library. Add project folder on its folder brings it back.',
+  'library.dismiss': 'Dismiss',
+  'library.failed': 'It did not work.',
   'library.cover.title': 'Change thumbnail',
+  'library.cover.field': 'Thumbnail',
   'library.cover.upload': 'Upload an image',
   'library.cover.builtin': 'Built-in covers',
   'library.cover.builtin.contours': 'Contours',
@@ -311,6 +314,7 @@ export const en = {
   'library.cover.failed': 'The thumbnail was not changed.',
   'library.cover.badImage': 'This file is not an image the app can read.',
   'library.folders.new': 'New folder',
+  'library.folders.row': 'Folders',
   'library.folders.all': 'All projects',
   'library.folders.loose': 'No folder',
   'library.folders.count': '{count} projects',

@@ -402,48 +402,51 @@ function FolderTile({
         {folder.name}
       </span>
       <span className="ftile-count mono">{count}</span>
-      {menu && (
-        <div
-          ref={list}
-          className="dmenu"
-          role="menu"
-          aria-label={folder.name}
-          style={style}
-          data-testid="folder-menu"
-          onClick={(e) => {
-            e.stopPropagation();
-          }}
-          onKeyDown={(e: KeyboardEvent<HTMLDivElement>) => {
-            e.stopPropagation();
-            if (list.current && arrowFocus(list.current, e.key)) e.preventDefault();
-          }}
-          onContextMenu={(e) => {
-            e.preventDefault();
-            e.stopPropagation();
-          }}
-        >
-          <div className="dmenu-h faint" dir="auto">
-            {folder.name}
-          </div>
-          {items.map((a) => (
-            <button
-              key={a.id}
-              type="button"
-              role="menuitem"
-              className={`dmenu-item${a.id === 'open' ? ' primary' : ''}${a.id === 'delete' ? ' danger' : ''}`}
-              data-testid={`folder-menu-${a.id}`}
-              onClick={() => {
-                setMenu(null);
-                if (a.id === 'open') onOpen();
-                else setDialog(a.id);
-              }}
-            >
-              <Icon name={a.icon} size={14} />
-              <span>{a.label}</span>
-            </button>
-          ))}
-        </div>
-      )}
+      {/* on document.body: menu items inside the role=button tile would read as part of it */}
+      {menu &&
+        createPortal(
+          <div
+            ref={list}
+            className="dmenu"
+            role="menu"
+            aria-label={folder.name}
+            style={style}
+            data-testid="folder-menu"
+            onClick={(e) => {
+              e.stopPropagation();
+            }}
+            onKeyDown={(e: KeyboardEvent<HTMLDivElement>) => {
+              e.stopPropagation();
+              if (list.current && arrowFocus(list.current, e.key)) e.preventDefault();
+            }}
+            onContextMenu={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+            }}
+          >
+            <div className="dmenu-h faint" dir="auto">
+              {folder.name}
+            </div>
+            {items.map((a) => (
+              <button
+                key={a.id}
+                type="button"
+                role="menuitem"
+                className={`dmenu-item${a.id === 'open' ? ' primary' : ''}${a.id === 'delete' ? ' danger' : ''}`}
+                data-testid={`folder-menu-${a.id}`}
+                onClick={() => {
+                  setMenu(null);
+                  if (a.id === 'open') onOpen();
+                  else setDialog(a.id);
+                }}
+              >
+                <Icon name={a.icon} size={14} />
+                <span>{a.label}</span>
+              </button>
+            ))}
+          </div>,
+          document.body,
+        )}
       {dialog === 'rename' &&
         createPortal(
           <FolderNameDialog
@@ -489,12 +492,13 @@ export function FolderRow({
   onOpen: (folderId: string) => void;
   onCard: (projectId: string, folderId: string) => void;
 }) {
+  const t = useT();
   if (folders.length === 0) return null;
   return (
     <div
       className={`frow${dragging ? ' dragging' : ''}`}
       role="group"
-      aria-label="Folders"
+      aria-label={t('library.folders.row')}
       data-testid="folder-row"
     >
       {folders.map((f) => (

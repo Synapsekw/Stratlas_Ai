@@ -437,7 +437,7 @@ function Wizard() {
             data-testid="wizard-cover"
             style={step === 0 ? undefined : { display: 'none' }}
           >
-            <span>Thumbnail</span>
+            <span>{t('library.cover.field')}</span>
             <CoverPicker
               palette={coverPalette(form.purpose)}
               value={form.cover}

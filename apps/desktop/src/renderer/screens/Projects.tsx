@@ -557,7 +557,7 @@ export function ProjectsScreen() {
               className="btn ghost sm"
               onClick={shell.getState().dismissLibraryNotice}
             >
-              Dismiss
+              {t('library.dismiss')}
             </button>
           </div>
         )}
@@ -589,7 +589,7 @@ export function ProjectsScreen() {
                     setMoveError(null);
                   }}
                 >
-                  Dismiss
+                  {t('library.dismiss')}
                 </button>
               </div>
             )}
