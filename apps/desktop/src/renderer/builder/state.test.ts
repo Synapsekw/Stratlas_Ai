@@ -399,6 +399,28 @@ describe('importFiles, the survey day of a .zpc cloud', () => {
     // the confirmed import is not asked again; the waiting drop is (and has no cloud here)
     expect(imports().map((r) => r.paths)).toEqual([['D:/export'], ['b.jpg']]);
     expect(cloudCalls).toHaveLength(2);
+    // the heights of the confirmed drop were read once, before its card
+    const planned1 = calls('builder:altitudePlan').map((c) => (c[1] as { paths: string[] }).paths);
+    expect(planned1).toEqual([['D:/export'], ['b.jpg']]);
+  });
+
+  it('starts the confirmed import at once: the heights are not read again, the days kept', async () => {
+    cloudScan = withCloud;
+    // the heights could not be read before the card; read again they would ask for a take-off
+    let plans = 0;
+    call.mockImplementation((channel: string) => {
+      if (channel !== 'builder:altitudePlan') return Promise.resolve(imported);
+      plans++;
+      return Promise.resolve(plans === 1 ? { ok: false, error: 'busy' } : planned(asks));
+    });
+    await b().importFiles(['D:/export']);
+    expect(b().cloudDatesPrompt?.clouds).toEqual([cloud]);
+    await b().confirmCloudDates({ [cloud.path]: '2026-03-04' });
+    expect(calls('builder:altitudePlan')).toHaveLength(1);
+    expect(b().heightsPrompt).toBeNull();
+    expect(imports()).toEqual([
+      { projectId: 'p1', paths: ['D:/export'], cloudDates: { [cloud.path]: '2026-03-04' } },
+    ]);
   });
 
   it('asks after the heights card, with the confirmed heights', async () => {

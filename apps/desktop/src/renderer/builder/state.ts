@@ -382,8 +382,10 @@ async function runImport(
   // a drawing has no camera and a 360 video is not placed: neither asks for camera heights. The
   // survey day of each Bentley .zpc cloud is read with the heights (its file only carries the
   // export day, ruling of 15 Oct 2026) and asked after them: an import that comes with its
-  // `altitude` was confirmed in a card and starts at once. `cloudDates` says it was answered.
-  if (!altitude && !opts?.drawings && !opts?.as360) {
+  // `altitude` was confirmed in a card and starts at once. `cloudDates` says the dates card was
+  // answered, so the heights were settled before it (asked, or not needed): reading them again
+  // would only wait, and a heights card opened then would drop the chosen days.
+  if (!altitude && !opts?.drawings && !opts?.as360 && opts?.cloudDates === undefined) {
     preparing = true;
     const [plan, clouds] = await Promise.all([
       bridge.call('builder:altitudePlan', {
@@ -392,7 +394,7 @@ async function runImport(
         // the sphere frames go to the panorama import: they ask for no camera heights
         ...(opts?.exclude?.length ? { exclude: [...opts.exclude] } : {}),
       }),
-      opts?.cloudDates === undefined ? cloudsToDate(project.id, paths, opts) : Promise.resolve([]),
+      cloudsToDate(project.id, paths, opts),
     ]).finally(() => {
       preparing = false;
     });
