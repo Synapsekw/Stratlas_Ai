@@ -3635,6 +3635,7 @@ export const en = {
   'review.rejectAll': 'Reject all drafts',
   'review.show': 'Show {name}',
   'review.hide': 'Hide {name}',
+  'review.hidden': 'Hidden in the view',
   'review.remove': 'Remove {name}',
   'review.removeAsk': 'Remove {name}? You accepted it.',
   'review.removeYes': 'Remove',
