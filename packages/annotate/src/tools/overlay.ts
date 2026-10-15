@@ -21,6 +21,7 @@ import {
 import type { StoreApi } from 'zustand/vanilla';
 import {
   areaBuffers,
+  clipRing,
   hitArea,
   issueAreas,
   screenAreas,
@@ -578,7 +579,11 @@ export function installIssueOverlay(
       });
       // hits keep off-screen coordinates (only points behind the camera drop), so an area whose
       // corners left the viewport can still be hovered and picked
-      const all = screenAreas(areas, looseProject(w, h));
+      // a hair in front of the near plane, so the cut points still project
+      const near = handle.camera.near * 1.01;
+      const viewDepth = (p: Vec3) =>
+        -v.set(p[0], p[1], p[2]).applyMatrix4(handle.camera.matrixWorldInverse).z;
+      const all = screenAreas(areas, looseProject(w, h), (ring) => clipRing(ring, viewDepth, near));
       const onView = (p: { x: number; y: number }) => p.x >= 0 && p.y >= 0 && p.x <= w && p.y <= h;
       const visible = areas.map((a, k) => areaVisible(a, all[k], onView));
       areaHits = all.map((hit, k) => (visible[k] ? hit : { ...hit, rings: [] }));

@@ -1,7 +1,7 @@
 import type { Issue, Sighting, Vec3 } from '@aio/schema';
 import { describe, expect, it } from 'vitest';
 import { makeIssue, photoSighting, tankModel } from '../testing';
-import { areaBuffers, hitArea, issueAreas, screenAreas } from './areas';
+import { areaBuffers, clipRing, hitArea, issueAreas, screenAreas } from './areas';
 
 const ring: Vec3[] = [
   [0, 0, 0],
@@ -103,5 +103,33 @@ describe('screen hits', () => {
       [0, null],
       [0, null],
     ]);
+  });
+});
+
+describe('clipRing', () => {
+  it('cuts a ring at a plane and keeps the part in front', () => {
+    const depth = (p: Vec3) => p[2];
+    const sq: Vec3[] = [
+      [0, 0, -1],
+      [2, 0, -1],
+      [2, 0, 3],
+      [0, 0, 3],
+    ];
+    expect(clipRing(sq, depth, 1)).toEqual([
+      [2, 0, 1],
+      [2, 0, 3],
+      [0, 0, 3],
+      [0, 0, 1],
+    ]);
+    expect(clipRing(sq, depth, 5)).toEqual([]);
+  });
+
+  it('lets screenAreas keep a ring with a vertex behind the camera', () => {
+    const [area] = issueAreas([placed()], [tankModel], null, 'all', { cloud: true });
+    if (!area) throw new Error('no area');
+    const front = (p: Vec3) => (p[2] > 1 ? null : { x: p[0], y: p[2] });
+    expect(screenAreas([area], front)[0]?.rings).toEqual([]);
+    const hit = screenAreas([area], front, (r) => clipRing(r, (p) => 1 - p[2], 0));
+    expect(hit[0]?.rings).toHaveLength(1);
   });
 });

@@ -395,9 +395,14 @@ describe('installIssueOverlay', () => {
           },
         ],
       });
-    const rig = (half: number, clear: () => boolean) => {
+    const rig = (
+      half: number,
+      clear: () => boolean,
+      issue: Issue = placedIssue(half),
+      aim?: (cam: PerspectiveCamera) => void,
+    ) => {
       const store = createWorkspace();
-      store.getState().openProject({ id: 'p', root: 'r', manifest }, [placedIssue(half)]);
+      store.getState().openProject({ id: 'p', root: 'r', manifest }, [issue]);
       let update: () => void = () => undefined;
       let snaps = 0;
       const occlusion: OcclusionFactory = (_h, _s, onUpdate) => {
@@ -411,6 +416,7 @@ describe('installIssueOverlay', () => {
         };
       };
       const { handle, frames } = fakeHandle();
+      aim?.(handle.camera);
       setActiveScene(handle);
       const uninstall = installIssueOverlay(store, createPinDisplay(null), { occlusion });
       frame(frames);
@@ -453,6 +459,48 @@ describe('installIssueOverlay', () => {
     it('still hits an area whose corners are off screen', () => {
       // 200 m wide: every corner is far outside the 800 x 600 view, the pointer is inside
       const r = rig(100, () => true);
+      r.el.dispatchEvent(r.ev('pointermove'));
+      expect(r.el.title).toBe('Crack on the shell');
+      r.el.dispatchEvent(r.ev('pointerdown'));
+      r.el.dispatchEvent(r.ev('pointerup'));
+      expect(r.store.getState().selection).toEqual({ kind: 'issue', id: 'placed' });
+      r.uninstall();
+    });
+
+    it('hits the visible part of a ground patch that runs behind the camera', () => {
+      // 200 m patch, camera 10 m above its middle looking forward and down: the back corners
+      // are behind the camera
+      const patch = makeIssue({
+        id: 'placed',
+        title: 'Crack on the shell',
+        sightings: [
+          photoSighting,
+          {
+            on: 'mesh',
+            layer: 'tank',
+            geom: {
+              type: 'spolygon',
+              points: [
+                [-100, 0, -100],
+                [100, 0, -100],
+                [100, 0, 100],
+                [-100, 0, 100],
+              ],
+            },
+            from: { sighting: 0 },
+          },
+        ],
+      });
+      const r = rig(
+        100,
+        () => true,
+        patch,
+        (cam) => {
+          cam.position.set(0, 10, 0);
+          cam.lookAt(0, 0, -30);
+          cam.updateMatrixWorld();
+        },
+      );
       r.el.dispatchEvent(r.ev('pointermove'));
       expect(r.el.title).toBe('Crack on the shell');
       r.el.dispatchEvent(r.ev('pointerdown'));

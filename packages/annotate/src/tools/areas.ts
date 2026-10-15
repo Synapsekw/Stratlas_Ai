@@ -134,15 +134,42 @@ export interface AreaHit {
   centre: ScreenPoint | null;
 }
 
-/** One entry per area, in order; rings with a point off screen are left out. */
+/**
+ * The part of a ring in front of a plane: one Sutherland-Hodgman pass, `depth` is the signed
+ * distance of a point in front of the plane (positive = kept). Empty when nothing is left.
+ */
+export function clipRing(ring: readonly Vec3[], depth: (p: Vec3) => number, min: number): Vec3[] {
+  const out: Vec3[] = [];
+  for (let i = 0; i < ring.length; i++) {
+    const a = ring[i];
+    const b = ring[(i + 1) % ring.length];
+    if (!a || !b) continue;
+    const da = depth(a) - min;
+    const db = depth(b) - min;
+    if (da > 0) out.push(a);
+    if (da > 0 !== db > 0) {
+      const t = da / (da - db);
+      out.push([a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t, a[2] + (b[2] - a[2]) * t]);
+    }
+  }
+  return out;
+}
+
+/**
+ * One entry per area, in order. Rings with a point `project` rejects are left out; `clip` (if
+ * given) first trims a ring to what is in front of the camera, so one vertex behind it does not
+ * lose the whole ring.
+ */
 export function screenAreas(
   areas: readonly IssueArea[],
   project: (p: Vec3) => ScreenPoint | null,
+  clip?: (ring: Vec3[]) => Vec3[],
 ): AreaHit[] {
   return areas.map((a) => {
     const rings: ScreenPoint[][] = [];
     for (const h of a.kind === 'prism' ? [0, a.height] : [0]) {
-      const pts = a.ring.map((p) => project(lift(p, h)));
+      const lifted = a.ring.map((p) => lift(p, h));
+      const pts = (clip ? clip(lifted) : lifted).map((p) => project(p));
       if (pts.length >= 3 && pts.every((p): p is ScreenPoint => p !== null)) rings.push(pts);
     }
     return { issueId: a.issueId, rings, centre: project(a.centre) };
