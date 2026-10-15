@@ -2,15 +2,19 @@ import { updateManifestFile } from '@aio/project/builder';
 import fs from 'node:fs';
 import { mkdir, mkdtemp, readFile, rename, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { join, sep } from 'node:path';
+import { join, parse, sep } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { coverFile } from './covers';
+import { createLibraryStore } from './library';
 import {
+  deletableTarget,
   deleteProject,
   managedProjectFolder,
   registerLibraryActionsIpc,
   renameProject,
   type LibraryActionsDeps,
 } from './libraryActions';
+import { createLibraryViewStore, libraryKey } from './libraryView';
 import { collectHandlers } from './notYet';
 import { ProjectRegistry } from './project';
 import {
@@ -43,6 +47,135 @@ const manifestOf = async (root: string) =>
 const yard = () =>
   writeProject(join(projects, 'north-yard'), sampleManifest({ name: 'North yard' }));
 const errorOf = (r: { ok: boolean; error?: string }) => (r.ok ? '' : (r.error ?? ''));
+/** A road review kit export: no manifest, recognised by its files. */
+async function roadKit(dir: string): Promise<string> {
+  await mkdir(join(dir, 'ortho'), { recursive: true });
+  await mkdir(join(dir, 'data'), { recursive: true });
+  await writeFile(join(dir, 'ortho', 'index.json'), '{}');
+  await writeFile(join(dir, 'data', 'defects.json'), '[]');
+  return dir;
+}
+
+describe('deletableTarget', () => {
+  const target = (path: string, o: { listed?: string[]; guardRoots?: string[] } = {}) =>
+    deletableTarget({
+      path,
+      dataRoot,
+      listed: o.listed ?? [path],
+      demoCopy: undefined,
+      guardRoots: o.guardRoots ?? [],
+    });
+
+  it('names a package file and a project folder in the data folder', async () => {
+    const pkg = join(projects, 'handover.aio');
+    await writeFile(pkg, 'zip');
+    const root = await yard();
+    // in the data folder, library.json does not need to list them
+    expect(
+      await deletableTarget({
+        path: pkg,
+        dataRoot,
+        listed: [],
+        guardRoots: [],
+        demoCopy: undefined,
+      }),
+    ).toEqual({
+      ok: true,
+      path: pkg,
+      what: 'package',
+    });
+    expect(await target(root, { listed: [] })).toEqual({ ok: true, path: root, what: 'folder' });
+  });
+
+  it('names an added package file and an added kit folder', async () => {
+    const pkg = join(base, 'elsewhere', 'handover.aio');
+    await mkdir(join(base, 'elsewhere'));
+    await writeFile(pkg, 'zip');
+    const kit = await roadKit(join(base, 'elsewhere', 'ring-road'));
+    expect(await target(pkg)).toEqual({ ok: true, path: pkg, what: 'package' });
+    expect(await target(kit)).toEqual({ ok: true, path: kit, what: 'folder' });
+  });
+
+  it('refuses a folder that is not in library.json', async () => {
+    const added = await writeProject(join(base, 'elsewhere', 'added'), sampleManifest());
+    const r = await target(added, { listed: [join(base, 'elsewhere', 'other')] });
+    expect(r.ok).toBe(false);
+    expect(errorOf(r)).toContain(added);
+  });
+
+  it('refuses a link to a folder', async () => {
+    const real = await writeProject(join(base, 'elsewhere', 'real'), sampleManifest());
+    const link = join(base, 'linked');
+    fs.symlinkSync(real, link, 'junction');
+    const r = await target(link);
+    expect(errorOf(r)).toContain('is a link');
+    expect(fs.existsSync(real)).toBe(true);
+  });
+
+  it('refuses the data folder itself', async () => {
+    await writeFile(join(dataRoot, 'manifest.json'), JSON.stringify(sampleManifest()));
+    const r = await target(dataRoot);
+    expect(r.ok).toBe(false);
+    expect(errorOf(r)).toContain(dataRoot);
+  });
+
+  it('refuses a folder that holds the data folder', async () => {
+    await writeFile(join(base, 'manifest.json'), JSON.stringify(sampleManifest()));
+    const r = await target(base);
+    expect(r.ok).toBe(false);
+    expect(errorOf(r)).toContain('holds');
+  });
+
+  it('refuses userData and a folder that holds it', async () => {
+    const userData = await writeProject(
+      join(base, 'home', 'AppData', 'Quadrion'),
+      sampleManifest(),
+    );
+    for (const p of [userData, join(base, 'home', 'AppData')]) {
+      await writeFile(join(p, 'manifest.json'), JSON.stringify(sampleManifest()));
+      const r = await target(p, { guardRoots: [userData] });
+      expect(r.ok, p).toBe(false);
+    }
+  });
+
+  it('refuses the home folder', async () => {
+    const home = await writeProject(join(base, 'home'), sampleManifest());
+    const r = await target(home, { guardRoots: [home] });
+    expect(r.ok).toBe(false);
+    expect(errorOf(r)).toContain(home);
+  });
+
+  it('refuses a drive root', async () => {
+    const root = parse(base).root;
+    const r = await target(root, { listed: [root] });
+    expect(r.ok).toBe(false);
+    expect(errorOf(r)).toContain('root');
+  });
+
+  it('refuses an added folder that is neither a project nor a kit export', async () => {
+    const dir = join(base, 'elsewhere', 'photos');
+    await mkdir(dir, { recursive: true });
+    await writeFile(join(dir, 'a.jpg'), 'x');
+    expect(errorOf(await target(dir))).toContain(dir);
+  });
+
+  it('refuses a path that is not there any more', async () => {
+    const gone = join(base, 'elsewhere', 'gone');
+    expect(errorOf(await target(gone))).toContain('not found');
+  });
+
+  it('names a demo working copy, or nothing when there is none', async () => {
+    const copy = await writeProject(join(base, 'userData', 'demo', 'sample'), sampleManifest());
+    const bundled = join(base, 'resources', 'demo', 'sample');
+    const guardRoots = [join(base, 'userData')];
+    expect(
+      await deletableTarget({ path: bundled, dataRoot, listed: [], demoCopy: copy, guardRoots }),
+    ).toEqual({ ok: true, path: copy, what: 'demo-copy' });
+    expect(
+      await deletableTarget({ path: bundled, dataRoot, listed: [], demoCopy: null, guardRoots }),
+    ).toEqual({ ok: true, path: bundled, what: 'nothing' });
+  });
+});
 
 describe('managedProjectFolder', () => {
   it('accepts a project folder directly inside <dataRoot>/projects', async () => {
@@ -278,6 +411,27 @@ describe('deleteProject', () => {
 });
 
 describe('library action channels', () => {
+  const listedStore = (paths: string[]) => ({
+    paths: () => Promise.resolve(paths),
+    remove: () => Promise.resolve(),
+  });
+  /** A hidden list in memory. */
+  const fakeView = () => {
+    const hidden: string[] = [];
+    return {
+      hidden,
+      hide: (k: string) => {
+        if (!hidden.includes(k)) hidden.push(k);
+        return Promise.resolve();
+      },
+      forget: (k: string) => {
+        const i = hidden.indexOf(k);
+        if (i >= 0) hidden.splice(i, 1);
+        return Promise.resolve();
+      },
+    };
+  };
+
   function setup(over: Partial<LibraryActionsDeps> = {}) {
     const registry = new ProjectRegistry();
     const reveal = vi.fn();
@@ -349,7 +503,7 @@ describe('library action channels', () => {
     expect(trash).not.toHaveBeenCalled();
   });
 
-  it('refuses to rename or delete a package, a demo project and a folder added from elsewhere', async () => {
+  it('refuses to rename a package, a demo project and a folder added from elsewhere', async () => {
     const pkg = join(projects, 'handover.aio');
     await writeFile(pkg, 'zip');
     const demo = await writeProject(join(base, 'demo', 'sample'), sampleManifest());
@@ -364,11 +518,178 @@ describe('library action channels', () => {
       expect(errorOf(await ipc.call('library:rename', { projectId: id, name: 'X' }))).toContain(
         why,
       );
-      expect(errorOf(await ipc.call('library:delete', { projectId: id }))).toContain(why);
     }
     expect(trash).not.toHaveBeenCalled();
     expect(fs.existsSync(pkg)).toBe(true);
     expect((await manifestOf(added)).name).not.toBe('X');
+  });
+
+  it('deletes a package file in the data folder', async () => {
+    const pkg = join(projects, 'handover.aio');
+    await writeFile(pkg, 'zip');
+    const release = vi.fn(() => Promise.resolve());
+    const { registry, ipc, trash } = setup({ release });
+    expect(await ipc.call('library:delete', { projectId: registry.register(pkg) })).toEqual({
+      ok: true,
+    });
+    expect(trash).toHaveBeenCalledWith(pkg);
+    expect(release).not.toHaveBeenCalled();
+    expect(fs.existsSync(pkg)).toBe(false);
+  });
+
+  it('deletes a folder added from elsewhere that holds a manifest', async () => {
+    const added = await writeProject(join(base, 'elsewhere', 'added'), sampleManifest());
+    const { registry, ipc, trash } = setup({ store: listedStore([added]) });
+    expect(await ipc.call('library:delete', { projectId: registry.register(added) })).toEqual({
+      ok: true,
+    });
+    expect(trash).toHaveBeenCalledWith(added);
+    expect(fs.existsSync(added)).toBe(false);
+    expect(fs.existsSync(join(base, 'elsewhere'))).toBe(true);
+  });
+
+  it('deletes a kit export folder added from elsewhere', async () => {
+    const kit = await roadKit(join(base, 'elsewhere', 'ring-road'));
+    const { registry, ipc, trash } = setup({ store: listedStore([kit]) });
+    expect(await ipc.call('library:delete', { projectId: registry.register(kit) })).toEqual({
+      ok: true,
+    });
+    expect(trash).toHaveBeenCalledWith(kit);
+  });
+
+  it('trashes a demo working copy and hides the demo', async () => {
+    const bundled = await writeProject(join(base, 'resources', 'demo', 'sample'), sampleManifest());
+    const copy = await writeProject(join(base, 'userData', 'demo', 'sample'), sampleManifest());
+    const view = fakeView();
+    const { registry, ipc, trash } = setup({
+      view,
+      isDemo: (p) => Promise.resolve(p === bundled),
+      demoCopy: (p) => Promise.resolve(p === bundled ? copy : undefined),
+      guardRoots: () => [join(base, 'userData')],
+    });
+    expect(await ipc.call('library:delete', { projectId: registry.register(bundled) })).toEqual({
+      ok: true,
+    });
+    expect(trash).toHaveBeenCalledWith(copy);
+    expect(fs.existsSync(copy)).toBe(false);
+    // the bundled demo is never touched, only hidden
+    expect(fs.existsSync(bundled)).toBe(true);
+    expect(view.hidden).toEqual(['demo:sample']);
+  });
+
+  it('hides a demo that has no working copy and trashes nothing', async () => {
+    const bundled = await writeProject(join(base, 'resources', 'demo', 'sample'), sampleManifest());
+    const view = fakeView();
+    const { registry, ipc, trash } = setup({
+      view,
+      isDemo: (p) => Promise.resolve(p === bundled),
+      demoCopy: (p) => Promise.resolve(p === bundled ? null : undefined),
+    });
+    expect(await ipc.call('library:delete', { projectId: registry.register(bundled) })).toEqual({
+      ok: true,
+    });
+    expect(trash).not.toHaveBeenCalled();
+    expect(fs.existsSync(bundled)).toBe(true);
+    expect(view.hidden).toEqual(['demo:sample']);
+  });
+
+  it('removes by hiding the key and touches no file', async () => {
+    const root = await yard();
+    const view = fakeView();
+    const remove = vi.fn(() => Promise.resolve());
+    const { registry, ipc, trash } = setup({
+      view,
+      store: { paths: () => Promise.resolve([]), remove },
+    });
+    expect(await ipc.call('library:remove', { projectId: registry.register(root) })).toEqual({
+      ok: true,
+    });
+    expect(view.hidden).toEqual([libraryKey(root, false)]);
+    expect(trash).not.toHaveBeenCalled();
+    expect(remove).not.toHaveBeenCalled();
+    expect((await manifestOf(root)).name).toBe('North yard');
+  });
+
+  it('removes a demo by its demo key, and refuses an unknown id', async () => {
+    const bundled = await writeProject(join(base, 'resources', 'demo', 'sample'), sampleManifest());
+    const view = fakeView();
+    const { registry, ipc } = setup({ view, isDemo: (p) => Promise.resolve(p === bundled) });
+    expect(await ipc.call('library:remove', { projectId: registry.register(bundled) })).toEqual({
+      ok: true,
+    });
+    expect(view.hidden).toEqual(['demo:sample']);
+    expect(errorOf(await ipc.call('library:remove', { projectId: 'nope' }))).toContain(
+      'Reload the library',
+    );
+  });
+
+  it('returns the failure when the hidden list cannot be written', async () => {
+    const root = await yard();
+    const { registry, ipc } = setup({
+      view: {
+        hide: () => Promise.reject(new Error('library-view.json is from a newer version')),
+        forget: () => Promise.resolve(),
+      },
+    });
+    const r = await ipc.call('library:remove', { projectId: registry.register(root) });
+    expect(errorOf(r)).toContain('newer version');
+  });
+
+  it('drops the path from library.json, the hidden list, the folder and the cover after a delete', async () => {
+    const added = await writeProject(join(base, 'elsewhere', 'added'), sampleManifest());
+    const store = createLibraryStore(join(base, 'library.json'));
+    await store.add(added);
+    const view = createLibraryViewStore(join(base, 'library-view.json'));
+    const key = libraryKey(added, false);
+    const folder = await view.createFolder('Handed over');
+    await view.move(key, folder.id);
+    await view.hide(key);
+    const covers = join(base, 'covers');
+    await mkdir(covers);
+    await writeFile(coverFile(covers, key), 'jpg');
+    const forgetPackage = vi.fn();
+    const { registry, ipc } = setup({
+      store,
+      view,
+      dropCover: (k) => rm(coverFile(covers, k), { force: true }),
+      forgetPackage,
+    });
+    const id = registry.register(added);
+    expect(await ipc.call('library:delete', { projectId: id })).toEqual({ ok: true });
+    expect(await store.paths()).toEqual([]);
+    const after = (await view.read()).view;
+    expect(after.hidden).toEqual([]);
+    expect(after.placed).toEqual({});
+    expect(after.folders.map((f) => f.name)).toEqual(['Handed over']);
+    expect(fs.existsSync(coverFile(covers, key))).toBe(false);
+    expect(forgetPackage).toHaveBeenCalledWith(id);
+  });
+
+  it('reports the delete even when the clean-up afterwards fails', async () => {
+    const pkg = join(projects, 'handover.aio');
+    await writeFile(pkg, 'zip');
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    const { registry, ipc } = setup({
+      view: {
+        hide: () => Promise.resolve(),
+        forget: () => Promise.reject(new Error('newer version')),
+      },
+      dropCover: () => Promise.reject(new Error('locked')),
+    });
+    expect(await ipc.call('library:delete', { projectId: registry.register(pkg) })).toEqual({
+      ok: true,
+    });
+    expect(warn).toHaveBeenCalled();
+    warn.mockRestore();
+  });
+
+  it('refuses a folder added from elsewhere that is not in library.json', async () => {
+    const added = await writeProject(join(base, 'elsewhere', 'added'), sampleManifest());
+    const { registry, ipc, trash } = setup();
+    const r = await ipc.call('library:delete', { projectId: registry.register(added) });
+    expect(errorOf(r)).toContain(added);
+    expect(trash).not.toHaveBeenCalled();
+    expect(fs.existsSync(added)).toBe(true);
   });
 
   it('moves a project to the recycle bin by its library id', async () => {

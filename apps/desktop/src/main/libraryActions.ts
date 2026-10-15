@@ -1,23 +1,31 @@
 /**
- * The menu of one project on the Projects screen: show its folder, rename it, move it to the
- * recycle bin (`library:reveal`, `library:rename`, `library:delete`).
+ * The menu of one project on the Projects screen: show its folder, rename it, take it out of the
+ * library, move it to the recycle bin (`library:reveal`, `library:rename`, `library:remove`,
+ * `library:delete`).
  *
- * The renderer names a project by its library id only; the folder comes from the registry. Rename
- * and delete then work on one kind of folder alone: a real folder (not a link) directly inside
+ * The renderer names a project by its library id only; the path comes from the registry.
+ *
+ * Rename works on one kind of folder alone: a real folder (not a link) directly inside
  * `<data folder>/projects` that holds a `manifest.json`. Packages, the demo projects that ship
- * with the app and folders added from elsewhere are refused with a sentence that says why.
+ * with the app and folders added from elsewhere are refused with a sentence that says why. It
+ * changes `name` in `manifest.json` and nothing else: the folder on disk and the project id keep
+ * their names (the id comes from the folder, and every path in the project is relative).
  *
- * Rename changes `name` in `manifest.json` and nothing else: the folder on disk and the project
- * id keep their names (the id comes from the folder, and every path in the project is relative).
- * Delete moves the whole folder to the recycle bin, never removes it for good.
+ * Remove only hides the card on this computer (`library-view.json`); no file is touched.
+ *
+ * Delete takes any card (`deletableTarget` re-checks it on disk): a project folder or package in
+ * the data folder, a folder or package added from elsewhere that `library.json` lists (never a
+ * link, a drive root, or a folder that holds the data folder, userData, home or the app), and for
+ * a demo its working copy, after which the demo is hidden. It always goes to the recycle bin
+ * (`shell.trashItem`), never removed for good.
  */
 import { PACKAGE_EXTENSION, parseManifest, type IpcResponse } from '@aio/schema';
 import { lstat, realpath, stat } from 'node:fs/promises';
-import { basename, dirname, join, resolve } from 'node:path';
+import { basename, dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
 import { readJson, writeJsonAtomic } from './fsutil';
-import type { LibraryStore } from './library';
-import type { LibraryViewStore } from './libraryView';
-import { notYet, type Handle } from './notYet';
+import { detectFolder, type LibraryStore } from './library';
+import { libraryKey, type LibraryViewStore } from './libraryView';
+import type { Handle } from './notYet';
 import { assertWritable } from './realDataGuard';
 
 /**
@@ -31,6 +39,7 @@ const fold = (p: string) => (process.platform === 'win32' ? p.toLowerCase() : p)
 export const samePath = (a: string, b: string) => fold(resolve(a)) === fold(resolve(b));
 const errorText = (e: unknown) => (e instanceof Error ? e.message : String(e));
 const fail = (error: string) => ({ ok: false as const, error });
+const isPackagePath = (p: string) => p.toLowerCase().endsWith(PACKAGE_EXTENSION);
 
 async function isFile(p: string): Promise<boolean> {
   try {
@@ -85,6 +94,124 @@ export async function managedProjectFolder(dataRoot: string, path: string): Prom
   if (!(await isFile(join(root, 'manifest.json'))))
     return fail(`${root} holds no manifest.json, so it is not a project folder.`);
   return { ok: true, root };
+}
+
+export type DeleteTarget =
+  | { ok: true; path: string; what: 'folder' | 'package' | 'demo-copy' | 'nothing' }
+  | { ok: false; error: string };
+
+/** Is `inner` the same as `outer` or somewhere inside it (case ignored on Windows)? */
+function within(inner: string, outer: string): boolean {
+  const rel = relative(fold(resolve(outer)), fold(resolve(inner)));
+  return rel === '' || (rel !== '..' && !rel.startsWith(`..${sep}`) && !isAbsolute(rel));
+}
+
+/** The folder as written and, when it exists, where it really is (links, short names). */
+async function spellings(p: string): Promise<string[]> {
+  try {
+    return [resolve(p), await realpath(p)];
+  } catch {
+    return [resolve(p)];
+  }
+}
+
+/**
+ * Every folder that must never go to the recycle bin with `path`: `path` must not be any of them
+ * nor hold one. Checked on the name as written and on where both really are.
+ */
+async function holdsGuarded(path: string, roots: string[]): Promise<string | null> {
+  const mine = await spellings(path);
+  for (const root of roots) {
+    if (root.trim() === '') continue;
+    for (const g of await spellings(root)) if (mine.some((m) => within(g, m))) return resolve(root);
+  }
+  return null;
+}
+
+async function packageFile(path: string): Promise<DeleteTarget> {
+  let info;
+  try {
+    info = await lstat(path);
+  } catch {
+    return fail(`${path} was not found. It may have been moved or deleted already.`);
+  }
+  if (info.isSymbolicLink())
+    return fail(
+      `${path} is a link to a file somewhere else. Delete that file in the file manager.`,
+    );
+  if (!info.isFile()) return fail(`${path} is not a package file.`);
+  return { ok: true, path, what: 'package' };
+}
+
+/**
+ * What a delete of the library entry at `path` moves to the recycle bin, checked on disk now.
+ *
+ * A demo (`demoCopy` not undefined): its working copy in userData, or nothing when there is none.
+ * Directly in `<dataRoot>/projects`: a `.aio` file, or a folder `managedProjectFolder` accepts.
+ * Anywhere else the path must be listed in `library.json`, must not be a link or a drive root,
+ * must not be or hold the data folder or a guard root, and must be a `.aio` file or a folder
+ * that holds a project (`detectFolder`: our manifest or a known kit export).
+ */
+export async function deletableTarget(o: {
+  path: string;
+  dataRoot: string;
+  listed: string[];
+  demoCopy: string | null | undefined;
+  guardRoots: string[];
+}): Promise<DeleteTarget> {
+  const path = resolve(o.path);
+  const guarded = [o.dataRoot, ...o.guardRoots];
+
+  if (o.demoCopy !== undefined) {
+    if (o.demoCopy === null) return { ok: true, path, what: 'nothing' };
+    const copy = resolve(o.demoCopy);
+    let info;
+    try {
+      info = await lstat(copy);
+    } catch {
+      return { ok: true, path, what: 'nothing' };
+    }
+    if (info.isSymbolicLink() || !info.isDirectory() || dirname(copy) === copy)
+      return fail(`${copy} is not the working copy folder of a demo. Nothing was deleted.`);
+    const held = await holdsGuarded(copy, guarded);
+    if (held !== null)
+      return fail(`${copy} is or holds ${held}, a folder the app needs. It is never deleted.`);
+    return { ok: true, path: copy, what: 'demo-copy' };
+  }
+
+  if (o.dataRoot.trim() !== '' && samePath(dirname(path), resolve(o.dataRoot, 'projects'))) {
+    if (isPackagePath(path)) return packageFile(path);
+    const m = await managedProjectFolder(o.dataRoot, path);
+    return m.ok ? { ok: true, path: m.root, what: 'folder' } : m;
+  }
+
+  if (!o.listed.some((l) => samePath(l, path)))
+    return fail(
+      `${path} is not in the data folder and was not added to the library, so it is not deleted here. Reload the library.`,
+    );
+  let info;
+  try {
+    info = await lstat(path);
+  } catch {
+    return fail(`${path} was not found. It may have been moved or deleted already.`);
+  }
+  if (info.isSymbolicLink())
+    return fail(
+      `${path} is a link to somewhere else. Delete what it points to in the file manager.`,
+    );
+  const real = (await spellings(path)).at(-1) ?? path;
+  if (dirname(path) === path || dirname(real) === real)
+    return fail(`${path} is the root of a drive. It is never deleted.`);
+  const held = await holdsGuarded(path, guarded);
+  if (held !== null)
+    return fail(`${path} is or holds ${held}, a folder the app needs. It is never deleted.`);
+  if (info.isFile() && isPackagePath(path)) return { ok: true, path, what: 'package' };
+  if (!info.isDirectory()) return fail(`${path} is not a project folder or a package.`);
+  if ((await detectFolder(path)) === null)
+    return fail(
+      `${path} holds no project (no manifest.json and no known kit export), so it is not deleted here.`,
+    );
+  return { ok: true, path, what: 'folder' };
 }
 
 /**
@@ -193,16 +320,28 @@ export interface LibraryActionsDeps {
   forgetPackage?: (projectId: string) => void;
 }
 
-const isPackagePath = (p: string) => p.toLowerCase().endsWith(PACKAGE_EXTENSION);
+/** A step after a delete: a failure is logged, the delete still counts. */
+async function bestEffort(what: string, step: () => Promise<void> | void): Promise<void> {
+  try {
+    await step();
+  } catch (e) {
+    console.warn(`Library: could not ${what} after deleting it (${errorText(e)}).`);
+  }
+}
+
+const JOB_RUNNING =
+  'A job is running in this project. Cancel it in Processing (the title bar chip; a project that is not open shows it under Running in other projects) or wait for it to finish, then delete the project.';
 
 export function registerLibraryActionsIpc(deps: LibraryActionsDeps): void {
   const { handle, projects } = deps;
 
-  /** The folder of a library id when the app may rename or delete it, else why not. */
-  async function managed(projectId: string, verb: 'renamed' | 'deleted'): Promise<ManagedFolder> {
+  const unknown = (projectId: string) =>
+    fail(`There is no project "${projectId}" in the library. Reload the library.`);
+
+  /** The folder of a library id when the app may rename it, else why not. */
+  async function managed(projectId: string, verb: 'renamed'): Promise<ManagedFolder> {
     const path = projects.path(projectId);
-    if (path === undefined)
-      return fail(`There is no project "${projectId}" in the library. Reload the library.`);
+    if (path === undefined) return unknown(projectId);
     if (projects.package(projectId) !== undefined || isPackagePath(path))
       return fail(
         `${basename(path)} is a package, a single read-only file. It cannot be ${verb} here.`,
@@ -230,19 +369,63 @@ export function registerLibraryActionsIpc(deps: LibraryActionsDeps): void {
     return r;
   });
 
-  handle('library:remove', () => notYet('Remove from library'));
+  // take the card out of the library on this computer: hidden by its key, no file touched
+  handle('library:remove', async ({ projectId }) => {
+    const path = projects.path(projectId);
+    if (path === undefined) return unknown(projectId);
+    const demo = (await deps.isDemo?.(path)) ?? false;
+    try {
+      await deps.view.hide(libraryKey(path, demo));
+    } catch (e) {
+      return fail(`${basename(path)} could not be removed from the library: ${errorText(e)}`);
+    }
+    return { ok: true };
+  });
 
   handle('library:delete', async ({ projectId }) => {
-    const m = await managed(projectId, 'deleted');
-    if (!m.ok) return m;
-    if (deps.jobRunningIn?.(m.root))
-      return fail(
-        'A job is running in this project. Cancel it in Processing (the title bar chip; a project that is not open shows it under Running in other projects) or wait for it to finish, then delete the project.',
-      );
-    return deleteProject(m.root, {
-      trash: deps.trash,
-      ...(deps.release ? { release: deps.release } : {}),
-      ...(deps.forget ? { forget: deps.forget } : {}),
+    const path = projects.path(projectId);
+    if (path === undefined) return unknown(projectId);
+    const isDemo = (await deps.isDemo?.(path)) ?? false;
+    let demoCopy = deps.demoCopy ? await deps.demoCopy(path) : undefined;
+    // a demo whose copy nobody can name: hide it, delete nothing
+    if (demoCopy === undefined && isDemo) demoCopy = null;
+    const demo = demoCopy !== undefined;
+    let listed: string[];
+    try {
+      listed = await deps.store.paths();
+    } catch (e) {
+      return fail(`Could not read the library list: ${errorText(e)}. Nothing was deleted.`);
+    }
+    const target = await deletableTarget({
+      path,
+      dataRoot: deps.dataRoot(),
+      listed,
+      demoCopy,
+      guardRoots: deps.guardRoots(),
     });
+    if (!target.ok) return target;
+    const folder = target.what === 'folder' || target.what === 'demo-copy';
+    if (folder && (deps.jobRunningIn?.(target.path) || deps.jobRunningIn?.(path)))
+      return fail(JOB_RUNNING);
+    if (target.what !== 'nothing') {
+      const r = await deleteProject(target.path, {
+        trash: deps.trash,
+        ...(folder && deps.release ? { release: deps.release } : {}),
+        ...(folder && deps.forget ? { forget: deps.forget } : {}),
+      });
+      if (!r.ok) return r;
+    }
+    const key = libraryKey(path, demo);
+    await bestEffort(`drop ${path} from library.json`, () => deps.store.remove(path));
+    await bestEffort(`forget the card of ${path}`, () => deps.view.forget(key));
+    const { dropCover, forgetPackage } = deps;
+    if (dropCover) await bestEffort(`drop the cover of ${path}`, () => dropCover(key));
+    if (forgetPackage)
+      await bestEffort(`forget package ${projectId}`, () => {
+        forgetPackage(projectId);
+      });
+    // the bundled demo stays where the app put it: hidden, so it does not come back
+    if (demo) await bestEffort(`hide the demo ${path}`, () => deps.view.hide(key));
+    return { ok: true };
   });
 }
