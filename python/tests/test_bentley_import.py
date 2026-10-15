@@ -126,4 +126,56 @@ def test_a_commit_run_twice_adds_one_layer_and_one_capture(tmp_path):
         importer._commit = real
     assert result["status"] == "done" and calls["n"] == 1
     m = _manifest(root)
-    assert len([x for x in m["layers"] if x["kind"] == "photos"]) == 1 and len(m["captures"]) == 1
+    (layer,) = [x for x in m["layers"] if x["kind"] == "photos"]
+    assert len(layer["items"]) == 3 and len(m["captures"]) == 1
+
+
+def _redate(out, old, new):
+    xml = Path(out["xml"])
+    text = xml.read_text("utf-8")
+    assert old in text
+    xml.write_text(text.replace(old, new), "utf-8")
+
+
+def test_an_unreadable_photo_date_is_skipped_and_logged(tmp_path):
+    root, out = _setup(tmp_path)
+    _redate(out, bs.TIMES[0], "2026:03:01 10:00:05")  # EXIF style, not ISO
+    result, rec = run_job(BentleyImport(), root, {"xml": out["xml"], "photos": out["photos"]})
+    assert result["status"] == "done"
+    m = _manifest(root)
+    (layer,) = [x for x in m["layers"] if x["kind"] == "photos"]
+    assert len(layer["items"]) == 3 and layer["capture"] == "capture-2026-03-04"
+    assert [c["date"] for c in m["captures"]] == ["2026-03-04"]
+    assert any("1 photos have a date that could not be read" in msg["message"] for msg in rec.of("log"))
+
+
+def test_no_readable_photo_date_imports_without_a_capture(tmp_path):
+    root, out = _setup(tmp_path)
+    for t in bs.TIMES:
+        _redate(out, t, t.replace("-", ":").replace("T", " "))
+    result, _ = run_job(BentleyImport(), root, {"xml": out["xml"], "photos": out["photos"]})
+    assert result["status"] == "done"
+    m = _manifest(root)
+    (layer,) = [x for x in m["layers"] if x["kind"] == "photos"]
+    assert "capture" not in layer and m["captures"] == []
+
+
+def test_the_capture_comes_from_photos_in_the_layer(tmp_path, monkeypatch):
+    from aio_pipelines.aik import cameras
+
+    real = cameras.review_copy
+
+    def first_unreadable(src, dest, long_edge=2560):
+        if Path(src).name == "IMG_0001.JPG":
+            raise OSError("not a picture")
+        return real(src, dest, long_edge)
+
+    monkeypatch.setattr(cameras, "review_copy", first_unreadable)
+    root, out = _setup(tmp_path)
+    _redate(out, bs.TIMES[0], "2026-03-02T10:00:05")  # the earliest day, but its copy fails
+    result, _ = run_job(BentleyImport(), root, {"xml": out["xml"], "photos": out["photos"]})
+    assert result["status"] == "done"
+    m = _manifest(root)
+    (layer,) = [x for x in m["layers"] if x["kind"] == "photos"]
+    assert len(layer["items"]) == 2 and layer["capture"] == "capture-2026-03-04"
+    assert [c["date"] for c in m["captures"]] == ["2026-03-04"]

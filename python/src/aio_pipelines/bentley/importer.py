@@ -12,7 +12,7 @@ What comes in (data-conventions section 35, the same shapes as ``opf.import``, s
   ``photos.json`` (the originals, read in place) and ``report/bentley-import.json``;
 - a **photos layer** of 2560 px review copies (``photos/<run>/``) placed by the calibrated poses
   (``pos``, ``q``, ``lens`` with the principal point and distortion), its ``capture`` the
-  earliest ``DateTimeOriginal`` date of the matched photos.
+  earliest valid ``DateTimeOriginal`` day of the photos in the layer (none when no photo has one).
 
 Photos not found, ambiguous or not aligned are left out and listed. The manifest is written
 last, with ``manifest.json.bak``.
@@ -21,8 +21,9 @@ last, with ``manifest.json.bak``.
 from __future__ import annotations
 
 import json
+import re
 import shutil
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 from pathlib import Path
 from typing import Any
 
@@ -43,6 +44,19 @@ from ..runtime import (
 LOG_NAMES = 200
 
 
+def photo_day(taken: str | None) -> str | None:
+    """The day (YYYY-MM-DD) of a block photo's ``DateTimeOriginal``, or None when it is not a valid
+    ISO date (an EXIF-style ``2026:03:04 10:00:00`` or a day that does not exist)."""
+    day = (taken or "").strip()[:10]
+    if not re.fullmatch(r"\d{4}-\d{2}-\d{2}", day):
+        return None
+    try:
+        date.fromisoformat(day)
+    except ValueError:
+        return None
+    return day
+
+
 def plan_import(block, frame, manifest: dict[str, Any], matching, name: str, root: Path):
     """The import as data (``plan.json``) and the sparse model, from a parsed block."""
     import numpy as np
@@ -60,7 +74,7 @@ def plan_import(block, frame, manifest: dict[str, Any], matching, name: str, roo
         model.cameras[g.index + 1] = colmap.Camera(g.index + 1, cmodel, g.width, g.height, params)
     taken: set[str] = set()
     photos: list[dict[str, Any]] = []
-    dates: list[str] = []
+    bad_dates = 0
     for p in block.aligned():
         f = matching.found.get(p.id)
         if f is None:
@@ -79,11 +93,14 @@ def plan_import(block, frame, manifest: dict[str, Any], matching, name: str, roo
             "lens": lens_record(lenses[p.group]),
             "group": p.group,
         }
+        day = photo_day(p.taken)
+        if day:
+            rec["day"] = day
+        elif p.taken:
+            bad_dates += 1
         photos.append(rec)
         iid = len(model.images) + 1
         model.images[iid] = colmap.Image(iid, pose.qvec, pose.tvec, p.group + 1, key)
-        if p.taken and len(p.taken) >= 10:
-            dates.append(p.taken[:10])
     model.xyz = np.zeros((0, 3))
     ambiguous = set(matching.ambiguous)
     rejected = [
@@ -116,7 +133,7 @@ def plan_import(block, frame, manifest: dict[str, Any], matching, name: str, roo
         "photos": photos,
         "rejected": rejected,
         "groups": groups,
-        "date": min(dates) if dates else None,
+        "badDates": bad_dates,
         "warnings": frame.notes,
         "summary": {
             "photos": len(block.photos),
@@ -203,6 +220,12 @@ class BentleyImport:
                 ctx.log(f"Left out: {r['name']} ({r['reason']}).", "warn")
             if len(plan["rejected"]) > LOG_NAMES:
                 ctx.log(f"And {len(plan['rejected']) - LOG_NAMES} more photos left out.", "warn")
+            if plan["badDates"]:
+                ctx.log(
+                    f"{plan['badDates']} photos have a date that could not be read; "
+                    "the survey date comes from the others.",
+                    "warn",
+                )
             for w in plan["warnings"]:
                 ctx.log(w, "warn")
             return {"run": run, **s}
@@ -255,9 +278,12 @@ def _commit(ctx: StepContext, plan: dict[str, Any], params: dict[str, Any]) -> d
 
     moves = [(f"run/sparse/{n}", f"{run_dir}/sparse/{n}") for n in SPARSE_FILES]
     items = []
+    days = []  # the survey date: the earliest day of the photos actually in the layer
     for p in plan["photos"]:
         if p["name"] in failed_names:
             continue
+        if p.get("day"):
+            days.append(p["day"])
         rel = f"photos/{run}/{p['id']}.jpg"
         moves.append((f"photos/{p['id']}.jpg", rel))
         items.append({"id": p["id"], "src": {"path": rel}, "pos": p["pos"], "q": p["q"], "lens": p["lens"]})
@@ -272,7 +298,7 @@ def _commit(ctx: StepContext, plan: dict[str, Any], params: dict[str, Any]) -> d
     layers = manifest.setdefault("layers", [])
     # a commit that runs again replaces its own layer (the run's own id), never adds a second
     layers[:] = [x for x in layers if not (isinstance(x, dict) and x.get("id") == layer_id)]
-    capture = capture_for_date(manifest, plan["date"]) if plan.get("date") else None
+    capture = capture_for_date(manifest, min(days)) if days else None
     layer = {
         "kind": "photos",
         "id": layer_id,
