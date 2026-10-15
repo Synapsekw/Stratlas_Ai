@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { GEOREF_SCHEMA, Georef } from './georef';
 
+// zod 4 numbers already reject NaN and Infinity, so no .finite() (it is deprecated).
 const Finite = z.number();
 
 /** The older embedded georeference structure (free-text keys pass through, known keys are typed). */

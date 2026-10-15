@@ -36,5 +36,8 @@ describe('Georef', () => {
     expect(
       Georef.safeParse({ ...full, vertical: { datum: 'unknown', status: 'unknown' } }).success,
     ).toBe(true);
+    expect(
+      Georef.safeParse({ ...full, vertical: { datum: 'Unknown', status: 'user' } }).success,
+    ).toBe(false);
   });
 });

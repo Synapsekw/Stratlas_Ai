@@ -255,8 +255,25 @@ function patchLayers(
       }
       return next;
     }
+    if ('georef' in patch || 'placement' in patch) {
+      if (l.kind !== 'mesh')
+        throw new Error(`"${l.name}" is not a model; only models take a ground placement.`);
+      return {
+        ...l,
+        ...(patch.georef !== undefined ? { georef: patch.georef } : {}),
+        ...(patch.placement !== undefined ? { placement: patch.placement } : {}),
+      };
+    }
     if (l.kind !== 'video')
       throw new Error(`"${l.name}" is not a video; time offset and lens belong to video layers.`);
+    // the placement patch returned above; this narrows the rest to the video patch
+    if (!(
+      'offsetMs' in patch ||
+      'lens' in patch ||
+      'orientation' in patch ||
+      'positionOffsetM' in patch
+    ))
+      return l;
     const next = {
       ...l,
       ...(patch.offsetMs !== undefined ? { offsetMs: Math.round(patch.offsetMs) } : {}),

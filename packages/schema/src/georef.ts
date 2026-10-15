@@ -2,6 +2,7 @@ import { z } from 'zod';
 import { Mat4 } from './common';
 
 export const GEOREF_SCHEMA = 'aio.georef/1' as const;
+// zod 4 numbers already reject NaN and Infinity, so no .finite() (it is deprecated).
 const Finite = z.number();
 
 /**
@@ -42,7 +43,7 @@ export const Georef = z
       })
       .strict()
       .refine(
-        (v) => (v.datum === 'unknown') === (v.status === 'unknown'),
+        (v) => (v.datum.toLowerCase() === 'unknown') === (v.status === 'unknown'),
         'An unknown datum has status unknown.',
       ),
     provenance: z
