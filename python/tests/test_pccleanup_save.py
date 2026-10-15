@@ -3,17 +3,20 @@ the original layer is hidden, its file untouched."""
 
 import hashlib
 import json
+import subprocess
+import threading
 
 import numpy as np
 import pytest
 
 from aio_pipelines.change.las import read_las
-from aio_pipelines.pointcloud import find_pdal
+from aio_pipelines.pointcloud import find_pdal, pdal_env
+from aio_pipelines.pointcloud_cleanup import pipeline as pcc_pipeline
 from aio_pipelines.pointcloud_cleanup.evaluate import evaluate, kept_for_save
 from aio_pipelines.pointcloud_cleanup.pipeline import PointcloudClean
-from aio_pipelines.runtime import JobError
+from aio_pipelines.runtime import Cancelled, JobError
 from conftest import run_job
-from pccleanup_synth import E0, N0, cloud_project, copc_to_las, planted_cloud
+from pccleanup_synth import E0, EPSG, N0, cloud_project, copc_to_las, planted_cloud
 
 pytestmark = pytest.mark.skipif(find_pdal() is None, reason="PDAL not found (set AIO_PDAL)")
 SRC = "clouds/cloud-a.copc.laz"
@@ -118,3 +121,70 @@ def test_refuses_a_recipe_of_another_layer(tmp_path):
         PointcloudClean().validate(
             {"mode": "save", "layerId": "cloud-a", "src": SRC, "recipe": recipe(layerId="b"), "name": "x"}
         )
+
+
+def small_project(tmp_path):
+    xyz, cls, _ = planted_cloud(ground_step=2.0, high=4, low=2)
+    return cloud_project(tmp_path, xyz, cls)
+
+
+def test_never_writes_over_a_path_another_layer_or_a_file_holds(tmp_path):
+    root = small_project(tmp_path)
+    mpath = root / "manifest.json"
+    manifest = json.loads(mpath.read_text("utf-8"))
+    taken_by_layer = root / "clouds" / "cloud-a-cleaned.copc.laz"
+    taken_by_file = root / "clouds" / "cloud-a-cleaned-2.copc.laz"
+    taken_by_layer.write_bytes(b"another layer's cloud")
+    taken_by_file.write_bytes(b"a file no layer names")
+    manifest["layers"].append(
+        {**manifest["layers"][0], "id": "other", "src": {"path": "clouds/cloud-a-cleaned.copc.laz"}}
+    )
+    mpath.write_text(json.dumps(manifest), "utf-8")
+    result, _ = save(root, recipe(hiddenClasses=[1]))
+    out = result["outputs"]["register"]
+    assert out["layer"] == "cloud-a-cleaned-3"
+    assert out["path"] == "clouds/cloud-a-cleaned-3.copc.laz"
+    assert taken_by_layer.read_bytes() == b"another layer's cloud"
+    assert taken_by_file.read_bytes() == b"a file no layer names"
+    layers = json.loads(mpath.read_text("utf-8"))["layers"]
+    assert [x["id"] for x in layers] == ["cloud-a", "other", "cloud-a-cleaned-3"]
+
+
+def test_the_cleaned_copy_keeps_the_source_crs(tmp_path):
+    root = small_project(tmp_path)
+    result, _ = save(root, recipe(hiddenClasses=[1]))
+    pdal = find_pdal()
+    info = subprocess.run(
+        [pdal, "info", "--metadata", str(root / result["outputs"]["register"]["path"])],
+        capture_output=True,
+        check=True,
+        env=pdal_env(pdal),
+    )
+    srs = json.loads(info.stdout)["metadata"]["srs"]
+    assert str(EPSG) in json.dumps(srs)
+
+
+def test_a_cancelled_save_leaves_no_project_files(tmp_path, monkeypatch):
+    root = small_project(tmp_path)
+    manifest = (root / "manifest.json").read_text("utf-8")
+    cancel = threading.Event()
+    real = pcc_pipeline._write_copc
+
+    def cancel_after_writing(*args, **kw):
+        out = real(*args, **kw)
+        cancel.set()  # the next ctx.check raises, before anything reaches the project
+        return out
+
+    monkeypatch.setattr(pcc_pipeline, "_write_copc", cancel_after_writing)
+    params = {
+        "mode": "save",
+        "layerId": "cloud-a",
+        "src": SRC,
+        "recipe": recipe(hiddenClasses=[1]),
+        "name": "S",
+    }
+    with pytest.raises(Cancelled):
+        run_job(PointcloudClean(), root, params, job_id="j-cancel", cancel=cancel)
+    assert (root / "manifest.json").read_text("utf-8") == manifest
+    assert not (root / "manifest.json.bak").exists()
+    assert sorted(p.name for p in (root / "clouds").iterdir()) == ["cloud-a.copc.laz"]
