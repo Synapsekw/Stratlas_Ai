@@ -66,7 +66,6 @@
   "e2e/photo-align.spec.ts": 8,
   "e2e/photo-process.spec.ts": 29,
   "e2e/photo-products.spec.ts": 42,
-  "e2e/photo-real.spec.ts": 1,
   "e2e/platform.spec.ts": 35,
   "e2e/processing-drawer.spec.ts": 15,
   "e2e/real-data-guard.spec.ts": 2,

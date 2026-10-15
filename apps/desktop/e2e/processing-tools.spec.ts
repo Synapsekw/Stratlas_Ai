@@ -8,21 +8,30 @@
  * date, and processing uses the new version without a restart. The native file dialog and
  * the Recycle Bin are stubbed in main; the launch asks for the notice (QUADRION_PACK_NOTICE=1),
  * which an automated run otherwise never shows.
+ *
+ * The Processing engine card (ODM, ADR 0012) installs from a local stand-in: a loopback server
+ * serves `odm-fake/fake-setup.mjs` as the setup, named by a test pin (`QUADRION_ODM_PIN_FILE`),
+ * and main runs it with Electron as Node (both only with QUADRION_E2E=1). Nothing is downloaded
+ * from the internet and the real ODM setup never runs.
  */
-import type { ElectronApplication, Page } from '@playwright/test';
+import type { ElectronApplication, Locator, Page } from '@playwright/test';
+import { createHash } from 'node:crypto';
 import { existsSync } from 'node:fs';
-import { mkdir, readdir, writeFile } from 'node:fs/promises';
+import { mkdir, readdir, readFile, writeFile } from 'node:fs/promises';
+import { createServer } from 'node:http';
+import type { AddressInfo } from 'node:net';
 import { join } from 'node:path';
 import { fakePackArchive, fakePackFiles } from '../src/main/jobs/packArchive.fakes';
 import {
   closeProcessing,
   expect,
   launchApp,
+  NetworkGuard,
   openProcessing,
   test,
   type DataRoot,
 } from './fixtures';
-import { PHOTO_PLATFORM, PHOTO_PLATFORM_ONLY } from './photoPack';
+import { ODM_FAKE_DIR, PHOTO_PLATFORM, PHOTO_PLATFORM_ONLY } from './photoPack';
 
 /** This computer as a pack manifest and a pack archive name it. */
 const PLATFORM = `${process.platform}-${process.arch}`;
@@ -69,13 +78,16 @@ async function stubDialogAndBin(app: ElectronApplication, path: string): Promise
  * Nothing of the Settings page is cut off or pushed sideways (CI runs a small window,
  * 1100 x 720): the page does not scroll sideways and `inside` lies wholly in the window.
  */
-async function expectFits(win: Page, ...inside: string[]): Promise<void> {
+async function expectFits(win: Page, ...inside: (string | Locator)[]): Promise<void> {
   const sideways = await win.locator('.set-body').evaluate((el) => el.scrollWidth - el.clientWidth);
   expect(sideways, 'the Settings page scrolls sideways').toBeLessThanOrEqual(1);
-  for (const id of inside) {
-    const target = win.getByTestId(id);
-    await target.scrollIntoViewIfNeeded();
-    await expect(target, id).toBeInViewport({ ratio: 1 });
+  for (const it of inside) {
+    const target = typeof it === 'string' ? win.getByTestId(it) : it;
+    // centred, not flush with an edge, where a fraction of a pixel can stay clipped (CI's scale 1)
+    await target.evaluate((el) => {
+      el.scrollIntoView({ block: 'center' });
+    });
+    await expect(target, String(it)).toBeInViewport({ ratio: 1 });
   }
 }
 
@@ -96,7 +108,7 @@ test('the start notice leads to Settings, where a pack file installs and process
   network,
 }, testInfo) => {
   await writeOldPack(dataRoot, '0.2.0');
-  const archive = await writeArchive(join(dataRoot.base, 'kit'), '0.7.0');
+  const archive = await writeArchive(join(dataRoot.base, 'kit'), '0.8.0');
   const app = await launchApp(dataRoot, ENV);
   await network.attach(app);
   try {
@@ -129,16 +141,16 @@ test('the start notice leads to Settings, where a pack file installs and process
     // install from the file the dialog answers
     await page.getByTestId('tools-choose').click();
     await expect(page.getByTestId('tools-note')).toContainText(
-      'Processing tools 0.7.0 are installed.',
+      'Processing tools 0.8.0 are installed.',
     );
     await expect(page.getByTestId('tools-state')).toHaveAttribute('data-state', 'ok');
     await expect(page.getByTestId('tools-state')).toContainText('Up to date');
-    await expect(page.getByTestId('tools-version')).toHaveText('0.7.0');
+    await expect(page.getByTestId('tools-version')).toHaveText('0.8.0');
     await expect(page.getByTestId('tools-needs')).toHaveCount(0);
     // the pack is in place, with nothing half-unpacked beside it
     const runtime = join(dataRoot.root, 'runtime');
-    expect((await readdir(runtime)).sort()).toEqual(['pipeline-pack-0.2.0', 'pipeline-pack-0.7.0']);
-    expect(existsSync(join(runtime, 'pipeline-pack-0.7.0', 'python', 'python.exe'))).toBe(true);
+    expect((await readdir(runtime)).sort()).toEqual(['pipeline-pack-0.2.0', 'pipeline-pack-0.8.0']);
+    expect(existsSync(join(runtime, 'pipeline-pack-0.8.0', 'python', 'python.exe'))).toBe(true);
 
     // the old pack is listed with its size and stays until removed
     const others = win.getByTestId('tools-others');
@@ -149,13 +161,13 @@ test('the start notice leads to Settings, where a pack file installs and process
     // the same file again asks before replacing
     await page.getByTestId('tools-choose').click();
     const replace = page.getByTestId('tools-replace');
-    await expect(replace).toContainText('Version 0.7.0 is already installed.');
+    await expect(replace).toContainText('Version 0.8.0 is already installed.');
     await expectFits(win, 'tools-replace', 'tools-replace-yes');
     await replace.getByRole('button', { name: 'Keep it' }).click();
     await expect(replace).toHaveCount(0);
 
     // processing follows without a restart: nothing says the tools are missing, the notice is gone
-    await expect.poll(() => runtimeVersion(win)).toBe('0.7.0');
+    await expect.poll(() => runtimeVersion(win)).toBe('0.8.0');
     await win.locator('.sb-nav .nav-item', { hasText: 'Scene' }).click();
     const drawer = await openProcessing(win);
     await expect(drawer.getByTestId('proc-tools')).toHaveCount(0);
@@ -174,7 +186,7 @@ test('the start notice leads to Settings, where a pack file installs and process
     await win.getByTestId('tools-remove-confirm-0.2.0').click();
     await expect(win.getByTestId('tools-others')).toHaveCount(0);
     await expect(win.getByTestId('tools-note')).toContainText('pipeline-pack-0.2.0 was moved');
-    expect(await readdir(runtime)).toEqual(['pipeline-pack-0.7.0']);
+    expect(await readdir(runtime)).toEqual(['pipeline-pack-0.8.0']);
     expect(await network.outbound()).toEqual([]);
   } finally {
     await app.close();
@@ -272,9 +284,13 @@ test('Update processing tools is one way in from Create maps and from the Proces
   network,
 }) => {
   test.skip(!PHOTO_PLATFORM, PHOTO_PLATFORM_ONLY);
-  // no processing tools at all
-  const archive = await writeArchive(join(dataRoot.base, 'kit'), '0.7.0');
-  const app = await launchApp(dataRoot, ENV);
+  // no processing tools at all; the processing engine is there (named, as in development)
+  const archive = await writeArchive(join(dataRoot.base, 'kit'), '0.8.0');
+  const app = await launchApp(dataRoot, {
+    ...ENV,
+    QUADRION_ODM_DIR: ODM_FAKE_DIR,
+    QUADRION_ODM_VERSION: '3.6.2',
+  });
   await network.attach(app);
   try {
     const win = await app.firstWindow();
@@ -303,7 +319,7 @@ test('Update processing tools is one way in from Create maps and from the Proces
     await expect(win.getByTestId('tools-state')).toHaveAttribute('data-state', 'missing');
     await win.getByTestId('tools-choose').click();
     const note = win.getByTestId('tools-note');
-    await expect(note).toContainText('Processing tools 0.7.0 are installed.');
+    await expect(note).toContainText('Processing tools 0.8.0 are installed.');
     await expectFits(win, 'tools-note', 'tools-resume');
 
     // and back: the dialog opens again, checks this computer again, and is no longer blocked
@@ -312,7 +328,7 @@ test('Update processing tools is one way in from Create maps and from the Proces
     await expect(wizard.getByTestId('photo-blocked')).toHaveCount(0);
     await expect(wizard.getByTestId('photo-drop')).toBeVisible();
     await wizard.getByRole('button', { name: 'Close' }).first().click();
-    await expect.poll(() => runtimeVersion(win)).toBe('0.7.0');
+    await expect.poll(() => runtimeVersion(win)).toBe('0.8.0');
     const after = await openProcessing(win);
     await expect(after.getByTestId('proc-tools')).toHaveCount(0);
     await closeProcessing(win);
@@ -344,4 +360,165 @@ test('the Processing drawer opens the same page', async ({ dataRoot, network }) 
   } finally {
     await app.close();
   }
+});
+
+// ---------------------------------------------------------------- the processing engine (ODM)
+
+/** The stand-in for ODM's setup, served over loopback in place of the GitHub download. */
+const FAKE_SETUP = join(import.meta.dirname, 'odm-fake', 'fake-setup.mjs');
+const SETUP_NAME = 'ODM_Setup_fake.mjs';
+/** REQUIRED_FILES (C4) beyond run.bat and VERSION, which the fake setup writes itself. */
+const SETUP_FILES = 'winrun.bat;win32env.bat;venv\\Scripts\\python.exe';
+/** Screenshots for a person to look at: only with QUADRION_E2E_SHOTS set to a folder. */
+const SHOTS = process.env.QUADRION_E2E_SHOTS;
+
+interface EngineFixtures {
+  /** The loopback origin that serves the fake setup. */
+  setupOrigin: string;
+  /** An empty folder stands for another ODM on this computer (QUADRION_ODM_OTHER, tests only). */
+  otherOdm: boolean;
+}
+
+const engineTest = test.extend<EngineFixtures>({
+  otherOdm: [false, { option: true }],
+  // eslint-disable-next-line no-empty-pattern -- Playwright requires the destructuring form.
+  setupOrigin: async ({}, use) => {
+    const bytes = await readFile(FAKE_SETUP);
+    const server = createServer((req, res) => {
+      if (req.url !== `/${SETUP_NAME}`) {
+        res.writeHead(404).end();
+        return;
+      }
+      res.writeHead(200, {
+        'content-type': 'application/octet-stream',
+        'content-length': String(bytes.length),
+      });
+      res.end(bytes);
+    });
+    await new Promise<void>((ok) => server.listen(0, '127.0.0.1', ok));
+    const { port } = server.address() as AddressInfo;
+    try {
+      await use(`http://127.0.0.1:${String(port)}`);
+    } finally {
+      await new Promise((ok) => server.close(ok));
+    }
+  },
+  network: async ({ setupOrigin }, use) => {
+    await use(new NetworkGuard([setupOrigin]));
+  },
+  // each test has its own data root (the fixtures' dataRoot): the pin names the served setup
+  appEnv: async ({ dataRoot, setupOrigin, otherOdm }, use) => {
+    const bytes = await readFile(FAKE_SETUP);
+    const pin = join(dataRoot.base, 'odm-pin.json');
+    await writeFile(
+      pin,
+      JSON.stringify({
+        version: '3.6.2',
+        url: `${setupOrigin}/${SETUP_NAME}`,
+        size: bytes.length,
+        sha256: createHash('sha256').update(bytes).digest('hex'),
+        installedBytes: 1_000_000,
+        file: SETUP_NAME,
+      }),
+    );
+    const env: Record<string, string> = {
+      ...ENV,
+      // no development ODM: the card installs one into the data folder
+      QUADRION_ODM_DIR: '',
+      QUADRION_ODM_PIN_FILE: pin,
+      FAKE_SETUP_FILES: SETUP_FILES,
+      AIO_NETWORK_GUARD_ALLOW: setupOrigin,
+    };
+    if (otherOdm) {
+      env.QUADRION_ODM_OTHER = join(dataRoot.base, 'other-odm');
+      await mkdir(env.QUADRION_ODM_OTHER, { recursive: true });
+    }
+    await use(env);
+  },
+});
+
+/** Settings, Processing tools: the page with the Processing engine card. */
+async function openToolsPage(win: Page): Promise<void> {
+  await openTinyProject(win);
+  await win.locator('.nav-item', { hasText: 'Settings' }).click();
+  await win
+    .getByRole('navigation', { name: 'Settings sections' })
+    .getByRole('button', { name: 'Processing tools' })
+    .click();
+  await expect(win.getByRole('heading', { level: 1, name: 'Processing tools' })).toBeVisible();
+  await win.getByTestId('engine').scrollIntoViewIfNeeded();
+}
+
+/** The card in both themes, for a person to look at (QUADRION_E2E_SHOTS only). */
+async function shootCard(win: Page, card: Locator, name: string): Promise<void> {
+  if (!SHOTS) return;
+  await card.screenshot({ path: join(SHOTS, `${name}.png`) });
+  await win.screenshot({ path: join(SHOTS, `${name}-window.png`) });
+  const theme = await win.evaluate(() => document.documentElement.dataset.theme ?? '');
+  const other = theme === 'dark' ? 'light' : 'dark';
+  await win.evaluate((t) => {
+    document.documentElement.dataset.theme = t;
+  }, other);
+  await card.screenshot({ path: join(SHOTS, `${name}-${other}.png`) });
+  await win.evaluate((t) => {
+    document.documentElement.dataset.theme = t;
+  }, theme);
+}
+
+engineTest.describe('Processing engine', () => {
+  engineTest.skip(!PHOTO_PLATFORM, PHOTO_PLATFORM_ONLY);
+
+  engineTest('installs the engine from Settings and removes it again', async ({ win }) => {
+    await openToolsPage(win);
+    const card = win.getByTestId('engine');
+    await expect(card.getByTestId('engine-state')).toHaveAttribute('data-state', 'not-installed');
+    await expect(card.getByTestId('engine-about')).toContainText('AGPL-3.0');
+    // a computer with an ODM of its own (a developer's) is asked first; CI has none
+    const other = await win.evaluate(() =>
+      window.aio.invoke('odm:status', {}).then((s) => s.other !== null),
+    );
+    await card.getByTestId('engine-install').click();
+    if (other) await card.getByTestId('engine-replace-yes').click();
+    await expect(card.getByTestId('engine-progress')).toBeVisible();
+    await shootCard(win, card, 'engine-installing');
+    await expect(card.getByTestId('engine-state')).toHaveAttribute('data-state', 'installed', {
+      timeout: 30_000,
+    });
+    await expect(card.getByTestId('engine-version')).toContainText('3.6.2');
+    await expectFits(win, card);
+    await shootCard(win, card, 'engine-installed');
+    const gpu = card.getByTestId('engine-gpu');
+    if (await gpu.isEnabled()) {
+      await gpu.click();
+      await expect(gpu).toHaveAttribute('aria-checked', 'false');
+      await expect
+        .poll(() =>
+          win.evaluate(() => window.aio.invoke('odm:status', {}).then((s) => s.gpu.setting)),
+        )
+        .toBe('off');
+    } else {
+      await expect(gpu).toBeDisabled(); // no NVIDIA card here (CI): the switch cannot be used
+    }
+    await card.getByTestId('engine-remove').click();
+    await card.getByTestId('engine-remove-confirm').click();
+    await expect(card.getByTestId('engine-state')).toHaveAttribute('data-state', 'not-installed');
+    await expectFits(win, card);
+  });
+
+  engineTest.describe(() => {
+    // the app was started with QUADRION_ODM_OTHER pointing at an empty folder (tests only)
+    engineTest.use({ otherOdm: true });
+
+    engineTest('another ODM asks before installing', async ({ win }) => {
+      await openToolsPage(win);
+      const card = win.getByTestId('engine');
+      await card.getByTestId('engine-install').click();
+      await expect(card.getByTestId('engine-replace')).toContainText('Installing replaces it');
+      await expectFits(win, 'engine-replace', 'engine-replace-yes');
+      await card.getByTestId('engine-replace-yes').click();
+      await expect(card.getByTestId('engine-state')).toHaveAttribute('data-state', 'installed', {
+        timeout: 30_000,
+      });
+    });
+  });
 });

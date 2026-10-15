@@ -7,9 +7,8 @@
  * A run read from a flight folder outside the project marks the same way, its photos read
  * through main (`photo:readPhoto`).
  *
- * Runs on the e2e stand-in pipelines (`e2e/photo-fake`): the app's side of processing. The real
- * pipelines run in `photo-real.spec.ts` where this machine has their tools. Synthetic photos only;
- * zero network.
+ * Runs on the e2e stand-in pipelines (`e2e/photo-fake`): the app's side of processing, with the
+ * fake ODM named as the processing engine (`photoPack.ts`). Synthetic photos only; zero network.
  */
 import type { Page } from '@playwright/test';
 import { existsSync } from 'node:fs';

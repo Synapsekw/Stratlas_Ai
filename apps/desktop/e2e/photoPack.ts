@@ -4,8 +4,10 @@
  * - `buildPhotoPack(dir)`: a throwaway pipeline pack (`QUADRION_PIPELINE_PACK`) whose Python is a
  *   venv over the development one, with `photo-fake/aio_photo_fake.py` swapped in for the photo
  *   pipelines: the app's side of processing (wizard, run panel, marking, reports, refined poses)
- *   end to end in seconds. The real pipelines run in `photo-real.spec.ts` on G8's synthetic set,
- *   where this machine has their native tools (`missingRealPhotoTools`).
+ *   end to end in seconds. The app sees an installed processing engine (`odmEnv`: the fake ODM of
+ *   `python/tests/fake_odm`, which these stand-ins never start).
+ * - `odmEnv()`: the app environment that names the fake ODM as the processing engine, for specs
+ *   that run the real photo pipelines on it (`photo-products`, `photo-change`).
  * - `writePhotoProject(dataRoot)`: `projects/e2e-photos/`, a fictional site in UTM 39N with a
  *   photos layer of twelve nadir photos (rendered by Pillow: noise ground and checker targets at
  *   the six ground control points), and the GCP CSV (`GCP1`-`GCP4` and `GCP6` control, `GCP5`
@@ -13,12 +15,11 @@
  *
  * Synthetic data only: no client file, place or camera.
  */
-import { envVar } from '@aio/brand/env';
 import { toWgs84 } from '@aio/geo';
 import { ProjectManifest, type ProjectManifestInput } from '@aio/schema';
 import type { ElectronApplication, Fixtures, Locator, Page } from '@playwright/test';
 import { execFileSync } from 'node:child_process';
-import { existsSync } from 'node:fs';
+import { mkdtempSync } from 'node:fs';
 import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -74,47 +75,31 @@ export function expectedPixel(
 const python = (exe: string, code: string, args: string[] = []) =>
   execFileSync(exe, ['-c', code, ...args], { encoding: 'utf8' }).trim();
 
-/**
- * `QUADRION_E2E_PHOTO_REAL=1`: the real photo pipelines run (`photo-real.spec.ts` is opt-in, and
- * fails instead of skipping when a tool is missing). The stand-in specs always use the stand-ins: their
- * Pillow photos are independent noise that no real matcher can align.
- */
-export const PHOTO_REAL = envVar(process.env, 'E2E_PHOTO_REAL') === '1';
-
-const imports = (exe: string, module: string): boolean => {
-  if (!existsSync(exe)) return false;
-  try {
-    execFileSync(exe, ['-c', `import ${module}`], { stdio: 'ignore', timeout: 60_000 });
-    return true;
-  } catch {
-    return false;
-  }
-};
+/** The fake ODM of the pipeline tests (`python/tests/fake_odm`): a `run.bat` over a Python script. */
+export const ODM_FAKE_DIR = join(
+  import.meta.dirname,
+  '..',
+  '..',
+  '..',
+  'python',
+  'tests',
+  'fake_odm',
+);
 
 /**
- * The Python whose `pycolmap` runs G2's structure from motion: `AIO_COLMAP_PYTHON` when set,
- * else the development Python, which has COLMAP's PyPI wheel after `uv sync`; null when this
- * machine has none.
+ * The app environment that makes the fake ODM the processing engine (`QUADRION_ODM_DIR`, as a
+ * development ODM: nothing is installed). The fake runs on the development Python and sends no
+ * progress datagrams; `AIO_ODM_WORK` is a fresh temporary folder without spaces, so a junction for
+ * a project path ODM could not take never lands in the repository.
  */
-export function colmapPython(): string | null {
-  const env = process.env.AIO_COLMAP_PYTHON;
-  if (env && imports(env, 'pycolmap')) return env;
-  return imports(VENV_PYTHON, 'pycolmap') ? VENV_PYTHON : null;
-}
-
-/**
- * What the real photo pipelines need that this machine lacks, in words, or null when all is
- * here: the development Python, and the COLMAP engine of `photo.align` (pycolmap). PDAL, OpenCV
- * and MeshLab are optional (photo.products falls back to its own numpy engines).
- */
-export function missingRealPhotoTools(): string | null {
-  const missing: string[] = [];
-  if (!existsSync(VENV_PYTHON)) missing.push(`the pipeline Python (${VENV_PYTHON})`);
-  else if (!colmapPython())
-    missing.push(
-      'the COLMAP engine of photo.align (pycolmap: run uv sync --frozen in python/, or set AIO_COLMAP_PYTHON)',
-    );
-  return missing.length ? missing.join('; ') : null;
+export function odmEnv(): Record<string, string> {
+  return {
+    QUADRION_ODM_DIR: ODM_FAKE_DIR,
+    QUADRION_ODM_VERSION: '3.6.2',
+    FAKE_ODM_PYTHON: VENV_PYTHON,
+    FAKE_ODM_UDP_PORT: '0',
+    AIO_ODM_WORK: mkdtempSync(join(tmpdir(), 'aio-odm-work-')),
+  };
 }
 
 /** Build the throwaway pack in `dir`; answers the app environment that selects it. */
@@ -139,7 +124,7 @@ export async function buildPhotoPack(dir: string): Promise<Record<string, string
     join(dir, 'manifest.json'),
     JSON.stringify({
       schema: 'aio.pipeline-pack/1',
-      version: '0.4.0',
+      version: '0.8.0',
       protocol: 'aio.pipelines/1',
       python: { version: '3', build: 'e2e photo fakes', executable: rel },
       platform: `${process.platform}-${process.arch}`,
@@ -149,7 +134,7 @@ export async function buildPhotoPack(dir: string): Promise<Record<string, string
       files: {},
     }),
   );
-  return { QUADRION_PIPELINE_PACK: dir, AIO_FAKE_PHOTO_STEP_S: '0.5' };
+  return { QUADRION_PIPELINE_PACK: dir, AIO_FAKE_PHOTO_STEP_S: '0.5', ...odmEnv() };
 }
 
 const RENDER = `
@@ -305,15 +290,13 @@ export async function openPhotoSite(win: Page): Promise<void> {
 }
 
 /**
- * Whether the app under test can create maps from photos at all: Windows x64 and Apple silicon
- * only (main `processingVerdict`). Elsewhere (an Intel Mac runner) the dialog opens on "This
- * computer cannot create maps from photos" whatever pack is installed, so specs that start a run
- * skip there.
+ * Whether the app under test can create maps from photos at all: Windows x64 only (main
+ * `processingVerdict`; ODM ships a Windows installer). Elsewhere (a Mac runner) the dialog opens
+ * on "This computer cannot create maps from photos" whatever pack is installed, so specs that
+ * start a run skip there.
  */
-export const PHOTO_PLATFORM =
-  (process.platform === 'win32' && process.arch === 'x64') ||
-  (process.platform === 'darwin' && process.arch === 'arm64');
-export const PHOTO_PLATFORM_ONLY = `maps from photos run on Windows x64 and Apple silicon only, not on ${process.platform} ${process.arch}`;
+export const PHOTO_PLATFORM = process.platform === 'win32' && process.arch === 'x64';
+export const PHOTO_PLATFORM_ONLY = `maps from photos run on Windows x64 only, not on ${process.platform} ${process.arch}`;
 
 /** The Processing drawer's **Create maps from photos**: the one-screen dialog. */
 export async function openWizard(win: Page) {
@@ -372,16 +355,24 @@ export async function startRun(win: Page, o: { groundControl?: boolean } = {}) {
  * A throwaway pack too old to create maps from photos (0.3.0; nothing in it ever runs): the
  * dialog must say so the moment it opens. Answers the app environment that selects it.
  */
-export async function oldPackEnv(dir: string): Promise<Record<string, string>> {
+export function oldPackEnv(dir: string): Promise<Record<string, string>> {
+  return packEnv(dir, '0.3.0');
+}
+
+/**
+ * A throwaway pack of `version` that is only a manifest (nothing in it ever runs), for the
+ * dialog's checks before any photo is chosen. Answers the app environment that selects it.
+ */
+export async function packEnv(dir: string, version: string): Promise<Record<string, string>> {
   await mkdir(dir, { recursive: true });
   await writeFile(join(dir, 'python.exe'), '');
   await writeFile(
     join(dir, 'manifest.json'),
     JSON.stringify({
       schema: 'aio.pipeline-pack/1',
-      version: '0.3.0',
+      version,
       protocol: 'aio.pipelines/1',
-      python: { version: '3', build: 'e2e old pack', executable: 'python.exe' },
+      python: { version: '3', build: 'e2e manifest-only pack', executable: 'python.exe' },
       platform: `${process.platform}-${process.arch}`,
       createdAt: new Date().toISOString(),
       pipelines: [],

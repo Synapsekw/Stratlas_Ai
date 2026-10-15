@@ -40,3 +40,6 @@ docs/sessions/_draft-*.md
 
 # private part of the team test board (tools/test-board): client, site and tester names
 tools/test-board/local/
+
+# junctions the ODM runner makes for unsafe project paths beside the fake ODM (python/tests/fake_odm)
+python/tests/odm-work/

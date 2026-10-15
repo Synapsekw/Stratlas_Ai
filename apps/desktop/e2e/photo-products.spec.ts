@@ -11,14 +11,16 @@ import {
   test,
   VENV_PYTHON,
 } from './fixtures';
+import { ODM_FAKE_DIR, odmEnv } from './photoPack';
 
 /**
  * Photogrammetry products (M10 G3) on G3's synthetic aligned project (python/tests/products_synth.py:
- * known cameras, a box building, a stockpile, checker targets): photo.products runs as a job in the
- * development pipeline runtime, then the project opens with the new ortho, DSM, DTM and mesh layers,
- * the ortho is drawn on the map and the run file lists what it made. The job is started through the
- * jobs:start channel, as the Builder's Process photos wizard (G4) will; the photos are only read.
- * Needs the development Python (`uv sync` in python/, or STRATLAS_E2E_PYTHON). Synthetic data only.
+ * known cameras, a box building, a stockpile, checker targets, and the run's ODM folder): photo.products
+ * runs ODM (the fake of `python/tests/fake_odm`) as a job in the development pipeline runtime, then
+ * the project opens with the new ortho, DSM, DTM and mesh layers, the ortho is drawn on the map and
+ * the run file lists what it made. The job is started through the jobs:start channel, as the Create
+ * maps dialog does; the photos are only read. Needs the development Python (`uv sync` in python/,
+ * or QUADRION_E2E_PYTHON). Synthetic data only.
  */
 
 const FIXTURE = join(import.meta.dirname, 'photo-fixture.py');
@@ -61,7 +63,10 @@ const photoTest = test.extend<{ photo: Fixture & { root: string } }>({
   },
 });
 
-photoTest.use({ appEnv: PIPELINE_ENV });
+// the fake ODM as the processing engine: QUADRION_ODM_DIR for main, AIO_ODM for the job itself
+photoTest.use({
+  appEnv: { ...PIPELINE_ENV, ...odmEnv(), AIO_ODM: ODM_FAKE_DIR, AIO_ODM_VERSION: '3.6.2' },
+});
 photoTest.skip(!hasPipelinePython(), `no Python with aio_pipelines at ${VENV_PYTHON}`);
 
 /** Map layer ids of the first map on the page that has loaded a style. */

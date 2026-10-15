@@ -11,9 +11,9 @@
  * and the Globe lists the surface heat map in the site card, draws it when switched on (red over
  * the pile, which grew) and reaches no network. Needs the development pipeline Python
  * (QUADRION_E2E_PYTHON, or `uv sync` in python/) and PDAL; skipped without them.
- * The cloud runs the DSM and DTM steps first (no DTM layer, none is asked for), classifies
- * ground from the DTM and goes to COPC through untwine when AIO_UNTWINE names it, else
- * through PDAL.
+ * ODM is the fake of `python/tests/fake_odm` (`odmEnv`): it writes ODM's outputs from the run's
+ * synthetic surface, as LAS, so the cloud goes to COPC through untwine when AIO_UNTWINE names
+ * it, else through PDAL.
  */
 import { utmToWgs84 } from '@aio/geo';
 import type { Page } from '@playwright/test';
@@ -31,6 +31,7 @@ import {
   test,
   VENV_PYTHON,
 } from './fixtures';
+import { ODM_FAKE_DIR, odmEnv } from './photoPack';
 
 const FIXTURE = join(import.meta.dirname, 'photo-two-surveys-fixture.py');
 /** The fixture's sampling step, metres (finer is slower to render and to process). */
@@ -42,19 +43,18 @@ const SITE_NAME = 'Synthetic photo site';
 const ZONE = 39;
 const PAIR = 'c1-c2';
 /**
- * The products' preset. Not Fast: Fast has no dense matching, so its cloud is the sparse points
- * (about 2,400 over the site, under one per square metre), and cloud change, which joins changed
- * points on a 25 cm grid into regions of at least 30 points, finds no region at all there (the
- * shed and the pile included). Standard matches densely (about 235,000 points) and costs about
- * 2 s more per survey on this synthetic site.
+ * The products' preset. Not Fast: Fast skips ODM's dense matching (`--fast-orthophoto`), so its
+ * cloud is the sparse points, and cloud change, which joins changed points on a 25 cm grid into
+ * regions of at least 30 points, finds no region there (the shed and the pile included).
+ * Standard runs ODM's dense matching (openmvs); the fake ODM makes its dense cloud from the
+ * run's 20,000 true surface points.
  */
 const PRESET = 'standard';
 /** The cloud threshold the producer sends (`ChangeThresholds.cloud.significantM` default). */
 const SIGNIFICANT_M = 0.05;
 /**
- * Fill volume of the pile against the truth. The Standard preset's DSM (18 cm) gave 100.6 m3
- * against 102.6 m3 (2 % low) on this workstation; 10 % leaves room for another CPU's matching
- * without accepting a pile measured on the wrong surface (the Fast preset's sparse DSM gave 80 m3).
+ * Fill volume of the pile against the truth. 10 % leaves room for the DSM's grid without accepting
+ * a pile measured on the wrong surface (a sparse DSM gave 80 m3 against 102.6 m3).
  */
 const FILL_TOLERANCE = 0.1;
 
@@ -116,8 +116,8 @@ interface ProjectRaster {
   lastError: string | null;
 }
 interface ProductsReport {
-  engines: { ground?: string };
-  cloud: { points: number; budget: number; writer?: string; groundPoints?: number };
+  engines: { odm?: string };
+  cloud: { points: number; writer?: string };
 }
 
 const twoSurveys = test.extend<{ surveys: Fixture & { root: string } }>({
@@ -130,7 +130,10 @@ const twoSurveys = test.extend<{ surveys: Fixture & { root: string } }>({
   },
 });
 
-twoSurveys.use({ appEnv: PIPELINE_ENV });
+// the fake ODM as the processing engine: QUADRION_ODM_DIR for main, AIO_ODM for the job itself
+twoSurveys.use({
+  appEnv: { ...PIPELINE_ENV, ...odmEnv(), AIO_ODM: ODM_FAKE_DIR, AIO_ODM_VERSION: '3.6.2' },
+});
 twoSurveys.skip(!hasPipelinePython(), `no Python with aio_pipelines at ${VENV_PYTHON}`);
 twoSurveys.skip(!hasPdal(), `no PDAL at ${PDAL} (set AIO_PDAL)`);
 
@@ -368,8 +371,8 @@ twoSurveys(
       ).toBe(true);
     }
 
-    // 2b. the cloud's ground came from the DTM step, which published nothing, and the COPC went
-    // through untwine when this computer has it, else through PDAL
+    // 2b. ODM made the products, and the COPC went through untwine when this computer has it,
+    // else through PDAL (the fake ODM writes LAS, not COPC); no DTM layer, none was asked for
     for (const capture of ['c1', 'c2'] as const) {
       const report = JSON.parse(
         await readFile(
@@ -377,10 +380,9 @@ twoSurveys(
           'utf8',
         ),
       ) as ProductsReport;
-      expect(report.engines.ground, `ground engine ${capture}`).toBe('smrf-grid');
+      expect(report.engines.odm, `ODM version ${capture}`).toBe('3.6.2');
       expect(report.cloud.writer, `COPC writer ${capture}`).toBe(hasUntwine() ? 'untwine' : 'pdal');
-      expect(report.cloud.groundPoints ?? 0, `ground points ${capture}`).toBeGreaterThan(0);
-      expect(report.cloud.budget, `budget ${capture}`).toBe(150_000_000);
+      expect(report.cloud.points, `cloud points ${capture}`).toBeGreaterThan(0);
       expect(
         layers.some((l) => l.capture === capture && l.id.endsWith('-dtm')),
         `no DTM layer ${capture}`,
@@ -441,10 +443,20 @@ twoSurveys(
       cloudRegions.some((r) => above(r) && overlapShare(r, shed) > 0.25),
       'a cloud region over the shed',
     ).toBe(true);
+    // the fake ODM's dense cloud is the run's 20,000 true surface points, about 3 a square metre:
+    // the pile's change falls apart into several regions on the 25 cm grid, none of them sure to
+    // hold its very centre. They lie on the pile, and the largest distance is near its 2 m rise.
+    const onPile = cloudRegions.filter((r) => {
+      if (!above(r) || !r.bounds) return false;
+      const cx = ((r.bounds.min[0] ?? NaN) + (r.bounds.max[0] ?? NaN)) / 2 - pile[0];
+      const cz = ((r.bounds.min[2] ?? NaN) + (r.bounds.max[2] ?? NaN)) / 2 - pile[1];
+      return Math.hypot(cx, cz) < truth.pile.radiusM;
+    });
+    expect(onPile.length, 'cloud regions on the pile').toBeGreaterThan(0);
     expect(
-      cloudRegions.some((r) => above(r) && contains(r, pile)),
-      'a cloud region at the pile',
-    ).toBe(true);
+      Math.max(...onPile.map((r) => r.distance?.maxM ?? 0)),
+      'largest cloud distance on the pile',
+    ).toBeGreaterThan(1);
     for (const p of truth.openGround)
       expect(
         cloudRegions.some((r) => contains(r, p)),

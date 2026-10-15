@@ -7,7 +7,8 @@ write the files of data-conventions section 21 with synthetic values:
 
 - ``photo.align``: ``run.json`` (aligned), ``report/align.json``, a GNSS-only
   ``report/accuracy.json``, ``cameras-sfm.json`` (the layer's poses moved a few centimetres) and
-  ``sparse/``; the stages of the real pipeline, slowly enough to pause and resume.
+  ``sparse/``; the stages of the real pipeline (``inspect``, ``sfm``, ``georef``, ``report``),
+  slowly enough to pause and resume. No ODM runs.
 - ``photo.georef``: residuals from the marks in ``gcp.json`` (a point named ``GCP6`` is the
   planted outlier, 1 m off), RMSE per role, checkpoints never adjusted.
 - ``photo.products``: a small GLB mesh layer added to the manifest (with ``manifest.json.bak``).
@@ -295,12 +296,11 @@ class FakeAlign(_align.PhotoAlign):
             )
             return {}
 
+        # the stages and titles of the real photo.align, which runs ODM in its sfm stage
         return [
-            Step("inspect", "Read photos", inspect),
-            Step("features", "Find features", work("features")),
-            Step("match", "Match photos", work("match")),
-            Step("sfm", "Place cameras", work("sfm")),
-            Step("georef", "Georeference", work("georef")),
+            Step("inspect", "Read the photos", inspect),
+            Step("sfm", "Align the photos (ODM)", work("sfm")),
+            Step("georef", "Place the model", work("georef")),
             Step("report", "Report", report),
         ]
 
@@ -438,7 +438,16 @@ class FakeProducts(_products.PhotoProducts):
     def plan(self, params: dict[str, Any]) -> list[Step]:
         run = _run_id(params)
         wanted: list[str] = list(params["products"])
-        names = ["dense", "fuse"] + [p for p in ("cloud", "dsm", "dtm", "ortho", "mesh") if p in wanted]
+        # the job steps of the real photo.products (one ODM call each): dense, the cloud, then what
+        # was asked for; the commit adds the layers
+        names = ["dense", "cloud"] + [p for p in ("dsm", "ortho", "mesh") if p in wanted]
+        titles = {
+            "dense": "Dense point cloud",
+            "cloud": "Surface and point cloud",
+            "dsm": "Elevation models (DSM and DTM)",
+            "ortho": "Orthophoto and report",
+            "mesh": "3D mesh",
+        }
 
         def work(name: str):
             def fn(ctx: StepContext) -> dict[str, Any]:
@@ -485,7 +494,7 @@ class FakeProducts(_products.PhotoProducts):
             _update_run(ctx, run, status="done", outputs=outputs, settings=settings, **cap)
             return {}
 
-        return [Step(n, n.title(), work(n)) for n in names] + [Step("commit", "Add layers", commit)]
+        return [Step(n, titles[n], work(n)) for n in names] + [Step("commit", "Add layers", commit)]
 
 
 _align.PhotoAlign = FakeAlign  # type: ignore[misc]

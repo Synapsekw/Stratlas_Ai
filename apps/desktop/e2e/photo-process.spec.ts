@@ -6,7 +6,7 @@
  * impossible on this computer shows the moment the dialog opens, with the button that fixes it.
  *
  * Runs on the e2e stand-in pipelines (`e2e/photo-fake`, see `photoPack.ts`): the app's side of
- * processing. The real pipelines run in `photo-real.spec.ts` where this machine has their tools.
+ * processing; the app sees the fake ODM of `python/tests/fake_odm` as its processing engine.
  * Needs the development Python (`uv sync` in python/, or QUADRION_E2E_PYTHON), except the blocked
  * states, which run nothing. Synthetic photos only; zero network.
  */
@@ -30,6 +30,7 @@ import {
   chooseFolder,
   oldPackEnv,
   openOptions,
+  packEnv,
   openPhotoSite,
   openWizard,
   PHOTO_DAY,
@@ -191,7 +192,7 @@ test.describe('on the stand-in pipelines', () => {
     );
     // what does the work is quiet detail, never a fault to fix
     await expect(options.getByTestId('photo-gpu')).toContainText(
-      /Runs on the processor\. Graphics card acceleration is not available yet\.|used for High/,
+      /used for processing|switched off|No NVIDIA graphics card found/,
     );
     await expect(options).not.toContainText('not installed');
     await expectAccessible(win, 'create maps from photos, options', {
@@ -333,7 +334,7 @@ test.describe('on the stand-in pipelines', () => {
     await panel.getByText('Every step').click();
     await expect(
       panel.getByRole('list', { name: 'Stages' }).getByRole('listitem').filter({
-        hasText: 'Find features',
+        hasText: 'Align the photos (ODM)',
       }),
     ).toHaveAttribute('data-state', /skipped|done/);
 
@@ -589,14 +590,14 @@ plain.describe('when this computer cannot create maps', () => {
       if (!PHOTO_PLATFORM) {
         // an Intel Mac, Windows on Arm, Linux: nothing on this computer fixes it, so no button
         await expect(blocked).toContainText('This computer cannot create maps from photos');
-        await expect(blocked).toContainText('Windows x64 and on Macs with Apple silicon');
+        await expect(blocked).toContainText('runs on Windows x64');
         await expect(fix).toHaveCount(0);
         await blocked.getByRole('button', { name: 'Close' }).click();
         await expect(wizard).toHaveCount(0);
         return;
       }
       await expect(blocked).toContainText('The processing tools are not installed');
-      await expect(blocked).toContainText('needs the processing tools, version 0.4.0 or later');
+      await expect(blocked).toContainText('needs the processing tools, version 0.8.0 or later');
       await fix.click();
       await expect(wizard).toHaveCount(0);
       // Settings, on the page that installs and updates this computer's processing tools
@@ -625,7 +626,7 @@ plain.describe('when this computer cannot create maps', () => {
         const blocked = wizard.getByTestId('photo-blocked');
         await expect(blocked).toContainText('The processing tools need an update');
         await expect(blocked).toContainText(
-          'too old to create maps from photos. Update them to version 0.4.0 or later.',
+          'too old to create maps from photos. Update them to version 0.8.0 or later.',
         );
         await expect(
           blocked.getByRole('button', { name: 'Update processing tools' }),
@@ -636,6 +637,50 @@ plain.describe('when this computer cannot create maps', () => {
           include: '[data-testid="photo-wizard"]',
         });
         await shot(win, 'create-maps-blocked');
+        expect(await network.outbound()).toEqual([]);
+      } finally {
+        await app.close();
+        await rm(dir, { recursive: true, force: true });
+      }
+    },
+  );
+
+  plain(
+    'with the processing tools but no processing engine it asks for the engine first',
+    async ({ dataRoot, network }) => {
+      plain.skip(!PHOTO_PLATFORM, PHOTO_PLATFORM_ONLY);
+      // a pack new enough (nothing in it ever runs), no QUADRION_ODM_DIR and no ODM installed
+      const dir = await mkdtemp(join(tmpdir(), 'aio-pack-no-engine-'));
+      const app = await launchApp(dataRoot, {
+        ...(await packEnv(dir, '0.8.0')),
+        QUADRION_ODM_DIR: '',
+      });
+      await network.attach(app);
+      try {
+        const win = await app.firstWindow();
+        await win.getByTestId('project-card').first().click();
+        const wizard = await openWizard(win);
+        const blocked = wizard.getByTestId('photo-blocked');
+        await expect(blocked).toContainText('Install the processing engine first');
+        await expect(wizard.getByTestId('photo-start')).toHaveCount(0);
+        const fix = blocked.getByTestId('photo-fix');
+        await expect(fix).toHaveText('Install the processing engine');
+        await expectAccessible(win, 'create maps from photos, no processing engine', {
+          include: '[data-testid="photo-wizard"]',
+        });
+        await fix.click();
+        await expect(wizard).toHaveCount(0);
+        // Settings, Processing tools, with the Processing engine card in view and its button focused
+        await expect(
+          win.getByRole('heading', { level: 1, name: 'Processing tools' }),
+        ).toBeVisible();
+        const card = win.getByTestId('engine');
+        await expect(card.getByTestId('engine-state')).toHaveAttribute(
+          'data-state',
+          'not-installed',
+        );
+        await expect(card).toBeInViewport();
+        await expect(card.getByTestId('engine-install')).toBeFocused();
         expect(await network.outbound()).toEqual([]);
       } finally {
         await app.close();
