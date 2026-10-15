@@ -1,4 +1,3 @@
-import { getActiveStage } from '@aio/engine';
 import type { LibraryEntry, ProjectPurpose } from '@aio/schema';
 
 /** Longest side of a cover in pixels. */
@@ -393,22 +392,6 @@ export async function builtinCoverJpeg(
   const c = new OffscreenCanvas(w, h);
   drawBuiltinCover(context(c), id, palette, w, h);
   return canvasJpeg(c);
-}
-
-/** Is a 3D view open to take a cover from? */
-export function canUseCurrentView(): boolean {
-  return getActiveStage() !== null;
-}
-
-/** The 3D view at its current camera as a cover; null without a view. Never changes the screen. */
-export async function currentViewJpeg(): Promise<Uint8Array<ArrayBuffer> | null> {
-  // captureSnapshot would go to the scene to find a stage; a cover never navigates
-  if (!canUseCurrentView()) return null;
-  // loaded late: the exports module pulls in the whole workspace
-  const { captureSnapshot } = await import('../exports/exports');
-  const png = await captureSnapshot(false);
-  if (!png) return null;
-  return imageToCoverJpeg(new Blob([png], { type: 'image/png' }));
 }
 
 /** Bytes to send for a choice: null for 'reset', undefined for 'none'. */

@@ -1,7 +1,8 @@
 /**
  * Library covers: the new project wizard writes the cover it was given, Change thumbnail on a
  * project folder writes its `thumbnail.jpg`, a package gets a cover kept on this computer only
- * (the `.aio` file is never touched), and "Use current view" waits for the 3D view.
+ * (the `.aio` file is never touched), and "Use the last 3D view" offers the view as the project's
+ * scene was left.
  */
 import type { ElectronApplication, Locator, Page } from '@playwright/test';
 import { createHash } from 'node:crypto';
@@ -9,7 +10,7 @@ import { existsSync } from 'node:fs';
 import { mkdir, readFile, stat, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import sharp from 'sharp';
-import { expect, launchApp, NetworkGuard, test, type DataRoot } from './fixtures';
+import { expect, launchApp, NetworkGuard, test, tinyManifest, type DataRoot } from './fixtures';
 
 const card = (win: Page, name: string) =>
   win.getByTestId('project-card').filter({ hasText: name }).first();
@@ -70,8 +71,8 @@ test('the wizard writes the chosen cover into the new project', async ({ win, da
   const cover = wiz.getByTestId('wizard-cover');
   // a built-in cover is picked from the start: a new project never gets the blank placeholder
   await expect(cover.getByTestId('cover-builtin-contours')).toHaveAttribute('aria-pressed', 'true');
-  // the wizard has no 3D view of the new project to take a picture of
-  await expect(cover.getByTestId('cover-current-view')).toBeDisabled();
+  // the new project has never been open in 3D: no picture of it to take
+  await expect(cover.getByTestId('cover-last-view')).toBeDisabled();
   // an uploaded picture still shows after a step away and back
   await cover
     .getByTestId('cover-upload')
@@ -222,31 +223,66 @@ test('a package gets a cover on this computer only; the package file is unchange
   }
 });
 
-test('Use current view is greyed until the 3D view has been open', async ({ win }) => {
+test('Use the last 3D view is greyed until the project has been open in 3D, then sets the card', async ({
+  win,
+  dataRoot,
+}) => {
   const name = 'E2E tiny project';
-  const dlg = await openCoverDialog(win, name);
-  const view = dlg.getByTestId('cover-current-view');
+  // a built-in cover first, so the card has a picture to change from
+  let dlg = await openCoverDialog(win, name);
+  const view = dlg.getByTestId('cover-last-view');
   await expect(view).toBeDisabled();
-  await expect(dlg).toContainText('Open the 3D view first');
-  await dlg.getByTestId('cover-cancel').click();
-  await expect(dlg).toBeHidden();
-});
+  await expect(view).toContainText('Use the last 3D view');
+  await expect(dlg).toContainText('Open this project in the 3D view first');
+  await dlg.getByTestId('cover-builtin-grid').click();
+  await saveCover(dlg);
+  const img = cardImg(win, name);
+  await expect(img).toHaveAttribute('src', /^aio:\/\/project\/e2e-tiny\/thumbnail\.jpg\?v=\d+$/);
+  const before = await img.getAttribute('src');
+  const builtin = await readFile(join(dataRoot.projectDir, 'thumbnail.jpg'));
 
-// The 3D view is disposed when the Projects screen shows (SceneView unmounts, so there is no
-// active stage), and Change thumbnail is only on the Projects screen: Use current view cannot be
-// reached yet. Kept as the behaviour to reach once the dialog gets a way to the 3D view.
-test.fixme('Use current view takes the open 3D view as the cover', async ({ win }) => {
-  const name = 'E2E tiny project';
+  // the scene, then back: the 3D view as it was left is offered, with a small preview
   await card(win, name).click();
   await expect(win.locator('[data-scene-view] canvas')).toBeVisible({ timeout: 30_000 });
   await goProjects(win);
-  const dlg = await openCoverDialog(win, name);
-  await expect(dlg.getByTestId('cover-current-view')).toBeEnabled();
-  await dlg.getByTestId('cover-current-view').click();
-  await expect(dlg.getByTestId('cover-preview')).toHaveAttribute('data-kind', 'image', {
-    timeout: 15_000,
-  });
+  await expect(card(win, name)).toBeVisible();
+  dlg = await openCoverDialog(win, name);
+  const last = dlg.getByTestId('cover-last-view');
+  await expect(last).toBeEnabled({ timeout: 10_000 });
+  await expect(dlg).not.toContainText('Open this project in the 3D view first');
+  await expectLoaded(last.locator('img'));
+  await last.click();
+  await expect(last).toHaveAttribute('aria-pressed', 'true');
+  await expect(dlg.getByTestId('cover-preview')).toHaveAttribute('data-kind', 'image');
+  await expectLoaded(dlg.getByTestId('cover-preview').locator('img'));
   await saveCover(dlg);
-  await expect(cardImg(win, name)).toHaveAttribute('src', /thumbnail\.jpg\?v=\d+$/);
-  await expectLoaded(cardImg(win, name));
+  await expect(img).not.toHaveAttribute('src', before ?? '');
+  await expect(img).toHaveAttribute('src', /^aio:\/\/project\/e2e-tiny\/thumbnail\.jpg\?v=\d+$/);
+  await expectLoaded(img);
+  const bytes = await readFile(join(dataRoot.projectDir, 'thumbnail.jpg'));
+  expect(bytes.equals(builtin)).toBe(false);
+  const size = jpegSize(bytes);
+  expect(Math.max(size.width, size.height)).toBeLessThanOrEqual(640);
+});
+
+test('another project has no last 3D view of its own', async ({ win, dataRoot }) => {
+  const dir = join(dataRoot.root, 'projects', 'second-yard');
+  await mkdir(dir, { recursive: true });
+  await writeFile(
+    join(dir, 'manifest.json'),
+    JSON.stringify({ ...tinyManifest(), id: 'second-yard', name: 'Second yard' }, null, 2),
+  );
+  await writeFile(
+    join(dir, 'issues.json'),
+    JSON.stringify({ schema: 'aio.issues/1', issues: [] }, null, 2),
+  );
+  // the library is read again on a reload
+  await win.reload();
+  await expect(card(win, 'Second yard')).toBeVisible({ timeout: 15_000 });
+  await card(win, 'E2E tiny project').click();
+  await expect(win.locator('[data-scene-view] canvas')).toBeVisible({ timeout: 30_000 });
+  await goProjects(win);
+  await expect(card(win, 'Second yard')).toBeVisible();
+  const dlg = await openCoverDialog(win, 'Second yard');
+  await expect(dlg.getByTestId('cover-last-view')).toBeDisabled();
 });

@@ -117,6 +117,11 @@ export interface ShellState {
   annotating: boolean;
   /** Last 3D view per project id, so leaving and returning to Scene keeps the camera. */
   views: Record<string, SavedView>;
+  /**
+   * A cover-sized JPEG of the 3D view per library id, taken as its scene was left: Change
+   * thumbnail offers it as "Use the last 3D view". In memory only.
+   */
+  lastViews: Record<string, Uint8Array<ArrayBuffer>>;
   /** The point cloud panel (colour, size, budget, EDL) under the stage toolbar is open. */
   cloudPanelOpen: boolean;
   /** The open project came from a `.aio` package (never written to). */
@@ -194,6 +199,7 @@ export interface ShellActions {
   setLabelMode: (mode: LabelMode) => void;
   setAnnotating: (on: boolean) => void;
   saveView: (projectId: string, view: SavedView) => void;
+  setLastView: (projectId: string, data: Uint8Array<ArrayBuffer>) => void;
   setCloudPanel: (open: boolean) => void;
   /** Show the point cloud panel from anywhere: the scene, in a mode with the 3D view. */
   openCloudPanel: () => void;
@@ -210,6 +216,11 @@ export interface ShellOptions {
    * storage by default.
    */
   storage?: PanelStorage | null;
+  /**
+   * The scene of this project is being left (another screen, another project, closed) while its
+   * 3D view is still on screen. Called synchronously, before the view goes; must not block.
+   */
+  onLeaveView?: (projectId: string) => void;
 }
 
 /** The answer of a library change: null when it worked, else the sentence to show. */
@@ -237,333 +248,367 @@ export function createShellStore(
   };
   const storage = options.storage === undefined ? browserStorage() : options.storage;
   const panels = readPanelPrefs(storage);
-  return createStore<Shell>()((set, get) => ({
-    screen: 'projects',
-    settingsFocus: null,
-    settingsPage: null,
-    settings: DEFAULT_SETTINGS,
-    settingsError: null,
-    library: null,
-    libraryError: null,
-    folders: [],
-    libraryNotice: null,
-    opening: null,
-    openError: null,
-    paletteOpen: false,
-    stageMode: '3d',
-    stageAuto: false,
-    rightCollapsed: panels.rightCollapsed,
-    agentDockCollapsed: panels.agentDockCollapsed,
-    videoDocked: false,
-    videoHidden: false,
-    labelMode: 'key',
-    annotating: false,
-    views: {},
-    cloudPanelOpen: false,
-    pkg: null,
-    unlock: null,
-    exportFor: null,
-    origin: null,
+  return createStore<Shell>()((set, get) => {
+    /** Before the scene of the open project goes: let the caller take a picture of its 3D view. */
+    const leaveScene = (next: Screen | null) => {
+      const id = workspace.getState().project?.id;
+      if (!id || get().screen !== 'scene' || next === 'scene') return;
+      try {
+        options.onLeaveView?.(id);
+      } catch {
+        // a picture that cannot be taken never holds anything up
+      }
+    };
+    return {
+      screen: 'projects',
+      settingsFocus: null,
+      settingsPage: null,
+      settings: DEFAULT_SETTINGS,
+      settingsError: null,
+      library: null,
+      libraryError: null,
+      folders: [],
+      libraryNotice: null,
+      opening: null,
+      openError: null,
+      paletteOpen: false,
+      stageMode: '3d',
+      stageAuto: false,
+      rightCollapsed: panels.rightCollapsed,
+      agentDockCollapsed: panels.agentDockCollapsed,
+      videoDocked: false,
+      videoHidden: false,
+      labelMode: 'key',
+      annotating: false,
+      views: {},
+      lastViews: {},
+      cloudPanelOpen: false,
+      pkg: null,
+      unlock: null,
+      exportFor: null,
+      origin: null,
 
-    init: async () => {
-      const rev = settingsRev;
-      const [settings] = await Promise.all([bridge.call('settings:get', {}), get().loadLibrary()]);
-      if (!settings.ok) set({ settingsError: settings.error });
-      else if (rev === settingsRev) set({ settings: settings.value, settingsError: null });
-    },
+      init: async () => {
+        const rev = settingsRev;
+        const [settings] = await Promise.all([
+          bridge.call('settings:get', {}),
+          get().loadLibrary(),
+        ]);
+        if (!settings.ok) set({ settingsError: settings.error });
+        else if (rev === settingsRev) set({ settings: settings.value, settingsError: null });
+      },
 
-    go: (screen) => {
-      // leaving Settings forgets the page asked for: it opens on AI providers next time
-      set(screen === 'settings' ? { screen } : { screen, settingsPage: null });
-    },
+      go: (screen) => {
+        leaveScene(screen);
+        // leaving Settings forgets the page asked for: it opens on AI providers next time
+        set(screen === 'settings' ? { screen } : { screen, settingsPage: null });
+      },
 
-    openSettings: (focus) => {
-      set({
-        screen: 'settings',
-        settingsFocus: focus ?? null,
-        settingsPage: focus ? FOCUS_PAGE[focus] : null,
-      });
-    },
+      openSettings: (focus) => {
+        leaveScene('settings');
+        set({
+          screen: 'settings',
+          settingsFocus: focus ?? null,
+          settingsPage: focus ? FOCUS_PAGE[focus] : null,
+        });
+      },
 
-    openSettingsPage: (page) => {
-      set({ screen: 'settings', settingsPage: page });
-    },
+      openSettingsPage: (page) => {
+        leaveScene('settings');
+        set({ screen: 'settings', settingsPage: page });
+      },
 
-    clearSettingsPage: () => {
-      if (get().settingsPage) set({ settingsPage: null });
-    },
+      clearSettingsPage: () => {
+        if (get().settingsPage) set({ settingsPage: null });
+      },
 
-    clearSettingsFocus: () => {
-      if (get().settingsFocus) set({ settingsFocus: null });
-    },
+      clearSettingsFocus: () => {
+        if (get().settingsFocus) set({ settingsFocus: null });
+      },
 
-    loadLibrary: async () => {
-      const r = await bridge.call('library:list', {});
-      if (r.ok) set({ library: r.value, libraryError: null });
-      else set({ library: get().library ?? [], libraryError: r.error });
-      const f = await bridge.call('library:folders', {});
-      if (f.ok && f.value.ok) set({ folders: f.value.folders });
-      else if (r.ok) set({ libraryError: f.ok ? (f.value.ok ? null : f.value.error) : f.error });
-    },
+      loadLibrary: async () => {
+        const r = await bridge.call('library:list', {});
+        if (r.ok) set({ library: r.value, libraryError: null });
+        else set({ library: get().library ?? [], libraryError: r.error });
+        const f = await bridge.call('library:folders', {});
+        if (f.ok && f.value.ok) set({ folders: f.value.folders });
+        else if (r.ok) set({ libraryError: f.ok ? (f.value.ok ? null : f.value.error) : f.error });
+      },
 
-    updateSettings: async (patch) => {
-      const rev = ++settingsRev;
-      const before = get().settings;
-      set({ settings: { ...before, ...patch } });
-      const r = await bridge.call('settings:set', patch);
-      if (r.ok) {
-        // main writes changes in order, so the newest answer holds every one of them
-        if (rev === settingsRev) set({ settings: r.value, settingsError: null });
+      updateSettings: async (patch) => {
+        const rev = ++settingsRev;
+        const before = get().settings;
+        set({ settings: { ...before, ...patch } });
+        const r = await bridge.call('settings:set', patch);
+        if (r.ok) {
+          // main writes changes in order, so the newest answer holds every one of them
+          if (rev === settingsRev) set({ settings: r.value, settingsError: null });
+          return null;
+        }
+        // Keep the local change so the app stays usable; report the failure.
+        set({ settingsError: r.error });
+        return r.error;
+      },
+
+      settingsCall: async (start, settingsOf) => {
+        const rev = ++settingsRev;
+        const answer = await start();
+        const next = settingsOf(answer);
+        if (next && rev === settingsRev) set({ settings: next, settingsError: null });
+        return answer;
+      },
+
+      toggleSidebar: async () => {
+        await get().updateSettings({ sidebarCollapsed: !get().settings.sidebarCollapsed });
+      },
+
+      openProject: async (path, passphrase) => {
+        // A screen picked while the project is still opening (a card, then Reports) is kept.
+        const from = get().screen;
+        set({ opening: path, openError: null });
+        const r = await bridge.call(
+          'project:open',
+          passphrase === undefined ? { path } : { path, passphrase },
+        );
+        if (!r.ok) {
+          set({ opening: null, openError: r.error });
+          return;
+        }
+        if (!r.value.ok) {
+          if (r.value.needsPassphrase)
+            set({ opening: null, unlock: { path, error: r.value.error } });
+          else set({ opening: null, openError: r.value.error, unlock: null });
+          return;
+        }
+        const { id, root, manifest, issues } = r.value;
+        const pkg = r.value.package ?? null;
+        const player = isPlayer(pkg);
+        // Every package is opened in place and never written: no annotation, no issue edits.
+        setReadOnly(pkg !== null);
+        if (workspace.getState().project?.id !== id) leaveScene(null);
+        workspace.getState().openProject({ id, root, manifest }, issues);
+        // drone video first, nothing 3D yet: the flights on the map beside the 3D view
+        const first = videoFirst(manifest);
+        const { stageAuto, stageMode } = get();
+        set({
+          stageMode: first ? 'split' : stageAuto ? '3d' : stageMode,
+          stageAuto: first,
+          opening: null,
+          unlock: null,
+          pkg,
+          // A project extracted from a package says where it came from.
+          origin: pkg ? null : (r.value.origin ?? null),
+          annotating: pkg ? false : get().annotating,
+          screen: get().screen !== from ? get().screen : player ? 'welcome' : 'scene',
+        });
+        if (pkg) void get().loadLibrary();
+      },
+
+      cancelUnlock: () => {
+        set({ unlock: null });
+      },
+
+      openPackageFile: async () => {
+        const pick = await bridge.call('dialog:openFile', {
+          title: 'Open a project package',
+          filters: [{ name: 'Project package', extensions: ['aio'] }],
+        });
+        if (!pick.ok) {
+          set({ openError: pick.error });
+          return;
+        }
+        if (pick.value.path) await get().openProject(pick.value.path);
+      },
+
+      setExportFor: (exportFor) => {
+        set({ exportFor });
+      },
+
+      closeProject: () => {
+        leaveScene(null);
+        workspace.getState().closeProject();
+        setReadOnly(false);
+        set({ screen: 'projects', pkg: null, origin: null });
+      },
+
+      addProjectFolder: async () => {
+        const pick = await bridge.call('dialog:openFolder', { title: 'Add a project folder' });
+        if (!pick.ok) {
+          set({ libraryError: pick.error });
+          return;
+        }
+        if (!pick.value.path) return;
+        const added = await bridge.call('library:add', { path: pick.value.path });
+        if (!added.ok) {
+          set({ libraryError: added.error });
+          return;
+        }
+        if (!added.value.ok) {
+          set({ libraryError: added.value.error });
+          return;
+        }
+        await get().loadLibrary();
+      },
+
+      revealProject: async (entry) => {
+        const r = await bridge.call('library:reveal', { projectId: entry.id });
+        const error = !r.ok ? r.error : r.value.ok ? null : r.value.error;
+        // no dialog is open for this one: the library's own notice says it
+        if (error) set({ libraryError: error });
+        return error;
+      },
+
+      renameProject: async (entry, name) => {
+        const r = await bridge.call('library:rename', { projectId: entry.id, name });
+        if (!r.ok) return r.error;
+        if (!r.value.ok) return r.value.error;
+        // the open project shows its new name at once (sidebar, title bar)
+        const open = workspace.getState().project;
+        if (open?.root === entry.path)
+          workspace.getState().replaceManifest({ ...open.manifest, name: r.value.name });
+        await get().loadLibrary();
         return null;
-      }
-      // Keep the local change so the app stays usable; report the failure.
-      set({ settingsError: r.error });
-      return r.error;
-    },
+      },
 
-    settingsCall: async (start, settingsOf) => {
-      const rev = ++settingsRev;
-      const answer = await start();
-      const next = settingsOf(answer);
-      if (next && rev === settingsRev) set({ settings: next, settingsError: null });
-      return answer;
-    },
+      deleteProject: async (entry) => {
+        if (workspace.getState().project?.root === entry.path)
+          return 'This project is open. Close it first, then delete it.';
+        const r = await bridge.call('library:delete', { projectId: entry.id });
+        // read the folder again either way: what is still on disk stays in the list
+        await get().loadLibrary();
+        if (!r.ok) return r.error;
+        return r.value.ok ? null : r.value.error;
+      },
 
-    toggleSidebar: async () => {
-      await get().updateSettings({ sidebarCollapsed: !get().settings.sidebarCollapsed });
-    },
+      removeProject: async (entry) => {
+        const r = await bridge.call('library:remove', { projectId: entry.id });
+        await get().loadLibrary();
+        const error = !r.ok ? r.error : r.value.ok ? null : r.value.error;
+        if (error !== null) return error;
+        const key = entry.package
+          ? 'library.removed.package'
+          : entry.demo
+            ? 'library.removed.demo'
+            : 'library.removed';
+        set({ libraryNotice: t(key, { project: entry.name, path: entry.path }) });
+        return null;
+      },
 
-    openProject: async (path, passphrase) => {
-      // A screen picked while the project is still opening (a card, then Reports) is kept.
-      const from = get().screen;
-      set({ opening: path, openError: null });
-      const r = await bridge.call(
-        'project:open',
-        passphrase === undefined ? { path } : { path, passphrase },
-      );
-      if (!r.ok) {
-        set({ opening: null, openError: r.error });
-        return;
-      }
-      if (!r.value.ok) {
-        if (r.value.needsPassphrase) set({ opening: null, unlock: { path, error: r.value.error } });
-        else set({ opening: null, openError: r.value.error, unlock: null });
-        return;
-      }
-      const { id, root, manifest, issues } = r.value;
-      const pkg = r.value.package ?? null;
-      const player = isPlayer(pkg);
-      // Every package is opened in place and never written: no annotation, no issue edits.
-      setReadOnly(pkg !== null);
-      workspace.getState().openProject({ id, root, manifest }, issues);
-      // drone video first, nothing 3D yet: the flights on the map beside the 3D view
-      const first = videoFirst(manifest);
-      const { stageAuto, stageMode } = get();
-      set({
-        stageMode: first ? 'split' : stageAuto ? '3d' : stageMode,
-        stageAuto: first,
-        opening: null,
-        unlock: null,
-        pkg,
-        // A project extracted from a package says where it came from.
-        origin: pkg ? null : (r.value.origin ?? null),
-        annotating: pkg ? false : get().annotating,
-        screen: get().screen !== from ? get().screen : player ? 'welcome' : 'scene',
-      });
-      if (pkg) void get().loadLibrary();
-    },
+      dismissLibraryNotice: () => {
+        set({ libraryNotice: null });
+      },
 
-    cancelUnlock: () => {
-      set({ unlock: null });
-    },
+      setThumbnail: async (projectId, data) => {
+        const r = await bridge.call('library:setThumbnail', { projectId, data });
+        await get().loadLibrary();
+        return failure(r);
+      },
 
-    openPackageFile: async () => {
-      const pick = await bridge.call('dialog:openFile', {
-        title: 'Open a project package',
-        filters: [{ name: 'Project package', extensions: ['aio'] }],
-      });
-      if (!pick.ok) {
-        set({ openError: pick.error });
-        return;
-      }
-      if (pick.value.path) await get().openProject(pick.value.path);
-    },
+      createFolder: async (name) => {
+        const r = await bridge.call('library:createFolder', { name });
+        await get().loadLibrary();
+        return failure(r);
+      },
 
-    setExportFor: (exportFor) => {
-      set({ exportFor });
-    },
+      renameFolder: async (folderId, name) => {
+        const r = await bridge.call('library:renameFolder', { folderId, name });
+        await get().loadLibrary();
+        return failure(r);
+      },
 
-    closeProject: () => {
-      workspace.getState().closeProject();
-      setReadOnly(false);
-      set({ screen: 'projects', pkg: null, origin: null });
-    },
+      deleteFolder: async (folderId) => {
+        const r = await bridge.call('library:deleteFolder', { folderId });
+        await get().loadLibrary();
+        return failure(r);
+      },
 
-    addProjectFolder: async () => {
-      const pick = await bridge.call('dialog:openFolder', { title: 'Add a project folder' });
-      if (!pick.ok) {
-        set({ libraryError: pick.error });
-        return;
-      }
-      if (!pick.value.path) return;
-      const added = await bridge.call('library:add', { path: pick.value.path });
-      if (!added.ok) {
-        set({ libraryError: added.error });
-        return;
-      }
-      if (!added.value.ok) {
-        set({ libraryError: added.value.error });
-        return;
-      }
-      await get().loadLibrary();
-    },
+      moveToFolder: async (entry, folderId) => {
+        const r = await bridge.call('library:move', { projectId: entry.id, folderId });
+        await get().loadLibrary();
+        return failure(r);
+      },
 
-    revealProject: async (entry) => {
-      const r = await bridge.call('library:reveal', { projectId: entry.id });
-      const error = !r.ok ? r.error : r.value.ok ? null : r.value.error;
-      // no dialog is open for this one: the library's own notice says it
-      if (error) set({ libraryError: error });
-      return error;
-    },
+      chooseDataRoot: async () => {
+        const pick = await bridge.call('dialog:openFolder', { title: 'Choose the data folder' });
+        if (!pick.ok) {
+          set({ settingsError: pick.error });
+          return;
+        }
+        if (!pick.value.path) return;
+        const err = await get().updateSettings({ dataRoot: pick.value.path });
+        if (!err) await get().loadLibrary();
+      },
 
-    renameProject: async (entry, name) => {
-      const r = await bridge.call('library:rename', { projectId: entry.id, name });
-      if (!r.ok) return r.error;
-      if (!r.value.ok) return r.value.error;
-      // the open project shows its new name at once (sidebar, title bar)
-      const open = workspace.getState().project;
-      if (open?.root === entry.path)
-        workspace.getState().replaceManifest({ ...open.manifest, name: r.value.name });
-      await get().loadLibrary();
-      return null;
-    },
-
-    deleteProject: async (entry) => {
-      if (workspace.getState().project?.root === entry.path)
-        return 'This project is open. Close it first, then delete it.';
-      const r = await bridge.call('library:delete', { projectId: entry.id });
-      // read the folder again either way: what is still on disk stays in the list
-      await get().loadLibrary();
-      if (!r.ok) return r.error;
-      return r.value.ok ? null : r.value.error;
-    },
-
-    removeProject: async (entry) => {
-      const r = await bridge.call('library:remove', { projectId: entry.id });
-      await get().loadLibrary();
-      const error = !r.ok ? r.error : r.value.ok ? null : r.value.error;
-      if (error !== null) return error;
-      const key = entry.package
-        ? 'library.removed.package'
-        : entry.demo
-          ? 'library.removed.demo'
-          : 'library.removed';
-      set({ libraryNotice: t(key, { project: entry.name, path: entry.path }) });
-      return null;
-    },
-
-    dismissLibraryNotice: () => {
-      set({ libraryNotice: null });
-    },
-
-    setThumbnail: async (projectId, data) => {
-      const r = await bridge.call('library:setThumbnail', { projectId, data });
-      await get().loadLibrary();
-      return failure(r);
-    },
-
-    createFolder: async (name) => {
-      const r = await bridge.call('library:createFolder', { name });
-      await get().loadLibrary();
-      return failure(r);
-    },
-
-    renameFolder: async (folderId, name) => {
-      const r = await bridge.call('library:renameFolder', { folderId, name });
-      await get().loadLibrary();
-      return failure(r);
-    },
-
-    deleteFolder: async (folderId) => {
-      const r = await bridge.call('library:deleteFolder', { folderId });
-      await get().loadLibrary();
-      return failure(r);
-    },
-
-    moveToFolder: async (entry, folderId) => {
-      const r = await bridge.call('library:move', { projectId: entry.id, folderId });
-      await get().loadLibrary();
-      return failure(r);
-    },
-
-    chooseDataRoot: async () => {
-      const pick = await bridge.call('dialog:openFolder', { title: 'Choose the data folder' });
-      if (!pick.ok) {
-        set({ settingsError: pick.error });
-        return;
-      }
-      if (!pick.value.path) return;
-      const err = await get().updateSettings({ dataRoot: pick.value.path });
-      if (!err) await get().loadLibrary();
-    },
-
-    setPalette: (paletteOpen) => {
-      set({ paletteOpen });
-    },
-    setStageMode: (stageMode) => {
-      set({ stageMode, stageAuto: false });
-    },
-    toggleRight: () => {
-      get().setRight(!get().rightCollapsed);
-    },
-    setRight: (rightCollapsed) => {
-      if (get().rightCollapsed === rightCollapsed) return;
-      set({ rightCollapsed });
-      // the two panels are stored as one value: write both, so neither forgets the other
-      writePanelPrefs(storage, { rightCollapsed, agentDockCollapsed: get().agentDockCollapsed });
-    },
-    toggleAgentDock: () => {
-      get().setAgentDock(!get().agentDockCollapsed);
-    },
-    setAgentDock: (agentDockCollapsed) => {
-      if (get().agentDockCollapsed === agentDockCollapsed) return;
-      set({ agentDockCollapsed });
-      writePanelPrefs(storage, { rightCollapsed: get().rightCollapsed, agentDockCollapsed });
-    },
-    setVideoDocked: (videoDocked) => {
-      set({ videoDocked });
-    },
-    setVideoHidden: (videoHidden) => {
-      set({ videoHidden });
-    },
-    setLabelMode: (labelMode) => {
-      set({ labelMode });
-    },
-    setAnnotating: (annotating) => {
-      // A package is never annotated.
-      set({ annotating: annotating && get().pkg === null });
-    },
-    saveView: (projectId, view) => {
-      set({ views: { ...get().views, [projectId]: view } });
-    },
-    setCloudPanel: (cloudPanelOpen) => {
-      set({ cloudPanelOpen });
-    },
-    openCloudPanel: () => {
-      const { stageMode } = get();
-      set({
-        screen: 'scene',
-        stageMode: stageMode === 'map' ? '3d' : stageMode,
-        cloudPanelOpen: true,
-      });
-    },
-    dismissOpenError: () => {
-      set({ openError: null });
-    },
-  }));
+      setPalette: (paletteOpen) => {
+        set({ paletteOpen });
+      },
+      setStageMode: (stageMode) => {
+        set({ stageMode, stageAuto: false });
+      },
+      toggleRight: () => {
+        get().setRight(!get().rightCollapsed);
+      },
+      setRight: (rightCollapsed) => {
+        if (get().rightCollapsed === rightCollapsed) return;
+        set({ rightCollapsed });
+        // the two panels are stored as one value: write both, so neither forgets the other
+        writePanelPrefs(storage, { rightCollapsed, agentDockCollapsed: get().agentDockCollapsed });
+      },
+      toggleAgentDock: () => {
+        get().setAgentDock(!get().agentDockCollapsed);
+      },
+      setAgentDock: (agentDockCollapsed) => {
+        if (get().agentDockCollapsed === agentDockCollapsed) return;
+        set({ agentDockCollapsed });
+        writePanelPrefs(storage, { rightCollapsed: get().rightCollapsed, agentDockCollapsed });
+      },
+      setVideoDocked: (videoDocked) => {
+        set({ videoDocked });
+      },
+      setVideoHidden: (videoHidden) => {
+        set({ videoHidden });
+      },
+      setLabelMode: (labelMode) => {
+        set({ labelMode });
+      },
+      setAnnotating: (annotating) => {
+        // A package is never annotated.
+        set({ annotating: annotating && get().pkg === null });
+      },
+      saveView: (projectId, view) => {
+        set({ views: { ...get().views, [projectId]: view } });
+      },
+      setLastView: (projectId, data) => {
+        set({ lastViews: { ...get().lastViews, [projectId]: data } });
+      },
+      setCloudPanel: (cloudPanelOpen) => {
+        set({ cloudPanelOpen });
+      },
+      openCloudPanel: () => {
+        const { stageMode } = get();
+        set({
+          screen: 'scene',
+          stageMode: stageMode === 'map' ? '3d' : stageMode,
+          cloudPanelOpen: true,
+        });
+      },
+      dismissOpenError: () => {
+        set({ openError: null });
+      },
+    };
+  });
 }
 
 let shellStore: StoreApi<Shell> | null = null;
+let leaveViewHook: ((projectId: string) => void) | null = null;
+
+/**
+ * What the app shell does as the scene of a project is left (library/lastView.ts takes a picture
+ * of the 3D view). Set at start-up, so this module does not load the 3D export code.
+ */
+export function onLeaveView(hook: ((projectId: string) => void) | null): void {
+  leaveViewHook = hook;
+}
 
 /** The app-wide shell store, bound to window.aio and the app workspace. */
 export function getShell(workspace: StoreApi<Workspace>): StoreApi<Shell> {
@@ -571,6 +616,9 @@ export function getShell(workspace: StoreApi<Workspace>): StoreApi<Shell> {
     onReadOnly: (on) => {
       setAnnotateReadOnly(on);
       volumetric.getState().setReadOnly(on);
+    },
+    onLeaveView: (id) => {
+      leaveViewHook?.(id);
     },
   });
   return shellStore;

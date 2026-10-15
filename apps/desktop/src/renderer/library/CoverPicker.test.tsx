@@ -40,6 +40,27 @@ const render = (p: Partial<CoverPickerProps> = {}) => {
 };
 const q = (id: string) => host.querySelector<HTMLElement>(`[data-testid="${id}"]`);
 
+/** jsdom has no object URLs: give URL the two calls for this test only. */
+function stubObjectUrls(make: () => string) {
+  const revoked = vi.fn();
+  const saved = {
+    create: Object.getOwnPropertyDescriptor(URL, 'createObjectURL'),
+    revoke: Object.getOwnPropertyDescriptor(URL, 'revokeObjectURL'),
+  };
+  Object.defineProperty(URL, 'createObjectURL', { configurable: true, value: vi.fn(make) });
+  Object.defineProperty(URL, 'revokeObjectURL', { configurable: true, value: revoked });
+  onTestFinished(() => {
+    for (const [name, d] of [
+      ['createObjectURL', saved.create],
+      ['revokeObjectURL', saved.revoke],
+    ] as const) {
+      if (d) Object.defineProperty(URL, name, d);
+      else Reflect.deleteProperty(URL, name);
+    }
+  });
+  return revoked;
+}
+
 describe('CoverPicker', () => {
   it('marks the chosen built-in cover and reports a new pick', () => {
     render({ value: { kind: 'builtin', id: 'grid' } });
@@ -51,12 +72,33 @@ describe('CoverPicker', () => {
     expect(onChange).toHaveBeenCalledWith({ kind: 'builtin', id: 'dots' });
   });
 
-  it('greys Use current view and says why while no 3D view is open', () => {
-    render({ currentView: true });
-    const view = q('cover-current-view') as HTMLButtonElement;
+  it('greys Use the last 3D view and says why while there is no picture of it', () => {
+    render();
+    const view = q('cover-last-view') as HTMLButtonElement;
     expect(view.disabled).toBe(true);
+    expect(view.textContent).toContain('Use the last 3D view');
+    expect(view.querySelector('img')).toBeNull();
     const why = document.getElementById(view.getAttribute('aria-describedby') ?? '');
-    expect(why?.textContent).toBe('Open the 3D view first');
+    expect(why?.textContent).toBe('Open this project in the 3D view first');
+  });
+
+  it('offers the last 3D view with a small preview and picks it as an image', () => {
+    let n = 0;
+    const revoked = stubObjectUrls(() => `blob:view-${String(++n)}`);
+    const shot = new Uint8Array([0xff, 0xd8, 0xff, 7]);
+    render({ lastView: shot });
+    const view = q('cover-last-view') as HTMLButtonElement;
+    expect(view.disabled).toBe(false);
+    expect(view.getAttribute('aria-describedby')).toBeNull();
+    expect(view.querySelector('img')?.getAttribute('src')).toBe('blob:view-1');
+    act(() => {
+      view.click();
+    });
+    expect(onChange).toHaveBeenCalledWith({ kind: 'image', data: shot, url: 'blob:view-2' });
+    act(() => root?.unmount());
+    root = undefined;
+    expect(revoked).toHaveBeenCalledWith('blob:view-1');
+    expect(revoked).toHaveBeenCalledWith('blob:view-2');
   });
 
   it('offers No cover and the project picture only when allowed', () => {
@@ -72,24 +114,7 @@ describe('CoverPicker', () => {
   });
 
   it('frees the object URL of an uploaded image when it goes away', async () => {
-    const created = vi.fn(() => 'blob:cover-1');
-    const revoked = vi.fn();
-    // jsdom has no object URLs; give URL the two calls for this test only
-    const saved = {
-      create: Object.getOwnPropertyDescriptor(URL, 'createObjectURL'),
-      revoke: Object.getOwnPropertyDescriptor(URL, 'revokeObjectURL'),
-    };
-    Object.defineProperty(URL, 'createObjectURL', { configurable: true, value: created });
-    Object.defineProperty(URL, 'revokeObjectURL', { configurable: true, value: revoked });
-    onTestFinished(() => {
-      for (const [name, d] of [
-        ['createObjectURL', saved.create],
-        ['revokeObjectURL', saved.revoke],
-      ] as const) {
-        if (d) Object.defineProperty(URL, name, d);
-        else Reflect.deleteProperty(URL, name);
-      }
-    });
+    const revoked = stubObjectUrls(() => 'blob:cover-1');
     // a stand-in decoder and canvas: the bytes are not looked at here
     vi.stubGlobal(
       'createImageBitmap',

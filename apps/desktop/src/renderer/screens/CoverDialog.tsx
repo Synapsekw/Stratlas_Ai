@@ -2,12 +2,14 @@ import { Icon, useFocusTrap, useT } from '@aio/ui';
 import { useMemo, useRef, useState } from 'react';
 import { coverBytes, coverPalette, type CoverChoice } from '../library/cover';
 import { CoverPicker } from '../library/CoverPicker';
-import { shell } from '../shell';
+import { shell, useShell } from '../shell';
 import type { EntryDialogProps } from './projectMenuModel';
 
-/** Change thumbnail: pick a built-in cover, an image or the current view for a library card. */
-export function CoverDialog({ entry, current, onClose, returnTo }: EntryDialogProps) {
+/** Change thumbnail: a built-in cover, an image or the last 3D view of the project for its card. */
+export function CoverDialog({ entry, onClose, returnTo }: EntryDialogProps) {
   const t = useT();
+  // taken as the project's scene was last left (library/lastView.ts)
+  const lastView = useShell((s) => s.lastViews[entry.id]);
   const dlg = useRef<HTMLDivElement>(null);
   const palette = useMemo(
     () => coverPalette(entry.purpose, entry.kind),
@@ -73,7 +75,7 @@ export function CoverDialog({ entry, current, onClose, returnTo }: EntryDialogPr
               setChoice(c);
             }}
             allowReset={entry.customCover === true}
-            currentView={current}
+            lastView={lastView ?? null}
           />
           {error && (
             <p className="notice danger" role="alert" style={{ margin: 0 }}>

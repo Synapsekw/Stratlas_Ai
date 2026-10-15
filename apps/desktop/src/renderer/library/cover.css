@@ -112,6 +112,13 @@
   background: var(--acc-a12);
   color: var(--fg-0);
 }
+.cover-last-thumb {
+  width: 28px;
+  aspect-ratio: 16 / 9;
+  object-fit: cover;
+  border-radius: 2px;
+  margin-left: -2px;
+}
 .cover-why {
   margin: 0;
   color: var(--fg-3);

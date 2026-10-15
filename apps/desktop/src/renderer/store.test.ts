@@ -605,6 +605,73 @@ describe('shell store', () => {
     expect(s.getState().screen).toBe('projects');
   });
 
+  it('keeps a picture of the last 3D view per project, in memory', () => {
+    const { bridge } = fakeBridge({});
+    const s = createShellStore(bridge, createWorkspace());
+    expect(s.getState().lastViews).toEqual({});
+    const a = new Uint8Array([0xff, 0xd8, 0xff, 1]);
+    const b = new Uint8Array([0xff, 0xd8, 0xff, 2]);
+    s.getState().setLastView('hcl', a);
+    s.getState().setLastView('alzour', a);
+    s.getState().setLastView('hcl', b);
+    expect(s.getState().lastViews).toEqual({ hcl: b, alzour: a });
+  });
+
+  it('asks for a picture of the 3D view whenever the scene of an open project is left', async () => {
+    const other = { ...manifest, id: 'alzour', name: 'Alzour' };
+    const { bridge } = fakeBridge({
+      'project:open': (req) =>
+        (req as { path: string }).path === 'E:/alzour'
+          ? { ok: true, id: 'alzour', root: 'E:/alzour', manifest: other, issues: [] }
+          : { ok: true, id: 'hcl', root: entry.path, manifest, issues: [] },
+    });
+    const left: string[] = [];
+    const s = createShellStore(bridge, createWorkspace(), {
+      storage: null,
+      onLeaveView: (id) => {
+        left.push(id);
+      },
+    });
+    // no project open: nothing to take
+    s.getState().go('scene');
+    s.getState().go('projects');
+    expect(left).toEqual([]);
+    await s.getState().openProject(entry.path);
+    expect(s.getState().screen).toBe('scene');
+    expect(left).toEqual([]);
+    s.getState().go('scene'); // staying is not leaving
+    s.getState().go('projects');
+    expect(left).toEqual(['hcl']);
+    s.getState().go('issues'); // not from the scene
+    expect(left).toEqual(['hcl']);
+    s.getState().go('scene');
+    s.getState().openSettings();
+    s.getState().go('scene');
+    s.getState().openSettingsPage('maps');
+    expect(left).toEqual(['hcl', 'hcl', 'hcl']);
+    // another project opened from the scene: the one on screen until now
+    s.getState().go('scene');
+    await s.getState().openProject('E:/alzour');
+    expect(left).toEqual(['hcl', 'hcl', 'hcl', 'hcl']);
+    s.getState().closeProject();
+    expect(left).toEqual(['hcl', 'hcl', 'hcl', 'hcl', 'alzour']);
+  });
+
+  it('leaves the scene even when taking the picture throws', async () => {
+    const { bridge } = fakeBridge({
+      'project:open': () => ({ ok: true, id: 'hcl', root: entry.path, manifest, issues: [] }),
+    });
+    const s = createShellStore(bridge, createWorkspace(), {
+      storage: null,
+      onLeaveView: () => {
+        throw new Error('lost context');
+      },
+    });
+    await s.getState().openProject(entry.path);
+    s.getState().go('projects');
+    expect(s.getState().screen).toBe('projects');
+  });
+
   it('keeps the last 3D view per project and starts with key labels and no annotation tools', () => {
     const { bridge } = fakeBridge({});
     const s = createShellStore(bridge, createWorkspace());

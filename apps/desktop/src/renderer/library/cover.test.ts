@@ -1,12 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import {
-  BUILTIN_COVERS,
-  canUseCurrentView,
-  coverBytes,
-  coverPalette,
-  currentViewJpeg,
-  fitCover,
-} from './cover';
+import { BUILTIN_COVERS, coverBytes, coverPalette, fitCover } from './cover';
 
 const pal = coverPalette('survey');
 
@@ -48,10 +41,5 @@ describe('cover', () => {
     expect(await coverBytes({ kind: 'reset' }, pal)).toBeNull();
     const data = new Uint8Array([0xff, 0xd8, 0xff, 0xe0]);
     expect(await coverBytes({ kind: 'image', data, url: 'blob:x' }, pal)).toBe(data);
-  });
-
-  it('says no current view while no stage is active', async () => {
-    expect(canUseCurrentView()).toBe(false);
-    expect(await currentViewJpeg()).toBeNull();
   });
 });

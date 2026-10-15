@@ -66,7 +66,23 @@ describe('CoverDialog', () => {
       'Change thumbnail',
     );
     expect(q('cover-reset')).toBeNull();
-    expect((q('cover-current-view') as HTMLButtonElement).disabled).toBe(true);
+    expect((q('cover-last-view') as HTMLButtonElement).disabled).toBe(true);
+  });
+
+  it('offers the last 3D view taken of this project only', () => {
+    Object.defineProperty(URL, 'createObjectURL', { configurable: true, value: () => 'blob:v' });
+    Object.defineProperty(URL, 'revokeObjectURL', { configurable: true, value: () => undefined });
+    shell.setState({ lastViews: { 'south-yard': new Uint8Array([0xff, 0xd8, 0xff]) } });
+    render();
+    expect((q('cover-last-view') as HTMLButtonElement).disabled).toBe(true);
+    act(() => root?.unmount());
+    shell.setState({ lastViews: { 'north-yard': new Uint8Array([0xff, 0xd8, 0xff]) } });
+    render();
+    expect((q('cover-last-view') as HTMLButtonElement).disabled).toBe(false);
+    act(() => root?.unmount());
+    root = undefined;
+    Reflect.deleteProperty(URL, 'createObjectURL');
+    Reflect.deleteProperty(URL, 'revokeObjectURL');
   });
 
   it('saves the project picture back as null and closes', async () => {

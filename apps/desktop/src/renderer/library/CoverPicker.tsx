@@ -2,8 +2,6 @@ import { Icon, useT } from '@aio/ui';
 import { useEffect, useId, useRef, useState } from 'react';
 import {
   BUILTIN_COVERS,
-  canUseCurrentView,
-  currentViewJpeg,
   drawBuiltinCover,
   imageToCoverJpeg,
   type BuiltinCoverId,
@@ -43,8 +41,24 @@ export interface CoverPickerProps {
   allowNone?: boolean;
   /** The dialog, when a cover of this computer is set: offer the project's own picture. */
   allowReset?: boolean;
-  /** Offer "Use current view" (the project is the one open). */
-  currentView?: boolean;
+  /** A picture of this project's 3D view taken as its scene was last left, if there is one. */
+  lastView?: Uint8Array<ArrayBuffer> | null;
+}
+
+/** A small picture of the last 3D view, with an object URL of its own while it shows. */
+function LastViewThumb({ data }: { data: Uint8Array<ArrayBuffer> }) {
+  const img = useRef<HTMLImageElement>(null);
+  useEffect(() => {
+    const el = img.current;
+    if (!el) return;
+    const u = URL.createObjectURL(new Blob([data], { type: 'image/jpeg' }));
+    el.src = u;
+    return () => {
+      el.removeAttribute('src');
+      URL.revokeObjectURL(u);
+    };
+  }, [data]);
+  return <img ref={img} className="cover-last-thumb" alt="" draggable={false} />;
 }
 
 export function CoverPicker({
@@ -53,12 +67,12 @@ export function CoverPicker({
   onChange,
   allowNone,
   allowReset,
-  currentView,
+  lastView,
 }: CoverPickerProps) {
   const t = useT();
   const file = useRef<HTMLInputElement>(null);
   const whyId = useId();
-  const [busy, setBusy] = useState<'upload' | 'view' | null>(null);
+  const [busy, setBusy] = useState(false);
   const [bad, setBad] = useState(false);
   // the object URL this picker made last: freed when replaced and when the picker goes away
   const made = useRef<string | null>(null);
@@ -69,7 +83,7 @@ export function CoverPicker({
     },
     [],
   );
-  const viewOk = currentView === true && canUseCurrentView();
+  const viewOk = lastView != null && lastView.byteLength > 0;
 
   const takeImage = (data: Uint8Array<ArrayBuffer>) => {
     const url = URL.createObjectURL(new Blob([data], { type: 'image/jpeg' }));
@@ -80,7 +94,7 @@ export function CoverPicker({
 
   const upload = (f: File | undefined) => {
     if (!f) return;
-    setBusy('upload');
+    setBusy(true);
     setBad(false);
     imageToCoverJpeg(f)
       .then(takeImage)
@@ -88,24 +102,14 @@ export function CoverPicker({
         setBad(true);
       })
       .finally(() => {
-        setBusy(null);
+        setBusy(false);
       });
   };
 
   const fromView = () => {
-    if (!viewOk || busy) return;
-    setBusy('view');
+    if (!lastView || !viewOk || busy) return;
     setBad(false);
-    currentViewJpeg()
-      .then((data) => {
-        if (data) takeImage(data);
-      })
-      .catch(() => {
-        setBad(true);
-      })
-      .finally(() => {
-        setBusy(null);
-      });
+    takeImage(lastView);
   };
 
   const pick = (c: CoverChoice) => {
@@ -156,8 +160,8 @@ export function CoverPicker({
           <button
             type="button"
             className="btn sm"
-            aria-pressed={value.kind === 'image'}
-            disabled={busy !== null}
+            aria-pressed={value.kind === 'image' && value.data !== lastView}
+            disabled={busy}
             data-testid="cover-upload-button"
             onClick={() => file.current?.click()}
           >
@@ -179,13 +183,14 @@ export function CoverPicker({
           <button
             type="button"
             className="btn sm"
-            disabled={!viewOk || busy !== null}
+            disabled={!viewOk || busy}
             aria-describedby={viewOk ? undefined : whyId}
-            data-testid="cover-current-view"
+            aria-pressed={value.kind === 'image' && value.data === lastView}
+            data-testid="cover-last-view"
             onClick={fromView}
           >
-            <Icon name="camera" size={12} />
-            {t('library.cover.view')}
+            {lastView ? <LastViewThumb data={lastView} /> : <Icon name="camera" size={12} />}
+            {t('library.cover.lastView')}
           </button>
           {allowNone && (
             <button
@@ -217,7 +222,7 @@ export function CoverPicker({
         </div>
         {!viewOk && (
           <p className="cover-why" id={whyId}>
-            {t('library.cover.view.why')}
+            {t('library.cover.lastView.why')}
           </p>
         )}
       </div>
