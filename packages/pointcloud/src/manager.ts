@@ -29,6 +29,7 @@ import {
   type PointMaterial,
 } from './material';
 import {
+  boxInFrustum,
   indexNodes,
   parentKey,
   selectNodes,
@@ -80,6 +81,14 @@ export interface ChunkState {
 }
 
 export type ChunkSeed = Omit<ChunkState, 'object' | 'busy' | 'failed'>;
+
+/** A view the octree refines for instead of the camera's (placing a finding from a photo). */
+export interface LodFocus {
+  eye: V3;
+  planes: readonly Plane4[];
+  /** Pixels per metre at distance 1 of that view (the photo's focal length in pixels). */
+  pxPerM: number;
+}
 
 /** A COPC layer's file, header and frame, for loading further hierarchy pages. */
 export interface CopcLayerInfo {
@@ -171,6 +180,10 @@ export class CloudManager {
   private readonly unsubscribers: (() => void)[] = [];
   private decoder: Decoder | null = null;
   private pxPerM = 800;
+  private focus: LodFocus | null = null;
+  private focusSeq = 0;
+  /** The `focusSeq` the last level-of-detail selection was made for. */
+  private selectedSeq = 0;
   /** Automatic elevation range; recomputed when `heightsDirty`. */
   private heights: HeightStats | null = null;
   private heightsDirty = true;
@@ -342,7 +355,11 @@ export class CloudManager {
         p.normal.z,
         p.constant,
       ]);
-      this.update([eye.x, eye.y, eye.z], effectiveBudget(s) * this.share, planes);
+      const budget = effectiveBudget(s) * this.share;
+      const f = this.focus;
+      if (f) this.update([f.eye[0], f.eye[1], f.eye[2]], budget, [...f.planes], f.pxPerM);
+      else this.update([eye.x, eye.y, eye.z], budget, planes);
+      this.selectedSeq = this.focusSeq;
     } else if (moved) {
       // come back when the interval is up, even if the camera stops now
       this.handle.requestRender();
@@ -413,6 +430,46 @@ export class CloudManager {
     return this.heightStats()?.range ?? null;
   }
 
+  /** Refine for `focus` instead of the camera until `clearFocus`. Returns its number. */
+  setFocus(focus: LodFocus): number {
+    this.focus = focus;
+    this.focusSeq++;
+    this.dirty = true;
+    this.handle.requestRender();
+    return this.focusSeq;
+  }
+
+  /** Back to the camera's view, if focus `seq` is still the one in force. */
+  clearFocus(seq: number): void {
+    if (seq !== this.focusSeq || !this.focus) return;
+    this.focus = null;
+    this.focusSeq++;
+    this.dirty = true;
+    this.handle.requestRender();
+  }
+
+  /** A selection was made for focus `seq` and everything it wanted is loaded (or failed). */
+  settled(seq: number): boolean {
+    if (this.selectedSeq < seq || this.inflight > 0 || this.ready.size > 0) return false;
+    for (const l of this.layers.values()) if (l.pagesLoading.size > 0) return false;
+    const owner = this.lod?.owner;
+    return this.wanted.every((k) => {
+      const c = owner?.get(k)?.byKey.get(k);
+      if (!c) return true;
+      return c.object !== null || c.failed;
+    });
+  }
+
+  /** Deepest octree depth loaded among the shown chunks that meet `planes`. */
+  deepestLoaded(planes: readonly Plane4[]): number {
+    let depth = 0;
+    for (const l of this.layers.values()) {
+      if (!l.visible) continue;
+      for (const c of l.loaded) if (c.lod > depth && boxInFrustum(c.bounds, planes)) depth = c.lod;
+    }
+    return depth;
+  }
+
   /** The LOD inputs for the current chunk set, rebuilt only when it changed. */
   private lodInputs(): LodCache {
     if (this.lod?.version === this.version) return this.lod;
@@ -445,7 +502,12 @@ export class CloudManager {
     return this.lod;
   }
 
-  private update(eye: [number, number, number], budget: number, frustum: Plane4[]): void {
+  private update(
+    eye: [number, number, number],
+    budget: number,
+    frustum: Plane4[],
+    pxPerM = this.pxPerM,
+  ): void {
     const { chunks, nodes, owner, index } = this.lodInputs();
     for (let i = 0; i < chunks.length; i++) {
       const c = chunks[i];
@@ -456,12 +518,7 @@ export class CloudManager {
       n.bounds = c.bounds;
       n.loaded = c.object !== null || c.busy;
     }
-    const sel = selectNodes(
-      nodes,
-      eye,
-      { budget, pxPerM: this.pxPerM, minPx: REFINE_PX, frustum },
-      index,
-    );
+    const sel = selectNodes(nodes, eye, { budget, pxPerM, minPx: REFINE_PX, frustum }, index);
     for (const key of sel.unload) {
       const c = owner.get(key)?.byKey.get(key);
       if (c && !c.busy) this.unloadChunk(c);

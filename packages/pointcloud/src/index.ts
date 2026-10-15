@@ -77,3 +77,13 @@ export {
   useElevationRange,
   type ElevationLegendProps,
 } from './ElevationLegend';
+export { cloudRayProvider, pointsInPrism } from './cloudRay';
+export {
+  pointsInPrismOf,
+  raycastPoints,
+  type Prism,
+  type RayChunk,
+  type RayPointHit,
+  type RayPointOptions,
+} from './rayMath';
+export { refineAround, type LodFocus, type RefineResult } from './refine';
