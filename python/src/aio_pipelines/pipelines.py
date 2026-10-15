@@ -26,6 +26,7 @@ from .photo.align import PhotoAlign
 from .photo.georef import PhotoGeoref
 from .photo.products import PhotoProducts
 from .pointcloud import PointcloudToCopc
+from .pointcloud_cleanup.pipeline import PointcloudClean
 from .road.pipeline import RoadBuild
 from .runtime import Pipeline
 from .selftest import SelfTest
@@ -90,5 +91,7 @@ def all_pipelines() -> dict[str, Pipeline]:
         WalkProcess(),
         # Drone panoramas (pipeline pack 0.7.0)
         PanoStitch(),
+        # Point cloud cleanup (pipeline pack POINTCLOUD_CLEAN_MIN_PACK)
+        PointcloudClean(),
     ]
     return {p.name: p for p in items}
