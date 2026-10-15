@@ -65,6 +65,66 @@ describe('finding another ODM', () => {
     ).toEqual({ dir: 'C:\\ODM', version: '3.5.6' });
   });
 
+  it('reads the folder from the entry itself when its path has no "ODM" in it', async () => {
+    // `reg query /f ODM /d` prints only the values holding "ODM": here the name, not the folder
+    const key =
+      'HKEY_LOCAL_MACHINE\\Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\{X}_is1';
+    const found = [key, '    DisplayName    REG_SZ    ODM version 3.5.6', ''].join('\r\n');
+    const full = [
+      key,
+      '    Inno Setup: App Path    REG_SZ    D:\\OpenDroneMap',
+      '    InstallLocation    REG_SZ    D:\\OpenDroneMap\\',
+      '    Inno Setup: Selected Tasks    REG_SZ    ',
+      '    DisplayName    REG_SZ    ODM version 3.5.6',
+      '    DisplayVersion    REG_SZ    3.5.6',
+      '    Publisher    REG_SZ    OpenDroneMap',
+      '',
+    ].join('\r\n');
+    const asked: string[][] = [];
+    const regQuery = (k: string, search?: string): Promise<string> => {
+      asked.push(search ? [k, search] : [k]);
+      if (k === key && !search) return Promise.resolve(full);
+      return Promise.resolve(k.startsWith('HKLM\\Software\\Microsoft') && search ? found : '');
+    };
+    const d = { regQuery, exists: () => Promise.resolve(false), env: {} };
+    expect(await findOtherOdm({ ...d, ours: null })).toEqual({
+      dir: 'D:\\OpenDroneMap',
+      version: '3.5.6',
+    });
+    expect(asked).toContainEqual([key]);
+    expect(await findOtherOdm({ ...d, ours: 'd:\\opendronemap\\' })).toBeNull();
+    // only the App Path: still found
+    const appPathOnly = full.replace(/^.*InstallLocation.*$/m, '');
+    const d2 = {
+      ...d,
+      regQuery: (k: string, search?: string) =>
+        k === key && !search ? Promise.resolve(appPathOnly) : regQuery(k, search),
+    };
+    expect(await findOtherOdm({ ...d2, ours: null })).toEqual({
+      dir: 'D:\\OpenDroneMap',
+      version: '3.5.6',
+    });
+  });
+
+  it('leaves out a program named ODM by another publisher', async () => {
+    const key = 'HKEY_CURRENT_USER\\Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\Acme';
+    const entry = [
+      key,
+      '    DisplayName    REG_SZ    ODM Office Data Manager',
+      '    InstallLocation    REG_SZ    C:\\Program Files\\Acme ODM\\',
+      '    Publisher    REG_SZ    Acme',
+      '',
+    ].join('\r\n');
+    expect(
+      await findOtherOdm({
+        regQuery: (k) => Promise.resolve(k.startsWith('HKCU') || k === key ? entry : ''),
+        exists: () => Promise.resolve(false),
+        ours: null,
+        env: {},
+      }),
+    ).toBeNull();
+  });
+
   it('ignores an entry whose folder is ours', async () => {
     expect(
       await findOtherOdm({

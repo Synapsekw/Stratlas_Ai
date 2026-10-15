@@ -131,7 +131,7 @@ export async function odmStatus(d: OdmDeps, installing: boolean): Promise<OdmSta
   const dataRoot = d.dataRoot();
   const rec = devDir ? null : await readRecord(dataRoot);
   const other = await findOtherOdm({
-    regQuery: (k) => d.system.regQuery(k),
+    regQuery: (k, s) => d.system.regQuery(k, s),
     exists: (p) => d.system.exists(p),
     ours: devDir ? [devDir] : ourDirs(rec, odmInstallDir(dataRoot, d.env, pin.version)),
     env: d.env,
@@ -247,7 +247,7 @@ export async function installOdm(
   const pin = await pinFrom(env);
   const target = odmInstallDir(dataRoot, env, pin.version);
   const other = await findOtherOdm({
-    regQuery: (k) => system.regQuery(k),
+    regQuery: (k, s) => system.regQuery(k, s),
     exists: (p) => system.exists(p),
     ours: ourDirs(old, target),
     env,

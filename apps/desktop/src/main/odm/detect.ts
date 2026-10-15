@@ -6,10 +6,15 @@ export interface UninstallEntry {
   displayName: string;
   installLocation?: string;
   displayVersion?: string;
+  publisher?: string;
+  /** Inno Setup's own record of the folder (`Inno Setup: App Path`). */
+  appPath?: string;
+  uninstallString?: string;
 }
 
-/** ODM's setup registers as `ODM version 3.6.2` (C14). */
+/** ODM's setup registers as `ODM version 3.6.2` (C14), published by OpenDroneMap. */
 export const UNINSTALL_MATCH = /^ODM\b/i;
+const PUBLISHER_MATCH = /opendronemap/i;
 
 /** Where Windows lists installed programs, per user first. */
 const UNINSTALL_KEYS = [
@@ -32,6 +37,9 @@ export function parseUninstallEntries(text: string): UninstallEntry[] {
       const e: UninstallEntry = { key, displayName };
       if (values.InstallLocation) e.installLocation = values.InstallLocation;
       if (values.DisplayVersion) e.displayVersion = values.DisplayVersion;
+      if (values.Publisher) e.publisher = values.Publisher;
+      if (values['Inno Setup: App Path']) e.appPath = values['Inno Setup: App Path'];
+      if (values.UninstallString) e.uninstallString = values.UninstallString;
       out.push(e);
     }
   };
@@ -42,7 +50,8 @@ export function parseUninstallEntries(text: string): UninstallEntry[] {
       values = {};
       continue;
     }
-    const m = /^\s+(\S+)\s+REG_\w+\s+(.*)$/.exec(line);
+    // value names may hold spaces (`Inno Setup: App Path`); the data may be empty
+    const m = /^\s+(.+?)\s+REG_[A-Z0-9_]+(?:\s+(.*))?$/.exec(line);
     if (m && key) values[m[1] ?? ''] = (m[2] ?? '').trim();
   }
   flush();
@@ -51,12 +60,24 @@ export function parseUninstallEntries(text: string): UninstallEntry[] {
 
 const norm = (p: string) => p.replace(/[\\/]+$/, '').toLowerCase();
 
+/** The folder of an uninstall entry: its InstallLocation, Inno's App Path, or the uninstaller's folder. */
+function entryDir(e: UninstallEntry): string | null {
+  const uninstaller = /^"?([^"]+\\)[^"\\]+\.exe"?/i.exec(e.uninstallString ?? '')?.[1];
+  const dir = e.installLocation ?? e.appPath ?? uninstaller; // the parser leaves empty values out
+  return dir ? dir.replace(/[\\/]+$/, '') : null;
+}
+
 /**
- * Another ODM on this computer, which ODM's setup would replace: an uninstall entry whose folder
- * is not ours (`ours`: one folder or several), else `C:\ODM\run.bat`. In end to end tests `QUADRION_ODM_OTHER` stands for one.
+ * Another ODM on this computer, which ODM's setup would replace: an uninstall entry named
+ * `ODM ...` (published by OpenDroneMap when it names a publisher) whose folder is not ours
+ * (`ours`: one folder or several), else `C:\ODM\run.bat`. The entries are found by searching the
+ * values for "ODM" (`regQuery(key, 'ODM')`, which prints only the matching values), then each one
+ * is read in full (`regQuery(entryKey)`), so a folder without "ODM" in its path is seen too; one
+ * whose folder cannot be read is named by its entry, and still asked about. In end to end tests
+ * `QUADRION_ODM_OTHER` stands for one.
  */
 export async function findOtherOdm(d: {
-  regQuery(key: string): Promise<string>;
+  regQuery(key: string, search?: string): Promise<string>;
   exists(p: string): Promise<boolean>;
   ours: string | readonly (string | null | undefined)[] | null;
   env: Record<string, string | undefined>;
@@ -69,11 +90,15 @@ export async function findOtherOdm(d: {
       .map((p) => norm(p ?? '')),
   );
   for (const key of UNINSTALL_KEYS) {
-    for (const e of parseUninstallEntries(await d.regQuery(key))) {
-      if (!UNINSTALL_MATCH.test(e.displayName) || !e.installLocation) continue;
-      const dir = e.installLocation.replace(/[\\/]+$/, '');
+    for (const found of parseUninstallEntries(await d.regQuery(key, 'ODM'))) {
+      if (!UNINSTALL_MATCH.test(found.displayName)) continue;
+      const full = parseUninstallEntries(await d.regQuery(found.key)).find(
+        (e) => e.key.toLowerCase() === found.key.toLowerCase(),
+      );
+      const e = { ...found, ...full };
+      if (e.publisher && !PUBLISHER_MATCH.test(e.publisher)) continue;
+      const dir = entryDir(e) ?? e.displayName;
       if (ours.has(norm(dir))) continue;
-      // `reg query /f ODM /d` prints only values holding "ODM": the version is in the name then
       const version = e.displayVersion ?? /\bversion\s+(\S+)/i.exec(e.displayName)?.[1];
       return version ? { dir, version } : { dir };
     }

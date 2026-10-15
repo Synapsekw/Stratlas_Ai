@@ -9,8 +9,11 @@ export interface OdmSystem {
   /** `run.bat --help` in an ODM folder: its exit code and everything it printed. */
   runSmoke(dir: string): Promise<{ code: number; out: string }>;
   runUninstaller(file: string, args: string[]): Promise<number>;
-  /** `reg query` output for one key, `''` when nothing is found. */
-  regQuery(key: string): Promise<string>;
+  /**
+   * `reg query` output, `''` when nothing is found: with `search`, every value below `key` whose
+   * data holds it (`/s /f <search> /d`); without, all values of `key` itself.
+   */
+  regQuery(key: string, search?: string): Promise<string>;
   exists(p: string): Promise<boolean>;
   rm(p: string): Promise<void>;
   rename(from: string, to: string): Promise<void>;
@@ -101,11 +104,11 @@ export function nodeOdmSystem(env: Record<string, string | undefined>): OdmSyste
           },
         );
       }),
-    regQuery: (key) =>
+    regQuery: (key, search) =>
       new Promise((ok, fail) => {
         execFile(
           'reg',
-          ['query', key, '/s', '/f', 'ODM', '/d'],
+          search ? ['query', key, '/s', '/f', search, '/d'] : ['query', key],
           { windowsHide: true, maxBuffer: 16 * 1024 * 1024 },
           (err, stdout) => {
             // exit 1: nothing found (or no such key)
