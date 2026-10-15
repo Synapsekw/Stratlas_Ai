@@ -1,10 +1,12 @@
 import { formatBytes, Icon, useFocusTrap, useT } from '@aio/ui';
 import { useRef, useState } from 'react';
 import { shell } from '../shell';
+import { deleteText } from './deleteText';
 import type { EntryDialogProps } from './projectMenuModel';
 
 export function DeleteDialog({ entry, onClose, returnTo }: EntryDialogProps) {
   const t = useT();
+  const what = deleteText(entry);
   const dlg = useRef<HTMLDivElement>(null);
   const keep = useRef<HTMLButtonElement>(null);
   const [busy, setBusy] = useState(false);
@@ -55,10 +57,10 @@ export function DeleteDialog({ entry, onClose, returnTo }: EntryDialogProps) {
         </div>
         <div className="dlg-b">
           <p id="project-delete-text" style={{ margin: 0 }}>
-            {t('library.delete.text')}
+            {t(what.text)}
           </p>
           <dl className="kv" style={{ margin: 0 }}>
-            <dt>{t('library.delete.folder')}</dt>
+            <dt>{t(what.label)}</dt>
             <dd className="mono pm-path">{entry.path}</dd>
             {entry.sizeBytes !== undefined && (
               <>
