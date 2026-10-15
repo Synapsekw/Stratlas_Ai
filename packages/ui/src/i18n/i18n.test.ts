@@ -106,6 +106,22 @@ describe('the English catalogue', () => {
     expect(en['change.surveyDateNew']).toBe('New survey date...');
   });
 
+  it('has the strings for placing findings on a model', () => {
+    expect(t('place.offer', { count: 2 })).toBe('Connect 2 findings to a model?');
+    expect(t('place.offer', { count: 1 })).toBe('Connect 1 finding to a model?');
+    expect(t('place.result', { placed: 12, count: 14, layer: 'Mesh 3 Mar' })).toBe(
+      'Placed 12 of 14 on Mesh 3 Mar.',
+    );
+    expect(t('place.missed', { count: 2 })).toBe('2 missed the model.');
+    expect(t('place.match', { code: 'AI-31', other: 'AI-12', date: '3 Mar' })).toBe(
+      'AI-31 looks like AI-12 from 3 Mar',
+    );
+    expect(t('place.menu', { count: 1 })).toBe('Place on model...');
+    expect(t('place.menu', { count: 3 })).toBe('Place 3 on model...');
+    for (const [k, v] of Object.entries(en))
+      if (k.startsWith('place.')) expect(v, k).not.toMatch(/\p{Extended_Pictographic}/u);
+  });
+
   it('finds missing keys and placeholder mismatches in a translation', () => {
     expect(placeholders('{count} of {total}')).toEqual(['count', 'total']);
     const bad: Catalogue = { 'library.count_one': '{n} مشروع', 'nope.key': 'x' };
