@@ -93,7 +93,7 @@ export function toDraftDetections(o: ConvertInput): { detections: Detection[]; s
       const cls = classes.get(a.classId);
       const sameClass = (d: Detection) =>
         d.classId === a.classId &&
-        (a.classId !== '' || d.label.toLowerCase() === a.label.toLowerCase());
+        (a.classId !== '' || (d.label ?? '').toLowerCase() === a.label.toLowerCase());
       if (here.some((d) => sameClass(d) && boundsIou(d.geom, geom) >= REPEAT_IOU)) {
         skipped++;
         continue;
