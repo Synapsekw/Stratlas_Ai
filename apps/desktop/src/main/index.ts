@@ -1790,6 +1790,13 @@ function registerIpc(): void {
     handle,
     projects: registry,
     projectPackage: (id) => registry.package(id)?.archive,
+    activeRuns: () =>
+      new Set(
+        jobStore
+          .all()
+          .filter((j) => ['starting', 'running', 'cancelling'].includes(j.status))
+          .map((j) => j.id),
+      ),
   });
   registerGeoidPacksIpc({
     handle,

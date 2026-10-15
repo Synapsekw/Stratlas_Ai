@@ -20,6 +20,7 @@ describe('point cloud cleanup IPC', () => {
   let root = '';
   let ipc: ReturnType<typeof collectHandlers>;
   const archive = new Map<string, Buffer>();
+  const active = new Set<string>();
 
   beforeEach(async () => {
     root = await mkdtemp(join(tmpdir(), 'pccleanup-'));
@@ -35,6 +36,7 @@ describe('point cloud cleanup IPC', () => {
           read: (n) => Promise.resolve(archive.get(n) ?? Buffer.alloc(0)),
         }),
         now: () => NOW,
+        activeRuns: () => active,
       });
     });
   });
@@ -162,6 +164,73 @@ describe('point cloud cleanup IPC', () => {
     expect(r).toEqual({ ok: true, trashed: [noiseCopyPath('a', 'j1')] });
     expect(existsSync(join(root, 'edits', 'pointcloud', 'a.json'))).toBe(false);
     expect(existsSync(join(root, 'edits', 'pointcloud', 'a.json.bak'))).toBe(true);
+  });
+
+  it('writes again after a reset, and after undoing it', async () => {
+    const w = (recipe: PointcloudCleanup | null) =>
+      ipc.call('pointcloud:writeCleanup', { projectId: 'p', layerId: 'a', recipe });
+    const first = { ...emptyCleanup('a'), hiddenClasses: [7] };
+    expect(await w(first)).toMatchObject({ ok: true });
+    expect(await w(null)).toMatchObject({ ok: true });
+    expect(await w({ ...first, hiddenClasses: [6] })).toMatchObject({ ok: true });
+    expect(await w(null)).toMatchObject({ ok: true });
+    expect(await w(first)).toMatchObject({ ok: true }); // undo of the reset
+    const path = join(root, 'edits', 'pointcloud', 'a.json');
+    expect(JSON.parse(await readFile(path, 'utf8'))).toEqual(first);
+  });
+
+  it('refuses a noise path that is not the copy of its run', async () => {
+    const bad = {
+      ...emptyCleanup('a'),
+      noise: { ...run('a', 'j1'), path: noiseCopyPath('b', 'j1') },
+    };
+    const r = await ipc.call('pointcloud:writeCleanup', {
+      projectId: 'p',
+      layerId: 'a',
+      recipe: bad,
+      keep: [],
+    });
+    expect(r.ok).toBe(false);
+  });
+
+  it('sweeps only on a reset or when asked, and never the files of a running job', async () => {
+    await put(noiseCopyPath('a', 'j1'), 'copc 1');
+    await put(noiseRunPath('a', 'j1'), JSON.stringify(run('a', 'j1')));
+    // an ordinary step (no keep) leaves every working copy alone
+    expect(
+      await ipc.call('pointcloud:writeCleanup', {
+        projectId: 'p',
+        layerId: 'a',
+        recipe: emptyCleanup('a'),
+      }),
+    ).toEqual({ ok: true, trashed: [] });
+    expect(existsSync(join(root, noiseCopyPath('a', 'j1')))).toBe(true);
+    // a sweep while the job of j1 runs leaves its files
+    active.add('j1');
+    expect(
+      await ipc.call('pointcloud:writeCleanup', {
+        projectId: 'p',
+        layerId: 'a',
+        recipe: null,
+      }),
+    ).toEqual({ ok: true, trashed: [] });
+    expect(existsSync(join(root, noiseCopyPath('a', 'j1')))).toBe(true);
+    active.clear();
+    const r = await ipc.call('pointcloud:writeCleanup', {
+      projectId: 'p',
+      layerId: 'a',
+      recipe: null,
+    });
+    expect(r).toEqual({ ok: true, trashed: [noiseCopyPath('a', 'j1'), noiseRunPath('a', 'j1')] });
+  });
+
+  it('reads no noise record that is not the one asked for', async () => {
+    await put(noiseRunPath('a', 'j1'), JSON.stringify(run('a', 'j2')));
+    const r = await ipc.call('pointcloud:readCleanup', {
+      projectId: 'p',
+      noiseRun: { layerId: 'a', runId: 'j1' },
+    });
+    expect(r.ok && r.noise).toBeNull();
   });
 
   it('reads the recipes of a package and calls it read-only', async () => {

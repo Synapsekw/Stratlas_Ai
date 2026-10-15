@@ -5,7 +5,8 @@
  *   warning), and the record of one noise run when asked; packages read from the archive;
  * - `pointcloud:writeCleanup`: one layer's recipe, atomic with a `.bak`, a wrapped writer of the
  *   journal service (journal.ts); null removes it (kept as `.bak`). Noise working copies of the
- *   layer that neither the recipe nor `keep` names move to the project trash.
+ *   layer that neither the recipe nor `keep` names move to the project trash, on a reset or when
+ *   the request carries `keep`, and never those of a job still running (`activeRuns`).
  * The pack gate for `pointcloud.clean` sits here too (as walks.ts and panos.ts do theirs).
  */
 import {
@@ -14,12 +15,19 @@ import {
   POINTCLOUD_CLEAN_FEATURE,
   POINTCLOUD_CLEAN_MIN_PACK,
   PointcloudCleanup,
+  noiseCopyPath,
   noiseRunPath,
   type IpcResponse,
 } from '@aio/schema';
-import { mkdir, readdir, rename, rm } from 'node:fs/promises';
+import { mkdir, readdir } from 'node:fs/promises';
 import { join } from 'node:path';
-import { isChangedOnDisk, readJsonSeen, writeJsonSeen } from './fsutil';
+import {
+  isChangedOnDisk,
+  readJsonSeen,
+  removeJsonSeen,
+  renameRetrying,
+  writeJsonSeen,
+} from './fsutil';
 import { compareVersions } from './jobs/pack';
 import type { Handle } from './notYet';
 
@@ -72,7 +80,9 @@ export async function readNoiseRun(
   if (!SAFE_ID.test(layerId)) return null;
   try {
     const r = NoiseRun.safeParse(await readJsonSeen(join(root, noiseRunPath(layerId, runId))));
-    return r.success ? r.data : null;
+    return r.success && r.data.runId === runId && r.data.path === noiseCopyPath(layerId, runId)
+      ? r.data
+      : null;
   } catch {
     return null;
   }
@@ -82,13 +92,16 @@ export async function writeCleanup(
   root: string,
   layerId: string,
   recipe: PointcloudCleanup | null,
-  keep: readonly string[],
+  keep: readonly string[] | undefined,
   now: Date = new Date(),
+  active: ReadonlySet<string> = new Set(),
 ): Promise<IpcResponse<'pointcloud:writeCleanup'>> {
   if (!SAFE_ID.test(layerId) || layerId.includes('..'))
     return { ok: false, error: `The layer id "${layerId}" cannot name a cleanup file.` };
   if (recipe && recipe.layerId !== layerId)
     return { ok: false, error: 'The cleanup belongs to another layer.' };
+  if (recipe?.noise && recipe.noise.path !== noiseCopyPath(layerId, recipe.noise.runId))
+    return { ok: false, error: 'The noise copy named by the cleanup is not the copy of its run.' };
   const dir = join(root, PCCLEANUP_DIR);
   const file = join(dir, `${layerId}.json`);
   try {
@@ -96,24 +109,23 @@ export async function writeCleanup(
     if (recipe) {
       await writeJsonSeen(file, recipe, { backup: true, name: `${PCCLEANUP_DIR}/${layerId}.json` });
     } else {
-      await rm(`${file}.bak`, { force: true });
-      try {
-        await rename(file, `${file}.bak`);
-      } catch (e) {
-        if ((e as NodeJS.ErrnoException).code !== 'ENOENT') throw e;
-      }
+      await removeJsonSeen(file, { name: `${PCCLEANUP_DIR}/${layerId}.json` });
     }
   } catch (e) {
     if (isChangedOnDisk(e)) return { ok: false, error: e.message };
     return { ok: false, error: `The cleanup was not saved: ${why(e)}` };
   }
-  // noise working copies (and their records) nobody names any more go to the project trash
-  const named = new Set([...(recipe?.noise ? [recipe.noise.path] : []), ...keep]);
+  // Noise working copies (and their records) nobody names any more go to the project trash, but
+  // only on a reset or when the request carries `keep` (the save has finished), and never a run
+  // whose job is still queued or running: its copy is not named by any recipe yet.
+  if (recipe !== null && keep === undefined) return { ok: true, trashed: [] };
+  const named = new Set([...(recipe?.noise ? [recipe.noise.path] : []), ...(keep ?? [])]);
   const prefix = `${layerId}.noise-`;
   const names = (await readdir(dir)).filter((n) => n.startsWith(prefix)).sort();
   const loose = names.filter((n) => {
     const copy = n.endsWith('.json') ? n.replace(/\.json$/, '.copc.laz') : n;
-    return !named.has(`${PCCLEANUP_DIR}/${copy}`);
+    const runId = copy.slice(prefix.length).replace(/\.copc\.laz$/, '');
+    return !named.has(`${PCCLEANUP_DIR}/${copy}`) && !active.has(runId);
   });
   const trashed: string[] = [];
   if (loose.length) {
@@ -126,7 +138,7 @@ export async function writeCleanup(
       (a, b) => Number(a.endsWith('.json')) - Number(b.endsWith('.json')) || a.localeCompare(b),
     )) {
       try {
-        await rename(join(dir, n), join(entry, PCCLEANUP_DIR, n));
+        await renameRetrying(join(dir, n), join(entry, PCCLEANUP_DIR, n));
         trashed.push(`${PCCLEANUP_DIR}/${n}`);
       } catch (e) {
         console.warn(`${PCCLEANUP_DIR}/${n} stays: ${why(e)}`);
@@ -143,6 +155,8 @@ interface Deps {
     id: string,
   ) => { entries: ReadonlyMap<string, unknown>; read(name: string): Promise<Buffer> } | undefined;
   now?: () => Date;
+  /** Ids of the jobs still starting, running or cancelling (a noise run id is its job id). */
+  activeRuns?: () => ReadonlySet<string>;
 }
 
 const NOT_OPEN = { ok: false as const, error: 'The project is not open.' };
@@ -160,7 +174,7 @@ export function registerPointcloudCleanupIpc(deps: Deps): void {
           const r = PointcloudCleanup.safeParse(
             JSON.parse((await archive?.read(name))?.toString('utf8') ?? ''),
           );
-          if (r.success) recipes.push(r.data);
+          if (r.success && `${PCCLEANUP_DIR}/${r.data.layerId}.json` === name) recipes.push(r.data);
         } catch {
           // a damaged member is skipped, as in a folder
         }
@@ -183,6 +197,13 @@ export function registerPointcloudCleanupIpc(deps: Deps): void {
       });
     const root = projects.root(projectId);
     if (root === undefined) return Promise.resolve(NOT_OPEN);
-    return writeCleanup(root, layerId, recipe, keep ?? [], deps.now?.() ?? new Date());
+    return writeCleanup(
+      root,
+      layerId,
+      recipe,
+      keep,
+      deps.now?.() ?? new Date(),
+      deps.activeRuns?.() ?? new Set(),
+    );
   });
 }

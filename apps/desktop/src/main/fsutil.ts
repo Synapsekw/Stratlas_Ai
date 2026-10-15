@@ -345,6 +345,31 @@ export async function writeJsonSeen(
   return writeInTurn(file, data, opts, () => seen.expect(file), seen);
 }
 
+/**
+ * Remove a record the person edits, kept as `<file>.bak`: in the file's turn, compared with what
+ * `seen` remembers, renamed with the Windows lock retry, then remembered as absent so the next
+ * write of the file is not taken for someone else's change. A file that is not there is fine.
+ */
+export async function removeJsonSeen(
+  file: string,
+  opts: { name?: string } = {},
+  seen: SeenFiles = seenFiles,
+): Promise<void> {
+  guardWrite(file, 'removeJsonSeen');
+  await inTurn(file, async () => {
+    await check(file, seen.expect(file), opts.name);
+    try {
+      await renameOver(file, `${file}.bak`);
+    } catch (e) {
+      if ((e as NodeJS.ErrnoException).code !== 'ENOENT') throw e;
+    }
+    seen.remember(file, null);
+  });
+}
+
+/** `rename` with the Windows lock retry of the atomic writes. */
+export const renameRetrying = renameOver;
+
 /** True for a `ChangedOnDiskError` (also across module copies, by its code). */
 export function isChangedOnDisk(e: unknown): e is ChangedOnDiskError {
   return (
