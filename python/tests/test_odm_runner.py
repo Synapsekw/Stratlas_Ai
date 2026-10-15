@@ -520,6 +520,22 @@ def test_products_resume_starts_after_the_last_finished_stage(odm, aligned, tmp_
     assert run.started_from == "odm_meshing"
 
 
+def test_resume_works_while_an_earlier_attempts_log_is_still_held(odm, aligned, tmp_path):
+    # an ODM left running by an earlier version still holds its output file (I2): the resume must
+    # read it, start after its last finished stage and write its own output elsewhere
+    logs = tmp_path / "logs"
+    logs.mkdir()
+    (logs / "tool.out").write_text("[INFO]    Running openmvs stage\n[INFO]    Finished openmvs stage\n")
+    with open(logs / "tool.out", "ab"):  # held open: Windows refuses to delete it
+        run = R.run_odm(Ctx(), odm, aligned, [], "openmvs", "odm_georeferencing", logs, rerun=True,
+                        use_gpu=False, port=_free_port())  # fmt: skip
+    assert run.started_from == "odm_filterpoints"
+    assert "Finished odm_georeferencing stage" in run.log.read_text()
+    again = R.run_odm(Ctx(), odm, aligned, [], "openmvs", "odm_georeferencing", logs, rerun=True,
+                      use_gpu=False, port=_free_port())  # fmt: skip
+    assert again.started_from == "odm_georeferencing"  # everything finished: only the last stage again
+
+
 def test_a_gpu_fallback_is_a_warning_not_a_failure(odm, aligned, tmp_path, monkeypatch):
     monkeypatch.setenv("FAKE_ODM_GPU", "features-fallback")
     ctx = Ctx()

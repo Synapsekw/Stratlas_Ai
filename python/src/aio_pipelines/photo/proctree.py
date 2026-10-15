@@ -390,6 +390,121 @@ def end_tree(proc: subprocess.Popen, passes: int = 3) -> None:
             return
 
 
+#: Start a child this way, then hand it to ``contain`` (Windows): it runs nothing before it is in its job.
+CREATE_SUSPENDED = 0x4
+
+
+def contain(proc: subprocess.Popen) -> int | None:
+    """Put a child started with ``CREATE_SUSPENDED`` into a new job object that ends the child and
+    everything it starts when the returned handle closes, which Windows also does when this process
+    ends in any way; then let the child run. None when no job could be made (the child runs
+    anyway). Close the handle with ``release``. If the child cannot be let run, it is ended and
+    ``OSError`` raised."""
+    from ctypes import wintypes
+
+    class Basic(ctypes.Structure):
+        _fields_ = [
+            ("PerProcessUserTimeLimit", ctypes.c_int64),
+            ("PerJobUserTimeLimit", ctypes.c_int64),
+            ("LimitFlags", wintypes.DWORD),
+            ("MinimumWorkingSetSize", ctypes.c_size_t),
+            ("MaximumWorkingSetSize", ctypes.c_size_t),
+            ("ActiveProcessLimit", wintypes.DWORD),
+            ("Affinity", ctypes.c_size_t),
+            ("PriorityClass", wintypes.DWORD),
+            ("SchedulingClass", wintypes.DWORD),
+        ]
+
+    class Extended(ctypes.Structure):
+        _fields_ = [
+            ("BasicLimitInformation", Basic),
+            ("IoInfo", ctypes.c_uint64 * 6),
+            ("ProcessMemoryLimit", ctypes.c_size_t),
+            ("JobMemoryLimit", ctypes.c_size_t),
+            ("PeakProcessMemoryUsed", ctypes.c_size_t),
+            ("PeakJobMemoryUsed", ctypes.c_size_t),
+        ]
+
+    k32 = ctypes.WinDLL("kernel32", use_last_error=True)
+    k32.CreateJobObjectW.restype = wintypes.HANDLE
+    k32.CreateJobObjectW.argtypes = [ctypes.c_void_p, wintypes.LPCWSTR]
+    k32.SetInformationJobObject.argtypes = [wintypes.HANDLE, ctypes.c_int, ctypes.c_void_p, wintypes.DWORD]
+    k32.AssignProcessToJobObject.argtypes = [wintypes.HANDLE, wintypes.HANDLE]
+    k32.CloseHandle.argtypes = [wintypes.HANDLE]
+    job = None
+    try:
+        job = k32.CreateJobObjectW(None, None) or None
+        if job is not None:
+            info = Extended()
+            info.BasicLimitInformation.LimitFlags = 0x2000  # JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE
+            ok = k32.SetInformationJobObject(job, 9, ctypes.byref(info), ctypes.sizeof(info))
+            if not (ok and k32.AssignProcessToJobObject(job, int(proc._handle))):  # type: ignore[attr-defined]
+                k32.CloseHandle(job)
+                job = None
+    finally:
+        if not _resume(proc.pid):
+            if job is not None:
+                k32.CloseHandle(job)
+            with contextlib.suppress(OSError):
+                proc.kill()
+            raise OSError("the program could not be started")
+    return job
+
+
+def _resume(pid: int) -> bool:
+    """Let every thread of a process started suspended run; whether one did."""
+    from ctypes import wintypes
+
+    class TE(ctypes.Structure):
+        _fields_ = [
+            ("dwSize", wintypes.DWORD),
+            ("cntUsage", wintypes.DWORD),
+            ("th32ThreadID", wintypes.DWORD),
+            ("th32OwnerProcessID", wintypes.DWORD),
+            ("tpBasePri", ctypes.c_long),
+            ("tpDeltaPri", ctypes.c_long),
+            ("dwFlags", wintypes.DWORD),
+        ]
+
+    k32 = ctypes.WinDLL("kernel32", use_last_error=True)
+    k32.CreateToolhelp32Snapshot.restype = wintypes.HANDLE
+    k32.Thread32First.argtypes = k32.Thread32Next.argtypes = [wintypes.HANDLE, ctypes.POINTER(TE)]
+    k32.OpenThread.restype = wintypes.HANDLE
+    k32.OpenThread.argtypes = [wintypes.DWORD, wintypes.BOOL, wintypes.DWORD]
+    k32.ResumeThread.restype = wintypes.DWORD
+    k32.ResumeThread.argtypes = [wintypes.HANDLE]
+    k32.CloseHandle.argtypes = [wintypes.HANDLE]
+    snap = k32.CreateToolhelp32Snapshot(0x4, 0)  # TH32CS_SNAPTHREAD
+    if snap in (None, wintypes.HANDLE(-1).value):
+        return False
+    resumed = False
+    try:
+        te = TE()
+        te.dwSize = ctypes.sizeof(TE)
+        ok = k32.Thread32First(snap, ctypes.byref(te))
+        while ok:
+            if te.th32OwnerProcessID == pid:
+                h = k32.OpenThread(0x2, False, te.th32ThreadID)  # THREAD_SUSPEND_RESUME
+                if h:
+                    resumed = k32.ResumeThread(h) != 0xFFFFFFFF or resumed
+                    k32.CloseHandle(h)
+            ok = k32.Thread32Next(snap, ctypes.byref(te))
+    finally:
+        k32.CloseHandle(snap)
+    return resumed
+
+
+def release(job: int | None) -> None:
+    """Close a job of ``contain``: whatever of the tool's tree still runs is ended."""
+    if job is None:
+        return
+    from ctypes import wintypes
+
+    k32 = ctypes.WinDLL("kernel32", use_last_error=True)
+    k32.CloseHandle.argtypes = [wintypes.HANDLE]
+    k32.CloseHandle(job)
+
+
 def process_tree(pid: int) -> list[int]:
     """A process and all its descendants (a Windows venv ``python.exe`` is a launcher whose child
     does the work). On Windows a parent PID alone does not make a child (``descendants``); other

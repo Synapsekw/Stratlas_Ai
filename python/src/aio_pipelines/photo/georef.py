@@ -21,6 +21,7 @@ identical with and without them (tested).
 
 from __future__ import annotations
 
+import contextlib
 import hashlib
 import json
 import shutil
@@ -179,13 +180,15 @@ class PhotoGeoref:
         # C12: a first attempt removes the alignment so ODM runs it again; a resumed one keeps it,
         # unless the control it would use changed since (the stamp of the gcp_list.txt it was given)
         stamp, digest = log_dir / "gcp_list.sha1", _sha1(gcp_list.path)
-        resumed = (log_dir / "odm.log").exists() or (log_dir / "tool.out").exists()
+        attempts = sorted(log_dir.glob("tool*.out")) if log_dir.is_dir() else []  # run_odm's own output files
+        resumed = (log_dir / "odm.log").exists() or bool(attempts)
         same = resumed and stamp.is_file() and stamp.read_text("utf-8").strip() == digest
         if strategy == "invalidate" and not same:
             OP.invalidate(odm_dir, OP.GEOREF_INVALIDATE)
             if resumed:  # ODM's earlier stages would count as done for this attempt
-                (log_dir / "odm.log").unlink(missing_ok=True)
-                (log_dir / "tool.out").unlink(missing_ok=True)
+                for path in (log_dir / "odm.log", *attempts):
+                    with contextlib.suppress(OSError):
+                        path.unlink()
         log_dir.mkdir(parents=True, exist_ok=True)
         stamp.write_text(digest, "utf-8")
         flags = OF.georef_flags(

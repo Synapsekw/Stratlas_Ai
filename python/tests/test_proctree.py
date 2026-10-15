@@ -251,6 +251,58 @@ def test_a_pid_given_to_another_process_since_the_walk_is_not_ended():
         child.wait()
 
 
+RUNTIME = """
+import sys, threading
+from pathlib import Path
+from aio_pipelines.photo import native
+
+class Ctx:
+    cancel_event = threading.Event()
+    def progress(self, f, m=None):
+        pass
+
+TOOL = '''
+import os, subprocess, sys, time
+from pathlib import Path
+child = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(120)"])
+Path(sys.argv[1]).write_text(f"{os.getpid()} {child.pid}")
+time.sleep(120)
+'''
+Path(sys.argv[1], "runtime.pid").write_text(str(__import__("os").getpid()))
+native.run_tool(Ctx(), [sys.executable, "-c", TOOL, str(Path(sys.argv[1], "tool.pids"))], "Tool",
+                Path(sys.argv[1], "work"), expected_s=3600)
+"""
+
+
+@pytest.mark.skipif(os.name != "nt", reason="Windows job objects")
+def test_a_tools_whole_tree_ends_when_the_runtime_dies(tmp_path):
+    # the app quits mid-run: it ends the Python runtime only, and nothing ODM started may live on (I2)
+    (tmp_path / "runtime.py").write_text(RUNTIME, "utf-8")
+    env = {**os.environ, "PYTHONPATH": os.pathsep.join(sys.path)}
+    runtime = subprocess.Popen(
+        [sys.executable, str(tmp_path / "runtime.py"), str(tmp_path)],
+        env=env,
+        creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+    )
+    try:
+        pids = tmp_path / "tool.pids"
+        for _ in range(300):
+            if pids.exists() and len(pids.read_text().split()) == 2:
+                break
+            time.sleep(0.1)
+        listed = [(p, process_started(p)) for p in map(int, pids.read_text().split())]
+        assert all(t is not None for _, t in listed)
+        # the interpreter itself (sys.executable may be a launcher that started it)
+        me = int((tmp_path / "runtime.pid").read_text())
+        assert end_process(me, process_started(me)) == "ended"
+        assert _gone(listed), "the tool's processes outlived the runtime"
+    finally:
+        kill(runtime)
+        for p, t in locals().get("listed", []):
+            if t is not None:
+                end_process(p, t)
+
+
 def test_the_cpu_time_of_a_tree_counts_a_busy_child_and_keeps_what_ended():
     from aio_pipelines.photo.proctree import TreeCpu, process_cpu_seconds, tree_programs
 

@@ -465,12 +465,36 @@ class OdmRun:
     started_from: str | None
 
 
-def _tail(log_dir: Path) -> list[str]:
+def _tail(out: Path) -> list[str]:
     text = ""
-    for name in ("tool.err", "tool.out"):
+    for path in (out.with_suffix(".err"), out):
         with contextlib.suppress(OSError):
-            text += (log_dir / name).read_text("utf-8", errors="replace") + "\n"
+            text += path.read_text("utf-8", errors="replace") + "\n"
     return [ln for ln in text.splitlines() if ln.strip()]
+
+
+ATTEMPT = re.compile(r"tool(?:-(\d+))?\.(?:out|err)")
+
+
+def _attempt_number(path: Path) -> int:
+    m = ATTEMPT.fullmatch(path.name)
+    return int(m.group(1) or 0) if m else -1
+
+
+def _next_attempt(log_dir: Path, log: Path) -> Path:
+    """Fold the output of earlier attempts (cancelled, failed, or of an ODM that outlived its app)
+    into ``log`` (their lines count for the resume), and name this attempt's output file. An
+    earlier output file still held by a running ODM cannot be deleted, so every attempt writes its
+    own: ``tool-<n>.out``."""
+    files = sorted((p for p in log_dir.glob("tool*.*") if _attempt_number(p) >= 0), key=_attempt_number)
+    for path in files:
+        if path.suffix == ".out":
+            with contextlib.suppress(OSError), open(log, "ab") as f:
+                f.write(path.read_bytes())
+        with contextlib.suppress(OSError):
+            path.unlink()
+    used = [_attempt_number(p) for p in log_dir.glob("tool*.*") if _attempt_number(p) >= 0]
+    return log_dir / f"tool-{max(used, default=0) + 1}.out"
 
 
 def run_odm(
@@ -490,11 +514,9 @@ def run_odm(
     """Run ODM over the stages ``first`` to ``last`` of ``project_dir`` (flags without
     ``--rerun-from``, ``--end-with`` and the project); the bar moves over ``progress``."""
     log_dir.mkdir(parents=True, exist_ok=True)
-    log, last_out = log_dir / "odm.log", log_dir / "tool.out"
-    if last_out.exists():  # an attempt that was cancelled or failed: its lines count for the resume
-        with open(log, "ab") as f:
-            f.write(last_out.read_bytes())
-        last_out.unlink()
+    log = log_dir / "odm.log"
+    last_out = _next_attempt(log_dir, log)
+    last_err = last_out.with_suffix(".err")
     earlier = log.read_text("utf-8", errors="replace") if log.exists() else ""
     dtm = "--dtm" in flags
     start = resume_from(earlier, first, last) if rerun else None
@@ -542,24 +564,25 @@ def run_odm(
                 _Bar, odm_command(odm, project_dir, args), "ODM", log_dir, expected_s=3600.0,
                 progress=(0.0, 1.0), memory_limit=odm_memory_cap() or 0,
                 env=odm_env(os.environ, use_gpu), on_output=watch, fail=exit_error, on_poll=watchdog,
+                log_name=last_out.stem,
             )  # fmt: skip
         except JobError as e:
-            for line in _tail(log_dir)[-TAIL_LINES:]:  # the last ODM lines always go to the job log
+            for line in _tail(last_out)[-TAIL_LINES:]:  # the last ODM lines always go to the job log
                 ctx.log(f"ODM: {ANSI.sub('', line)}", "warn")
             if isinstance(e, native.ToolMemoryExceeded):
                 raise JobError(OOM) from None
             raise
     text = last_out.read_text("utf-8", errors="replace") if last_out.exists() else ""
-    err = (
-        (log_dir / "tool.err").read_text("utf-8", errors="replace") if (log_dir / "tool.err").exists() else ""
-    )
+    err = last_err.read_text("utf-8", errors="replace") if last_err.exists() else ""
     if dtm and GROUND_FAIL.search(text + err):  # ODM ended before its line was read
-        for line in _tail(log_dir)[-TAIL_LINES:]:
+        for line in _tail(last_out)[-TAIL_LINES:]:
             ctx.log(f"ODM: {ANSI.sub('', line)}", "warn")
         raise ground_failed()
     with open(log, "a", encoding="utf-8") as f:
         f.write(text)
-    last_out.unlink(missing_ok=True)
+    for path in (last_out, last_err):
+        with contextlib.suppress(OSError):
+            path.unlink()
     # ODM prints Running/Finished for the stages before --rerun-from too: only the stages that ran count
     gpu = gpu_use(text + err, use_gpu, (start or first, last), dense_capable)
     if dtm and stage_index(start or first) <= stage_index("odm_georeferencing") <= stage_index(last):

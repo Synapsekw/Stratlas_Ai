@@ -15,7 +15,9 @@ photogrammetry itself runs in OpenDroneMap (``odm/``), not through these tools.
 ``run_tool`` runs one cancellably: output to files (a full pipe would block the child), stdin
 closed, no console window, and on cancel the whole process tree is killed (on Windows
 ``proctree.end_tree``: the tool's own descendants and nothing else), so no orphan keeps running
-after the job stops. ``on_output`` reads the tool's own progress: each new line it prints (stdout
+after the job stops. On Windows the tool also starts inside a job object that ends its whole tree
+when the job's only handle closes: when the tool is done, and when this runtime ends in any way
+(the app quits mid-run and ends the runtime only; Windows does not end a process's children). ``on_output`` reads the tool's own progress: each new line it prints (stdout
 or stderr) goes to the hook, and a fraction the hook returns moves the bar instead of the time
 ramp.
 
@@ -113,6 +115,7 @@ def run_tool(
     on_output: Callable[[str], float | None] | None = None,
     fail: Callable[[int, list[str]], JobError] | None = None,
     on_poll: Callable[[subprocess.Popen], object] | None = None,
+    log_name: str = "tool",
 ) -> str:
     """Run a native tool; return its stdout, or raise with the last line it printed. A ``str`` is
     one command line, passed on as is (Windows: how ``run.bat`` starts). With ``fail`` a non-zero
@@ -121,10 +124,12 @@ def run_tool(
     (``ToolMemoryExceeded``), so a tool never pushes the computer into swapping. With
     ``on_output`` the tool's own progress lines move the bar (see the module docstring).
     ``on_poll`` gets the running process every tenth of a second (a watchdog: raising ends the
-    tool's tree)."""
+    tool's tree). Its output goes to ``<work>/<log_name>.out`` and ``.err``."""
     work.mkdir(parents=True, exist_ok=True)
-    out_path, err_path = work / "tool.out", work / "tool.err"
-    kw: dict = {"creationflags": getattr(subprocess, "CREATE_NO_WINDOW", 0)}
+    out_path, err_path = work / f"{log_name}.out", work / f"{log_name}.err"
+    from . import proctree
+
+    kw: dict = {"creationflags": getattr(subprocess, "CREATE_NO_WINDOW", 0) | proctree.CREATE_SUSPENDED}
     if os.name != "nt":
         kw = {"start_new_session": True}
     if env is not None:
@@ -142,48 +147,17 @@ def run_tool(
             first = args.split('"')[1] if isinstance(args, str) and args.startswith('"') else args
             first = first if isinstance(first, str) else first[0]
             raise JobError(f"{what}: the tool {Path(first).name} could not start ({e}).") from e
-        t0 = time.monotonic()
-        lo, hi = progress
-        last_mem = last_read = 0.0
-        tails = [_Tail(out_path), _Tail(err_path)] if on_output is not None else []
-        told: float | None = None
-        shown = 0.0  # the bar never steps back (the ramp may pass the tool's first fraction)
         try:
-            while proc.poll() is None:
-                if ctx.cancel_event.is_set():
-                    _kill_tree(proc)
-                    raise Cancelled()
-                if memory_limit and time.monotonic() - last_mem >= 0.5:
-                    from .proctree import tree_memory
-
-                    last_mem = time.monotonic()
-                    used = tree_memory(proc.pid)
-                    if used > memory_limit:
-                        _kill_tree(proc)
-                        raise ToolMemoryExceeded(
-                            f"{what} stopped: it needed more than {memory_limit / 1e9:.1f} GB of memory."
-                        )
-                if tails and on_output is not None and time.monotonic() - last_read >= 0.2:
-                    last_read = time.monotonic()
-                    for tail in tails:
-                        for line in tail.lines():
-                            f = on_output(line)
-                            if f is not None:
-                                told = max(told or 0.0, min(1.0, f))
-                if on_poll is not None:
-                    on_poll(proc)
-                if told is not None:
-                    frac = told
-                else:
-                    frac = min(1.0, (time.monotonic() - t0) / max(1.0, expected_s)) * 0.95
-                shown = max(shown, frac)
-                ctx.progress(lo + (hi - lo) * shown, what)
-                time.sleep(0.1)
-        except BaseException:
-            # A hook, the progress callback or the memory probe raised: never leave the tool running.
-            if proc.poll() is None:
-                _kill_tree(proc)
-            raise
+            # started suspended: in its job before it can start anything (the job ends the tree with us)
+            job = proctree.contain(proc) if os.name == "nt" else None
+        except OSError as e:
+            raise JobError(f"{what}: {e}.") from e
+        try:
+            _watch(
+                ctx, proc, what, (out_path, err_path), expected_s, progress, memory_limit, on_output, on_poll
+            )
+        finally:
+            proctree.release(job)  # ends whatever of the tool's tree is still running
     out = out_path.read_text("utf-8", errors="replace")
     if proc.returncode != 0:
         err = err_path.read_text("utf-8", errors="replace")
@@ -193,6 +167,62 @@ def run_tool(
         lines = (err or out or "").strip().splitlines()
         raise JobError(f"{what} failed: {lines[-1] if lines else f'exit {proc.returncode}'}")
     return out
+
+
+def _watch(
+    ctx: StepContext,
+    proc: subprocess.Popen,
+    what: str,
+    logs: tuple[Path, Path],
+    expected_s: float,
+    progress: tuple[float, float],
+    memory_limit: int,
+    on_output: Callable[[str], float | None] | None,
+    on_poll: Callable[[subprocess.Popen], object] | None,
+) -> None:
+    """``run_tool``'s loop until the tool ends: cancel, memory, output lines, the watchdog, the bar."""
+    t0 = time.monotonic()
+    lo, hi = progress
+    last_mem = last_read = 0.0
+    tails = [_Tail(p) for p in logs] if on_output is not None else []
+    told: float | None = None
+    shown = 0.0  # the bar never steps back (the ramp may pass the tool's first fraction)
+    try:
+        while proc.poll() is None:
+            if ctx.cancel_event.is_set():
+                _kill_tree(proc)
+                raise Cancelled()
+            if memory_limit and time.monotonic() - last_mem >= 0.5:
+                from .proctree import tree_memory
+
+                last_mem = time.monotonic()
+                used = tree_memory(proc.pid)
+                if used > memory_limit:
+                    _kill_tree(proc)
+                    raise ToolMemoryExceeded(
+                        f"{what} stopped: it needed more than {memory_limit / 1e9:.1f} GB of memory."
+                    )
+            if tails and on_output is not None and time.monotonic() - last_read >= 0.2:
+                last_read = time.monotonic()
+                for tail in tails:
+                    for line in tail.lines():
+                        f = on_output(line)
+                        if f is not None:
+                            told = max(told or 0.0, min(1.0, f))
+            if on_poll is not None:
+                on_poll(proc)
+            if told is not None:
+                frac = told
+            else:
+                frac = min(1.0, (time.monotonic() - t0) / max(1.0, expected_s)) * 0.95
+            shown = max(shown, frac)
+            ctx.progress(lo + (hi - lo) * shown, what)
+            time.sleep(0.1)
+    except BaseException:
+        # A hook, the progress callback or the memory probe raised: never leave the tool running.
+        if proc.poll() is None:
+            _kill_tree(proc)
+        raise
 
 
 # ---------------------------------------------------------------------------------- memory, disk
