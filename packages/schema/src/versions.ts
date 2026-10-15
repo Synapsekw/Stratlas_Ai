@@ -138,6 +138,14 @@ export const SCHEMA_REGISTRY: readonly SchemaEntry[] = [
     since: '0.14',
   },
   {
+    // an engineering run's AI allowance used so far (`@aio/ai` engineerSpend.ts, main process)
+    family: 'aio.engineer-spend',
+    version: 1,
+    home: 'project',
+    where: 'engineering/*/ai/spend.json',
+    since: '0.16',
+  },
+  {
     family: 'aio.drawingplacement',
     version: 1,
     home: 'project',
