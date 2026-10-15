@@ -248,6 +248,22 @@ describe('Stage', () => {
     stage.dispose();
   });
 
+  it('re-creates every layer when the same project reopens with a moved origin', async () => {
+    // a re-centre: adapters (the point cloud's) read the origin only when they create a layer
+    const { stage, store, handles } = make();
+    const first = project([meshLayer('plant')]);
+    store.getState().openProject(first);
+    await flush();
+    expect(handles).toHaveLength(1);
+    const moved = { ...first.manifest, origin: [30_000, 0, 0] as [number, number, number] };
+    store.getState().openProject({ ...first, manifest: moved });
+    await flush();
+    expect(handles).toHaveLength(2);
+    expect(handles[0]?.disposed).toBe(true);
+    expect(handles[1]?.disposed).toBe(false);
+    stage.dispose();
+  });
+
   it('frames the content on load and picks the tagged node under the cursor', async () => {
     const { stage, store, resize } = make();
     resize(800, 600);

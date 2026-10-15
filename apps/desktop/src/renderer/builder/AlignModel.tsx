@@ -66,6 +66,16 @@ export function AlignModel({ layerId }: { layerId: string }) {
   const origin = project?.manifest.origin;
   const epsg = project && 'epsg' in project.manifest.crs ? project.manifest.crs.epsg : null;
 
+  // A moved origin (a re-centre) changes the local frame: the targets of the pairs and the
+  // transform Undo would restore belong to the old one, so both go.
+  const frame = origin ? origin.join(' ') : '';
+  const [pairsFrame, setPairsFrame] = useState(frame);
+  if (pairsFrame !== frame) {
+    setPairsFrame(frame);
+    setPairs([]);
+    setPrevious(null);
+  }
+
   const fit = useMemo<{ fit: SimilarityFit | null; error: string | null }>(() => {
     if (pairs.length < 3) return { fit: null, error: null };
     try {

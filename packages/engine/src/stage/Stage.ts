@@ -110,6 +110,10 @@ const visibleChain = (o: Object3D | null): boolean => {
   return true;
 };
 
+/** Whether two project origins are the same point (all three components). */
+const sameOrigin = (a: readonly number[], b: readonly number[]): boolean =>
+  a.length === b.length && a.every((v, i) => v === b[i]);
+
 /** Bounds of visible content, leaving out terrain (a modelled sea or mainland dwarfs the asset). */
 function expandWithoutTerrain(o: Object3D, box: Box3, tmp: Box3) {
   if (!o.visible || o.userData.type === 'terrain') return;
@@ -917,9 +921,11 @@ export class Stage implements EngineStage {
       s.project &&
       this.sync &&
       this.project?.id === s.project.id &&
-      this.project.root === s.project.root
+      this.project.root === s.project.root &&
+      sameOrigin(this.project.manifest.origin, s.project.manifest.origin)
     ) {
-      // Same project, edited manifest (import, alignment): only changed layers reload.
+      // Same project, edited manifest (import, alignment): only changed layers reload. A moved
+      // origin (a re-centre) opens it afresh: adapters read the origin when they create a layer.
       this.project = s.project;
       this.sync.sync(s.project.manifest.layers, s.hidden);
     } else if (s.project !== prev.project) this.openProject(s.project);
