@@ -880,18 +880,21 @@ export function createAgentRuntime(
     if ('error' in disk) return { kind: 'refused', code: 'policy', reason: disk.error };
     let spend: RunSpend;
     try {
+      // nothing is written until a request is metered: a refused or cached one starts no clock
       spend = (await readRunSpend(dir)) ?? {
-        startedAt: clock(),
+        startedAt: 0,
         spentUsd: 0,
         calls: 0,
         tokens: 0,
         unpriced: 0,
+        aiMs: 0,
       };
     } catch {
       return { kind: 'refused', code: 'budget', reason: SPEND_UNREADABLE };
     }
-    // the run's AI time and request limits, checked before a consent token is spent
-    const left = spend.startedAt + ENGINEER_TIMEOUT_MS - clock();
+    // the run's AI time (requests in flight) and request limits, checked before a consent token
+    // is spent
+    const left = ENGINEER_TIMEOUT_MS - spend.aiMs;
     if (left <= 0) return { kind: 'refused', code: 'time', reason: TIME_USED_UP };
     const limits = runLimits(req.setup.detail);
     if (spend.calls >= limits.calls || spend.tokens >= limits.tokens) {
@@ -920,10 +923,13 @@ export function createAgentRuntime(
     const run: Run = { controller: new AbortController(), pending: new Map() };
     runs.set(req.runId, run);
     inFlight.add(runKey);
-    // the run's AI time starts with its first request, also across restarts
-    let saving = writeRunSpend(dir, spend).catch(() => undefined);
+    // the run's AI time is what its requests spend in flight, kept across restarts
+    let saving: Promise<void> = Promise.resolve();
+    const sent = { metered: false };
+    const began = clock();
+    let outcome: Awaited<ReturnType<typeof runEngineer>> | undefined;
     try {
-      return await runEngineer(c, {
+      outcome = await runEngineer(c, {
         route: () => route,
         key: (p) => host.getKey(p as AiProvider),
         offlineOnly,
@@ -931,8 +937,10 @@ export function createAgentRuntime(
         cache: fileEngineerCache(join(dir, 'ai')),
         spent: () => spend.spentUsd,
         usage: (u) => {
+          sent.metered = true;
           spend = {
             ...spend,
+            startedAt: spend.startedAt || clock(),
             spentUsd: spend.spentUsd + (u.costUsd ?? 0),
             calls: spend.calls + 1,
             tokens: spend.tokens + u.inputTokens + u.outputTokens,
@@ -966,8 +974,16 @@ export function createAgentRuntime(
         maxRetries: options.maxRetries ?? 2,
         // the run's AI time, on the wall clock the request's timer uses
         deadline: Date.now() + left,
+        callsLeft: limits.calls - spend.calls,
       });
+      return outcome;
     } finally {
+      // a request that went out (metered, or failed on the way) counts its time in flight
+      if (sent.metered || outcome === undefined || outcome.kind === 'failed') {
+        spend = { ...spend, aiMs: spend.aiMs + Math.max(0, Math.round(clock() - began)) };
+        const snapshot = spend;
+        saving = saving.then(() => writeRunSpend(dir, snapshot)).catch(() => undefined);
+      }
       await saving;
       inFlight.delete(runKey);
       runs.delete(req.runId);

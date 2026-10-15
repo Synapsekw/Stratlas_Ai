@@ -96,6 +96,8 @@ interface Opts {
   now?: () => number;
   open?: boolean;
   unreadable?: boolean;
+  /** Runs inside every model request (a test moves its clock while the request is in flight). */
+  onGenerate?: () => void;
 }
 
 function setup(o: Opts = {}) {
@@ -104,6 +106,7 @@ function setup(o: Opts = {}) {
   const scripted = createScriptedProvider(provider, true, {
     onGenerate: () => {
       requests += 1;
+      o.onGenerate?.();
     },
   });
   const model = o.model;
@@ -382,15 +385,18 @@ describe('ai:engineer', () => {
     });
   });
 
-  it('the run has 10 minutes of AI time in all, also across a restart', async () => {
+  it('the run has 10 minutes of AI time in all, counted while requests are in flight', async () => {
     let now = 1_000_000;
-    const t = setup({ flags: ALLOWED, now: () => now });
+    // every request takes 5 minutes
+    const slow = { flags: ALLOWED, now: () => now, onGenerate: () => (now += 5 * 60_000) };
+    const t = setup(slow);
     expect(await send(t.runtime, request())).toMatchObject({ kind: 'proposal' });
-    now += 9 * 60_000;
-    // a new runtime (the app restarted) keeps the run's start
-    const after = setup({ flags: ALLOWED, now: () => now });
+    expect((await readRunSpend(runDir()))?.aiMs).toBe(5 * 60_000);
+    // an hour reading the send preview does not count; a new runtime (a restart) keeps the time
+    now += 60 * 60_000;
+    const after = setup(slow);
     expect(await send(after.runtime, request({ pass: 2 }))).toMatchObject({ kind: 'proposal' });
-    now += 61_000;
+    expect((await readRunSpend(runDir()))?.aiMs).toBe(10 * 60_000);
     const p = await after.runtime.engineerPreview(preview(request({ pass: 3 })));
     if (!p.ok) throw new Error(p.error);
     const consent = { token: p.consent, photos: false, scans: false };
@@ -408,6 +414,33 @@ describe('ai:engineer', () => {
       kind: 'proposal',
     });
     expect(t.requests() + after.requests()).toBe(3);
+  });
+
+  it('a request that sends nothing does not start the run clock', async () => {
+    let now = 1_000_000;
+    const t = setup({ flags: ALLOWED, now: () => now });
+    // no send preview: refused before anything is sent
+    expect(await t.runtime.engineer(request())).toMatchObject({ kind: 'refused', code: 'policy' });
+    expect(await readRunSpend(runDir())).toBeNull();
+    now += 30 * 60_000;
+    expect(await send(t.runtime, request())).toMatchObject({ kind: 'proposal' });
+    // the clock starts with the first metered request
+    expect(await readRunSpend(runDir())).toMatchObject({ startedAt: now, calls: 1 });
+  });
+
+  it('the last request a run may make gets no repair', async () => {
+    await mkdir(join(runDir(), 'ai'), { recursive: true });
+    // standard: 4 requests in all, 3 made
+    const spend = { startedAt: Date.now(), spentUsd: 0, calls: 3, tokens: 10, unpriced: 0 };
+    await writeFile(
+      join(runDir(), 'ai', 'spend.json'),
+      JSON.stringify({ schema: SPEND_SCHEMA, ...spend }),
+    );
+    const t = setup({ flags: ALLOWED });
+    const r = await send(t.runtime, request({ summary: '{"note":"#engineer invalid"}' }));
+    expect(r).toMatchObject({ kind: 'failed', code: 'invalid' });
+    expect(t.requests()).toBe(1);
+    expect((await readRunSpend(runDir()))?.calls).toBe(4);
   });
 
   it('the spend of a run is kept in the project and survives a restart', async () => {

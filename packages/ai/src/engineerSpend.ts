@@ -1,7 +1,8 @@
 /**
  * What an engineering run has used of its AI allowance, kept in the project next to the run
  * (`engineering/<run>/ai/spend.json`) so a restart, a second window or a new runtime cannot reset
- * it: when its AI time started, what it spent, how many requests it made and their tokens. Main
+ * it: how long its requests were in flight, what it spent, how many requests it made and their
+ * tokens. Main
  * process only. Written atomically (temporary file, then rename).
  */
 import { randomUUID } from 'node:crypto';
@@ -15,8 +16,13 @@ export const SPEND_SCHEMA = 'aio.engineer-spend/1';
 const RunSpendFile = z
   .object({
     schema: z.literal(SPEND_SCHEMA),
-    /** Epoch ms of the run's first AI request: its 10 minutes of AI time count from here. */
+    /** Epoch ms of the run's first metered AI request (for the record). */
     startedAt: z.number().int().nonnegative(),
+    /**
+     * Milliseconds the run's AI requests were in flight: its 10 minutes of AI time. Not the time
+     * between requests (the person reading a send preview). Absent in older files: 0.
+     */
+    aiMs: z.number().int().nonnegative().optional(),
     /** Known cost in US dollars. */
     spentUsd: z.number().nonnegative(),
     /** Model requests made (repairs included). */
@@ -27,7 +33,7 @@ const RunSpendFile = z
     unpriced: z.number().int().nonnegative(),
   })
   .strict();
-export type RunSpend = Omit<z.infer<typeof RunSpendFile>, 'schema'>;
+export type RunSpend = Omit<z.infer<typeof RunSpendFile>, 'schema' | 'aiMs'> & { aiMs: number };
 
 /** Tokens a run may use per pass, whatever the price (also caps a model without a price). */
 export const TOKENS_PER_PASS = 250_000;
@@ -59,6 +65,7 @@ export async function readRunSpend(runDir: string): Promise<RunSpend | null> {
     calls: f.calls,
     tokens: f.tokens,
     unpriced: f.unpriced,
+    aiMs: f.aiMs ?? 0,
   };
 }
 

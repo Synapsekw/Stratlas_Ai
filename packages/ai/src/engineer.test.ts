@@ -402,6 +402,14 @@ describe('runEngineer', () => {
     expect(t.usage).toHaveLength(2);
   });
 
+  it('with one request left, an invalid reply is not repaired', async () => {
+    const bad = { ...stackProposal(), family: { value: 'windmill', reasons: [] } };
+    const t = mockHost({ replies: [wire(bad), wire(stackProposal())] });
+    const r = await runEngineer(call(), { ...t.host, callsLeft: 1 });
+    expect(r).toMatchObject({ kind: 'failed', code: 'invalid' });
+    expect(t.calls.length).toBe(1);
+  });
+
   it('a repaired reply is accepted', async () => {
     const bad = { ...stackProposal(), family: { value: 'windmill', reasons: [] } };
     const t = mockHost({ replies: [wire(bad), wire(stackProposal())] });

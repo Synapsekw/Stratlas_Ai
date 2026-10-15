@@ -135,6 +135,8 @@ export interface EngineerHost {
    * `ENGINEER_TIMEOUT_MS`, and none is sent once it has passed.
    */
   deadline?: number;
+  /** Model requests the run may still make: with only one left, an invalid reply gets no repair. */
+  callsLeft?: number;
 }
 
 export type EngineerOutcome =
@@ -816,6 +818,11 @@ export async function runEngineer(c: EngineerCall, host: EngineerHost): Promise<
       });
       if (estimate !== undefined && spent + estimate + (extra ?? 0) > capUsd) {
         throw new InvalidProposalError(`${answer.issues} (no retry: the AI cost cap was reached)`);
+      }
+      if (host.callsLeft !== undefined && host.callsLeft <= 1) {
+        throw new InvalidProposalError(
+          `${answer.issues} (no retry: the run has made all the AI requests it may)`,
+        );
       }
       answer = await ask([
         ...messages,
