@@ -2,6 +2,15 @@ import { useFocusTrap, useT } from '@aio/ui';
 import { useRef } from 'react';
 import type { BatchPlan } from './batch';
 
+/** Why a batch action or its undo was refused, shown even when no detection is current. */
+export function BatchError({ message }: { message: string }) {
+  return (
+    <p className="det-banner" role="alert" data-testid="det-batch-error">
+      {message}
+    </p>
+  );
+}
+
 /** The question before Accept all or Reject all acts on the list on screen. */
 export function BatchConfirm({
   kind,
@@ -24,6 +33,11 @@ export function BatchConfirm({
       role="alertdialog"
       aria-modal="true"
       data-testid="det-batch-confirm"
+      onKeyDown={(e) => {
+        // The review's shortcuts (Enter accepts, X rejects, ...) must not see these keys.
+        e.stopPropagation();
+        if (e.key === 'Escape') onCancel();
+      }}
     >
       <p>
         {kind === 'accept'

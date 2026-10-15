@@ -30,7 +30,7 @@ import { itemKey, type DetectItem } from '../detections/convert';
 import { ReviewEditor, type EditorShape } from '../detections/Editor';
 import { Inspector } from '../detections/Inspector';
 import { reviewCommand, typingIn } from '../detections/keys';
-import { BatchConfirm } from '../detections/BatchConfirm';
+import { BatchConfirm, BatchError } from '../detections/BatchConfirm';
 import {
   acceptAll,
   acceptCurrent,
@@ -318,7 +318,7 @@ export function DetectionsScreen() {
   };
 
   const onKeyDown = (e: KeyboardEvent<HTMLElement>) => {
-    if (aiOpen || typingIn(e.target)) return;
+    if (aiOpen || batch || typingIn(e.target)) return;
     const cmd = reviewCommand(e);
     if (!cmd) return;
     // Enter and Backspace close and edit a polygon while one is being drawn
@@ -455,7 +455,7 @@ export function DetectionsScreen() {
           type="button"
           className="btn sm"
           data-testid="det-accept-all"
-          disabled={readOnly || plan.accept === 0}
+          disabled={readOnly || batch !== null || plan.accept === 0}
           onClick={() => {
             setBatch('accept');
           }}
@@ -466,7 +466,7 @@ export function DetectionsScreen() {
           type="button"
           className="btn ghost sm"
           data-testid="det-reject-all"
-          disabled={readOnly || plan.reject === 0}
+          disabled={readOnly || batch !== null || plan.reject === 0}
           onClick={() => {
             setBatch('reject');
           }}
@@ -627,6 +627,7 @@ export function DetectionsScreen() {
           {t(ERROR_KEY[review.lastError])}
         </p>
       )}
+      {issueError && !current && <BatchError message={issueError} />}
       {maskError && (
         <p className="det-banner" role="alert">
           {maskError}
