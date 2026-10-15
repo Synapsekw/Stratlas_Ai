@@ -79,6 +79,13 @@ async function stubDialogAndBin(app: ElectronApplication, path: string): Promise
  * 1100 x 720): the page does not scroll sideways and `inside` lies wholly in the window.
  */
 async function expectFits(win: Page, ...inside: (string | Locator)[]): Promise<void> {
+  // the page as it settles: the Processing engine card above grows by about 170 px when its
+  // status comes in (slow on CI), and scrolling before that leaves what lies below it pushed
+  // out of the window
+  await expect(win.getByTestId('engine-state')).not.toHaveAttribute('data-state', 'loading', {
+    timeout: 15_000,
+  });
+  await expect(win.getByTestId('tools-state')).not.toHaveAttribute('data-state', 'loading');
   const sideways = await win.locator('.set-body').evaluate((el) => el.scrollWidth - el.clientWidth);
   expect(sideways, 'the Settings page scrolls sideways').toBeLessThanOrEqual(1);
   for (const it of inside) {
@@ -320,6 +327,7 @@ test('Update processing tools is one way in from Create maps and from the Proces
     await win.getByTestId('tools-choose').click();
     const note = win.getByTestId('tools-note');
     await expect(note).toContainText('Processing tools 0.8.0 are installed.');
+    await expect(win.getByTestId('tools-state')).toHaveAttribute('data-state', 'ok');
     await expectFits(win, 'tools-note', 'tools-resume');
 
     // and back: the dialog opens again, checks this computer again, and is no longer blocked
