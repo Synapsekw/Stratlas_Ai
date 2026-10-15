@@ -43,6 +43,10 @@ beforeEach(() => {
   document.body.append(host);
   commit.mockReset().mockResolvedValue(true);
   toggle.mockReset();
+  workspace.setState({
+    project: { manifest: { layers: [{ id: 'a', name: 'Cloud A' }] } },
+    hidden: {},
+  } as never);
   pointcloudCleanup.getState().clear();
   pointcloudCleanup.getState().set('a', recipe);
   cleanup.store.setState({ active: 'a', panelOpen: false, readOnly: false });
@@ -61,7 +65,7 @@ describe('StageClassLegend', () => {
   it('with the panel open edits the active cloud as one undo step, under its name', () => {
     cleanup.store.setState({ panelOpen: true });
     mount();
-    expect(host.textContent).toContain('Classes: ');
+    expect(host.querySelector('.overlay-box')?.textContent).toContain('Classes: Cloud A');
     press(1);
     expect(commit).toHaveBeenCalledTimes(1);
     expect(commit).toHaveBeenCalledWith('a', { ...recipe, hiddenClasses: [7, 18] });
@@ -74,6 +78,12 @@ describe('StageClassLegend', () => {
     press(0);
     expect(toggle).toHaveBeenCalledWith(2);
     expect(commit).not.toHaveBeenCalled();
+  });
+
+  it('shows no note when the recipe cloud is hidden from the view', () => {
+    workspace.setState({ hidden: { a: true } } as never);
+    mount();
+    expect(host.textContent).not.toContain('keep their own classes');
   });
 
   it('shows no note when no cloud has a recipe', () => {

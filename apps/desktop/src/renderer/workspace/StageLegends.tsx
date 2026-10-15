@@ -40,14 +40,16 @@ const wrap = {
   insetInlineEnd: 14,
   bottom: 84,
   zIndex: 4,
-  display: 'grid',
-  gap: 4,
+  display: 'flex',
+  flexDirection: 'column',
   maxHeight: '50%',
+  overflow: 'hidden',
   pointerEvents: 'auto',
-  background: 'transparent',
 } as const;
+const scroll = { minHeight: 0, overflow: 'auto' } as const;
 const note = {
-  padding: '4px 10px',
+  flex: 'none',
+  padding: '6px 10px',
   maxWidth: 220,
   font: 'var(--t-11, 11px) var(--f-ui, system-ui)',
   color: 'var(--fg-3, #8a94a6)',
@@ -68,12 +70,12 @@ export function StageClassLegend({ view }: LegendProps) {
   const off = useWorkspace((s) => s.hidden);
   const own = panelOpen && active ? recipes[active] : undefined;
   const name = own && active ? (layers?.find((l) => l.id === active)?.name ?? active) : '';
-  const someOwn = Object.keys(recipes).some((id) => !off[id]);
+  const someOwn = (layers ?? []).some((l) => recipes[l.id] && !off[l.id]);
   const locked = own !== undefined && readOnly;
   if (!counts) return null;
   const legend = (
     <ClassificationLegend
-      className="overlay-box class-legend"
+      className="class-legend"
       counts={counts}
       hidden={own ? own.hiddenClasses : hidden}
       onToggle={(c) => {
@@ -90,20 +92,20 @@ export function StageClassLegend({ view }: LegendProps) {
     />
   );
   return (
-    <div className="elev-legend" style={wrap}>
+    <div className="elev-legend overlay-box" style={wrap}>
       {own && (
         <div style={note} data-testid="class-legend-title">
           {t('cleanup.legend.title', { name })}
         </div>
       )}
       {locked ? (
-        <div title={t('cleanup.readOnly')} aria-disabled="true">
+        <div style={scroll} title={t('cleanup.readOnly')} aria-disabled="true">
           <div inert style={{ opacity: 0.6 }}>
             {legend}
           </div>
         </div>
       ) : (
-        legend
+        <div style={scroll}>{legend}</div>
       )}
       {!own && someOwn && (
         <div style={note} data-testid="class-legend-note">
