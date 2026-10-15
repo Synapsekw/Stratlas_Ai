@@ -305,6 +305,41 @@ describe('LayerDateMenu', () => {
     expect(q('move-to-nov')?.textContent).not.toContain('2024-11-06');
   });
 
+  it('lists the layer actions first and runs them, closing the menu', () => {
+    const run = vi.fn();
+    const { onClose } = open('oct', true, {
+      actions: [
+        { id: 'pointcloud.cleanup', label: 'Clean up...', testId: 'menu-pointcloud-cleanup', run },
+        {
+          id: 'pointcloud.resetCleanup',
+          label: 'Reset cleanup',
+          testId: 'menu-pointcloud-resetCleanup',
+          run,
+        },
+      ],
+    });
+    const items = [...document.body.querySelectorAll('[role="menuitem"], [role="menuitemradio"]')];
+    expect(items[0]?.getAttribute('data-testid')).toBe('menu-pointcloud-cleanup');
+    click('menu-pointcloud-cleanup');
+    expect(run).toHaveBeenCalledTimes(1);
+    expect(onClose).toHaveBeenCalledTimes(1);
+  });
+
+  it('opens for actions alone in a read-only project', () => {
+    open('oct', false, {
+      actions: [
+        {
+          id: 'pointcloud.cleanup',
+          label: 'Clean up...',
+          testId: 'menu-pointcloud-cleanup',
+          run: vi.fn(),
+        },
+      ],
+      dateMoves: false,
+    });
+    expect(q('menu-pointcloud-cleanup')).not.toBeNull();
+  });
+
   it('files the dataset under the picked date, or under none', () => {
     const { onMove, onClose } = open('oct');
     click('move-to-sep');

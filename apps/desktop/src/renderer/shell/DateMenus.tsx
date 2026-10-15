@@ -460,6 +460,15 @@ export function DateFolderMenu(props: DateFolderMenuProps) {
   );
 }
 
+/** A layer command at the top of the menu (point cloud cleanup today; the shared registry later). */
+export interface LayerMenuAction {
+  id: string;
+  label: string;
+  testId: string;
+  danger?: boolean;
+  run(): void;
+}
+
 export interface LayerDateMenuProps {
   menu: DateItemMenuRequest;
   /** The project's survey dates. */
@@ -475,6 +484,8 @@ export interface LayerDateMenuProps {
   onDelete?: ((layerIds: string[]) => void) | undefined;
   /** False with survey dates off: no "File under" list, only Compare and Delete. Default true. */
   dateMoves?: boolean | undefined;
+  /** Commands of the layer, listed first (single-layer menus). */
+  actions?: readonly LayerMenuAction[] | undefined;
 }
 
 /**
@@ -492,6 +503,7 @@ export function LayerDateMenu({
   onMove,
   onDelete,
   dateMoves,
+  actions,
 }: LayerDateMenuProps) {
   const t = useT();
   const list = useRef<HTMLDivElement>(null);
@@ -504,7 +516,8 @@ export function LayerDateMenu({
   const del = canEdit && onDelete !== undefined;
   // nothing to compare, file or delete (read-only, or dates off on a row that cannot be deleted):
   // there is nothing to show, so do not open an empty menu
-  const empty = !compare && !moves && !del;
+  const acts = actions ?? [];
+  const empty = !compare && !moves && !del && acts.length === 0;
   useEffect(() => {
     if (empty) onClose();
   }, [empty, onClose]);
@@ -512,7 +525,7 @@ export function LayerDateMenu({
     list,
     menu.x,
     menu.y,
-    moves ? Math.min(90 + (captures.length + 1) * 30, 340) : 110,
+    (moves ? Math.min(90 + (captures.length + 1) * 30, 340) : 110) + acts.length * 30,
   );
   const newestFirst = [...captures].sort(
     (a, b) => b.date.localeCompare(a.date) || b.id.localeCompare(a.id),
@@ -564,6 +577,24 @@ export function LayerDateMenu({
           <div className="dmenu-h faint">
             {moves ? `${t('tree.dates.move.title')} · ${menu.name}` : menu.name}
           </div>
+          {acts.map((a) => (
+            <button
+              key={a.id}
+              type="button"
+              role="menuitem"
+              className={`dmenu-item${a.danger ? ' danger' : ''}`}
+              data-testid={a.testId}
+              onClick={() => {
+                onClose();
+                a.run();
+              }}
+            >
+              <span>{a.label}</span>
+            </button>
+          ))}
+          {acts.length > 0 && (compare || moves || del) && (
+            <div className="dmenu-sep" role="separator" />
+          )}
           {compare && (
             <button
               type="button"

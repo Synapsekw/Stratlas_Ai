@@ -34,6 +34,8 @@ import { dateTags, useWorkspace, workspace } from '@aio/workspace';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { openAuditTrail } from '../audit/auditView';
 import { builder } from '../builder/state';
+import { CLEANUP_ACTIONS, cleanupActionContext } from '../pointcloud/cleanupActions';
+import { useCleanup } from '../pointcloud/cleanupStore';
 import { DrawingControls } from '../drawings/DrawingControls';
 import { drawings, unplacedOf, useDrawings } from '../drawings/store';
 import { useMedia } from '../media';
@@ -54,7 +56,7 @@ import { selectClip } from '../workspace/pickClip';
 import { timeline, useTimeline } from '../workspace/timeline';
 import { moveLayersToDate, undoDateMove, updateCapture } from './dateFolders';
 import { AddSurveyDateButton } from './AddSurveyDate';
-import { DateFolderMenu, LayerDateMenu } from './DateMenus';
+import { DateFolderMenu, LayerDateMenu, type LayerMenuAction } from './DateMenus';
 import { DateNotes, type DateNote } from './DateNotes';
 import { askRemove, removal, useRemoval } from './removal';
 import { EmptyTrashDialog } from './RemoveHost';
@@ -299,6 +301,25 @@ function Datasets({ collapsed }: { collapsed: boolean }) {
   const canEdit = !readOnly && !lookOnly;
   const [folderMenu, setFolderMenu] = useState<DateFolderMenuRequest | null>(null);
   const [itemMenu, setItemMenu] = useState<DateItemMenuRequest | null>(null);
+  const cleanupLayers = useCleanup((s) => s.layers);
+  const layerActions = (m: DateItemMenuRequest): LayerMenuAction[] => {
+    const [only] = m.layerIds;
+    const layer =
+      m.layerIds.length === 1 ? project?.manifest.layers.find((l) => l.id === only) : undefined;
+    if (!layer) return [];
+    const target = {
+      layer,
+      readOnly: !canEdit,
+      hasRecipe: Boolean(cleanupLayers[layer.id]?.present),
+    };
+    return CLEANUP_ACTIONS.filter((a) => a.applies(target)).map((a) => ({
+      id: a.id,
+      label: t(a.label),
+      testId: `menu-${a.id.replace('.', '-')}`,
+      danger: a.id === 'pointcloud.resetCleanup',
+      run: () => void a.run(target, cleanupActionContext),
+    }));
+  };
   const [renaming, setRenaming] = useState<string | null>(null);
   const [note, setNote] = useState<DateNote | null>(null);
   // rows marked with Ctrl or Shift for one Delete
@@ -776,6 +797,7 @@ function Datasets({ collapsed }: { collapsed: boolean }) {
           every={EVERY_DATE}
           canEdit={canEdit}
           dateMoves={datesOn}
+          actions={layerActions(itemMenu)}
           onClose={() => {
             setItemMenu(null);
           }}

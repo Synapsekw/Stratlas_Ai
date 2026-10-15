@@ -6,9 +6,11 @@
  * measurement) and passed to `survey.export` as `out`, so nothing is written into the project. The
  * offered file name carries the export's suffix (`_site-grid_usft` and so on).
  */
-import type { HeightTiles, IpcResponse } from '@aio/schema';
+import { cleanupRemoves, isEmptyCleanup } from '@aio/schema';
+import type { HeightTiles, IpcResponse, PointcloudCleanup } from '@aio/schema';
 import { unitName } from '@aio/geo';
-import { Icon, useFocusTrap } from '@aio/ui';
+import { pointcloudCleanup } from '@aio/pointcloud';
+import { Icon, t, useFocusTrap } from '@aio/ui';
 import { useWorkspace } from '@aio/workspace';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useStore } from 'zustand';
@@ -78,6 +80,31 @@ type CrsKind = 'site' | 'wgs84' | 'epsg';
 const WHATS: ExportWhat[] = ['surface', 'ortho', 'cloud', 'contours', 'measurements', 'section'];
 const UNITS: ExportUnits[] = ['m', 'ft', 'us-ft'];
 
+/** The layer's recipe when it changes anything (Apply cleanup is offered then), else null. */
+export function exportCleanupFor(
+  layerId: string | null | undefined,
+  recipes: Readonly<Record<string, PointcloudCleanup>>,
+): PointcloudCleanup | null {
+  const r = layerId ? recipes[layerId] : undefined;
+  return r && !isEmptyCleanup(r) ? r : null;
+}
+
+/** One sentence on what Apply cleanup takes out of the export. */
+export function cleanupSummary(r: PointcloudCleanup): string {
+  const x = cleanupRemoves(r);
+  const parts: string[] = [];
+  if (x.box)
+    parts.push(t(x.box === 'outside' ? 'cleanup.part.boxOutside' : 'cleanup.part.boxInside'));
+  if (x.height) parts.push(t('cleanup.part.height'));
+  if (x.deletes) parts.push(t('cleanup.part.deletes', { count: x.deletes }));
+  if (x.hiddenClasses.length)
+    parts.push(t('cleanup.part.classes', { list: x.hiddenClasses.join(', ') }));
+  if (!parts.length) return t('cleanup.export.nothing');
+  return t('cleanup.export.removes', {
+    parts: new Intl.ListFormat('en', { type: 'conjunction' }).format(parts),
+  });
+}
+
 export function ExportDialog() {
   const project = useWorkspace((s) => s.project);
   const settings = useMeasure((s) => s.settings);
@@ -96,6 +123,8 @@ export function ExportDialog() {
   const [pick, setPick] = useState<MeasureChoice>(selected.length ? 'selected' : 'all');
   const [surface, setSurface] = useState('');
   const [each, setEach] = useState(false);
+  const [applyCleanup, setApplyCleanup] = useState(true);
+  const recipes = useStore(pointcloudCleanup, (s) => s.recipes);
   const [busy, setBusy] = useState(false);
   const [note, setNote] = useState<{ text: string; error: boolean } | null>(null);
   const ref = useRef<HTMLDivElement>(null);
@@ -140,6 +169,9 @@ export function ExportDialog() {
     return measurementIds(mfile, choice, what === 'section');
   }, [what, pick, selected, mfile]);
 
+  const layerParam =
+    what === 'cloud' ? (source?.param as { layer?: string } | undefined)?.layer : undefined;
+  const recipe = exportCleanupFor(layerParam, recipes);
   const crs: ExportCrs = crsKind === 'epsg' ? { epsg: Number.parseInt(epsg, 10) || 0 } : crsKind;
   const choice: ExportChoice = {
     what,
@@ -150,6 +182,7 @@ export function ExportDialog() {
     source: what === 'measurements' || what === 'section' ? null : source,
     measurements: ids,
     surface: surface || null,
+    cleanup: recipe && applyCleanup ? recipe : null,
   };
   const problem = exportProblem(choice);
   const suffix = siteSuffix(settings, crs, units);
@@ -423,6 +456,22 @@ export function ExportDialog() {
             </label>
           )}
         </div>
+        {recipe && (
+          <label className="sv-check">
+            <input
+              type="checkbox"
+              checked={applyCleanup}
+              data-testid="survey-export-cleanup"
+              onChange={(e) => {
+                setApplyCleanup(e.target.checked);
+              }}
+            />
+            <span>{t('cleanup.export.apply')}</span>
+            <span className="small faint" data-testid="survey-export-cleanup-summary">
+              {cleanupSummary(recipe)}
+            </span>
+          </label>
+        )}
         {(what === 'measurements' || what === 'section') && (
           <label className="sv-check">
             <input
