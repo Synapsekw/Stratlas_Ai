@@ -8,7 +8,8 @@
  * Noise working copies: main sweeps unreferenced copies only on a null write or when the request
  * carries `keep`. Ordinary steps omit `keep`; every null write and every step that changes which
  * noise copy the recipe names (a noise run, Reset, undo, redo) sends the copies the whole history
- * still names. Loading a recipe also writes it once, unchanged, to sweep earlier sessions' leftovers.
+ * still names. Loading a recipe also writes it once, unchanged, to sweep earlier sessions' leftovers,
+ * and a finished save does the same (`sweep`).
  */
 import { isAnnotateReadOnly } from '@aio/annotate';
 import { pointcloudCleanup, pointcloudSettings, type CleanupRecipes } from '@aio/pointcloud';
@@ -244,6 +245,17 @@ export function createCleanup(deps: Deps) {
       const ok = await step(layerId, h, n);
       if (ok && notice) notify({ text: noticeText(notice), undo: true, error: false, layerId });
       return ok;
+    },
+
+    /**
+     * After a finished save: write the present recipe unchanged with `keep` naming every copy the
+     * history still holds, so main moves the copies nothing names to the trash. Not an undo step;
+     * resolves to an error text or null.
+     */
+    async sweep(layerId: string): Promise<string | null> {
+      const h = store.getState().layers[layerId];
+      if (!h || !writable()) return null;
+      return send(layerId, h.present, referencedCopies(h));
     },
 
     preview(layerId: string, recipe: PointcloudCleanup | null): void {

@@ -182,7 +182,13 @@ export async function saveCleaned(
       },
     );
     if ('error' in started) return started.error;
-    return started.job.status === 'done' ? null : (started.job.error ?? 'The save did not finish.');
+    if (started.job.status !== 'done') return started.job.error ?? 'The save did not finish.';
+    // the save has finished: noise copies the history no longer names go to the trash
+    if (here()) {
+      const error = await d.cleanup.sweep(layer.id);
+      if (error) console.warn(`Cleanup sweep of layer "${layer.id}" after the save failed`, error);
+    }
+    return null;
   } finally {
     if (here()) d.cleanup.setBusy(null);
   }

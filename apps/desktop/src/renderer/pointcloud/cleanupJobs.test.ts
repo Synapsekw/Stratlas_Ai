@@ -193,6 +193,38 @@ describe('save cleaned copy', () => {
     });
   });
 
+  it('after a finished save, sweeps the noise copies the history no longer names', async () => {
+    const { d, cleanup, call } = deps(0);
+    await cleanup.load('p', [layer]);
+    const noise = run(60);
+    await cleanup.commit('a', { ...emptyCleanup('a'), noise, hiddenClasses: [7] });
+    call.mockClear();
+    expect(await saveCleaned(d, layer, 'Scan')).toBeNull();
+    const writes = call.mock.calls.filter((c) => c[0] === 'pointcloud:writeCleanup');
+    // one write of the present recipe, unchanged, whose keep names every copy the history holds
+    expect(writes).toEqual([
+      [
+        'pointcloud:writeCleanup',
+        {
+          projectId: 'p',
+          layerId: 'a',
+          recipe: cleanup.recipeOf('a'),
+          keep: [noise.path],
+        },
+      ],
+    ]);
+    expect(cleanup.store.getState().layers.a?.past).toHaveLength(1); // no undo step
+  });
+
+  it('a failed save sweeps nothing', async () => {
+    const { d, cleanup, call } = deps(0, 'failed');
+    await cleanup.load('p', [layer]);
+    await cleanup.commit('a', { ...emptyCleanup('a'), hiddenClasses: [7] });
+    call.mockClear();
+    expect(await saveCleaned(d, layer, 'Scan')).toBe('PDAL failed');
+    expect(call.mock.calls.filter((c) => c[0] === 'pointcloud:writeCleanup')).toEqual([]);
+  });
+
   it('an old pipeline pack refuses the save with the pack update wording', async () => {
     const { d, cleanup } = deps(0, 'done', PACK_REFUSAL);
     await cleanup.load('p', [layer]);
