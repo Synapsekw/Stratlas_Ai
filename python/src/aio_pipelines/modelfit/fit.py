@@ -26,7 +26,15 @@ from typing import Any
 import numpy as np
 
 from ..params import known_keys, number, text
-from ..runtime import JobError, Step, StepContext, atomic_write_json, now_iso, safe_project_path
+from ..runtime import (
+    JobError,
+    Step,
+    StepContext,
+    atomic_write_json,
+    now_iso,
+    replace_over,
+    safe_project_path,
+)
 from . import ransac, segment
 
 PROCMODEL_V1 = "aio.procmodel/1"
@@ -252,7 +260,7 @@ class ModelFitCloud:
                 tmp = path.with_name(f"{path.name}.bak.{os.getpid()}.tmp")
                 try:
                     shutil.copyfile(path, tmp)
-                    os.replace(tmp, bak)
+                    replace_over(tmp, bak)
                 finally:
                     tmp.unlink(missing_ok=True)
             atomic_write_json(path, model, indent=2)
