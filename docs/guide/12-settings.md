@@ -175,6 +175,16 @@ The same list is in **Settings**, **Keyboard**. On a Mac, Ctrl is ⌘ (Command) 
 | Enter | Open the issue card              |
 | Space | Tick the issue for a bulk change |
 
+### Datasets list
+
+| Keys             | Does                                      |
+| ---------------- | ----------------------------------------- |
+| Shift F10, Menu  | Open the menu of the focused row          |
+| F2               | Rename the focused dataset or survey date |
+| Delete           | Delete the focused or marked datasets     |
+| Ctrl Space       | Mark or unmark the focused dataset        |
+| Shift ↑, Shift ↓ | Mark the rows above or below              |
+
 ### Photo with marks
 
 | Keys | Does                   |

@@ -22,6 +22,7 @@ export type ShortcutScope =
   | 'cleanup'
   | 'issues'
   | 'issueList'
+  | 'tree'
   | 'photo'
   | 'videoWindow'
   | 'videoAnnotate'
@@ -56,6 +57,7 @@ export const SHORTCUT_SCOPES: readonly { scope: ShortcutScope; label: MessageKey
   { scope: 'cleanup', label: 'keys.scope.cleanup' },
   { scope: 'issues', label: 'keys.scope.issues' },
   { scope: 'issueList', label: 'keys.scope.issueList' },
+  { scope: 'tree', label: 'keys.scope.tree' },
   { scope: 'photo', label: 'keys.scope.photo' },
   { scope: 'lightbox', label: 'keys.scope.lightbox' },
   { scope: 'spot', label: 'keys.scope.spot' },
@@ -479,6 +481,13 @@ export const SHORTCUTS = [
     label: 'keys.review.redo',
   },
 
+  // the Datasets list (founder, 15 Oct 2026: every sidebar action on right-click)
+  { id: 'tree.menu', scope: 'tree', keys: ['Shift+F10', 'Menu'], label: 'keys.tree.menu' },
+  { id: 'tree.rename', scope: 'tree', keys: ['F2'], label: 'keys.tree.rename' },
+  { id: 'tree.delete', scope: 'tree', keys: ['Delete'], label: 'keys.tree.delete' },
+  { id: 'tree.mark', scope: 'tree', keys: ['Ctrl+Space'], label: 'keys.tree.mark' },
+  { id: 'tree.extend', scope: 'tree', keys: ['Shift+Up', 'Shift+Down'], label: 'keys.tree.extend' },
+
   // a PDF report
   { id: 'pdf.next', scope: 'pdf', keys: ['PageDown', 'Right'], label: 'keys.pdf.next' },
   { id: 'pdf.prev', scope: 'pdf', keys: ['PageUp', 'Left'], label: 'keys.pdf.prev' },
@@ -510,6 +519,9 @@ const NAMED: Record<string, readonly string[]> = {
   Esc: ['Escape'],
   Enter: ['Enter'],
   Space: [' ', 'Spacebar'],
+  F2: ['F2'],
+  F10: ['F10'],
+  Menu: ['ContextMenu'],
   Tab: ['Tab'],
   Backspace: ['Backspace'],
   Delete: ['Delete'],
@@ -612,6 +624,7 @@ export function keyLabel(combo: string, mac: boolean = isMacPlatform()): string 
 }
 
 const ARIA: Record<string, string> = {
+  Menu: 'ContextMenu',
   Esc: 'Escape',
   Up: 'ArrowUp',
   Down: 'ArrowDown',

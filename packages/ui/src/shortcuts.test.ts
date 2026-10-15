@@ -128,3 +128,16 @@ describe('shortcut registry', () => {
     expect(matchShortcut('global', optionB)).toBe('global.rightPanel');
   });
 });
+
+describe('the Datasets list keys', () => {
+  it('opens the row menu with Shift+F10 or the Menu key, renames with F2', () => {
+    expect(isShortcut('tree.menu', press('F10', { shift: true }))).toBe(true);
+    expect(isShortcut('tree.menu', press('ContextMenu'))).toBe(true);
+    expect(isShortcut('tree.menu', press('F10'))).toBe(false);
+    expect(isShortcut('tree.rename', press('F2'))).toBe(true);
+    expect(shortcutHint('tree.rename', false)).toBe('F2');
+    expect(ariaKeys('tree.menu', false)).toBe('Shift+F10 ContextMenu');
+    expect(SHORTCUT_SCOPES.some((s) => s.scope === 'tree')).toBe(true);
+    expect(shortcutConflicts()).toEqual([]);
+  });
+});
