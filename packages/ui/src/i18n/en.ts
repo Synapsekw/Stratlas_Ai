@@ -306,6 +306,7 @@ export const en = {
   'library.cover.lastView.why': 'Open this project in the 3D view first',
   'library.cover.none': 'No cover',
   'library.cover.reset': "Use the project's own picture",
+  'library.cover.pick': 'Pick a built-in cover, an image or the last 3D view.',
   'library.cover.save': 'Save',
   'library.cover.failed': 'The thumbnail was not changed.',
   'library.cover.badImage': 'This file is not an image the app can read.',

@@ -85,6 +85,18 @@ describe('CoverDialog', () => {
     Reflect.deleteProperty(URL, 'revokeObjectURL');
   });
 
+  it('opens with nothing picked and Save off until a cover is chosen', async () => {
+    render();
+    const save = q('cover-save') as HTMLButtonElement;
+    expect(save.disabled).toBe(true);
+    expect(q('cover-preview')?.dataset.kind).toBe('empty');
+    expect(q('cover-builtin-contours')?.getAttribute('aria-pressed')).toBe('false');
+    await settle(save);
+    expect(setThumbnail).not.toHaveBeenCalled();
+    act(() => q('cover-builtin-grid')?.click());
+    expect(save.disabled).toBe(false);
+  });
+
   it('saves the project picture back as null and closes', async () => {
     render();
     act(() => q('cover-reset')?.click());

@@ -209,7 +209,6 @@ export async function applyLibraryView(
     if (hidden.has(key)) continue;
     const e: LibraryEntry = { ...entry };
     delete e.folderId;
-    delete e.customCover;
     const folderId = view.placed[key];
     if (folderId !== undefined && folders.has(folderId)) e.folderId = folderId;
     const cover = await coverStamp(key).catch(() => null);

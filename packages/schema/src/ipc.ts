@@ -202,7 +202,10 @@ export const LibraryEntry = z.object({
   folderId: LibraryFolderId.optional(),
   /** The manifest's purpose when this build knows it (cover colours). */
   purpose: ProjectPurpose.optional(),
-  /** A per-computer cover (userData covers/) overrides the project's own picture. */
+  /**
+   * The card shows a changed cover: a per-computer one (userData covers/), or Change thumbnail
+   * wrote the folder's `thumbnail.jpg` and kept its own picture as `thumbnail.original.jpg`.
+   */
   customCover: z.boolean().optional(),
 });
 

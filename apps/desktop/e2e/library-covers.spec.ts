@@ -141,6 +141,43 @@ test('Change thumbnail on a project uploads an image and the card shows it at on
   expect(jpegSize(bytes)).toEqual({ width: 640, height: 427 });
 });
 
+test("Change thumbnail keeps a project's own picture and puts it back", async ({
+  win,
+  dataRoot,
+}) => {
+  const name = 'E2E tiny project';
+  const thumb = join(dataRoot.projectDir, 'thumbnail.jpg');
+  const own = await sharp({
+    create: { width: 320, height: 180, channels: 3, background: '#30a060' },
+  })
+    .jpeg()
+    .toBuffer();
+  await writeFile(thumb, own);
+  // the library is read again on a reload
+  await win.reload();
+  await expect(cardImg(win, name)).toHaveAttribute('src', /thumbnail\.jpg\?v=\d+$/, {
+    timeout: 15_000,
+  });
+
+  let dlg = await openCoverDialog(win, name);
+  // nothing picked yet: Save cannot replace the picture by accident
+  await expect(dlg.getByTestId('cover-save')).toBeDisabled();
+  await expect(dlg.getByTestId('cover-reset')).toHaveCount(0);
+  await dlg.getByTestId('cover-builtin-ridge').click();
+  await saveCover(dlg);
+  const original = join(dataRoot.projectDir, 'thumbnail.original.jpg');
+  expect((await readFile(original)).equals(own)).toBe(true);
+  expect((await readFile(thumb)).equals(own)).toBe(false);
+
+  dlg = await openCoverDialog(win, name);
+  await expect(dlg.getByTestId('cover-reset')).toContainText("Use the project's own picture");
+  await dlg.getByTestId('cover-reset').click();
+  await saveCover(dlg);
+  expect((await readFile(thumb)).equals(own)).toBe(true);
+  expect(existsSync(original)).toBe(false);
+  await expectLoaded(cardImg(win, name));
+});
+
 /** Answer the next native save dialog with `file` (main process). */
 async function stubSaveDialog(app: ElectronApplication, file: string) {
   await app.evaluate(({ dialog }, target) => {

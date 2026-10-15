@@ -6,9 +6,10 @@
  */
 import type { IpcResponse } from '@aio/schema';
 import { createHash, randomBytes } from 'node:crypto';
-import { lstat, mkdir, rename, rm, stat, writeFile } from 'node:fs/promises';
+import { constants } from 'node:fs';
+import { copyFile, lstat, mkdir, rename, rm, stat, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
-import { detectFolder } from './library';
+import { detectFolder, THUMBNAIL_ORIGINAL } from './library';
 import { libraryKey } from './libraryView';
 import type { Handle } from './notYet';
 import { assertWritable } from './realDataGuard';
@@ -57,6 +58,11 @@ async function writeAtomic(file: string, data: Uint8Array): Promise<void> {
   }
 }
 
+const isFile = (p: string): Promise<boolean> =>
+  stat(p)
+    .then((s) => s.isFile())
+    .catch(() => false);
+
 const stampOf = (ms: number): string => `?v=${String(Math.round(ms))}`;
 
 /** The project's own picture, as the card shows it, or null when it has none. */
@@ -73,8 +79,9 @@ async function ownThumbnail(id: string, path: string, isPackage: boolean): Promi
 /**
  * Set (JPEG bytes) or clear (null) the card picture of one project. A native project folder keeps
  * its picture as `thumbnail.jpg`; a package, kit export, demo or linked folder keeps it in the
- * covers folder, so nothing outside the app's own data is ever written for them. Clearing removes
- * the custom cover only: the folder's own `thumbnail.jpg` is never removed.
+ * covers folder, so nothing outside the app's own data is ever written for them. Before the first
+ * change to a native folder's picture, the old one is kept as `thumbnail.original.jpg`. Clearing
+ * removes the custom cover and puts that kept picture back; with none kept, `thumbnail.jpg` stays.
  */
 export async function setCover(o: {
   id: string;
@@ -86,19 +93,30 @@ export async function setCover(o: {
 }): Promise<IpcResponse<'library:setThumbnail'>> {
   const key = libraryKey(o.path, o.demo);
   const custom = coverFile(o.coversDir, key);
-  if (o.data === null) {
-    await rm(custom, { force: true });
-    return { ok: true, thumbnail: await ownThumbnail(o.id, o.path, o.isPackage) };
-  }
-  if (!isJpeg(o.data)) return { ok: false, error: 'A cover must be a JPEG image.' };
+  if (o.data !== null && !isJpeg(o.data))
+    return { ok: false, error: 'A cover must be a JPEG image.' };
   const link = await lstat(o.path)
     .then((s) => s.isSymbolicLink())
     .catch(() => false);
   const inFolder =
     !o.isPackage && !o.demo && !link && (await detectFolder(o.path).catch(() => null)) === 'native';
+  const file = join(o.path, 'thumbnail.jpg');
+  const original = join(o.path, THUMBNAIL_ORIGINAL);
+  if (o.data === null) {
+    await rm(custom, { force: true });
+    if (inFolder && (await isFile(original))) {
+      assertWritable(file, 'put the project thumbnail back');
+      await rename(original, file);
+    }
+    return { ok: true, thumbnail: await ownThumbnail(o.id, o.path, o.isPackage) };
+  }
   if (inFolder) {
-    const file = join(o.path, 'thumbnail.jpg');
     assertWritable(file, 'change the project thumbnail');
+    // the project's own picture, kept once so it can be put back; an earlier copy is never replaced
+    if ((await isFile(file)) && !(await isFile(original))) {
+      assertWritable(original, 'change the project thumbnail');
+      await copyFile(file, original, constants.COPYFILE_EXCL);
+    }
     await writeAtomic(file, o.data);
     // the folder picture wins from now on
     await rm(custom, { force: true });

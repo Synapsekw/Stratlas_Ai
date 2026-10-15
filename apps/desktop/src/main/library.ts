@@ -34,6 +34,12 @@ const LibraryFile = z.object({
   paths: z.array(z.string()),
 });
 
+/**
+ * Beside `thumbnail.jpg` in a native project: the project's own picture, kept once before Change
+ * thumbnail first replaced it, so it can be put back (covers.ts).
+ */
+export const THUMBNAIL_ORIGINAL = 'thumbnail.original.jpg';
+
 const sameKey = (p: string) =>
   process.platform === 'win32' ? resolve(p).toLowerCase() : resolve(p);
 
@@ -292,6 +298,8 @@ async function buildEntry(dir: string, registry: ProjectRegistry): Promise<Built
   });
   const thumbTime = await mtimeOf(join(dir, 'thumbnail.jpg'));
   if (thumbTime !== null) entry.thumbnail = `aio://project/${id}/thumbnail.jpg${stamp(thumbTime)}`;
+  // Change thumbnail kept the project's own picture beside the new one (covers.ts)
+  if ((await mtimeOf(join(dir, THUMBNAIL_ORIGINAL))) !== null) entry.customCover = true;
   return { ok: true, entry };
 }
 

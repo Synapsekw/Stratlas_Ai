@@ -255,6 +255,11 @@ describe('applyLibraryView', () => {
     expect(e?.thumbnail).toBe('aio://project/a/thumbnail.jpg?v=1');
     expect(e?.customCover).toBeUndefined();
   });
+
+  it('keeps the mark of a cover changed in the project folder', async () => {
+    const [e] = await applyLibraryView([entry({ customCover: true })], empty, noCover);
+    expect(e?.customCover).toBe(true);
+  });
 });
 
 describe('folders IPC', () => {

@@ -35,11 +35,12 @@ function CoverCanvas({
 
 export interface CoverPickerProps {
   palette: CoverPalette;
-  value: CoverChoice;
+  /** null: nothing picked yet (the dialog opens so). */
+  value: CoverChoice | null;
   onChange: (c: CoverChoice) => void;
   /** The wizard: offer "No cover". */
   allowNone?: boolean;
-  /** The dialog, when a cover of this computer is set: offer the project's own picture. */
+  /** The dialog, when the card shows a changed cover: offer the project's own picture back. */
   allowReset?: boolean;
   /** A picture of this project's 3D view taken as its scene was last left, if there is one. */
   lastView?: Uint8Array<ArrayBuffer> | null;
@@ -119,10 +120,16 @@ export function CoverPicker({
 
   return (
     <div className="cover-picker">
-      <div className="cover-preview" data-kind={value.kind} data-testid="cover-preview">
-        {value.kind === 'builtin' && <CoverCanvas id={value.id} palette={palette} width={640} />}
-        {value.kind === 'image' && <img src={value.url} alt="" draggable={false} />}
-        {(value.kind === 'none' || value.kind === 'reset') && (
+      <div className="cover-preview" data-kind={value?.kind ?? 'empty'} data-testid="cover-preview">
+        {value === null && (
+          <div className="cover-empty" style={{ background: palette.bg }}>
+            <Icon name="photo" size={20} />
+            <span>{t('library.cover.pick')}</span>
+          </div>
+        )}
+        {value?.kind === 'builtin' && <CoverCanvas id={value.id} palette={palette} width={640} />}
+        {value?.kind === 'image' && <img src={value.url} alt="" draggable={false} />}
+        {(value?.kind === 'none' || value?.kind === 'reset') && (
           <div className="cover-empty" style={{ background: palette.bg }}>
             <Icon name={value.kind === 'none' ? 'x' : 'photo'} size={20} />
             <span>{t(value.kind === 'none' ? 'library.cover.none' : 'library.cover.reset')}</span>
@@ -136,7 +143,7 @@ export function CoverPicker({
         </span>
         <div className="cover-swatches" role="group" aria-labelledby={`${whyId}-b`}>
           {BUILTIN_COVERS.map((id) => {
-            const on = value.kind === 'builtin' && value.id === id;
+            const on = value?.kind === 'builtin' && value.id === id;
             return (
               <button
                 key={id}
@@ -160,7 +167,7 @@ export function CoverPicker({
           <button
             type="button"
             className="btn sm"
-            aria-pressed={value.kind === 'image' && value.data !== lastView}
+            aria-pressed={value?.kind === 'image' && value.data !== lastView}
             disabled={busy}
             data-testid="cover-upload-button"
             onClick={() => file.current?.click()}
@@ -185,7 +192,7 @@ export function CoverPicker({
             className="btn sm"
             disabled={!viewOk || busy}
             aria-describedby={viewOk ? undefined : whyId}
-            aria-pressed={value.kind === 'image' && value.data === lastView}
+            aria-pressed={value?.kind === 'image' && value.data === lastView}
             data-testid="cover-last-view"
             onClick={fromView}
           >
@@ -196,7 +203,7 @@ export function CoverPicker({
             <button
               type="button"
               className="btn sm ghost"
-              aria-pressed={value.kind === 'none'}
+              aria-pressed={value?.kind === 'none'}
               data-testid="cover-none"
               onClick={() => {
                 pick({ kind: 'none' });
@@ -209,7 +216,7 @@ export function CoverPicker({
             <button
               type="button"
               className="btn sm ghost"
-              aria-pressed={value.kind === 'reset'}
+              aria-pressed={value?.kind === 'reset'}
               data-testid="cover-reset"
               onClick={() => {
                 pick({ kind: 'reset' });

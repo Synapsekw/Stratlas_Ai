@@ -57,6 +57,16 @@ describe('listLibrary', () => {
     const { mtimeMs } = await stat(join(dir, 'thumbnail.jpg'));
     expect(e?.purpose).toBe('survey');
     expect(e?.thumbnail).toBe(`aio://project/yard/thumbnail.jpg?v=${String(Math.round(mtimeMs))}`);
+    expect(e?.customCover).toBeUndefined();
+  });
+
+  it("marks a changed cover when the project's own picture is kept beside it", async () => {
+    await writeProject(join(dataRoot, 'projects', 'yard'), sampleManifest(), {
+      'thumbnail.jpg': 'new',
+      'thumbnail.original.jpg': 'own',
+    });
+    const [e] = await listLibrary({ dataRoot, extraPaths: [], registry: new ProjectRegistry() });
+    expect(e?.customCover).toBe(true);
   });
 
   it('registers listed projects so their thumbnails resolve', async () => {

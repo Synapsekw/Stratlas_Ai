@@ -15,7 +15,8 @@ export function CoverDialog({ entry, onClose, returnTo }: EntryDialogProps) {
     () => coverPalette(entry.purpose, entry.kind),
     [entry.purpose, entry.kind],
   );
-  const [choice, setChoice] = useState<CoverChoice>({ kind: 'builtin', id: 'contours' });
+  // nothing picked at first, so Save never replaces a picture the person did not choose
+  const [choice, setChoice] = useState<CoverChoice | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const cancel = () => {
@@ -24,7 +25,7 @@ export function CoverDialog({ entry, onClose, returnTo }: EntryDialogProps) {
   useFocusTrap(dlg, true, { onEscape: cancel, returnTo });
 
   const save = () => {
-    if (busy) return;
+    if (busy || choice === null) return;
     setBusy(true);
     setError(null);
     void (async () => {
@@ -101,7 +102,7 @@ export function CoverDialog({ entry, onClose, returnTo }: EntryDialogProps) {
             type="button"
             className="btn primary"
             onClick={save}
-            disabled={busy}
+            disabled={busy || choice === null}
             data-testid="cover-save"
           >
             <Icon name="check" size={14} />

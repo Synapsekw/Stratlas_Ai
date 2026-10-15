@@ -155,6 +155,26 @@ describe('setCover', () => {
     expect(await setCover({ ...base(), data: null })).toEqual({ ok: true, thumbnail: null });
   });
 
+  it("keeps the project's own picture once before a cover replaces it", async () => {
+    await writeFile(join(proj, 'thumbnail.jpg'), JPEG(9));
+    await setCover({ ...base(), data: JPEG(1) });
+    await setCover({ ...base(), data: JPEG(2) });
+    expect(new Uint8Array(await readFile(join(proj, 'thumbnail.original.jpg')))).toEqual(JPEG(9));
+    expect(new Uint8Array(await readFile(join(proj, 'thumbnail.jpg')))).toEqual(JPEG(2));
+  });
+
+  it("null puts the project's own picture back from the copy kept", async () => {
+    await writeFile(join(proj, 'thumbnail.jpg'), JPEG(9));
+    await setCover({ ...base(), data: JPEG(1) });
+    const r = await setCover({ ...base(), data: null });
+    expect(new Uint8Array(await readFile(join(proj, 'thumbnail.jpg')))).toEqual(JPEG(9));
+    expect((await readdir(proj)).sort()).toEqual(['manifest.json', 'thumbnail.jpg']);
+    expect(r).toMatchObject({
+      ok: true,
+      thumbnail: expect.stringContaining('aio://project/p1/thumbnail.jpg?v=') as unknown,
+    });
+  });
+
   it('a folder cover removes an older custom cover of the same key', async () => {
     const key = libraryKey(proj, false);
     await mkdir(covers);
