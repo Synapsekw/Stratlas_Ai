@@ -84,7 +84,7 @@ describe('Georeference model', () => {
       units: 'm',
       modelToCrs: [1, 0, 0, 0, 0, 0, 1, 0, 0, -1, 0, 0, 500000, 0, 0, 1],
       heading: { deg: 0, status: 'assumed-grid' },
-      scale: { factor: 1, status: 'assumed' },
+      scale: { factor: 1, status: 'provisional' },
       horizontal: { status: 'unplaced' },
       vertical: { datum: 'unknown', status: 'unknown' },
       provenance: { by: 'engineer', runId: 'r1' },
