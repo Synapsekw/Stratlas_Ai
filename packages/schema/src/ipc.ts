@@ -38,6 +38,8 @@ import { OrientationFile } from './orientation';
 import { ReleaseNotes, UpdateStatus } from './update';
 import { ChangeKind, ChangeSet, ChangeSetId, ChangeSetSummary, ChangeThresholds } from './change';
 import { ProcModel, ProcModelId, ProcModelSummary } from './procmodel';
+import { Detail, EngineerProposal, EngineerRun, RunId } from './engineer';
+import { EvidencePack } from './modelEvidence';
 import {
   DetectorModelId,
   DetectorModelInfo,
@@ -133,6 +135,20 @@ export const FailureCode = z.enum(['not-implemented', 'read-only', 'forbidden', 
 const Failure = z.object({ ok: z.literal(false), error: z.string(), code: FailureCode.optional() });
 const OkOrFailure = z.discriminatedUnion('ok', [z.object({ ok: z.literal(true) }), Failure]);
 const ProjectId = z.string().min(1);
+
+/** How an engineering GLB was meshed: coarsened for the budget, or not built at all. */
+export const GlbBuildReport = z
+  .object({
+    triangles: z.number().int().nonnegative(),
+    overBudget: z.boolean(),
+    /** The coarsest detail level used. */
+    detail: Detail,
+    simplified: z.array(z.object({ id: z.string(), detail: Detail }).strict()),
+    failed: z.array(z.object({ id: z.string(), reason: z.string() }).strict()),
+    notes: z.array(z.string()),
+  })
+  .strict();
+export type GlbBuildReport = z.infer<typeof GlbBuildReport>;
 
 /** A detection pass file name in `<project>/detections/` (`review.json`, `ai-<run>.json`). */
 export const DetectionPassName = z
@@ -1817,13 +1833,102 @@ export const ipc = {
       .object({ projectId: ProjectId, id: ProcModelId, draft: z.boolean().optional() })
       .strict(),
     response: z.discriminatedUnion('ok', [
-      z.object({ ok: z.literal(true), layer: z.string(), glb: z.string() }),
+      z.object({
+        ok: z.literal(true),
+        layer: z.string(),
+        glb: z.string(),
+        /** Triangles written (engineering and parts models). */
+        triangles: z.number().int().nonnegative().optional(),
+        /** How an engineering GLB was meshed (absent for a parts-only model). */
+        report: GlbBuildReport.optional(),
+      }),
       Failure,
     ]),
   },
   /** Set the project policy `aiCloudDrawings` (manifest, backed up); refused for packages. */
   'ai:setCloudDrawings': {
     request: z.object({ projectId: ProjectId, allow: z.boolean() }).strict(),
+    response: OkOrFailure,
+  },
+
+  // ---------------------------------------------------------------- engineering model (S2)
+  /**
+   * Export an engineering model into `<folder>/<modelId>/`: `<id>.glb` (with
+   * `asset.extras.aioGeoref`), `<id>.procmodel.json`, `<id>.components.json` and
+   * `<id>.georeference.json`, written into a staging folder renamed when complete. Accepted
+   * components only. `files` are the absolute paths written; `report` says what was coarsened for
+   * the budget or could not be built.
+   */
+  'model:exportEngineering': {
+    request: z
+      .object({
+        projectId: ProjectId,
+        modelId: ProcModelId,
+        folder: z.string().min(1).max(1000),
+        detail: Detail,
+        replace: z.boolean().optional(),
+      })
+      .strict(),
+    response: z.discriminatedUnion('ok', [
+      z.object({ ok: z.literal(true), files: z.array(z.string()), report: GlbBuildReport }),
+      Failure,
+    ]),
+  },
+  /**
+   * The files of an engineering run (`engineering/<run>/run.json`, `evidence.json`,
+   * `proposal.json`); null for each one not there (and for every one in a package, which leaves
+   * run files out). A file that is there but not valid is an error naming it.
+   */
+  'engineer:runRead': {
+    request: z.object({ projectId: ProjectId, runId: RunId }).strict(),
+    response: z.discriminatedUnion('ok', [
+      z.object({
+        ok: z.literal(true),
+        run: EngineerRun.nullable(),
+        evidence: EvidencePack.nullable(),
+        proposal: EngineerProposal.nullable(),
+      }),
+      Failure,
+    ]),
+  },
+  /** Write `engineering/<run.id>/run.json` atomically with a `.bak`; refused for packages. */
+  'engineer:runWrite': {
+    request: z.object({ projectId: ProjectId, run: EngineerRun }).strict(),
+    response: OkOrFailure,
+  },
+  /**
+   * One evidence image of a run (listed in its `evidence.json`, under `engineering/<run>/img/`) as
+   * a data URL at most 1568 px on its long side, for the send preview. Never a cloud or a file
+   * outside the run's images.
+   */
+  'engineer:evidenceImage': {
+    request: z
+      .object({
+        projectId: ProjectId,
+        runId: RunId,
+        imageId: z.string().regex(/^img-[a-z0-9-]{1,40}$/),
+      })
+      .strict(),
+    response: z.discriminatedUnion('ok', [
+      z.object({ ok: z.literal(true), dataUrl: z.string() }),
+      Failure,
+    ]),
+  },
+  /**
+   * Set the project policies `aiCloudPhotos` and `aiCloudScans` (manifest, backed up; false
+   * removes the flag, so absent means off); refused for packages.
+   */
+  'ai:setCloudEvidence': {
+    request: z
+      .object({
+        projectId: ProjectId,
+        photos: z.boolean().optional(),
+        scans: z.boolean().optional(),
+      })
+      .strict()
+      .refine((r) => r.photos !== undefined || r.scans !== undefined, {
+        message: 'Give photos or scans',
+      }),
     response: OkOrFailure,
   },
 
