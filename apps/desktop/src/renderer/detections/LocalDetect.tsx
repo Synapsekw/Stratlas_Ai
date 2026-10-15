@@ -6,6 +6,7 @@
  * remaining" continues the same run.
  */
 import type { DetectorModelInfo, IpcEvent } from '@aio/schema';
+import { NEW_CLASS_OPTION, NewClassRow, useNewClass } from '@aio/annotate';
 import { Icon, t, useFocusTrap } from '@aio/ui';
 import { useWorkspace } from '@aio/workspace';
 import { useEffect, useMemo, useRef, useState } from 'react';
@@ -34,6 +35,33 @@ function writeStore(key: string, value: string): void {
     window.localStorage.setItem(key, value);
   } catch {
     // a remembered choice is a convenience only
+  }
+}
+
+/**
+ * A class was made from a model's word (Create class in the review): every local model of this
+ * project that keeps that word as it is ("keep the name") now maps it to the new class. A word
+ * mapped to a class on purpose is left alone.
+ */
+export function mapModelClass(projectId: string, raw: string, classId: string): void {
+  const prefix = `stratlas.detect.classMap.${projectId}.`;
+  let keys: string[];
+  try {
+    keys = Object.keys(window.localStorage).filter((k) => k.startsWith(prefix));
+  } catch {
+    return;
+  }
+  const word = raw.trim().toLowerCase();
+  for (const key of keys) {
+    let map: Record<string, string>;
+    try {
+      map = JSON.parse(readStore(key) ?? '{}') as Record<string, string>;
+    } catch {
+      continue;
+    }
+    const hit = Object.keys(map).find((k) => k.trim().toLowerCase() === word);
+    if (hit === undefined || map[hit]) continue;
+    writeStore(key, JSON.stringify({ ...map, [hit]: classId }));
   }
 }
 
@@ -117,6 +145,8 @@ export function LocalDetectDialog({
   onClose: () => void;
 }) {
   const manifest = useWorkspace((s) => s.project?.manifest);
+  const { create, disabledReason } = useNewClass();
+  const [newFor, setNewFor] = useState<string | null>(null);
   const projectClasses = useMemo(
     () => (manifest?.classCatalogues ?? []).flatMap((c) => c.classes),
     [manifest],
@@ -449,6 +479,10 @@ export function LocalDetectDialog({
                         aria-label={c}
                         value={classMap[c] ?? ''}
                         onChange={(e) => {
+                          if (e.target.value === NEW_CLASS_OPTION) {
+                            setNewFor(c);
+                            return;
+                          }
                           setClass(c, e.target.value);
                         }}
                       >
@@ -458,7 +492,23 @@ export function LocalDetectDialog({
                             {pc.label}
                           </option>
                         ))}
+                        {create && <option value={NEW_CLASS_OPTION}>{t('det.class.new')}</option>}
                       </select>
+                      {newFor === c && create && (
+                        <NewClassRow
+                          startOpen
+                          onCreate={create}
+                          disabledReason={disabledReason}
+                          testId="det-local-new-class"
+                          onCancel={() => {
+                            setNewFor(null);
+                          }}
+                          onCreated={(cls) => {
+                            setNewFor(null);
+                            setClass(c, cls.id);
+                          }}
+                        />
+                      )}
                     </label>
                   ))}
                 </div>

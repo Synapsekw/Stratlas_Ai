@@ -2,7 +2,13 @@
  * The current detection: where it came from, class, severity, uncertain flag and note, and the
  * decisions (accept as a new issue, link to an issue, reject, reopen, delete a drawing).
  */
-import { SeverityBadge, useTaxonomy } from '@aio/annotate';
+import {
+  NEW_CLASS_OPTION,
+  NewClassRow,
+  SeverityBadge,
+  useNewClass,
+  useTaxonomy,
+} from '@aio/annotate';
 import {
   acceptProblem,
   linkCandidates,
@@ -12,6 +18,7 @@ import {
 import type { Issue } from '@aio/schema';
 import { Icon, useFocusTrap, useT, type MessageKey } from '@aio/ui';
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { createClassFromLabel } from './createFromLabel';
 
 export const PROBLEM_KEY: Record<AcceptProblem, MessageKey> = {
   'no-class': 'det.problem.noClass',
@@ -166,6 +173,10 @@ export function Inspector(p: InspectorProps) {
     setNoteFor(d?.id ?? null);
     setNote(d?.note ?? '');
   }
+  const { create, disabledReason } = useNewClass();
+  const [newOpen, setNewOpen] = useState(false);
+  const [creating, setCreating] = useState(false);
+  const [createError, setCreateError] = useState<string | null>(null);
   const noteRef = useRef<HTMLTextAreaElement>(null);
   useEffect(() => {
     if (p.noteFocus > 0) noteRef.current?.focus();
@@ -239,7 +250,38 @@ export function Inspector(p: InspectorProps) {
         </div>
         <OriginLine d={d} />
         {d.label && d.classId === '' && (
-          <p className="ann-faint">{t('det.modelSaid', { label: d.label })}</p>
+          <div className="det-newclass" data-testid="det-unknown-class">
+            <p className="ann-faint">
+              {d.suggestedNew
+                ? t('det.suggestedClass', { label: d.label })
+                : t('det.modelSaid', { label: d.label })}
+            </p>
+            {!locked && create && (
+              <button
+                type="button"
+                className="ann-btn"
+                data-testid="det-create-class"
+                disabled={disabledReason !== null || creating}
+                title={disabledReason ?? ''}
+                onClick={() => {
+                  const word = d.label;
+                  if (!word) return;
+                  setCreating(true);
+                  void createClassFromLabel(word).then((e) => {
+                    setCreating(false);
+                    setCreateError(e);
+                  });
+                }}
+              >
+                {t('det.createClass', { label: d.label })}
+              </button>
+            )}
+            {createError && (
+              <p className="ann-err" role="alert">
+                {createError}
+              </p>
+            )}
+          </div>
         )}
 
         <label className="ann-field">
@@ -250,6 +292,10 @@ export function Inspector(p: InspectorProps) {
             disabled={locked}
             data-testid="det-class"
             onChange={(e) => {
+              if (e.target.value === NEW_CLASS_OPTION) {
+                setNewOpen(true);
+                return;
+              }
               p.onPatch({ classId: e.target.value });
             }}
           >
@@ -259,8 +305,24 @@ export function Inspector(p: InspectorProps) {
                 {c.label}
               </option>
             ))}
+            {create && <option value={NEW_CLASS_OPTION}>{t('det.class.new')}</option>}
           </select>
         </label>
+        {newOpen && create && !locked && (
+          <NewClassRow
+            startOpen
+            onCreate={create}
+            disabledReason={disabledReason}
+            testId="det-new-class"
+            onCancel={() => {
+              setNewOpen(false);
+            }}
+            onCreated={(cls) => {
+              setNewOpen(false);
+              p.onPatch({ classId: cls.id });
+            }}
+          />
+        )}
 
         <div className="ann-field">
           <span>{t('det.severity')}</span>
