@@ -1,6 +1,6 @@
 import { Icon, useT } from '@aio/ui';
 import { useWorkspace } from '@aio/workspace';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useStore } from 'zustand';
 import type { StoreApi } from 'zustand/vanilla';
 import { layerChoices, type LayerChoice } from './layers';
@@ -42,6 +42,39 @@ export function PlaceOnModelNotice({ store }: { store: StoreApi<PlacementState> 
   useEffect(() => {
     setMatched(null);
   }, [projectId]);
+  // a new result starts afresh
+  const result = s.result;
+  useEffect(() => {
+    if (result) setMatched(null);
+  }, [result]);
+
+  /**
+   * Focus inside the notice when a button closed its own section (Place, the last match, Undo,
+   * Dismiss): it moves to the result's Undo or Dismiss, else to the toast, and never takes focus
+   * that was elsewhere.
+   */
+  const rootRef = useRef<HTMLDivElement>(null);
+  const wantFocus = useRef(false);
+  const keepFocus = () => {
+    wantFocus.current = rootRef.current?.contains(document.activeElement) ?? false;
+  };
+  useEffect(() => {
+    if (!wantFocus.current) return;
+    const root = rootRef.current;
+    const active = document.activeElement;
+    if (!root || (active && active !== document.body && active !== root)) {
+      // the notice went, or focus is on a control still there, or it moved away
+      wantFocus.current = false;
+      return;
+    }
+    const to =
+      root.querySelector('[data-testid="place-undo"]') ??
+      root.querySelector('[data-testid="place-dismiss"]');
+    if (to instanceof HTMLElement) {
+      to.focus();
+      wantFocus.current = false;
+    } else if (active !== root) root.focus(); // placing: the result's Undo comes next
+  });
 
   const match = s.matches[0];
   const r = s.result;
@@ -63,12 +96,13 @@ export function PlaceOnModelNotice({ store }: { store: StoreApi<PlacementState> 
   const same = choices.filter((c) => c.sameDate);
   const other = choices.filter((c) => !c.sameDate);
   const dismiss = () => {
+    keepFocus();
     setMatched(null);
     store.getState().dismiss();
   };
 
   return (
-    <div className="toast" data-testid="place-notice">
+    <div className="toast" data-testid="place-notice" ref={rootRef} tabIndex={-1}>
       {s.offer && (
         <div className="toast-h" data-testid="place-offer">
           <Icon name="target" size={14} />
@@ -77,8 +111,10 @@ export function PlaceOnModelNotice({ store }: { store: StoreApi<PlacementState> 
           <button
             type="button"
             className="btn ghost icon sm"
-            aria-label={t('place.dismiss')}
+            aria-label={t('place.notNow')}
+            data-testid="place-offer-close"
             onClick={() => {
+              keepFocus();
               store.getState().notNow();
             }}
           >
@@ -91,32 +127,37 @@ export function PlaceOnModelNotice({ store }: { store: StoreApi<PlacementState> 
           <div className="toast-p">{t('place.noLayers')}</div>
         ) : (
           <>
-            <select
-              className="input sm"
-              aria-label={t('place.layer')}
-              data-testid="place-layer"
-              value={s.layerId ?? ''}
-              disabled={s.busy}
-              onChange={(e) => {
-                store.getState().setLayer(e.target.value);
-              }}
-            >
-              {same.length > 0 && other.length > 0 ? (
-                <>
-                  <optgroup label={t('place.group.sameDate')}>{same.map(option)}</optgroup>
-                  <optgroup label={t('place.group.other')}>{other.map(option)}</optgroup>
-                </>
-              ) : (
-                choices.map(option)
-              )}
-            </select>
+            <div aria-live="off" style={{ display: 'grid' }}>
+              <select
+                className="input sm"
+                aria-label={t('place.layer')}
+                data-testid="place-layer"
+                value={s.layerId ?? ''}
+                disabled={s.busy}
+                onChange={(e) => {
+                  store.getState().setLayer(e.target.value);
+                }}
+              >
+                {same.length > 0 && other.length > 0 ? (
+                  <>
+                    <optgroup label={t('place.group.sameDate')}>{same.map(option)}</optgroup>
+                    <optgroup label={t('place.group.other')}>{other.map(option)}</optgroup>
+                  </>
+                ) : (
+                  choices.map(option)
+                )}
+              </select>
+            </div>
             <div className="toast-p pm-acts">
               <button
                 type="button"
                 className="btn sm"
                 data-testid="place-go"
                 disabled={s.busy || !s.layerId}
-                onClick={() => void store.getState().place()}
+                onClick={() => {
+                  keepFocus();
+                  void store.getState().place();
+                }}
               >
                 {t('place.go')}
               </button>
@@ -125,6 +166,7 @@ export function PlaceOnModelNotice({ store }: { store: StoreApi<PlacementState> 
                 className="btn ghost sm"
                 data-testid="place-not-now"
                 onClick={() => {
+                  keepFocus();
                   store.getState().notNow();
                 }}
               >
@@ -156,6 +198,7 @@ export function PlaceOnModelNotice({ store }: { store: StoreApi<PlacementState> 
               className="btn ghost sm"
               data-testid="place-undo"
               onClick={() => {
+                keepFocus();
                 setMatched(null);
                 store.getState().undo();
               }}
@@ -180,11 +223,7 @@ export function PlaceOnModelNotice({ store }: { store: StoreApi<PlacementState> 
           {!r && !s.offer && <Icon name={s.undoStale || showError ? 'warn' : 'check'} size={14} />}
           <div className="toast-p toast-grow">
             {s.undoStale && <div data-testid="place-undo-stale">{t('place.undoStale')}</div>}
-            {showError && (
-              <div role="alert" data-testid="place-error">
-                {s.error}
-              </div>
-            )}
+            {showError && <div data-testid="place-error">{s.error}</div>}
             {matched && <div data-testid="place-matched">{t('place.matched', matched)}</div>}
           </div>
           {!r && !s.offer && (
@@ -211,14 +250,9 @@ export function PlaceOnModelNotice({ store }: { store: StoreApi<PlacementState> 
               className="btn sm"
               data-testid="place-same"
               onClick={() => {
-                const before = store.getState().error;
-                store.getState().same();
-                const after = store.getState().error;
-                setMatched(
-                  after === null || after === before
-                    ? { code: match.code, other: match.otherCode }
-                    : null,
-                );
+                keepFocus();
+                const tracked = store.getState().same();
+                setMatched(tracked ? { code: match.code, other: match.otherCode } : null);
               }}
             >
               {t('place.same')}
@@ -228,6 +262,7 @@ export function PlaceOnModelNotice({ store }: { store: StoreApi<PlacementState> 
               className="btn ghost sm"
               data-testid="place-different"
               onClick={() => {
+                keepFocus();
                 setMatched(null);
                 store.getState().different();
               }}
@@ -239,6 +274,7 @@ export function PlaceOnModelNotice({ store }: { store: StoreApi<PlacementState> 
               className="btn ghost sm"
               data-testid="place-skip-all"
               onClick={() => {
+                keepFocus();
                 setMatched(null);
                 store.getState().skipAll();
               }}

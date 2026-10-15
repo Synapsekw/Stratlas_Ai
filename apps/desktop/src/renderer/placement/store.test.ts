@@ -491,7 +491,7 @@ describe('match suggestions', () => {
     expect(store.getState().matches).toEqual([
       { issueId: 'a', code: 'F01', otherId: 'e', otherCode: 'F04', date: '3 Mar 2026' },
     ]);
-    store.getState().same();
+    expect(store.getState().same()).toBe(true);
     expect(editor.commitIssues).toHaveBeenLastCalledWith(expect.any(Array), 'Match F04 and F01');
     const tracks = ws
       .getState()
@@ -524,8 +524,32 @@ describe('match suggestions', () => {
       const i = ws.getState().issues.find((x) => x.id === id);
       if (i) ws.getState().upsertIssue({ ...i, track: 'T', capture });
     }
-    store.getState().same();
+    expect(store.getState().same()).toBe(true);
     expect(editor.commitIssues).toHaveBeenCalledTimes(1);
+    expect(store.getState().matches).toEqual([]);
+  });
+
+  it('Same answers false and writes nothing when an issue went or the dates are unknown', async () => {
+    const { store, ws, editor } = setup();
+    await store.getState().placeIds(['a'], 'model-d2');
+    ws.getState().removeIssue('e');
+    expect(store.getState().same()).toBe(false);
+    expect(store.getState().matches).toEqual([]);
+    store.setState({
+      matches: [{ issueId: 'a', code: 'F01', otherId: 'b', otherCode: 'F02', date: '1 Sep 2026' }],
+    });
+    ws.getState().setDates(null);
+    expect(store.getState().same()).toBe(false);
+    expect(store.getState().matches).toEqual([]);
+    expect(editor.commitIssues).toHaveBeenCalledTimes(1);
+  });
+
+  it('Same answers false and shows the refusal when the match cannot be written', async () => {
+    const { store, editor } = setup();
+    await store.getState().placeIds(['a'], 'model-d2');
+    editor.commitIssues.mockImplementation(() => err<null>('Read only'));
+    expect(store.getState().same()).toBe(false);
+    expect(store.getState().error).toBe('Read only');
     expect(store.getState().matches).toEqual([]);
   });
 });

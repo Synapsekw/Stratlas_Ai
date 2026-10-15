@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import type { EditorState, PlaceResult } from '@aio/annotate';
-import { ok, type ProjectManifest } from '@aio/schema';
-import { workspace } from '@aio/workspace';
+import { err, ok, type Issue, type ProjectManifest, type Result } from '@aio/schema';
+import { captureIndex, workspace } from '@aio/workspace';
 import { act } from 'react';
 import { createRoot } from 'react-dom/client';
 import { afterEach, describe, expect, it, vi } from 'vitest';
@@ -59,8 +59,31 @@ function summary(over: Partial<PlaceSummary> = {}): PlaceSummary {
   };
 }
 
-function mount(undoLabel = LABEL) {
-  workspace.getState().openProject({ id: 'p', root: 'r', manifest }, []);
+const finding = (id: string, code: string): Issue => ({
+  id,
+  code,
+  classId: 'marker',
+  severityModelId: 'sev',
+  severity: 1,
+  status: 'draft',
+  title: code,
+  note: '',
+  author: 'Demo',
+  createdAt: '2026-10-15T10:00:00.000Z',
+  updatedAt: '2026-10-15T10:00:00.000Z',
+  sightings: [],
+  source: 'agent',
+});
+const MATCH = { issueId: 'x', code: 'AI-31', otherId: 'y', otherCode: 'AI-12', date: '3 Mar' };
+
+function mount(
+  undoLabel = LABEL,
+  commit: () => Result<null> = () => ok(null),
+  issues: Issue[] = [finding('x', 'AI-31'), finding('y', 'AI-12')],
+) {
+  workspace.getState().openProject({ id: 'p', root: 'r', manifest }, issues);
+  workspace.getState().setDates(captureIndex(manifest));
+  const commitIssues = vi.fn(commit);
   const undo = vi.fn(() => true);
   const state = {
     canUndo: true,
@@ -72,7 +95,7 @@ function mount(undoLabel = LABEL) {
   } as unknown as EditorState;
   const store = createPlacementStore({
     workspace,
-    editor: { state, commitIssues: vi.fn(() => ok(null)), undo },
+    editor: { state, commitIssues, undo },
     prepare: vi.fn(() => Promise.resolve()),
     place: vi.fn(() => Promise.resolve<PlaceResult>({ ok: false, reason: 'missed' })),
     writeSelection: vi.fn(() => Promise.resolve({ error: 'no' })),
@@ -95,6 +118,7 @@ function mount(undoLabel = LABEL) {
   return {
     store,
     undo,
+    commitIssues,
     el,
     q,
     click,
@@ -182,17 +206,11 @@ describe('PlaceOnModelNotice', () => {
 
   it('says a match is tracked as one after Same', () => {
     const ui = mount();
-    const same = vi.fn(() => {
-      ui.store.setState({ matches: [] });
-    });
     act(() => {
-      ui.store.setState({
-        same,
-        matches: [{ issueId: 'x', code: 'AI-31', otherId: 'y', otherCode: 'AI-12', date: '3 Mar' }],
-      });
+      ui.store.setState({ matches: [MATCH] });
     });
     ui.click('place-same');
-    expect(same).toHaveBeenCalledTimes(1);
+    expect(ui.commitIssues).toHaveBeenCalledTimes(1);
     expect(ui.q('place-match')).toBeNull();
     expect(ui.q('place-matched')?.textContent).toBe('AI-31 and AI-12 are tracked as one finding.');
     ui.click('place-dismiss');
@@ -200,19 +218,75 @@ describe('PlaceOnModelNotice', () => {
     ui.unmount();
   });
 
-  it('does not claim a match when Same was refused', () => {
-    const ui = mount();
+  it('does not claim a match when Same is refused with the error already showing', () => {
+    const ui = mount(LABEL, () => err<null>('The project is read only.'));
     act(() => {
-      ui.store.setState({
-        same: () => {
-          ui.store.setState({ matches: [], error: 'The project is read only.' });
-        },
-        matches: [{ issueId: 'x', code: 'AI-31', otherId: 'y', otherCode: 'AI-12', date: '3 Mar' }],
-      });
+      ui.store.setState({ matches: [MATCH, MATCH], error: 'The project is read only.' });
     });
     ui.click('place-same');
+    expect(ui.commitIssues).toHaveBeenCalledTimes(1);
     expect(ui.q('place-matched')).toBeNull();
     expect(ui.q('place-error')?.textContent).toBe('The project is read only.');
+    ui.unmount();
+  });
+
+  it('does not claim a match when one of the two issues went', () => {
+    const ui = mount(LABEL, () => ok(null), [finding('x', 'AI-31')]);
+    act(() => {
+      ui.store.setState({ matches: [MATCH] });
+    });
+    ui.click('place-same');
+    expect(ui.commitIssues).not.toHaveBeenCalled();
+    expect(ui.q('place-matched')).toBeNull();
+    ui.unmount();
+  });
+
+  it('clears the matched line when a new result arrives', () => {
+    const ui = mount();
+    act(() => {
+      ui.store.setState({ matches: [MATCH] });
+    });
+    ui.click('place-same');
+    expect(ui.q('place-matched')).not.toBeNull();
+    act(() => {
+      ui.store.setState({ result: summary() });
+    });
+    expect(ui.q('place-matched')).toBeNull();
+    ui.unmount();
+  });
+
+  it('moves focus to Undo when the last match closes, only when focus was in the notice', () => {
+    const ui = mount();
+    act(() => {
+      ui.store.setState({ result: summary(), matches: [MATCH] });
+    });
+    const skip = ui.q('place-skip-all');
+    if (skip instanceof HTMLElement) skip.focus();
+    ui.click('place-skip-all');
+    expect(document.activeElement).toBe(ui.q('place-undo'));
+
+    const outside = document.createElement('button');
+    document.body.append(outside);
+    act(() => {
+      ui.store.setState({ matches: [MATCH] });
+    });
+    outside.focus();
+    ui.click('place-skip-all');
+    expect(document.activeElement).toBe(outside);
+    outside.remove();
+    ui.unmount();
+  });
+
+  it('closes the offer with its X, labelled Not now', () => {
+    const ui = mount();
+    act(() => {
+      ui.store.setState({ offer: { ids: ['x'], source: 'menu' }, layerId: 'model' });
+    });
+    expect(ui.q('place-offer-close')?.getAttribute('aria-label')).toBe('Not now');
+    expect(ui.q('place-layer')?.closest('[aria-live="off"]')).not.toBeNull();
+    expect(ui.el.querySelector('[role="alert"]')).toBeNull();
+    ui.click('place-offer-close');
+    expect(ui.store.getState().offer).toBeNull();
     ui.unmount();
   });
 

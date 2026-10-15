@@ -83,7 +83,8 @@ export interface PlacementState {
   placeIds(ids: readonly string[], layerId: string): Promise<PlaceSummary | null>;
   notNow(): void;
   undo(): void;
-  same(): void;
+  /** Track the first match as one finding: true when they are (now or already), else false. */
+  same(): boolean;
   different(): void;
   skipAll(): void;
   dismiss(): void;
@@ -370,7 +371,7 @@ export function createPlacementStore(deps: PlacementDeps): StoreApi<PlacementSta
         const b = m ? issueById(m.otherId) : undefined;
         if (!m || !a || !b || !dates) {
           set({ matches: get().matches.slice(1) });
-          return;
+          return false;
         }
         const at = (i: Issue) => dates.captures.findIndex((c) => c.id === issueDate(i, dates));
         const [earlier, later] = at(a) <= at(b) ? [a, b] : [b, a];
@@ -386,10 +387,11 @@ export function createPlacementStore(deps: PlacementDeps): StoreApi<PlacementSta
         );
         if (changed.length === 0) {
           set({ matches: dropMatch([a.id, b.id]) });
-          return;
+          return true;
         }
         const c = deps.editor.commitIssues(changed, `Match ${earlier.code} and ${later.code}`);
         set({ matches: dropMatch([a.id, b.id]), ...(c.ok ? {} : { error: c.error }) });
+        return c.ok;
       },
       different() {
         set({ matches: get().matches.slice(1) });
