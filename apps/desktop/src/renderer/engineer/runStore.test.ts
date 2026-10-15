@@ -9,9 +9,11 @@ import type {
   ProcModel,
 } from '@aio/schema';
 import { describe, expect, it } from 'vitest';
+import type { UserOverrides } from '@aio/modelling';
 import {
   createRunStore,
   DECLINED_IDENTIFY,
+  NO_OVERRIDES,
   OFFLINE_IDENTIFY,
   STAGES,
   type RunIpc,
@@ -197,6 +199,12 @@ class FakeProject {
   });
   /** Holds the next AI answer until released (to cancel in flight). */
   hold: Promise<void> | null = null;
+  /** The engineer route in Settings. */
+  route: { task: 'engineer'; provider: 'anthropic' | 'openai'; model: string } = {
+    task: 'engineer',
+    provider: 'anthropic',
+    model: 'test-vision',
+  };
 
   private log(channel: string, payload: unknown) {
     this.calls.push({ channel, payload });
@@ -204,6 +212,7 @@ class FakeProject {
 
   ipc(): RunIpc {
     return {
+      route: () => Promise.resolve({ ...this.route }),
       runRead: (runId) => {
         this.log('engineer:runRead', { runId });
         return Promise.resolve({
@@ -626,5 +635,101 @@ describe('engineering run store', () => {
     for (const c of p.calls) walk(c.payload, c.channel);
     expect(bad).toEqual([]);
     expect(p.calls.length).toBeGreaterThan(10);
+  });
+
+  it('the person corrections survive a reopen and nothing reassembles without them', async () => {
+    const p = new FakeProject();
+    const s = store(p);
+    await s.getState().start(setup());
+    const flue = s.getState().model?.assemblies.find((a) => a.kind === 'flue');
+    if (!flue) throw new Error('no flue');
+    const user: UserOverrides = {
+      params: {},
+      counts: { flue: 3 },
+      levels: { 'light-l1': [30] },
+      removed: ['flue-3'],
+      added: [{ ...flue, id: 'manual-flue', name: 'Manual flue', status: 'accepted' }],
+    };
+    await s.getState().rebuild(user);
+    const ids = (m: ProcModel | null) => (m?.assemblies ?? []).map((a) => a.id).sort();
+    const built = ids(s.getState().model);
+    expect(built).toContain('manual-flue');
+    expect(built).not.toContain('flue-3');
+    expect(p.runs.get('run-test-1')?.user).toEqual(user);
+    const writes = p.calls.filter((c) => c.channel === 'model:write').length;
+
+    const reopened = store(p);
+    await reopened.getState().resume('run-test-1');
+    expect(reopened.getState().user).toEqual(user);
+    expect(reopened.getState().current()?.user).toEqual(user);
+    expect(p.calls.filter((c) => c.channel === 'model:write').length).toBe(writes);
+    expect(ids(reopened.getState().model)).toEqual(built);
+    // and a later rebuild starts from them
+    await reopened.getState().rebuild({ ...user, counts: { flue: 2 } });
+    expect(ids(reopened.getState().model)).toContain('manual-flue');
+  });
+
+  it('switching the AI model asks identify again; the same model does not', async () => {
+    const p = new FakeProject();
+    await store(p).getState().start(setup());
+    expect(p.engineerCalls).toBe(1);
+    await store(p).getState().resume('run-test-1');
+    expect(p.engineerCalls).toBe(1);
+    p.route = { task: 'engineer', provider: 'openai', model: 'other-vision' };
+    await store(p).getState().resume('run-test-1');
+    expect(p.engineerCalls).toBe(2);
+  });
+
+  it('placement at a picked point moves the measured base there, as the person placed it', async () => {
+    const p = new FakeProject();
+    const s = store(p);
+    await s.getState().start(setup({ placement: 'anchor', anchor: [10, 0, -20] }));
+    const g = s.getState().model?.georef;
+    if (!g) throw new Error('no georef');
+    expect(g.horizontal.status).toBe('user');
+    expect(g.anchor).toEqual([500010, 3200020, 0]);
+    // the measured base (0, 0, 0 local) lands on the anchor
+    const at = (i: number) => g.modelToCrs[i] ?? NaN;
+    expect([at(12), at(13), at(14)]).toEqual([500010, 3200020, 0]);
+    // without the anchor the same cloud is placed from the source
+    const q = new FakeProject();
+    const s2 = store(q);
+    await s2.getState().start(setup());
+    expect(s2.getState().model?.georef?.horizontal.status).toBe('from-source');
+    expect(s2.getState().model?.georef?.anchor).toEqual([500000, 3200000, 0]);
+  });
+
+  it('accept waits for a run at work; the session offers current and setStatus', async () => {
+    const p = new FakeProject();
+    const s = store(p, { autoSend: false });
+    let tried = false;
+    s.subscribe((st, prev) => {
+      if (st.preview && !prev.preview && !tried) {
+        tried = true;
+        void s
+          .getState()
+          .accept()
+          .then(() => {
+            s.getState().sendPreview({ once: { photos: true, scans: true }, costConfirmed: false });
+          });
+      }
+    });
+    await s.getState().start(setup());
+    expect(p.calls.some((c) => c.channel === 'engineer:accept')).toBe(false);
+    const session = s.getState().session();
+    const cur = session.current();
+    expect(cur?.user).toEqual(NO_OVERRIDES);
+    const flue = cur?.model.assemblies.find((a) => a.kind === 'flue');
+    if (!flue) throw new Error('no flue');
+    const saved = await session.setStatus([flue.id], 'accepted');
+    if ('error' in saved) throw new Error(saved.error);
+    expect(saved.assemblies.find((a) => a.id === flue.id)?.status).toBe('accepted');
+    expect(p.models.get(saved.id)?.assemblies.find((a) => a.id === flue.id)?.status).toBe(
+      'accepted',
+    );
+    const rebuilt = await session.rebuild({ ...NO_OVERRIDES, counts: { flue: 3 } });
+    if ('error' in rebuilt) throw new Error(rebuilt.error);
+    // the accepted flue keeps its status through the rebuild
+    expect(rebuilt.model.assemblies.find((a) => a.id === flue.id)?.status).toBe('accepted');
   });
 });

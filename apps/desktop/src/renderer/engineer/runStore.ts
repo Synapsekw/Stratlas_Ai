@@ -18,12 +18,20 @@
  * 6. review: ready.
  *
  * Cancel stops the job, the AI request or a waiting preview and leaves completed stages done.
- * Accept builds the one layer `model-<id>` (idempotent). Nothing large crosses IPC: images go by
- * pack id to main, which reads them; the model is a bounded JSON record.
+ * Accept builds the one layer `model-<id>` (idempotent, checked in main). What crosses IPC is
+ * bounded: the evidence images go as data URLs main read and scaled down (at most 1568 px each,
+ * the pack's own limit on how many), the summary is compact text, and the model a bounded JSON
+ * record; never a typed array or a cloud.
  */
-import type { EvidencePreviewContent, ModelRoute } from '@aio/ai';
-import { layerTransformToGeoref } from '@aio/geo';
-import { assemble, type UserOverrides } from '@aio/modelling';
+import {
+  ENGINEER_PROMPT_VERSION,
+  routeFor,
+  type EvidencePreviewContent,
+  type ModelRoute,
+} from '@aio/ai';
+import { layerTransformToGeoref, localToProject } from '@aio/geo';
+import { assemble, type AssembleResult, type UserOverrides } from '@aio/modelling';
+import { t } from '@aio/ui';
 import {
   DETAIL_BUDGETS,
   type EngineerProposal,
@@ -45,6 +53,7 @@ import {
 import type { StoreApi } from 'zustand';
 import { createStore } from 'zustand/vanilla';
 import type { Bridge } from '../bridge';
+import type { EngineerModelSession } from '../modeller/engineerTools';
 import { measurementSummary } from './summary';
 
 export const STAGES: readonly EngineerStage[] = [
@@ -56,6 +65,33 @@ export const STAGES: readonly EngineerStage[] = [
   'review',
 ];
 
+/** The run's messages, in the person's language (read when shown, so a locale change applies). */
+export const runText = {
+  offline: () => t('eng.msg.offline'),
+  declined: () => t('eng.msg.declined'),
+  noSources: () => t('eng.msg.noSources'),
+  noRun: () => t('eng.msg.noRun'),
+  jobFailed: () => t('eng.msg.jobFailed'),
+  jobGone: () => t('eng.msg.jobGone'),
+  noEvidence: () => t('eng.msg.noEvidence'),
+  height: (m: string) => t('eng.msg.height', { m }),
+  notPrepared: () => t('eng.msg.notPrepared'),
+  costCap: () => t('eng.msg.costCap'),
+  conflict: (ids: string) => t('eng.msg.conflict', { ids }),
+  noDraft: () => t('eng.msg.noDraft'),
+  validatorErrors: (n: number) => t('eng.msg.validatorErrors', { count: n }),
+  notFinite: () => t('eng.msg.notFinite'),
+  badIndices: () => t('eng.msg.badIndices'),
+  overBudget: () => t('eng.msg.overBudget'),
+  notBuilt: (n: number) => t('eng.msg.notBuilt', { count: n }),
+  check: (list: string) => t('eng.msg.check', { list }),
+  cancelled: () => t('eng.msg.cancelled'),
+  noSuchRun: (id: string) => t('eng.msg.noSuchRun', { id }),
+  nothingToAccept: () => t('eng.msg.nothingToAccept'),
+  busy: () => t('eng.msg.busy'),
+};
+
+/** English texts some callers compare with (tests); the store itself uses `runText`. */
 export const OFFLINE_IDENTIFY = 'Needs a vision model. Offline mode is on, so nothing is sent.';
 export const DECLINED_IDENTIFY =
   'Nothing was sent: the send was declined. The draft is measured only.';
@@ -72,6 +108,8 @@ export type GeneratedView = EngineerCallImage & { kind: 'generated' };
 
 /** The IPC a run needs, as plain promises (errors thrown as `Error` with a readable message). */
 export interface RunIpc {
+  /** The model route the engineer step uses now (Settings), or null when none is set. */
+  route(): Promise<ModelRoute | null>;
   runRead(runId: string): Promise<{
     run: EngineerRun | null;
     evidence: EvidencePack | null;
@@ -135,6 +173,8 @@ export interface RunState {
   preview: PendingPreview | null;
   layer: string | null;
   draftLayer: string | null;
+  /** The person's corrections the draft was last assembled with (kept in run.json). */
+  user: UserOverrides;
   start(setup: EngineerSetup, o?: { modelId?: string; runId?: string }): Promise<void>;
   resume(runId: string): Promise<void>;
   cancel(): Promise<void>;
@@ -145,6 +185,15 @@ export interface RunState {
   declinePreview(): void;
   allowProject(kind: 'photos' | 'scans'): Promise<void>;
   dropImages(ids: string[]): Promise<void>;
+  /** The draft on screen and its corrections, or null (the agent's `EngineerModelSession`). */
+  current(): { model: ProcModel; user: UserOverrides } | null;
+  /** Set the review status of components or parts, save the model; the saved model. */
+  setStatus(
+    ids: string[],
+    status: 'draft' | 'accepted' | 'rejected',
+  ): Promise<ProcModel | { error: string }>;
+  /** This run as the agent's `EngineerModelSession` (`setEngineerSession`). */
+  session(): EngineerModelSession;
 }
 
 /** No corrections. */
@@ -159,7 +208,8 @@ export const NO_OVERRIDES: UserOverrides = {
 class Cancelled extends Error {}
 class StageFailed extends Error {}
 
-const IDENTITY = [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1];
+/** The proposal format of the engineer request (`@aio/ai` engineer.ts), part of the identify hash. */
+const PROPOSAL_FORMAT = 'proposal-1';
 
 /** SHA-256 of the JSON of `v`, lower-case hex. */
 export async function hashOf(v: unknown): Promise<string> {
@@ -183,9 +233,12 @@ function dataUrlBytes(url: string): number {
 }
 
 /**
- * The model's georeference: it is built in the project's local frame (identity layer transform),
- * with statuses that say how far its place is known. A cloud measured in the project CRS places
- * it from the source; photos alone, or "unplaced", leave it unplaced (accepted provisionally).
+ * The model's georeference. The model is built in the project's local frame; its statuses say how
+ * far its place is known. A cloud measured in the project CRS places it from the source; photos
+ * alone, or "unplaced", leave it unplaced (accepted provisionally). "At a point I pick": the
+ * model's base goes to the picked anchor (a measured base is moved there; a model built without a
+ * measured base already stands on it), the record's anchor is that point in project E, N, H, and
+ * only then is the horizontal placement the person's (`user`).
  */
 export function georefFor(
   model: ProcModel,
@@ -193,14 +246,22 @@ export function georefFor(
   evidence: EvidencePack | null,
   project: RunDeps['project'],
 ): Georef {
-  const g = layerTransformToGeoref(IDENTITY, project, null, 'engineer');
   const metric = (evidence?.samples.kept ?? 0) > 0;
-  const horizontal: Georef['horizontal']['status'] =
-    setup.placement === 'anchor'
-      ? 'user'
-      : setup.placement === 'from-source' && metric
-        ? 'from-source'
-        : 'unplaced';
+  const anchor = setup.placement === 'anchor' ? setup.anchor : undefined;
+  // where the assembler stood the model: the measured base, else the anchor, else the origin
+  const measuredBase = metric ? (evidence?.base ?? evidence?.axis?.point) : undefined;
+  const shift: Vec3 =
+    anchor && measuredBase
+      ? [anchor[0] - measuredBase[0], anchor[1] - measuredBase[1], anchor[2] - measuredBase[2]]
+      : [0, 0, 0];
+  const transform = [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, ...shift, 1];
+  const g = layerTransformToGeoref(transform, project, null, 'engineer');
+  const horizontal: Georef['horizontal']['status'] = anchor
+    ? 'user'
+    : setup.placement === 'from-source' && metric
+      ? 'from-source'
+      : 'unplaced';
+  if (anchor) g.anchor = localToProject([anchor[0], anchor[1], anchor[2]], project.origin);
   const scale = model.scale?.status ?? 'provisional';
   return {
     ...g,
@@ -225,6 +286,7 @@ export function createRunStore(deps: RunDeps): StoreApi<RunState> {
   let calls = 0;
   let answer: ((a: 'send' | 'decline' | 'cancel', o?: SendChoice) => void) | null = null;
   let user: UserOverrides = NO_OVERRIDES;
+  let assembled: AssembleResult | null = null;
 
   interface SendChoice {
     once: { photos: boolean; scans: boolean };
@@ -238,7 +300,7 @@ export function createRunStore(deps: RunDeps): StoreApi<RunState> {
 
     const mustRun = (): EngineerRun => {
       const r = get().run;
-      if (!r) throw new StageFailed('There is no run.');
+      if (!r) throw new StageFailed(runText.noRun());
       return r;
     };
 
@@ -269,7 +331,8 @@ export function createRunStore(deps: RunDeps): StoreApi<RunState> {
       const hash = await hashOf({ s: setup.sources, r: setup.region, d: setup.detail });
       if (fresh('inspect', hash) && get().evidence) return;
       const { clouds, meshes, photos } = setup.sources;
-      if (clouds.length + meshes.length + photos.length === 0) throw new StageFailed(NO_SOURCES);
+      if (clouds.length + meshes.length + photos.length === 0)
+        throw new StageFailed(runText.noSources());
       const known = statusOf('inspect')?.output;
       let rec = known ? await deps.ipc.jobStatus(known) : null;
       if (
@@ -292,19 +355,18 @@ export function createRunStore(deps: RunDeps): StoreApi<RunState> {
       for (;;) {
         check(t);
         if (rec.status === 'done') break;
-        if (rec.status === 'failed')
-          throw new StageFailed(rec.error ?? 'Measuring the sources failed.');
+        if (rec.status === 'failed') throw new StageFailed(rec.error ?? runText.jobFailed());
         if (rec.status === 'cancelled' || rec.status === 'interrupted')
           throw new Cancelled('cancelled');
         await sleep(1000);
         check(t);
         const next = await deps.ipc.jobStatus(rec.id);
-        if (!next) throw new StageFailed('The measuring job is gone from the job list.');
+        if (!next) throw new StageFailed(runText.jobGone());
         rec = next;
       }
       jobId = null;
       const read = await deps.ipc.runRead(mustRun().id);
-      if (!read.evidence) throw new StageFailed('The measuring job wrote no evidence.json.');
+      if (!read.evidence) throw new StageFailed(runText.noEvidence());
       const r = read.evidence.reconstruction;
       set({ evidence: read.evidence });
       await saveRun({
@@ -323,10 +385,10 @@ export function createRunStore(deps: RunDeps): StoreApi<RunState> {
         evidence = (await deps.ipc.runRead(mustRun().id)).evidence;
         set({ evidence });
       }
-      if (!evidence) throw new StageFailed('The measuring job wrote no evidence.json.');
+      if (!evidence) throw new StageFailed(runText.noEvidence());
       const hash = await hashOf(evidence);
       if (fresh('estimate', hash)) return;
-      const m = evidence.height !== null ? `Height ${evidence.height.toFixed(2)} m measured.` : '';
+      const m = evidence.height !== null ? runText.height(evidence.height.toFixed(2)) : '';
       await saveStage('estimate', { status: 'done', hash, ...(m ? { message: m } : {}) });
     }
 
@@ -364,11 +426,22 @@ export function createRunStore(deps: RunDeps): StoreApi<RunState> {
     async function identifyHash(): Promise<string> {
       const run = mustRun();
       const e = get().evidence;
+      // a reply belongs to the model that gave it: another provider, model or prompt asks again
+      const route = deps.online() ? await deps.ipc.route() : null;
       return hashOf({
         summary: measurementSummary(e, run.setup),
         images: (e?.images ?? []).map((i) => [i.id, i.sha1]),
         excluded: get().excludedImages,
         setup: run.setup,
+        route: route
+          ? {
+              provider: route.provider,
+              model: route.model,
+              treatAsVision: route.treatAsVision === true,
+            }
+          : null,
+        prompt: ENGINEER_PROMPT_VERSION,
+        format: PROPOSAL_FORMAT,
       });
     }
 
@@ -428,8 +501,8 @@ export function createRunStore(deps: RunDeps): StoreApi<RunState> {
         return;
       }
       if (!deps.online()) {
-        set({ notice: OFFLINE_IDENTIFY, proposal: null });
-        await saveStage('identify', { status: 'skipped', hash, message: OFFLINE_IDENTIFY });
+        set({ notice: runText.offline(), proposal: null });
+        await saveStage('identify', { status: 'skipped', hash, message: runText.offline() });
         return;
       }
       await saveStage('identify', { status: 'running', hash });
@@ -461,11 +534,11 @@ export function createRunStore(deps: RunDeps): StoreApi<RunState> {
         };
         const c = await consent(t, pass, req);
         if ('refused' in c) {
-          skipped = c.refused ?? 'The request could not be prepared.';
+          skipped = c.refused ?? runText.notPrepared();
           break;
         }
         if ('declined' in c) {
-          skipped = DECLINED_IDENTIFY;
+          skipped = runText.declined();
           break;
         }
         aiRun = `${run.id}-p${String(pass)}-${String(++calls)}`;
@@ -483,28 +556,30 @@ export function createRunStore(deps: RunDeps): StoreApi<RunState> {
           break;
         }
         if (out.kind === 'refused') {
-          skipped = out.code === 'offline' ? OFFLINE_IDENTIFY : out.reason;
+          skipped = out.code === 'offline' ? runText.offline() : out.reason;
           break;
         }
         const r = mustRun();
         set({
           run: {
             ...r,
-            usage: { ...r.usage, costUsd: r.usage.costUsd + out.costUsd },
+            usage: {
+              costUsd: r.usage.costUsd + out.costUsd,
+              inputTokens: r.usage.inputTokens + (out.usage?.inputTokens ?? 0),
+              outputTokens: r.usage.outputTokens + (out.usage?.outputTokens ?? 0),
+            },
           },
         });
         const conflicts = out.proposal.identity.conflicts;
         if (out.identityConflict || (!out.proposal.identity.sameAsset && conflicts.length)) {
           const ids = [...new Set(conflicts.flatMap((x) => x.imageIds))];
           set({ conflicts });
-          throw new StageFailed(
-            `These images may show a different asset: ${ids.join(', ')}. Drop them, then run again.`,
-          );
+          throw new StageFailed(runText.conflict(ids.join(', ')));
         }
         proposal = out.proposal;
         if (out.stopped === 'budget') {
           skipped = null;
-          set({ notice: 'The cost cap of this run is reached: the best draft so far is kept.' });
+          set({ notice: runText.costCap() });
           break;
         }
       }
@@ -531,6 +606,7 @@ export function createRunStore(deps: RunDeps): StoreApi<RunState> {
       await saveStage('generate', { status: 'running', hash });
       const r = assembleModel(run, get().proposal);
       await deps.ipc.modelWrite(r.model);
+      assembled = r;
       set({ model: r.model, unresolved: r.unresolved, flagged: r.flagged });
       await saveStage('generate', { status: 'done', hash });
     }
@@ -538,7 +614,7 @@ export function createRunStore(deps: RunDeps): StoreApi<RunState> {
     async function validate(t: number): Promise<void> {
       const run = mustRun();
       const model = get().model;
-      if (!model) throw new StageFailed('There is no draft model to check.');
+      if (!model) throw new StageFailed(runText.noDraft());
       const hash = await hashOf({ m: model.assemblies, g: model.georef, d: run.setup.detail });
       if (fresh('validate', hash) && get().report) return;
       await saveStage('validate', { status: 'running', hash });
@@ -551,18 +627,16 @@ export function createRunStore(deps: RunDeps): StoreApi<RunState> {
         deps.silhouette && evidence ? await deps.silhouette(model, evidence) : null;
       set({ build: built.report ?? null, report, silhouette, draftLayer: built.layer });
       const problems = [
-        report.validatorErrors ? `${String(report.validatorErrors)} validator errors` : '',
-        !report.finite ? 'positions that are not finite' : '',
-        !report.indicesValid ? 'indices out of range' : '',
-        !report.withinBudget ? 'over the triangle budget' : '',
-        built.report?.failed.length
-          ? `${String(built.report.failed.length)} components not built`
-          : '',
+        report.validatorErrors ? runText.validatorErrors(report.validatorErrors) : '',
+        !report.finite ? runText.notFinite() : '',
+        !report.indicesValid ? runText.badIndices() : '',
+        !report.withinBudget ? runText.overBudget() : '',
+        built.report?.failed.length ? runText.notBuilt(built.report.failed.length) : '',
       ].filter(Boolean);
       await saveStage('validate', {
         status: 'done',
         hash,
-        ...(problems.length ? { message: `Check: ${problems.join(', ')}.` } : {}),
+        ...(problems.length ? { message: runText.check(problems.join(', ')) } : {}),
       });
     }
 
@@ -582,13 +656,13 @@ export function createRunStore(deps: RunDeps): StoreApi<RunState> {
             const src = mustRun().setup.sources;
             // photos alone and offline: nothing more can be done (spec 5.2)
             if (!deps.online() && src.clouds.length + src.meshes.length === 0) {
-              set({ notice: OFFLINE_IDENTIFY });
+              set({ notice: runText.offline() });
               await saveStage('identify', {
                 status: 'skipped',
                 hash: await identifyHash(),
-                message: OFFLINE_IDENTIFY,
+                message: runText.offline(),
               });
-              set({ error: OFFLINE_IDENTIFY });
+              set({ error: runText.offline() });
               return;
             }
             await identify(t);
@@ -604,7 +678,7 @@ export function createRunStore(deps: RunDeps): StoreApi<RunState> {
           const prev = statusOf(at);
           if (e instanceof Cancelled) {
             await saveStage(at, { ...(prev ?? {}), status: 'cancelled' }).catch(() => undefined);
-            set({ notice: 'Cancelled. Finished stages are kept.' });
+            set({ notice: runText.cancelled() });
           } else {
             const message = e instanceof Error ? e.message : String(e);
             await saveStage(at, {
@@ -647,6 +721,7 @@ export function createRunStore(deps: RunDeps): StoreApi<RunState> {
       preview: null,
       layer: null,
       draftLayer: null,
+      user: NO_OVERRIDES,
 
       async start(setup, o = {}) {
         if (driving) await get().cancel();
@@ -662,7 +737,9 @@ export function createRunStore(deps: RunDeps): StoreApi<RunState> {
           usage: { costUsd: 0, inputTokens: 0, outputTokens: 0 },
         };
         user = NO_OVERRIDES;
+        assembled = null;
         set({
+          user,
           run,
           evidence: null,
           proposal: null,
@@ -684,11 +761,14 @@ export function createRunStore(deps: RunDeps): StoreApi<RunState> {
         if (driving) await get().cancel();
         const r = await deps.ipc.runRead(runId);
         if (!r.run) {
-          set({ error: `There is no engineering run "${runId}" in this project.` });
+          set({ error: runText.noSuchRun(runId) });
           return;
         }
-        user = NO_OVERRIDES;
+        // the corrections come back with the run, so nothing reassembles without them
+        user = r.run.user ?? NO_OVERRIDES;
+        assembled = null;
         set({
+          user,
           run: r.run,
           evidence: r.evidence,
           proposal: r.proposal,
@@ -719,17 +799,61 @@ export function createRunStore(deps: RunDeps): StoreApi<RunState> {
       async rebuild(next) {
         if (driving) await get().cancel();
         user = next;
+        set({ user });
+        const run = get().run;
+        if (run) await saveRun({ ...run, user: next });
         await go();
       },
 
       async accept() {
+        if (get().busy) {
+          set({ error: runText.busy() });
+          return;
+        }
         const run = get().run;
         if (!run || !get().model) {
-          set({ error: 'There is no draft model to accept yet.' });
+          set({ error: runText.nothingToAccept() });
           return;
         }
         const r = await deps.ipc.accept(run.modelId);
         set({ layer: r.layer, draftLayer: null });
+      },
+
+      current() {
+        const model = get().model;
+        return model ? { model, user } : null;
+      },
+
+      async setStatus(ids, status) {
+        const model = get().model;
+        if (!model) return { error: runText.nothingToAccept() };
+        const want = new Set(ids);
+        const next: ProcModel = {
+          ...model,
+          updatedAt: deps.now(),
+          assemblies: model.assemblies.map((a) => (want.has(a.id) ? { ...a, status } : a)),
+          parts: model.parts.map((p) => (want.has(p.id) ? { ...p, status } : p)),
+        };
+        try {
+          await deps.ipc.modelWrite(next);
+        } catch (e) {
+          return { error: e instanceof Error ? e.message : String(e) };
+        }
+        set({ model: next });
+        return next;
+      },
+
+      session() {
+        return {
+          current: () => get().current(),
+          setStatus: (ids, status) => get().setStatus(ids, status),
+          rebuild: async (next) => {
+            await get().rebuild(next);
+            const err = get().error;
+            if (err) return { error: err };
+            return assembled ?? { error: runText.noDraft() };
+          },
+        };
       },
 
       sendPreview(o) {
@@ -772,6 +896,14 @@ export function ipcRunIpc(bridge: Bridge, projectId: string, root: string): RunI
     return v as Extract<T, { ok: true }>;
   };
   return {
+    route: async () => {
+      const settings = await must(bridge.call('settings:get', {}));
+      try {
+        return routeFor(settings.routes, 'engineer');
+      } catch {
+        return null;
+      }
+    },
     runRead: async (runId) => {
       const r = ok(await must(bridge.call('engineer:runRead', { projectId, runId })));
       return { run: r.run, evidence: r.evidence, proposal: r.proposal };

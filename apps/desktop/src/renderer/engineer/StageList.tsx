@@ -16,14 +16,22 @@ const ICON: Record<Status, IconName> = {
 
 /**
  * The six stages of an engineering model run, in order, each with its state and message: pending
- * until reached. Cancel while one runs; Retry once one failed or was cancelled.
+ * until reached. Cancel while the run is at work; Retry once it stopped short: a stage failed or
+ * was cancelled, the run stopped with a reason (`error`, such as photos alone and offline), or
+ * run.json still says a stage is running though nothing runs (the app closed mid-stage).
  */
 export function StageList({
   stages,
+  busy,
+  error,
   onCancel,
   onRetry,
 }: {
   stages: Stages;
+  /** The store's `busy`: whether the run is at work now (run.json may say otherwise). */
+  busy?: boolean;
+  /** The store's `error`: the run stopped with this reason. */
+  error?: string | null;
   onCancel: () => void;
   onRetry: () => void;
 }) {
@@ -32,8 +40,12 @@ export function StageList({
     stage,
     state: stages[stage] ?? { status: 'pending' as const },
   }));
-  const running = list.some((s) => s.state.status === 'running');
-  const stopped = list.some((s) => s.state.status === 'failed' || s.state.status === 'cancelled');
+  const saysRunning = list.some((s) => s.state.status === 'running');
+  const running = busy ?? saysRunning;
+  const stopped =
+    list.some((s) => s.state.status === 'failed' || s.state.status === 'cancelled') ||
+    Boolean(error) ||
+    (busy === false && saysRunning);
   return (
     <section className="eng-stages" aria-label={t('eng.stage.title')}>
       <ol>

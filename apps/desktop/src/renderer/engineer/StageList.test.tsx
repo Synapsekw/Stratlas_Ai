@@ -87,4 +87,53 @@ describe('StageList', () => {
     );
     expect(q('eng-retry')).not.toBeNull();
   });
+
+  it('follows the store: a stage left running by a closed app offers Retry, not Cancel', () => {
+    const onRetry = vi.fn();
+    act(() =>
+      root?.render(
+        <StageList
+          stages={{ inspect: { status: 'done' }, estimate: { status: 'running' } }}
+          busy={false}
+          onCancel={() => undefined}
+          onRetry={onRetry}
+        />,
+      ),
+    );
+    expect(q('eng-cancel')).toBeNull();
+    act(() => q('eng-retry')?.click());
+    expect(onRetry).toHaveBeenCalled();
+  });
+
+  it('a run stopped with a reason (photos alone, offline) offers Retry', () => {
+    act(() =>
+      root?.render(
+        <StageList
+          stages={{
+            inspect: { status: 'done' },
+            estimate: { status: 'done' },
+            identify: { status: 'skipped', message: 'Offline' },
+          }}
+          busy={false}
+          error="Offline"
+          onCancel={() => undefined}
+          onRetry={() => undefined}
+        />,
+      ),
+    );
+    expect(q('eng-retry')).not.toBeNull();
+    // while the store is at work, Cancel only
+    act(() =>
+      root?.render(
+        <StageList
+          stages={{ inspect: { status: 'pending' } }}
+          busy
+          onCancel={() => undefined}
+          onRetry={() => undefined}
+        />,
+      ),
+    );
+    expect(q('eng-cancel')).not.toBeNull();
+    expect(q('eng-retry')).toBeNull();
+  });
 });
