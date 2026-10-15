@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
 import type { LibraryEntry, LibraryFolder } from '@aio/schema';
+import { workspace, type Workspace } from '@aio/workspace';
 import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -157,5 +158,17 @@ describe('ProjectsScreen folders', () => {
       notice.querySelector('button')?.click();
     });
     expect(actions.dismissLibraryNotice).toHaveBeenCalled();
+  });
+
+  it('marks the open project whatever case or slashes its path is written in', () => {
+    act(() => {
+      workspace.setState({
+        project: { id: 'north-yard', root: 'd:/DATA/projects/North-Yard', manifest: {} },
+      } as unknown as Partial<Workspace>);
+    });
+    expect(document.querySelector('.pcard.current .pc-name')?.textContent).toBe('north-yard');
+    act(() => {
+      workspace.setState({ project: null } as unknown as Partial<Workspace>);
+    });
   });
 });

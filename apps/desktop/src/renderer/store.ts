@@ -16,6 +16,7 @@ import { createStore, type StoreApi } from 'zustand/vanilla';
 import { createBridge, type Bridge } from './bridge';
 import { browserStorage, readPanelPrefs, writePanelPrefs, type PanelStorage } from './panelPrefs';
 import { isPlayer } from './player';
+import { samePathText } from './screens/projectMenuModel';
 import { videoFirst } from './stageDefault';
 
 export type Screen =
@@ -243,6 +244,8 @@ export function createShellStore(
    * one (a local model chosen meanwhile went back to the default address, localhost:11434).
    */
   let settingsRev = 0;
+  /** Counts library reads started here; only the answer to the latest one is kept. */
+  let libraryRev = 0;
   const setReadOnly = (on: boolean) => {
     options.onReadOnly?.(on);
   };
@@ -313,10 +316,14 @@ export function createShellStore(
     },
 
     loadLibrary: async () => {
+      // two quick changes read the library twice: an answer older than the latest is dropped
+      const req = ++libraryRev;
       const r = await bridge.call('library:list', {});
+      if (req !== libraryRev) return;
       if (r.ok) set({ library: r.value, libraryError: null });
       else set({ library: get().library ?? [], libraryError: r.error });
       const f = await bridge.call('library:folders', {});
+      if (req !== libraryRev) return;
       if (f.ok && f.value.ok) set({ folders: f.value.folders });
       else if (r.ok) set({ libraryError: f.ok ? (f.value.ok ? null : f.value.error) : f.error });
     },
@@ -456,7 +463,8 @@ export function createShellStore(
     },
 
     deleteProject: async (entry) => {
-      if (workspace.getState().project?.root === entry.path)
+      const open = workspace.getState().project;
+      if (open && samePathText(open.root, entry.path))
         return 'This project is open. Close it first, then delete it.';
       const r = await bridge.call('library:delete', { projectId: entry.id });
       // read the folder again either way: what is still on disk stays in the list

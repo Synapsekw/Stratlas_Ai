@@ -25,6 +25,7 @@ import {
 } from './libraryFolderModel';
 import { FolderBack, FolderRow, NewFolderButton } from './LibraryFolders';
 import { ProjectMenu, type MenuAt } from './ProjectMenu';
+import { samePathText } from './projectMenuModel';
 
 const LAYER_CHIPS: { key: string; icon: IconName; label: string }[] = [
   { key: 'mesh', icon: 'scene', label: 'Models' },
@@ -618,7 +619,7 @@ export function ProjectsScreen() {
                     key={e.id}
                     entry={e}
                     opening={opening === e.path}
-                    current={currentRoot === e.path}
+                    current={currentRoot !== undefined && samePathText(currentRoot, e.path)}
                     folderName={
                       searching && e.folderId !== undefined
                         ? folderNames.get(e.folderId)

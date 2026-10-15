@@ -582,6 +582,49 @@ describe('shell store', () => {
     expect(ws.getState().project).not.toBeNull();
   });
 
+  it('knows the open project whatever case or slashes its path is written in', async () => {
+    const { bridge, calls } = fakeBridge({
+      'project:open': () => ({
+        ok: true,
+        id: entry.id,
+        root: 'e:/DATA/projects/HCL/',
+        manifest,
+        issues: [],
+      }),
+      'library:delete': () => ({ ok: true }),
+    });
+    const s = createShellStore(bridge, createWorkspace());
+    await s.getState().openProject(entry.path);
+    expect(await s.getState().deleteProject(entry)).toContain('Close it first');
+    expect(calls.map((c) => c.channel)).not.toContain('library:delete');
+  });
+
+  it('drops a library answer that comes back after a newer one', async () => {
+    const waiting: ((v: LibraryEntry[]) => void)[] = [];
+    const bridge: Bridge = {
+      call: (channel) => {
+        if (channel === 'library:list')
+          return new Promise((done) => {
+            waiting.push((value) => {
+              done({ ok: true, value } as Res<never>);
+            });
+          });
+        if (channel === 'library:folders')
+          return Promise.resolve({ ok: true, value: { ok: true, folders: [] } } as Res<never>);
+        return Promise.resolve({ ok: false, error: `no ${channel}` } as Res<never>);
+      },
+    };
+    const s = createShellStore(bridge, createWorkspace());
+    const first = s.getState().loadLibrary();
+    const second = s.getState().loadLibrary();
+    const renamed = { ...entry, name: 'Renamed' };
+    waiting[1]?.([renamed]);
+    await second;
+    waiting[0]?.([entry]);
+    await first;
+    expect(s.getState().library).toEqual([renamed]);
+  });
+
   it('shows a project in its folder, and says so in the library when that fails', async () => {
     const answers = [{ ok: true }, { ok: false, error: 'Not found: the project folder.' }];
     const { bridge, calls } = fakeBridge({ 'library:reveal': () => answers.shift() });
