@@ -60,6 +60,9 @@ STALL_S = 300
 #: How often the build's watch samples its activity and updates the text, seconds.
 WATCH_EVERY_S = 2.0
 WATCH_THREAD = "pointcloud-build-watch"
+#: How long leaving the watch waits for its thread, seconds. A sample stuck past it (a hung
+#: process query) is left behind: the thread is a daemon and the build carries on.
+WATCH_JOIN_S = 30.0
 
 
 def find_pdal() -> str | None:
@@ -346,6 +349,9 @@ def _kernel32() -> Any:
     k32.CloseHandle.argtypes = [wintypes.HANDLE]
     k32.CreateToolhelp32Snapshot.restype = wintypes.HANDLE
     k32.CreateToolhelp32Snapshot.argtypes = [wintypes.DWORD, wintypes.DWORD]
+    for walk in (k32.Process32FirstW, k32.Process32NextW):
+        walk.restype = wintypes.BOOL
+        walk.argtypes = [wintypes.HANDLE, ctypes.c_void_p]  # a PROCESSENTRY32W, by reference
     return k32
 
 
@@ -474,7 +480,7 @@ class BuildWatch:
     def __exit__(self, *exc: object) -> None:
         self._stop.set()
         if self._thread is not None:
-            self._thread.join()
+            self._thread.join(WATCH_JOIN_S)
             self._thread = None
 
 

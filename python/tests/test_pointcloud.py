@@ -619,16 +619,46 @@ def test_without_the_cpu_read_the_watch_falls_back_to_file_activity(tmp_path, mo
 def test_a_busy_child_raises_the_cpu_time():
     from aio_pipelines.pointcloud import children_cpu_seconds
 
+    # the child spins far longer than the test needs (it is killed at the end), and the second
+    # reading is retried for a few seconds, so a slow or loaded machine still sees it rise
     child = subprocess.Popen(
-        [sys.executable, "-c", "import time\nt = time.time()\nwhile time.time() - t < 1.5: pass"],
+        [sys.executable, "-c", "import time\nt = time.time()\nwhile time.time() - t < 30: pass"],
         creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
     )
     try:
         time.sleep(0.4)
         a = children_cpu_seconds()
-        time.sleep(0.4)
-        b = children_cpu_seconds()
+        assert a is not None
+        b = a
+        deadline = time.monotonic() + 8
+        while time.monotonic() < deadline:
+            time.sleep(0.2)
+            b = children_cpu_seconds()
+            if b is not None and b > a:
+                break
     finally:
         child.kill()
-        child.wait()
-    assert a is not None and b is not None and b > a
+        child.wait(timeout=10)
+    assert b is not None and b > a
+
+
+def test_leaving_the_watch_does_not_wait_forever_for_a_stuck_sample(tmp_path, monkeypatch):
+    import aio_pipelines.pointcloud as pc
+
+    monkeypatch.setattr(pc, "WATCH_JOIN_S", 0.2)
+    release = threading.Event()
+    w, _, _, _ = watch(tmp_path, monkeypatch, cpu=lambda: release.wait(20) and None)
+    left = threading.Event()
+
+    def build():
+        with w:
+            time.sleep(0.2)  # the watch's first sample is stuck by now
+        left.set()
+
+    t = threading.Thread(target=build, daemon=True)
+    t.start()
+    try:
+        assert left.wait(5), "leaving the watch waited for its stuck thread"
+    finally:
+        release.set()
+        t.join(25)
