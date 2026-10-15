@@ -7,7 +7,11 @@ import { ProjectManifest, type PointcloudCleanup, type ProjectManifestInput } fr
 import type { Page } from '@playwright/test';
 import { copyFile, mkdir, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
-import { compileCleanup, evaluateAll } from '../../../packages/pointcloud/src/cleanup/evaluate';
+import {
+  STATE,
+  compileCleanup,
+  evaluateAll,
+} from '../../../packages/pointcloud/src/cleanup/evaluate';
 import { generate } from '../../../tools/pointcloud/synthetic-cloud.mjs';
 import { expect, tinyManifest } from './fixtures';
 
@@ -15,9 +19,17 @@ export const NOISY_FIXTURE = join(
   import.meta.dirname,
   '../../../packages/pointcloud/test-data/noisy.copc.laz',
 );
-export const NOISY_POINTS = 16060;
+/** The fixture's construction (tools/pointcloud/README.md, "Test fixture"). */
+export const CLOUD_POINTS = 16000;
+export const HIGH_OUTLIERS = 40;
+/** 40 high and 20 low isolated points, class 1. */
+export const PLANTED = HIGH_OUTLIERS + Math.floor(HIGH_OUTLIERS / 2);
+/** The fixture's rows (x, y, z, red, green, blue, intensity, class), from the same seeded generator. */
+const ROWS = generate(CLOUD_POINTS, HIGH_OUTLIERS)
+  .slice(1)
+  .map((r) => r.split(',').map(Number));
+export const NOISY_POINTS = ROWS.length;
 export const LAYER = 'noisy';
-const SHOTS = process.env.QUADRION_SHOTS;
 
 export async function writeNoisyProject(projectDir: string): Promise<void> {
   const base = tinyManifest();
@@ -74,7 +86,8 @@ export async function openNoisyProject(win: Page): Promise<void> {
   await expect(win.locator('[data-scene-view] canvas')).toBeVisible();
   // the whole cloud from above and to the south
   await setView(win, [20, 70, 35], [20, 0, -20]);
-  // 16 060 points in a handful of nodes: every one loads at this view
+  // 16 060 points in a handful of nodes, far under the point budget: every node loads, so the
+  // drawn counts the specs compare are whole-cloud counts, not level-of-detail samples
   await expect.poll(() => drawn(win), { timeout: 30_000 }).toBe(NOISY_POINTS);
 }
 
@@ -89,6 +102,7 @@ export async function openCleanupFromMenu(win: Page): Promise<void> {
     if ((await group.count()) && (await group.getAttribute('aria-expanded')) === 'false')
       await group.click();
   }
+  await expect(row).toBeVisible();
   await row.scrollIntoViewIfNeeded();
   await row.click({ button: 'right' });
   await win.getByTestId('menu-pointcloud-cleanup').click();
@@ -123,18 +137,21 @@ export const middleReachesView = (win: Page): Promise<boolean> =>
     return r ? document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2) === c : false;
   });
 
-/** A screenshot into QUADRION_SHOTS when it is set. */
-export async function shot(win: Page, name: string): Promise<void> {
-  if (SHOTS) await win.screenshot({ path: join(SHOTS, name) });
-}
-
 /** How many fixture points a save or an export keeps under `recipe` (the evaluator over every point). */
 export function expectedKept(recipe: PointcloudCleanup): number {
-  const rows = generate(16000, 40)
-    .slice(1)
-    .map((r) => r.split(',').map(Number));
-  const xyz = rows.flatMap((r) => [r[0] ?? 0, r[1] ?? 0, r[2] ?? 0]);
-  const cls = rows.map((r) => r[7] ?? 0);
-  const { state } = evaluateAll(compileCleanup(recipe), xyz, cls);
-  return state.filter((s) => s <= 1).length;
+  return statesOf(recipe).filter((s) => s <= STATE.hidden).length;
+}
+
+/**
+ * How many fixture points the view draws under `recipe` once every node is loaded (kept only:
+ * hidden selections, hidden classes, deletes and the box and heights are not drawn).
+ */
+export function expectedDrawn(recipe: PointcloudCleanup): number {
+  return statesOf(recipe).filter((s) => s === STATE.kept).length;
+}
+
+function statesOf(recipe: PointcloudCleanup): Uint8Array {
+  const xyz = ROWS.flatMap((r) => [r[0] ?? 0, r[1] ?? 0, r[2] ?? 0]);
+  const cls = ROWS.map((r) => r[7] ?? 0);
+  return evaluateAll(compileCleanup(recipe), xyz, cls).state;
 }

@@ -9,12 +9,14 @@ import { mkdir, readdir } from 'node:fs/promises';
 import { join } from 'node:path';
 import { PIPELINE_ENV, PDAL, expect, hasPdal, hasPipelinePython, test } from './fixtures';
 import {
+  HIGH_OUTLIERS,
   NOISY_POINTS,
+  drawn,
+  expectedDrawn,
   expectedKept,
   openCleanupFromMenu,
   openNoisyProject,
   recipeOf,
-  shot,
   writeNoisyProject,
 } from './cleanupHelpers';
 
@@ -70,12 +72,20 @@ test('lasso delete and clip box, saved as a copy and exported with the same poin
   await win.getByTestId('cleanup-height-max').fill('20');
   await win.getByTestId('cleanup-height-max').press('Enter');
   await expect.poll(async () => (await recipeOf(win))?.height?.max).toBe(20);
-  await shot(win, 'cleanup-lasso-box-height.png');
 
   const recipe = await recipeOf(win);
   if (!recipe) throw new Error('no recipe');
   const expected = expectedKept(recipe);
-  expect(expected).toBeLessThan(NOISY_POINTS);
+  // anchors from the fixture's construction: the fitted box keeps everything, Highest 20 m drops
+  // exactly the 40 high outliers (the building top is at 10 m, the trees at 6 m), and the lasso
+  // deletes some points of its own
+  const { clipBox, ...noBox } = recipe;
+  expect(clipBox).toBeTruthy();
+  expect(expectedKept({ ...noBox, regions: [] })).toBe(NOISY_POINTS - HIGH_OUTLIERS);
+  expect(expectedKept({ ...recipe, regions: [] })).toBe(NOISY_POINTS - HIGH_OUTLIERS);
+  expect(expected).toBeLessThan(NOISY_POINTS - HIGH_OUTLIERS);
+  // the view agrees with the evaluator (every node is loaded)
+  await expect.poll(() => drawn(win)).toBe(expectedDrawn(recipe));
 
   // Save cleaned copy: a new layer with that many points
   await win.getByTestId('cleanup-save-name').fill('Noisy scan');
@@ -116,7 +126,6 @@ test('lasso delete and clip box, saved as a copy and exported with the same poin
   await expect(dlg.getByTestId('survey-export-cleanup')).toBeChecked();
   await dlg.getByTestId('survey-export-run').click();
   await expect(dlg.getByTestId('survey-export-note')).toContainText('Saved', { timeout: 120_000 });
-  await shot(win, 'cleanup-export-saved.png');
   const [file] = (await readdir(out)).filter((f) => f.endsWith('.laz'));
   if (!file) throw new Error('no export');
   const info = JSON.parse(
