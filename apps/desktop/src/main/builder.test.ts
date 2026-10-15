@@ -1,6 +1,7 @@
 import { MAX_FOLDER_FILES } from '@aio/project/builder';
 import { withExif } from '@aio/project/builder/testing';
-import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
+import type { Georef } from '@aio/schema';
+import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
@@ -132,6 +133,57 @@ describe('builder main handlers', () => {
     expect(r.ok).toBe(true);
     expect(lines).toHaveLength(1);
     expect(lines[0]).toContain('walks/w/raw-path.json');
+  });
+
+  it("rewrites a model's georeference sidecar when its layer is placed, so the two agree", async () => {
+    const dir = join(base, 'projects', 'placed');
+    const manifest = sampleManifest();
+    const layer = (id: string, draft = false) => ({
+      kind: 'mesh' as const,
+      id,
+      name: id,
+      visible: true,
+      src: { path: `models/${id}.glb` },
+      transform: [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1],
+      derived: { kind: 'model' as const, source: ['stack'], ...(draft ? { draft: true } : {}) },
+    });
+    await writeProject(dir, {
+      ...manifest,
+      layers: [...manifest.layers, layer('model-stack'), layer('model-draft-stack', true)],
+    });
+    await mkdir(join(dir, 'models'), { recursive: true });
+    await writeFile(join(dir, 'models', 'stack.procmodel.json'), '{}');
+    await writeFile(join(dir, 'models', 'stack.georeference.json'), '{"stale":true}\n');
+    const registry = new ProjectRegistry();
+    const projectId = registry.register(dir);
+    const georef: Georef = {
+      schema: 'aio.georef/1',
+      crs: { epsg: 32639 },
+      anchor: [221030, 3214470, 32],
+      axes: 'x-east,y-up,z-south',
+      units: 'm',
+      modelToCrs: [1, 0, 0, 0, 0, 0, 1, 0, 0, -1, 0, 0, 221030, 3214470, 32, 1],
+      heading: { deg: 0, status: 'user' },
+      scale: { factor: 1, status: 'user' },
+      horizontal: { status: 'user' },
+      vertical: { datum: 'unknown', status: 'unknown' },
+      provenance: { by: 'place-model' },
+    };
+    const transform = [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 1, 0.3, -8, 1];
+    const r = await builderUpdateLayers(
+      { projectId, layerIds: ['model-stack'], patch: { transform, georef, placement: 'placed' } },
+      registry,
+    );
+    expect(r.ok).toBe(true);
+    const sidecar = join(dir, 'models', 'stack.georeference.json');
+    expect(JSON.parse(await readFile(sidecar, 'utf8'))).toEqual(georef);
+    // the draft preview is not the model's placement: its sidecar is left alone
+    await writeFile(sidecar, '{"kept":true}\n');
+    await builderUpdateLayers(
+      { projectId, layerIds: ['model-draft-stack'], patch: { georef, placement: 'placed' } },
+      registry,
+    );
+    expect(await readFile(sidecar, 'utf8')).toBe('{"kept":true}\n');
   });
 
   it('renames and colours a survey date of an open project, and only that', async () => {

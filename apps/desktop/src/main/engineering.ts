@@ -34,7 +34,7 @@ import {
   type Layer,
   type ProjectManifest,
 } from '@aio/schema';
-import { mkdir, open, readFile, realpath } from 'node:fs/promises';
+import { mkdir, open, readFile, realpath, rm } from 'node:fs/promises';
 import { extname, isAbsolute, join, relative, resolve, sep } from 'node:path';
 import type { z } from 'zod';
 import { isChangedOnDisk, readBytesSeen, writeJsonSeen } from './fsutil';
@@ -402,11 +402,10 @@ export function registerEngineeringIpc({
       await writeBytesAtomic(join(root, ...rel.split('/')), new TextEncoder().encode(text));
       files.push(rel);
     };
-    if (placement.georef)
-      await write(
-        `${PROCMODEL_DIR}/${modelId}.georeference.json`,
-        `${JSON.stringify(placement.georef, null, 2)}\n`,
-      );
+    const sidecar = `${PROCMODEL_DIR}/${modelId}.georeference.json`;
+    if (placement.georef) await write(sidecar, `${JSON.stringify(placement.georef, null, 2)}\n`);
+    // no georeference: one left from an earlier accept would no longer say where the model is
+    else await rm(join(root, ...sidecar.split('/')), { force: true });
     await write(`${PROCMODEL_DIR}/${modelId}.components.json`, register);
     const check = checked.report;
     if (!check) return { ok: false, error: 'The accepted model was not checked.' };

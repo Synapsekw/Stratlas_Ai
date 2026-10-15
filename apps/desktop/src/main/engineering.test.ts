@@ -462,6 +462,20 @@ describe('engineer:validate and engineer:accept', () => {
     ).toEqual(user);
   });
 
+  it('removes a georeference sidecar left from before when the model has no georeference', async () => {
+    const plain: ProcModel = { ...model };
+    delete plain.georef;
+    await writeFile(join(root, 'models', 'stack.procmodel.json'), JSON.stringify(plain));
+    const sidecar = join(root, 'models', 'stack.georeference.json');
+    await writeFile(sidecar, `${JSON.stringify(MODEL_GEOREF, null, 2)}\n`);
+    const a = await ipc().call('engineer:accept', { projectId: 'site', modelId: 'stack' });
+    if (!a.ok) throw new Error(a.error);
+    expect(a.files).toEqual(['models/stack.components.json']);
+    expect(existsSync(sidecar)).toBe(false);
+    const layer = (await readManifestFile(root)).layers[0];
+    expect(layer?.kind === 'mesh' && layer.placement).toBe('provisional');
+  });
+
   it('an unplaced model is accepted provisionally, and a package refuses', async () => {
     const unplaced: ProcModel = {
       ...model,
