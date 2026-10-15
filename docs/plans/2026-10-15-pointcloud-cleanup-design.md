@@ -108,7 +108,7 @@ All are additive, with compat fixtures in `tools/compat`.
   - Save cleaned copy: a name field and Save, with job progress in the jobs tray.
   - Footer: Undo and Redo buttons, and Reset all cleanup.
 - Built with the design skills (`impeccable`, `frontend-design`) and the existing panel styles. Strings go in `packages/ui/src/i18n/en.ts`.
-- **Right-click menu** on a point cloud layer row: Clean up..., Remove noise..., Save cleaned copy..., Reset cleanup. Today these go in `DateMenus.tsx` (`LayerDateMenu`), gated on `kind === 'pointcloud'` and COPC. The sidebar context-menu session (`feat/sidebar-context-menus`) is told the action list, so whichever branch lands second moves them into the shared list.
+- **Right-click menu** on a point cloud layer row: Clean up..., Remove noise..., Save cleaned copy..., Reset cleanup. Today these go in `DateMenus.tsx` (`LayerDateMenu`), gated on `kind === 'pointcloud'` and COPC. The sidebar context-menu session (`feat/sidebar-context-menus`) will move them into its shared action registry when it rebases. To make that easy, each action is a plain record in `apps/desktop/src/renderer/pointcloud/cleanupActions.ts` with the shape `{ id: 'pointcloud.cleanup' | 'pointcloud.removeNoise' | 'pointcloud.saveCleaned' | 'pointcloud.resetCleanup', label: <i18n key>, applies(target) -> boolean, multi: false, run(target, ctx) }`. The menu items call `run`, with no handler logic inline in JSX.
 - **Export dialog** (`ExportDialog.tsx`): for a cloud with a recipe, an "Apply cleanup" checkbox, on by default, with a one-line summary of what it removes.
 
 ### 6. Errors and limits
