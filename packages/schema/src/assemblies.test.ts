@@ -54,6 +54,26 @@ describe('Assembly', () => {
     expect(shaft({ hash: '0a1b2c3d', note: 'x' })).toBe(false);
     expect(shaft({ runId: 'run-a' })).toBe(false);
   });
+  it('a warning light may record the height its level was found at', () => {
+    const light = (levelFoundAt: unknown) =>
+      Assembly.safeParse({
+        ...base,
+        id: 'light-l1-1',
+        kind: 'warningLight',
+        params: {
+          fixture: 'twin',
+          centre: [7, 45, 0],
+          outward: [1, 0, 0],
+          size: 0.4,
+          ...(levelFoundAt === undefined ? {} : { levelFoundAt }),
+        },
+        quality: { centre: { basis: 'user' } },
+      }).success;
+    expect(light(undefined)).toBe(true);
+    expect(light(40)).toBe(true);
+    expect(light('40')).toBe(false);
+    expect(light(5000)).toBe(false);
+  });
   it('refuses an open-top shaft without a wall thickness', () => {
     const params = {
       base: [0, 0, 0],

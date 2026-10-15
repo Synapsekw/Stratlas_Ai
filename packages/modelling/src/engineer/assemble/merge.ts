@@ -97,6 +97,12 @@ function withReviewed(a: Assembly, hash: string, runId: string | undefined): Ass
   return { ...a, reviewed: runId === undefined ? { hash } : { hash, runId } };
 }
 
+/**
+ * Params that record where the run found a component, not what it is (a light's `levelFoundAt`):
+ * they follow the new run even on an accepted component and never count as a change to flag.
+ */
+const BOOKKEEPING = ['levelFoundAt'];
+
 const userKeys = (a: Assembly): string[] =>
   Object.entries(a.quality)
     .filter(([k, q]) => q.basis === 'user' && k in a.params)
@@ -124,12 +130,15 @@ export function mergeModels(
     }
     if (p.status !== 'draft') {
       // the person's own new values land on the kept component; nothing else does
-      const own = p.kind === n.kind ? userKeys(n).filter((k) => !sameData(...pair(p, n, k))) : [];
+      const own =
+        p.kind === n.kind
+          ? [...userKeys(n), ...BOOKKEEPING].filter((k) => !sameData(...pair(p, n, k)))
+          : [];
       let merged = (p.kind === n.kind ? withParams(p, n, own) : undefined) ?? p;
       if (p.status === 'accepted') {
         // flag once per new set of run values: compare with the values it was last reviewed
         // against (recorded on it), else with the values it was accepted with
-        const skip = new Set([...userKeys(p), ...userKeys(n)]);
+        const skip = new Set([...userKeys(p), ...userKeys(n), ...BOOKKEEPING]);
         const fresh = runValuesHash(n, skip);
         if (fresh !== (p.reviewed?.hash ?? runValuesHash(p, skip))) {
           flagged.push({

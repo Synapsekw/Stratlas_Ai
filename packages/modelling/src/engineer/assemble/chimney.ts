@@ -661,20 +661,16 @@ function build(ctx: FamilyCtx, shaftOnly: boolean): Assembly[] {
   return out;
 }
 
-/** The note on a moved light's centre quality: where its level was found (metres above base). */
-export const movedNote = (h: number) => `Level moved from ${h.toFixed(2)} m.`;
-function movedFrom(note: string | undefined): number | undefined {
-  const m = /^Level moved from (-?[0-9]+(?:\.[0-9]+)?) m\.$/.exec(note ?? '');
-  return m?.[1] === undefined ? undefined : Number(m[1]);
-}
+/** A human-readable note on a moved light's centre quality (display only; nothing reads it). */
+const movedNote = (h: number) => `Level moved from ${h.toFixed(2)} m.`;
 
 /**
  * Roles (`light-l<n>`) of the intermediate light levels. A level near (within `tol`) a level of
- * the previous model keeps that level's role, a level the person moved being compared at the
- * height it was found at (its lights' `movedFrom` note); previous levels moved without that note
- * pair with the levels left over, in height order; new levels are numbered after the highest
- * previous one. So a level found later never renumbers the others, and `user.levels` keeps its
- * target.
+ * the previous model keeps that level's role, each previous level compared at the height it was
+ * found at (its lights' `levelFoundAt`, which survives a move by the person); previous levels
+ * the person moved that carry no found height pair with the levels left over, in height order;
+ * new levels are numbered after the highest previous one. So a level found later never
+ * renumbers the others, and `user.levels` keeps its target.
  */
 function levelRoles(ctx: FamilyCtx, mid: readonly { h: number }[], tol: number): string[] {
   const byRole = new Map<string, { n: number; ys: number[] }>();
@@ -683,7 +679,7 @@ function levelRoles(ctx: FamilyCtx, mid: readonly { h: number }[], tol: number):
     if (!m?.[1] || a.kind !== 'warningLight') continue;
     const role = `light-l${m[1]}`;
     const e = byRole.get(role) ?? { n: Number(m[1]), ys: [] };
-    e.ys.push(movedFrom(a.quality.centre?.note) ?? a.params.centre[1] - ctx.base[1]);
+    e.ys.push(a.params.levelFoundAt ?? a.params.centre[1] - ctx.base[1]);
     byRole.set(role, e);
   }
   const prev = [...byRole.entries()].map(([role, e]) => ({ role, n: e.n, h: mean(e.ys) }));
@@ -827,7 +823,7 @@ function lights(ctx: FamilyCtx, shaftId: string): Assembly[] {
         ctx,
         'warningLight',
         id,
-        { fixture: fixture.v, centre, outward, size: size.v },
+        { fixture: fixture.v, centre, outward, size: size.v, levelFoundAt: level.h },
         {
           category: 'Lights',
           name: `${level.role === 'light-crown' ? 'Crown light' : `Light ${level.role.slice(6).toUpperCase()}`} ${String(indexInRole(level.role, id) ?? i + 1)}`,

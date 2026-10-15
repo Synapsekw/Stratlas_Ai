@@ -251,6 +251,12 @@ export const AssemblyParamsByKind = {
       centre: Vec3,
       outward: Dir,
       size: L,
+      /**
+       * Height above the asset base of the light level this light was found on (by the evidence
+       * or the proposal), kept when the person moves the level, so a regenerated level keeps its
+       * id. Bookkeeping: the builder ignores it.
+       */
+      levelFoundAt: Y.optional(),
     })
     .strict(),
   earthing: z.object({ path: Path3, diameter: L }).strict(),

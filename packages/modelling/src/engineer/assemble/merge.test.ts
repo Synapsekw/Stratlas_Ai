@@ -294,6 +294,78 @@ describe('light level roles across regeneration', () => {
     expect(next.changed.sort()).toEqual(['light-l3-1', 'light-l3-2', 'light-l3-3']);
   });
 
+  it('rewording or dropping the notes does not change how levels pair', () => {
+    const user = { levels: { 'light-l1': [95] } };
+    const first = assembleStack({ user });
+    const reworded: ProcModel = {
+      ...first.model,
+      assemblies: first.model.assemblies.map((a) =>
+        a.kind === 'warningLight'
+          ? { ...a, quality: { ...a.quality, centre: { basis: 'user', note: 'Moved on site.' } } }
+          : a,
+      ),
+    };
+    const silent: ProcModel = {
+      ...first.model,
+      assemblies: first.model.assemblies.map((a) =>
+        a.kind === 'warningLight' ? { ...a, quality: {} } : a,
+      ),
+    };
+    const ids = (m: ProcModel) =>
+      lightsOf(m)
+        .map((l) => `${l.id}@${String(Math.round(l.y))}`)
+        .sort();
+    const expected = ids(
+      assembleStack({ previous: first.model, evidence: withLowLevel(10), user }).model,
+    );
+    for (const previous of [reworded, silent])
+      expect(ids(assembleStack({ previous, evidence: withLowLevel(10), user }).model)).toEqual(
+        expected,
+      );
+    expect(expected.filter((s) => s.startsWith('light-l1-'))).toEqual([
+      'light-l1-1@95',
+      'light-l1-2@95',
+      'light-l1-3@95',
+    ]);
+  });
+
+  it('a found level that shifts updates an accepted light where it was found, not its values', () => {
+    const prev = withStatus(assembleStack().model, 'light-l1-1', 'accepted');
+    const shifted = stackEvidence();
+    const ev: EvidencePack = {
+      ...shifted,
+      members: shifted.members.map((g) =>
+        g.kind === 'light-candidate'
+          ? {
+              ...g,
+              items: g.items.map((it) =>
+                Math.abs(it.centre[1] - 40) < 0.5
+                  ? {
+                      ...it,
+                      centre: [it.centre[0], 41.5, it.centre[2]] as [number, number, number],
+                    }
+                  : it,
+              ),
+            }
+          : g,
+      ),
+    };
+    const next = assembleStack({ previous: prev, evidence: ev });
+    const was = byId(prev, 'light-l1-1');
+    const now = byId(next.model, 'light-l1-1');
+    if (now.kind !== 'warningLight' || was.kind !== 'warningLight') throw new Error('test: light');
+    expect(now.status).toBe('accepted');
+    expect(now.params.levelFoundAt).toBeCloseTo(41.5, 6);
+    expect(was.params.levelFoundAt).toBeCloseTo(40, 6);
+    expect({ ...now.params, levelFoundAt: 0 }).toEqual({ ...was.params, levelFoundAt: 0 });
+    expect(now.quality).toEqual(was.quality);
+    // the drafts of that level follow the evidence; the accepted one is flagged for review
+    const draft = byId(next.model, 'light-l1-2');
+    expect(draft.kind === 'warningLight' && draft.params.centre[1]).toBeCloseTo(41.5, 6);
+    expect(next.flagged.map((f) => f.id)).toContain('light-l1-1');
+    expect(ProcModel.safeParse(next.model).success).toBe(true);
+  });
+
   it('a level the person moved far keeps its role when regenerated', () => {
     const first = assembleStack({ user: { levels: { 'light-l1': [60] } } });
     const next = assembleStack({
