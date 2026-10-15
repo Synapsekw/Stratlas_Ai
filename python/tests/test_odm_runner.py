@@ -257,7 +257,7 @@ def test_threads_and_memory_limit_come_only_from_the_hand_set_cap(odm, aligned, 
 
 
 def test_align_runs_to_opensfm_with_progress_and_the_gpu_line(odm, aligned, tmp_path, monkeypatch):
-    (aligned / ".fake" / "opensfm.done").unlink()  # a fresh alignment: the fake runs opensfm again
+    (aligned / ".fake" / "opensfm.done.json").unlink()  # a fresh alignment: the fake runs opensfm again
     log = tmp_path / "args.jsonl"
     monkeypatch.setenv("FAKE_ODM_ARGS_LOG", str(log))
     ctx = Ctx()

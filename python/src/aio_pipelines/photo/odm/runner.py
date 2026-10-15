@@ -27,7 +27,7 @@ from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from ...runtime import JobError, StepContext
+from ...runtime import JobError, StepContext, replace_over
 from .. import native
 from .flags import STAGE_END, gpu_wanted, odm_threads, stage_after, stage_index, stage_start, stage_window
 
@@ -128,9 +128,9 @@ def ensure_dense_gpu(odm: OdmInstall, use_gpu: bool, env: Mapping[str, str] | No
     with contextlib.suppress(OSError):  # a file in use stays as it is; the answer below says so
         if want:
             if stub.is_file() and stub.stat().st_size < STUB_MAX_BYTES:
-                os.replace(stub, parked)  # a repair may have brought the stub back beside a parked copy
+                replace_over(stub, parked)  # a repair may have brought the stub back beside a parked copy
         elif parked.is_file() and not stub.exists():
-            os.replace(parked, stub)
+            replace_over(parked, stub)
     return want and parked.is_file() and not stub.exists()
 
 

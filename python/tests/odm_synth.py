@@ -137,7 +137,7 @@ def write_odm_folder(
     fake.mkdir(exist_ok=True)
     (fake / "truth.json").write_text(json.dumps(truth), "utf-8")
     for stage in ("dataset", "opensfm"):
-        (fake / f"{stage}.done").write_text("")
+        (fake / f"{stage}.done.json").write_text("{}")
     return odm
 
 

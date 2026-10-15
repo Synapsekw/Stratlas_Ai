@@ -1,8 +1,8 @@
 """Structure from motion on a walk's equirectangular stills (``walk.process``, step ``sfm``).
 
-COLMAP (pycolmap 4.2.1) runs in a child Python as for ``photo.align`` (``photo/colmap_io.py``):
-cancel kills it at once, a native crash cannot take the job down, and its memory is guarded
-(``colmap_io.memory_limit``, the one cap ``AIO_PHOTO_MEMORY_MB``). The child is
+COLMAP (pycolmap 4.2.1) runs in a child Python (helpers in ``walk/colmap_child.py``): cancel
+kills it at once, a native crash cannot take the job down, and its memory is guarded
+(``proctree.memory_limit``, the one cap ``AIO_PHOTO_MEMORY_MB``). The child is
 ``python -m aio_pipelines.walk.sfm <request.json>``; it talks back through the same progress file.
 
 - **Camera.** One ``EQUIRECTANGULAR`` camera (parameters: width, height) shared by every still,

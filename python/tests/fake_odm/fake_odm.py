@@ -540,7 +540,7 @@ def main(argv: list[str]) -> int:
             child = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(3600)"])
             Path(os.environ["FAKE_ODM_PIDS"]).write_text(f"{os.getpid()}\n{child.pid}\n")
             time.sleep(3600)
-        if forced or not (fake / f"{stage}.done").exists() or missing_output(project, stage):
+        if forced or not (fake / f"{stage}.done.json").exists() or missing_output(project, stage):
             half = float(os.environ.get("FAKE_ODM_STAGE_S", "0")) / 2
             time.sleep(half)  # the Running line is read before the midpoint datagram arrives
             STAGE_FNS[stage](project, a, gpu_bad)
@@ -548,7 +548,7 @@ def main(argv: list[str]) -> int:
                 a.name, (END[stage] + (END[STAGES[STAGES.index(stage) - 1]] if stage != "dataset" else 0)) / 2
             )
             time.sleep(half)  # and the midpoint holds long enough to be seen
-            (fake / f"{stage}.done").write_text("")
+            (fake / f"{stage}.done.json").write_text("{}")
         if stage == "opensfm" and not undistorted_ok(project):
             undistort(project)
         udp(a.name, END[stage])
