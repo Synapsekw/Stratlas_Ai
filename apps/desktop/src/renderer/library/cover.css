@@ -1,0 +1,124 @@
+/* Library covers: the picker in the Change thumbnail dialog and the new project wizard. */
+
+.cover-picker {
+  display: grid;
+  grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr);
+  gap: 14px 16px;
+  align-items: start;
+}
+@media (max-width: 520px) {
+  .cover-picker {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+/* the large 16:9 preview, framed like a library card */
+.cover-preview {
+  position: relative;
+  aspect-ratio: 16 / 9;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-4);
+  background: var(--bg-0);
+  overflow: hidden;
+}
+.cover-preview > canvas,
+.cover-preview > img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.cover-empty {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  color: var(--fg-3);
+  font-size: var(--t-12);
+  text-align: center;
+  padding: 12px;
+}
+.cover-empty svg {
+  color: var(--fg-4);
+}
+.cover-canvas {
+  display: block;
+  width: 100%;
+  height: auto;
+  aspect-ratio: 16 / 9;
+}
+
+.cover-side {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+}
+.cover-label {
+  font: 500 var(--t-11) / 1 var(--f-cond);
+  color: var(--fg-3);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.cover-swatches {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px;
+}
+.cover-swatch {
+  position: relative;
+  padding: 0;
+  border: 1px solid var(--line);
+  border-radius: var(--r-4);
+  background: var(--bg-0);
+  overflow: hidden;
+  cursor: pointer;
+  transition:
+    border-color 120ms var(--ease),
+    box-shadow 120ms var(--ease);
+}
+.cover-swatch:hover {
+  border-color: var(--line-strong);
+}
+.cover-swatch[aria-pressed='true'] {
+  border-color: var(--acc);
+  box-shadow: 0 0 0 1px var(--acc);
+}
+.cover-swatch[aria-pressed='true']::after {
+  /* a small tick in the corner: the selection reads without relying on the ring's colour */
+  content: '';
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--acc);
+  box-shadow: 0 0 0 2px var(--bg-0);
+}
+
+.cover-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 4px;
+}
+.cover-actions .btn[aria-pressed='true'] {
+  border-color: var(--acc-a40);
+  background: var(--acc-a12);
+  color: var(--fg-0);
+}
+.cover-why {
+  margin: 0;
+  color: var(--fg-3);
+  font-size: var(--t-11);
+  line-height: 1.45;
+}
+.cover-bad {
+  grid-column: 1 / -1;
+  margin: 0;
+}
