@@ -525,6 +525,282 @@ describe('geom kernel', () => {
   });
 });
 
+describe('geom kernel input checks and robustness', () => {
+  const std = () => new MeshSink(SEGMENTS.standard);
+  const square: [number, number][] = [
+    [-5, -5],
+    [5, -5],
+    [5, 5],
+    [-5, 5],
+  ];
+
+  it('closedAndWound rejects an inside-out piece sharing a primitive with a correct one', () => {
+    const s = std();
+    s.box('x', { centre: [0, 0, 0], size: [2, 2, 2] });
+    const p = s.prim('x');
+    const n0 = p.indices.length;
+    s.box('x', { centre: [10, 0, 0], size: [1, 1, 1] });
+    expect(closedAndWound(p)).toBe(true);
+    for (let i = n0; i < p.indices.length; i += 3) {
+      const t = must(p.indices[i + 1]);
+      p.indices[i + 1] = must(p.indices[i + 2]);
+      p.indices[i + 2] = t;
+    }
+    expect(volume(p)).toBeGreaterThan(0); // the total still looks fine
+    expect(closedAndWound(p)).toBe(false);
+  });
+
+  it('a hole touching the outline is refused, not dropped', () => {
+    const tangent = ringPoints2(4, 0, 1, 16);
+    expect(() => triangulateWithHoles(square, [tangent])).toThrow(/hole/);
+    expect(() => {
+      std().slab('d', { y: 0, outline: square, thickness: 0.3, holes: [{ c: [4, 0], r: 1 }] });
+    }).toThrow(/hole 1 touches or crosses the outline/);
+    expect(() => {
+      std().disc('d', {
+        centre: [0, 0, 0],
+        normal: [0, 1, 0],
+        r: 3,
+        holes: [{ c: [2.5, 0], r: 1 }],
+      });
+    }).toThrow(/outline/);
+    expect(() => {
+      std().slab('d', { y: 0, outline: square, thickness: 0.3, holes: [{ c: [7, 0], r: 1 }] });
+    }).toThrow(/inside the outline/);
+  });
+
+  it('touching or overlapping holes are refused', () => {
+    for (const c of [1, 0.5]) {
+      expect(() => {
+        std().slab('d', {
+          y: 0,
+          outline: { r: 6 },
+          thickness: 0.3,
+          holes: [
+            { c: [c, 0], r: 1 },
+            { c: [-c, 0], r: 1 },
+          ],
+        });
+      }).toThrow(/holes 1 and 2 touch or overlap/);
+    }
+  });
+
+  it('a polygon that cannot be triangulated is refused instead of fanned', () => {
+    // a bow tie: self-intersecting
+    const bow: [number, number][] = [
+      [0, 0],
+      [2, 2],
+      [2, 0],
+      [0, 2],
+    ];
+    expect(() => triangulateWithHoles(bow, [])).toThrow(/simple polygon/);
+  });
+
+  it('triangulates the same at far-off coordinates (tolerances follow the outline size)', () => {
+    const s = std();
+    s.slab('d', {
+      y: 0,
+      outline: [
+        [500000, 4000000],
+        [500010, 4000000],
+        [500010, 4000010],
+        [500000, 4000010],
+      ],
+      thickness: 0.3,
+      holes: [{ c: [500005, 4000005], r: 1 }],
+    });
+    const p = only(s);
+    expect(closedAndWound(p)).toBe(true);
+    expect(volume(p) / (0.3 * (100 - ngon(1, SEGMENTS.standard(1))))).toBeCloseTo(1, 4);
+    const tiny = triangulateWithHoles(ringPoints2(0, 0, 1e-4, 24), [ringPoints2(0, 0, 0.5e-4, 12)]);
+    expect(tiny).toHaveLength(24 + 12 + 2 - 2);
+  });
+
+  it('refuses non-finite, negative and inside-out inputs with a clear message', () => {
+    const base: V3 = [0, 0, 0];
+    const axis: V3 = [0, 1, 0];
+    const cases: [string, () => void, RegExp][] = [
+      [
+        'NaN radius',
+        () => {
+          std().frustumShell('c', {
+            base,
+            axis,
+            profile: [
+              { y: 0, r: NaN },
+              { y: 5, r: 1 },
+            ],
+            capBottom: true,
+            capTop: true,
+          });
+        },
+        /frustum profile/,
+      ],
+      [
+        'negative radius',
+        () => {
+          std().frustumShell('c', {
+            base,
+            axis,
+            profile: [
+              { y: 0, r: -1 },
+              { y: 5, r: 1 },
+            ],
+            capBottom: true,
+            capTop: true,
+          });
+        },
+        /not negative/,
+      ],
+      [
+        'zero axis',
+        () => {
+          std().frustumShell('c', {
+            base,
+            axis: [0, 0, 0],
+            profile: [
+              { y: 0, r: 1 },
+              { y: 5, r: 1 },
+            ],
+            capBottom: true,
+            capTop: true,
+          });
+        },
+        /frustum axis/,
+      ],
+      [
+        'zero-height frustum',
+        () => {
+          std().frustumShell('c', {
+            base,
+            axis,
+            profile: [
+              { y: 0, r: 2 },
+              { y: 0, r: 2 },
+            ],
+            capBottom: true,
+            capTop: true,
+          });
+        },
+        /needs some height/,
+      ],
+      [
+        'inner above outer',
+        () => {
+          std().annulusTube('a', { centre: base, axis, rOuter: 1, rInner: 1.2, y0: 0, y1: 5 });
+        },
+        /outer radius must exceed the inner/,
+      ],
+      [
+        'zero-height tube',
+        () => {
+          std().annulusTube('a', { centre: base, axis, rOuter: 1, rInner: 0.8, y0: 3, y1: 3 });
+        },
+        /y1 above y0/,
+      ],
+      [
+        'zero thickness slab',
+        () => {
+          std().slab('d', { y: 0, outline: { r: 2 }, thickness: 0, holes: [] });
+        },
+        /slab thickness/,
+      ],
+      [
+        'flat box',
+        () => {
+          std().box('b', { centre: base, size: [1, 0, 1] });
+        },
+        /box size/,
+      ],
+      [
+        'zero-length beam',
+        () => {
+          std().beam('b', base, base, 0.1);
+        },
+        /beam ends must be apart/,
+      ],
+      [
+        'NaN rod end',
+        () => {
+          std().rod('r', base, [NaN, 1, 0], 0.1, true);
+        },
+        /rod ends must be finite/,
+      ],
+      [
+        'fat torus',
+        () => {
+          std().torus('t', { centre: base, axis, R: 0.1, r: 0.2 });
+        },
+        /torus radius must exceed/,
+      ],
+      [
+        'zero disc',
+        () => {
+          std().disc('d', { centre: base, normal: axis, r: 0 });
+        },
+        /disc radius/,
+      ],
+      [
+        'one-point sweep',
+        () => {
+          std().sweep('p', [base, base], 0.1, { capStart: true, capEnd: true });
+        },
+        /2 or more distinct points/,
+      ],
+      [
+        'U-turn sweep',
+        () => {
+          std().sweep(
+            'p',
+            [
+              [0, 0, 0],
+              [5, 0, 0],
+              [0, 0, 0],
+            ],
+            0.2,
+            { capStart: true, capEnd: true },
+          );
+        },
+        /doubles back/,
+      ],
+      [
+        'zero-width rect sweep',
+        () => {
+          std().rectSweep('d', [base, [0, 0, 1]], 0, 0.3, true);
+        },
+        /rect sweep width/,
+      ],
+      [
+        'bad opening',
+        () => {
+          std().opening('o', { centre: base, normal: axis, r: -1 });
+        },
+        /opening radius/,
+      ],
+    ];
+    for (const [name, run, message] of cases) {
+      expect(run, name).toThrow(message);
+    }
+  });
+
+  it('a sharp but not doubled-back turn still sweeps closed', () => {
+    const s = std();
+    s.sweep(
+      'p',
+      [
+        [0, 0, 0],
+        [5, 0, 0],
+        [0, 0, 0.5],
+      ],
+      0.2,
+      { capStart: true, capEnd: true },
+    );
+    const p = only(s);
+    expect(closedAndWound(p)).toBe(true);
+    expect(normalsUnit(p)).toBe(true);
+  });
+});
+
 /** Points on a circle in the plane, counter-clockwise. */
 function ringPoints2(cx: number, cy: number, r: number, n: number): [number, number][] {
   return Array.from({ length: n }, (_, i): [number, number] => {

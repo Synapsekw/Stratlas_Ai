@@ -115,6 +115,63 @@ function nth<T>(xs: readonly T[], i: number): T {
 }
 
 // ---------------------------------------------------------------------------------------------
+// input checks: every primitive refuses values that would make a broken or inside-out mesh
+
+function need(ok: boolean, what: string): void {
+  if (!ok) throw new Error(`geometry: ${what}`);
+}
+const finite = (...xs: number[]) => xs.every((x) => Number.isFinite(x));
+const finiteV = (...vs: readonly V3[]) => vs.every((v) => finite(...v));
+const needDir = (v: V3, what: string) => {
+  need(finiteV(v) && len(v) > 1e-12, `${what} must be a finite, non-zero direction`);
+};
+const needPos = (x: number, what: string) => {
+  need(Number.isFinite(x) && x > 0, `${what} must be a finite number above zero`);
+};
+const needCount = (n: number | undefined, what: string) => {
+  need(
+    n === undefined || (Number.isInteger(n) && n >= 3),
+    `${what} must be a whole number of 3 or more`,
+  );
+};
+
+/** Distance from `p` to the segment `a`-`b`. */
+function segDist(p: V2, a: V2, b: V2): number {
+  const dx = b[0] - a[0];
+  const dy = b[1] - a[1];
+  const l2 = dx * dx + dy * dy;
+  const t = l2 > 0 ? Math.max(0, Math.min(1, ((p[0] - a[0]) * dx + (p[1] - a[1]) * dy) / l2)) : 0;
+  return Math.hypot(p[0] - a[0] - t * dx, p[1] - a[1] - t * dy);
+}
+
+/**
+ * Circular holes must sit inside the outline polygon with clearance and keep clear of each other:
+ * a hole touching the edge or another hole cannot be meshed as a closed solid.
+ */
+function checkHoles(outline: readonly V2[], holes: readonly Hole[]): void {
+  const o0 = nth(outline, 0);
+  const size = Math.max(
+    ...outline.map((q) => Math.max(Math.abs(q[0] - o0[0]), Math.abs(q[1] - o0[1]))),
+  );
+  const gap = 1e-6 * Math.max(size, 1);
+  holes.forEach((h, i) => {
+    const name = `hole ${String(i + 1)}`;
+    need(finite(h.c[0], h.c[1]), `${name} centre must be finite`);
+    needPos(h.r, `${name} radius`);
+    needCount(h.segments, `${name} segments`);
+    need(insideRing(h.c, outline), `${name} must lie inside the outline`);
+    for (let k = 0; k < outline.length; k++) {
+      const d = segDist(h.c, nth(outline, k), nth(outline, (k + 1) % outline.length));
+      need(d > h.r + gap, `${name} touches or crosses the outline`);
+    }
+    holes.slice(0, i).forEach((o, j) => {
+      const d = Math.hypot(h.c[0] - o.c[0], h.c[1] - o.c[1]);
+      need(d > h.r + o.r + gap, `holes ${String(j + 1)} and ${String(i + 1)} touch or overlap`);
+    });
+  });
+}
+
+// ---------------------------------------------------------------------------------------------
 // triangulation
 
 const area2 = (ring: readonly V2[]): number => {
@@ -165,8 +222,34 @@ export function triangulateWithHoles(
   outer: readonly V2[],
   holes: readonly (readonly V2[])[] = [],
 ): [number, number, number][] {
-  const pts: V2[] = [...outer, ...holes.flat()];
+  need(outer.length >= 3 && holes.every((h) => h.length >= 3), 'rings need 3 or more points');
+  const raw: V2[] = [...outer, ...holes.flat()];
+  need(
+    raw.every((q) => finite(q[0], q[1])),
+    'ring points must be finite',
+  );
+  // work in the outline's bounding box scaled to 1, so tolerances hold at any size or offset
+  const xs = outer.map((q) => q[0]);
+  const ys = outer.map((q) => q[1]);
+  const [x0, y0] = [Math.min(...xs), Math.min(...ys)];
+  const size = Math.max(Math.max(...xs) - x0, Math.max(...ys) - y0);
+  need(size > 0, 'the outline has no extent');
+  const unit = (r: readonly V2[]) => r.map((q): V2 => [(q[0] - x0) / size, (q[1] - y0) / size]);
+  const pts = unit(raw);
+  const outerU = unit(outer);
+  const holesU = holes.map(unit);
   const P = (i: number) => nth(pts, i);
+  // every ring simple and no two rings crossing: ear clipping is only sound on those
+  const allEdges: [V2, V2][] = [outerU, ...holesU].flatMap((r) =>
+    r.map((q, k): [V2, V2] => [q, nth(r, (k + 1) % r.length)]),
+  );
+  for (let i = 0; i < allEdges.length; i++) {
+    const [a, b] = nth(allEdges, i);
+    for (let j = i + 1; j < allEdges.length; j++) {
+      const [c, d] = nth(allEdges, j);
+      need(!crosses(a, b, c, d), 'the outline or a hole is not a simple polygon');
+    }
+  }
   let poly = outer.map((_, i) => i);
   if (area2(outer) < 0) poly.reverse();
   const holeIdx: number[][] = [];
@@ -209,11 +292,11 @@ export function triangulateWithHoles(
       )
         continue;
       const mid: V2 = [(pm[0] + pv[0]) / 2, (pm[1] + pv[1]) / 2];
-      if (!insideRing(mid, outer) || holes.some((hr) => insideRing(mid, hr))) continue;
+      if (!insideRing(mid, outerU) || holesU.some((hr) => insideRing(mid, hr))) continue;
       best = k;
       bestD = d;
     }
-    if (best < 0) continue; // no bridge found: leave the hole out rather than fail
+    need(best >= 0, 'a hole touches the outline or another hole and cannot be bridged');
     const loop = [...ids.slice(mPos), ...ids.slice(0, mPos), M];
     const V = nth(poly, best);
     poly = [...poly.slice(0, best + 1), ...loop, V, ...poly.slice(best + 1)];
@@ -243,9 +326,9 @@ export function triangulateWithHoles(
     }
     if (!clipped) break;
   }
-  if (idx.length === 3) out.push([nth(idx, 0), nth(idx, 1), nth(idx, 2)]);
-  else
-    for (let k = 1; k + 1 < idx.length; k++) out.push([nth(idx, 0), nth(idx, k), nth(idx, k + 1)]);
+  need(idx.length === 3, 'the outline or a hole is not a simple polygon');
+  const [i0, i1, i2] = [nth(idx, 0), nth(idx, 1), nth(idx, 2)];
+  if (crossZ(P(i0), P(i1), P(i2)) > 1e-14) out.push([i0, i1, i2]);
   return out;
 }
 
@@ -325,6 +408,9 @@ export class MeshSink {
 
   /** Declares an intended opening on the primitive of `material`. */
   opening(material: string, o: Opening): void {
+    need(finiteV(o.centre), 'opening centre must be finite');
+    needDir(o.normal, 'opening normal');
+    needPos(o.r, 'opening radius');
     const p = this.prim(material);
     (p.openings ??= []).push({ centre: clean(o.centre), normal: clean(norm(o.normal)), r: o.r });
   }
@@ -401,8 +487,21 @@ export class MeshSink {
       inward?: boolean;
     },
   ): void {
+    need(finiteV(o.base), 'frustum base must be finite');
+    needDir(o.axis, 'frustum axis');
+    need(o.profile.length >= 2, 'frustum profile needs 2 or more points');
+    need(
+      o.profile.every((q) => finite(q.y, q.r) && q.r >= 0),
+      'frustum profile heights must be finite and radii finite and not negative',
+    );
+    needCount(o.sides, 'frustum sides');
+    needCount(o.segments, 'frustum segments');
     const prof = o.profile.map((q, i) => ({ ...q, i })).sort((a, b) => a.y - b.y || a.i - b.i);
-    if (prof.length < 2) return;
+    need(nth(prof, prof.length - 1).y - nth(prof, 0).y > 0, 'frustum profile needs some height');
+    need(
+      prof.some((q) => q.r > 0),
+      'frustum profile needs a radius above zero',
+    );
     const p = this.prim(m);
     const a = norm(o.axis);
     const [u, v] = basis(a);
@@ -492,6 +591,15 @@ export class MeshSink {
       openings?: 'top' | 'bottom' | 'both' | 'none';
     },
   ): void {
+    need(finiteV(o.centre), 'annulus tube centre must be finite');
+    needDir(o.axis, 'annulus tube axis');
+    needPos(o.rInner, 'annulus tube inner radius');
+    need(
+      Number.isFinite(o.rOuter) && o.rOuter > o.rInner,
+      'annulus tube outer radius must exceed the inner',
+    );
+    need(finite(o.y0, o.y1) && o.y1 > o.y0, 'annulus tube needs y1 above y0');
+    needCount(o.segments, 'annulus tube segments');
     const a = norm(o.axis);
     const n = o.segments ?? this.segmentsFor(o.rOuter);
     const shell = (r: number, inward: boolean) => {
@@ -539,6 +647,10 @@ export class MeshSink {
       declareHoles?: boolean;
     },
   ): void {
+    need(finiteV(o.centre), 'disc centre must be finite');
+    needDir(o.normal, 'disc normal');
+    needPos(o.r, 'disc radius');
+    needCount(o.segments, 'disc segments');
     const p = this.prim(m);
     const a = norm(o.normal);
     const [u, v] = basis(a);
@@ -546,6 +658,7 @@ export class MeshSink {
     const holes = o.holes ?? [];
     const n = o.segments ?? this.segmentsFor(o.r);
     const outer = circle2([0, 0], o.r, n);
+    checkHoles(outer, holes);
     const rings = holes.map((h) => circle2(h.c, h.r, h.segments ?? this.segmentsFor(h.r)));
     const only = holes.length === 1 ? holes[0] : undefined;
     const inner = rings[0];
@@ -580,6 +693,20 @@ export class MeshSink {
       holes: Hole[];
     },
   ): void {
+    need(Number.isFinite(o.y), 'slab level must be finite');
+    needPos(o.thickness, 'slab thickness');
+    if (Array.isArray(o.outline)) {
+      need(o.outline.length >= 3, 'slab outline needs 3 or more points');
+      need(
+        o.outline.every((q) => finite(q[0], q[1])),
+        'slab outline points must be finite',
+      );
+      need(Math.abs(area2(o.outline)) > 0, 'slab outline has no area');
+    } else {
+      need(o.outline.c === undefined || finite(...o.outline.c), 'slab centre must be finite');
+      needPos(o.outline.r, 'slab radius');
+      needCount(o.outline.segments, 'slab segments');
+    }
     const p = this.prim(m);
     const y0 = o.y - o.thickness;
     const y1 = o.y;
@@ -591,7 +718,7 @@ export class MeshSink {
           o.outline.r,
           o.outline.segments ?? this.segmentsFor(o.outline.r),
         );
-    if (outer.length < 3) return;
+    checkHoles(outer, o.holes);
     const rings = o.holes.map((h) => circle2(h.c, h.r, h.segments ?? this.segmentsFor(h.r)));
     const all = [outer, ...rings].flat();
     const tris = triangulateWithHoles(outer, rings);
@@ -637,6 +764,13 @@ export class MeshSink {
    * (counter-clockwise seen from above, as in the mesher); `up` (default +Y) tilts its y axis.
    */
   box(m: string, o: { centre: V3; size: V3; yawDeg?: number; up?: V3 }): void {
+    need(finiteV(o.centre), 'box centre must be finite');
+    need(
+      o.size.every((s) => Number.isFinite(s) && s > 0),
+      'box size must be finite and above zero',
+    );
+    need(o.yawDeg === undefined || Number.isFinite(o.yawDeg), 'box yaw must be finite');
+    if (o.up) needDir(o.up, 'box up');
     const p = this.prim(m);
     const ey = norm(o.up ?? [0, 1, 0]);
     const yaw = ((o.yawDeg ?? 0) * Math.PI) / 180;
@@ -676,17 +810,21 @@ export class MeshSink {
 
   /** A square member of side `section` from `a` to `b`. */
   beam(m: string, a: V3, b: V3, section: number): void {
+    need(finiteV(a, b), 'beam ends must be finite');
+    needPos(section, 'beam section');
     const d = sub(b, a);
     const l = len(d);
-    if (l < 1e-9) return;
+    need(l > 1e-9, 'beam ends must be apart');
     this.box(m, { centre: scale(add(a, b), 0.5), size: [section, l, section], up: d });
   }
 
   /** A round bar of radius `r` from `a` to `b`, closed at both ends when `caps`. */
   rod(m: string, a: V3, b: V3, r: number, caps: boolean): void {
+    need(finiteV(a, b), 'rod ends must be finite');
+    needPos(r, 'rod radius');
     const d = sub(b, a);
     const l = len(d);
-    if (l < 1e-9) return;
+    need(l > 1e-9, 'rod ends must be apart');
     this.frustumShell(m, {
       base: a,
       axis: d,
@@ -709,6 +847,7 @@ export class MeshSink {
     r: number,
     o: { bendRadius?: number; capStart: boolean; capEnd: boolean },
   ): void {
+    needPos(r, 'sweep radius');
     this.sweepSection(m, path, circleSection(r, this.segmentsFor(r)), o);
   }
 
@@ -724,6 +863,8 @@ export class MeshSink {
     caps: boolean,
     o: { bendRadius?: number } = {},
   ): void {
+    needPos(w, 'rect sweep width');
+    needPos(h, 'rect sweep height');
     this.sweepSection(m, path, rectSection(w, h), { ...o, capStart: caps, capEnd: caps });
   }
 
@@ -735,6 +876,15 @@ export class MeshSink {
     m: string,
     o: { centre: V3; axis: V3; R: number; r: number; arcDeg?: number; startDeg?: number },
   ): void {
+    need(finiteV(o.centre), 'torus centre must be finite');
+    needDir(o.axis, 'torus axis');
+    needPos(o.r, 'torus tube radius');
+    need(Number.isFinite(o.R) && o.R > o.r, 'torus radius must exceed its tube radius');
+    need(
+      o.arcDeg === undefined || (Number.isFinite(o.arcDeg) && o.arcDeg > 0 && o.arcDeg <= 360),
+      'torus arc must be above 0 and at most 360 degrees',
+    );
+    need(o.startDeg === undefined || Number.isFinite(o.startDeg), 'torus start must be finite');
     const p = this.prim(m);
     const a = norm(o.axis);
     const [u, v] = basis(a);
@@ -790,7 +940,8 @@ export class MeshSink {
   loft(m: string, ringA: V3[], ringB: V3[]): void {
     const n = ringA.length;
     if (n < 3 || ringB.length !== n)
-      throw new Error('loft needs two rings of the same length, at least 3');
+      throw new Error('geometry: loft needs two rings of the same length, at least 3');
+    need(finiteV(...ringA, ...ringB), 'loft ring points must be finite');
     const p = this.prim(m);
     const centroid = (r: V3[]) => scale(r.reduce(add, [0, 0, 0]), 1 / r.length);
     const cA = centroid(ringA);
@@ -821,12 +972,17 @@ export class MeshSink {
     sec: Section,
     o: { bendRadius?: number; capStart: boolean; capEnd: boolean },
   ): void {
+    need(finiteV(...path), 'sweep path points must be finite');
+    need(
+      o.bendRadius === undefined || (Number.isFinite(o.bendRadius) && o.bendRadius >= 0),
+      'sweep bend radius must be finite and not negative',
+    );
     const pts: V3[] = [];
     for (const q of path) {
       const last = pts.at(-1);
       if (!last || len(sub(q, last)) > 1e-9) pts.push(q);
     }
-    if (pts.length < 2) return;
+    need(pts.length >= 2, 'sweep path needs 2 or more distinct points');
     const p = this.prim(m);
     const dirs = pts.slice(1).map((q, i) => norm(sub(q, nth(pts, i))));
     const lens = pts.slice(1).map((q, i) => len(sub(q, nth(pts, i))));
@@ -844,6 +1000,7 @@ export class MeshSink {
       const dOut = nth(dirs, i);
       const P = nth(pts, i);
       const theta = Math.acos(Math.max(-1, Math.min(1, dot(dIn, dOut))));
+      need(theta < Math.PI - 1e-3, 'sweep path doubles back on itself');
       if (theta < 1e-6) {
         used = 0;
         continue;

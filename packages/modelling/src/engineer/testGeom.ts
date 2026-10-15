@@ -111,7 +111,10 @@ export function volume(p: Prim): number {
   return v;
 }
 
-/** Every welded edge is used once in each direction (closed, consistently wound) and the volume is positive. */
+/**
+ * Every welded edge is used once in each direction (closed, consistently wound) and every
+ * connected piece has a positive volume, so an inside-out piece cannot hide behind a larger one.
+ */
 export function closedAndWound(p: Prim): boolean {
   const directed = directedEdges(p, weld(p).id);
   if (directed.size === 0) return false;
@@ -119,7 +122,37 @@ export function closedAndWound(p: Prim): boolean {
     const [a, b] = k.split('>');
     if (n !== 1 || directed.get(`${b ?? ''}>${a ?? ''}`) !== 1) return false;
   }
-  return volume(p) > 0;
+  return componentVolumes(p).every((v) => v > 0);
+}
+
+/** Signed volume of each connected piece (triangles joined through shared welded vertices). */
+export function componentVolumes(p: Prim): number[] {
+  const { id } = weld(p);
+  const parent = new Map<number, number>();
+  const find = (w: number): number => {
+    let r = w;
+    for (let up = parent.get(r); up !== undefined && up !== r; up = parent.get(r)) r = up;
+    parent.set(w, r);
+    return r;
+  };
+  const tris: number[][] = [];
+  for (let t = 0; t + 2 < p.indices.length; t += 3) {
+    const w = [0, 1, 2].map((k) => id[p.indices[t + k] ?? 0] ?? 0);
+    tris.push(w);
+    const [a = 0, b = 0, c = 0] = w;
+    for (const o of [b, c]) {
+      const ra = find(a);
+      const ro = find(o);
+      if (ra !== ro) parent.set(ro, ra);
+    }
+  }
+  const vols = new Map<number, number>();
+  tris.forEach((w, i) => {
+    const piece = find(w[0] ?? 0);
+    const one: Prim = { ...p, indices: p.indices.slice(3 * i, 3 * i + 3) };
+    vols.set(piece, (vols.get(piece) ?? 0) + volume(one));
+  });
+  return [...vols.values()];
 }
 
 function faceNormal(p: Prim, t: number): V3 {
