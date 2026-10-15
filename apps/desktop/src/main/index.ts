@@ -59,6 +59,7 @@ import { listReports } from './exports/reports';
 import { runInUtility } from './exports/utility';
 import {
   builderAltitudePlan,
+  builderCloudDates,
   builderAddDrawingPage,
   builderCloseDrawing,
   drawingJobRefusal,
@@ -1434,6 +1435,15 @@ function registerIpc(): void {
           ),
         // point clouds convert in the pipeline pack as jobs (Jobs panel)
         jobs: builderPipelineJobs(jobs),
+        // a Bentley AT export asks for its photos folder (main's dialog, as dialog:openFolder)
+        pickFolder: async (title) => {
+          const win = targetWindow();
+          const options = { title, properties: ['openDirectory' as const] };
+          const r = win
+            ? await dialog.showOpenDialog(win, options)
+            : await dialog.showOpenDialog(options);
+          return r.canceled ? null : (r.filePaths[0] ?? null);
+        },
         emit: (e) => {
           const parsed = ipcEvents['builder:progress'].safeParse(e);
           if (parsed.success) targetWindow()?.webContents.send('builder:progress', parsed.data);
@@ -1441,6 +1451,8 @@ function registerIpc(): void {
       }),
   );
   handle('builder:altitudePlan', (req) => builderAltitudePlan(req, registry));
+  // the LAS header day of each .zpc cloud, before Add data asks for its survey day
+  handle('builder:cloudDates', (req) => builderCloudDates(req, registry));
   // the import as a whole: a running 360 stitch is stopped, the rest is reported as skipped
   handle('builder:cancelImport', ({ projectId }) => ({ ok: importRuns.cancel(projectId) }));
   // drone panoramas (P1): scan a folder, import the chosen spheres, start their stitches

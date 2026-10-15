@@ -103,6 +103,7 @@ const CHANNELS = {
   'builder:photoGps': true,
   'builder:import': true,
   'builder:altitudePlan': true,
+  'builder:cloudDates': true,
   'builder:updateLayers': true,
   'builder:layerExtents': true,
   'builder:recentre': true,

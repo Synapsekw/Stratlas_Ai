@@ -2284,6 +2284,17 @@ export const en = {
   'pano.offer.checking': 'Checking for drone panoramas…',
   'pano.offer.failed': 'Could not check these files for drone panoramas.',
   'pano.offer.anyway': 'Import as photos anyway',
+  // 15 Oct 2026: the survey day of a Bentley .zpc cloud, asked before it is imported
+  'builder.cloudDate.title_one': 'Survey date of {count} point cloud',
+  'builder.cloudDate.title_other': 'Survey date of {count} point clouds',
+  'builder.cloudDate.label': 'Survey date',
+  'builder.cloudDate.fromHeader':
+    'Read from the file: {date}, the day it was exported. Pick the flight day.',
+  'builder.cloudDate.noHeader': 'The file carries no date. Pick the flight day.',
+  'builder.cloudDate.import': 'Import',
+  'builder.cloudDate.cancel': 'Cancel',
+  'builder.cloudDate.failed':
+    'Could not read the dates of the point clouds: they come in not dated. Set their survey date afterwards.',
   // M8 C4: same view on another date (Frames pane) and change in matched frames
   'frames.pane': 'Frames',
   'frames.sameView': 'Same view on the other date',

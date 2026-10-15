@@ -41,6 +41,50 @@ describe('builder conversions as pipeline jobs', () => {
     ]);
   });
 
+  it('starts bentley.import with the block and its photos folder only', async () => {
+    const { r, started } = runner();
+    await builderPipelineJobs(r).start('bentley.import', {
+      projectRoot: 'E:/data/projects/site',
+      src: 'D:/jobs/at.xml',
+      epsg: 32640,
+      origin: [1, 2, 3],
+      xml: 'D:/jobs/at.xml',
+      photos: 'D:/jobs/photos',
+    });
+    expect(started).toEqual([
+      {
+        pipeline: 'bentley.import',
+        project: 'E:/data/projects/site',
+        params: { xml: 'D:/jobs/at.xml', photos: 'D:/jobs/photos' },
+      },
+    ]);
+  });
+
+  it('passes a cloud survey day to pointcloud.to_copc', async () => {
+    const { r, started } = runner();
+    await builderPipelineJobs(r).start('pointcloud.toCopc', {
+      projectRoot: 'E:/data/projects/site',
+      src: 'D:/scans/site.zpc',
+      out: 'clouds/site.copc.laz',
+      epsg: 32640,
+      origin: [1, 2, 3],
+      surveyDate: '2026-03-04',
+    });
+    expect(started).toEqual([
+      {
+        pipeline: 'pointcloud.to_copc',
+        project: 'E:/data/projects/site',
+        params: {
+          src: 'D:/scans/site.zpc',
+          out: 'clouds/site.copc.laz',
+          epsg: 32640,
+          origin: [1, 2, 3],
+          surveyDate: '2026-03-04',
+        },
+      },
+    ]);
+  });
+
   it('starts drawing.import on a dropped DXF with its path only', async () => {
     const { r, started } = runner();
     await builderPipelineJobs(r).start('drawing.import', {

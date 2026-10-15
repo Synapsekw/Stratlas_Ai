@@ -12,7 +12,7 @@ import type { IpcEvent, IpcRequest, IpcResponse, ProjectManifest } from '@aio/sc
 import { readMp4VideoInfo, parseDjiSrt, srtTimingCheck, srtToFlight } from '@aio/video/telemetry';
 import { execFile } from 'node:child_process';
 import { open, readdir, stat } from 'node:fs/promises';
-import { basename, join, resolve, sep } from 'node:path';
+import { basename, extname, join, resolve, sep } from 'node:path';
 import { promisify } from 'node:util';
 import { createImportRuns } from './importRuns';
 import { readManifest, type ProjectRegistry } from './project';
@@ -207,6 +207,34 @@ export async function builderAltitudePlan(
 }
 
 /**
+ * The `.zpc` clouds an import would take with the day their LAS headers carry (the export day, not
+ * the flight day): Add data asks for each cloud's survey day before `builder:import` (15 Oct 2026).
+ */
+export async function builderCloudDates(
+  req: IpcRequest<'builder:cloudDates'>,
+  registry: ProjectRegistry,
+  opts: ExpandOptions = {},
+): Promise<IpcResponse<'builder:cloudDates'>> {
+  const root = registry.root(req.projectId);
+  if (root === undefined)
+    return { ok: false, error: `Project "${req.projectId}" is not open. Open it, then import.` };
+  try {
+    const ex = await expandFor(req.paths, opts);
+    if (ex.tooMany !== null) return { ok: false, error: tooManyError(ex.tooMany) };
+    const files = outsidePanoFolder(root, withoutExcluded(ex.files, req.exclude));
+    const { zpcHeaderDay } = await lib();
+    const clouds = await Promise.all(
+      files
+        .filter((f) => extname(f).toLowerCase() === '.zpc')
+        .map(async (path) => ({ path, name: basename(path), headerDay: await zpcHeaderDay(path) })),
+    );
+    return { ok: true, clouds };
+  } catch (e) {
+    return { ok: false, error: errorText(e) };
+  }
+}
+
+/**
  * A JPEG poster frame through ffmpeg (`bin`, else the one on the PATH) when it is installed;
  * rejects otherwise.
  */
@@ -287,6 +315,8 @@ export interface BuilderImportDeps {
   limit?: ExpandOptions['limit'];
   /** The ffmpeg to use (the pipeline pack's, `findFfmpeg`), asked on each import; null: the PATH. */
   ffmpeg?: () => Promise<FfmpegBin | null>;
+  /** The system folder dialog, for a Bentley block's photos folder (index.ts). */
+  pickFolder?: (title: string) => Promise<string | null>;
 }
 
 /**
@@ -358,6 +388,9 @@ export async function builderImport(
       ...(req.utcOffsetMin !== undefined ? { utcOffsetMin: req.utcOffsetMin } : {}),
       ...(req.altitude ? { altitude: req.altitude } : {}),
       ...(req.drawings ? { drawings: true } : {}),
+      ...(d.pickFolder ? { pickFolder: d.pickFolder } : {}),
+      // the survey day Add data chose for each cloud (pointcloud.to_copc surveyDate)
+      ...(req.cloudDates ? { cloudDates: req.cloudDates } : {}),
       onProgress: progress.file,
     });
     return {

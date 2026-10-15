@@ -9,15 +9,19 @@ export const BUILDER_PIPELINES: Readonly<Record<string, PipelineName>> = {
   'opf.import': 'opf.import',
   // M11 G6: a LandXML or 12da design dropped on the builder (into survey/designs/)
   'design.import': 'design.import',
+  // 15 Oct 2026: a Bentley BlocksExchange AT export dropped on the builder, with its photos folder
+  'bentley.import': 'bentley.import',
 };
 
 /** Keys of the builder's job params each pipeline takes (`projectRoot` becomes the job project). */
 const PARAM_KEYS: Readonly<Partial<Record<PipelineName, readonly string[]>>> = {
-  'pointcloud.to_copc': ['src', 'out', 'epsg', 'origin'],
+  // surveyDate: the day Add data chose for the cloud (the job files the layer under it)
+  'pointcloud.to_copc': ['src', 'out', 'epsg', 'origin', 'surveyDate'],
   // the drawing's units and placement are set in the Model builder afterwards
   'drawing.import': ['src'],
   'opf.import': ['src'],
   'design.import': ['src'],
+  'bentley.import': ['xml', 'photos', 'name'],
 };
 
 export interface JobStarter {
