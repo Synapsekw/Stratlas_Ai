@@ -243,7 +243,7 @@ export function parseDetectReply(
       }
       const said = r.data.class.trim();
       const proposed = NEW_CLASS.test(said);
-      const word = proposed ? said.replace(NEW_CLASS, '').trim().slice(0, 60) : said;
+      const word = proposed ? said.replace(NEW_CLASS, '').trim().slice(0, 60).trim() : said;
       if (!word) {
         warnings.push(`Image ${String(img.image)}: one proposal named no class and was skipped.`);
         continue;

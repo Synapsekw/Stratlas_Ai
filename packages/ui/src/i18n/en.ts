@@ -418,8 +418,6 @@ export const en = {
   'det.ai.noRoute':
     'No model is set for image understanding. Choose one in Settings, AI providers.',
   'det.ai.notReady': 'The vision model cannot be used right now.',
-  'det.ai.noClasses':
-    'This project has no class catalogue, so the model has nothing to look for. Add classes to the project first.',
   'det.ai.preview': 'What leaves this workstation',
   'det.ai.previewLead':
     'These images go to {provider}, each scaled to at most {size} px on its long side, with the instructions and the class list below. Nothing else is sent.',

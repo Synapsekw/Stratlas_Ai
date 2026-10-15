@@ -214,6 +214,19 @@ describe('suggested new classes', () => {
     });
   });
 
+  it('keeps two suggestions with different names on the same box, drops a same-name repeat', () => {
+    const mk = (label: string) => ({
+      classId: '',
+      label,
+      suggestedNew: true,
+      box: [0, 0, 0.5, 0.5] as [number, number, number, number],
+    });
+    const { detections } = convert([
+      { key: itemKey(frame), detections: [mk('Spalling'), mk('Efflorescence'), mk('spalling')] },
+    ]);
+    expect(detections.map((d) => d.label)).toEqual(['Spalling', 'Efflorescence']);
+  });
+
   it('does not flag a detection whose class resolved', () => {
     const { detections } = convert([
       {
