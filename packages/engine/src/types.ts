@@ -240,6 +240,11 @@ export interface EngineStage extends SceneHandle {
   /** Whether a layer's content has loaded in this view (false while loading or missing). */
   layerLoaded(layerId: string): boolean;
   /**
+   * Listen for layers whose content has loaded in this view, also a layer made again (a rebuilt
+   * model): its components may have changed. Returns an unsubscribe.
+   */
+  onLayerLoaded(cb: (layerId: string) => void): () => void;
+  /**
    * The hidden nodes of a layer. The engine keeps them per project and layer: every view of the
    * layer applies them, also when the layer loads again.
    */

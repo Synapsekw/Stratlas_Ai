@@ -65,7 +65,7 @@ import type { GroundUniforms } from './groundShading';
 import { skyDirection, solarPosition } from './solar';
 import { estimateGpuBytes, formatPerf, type PerfStats } from './perf';
 import { Highlighter } from './highlight';
-import { hiddenNodesOf, onHiddenNodes, setNodeHidden } from './nodeVisibility';
+import { forgetHiddenNodes, hiddenNodesOf, onHiddenNodes, setNodeHidden } from './nodeVisibility';
 import { drawnObjects, ProgramWarmup } from './programWarmup';
 import { moduleTextures } from './sharedTextures';
 import { reducedMotion } from '../motion';
@@ -209,6 +209,7 @@ export class Stage implements EngineStage {
   private readonly stateCbs = new Set<() => void>();
   private readonly pickCbs = new Set<(e: PickEvent) => void>();
   private readonly hiddenCbs = new Set<(layerId: string) => void>();
+  private readonly loadedCbs = new Set<(layerId: string) => void>();
   /** The hidden nodes applied to each loaded layer's handle (see `applyHidden`). */
   private readonly appliedHidden = new Map<string, Set<string>>();
   private readonly offHidden = onHiddenNodes((projectId, layerId) => {
@@ -671,6 +672,13 @@ export class Stage implements EngineStage {
     };
   }
 
+  onLayerLoaded(cb: (layerId: string) => void): () => void {
+    this.loadedCbs.add(cb);
+    return () => {
+      this.loadedCbs.delete(cb);
+    };
+  }
+
   components(layerId: string): ComponentInfo[] {
     return this.sync?.handle(layerId)?.components?.() ?? [];
   }
@@ -1070,7 +1078,10 @@ export class Stage implements EngineStage {
       // Same project, edited manifest (import, alignment): only changed layers reload. A moved
       // origin (a re-centre) opens it afresh: adapters read the origin when they create a layer.
       const kept = new Set(s.project.manifest.layers.map((l) => l.id));
-      const removed = this.project.manifest.layers.some((l) => !kept.has(l.id));
+      const gone = this.project.manifest.layers.filter((l) => !kept.has(l.id));
+      const removed = gone.length > 0;
+      // a layer that left the project takes its hidden components with it
+      for (const l of gone) forgetHiddenNodes(s.project.id, l.id);
       this.project = s.project;
       this.sync.sync(s.project.manifest.layers, s.hidden);
       // removal is synchronous: the bounds now follow the layers that stay. The layer the camera
@@ -1116,6 +1127,7 @@ export class Stage implements EngineStage {
           this.appliedHidden.delete(layer.id);
           this.applyHidden(layer.id, handle);
           this.contentChanged();
+          for (const cb of this.loadedCbs) cb(layer.id);
         },
         onError: (layer, e) => {
           console.error(`Layer "${layer.name}" could not be loaded`, e);

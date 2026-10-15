@@ -500,6 +500,33 @@ describe('Stage', () => {
       other.stage.dispose();
       stage.dispose();
     });
+
+    it('tells when a layer has loaded, also when it is made again', async () => {
+      const { stage, store } = await open();
+      const loaded: string[] = [];
+      const off = stage.onLayerLoaded((id) => loaded.push(id));
+      store.getState().openProject(project([{ ...meshLayer('chimney'), name: 'rebuilt' }]));
+      await flush();
+      expect(loaded).toEqual(['chimney']);
+      off();
+      store.getState().openProject(project([{ ...meshLayer('chimney'), name: 'again' }]));
+      await flush();
+      expect(loaded).toEqual(['chimney']);
+      stage.dispose();
+    });
+
+    it('forgets the hidden components of a layer removed from the project', async () => {
+      const { stage, store } = await open();
+      expect(stage.setNodeVisible('chimney', 'casing-1', false)).toBe(true);
+      store.getState().openProject(project([]));
+      await flush();
+      expect(stage.hiddenNodes('chimney')).toEqual([]);
+      // added again later, it starts with everything shown
+      store.getState().openProject(project([meshLayer('chimney')]));
+      await flush();
+      expect(stage.pickAt(0, 0)?.node).toBe('casing-1');
+      stage.dispose();
+    });
   });
 
   it('raycasts against content first and the ground plane otherwise', async () => {

@@ -32,6 +32,15 @@ export function setNodeHidden(
   return true;
 }
 
+/**
+ * Forget the hidden nodes of a layer that left the project, so the record does not grow with
+ * every layer ever removed. Listeners hear it as a change.
+ */
+export function forgetHiddenNodes(projectId: string, layerId: string): void {
+  if (!hidden.delete(key(projectId, layerId))) return;
+  for (const l of listeners) l(projectId, layerId);
+}
+
 /** Listen for changes; returns an unsubscribe. */
 export function onHiddenNodes(cb: (projectId: string, layerId: string) => void): () => void {
   listeners.add(cb);
