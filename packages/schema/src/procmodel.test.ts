@@ -167,4 +167,49 @@ describe('procedural models (aio.procmodel/2)', () => {
   it('refuses a /1 model (readers migrate it first)', () => {
     expect(ProcModel.safeParse({ ...model, schema: 'aio.procmodel/1' }).success).toBe(false);
   });
+
+  it('refuses a self-parent and a parent cycle', () => {
+    const self = ProcModel.safeParse({ ...model, assemblies: [shaft('shaft-1', 'shaft-1')] });
+    expect(self.success).toBe(false);
+    expect(self.error?.issues.some((i) => i.message.includes('cycle'))).toBe(true);
+    const loop = ProcModel.safeParse({
+      ...model,
+      assemblies: [
+        shaft('shaft-1', 'shaft-2'),
+        shaft('shaft-2', 'shaft-3'),
+        shaft('shaft-3', 'shaft-1'),
+      ],
+    });
+    expect(loop.success).toBe(false);
+    expect(loop.error?.issues.some((i) => i.message.includes('cycle'))).toBe(true);
+  });
+
+  it('needs a band to sit on an existing shaft assembly', () => {
+    const brick = {
+      id: 'brick',
+      name: 'Brick',
+      baseColor: [0.6, 0.3, 0.2, 1],
+      metallic: 0,
+      roughness: 0.9,
+    };
+    const band = (on: string) => ({
+      ...shaft('band-1'),
+      kind: 'band',
+      params: { shaft: on, y0: 10, y1: 12, material: 'brick' },
+    });
+    const flue = {
+      ...shaft('flue-1'),
+      kind: 'flue',
+      params: { centre: [0, 100, 0], rOuter: 1, rInner: 0.8, height: 5 },
+    };
+    const parse = (assemblies: unknown[]) =>
+      ProcModel.safeParse({ ...model, materials: [brick], assemblies });
+    expect(parse([shaft('shaft-1'), band('shaft-1')]).success).toBe(true);
+    expect(parse([shaft('shaft-1'), band('shaft-9')]).success).toBe(false);
+    expect(parse([flue, band('flue-1')]).success).toBe(false);
+  });
+
+  it('refuses an empty run id', () => {
+    expect(ProcModel.safeParse({ ...model, run: { id: '', detail: 'fast' } }).success).toBe(false);
+  });
 });

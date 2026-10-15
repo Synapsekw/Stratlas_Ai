@@ -132,7 +132,10 @@ export const ProcModel = z
     evidence: EvidenceInventory.optional(),
     /** The engineering model run that last wrote the assemblies. */
     run: z
-      .object({ id: z.string().max(80), detail: z.enum(['fast', 'standard', 'detailed']) })
+      .object({
+        id: z.string().min(1).max(80),
+        detail: z.enum(['fast', 'standard', 'detailed']),
+      })
       .strict()
       .optional(),
   })
@@ -153,9 +156,27 @@ export const ProcModel = z
         issue(`Assembly id "${a.id}" is also a part id`, ['assemblies', i, 'id']);
       assemblies.add(a.id);
     });
+    const kindOf = new Map(m.assemblies.map((a) => [a.id, a.kind]));
+    const parentOf = new Map(m.assemblies.map((a) => [a.id, a.parent]));
     m.assemblies.forEach((a, i) => {
       if (a.parent !== undefined && !assemblies.has(a.parent))
         issue(`Assembly parent "${a.parent}" does not exist`, ['assemblies', i, 'parent']);
+      // walk the parent chain: a repeat is a cycle (a self-parent included)
+      const visited = new Set<string>([a.id]);
+      for (let up = a.parent; up !== undefined; up = parentOf.get(up)) {
+        if (visited.has(up)) {
+          issue(`Assembly "${a.id}" is in a parent cycle`, ['assemblies', i, 'parent']);
+          break;
+        }
+        visited.add(up);
+      }
+      if (a.kind === 'band' && kindOf.get(a.params.shaft) !== 'shaft')
+        issue(`Band shaft "${a.params.shaft}" is not a shaft in the model`, [
+          'assemblies',
+          i,
+          'params',
+          'shaft',
+        ]);
       if (a.material !== undefined && !materials.has(a.material))
         issue(`Material "${a.material}" is not in the model`, ['assemblies', i, 'material']);
       if (a.kind === 'band' && !materials.has(a.params.material))

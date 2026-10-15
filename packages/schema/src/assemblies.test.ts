@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { Assembly, AssemblyKind, Material } from './assemblies';
+import { Assembly, AssemblyKind, Material, ParamQuality, ScaleRecord } from './assemblies';
 
 const origin = { by: 'engineer', runId: 'r1' } as const;
 const base = {
@@ -120,5 +120,59 @@ describe('Assembly', () => {
         roughness: 0.5,
       }).success,
     ).toBe(false);
+  });
+
+  it('allows a residual and support only on measured values', () => {
+    expect(
+      ParamQuality.safeParse({ basis: 'measured', residualM: 0.01, support: 900 }).success,
+    ).toBe(true);
+    expect(ParamQuality.safeParse({ basis: 'observed', residualM: 0.001 }).success).toBe(false);
+    expect(ParamQuality.safeParse({ basis: 'inferred', support: 12 }).success).toBe(false);
+    expect(ParamQuality.safeParse({ basis: 'user', coverage: 0.5 }).success).toBe(true);
+  });
+
+  it('keys quality by the params of the kind', () => {
+    const shaft = {
+      ...base,
+      id: 'shaft-1',
+      kind: 'shaft',
+      params: {
+        base: [0, 0, 0],
+        profile: [
+          { y: 0, r: 10 },
+          { y: 100, r: 7 },
+        ],
+        openTop: true,
+      },
+    };
+    expect(
+      Assembly.safeParse({ ...shaft, quality: { profile: { basis: 'measured', residualM: 0.02 } } })
+        .success,
+    ).toBe(true);
+    expect(
+      Assembly.safeParse({ ...shaft, quality: { rInner: { basis: 'inferred' } } }).success,
+    ).toBe(false);
+  });
+
+  it('needs the reference when the scale comes from one', () => {
+    expect(ScaleRecord.safeParse({ status: 'reference' }).success).toBe(false);
+    expect(
+      ScaleRecord.safeParse({ status: 'reference', reference: { what: 'height', valueM: 80 } })
+        .success,
+    ).toBe(true);
+    expect(ScaleRecord.safeParse({ status: 'provisional' }).success).toBe(true);
+  });
+
+  it('refuses an empty engineer run id', () => {
+    const cabinet = {
+      ...base,
+      id: 'cabinet-1',
+      kind: 'cabinet',
+      params: { base: [0, 0, 0], size: [1, 2, 1], yawDeg: 0 },
+    };
+    expect(Assembly.safeParse(cabinet).success).toBe(true);
+    expect(Assembly.safeParse({ ...cabinet, origin: { by: 'engineer', runId: '' } }).success).toBe(
+      false,
+    );
   });
 });

@@ -22,6 +22,10 @@ export const ModelFamily = z.enum([
   'generic',
 ]);
 export const ValueBasis = z.enum(['measured', 'observed', 'inferred', 'user']);
+/**
+ * How a parameter value is known. A fit residual and its point support describe a measurement, so
+ * they are refused on any other basis (an observed or inferred value cannot pose as survey accuracy).
+ */
 export const ParamQuality = z
   .object({
     basis: ValueBasis,
@@ -30,7 +34,17 @@ export const ParamQuality = z
     coverage: z.number().min(0).max(1).optional(),
     note: z.string().max(200).optional(),
   })
-  .strict();
+  .strict()
+  .superRefine((q, ctx) => {
+    if (q.basis === 'measured') return;
+    for (const key of ['residualM', 'support'] as const)
+      if (q[key] !== undefined)
+        ctx.addIssue({
+          code: 'custom',
+          message: `Only a measured value has a ${key === 'residualM' ? 'residual' : 'support'}.`,
+          path: [key],
+        });
+  });
 export const EvidenceRef = z
   .object({
     kind: z.enum(['cloud', 'photo', 'mesh', 'user']),
@@ -272,9 +286,22 @@ export type Assembly = {
  */
 export const Assembly = z.discriminatedUnion(
   'kind',
-  AssemblyKind.options.map((k) =>
-    z.object({ ...assemblyBase, kind: z.literal(k), params: AssemblyParamsByKind[k] }).strict(),
-  ) as unknown as [z.ZodObject, ...z.ZodObject[]],
+  AssemblyKind.options.map((k) => {
+    // quality is keyed by the kind's own parameter names (which also bounds the record)
+    const names = new Set(Object.keys(AssemblyParamsByKind[k].shape));
+    return z
+      .object({ ...assemblyBase, kind: z.literal(k), params: AssemblyParamsByKind[k] })
+      .strict()
+      .superRefine((a, ctx) => {
+        for (const key of Object.keys(a.quality))
+          if (!names.has(key))
+            ctx.addIssue({
+              code: 'custom',
+              message: `"${key}" is not a parameter of a ${k}.`,
+              path: ['quality', key],
+            });
+      });
+  }) as unknown as [z.ZodObject, ...z.ZodObject[]],
 ) as unknown as z.ZodType<Assembly>;
 
 export const ScaleRecord = z
@@ -289,7 +316,11 @@ export const ScaleRecord = z
       .strict()
       .optional(),
   })
-  .strict();
+  .strict()
+  .refine((s) => s.status !== 'reference' || s.reference !== undefined, {
+    message: 'A scale from a reference names the reference.',
+    path: ['reference'],
+  });
 export const EvidenceInventory = z
   .object({
     supported: z.array(z.string().max(80)).max(400),

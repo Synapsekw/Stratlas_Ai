@@ -37,7 +37,7 @@ export const PartOrigin = z.discriminatedUnion('by', [
   z
     .object({
       by: z.literal('engineer'),
-      runId: z.string().max(80),
+      runId: z.string().min(1).max(80),
       /** The AI model that proposed it, when one did. */
       model: z.string().max(120).optional(),
     })
