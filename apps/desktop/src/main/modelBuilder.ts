@@ -11,6 +11,7 @@
  * then its parts).
  */
 import { brand } from '@aio/brand';
+import { georefToLayerTransform } from '@aio/geo';
 import {
   buildEngineeringGlb,
   checkProcModel,
@@ -71,6 +72,61 @@ export interface ModelBuilderIpcDeps {
 
 const SUFFIX = '.procmodel.json';
 const IDENTITY = [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1];
+
+/** Where an accepted model's layer goes. */
+export interface AcceptPlacement {
+  georef?: Georef;
+  placement: 'placed' | 'needed' | 'provisional';
+  transform: number[];
+}
+
+/**
+ * The placement of an accepted model's layer. A placement the person made with Place model (the
+ * layer's georeference by `place-model`) stays as it is. Otherwise the model's georeference places
+ * the layer (`placed`, or `provisional` when it is unplaced, or `needed` when it cannot be placed
+ * in this project); a model without one sits at the origin, provisionally (spec 5.6).
+ */
+export function acceptPlacement(
+  modelGeoref: Georef | undefined,
+  layer: Layer | undefined,
+  project: { crs: { epsg: number } | { wkt: string }; origin: [number, number, number] },
+): AcceptPlacement {
+  if (layer?.kind === 'mesh' && layer.georef?.provenance.by === 'place-model')
+    return {
+      georef: layer.georef,
+      placement: layer.placement ?? 'placed',
+      transform: [...layer.transform],
+    };
+  if (!modelGeoref) return { placement: 'provisional', transform: [...IDENTITY] };
+  const placed = georefToLayerTransform(modelGeoref, project);
+  if (placed.kind === 'placed')
+    return {
+      georef: modelGeoref,
+      placement: modelGeoref.horizontal.status === 'unplaced' ? 'provisional' : 'placed',
+      transform: placed.transform,
+    };
+  return {
+    georef: modelGeoref,
+    placement: 'needed',
+    transform: [...(placed.horizontalOnly ?? IDENTITY)],
+  };
+}
+
+/**
+ * Where a draft layer goes: as an accept would place the model (its own georeference, or a Place
+ * model placement of the built layer), recomputed against the current origin. A model with
+ * neither keeps the old way (identity, the local frame).
+ */
+function draftPlacement(
+  model: ProcModel,
+  id: string,
+  manifest: ProjectManifest,
+): AcceptPlacement | undefined {
+  const built = manifest.layers.find((l) => l.id === modelLayerId(id, false));
+  const placedByHand = built?.kind === 'mesh' && built.georef?.provenance.by === 'place-model';
+  if (!model.georef && !placedByHand) return undefined;
+  return acceptPlacement(model.georef, built, { crs: manifest.crs, origin: manifest.origin });
+}
 
 const READ_ONLY = {
   ok: false as const,
@@ -329,13 +385,16 @@ export async function buildModelLayer(
   };
   const draftId = modelLayerId(id, true);
   await updateManifest(root, (manifest) => {
+    // a draft of a georeferenced model is placed as an accept would place it (from the record,
+    // against the current origin), so it stays aligned after a re-centre
+    const given = o.placement ?? (draft ? draftPlacement(model, id, manifest) : undefined);
     let placed = false;
     const layers: Layer[] = [];
     for (const l of manifest.layers) {
       if (l.id === layerId) {
         // a placement (Place model, an accept) keeps its transform: a rebuild never resets it
-        const keep = o.placement
-          ? placementFields(o.placement)
+        const keep = given
+          ? placementFields(given)
           : l.kind === 'mesh' && (l.georef || l.placement)
             ? {
                 ...(l.georef ? { georef: l.georef } : {}),
@@ -352,7 +411,7 @@ export async function buildModelLayer(
         layers.push(l);
       }
     }
-    if (!placed) layers.push({ ...layer, ...(o.placement ? placementFields(o.placement) : {}) });
+    if (!placed) layers.push({ ...layer, ...(given ? placementFields(given) : {}) });
     return { ...manifest, layers };
   });
   if (!draft) await rm(join(root, ...modelGlb(id, true).split('/')), { force: true });

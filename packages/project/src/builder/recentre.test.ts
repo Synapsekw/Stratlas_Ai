@@ -250,6 +250,17 @@ it('re-centres a parts model placed with Place model: its layer keeps its transf
   ]);
 });
 
+it('refuses an engineering model with no georeference: its values are in the local frame', async () => {
+  const root = await withModelAndCloud();
+  await writeFile(
+    join(root, 'models', 'eng.procmodel.json'),
+    JSON.stringify({ schema: 'aio.procmodel/2', id: 'eng', assemblies: [{ id: 'shaft-1' }] }),
+  );
+  expect(await recentreBlockers(root, await readManifestFile(root))).toEqual([
+    'the engineering model "eng.procmodel.json" (place or georeference the engineering model first)',
+  ]);
+});
+
 it('refuses a procedural model: its parts are in the local frame and a rebuild resets it', async () => {
   const root = await withModelAndCloud();
   await writeFile(join(root, 'models', 'pump.procmodel.json'), '{}');

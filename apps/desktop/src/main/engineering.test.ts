@@ -1,6 +1,6 @@
 import { layerTransformToGeoref, worldOfModelPoint } from '@aio/geo';
 import { DEFAULT_MATERIALS, newProcModel, readGlb } from '@aio/modelling';
-import { readManifestFile, writeManifestFile } from '@aio/project/builder';
+import { readManifestFile, recentreProject, writeManifestFile } from '@aio/project/builder';
 import {
   Georef,
   type Assembly,
@@ -460,6 +460,40 @@ describe('engineer:validate and engineer:accept', () => {
         JSON.parse(await readFile(join(root, 'models', 'stack.georeference.json'), 'utf8')),
       ),
     ).toEqual(user);
+  });
+
+  it('keeps world positions through a re-centre, a draft rebuild and an accept (1 mm)', async () => {
+    const r = ipc();
+    const probe: [number, number, number][] = [
+      [0, 0, 0],
+      [3, 20, -4],
+      [-6, 46, 5],
+    ];
+    const worldOf = async (layerId: string) => {
+      const m = await readManifestFile(root);
+      const l = m.layers.find((x) => x.id === layerId);
+      if (l?.kind !== 'mesh') throw new Error(`no layer ${layerId}`);
+      return probe.map((p) => worldOfModelPoint(l.transform, { crs: m.crs, origin: m.origin }, p));
+    };
+    const close = (a: number[][], b: number[][]) => {
+      a.forEach((p, i) => {
+        p.forEach((v, k) => {
+          expect(Math.abs(v - (b[i]?.[k] ?? NaN))).toBeLessThan(1e-3);
+        });
+      });
+    };
+    const a = await r.call('engineer:accept', { projectId: 'site', modelId: 'stack' });
+    if (!a.ok) throw new Error(a.error);
+    const world = await worldOf('model-stack');
+    await r.call('model:build', { projectId: 'site', id: 'stack', draft: true });
+    close(await worldOf('model-draft-stack'), world);
+    await recentreProject(root, [400100, 2800050]);
+    close(await worldOf('model-stack'), world);
+    await r.call('model:build', { projectId: 'site', id: 'stack', draft: true });
+    close(await worldOf('model-draft-stack'), world);
+    const again = await r.call('engineer:accept', { projectId: 'site', modelId: 'stack' });
+    if (!again.ok) throw new Error(again.error);
+    close(await worldOf('model-stack'), world);
   });
 
   it('removes a georeference sidecar left from before when the model has no georeference', async () => {

@@ -62,11 +62,12 @@ async function jobBlockers(root: string): Promise<string[]> {
 const PROCMODEL_SUFFIX = '.procmodel.json';
 
 /**
- * Procedural models (`models/<id>.procmodel.json`) whose parts are in the local frame: their mesh
- * layer is written with an identity transform, so a shift would be undone by the next build. Not
- * so for a model with assemblies or a georeference, or whose layer carries a georeference: its
- * geometry is in the model's own frame, a rebuild keeps the (shifted) layer transform and an accept
- * recomputes it from the georeference against the current origin. A file that cannot be read
+ * Procedural models (`models/<id>.procmodel.json`) whose values are in the local frame: without a
+ * georeference their layer (built or draft) is written with an identity transform, so a shift
+ * would be undone by the next build or accept. That holds for an engineering model (assemblies)
+ * without a georeference too: it must be placed or georeferenced first. A model with a
+ * georeference, or whose built layer carries one, is placed from it against the current origin
+ * (draft builds and accepts alike) and is shifted with its layer. A file that cannot be read
  * refuses, as it may be either.
  */
 async function procModelBlockers(root: string, m: ProjectManifest): Promise<string[]> {
@@ -86,18 +87,24 @@ async function procModelBlockers(root: string, m: ProjectManifest): Promise<stri
         l.derived.source?.includes(id) === true &&
         l.georef !== undefined,
     );
-    let ownFrame = false;
+    let georef = false;
+    let engineering = false;
     try {
       const json = JSON.parse(await readFile(join(root, 'models', f), 'utf8')) as {
         assemblies?: unknown;
         georef?: unknown;
       };
-      ownFrame =
-        (Array.isArray(json.assemblies) && json.assemblies.length > 0) || json.georef != null;
+      georef = json.georef != null;
+      engineering = Array.isArray(json.assemblies) && json.assemblies.length > 0;
     } catch {
-      // unreadable: it may hold parts in the local frame
+      // unreadable: it may hold values in the local frame
     }
-    if (!ownFrame && !layerPlaced) out.push(`the procedural model "${f}"`);
+    if (georef || layerPlaced) continue;
+    out.push(
+      engineering
+        ? `the engineering model "${f}" (place or georeference the engineering model first)`
+        : `the procedural model "${f}"`,
+    );
   }
   return out;
 }

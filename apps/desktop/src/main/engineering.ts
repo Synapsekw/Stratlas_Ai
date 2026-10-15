@@ -16,7 +16,7 @@
  * `ai:setCloudEvidence` (the photo and scan consents) is the AI lane's handler, not this module's.
  */
 import { brand } from '@aio/brand';
-import { georefToLayerTransform, layerTransformToGeoref } from '@aio/geo';
+import { layerTransformToGeoref } from '@aio/geo';
 import {
   componentRegister,
   exportBundle,
@@ -29,9 +29,7 @@ import {
   EngineerRun,
   EvidencePack,
   PROCMODEL_DIR,
-  type Georef,
   type GlbCheckReport,
-  type Layer,
   type ProjectManifest,
 } from '@aio/schema';
 import { mkdir, open, readFile, realpath, rm } from 'node:fs/promises';
@@ -39,6 +37,7 @@ import { extname, isAbsolute, join, relative, resolve, sep } from 'node:path';
 import type { z } from 'zod';
 import { isChangedOnDisk, readBytesSeen, writeJsonSeen } from './fsutil';
 import {
+  acceptPlacement,
   buildModelLayer,
   modelFile,
   modelGlb,
@@ -126,46 +125,7 @@ export function imageSize(b: Uint8Array): { w: number; h: number } | null {
   return null;
 }
 
-const IDENTITY = [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1];
-
-/** Where an accepted model's layer goes. */
-export interface AcceptPlacement {
-  georef?: Georef;
-  placement: 'placed' | 'needed' | 'provisional';
-  transform: number[];
-}
-
-/**
- * The placement of an accepted model's layer. A placement the person made with Place model (the
- * layer's georeference by `place-model`) stays as it is. Otherwise the model's georeference places
- * the layer (`placed`, or `provisional` when it is unplaced, or `needed` when it cannot be placed
- * in this project); a model without one sits at the origin, provisionally (spec 5.6).
- */
-export function acceptPlacement(
-  modelGeoref: Georef | undefined,
-  layer: Layer | undefined,
-  project: { crs: { epsg: number } | { wkt: string }; origin: [number, number, number] },
-): AcceptPlacement {
-  if (layer?.kind === 'mesh' && layer.georef?.provenance.by === 'place-model')
-    return {
-      georef: layer.georef,
-      placement: layer.placement ?? 'placed',
-      transform: [...layer.transform],
-    };
-  if (!modelGeoref) return { placement: 'provisional', transform: [...IDENTITY] };
-  const placed = georefToLayerTransform(modelGeoref, project);
-  if (placed.kind === 'placed')
-    return {
-      georef: modelGeoref,
-      placement: modelGeoref.horizontal.status === 'unplaced' ? 'provisional' : 'placed',
-      transform: placed.transform,
-    };
-  return {
-    georef: modelGeoref,
-    placement: 'needed',
-    transform: [...(placed.horizontalOnly ?? IDENTITY)],
-  };
-}
+export { acceptPlacement, type AcceptPlacement } from './modelBuilder';
 
 /** Why an accepted GLB is refused (validator errors, broken positions or indices), or null. */
 export function acceptRefusal(r: GlbCheckReport): string | null {
