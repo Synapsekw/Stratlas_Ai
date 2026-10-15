@@ -238,6 +238,10 @@ export function diskNeed(e: PhotoEstimate): { needs: string; has: string } | nul
 export const memoryNote = (e: PhotoEstimate): string | null =>
   (e.notes ?? []).find((n) => n.includes('within memory')) ?? null;
 
+/** The estimate's note that the photos are the project's reduced review copies, if it has one. */
+export const reducedNote = (e: PhotoEstimate): string | null =>
+  (e.notes ?? []).find((n) => n.includes('reduced copies')) ?? null;
+
 /** A run counts as long when even its quick end takes a working day. */
 export const LONG_RUN_MINUTES = 8 * 60;
 export const isLongRun = (e: PhotoEstimate): boolean => e.minutes[0] >= LONG_RUN_MINUTES;

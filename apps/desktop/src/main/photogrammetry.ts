@@ -393,8 +393,10 @@ export interface PhotoSet {
   sampled: boolean;
   /** Centre of the photos' GPS positions, when any had one. */
   centre?: { lat: number; lon: number };
-  /** Photos without a GPS position (of those read). */
+  /** Photos without a GPS position (of those read): neither in the photo nor placed by the project. */
   noGps: number;
+  /** Photos with no camera, date or GPS in their head (stripped review copies); scaled when sampled. */
+  noExif?: number;
   /** Days the photos were taken (local date in the photo), most photos first; scaled when sampled. */
   days: { date: string; photos: number }[];
 }
@@ -561,8 +563,15 @@ const median = (xs: number[]) => {
   return s.length % 2 ? (s[m] ?? 0) : ((s[m - 1] ?? 0) + (s[m] ?? 0)) / 2;
 };
 
-/** Read the photos' heads (a sample of at most 300) into what the estimate needs. */
-export async function readPhotoSet(files: readonly string[]): Promise<PhotoSet> {
+/**
+ * Read the photos' heads (a sample of at most 300) into what the estimate needs. `located` names
+ * the files the project already places (a photos layer's poses), so a copy without GPS of its own
+ * still counts as having a position.
+ */
+export async function readPhotoSet(
+  files: readonly string[],
+  located?: ReadonlySet<string>,
+): Promise<PhotoSet> {
   const { readPhotoMeta } = await lib();
   const step = Math.max(1, files.length / SAMPLE);
   const sample: string[] = [];
@@ -575,6 +584,7 @@ export async function readPhotoSet(files: readonly string[]): Promise<PhotoSet> 
   const mps: number[] = [];
   let bytes = 0;
   let noGps = 0;
+  let noExif = 0;
   let lat = 0;
   let lon = 0;
   let withGps = 0;
@@ -614,7 +624,8 @@ export async function readPhotoSet(files: readonly string[]): Promise<PhotoSet> 
       lat += gps.lat;
       lon += gps.lon;
       withGps++;
-    } else noGps++;
+    } else if (!located?.has(f)) noGps++;
+    if (!gps && !meta.make?.trim() && !meta.model?.trim() && !meta.takenAt) noExif++;
   }
   const factor = sample.length ? files.length / sample.length : 0;
   const sampled = sample.length < files.length;
@@ -632,7 +643,21 @@ export async function readPhotoSet(files: readonly string[]): Promise<PhotoSet> 
       .slice(0, 366),
     ...(withGps ? { centre: { lat: lat / withGps, lon: lon / withGps } } : {}),
     noGps: sampled ? Math.round(noGps * factor) : noGps,
+    noExif: sampled ? Math.round(noExif * factor) : noExif,
   };
+}
+
+/** Long side, pixels, at or under which a photo without EXIF is taken for a reduced review copy. */
+const REDUCED_LONG_SIDE_PX = 3200;
+
+/**
+ * Whether the photos are reduced review copies: none carries a camera, date or GPS, and every
+ * frame read is well under a drone original's (4000 px and more on the long side).
+ */
+export function reducedCopies(set: PhotoSet): boolean {
+  if (!set.count || (set.noExif ?? 0) < set.count) return false;
+  const sides = set.groups.map((g) => Math.max(g.widthPx ?? 0, g.heightPx ?? 0));
+  return sides.length > 0 && sides.every((s) => s > 0 && s <= REDUCED_LONG_SIDE_PX);
 }
 
 /** The UTM zone (WGS84) of a position, as an EPSG code. */
@@ -1096,28 +1121,47 @@ export function registerPhotogrammetryIpc({
     const hw = await currentProbe();
     const files = await photoFiles(projectId, photos);
     if (!files.ok) return files;
-    const set = await readPhotoSet(files.files);
+    const set = await readPhotoSet(files.files, files.located);
     const estimate = estimateRun(
       set,
       preset,
       products,
       hw ?? { cpu: { model: '', cores: 8 }, memoryBytes: 0, freeDiskBytes: 0, cuda: false },
     );
-    if (set.centre) {
-      const epsg = utmEpsg(set.centre.lat, set.centre.lon);
-      const zone = epsg % 100;
-      const note = `The photos are in UTM zone ${String(zone)}${epsg < 32700 ? 'N' : 'S'} (EPSG:${String(epsg)}).`;
-      estimate.notes = [note, ...(estimate.notes ?? [])].slice(0, 20);
+    const lead: string[] = [];
+    // the photos' own GPS first; review copies without it are placed in the project's grid
+    const epsg = set.centre
+      ? utmEpsg(set.centre.lat, set.centre.lon)
+      : files.located?.size
+        ? files.epsg
+        : undefined;
+    if (epsg !== undefined) {
+      if ((epsg > 32600 && epsg <= 32660) || (epsg > 32700 && epsg <= 32760))
+        lead.push(
+          `The photos are in UTM zone ${String(epsg % 100)}${epsg < 32700 ? 'N' : 'S'} (EPSG:${String(epsg)}).`,
+        );
       estimate.suggestedEpsg = epsg;
     }
+    if ('layer' in photos && reducedCopies(set))
+      lead.push(
+        'The maps come from the reduced copies in the project, so they will be coarser than from the original photos; for full detail, choose the folder of original photos.',
+      );
+    if (lead.length) estimate.notes = [...lead, ...(estimate.notes ?? [])].slice(0, 20);
     return { ok: true, estimate };
   });
 
-  /** The photo files of a source: a photos layer of the project, or folders read in place. */
+  /**
+   * The photo files of a source: a photos layer of the project, or folders read in place. For a
+   * layer in a placed project, `located` names the files whose item has a pose (the run takes
+   * their position from it) and `epsg` is the project's coordinate system.
+   */
   async function photoFiles(
     projectId: string | undefined,
     photos: PhotoSource,
-  ): Promise<{ ok: true; files: string[] } | { ok: false; error: string; code?: 'read-only' }> {
+  ): Promise<
+    | { ok: true; files: string[]; located?: Set<string>; epsg?: number }
+    | { ok: false; error: string; code?: 'read-only' }
+  > {
     if ('folders' in photos) {
       const bad = photos.folders.find((f) => !isAbsolute(f));
       if (bad) return { ok: false, error: `Choose a whole folder path, not "${bad}".` };
@@ -1134,12 +1178,17 @@ export function registerPhotogrammetryIpc({
     if (layer?.kind !== 'photos')
       return { ok: false, error: `There is no photos layer "${photos.layer}" in this project.` };
     const files: string[] = [];
+    const located = new Set<string>();
     for (const it of layer.items) {
       if (!('path' in it.src)) continue;
       const p = resolve(root, it.src.path);
-      if (!relative(root, p).startsWith('..')) files.push(p);
+      if (relative(root, p).startsWith('..')) continue;
+      files.push(p);
+      // the run places a photo without GPS by its pose (align.py layer_meta)
+      if (it.pos) located.add(p);
     }
-    return { ok: true, files };
+    const epsg = 'epsg' in manifest.crs ? manifest.crs.epsg : undefined;
+    return { ok: true, files, located, ...(epsg !== undefined ? { epsg } : {}) };
   }
 
   handle('photo:runs', async ({ projectId }) => {

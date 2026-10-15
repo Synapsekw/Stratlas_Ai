@@ -74,6 +74,16 @@ const photoSet = (o: Partial<PhotoSet> = {}): PhotoSet => ({
   ...o,
 });
 
+/** A JPEG head with only its frame size: a review copy whose EXIF and XMP were stripped. */
+function bareJpeg(width: number, height: number): Uint8Array {
+  const hi = (n: number) => n >> 8;
+  const lo = (n: number) => n & 255;
+  return Uint8Array.from([
+    ...[0xff, 0xd8, 0xff, 0xc0, 0x00, 0x11, 0x08, hi(height), lo(height), hi(width), lo(width)],
+    ...[3, 1, 0x22, 0, 2, 0x11, 1, 3, 0x11, 1, 0xff, 0xd9],
+  ]);
+}
+
 function photosManifest(): ProjectManifest {
   const m = sampleManifest({ layers: [] });
   return {
@@ -531,6 +541,17 @@ describe('photo files', () => {
     expect(() => PhotoEstimate.parse(estimateRun(mixed, 'standard', ['ortho'], hw))).not.toThrow();
   });
 
+  it('counts photos the project places as located, though their copies carry no GPS', async () => {
+    const files = ['a', 'b'].map((n) => join(dir, `${n}.jpg`));
+    for (const f of files) await writeFile(f, bareJpeg(2560, 1920));
+    expect((await readPhotoSet(files)).noGps).toBe(2);
+    expect((await readPhotoSet(files, new Set([files[0] ?? '']))).noGps).toBe(1);
+    const placed = await readPhotoSet(files, new Set(files));
+    expect(placed.noGps).toBe(0);
+    expect(placed.noExif).toBe(2);
+    expect(placed.centre).toBeUndefined();
+  });
+
   it('reads camera groups, the frame size and GPS from the photo heads', async () => {
     const a = withExif({
       make: 'Stratlas Synthetic',
@@ -768,6 +789,7 @@ describe('photo IPC', () => {
     expect(layer.estimate.cameras).toMatchObject([
       { make: 'Stratlas Synthetic', model: 'SYN-20', widthPx: 1600, heightPx: 1200, photos: 3 },
     ]);
+    expect(layer.estimate.notes?.some((n) => n.includes('reduced copies'))).toBe(false);
     const folder = await ipc.call('photo:estimate', {
       photos: { folders: [join(root, 'photos')] },
       preset: 'fast',
@@ -797,6 +819,39 @@ describe('photo IPC', () => {
         products: [],
       }),
     ).toMatchObject({ ok: false, code: 'read-only' });
+  });
+
+  it('estimates review copies of a photos layer as placed by the project', async () => {
+    await mkdir(join(root, 'photos'));
+    for (const n of ['p1', 'p2', 'p3'])
+      await writeFile(join(root, 'photos', `${n}.jpg`), bareJpeg(2560, 1920));
+    const layer = await ipc.call('photo:estimate', {
+      projectId: 'p',
+      photos: { layer: 'photos' },
+      preset: 'fast',
+      products: ['ortho'],
+    });
+    expect(layer).toMatchObject({ ok: true });
+    if (!layer.ok) return;
+    const notes = layer.estimate.notes ?? [];
+    expect(notes.some((n) => n.includes('no GPS position'))).toBe(false);
+    expect(notes[0]).toBe('The photos are in UTM zone 39N (EPSG:32639).');
+    expect(layer.estimate.suggestedEpsg).toBe(32639);
+    expect(notes[1]).toBe(
+      'The maps come from the reduced copies in the project, so they will be coarser than from the original photos; for full detail, choose the folder of original photos.',
+    );
+    // the same files read as a folder have no position at all
+    const folder = await ipc.call('photo:estimate', {
+      photos: { folders: [join(root, 'photos')] },
+      preset: 'fast',
+      products: ['ortho'],
+    });
+    if (!folder.ok) throw new Error(folder.error);
+    expect(folder.estimate.notes).toContain(
+      '3 photos have no GPS position; they are placed by matching only.',
+    );
+    expect(folder.estimate.suggestedEpsg).toBeUndefined();
+    expect(folder.estimate.notes?.some((n) => n.includes('reduced copies'))).toBe(false);
   });
 
   it('lists runs newest first, skipping a broken one, in folders and packages', async () => {
