@@ -93,13 +93,17 @@ const PARAM_VALUES: readonly string[] = [
   'booleans (openTop, cage, guardrail, braced, windshield): true or false',
 ];
 
+/** The first line of the system text; the scripted test model recognises the engineer step by it. */
+export const ENGINEER_SYSTEM_LEAD =
+  'You help an engineer build a component model of one industrial structure (a chimney, a flare stack or a telecom tower) from measurements and images.';
+
 /** The system text: the task, the reply format, and the rules about untrusted data. */
 export function engineerSystem(): string {
   const params = Object.entries(PROPOSAL_PARAMS)
     .map(([kind, names]) => `- ${kind}: ${names.join(', ')}`)
     .join('\n');
   return [
-    'You help an engineer build a component model of one industrial structure (a chimney, a flare stack or a telecom tower) from measurements and images.',
+    ENGINEER_SYSTEM_LEAD,
     'You propose parameters only. Never return geometry, coordinates or meshes: the app builds the model from your proposal and its own measurements.',
     '',
     'Reply with one object that matches the given schema:',

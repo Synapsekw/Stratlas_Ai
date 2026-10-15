@@ -6,16 +6,31 @@
  * Nothing here logs prompts, images or keys. Provider errors are shown and logged with the
  * provider's own text, sanitised by `describeError` (keys removed, length capped).
  */
-import type {
-  AiPolicy,
-  AiProvider,
-  AiTask,
-  IpcEvent,
-  IpcRequest,
-  IpcResponse,
-  LocalModelSettings,
-  WindowKind,
+import {
+  DETAIL_BUDGETS,
+  type AiPolicy,
+  type AiProvider,
+  type AiTask,
+  type IpcEvent,
+  type IpcRequest,
+  type IpcResponse,
+  type LocalModelSettings,
+  type WindowKind,
 } from '@aio/schema';
+import { randomUUID } from 'node:crypto';
+import {
+  buildEngineerPayload,
+  ENGINEER_TIMEOUT_MS,
+  engineerCacheKey,
+  engineerLimits,
+  estimateEngineerCostUsd,
+  fileEngineerCache,
+  runEngineer,
+  TIME_USED_UP,
+  type EngineerCall,
+  type EngineerHost,
+} from './engineer';
+import { payloadPreview } from './engineerPrompt';
 import {
   generateText,
   RetryError,
@@ -141,6 +156,23 @@ export interface AgentRuntimeHost {
   policy?(projectId: string): Promise<AiPolicy>;
   /** Called for every model step with tokens and the estimated cost, for the per-project meter. */
   recordUsage?(projectId: string, usage: StepUsage): void;
+  /** The engineering model's AI step (`ai:engineerPreview`, `ai:engineer`); absent: refused. */
+  engineer?: EngineerRuntimeHost;
+}
+
+/** What the engineer step needs from the Electron main process. */
+export interface EngineerRuntimeHost {
+  /**
+   * The project's AI policy and its photo and scan consents, read from the manifest on disk now
+   * (never from the renderer); null when the project is not open.
+   */
+  policy(projectId: string): Promise<{ ai: AiPolicy; photos: boolean; scans: boolean } | null>;
+  /** The run's cache folder (`<project>/engineering/<run>/ai`); undefined: no cache (a package). */
+  cacheDir?(projectId: string, engineerRun: string): string | undefined;
+  /** Downscale an image to `maxPx` on its long side (Electron `nativeImage`). */
+  resize?(dataUrl: string, maxPx: number): Promise<string>;
+  /** The clock for the run's AI time; Date.now by default. */
+  now?(): number;
 }
 
 export interface StepUsage {
@@ -172,7 +204,25 @@ export interface AgentRuntime {
    * same gates as the agent. Usage is metered to the project. Cancel with `cancel(runId)`.
    */
   draft(req: IpcRequest<'ai:draftText'>): Promise<IpcResponse<'ai:draftText'>>;
+  /**
+   * What the engineer step would send (the send preview), with the consents on disk, the cost
+   * estimate and a one-time consent token for exactly this content. Sends nothing, reads no key.
+   */
+  engineerPreview(
+    req: IpcRequest<'ai:engineerPreview'>,
+  ): Promise<IpcResponse<'ai:engineerPreview'>>;
+  /** One engineer request; `cancel(req.runId)` stops it. */
+  engineer(req: IpcRequest<'ai:engineer'>): Promise<IpcResponse<'ai:engineer'>>;
 }
+
+/** How long a one-time consent from the send preview stays valid. */
+const CONSENT_MS = 10 * 60_000;
+
+/** A cache that keeps nothing (a read-only package). */
+const NO_CACHE: EngineerHost['cache'] = {
+  get: () => Promise.resolve(null),
+  put: () => Promise.resolve(),
+};
 
 export interface AgentRuntimeOptions {
   providers?: ProviderRegistry;
@@ -684,7 +734,202 @@ export function createAgentRuntime(
     }
   }
 
+  // ---------------------------------------------------------------- engineer step
+
+  /** Per engineering run: when its AI time started, what it spent, whether a request is out. */
+  const engineerRuns = new Map<
+    string,
+    { startedAt: number; spentUsd: number; inFlight: boolean }
+  >();
+  /** One-time consents handed out with a send preview: valid once, for that content only. */
+  const consents = new Map<string, { projectId: string; key: string; expires: number }>();
+  const clock = () => host.engineer?.now?.() ?? Date.now();
+  /** The registry the engineer step resolves through: the local model included. */
+  const engineerProviders: ProviderRegistry = {
+    get: resolveProvider,
+    register: (p) => {
+      providers.register(p);
+    },
+    list: () => providers.list(),
+  };
+
+  function engineerCallOf(req: IpcRequest<'ai:engineerPreview'>): EngineerCall {
+    return {
+      projectId: req.projectId,
+      runId: req.engineerRun,
+      pass: req.pass,
+      images: req.images.map((im) => ({
+        id: im.id,
+        kind: im.kind,
+        dataUrl: im.dataUrl,
+        bytes: im.bytes,
+        ...(im.view !== undefined ? { view: im.view } : {}),
+      })),
+      summary: req.summary,
+      setup: req.setup,
+      ...(req.previous ? { previous: req.previous } : {}),
+    };
+  }
+
+  function engineerRoute(): ModelRoute | { error: string } {
+    try {
+      return routeFor(host.routes?.() ?? defaultRoutes(), 'engineer');
+    } catch (e) {
+      return { error: e instanceof Error ? e.message : MESSAGES.failed };
+    }
+  }
+
+  /** What a consent token is bound to: the request content as the cache key sees it. */
+  function contentKey(c: EngineerCall, route: ModelRoute): string {
+    const local = localOf(route);
+    return engineerCacheKey(c, route, engineerLimits(route, local?.capabilities), local?.baseUrl);
+  }
+
+  const notOpenMessage = 'The project is not open. Open it, then try again.';
+
+  async function engineerPreview(
+    req: IpcRequest<'ai:engineerPreview'>,
+  ): Promise<IpcResponse<'ai:engineerPreview'>> {
+    const eh = host.engineer;
+    if (!eh) return { ok: false, error: 'The engineering step is not available here.' };
+    const route = engineerRoute();
+    if ('error' in route) return { ok: false, error: route.error };
+    const ready = engineerReady(route, localOf(route)?.capabilities);
+    if (!ready.ok) return { ok: false, error: ready.reason };
+    const flags = await eh.policy(req.projectId);
+    if (!flags) return { ok: false, error: notOpenMessage };
+    const c = engineerCallOf(req);
+    const built = await buildEngineerPayload(c, ready.caps, eh.resize?.bind(eh));
+    if (!built.ok) return { ok: false, error: built.reason };
+    const provider = resolveProvider(route.provider);
+    const estimate = estimateEngineerCostUsd(c, route, ready.caps);
+    const now = clock();
+    for (const [t, v] of consents) if (v.expires <= now) consents.delete(t);
+    const token = randomUUID();
+    consents.set(token, {
+      projectId: req.projectId,
+      key: contentKey(c, route),
+      expires: now + CONSENT_MS,
+    });
+    return {
+      ok: true,
+      route: {
+        task: route.task,
+        provider: route.provider,
+        model: route.model,
+        ...(route.treatAsVision !== undefined ? { treatAsVision: route.treatAsVision } : {}),
+      },
+      cloud: provider ? provider.cloud : route.provider !== 'local',
+      flags: { photos: flags.photos, scans: flags.scans },
+      ...(estimate !== undefined ? { estimateUsd: estimate } : {}),
+      content: payloadPreview(built.payload),
+      consent: token,
+    };
+  }
+
+  async function engineer(req: IpcRequest<'ai:engineer'>): Promise<IpcResponse<'ai:engineer'>> {
+    const eh = host.engineer;
+    if (!eh) {
+      return {
+        kind: 'refused',
+        code: 'capability',
+        reason: 'The engineering step is not available here.',
+      };
+    }
+    if (runs.has(req.runId)) return { kind: 'refused', code: 'busy', reason: MESSAGES.busy };
+    const runKey = `${req.projectId}\n${req.engineerRun}`;
+    const known = engineerRuns.get(runKey);
+    if (known?.inFlight) {
+      return {
+        kind: 'refused',
+        code: 'busy',
+        reason: 'Another AI request of this run is still under way. Wait for it, or stop it.',
+      };
+    }
+    const route = engineerRoute();
+    if ('error' in route) return { kind: 'refused', code: 'capability', reason: route.error };
+    const provider = resolveProvider(route.provider);
+    const cloud = provider ? provider.cloud : route.provider !== 'local';
+    if (cloud && offlineOnly()) {
+      return { kind: 'refused', code: 'offline', reason: MESSAGES.offlineOnly };
+    }
+    if (cloud && !host.cloudAllowed()) {
+      return { kind: 'refused', code: 'policy', reason: MESSAGES.cloudOff };
+    }
+    // the consents as the manifest on disk says now, whatever the renderer claims
+    const disk = await eh.policy(req.projectId);
+    if (!disk) return { kind: 'refused', code: 'policy', reason: notOpenMessage };
+    const c: EngineerCall = {
+      ...engineerCallOf(req),
+      ...(req.costConfirmed ? { costConfirmed: true } : {}),
+    };
+    let { photos, scans } = disk;
+    if (req.consent) {
+      // valid once, for this project and exactly the content the preview showed
+      const t = consents.get(req.consent.token);
+      consents.delete(req.consent.token);
+      const valid =
+        t?.projectId === req.projectId && t.expires > clock() && t.key === contentKey(c, route);
+      if (valid) {
+        photos ||= req.consent.photos;
+        scans ||= req.consent.scans;
+      }
+    }
+    const state = known ?? { startedAt: clock(), spentUsd: 0, inFlight: false };
+    engineerRuns.set(runKey, state);
+    const left = state.startedAt + ENGINEER_TIMEOUT_MS - clock();
+    if (left <= 0) return { kind: 'refused', code: 'time', reason: TIME_USED_UP };
+
+    const run: Run = { controller: new AbortController(), pending: new Map() };
+    runs.set(req.runId, run);
+    state.inFlight = true;
+    try {
+      const dir = eh.cacheDir?.(req.projectId, req.engineerRun);
+      return await runEngineer(c, {
+        route: () => route,
+        key: (p) => host.getKey(p as AiProvider),
+        offlineOnly,
+        policy: () => ({ ai: disk.ai, photos, scans }),
+        cache: dir ? fileEngineerCache(dir) : NO_CACHE,
+        spent: () => state.spentUsd,
+        usage: (u) => {
+          if (u.costUsd !== undefined) state.spentUsd += u.costUsd;
+          const tags = { provider: u.provider, model: u.model };
+          const cost = u.costUsd !== undefined ? { costUsd: u.costUsd } : {};
+          host.emit({
+            type: 'usage',
+            runId: req.runId,
+            inputTokens: u.inputTokens,
+            outputTokens: u.outputTokens,
+            ...cost,
+            ...tags,
+          });
+          host.recordUsage?.(req.projectId, {
+            ...tags,
+            inputTokens: u.inputTokens,
+            outputTokens: u.outputTokens,
+            ...cost,
+          });
+        },
+        budgetUsd: DETAIL_BUDGETS[req.setup.detail].costUsd,
+        signal: run.controller.signal,
+        providers: engineerProviders,
+        localCaps: () => localOf(route)?.capabilities,
+        endpoint: () => localOf(route)?.baseUrl,
+        ...(eh.resize ? { resize: eh.resize.bind(eh) } : {}),
+        maxRetries: options.maxRetries ?? 2,
+        // the run's AI time, on the wall clock the request's timer uses
+        deadline: Date.now() + left,
+      });
+    } finally {
+      state.inFlight = false;
+      runs.delete(req.runId);
+    }
+  }
+
   return {
+    engineerPreview,
+    engineer,
     send: async (req) => {
       if (runs.has(req.runId)) return { ok: false, error: MESSAGES.busy };
       const run: Run = { controller: new AbortController(), pending: new Map() };

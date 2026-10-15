@@ -54,6 +54,9 @@ export const ENGINEER_MAX_OUTPUT_TOKENS = 8_000;
 const ESTIMATE_OUTPUT_TOKENS = 4_000;
 /** Longest measurement summary sent (characters); a longer one is refused, not cut. */
 export const SUMMARY_MAX_CHARS = 40_000;
+/** The refusal once a run's AI time is used up. */
+export const TIME_USED_UP =
+  'This run has used its 10 minutes of AI time. Review the proposal so far, or start a new run.';
 /** Longest bad reply sent back in the repair request (characters). */
 const REPAIR_REPLY_MAX = 20_000;
 /** Version of the reply format (the wire schema below and its mapping to `EngineerProposal`). */
@@ -127,6 +130,11 @@ export interface EngineerHost {
   resize?(dataUrl: string, maxPx: number): Promise<string>;
   /** Provider retries per request; 2 by default. */
   maxRetries?: number;
+  /**
+   * When the run's AI time ends (epoch ms): a request gets what is left of it, at most
+   * `ENGINEER_TIMEOUT_MS`, and none is sent once it has passed.
+   */
+  deadline?: number;
 }
 
 export type EngineerOutcome =
@@ -146,7 +154,17 @@ export type EngineerOutcome =
   | {
       kind: 'refused';
       reason: string;
-      code: 'offline' | 'policy' | 'no-key' | 'capability' | 'budget' | 'identity';
+      code:
+        | 'offline'
+        | 'policy'
+        | 'no-key'
+        | 'capability'
+        | 'budget'
+        | 'identity'
+        /** Another request of the same engineering run is in flight (main). */
+        | 'busy'
+        /** The run's AI time is used up. */
+        | 'time';
     }
   | {
       kind: 'failed';
@@ -718,7 +736,11 @@ export async function runEngineer(c: EngineerCall, host: EngineerHost): Promise<
     return { kind: 'refused', code: 'budget', reason: err.message };
   }
 
-  const timeout = AbortSignal.timeout(ENGINEER_TIMEOUT_MS);
+  const left = host.deadline === undefined ? ENGINEER_TIMEOUT_MS : host.deadline - Date.now();
+  if (left <= 0) {
+    return { kind: 'refused', code: 'time', reason: TIME_USED_UP };
+  }
+  const timeout = AbortSignal.timeout(Math.min(ENGINEER_TIMEOUT_MS, left));
   const signal = AbortSignal.any([host.signal, timeout]);
   const model = provider.languageModel(route.model, key);
   const instructions = engineerSystem();
@@ -826,11 +848,14 @@ function failure(
     return { kind: 'refused', code: 'offline', reason: OFFLINE_ONLY_MESSAGE };
   }
   if (o.timeout.aborted) {
-    return {
-      kind: 'failed',
-      code: 'network',
-      error: `${o.label} did not answer within ${String(ENGINEER_TIMEOUT_MS / 60_000)} minutes. Try again.`,
-    };
+    const runOut = o.host.deadline !== undefined && Date.now() >= o.host.deadline;
+    return runOut
+      ? { kind: 'refused', code: 'time', reason: TIME_USED_UP }
+      : {
+          kind: 'failed',
+          code: 'network',
+          error: `${o.label} did not answer within ${String(ENGINEER_TIMEOUT_MS / 60_000)} minutes. Try again.`,
+        };
   }
   const described = describeError(e, { label: o.label, model: o.route.model, secrets: [o.key] });
   if (inner instanceof InvalidProposalError || NoOutputGeneratedError.isInstance(inner)) {

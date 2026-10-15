@@ -13,6 +13,7 @@ import {
   type LanguageModelV4StreamPart,
 } from '@ai-sdk/provider';
 import { DETECT_MARKER } from './detect';
+import { ENGINEER_SYSTEM_LEAD } from './engineerPrompt';
 import type { ModelProvider } from './providers';
 
 /** Keyword (lower case, in the user's message) to the tool call the script makes. */
@@ -162,6 +163,154 @@ export function scriptedDetections(prompt: LanguageModelV4Prompt): string | null
   return JSON.stringify({ images });
 }
 
+interface WireParam {
+  name: string;
+  value: number | string | boolean;
+}
+interface WireComponent {
+  role: string;
+  kind: string;
+  count: number;
+  units: 'ratio' | 'm';
+  params: WireParam[];
+  levels: number[];
+  imageIds: string[];
+  observed: boolean;
+  description: string;
+}
+
+const p = (o: Record<string, number | string | boolean>): WireParam[] =>
+  Object.entries(o).map(([name, value]) => ({ name, value }));
+
+const part = (
+  role: string,
+  kind: string,
+  count: number,
+  params: Record<string, number | string | boolean>,
+  levels: number[] = [],
+): WireComponent => ({
+  role,
+  kind,
+  count,
+  units: 'ratio',
+  params: p(params),
+  levels,
+  imageIds: ['p1'],
+  observed: true,
+  description: '',
+});
+
+const wireProposal = (
+  family: string,
+  components: WireComponent[],
+  sameAsset = true,
+): Record<string, unknown> => ({
+  family: { value: family, reasons: [`Scripted ${family} for tests.`] },
+  identity: {
+    sameAsset,
+    conflicts: sameAsset
+      ? []
+      : [{ imageIds: ['p1'], reason: 'Scripted: this image shows another structure.' }],
+  },
+  components,
+  unresolved: ['Make and process duty unknown (scripted).'],
+  notes: `Scripted ${family} proposal; no data left the workstation.`,
+});
+
+const CHIMNEY = [
+  part('shaft', 'shaft', 1, { rBase: 0.05, rTop: 0.035, openTop: true, wall: 0.004 }),
+  part('flue', 'flue', 3, { rOuter: 0.008, rInner: 0.006 }),
+  part('light', 'warningLight', 3, { fixture: 'single', arrangement: 'ring' }, [0.5, 0.98]),
+  part('ladder', 'ladder', 1, { cage: true, azimuthDeg: 90 }),
+];
+
+/**
+ * The scripted engineer replies by name, in the reply format the model fills in (params as name
+ * and value pairs). A request picks one with `#engineer <name>` in its summary; the default is
+ * `chimney`. `invalid` is the first reply of `#engineer invalid` (the repair gets `chimney`).
+ */
+export const SCRIPTED_ENGINEER: Readonly<Record<string, Record<string, unknown>>> = {
+  chimney: wireProposal('chimney', CHIMNEY),
+  flare: wireProposal('flare', [
+    part('riser', 'shaft', 1, { rBase: 0.012, rTop: 0.01, support: 'self' }),
+    part('tip', 'flareTip', 1, { r: 0.015, height: 0.04, windshield: true, pilots: 3 }),
+    part('platform', 'ringPlatform', 1, { guardrail: true, width: 0.02 }, [0.9]),
+    part('gas-line', 'pipeRun', 1, { diameter: 0.004, azimuthDeg: 270 }),
+  ]),
+  lattice: wireProposal('telecom-lattice', [
+    part('tower', 'lattice', 1, {
+      legs: 3,
+      widthBase: 0.12,
+      widthTop: 0.04,
+      bays: 8,
+      bracing: 'X',
+    }),
+    part('antenna', 'antenna', 6, { type: 'panel', size: 0.05, sectors: 3, azimuthDeg: 0 }, [0.92]),
+    part('mount', 'antennaMount', 6, { type: 'standoff' }),
+  ]),
+  monopole: wireProposal('telecom-monopole', [
+    part('pole', 'monopole', 1, { rBase: 0.02, rTop: 0.012, sides: 12 }),
+    part(
+      'antenna',
+      'antenna',
+      3,
+      { type: 'panel', size: 0.06, sectors: 3, azimuthDeg: 30 },
+      [0.95],
+    ),
+    part('mount', 'antennaMount', 3, { type: 'pipe' }),
+  ]),
+  conflict: wireProposal('chimney', CHIMNEY, false),
+  invalid: { ...wireProposal('chimney', CHIMNEY), family: { value: 'windmill', reasons: [] } },
+};
+
+/** The scripted engineer request names. */
+const ENGINEER_NAMES = [
+  'chimney',
+  'flare',
+  'lattice',
+  'monopole',
+  'conflict',
+  'invalid-always',
+  'invalid',
+  'rate-limit',
+] as const;
+
+/**
+ * An engineer request (`runEngineer`): the reply picked by `#engineer <name>` in the request, the
+ * same for every provider. `rate-limit` throws a 429; `invalid` answers out of range first and
+ * `chimney` on the repair; `invalid-always` stays out of range. Null for other prompts.
+ */
+export function scriptedEngineer(prompt: LanguageModelV4Prompt): string | null {
+  if (!systemText(prompt).includes(ENGINEER_SYSTEM_LEAD)) return null;
+  const first =
+    prompt
+      .filter((m) => m.role === 'user')
+      .flatMap((m) => m.content.filter((x) => x.type === 'text').map((x) => x.text))
+      .at(0) ?? '';
+  const name = ENGINEER_NAMES.find((n) => first.includes(`#engineer ${n}`)) ?? 'chimney';
+  const repair = prompt.some((m) => m.role === 'assistant');
+  if (name === 'rate-limit') {
+    throw new APICallError({
+      message: 'Too Many Requests',
+      url: 'scripted://engineer',
+      requestBodyValues: {},
+      statusCode: 429,
+      responseBody: JSON.stringify({
+        type: 'error',
+        error: { type: 'rate_limit_error', message: 'Scripted rate limit.' },
+      }),
+      isRetryable: false,
+    });
+  }
+  const pick =
+    name === 'invalid-always' || (name === 'invalid' && !repair)
+      ? 'invalid'
+      : name === 'invalid'
+        ? 'chimney'
+        : name;
+  return JSON.stringify(SCRIPTED_ENGINEER[pick] ?? SCRIPTED_ENGINEER.chimney);
+}
+
 /** The system instructions of a prompt. */
 function systemText(prompt: LanguageModelV4Prompt): string {
   return prompt
@@ -209,6 +358,8 @@ export interface ScriptedOptions {
    * panel's in-place fix (end-to-end test).
    */
   workspaceId?: () => string | undefined;
+  /** Called for every non-streamed request (tests count what would have been sent). */
+  onGenerate?: () => void;
 }
 
 function workspaceError(modelId: string): APICallError {
@@ -227,6 +378,7 @@ function workspaceError(modelId: string): APICallError {
 let calls = 0;
 
 function scriptedModel(modelId: string, options: ScriptedOptions = {}): LanguageModelV4 {
+  const onGenerate = options.onGenerate;
   // Rejects like the provider when an organisation key has no workspace ID yet.
   const refused = () =>
     options.workspaceId !== undefined && !options.workspaceId()?.trim()
@@ -265,11 +417,22 @@ function scriptedModel(modelId: string, options: ScriptedOptions = {}): Language
     doGenerate: (options) => {
       const error = refused();
       if (error) return Promise.reject(error);
+      onGenerate?.();
+      let engineer: string | null;
+      try {
+        engineer = scriptedEngineer(options.prompt);
+      } catch (e) {
+        return Promise.reject(e instanceof Error ? e : new Error(String(e)));
+      }
       return Promise.resolve({
         content: [
           {
             type: 'text',
-            text: scriptedDetections(options.prompt) ?? scriptedNarrative(options.prompt) ?? 'OK',
+            text:
+              engineer ??
+              scriptedDetections(options.prompt) ??
+              scriptedNarrative(options.prompt) ??
+              'OK',
           },
         ],
         finishReason: { unified: 'stop', raw: 'end_turn' },

@@ -110,6 +110,7 @@ import {
 import { registerLocalModelsIpc, type LocalServerSeen } from './localModels';
 import { readCloudDrawings, registerModelBuilderIpc } from './modelBuilder';
 import { registerEngineeringIpc } from './engineering';
+import { engineerRuntimeHost, registerEvidencePolicyIpc } from './evidencePolicy';
 import { createBlobService, registerBlobsIpc } from './blobs';
 import { houseSignOff, registerCollabIpc } from './collab';
 import {
@@ -628,6 +629,30 @@ const agent = createAgentRuntime(
         aiProjects.addUsage(root, projectNames.get(projectId) ?? projectId, usage);
     },
     emit: emitAiEvent,
+    // the engineering model's AI step: consents re-read from disk for every request
+    engineer: engineerRuntimeHost({
+      projects: registry,
+      packagePolicy: (id) => {
+        const header = registry.package(id)?.header;
+        return header === undefined || header.aiPolicy === 'allow' ? 'allow' : 'forbid';
+      },
+      resize: (dataUrl, maxPx) => {
+        const img = nativeImage.createFromDataURL(dataUrl);
+        if (img.isEmpty()) return Promise.reject(new Error('The image could not be decoded.'));
+        const { width, height } = img.getSize();
+        const s = Math.min(1, maxPx / Math.max(width, height, 1));
+        const small = img.resize({
+          width: Math.max(1, Math.floor(width * s)),
+          height: Math.max(1, Math.floor(height * s)),
+          quality: 'good',
+        });
+        return Promise.resolve(
+          dataUrl.startsWith('data:image/png')
+            ? small.toDataURL()
+            : `data:image/jpeg;base64,${small.toJPEG(90).toString('base64')}`,
+        );
+      },
+    }),
   },
   { providers },
 );
@@ -1088,6 +1113,9 @@ function registerIpc(): void {
     return maskAssist.segment(r.path, box);
   });
   handle('ai:detect', (req) => agent.detect(req));
+  // the engineering model's AI step: the send preview, then one request per pass (ai:cancel stops it)
+  handle('ai:engineerPreview', (req) => agent.engineerPreview(req));
+  handle('ai:engineer', (req) => agent.engineer(req));
 
   // Map packs carried by open packages join the list when this machine lacks that area.
   handle('packs:list', async () => {
@@ -1611,6 +1639,7 @@ function registerIpc(): void {
     thresholds: () => ChangeThresholds.parse(settings.current().change ?? {}),
   });
   registerModelBuilderIpc({ handle, projects: registry });
+  registerEvidencePolicyIpc({ handle, projects: registry });
   registerEngineeringIpc({
     handle,
     projects: registry,
