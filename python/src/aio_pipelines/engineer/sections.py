@@ -78,14 +78,21 @@ def fit_ring(
 
 
 def fit_sections(
-    xyz: np.ndarray, axis: Axis, step: float, max_slices: int = 256, seed: int = 0
+    xyz: np.ndarray,
+    axis: Axis,
+    step: float,
+    max_slices: int = 256,
+    seed: int = 0,
+    report: dict | None = None,
 ) -> list[SliceFit]:
     """One circle per slice every `step` metres along the axis, bottom to top.
 
     The slice is `step` thick (at least 0.3 m). A step that would give more than `max_slices`
     slices is widened. Slices that do not fit, or whose radius jumps away from the running shaft
-    radius, are skipped.
+    radius, are skipped. With `report` (a dict) the counts of skipped slices are written to it:
+    `{"slices": kept, "rejected": {"no-fit": n, "radius-jump": n, "off-axis": n}}`.
     """
+    rejected = {"no-fit": 0, "radius-jump": 0, "off-axis": 0}
     if len(xyz) < MIN_SLICE_POINTS or step <= 0:
         return []
     rng = np.random.default_rng(seed)
@@ -106,6 +113,7 @@ def fit_sections(
         sel = order[lo:hi]
         fit = fit_ring(np.column_stack([u[sel], w[sel]]), rng)
         if fit is None:
+            rejected["no-fit"] += 1
             continue
         cu, cw, r, rms, support, cov = fit
         if ref is None:
@@ -116,12 +124,20 @@ def fit_sections(
             ref = float(np.median(seed_radii))
             recent = list(seed_radii)
         offset = math.hypot(cu, cw)
-        if abs(r - ref) > RADIUS_JUMP * ref or offset > 0.5 * ref:
+        if abs(r - ref) > RADIUS_JUMP * ref:
+            rejected["radius-jump"] += 1
+            continue
+        if offset > 0.5 * ref:
+            rejected["off-axis"] += 1
             continue
         recent = [*recent, r][-5:]
         ref = float(np.median(recent))
         out.append(_slice(axis, y, cu, cw, r, rms, support, cov))
-    return _drop_seed_outliers(out, seed_radii) if ref is not None else out
+    out = _drop_seed_outliers(out, seed_radii) if ref is not None else out
+    if report is not None:
+        report["slices"] = len(out)
+        report["rejected"] = rejected
+    return out
 
 
 def _drop_seed_outliers(slices: list[SliceFit], seed_radii: list[float]) -> list[SliceFit]:

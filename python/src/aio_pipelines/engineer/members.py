@@ -451,7 +451,11 @@ def _fill_ratio(xyz: np.ndarray, axis: Axis, seed: int = 0) -> float:
 
 
 def family_hints(
-    xyz: np.ndarray, axis: Axis, slices: list[SliceFit], members: list[MemberGroup]
+    xyz: np.ndarray,
+    axis: Axis,
+    slices: list[SliceFit],
+    members: list[MemberGroup],
+    seed: int = 0,
 ) -> FamilyHints:
     """A suggested family with reasons; the caller never has to accept it.
 
@@ -469,7 +473,7 @@ def family_hints(
     base = h < max(0.05 * top, 0.5)
     foot = max(float(np.ptp(u[base])), float(np.ptp(w[base]))) if base.sum() > 3 else 0.0
     slender = top / foot if foot > 0 else 0.0
-    fill = _fill_ratio(xyz, axis) if len(xyz) > 200 else 0.0
+    fill = _fill_ratio(xyz, axis, seed) if len(xyz) > 200 else 0.0
     reasons = [f"fill {fill:.2f}", f"slenderness {slender:.1f}"]
     sectors = len({round(i.azimuth_deg / 30) % 12 for i in ants if i.azimuth_deg is not None})
     # a burner tip: the topmost ring against the shaft below it
@@ -478,7 +482,7 @@ def family_hints(
         sel = np.flatnonzero(h > top - max(2.0, 0.04 * top))
         lower = np.flatnonzero((h > 0.6 * top) & (h < 0.9 * top))
         if len(sel) > 60 and len(lower) > 60:
-            rng = np.random.default_rng(0)
+            rng = np.random.default_rng(seed)
             a = fit_ring(np.column_stack([u[sel], w[sel]]), rng)
             b = fit_ring(np.column_stack([u[lower], w[lower]]), rng)
             tip = bool(a and b and 0.5 <= a[2] / b[2] <= 0.95 and a[4] > 0.6 * len(sel))

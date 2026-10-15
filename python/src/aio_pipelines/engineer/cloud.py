@@ -12,6 +12,8 @@ Local frame: x east, y up, z south from the project origin `[E, N, H]`:
 from __future__ import annotations
 
 import struct
+from collections.abc import Callable
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
@@ -20,6 +22,8 @@ import numpy as np
 from ..modelfit.segment import ground_surface, read_kit_packed, read_png_packed
 from ..runtime import JobError
 from ..volumetric.cloud import LasHeader, read_las_chunks
+from .axis import Axis
+from .members import _components
 
 Region = dict[str, Any]  # {"centre": [x, z], "radiusM": r} or {"min": [x, y, z], "max": [x, y, z]}
 PDAL_FORMATS = ("copc", "laz")
@@ -47,6 +51,22 @@ def _world_bounds(region: Region, origin: tuple[float, float, float]) -> str:
         return f"([{ox + cx - r},{ox + cx + r}],[{oy - cz - r},{oy - cz + r}])"
     (x0, y0, z0), (x1, y1, z1) = region["min"], region["max"]
     return f"([{ox + x0},{ox + x1}],[{oy - z1},{oy - z0}],[{oz + y0},{oz + y1}])"
+
+
+def pdal_translate_args(
+    pdal: str, src: Path, dst: Path, fmt: str, region: Region | None, origin: tuple[float, float, float]
+) -> list[str]:
+    """`pdal translate` to a plain LAS with the region applied at the source: a COPC reader takes
+    `bounds` (only that part is decompressed); LAZ and LAS have no spatial index, so `filters.crop`
+    with the same bounds runs on the stream and only the region reaches the file."""
+    args = [pdal, "translate", str(src), str(dst)]
+    if region is not None:
+        bounds = _world_bounds(region, origin)
+        if fmt == "copc":
+            args.append(f"--readers.copc.bounds={bounds}")
+        else:
+            args += ["crop", f"--filters.crop.bounds={bounds}"]
+    return args
 
 
 def las_crs(path: Path) -> dict[str, Any] | None:
@@ -142,7 +162,9 @@ def read_region(
     `origin` is the project origin `[E, N, H]`. Returns the local xyz and
     `{"read": points inside the region, "kept": points returned, "crs": {...} | None,
     "bounds": {"min", "max"} of the kept points | None}`. `read` counts what the region holds, not
-    what the sample keeps. COPC and LAZ need PDAL (the region is its reader's `bounds`).
+    what the sample keeps. COPC and LAZ need PDAL (the region is the reader's `bounds`, or a
+    `filters.crop` for LAZ). kit-packed and png-packed clouds are loaded whole before the crop
+    (their readers have no bounded mode), so they are not memory-bounded by the region.
     """
     if fmt not in READABLE:
         raise JobError(f"A {fmt} cloud has an unsupported format; use COPC, LAS, kit-packed or png-packed.")
@@ -161,10 +183,7 @@ def read_region(
         if not pdal:
             raise JobError(PDAL_MISSING)
         out = ctx.job.dir / "region.las"
-        args = [pdal, "translate", str(layer_path), str(out)]
-        if region is not None and fmt == "copc":
-            args.append(f"--readers.copc.bounds={_world_bounds(region, origin)}")
-        _run(ctx, args, "Read the asset region")
+        _run(ctx, pdal_translate_args(pdal, layer_path, out, fmt, region, origin), "Read the asset region")
         try:
             crs = las_crs(out)
             read = _stream_las(out, region, origin, res, check)
@@ -188,11 +207,170 @@ def read_region(
     return xyz, {"read": int(read), "kept": len(xyz), "crs": crs, "bounds": bounds}
 
 
-def remove_ground(xyz: np.ndarray, dist: float) -> tuple[np.ndarray, int]:
-    """The points at least `dist` above the ground surface (`modelfit.segment.ground_surface`),
-    and how many were removed."""
+@dataclass
+class GroundSplit:
+    kept: np.ndarray  # points at least `dist` above the ground surface
+    ground: np.ndarray  # the points removed
+    surface: Callable[[np.ndarray], np.ndarray]  # ground height at local (x, z) rows
+
+    @property
+    def removed(self) -> int:
+        return len(self.ground)
+
+
+def split_ground(xyz: np.ndarray, dist: float) -> GroundSplit:
+    """Split a cloud at the ground surface (`modelfit.segment.ground_surface`) plus `dist`."""
     if len(xyz) == 0:
-        return xyz, 0
+        return GroundSplit(xyz, xyz, lambda xz: np.zeros(len(xz)))
     surface = ground_surface(xyz)
     keep = xyz[:, 1] >= surface(xyz[:, [0, 2]]) + dist
-    return xyz[keep], int(len(xyz) - keep.sum())
+    return GroundSplit(xyz[keep], xyz[~keep], surface)
+
+
+def remove_ground(xyz: np.ndarray, dist: float) -> tuple[np.ndarray, int]:
+    """The points at least `dist` above the ground surface, and how many were removed."""
+    split = split_ground(xyz, dist)
+    return split.kept, split.removed
+
+
+def region_centre(region: Region | None) -> tuple[float, float] | None:
+    """The plan centre (x, z) of a crop region, or None when there is no region."""
+    if region is None:
+        return None
+    if "radiusM" in region:
+        return float(region["centre"][0]), float(region["centre"][1])
+    (x0, _, z0), (x1, _, z1) = region["min"], region["max"]
+    return (x0 + x1) / 2, (z0 + z1) / 2
+
+
+ATTACH_MARGIN_M = 1.0
+
+
+def isolate_asset(
+    xyz: np.ndarray,
+    centre: tuple[float, float] | None,
+    voxel: float = 0.3,
+    eps: float = 0.5,
+    min_share: float = 0.1,
+) -> tuple[np.ndarray, dict[str, Any]]:
+    """Keep the one connected structure the crop is about; drop neighbours and clutter.
+
+    Call it after ground removal. Points are thinned to `voxel` cells, the cells are chained
+    within `eps` (3D), and of the components at least `min_share` the size of the largest, the one
+    whose plan bounding box is centred nearest `centre` is kept (the largest when `centre` is None;
+    a tie within 1 m goes to the larger). Returns the kept points and
+    `{"components", "kept", "dropped": [{"points", "min", "max"}, ...] (at most 8, over 50 points),
+    "droppedPoints"}` so the caller can say what was excluded.
+    """
+    info: dict[str, Any] = {"components": 0, "kept": len(xyz), "dropped": [], "droppedPoints": 0}
+    if len(xyz) < 10:
+        return xyz, info
+    keys = np.floor(xyz / voxel).astype(np.int64)
+    cells, inv = np.unique(keys, axis=0, return_inverse=True)
+    inv = inv.reshape(-1)
+    comps = _components((cells + 0.5) * voxel, eps, 1)
+    label = np.empty(len(cells), dtype=np.int64)
+    for i, c in enumerate(comps):
+        label[c] = i
+    point_label = label[inv]
+    counts = np.bincount(point_label, minlength=len(comps))
+    info["components"] = len(comps)
+    big = [i for i in range(len(comps)) if counts[i] >= min_share * counts.max()]
+    if centre is None:
+        chosen = int(np.argmax(counts))
+    else:
+        cx, cz = centre
+        dist = {}
+        for i in big:
+            p = xyz[point_label == i]
+            dist[i] = float(
+                np.hypot((p[:, 0].min() + p[:, 0].max()) / 2 - cx, (p[:, 2].min() + p[:, 2].max()) / 2 - cz)
+            )
+        nearest = min(dist.values())
+        chosen = max((i for i in big if dist[i] <= nearest + 1.0), key=lambda i: counts[i])
+    mask = point_label == chosen
+    # parts that stand apart but belong to the asset (flues floating over an open crown, lights
+    # a hand off the wall) lie inside its plan footprint plus a metre: they stay
+    main = xyz[mask]
+    mid = (main[:, [0, 2]].min(axis=0) + main[:, [0, 2]].max(axis=0)) / 2
+    reach = float(np.hypot(main[:, 0] - mid[0], main[:, 2] - mid[1]).max()) + ATTACH_MARGIN_M
+    y_top = float(main[:, 1].max()) + max(3.0, 0.1 * float(np.ptp(main[:, 1])))  # a flue over a crown
+    near = (np.hypot(xyz[:, 0] - mid[0], xyz[:, 2] - mid[1]) <= reach) & (xyz[:, 1] <= y_top)
+    for i in range(len(comps)):
+        if i != chosen:
+            sel = point_label == i
+            if not np.any(sel & ~near):
+                mask |= sel
+    others = ~mask
+    info["kept"] = int(mask.sum())
+    info["droppedPoints"] = int(others.sum())
+    if others.any():
+        # the dropped parts, grouped into structures (parts within 2 m of each other are one)
+        rest = xyz[others]
+        cells, inv = np.unique(np.floor(rest).astype(np.int64), axis=0, return_inverse=True)
+        inv = inv.reshape(-1)
+        groups = _components(cells + 0.5, 2.0, 1)
+        owner = np.empty(len(cells), dtype=np.int64)
+        for g, idx in enumerate(groups):
+            owner[idx] = g
+        label_of = owner[inv]
+        sizes = np.bincount(label_of, minlength=len(groups))
+        for g in np.argsort(-sizes)[:8]:
+            if sizes[g] < 50:
+                break
+            p = rest[label_of == g]
+            info["dropped"].append(
+                {
+                    "points": int(sizes[g]),
+                    "min": [float(v) for v in p.min(axis=0)],
+                    "max": [float(v) for v in p.max(axis=0)],
+                }
+            )
+    return xyz[mask], info
+
+
+#: A base this far (metres) or less above the ground still counts as seen: ground removal leaves a
+#: 0.15 m margin and slabs, plinths and scan noise add a few decimetres.
+BASE_GAP_TOLERANCE_M = 1.0
+
+
+@dataclass
+class Base:
+    point: tuple[float, float, float]  # on the axis, at the ground (or the lowest point seen)
+    observed: bool
+    basis: str  # "ground" or "lowest-point"
+    gap_m: float  # lowest asset point above the ground; 0 when there is no ground
+    note: str | None  # a sentence for the warnings when not observed
+
+
+def find_base(axis: Axis, kept: np.ndarray, split: GroundSplit | None) -> tuple[Base, Axis]:
+    """The asset base and the axis re-anchored there, so heights count from the base.
+
+    With ground found (at least 100 ground points beyond 1.2 times the asset radius, so the
+    ground is not just the asset's own lowest layer) the base is the ground height under the axis.
+    When the lowest asset point is more than `BASE_GAP_TOLERANCE_M` above it, the base was not
+    scanned: it is flagged unobserved and heights still count from the ground. With no ground the
+    base is the lowest observed point, flagged unobserved.
+    """
+    foot = np.asarray(axis.point)
+    u, w, _ = axis.to_frame(kept) if len(kept) else (np.zeros(1), np.zeros(1), None)
+    radius = float(np.percentile(np.hypot(u, w), 98)) if len(kept) else 0.0
+    ground = split.ground if split is not None else np.zeros((0, 3))
+    far = np.hypot(ground[:, 0] - foot[0], ground[:, 2] - foot[2]) > 1.2 * radius if len(ground) else []
+    if split is None or int(np.sum(far)) < 100:
+        note = "No ground was found, so heights count from the lowest point seen."
+        return Base(tuple(float(v) for v in foot), False, "lowest-point", 0.0, note), axis
+    ground_y = float(split.surface(foot[None, [0, 2]])[0])
+    gap = float(foot[1] - ground_y)
+    if gap <= 0:
+        return Base(tuple(float(v) for v in foot), True, "ground", 0.0, None), axis
+    d = np.asarray(axis.dir)
+    point = foot - d * (gap / d[1])
+    moved = Axis(tuple(float(v) for v in point), axis.dir, axis.tilt_deg)
+    observed = gap <= BASE_GAP_TOLERANCE_M
+    note = (
+        None
+        if observed
+        else f"The base was not scanned: the lowest point seen is {gap:.1f} m above the ground. Heights count from the ground."
+    )
+    return Base(tuple(float(v) for v in point), observed, "ground", gap, note), moved
