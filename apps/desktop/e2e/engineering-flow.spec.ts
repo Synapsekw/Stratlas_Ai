@@ -29,8 +29,16 @@ const PROJECT = { id: 'e2e-eng-flow', name: 'E2E engineering chimney' };
 const ENV = { ...PIPELINE_ENV, QUADRION_AI_TEST_PROVIDER: '1' };
 
 test.skip(!hasPipelinePython(), `no Python with aio_pipelines at ${VENV_PYTHON}`);
-/** The cloud is a COPC layer: the job reads its region through PDAL (the pack ships it). */
-const NO_PDAL = `no PDAL at ${PDAL} (set AIO_PDAL)`;
+/**
+ * The cloud is a COPC layer: the job reads its region through PDAL (the pack ships it). A
+ * workstation without PDAL skips these cases; CI installs it (ci.yml), so there they fail instead.
+ */
+function needPdal(): void {
+  if (hasPdal()) return;
+  const why = `no PDAL at ${PDAL} (set AIO_PDAL)`;
+  if (process.env.CI) throw new Error(`${why}: CI must run the engineering flow on the cloud`);
+  test.skip(true, why);
+}
 
 interface Assembly {
   id: string;
@@ -228,7 +236,7 @@ async function readModel(dir: string): Promise<Model> {
 
 engTest('A: from a partial chimney cloud to an accepted model layer', async ({ eng, win }) => {
   test.setTimeout(300_000);
-  test.skip(!hasPdal(), NO_PDAL);
+  needPdal();
   await openProject(win);
   const setup = await setupFromCloud(win);
   await expect(setup.getByTestId('eng-detail-standard')).toBeChecked();
@@ -376,7 +384,7 @@ engTest(
   'H: offline, the local stages run, identify says why, nothing is sent',
   async ({ eng, win, network }) => {
     test.setTimeout(240_000);
-    test.skip(!hasPdal(), NO_PDAL);
+    needPdal();
     await openProject(win);
     await setSettings(win, { offlineOnly: true });
     const setup = await setupFromCloud(win);
@@ -403,7 +411,7 @@ engTest(
   'H: declined at the preview, nothing is sent and the draft is measured only',
   async ({ eng, win }) => {
     test.setTimeout(240_000);
-    test.skip(!hasPdal(), NO_PDAL);
+    needPdal();
     await openProject(win);
     const setup = await setupFromCloud(win);
     await setup.getByTestId('eng-detail-fast').check();
@@ -420,7 +428,7 @@ engTest(
 
 engTest('H: the OpenAI route runs the same flow; cancel and retry', async ({ eng, win }) => {
   test.setTimeout(300_000);
-  test.skip(!hasPdal(), NO_PDAL);
+  needPdal();
   await openProject(win);
   await setSettings(win, {
     routes: [
@@ -455,7 +463,7 @@ test('D: corrections regenerate only what they touch, keep ids and survive a res
   dataRoot,
 }) => {
   test.setTimeout(360_000);
-  test.skip(!hasPdal(), NO_PDAL);
+  needPdal();
   const eng = await writeProject(dataRoot);
   const network = new NetworkGuard();
   let app = await launchApp(dataRoot, ENV);
