@@ -64,8 +64,20 @@ const stubFolderPicker = (app: ElectronApplication, dir: string) =>
 const card = (win: Page, name: string) => win.getByTestId('project-card').filter({ hasText: name });
 const dots = (win: Page, name: string) => win.getByRole('button', { name: `Actions for ${name}` });
 
+/**
+ * Opens the menu of the card `name`. The library reads itself again after a project opens or
+ * closes and the cards can move under a click, so the click is tried again until the menu shows.
+ */
+async function openMenu(win: Page, name: string) {
+  const menu = win.getByTestId('project-menu');
+  await expect(async () => {
+    if (!(await menu.isVisible())) await dots(win, name).click();
+    await expect(menu).toBeVisible({ timeout: 1_000 });
+  }).toPass({ timeout: 15_000 });
+}
+
 async function pickFromMenu(win: Page, name: string, item: 'remove' | 'delete' | 'close') {
-  await dots(win, name).click();
+  await openMenu(win, name);
   await win.getByTestId(`project-menu-${item}`).click();
 }
 
@@ -118,7 +130,7 @@ test('remove hides a data-folder project; it stays hidden after a restart and Ad
     const { app, win } = run;
     await expect(win.getByTestId('project-card')).toHaveCount(2);
     // Remove is offered on any card and needs no confirm
-    await dots(win, 'Removable yard').click();
+    await openMenu(win, 'Removable yard');
     await expect(win.getByTestId('project-menu-remove')).toContainText('Remove from library');
     await expect(win.getByTestId('project-menu-remove')).not.toHaveAttribute(
       'aria-disabled',
@@ -320,7 +332,7 @@ test.describe('a demo card', () => {
       await win.locator('.nav-item', { hasText: 'Projects' }).first().click();
 
       // the open demo holds Delete until it is closed
-      await dots(win, CHANGE_DEMO.name).click();
+      await openMenu(win, CHANGE_DEMO.name);
       await expect(win.getByTestId('project-menu-delete')).toHaveAttribute('aria-disabled', 'true');
       await win.getByTestId('project-menu-close').click();
       await expect.poll(async () => (await openProject(win)).id).toBeNull();
