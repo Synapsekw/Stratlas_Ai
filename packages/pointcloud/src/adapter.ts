@@ -1,8 +1,9 @@
 import { getAdapter, registerAdapter, type LayerAdapter, type SceneHandle } from '@aio/engine';
-import type { PointcloudScalar } from '@aio/schema';
+import type { Layer, PointcloudScalar } from '@aio/schema';
 import { workspace } from '@aio/workspace';
 import { Box3, Vector3 } from 'three';
 import type { StoreApi } from 'zustand/vanilla';
+import { pointcloudCleanup, type CleanupRecipes } from './cleanup/store';
 import { withScalar } from './copc';
 import { copcChunkSeeds } from './copcLayer';
 import { CloudManager, type ChunkSeed, type CopcLayerInfo } from './manager';
@@ -13,6 +14,7 @@ import { pointcloudSettings, type PointcloudSettings } from './settings';
 import { pointcloudStats } from './stats';
 
 type V3 = readonly [number, number, number];
+type CloudLayer = Extract<Layer, { kind: 'pointcloud' }>;
 
 export interface PointcloudAdapterOptions {
   /** Creates the decoder for a scene; default: a pool of module workers. */
@@ -24,6 +26,8 @@ export interface PointcloudAdapterOptions {
    * project's manifest `origin`.
    */
   origin?: () => V3 | null;
+  /** The live cleanup recipes; default the app's (cleanup/store.ts). */
+  cleanup?: StoreApi<CleanupRecipes>;
 }
 
 /** A Distance field the layer does not describe: unsigned metres, full colour at 30 cm. */
@@ -84,6 +88,59 @@ function resolveChunkUrl(
   }
 }
 
+/** What a COPC file gives a layer: its chunks, size, header and framing box (local frame). */
+interface LoadedCopc {
+  chunks: ChunkSeed[];
+  baseSize: number;
+  copc: CopcLayerInfo;
+  scalar: PointcloudScalar | null;
+  box: Box3;
+}
+
+/** Reads a COPC file's header and root page for `layer` (its own file or its noise copy). */
+async function loadCopc(
+  layer: CloudLayer,
+  url: string,
+  origin: V3,
+  m: CloudManager,
+): Promise<LoadedCopc> {
+  let scalar: PointcloudScalar | null = null;
+  const dec = m.getDecoder();
+  if (!dec.copcSource || !dec.copcPage) throw new Error('This decoder cannot read COPC');
+  // the change field (cloud change): the layer names it, else a Distance dimension
+  const dim = layer.scalar?.dim ?? 'Distance';
+  const sc = withScalar(await dec.copcSource(url), dim);
+  if (sc.error) {
+    const msg = `${layer.name}: ${sc.error}`;
+    console.warn(msg);
+    pointcloudStats.getState().addError(msg);
+  }
+  const source = sc.source;
+  if (source.layout.scalar) scalar = layer.scalar ?? { ...DEFAULT_SCALAR, dim };
+  const epsg = projectEpsg();
+  if (source.epsg !== undefined && epsg !== null && source.epsg !== epsg) {
+    const msg = `${layer.name}: the cloud is in EPSG ${source.epsg}, the project in EPSG ${epsg}`;
+    console.warn(msg);
+    pointcloudStats.getState().addError(msg);
+  }
+  const root = await dec.copcPage(url, source.rootPage);
+  const chunks = copcChunkSeeds(layer.id, url, source, root, origin);
+  const b = source.bounds ?? source.cube;
+  // CRS to the local frame (data-conventions section 1): z = origin N - N
+  const box = new Box3(
+    new Vector3(b.min[0] - origin[0], b.min[2] - origin[2], origin[1] - b.max[1]),
+    new Vector3(b.max[0] - origin[0], b.max[2] - origin[2], origin[1] - b.min[1]),
+  );
+  return { chunks, baseSize: source.spacing, copc: { url, source, origin }, scalar, box };
+}
+
+/** The noise working copy could not be read: say so and show the original. */
+function noiseFailed(path: string, e: unknown): void {
+  const msg = `${path}: the noise working copy could not be read (${e instanceof Error ? e.message : String(e)}); showing the original cloud`;
+  console.warn(msg);
+  pointcloudStats.getState().addError(msg);
+}
+
 export function createPointcloudAdapter(
   opts: PointcloudAdapterOptions = {},
 ): LayerAdapter<'pointcloud'> {
@@ -91,11 +148,12 @@ export function createPointcloudAdapter(
   const settings = opts.settings ?? pointcloudSettings;
   const fetchJson = opts.fetchJson ?? defaultFetchJson;
   const originOf = opts.origin ?? projectOrigin;
+  const cleanup = opts.cleanup ?? pointcloudCleanup;
 
   const managerFor = (handle: SceneHandle): CloudManager => {
     let manager = managers.get(handle);
     if (!manager) {
-      manager = new CloudManager(handle, makeDecoder, settings);
+      manager = new CloudManager(handle, makeDecoder, settings, cleanup);
       managers.set(handle, manager);
       // clouds take part in SceneHandle.raycast (cursor readout, annotation, measure)
       pickers.set(
@@ -121,6 +179,8 @@ export function createPointcloudAdapter(
       let copc: CopcLayerInfo | null = null;
       let scalar: PointcloudScalar | null = null;
       let box: Box3 | null = null;
+      // COPC: the noise working copy streamed instead of the layer's file, or null
+      let noisePath: string | null = null;
       const url = ctx.url(layer.src);
       const handle = ctx.scene;
       if (layer.format === 'kit-packed') {
@@ -153,35 +213,18 @@ export function createPointcloudAdapter(
         const origin = originOf();
         if (!origin) throw new Error('A COPC layer needs the project origin');
         const m = managerFor(handle);
+        noisePath = cleanup.getState().recipes[layer.id]?.noise?.path ?? null;
         try {
-          const dec = m.getDecoder();
-          if (!dec.copcSource || !dec.copcPage) throw new Error('This decoder cannot read COPC');
-          // the change field (cloud change): the layer names it, else a Distance dimension
-          const dim = layer.scalar?.dim ?? 'Distance';
-          const sc = withScalar(await dec.copcSource(url), dim);
-          if (sc.error) {
-            const msg = `${layer.name}: ${sc.error}`;
-            console.warn(msg);
-            pointcloudStats.getState().addError(msg);
+          let r: LoadedCopc;
+          try {
+            r = await loadCopc(layer, noisePath ? ctx.url({ path: noisePath }) : url, origin, m);
+          } catch (e) {
+            if (!noisePath) throw e;
+            // noisePath keeps the failed copy, so later edits of the recipe do not retry it
+            noiseFailed(noisePath, e);
+            r = await loadCopc(layer, url, origin, m);
           }
-          const source = sc.source;
-          if (source.layout.scalar) scalar = layer.scalar ?? { ...DEFAULT_SCALAR, dim };
-          const epsg = projectEpsg();
-          if (source.epsg !== undefined && epsg !== null && source.epsg !== epsg) {
-            const msg = `${layer.name}: the cloud is in EPSG ${source.epsg}, the project in EPSG ${epsg}`;
-            console.warn(msg);
-            pointcloudStats.getState().addError(msg);
-          }
-          const root = await dec.copcPage(url, source.rootPage);
-          chunks = copcChunkSeeds(layer.id, url, source, root, origin);
-          baseSize = source.spacing;
-          copc = { url, source, origin };
-          const b = source.bounds ?? source.cube;
-          // CRS to the local frame (data-conventions section 1): z = origin N - N
-          box = new Box3(
-            new Vector3(b.min[0] - origin[0], b.min[2] - origin[2], origin[1] - b.max[1]),
-            new Vector3(b.max[0] - origin[0], b.max[2] - origin[2], origin[1] - b.min[1]),
-          );
+          ({ chunks, baseSize, copc, scalar, box } = r);
         } catch (e) {
           release(handle, m);
           throw e;
@@ -202,6 +245,40 @@ export function createPointcloudAdapter(
       const unframe = framed
         ? handle.addContentBounds(() => (shown ? framed : null), { solid: true })
         : () => undefined;
+      // COPC: a recipe's noise run streams its working copy; the layer is removed and added again
+      let disposed = false;
+      let swap = 0;
+      const offNoise =
+        layer.format === 'copc'
+          ? cleanup.subscribe((s) => {
+              const want = s.recipes[layer.id]?.noise?.path ?? null;
+              if (want === noisePath) return;
+              noisePath = want;
+              const mine = ++swap;
+              const origin = originOf();
+              if (!origin) return;
+              const streams = (u: string) => m.layers.get(layer.id)?.copc?.url === u;
+              const show = (r: LoadedCopc) => {
+                if (mine !== swap || disposed) return;
+                m.removeLayer(layer.id);
+                m.addLayer(layer.id, r.chunks, r.baseSize, rgbHint, r.copc, r.scalar);
+                if (!shown) m.setVisible(layer.id, false);
+              };
+              const target = want ? ctx.url({ path: want }) : url;
+              if (streams(target)) return;
+              loadCopc(layer, target, origin, m)
+                .then(show)
+                .catch((e: unknown) => {
+                  if (!want) return;
+                  // noisePath keeps the failed copy, so later edits of the recipe do not retry it
+                  noiseFailed(want, e);
+                  if (mine !== swap || disposed || streams(url)) return;
+                  void loadCopc(layer, url, origin, m)
+                    .then(show)
+                    .catch(() => undefined);
+                });
+            })
+          : () => undefined;
       return {
         setVisible: (v) => {
           shown = v;
@@ -209,6 +286,8 @@ export function createPointcloudAdapter(
           (handle as Partial<{ contentUpdated(): void }>).contentUpdated?.();
         },
         dispose: () => {
+          disposed = true;
+          offNoise();
           unframe();
           m.removeLayer(layer.id);
           release(handle, m);
@@ -222,4 +301,19 @@ export function createPointcloudAdapter(
 export function registerPointcloudAdapters(): void {
   if (getAdapter('pointcloud')) return;
   registerAdapter(createPointcloudAdapter() as unknown as LayerAdapter);
+}
+
+/** The COPC file a cloud layer streams now (its own, or its noise working copy). */
+export function cloudSourceUrl(handle: SceneHandle, layerId: string): string | null {
+  return getCloudManager(handle)?.layers.get(layerId)?.copc?.url ?? null;
+}
+
+/** A COPC layer's bounds in the project CRS (the header's, else the octree cube). */
+export function cloudWorldBounds(
+  handle: SceneHandle,
+  layerId: string,
+): { min: [number, number, number]; max: [number, number, number] } | null {
+  const s = getCloudManager(handle)?.layers.get(layerId)?.copc?.source;
+  const b = s?.bounds ?? s?.cube;
+  return b ? { min: [...b.min], max: [...b.max] } : null;
 }

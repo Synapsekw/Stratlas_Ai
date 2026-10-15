@@ -18,7 +18,10 @@ export {
   type SelectOptions,
 } from './lod';
 export {
+  cloudSourceUrl,
+  cloudWorldBounds,
   createPointcloudAdapter,
+  getCloudManager,
   registerPointcloudAdapters,
   type PointcloudAdapterOptions,
 } from './adapter';
@@ -104,3 +107,4 @@ export {
 export { boxInverseWorld, localToWorld, mul4, worldToLocal, type M4 } from './cleanup/frame';
 export { pointInPolygon, ringOf, type Ring } from './cleanup/polygon';
 export { createCleanupRecipes, pointcloudCleanup, type CleanupRecipes } from './cleanup/store';
+export { WORKER_MIN_POINTS, chunkMask, type ChunkMask } from './cleanup/chunk';

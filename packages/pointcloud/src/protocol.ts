@@ -1,3 +1,5 @@
+import type { PointcloudCleanup } from '@aio/schema';
+import { chunkMaskFor, type ChunkMask } from './cleanup/chunk';
 import {
   loadCopcNode,
   readCopcPage,
@@ -33,7 +35,19 @@ export type InfoRequest =
   | { id: number; kind: 'copc-source'; url: string }
   | { id: number; kind: 'copc-page'; url: string; page: CopcPage };
 
-export type WorkerRequest = DecodeRequest | InfoRequest;
+/** A chunk's cleanup mask, computed off the main thread (Task 6). Positions are a copy. */
+export interface MaskRequest {
+  id: number;
+  kind: 'mask';
+  recipe: PointcloudCleanup;
+  origin: V3;
+  count: number;
+  positions: Uint16Array;
+  quant: { offset: [number, number, number]; scale: [number, number, number] };
+  classes: Uint8Array | null;
+}
+
+export type WorkerRequest = DecodeRequest | InfoRequest | MaskRequest;
 
 export interface DecodedChunk {
   id: number;
@@ -59,7 +73,10 @@ export interface DecodedChunk {
 export type DecodeResult = DecodedChunk | { id: number; error: string };
 
 export type WorkerResult =
-  DecodeResult | { id: number; source: CopcSource } | { id: number; hierarchy: CopcHierarchy };
+  | DecodeResult
+  | { id: number; source: CopcSource }
+  | { id: number; hierarchy: CopcHierarchy }
+  | ({ id: number } & ChunkMask);
 
 export interface DecodeDeps {
   fetchBytes(url: string): Promise<ArrayBuffer>;
@@ -92,6 +109,12 @@ export async function handleRequest(
 ): Promise<{ result: WorkerResult; transfer: ArrayBuffer[] }> {
   try {
     switch (req.kind) {
+      case 'mask': {
+        const r = chunkMaskFor(req.recipe, req.origin, req);
+        const transfer = [r.mask.buffer as ArrayBuffer];
+        if (r.cls) transfer.push(r.cls.buffer as ArrayBuffer);
+        return { result: { id: req.id, ...r }, transfer };
+      }
       case 'kit': {
         const c = decodeKitPacked(await deps.fetchBytes(req.url), req.scale);
         const heights = sampleHeights(c.count, (i) => c.positions[3 * i + 1] ?? NaN);

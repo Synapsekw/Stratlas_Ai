@@ -1,5 +1,12 @@
+import type { ChunkMask } from './cleanup/chunk';
 import type { CopcHierarchy, CopcPage, CopcSource } from './copc';
-import type { DecodedChunk, DecodeRequest, WorkerRequest, WorkerResult } from './protocol';
+import type {
+  DecodedChunk,
+  DecodeRequest,
+  MaskRequest,
+  WorkerRequest,
+  WorkerResult,
+} from './protocol';
 
 type Job = DecodeRequest extends infer R
   ? R extends DecodeRequest
@@ -19,6 +26,8 @@ export interface Decoder {
   copcSource?(url: string): Promise<CopcSource>;
   /** One COPC hierarchy page. */
   copcPage?(url: string, page: CopcPage): Promise<CopcHierarchy>;
+  /** A chunk's cleanup mask (workers only; without it the manager masks on the main thread). */
+  mask?(job: Omit<MaskRequest, 'id'>): Promise<ChunkMask>;
   dispose(): void;
 }
 
@@ -56,7 +65,7 @@ export function createWorkerPool(size = defaultSize()): Decoder {
     };
     workers.push({ w, busy: 0 });
   }
-  const send = (job: AnyJob): Promise<WorkerResult> => {
+  const send = (job: AnyJob, transfer: Transferable[] = []): Promise<WorkerResult> => {
     const id = next++;
     let slot = 0;
     workers.forEach((x, i) => {
@@ -67,7 +76,7 @@ export function createWorkerPool(size = defaultSize()): Decoder {
     entry.busy++;
     return new Promise<WorkerResult>((resolve, reject) => {
       pending.set(id, { resolve, reject, slot });
-      entry.w.postMessage({ ...job, id });
+      entry.w.postMessage({ ...job, id }, transfer);
     });
   };
   return {
@@ -85,6 +94,14 @@ export function createWorkerPool(size = defaultSize()): Decoder {
       const r = await send({ kind: 'copc-page', url, page });
       if (!('hierarchy' in r)) throw new Error('Unexpected COPC hierarchy result');
       return r.hierarchy;
+    },
+    async mask(job) {
+      // the positions and classes are the caller's copies: moved, not cloned
+      const transfer: Transferable[] = [job.positions.buffer as ArrayBuffer];
+      if (job.classes) transfer.push(job.classes.buffer as ArrayBuffer);
+      const r = await send(job, transfer);
+      if (!('mask' in r)) throw new Error('Unexpected mask result');
+      return { mask: r.mask, cls: r.cls, classes: r.classes };
     },
     dispose() {
       for (const x of workers) x.w.terminate();

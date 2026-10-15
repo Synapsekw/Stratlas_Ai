@@ -1,5 +1,5 @@
 import type { SceneHandle } from '@aio/engine';
-import type { PointcloudScalar } from '@aio/schema';
+import type { PointcloudCleanup, PointcloudScalar } from '@aio/schema';
 import {
   BufferAttribute,
   BufferGeometry,
@@ -17,6 +17,9 @@ import type { LasLayout } from './copcDecode';
 import { copcChunkSeeds } from './copcLayer';
 import type { Bounds3, Quantisation } from './decode';
 import { budgetShareOf } from './budgetShare';
+import { WORKER_MIN_POINTS, chunkMask, type ChunkMask } from './cleanup/chunk';
+import { cleanupUniformsOf, compileCleanup, type CompiledCleanup } from './cleanup/evaluate';
+import { pointcloudCleanup, type CleanupRecipes } from './cleanup/store';
 import { EdlPass } from './edl';
 import { robustHeightRange, type HeightSample, type HeightStats } from './heights';
 import {
@@ -24,6 +27,7 @@ import {
   FLIGHT_PALETTE,
   MODE_INDEX,
   applyChangeUniforms,
+  applyCleanupUniforms,
   applyHiddenClasses,
   createPointMaterial,
   type PointMaterial,
@@ -77,6 +81,14 @@ export interface ChunkState {
   classes?: Record<number, number>;
   /** A sample of the chunk's point heights (local Y), once decoded; kept after unloading. */
   heights?: Float32Array;
+  /** COPC: the decoder's quantisation, kept to mask the chunk again. */
+  quant?: { offset: [number, number, number]; scale: [number, number, number] };
+  /**
+   * COPC: the decoded classes, before any cleanup class selection. The `aClass` attribute shares
+   * this array until a class selection first overrides it; then this keeps a copy.
+   */
+  baseClass?: Uint8Array;
+  baseClasses?: Record<number, number>;
 }
 
 export type ChunkSeed = Omit<ChunkState, 'object' | 'busy' | 'failed'>;
@@ -117,6 +129,10 @@ export interface CloudLayerState {
   depthMaterials: Map<number, PointMaterial>;
   /** Shallowest octree depth whose chunks carry a height sample (the elevation range level). */
   heightLod: number;
+  /** The layer's cleanup recipe compiled in the local frame (COPC only), or null. */
+  cleanup: { recipe: PointcloudCleanup; compiled: CompiledCleanup; regionsKey: string } | null;
+  /** Bumped when the selections change; a worker mask from before is dropped. */
+  maskVersion: number;
 }
 
 /** A decoded chunk waiting for its frame. */
@@ -181,6 +197,7 @@ export class CloudManager {
     readonly handle: SceneHandle,
     private readonly makeDecoder: () => Decoder,
     readonly settings: StoreApi<PointcloudSettings>,
+    readonly cleanup: StoreApi<CleanupRecipes> = pointcloudCleanup,
   ) {
     this.root.name = 'PointClouds';
     this.unsubscribers.push(
@@ -194,7 +211,17 @@ export class CloudManager {
         if (s.budget !== prev.budget || s.budgetCap !== prev.budgetCap) this.dirty = true;
         if (s.hiddenClasses !== prev.hiddenClasses) {
           for (const l of this.layers.values())
-            if (l.material) applyHiddenClasses(l.material, s.hiddenClasses);
+            if (l.material) applyHiddenClasses(l.material, this.hiddenFor(l));
+        }
+        handle.requestRender();
+      }),
+    );
+    this.unsubscribers.push(
+      cleanup.subscribe((s, prev) => {
+        if (s.recipes === prev.recipes) return;
+        for (const l of this.layers.values()) {
+          const r = s.recipes[l.id] ?? null;
+          if (r !== (prev.recipes[l.id] ?? null)) this.applyRecipe(l, r);
         }
         handle.requestRender();
       }),
@@ -258,8 +285,11 @@ export class CloudManager {
       loaded: new Set(),
       depthMaterials: new Map(),
       heightLod: Infinity,
+      cleanup: null,
+      maskVersion: 0,
     };
     this.layers.set(id, layer);
+    this.applyRecipe(layer, this.cleanup.getState().recipes[id] ?? null);
     this.structureChanged();
     this.heightsDirty = true;
     this.updateStats();
@@ -654,6 +684,7 @@ export class CloudManager {
     if (d.intensity) geo.setAttribute('aIntensity', new BufferAttribute(d.intensity, 1, true));
     if (d.classification) geo.setAttribute('aClass', new BufferAttribute(d.classification, 1));
     if (d.scalar) geo.setAttribute('aScalar', new BufferAttribute(d.scalar, 1));
+    const src = c.source;
     if (
       !l.material ||
       l.hasRgb !== !!d.rgb ||
@@ -671,21 +702,32 @@ export class CloudManager {
         hasIntensity: l.hasIntensity,
         hasClass: l.hasClass,
         hasScalar: l.hasScalar,
+        // every chunk of a layer has the same source kind, so this never rebuilds per chunk;
+        // the depth materials are cloned from this one (defines included) after it
+        hasMask: src.kind === 'copc',
         baseSize: l.baseSize,
         tint: l.tint,
       });
-      applyHiddenClasses(l.material, this.settings.getState().hiddenClasses);
+      applyHiddenClasses(l.material, this.hiddenFor(l));
+      applyCleanupUniforms(l.material, cleanupUniformsOf(l.cleanup?.compiled ?? null));
       // the section tool cuts meshes and clouds together through this shared array
       l.material.clippingPlanes = this.handle.clippingPlanes;
       for (const o of l.loaded) if (o.object) o.object.material = l.material;
       this.sizesDirty = true;
+    }
+    if (src.kind === 'copc') {
+      geo.setAttribute('aMask', new BufferAttribute(new Uint8Array(d.count), 1));
+      if (d.quant) c.quant = d.quant;
+      if (d.classification) {
+        c.baseClass = d.classification;
+        if (d.classes) c.baseClasses = d.classes;
+      }
     }
     const pts = new Points(geo, l.material);
     pts.name = `pointcloud:${l.id}:${c.key}`;
     pts.userData.layerId = l.id;
     pts.userData.chunk = c.key;
     pts.matrixAutoUpdate = false;
-    const src = c.source;
     if (src.kind === 'kit') {
       pts.scale.setScalar(src.scale);
     } else {
@@ -718,6 +760,110 @@ export class CloudManager {
     c.object = pts;
     l.loaded.add(c);
     l.group.add(pts);
+    if (src.kind === 'copc' && l.cleanup?.compiled.regions.length) this.maskChunk(l, c);
+  }
+
+  /** The layer's hidden classes: its recipe's set (COPC layers), else the global one. */
+  private hiddenFor(l: CloudLayerState): readonly number[] {
+    const own = l.copc ? this.cleanup.getState().recipes[l.id]?.hiddenClasses : undefined;
+    return own ?? this.settings.getState().hiddenClasses;
+  }
+
+  private applyRecipe(l: CloudLayerState, r: PointcloudCleanup | null): void {
+    // png-packed and kit-packed clouds have no COPC source to save from: no cleanup (the panel says so)
+    if (!l.copc) return;
+    const before = l.cleanup?.regionsKey ?? '';
+    l.cleanup = r
+      ? {
+          recipe: r,
+          compiled: compileCleanup(r, { origin: l.copc.origin }),
+          regionsKey: JSON.stringify(r.regions),
+        }
+      : null;
+    if (l.material) {
+      // the depth materials share these uniform objects
+      applyCleanupUniforms(l.material, cleanupUniformsOf(l.cleanup?.compiled ?? null));
+      applyHiddenClasses(l.material, this.hiddenFor(l));
+    }
+    if ((l.cleanup?.regionsKey ?? '') !== before) {
+      l.maskVersion++;
+      for (const c of l.loaded) this.maskChunk(l, c);
+    }
+  }
+
+  /** Masks one loaded COPC chunk by the layer's selections: in a worker above WORKER_MIN_POINTS. */
+  private maskChunk(l: CloudLayerState, c: ChunkState): void {
+    const obj = c.object;
+    const quant = c.quant;
+    const copc = l.copc;
+    if (!obj || !quant || !copc) return;
+    const position = obj.geometry.getAttribute('position');
+    const count = position.count;
+    const cu = l.cleanup;
+    if (!cu || cu.compiled.regions.length === 0) {
+      this.setMask(c, { mask: new Uint8Array(count), cls: null, classes: null });
+      return;
+    }
+    const positions = position.array as Uint16Array;
+    const input = { count, positions, quant, classes: c.baseClass ?? null };
+    const dec = this.getDecoder();
+    const version = l.maskVersion;
+    if (count > WORKER_MIN_POINTS && dec.mask) {
+      dec
+        .mask({
+          kind: 'mask',
+          recipe: cu.recipe,
+          origin: copc.origin,
+          count,
+          positions: positions.slice(),
+          quant,
+          classes: c.baseClass?.slice() ?? null,
+        })
+        .then((r) => {
+          if (l.maskVersion === version && c.object === obj) this.setMask(c, r);
+        })
+        .catch((e: unknown) => {
+          console.warn(`Cleanup mask of ${c.key} on the main thread: ${String(e)}`);
+          if (l.maskVersion === version && c.object === obj)
+            this.setMask(c, chunkMask(cu.compiled, input));
+        });
+      return;
+    }
+    this.setMask(c, chunkMask(cu.compiled, input));
+  }
+
+  /**
+   * Writes a chunk's mask and class override into its attributes in place (a replaced attribute
+   * would leave its GPU buffer behind until the geometry is disposed).
+   */
+  private setMask(c: ChunkState, r: ChunkMask): void {
+    const geo = c.object?.geometry;
+    if (!geo) return;
+    const mask = geo.getAttribute('aMask') as BufferAttribute | undefined;
+    if (mask?.array.length === r.mask.length) {
+      (mask.array as Uint8Array).set(r.mask);
+      mask.needsUpdate = true;
+    } else {
+      geo.setAttribute('aMask', new BufferAttribute(r.mask, 1));
+    }
+    const base = c.baseClass;
+    const cls = geo.getAttribute('aClass') as BufferAttribute | undefined;
+    if (base && cls?.array.length === base.length) {
+      const arr = cls.array as Uint8Array;
+      if (r.cls) {
+        // the first override: keep the decoded classes apart from the drawn ones
+        if (arr === base) c.baseClass = base.slice();
+        arr.set(r.cls);
+        cls.needsUpdate = true;
+      } else if (arr !== base) {
+        arr.set(base);
+        cls.needsUpdate = true;
+      }
+    }
+    const classes = r.classes ?? c.baseClasses;
+    if (classes) c.classes = classes;
+    this.statsDirty = true;
+    this.handle.requestRender();
   }
 
   private unloadChunk(c: ChunkState): void {
