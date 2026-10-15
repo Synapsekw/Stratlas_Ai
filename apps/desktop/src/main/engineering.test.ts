@@ -14,7 +14,10 @@ import { mkdir, mkdtemp, readdir, readFile, rm, writeFile } from 'node:fs/promis
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { exportPackage, openPackage } from '@aio/project/package';
+import { builderUpdateLayers } from './builder';
 import { registerEngineeringIpc, type EngineeringIpcDeps } from './engineering';
+import { ProjectRegistry } from './project';
 import { registerModelBuilderIpc } from './modelBuilder';
 import { collectHandlers } from './notYet';
 
@@ -396,5 +399,39 @@ describe('engineer:evidenceImage', () => {
       imageId: 'img-big',
     });
     expect(plain.ok).toBe(false);
+  });
+});
+
+describe('an opened .aio package is read only', () => {
+  it('refuses Place model (a ground placement), model saves and run writes', async () => {
+    const file = join(dir, 'site.aio');
+    await exportPackage({
+      root,
+      out: file,
+      manifest,
+      exclude: [],
+      header: { readOnly: true, aiPolicy: 'forbid', exports: [] },
+    });
+    const opened = await openPackage(file);
+    if (!opened.ok) throw new Error(opened.error);
+    const registry = new ProjectRegistry();
+    const id = registry.registerPackage({ file, ...opened.value });
+    const placed = await builderUpdateLayers(
+      { projectId: id, layerIds: ['model-stack'], patch: { placement: 'placed' } },
+      registry,
+    );
+    expect(placed.ok).toBe(false);
+    const r = collectHandlers((handle) => {
+      registerEngineeringIpc({ handle, projects: registry });
+      registerModelBuilderIpc({ handle, projects: registry });
+    });
+    expect(await r.call('model:write', { projectId: id, model })).toMatchObject({
+      ok: false,
+      code: 'read-only',
+    });
+    expect(await r.call('engineer:runWrite', { projectId: id, run: RUN })).toMatchObject({
+      ok: false,
+      code: 'read-only',
+    });
   });
 });
