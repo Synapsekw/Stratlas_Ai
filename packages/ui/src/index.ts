@@ -72,3 +72,5 @@ export {
   type CommandPaletteProps,
   type PaletteCommand,
 } from './palette/CommandPalette';
+
+export * from './actions';
