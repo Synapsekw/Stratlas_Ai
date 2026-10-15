@@ -75,7 +75,8 @@ test('library, settings and aio:// work offline and the protocol refuses travers
     expect(library[0]).toMatchObject({
       id: 'alzour',
       kind: 'native',
-      thumbnail: 'aio://project/alzour/thumbnail.jpg',
+      // the card's picture carries its file time, so a changed cover shows at once
+      thumbnail: expect.stringMatching(/^aio:\/\/project\/[^/]+\/thumbnail\.jpg\?v=\d+$/),
     });
 
     const slice = await win.evaluate(async () => {
