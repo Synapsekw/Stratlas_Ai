@@ -99,6 +99,36 @@ describe('NewClassRow', () => {
     expect(el.querySelector('input')).toBeNull();
   });
 
+  it('ignores a second Enter while the create is pending', async () => {
+    let resolve: (c: IssueClass) => void = () => undefined;
+    const onCreate = vi.fn(
+      () =>
+        new Promise<IssueClass>((r) => {
+          resolve = r;
+        }),
+    );
+    const el = render(<NewClassRow onCreate={onCreate} onCreated={vi.fn()} startOpen />);
+    const input = el.querySelector('input');
+    if (!input) throw new Error('no field');
+    act(() => {
+      type(input, 'Rust');
+    });
+    await act(async () => {
+      key(input, 'Enter');
+      key(input, 'Enter');
+      await Promise.resolve();
+    });
+    await act(async () => {
+      key(input, 'Enter');
+      await Promise.resolve();
+    });
+    expect(onCreate).toHaveBeenCalledTimes(1);
+    await act(async () => {
+      resolve(spalling);
+      await Promise.resolve();
+    });
+  });
+
   it('is disabled with the reason', () => {
     const el = render(
       <NewClassRow onCreate={vi.fn()} onCreated={vi.fn()} disabledReason="Read-only project" />,

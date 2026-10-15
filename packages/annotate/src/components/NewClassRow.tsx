@@ -1,5 +1,5 @@
 import type { IssueClass } from '@aio/schema';
-import { useState, useSyncExternalStore } from 'react';
+import { useRef, useState, useSyncExternalStore } from 'react';
 import { useAnnotateReadOnly } from '../runtime';
 
 /*
@@ -74,6 +74,7 @@ export function NewClassRow({
   const [open, setOpen] = useState(startOpen);
   const [label, setLabel] = useState('');
   const [busy, setBusy] = useState(false);
+  const inFlight = useRef(false);
   const [error, setError] = useState<string | null>(null);
 
   if (!open) {
@@ -100,11 +101,13 @@ export function NewClassRow({
     onCancel?.();
   };
   const submit = async () => {
+    if (busy || inFlight.current) return;
     const name = label.trim();
     if (!name) {
       setError('Type a name for the class.');
       return;
     }
+    inFlight.current = true;
     setBusy(true);
     try {
       const cls = await onCreate(name);
@@ -115,6 +118,7 @@ export function NewClassRow({
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
+      inFlight.current = false;
       setBusy(false);
     }
   };
