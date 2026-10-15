@@ -25,6 +25,7 @@ interface IssueLite {
   code: string;
   title: string;
   track?: string;
+  updatedAt?: string;
   sightings: S[];
 }
 /** The bits of a three.js Vector3 the spec uses to project a point to the screen. */
@@ -198,6 +199,11 @@ test('places accepted findings on the mesh and the cloud, and matches them acros
   // stain's along the top edge, where the photo looks past the model (so it misses the mesh and
   // the stain's box stays the one placed). The evidence ranks the largest box first, so the
   // photo the area came from is the second of its photos: opening the first one fails below.
+  // The edit is stamped with a new updatedAt, as every edit through the issue editor is: the
+  // spec's pass files were written from outside the app, so the app's first save of each makes
+  // the journal send journal:changed, and that reload (team/reload.ts) keeps a local issue only
+  // when it is newer than the copy on disk (mergeDiskIssues). On a slow runner the reload lands
+  // after this edit, and an unstamped edit lost to the saved copy of the accepted finding.
   await win.evaluate((id) => {
     const ws = (window as unknown as Inspect).__stratlas.workspace.getState();
     const issue = ws.issues.find((x) => x.id === id);
@@ -208,11 +214,15 @@ test('places accepted findings on the mesh and the cloud, and matches them acros
       photo: 'p01',
       geom: { type: 'box', x: 2, y: 2, w: 200, h: 20 },
     };
-    ws.upsertIssue({ ...issue, sightings: [other, ...issue.sightings] });
+    ws.upsertIssue({
+      ...issue,
+      updatedAt: new Date().toISOString(),
+      sightings: [other, ...issue.sightings],
+    });
   }, later.id);
-  await expect
-    .poll(async () => (await issues(win)).find((i) => i.id === later.id)?.sightings[0]?.photo)
-    .toBe('p01');
+  const decoyKept = async () =>
+    (await issues(win)).find((i) => i.id === later.id)?.sightings[0]?.photo ?? null;
+  await expect.poll(decoyKept).toBe('p01');
 
   // 2. the later finding on the later mesh: an outline instead of its pin
   await win.locator('.nav-item', { hasText: 'Scene' }).first().click();
@@ -224,6 +234,7 @@ test('places accepted findings on the mesh and the cloud, and matches them acros
     )
     .toContain('spolygon');
   const placed = (await issues(win)).find((i) => i.id === later.id);
+  expect(placed?.sightings[0]?.photo, 'the p01 sighting is still on the finding').toBe('p01');
   // on that mesh it has the outline only: no automatic pin beside it, no second outline
   expect(placed?.sightings.filter((s) => s.layer === 'model-d2').map((s) => s.geom?.type)).toEqual([
     'spolygon',
