@@ -227,6 +227,11 @@ describe('dampingFor', () => {
 
 describe('Stage', () => {
   let container: HTMLDivElement;
+  /**
+   * Every stage a test made. A stage a failed test left running keeps asking for frames, and in a
+   * later test that stubs `requestAnimationFrame` its loop would take that test's frames.
+   */
+  const live: Stage[] = [];
   beforeEach(() => {
     observers.length = 0;
     vi.stubGlobal('ResizeObserver', FakeResizeObserver);
@@ -234,6 +239,7 @@ describe('Stage', () => {
     document.body.appendChild(container);
   });
   afterEach(() => {
+    for (const s of live.splice(0)) s.dispose();
     vi.unstubAllGlobals();
     container.remove();
   });
@@ -250,6 +256,7 @@ describe('Stage', () => {
       getAdapter: (kind) =>
         kind === 'mesh' ? (adapter ?? boxAdapter(handles)) : others.find((a) => a.kind === kind),
     });
+    live.push(stage);
     const resize = (width: number, height: number) => {
       for (const cb of observers) cb([{ contentRect: { width, height } }]);
     };
@@ -701,6 +708,8 @@ describe('Stage', () => {
 
     async function opened() {
       vi.stubGlobal('matchMedia', () => ({ matches: true }));
+      // no frame runs unasked: a frame glides the camera (damping), and the views are compared
+      vi.stubGlobal('requestAnimationFrame', () => 1);
       const made = make(undefined, [placesAdapter]);
       made.resize(800, 600);
       made.store.getState().openProject(project([places('drone', 0), places('phone', 91_000)]));
@@ -926,6 +935,7 @@ describe('Stage', () => {
             },
           }),
       });
+      live.push(stage);
       wall.material.clippingPlanes = stage.clippingPlanes;
       stage.scene.add(wall);
       stage.addProjectionReceiver(wall);
