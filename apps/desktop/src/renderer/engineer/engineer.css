@@ -150,8 +150,14 @@
 }
 
 /* the run panel: stages, what stopped it, the identity conflicts, the views and Accept */
+/* on the left of the 3D view, so the Model builder (on the right) stays usable beside it */
 .eng-run {
-  width: 360px;
+  width: 340px;
+  right: auto;
+  left: calc(var(--sb-w) + 16px);
+}
+.app[data-sb='collapsed'] .eng-run {
+  left: calc(var(--sb-w-c) + 16px);
 }
 .eng-run .sec p {
   margin: 0;

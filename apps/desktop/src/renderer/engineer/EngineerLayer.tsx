@@ -7,6 +7,7 @@ import { useStore } from 'zustand';
 import { createStore } from 'zustand/vanilla';
 import { engineerUi, engineeringUiOn } from './ui';
 import { useStagePick } from '../builder/pick';
+import { useModeller } from '../modeller';
 import { openModelBuilder } from '../modeller/ModellerLayer';
 import { bridge, shell, useShell } from '../shell';
 import { EvidencePreview } from './EvidencePreview';
@@ -285,13 +286,15 @@ export function EngineerLayer() {
   const store = useHost((s) => s.store);
   const run = useRun((s) => s.run, null);
   const evidence = useRun((s) => s.evidence, null);
+  const builderOpen = useModeller((s) => s.open);
   if (!on || !layers || !store) return null;
   const hint = evidence?.familyHints ?? null;
   return (
     <>
       <ScenePick />
       <PendingSend />
-      {open && run && <RunPanel />}
+      {/* the Model builder takes that place while it is open (the review); the run comes back after */}
+      {open && run && !builderOpen && <RunPanel />}
       {open && !picking && !run && (
         <SetupDialog
           layers={layers}

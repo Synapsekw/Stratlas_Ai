@@ -14,6 +14,11 @@
   box-shadow: 0 16px 40px oklch(0.08 0.01 250 / 0.55);
   font-size: var(--t-12);
 }
+/* beside the Scene's right panel, not over it: the agent and the selection stay usable while the
+   builder is open (an agent correction is approved there) */
+.app:has(.ws:not(.right-off)) .mb {
+  right: calc(var(--rp-w) + 16px);
+}
 .mb > header {
   display: flex;
   align-items: center;

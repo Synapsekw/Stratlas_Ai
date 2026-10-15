@@ -71,7 +71,7 @@ export const PANEL_CSS = `
 .aio-agent .ag-hist b { color: var(--fg-0); font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .aio-agent .ag-hist .ag-mono { font-size: var(--t-11); color: var(--fg-3); }
 .aio-agent .ag-pending { font-size: var(--t-11); color: var(--s3); }
-.aio-agent .ag-modal-back { position: fixed; inset: 0; z-index: 50; display: grid; place-items: center; background: oklch(0.1 0.01 250 / 0.6); }
+.aio-agent .ag-modal-back { position: fixed; inset: 0; z-index: 120; display: grid; place-items: center; background: oklch(0.1 0.01 250 / 0.6); }
 .aio-agent .ag-modal { width: min(560px, calc(100vw - 32px)); max-height: calc(100vh - 64px); overflow-y: auto; background: var(--bg-1); border: 1px solid var(--line); border-radius: 8px; padding: 16px; display: grid; gap: 10px; box-shadow: 0 12px 40px oklch(0 0 0 / 0.4); }
 .aio-agent .ag-modal h4 { margin: 0; font-size: var(--t-13); font-weight: 600; color: var(--fg-0); }
 .aio-agent .ag-sub { margin: 0; font-size: var(--t-12); color: var(--fg-2); }
