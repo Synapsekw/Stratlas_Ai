@@ -38,6 +38,20 @@ export {
 } from './engineer/meshAssemblies';
 export { DEFAULT_MATERIALS, resolveMaterials } from './engineer/materials';
 export {
+  ASSUMED_HEIGHT_M,
+  assemble,
+  FAMILIES,
+  type AssembleInput,
+  type AssembleResult,
+  type Candidates,
+  type FamilyAssembler,
+  type FamilyCtx,
+  type UserOverrides,
+} from './engineer/assemble/assemble';
+export { assignIds, azimuthDeg, type IdItem } from './engineer/assemble/ids';
+export { mergeModels, type MergeResult } from './engineer/assemble/merge';
+export { deckOpenings } from './engineer/assemble/chimney';
+export {
   validateGlb,
   type GlbReport,
   type KhronosResult,

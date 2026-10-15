@@ -8,12 +8,19 @@ import type {
   Assembly,
   AssemblyKind,
   AssemblyParams,
+  Detail,
+  EngineerProposal,
+  EngineerSetup,
+  EvidencePack,
+  MemberGroup,
+  ModelFamily,
   ParamQuality,
   ProcModel,
+  ProposalComponent,
   Vec3,
 } from '@aio/schema';
 import { newProcModel } from '../procmodel';
-import { ctxFor } from './builders/ctx';
+import { ctxFor, profileRadiusAt } from './builders/ctx';
 import { MeshSink, SEGMENTS, type Opening } from './geom';
 import { buildAssembly } from './meshAssemblies';
 import { DEFAULT_MATERIALS } from './materials';
@@ -482,4 +489,419 @@ export function openingsOf(
     if (openings.length) out[a.id] = openings;
   }
   return out;
+}
+
+// ---------------------------------------------------------------------------------------------
+// Evidence packs and proposals with their synthetic truth (the assembler's inputs). Heights are
+// above the asset base; a member's `size` is its diameter. None of it describes a real asset.
+// ---------------------------------------------------------------------------------------------
+
+/** The synthetic chimney the stack evidence and proposal describe. The last light level is the crown. */
+export const STACK_TRUTH = {
+  height: 120,
+  profile: [
+    { y: 0, r: 9 },
+    { y: 55, r: 6.5 },
+    { y: 120, r: 6.5 },
+  ],
+  flues: 3,
+  fluePitchR: 2.6,
+  lightLevels: [40, 80, 120],
+  lightsPerLevel: 3,
+  bands: [
+    [100, 104],
+    [108, 112],
+  ] as [number, number][],
+};
+/** Flue azimuths (none at north, so the id order is not the input order) and their radius. */
+const STACK_FLUE_AZ = [30, 150, 270];
+const STACK_FLUE_R = 0.9;
+const STACK_LIGHT_AZ = [0, 120, 240];
+const STACK_LIGHT_SIZE = 0.4;
+
+const toward = (b: Vec3, deg: number, r: number, h: number): Vec3 => {
+  const t = (deg * Math.PI) / 180;
+  return [b[0] + r * Math.sin(t), b[1] + h, b[2] - r * Math.cos(t)];
+};
+
+interface PackSpec {
+  base: Vec3;
+  height: number;
+  profile: { y: number; r: number }[];
+  coverage: number;
+  shape?: 'circle' | 'square';
+  members: MemberGroup[];
+  colours?: EvidencePack['colours'];
+  suggested: ModelFamily;
+  fillRatio: number;
+  topFeatures: number;
+  kept: number;
+}
+
+/** A metric evidence pack from a cloud: 25 slices, the taper, the members, no photos. */
+function pack(s: PackSpec): EvidencePack {
+  const [bx, by, bz] = s.base;
+  const rMax = Math.max(...s.profile.map((q) => q.r));
+  const partial = s.coverage < 0.5;
+  const slices = Array.from({ length: 25 }, (_, i) => {
+    const h = (s.height * i) / 24;
+    return {
+      y: by + h,
+      centre: [bx, bz] as [number, number],
+      // a deterministic few millimetres of fit noise
+      r: profileRadiusAt(s.profile, h) * (1 + 0.002 * Math.sin(i * 1.7)),
+      residualM: partial ? 0.06 : 0.03,
+      support: partial ? 180 : 400,
+      coverage: s.coverage,
+      shape: s.shape ?? 'circle',
+    };
+  });
+  return {
+    schema: 'aio.evidence/1',
+    run: 'run-synthetic',
+    crs: null,
+    units: 'm',
+    crop: { centre: [bx, bz], radiusM: rMax * 4 },
+    bounds: { min: [bx - rMax, by, bz - rMax], max: [bx + rMax, by + s.height + 2, bz + rMax] },
+    samples: { read: Math.round(s.kept * 2.5), kept: s.kept, ground: Math.round(s.kept / 20) },
+    axis: { point: [bx, by, bz], dir: [0, 1, 0], tiltDeg: 0 },
+    base: [bx, by, bz],
+    height: s.height,
+    slices,
+    taper: {
+      profile: s.profile.map((q) => ({ y: by + q.y, r: q.r * 1.003 })),
+      residualM: partial ? 0.05 : 0.025,
+    },
+    members: s.members,
+    familyHints: {
+      fillRatio: s.fillRatio,
+      slenderness: s.height / (2 * rMax),
+      topFeatures: s.topFeatures,
+      suggested: s.suggested,
+    },
+    colours: s.colours ?? [],
+    photos: [],
+    images: [],
+    reconstruction: 'not-needed',
+    warnings: [],
+  };
+}
+
+const item = (centre: Vec3, size: number, azimuthDeg?: number, support = 300) => ({
+  centre,
+  size,
+  support,
+  ...(azimuthDeg === undefined ? {} : { azimuthDeg }),
+});
+
+/**
+ * Evidence of the synthetic chimney, its base at `base` (default the origin). `partial`: a scan
+ * from the north only (slice coverage under a half, the lights on the far side unseen; the flues
+ * on the crown are all seen).
+ */
+export function stackEvidence(o: { partial?: boolean; base?: Vec3 } = {}): EvidencePack {
+  const b = o.base ?? [0, 0, 0];
+  const T = STACK_TRUTH;
+  const seen = (az: number) => !o.partial || az <= 90 || az >= 270;
+  const lights = T.lightLevels.flatMap((h) =>
+    STACK_LIGHT_AZ.filter(seen).map((az) =>
+      item(
+        toward(b, az, profileRadiusAt(T.profile, h) + STACK_LIGHT_SIZE, h),
+        STACK_LIGHT_SIZE,
+        az,
+        60,
+      ),
+    ),
+  );
+  return pack({
+    base: b,
+    height: T.height,
+    profile: T.profile,
+    coverage: o.partial ? 0.45 : 0.9,
+    members: [
+      {
+        kind: 'flue',
+        items: STACK_FLUE_AZ.map((az) =>
+          item(toward(b, az, T.fluePitchR, T.height + 1), 2 * STACK_FLUE_R, az, 500),
+        ),
+        metrics: { residualM: 0.02, regularity: 0.95 },
+      },
+      { kind: 'light-candidate', items: lights, metrics: { regularity: o.partial ? 0.4 : 0.9 } },
+    ],
+    colours: [
+      { y0: b[1], y1: b[1] + 100, rgb: [150, 148, 140] },
+      { y0: b[1] + 100, y1: b[1] + 104, rgb: [190, 40, 35] },
+      { y0: b[1] + 104, y1: b[1] + 108, rgb: [150, 148, 140] },
+      { y0: b[1] + 108, y1: b[1] + 112, rgb: [235, 235, 230] },
+      { y0: b[1] + 112, y1: b[1] + T.height, rgb: [150, 148, 140] },
+    ],
+    suggested: 'chimney',
+    fillRatio: 0.7,
+    topFeatures: T.flues,
+    kept: 900_000,
+  });
+}
+
+const proposed = (
+  c: Omit<ProposalComponent, 'imageIds' | 'observed' | 'units'> &
+    Partial<Pick<ProposalComponent, 'units' | 'observed'>>,
+): ProposalComponent => ({ units: 'ratio', imageIds: ['img-side-1'], observed: true, ...c });
+
+function proposal(
+  family: ModelFamily,
+  reason: string,
+  components: ProposalComponent[],
+): EngineerProposal {
+  return {
+    family: { value: family, reasons: [reason] },
+    identity: { sameAsset: true, conflicts: [] },
+    components,
+    unresolved: [],
+    notes: '',
+  };
+}
+
+/**
+ * The AI proposal for the synthetic chimney, lengths as ratios of its height. `flues` the flue
+ * count it reports; `levels` the light levels it reports, in metres above the base (default the
+ * truth's, the crown included).
+ */
+export function stackProposal(o: { flues?: number; levels?: number[] } = {}): EngineerProposal {
+  const T = STACK_TRUTH;
+  const H = T.height;
+  const [p0, p1] = [T.profile[0], T.profile[1]];
+  return proposal('chimney', 'A tapered concrete shaft with flues standing out of its top.', [
+    proposed({
+      role: 'shaft',
+      kind: 'shaft',
+      count: 1,
+      params: { rBase: (p0?.r ?? 1) / H, rTop: (p1?.r ?? 1) / H, taperTop: (p1?.y ?? H) / H },
+    }),
+    proposed({
+      role: 'flue',
+      kind: 'flue',
+      count: o.flues ?? T.flues,
+      params: { rOuter: STACK_FLUE_R / H, pitchR: T.fluePitchR / H },
+    }),
+    proposed({
+      role: 'band',
+      kind: 'band',
+      count: T.bands.length,
+      params: { width: 4 / H, colours: 'red,white' },
+      levels: T.bands.map(([y0]) => y0 / H),
+    }),
+    proposed({
+      role: 'light',
+      kind: 'warningLight',
+      count: T.lightsPerLevel,
+      params: { fixture: 'twin', size: STACK_LIGHT_SIZE / H },
+      levels: (o.levels ?? T.lightLevels).map((y) => y / H),
+    }),
+  ]);
+}
+
+/** A synthetic flare stack: a tapered steel shaft, a tip, a caged ladder and one platform. */
+export const FLARE_TRUTH = {
+  height: 60,
+  profile: [
+    { y: 0, r: 1.2 },
+    { y: 60, r: 0.8 },
+  ],
+  tipR: 0.6,
+  tipHeight: 3,
+  pilots: 3,
+  platformLevels: [57],
+  ladder: true,
+};
+
+export function flareEvidence(): EvidencePack {
+  const T = FLARE_TRUTH;
+  return pack({
+    base: [0, 0, 0],
+    height: T.height,
+    profile: T.profile,
+    coverage: 0.85,
+    members: [
+      {
+        kind: 'platform',
+        items: T.platformLevels.map((h) => item([0, h, 0], 4.8, undefined, 800)),
+        metrics: { residualM: 0.03 },
+      },
+    ],
+    suggested: 'flare',
+    fillRatio: 0.5,
+    topFeatures: 1,
+    kept: 400_000,
+  });
+}
+
+export function flareProposal(): EngineerProposal {
+  const T = FLARE_TRUTH;
+  const H = T.height;
+  const [p0, p1] = [T.profile[0], T.profile.at(-1)];
+  return proposal('flare', 'A slender steel stack with a flare tip and pilot burners.', [
+    proposed({
+      role: 'shaft',
+      kind: 'shaft',
+      count: 1,
+      params: { rBase: (p0?.r ?? 1) / H, rTop: (p1?.r ?? 1) / H },
+    }),
+    proposed({
+      role: 'tip',
+      kind: 'flareTip',
+      count: 1,
+      params: { r: T.tipR / H, height: T.tipHeight / H, windshield: true, pilots: T.pilots },
+    }),
+    proposed({ role: 'ladder', kind: 'ladder', count: 1, params: { cage: true } }),
+    proposed({
+      role: 'platform',
+      kind: 'ringPlatform',
+      count: 1,
+      params: { guardrail: true },
+      levels: T.platformLevels.map((y) => y / H),
+    }),
+  ]);
+}
+
+/** A synthetic four-legged lattice tower with three panel antennas on sector frames. */
+export const LATTICE_TRUTH = {
+  height: 40,
+  legs: 4 as const,
+  widthBase: 6,
+  widthTop: 1.5,
+  bays: 8,
+  sectors: [0, 120, 240],
+  antennaY: 38,
+};
+
+export function latticeEvidence(): EvidencePack {
+  const T = LATTICE_TRUTH;
+  const b: Vec3 = [0, 0, 0];
+  const h = T.widthBase / 2;
+  const corners: [number, number][] = [
+    [h, h],
+    [h, -h],
+    [-h, -h],
+    [-h, h],
+  ];
+  return pack({
+    base: b,
+    height: T.height,
+    profile: [
+      { y: 0, r: T.widthBase / 2 },
+      { y: T.height, r: T.widthTop / 2 },
+    ],
+    coverage: 0.8,
+    shape: 'square',
+    members: [
+      {
+        kind: 'leg',
+        items: corners.map(([x, z]) => item([x, 0, z], 0.2)),
+        metrics: { residualM: 0.02, regularity: 0.97 },
+      },
+      {
+        kind: 'antenna-candidate',
+        items: T.sectors.map((az) => item(toward(b, az, 2.1, T.antennaY), 1.4, az)),
+        metrics: { regularity: 0.9 },
+      },
+    ],
+    suggested: 'telecom-lattice',
+    fillRatio: 0.15,
+    topFeatures: T.sectors.length,
+    kept: 350_000,
+  });
+}
+
+export function latticeProposal(): EngineerProposal {
+  const T = LATTICE_TRUTH;
+  const H = T.height;
+  return proposal('telecom-lattice', 'An open steel lattice with sector antennas at the top.', [
+    proposed({
+      role: 'lattice',
+      kind: 'lattice',
+      count: 1,
+      params: {
+        legs: T.legs,
+        bays: T.bays,
+        widthBase: T.widthBase / H,
+        widthTop: T.widthTop / H,
+        bracing: 'X',
+      },
+    }),
+    proposed({
+      role: 'antenna',
+      kind: 'antenna',
+      count: T.sectors.length,
+      params: { type: 'panel' },
+      levels: [T.antennaY / H],
+    }),
+    proposed({ role: 'mount', kind: 'antennaMount', count: T.sectors.length, params: {} }),
+    proposed({ role: 'cabinet', kind: 'cabinet', count: 1, params: {} }),
+  ]);
+}
+
+/** A synthetic twelve-sided monopole with one panel antenna near the top. */
+export const MONOPOLE_TRUTH = {
+  height: 30,
+  profile: [
+    { y: 0, r: 0.8 },
+    { y: 30, r: 0.4 },
+  ],
+  sides: 12,
+  antennas: 1,
+  antennaY: 28,
+};
+
+export function monopoleEvidence(): EvidencePack {
+  const T = MONOPOLE_TRUTH;
+  const b: Vec3 = [0, 0, 0];
+  return pack({
+    base: b,
+    height: T.height,
+    profile: T.profile,
+    coverage: 0.85,
+    members: [
+      {
+        kind: 'antenna-candidate',
+        items: [item(toward(b, 0, 1.1, T.antennaY), 1.4, 0)],
+        metrics: {},
+      },
+    ],
+    suggested: 'telecom-monopole',
+    fillRatio: 0.6,
+    topFeatures: T.antennas,
+    kept: 250_000,
+  });
+}
+
+export function monopoleProposal(): EngineerProposal {
+  const T = MONOPOLE_TRUTH;
+  const H = T.height;
+  const [p0, p1] = [T.profile[0], T.profile.at(-1)];
+  return proposal('telecom-monopole', 'A single tapered steel pole with an antenna at the top.', [
+    proposed({
+      role: 'pole',
+      kind: 'monopole',
+      count: 1,
+      params: { rBase: (p0?.r ?? 1) / H, rTop: (p1?.r ?? 1) / H, sides: T.sides },
+    }),
+    proposed({
+      role: 'antenna',
+      kind: 'antenna',
+      count: T.antennas,
+      params: { type: 'panel' },
+      levels: [T.antennaY / H],
+    }),
+  ]);
+}
+
+/** A run setup over one cloud layer, the asset only, placed from the source. */
+export function setupFor(family: ModelFamily | 'auto', detail: Detail = 'standard'): EngineerSetup {
+  return {
+    sources: { clouds: [{ layer: 'cloud-1' }], meshes: [], photos: [] },
+    family,
+    scope: 'asset',
+    detail,
+    placement: 'from-source',
+  };
 }
