@@ -1506,6 +1506,11 @@ export const ipc = {
          */
         drawings: z.boolean().optional(),
         /**
+         * Survey day chosen in Add data for each cloud (absolute path to YYYY-MM-DD, null = Not
+         * dated), passed to `pointcloud.to_copc` as `surveyDate` (15 Oct 2026).
+         */
+        cloudDates: z.record(z.string().min(1).max(2048), IsoDate.nullable()).optional(),
+        /**
          * "Add 360 video": an MP4 or MOV is taken as a stitched equirectangular video and stored
          * as a walk (`walks/<id>/`), not as a drone clip that needs its SRT.
          */
@@ -1557,6 +1562,30 @@ export const ipc = {
       .strict(),
     response: z.discriminatedUnion('ok', [
       z.object({ ok: z.literal(true), plan: AltitudePlan }),
+      z.object({ ok: z.literal(false), error: z.string() }),
+    ]),
+  },
+  /**
+   * The `.zpc` clouds under `paths` with the day their LAS headers carry (the export day, not the
+   * flight day), so Add data can ask for the survey day before `builder:import` (15 Oct 2026).
+   */
+  'builder:cloudDates': {
+    request: z
+      .object({
+        projectId: z.string().min(1),
+        /** Files or folders; a folder is read recursively. */
+        paths: z.array(z.string().min(1)).min(1),
+        /** Files to leave out, absolute, as `builder:import` takes them. */
+        exclude: z.array(z.string().min(1).max(2048)).max(20_000).optional(),
+      })
+      .strict(),
+    response: z.discriminatedUnion('ok', [
+      z.object({
+        ok: z.literal(true),
+        clouds: z.array(
+          z.object({ path: z.string(), name: z.string(), headerDay: IsoDate.nullable() }),
+        ),
+      }),
       z.object({ ok: z.literal(false), error: z.string() }),
     ]),
   },
