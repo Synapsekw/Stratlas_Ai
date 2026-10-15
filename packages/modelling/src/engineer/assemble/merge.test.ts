@@ -52,6 +52,14 @@ describe('mergeModels', () => {
     const prev = engineeringModel('m', 'M', [flue('flue-1', 1, 'accepted')]);
     const first = mergeModels(prev, [flue('flue-1', 3)]);
     expect(first.flagged.map((f) => f.id)).toEqual(['flue-1']);
+    // recorded in its own field; the evidence references are left alone
+    const stamped = must(first.assemblies[0]);
+    expect(stamped.reviewed).toEqual({
+      hash: expect.stringMatching(/^[0-9a-f]{8}$/) as string,
+      runId: 'run-a',
+    });
+    expect(stamped.sources).toEqual(must(prev.assemblies[0]).sources);
+    expect(ProcModel.safeParse(engineeringModel('m', 'M', first.assemblies)).success).toBe(true);
     const again = engineeringModel('m', 'M', first.assemblies);
     const second = mergeModels(again, [flue('flue-1', 3)]);
     expect(second.flagged).toEqual([]);
@@ -189,7 +197,7 @@ describe('regenerating through assemble', () => {
     const moved = byId(next.model, 'light-l1-2');
     expect(moved.status).toBe('accepted');
     expect(moved.kind === 'warningLight' && moved.params.centre[1]).toBeCloseTo(45, 6);
-    expect(moved.quality.centre).toEqual({ basis: 'user' });
+    expect(moved.quality.centre).toEqual({ basis: 'user', note: 'Level moved from 40.00 m.' });
     expect(byId(next.model, 'light-l2-2')).toBe(byId(prev, 'light-l2-2'));
     const l = byId(next.model, 'light-l2-2');
     expect(l.kind === 'warningLight' && l.params.fixture).toBe('beacon');
@@ -263,6 +271,27 @@ describe('light level roles across regeneration', () => {
     expect(ys('light-l1')).toEqual([45, 45, 45]);
     expect(ys('light-l2')).toEqual([80, 80, 80]);
     expect(ys('light-l3')).toEqual([10, 10, 10]);
+  });
+
+  it('a level moved above another keeps its role when a new level appears below', () => {
+    // l1 (found at 40 m) moved to 95 m, above l2 at 80 m; then a level at 10 m is found. Roles by
+    // height order would give 10 m l1; the nearest previous level to 40 m is l2 at 80 m; pairing
+    // leftovers in height order gives 10 m l1. Only the height l1 was found at pins it to 40 m.
+    const user = { levels: { 'light-l1': [95] } };
+    const first = assembleStack({ user });
+    const next = assembleStack({ previous: first.model, evidence: withLowLevel(10), user });
+    const ys = (role: string) =>
+      lightsOf(next.model)
+        .filter((l) => l.id.startsWith(`${role}-`))
+        .map((l) => Math.round(l.y));
+    expect(ys('light-l1')).toEqual([95, 95, 95]);
+    expect(ys('light-l2')).toEqual([80, 80, 80]);
+    expect(ys('light-l3')).toEqual([10, 10, 10]);
+    for (const k of [1, 2, 3])
+      expect(byId(next.model, `light-l1-${String(k)}`)).toBe(
+        byId(first.model, `light-l1-${String(k)}`),
+      );
+    expect(next.changed.sort()).toEqual(['light-l3-1', 'light-l3-2', 'light-l3-3']);
   });
 
   it('a level the person moved far keeps its role when regenerated', () => {

@@ -30,6 +30,30 @@ describe('Assembly', () => {
     });
     expect(r.success).toBe(true);
   });
+  it('may record the run values it was last reviewed against, and nothing else there', () => {
+    const shaft = (reviewed: unknown) =>
+      Assembly.safeParse({
+        ...base,
+        id: 'shaft-1',
+        kind: 'shaft',
+        status: 'accepted',
+        params: {
+          base: [0, 0, 0],
+          profile: [
+            { y: 0, r: 10 },
+            { y: 100, r: 7 },
+          ],
+          openTop: false,
+        },
+        ...(reviewed === undefined ? {} : { reviewed }),
+      }).success;
+    expect(shaft(undefined)).toBe(true);
+    expect(shaft({ hash: '0a1b2c3d' })).toBe(true);
+    expect(shaft({ hash: '0a1b2c3d', runId: 'run-a' })).toBe(true);
+    expect(shaft({ hash: 'XYZ' })).toBe(false);
+    expect(shaft({ hash: '0a1b2c3d', note: 'x' })).toBe(false);
+    expect(shaft({ runId: 'run-a' })).toBe(false);
+  });
   it('refuses an open-top shaft without a wall thickness', () => {
     const params = {
       base: [0, 0, 0],

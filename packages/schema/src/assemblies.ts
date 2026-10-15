@@ -283,6 +283,19 @@ const assemblyBase = {
     .max(4)
     .optional(),
   hidden: z.boolean().optional(),
+  /**
+   * The run values an accepted component was last reviewed against: a hash of the regenerated
+   * params (the person's own left out) and the run that made them. A later run flags the
+   * component only when its values hash differently. Absent until a run first flags it.
+   */
+  reviewed: z
+    .object({
+      hash: z.string().regex(/^[0-9a-f]{8,64}$/),
+      // the run id as `PartOrigin` carries it (engineer.ts imports this module, so not `RunId`)
+      runId: z.string().min(1).max(80).optional(),
+    })
+    .strict()
+    .optional(),
 };
 
 export type Assembly = {

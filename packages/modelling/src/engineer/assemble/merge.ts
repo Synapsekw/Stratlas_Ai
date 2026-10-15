@@ -67,12 +67,6 @@ function withParams(onto: Assembly, from: Assembly, keys: string[]): Assembly | 
   return r.success ? r.data : undefined;
 }
 
-/**
- * Source entry on an accepted component recording (as `view`) a hash of the run values it was
- * last reviewed against, so a difference is flagged once, not on every run.
- */
-export const REVIEWED_REF = 'reviewed-run-values';
-
 function stableJson(v: unknown): string {
   if (Array.isArray(v)) return `[${v.map(stableJson).join(',')}]`;
   if (typeof v === 'object' && v !== null) {
@@ -98,15 +92,9 @@ export function runValuesHash(a: Assembly, skip: ReadonlySet<string> = new Set()
   return h.toString(16).padStart(8, '0');
 }
 
-const reviewedHash = (a: Assembly): string | undefined =>
-  a.sources.find((s) => s.kind === 'user' && s.ref === REVIEWED_REF)?.view;
-
-function withReviewed(a: Assembly, hash: string): Assembly {
-  const others = a.sources.filter((s) => !(s.kind === 'user' && s.ref === REVIEWED_REF));
-  return {
-    ...a,
-    sources: [...others.slice(0, 63), { kind: 'user', ref: REVIEWED_REF, view: hash }],
-  };
+/** The accepted component with `reviewed` set: the run values it is now flagged against. */
+function withReviewed(a: Assembly, hash: string, runId: string | undefined): Assembly {
+  return { ...a, reviewed: runId === undefined ? { hash } : { hash, runId } };
 }
 
 const userKeys = (a: Assembly): string[] =>
@@ -143,13 +131,17 @@ export function mergeModels(
         // against (recorded on it), else with the values it was accepted with
         const skip = new Set([...userKeys(p), ...userKeys(n)]);
         const fresh = runValuesHash(n, skip);
-        if (fresh !== (reviewedHash(p) ?? runValuesHash(p, skip))) {
+        if (fresh !== (p.reviewed?.hash ?? runValuesHash(p, skip))) {
           flagged.push({
             id: p.id,
             reason:
               'The new run would change this accepted component; the accepted values are kept.',
           });
-          merged = withReviewed(merged, fresh);
+          merged = withReviewed(
+            merged,
+            fresh,
+            n.origin.by === 'engineer' ? n.origin.runId : undefined,
+          );
         }
       }
       out.push(merged);

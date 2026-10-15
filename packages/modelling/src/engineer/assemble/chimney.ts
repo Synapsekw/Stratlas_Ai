@@ -661,11 +661,20 @@ function build(ctx: FamilyCtx, shaftOnly: boolean): Assembly[] {
   return out;
 }
 
+/** The note on a moved light's centre quality: where its level was found (metres above base). */
+export const movedNote = (h: number) => `Level moved from ${h.toFixed(2)} m.`;
+function movedFrom(note: string | undefined): number | undefined {
+  const m = /^Level moved from (-?[0-9]+(?:\.[0-9]+)?) m\.$/.exec(note ?? '');
+  return m?.[1] === undefined ? undefined : Number(m[1]);
+}
+
 /**
  * Roles (`light-l<n>`) of the intermediate light levels. A level near (within `tol`) a level of
- * the previous model keeps that level's role; previous levels the person moved pair with the
- * levels left over, in height order; new levels are numbered after the highest previous one. So
- * a level found later never renumbers the others, and `user.levels` keeps its target.
+ * the previous model keeps that level's role, a level the person moved being compared at the
+ * height it was found at (its lights' `movedFrom` note); previous levels moved without that note
+ * pair with the levels left over, in height order; new levels are numbered after the highest
+ * previous one. So a level found later never renumbers the others, and `user.levels` keeps its
+ * target.
  */
 function levelRoles(ctx: FamilyCtx, mid: readonly { h: number }[], tol: number): string[] {
   const byRole = new Map<string, { n: number; ys: number[] }>();
@@ -674,7 +683,7 @@ function levelRoles(ctx: FamilyCtx, mid: readonly { h: number }[], tol: number):
     if (!m?.[1] || a.kind !== 'warningLight') continue;
     const role = `light-l${m[1]}`;
     const e = byRole.get(role) ?? { n: Number(m[1]), ys: [] };
-    e.ys.push(a.params.centre[1] - ctx.base[1]);
+    e.ys.push(movedFrom(a.quality.centre?.note) ?? a.params.centre[1] - ctx.base[1]);
     byRole.set(role, e);
   }
   const prev = [...byRole.entries()].map(([role, e]) => ({ role, n: e.n, h: mean(e.ys) }));
@@ -805,9 +814,11 @@ function lights(ctx: FamilyCtx, shaftId: string): Assembly[] {
       const { centre, outward } = lightCentre(ctx, a.az, y, size.v, fixture.v);
       const posBasis = levelBasis === 'user' ? 'user' : weakest(levelBasis, a.basis);
       const centreQ: ParamQuality =
-        posBasis === 'measured' && a.it
-          ? { basis: 'measured', ...measuredBy(a.it.support) }
-          : { basis: posBasis };
+        moved !== undefined
+          ? { basis: 'user', note: movedNote(level.h) }
+          : posBasis === 'measured' && a.it
+            ? { basis: 'measured', ...measuredBy(a.it.support) }
+            : { basis: posBasis };
       const outQ: ParamQuality =
         a.basis === 'measured' && a.it
           ? { basis: 'measured', ...measuredBy(a.it.support) }
