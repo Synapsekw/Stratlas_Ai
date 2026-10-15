@@ -3,9 +3,9 @@ import type { Issue, ProjectManifest } from '@aio/schema';
 import { workspace } from '@aio/workspace';
 import { act } from 'react';
 import { createRoot } from 'react-dom/client';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { setIssueView, issueView } from '../model/view';
-import { issueEditor, setAnnotateReadOnly } from '../runtime';
+import { issueEditor, setAnnotateReadOnly, setIssueListActions } from '../runtime';
 import { catalogue, makeIssue, strictModel, tankModel } from '../testing';
 import { IssueRegister } from './IssueRegister';
 
@@ -216,5 +216,65 @@ describe('IssueRegister at scale', () => {
     } finally {
       setAnnotateReadOnly(false);
     }
+  });
+});
+
+describe('IssueRegister right-click menu', () => {
+  afterEach(() => {
+    workspace.getState().closeProject();
+  });
+
+  const rightClick = (ui: ReturnType<typeof mount>, code: string) => {
+    const row = [...ui.el.querySelectorAll('.ann-row')].find((r) => r.textContent.includes(code));
+    if (!row) throw new Error(`no row ${code}`);
+    const ev = new MouseEvent('contextmenu', {
+      bubbles: true,
+      cancelable: true,
+      clientX: 30,
+      clientY: 40,
+    });
+    act(() => {
+      row.dispatchEvent(ev);
+    });
+    return ev;
+  };
+
+  it('offers Place on model for the row, or for every checked row', () => {
+    workspace.getState().openProject({ id: 'big', root: 'r', manifest }, many(5));
+    const placeOnModel = vi.fn<(ids: readonly string[]) => void>();
+    const off = setIssueListActions({ placeOnModel });
+    const ui = mount();
+    expect(rightClick(ui, 'D0001').defaultPrevented).toBe(true);
+    const item = () => document.querySelector('[data-testid="issue-place-on-model"]');
+    expect(item()?.textContent).toBe('Place on model...');
+    act(() => {
+      item()?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    });
+    expect(placeOnModel).toHaveBeenLastCalledWith(['i1']);
+    expect(item()).toBeNull();
+    ui.click('[data-tick="D0002"]');
+    ui.click('[data-tick="D0003"]');
+    rightClick(ui, 'D0003');
+    expect(item()?.textContent).toBe('Place 2 on model...');
+    act(() => {
+      item()?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    });
+    expect([...(placeOnModel.mock.lastCall?.[0] ?? [])].sort()).toEqual(['i2', 'i3']);
+    // Esc closes it
+    rightClick(ui, 'D0004');
+    act(() => {
+      window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
+    });
+    expect(item()).toBeNull();
+    off();
+    ui.unmount();
+  });
+
+  it('leaves the browser menu alone without the action', () => {
+    workspace.getState().openProject({ id: 'big', root: 'r', manifest }, many(2));
+    const ui = mount();
+    expect(rightClick(ui, 'D0001').defaultPrevented).toBe(false);
+    expect(document.querySelector('[data-testid="issue-row-menu"]')).toBeNull();
+    ui.unmount();
   });
 });

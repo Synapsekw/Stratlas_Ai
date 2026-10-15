@@ -3,6 +3,7 @@ import type { Issue, IssueStatus } from '@aio/schema';
 import { Icon, shortcutHint } from '@aio/ui';
 import { useWorkspace } from '@aio/workspace';
 import {
+  useCallback,
   useDeferredValue,
   useEffect,
   useLayoutEffect,
@@ -35,9 +36,11 @@ import {
   useAnnotateReadOnly,
   useAuthorInitials,
   useIssueEditorState,
+  useIssueListActions,
 } from '../runtime';
 import { severityColor } from '../tools/mesh';
 import { SeverityBadge, kindLabel, sevStyle, useTaxonomy } from './common';
+import { IssueRowMenu } from './IssueRowMenu';
 import { NEW_CLASS_OPTION, NewClassRow, useNewClass } from './NewClassRow';
 import { AnnotateStyles } from './styles';
 
@@ -165,6 +168,11 @@ export function IssueRegister({ className }: { className?: string }) {
   const collapsed = collapsedIn.by === groupBy ? collapsedIn.keys : NONE_COLLAPSED;
   const [checked, setChecked] = useState<ReadonlySet<string>>(new Set());
   const [anchor, setAnchor] = useState<string | null>(null);
+  const listActions = useIssueListActions();
+  const [menu, setMenu] = useState<{ x: number; y: number; ids: string[] } | null>(null);
+  const closeMenu = useCallback(() => {
+    setMenu(null);
+  }, []);
   const [notice, setNotice] = useState<string | null>(null);
   const { create, disabledReason } = useNewClass();
   const [newClassOpen, setNewClassOpen] = useState(false);
@@ -328,6 +336,11 @@ export function IssueRegister({ className }: { className?: string }) {
         aria-selected={i.id === selectedId}
         aria-checked={readOnly ? undefined : on}
         className={`ann-row${i.status === 'draft' ? ' draft' : ''}${on ? ' checked' : ''}${readOnly ? ' ro' : ''}`}
+        onContextMenu={(e) => {
+          if (readOnly || !listActions.placeOnModel) return;
+          e.preventDefault();
+          setMenu({ x: e.clientX, y: e.clientY, ids: live.has(i.id) ? [...live] : [i.id] });
+        }}
         onClick={(e) => {
           if (!readOnly && (e.ctrlKey || e.metaKey)) {
             toggle(i.id, e);
@@ -681,6 +694,17 @@ export function IssueRegister({ className }: { className?: string }) {
           </div>
         )}
       </div>
+      {menu && listActions.placeOnModel && (
+        <IssueRowMenu
+          x={menu.x}
+          y={menu.y}
+          count={menu.ids.length}
+          onPlace={() => {
+            listActions.placeOnModel?.(menu.ids);
+          }}
+          onClose={closeMenu}
+        />
+      )}
     </div>
   );
 }
