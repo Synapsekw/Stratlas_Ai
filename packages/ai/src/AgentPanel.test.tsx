@@ -410,3 +410,11 @@ describe('describeStep', () => {
     );
   });
 });
+
+describe('describeStep for propose_class', () => {
+  it('asks to create the named class', () => {
+    expect(describeStep({ name: 'propose_class', input: { label: 'Spalling' } })).toBe(
+      "Create class 'Spalling'?",
+    );
+  });
+});

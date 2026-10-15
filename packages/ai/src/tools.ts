@@ -254,6 +254,16 @@ export const toolInputs = {
       at: Target.optional().describe('Where the issue is; defaults to the current selection'),
     })
     .strict(),
+  propose_class: z
+    .object({
+      label: z
+        .string()
+        .trim()
+        .min(1)
+        .max(60)
+        .describe('Short name of a new issue class (two to four words)'),
+    })
+    .strict(),
   set_layer_visible: z.object({ layerId: z.string().min(1), visible: z.boolean() }).strict(),
   capture_frame: z.object({}).strict(),
   summarize_issues: z
@@ -444,6 +454,16 @@ const BUILT_IN: ToolSpec[] = [
     {
       description:
         'Create a draft issue (finding) at an asset, issue or point, or at the current selection. Always a draft for a person to review; the app asks for approval first.',
+      scope: 'project',
+      risk: 'write',
+    },
+    true,
+  ),
+  spec(
+    'propose_class',
+    {
+      description:
+        'Propose a new issue class when no class of the project fits a finding. A person approves it before it exists; an existing class with that name is returned instead.',
       scope: 'project',
       risk: 'write',
     },

@@ -20,6 +20,7 @@ import {
   setIssueView,
 } from '@aio/annotate';
 import { workspace, type OpenProject } from '@aio/workspace';
+import { createClass } from '../classes/store';
 import { detections, loadDetections } from '../detections/store';
 import { closeEvidence, evidence, openEvidence } from '../issueCard/evidence';
 import { findingsIndex } from '../screens/mediaFindings';
@@ -207,6 +208,10 @@ export function registerAgentHooks(): () => void {
     showEvidence: openEvidence,
     captureView,
     viewFilters,
+    createClass: async (label) => {
+      const cls = await createClass(label);
+      return { id: cls.id, label: cls.label };
+    },
   });
   readReview(workspace.getState().project);
   const offProject = workspace.subscribe((s, prev) => {

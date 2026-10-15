@@ -151,6 +151,8 @@ export interface AppHooks {
   captureView?: () => () => void;
   /** The filters that are on, for the context. */
   viewFilters?: () => ViewFilters;
+  /** Create an issue class in the open project (after the person approved `propose_class`). */
+  createClass?: (label: string) => Promise<{ id: string; label: string }>;
 }
 
 export const appHooks: AppHooks = {};
@@ -335,7 +337,9 @@ export const worstFirst = (a: Issue, b: Issue): number =>
 export function issueClasses(ctx: RendererToolContext) {
   const classes = project(ctx).manifest.classCatalogues.flatMap((c) => c.classes);
   if (classes.length === 0) {
-    throw new ToolError('This project has no issue classes yet. Add a class catalogue first.');
+    throw new ToolError(
+      'This project has no issue classes yet. Propose one with propose_class; a person confirms it.',
+    );
   }
   return classes;
 }

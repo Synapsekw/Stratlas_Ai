@@ -17,6 +17,7 @@ import { assetUrl, workspace, type Selection } from '@aio/workspace';
 import './analysis-tools';
 import { assetIndex, describeIssue } from './asset-index';
 import './camera-tools';
+import './class-tools';
 import './collab-tools';
 import './photo-tools';
 import { clipStartUtcMs, selectionLabel } from './context';

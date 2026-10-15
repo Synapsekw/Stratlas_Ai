@@ -70,7 +70,8 @@ describe('issue classes', () => {
       { id: 'p1', root: 'E:/x', manifest: { ...fixtureManifest(), classCatalogues: [] } },
       [],
     );
-    const said = 'This project has no issue classes yet. Add a class catalogue first.';
+    const said =
+      'This project has no issue classes yet. Propose one with propose_class; a person confirms it.';
     expect(() => issueClasses(ctx(ws))).toThrow(new ToolError(said));
     expect(() => issueClass(ctx(ws), 'corrosion')).toThrow(new ToolError(said));
   });

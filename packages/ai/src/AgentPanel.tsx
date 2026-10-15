@@ -752,6 +752,10 @@ function StepRow({ step, session }: { step: Step; session: AgentSession }) {
 /** What an approval will do, in one line. */
 export function describeStep(step: Pick<Step, 'name' | 'input'>): string {
   const input = (step.input ?? {}) as Record<string, unknown>;
+  if (step.name === 'propose_class') {
+    const label = typeof input.label === 'string' ? input.label : 'untitled';
+    return `Create class '${label}'?`;
+  }
   if (step.name === 'create_issue_draft') {
     const title = typeof input.title === 'string' ? input.title : 'untitled';
     const sev =
