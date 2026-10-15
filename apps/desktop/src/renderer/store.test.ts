@@ -535,7 +535,7 @@ describe('shell store', () => {
     expect(calls.map((c) => c.channel)).toContain('library:list');
     expect(s.getState().library).toEqual([]);
     expect(s.getState().libraryNotice).toBe(
-      'HCl Tank was removed from the library. The file stays in E:\\data\\handover.aio. Open package brings it back.',
+      `${pkg.name} was removed from the library. The file stays in ${pkg.path}. Open package brings it back.`,
     );
     s.getState().dismissLibraryNotice();
     expect(s.getState().libraryNotice).toBeNull();
@@ -655,17 +655,17 @@ describe('shell store', () => {
     const a = new Uint8Array([0xff, 0xd8, 0xff, 1]);
     const b = new Uint8Array([0xff, 0xd8, 0xff, 2]);
     s.getState().setLastView('hcl', a);
-    s.getState().setLastView('alzour', a);
+    s.getState().setLastView('river', a);
     s.getState().setLastView('hcl', b);
-    expect(s.getState().lastViews).toEqual({ hcl: b, alzour: a });
+    expect(s.getState().lastViews).toEqual({ hcl: b, river: a });
   });
 
   it('asks for a picture of the 3D view whenever the scene of an open project is left', async () => {
-    const other = { ...manifest, id: 'alzour', name: 'Alzour' };
+    const other = { ...manifest, id: 'river', name: 'River Bridge' };
     const { bridge } = fakeBridge({
       'project:open': (req) =>
-        (req as { path: string }).path === 'E:/alzour'
-          ? { ok: true, id: 'alzour', root: 'E:/alzour', manifest: other, issues: [] }
+        (req as { path: string }).path === 'E:/river'
+          ? { ok: true, id: 'river', root: 'E:/river', manifest: other, issues: [] }
           : { ok: true, id: 'hcl', root: entry.path, manifest, issues: [] },
     });
     const left: string[] = [];
@@ -694,10 +694,10 @@ describe('shell store', () => {
     expect(left).toEqual(['hcl', 'hcl', 'hcl']);
     // another project opened from the scene: the one on screen until now
     s.getState().go('scene');
-    await s.getState().openProject('E:/alzour');
+    await s.getState().openProject('E:/river');
     expect(left).toEqual(['hcl', 'hcl', 'hcl', 'hcl']);
     s.getState().closeProject();
-    expect(left).toEqual(['hcl', 'hcl', 'hcl', 'hcl', 'alzour']);
+    expect(left).toEqual(['hcl', 'hcl', 'hcl', 'hcl', 'river']);
   });
 
   it('leaves the scene even when taking the picture throws', async () => {

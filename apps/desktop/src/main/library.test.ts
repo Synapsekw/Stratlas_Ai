@@ -40,7 +40,7 @@ describe('listLibrary', () => {
       kind: 'native',
       captureDate: '2024-01-10',
       thumbnail: expect.stringMatching(
-        /^aio:\/\/project\/alzour\/thumbnail\.jpg\?v=\d+$/,
+        new RegExp(`^aio://project/${e?.id ?? ''}/thumbnail\\.jpg\\?v=\\d+$`),
       ) as string,
       layerCounts: { mesh: 1, video: 2 },
     });
