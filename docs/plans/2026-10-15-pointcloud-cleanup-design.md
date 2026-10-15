@@ -88,7 +88,7 @@ New pipeline `pointcloud.clean` (`PointcloudCleanParams`), module `python/src/ai
 - `mode: 'save'`, params `{ layerId, src, recipe, name }`: PDAL `readers.copc` (on `noise.path` when set) to staged LAS, the numpy evaluator applies the recipe by streaming over the LAS records (chunks of 2M points, memory bounded), then `write_copc` writes `clouds/<newId>.copc.laz`. A new layer is appended to the manifest: `{ kind: 'pointcloud', format: 'copc', name: '<name> (cleaned)', derived: { kind: 'cleanup', source: [layerId], runId } }`. The original layer is hidden and its file is untouched.
 - `survey.export` with `what: 'cloud'` gains an optional `cleanup` (a recipe object). The export applies the same evaluator on its staged LAS before writing LAS or LAZ.
 - `tools/pipeline-pack/pdal.mjs` `DRIVERS` and its test add `filters.outlier` and `filters.elm`.
-- Pack version: the next free version at merge time. `aio-software-26` (engineering model) and this branch agreed that the first to merge takes 0.10.0 and the other takes 0.11.0. `POINTCLOUD_CLEAN_MIN_PACK` in `packages/schema/src/pointcloudCleanup.ts` matches it; with an older pack the noise run and save show "Update the pipeline pack in Settings > Processing tools". The live tools (clip box, height, regions) work with any pack.
+- Pack version: the next free version at merge time; bentley-import took 0.10.0, engineering-model expects 0.11.0, this branch is provisionally 0.12.0. `POINTCLOUD_CLEAN_MIN_PACK` in `packages/schema/src/pointcloudCleanup.ts` matches it; with an older pack the noise run and save show "Update the pipeline pack in Settings > Processing tools". The live tools (clip box, height, regions) work with any pack.
 
 **Contract changes** (rows in `docs/architecture/contract-changes.md`):
 
