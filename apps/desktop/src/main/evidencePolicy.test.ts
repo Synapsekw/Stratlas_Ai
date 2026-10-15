@@ -4,7 +4,14 @@ import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { engineerRuntimeHost, evidencePolicy, registerEvidencePolicyIpc } from './evidencePolicy';
+import {
+  engineerRuntimeHost,
+  evidencePolicy,
+  MANIFEST_UNREADABLE,
+  registerEvidencePolicyIpc,
+  resizeDataUrl,
+  type NativeImageLike,
+} from './evidencePolicy';
 import type { ModelProjects } from './modelBuilder';
 import { collectHandlers } from './notYet';
 
@@ -70,14 +77,10 @@ describe('evidencePolicy', () => {
     expect(await evidencePolicy(root)).toMatchObject({ ai: 'forbid' });
   });
 
-  it('refuses everything when the manifest cannot be read', async () => {
+  it('refuses with a reason when the manifest cannot be read (never "allow")', async () => {
     await writeFile(join(root, 'manifest.json'), '{"aiCloudPhotos": true, broken');
-    expect(await evidencePolicy(root)).toEqual({ ai: 'allow', photos: false, scans: false });
-    expect(await evidencePolicy(join(dir, 'missing'))).toEqual({
-      ai: 'allow',
-      photos: false,
-      scans: false,
-    });
+    expect(await evidencePolicy(root)).toEqual({ error: MANIFEST_UNREADABLE });
+    expect(await evidencePolicy(join(dir, 'missing'))).toEqual({ error: MANIFEST_UNREADABLE });
   });
 
   it('ai:setCloudEvidence sets and removes each consent on its own', async () => {
@@ -120,7 +123,7 @@ describe('evidencePolicy', () => {
     await writeManifestFile(root, { ...manifest, aiCloudPhotos: true });
     expect(await h.policy('site')).toEqual({ ai: 'allow', photos: true, scans: false });
     expect(await h.policy('other')).toBeNull();
-    expect(h.cacheDir?.('site', 'run-a')).toBe(join(root, 'engineering', 'run-a', 'ai'));
+    expect(h.runDir?.('site', 'run-a')).toBe(join(root, 'engineering', 'run-a'));
   });
 
   it('a package shares no photos or scans and keeps no cache', async () => {
@@ -129,16 +132,55 @@ describe('evidencePolicy', () => {
       packagePolicy: () => 'allow',
     });
     expect(await h.policy('pkg')).toEqual({ ai: 'allow', photos: false, scans: false });
-    expect(h.cacheDir?.('pkg', 'run-a')).toBeUndefined();
+    expect(h.runDir?.('pkg', 'run-a')).toBeUndefined();
   });
 
-  it('a flag that is not exactly true is off', async () => {
+  it('a flag that is not a boolean makes the manifest invalid: refused, not allowed', async () => {
     await writeManifestFile(root, manifest);
     const raw = JSON.parse(await readFile(join(root, 'manifest.json'), 'utf8')) as object;
     await writeFile(
       join(root, 'manifest.json'),
       JSON.stringify({ ...raw, aiCloudPhotos: 'yes', aiCloudScans: 1 }),
     );
-    expect(await evidencePolicy(root)).toMatchObject({ photos: false, scans: false });
+    expect(await evidencePolicy(root)).toEqual({ error: MANIFEST_UNREADABLE });
+  });
+});
+
+describe('resizeDataUrl', () => {
+  function fake(width: number, height: number, empty = false) {
+    const resized: { width: number; height: number }[] = [];
+    const img: NativeImageLike = {
+      isEmpty: () => empty,
+      getSize: () => ({ width, height }),
+      resize: (o) => {
+        resized.push({ width: o.width, height: o.height });
+        return img;
+      },
+      toPNG: () => Buffer.from('png-bytes'),
+      toJPEG: (q) => Buffer.from(`jpeg-${String(q)}`),
+    };
+    return { img, resized };
+  }
+
+  it('fits the long side and keeps a PNG a PNG', async () => {
+    const f = fake(4000, 3000);
+    const out = await resizeDataUrl('data:image/png;base64,AAAA', 1568, () => f.img);
+    expect(f.resized).toEqual([{ width: 1568, height: 1176 }]);
+    expect(out).toBe(`data:image/png;base64,${Buffer.from('png-bytes').toString('base64')}`);
+  });
+
+  it('re-encodes JPEG and WebP as JPEG at 90', async () => {
+    for (const type of ['jpeg', 'webp']) {
+      const f = fake(1000, 3000);
+      const out = await resizeDataUrl(`data:image/${type};base64,AAAA`, 1024, () => f.img);
+      expect(f.resized).toEqual([{ width: 341, height: 1024 }]);
+      expect(out).toBe(`data:image/jpeg;base64,${Buffer.from('jpeg-90').toString('base64')}`);
+    }
+  });
+
+  it('refuses an image it cannot decode', async () => {
+    await expect(
+      resizeDataUrl('data:image/png;base64,AAAA', 1024, () => fake(0, 0, true).img),
+    ).rejects.toThrow('could not be decoded');
   });
 });

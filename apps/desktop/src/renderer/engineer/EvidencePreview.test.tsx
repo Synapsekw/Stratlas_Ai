@@ -207,6 +207,64 @@ describe('EvidencePreview', () => {
     expect(button(/Send once|Run/).disabled).toBe(false);
   });
 
+  it('a disabled Send once says why, and the reason follows the boxes', () => {
+    render(props());
+    const send = button(/Send once/);
+    const why = () => document.getElementById(send.getAttribute('aria-describedby') ?? '');
+    expect(why()?.textContent).toBe(
+      'Allow photos and scan views for this project, or tick them for this send.',
+    );
+    click(box(/Send photos this once/));
+    expect(why()?.textContent).toBe(
+      'Allow scan views for this project, or tick them for this send.',
+    );
+    click(box(/Send scan views this once/));
+    expect(send.getAttribute('aria-describedby')).toBeNull();
+    expect(dialog().textContent).not.toContain('or tick them');
+  });
+
+  it('shows the size of the whole request', () => {
+    render(props());
+    expect(dialog().textContent).toContain('225 KB with the text');
+  });
+
+  it('keeps Tab inside the dialog and gives the focus back when it closes', () => {
+    const before = document.createElement('button');
+    before.textContent = 'Open preview';
+    document.body.append(before);
+    before.focus();
+    render(props({ flags: { photos: true, scans: true } }));
+    const items = [...dialog().querySelectorAll<HTMLElement>('button:not([disabled]), input')];
+    const first = items[0];
+    const last = items.at(-1);
+    if (!first || !last) throw new Error('no controls');
+    expect(dialog().contains(document.activeElement)).toBe(true);
+    last.focus();
+    act(() => {
+      last.dispatchEvent(new KeyboardEvent('keydown', { key: 'Tab', bubbles: true }));
+    });
+    expect(document.activeElement).toBe(first);
+    act(() => {
+      first.dispatchEvent(
+        new KeyboardEvent('keydown', { key: 'Tab', shiftKey: true, bubbles: true }),
+      );
+    });
+    expect(document.activeElement).toBe(last);
+    act(() => root?.render(<></>));
+    expect(document.activeElement).toBe(before);
+    before.remove();
+  });
+
+  it('Escape cancels wherever the focus is', () => {
+    const p = props();
+    render(p);
+    (document.activeElement as HTMLElement | null)?.blur();
+    act(() => {
+      document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    });
+    expect(p.onCancel).toHaveBeenCalledTimes(1);
+  });
+
   it('Cancel and Escape send nothing', () => {
     const p = props({ flags: { photos: true, scans: true } });
     render(p);

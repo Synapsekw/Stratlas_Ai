@@ -1,11 +1,18 @@
 import type { LanguageModelV4 } from '@ai-sdk/provider';
 import type { AiProvider, EngineerSetup, IpcEvent, IpcRequest } from '@aio/schema';
-import { mkdtemp, readdir, rm } from 'node:fs/promises';
+import { mkdir, mkdtemp, readdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { TIME_USED_UP } from './engineer';
-import { createAgentRuntime, MESSAGES, type AgentRuntimeHost, type StepUsage } from './main';
+import { readRunSpend, SPEND_SCHEMA } from './engineerSpend';
+import {
+  createAgentRuntime,
+  MESSAGES,
+  type AgentRuntime,
+  type AgentRuntimeHost,
+  type StepUsage,
+} from './main';
 import { createProviderRegistry, type ModelProvider } from './providers';
 import type { ModelRoute } from './routes';
 import { createScriptedProvider } from './scripted';
@@ -58,16 +65,31 @@ function preview(r: IpcRequest<'ai:engineer'>): IpcRequest<'ai:engineerPreview'>
   };
 }
 
+/** The project folder of the tests: runs `run-a` and `run-b` are saved (their run.json). */
+let root = '';
+beforeEach(async () => {
+  root = await mkdtemp(join(tmpdir(), 'eng-ipc-'));
+  for (const run of ['run-a', 'run-b']) {
+    await mkdir(join(root, 'engineering', run), { recursive: true });
+    await writeFile(join(root, 'engineering', run, 'run.json'), '{}');
+  }
+});
+afterEach(async () => {
+  await rm(root, { recursive: true, force: true });
+});
+
+const runDir = (run = 'run-a') => join(root, 'engineering', run);
+
 interface Opts {
   provider?: 'anthropic' | 'openai';
   flags?: { photos: boolean; scans: boolean };
   ai?: 'allow' | 'forbid';
   offline?: boolean;
   cloud?: boolean;
-  cacheDir?: string;
   model?: LanguageModelV4;
   now?: () => number;
   open?: boolean;
+  unreadable?: boolean;
 }
 
 function setup(o: Opts = {}) {
@@ -100,12 +122,13 @@ function setup(o: Opts = {}) {
       policy: (projectId) => {
         policyReads.push(projectId);
         if (o.open === false) return Promise.resolve(null);
+        if (o.unreadable) return Promise.resolve({ error: 'The manifest could not be read.' });
         return Promise.resolve({
           ai: o.ai ?? 'allow',
           ...(o.flags ?? { photos: false, scans: false }),
         });
       },
-      cacheDir: (_p, run) => (o.cacheDir ? join(o.cacheDir, run, 'ai') : undefined),
+      runDir: (_projectId, run) => (o.open === false ? undefined : join(root, 'engineering', run)),
       ...(o.now ? { now: o.now } : {}),
     },
   };
@@ -116,11 +139,16 @@ function setup(o: Opts = {}) {
   return { runtime, events, recorded, getKey, policyReads, requests: () => requests };
 }
 
-let dir = '';
-afterEach(async () => {
-  if (dir) await rm(dir, { recursive: true, force: true });
-  dir = '';
-});
+/** Through the send preview, as the app does: its token, with the boxes ticked in `once`. */
+async function send(
+  runtime: AgentRuntime,
+  req: IpcRequest<'ai:engineer'>,
+  once: { photos: boolean; scans: boolean } = { photos: false, scans: false },
+) {
+  const p = await runtime.engineerPreview(preview(req));
+  if (!p.ok) throw new Error(p.error);
+  return runtime.engineer({ ...req, consent: { token: p.consent, ...once } });
+}
 
 const ALLOWED = { photos: true, scans: true };
 
@@ -129,7 +157,7 @@ describe('ai:engineer', () => {
     '%s: returns a proposal, emits usage and records it to the project',
     async (provider) => {
       const t = setup({ provider, flags: ALLOWED });
-      const r = await t.runtime.engineer(request());
+      const r = await send(t.runtime, request());
       expect(r).toMatchObject({
         kind: 'proposal',
         cached: false,
@@ -149,7 +177,7 @@ describe('ai:engineer', () => {
 
   it('offline: refused, nothing sent, no key read', async () => {
     const t = setup({ offline: true, flags: ALLOWED });
-    expect(await t.runtime.engineer(request())).toEqual({
+    expect(await send(t.runtime, request())).toEqual({
       kind: 'refused',
       code: 'offline',
       reason: MESSAGES.offlineOnly,
@@ -160,29 +188,59 @@ describe('ai:engineer', () => {
 
   it('cloud AI off: refused before any key read', async () => {
     const t = setup({ cloud: false, flags: ALLOWED });
-    expect(await t.runtime.engineer(request())).toMatchObject({ kind: 'refused', code: 'policy' });
+    expect(await send(t.runtime, request())).toMatchObject({ kind: 'refused', code: 'policy' });
     expect(t.requests()).toBe(0);
     expect(t.getKey).not.toHaveBeenCalled();
   });
 
   it('a project that forbids cloud AI is refused before any key read', async () => {
     const t = setup({ ai: 'forbid', flags: ALLOWED });
-    expect(await t.runtime.engineer(request())).toMatchObject({ kind: 'refused', code: 'policy' });
+    expect(await send(t.runtime, request())).toMatchObject({ kind: 'refused', code: 'policy' });
     expect(t.requests()).toBe(0);
     expect(t.getKey).not.toHaveBeenCalled();
   });
 
+  it('an unreadable manifest refuses with its reason, in the preview too', async () => {
+    const t = setup({ unreadable: true });
+    expect(await t.runtime.engineer(request())).toEqual({
+      kind: 'refused',
+      code: 'policy',
+      reason: 'The manifest could not be read.',
+    });
+    expect(await t.runtime.engineerPreview(preview(request()))).toEqual({
+      ok: false,
+      error: 'The manifest could not be read.',
+    });
+    expect(t.getKey).not.toHaveBeenCalled();
+  });
+
+  it('every cloud request needs a token from the preview, also with both consents on', async () => {
+    const t = setup({ flags: ALLOWED });
+    for (const req of [request(), request({ images: [] })]) {
+      const r = await t.runtime.engineer(req);
+      expect(r).toMatchObject({ kind: 'refused', code: 'policy' });
+      if (r.kind === 'refused') expect(r.reason).toContain('send preview');
+      expect(
+        await t.runtime.engineer({
+          ...req,
+          consent: { token: 'made-up', photos: true, scans: true },
+        }),
+      ).toMatchObject({ kind: 'refused', code: 'policy' });
+    }
+    expect(t.requests()).toBe(0);
+    expect(t.getKey).not.toHaveBeenCalled();
+    expect(await send(t.runtime, request({ images: [] }))).toMatchObject({ kind: 'proposal' });
+  });
+
   it('refuses photos when the flag on disk is off, whatever the renderer claims', async () => {
     const t = setup({ flags: { photos: false, scans: true } });
-    const r = await t.runtime.engineer(
-      request({ consent: { token: 'made-up', photos: true, scans: true } }),
-    );
+    const r = await send(t.runtime, request());
     expect(r).toMatchObject({ kind: 'refused', code: 'policy' });
     if (r.kind === 'refused') expect(r.reason).toContain('photos');
     expect(t.requests()).toBe(0);
     expect(t.getKey).not.toHaveBeenCalled();
-    // the flags are read from disk for every request
-    expect(t.policyReads).toEqual(['p1']);
+    // the flags are read from disk for every request (preview, then the request)
+    expect(t.policyReads).toEqual(['p1', 'p1']);
   });
 
   it('a one-time consent from the preview counts once, for that content only', async () => {
@@ -211,18 +269,14 @@ describe('ai:engineer', () => {
 
   it('a one-time consent covers only the kinds ticked', async () => {
     const t = setup({ flags: { photos: false, scans: false } });
-    const p = await t.runtime.engineerPreview(preview(request()));
-    if (!p.ok) throw new Error(p.error);
-    const r = await t.runtime.engineer(
-      request({ consent: { token: p.consent, photos: true, scans: false } }),
-    );
+    const r = await send(t.runtime, request(), { photos: true, scans: false });
     expect(r).toMatchObject({ kind: 'refused', code: 'policy' });
     if (r.kind === 'refused') expect(r.reason).toContain('scan views');
   });
 
-  it('a consent for the project needs no token', async () => {
+  it('the project consents spare the boxes, not the preview', async () => {
     const t = setup({ flags: ALLOWED });
-    expect(await t.runtime.engineer(request())).toMatchObject({ kind: 'proposal' });
+    expect(await send(t.runtime, request())).toMatchObject({ kind: 'proposal' });
   });
 
   it('the preview shows what is sent and sends nothing', async () => {
@@ -264,7 +318,7 @@ describe('ai:engineer', () => {
       doStream: () => Promise.reject(new Error('not used')),
     };
     const t = setup({ flags: ALLOWED, model: hanging });
-    const running = t.runtime.engineer(request());
+    const running = send(t.runtime, request());
     await begun;
     t.runtime.cancel('ipc-1');
     expect(await running).toMatchObject({ kind: 'failed', code: 'cancelled' });
@@ -294,77 +348,141 @@ describe('ai:engineer', () => {
       doStream: () => Promise.reject(new Error('not used')),
     };
     const t = setup({ flags: ALLOWED, model: slow });
-    const first = t.runtime.engineer(request({ runId: 'ipc-1' }));
+    const first = send(t.runtime, request({ runId: 'ipc-1' }));
     await begun;
-    expect(await t.runtime.engineer(request({ runId: 'ipc-2' }))).toMatchObject({
+    expect(await send(t.runtime, request({ runId: 'ipc-2' }))).toMatchObject({
       kind: 'refused',
       code: 'busy',
     });
     // the same IPC run id is busy too
-    expect(await t.runtime.engineer(request({ runId: 'ipc-1', pass: 2 }))).toMatchObject({
+    expect(await send(t.runtime, request({ runId: 'ipc-1', pass: 2 }))).toMatchObject({
       kind: 'refused',
       code: 'busy',
     });
     // another engineering run is not held up by this one
-    const other = t.runtime.engineer(request({ runId: 'ipc-3', engineerRun: 'run-b' }));
+    const other = send(t.runtime, request({ runId: 'ipc-3', engineerRun: 'run-b' }));
     release();
     expect(await first).toMatchObject({ kind: 'proposal' });
     expect(await other).toMatchObject({ kind: 'proposal' });
     // and once the first is back, the run takes the next request
-    expect(await t.runtime.engineer(request({ runId: 'ipc-4', pass: 2 }))).toMatchObject({
+    expect(await send(t.runtime, request({ runId: 'ipc-4', pass: 2 }))).toMatchObject({
       kind: 'proposal',
     });
   });
 
-  it('the run has 10 minutes of AI time in all', async () => {
+  it('the run has 10 minutes of AI time in all, also across a restart', async () => {
     let now = 1_000_000;
     const t = setup({ flags: ALLOWED, now: () => now });
-    expect(await t.runtime.engineer(request())).toMatchObject({ kind: 'proposal' });
+    expect(await send(t.runtime, request())).toMatchObject({ kind: 'proposal' });
     now += 9 * 60_000;
-    expect(await t.runtime.engineer(request({ pass: 2 }))).toMatchObject({ kind: 'proposal' });
+    // a new runtime (the app restarted) keeps the run's start
+    const after = setup({ flags: ALLOWED, now: () => now });
+    expect(await send(after.runtime, request({ pass: 2 }))).toMatchObject({ kind: 'proposal' });
     now += 61_000;
-    expect(await t.runtime.engineer(request({ pass: 3 }))).toEqual({
+    const p = await after.runtime.engineerPreview(preview(request({ pass: 3 })));
+    if (!p.ok) throw new Error(p.error);
+    const consent = { token: p.consent, photos: false, scans: false };
+    expect(await after.runtime.engineer(request({ pass: 3, consent }))).toEqual({
       kind: 'refused',
       code: 'time',
       reason: TIME_USED_UP,
     });
+    // a token is bound to its run: run-a's does not open run-b
+    expect(
+      await after.runtime.engineer(request({ pass: 3, engineerRun: 'run-b', consent })),
+    ).toMatchObject({ kind: 'refused', code: 'policy' });
     // a new run starts its own time
-    expect(await t.runtime.engineer(request({ engineerRun: 'run-b' }))).toMatchObject({
+    expect(await send(after.runtime, request({ engineerRun: 'run-b' }))).toMatchObject({
       kind: 'proposal',
     });
-    expect(t.requests()).toBe(3);
+    expect(t.requests() + after.requests()).toBe(3);
+  });
+
+  it('the spend of a run is kept in the project and survives a restart', async () => {
+    const a = setup({ flags: ALLOWED });
+    const first = await send(a.runtime, request());
+    if (first.kind !== 'proposal') throw new Error(first.kind);
+    const once = await readRunSpend(runDir());
+    expect(once).toMatchObject({ calls: 1, tokens: 1350, unpriced: 0 });
+    expect(once?.spentUsd).toBeCloseTo(first.costUsd, 10);
+    const b = setup({ flags: ALLOWED });
+    expect(await send(b.runtime, request({ pass: 2 }))).toMatchObject({ kind: 'proposal' });
+    const twice = await readRunSpend(runDir());
+    expect(twice).toMatchObject({ calls: 2, tokens: 2700 });
+    expect(twice?.spentUsd).toBeCloseTo(2 * first.costUsd, 10);
+    expect((await readdir(join(runDir(), 'ai'))).filter((f) => f.includes('.tmp'))).toEqual([]);
+  });
+
+  it('a run at its cost cap on disk is refused, whatever the runtime remembers', async () => {
+    await mkdir(join(runDir(), 'ai'), { recursive: true });
+    const spend = { startedAt: Date.now(), spentUsd: 1.9999, calls: 1, tokens: 10, unpriced: 0 };
+    await writeFile(
+      join(runDir(), 'ai', 'spend.json'),
+      JSON.stringify({ schema: SPEND_SCHEMA, ...spend }),
+    );
+    const t = setup({ flags: ALLOWED });
+    expect(await send(t.runtime, request())).toMatchObject({ kind: 'refused', code: 'budget' });
+    expect(t.requests()).toBe(0);
+  });
+
+  it('a run that has made all its requests is refused, also with an unknown price', async () => {
+    await mkdir(join(runDir(), 'ai'), { recursive: true });
+    const spend = { startedAt: Date.now(), spentUsd: 0, calls: 4, tokens: 10, unpriced: 4 };
+    await writeFile(
+      join(runDir(), 'ai', 'spend.json'),
+      JSON.stringify({ schema: SPEND_SCHEMA, ...spend }),
+    );
+    const t = setup({ flags: ALLOWED });
+    const r = await send(t.runtime, request({ costConfirmed: true }));
+    expect(r).toMatchObject({ kind: 'refused', code: 'budget' });
+    if (r.kind === 'refused') expect(r.reason).toContain('all the AI requests');
+  });
+
+  it('a spend record that cannot be read refuses rather than starting again', async () => {
+    await mkdir(join(runDir(), 'ai'), { recursive: true });
+    await writeFile(join(runDir(), 'ai', 'spend.json'), '{"schema":');
+    const t = setup({ flags: ALLOWED });
+    expect(await send(t.runtime, request())).toMatchObject({ kind: 'refused', code: 'budget' });
+    expect(await readFile(join(runDir(), 'ai', 'spend.json'), 'utf8')).toBe('{"schema":');
+  });
+
+  it('a run that is not saved in the project is refused', async () => {
+    const t = setup({ flags: ALLOWED });
+    const r = await send(t.runtime, request({ engineerRun: 'run-unknown' }));
+    expect(r).toMatchObject({ kind: 'refused', code: 'capability' });
+    if (r.kind === 'refused') expect(r.reason).toContain('not saved');
+    expect(t.requests()).toBe(0);
+    expect(t.getKey).not.toHaveBeenCalled();
   });
 
   it('a cache hit makes no request, also after a restart', async () => {
-    dir = await mkdtemp(join(tmpdir(), 'eng-ipc-'));
-    const a = setup({ flags: ALLOWED, cacheDir: dir });
-    expect(await a.runtime.engineer(request())).toMatchObject({ cached: false });
+    const a = setup({ flags: ALLOWED });
+    expect(await send(a.runtime, request())).toMatchObject({ cached: false });
     expect(a.requests()).toBe(1);
-    expect(await readdir(join(dir, 'run-a', 'ai'))).toHaveLength(1);
-    const b = setup({ flags: ALLOWED, cacheDir: dir });
-    expect(await b.runtime.engineer(request())).toMatchObject({ kind: 'proposal', cached: true });
+    expect((await readdir(join(runDir(), 'ai'))).filter((f) => f !== 'spend.json')).toHaveLength(1);
+    const b = setup({ flags: ALLOWED });
+    expect(await send(b.runtime, request())).toMatchObject({ kind: 'proposal', cached: true });
     expect(b.requests()).toBe(0);
     expect(b.events).toEqual([]);
   });
 
   it('a project that is not open is refused', async () => {
     const t = setup({ open: false });
-    expect(await t.runtime.engineer(request())).toMatchObject({ kind: 'refused', code: 'policy' });
+    expect(await t.runtime.engineer(request())).toMatchObject({ kind: 'refused' });
     expect(await t.runtime.engineerPreview(preview(request()))).toMatchObject({ ok: false });
   });
 
   it('scripted replies through the IPC: flare, invalid then valid, rate limit', async () => {
     const t = setup({ flags: ALLOWED });
+    expect(await send(t.runtime, request({ summary: '{"note":"#engineer flare"}' }))).toMatchObject(
+      { kind: 'proposal', proposal: { family: { value: 'flare' } } },
+    );
     expect(
-      await t.runtime.engineer(request({ summary: '{"note":"#engineer flare"}' })),
-    ).toMatchObject({ kind: 'proposal', proposal: { family: { value: 'flare' } } });
-    expect(
-      await t.runtime.engineer(
-        request({ runId: 'ipc-2', summary: '{"note":"#engineer invalid"}' }),
-      ),
+      await send(t.runtime, request({ runId: 'ipc-2', summary: '{"note":"#engineer invalid"}' })),
     ).toMatchObject({ kind: 'proposal', proposal: { family: { value: 'chimney' } } });
     expect(
-      await t.runtime.engineer(
+      await send(
+        t.runtime,
         request({ runId: 'ipc-3', summary: '{"note":"#engineer rate-limit"}' }),
       ),
     ).toMatchObject({ kind: 'failed', code: 'rate-limit' });

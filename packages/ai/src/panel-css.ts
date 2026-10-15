@@ -96,6 +96,7 @@ export const PANEL_CSS = `
 .aio-agent .ag-btn.link { height: auto; padding: 0; border: 0; background: none; color: var(--acc); text-decoration: underline; text-underline-offset: 2px; }
 .aio-agent .ag-btn.link:hover { background: none; color: var(--acc-strong); }
 .aio-agent.ag-standalone { display: contents; }
+.aio-agent .ag-modal:focus { outline: none; }
 .aio-agent .ag-modal.ag-ev { width: min(640px, calc(100vw - 32px)); gap: 12px; }
 .aio-agent .ag-ev-group { display: grid; gap: 8px; padding-top: 10px; border-top: 1px solid var(--line-soft); }
 .aio-agent .ag-ev-head { display: flex; align-items: center; gap: 8px; min-width: 0; }

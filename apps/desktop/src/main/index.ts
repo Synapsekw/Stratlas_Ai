@@ -110,7 +110,7 @@ import {
 import { registerLocalModelsIpc, type LocalServerSeen } from './localModels';
 import { readCloudDrawings, registerModelBuilderIpc } from './modelBuilder';
 import { registerEngineeringIpc } from './engineering';
-import { engineerRuntimeHost, registerEvidencePolicyIpc } from './evidencePolicy';
+import { engineerRuntimeHost, registerEvidencePolicyIpc, resizeDataUrl } from './evidencePolicy';
 import { createBlobService, registerBlobsIpc } from './blobs';
 import { houseSignOff, registerCollabIpc } from './collab';
 import {
@@ -636,22 +636,8 @@ const agent = createAgentRuntime(
         const header = registry.package(id)?.header;
         return header === undefined || header.aiPolicy === 'allow' ? 'allow' : 'forbid';
       },
-      resize: (dataUrl, maxPx) => {
-        const img = nativeImage.createFromDataURL(dataUrl);
-        if (img.isEmpty()) return Promise.reject(new Error('The image could not be decoded.'));
-        const { width, height } = img.getSize();
-        const s = Math.min(1, maxPx / Math.max(width, height, 1));
-        const small = img.resize({
-          width: Math.max(1, Math.floor(width * s)),
-          height: Math.max(1, Math.floor(height * s)),
-          quality: 'good',
-        });
-        return Promise.resolve(
-          dataUrl.startsWith('data:image/png')
-            ? small.toDataURL()
-            : `data:image/jpeg;base64,${small.toJPEG(90).toString('base64')}`,
-        );
-      },
+      resize: (dataUrl, maxPx) =>
+        resizeDataUrl(dataUrl, maxPx, (url) => nativeImage.createFromDataURL(url)),
     }),
   },
   { providers },

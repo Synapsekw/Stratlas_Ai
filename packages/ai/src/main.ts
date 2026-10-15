@@ -28,9 +28,11 @@ import {
   runEngineer,
   TIME_USED_UP,
   type EngineerCall,
-  type EngineerHost,
 } from './engineer';
 import { payloadPreview } from './engineerPrompt';
+import { readRunSpend, runLimits, writeRunSpend, type RunSpend } from './engineerSpend';
+import { existsSync } from 'node:fs';
+import { join } from 'node:path';
 import {
   generateText,
   RetryError,
@@ -164,11 +166,18 @@ export interface AgentRuntimeHost {
 export interface EngineerRuntimeHost {
   /**
    * The project's AI policy and its photo and scan consents, read from the manifest on disk now
-   * (never from the renderer); null when the project is not open.
+   * (never from the renderer); null when the project is not open; `error` when the manifest
+   * cannot be read (nothing is sent then).
    */
-  policy(projectId: string): Promise<{ ai: AiPolicy; photos: boolean; scans: boolean } | null>;
-  /** The run's cache folder (`<project>/engineering/<run>/ai`); undefined: no cache (a package). */
-  cacheDir?(projectId: string, engineerRun: string): string | undefined;
+  policy(
+    projectId: string,
+  ): Promise<{ ai: AiPolicy; photos: boolean; scans: boolean } | { error: string } | null>;
+  /**
+   * The run's folder (`<project>/engineering/<run>`), undefined when the project has none (a
+   * package, or not open). A request needs the run's `run.json` there; the cache and the run's
+   * spend live in its `ai/` folder.
+   */
+  runDir?(projectId: string, engineerRun: string): string | undefined;
   /** Downscale an image to `maxPx` on its long side (Electron `nativeImage`). */
   resize?(dataUrl: string, maxPx: number): Promise<string>;
   /** The clock for the run's AI time; Date.now by default. */
@@ -218,11 +227,14 @@ export interface AgentRuntime {
 /** How long a one-time consent from the send preview stays valid. */
 const CONSENT_MS = 10 * 60_000;
 
-/** A cache that keeps nothing (a read-only package). */
-const NO_CACHE: EngineerHost['cache'] = {
-  get: () => Promise.resolve(null),
-  put: () => Promise.resolve(),
-};
+const NO_RUN =
+  'This engineering run is not saved in the project, so its AI step cannot run. Start the run again from the engineering panel.';
+const SPEND_UNREADABLE =
+  "This run's AI spend record (engineering/<run>/ai/spend.json) could not be read, so no more AI requests are sent for it. Start a new run.";
+const LIMIT_REACHED =
+  'This run has made all the AI requests its detail level allows. Review the proposal so far, or start a new run.';
+const PREVIEW_FIRST =
+  'Open the send preview and send from there: every request to a cloud model is confirmed for exactly what it sends.';
 
 export interface AgentRuntimeOptions {
   providers?: ProviderRegistry;
@@ -736,13 +748,13 @@ export function createAgentRuntime(
 
   // ---------------------------------------------------------------- engineer step
 
-  /** Per engineering run: when its AI time started, what it spent, whether a request is out. */
-  const engineerRuns = new Map<
-    string,
-    { startedAt: number; spentUsd: number; inFlight: boolean }
-  >();
+  /** Engineering runs with a request out (one at a time per run); their spend is on disk. */
+  const inFlight = new Set<string>();
   /** One-time consents handed out with a send preview: valid once, for that content only. */
-  const consents = new Map<string, { projectId: string; key: string; expires: number }>();
+  const consents = new Map<
+    string,
+    { projectId: string; run: string; key: string; expires: number }
+  >();
   const clock = () => host.engineer?.now?.() ?? Date.now();
   /** The registry the engineer step resolves through: the local model included. */
   const engineerProviders: ProviderRegistry = {
@@ -798,6 +810,7 @@ export function createAgentRuntime(
     if (!ready.ok) return { ok: false, error: ready.reason };
     const flags = await eh.policy(req.projectId);
     if (!flags) return { ok: false, error: notOpenMessage };
+    if ('error' in flags) return { ok: false, error: flags.error };
     const c = engineerCallOf(req);
     const built = await buildEngineerPayload(c, ready.caps, eh.resize?.bind(eh));
     if (!built.ok) return { ok: false, error: built.reason };
@@ -808,6 +821,7 @@ export function createAgentRuntime(
     const token = randomUUID();
     consents.set(token, {
       projectId: req.projectId,
+      run: req.engineerRun,
       key: contentKey(c, route),
       expires: now + CONSENT_MS,
     });
@@ -838,8 +852,7 @@ export function createAgentRuntime(
     }
     if (runs.has(req.runId)) return { kind: 'refused', code: 'busy', reason: MESSAGES.busy };
     const runKey = `${req.projectId}\n${req.engineerRun}`;
-    const known = engineerRuns.get(runKey);
-    if (known?.inFlight) {
+    if (inFlight.has(runKey)) {
       return {
         kind: 'refused',
         code: 'busy',
@@ -856,44 +869,77 @@ export function createAgentRuntime(
     if (cloud && !host.cloudAllowed()) {
       return { kind: 'refused', code: 'policy', reason: MESSAGES.cloudOff };
     }
+    // an engineering run is saved in the project before its AI step: its allowance lives there
+    const dir = eh.runDir?.(req.projectId, req.engineerRun);
+    if (!dir || !existsSync(join(dir, 'run.json'))) {
+      return { kind: 'refused', code: 'capability', reason: NO_RUN };
+    }
     // the consents as the manifest on disk says now, whatever the renderer claims
     const disk = await eh.policy(req.projectId);
     if (!disk) return { kind: 'refused', code: 'policy', reason: notOpenMessage };
+    if ('error' in disk) return { kind: 'refused', code: 'policy', reason: disk.error };
+    let spend: RunSpend;
+    try {
+      spend = (await readRunSpend(dir)) ?? {
+        startedAt: clock(),
+        spentUsd: 0,
+        calls: 0,
+        tokens: 0,
+        unpriced: 0,
+      };
+    } catch {
+      return { kind: 'refused', code: 'budget', reason: SPEND_UNREADABLE };
+    }
+    // the run's AI time and request limits, checked before a consent token is spent
+    const left = spend.startedAt + ENGINEER_TIMEOUT_MS - clock();
+    if (left <= 0) return { kind: 'refused', code: 'time', reason: TIME_USED_UP };
+    const limits = runLimits(req.setup.detail);
+    if (spend.calls >= limits.calls || spend.tokens >= limits.tokens) {
+      return { kind: 'refused', code: 'budget', reason: LIMIT_REACHED };
+    }
     const c: EngineerCall = {
       ...engineerCallOf(req),
       ...(req.costConfirmed ? { costConfirmed: true } : {}),
     };
     let { photos, scans } = disk;
-    if (req.consent) {
-      // valid once, for this project and exactly the content the preview showed
-      const t = consents.get(req.consent.token);
-      consents.delete(req.consent.token);
-      const valid =
-        t?.projectId === req.projectId && t.expires > clock() && t.key === contentKey(c, route);
-      if (valid) {
-        photos ||= req.consent.photos;
-        scans ||= req.consent.scans;
-      }
+    // every cloud request goes through the send preview: a token valid once, for this project
+    // and exactly the content shown; the project consents only spare the per-request boxes
+    const token = req.consent ? consents.get(req.consent.token) : undefined;
+    if (req.consent) consents.delete(req.consent.token);
+    const valid =
+      token?.projectId === req.projectId &&
+      token.run === req.engineerRun &&
+      token.expires > clock() &&
+      token.key === contentKey(c, route);
+    if (cloud && !valid) return { kind: 'refused', code: 'policy', reason: PREVIEW_FIRST };
+    if (valid && req.consent) {
+      photos ||= req.consent.photos;
+      scans ||= req.consent.scans;
     }
-    const state = known ?? { startedAt: clock(), spentUsd: 0, inFlight: false };
-    engineerRuns.set(runKey, state);
-    const left = state.startedAt + ENGINEER_TIMEOUT_MS - clock();
-    if (left <= 0) return { kind: 'refused', code: 'time', reason: TIME_USED_UP };
 
     const run: Run = { controller: new AbortController(), pending: new Map() };
     runs.set(req.runId, run);
-    state.inFlight = true;
+    inFlight.add(runKey);
+    // the run's AI time starts with its first request, also across restarts
+    let saving = writeRunSpend(dir, spend).catch(() => undefined);
     try {
-      const dir = eh.cacheDir?.(req.projectId, req.engineerRun);
       return await runEngineer(c, {
         route: () => route,
         key: (p) => host.getKey(p as AiProvider),
         offlineOnly,
         policy: () => ({ ai: disk.ai, photos, scans }),
-        cache: dir ? fileEngineerCache(dir) : NO_CACHE,
-        spent: () => state.spentUsd,
+        cache: fileEngineerCache(join(dir, 'ai')),
+        spent: () => spend.spentUsd,
         usage: (u) => {
-          if (u.costUsd !== undefined) state.spentUsd += u.costUsd;
+          spend = {
+            ...spend,
+            spentUsd: spend.spentUsd + (u.costUsd ?? 0),
+            calls: spend.calls + 1,
+            tokens: spend.tokens + u.inputTokens + u.outputTokens,
+            unpriced: spend.unpriced + (u.costUsd === undefined ? 1 : 0),
+          };
+          const snapshot = spend;
+          saving = saving.then(() => writeRunSpend(dir, snapshot)).catch(() => undefined);
           const tags = { provider: u.provider, model: u.model };
           const cost = u.costUsd !== undefined ? { costUsd: u.costUsd } : {};
           host.emit({
@@ -922,7 +968,8 @@ export function createAgentRuntime(
         deadline: Date.now() + left,
       });
     } finally {
-      state.inFlight = false;
+      await saving;
+      inFlight.delete(runKey);
       runs.delete(req.runId);
     }
   }

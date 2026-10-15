@@ -98,6 +98,14 @@ export function EvidencePreview(p: EvidencePreviewProps) {
   const priced = local || p.estimateUsd !== undefined || costConfirmed;
   const ready = consented && priced;
   const left = p.content.leftOut;
+  const missing = GROUPS.filter(
+    (g) => !local && byNeed(g.need).length > 0 && !p.flags[g.need] && !once[g.need],
+  ).map((g) => g.title.toLowerCase());
+  const why = !consented
+    ? `Allow ${missing.join(' and ')} for this project, or tick them for this send.`
+    : !priced
+      ? 'Confirm sending without a cost estimate.'
+      : null;
 
   return (
     <SendDialog
@@ -115,6 +123,7 @@ export function EvidencePreview(p: EvidencePreviewProps) {
             type="button"
             className="ag-btn primary"
             disabled={!ready}
+            aria-describedby={why ? 'eng-ev-why' : undefined}
             onClick={() => {
               p.onSendOnce({
                 once: { photos: !local && once.photos, scans: !local && once.scans },
@@ -139,6 +148,8 @@ export function EvidencePreview(p: EvidencePreviewProps) {
         </dd>
         <dt>Images</dt>
         <dd>{imagesText(p.content.images.length, total)} in all</dd>
+        <dt>Request size</dt>
+        <dd>{formatBytes(p.content.bytes)} with the text</dd>
         <dt>Estimated cost</dt>
         <dd className={p.estimateUsd === undefined && !local ? 'ag-ev-cost unknown' : 'ag-ev-cost'}>
           {costText(p.estimateUsd, local)}
@@ -234,6 +245,11 @@ export function EvidencePreview(p: EvidencePreviewProps) {
           />
           Send without a cost estimate
         </label>
+      )}
+      {why && (
+        <p id="eng-ev-why" className="ag-sub">
+          {why}
+        </p>
       )}
     </SendDialog>
   );

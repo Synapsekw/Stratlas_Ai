@@ -21,14 +21,64 @@ export interface EvidencePolicy {
 /** The builder library loads on first use, as in builder.ts and modelBuilder.ts. */
 const lib = () => import('@aio/project/builder');
 
-export async function evidencePolicy(projectRoot: string): Promise<EvidencePolicy> {
-  const ai = await readAiPolicy(projectRoot);
+/** Shown when the manifest cannot be read: nothing goes to a cloud model then. */
+export const MANIFEST_UNREADABLE =
+  "The project's manifest could not be read, so its AI sharing settings are unknown and nothing is sent to a cloud model. Check the project folder, then try again.";
+
+/**
+ * The policy from the manifest on disk, or `error` when the manifest cannot be read or is not
+ * valid (never "allow" by default on this path).
+ */
+export async function evidencePolicy(
+  projectRoot: string,
+): Promise<EvidencePolicy | { error: string }> {
+  let m: ProjectManifest;
   try {
-    const m = await (await lib()).readManifestFile(projectRoot);
-    return { ai, photos: m.aiCloudPhotos === true, scans: m.aiCloudScans === true };
+    m = await (await lib()).readManifestFile(projectRoot);
   } catch {
-    return { ai, photos: false, scans: false };
+    return { error: MANIFEST_UNREADABLE };
   }
+  // the package-style `aiPolicy` key is read from the raw file (the schema strips it)
+  const ai = await readAiPolicy(projectRoot);
+  return { ai, photos: m.aiCloudPhotos === true, scans: m.aiCloudScans === true };
+}
+
+/** The part of Electron's `NativeImage` the downscale uses. */
+export interface NativeImageLike {
+  isEmpty(): boolean;
+  getSize(): { width: number; height: number };
+  resize(o: {
+    width: number;
+    height: number;
+    quality?: 'good' | 'better' | 'best';
+  }): NativeImageLike;
+  toPNG(): Buffer;
+  toJPEG(quality: number): Buffer;
+}
+
+/**
+ * Downscale an image so its long side is at most `maxPx`, re-encoded explicitly: a PNG stays PNG
+ * (transparency), anything else (JPEG, WebP, which Electron cannot write) becomes JPEG at 90.
+ */
+export function resizeDataUrl(
+  dataUrl: string,
+  maxPx: number,
+  fromDataUrl: (url: string) => NativeImageLike,
+): Promise<string> {
+  const img = fromDataUrl(dataUrl);
+  if (img.isEmpty()) return Promise.reject(new Error('The image could not be decoded.'));
+  const { width, height } = img.getSize();
+  const s = Math.min(1, maxPx / Math.max(width, height, 1));
+  const small = img.resize({
+    width: Math.max(1, Math.floor(width * s)),
+    height: Math.max(1, Math.floor(height * s)),
+    quality: 'good',
+  });
+  return Promise.resolve(
+    dataUrl.startsWith('data:image/png;')
+      ? `data:image/png;base64,${small.toPNG().toString('base64')}`
+      : `data:image/jpeg;base64,${small.toJPEG(90).toString('base64')}`,
+  );
 }
 
 const READ_ONLY = {
@@ -72,8 +122,9 @@ export function registerEvidencePolicyIpc({
 
 /**
  * The engineer step's host in main: consents re-read from disk for every request (a package
- * shares no photos or scans and keeps no cache), the cache under the run's `engineering/<run>/ai`,
- * and the downscale (`resize`, Electron `nativeImage` in the app).
+ * shares no photos or scans and has no runs), the run folder `engineering/<run>` (its `run.json`
+ * must be there; cache and spend under its `ai/`), and the downscale (`resize`, Electron
+ * `nativeImage` through `resizeDataUrl` in the app).
  */
 export function engineerRuntimeHost(o: {
   projects: Pick<ModelProjects, 'root' | 'package'>;
@@ -89,10 +140,10 @@ export function engineerRuntimeHost(o: {
       const root = o.projects.root(projectId);
       return root === undefined ? null : evidencePolicy(root);
     },
-    cacheDir: (projectId, run) => {
+    runDir: (projectId, run) => {
       if (o.projects.package(projectId)) return undefined;
       const root = o.projects.root(projectId);
-      return root === undefined ? undefined : join(root, 'engineering', run, 'ai');
+      return root === undefined ? undefined : join(root, 'engineering', run);
     },
     ...(o.resize ? { resize: o.resize } : {}),
   };
