@@ -82,6 +82,9 @@ span.ann-tick[data-on='true']::after { content: ''; position: absolute; left: 3.
 .ann-sighting .stl button { margin-left: auto; }
 .ann-audit { font: 400 var(--t-11)/1.5 var(--f-mono); color: var(--fg-3); margin: 0; padding-left: 14px; }
 .ann-error { color: var(--danger); font-size: var(--t-11); }
+.new-class-row { display: flex; flex-direction: column; gap: 4px; padding: 2px 6px; }
+.new-class-row .ann-input { width: 100%; box-sizing: border-box; }
+.ann-pop .new-class { justify-content: flex-start; height: 26px; padding: 0 6px; color: var(--fg-2); }
 .ann-faint { color: var(--fg-3); font-size: var(--t-11); }
 .ann-ro-title { color: var(--fg-0); font-size: var(--t-14); font-weight: 600; line-height: 1.35; }
 .ann-ro-note { margin: 0; color: var(--fg-1); font-size: var(--t-13); line-height: 1.5; white-space: pre-wrap; }

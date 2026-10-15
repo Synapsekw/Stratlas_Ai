@@ -128,7 +128,7 @@ export function NewClassRow({
         placeholder="Class name"
         maxLength={80}
         value={label}
-        disabled={busy}
+        readOnly={busy}
         onChange={(e) => {
           setLabel(e.target.value);
           setError(null);
@@ -146,7 +146,7 @@ export function NewClassRow({
         }}
       />
       {error && (
-        <span className="ann-err" role="alert">
+        <span className="ann-error" role="alert">
           {error}
         </span>
       )}

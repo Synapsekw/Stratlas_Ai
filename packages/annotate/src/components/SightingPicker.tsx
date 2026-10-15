@@ -123,7 +123,7 @@ export function SightingPicker({ kinds }: { kinds: readonly Sighting['on'][] }) 
       <div className="classes" role="listbox" aria-label="Class">
         {classes.length === 0 && (
           <div className="ann-faint">
-            {create
+            {create && !disabledReason
               ? 'No classes yet. Create one below.'
               : 'This project has no class catalogue yet.'}
           </div>
