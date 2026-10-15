@@ -305,8 +305,20 @@ describe('model builder IPC', () => {
         ],
       },
     });
+    // a draft part sharing the tank's tag: its node is told apart by name, not by tag
+    const twin = {
+      kind: 'box',
+      id: 'p4',
+      tag: 'T-101',
+      class: 'skid',
+      status: 'draft',
+      origin: { by: 'manual' },
+      base: [60, 0, 0],
+      size: [2, 2, 2],
+    };
     const eng = ProcModel.parse({
       ...model,
+      parts: [...model.parts, twin],
       assemblies: [
         shaft('shaft-1', 'accepted', 'CH-1'),
         shaft('shaft-2', 'accepted'),
@@ -331,7 +343,7 @@ describe('model builder IPC', () => {
     expect(m.layers[0]).toMatchObject({
       id: 'model-plant',
       tags: [
-        { node: 'shaft-1', tag: 'CH-1' },
+        { node: 'shaft-1', tag: 'CH-1', area: 'shaft' },
         { node: 'T-101', tag: 'T-101', area: 'tank' },
       ],
     });
@@ -343,6 +355,12 @@ describe('model builder IPC', () => {
       'shaft-1',
       'shaft-2',
       'shaft-3',
+    ]);
+    const layer = (await readManifestFile(root)).layers.find((l) => l.id === 'model-draft-plant');
+    expect(layer?.kind === 'mesh' && layer.tags).toEqual([
+      { node: 'shaft-1', tag: 'CH-1', area: 'shaft' },
+      { node: 'T-101', tag: 'T-101', area: 'tank' },
+      { node: 'T-101_p4', tag: 'T-101', area: 'skid' },
     ]);
   });
 

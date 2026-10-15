@@ -15,6 +15,7 @@ import {
   buildEngineeringGlb,
   checkProcModel,
   meshProcModel,
+  readGlb,
   readProcModel,
   summarise,
 } from '@aio/modelling';
@@ -155,16 +156,26 @@ function meshModel(
       drafts: draft,
       generator: `${brand.productName} model builder`,
     });
-    const assemblyIds = new Set(model.assemblies.map((a) => a.id));
+    const assemblies = new Map(model.assemblies.map((a) => [a.id, a]));
+    // the part each part node was made from, by node name (its `extras.part`)
+    const partOfNode = new Map<string, string>();
+    const glbNodes = readGlb(built.glb).json.nodes;
+    for (const n of Array.isArray(glbNodes) ? (glbNodes as unknown[]) : []) {
+      if (typeof n !== 'object' || n === null) continue;
+      const { name, extras } = n as { name?: unknown; extras?: { part?: unknown } };
+      if (typeof name === 'string' && typeof extras?.part === 'string')
+        partOfNode.set(name, extras.part);
+    }
     const tags: NonNullable<MeshLayer['tags']> = [];
     for (const n of built.nodes) {
-      if (n.tag === undefined) continue;
-      if (assemblyIds.has(n.node)) {
-        tags.push({ node: n.node, tag: n.tag, ...(n.area ? { area: n.area } : {}) });
+      const a = assemblies.get(n.node);
+      if (a) {
+        if (a.tag) tags.push({ node: n.node, tag: a.tag, area: a.kind });
         continue;
       }
       // a part node is tagged as the parts mesher tags it: only a part with a tag, by its class
-      const part = model.parts.find((p) => p.tag === n.tag);
+      const id = partOfNode.get(n.node);
+      const part = id === undefined ? undefined : model.parts.find((p) => p.id === id);
       if (part?.tag)
         tags.push({ node: n.node, tag: part.tag, ...(part.class ? { area: part.class } : {}) });
     }
