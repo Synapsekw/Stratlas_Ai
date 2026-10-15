@@ -1,6 +1,6 @@
-import { ProcModel, type Assembly } from '@aio/schema';
+import { ProcModel, type Assembly, type EvidencePack } from '@aio/schema';
 import { describe, expect, it } from 'vitest';
-import { component, engineeringModel } from '../fixtures';
+import { component, engineeringModel, stackEvidence } from '../fixtures';
 import { mergeModels } from './merge';
 import { assembleStack, byId, byKind, must, withStatus } from './testAssemble';
 
@@ -42,8 +42,30 @@ describe('mergeModels', () => {
   it('keeps an accepted component over its regenerated values and flags the difference', () => {
     const prev = engineeringModel('m', 'M', [flue('flue-1', 1, 'accepted')]);
     const r = mergeModels(prev, [flue('flue-1', 3)]);
-    expect(r.assemblies[0]).toBe(prev.assemblies[0]);
+    const kept = must(r.assemblies[0]);
+    expect(kept.status).toBe('accepted');
+    expect(kept.kind === 'flue' && kept.params).toEqual(must(prev.assemblies[0]).params);
     expect(r.flagged.map((f) => f.id)).toEqual(['flue-1']);
+  });
+
+  it('flags an accepted difference once, not again on the next run with the same values', () => {
+    const prev = engineeringModel('m', 'M', [flue('flue-1', 1, 'accepted')]);
+    const first = mergeModels(prev, [flue('flue-1', 3)]);
+    expect(first.flagged.map((f) => f.id)).toEqual(['flue-1']);
+    const again = engineeringModel('m', 'M', first.assemblies);
+    const second = mergeModels(again, [flue('flue-1', 3)]);
+    expect(second.flagged).toEqual([]);
+    expect(second.assemblies[0]).toBe(again.assemblies[0]);
+    // run values that change once more are flagged again
+    const third = mergeModels(again, [flue('flue-1', 4)]);
+    expect(third.flagged.map((f) => f.id)).toEqual(['flue-1']);
+  });
+
+  it('does not flag an accepted component the run regenerates as it was accepted', () => {
+    const prev = engineeringModel('m', 'M', [flue('flue-1', 1, 'accepted')]);
+    const r = mergeModels(prev, [flue('flue-1', 1)]);
+    expect(r.flagged).toEqual([]);
+    expect(r.assemblies[0]).toBe(prev.assemblies[0]);
   });
 
   it('takes a person value onto an accepted component and keeps it accepted', () => {
@@ -172,5 +194,84 @@ describe('regenerating through assemble', () => {
     const l = byId(next.model, 'light-l2-2');
     expect(l.kind === 'warningLight' && l.params.fixture).toBe('beacon');
     expect(next.changed.sort()).toEqual(['light-l1-1', 'light-l1-2', 'light-l1-3']);
+  });
+});
+
+/** The stack evidence with an extra light level found at `h` metres (lights at 0, 120, 240). */
+function withLowLevel(h: number): EvidencePack {
+  const ev = stackEvidence();
+  return {
+    ...ev,
+    members: ev.members.map((g) =>
+      g.kind === 'light-candidate'
+        ? {
+            ...g,
+            items: [
+              ...g.items,
+              ...[0, 120, 240].map((az) => {
+                const t = (az * Math.PI) / 180;
+                const r = 9 - (2.5 * h) / 55 + 0.4;
+                return {
+                  centre: [r * Math.sin(t), h, -r * Math.cos(t)] as [number, number, number],
+                  size: 0.4,
+                  support: 60,
+                  azimuthDeg: az,
+                };
+              }),
+            ],
+          }
+        : g,
+    ),
+  };
+}
+
+const lightsOf = (m: ProcModel) =>
+  byKind(m, 'warningLight').map((l) => ({ id: l.id, y: l.params.centre[1], status: l.status }));
+
+describe('light level roles across regeneration', () => {
+  it('adding a lower level keeps every existing light id and accepted light', () => {
+    const prev = withStatus(assembleStack().model, 'light-l1-1', 'accepted');
+    const next = assembleStack({ previous: prev, evidence: withLowLevel(10) });
+    const before = lightsOf(prev);
+    const after = lightsOf(next.model);
+    for (const l of before)
+      expect(after.find((a) => a.id === l.id)).toEqual({
+        ...l,
+        y: expect.closeTo(l.y, 6) as number,
+      });
+    expect(byId(next.model, 'light-l1-1')).toBe(byId(prev, 'light-l1-1'));
+    // the new level gets the next role and nothing is duplicated
+    const low = after.filter((a) => Math.abs(a.y - 10) < 0.5).map((a) => a.id);
+    expect(low.sort()).toEqual(['light-l3-1', 'light-l3-2', 'light-l3-3']);
+    expect(new Set(after.map((a) => a.id)).size).toBe(after.length);
+    expect(after).toHaveLength(before.length + 3);
+    expect(next.changed.sort()).toEqual(['light-l3-1', 'light-l3-2', 'light-l3-3']);
+    expect(ProcModel.safeParse(next.model).success).toBe(true);
+  });
+
+  it('a level correction still targets the intended level after a lower level appears', () => {
+    const prev = assembleStack().model;
+    const next = assembleStack({
+      previous: prev,
+      evidence: withLowLevel(10),
+      user: { levels: { 'light-l1': [45] } },
+    });
+    const ys = (role: string) =>
+      lightsOf(next.model)
+        .filter((l) => l.id.startsWith(`${role}-`))
+        .map((l) => Math.round(l.y));
+    expect(ys('light-l1')).toEqual([45, 45, 45]);
+    expect(ys('light-l2')).toEqual([80, 80, 80]);
+    expect(ys('light-l3')).toEqual([10, 10, 10]);
+  });
+
+  it('a level the person moved far keeps its role when regenerated', () => {
+    const first = assembleStack({ user: { levels: { 'light-l1': [60] } } });
+    const next = assembleStack({
+      previous: first.model,
+      user: { levels: { 'light-l1': [60] } },
+    });
+    expect(next.changed).toEqual([]);
+    expect(lightsOf(next.model).map((l) => l.id)).toEqual(lightsOf(first.model).map((l) => l.id));
   });
 });

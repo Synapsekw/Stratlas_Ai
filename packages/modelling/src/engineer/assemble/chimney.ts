@@ -279,6 +279,37 @@ const PLACED = new Set<string>([
   'frame',
 ]);
 
+/**
+ * A component count: the person's, else the AI's when it saw them, else the evidence's, else the
+ * AI's guess, else none. When the AI and the evidence disagree the choice is noted as unresolved.
+ * (A partial cloud undercounts and photos miss things, so neither is silently blended.)
+ */
+function chooseCount(
+  ctx: FamilyCtx,
+  o: {
+    what: string;
+    user: number | undefined;
+    proposed: readonly ProposalComponent[];
+    evidence: number | undefined;
+  },
+): { n: number; basis: ValueBasis } {
+  const aiN = o.proposed.length ? o.proposed.reduce((s, c) => s + c.count, 0) : undefined;
+  const aiSaw = o.proposed.some((c) => c.observed);
+  const pick: { n: number; basis: ValueBasis; from: string } =
+    o.user !== undefined
+      ? { n: o.user, basis: 'user', from: 'your count' }
+      : aiN !== undefined && aiSaw
+        ? { n: aiN, basis: 'observed', from: 'the AI count' }
+        : o.evidence !== undefined
+          ? { n: o.evidence, basis: 'measured', from: 'the measured count' }
+          : { n: aiN ?? 0, basis: 'inferred', from: 'the AI guess' };
+  if (aiN !== undefined && o.evidence !== undefined && aiN !== o.evidence)
+    ctx.note(
+      `The AI counts ${String(aiN)} ${o.what}, the measurements ${String(o.evidence)}: ${String(pick.n)} used (${pick.from}).`,
+    );
+  return { n: Math.max(0, pick.n), basis: pick.basis };
+}
+
 interface Level {
   role: string;
   h: number;
@@ -348,21 +379,17 @@ function build(ctx: FamilyCtx, shaftOnly: boolean): Assembly[] {
   const flueC = ctx.proposals('flue')[0];
   const flueGroup = shaftOnly ? undefined : group(ctx, 'flue');
   const userFlues = shaftOnly ? undefined : ctx.userCount('flue');
-  const proposedFlues = ctx.proposals('flue').reduce((s, c) => s + c.count, 0);
-  const flueCount = shaftOnly
-    ? 0
-    : (userFlues ?? Math.max(flueGroup?.items.length ?? 0, proposedFlues));
+  const flueChoice = shaftOnly
+    ? { n: 0, basis: 'inferred' as ValueBasis }
+    : chooseCount(ctx, {
+        what: 'flues',
+        user: userFlues,
+        proposed: ctx.proposals('flue'),
+        evidence: flueGroup?.items.length,
+      });
+  const flueCount = flueChoice.n;
   const openTop = flueCount > 0 || bool(shaftC, 'openTop') === true;
-  const openTopBasis: ValueBasis =
-    userFlues !== undefined
-      ? 'user'
-      : flueGroup?.items.length
-        ? 'measured'
-        : flueC
-          ? flueC.observed
-            ? 'observed'
-            : 'inferred'
-          : 'inferred';
+  const openTopBasis: ValueBasis = flueCount > 0 ? flueChoice.basis : 'inferred';
   const aiWall = ctx.len(shaftC, 'wall');
   const wall =
     openTop || aiWall !== undefined
@@ -634,6 +661,50 @@ function build(ctx: FamilyCtx, shaftOnly: boolean): Assembly[] {
   return out;
 }
 
+/**
+ * Roles (`light-l<n>`) of the intermediate light levels. A level near (within `tol`) a level of
+ * the previous model keeps that level's role; previous levels the person moved pair with the
+ * levels left over, in height order; new levels are numbered after the highest previous one. So
+ * a level found later never renumbers the others, and `user.levels` keeps its target.
+ */
+function levelRoles(ctx: FamilyCtx, mid: readonly { h: number }[], tol: number): string[] {
+  const byRole = new Map<string, { n: number; ys: number[] }>();
+  for (const a of ctx.input.previous?.assemblies ?? []) {
+    const m = /^light-l([1-9][0-9]*)-[1-9][0-9]*$/.exec(a.id);
+    if (!m?.[1] || a.kind !== 'warningLight') continue;
+    const role = `light-l${m[1]}`;
+    const e = byRole.get(role) ?? { n: Number(m[1]), ys: [] };
+    e.ys.push(a.params.centre[1] - ctx.base[1]);
+    byRole.set(role, e);
+  }
+  const prev = [...byRole.entries()].map(([role, e]) => ({ role, n: e.n, h: mean(e.ys) }));
+  const out: (string | undefined)[] = mid.map(() => undefined);
+  const used = new Set<string>();
+  const pairs = mid
+    .flatMap((l, i) => prev.map((p) => ({ i, p, d: Math.abs(l.h - p.h) })))
+    .filter((x) => x.d <= tol)
+    .sort((x, y) => x.d - y.d || x.p.n - y.p.n || x.i - y.i);
+  for (const { i, p } of pairs)
+    if (out[i] === undefined && !used.has(p.role)) {
+      out[i] = p.role;
+      used.add(p.role);
+    }
+  const movedPrev = prev
+    .filter((p) => !used.has(p.role) && ctx.userLevels(p.role) !== undefined)
+    .sort((x, y) => x.h - y.h);
+  const left = mid
+    .map((l, i) => ({ h: l.h, i }))
+    .filter((x) => out[x.i] === undefined)
+    .sort((x, y) => x.h - y.h);
+  movedPrev.forEach((p, k) => {
+    const l = left[k];
+    if (l) out[l.i] = p.role;
+  });
+  let next = prev.reduce((m, p) => Math.max(m, p.n), 0);
+  for (const l of left) out[l.i] ??= `light-l${String(++next)}`;
+  return out.map((r, i) => r ?? `light-l${String(i + 1)}`);
+}
+
 function lights(ctx: FamilyCtx, shaftId: string): Assembly[] {
   const H = ctx.height;
   const b = ctx.base;
@@ -673,8 +744,9 @@ function lights(ctx: FamilyCtx, shaftId: string): Assembly[] {
       items: levels.find((l) => l !== crown && Math.abs(l.h - h) <= 0.04 * H)?.items ?? [],
     }));
   }
+  const midRoles = levelRoles(ctx, mid, 0.04 * H);
   const roles: Level[] = [
-    ...mid.map((l, i) => ({ ...l, role: `light-l${String(i + 1)}` })),
+    ...mid.map((l, i) => ({ ...l, role: midRoles[i] ?? `light-l${String(i + 1)}` })),
     ...(crown ? [{ ...crown, h: H, role: 'light-crown' }] : []),
   ];
   const out: Assembly[] = [];
@@ -683,10 +755,12 @@ function lights(ctx: FamilyCtx, shaftId: string): Assembly[] {
     const h = moved ?? level.h;
     const levelBasis: ValueBasis = moved !== undefined ? 'user' : level.basis;
     const y = b[1] + h;
-    const n =
-      ctx.userCount(level.role) ??
-      ctx.userCount('light') ??
-      Math.max(level.items.length, lightC?.count ?? 0);
+    const { n } = chooseCount(ctx, {
+      what: `lights at ${h.toFixed(1)} m`,
+      user: ctx.userCount(level.role) ?? ctx.userCount('light'),
+      proposed: lightC ? [lightC] : [],
+      evidence: level.basis === 'measured' ? level.items.length : undefined,
+    });
     if (n <= 0) continue;
     const seen = [...level.items].sort(bySupport(ctx)).slice(0, n);
     const seenAz = seen.map((it) => itemAz(ctx, it));

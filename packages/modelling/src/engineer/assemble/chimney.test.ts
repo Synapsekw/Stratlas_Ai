@@ -272,6 +272,61 @@ describe('chimney family', () => {
     expect(r.model.run).toEqual({ id: 'run-a', detail: 'standard' });
   });
 
+  it('photos count 2 flues, the cloud 3: the observed count wins, the strongest kept, noted', () => {
+    const r = assemble({
+      ...base,
+      evidence: stackEvidence(),
+      proposal: stackProposal({ flues: 2 }),
+    });
+    const fl = byKind(r.model, 'flue');
+    expect(fl).toHaveLength(2);
+    expect(fl.every((f) => f.quality.centre?.basis === 'measured')).toBe(true);
+    expect(r.unresolved.filter((u) => u.includes('flues'))).toEqual([
+      'The AI counts 2 flues, the measurements 3: 2 used (the AI count).',
+    ]);
+  });
+
+  it('photos count 5 flues, the cloud 3: five, the two beyond the cloud inferred, noted', () => {
+    const r = assemble({
+      ...base,
+      evidence: stackEvidence(),
+      proposal: stackProposal({ flues: 5 }),
+    });
+    const fl = byKind(r.model, 'flue');
+    expect(fl).toHaveLength(5);
+    expect(fl.filter((f) => f.quality.centre?.basis === 'measured')).toHaveLength(3);
+    expect(fl.filter((f) => f.quality.centre?.basis === 'inferred')).toHaveLength(2);
+    expect(r.unresolved).toContain(
+      'The AI counts 5 flues, the measurements 3: 5 used (the AI count).',
+    );
+  });
+
+  it('an unseen AI count gives way to the cloud, and agreeing counts leave no note', () => {
+    const p = stackProposal({ flues: 2 });
+    const unseen = {
+      ...p,
+      components: p.components.map((c) => (c.kind === 'flue' ? { ...c, observed: false } : c)),
+    };
+    const r = assemble({ ...base, evidence: stackEvidence(), proposal: unseen });
+    expect(byKind(r.model, 'flue')).toHaveLength(3);
+    expect(r.unresolved).toContain(
+      'The AI counts 2 flues, the measurements 3: 3 used (the measured count).',
+    );
+    const agree = assemble({ ...base, evidence: stackEvidence(), proposal: stackProposal() });
+    expect(agree.unresolved.some((u) => u.includes('The AI counts'))).toBe(false);
+  });
+
+  it('a level where the cloud sees fewer lights than the photos uses the photos and notes it', () => {
+    const r = assemble({
+      ...base,
+      evidence: stackEvidence({ partial: true }),
+      proposal: stackProposal(),
+    });
+    expect(r.unresolved).toContain(
+      'The AI counts 3 lights at 40.0 m, the measurements 1: 3 used (the AI count).',
+    );
+  });
+
   it('a generic model is the shaft alone', () => {
     const r = assemble({
       ...base,

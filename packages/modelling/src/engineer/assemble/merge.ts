@@ -67,6 +67,48 @@ function withParams(onto: Assembly, from: Assembly, keys: string[]): Assembly | 
   return r.success ? r.data : undefined;
 }
 
+/**
+ * Source entry on an accepted component recording (as `view`) a hash of the run values it was
+ * last reviewed against, so a difference is flagged once, not on every run.
+ */
+export const REVIEWED_REF = 'reviewed-run-values';
+
+function stableJson(v: unknown): string {
+  if (Array.isArray(v)) return `[${v.map(stableJson).join(',')}]`;
+  if (typeof v === 'object' && v !== null) {
+    const r = v as Record<string, unknown>;
+    return `{${Object.keys(r)
+      .filter((k) => r[k] !== undefined)
+      .sort()
+      .map((k) => `${JSON.stringify(k)}:${stableJson(r[k])}`)
+      .join(',')}}`;
+  }
+  return JSON.stringify(v);
+}
+
+/** FNV-1a hash of an assembly's kind and params, the `skip` params left out. */
+export function runValuesHash(a: Assembly, skip: ReadonlySet<string> = new Set()): string {
+  const params = Object.fromEntries(Object.entries(a.params).filter(([k]) => !skip.has(k)));
+  const text = stableJson({ kind: a.kind, params });
+  let h = 0x811c9dc5;
+  for (let i = 0; i < text.length; i++) {
+    h ^= text.charCodeAt(i);
+    h = Math.imul(h, 0x01000193) >>> 0;
+  }
+  return h.toString(16).padStart(8, '0');
+}
+
+const reviewedHash = (a: Assembly): string | undefined =>
+  a.sources.find((s) => s.kind === 'user' && s.ref === REVIEWED_REF)?.view;
+
+function withReviewed(a: Assembly, hash: string): Assembly {
+  const others = a.sources.filter((s) => !(s.kind === 'user' && s.ref === REVIEWED_REF));
+  return {
+    ...a,
+    sources: [...others.slice(0, 63), { kind: 'user', ref: REVIEWED_REF, view: hash }],
+  };
+}
+
 const userKeys = (a: Assembly): string[] =>
   Object.entries(a.quality)
     .filter(([k, q]) => q.basis === 'user' && k in a.params)
@@ -95,14 +137,23 @@ export function mergeModels(
     if (p.status !== 'draft') {
       // the person's own new values land on the kept component; nothing else does
       const own = p.kind === n.kind ? userKeys(n).filter((k) => !sameData(...pair(p, n, k))) : [];
-      const merged = (p.kind === n.kind ? withParams(p, n, own) : undefined) ?? p;
+      let merged = (p.kind === n.kind ? withParams(p, n, own) : undefined) ?? p;
+      if (p.status === 'accepted') {
+        // flag once per new set of run values: compare with the values it was last reviewed
+        // against (recorded on it), else with the values it was accepted with
+        const skip = new Set([...userKeys(p), ...userKeys(n)]);
+        const fresh = runValuesHash(n, skip);
+        if (fresh !== (reviewedHash(p) ?? runValuesHash(p, skip))) {
+          flagged.push({
+            id: p.id,
+            reason:
+              'The new run would change this accepted component; the accepted values are kept.',
+          });
+          merged = withReviewed(merged, fresh);
+        }
+      }
       out.push(merged);
       (merged === p ? kept : changed).push(p.id);
-      if (p.status === 'accepted' && !sameAssembly({ ...merged, status: n.status }, n))
-        flagged.push({
-          id: p.id,
-          reason: 'The new run would change this accepted component; the accepted values are kept.',
-        });
       continue;
     }
     const carry = userKeys(p).filter((k) => n.quality[k]?.basis !== 'user');
