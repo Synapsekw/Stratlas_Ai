@@ -1573,7 +1573,7 @@ export const ipc = {
   /**
    * Replace the project's class catalogues: add, rename, recolour, set a hotkey or a severity
    * model, delete (ANN-7). Validated in main (unique catalogue and class ids, unique hotkeys,
-   * `a` and `u` reserved, known severity models, no class removed while `issues.json` uses it),
+   * one letter a-z, not `a` or `u`, known severity models, no class removed while `issues.json` uses it),
    * backed up and journaled like `builder:updateCapture`.
    */
   'builder:updateClasses': {

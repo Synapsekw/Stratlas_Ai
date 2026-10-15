@@ -84,6 +84,16 @@ describe('cataloguesProblem', () => {
       /Two class catalogues/,
     );
   });
+  it('refuses hotkeys that are not one letter, and accepts k', () => {
+    const crack = { id: 'crack', label: 'Crack', color: '#e5484d', severityModel: 'sev' };
+    for (const hotkey of ['3', '-', 'a']) {
+      expect(cataloguesProblem(m, withClasses([{ ...crack, hotkey }]), none)).not.toBeNull();
+    }
+    expect(cataloguesProblem(m, withClasses([{ ...crack, hotkey: '3' }]), none)).toBe(
+      'Class Crack: A hotkey is one letter.',
+    );
+    expect(cataloguesProblem(m, withClasses([{ ...crack, hotkey: 'k' }]), none)).toBeNull();
+  });
   it('refuses to remove a class that issues use; an unknown class in issues does not matter', () => {
     expect(cataloguesProblem(m, withClasses([]), new Set(['rust']))).toMatch(
       /Class "rust" still has issues/,
@@ -115,5 +125,22 @@ describe('updateClasses', () => {
       await readFile(join(dir, 'manifest.json'), 'utf8'),
     ) as ProjectManifest;
     expect(onDisk.classCatalogues).toEqual(manifest().classCatalogues);
+  });
+
+  it('checks issues.json when its turn comes, not when the call starts', async () => {
+    const rust = manifest().classCatalogues[0]?.classes[1];
+    const p = updateClasses(dir, withClasses(rust ? [rust] : []));
+    await writeFile(
+      join(dir, 'issues.json'),
+      JSON.stringify({ schema: 'aio.issues/1', issues: [{ id: 'i2', classId: 'crack' }] }),
+    );
+    await expect(p).rejects.toThrow(/Class "crack" still has issues/);
+  });
+
+  it('refuses clearly when issues.json is damaged', async () => {
+    await writeFile(join(dir, 'issues.json'), '{ nope');
+    await expect(updateClasses(dir, withClasses([]))).rejects.toThrow(
+      'The issues file could not be read, so classes in use cannot be checked.',
+    );
   });
 });

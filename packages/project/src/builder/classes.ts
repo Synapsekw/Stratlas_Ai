@@ -35,6 +35,7 @@ export function cataloguesProblem(
         return `Class ${k.label} names severity model "${k.severityModel}", which the project does not have.`;
       }
       if (k.hotkey) {
+        if (!/^[a-z]$/i.test(k.hotkey)) return `Class ${k.label}: A hotkey is one letter.`;
         const key = k.hotkey.toLowerCase();
         if (RESERVED.has(key)) return `Class ${k.label}: "${key}" is reserved in the class picker.`;
         const other = keys.get(key);
@@ -61,7 +62,12 @@ async function usedClasses(root: string): Promise<Set<string>> {
     if ((e as NodeJS.ErrnoException).code === 'ENOENT') return new Set();
     throw e;
   }
-  const raw = JSON.parse(text) as { issues?: { classId?: unknown }[] };
+  let raw: { issues?: { classId?: unknown }[] };
+  try {
+    raw = JSON.parse(text) as { issues?: { classId?: unknown }[] };
+  } catch {
+    throw new Error('The issues file could not be read, so classes in use cannot be checked.');
+  }
   return new Set(
     (raw.issues ?? []).flatMap((i) => (typeof i.classId === 'string' ? [i.classId] : [])),
   );
@@ -72,8 +78,8 @@ export async function updateClasses(
   root: string,
   catalogues: readonly ClassCatalogue[],
 ): Promise<{ manifest: ProjectManifest; backup: string }> {
-  const used = await usedClasses(root);
-  const r = await updateManifestFile(root, (m) => {
+  const r = await updateManifestFile(root, async (m) => {
+    const used = await usedClasses(root);
     const problem = cataloguesProblem(m, catalogues, used);
     if (problem) throw new Error(problem);
     return {
