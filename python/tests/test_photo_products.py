@@ -213,6 +213,36 @@ def test_a_cancelled_products_job_resumes_where_it_stopped(site, monkeypatch):
     assert {f"{ps.RUN}-dsm", f"{ps.RUN}-dtm"} <= ids
 
 
+def test_a_products_job_begun_by_the_earlier_engine_is_refused_plainly(site, monkeypatch):
+    import threading
+
+    from aio_pipelines.runtime import Cancelled
+
+    root, _ = site
+    cancel = threading.Event()
+    real = P.IMPORTS["dsm"]
+
+    def stop(self, ctx, s, odm_dir):
+        cancel.set()
+        ctx.check()
+        return real(self, ctx, s, odm_dir)
+
+    monkeypatch.setitem(P.IMPORTS, "dsm", stop)
+    monkeypatch.setattr(P, "LAYOUT", 2)  # the earlier engine's prepare step
+    params = {"run": ps.RUN, "products": ["dsm"], "preset": "standard"}
+    with pytest.raises(Cancelled):
+        run_job(P.PhotoProducts(), root, params, cancel=cancel)
+    monkeypatch.setattr(P, "LAYOUT", 3)
+    monkeypatch.setitem(P.IMPORTS, "dsm", real)
+    with pytest.raises(JobError) as e:
+        run_job(P.PhotoProducts(), root, params, cancel=threading.Event())
+    assert str(e.value) == P.OLD_LAYOUT
+    assert "Remove it from the Processing list and use Create maps again" in P.OLD_LAYOUT
+    # Create maps again starts a new job: it works on the same run
+    result, _ = run_job(P.PhotoProducts(), root, params, job_id="j2")
+    assert result["status"] == "done"
+
+
 def test_the_dsm_has_the_scenes_heights(site):
     root, _ = site
     run_job(P.PhotoProducts(), root, {"run": ps.RUN, "products": ["dsm"], "preset": "standard"})
@@ -329,8 +359,9 @@ def test_a_run_without_an_odm_project_is_refused_plainly(site):
     import shutil
 
     shutil.rmtree(root / "photogrammetry" / ps.RUN / "odm")
-    with pytest.raises(JobError, match="use Create maps again"):
+    with pytest.raises(JobError) as e:
         run_job(P.PhotoProducts(), root, {"run": ps.RUN, "products": ["ortho"]})
+    assert str(e.value) == P.OLD_RUN and "Use Create maps again on its photos" in P.OLD_RUN
 
 
 def test_a_gpu_fallback_is_a_warning_in_the_report(site, monkeypatch):

@@ -82,6 +82,11 @@ FRAME_SCHEMA = "aio.photo-frame/1"
 LIST_SCHEMA = "aio.photo-list/1"
 RUN_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,79}$")
 STAGES = ("inspect", "sfm", "georef", "report", "commit")
+#: A job whose inspect step ran in an earlier version laid out no ODM project (no ``names.json``).
+OLD_JOB = (
+    "This job was started by an earlier version of the processing engine. Remove it from the "
+    "Processing list and use Create maps again."
+)
 #: one-sigma accuracy (metres) written to geo.txt when GNSS is ignored: ODM barely weighs it
 IGNORED_GNSS_SIGMA_M = (50.0, 50.0)
 
@@ -659,7 +664,12 @@ class PhotoAlign:
         return [Step(s, titles[s], staged(s, fns[s]), weights[s]) for s in STAGES]
 
     def _state(self, ctx: StepContext) -> dict[str, Any]:
-        return RunState(ctx).load()
+        """The run's state for the steps after inspect; a job begun by an earlier version is refused
+        (the real folder: ``run_odm_dir`` may make a junction)."""
+        state = RunState(ctx).load()
+        if not (OP.odm_project_dir(ctx.project, state["id"]) / "names.json").is_file():
+            raise JobError(OLD_JOB)
+        return state
 
     def _metas(self, ctx: StepContext) -> list[PhotoMeta]:
         data = json.loads(ctx.stage("work/photos.json").read_text("utf-8"))

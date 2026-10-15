@@ -143,6 +143,38 @@ def test_resume_after_a_cancel_in_odm_runs_odm_again_plainly(odm, project, photo
     assert "--rerun-from" not in json.loads(odm.read_text().splitlines()[-1])
 
 
+def test_an_alignment_begun_by_the_earlier_engine_is_refused_and_a_fresh_run_works(
+    odm, project, photo_mini, monkeypatch, tmp_path
+):
+    pids = tmp_path / "pids"
+    monkeypatch.setenv("FAKE_ODM_HANG", "opensfm")
+    monkeypatch.setenv("FAKE_ODM_PIDS", str(pids))
+    cancel = threading.Event()
+
+    def stop():
+        for _ in range(600):
+            if pids.exists():
+                cancel.set()
+                return
+            time.sleep(0.1)
+
+    threading.Thread(target=stop, daemon=True).start()
+    with pytest.raises(Cancelled):
+        run_job(A.PhotoAlign(), project, _params(photo_mini.photos), cancel=cancel)
+    monkeypatch.delenv("FAKE_ODM_HANG")
+    # what the earlier engine's inspect step left: no ODM project
+    (project / "photogrammetry" / "r1" / "odm" / "names.json").unlink()
+    with pytest.raises(JobError) as e:
+        run_job(A.PhotoAlign(), project, _params(photo_mini.photos))
+    assert str(e.value) == A.OLD_JOB
+    assert "Remove it from the Processing list and use Create maps again" in A.OLD_JOB
+    # Create maps again: the app gives the new alignment a new run id
+    result, _ = run_job(A.PhotoAlign(), project, _params(photo_mini.photos, run="r2"), job_id="j2")
+    assert result["status"] == "done"
+    run = json.loads((project / "photogrammetry" / "r2" / "run.json").read_text())
+    assert run["status"] == "aligned" and run["engine"]["name"] == "odm"
+
+
 def test_no_odm_is_a_plain_message_before_any_work(project, photo_mini, monkeypatch):
     monkeypatch.delenv(R.ODM_ENV, raising=False)
     with pytest.raises(JobError, match="Install it in Settings, Processing tools"):

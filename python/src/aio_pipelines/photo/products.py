@@ -75,12 +75,12 @@ IDENTITY = [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1]
 STAGES = ("dense", "mesh", "texture", "cloud", "dsm", "ortho", "commit", "tiles")
 LAYOUT = 3
 OLD_LAYOUT = (
-    "This processing was started by an older version; use Create maps again on this run "
-    "(the depth maps are kept)."
+    "This job was started by an earlier version of the processing engine. Remove it from the "
+    "Processing list and use Create maps again."
 )
 OLD_RUN = (
-    "This run was aligned by an earlier version or imported; use Create maps again to process "
-    "the photos with ODM."
+    "This run was made by an earlier version of the processing engine, or imported. Use Create "
+    "maps again on its photos."
 )
 #: Free space needed, times the bytes of ``odm/images/``.
 DISK_FACTOR = {"fast": 3, "standard": 6, "high": 10}
