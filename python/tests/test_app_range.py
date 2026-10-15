@@ -22,9 +22,9 @@ def test_app_range_is_readable_by_the_app():
     assert all(COMPARATOR.match(p) for p in parts), APP_RANGE
 
 
-def test_app_range_covers_0_15_and_1_x_but_not_0_14():
-    # Pack 0.9.0 writes aio.procmodel/2, which an app before 0.15 cannot read.
-    assert APP_RANGE == ">=0.15.0 <2.0.0"
+def test_app_range_covers_0_16_and_1_x_but_not_0_15():
+    # Pack 0.9.0 writes aio.procmodel/2, which an app before 0.16 cannot read.
+    assert APP_RANGE == ">=0.16.0 <2.0.0"
 
 
 def test_version_flag_reports_the_range():
