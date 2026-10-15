@@ -1,6 +1,7 @@
 """pointcloud.to_copc on a Bentley .zpc (a ZIP of LAS/LAZ tiles), synthetic."""
 
 import json
+import struct
 import subprocess
 import threading
 import zipfile
@@ -10,8 +11,8 @@ import pytest
 import bentley_synth as bs
 from aio_pipelines import zpc
 from aio_pipelines.pointcloud import PointcloudToCopc, find_pdal, pdal_env
-from aio_pipelines.runtime import Cancelled, JobError
-from conftest import run_job
+from aio_pipelines.runtime import Cancelled, Job, JobError
+from conftest import Recorder, run_job
 
 PDAL = find_pdal()
 
@@ -70,8 +71,52 @@ def test_register_files_the_cloud_under_the_day_once(tmp_path, monkeypatch):
 
 def test_only_las_and_laz_members_are_tiles(tmp_path):
     z = bs.make_zpc(tmp_path / "c.zpc", extra={"metadata.xml": b"<x/>", "Tile_3.LAZ": b"LASF"})
-    names = [t.name for t in zpc.list_tiles(tmp_path / "c.zpc")]
+    ignored: list[str] = []
+    names = [t.name for t in zpc.list_tiles(tmp_path / "c.zpc", ignored)]
     assert names == ["Tile_1.las", "Tile_2.las", "Tile_3.LAZ"] and z["points"] == 1000
+    assert ignored == ["metadata.xml"]
+
+
+def test_the_job_logs_the_files_it_ignores(tmp_path, monkeypatch):
+    from aio_pipelines import pointcloud as pc
+
+    extra = {f"report-{i}.txt": b"x" for i in range(7)}
+    bs.make_zpc(tmp_path / "c.zpc", tiles=1, extra=extra)
+    monkeypatch.setattr(pc, "find_pdal", lambda: "pdal")
+
+    def stop(ctx, pdal, path):
+        raise JobError("stop here")
+
+    monkeypatch.setattr(pc, "read_summary", stop)
+    rec = Recorder()
+    job = Job(
+        "j1", PointcloudToCopc(), project(tmp_path), {"src": str(tmp_path / "c.zpc")}, rec, threading.Event()
+    )
+    with pytest.raises(JobError):
+        job.run()
+    logs = [p["message"] for p in rec.of("log")]
+    shown = ", ".join(f"report-{i}.txt" for i in range(5))
+    assert f"Ignored 7 other file(s) in c.zpc: {shown} and 2 more" in logs
+
+
+def test_a_tile_in_an_unknown_compression_fails_with_its_name(tmp_path):
+    bs.make_zpc(tmp_path / "c.zpc", tiles=1)
+    data = bytearray((tmp_path / "c.zpc").read_bytes())
+    # the compression method of the local header (offset 8) and the central directory entry (10)
+    struct.pack_into("<H", data, 8, 99)
+    struct.pack_into("<H", data, data.find(b"PK\x01\x02") + 10, 99)
+    (tmp_path / "c.zpc").write_bytes(bytes(data))
+    tiles = zpc.list_tiles(tmp_path / "c.zpc")
+    with pytest.raises(JobError, match=r"Tile_1\.las of c\.zpc could not be unpacked"):
+        zpc.extract_tiles(FakeCtx(), tmp_path / "c.zpc", tiles, tmp_path / "out", (0.0, 1.0))
+
+
+class FakeCtx:
+    def check(self):
+        pass
+
+    def progress(self, fraction, message=None):
+        pass
 
 
 @pytest.mark.parametrize("bad", ["../evil.las", "/abs/evil.las", "C:/evil.las", "a/../../evil.laz"])

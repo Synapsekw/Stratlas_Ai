@@ -270,6 +270,8 @@ def disk_needed(points: int, record: int | None) -> int:
 
 #: A ``.zpc``'s progress: unpacking the tiles up to here, then as any cloud.
 ZPC_UNPACK_END = 0.10
+#: How many names of a ``.zpc``'s ignored (non-tile) files the log lists.
+IGNORED_SHOWN = 5
 
 
 def check_space(folder: Path, needed: int) -> None:
@@ -546,7 +548,12 @@ def convert_zpc(ctx: StepContext, pdal: str, src: Path, epsg: int | None) -> dic
     and reprojected tiles go whatever happens."""
     from . import zpc
 
-    tiles = zpc.list_tiles(src)
+    ignored: list[str] = []
+    tiles = zpc.list_tiles(src, ignored)
+    if ignored:
+        shown = ", ".join(n[:120] for n in ignored[:IGNORED_SHOWN])
+        more = f" and {len(ignored) - IGNORED_SHOWN} more" if len(ignored) > IGNORED_SHOWN else ""
+        ctx.log(f"Ignored {len(ignored)} other file(s) in {src.name}: {shown}{more}")
     check_space(ctx.staging, sum(t.size for t in tiles))
     raw, las_dir = ctx.stage("zpc-tiles"), ctx.stage("zpc-las")
     for d in (raw, las_dir):

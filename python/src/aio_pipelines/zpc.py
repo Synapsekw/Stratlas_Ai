@@ -32,7 +32,9 @@ def _unsafe(name: str) -> bool:
     return n.startswith("/") or bool(re.match(r"^[A-Za-z]:", n)) or ".." in n.split("/")
 
 
-def list_tiles(path: Path) -> list[Tile]:
+def list_tiles(path: Path, ignored: list[str] | None = None) -> list[Tile]:
+    """The LAS and LAZ tiles of ``path``, in the ZIP's order. The names of the other members
+    (not tiles, so not read) are added to ``ignored`` when given."""
     if not zipfile.is_zipfile(path):
         raise JobError(f"{path.name} is not a ZIP file, so not a Bentley .zpc export.")
     tiles: list[Tile] = []
@@ -45,6 +47,8 @@ def list_tiles(path: Path) -> list[Tile]:
                     f"{path.name} holds a file with an unsafe name ({info.filename[:120]}); it is not read."
                 )
             if PurePosixPath(info.filename.replace("\\", "/")).suffix.lower() not in TILE_SUFFIXES:
+                if ignored is not None:
+                    ignored.append(info.filename)
                 continue
             if info.flag_bits & 0x1:
                 raise JobError(f"{path.name} is encrypted; export it again without a password.")
@@ -74,7 +78,7 @@ def extract_tiles(
                         fout.write(chunk)
                         done += len(chunk)
                         ctx.progress(lo + (hi - lo) * done / total, f"Unpacking tile {i + 1} of {len(tiles)}")
-            except (zipfile.BadZipFile, zlib.error, EOFError, OSError) as e:
+            except (zipfile.BadZipFile, zlib.error, EOFError, OSError, NotImplementedError) as e:
                 raise JobError(f"Tile {t.name} of {src.name} could not be unpacked: {e}") from None
             out.append(dst)
     return out
