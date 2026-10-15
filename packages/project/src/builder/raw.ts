@@ -157,6 +157,17 @@ export interface ImportDeps {
    * saved as usual. A file other than a 360 video that is in hand is finished first.
    */
   signal?: AbortSignal;
+  /**
+   * Ask the person for a folder (main shows the system dialog). A Bentley BlocksExchange AT
+   * export needs the folder of its photos; without this, or when the person cancels, the block is
+   * skipped with `BENTLEY_NO_FOLDER`.
+   */
+  pickFolder?: (title: string) => Promise<string | null>;
+  /**
+   * The survey day Add data chose for a cloud (absolute path to `YYYY-MM-DD`, null = not dated).
+   * A chosen day goes to the conversion as `surveyDate`; the job files the layer under it.
+   */
+  cloudDates?: Readonly<Record<string, string | null>>;
 }
 
 export interface ImportResult {
@@ -176,7 +187,8 @@ const PHOTO = new Set(['.jpg', '.jpeg']);
 const VIDEO = new Set(['.mp4', '.mov']);
 const MESH = new Set(['.glb', '.obj']);
 const RASTER = new Set(['.tif', '.tiff']);
-const CLOUD = new Set(['.las', '.laz', '.e57', '.ply']);
+/** Point clouds; `.zpc` is a Bentley export, a ZIP of LAS/LAZ tiles (15 Oct 2026). */
+const CLOUD = new Set(['.las', '.laz', '.e57', '.ply', '.zpc']);
 /** DXF plot plans (M8): imported by the `drawing.import` pipeline into `drawings/`. */
 const DRAWING = new Set(['.dxf']);
 /** Designs (M11 G6): LandXML (`.xml` only when it is LandXML) and 12da, by `design.import`. */
@@ -197,6 +209,11 @@ const RASTER_TOO_LARGE =
   'This GeoTIFF is too large to import yet (over 300 MB, over 12,000 x 12,000 pixels, or a BigTIFF). Reduce or split it in other software, then import the parts.';
 const REVIEW_PX = 2560;
 const THUMB_PX = 480;
+
+export const BENTLEY_NO_FOLDER =
+  'No photos folder was chosen, so the Bentley block was not imported. Add the .xml again and choose the folder that holds its photos.';
+export const UNSUPPORTED_XML =
+  'Not a supported XML file: LandXML designs and Bentley BlocksExchange AT exports are read.';
 
 const PIPELINE_MISSING =
   'Needs the processing tools to convert. Install them in Settings, Processing tools, then import this file again.';
@@ -811,8 +828,10 @@ export async function importRawFiles(
           });
         }
       } else if (CLOUD.has(ext)) {
+        const surveyDate = deps.cloudDates?.[file];
         await job(file, 'pointcloud', 'pointcloud.toCopc', {
           out: `clouds/${slug(name.slice(0, -ext.length), 'cloud')}.copc.laz`,
+          ...(surveyDate ? { surveyDate } : {}),
         });
       } else if (DRAWING.has(ext)) {
         // a picture drawing of the same name keeps its folder: the DXF then comes in from a copy
@@ -825,12 +844,28 @@ export async function importRawFiles(
         } else if (dxf.copy) await rm(dxf.copy, { force: true }).catch(() => undefined);
       } else if (OPF.has(ext)) {
         await job(file, 'opf', 'opf.import', {});
-      } else if (
-        DESIGN.has(ext) ||
-        (ext === '.xml' &&
-          new TextDecoder().decode(await readHead(file, 4096)).includes('<LandXML'))
-      ) {
+      } else if (DESIGN.has(ext)) {
         await job(file, 'design', 'design.import', {});
+      } else if (ext === '.xml') {
+        const head = new TextDecoder().decode(await readHead(file, 4096));
+        if (head.includes('<LandXML')) await job(file, 'design', 'design.import', {});
+        else if (head.includes('<BlocksExchange')) {
+          // without the pipeline the block cannot be read, so the folder is not asked for
+          const photos =
+            pipeline && deps.pickFolder
+              ? await deps.pickFolder(`Choose the photos folder of ${name}`)
+              : null;
+          if (!pipeline) await job(file, 'bentley', 'bentley.import', {});
+          else if (photos) await job(file, 'bentley', 'bentley.import', { xml: file, photos });
+          else
+            items.push({
+              file: name,
+              kind: 'bentley',
+              status: 'skipped',
+              message: BENTLEY_NO_FOLDER,
+            });
+        } else
+          items.push({ file: name, kind: 'unknown', status: 'skipped', message: UNSUPPORTED_XML });
       } else if (ext === '.dwg') {
         items.push({
           file: name,
