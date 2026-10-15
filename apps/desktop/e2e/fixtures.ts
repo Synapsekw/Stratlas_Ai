@@ -1049,12 +1049,16 @@ export async function launchReviewer(
   initials: string,
   opts: ReviewerOptions = {},
 ): Promise<Reviewer> {
+  // Fixtures launch reviewers before the spec body raises its budget: keep at least 180 s here.
+  const info = base.info();
+  if (info.timeout > 0 && info.timeout < 180_000) info.setTimeout(180_000);
   const dataRoot = await createDataRoot();
   const project = await writeTeamProject(dataRoot.root);
   const app = await launchApp(dataRoot, opts.env ?? {}, [`--profile=${profile}`]);
   const network = new NetworkGuard(opts.allow ?? []);
   await network.attach(app);
-  const win = await app.firstWindow();
+  // a slow hosted runner once took 23 s to one app's first window (identity.spec.ts, d98c23cb)
+  const win = await app.firstWindow({ timeout: 90_000 });
   await win.waitForLoadState('domcontentloaded');
   const set = await win.evaluate((patch) => window.aio.invoke('identity:set', patch), {
     name,
