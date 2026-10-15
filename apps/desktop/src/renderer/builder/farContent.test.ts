@@ -302,6 +302,54 @@ describe('handheld camera GPS', () => {
     expect(s.getState().notice?.photoLayers).toEqual([]);
   });
 
+  describe('a model and handheld photos in one import', () => {
+    const withMesh = [
+      { kind: 'mesh', id: 'mesh', name: 'Model' },
+      { kind: 'photos', id: 'photos', name: 'Photos' },
+    ];
+    const both = (extents: Ex) => {
+      const call = vi.fn((channel: string): Promise<unknown> =>
+        Promise.resolve(
+          channel === 'builder:layerExtents'
+            ? { ok: true, extents, recentre: { blockers: [] } }
+            : { ok: true, manifest: { origin, layers: withMesh }, backup: 'b' },
+        ),
+      );
+      return {
+        call,
+        reopen: vi.fn(),
+        project: () => ({ id: 'p', manifest: { origin, layers: withMesh } }),
+      };
+    };
+
+    it('the model near the origin keeps it: the far photos are offered to ignore their GPS', async () => {
+      const s = createFarNotice(
+        both([
+          { layerId: 'mesh', ...box(0, 0) },
+          { layerId: 'photos', ...box(40_000, 0) },
+        ]),
+      );
+      await s.getState().check('p', new Set(['mesh', 'photos']));
+      const n = s.getState().notice;
+      expect(n?.canRecentre).toBe(false);
+      expect(n?.photoLayers).toEqual(['photos']);
+      expect(n?.text).toContain("a camera's GPS can be kilometres out");
+    });
+
+    it('a far model and far photos at another place re-centre on the model', async () => {
+      const s = createFarNotice(
+        both([
+          { layerId: 'mesh', ...box(30_000, 0) },
+          { layerId: 'photos', ...box(70_000, 20_000) },
+        ]),
+      );
+      await s.getState().check('p', new Set(['mesh', 'photos']));
+      const n = s.getState().notice;
+      expect(n?.canRecentre).toBe(true);
+      expect(n?.target).toEqual([530_000, 3_200_000]);
+    });
+  });
+
   it('a failed clear says so and keeps the photos', async () => {
     const d = depsWith(photosFar);
     d.call.mockImplementation((channel: string) =>

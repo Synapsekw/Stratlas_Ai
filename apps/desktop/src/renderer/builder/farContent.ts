@@ -206,10 +206,11 @@ export function createFarNotice(deps: {
       }
       if (added.length === 0 && reported.length > 0 && prev) return; // nothing new: keep it as is
       const lines = farLines(p, far);
-      // survey data over a camera's GPS: far photos beside survey data are not a new origin
-      const olderIds = [...older];
-      const surveyOlder = olderIds.some((id) => !isPhotos(p, id));
-      if (surveyOlder && far.every((f) => isPhotos(p, f.layerId))) {
+      // survey data over a camera's GPS: far photos beside survey data are not a new origin, also
+      // when both came in the same import (a model near the origin and handheld photos far off)
+      const farIds = new Set(far.map((f) => f.layerId));
+      const surveyNear = r.extents.some((e) => !farIds.has(e.layerId) && !isPhotos(p, e.layerId));
+      if (surveyNear && far.every((f) => isPhotos(p, f.layerId))) {
         set({
           notice: {
             projectId,
@@ -224,8 +225,10 @@ export function createFarNotice(deps: {
         });
         return;
       }
-      const photosOnly =
-        olderIds.length > 0 && !surveyOlder && far.some((f) => !isPhotos(p, f.layerId));
+      // the survey layers among the far ones set the target; far photos beside them are offered
+      // "Ignore their GPS" by the check after the re-centre
+      const surveyFar = far.filter((f) => !isPhotos(p, f.layerId));
+      const photosOnly = older.size > 0 && !surveyNear && surveyFar.length > 0;
       const blockers = r.recentre.blockers;
       const why = blockers.length
         ? ` Re-centring is not offered: this project holds ${blockers.join(', ')}.`
@@ -235,7 +238,7 @@ export function createFarNotice(deps: {
           projectId,
           text: `${lines}${photosOnly ? PHOTOS_ONLY : ''}${why}`,
           canRecentre: blockers.length === 0,
-          target: recentreTarget(far, p.manifest.origin),
+          target: recentreTarget(surveyFar.length > 0 ? surveyFar : far, p.manifest.origin),
           busy: false,
           done: false,
           far,
