@@ -1,4 +1,9 @@
-import { AnnotateStyles, issueSaver, setAnnotationPeople } from '@aio/annotate';
+import {
+  AnnotateStyles,
+  issueSaver,
+  registerClassCreator,
+  setAnnotationPeople,
+} from '@aio/annotate';
 import { changeStore } from '@aio/change';
 import {
   announce,
@@ -26,6 +31,8 @@ import { ReportsScreen } from './screens/Reports';
 import { SettingsScreen } from './screens/Settings';
 import { WelcomeScreen } from './screens/Welcome';
 import { initAuthor } from './author';
+import { ClassNotice } from './classes/ClassNotice';
+import { createClass } from './classes/store';
 import { detections, loadDetections } from './detections/store';
 import { roadStore, startRoadSync } from './road/store';
 import { Toasts } from './exports/Toasts';
@@ -390,6 +397,9 @@ export function App() {
     };
   }, []);
 
+  // "+ New class..." in every picker creates through the class store (ANN-7)
+  useEffect(() => registerClassCreator((label) => createClass(label)), []);
+
   useEffect(() => {
     const dark = window.matchMedia(OS_QUERIES.dark);
     const more = window.matchMedia(OS_QUERIES.moreContrast);
@@ -431,6 +441,7 @@ export function App() {
       <PackageExportDialog />
       <PanoImportDialog />
       <Toasts />
+      <ClassNotice />
       <LiveAnnouncer />
       <BuilderLayer />
       <DrawingsLayer />
