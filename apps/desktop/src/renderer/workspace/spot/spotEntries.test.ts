@@ -62,12 +62,16 @@ describe('spotEntries', () => {
       index,
       videoSamples: () => null,
       correction: (l, p) =>
-        l === 'photos-d1' && p === 'a'
+        l === 'photos-d1' && (p === 'a' || p === 'c')
           ? { yawDeg: 0, pitchDeg: 0, rollDeg: 0, offsetM: [5, 0, 0] }
           : null,
     });
     expect(moved.find((x) => x.kind === 'photo' && x.id === 'a')).toMatchObject({
       pos: [6, 2, 3],
+    });
+    // a handheld photo has a position and no orientation
+    expect(moved.find((x) => x.kind === 'photo' && x.id === 'c')).toMatchObject({
+      pos: [9, 5, 6],
     });
   });
   it('keeps undated layers, without a date', () => {

@@ -1,4 +1,5 @@
 import { panoOpenable } from '@aio/engine';
+import { correctedPhoto } from '@aio/geo';
 import type { Layer, PhotoCorrection, WalkLayer } from '@aio/schema';
 import {
   calibratedVideoPose,
@@ -29,8 +30,9 @@ export function spotEntries(input: EntryInputs): SpotEntry[] {
     const capture = layerCapture(l, input.index);
     if (l.kind === 'photos') {
       for (const p of l.items) {
-        const pose = photoPose(p, input.correction?.(l.id, p.id) ?? null);
-        const pos = pose?.pos ?? p.pos;
+        const correction = input.correction?.(l.id, p.id) ?? null;
+        const pose = photoPose(p, correction);
+        const pos = pose?.pos ?? correctedPhoto(p, correction).pos;
         out.push({
           kind: 'photo',
           layer: l.id,
