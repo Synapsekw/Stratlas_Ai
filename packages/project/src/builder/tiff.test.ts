@@ -110,6 +110,17 @@ describe('georeference', () => {
     ).toBe(32639);
     expect(epsgFromPrj('PROJCS["WGS_1984_UTM_Zone_39N",GEOGCS["GCS_WGS_1984"]]')).toBe(32639);
   });
+
+  it('takes the plan grid of a compound .prj, not its vertical datum', () => {
+    expect(
+      epsgFromPrj(
+        'COMPD_CS["WGS 84 / UTM zone 39N + EGM96 height",' +
+          'PROJCS["WGS 84 / UTM zone 39N",GEOGCS["WGS 84",AUTHORITY["EPSG","4326"]],' +
+          'AUTHORITY["EPSG","32639"]],' +
+          'VERT_CS["EGM96 height",VERT_DATUM["EGM96 geoid",2005],AUTHORITY["EPSG","5773"]]]',
+      ),
+    ).toBe(32639);
+  });
 });
 
 describe('rasterToRgba', () => {

@@ -337,8 +337,25 @@ export function parseWorldFile(text: string): number[] {
   return v.slice(0, 6);
 }
 
-/** EPSG code from a .prj (WKT): the last AUTHORITY["EPSG", n], or a UTM zone name. */
-export function epsgFromPrj(wkt: string): number | undefined {
+/** The `PROJCS[...]` inside a compound WKT (`COMPD_CS`): its plan grid, without the vertical one. */
+function projcsOf(wkt: string): string | null {
+  if (!/^\s*COMPD_CS\s*\[/i.test(wkt)) return null;
+  const at = wkt.search(/PROJCS\s*\[/i);
+  if (at < 0) return null;
+  let depth = 0;
+  for (let i = wkt.indexOf('[', at); i < wkt.length; i++) {
+    if (wkt[i] === '[') depth++;
+    else if (wkt[i] === ']' && --depth === 0) return wkt.slice(at, i + 1);
+  }
+  return null;
+}
+
+/**
+ * EPSG code from a .prj (WKT): the last AUTHORITY["EPSG", n] (of the plan grid, for a compound
+ * one), or a UTM zone name.
+ */
+export function epsgFromPrj(prj: string): number | undefined {
+  const wkt = projcsOf(prj) ?? prj;
   const all = [...wkt.matchAll(/AUTHORITY\s*\[\s*"EPSG"\s*,\s*"?(\d+)"?\s*\]/gi)];
   const last = all.at(-1)?.[1];
   if (last) return Number(last);

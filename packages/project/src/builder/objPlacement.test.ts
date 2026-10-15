@@ -48,6 +48,31 @@ describe('Pix4D offset', () => {
   it('finds nothing for an OBJ outside a Pix4D layout', async () => {
     expect(await findPix4dOffset(join(dir, 'loose.obj'))).toBeNull();
   });
+  it('finds nothing when the offset file cannot be read, so the model stays Y up', async () => {
+    const obj = await pix4d();
+    const params = join(dir, 'tower', '1_initial', 'params');
+    await rm(join(params, 'tower_offset.xyz'));
+    await mkdir(join(params, 'tower_offset.xyz')); // a folder by that name: reading it fails
+    const found = await findPix4dOffset(obj);
+    expect(found).toBeNull();
+    const small = { min: [-5, -5, 0] as Vec3, max: [5, 5, 40] as Vec3 };
+    const p = objPlacement({
+      pix4d: found,
+      bounds: small,
+      shift: [0, 0, 0],
+      origin: ORIGIN,
+      epsg: 32639,
+    });
+    expect(p.up).toBe('y');
+  });
+  it('keeps the offset when the .prj cannot be read', async () => {
+    const obj = await pix4d();
+    await mkdir(join(dir, 'tower', '1_initial', 'params', 'tower_wkt.prj'));
+    expect(await findPix4dOffset(obj)).toEqual({
+      offset: [530000, 3200000, 12],
+      file: 'tower_offset.xyz',
+    });
+  });
 });
 
 describe('placement', () => {
@@ -66,6 +91,34 @@ describe('placement', () => {
       projectToLocal([530000, 3200000, 52], ORIGIN),
     );
     expect(p.note).toContain('Z up');
+  });
+  it('places an export in a CRS not known offline at its offset as is, and says so', () => {
+    const p = objPlacement({
+      pix4d: { offset: [530000, 3200000, 12], file: 'tower_offset.xyz', epsg: 2193 },
+      bounds: small,
+      shift: [0, 0, 0],
+      origin: ORIGIN,
+      epsg: 32639,
+    });
+    expect(p.up).toBe('z');
+    expect(applyMat4(p.transform, [0, 0, 0])).toEqual(
+      projectToLocal([530000, 3200000, 12], ORIGIN),
+    );
+    expect(p.warnings).toEqual([
+      "The export's CRS (EPSG:2193) is not known offline; its offset is taken as in the project CRS.",
+    ]);
+  });
+  it('converts the offset of an export in another known CRS', () => {
+    const p = objPlacement({
+      pix4d: { offset: [500000, 3200000, 12], file: 'tower_offset.xyz', epsg: 32640 },
+      bounds: small,
+      shift: [0, 0, 0],
+      origin: ORIGIN,
+      epsg: 32639,
+    });
+    // a point on zone 40's central meridian (57 E) lies east of zone 39's (51 E)
+    expect(applyMat4(p.transform, [0, 0, 0])[0]).toBeGreaterThan(500_000);
+    expect(p.warnings[0]).toContain('its offset was converted');
   });
   it('takes map grid coordinates as z up and stores them shifted by their centre', () => {
     const b = { min: [499_990, 3_199_990, 15] as Vec3, max: [500_010, 3_200_010, 60] as Vec3 };

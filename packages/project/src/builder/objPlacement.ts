@@ -1,4 +1,12 @@
-import { IDENTITY, fromWgs84, placeZUp, projectToLocal, toWgs84, type UpAxis } from '@aio/geo';
+import {
+  IDENTITY,
+  fromWgs84,
+  isKnownCrs,
+  placeZUp,
+  projectToLocal,
+  toWgs84,
+  type UpAxis,
+} from '@aio/geo';
 import type { Mat4, Vec3 } from '@aio/schema';
 import { readFile, readdir } from 'node:fs/promises';
 import { basename, dirname, join } from 'node:path';
@@ -53,10 +61,20 @@ export async function findPix4dOffset(objPath: string): Promise<Pix4dOffset | nu
   }
   const file = names.filter((n) => n.toLowerCase().endsWith('_offset.xyz')).sort()[0];
   if (!file) return null;
-  const offset = parseOffsetXyz(await readFile(join(params, file), 'utf8'));
+  let offset: Vec3 | null;
+  try {
+    offset = parseOffsetXyz(await readFile(join(params, file), 'utf8'));
+  } catch {
+    return null; // unreadable: the model is placed by hand, as one outside a Pix4D layout
+  }
   if (!offset) return null;
   const prj = names.find((n) => n.toLowerCase().endsWith('.prj'));
-  const epsg = prj ? epsgFromPrj(await readFile(join(params, prj), 'utf8')) : undefined;
+  let epsg: number | undefined;
+  try {
+    epsg = prj ? epsgFromPrj(await readFile(join(params, prj), 'utf8')) : undefined;
+  } catch {
+    epsg = undefined; // unreadable: the offset is taken as in the project CRS
+  }
   return { offset, file, ...(epsg !== undefined ? { epsg } : {}) };
 }
 
@@ -83,12 +101,25 @@ export function objPlacement(o: {
   if (o.pix4d) {
     const warnings: string[] = [];
     let at = o.pix4d.offset;
-    if (o.pix4d.epsg !== undefined && o.pix4d.epsg !== o.epsg) {
-      const p = fromWgs84(toWgs84(at, o.pix4d.epsg), o.epsg);
-      at = [p[0], p[1], at[2]];
-      warnings.push(
-        `The export is in EPSG:${String(o.pix4d.epsg)}, the project in EPSG:${String(o.epsg)}: its offset was converted; the turn between the two grids is not applied.`,
-      );
+    const from = o.pix4d.epsg;
+    if (from !== undefined && from !== o.epsg) {
+      let converted: Vec3 | null = null;
+      if (isKnownCrs(from) && isKnownCrs(o.epsg)) {
+        try {
+          converted = fromWgs84(toWgs84(at, from), o.epsg);
+        } catch {
+          converted = null;
+        }
+      }
+      if (converted) {
+        at = [converted[0], converted[1], at[2]];
+        warnings.push(
+          `The export is in EPSG:${String(from)}, the project in EPSG:${String(o.epsg)}: its offset was converted; the turn between the two grids is not applied.`,
+        );
+      } else
+        warnings.push(
+          `The export's CRS (EPSG:${String(from)}) is not known offline; its offset is taken as in the project CRS.`,
+        );
     }
     return {
       up: 'z',
