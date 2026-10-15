@@ -21,6 +21,31 @@
   font-size: var(--t-12);
   color: var(--fg-1);
 }
+/* nothing in the panel is wider than its column: rows wrap, inputs and segments shrink */
+.cleanup-panel .pop-row {
+  flex-wrap: wrap;
+  min-width: 0;
+}
+.cleanup-panel .seg,
+.cleanup-panel .seg button,
+.cleanup-panel .input,
+.cleanup-panel .btn {
+  min-width: 0;
+}
+.cleanup-panel .input {
+  width: 100%;
+}
+.cleanup-panel .pop-row > .input {
+  flex: 1 1 120px;
+  width: auto;
+}
+.cleanup-panel .seg button {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.cleanup-field .input[aria-invalid='true'] {
+  border-color: var(--danger-line);
+}
 .cleanup-head {
   display: flex;
   align-items: center;
@@ -197,4 +222,19 @@
   width: 10px;
   height: 10px;
   border-radius: 2px;
+}
+/* the notice with Undo, bottom centre of the stage; above the selection bar while one shows */
+.cleanup-notice {
+  position: absolute;
+  bottom: 16px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 23;
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  max-width: calc(100% - 32px);
+}
+.cleanup-notice.lifted {
+  bottom: 64px;
 }

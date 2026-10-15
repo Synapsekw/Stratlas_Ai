@@ -4,7 +4,10 @@ import { workspace } from '@aio/workspace';
 import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { CleanupHost, closeCleanupWithProject } from './CleanupHost';
 import { CleanupPanel } from './CleanupPanel';
+import type * as Jobs from './cleanupJobs';
+import { runNoise } from './cleanupJobs';
 import { cleanup } from './cleanupStore';
 
 vi.mock('../shell', () => ({
@@ -12,6 +15,15 @@ vi.mock('../shell', () => ({
   bridge: { call: () => Promise.resolve({ ok: false, error: 'no bridge in tests' }) },
   jobs: { getState: () => ({ jobs: [] }), subscribe: () => () => undefined },
 }));
+
+vi.mock('./cleanupJobs', async (original) => ({
+  ...(await original<typeof Jobs>()),
+  runNoise: vi.fn(() => Promise.resolve(null)),
+}));
+
+Element.prototype.scrollIntoView = function scrollIntoView() {
+  /* jsdom has no layout */
+};
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 let host: HTMLDivElement;
@@ -78,6 +90,58 @@ const setValue = (el: HTMLInputElement, value: string) => {
   el.dispatchEvent(new Event('input', { bubbles: true }));
 };
 
+describe('CleanupHost', () => {
+  it('Escape in the selection bar cancels the selection', () => {
+    project([copc('a')]);
+    root = createRoot(host);
+    act(() => root?.render(<CleanupHost engine={null} />));
+    act(() => {
+      cleanup.setPending({
+        layerId: 'a',
+        shape: 'box',
+        polygon: [
+          [0, 0],
+          [1, 0],
+          [1, 1],
+          [0, 1],
+        ],
+        viewProj: Array.from({ length: 16 }, () => 0),
+        count: 12,
+      });
+    });
+    expect(q('cleanup-selection-count')?.textContent).toBe('12 loaded points selected');
+    act(() => {
+      q('cleanup-set-class')?.click();
+    });
+    expect(q('cleanup-class-list')).not.toBeNull();
+    act(() => {
+      q('cleanup-hide')?.dispatchEvent(
+        new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }),
+      );
+    });
+    expect(q('cleanup-class-list')).toBeNull(); // first Escape closes the class list
+    expect(cleanup.store.getState().pending).not.toBeNull();
+    act(() => {
+      q('cleanup-hide')?.dispatchEvent(
+        new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }),
+      );
+    });
+    expect(cleanup.store.getState().pending).toBeNull();
+  });
+
+  it('closes the panel and forgets the recipes when the project changes', () => {
+    project([copc('a')]);
+    const stop = closeCleanupWithProject();
+    cleanup.store.setState({ panelOpen: true, active: 'a' });
+    act(() => {
+      workspace.getState().closeProject();
+    });
+    expect(cleanup.store.getState().panelOpen).toBe(false);
+    expect(cleanup.store.getState().projectId).toBeNull();
+    stop();
+  });
+});
+
 describe('CleanupPanel', () => {
   it('acts on the only cloud and offers every section', () => {
     project([copc('a')]);
@@ -136,8 +200,97 @@ describe('CleanupPanel', () => {
       min.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
     });
     expect(commit).not.toHaveBeenCalled();
+    expect(q('cleanup-error')?.textContent).toBe(
+      'The lowest height must not be above the highest.',
+    );
+    commit.mockRestore();
+  });
+
+  it('does not commit a field that was only focused and left', () => {
+    project([copc('a')]);
+    cleanup.store.setState({
+      layers: {
+        a: { past: [], present: { ...emptyCleanup('a'), height: { min: 1.2345 } }, future: [] },
+      },
+    });
+    const commit = vi.spyOn(cleanup, 'commit').mockResolvedValue(true);
+    render();
+    const min = q('cleanup-height-min') as HTMLInputElement;
+    act(() => {
+      min.focus();
+      min.dispatchEvent(new FocusEvent('focusout', { bubbles: true }));
+    });
+    expect(commit).not.toHaveBeenCalled();
+    // the other field edited: the untouched end keeps its exact value
+    const max = q('cleanup-height-max') as HTMLInputElement;
+    act(() => {
+      setValue(max, '20');
+      max.dispatchEvent(new FocusEvent('focusout', { bubbles: true }));
+    });
+    expect(commit).toHaveBeenCalledWith(
+      'a',
+      expect.objectContaining({ height: { min: 1.2345, max: 20 } }),
+    );
+    commit.mockRestore();
+  });
+
+  it('keeps the range and marks the field when a height does not parse', () => {
+    project([copc('a')]);
+    cleanup.store.setState({
+      layers: {
+        a: { past: [], present: { ...emptyCleanup('a'), height: { min: 3 } }, future: [] },
+      },
+    });
+    const commit = vi.spyOn(cleanup, 'commit').mockResolvedValue(true);
+    render();
+    const min = q('cleanup-height-min') as HTMLInputElement;
+    act(() => {
+      setValue(min, '12,5x');
+      min.dispatchEvent(new FocusEvent('focusout', { bubbles: true }));
+    });
+    expect(commit).not.toHaveBeenCalled();
+    expect(min.getAttribute('aria-invalid')).toBe('true');
     expect(q('cleanup-error')).not.toBeNull();
     commit.mockRestore();
+  });
+
+  it('clamps the noise settings to their ranges', () => {
+    project([copc('a')]);
+    render();
+    const settings = q('cleanup-noise-settings') as HTMLDetailsElement;
+    const [neighbours, distance] = [...settings.querySelectorAll<HTMLInputElement>('input')];
+    act(() => {
+      if (neighbours) setValue(neighbours, '500');
+      if (distance) setValue(distance, '0.001');
+    });
+    act(() => {
+      q('cleanup-noise-run')?.click();
+    });
+    expect(runNoise).toHaveBeenCalledWith(expect.anything(), expect.anything(), {
+      outlier: { meanK: 64, multiplier: 0.1 },
+    });
+  });
+
+  it('focuses the section the right-click menu asked for', () => {
+    project([copc('a')]);
+    cleanup.store.setState({ section: 'save' });
+    render();
+    expect(document.activeElement).toBe(q('cleanup-save-name'));
+  });
+
+  it('takes focus on open and gives it back to the toolbar button on close', () => {
+    project([copc('a')]);
+    const button = document.createElement('button');
+    button.dataset.testid = 'cleanup-tool';
+    document.body.append(button);
+    render();
+    expect(q('cleanup-panel')?.contains(document.activeElement)).toBe(true);
+    act(() => {
+      q('cleanup-close')?.click();
+    });
+    act(() => root?.render(<></>));
+    expect(document.activeElement).toBe(button);
+    button.remove();
   });
 
   it('shows the noise result with an Undo', () => {

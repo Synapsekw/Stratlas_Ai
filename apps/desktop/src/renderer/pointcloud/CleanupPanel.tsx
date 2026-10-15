@@ -62,6 +62,16 @@ const num = (s: string): number | undefined => {
   const v = Number.parseFloat(s);
   return Number.isFinite(v) ? v : undefined;
 };
+/** A height field: empty is no limit, anything else must be a number. */
+const parseHeight = (s: string): number | undefined | 'bad' => {
+  const v = s.trim();
+  if (!v) return undefined;
+  const n = Number(v);
+  return Number.isFinite(n) ? n : 'bad';
+};
+/** A noise setting within the schema's range (the default when it does not parse). */
+const clamp = (s: string, fallback: number, lo: number, hi: number): number =>
+  Math.min(hi, Math.max(lo, num(s) ?? fallback));
 const fmt = (v: number | undefined) => (v === undefined ? '' : String(Math.round(v * 100) / 100));
 
 /** A recipe with or without its height range (no undefined keys in a recipe). */
@@ -135,6 +145,7 @@ export function CleanupPanel({ stage }: { stage: EngineStage | null }) {
   const [minDraft, setMinDraft] = useState(fmt(hMin));
   const [maxDraft, setMaxDraft] = useState(fmt(hMax));
   const [name, setName] = useState(layer?.name ?? '');
+  const [bad, setBad] = useState({ min: false, max: false });
   // another layer, or its range changed elsewhere (undo, redo): the fields follow, during render
   const shown = `${id ?? ''}|${layer?.name ?? ''}|${String(hMin)}|${String(hMax)}`;
   const [seen, setSeen] = useState(shown);
@@ -143,6 +154,7 @@ export function CleanupPanel({ stage }: { stage: EngineStage | null }) {
     setSeen(shown);
     setMinDraft(fmt(hMin));
     setMaxDraft(fmt(hMax));
+    setBad({ min: false, max: false });
     if (seenId !== (id ?? '') || seenName !== (layer?.name ?? '')) {
       setName(layer?.name ?? '');
       setError(null);
@@ -155,15 +167,30 @@ export function CleanupPanel({ stage }: { stage: EngineStage | null }) {
       ...(max !== undefined ? { max } : {}),
     });
     if (!check.success) {
-      setError(check.error.issues[0]?.message ?? null);
+      setError(t('cleanup.height.order'));
       return;
     }
     setError(null);
     if (min === hMin && max === hMax) return;
     void commit(withHeight(base(), min, max));
   };
+  /** Blur or Enter: only an end whose text the user changed is read; the other keeps its value. */
   const commitFields = () => {
-    commitHeight(num(minDraft), num(maxDraft));
+    const minChanged = minDraft !== fmt(hMin);
+    const maxChanged = maxDraft !== fmt(hMax);
+    const min = minChanged ? parseHeight(minDraft) : hMin;
+    const max = maxChanged ? parseHeight(maxDraft) : hMax;
+    const nowBad = { min: min === 'bad', max: max === 'bad' };
+    setBad(nowBad);
+    if (min === 'bad' || max === 'bad') {
+      setError(t('cleanup.height.invalid'));
+      return;
+    }
+    if (!minChanged && !maxChanged) {
+      setError(null);
+      return;
+    }
+    commitHeight(min, max);
   };
   const lo = bounds ? bounds.min[2] : null;
   const hi = bounds ? bounds.max[2] : null;
@@ -218,14 +245,14 @@ export function CleanupPanel({ stage }: { stage: EngineStage | null }) {
   const [threshold, setThreshold] = useState(String(DEFAULT_ELM.threshold));
   const noiseParams = (): NoiseParams => ({
     outlier: {
-      meanK: Math.round(num(meanK) ?? DEFAULT_OUTLIER.meanK),
-      multiplier: num(multiplier) ?? DEFAULT_OUTLIER.multiplier,
+      meanK: Math.round(clamp(meanK, DEFAULT_OUTLIER.meanK, 2, 64)),
+      multiplier: clamp(multiplier, DEFAULT_OUTLIER.multiplier, 0.1, 10),
     },
     ...(low
       ? {
           elm: {
-            cell: num(cell) ?? DEFAULT_ELM.cell,
-            threshold: num(threshold) ?? DEFAULT_ELM.threshold,
+            cell: clamp(cell, DEFAULT_ELM.cell, 0.5, 100),
+            threshold: clamp(threshold, DEFAULT_ELM.threshold, 0.1, 50),
           },
         }
       : {}),
@@ -236,12 +263,24 @@ export function CleanupPanel({ stage }: { stage: EngineStage | null }) {
   /* ---------------------------------------------------------------- focus a section */
   const noiseRef = useRef<HTMLElement>(null);
   const saveRef = useRef<HTMLElement>(null);
+  const panelRef = useRef<HTMLDivElement>(null);
+  const headRef = useRef<HTMLSpanElement>(null);
   useEffect(() => {
     const el = section === 'noise' ? noiseRef.current : section === 'save' ? saveRef.current : null;
     if (!el) return;
     el.scrollIntoView({ block: 'nearest' });
     el.querySelector<HTMLElement>(section === 'save' ? 'input' : 'button')?.focus();
   }, [section]);
+  // focus moves into the panel when it opens and back to the toolbar button when it closes
+  useLayoutEffect(() => {
+    const panel = panelRef.current;
+    if (!cleanup.store.getState().section) headRef.current?.focus();
+    return () => {
+      const at = document.activeElement;
+      if (at && at !== document.body && !panel?.contains(at)) return;
+      document.querySelector<HTMLElement>('[data-testid="cleanup-tool"]')?.focus();
+    };
+  }, []);
 
   const close = () => {
     cleanup.closePanel();
@@ -329,6 +368,7 @@ export function CleanupPanel({ stage }: { stage: EngineStage | null }) {
 
   return (
     <div
+      ref={panelRef}
       className="cleanup-panel overlay-box"
       data-surface="dark"
       data-testid="cleanup-panel"
@@ -341,7 +381,9 @@ export function CleanupPanel({ stage }: { stage: EngineStage | null }) {
       }}
     >
       <div className="cleanup-head">
-        <span className="pop-title">{t('cleanup.title')}</span>
+        <span className="pop-title" ref={headRef} tabIndex={-1}>
+          {t('cleanup.title')}
+        </span>
         <button
           type="button"
           className="btn ghost icon sm"
@@ -462,10 +504,11 @@ export function CleanupPanel({ stage }: { stage: EngineStage | null }) {
               <span>{t(label)}</span>
               <input
                 className="input"
-                type="number"
+                type="text"
                 inputMode="decimal"
-                step="any"
+                spellCheck={false}
                 value={value}
+                aria-invalid={bad[end]}
                 placeholder={end === 'min' ? fmt(lo ?? undefined) : fmt(hi ?? undefined)}
                 disabled={!can}
                 data-testid={`cleanup-height-${end}`}

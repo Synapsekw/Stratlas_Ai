@@ -36,12 +36,14 @@ export function CleanupHost({ engine }: { engine: EngineStage | null }) {
 }
 
 /**
- * The project closed or another opened: forget the recipes and the history (the next load reads
- * again). Called once at start-up; returns the unsubscribe.
+ * The project closed or another opened: close the panel and forget the recipes and the history
+ * (the next load reads again). Called once at start-up; returns the unsubscribe.
  */
 export function closeCleanupWithProject(): () => void {
   return workspace.subscribe((s, prev) => {
-    if ((s.project?.id ?? null) !== (prev.project?.id ?? null)) cleanup.close();
+    if ((s.project?.id ?? null) === (prev.project?.id ?? null)) return;
+    cleanup.close();
+    cleanup.closePanel();
   });
 }
 
@@ -110,7 +112,7 @@ function SelectionBar() {
           type="button"
           className="btn sm"
           aria-expanded={classes}
-          aria-haspopup="listbox"
+          aria-haspopup="menu"
           data-testid="cleanup-set-class"
           onClick={() => {
             setClasses(!classes);
@@ -122,7 +124,7 @@ function SelectionBar() {
         {classes && (
           <div
             className="cleanup-class-list overlay-box"
-            role="listbox"
+            role="menu"
             aria-label={t('cleanup.select.setClass')}
             data-testid="cleanup-class-list"
           >
@@ -130,8 +132,7 @@ function SelectionBar() {
               <button
                 key={c.code}
                 type="button"
-                role="option"
-                aria-selected={false}
+                role="menuitem"
                 className="pop-item"
                 data-testid={`cleanup-class-${c.code}`}
                 onClick={() => {
@@ -166,6 +167,8 @@ function SelectionBar() {
 export function CleanupNotice() {
   const t = useT();
   const notice = useCleanup((s) => s.notice);
+  // above the selection bar while a selection waits for its action
+  const lifted = useCleanup((s) => s.panelOpen && s.pending !== null);
   useEffect(() => {
     if (!notice || notice.error) return;
     const timer = window.setTimeout(cleanup.dismiss, SHOW_MS);
@@ -176,20 +179,9 @@ export function CleanupNotice() {
   if (!notice) return null;
   return (
     <div
-      className={`class-notice notice${notice.error ? ' warn' : ''}`}
+      className={`cleanup-notice notice${notice.error ? ' warn' : ''}${lifted ? ' lifted' : ''}`}
       role="status"
       data-testid="cleanup-notice"
-      style={{
-        position: 'fixed',
-        bottom: 16,
-        left: '50%',
-        transform: 'translateX(-50%)',
-        zIndex: 60,
-        display: 'flex',
-        gap: 8,
-        alignItems: 'center',
-        maxWidth: 'calc(100vw - 32px)',
-      }}
     >
       <span>{notice.text}</span>
       {notice.undo && notice.layerId && (

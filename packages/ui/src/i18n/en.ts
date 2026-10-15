@@ -730,6 +730,8 @@ export const en = {
   'cleanup.height.min': 'Lowest (m)',
   'cleanup.height.max': 'Highest (m)',
   'cleanup.height.clear': 'Clear',
+  'cleanup.height.order': 'The lowest height must not be above the highest.',
+  'cleanup.height.invalid': 'Type a height in metres, or leave the field empty for no limit.',
   'cleanup.select.title': 'Select points',
   'cleanup.select.box': 'Box',
   'cleanup.select.lasso': 'Lasso',
