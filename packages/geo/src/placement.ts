@@ -31,7 +31,10 @@ export type PlacementResult =
        * grid heading of the model changes by minus this. 0 within one CRS.
        */
       headingDeltaDeg: number;
-      /** Set when the two projections' scale factors at the anchor differ by more than 1e-4. */
+      /**
+       * Set when the two projections' scale factors at the anchor differ by more than 1e-4; the
+       * difference is then applied to horizontal distances so the model keeps its ground size.
+       */
       scaleNote?: string;
       /** Set when either vertical datum is unknown: heights are taken as they are. */
       heightNote?: string;
@@ -144,24 +147,12 @@ const crsLabel = (crs: { epsg: number } | { wkt: string }) =>
 const knownDatum = (d: string | undefined): string | null =>
   d === undefined || d.trim() === '' || d.trim().toLowerCase() === 'unknown' ? null : d.trim();
 
-/** Ratio of the point scale of projection `to` to that of `from` at a WGS84 lon, lat. */
-function scaleRatio(lon: number, lat: number, from: number, to: number): number {
-  const d = 1e-4;
-  const len = (epsg: number, dl: number, dp: number) => {
-    const a = fromWgs84([lon, lat, 0], epsg);
-    const b = fromWgs84([lon + dl, lat + dp, 0], epsg);
-    return Math.hypot(b[0] - a[0], b[1] - a[1]);
-  };
-  const east = len(to, d, 0) / len(from, d, 0);
-  const north = len(to, 0, d) / len(from, 0, d);
-  return (east + north) / 2;
-}
-
 /**
  * The layer transform that puts a georeferenced model in a project, or why it cannot be placed.
  * Same CRS: the record's matrix moved into the local frame. Another supported CRS: the anchor is
  * carried through WGS84 and the model turned about the vertical through it by the difference in
- * grid convergence; scale is kept and a projection scale difference is only noted. An unsupported
+ * grid convergence; a projection scale difference over 1e-4 is applied horizontally (and noted),
+ * a smaller one is left alone, and the record's own scale is never changed. An unsupported
  * CRS on either side is never guessed. Heights pass through: an unknown datum stays unknown, and
  * two different known datums leave the height to the user (horizontal placement offered).
  */
@@ -189,17 +180,29 @@ export function georefToLayerTransform(g: Georef, project: ProjectGeo): Placemen
     const moved = transformPoint(anchor, from, to);
     const [lon, lat] = toWgs84(anchor, from);
     headingDeltaDeg = gridConvergenceDeg(lon, lat, to) - gridConvergenceDeg(lon, lat, from);
-    const c = Math.cos(headingDeltaDeg * RAD);
-    const s = Math.sin(headingDeltaDeg * RAD);
-    // counter-clockwise seen from above in E, N: E' = E c - N s, N' = E s + N c
-    const turn: Mat4 = [c, s, 0, 0, -s, c, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1];
+    // The horizontal part of the CRS change at the anchor (its Jacobian, by central differences
+    // in the source grid): the convergence turn and the projections' scale difference together,
+    // including the east/north difference of a projection that is not conformal (EPSG:3857).
+    // Heights never scale with a projection.
+    const step = 10;
+    const d = (de: number, dn: number) => {
+      const p = transformPoint([anchor[0] + de, anchor[1] + dn, 0], from, to);
+      const q = transformPoint([anchor[0] - de, anchor[1] - dn, 0], from, to);
+      return [(p[0] - q[0]) / (2 * step), (p[1] - q[1]) / (2 * step)];
+    };
+    const [jEE = 1, jNE = 0] = d(step, 0);
+    const [jEN = 0, jNN = 1] = d(0, step);
+    // Below 1e-4 the scale difference is left alone (spec 5.6): only the turn is kept.
+    const k = Math.sqrt(Math.abs(jEE * jNN - jEN * jNE));
+    const applied = Math.abs(k - 1) > 1e-4;
+    const f = applied ? 1 : 1 / k;
+    if (applied)
+      scaleNote = `The two map projections differ in scale by a factor of ${k.toFixed(6)} here; the model was scaled across by it so it keeps its size on the ground.`;
+    const across: Mat4 = [jEE * f, jNE * f, 0, 0, jEN * f, jNN * f, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1];
     m = mul(
       translation(moved),
-      mul(turn, mul(translation([-anchor[0], -anchor[1], -anchor[2]]), m)),
+      mul(across, mul(translation([-anchor[0], -anchor[1], -anchor[2]]), m)),
     );
-    const k = scaleRatio(lon, lat, from, to);
-    if (Math.abs(k - 1) > 1e-4)
-      scaleNote = `The projection scale differs by a factor of ${k.toFixed(6)} between EPSG:${String(from)} and EPSG:${String(to)} here; the model keeps its own scale.`;
   }
 
   const transform = enhToLocal(m, project.origin);

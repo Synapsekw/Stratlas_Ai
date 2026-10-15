@@ -158,6 +158,18 @@ describe('georefToLayerTransform', () => {
     // the true direction is kept: model +X, taken back to zone 33N, points where it did there
     const tip = viaProj4(worldOfModelPoint(r.transform, C, [100, 0, 0]), 32634, 32633);
     expect(angleDiff(bearing([400010, 5600020, 15], tip), 90)).toBeLessThan(0.01);
+    // points off the anchor land on the same ground (projection scale applied across)
+    expect(r.scaleNote).toBeDefined();
+    for (const p of [
+      [20, 0, 0],
+      [0, 30, -20],
+      [-15, 5, 10],
+    ] as Vec3[])
+      expectClose(
+        viaProj4(worldOfModelPoint(r.transform, C, p), 32634, 32633),
+        [400010 + p[0], 5600020 - p[2], 15 + p[1]],
+        0.001,
+      );
     // height passes through
     expect(Math.abs(w[2] - 15)).toBeLessThan(1e-9);
   });
@@ -171,8 +183,31 @@ describe('georefToLayerTransform', () => {
     const w = worldOfModelPoint(r.transform, D, [0, 0, 0]);
     expectClose(viaProj4(w, 3857, 32633), [400010, 5600020, 15], 0.001);
     expect(r.scaleNote).toBeDefined();
-    // scale is kept (recorded, not applied): 100 model metres stay 100 project units
-    expect(Math.abs(dist(w, worldOfModelPoint(r.transform, D, [100, 0, 0])) - 100)).toBeLessThan(
+    // the projection scale is applied across, so points off the anchor land on the same ground
+    for (const p of [
+      [20, 0, 0],
+      [0, 30, -20],
+      [-15, 5, 10],
+    ] as Vec3[])
+      expectClose(
+        viaProj4(worldOfModelPoint(r.transform, D, p), 3857, 32633),
+        [400010 + p[0], 5600020 - p[2], 15 + p[1]],
+        0.001,
+      );
+    // heights never scale with a projection
+    expect(Math.abs(worldOfModelPoint(r.transform, D, [0, 30, 0])[2] - 45)).toBeLessThan(1e-9);
+  });
+
+  it('a projection scale difference under 1e-4 is left alone', () => {
+    // two southern and northern zones share the central meridian: identical point scale
+    const S: ProjectGeo = {
+      crs: { epsg: 32733 },
+      origin: transformPoint([400000, 5600000, 0], 32633, 32733),
+    };
+    const r = placed(georefToLayerTransform(g(), S));
+    expect(r.scaleNote).toBeUndefined();
+    const w0 = worldOfModelPoint(r.transform, S, [0, 0, 0]);
+    expect(Math.abs(dist(w0, worldOfModelPoint(r.transform, S, [100, 0, 0])) - 100)).toBeLessThan(
       1e-6,
     );
   });
