@@ -136,6 +136,26 @@ const Failure = z.object({ ok: z.literal(false), error: z.string(), code: Failur
 const OkOrFailure = z.discriminatedUnion('ok', [z.object({ ok: z.literal(true) }), Failure]);
 const ProjectId = z.string().min(1);
 
+/** The checks of a written engineering GLB (`engineer:validate`; `@aio/modelling` `GlbReport`). */
+export const GlbCheckReport = z
+  .object({
+    validatorErrors: z.number().int().nonnegative(),
+    validatorWarnings: z.number().int().nonnegative(),
+    messages: z.array(z.string()).max(200),
+    finite: z.boolean(),
+    indicesValid: z.boolean(),
+    normalsUnit: z.boolean(),
+    degenerate: z.number().int().nonnegative(),
+    duplicateTris: z.number().int().nonnegative(),
+    unintendedHoles: z.array(z.object({ node: z.string(), loops: z.number().int() })).max(500),
+    intendedOpenOk: z.boolean(),
+    openingProblems: z.array(z.object({ node: z.string(), problem: z.string() })).max(500),
+    triangles: z.number().int().nonnegative(),
+    withinBudget: z.boolean(),
+  })
+  .strict();
+export type GlbCheckReport = z.infer<typeof GlbCheckReport>;
+
 /** How an engineering GLB was meshed: coarsened for the budget, or not built at all. */
 export const GlbBuildReport = z
   .object({
@@ -1983,8 +2003,47 @@ export const ipc = {
   },
   /** Write `engineering/<run.id>/run.json` atomically with a `.bak`; refused for packages. */
   'engineer:runWrite': {
-    request: z.object({ projectId: ProjectId, run: EngineerRun }).strict(),
+    request: z
+      .object({
+        projectId: ProjectId,
+        run: EngineerRun,
+        /** Also write `engineering/<run.id>/proposal.json` (atomic, `.bak`) when given. */
+        proposal: EngineerProposal.optional(),
+      })
+      .strict(),
     response: OkOrFailure,
+  },
+  /**
+   * Check a model's built GLB as written (`models/<id>.glb`, or the draft): the Khronos glTF
+   * validator in main, finite positions, index ranges, unit normals, degenerate and duplicate
+   * triangles, closed solids except declared openings, and the triangle budget of `detail`.
+   */
+  'engineer:validate': {
+    request: z
+      .object({ projectId: ProjectId, modelId: ProcModelId, draft: z.boolean(), detail: Detail })
+      .strict(),
+    response: z.discriminatedUnion('ok', [
+      z.object({ ok: z.literal(true), report: GlbCheckReport }),
+      Failure,
+    ]),
+  },
+  /**
+   * Accept an engineering model: build `models/<id>.glb` and its one layer `model-<id>` (the draft
+   * preview goes), give the layer the model's georeference and placement, and write
+   * `models/<id>.georeference.json` and `models/<id>.components.json`. Idempotent: accepting again
+   * replaces that one layer. Refused for packages.
+   */
+  'engineer:accept': {
+    request: z.object({ projectId: ProjectId, modelId: ProcModelId }).strict(),
+    response: z.discriminatedUnion('ok', [
+      z.object({
+        ok: z.literal(true),
+        layer: z.string(),
+        files: z.array(z.string()),
+        report: GlbBuildReport.optional(),
+      }),
+      Failure,
+    ]),
   },
   /**
    * One evidence image of a run (listed in its `evidence.json`, under `engineering/<run>/img/`) as

@@ -136,6 +136,8 @@ const CHANNELS = {
   'engineer:runRead': true,
   'engineer:runWrite': true,
   'engineer:evidenceImage': true,
+  'engineer:validate': true,
+  'engineer:accept': true,
   'ai:setCloudEvidence': true,
   'ai:engineerPreview': true,
   'ai:engineer': true,
