@@ -4,7 +4,9 @@
   optionally ``filters.elm`` set class 7 on noise (other classes untouched), then a COPC working
   copy ``edits/pointcloud/<layer>.noise-<job>.copc.laz`` and its record ``.json`` beside it
   (``NoiseRun``). The app writes the record into the layer's recipe.
-- ``mode: save`` (Task 12): the recipe applied over every point, streamed, to a new layer.
+- ``mode: save``: the recipe applied over every point (of the noise copy when the recipe has one),
+  streamed in chunks over a staged LAS, written as a new COPC ``clouds/<id>.copc.laz`` and added to
+  the manifest as a derived layer ``<name> (cleaned)``; the original layer is hidden.
 
 The original file is never written. A cancelled job leaves only its staging folder.
 """
@@ -17,6 +19,8 @@ import shutil
 from pathlib import Path
 from typing import Any
 
+import numpy as np
+
 from ..params import known_keys, number, text
 from ..pointcloud import (
     COPC_BYTES_PER_POINT,
@@ -24,11 +28,13 @@ from ..pointcloud import (
     PDAL_MISSING,
     UNTWINE_TEMP_BYTES_PER_POINT,
     _run,
+    check_space,
     find_pdal,
     read_summary,
 )
 from ..runtime import JobError, Step, StepContext, atomic_write_json, commit_files, safe_project_path
-from .lasstream import class_histogram
+from .evaluate import evaluate, kept_for_save
+from .lasstream import class_histogram, filter_las
 from .recipe import NOISE_CLASS, validate_recipe
 
 NOISE_DIR = "edits/pointcloud"
@@ -128,19 +134,10 @@ def _check_memory(count: int) -> None:
         )
 
 
-def _check_space(folder: Path, needed: int) -> None:
-    """Refuse up front, with both numbers, when the staging drive cannot hold the cleanup."""
-    from ..photo import native
-
-    try:
-        native.check_disk(folder, needed)
-    except JobError:
-        free = shutil.disk_usage(folder).free
-        drive = Path(folder).resolve().anchor.rstrip("\\/") or str(folder)
-        raise JobError(
-            f"Cleaning up this point cloud needs about {needed / 1024**3:.1f} GB free on {drive}, "
-            f"which has {free / 1024**3:.1f} GB. Free some space or move the project to a larger drive."
-        ) from None
+def _check_cleanup_space(ctx: StepContext, count: int) -> None:
+    """Two LAS copies, untwine's temp and the COPC: refuse up front when the staging drive is too small."""
+    needed = count * (2 * DEFAULT_RECORD + UNTWINE_TEMP_BYTES_PER_POINT + COPC_BYTES_PER_POINT)
+    check_space(ctx.staging, needed, what="Cleaning up")
 
 
 def _stage_las(ctx: StepContext, pdal: str, src: Path, out: Path, band: tuple[float, float]) -> int:
@@ -148,13 +145,82 @@ def _stage_las(ctx: StepContext, pdal: str, src: Path, out: Path, band: tuple[fl
     staging drive is too small. Answers the count."""
     count = int(read_summary(ctx, pdal, src).get("num_points") or 0)
     _check_memory(count)
-    _check_space(
-        ctx.staging, count * (2 * DEFAULT_RECORD + UNTWINE_TEMP_BYTES_PER_POINT + COPC_BYTES_PER_POINT)
-    )
+    _check_cleanup_space(ctx, count)
     pipe = ctx.stage("work/to-las.json")
     atomic_write_json(pipe, {"pipeline": [{"type": "readers.copc", "filename": str(src)}, _las_writer(out)]})
     _run(ctx, [pdal, "pipeline", str(pipe)], "Reading the cloud", band)
     return count
+
+
+def filter_format(src: Path) -> int:
+    """The LAS 1.4 point format the streaming filter reads that keeps what ``src`` holds: 8 for a
+    source with near infrared, 7 for colour without it, else 6 (unreadable: 7, as before)."""
+    try:
+        with open(src, "rb") as f:
+            head = f.read(105)
+    except OSError:
+        return 7
+    if len(head) < 105:
+        return 7
+    pdrf = head[104] & 0x3F  # the top bits flag compression (LAZ, COPC)
+    if pdrf in (8, 10):
+        return 8
+    return 7 if pdrf in (2, 3, 5, 7) else 6
+
+
+def stage_plain_las(
+    ctx: StepContext,
+    pdal: str,
+    src: Path,
+    out: Path,
+    what: str,
+    band: tuple[float, float] = (0.0, 0.0),
+    extra_dims: bool = False,
+) -> None:
+    """``src`` (any cloud PDAL reads) as an uncompressed LAS 1.4 of the point format
+    ``filter_format`` picks, the input ``filter_las`` needs. Streams in PDAL, so it holds no cloud."""
+    writer: dict[str, Any] = {
+        "type": "writers.las",
+        "filename": str(out),
+        "minor_version": 4,
+        "dataformat_id": filter_format(src),
+        "forward": "all",
+    }
+    if extra_dims:
+        writer["extra_dims"] = "all"
+    pipe = ctx.stage(f"work/{out.stem}.json")
+    atomic_write_json(pipe, {"pipeline": [str(src), writer]})
+    _run(ctx, [pdal, "pipeline", str(pipe)], what, band)
+
+
+def _save_rule(recipe: dict[str, Any]):
+    def rule(xyz: np.ndarray, cls: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+        state, new_cls = evaluate(recipe, xyz, cls)
+        return kept_for_save(state), new_cls
+
+    return rule
+
+
+def cleaned_las(ctx: StepContext, cleanup: dict[str, Any], layer_src: Path, pdal: str) -> Any:
+    """The cloud with the cleanup recipe applied, read whole (``survey.export``).
+
+    PDAL stages the cloud (the noise run's working copy when the recipe has one) as LAS 1.4 in the
+    format ``filter_format`` picks, whatever format the source file has, since the streaming filter
+    reads those formats only; the filter keeps what a saved copy would keep and writes set-class
+    selections with their class."""
+    from ..change.las import read_las
+
+    noise = cleanup.get("noise")
+    # the noise run's working copy carries the noise marks the recipe hides
+    src = ctx.input(noise["path"]) if noise else layer_src
+    plain = ctx.stage("work/cloud-clean-src.las")
+    stage_plain_las(ctx, pdal, src, plain, "Read the point cloud")
+    kept = ctx.stage("work/cloud-cleaned.las")
+    res = filter_las(plain, kept, _save_rule(cleanup), check=ctx.check)
+    if not res["points_out"]:
+        raise JobError("The cleanup removes every point of this cloud, so there is nothing to export.")
+    ctx.log(f"Cleanup: {res['points_out']:,} of {res['points_in']:,} points kept.")
+    return read_las(kept)
 
 
 def _write_copc(ctx: StepContext, las: Path, out: Path, count: int, band: tuple[float, float]) -> str:
@@ -281,4 +347,86 @@ class PointcloudClean:
         ]
 
     def _save(self, params: dict[str, Any]) -> list[Step]:
-        raise JobError("Saving a cleaned copy comes with the next step of this plan.")  # replaced in Task 12
+        lid, recipe = params["layerId"], params["recipe"]
+        noise = recipe.get("noise")
+
+        def stage(ctx: StepContext) -> dict[str, Any]:
+            _cloud_layer(ctx.project, lid, params["src"])
+            pdal = _pdal()
+            src = ctx.input(noise["path"] if noise else params["src"])
+            count = int(read_summary(ctx, pdal, src).get("num_points") or 0)
+            # PDAL and the filter both stream (2M-point chunks): only the disk can run short here;
+            # write_copc checks the memory budget itself
+            _check_cleanup_space(ctx, count)
+            stage_plain_las(
+                ctx, pdal, src, ctx.stage("source.las"), "Reading the cloud", (0.02, 0.25), extra_dims=True
+            )
+            return {"points": count}
+
+        def apply(ctx: StepContext) -> dict[str, Any]:
+            src_las, out = ctx.stage("source.las"), ctx.stage("cleaned.las")
+            counts = filter_las(
+                src_las,
+                out,
+                _save_rule(recipe),
+                check=ctx.check,
+                progress=lambda f: ctx.progress(0.25 + 0.3 * f, "Applying the cleanup"),
+            )
+            src_las.unlink(missing_ok=True)
+            if counts["points_out"] == 0:
+                out.unlink(missing_ok=True)
+                raise JobError(
+                    "The cleanup removes every point of this cloud, so there is nothing left to save. "
+                    "Undo a step or show a class again, then save."
+                )
+            ctx.log(f"Kept {counts['points_out']:,} of {counts['points_in']:,} points.")
+            return counts
+
+        def write(ctx: StepContext) -> dict[str, Any]:
+            n = int(ctx.outputs("apply")["points_out"])
+            las, copc = ctx.stage("cleaned.las"), ctx.stage("cloud.copc.laz")
+            return {"writer": _write_copc(ctx, las, copc, n, (0.55, 0.95))}
+
+        def register(ctx: StepContext) -> dict[str, Any]:
+            mpath, manifest = _manifest(ctx.project)
+            layers = manifest.setdefault("layers", [])
+            source = next((x for x in layers if x.get("id") == lid), None)
+            if source is None:
+                raise JobError(f'The layer "{lid}" is not in the project any more.')
+            points = int(ctx.outputs("apply")["points_out"])
+            run_id = ctx.job.job_id
+            existing = next((x for x in layers if (x.get("derived") or {}).get("runId") == run_id), None)
+            if existing is not None:  # a resumed job that already registered
+                return {"layer": existing["id"], "path": existing["src"]["path"], "points": points}
+            taken = {str(x.get("id")) for x in layers}
+            new_id, n = f"{lid}-cleaned", 2
+            while new_id in taken:
+                new_id, n = f"{lid}-cleaned-{n}", n + 1
+            rel = f"clouds/{new_id}.copc.laz"
+            commit_files(ctx, [("cloud.copc.laz", rel)])
+            layers.append(
+                {
+                    "kind": "pointcloud",
+                    "id": new_id,
+                    "name": f"{params['name']} (cleaned)",
+                    "visible": True,
+                    **({"capture": source["capture"]} if source.get("capture") else {}),
+                    "src": {"path": rel},
+                    "format": "copc",
+                    "pointCount": points,
+                    "derived": {"kind": "cleanup", "source": [lid], "runId": run_id},
+                }
+            )
+            source["visible"] = False  # the original stays, hidden; its file is untouched
+            # the manifest last, with the one before kept beside it (as PointcloudToCopc.register)
+            shutil.copyfile(mpath, mpath.with_name("manifest.json.bak"))
+            atomic_write_json(mpath, manifest, indent=2)
+            ctx.log(f"Added layer {new_id} ({rel}).")
+            return {"layer": new_id, "path": rel, "points": points}
+
+        return [
+            Step("stage", "Read the cloud", stage, weight=3),
+            Step("apply", "Apply the cleanup", apply, weight=3),
+            Step("write", "Build the cleaned copy", write, weight=4),
+            Step("register", "Add the layer to the project", register, weight=0.5),
+        ]

@@ -260,8 +260,9 @@ def disk_needed(points: int, record: int | None) -> int:
     return points * ((record or 0) + UNTWINE_TEMP_BYTES_PER_POINT + COPC_BYTES_PER_POINT)
 
 
-def check_space(folder: Path, needed: int) -> None:
-    """Refuse up front, with both numbers, when the staging drive cannot hold the conversion."""
+def check_space(folder: Path, needed: int, what: str = "Importing") -> None:
+    """Refuse up front, with both numbers, when the staging drive cannot hold the work; ``what``
+    names it (``Importing``, ``Cleaning up``)."""
     from .photo import native
 
     try:
@@ -270,7 +271,7 @@ def check_space(folder: Path, needed: int) -> None:
         free = shutil.disk_usage(folder).free
         drive = Path(folder).resolve().anchor.rstrip("\\/") or str(folder)
         raise JobError(
-            f"Importing this point cloud needs about {needed / 1024**3:.1f} GB free on {drive}, "
+            f"{what} this point cloud needs about {needed / 1024**3:.1f} GB free on {drive}, "
             f"which has {free / 1024**3:.1f} GB. Free some space or move the project to a larger drive."
         ) from None
 
