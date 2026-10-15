@@ -9,6 +9,7 @@
  */
 import { issueEditor } from '@aio/annotate';
 import {
+  acceptMany,
   currentOf,
   initialReview,
   newIssueInput,
@@ -33,6 +34,7 @@ import { createStore } from 'zustand/vanilla';
 import { authorName } from '../author';
 import { beforeJobStart } from '../bridge';
 import { bridge } from '../shell';
+import { acceptLabel, planBatch, rejectLabel, undoStep, type BatchPlan } from './batch';
 
 export type DetectionSaveState = 'saved' | 'pending' | 'saving' | 'error';
 
@@ -406,4 +408,86 @@ export function acceptCurrent(mode: AcceptMode): { ok: true; issueId: string } |
   }
   dispatch({ type: 'accepted', id: d.id, issueId: mode.issueId, by: authorName() || 'user', now });
   return { ok: true, issueId: mode.issueId };
+}
+
+const sizeOf = (d: Detection) => imageSizes.get(sourceKey(d.source));
+
+/** What Accept all and Reject all would do with `list` (the filtered list on screen). */
+export function planFor(list: readonly Detection[]): BatchPlan {
+  return planBatch(list, issueEditor.context(), sizeOf);
+}
+
+/**
+ * Accept all: every waiting detection of `list` that can be accepted becomes a draft issue, as one
+ * issue editor command and one review change of the same label (one Ctrl+Z undoes both).
+ */
+export function acceptAll(
+  list: readonly Detection[],
+): { accepted: number; skipped: number } | { error: string } {
+  const s = detections.getState();
+  if (s.readOnly) return { error: t('det.save.readOnly') };
+  const r = acceptMany(list, issueEditor.context(), sizeOf);
+  if (r.accepted.length === 0) return { accepted: 0, skipped: r.skipped.length };
+  const label = acceptLabel(r.accepted.length);
+  const created = issueEditor.createMany(
+    r.accepted.map((a) => a.input),
+    label,
+  );
+  if (!created.ok) {
+    detections.setState({ problem: null, issueError: created.error });
+    return { error: created.error };
+  }
+  const items = r.accepted.flatMap((a, i) => {
+    const issue = created.value[i];
+    return issue ? [{ id: a.detection.id, issueId: issue.id }] : [];
+  });
+  dispatch({
+    type: 'acceptedMany',
+    items,
+    label,
+    by: authorName() || 'user',
+    now: new Date().toISOString(),
+  });
+  return { accepted: items.length, skipped: r.skipped.length };
+}
+
+/** Reject all: every waiting detection of `list`, one undo step. */
+export function rejectAll(list: readonly Detection[]): number {
+  if (detections.getState().readOnly) return 0;
+  const ids = list.filter((d) => d.status === 'draft').map((d) => d.id);
+  if (ids.length === 0) return 0;
+  dispatch({
+    type: 'rejectMany',
+    ids,
+    label: rejectLabel(ids.length),
+    by: authorName() || 'user',
+    now: new Date().toISOString(),
+  });
+  return ids.length;
+}
+
+/** Undo in the review: an Accept all is undone with its issues, or not at all. */
+export function undoReview(): void {
+  const s = detections.getState();
+  const step = undoStep(s.review.past.at(-1), issueEditor.state.undoLabel);
+  if (step === 'none') return;
+  if (step === 'blocked') {
+    detections.setState({ issueError: t('det.error.batchUndoMoved') });
+    return;
+  }
+  if (step === 'with-issues' && !issueEditor.undo()) return;
+  dispatch({ type: 'undo' });
+}
+
+/** Redo in the review: an Accept all is redone with its issues, or not at all. */
+export function redoReview(): void {
+  const s = detections.getState();
+  const step = undoStep(s.review.future.at(-1), issueEditor.state.redoLabel);
+  if (step === 'none') return;
+  if (step === 'blocked') {
+    detections.setState({ issueError: t('det.error.batchUndoMoved') });
+    return;
+  }
+  if (step === 'with-issues' && !issueEditor.redo()) return;
+  dispatch({ type: 'redo' });
 }

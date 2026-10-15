@@ -30,7 +30,18 @@ import { itemKey, type DetectItem } from '../detections/convert';
 import { ReviewEditor, type EditorShape } from '../detections/Editor';
 import { Inspector } from '../detections/Inspector';
 import { reviewCommand, typingIn } from '../detections/keys';
-import { acceptCurrent, dispatch, loadDetections, useDetections } from '../detections/store';
+import { BatchConfirm } from '../detections/BatchConfirm';
+import {
+  acceptAll,
+  acceptCurrent,
+  dispatch,
+  loadDetections,
+  planFor,
+  redoReview,
+  rejectAll,
+  undoReview,
+  useDetections,
+} from '../detections/store';
 import '../detections/detections.css';
 import { FocusZone } from '../FocusZone';
 import { useMedia } from '../media';
@@ -87,6 +98,7 @@ export function DetectionsScreen() {
   const [noteFocus, setNoteFocus] = useState(0);
   const [fitSignal, setFitSignal] = useState(0);
   const [aiOpen, setAiOpen] = useState(false);
+  const [batch, setBatch] = useState<'accept' | 'reject' | null>(null);
   const [maskError, setMaskError] = useState<string | null>(null);
   const mask = useCall('detections:maskAssistStatus', {}, project?.id ?? null);
   const maskAvailable = mask?.ok === true && mask.value.available;
@@ -105,6 +117,9 @@ export function DetectionsScreen() {
   );
   const current = currentOf(review);
   const queue = useMemo(() => queueOf(review), [review]);
+  // `classes` is a dependency so the counts follow a class added while working.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const plan = useMemo(() => planFor(queue), [queue, classes]);
   const counts = useMemo(() => {
     const c = { draft: 0, accepted: 0, rejected: 0 };
     for (const d of review.detections) c[d.status] += 1;
@@ -368,10 +383,10 @@ export function DetectionsScreen() {
         setFitSignal((n) => n + 1);
         break;
       case 'undo':
-        dispatch({ type: 'undo' });
+        undoReview();
         break;
       case 'redo':
-        dispatch({ type: 'redo' });
+        redoReview();
         break;
     }
     e.preventDefault();
@@ -438,12 +453,48 @@ export function DetectionsScreen() {
         <span className="grow" />
         <button
           type="button"
+          className="btn sm"
+          data-testid="det-accept-all"
+          disabled={readOnly || plan.accept === 0}
+          onClick={() => {
+            setBatch('accept');
+          }}
+        >
+          {t('det.acceptAll', { count: plan.accept })}
+        </button>
+        <button
+          type="button"
+          className="btn ghost sm"
+          data-testid="det-reject-all"
+          disabled={readOnly || plan.reject === 0}
+          onClick={() => {
+            setBatch('reject');
+          }}
+        >
+          {t('det.rejectAll', { count: plan.reject })}
+        </button>
+        {batch && (
+          <BatchConfirm
+            kind={batch}
+            plan={plan}
+            onCancel={() => {
+              setBatch(null);
+            }}
+            onConfirm={() => {
+              if (batch === 'accept') acceptAll(queue);
+              else rejectAll(queue);
+              setBatch(null);
+            }}
+          />
+        )}
+        <button
+          type="button"
           className="btn ghost icon sm"
           aria-label={t('det.undo', { keys: shortcutHint('review.undo') })}
           title={t('det.undo', { keys: shortcutHint('review.undo') })}
           disabled={!canUndo(review)}
           onClick={() => {
-            dispatch({ type: 'undo' });
+            undoReview();
           }}
         >
           <Icon name="undo" size={14} />
@@ -455,7 +506,7 @@ export function DetectionsScreen() {
           title={t('det.redo', { keys: shortcutHint('review.redo') })}
           disabled={!canRedo(review)}
           onClick={() => {
-            dispatch({ type: 'redo' });
+            redoReview();
           }}
         >
           <Icon name="undo" size={14} className="flip" />

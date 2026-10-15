@@ -1,0 +1,42 @@
+import type { IssueContext } from '@aio/annotate';
+import { acceptMany, type Detection, type ReviewChange } from '@aio/annotate/detections';
+
+/*
+ * Accept all and Reject all (ANN-7) over the filtered list on screen. The issue editor command
+ * and the review change of one Accept all carry the same label, so undo can do both or neither.
+ */
+
+export interface BatchPlan {
+  /** Waiting detections Accept all turns into issues. */
+  accept: number;
+  /** Waiting detections it skips (no class, no severity...). */
+  skip: number;
+  /** Waiting detections Reject all rejects. */
+  reject: number;
+}
+
+export function planBatch(
+  list: readonly Detection[],
+  ctx: IssueContext,
+  sizeOf?: (d: Detection) => readonly [number, number] | undefined,
+): BatchPlan {
+  const r = acceptMany(list, ctx, sizeOf);
+  return {
+    accept: r.accepted.length,
+    skip: r.skipped.length,
+    reject: list.filter((d) => d.status === 'draft').length,
+  };
+}
+
+const n = (count: number, one: string) => `${String(count)} ${one}${count === 1 ? '' : 's'}`;
+export const acceptLabel = (count: number) => `Accept ${n(count, 'detection')}`;
+export const rejectLabel = (count: number) => `Reject ${n(count, 'detection')}`;
+
+export type UndoStep = 'none' | 'review' | 'with-issues' | 'blocked';
+
+/** What undo may do with the review's last change, given the issue editor's undo label. */
+export function undoStep(top: ReviewChange | undefined, editorLabel: string | null): UndoStep {
+  if (!top) return 'none';
+  if (!top.issues) return 'review';
+  return editorLabel === top.label ? 'with-issues' : 'blocked';
+}

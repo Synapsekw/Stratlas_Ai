@@ -17,7 +17,25 @@
   flex-wrap: wrap;
 }
 .det-h {
+  position: relative;
   background: var(--bg-1);
+}
+.det-batch-confirm {
+  position: absolute;
+  top: 44px;
+  right: 16px;
+  z-index: 20;
+  max-width: min(360px, calc(100vw - 32px));
+  padding: 12px 14px;
+  border-radius: 8px;
+  background: var(--bg-2);
+  border: 1px solid var(--line-soft);
+  box-shadow: 0 8px 24px var(--shadow);
+}
+.det-batch-confirm .row {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
 }
 .det-h h1 {
   margin: 0;
