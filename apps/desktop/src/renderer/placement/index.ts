@@ -11,6 +11,7 @@ import { bridge } from '../shell';
 import { ensureSizes, layerReady, placeOnScene } from './controller';
 import {
   createPlacementStore,
+  followProject,
   type OfferSource,
   type PlacementDeps,
   type PlacementState,
@@ -33,7 +34,8 @@ function liveDeps(): PlacementDeps {
           ? new Uint8Array(data.buffer, data.byteOffset, data.byteLength)
           : new Uint8Array(data);
       const r = await bridge.call('project:writeSelection', { projectId, name, data: bytes });
-      return r.ok && r.value.ok ? r.value.path : null;
+      if (!r.ok) return { error: r.error };
+      return r.value.ok ? { path: r.value.path } : { error: r.value.error };
     },
     ready: (id) => layerReady(workspace, id),
     now: () => new Date().toISOString(),
@@ -51,15 +53,20 @@ export function usePlacement<T>(select: (s: PlacementState) => T): T {
   return useStore(placement, select);
 }
 
-/** The issue list's "Place on model..." opens the same offer. Returns a stop function. */
+/**
+ * The issue list's "Place on model..." opens the same offer, and opening another project resets
+ * the placement. Returns a stop function.
+ */
 export function startPlacement(): () => void {
   const stopList = setIssueListActions({
     placeOnModel: (ids) => {
       offerPlacement(ids, 'menu');
     },
   });
+  const stopProject = followProject(placement, workspace);
   return () => {
     stopList();
+    stopProject();
   };
 }
 

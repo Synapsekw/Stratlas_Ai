@@ -10,7 +10,13 @@ import {
 } from '@aio/schema';
 import { captureIndex, createWorkspace } from '@aio/workspace';
 import { describe, expect, it, vi } from 'vitest';
-import { createPlacementStore, type PlacementDeps } from './store';
+import {
+  createPlacementStore,
+  followProject,
+  stepSelectionName,
+  type PlacementDeps,
+  type SelectionWrite,
+} from './store';
 
 const I = [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1];
 const manifest: ProjectManifest = {
@@ -155,7 +161,7 @@ function setup(over: Partial<PlacementDeps> = {}, results: Record<string, PlaceR
       ),
     ),
     prepare: vi.fn(() => Promise.resolve()),
-    writeSelection: vi.fn(() => Promise.resolve('selections/x.sel')),
+    writeSelection: vi.fn(() => Promise.resolve<SelectionWrite>({ path: 'selections/x.sel' })),
     ready: vi.fn(() => Promise.resolve(true)),
     now: () => '2026-10-15T12:00:00.000Z',
     newId: () => 'track-1',
@@ -220,7 +226,9 @@ describe('placing', () => {
     const { store, ws, deps } = setup({}, { a: cloudResult });
     await store.getState().placeIds(['a'], 'cloud-d2');
     const [projectId, name, bytes] = vi.mocked(deps.writeSelection).mock.calls[0] ?? [];
-    expect([projectId, name]).toEqual(['p', 'a-cloud-d2']);
+    // a name of its own per write: Undo puts back a sighting whose file still holds its points
+    expect([projectId, name]).toEqual(['p', 'a-cloud-d2-20261015120000000']);
+    expect(name).toMatch(/^[A-Za-z0-9_-]{1,120}$/);
     expect(decodeSelection(bytes ?? new Uint8Array())?.lod).toBe(3);
     const a = ws.getState().issues.find((i) => i.id === 'a');
     expect(a?.sightings.at(-1)).toEqual({
@@ -304,6 +312,175 @@ describe('placing', () => {
     store.getState().undo();
     expect(editor.undo).toHaveBeenCalledTimes(1);
     expect(store.getState().result).toBeNull();
+    // the bar can say why nothing was undone
+    expect(store.getState().undoStale).toBe(true);
+    store.getState().dismiss();
+    expect(store.getState().undoStale).toBe(false);
+  });
+
+  it('builds on the issue as it is at commit: edits made while placing stay', async () => {
+    const { store, ws } = setup({
+      place: vi.fn((i: Issue) => {
+        // someone retitles the issue while the projection runs
+        const now = ws.getState().issues.find((x) => x.id === i.id);
+        if (now) ws.getState().upsertIssue({ ...now, title: 'Renamed meanwhile' });
+        return Promise.resolve<PlaceResult>({
+          ok: true,
+          sightings: [
+            {
+              on: 'mesh',
+              layer: 'model-d2',
+              geom: { type: 'spolygon', points: square(0) },
+              from: { sighting: 0 },
+            },
+          ],
+          from: 0,
+          hitRate: 1,
+        });
+      }),
+    });
+    const r = await store.getState().placeIds(['a'], 'model-d2');
+    expect(r?.placed).toBe(1);
+    const a = ws.getState().issues.find((i) => i.id === 'a');
+    expect(a?.title).toBe('Renamed meanwhile');
+    expect(a?.sightings.at(-1)?.on).toBe('mesh');
+  });
+
+  it('leaves an issue whose photo sighting went while placing, and says so', async () => {
+    const { store, ws, editor } = setup({
+      place: vi.fn((i: Issue) => {
+        const now = ws.getState().issues.find((x) => x.id === i.id);
+        if (now) ws.getState().upsertIssue({ ...now, sightings: now.sightings.slice(1) });
+        return Promise.resolve<PlaceResult>({
+          ok: true,
+          sightings: [
+            {
+              on: 'mesh',
+              layer: 'model-d2',
+              geom: { type: 'spolygon', points: square(0) },
+              from: { sighting: 0 },
+            },
+          ],
+          from: 0,
+          hitRate: 1,
+        });
+      }),
+    });
+    const r = await store.getState().placeIds(['a'], 'model-d2');
+    expect(r).toMatchObject({ placed: 0, missed: 0, changed: 1 });
+    expect(r?.outcomes[0]).toMatchObject({ id: 'a', ok: false, reason: 'missed', changed: true });
+    expect(editor.commitIssues).not.toHaveBeenCalled();
+  });
+
+  it('writes nothing when another project opened while placing, and resets', async () => {
+    const { store, ws, editor } = setup({
+      place: vi.fn(() => {
+        ws.getState().openProject({ id: 'q', root: 'r2', manifest: { ...manifest, id: 'q' } }, [A]);
+        return Promise.resolve<PlaceResult>({ ok: false, reason: 'missed' });
+      }),
+    });
+    const stop = followProject(store, ws);
+    store.getState().offerIds(['a', 'b'], 'detections');
+    const r = await store.getState().placeIds(['a', 'b'], 'model-d2');
+    expect(r).toBeNull();
+    expect(editor.commitIssues).not.toHaveBeenCalled();
+    expect(store.getState()).toMatchObject({
+      offer: null,
+      layerId: null,
+      result: null,
+      matches: [],
+      error: null,
+      busy: false,
+    });
+    stop();
+  });
+
+  it('runs one placement at a time and keeps every call', async () => {
+    let active = 0;
+    let most = 0;
+    const { store } = setup({
+      place: vi.fn(async (i: Issue) => {
+        active += 1;
+        most = Math.max(most, active);
+        await new Promise((r) => setTimeout(r, 10));
+        active -= 1;
+        return i.id === 'a'
+          ? ({
+              ok: true,
+              sightings: [
+                {
+                  on: 'mesh',
+                  layer: 'model-d2',
+                  geom: { type: 'spolygon', points: square(0) },
+                  from: { sighting: 0 },
+                },
+              ],
+              from: 0,
+              hitRate: 1,
+            } satisfies PlaceResult)
+          : ({ ok: false, reason: 'missed' } satisfies PlaceResult);
+      }),
+    });
+    const first = store.getState().placeIds(['a'], 'model-d2');
+    const second = store.getState().placeIds(['b'], 'model-d2');
+    expect(store.getState().busy).toBe(true);
+    const [r1, r2] = await Promise.all([first, second]);
+    expect(most).toBe(1);
+    expect(r1?.placed).toBe(1);
+    expect(r2).toMatchObject({ placed: 0, missed: 1 });
+    expect(store.getState().busy).toBe(false);
+  });
+
+  it('says when a selection file could not be written; the prism still lands', async () => {
+    const cloudResult: PlaceResult = {
+      ok: true,
+      sightings: [
+        {
+          on: 'pointcloud',
+          layer: 'cloud-d2',
+          geom: { type: 'polygon3', points: square(0), height: 0.2 },
+          from: { sighting: 0 },
+        },
+      ],
+      from: 0,
+      hitRate: 1,
+      selection: { positions: new Float32Array([1, 2, 3]), count: 1, lod: 2 },
+    };
+    const { store, ws } = setup(
+      { writeSelection: vi.fn(() => Promise.resolve<SelectionWrite>({ error: 'Disk full' })) },
+      { a: cloudResult },
+    );
+    const r = await store.getState().placeIds(['a'], 'cloud-d2');
+    expect(r).toMatchObject({ placed: 1, selectionFailed: 1 });
+    expect(r?.outcomes[0]?.selectionError).toBe('Disk full');
+    expect(store.getState().error).toBe('Disk full');
+    const a = ws.getState().issues.find((i) => i.id === 'a');
+    // the prism without a selection sighting (the mesh pin is of another layer and stays)
+    expect(a?.sightings.map((s) => ('geom' in s ? s.geom.type : s.on))).toEqual([
+      'box',
+      'spoint',
+      'polygon3',
+    ]);
+  });
+
+  it('offers again, with what was offered meanwhile, when the commit is refused', async () => {
+    const { store, editor } = setup();
+    editor.commitIssues.mockImplementation(() => err<null>('Refused'));
+    store.getState().offerIds(['a'], 'detections');
+    const run = store.getState().place();
+    store.getState().offerIds(['b'], 'change');
+    await run;
+    expect(store.getState().offer).toEqual({ ids: ['a', 'b'], source: 'change' });
+  });
+
+  it('names each selection write apart, within the file name rule', () => {
+    const long = 'x'.repeat(200);
+    const name = stepSelectionName(long, 'cloud', '2026-10-15T12:00:00.000Z');
+    expect(name).toMatch(/^[A-Za-z0-9_-]{1,120}$/);
+    expect(name.endsWith('-20261015120000000')).toBe(true);
+    expect(stepSelectionName('a', 'c', '2026-10-15T12:00:00.001Z')).not.toBe(
+      stepSelectionName('a', 'c', '2026-10-15T12:00:00.000Z'),
+    );
   });
 });
 
@@ -333,5 +510,22 @@ describe('match suggestions', () => {
     store.getState().skipAll();
     expect(store.getState().matches).toEqual([]);
     expect(editor.commitIssues).toHaveBeenCalledTimes(2);
+  });
+
+  it('Same writes nothing when the two are already tracked as one', async () => {
+    const { store, ws, editor } = setup();
+    await store.getState().placeIds(['a'], 'model-d2');
+    expect(store.getState().matches).toHaveLength(1);
+    // matched elsewhere before Same was pressed
+    for (const [id, capture] of [
+      ['a', 'd2'],
+      ['e', 'd1'],
+    ] as const) {
+      const i = ws.getState().issues.find((x) => x.id === id);
+      if (i) ws.getState().upsertIssue({ ...i, track: 'T', capture });
+    }
+    store.getState().same();
+    expect(editor.commitIssues).toHaveBeenCalledTimes(1);
+    expect(store.getState().matches).toEqual([]);
   });
 });

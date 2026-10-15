@@ -27,7 +27,14 @@ export interface PlaceOutcome {
   code: string;
   ok: boolean;
   reason?: PlaceFailure;
+  /**
+   * The issue, or the photo sighting it was projected from, changed or went while placing:
+   * nothing was written for it (reason 'missed'; counted in `PlaceSummary.changed`).
+   */
+  changed?: true;
   sightings?: Sighting[];
+  /** The point selection file could not be written (the prism still landed). */
+  selectionError?: string;
 }
 
 export interface PlaceSummary {
@@ -35,9 +42,14 @@ export interface PlaceSummary {
   layerName: string;
   total: number;
   placed: number;
+  /** Missed the model (not counting `changed`). */
   missed: number;
   noPhoto: number;
   notLoaded: number;
+  /** Changed or removed while placing, so left as they are. */
+  changed: number;
+  /** Cloud findings whose point selection file could not be written. */
+  selectionFailed: number;
   /** The editor step's label: Undo acts only while it is the last step. */
   label: string;
   outcomes: PlaceOutcome[];
@@ -57,13 +69,17 @@ export interface PlacementState {
   layerId: string | null;
   /** The project has no mesh or point cloud. */
   noLayers: boolean;
+  /** A placement is running or waiting its turn. */
   busy: boolean;
   result: PlaceSummary | null;
   matches: MatchOffer[];
   error: string | null;
+  /** Undo was pressed after another edit: the placement was not undone (Ctrl+Z still can). */
+  undoStale: boolean;
   offerIds(ids: readonly string[], source: OfferSource): void;
   setLayer(id: string): void;
   place(): Promise<PlaceSummary | null>;
+  /** Place the issues on a layer; runs queue up, one at a time. */
   placeIds(ids: readonly string[], layerId: string): Promise<PlaceSummary | null>;
   notNow(): void;
   undo(): void;
@@ -71,7 +87,11 @@ export interface PlacementState {
   different(): void;
   skipAll(): void;
   dismiss(): void;
+  /** Forget everything (another project opened); runs still queued write nothing. */
+  reset(): void;
 }
+
+export type SelectionWrite = { path: string } | { error: string };
 
 export interface PlacementDeps {
   workspace: StoreApi<Workspace>;
@@ -82,8 +102,8 @@ export interface PlacementDeps {
    */
   prepare: (issue: Issue) => Promise<void>;
   place: (issue: Issue, layer: Layer) => Promise<PlaceResult>;
-  /** Write a selection file; its project path, or null when it was not written. */
-  writeSelection: (projectId: string, name: string, data: Uint8Array) => Promise<string | null>;
+  /** Write a selection file: its project path, or why it was not written. */
+  writeSelection: (projectId: string, name: string, data: Uint8Array) => Promise<SelectionWrite>;
   /** Show the layer when hidden and wait until the 3D view can cast rays at it. */
   ready: (layerId: string) => Promise<boolean>;
   now: () => string;
@@ -92,10 +112,35 @@ export interface PlacementDeps {
 
 const plural = (n: number) => `${String(n)} issue${n === 1 ? '' : 's'}`;
 
+/**
+ * A selection file name of its own for every write (`SelectionName`, at most 120 characters):
+ * the issue and layer, then the time of the write, so Undo puts back a sighting whose file still
+ * holds its own points.
+ */
+export function stepSelectionName(issueId: string, layer: string, now: string): string {
+  const stamp = now.replace(/[^0-9]/g, '').slice(0, 17) || '0';
+  return `${selectionName(issueId, layer).slice(0, 119 - stamp.length)}-${stamp}`;
+}
+
+/** What one issue's projection gave, before it is committed onto the issue as it is then. */
+interface Computed {
+  id: string;
+  sightings: Sighting[];
+  /** Index of the photo sighting projected from, and that sighting as it was. */
+  from: number;
+  source: string;
+}
+
 export function createPlacementStore(deps: PlacementDeps): StoreApi<PlacementState> {
   const issueById = (id: string) => deps.workspace.getState().issues.find((i) => i.id === id);
+  const projectId = () => deps.workspace.getState().project?.id ?? null;
 
   return createStore<PlacementState>()((set, get) => {
+    /** Runs one after another (one refine at a time); `generation` moves on at every reset. */
+    let queue: Promise<unknown> = Promise.resolve();
+    let pending = 0;
+    let generation = 0;
+
     const matchesFor = (placed: readonly Issue[]): MatchOffer[] => {
       const ws = deps.workspace.getState();
       const dates = ws.dates;
@@ -121,73 +166,138 @@ export function createPlacementStore(deps: PlacementDeps): StoreApi<PlacementSta
       return out;
     };
 
-    const placeIds = async (
+    const runPlace = async (
       ids: readonly string[],
       layerId: string,
+      project: string | null,
+      gen: number,
     ): Promise<PlaceSummary | null> => {
-      const project = deps.workspace.getState().project;
-      const layer = project?.manifest.layers.find((l) => l.id === layerId);
-      if (!project || !layer) return null;
-      set({ busy: true, error: null });
+      const current = () => gen === generation && project !== null && projectId() === project;
+      const open = deps.workspace.getState().project;
+      const layer = open?.manifest.layers.find((l) => l.id === layerId);
+      if (!open || !layer || !current()) return null;
       try {
         const ready = await deps.ready(layerId);
-        const outcomes: PlaceOutcome[] = [];
-        const next: Issue[] = [];
+        const outcomes = new Map<string, PlaceOutcome>();
+        const computed: Computed[] = [];
         for (const id of ids) {
+          if (!current()) return null;
           const issue = issueById(id);
           if (!issue) continue;
           if (!ready) {
-            outcomes.push({ id, code: issue.code, ok: false, reason: 'layer-not-loaded' });
+            outcomes.set(id, { id, code: issue.code, ok: false, reason: 'layer-not-loaded' });
             continue;
           }
           await deps.prepare(issue);
           const r = await deps.place(issue, layer);
           if (!r.ok) {
-            outcomes.push({ id, code: issue.code, ok: false, reason: r.reason });
+            outcomes.set(id, { id, code: issue.code, ok: false, reason: r.reason });
             continue;
           }
           let sightings = r.sightings;
+          let selectionError: string | undefined;
           if (r.selection) {
-            const path = await deps.writeSelection(
-              project.id,
-              selectionName(issue.id, layer.id),
+            const w = await deps.writeSelection(
+              open.id,
+              stepSelectionName(issue.id, layer.id, deps.now()),
               encodeSelection(r.selection.positions, r.selection.lod),
             );
-            if (path)
+            if ('path' in w)
               sightings = [
                 ...sightings,
-                selectionSighting(layer.id, { path }, r.selection, r.from),
+                selectionSighting(layer.id, { path: w.path }, r.selection, r.from),
               ];
+            else selectionError = w.error;
           }
-          next.push(withPlacedArea(issue, layer.id, sightings, deps.now()));
-          outcomes.push({ id, code: issue.code, ok: true, sightings });
+          computed.push({
+            id,
+            sightings,
+            from: r.from,
+            source: JSON.stringify(issue.sightings[r.from] ?? null),
+          });
+          outcomes.set(id, {
+            id,
+            code: issue.code,
+            ok: true,
+            sightings,
+            ...(selectionError !== undefined ? { selectionError } : {}),
+          });
+        }
+        // another project opened meanwhile: nothing of this run is written
+        if (!current()) return null;
+        // build on the issues as they are now: edits made while placing stay
+        const next: Issue[] = [];
+        for (const c of computed) {
+          const now = issueById(c.id);
+          const o = outcomes.get(c.id);
+          const same =
+            now !== undefined && JSON.stringify(now.sightings[c.from] ?? null) === c.source;
+          if (!now || !same) {
+            outcomes.set(c.id, {
+              id: c.id,
+              code: now?.code ?? o?.code ?? c.id,
+              ok: false,
+              reason: 'missed',
+              changed: true,
+            });
+            continue;
+          }
+          next.push(withPlacedArea(now, layer.id, c.sightings, deps.now()));
         }
         const label = `Place ${plural(next.length)} on ${layer.name}`;
         if (next.length > 0) {
           const c = deps.editor.commitIssues(next, label);
           if (!c.ok) {
-            set({ busy: false, error: c.error });
+            set({ error: c.error });
             return null;
           }
         }
-        const count = (reason: PlaceFailure) => outcomes.filter((o) => o.reason === reason).length;
+        const list = ids.flatMap((id) => {
+          const o = outcomes.get(id);
+          return o ? [o] : [];
+        });
+        const count = (reason: PlaceFailure) =>
+          list.filter((o) => o.reason === reason && !o.changed).length;
+        const failed = list.filter((o) => o.ok && o.selectionError !== undefined);
         const summary: PlaceSummary = {
           layerId,
           layerName: layer.name,
-          total: outcomes.length,
+          total: list.length,
           placed: next.length,
           missed: count('missed'),
           noPhoto: count('no-photo-shape'),
           notLoaded: count('layer-not-loaded'),
+          changed: list.filter((o) => o.changed).length,
+          selectionFailed: failed.length,
           label,
-          outcomes,
+          outcomes: list,
         };
-        set({ busy: false, result: summary, matches: matchesFor(next) });
+        set({
+          result: summary,
+          matches: matchesFor(next),
+          undoStale: false,
+          ...(failed[0]?.selectionError !== undefined ? { error: failed[0].selectionError } : {}),
+        });
         return summary;
       } catch (e) {
-        set({ busy: false, error: e instanceof Error ? e.message : String(e) });
+        if (current()) set({ error: e instanceof Error ? e.message : String(e) });
         return null;
       }
+    };
+
+    const placeIds = (ids: readonly string[], layerId: string): Promise<PlaceSummary | null> => {
+      const project = projectId();
+      const gen = generation;
+      pending += 1;
+      set({ busy: true, error: null });
+      const run = queue
+        .then(() => runPlace([...ids], layerId, project, gen))
+        .finally(() => {
+          pending -= 1;
+          if (pending === 0) set({ busy: false });
+        });
+      queue = run.catch(() => undefined);
+      return run;
     };
 
     const dropMatch = (ids: readonly string[]) =>
@@ -203,6 +313,7 @@ export function createPlacementStore(deps: PlacementDeps): StoreApi<PlacementSta
       result: null,
       matches: [],
       error: null,
+      undoStale: false,
       offerIds(ids, source) {
         const ws = deps.workspace.getState();
         const project = ws.project;
@@ -230,7 +341,16 @@ export function createPlacementStore(deps: PlacementDeps): StoreApi<PlacementSta
         if (!offer || !layerId) return null;
         set({ offer: null });
         const r = await placeIds(offer.ids, layerId);
-        if (!r && get().error) set({ offer });
+        if (!r && get().error) {
+          // offered again, together with anything offered while it ran
+          const now = get().offer;
+          set({
+            offer: {
+              ids: [...new Set([...offer.ids, ...(now?.ids ?? [])])],
+              source: now?.source ?? offer.source,
+            },
+          });
+        }
         return r;
       },
       placeIds,
@@ -239,8 +359,9 @@ export function createPlacementStore(deps: PlacementDeps): StoreApi<PlacementSta
       },
       undo() {
         const r = get().result;
-        if (r && r.placed > 0 && deps.editor.state.undoLabel === r.label) deps.editor.undo();
-        set({ result: null, matches: [] });
+        const stale = r !== null && r.placed > 0 && deps.editor.state.undoLabel !== r.label;
+        if (r && r.placed > 0 && !stale) deps.editor.undo();
+        set({ result: null, matches: [], undoStale: stale });
       },
       same() {
         const m = get().matches[0];
@@ -258,11 +379,15 @@ export function createPlacementStore(deps: PlacementDeps): StoreApi<PlacementSta
           later,
           { from: issueDate(earlier, dates) ?? '', to: issueDate(later, dates) ?? '' },
           deps.now(),
-          deps.newId,
+          () => deps.newId(),
         );
         const changed = [r.earlier, r.later].filter(
           (x): x is Issue => x !== undefined && x !== issueById(x.id),
         );
+        if (changed.length === 0) {
+          set({ matches: dropMatch([a.id, b.id]) });
+          return;
+        }
         const c = deps.editor.commitIssues(changed, `Match ${earlier.code} and ${later.code}`);
         set({ matches: dropMatch([a.id, b.id]), ...(c.ok ? {} : { error: c.error }) });
       },
@@ -273,8 +398,31 @@ export function createPlacementStore(deps: PlacementDeps): StoreApi<PlacementSta
         set({ matches: [] });
       },
       dismiss() {
-        set({ result: null, matches: [], error: null });
+        set({ result: null, matches: [], error: null, undoStale: false });
+      },
+      reset() {
+        generation += 1;
+        set({
+          offer: null,
+          layerId: null,
+          noLayers: false,
+          result: null,
+          matches: [],
+          error: null,
+          busy: false,
+          undoStale: false,
+        });
       },
     };
+  });
+}
+
+/** Reset the placement whenever another project opens (or the project closes). */
+export function followProject(
+  store: StoreApi<PlacementState>,
+  ws: StoreApi<Workspace>,
+): () => void {
+  return ws.subscribe((s, prev) => {
+    if ((s.project?.id ?? null) !== (prev.project?.id ?? null)) store.getState().reset();
   });
 }

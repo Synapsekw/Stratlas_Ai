@@ -71,6 +71,18 @@ describe('layerReady', () => {
     const ws = createWorkspace();
     ws.getState().openProject({ id: 'p', root: 'r', manifest }, []);
     expect(await layerReady(ws, 'cloud', () => null, 30, 5)).toBe(false);
+    const never = () => ({ rayLayers: () => new Set<string>() }) as unknown as SceneHandle;
+    expect(await layerReady(ws, 'cloud', never, 30, 5)).toBe(false);
+  });
+
+  it('answers at once when no 3D view is mounted, without waiting out the timeout', async () => {
+    const ws = createWorkspace();
+    ws.getState().openProject({ id: 'p', root: 'r', manifest }, []);
+    const started = Date.now();
+    expect(await layerReady(ws, 'cloud', () => null, 10_000, 5)).toBe(false);
+    expect(Date.now() - started).toBeLessThan(500);
+    // the layer is shown all the same, for when the view opens
+    expect(ws.getState().hidden.cloud).toBeUndefined();
   });
 });
 

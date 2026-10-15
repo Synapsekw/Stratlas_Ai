@@ -481,9 +481,13 @@ export function acceptByIds(
   const done = list.flatMap((d) =>
     d.status === 'accepted' && d.issueId ? [{ id: d.id, issueId: d.issueId }] : [],
   );
-  const skipped = list
-    .filter((d) => d.status !== 'draft' && !(d.status === 'accepted' && d.issueId))
-    .map((d) => ({ id: d.id, problem: 'not-waiting' }));
+  const known = new Set(list.map((d) => d.id));
+  const skipped = [
+    ...[...want].filter((id) => !known.has(id)).map((id) => ({ id, problem: 'not-found' })),
+    ...list
+      .filter((d) => d.status !== 'draft' && !(d.status === 'accepted' && d.issueId))
+      .map((d) => ({ id: d.id, problem: 'not-waiting' })),
+  ];
   const r = acceptMany(list, issueEditor.context(), sizeOf);
   skipped.push(...r.skipped.map((x) => ({ id: x.detection.id, problem: x.problem })));
   if (r.accepted.length === 0) return { accepted: done, skipped };
