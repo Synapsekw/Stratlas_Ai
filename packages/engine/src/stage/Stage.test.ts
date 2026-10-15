@@ -536,6 +536,25 @@ describe('Stage', () => {
       stage.dispose();
     });
 
+    it('frames the project again when several layers go in one edit', async () => {
+      vi.stubGlobal('matchMedia', () => ({ matches: true }));
+      const { stage, store, resize } = make(undefined, [placesAdapter]);
+      resize(800, 600);
+      store
+        .getState()
+        .openProject(
+          project([places('drone', 0), places('phone', 91_000), places('tablet', 95_000)]),
+        );
+      await flush();
+      store.getState().flyTo({ kind: 'point', p: [95_000, 0, 0], distance: 300 });
+      const m = store.getState().project?.manifest;
+      if (!m) throw new Error('no project');
+      store.getState().replaceManifest({ ...m, layers: m.layers.filter((l) => l.id === 'drone') });
+      await flush();
+      expect(plan(stage.saveView())).toBeLessThan(200);
+      stage.dispose();
+    });
+
     it('leaves the view alone when the camera still looks at the project', async () => {
       const { stage, store } = await opened();
       store.getState().flyTo({ kind: 'point', p: [91_050, 0, 20], distance: 300 });

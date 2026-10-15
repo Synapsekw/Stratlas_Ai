@@ -202,8 +202,6 @@ export class Stage implements EngineStage {
   private height = 0;
   private flight: Flight | null = null;
   private autoFit = true;
-  /** A layer went: frame the project again if the camera now looks at nothing (`contentChanged`). */
-  private refitIfStrayed = false;
   private shadowDirty = true;
   private pendingCamera: CameraRequest | null = null;
   private pendingSelection: Selection | null = null;
@@ -937,10 +935,10 @@ export class Stage implements EngineStage {
       const kept = new Set(s.project.manifest.layers.map((l) => l.id));
       const removed = this.project.manifest.layers.some((l) => !kept.has(l.id));
       this.project = s.project;
-      // a layer the camera looked at may go (far photos deleted): checked once the bounds follow
-      if (removed) this.refitIfStrayed = true;
       this.sync.sync(s.project.manifest.layers, s.hidden);
-      if (this.refitIfStrayed) this.contentChanged();
+      // removal is synchronous: the bounds now follow the layers that stay. The layer the camera
+      // looked at may have gone (far photos deleted): frame the project again
+      if (removed && this.strayed(this.contentBox())) this.flyToSite();
     } else if (s.project !== prev.project) this.openProject(s.project);
     else if (s.hidden !== prev.hidden && s.project) {
       this.sync?.sync(s.project.manifest.layers, s.hidden);
@@ -1043,10 +1041,6 @@ export class Stage implements EngineStage {
         this.controls.target.copy(pose.target);
         this.controls.update();
       }
-    }
-    if (this.refitIfStrayed) {
-      this.refitIfStrayed = false;
-      if (this.strayed(box)) this.fly(this.siteFrame());
     }
     if (this.pendingSelection) this.applySelection(this.pendingSelection);
     if (this.pendingCamera) this.handleCamera(this.pendingCamera);
@@ -1163,14 +1157,26 @@ export class Stage implements EngineStage {
    * The Centre on project view (`siteBounds`, else around the origin). Zooming closes in on the
    * site from there, however far the rest of the content reaches.
    */
-  private siteFrame(): CameraPose {
+  private siteFrame(): { pose: CameraPose; radius: number } {
     const box = this.siteBounds();
     const sphere = box
       ? { center: box.getCenter(new Vector3()), radius: box.getSize(new Vector3()).length() / 2 }
       : { center: new Vector3(), radius: SITE_DEFAULT_RADIUS };
-    this.controls.minDistance = Math.max(sphere.radius * 0.002, 0.05);
+    const pose = poseForPreset('iso', sphere, this.camera.fov, this.aspect, HOME_MARGIN);
+    return { pose, radius: sphere.radius };
+  }
+
+  /** Let the orbit close in on a framed site of this radius. */
+  private zoomToSite(radius: number) {
+    this.controls.minDistance = Math.max(radius * 0.002, 0.05);
+  }
+
+  /** Fly to the Centre on project view. */
+  private flyToSite() {
+    const { pose, radius } = this.siteFrame();
+    this.zoomToSite(radius);
     this.autoFit = false;
-    return poseForPreset('iso', sphere, this.camera.fov, this.aspect, HOME_MARGIN);
+    this.fly(pose);
   }
 
   /**
@@ -1196,8 +1202,11 @@ export class Stage implements EngineStage {
       const sphere = this.contentSphere();
       if (sphere) pose = poseForPreset('iso', sphere, this.camera.fov, this.aspect, HOME_MARGIN);
     } else if (t.kind === 'site') {
-      if (this.siteBounds() || !this.sync || this.sync.pendingCount() === 0)
-        pose = this.siteFrame();
+      if (this.siteBounds() || !this.sync || this.sync.pendingCount() === 0) {
+        const site = this.siteFrame();
+        pose = site.pose;
+        this.zoomToSite(site.radius);
+      }
     } else if (t.kind === 'point') {
       pose = poseForPoint(
         new Vector3(...t.p),
