@@ -86,3 +86,15 @@ Click **Issues** in the sidebar.
 ## Severity models
 
 Each project grades issues with its own severity model: levels with a colour, criteria and a recommended action. **Settings**, **Severity models** shows the model of the open project (read only in this version). You choose the model when you create a project.
+
+## Classes
+
+Each project sorts findings into classes: a name, a colour, an optional hotkey and the severity scale its issues are graded on. **Settings**, **Classes** lists the classes of the open project.
+
+- **Rename** a class in its name field and press Enter. **Colour** opens the palette. **Hotkey** takes one letter.
+- **Severity scale** can be changed while no issue uses the class.
+- **Delete** a class nobody uses at once. When issues or waiting detections use it, you pick the class that takes them over; their severities move to the nearest level of that class's scale.
+- **Save to my class library** keeps the class on this computer. A new project offers library classes under **From your class library**.
+- **Ctrl+Z** in the page, or **Undo** on the notice, takes the last class change back.
+
+You can also make a class while you work: choose **+ New class...** in the class picker of a new shape, in **Set class** of the Issues register, in the class field of a detection, or in the class mapping of a local model, type the name and press Enter.

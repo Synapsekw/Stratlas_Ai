@@ -63,6 +63,8 @@ Current limits only; each is removed from this list when fixed.
 - **Deleting on a shared project.** Other computers of a hub or Team Server receive a deletion as a change to the project only; their copies of the files stay until a later version cleans them up.
 - **A deletion that could not be put back leaves a `held-` folder.** When a deletion fails and some of its files cannot be moved back (a file held open), they stay in a `.trash/held-...` folder, listed in its `removed.json`, and the message names it. The app never deletes such a folder, nor counts it in the trash size: move its files back into the project folder by hand, then delete it.
 - Single photos cannot be removed from a photos layer; delete the layer and import the photos you want again.
+- Class changes travel with the project settings as one record: when two people edit classes at the same time, the later change wins for the whole class list.
+- Undoing an Accept all in the Issues register leaves its detections accepted; undo it in the detection review to put them back to waiting.
 
 ## Release
 
