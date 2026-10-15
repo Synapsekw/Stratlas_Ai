@@ -4,10 +4,12 @@ import { volumetric } from '@aio/volumetric';
 import type { LabelMode, SavedView } from '@aio/engine';
 import {
   type LibraryEntry,
+  type LibraryFolder,
   type PackageInfo,
   type PackageOrigin,
   type Settings,
 } from '@aio/schema';
+import { t } from '@aio/ui';
 import type { Workspace } from '@aio/workspace';
 import { useStore } from 'zustand';
 import { createStore, type StoreApi } from 'zustand/vanilla';
@@ -86,6 +88,10 @@ export interface ShellState {
   /** null until the first library:list answer. */
   library: LibraryEntry[] | null;
   libraryError: string | null;
+  /** The folders of the library, in the order they were made; empty until the first answer. */
+  folders: LibraryFolder[];
+  /** One sentence after a project was removed from the library; the Projects screen shows it. */
+  libraryNotice: string | null;
   /** Path of the project being opened. */
   opening: string | null;
   openError: string | null;
@@ -160,6 +166,16 @@ export interface ShellActions {
   renameProject: (entry: LibraryEntry, name: string) => Promise<string | null>;
   /** Moves the project folder to the recycle bin; refused while the project is open. */
   deleteProject: (entry: LibraryEntry) => Promise<string | null>;
+  /** Takes the project out of the library; its files stay. Sets `libraryNotice` on success. */
+  removeProject: (entry: LibraryEntry) => Promise<string | null>;
+  dismissLibraryNotice: () => void;
+  /** A JPEG for the card, or null to go back to the project's own picture. */
+  setThumbnail: (projectId: string, data: Uint8Array<ArrayBuffer> | null) => Promise<string | null>;
+  createFolder: (name: string) => Promise<string | null>;
+  renameFolder: (folderId: string, name: string) => Promise<string | null>;
+  deleteFolder: (folderId: string) => Promise<string | null>;
+  /** Puts the project in a folder, or in none (null). */
+  moveToFolder: (entry: LibraryEntry, folderId: string | null) => Promise<string | null>;
   chooseDataRoot: () => Promise<void>;
   setPalette: (open: boolean) => void;
   setStageMode: (mode: StageMode) => void;
@@ -196,6 +212,14 @@ export interface ShellOptions {
   storage?: PanelStorage | null;
 }
 
+/** The answer of a library change: null when it worked, else the sentence to show. */
+function failure(
+  answer: { ok: true; value: { ok: boolean; error?: string } } | { ok: false; error: string },
+): string | null {
+  if (!answer.ok) return answer.error;
+  return answer.value.ok ? null : (answer.value.error ?? 'It did not work.');
+}
+
 export function createShellStore(
   bridge: Bridge,
   workspace: StoreApi<Workspace>,
@@ -221,6 +245,8 @@ export function createShellStore(
     settingsError: null,
     library: null,
     libraryError: null,
+    folders: [],
+    libraryNotice: null,
     opening: null,
     openError: null,
     paletteOpen: false,
@@ -275,6 +301,9 @@ export function createShellStore(
       const r = await bridge.call('library:list', {});
       if (r.ok) set({ library: r.value, libraryError: null });
       else set({ library: get().library ?? [], libraryError: r.error });
+      const f = await bridge.call('library:folders', {});
+      if (f.ok && f.value.ok) set({ folders: f.value.folders });
+      else if (r.ok) set({ libraryError: f.ok ? (f.value.ok ? null : f.value.error) : f.error });
     },
 
     updateSettings: async (patch) => {
@@ -417,6 +446,54 @@ export function createShellStore(
       await get().loadLibrary();
       if (!r.ok) return r.error;
       return r.value.ok ? null : r.value.error;
+    },
+
+    removeProject: async (entry) => {
+      const r = await bridge.call('library:remove', { projectId: entry.id });
+      await get().loadLibrary();
+      const error = !r.ok ? r.error : r.value.ok ? null : r.value.error;
+      if (error !== null) return error;
+      const key = entry.package
+        ? 'library.removed.package'
+        : entry.demo
+          ? 'library.removed.demo'
+          : 'library.removed';
+      set({ libraryNotice: t(key, { project: entry.name, path: entry.path }) });
+      return null;
+    },
+
+    dismissLibraryNotice: () => {
+      set({ libraryNotice: null });
+    },
+
+    setThumbnail: async (projectId, data) => {
+      const r = await bridge.call('library:setThumbnail', { projectId, data });
+      await get().loadLibrary();
+      return failure(r);
+    },
+
+    createFolder: async (name) => {
+      const r = await bridge.call('library:createFolder', { name });
+      await get().loadLibrary();
+      return failure(r);
+    },
+
+    renameFolder: async (folderId, name) => {
+      const r = await bridge.call('library:renameFolder', { folderId, name });
+      await get().loadLibrary();
+      return failure(r);
+    },
+
+    deleteFolder: async (folderId) => {
+      const r = await bridge.call('library:deleteFolder', { folderId });
+      await get().loadLibrary();
+      return failure(r);
+    },
+
+    moveToFolder: async (entry, folderId) => {
+      const r = await bridge.call('library:move', { projectId: entry.id, folderId });
+      await get().loadLibrary();
+      return failure(r);
     },
 
     chooseDataRoot: async () => {

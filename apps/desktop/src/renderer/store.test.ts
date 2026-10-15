@@ -418,6 +418,7 @@ describe('shell store', () => {
       'dialog:openFolder',
       'library:add',
       'library:list',
+      'library:folders',
     ]);
     expect(s.getState().library).toEqual([entry]);
   });
@@ -480,6 +481,7 @@ describe('shell store', () => {
     expect(calls).toEqual([
       { channel: 'library:delete', req: { projectId: entry.id } },
       { channel: 'library:list', req: {} },
+      { channel: 'library:folders', req: {} },
     ]);
     expect(s.getState().library).toEqual([]);
   });
@@ -492,6 +494,79 @@ describe('shell store', () => {
     const s = createShellStore(bridge, createWorkspace());
     expect(await s.getState().deleteProject(entry)).toBe('The item is in use.');
     expect(s.getState().library).toEqual([entry]);
+  });
+
+  it('fills the folders with the library', async () => {
+    const folders = [{ id: 'f_abcdefghij', name: 'Site A' }];
+    const { bridge } = fakeBridge({
+      'library:list': () => [entry],
+      'library:folders': () => ({ ok: true, folders }),
+    });
+    const s = createShellStore(bridge, createWorkspace());
+    await s.getState().loadLibrary();
+    expect(s.getState().folders).toEqual(folders);
+  });
+
+  it('keeps the library and says why when the folders cannot be read', async () => {
+    const { bridge } = fakeBridge({
+      'library:list': () => [entry],
+      'library:folders': () => ({ ok: false, error: 'folders.json is broken' }),
+    });
+    const s = createShellStore(bridge, createWorkspace());
+    await s.getState().loadLibrary();
+    expect(s.getState().library).toEqual([entry]);
+    expect(s.getState().libraryError).toBe('folders.json is broken');
+  });
+
+  it('removes a package by its id, reads the library again and sets the notice', async () => {
+    const pkg: LibraryEntry = {
+      ...entry,
+      path: 'E:\\data\\handover.aio',
+      package: { encrypted: false, readOnly: true },
+    };
+    const { bridge, calls } = fakeBridge({
+      'library:remove': () => ({ ok: true }),
+      'library:list': () => [],
+      'library:folders': () => ({ ok: true, folders: [] }),
+    });
+    const s = createShellStore(bridge, createWorkspace());
+    expect(await s.getState().removeProject(pkg)).toBeNull();
+    expect(calls[0]).toEqual({ channel: 'library:remove', req: { projectId: pkg.id } });
+    expect(calls.map((c) => c.channel)).toContain('library:list');
+    expect(s.getState().library).toEqual([]);
+    expect(s.getState().libraryNotice).toBe(
+      'HCl Tank was removed from the library. The file stays in E:\\data\\handover.aio. Open package brings it back.',
+    );
+    s.getState().dismissLibraryNotice();
+    expect(s.getState().libraryNotice).toBeNull();
+  });
+
+  it('sets no notice when the removal failed', async () => {
+    const { bridge } = fakeBridge({ 'library:remove': () => ({ ok: false, error: 'No.' }) });
+    const s = createShellStore(bridge, createWorkspace());
+    expect(await s.getState().removeProject(entry)).toBe('No.');
+    expect(s.getState().libraryNotice).toBeNull();
+  });
+
+  it('moves a project out of its folder with folderId null', async () => {
+    const { bridge, calls } = fakeBridge({ 'library:move': () => ({ ok: true }) });
+    const s = createShellStore(bridge, createWorkspace());
+    expect(await s.getState().moveToFolder(entry, null)).toBeNull();
+    expect(calls[0]).toEqual({
+      channel: 'library:move',
+      req: { projectId: entry.id, folderId: null },
+    });
+    expect(calls.map((c) => c.channel)).toContain('library:folders');
+  });
+
+  it('answers why a folder or thumbnail change did not work', async () => {
+    const { bridge } = fakeBridge({
+      'library:createFolder': () => ({ ok: false, error: 'That name is taken.' }),
+      'library:setThumbnail': () => ({ ok: true, thumbnail: null }),
+    });
+    const s = createShellStore(bridge, createWorkspace());
+    expect(await s.getState().createFolder('Site A')).toBe('That name is taken.');
+    expect(await s.getState().setThumbnail(entry.id, null)).toBeNull();
   });
 
   it('never asks main to delete the open project', async () => {

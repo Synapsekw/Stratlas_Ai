@@ -253,12 +253,16 @@ export const en = {
   'library.menu.export': 'Export package',
   'library.menu.close': 'Close project',
   'library.menu.delete': 'Delete',
+  'library.menu.remove': 'Remove from library',
+  'library.menu.thumbnail': 'Change thumbnail',
+  'library.menu.move': 'Move to folder',
   'library.menu.emptyTrash': 'Empty project trash',
   'library.menu.why.package': 'A package is a read-only file',
   'library.menu.why.demo': 'Demo projects ship with the app',
   'library.menu.why.kit': 'A kit export has no project file',
   'library.menu.why.outside': 'Not in the data folder',
   'library.menu.why.open': 'Close the project first',
+  'library.menu.why.job': 'A job is running in it',
   'library.menu.failed': '{action} did not work for {project}.',
   'library.rename.title': 'Rename project',
   'library.rename.field': 'Project name',
@@ -277,6 +281,45 @@ export const en = {
   'library.delete.confirm': 'Move to recycle bin',
   'library.delete.busy': 'Moving',
   'library.delete.failed': 'The project was not deleted. It is still in the library.',
+  'library.delete.text.package': 'The package file moves to the recycle bin.',
+  'library.delete.text.kit':
+    'The kit export folder moves to the recycle bin with everything in it.',
+  'library.delete.text.demo':
+    'The working copy of this demo moves to the recycle bin and the demo leaves the library. The demo that ships with the app is not touched.',
+  'library.delete.text.demoNone':
+    'Nothing of this demo is on disk outside the app. It leaves the library.',
+  'library.delete.file': 'File',
+  'library.removed':
+    '{project} was removed from the library. Its files stay in {path}. Add project folder brings it back.',
+  'library.removed.package':
+    '{project} was removed from the library. The file stays in {path}. Open package brings it back.',
+  'library.removed.demo':
+    '{project} was removed from the library. Add project folder on its folder brings it back.',
+  'library.cover.title': 'Change thumbnail',
+  'library.cover.upload': 'Upload an image',
+  'library.cover.builtin': 'Built-in covers',
+  'library.cover.view': 'Use current view',
+  'library.cover.view.why': 'Open the 3D view first',
+  'library.cover.none': 'No cover',
+  'library.cover.reset': "Use the project's own picture",
+  'library.cover.save': 'Save',
+  'library.cover.failed': 'The thumbnail was not changed.',
+  'library.cover.badImage': 'This file is not an image the app can read.',
+  'library.folders.new': 'New folder',
+  'library.folders.all': 'All projects',
+  'library.folders.loose': 'No folder',
+  'library.folders.count': '{count} projects',
+  'library.folders.count.one': '1 project',
+  'library.folders.empty':
+    'No projects in this folder yet. Drag a card here or use Move to folder.',
+  'library.folders.rename': 'Rename folder',
+  'library.folders.delete': 'Delete folder',
+  'library.folders.delete.text':
+    'The projects in {folder} stay in the library without a folder. No file is touched.',
+  'library.folders.name': 'Folder name',
+  'library.folders.create': 'Create',
+  'library.move.title': 'Move {project} to a folder',
+  'library.move.confirm': 'Move',
   'library.cancel': 'Cancel',
 
   // Detection review (BLD-5) and AI-assisted detection (BLD-6)
