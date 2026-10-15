@@ -205,5 +205,14 @@ describe('EvidencePack', () => {
     expect(p.taper?.profile.length).toBeGreaterThan(1);
     expect(p.familyHints?.suggested).toBe('chimney');
     expect(p.photos.length).toBeGreaterThan(0);
+    // references hold together: a conflict names pack images, a duplicate names a photo of the pack
+    const imageIds = new Set(p.images.map((i) => i.id));
+    const photoIds = new Set(p.photos.map((x) => x.id));
+    expect(p.identity?.sameAsset).toBe(false);
+    for (const c of p.identity?.conflicts ?? []) {
+      expect(c.imageIds.length).toBeGreaterThan(0);
+      for (const id of c.imageIds) expect(imageIds.has(id)).toBe(true);
+    }
+    for (const x of p.photos) if (x.dupOf) expect(photoIds.has(x.dupOf)).toBe(true);
   });
 });

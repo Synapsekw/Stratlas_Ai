@@ -18,6 +18,7 @@ A resume is refused when the job's input files (``Pipeline.inputs``) changed sin
 from __future__ import annotations
 
 import hashlib
+import inspect
 import json
 import os
 import re
@@ -386,7 +387,10 @@ class Job:
                 )
         inputs_of = getattr(self.pipeline, "inputs", None)
         if callable(inputs_of):
-            self.inputs = input_fingerprint(self.project, inputs_of(self.params))
+            # a pipeline whose inputs depend on the project (its layers' files) takes it as a second argument
+            wants_project = len(inspect.signature(inputs_of).parameters) >= 2
+            paths = inputs_of(self.params, self.project) if wants_project else inputs_of(self.params)
+            self.inputs = input_fingerprint(self.project, paths)
             started = prev.get("inputs") if prev_path.exists() else None
             if isinstance(started, dict) and started.get("hash") != self.inputs["hash"]:
                 # leave job.json as it was: the job can only be started again

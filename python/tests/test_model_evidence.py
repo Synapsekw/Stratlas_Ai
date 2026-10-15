@@ -19,7 +19,7 @@ from pathlib import Path
 
 import numpy as np
 import pytest
-from PIL import Image
+from PIL import Image, ImageDraw
 
 from aio_pipelines.engineer import pipeline as pipe
 from aio_pipelines.engineer.pipeline import ModelEvidence
@@ -37,23 +37,28 @@ FIXTURE = (
 
 
 def make_project(
-    root: Path, cloud: np.ndarray | None, colour: bool = True, photos: int = 0, fmt: str = "las"
+    root: Path,
+    cloud: np.ndarray | None,
+    colour: bool = True,
+    photos: int = 0,
+    fmt: str = "las",
+    src: str = "clouds/scan.las",
 ) -> Path:
     layers = []
     if cloud is not None:
-        (root / "clouds").mkdir(parents=True, exist_ok=True)
+        (root / src).parent.mkdir(parents=True, exist_ok=True)
         rgb = None
         if colour:
             rgb = np.tile(np.array([150, 148, 140], dtype=np.uint8), (len(cloud), 1))
             rgb[(cloud[:, 1] >= 100) & (cloud[:, 1] < 104)] = [190, 40, 35]
-        write_las(cloud, root / "clouds" / "scan.las", offset=ORIGIN, rgb=rgb)
+        write_las(cloud, root / src, offset=ORIGIN, rgb=rgb)
         layers.append(
             {
                 "kind": "pointcloud",
                 "id": "scan",
                 "name": "Scan",
                 "visible": True,
-                "src": {"path": "clouds/scan.las"},
+                "src": {"path": src},
                 "format": fmt,
             }
         )
@@ -96,7 +101,11 @@ def stack_run(tmp_path_factory):
     root = tmp_path_factory.mktemp("stack")
     cloud, truth = stack_cloud(seed=7, partial=True, noise=0.03)
     make_project(root, cloud, photos=3)
-    photos = [{"path": f"photos/synth_0{i}.jpg"} for i in (1, 2, 3)]
+    # a fourth photo of something else (other colours): flagged, never blended
+    odd = Image.new("RGB", (1600, 1200), (200, 60, 40))
+    ImageDraw.Draw(odd).rectangle([600, 100, 1000, 1100], fill=(250, 200, 30))
+    odd.save(root / "photos" / "odd.jpg", "JPEG")
+    photos = [{"path": f"photos/synth_0{i}.jpg"} for i in (1, 2, 3)] + [{"path": "photos/odd.jpg"}]
     result, rec = run_job(ModelEvidence(), root, params(photos=photos))
     return root, truth, read_pack(root), rec, result
 
@@ -136,8 +145,16 @@ def test_partial_noisy_stack_pack(stack_run):
     # colour bands: the red band at 100 to 104 m
     assert any(b["rgb"][0] > 180 and 96 < b["y0"] < 106 for b in pack["colours"])
     # photos: three kept, no private path
-    assert len(pack["photos"]) == 3 and all(p["original"].startswith("photos/") for p in pack["photos"])
-    assert pack["identity"] == {"sameAsset": True, "conflicts": []}
+    assert len(pack["photos"]) == 4 and all(p["original"].startswith("photos/") for p in pack["photos"])
+    # the odd photo is flagged under its pack image id (img-photo-...), not its sha1
+    assert pack["identity"]["sameAsset"] is False
+    image_ids = {i["id"] for i in pack["images"]}
+    (conflict,) = pack["identity"]["conflicts"]
+    assert len(conflict["imageIds"]) == 1 and set(conflict["imageIds"]) <= image_ids
+    assert conflict["imageIds"][0].startswith("img-photo-")
+    flagged = [p for p in pack["photos"] if p["id"][:12] == conflict["imageIds"][0][len("img-photo-") :]]
+    assert flagged and flagged[0]["original"] == "photos/odd.jpg"
+    assert any("do not look like the same asset" in w for w in pack["warnings"])
     assert pack["reconstruction"] == "not-needed"
     assert pack["samples"]["kept"] > 1000 and pack["samples"]["ground"] > 1000
     assert pack["isolation"]["dropped"] == []
@@ -173,7 +190,36 @@ def _compare_with_fixture(pack: dict) -> None:
         return
     assert FIXTURE.is_file(), "run with AIO_UPDATE_FIXTURES=1 to write the schema fixture"
     old = json.loads(FIXTURE.read_text("utf-8"))
-    assert set(old) == set(pack), "the pack's keys changed: regenerate the fixture (see the module docstring)"
+    why = _differs(old, pack, "pack")
+    assert why is None, f"the committed fixture has drifted ({why}): regenerate it (see the module docstring)"
+
+
+#: values that depend on the image encoders (file bytes, hashes) and on the machine's temp paths
+_ENCODER_KEYS = {"id", "sha1", "bytes", "dupOf", "imageIds", "blur", "file"}
+
+
+def _differs(a, b, path: str):
+    """Where `b` differs from the committed `a`: structure and strings exactly, numbers within a
+    tolerance (BLAS and encoder versions move the last digits), encoder-dependent keys ignored."""
+    if isinstance(a, dict) and isinstance(b, dict):
+        if set(a) != set(b):
+            return f"{path}: keys {sorted(set(a) ^ set(b))}"
+        for k in a:
+            if k in _ENCODER_KEYS:
+                continue
+            if (r := _differs(a[k], b[k], f"{path}.{k}")) is not None:
+                return r
+        return None
+    if isinstance(a, list) and isinstance(b, list):
+        if len(a) != len(b):
+            return f"{path}: {len(a)} items against {len(b)}"
+        for i, (x, y) in enumerate(zip(a, b, strict=True)):
+            if (r := _differs(x, y, f"{path}[{i}]")) is not None:
+                return r
+        return None
+    if isinstance(a, bool) or isinstance(b, bool) or not isinstance(a, int | float):
+        return None if a == b else f"{path}: {a!r} against {b!r}"
+    return None if abs(a - b) <= 0.02 * max(1.0, abs(a)) + 0.05 else f"{path}: {a} against {b}"
 
 
 def test_photos_only_pack(tmp_path, monkeypatch):
@@ -318,6 +364,155 @@ def test_registered_with_the_pack():
         "photos",
         "pack",
     ]
+
+
+def add_layer(root: Path, layer: dict) -> None:
+    m = json.loads((root / "manifest.json").read_text("utf-8"))
+    m["layers"].append(layer)
+    (root / "manifest.json").write_text(json.dumps(m), "utf-8")
+
+
+def test_a_cloud_from_photogrammetry_is_marked_used(tmp_path):
+    cloud, _ = stack_cloud(seed=3, noise=0.02)
+    make_project(tmp_path, cloud, src="photogrammetry/run-1/odm/cloud.las")
+    run_job(ModelEvidence(), tmp_path, params())
+    assert read_pack(tmp_path)["reconstruction"] == "used"
+    other = tmp_path / "other"
+    other.mkdir()
+    make_project(other, cloud)
+    run_job(ModelEvidence(), other, params())
+    assert read_pack(other)["reconstruction"] == "not-needed"
+
+
+def test_photos_only_with_photogrammetry_points_to_reconstruct_first(tmp_path, monkeypatch):
+    make_project(tmp_path, None, photos=3)
+    monkeypatch.setattr(pipe, "photogrammetry_available", lambda: True)
+    photos = [{"path": f"photos/synth_0{i}.jpg"} for i in (1, 2, 3)]
+    run_job(ModelEvidence(), tmp_path, params(clouds=[], photos=photos, region=None))
+    pack = read_pack(tmp_path)
+    assert pack["reconstruction"] == "not-needed" and pack["taper"] is None
+    assert any("Reconstruct first" in w for w in pack["warnings"])
+
+
+def _mesh_project(root: Path, n_meshes: int = 1):
+    import trimesh
+
+    (root / "meshes").mkdir(parents=True, exist_ok=True)
+    layers = []
+    for k in range(n_meshes):
+        m = trimesh.creation.cylinder(radius=5.0 - k, height=60.0, sections=48)
+        m.apply_transform(trimesh.transformations.rotation_matrix(np.pi / 2, [1, 0, 0]))  # axis along y
+        m.apply_translation([20.0 * k, 30.0, 0.0])
+        m.export(root / "meshes" / f"m{k}.glb")
+        layers.append(
+            {
+                "kind": "mesh",
+                "id": f"m{k}",
+                "name": f"Model {k}",
+                "visible": True,
+                "src": {"path": f"meshes/m{k}.glb"},
+            }
+        )
+    manifest = {
+        "schema": "aio.project/1",
+        "id": "s",
+        "name": "S",
+        "crs": {"epsg": 32633},
+        "origin": list(ORIGIN),
+        "captures": [],
+        "layers": layers,
+        "severityModels": [],
+        "classCatalogues": [],
+    }
+    (root / "manifest.json").write_text(json.dumps(manifest), "utf-8")
+
+
+def test_a_mesh_source_is_sampled_into_the_measured_points(tmp_path):
+    _mesh_project(tmp_path)
+    limits = {"maxPoints": 30_000, "maxImages": 12, "maxPx": 512}
+    run_job(
+        ModelEvidence(),
+        tmp_path,
+        params(
+            clouds=[], meshes=[{"layer": "m0"}], region={"centre": [0.0, 0.0], "radiusM": 20.0}, limits=limits
+        ),
+    )
+    pack = read_pack(tmp_path)
+    assert 5000 < pack["samples"]["kept"] <= 30_000
+    prof = pack["taper"]["profile"]
+    got = float(np.interp(30.0, [p["y"] for p in prof], [p["r"] for p in prof]))
+    assert abs(got - 5.0) < 0.1
+    assert pack["colours"] == [] and pack["baseInfo"]["observed"] is False  # a mesh has no ground
+    assert any("No ground" in w for w in pack["warnings"])
+    # two meshes share the point budget, and a missing layer is refused
+    two = tmp_path / "two"
+    two.mkdir()
+    _mesh_project(two, 2)
+    run_job(
+        ModelEvidence(),
+        two,
+        params(
+            clouds=[],
+            meshes=[{"layer": "m0"}, {"layer": "m1"}],
+            region={"centre": [0.0, 0.0], "radiusM": 5.0},
+            limits=limits,
+        ),
+    )
+    assert read_pack(two)["samples"]["kept"] <= 30_000
+    with pytest.raises(JobError, match="no layer"):
+        run_job(
+            ModelEvidence(),
+            two,
+            params(clouds=[], meshes=[{"layer": "nope"}], region=None, run="run-x"),
+            job_id="j9",
+        )
+
+
+def test_different_coordinate_systems_are_warned_about(tmp_path):
+    cloud, _ = stack_cloud(seed=3, noise=0.02)
+    make_project(tmp_path, cloud)
+    write_las(cloud, tmp_path / "clouds" / "other.las", crs_epsg=32634, offset=ORIGIN)
+    add_layer(
+        tmp_path,
+        {
+            "kind": "pointcloud",
+            "id": "other",
+            "name": "O",
+            "visible": True,
+            "src": {"path": "clouds/other.las"},
+            "format": "las",
+        },
+    )
+    run_job(ModelEvidence(), tmp_path, params(clouds=[{"layer": "scan"}, {"layer": "other"}]))
+    assert any("different coordinate systems" in w for w in read_pack(tmp_path)["warnings"])
+
+
+def test_a_cancel_while_committing_never_leaves_an_old_pack_beside_new_images(tmp_path, monkeypatch):
+    cloud, _ = stack_cloud(seed=3, noise=0.02)
+    make_project(tmp_path, cloud)
+    run_job(ModelEvidence(), tmp_path, params(), job_id="j1")
+    assert (tmp_path / "engineering" / "run-test" / "evidence.json").is_file()
+    real = pipe.commit_tree
+
+    def cancelling(ctx, staged, dest):
+        real(ctx, staged, dest)  # the new images are in place...
+        raise Cancelled()  # ...and the job is cancelled before the new pack
+
+    monkeypatch.setattr(pipe, "commit_tree", cancelling)
+    with pytest.raises(Cancelled):
+        run_job(ModelEvidence(), tmp_path, params(), job_id="j2")
+    assert not (tmp_path / "engineering" / "run-test" / "evidence.json").exists()
+
+
+def test_only_the_source_files_decide_whether_a_job_may_resume(tmp_path):
+    cloud, _ = stack_cloud(seed=3, noise=0.02)
+    make_project(tmp_path, cloud)
+    unrelated = tmp_path / "clouds" / "unrelated.las"
+    unrelated.write_bytes(b"x")
+    run_job(ModelEvidence(), tmp_path, params(), job_id="j1")
+    unrelated.write_bytes(b"changed")  # another cloud of the project: not this job's input
+    run_job(ModelEvidence(), tmp_path, params(), job_id="j1")
+    assert ModelEvidence().inputs(params(), tmp_path) == ["manifest.json", "clouds/scan.las"]
 
 
 @pytest.mark.skipif(find_pdal() is None, reason="PDAL not found (set AIO_PDAL)")

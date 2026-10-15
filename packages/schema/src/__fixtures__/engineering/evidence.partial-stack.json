@@ -1176,7 +1176,7 @@
    "w": 1600,
    "h": 1200,
    "orientationApplied": false,
-   "blur": 23.325
+   "blur": 19.9989
   },
   {
    "id": "ce38f3d025081e9bef3edb4ad7d5b935416b3ec1",
@@ -1184,7 +1184,7 @@
    "w": 1600,
    "h": 1200,
    "orientationApplied": false,
-   "blur": 24.8577,
+   "blur": 22.6365,
    "dupOf": "31bea92611667c792657940969a2330c4c7638c1",
    "review": "near duplicate, not used"
   },
@@ -1194,7 +1194,16 @@
    "w": 1600,
    "h": 1200,
    "orientationApplied": false,
-   "blur": 29.2423
+   "blur": 26.6698
+  },
+  {
+   "id": "b4f87fa37f3cf93394cba70deac0572075545130",
+   "original": "photos/odd.jpg",
+   "w": 1600,
+   "h": 1200,
+   "orientationApplied": false,
+   "blur": 27.9228,
+   "review": "identity: colours differ from the other photos"
   }
  ],
  "images": [
@@ -1279,14 +1288,14 @@
    "sha1": "669fe08bbfb215bc7a44679455e94601b328ed38"
   },
   {
-   "id": "img-base",
-   "file": "img/img-base.png",
-   "kind": "crop",
-   "view": "base",
-   "w": 512,
-   "h": 512,
-   "bytes": 13139,
-   "sha1": "6c44c1b27c46d767ce80fd15f4f9bcd2cc001531"
+   "id": "img-photo-b4f87fa37f3c",
+   "file": "img/img-photo-b4f87fa37f3c.jpg",
+   "kind": "photo",
+   "view": "photo",
+   "w": 1024,
+   "h": 768,
+   "bytes": 16767,
+   "sha1": "6a04bd9a51e3ee25305389b45edf9cdc9b186938"
   },
   {
    "id": "img-photo-31bea9261166",
@@ -1311,7 +1320,8 @@
  ],
  "reconstruction": "not-needed",
  "warnings": [
-  "Skipped 4 slices (4 radius-jump)."
+  "Skipped 4 slices (4 radius-jump).",
+  "Some photos do not look like the same asset; they are flagged, not blended."
  ],
  "baseInfo": {
   "observed": true,
@@ -1329,7 +1339,14 @@
   "offAxis": 0
  },
  "identity": {
-  "sameAsset": true,
-  "conflicts": []
+  "sameAsset": false,
+  "conflicts": [
+   {
+    "imageIds": [
+     "img-photo-b4f87fa37f3c"
+    ],
+    "reason": "These photos share no colours with the rest; they may show another asset."
+   }
+  ]
  }
 }

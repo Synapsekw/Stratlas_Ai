@@ -7,15 +7,24 @@ and recorded with `dupOf`. The only metadata that leaves a photo is the camera p
 (`gpsCamera`, never a position of the asset); EXIF text, thumbnails and GPS are not copied into
 the review copies or the pack.
 
-Identity: photos whose colour make-up has nothing in common with the others are flagged, not
-blended (`identity` in the result, `review` on the photo), so the run can stop and the user can drop
-them.
+Memory is bounded by one photo at a time: each is decoded, turned upright, cut down to the review
+size and written out before the next is opened, so 400 twenty-megapixel photos never sit in memory
+together. Only small signatures stay.
+
+Quality gate: a photo under 320 px on its long side, or with no detail at all (blur score under
+0.5 at 512 px), is rejected with the reason on its item.
+
+Identity: photos whose colour make-up has nothing in common with the others, or whose camera
+position is implausibly far from the asset, are flagged, not blended (`identity` in the result,
+`review` on the photo), so the run can stop and the user can drop them.
 """
 
 from __future__ import annotations
 
 import hashlib
+import math
 import os
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -30,6 +39,11 @@ NEAR_DUPLICATE_BITS = 4
 IDENTITY_MIN_SIMILARITY = 0.3
 SIGNATURE_PX = 96
 BLUR_PX = 512
+MIN_LONG_SIDE_PX = 320
+#: Laplacian variance of the 512 px grey image under which a photo has no usable detail.
+MIN_BLUR_SCORE = 0.5
+#: A camera this far from the asset (metres) is not a photo of it.
+CAMERA_FAR_M = 5000.0
 
 
 @dataclass
@@ -38,7 +52,7 @@ class IngestResult:
     kept: list[str] = field(default_factory=list)  # ids of the photos used as evidence
     copies: dict[str, Path] = field(default_factory=dict)  # id -> review copy
     identity: dict[str, Any] = field(default_factory=lambda: {"sameAsset": True, "conflicts": []})
-    rejected: list[dict[str, str]] = field(default_factory=list)  # unreadable files, with reasons
+    rejected: list[dict[str, str]] = field(default_factory=list)  # unusable files, with reasons
 
 
 def _hamming(a: int, b: int) -> int:
@@ -60,17 +74,26 @@ def _write_jpeg(im: Image.Image, path: Path) -> None:
     os.replace(tmp, path)
 
 
-def ingest_photos(paths: list[Path], out_dir: Path, max_px: int, max_images: int) -> IngestResult:
-    """Read, orient, de-duplicate and cap the photos; write review copies of those kept.
+def ingest_photos(
+    paths: list[Path],
+    out_dir: Path,
+    max_px: int,
+    max_images: int,
+    check: Callable[[], None] | None = None,
+) -> IngestResult:
+    """Read, orient, gate, de-duplicate and cap the photos; write review copies of those kept.
 
-    Order of work: unreadable files are rejected; exact duplicates (same sha1) and near duplicates
-    (dhash distance 4 or less, the sharper one kept) are dropped with `dupOf`; of the rest the
-    `max_images` sharpest are kept. Dropped photos stay in `items` (`review` says why) so the run
-    can show them.
+    Unreadable photos and those failing the quality gate are rejected. Exact duplicates (same sha1)
+    and near duplicates (dhash distance 4 or less, the sharper one kept) are dropped with `dupOf`;
+    of the rest the `max_images` sharpest are kept. Dropped photos stay in `items` (`review` says
+    why) so the run can show them. `check` is called between photos (cancellation).
     """
     result = IngestResult()
     loaded: list[dict[str, Any]] = []
+    first_of: dict[str, dict[str, Any]] = {}
     for i, p in enumerate(paths):
+        if check:
+            check()
         p = Path(p)
         meta = read_photo(str(i), p, look=False)
         if meta.error:
@@ -79,9 +102,11 @@ def ingest_photos(paths: list[Path], out_dir: Path, max_px: int, max_images: int
         try:
             with Image.open(p) as raw:
                 orientation = int(raw.getexif().get(0x0112, 1) or 1)
+                full_w, full_h = (raw.height, raw.width) if orientation in (5, 6, 7, 8) else raw.size
+                raw.draft("RGB", (max_px, max_px))  # JPEG: decode at a reduced scale when it suffices
                 up = ImageOps.exif_transpose(raw)
-                up = up.convert("RGB") if up is not None else raw.convert("RGB")
-                up.load()
+                up = (up if up is not None else raw).convert("RGB")
+            up.thumbnail((max_px, max_px), Image.LANCZOS)  # the full decode is gone after this
         except Exception as e:
             result.rejected.append(
                 {"path": str(p), "reason": f"{p.name} cannot be decoded ({type(e).__name__})"}
@@ -96,23 +121,40 @@ def ingest_photos(paths: list[Path], out_dir: Path, max_px: int, max_images: int
         item: dict[str, Any] = {
             "id": sha,
             "original": str(p),
-            "w": up.width,
-            "h": up.height,
+            "w": full_w,
+            "h": full_h,
             "orientationApplied": orientation != 1,
             "blur": _laplacian_variance(np.asarray(g)),
         }
         if meta.has_gps and meta.lat is not None and meta.lon is not None:
             item["gpsCamera"] = [float(meta.lon), float(meta.lat), float(meta.altitude or 0.0)]
-        loaded.append({"item": item, "image": up, "dhash": _dhash(gray), "path": p})
+        ph: dict[str, Any] = {"item": item, "dhash": _dhash(gray), "path": p}
+        loaded.append(ph)
+        if max(full_w, full_h) < MIN_LONG_SIDE_PX or item["blur"] < MIN_BLUR_SCORE:
+            why = (
+                f"too small ({full_w} x {full_h} px)"
+                if max(full_w, full_h) < MIN_LONG_SIDE_PX
+                else "no usable detail (out of focus or blank)"
+            )
+            item["review"] = f"rejected: {why}"
+            result.rejected.append({"path": str(p), "reason": f"{p.name} rejected: {why}"[:300]})
+            ph["gated"] = True
+            continue
+        if sha in first_of:
+            continue  # an exact copy needs no copy of its own
+        first_of[sha] = ph
+        copy = out_dir / f"{sha[:16]}.jpg"
+        _write_jpeg(up, copy)
+        ph["copy"] = copy
+        ph["sig"] = _colour_signature(up)
 
     # exact duplicates: the first file keeps the id, a copy gets its own id and points at it
-    by_sha: dict[str, dict[str, Any]] = {}
     unique: list[dict[str, Any]] = []
     for ph in loaded:
+        if ph.get("gated"):
+            continue
         it = ph["item"]
-        first = by_sha.get(it["id"])
-        if first is None:
-            by_sha[it["id"]] = ph
+        if first_of.get(it["id"]) is ph:
             unique.append(ph)
         else:
             it["dupOf"] = it["id"]
@@ -128,22 +170,25 @@ def ingest_photos(paths: list[Path], out_dir: Path, max_px: int, max_images: int
             ph["item"]["review"] = "near duplicate, not used"
         else:
             keepers.append(ph)
-    for ph in keepers[max(0, int(max_images)) :]:
+    limit = max(0, int(max_images))
+    for ph in keepers[limit:]:
         ph["item"]["review"] = "over the image limit, not used"
-    used = keepers[: max(0, int(max_images))]
-
+    used = keepers[:limit]
+    used_ids = {ph["item"]["id"] for ph in used}
+    for ph in unique:  # copies of photos that are not used are not kept
+        if ph["item"]["id"] not in used_ids:
+            ph["copy"].unlink(missing_ok=True)
     for ph in used:
-        im = ph["image"].copy()
-        im.thumbnail((max_px, max_px), Image.LANCZOS)
-        path = out_dir / f"{ph['item']['id'][:16]}.jpg"
-        _write_jpeg(im, path)
-        result.copies[ph["item"]["id"]] = path
+        result.copies[ph["item"]["id"]] = ph["copy"]
         result.kept.append(ph["item"]["id"])
-        ph["sig"] = _colour_signature(im)
-
     _flag_identity(used, result)
     result.items = [ph["item"] for ph in loaded]
     return result
+
+
+def _flag(result: IngestResult, ids: list[str], reason: str) -> None:
+    result.identity["conflicts"].append({"imageIds": ids[:40], "reason": reason[:300]})
+    result.identity["sameAsset"] = False
 
 
 def _flag_identity(used: list[dict[str, Any]], result: IngestResult) -> None:
@@ -172,13 +217,43 @@ def _flag_identity(used: list[dict[str, Any]], result: IngestResult) -> None:
     for g in groups.values():
         if g is main:
             continue
-        ids = [used[i]["item"]["id"] for i in g]
         for i in g:
             used[i]["item"]["review"] = "identity: colours differ from the other photos"
-        result.identity["conflicts"].append(
-            {
-                "imageIds": ids[:40],
-                "reason": "These photos share no colours with the rest; they may show another asset.",
-            }
+        _flag(
+            result,
+            [used[i]["item"]["id"] for i in g],
+            "These photos share no colours with the rest; they may show another asset.",
         )
-    result.identity["sameAsset"] = False
+
+
+def distance_m(lon1: float, lat1: float, lon2: float, lat2: float) -> float:
+    """Great-circle distance in metres (haversine, a mean Earth radius)."""
+    p1, p2 = math.radians(lat1), math.radians(lat2)
+    a = (
+        math.sin((p2 - p1) / 2) ** 2
+        + math.cos(p1) * math.cos(p2) * math.sin(math.radians(lon2 - lon1) / 2) ** 2
+    )
+    return 2 * 6371008.8 * math.asin(min(1.0, math.sqrt(a)))
+
+
+def flag_far_cameras(
+    result: IngestResult, centre_lonlat: tuple[float, float], limit_m: float = CAMERA_FAR_M
+) -> None:
+    """Flag kept photos whose camera position is more than `limit_m` from the region centre. The
+    position is the camera's, never a position of the asset; a photo without GPS is not judged."""
+    by_id = {it["id"]: it for it in result.items}
+    far: list[tuple[str, float]] = []
+    for pid in result.kept:
+        gps = by_id[pid].get("gpsCamera")
+        if gps:
+            d = distance_m(gps[0], gps[1], centre_lonlat[0], centre_lonlat[1])
+            if d > limit_m:
+                far.append((pid, d))
+    for pid, d in far:
+        by_id[pid]["review"] = f"identity: camera is {d / 1000:.0f} km from the asset"
+    if far:
+        _flag(
+            result,
+            [pid for pid, _ in far],
+            f"These photos were taken more than {limit_m / 1000:.0f} km from the asset.",
+        )

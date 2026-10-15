@@ -10,7 +10,9 @@ array, no `.npy`, and no image wider than the detail's `maxPx`.
 
 from __future__ import annotations
 
+import json
 import re
+from pathlib import Path
 from typing import Any
 
 import numpy as np
@@ -28,6 +30,7 @@ from . import photos as photo_ingest
 from .axis import Axis, estimate_axis
 from .cloud import (
     GroundSplit,
+    _inside,
     find_base,
     isolate_asset,
     read_region,
@@ -77,6 +80,64 @@ def _layer(manifest: dict[str, Any], layer_id: str) -> dict[str, Any]:
     if layer.get("kind") != "pointcloud":
         raise JobError(f'"{layer.get("name", layer_id)}" is not a point cloud layer.')
     return layer
+
+
+def _region_lonlat(project: Path, region: dict[str, Any] | None) -> tuple[float, float] | None:
+    """The region centre as (lon, lat) for the camera plausibility check, or None without a region or
+    a projected CRS in the manifest."""
+    centre = region_centre(region)
+    if centre is None:
+        return None
+    try:
+        manifest = json.loads((Path(project) / "manifest.json").read_text("utf-8"))
+        epsg = (manifest.get("crs") or {}).get("epsg")
+        if not isinstance(epsg, int):
+            return None
+        from rasterio.warp import transform
+
+        ox, oy, _ = manifest.get("origin") or [0, 0, 0]
+        lon, lat = transform(f"EPSG:{epsg}", "EPSG:4326", [ox + centre[0]], [oy - centre[1]])
+        return float(lon[0]), float(lat[0])
+    except Exception:  # an unreadable CRS only skips the check
+        return None
+
+
+def _mesh_layer(manifest: dict[str, Any], layer_id: str) -> dict[str, Any]:
+    layer = next((x for x in manifest.get("layers", []) if x.get("id") == layer_id), None)
+    if layer is None:
+        raise JobError(f'The project has no layer "{layer_id}".')
+    if layer.get("kind") != "mesh":
+        raise JobError(f'"{layer.get("name", layer_id)}" is not a mesh layer.')
+    return layer
+
+
+def _is_reconstruction(layer: dict[str, Any]) -> bool:
+    """A cloud layer made from photos: its file lies under `photogrammetry/` (photo.products output)."""
+    src = layer.get("src")
+    path = src.get("path") if isinstance(src, dict) else None
+    return isinstance(path, str) and path.replace("\\", "/").lstrip("./").startswith("photogrammetry/")
+
+
+def sample_mesh_surface(
+    path: Path, transform: list[float] | None, region: dict[str, Any] | None, n: int, seed: int
+) -> np.ndarray:
+    """Area-weighted, seeded points on a mesh's surface in the project local frame, at most `n`,
+    inside the region. Faces whose centre is outside the region are not sampled, so a small region
+    of a large model still gets its points."""
+    import trimesh
+
+    from ..change.mesh import load_parts
+
+    parts = load_parts(path, transform)
+    whole = trimesh.util.concatenate([local for _, local in parts.values()])
+    if region is not None:
+        keep = _inside(whole.triangles_center, region)
+        if not keep.any():
+            return np.zeros((0, 3))
+        whole = trimesh.Trimesh(whole.vertices, whole.faces[keep], process=False)
+    pts, _ = trimesh.sample.sample_surface(whole, int(n), seed=seed)
+    pts = np.asarray(pts, dtype=np.float64)
+    return pts[_inside(pts, region)]
 
 
 def _vec(v: Any) -> list[float]:
@@ -193,14 +254,30 @@ class ModelEvidence:
             ):
                 raise JobError("region.centre is [x, z] and radiusM is positive.")
             out["region"] = region
-        if not out["clouds"] and not out["photos"]:
-            raise JobError("Give at least one point cloud or one photo.")
+        if not out["clouds"] and not out["meshes"] and not out["photos"]:
+            raise JobError("Give at least one point cloud, mesh or photo.")
         return out
 
-    def inputs(self, params: dict[str, Any]) -> list[str]:
+    def inputs(self, params: dict[str, Any], project: Path | None = None) -> list[str]:
+        """The manifest (origin and layers), the actual file of each source layer (clouds under
+        `clouds/` or `photogrammetry/`, meshes wherever they are) and the photo paths."""
         photos = [p["path"] for p in params.get("photos", [])]
-        # the layers (manifest), the cloud files and the mesh files (data-conventions section 2)
-        return ["manifest.json", "clouds", "meshes", *photos]
+        files: list[str] = []
+        layers = [*params.get("clouds", []), *params.get("meshes", [])]
+        manifest: dict[str, Any] = {}
+        if project is not None:
+            try:
+                manifest = json.loads((Path(project) / "manifest.json").read_text("utf-8"))
+            except (OSError, ValueError):
+                manifest = {}
+        for ref in layers:
+            layer = next((x for x in manifest.get("layers", []) if x.get("id") == ref["layer"]), None)
+            src = layer.get("src") if isinstance(layer, dict) else None
+            if isinstance(src, dict) and isinstance(src.get("path"), str):
+                files.append(src["path"])
+            else:  # unknown layer: the job will say so; the folders keep a changed file noticed
+                files += ["clouds", "meshes", "photogrammetry"]
+        return ["manifest.json", *files, *photos]
 
     # ------------------------------------------------------------------ plan
 
@@ -208,7 +285,7 @@ class ModelEvidence:
         lim = params["limits"]
         region = params.get("region")
         run = params["run"]
-        has_cloud = bool(params["clouds"])
+        has_cloud = bool(params["clouds"] or params["meshes"])  # points to measure, from a scan or a mesh
 
         def load(ctx: StepContext, name: str) -> np.ndarray:
             return np.load(ctx.stage(f"work/{name}.npy"))
@@ -225,21 +302,39 @@ class ModelEvidence:
 
             manifest = read_manifest(ctx.project)
             origin = tuple(manifest.get("origin") or [0, 0, 0])
-            clouds = params["clouds"]
-            cap = max(1, lim["maxPoints"] // len(clouds))
-            parts, colours, crs, read = [], [], None, 0
+            clouds, meshes = params["clouds"], params["meshes"]
+            sources = len(clouds) + len(meshes)
+            cap = max(1, lim["maxPoints"] // sources)
+            parts, colours, read = [], [], 0
+            crs_seen: list[dict[str, Any]] = []
+            reconstructed = False
             for i, c in enumerate(clouds):
                 ctx.check()
-                ctx.progress(i / len(clouds), f"Cloud {i + 1} of {len(clouds)}")
+                ctx.progress(i / sources, f"Cloud {i + 1} of {len(clouds)}")
                 layer = _layer(manifest, c["layer"])
                 path = asset_path(ctx.project, layer.get("src"))
                 if path is None or not path.is_file():
                     raise JobError(f'The file of "{layer.get("name", c["layer"])}" is missing.')
+                reconstructed = reconstructed or _is_reconstruction(layer)
                 xyz, info = read_region(path, layer.get("format", ""), region, cap, ctx, origin, SEED + i)
                 parts.append(xyz)
                 colours.append(info["rgb"])
-                crs = crs or info["crs"]
+                if info["crs"]:
+                    crs_seen.append(info["crs"])
                 read += info["read"]
+            for j, m in enumerate(meshes):
+                ctx.check()
+                ctx.progress((len(clouds) + j) / sources, f"Mesh {j + 1} of {len(meshes)}")
+                layer = _mesh_layer(manifest, m["layer"])
+                path = asset_path(ctx.project, layer.get("src"))
+                if path is None or not path.is_file():
+                    raise JobError(f'The file of "{layer.get("name", m["layer"])}" is missing.')
+                pts = sample_mesh_surface(path, layer.get("transform"), region, cap, SEED + len(clouds) + j)
+                parts.append(pts)
+                colours.append(None)  # a mesh surface has no scanned colour
+                read += len(pts)
+            crs = crs_seen[0] if crs_seen else None
+            crs_mismatch = any(c != crs for c in crs_seen)
             xyz = np.concatenate(parts)
             if len(xyz) < MIN_POINTS:
                 raise JobError(
@@ -255,6 +350,8 @@ class ModelEvidence:
                 "read": read,
                 "crs": crs,
                 "colour": have_colour,
+                "reconstructed": reconstructed,
+                "crsMismatch": crs_mismatch,
                 "bounds": {"min": _vec(xyz.min(axis=0)), "max": _vec(xyz.max(axis=0))},
             }
 
@@ -429,15 +526,20 @@ class ModelEvidence:
                 paths.append(path)
                 given[str(path)] = p["path"]
             res = photo_ingest.ingest_photos(
-                paths, ctx.stage("img_photos"), lim["maxPx"], max(0, lim["maxImages"] - used)
+                paths, ctx.stage("img_photos"), lim["maxPx"], max(0, lim["maxImages"] - used), ctx.check
             )
+            centre = _region_lonlat(ctx.project, region)
+            if centre is not None:
+                photo_ingest.flag_far_cameras(res, centre)
             images = []
+            image_of: dict[str, str] = {}
             from PIL import Image
 
             for pid, copy in res.copies.items():
                 import hashlib
 
                 name = f"img-photo-{pid[:12]}"
+                image_of[pid] = name
                 dest = ctx.stage(f"img/{name}.jpg")
                 dest.write_bytes(copy.read_bytes())
                 with Image.open(dest) as im:
@@ -460,7 +562,14 @@ class ModelEvidence:
                 it = dict(it)
                 it["original"] = given.get(it["original"], it["original"])[:1000]
                 items.append(it)
-            ident = res.identity if not res.identity["sameAsset"] else {"sameAsset": True, "conflicts": []}
+            # conflicts name the pack's images (img-photo-...), which is what the proposal refers to
+            ident = {
+                "sameAsset": res.identity["sameAsset"],
+                "conflicts": [
+                    {"imageIds": [image_of[i] for i in c["imageIds"] if i in image_of], "reason": c["reason"]}
+                    for c in res.identity["conflicts"]
+                ],
+            }
             return {
                 "items": items,
                 "images": images,
@@ -473,6 +582,9 @@ class ModelEvidence:
             doc = self._assemble(ctx, params, has_cloud)
             out_dir = f"engineering/{run}"
             written = {i["file"] for i in doc["images"]}
+            # the old pack goes first: a cancel while the images are replaced must never leave new
+            # images beside an old evidence.json that describes other ones
+            ctx.out(f"{out_dir}/evidence.json").unlink(missing_ok=True)
             commit_tree(ctx, "img", f"{out_dir}/img")
             for stale in (ctx.out(f"{out_dir}/img")).glob("*"):
                 if f"img/{stale.name}" not in written and stale.is_file():
@@ -522,18 +634,27 @@ class ModelEvidence:
             "colours": [],
             "photos": phot.get("items", []),
             "images": images[:64],
-            "reconstruction": "not-needed" if has_cloud else "unavailable",
+            "reconstruction": "not-needed",
             "warnings": warnings,
         }
         if not has_cloud:
             if photogrammetry_available():
-                warnings.append("Photos only: no point cloud was measured and no reconstruction was run.")
+                # nothing is reconstructed here: the person is pointed at the step that does it
+                warnings.append(
+                    "Photos only: no point cloud was measured. Reconstruct first (process the photos into a point cloud), then measure it."
+                )
             else:
+                doc["reconstruction"] = "unavailable"
                 warnings.append(
                     "Photos only: no point cloud, and photogrammetry is not available to reconstruct one."
                 )
-        if params["meshes"]:
-            warnings.append("Reference meshes were listed but are not measured yet.")
+        if has_cloud and ctx.outputs("crop").get("reconstructed"):
+            doc["reconstruction"] = "used"
+            warnings.append(
+                "The point cloud was reconstructed from photos; measurements carry that accuracy."
+            )
+        if has_cloud and ctx.outputs("crop").get("crsMismatch"):
+            warnings.append("The clouds declare different coordinate systems; they were not reprojected.")
         if has_cloud:
             crop_o, ground_o = ctx.outputs("crop"), ctx.outputs("ground")
             ax, base = ctx.outputs("axis"), ctx.outputs("axis")["base"]
