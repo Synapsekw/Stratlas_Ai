@@ -1,4 +1,5 @@
-import type { Vec3 } from '@aio/schema';
+import { georefToLayerTransform } from '@aio/geo';
+import type { Georef, Vec3 } from '@aio/schema';
 import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -168,6 +169,84 @@ it('refuses while a job of another pipeline has not finished, or cannot be read'
     'a job that has not finished ("blank")',
     'a job that has not finished ("busy")',
     'a job that has not finished ("stopped")',
+  ]);
+});
+
+/** A model file `id` and its layer, placed by a georeference in the project above. */
+async function withPlacedModel(
+  root: string,
+  id: string,
+  model: Record<string, unknown>,
+  by: Georef['provenance']['by'],
+): Promise<Georef> {
+  const georef: Georef = {
+    schema: 'aio.georef/1',
+    crs: { epsg: 32639 },
+    anchor: [500120, 3200040, 25],
+    axes: 'x-east,y-up,z-south',
+    units: 'm',
+    modelToCrs: [1, 0, 0, 0, 0, 0, 1, 0, 0, -1, 0, 0, 500120, 3200040, 25, 1],
+    heading: { deg: 0, status: 'measured' },
+    scale: { factor: 1, status: 'reference' },
+    horizontal: { status: 'surveyed' },
+    vertical: { datum: 'unknown', status: 'unknown' },
+    provenance: { by },
+  };
+  await writeFile(join(root, 'models', `${id}.procmodel.json`), JSON.stringify(model));
+  const m = await readManifestFile(root);
+  const placed = georefToLayerTransform(georef, { crs: m.crs, origin: m.origin });
+  if (placed.kind !== 'placed') throw new Error('not placed');
+  m.layers.push({
+    kind: 'mesh',
+    id: `model-${id}`,
+    name: id,
+    visible: true,
+    src: { path: `models/${id}.glb` },
+    transform: placed.transform,
+    georef,
+    placement: 'placed',
+    derived: { kind: 'model', source: [id] },
+  });
+  await writeManifestFile(root, m);
+  return georef;
+}
+
+it('re-centres an engineering model once and keeps where it is on the earth', async () => {
+  const root = await withModelAndCloud();
+  const georef = await withPlacedModel(
+    root,
+    'eng',
+    { schema: 'aio.procmodel/2', id: 'eng', assemblies: [{ id: 'shaft-1' }] },
+    'engineer',
+  );
+  const before = await readManifestFile(root);
+  expect(await recentreBlockers(root, before)).toEqual([]);
+  const { manifest } = await recentreProject(root, [500100, 3200050]);
+  const layer = manifest.layers.find((l) => l.id === 'model-eng');
+  if (layer?.kind !== 'mesh') throw new Error('no layer');
+  // shifted once: what the georeference gives against the new origin, within 1 mm
+  const again = georefToLayerTransform(georef, { crs: manifest.crs, origin: manifest.origin });
+  if (again.kind !== 'placed') throw new Error('not placed');
+  for (const i of [12, 13, 14])
+    expect(Math.abs((layer.transform[i] ?? 0) - (again.transform[i] ?? 0))).toBeLessThan(1e-3);
+  expect(layer.transform[12]).toBeCloseTo(20, 6);
+  expect(layer.transform[14]).toBeCloseTo(10, 6);
+  expect(layer.georef?.anchor).toEqual(georef.anchor);
+});
+
+it('re-centres a parts model placed with Place model: its layer keeps its transform', async () => {
+  const root = await withModelAndCloud();
+  await withPlacedModel(
+    root,
+    'pump',
+    { schema: 'aio.procmodel/2', id: 'pump', parts: [], assemblies: [] },
+    'place-model',
+  );
+  expect(await recentreBlockers(root, await readManifestFile(root))).toEqual([]);
+  // a parts model whose layer is still at the identity (the local frame) keeps refusing
+  await writeFile(join(root, 'models', 'old.procmodel.json'), '{"schema":"aio.procmodel/1"}');
+  expect(await recentreBlockers(root, await readManifestFile(root))).toEqual([
+    'the procedural model "old.procmodel.json"',
   ]);
 });
 
