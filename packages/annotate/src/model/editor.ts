@@ -421,6 +421,7 @@ export function createIssueEditor(opts: IssueEditorOptions): IssueEditor {
       return c.ok ? ok(out) : err(c.error);
     },
     reassignClass(fromId, toId) {
+      if (fromId === toId) return { changed: 0, skipped: [] };
       const ctx = context();
       const to = findClass(ctx, toId);
       const ids = store

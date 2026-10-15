@@ -104,6 +104,14 @@ describe('reassignClass', () => {
     expect(store.getState().issues.map((i) => i.classId)).toEqual(['crack', 'crack', 'blister']);
   });
 
+  it('is a no-op with no undo step when the class moves to itself', () => {
+    const { store, editor } = setup([makeIssue({ id: 'i1', code: 'F01', classId: 'crack' })]);
+    const before = store.getState().issues;
+    expect(editor.reassignClass('crack', 'crack')).toEqual({ changed: 0, skipped: [] });
+    expect(store.getState().issues).toBe(before);
+    expect(editor.state.canUndo).toBe(false);
+  });
+
   it('skips every issue when the target class does not exist', () => {
     const { editor } = setup([makeIssue({ id: 'i1', code: 'F01', classId: 'crack' })]);
     const r = editor.reassignClass('crack', 'nope');

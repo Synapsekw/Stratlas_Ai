@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { ctx } from '../testing';
+import { ctx, strictModel, tankModel } from '../testing';
 import { acceptMany } from './accept';
 import type { Detection } from './model';
 import { canUndo, initialReview, reviewReducer, type ReviewState } from './review';
@@ -106,8 +106,77 @@ describe('review batches', () => {
       det('c', { status: 'accepted', issueId: 'x' }),
       det('d', { classId: 'blister' }),
     ]);
-    const s1 = reviewReducer(s0, { type: 'reclass', from: 'crack', to: 'pothole', now: NOW });
+    const s1 = reviewReducer(s0, {
+      type: 'reclass',
+      from: 'crack',
+      to: 'pothole',
+      model: strictModel,
+      now: NOW,
+    });
     expect(s1.detections.map((d) => d.classId)).toEqual(['pothole', 'pothole', 'crack', 'blister']);
-    expect(reviewReducer(s0, { type: 'reclass', from: 'nope', to: 'pothole', now: NOW })).toBe(s0);
+    expect(
+      reviewReducer(s0, {
+        type: 'reclass',
+        from: 'nope',
+        to: 'pothole',
+        model: strictModel,
+        now: NOW,
+      }),
+    ).toBe(s0);
+  });
+
+  it('reclass maps severities onto the new class model so Accept all can take them', () => {
+    const s0 = loaded([
+      det('five', { severity: 5 }),
+      det('unsure', { severity: 'uncertain', uncertain: true }),
+      det('none', { severity: null }),
+    ]);
+    const s1 = reviewReducer(s0, {
+      type: 'reclass',
+      from: 'crack',
+      to: 'pothole',
+      model: strictModel,
+      now: NOW,
+    });
+    expect(s1.detections.map((d) => [d.severity, d.uncertain])).toEqual([
+      [3, false],
+      [3, false],
+      [null, false],
+    ]);
+    const r = acceptMany(s1.detections, ctx);
+    expect(r.accepted.map((a) => [a.detection.id, a.input.severity])).toEqual([
+      ['five', 3],
+      ['unsure', 3],
+    ]);
+    expect(r.skipped.map((s) => [s.detection.id, s.problem])).toEqual([['none', 'no-severity']]);
+  });
+
+  it('reclass keeps uncertain when the new model has an uncertain level', () => {
+    const s0 = loaded([det('u', { severity: 'uncertain', uncertain: true })]);
+    const s1 = reviewReducer(s0, {
+      type: 'reclass',
+      from: 'crack',
+      to: 'blister',
+      model: tankModel,
+      now: NOW,
+    });
+    expect(s1.detections[0]).toMatchObject({
+      classId: 'blister',
+      severity: 'uncertain',
+      uncertain: true,
+    });
+  });
+
+  it('reclass to the same class is a no-op with no undo step', () => {
+    const s0 = loaded([det('a', { severity: 5 })]);
+    const s1 = reviewReducer(s0, {
+      type: 'reclass',
+      from: 'crack',
+      to: 'crack',
+      model: strictModel,
+      now: NOW,
+    });
+    expect(s1).toBe(s0);
+    expect(canUndo(s1)).toBe(false);
   });
 });

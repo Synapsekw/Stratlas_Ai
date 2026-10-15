@@ -1,5 +1,6 @@
-import type { ImageGeom } from '@aio/schema';
+import type { ImageGeom, SeverityModel } from '@aio/schema';
 import { compareCodes } from '../model/query';
+import { mapSeverity } from '../model/severityMap';
 import { sourceKey, type Detection, type DetectionRun, type DetectionSource } from './model';
 
 /*
@@ -76,8 +77,11 @@ export type ReviewAction =
     }
   /** Reject all: the waiting detections among `ids` rejected as one step. */
   | { type: 'rejectMany'; ids: readonly string[]; label: string; by: string; now: string }
-  /** A class was deleted: its waiting and rejected detections move to class `to`, one step. */
-  | { type: 'reclass'; from: string; to: string; now: string }
+  /**
+   * A class was deleted: its waiting and rejected detections move to class `to`, one step, each
+   * severity mapped onto `model` (class `to`'s severity model) like the moved issues.
+   */
+  | { type: 'reclass'; from: string; to: string; model: SeverityModel; now: string }
   | { type: 'undo' }
   | { type: 'redo' }
   | { type: 'clearError' };
@@ -202,6 +206,25 @@ export function sourceCounts(detections: readonly Detection[]): SourceCounts[] {
 }
 
 // ---- reducer ----
+
+/**
+ * A detection's severity on the model of the class it moves to (`reclass`), by the same rule as
+ * the moved issues (`mapSeverity`): a level is kept or snapped to the nearest; uncertain stays
+ * where the model has it, else becomes the highest level. No severity stays none.
+ */
+function reclassSeverity(
+  d: Detection,
+  model: SeverityModel,
+): Pick<Detection, 'severity' | 'uncertain'> {
+  const keepUncertain = d.uncertain && !!model.uncertain;
+  if (d.severity === null) return { severity: null, uncertain: d.uncertain };
+  if (d.severity === 'uncertain') {
+    return model.uncertain
+      ? { severity: 'uncertain', uncertain: d.uncertain }
+      : { severity: mapSeverity('uncertain', model), uncertain: false };
+  }
+  return { severity: mapSeverity(d.severity, model), uncertain: keepUncertain };
+}
 
 function apply(list: readonly Detection[], after: ReviewChange['after']): Detection[] {
   const out: Detection[] = [];
@@ -472,12 +495,18 @@ export function reviewReducer(state: ReviewState, action: ReviewAction): ReviewS
       return commit(state, { label: action.label, before, after });
     }
     case 'reclass': {
+      if (action.from === action.to) return state;
       const before: Record<string, Detection> = {};
       const after: Record<string, Detection> = {};
       for (const d of state.detections) {
         if (d.classId !== action.from || d.status === 'accepted') continue;
         before[d.id] = d;
-        after[d.id] = { ...d, classId: action.to, updatedAt: action.now };
+        after[d.id] = {
+          ...d,
+          ...reclassSeverity(d, action.model),
+          classId: action.to,
+          updatedAt: action.now,
+        };
       }
       if (Object.keys(after).length === 0) return state;
       return commit(
