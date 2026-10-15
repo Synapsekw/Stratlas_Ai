@@ -92,7 +92,7 @@ export function useEngineeringReview(
       onModelVisible: (v) => {
         if (draftLayer) workspace.getState().setLayerVisible(draftLayer, v);
       },
-      onRebuild: () => void rebuildWith(engineerHost.getState().user),
+      onRebuild: () => void rebuildWith(state.user),
     },
   );
   return { model: runModel, panel };

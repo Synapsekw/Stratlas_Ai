@@ -1,11 +1,11 @@
-import { addAssembly, newAssembly, setAssemblyStatus, type UserOverrides } from '@aio/modelling';
+import { addAssembly, newAssembly, type UserOverrides } from '@aio/modelling';
 import type { Assembly, AssemblyKind, PartStatus, ProcModel, ProjectManifest } from '@aio/schema';
 import { workspace } from '@aio/workspace';
 import { useStore, type StoreApi } from 'zustand';
 import { createStore } from 'zustand/vanilla';
-import { setEngineerSession, type EngineerModelSession } from '../modeller/engineerTools';
+import { setEngineerSession } from '../modeller/engineerTools';
 import { bridge, shell } from '../shell';
-import { createRunStore, ipcRunIpc, NO_OVERRIDES, type RunIpc, type RunState } from './runStore';
+import { createRunStore, ipcRunIpc, type RunIpc, type RunState } from './runStore';
 import { domDecode, domViewCanvas, renderDraftViews, silhouetteScores } from './views';
 
 /**
@@ -21,8 +21,6 @@ export interface HostState {
   projectId: string | null;
   store: Store | null;
   ipc: RunIpc | null;
-  /** The person's values the current model was assembled with (corrections build on them). */
-  user: UserOverrides;
   /** Review view state (Model builder, Components). */
   selected: string | null;
   hidden: string[];
@@ -38,7 +36,6 @@ const initial = (): HostState => ({
   projectId: null,
   store: null,
   ipc: null,
-  user: NO_OVERRIDES,
   selected: null,
   hidden: [],
   sourceVisible: true,
@@ -67,13 +64,30 @@ async function writeModel(model: ProcModel): Promise<ProcModel | { error: string
   }
 }
 
-export function setStatus(
+/**
+ * Accept, reject or make draft: the run store writes the model (so the status survives a
+ * reopen), then the draft is drawn again.
+ */
+export async function setStatus(
   ids: readonly string[] | 'all',
   status: PartStatus,
 ): Promise<ProcModel | { error: string }> {
-  const model = engineerHost.getState().store?.getState().model;
-  if (!model) return Promise.resolve({ error: 'No engineering model is open.' });
-  return writeModel(setAssemblyStatus(model, ids, status, new Date().toISOString()));
+  const { store, ipc } = engineerHost.getState();
+  const model = store?.getState().model;
+  if (!store || !ipc || !model) return { error: 'No engineering model is open.' };
+  const all = ids === 'all' ? model.assemblies.map((a) => a.id) : [...ids];
+  const r = await store.getState().setStatus(all, status);
+  if ('error' in r) {
+    engineerHost.setState({ error: r.error });
+    return r;
+  }
+  try {
+    const built = await ipc.modelBuild(r.id, true);
+    store.setState({ draftLayer: built.layer, build: built.report ?? null });
+  } catch (e) {
+    engineerHost.setState({ error: e instanceof Error ? e.message : String(e) });
+  }
+  return r;
 }
 
 export function addComponent(kind: AssemblyKind): Promise<ProcModel | { error: string }> {
@@ -86,7 +100,7 @@ export function addComponent(kind: AssemblyKind): Promise<ProcModel | { error: s
 export async function rebuildWith(user: UserOverrides): Promise<void> {
   const { store } = engineerHost.getState();
   if (!store) return;
-  engineerHost.setState({ user, stale: false, error: null });
+  engineerHost.setState({ stale: false, error: null });
   await store.getState().rebuild(user);
 }
 
@@ -105,30 +119,6 @@ export async function acceptRun(): Promise<void> {
 /** Components the person accepted in the review (accept needs at least one). */
 export const acceptedCount = (model: ProcModel | null): number =>
   model?.assemblies.filter((a: Assembly) => a.status === 'accepted').length ?? 0;
-
-/** The agent's corrections act on the run's model through this. */
-export function sessionOver(): EngineerModelSession {
-  return {
-    current: () => {
-      const { store, user } = engineerHost.getState();
-      const model = store?.getState().model;
-      return model ? { model, user } : null;
-    },
-    rebuild: async (user) => {
-      await rebuildWith(user);
-      const s = engineerHost.getState().store?.getState();
-      if (!s?.model) return { error: s?.error ?? 'The model could not be assembled.' };
-      return {
-        model: s.model,
-        changed: [],
-        kept: [],
-        flagged: s.flagged,
-        unresolved: s.unresolved,
-      };
-    },
-    setStatus: (ids, status) => setStatus(ids, status),
-  };
-}
 
 /** Make the run for an open folder project (none for a package), or drop it. */
 export function openRun(
@@ -160,7 +150,8 @@ export function openRun(
     },
   });
   engineerHost.setState({ projectId: project.id, store, ipc });
-  setEngineerSession(sessionOver());
+  // the store's own session: corrections are saved with the run and survive a reopen
+  setEngineerSession(store.getState().session());
 }
 
 /** Follow the open project (call once; returns the unsubscribe). */

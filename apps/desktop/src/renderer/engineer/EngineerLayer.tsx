@@ -109,6 +109,8 @@ function RunPanel() {
         <div className="sec">
           <StageList
             stages={run.stages}
+            busy={busy}
+            error={error}
             onCancel={() => void st.cancel()}
             onRetry={() => void st.retry()}
           />

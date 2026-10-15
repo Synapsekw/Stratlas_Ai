@@ -40,11 +40,16 @@ const run = {
 
 function setup() {
   const rebuild = vi.fn(() => Promise.resolve());
+  const modelWrite = vi.fn<(m: ProcModel) => Promise<void>>(() => Promise.resolve());
+  const modelBuild = vi.fn(() => Promise.resolve({ layer: 'model-draft-stack' }));
+  const evidenceImage = vi.fn(() => Promise.resolve('data:image/png;base64,AAAA'));
+  // the store's own status write (as runStore.setStatus): the model file, then the state
   const store = createStore<RunState>(
-    () =>
+    (set, get) =>
       ({
         run,
         model: model(),
+        user: { params: {}, counts: {}, levels: {}, removed: [], added: [] },
         draftLayer: 'model-draft-stack',
         busy: false,
         build: null,
@@ -53,11 +58,20 @@ function setup() {
         unresolved: [],
         flagged: [],
         rebuild,
+        setStatus: async (ids: string[], status: string) => {
+          const m = get().model;
+          if (!m) return { error: 'none' };
+          const next = {
+            ...m,
+            assemblies: m.assemblies.map((a) => (ids.includes(a.id) ? { ...a, status } : a)),
+          } as ProcModel;
+          await modelWrite(next);
+          set({ model: next });
+          return next;
+        },
+        session: () => null,
       }) as unknown as RunState,
   );
-  const modelWrite = vi.fn(() => Promise.resolve());
-  const modelBuild = vi.fn(() => Promise.resolve({ layer: 'model-draft-stack' }));
-  const evidenceImage = vi.fn(() => Promise.resolve('data:image/png;base64,AAAA'));
   const ipc = { modelWrite, modelBuild, evidenceImage } as unknown as RunIpc;
   engineerHost.setState({ projectId: 'p', store, ipc, selected: null, hidden: [], thumbnails: {} });
   return { store, rebuild, modelWrite, modelBuild, evidenceImage };
