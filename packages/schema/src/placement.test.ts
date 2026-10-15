@@ -5,6 +5,7 @@ import {
   decodeSelection,
   encodeSelection,
   SELECTION_HEADER_BYTES,
+  SELECTION_MAX_POINTS,
   SelectionName,
   selectionByteLength,
 } from './selection';
@@ -88,6 +89,12 @@ describe('selection files', () => {
     expect(decodeSelection(wrong)).toBeNull();
     expect(decodeSelection(good.subarray(0, SELECTION_HEADER_BYTES - 1))).toBeNull();
     expect(decodeSelection(good.subarray(0, good.byteLength - 4))).toBeNull();
+    const longer = new Uint8Array(good.byteLength + 4);
+    longer.set(good);
+    expect(decodeSelection(longer)).toBeNull();
+    const over = good.slice();
+    new DataView(over.buffer).setUint32(8, SELECTION_MAX_POINTS + 1, true);
+    expect(decodeSelection(over)).toBeNull();
   });
 
   it('refuses positions that are not whole points', () => {

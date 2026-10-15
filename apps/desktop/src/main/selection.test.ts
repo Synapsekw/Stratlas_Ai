@@ -42,4 +42,22 @@ describe('writeSelection', () => {
       error: 'The point selection is not a valid selection file.',
     });
   });
+
+  it('settles two overlapping writes of one name and leaves no temporary file', async () => {
+    const a = encodeSelection(new Float32Array([0, 0, 0]), 1);
+    const b = encodeSelection(new Float32Array([1, 1, 1, 2, 2, 2]), 2);
+    const [ra, rb] = await Promise.all([
+      writeSelection(root, 'x', a),
+      writeSelection(root, 'x', b),
+    ]);
+    expect(ra.ok).toBe(true);
+    expect(rb.ok).toBe(true);
+    expect(await readBack('x')).not.toBeNull();
+    expect(await readdir(join(root, 'selections'))).toEqual(['x.sel']);
+  });
+
+  it('refuses a name that is not a plain file name', async () => {
+    const data = encodeSelection(new Float32Array([0, 0, 0]), 1);
+    expect((await writeSelection(root, '../x', data)).ok).toBe(false);
+  });
 });
