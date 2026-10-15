@@ -1,6 +1,6 @@
 # Maps and offline packs
 
-Street maps come from offline map packs on your disk. One pack serves every project in its area. Orthos and plot plans of a project always show, with or without a pack.
+Street maps come from offline map packs on your disk. One pack serves every project in its area. Orthos and plot plans of a project always show, with or without a pack. If you want them, online maps (Sentinel-2, Esri and Mapbox) can be switched on as well: see [Online maps](#online-maps).
 
 ## The map view
 
@@ -9,28 +9,35 @@ Street maps come from offline map packs on your disk. One pack serves every proj
 
 Street maps are dark, also in the light theme. With no pack installed, the map says "No map packs installed. Add a pack in Settings, Maps."
 
-### Choose the map type
+### The Map menu
 
-The chip under the zoom buttons names the map type in use. Click it to choose:
+The Map view, the 3D scene and the Globe share one **Map** menu. Its chip sits at the top right of the view, under the zoom buttons, and shows a small picture and the name of the map in use, for example **Mapbox Streets**. Click it to open the menu:
 
-- **Streets:** the street map alone.
-- **Satellite:** imagery with the streets and names over it.
-- **Satellite only:** imagery alone, without streets and names.
-- **Terrain shading:** relief shading from a terrain pack, with any map type.
-- **Online satellite:** satellite imagery of the whole world from the internet (Sentinel-2, 2016, about 10 m per pixel), for sites no imagery pack covers. Off until you tick it. See [Online satellite](#online-satellite).
+- **Offline**: **Streets**, the street map from your packs (the Globe also has **Natural Earth**).
+- **Online satellite**: **Sentinel-2**, **Esri** and **Mapbox**.
+- **Mapbox styles**: **Streets**, **Outdoors**, **Light**, **Dark** and **Satellite streets**.
+- **On top**: switches for what lies over the map. In the Map view: **Street names and roads**, **Terrain shading** and **Imagery packs and orthos** (with an **Imagery pack** list, **Best available** to draw them all, detailed over coarse). A switch that does not apply is greyed with the reason under it, for example "No imagery pack covers this site" or "This map has its own street names".
+- The footer credits the map that is drawn and has **Map sources**, which opens the Settings page with the online maps and their keys. A Mapbox map adds **Improve this map**, which opens Mapbox's feedback page in your browser.
 
-When several imagery packs cover the site, **Imagery** picks one of them, or **Best available** to draw them all, detailed over coarse.
+Picking a map keeps the view where it is. The choice is remembered on this computer. A tile that cannot be picked is greyed with a badge and a note: **Key** ("Add a key in Map sources"), **Offline** ("This workstation is offline-only") or, in the 3D scene, **Medium** ("Needs Medium graphics or higher").
 
-Switching keeps the map where it is. The choice is remembered on this computer and is the same as the ticks under **Imagery and terrain** in Settings, **Offline maps**. From the keyboard, the arrow keys move between the map types and **Esc** closes the list. The command palette (**Ctrl K**) has the same choices: type "map type", or "online satellite".
+If the map you chose cannot be drawn right now (no key, online maps switched off, or the workstation is offline-only), the offline street map is drawn instead and the chip says **Offline map**.
 
-Imagery and terrain come from packs on your disk. The one exception is **Online satellite**, and only once you have switched it on. A map type with no imagery for the site is greyed out, and the list says which pack is missing. Click **Offline maps** there to open Settings where packs are imported, or **Online satellite** to turn that on instead. See [Imagery and terrain packs](31-imagery-and-terrain-packs.md).
+From the keyboard, the arrow keys (and **Home** and **End**) move across the maps and pick as they go, **Tab** moves to the switches and the footer, and **Esc** closes the menu. The command palette (**Ctrl K**) has the same choices: type "map" for **Map: Streets**, **Map: Esri** and the others, **Turn terrain shading on the map on**, and **Turn online maps on**.
+
+<!-- screenshot: map-menu.png | The Map menu open in the Map view of a demo project placed on the Earth, with online maps on: the Offline, Online satellite and Mapbox styles tiles, the On top switches and the Map sources link in the footer -->
+
+Imagery and terrain packs come from your disk. A map type with no imagery for the site is greyed out and says which pack is missing. See [Imagery and terrain packs](31-imagery-and-terrain-packs.md).
 
 ### The ground in 3D
 
-In 3D, **Layers and issue pins** has the ground around the site:
+In 3D, the same **Map** chip sits at the top right of the view, once the project is placed on the Earth. It chooses the ground around the site:
 
-- **The street map under the site in 3D** is on for every project a pack covers. Turn it off and on with the street map button in the stage toolbar (under **More tools** in a narrow window); the choice is remembered for the project on this computer. The button is greyed out when no installed pack covers the site, and while **Imagery around the site** or **Terrain around the site** is on: that landscape follows the terrain and takes the street map's place.
-- **Imagery around the site** and **Terrain around the site** drape the imagery packs and the relief on the land around the site. They need Medium graphics or higher and a pack that covers the site.
+- **Streets**: the offline street map under the site, sharp there and running out to the horizon, wherever an installed pack covers the site. Turn it off and on with the street map button in the stage toolbar (under **More tools** in a narrow window); the choice is remembered for the project on this computer. The button is greyed out when no installed pack covers the site.
+- An online map (**Esri**, **Mapbox** or **Sentinel-2**): the imagery lies on the ground around the site in place of the plain grey ground. Needs Medium graphics or higher.
+- **On top** has **Imagery packs around the site** and **Terrain around the site**, which drape your imagery packs and the relief on the land around the site. They also need Medium graphics or higher and a pack that covers the site.
+
+A projected drone video still drapes onto whatever ground is showing.
 
 ## Offline map packs
 
@@ -90,29 +97,44 @@ If the workstation is set to offline-only, downloads are off: "This workstation 
 
 Click **Remove** on the pack's row, then confirm. Maps lose that area until the pack is added again. A pack that came with an open package shows **In open package** and cannot be removed.
 
-## Online satellite
+## Online maps
 
-Not every workstation has to work offline. **Online satellite** draws satellite imagery of the whole world on the map without a pack. It is off until you switch it on.
+Not every workstation has to work offline. Online maps draw imagery or styled maps of the whole world without a pack. They are off until you switch them on.
 
-1. On the map, click the map type chip and tick **Online satellite**. The same switch is **Online satellite (Sentinel-2)** in **Settings**, **Offline maps**, **Imagery and terrain**; the two always agree.
-2. The first time, read the notice and click **Switch on**. Nothing is requested before that.
-3. Choose **Satellite** or **Satellite only**. With online satellite on they can be chosen at any site, also where no imagery pack covers it.
+| Map                    | Key                                                                         | Kept on this computer      |
+| ---------------------- | --------------------------------------------------------------------------- | -------------------------- |
+| **Sentinel-2 (EOX)**   | None. Imagery from 2016, about 10 m per pixel                               | Yes, up to 300 MB of tiles |
+| **Esri World Imagery** | Optional. A key from an ArcGIS Location Platform account uses its allowance | No                         |
+| **Mapbox**             | Needed: a public access token from a Mapbox account                         | No                         |
 
-What you get:
+### Switch them on
 
-- Imagery, like a pack: it shows with **Satellite** and **Satellite only**, and not with **Streets**.
+1. Open **Settings**, **Map sources** (or click **Map sources** in the footer of the Map menu).
+2. Switch on **Online maps**. The first time, a notice names the provider and what it can see: read it and click **Switch on**. Nothing is requested before that.
+3. In the Map menu, pick **Esri**, **Sentinel-2**, **Mapbox** or a Mapbox style.
 
-- Sentinel-2 imagery from 2016, at about 10 m per pixel. It shows the lie of the land, roads and large structures, not site detail, and nothing built since 2016. Zoomed in past that detail the imagery is stretched, not sharper.
-- It sits at the bottom of the map: your imagery packs and the project's orthos draw over it, and street lines and labels stay on top.
-- The credit shows in the corner of the map while the imagery does: "EOxCloudless https://cloudless.eox.at by EOX IT Services GmbH (Contains modified Copernicus Sentinel data 2016)". The imagery is licensed CC BY 4.0.
+Picking an online map in the Map menu while online maps are off shows the same notice first. **Ctrl K**, **Turn online maps on** does the same and opens **Map sources**.
 
-What is sent:
+### Add a key
 
-- {product} requests the imagery tiles for the areas you look at from the servers of EOX IT Services GmbH. That service can therefore see which areas you view, and the address your computer connects from. Nothing else is sent: no project data, no account, no key.
-- Tiles you have viewed are kept on this computer (up to 300 MB; the ones used longest ago make room for new ones), so those areas draw again without a request. **Clear cached satellite tiles** in the same place deletes them and shows how much they take.
-- The service is free and comes with no guarantee. When it cannot be reached, the map shows what it has and tries again later.
+1. In **Settings**, **Map sources**, find **Esri World Imagery** or **Mapbox**.
+2. Paste the key in **Paste the key** and click **Save key**. {product} asks the provider for one tile to check it, then says "The key is saved on this computer."
+3. **Test** checks a saved key again ("The key works."). **Remove** takes it off this computer.
 
-On an offline-only workstation it cannot be switched on: the row on the map is greyed and reads "Go online to use it", and Settings says "This workstation is offline-only, so online satellite cannot be switched on." If it was on before the workstation was set to offline-only, nothing more is requested: the row reads "Showing saved tiles only", areas you viewed before still draw from this computer, and you can untick it to hide them.
+Each row says **Works without a key**, **No key** or **Key saved**. Keys are kept per computer in the system credential store. They never enter project files, packages or logs, and {product} never shows them again.
+
+<!-- screenshot: settings-map-sources.png | Settings, Map sources with Online maps on, the Sentinel-2, Esri World Imagery and Mapbox rows, and a saved Mapbox key showing Key saved with Test and Remove -->
+
+### What is sent
+
+- {product} requests the tiles for the areas you look at from the provider you picked (EOX, Esri or Mapbox, with your key where you added one). That provider can therefore see which areas you view, and the address your computer connects from. Nothing else is sent: no project data and no account details.
+- Requests beyond a provider's free monthly allowance are billed to the account of the key.
+- Sentinel-2 tiles you have viewed are kept on this computer (up to 300 MB; the ones used longest ago make room for new ones), so those areas draw again without a request. **Clear saved satellite tiles** at the bottom of **Map sources** deletes them and shows how much they take. Esri and Mapbox tiles are not kept.
+- The credit of the map you see shows in the footer of the Map menu. Sentinel-2 imagery is licensed CC BY 4.0.
+
+What you get from Sentinel-2: the lie of the land, roads and large structures, not site detail, and nothing built since 2016. Esri and Mapbox imagery is sharper. Zoomed in past the detail a source has, the imagery is stretched, not sharper. Your imagery packs and the project's orthos draw over an online map.
+
+On an offline-only workstation online maps cannot be switched on: the tiles in the Map menu are greyed with **Offline**, and **Map sources** says "This workstation is offline-only, so online maps cannot be switched on. Turn off offline-only in Privacy and cloud." Sentinel-2 areas you viewed before can still draw from this computer. When a provider cannot be reached, the map shows what it has.
 
 For imagery that works with no network, or sharper imagery of your site, use an imagery pack. See [Imagery and terrain packs](31-imagery-and-terrain-packs.md).
 

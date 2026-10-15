@@ -23,9 +23,9 @@ The list shows each pack with its zoom levels, size, date, licence and attributi
 - **Terrain around the site in 3D** and **Imagery around the site in 3D:** the landscape around the site in the 3D view, on the Medium graphics preset and up.
 - The Globe uses every installed pack (see the chapter on the Globe).
 
-The same choices are on the map itself: the map type chip under the zoom buttons (**Streets**, **Satellite**, **Satellite only**, **Terrain shading**), and **Layers and issue pins** in 3D. See [Maps and offline packs](06-maps.md#choose-the-map-type).
+The same choices are in the **Map** menu on the map, in the 3D scene and on the Globe, under **On top**: **Imagery packs and orthos** (with **Imagery pack**), **Terrain shading**, and in 3D **Imagery packs around the site** and **Terrain around the site**. See [The Map menu](06-maps.md#the-map-menu).
 
-**Online satellite (Sentinel-2)** in the same list, and **Online satellite** in the map type chip, is not a pack: it streams imagery from 2016 for the areas you look at, when you switch it on, and your packs draw over it. See [Online satellite](06-maps.md#online-satellite).
+Online maps (Sentinel-2, Esri and Mapbox) are not packs: they stream imagery for the areas you look at, once you switch them on in **Settings**, **Map sources**, and your packs draw over them. See [Online maps](06-maps.md#online-maps).
 
 ## Licences
 

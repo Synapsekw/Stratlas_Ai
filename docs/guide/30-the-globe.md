@@ -6,9 +6,11 @@ The Globe shows every project in your library as a site on the Earth, offline. I
 
 Click **Globe** in the sidebar. The Earth is drawn as the dark street map the Map view uses, from the street map packs you have installed: countries and cities from far out, streets where a detailed pack covers the place. Each project with a location is a chip on the map with its name. The footer credits what is shown, for example "Natural Earth (public domain)", "© OpenStreetMap contributors" and "CesiumJS (Apache-2.0)"; **Imagery and terrain credits** lists them all.
 
+The Globe opens on the whole Earth, looking straight down over the open project's site. When you come back to it in the same session, it is where you left it.
+
 The Globe fills the whole screen. **Find a site** is at the top, **Map** at the top right, and **Measure on the ellipsoid**, **Zoom in**, **Zoom out** and **Show all sites** are at the lower right.
 
-The Globe makes no network requests of its own. Everything it draws ships with {product} or comes from packs you add in Settings (see the chapters on map packs and on imagery and terrain packs). The one exception is online satellite, which shows in the **Satellite** look only after you have switched it on, and never on an offline-only workstation except for what is already cached.
+The Globe makes no network requests of its own. Everything it draws ships with {product} or comes from packs you add in Settings (see the chapters on map packs and on imagery and terrain packs). The one exception is online maps (Sentinel-2, Esri and Mapbox), which show only after you have switched them on, and never on an offline-only workstation except for Sentinel-2 tiles already kept on this computer.
 
 Left alone with the whole Earth in view, the Globe turns slowly for a while and then rests. Any click, drag or scroll stops it. It does not turn when Reduce motion is on or on the Low graphics preset.
 
@@ -38,17 +40,18 @@ With the keyboard, Tab goes from **Find a site** to **Map**, then to the open ca
 
 ## Map
 
-**Map** opens the map settings. They stay open while you try a choice; Esc or a click on the Globe closes them.
+**Map** opens the same Map menu as the Map view and the 3D scene (see [The Map menu](06-maps.md#the-map-menu)). It stays open while you try a choice; Esc or a click on the Globe closes it.
 
-**Map type** chooses what the Earth is drawn from:
+The maps:
 
-- **Street map:** the street map packs over the land and borders that ship with {product}. Without any street map pack the Globe says "No street map pack is installed, so the Globe shows land and borders only. Add packs in Settings, Offline maps."
-- **Satellite:** imagery over the street map. With **Online satellite** switched on (see the chapter on maps), the whole Earth shows that imagery, and your imagery packs lie over it where you have them; it is credited in the footer while it shows. With it off, only your imagery packs show. **Imagery** chooses between **Best available**, the sharpest installed pack for each place, and one pack. Without any imagery pack and with online satellite off the Globe says "Turn on Online satellite in the map type menu to see imagery everywhere."
-- **Natural Earth:** the painted Natural Earth II picture of the Earth, with your imagery packs over it. Street map packs are not drawn in this look.
+- **Offline**: **Streets**, the street map packs over the land and borders that ship with {product}, and **Natural Earth**, the painted Natural Earth II picture of the Earth (street map packs are not drawn on it). Without any street map pack the menu says "No street map pack is installed, so the Globe shows land and borders only. Add packs in Settings, Offline maps."
+- **Online satellite** and **Mapbox styles**: once online maps are switched on in **Settings**, **Map sources**, the whole Earth shows the map you pick, credited in the footer of the menu. See [Online maps](06-maps.md#online-maps).
+
+**On top** has **Imagery packs and orthos** (your imagery packs over the map, **Best available** or one pack), **Terrain** (see [Terrain](#terrain)) and **Issues of the open project**.
 
 Street names and other labels are part of the map, so they lie on the ground: they turn with the Earth and lean when you tilt the view.
 
-The two dots at the bottom of the settings show the chips' colours: **No open issues** and **Open issues**.
+**Site pins**, at the bottom of the menu, shows the chips' colours: **No open issues** and **Open issues**.
 
 ## Processed maps on the Globe
 
@@ -60,11 +63,11 @@ The switches last until you close the app. They are not saved.
 
 ## Terrain
 
-**Terrain**, in the map settings: **Best available** uses installed terrain packs for relief; **Off (smooth Earth)** turns relief off. On the Low graphics preset terrain is off: "Terrain is off on the Low graphics preset."
+**Terrain**, under **On top** in the Map menu: **Best available** uses installed terrain packs for relief; **Off (smooth Earth)** turns relief off. On the Low graphics preset terrain is off: "Terrain is off on the Low graphics preset."
 
 ## Issues on the Globe
 
-With a project open, **Show issues of the open project** in the map settings is ticked to start with. Issues show as pins in their severity colours. Click one to see its card, then **Open issue** to open it in the site view.
+With a project open, **Issues of the open project** in the Map menu is on to start with. Issues show as pins in their severity colours. Click one to see its card, then **Open issue** to open it in the site view.
 
 ## Measure
 

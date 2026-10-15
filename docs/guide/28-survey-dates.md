@@ -20,7 +20,7 @@ In a small window the list can be longer than the sidebar. If the folder you wan
 
 Drop a dataset on **Every date** to take its date off. When every dataset has a date the Every date folder is not in the list, so while you drag it appears at the foot of the list as a place to drop.
 
-Without dragging: right-click a dataset or a group heading (or focus it and press the menu key or **Shift+F10**), then pick a date or **Every date (no date)** under **Move to date**. The **Belongs to date...** box in the Selection panel does the same for one dataset.
+Without dragging: right-click a dataset or a group heading (or focus it and press the menu key or **Shift+F10**), then pick a date or **Every date (no date)** under **File under**. The same menu has **Compare with another date...** and **Delete…**. The **Belongs to date...** box in the Selection panel does the same for one dataset.
 
 After a move of more than one dataset, a note at the top of the list says how many were moved and offers **Undo**, which puts them back under the date they had. Undo covers the last move only, until you dismiss the note, make another move or close the project. A dataset you filed under a different date since stays where you put it.
 
@@ -41,20 +41,22 @@ Right-click a date folder, or use the three dots that show when you point at it:
 - **Colour** picks one of the eight date colours. The colour changes everywhere the date is shown: the folder, the date bar, the calendar, the video and photo headers and the date chips.
 - **Icon** swaps the colour square for an icon in the date's colour. The first choice, the square, removes the icon.
 - **Reset colour and icon** goes back to the colour the date gets from its place in date order, and to the square.
+- **Compare with...** puts this date beside another. See [Compare from the tree](04-compare-dates.md#compare-from-the-tree).
+- **Delete…** removes the date and everything filed under it, to the project trash. See [Delete datasets and the project trash](03-scene.md#delete-datasets-and-the-project-trash).
 
-The Every date folder has the same menu without a name, colour or icon.
+The Every date folder has the same menu without a name, colour, icon or **Delete…**.
 
 The name, colour and icon are saved in the project, so they are there when you open it again and travel with it when you share it. In a read-only package, and for a reviewer who may only look, datasets cannot be dragged and the menu has only the view, expand and show or hide entries.
 
 ## Moving between dates
 
-- The bar above the views shows the date you are viewing. Use the arrows, or press **Alt+Left** and **Alt+Right** on the workspace screen. The shortcuts are ignored while you are typing in a text field.
+- The bar above the views shows the date you are viewing. Use the arrows, or press **Alt+Left** and **Alt+Right** on the workspace screen. The shortcuts are ignored while you are typing in a text field. In a project with video, the date sits in the top left corner of the timeline instead, which has one lane per date (see [One lane per survey date](03-scene.md#one-lane-per-survey-date)).
 - Click the date to open the calendar. Days with a survey are coloured, and other days are shown but can't be selected. The month arrows and **Page Up** and **Page Down** skip months without a survey, the arrow keys move day by day, **Enter** picks the day, and **Escape** closes the calendar and returns you to the date bar.
 - Press Ctrl+K and type "survey" to list **Go to previous survey**, **Go to next survey** and one command per date, such as **Go to survey 6 Nov 2024**.
 
 When you move to another date, that date's layers come on and the previous date's layers go off. Anything you switched on by hand from a third date stays on, so you can keep, say, the 1 November orthomosaic on screen while you step through later surveys. A closed folder shows how many of its layers are on ("1 on").
 
-If a video clip is playing when you move to another date, it switches to the matching clip of the new date.
+When you move to another date, the playhead keeps its time of day. If the new date has a clip at that time, that clip is selected, ready to play with **Space**.
 
 In stockpile projects the Volumes date buttons and the date bar move together.
 

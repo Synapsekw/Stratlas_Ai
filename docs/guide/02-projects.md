@@ -22,6 +22,7 @@ Every card has three dots in its top corner. Click them, or right-click the card
 - **Rename**: type the new name and click **Rename**. Only the name shown in the app changes; the folder on disk keeps its name, so nothing that points at the folder breaks.
 - **Show in folder**: shows the project folder (or the package file) in the file manager.
 - **Export package** and **Close project**: on the project that is open. See [Packages](11-packages.md).
+- **Empty project trash**: deletes for good what was deleted inside the project. See [Delete datasets and the project trash](03-scene.md#delete-datasets-and-the-project-trash).
 - **Delete**: asks first, naming the project and its folder. **Move to recycle bin** then moves the whole project folder to the recycle bin. Nothing is erased for good: to get the project back, restore the folder from the recycle bin. If the folder cannot be moved (a file of the project is open in another program, or the drive has no recycle bin), the app says why and the project stays in the library.
 
 **Rename** and **Delete** are greyed, with the reason under them, when they do not apply:
