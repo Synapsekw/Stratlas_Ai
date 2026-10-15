@@ -74,6 +74,12 @@ export const defaultJobsDeps: JobsDeps = {
 
 const srcOf = (layer: CloudLayer): string | null => ('path' in layer.src ? layer.src.path : null);
 
+/** Why the cleanup cannot be changed here (a package, a look-only reviewer), or null. */
+function refusal(d: JobsDeps): string | null {
+  if (d.cleanup.canEdit()) return null;
+  return d.cleanup.store.getState().readOnly ? t('cleanup.readOnly') : t('cleanup.lookOnly');
+}
+
 async function start(
   d: JobsDeps,
   params: Record<string, unknown>,
@@ -97,6 +103,8 @@ export async function runNoise(
   const p = d.project();
   if (!p) return 'No project is open.';
   if (!src) return 'This cloud has no file in the project.';
+  const refused = refusal(d);
+  if (refused) return refused;
   // a project switched while the job ran: its result belongs to the other project, never here
   const here = () => d.cleanup.store.getState().projectId === p.id;
   d.cleanup.setBusy('noise');
@@ -146,6 +154,8 @@ export async function saveCleaned(
 ): Promise<string | null> {
   const src = srcOf(layer);
   if (!src) return 'This cloud has no file in the project.';
+  const refused = refusal(d);
+  if (refused) return refused;
   const recipe = d.cleanup.recipeOf(layer.id) ?? emptyCleanup(layer.id);
   const projectId = d.cleanup.store.getState().projectId;
   const here = () => d.cleanup.store.getState().projectId === projectId;

@@ -1,4 +1,5 @@
 // @vitest-environment jsdom
+import { setAnnotateReadOnly } from '@aio/annotate';
 import { ProjectManifest, emptyCleanup, type Layer } from '@aio/schema';
 import { workspace } from '@aio/workspace';
 import { act } from 'react';
@@ -187,6 +188,21 @@ describe('CleanupPanel', () => {
     ])
       expect(q(id), id).not.toBeNull();
     expect((q('cleanup-save-name') as HTMLInputElement).value).toBe('Scan a');
+  });
+
+  it('shows a look-only reviewer the cleanup with every tool off', () => {
+    project([copc('a')]);
+    setAnnotateReadOnly(true);
+    try {
+      render();
+      expect(q('cleanup-hint')?.textContent).toBe(
+        'You can look at this project but not change it: the cleanup is shown, not changed.',
+      );
+      expect((q('cleanup-noise-run') as HTMLButtonElement).disabled).toBe(true);
+      expect((q('cleanup-select-box') as HTMLButtonElement).disabled).toBe(true);
+    } finally {
+      setAnnotateReadOnly(false);
+    }
   });
 
   it('says COPC only and disables the tools for a png-packed cloud', () => {

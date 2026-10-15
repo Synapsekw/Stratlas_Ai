@@ -201,3 +201,15 @@ describe('save cleaned copy', () => {
     expect(cleanup.store.getState().notice).toBeNull(); // no "Saving" notice for a refused job
   });
 });
+
+describe('who may run the jobs', () => {
+  it('starts neither a noise run nor a save when the cleanup cannot be edited', async () => {
+    const { d, cleanup, started } = deps(60);
+    await cleanup.load('p', [layer]);
+    cleanup.store.setState({ readOnly: true }); // a package; a look-only reviewer gives the same
+    expect(cleanup.canEdit()).toBe(false);
+    expect(await runNoise(d, layer, { outlier: { meanK: 8, multiplier: 2 } })).toBeTruthy();
+    expect(await saveCleaned(d, layer, 'Scan')).toBeTruthy();
+    expect(started).toEqual([]);
+  });
+});

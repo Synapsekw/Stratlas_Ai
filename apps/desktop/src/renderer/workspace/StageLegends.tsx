@@ -4,6 +4,7 @@
  * shows the range and the classes it draws. Without a view: every cloud on screen, as in a single
  * 3D view.
  */
+import { useAnnotateReadOnly } from '@aio/annotate';
 import type { EngineStage } from '@aio/engine';
 import {
   ClassificationLegend,
@@ -64,7 +65,10 @@ export function StageClassLegend({ view }: LegendProps) {
   const { counts, hidden } = useClassificationLegend(pointcloudSettings, view);
   const panelOpen = useCleanup((s) => s.panelOpen);
   const active = useCleanup((s) => s.active);
-  const readOnly = useCleanup((s) => s.readOnly);
+  // a read-only package or a look-only reviewer: the cloud's classes are shown, not changed
+  const lookOnly = useAnnotateReadOnly();
+  const pkg = useCleanup((s) => s.readOnly);
+  const readOnly = pkg || lookOnly;
   const recipes = useStore(pointcloudCleanup, (s) => s.recipes);
   const layers = useWorkspace((s) => s.project?.manifest.layers);
   const off = useWorkspace((s) => s.hidden);
@@ -99,7 +103,11 @@ export function StageClassLegend({ view }: LegendProps) {
         </div>
       )}
       {locked ? (
-        <div style={scroll} title={t('cleanup.readOnly')} aria-disabled="true">
+        <div
+          style={scroll}
+          title={t(pkg ? 'cleanup.readOnly' : 'cleanup.lookOnly')}
+          aria-disabled="true"
+        >
           <div inert style={{ opacity: 0.6 }}>
             {legend}
           </div>

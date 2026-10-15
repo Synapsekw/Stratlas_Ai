@@ -57,7 +57,12 @@ const noiseOf = (id: string) => ({
 
 function setup(
   recipes: PointcloudCleanup[] = [],
-  opts: { readOnly?: boolean; fail?: boolean; globalHidden?: number[] } = {},
+  opts: {
+    readOnly?: boolean;
+    fail?: boolean;
+    globalHidden?: number[];
+    lookOnly?: () => boolean;
+  } = {},
 ) {
   const writes: {
     projectId: string;
@@ -87,6 +92,7 @@ function setup(
     recipes: live,
     now: () => 1,
     globalHidden: () => opts.globalHidden ?? [],
+    lookOnly: () => opts.lookOnly?.() ?? false,
   });
   return { c, live, writes, call };
 }
@@ -271,6 +277,27 @@ describe('the cleanup store', () => {
     await s.c.load('pkg', [cloud('a')]);
     expect(await s.c.commit('a', null)).toBe(false);
     expect(s.writes).toEqual([]);
+  });
+
+  it('refuses every step, undo, redo and reset for a look-only reviewer', async () => {
+    let look = false;
+    const r1 = { ...emptyCleanup('a'), hiddenClasses: [7] };
+    const s = setup([], { lookOnly: () => look });
+    await s.c.load('p', [cloud('a')]);
+    await s.c.commit('a', r1);
+    await s.c.undo('a');
+    const before = s.writes.length;
+    look = true;
+    expect(s.c.canEdit()).toBe(false);
+    expect(await s.c.commit('a', { ...r1, hiddenClasses: [9] })).toBe(false);
+    expect(await s.c.redo('a')).toBe(false); // keyboard redo
+    expect(await s.c.undo('a')).toBe(false); // keyboard undo
+    expect(await s.c.reset('a')).toBe(false); // right-click Reset cleanup
+    expect(s.writes).toHaveLength(before);
+    expect(s.c.recipeOf('a')).toBeNull();
+    look = false;
+    expect(s.c.canEdit()).toBe(true);
+    expect(await s.c.redo('a')).toBe(true);
   });
 
   it('opens the panel on a layer and a section', () => {

@@ -717,6 +717,8 @@ export const en = {
   'cleanup.none': 'Select a COPC point cloud layer to clean up.',
   'cleanup.copcOnly': 'Cleanup works on COPC clouds. Convert this cloud to COPC to clean it up.',
   'cleanup.readOnly': 'This project is a read-only package: the cleanup is shown, not changed.',
+  'cleanup.lookOnly':
+    'You can look at this project but not change it: the cleanup is shown, not changed.',
   'cleanup.box.title': 'Clip box',
   'cleanup.box.edit': 'Edit box',
   'cleanup.box.editing': 'Drag a face to resize the box, the ring to turn it.',

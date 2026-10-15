@@ -10,6 +10,7 @@
  * noise copy the recipe names (a noise run, Reset, undo, redo) sends the copies the whole history
  * still names. Loading a recipe also writes it once, unchanged, to sweep earlier sessions' leftovers.
  */
+import { isAnnotateReadOnly } from '@aio/annotate';
 import { pointcloudCleanup, pointcloudSettings, type CleanupRecipes } from '@aio/pointcloud';
 import type { Layer, PointcloudCleanup } from '@aio/schema';
 import { t } from '@aio/ui';
@@ -60,6 +61,11 @@ interface Deps {
   now?: () => number;
   /** The global hidden classes (`pointcloudSettings`), the start of a cloud's first recipe. */
   globalHidden?: () => readonly number[];
+  /**
+   * A look-only reviewer (`isAnnotateReadOnly`): every commit, undo, redo and reset is refused here,
+   * whichever path asks (the panel, the legend, the right-click menu, the keyboard).
+   */
+  lookOnly?: () => boolean;
 }
 
 function noticeText(n: { kind: NoticeKind; name?: string; count?: number }): string {
@@ -165,12 +171,14 @@ export function createCleanup(deps: Deps) {
   };
   const writable = () => {
     const s = store.getState();
-    return s.projectId !== null && !s.readOnly;
+    return s.projectId !== null && !s.readOnly && !(deps.lookOnly?.() ?? false);
   };
 
   return {
     store,
     notify,
+    /** False in a read-only package, for a look-only reviewer, or with no project open. */
+    canEdit: () => writable(),
     recipeOf: (layerId: string) => store.getState().layers[layerId]?.present ?? null,
 
     async load(projectId: string, layers: readonly Layer[]): Promise<void> {
@@ -318,6 +326,7 @@ export const cleanup: Cleanup = createCleanup({
   call: (channel, req) => bridge.call(channel, req),
   recipes: pointcloudCleanup,
   globalHidden: () => pointcloudSettings.getState().hiddenClasses,
+  lookOnly: isAnnotateReadOnly,
 });
 
 /**

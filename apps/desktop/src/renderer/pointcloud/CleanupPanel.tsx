@@ -4,6 +4,7 @@
  * (dark in every theme) under the toolbar. Every edit is one step of the layer's recipe through the
  * cleanup store; the stage tools themselves are bound by `mountCleanupScene` (CleanupHost).
  */
+import { useAnnotateReadOnly } from '@aio/annotate';
 import { formatBoxSize, type EngineStage } from '@aio/engine';
 import { cloudWorldBounds, usePointcloudCounts } from '@aio/pointcloud';
 import {
@@ -114,12 +115,14 @@ export function CleanupPanel({ stage }: { stage: EngineStage | null }) {
   const id = layer?.id ?? null;
   const history = useCleanup((s) => (id ? s.layers[id] : undefined));
   const readOnly = useCleanup((s) => s.readOnly);
+  // a look-only reviewer sees the cleanup but cannot change it (the store refuses it too)
+  const lookOnly = useAnnotateReadOnly();
   const busy = useCleanup((s) => s.busy);
   const shape = useCleanup((s) => s.selectShape);
   const section = useCleanup((s) => s.section);
   const recipe = history?.present ?? null;
   const copc = layer ? isCleanable(layer) : false;
-  const can = copc && !readOnly;
+  const can = copc && !readOnly && !lookOnly;
   const [error, setError] = useState<string | null>(null);
 
   // keep the store's active layer in step with what the panel shows
@@ -431,6 +434,10 @@ export function CleanupPanel({ stage }: { stage: EngineStage | null }) {
       ) : readOnly ? (
         <p className="pop-note" data-testid="cleanup-hint">
           {t('cleanup.readOnly')}
+        </p>
+      ) : lookOnly ? (
+        <p className="pop-note" data-testid="cleanup-hint">
+          {t('cleanup.lookOnly')}
         </p>
       ) : null}
 
