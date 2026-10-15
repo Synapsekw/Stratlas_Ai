@@ -87,3 +87,20 @@ export {
   useElevationRange,
   type ElevationLegendProps,
 } from './ElevationLegend';
+export {
+  STATE,
+  STATE_NAMES,
+  applyRegions,
+  cleanupUniformsOf,
+  compileCleanup,
+  evaluateAll,
+  evaluatePoint,
+  type CleanupState,
+  type CompiledBox,
+  type CompiledCleanup,
+  type CompiledRegion,
+  type RegionHit,
+} from './cleanup/evaluate';
+export { boxInverseWorld, localToWorld, mul4, worldToLocal, type M4 } from './cleanup/frame';
+export { pointInPolygon, ringOf, type Ring } from './cleanup/polygon';
+export { createCleanupRecipes, pointcloudCleanup, type CleanupRecipes } from './cleanup/store';
