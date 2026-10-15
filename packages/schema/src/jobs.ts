@@ -84,7 +84,7 @@ export const PipelineName = z.enum([
   'walk.process',
   // Drone panoramas (pipeline pack 0.7.0)
   'pano.stitch',
-  // Engineering model (pipeline pack 0.9.0)
+  // Engineering model (pipeline pack 0.10.0)
   'model.evidence',
 ]);
 export type PipelineName = z.infer<typeof PipelineName>;

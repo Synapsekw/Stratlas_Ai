@@ -268,6 +268,16 @@ describe('model builder IPC', () => {
     });
   });
 
+  it('refuses to save over a file a newer build saved', async () => {
+    const text = JSON.stringify({ ...model, schema: 'aio.procmodel/3' });
+    await mkdir(join(root, 'models'));
+    const file = join(root, 'models', 'plant.procmodel.json');
+    await writeFile(file, text);
+    const written = await ipc().call('model:write', { projectId: 'site', model });
+    expect(!written.ok && written.error).toMatch(/was saved by a newer version of Quadrion AI/);
+    expect(await readFile(file, 'utf8')).toBe(text);
+  });
+
   it('refuses a /3 file with the newer-version message', async () => {
     const text = JSON.stringify({ ...model, schema: 'aio.procmodel/3' });
     await mkdir(join(root, 'models'));

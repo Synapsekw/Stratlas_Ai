@@ -42,7 +42,7 @@ export const BUDGETS = Object.freeze({
    * as the 0.6.0 archive is 448.7 MB. Pack 0.6.1 adds conda-forge's untwine to `tools/pdal`.
    * Pack 0.7.0 (drone panoramas, pano.stitch) adds Python sources only; the budget is unchanged.
    * Pack 0.8.0 drops pymeshlab and our own photogrammetry; ODM is downloaded by the app, never
-   * packed, so the budget stays. Pack 0.9.0 (model.evidence) adds Python sources only.
+   * packed, so the budget stays. Packs 0.9.0 and 0.10.0 (model.evidence) add Python sources only.
    */
   pack: Object.freeze({ unpackedBytes: 1_300_000_000, compressedBytes: 500_000_000 }),
   /**

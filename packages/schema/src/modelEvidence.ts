@@ -9,7 +9,7 @@ import { Detail, EvidenceRegion, RunId } from './engineer';
  */
 
 /** The first pipeline pack with `model.evidence`, and how Settings, Processing tools names it. */
-export const MODEL_EVIDENCE_MIN_PACK = '0.9.0';
+export const MODEL_EVIDENCE_MIN_PACK = '0.10.0';
 export const MODEL_EVIDENCE_FEATURE = 'Measuring an engineered asset';
 
 /** Default sampling and image limits per detail. */

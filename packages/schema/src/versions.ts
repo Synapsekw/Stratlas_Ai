@@ -121,21 +121,21 @@ export const SCHEMA_REGISTRY: readonly SchemaEntry[] = [
     version: 1,
     home: 'project',
     where: 'models/*.georeference.json',
-    since: '0.14',
+    since: '0.16',
   },
   {
     family: 'aio.evidence',
     version: 1,
     home: 'project',
     where: 'engineering/*/evidence.json',
-    since: '0.14',
+    since: '0.16',
   },
   {
     family: 'aio.engineer-run',
     version: 1,
     home: 'project',
     where: 'engineering/*/run.json',
-    since: '0.14',
+    since: '0.16',
   },
   {
     // an engineering run's AI allowance used so far (`@aio/ai` engineerSpend.ts, main process)
