@@ -16,8 +16,8 @@ export const MAX_LASSO_VERTICES = 256;
 /** ASPRS class 7 (low noise): what the noise filters mark. */
 export const NOISE_CLASS = 7;
 
-/** The first pipeline pack with `pointcloud.clean`; one constant, set at merge time (0.10.0 or 0.11.0). */
-export const POINTCLOUD_CLEAN_MIN_PACK = '0.10.0';
+/** The first pipeline pack with `pointcloud.clean`; one constant, set at merge time (0.12.0, provisional). */
+export const POINTCLOUD_CLEAN_MIN_PACK = '0.12.0';
 export const POINTCLOUD_CLEAN_FEATURE = 'Point cloud noise removal and cleaned copies';
 
 export const DEFAULT_OUTLIER = { meanK: 8, multiplier: 2 } as const;

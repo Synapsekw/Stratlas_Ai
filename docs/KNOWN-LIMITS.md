@@ -304,3 +304,13 @@ Current limits only; each is removed from this list when fixed.
 - Hydrology runs read at most a bounded number of cells: flood to level 25 million, runoff and catchment 4 million, direct rainfall 4 million. A larger surface needs a **Region** (an area or volume measurement); the region is its bounding box clipped to the surface, so cells outside the polygon but inside its box count too.
 - Hydrology is checked against analytic truths (a bowl, a V-shaped catchment, a tilted plane); WhiteboxTools is not used as a second opinion.
 - A haul-road centreline is a design alignment, a design polyline or a drawn line; proposing one from the surface is not built.
+
+## Point cloud cleanup
+
+- **Point cloud cleanup: COPC only.** The clip box, height range, selections and noise run work on COPC clouds; `png-packed` and kit clouds show a hint. Convert them to COPC first.
+- **Point cloud cleanup: older versions.** A project with a cleaned copy (a layer saved by **Save cleaned copy**) does not open in version 0.15 or earlier: their manifest check does not know the cleaned copy's record. Projects without one open as before.
+- **Remove noise holds the whole cloud in memory.** PDAL's outlier filter reads every point (about 100 bytes a point: 2 GB for 20 million). Very large clouds may need a tiled conversion first.
+- **Selections reach through the cloud.** A box or lasso selects every point that falls inside it in the view it was drawn in, near and far, also the points not loaded at the time. Undo a selection that caught too much.
+- **Packages carry recipes, not working copies.** A package of a project keeps each cloud's cleanup recipe but not the noise working copy, so noise marks are not shown there; save a cleaned copy before packaging.
+- **Cleanup of a large cloud is not shared in a team folder as one step.** Each step rewrites the layer's recipe file (last writer wins, like other whole-file records).
+- **Remove noise and clean exports in tests.** The end to end specs for noise removal and the clean export skip on the CI runners, which have no PDAL; they run on a computer with the processing tools.

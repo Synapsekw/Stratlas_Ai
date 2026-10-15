@@ -85,6 +85,25 @@ Click **Point cloud** in the stage toolbar:
 
 Detail streams in as you move: coarse first, finer after. The default budget follows the graphics preset (see [Graphics quality](12-settings.md#graphics-quality)).
 
+## Clean up a point cloud
+
+Click **Clean up the point cloud** in the stage toolbar (in the point cloud group, next to **Point cloud**), or right-click a point cloud in **Datasets** and pick **Clean up...**. The panel opens at the top left of the view and works on the selected cloud; with several clouds, pick one at the top. Cleanup works on COPC clouds only: convert others first.
+
+Nothing is rewritten while you clean up. Every change is one step you can undo with **Undo** (**Ctrl+Z**) and redo with **Redo** (**Ctrl+Y** or **Ctrl+Shift+Z**), and the points come back when you undo.
+
+- **Clip box**: **Fit to layer** puts a box around the cloud. **Edit box** shows handles: drag a face to move it (in steps of 10 cm), drag the ring above the box to turn it. **Keep** **Inside** or **Outside**. **Remove box** takes it away. The box works together with the section plane.
+- **Height range**: type the lowest and highest elevation, or drag the two handles of the slider. Points outside are hidden.
+- **Select points**: pick **Box** or **Lasso** and drag over the view (**Esc** cancels). The bar says how many of the loaded points you caught, then **Hide** (only in the view), **Delete** (left out of saves and exports) or **Set class**. A selection reaches through the whole cloud along your view, also the points not loaded yet.
+- **Remove noise**: finds stray points in the air and under the ground and marks them as class 7 (Low noise), which is then hidden. It runs as a job; the panel then says how many points it marked. **Settings** has the number of neighbours, the distance limit and **Also mark low points**. **Undo** takes the run back.
+- **Save cleaned copy**: writes a new point cloud layer, "<name> (cleaned)", without the deleted, clipped and hidden-class points. The original is hidden and its file is never changed.
+- **Reset all cleanup** starts over (also one step you can undo). While the panel is open, the Classification legend shows and hides the classes of the cloud you clean up.
+
+Right-click a point cloud in **Datasets** for **Clean up...**, **Remove noise...** and **Save cleaned copy...** (each opens the panel at its section), and **Reset cleanup** once you changed something.
+
+Exporting a cloud with a cleanup (**Site data**, **Export survey data**) has **Apply cleanup**, on by default, with a line that says what it removes.
+
+**Remove noise** and **Save cleaned copy** need the processing tools 0.12.0 or later (see [Processing tools](12-settings.md#processing-tools)).
+
 ## Sky, sun and water
 
 Click **Environment and time of day** at the right end of the toolbar (3D only):

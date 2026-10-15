@@ -64,7 +64,7 @@ export const PLATFORMS = {
   'darwin-x64': { subdir: 'osx-64', osx: '13.0' },
 };
 
-/** The drivers our pipelines use (pointcloud, change, photo, opf, volumetric, modelfit). */
+/** The drivers our pipelines use (pointcloud, change, photo, opf, volumetric, modelfit, cleanup). */
 export const DRIVERS = [
   'readers.las',
   'readers.copc',
@@ -77,6 +77,8 @@ export const DRIVERS = [
   'filters.sample',
   'filters.range',
   'filters.assign',
+  'filters.outlier',
+  'filters.elm',
 ];
 
 const say = (msg) => process.stdout.write(`${msg}\n`);

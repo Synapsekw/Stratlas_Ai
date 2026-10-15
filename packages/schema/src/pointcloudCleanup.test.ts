@@ -193,8 +193,8 @@ describe('the pointcloud.clean pipeline and the export', () => {
     ).toBe(true);
   });
 
-  it('needs pack 0.10.0 or later', () => {
-    expect(POINTCLOUD_CLEAN_MIN_PACK).toMatch(/^0\.1[01]\.0$/);
+  it('needs pack 0.12.0 or later', () => {
+    expect(POINTCLOUD_CLEAN_MIN_PACK).toBe('0.12.0');
   });
 });
 

@@ -243,9 +243,9 @@ describe('point cloud cleanup IPC', () => {
 describe('the pack gate', () => {
   it('refuses pointcloud.clean on an older pack only', () => {
     expect(cleanPackRefusal('pointcloud.clean', '0.9.0')).toMatch(
-      /needs processing tools 0\.1[01]\.0 or later \(these are 0\.9\.0\)/,
+      /needs processing tools 0.12.0 or later \(these are 0\.9\.0\)/,
     );
-    expect(cleanPackRefusal('pointcloud.clean', '0.11.0')).toBeNull();
+    expect(cleanPackRefusal('pointcloud.clean', '0.12.0')).toBeNull();
     expect(cleanPackRefusal('pointcloud.clean', 'dev')).toBeNull();
     expect(cleanPackRefusal('pointcloud.clean', null)).toBeNull();
     expect(cleanPackRefusal('pointcloud.to_copc', '0.9.0')).toBeNull();

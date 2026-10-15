@@ -938,3 +938,15 @@ An issue found in a photo or video frame can be placed on a mesh or point-cloud 
 The automatic crossview pin (ANN-9) is a mesh `spoint` with `from`; placing an area on a layer removes that layer's automatic pin and any earlier area there. Hand-placed pins have no `from`.
 
 `selections/<name>.sel` (name: letters, digits, dash, underscore; the app uses `<issue id>-<layer id>-<timestamp digits>`, the digits of the placing time, cut so the name stays within 120 characters), little-endian: 8 bytes ASCII magic `AIOSEL01`, uint32 point count, uint32 lod, then count x 3 float32 x, y, z in the project local frame (metres). Written by `project:writeSelection` (temporary file and rename; refused on a package; not journalled).
+
+## 37. Point cloud cleanup (`edits/pointcloud/`)
+
+    edits/pointcloud/<layer>.json                       aio.pccleanup/1: the cleanup recipe of one point cloud layer
+    edits/pointcloud/<layer>.json.bak                   the recipe before the last write (or after Reset)
+    edits/pointcloud/<layer>.noise-<job>.copc.laz       a noise run's working copy: every point, noise as class 7
+    edits/pointcloud/<layer>.noise-<job>.json           that run's record (NoiseRun: path, params, marked, total, runId)
+
+- The recipe (`PointcloudCleanup`, `packages/schema/src/pointcloudCleanup.ts`) is in world coordinates of the project CRS: an optional clip box (centre, size along its east, north and up axes, yaw about +Z counter-clockwise from above, keep inside or outside), an optional height range, the hidden classes (they replace the global ones for this layer), up to 200 selections (NDC polygon and the world-to-clip matrix of the view they were drawn in; hide, delete or set class) and the noise run in use.
+- Evaluation per point: class (from the noise copy when there is one); the selections in order (later ones win on class); outside the box or the height range: dropped; a hidden class: hidden. One outcome per point, dropped > deleted > class hidden > hidden > kept. The viewer draws only kept points; a save or an export writes kept points and points hidden by a hide selection, with their new class. `packages/schema/test-data/pccleanup-vectors.json` holds the cases both evaluators are tested against.
+- Written only through IPC `pointcloud:writeCleanup` (atomic with a `.bak`, journaled as one labelled `record.external` op per step; refused for packages). Noise copies no step of the renderer's undo history names move to the project trash (section 33) on the next write. A recipe whose layer is gone is removed when the project opens.
+- `pointcloud.clean` with `mode: save` writes `clouds/<layer>-cleaned[-n].copc.laz` and a layer with `derived: { kind: 'cleanup', source: [<layer>], runId }`; the source layer is hidden, its file untouched. A cleaned copy is not removed with its source and takes part in cloud change like an imported cloud.

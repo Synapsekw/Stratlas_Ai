@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  DRIVERS,
   explicitSpec,
   keepWindows,
   lockedPackages,
@@ -101,5 +102,15 @@ describe('the untwine check', () => {
     expect(b.length).toBe(375 + 3 * 36);
     expect(b.readDoubleLE(179)).toBe(1); // max x, metres
     expect(b[375 + 16]).toBe(2); // the first point's class
+  });
+});
+
+describe('the drivers the pipelines need', () => {
+  it('include the noise filters of point cloud cleanup', () => {
+    expect(DRIVERS).toEqual(
+      expect.arrayContaining(['filters.outlier', 'filters.elm', 'readers.copc', 'writers.las']),
+    );
+    for (const d of DRIVERS) expect(d).toMatch(/^(readers|writers|filters)\.[a-z0-9_]+$/);
+    expect(new Set(DRIVERS).size).toBe(DRIVERS.length);
   });
 });
