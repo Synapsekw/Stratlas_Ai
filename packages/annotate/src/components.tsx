@@ -9,6 +9,15 @@ export { PhotoViewer, type PhotoViewerHandle } from './components/PhotoViewer';
 export { VideoAnnotator } from './components/VideoAnnotator';
 export { AnnotationToolbar, useIssueOverlay } from './components/AnnotationToolbar';
 export { SightingPicker } from './components/SightingPicker';
+export {
+  NEW_CLASS_OPTION,
+  NewClassRow,
+  registerClassCreator,
+  useClassCreator,
+  useNewClass,
+  type ClassCreator,
+  type NewClassRowProps,
+} from './components/NewClassRow';
 export { useMapDraw, type MapDraw } from './components/MapDraw';
 export { AnnotateStyles } from './components/styles';
 export { PinControls } from './components/PinControls';

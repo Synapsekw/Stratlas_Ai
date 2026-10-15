@@ -10,6 +10,7 @@ import {
 } from '../runtime';
 import { severityColor } from '../tools/mesh';
 import { sevStyle, useTaxonomy } from './common';
+import { NewClassRow, useNewClass } from './NewClassRow';
 import { AnnotateStyles } from './styles';
 
 /**
@@ -28,6 +29,7 @@ export function SightingPicker({ kinds }: { kinds: readonly Sighting['on'][] }) 
     selection?.kind === 'issue' ? s.issues.find((i) => i.id === selection.id) : undefined,
   );
   const { classes, models } = useTaxonomy();
+  const { create, disabledReason } = useNewClass();
   const [classId, setClassId] = useState<string | null>(null);
   const [severity, setSeverity] = useState<Issue['severity'] | null>(null);
   const [stage, setStage] = useState<'class' | 'severity'>('class');
@@ -120,7 +122,11 @@ export function SightingPicker({ kinds }: { kinds: readonly Sighting['on'][] }) 
       </div>
       <div className="classes" role="listbox" aria-label="Class">
         {classes.length === 0 && (
-          <div className="ann-faint">This project has no class catalogue yet.</div>
+          <div className="ann-faint">
+            {create
+              ? 'No classes yet. Create one below.'
+              : 'This project has no class catalogue yet.'}
+          </div>
         )}
         {classes.map((c) => (
           <button
@@ -138,6 +144,17 @@ export function SightingPicker({ kinds }: { kinds: readonly Sighting['on'][] }) 
             {c.hotkey && <kbd>{c.hotkey}</kbd>}
           </button>
         ))}
+        {create && (
+          <NewClassRow
+            onCreate={create}
+            disabledReason={disabledReason}
+            testId="picker-new-class"
+            onCreated={(cls) => {
+              setClassId(cls.id);
+              setStage('severity');
+            }}
+          />
+        )}
       </div>
       <div className="sevs" role="group" aria-label="Severity">
         {levels.map((v) => (

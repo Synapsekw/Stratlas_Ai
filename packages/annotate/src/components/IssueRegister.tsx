@@ -38,6 +38,7 @@ import {
 } from '../runtime';
 import { severityColor } from '../tools/mesh';
 import { SeverityBadge, kindLabel, sevStyle, useTaxonomy } from './common';
+import { NEW_CLASS_OPTION, NewClassRow, useNewClass } from './NewClassRow';
 import { AnnotateStyles } from './styles';
 
 const DATASETS: DatasetKind[] = ['mesh', 'image', 'video', 'pointcloud', 'map', 'pano'];
@@ -165,6 +166,8 @@ export function IssueRegister({ className }: { className?: string }) {
   const [checked, setChecked] = useState<ReadonlySet<string>>(new Set());
   const [anchor, setAnchor] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  const { create, disabledReason } = useNewClass();
+  const [newClassOpen, setNewClassOpen] = useState(false);
   const listRef = useRef<HTMLDivElement>(null);
   const view = useViewport(listRef);
 
@@ -584,6 +587,10 @@ export function IssueRegister({ className }: { className?: string }) {
                 onChange={(e) => {
                   const to = e.target.value;
                   if (!to) return;
+                  if (to === NEW_CLASS_OPTION) {
+                    setNewClassOpen(true);
+                    return;
+                  }
                   report(`Set to ${label(to)}:`, issueEditor.setClassMany([...live], to));
                 }}
               >
@@ -593,7 +600,23 @@ export function IssueRegister({ className }: { className?: string }) {
                     {c.label}
                   </option>
                 ))}
+                {create && <option value={NEW_CLASS_OPTION}>+ New class...</option>}
               </select>
+              {newClassOpen && create && (
+                <NewClassRow
+                  startOpen
+                  onCreate={create}
+                  disabledReason={disabledReason}
+                  testId="register-new-class"
+                  onCancel={() => {
+                    setNewClassOpen(false);
+                  }}
+                  onCreated={(cls) => {
+                    setNewClassOpen(false);
+                    report(`Set to ${cls.label}:`, issueEditor.setClassMany([...live], cls.id));
+                  }}
+                />
+              )}
               <button
                 type="button"
                 className="ann-btn"
