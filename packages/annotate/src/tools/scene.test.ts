@@ -372,6 +372,118 @@ describe('installIssueOverlay', () => {
     uninstall();
   });
 
+  describe('placed areas and the model', () => {
+    const placedIssue = (half: number) =>
+      makeIssue({
+        id: 'placed',
+        title: 'Crack on the shell',
+        sightings: [
+          photoSighting,
+          {
+            on: 'mesh',
+            layer: 'tank',
+            geom: {
+              type: 'spolygon',
+              points: [
+                [-half, 0, 0],
+                [half, 0, 0],
+                [half, 2 * half, 0],
+                [-half, 2 * half, 0],
+              ],
+            },
+            from: { sighting: 0 },
+          },
+        ],
+      });
+    const rig = (half: number, clear: () => boolean) => {
+      const store = createWorkspace();
+      store.getState().openProject({ id: 'p', root: 'r', manifest }, [placedIssue(half)]);
+      let update: () => void = () => undefined;
+      let snaps = 0;
+      const occlusion: OcclusionFactory = (_h, _s, onUpdate) => {
+        update = onUpdate;
+        return {
+          frame: () => {
+            snaps++;
+          },
+          clear: () => clear(),
+          dispose: () => undefined,
+        };
+      };
+      const { handle, frames } = fakeHandle();
+      setActiveScene(handle);
+      const uninstall = installIssueOverlay(store, createPinDisplay(null), { occlusion });
+      frame(frames);
+      const el = handle.renderer.domElement as unknown as EventTarget & { title: string };
+      const ev = (type: string) =>
+        Object.assign(new Event(type), { button: 0, buttons: 0, clientX: 400, clientY: 300 });
+      return {
+        store,
+        handle,
+        frames,
+        el,
+        ev,
+        uninstall,
+        snaps: () => snaps,
+        update: () => {
+          update();
+        },
+      };
+    };
+
+    it('does not hover or pick an area on the far side of the model', () => {
+      let front = false;
+      const r = rig(2, () => front);
+      r.el.dispatchEvent(r.ev('pointermove'));
+      expect(r.el.title).toBe('');
+      r.el.dispatchEvent(r.ev('pointerdown'));
+      r.el.dispatchEvent(r.ev('pointerup'));
+      expect(r.store.getState().selection).toBeNull();
+      front = true;
+      r.update();
+      frame(r.frames);
+      r.el.dispatchEvent(r.ev('pointermove'));
+      expect(r.el.title).toBe('Crack on the shell');
+      r.el.dispatchEvent(r.ev('pointerdown'));
+      r.el.dispatchEvent(r.ev('pointerup'));
+      expect(r.store.getState().selection).toEqual({ kind: 'issue', id: 'placed' });
+      r.uninstall();
+    });
+
+    it('still hits an area whose corners are off screen', () => {
+      // 200 m wide: every corner is far outside the 800 x 600 view, the pointer is inside
+      const r = rig(100, () => true);
+      r.el.dispatchEvent(r.ev('pointermove'));
+      expect(r.el.title).toBe('Crack on the shell');
+      r.el.dispatchEvent(r.ev('pointerdown'));
+      r.el.dispatchEvent(r.ev('pointerup'));
+      expect(r.store.getState().selection).toEqual({ kind: 'issue', id: 'placed' });
+      r.uninstall();
+    });
+
+    it('keeps the depth snapshot fresh while only areas are drawn', () => {
+      const r = rig(2, () => true);
+      expect(r.snaps()).toBe(1);
+      r.uninstall();
+    });
+
+    it('frees the old geometries when the areas are rebuilt', () => {
+      const r = rig(2, () => true);
+      const group = r.handle.scene.getObjectByName('annotate-issue-pins');
+      const lines = group?.getObjectByName('annotate-area-lines') as
+        { geometry: BufferGeometry } | undefined;
+      const old = lines?.geometry;
+      let disposed = 0;
+      old?.addEventListener('dispose', () => {
+        disposed++;
+      });
+      r.store.getState().select({ kind: 'issue', id: 'placed' });
+      expect(disposed).toBe(1);
+      expect(lines?.geometry).not.toBe(old);
+      r.uninstall();
+    });
+  });
+
   it('attaches to a scene that was already active', () => {
     const store = createWorkspace();
     store.getState().openProject({ id: 'p', root: 'r', manifest }, [makeIssue()]);

@@ -533,6 +533,36 @@ export function installIssueOverlay(
       return { x, y };
     };
 
+    // like `project`, but keeps points off the viewport: only those behind the near plane drop
+    const looseProject = (w: number, h: number) => (p: Vec3) => {
+      v.set(p[0], p[1], p[2]).applyMatrix4(handle.camera.matrixWorldInverse);
+      if (-v.z <= handle.camera.near) return null;
+      v.applyMatrix4(handle.camera.projectionMatrix);
+      return { x: (v.x * 0.5 + 0.5) * w, y: (-v.y * 0.5 + 0.5) * h };
+    };
+
+    // An area is hittable when some sample of it that is in view is not behind the model (the
+    // depth snapshot, like the pins). With no sample in view (zoomed right in) it counts as shown.
+    const areaVisible = (
+      a: IssueArea,
+      hit: AreaHit | undefined,
+      onView: (p: { x: number; y: number }) => boolean,
+    ): boolean => {
+      if (!hit) return false;
+      if (hit.rings.length === 0) return false;
+      const samples: Vec3[] = [a.centre, ...a.ring];
+      if (a.kind === 'prism') for (const p of a.ring) samples.push([p[0], p[1] + a.height, p[2]]);
+      const proj = looseProject(el.clientWidth || 1, el.clientHeight || 1);
+      let seen = false;
+      for (const p of samples) {
+        const s = proj(p);
+        if (!s || !onView(s)) continue;
+        seen = true;
+        if (occlusion.clear(p)) return true;
+      }
+      return !seen;
+    };
+
     const layout = () => {
       const w = el.clientWidth || 1;
       const h = el.clientHeight || 1;
@@ -546,24 +576,32 @@ export function installIssueOverlay(
         height: h,
         visible: (pin) => occlusion.clear(pin.p),
       });
-      areaHits = screenAreas(areas, project(w, h));
+      // hits keep off-screen coordinates (only points behind the camera drop), so an area whose
+      // corners left the viewport can still be hovered and picked
+      const all = screenAreas(areas, looseProject(w, h));
+      const onView = (p: { x: number; y: number }) => p.x >= 0 && p.y >= 0 && p.x <= w && p.y <= h;
+      const visible = areas.map((a, k) => areaVisible(a, all[k], onView));
+      areaHits = all.map((hit, k) => (visible[k] ? hit : { ...hit, rings: [] }));
       const areaLabels: PinLabel[] = [];
+      const labelled = new Set<string>();
       areas.forEach((a, k) => {
-        const c = areaHits[k]?.centre;
-        if (c && occlusion.clear(a.centre))
-          areaLabels.push({
-            key: a.issueId,
-            kind: 'code',
-            text: a.code,
-            x: c.x,
-            y: c.y,
-            color: a.color,
-          });
+        const c = all[k]?.centre;
+        if (!c || !onView(c) || !visible[k] || labelled.has(a.issueId)) return;
+        if (!occlusion.clear(a.centre)) return;
+        labelled.add(a.issueId);
+        areaLabels.push({
+          key: a.issueId,
+          kind: 'code',
+          text: a.code,
+          x: c.x,
+          y: c.y,
+          color: a.color,
+        });
       });
-      group.userData.areas = areaHits.map((hit) => ({
+      group.userData.areas = areaHits.map((hit, k) => ({
         issueId: hit.issueId,
-        x: hit.centre?.x ?? null,
-        y: hit.centre?.y ?? null,
+        x: visible[k] ? (hit.centre?.x ?? null) : null,
+        y: visible[k] ? (hit.centre?.y ?? null) : null,
       }));
       items = out.items;
       group.userData.layout = out;
@@ -591,7 +629,7 @@ export function installIssueOverlay(
       const cam = handle.camera;
       cam.updateMatrixWorld();
       // only while pins draw: the heat map has its own depth test
-      if (pins.length > 0) occlusion.frame(performance.now());
+      if (pins.length > 0 || areas.length > 0) occlusion.frame(performance.now());
       const w = el.clientWidth;
       const h = el.clientHeight;
       if (
@@ -735,8 +773,9 @@ export function installIssueOverlay(
             : (areas.find((a) => a.issueId === (areaId ?? labelled))?.title ?? '');
       }
       if (id !== hoverId) {
+        const wasArea = areas.some((a) => a.issueId === hoverId);
         hoverId = id;
-        writeAreas();
+        if (wasArea || areas.some((a) => a.issueId === id)) writeAreas();
         dirty = true;
         handle.requestRender();
       }
