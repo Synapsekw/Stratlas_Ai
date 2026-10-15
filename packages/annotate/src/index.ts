@@ -42,6 +42,23 @@ export {
 } from './crossview/backproject';
 export { createDeriver, type DeriverSources } from './crossview/derive';
 export { sightingCamera, type CameraSources, type SightingCamera } from './crossview/camera';
+export { photoFrustum, type PhotoFrustum, type Plane4 } from './crossview/frustum';
+export {
+  GRID,
+  MIN_HIT_RATE,
+  placeCandidates,
+  placeOnLayer,
+  selectionName,
+  selectionSighting,
+  STEP_PX,
+  type CloudPlaceOps,
+  type PendingSelection,
+  type PlaceCandidate,
+  type PlaceFailure,
+  type PlaceResult,
+  type PlaceScene,
+  type PrismQuery,
+} from './crossview/place';
 export {
   dropFrom,
   hasPlacedArea,

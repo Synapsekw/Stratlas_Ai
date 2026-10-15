@@ -22,7 +22,8 @@ export interface Ray {
 
 const rad = (deg: number) => (deg * Math.PI) / 180;
 
-function focalPx(lens: LensModel, width: number): number {
+/** Focal length in pixels for an image `width` wide. */
+export function focalPx(lens: LensModel, width: number): number {
   const half = rad(lens.hfovDeg) / 2;
   return lens.model === 'pinhole' ? width / 2 / Math.tan(half) : width / 2 / half;
 }
