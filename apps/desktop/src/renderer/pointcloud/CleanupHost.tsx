@@ -163,12 +163,12 @@ function SelectionBar() {
   );
 }
 
-/** "Points deleted from saves and exports." with Undo, bottom centre; errors stay until dismissed. */
+/** "Points deleted from saves and exports." with Undo, top centre; errors stay until dismissed. */
 export function CleanupNotice() {
   const t = useT();
   const notice = useCleanup((s) => s.notice);
-  // above the selection bar while a selection waits for its action
-  const lifted = useCleanup((s) => s.panelOpen && s.pending !== null);
+  // top centre of the stage, beside the panel while it is open
+  const beside = useCleanup((s) => s.panelOpen);
   useEffect(() => {
     if (!notice || notice.error) return;
     const timer = window.setTimeout(cleanup.dismiss, SHOW_MS);
@@ -179,7 +179,7 @@ export function CleanupNotice() {
   if (!notice) return null;
   return (
     <div
-      className={`cleanup-notice notice${notice.error ? ' warn' : ''}${lifted ? ' lifted' : ''}`}
+      className={`cleanup-notice notice${notice.error ? ' warn' : ''}${beside ? ' beside-panel' : ''}`}
       role="status"
       data-testid="cleanup-notice"
     >

@@ -19,7 +19,20 @@ vi.mock('../shell', () => ({
 vi.mock('./cleanupJobs', async (original) => ({
   ...(await original<typeof Jobs>()),
   runNoise: vi.fn(() => Promise.resolve(null)),
+  saveCleaned: vi.fn(() => {
+    // as the job module does once main accepts the job
+    cleanup.notify({
+      text: 'Saving the cleaned copy. It appears in Datasets when it is done.',
+      undo: false,
+      error: false,
+      layerId: 'a',
+    });
+    return saveResult.promise;
+  }),
 }));
+
+/** What the mocked save job ends with (null: done, text: the job error). */
+const saveResult: { promise: Promise<string | null> } = { promise: Promise.resolve(null) };
 
 Element.prototype.scrollIntoView = function scrollIntoView() {
   /* jsdom has no layout */
@@ -127,6 +140,23 @@ describe('CleanupHost', () => {
       );
     });
     expect(cleanup.store.getState().pending).toBeNull();
+  });
+
+  it('draws the notice at the top of the stage, beside the open panel', () => {
+    project([copc('a')]);
+    root = createRoot(host);
+    act(() => root?.render(<CleanupHost engine={null} />));
+    act(() => {
+      cleanup.notify({ text: 'Cleanup reset.', undo: true, error: false, layerId: 'a' });
+    });
+    const notice = q('cleanup-notice');
+    expect(notice?.className).toContain('cleanup-notice');
+    expect(notice?.className).toContain('beside-panel');
+    expect(notice?.getAttribute('style')).toBeNull(); // placed by cleanup.css only
+    act(() => {
+      cleanup.closePanel();
+    });
+    expect(q('cleanup-notice')?.className).not.toContain('beside-panel');
   });
 
   it('closes the panel and forgets the recipes when the project changes', () => {
@@ -269,6 +299,53 @@ describe('CleanupPanel', () => {
     expect(runNoise).toHaveBeenCalledWith(expect.anything(), expect.anything(), {
       outlier: { meanK: 64, multiplier: 0.1 },
     });
+  });
+
+  it.each([
+    ['done', null],
+    ['failed', 'The save did not finish.'],
+  ])('clears the saving notice as soon as the save job is %s', async (_how, error) => {
+    project([copc('a')]);
+    let finish: (e: string | null) => void = () => undefined;
+    saveResult.promise = new Promise((resolve) => {
+      finish = resolve;
+    });
+    render();
+    act(() => {
+      q('cleanup-save')?.click();
+    });
+    expect(cleanup.store.getState().notice?.text).toContain('Saving the cleaned copy');
+    await act(async () => {
+      finish(error);
+      await saveResult.promise;
+    });
+    expect(cleanup.store.getState().notice).toBeNull();
+    if (error) expect(q('cleanup-error')?.textContent).toBe(error);
+  });
+
+  it('leaves a newer notice in place when the save ends', async () => {
+    project([copc('a')]);
+    let finish: (e: string | null) => void = () => undefined;
+    saveResult.promise = new Promise((resolve) => {
+      finish = resolve;
+    });
+    render();
+    act(() => {
+      q('cleanup-save')?.click();
+    });
+    act(() => {
+      cleanup.notify({
+        text: 'Points hidden in the view.',
+        undo: true,
+        error: false,
+        layerId: 'a',
+      });
+    });
+    await act(async () => {
+      finish(null);
+      await saveResult.promise;
+    });
+    expect(cleanup.store.getState().notice?.text).toBe('Points hidden in the view.');
   });
 
   it('focuses the section the right-click menu asked for', () => {

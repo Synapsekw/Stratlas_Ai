@@ -360,6 +360,9 @@ export function CleanupPanel({ stage }: { stage: EngineStage | null }) {
     if (!layer) return;
     setError(null);
     const e = await saveCleaned(defaultJobsDeps, layer, name);
+    // the job is over (the copy is in Datasets, or it failed): "Saving..." no longer holds
+    const started = t('cleanup.save.started');
+    if (cleanup.store.getState().notice?.text === started) cleanup.dismiss();
     if (e) setError(e);
   };
 

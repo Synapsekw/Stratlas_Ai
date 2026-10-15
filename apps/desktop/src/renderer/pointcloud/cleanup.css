@@ -223,18 +223,27 @@
   height: 10px;
   border-radius: 2px;
 }
-/* the notice with Undo, bottom centre of the stage; above the selection bar while one shows */
+/* The notice with Undo: top centre of the stage under the toolbar, clear of the readout, the
+   compass, the legends and the selection bar at the bottom; beside the panel while it is open
+   (the panel's own width, see .cleanup-panel). */
 .cleanup-notice {
   position: absolute;
-  bottom: 16px;
-  left: 50%;
-  transform: translateX(-50%);
+  top: 52px;
+  inset-inline: 12px;
   z-index: 23;
+  width: fit-content;
+  max-width: calc(100% - 24px);
+  margin: 0 auto;
   display: flex;
   gap: 8px;
   align-items: center;
-  max-width: calc(100% - 32px);
+  /* opaque over the view: the warning tint on the panel colour */
+  background: linear-gradient(var(--s3-a), var(--s3-a)), var(--bg-1);
 }
-.cleanup-notice.lifted {
-  bottom: 64px;
+.cleanup-notice.beside-panel {
+  inset-inline-start: calc(clamp(220px, calc(50% - 24px), 300px) + 24px);
+  max-width: none;
+}
+.cleanup-notice > span {
+  min-width: 0;
 }
