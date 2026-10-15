@@ -27,6 +27,10 @@ import { GPU_TIERS, TIER_ORDER, graphics, useGraphics, type GpuTier } from '../g
 import { cloudAiBlocked } from '../player';
 import { bridge, shell, useCall, useShell } from '../shell';
 import type { SettingsPage } from '../store';
+import { ENGINEERING_MODEL_UI } from '../engineer/flags';
+
+/** The flag as a plain boolean (the constant is fixed per build). */
+const engineeringUi = (): boolean => ENGINEERING_MODEL_UI;
 import { HelpLink } from '../help/HelpPanel';
 import { SETTINGS_HELP } from '../help/store';
 import { About } from './settings/About';
@@ -264,6 +268,17 @@ const TASKS: { task: AiTask; label: string; icon: IconName; sends: string }[] = 
   { task: 'report', label: 'Report writing', icon: 'report', sends: 'Issue text' },
   { task: 'extract', label: 'Structured extraction', icon: 'raster', sends: 'Text, tables' },
   { task: 'build', label: 'Build from drawings', icon: 'scene', sends: 'Drawings, clouds' },
+  // the engineering model's route, shown once its entry points are (ENGINEERING_MODEL_UI)
+  ...(engineeringUi()
+    ? [
+        {
+          task: 'engineer' as const,
+          label: t('settings.task.engineer'),
+          icon: 'box' as const,
+          sends: t('settings.task.engineerSends'),
+        },
+      ]
+    : []),
 ];
 
 function ProviderRow({ provider }: { provider: AiProvider }) {
@@ -439,6 +454,7 @@ function Routing() {
             <th>Provider</th>
             <th>Model</th>
             <th>Sends</th>
+            <th title={t('settings.treatAsVisionHint')}>{t('settings.treatAsVision')}</th>
           </tr>
         </thead>
         <tbody>
@@ -500,6 +516,18 @@ function Routing() {
                   </datalist>
                 </td>
                 <td className="faint nowrap">{sends}</td>
+                <td>
+                  <input
+                    type="checkbox"
+                    aria-label={`${t('settings.treatAsVision')}: ${label}`}
+                    title={t('settings.treatAsVisionHint')}
+                    data-testid={`treat-as-vision-${task}`}
+                    checked={r.treatAsVision === true}
+                    onChange={(e) => {
+                      replace(task, { treatAsVision: e.target.checked || undefined });
+                    }}
+                  />
+                </td>
               </tr>
             );
           })}
