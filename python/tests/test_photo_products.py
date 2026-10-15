@@ -237,8 +237,8 @@ def test_a_products_job_begun_by_the_earlier_engine_is_refused_plainly(site, mon
     with pytest.raises(JobError) as e:
         run_job(P.PhotoProducts(), root, params, cancel=threading.Event())
     assert str(e.value) == P.OLD_LAYOUT
-    assert "Remove it from the Processing list and use Create maps again" in P.OLD_LAYOUT
-    # Create maps again starts a new job: it works on the same run
+    assert "Remove it from the Processing list and use Create maps from photos again" in P.OLD_LAYOUT
+    # a new job works on the same run
     result, _ = run_job(P.PhotoProducts(), root, params, job_id="j2")
     assert result["status"] == "done"
 
@@ -414,7 +414,7 @@ def test_a_run_without_an_odm_project_is_refused_plainly(site):
     shutil.rmtree(root / "photogrammetry" / ps.RUN / "odm")
     with pytest.raises(JobError) as e:
         run_job(P.PhotoProducts(), root, {"run": ps.RUN, "products": ["ortho"]})
-    assert str(e.value) == P.OLD_RUN and "Use Create maps again on its photos" in P.OLD_RUN
+    assert str(e.value) == P.OLD_RUN and "Use Create maps from photos on its photos" in P.OLD_RUN
 
 
 def test_a_gpu_fallback_is_a_warning_in_the_report(site, monkeypatch):

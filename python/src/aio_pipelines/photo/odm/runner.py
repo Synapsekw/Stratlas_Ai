@@ -398,7 +398,7 @@ class Watchdog:
         if self.dem is not None and quiet > self.dem and self._dem_since(time.time() - self.dem, proc.pid):
             raise OdmGroundFailed(
                 f"ODM's terrain model (DTM) made no progress for {self.dem / 60:g} minutes; this happens "
-                "when ODM finds no ground points. Create maps again without the DTM."
+                "when ODM finds no ground points. Make the maps again without the DTM."
             )
         t0, used0 = self.samples[0]
         busy = self.samples[-1][1] - used0 >= BUSY_SHARE * (now - t0)

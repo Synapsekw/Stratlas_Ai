@@ -76,11 +76,11 @@ STAGES = ("dense", "mesh", "texture", "cloud", "dsm", "ortho", "commit", "tiles"
 LAYOUT = 3
 OLD_LAYOUT = (
     "This job was started by an earlier version of the processing engine. Remove it from the "
-    "Processing list and use Create maps again."
+    "Processing list and use Create maps from photos again (a new run)."
 )
 OLD_RUN = (
     "This run was made by an earlier version of the processing engine, or imported. Use Create "
-    "maps again on its photos."
+    "maps from photos on its photos to make a new run."
 )
 #: Free space needed, times the bytes of ``odm/images/``.
 DISK_FACTOR = {"fast": 3, "standard": 6, "high": 10}

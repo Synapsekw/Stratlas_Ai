@@ -140,7 +140,9 @@ def link_images(odm_dir: Path, photos: list[tuple[str, Path]]) -> tuple[dict[str
 def read_names(odm_dir: Path) -> dict[str, str]:
     path = odm_dir / "names.json"
     if not path.is_file():
-        raise JobError("The run's ODM project has no names.json; use Create maps again.")
+        raise JobError(
+            "The run's ODM project has no names.json; use Create maps from photos again (a new run)."
+        )
     return json.loads(path.read_text(encoding="utf-8"))
 
 

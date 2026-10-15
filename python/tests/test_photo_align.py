@@ -167,8 +167,8 @@ def test_an_alignment_begun_by_the_earlier_engine_is_refused_and_a_fresh_run_wor
     with pytest.raises(JobError) as e:
         run_job(A.PhotoAlign(), project, _params(photo_mini.photos))
     assert str(e.value) == A.OLD_JOB
-    assert "Remove it from the Processing list and use Create maps again" in A.OLD_JOB
-    # Create maps again: the app gives the new alignment a new run id
+    assert "Remove it from the Processing list and use Create maps from photos again" in A.OLD_JOB
+    # Create maps from photos again: the wizard gives the new alignment a new run id
     result, _ = run_job(A.PhotoAlign(), project, _params(photo_mini.photos, run="r2"), job_id="j2")
     assert result["status"] == "done"
     run = json.loads((project / "photogrammetry" / "r2" / "run.json").read_text())

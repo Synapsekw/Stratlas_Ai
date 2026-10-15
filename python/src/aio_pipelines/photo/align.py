@@ -85,7 +85,7 @@ STAGES = ("inspect", "sfm", "georef", "report", "commit")
 #: A job whose inspect step ran in an earlier version laid out no ODM project (no ``names.json``).
 OLD_JOB = (
     "This job was started by an earlier version of the processing engine. Remove it from the "
-    "Processing list and use Create maps again."
+    "Processing list and use Create maps from photos again (a new run)."
 )
 #: one-sigma accuracy (metres) written to geo.txt when GNSS is ignored: ODM barely weighs it
 IGNORED_GNSS_SIGMA_M = (50.0, 50.0)

@@ -280,7 +280,7 @@ def test_a_legacy_run_in_the_project_crs_exports_the_same_cameras(tmp_path):
 
 
 def test_an_imported_opf_run_is_refused_by_photo_products(tmp_path, monkeypatch):
-    """An imported run has a sparse model but no ODM project: products asks for Create maps again
+    """An imported run has a sparse model but no ODM project: products asks for Create maps from photos
     (deviation 8 of the ODM plan)."""
     from aio_pipelines.photo.products import PhotoProducts
 
@@ -295,7 +295,7 @@ def test_an_imported_opf_run_is_refused_by_photo_products(tmp_path, monkeypatch)
     assert listing["schema"] == "aio.photo-list/1" and len(listing["photos"]) == 6
     for rec in listing["photos"].values():
         assert (Path(listing["imageRoot"]) / rec["name"]).is_file()
-    with pytest.raises(JobError, match="use Create maps again"):
+    with pytest.raises(JobError, match="Use Create maps from photos on its photos"):
         run_job(PhotoProducts(), proj, {"run": run, "products": ["dsm"], "preset": "fast"}, job_id="p1")
     assert f"{run}-dsm" not in {layer["id"] for layer in _manifest(proj)["layers"]}
 
