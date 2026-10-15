@@ -60,9 +60,15 @@ export function CoverPicker({
   const whyId = useId();
   const [busy, setBusy] = useState<'upload' | 'view' | null>(null);
   const [bad, setBad] = useState(false);
-  // object URLs this picker made; the last one may still be in the caller's state, so only
-  // the ones it replaces are freed
+  // the object URL this picker made last: freed when replaced and when the picker goes away
   const made = useRef<string | null>(null);
+  useEffect(
+    () => () => {
+      if (made.current) URL.revokeObjectURL(made.current);
+      made.current = null;
+    },
+    [],
+  );
   const viewOk = currentView === true && canUseCurrentView();
 
   const takeImage = (data: Uint8Array<ArrayBuffer>) => {
@@ -125,7 +131,7 @@ export function CoverPicker({
           {t('library.cover.builtin')}
         </span>
         <div className="cover-swatches" role="group" aria-labelledby={`${whyId}-b`}>
-          {BUILTIN_COVERS.map((id, i) => {
+          {BUILTIN_COVERS.map((id) => {
             const on = value.kind === 'builtin' && value.id === id;
             return (
               <button
@@ -133,7 +139,8 @@ export function CoverPicker({
                 type="button"
                 className="cover-swatch"
                 aria-pressed={on}
-                aria-label={`${t('library.cover.builtin')} ${String(i + 1)}`}
+                aria-label={t(`library.cover.builtin.${id}`)}
+                title={t(`library.cover.builtin.${id}`)}
                 data-testid={`cover-builtin-${id}`}
                 onClick={() => {
                   pick({ kind: 'builtin', id });
