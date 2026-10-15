@@ -1,15 +1,28 @@
 import { z } from 'zod';
+import { Assembly, EvidenceInventory, Material, ModelFamily, ScaleRecord } from './assemblies';
 import { Id, IsoTime, Vec2, Vec3 } from './common';
+import { PartOrigin } from './partOrigin';
+
+// The engineering assemblies and the part origin live in their own modules (no load-time cycle);
+// they are part of this contract, so the package index gets them through this file.
+export * from './assemblies';
+export { PartOrigin } from './partOrigin';
 
 /**
  * Procedural models (M8, BLD-11): massing and plant primitives made from a DXF drawing, a point
  * cloud fit, the agent or by hand, built by the TypeScript mesher into a GLB with one node per part
- * (named by tag). One file per model, `<project>/models/<id>.procmodel.json` (`aio.procmodel/1`,
+ * (named by tag). One file per model, `<project>/models/<id>.procmodel.json` (`aio.procmodel/2`,
  * data-conventions section 15). Coordinates are the project local frame in metres (x east, y up,
  * z south); footprints are `[x, z]` pairs. Every part starts as a draft a person accepts.
+ *
+ * Version 2 adds engineering assemblies, their materials and the run record beside the parts; a
+ * `/1` file is read through `readVersioned` (`migrateProcModel1to2` in `versions.ts`) and keeps
+ * every part as it was.
  */
 
-export const PROCMODEL_SCHEMA = 'aio.procmodel/1' as const;
+export const PROCMODEL_SCHEMA = 'aio.procmodel/2' as const;
+/** The first version, still read (and migrated) by this build. */
+export const PROCMODEL_V1 = 'aio.procmodel/1' as const;
 /** Folder of procedural models (and their built GLBs) inside a project. */
 export const PROCMODEL_DIR = 'models';
 
@@ -21,38 +34,6 @@ export const ProcModelId = z
 export const PartStatus = z.enum(['draft', 'accepted', 'rejected']);
 
 export const ProcPartKind = z.enum(['extrusion', 'cylinder', 'box', 'pipe', 'sphere']);
-
-/** Where a part came from. */
-export const PartOrigin = z.discriminatedUnion('by', [
-  z
-    .object({
-      by: z.literal('fit'),
-      /** RMS distance of the inlier points to the primitive, metres. */
-      residualM: z.number().nonnegative(),
-      inliers: z.number().int().nonnegative(),
-      /** Share of the cluster's points that are inliers, 0 to 1. */
-      inlierShare: z.number().min(0).max(1).optional(),
-      runId: z.string().optional(),
-    })
-    .strict(),
-  z
-    .object({
-      by: z.literal('drawing'),
-      /** Project-relative drawing file, its DXF layer and entity handle. */
-      file: z.string().optional(),
-      layer: z.string().optional(),
-      entity: z.string().optional(),
-    })
-    .strict(),
-  z
-    .object({
-      by: z.literal('agent'),
-      runId: z.string().optional(),
-      model: z.string().optional(),
-    })
-    .strict(),
-  z.object({ by: z.literal('manual'), author: z.string().optional() }).strict(),
-]);
 
 const Positive = z.number().positive();
 
@@ -140,17 +121,50 @@ export const ProcModel = z
       )
       .optional(),
     parts: z.array(ProcPart),
+    /** What the engineering model describes; absent on plain procedural models. */
+    family: ModelFamily.optional(),
+    scope: z.enum(['asset', 'asset-and-surroundings']).optional(),
+    materials: z.array(Material).max(64),
+    assemblies: z.array(Assembly).max(2000),
+    scale: ScaleRecord.optional(),
+    // aio.georef/1 (georef.ts) takes this place once both contracts have landed
+    georef: z.unknown().optional(),
+    evidence: EvidenceInventory.optional(),
+    /** The engineering model run that last wrote the assemblies. */
+    run: z
+      .object({ id: z.string().max(80), detail: z.enum(['fast', 'standard', 'detailed']) })
+      .strict()
+      .optional(),
   })
   .superRefine((m, ctx) => {
+    const issue = (message: string, path: (string | number)[]) => {
+      ctx.addIssue({ code: 'custom', message, path });
+    };
     const seen = new Set<string>();
     m.parts.forEach((p, i) => {
-      if (seen.has(p.id))
-        ctx.addIssue({
-          code: 'custom',
-          message: `Duplicate part id "${p.id}"`,
-          path: ['parts', i, 'id'],
-        });
+      if (seen.has(p.id)) issue(`Duplicate part id "${p.id}"`, ['parts', i, 'id']);
       seen.add(p.id);
+    });
+    const materials = new Set(m.materials.map((x) => x.id));
+    const assemblies = new Set<string>();
+    m.assemblies.forEach((a, i) => {
+      if (assemblies.has(a.id)) issue(`Duplicate assembly id "${a.id}"`, ['assemblies', i, 'id']);
+      else if (seen.has(a.id))
+        issue(`Assembly id "${a.id}" is also a part id`, ['assemblies', i, 'id']);
+      assemblies.add(a.id);
+    });
+    m.assemblies.forEach((a, i) => {
+      if (a.parent !== undefined && !assemblies.has(a.parent))
+        issue(`Assembly parent "${a.parent}" does not exist`, ['assemblies', i, 'parent']);
+      if (a.material !== undefined && !materials.has(a.material))
+        issue(`Material "${a.material}" is not in the model`, ['assemblies', i, 'material']);
+      if (a.kind === 'band' && !materials.has(a.params.material))
+        issue(`Material "${a.params.material}" is not in the model`, [
+          'assemblies',
+          i,
+          'params',
+          'material',
+        ]);
     });
   });
 
@@ -167,7 +181,6 @@ export const ProcModelSummary = z.object({
 
 export type PartStatus = z.infer<typeof PartStatus>;
 export type ProcPartKind = z.infer<typeof ProcPartKind>;
-export type PartOrigin = z.infer<typeof PartOrigin>;
 export type ProcPart = z.infer<typeof ProcPart>;
 export type ProcModel = z.infer<typeof ProcModel>;
 export type ProcModelSummary = z.infer<typeof ProcModelSummary>;

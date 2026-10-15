@@ -30,6 +30,8 @@ export function newProcModel(o: {
     updatedAt: o.now,
     ...(o.capture ? { capture: o.capture } : {}),
     parts: [],
+    materials: [],
+    assemblies: [],
   };
 }
 

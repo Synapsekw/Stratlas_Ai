@@ -9,6 +9,7 @@ import {
   NarrativeFile,
   PROCMODEL_DIR,
   ProcModel,
+  readVersioned,
   type ChangeSetInput,
 } from '@aio/schema';
 import type { Projection } from './project';
@@ -277,8 +278,9 @@ function applyOne(
     return r.success ? applyDetections(path.slice(DETECTIONS_DIR.length + 1), r.data, p) : null;
   }
   if (path.startsWith(`${PROCMODEL_DIR}/`)) {
-    const r = ProcModel.safeParse(json);
-    return r.success ? applyProcModel(r.data, p) : null;
+    // an older model (aio.procmodel/1) is migrated, so the merged file is written as the current one
+    const r = readVersioned(json, { family: 'aio.procmodel', schema: ProcModel });
+    return r.ok ? applyProcModel(r.value, p) : null;
   }
   return null;
 }

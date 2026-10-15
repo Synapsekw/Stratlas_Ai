@@ -13,7 +13,7 @@ import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import * as current from '../../packages/schema/src/index.ts';
 import * as v09 from './schema-0.9/index.mjs';
-import { familyOf } from './families.mjs';
+import { asOpened, familyOf } from './families.mjs';
 
 const here = fileURLToPath(new URL('.', import.meta.url));
 const corpus = join(here, 'corpus');
@@ -25,7 +25,8 @@ const IDENTITY = [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1];
 describe('a project written by 0.9', () => {
   for (const p of index.builds['0.9'].files) {
     it(`${p} round-trips unchanged through the 0.10 schemas`, () => {
-      const raw = load('0.9', p);
+      // an older version this build migrates (aio.procmodel/1) round-trips in its migrated form
+      const raw = asOpened(current, familyOf(rel(p))?.family, load('0.9', p));
       const schema = familyOf(rel(p))?.pick(current);
       expect(schema, `no 0.10 schema for ${p}`).toBeTruthy();
       const r = schema.safeParse(raw);

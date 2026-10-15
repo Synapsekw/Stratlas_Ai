@@ -27,7 +27,7 @@ import {
 } from '../../apps/desktop/src/main/settings.ts';
 import * as current from '../../packages/schema/src/index.ts';
 import * as v010 from './schema-0.10/index.mjs';
-import { familyOf } from './families.mjs';
+import { asOpened, familyOf } from './families.mjs';
 
 const here = fileURLToPath(new URL('.', import.meta.url));
 const corpus = join(here, 'corpus');
@@ -58,7 +58,8 @@ function sampleOp() {
 describe('a project written by 0.10', () => {
   for (const p of index.builds['0.10'].files) {
     it(`${p} round-trips unchanged through the 0.11 schemas`, () => {
-      const raw = load('0.10', p);
+      // an older version this build migrates (aio.procmodel/1) round-trips in its migrated form
+      const raw = asOpened(current, familyOf(rel(p))?.family, load('0.10', p));
       const schema = familyOf(rel(p))?.pick(current);
       expect(schema, `no 0.11 schema for ${p}`).toBeTruthy();
       const r = schema.safeParse(raw);

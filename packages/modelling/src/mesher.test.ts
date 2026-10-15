@@ -208,7 +208,9 @@ describe('meshPart', () => {
 
 describe('meshProcModel', () => {
   const model = ProcModel.parse({
-    schema: 'aio.procmodel/1',
+    schema: 'aio.procmodel/2',
+    materials: [],
+    assemblies: [],
     id: 'site',
     name: 'Site',
     createdAt: '2026-10-06T08:00:00Z',

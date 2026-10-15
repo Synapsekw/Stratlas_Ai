@@ -58,16 +58,40 @@ const parts: ProcPart[] = [
 ];
 
 const model = {
-  schema: 'aio.procmodel/1',
+  schema: 'aio.procmodel/2',
   id: 'site',
   name: 'Site massing',
   createdAt: '2026-10-06T08:00:00Z',
   updatedAt: '2026-10-06T08:00:00Z',
   sources: [{ kind: 'drawing', ref: 'drawings/plot.dxf' }],
   parts,
+  materials: [],
+  assemblies: [],
 };
 
-describe('procedural models (aio.procmodel/1)', () => {
+const engineer = { by: 'engineer', runId: 'r1' } as const;
+const shaft = (id: string, parent?: string) => ({
+  id,
+  ...(parent === undefined ? {} : { parent }),
+  kind: 'shaft',
+  name: 'Shaft',
+  description: 'Tapered shaft',
+  category: 'Shaft',
+  status: 'draft',
+  origin: engineer,
+  quality: {},
+  sources: [],
+  params: {
+    base: [0, 0, 0],
+    profile: [
+      { y: 0, r: 10 },
+      { y: 100, r: 7 },
+    ],
+    openTop: true,
+  },
+});
+
+describe('procedural models (aio.procmodel/2)', () => {
   it('accepts every part kind with its origin', () => {
     const r = ProcModel.safeParse(model);
     expect(r.success, r.error?.message).toBe(true);
@@ -82,5 +106,65 @@ describe('procedural models (aio.procmodel/1)', () => {
     expect(
       ProcModel.safeParse({ ...model, parts: [{ ...parts[0], origin: { by: 'fit' } }] }).success,
     ).toBe(false);
+  });
+
+  it('accepts engineering assemblies with an engineer origin and a parent', () => {
+    const r = ProcModel.safeParse({
+      ...model,
+      assemblies: [shaft('shaft-1'), shaft('shaft-2', 'shaft-1')],
+    });
+    expect(r.success, r.error?.message).toBe(true);
+  });
+
+  it('refuses duplicate assembly ids', () => {
+    const r = ProcModel.safeParse({ ...model, assemblies: [shaft('shaft-1'), shaft('shaft-1')] });
+    expect(r.success).toBe(false);
+    expect(r.error?.issues[0]?.message).toMatch(/Duplicate assembly id/);
+  });
+
+  it('refuses an assembly parent that does not exist', () => {
+    const r = ProcModel.safeParse({ ...model, assemblies: [shaft('shaft-1', 'nothing')] });
+    expect(r.success).toBe(false);
+    expect(r.error?.issues[0]?.path).toEqual(['assemblies', 0, 'parent']);
+  });
+
+  it('refuses a material that is not in the model', () => {
+    const r = ProcModel.safeParse({
+      ...model,
+      assemblies: [{ ...shaft('shaft-1'), material: 'brick' }],
+    });
+    expect(r.success).toBe(false);
+    const band = {
+      ...shaft('band-1'),
+      kind: 'band',
+      params: { shaft: 'shaft-1', y0: 10, y1: 12, material: 'paint' },
+    };
+    const brick = {
+      id: 'brick',
+      name: 'Brick',
+      baseColor: [0.6, 0.3, 0.2, 1],
+      metallic: 0,
+      roughness: 0.9,
+    };
+    expect(
+      ProcModel.safeParse({ ...model, materials: [brick], assemblies: [shaft('shaft-1'), band] })
+        .success,
+    ).toBe(false);
+    expect(
+      ProcModel.safeParse({
+        ...model,
+        materials: [brick],
+        assemblies: [shaft('shaft-1'), { ...band, params: { ...band.params, material: 'brick' } }],
+      }).success,
+    ).toBe(true);
+  });
+
+  it('refuses an assembly id that is also a part id', () => {
+    const r = ProcModel.safeParse({ ...model, assemblies: [shaft('t101')] });
+    expect(r.success).toBe(false);
+  });
+
+  it('refuses a /1 model (readers migrate it first)', () => {
+    expect(ProcModel.safeParse({ ...model, schema: 'aio.procmodel/1' }).success).toBe(false);
   });
 });

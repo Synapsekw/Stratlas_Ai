@@ -52,7 +52,7 @@ describe('procmodel helpers', () => {
   it('starts an empty, valid model', () => {
     const m = newProcModel({ id: 'site', name: 'Site', now: NOW, capture: 'c1' });
     expect(ProcModel.parse(m)).toEqual(m);
-    expect(m).toMatchObject({ schema: 'aio.procmodel/1', parts: [], capture: 'c1' });
+    expect(m).toMatchObject({ schema: 'aio.procmodel/2', parts: [], capture: 'c1' });
   });
 
   it('accepts or rejects one part, a list, or all of them, and stamps the update', () => {

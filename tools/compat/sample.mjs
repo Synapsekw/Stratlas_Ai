@@ -196,7 +196,7 @@ export function sampleFromDemo(demoDir) {
         coverage: 0.92,
       },
       'models/site.procmodel.json': {
-        schema: 'aio.procmodel/1',
+        schema: 'aio.procmodel/2',
         id: 'site',
         name: 'Site model',
         createdAt: T0,
@@ -238,6 +238,8 @@ export function sampleFromDemo(demoDir) {
             diameter: 0.3,
           },
         ],
+        materials: [],
+        assemblies: [],
       },
     },
     userData: {

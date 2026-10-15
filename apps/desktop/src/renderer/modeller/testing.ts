@@ -36,7 +36,9 @@ export const manifest: ProjectManifest = {
 };
 
 export const candidates: ProcModel = {
-  schema: 'aio.procmodel/1',
+  schema: 'aio.procmodel/2',
+  materials: [],
+  assemblies: [],
   id: 'plot',
   name: 'plot.dxf',
   createdAt: '2026-10-06T08:00:00Z',

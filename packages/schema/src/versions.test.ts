@@ -3,7 +3,9 @@ import { join, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import { z } from 'zod';
+import { ProcModel } from './procmodel';
 import {
+  MIGRATIONS,
   NOT_FILE_SCHEMAS,
   SCHEMA_REGISTRY,
   appRangeAllows,
@@ -23,12 +25,12 @@ const repo = fileURLToPath(new URL('../../..', import.meta.url));
 const Thing = z.object({ schema: z.literal('aio.issues/1'), issues: z.array(z.string()) });
 
 describe('version registry', () => {
-  it('has one row per family, each at version 1 in 1.x', () => {
+  it('has one row per family, each at version 1 except the migrated procedural model', () => {
     const families = SCHEMA_REGISTRY.map((e) => e.family);
     expect(new Set(families).size).toBe(families.length);
     for (const e of SCHEMA_REGISTRY) {
       expect(e.family).toMatch(/^aio\.[a-z][a-z0-9-]*$/);
-      expect(e.version).toBe(1);
+      expect(e.version).toBe(e.family === 'aio.procmodel' ? 2 : 1);
       expect(e.since).toMatch(/^0\.([4-9]|1\d)$/);
     }
   });
@@ -75,8 +77,11 @@ describe('version registry', () => {
       }
     };
     roots.forEach(walk);
+    // a family at version n also knows the older ids its migrators read
     const known = new Set([
-      ...SCHEMA_REGISTRY.map((e) => `${e.family}/${String(e.version)}`),
+      ...SCHEMA_REGISTRY.flatMap((e) =>
+        Array.from({ length: e.version }, (_, i) => `${e.family}/${String(i + 1)}`),
+      ),
       ...NOT_FILE_SCHEMAS,
     ]);
     const missing = [...found].filter(([id]) => !known.has(id));
@@ -213,6 +218,41 @@ describe('readVersioned', () => {
       { v: Number.NaN },
     ];
     for (const raw of inputs) expect(() => readVersioned(raw, opts)).not.toThrow();
+  });
+});
+
+describe('aio.procmodel migration', () => {
+  it('migrates aio.procmodel/1 to /2 without touching parts', () => {
+    const v1 = {
+      schema: 'aio.procmodel/1',
+      id: 'm1',
+      name: 'M',
+      createdAt: '2026-01-01T00:00:00Z',
+      updatedAt: '2026-01-01T00:00:00Z',
+      parts: [
+        {
+          kind: 'box',
+          id: 'b1',
+          status: 'accepted',
+          origin: { by: 'manual' },
+          base: [0, 0, 0],
+          size: [1, 1, 1],
+        },
+      ],
+    };
+    const r = readVersioned(v1, { family: 'aio.procmodel', schema: ProcModel });
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    expect(r.value.schema).toBe('aio.procmodel/2');
+    expect(r.value.assemblies).toEqual([]);
+    expect(r.value.materials).toEqual([]);
+    expect(r.value.parts[0]).toEqual(v1.parts[0]);
+    expect(r.migratedFrom).toBe(1);
+    expect(v1.schema).toBe('aio.procmodel/1'); // input not mutated
+  });
+
+  it('has exactly one procmodel migration', () => {
+    expect(MIGRATIONS.filter((m) => m.family === 'aio.procmodel').map((m) => m.from)).toEqual([1]);
   });
 });
 

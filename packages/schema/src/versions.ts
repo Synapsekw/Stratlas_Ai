@@ -108,9 +108,10 @@ export const SCHEMA_REGISTRY: readonly SchemaEntry[] = [
     since: '0.6',
   },
   { family: 'aio.change', version: 1, home: 'project', where: 'change/*.json', since: '0.8' },
+  // version 2 (engineering model, 15 Oct 2026): assemblies and materials; /1 files migrate
   {
     family: 'aio.procmodel',
-    version: 1,
+    version: 2,
     home: 'project',
     where: 'models/*.procmodel.json',
     since: '0.8',
@@ -584,7 +585,7 @@ export function schemaIdOf(raw: unknown, family?: string): string | null {
 
 export type ReaderVerdict =
   | { kind: 'current'; entry: SchemaEntry }
-  /** An older version this build migrates (none in 1.0: every schema is still `/1`). */
+  /** An older version this build migrates (`MIGRATIONS`). */
   | { kind: 'older'; entry: SchemaEntry; from: number }
   | { kind: 'newer'; entry: SchemaEntry; found: number; message: string }
   | { kind: 'unknown'; message: string };
@@ -629,8 +630,26 @@ export interface Migration {
   migrate: (raw: Record<string, unknown>) => Record<string, unknown>;
 }
 
-/** Migrators of this build. Empty in 1.0: every schema is still `/1`. */
-export const MIGRATIONS: readonly Migration[] = [];
+/**
+ * `aio.procmodel/1` to `/2`: the parts stay exactly as they were; the model gains empty
+ * `materials` and `assemblies`. Pure: works on a copy.
+ */
+export function migrateProcModel1to2(raw: Record<string, unknown>): Record<string, unknown> {
+  return { ...structuredClone(raw), schema: 'aio.procmodel/2', materials: [], assemblies: [] };
+}
+
+/**
+ * Migrators of this build, one step per older version of a family. A family whose registry row
+ * is above `/1` has a step from every older version here, so `readVersioned` reads its old files.
+ */
+export const MIGRATIONS: readonly Migration[] = [
+  {
+    family: 'aio.procmodel',
+    from: 1,
+    note: 'Procedural models gain engineering components and materials; existing parts are unchanged.',
+    migrate: migrateProcModel1to2,
+  },
+];
 
 /** The steps from `from` to `to`, in order; null when a step is missing. */
 export function migrationPath(

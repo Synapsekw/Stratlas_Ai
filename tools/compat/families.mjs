@@ -58,3 +58,18 @@ export const FAMILIES = [
 export function familyOf(rel) {
   return FAMILIES.find((f) => f.match.test(rel));
 }
+
+/**
+ * A corpus file as this build opens it: an older version of a family this build migrates
+ * (`aio.procmodel/1` since `/2`) goes through the migrators first, as `readVersioned` does in the
+ * app; anything else comes back as it is. "Nothing lost" and "unchanged" compare the parse output
+ * with this. `current` is the current schema module.
+ */
+export function asOpened(current, family, raw) {
+  const id = family ? current.schemaIdOf(raw, family) : null;
+  const parsed = id === null ? null : current.parseSchemaId(id);
+  const entry = current.SCHEMA_REGISTRY.find((e) => e.family === family);
+  if (!parsed || !entry || parsed.version >= entry.version) return raw;
+  const steps = current.migrationPath(family, parsed.version, entry.version) ?? [];
+  return steps.reduce((data, step) => step.migrate(data), raw);
+}

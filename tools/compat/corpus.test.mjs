@@ -13,7 +13,7 @@ import * as current from '../../packages/schema/src/index.ts';
 import * as v08 from './schema-0.8/index.mjs';
 import * as v09 from './schema-0.9/index.mjs';
 import * as v010 from './schema-0.10/index.mjs';
-import { familyOf } from './families.mjs';
+import { asOpened, familyOf } from './families.mjs';
 import { MILESTONES } from './milestones.mjs';
 
 const here = fileURLToPath(new URL('.', import.meta.url));
@@ -59,12 +59,18 @@ describe('compatibility corpus', () => {
           const fam = familyOf(rel(p));
           const schema = fam?.pick(current);
           expect(schema, `no current schema for ${p}`).toBeTruthy();
-          const r = schema.safeParse(raw);
+          // an older version this build migrates (aio.procmodel/1) is compared after migration
+          const opened = asOpened(current, fam.family, raw);
+          const r = schema.safeParse(opened);
           expect(r.success, r.success ? '' : r.error.message).toBe(true);
-          expect(lost(raw, r.data)).toEqual([]);
+          expect(lost(opened, r.data)).toEqual([]);
           if (fam.family.startsWith('aio.')) {
             const read = current.readVersioned(raw, { family: fam.family, schema, what: p });
-            expect(read).toMatchObject({ ok: true, migratedFrom: null });
+            expect(read).toMatchObject({
+              ok: true,
+              migratedFrom: opened === raw ? null : expect.any(Number),
+            });
+            if (read.ok) expect(lost(opened, read.value)).toEqual([]);
           }
         });
       }
@@ -100,9 +106,11 @@ describe('a file saved by a newer build', () => {
   );
 
   for (const p of versioned) {
-    it(`${p} as /2 is refused with the update message and left unchanged`, () => {
-      const fam = familyOf(rel(p));
-      const raw = { ...load(CURRENT, p), schema: `${fam.family}/2` };
+    const fam = familyOf(rel(p));
+    const version = current.SCHEMA_REGISTRY.find((e) => e.family === fam.family)?.version ?? 1;
+    const next = `${fam.family}/${String(version + 1)}`;
+    it(`${p} as ${next} is refused with the update message and left unchanged`, () => {
+      const raw = { ...load(CURRENT, p), schema: next };
       const before = JSON.stringify(raw);
       const r = current.readVersioned(raw, {
         family: fam.family,
@@ -114,7 +122,7 @@ describe('a file saved by a newer build', () => {
       if (!r.ok) {
         expect(r.reason).toBe('newer');
         expect(r.error).toBe(
-          `${rel(p)} was saved by a newer version of Quadrion AI (${fam.family}/2). Update the app to open it. The file was not changed.`,
+          `${rel(p)} was saved by a newer version of Quadrion AI (${next}). Update the app to open it. The file was not changed.`,
         );
       }
       expect(current.newerRefusal(raw, 'Quadrion AI')).toMatch(/newer version of Quadrion AI/);

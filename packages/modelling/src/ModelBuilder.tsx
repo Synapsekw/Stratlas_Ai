@@ -52,6 +52,7 @@ const ORIGIN_LABEL: Record<ProcPart['origin']['by'], string> = {
   fit: 'Fitted',
   agent: 'From the agent',
   manual: 'By hand',
+  engineer: 'From an engineering model run',
 };
 
 /** Fit quality from the RMS residual: good up to 2 cm, fair up to 5 cm, else poor. */

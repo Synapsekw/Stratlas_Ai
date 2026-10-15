@@ -16,6 +16,7 @@ import {
   applyIssues,
   applyNarrative,
   applyProcModel,
+  mergeStateFiles,
   project,
   stateFiles,
   stateFileText,
@@ -175,7 +176,7 @@ describe('applyDetections', () => {
 describe('applyProcModel, applyBoundaries, applyNarrative', () => {
   it('merges part fields', () => {
     const model = ProcModel.parse({
-      schema: 'aio.procmodel/1',
+      schema: 'aio.procmodel/2',
       id: 'm1',
       name: 'Site',
       createdAt: '2026-10-06T08:00:00Z',
@@ -191,6 +192,8 @@ describe('applyProcModel, applyBoundaries, applyNarrative', () => {
           size: [4, 2.5, 6],
         },
       ],
+      materials: [],
+      assemblies: [],
     });
     const sim = new TeamSim();
     sim.write(
@@ -202,6 +205,41 @@ describe('applyProcModel, applyBoundaries, applyNarrative', () => {
     const out = applyProcModel(model, project(sim.all()));
     expect(out.value.parts[0]?.status).toBe('accepted');
     expect(stateFiles(project(sim.all()))).toEqual(['models/m1.procmodel.json']);
+  });
+
+  it('migrates a /1 model file before merging into it, never dropping it', async () => {
+    const v1 = {
+      schema: 'aio.procmodel/1',
+      id: 'm1',
+      name: 'Site',
+      createdAt: '2026-10-06T08:00:00Z',
+      updatedAt: '2026-10-06T08:00:00Z',
+      parts: [
+        {
+          kind: 'box',
+          id: 's1',
+          status: 'draft',
+          origin: { by: 'manual' },
+          base: [5, 0, 5],
+          size: [4, 2.5, 6],
+        },
+      ],
+    };
+    const sim = new TeamSim();
+    sim.write(
+      0,
+      'procmodel.part',
+      { rec: 'part', id: 's1', in: 'm1' },
+      { set: { status: 'accepted' } },
+    );
+    const out = await mergeStateFiles(project(sim.all()), (path) =>
+      Promise.resolve(path === 'models/m1.procmodel.json' ? JSON.stringify(v1) : null),
+    );
+    expect(out.problems).toEqual([]);
+    const written = out.files.find((f) => f.path === 'models/m1.procmodel.json');
+    const merged = ProcModel.parse(JSON.parse(written?.text ?? '{}'));
+    expect(merged.schema).toBe('aio.procmodel/2');
+    expect(merged.parts[0]?.status).toBe('accepted');
   });
 
   it('takes the last boundary edit per pile and date', () => {
