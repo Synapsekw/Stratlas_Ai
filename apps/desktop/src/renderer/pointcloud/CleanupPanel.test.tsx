@@ -4,11 +4,11 @@ import { workspace } from '@aio/workspace';
 import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { CleanupHost, closeCleanupWithProject } from './CleanupHost';
+import { CleanupHost } from './CleanupHost';
 import { CleanupPanel } from './CleanupPanel';
 import type * as Jobs from './cleanupJobs';
 import { runNoise } from './cleanupJobs';
-import { cleanup } from './cleanupStore';
+import { cleanup, followProjectForCleanup } from './cleanupStore';
 
 vi.mock('../shell', () => ({
   shell: { getState: () => ({ pkg: null }) },
@@ -161,7 +161,7 @@ describe('CleanupHost', () => {
 
   it('closes the panel and forgets the recipes when the project changes', () => {
     project([copc('a')]);
-    const stop = closeCleanupWithProject();
+    const stop = followProjectForCleanup();
     cleanup.store.setState({ panelOpen: true, active: 'a' });
     act(() => {
       workspace.getState().closeProject();

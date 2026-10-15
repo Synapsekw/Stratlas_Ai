@@ -31,6 +31,7 @@ import {
   type ReactNode,
 } from 'react';
 import { shell, useShell } from '../shell';
+import { openCleanupPanel } from '../pointcloud/cleanupActions';
 import { cleanup, useCleanup } from '../pointcloud/cleanupStore';
 import { PATH_MODES, setPathMode } from './flightPaths';
 import { updateFlightPaths, useFlightPathModel } from './pathModel';
@@ -554,7 +555,7 @@ export function CloudTools() {
         testId="cleanup-tool"
         onClick={() => {
           if (cleanupOpen) cleanup.closePanel();
-          else cleanup.openPanel();
+          else openCleanupPanel();
         }}
       />
     </>

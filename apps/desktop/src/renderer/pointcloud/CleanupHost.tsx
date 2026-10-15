@@ -1,12 +1,11 @@
 /**
- * The Clean up panel's place on the stage: loads the open project's recipes (once per project id),
- * binds the cleanup stage tools while the panel is open, and draws the panel, the bar of a drawn
- * selection and the notice with Undo.
+ * The Clean up panel's place on the stage: binds the cleanup stage tools while the panel is open,
+ * and draws the panel, the bar of a drawn selection and the notice with Undo. The recipes load with
+ * the project, not here (cleanupStore.ts `followProjectForCleanup`, from bootstrap).
  */
 import type { EngineStage } from '@aio/engine';
 import { ASPRS_CLASSES, classColour } from '@aio/pointcloud';
 import { Icon, useT } from '@aio/ui';
-import { useWorkspace, workspace } from '@aio/workspace';
 import { useEffect, useRef, useState } from 'react';
 import { CleanupPanel } from './CleanupPanel';
 import { applyPending, mountCleanupScene } from './cleanupScene';
@@ -15,16 +14,9 @@ import './cleanup.css';
 
 const SHOW_MS = 8000;
 
-/** Loads the open project's recipes, binds the stage tools while the panel is open, draws the panel. */
+/** Binds the stage tools while the panel is open, draws the panel. */
 export function CleanupHost({ engine }: { engine: EngineStage | null }) {
-  const projectId = useWorkspace((s) => s.project?.id ?? null);
   const open = useCleanup((s) => s.panelOpen);
-  useEffect(() => {
-    if (!projectId) return;
-    // the layers as the project opened; a manifest reload (a saved copy) must not reset the history
-    const layers = workspace.getState().project?.manifest.layers ?? [];
-    void cleanup.load(projectId, layers);
-  }, [projectId]);
   useEffect(() => (open && engine ? mountCleanupScene(engine) : undefined), [open, engine]);
   return (
     <>
@@ -33,18 +25,6 @@ export function CleanupHost({ engine }: { engine: EngineStage | null }) {
       <CleanupNotice />
     </>
   );
-}
-
-/**
- * The project closed or another opened: close the panel and forget the recipes and the history
- * (the next load reads again). Called once at start-up; returns the unsubscribe.
- */
-export function closeCleanupWithProject(): () => void {
-  return workspace.subscribe((s, prev) => {
-    if ((s.project?.id ?? null) === (prev.project?.id ?? null)) return;
-    cleanup.close();
-    cleanup.closePanel();
-  });
 }
 
 /** "N loaded points selected" with Hide, Delete, Set class and Cancel, bottom centre. */

@@ -1,13 +1,42 @@
 // @vitest-environment jsdom
 import { createCleanupRecipes } from '@aio/pointcloud';
-import { emptyCleanup, noiseCopyPath, type Layer, type PointcloudCleanup } from '@aio/schema';
-import { describe, expect, it, vi } from 'vitest';
-import { createCleanup, isCleanable } from './cleanupStore';
+import {
+  ProjectManifest,
+  emptyCleanup,
+  noiseCopyPath,
+  type Layer,
+  type PointcloudCleanup,
+} from '@aio/schema';
+import { workspace } from '@aio/workspace';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import { exportCleanupFor } from '../survey/ExportDialog';
+import { createCleanup, followProjectForCleanup, isCleanable } from './cleanupStore';
 
 vi.mock('../shell', () => ({
   shell: { getState: () => ({ pkg: null }) },
   bridge: { call: () => Promise.resolve({ ok: false, error: 'no bridge in tests' }) },
+  useShell: () => null,
 }));
+
+function openProject(layers: Layer[]) {
+  workspace.getState().openProject({
+    id: 'p',
+    root: 'D:/p',
+    manifest: ProjectManifest.parse({
+      schema: 'aio.project/1',
+      id: 'p',
+      name: 'P',
+      customer: 'E2E',
+      site: 'Synthetic site',
+      origin: [500000, 3200000, 0],
+      crs: { epsg: 32639 },
+      captures: [],
+      layers,
+      severityModels: [],
+      classCatalogues: [],
+    }),
+  });
+}
 
 const cloud = (id: string, format: 'copc' | 'png-packed' = 'copc'): Layer => ({
   kind: 'pointcloud',
@@ -245,5 +274,40 @@ describe('the cleanup store', () => {
     expect(s.c.store.getState()).toMatchObject({ panelOpen: true, active: 'a', section: 'noise' });
     s.c.closePanel();
     expect(s.c.store.getState().panelOpen).toBe(false);
+  });
+});
+
+describe('the recipes follow the open project, with or without the 3D view', () => {
+  afterEach(() => {
+    workspace.getState().closeProject();
+  });
+
+  it('loads on project open with no stage mounted, so the export sees the recipe', async () => {
+    const r = { ...emptyCleanup('a'), hiddenClasses: [7] };
+    const s = setup([r]);
+    const stop = followProjectForCleanup(s.c, workspace);
+    openProject([cloud('a')]);
+    await vi.waitFor(() => {
+      expect(s.c.recipeOf('a')).toEqual(r);
+    });
+    expect(s.c.store.getState().projectId).toBe('p');
+    expect(exportCleanupFor('a', s.live.getState().recipes)).toEqual(r);
+    // closing the project closes the panel and forgets the recipes
+    s.c.openPanel('a');
+    workspace.getState().closeProject();
+    expect(s.c.store.getState()).toMatchObject({ projectId: null, panelOpen: false });
+    expect(exportCleanupFor('a', s.live.getState().recipes)).toBeNull();
+    stop();
+  });
+
+  it('loads a project that is already open when it starts', async () => {
+    const r = { ...emptyCleanup('a'), hiddenClasses: [2] };
+    const s = setup([r]);
+    openProject([cloud('a')]);
+    const stop = followProjectForCleanup(s.c, workspace);
+    await vi.waitFor(() => {
+      expect(s.c.recipeOf('a')).toEqual(r);
+    });
+    stop();
   });
 });

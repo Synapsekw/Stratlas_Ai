@@ -36,9 +36,8 @@ import { requestGlobe } from './globe/request';
 import { mediaView } from './screens/mediaView';
 import { agentPhotoRuns, agentProcessPhotos } from './photogrammetry/agentHooks';
 import { placement, startPlacement } from './placement';
-import { closeCleanupWithProject } from './pointcloud/CleanupHost';
 import { cleanupDebug } from './pointcloud/cleanupScene';
-import { cleanup } from './pointcloud/cleanupStore';
+import { cleanup, followProjectForCleanup } from './pointcloud/cleanupStore';
 import { bridge, shell } from './shell';
 import { COMPARE_GPU_BYTES, compareRuntime } from './workspace/compare';
 import { tilesDebug } from './workspace/siteTiles';
@@ -188,8 +187,8 @@ export function bootstrap(): void {
       },
     },
   });
-  // the cleanup history belongs to one open project
-  closeCleanupWithProject();
+  // the cleanup recipes and history belong to the open project (loaded on open, any view mode)
+  followProjectForCleanup();
   shareFlightPoses(workspace.getState().project);
   workspace.subscribe((s, prev) => {
     if (s.project !== prev.project) shareFlightPoses(s.project);

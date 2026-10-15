@@ -13,6 +13,7 @@
 import { pointcloudCleanup, type CleanupRecipes } from '@aio/pointcloud';
 import type { Layer, PointcloudCleanup } from '@aio/schema';
 import { t } from '@aio/ui';
+import { workspace } from '@aio/workspace';
 import { useStore } from 'zustand';
 import { createStore, type StoreApi } from 'zustand/vanilla';
 import type { Bridge } from '../bridge';
@@ -304,6 +305,30 @@ export const cleanup: Cleanup = createCleanup({
   call: (channel, req) => bridge.call(channel, req),
   recipes: pointcloudCleanup,
 });
+
+/**
+ * The recipes belong to the open project, whatever the stage shows: load them when a project opens
+ * (the export dialog and the right-click menu need them in Map mode too), and on a project change
+ * close the panel and forget the recipes and the history first. Only the project id counts: a
+ * manifest reload (a saved copy arriving) must not reset the history. Called once at start-up from
+ * bootstrap; returns the unsubscribe.
+ */
+export function followProjectForCleanup(
+  c: Cleanup = cleanup,
+  ws: typeof workspace = workspace,
+): () => void {
+  const loadOpen = () => {
+    const p = ws.getState().project;
+    if (p) void c.load(p.id, p.manifest.layers);
+  };
+  loadOpen();
+  return ws.subscribe((s, prev) => {
+    if ((s.project?.id ?? null) === (prev.project?.id ?? null)) return;
+    c.close();
+    c.closePanel();
+    loadOpen();
+  });
+}
 
 export function useCleanup<T>(selector: (s: CleanupState) => T): T {
   return useStore(cleanup.store, selector);
