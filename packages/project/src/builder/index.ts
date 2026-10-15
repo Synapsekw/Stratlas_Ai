@@ -22,6 +22,7 @@ export {
   type ManifestChange,
   type ManifestUpdate,
 } from './create';
+export { cataloguesProblem, updateClasses } from './classes';
 export * from './altitude';
 export * from './drawingPlacement';
 export { glbBounds, lasBounds, layerExtent, layerExtents, type LocalExtent } from './extents';

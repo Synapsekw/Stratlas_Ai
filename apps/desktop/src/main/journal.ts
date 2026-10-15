@@ -13,7 +13,7 @@
  * - `builder:recentre` is diffed after it writes too, but as ONE `record.external` step for
  *   `manifest.json` (label "Project re-centred"): the origin and every layer moved together, so no
  *   per-record undo may restore part of it;
- * - `builder:updateLayers`, `builder:updateCapture`, `builder:removeCapture`, `walks:remove` and
+ * - `builder:updateLayers`, `builder:updateCapture`, `builder:updateClasses`, `builder:removeCapture`, `walks:remove` and
  *   `builder:ensureCapture` are diffed after they write (their result is computed in the
  *   handler), and so are `tilesets:import` (the imported tileset's name as the label),
  *   `photo:applyPoses` with `apply: true` and `builder:remove` (every journaled file its plan
@@ -1014,6 +1014,7 @@ export function createJournalService(deps: JournalServiceDeps) {
     if (
       channel === 'builder:updateLayers' ||
       channel === 'builder:updateCapture' ||
+      channel === 'builder:updateClasses' ||
       channel === 'builder:removeCapture' ||
       channel === 'walks:remove' ||
       channel === 'builder:ensureCapture' ||
@@ -1024,6 +1025,7 @@ export function createJournalService(deps: JournalServiceDeps) {
         const { projectId } = req as IpcRequest<
           | 'builder:updateLayers'
           | 'builder:updateCapture'
+          | 'builder:updateClasses'
           | 'builder:removeCapture'
           | 'walks:remove'
           | 'builder:ensureCapture'

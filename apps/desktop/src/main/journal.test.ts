@@ -1036,6 +1036,7 @@ describe('journal service', () => {
       'builder:updateLayers',
       'builder:recentre',
       'builder:updateCapture',
+      'builder:updateClasses',
       'builder:ensureCapture',
       'builder:removeCapture',
       'walks:remove',

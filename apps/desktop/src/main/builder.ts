@@ -516,6 +516,25 @@ export async function builderUpdateCapture(
   }
 }
 
+/** Replace the project's class catalogues (ANN-7): only `manifest.classCatalogues` changes. */
+export async function builderUpdateClasses(
+  req: IpcRequest<'builder:updateClasses'>,
+  registry: ProjectRegistry,
+): Promise<IpcResponse<'builder:updateClasses'>> {
+  const root = registry.root(req.projectId);
+  if (root === undefined)
+    return {
+      ok: false,
+      error: `Project "${req.projectId}" is not open. Open it, then save again.`,
+    };
+  try {
+    const r = await (await lib()).updateClasses(root, req.catalogues);
+    return { ok: true, manifest: r.manifest, backup: r.backup };
+  } catch (e) {
+    return { ok: false, error: errorText(e) };
+  }
+}
+
 /** Remove a survey date that holds no datasets: only `manifest.captures` changes. */
 export async function builderRemoveCapture(
   req: IpcRequest<'builder:removeCapture'>,

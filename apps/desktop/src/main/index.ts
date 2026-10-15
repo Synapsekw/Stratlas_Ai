@@ -56,6 +56,7 @@ import {
   importRuns,
   builderTemplates,
   builderUpdateCapture,
+  builderUpdateClasses,
   builderRemoveCapture,
   builderLayerExtents,
   builderRecentre,
@@ -171,6 +172,7 @@ import {
 } from './jobs/addon';
 import { packArchivePlaces, registerPipelinePackIpc } from './jobs/packInstall';
 import { createKeyVault } from './keys';
+import { createClassLibraryStore } from './classLibrary';
 import { addToLibrary, createLibraryStore, listLibrary } from './library';
 import { registerLibraryActionsIpc, samePath } from './libraryActions';
 import {
@@ -322,6 +324,7 @@ const settings = createSettingsStore(
   ),
 );
 const library = createLibraryStore(join(app.getPath('userData'), 'library.json'));
+const classLibrary = createClassLibraryStore(join(app.getPath('userData'), 'class-library.json'));
 /** The person's report logo (Settings, Report branding). */
 const brandingDir = () => join(app.getPath('userData'), 'branding');
 /** Working copies of the bundled demo projects (see demo.ts). */
@@ -833,6 +836,21 @@ function registerIpc(): void {
     };
   });
   handle('library:add', ({ path }) => addToLibrary(path, library, registry));
+  handle('classLibrary:list', () => classLibrary.list());
+  handle('classLibrary:save', async ({ cls }) => {
+    try {
+      return { ok: true as const, classes: await classLibrary.save(cls) };
+    } catch (e) {
+      return { ok: false as const, error: e instanceof Error ? e.message : String(e) };
+    }
+  });
+  handle('classLibrary:remove', async ({ label }) => {
+    try {
+      return { ok: true as const, classes: await classLibrary.remove(label) };
+    } catch (e) {
+      return { ok: false as const, error: e instanceof Error ? e.message : String(e) };
+    }
+  });
   // the menu of one project on the Projects screen: show in folder, rename, move to the recycle bin
   registerLibraryActionsIpc({
     handle,
@@ -1460,6 +1478,10 @@ function registerIpc(): void {
   handle(
     'builder:updateCapture',
     (req) => packageRefusal(req.projectId) ?? builderUpdateCapture(req, registry),
+  );
+  handle(
+    'builder:updateClasses',
+    (req) => packageRefusal(req.projectId) ?? builderUpdateClasses(req, registry),
   );
   handle(
     'builder:removeCapture',
