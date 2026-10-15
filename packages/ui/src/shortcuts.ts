@@ -19,6 +19,7 @@ export type ShortcutScope =
   | 'scene'
   | 'road'
   | 'volumes'
+  | 'cleanup'
   | 'issues'
   | 'issueList'
   | 'photo'
@@ -52,6 +53,7 @@ export const SHORTCUT_SCOPES: readonly { scope: ShortcutScope; label: MessageKey
   { scope: 'scene', label: 'keys.scope.scene' },
   { scope: 'road', label: 'keys.scope.road' },
   { scope: 'volumes', label: 'keys.scope.volumes' },
+  { scope: 'cleanup', label: 'keys.scope.cleanup' },
   { scope: 'issues', label: 'keys.scope.issues' },
   { scope: 'issueList', label: 'keys.scope.issueList' },
   { scope: 'photo', label: 'keys.scope.photo' },
@@ -75,8 +77,10 @@ export const CONCURRENT_SCOPES: readonly (readonly [ShortcutScope, ShortcutScope
   ['scene', 'road'],
   ['scene', 'volumes'],
   ['scene', 'issues'],
+  ['scene', 'cleanup'],
   ['road', 'issues'],
   ['volumes', 'issues'],
+  ['cleanup', 'issues'],
   ['scene', 'panorama'],
 ];
 
@@ -181,6 +185,22 @@ export const SHORTCUTS = [
     keys: ['Ctrl+Z'],
     label: 'keys.volumes.undo',
     shadows: ['issues.undo'],
+  },
+
+  // the point cloud Clean up panel or one of its tools (renderer/pointcloud/cleanupScene.ts)
+  {
+    id: 'cleanup.undo',
+    scope: 'cleanup',
+    keys: ['Ctrl+Z'],
+    label: 'keys.cleanup.undo',
+    shadows: ['issues.undo'],
+  },
+  {
+    id: 'cleanup.redo',
+    scope: 'cleanup',
+    keys: ['Ctrl+Y', 'Ctrl+Shift+Z'],
+    label: 'keys.cleanup.redo',
+    shadows: ['issues.redo'],
   },
 
   // issue edits, wherever the issue register is open
