@@ -18,12 +18,14 @@ project CRS).
 
 from __future__ import annotations
 
+import contextlib
 import json
 import os
 import re
 import shutil
 import subprocess
 import sys
+import threading
 import time
 from collections.abc import Callable
 from pathlib import Path
@@ -53,6 +55,11 @@ DEFAULT_RECORD = 36
 TOO_BIG_WITHOUT_UNTWINE = (
     "This point cloud is too large to convert without untwine. Install pipeline pack 0.6.1 or later."
 )
+#: Seconds without any sign of work before the build's text says so (the job carries on).
+STALL_S = 300
+#: How often the build's watch samples its activity and updates the text, seconds.
+WATCH_EVERY_S = 2.0
+WATCH_THREAD = "pointcloud-build-watch"
 
 
 def find_pdal() -> str | None:
@@ -265,23 +272,225 @@ def check_space(folder: Path, needed: int) -> None:
         ) from None
 
 
-class _BuildProgress:
-    """The step context ``write_copc`` runs with: its progress in plain words. Untwine reports
-    its own percentage, which goes straight through; PDAL reports none, so then the bar holds
-    where the build began and the text says how long it has run."""
+def span(seconds: float) -> str:
+    """A coarse duration for status text: ``42 s``, ``6 min`` or ``1 h 05 min``."""
+    s = max(0, int(seconds))
+    if s < 60:
+        return f"{s} s"
+    if s < 3600:
+        return f"{s // 60} min"
+    return f"{s // 3600} h {s % 3600 // 60:02d} min"
 
-    def __init__(self, ctx: StepContext, measured: bool, start: float):
-        self._ctx, self._measured, self._start = ctx, measured, start
-        self._t0 = time.monotonic()
+
+def folder_signature(folder: Path) -> tuple[int, int, int]:
+    """Files, bytes and the newest change (ns) under ``folder``: any change means a writer is
+    at work there. Files that vanish during the walk are skipped."""
+    files = size = newest = 0
+    todo = [folder]
+    while todo:
+        try:
+            entries = list(os.scandir(todo.pop()))
+        except OSError:
+            continue
+        for e in entries:
+            try:
+                if e.is_dir(follow_symlinks=False):
+                    todo.append(Path(e.path))
+                    continue
+                st = e.stat(follow_symlinks=False)
+            except OSError:
+                continue
+            files, size, newest = files + 1, size + st.st_size, max(newest, st.st_mtime_ns)
+    return files, size, newest
+
+
+def children_cpu_seconds() -> float | None:
+    """CPU time (kernel and user, seconds) of the processes this worker started and that still
+    run (Windows), else None. Rising, it shows a converter at work while it writes nothing."""
+    if os.name != "nt":
+        return None
+    try:
+        k32 = _kernel32()
+        me = os.getpid()
+        mine = _process_times(k32, me)
+        if mine is None:
+            return None
+        links = _process_links(k32)
+        # A child starts after its parent: a process naming a reused PID as parent is no child.
+        family, todo, total = {me: mine[0]}, [me], 0.0
+        while todo:
+            parent = todo.pop()
+            for pid, of in links:
+                if of != parent or pid in family:
+                    continue
+                times = _process_times(k32, pid)
+                if times is None or times[0] < family[parent]:
+                    continue
+                family[pid] = times[0]
+                todo.append(pid)
+                total += times[1]
+        return total
+    except Exception:
+        return None
+
+
+def _kernel32() -> Any:
+    """kernel32 with the few calls ``children_cpu_seconds`` makes (Windows)."""
+    import ctypes
+    from ctypes import wintypes
+
+    k32 = ctypes.WinDLL("kernel32")
+    k32.OpenProcess.restype = wintypes.HANDLE
+    k32.OpenProcess.argtypes = [wintypes.DWORD, wintypes.BOOL, wintypes.DWORD]
+    k32.GetProcessTimes.argtypes = [wintypes.HANDLE] + [ctypes.POINTER(wintypes.FILETIME)] * 4
+    k32.CloseHandle.argtypes = [wintypes.HANDLE]
+    k32.CreateToolhelp32Snapshot.restype = wintypes.HANDLE
+    k32.CreateToolhelp32Snapshot.argtypes = [wintypes.DWORD, wintypes.DWORD]
+    return k32
+
+
+def _process_times(k32: Any, pid: int) -> tuple[int, float] | None:
+    """A process's start (100 ns ticks) and its CPU time (seconds), else None."""
+    import ctypes
+    from ctypes import wintypes
+
+    h = k32.OpenProcess(0x1000, False, pid)  # PROCESS_QUERY_LIMITED_INFORMATION
+    if not h:
+        return None
+    try:
+        made, ended, kernel, user = (wintypes.FILETIME() for _ in range(4))
+        refs = (ctypes.byref(t) for t in (made, ended, kernel, user))
+        if not k32.GetProcessTimes(h, *refs):
+            return None
+        ticks = [(t.dwHighDateTime << 32) | t.dwLowDateTime for t in (made, kernel, user)]
+        return ticks[0], (ticks[1] + ticks[2]) / 1e7
+    finally:
+        k32.CloseHandle(h)
+
+
+def _process_links(k32: Any) -> list[tuple[int, int]]:
+    """Every process of this computer as (PID, parent PID), from a Toolhelp snapshot."""
+    import ctypes
+    from ctypes import wintypes
+
+    class Entry(ctypes.Structure):
+        _fields_ = [
+            ("dwSize", wintypes.DWORD),
+            ("cntUsage", wintypes.DWORD),
+            ("th32ProcessID", wintypes.DWORD),
+            ("th32DefaultHeapID", ctypes.c_size_t),
+            ("th32ModuleID", wintypes.DWORD),
+            ("cntThreads", wintypes.DWORD),
+            ("th32ParentProcessID", wintypes.DWORD),
+            ("pcPriClassBase", ctypes.c_long),
+            ("dwFlags", wintypes.DWORD),
+            ("szExeFile", ctypes.c_wchar * 260),
+        ]
+
+    snap = k32.CreateToolhelp32Snapshot(0x2, 0)  # TH32CS_SNAPPROCESS
+    if not snap or snap == wintypes.HANDLE(-1).value:
+        raise OSError("no process snapshot")
+    links: list[tuple[int, int]] = []
+    try:
+        e = Entry()
+        e.dwSize = ctypes.sizeof(Entry)
+        ok = k32.Process32FirstW(snap, ctypes.byref(e))
+        while ok:
+            links.append((int(e.th32ProcessID), int(e.th32ParentProcessID)))
+            ok = k32.Process32NextW(snap, ctypes.byref(e))
+    finally:
+        k32.CloseHandle(snap)
+    return links
+
+
+class BuildWatch:
+    """The COPC build's honest status, from what really happens rather than a timer.
+
+    Every ``WATCH_EVERY_S`` a thread looks at the staging folder (untwine's temporary files and
+    the COPC being written) and the CPU time of the worker's child processes: either changing
+    is activity. The text keeps the stage name and adds how long the build has run, and either
+    ``still working`` or, after ``STALL_S`` without any activity, how long nothing has moved
+    (the job is never stopped for it). The bar moves only by the percentage untwine itself prints
+    to its ``tool.out``, never backwards; without one it holds where the build began."""
+
+    def __init__(
+        self,
+        ctx: StepContext,
+        band: tuple[float, float],
+        folder: Path,
+        tool_out: Path,
+        clock: Callable[[], float] = time.monotonic,
+        cpu: Callable[[], float | None] = children_cpu_seconds,
+    ):
+        from .photo.cloud_out import UNTWINE_PROGRESS
+
+        self._ctx, self._band, self._folder, self._tool_out = ctx, band, folder, tool_out
+        self._clock, self._cpu, self._percent = clock, cpu, UNTWINE_PROGRESS
+        self._t0 = self._active = clock()
+        self._last: tuple[Any, ...] | None = None
+        self._told = 0.0
+        self._stop = threading.Event()
+        self._thread: threading.Thread | None = None
+
+    def told(self) -> float | None:
+        """The last percentage untwine printed (0 to 1), else None. Read from the end of the
+        file only, as the tool appends to it."""
+        try:
+            with open(self._tool_out, "rb") as f:
+                f.seek(max(0, f.seek(0, os.SEEK_END) - 4096))
+                tail = f.read().decode("utf-8", errors="replace")
+        except OSError:
+            return None
+        found = self._percent.findall(tail)
+        return min(100, int(found[-1])) / 100 if found else None
+
+    def tick(self) -> None:
+        """One sample and one progress update."""
+        now = self._clock()
+        seen = (folder_signature(self._folder), self._cpu())
+        if self._last is not None and seen != self._last:
+            self._active = now
+        self._last = seen
+        told = self.told()
+        if told is not None:
+            self._told = max(self._told, told)
+        lo, hi = self._band
+        quiet = now - self._active
+        state = f"no activity for {span(quiet)}" if quiet >= STALL_S else "still working"
+        self._ctx.progress(lo + (hi - lo) * self._told, f"{BUILDING}: {span(now - self._t0)}, {state}")
+
+    def _loop(self) -> None:
+        while True:
+            with contextlib.suppress(Exception):  # a status line is never worth failing a build
+                self.tick()
+            if self._stop.wait(WATCH_EVERY_S):
+                return
+
+    def __enter__(self) -> BuildWatch:
+        self._thread = threading.Thread(target=self._loop, name=WATCH_THREAD, daemon=True)
+        self._thread.start()
+        return self
+
+    def __exit__(self, *exc: object) -> None:
+        self._stop.set()
+        if self._thread is not None:
+            self._thread.join()
+            self._thread = None
+
+
+class _BuildProgress:
+    """The step context ``write_copc`` runs with. Its tool runner moves the bar on a timer until
+    untwine prints a percentage (which comes late and in bursts), so its progress is dropped
+    here: ``BuildWatch`` reports the build. Everything else (the cancel event) goes through."""
+
+    def __init__(self, ctx: StepContext):
+        self._ctx = ctx
 
     def __getattr__(self, name: str) -> Any:
         return getattr(self._ctx, name)
 
     def progress(self, fraction: float, message: str | None = None) -> None:
-        if self._measured:
-            self._ctx.progress(fraction, BUILDING)
-        else:
-            self._ctx.progress(self._start, f"{BUILDING}, {elapsed(time.monotonic() - self._t0)} so far")
+        pass
 
 
 def _layer_id(out_rel: str, taken: set[str]) -> str:
@@ -359,17 +568,19 @@ class PointcloudToCopc:
                     prepare_las(ctx, pdal, src, prepared, reproject, count, (READ_END, PREPARE_END))
                     las, start = prepared, PREPARE_END
                 ctx.check()
-                build = _BuildProgress(ctx, native.find_tool("untwine") is not None, start)
-                writer = cloud_out.write_copc(
-                    build,  # type: ignore[arg-type]  # a StepContext in all it uses
-                    las,
-                    staged,
-                    count,
-                    epsg,
-                    ctx.stage("copc-work"),
-                    native.memory_budget(),
-                    progress=(start, BUILD_END),
-                )
+                work = ctx.stage("copc-work")
+                (work / "tool.out").unlink(missing_ok=True)  # an earlier run's percentage
+                with BuildWatch(ctx, (start, BUILD_END), ctx.staging, work / "tool.out"):
+                    writer = cloud_out.write_copc(
+                        _BuildProgress(ctx),  # type: ignore[arg-type]  # a StepContext in all it uses
+                        las,
+                        staged,
+                        count,
+                        epsg,
+                        work,
+                        native.memory_budget(),
+                        progress=(start, BUILD_END),
+                    )
             except JobError as e:
                 # the shared writer's refusal of PDAL over the memory budget speaks of photo
                 # products; an import says it in its own words

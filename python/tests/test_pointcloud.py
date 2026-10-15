@@ -1,4 +1,5 @@
 import json
+import re
 import subprocess
 import sys
 import threading
@@ -169,18 +170,23 @@ def test_the_source_epsg_comes_from_the_header_crs():
 class FakeWriter:
     """Stands in for photo.cloud_out.write_copc: records its call, reports progress, writes out."""
 
-    def __init__(self, fractions=(0.5,)):
+    def __init__(self, fractions=(0.5,), printed=True):
         self.calls = []
         self.fractions = fractions
+        self.printed = printed  # untwine prints its percentage to tool.out; PDAL prints none
 
     def __call__(self, ctx, las, out, points, epsg, temp, budget, progress=(0.3, 0.95)):
         self.calls.append(
             {"las": las, "out": out, "points": points, "epsg": epsg, "budget": budget, "progress": progress}
         )
         lo, hi = progress
+        temp.mkdir(parents=True, exist_ok=True)
         for f in self.fractions:
+            if self.printed:
+                with open(temp / "tool.out", "a") as log:
+                    log.write(f"Untwine progress ({round(f * 100)}% done)\n")
             ctx.progress(lo + (hi - lo) * f, "Building the COPC (untwine)")
-            time.sleep(0.25)  # past the progress throttle
+            time.sleep(0.25)  # past the progress throttle and a watcher sample
         out.write_bytes(b"copc")
         return "untwine"
 
@@ -317,27 +323,38 @@ def running(rec):
 
 
 def test_the_writers_own_progress_reaches_the_job(tmp_path, monkeypatch):
+    import aio_pipelines.pointcloud as pc
+
+    monkeypatch.setattr(pc, "WATCH_EVERY_S", 0.05)
     src, writer, _ = fake_cloud(tmp_path, monkeypatch, UTM39, writer=FakeWriter(fractions=(0.42,)))
     root = project(tmp_path)
     _, rec = run_job(PointcloudToCopc(), root, {"src": str(src), "epsg": 32639})
     lo, hi = writer.calls[0]["progress"]
     hit = [p for p in running(rec) if p["stepFraction"] == round(lo + (hi - lo) * 0.42, 4)]
     assert hit, running(rec)
-    assert hit[0]["message"] == "Building the viewable cloud"
+    assert hit[0]["message"].startswith("Building the viewable cloud: ")
     for p in running(rec):
         assert "–" not in p.get("message", "") and "—" not in p.get("message", "")
 
 
 def test_without_untwine_the_bar_holds_and_the_text_counts_the_time(tmp_path, monkeypatch):
+    import aio_pipelines.pointcloud as pc
+
+    monkeypatch.setattr(pc, "WATCH_EVERY_S", 0.05)
     src, writer, _ = fake_cloud(
-        tmp_path, monkeypatch, UTM39, untwine=False, writer=FakeWriter(fractions=(0.3, 0.6, 0.9))
+        tmp_path,
+        monkeypatch,
+        UTM39,
+        untwine=False,
+        writer=FakeWriter(fractions=(0.3, 0.6, 0.9), printed=False),
     )
     root = project(tmp_path)
     _, rec = run_job(PointcloudToCopc(), root, {"src": str(src), "epsg": 32639})
     lo, _ = writer.calls[0]["progress"]
     building = [p for p in running(rec) if p.get("message", "").startswith("Building the viewable cloud")]
+    # the writer's own (timer) fractions never move the bar: only real knowledge does
     assert len(building) >= 2 and all(p["stepFraction"] == round(lo, 4) for p in building)
-    assert building[-1]["message"].endswith("so far")
+    assert re.fullmatch(r"Building the viewable cloud: \d+ s, still working", building[-1]["message"])
 
 
 def test_cancel_stops_the_copc_tool(tmp_path, monkeypatch):
@@ -431,3 +448,187 @@ def test_a_cloud_in_another_crs_lands_in_the_project_crs(tmp_path):
     # UTM 39N easting 245700 lies far west of zone 40's central meridian
     assert info["bounds"]["maxx"] < 0
     assert not list((root / "jobs").rglob("source.las"))
+
+
+# ------------------------------------------------------------ the build's honest "still working"
+
+
+class Clock:
+    def __init__(self):
+        self.now = 1000.0
+
+    def __call__(self):
+        return self.now
+
+
+def watch(tmp_path, monkeypatch, stall=None, cpu=None):
+    """A build watch over ``tmp_path/staging`` on a fake clock, no thread (``tick`` by hand)."""
+    import aio_pipelines.pointcloud as pc
+
+    if stall is not None:
+        monkeypatch.setattr(pc, "STALL_S", stall)
+    staging = tmp_path / "staging"
+    (staging / "copc-work").mkdir(parents=True, exist_ok=True)
+    ctx, clock = BareCtx(tmp_path), Clock()
+    w = pc.BuildWatch(
+        ctx, (0.35, 0.99), staging, staging / "copc-work" / "tool.out", clock=clock, cpu=cpu or (lambda: None)
+    )
+    return w, ctx, clock, staging
+
+
+def test_the_build_text_counts_the_time_and_says_still_working_while_files_grow(tmp_path, monkeypatch):
+    w, ctx, clock, staging = watch(tmp_path, monkeypatch)
+    w.tick()
+    assert ctx.seen[-1] == (0.35, "Building the viewable cloud: 0 s, still working")
+    for minute in range(1, 7):
+        clock.now += 60
+        (staging / "copc-work" / f"bucket{minute}").write_bytes(b"x" * minute)
+        w.tick()
+    assert ctx.seen[-1] == (0.35, "Building the viewable cloud: 6 min, still working")
+    clock.now += 3600
+    (staging / "copc-work" / "bucket1").write_bytes(b"y" * 100)
+    w.tick()
+    assert ctx.seen[-1][1] == "Building the viewable cloud: 1 h 06 min, still working"
+    for _, m in ctx.seen:
+        assert "–" not in m and "—" not in m
+
+
+def test_the_build_text_says_no_activity_when_nothing_moves(tmp_path, monkeypatch):
+    w, ctx, clock, staging = watch(tmp_path, monkeypatch, stall=120)
+    w.tick()
+    clock.now += 100
+    w.tick()
+    assert ctx.seen[-1][1] == "Building the viewable cloud: 1 min, still working"
+    clock.now += 740  # 14 min in, nothing written since the start
+    w.tick()
+    assert ctx.seen[-1][1] == "Building the viewable cloud: 14 min, no activity for 14 min"
+    (staging / "cloud.copc.laz").write_bytes(b"copc")  # the writer moves again
+    clock.now += 5
+    w.tick()
+    assert ctx.seen[-1][1] == "Building the viewable cloud: 14 min, still working"
+
+
+def test_child_cpu_time_counts_as_activity(tmp_path, monkeypatch):
+    cpu = iter([1.0, 2.5, 4.0, 4.0, 4.0, 4.0])
+    w, ctx, clock, _ = watch(tmp_path, monkeypatch, stall=60, cpu=lambda: next(cpu))
+    w.tick()
+    for _ in range(3):
+        clock.now += 50
+        w.tick()
+    assert ctx.seen[-1][1].endswith("still working")  # the CPU time kept rising
+    clock.now += 70
+    w.tick()
+    assert ctx.seen[-1][1].endswith("no activity for 2 min")
+
+
+def test_the_bar_follows_only_the_writers_real_percentage_and_never_steps_back(tmp_path, monkeypatch):
+    w, ctx, clock, staging = watch(tmp_path, monkeypatch)
+    for _ in range(5):  # time alone moves nothing
+        clock.now += 600
+        w.tick()
+    assert {f for f, _ in ctx.seen} == {0.35}
+    log = staging / "copc-work" / "tool.out"
+    log.write_text("Untwine progress (41% done)\nUntwine progress (50% done)\n")
+    w.tick()
+    assert ctx.seen[-1][0] == pytest.approx(0.35 + 0.64 * 0.5)
+    log.write_text("Untwine progress (10% done)\n")  # a fresh run's file never pulls the bar back
+    w.tick()
+    assert ctx.seen[-1][0] == pytest.approx(0.35 + 0.64 * 0.5)
+    fractions = [f for f, _ in ctx.seen]
+    assert fractions == sorted(fractions)
+
+
+def watch_threads():
+    from aio_pipelines.pointcloud import WATCH_THREAD
+
+    return [t for t in threading.enumerate() if t.name == WATCH_THREAD and t.is_alive()]
+
+
+@pytest.mark.parametrize("outcome", ["done", "failed", "cancelled"])
+def test_the_watch_runs_during_the_build_and_is_gone_after_it(tmp_path, monkeypatch, outcome):
+    import aio_pipelines.pointcloud as pc
+
+    monkeypatch.setattr(pc, "WATCH_EVERY_S", 0.02)
+    seen = []
+
+    def writer(ctx, las, out, points, epsg, temp, budget, progress=(0.3, 0.95)):
+        temp.mkdir(parents=True, exist_ok=True)
+        for i in range(5):
+            (temp / f"part{i}").write_bytes(b"x" * (i + 1))
+            time.sleep(0.05)
+        seen.append(len(watch_threads()))
+        if outcome == "failed":
+            raise JobError("untwine failed: disk error")
+        if outcome == "cancelled":
+            raise Cancelled()
+        out.write_bytes(b"copc")
+        return "untwine"
+
+    src, _, _ = fake_cloud(tmp_path, monkeypatch, UTM39, writer=writer)
+    root = project(tmp_path)
+    if outcome == "done":
+        _, rec = run_job(PointcloudToCopc(), root, {"src": str(src), "epsg": 32639})
+        texts = [p.get("message", "") for p in running(rec)]
+        assert any(re.fullmatch(r"Building the viewable cloud: \d+ s, still working", t) for t in texts)
+    else:
+        with pytest.raises(JobError if outcome == "failed" else Cancelled):
+            run_job(PointcloudToCopc(), root, {"src": str(src), "epsg": 32639})
+    assert seen == [1]
+    assert watch_threads() == []
+
+
+def test_pointcloud_imports_nothing_from_colmap_io():
+    import ast
+    from pathlib import Path
+
+    import aio_pipelines.pointcloud as pc
+
+    source = Path(pc.__file__).read_text("utf-8")
+    tree = ast.parse(source)
+    for node in ast.walk(tree):
+        if isinstance(node, ast.ImportFrom):
+            names = [node.module or ""] + [f"{node.module or ''}.{a.name}" for a in node.names]
+            assert not any("colmap_io" in n for n in names), ast.dump(node)
+        elif isinstance(node, ast.Import):
+            assert not any("colmap_io" in a.name for a in node.names)
+    assert "colmap_io" not in source
+
+
+def test_without_the_cpu_read_the_watch_falls_back_to_file_activity(tmp_path, monkeypatch):
+    import aio_pipelines.pointcloud as pc
+
+    def broken():
+        raise OSError("no kernel32 here")
+
+    monkeypatch.setattr(pc, "_kernel32", broken)
+    assert pc.children_cpu_seconds() is None
+    w, ctx, clock, staging = watch(tmp_path, monkeypatch, stall=60, cpu=pc.children_cpu_seconds)
+    w.tick()
+    clock.now += 50
+    (staging / "copc-work" / "part").write_bytes(b"x")
+    w.tick()
+    clock.now += 50
+    w.tick()
+    assert ctx.seen[-1][1].endswith("still working")
+    clock.now += 20
+    w.tick()
+    assert ctx.seen[-1][1].endswith("no activity for 1 min")
+
+
+@pytest.mark.skipif(sys.platform != "win32", reason="the CPU read is Windows only")
+def test_a_busy_child_raises_the_cpu_time():
+    from aio_pipelines.pointcloud import children_cpu_seconds
+
+    child = subprocess.Popen(
+        [sys.executable, "-c", "import time\nt = time.time()\nwhile time.time() - t < 1.5: pass"],
+        creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+    )
+    try:
+        time.sleep(0.4)
+        a = children_cpu_seconds()
+        time.sleep(0.4)
+        b = children_cpu_seconds()
+    finally:
+        child.kill()
+        child.wait()
+    assert a is not None and b is not None and b > a
