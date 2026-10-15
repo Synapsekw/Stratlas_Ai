@@ -2,11 +2,15 @@ import { crsOption, fromWgs84, searchCrs, toWgs84, utmEpsgFor } from '@aio/geo';
 import { LocationPicker } from '@aio/maps';
 import { PURPOSE_TYPE, type LibraryClass, type SeverityTemplate, type Vec3 } from '@aio/schema';
 import { Icon, t, useFocusTrap, type IconName } from '@aio/ui';
+import { workspace } from '@aio/workspace';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { addLibraryClasses, listLibrary } from '../classes/store';
+import { coverBytes, coverPalette } from '../library/cover';
+import { CoverPicker } from '../library/CoverPicker';
 import { processing } from '../processing/store';
-import { bridge, jobs } from '../shell';
+import { bridge, jobs, shell } from '../shell';
 import {
+  DEFAULT_COVER,
   defaultTemplateFor,
   PROJECT_TYPES,
   parseCoordinate,
@@ -76,6 +80,7 @@ function Wizard() {
     purpose: 'vertical-asset',
     epsg: 32639,
     severityTemplate: null,
+    cover: DEFAULT_COVER,
   });
   const [crsTouched, setCrsTouched] = useState(false);
   const [sevTouched, setSevTouched] = useState(false);
@@ -234,6 +239,23 @@ function Wizard() {
   const volumetric = type === 'volumetric';
   const surveyBlock = volumetric ? surveyProblem(surveys) : null;
 
+  /** The chosen cover into the project just created; a failure is a notice, never a block. */
+  const writeCover = async () => {
+    const id = workspace.getState().project?.id;
+    let err: string | null;
+    try {
+      const bytes = await coverBytes(form.cover, coverPalette(form.purpose));
+      if (!id || !bytes) return;
+      err = await shell.getState().setThumbnail(id, bytes);
+    } catch (e) {
+      err = e instanceof Error ? e.message : String(e);
+    }
+    if (err)
+      builder.setState({
+        importResult: { items: [], error: `${t('library.cover.failed')} ${err}` },
+      });
+  };
+
   const create = async () => {
     if (Object.keys(problems).length || !origin || surveyBlock) return;
     setBusy(true);
@@ -286,6 +308,7 @@ function Wizard() {
         });
       }
     }
+    await writeCover();
     if (build) {
       // the new project is open on the Scene (`created`): show its build, the job just started
       processing.getState().openDrawer(startedId);
@@ -407,6 +430,23 @@ function Wizard() {
               </div>
             </>
           )}
+          {/* kept mounted on every step: an uploaded picture's preview URL lives as long as the
+              picker does */}
+          <div
+            className="b-field"
+            data-testid="wizard-cover"
+            style={step === 0 ? undefined : { display: 'none' }}
+          >
+            <span>Thumbnail</span>
+            <CoverPicker
+              palette={coverPalette(form.purpose)}
+              value={form.cover}
+              onChange={(cover) => {
+                setForm((f) => ({ ...f, cover }));
+              }}
+              allowNone
+            />
+          </div>
 
           {step === 1 && (
             <>

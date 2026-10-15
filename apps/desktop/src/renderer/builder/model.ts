@@ -8,6 +8,7 @@ import {
   type SeverityTemplate,
   type Vec3,
 } from '@aio/schema';
+import type { CoverChoice } from '../library/cover';
 
 /** The new project wizard's form. */
 export interface WizardForm {
@@ -20,7 +21,12 @@ export interface WizardForm {
   /** Project CRS (E, N, H), null until chosen. */
   origin: Vec3 | null;
   severityTemplate: string | null;
+  /** The cover written into the new project once it exists. */
+  cover: CoverChoice;
 }
+
+/** The wizard starts on a built-in cover, so a new project never shows the blank placeholder. */
+export const DEFAULT_COVER: CoverChoice = { kind: 'builtin', id: 'contours' };
 
 /**
  * The cards of the wizard's type picker. Each writes its id as the manifest's `purpose` and the
