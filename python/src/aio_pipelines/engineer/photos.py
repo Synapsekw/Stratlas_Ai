@@ -23,7 +23,6 @@ from __future__ import annotations
 
 import hashlib
 import math
-import os
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -33,6 +32,7 @@ import numpy as np
 from PIL import Image, ImageOps
 
 from ..photo.exif import _dhash, _laplacian_variance, file_sha1, read_photo
+from ..runtime import replace_over
 
 NEAR_DUPLICATE_BITS = 4
 #: Histogram intersection under which two photos share no colour make-up (same place and light: 0.6+).
@@ -71,7 +71,7 @@ def _write_jpeg(im: Image.Image, path: Path) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     tmp = path.with_name(path.name + ".tmp")
     im.save(tmp, format="JPEG", quality=85)  # no exif argument: nothing of the original's metadata
-    os.replace(tmp, path)
+    replace_over(tmp, path)
 
 
 def ingest_photos(

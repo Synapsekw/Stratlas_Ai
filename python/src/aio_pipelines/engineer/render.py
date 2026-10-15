@@ -8,13 +8,13 @@ with north up.
 from __future__ import annotations
 
 import hashlib
-import os
 from pathlib import Path
 from typing import Any, Literal
 
 import numpy as np
 from PIL import Image, ImageDraw
 
+from ..runtime import replace_over
 from .axis import Axis
 from .members import MemberGroup
 from .sections import Taper
@@ -167,7 +167,7 @@ def write_png(image: Image.Image, path: Path) -> Path:
     path.parent.mkdir(parents=True, exist_ok=True)
     tmp = path.with_name(path.name + ".tmp")
     image.save(tmp, format="PNG")
-    os.replace(tmp, path)
+    replace_over(tmp, path)
     return path
 
 
