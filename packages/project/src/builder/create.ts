@@ -216,10 +216,21 @@ function patchLayers(
         }),
       };
     }
+    // a ground placement, with the transform it goes with when given: one write for all three
+    if ('georef' in patch || 'placement' in patch) {
+      if (l.kind !== 'mesh')
+        throw new Error(`"${l.name}" is not a model; only models take a ground placement.`);
+      return {
+        ...l,
+        ...(patch.transform !== undefined ? { transform: [...patch.transform] } : {}),
+        ...(patch.georef !== undefined ? { georef: patch.georef } : {}),
+        ...(patch.placement !== undefined ? { placement: patch.placement } : {}),
+      };
+    }
     if ('transform' in patch) {
       if (l.kind !== 'mesh')
         throw new Error(`"${l.name}" is not a model; only models take a transform.`);
-      return { ...l, transform: [...patch.transform] };
+      return patch.transform ? { ...l, transform: [...patch.transform] } : l;
     }
     if ('corners' in patch) {
       if (l.kind !== 'raster' || l.format !== 'image')
@@ -254,15 +265,6 @@ function patchLayers(
         next.place = { ...place, pins: [...place.pins].sort((a, b) => a.t - b.t) };
       }
       return next;
-    }
-    if ('georef' in patch || 'placement' in patch) {
-      if (l.kind !== 'mesh')
-        throw new Error(`"${l.name}" is not a model; only models take a ground placement.`);
-      return {
-        ...l,
-        ...(patch.georef !== undefined ? { georef: patch.georef } : {}),
-        ...(patch.placement !== undefined ? { placement: patch.placement } : {}),
-      };
     }
     if (l.kind !== 'video')
       throw new Error(`"${l.name}" is not a video; time offset and lens belong to video layers.`);

@@ -1,5 +1,5 @@
 import { fromWgs84 } from '@aio/geo';
-import { parseManifest, type ProjectManifest } from '@aio/schema';
+import { Georef, parseManifest, type ProjectManifest } from '@aio/schema';
 import { copyFile, mkdir, mkdtemp, open, readFile, readdir, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -1359,6 +1359,28 @@ describe('GLB georeference on import (engineering model 5.6)', () => {
     );
     expect(meshes).toHaveLength(2);
     expect(meshes[1]).toEqual(meshes[0]);
+  });
+
+  it('one write carries the transform, the georeference and the placement (Place model)', async () => {
+    const root = await project();
+    await writeFile(join(dir, 'bad.glb'), glbWithExtras({ aioGeoref: { schema: 'aio.georef/1' } }));
+    await importRawFiles(root, [join(dir, 'bad.glb')], deps());
+    const id = (await readManifest(root)).layers.find((l) => l.kind === 'mesh')?.id ?? '';
+    const moved = [...IDENTITY];
+    moved[12] = 7;
+    const r = await updateLayers(root, [id], {
+      transform: moved,
+      georef: Georef.parse(georef),
+      placement: 'placed',
+    });
+    const layer = r.manifest.layers.find((l) => l.id === id);
+    if (layer?.kind !== 'mesh') throw new Error('no mesh layer');
+    expect(layer.transform).toEqual(moved);
+    expect(layer.georef).toEqual(georef);
+    expect(layer.placement).toBe('placed');
+    // what is on disk is that one write
+    const saved = (await readManifest(root)).layers.find((l) => l.id === id);
+    expect(saved).toEqual(layer);
   });
 
   it('refuses a ground placement on a layer that is not a model', async () => {
