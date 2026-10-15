@@ -1,0 +1,123 @@
+import { emptyOrientation, type ProjectManifest } from '@aio/schema';
+import { describe, expect, it, vi } from 'vitest';
+import {
+  boundsOf,
+  groundAt,
+  knowsWhere,
+  layerBounds,
+  padBox,
+  unionBox,
+  type BoundsDeps,
+  type Box,
+} from './layerBounds';
+
+const manifest = {
+  layers: [
+    { kind: 'mesh', id: 'm', name: 'M', visible: true, src: { path: 'm.glb' }, transform: [] },
+    {
+      kind: 'photos',
+      id: 'ph',
+      name: 'P',
+      visible: true,
+      items: [
+        { id: 'a', src: { path: 'a' }, pos: [10, 1, 10] },
+        { id: 'b', src: { path: 'b' }, pos: [12, 3, 14] },
+      ],
+    },
+    {
+      kind: 'raster',
+      id: 'img',
+      name: 'I',
+      visible: true,
+      src: { path: 'i.png' },
+      role: 'plan',
+      format: 'image',
+      corners: { tl: [0, 0, 0], tr: [4, 0, 0], bl: [0, 0, 2] },
+    },
+    {
+      kind: 'raster',
+      id: 'dsm',
+      name: 'D',
+      visible: true,
+      src: { path: 'd.tif' },
+      role: 'dsm',
+      format: 'cog',
+    },
+    {
+      kind: 'panoramas',
+      id: 'pn',
+      name: 'N',
+      visible: true,
+      items: [{ id: 'x', src: { path: 'x' }, pos: [5, 0, 5], headingDeg: 0 }],
+    },
+    { kind: 'basemap', id: 'bm', name: 'B', visible: true, pack: 'p', style: 'dark' },
+  ],
+} as unknown as ProjectManifest;
+
+const deps = (over: Partial<BoundsDeps> = {}): BoundsDeps => ({
+  manifest,
+  orientation: null,
+  sceneBox: (id) => (id === 'm' ? { min: [-1, 0, -1], max: [1, 2, 1] } : null),
+  fileExtent: vi.fn((id: string): Promise<Box | null> =>
+    Promise.resolve(id === 'dsm' ? { min: [-50, 0, -50], max: [50, 9, 50] } : null),
+  ),
+  rayDown: () => 4,
+  ...over,
+});
+
+describe('layerBounds', () => {
+  it('reads models from the scene, photos from corrected positions, images from corners', async () => {
+    expect(await layerBounds('m', deps())).toEqual({ min: [-1, 0, -1], max: [1, 2, 1] });
+    expect(await layerBounds('ph', deps())).toEqual({ min: [10, 1, 10], max: [12, 3, 14] });
+    const o = {
+      ...emptyOrientation(),
+      photos: {
+        ph: {
+          a: {
+            yawDeg: 0,
+            pitchDeg: 0,
+            rollDeg: 0,
+            offsetM: [-10, 0, -10] as [number, number, number],
+          },
+        },
+      },
+    };
+    expect(await layerBounds('ph', deps({ orientation: o }))).toEqual({
+      min: [0, 1, 0],
+      max: [12, 3, 14],
+    });
+    expect(await layerBounds('img', deps())).toEqual({ min: [0, 0, 0], max: [4, 0, 2] });
+    expect(await layerBounds('pn', deps())).toEqual({ min: [5, 0, 5], max: [5, 0, 5] });
+  });
+
+  it('asks main for COGs, and for a model the scene has not drawn', async () => {
+    const fileExtent = vi.fn((id: string): Promise<Box | null> =>
+      Promise.resolve(id === 'dsm' ? { min: [-50, 0, -50], max: [50, 9, 50] } : null),
+    );
+    const d = deps({ sceneBox: () => null, fileExtent });
+    expect(await layerBounds('dsm', d)).toEqual({ min: [-50, 0, -50], max: [50, 9, 50] });
+    await layerBounds('m', d);
+    expect(fileExtent).toHaveBeenCalledWith('m');
+    expect(await layerBounds('bm', d)).toBeNull();
+  });
+
+  it('frames the union of several datasets and pads a single point', async () => {
+    expect(await boundsOf(['m', 'pn'], deps())).toEqual({ min: [-1, 0, -1], max: [5, 2, 5] });
+    expect(unionBox([null, null])).toBeNull();
+    expect(padBox({ min: [5, 0, 5], max: [5, 0, 5] })).toEqual({
+      min: [0, -5, 0],
+      max: [10, 5, 10],
+    });
+  });
+
+  it('knows which kinds can say where they lie without reading files', () => {
+    const ls = manifest.layers;
+    expect(ls.map((l) => knowsWhere(l))).toEqual([true, true, true, true, true, false]);
+  });
+
+  it('takes the ground from a ray only where a DSM covers the point', async () => {
+    expect(await groundAt(0, 0, deps())).toBe(4);
+    expect(await groundAt(500, 0, deps())).toBeNull();
+    expect(await groundAt(0, 0, deps({ rayDown: () => null }))).toBeNull();
+  });
+});
