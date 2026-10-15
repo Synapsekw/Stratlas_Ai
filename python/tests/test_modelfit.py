@@ -141,8 +141,20 @@ def test_tanks_boxes_and_pipes_fit_within_tolerance_and_noise_gives_nothing(tmp_
             "points", "diameter", "footprint", "baseY", "center",
         }  # fmt: skip
     m = json.loads((tmp_path / "models" / "scan-scan.procmodel.json").read_text("utf-8"))
-    assert m["schema"] == "aio.procmodel/1"
+    assert m["schema"] == "aio.procmodel/2"
     assert m["sources"] == [{"kind": "pointcloud", "ref": "scan"}]
+
+
+def test_new_model_is_v2(tmp_path):
+    rng = np.random.default_rng(2)
+    project(tmp_path, np.vstack([_ground(rng), _tank(rng)]))
+    run_job(ModelFitCloud(), tmp_path, {"layer": "scan", "kinds": ["cylinder"]})
+    m = json.loads((tmp_path / "models" / "scan-scan.procmodel.json").read_text("utf-8"))
+    assert m["schema"] == "aio.procmodel/2"
+    assert m["materials"] == []
+    assert m["assemblies"] == []
+    assert [p["kind"] for p in m["parts"]] == ["cylinder"]
+    assert not (tmp_path / "models" / "scan-scan.procmodel.json.bak").exists()
 
 
 def test_a_half_seen_tank_still_fits(tmp_path):
@@ -180,6 +192,68 @@ def test_kinds_limit_the_output_and_parts_append_to_a_model(tmp_path):
     assert [p["kind"] for p in parts] == ["sphere", "cylinder"]
     assert parts[0] == existing["parts"][0]
     assert (tmp_path / "models" / "site.procmodel.json.bak").is_file()
+    # the /1 file is upgraded the way the app's migrator does it; the .bak keeps the /1 text
+    m = json.loads((tmp_path / "models" / "site.procmodel.json").read_text("utf-8"))
+    assert m["schema"] == "aio.procmodel/2"
+    assert m["materials"] == [] and m["assemblies"] == []
+    bak = json.loads((tmp_path / "models" / "site.procmodel.json.bak").read_text("utf-8"))
+    assert bak == existing
+
+
+SHAFT = {
+    "kind": "shaft",
+    "id": "shaft-1",
+    "name": "Shaft",
+    "description": "",
+    "category": "shaft",
+    "status": "accepted",
+    "origin": {"by": "manual"},
+    "quality": {},
+    "sources": [],
+    "material": "brick",
+    "params": {"base": [0, 0, 0], "openTop": False, "profile": [{"y": 0, "r": 3}, {"y": 30, "r": 2}]},
+}
+
+
+def test_commit_appends_to_v2_model(tmp_path):
+    rng = np.random.default_rng(3)
+    project(tmp_path, scene(rng))
+    (tmp_path / "models").mkdir()
+    brick = {"id": "brick", "name": "Brick", "baseColor": [0.5, 0.3, 0.2, 1], "metallic": 0, "roughness": 0.9}
+    existing = {
+        "schema": "aio.procmodel/2",
+        "id": "stack",
+        "name": "Stack",
+        "createdAt": "2026-10-06T08:00:00Z",
+        "updatedAt": "2026-10-06T08:00:00Z",
+        "family": "chimney",
+        "run": {"id": "run-1", "detail": "standard"},
+        "parts": [],
+        "materials": [brick],
+        "assemblies": [SHAFT],
+    }
+    (tmp_path / "models" / "stack.procmodel.json").write_text(json.dumps(existing), "utf-8")
+    run_job(ModelFitCloud(), tmp_path, {"layer": "scan", "kinds": ["cylinder"], "model": "stack"})
+    m = json.loads((tmp_path / "models" / "stack.procmodel.json").read_text("utf-8"))
+    assert m["schema"] == "aio.procmodel/2"
+    assert m["assemblies"] == [SHAFT]
+    assert m["materials"] == [brick]
+    assert m["family"] == "chimney" and m["run"] == {"id": "run-1", "detail": "standard"}
+    assert [p["kind"] for p in m["parts"]] == ["cylinder"]
+    assert m["parts"][0]["id"] != "shaft-1"
+    assert (tmp_path / "models" / "stack.procmodel.json.bak").is_file()
+
+
+def test_commit_refuses_a_newer_model_untouched(tmp_path):
+    rng = np.random.default_rng(3)
+    project(tmp_path, scene(rng))
+    (tmp_path / "models").mkdir()
+    text = json.dumps({"schema": "aio.procmodel/3", "id": "next", "parts": []})
+    (tmp_path / "models" / "next.procmodel.json").write_text(text, "utf-8")
+    with pytest.raises(JobError, match="newer version"):
+        run_job(ModelFitCloud(), tmp_path, {"layer": "scan", "kinds": ["cylinder"], "model": "next"})
+    assert (tmp_path / "models" / "next.procmodel.json").read_text("utf-8") == text
+    assert not (tmp_path / "models" / "next.procmodel.json.bak").exists()
 
 
 def test_resume_with_a_changed_cloud_is_refused(tmp_path):

@@ -1,14 +1,18 @@
 import {
   PROCMODEL_SCHEMA,
   ProcModel,
+  readVersioned,
+  type Assembly,
   type PartStatus,
   type ProcModelSummary,
   type ProcPart,
   type Vec2,
+  type VersionedRead,
 } from '@aio/schema';
 
 /**
- * Helpers for procedural models (`aio.procmodel/1`) beyond the zod schema: building, editing and
+ * Helpers for procedural models (`aio.procmodel/2`, older `/1` files read through
+ * the migrator) beyond the zod schema: building, editing and
  * checking a model the way the Model builder and the agent tools do. Every function returns a new
  * model; nothing is changed in place.
  */
@@ -57,6 +61,43 @@ export function setPartStatus(
     updatedAt: now,
     parts: m.parts.map((p) => (want === null || want.has(p.id) ? { ...p, status } : p)),
   };
+}
+
+/** Set the status of some assemblies (by id) or all of them, and stamp the update. */
+export function setAssemblyStatus(
+  m: ProcModel,
+  ids: readonly string[] | 'all',
+  status: Assembly['status'],
+  now: string,
+): ProcModel {
+  const want = ids === 'all' ? null : new Set(ids);
+  return {
+    ...m,
+    updatedAt: now,
+    assemblies: m.assemblies.map((a) => (want === null || want.has(a.id) ? { ...a, status } : a)),
+  };
+}
+
+/** An assembly found by id, tag or name (case-insensitive for tags and names). */
+export function findAssembly(m: ProcModel, key: string): Assembly | undefined {
+  const k = key.trim().toLowerCase();
+  return (
+    m.assemblies.find((a) => a.id === key) ??
+    m.assemblies.find((a) => a.tag?.toLowerCase() === k) ??
+    m.assemblies.find((a) => a.name.toLowerCase() === k)
+  );
+}
+
+/** `ringPlatform` to "Ring platform". */
+function kindLabel(kind: string): string {
+  const words = kind.replace(/([A-Z])/g, ' $1').toLowerCase();
+  return words.charAt(0).toUpperCase() + words.slice(1);
+}
+
+/** 'Shaft "Main shaft" (S-1), accepted'. */
+export function assemblySummary(a: Assembly): string {
+  const tag = a.tag ? ` (${a.tag})` : '';
+  return `${kindLabel(a.kind)} "${a.name}"${tag}, ${a.status}`;
 }
 
 function sameOrigin(a: ProcPart, b: ProcPart): boolean {
@@ -353,19 +394,38 @@ function partProblems(p: ProcPart): string[] {
 }
 
 /**
- * What a person should fix before building: an invalid file, a crossed or empty footprint, a
- * pipe without length, a part far off site, a tag on two parts. Empty when the model is good.
+ * A model file read the way every reader does: an older `aio.procmodel/1` is migrated to the
+ * current `/2` on a copy (`migratedFrom: 1`), a newer one is refused untouched with the update
+ * message, anything else is validated against the schema.
+ */
+export function readProcModel(
+  raw: unknown,
+  o: { appName?: string; what?: string } = {},
+): VersionedRead<ProcModel> {
+  return readVersioned(raw, { family: 'aio.procmodel', schema: ProcModel, ...o });
+}
+
+/**
+ * What a person should fix before building: an invalid file (or one saved by a newer version), a
+ * crossed or empty footprint, a pipe without length, a part far off site, a tag on two parts.
+ * Empty when the model is good. An older `/1` file is checked after migration.
  */
 export function checkProcModel(raw: unknown): ModelProblem[] {
-  const parsed = ProcModel.safeParse(raw);
-  if (!parsed.success) {
-    const first = parsed.error.issues[0];
-    const where = first?.path.length ? first.path.join('.') : 'the top level';
-    return [
-      { message: `The model file is not valid at ${where}: ${first?.message ?? 'unknown'}.` },
-    ];
+  let issue: { path: PropertyKey[]; message: string } | undefined;
+  const capturing = {
+    safeParse: (v: unknown) => {
+      const r = ProcModel.safeParse(v);
+      if (!r.success) issue = r.error.issues[0];
+      return r;
+    },
+  };
+  const parsed = readVersioned(raw, { family: 'aio.procmodel', schema: capturing });
+  if (!parsed.ok) {
+    if (parsed.reason !== 'invalid' || !issue) return [{ message: parsed.error }];
+    const where = issue.path.length ? issue.path.map(String).join('.') : 'the top level';
+    return [{ message: `The model file is not valid at ${where}: ${issue.message}.` }];
   }
-  const m = parsed.data;
+  const m = parsed.value;
   const out: ModelProblem[] = [];
   for (const p of m.parts) {
     for (const what of partProblems(p))

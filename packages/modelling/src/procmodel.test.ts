@@ -3,14 +3,19 @@ import { describe, expect, it } from 'vitest';
 import {
   addParts,
   applyDimension,
+  assemblySummary,
   checkProcModel,
+  findAssembly,
   newProcModel,
   partDimensions,
   partSummary,
+  readProcModel,
+  setAssemblyStatus,
   setPartStatus,
   summarise,
   updatePart,
 } from './procmodel';
+import { shaft } from './engineer/builders/testFixtures';
 
 const NOW = '2026-10-06T08:00:00Z';
 const LATER = '2026-10-06T09:00:00Z';
@@ -170,5 +175,65 @@ describe('checkProcModel', () => {
   it('reads a file that does not match the schema with a readable message', () => {
     const problems = checkProcModel({ schema: 'aio.procmodel/1', id: 'x', parts: 'no' });
     expect(problems[0]?.message).toMatch(/^The model file is not valid at /);
+  });
+});
+
+describe('procmodel versions and assemblies', () => {
+  const v1 = {
+    schema: 'aio.procmodel/1',
+    id: 'site',
+    name: 'Site',
+    createdAt: NOW,
+    updatedAt: NOW,
+    parts: [tank, building],
+  };
+
+  it('checks a /1 file without problems, and reads it migrated to /2', () => {
+    expect(checkProcModel(v1)).toEqual([]);
+    const r = readProcModel(v1);
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    expect(r.migratedFrom).toBe(1);
+    expect(r.value).toMatchObject({ schema: 'aio.procmodel/2', materials: [], assemblies: [] });
+    expect(r.value.parts).toEqual([tank, building]);
+    expect(v1.schema).toBe('aio.procmodel/1');
+  });
+
+  it('reads a /2 file as it is and refuses a newer one untouched', () => {
+    const r = readProcModel(model());
+    expect(r).toMatchObject({ ok: true, migratedFrom: null });
+    const newer = readProcModel({ ...v1, schema: 'aio.procmodel/3' }, { appName: 'Quadrion AI' });
+    expect(newer).toMatchObject({ ok: false, reason: 'newer' });
+    expect(!newer.ok && newer.error).toMatch(/saved by a newer version of Quadrion AI/);
+    expect(checkProcModel({ ...v1, schema: 'aio.procmodel/3' })[0]?.message).toMatch(
+      /newer version/,
+    );
+  });
+
+  it('sets the status of assemblies, finds one and sums it up', () => {
+    const base = {
+      ...model([]),
+      assemblies: [
+        shaft('shaft-1', [
+          { y: 0, r: 4 },
+          { y: 60, r: 3 },
+        ]),
+        { ...shaft('shaft-2', [{ y: 0, r: 2 }]), tag: 'S-2', name: 'Second shaft' },
+      ],
+    };
+    const one = setAssemblyStatus(base, ['shaft-1'], 'accepted', LATER);
+    expect(one.assemblies.map((a) => a.status)).toEqual(['accepted', 'draft']);
+    expect(one.updatedAt).toBe(LATER);
+    expect(base.assemblies[0]?.status).toBe('draft');
+    const all = setAssemblyStatus(base, 'all', 'rejected', LATER);
+    expect(all.assemblies.map((a) => a.status)).toEqual(['rejected', 'rejected']);
+    expect(findAssembly(base, 'shaft-2')?.id).toBe('shaft-2');
+    expect(findAssembly(base, 's-2')?.id).toBe('shaft-2');
+    expect(findAssembly(base, 'second SHAFT')?.id).toBe('shaft-2');
+    expect(findAssembly(base, 'nothing')).toBeUndefined();
+    const first = base.assemblies[0];
+    expect(first && assemblySummary(first)).toBe('Shaft "shaft-1", draft');
+    const second = base.assemblies[1];
+    expect(second && assemblySummary(second)).toBe('Shaft "Second shaft" (S-2), draft');
   });
 });

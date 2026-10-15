@@ -229,6 +229,123 @@ describe('model builder IPC', () => {
     });
   });
 
+  it('upgrades a /1 file on save and keeps parts', async () => {
+    const v1: Record<string, unknown> = { ...model, schema: 'aio.procmodel/1' };
+    delete v1.materials;
+    delete v1.assemblies;
+    const v1Text = `${JSON.stringify(v1, null, 2)}\n`;
+    await mkdir(join(root, 'models'));
+    const file = join(root, 'models', 'plant.procmodel.json');
+    await writeFile(file, v1Text);
+    const r = ipc();
+    expect(await r.call('model:list', { projectId: 'site' })).toMatchObject({
+      models: [{ id: 'plant', parts: 2, accepted: 1 }],
+    });
+    const read = await r.call('model:read', { projectId: 'site', id: 'plant' });
+    if (!read.ok) throw new Error(read.error);
+    expect(read.model.schema).toBe('aio.procmodel/2');
+    expect(read.model.parts).toEqual(model.parts);
+    // the file itself is not touched by reading
+    expect(await readFile(file, 'utf8')).toBe(v1Text);
+    expect(await r.call('model:write', { projectId: 'site', model: read.model })).toEqual({
+      ok: true,
+    });
+    const saved = ProcModel.parse(JSON.parse(await readFile(file, 'utf8')));
+    expect(saved.schema).toBe('aio.procmodel/2');
+    expect(saved.parts.map((p) => [p.id, p.status])).toEqual([
+      ['p1', 'accepted'],
+      ['p2', 'draft'],
+    ]);
+    expect(await readFile(`${file}.bak`, 'utf8')).toBe(v1Text);
+    // a /1 file builds as before
+    await writeFile(file, v1Text);
+    expect(await r.call('model:build', { projectId: 'site', id: 'plant' })).toEqual({
+      ok: true,
+      layer: 'model-plant',
+      glb: 'models/plant.glb',
+    });
+  });
+
+  it('refuses a /3 file with the newer-version message', async () => {
+    const text = JSON.stringify({ ...model, schema: 'aio.procmodel/3' });
+    await mkdir(join(root, 'models'));
+    const file = join(root, 'models', 'plant.procmodel.json');
+    await writeFile(file, text);
+    const r = ipc();
+    const newer =
+      /^models\/plant\.procmodel\.json was saved by a newer version of Quadrion AI \(aio\.procmodel\/3\)\. Update the app to open it\./;
+    const read = await r.call('model:read', { projectId: 'site', id: 'plant' });
+    expect(read.ok).toBe(false);
+    expect(!read.ok && read.error).toMatch(newer);
+    const built = await r.call('model:build', { projectId: 'site', id: 'plant' });
+    expect(!built.ok && built.error).toMatch(newer);
+    expect(await r.call('model:list', { projectId: 'site' })).toMatchObject({ models: [] });
+    expect(await readFile(file, 'utf8')).toBe(text);
+    expect(existsSync(join(root, 'models', 'plant.glb'))).toBe(false);
+  });
+
+  it('builds an engineering model to a GLB with one node per accepted assembly', async () => {
+    const shaft = (id: string, status: 'draft' | 'accepted' | 'rejected', tag?: string) => ({
+      kind: 'shaft',
+      id,
+      name: id,
+      description: '',
+      category: 'shaft',
+      status,
+      origin: { by: 'manual' },
+      quality: {},
+      sources: [],
+      ...(tag ? { tag } : {}),
+      params: {
+        base: [40 * Number(id.slice(-1)), 0, 0],
+        openTop: false,
+        profile: [
+          { y: 0, r: 3 },
+          { y: 30, r: 2 },
+        ],
+      },
+    });
+    const eng = ProcModel.parse({
+      ...model,
+      assemblies: [
+        shaft('shaft-1', 'accepted', 'CH-1'),
+        shaft('shaft-2', 'accepted'),
+        shaft('shaft-3', 'draft'),
+        shaft('shaft-4', 'rejected'),
+      ],
+    });
+    const r = ipc();
+    await r.call('model:write', { projectId: 'site', model: eng });
+    expect(await r.call('model:build', { projectId: 'site', id: 'plant' })).toEqual({
+      ok: true,
+      layer: 'model-plant',
+      glb: 'models/plant.glb',
+    });
+    const glb = new Uint8Array(await readFile(join(root, 'models', 'plant.glb')));
+    const names = (readGlb(glb).json.nodes as { name: string }[]).map((n) => n.name);
+    // the accepted assemblies, then the accepted part, under the model root
+    expect(names.filter((n) => n.startsWith('shaft-'))).toEqual(['shaft-1', 'shaft-2']);
+    expect(names).toContain('T-101');
+    expect(names).toContain('plant');
+    const m = await readManifestFile(root);
+    expect(m.layers[0]).toMatchObject({
+      id: 'model-plant',
+      tags: [
+        { node: 'shaft-1', tag: 'CH-1' },
+        { node: 'T-101', tag: 'T-101', area: 'tank' },
+      ],
+    });
+    // the draft preview adds the draft assembly, never the rejected one
+    await r.call('model:build', { projectId: 'site', id: 'plant', draft: true });
+    const draft = new Uint8Array(await readFile(join(root, 'models', 'draft-plant.glb')));
+    const draftNames = (readGlb(draft).json.nodes as { name: string }[]).map((n) => n.name);
+    expect(draftNames.filter((n) => n.startsWith('shaft-'))).toEqual([
+      'shaft-1',
+      'shaft-2',
+      'shaft-3',
+    ]);
+  });
+
   it('keeps packages read-only and reads models from them', async () => {
     const entries = new Map<string, unknown>([
       ['models/plant.procmodel.json', {}],
