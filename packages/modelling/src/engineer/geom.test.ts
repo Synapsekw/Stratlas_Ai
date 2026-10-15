@@ -569,6 +569,52 @@ describe('geom kernel input checks and robustness', () => {
     }).toThrow(/inside the outline/);
   });
 
+  it('a thin concentric wall (1 percent) is accepted and closed; a crossing hole still throws', () => {
+    const s = new MeshSink(() => 16);
+    s.annulusTube('steel', {
+      centre: [0, 0, 0],
+      axis: [0, 1, 0],
+      rOuter: 0.5,
+      rInner: 0.495,
+      y0: 0,
+      y1: 10,
+    });
+    const p = only(s);
+    expect(solidOk(p)).toBe(true);
+    const exact = 10 * (ngon(0.5, 16) - ngon(0.495, 16));
+    expect(volume(p) / exact).toBeCloseTo(1, 6);
+    // the same thin ring as a deck hole and as a disc hole
+    const t = new MeshSink(() => 16);
+    t.slab('deck', { y: 0, outline: { r: 0.5 }, thickness: 0.1, holes: [{ c: [0, 0], r: 0.495 }] });
+    expect(solidOk(only(t))).toBe(true);
+    expect(() => {
+      new MeshSink(() => 16).disc('d', {
+        centre: [0, 0, 0],
+        normal: [0, 1, 0],
+        r: 0.5,
+        holes: [{ c: [0, 0], r: 0.495 }],
+      });
+    }).not.toThrow();
+    // off-centre by more than the wall: the hole crosses the outline
+    expect(() => {
+      new MeshSink(() => 16).slab('deck', {
+        y: 0,
+        outline: { r: 0.5 },
+        thickness: 0.1,
+        holes: [{ c: [0.01, 0], r: 0.495 }],
+      });
+    }).toThrow(/hole 1 touches or crosses the outline/);
+    // larger than the outline polygon, though its centre is inside
+    expect(() => {
+      new MeshSink(() => 16).disc('d', {
+        centre: [0, 0, 0],
+        normal: [0, 1, 0],
+        r: 0.5,
+        holes: [{ c: [0, 0], r: 0.5 }],
+      });
+    }).toThrow(/hole 1 touches or crosses the outline/);
+  });
+
   it('touching or overlapping holes are refused', () => {
     for (const c of [1, 0.5]) {
       expect(() => {

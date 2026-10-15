@@ -146,24 +146,38 @@ function segDist(p: V2, a: V2, b: V2): number {
 
 /**
  * Circular holes must sit inside the outline polygon with clearance and keep clear of each other:
- * a hole touching the edge or another hole cannot be meshed as a closed solid.
+ * a hole touching the edge or another hole cannot be meshed as a closed solid. A hole is tested
+ * as the polygon actually built (`segments` points), against the outline polygon as built, so a
+ * thin concentric wall (a 5 mm flue wall) passes while anything touching or crossing does not.
  */
-function checkHoles(outline: readonly V2[], holes: readonly Hole[]): void {
+function checkHoles(
+  outline: readonly V2[],
+  holes: readonly Hole[],
+  segmentsFor: (r: number) => number,
+): void {
   const o0 = nth(outline, 0);
   const size = Math.max(
     ...outline.map((q) => Math.max(Math.abs(q[0] - o0[0]), Math.abs(q[1] - o0[1]))),
   );
-  const gap = 1e-6 * Math.max(size, 1);
+  const gap = 1e-9 * Math.max(size, 1);
+  const edgesOf = (r: readonly V2[]) => r.map((q, k): [V2, V2] => [q, nth(r, (k + 1) % r.length)]);
+  const outlineEdges = edgesOf(outline);
   holes.forEach((h, i) => {
     const name = `hole ${String(i + 1)}`;
     need(finite(h.c[0], h.c[1]), `${name} centre must be finite`);
     needPos(h.r, `${name} radius`);
     needCount(h.segments, `${name} segments`);
     need(insideRing(h.c, outline), `${name} must lie inside the outline`);
-    for (let k = 0; k < outline.length; k++) {
-      const d = segDist(h.c, nth(outline, k), nth(outline, (k + 1) % outline.length));
-      need(d > h.r + gap, `${name} touches or crosses the outline`);
-    }
+    const ring = circle2(h.c, h.r, h.segments ?? segmentsFor(h.r));
+    const clear =
+      ring.every(
+        (q) => insideRing(q, outline) && outlineEdges.every(([a, b]) => segDist(q, a, b) > gap),
+      ) &&
+      outline.every(
+        (q) => !insideRing(q, ring) && edgesOf(ring).every(([a, b]) => segDist(q, a, b) > gap),
+      ) &&
+      edgesOf(ring).every(([a, b]) => outlineEdges.every(([c, d]) => !crosses(a, b, c, d)));
+    need(clear, `${name} touches or crosses the outline`);
     holes.slice(0, i).forEach((o, j) => {
       const d = Math.hypot(h.c[0] - o.c[0], h.c[1] - o.c[1]);
       need(d > h.r + o.r + gap, `holes ${String(j + 1)} and ${String(i + 1)} touch or overlap`);
@@ -658,7 +672,7 @@ export class MeshSink {
     const holes = o.holes ?? [];
     const n = o.segments ?? this.segmentsFor(o.r);
     const outer = circle2([0, 0], o.r, n);
-    checkHoles(outer, holes);
+    checkHoles(outer, holes, this.segmentsFor);
     const rings = holes.map((h) => circle2(h.c, h.r, h.segments ?? this.segmentsFor(h.r)));
     const only = holes.length === 1 ? holes[0] : undefined;
     const inner = rings[0];
@@ -718,7 +732,7 @@ export class MeshSink {
           o.outline.r,
           o.outline.segments ?? this.segmentsFor(o.outline.r),
         );
-    checkHoles(outer, o.holes);
+    checkHoles(outer, o.holes, this.segmentsFor);
     const rings = o.holes.map((h) => circle2(h.c, h.r, h.segments ?? this.segmentsFor(h.r)));
     const all = [outer, ...rings].flat();
     const tris = triangulateWithHoles(outer, rings);
