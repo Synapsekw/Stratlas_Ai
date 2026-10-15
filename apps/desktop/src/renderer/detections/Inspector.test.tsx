@@ -8,7 +8,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const h = vi.hoisted(() => ({
   finish: null as null | ((cls: { id: string }) => void),
-  createResult: Promise.resolve(null),
+  createResult: Promise.resolve<string | null>(null),
 }));
 
 vi.mock('@aio/annotate', () => ({
