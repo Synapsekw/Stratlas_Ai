@@ -50,3 +50,6 @@ export * from './onlineImagery';
 export * from './removal';
 // The ODM photogrammetry engine: install status, GPU setting, install record (ADR 0012)
 export * from './odm';
+// Engineering model: aio.georef/1 and the older embedded georeference adapter
+export * from './georef';
+export * from './georefCompat';

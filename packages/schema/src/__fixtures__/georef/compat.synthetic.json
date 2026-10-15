@@ -1,0 +1,13 @@
+{
+  "schema": "chimney.georeference/1",
+  "crs": { "epsg": 32633, "name": "WGS 84 / UTM zone 33N" },
+  "origin_easting_northing_height_m": [400000.125, 5600000.25, 12.5],
+  "model_anchor": [0, 0, 0],
+  "model_axes": { "x": "grid east", "y": "up", "z": "grid south" },
+  "units": "metres",
+  "model_to_source_enh_column_major": [
+    1, 0, 0, 0, 0, 0, 1, 0, 0, -1, 0, 0, 400000.125, 5600000.25, 12.5, 1
+  ],
+  "heading_about_up_deg": 0,
+  "vertical_basis": "Source heights kept as supplied; datum not stated."
+}

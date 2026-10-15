@@ -1,0 +1,77 @@
+import { z } from 'zod';
+import { GEOREF_SCHEMA, Georef } from './georef';
+
+const Finite = z.number();
+
+/** The older embedded georeference structure (free-text keys pass through, known keys are typed). */
+export const CompatGeoreference = z.looseObject({
+  schema: z.literal('chimney.georeference/1'),
+  crs: z.looseObject({ epsg: z.number().int().positive() }),
+  origin_easting_northing_height_m: z.tuple([Finite, Finite, Finite]),
+  model_axes: z.looseObject({ x: z.string(), y: z.string(), z: z.string() }),
+  units: z.string(),
+  model_to_source_enh_column_major: z.array(Finite).length(16),
+  heading_about_up_deg: Finite.optional(),
+});
+
+export type FromCompatResult = { ok: true; georef: Georef } | { ok: false; reason: string };
+
+/** Map the older structure to `aio.georef/1`, refusing anything but east, up, south axes. */
+export function fromCompatGeoreference(raw: unknown): FromCompatResult {
+  const parsed = CompatGeoreference.safeParse(raw);
+  if (!parsed.success) {
+    const issue = parsed.error.issues[0];
+    return {
+      ok: false,
+      reason:
+        `Not a usable georeference: ${issue?.path.join('.') ?? ''} ${issue?.message ?? ''}`.trim(),
+    };
+  }
+  const c = parsed.data;
+  const ax = c.model_axes;
+  const norm = (s: string): string => s.trim().toLowerCase();
+  if (norm(ax.x) !== 'grid east' || norm(ax.y) !== 'up' || norm(ax.z) !== 'grid south') {
+    return { ok: false, reason: 'The model axes are not east, up, south.' };
+  }
+  if (!['metres', 'meters', 'm'].includes(norm(c.units))) {
+    return { ok: false, reason: 'The units are not metres.' };
+  }
+  const g = Georef.safeParse({
+    schema: GEOREF_SCHEMA,
+    crs: { epsg: c.crs.epsg },
+    anchor: c.origin_easting_northing_height_m,
+    axes: 'x-east,y-up,z-south',
+    units: 'm',
+    modelToCrs: c.model_to_source_enh_column_major,
+    heading: { deg: c.heading_about_up_deg ?? 0, status: 'assumed-grid' },
+    scale: { factor: 1, status: 'provisional' },
+    horizontal: { status: 'from-source' },
+    vertical: { datum: 'unknown', status: 'unknown' },
+    provenance: { by: 'compat', source: 'asset.extras.georeference' },
+  });
+  return g.success
+    ? { ok: true, georef: g.data }
+    : { ok: false, reason: g.error.issues[0]?.message ?? 'Invalid georeference.' };
+}
+
+export type GlbGeoref =
+  | { kind: 'aio' | 'compat'; georef: Georef }
+  | { kind: 'invalid'; reason: string }
+  | { kind: 'absent' };
+
+/** Read a GLB's `asset.extras`: our record first, then the older structure, else absent. */
+export function readGlbGeoref(assetExtras: unknown): GlbGeoref {
+  if (typeof assetExtras !== 'object' || assetExtras === null) return { kind: 'absent' };
+  const extras = assetExtras as Record<string, unknown>;
+  if (extras.aioGeoref !== undefined) {
+    const p = Georef.safeParse(extras.aioGeoref);
+    return p.success
+      ? { kind: 'aio', georef: p.data }
+      : { kind: 'invalid', reason: p.error.issues[0]?.message ?? 'Invalid georeference.' };
+  }
+  if (extras.georeference !== undefined) {
+    const r = fromCompatGeoreference(extras.georeference);
+    return r.ok ? { kind: 'compat', georef: r.georef } : { kind: 'invalid', reason: r.reason };
+  }
+  return { kind: 'absent' };
+}

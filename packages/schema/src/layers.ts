@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { AssetRef, HexColor, Id, IsoTime, Mat4, Quat, Vec3 } from './common';
+import { Georef, Placement } from './georef';
 import { PanoCov, PanoStitchState } from './panoStitch';
 import { WalkCalibration, WalkPathRefs } from './walks';
 
@@ -162,6 +163,10 @@ export const Layer = z.discriminatedUnion('kind', [
     src: AssetRef,
     transform: Mat4,
     tags: z.array(AssetTag).optional(),
+    /** Where the model sits on the ground (`aio.georef/1`); mesh layers only. */
+    georef: Georef.optional(),
+    /** Whether the model is placed, still needs placing or is provisional; mesh layers only. */
+    placement: Placement.optional(),
   }),
   z.object({
     kind: z.literal('pointcloud'),

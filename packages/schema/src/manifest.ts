@@ -67,6 +67,10 @@ export const ProjectManifest = z
      * drawings to a cloud model, after the send preview? Absent or false (default): local only.
      */
     aiCloudDrawings: z.boolean().optional(),
+    /** May the engineering model send ordinary photos to a cloud model? Absent means off. */
+    aiCloudPhotos: z.boolean().optional(),
+    /** May the engineering model send point cloud renders to a cloud model? Absent means off. */
+    aiCloudScans: z.boolean().optional(),
   })
   .superRefine(uniqueIds('layers'))
   .superRefine(uniqueIds('severityModels'))

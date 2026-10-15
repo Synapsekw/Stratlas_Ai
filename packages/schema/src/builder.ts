@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { Id, IsoDate, Mat4, Vec3 } from './common';
+import { Georef, Placement } from './georef';
 import { CameraOrientation, LensModel } from './layers';
 import { ClassCatalogue, SeverityModel } from './severity';
 import { WalkCalibration } from './walks';
@@ -202,6 +203,13 @@ export const ImportItem = z.object({
  */
 export const LayerPatch = z.union([
   z.object({ transform: Mat4 }).strict(),
+  /** The ground placement of a mesh layer (mesh layers only; the project writer refuses others). */
+  z
+    .object({ georef: Georef.optional(), placement: Placement.optional() })
+    .strict()
+    .refine((p) => p.georef !== undefined || p.placement !== undefined, {
+      message: 'Give georef or placement',
+    }),
   z
     .object({
       offsetMs: z.number().optional(),
