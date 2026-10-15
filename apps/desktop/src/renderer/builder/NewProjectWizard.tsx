@@ -1,8 +1,9 @@
 import { crsOption, fromWgs84, searchCrs, toWgs84, utmEpsgFor } from '@aio/geo';
 import { LocationPicker } from '@aio/maps';
-import { PURPOSE_TYPE, type SeverityTemplate, type Vec3 } from '@aio/schema';
+import { PURPOSE_TYPE, type LibraryClass, type SeverityTemplate, type Vec3 } from '@aio/schema';
 import { Icon, t, useFocusTrap, type IconName } from '@aio/ui';
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { addLibraryClasses, listLibrary } from '../classes/store';
 import { processing } from '../processing/store';
 import { bridge, jobs } from '../shell';
 import {
@@ -12,6 +13,7 @@ import {
   wizardProblems,
   type WizardForm,
 } from './model';
+import { libraryChoices, pickedEntries } from './libraryPick';
 import { builder, useBuilder } from './state';
 import { buildParams, emptySurvey, noSurveys, surveyProblem, type SurveyInput } from './surveys';
 import { VolumetricSurveys } from './VolumetricSurveys';
@@ -93,6 +95,17 @@ function Wizard() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [surveys, setSurveys] = useState<SurveyInput[]>([emptySurvey()]);
+  const [library, setLibrary] = useState<LibraryClass[]>([]);
+  const [picked, setPicked] = useState<ReadonlySet<string>>(new Set());
+  useEffect(() => {
+    let live = true;
+    void listLibrary().then((l) => {
+      if (live) setLibrary(l);
+    });
+    return () => {
+      live = false;
+    };
+  }, []);
 
   useEffect(() => {
     void bridge.call('builder:templates', {}).then((r) => {
@@ -264,6 +277,15 @@ function Wizard() {
     // the store selects the job it has just started: take its id before `created` reads the list
     const startedId = jobError ? undefined : (jobs.getState().selected ?? undefined);
     await builder.getState().created(r.value.path);
+    const extra = pickedEntries(library, picked, template);
+    if (extra.length > 0) {
+      const e = await addLibraryClasses(extra);
+      if (e) {
+        builder.setState({
+          importResult: { items: [], error: t('builder.library.notAdded', { error: e }) },
+        });
+      }
+    }
     if (build) {
       // the new project is open on the Scene (`created`): show its build, the job just started
       processing.getState().openDrawer(startedId);
@@ -576,6 +598,42 @@ function Wizard() {
                   ))}
                 </div>
               </div>
+              {library.length > 0 && (
+                <div className="b-field" data-testid="wizard-library">
+                  <span>{t('builder.library.title')}</span>
+                  <p className="faint small">{t('builder.library.lead')}</p>
+                  <div className="b-list" style={{ maxHeight: 160 }}>
+                    {libraryChoices(library, template).map(({ cls, inTemplate }) => (
+                      <label key={cls.label} className="ann-check">
+                        <input
+                          type="checkbox"
+                          disabled={inTemplate}
+                          checked={inTemplate || picked.has(cls.label)}
+                          onChange={(e) => {
+                            const next = new Set(picked);
+                            if (e.target.checked) next.add(cls.label);
+                            else next.delete(cls.label);
+                            setPicked(next);
+                          }}
+                        />
+                        <i
+                          style={{
+                            background: cls.color,
+                            width: 10,
+                            height: 10,
+                            borderRadius: 3,
+                            display: 'inline-block',
+                          }}
+                        />
+                        {cls.label}
+                        {inTemplate && (
+                          <small className="faint"> {t('builder.library.inTemplate')}</small>
+                        )}
+                      </label>
+                    ))}
+                  </div>
+                </div>
+              )}
               <p className="faint small">{t('builder.reportBranding')}</p>
             </>
           )}
