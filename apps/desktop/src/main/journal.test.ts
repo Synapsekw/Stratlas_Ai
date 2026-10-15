@@ -13,6 +13,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { signerFromKey, verifyJournal } from '@aio/journal';
 import {
+  emptyCleanup,
   emptyRemovalPlan,
   type Issue,
   type IpcChannel,
@@ -488,6 +489,20 @@ describe('journal service', () => {
       const e = await hist(s);
       expect(e).toHaveLength(1);
       expect(e[0]).toMatchObject({ kind: 'record.external', label: 'Ground control edited' });
+    });
+
+    it('journals a cleanup recipe write as one op', async () => {
+      const { root, userData } = setup();
+      const s = service(root, userData);
+      await s.open({ path: root });
+      const write = s.journal.wrap('pointcloud:writeCleanup', ({ layerId, recipe }) => {
+        put(root, `edits/pointcloud/${layerId}.json`, recipe);
+        return { ok: true as const, trashed: [] };
+      });
+      await write({ projectId: 'p', layerId: 'a', recipe: emptyCleanup('a') });
+      const e = await hist(s);
+      expect(e).toHaveLength(1);
+      expect(e[0]).toMatchObject({ kind: 'record.external', label: 'Point cloud cleanup edited' });
     });
 
     it('records a tilesets:import after it went through, none after a refused one', async () => {

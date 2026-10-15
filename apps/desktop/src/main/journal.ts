@@ -235,6 +235,13 @@ const WRITERS: Partial<
     rel: 'survey/cleanups.json',
     after: r.file,
   }),
+  // point cloud cleanup: one record.external op per step of the recipe (null removes the file)
+  'pointcloud:writeCleanup': (r: IpcRequest<'pointcloud:writeCleanup'>) => ({
+    projectId: r.projectId,
+    rel: `edits/pointcloud/${r.layerId}.json`,
+    after: r.recipe,
+    commands: [{ label: 'Point cloud cleanup edited', ids: ['file'] }],
+  }),
 };
 
 /**
@@ -246,6 +253,7 @@ const READS: ReadonlySet<IpcChannel> = new Set<IpcChannel>([
   'project:readVolumes',
   'survey:readDesigns',
   'detections:read',
+  'pointcloud:readCleanup',
   'detections:maskAssistStatus',
   'report:list',
   'report:readNarrative',

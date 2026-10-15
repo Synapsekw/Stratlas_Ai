@@ -172,6 +172,11 @@ import { createSegmenter } from './inference/segment';
 import { qaJobEvents, registerSurveyQaIpc } from './surveyQa';
 import { registerSurveyOverlaysIpc } from './surveyOverlays';
 import { registerSurveyHydroIpc } from './surveyHydro';
+import {
+  CLEAN_PACK_FEATURE,
+  cleanPackRefusal,
+  registerPointcloudCleanupIpc,
+} from './pointcloudCleanup';
 import { registerSurveyHaulIpc } from './surveyHaul';
 import { createTestVault, useTestVault } from './testVault';
 import { importLogo, removeLogo } from './branding';
@@ -1274,7 +1279,12 @@ function registerIpc(): void {
     }
     // walk.process and pano.stitch on processing tools older than their first pack: the update
     // path, not a failed job
-    if ('pipeline' in req && (req.pipeline === 'walk.process' || req.pipeline === 'pano.stitch')) {
+    if (
+      'pipeline' in req &&
+      (req.pipeline === 'walk.process' ||
+        req.pipeline === 'pano.stitch' ||
+        req.pipeline === 'pointcloud.clean')
+    ) {
       const found = await findPack({
         dataRoot: settings.current().dataRoot,
         env: process.env,
@@ -1282,7 +1292,9 @@ function registerIpc(): void {
       });
       const version = found.pack?.version ?? null;
       const tooOld =
-        walkPackRefusal(req.pipeline, version) ?? panoPackRefusal(req.pipeline, version);
+        walkPackRefusal(req.pipeline, version) ??
+        panoPackRefusal(req.pipeline, version) ??
+        cleanPackRefusal(req.pipeline, version);
       if (tooOld) return { ok: false, error: tooOld };
     }
     // a drone panorama stitch waits for the one running (one at a time on this computer)
@@ -1774,6 +1786,11 @@ function registerIpc(): void {
   registerSurveyQaIpc({ handle, ...survey });
   registerSurveyHydroIpc({ handle, ...survey });
   registerSurveyHaulIpc({ handle, ...survey });
+  registerPointcloudCleanupIpc({
+    handle,
+    projects: registry,
+    projectPackage: (id) => registry.package(id)?.archive,
+  });
   registerGeoidPacksIpc({
     handle,
     dataRoot: () => settings.current().dataRoot,
@@ -1810,6 +1827,7 @@ function registerIpc(): void {
             { label: 'Creating maps from photos', minVersion: PHOTO_PACK },
             WALK_PACK_FEATURE,
             PANO_PACK_FEATURE,
+            CLEAN_PACK_FEATURE,
           ],
     places: () =>
       packArchivePlaces({

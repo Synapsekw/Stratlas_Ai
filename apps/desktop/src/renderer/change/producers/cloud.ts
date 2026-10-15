@@ -65,7 +65,9 @@ export function pairByName<T extends Layer>(
   return null;
 }
 
-const isCloud = (l: Layer): l is CloudLayer => l.kind === 'pointcloud' && !l.derived && !l.scalar;
+/** Clouds a person brought in (imported, or a cleaned copy of one); not change results. */
+const isCloud = (l: Layer): l is CloudLayer =>
+  l.kind === 'pointcloud' && (!l.derived || l.derived.kind === 'cleanup') && !l.scalar;
 /**
  * COPC clouds, and `png-packed` viewer clouds, which the pipelines read from their
  * `sources/<id>.las` (they say so when it is missing).

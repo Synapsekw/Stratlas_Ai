@@ -47,6 +47,16 @@ describe('the cloud pair of two dates', () => {
     expect(r).toMatchObject({ from: { id: 'a' }, to: { id: 'b' } });
   });
 
+  it('pairs a cleaned copy like an imported cloud, but not a change cloud', () => {
+    const plain = cloud('a', 'Scan');
+    const cleaned = cloud('b', 'Scan (cleaned)', {
+      derived: { kind: 'cleanup', source: ['b0'], runId: 'j1' },
+    });
+    const change = cloud('c', 'Scan', { derived: { kind: 'change' } });
+    expect(cloudPair(ctx([plain], [cleaned]))).toEqual({ from: plain, to: cleaned });
+    expect(cloudPair(ctx([plain], [change]))).toBe('Each date needs a point cloud of its own.');
+  });
+
   it('matches counterparts by name when a date has several, and leaves change clouds out', () => {
     const r = cloudPair(
       ctx(

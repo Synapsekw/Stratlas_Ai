@@ -177,6 +177,28 @@ describe('planRemoval', () => {
     expect(p.keptOutside).toEqual([OUTSIDE]);
   });
 
+  it('keeps a cleaned copy when the cloud it came from is removed', async () => {
+    const cloud = (id: string, extra: Partial<Layer> = {}): Layer =>
+      ({
+        kind: 'pointcloud',
+        id,
+        name: id,
+        visible: true,
+        src: { path: `clouds/${id}.copc.laz` },
+        format: 'copc',
+        ...extra,
+      }) as Layer;
+    await put('clouds/scan.copc.laz');
+    await put('clouds/scan-cleaned.copc.laz');
+    await addLayers(
+      cloud('scan'),
+      cloud('scan-cleaned', { derived: { kind: 'cleanup', source: ['scan'], runId: 'j1' } }),
+    );
+    const p = await planRemoval(root, [{ layer: 'scan' }], { jobs: [] });
+    expect(ids(p.layers)).toEqual(['scan']);
+    expect(p.files).not.toContain('clouds/scan-cleaned.copc.laz');
+  });
+
   it('does not move a file another remaining layer names', async () => {
     expect((await planRemoval(root, [{ layer: 'mesh-a' }])).files).toEqual([]);
     const clip = await planRemoval(root, [{ layer: 'clip-1' }]);

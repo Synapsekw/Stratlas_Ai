@@ -410,6 +410,8 @@ export async function planRemoval(
       const d = l.derived;
       if (d?.changeId && changeWhy.has(d.changeId) && take(l.id, { madeBy: d.changeId }))
         grew = true;
+      // a cleaned copy is a cloud of its own: removing the cloud it came from keeps it
+      if (d?.kind === 'cleanup') continue;
       const src = d?.source?.find((s) => layerWhy.has(s));
       if (src !== undefined && take(l.id, { usedBy: src })) grew = true;
     }
