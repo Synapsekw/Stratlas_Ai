@@ -451,3 +451,31 @@ describe('earthing', () => {
     expect(b.min[2]).toBeCloseTo(5, 9);
   });
 });
+
+describe('pipeRun flanges at the ends', () => {
+  const path: V3[] = [
+    [0, 1, 0],
+    [4, 1, 0],
+    [4, 3, 0],
+  ];
+
+  it('an open end gets a ring flange round its bore; a closed end a solid disc', () => {
+    const open = only(
+      build('pipeRun', { path, diameter: 0.2, openEnds: 'end', flanges: [0, 2] }).out(),
+    );
+    expect(normalsAgree(open)).toBe(true);
+    expect(degenerateTriangles(open)).toBe(0);
+    // the open end is still the only boundary loop: the ring flange is a closed annular solid
+    const loops = boundaryLoops(open).map((l) => loopCentreRadius(open, l));
+    expect(loops).toHaveLength(1);
+    expect(must(loops[0]).r).toBeCloseTo(0.1, 9);
+    // nothing of the ring reaches into the bore at the open end
+    for (let i = 0; i < open.positions.length / 3; i++) {
+      const v = vertexAt(open, i);
+      if (v[1] > 2.9) expect(Math.hypot(v[0] - 4, v[2] - 0)).toBeGreaterThan(0.1 - 1e-9);
+    }
+    const closed = only(build('pipeRun', { path, diameter: 0.2, flanges: [0, 2] }).out());
+    expect(closedAndWound(closed)).toBe(true);
+    expect(countComponents(closed)).toBe(3); // the pipe and two disc flanges
+  });
+});

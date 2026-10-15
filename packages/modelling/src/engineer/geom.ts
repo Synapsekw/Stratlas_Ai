@@ -26,7 +26,9 @@ export interface Prim {
 /**
  * A declared, intended opening: a circle of radius `r` at `centre`, facing `normal`; or, with
  * `outline`, that polygon (an open hatch), `r` then the radius of the circle round it. `depth`,
- * when known, is how far the passage runs behind it (against `normal`) and must stay clear.
+ * when known, is how far the passage runs behind it (against `normal`) and must stay clear;
+ * `clearRadius` (at most `r`, default `r`) is the radius it stays clear at over that depth, for a
+ * bore that narrows below its mouth.
  */
 export interface Opening {
   centre: V3;
@@ -34,6 +36,7 @@ export interface Opening {
   r: number;
   outline?: V3[];
   depth?: number;
+  clearRadius?: number;
 }
 
 /** A circular hole in a flat face, centred at `c` in the face's own 2D coordinates. */
@@ -501,10 +504,15 @@ export class MeshSink {
         'opening outline needs 3 or more finite points',
       );
     if (o.depth !== undefined) needPos(o.depth, 'opening depth');
+    if (o.clearRadius !== undefined) {
+      needPos(o.clearRadius, 'opening clear radius');
+      need(o.clearRadius <= o.r, 'opening clear radius cannot exceed its radius');
+    }
     const p = this.prim(material);
     const decl: Opening = { centre: clean(o.centre), normal: clean(norm(o.normal)), r: o.r };
     if (o.outline) decl.outline = o.outline.map(clean);
     if (o.depth !== undefined) decl.depth = o.depth;
+    if (o.clearRadius !== undefined) decl.clearRadius = o.clearRadius;
     (p.openings ??= []).push(decl);
   }
 

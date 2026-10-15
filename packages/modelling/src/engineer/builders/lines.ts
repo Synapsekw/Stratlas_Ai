@@ -252,7 +252,18 @@ export function buildPipeRun(sink: MeshSink, a: AssemblyOf<'pipeRun'>, ctx: Buil
       t = pick(dirs, i - 1);
       c = sub(P, scale(t, pick(starts, i)));
     }
-    sink.rod(m, sub(c, scale(t, tf / 2)), add(c, scale(t, tf / 2)), rf, true);
+    if ((i === 0 && openStart) || (i === lastIndex && openEnd))
+      // a ring round an open end, its bore the pipe's, so the passage stays open
+      sink.annulusTube(m, {
+        centre: c,
+        axis: t,
+        rOuter: rf,
+        rInner: r,
+        y0: -tf / 2,
+        y1: tf / 2,
+        openings: 'none',
+      });
+    else sink.rod(m, sub(c, scale(t, tf / 2)), add(c, scale(t, tf / 2)), rf, true);
   }
 }
 

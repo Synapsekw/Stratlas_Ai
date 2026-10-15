@@ -1,8 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import { writeGlbV2, type GlbMaterial, type GlbNodeV2 } from '../glb';
-import { FIXTURE_MODELS, openingsOf, stackModel } from './fixtures';
+import { FIXTURE_MODELS, component, engineeringModel, openingsOf, stackModel } from './fixtures';
 import { MeshSink, SEGMENTS, type Opening, type Prim, type V3 } from './geom';
-import { buildEngineeringGlb } from './meshAssemblies';
+import { ctxFor } from './builders/ctx';
+import { buildAssembly, buildEngineeringGlb } from './meshAssemblies';
 import { khronos } from './testKhronos';
 import { validateGlb, type DeclaredOpening } from './validate';
 
@@ -227,6 +228,69 @@ describe('validateGlb', () => {
     expect(r.openingProblems).toEqual([
       { node: 'liner-1', problem: 'opening 1: the passage behind or in front of it is blocked' },
     ]);
+  });
+
+  /** One assembly built in its own node, its openings in the extras; `extra` adds to the node. */
+  const assemblyGlb = (
+    a: ReturnType<typeof component>,
+    extra: (s: MeshSink) => void = () => undefined,
+  ) => {
+    const s = sink();
+    buildAssembly(s, a, ctxFor(engineeringModel('m-test', 'Test', [a])));
+    extra(s);
+    const prims = s.out();
+    return glbOf([
+      { name: a.id, prims, extras: { openings: prims.flatMap((p) => p.openings ?? []) } },
+    ]);
+  };
+  const openShaft = (profile: { y: number; r: number }[]) =>
+    component('shaft', 'shaft-1', 'Shaft', { base: [0, 0, 0], profile, wall: 0.3, openTop: true });
+
+  it('a bore narrowing below its mouth stays clear at its narrowest; a plug there is found', async () => {
+    // flared to the mouth (3 m at the foot, 4 m at the top) and waisted like a cooling tower
+    const flared = openShaft([
+      { y: 0, r: 3 },
+      { y: 20, r: 4 },
+    ]);
+    const waisted = openShaft([
+      { y: 0, r: 4 },
+      { y: 10, r: 3 },
+      { y: 20, r: 3.5 },
+    ]);
+    for (const a of [flared, waisted]) {
+      const r = await validateGlb(assemblyGlb(a), { budget: 1e6, khronos });
+      expect(r.openingProblems).toEqual([]);
+      expect(r.intendedOpenOk).toBe(true);
+      expect(r.unintendedHoles).toEqual([]);
+    }
+    const plugged = await validateGlb(
+      assemblyGlb(waisted, (s) => {
+        s.disc('grey', { centre: [0, 10, 0], normal: [0, 1, 0], r: 2.7 });
+      }),
+      { budget: 1e6, khronos },
+    );
+    expect(plugged.intendedOpenOk).toBe(false);
+  });
+
+  it('an open pipe end with a flange stays open', async () => {
+    const pipe = (openEnds: 'both' | 'none') =>
+      component('pipeRun', 'pipe-1', 'Lines', {
+        path: [
+          [0, 0, 0],
+          [3, 0, 0],
+          [3, 3, 0],
+        ],
+        diameter: 0.2,
+        openEnds,
+        flanges: [0, 2],
+      });
+    const r = await validateGlb(assemblyGlb(pipe('both')), { budget: 1e6, khronos });
+    expect(r.openingProblems).toEqual([]);
+    expect(r.intendedOpenOk).toBe(true);
+    expect(r.unintendedHoles).toEqual([]);
+    const closed = await validateGlb(assemblyGlb(pipe('none')), { budget: 1e6, khronos });
+    expect(closed.unintendedHoles).toEqual([]);
+    expect(closed.intendedOpenOk).toBe(true);
   });
 
   it('detects a capped annular passage when both bores are declared', async () => {

@@ -384,3 +384,31 @@ describe('flare tip', () => {
     expectBounds(prim(prims, 'stainless'), [-0.5, 0, -0.5], [0.5, 2, 0.5], 1e-3);
   });
 });
+
+describe('open-top shaft clear radius', () => {
+  it('declares how wide its bore stays clear when it narrows below the mouth', () => {
+    const open = (profile: { y: number; r: number }[]) =>
+      must(
+        sinkFor(
+          model([shaft('shaft-1', profile, { wall: 0.3, openTop: true })]),
+          'shaft-1',
+        ).out()[0],
+      );
+    const waist = open([
+      { y: 0, r: 4 },
+      { y: 10, r: 3 },
+      { y: 20, r: 3.5 },
+    ]);
+    expect(waist.openings).toHaveLength(1);
+    const o = must(waist.openings?.[0]);
+    expect(o.r).toBeCloseTo(3.2, 12);
+    expect(o.clearRadius).toBeCloseTo(2.7, 12);
+    expect(o.depth).toBe(20);
+    // widening all the way down: the mouth is the narrowest, so nothing extra is declared
+    const tapered = open([
+      { y: 0, r: 4 },
+      { y: 20, r: 3 },
+    ]);
+    expect(must(tapered.openings?.[0]).clearRadius).toBeUndefined();
+  });
+});

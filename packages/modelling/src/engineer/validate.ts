@@ -270,11 +270,13 @@ class OpeningRegion {
   samples(): P2[] {
     const poly = this.poly;
     if (!poly) {
+      // within the radius the passage stays clear at over its depth
+      const clear = Math.min(this.o.clearRadius ?? this.o.r, this.o.r);
       const out: P2[] = [[0, 0]];
       for (const f of [0.45, 0.85])
         for (let k = 0; k < 8; k++) {
           const t = (k * Math.PI) / 4;
-          out.push([f * this.o.r * Math.cos(t), f * this.o.r * Math.sin(t)]);
+          out.push([f * clear * Math.cos(t), f * clear * Math.sin(t)]);
         }
       return out;
     }
@@ -295,7 +297,8 @@ class OpeningRegion {
   /**
    * Whether the passage is blocked: a triangle meets a line through the opening along its axis,
    * from a little in front of the mouth (`max(0.25 r, 5 cm)`) to its depth behind it (the declared
-   * `depth`, else `max(0.5 r, 10 cm)`), at the centre or at points inside the rim.
+   * `depth`, else `max(0.5 r, 10 cm)`), at the centre or at points inside the clear radius
+   * (`clearRadius`, else `r`: a bore narrowing below its mouth stays clear only that wide).
    */
   passageBlocked(tris: readonly Tris[]): boolean {
     const front = Math.max(0.25 * this.o.r, 0.05);
@@ -507,6 +510,7 @@ const isOpening = (v: unknown): v is DeclaredOpening => {
     v3(o.normal) &&
     typeof o.r === 'number' &&
     (o.depth === undefined || typeof o.depth === 'number') &&
+    (o.clearRadius === undefined || typeof o.clearRadius === 'number') &&
     (o.outline === undefined || (Array.isArray(o.outline) && o.outline.every(v3)))
   );
 };
