@@ -260,14 +260,44 @@ describe('IssueRegister right-click menu', () => {
       item()?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
     });
     expect([...(placeOnModel.mock.lastCall?.[0] ?? [])].sort()).toEqual(['i2', 'i3']);
+    // a row that is not among the checked ones acts alone
+    rightClick(ui, 'D0004');
+    expect(item()?.textContent).toBe('Place on model...');
+    expect(document.activeElement).toBe(item());
+    act(() => {
+      item()?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    });
+    expect(placeOnModel).toHaveBeenLastCalledWith(['i4']);
     // Esc closes it
     rightClick(ui, 'D0004');
     act(() => {
       window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
     });
     expect(item()).toBeNull();
+    // so does a press elsewhere
+    rightClick(ui, 'D0004');
+    expect(item()).not.toBeNull();
+    act(() => {
+      document.body.dispatchEvent(new Event('pointerdown', { bubbles: true }));
+    });
+    expect(item()).toBeNull();
     off();
     ui.unmount();
+  });
+
+  it('leaves the browser menu alone in a read-only package', () => {
+    workspace.getState().openProject({ id: 'big', root: 'r', manifest }, many(2));
+    const off = setIssueListActions({ placeOnModel: vi.fn() });
+    setAnnotateReadOnly(true);
+    const ui = mount();
+    try {
+      expect(rightClick(ui, 'D0001').defaultPrevented).toBe(false);
+      expect(document.querySelector('[data-testid="issue-row-menu"]')).toBeNull();
+    } finally {
+      setAnnotateReadOnly(false);
+      off();
+      ui.unmount();
+    }
   });
 
   it('leaves the browser menu alone without the action', () => {

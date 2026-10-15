@@ -19,19 +19,24 @@ export function IssueRowMenu({ x, y, count, onPlace, onClose }: IssueRowMenuProp
   const t = useT();
   const ref = useRef<HTMLDivElement>(null);
   useEffect(() => {
+    const before = document.activeElement;
     ref.current?.querySelector<HTMLButtonElement>('[role="menuitem"]')?.focus();
     const away = (e: PointerEvent) => {
       const target = e.target;
       if (!(target instanceof Node) || !ref.current?.contains(target)) onClose();
     };
     const esc = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onClose();
+      if (e.key !== 'Escape') return;
+      // the register's or the 3D view's own Escape must not also fire
+      e.stopPropagation();
+      onClose();
     };
     window.addEventListener('pointerdown', away, true);
-    window.addEventListener('keydown', esc);
+    window.addEventListener('keydown', esc, true);
     return () => {
       window.removeEventListener('pointerdown', away, true);
-      window.removeEventListener('keydown', esc);
+      window.removeEventListener('keydown', esc, true);
+      if (before instanceof HTMLElement && before.isConnected) before.focus();
     };
   }, [onClose]);
   const left = Math.max(8, Math.min(x, window.innerWidth - MENU_W - 8));
