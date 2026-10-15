@@ -69,6 +69,18 @@ describe('selection outlines', () => {
     expect(worst).toBeLessThan(0.01);
   });
 
+  it('respects a smaller vertex budget', () => {
+    const pts: [number, number][] = Array.from({ length: 5000 }, (_, i) => {
+      const a = (i / 5000) * Math.PI * 2;
+      return [0.5 * Math.cos(a) + 0.01 * Math.sin(i), 0.5 * Math.sin(a)];
+    });
+    for (const max of [8, 32, 100]) {
+      const out = simplifyPath(pts, max);
+      expect(out.length).toBeLessThanOrEqual(max);
+      expect(out.length).toBeGreaterThanOrEqual(3);
+    }
+  });
+
   it('keeps a short path as it is, without repeated points', () => {
     expect(
       simplifyPath([
@@ -176,6 +188,74 @@ describe('PointSelectTool', () => {
     expect(got).toHaveLength(1);
     expect(got[0]?.shape).toBe('lasso');
     expect(got[0]?.polygon).toHaveLength(4);
+    off();
+  });
+
+  it('selects a closed lasso that ends where it started', () => {
+    const { stage, canvas } = fakeStage();
+    const got: { polygon: number[][] }[] = [];
+    const tool = new PointSelectTool(stage, {
+      shape: 'lasso',
+      onSelect: (s) => got.push(s),
+      onCancel: () => undefined,
+    });
+    const off = tool.attach();
+    canvas.dispatchEvent(ev('pointerdown', 20, 20));
+    window.dispatchEvent(ev('pointermove', 120, 20));
+    window.dispatchEvent(ev('pointermove', 120, 80));
+    window.dispatchEvent(ev('pointermove', 20, 80));
+    window.dispatchEvent(ev('pointerup', 21, 21));
+    expect(got).toHaveLength(1);
+    expect(got[0]?.polygon.length).toBeGreaterThanOrEqual(3);
+    off();
+  });
+
+  it('swallows another button pressed while drawing', () => {
+    const { stage, canvas } = fakeStage();
+    const got: unknown[] = [];
+    const tool = new PointSelectTool(stage, {
+      shape: 'box',
+      onSelect: (s) => got.push(s),
+      onCancel: () => got.push('cancel'),
+    });
+    const off = tool.attach();
+    let stageSaw = 0;
+    canvas.addEventListener('pointerdown', () => stageSaw++);
+    canvas.dispatchEvent(ev('pointerdown', 10, 10));
+    window.dispatchEvent(ev('pointermove', 100, 60));
+    canvas.dispatchEvent(
+      new PointerEvent('pointerdown', { clientX: 50, clientY: 50, button: 2, bubbles: true }),
+    );
+    window.dispatchEvent(ev('pointerup', 100, 60));
+    expect(stageSaw).toBe(0);
+    expect(got).toHaveLength(1);
+    const corner = (got[0] as { polygon: number[][] }).polygon[0] ?? [];
+    expect(corner[0]).toBeCloseTo(-0.9);
+    expect(corner[1]).toBeCloseTo(-0.2);
+    off();
+  });
+
+  it('lets Escape reach other handlers when nothing is being drawn', () => {
+    const { stage, canvas } = fakeStage();
+    const got: unknown[] = [];
+    const tool = new PointSelectTool(stage, {
+      shape: 'lasso',
+      onSelect: (s) => got.push(s),
+      onCancel: () => got.push('cancel'),
+    });
+    const off = tool.attach();
+    let others = 0;
+    const other = () => others++;
+    window.addEventListener('keydown', other, { capture: true });
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
+    expect(others).toBe(1);
+    expect(got).toEqual(['cancel']);
+    canvas.dispatchEvent(ev('pointerdown', 10, 10));
+    window.dispatchEvent(ev('pointermove', 60, 10));
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
+    expect(others).toBe(1);
+    expect(got).toEqual(['cancel', 'cancel']);
+    window.removeEventListener('keydown', other, { capture: true });
     off();
   });
 

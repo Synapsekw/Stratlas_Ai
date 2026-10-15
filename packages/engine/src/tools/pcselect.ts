@@ -105,6 +105,8 @@ export class PointSelectTool {
   private shape: SelectShape;
   private path: [number, number][] = [];
   private start: { x: number; y: number } | null = null;
+  /** Pixel bounds of every sample of the drawing in progress. */
+  private extent = { x0: 0, x1: 0, y0: 0, y1: 0 };
   private overlay: SVGSVGElement | null = null;
   private outline: SVGPolylineElement | null = null;
 
@@ -143,18 +145,31 @@ export class PointSelectTool {
     this.outline = line;
 
     const down = (e: PointerEvent) => {
+      // While drawing, every press (any button) belongs to the drawing and is swallowed.
+      if (this.start) {
+        e.stopImmediatePropagation();
+        return;
+      }
       if (e.button !== 0) return;
       // The selection takes the press: neither the orbit controls nor the stage's click see it,
       // so a release never selects assets.
       e.stopImmediatePropagation();
-      if (this.start) return;
       this.stage.controls.enabled = false;
       this.start = { x: e.clientX, y: e.clientY };
+      this.extent = { x0: e.clientX, x1: e.clientX, y0: e.clientY, y1: e.clientY };
       this.path = [this.ndc(e)];
       this.draw();
     };
+    const grow = (e: PointerEvent) => {
+      const b = this.extent;
+      b.x0 = Math.min(b.x0, e.clientX);
+      b.x1 = Math.max(b.x1, e.clientX);
+      b.y0 = Math.min(b.y0, e.clientY);
+      b.y1 = Math.max(b.y1, e.clientY);
+    };
     const move = (e: PointerEvent) => {
       if (!this.start) return;
+      grow(e);
       if (this.shape === 'box') this.path = [this.path[0] ?? this.ndc(e), this.ndc(e)];
       else this.path.push(this.ndc(e));
       this.draw();
@@ -164,7 +179,14 @@ export class PointSelectTool {
       if (!s) return;
       this.start = null;
       this.stage.controls.enabled = true;
-      const moved = Math.hypot(e.clientX - s.x, e.clientY - s.y) >= MIN_DRAG_PX;
+      grow(e);
+      // A box is a click when its rectangle is tiny; a lasso when the whole path stays within a
+      // few pixels (a closed loop ends where it started, so start-to-end distance says nothing).
+      const b = this.extent;
+      const moved =
+        this.shape === 'box'
+          ? Math.hypot(e.clientX - s.x, e.clientY - s.y) >= MIN_DRAG_PX
+          : b.x1 - b.x0 >= MIN_DRAG_PX || b.y1 - b.y0 >= MIN_DRAG_PX;
       const first = this.path[0];
       const polygon =
         this.shape === 'box'
@@ -188,8 +210,9 @@ export class PointSelectTool {
     };
     const key = (e: KeyboardEvent) => {
       if (e.key !== 'Escape') return;
+      // Only a drawing in progress owns Escape; otherwise other handlers see it too.
+      if (this.start) e.stopImmediatePropagation();
       this.abort();
-      e.stopImmediatePropagation();
       this.opts.onCancel();
     };
     canvas.addEventListener('pointerdown', down, { capture: true });
