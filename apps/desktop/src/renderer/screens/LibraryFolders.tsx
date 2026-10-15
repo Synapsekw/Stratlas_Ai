@@ -264,14 +264,16 @@ export function NewFolderButton({ onCreated }: { onCreated?: () => void }) {
       <button
         ref={btn}
         type="button"
-        className="btn"
+        className="btn icon"
         data-testid="library-new-folder"
+        // icon only: the header keeps its actions on one row in a 1440 px window
+        aria-label={t('library.folders.new')}
+        title={t('library.folders.new')}
         onClick={() => {
           setOpen(true);
         }}
       >
         <Icon name="folder" size={14} />
-        {t('library.folders.new')}
       </button>
       {open &&
         createPortal(

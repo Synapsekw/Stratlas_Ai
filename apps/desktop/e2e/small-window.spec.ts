@@ -136,7 +136,14 @@ test('the Projects header keeps every action in view, down to the smallest windo
   win,
 }, info) => {
   await expect(win.getByTestId('project-card').first()).toBeVisible();
-  const names = ['Filter projects', 'Recent', 'Name', 'Open package', 'Add project folder'];
+  const names = [
+    'Filter projects',
+    'Recent',
+    'Name',
+    'New folder',
+    'Open package',
+    'Add project folder',
+  ];
 
   // the smallest window: the actions wrap inside the pane, New project included
   const small = await headerLayout(win);
