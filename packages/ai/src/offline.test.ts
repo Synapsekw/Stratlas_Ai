@@ -6,6 +6,7 @@
 import type { AiProvider, AiTask, IpcEvent, IpcRequest, LocalModelSettings } from '@aio/schema';
 import { generateText } from 'ai';
 import { describe, expect, it, vi } from 'vitest';
+import { runEngineer } from './engineer';
 import { describeError, OfflineOnlyError } from './errors';
 import { createAgentRuntime, MESSAGES } from './main';
 import { builtInProviders, createProviderRegistry, localProvider } from './providers';
@@ -139,6 +140,49 @@ describe.each(CLOUD)('offline-only workstation: %s', (provider, model, origin) =
     await expect(
       generateText({ model: cloud.languageModel(model, KEY), prompt: 'Engineer.', maxRetries: 0 }),
     ).rejects.toBeInstanceOf(OfflineOnlyError);
+    // the engineer call itself: refused before the key, the cache or the network
+    const keyReads: string[] = [];
+    const cacheReads: string[] = [];
+    const outcome = await runEngineer(
+      {
+        projectId: 'p1',
+        runId: 'run-1',
+        pass: 1,
+        images: [{ id: 'p1', kind: 'photo', dataUrl: 'data:image/png;base64,AAAA', bytes: 3 }],
+        summary: '{}',
+        setup: {
+          sources: { clouds: [], meshes: [], photos: [] },
+          family: 'auto',
+          scope: 'asset',
+          detail: 'fast',
+          placement: 'unplaced',
+        },
+      },
+      {
+        route: () => ({ task: 'engineer', provider, model }),
+        key: (p) => {
+          keyReads.push(p);
+          return Promise.resolve(KEY);
+        },
+        offlineOnly: () => true,
+        policy: () => ({ ai: 'allow', photos: true, scans: true }),
+        cache: {
+          get: (k) => {
+            cacheReads.push(k);
+            return Promise.resolve(null);
+          },
+          put: () => Promise.resolve(),
+        },
+        spent: () => 0,
+        usage: () => undefined,
+        budgetUsd: 5,
+        signal: new AbortController().signal,
+        providers: registry,
+      },
+    );
+    expect(outcome).toEqual({ kind: 'refused', code: 'offline', reason: MESSAGES.offlineOnly });
+    expect(keyReads).toEqual([]);
+    expect(cacheReads).toEqual([]);
     expect(t.net.seen).toEqual([]);
     expect(t.getKey).not.toHaveBeenCalled();
   });

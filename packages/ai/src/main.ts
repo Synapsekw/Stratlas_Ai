@@ -71,12 +71,31 @@ import {
 import { allToolSpecs, riskOf, toolsForWindow, type ToolProfile } from './tools';
 
 export {
+  BudgetReachedError,
   describeError,
+  InvalidProposalError,
   OFFLINE_ONLY_MESSAGE,
   OfflineOnlyError,
   sanitize,
   type DescribedError,
 } from './errors';
+export {
+  ENGINEER_MAX_OUTPUT_TOKENS,
+  ENGINEER_TIMEOUT_MS,
+  engineerCacheKey,
+  estimateEngineerCostUsd,
+  fileEngineerCache,
+  imageSize,
+  redactPaths,
+  runEngineer,
+  stripImageMetadata,
+  type EngineerCall,
+  type EngineerHost,
+  type EngineerImage,
+  type EngineerImageKind,
+  type EngineerOutcome,
+  type EngineerUsage,
+} from './engineer';
 export {
   anthropicHeaders,
   createProviderRegistry,
