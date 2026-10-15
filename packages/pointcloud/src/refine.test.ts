@@ -2,7 +2,7 @@ import type { SceneHandle } from '@aio/engine';
 import type { Vector2 } from 'three';
 import { PerspectiveCamera, Scene } from 'three';
 import { describe, expect, it, vi } from 'vitest';
-import { createPointcloudAdapter } from './adapter';
+import { createPointcloudAdapter, getCloudManager } from './adapter';
 import { frustumPlanes } from './octree';
 import type { Decoder } from './pool';
 import type { DecodedChunk, DecodeRequest } from './protocol';
@@ -87,12 +87,12 @@ const index = {
   chunks: [chunk(0, 0), chunk(-10, 1), chunk(400, 1)],
 };
 
-async function setup() {
+async function setup(settings = createPointcloudSettings(null)) {
   const { handle, frame } = fakeHandle();
   const d = fakeDecoder();
   const adapter = createPointcloudAdapter({
     decoder: () => d.decoder,
-    settings: createPointcloudSettings(null),
+    settings,
     fetchJson: () => Promise.resolve(index),
   });
   handle.camera.lookAt(0, 0, 10); // c400 lies outside this view
@@ -139,6 +139,30 @@ describe('refineAround', () => {
     expect(r.depth).toBe(1);
     r.release();
     r.release(); // twice is harmless
+  });
+
+  it('hands the level of detail back to the camera on release', async () => {
+    const settings = createPointcloudSettings(null);
+    const { handle, frame, d } = await setup(settings);
+    const c400Loaded = () =>
+      [...(getCloudManager(handle)?.layers.get('pc')?.loaded ?? [])].some(
+        (c) => c.bounds.min[0] === 400,
+      );
+    const done = refineAround(handle, focus, 2000);
+    frame();
+    d.finishAll();
+    await flush();
+    frame();
+    frame();
+    const r = await done;
+    expect(c400Loaded()).toBe(true);
+    // a budget of two decoded chunks (10 points each): the root and one more
+    settings.getState().setBudgetCap(20);
+    frame();
+    expect(c400Loaded()).toBe(true); // the photo's while held
+    r.release();
+    frame();
+    expect(c400Loaded()).toBe(false);
   });
 
   it('gives up after the timeout when no frame comes', async () => {

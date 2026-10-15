@@ -12,6 +12,11 @@ export interface RayChunk {
   floor?: number;
   /** Rejects points (section planes, hidden classes); gets chunk coordinates and the index. */
   keep?: (x: number, y: number, z: number, index: number) => boolean;
+  /**
+   * A sphere holding every point, in the local frame: a chunk the cone cannot reach is skipped
+   * without scanning its points.
+   */
+  sphere?: { center: V3; radius: number };
 }
 
 export interface RayPointHit {
@@ -82,6 +87,17 @@ export function raycastPoints(
     if (!c) continue;
     const toLocal = transformOf(c.matrix);
     const floor = Math.max(opts.floor ?? 0.01, c.floor ?? 0);
+    if (c.sphere) {
+      // the chunk spans t in [tc - R, tc + R]; no point of it is nearer the ray than d - R
+      const sx = c.sphere.center[0] - ox;
+      const sy = c.sphere.center[1] - oy;
+      const sz = c.sphere.center[2] - oz;
+      const R = c.sphere.radius;
+      const tc = sx * dx + sy * dy + sz * dz;
+      if (tc + R <= 0 || tc - R > maxDist || (best !== null && tc - R >= best.t)) continue;
+      const d = Math.sqrt(Math.max(0, sx * sx + sy * sy + sz * sz - tc * tc));
+      if (d - R > Math.max(opts.coneRad * (tc + R), floor)) continue;
+    }
     const n = Math.floor(c.positions.length / 3);
     for (let i = 0; i < n; i++) {
       const lx = c.positions[i * 3] ?? 0;

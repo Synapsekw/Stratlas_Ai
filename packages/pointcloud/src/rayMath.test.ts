@@ -47,6 +47,41 @@ describe('raycastPoints', () => {
   });
 });
 
+describe('raycastPoints chunk culling', () => {
+  /** Positions that count how often they are read. */
+  function counted(values: number[]) {
+    const reads = { n: 0 };
+    const arr = new Float32Array(values);
+    const positions = new Proxy(arr, {
+      get(target, key, receiver) {
+        if (typeof key === 'string' && /^\d+$/.test(key)) reads.n++;
+        return Reflect.get(target, key, receiver) as unknown;
+      },
+    });
+    return { positions, reads };
+  }
+
+  it('never scans a chunk whose sphere the cone cannot reach, and finds the same hit', () => {
+    const far = counted([50, 0, 0, 50, 0, -5]);
+    const behind = counted([0, 0, 30, 0, 0, 40]);
+    const farChunk: RayChunk = {
+      positions: far.positions,
+      sphere: { center: [50, 0, -2.5], radius: 2.5 },
+    };
+    const behindChunk: RayChunk = {
+      positions: behind.positions,
+      sphere: { center: [0, 0, 35], radius: 5 },
+    };
+    const rowChunk: RayChunk = { ...row, sphere: { center: [0.25, 0, -5], radius: 5.1 } };
+    const culled = raycastPoints(down, [farChunk, behindChunk, rowChunk], { coneRad: 0.001 });
+    expect(far.reads.n).toBe(0);
+    expect(behind.reads.n).toBe(0);
+    const plain = raycastPoints(down, [row], { coneRad: 0.001 });
+    expect(culled).toEqual({ ...plain, chunk: 2 });
+    expect(culled?.index).toBe(0);
+  });
+});
+
 describe('pointsInPrismOf', () => {
   it('returns the points inside the plan-view ring and the height range, in the local frame', () => {
     const pts: RayChunk = {

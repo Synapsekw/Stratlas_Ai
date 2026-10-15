@@ -7,7 +7,11 @@ import { cloudRayProvider, pointsInPrism } from './cloudRay';
 import type { Decoder } from './pool';
 import { createPointcloudSettings } from './settings';
 
-async function load(clippingPlanes: Plane[] = []) {
+async function load(
+  clippingPlanes: Plane[] = [],
+  classification?: Uint8Array,
+  settings = createPointcloudSettings(null),
+) {
   const frames = new Set<() => void>();
   const providers: RayProvider[] = [];
   const camera = new PerspectiveCamera(60, 1, 0.1, 100);
@@ -45,12 +49,13 @@ async function load(clippingPlanes: Plane[] = []) {
         position: new Int16Array([0, 0, 0, 0, 0, 2000, 3000, 0, 0]),
         intensity: new Uint8Array(3),
         bounds: { min: [0, 0, 0], max: [3, 0, 2] },
+        ...(classification ? { classification } : {}),
       }),
     dispose: () => undefined,
   };
   const adapter = createPointcloudAdapter({
     decoder: () => decoder,
-    settings: createPointcloudSettings(null),
+    settings,
   });
   const layer = await adapter.create(
     {
@@ -66,7 +71,7 @@ async function load(clippingPlanes: Plane[] = []) {
   for (const f of frames) f();
   await new Promise((r) => setTimeout(r, 0));
   for (const f of frames) f();
-  return { handle, providers, layer };
+  return { handle, providers, layer, frames };
 }
 
 const o = new Vector3(0, 0, 10);
@@ -98,6 +103,15 @@ describe('cloudRayProvider', () => {
     const { handle } = await load([new Plane(new Vector3(0, 0, -1), 1)]);
     expect(cloudRayProvider(handle).cast(o, d, 'f101', { coneRad: 0.001 })?.index).toBe(0);
   });
+
+  it('skips points of a hidden class', async () => {
+    const settings = createPointcloudSettings(null);
+    const { handle, frames } = await load([], new Uint8Array([2, 6, 2]), settings);
+    expect(cloudRayProvider(handle).cast(o, d, 'f101', { coneRad: 0.001 })?.index).toBe(1);
+    settings.getState().toggleClass(6);
+    for (const f of frames) f();
+    expect(cloudRayProvider(handle).cast(o, d, 'f101', { coneRad: 0.001 })?.index).toBe(0);
+  });
 });
 
 describe('pointsInPrism', () => {
@@ -112,5 +126,19 @@ describe('pointsInPrism', () => {
     const pts = pointsInPrism(handle, 'f101', { ring, minY: -1, maxY: 1 });
     expect(pts.length).toBe(6);
     expect(pointsInPrism(handle, 'nope', { ring, minY: -1, maxY: 1 }).length).toBe(0);
+  });
+
+  it('keeps the points of a hidden class', async () => {
+    const settings = createPointcloudSettings(null);
+    const { handle, frames } = await load([], new Uint8Array([2, 6, 2]), settings);
+    settings.getState().toggleClass(6);
+    for (const f of frames) f();
+    const ring = [
+      [-0.5, -0.5],
+      [0.5, -0.5],
+      [0.5, 2.5],
+      [-0.5, 2.5],
+    ] as const;
+    expect(pointsInPrism(handle, 'f101', { ring, minY: -1, maxY: 1 }).length).toBe(6);
   });
 });

@@ -4,12 +4,13 @@
  * `pickPoint` does, and the points inside a prism for a finding's selection.
  */
 import type { RayProvider, SceneHandle } from '@aio/engine';
-import { Vector3, type Intersection, type Points } from 'three';
+import { Sphere, Vector3, type Intersection, type Points } from 'three';
 import { getCloudManager } from './adapter';
 import { drawnPoints } from './pick';
 import { pointsInPrismOf, raycastPoints, type Prism, type RayChunk } from './rayMath';
 
 const world = new Vector3();
+const bound = new Sphere();
 
 function chunksOf(
   handle: SceneHandle,
@@ -38,11 +39,20 @@ function chunksOf(
           }
         : undefined;
     const spacing = c.spacing ?? layer.baseSize / 2 ** c.lod;
+    // the chunk's bounding sphere in the local frame lets a ray skip it without a scan
+    if (!obj.geometry.boundingSphere) obj.geometry.computeBoundingSphere();
+    const bs = obj.geometry.boundingSphere;
+    let sphere: RayChunk['sphere'];
+    if (bs) {
+      bound.copy(bs).applyMatrix4(m);
+      sphere = { center: [bound.center.x, bound.center.y, bound.center.z], radius: bound.radius };
+    }
     chunks.push({
       positions: obj.geometry.getAttribute('position').array,
       matrix: m.elements,
       floor: spacing * 0.75,
       ...(keep ? { keep } : {}),
+      ...(sphere ? { sphere } : {}),
     });
     objects.push(obj);
   }
