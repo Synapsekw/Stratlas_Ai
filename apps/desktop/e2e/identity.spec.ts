@@ -84,13 +84,17 @@ test('a second profile exports a card and the owner adds it as an owner-certifie
   win,
   dataRoot,
 }) => {
+  // Two apps in one test, like the other two-person specs (exchange, hub, conflicts): on a slow
+  // hosted runner one start alone took 23 s to its first window, which left the second launch
+  // too little of the default 60 s and firstWindow's 30 s.
+  test.setTimeout(180_000);
   const card = join(dataRoot.base, 'Omar Sample.aioid');
   // Omar: a second instance on the same PC, own userData and vault service
   const network = new NetworkGuard();
   const omarApp = await launchApp(dataRoot, {}, ['--profile=reviewer-b']);
   try {
     await network.attach(omarApp);
-    const omar = await omarApp.firstWindow();
+    const omar = await omarApp.firstWindow({ timeout: 90_000 });
     await omar.waitForLoadState('domcontentloaded');
     await openIdentity(omar);
     await setField(omar, 'Your name', 'Omar Sample');
