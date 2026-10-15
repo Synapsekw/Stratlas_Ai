@@ -4,7 +4,7 @@ import { FIXTURE_MODELS, openingsOf, stackModel } from './fixtures';
 import { MeshSink, SEGMENTS, type Opening, type Prim, type V3 } from './geom';
 import { buildEngineeringGlb } from './meshAssemblies';
 import { khronos } from './testKhronos';
-import { validateGlb } from './validate';
+import { validateGlb, type DeclaredOpening } from './validate';
 
 const MATERIALS: GlbMaterial[] = [
   { name: 'grey', baseColor: [0.5, 0.5, 0.5, 1], metallic: 0, roughness: 0.8 },
@@ -35,8 +35,14 @@ function box(): Prim[] {
   s.box('grey', { centre: [0, 1, 0], size: [2, 2, 2] });
   return s.out();
 }
-/** A flue tube, open at its mouth (y 10), with its declared opening. */
-function flue(capped: boolean): { prims: Prim[]; openings: Opening[] } {
+/**
+ * A flue tube 6 m long, open at its mouth (y 10), with its declared opening; `capped` adds a disc
+ * over the mouth, `extra` anything else in the same node.
+ */
+function flue(
+  capped: boolean,
+  extra: (s: MeshSink) => void = () => undefined,
+): { prims: Prim[]; openings: Opening[] } {
   const s = sink();
   s.annulusTube('grey', {
     centre: [0, 10, 0],
@@ -48,8 +54,18 @@ function flue(capped: boolean): { prims: Prim[]; openings: Opening[] } {
     openings: 'top',
   });
   if (capped) s.disc('grey', { centre: [0, 10, 0], normal: [0, 1, 0], r: 1 });
+  extra(s);
   const prims = s.out();
   return { prims, openings: prims.flatMap((p) => p.openings ?? []) };
+}
+
+/** Validates one flue node with `openings` (default: its own). */
+async function checkFlue(f: { prims: Prim[]; openings: Opening[] }, openings?: DeclaredOpening[]) {
+  return validateGlb(glbOf([{ name: 'flue-1', prims: f.prims }]), {
+    budget: 1e6,
+    openings: { 'flue-1': openings ?? f.openings },
+    khronos,
+  });
 }
 
 describe('validateGlb', () => {
@@ -158,20 +174,68 @@ describe('validateGlb', () => {
     expect(bad.intendedOpenOk).toBe(false);
   });
 
-  it('a lined bore only has to keep the lining bore clear', async () => {
-    const lined = (capped: boolean) => {
+  it('detects a cap or plug off the mouth plane and a partial cap', async () => {
+    const disc =
+      (y: number, r: number, x = 0) =>
+      (s: MeshSink) => {
+        s.disc('grey', { centre: [x, y, 0], normal: [0, 1, 0], r });
+      };
+    const open = await checkFlue(flue(false));
+    expect(open.intendedOpenOk).toBe(true);
+    expect(open.openingProblems).toEqual([]);
+    const below = await checkFlue(flue(false, disc(9.995, 0.9)));
+    expect(below.intendedOpenOk).toBe(false);
+    // its rim lies 5 mm below the mouth plane, so it is no intended opening either
+    expect(below.unintendedHoles).toEqual([{ node: 'flue-1', loops: 1 }]);
+    expect((await checkFlue(flue(false, disc(10.005, 1)))).intendedOpenOk).toBe(false);
+    // a plug 1 m down: past the default depth, found when the opening declares its depth
+    const plugged = flue(false, disc(9, 0.9));
+    expect((await checkFlue(plugged)).intendedOpenOk).toBe(true);
+    const deep = plugged.openings.map((o) => ({ ...o, depth: 6 }));
+    const r = await checkFlue(plugged, deep);
+    expect(r.intendedOpenOk).toBe(false);
+    expect(r.openingProblems).toEqual([
+      { node: 'flue-1', problem: 'opening 1: the passage behind or in front of it is blocked' },
+    ]);
+    // a few triangles across part of the mouth
+    expect((await checkFlue(flue(false, disc(10, 0.1, 0.3)))).intendedOpenOk).toBe(false);
+  });
+
+  it('detects a capped annular passage when both bores are declared', async () => {
+    const annulus = (capped: boolean) => {
       const s = sink();
-      const tube = { centre: [0, 10, 0] as V3, axis: [0, 1, 0] as V3, y0: -3, y1: 0 };
-      s.annulusTube('grey', { ...tube, rOuter: 1, rInner: 0.9, openings: 'top' });
-      s.annulusTube('grey', { ...tube, rOuter: 0.899, rInner: 0.7, y0: -1, openings: 'top' });
-      if (capped) s.disc('grey', { centre: [0, 10, 0], normal: [0, 1, 0], r: 0.75 });
+      const tube = { centre: [0, 10, 0] as V3, axis: [0, 1, 0] as V3, y0: -6, y1: 0 };
+      s.annulusTube('grey', { ...tube, rOuter: 1, rInner: 0.8, openings: 'top' });
+      s.annulusTube('grey', { ...tube, rOuter: 0.6, rInner: 0.5, openings: 'top' });
+      if (capped)
+        s.disc('grey', {
+          centre: [0, 10, 0],
+          normal: [0, 1, 0],
+          r: 0.8,
+          holes: [{ c: [0, 0], r: 0.6 }],
+          declareHoles: false,
+        });
       const prims = s.out();
-      return glbOf([
-        { name: 'tip-1', prims, extras: { openings: prims.flatMap((p) => p.openings ?? []) } },
-      ]);
+      return { prims, openings: prims.flatMap((p) => p.openings ?? []) };
     };
-    expect((await validateGlb(lined(false), { budget: 1e6, khronos })).intendedOpenOk).toBe(true);
-    expect((await validateGlb(lined(true), { budget: 1e6, khronos })).intendedOpenOk).toBe(false);
+    expect((await checkFlue(annulus(true))).intendedOpenOk).toBe(false);
+    // declaring only the inner bore (the real passage) of the open pair passes
+    const open = annulus(false);
+    const inner = open.openings.filter((o) => o.r === 0.5);
+    expect(inner).toHaveLength(1);
+    expect((await checkFlue(open, inner)).intendedOpenOk).toBe(true);
+  });
+
+  it('an opening declared where the mesh has no rim fails', async () => {
+    const r = await validateGlb(glbOf([{ name: 'box-1', prims: box() }]), {
+      budget: 1e6,
+      openings: { 'box-1': [{ centre: [0, 5, 0], normal: [0, 1, 0], r: 0.3 }] },
+      khronos,
+    });
+    expect(r.intendedOpenOk).toBe(false);
+    expect(r.openingProblems).toEqual([
+      { node: 'box-1', problem: 'opening 1: the mesh has no rim there' },
+    ]);
   });
 
   it('reads the openings from node extras when none are given', async () => {
@@ -196,8 +260,14 @@ describe('validateGlb', () => {
       r: Math.hypot(1, 0.5),
       outline,
     };
+    // a frame round the rectangle, its top face in the opening plane: the rim
+    const frame = (s: MeshSink) => {
+      for (const z of [-0.6, 0.6]) s.box('grey', { centre: [0, -0.05, z], size: [2, 0.1, 0.2] });
+      for (const x of [-1.1, 1.1]) s.box('grey', { centre: [x, -0.05, 0], size: [0.2, 0.1, 1] });
+    };
     // a bar crossing the plane inside the circle round the outline but outside the rectangle
     const s = sink();
+    frame(s);
     s.box('grey', { centre: [0, 0, 0.9], size: [0.1, 1, 0.1] });
     const outside = await validateGlb(glbOf([{ name: 'hatch-1', prims: s.out() }]), {
       budget: 1e6,
@@ -206,6 +276,7 @@ describe('validateGlb', () => {
     });
     expect(outside.intendedOpenOk).toBe(true);
     const t = sink();
+    frame(t);
     t.box('grey', { centre: [0.5, 0, 0], size: [0.1, 1, 0.1] });
     const inside = await validateGlb(glbOf([{ name: 'hatch-1', prims: t.out() }]), {
       budget: 1e6,

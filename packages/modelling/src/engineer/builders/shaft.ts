@@ -212,7 +212,8 @@ export function buildFlareTip(sink: MeshSink, a: AssemblyOf<'flareTip'>, ctx: Bu
     rInner: bore,
     y0: 0,
     y1: t.height,
-    openings: 'top',
+    // the lining narrows the mouth: its bore, declared below, is the real passage
+    openings: 'none',
   });
   // refractory lining in the upper part of the bore, flush with the mouth
   sink.annulusTube('refractory', {

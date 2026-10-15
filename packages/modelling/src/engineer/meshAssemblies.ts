@@ -68,6 +68,8 @@ export interface MeshAssembliesResult {
   simplified: { id: string; detail: Detail }[];
   /** Components whose geometry could not be built (not written), with the reason. */
   failed: { id: string; reason: string }[];
+  /** Other things worth knowing, such as a coarser mesh that failed to build (the finer one is kept). */
+  notes: string[];
 }
 
 const LEVELS: readonly Detail[] = ['detailed', 'standard', 'fast'];
@@ -133,6 +135,7 @@ export function meshAssemblies(
   };
   const start = LEVELS.indexOf(o.detail);
   const failed: { id: string; reason: string }[] = [];
+  const notes: string[] = [];
   const entries: { a: Assembly; prims: Prim[]; level: number; size: number }[] = [];
   for (const a of model.assemblies) {
     if (!o.include(a)) continue;
@@ -155,8 +158,11 @@ export function meshAssemblies(
         let prims: Prim[];
         try {
           prims = meshAt(e.a, d);
-        } catch {
-          continue; // keep the finer mesh that did build
+        } catch (err) {
+          // keep the finer mesh that did build, and say so
+          const why = err instanceof Error ? err.message : String(err);
+          notes.push(`${e.a.id} kept at ${LEVELS[e.level] ?? o.detail}: ${d} failed (${why})`);
+          continue;
         }
         total += trianglesOf(prims) - trianglesOf(e.prims);
         e.prims = prims;
@@ -193,8 +199,13 @@ export function meshAssemblies(
     detail: LEVELS[coarsest] ?? o.detail,
     simplified,
     failed,
+    notes,
   };
 }
+
+/** Bounds on what node extras carry, so a file never holds runaway records. */
+const MAX_DESCRIPTION = 1000;
+const MAX_OUTLINE = 256;
 
 /** Basis order for ties: the weaker basis wins, so a label never overstates. */
 const BASIS_RANK: Record<ValueBasis, number> = { inferred: 0, observed: 1, user: 2, measured: 3 };
@@ -205,7 +216,19 @@ const BASIS_RANK: Record<ValueBasis, number> = { inferred: 0, observed: 1, user:
  * parameter, the worst residual and the least coverage. `part` (the id) and an optional `tag`
  * and `type` keep the extras keys `/1` part nodes have.
  */
-export function componentExtras(a: Assembly): Record<string, unknown> {
+export function componentExtras(
+  a: Assembly,
+  openings: readonly Opening[] = [],
+): Record<string, unknown> {
+  if (a.description.length > MAX_DESCRIPTION)
+    throw new Error(
+      `engineering model: the description of "${a.id}" is over ${String(MAX_DESCRIPTION)} characters`,
+    );
+  for (const op of openings)
+    if ((op.outline?.length ?? 0) > MAX_OUTLINE)
+      throw new Error(
+        `engineering model: an opening of "${a.id}" has over ${String(MAX_OUTLINE)} outline points`,
+      );
   const params: Record<string, ValueBasis> = {};
   const counts = new Map<ValueBasis, number>();
   let residualM: number | undefined;
@@ -241,6 +264,7 @@ export function componentExtras(a: Assembly): Record<string, unknown> {
       ...(residualM === undefined ? {} : { residualM }),
       ...(coverage === undefined ? {} : { coverage }),
     },
+    ...(openings.length ? { openings: openings.map((op) => ({ ...op })) } : {}),
   };
 }
 
@@ -263,6 +287,7 @@ export interface EngineeringGlb {
   detail: Detail;
   simplified: { id: string; detail: Detail }[];
   failed: { id: string; reason: string }[];
+  notes: string[];
 }
 
 /**
@@ -275,10 +300,17 @@ export function buildEngineeringGlb(
   model: ProcModel,
   o: { detail: Detail; drafts: boolean; generator: string; budget?: number },
 ): EngineeringGlb {
+  const parts = meshParts(model, {
+    parts: o.drafts ? 'all' : 'accepted',
+    used: new Set(model.assemblies.map((x) => x.id)),
+  });
+  const partTriangles = parts.reduce((sum, p) => sum + p.mesh.indices.length / 3, 0);
+  const budget = o.budget ?? DETAIL_BUDGETS[o.detail].triangles;
   const r = meshAssemblies(model, {
     detail: o.detail,
     include: (a) => a.status === 'accepted' || (o.drafts && a.status === 'draft'),
-    ...(o.budget === undefined ? {} : { budget: o.budget }),
+    // the /1 parts are written as they are, so the assemblies get what is left of the budget
+    budget: Math.max(0, budget - partTriangles),
   });
   const known = new Map(resolveMaterials(model).map((m) => [m.id, m]));
   const materials: GlbMaterial[] = [];
@@ -300,10 +332,7 @@ export function buildEngineeringGlb(
     nodes.push({
       name: c.id,
       translation: c.anchor,
-      extras: {
-        ...componentExtras(a),
-        ...(c.openings.length ? { openings: c.openings } : {}),
-      },
+      extras: componentExtras(a, c.openings),
       primitives: c.prims.map((p) => ({
         material: materialIndex(p.material, () => {
           const m = known.get(p.material);
@@ -316,12 +345,7 @@ export function buildEngineeringGlb(
     });
     list.push(a.tag === undefined ? { node: c.id } : { node: c.id, tag: a.tag });
   }
-  let triangles = r.triangles;
-  const used = new Set(r.components.map((c) => c.id));
-  for (const { part, name, extras, mesh } of meshParts(model, {
-    parts: o.drafts ? 'all' : 'accepted',
-    used,
-  })) {
+  for (const { part, name, extras, mesh } of parts) {
     const colour = partColour(part);
     const material = materialIndex(colour.name, () => ({
       name: colour.name,
@@ -337,10 +361,9 @@ export function buildEngineeringGlb(
         { material, positions: mesh.positions, normals: mesh.normals, indices: mesh.indices },
       ],
     });
-    triangles += mesh.indices.length / 3;
     list.push(extras.tag === undefined ? { node: name } : { node: name, tag: extras.tag });
   }
-  const budget = o.budget ?? DETAIL_BUDGETS[o.detail].triangles;
+  const triangles = r.triangles + partTriangles;
   return {
     glb: writeGlbV2(nodes, { root: model.id, generator: o.generator, materials }),
     nodes: list,
@@ -349,5 +372,6 @@ export function buildEngineeringGlb(
     detail: r.detail,
     simplified: r.simplified,
     failed: r.failed,
+    notes: r.notes,
   };
 }

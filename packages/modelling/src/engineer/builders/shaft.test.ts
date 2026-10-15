@@ -352,11 +352,13 @@ describe('flare tip', () => {
     expect(normalsUnit(body)).toBe(true);
     expect(degenerateTriangles(body)).toBe(0);
     expect(countComponents(body)).toBe(1 + 3); // tip and three pilots
-    expect(body.openings).toHaveLength(1);
-    expect(must(body.openings?.[0]).centre).toEqual([0, 83, 0]);
+    // only the lining bore, the real passage, is declared open
+    expect(body.openings).toBeUndefined();
     const lining = prim(prims, 'refractory');
     expectSolid(lining);
     expect(lining.openings).toHaveLength(1);
+    expect(must(lining.openings?.[0]).centre).toEqual([0, 83, 0]);
+    expect(must(lining.openings?.[0]).r).toBeCloseTo(0.78 * 0.6, 12);
     // the lining stands just clear of the body's bore face, never on it
     const boreFace = 0.9 * 0.6;
     const liningOuter = must(ringRadiiAt(lining, [82.5])[0]);

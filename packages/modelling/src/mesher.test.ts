@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import { ProcModel, type ProcPart } from '@aio/schema';
 import { describe, expect, it } from 'vitest';
 import type { Prim } from './engineer/geom';
@@ -7,6 +8,7 @@ import { readGlb } from './glb';
 import { buildEngineeringGlb, meshPart, meshProcModel, partNodeName, type PartMesh } from './index';
 
 const origin = { by: 'manual' } as const;
+const sha256 = (b: Uint8Array) => createHash('sha256').update(b).digest('hex');
 
 const PARTS = {
   flatTank: {
@@ -206,11 +208,63 @@ describe('meshProcModel', () => {
     expect(readGlb(none.glb).json.nodes).toEqual([{ name: 'site', children: [] }]);
   });
 
+  it('writes the same bytes as before the engineering model (golden)', () => {
+    // SHA-256 of the GLBs the parts mesher wrote before meshParts and partColour were split out
+    const golden = ProcModel.parse({
+      schema: 'aio.procmodel/2',
+      materials: [],
+      assemblies: [],
+      id: 'site',
+      name: 'Site',
+      createdAt: '2026-10-06T08:00:00Z',
+      updatedAt: '2026-10-06T08:00:00Z',
+      parts: [
+        { ...PARTS.flatTank },
+        { ...PARTS.coneTank, status: 'draft' },
+        {
+          ...PARTS.flatTank,
+          id: 'c3',
+          tag: undefined,
+          class: undefined,
+          name: 'T-101',
+          origin,
+          base: [5, 0, 0],
+          radius: 4,
+          height: 8,
+        },
+        {
+          ...PARTS.flatTank,
+          id: 'c4',
+          class: 'pipe',
+          tag: '',
+          status: 'rejected',
+          origin,
+          base: [5, 0, 9],
+          radius: 1,
+          height: 2,
+        },
+        { ...PARTS.box },
+      ],
+    });
+    const accepted = meshProcModel(golden, { parts: 'accepted' });
+    expect(accepted.nodes).toEqual(['T-101', 'T-101_c3', 'b1']);
+    expect(accepted.glb.length).toBe(30260);
+    expect(sha256(accepted.glb)).toBe(
+      '322765eb9bf676527255be8f8ea4d23a4a850fdc23f8f08105413c1adf60682e',
+    );
+    const all = meshProcModel(golden, { parts: 'all' });
+    expect(all.nodes).toEqual(['T-101', 'c2', 'T-101_c3', 'b1']);
+    expect(sha256(all.glb)).toBe(
+      '674f00e515d5b758885328a92bf565966916eee9553e81eb0b2a351c4ea92aac',
+    );
+  });
+
   it('a mixed model: parts mesh as before, the engineering GLB holds parts and assemblies', () => {
     const mixed: ProcModel = { ...stackModel(), id: 'site', parts: model.parts };
     const parts = meshProcModel(mixed);
     expect(parts.nodes).toEqual(['T-101', 'Line_7']);
-    expect(parts.glb).toEqual(meshProcModel(model).glb);
+    // assemblies change nothing in the parts GLB
+    expect(sha256(parts.glb)).toBe(sha256(meshProcModel(model).glb));
     const built = buildEngineeringGlb(mixed, { detail: 'fast', drafts: false, generator: 't' });
     const names = (readGlb(built.glb).json.nodes as { name: string }[]).map((n) => n.name);
     // the accepted shaft, then the accepted parts, then the root

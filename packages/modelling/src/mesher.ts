@@ -465,13 +465,16 @@ export function meshProcModel(
   return { glb, nodes: meshed.map((m) => m.name), partIds: meshed.map((m) => m.part.id) };
 }
 
-/** The colour a part is drawn in (linear RGB): amber for a draft, else by class. */
+/**
+ * The colour a part is drawn in (linear RGB): amber for a draft, else by class. The name
+ * (`part/<class>`) cannot clash with a model material id, which has no slash.
+ */
 export function partColour(part: ProcPart): { name: string; rgb: V3 } {
-  if (part.status === 'draft') return { name: 'part-draft', rgb: linearRgb(DRAFT_COLOUR) };
+  if (part.status === 'draft') return { name: 'part/draft', rgb: linearRgb(DRAFT_COLOUR) };
   const hex = part.class === undefined ? undefined : CLASS_COLOURS[part.class];
   return hex === undefined
-    ? { name: 'part-default', rgb: linearRgb(DEFAULT_COLOUR) }
-    : { name: `part-${part.class ?? ''}`, rgb: linearRgb(hex) };
+    ? { name: 'part/default', rgb: linearRgb(DEFAULT_COLOUR) }
+    : { name: `part/${part.class ?? ''}`, rgb: linearRgb(hex) };
 }
 
 /** One meshed part ready for a GLB node: its unique node name, extras and triangles. */

@@ -7,6 +7,7 @@ import { readGlb } from '../glb';
 import { FIXTURE_MODELS, component, flareModel, stackModel } from './fixtures';
 import { DEFAULT_MATERIALS, resolveMaterials } from './materials';
 import { BUILDERS, buildEngineeringGlb, componentExtras, meshAssemblies } from './meshAssemblies';
+import { SEGMENTS, type Opening, type V3 } from './geom';
 import { must } from './testGeom';
 
 interface JsonNode {
@@ -200,11 +201,73 @@ describe('buildEngineeringGlb', () => {
     expect(tank.translation).toEqual([30, 0, 0]);
     const j = json(built.glb);
     expect(must(j.materials[must(j.meshes[must(tank.mesh)]?.primitives[0]).material]).name).toBe(
-      'part-tank',
+      'part/tank',
     );
     // a part whose name is taken by an assembly id gets its id added
     expect(j.nodes.map((n) => n.name)).toContain('shaft-1_shaft-1');
     expect(built.nodes).toContainEqual({ node: 'T-101', tag: 'T-101' });
+  });
+
+  const withTank = (m: ProcModel): ProcModel => ({
+    ...m,
+    parts: [
+      {
+        kind: 'cylinder',
+        id: 'c1',
+        class: 'tank',
+        status: 'accepted',
+        origin: { by: 'manual' },
+        base: [30, 0, 0],
+        radius: 3,
+        height: 5,
+      },
+    ],
+  });
+
+  it('counts /1 part triangles against the budget', () => {
+    const m = withTank(stackModel());
+    const all = () => true;
+    const assemblies = meshAssemblies(m, { detail: 'standard', include: all }).triangles;
+    const fits = buildEngineeringGlb(m, { detail: 'standard', drafts: true, generator: 't' });
+    const parts = fits.triangles - assemblies;
+    expect(parts).toBeGreaterThan(0);
+    const exact = buildEngineeringGlb(m, {
+      detail: 'standard',
+      drafts: true,
+      generator: 't',
+      budget: assemblies + parts,
+    });
+    expect(exact.simplified).toEqual([]);
+    expect(exact.overBudget).toBe(false);
+    const tight = buildEngineeringGlb(m, {
+      detail: 'standard',
+      drafts: true,
+      generator: 't',
+      budget: assemblies + parts - 1,
+    });
+    expect(tight.simplified.length).toBeGreaterThan(0);
+    expect(tight.triangles).toBeLessThanOrEqual(assemblies + parts - 1);
+    expect(tight.overBudget).toBe(false);
+  });
+
+  it('part materials never clash with a model material id', () => {
+    const m = withTank(stackModel());
+    const own = { ...must(DEFAULT_MATERIALS[0]), id: 'part-tank', name: 'Own' };
+    const model: ProcModel = {
+      ...m,
+      materials: [...m.materials, own],
+      assemblies: m.assemblies.map((a) =>
+        a.id === 'band-1' && a.kind === 'band'
+          ? { ...a, params: { ...a.params, material: 'part-tank' } }
+          : a,
+      ),
+    };
+    const names = json(
+      buildEngineeringGlb(model, { detail: 'fast', drafts: true, generator: 't' }).glb,
+    ).materials.map((x) => x.name);
+    expect(names).toContain('part-tank');
+    expect(names).toContain('part/tank');
+    expect(new Set(names).size).toBe(names.length);
   });
 });
 
@@ -274,6 +337,34 @@ describe('meshAssemblies', () => {
     expect(r.components.map((c) => c.id)).not.toContain('band-9');
   });
 
+  it('notes a coarser mesh that fails and keeps the finer one', () => {
+    const real = BUILDERS.cabinet;
+    BUILDERS.cabinet = (sink, a, ctx) => {
+      if (sink.segmentsFor === SEGMENTS.fast) throw new Error('geometry: no fast cabinet');
+      real(sink, a, ctx);
+    };
+    try {
+      const m: ProcModel = {
+        ...stackModel(),
+        assemblies: [
+          component('cabinet', 'cabinet-1', 'Equipment', {
+            base: [20, 0, 0],
+            size: [1, 2, 1],
+            yawDeg: 0,
+          }),
+        ],
+      };
+      const r = meshAssemblies(m, { detail: 'standard', include: all, budget: 1 });
+      expect(r.components.map((c) => [c.id, c.detail])).toEqual([['cabinet-1', 'standard']]);
+      expect(r.notes).toEqual([
+        'cabinet-1 kept at standard: fast failed (geometry: no fast cabinet)',
+      ]);
+      expect(r.overBudget).toBe(true);
+    } finally {
+      BUILDERS.cabinet = real;
+    }
+  });
+
   it('anchors a component at its base param and makes positions relative to it', () => {
     const r = meshAssemblies(stackModel({ base: [500, 10, -800] }), {
       detail: 'fast',
@@ -327,6 +418,27 @@ describe('componentExtras', () => {
       coverage: 0.6,
     });
     expect(componentExtras(withQuality({})).quality).toEqual({ params: {} });
+  });
+
+  it('bounds what it writes: description and opening outlines', () => {
+    const ok = { ...base, description: 'd'.repeat(1000) };
+    expect(componentExtras(ok).description).toHaveLength(1000);
+    expect(() => componentExtras({ ...base, description: 'd'.repeat(1001) })).toThrow(
+      'engineering model: the description of "flue-1" is over 1000 characters',
+    );
+    const ring = (n: number): Opening => ({
+      centre: [0, 0, 0],
+      normal: [0, 1, 0],
+      r: 1,
+      outline: Array.from({ length: n }, (_, i): V3 => {
+        const t = (2 * Math.PI * i) / n;
+        return [Math.cos(t), 0, Math.sin(t)];
+      }),
+    });
+    expect(componentExtras(base, [ring(256)]).openings).toHaveLength(1);
+    expect(() => componentExtras(base, [ring(257)])).toThrow(
+      'engineering model: an opening of "flue-1" has over 256 outline points',
+    );
   });
 });
 

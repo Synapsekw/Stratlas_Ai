@@ -8,11 +8,18 @@
  * are single-skin sheets by design) are welded at 0.1 mm and their boundary loops found. A loop
  * matching a declared opening (centroid within 2 cm of its centre and mean radius within 2 percent
  * of `r`, or for an outline every point within 2 cm of it) is intended; any other loop is an
- * unintended hole. Openings: no triangle of the node may cross a declared opening's interior (the
- * disc of 0.95 `r`, or the outline less a small margin), so a capped flue fails while the flue's
- * own rim ring, lying in the opening plane outside the bore, passes; of coplanar circular openings
- * one inside another (a lined bore) only the innermost has to stay clear. Openings come from the node
- * extras (`openings`, model frame) unless `o.openings` gives them for that node.
+ * unintended hole; a loop must lie in the opening plane (1 mm), so a cap just below a mouth is no
+ * match. Openings, each of which must pass three checks:
+ * - no triangle of the node crosses its interior in the plane (the disc of 0.95 `r`, or the
+ *   outline less a small margin), so a capped flue fails while the flue's own rim ring, lying in
+ *   the opening plane outside the bore, passes;
+ * - the passage is clear: lines along the axis through the centre and points inside the rim, from
+ *   `max(0.25 r, 5 cm)` in front of the mouth to the declared `depth` behind it (else
+ *   `max(0.5 r, 10 cm)`), meet no triangle, so a cap or plug off the plane fails too;
+ * - the rim exists: mesh edges in the plane, or the plane's cut through the walls, follow the
+ *   circle or outline all the way round.
+ * Openings come from the node extras (`openings`, model frame) unless `o.openings` gives them for
+ * that node.
  */
 import { readGlb } from '../glb';
 import { basis, cross, dot, len, norm, sub, type Opening, type V3 } from './geom';
@@ -26,6 +33,11 @@ export interface KhronosResult {
 /** Runs the Khronos glTF validator on GLB bytes. */
 export type KhronosValidator = (glb: Uint8Array) => Promise<KhronosResult>;
 
+/** A declared opening as the validator reads it: `depth` is how deep the passage must stay clear. */
+export interface DeclaredOpening extends Opening {
+  depth?: number;
+}
+
 export interface GlbReport {
   validatorErrors: number;
   validatorWarnings: number;
@@ -37,6 +49,8 @@ export interface GlbReport {
   duplicateTris: number;
   unintendedHoles: { node: string; loops: number }[];
   intendedOpenOk: boolean;
+  /** Why `intendedOpenOk` is false: one line per failing opening. */
+  openingProblems: { node: string; problem: string }[];
   triangles: number;
   withinBudget: boolean;
 }
@@ -81,6 +95,8 @@ const PLANE_EPS = 1e-4;
 const LOOP_CENTRE_TOL = 0.02;
 const LOOP_RADIUS_TOL = 0.02;
 const INTERIOR = 0.95;
+/** How far off the opening plane a rim edge or loop point may lie. */
+const RIM_PLANE_TOL = 1e-3;
 
 class Bad extends Error {}
 
@@ -166,7 +182,7 @@ class OpeningRegion {
   private readonly poly: P2[] | null;
   private readonly tol: number;
 
-  constructor(readonly o: Opening) {
+  constructor(readonly o: DeclaredOpening) {
     this.n = norm(o.normal);
     [this.u, this.v] = basis(this.n);
     this.poly = o.outline ? o.outline.map((q) => this.to2(q)) : null;
@@ -221,66 +237,198 @@ class OpeningRegion {
 
   /** Whether triangle `a b c` (model frame) crosses or covers the opening's interior. */
   crossedBy(a: V3, b: V3, c: V3): boolean {
-    const pts = [a, b, c];
+    const cut = this.planeCut([a, b, c]);
+    if (cut === 'coplanar') return this.triangleIn([this.to2(a), this.to2(b), this.to2(c)]);
+    return cut !== null && this.segmentIn(this.to2(cut[0]), this.to2(cut[1]));
+  }
+
+  /** A model frame point of the opening plane from plane coordinates. */
+  private to3(p: P2): V3 {
+    const c = this.o.centre;
+    return [
+      c[0] + p[0] * this.u[0] + p[1] * this.v[0],
+      c[1] + p[0] * this.u[1] + p[1] * this.v[1],
+      c[2] + p[0] * this.u[2] + p[1] * this.v[2],
+    ];
+  }
+
+  /** Distance from `p` (model frame) to the outline polygon. */
+  private outlineDist(p: V3): number {
+    const outline = this.o.outline ?? [];
+    let best = Infinity;
+    outline.forEach((a, i) => {
+      const b = outline[(i + 1) % outline.length] ?? a;
+      const ab = sub(b, a);
+      const l2 = dot(ab, ab);
+      const t = l2 > 0 ? Math.max(0, Math.min(1, dot(sub(p, a), ab) / l2)) : 0;
+      best = Math.min(best, len(sub(p, [a[0] + t * ab[0], a[1] + t * ab[1], a[2] + t * ab[2]])));
+    });
+    return best;
+  }
+
+  /** Points well inside the opening (plane coordinates): the centre and two rings towards the rim. */
+  samples(): P2[] {
+    const poly = this.poly;
+    if (!poly) {
+      const out: P2[] = [[0, 0]];
+      for (const f of [0.45, 0.85])
+        for (let k = 0; k < 8; k++) {
+          const t = (k * Math.PI) / 4;
+          out.push([f * this.o.r * Math.cos(t), f * this.o.r * Math.sin(t)]);
+        }
+      return out;
+    }
+    const c: P2 = [
+      poly.reduce((s, p) => s + p[0], 0) / poly.length,
+      poly.reduce((s, p) => s + p[1], 0) / poly.length,
+    ];
+    const towards = poly.flatMap((p, i) => {
+      const q = poly[(i + 1) % poly.length] ?? p;
+      return [p, [(p[0] + q[0]) / 2, (p[1] + q[1]) / 2] as P2];
+    });
+    const out: P2[] = [c];
+    for (const f of [0.45, 0.85])
+      for (const p of towards) out.push([c[0] + f * (p[0] - c[0]), c[1] + f * (p[1] - c[1])]);
+    return out.filter((p) => this.pointIn(p));
+  }
+
+  /**
+   * Whether the passage is blocked: a triangle meets a line through the opening along its axis,
+   * from a little in front of the mouth (`max(0.25 r, 5 cm)`) to its depth behind it (the declared
+   * `depth`, else `max(0.5 r, 10 cm)`), at the centre or at points inside the rim.
+   */
+  passageBlocked(tris: readonly Tris[]): boolean {
+    const front = Math.max(0.25 * this.o.r, 0.05);
+    const back = this.o.depth ?? Math.max(0.5 * this.o.r, 0.1);
+    const rays = this.samples().map((p) => {
+      const at = this.to3(p);
+      const start: V3 = [
+        at[0] + front * this.n[0],
+        at[1] + front * this.n[1],
+        at[2] + front * this.n[2],
+      ];
+      return { start, length: front + back };
+    });
+    const dir: V3 = [-this.n[0], -this.n[1], -this.n[2]];
+    for (const t of tris)
+      for (let k = 0; k + 2 < t.indices.length; k += 3) {
+        const [a, b, c] = [0, 1, 2].map((e) => at3(t.positions, t.indices[k + e] ?? 0)) as [
+          V3,
+          V3,
+          V3,
+        ];
+        if (rays.some((r) => segmentHitsTriangle(r.start, dir, r.length, a, b, c))) return true;
+      }
+    return false;
+  }
+
+  /**
+   * Whether the mesh has this opening's rim: edges in the opening plane, or the plane's cut through
+   * its triangles, on the circle (0.9 to 1.1 `r`) or within 2 cm of the outline, all the way round.
+   */
+  rimPresent(tris: readonly Tris[]): boolean {
+    const BINS = 36;
+    const covered = new Array<boolean>(BINS).fill(false);
+    const centre: P2 = this.poly
+      ? [
+          this.poly.reduce((s, p) => s + p[0], 0) / this.poly.length,
+          this.poly.reduce((s, p) => s + p[1], 0) / this.poly.length,
+        ]
+      : [0, 0];
+    const onRim = (p: V3): boolean => {
+      if (Math.abs(dot(sub(p, this.o.centre), this.n)) > RIM_PLANE_TOL) return false;
+      if (this.o.outline) return this.outlineDist(p) <= LOOP_CENTRE_TOL;
+      const q = this.to2(p);
+      const r = Math.hypot(q[0], q[1]);
+      return r >= 0.9 * this.o.r && r <= 1.1 * this.o.r;
+    };
+    const angle = (p: V3) => {
+      const q = this.to2(p);
+      return Math.atan2(q[1] - centre[1], q[0] - centre[0]);
+    };
+    const mark = (p: V3, q: V3) => {
+      if (!onRim(p) || !onRim(q)) return;
+      let a0 = angle(p);
+      let span = angle(q) - a0;
+      if (span > Math.PI) span -= 2 * Math.PI;
+      if (span < -Math.PI) span += 2 * Math.PI;
+      if (span < 0) {
+        a0 += span;
+        span = -span;
+      }
+      const steps = Math.max(2, Math.ceil((span / (2 * Math.PI)) * BINS * 4));
+      for (let i = 0; i <= steps; i++) {
+        const a = a0 + (span * i) / steps;
+        const bin = Math.floor(((((a / (2 * Math.PI)) % 1) + 1) % 1) * BINS) % BINS;
+        covered[bin] = true;
+      }
+    };
+    for (const t of tris)
+      for (let k = 0; k + 2 < t.indices.length; k += 3) {
+        const pts = [0, 1, 2].map((e) => at3(t.positions, t.indices[k + e] ?? 0)) as [V3, V3, V3];
+        const cut = this.planeCut(pts);
+        if (cut === 'coplanar')
+          for (let e = 0; e < 3; e++) mark(pts[e] ?? pts[0], pts[(e + 1) % 3] ?? pts[0]);
+        else if (cut) mark(cut[0], cut[1]);
+      }
+    return covered.every(Boolean);
+  }
+
+  /** Where the opening plane cuts triangle `pts`: a segment, `coplanar`, or null. */
+  planeCut(pts: readonly [V3, V3, V3]): [V3, V3] | 'coplanar' | null {
     const d = pts.map((p) => dot(sub(p, this.o.centre), this.n));
     const s = d.map((x) => (x > PLANE_EPS ? 1 : x < -PLANE_EPS ? -1 : 0));
-    if (s.every((x) => x === 0)) return this.triangleIn([this.to2(a), this.to2(b), this.to2(c)]);
-    if (s.every((x) => x >= 0) && s.some((x) => x > 0) && !s.includes(0)) return false;
-    if (s.every((x) => x <= 0) && !s.includes(0)) return false;
+    if (s.every((x) => x === 0)) return 'coplanar';
+    if (!s.includes(0) && (s.every((x) => x > 0) || s.every((x) => x < 0))) return null;
     const hits: V3[] = [];
     for (let i = 0; i < 3; i++) {
-      const p = pts[i] ?? a;
+      const p = pts[i] ?? pts[0];
       if (s[i] === 0) hits.push(p);
       const j = (i + 1) % 3;
-      const si = s[i] ?? 0;
-      const sj = s[j] ?? 0;
-      if (si * sj < 0) {
-        const q = pts[j] ?? a;
+      if ((s[i] ?? 0) * (s[j] ?? 0) < 0) {
+        const q = pts[j] ?? pts[0];
         const di = d[i] ?? 0;
         const t = di / (di - (d[j] ?? 0));
         hits.push([p[0] + t * (q[0] - p[0]), p[1] + t * (q[1] - p[1]), p[2] + t * (q[2] - p[2])]);
       }
     }
     const [h0, h1] = hits;
-    if (!h0) return false;
-    return this.segmentIn(this.to2(h0), this.to2(h1 ?? h0));
-  }
-
-  /**
-   * Whether `inner` is a smaller circular opening in this one's plane, wholly inside it (a lined
-   * bore): the passage is then the inner one, which alone has to stay clear.
-   */
-  encloses(inner: OpeningRegion): boolean {
-    if (this.o.outline || inner.o.outline || dot(this.n, inner.n) < 0.999) return false;
-    const d = sub(inner.o.centre, this.o.centre);
-    if (Math.abs(dot(d, this.n)) > PLANE_EPS) return false;
-    return len(d) + inner.o.r < this.o.r;
+    if (!h0) return null;
+    return [h0, h1 ?? h0];
   }
 
   /** Whether a boundary loop (model frame points) is this opening's rim. */
   matchesLoop(loop: readonly V3[]): boolean {
     if (loop.length === 0) return false;
+    if (this.o.outline) return loop.every((p) => this.outlineDist(p) <= LOOP_CENTRE_TOL);
+    // the rim lies in the opening plane: a cap a few millimetres off it is no match
+    if (loop.some((p) => Math.abs(dot(sub(p, this.o.centre), this.n)) > RIM_PLANE_TOL))
+      return false;
     const c: V3 = [0, 1, 2].map(
       (k) => loop.reduce((s, p) => s + p[k as 0 | 1 | 2], 0) / loop.length,
     ) as V3;
-    if (this.o.outline) {
-      const outline = this.o.outline;
-      return loop.every((p) =>
-        outline.some((a, i) => {
-          const b = outline[(i + 1) % outline.length] ?? a;
-          const ab = sub(b, a);
-          const l2 = dot(ab, ab);
-          const t = l2 > 0 ? Math.max(0, Math.min(1, dot(sub(p, a), ab) / l2)) : 0;
-          return (
-            len(sub(p, [a[0] + t * ab[0], a[1] + t * ab[1], a[2] + t * ab[2]])) <= LOOP_CENTRE_TOL
-          );
-        }),
-      );
-    }
     if (len(sub(c, this.o.centre)) > LOOP_CENTRE_TOL) return false;
     const r = loop.reduce((s, p) => s + len(sub(p, c)), 0) / loop.length;
     return Math.abs(r - this.o.r) <= LOOP_RADIUS_TOL * this.o.r;
   }
+}
+
+/** Whether the segment from `o` along unit `dir` for `length` meets triangle `a b c` (edges included). */
+function segmentHitsTriangle(o: V3, dir: V3, length: number, a: V3, b: V3, c: V3): boolean {
+  const e1 = sub(b, a);
+  const e2 = sub(c, a);
+  const p = cross(dir, e2);
+  const det = dot(e1, p);
+  if (Math.abs(det) < 1e-14) return false; // parallel to the line
+  const inv = 1 / det;
+  const s = sub(o, a);
+  const u = dot(s, p) * inv;
+  if (u < -1e-9 || u > 1 + 1e-9) return false;
+  const q = cross(s, e1);
+  const v = dot(dir, q) * inv;
+  if (v < -1e-9 || u + v > 1 + 1e-9) return false;
+  const t = dot(e2, q) * inv;
+  return t >= 0 && t <= length;
 }
 
 /** Boundary loops (model frame points) of the welded triangles of `tris`. */
@@ -349,7 +497,7 @@ function boundaryLoops(tris: readonly Tris[]): V3[][] {
   return loops;
 }
 
-const isOpening = (v: unknown): v is Opening => {
+const isOpening = (v: unknown): v is DeclaredOpening => {
   if (typeof v !== 'object' || v === null) return false;
   const o = v as Record<string, unknown>;
   const v3 = (x: unknown) =>
@@ -358,6 +506,7 @@ const isOpening = (v: unknown): v is Opening => {
     v3(o.centre) &&
     v3(o.normal) &&
     typeof o.r === 'number' &&
+    (o.depth === undefined || typeof o.depth === 'number') &&
     (o.outline === undefined || (Array.isArray(o.outline) && o.outline.every(v3)))
   );
 };
@@ -365,7 +514,7 @@ const isOpening = (v: unknown): v is Opening => {
 /** Checks a GLB file; see the module comment. */
 export async function validateGlb(
   glb: Uint8Array,
-  o: { budget: number; openings?: Record<string, Opening[]>; khronos: KhronosValidator },
+  o: { budget: number; openings?: Record<string, DeclaredOpening[]>; khronos: KhronosValidator },
 ): Promise<GlbReport> {
   const report: GlbReport = {
     validatorErrors: 0,
@@ -378,6 +527,7 @@ export async function validateGlb(
     duplicateTris: 0,
     unintendedHoles: [],
     intendedOpenOk: true,
+    openingProblems: [],
     triangles: 0,
     withinBudget: true,
   };
@@ -486,17 +636,29 @@ export async function validateGlb(
     const fromExtras = n.extras?.openings;
     const openings = (given ?? (Array.isArray(fromExtras) ? fromExtras : [])).filter(isOpening);
     const regions = openings.map((x) => new OpeningRegion(x));
-    const open = regions.filter((r) => !regions.some((inner) => inner !== r && r.encloses(inner)));
-    for (const r of open)
-      for (const t of tris)
-        for (let k = 0; k + 2 < t.indices.length && report.intendedOpenOk; k += 3) {
+    regions.forEach((r, i) => {
+      const fail = (problem: string) => {
+        report.intendedOpenOk = false;
+        report.openingProblems.push({
+          node: name,
+          problem: `opening ${String(i + 1)}: ${problem}`,
+        });
+      };
+      const crossed = tris.some((t) => {
+        for (let k = 0; k + 2 < t.indices.length; k += 3) {
           const [a, b, c] = [0, 1, 2].map((e) => at3(t.positions, t.indices[k + e] ?? 0)) as [
             V3,
             V3,
             V3,
           ];
-          if (r.crossedBy(a, b, c)) report.intendedOpenOk = false;
+          if (r.crossedBy(a, b, c)) return true;
         }
+        return false;
+      });
+      if (crossed) fail('a triangle crosses the opening');
+      else if (r.passageBlocked(tris)) fail('the passage behind or in front of it is blocked');
+      if (!r.rimPresent(tris)) fail('the mesh has no rim there');
+    });
     const loops = boundaryLoops(tris.filter((t) => !t.doubleSided)).filter(
       (loop) => !regions.some((r) => r.matchesLoop(loop)),
     );
