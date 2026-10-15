@@ -280,6 +280,12 @@ export const ModelRouteSchema = z.object({
   task: AiTask,
   provider: AiProvider,
   model: z.string().min(1),
+  /**
+   * "Treat as vision model" in Settings: the person vouches that this route's model reads images
+   * and returns structured output, so an unknown model may run the engineer step (with
+   * conservative limits). Absent means off.
+   */
+  treatAsVision: z.boolean().optional(),
 });
 
 /** Tokens and estimated cost for one provider. */

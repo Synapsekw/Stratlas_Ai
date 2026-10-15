@@ -63,6 +63,12 @@ export interface ModelRoute {
   task: AiTask;
   provider: AiProvider;
   model: string;
+  /**
+   * The person vouches that this model reads images and returns structured output ("Treat as
+   * vision model" in Settings): an unknown model is then accepted for the engineer step with
+   * conservative limits. Ignored for models the capability table knows.
+   */
+  treatAsVision?: boolean | undefined;
 }
 
 /** Defaults shown in Settings; the person can change every route. */
@@ -128,8 +134,20 @@ export const TEST_MODELS: Record<(typeof PROVIDERS)[number], string> = {
   google: 'gemini-3.1-flash-lite',
 };
 
+/**
+ * Tasks without a default route of their own: they follow another task's route until the person
+ * sets one. The engineer step follows the vision route, so it changes with it (and with the
+ * Offline agent preset).
+ */
+const FOLLOWS: Partial<Record<AiTask, AiTask>> = { engineer: 'vision' };
+
 export function routeFor(routes: readonly ModelRoute[], task: AiTask): ModelRoute {
-  const r = routes.find((x) => x.task === task);
+  let r = routes.find((x) => x.task === task);
+  const followed = FOLLOWS[task];
+  if (!r && followed) {
+    const base = routes.find((x) => x.task === followed);
+    if (base) r = { ...base, task };
+  }
   if (!r) {
     throw new Error(
       `No model is set for the "${task}" task. Choose one in Settings, AI providers.`,

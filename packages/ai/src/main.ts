@@ -29,6 +29,7 @@ import {
   type ToolSet,
   type UserContent,
 } from 'ai';
+import { engineerReady } from './capabilities';
 import {
   DETECT_PROMPT_VERSION,
   detectInstructions,
@@ -331,7 +332,7 @@ export function createAgentRuntime(
 
   /**
    * Every gate before a call, in order: route, provider, offline-only, cloud switch, project
-   * policy, key.
+   * policy, key, then the engineer step's model capabilities and the local model probe.
    */
   async function check(task: AiTask, projectId: string | undefined): Promise<Check> {
     let route: ModelRoute;
@@ -370,6 +371,12 @@ export function createAgentRuntime(
         route,
         cloud,
       };
+    }
+    // The engineer step needs images in and a structured proposal out: known models only, unless
+    // the person treats the model as a vision model; a local one by what the probe found.
+    if (task === 'engineer') {
+      const ready = engineerReady(route, localOf(route)?.capabilities);
+      if (!ready.ok) return { ok: false, reason: 'no-route', message: ready.reason, route, cloud };
     }
     // A local route is checked against what the capability probe found (AI-9).
     if (route.provider === 'local') {

@@ -10,6 +10,7 @@ export {
   routeFor,
   type ModelRoute,
 } from './routes';
+export { capsFor, engineerReady, type LocalCaps, type ModelCaps } from './capabilities';
 export {
   AgentPanel,
   describeStep,

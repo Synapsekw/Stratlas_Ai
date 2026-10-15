@@ -122,6 +122,27 @@ describe.each(CLOUD)('offline-only workstation: %s', (provider, model, origin) =
     expect(t.getKey).not.toHaveBeenCalled();
   });
 
+  it('makes the engineer step unavailable with the reason and sends nothing', async () => {
+    const t = setup({ provider, model, offlineOnly: () => true });
+    expect(await t.runtime.status({ task: 'engineer' })).toMatchObject({
+      ready: false,
+      reason: 'offline-only',
+      message: MESSAGES.offlineOnly,
+      cloud: true,
+    });
+    // a cloud provider asked for directly still refuses before any request leaves the machine
+    const registry = createProviderRegistry(
+      builtInProviders({ fetch: t.net.fetch, offlineOnly: () => true }),
+    );
+    const cloud = registry.get(provider);
+    if (!cloud) throw new Error(`no ${provider} provider`);
+    await expect(
+      generateText({ model: cloud.languageModel(model, KEY), prompt: 'Engineer.', maxRetries: 0 }),
+    ).rejects.toBeInstanceOf(OfflineOnlyError);
+    expect(t.net.seen).toEqual([]);
+    expect(t.getKey).not.toHaveBeenCalled();
+  });
+
   it('calls the provider on each of those paths with offline-only off', async () => {
     const t = setup({ provider, model, offlineOnly: () => false });
     await t.runtime.send(send());
