@@ -278,6 +278,10 @@ const READS: ReadonlySet<IpcChannel> = new Set<IpcChannel>([
   'blobs:status',
   'thumbs:put',
   'library:reveal',
+  // dataset properties, reveal and export read the project; export writes outside it only
+  'layer:info',
+  'layer:reveal',
+  'layer:export',
   // they write userData only (library.json, library-view.json), never the project
   'library:remove',
   'library:move',

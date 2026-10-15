@@ -242,6 +242,8 @@ export const LayerPatch = z.union([
    * (`drawings/<stem>/plan.png`) the save also shows the layer and marks its placement as placed.
    */
   z.object({ corners: RasterCorners }).strict(),
+  /** A new name for any layer kind (the Datasets menu's Rename, F2). Nothing else changes. */
+  z.object({ name: z.string().trim().min(1).max(120) }).strict(),
   /** The placement of a `walk` layer (its pins and corrections); `null` clears it. */
   z.object({ walk: WalkCalibration.nullable() }).strict(),
   /** Forget the GPS places of a photos layer (a camera whose GPS is wrong): they stay in Media. */

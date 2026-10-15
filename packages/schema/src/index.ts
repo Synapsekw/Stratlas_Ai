@@ -12,6 +12,7 @@ export * from './package';
 export * from './volumes';
 export * from './report';
 export * from './builder';
+export * from './layerInfo';
 export * from './ipc';
 export * from './jobs';
 export * from './detections';

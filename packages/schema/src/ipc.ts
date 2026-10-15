@@ -62,6 +62,7 @@ import { Id, Sha256Hex } from './common';
 import { ExchangeKind, ExchangePreview, Heads, TeamProjectId } from './exchange';
 import { ActorId, DeviceId, Identity, Initials, Member, PersonName, Role } from './identity';
 import { LaunchSettings } from './launch';
+import { LayerExportResult, LayerInfo } from './layerInfo';
 import {
   MapKeyProvider,
   MapKeysStatus,
@@ -1792,6 +1793,39 @@ export const ipc = {
       }),
       z.object({ ok: z.literal(false), error: z.string() }),
     ]),
+  },
+  /**
+   * The Properties of one dataset, read from its files (`LayerInfo`). Reads only. A package
+   * answers a failure: its files stay inside the `.aio`.
+   */
+  'layer:info': {
+    request: z.object({ projectId: ProjectId, layerId: z.string().min(1) }).strict(),
+    response: z.discriminatedUnion('ok', [
+      z.object({ ok: z.literal(true), info: LayerInfo }),
+      Failure,
+    ]),
+  },
+  /**
+   * Copy each layer's own files unchanged into `<dir>/<layer name>/`, with `<layer name>.crs.json`
+   * for a layer in the local frame. A folder that is already there is never overwritten (the
+   * layer is named in `skipped`). Progress arrives as `export:progress` with `jobId`;
+   * `export:cancel` with the same id stops it. Refused for a package.
+   */
+  'layer:export': {
+    request: z
+      .object({
+        projectId: ProjectId,
+        jobId: z.string().min(1).max(64),
+        layerIds: z.array(z.string().min(1)).min(1),
+        dir: z.string().min(1),
+      })
+      .strict(),
+    response: z.discriminatedUnion('ok', [LayerExportResult, Failure]),
+  },
+  /** Show the layer's main file in the file manager; main finds the path. */
+  'layer:reveal': {
+    request: z.object({ projectId: ProjectId, layerId: z.string().min(1) }).strict(),
+    response: OkOrFailure,
   },
   /**
    * Move the project origin to `at` (E, N in the project CRS; height kept) and shift the local
