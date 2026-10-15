@@ -1,6 +1,7 @@
-import type { Object3D } from 'three';
+import type { Material, Object3D } from 'three';
 import {
   BoxGeometry,
+  Raycaster,
   BufferAttribute,
   BufferGeometry,
   Group,
@@ -10,13 +11,19 @@ import {
 } from 'three';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { describe, expect, it, vi } from 'vitest';
+import { chimneyGlb, legacyGlb } from './componentGlb';
+import { buildTemplate, instantiate, nodeControls } from './mesh';
 import {
   PICK_LAYER,
   attributeSignature,
+  componentOf,
   layerMatrix,
   markNodes,
   mergeByMaterial,
+  nodeById,
+  nodeId,
   selectableNode,
+  visibleHits,
 } from './model';
 
 describe('layerMatrix', () => {
@@ -283,3 +290,101 @@ function texturedGlb(): ArrayBuffer {
   new Uint8Array(out, b + 8, bin.byteLength).set(bin);
   return out;
 }
+
+const IDENTITY = [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1];
+
+/** Parse a GLB in Node and place it the way the mesh adapter does (template, then a stage copy). */
+async function placed(glb: ArrayBuffer) {
+  vi.stubGlobal('self', globalThis);
+  const gltf = await new GLTFLoader().parseAsync(glb, '');
+  vi.unstubAllGlobals();
+  const t = buildTemplate(
+    gltf.scene,
+    IDENTITY,
+    (o) => gltf.parser.associations.get(o)?.nodes !== undefined,
+  );
+  return { t, ...instantiate(t) };
+}
+
+function must<T>(v: T | null | undefined, what: string): T {
+  if (v === null || v === undefined) throw new Error(`missing ${what}`);
+  return v;
+}
+
+const meshesUnder = (o: Object3D) => {
+  const out: Mesh[] = [];
+  o.traverse((c) => {
+    if ((c as Partial<Mesh>).isMesh === true) out.push(c as Mesh);
+  });
+  return out;
+};
+
+/** What a click straight down -Z at (x, y) selects, through the stage's own hit filter. */
+function clickAt(root: Object3D, x: number, y: number): Object3D | null {
+  const rc = new Raycaster(new Vector3(x, y, 50), new Vector3(0, 0, -1));
+  rc.layers.mask = 1 | (1 << PICK_LAYER);
+  const [hit] = visibleHits(rc, [root], []);
+  return hit ? selectableNode(hit.object, root, new Set()) : null;
+}
+
+describe('engineering components', () => {
+  it('resolves a hit on the lens of a warning light to its component node', async () => {
+    const { root } = await placed(chimneyGlb());
+    const light = must(root.getObjectByName('light-l1-2'), 'light');
+    const lens = must(
+      meshesUnder(light).find((m) => (m.material as Material).name === 'lens'),
+      'lens',
+    );
+    expect(lens).not.toBe(light);
+    const picked = selectableNode(lens, root, new Set());
+    expect(picked).toBe(light);
+    expect(picked).not.toBe(root);
+    expect(componentOf(light)).toEqual({
+      id: 'light-l1-2',
+      name: 'Warning light 2',
+      category: 'lighting',
+      description: 'Warning light 2 of the test chimney',
+      basis: 'measured',
+    });
+    expect(nodeId(light)).toBe('light-l1-2');
+    expect(nodeById(root, 'light-l1-2')).toBe(light);
+    // a warning light is three primitives, each its own mesh under the node
+    expect(meshesUnder(light)).toHaveLength(3);
+  });
+
+  it('draws component meshes as they are, so a hidden component hides its triangles', async () => {
+    const { root, merged } = await placed(chimneyGlb());
+    expect(merged).toHaveLength(0);
+    for (const m of meshesUnder(root)) expect(m.layers.isEnabled(0)).toBe(true);
+  });
+
+  it('a hidden component is neither drawn nor hit: the one behind it is', async () => {
+    const { root } = await placed(chimneyGlb());
+    const controls = must(nodeControls(root), 'controls');
+    expect(clickAt(root, 0, 0)?.name).toBe('flue-2');
+    expect(controls.setNodeVisible('flue-2', false)).toBe(true);
+    const flue2 = must(root.getObjectByName('flue-2'), 'flue-2');
+    expect(flue2.visible).toBe(false);
+    expect(clickAt(root, 0, 0)?.name).toBe('flue-1');
+    expect(controls.setNodeVisible('flue-2', true)).toBe(true);
+    expect(clickAt(root, 0, 0)?.name).toBe('flue-2');
+    expect(controls.setNodeVisible('no-such-part', false)).toBe(false);
+    expect(controls.components().map((c) => c.id)).toEqual(['flue-1', 'flue-2', 'light-l1-2']);
+    expect(controls.components()[0]).toMatchObject({ id: 'flue-1', name: 'Flue 1', tag: 'F-1' });
+  });
+
+  it('keeps picking and merging a /1 parts GLB as before', async () => {
+    const { root, merged } = await placed(legacyGlb());
+    expect(merged.length).toBeGreaterThan(0);
+    expect(nodeControls(root)).toBeNull();
+    const p1 = must(root.getObjectByName('P-1'), 'P-1');
+    const p2 = must(root.getObjectByName('P-2'), 'P-2');
+    const [m1] = meshesUnder(p1);
+    const [m2] = meshesUnder(p2);
+    expect(selectableNode(must(m1, 'mesh'), root, new Set())).toBe(p1);
+    expect(selectableNode(must(m2, 'mesh'), root, new Set())).toBe(p2);
+    expect(componentOf(p1)).toBeNull();
+    expect(nodeId(p2)).toBe('P-2');
+    expect(clickAt(root, 0, 0)?.name).toBe('P-1');
+  });
+});

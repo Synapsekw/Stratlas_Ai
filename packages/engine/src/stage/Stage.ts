@@ -20,7 +20,15 @@ import {
 } from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import type { StoreApi } from 'zustand/vanilla';
-import { PICK_LAYER, isMesh, selectableNode } from '../adapters/model';
+import {
+  PICK_LAYER,
+  componentOf,
+  isMesh,
+  nodeById,
+  nodeId,
+  selectableNode,
+  visibleHits,
+} from '../adapters/model';
 import {
   frameBox,
   headingDeg,
@@ -39,11 +47,14 @@ import { MeasureTool } from '../tools/measure';
 import { DEFAULT_SECTION, applySection, type SectionState } from '../tools/section';
 import type {
   ClientRectLike,
+  ComponentInfo,
   EngineStage,
   EnvironmentInfo,
   EnvironmentSettings,
   LabelMode,
   LayerAdapter,
+  PickEvent,
+  PickInfo,
   RaycastProvider,
   SavedView,
   StageTool,
@@ -106,6 +117,15 @@ interface Flight {
   start: number;
   ms: number;
 }
+
+/** Whether a key event goes to a text field (its Escape is the field's). */
+const typing = (t: EventTarget | null): boolean =>
+  t instanceof HTMLElement &&
+  (t.isContentEditable ||
+    t.tagName === 'INPUT' ||
+    t.tagName === 'TEXTAREA' ||
+    t.tagName === 'SELECT' ||
+    t.closest('[role="dialog"],[role="menu"],[role="listbox"]') !== null);
 
 const visibleChain = (o: Object3D | null): boolean => {
   for (let p = o; p; p = p.parent) if (!p.visible) return false;
@@ -186,6 +206,7 @@ export class Stage implements EngineStage {
   private readonly frameCbs = new Set<(dtMs: number) => void>();
   private readonly holders = new Map<symbol, string>();
   private readonly stateCbs = new Set<() => void>();
+  private readonly pickCbs = new Set<(e: PickEvent) => void>();
   private readonly anchors = new WeakMap<Object3D, Vector3>();
   private readonly volumes = new WeakMap<Object3D, number>();
   private readonly nodeCache = new WeakMap<Object3D, Map<string, Object3D | null>>();
@@ -368,9 +389,9 @@ export class Stage implements EngineStage {
     return () => {
       this.targets.delete(object);
       if (this.highlight.selected && this.isUnder(this.highlight.selected, object))
-        this.highlight.set('select', null);
+        this.setHighlight('select', null);
       if (this.highlight.hovered && this.isUnder(this.highlight.hovered, object))
-        this.highlight.set('hover', null);
+        this.setHighlight('hover', null);
       this.contentChanged();
     };
   }
@@ -596,6 +617,75 @@ export class Stage implements EngineStage {
     return () => {
       this.stateCbs.delete(cb);
     };
+  }
+
+  /* ----------------------------------------------------------------------- components */
+
+  get hovered(): PickInfo | null {
+    return this.pickInfo(this.highlight.hovered);
+  }
+
+  get selected(): PickInfo | null {
+    return this.pickInfo(this.highlight.selected);
+  }
+
+  onPick(cb: (e: PickEvent) => void): () => void {
+    this.pickCbs.add(cb);
+    return () => {
+      this.pickCbs.delete(cb);
+    };
+  }
+
+  pickAt(ndcX: number, ndcY: number): PickInfo | null {
+    const hit = this.pick(ndcX, ndcY);
+    return hit ? this.pickInfo(hit.node) : null;
+  }
+
+  setNodeVisible(layerId: string, node: string, visible: boolean): boolean {
+    const handle = this.sync?.handle(layerId);
+    if (!handle?.setNodeVisible) return false;
+    let found = false;
+    for (const [root, lid] of this.targets)
+      if (lid === layerId && nodeById(root, node)) found = true;
+    if (!found) return false;
+    handle.setNodeVisible(node, visible);
+    this.refreshHighlight();
+    this.shadowDirty = true;
+    return true;
+  }
+
+  components(layerId: string): ComponentInfo[] {
+    return this.sync?.handle(layerId)?.components?.() ?? [];
+  }
+
+  /**
+   * A layer showed or hid part of its content (a component): the hover and selection overlays
+   * follow, so a hidden component is not drawn by its highlight either.
+   */
+  refreshHighlight(): void {
+    if (this.disposed) return;
+    this.highlight.refresh();
+    this.rebuildCallouts();
+    this.need = true;
+  }
+
+  /** The selection id, layer and component record of a node, or null. */
+  private pickInfo(node: Object3D | null): PickInfo | null {
+    if (!node) return null;
+    const owner = this.rootOf(node);
+    if (!owner) return null;
+    const component = componentOf(node);
+    return component
+      ? { node: nodeId(node), layerId: owner[1], component }
+      : { node: nodeId(node), layerId: owner[1] };
+  }
+
+  /** Highlight a node and tell the listeners; true when something changed. */
+  private setHighlight(mode: 'hover' | 'select', node: Object3D | null): boolean {
+    if (!this.highlight.set(mode, node)) return false;
+    const pick = this.pickInfo(node);
+    for (const cb of this.pickCbs) cb({ kind: mode, pick });
+    return true;
   }
 
   get labelMode(): LabelMode {
@@ -945,6 +1035,8 @@ export class Stage implements EngineStage {
       // shown or hidden layers change the land mask and what casts shadows
       if (this.env.waterY !== null) this.maskDirty = true;
       this.shadowDirty = true;
+      // a highlight on a hidden layer is not drawn either
+      this.highlight.refresh();
     }
     if (s.selection !== prev.selection) this.applySelection(s.selection);
     if (s.camera && s.camera !== prev.camera) this.handleCamera(s.camera);
@@ -955,8 +1047,8 @@ export class Stage implements EngineStage {
     this.sync?.dispose();
     this.sync = null;
     this.project = project;
-    this.highlight.set('select', null);
-    this.highlight.set('hover', null);
+    this.setHighlight('select', null);
+    this.setHighlight('hover', null);
     this.clearMeasure();
     this.flight = null;
     this.autoFit = true;
@@ -1131,7 +1223,8 @@ export class Stage implements EngineStage {
   private findNode(id: string, layerId?: string) {
     for (const [root, lid] of this.targets) {
       if (layerId && lid !== layerId) continue;
-      const node = root.name === id ? root : root.getObjectByName(id);
+      // an engineering component by its id, any other node by its name
+      const node = nodeById(root, id);
       if (node) return { node, root, layerId: lid };
     }
     return null;
@@ -1140,15 +1233,15 @@ export class Stage implements EngineStage {
   private applySelection(sel: Selection | null) {
     this.pendingSelection = null;
     if (sel?.kind !== 'asset') {
-      if (this.highlight.set('select', null)) this.rebuildCallouts();
+      if (this.setHighlight('select', null)) this.rebuildCallouts();
       this.need = true;
       return;
     }
     const hit = this.findNode(sel.id, sel.layer);
     if (!hit) {
       this.pendingSelection = sel;
-      this.highlight.set('select', null);
-    } else this.highlight.set('select', hit.node);
+      this.setHighlight('select', null);
+    } else this.setHighlight('select', hit.node);
     this.rebuildCallouts();
     this.need = true;
   }
@@ -1423,15 +1516,7 @@ export class Stage implements EngineStage {
   private intersect(ndcX: number, ndcY: number): Intersection[] {
     this.raycaster.setFromCamera(this.ndc.set(ndcX, ndcY), this.camera);
     this.raycaster.layers.mask = 1 | (1 << PICK_LAYER);
-    const hits: Intersection[] = [];
-    for (const [root] of this.targets) {
-      if (!visibleChain(root)) continue;
-      this.raycaster.intersectObject(root, true, hits);
-    }
-    const planes = this.clippingPlanes;
-    return hits
-      .filter((h) => visibleChain(h.object) && planes.every((p) => p.distanceToPoint(h.point) >= 0))
-      .sort((a, b) => a.distance - b.distance);
+    return visibleHits(this.raycaster, this.targets.keys(), this.clippingPlanes);
   }
 
   private rootOf(o: Object3D): [Object3D, string] | null {
@@ -1488,7 +1573,7 @@ export class Stage implements EngineStage {
     const picked = this.pick(x, y);
     this.opts.store
       .getState()
-      .select(picked ? { kind: 'asset', id: picked.node.name, layer: picked.layerId } : null);
+      .select(picked ? { kind: 'asset', id: nodeId(picked.node), layer: picked.layerId } : null);
   };
 
   private readonly onPointerMove = (e: PointerEvent) => {
@@ -1501,7 +1586,7 @@ export class Stage implements EngineStage {
       if (!ev || this.disposed) return;
       const [x, y] = this.toNdc(ev);
       const node = this._tool === 'measure' ? null : (this.pick(x, y)?.node ?? null);
-      if (this.highlight.set('hover', node)) {
+      if (this.setHighlight('hover', node)) {
         this.need = true;
         this.rebuildCallouts();
       }
@@ -1511,7 +1596,7 @@ export class Stage implements EngineStage {
 
   private readonly onPointerLeave = () => {
     this.hoverEvent = null;
-    if (this.highlight.set('hover', null)) {
+    if (this.setHighlight('hover', null)) {
       this.need = true;
       this.rebuildCallouts();
     }
@@ -1524,7 +1609,15 @@ export class Stage implements EngineStage {
       this.setPerfOverlay(this.perfHold === null);
       return;
     }
-    if (e.key === 'Escape' && this._tool === 'measure') this.clearMeasure();
+    if (e.key !== 'Escape') return;
+    if (this._tool === 'measure') {
+      this.clearMeasure();
+      return;
+    }
+    // Escape clears a selected component, unless a field or a dialog took it
+    if (e.defaultPrevented || typing(e.target)) return;
+    const store = this.opts.store.getState();
+    if (store.selection?.kind === 'asset') store.select(null);
   };
 
   /* ----------------------------------------------------------------------- misc */
@@ -1598,6 +1691,7 @@ export class Stage implements EngineStage {
     this.providers.clear();
     this.holders.clear();
     this.stateCbs.clear();
+    this.pickCbs.clear();
   }
 }
 

@@ -157,6 +157,59 @@ function taggedAdapter(): LayerAdapter {
   };
 }
 
+/**
+ * An engineering model like the mesh adapter shows one: two nested components (the outer one in
+ * front of the inner one from any side) whose node names differ from their component ids, with
+ * per-node visibility.
+ */
+function componentAdapter(): LayerAdapter {
+  return {
+    kind: 'mesh',
+    create: (layer, ctx) => {
+      const root = new Group();
+      const steel = new MeshStandardMaterial({ name: 'steel' });
+      const parts: [string, string, number][] = [
+        ['Node_1', 'flue-1', 4],
+        ['Node_2', 'casing-1', 10],
+      ];
+      for (const [name, id, size] of parts) {
+        const node = new Group();
+        node.name = name;
+        node.userData = {
+          aioNode: true,
+          component: id,
+          name: id === 'flue-1' ? 'Flue 1' : 'Casing',
+          category: 'structure',
+        };
+        const mesh = new Mesh(new BoxGeometry(size, size, size), steel);
+        mesh.position.y = 5;
+        node.add(mesh);
+        root.add(node);
+      }
+      ctx.scene.scene.add(root);
+      root.updateMatrixWorld(true);
+      const off = ctx.scene.addRaycastTarget(root, layer.id);
+      return Promise.resolve({
+        setVisible(v: boolean) {
+          root.visible = v;
+        },
+        setNodeVisible(id: string, v: boolean) {
+          root.traverse((o) => {
+            if (o.userData.component === id) o.visible = v;
+          });
+        },
+        components: () => [
+          { id: 'flue-1', name: 'Flue 1' },
+          { id: 'casing-1', name: 'Casing' },
+        ],
+        dispose() {
+          off();
+        },
+      });
+    },
+  };
+}
+
 const flush = () => new Promise((r) => setTimeout(r, 0));
 
 describe('dampingFor', () => {
@@ -306,6 +359,107 @@ describe('Stage', () => {
     expect(claimed).toEqual([400]);
     expect(store.getState().selection).toMatchObject({ kind: 'asset', id: 'TANK-1' });
     stage.dispose();
+  });
+
+  describe('engineering components', () => {
+    async function open() {
+      const made = make(componentAdapter());
+      made.resize(800, 600);
+      made.store.getState().openProject(project([meshLayer('chimney')]));
+      await flush();
+      const canvas = container.querySelector('canvas');
+      if (!canvas) throw new Error('no canvas');
+      canvas.getBoundingClientRect = () =>
+        ({ left: 0, top: 0, width: 800, height: 600 }) as DOMRect;
+      canvas.setPointerCapture = () => undefined;
+      canvas.releasePointerCapture = () => undefined;
+      const press = (type: string, x: number, y: number, pointerType = 'mouse') => {
+        const e = new MouseEvent(type, { clientX: x, clientY: y, button: 0 });
+        Object.defineProperty(e, 'pointerType', { value: pointerType });
+        canvas.dispatchEvent(e);
+      };
+      return { ...made, canvas, press };
+    }
+    const casing = {
+      node: 'casing-1',
+      layerId: 'chimney',
+      component: { id: 'casing-1', name: 'Casing', category: 'structure' },
+    };
+
+    it('selects a component by its id with its record, and reports it', async () => {
+      const { stage, store, press } = await open();
+      const events: unknown[] = [];
+      const off = stage.onPick((e) => events.push(e));
+      expect(stage.pickAt(0, 0)).toEqual(casing);
+      press('pointerdown', 400, 300);
+      press('pointerup', 400, 300);
+      expect(store.getState().selection).toEqual({
+        kind: 'asset',
+        id: 'casing-1',
+        layer: 'chimney',
+      });
+      expect(stage.selected).toEqual(casing);
+      expect(events).toContainEqual({ kind: 'select', pick: casing });
+      // a selection by component id (an issue, the component panel) finds the node too
+      store.getState().select({ kind: 'asset', id: 'flue-1', layer: 'chimney' });
+      expect(stage.selected?.component?.name).toBe('Flue 1');
+      off();
+      stage.dispose();
+    });
+
+    it('does not select on an orbit drag; a background click and Escape clear the selection', async () => {
+      const { stage, store, press } = await open();
+      press('pointerdown', 400, 300);
+      press('pointerup', 460, 300);
+      expect(store.getState().selection).toBeNull();
+      press('pointerdown', 400, 300, 'touch');
+      press('pointerup', 405, 302, 'touch');
+      expect(store.getState().selection).toMatchObject({ id: 'casing-1' });
+      press('pointerdown', 790, 590);
+      press('pointerup', 790, 590);
+      expect(store.getState().selection).toBeNull();
+      store.getState().select({ kind: 'asset', id: 'flue-1', layer: 'chimney' });
+      // Escape typed in a field belongs to the field
+      const input = document.createElement('input');
+      container.appendChild(input);
+      input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+      expect(store.getState().selection).toMatchObject({ id: 'flue-1' });
+      window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
+      expect(store.getState().selection).toBeNull();
+      expect(stage.selected).toBeNull();
+      stage.dispose();
+    });
+
+    it('reports the hovered component with its record', async () => {
+      const { stage, press, canvas } = await open();
+      const events: unknown[] = [];
+      stage.onPick((e) => events.push(e));
+      press('pointermove', 400, 300);
+      await vi.waitFor(() => {
+        expect(stage.hovered).toEqual(casing);
+      });
+      expect(events).toContainEqual({ kind: 'hover', pick: casing });
+      canvas.dispatchEvent(new MouseEvent('pointerleave'));
+      expect(stage.hovered).toBeNull();
+      expect(events).toContainEqual({ kind: 'hover', pick: null });
+      stage.dispose();
+    });
+
+    it('hides a component: the one behind it is picked and the highlight lets go', async () => {
+      const { stage, store } = await open();
+      store.getState().select({ kind: 'asset', id: 'casing-1', layer: 'chimney' });
+      expect(stage.components('chimney').map((c) => c.id)).toEqual(['flue-1', 'casing-1']);
+      expect(stage.setNodeVisible('chimney', 'casing-1', false)).toBe(true);
+      expect(stage.pickAt(0, 0)?.node).toBe('flue-1');
+      // still selected (the panel can show it again), but nothing is drawn for it
+      const overlays = () => stage.scene.getObjectByName('engine:highlight')?.children.length;
+      expect(stage.selected?.node).toBe('casing-1');
+      expect(overlays()).toBe(0);
+      expect(stage.setNodeVisible('chimney', 'casing-1', true)).toBe(true);
+      expect(overlays()).toBeGreaterThan(0);
+      expect(stage.setNodeVisible('no-layer', 'casing-1', false)).toBe(false);
+      stage.dispose();
+    });
   });
 
   it('raycasts against content first and the ground plane otherwise', async () => {

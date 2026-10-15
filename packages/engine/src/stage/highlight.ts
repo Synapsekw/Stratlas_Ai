@@ -41,6 +41,11 @@ void main() {
 
 type Mode = 'hover' | 'select';
 
+const shown = (o: Object3D): boolean => {
+  for (let p: Object3D | null = o; p; p = p.parent) if (!p.visible) return false;
+  return true;
+};
+
 interface Tintable extends Material {
   emissive?: Color;
   emissiveIntensity?: number;
@@ -93,6 +98,11 @@ export class Highlighter {
     return true;
   }
 
+  /** Redraw the overlays: a highlighted node or one of its parts was shown or hidden. */
+  refresh() {
+    this.rebuild();
+  }
+
   private tint(src: Material, mode: Mode): Material {
     const key = `${src.uuid}:${mode}`;
     let m = this.tints.get(key);
@@ -115,9 +125,10 @@ export class Highlighter {
   private rebuild() {
     this.group.clear();
     const add = (node: Object3D | null, mode: Mode) => {
-      if (!node) return;
+      if (!node || !shown(node)) return;
       node.updateWorldMatrix(true, true);
-      node.traverse((o) => {
+      // hidden content stays hidden: a hidden component (or a hidden part of one) gets no overlay
+      node.traverseVisible((o) => {
         if (!isMesh(o) || Array.isArray(o.material)) return;
         const src = o;
         const tinted = new Mesh(src.geometry, this.tint(src.material as Material, mode));
