@@ -28,7 +28,8 @@ from .blocks import Block, BlockPhoto, Photogroup
 #: Bentley's documented model is ``x_d = x(1 + K1 r² + K2 r⁴ + K3 r⁶) + P1 (r² + 2x²) + 2 P2 x y``,
 #: so its P1 is OpenCV's p2 and its P2 OpenCV's p1. Known limit: this swap is an assumption from
 #: the documentation, not verified against tie points (no export with tie points is available).
-#: With P1, P2 of a few 1e-4 a wrong order moves image points by well under a pixel.
+#: For the reference camera a wrong order moves image points by under half a pixel at the corners,
+#: and by more for longer focal lengths (data-conventions section 35).
 TANGENTIAL_SWAP = True
 
 #: How the frame's notes and messages name the source.
