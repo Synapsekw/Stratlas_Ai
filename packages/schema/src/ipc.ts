@@ -382,6 +382,14 @@ const EngineerOutcomeSchema = z.discriminatedUnion('kind', [
     costUsd: z.number().nonnegative(),
     identityConflict: z.literal(true).optional(),
     stopped: z.literal('budget').optional(),
+    /** Tokens of the request (absent for a cached reply or when the provider does not say). */
+    usage: z
+      .object({
+        inputTokens: z.number().int().nonnegative(),
+        outputTokens: z.number().int().nonnegative(),
+      })
+      .strict()
+      .optional(),
   }),
   z.object({
     kind: z.literal('refused'),
@@ -2028,10 +2036,12 @@ export const ipc = {
     ]),
   },
   /**
-   * Accept an engineering model: build `models/<id>.glb` and its one layer `model-<id>` (the draft
-   * preview goes), give the layer the model's georeference and placement, and write
-   * `models/<id>.georeference.json` and `models/<id>.components.json`. Idempotent: accepting again
-   * replaces that one layer. Refused for packages.
+   * Accept an engineering model: build `models/<id>.glb`, check the written bytes (the Khronos
+   * validator, finite positions, index ranges; refused with the reasons when they fail, nothing
+   * changed), then its one layer `model-<id>` (the draft preview goes). The layer keeps a placement
+   * the person made (Place model); otherwise it takes the model's georeference, placed from it.
+   * Writes `models/<id>.georeference.json` and `models/<id>.components.json`. Idempotent:
+   * accepting again replaces that one layer. Refused for packages.
    */
   'engineer:accept': {
     request: z.object({ projectId: ProjectId, modelId: ProcModelId }).strict(),
@@ -2041,6 +2051,8 @@ export const ipc = {
         layer: z.string(),
         files: z.array(z.string()),
         report: GlbBuildReport.optional(),
+        /** The checks of the accepted GLB as written (the Khronos validator included). */
+        check: GlbCheckReport,
       }),
       Failure,
     ]),

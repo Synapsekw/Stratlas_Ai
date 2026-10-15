@@ -255,13 +255,30 @@ export type BuildResult =
  * layer keeps its visibility and, unless `placement` gives new ones, its `georef` and
  * `placement`. The real build replaces the draft preview.
  */
+const placementFields = (p: {
+  georef?: Georef;
+  placement: NonNullable<MeshLayer['placement']>;
+  transform?: number[];
+}) => ({
+  ...(p.georef ? { georef: p.georef } : {}),
+  placement: p.placement,
+  ...(p.transform ? { transform: [...p.transform] } : {}),
+});
+
 export async function buildModelLayer(
   root: string,
   id: string,
   o: {
     draft: boolean;
     now: Date;
-    placement?: { georef?: Georef; placement: NonNullable<MeshLayer['placement']> };
+    /** The layer's placement (and the transform it puts the model at); absent keeps the layer's. */
+    placement?: {
+      georef?: Georef;
+      placement: NonNullable<MeshLayer['placement']>;
+      transform?: number[];
+    };
+    /** Checks the GLB before anything is written: an answer stops the build with that reason. */
+    check?: (glb: Uint8Array) => Promise<string | null>;
   },
 ): Promise<BuildResult> {
   const draft = o.draft;
@@ -285,6 +302,8 @@ export async function buildModelLayer(
           : 'Accept at least one part, then build the model.',
     };
   }
+  const refused = o.check ? await o.check(meshed.glb) : null;
+  if (refused) return { ok: false, error: refused };
   const glbRel = modelGlb(id, draft);
   await mkdir(join(root, PROCMODEL_DIR), { recursive: true });
   await writeBytesAtomic(join(root, ...glbRel.split('/')), meshed.glb);
@@ -313,15 +332,14 @@ export async function buildModelLayer(
     const layers: Layer[] = [];
     for (const l of manifest.layers) {
       if (l.id === layerId) {
+        // a placement (Place model, an accept) keeps its transform: a rebuild never resets it
         const keep = o.placement
-          ? {
-              ...(o.placement.georef ? { georef: o.placement.georef } : {}),
-              placement: o.placement.placement,
-            }
-          : l.kind === 'mesh'
+          ? placementFields(o.placement)
+          : l.kind === 'mesh' && (l.georef || l.placement)
             ? {
                 ...(l.georef ? { georef: l.georef } : {}),
                 ...(l.placement ? { placement: l.placement } : {}),
+                transform: [...l.transform],
               }
             : {};
         layers.push({ ...layer, ...keep, visible: l.visible });
@@ -333,12 +351,7 @@ export async function buildModelLayer(
         layers.push(l);
       }
     }
-    if (!placed)
-      layers.push({
-        ...layer,
-        ...(o.placement?.georef ? { georef: o.placement.georef } : {}),
-        ...(o.placement ? { placement: o.placement.placement } : {}),
-      });
+    if (!placed) layers.push({ ...layer, ...(o.placement ? placementFields(o.placement) : {}) });
     return { ...manifest, layers };
   });
   if (!draft) await rm(join(root, ...modelGlb(id, true).split('/')), { force: true });

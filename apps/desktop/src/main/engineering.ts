@@ -16,7 +16,7 @@
  * `ai:setCloudEvidence` (the photo and scan consents) is the AI lane's handler, not this module's.
  */
 import { brand } from '@aio/brand';
-import { layerTransformToGeoref } from '@aio/geo';
+import { georefToLayerTransform, layerTransformToGeoref } from '@aio/geo';
 import {
   componentRegister,
   exportBundle,
@@ -29,6 +29,9 @@ import {
   EngineerRun,
   EvidencePack,
   PROCMODEL_DIR,
+  type Georef,
+  type GlbCheckReport,
+  type Layer,
   type ProjectManifest,
 } from '@aio/schema';
 import { mkdir, open, readFile, realpath } from 'node:fs/promises';
@@ -121,6 +124,58 @@ export function imageSize(b: Uint8Array): { w: number; h: number } | null {
     }
   }
   return null;
+}
+
+const IDENTITY = [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1];
+
+/** Where an accepted model's layer goes. */
+export interface AcceptPlacement {
+  georef?: Georef;
+  placement: 'placed' | 'needed' | 'provisional';
+  transform: number[];
+}
+
+/**
+ * The placement of an accepted model's layer. A placement the person made with Place model (the
+ * layer's georeference by `place-model`) stays as it is. Otherwise the model's georeference places
+ * the layer (`placed`, or `provisional` when it is unplaced, or `needed` when it cannot be placed
+ * in this project); a model without one sits at the origin, provisionally (spec 5.6).
+ */
+export function acceptPlacement(
+  modelGeoref: Georef | undefined,
+  layer: Layer | undefined,
+  project: { crs: { epsg: number } | { wkt: string }; origin: [number, number, number] },
+): AcceptPlacement {
+  if (layer?.kind === 'mesh' && layer.georef?.provenance.by === 'place-model')
+    return {
+      georef: layer.georef,
+      placement: layer.placement ?? 'placed',
+      transform: [...layer.transform],
+    };
+  if (!modelGeoref) return { placement: 'provisional', transform: [...IDENTITY] };
+  const placed = georefToLayerTransform(modelGeoref, project);
+  if (placed.kind === 'placed')
+    return {
+      georef: modelGeoref,
+      placement: modelGeoref.horizontal.status === 'unplaced' ? 'provisional' : 'placed',
+      transform: placed.transform,
+    };
+  return {
+    georef: modelGeoref,
+    placement: 'needed',
+    transform: [...(placed.horizontalOnly ?? IDENTITY)],
+  };
+}
+
+/** Why an accepted GLB is refused (validator errors, broken positions or indices), or null. */
+export function acceptRefusal(r: GlbCheckReport): string | null {
+  const reasons = [
+    r.validatorErrors ? `${String(r.validatorErrors)} glTF validator errors` : '',
+    r.finite ? '' : 'positions that are not finite numbers',
+    r.indicesValid ? '' : 'indices outside their vertices',
+  ].filter(Boolean);
+  if (!reasons.length) return null;
+  return `The model was not accepted: its GLB has ${reasons.join(', ')}. ${r.messages.slice(0, 3).join(' ')}`.trim();
 }
 
 type Read<T> = { ok: true; value: T | null } | { ok: false; error: string };
@@ -316,13 +371,26 @@ export function registerEngineeringIpc({
     if (root === undefined) return notOpen(projectId);
     const read = await readModelFile(root, modelId);
     if (!read.ok) return read;
-    const georef = read.model.georef;
-    // a model with no defensible place sits at the project origin, provisionally (spec 5.6)
-    const placement = !georef || georef.horizontal.status === 'unplaced' ? 'provisional' : 'placed';
+    const manifest = await (await lib()).readManifestFile(root);
+    const placement = acceptPlacement(
+      read.model.georef,
+      manifest.layers.find((l) => l.id === modelLayerId(modelId, false)),
+      { crs: manifest.crs, origin: manifest.origin },
+    );
+    const checked: { report: GlbCheckReport | null } = { report: null };
     const built = await buildModelLayer(root, modelId, {
       draft: false,
       now: now(),
-      placement: { ...(georef ? { georef } : {}), placement },
+      placement,
+      // the accepted GLB is checked as it will be written, before anything changes
+      check: async (glb) => {
+        const r = await validateGlb(glb, {
+          budget: Number.MAX_SAFE_INTEGER,
+          khronos: khronos ?? khronosValidator,
+        });
+        checked.report = { ...r, messages: r.messages.slice(0, 200) };
+        return acceptRefusal(r);
+      },
     });
     if (!built.ok) return built;
     const files: string[] = [];
@@ -331,17 +399,20 @@ export function registerEngineeringIpc({
       await writeBytesAtomic(join(root, ...rel.split('/')), new TextEncoder().encode(text));
       files.push(rel);
     };
-    if (georef)
+    if (placement.georef)
       await write(
         `${PROCMODEL_DIR}/${modelId}.georeference.json`,
-        `${JSON.stringify(georef, null, 2)}\n`,
+        `${JSON.stringify(placement.georef, null, 2)}\n`,
       );
     await write(`${PROCMODEL_DIR}/${modelId}.components.json`, register);
+    const check = checked.report;
+    if (!check) return { ok: false, error: 'The accepted model was not checked.' };
     return {
       ok: true,
       layer: built.layer,
       files,
       ...(built.report ? { report: built.report } : {}),
+      check,
     };
   });
 

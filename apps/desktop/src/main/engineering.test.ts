@@ -1,4 +1,4 @@
-import { worldOfModelPoint } from '@aio/geo';
+import { layerTransformToGeoref, worldOfModelPoint } from '@aio/geo';
 import { DEFAULT_MATERIALS, newProcModel, readGlb } from '@aio/modelling';
 import { readManifestFile, writeManifestFile } from '@aio/project/builder';
 import {
@@ -403,6 +403,63 @@ describe('engineer:validate and engineer:accept', () => {
     const again = (await readManifestFile(root)).layers[0];
     expect(again?.kind === 'mesh' && again.placement).toBe('placed');
     expect(again?.kind === 'mesh' && again.georef).toEqual(MODEL_GEOREF);
+  });
+
+  it('accept checks the GLB as written: the report comes back, errors refuse it', async () => {
+    const ok = await ipc().call('engineer:accept', { projectId: 'site', modelId: 'stack' });
+    if (!ok.ok) throw new Error(ok.error);
+    expect(ok.check.validatorErrors).toBe(0);
+    expect(ok.check.finite && ok.check.indicesValid).toBe(true);
+    // the model placed from its georeference: 7 m east, 1 m up, 9 m north of the origin
+    const layer = (await readManifestFile(root)).layers[0];
+    expect(layer?.kind === 'mesh' && layer.transform.slice(12, 15)).toEqual([7, 1, -9]);
+
+    await rm(join(root, 'models', 'stack.glb'));
+    const m = await readManifestFile(root);
+    await writeManifestFile(root, { ...m, layers: [] });
+    const refused = await ipc({
+      khronos: () => Promise.resolve({ errors: 2, warnings: 0, messages: ['error X: broken'] }),
+    }).call('engineer:accept', { projectId: 'site', modelId: 'stack' });
+    expect(refused).toMatchObject({ ok: false });
+    expect(!refused.ok && refused.error).toMatch(/2 glTF validator errors.*error X: broken/);
+    // nothing changed: no layer, no GLB
+    expect((await readManifestFile(root)).layers).toEqual([]);
+    expect(existsSync(join(root, 'models', 'stack.glb'))).toBe(false);
+  });
+
+  it('a placement made with Place model survives a rebuild and a second accept', async () => {
+    const r = ipc();
+    await r.call('engineer:accept', { projectId: 'site', modelId: 'stack' });
+    // Place model: turned 30 degrees and moved, recorded as the person's placement
+    const c = Math.cos(Math.PI / 6);
+    const s = Math.sin(Math.PI / 6);
+    const placedT = [c, 0, s, 0, 0, 1, 0, 0, -s, 0, c, 0, 40, 3, -25, 1];
+    const user = layerTransformToGeoref(
+      placedT,
+      { crs: manifest.crs, origin: manifest.origin },
+      MODEL_GEOREF,
+      'place-model',
+    );
+    const m = await readManifestFile(root);
+    await writeManifestFile(root, {
+      ...m,
+      layers: m.layers.map((l) =>
+        l.kind === 'mesh' ? { ...l, transform: placedT, georef: user, placement: 'placed' } : l,
+      ),
+    });
+    await r.call('model:build', { projectId: 'site', id: 'stack' });
+    let layer = (await readManifestFile(root)).layers[0];
+    expect(layer?.kind === 'mesh' && layer.transform).toEqual(placedT);
+    expect(layer?.kind === 'mesh' && layer.georef).toEqual(user);
+    await r.call('engineer:accept', { projectId: 'site', modelId: 'stack' });
+    layer = (await readManifestFile(root)).layers[0];
+    expect(layer?.kind === 'mesh' && layer.transform).toEqual(placedT);
+    expect(layer?.kind === 'mesh' && layer.georef?.provenance.by).toBe('place-model');
+    expect(
+      Georef.parse(
+        JSON.parse(await readFile(join(root, 'models', 'stack.georeference.json'), 'utf8')),
+      ),
+    ).toEqual(user);
   });
 
   it('an unplaced model is accepted provisionally, and a package refuses', async () => {
