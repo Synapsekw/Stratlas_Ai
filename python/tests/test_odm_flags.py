@@ -35,19 +35,29 @@ def test_preset_flags_are_the_spec_table():
 
 def test_align_flags(tmp_path: Path):
     geo = tmp_path / "geo.txt"
-    got = F.align_flags("standard", True, 8, geo)
+    got = F.align_flags("standard", True, 8, geo, 2.0)
     assert got == [
         "--pc-quality", "medium", "--feature-quality", "high", "--feature-type", "sift",
-        "--max-concurrency", "8", "--geo", str(geo),
+        "--max-concurrency", "8", "--orthophoto-resolution", "2", "--geo", str(geo),
     ]  # fmt: skip
-    assert "--geo" not in F.align_flags("fast", False, 2, None)
-    assert "--no-gpu" in F.align_flags("fast", False, 2, None)
+    assert "--geo" not in F.align_flags("fast", False, 2, None, 2.0)
+    assert "--no-gpu" in F.align_flags("fast", False, 2, None, 2.0)
 
 
 def test_georef_flags_add_the_gcp_file(tmp_path: Path):
     gcp = tmp_path / "gcp_list.txt"
-    got = F.georef_flags("high", False, 4, gcp, None)
+    got = F.georef_flags("high", False, 4, gcp, None, 2.5)
     assert got[-2:] == ["--gcp", str(gcp)]
+    assert got[got.index("--orthophoto-resolution") + 1] == "2.5"
+
+
+def test_alignment_undistorts_for_the_photos_own_resolution(tmp_path: Path):
+    # ODM sizes opensfm/undistorted for --orthophoto-resolution at the opensfm stage, which products
+    # never rerun: with ODM's default 5 cm, photos finer than 1.7 cm would be halved for good (I3)
+    got = F.align_flags("standard", False, 8, None, 1.234)
+    assert got[got.index("--orthophoto-resolution") + 1] == "1.23"
+    unknown = F.align_flags("standard", False, 8, None, None)
+    assert unknown[unknown.index("--orthophoto-resolution") + 1] == f"{F.UNDISTORT_FALLBACK_CM:g}"
 
 
 def test_products_flags_always_and_by_product(tmp_path: Path):

@@ -76,6 +76,21 @@ def test_align_a_folder_end_to_end(odm, project, photo_mini):
     args = json.loads(odm.read_text().splitlines()[-1])
     assert args[args.index("--end-with") + 1] == "opensfm" and "--rerun-from" not in args
     assert "--no-gpu" in args  # no CUDA driver on the test machine
+    # the undistorted photos are sized for the photos' own resolution, as products will ask (I3)
+    metas = [A.read_photo(p.name, p) for p in sorted(Path(photo_mini.photos).iterdir()) if p.is_file()]
+    gsd = A.estimate_gsd_cm(metas)
+    assert gsd is not None and 0.1 < gsd < 20
+    assert float(args[args.index("--orthophoto-resolution") + 1]) == pytest.approx(gsd, rel=0.1)
+
+
+def test_the_ground_resolution_is_estimated_from_height_and_lens():
+    from aio_pipelines.photo.exif import PhotoMeta
+
+    m = PhotoMeta("a", Path("a.jpg"), width=4000, height=3000, focal35=24.0, rel_alt=100.0)
+    # 100 m x 43.27 mm / (24 mm x 5000 px diagonal) = 3.61 cm
+    assert A.estimate_gsd_cm([m, m]) == pytest.approx(3.6058, abs=1e-3)
+    assert A.estimate_gsd_cm([PhotoMeta("b", Path("b.jpg"), width=4000, height=3000, focal35=24.0)]) is None
+    assert A.estimate_gsd_cm([PhotoMeta("c", Path("c.jpg"), width=4000, height=3000, rel_alt=50.0)]) is None
 
 
 def test_source_photos_are_linked_never_written(odm, project, photo_mini):

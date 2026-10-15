@@ -276,6 +276,28 @@ def meta_from(rec: dict[str, Any]) -> PhotoMeta:
     return m
 
 
+def estimate_gsd_cm(metas: list[PhotoMeta]) -> float | None:
+    """The photos' ground resolution before alignment, cm per pixel: the median over the photos
+    with a height above take-off and a 35 mm equivalent focal length (the 35 mm frame's diagonal is
+    43.27 mm, so a pixel spans 43.27 / (f35 x image diagonal in pixels) radians). None without them."""
+    values = [
+        m.rel_alt * 100.0 * 43.27 / (m.focal35 * math.hypot(m.width, m.height))
+        for m in metas
+        if m.rel_alt and m.rel_alt > 0 and m.focal35 and m.focal35 > 0 and m.width and m.height
+    ]
+    return float(np.median(values)) if values else None
+
+
+def reported_gsd_cm(run_folder: Path) -> float | None:
+    """The photos' GSD that ``photo.align`` measured (``report/align.json``), if any."""
+    try:
+        v = json.loads((run_folder / "report" / "align.json").read_text("utf-8-sig")).get("gsdCm")
+    except (OSError, ValueError, AttributeError):
+        return None
+    ok = isinstance(v, int | float) and not isinstance(v, bool) and 0.1 <= v <= 1000
+    return float(v) if ok else None
+
+
 # ------------------------------------------------------------------------------- heights and frames
 
 
@@ -793,8 +815,12 @@ class PhotoAlign:
         mc = OR.machine()
         odm_dir = OP.run_odm_dir(ctx.project, run)
         geo = odm_dir / "geo.txt"
-        flags = OF.align_flags(state["preset"], mc.use_gpu, mc.threads, geo if geo.is_file() else None)
-        ctx.log(f"ODM {odm.version}: {mc.threads} threads, graphics card {'on' if mc.use_gpu else 'off'}.")
+        gsd = estimate_gsd_cm(self._metas(ctx))
+        flags = OF.align_flags(state["preset"], mc.use_gpu, mc.threads, geo if geo.is_file() else None, gsd)
+        ctx.log(
+            f"ODM {odm.version}: {mc.threads} threads, graphics card {'on' if mc.use_gpu else 'off'}"
+            + (f", photos about {gsd:.1f} cm per pixel." if gsd else ".")
+        )
         res = OR.run_odm(
             ctx, odm, odm_dir, flags, "dataset", "opensfm",
             ctx.project / run_dir(run) / "odm-logs" / f"{ctx.job.job_id}-sfm",

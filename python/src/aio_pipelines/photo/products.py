@@ -545,12 +545,9 @@ class PhotoProducts:
 
     def _align_gsd_cm(self, ctx: StepContext) -> float | None:
         """The photos' GSD that ``photo.align`` reported (``report/align.json``), if any."""
-        try:
-            v = json.loads((self._run_dir(ctx) / "report" / "align.json").read_text("utf-8-sig")).get("gsdCm")
-        except (OSError, ValueError, AttributeError):
-            return None
-        ok = isinstance(v, int | float) and not isinstance(v, bool) and 0.1 <= v <= 1000
-        return float(v) if ok else None
+        from .align import reported_gsd_cm
+
+        return reported_gsd_cm(self._run_dir(ctx))
 
     def _odm_step(self, step: OF.OdmStep):
         def run(ctx: StepContext) -> dict[str, Any]:

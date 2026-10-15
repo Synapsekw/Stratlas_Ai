@@ -125,6 +125,15 @@ def test_odm_runs_alignment_again_with_the_gcp_file(run, tmp_path):
     assert _config(base)["bundle_use_gcp"] == "yes"
 
 
+def test_the_new_alignment_undistorts_for_the_photos_resolution(run, tmp_path):
+    root, base = run
+    (base / "report").mkdir(exist_ok=True)
+    (base / "report" / "align.json").write_text(json.dumps({"gsdCm": 1.2}))  # what photo.align measured
+    run_job(PhotoGeoref(), root, {"run": ps.RUN})
+    args = _args(tmp_path)
+    assert args[args.index("--orthophoto-resolution") + 1] == "1.2"  # as products will ask (I3)
+
+
 def test_odms_new_reference_is_absorbed(run):
     root, base = run
     frame = json.loads((base / "sparse" / "frame.json").read_text())["enu"]

@@ -52,6 +52,7 @@ from .align import (
     grid_to_enu_model,
     merge_predictions,
     read_sparse,
+    reported_gsd_cm,
     run_dir,
     staged,
     write_sparse,
@@ -193,7 +194,7 @@ class PhotoGeoref:
         stamp.write_text(digest, "utf-8")
         flags = OF.georef_flags(
             state.get("preset") or "standard", mc.use_gpu, mc.threads, gcp_list.path,
-            geo_txt if geo_txt.is_file() else None,
+            geo_txt if geo_txt.is_file() else None, reported_gsd_cm(ctx.project / run_dir(run)),
         )  # fmt: skip
         if use_gnss:
             flags.append("--force-gps")

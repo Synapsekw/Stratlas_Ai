@@ -30,6 +30,8 @@ MESH_PRODUCTS = frozenset({"mesh", "tiles"})
 GEOREF_STRATEGY = "invalidate"
 #: Where Fast's dense step starts after an alignment run (C13).
 FAST_FIRST_STAGE = "odm_filterpoints"
+#: The resolution alignment asks of ODM when the photos' own is unknown: full-size undistorted photos.
+UNDISTORT_FALLBACK_CM = 1.0
 GB = 1024**3
 
 
@@ -75,16 +77,28 @@ def _common(preset: str, use_gpu: bool, threads: int) -> list[str]:
     return [*PRESET_FLAGS[preset], *gpu_flags(use_gpu), "--max-concurrency", str(threads)]
 
 
-def align_flags(preset: str, use_gpu: bool, threads: int, geo: Path | None) -> list[str]:
-    return [*_common(preset, use_gpu, threads), *(["--geo", str(geo)] if geo else [])]
-
-
-def georef_flags(preset: str, use_gpu: bool, threads: int, gcp: Path, geo: Path | None) -> list[str]:
-    return [*align_flags(preset, use_gpu, threads, geo), "--gcp", str(gcp)]
-
-
 def _num(v: float) -> str:
     return f"{v:g}"
+
+
+def align_flags(
+    preset: str, use_gpu: bool, threads: int, geo: Path | None, ortho_res_cm: float | None
+) -> list[str]:
+    """ODM's opensfm stage sizes ``opensfm/undistorted`` for ``--orthophoto-resolution`` (photos
+    finer than a third of it are halved), and products never run that stage again: alignment asks
+    for the photos' own resolution (``UNDISTORT_FALLBACK_CM`` when it is unknown), as products do."""
+    res = round(ortho_res_cm, 2) if ortho_res_cm else UNDISTORT_FALLBACK_CM
+    return [
+        *_common(preset, use_gpu, threads),
+        "--orthophoto-resolution", _num(res),
+        *(["--geo", str(geo)] if geo else []),
+    ]  # fmt: skip
+
+
+def georef_flags(
+    preset: str, use_gpu: bool, threads: int, gcp: Path, geo: Path | None, ortho_res_cm: float | None
+) -> list[str]:
+    return [*align_flags(preset, use_gpu, threads, geo, ortho_res_cm), "--gcp", str(gcp)]
 
 
 def products_flags(
