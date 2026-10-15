@@ -54,6 +54,12 @@ export { deckOpenings } from './engineer/assemble/chimney';
 export { assembleFlare, SERVICE_LINE_OFFSET } from './engineer/assemble/flare';
 export { assembleLattice, assembleMonopole, SECTOR_GAP_DEG } from './engineer/assemble/telecom';
 export {
+  componentRegister,
+  exportBundle,
+  type ComponentRow,
+  type EngineeringBundle,
+} from './engineer/exportBundle';
+export {
   validateGlb,
   type GlbReport,
   type KhronosResult,

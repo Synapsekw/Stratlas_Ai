@@ -1264,3 +1264,111 @@ describe('obj placement', () => {
     expect(r.items[0]?.message).toContain('Up axis');
   });
 });
+
+describe('GLB georeference on import (engineering model 5.6)', () => {
+  /** A tiny GLB with `asset.extras` (an empty scene). */
+  function glbWithExtras(extras: Record<string, unknown>): Uint8Array {
+    const text = JSON.stringify({ asset: { version: '2.0', extras }, scenes: [{ nodes: [] }] });
+    const raw = new TextEncoder().encode(text);
+    const len = raw.length + ((4 - (raw.length % 4)) % 4);
+    const out = new Uint8Array(20 + len).fill(0x20);
+    const v = new DataView(out.buffer);
+    v.setUint32(0, 0x46546c67, true);
+    v.setUint32(4, 2, true);
+    v.setUint32(8, out.length, true);
+    v.setUint32(12, len, true);
+    v.setUint32(16, 0x4e4f534a, true);
+    out.set(raw, 20);
+    return out;
+  }
+  // synthetic: 12.5 m east, 40 m north and 3 m above the project origin, turned 90 degrees
+  const anchor: [number, number, number] = [ORIGIN[0] + 12.5, ORIGIN[1] + 40, ORIGIN[2] + 3];
+  const georef = {
+    schema: 'aio.georef/1',
+    crs: { epsg: 32639 },
+    anchor,
+    axes: 'x-east,y-up,z-south',
+    units: 'm',
+    // model +X to grid south, model north (-z) to grid east: heading 90
+    modelToCrs: [0, -1, 0, 0, 0, 0, 1, 0, -1, 0, 0, 0, ...anchor, 1],
+    heading: { deg: 90, status: 'measured' },
+    scale: { factor: 1, status: 'measured' },
+    horizontal: { status: 'surveyed' },
+    vertical: { datum: 'unknown', status: 'unknown' },
+    provenance: { by: 'engineer' },
+  };
+  const IDENTITY = [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1];
+
+  it('importing a georeferenced GLB writes a placed mesh layer with its georef', async () => {
+    const root = await project();
+    await writeFile(join(dir, 'stack.glb'), glbWithExtras({ aioGeoref: georef }));
+    const r = await importRawFiles(root, [join(dir, 'stack.glb')], deps());
+    const layer = (await readManifest(root)).layers.find((l) => l.kind === 'mesh');
+    if (layer?.kind !== 'mesh') throw new Error('no mesh layer');
+    expect(layer.placement).toBe('placed');
+    expect(layer.georef).toEqual(georef);
+    // local = [E - E0, H - H0, -(N - N0)] of the model point, so the model origin sits at
+    // [12.5, 3, -40] and model +X (grid south) maps to local +Z
+    const t = layer.transform;
+    const r6 = (x: number | undefined) => Math.round((x ?? NaN) * 1e6) / 1e6;
+    expect([t[12], t[13], t[14]].map(r6)).toEqual([12.5, 3, -40]);
+    expect([t[0], t[1], t[2]].map(r6)).toEqual([0, 0, 1]);
+    expect(r.items[0]?.message).toContain('Placed from the georeference in the file.');
+    expect(r.items[0]?.message).toContain('vertical datum is unknown');
+    // the file is copied as it is
+    const copied = await readFile(join(root, 'models', 'stack.glb'));
+    expect(copied.equals(Buffer.from(glbWithExtras({ aioGeoref: georef })))).toBe(true);
+  });
+
+  it('importing a plain GLB writes exactly the current record', async () => {
+    const root = await project();
+    await writeFile(join(dir, 'plain.glb'), glb());
+    const r = await importRawFiles(root, [join(dir, 'plain.glb')], deps());
+    const layer = (await readManifest(root)).layers.find((l) => l.kind === 'mesh');
+    expect(layer).toEqual({
+      kind: 'mesh',
+      id: 'mesh-plain',
+      name: 'plain',
+      visible: true,
+      src: { path: 'models/plain.glb' },
+      transform: IDENTITY,
+    });
+    expect(r.items[0]?.message).toBe('Place it with Align, Georeference model.');
+  });
+
+  it('an unusable georeference imports at identity, placement needed, never claimed placed', async () => {
+    const root = await project();
+    await writeFile(join(dir, 'bad.glb'), glbWithExtras({ aioGeoref: { schema: 'aio.georef/1' } }));
+    const r = await importRawFiles(root, [join(dir, 'bad.glb')], deps());
+    const layer = (await readManifest(root)).layers.find((l) => l.kind === 'mesh');
+    if (layer?.kind !== 'mesh') throw new Error('no mesh layer');
+    expect(layer.placement).toBe('needed');
+    expect(layer.georef).toBeUndefined();
+    expect(layer.transform).toEqual(IDENTITY);
+    expect(r.items[0]?.message).not.toContain('Placed from');
+    expect(r.items[0]?.message).toContain('Place model');
+  });
+
+  it('importing the same georeferenced file twice gives the same transform', async () => {
+    const root = await project();
+    await writeFile(join(dir, 'twice.glb'), glbWithExtras({ aioGeoref: georef }));
+    await importRawFiles(root, [join(dir, 'twice.glb')], deps());
+    await importRawFiles(root, [join(dir, 'twice.glb')], deps());
+    const meshes = (await readManifest(root)).layers.flatMap((l) =>
+      l.kind === 'mesh' ? [l.transform] : [],
+    );
+    expect(meshes).toHaveLength(2);
+    expect(meshes[1]).toEqual(meshes[0]);
+  });
+
+  it('refuses a ground placement on a layer that is not a model', async () => {
+    const root = await project();
+    const a = join(dir, 'DSC00001.JPG');
+    await writeFile(a, withExif({ lat: 29.0276, lon: 48.1352 }));
+    await importRawFiles(root, [a], deps());
+    const id = (await readManifest(root)).layers.find((l) => l.kind === 'photos')?.id ?? '';
+    await expect(updateLayers(root, [id], { placement: 'placed' })).rejects.toThrow(
+      /only models take a ground placement/,
+    );
+  });
+});
