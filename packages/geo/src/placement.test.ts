@@ -198,18 +198,73 @@ describe('georefToLayerTransform', () => {
     expect(Math.abs(worldOfModelPoint(r.transform, D, [0, 30, 0])[2] - 45)).toBeLessThan(1e-9);
   });
 
-  it('a projection scale difference under 1e-4 is left alone', () => {
-    // two southern and northern zones share the central meridian: identical point scale
+  it('a zone pair with the same point scale records a projection scale of 1', () => {
+    // a southern and a northern zone share the central meridian: identical point scale
     const S: ProjectGeo = {
       crs: { epsg: 32733 },
       origin: transformPoint([400000, 5600000, 0], 32633, 32733),
     };
     const r = placed(georefToLayerTransform(g(), S));
     expect(r.scaleNote).toBeUndefined();
+    expect(Math.abs(r.projectionScale - 1)).toBeLessThan(1e-9);
     const w0 = worldOfModelPoint(r.transform, S, [0, 0, 0]);
     expect(Math.abs(dist(w0, worldOfModelPoint(r.transform, S, [100, 0, 0])) - 100)).toBeLessThan(
       1e-6,
     );
+  });
+
+  /** Model points 100 m out (and up), turned 30 degrees, compared with proj4 directly. */
+  const far: Vec3[] = [
+    [100, 0, 0],
+    [0, 0, 100],
+    [-70, 0, 70],
+    [0, 100, 0],
+    [100, 30, -100],
+  ];
+  function worstAt100(anchor: Vec3, to: number) {
+    const m = enhMatrix(anchor, 30, 1);
+    const geo = g({ anchor, modelToCrs: m, heading: { deg: 30, status: 'user' } });
+    const a2 = viaProj4(anchor, 32633, to);
+    const P: ProjectGeo = { crs: { epsg: to }, origin: [a2[0] + 1234.5, a2[1] - 777.25, 250] };
+    // the farthest probe lies 141.4 m out horizontally
+    const r = placed(georefToLayerTransform(geo, P, { extentM: 142 }));
+    let worst = 0;
+    for (const p of far) {
+      const at = m;
+      const src: Vec3 = [
+        (at[0] ?? 0) * p[0] + (at[4] ?? 0) * p[1] + (at[8] ?? 0) * p[2] + (at[12] ?? 0),
+        (at[1] ?? 0) * p[0] + (at[5] ?? 0) * p[1] + (at[9] ?? 0) * p[2] + (at[13] ?? 0),
+        (at[2] ?? 0) * p[0] + (at[6] ?? 0) * p[1] + (at[10] ?? 0) * p[2] + (at[14] ?? 0),
+      ];
+      const truth = viaProj4(src, 32633, to);
+      worst = Math.max(worst, dist(worldOfModelPoint(r.transform, P, p), truth));
+    }
+    return { r, worst };
+  }
+  const utm33 = (lon: number, lat: number): Vec3 => {
+    const [e, n] = proj4(crsDefinition(4326), crsDefinition(32633)).forward([lon, lat]);
+    return [e, n, 300];
+  };
+
+  it('UTM 33N to 34N is within 1 mm at 100 m, also near the zone edge', () => {
+    for (const lon of [13.6, 16, 17, 17.5, 17.99]) {
+      const { r, worst } = worstAt100(utm33(lon, 50.5), 32634);
+      expect(worst, `lon ${String(lon)}`).toBeLessThan(0.001);
+      expect(r.linearErrorM).toBeLessThan(0.001);
+      expect(r.approxNote).toBeUndefined();
+      // the projection scale is recorded and is that of the change
+      expect(r.projectionScale).toBeGreaterThan(0.99);
+    }
+  });
+
+  it('Web Mercator is approximate, and says so with the worst case for the extent', () => {
+    const { r, worst } = worstAt100(utm33(13.6, 50.5), 3857);
+    expect(r.approxNote).toMatch(/^Web Mercator placement is approximate away from the anchor/);
+    expect(r.linearErrorM).toBeGreaterThan(0.001);
+    // the stated worst case covers what proj4 measures (heights do not add error)
+    expect(worst).toBeLessThanOrEqual(r.linearErrorM + 1e-6);
+    expect(worst).toBeLessThan(0.01);
+    expect(Math.abs(r.projectionScale - 1.573)).toBeLessThan(0.01);
   });
 
   it('unsupported CRS gives placement needed', () => {
@@ -309,6 +364,45 @@ describe('georefToLayerTransform', () => {
 });
 
 describe('layerTransformToGeoref', () => {
+  it('keeps the model scale apart from the projection scale after a cross-CRS placement', () => {
+    const geo = g({
+      modelToCrs: enhMatrix([400010, 5600020, 15], 20, 1.25),
+      scale: { factor: 1.25, status: 'measured' },
+    });
+    const C: ProjectGeo = {
+      crs: { epsg: 32634 },
+      origin: transformPoint([400000, 5600000, 0], 32633, 32634),
+    };
+    const r = placed(georefToLayerTransform(geo, C));
+    expect(Math.abs(r.projectionScale - 1)).toBeGreaterThan(1e-3);
+    const back = layerTransformToGeoref(r.transform, C, geo, 'engineer');
+    expect(back.crs).toEqual({ epsg: 32634 });
+    expect(Math.abs(back.scale.factor - 1.25)).toBeLessThan(1e-6);
+    // and the record in the new CRS still places the model where it was
+    const again = placed(georefToLayerTransform(back, C));
+    for (const p of probe)
+      expectClose(
+        worldOfModelPoint(again.transform, C, p),
+        worldOfModelPoint(r.transform, C, p),
+        0.001,
+      );
+  });
+
+  it('pivots on the model origin, not on an anchor elsewhere on the model', () => {
+    // the anchor names the top of the model; geometry pivots on the origin all the same
+    const geo = g({ anchor: [400010, 5600020, 115] });
+    const C: ProjectGeo = {
+      crs: { epsg: 32634 },
+      origin: transformPoint([400000, 5600000, 0], 32633, 32634),
+    };
+    const r = placed(georefToLayerTransform(geo, C));
+    expectClose(
+      viaProj4(worldOfModelPoint(r.transform, C, [0, 0, 0]), 32634, 32633),
+      [400010, 5600020, 15],
+      0.001,
+    );
+  });
+
   it('inverts georefToLayerTransform', () => {
     const geo = g({
       modelToCrs: enhMatrix([400010, 5600020, 15], -42, 1.25),

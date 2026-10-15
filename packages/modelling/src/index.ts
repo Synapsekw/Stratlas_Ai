@@ -56,6 +56,7 @@ export { assembleLattice, assembleMonopole, SECTOR_GAP_DEG } from './engineer/as
 export {
   componentRegister,
   exportBundle,
+  type BundleBuild,
   type ComponentRow,
   type EngineeringBundle,
 } from './engineer/exportBundle';

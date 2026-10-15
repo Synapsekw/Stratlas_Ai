@@ -125,8 +125,20 @@ describe('exportBundle', () => {
     expect(bin.byteLength).toBeGreaterThan(0);
   });
 
-  it('writes no georeference when there is none', () => {
+  it('reports how the GLB was built', () => {
     const b = exportBundle(model(), { detail: 'fast', generator: 'test', georef: null });
+    expect(b.build.triangles).toBeGreaterThan(1000);
+    expect(b.build.overBudget).toBe(false);
+    expect(b.build.failed).toEqual([]);
+    expect(b.build.detail).toBe('fast');
+  });
+
+  it('writes no georeference when there is none, not even an old one in the model', () => {
+    const b = exportBundle(
+      { ...model(), georef: GEOREF },
+      { detail: 'fast', generator: 'test', georef: null },
+    );
+    expect(JSON.parse(b.procmodel)).not.toHaveProperty('georef');
     expect(b.georeference).toBeNull();
     const asset = readGlb(b.glb).json.asset as { extras?: unknown };
     expect(asset.extras).toBeUndefined();

@@ -683,11 +683,17 @@ export async function importRawFiles(
           const head = await readHead(file, 4);
           if (new TextDecoder().decode(head) !== 'glTF') throw new Error('Not a GLB file.');
           await copyFile(file, join(root, rel));
-          // the georeference in the file, read from its JSON chunk only (vertices never rewritten)
-          glbPlace = placeImportedGlb(await readGlbJsonFromFile(file), {
-            crs: m.crs,
-            origin: m.origin,
-          });
+          // the georeference in the stored copy, read from its JSON chunk only (vertices never
+          // rewritten); a copy that cannot be read is not left behind
+          try {
+            glbPlace = placeImportedGlb(await readGlbJsonFromFile(join(root, rel)), {
+              crs: m.crs,
+              origin: m.origin,
+            });
+          } catch (e) {
+            await rm(join(root, rel), { force: true });
+            throw e;
+          }
           transform = glbPlace.transform;
         } else {
           const text = await readFile(file, 'utf8');

@@ -32,10 +32,19 @@ export type PlacementResult =
        */
       headingDeltaDeg: number;
       /**
-       * Set when the two projections' scale factors at the anchor differ by more than 1e-4; the
-       * difference is then applied to horizontal distances so the model keeps its ground size.
+       * Scale of the CRS change at the pivot (1 within one CRS), always applied to horizontal
+       * distances so the model keeps its ground size; kept apart from the record's own scale.
        */
+      projectionScale: number;
+      /**
+       * Worst horizontal distance, metres, between the one linear map used and the exact CRS
+       * change within `extentM` of the pivot (0 within one CRS).
+       */
+      linearErrorM: number;
+      /** Set when the projection scale differs from 1 by more than 1e-4 (it is applied). */
       scaleNote?: string;
+      /** Set when Web Mercator is involved: the placement is approximate away from the anchor. */
+      approxNote?: string;
       /** Set when either vertical datum is unknown: heights are taken as they are. */
       heightNote?: string;
     }
@@ -46,7 +55,14 @@ export type PlacementResult =
       horizontalOnly?: Mat4;
     };
 
+export interface PlacementOptions {
+  /** How far the model reaches from its origin, metres, for `linearErrorM` (default 100). */
+  extentM?: number;
+}
+
 const RAD = Math.PI / 180;
+const WEB_MERCATOR = 3857;
+const DEFAULT_EXTENT_M = 100;
 
 /** E, N, H from one EPSG CRS to another through WGS84. Height passes through unchanged. */
 export function transformPoint(p: Vec3, fromEpsg: number, toEpsg: number): Vec3 {
@@ -149,14 +165,21 @@ const knownDatum = (d: string | undefined): string | null =>
 
 /**
  * The layer transform that puts a georeferenced model in a project, or why it cannot be placed.
- * Same CRS: the record's matrix moved into the local frame. Another supported CRS: the anchor is
- * carried through WGS84 and the model turned about the vertical through it by the difference in
- * grid convergence; a projection scale difference over 1e-4 is applied horizontally (and noted),
- * a smaller one is left alone, and the record's own scale is never changed. An unsupported
+ * Same CRS: the record's matrix moved into the local frame. Another supported CRS: the model
+ * origin's image (the pivot) is carried through WGS84 and the horizontal Jacobian of the CRS change
+ * there is applied about it, always: the convergence turn, the projection scale difference
+ * (`projectionScale`) and, for EPSG:3857, its east/north difference. The record's own scale is
+ * never changed. One linear map is exact at the pivot and strays with distance: between UTM zones
+ * by well under 1 mm at 100 m; Web Mercator is approximate (about 3 mm at 100 m at mid latitudes),
+ * so `linearErrorM` gives the worst case within `extentM` and `approxNote` says so. An unsupported
  * CRS on either side is never guessed. Heights pass through: an unknown datum stays unknown, and
  * two different known datums leave the height to the user (horizontal placement offered).
  */
-export function georefToLayerTransform(g: Georef, project: ProjectGeo): PlacementResult {
+export function georefToLayerTransform(
+  g: Georef,
+  project: ProjectGeo,
+  o: PlacementOptions = {},
+): PlacementResult {
   const to = metricEpsg(project.crs);
   if (to === null)
     return {
@@ -174,35 +197,30 @@ export function georefToLayerTransform(g: Georef, project: ProjectGeo): Placemen
 
   let m: Mat4 = [...g.modelToCrs];
   let headingDeltaDeg = 0;
+  let projectionScale = 1;
+  let linearErrorM = 0;
   let scaleNote: string | undefined;
+  let approxNote: string | undefined;
+  const extentM = o.extentM ?? DEFAULT_EXTENT_M;
   if (from !== to) {
-    const anchor: Vec3 = [g.anchor[0], g.anchor[1], g.anchor[2]];
-    const moved = transformPoint(anchor, from, to);
-    const [lon, lat] = toWgs84(anchor, from);
+    // The pivot is the model origin's image (where the vertices are), not the anchor field.
+    const pivot = apply(m, [0, 0, 0]);
+    const moved = transformPoint(pivot, from, to);
+    const [lon, lat] = toWgs84(pivot, from);
     headingDeltaDeg = gridConvergenceDeg(lon, lat, to) - gridConvergenceDeg(lon, lat, from);
-    // The horizontal part of the CRS change at the anchor (its Jacobian, by central differences
-    // in the source grid): the convergence turn and the projections' scale difference together,
-    // including the east/north difference of a projection that is not conformal (EPSG:3857).
-    // Heights never scale with a projection.
-    const step = 10;
-    const d = (de: number, dn: number) => {
-      const p = transformPoint([anchor[0] + de, anchor[1] + dn, 0], from, to);
-      const q = transformPoint([anchor[0] - de, anchor[1] - dn, 0], from, to);
-      return [(p[0] - q[0]) / (2 * step), (p[1] - q[1]) / (2 * step)];
-    };
-    const [jEE = 1, jNE = 0] = d(step, 0);
-    const [jEN = 0, jNN = 1] = d(0, step);
-    // Below 1e-4 the scale difference is left alone (spec 5.6): only the turn is kept.
-    const k = Math.sqrt(Math.abs(jEE * jNN - jEN * jNE));
-    const applied = Math.abs(k - 1) > 1e-4;
-    const f = applied ? 1 : 1 / k;
-    if (applied)
-      scaleNote = `The two map projections differ in scale by a factor of ${k.toFixed(6)} here; the model was scaled across by it so it keeps its size on the ground.`;
-    const across: Mat4 = [jEE * f, jNE * f, 0, 0, jEN * f, jNN * f, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1];
-    m = mul(
-      translation(moved),
-      mul(across, mul(translation([-anchor[0], -anchor[1], -anchor[2]]), m)),
-    );
+    // The horizontal part of the CRS change at the pivot, always applied: the convergence turn,
+    // the projections' scale difference and the east/north difference of a projection that is
+    // not conformal (EPSG:3857) together. Heights never scale with a projection.
+    const j = crsJacobian(pivot, from, to);
+    projectionScale = Math.sqrt(Math.abs(j.ee * j.nn - j.en * j.ne));
+    if (Math.abs(projectionScale - 1) > 1e-4)
+      scaleNote = `The two map projections differ in scale by a factor of ${projectionScale.toFixed(6)} here; the model was scaled across by it so it keeps its size on the ground.`;
+    const across: Mat4 = [j.ee, j.ne, 0, 0, j.en, j.nn, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1];
+    m = mul(translation(moved), mul(across, translation([-pivot[0], -pivot[1], -pivot[2]])));
+    m = mul(m, [...g.modelToCrs]);
+    linearErrorM = linearError(pivot, moved, j, from, to, extentM);
+    if (from === WEB_MERCATOR || to === WEB_MERCATOR)
+      approxNote = `Web Mercator placement is approximate away from the anchor: up to ${(linearErrorM * 1000).toFixed(1)} mm within ${String(extentM)} m of it.`;
   }
 
   const transform = enhToLocal(m, project.origin);
@@ -224,9 +242,67 @@ export function georefToLayerTransform(g: Georef, project: ProjectGeo): Placemen
     kind: 'placed',
     transform,
     headingDeltaDeg,
+    projectionScale,
+    linearErrorM,
     ...(scaleNote !== undefined ? { scaleNote } : {}),
+    ...(approxNote !== undefined ? { approxNote } : {}),
     ...(heightNote !== undefined ? { heightNote } : {}),
   };
+}
+
+/**
+ * The horizontal Jacobian of the change from one CRS to another at `p` (central differences of
+ * 10 m in the source grid): d(E', N') / d(E, N).
+ */
+function crsJacobian(
+  p: Vec3,
+  from: number,
+  to: number,
+): { ee: number; ne: number; en: number; nn: number } {
+  const step = 10;
+  const d = (de: number, dn: number): [number, number] => {
+    const a = transformPoint([p[0] + de, p[1] + dn, 0], from, to);
+    const b = transformPoint([p[0] - de, p[1] - dn, 0], from, to);
+    return [(a[0] - b[0]) / (2 * step), (a[1] - b[1]) / (2 * step)];
+  };
+  const [ee, ne] = d(step, 0);
+  const [en, nn] = d(0, step);
+  return { ee, ne, en, nn };
+}
+
+/**
+ * How far the one linear map strays from the exact CRS change within `radiusM` of the pivot
+ * (horizontal metres, the worst of 16 directions on that circle, where the error is largest).
+ */
+function linearError(
+  pivot: Vec3,
+  moved: Vec3,
+  j: { ee: number; ne: number; en: number; nn: number },
+  from: number,
+  to: number,
+  radiusM: number,
+): number {
+  let worst = 0;
+  for (let i = 0; i < 16; i++) {
+    const t = (i / 16) * 2 * Math.PI;
+    const de = radiusM * Math.cos(t);
+    const dn = radiusM * Math.sin(t);
+    const exact = transformPoint([pivot[0] + de, pivot[1] + dn, 0], from, to);
+    const e = moved[0] + j.ee * de + j.en * dn;
+    const n = moved[1] + j.ne * de + j.nn * dn;
+    worst = Math.max(worst, Math.hypot(exact[0] - e, exact[1] - n));
+  }
+  return worst;
+}
+
+/**
+ * The scale of the change from one CRS to another at `p` (1 within one CRS): how much longer a
+ * short horizontal distance is in `to` grid units than in `from` grid units.
+ */
+export function projectionScaleBetween(p: Vec3, from: number, to: number): number {
+  if (from === to) return 1;
+  const j = crsJacobian(p, from, to);
+  return Math.sqrt(Math.abs(j.ee * j.nn - j.en * j.ne));
 }
 
 /** Grid heading in degrees, (-180, 180]: how far model north (-z) is turned clockwise from grid north. */
@@ -239,9 +315,13 @@ function headingOf(m: readonly number[]): number {
   return h;
 }
 
-function scaleOf(m: readonly number[]): number {
+/**
+ * The model's own scale: the mean length of the three axis columns, with the horizontal (E, N)
+ * parts divided by the projection scale `kh` they carry (heights never scale with a projection).
+ */
+function scaleOf(m: readonly number[], kh = 1): number {
   let s = 0;
-  for (let c = 0; c < 3; c++) s += Math.hypot(at(m, 0, c), at(m, 1, c), at(m, 2, c));
+  for (let c = 0; c < 3; c++) s += Math.hypot(at(m, 0, c) / kh, at(m, 1, c) / kh, at(m, 2, c));
   return s / 3;
 }
 
@@ -263,7 +343,15 @@ export function layerTransformToGeoref(
     : null) ?? [0, 0, 0];
   const anchor = apply(modelToCrs, modelAnchor);
   const deg = headingOf(modelToCrs);
-  const factor = scaleOf(modelToCrs);
+  // A layer placed from a record in another CRS carries that change's projection scale in its
+  // matrix; the record's scale is the model's own, so the projection part is taken back out.
+  const prevEpsg = prev ? metricEpsg(prev.crs) : null;
+  const toEpsg = metricEpsg(project.crs);
+  const kProj =
+    prev && prevEpsg !== null && toEpsg !== null && isAffine(prev.modelToCrs)
+      ? projectionScaleBetween(apply(prev.modelToCrs, [0, 0, 0]), prevEpsg, toEpsg)
+      : 1;
+  const factor = scaleOf(modelToCrs, kProj);
   const projectDatum = knownDatum(project.verticalDatum);
   const user = by === 'place-model';
   const vertical: Georef['vertical'] = user

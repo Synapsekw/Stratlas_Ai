@@ -134,7 +134,7 @@ export function placeImportedGlb(
     transform: r.transform,
     georef: read.georef,
     placement: 'placed',
-    message: ['Placed from the georeference in the file.', r.scaleNote, r.heightNote]
+    message: ['Placed from the georeference in the file.', r.scaleNote, r.approxNote, r.heightNote]
       .filter((s): s is string => typeof s === 'string')
       .join(' '),
   };

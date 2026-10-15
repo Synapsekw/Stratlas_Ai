@@ -1,4 +1,12 @@
-import { mkdir, mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises';
+import {
+  mkdir,
+  mkdtemp,
+  readFile,
+  readdir,
+  rename as fsRename,
+  rm,
+  writeFile,
+} from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
@@ -56,6 +64,27 @@ describe('writeExportFolder', () => {
     expect(await readdir(target)).toEqual(['old.txt']);
     expect(await readdir(dir)).toEqual(['stack']);
     await writeExportFolder(target, FILES, { replace: true });
+    expect((await readdir(target)).sort()).toEqual(Object.keys(FILES).sort());
+    expect(await readdir(dir)).toEqual(['stack']);
+  });
+
+  it('tries the rename again while Windows holds a file open', async () => {
+    const target = join(dir, 'stack');
+    let refusals = 0;
+    await writeExportFolder(target, FILES, {
+      rename: {
+        platform: 'win32',
+        sleep: () => Promise.resolve(),
+        rename: async (from, to) => {
+          if (refusals++ < 2)
+            throw Object.assign(new Error('EPERM: operation not permitted, rename'), {
+              code: 'EPERM',
+            });
+          await fsRename(from, to);
+        },
+      },
+    });
+    expect(refusals).toBe(3);
     expect((await readdir(target)).sort()).toEqual(Object.keys(FILES).sort());
     expect(await readdir(dir)).toEqual(['stack']);
   });

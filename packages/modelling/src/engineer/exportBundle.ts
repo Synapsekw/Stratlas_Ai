@@ -24,6 +24,20 @@ export interface EngineeringBundle {
   components: string;
   /** The `aio.georef/1` sidecar, or null when the model has no georeference. */
   georeference: string | null;
+  /** How the GLB was built: what was coarsened for the budget, what could not be built. */
+  build: BundleBuild;
+}
+
+/** The meshing outcome of a bundle's GLB, for the caller to report. */
+export interface BundleBuild {
+  triangles: number;
+  overBudget: boolean;
+  /** The coarsest detail level used. */
+  detail: Detail;
+  simplified: { id: string; detail: Detail }[];
+  /** Components whose geometry could not be built (not in the GLB), with the reason. */
+  failed: { id: string; reason: string }[];
+  notes: string[];
 }
 
 /** One row of the component register (`components.json`). */
@@ -137,11 +151,22 @@ export function exportBundle(
     generator: o.generator,
   });
   const glb = georef ? withAssetExtras(built.glb, { aioGeoref: georef }) : built.glb;
-  const out: ProcModel = georef ? { ...model, georef } : model;
+  // the written model carries exactly the georeference exported with it, or none
+  const out: ProcModel = { ...model };
+  if (georef) out.georef = georef;
+  else delete out.georef;
   return {
     glb,
     procmodel: `${JSON.stringify(out, null, 2)}\n`,
     components: `${JSON.stringify(componentRegister(model), null, 2)}\n`,
     georeference: georef ? `${JSON.stringify(georef, null, 2)}\n` : null,
+    build: {
+      triangles: built.triangles,
+      overBudget: built.overBudget,
+      detail: built.detail,
+      simplified: built.simplified,
+      failed: built.failed,
+      notes: built.notes,
+    },
   };
 }
