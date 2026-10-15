@@ -53,6 +53,22 @@ export { meshTemplates } from './adapters/mesh';
 export { SharedAssets, type Lease, type SharedStats } from './adapters/shared';
 export type { SectionState } from './tools/section';
 export { DEFAULT_SECTION } from './tools/section';
+export {
+  ClipBoxTool,
+  MIN_SIZE_M,
+  SNAP_M,
+  boxAxes,
+  closestOnLine,
+  dragFace,
+  faceCentre,
+  faceNormal,
+  formatBoxSize,
+  headingOf,
+  pickHandle,
+  type BoxFace,
+  type BoxHandle,
+  type ClipBoxLocal,
+} from './tools/clipbox';
 export { PALETTE } from './palette';
 export { reducedMotion } from './motion';
 export { solarPosition, skyDirection, utcOffsetHours, type SolarPosition } from './stage/solar';

@@ -514,7 +514,7 @@ export class Stage implements EngineStage {
     this._tool = tool;
     if (tool !== 'measure') this.clearMeasure();
     if (tool === 'section' && !this._section.enabled) this.setSection({ enabled: true });
-    this.canvas.style.cursor = tool === 'measure' ? 'crosshair' : '';
+    this.canvas.style.cursor = tool === 'measure' || tool === 'pcselect' ? 'crosshair' : '';
     this.emitState();
   }
 
@@ -1500,12 +1500,13 @@ export class Stage implements EngineStage {
       const ev = this.hoverEvent;
       if (!ev || this.disposed) return;
       const [x, y] = this.toNdc(ev);
-      const node = this._tool === 'measure' ? null : (this.pick(x, y)?.node ?? null);
+      const aiming = this._tool === 'measure' || this._tool === 'pcselect';
+      const node = aiming ? null : (this.pick(x, y)?.node ?? null);
       if (this.highlight.set('hover', node)) {
         this.need = true;
         this.rebuildCallouts();
       }
-      this.canvas.style.cursor = this._tool === 'measure' ? 'crosshair' : node ? 'pointer' : '';
+      this.canvas.style.cursor = aiming ? 'crosshair' : node ? 'pointer' : '';
     });
   };
 

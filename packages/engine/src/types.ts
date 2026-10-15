@@ -125,7 +125,11 @@ export interface SceneHandle {
 /** Extra content for `SceneHandle.raycast`, e.g. point picking within a few pixels. */
 export type RaycastProvider = (ndcX: number, ndcY: number) => Intersection | null;
 
-export type StageTool = 'select' | 'measure' | 'section';
+/**
+ * `clipbox` and `pcselect` are the point cloud cleanup tools (tools/clipbox.ts, tools/pcselect.ts):
+ * the app attaches them while the tool is on; the stage only knows the cursor.
+ */
+export type StageTool = 'select' | 'measure' | 'section' | 'clipbox' | 'pcselect';
 
 /**
  * Component callouts: `off` shows only the selected and hovered component, `key` adds one callout
