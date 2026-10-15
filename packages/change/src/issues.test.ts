@@ -1,7 +1,14 @@
-import { DEFAULT_CHANGE_THRESHOLDS, type ChangeItem } from '@aio/schema';
+import { DEFAULT_CHANGE_THRESHOLDS, type ChangeItem, type Issue, type Vec3 } from '@aio/schema';
 import { captureIndex } from '@aio/workspace/captures';
 import { describe, expect, it } from 'vitest';
-import { issueChanges, issueDate, issuePosition, issueSize } from './issues';
+import {
+  isTracked,
+  issueChanges,
+  issueDate,
+  issuePosition,
+  issueSize,
+  suggestMatches,
+} from './issues';
 import { issue, SITE } from './testing';
 
 const index = captureIndex(SITE);
@@ -156,5 +163,79 @@ describe('issue change between two dates', () => {
       ]),
     );
     expect(shrunk['issue:F01']?.verdict).toBe('shrunk');
+  });
+});
+
+describe('placed areas: footprint matching', () => {
+  const area = (
+    code: string,
+    layer: string,
+    x: number,
+    z: number,
+    over: Partial<Issue> = {},
+  ): Issue => ({
+    ...issue({ code, layer, at: [x, 0, z] }),
+    sightings: [
+      {
+        on: 'mesh',
+        layer,
+        geom: {
+          type: 'spolygon',
+          points: [
+            [x, 0, z],
+            [x + 1, 0, z],
+            [x + 1, 0, z + 1],
+            [x, 0, z + 1],
+          ] as Vec3[],
+        },
+        from: { sighting: 0 },
+      },
+    ],
+    ...over,
+  });
+
+  it('pairs overlapping areas of the same class across dates, largest overlap first', () => {
+    const a = area('F01', 'model-d1', 0, 0);
+    const near = area('F02', 'model-d2', 0.2, 0); // overlap 0.8
+    const nearer = area('F03', 'model-d2', 0.1, 0); // overlap 0.9
+    const items = byId(run([a, near, nearer]));
+    expect(items['issue:F01']).toMatchObject({ to: nearer.id, method: 'footprint' });
+    expect(items['issue:F02']).toMatchObject({ verdict: 'new' });
+  });
+
+  it('does not pair areas that overlap less than 0.3, even when their centres are close', () => {
+    const a = area('F01', 'model-d1', 0, 0);
+    const b = area('F02', 'model-d2', 0.8, 0); // overlap 0.2, centres 0.8 m apart
+    const items = byId(run([a, b]));
+    expect(items['issue:F01']).not.toHaveProperty('to');
+  });
+
+  it('keeps the distance rule when one of the two has only a pin', () => {
+    const a = area('F01', 'model-d1', 0, 0);
+    const pin = issue({ code: 'F02', layer: 'model-d2', at: [0.6, 0, 0.6] });
+    expect(byId(run([a, pin]))['issue:F01']).toMatchObject({ to: pin.id, method: 'mesh' });
+  });
+
+  it('suggests matches on other dates, best first, skipping tracked issues and other classes', () => {
+    const a = area('F01', 'model-d1', 0, 0);
+    const b = area('F02', 'model-d2', 0.1, 0);
+    const c = area('F03', 'model-d2', 0.5, 0);
+    const other = area('F04', 'model-d2', 0, 0, { classId: 'coating' });
+    const same = area('F05', 'model-d1', 0, 0);
+    const list = [a, b, c, other, same];
+    expect(suggestMatches(a, list, index).map((m) => [m.issue.code, m.capture])).toEqual([
+      ['F02', 'd2'],
+      ['F03', 'd2'],
+    ]);
+    // a track of its own (a Make issue draft) is not a link; a shared one is
+    const own = { ...b, track: b.id };
+    expect(isTracked(own, [a, own])).toBe(false);
+    const la = { ...a, track: 't' };
+    const linked = [la, { ...c, track: 't' }, b];
+    expect(isTracked(la, linked)).toBe(true);
+    expect(suggestMatches(b, linked, index).map((m) => m.issue.code)).toEqual([]);
+    expect(
+      suggestMatches(issue({ code: 'F09', layer: 'model-d1', at: [0, 0, 0] }), list, index),
+    ).toEqual([]);
   });
 });

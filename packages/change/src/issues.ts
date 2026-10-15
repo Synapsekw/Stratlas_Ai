@@ -7,6 +7,7 @@ import type {
   Vec3,
 } from '@aio/schema';
 import { cameraSees, dist3, mean3, polygonArea3, polylineLength3 } from './geometry';
+import { footprintOf, footprintOverlap, MIN_OVERLAP, type XZ } from './footprint';
 import type { DateIndex } from './pairs';
 
 /**
@@ -14,8 +15,9 @@ import type { DateIndex } from './pairs';
  *
  * - Dates: `Issue.capture`, else the dates of the sightings' layers, else `createdAt` against the
  *   capture dates.
- * - Matching: a confirmed `track` first; else the same class within `max(0.5 m, 2% of the site
- *   height)` of the mesh or point cloud sighting, nearest first.
+ * - Matching: a confirmed `track` first; else, for two issues placed as areas, the same class with
+ *   footprints overlapping at least `MIN_OVERLAP` (largest first); else the same class within
+ *   `max(0.5 m, 2% of the site height)` of the mesh or point cloud sighting, nearest first.
  * - Verdicts: `new`, `resolved` (gone where a posed photo of the later date looked), `not-seen`
  *   (gone, but nothing of the later date looked: never `resolved`), `grown` / `shrunk` (area beyond
  *   the threshold), `worsened` / `improved` (severity), `unchanged`.
@@ -138,12 +140,13 @@ export interface IssueChangeInput {
 interface Placed {
   issue: Issue;
   at: { p: Vec3; method: 'mesh' | 'pointcloud' } | null;
+  foot: XZ[] | null;
 }
 
 /** Issue change items of a date pair, earlier-date issues first, then the new ones. */
 export function issueChanges(input: IssueChangeInput): IssueItem[] {
   const { index, from, to, thresholds } = input;
-  const place = (i: Issue): Placed => ({ issue: i, at: issuePosition(i) });
+  const place = (i: Issue): Placed => ({ issue: i, at: issuePosition(i), foot: footprintOf(i) });
   const a = input.issues.filter((i) => issueDate(i, index) === from).map(place);
   const b = input.issues.filter((i) => issueDate(i, index) === to).map(place);
   const ys = [...a, ...b].flatMap((x) => (x.at ? [x.at.p[1]] : []));
@@ -161,12 +164,29 @@ export function issueChanges(input: IssueChangeInput): IssueItem[] {
       taken.add(y);
     }
   }
-  // 2. same class, nearest within the tolerance
+  // 2. two placed areas of the same class: footprint overlap, largest first
+  const overlaps: { x: Placed; y: Placed; o: number }[] = [];
+  for (const x of a) {
+    if (pairOf.has(x) || !x.foot) continue;
+    for (const y of b) {
+      if (taken.has(y) || !y.foot || y.issue.classId !== x.issue.classId) continue;
+      const o = footprintOverlap(x.foot, y.foot);
+      if (o >= MIN_OVERLAP) overlaps.push({ x, y, o });
+    }
+  }
+  overlaps.sort((p, q) => q.o - p.o);
+  for (const { x, y } of overlaps) {
+    if (pairOf.has(x) || taken.has(y)) continue;
+    pairOf.set(x, { b: y, method: 'footprint' });
+    taken.add(y);
+  }
+  // 3. same class, nearest within the tolerance (one of the two has only a pin)
   const candidates: { x: Placed; y: Placed; d: number }[] = [];
   for (const x of a) {
     if (pairOf.has(x) || !x.at) continue;
     for (const y of b) {
       if (taken.has(y) || !y.at || y.issue.classId !== x.issue.classId) continue;
+      if (x.foot && y.foot) continue;
       const d = dist3(x.at.p, y.at.p);
       if (d <= tolerance) candidates.push({ x, y, d });
     }
@@ -294,4 +314,43 @@ function matched(
     ...severityOf(x.issue, y.issue),
     ...sizeOf(x.issue, y.issue),
   };
+}
+/** The issue shares its track with another issue (a confirmed match). */
+export function isTracked(issue: Issue, issues: readonly Issue[]): boolean {
+  const t = issue.track;
+  return t !== undefined && issues.some((o) => o.id !== issue.id && o.track === t);
+}
+
+export interface MatchSuggestion {
+  issue: Issue;
+  /** Intersection over the smaller footprint, 0 to 1. */
+  overlap: number;
+  /** The capture the suggested issue belongs to. */
+  capture: string;
+}
+
+/**
+ * Issues of other dates that look like `issue` once it is placed as an area: the same class,
+ * footprints overlapping at least `MIN_OVERLAP`, neither linked to another issue yet. Best first.
+ * The same rule `issueChanges` matches areas with; nothing here changes an issue.
+ */
+export function suggestMatches(
+  issue: Issue,
+  issues: readonly Issue[],
+  index: Pick<DateIndex, 'captures' | 'of'>,
+): MatchSuggestion[] {
+  const foot = footprintOf(issue);
+  const date = issueDate(issue, index);
+  if (!foot || !date || isTracked(issue, issues)) return [];
+  const out: MatchSuggestion[] = [];
+  for (const o of issues) {
+    if (o.id === issue.id || o.classId !== issue.classId) continue;
+    const capture = issueDate(o, index);
+    if (!capture || capture === date || isTracked(o, issues)) continue;
+    const f = footprintOf(o);
+    if (!f) continue;
+    const overlap = footprintOverlap(foot, f);
+    if (overlap >= MIN_OVERLAP) out.push({ issue: o, overlap, capture });
+  }
+  return out.sort((p, q) => q.overlap - p.overlap || p.issue.code.localeCompare(q.issue.code));
 }

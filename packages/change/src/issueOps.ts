@@ -5,6 +5,7 @@ import type {
   Issue,
   ProjectManifest,
   Sighting,
+  Vec3,
 } from '@aio/schema';
 
 /**
@@ -72,6 +73,22 @@ function nextCode(codes: readonly string[], prefix = 'F'): string {
   return `${prefix}${String(max + 1).padStart(2, '0')}`;
 }
 
+/** A 3D sighting at a point or along a ring, of the kind the layer needs (mesh or point cloud). */
+function onLayer(
+  layer: string,
+  ctx: DraftContext,
+  geom: { at: Vec3 } | { ring: Vec3[] },
+): Sighting {
+  const cloud = ctx.manifest.layers.find((l) => l.id === layer)?.kind === 'pointcloud';
+  if ('ring' in geom)
+    return cloud
+      ? { on: 'pointcloud', layer, geom: { type: 'polygon3', points: geom.ring } }
+      : { on: 'mesh', layer, geom: { type: 'spolygon', points: geom.ring } };
+  return cloud
+    ? { on: 'pointcloud', layer, geom: { type: 'point3', p: geom.at } }
+    : { on: 'mesh', layer, geom: { type: 'spoint', p: geom.at, n: [0, 1, 0] } };
+}
+
 function sightingFor(item: ChangeItem, ctx: DraftContext): Sighting | null {
   if (item.kind === 'vector' && ctx.geometry) {
     const layer = item.layerTo ?? item.layerFrom;
@@ -92,12 +109,10 @@ function sightingFor(item: ChangeItem, ctx: DraftContext): Sighting | null {
         geojson: { type: 'Polygon', coordinates: [item.outline] },
       };
     const layer = ctx.meshLayer;
-    if (item.outlineLocal && layer)
-      return { on: 'mesh', layer, geom: { type: 'spolygon', points: item.outlineLocal } };
+    if (item.outlineLocal && layer) return onLayer(layer, ctx, { ring: item.outlineLocal });
   }
   const layer = (item.kind === 'component' ? item.layerTo : undefined) ?? ctx.meshLayer;
-  if (item.at && layer)
-    return { on: 'mesh', layer, geom: { type: 'spoint', p: item.at, n: [0, 1, 0] } };
+  if (item.at && layer) return onLayer(layer, ctx, { at: item.at });
   return null;
 }
 
