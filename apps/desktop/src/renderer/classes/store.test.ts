@@ -9,6 +9,8 @@ const h = vi.hoisted(() => ({
   order: [] as string[],
   answer: null as null | { ok: false; error: string },
   actions: [] as { type: string; model?: unknown }[],
+  /** While set, builder:updateClasses answers only after it resolves. */
+  hold: null as null | Promise<void>,
 }));
 
 vi.mock('../shell', () => ({
@@ -18,12 +20,15 @@ vi.mock('../shell', () => ({
       h.calls.push({ channel, req });
       h.order.push(channel);
       if (channel === 'builder:updateClasses') {
-        if (h.answer) return Promise.resolve({ ok: true, value: h.answer });
+        const answer = h.answer;
         const m = workspace.getState().project?.manifest;
-        return Promise.resolve({
-          ok: true,
-          value: { ok: true, backup: 'b', manifest: { ...m, classCatalogues: req.catalogues } },
-        });
+        const reply = answer
+          ? { ok: true, value: answer }
+          : {
+              ok: true,
+              value: { ok: true, backup: 'b', manifest: { ...m, classCatalogues: req.catalogues } },
+            };
+        return (h.hold ?? Promise.resolve()).then(() => reply);
       }
       return Promise.resolve({ ok: true, value: [] });
     },
@@ -99,6 +104,7 @@ beforeEach(() => {
   h.order = [];
   h.answer = null;
   h.actions = [];
+  h.hold = null;
   workspace.setState({ project: null, issues: [] });
   workspace.setState({
     project: { id: 'p', root: '/p', manifest },
@@ -157,7 +163,7 @@ describe('class store', () => {
     expect(await deleteClass('rust', 'crack')).toBeNull();
     expect(workspace.getState().issues.map((i) => i.classId)).toEqual(['crack', 'crack']);
     expect(labels()).toEqual(['Crack']);
-    expect(h.order).toEqual(['dispatch:reclass', 'flush', 'builder:updateClasses']);
+    expect(h.order).toEqual(['flush', 'builder:updateClasses', 'dispatch:reclass']);
     // detections move with the severity model of the class they go to
     expect(h.actions[0]).toMatchObject({ type: 'reclass', from: 'rust', to: 'crack' });
     expect(h.actions[0]?.model).toMatchObject({ id: 'sev' });
@@ -171,5 +177,54 @@ describe('class store', () => {
     workspace.setState({ issues: [] });
     expect(await deleteClass('rust', null)).toBeNull();
     expect(labels()).toEqual(['Crack']);
+  });
+
+  it('a refused delete changes nothing: issues roll back, detections stay', async () => {
+    h.answer = { ok: false, error: 'disk full' };
+    expect(await deleteClass('rust', 'crack')).toBe('disk full');
+    expect(labels()).toEqual(['Crack', 'Rust']);
+    expect(workspace.getState().issues.map((i) => i.classId)).toEqual(['rust', 'rust']);
+    expect(h.actions).toEqual([]);
+    expect(classes.getState().past).toEqual([]);
+  });
+
+  it('two creates at once both land, one after the other', async () => {
+    const [a, b] = await Promise.all([createClass('Spalling'), createClass('Leak')]);
+    expect([a.id, b.id]).toEqual(['spalling', 'leak']);
+    expect(labels()).toEqual(['Crack', 'Rust', 'Spalling', 'Leak']);
+    const writes = h.calls.filter((c) => c.channel === 'builder:updateClasses');
+    expect(writes).toHaveLength(2);
+    const past = classes.getState().past;
+    expect(past).toHaveLength(2);
+    expect(past[0]?.before).not.toEqual(past[1]?.before);
+    expect(past[1]?.before).toEqual(past[0]?.after);
+  });
+
+  it('a project switch during the write leaves no undo entry and no notice', async () => {
+    let release: () => void = () => undefined;
+    h.hold = new Promise<void>((r) => {
+      release = r;
+    });
+    const pending = createClass('Spalling');
+    await vi.waitFor(() => {
+      expect(h.calls).toHaveLength(1);
+    });
+    workspace.setState({ project: { id: 'q', root: '/q', manifest: { ...manifest, id: 'q' } } });
+    release();
+    await expect(pending).rejects.toThrow(/project changed/);
+    expect(classes.getState().past).toEqual([]);
+    expect(classes.getState().notice).toBeNull();
+    expect(labels()).toEqual(['Crack', 'Rust']);
+  });
+
+  it('undo refuses an edit made in another project', async () => {
+    await createClass('Spalling');
+    const edit = classes.getState().past.at(-1);
+    workspace.setState({ project: { id: 'q', root: '/q', manifest: { ...manifest, id: 'q' } } });
+    if (edit) classes.setState({ past: [edit] });
+    h.calls = [];
+    expect(await undoClassEdit()).toBe(false);
+    expect(h.calls).toHaveLength(0);
+    expect(labels()).toEqual(['Crack', 'Rust']);
   });
 });
