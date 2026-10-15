@@ -311,7 +311,12 @@ describe('the cleanup store', () => {
   it("a cloud's first recipe starts with the globally hidden classes", async () => {
     const s = setup([], { globalHidden: [2, 7] });
     await s.c.load('p', [cloud('a')]);
-    const box = { center: [0, 0, 0], size: [1, 1, 1], yaw: 0, keep: 'inside' } as const;
+    const box: NonNullable<PointcloudCleanup['clipBox']> = {
+      center: [0, 0, 0],
+      size: [1, 1, 1],
+      yaw: 0,
+      keep: 'inside',
+    };
     // a drag preview of the first recipe keeps them hidden too
     s.c.preview('a', { ...emptyCleanup('a'), clipBox: box });
     expect(s.live.getState().recipes.a?.hiddenClasses).toEqual([2, 7]);
