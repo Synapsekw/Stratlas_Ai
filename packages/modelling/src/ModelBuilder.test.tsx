@@ -3,6 +3,8 @@ import type { ProcModel } from '@aio/schema';
 import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import type { ComponentsPanel } from './ComponentsSection';
+import { stackModel } from './engineer/fixtures';
 import { fitQuality, ModelBuilder, type ModelBuilderProps } from './ModelBuilder';
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -96,6 +98,21 @@ const button = (el: HTMLElement, text: string) => {
 };
 
 describe('ModelBuilder', () => {
+  it('offers Create engineering model only when the host gives it', () => {
+    const plain = render();
+    expect(plain.el.querySelector('[data-testid="mb-engineer"]')).toBeNull();
+    act(() => {
+      root?.unmount();
+    });
+    host?.remove();
+    const onEngineer = vi.fn();
+    const { el } = render({ onEngineer });
+    const b = el.querySelector<HTMLButtonElement>('[data-testid="mb-engineer"]');
+    expect(b?.textContent.trim()).toBe('Create engineering model');
+    act(() => b?.click());
+    expect(onEngineer).toHaveBeenCalled();
+  });
+
   it('lists the parts with status, size and origin', () => {
     const { el } = render();
     const items = [...el.querySelectorAll('[role="option"]')].map((x) => x.textContent);
@@ -180,6 +197,132 @@ describe('ModelBuilder', () => {
     const ro = render({ readOnly: true });
     expect(button(ro.el, 'From drawing').disabled).toBe(true);
     expect(ro.el.textContent).toContain('read-only package');
+  });
+
+  describe('Components', () => {
+    const eng = stackModel();
+    const panel = (over: Partial<ComponentsPanel> = {}): ComponentsPanel => ({
+      selected: 'flue-1',
+      hidden: [],
+      thumbnails: {},
+      sourceVisible: true,
+      modelVisible: true,
+      unresolved: [],
+      conflicts: [],
+      report: null,
+      stale: false,
+      onSelect: vi.fn(),
+      onToggle: vi.fn(),
+      onStatus: vi.fn(),
+      onRemove: vi.fn(),
+      onAdd: vi.fn(),
+      onField: vi.fn(),
+      onFocus: vi.fn(),
+      onSourceVisible: vi.fn(),
+      onModelVisible: vi.fn(),
+      onRebuild: vi.fn(),
+      ...over,
+    });
+
+    it('shows the section only for a model with components', () => {
+      const none = render({ components: panel() });
+      expect(none.el.querySelector('[data-testid="components-section"]')).toBeNull();
+      act(() => {
+        root?.unmount();
+      });
+      host?.remove();
+      const yes = render({ model: eng, components: panel() });
+      expect(yes.el.querySelector('[data-testid="components-section"]')).not.toBeNull();
+      expect(yes.el.querySelector('[data-testid="component-card"]')).not.toBeNull();
+      act(() => {
+        root?.unmount();
+      });
+      host?.remove();
+      const bare = render({ model: eng });
+      expect(bare.el.querySelector('[data-testid="components-section"]')).toBeNull();
+    });
+
+    it('shows what is unresolved and the photos that may show another asset', () => {
+      const { el } = render({
+        model: eng,
+        components: panel({
+          unresolved: ['The scale is assumed.', 'No view of the back.'],
+          conflicts: [
+            { imageIds: ['img-photo-aa'], reason: 'These photos share no colours with the rest.' },
+          ],
+        }),
+      });
+      expect(el.querySelector('[data-testid="unresolved"]')?.textContent).toContain(
+        'No view of the back.',
+      );
+      const c = el.querySelector('[data-testid="conflicts"]');
+      expect(c?.getAttribute('role')).toBe('alert');
+      expect(c?.textContent).toContain('img-photo-aa');
+    });
+
+    it('never hides what the model file check left out or simplified', () => {
+      const { el } = render({
+        model: eng,
+        components: panel({
+          report: {
+            failed: [{ id: 'duct-1', reason: 'The path has a zero-length segment.' }],
+            simplified: [{ id: 'lattice-1', detail: 'fast' }],
+            overBudget: true,
+            notes: ['A finer mesh failed; the coarser one is kept.'],
+          },
+        }),
+      });
+      const r = el.querySelector('[data-testid="build-report"]');
+      expect(r?.getAttribute('role')).toBe('alert');
+      expect(r?.textContent).toContain('duct-1');
+      expect(r?.textContent).toContain('zero-length');
+      expect(r?.textContent).toContain('lattice-1, now fast');
+      expect(r?.textContent).toContain('still over the size limit');
+      expect(r?.textContent).toContain('the coarser one is kept');
+      act(() => {
+        root?.unmount();
+      });
+      host?.remove();
+      const ok = render({
+        model: eng,
+        components: panel({ report: { failed: [], simplified: [], overBudget: false, notes: [] } }),
+      });
+      expect(ok.el.querySelector('[data-testid="build-report"]')?.textContent).toContain(
+        'Every component was written to the file.',
+      );
+    });
+
+    it('toggles the scan and the model, and rebuilds only when edits are waiting', () => {
+      const p = panel({ stale: true });
+      const { el } = render({ model: eng, components: p });
+      const boxes = [
+        ...el.querySelectorAll<HTMLInputElement>(
+          '[data-testid="components-section"] > .mb-row input[type="checkbox"]',
+        ),
+      ];
+      act(() => {
+        boxes[0]?.click();
+        boxes[1]?.click();
+      });
+      expect(p.onSourceVisible).toHaveBeenCalledWith(false);
+      expect(p.onModelVisible).toHaveBeenCalledWith(false);
+      act(() => {
+        button(el, 'Rebuild with my edits').click();
+      });
+      expect(p.onRebuild).toHaveBeenCalled();
+      act(() => {
+        root?.unmount();
+      });
+      host?.remove();
+      const idle = render({ model: eng, components: panel({ stale: false }) });
+      expect(button(idle.el, 'Rebuild with my edits').disabled).toBe(true);
+    });
+
+    it('is locked with the panel when a job is busy', () => {
+      const { el } = render({ model: eng, busy: 'Building', components: panel({ stale: true }) });
+      expect(button(el, 'Rebuild with my edits').disabled).toBe(true);
+      expect(button(el, 'Add component').disabled).toBe(true);
+    });
   });
 
   it('rates the fit residual', () => {

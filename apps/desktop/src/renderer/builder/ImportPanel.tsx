@@ -8,7 +8,8 @@ import { PhotoProcessLayer } from '../photogrammetry/PhotoProcessLayer';
 import { useShell } from '../shell';
 import { CloudDatesCard } from './CloudDates';
 import { heightsLine, offsetFromTakeoff, promptChoice, type HeightsPrompt } from './heights';
-import { importDestination, importHeadline } from './importSummary';
+import { engineeringAction, importDestination, importHeadline } from './importSummary';
+import { createEngineeringModel } from '../engineer/ui';
 import { TilesetImportCard } from './ImportTileset';
 import { ProjectKindTag, ProjectStarter } from './ProjectStarter';
 import { builder, useBuilder, type PanoOffer } from './state';
@@ -343,6 +344,12 @@ function PanoCheckingCard() {
   );
 }
 
+/** A model the import could not place for sure (no georeference, or a first guess). */
+export function needsPlacing(layerId: string | undefined, layers: readonly Layer[]): boolean {
+  const l = layers.find((x) => x.id === layerId);
+  return l?.kind === 'mesh' && (l.placement === 'needed' || l.placement === 'provisional');
+}
+
 function ImportStatus() {
   const t = useT();
   const importing = useBuilder((s) => s.importing);
@@ -357,6 +364,7 @@ function ImportStatus() {
   const pages = useDrawings((s) => s.pagePrompt);
   const failed = useBuilder((s) => s.panoFailed);
   const scanning = useBuilder((s) => s.panoScanning);
+  const pkg = useShell((s) => s.pkg);
   if (scanning) return <PanoCheckingCard />;
   if (failed && !importing) return <PanoFailedCard />;
   if (offer && !importing) return <PanoOfferCard o={offer} />;
@@ -470,6 +478,35 @@ function ImportStatus() {
               {it.message && it.status !== 'skipped' && it.status !== 'error' && (
                 <p>{it.message}</p>
               )}
+              {needsPlacing(it.layerId, layers) && it.layerId && (
+                <button
+                  type="button"
+                  className="btn sm"
+                  data-testid="import-place-model"
+                  onClick={() => {
+                    if (it.layerId)
+                      builder.getState().startAlign({ kind: 'place', layerId: it.layerId });
+                  }}
+                >
+                  <Icon name="target" size={12} />
+                  {t('place.import')}
+                </button>
+              )}
+              {!pkg &&
+                ((action) =>
+                  action && (
+                    <button
+                      type="button"
+                      className="btn sm"
+                      data-testid="import-create-engineering"
+                      onClick={() => {
+                        createEngineeringModel([action.layerId]);
+                      }}
+                    >
+                      <Icon name="box" size={12} />
+                      {t('eng.entry.import')}
+                    </button>
+                  ))(engineeringAction(it, layers))}
             </li>
           ))}
         </ul>

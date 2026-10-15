@@ -327,6 +327,25 @@ describe('chimney family', () => {
     );
   });
 
+  it("the person's flue count is not the person's open top: the shaft's basis stays", () => {
+    const run = (flues?: number) =>
+      assemble({
+        ...base,
+        evidence: stackEvidence(),
+        proposal: stackProposal(),
+        user: { ...noUser(), counts: flues === undefined ? {} : { flue: flues } },
+      });
+    const shaft = (r: ReturnType<typeof run>) => must(byKind(r.model, 'shaft')[0]);
+    const before = shaft(run());
+    const after = shaft(run(4));
+    expect(after.quality).toEqual(before.quality);
+    expect(after.quality.openTop?.basis).not.toBe('user');
+    expect(byKind(run(4).model, 'flue')).toHaveLength(4);
+    // a count that changes the open top: inferred, still not the person's
+    const none = shaft(run(0));
+    expect(none.quality.openTop?.basis).toBe('inferred');
+  });
+
   it('a generic model is the shaft alone', () => {
     const r = assemble({
       ...base,

@@ -50,13 +50,7 @@ describe('the app and the pipeline pack of this repository', () => {
   });
 
   it('accept each other: the pack takes this app, and is new enough for it', () => {
-    // a pack may wait for a release bump or two: its range then starts at a later minor
-    const [major = 0, minor = 0] = app.split('.').map(Number);
-    const later = [1, 2].map((n) => `${major}.${minor + n}.0`);
-    const ok =
-      packRangeRefusal(appRange, app, 'Quadrion AI') === null ||
-      later.some((x) => packRangeRefusal(appRange, x, 'Quadrion AI') === null);
-    expect(ok).toBe(true);
+    expect(packRangeRefusal(appRange, app, 'Quadrion AI')).toBeNull();
     expect(packNeeds(pack, undefined, features)).toEqual([]);
   });
 

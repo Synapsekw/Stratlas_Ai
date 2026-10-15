@@ -37,6 +37,7 @@ import {
   type DrawingImages,
 } from './drawings';
 import { readPhotoMeta } from './exif';
+import { placeImportedGlb, readGlbJsonFromFile, type ImportedPlacement } from './glbGeoref';
 import { mergeImport } from './importMerge';
 import { modelTextures } from './modelTextures';
 import { mtlDiffuseMaps } from './mtl';
@@ -694,10 +695,23 @@ export async function importRawFiles(
         let message: string | undefined;
         let transform: Mat4 = [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1];
         let placedNote: string | null = null;
+        let glbPlace: ImportedPlacement | null = null;
         if (ext === '.glb') {
           const head = await readHead(file, 4);
           if (new TextDecoder().decode(head) !== 'glTF') throw new Error('Not a GLB file.');
           await copyFile(file, join(root, rel));
+          // the georeference in the stored copy, read from its JSON chunk only (vertices never
+          // rewritten); a copy that cannot be read is not left behind
+          try {
+            glbPlace = placeImportedGlb(await readGlbJsonFromFile(join(root, rel)), {
+              crs: m.crs,
+              origin: m.origin,
+            });
+          } catch (e) {
+            await rm(join(root, rel), { force: true });
+            throw e;
+          }
+          transform = glbPlace.transform;
         } else {
           const text = await readFile(file, 'utf8');
           const mtlName = /^mtllib\s+(.+)$/m.exec(text)?.[1]?.trim();
@@ -738,6 +752,8 @@ export async function importRawFiles(
           visible: true,
           src: { path: rel },
           transform,
+          ...(glbPlace?.georef ? { georef: glbPlace.georef } : {}),
+          ...(glbPlace?.placement ? { placement: glbPlace.placement } : {}),
         });
         items.push({
           file: name,
@@ -747,8 +763,8 @@ export async function importRawFiles(
           message: [
             message,
             placedNote ??
-              (ext === '.glb'
-                ? 'Place it with Align, Georeference model.'
+              (glbPlace
+                ? glbPlace.message
                 : 'Place it with Align, Georeference model. If it lies on its side, set its Up axis to Z there.'),
             placedNote ? 'Fine-tune it with Align, Georeference model.' : null,
           ]

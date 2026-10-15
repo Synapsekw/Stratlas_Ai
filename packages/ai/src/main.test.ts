@@ -442,6 +442,34 @@ describe('project AI policy and the local model', () => {
       route: { provider: 'anthropic', model: 'claude-sonnet-5-5' },
     });
   });
+
+  it('checks the engineer step on the vision route by default', async () => {
+    expect(await setup({}).runtime.status({ task: 'engineer' })).toMatchObject({
+      ready: true,
+      cloud: true,
+      route: { task: 'engineer', provider: 'anthropic', model: 'claude-opus-5-5' },
+    });
+  });
+
+  it('refuses the engineer step on an unknown cloud model unless treated as vision', async () => {
+    const routes = (treatAsVision?: boolean) => () => [
+      {
+        task: 'vision' as const,
+        provider: 'anthropic' as const,
+        model: 'claude-next-preview',
+        ...(treatAsVision === undefined ? {} : { treatAsVision }),
+      },
+    ];
+    const t = setup({ host: { routes: routes() } });
+    const s = await t.runtime.status({ task: 'engineer' });
+    expect(s).toMatchObject({ ready: false, reason: 'no-route', cloud: true });
+    expect(s.message).toContain('"Treat as vision model"');
+    // the plain vision route is not affected by the engineer check
+    expect(await t.runtime.status({ task: 'vision' })).toMatchObject({ ready: true });
+    expect(
+      await setup({ host: { routes: routes(true) } }).runtime.status({ task: 'engineer' }),
+    ).toMatchObject({ ready: true, route: { model: 'claude-next-preview' } });
+  });
 });
 
 describe('provider errors and the connection test', () => {
@@ -753,6 +781,29 @@ describe('the local agent on a small model (AI-9)', () => {
       }),
     ).toEqual({ ok: false, error: MESSAGES.noVision });
     expect(t.model.doGenerateCalls).toHaveLength(0);
+  });
+
+  it('refuses the engineer step on a text-only local model with the reason', async () => {
+    const t = localSetup({ cfg: { capabilities: { tools: true, vision: false } } });
+    const s = await t.runtime.status({ task: 'engineer' });
+    expect(s).toMatchObject({
+      ready: false,
+      reason: 'no-route',
+      route: { task: 'engineer', provider: 'local', model: 'example-small' },
+      cloud: false,
+    });
+    expect(s.message).toContain('cannot read images');
+    expect(t.model.doGenerateCalls).toHaveLength(0);
+    expect(t.model.doStreamCalls).toHaveLength(0);
+  });
+
+  it('allows the engineer step on a local model the probe found with vision', async () => {
+    const t = localSetup({ cfg: { capabilities: { tools: false, vision: true } } });
+    expect(await t.runtime.status({ task: 'engineer' })).toMatchObject({
+      ready: true,
+      route: { task: 'engineer', provider: 'local' },
+      cloud: false,
+    });
   });
 
   it('runs detection and narrative on the local model at no cost', async () => {

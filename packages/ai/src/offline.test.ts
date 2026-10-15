@@ -6,6 +6,7 @@
 import type { AiProvider, AiTask, IpcEvent, IpcRequest, LocalModelSettings } from '@aio/schema';
 import { generateText } from 'ai';
 import { describe, expect, it, vi } from 'vitest';
+import { runEngineer } from './engineer';
 import { describeError, OfflineOnlyError } from './errors';
 import { createAgentRuntime, MESSAGES } from './main';
 import { builtInProviders, createProviderRegistry, localProvider } from './providers';
@@ -118,6 +119,70 @@ describe.each(CLOUD)('offline-only workstation: %s', (provider, model, origin) =
         cloud: true,
       });
     }
+    expect(t.net.seen).toEqual([]);
+    expect(t.getKey).not.toHaveBeenCalled();
+  });
+
+  it('makes the engineer step unavailable with the reason and sends nothing', async () => {
+    const t = setup({ provider, model, offlineOnly: () => true });
+    expect(await t.runtime.status({ task: 'engineer' })).toMatchObject({
+      ready: false,
+      reason: 'offline-only',
+      message: MESSAGES.offlineOnly,
+      cloud: true,
+    });
+    // a cloud provider asked for directly still refuses before any request leaves the machine
+    const registry = createProviderRegistry(
+      builtInProviders({ fetch: t.net.fetch, offlineOnly: () => true }),
+    );
+    const cloud = registry.get(provider);
+    if (!cloud) throw new Error(`no ${provider} provider`);
+    await expect(
+      generateText({ model: cloud.languageModel(model, KEY), prompt: 'Engineer.', maxRetries: 0 }),
+    ).rejects.toBeInstanceOf(OfflineOnlyError);
+    // the engineer call itself: refused before the key, the cache or the network
+    const keyReads: string[] = [];
+    const cacheReads: string[] = [];
+    const outcome = await runEngineer(
+      {
+        projectId: 'p1',
+        runId: 'run-1',
+        pass: 1,
+        images: [{ id: 'p1', kind: 'photo', dataUrl: 'data:image/png;base64,AAAA', bytes: 3 }],
+        summary: '{}',
+        setup: {
+          sources: { clouds: [], meshes: [], photos: [] },
+          family: 'auto',
+          scope: 'asset',
+          detail: 'fast',
+          placement: 'unplaced',
+        },
+      },
+      {
+        route: () => ({ task: 'engineer', provider, model }),
+        key: (p) => {
+          keyReads.push(p);
+          return Promise.resolve(KEY);
+        },
+        offlineOnly: () => true,
+        policy: () => ({ ai: 'allow', photos: true, scans: true }),
+        cache: {
+          get: (k) => {
+            cacheReads.push(k);
+            return Promise.resolve(null);
+          },
+          put: () => Promise.resolve(),
+        },
+        spent: () => 0,
+        usage: () => undefined,
+        budgetUsd: 5,
+        signal: new AbortController().signal,
+        providers: registry,
+      },
+    );
+    expect(outcome).toEqual({ kind: 'refused', code: 'offline', reason: MESSAGES.offlineOnly });
+    expect(keyReads).toEqual([]);
+    expect(cacheReads).toEqual([]);
     expect(t.net.seen).toEqual([]);
     expect(t.getKey).not.toHaveBeenCalled();
   });

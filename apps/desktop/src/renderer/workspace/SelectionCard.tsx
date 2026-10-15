@@ -1,3 +1,5 @@
+import { useAnnotateReadOnly } from '@aio/annotate';
+import type { ComponentDimension, ComponentInfo } from '@aio/engine';
 import { clipKeys, correctedPhoto, looksEstimated, photoCorrection } from '@aio/geo';
 import type { Issue, Layer, OrientationFile, PoseSample, ProjectManifest, Vec3 } from '@aio/schema';
 import {
@@ -12,14 +14,24 @@ import {
   localToProject,
   SevChip,
   severityColor,
+  useT,
   type IconName,
+  type MessageKey,
 } from '@aio/ui';
 import { interpolatePose } from '@aio/video';
 import { useWorkspace, workspace, type Selection } from '@aio/workspace';
-import { useEffect, type ReactNode } from 'react';
+import { useEffect, type KeyboardEvent as ReactKeyboardEvent, type ReactNode } from 'react';
 import { alignCamera } from '../builder/alignSession';
+import { builder } from '../builder/state';
+import { useShell } from '../shell';
 import { LayerDatePicker } from '../change/SurveyDate';
 import { loadFlight, useMedia } from '../media';
+import {
+  LayerComponents,
+  setComponentVisible,
+  useHiddenComponents,
+  useLayerComponents,
+} from './ComponentList';
 import { SpotHistoryButton } from './spot/SpotHistoryEntry';
 import type { SpotOpen } from './spot/spotTypes';
 
@@ -259,10 +271,267 @@ function describe(
   };
 }
 
+const BASIS: Record<string, MessageKey> = {
+  measured: 'component.basis.measured',
+  observed: 'component.basis.observed',
+  inferred: 'component.basis.inferred',
+  user: 'component.basis.user',
+};
+const STATUS: Record<string, MessageKey> = {
+  draft: 'component.status.draft',
+  accepted: 'component.status.accepted',
+  rejected: 'component.status.rejected',
+};
+const SURFACE: Record<string, MessageKey> = {
+  back: 'component.surface.back',
+  top: 'component.surface.top',
+  interior: 'component.surface.interior',
+  base: 'component.surface.base',
+};
+
+/** "lensDiameter", "lens_diameter" and "lens-diameter" read "Lens diameter"; "yawDeg" reads "Yaw". */
+export function paramLabel(key: string): string {
+  const words = key
+    // the unit is shown with the value
+    .replace(/(.)Deg$/, '$1')
+    .replace(/([a-z0-9])([A-Z])/g, '$1 $2')
+    .replace(/[_-]+/g, ' ')
+    .trim()
+    .toLowerCase();
+  return words.charAt(0).toUpperCase() + words.slice(1);
+}
+
+/** A dimension as read: "32.4 m", "1.2 × 0.8 m", "270°". */
+export function formatDimension(d: ComponentDimension): string {
+  const n = (v: number) => String(Number(v.toFixed(3)));
+  const value = Array.isArray(d.value) ? d.value.map(n).join(' × ') : n(d.value);
+  return d.unit === 'deg' ? `${value}°` : `${value} ${d.unit}`;
+}
+
+/** Coverage in words: the panel never shows a share as a percentage. */
+function coverageKey(c: number): MessageKey {
+  return c >= 0.8
+    ? 'component.coverage.good'
+    : c >= 0.4
+      ? 'component.coverage.partial'
+      : 'component.coverage.sparse';
+}
+
+/** Escape in the card clears the selection (a text field keeps its own Escape). */
+function clearOnEscape(e: ReactKeyboardEvent) {
+  if (e.key !== 'Escape' || e.defaultPrevented) return;
+  const el = e.target as HTMLElement;
+  if (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.isContentEditable) return;
+  if (!workspace.getState().selection) return;
+  e.preventDefault();
+  workspace.getState().select(null);
+}
+
+/**
+ * The selection card of an engineering model component: what it is, how each value is known, the
+ * fit and coverage of the evidence (in words), the sides no evidence saw, and Focus, Clear and
+ * the layer's component list.
+ */
+function ComponentCard({
+  info,
+  layer,
+  selection,
+  all,
+  provisional,
+}: {
+  info: ComponentInfo;
+  layer: Layer;
+  selection: Selection;
+  all: readonly ComponentInfo[];
+  /** The model's scale is provisional: its lengths are not true metres yet. */
+  provisional: boolean;
+}) {
+  const t = useT();
+  const hidden = useHiddenComponents(layer.id).has(info.id);
+  const q = info.quality;
+  const dims = info.dimensions ?? {};
+  // every value: its dimension (when it has one) and how it is known
+  const keys = [...new Set([...Object.keys(dims), ...Object.keys(q?.params ?? {})])];
+  const parent = info.parent ? (all.find((c) => c.id === info.parent)?.name ?? info.parent) : null;
+  const label = (keys: Record<string, MessageKey>, v: string) => {
+    const key = keys[v];
+    return key ? t(key) : paramLabel(v);
+  };
+  const basis = (b: string | undefined) =>
+    !b
+      ? ''
+      : provisional && b === 'measured'
+        ? t('component.basis.measuredProvisional')
+        : label(BASIS, b);
+  const valueText = (k: string) => {
+    const d = dims[k];
+    const shown = d
+      ? provisional && d.unit === 'm'
+        ? t('component.card.provisionalValue', { value: formatDimension(d) })
+        : formatDimension(d)
+      : '';
+    return [shown, basis(q?.params[k])].filter(Boolean).join(' · ');
+  };
+  const status = info.status ? STATUS[info.status] : undefined;
+  return (
+    <section
+      className="ctx comp-card"
+      aria-label={t('component.card.kind')}
+      data-testid="component-card"
+      onKeyDown={clearOnEscape}
+    >
+      <div className="panel-h">
+        <h2>{t('selection.title')}</h2>
+        <span className="sub">{t('component.card.kind')}</span>
+      </div>
+      <div className="ctx-body">
+        <div className="ent-h">
+          <div className="ent-ic">
+            <Icon name="box" size={20} />
+          </div>
+          <div className="et">
+            <b>{info.name}</b>
+            <span>{[info.category, layer.name].filter(Boolean).join(' · ')}</span>
+          </div>
+        </div>
+        {info.description && <p className="comp-desc">{info.description}</p>}
+        <div className="comp-acts">
+          <button
+            type="button"
+            className="btn sm"
+            data-testid="component-focus"
+            onClick={() => {
+              workspace.getState().flyTo({ kind: 'selection', selection });
+            }}
+          >
+            <Icon name="target" size={12} />
+            {t('component.card.focus')}
+          </button>
+          <button
+            type="button"
+            className="btn sm ghost"
+            data-testid="component-clear"
+            onClick={() => {
+              workspace.getState().select(null);
+            }}
+          >
+            <Icon name="x" size={12} />
+            {t('component.card.clear')}
+          </button>
+        </div>
+        {hidden && (
+          <div className="comp-hidden">
+            <span>{t('component.card.hidden')}</span>
+            <button
+              type="button"
+              className="btn sm"
+              data-testid="component-show"
+              onClick={() => {
+                setComponentVisible(layer.id, info.id, true);
+              }}
+            >
+              <Icon name="eye" size={12} />
+              {t('component.card.show')}
+            </button>
+          </div>
+        )}
+        <dl className="kv">
+          <div className="kv-row">
+            <dt>{t('component.card.id')}</dt>
+            <dd className="mono" data-testid="component-id">
+              {info.id}
+            </dd>
+          </div>
+          {info.tag && (
+            <div className="kv-row">
+              <dt>{t('component.card.tag')}</dt>
+              <dd className="mono">{info.tag}</dd>
+            </div>
+          )}
+          {info.basis && (
+            <div className="kv-row">
+              <dt>{t('component.card.basis')}</dt>
+              <dd data-testid="component-basis">{basis(info.basis)}</dd>
+            </div>
+          )}
+          {status && (
+            <div className="kv-row">
+              <dt>{t('component.card.status')}</dt>
+              <dd>{t(status)}</dd>
+            </div>
+          )}
+          {parent && (
+            <div className="kv-row">
+              <dt>{t('component.card.mountedOn')}</dt>
+              <dd>{parent}</dd>
+            </div>
+          )}
+          {provisional && (
+            <div className="kv-row">
+              <dt>{t('component.card.scale')}</dt>
+              <dd data-testid="component-scale">{t('component.card.scaleProvisional')}</dd>
+            </div>
+          )}
+          {keys.length > 0 && (
+            <div className="kv-row">
+              <dt>{t('component.card.values')}</dt>
+              <dd>
+                <ul className="comp-values">
+                  {keys.map((k) => (
+                    <li key={k} data-testid="component-value">
+                      <span>{paramLabel(k)}</span>
+                      <span>{valueText(k)}</span>
+                    </li>
+                  ))}
+                </ul>
+              </dd>
+            </div>
+          )}
+          {q?.residualM !== undefined && (
+            <div className="kv-row">
+              <dt>{t('component.card.fit')}</dt>
+              <dd>
+                {t('component.card.fitValue', {
+                  mm: String(Math.max(1, Math.round(q.residualM * 1000))),
+                })}
+              </dd>
+            </div>
+          )}
+          {q?.coverage !== undefined && (
+            <div className="kv-row">
+              <dt>{t('component.card.coverage')}</dt>
+              <dd>{t(coverageKey(q.coverage))}</dd>
+            </div>
+          )}
+          {info.unobserved && info.unobserved.length > 0 && (
+            <div className="kv-row">
+              <dt>{t('component.card.unobserved')}</dt>
+              <dd>{info.unobserved.map((s) => label(SURFACE, s)).join(', ')}</dd>
+            </div>
+          )}
+        </dl>
+      </div>
+    </section>
+  );
+}
+
 export function SelectionCard() {
   const project = useWorkspace((s) => s.project);
   const selection = useWorkspace((s) => s.selection);
+  // an engineering model's components (empty for any other selection)
+  const meshLayer = project?.manifest.layers.find(
+    (l) =>
+      l.kind === 'mesh' &&
+      ((selection?.kind === 'asset' && l.id === selection.layer) ||
+        (selection?.kind === 'layer' && l.id === selection.id)),
+  );
+  const components = useLayerComponents(meshLayer?.id ?? '');
+  const component =
+    selection?.kind === 'asset' ? components.find((c) => c.id === selection.id) : undefined;
+  const t = useT();
   const issues = useWorkspace((s) => s.issues);
+  const pkg = useShell((s) => s.pkg);
+  const readOnly = useAnnotateReadOnly();
   const nowMs = useWorkspace((s) => (s.selection?.kind === 'clip' ? s.nowMs : 0));
   const orientation = useWorkspace((s) => s.orientation);
   const { durations, flights } = useMedia(project);
@@ -273,6 +542,40 @@ export function SelectionCard() {
   }, [project, selection]);
   if (!project) return null;
   const m = project.manifest;
+  // the layer's component list stays in one place below the card, so moving between the layer
+  // card and a component card keeps its search text and the focused row
+  const list =
+    meshLayer && components.length > 0 ? (
+      <div className="ctx-body comp-list-host">
+        <LayerComponents
+          layerId={meshLayer.id}
+          selected={selection?.kind === 'asset' ? selection.id : undefined}
+        />
+      </div>
+    ) : null;
+  // with a component list the card and the list scroll together in a capped host, so the last
+  // rows stay reachable in a small window (the agent keeps its share of the panel)
+  const host = (children: ReactNode) =>
+    list ? (
+      <div className="sel-scroll" data-testid="selection-scroll">
+        {children}
+      </div>
+    ) : (
+      <>{children}</>
+    );
+  if (component && meshLayer?.kind === 'mesh' && selection)
+    return host(
+      <>
+        <ComponentCard
+          info={component}
+          layer={meshLayer}
+          selection={selection}
+          all={components}
+          provisional={meshLayer.georef?.scale.status === 'provisional'}
+        />
+        {list}
+      </>,
+    );
 
   const card = describe(selection, m, issues, nowMs, durations, flights, orientation);
   const spotOpen = spotOpenOf(selection, m);
@@ -285,102 +588,120 @@ export function SelectionCard() {
     .filter((x) => x.n > 0)
     .reverse();
 
-  return (
-    <section className="ctx" aria-label="Selection">
-      <div className="panel-h">
-        <h2>Selection</h2>
-        <span className="sub">{card.kindLabel}</span>
-        <div className="acts">
-          {spotOpen && <SpotHistoryButton open={spotOpen} />}
-          <button
-            type="button"
-            className="btn icon sm ghost"
-            title="Fly to"
-            aria-label="Fly to the selection"
-            onClick={() => {
-              workspace
-                .getState()
-                .flyTo(selection ? { kind: 'selection', selection } : { kind: 'home' });
-            }}
-          >
-            <Icon name="target" size={14} />
-          </button>
-          {selection && (
+  return host(
+    <>
+      <section className="ctx" aria-label={t('selection.title')} onKeyDown={clearOnEscape}>
+        <div className="panel-h">
+          <h2>{t('selection.title')}</h2>
+          <span className="sub">{card.kindLabel}</span>
+          <div className="acts">
+            {spotOpen && <SpotHistoryButton open={spotOpen} />}
             <button
               type="button"
               className="btn icon sm ghost"
-              title="Clear selection"
-              aria-label="Clear selection"
+              title="Fly to"
+              aria-label="Fly to the selection"
               onClick={() => {
-                workspace.getState().select(null);
+                workspace
+                  .getState()
+                  .flyTo(selection ? { kind: 'selection', selection } : { kind: 'home' });
               }}
             >
-              <Icon name="x" size={14} />
+              <Icon name="target" size={14} />
             </button>
+            {selection && (
+              <button
+                type="button"
+                className="btn icon sm ghost"
+                title="Clear selection"
+                aria-label="Clear selection"
+                onClick={() => {
+                  workspace.getState().select(null);
+                }}
+              >
+                <Icon name="x" size={14} />
+              </button>
+            )}
+          </div>
+        </div>
+        <div className="ctx-body">
+          <div className="ent-h">
+            <div className="ent-ic">
+              <Icon name={card.icon} size={20} />
+            </div>
+            <div className="et">
+              <b>{card.title}</b>
+              <span>{card.subtitle}</span>
+            </div>
+          </div>
+          {card.chips && <div className="ent-chips">{card.chips}</div>}
+          <LayerDatePicker />
+          <div className="mini-stats">
+            <div>
+              <div className="v">{clips}</div>
+              <div className="k">Clips</div>
+            </div>
+            <div>
+              <div className="v sv">
+                {open.length}
+                {sevCounts && sevCounts.length > 0 && (
+                  <span className="sevbar">
+                    {sevCounts.map(({ lv, n }) => (
+                      <i key={lv.value} style={{ flex: n, background: lv.color }} />
+                    ))}
+                  </span>
+                )}
+              </div>
+              <div className="k">Open issues</div>
+            </div>
+            <div>
+              <div className="v">{formatCompact(photos)}</div>
+              <div className="k">Photos</div>
+            </div>
+          </div>
+          <dl className="kv">
+            {card.position && project3 ? (
+              <>
+                <dt>Site frame</dt>
+                <dd className="mono">{formatLocal(card.position)}</dd>
+                <dt>{crsLabel(m.crs).split(' · ')[0]}</dt>
+                <dd className="mono">
+                  {formatEastNorth(project3[0], project3[1])}
+                  <br />
+                  EL {project3[2].toFixed(2)} m
+                </dd>
+              </>
+            ) : (
+              <>
+                <dt>Position</dt>
+                <dd className="faint">Not known for this selection</dd>
+              </>
+            )}
+            {card.rows.map(([k, v]) => (
+              <div className="kv-row" key={k}>
+                <dt>{k}</dt>
+                <dd>{v}</dd>
+              </div>
+            ))}
+          </dl>
+          {selection?.kind === 'layer' && meshLayer && !pkg && !readOnly && (
+            <div className="acts">
+              <button
+                type="button"
+                className="btn sm"
+                data-testid="layer-place-model"
+                onClick={() => {
+                  builder.getState().startAlign({ kind: 'place', layerId: meshLayer.id });
+                }}
+              >
+                <Icon name="target" size={12} />
+                {t('place.layerCard')}
+              </button>
+            </div>
           )}
         </div>
-      </div>
-      <div className="ctx-body">
-        <div className="ent-h">
-          <div className="ent-ic">
-            <Icon name={card.icon} size={20} />
-          </div>
-          <div className="et">
-            <b>{card.title}</b>
-            <span>{card.subtitle}</span>
-          </div>
-        </div>
-        {card.chips && <div className="ent-chips">{card.chips}</div>}
-        <LayerDatePicker />
-        <div className="mini-stats">
-          <div>
-            <div className="v">{clips}</div>
-            <div className="k">Clips</div>
-          </div>
-          <div>
-            <div className="v sv">
-              {open.length}
-              {sevCounts && sevCounts.length > 0 && (
-                <span className="sevbar">
-                  {sevCounts.map(({ lv, n }) => (
-                    <i key={lv.value} style={{ flex: n, background: lv.color }} />
-                  ))}
-                </span>
-              )}
-            </div>
-            <div className="k">Open issues</div>
-          </div>
-          <div>
-            <div className="v">{formatCompact(photos)}</div>
-            <div className="k">Photos</div>
-          </div>
-        </div>
-        <dl className="kv">
-          {card.position && project3 ? (
-            <>
-              <dt>Site frame</dt>
-              <dd className="mono">{formatLocal(card.position)}</dd>
-              <dt>{crsLabel(m.crs).split(' · ')[0]}</dt>
-              <dd className="mono">
-                {formatEastNorth(project3[0], project3[1])}
-                <br />
-                EL {project3[2].toFixed(2)} m
-              </dd>
-            </>
-          ) : (
-            <>
-              <dt>Position</dt>
-              <dd className="faint">Not known for this selection</dd>
-            </>
-          )}
-          {card.rows.map(([k, v]) => (
-            <div className="kv-row" key={k}>
-              <dt>{k}</dt>
-              <dd>{v}</dd>
-            </div>
-          ))}
-        </dl>
-      </div>
-    </section>
+      </section>
+      {list}
+    </>,
   );
 }

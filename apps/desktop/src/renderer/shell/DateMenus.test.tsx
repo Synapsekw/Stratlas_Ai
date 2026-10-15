@@ -340,6 +340,29 @@ describe('LayerDateMenu', () => {
     expect(q('menu-pointcloud-cleanup')).not.toBeNull();
   });
 
+  it('offers Place model... for a model in an editable project only', () => {
+    const onPlaceModel = vi.fn();
+    const { onClose } = open('oct', true, { onPlaceModel });
+    expect(q('menu-place-model')?.textContent).toBe('Place model...');
+    click('menu-place-model');
+    expect(onPlaceModel).toHaveBeenCalledTimes(1);
+    expect(onClose).toHaveBeenCalled();
+    act(() => root?.unmount());
+    open('oct', false, { onPlaceModel });
+    expect(q('menu-place-model')).toBeNull();
+  });
+
+  it('offers Create engineering model... beside Place model, in an editable project', () => {
+    const onCreateEngineering = vi.fn();
+    open('oct', true, { onPlaceModel: vi.fn(), onCreateEngineering });
+    expect(q('menu-create-engineering')?.textContent).toBe('Create engineering model...');
+    click('menu-create-engineering');
+    expect(onCreateEngineering).toHaveBeenCalledTimes(1);
+    act(() => root?.unmount());
+    open('oct', false, { onCreateEngineering });
+    expect(q('menu-create-engineering')).toBeNull();
+  });
+
   it('files the dataset under the picked date, or under none', () => {
     const { onMove, onClose } = open('oct');
     click('move-to-sep');

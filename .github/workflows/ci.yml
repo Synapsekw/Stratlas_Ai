@@ -261,6 +261,20 @@ jobs:
       - name: Pipeline runtime venv
         working-directory: python
         run: uv sync --frozen
+      # PDAL as in the pack, the same step and cache as the pipelines job: the PDAL specs (the
+      # engineering flow's COPC cloud among them) read AIO_PDAL through e2e/fixtures.ts.
+      - name: Cache PDAL's and ffmpeg's conda packages
+        uses: actions/cache@v4
+        with:
+          path: ${{ runner.temp }}/conda
+          key: conda-pdal-ffmpeg-${{ runner.os }}-${{ hashFiles('tools/pipeline-pack/pdal-lock.json', 'tools/pipeline-pack/ffmpeg-lock.json') }}
+      - name: PDAL (conda-forge, as in the pack)
+        working-directory: python
+        env:
+          QUADRION_CONDA_ROOT: ${{ runner.temp }}/conda
+        run: |
+          node ../tools/pipeline-pack/pdal.mjs --out "$RUNNER_TEMP/pdal" | tee "$RUNNER_TEMP/pdal.log"
+          grep -E '^(AIO_PDAL|AIO_UNTWINE)=' "$RUNNER_TEMP/pdal.log" >> "$GITHUB_ENV"
 
       # M10: renders of the synthetic photo set (python/tests/photo_synth.py), keyed by its
       # source; the generator also keys its cache folders by the hash of its rendering code.

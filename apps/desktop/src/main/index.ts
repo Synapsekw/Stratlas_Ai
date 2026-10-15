@@ -86,6 +86,7 @@ import {
   WALK_PACK_FEATURE,
   walkPackRefusal,
 } from './walks';
+import { EVIDENCE_PACK_FEATURE, evidencePackRefusal } from './evidencePack';
 import {
   PANO_PACK_FEATURE,
   PANO_QUEUED,
@@ -111,6 +112,8 @@ import {
 } from './inference/electron';
 import { registerLocalModelsIpc, type LocalServerSeen } from './localModels';
 import { readCloudDrawings, registerModelBuilderIpc } from './modelBuilder';
+import { registerEngineeringIpc } from './engineering';
+import { engineerRuntimeHost, registerEvidencePolicyIpc, resizeDataUrl } from './evidencePolicy';
 import { createBlobService, registerBlobsIpc } from './blobs';
 import { houseSignOff, registerCollabIpc } from './collab';
 import {
@@ -634,6 +637,16 @@ const agent = createAgentRuntime(
         aiProjects.addUsage(root, projectNames.get(projectId) ?? projectId, usage);
     },
     emit: emitAiEvent,
+    // the engineering model's AI step: consents re-read from disk for every request
+    engineer: engineerRuntimeHost({
+      projects: registry,
+      packagePolicy: (id) => {
+        const header = registry.package(id)?.header;
+        return header === undefined || header.aiPolicy === 'allow' ? 'allow' : 'forbid';
+      },
+      resize: (dataUrl, maxPx) =>
+        resizeDataUrl(dataUrl, maxPx, (url) => nativeImage.createFromDataURL(url)),
+    }),
   },
   { providers },
 );
@@ -1104,6 +1117,9 @@ function registerIpc(): void {
     return maskAssist.segment(r.path, box);
   });
   handle('ai:detect', (req) => agent.detect(req));
+  // the engineering model's AI step: the send preview, then one request per pass (ai:cancel stops it)
+  handle('ai:engineerPreview', (req) => agent.engineerPreview(req));
+  handle('ai:engineer', (req) => agent.engineer(req));
 
   // Map packs carried by open packages join the list when this machine lacks that area.
   handle('packs:list', async () => {
@@ -1295,6 +1311,7 @@ function registerIpc(): void {
       'pipeline' in req &&
       (req.pipeline === 'walk.process' ||
         req.pipeline === 'pano.stitch' ||
+        req.pipeline === 'model.evidence' ||
         req.pipeline === 'pointcloud.clean')
     ) {
       const found = await findPack({
@@ -1306,6 +1323,7 @@ function registerIpc(): void {
       const tooOld =
         walkPackRefusal(req.pipeline, version) ??
         panoPackRefusal(req.pipeline, version) ??
+        evidencePackRefusal(req.pipeline, version) ??
         cleanPackRefusal(req.pipeline, version);
       if (tooOld) return { ok: false, error: tooOld };
     }
@@ -1645,6 +1663,24 @@ function registerIpc(): void {
     thresholds: () => ChangeThresholds.parse(settings.current().change ?? {}),
   });
   registerModelBuilderIpc({ handle, projects: registry });
+  registerEvidencePolicyIpc({ handle, projects: registry });
+  registerEngineeringIpc({
+    handle,
+    projects: registry,
+    images: {
+      // evidence images over the preview size, scaled down with Electron's own codec
+      downscale(bytes, maxPx) {
+        const img = nativeImage.createFromBuffer(Buffer.from(bytes));
+        if (img.isEmpty()) return Promise.reject(new Error('The image could not be decoded.'));
+        const { width, height } = img.getSize();
+        const out =
+          Math.max(width, height) > maxPx
+            ? img.resize(width >= height ? { width: maxPx } : { height: maxPx })
+            : img;
+        return Promise.resolve({ bytes: new Uint8Array(out.toJPEG(85)), mime: 'image/jpeg' });
+      },
+    },
+  });
   registerInferenceIpc({
     handle,
     ...electronInference({
@@ -1857,6 +1893,7 @@ function registerIpc(): void {
             { label: 'Creating maps from photos', minVersion: PHOTO_PACK },
             WALK_PACK_FEATURE,
             PANO_PACK_FEATURE,
+            EVIDENCE_PACK_FEATURE,
             CLEAN_PACK_FEATURE,
           ],
     places: () =>

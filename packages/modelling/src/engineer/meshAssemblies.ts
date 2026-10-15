@@ -207,6 +207,41 @@ export function meshAssemblies(
 const MAX_DESCRIPTION = 1000;
 const MAX_OUTLINE = 256;
 
+/** A component dimension in the node extras: metres, or degrees for an angle. */
+export interface Dimension {
+  value: number | number[];
+  unit: 'm' | 'deg';
+}
+
+/** Params that count things (bays, rails), not dimensions. */
+const COUNTS = new Set(['bays', 'rails', 'blades', 'legs', 'pilots']);
+/** Params that record where a run found a component, not what it is (see merge.ts). */
+const BOOKKEEPING = new Set(['levelFoundAt']);
+/** Tuples that are sizes; any other number array is a position, direction or path. */
+const SIZES = new Set(['size']);
+const mm = (v: number) => Math.round(v * 1000) / 1000;
+
+/**
+ * The dimensions among a component's params, for the component panel: each numeric length,
+ * height, radius, elevation and angle (`...Deg`) with its unit, and size tuples. Positions,
+ * directions, paths, outlines, counts and bookkeeping are left out.
+ */
+export function dimensionsOf(params: Readonly<Record<string, unknown>>): Record<string, Dimension> {
+  const out: Record<string, Dimension> = {};
+  for (const [k, v] of Object.entries(params)) {
+    if (COUNTS.has(k) || BOOKKEEPING.has(k)) continue;
+    const unit = k.endsWith('Deg') ? 'deg' : 'm';
+    if (typeof v === 'number' && Number.isFinite(v)) out[k] = { value: mm(v), unit };
+    else if (
+      SIZES.has(k) &&
+      Array.isArray(v) &&
+      v.every((x) => typeof x === 'number' && Number.isFinite(x))
+    )
+      out[k] = { value: (v as number[]).map(mm), unit };
+  }
+  return out;
+}
+
 /** Basis order for ties: the weaker basis wins, so a label never overstates. */
 const BASIS_RANK: Record<ValueBasis, number> = { inferred: 0, observed: 1, user: 2, measured: 3 };
 
@@ -265,7 +300,13 @@ export function componentExtras(
       ...(coverage === undefined ? {} : { coverage }),
     },
     ...(openings.length ? { openings: openings.map((op) => ({ ...op })) } : {}),
+    ...dims(a),
   };
+}
+
+function dims(a: Assembly): { dimensions?: Record<string, Dimension> } {
+  const d = dimensionsOf(a.params);
+  return Object.keys(d).length ? { dimensions: d } : {};
 }
 
 const toGlbMaterial = (m: Material): GlbMaterial => ({
@@ -365,7 +406,13 @@ export function buildEngineeringGlb(
   }
   const triangles = r.triangles + partTriangles;
   return {
-    glb: writeGlbV2(nodes, { root: model.id, generator: o.generator, materials }),
+    // `aioEngineering` tells viewers the nodes are components (drawn and hidden one by one)
+    glb: writeGlbV2(nodes, {
+      root: model.id,
+      generator: o.generator,
+      materials,
+      assetExtras: { aioEngineering: 1 },
+    }),
     nodes: list,
     triangles,
     overBudget: r.overBudget || triangles > budget,

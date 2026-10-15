@@ -69,6 +69,7 @@ import {
 } from './compare';
 import { CompareButton, CompareMap, useVolumesFollowDate } from './CompareControls';
 import { CompareScene } from './CompareScene';
+import { StageComponentBrief } from './ComponentBrief';
 import { ChangeLegends } from './MapSwipe';
 import { CursorReadout, useSceneCursor } from './SceneCursor';
 import { StageClassLegend, StageElevationLegend } from './StageLegends';
@@ -173,6 +174,7 @@ function ScenePane({
         <SceneView className="scene-fill" store={primaryScene} />
       </div>
       <CursorReadout text={cursor} />
+      {!hidden && <StageComponentBrief engine={engine} />}
       <StageElevationLegend view={view} />
       <VolumetricStage stage={engine} epoch={epoch} />
       <StageClassLegend view={view} />

@@ -47,7 +47,14 @@ const SKIP = [
   /^walks\/\.staging-[^/]*\//i,
   // A removed walk waits seven days here before it is deleted (`builder/walkRemove.ts`).
   /^\.trash\//i,
+  // Engineering runs (`engineering/<run>/`): evidence images may hold ordinary photos and the AI
+  // cache what was sent, so runs stay with the project (engineering model spec 5.6). The model
+  // itself travels in `models/`.
+  /^engineering\//i,
 ];
+
+/** What a built procedural model layer owns beside its GLB, per source model id. */
+const MODEL_FILES = ['procmodel.json', 'georeference.json', 'components.json'];
 
 /** Where importers put the delivered viewer until 11 Oct 2026, and the grids beside it. */
 const RETIRED_DIR = 'legacy/';
@@ -94,6 +101,11 @@ function ownership(layer: Layer): { files: string[]; prefixes: string[]; kept: s
   switch (layer.kind) {
     case 'mesh':
       add(layer.src);
+      // A built model layer also owns its model, georeference and component register, so they
+      // leave with it; a draft preview owns only its GLB (the model stays for the built layer).
+      if (layer.derived?.kind === 'model' && layer.derived.draft !== true)
+        for (const id of layer.derived.source ?? [])
+          for (const f of MODEL_FILES) files.push(`models/${id}.${f}`);
       break;
     case 'pointcloud':
       if (layer.format === 'png-packed' || layer.format === 'potree2') folderOf(layer.src);
@@ -152,6 +164,8 @@ function ownership(layer: Layer): { files: string[]; prefixes: string[]; kept: s
  * `models/` and `drawings/` go with it, and so does the `data/` folder beside a stockpile
  * viewer, which holds the grids of the volumes. `photogrammetry/<run>/` sends only its records
  * and reports (`run.json`, `gcp.json`, `report/`), never its work files, unless a layer owns them.
+ * `engineering/` never travels. A built model layer owns `models/<id>.procmodel.json`,
+ * `.georeference.json` and `.components.json`, so leaving the layer out leaves them out.
  */
 export function planPackage(
   manifest: ProjectManifest,

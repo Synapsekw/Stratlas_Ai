@@ -1,0 +1,174 @@
+/* ---------- engineering model components: hover brief, component list, card section ----------
+   The brief reads like the stage tooltips (.tip): a small raised plate that never takes the
+   pointer. The list and the card section use the right panel's rows and key-value grid. */
+
+.comp-brief {
+  position: fixed;
+  z-index: 60;
+  max-width: 260px;
+  padding: 7px 10px 8px;
+  display: grid;
+  gap: 2px;
+  background: var(--bg-3);
+  color: var(--fg-1);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-4);
+  box-shadow: var(--shadow);
+  font-size: var(--t-12);
+  line-height: 1.35;
+  pointer-events: none;
+}
+.comp-brief b {
+  color: var(--fg-0);
+  font-size: var(--t-13);
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+.comp-brief .cb-cat {
+  color: var(--fg-3);
+  font-size: var(--t-11);
+}
+.comp-brief p {
+  margin: 3px 0 0;
+}
+.comp-brief .cb-hint {
+  margin-top: 4px;
+  color: var(--acc);
+  font-size: var(--t-11);
+}
+
+.comp-list {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+}
+.comp-list h3 {
+  margin: 0;
+  font-size: var(--t-12);
+  font-weight: 600;
+  color: var(--fg-1);
+}
+.comp-list .cl-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+}
+.comp-list .cl-head span {
+  font-size: var(--t-11);
+}
+.comp-list .cl-search {
+  width: 100%;
+}
+.comp-list .cl-empty {
+  margin: 0;
+  font-size: var(--t-12);
+}
+.cl-group h3 {
+  margin: 4px 0 2px;
+  font-size: var(--t-11);
+  font-weight: 500;
+  color: var(--fg-3);
+}
+.cl-group ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.cl-group li {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+}
+.cl-group .cl-name {
+  flex: 1;
+  min-width: 0;
+  min-height: 32px;
+  display: grid;
+  justify-items: start;
+  padding: 4px 6px;
+  border: 0;
+  border-radius: var(--r-2);
+  background: none;
+  color: var(--fg-1);
+  font: inherit;
+  font-size: var(--t-12);
+  text-align: start;
+  cursor: pointer;
+}
+.cl-group .cl-name > span {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.cl-group .cl-name:hover {
+  background: var(--bg-2);
+}
+.cl-group .cl-name:focus-visible {
+  outline: 2px solid var(--acc);
+  outline-offset: -2px;
+}
+.cl-group .cl-name[aria-current='true'] {
+  background: var(--acc-a12);
+  color: var(--fg-0);
+}
+.cl-group .cl-sub {
+  color: var(--fg-3);
+  font-size: var(--t-11);
+}
+.cl-group li.is-hidden .cl-name {
+  color: var(--fg-3);
+}
+
+.comp-card .comp-desc {
+  margin: 0;
+  font-size: var(--t-12);
+  color: var(--fg-1);
+  line-height: 1.45;
+}
+.comp-card .comp-acts {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+.comp-card .comp-hidden {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 6px 8px;
+  border: 1px solid var(--line-soft);
+  border-radius: var(--r-4);
+  font-size: var(--t-12);
+  color: var(--fg-2);
+}
+.comp-card .comp-values {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 2px;
+}
+.comp-card .comp-values li {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+}
+.comp-card .comp-values li span:last-child {
+  color: var(--fg-3);
+}
+
+/* The selection card with a component list: card and list scroll together in a host capped to
+   most of the right panel, so a long list stays reachable in a 1100 x 720 window and the agent
+   below keeps its share. */
+.ctx-wrap:has(> .sel-scroll) {
+  flex: 0 1 auto;
+  max-height: 62%;
+}
+.sel-scroll {
+  flex: 0 1 auto;
+  min-height: 0;
+  overflow: auto;
+}

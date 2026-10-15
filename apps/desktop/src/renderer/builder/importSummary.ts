@@ -1,4 +1,5 @@
 import type { ImportItem, Layer } from '@aio/schema';
+import { ENGINEERING_SOURCES, engineeringUiOn } from '../engineer/flags';
 
 /*
  * What the import panel says about each file: where it went (the group of the Datasets list it
@@ -58,4 +59,20 @@ export function importHeadline(items: readonly ImportItem[]): string {
   return skipped === 0
     ? `Nothing imported: ${String(failed)} ${plural(failed)} failed`
     : `Nothing imported: ${String(failed)} ${plural(failed)} failed, ${String(skipped)} skipped`;
+}
+
+/**
+ * The action an imported file offers beside its row: "Create engineering model" for a point
+ * cloud, a model or photos (the layer to start the setup with), or null. It only opens the setup;
+ * nothing is measured or sent from an import.
+ */
+export function engineeringAction(
+  item: ImportItem,
+  layers: readonly Layer[],
+): { kind: 'engineer'; layerId: string } | null {
+  if (!engineeringUiOn() || item.status !== 'imported' || !item.layerId) return null;
+  const layer = layers.find((l) => l.id === item.layerId);
+  return layer && ENGINEERING_SOURCES.includes(layer.kind)
+    ? { kind: 'engineer', layerId: layer.id }
+    : null;
 }

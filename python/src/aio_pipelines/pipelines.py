@@ -11,6 +11,7 @@ from .change.raster import ChangeRaster
 from .change.surface import ChangeSurface
 from .design.importer import DesignImport
 from .drawing.pipeline import DrawingImport
+from .engineer.pipeline import ModelEvidence
 from .geodesy.calibration import GeoCalibration
 from .haul.analyse import HaulAnalyse
 from .hydro.flood import HydroFlood
@@ -93,6 +94,8 @@ def all_pipelines() -> dict[str, Pipeline]:
         WalkProcess(),
         # Drone panoramas (pipeline pack 0.7.0)
         PanoStitch(),
+        # Engineering model (pipeline pack 0.11.0)
+        ModelEvidence(),
         # Point cloud cleanup (pipeline pack POINTCLOUD_CLEAN_MIN_PACK)
         PointcloudClean(),
     ]

@@ -4,6 +4,7 @@ import { Id, IsoDate, ProjectPath, Vec3 } from './common';
 import { RasterPackId, TerrainDatum } from './globe';
 import { Crs } from './manifest';
 import { PhotoPreset, PhotoProduct, PhotoRunId, PhotoSource } from './photogrammetry';
+import { ModelEvidenceParams } from './modelEvidence';
 import { PanoFolderId, PanoQuality, PanoShape } from './panoStitch';
 import { PointcloudCleanParams, PointcloudCleanup } from './pointcloudCleanup';
 import { ProcModelId, ProcPartKind } from './procmodel';
@@ -86,6 +87,8 @@ export const PipelineName = z.enum([
   'walk.process',
   // Drone panoramas (pipeline pack 0.7.0)
   'pano.stitch',
+  // Engineering model (pipeline pack 0.11.0)
+  'model.evidence',
   // Point cloud cleanup (pipeline pack POINTCLOUD_CLEAN_MIN_PACK)
   'pointcloud.clean',
 ]);
@@ -327,6 +330,12 @@ export const PIPELINES: readonly { name: PipelineName; title: string; descriptio
     title: 'Stitch drone panorama',
     description:
       'One level, north-up 360 panorama from the frames of a drone sphere, aligned from its gimbal angles and features.',
+  },
+  {
+    name: 'model.evidence',
+    title: 'Measure an engineered asset',
+    description:
+      'Crop, ground, axis, sections and repeated members of a chimney, flare stack or tower from a point cloud and photos, as a bounded evidence pack.',
   },
   {
     name: 'pointcloud.clean',
@@ -1207,6 +1216,7 @@ const PARAMS = {
   'haul.analyse': HaulAnalyseParams,
   'walk.process': WalkProcessParams,
   'pano.stitch': PanoStitchParams,
+  'model.evidence': ModelEvidenceParams,
   'pointcloud.clean': PointcloudCleanParams,
 } as const satisfies Record<PipelineName, z.ZodType>;
 

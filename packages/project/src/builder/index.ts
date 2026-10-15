@@ -28,6 +28,13 @@ export * from './drawingPlacement';
 export { glbBounds, lasBounds, layerExtent, layerExtents, type LocalExtent } from './extents';
 export { recentreBlockers, recentreProject, recentred } from './recentre';
 export {
+  placeImportedGlb,
+  readGlbJsonChunk,
+  readGlbJsonFromFile,
+  type ImportedPlacement,
+} from './glbGeoref';
+export { writeExportFolder, type ExportFolderOptions } from './exportFolder';
+export {
   DRAWING_ADDED,
   addDrawingPage,
   closeDrawing,

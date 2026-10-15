@@ -10,6 +10,7 @@ import { CalibrateVideo } from './CalibrateVideo';
 import { DroneMenu } from './DroneMenu';
 import { loadOrientation } from './orientationFile';
 import { PhotoMenu } from './PhotoMenu';
+import { PlaceModel } from './PlaceModel';
 import { EmptyProjectHint, ImportLayer } from './ImportPanel';
 import { NewProjectWizard } from './NewProjectWizard';
 import { builder, useBuilder } from './state';
@@ -73,6 +74,9 @@ export function BuilderLayer() {
       {pane && createPortal(<EmptyProjectHint />, pane)}
       {screen === 'scene' && align?.kind === 'mesh' && (
         <AlignModel key={align.layerId} layerId={align.layerId} />
+      )}
+      {screen === 'scene' && align?.kind === 'place' && (
+        <PlaceModel key={align.layerId} layerId={align.layerId} />
       )}
       {screen === 'scene' && align?.kind === 'video' && pane && (
         <CalibrateVideo key={align.layerId} layerId={align.layerId} />

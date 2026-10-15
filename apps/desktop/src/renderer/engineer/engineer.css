@@ -1,0 +1,206 @@
+/* ---------- engineering model: setup dialog and run stages (engineer/) ----------
+   The setup uses the app's dialog frame (.dlg, package.css); sections are fieldsets so each
+   group of choices is announced with its name. Fits a 1100 x 720 window: the body scrolls. */
+
+.eng-setup .dlg-b {
+  gap: 12px;
+}
+.eng-sec {
+  margin: 0;
+  padding: 0;
+  border: 0;
+  min-width: 0;
+  display: grid;
+  gap: 6px;
+}
+.eng-sec > legend,
+.eng-sec > h3 {
+  margin: 0 0 2px;
+  padding: 0;
+  font-size: var(--t-13);
+  font-weight: 600;
+  color: var(--fg-0);
+}
+.eng-sec > p {
+  margin: 0;
+  color: var(--fg-3);
+  font-size: var(--t-12);
+}
+.eng-sources {
+  display: grid;
+  border: 1px solid var(--line-soft);
+  border-radius: var(--r-4);
+}
+.eng-sources .eng-choice {
+  padding: 6px 10px;
+}
+.eng-sources .eng-choice + .eng-choice {
+  border-top: 1px solid var(--line-soft);
+}
+.eng-choice {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  font-size: var(--t-13);
+  color: var(--fg-1);
+  min-width: 0;
+  cursor: pointer;
+}
+.eng-choice > input {
+  flex: none;
+  align-self: center;
+}
+.eng-choice .faint {
+  margin-left: auto;
+  font-size: var(--t-12);
+  text-align: right;
+}
+.eng-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px 20px;
+}
+.eng-row {
+  display: flex;
+  gap: 6px;
+}
+.eng-row .input {
+  min-width: 0;
+  flex: 1;
+}
+.eng-setup .acts {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+.eng-at {
+  font-size: var(--t-12);
+  color: var(--fg-2);
+}
+.eng-files {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: var(--t-12);
+  color: var(--fg-2);
+}
+.eng-num {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: var(--t-12);
+  color: var(--fg-3);
+}
+.eng-num .input {
+  width: 84px;
+}
+.eng-route {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: var(--t-13);
+  color: var(--fg-1);
+}
+
+.eng-stages ol {
+  list-style: none;
+  margin: 0 0 8px;
+  padding: 0;
+  display: grid;
+  gap: 2px;
+}
+.eng-stage {
+  display: grid;
+  grid-template-columns: 18px 1fr auto;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 8px;
+  border-radius: var(--r-2);
+  font-size: var(--t-13);
+  color: var(--fg-3);
+}
+.eng-stage.running {
+  background: var(--acc-a12);
+  color: var(--fg-0);
+}
+.eng-stage.done {
+  color: var(--fg-1);
+}
+.eng-stage.failed {
+  color: var(--s5);
+}
+.eng-stage-status {
+  font-size: var(--t-12);
+}
+.eng-stage-msg {
+  grid-column: 2 / -1;
+  margin: 0;
+  font-size: var(--t-12);
+  color: var(--fg-2);
+}
+.eng-stages .acts {
+  display: flex;
+  gap: 6px;
+}
+.eng-bad {
+  margin: 0;
+  font-size: var(--t-12);
+  color: var(--s5);
+}
+
+/* the run panel: stages, what stopped it, the identity conflicts, the views and Accept */
+/* on the left of the 3D view, so the Model builder (on the right) stays usable beside it */
+.eng-run {
+  width: 340px;
+  right: auto;
+  left: calc(var(--sb-w) + 16px);
+}
+.app[data-sb='collapsed'] .eng-run {
+  left: calc(var(--sb-w-c) + 16px);
+}
+.eng-run .sec p {
+  margin: 0;
+}
+.eng-conflict {
+  display: grid;
+  gap: 6px;
+  padding: 8px 10px;
+  border: 1px solid var(--warn-line);
+  border-radius: var(--r-4);
+  font-size: var(--t-12);
+}
+.eng-scores {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-size: var(--t-12);
+  color: var(--fg-2);
+}
+
+/* A pick in the 3D view for the setup (the region, the anchor): one line at the top of the view,
+   with Cancel, while the setup steps aside. */
+.eng-pickbar {
+  position: fixed;
+  top: calc(var(--tb-h) + 56px);
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 60;
+  max-width: calc(100vw - 32px);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 6px 6px 12px;
+  background: var(--bg-1);
+  color: var(--fg-1);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-6);
+  box-shadow: 0 16px 40px oklch(0.08 0.01 250 / 0.55);
+  font-size: var(--t-13);
+}
+.eng-pickbar > span {
+  min-width: 0;
+}

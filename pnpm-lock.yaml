@@ -117,6 +117,9 @@ importers:
       '@napi-rs/keyring':
         specifier: ^2.1.0
         version: 2.1.0
+      gltf-validator:
+        specifier: 2.0.0-dev.3.10
+        version: 2.0.0-dev.3.10
       onnxruntime-node:
         specifier: ^1.30.0
         version: 1.30.0

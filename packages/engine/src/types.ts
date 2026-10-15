@@ -250,6 +250,35 @@ export interface EngineStage extends SceneHandle {
   setEnvironment(patch: Partial<EnvironmentSettings>): void;
   /** Listen for tool or section changes, for toolbar state. */
   onStateChange(cb: () => void): () => void;
+  /** The node under the mouse, with its component record (hover brief). */
+  readonly hovered: PickInfo | null;
+  /** The selected node as drawn (null while the selection has not loaded or is not an asset). */
+  readonly selected: PickInfo | null;
+  /** Listen for hover and selection changes of the highlighted node. Returns an unsubscribe. */
+  onPick(cb: (e: PickEvent) => void): () => void;
+  /** What a click at a normalised device point would select (tests, tools). */
+  pickAt(ndcX: number, ndcY: number): PickInfo | null;
+  /**
+   * Show or hide one node of a layer (component id or node name). False when the layer is not
+   * loaded, cannot hide single nodes, or has no such node.
+   */
+  setNodeVisible(layerId: string, node: string, visible: boolean): boolean;
+  /** The engineering components of a loaded layer (empty for other layers). */
+  components(layerId: string): ComponentInfo[];
+  /** Whether a layer's content has loaded in this view (false while loading or missing). */
+  layerLoaded(layerId: string): boolean;
+  /**
+   * Listen for layers whose content has loaded in this view, also a layer made again (a rebuilt
+   * model): its components may have changed. Returns an unsubscribe.
+   */
+  onLayerLoaded(cb: (layerId: string) => void): () => void;
+  /**
+   * The hidden nodes of a layer. The engine keeps them per project and layer: every view of the
+   * layer applies them, also when the layer loads again.
+   */
+  hiddenNodes(layerId: string): string[];
+  /** Listen for nodes of a layer being shown or hidden in this view. Returns an unsubscribe. */
+  onHiddenNodes(cb: (layerId: string) => void): () => void;
 }
 
 export interface AdapterContext {
@@ -258,9 +287,69 @@ export interface AdapterContext {
   scene: SceneHandle;
 }
 
+/**
+ * The component record of an engineering model node (its glTF extras): what hover briefs and the
+ * component panel show.
+ */
+export interface ComponentInfo {
+  id: string;
+  name: string;
+  category?: string;
+  description?: string;
+  tag?: string;
+  basis?: string;
+  /** `draft`, `accepted` or `rejected` (a draft is shown while a model is reviewed). */
+  status?: string;
+  /** The component id it is mounted on. */
+  parent?: string;
+  /** Surfaces no evidence saw (`back`, `top`, `interior`, `base`). */
+  unobserved?: string[];
+  /** How each parameter is known, the worst fit residual and the least coverage. */
+  quality?: ComponentQuality;
+  /** The component's dimensions by parameter, with units (`m`, `deg`). */
+  dimensions?: Record<string, ComponentDimension>;
+}
+
+export interface ComponentDimension {
+  /** A number, or the sides of a size (width, height, depth). */
+  value: number | number[];
+  unit: string;
+}
+
+export interface ComponentQuality {
+  /** Parameter name to its basis (`measured`, `observed`, `inferred`, `user`). */
+  params: Record<string, string>;
+  residualM?: number;
+  /** 0..1, the share of the surface the evidence covers. */
+  coverage?: number;
+}
+
+/**
+ * A node under the cursor or selected: its selection id (the extras `component` id, else the node
+ * name), its layer, and its component record when it has one.
+ */
+export interface PickInfo {
+  node: string;
+  layerId: string;
+  component?: ComponentInfo;
+}
+
+/** A hover or selection change on the stage; `pick` is null when it cleared. */
+export interface PickEvent {
+  kind: 'hover' | 'select';
+  pick: PickInfo | null;
+}
+
 export interface LayerHandle {
   setVisible(visible: boolean): void;
   dispose(): void;
+  /**
+   * Show or hide one node (component id or node name): hidden, it is neither drawn nor picked.
+   * Only layers that draw their nodes separately offer it (engineering models).
+   */
+  setNodeVisible?(node: string, visible: boolean): void;
+  /** The engineering components of the layer, in file order. */
+  components?(): ComponentInfo[];
 }
 
 /** Turns one kind of layer into scene objects. Each stream registers its adapter. */

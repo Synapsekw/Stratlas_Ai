@@ -8,6 +8,10 @@ import { Detail, EvidenceRegion, RunId } from './engineer';
  * and atomic: crop, ground, axis, sections, members, renders, photos, pack.
  */
 
+/** The first pipeline pack with `model.evidence`, and how Settings, Processing tools names it. */
+export const MODEL_EVIDENCE_MIN_PACK = '0.11.0';
+export const MODEL_EVIDENCE_FEATURE = 'Measuring an engineered asset';
+
 /** Default sampling and image limits per detail. */
 export const EVIDENCE_LIMITS = {
   fast: { maxPoints: 300_000, maxImages: 12, maxPx: 1024 },
@@ -70,10 +74,16 @@ export const MemberGroup = z
             size: z.number().nonnegative(),
             support: z.number().int().nonnegative(),
             azimuthDeg: z.number().min(0).max(360).optional(),
+            /** RMS fit residual of this item, metres, when the measurement has one. */
+            residualM: z.number().nonnegative().optional(),
+            /** Share of the item's outline seen, 0..1, when the measurement has one. */
+            coverage: z.number().min(0).max(1).optional(),
           })
           .strict(),
       )
       .max(128),
+    /** Heights above the asset base of the groups' levels (lights, platforms), metres. */
+    levels: z.array(z.number()).max(32).optional(),
     metrics: z
       .object({
         residualM: z.number().nonnegative().optional(),
@@ -165,6 +175,8 @@ export const EvidencePack = z
         slenderness: z.number().nonnegative(),
         topFeatures: z.number().int().nonnegative(),
         suggested: ModelFamily,
+        /** Why: a suggestion, never a decision. */
+        reasons: z.array(z.string().max(200)).max(8).optional(),
       })
       .strict()
       .nullable(),
@@ -182,8 +194,68 @@ export const EvidencePack = z
       .max(64),
     photos: z.array(PhotoItem).max(400),
     images: z.array(EvidenceImage).max(64),
-    reconstruction: z.enum(['not-needed', 'unavailable', 'used']),
+    /**
+     * `available-not-run`: photos only, photogrammetry is installed but nothing was reconstructed
+     * (the warnings point at reconstructing first).
+     */
+    reconstruction: z.enum(['not-needed', 'unavailable', 'available-not-run', 'used']),
     warnings: z.array(z.string().max(300)).max(50),
+    /** How the base was found (absent in a photos-only pack). */
+    baseInfo: z
+      .object({
+        observed: z.boolean(),
+        /** `ground`: the ground height under the axis; `lowest-point`: no ground was found. */
+        basis: z.enum(['ground', 'lowest-point']),
+        /** Metres the lowest asset point stands above the base (0 when there is no ground). */
+        gapM: z.number().nonnegative(),
+      })
+      .strict()
+      .optional(),
+    /** What the crop held besides the asset: neighbouring structures and clutter that were left out. */
+    isolation: z
+      .object({
+        components: z.number().int().nonnegative(),
+        droppedPoints: z.number().int().nonnegative(),
+        dropped: z
+          .array(
+            z
+              .object({
+                points: z.number().int().nonnegative(),
+                min: z.tuple([z.number(), z.number(), z.number()]),
+                max: z.tuple([z.number(), z.number(), z.number()]),
+              })
+              .strict(),
+          )
+          .max(8),
+      })
+      .strict()
+      .optional(),
+    /** Photos that do not look like the same asset, flagged and never blended. */
+    identity: z
+      .object({
+        sameAsset: z.boolean(),
+        conflicts: z
+          .array(
+            z
+              .object({
+                imageIds: z.array(z.string().max(60)).max(40),
+                reason: z.string().max(300),
+              })
+              .strict(),
+          )
+          .max(20),
+      })
+      .strict()
+      .optional(),
+    /** Section slices the fit skipped, by reason. */
+    rejectedSlices: z
+      .object({
+        noFit: z.number().int().nonnegative(),
+        radiusJump: z.number().int().nonnegative(),
+        offAxis: z.number().int().nonnegative(),
+      })
+      .strict()
+      .optional(),
   })
   .strict();
 

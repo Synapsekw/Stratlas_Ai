@@ -1,6 +1,7 @@
 import {
   fitModelPlacement,
   fromWgs84,
+  layerTransformToGeoref,
   toWgs84,
   upAxisOf,
   withUpAxis,
@@ -8,7 +9,7 @@ import {
   type UpAxis,
 } from '@aio/geo';
 import { LocationPicker } from '@aio/maps';
-import type { Layer, Vec3 } from '@aio/schema';
+import type { Layer, LayerPatch, Vec3 } from '@aio/schema';
 import { Icon } from '@aio/ui';
 import { useWorkspace, workspace } from '@aio/workspace';
 import { useCallback, useEffect, useMemo, useState } from 'react';
@@ -61,7 +62,7 @@ export function AlignModel({ layerId }: { layerId: string }) {
   const [typed, setTyped] = useState('');
   const [say, setSay] = useState<{ text: string; tone?: 'armed' | 'bad' } | null>(null);
   const [saving, setSaving] = useState(false);
-  const [previous, setPrevious] = useState<number[] | null>(null);
+  const [previous, setPrevious] = useState<LayerPatch | null>(null);
 
   const origin = project?.manifest.origin;
   const epsg = project && 'epsg' in project.manifest.crs ? project.manifest.crs.epsg : null;
@@ -167,11 +168,39 @@ export function AlignModel({ layerId }: { layerId: string }) {
     l.kind === 'photos' ? l.items.flatMap((p) => (p.pos ? [{ id: p.id, pos: p.pos }] : [])) : [],
   );
 
-  const save = async (transform: number[]) => {
-    if (!layer) return;
+  /** The patch that puts the layer at `transform`. */
+  const placeAt = (transform: number[]): LayerPatch | null => {
+    if (!layer || !project || !origin) return null;
+    // as Place model: a georeferenced model keeps a record of where it sits, now set by the
+    // person, and a model that waited for placing is placed, all in one write
+    const placing = layer.georef !== undefined || (layer.placement ?? 'placed') !== 'placed';
+    if (!placing) return { transform };
+    return {
+      transform,
+      ...(layer.georef
+        ? {
+            georef: layerTransformToGeoref(
+              transform,
+              { crs: project.manifest.crs, origin },
+              layer.georef,
+              'place-model',
+            ),
+          }
+        : {}),
+      placement: 'placed',
+    };
+  };
+
+  const save = async (patch: LayerPatch | null) => {
+    if (!layer || !patch) return;
     setSaving(true);
-    const before = [...layer.transform];
-    const err = await builder.getState().saveLayers([layer.id], { transform });
+    // all of it goes back with Undo, in one write
+    const before: LayerPatch = {
+      transform: [...layer.transform],
+      ...(layer.georef !== undefined ? { georef: layer.georef } : {}),
+      ...(layer.placement !== undefined ? { placement: layer.placement } : {}),
+    };
+    const err = await builder.getState().saveLayers([layer.id], patch);
     setSaving(false);
     if (err) setSay({ text: err, tone: 'bad' });
     else {
@@ -275,7 +304,7 @@ export function AlignModel({ layerId }: { layerId: string }) {
                   aria-pressed={up === a}
                   disabled={saving}
                   onClick={() => {
-                    if (up !== a) void save(withUpAxis(layer.transform, a));
+                    if (up !== a) void save(placeAt(withUpAxis(layer.transform, a)));
                   }}
                 >
                   {a === 'y' ? 'Y up' : 'Z up'}
@@ -501,7 +530,7 @@ export function AlignModel({ layerId }: { layerId: string }) {
               className="btn primary"
               disabled={!fit.fit || saving}
               onClick={() => {
-                if (fit.fit) void save(fit.fit.matrix);
+                if (fit.fit) void save(placeAt(fit.fit.matrix));
               }}
               data-testid="align-save"
             >

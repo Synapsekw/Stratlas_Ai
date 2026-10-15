@@ -205,9 +205,16 @@ export const ImportItem = z.object({
  */
 export const LayerPatch = z.union([
   z.object({ transform: Mat4 }).strict(),
-  /** The ground placement of a mesh layer (mesh layers only; the project writer refuses others). */
+  /**
+   * The ground placement of a mesh layer (mesh layers only; the project writer refuses others),
+   * with the transform it goes with when given (Place model saves all three in one write).
+   */
   z
-    .object({ georef: Georef.optional(), placement: Placement.optional() })
+    .object({
+      transform: Mat4.optional(),
+      georef: Georef.optional(),
+      placement: Placement.optional(),
+    })
     .strict()
     .refine((p) => p.georef !== undefined || p.placement !== undefined, {
       message: 'Give georef or placement',

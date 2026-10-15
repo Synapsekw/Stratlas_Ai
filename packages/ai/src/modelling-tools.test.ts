@@ -14,7 +14,7 @@ const NAMES = [
 
 describe('model builder agent tools', () => {
   it('are in the catalogue with valid metadata', () => {
-    expect(MODELLING_TOOL_SPECS.map((s) => s.meta.name)).toEqual(NAMES);
+    expect(MODELLING_TOOL_SPECS.map((s) => s.meta.name).slice(0, NAMES.length)).toEqual(NAMES);
     for (const s of MODELLING_TOOL_SPECS) {
       expect(ToolMeta.safeParse(s.meta).success).toBe(true);
       expect(allToolSpecs()).toContain(s);
@@ -63,5 +63,72 @@ describe('model builder agent tools', () => {
     expect(i.edit_model_part.safeParse({ part: 'T-101', set: { height: -1 } }).success).toBe(false);
     expect(i.fit_primitives.safeParse({ layer: 'scan', kinds: ['cylinder'] }).success).toBe(true);
     expect(i.build_model.safeParse({ model: 'not a file/name' }).success).toBe(false);
+  });
+});
+
+const ENGINEER = [
+  'list_components',
+  'edit_component',
+  'set_count',
+  'set_levels',
+  'add_component',
+  'remove_component',
+];
+
+describe('engineering model correction tools', () => {
+  it('are in the catalogue after the model builder tools', () => {
+    expect(MODELLING_TOOL_SPECS.map((s) => s.meta.name).slice(NAMES.length)).toEqual(ENGINEER);
+    for (const n of ENGINEER) expect(ToolMeta.safeParse(getToolSpec(n)?.meta).success).toBe(true);
+  });
+
+  it('change the model only through approval; listing is a read', () => {
+    for (const n of ENGINEER.slice(1)) {
+      expect(riskOf(n), n).toBe('write');
+      expect(approvalFor(n), n).toBe(true);
+    }
+    expect(riskOf('list_components')).toBe('read');
+  });
+
+  it('check their inputs, bounded', () => {
+    const i = modellingToolInputs;
+    expect(i.set_count.safeParse({ role: 'flue', count: 4 }).success).toBe(true);
+    expect(i.set_count.safeParse({ role: 'flue', count: 65 }).success).toBe(false);
+    expect(i.set_count.safeParse({ role: 'flue', count: 2.5 }).success).toBe(false);
+    expect(i.set_count.safeParse({ role: 'Flue Pipes', count: 2 }).success).toBe(false);
+    expect(i.set_levels.safeParse({ role: 'light-l1', levels: [45] }).success).toBe(true);
+    expect(i.set_levels.safeParse({ role: 'light', levels: [-1] }).success).toBe(false);
+    expect(
+      i.set_levels.safeParse({ role: 'light', levels: Array.from({ length: 17 }, (_, k) => k) })
+        .success,
+    ).toBe(false);
+    expect(i.edit_component.safeParse({ component: 'flue-2' }).success).toBe(false);
+    expect(i.edit_component.safeParse({ component: 'flue-2', set: { rOuter: 0.6 } }).success).toBe(
+      true,
+    );
+    expect(i.edit_component.safeParse({ component: 'flue', status: 'accepted' }).success).toBe(
+      true,
+    );
+    // scalars only: no geometry through an edit
+    expect(
+      i.edit_component.safeParse({ component: 'flue-2', set: { centre: [0, 0, 0] } }).success,
+    ).toBe(false);
+    expect(
+      i.edit_component.safeParse({ component: 'flue-2', set: { rOuter: Number.POSITIVE_INFINITY } })
+        .success,
+    ).toBe(false);
+    expect(i.remove_component.safeParse({ component: 'ladder-1' }).success).toBe(true);
+    expect(i.remove_component.safeParse({ component: 'ladder-1', confirm: true }).success).toBe(
+      true,
+    );
+    expect(
+      i.add_component.safeParse({
+        kind: 'cabinet',
+        role: 'cabinet',
+        params: { base: [5, 0, 0], size: [1, 2, 1], yawDeg: 0 },
+      }).success,
+    ).toBe(true);
+    expect(i.add_component.safeParse({ kind: 'windmill', role: 'mill', params: {} }).success).toBe(
+      false,
+    );
   });
 });

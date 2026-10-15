@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { ModelFamily } from './assemblies';
+import { Assembly, ModelFamily } from './assemblies';
 import { IsoTime, Vec2, Vec3 } from './common';
 
 /**
@@ -135,6 +135,28 @@ const StageState = z
   })
   .strict();
 
+const OverrideKey = z.string().min(1).max(80);
+/** The person's corrections of a run, bounded (see `UserOverrides` in `@aio/modelling`). */
+export const RunOverrides = z
+  .object({
+    params: z
+      .record(
+        OverrideKey,
+        z.record(OverrideKey, z.union([z.number(), z.string().max(200), z.boolean()])),
+      )
+      .refine((p) => Object.keys(p).length <= 400, 'At most 400 corrected components.'),
+    counts: z
+      .record(OverrideKey, z.number().int().min(0).max(64))
+      .refine((p) => Object.keys(p).length <= 100, 'At most 100 corrected counts.'),
+    levels: z
+      .record(OverrideKey, z.array(z.number()).max(32))
+      .refine((p) => Object.keys(p).length <= 100, 'At most 100 corrected levels.'),
+    removed: z.array(OverrideKey).max(400),
+    added: z.array(Assembly).max(120),
+  })
+  .strict();
+export type RunOverrides = z.infer<typeof RunOverrides>;
+
 export const EngineerRun = z
   .object({
     schema: z.literal('aio.engineer-run/1'),
@@ -151,7 +173,19 @@ export const EngineerRun = z
         outputTokens: z.number().int().nonnegative(),
       })
       .strict(),
-    reconstruction: z.enum(['not-needed', 'queued', 'done', 'unavailable']).optional(),
+    reconstruction: z
+      .enum(['not-needed', 'queued', 'done', 'unavailable', 'available-not-run'])
+      .optional(),
+    /**
+     * The person's corrections the model was last assembled with (`UserOverrides` of
+     * `@aio/modelling`), so a reopened run rebuilds with them, never without.
+     */
+    user: RunOverrides.optional(),
+    /** Evidence images the person dropped (an identity conflict): never sent again in this run. */
+    excludedImages: z
+      .array(z.string().regex(/^img-[a-z0-9-]{1,40}$/))
+      .max(64)
+      .optional(),
   })
   .strict();
 

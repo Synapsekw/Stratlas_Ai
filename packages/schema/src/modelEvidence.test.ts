@@ -1,5 +1,12 @@
+import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
-import { EVIDENCE_LIMITS, EvidencePack, ModelEvidenceParams } from './modelEvidence';
+import { EngineerRun } from './engineer';
+import {
+  EVIDENCE_LIMITS,
+  EvidencePack,
+  MODEL_EVIDENCE_MIN_PACK,
+  ModelEvidenceParams,
+} from './modelEvidence';
 
 function must<T>(x: T | undefined | null): T {
   if (x === undefined || x === null) throw new Error('expected a value');
@@ -108,6 +115,12 @@ describe('EvidencePack', () => {
     expect(must(p.slices[0]).shape).toBe('circle');
     expect(must(p.members[0]).items).toHaveLength(2);
   });
+  it('says when photogrammetry is there but was not run, and the run keeps that', () => {
+    const p = { ...pack([]), reconstruction: 'available-not-run' };
+    expect(EvidencePack.safeParse(p).success).toBe(true);
+    expect(EngineerRun.shape.reconstruction.safeParse('available-not-run').success).toBe(true);
+    expect(EvidencePack.safeParse({ ...p, reconstruction: 'maybe' }).success).toBe(false);
+  });
   it('refuses slice coverage outside 0..1', () => {
     expect(EvidencePack.safeParse(pack([slice(10, 1.2)])).success).toBe(false);
     expect(EvidencePack.safeParse(pack([slice(10, -0.1)])).success).toBe(false);
@@ -141,5 +154,72 @@ describe('EvidencePack', () => {
     expect(
       EvidencePack.safeParse({ ...p, photos: [{ ...photo, dupOf: 'not-an-id' }] }).success,
     ).toBe(false);
+  });
+  it('takes the additive fields: levels, item residual and coverage, reasons, base, isolation', () => {
+    const p = pack([]);
+    const group = {
+      kind: 'light-candidate',
+      items: [{ centre: [1, 40, 2], size: 0.4, support: 60, residualM: 0.01, coverage: 0.5 }],
+      levels: [40],
+      metrics: {},
+    };
+    const extra = {
+      members: [group],
+      familyHints: {
+        fillRatio: 1,
+        slenderness: 6,
+        topFeatures: 3,
+        suggested: 'chimney',
+        reasons: ['x'],
+      },
+      baseInfo: { observed: false, basis: 'ground', gapM: 20 },
+      isolation: {
+        components: 2,
+        droppedPoints: 900,
+        dropped: [{ points: 900, min: [10, 0, -1], max: [12, 30, 1] }],
+      },
+      identity: {
+        sameAsset: false,
+        conflicts: [{ imageIds: ['img-photo-1'], reason: 'other asset' }],
+      },
+      rejectedSlices: { noFit: 1, radiusJump: 2, offAxis: 0 },
+    };
+    expect(EvidencePack.safeParse({ ...p, ...extra }).success).toBe(true);
+    expect(EvidencePack.safeParse(p).success).toBe(true); // all optional
+    const bad = { ...extra, baseInfo: { observed: true, basis: 'sea', gapM: 0 } };
+    expect(EvidencePack.safeParse({ ...p, ...bad }).success).toBe(false);
+    expect(
+      EvidencePack.safeParse({
+        ...p,
+        members: [{ ...group, items: [{ ...must(group.items[0]), coverage: 2 }] }],
+      }).success,
+    ).toBe(false);
+  });
+  it('names the first pack with model.evidence', () => {
+    expect(MODEL_EVIDENCE_MIN_PACK).toBe('0.11.0');
+  });
+  it('parses the pack the pipeline wrote for the partial synthetic stack', () => {
+    const raw: unknown = JSON.parse(
+      readFileSync(
+        new URL('./__fixtures__/engineering/evidence.partial-stack.json', import.meta.url),
+        'utf8',
+      ),
+    );
+    const r = EvidencePack.safeParse(raw);
+    expect(r.success, JSON.stringify(r.error?.issues.slice(0, 3))).toBe(true);
+    const p = must(r.data);
+    expect(p.members.some((g) => g.kind === 'flue')).toBe(true);
+    expect(p.taper?.profile.length).toBeGreaterThan(1);
+    expect(p.familyHints?.suggested).toBe('chimney');
+    expect(p.photos.length).toBeGreaterThan(0);
+    // references hold together: a conflict names pack images, a duplicate names a photo of the pack
+    const imageIds = new Set(p.images.map((i) => i.id));
+    const photoIds = new Set(p.photos.map((x) => x.id));
+    expect(p.identity?.sameAsset).toBe(false);
+    for (const c of p.identity?.conflicts ?? []) {
+      expect(c.imageIds.length).toBeGreaterThan(0);
+      for (const id of c.imageIds) expect(imageIds.has(id)).toBe(true);
+    }
+    for (const x of p.photos) if (x.dupOf) expect(photoIds.has(x.dupOf)).toBe(true);
   });
 });

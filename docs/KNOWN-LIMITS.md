@@ -305,6 +305,23 @@ Current limits only; each is removed from this list when fixed.
 - Hydrology is checked against analytic truths (a bowl, a V-shaped catchment, a tilted plane); WhiteboxTools is not used as a second opinion.
 - A haul-road centreline is a design alignment, a design polyline or a drawn line; proposing one from the surface is not built.
 
+## Engineering models
+
+- An engineering model is a review aid: not fabrication-ready and not an as-built survey. Rules fill what the sources do not show, and every value says whether it was measured, observed, inferred or entered by you.
+- A model made from photos only, without a known dimension, has a provisional scale: its lengths are not true metres until you enter one dimension. Photo GPS positions are camera positions and are never taken as the asset's position; such a model is placed provisionally.
+- The assemblers and the measuring were tuned on synthetic assets only.
+- Point clouds in COPC format are read through PDAL; that path is not tested on a computer without the PDAL tools.
+- The check that photos show the same asset uses colour and camera distance only; two similar structures can pass it.
+- Meshes used as a source are sampled for their shape only, without their colours.
+- In the 3D view an engineering model draws its components separately (about 1.7 draw calls per component); merging them into one batched mesh is not built.
+- Warning light lenses are red only. Joint rings on a shaft are drawn with flat facets. On lattice towers and monopoles the ladder follows the nearest axis of the structure, not the leg or the face.
+- Placement through Web Mercator (EPSG:3857) is approximate away from the anchor (about 3 mm at 100 m at mid latitudes); the app says so. Between other coordinate systems the scale change of the projection is always applied, however small.
+- A project does not name a height datum, so a model's heights are taken as they are, whatever datum the model names, and the placement says so; a height of unknown datum stays unknown. Check the height of a model from another source, and set it with Place model when it is off.
+- The project journal records an engineering model's component list as one value, not one entry per component: when two copies change components of the same model at the same time, the merge keeps the later list whole and the other copy's component change is lost.
+- Deleting an engineering model on one copy does not delete it on the others in a collaboration merge: the model file is kept there as it was (the merge finds the emptied record not valid and leaves the file alone, without telling the person).
+- A project holding an engineering model without a georeference cannot be re-centred until the model is placed or georeferenced (its values are in the project's local frame).
+- The AI step's request and token limits per run are fixed per detail level; a run that reaches them stops with the best result so far and needs a new run for more.
+
 ## Point cloud cleanup
 
 - **Point cloud cleanup: COPC only.** The clip box, height range, selections and noise run work on COPC clouds; `png-packed` and kit clouds show a hint. Convert them to COPC first.

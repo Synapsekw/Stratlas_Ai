@@ -12,6 +12,8 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { parseCoordinate } from '../builder/model';
 import { hitLayer, useStagePick, usePickMarkers, type Marker } from '../builder/pick';
 import { bridge, shell, useShell } from '../shell';
+import { createEngineeringModel, engineeringUiOn } from '../engineer/ui';
+import { useEngineeringReview } from '../engineer/review';
 import { modeller, useModeller } from './index';
 import './modeller.css';
 
@@ -373,12 +375,15 @@ export function ModellerLayer() {
         .map((l) => ({ id: l.id, name: l.name })),
     [project?.manifest],
   );
+  // an engineering run's model, reviewed in its Components section (null without a run)
+  const review = useEngineeringReview(s.model);
   if (!s.open || screen !== 'scene' || !project) return null;
   const placing = form?.kind === 'place' ? drawings.find((d) => d.stem === form.stem) : undefined;
   const st = modeller.getState();
   return (
     <ModelBuilder
-      model={s.model}
+      model={review?.model ?? s.model}
+      {...(review ? { components: review.panel } : {})}
       models={s.models}
       readOnly={s.readOnly}
       selected={s.selected}
@@ -414,6 +419,13 @@ export function ModellerLayer() {
       onBuild={() => void st.build(false)}
       onCloudDrawings={(allow) => void st.setCloudDrawings(allow)}
       onDismiss={st.dismiss}
+      onEngineer={
+        engineeringUiOn() && !s.readOnly
+          ? () => {
+              createEngineeringModel();
+            }
+          : undefined
+      }
     >
       {form?.kind === 'import' && (
         <ImportForm

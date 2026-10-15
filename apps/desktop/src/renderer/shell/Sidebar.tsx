@@ -33,7 +33,9 @@ import {
 import { dateTags, useWorkspace, workspace } from '@aio/workspace';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { openAuditTrail } from '../audit/auditView';
+import type { Layer } from '@aio/schema';
 import { builder } from '../builder/state';
+import { createEngineeringModel, ENGINEERING_SOURCES, engineeringUiOn } from '../engineer/ui';
 import { CLEANUP_ACTIONS, cleanupActionContext } from '../pointcloud/cleanupActions';
 import { useCleanup } from '../pointcloud/cleanupStore';
 import { DrawingControls } from '../drawings/DrawingControls';
@@ -239,6 +241,33 @@ function ProjectSwitcher({ collapsed }: { collapsed: boolean }) {
       )}
     </div>
   );
+}
+
+/** Place model... for a right-click on one model row (any mesh layer); nothing otherwise. */
+function placeModelOf(
+  layers: readonly Layer[],
+  layerIds: readonly string[],
+): (() => void) | undefined {
+  const [id] = layerIds;
+  if (layerIds.length !== 1 || !layers.some((l) => l.id === id && l.kind === 'mesh'))
+    return undefined;
+  return () => {
+    if (id) builder.getState().startAlign({ kind: 'place', layerId: id });
+  };
+}
+
+/** Create engineering model... for one point cloud, model or photos row; nothing otherwise. */
+export function engineeringOf(
+  layers: readonly Layer[],
+  layerIds: readonly string[],
+): (() => void) | undefined {
+  const [id] = layerIds;
+  if (!engineeringUiOn() || layerIds.length !== 1) return undefined;
+  const layer = layers.find((l) => l.id === id);
+  if (!layer || !ENGINEERING_SOURCES.includes(layer.kind)) return undefined;
+  return () => {
+    createEngineeringModel([layer.id]);
+  };
 }
 
 function Datasets({ collapsed }: { collapsed: boolean }) {
@@ -803,6 +832,8 @@ function Datasets({ collapsed }: { collapsed: boolean }) {
           }}
           onMove={onMove}
           onDelete={canEdit && deletable(itemMenu.layerIds).length > 0 ? askLayers : undefined}
+          onPlaceModel={placeModelOf(project.manifest.layers, itemMenu.layerIds)}
+          onCreateEngineering={engineeringOf(project.manifest.layers, itemMenu.layerIds)}
         />
       )}
     </div>

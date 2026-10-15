@@ -10,6 +10,31 @@ export {
   routeFor,
   type ModelRoute,
 } from './routes';
+export { capsFor, engineerReady, type LocalCaps, type ModelCaps } from './capabilities';
+export { SendDialog } from './SendDialog';
+// The engineer call itself runs in main ('@aio/ai/main'); the renderer gets its prompt and types.
+export {
+  engineerRepairText,
+  engineerSystem,
+  engineerUserText,
+  evidenceNeed,
+  imageLabel,
+  payloadPreview,
+  type EvidencePreviewContent,
+  type EvidencePreviewImage,
+  PROMPT_VERSION as ENGINEER_PROMPT_VERSION,
+  PROPOSAL_PARAMS,
+  type EngineerSetupView,
+} from './engineerPrompt';
+export type {
+  EngineerCall,
+  EngineerImage,
+  EngineerImageKind,
+  EngineerOutcome,
+  EngineerPayload,
+  EngineerPayloadImage,
+  EngineerUsage,
+} from './engineer';
 export {
   AgentPanel,
   describeStep,

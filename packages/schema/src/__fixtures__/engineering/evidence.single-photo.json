@@ -1,0 +1,51 @@
+{
+ "schema": "aio.evidence/1",
+ "run": "run-test",
+ "crs": null,
+ "units": "m",
+ "crop": null,
+ "bounds": null,
+ "samples": {
+  "read": 0,
+  "kept": 0,
+  "ground": 0
+ },
+ "axis": null,
+ "base": null,
+ "height": null,
+ "slices": [],
+ "taper": null,
+ "members": [],
+ "familyHints": null,
+ "colours": [],
+ "photos": [
+  {
+   "id": "8d9fcbbbde7a2cb7ca6176f0f5ea593ee80b2e31",
+   "original": "photos/synth_01.jpg",
+   "w": 1600,
+   "h": 1200,
+   "orientationApplied": false,
+   "blur": 19.9989
+  }
+ ],
+ "images": [
+  {
+   "id": "img-photo-8d9fcbbbde7a",
+   "file": "img/img-photo-8d9fcbbbde7a.jpg",
+   "kind": "photo",
+   "view": "photo",
+   "w": 1024,
+   "h": 768,
+   "bytes": 18458,
+   "sha1": "06ebb37896db037bff93ccbe3271153d041dd25f"
+  }
+ ],
+ "reconstruction": "unavailable",
+ "warnings": [
+  "Photos only: no point cloud, and photogrammetry is not available to reconstruct one."
+ ],
+ "identity": {
+  "sameAsset": true,
+  "conflicts": []
+ }
+}

@@ -51,6 +51,38 @@ export class OfflineOnlyError extends Error {
   }
 }
 
+/**
+ * The model's engineer reply did not match the proposal schema, after one repair request. `issues`
+ * is the validation summary, for the log (it may quote the reply, so it is never shown as is).
+ */
+export class InvalidProposalError extends Error {
+  readonly issues: string;
+  constructor(issues: string) {
+    super('The AI reply did not match the engineering proposal format, even after one retry.');
+    this.name = 'InvalidProposalError';
+    this.issues = issues;
+  }
+}
+
+/** The next AI request of a run would pass the run's AI cost cap (or its cost is unknown). */
+export class BudgetReachedError extends Error {
+  readonly capUsd: number;
+  readonly spentUsd: number;
+  /** The estimate of the request that was not sent; undefined when the model has no price. */
+  readonly estimateUsd: number | undefined;
+  constructor(o: { capUsd: number; spentUsd: number; estimateUsd: number | undefined }) {
+    super(
+      o.estimateUsd === undefined
+        ? 'The price of this model is not known, so the cost of the AI step cannot be estimated. Confirm the cost in the preview to send it anyway.'
+        : `The AI step would cost about US$${o.estimateUsd.toFixed(2)}, which would pass this run's AI cost cap of US$${o.capUsd.toFixed(2)} (US$${o.spentUsd.toFixed(2)} spent so far). Choose a higher detail level or send fewer images.`,
+    );
+    this.name = 'BudgetReachedError';
+    this.capUsd = o.capUsd;
+    this.spentUsd = o.spentUsd;
+    this.estimateUsd = o.estimateUsd;
+  }
+}
+
 const MAX_DETAIL = 400;
 
 /** Patterns of API keys and bearer tokens of the providers we talk to. */
@@ -158,6 +190,16 @@ export function describeError(err: unknown, ctx: ErrorContext): DescribedError {
   const { label } = ctx;
   if (e instanceof OfflineOnlyError) {
     return { message: e.message, log: `offline-only (${label}): the request was not sent` };
+  }
+  if (e instanceof InvalidProposalError) {
+    const where = ctx.model ? ` ${ctx.model}` : '';
+    return {
+      message: `${label}${where}: ${e.message} Try again, or choose another model in ${SETTINGS}.`,
+      log: `invalid proposal (${label}${where}): ${sanitize(e.issues, ctx.secrets)}`,
+    };
+  }
+  if (e instanceof BudgetReachedError) {
+    return { message: e.message, log: `budget reached (${label}): the request was not sent` };
   }
   if (APICallError.isInstance(e)) {
     const status = e.statusCode;

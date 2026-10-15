@@ -377,7 +377,8 @@ const TOOL_TASKS: readonly AiTask[] = ['chat', 'build'];
 
 /**
  * A route on the local model checked against what the probe found: `answer-only` for a tool task
- * on a model without tool calling, `no-vision` for the vision route on a model without vision.
+ * on a model without tool calling, `no-vision` for the vision route and the engineer step on a
+ * model without vision.
  * A model that was never probed is trusted.
  */
 export function localGate(
@@ -386,7 +387,7 @@ export function localGate(
 ): 'answer-only' | 'no-vision' | null {
   const caps = cfg?.capabilities;
   if (!caps) return null;
-  if (task === 'vision' && !caps.vision) return 'no-vision';
+  if ((task === 'vision' || task === 'engineer') && !caps.vision) return 'no-vision';
   if (TOOL_TASKS.includes(task) && !caps.tools) return 'answer-only';
   return null;
 }

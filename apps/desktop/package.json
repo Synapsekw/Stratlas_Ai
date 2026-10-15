@@ -23,6 +23,7 @@
     "@aio/merge": "workspace:*",
     "@aio/sync": "workspace:*",
     "@napi-rs/keyring": "^2.1.0",
+    "gltf-validator": "2.0.0-dev.3.10",
     "onnxruntime-node": "^1.30.0",
     "tar": "^7.5.22",
     "zod": "^4.6.5"

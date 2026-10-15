@@ -37,6 +37,17 @@ export {
   type MeshAssembliesResult,
 } from './engineer/meshAssemblies';
 export { DEFAULT_MATERIALS, resolveMaterials } from './engineer/materials';
+/** Synthetic whole models (no real asset), for tests, end to end specs and demos. */
+export {
+  FIXTURE_MODELS,
+  flareModel,
+  latticeModel,
+  monopoleModel,
+  setupFor,
+  stackEvidence,
+  stackModel,
+  stackProposal,
+} from './engineer/fixtures';
 export {
   ASSUMED_HEIGHT_M,
   assemble,
@@ -53,6 +64,13 @@ export { mergeModels, type MergeResult } from './engineer/assemble/merge';
 export { deckOpenings } from './engineer/assemble/chimney';
 export { assembleFlare, SERVICE_LINE_OFFSET } from './engineer/assemble/flare';
 export { assembleLattice, assembleMonopole, SECTOR_GAP_DEG } from './engineer/assemble/telecom';
+export {
+  componentRegister,
+  exportBundle,
+  type BundleBuild,
+  type ComponentRow,
+  type EngineeringBundle,
+} from './engineer/exportBundle';
 export {
   validateGlb,
   type GlbReport,
@@ -99,3 +117,24 @@ export {
   type DrawingPlacement,
 } from './drawing';
 export { fitQuality, ModelBuilder, type ModelBuilderProps } from './ModelBuilder';
+export {
+  addAssembly,
+  applyAssemblyField,
+  assemblyFields,
+  kindLabel,
+  newAssembly,
+  nextAssemblyId,
+  removeAssembly,
+  removeAssemblyOverrides,
+  roleOfKind,
+  type AssemblyField,
+} from './assemblyEdit';
+export {
+  ComponentCard,
+  coverageWords,
+  residualWords,
+  type ComponentCardProps,
+  type ComponentEvidence,
+} from './ComponentCard';
+export { ComponentTree, type ComponentTreeProps } from './ComponentTree';
+export { ComponentsSection, type ComponentsPanel } from './ComponentsSection';

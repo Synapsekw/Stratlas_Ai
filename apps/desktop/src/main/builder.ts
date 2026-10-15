@@ -8,6 +8,7 @@ import type {
   ProxyEncoder,
   VideoTools,
 } from '@aio/project/builder';
+import { PROCMODEL_DIR, ProcModelId } from '@aio/schema';
 import type { IpcEvent, IpcRequest, IpcResponse, ProjectManifest } from '@aio/schema';
 import { readMp4VideoInfo, parseDjiSrt, srtTimingCheck, srtToFlight } from '@aio/video/telemetry';
 import { execFile } from 'node:child_process';
@@ -15,6 +16,7 @@ import { open, readdir, stat } from 'node:fs/promises';
 import { basename, extname, join, resolve, sep } from 'node:path';
 import { promisify } from 'node:util';
 import { createImportRuns } from './importRuns';
+import { writeBytesAtomic } from './modelBuilder';
 import { readManifest, type ProjectRegistry } from './project';
 import { stitchProgress, walkToolsFor } from './walks';
 
@@ -473,6 +475,44 @@ export async function builderCloseDrawing(
   }
 }
 
+/**
+ * A placed model layer's georeference written to the model's sidecar
+ * (`models/<id>.georeference.json`, as `engineer:accept` writes it), so Place model and Georeference
+ * model leave the layer and the sidecar in agreement. Only built (not draft) layers of a model whose
+ * `.procmodel.json` is in the project. The layer's record is the one that counts: the model file's
+ * own `georef` is where the engineering run put it, used until the layer is placed.
+ */
+async function writeModelGeorefs(
+  root: string,
+  manifest: ProjectManifest,
+  layerIds: readonly string[],
+  log: (line: string) => void,
+): Promise<void> {
+  for (const l of manifest.layers) {
+    if (l.kind !== 'mesh' || !layerIds.includes(l.id) || !l.georef) continue;
+    if (l.derived?.kind !== 'model' || l.derived.draft === true) continue;
+    const id = l.derived.source?.[0];
+    if (id === undefined || !ProcModelId.safeParse(id).success) continue;
+    const model = join(root, PROCMODEL_DIR, `${id}.procmodel.json`);
+    if (
+      !(await stat(model).then(
+        (s) => s.isFile(),
+        () => false,
+      ))
+    )
+      continue;
+    const rel = `${PROCMODEL_DIR}/${id}.georeference.json`;
+    try {
+      await writeBytesAtomic(
+        join(root, PROCMODEL_DIR, `${id}.georeference.json`),
+        new TextEncoder().encode(`${JSON.stringify(l.georef, null, 2)}\n`),
+      );
+    } catch (e) {
+      log(`${rel} could not be written: ${errorText(e)}`);
+    }
+  }
+}
+
 export async function builderUpdateLayers(
   req: IpcRequest<'builder:updateLayers'>,
   registry: ProjectRegistry,
@@ -488,6 +528,8 @@ export async function builderUpdateLayers(
   try {
     const r = await (await lib()).updateLayers(root, req.layerIds, req.patch);
     for (const line of r.problems) log(line);
+    if ('georef' in req.patch && req.patch.georef)
+      await writeModelGeorefs(root, r.manifest, req.layerIds, log);
     return { ok: true, manifest: r.manifest, backup: r.backup };
   } catch (e) {
     return { ok: false, error: errorText(e) };

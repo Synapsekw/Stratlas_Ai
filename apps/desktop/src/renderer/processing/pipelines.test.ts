@@ -85,6 +85,7 @@ describe('the kind of a job', () => {
   it('tells map processing from AI analysis', () => {
     expect(jobKind('photo.products')).toBe('maps');
     expect(jobKind('model.fit_cloud')).toBe('maps');
+    expect(jobKind('model.evidence')).toBe('maps');
     expect(jobKind('inspection.run')).toBe('ai');
     expect(jobKind('aik.cameras')).toBe('ai');
     expect(jobKind('survey.compare')).toBe('survey');

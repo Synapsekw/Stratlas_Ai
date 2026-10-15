@@ -486,6 +486,10 @@ export interface LayerDateMenuProps {
   dateMoves?: boolean | undefined;
   /** Commands of the layer, listed first (single-layer menus). */
   actions?: readonly LayerMenuAction[] | undefined;
+  /** Place model... at the top (one model row in an editable project). */
+  onPlaceModel?: (() => void) | undefined;
+  /** Create engineering model... beside it (a point cloud, model or photos row). */
+  onCreateEngineering?: (() => void) | undefined;
 }
 
 /**
@@ -504,6 +508,8 @@ export function LayerDateMenu({
   onDelete,
   dateMoves,
   actions,
+  onPlaceModel,
+  onCreateEngineering,
 }: LayerDateMenuProps) {
   const t = useT();
   const list = useRef<HTMLDivElement>(null);
@@ -517,7 +523,9 @@ export function LayerDateMenu({
   // nothing to compare, file or delete (read-only, or dates off on a row that cannot be deleted):
   // there is nothing to show, so do not open an empty menu
   const acts = actions ?? [];
-  const empty = !compare && !moves && !del && acts.length === 0;
+  const place = canEdit ? onPlaceModel : undefined;
+  const engineer = canEdit ? onCreateEngineering : undefined;
+  const empty = !compare && !moves && !del && !place && !engineer && acts.length === 0;
   useEffect(() => {
     if (empty) onClose();
   }, [empty, onClose]);
@@ -592,8 +600,43 @@ export function LayerDateMenu({
               <span>{a.label}</span>
             </button>
           ))}
-          {acts.length > 0 && (compare || moves || del) && (
+          {acts.length > 0 && (Boolean(place ?? engineer) || compare || moves || del) && (
             <div className="dmenu-sep" role="separator" />
+          )}
+          {(place ?? engineer) && (
+            <>
+              {place && (
+                <button
+                  type="button"
+                  role="menuitem"
+                  className="dmenu-item"
+                  data-testid="menu-place-model"
+                  onClick={() => {
+                    onClose();
+                    place();
+                  }}
+                >
+                  <Icon name="target" size={14} />
+                  <span>{t('place.menu')}</span>
+                </button>
+              )}
+              {engineer && (
+                <button
+                  type="button"
+                  role="menuitem"
+                  className="dmenu-item"
+                  data-testid="menu-create-engineering"
+                  onClick={() => {
+                    onClose();
+                    engineer();
+                  }}
+                >
+                  <Icon name="box" size={14} />
+                  <span>{t('eng.entry.menu')}</span>
+                </button>
+              )}
+              {(compare || moves || del) && <div className="dmenu-sep" role="separator" />}
+            </>
           )}
           {compare && (
             <button

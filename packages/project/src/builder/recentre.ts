@@ -9,8 +9,8 @@ import { drawingStemOf } from './drawingPlacement';
  * Moving the project origin (data-conventions section 1). The COPC clouds are in the project CRS
  * and follow by themselves; models, photo places and pictures laid on the ground are in the
  * local frame and are shifted so they stay where they are. Anything else placed against the
- * origin (issues, flights, walks, drawings, survey files, runs, tilesets, procedural models, a job
- * that has not finished) refuses the move.
+ * origin (issues, flights, walks, drawings, survey files, runs, tilesets, procedural models in the
+ * local frame, a job that has not finished) refuses the move.
  */
 const SHIFTABLE_TOP = new Set([
   'manifest.json',
@@ -59,19 +59,54 @@ async function jobBlockers(root: string): Promise<string[]> {
   return out;
 }
 
+const PROCMODEL_SUFFIX = '.procmodel.json';
+
 /**
- * Procedural models (`models/<id>.procmodel.json`) hold their parts in the local frame and their
- * mesh layer is written with an identity transform: a shift would be undone by the next build.
+ * Procedural models (`models/<id>.procmodel.json`) whose values are in the local frame: without a
+ * georeference their layer (built or draft) is written with an identity transform, so a shift
+ * would be undone by the next build or accept. That holds for an engineering model (assemblies)
+ * without a georeference too: it must be placed or georeferenced first. A model with a
+ * georeference, or whose built layer carries one, is placed from it against the current origin
+ * (draft builds and accepts alike) and is shifted with its layer. A file that cannot be read
+ * refuses, as it may be either.
  */
-async function procModelBlockers(root: string): Promise<string[]> {
+async function procModelBlockers(root: string, m: ProjectManifest): Promise<string[]> {
+  let files: string[];
   try {
-    return (await readdir(join(root, 'models')))
-      .filter((f) => f.endsWith('.procmodel.json'))
-      .sort()
-      .map((f) => `the procedural model "${f}"`);
+    files = (await readdir(join(root, 'models'))).filter((f) => f.endsWith(PROCMODEL_SUFFIX));
   } catch {
     return [];
   }
+  const out: string[] = [];
+  for (const f of files.sort()) {
+    const id = f.slice(0, -PROCMODEL_SUFFIX.length);
+    const layerPlaced = m.layers.some(
+      (l) =>
+        l.kind === 'mesh' &&
+        l.derived?.kind === 'model' &&
+        l.derived.source?.includes(id) === true &&
+        l.georef !== undefined,
+    );
+    let georef = false;
+    let engineering = false;
+    try {
+      const json = JSON.parse(await readFile(join(root, 'models', f), 'utf8')) as {
+        assemblies?: unknown;
+        georef?: unknown;
+      };
+      georef = json.georef != null;
+      engineering = Array.isArray(json.assemblies) && json.assemblies.length > 0;
+    } catch {
+      // unreadable: it may hold values in the local frame
+    }
+    if (georef || layerPlaced) continue;
+    out.push(
+      engineering
+        ? `the engineering model "${f}" (place or georeference the engineering model first)`
+        : `the procedural model "${f}"`,
+    );
+  }
+  return out;
 }
 
 function shiftable(l: Layer): boolean {
@@ -110,7 +145,7 @@ export async function recentreBlockers(root: string, m: ProjectManifest): Promis
       if ((await readdir(join(root, e.name))).length > 0) out.push(`files in "${e.name}"`);
     } else out.push(`"${e.name}"`);
   }
-  out.push(...(await procModelBlockers(root)), ...(await jobBlockers(root)));
+  out.push(...(await procModelBlockers(root, m)), ...(await jobBlockers(root)));
   return out;
 }
 

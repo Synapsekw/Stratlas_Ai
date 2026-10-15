@@ -246,22 +246,30 @@ export function chooseCount(
     proposed: readonly ProposalComponent[];
     evidence: number | undefined;
   },
-): { n: number; basis: ValueBasis } {
+): {
+  n: number;
+  basis: ValueBasis;
+  /** The count without the person's: what values derived from the count rest on otherwise. */
+  prior: { n: number; basis: ValueBasis };
+} {
   const aiN = o.proposed.length ? o.proposed.reduce((s, c) => s + c.count, 0) : undefined;
   const aiSaw = o.proposed.some((c) => c.observed);
-  const pick: { n: number; basis: ValueBasis; from: string } =
-    o.user !== undefined
-      ? { n: o.user, basis: 'user', from: 'your count' }
-      : aiN !== undefined && aiSaw
-        ? { n: aiN, basis: 'observed', from: 'the AI count' }
-        : o.evidence !== undefined
-          ? { n: o.evidence, basis: 'measured', from: 'the measured count' }
-          : { n: aiN ?? 0, basis: 'inferred', from: 'the AI guess' };
+  const prior: { n: number; basis: ValueBasis; from: string } =
+    aiN !== undefined && aiSaw
+      ? { n: aiN, basis: 'observed', from: 'the AI count' }
+      : o.evidence !== undefined
+        ? { n: o.evidence, basis: 'measured', from: 'the measured count' }
+        : { n: aiN ?? 0, basis: 'inferred', from: 'the AI guess' };
+  const pick = o.user !== undefined ? { n: o.user, basis: 'user', from: 'your count' } : prior;
   if (aiN !== undefined && o.evidence !== undefined && aiN !== o.evidence)
     ctx.note(
       `The AI counts ${String(aiN)} ${o.what}, the measurements ${String(o.evidence)}: ${String(pick.n)} used (${pick.from}).`,
     );
-  return { n: Math.max(0, pick.n), basis: pick.basis };
+  return {
+    n: Math.max(0, pick.n),
+    basis: pick.basis as ValueBasis,
+    prior: { n: Math.max(0, prior.n), basis: prior.basis },
+  };
 }
 
 /** Kinds every family places only when the proposal or the person asks for them. */

@@ -63,6 +63,7 @@ import { WorkspaceScreen } from './workspace/WorkspaceScreen';
 import { BuilderLayer } from './builder/BuilderLayer';
 import { DrawingsLayer } from './drawings/DrawingsLayer';
 import { ModellerLayer } from './modeller/ModellerLayer';
+import { EngineerLayer } from './engineer/EngineerLayer';
 import { Lightbox } from './issueCard/Lightbox';
 import { RemoveHost } from './shell/RemoveHost';
 import { SpotViewer } from './workspace/spot/SpotViewer';
@@ -449,6 +450,7 @@ export function App() {
       <BuilderLayer />
       <DrawingsLayer />
       <ModellerLayer />
+      <EngineerLayer />
       <Lightbox />
       <RemoveHost />
       <SpotViewer />

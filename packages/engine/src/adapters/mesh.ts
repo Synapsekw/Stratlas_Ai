@@ -12,9 +12,9 @@ import { DRACOLoader } from 'three/examples/jsm/loaders/DRACOLoader.js';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { MeshoptDecoder } from 'three/examples/jsm/libs/meshopt_decoder.module.js';
 import { engineConfig } from '../config';
-import type { LayerAdapter, LayerHandle, SceneHandle } from '../types';
+import type { ComponentInfo, LayerAdapter, LayerHandle, SceneHandle } from '../types';
 import { MASK_LAYER, maskTerrainMaterial, type GroundUniforms } from '../stage/groundShading';
-import { isMesh, layerMatrix, markNodes, mergeByMaterial } from './model';
+import { componentOf, isMesh, layerMatrix, markNodes, mergeByMaterial, nodeById } from './model';
 import { fitTextureSize } from './rasterMath';
 import { SharedAssets } from './shared';
 
@@ -23,6 +23,59 @@ interface StageHooks {
   setWaterLevel(level: number | null): void;
   invalidateShadows(): void;
   groundUniforms(): GroundUniforms;
+  /** Content under a highlight was shown or hidden: redraw the hover and selection overlays. */
+  refreshHighlight(): void;
+}
+
+/**
+ * Whether a GLB's `asset.extras` mark it as an engineering model (`aioEngineering`, written by
+ * the engineering model writer): its nodes are components, drawn and hidden one by one.
+ */
+export function isEngineeringAsset(assetExtras: unknown): boolean {
+  return (
+    typeof assetExtras === 'object' &&
+    assetExtras !== null &&
+    (assetExtras as { aioEngineering?: unknown }).aioEngineering === 1
+  );
+}
+
+const isEngineering = (root: Object3D): boolean => root.userData.aioEngineering === true;
+
+/** Whether a mesh belongs to a node of an engineering model (a component or a `/1` part). */
+const engineered = (mesh: Object3D, root: Object3D): boolean => {
+  for (let o: Object3D | null = mesh; o && o !== root; o = o.parent)
+    if (typeof o.userData.component === 'string' || typeof o.userData.part === 'string')
+      return true;
+  return false;
+};
+
+/**
+ * Per-node visibility and the component list of an engineering model's stage copy, or null for
+ * any other GLB. Its nodes are drawn unmerged (`buildTemplate`), so hiding a node hides its
+ * triangles, and the stage's picking skips hidden nodes.
+ */
+export function nodeControls(root: Object3D): {
+  /** True when the node exists (whether or not it changed). */
+  setNodeVisible(node: string, visible: boolean): boolean;
+  components(): ComponentInfo[];
+} | null {
+  if (!isEngineering(root)) return null;
+  return {
+    setNodeVisible(node, visible) {
+      const target = nodeById(root, node);
+      if (!target || target === root) return false;
+      target.visible = visible;
+      return true;
+    },
+    components() {
+      const out: ComponentInfo[] = [];
+      root.traverse((o) => {
+        const c = componentOf(o);
+        if (c) out.push(c);
+      });
+      return out;
+    },
+  };
 }
 const hooks = (s: SceneHandle): Partial<StageHooks> => s as Partial<StageHooks>;
 
@@ -83,7 +136,9 @@ export function buildTemplate(
   root: Object3D,
   transform: readonly number[],
   isNode: (o: Object3D) => boolean,
+  opts: { engineering?: boolean } = {},
 ): MeshTemplate {
+  if (opts.engineering) root.userData.aioEngineering = true;
   const group = new Group();
   group.matrixAutoUpdate = false;
   group.matrix.copy(layerMatrix(transform));
@@ -125,7 +180,12 @@ export function buildTemplate(
     if (mat.name === 'Zone_Line') mat.visible = false;
   }
 
-  const merged = mergeByMaterial(root, group);
+  // An engineering model's nodes stay separate draws so each hides on its own: the writer gives
+  // every node one mesh with one primitive per material, inside the triangle budget, so this is
+  // about one draw per component and material (a few hundred at most). Other content still merges.
+  const merged = isEngineering(root)
+    ? mergeByMaterial(root, group, (m) => engineered(m, root))
+    : mergeByMaterial(root, group);
   for (const m of merged) group.add(m);
   // what stands on land: the land mask that lets animated water show through photographed sea
   group.traverse((o) => {
@@ -189,6 +249,7 @@ async function loadTemplate(url: string, transform: readonly number[]): Promise<
     gltf.scene,
     transform,
     (o) => gltf.parser.associations.get(o)?.nodes !== undefined,
+    { engineering: isEngineeringAsset((gltf.asset as { extras?: unknown }).extras) },
   );
 }
 
@@ -276,7 +337,19 @@ export const meshAdapter: LayerAdapter<'mesh'> = {
     stage.requestRender();
 
     let disposed = false;
+    const nodes = nodeControls(root);
     const handle: LayerHandle = {
+      ...(nodes
+        ? {
+            setNodeVisible(node: string, visible: boolean) {
+              if (disposed || !nodes.setNodeVisible(node, visible)) return;
+              hooks(stage).refreshHighlight?.();
+              hooks(stage).invalidateShadows?.();
+              stage.requestRender();
+            },
+            components: () => nodes.components(),
+          }
+        : {}),
       setVisible(v) {
         if (group.visible === v) return;
         group.visible = v;

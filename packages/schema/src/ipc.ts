@@ -40,6 +40,8 @@ import { OrientationFile } from './orientation';
 import { ReleaseNotes, UpdateStatus } from './update';
 import { ChangeKind, ChangeSet, ChangeSetId, ChangeSetSummary, ChangeThresholds } from './change';
 import { ProcModel, ProcModelId, ProcModelSummary } from './procmodel';
+import { Detail, EngineerProposal, EngineerRun, EngineerSetup, RunId } from './engineer';
+import { EvidencePack } from './modelEvidence';
 import {
   DetectorModelId,
   DetectorModelInfo,
@@ -135,6 +137,40 @@ export const FailureCode = z.enum(['not-implemented', 'read-only', 'forbidden', 
 const Failure = z.object({ ok: z.literal(false), error: z.string(), code: FailureCode.optional() });
 const OkOrFailure = z.discriminatedUnion('ok', [z.object({ ok: z.literal(true) }), Failure]);
 const ProjectId = z.string().min(1);
+
+/** The checks of a written engineering GLB (`engineer:validate`; `@aio/modelling` `GlbReport`). */
+export const GlbCheckReport = z
+  .object({
+    validatorErrors: z.number().int().nonnegative(),
+    validatorWarnings: z.number().int().nonnegative(),
+    messages: z.array(z.string()).max(200),
+    finite: z.boolean(),
+    indicesValid: z.boolean(),
+    normalsUnit: z.boolean(),
+    degenerate: z.number().int().nonnegative(),
+    duplicateTris: z.number().int().nonnegative(),
+    unintendedHoles: z.array(z.object({ node: z.string(), loops: z.number().int() })).max(500),
+    intendedOpenOk: z.boolean(),
+    openingProblems: z.array(z.object({ node: z.string(), problem: z.string() })).max(500),
+    triangles: z.number().int().nonnegative(),
+    withinBudget: z.boolean(),
+  })
+  .strict();
+export type GlbCheckReport = z.infer<typeof GlbCheckReport>;
+
+/** How an engineering GLB was meshed: coarsened for the budget, or not built at all. */
+export const GlbBuildReport = z
+  .object({
+    triangles: z.number().int().nonnegative(),
+    overBudget: z.boolean(),
+    /** The coarsest detail level used. */
+    detail: Detail,
+    simplified: z.array(z.object({ id: z.string(), detail: Detail }).strict()),
+    failed: z.array(z.object({ id: z.string(), reason: z.string() }).strict()),
+    notes: z.array(z.string()),
+  })
+  .strict();
+export type GlbBuildReport = z.infer<typeof GlbBuildReport>;
 
 /** A detection pass file name in `<project>/detections/` (`review.json`, `ai-<run>.json`). */
 export const DetectionPassName = z
@@ -282,7 +318,103 @@ export const ModelRouteSchema = z.object({
   task: AiTask,
   provider: AiProvider,
   model: z.string().min(1),
+  /**
+   * "Treat as vision model" in Settings: the person vouches that this route's model reads images
+   * and returns structured output, so an unknown model may run the engineer step (with
+   * conservative limits). Absent means off.
+   */
+  treatAsVision: z.boolean().optional(),
 });
+
+/** One evidence image of an engineer request: a pack image id, never a path. */
+const EngineerImageKind = z.enum(['photo', 'side', 'top', 'slice', 'crop', 'generated']);
+const EngineerCallImage = z
+  .object({
+    id: z.string().regex(/^[A-Za-z0-9][A-Za-z0-9._-]{0,39}$/),
+    kind: EngineerImageKind,
+    dataUrl: z
+      .string()
+      .max(40_000_000)
+      .regex(/^data:image\/(?:png|jpeg|webp);base64,[A-Za-z0-9+/]+={0,2}$/),
+    bytes: z.number().int().nonnegative(),
+    view: z.string().max(40).optional(),
+  })
+  .strict();
+
+/** The engineer request of one pass of a run (`ai:engineerPreview`, `ai:engineer`). */
+const EngineerCallRequest = z
+  .object({
+    projectId: z.string().min(1),
+    /** The engineering run (`engineering/<run>/`): cache folder, cost cap and AI time. */
+    engineerRun: RunId,
+    pass: z.number().int().min(1).max(3),
+    images: z.array(EngineerCallImage).max(64),
+    /** The evidence pack's measurement summary (JSON text); main refuses one over 40 000. */
+    summary: z.string().max(200_000),
+    setup: EngineerSetup,
+    previous: EngineerProposal.optional(),
+  })
+  .strict();
+
+/** The send preview's content: exactly the request text and images. */
+const EvidencePreviewContent = z.object({
+  text: z.string(),
+  images: z.array(
+    z.object({
+      id: z.string(),
+      kind: EngineerImageKind,
+      label: z.string(),
+      thumb: z.string(),
+      bytes: z.number().int().nonnegative(),
+      width: z.number().int().positive(),
+      height: z.number().int().positive(),
+      resized: z.boolean(),
+    }),
+  ),
+  leftOut: z.array(z.string()),
+  bytes: z.number().int().nonnegative(),
+});
+
+/** The outcome of one engineer request. */
+const EngineerOutcomeSchema = z.discriminatedUnion('kind', [
+  z.object({
+    kind: z.literal('proposal'),
+    proposal: EngineerProposal,
+    cached: z.boolean(),
+    costUsd: z.number().nonnegative(),
+    identityConflict: z.literal(true).optional(),
+    stopped: z.literal('budget').optional(),
+    /** Tokens of the request (absent for a cached reply or when the provider does not say). */
+    usage: z
+      .object({
+        inputTokens: z.number().int().nonnegative(),
+        outputTokens: z.number().int().nonnegative(),
+      })
+      .strict()
+      .optional(),
+  }),
+  z.object({
+    kind: z.literal('refused'),
+    reason: z.string(),
+    code: z.enum([
+      'offline',
+      'policy',
+      'no-key',
+      'capability',
+      'budget',
+      'identity',
+      /** Another request of this engineering run is in flight. */
+      'busy',
+      /** The run's 10 minutes of AI time are used up. */
+      'time',
+    ]),
+  }),
+  z.object({
+    kind: z.literal('failed'),
+    error: z.string(),
+    code: z.enum(['invalid', 'rate-limit', 'network', 'provider', 'cancelled']),
+  }),
+]);
 
 /** Tokens and estimated cost for one provider. */
 export const ProviderUsage = z.object({
@@ -1864,7 +1996,15 @@ export const ipc = {
       .object({ projectId: ProjectId, id: ProcModelId, draft: z.boolean().optional() })
       .strict(),
     response: z.discriminatedUnion('ok', [
-      z.object({ ok: z.literal(true), layer: z.string(), glb: z.string() }),
+      z.object({
+        ok: z.literal(true),
+        layer: z.string(),
+        glb: z.string(),
+        /** Triangles written (engineering and parts models). */
+        triangles: z.number().int().nonnegative().optional(),
+        /** How an engineering GLB was meshed (absent for a parts-only model). */
+        report: GlbBuildReport.optional(),
+      }),
       Failure,
     ]),
   },
@@ -1872,6 +2012,179 @@ export const ipc = {
   'ai:setCloudDrawings': {
     request: z.object({ projectId: ProjectId, allow: z.boolean() }).strict(),
     response: OkOrFailure,
+  },
+
+  // ---------------------------------------------------------------- engineering model (S2)
+  /**
+   * Export an engineering model into `<folder>/<modelId>/`: `<id>.glb` (with
+   * `asset.extras.aioGeoref`), `<id>.procmodel.json`, `<id>.components.json` and
+   * `<id>.georeference.json`, written into a staging folder renamed when complete. Accepted
+   * components only. `files` are the absolute paths written; `report` says what was coarsened for
+   * the budget or could not be built.
+   */
+  'model:exportEngineering': {
+    request: z
+      .object({
+        projectId: ProjectId,
+        modelId: ProcModelId,
+        /** An absolute folder (a drive or UNC path on Windows, `/...` elsewhere). */
+        folder: z
+          .string()
+          .min(1)
+          .max(1000)
+          .regex(
+            /^(?:[A-Za-z]:[\\/]|\\\\[^\\/]|\/)/,
+            'The export folder must be an absolute path.',
+          ),
+        detail: Detail,
+        replace: z.boolean().optional(),
+      })
+      .strict(),
+    response: z.discriminatedUnion('ok', [
+      z.object({ ok: z.literal(true), files: z.array(z.string()), report: GlbBuildReport }),
+      Failure,
+    ]),
+  },
+  /**
+   * The files of an engineering run (`engineering/<run>/run.json`, `evidence.json`,
+   * `proposal.json`); null for each one not there (and for every one in a package, which leaves
+   * run files out). A file that is there but not valid is an error naming it.
+   */
+  'engineer:runRead': {
+    request: z.object({ projectId: ProjectId, runId: RunId }).strict(),
+    response: z.discriminatedUnion('ok', [
+      z.object({
+        ok: z.literal(true),
+        run: EngineerRun.nullable(),
+        evidence: EvidencePack.nullable(),
+        proposal: EngineerProposal.nullable(),
+      }),
+      Failure,
+    ]),
+  },
+  /** Write `engineering/<run.id>/run.json` atomically with a `.bak`; refused for packages. */
+  'engineer:runWrite': {
+    request: z
+      .object({
+        projectId: ProjectId,
+        run: EngineerRun,
+        /** Also write `engineering/<run.id>/proposal.json` (atomic, `.bak`) when given. */
+        proposal: EngineerProposal.optional(),
+      })
+      .strict(),
+    response: OkOrFailure,
+  },
+  /**
+   * Check a model's built GLB as written (`models/<id>.glb`, or the draft): the Khronos glTF
+   * validator in main, finite positions, index ranges, unit normals, degenerate and duplicate
+   * triangles, closed solids except declared openings, and the triangle budget of `detail`.
+   */
+  'engineer:validate': {
+    request: z
+      .object({ projectId: ProjectId, modelId: ProcModelId, draft: z.boolean(), detail: Detail })
+      .strict(),
+    response: z.discriminatedUnion('ok', [
+      z.object({ ok: z.literal(true), report: GlbCheckReport }),
+      Failure,
+    ]),
+  },
+  /**
+   * Accept an engineering model: build `models/<id>.glb`, check the written bytes (the Khronos
+   * validator, finite positions, index ranges; refused with the reasons when they fail, nothing
+   * changed), then its one layer `model-<id>` (the draft preview goes). The layer keeps a placement
+   * the person made (Place model); otherwise it takes the model's georeference, placed from it.
+   * Writes `models/<id>.georeference.json` and `models/<id>.components.json`. Idempotent:
+   * accepting again replaces that one layer. Refused for packages.
+   */
+  'engineer:accept': {
+    request: z.object({ projectId: ProjectId, modelId: ProcModelId }).strict(),
+    response: z.discriminatedUnion('ok', [
+      z.object({
+        ok: z.literal(true),
+        layer: z.string(),
+        files: z.array(z.string()),
+        report: GlbBuildReport.optional(),
+        /** The checks of the accepted GLB as written (the Khronos validator included). */
+        check: GlbCheckReport,
+      }),
+      Failure,
+    ]),
+  },
+  /**
+   * One evidence image of a run (listed in its `evidence.json`, under `engineering/<run>/img/`) as
+   * a data URL at most 1568 px on its long side, for the send preview. Never a cloud or a file
+   * outside the run's images.
+   */
+  'engineer:evidenceImage': {
+    request: z
+      .object({
+        projectId: ProjectId,
+        runId: RunId,
+        imageId: z.string().regex(/^img-[a-z0-9-]{1,40}$/),
+      })
+      .strict(),
+    response: z.discriminatedUnion('ok', [
+      z.object({ ok: z.literal(true), dataUrl: z.string() }),
+      Failure,
+    ]),
+  },
+  /**
+   * Set the project policies `aiCloudPhotos` and `aiCloudScans` (manifest, backed up; false
+   * removes the flag, so absent means off); refused for packages.
+   */
+  'ai:setCloudEvidence': {
+    request: z
+      .object({
+        projectId: ProjectId,
+        photos: z.boolean().optional(),
+        scans: z.boolean().optional(),
+      })
+      .strict()
+      .refine((r) => r.photos !== undefined || r.scans !== undefined, {
+        message: 'Give photos or scans',
+      }),
+    response: OkOrFailure,
+  },
+  /**
+   * What the engineer step would send for this request, built in main by the same function as
+   * the request (images cut to the model's limit, downscaled, metadata stripped; the request
+   * text), with the route, the project's photo and scan consents read from disk, the cost
+   * estimate (absent when the model has no price) and a one-time consent token for exactly this
+   * content. Nothing is sent and no key is read.
+   */
+  'ai:engineerPreview': {
+    request: EngineerCallRequest,
+    response: z.discriminatedUnion('ok', [
+      z.object({
+        ok: z.literal(true),
+        route: ModelRouteSchema,
+        cloud: z.boolean(),
+        flags: z.object({ photos: z.boolean(), scans: z.boolean() }),
+        estimateUsd: z.number().nonnegative().optional(),
+        content: EvidencePreviewContent,
+        /** Valid once, for this project and this content, for a few minutes. */
+        consent: z.string().max(100),
+      }),
+      Failure,
+    ]),
+  },
+  /**
+   * One engineer request (structured, cached, budgeted). Gates in main: offline-only, the model's
+   * capabilities, the project policy, the photo and scan consents re-read from the manifest (a
+   * one-time consent counts only with a token from `ai:engineerPreview` for the same content),
+   * key, cache, the run's cost cap and its 10 minute AI time, one request in flight per run.
+   * `runId` is the IPC run, cancelled with `ai:cancel`; usage goes out as `ai:event` usage.
+   */
+  'ai:engineer': {
+    request: EngineerCallRequest.extend({
+      runId: z.string().min(1).max(100),
+      costConfirmed: z.boolean().optional(),
+      consent: z
+        .object({ token: z.string().max(100), photos: z.boolean(), scans: z.boolean() })
+        .strict()
+        .optional(),
+    }).strict(),
+    response: EngineerOutcomeSchema,
   },
 
   // ---------------------------------------------------------------- M8 local detection (C6)

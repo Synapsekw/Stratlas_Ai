@@ -538,6 +538,19 @@
 .b-align .say.bad {
   color: var(--s5);
 }
+/* Place model: the number fields, two to a row (offsets, heading and tilts, scale) */
+.b-align .b-place-fields {
+  grid-template-columns: 1fr 1fr;
+  column-gap: 10px;
+}
+.b-place-fields label {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+.b-place-fields .input {
+  width: 100%;
+}
 .b-pairs {
   width: 100%;
   border-collapse: collapse;

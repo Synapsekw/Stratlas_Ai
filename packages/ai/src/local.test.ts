@@ -466,6 +466,15 @@ describe('route capability checks', () => {
     );
   });
 
+  it('needs vision for the engineer step', () => {
+    expect(localGate({ ...base, capabilities: { tools: true, vision: false } }, 'engineer')).toBe(
+      'no-vision',
+    );
+    expect(localGate({ ...base, capabilities: { tools: false, vision: true } }, 'engineer')).toBe(
+      null,
+    );
+  });
+
   it('trusts a model that was never tested', () => {
     expect(localGate(base, 'chat')).toBe(null);
     expect(localGate(base, 'vision')).toBe(null);
