@@ -24,6 +24,8 @@ export interface AioRoots {
   thumbsDir?(): string;
   /** userData folder of the report logo (`aio://branding/<file>`). */
   brandingDir?(): string;
+  /** userData folder of per-computer library covers (`aio://cover/<sha256>.jpg`). */
+  coversDir?(): string;
   /** A map pack carried inside an open package (`packs/<id>.pmtiles`), served in place. */
   embeddedPack?(id: string): { archive: ZipArchive; member: string } | undefined;
   /** An imagery or terrain pack carried inside an open package, served in place. */
@@ -44,6 +46,7 @@ export interface AioRoots {
 }
 
 const PACK = /^([a-z0-9-]+)\.pmtiles$/;
+const COVER = /^[0-9a-f]{64}\.jpg$/;
 
 // Only the app itself can reach aio://, so a wildcard origin is safe and lets loaders that set
 // crossOrigin (three.js, MapLibre, <video crossorigin>) read the bytes from the file:// page.
@@ -173,6 +176,7 @@ export async function serveMember(
  *   an open package (`roots.embeddedPack`).
  * - `aio://thumb/<id>/<path>` serves a small thumbnail of a project image, or 404 (thumbs.ts).
  * - `aio://branding/<logo>` serves the person's report logo from userData.
+ * - `aio://cover/<sha256>.jpg` serves a per-computer library cover from userData `covers/`.
  * - `aio://online/<id>/<z>/<x>/<y>.jpg` serves an online satellite tile when the person switched
  *   that on (`roots.onlineTile`: the gate, the one host and the cache live in `onlineTiles.ts`).
  */
@@ -234,6 +238,14 @@ export function createAioHandler(roots: AioRoots): (req: Request) => Promise<Res
       if (name === undefined || rest.length > 0 || !LOGO_NAME.test(name) || dir === undefined)
         return status(404);
       return serveFile(join(dir, name), req, KEEP);
+    }
+
+    if (url.host === 'cover') {
+      // no KEEP: the URL carries `?v=<mtime>`, and a changed cover must show at once
+      const [name, ...rest] = segments;
+      const dir = roots.coversDir?.();
+      if (!name || rest.length > 0 || !COVER.test(name) || dir === undefined) return status(404);
+      return serveFile(join(dir, name), req);
     }
 
     if (url.host === 'online') {

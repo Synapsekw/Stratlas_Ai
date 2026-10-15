@@ -7,6 +7,7 @@ import {
   demoLibraryPaths,
   demoOpenPath,
   demoProjectPaths,
+  demoWorkingCopy,
   findDemos,
   markDemoEntries,
 } from './demo';
@@ -55,6 +56,21 @@ describe('demoProjectPaths', () => {
       }),
     ).toEqual([join(base, 'x', 'site')]);
     expect(await demoProjectPaths({ env: {}, packaged: false, resourcesPath: base })).toEqual([]);
+  });
+});
+
+describe('demoWorkingCopy', () => {
+  it('names the working copy of a demo when it holds a manifest, else null', async () => {
+    const copies = join(base, 'user', 'demo');
+    const bundled = join(base, 'resources', 'demo', 'demo-site');
+    expect(await demoWorkingCopy(bundled, copies)).toBeNull();
+    await project(join(copies, 'demo-site'));
+    expect(await demoWorkingCopy(bundled, copies)).toBe(join(copies, 'demo-site'));
+    expect(await demoWorkingCopy(join(copies, 'demo-site'), copies)).toBe(
+      join(copies, 'demo-site'),
+    );
+    await mkdir(join(copies, 'demo-road'), { recursive: true });
+    expect(await demoWorkingCopy(join(base, 'resources', 'demo', 'demo-road'), copies)).toBeNull();
   });
 });
 

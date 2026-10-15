@@ -294,14 +294,22 @@ describe('library action channels', () => {
         reveal,
         renamed,
         trash,
+        view: { hide: () => Promise.resolve(), forget: () => Promise.resolve() },
+        store: { paths: () => Promise.resolve([]), remove: () => Promise.resolve() },
+        guardRoots: () => [],
         ...over,
       });
     });
     return { registry, ipc, reveal, renamed, trash };
   }
 
-  it('registers the three channels', () => {
-    expect(setup().ipc.channels()).toEqual(['library:delete', 'library:rename', 'library:reveal']);
+  it('registers the four channels', () => {
+    expect(setup().ipc.channels()).toEqual([
+      'library:delete',
+      'library:remove',
+      'library:rename',
+      'library:reveal',
+    ]);
   });
 
   it('renames a project by its library id and says so to main', async () => {

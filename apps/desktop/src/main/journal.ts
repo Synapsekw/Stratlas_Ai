@@ -270,6 +270,9 @@ const READS: ReadonlySet<IpcChannel> = new Set<IpcChannel>([
   'blobs:status',
   'thumbs:put',
   'library:reveal',
+  // they write userData only (library.json, library-view.json), never the project
+  'library:remove',
+  'library:move',
   // a removal's plan and the trash size only read; the removal itself waits like any writer
   'builder:removePlan',
   'builder:trash',

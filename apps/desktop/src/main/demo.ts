@@ -1,6 +1,6 @@
 import type { LibraryEntry } from '@aio/schema';
 import { cp, readdir, readFile, rename, rm, stat } from 'node:fs/promises';
-import { join, relative, resolve, sep } from 'node:path';
+import { basename, join, relative, resolve, sep } from 'node:path';
 import { z } from 'zod';
 import { readJson, writeJsonAtomic } from './fsutil';
 
@@ -107,6 +107,17 @@ async function currentCopy(
   const id = project.split(sep).pop() ?? '';
   const dir = join(copyRoot, id);
   if ((await copies(copyRoot))[id] !== demos.build) return null;
+  return (await isFile(join(dir, 'manifest.json'))) ? dir : null;
+}
+
+/**
+ * The working copy in `copyRoot` of the demo at `path` (bundled or the copy itself) when it holds a
+ * `manifest.json`, whichever build made it; else null. Used to delete a demo's copy.
+ */
+export async function demoWorkingCopy(path: string, copyRoot: string): Promise<string | null> {
+  const id = basename(resolve(path));
+  if (id === '') return null;
+  const dir = join(copyRoot, id);
   return (await isFile(join(dir, 'manifest.json'))) ? dir : null;
 }
 

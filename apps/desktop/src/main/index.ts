@@ -15,6 +15,7 @@ import {
   type IpcChannel,
   type IpcEvent,
   type IpcRequest,
+  type LibraryEntry,
   type ReportBrandingSettings,
   type Settings,
 } from '@aio/schema';
@@ -32,13 +33,22 @@ import {
   shell,
 } from 'electron';
 import { existsSync } from 'node:fs';
+import { rm } from 'node:fs/promises';
 import { arch, release, totalmem, userInfo } from 'node:os';
 import { join } from 'node:path';
 import licenses from 'virtual:licenses';
 import releaseNotes from 'virtual:release-notes';
 import { createAiProjectStore, readAiPolicy } from './aiProjects';
 import { listConversations, loadConversation, saveConversation } from './conversations';
-import { demoLibraryPaths, demoOpenPath, demoRoot, findDemos, markDemoEntries } from './demo';
+import { coverFile, coverStamp, registerCoverIpc } from './covers';
+import {
+  demoLibraryPaths,
+  demoOpenPath,
+  demoRoot,
+  demoWorkingCopy,
+  findDemos,
+  markDemoEntries,
+} from './demo';
 import { createExportJobs } from './exports/jobs';
 import { printReport } from './exports/reportWindow';
 import { hasSurveyMeasurements, surveyRunIds, surveySurfaceIds } from './exports/survey';
@@ -176,6 +186,12 @@ import { createKeyVault } from './keys';
 import { createClassLibraryStore } from './classLibrary';
 import { addToLibrary, createLibraryStore, listLibrary } from './library';
 import { registerLibraryActionsIpc, samePath } from './libraryActions';
+import {
+  applyLibraryView,
+  createLibraryViewStore,
+  libraryKey,
+  registerLibraryFoldersIpc,
+} from './libraryView';
 import {
   PACKAGE_REFUSAL,
   emptyTrashAnswer,
@@ -334,6 +350,33 @@ const bundledDemos = () =>
   findDemos(
     demoRoot({ env: process.env, packaged: app.isPackaged, resourcesPath: process.resourcesPath }),
   );
+/** Is this path one of the demo projects that ship with the app (or its working copy)? */
+const isDemoPath = async (path: string): Promise<boolean> => {
+  const demos = await bundledDemos();
+  const known = [
+    ...(demos?.projects ?? []),
+    ...(await demoLibraryPaths(demos, demoCopyRoot())).map((d) => d.path),
+  ];
+  return known.some((p) => samePath(p, path));
+};
+/** Hidden cards, library folders and placements on this computer (libraryView.ts). */
+const libraryView = createLibraryViewStore(join(app.getPath('userData'), 'library-view.json'));
+/** Per-computer library covers (covers.ts, `aio://cover/<hash>.jpg`). */
+const coversDir = () => join(app.getPath('userData'), 'covers');
+/** The library as this computer shows it: hidden cards out, folders and custom covers in. */
+const listView = async (entries: LibraryEntry[]): Promise<LibraryEntry[]> =>
+  applyLibraryView(entries, (await libraryView.read()).view, (key) => coverStamp(coversDir(), key));
+/** Every library entry with its demo marks, before the view is applied. */
+const libraryEntries = async (): Promise<LibraryEntry[]> => {
+  const { dataRoot } = await settings.get();
+  const demos = await demoLibraryPaths(await bundledDemos(), demoCopyRoot());
+  const entries = await listLibrary({
+    dataRoot,
+    extraPaths: [...(await library.paths()), ...demos.map((d) => d.path)],
+    registry,
+  });
+  return markDemoEntries(entries, demos);
+};
 /** Thumbnails the renderer generated for project images without their own (Media). */
 const thumbsDir = () => join(app.getPath('userData'), 'cache', 'thumbs');
 /** M9 T6: binaries by content (`blobs:*`, and files this computer lacks on `aio://`). */
@@ -809,16 +852,7 @@ function registerIpc(): void {
     return { ok: src ? await putThumb(src, path, data, thumbsDir()) : false };
   });
 
-  handle('library:list', async () => {
-    const { dataRoot } = await settings.get();
-    const demos = await demoLibraryPaths(await bundledDemos(), demoCopyRoot());
-    const entries = await listLibrary({
-      dataRoot,
-      extraPaths: [...(await library.paths()), ...demos.map((d) => d.path)],
-      registry,
-    });
-    return markDemoEntries(entries, demos);
-  });
+  handle('library:list', async () => listView(await libraryEntries()));
   handle('app:setupStatus', async () => {
     const { dataRoot } = await settings.get();
     const [installed, found] = await Promise.all([
@@ -839,7 +873,15 @@ function registerIpc(): void {
       },
     };
   });
-  handle('library:add', ({ path }) => addToLibrary(path, library, registry));
+  handle('library:add', async ({ path }) => {
+    const r = await addToLibrary(path, library, registry);
+    // adding a removed card again brings it back
+    if (r.ok)
+      await libraryView
+        .unhide(libraryKey(r.entry.path, await isDemoPath(r.entry.path)))
+        .catch(() => undefined);
+    return r;
+  });
   handle('classLibrary:list', () => classLibrary.list());
   handle('classLibrary:save', async ({ cls }) => {
     try {
@@ -855,18 +897,28 @@ function registerIpc(): void {
       return { ok: false as const, error: e instanceof Error ? e.message : String(e) };
     }
   });
-  // the menu of one project on the Projects screen: show in folder, rename, move to the recycle bin
+  // library folders (one level) and covers kept on this computer
+  registerLibraryFoldersIpc({ handle, view: libraryView, projects: registry, isDemo: isDemoPath });
+  registerCoverIpc({ handle, projects: registry, isDemo: isDemoPath, coversDir });
+  // the menu of one project on the Projects screen: show in folder, rename, remove, delete
   registerLibraryActionsIpc({
     handle,
     projects: registry,
     dataRoot: () => settings.current().dataRoot,
-    isDemo: async (path) => {
-      const demos = await bundledDemos();
-      const known = [
-        ...(demos?.projects ?? []),
-        ...(await demoLibraryPaths(demos, demoCopyRoot())).map((d) => d.path),
-      ];
-      return known.some((p) => samePath(p, path));
+    isDemo: isDemoPath,
+    view: libraryView,
+    store: library,
+    demoCopy: async (path) =>
+      (await isDemoPath(path)) ? demoWorkingCopy(path, demoCopyRoot()) : undefined,
+    guardRoots: () => [
+      app.getPath('userData'),
+      app.getPath('home'),
+      app.getAppPath(),
+      process.resourcesPath,
+    ],
+    dropCover: (key) => rm(coverFile(coversDir(), key), { force: true }),
+    forgetPackage: (id) => {
+      registry.forgetPackage(id);
     },
     jobRunningIn: (root) =>
       jobStore.all().some((j) => jobs.isRunning(j.id) && samePath(j.project, root)),
@@ -891,7 +943,10 @@ function registerIpc(): void {
       policy.opened(r.id);
       projectNames.set(r.id, r.manifest.name);
       // Packages opened by double-click or File > Open stay in the library.
-      if (r.package) await library.add(r.package.file).catch(() => undefined);
+      if (r.package) {
+        await library.add(r.package.file).catch(() => undefined);
+        await libraryView.unhide(libraryKey(r.package.file, false)).catch(() => undefined);
+      }
     }
     return r;
   });
@@ -1671,12 +1726,8 @@ function registerIpc(): void {
   });
   registerGlobeIpc({
     handle,
-    library: async () => {
-      const { dataRoot } = await settings.get();
-      const demos = await demoLibraryPaths(await bundledDemos(), demoCopyRoot());
-      const extraPaths = [...(await library.paths()), ...demos.map((d) => d.path)];
-      return listLibrary({ dataRoot, extraPaths, registry });
-    },
+    // the library as the Projects screen shows it, so a removed card leaves the globe too
+    library: async () => listView(await libraryEntries()),
     readProject: globeProjectReader(registry),
     dataRoot: async () => (await settings.get()).dataRoot,
     settingsFile: join(app.getPath('userData'), 'globe.json'),
@@ -2009,6 +2060,7 @@ if (restore) {
         packsDir: () => join(settings.current().dataRoot, 'packs'),
         thumbsDir,
         brandingDir,
+        coversDir,
         embeddedPack: (id) => findEmbedded(id, registry.openPackages()),
         embeddedRaster: (kind, id) => findEmbeddedRaster(kind, id, registry.openPackages()),
         blob: (id, rel) => blobs.lookup(id, rel),

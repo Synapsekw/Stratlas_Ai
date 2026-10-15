@@ -4,6 +4,7 @@ import { openPackage, openZip } from '@aio/project/package';
 import {
   MapPackInfo,
   PACKAGE_EXTENSION,
+  projectPurpose,
   type IpcResponse,
   type LibraryEntry,
   type ProjectManifest,
@@ -19,6 +20,8 @@ import { readManifest, type ProjectRegistry } from './project';
 export interface LibraryStore {
   paths(): Promise<string[]>;
   add(path: string): Promise<void>;
+  /** Forget an added path (case ignored on Windows); nothing on disk changes. */
+  remove(path: string): Promise<void>;
 }
 
 /**
@@ -60,6 +63,13 @@ export function createLibraryStore(file: string): LibraryStore {
         schema: LIBRARY_SCHEMA,
         paths: [...current.paths, resolve(path)],
       });
+    },
+    async remove(path) {
+      const current = await load();
+      if (current.newer) throw new Error(current.newer);
+      const paths = current.paths.filter((p) => sameKey(p) !== sameKey(path));
+      if (paths.length === current.paths.length) return;
+      await writeJsonAtomic(file, { schema: LIBRARY_SCHEMA, paths });
     },
   };
 }
@@ -172,7 +182,25 @@ function summarise(m: ProjectManifest, entry: LibraryEntry): LibraryEntry {
   if (m.customer !== undefined) out.customer = m.customer;
   if (m.site !== undefined) out.site = m.site;
   if (captureDate !== undefined) out.captureDate = captureDate;
+  const purpose = projectPurpose(m);
+  if (purpose !== undefined) out.purpose = purpose;
   return out;
+}
+
+/** `?v=<mtime>` so a changed picture gets a new URL (the renderer caches by URL). */
+const stamp = (mtimeMs: number) => `?v=${String(Math.round(mtimeMs))}`;
+
+async function mtimeOf(p: string): Promise<number | null> {
+  try {
+    return (await stat(p)).mtimeMs;
+  } catch {
+    return null;
+  }
+}
+
+/** A package's thumbnail URL, stamped with the package file's mtime (a re-export changes it). */
+async function packageThumbnail(id: string, file: string): Promise<string> {
+  return `aio://project/${id}/thumbnail.jpg${stamp((await mtimeOf(file)) ?? 0)}`;
 }
 
 /**
@@ -204,7 +232,7 @@ async function buildPackageEntry(file: string, registry: ProjectRegistry): Promi
         package: { encrypted: true, readOnly: unlocked.header.readOnly },
       });
       if (unlocked.archive.entries.has('thumbnail.jpg')) {
-        entry.thumbnail = `aio://project/${id}/thumbnail.jpg`;
+        entry.thumbnail = await packageThumbnail(id, file);
       }
       return { ok: true, entry };
     }
@@ -232,7 +260,7 @@ async function buildPackageEntry(file: string, registry: ProjectRegistry): Promi
     sizeBytes,
     package: { encrypted: false, readOnly: header.readOnly },
   });
-  if (archive.entries.has('thumbnail.jpg')) entry.thumbnail = `aio://project/${id}/thumbnail.jpg`;
+  if (archive.entries.has('thumbnail.jpg')) entry.thumbnail = await packageThumbnail(id, file);
   return { ok: true, entry };
 }
 
@@ -262,9 +290,8 @@ async function buildEntry(dir: string, registry: ProjectRegistry): Promise<Built
     kind: 'native',
     sizeBytes: await folderSize(dir),
   });
-  if (await exists(join(dir, 'thumbnail.jpg'))) {
-    entry.thumbnail = `aio://project/${id}/thumbnail.jpg`;
-  }
+  const thumbTime = await mtimeOf(join(dir, 'thumbnail.jpg'));
+  if (thumbTime !== null) entry.thumbnail = `aio://project/${id}/thumbnail.jpg${stamp(thumbTime)}`;
   return { ok: true, entry };
 }
 

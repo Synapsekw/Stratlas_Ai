@@ -235,7 +235,7 @@ describe('library entries for packages', () => {
       kind: 'native',
       package: { encrypted: false, readOnly: true },
     });
-    expect(plain?.thumbnail).toMatch(/^aio:\/\/project\/.+\/thumbnail\.jpg$/);
+    expect(plain?.thumbnail).toMatch(/^aio:\/\/project\/.+\/thumbnail\.jpg\?v=\d+$/);
     const enc = entries.find((e) => e.path === locked);
     expect(enc).toMatchObject({ name: 'Customer copy', package: { encrypted: true } });
     expect(enc?.sizeBytes).toBeGreaterThan(0);
@@ -255,7 +255,7 @@ describe('library entries for packages', () => {
       customer: 'KIPIC',
       package: { encrypted: true, readOnly: true },
     });
-    expect(entry?.thumbnail).toMatch(/thumbnail\.jpg$/);
+    expect(entry?.thumbnail).toMatch(/thumbnail\.jpg\?v=\d+$/);
   });
 });
 

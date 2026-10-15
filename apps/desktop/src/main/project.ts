@@ -95,6 +95,11 @@ export class ProjectRegistry {
     return this.packages.get(id);
   }
 
+  /** Drop the opened package of an id (after it left the library); the id stays known. */
+  forgetPackage(id: string): void {
+    this.packages.delete(id);
+  }
+
   /** Where an id points on disk: a project folder or a `.aio` file (opened or still locked). */
   path(id: string): string | undefined {
     return this.byId.get(id);

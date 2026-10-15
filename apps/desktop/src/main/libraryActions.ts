@@ -15,7 +15,9 @@ import { PACKAGE_EXTENSION, parseManifest, type IpcResponse } from '@aio/schema'
 import { lstat, realpath, stat } from 'node:fs/promises';
 import { basename, dirname, join, resolve } from 'node:path';
 import { readJson, writeJsonAtomic } from './fsutil';
-import type { Handle } from './notYet';
+import type { LibraryStore } from './library';
+import type { LibraryViewStore } from './libraryView';
+import { notYet, type Handle } from './notYet';
 import { assertWritable } from './realDataGuard';
 
 /**
@@ -177,6 +179,18 @@ export interface LibraryActionsDeps {
   trash: DeleteDeps['trash'];
   release?: DeleteDeps['release'];
   forget?: DeleteDeps['forget'];
+  /** Cards this computer hides, and what it forgets of a deleted one. */
+  view: Pick<LibraryViewStore, 'hide' | 'forget'>;
+  /** Folders and packages added to the library (userData `library.json`). */
+  store: Pick<LibraryStore, 'paths' | 'remove'>;
+  /** Working copy of a demo entry (userData demo/<id>) or null when none; undefined: not a demo. */
+  demoCopy?: (path: string) => Promise<string | null | undefined>;
+  /** Folders never deleted, nor any folder holding one: userData, home, app, resources. */
+  guardRoots: () => string[];
+  /** Drop the per-computer cover of a library key. */
+  dropCover?: (key: string) => Promise<void>;
+  /** Drop the opened package of a library id. */
+  forgetPackage?: (projectId: string) => void;
 }
 
 const isPackagePath = (p: string) => p.toLowerCase().endsWith(PACKAGE_EXTENSION);
@@ -215,6 +229,8 @@ export function registerLibraryActionsIpc(deps: LibraryActionsDeps): void {
     if (r.ok) deps.renamed?.(projectId, r.name);
     return r;
   });
+
+  handle('library:remove', () => notYet('Remove from library'));
 
   handle('library:delete', async ({ projectId }) => {
     const m = await managed(projectId, 'deleted');
