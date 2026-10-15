@@ -1,3 +1,4 @@
+import { DETAIL_BUDGETS } from '@aio/schema';
 import { describe, expect, it } from 'vitest';
 import type { Prim } from '../geom';
 import {
@@ -132,17 +133,46 @@ describe('shaft', () => {
     expect(() => sinkFor(m, 'shaft-1')).toThrow(/^geometry: /);
   });
 
-  it('joints are 1 cm proud rings at each spacing, in their own material', () => {
+  it('an open-top shaft without a wall is refused, not silently capped', () => {
+    const m = model([shaft('shaft-1', taper, { openTop: true })]);
+    expect(() => sinkFor(m, 'shaft-1')).toThrow(
+      /^geometry: an open-top shaft needs a wall thickness$/,
+    );
+  });
+
+  it('joints are proud rings at each spacing, in their own material', () => {
     const m = model([shaft('shaft-1', taper, { joints: { spacing: 10 } })]);
     const prims = sinkFor(m, 'shaft-1').out();
     expect(prims.map((p) => p.material).sort()).toEqual(['concrete-grey', 'joint']);
     const j = prim(prims, 'joint');
     expect(countComponents(j)).toBe(9); // 10, 20, ... 90; none at the base or the top
     expect(closedAndWound(j)).toBe(true);
+    expect(normalsAgree(j)).toBe(true);
     expect(normalsUnit(j)).toBe(true);
     expect(degenerateTriangles(j)).toBe(0);
-    const r = ringRadiiAt(j, [30]);
-    expect(must(r[0]) - ctxFor(m).radiusAt('shaft-1', 30)).toBeCloseTo(0.01, 9);
+    const shaftR = ctxFor(m).radiusAt('shaft-1', 30);
+    // the ring's ridge at y 30: proud at its corners and still proud midway between them
+    const ridge: number[] = [];
+    for (let i = 0; i < j.positions.length / 3; i++)
+      if (Math.abs((j.positions[3 * i + 1] ?? 0) - 30) < 1e-9)
+        ridge.push(Math.hypot(j.positions[3 * i] ?? 0, j.positions[3 * i + 2] ?? 0));
+    const corner = Math.max(...ridge);
+    const corners = new Set(ridge.filter((r) => r > shaftR).map((r) => r.toFixed(6))).size;
+    expect(corners).toBe(1); // one ridge radius
+    const sides = j.positions.length / 3 / 9 / 3 / 2; // 3 strips of 2 rings per joint ring
+    expect(corner * Math.cos(Math.PI / sides) - shaftR).toBeGreaterThanOrEqual(0.004);
+    expect(must(ringRadiiAt(j, [30])[0]) - shaftR).toBeLessThan(0.05);
+  });
+
+  it('100 joint rings at standard stay under 5 percent of the standard triangle budget', () => {
+    const tall = [
+      { y: 0, r: 10 },
+      { y: 101, r: 6 },
+    ];
+    const m = model([shaft('shaft-1', tall, { joints: { spacing: 1 } })]);
+    const j = prim(sinkFor(m, 'shaft-1', 'standard').out(), 'joint');
+    expect(countComponents(j)).toBe(100);
+    expect(j.indices.length / 3).toBeLessThan(0.05 * DETAIL_BUDGETS.standard.triangles);
   });
 
   it('a shaft on a tilted axis is still a closed solid', () => {
@@ -327,6 +357,11 @@ describe('flare tip', () => {
     const lining = prim(prims, 'refractory');
     expectSolid(lining);
     expect(lining.openings).toHaveLength(1);
+    // the lining stands just clear of the body's bore face, never on it
+    const boreFace = 0.9 * 0.6;
+    const liningOuter = must(ringRadiiAt(lining, [82.5])[0]);
+    expect(liningOuter).toBeLessThan(boreFace - 5e-4);
+    expect(liningOuter).toBeGreaterThan(boreFace - 2e-3);
     // the windshield is a single sheet (a doubleSided material): one boundary loop round it
     const shield = prim(prims, 'steel-sheet');
     expect(boundaryLoops(shield)).toHaveLength(1);

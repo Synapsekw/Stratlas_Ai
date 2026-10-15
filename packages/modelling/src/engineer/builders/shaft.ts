@@ -20,8 +20,10 @@ import {
 /** How far a band stands proud of the shaft, and how far its inner face sinks into it. */
 const BAND_PROUD = 0.01;
 const BAND_SINK = 0.002;
-/** Tube radius of a joint ring: it stands 1 cm proud of the shaft surface. */
-const JOINT_R = 0.01;
+/** Joint ring: at least this proud of the shaft, this deep inside it, this half-width up its axis. */
+const JOINT_PROUD = 0.005;
+const JOINT_SINK = 0.005;
+const JOINT_HALF_WIDTH = 0.025;
 const MAX_JOINTS = 2000;
 
 function fail(what: string): never {
@@ -61,6 +63,8 @@ export function buildShaft(sink: MeshSink, a: AssemblyOf<'shaft'>, ctx: BuildCtx
   const prof = p.profile;
   const [bottom, top] = ends(prof, 'shaft profile');
   const at = (h: number): V3 => add(p.base, scale(axis, h));
+  // the schema refuses this too; a solid shaft has no bore to leave open
+  if (p.openTop && p.wall === undefined) fail('an open-top shaft needs a wall thickness');
   if (p.wall === undefined) {
     sink.frustumShell(m, { base: p.base, axis, profile: prof, capBottom: true, capTop: true });
   } else {
@@ -96,11 +100,46 @@ export function buildShaft(sink: MeshSink, a: AssemblyOf<'shaft'>, ctx: BuildCtx
     const spacing = p.joints.spacing;
     const count = Math.ceil((top.y - bottom.y) / spacing);
     if (count > MAX_JOINTS) fail(`shaft joints are too close (over ${String(MAX_JOINTS)} rings)`);
-    for (let k = 1; bottom.y + k * spacing < top.y - 1e-9; k++) {
-      const h = bottom.y + k * spacing;
-      sink.torus('joint', { centre: at(h), axis, R: profileRadiusAt(prof, h), r: JOINT_R });
-    }
+    const n = sink.segmentsFor(Math.max(...prof.map((q) => q.r)));
+    for (let k = 1; bottom.y + k * spacing < top.y - 1e-9; k++)
+      jointRing(sink, { base: p.base, axis, prof, h: bottom.y + k * spacing, n });
   }
+}
+
+/**
+ * A cheap joint ring: a closed ring of triangular section (a ridge `JOINT_PROUD` proud of the
+ * shaft and a flat inner face sunk into it), `n / 3` sides, so 2 n triangles a ring at most (a
+ * torus would be about 16 times that). The ridge corners sit out far enough that the ring stays
+ * proud midway between them; the inner face stays inside the shaft's own `n`-sided surface.
+ */
+function jointRing(
+  sink: MeshSink,
+  o: { base: V3; axis: V3; prof: { y: number; r: number }[]; h: number; n: number },
+): void {
+  const sides = Math.max(12, Math.ceil(o.n / 3));
+  const lo = o.h - JOINT_HALF_WIDTH;
+  const hi = o.h + JOINT_HALF_WIDTH;
+  const rs = [lo, o.h, hi].map((h) => profileRadiusAt(o.prof, h));
+  const ridge = (Math.max(...rs) + JOINT_PROUD) / Math.cos(Math.PI / sides);
+  const inner = Math.min(...rs) * Math.cos(Math.PI / o.n) - JOINT_SINK;
+  if (!(inner > 0)) fail('shaft is too thin for joint rings');
+  const shell = { base: o.base, axis: o.axis, capBottom: false, capTop: false, segments: sides };
+  sink.frustumShell('joint', {
+    ...shell,
+    profile: [
+      { y: lo, r: inner },
+      { y: o.h, r: ridge },
+      { y: hi, r: inner },
+    ],
+  });
+  sink.frustumShell('joint', {
+    ...shell,
+    profile: [
+      { y: lo, r: inner },
+      { y: hi, r: inner },
+    ],
+    inward: true,
+  });
 }
 
 export function buildBand(sink: MeshSink, a: AssemblyOf<'band'>, ctx: BuildCtx): void {
@@ -179,7 +218,7 @@ export function buildFlareTip(sink: MeshSink, a: AssemblyOf<'flareTip'>, ctx: Bu
   sink.annulusTube('refractory', {
     centre: t.base,
     axis: up,
-    rOuter: bore,
+    rOuter: bore - 1e-3, // just clear of the body's bore face, so the two never coincide
     rInner: 0.78 * t.r,
     y0: 0.6 * t.height,
     y1: t.height,

@@ -87,6 +87,7 @@ const shaft = (id: string, parent?: string) => ({
       { y: 0, r: 10 },
       { y: 100, r: 7 },
     ],
+    wall: 0.4,
     openTop: true,
   },
 });

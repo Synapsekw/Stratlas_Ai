@@ -96,7 +96,11 @@ export const AssemblyParamsByKind = {
       openTop: z.boolean(),
       joints: z.object({ spacing: L }).strict().optional(),
     })
-    .strict(),
+    .strict()
+    .refine((s) => !s.openTop || s.wall !== undefined, {
+      message: 'An open-top shaft needs a wall thickness.',
+      path: ['wall'],
+    }),
   band: z
     .object({ shaft: z.string().min(1).max(80), y0: Y, y1: Y, material: z.string().max(40) })
     .strict()

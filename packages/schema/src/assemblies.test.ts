@@ -24,10 +24,30 @@ describe('Assembly', () => {
           { y: 0, r: 10 },
           { y: 100, r: 7 },
         ],
+        wall: 0.4,
         openTop: true,
       },
     });
     expect(r.success).toBe(true);
+  });
+  it('refuses an open-top shaft without a wall thickness', () => {
+    const params = {
+      base: [0, 0, 0],
+      profile: [
+        { y: 0, r: 10 },
+        { y: 100, r: 7 },
+      ],
+      openTop: true,
+    };
+    const r = Assembly.safeParse({ ...base, id: 'shaft-1', kind: 'shaft', params });
+    expect(r.success).toBe(false);
+    expect(r.error?.issues.map((i) => i.message)).toContain(
+      'An open-top shaft needs a wall thickness.',
+    );
+    const closed = { ...params, openTop: false };
+    expect(
+      Assembly.safeParse({ ...base, id: 'shaft-1', kind: 'shaft', params: closed }).success,
+    ).toBe(true);
   });
   it('refuses a profile whose heights do not increase', () => {
     const r = Assembly.safeParse({
@@ -40,6 +60,7 @@ describe('Assembly', () => {
           { y: 10, r: 5 },
           { y: 5, r: 4 },
         ],
+        wall: 0.4,
         openTop: true,
       },
     });
@@ -142,6 +163,7 @@ describe('Assembly', () => {
           { y: 0, r: 10 },
           { y: 100, r: 7 },
         ],
+        wall: 0.4,
         openTop: true,
       },
     };
