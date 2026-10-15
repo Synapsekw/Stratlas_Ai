@@ -1,4 +1,5 @@
-import { ProcModel, type Layer, type ProjectManifest } from '@aio/schema';
+import type { Layer, ProcModel, ProjectManifest } from '@aio/schema';
+import { readProcModel } from './procmodel';
 
 /**
  * Imported drawings (the `drawing.import` pipeline): what the app needs to list them, read their
@@ -6,7 +7,8 @@ import { ProcModel, type Layer, type ProjectManifest } from '@aio/schema';
  * (`source: 'image'`): they have the plan and the placement, no DXF and no parts. Files of one
  * drawing `<stem>`:
  * `drawings/<stem>.dxf` (the copy), `drawings/<stem>/plan.png` (the plan raster layer
- * `plan-<stem>`), `drawings/<stem>/parts.procmodel.json` (candidate parts, `aio.procmodel/1`)
+ * `plan-<stem>`), `drawings/<stem>/parts.procmodel.json` (candidate parts, `aio.procmodel/2`;
+ * older builds wrote `/1`, read through the migrator)
  * and `drawings/<stem>/placement.json` (how drawing coordinates map to the local frame).
  */
 
@@ -151,12 +153,14 @@ export function localToDrawing(
   return [(d * x - b * z) / det, (-c * x + a * z) / det];
 }
 
-/** Candidate parts of an imported drawing, from its parts file. */
+/** Candidate parts of an imported drawing, from its parts file (`/1` files are migrated). */
 export function readDrawingParts(json: unknown): ProcModel {
-  const r = ProcModel.safeParse(json);
-  if (!r.success)
+  const r = readProcModel(json);
+  if (!r.ok) {
+    if (r.reason === 'newer') throw new Error(r.error);
     throw new Error('The parts read from the drawing are not valid. Import it again.');
-  return r.data;
+  }
+  return r.value;
 }
 
 /** True for the plan raster layer of an imported drawing. */

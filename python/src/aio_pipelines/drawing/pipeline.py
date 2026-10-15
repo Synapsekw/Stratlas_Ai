@@ -24,7 +24,7 @@ from .dxf import UNIT_M, read_dxf
 
 UNITS = ("mm", "cm", "m", "in", "ft", "us-ft")
 PLACEMENT_SCHEMA = "aio.drawingplacement/1"
-PROCMODEL_SCHEMA = "aio.procmodel/1"
+PROCMODEL_SCHEMA = "aio.procmodel/2"
 
 
 def stem_of(src: str) -> str:
@@ -208,6 +208,8 @@ class DrawingImport:
                     "updatedAt": t,
                     "sources": [{"kind": "drawing", "ref": dxf_rel}],
                     "parts": parts,
+                    "materials": [],
+                    "assemblies": [],
                 },
             )
             ctx.check()

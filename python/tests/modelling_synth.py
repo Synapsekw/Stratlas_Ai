@@ -234,13 +234,14 @@ def _vec(v, n) -> bool:
 
 
 def check_procmodel(doc: dict[str, Any]) -> None:
-    """Assert ``doc`` satisfies ``aio.procmodel/1`` (strict objects, types, unique part ids)."""
+    """Assert ``doc`` satisfies ``aio.procmodel/2`` as the parts pipelines write it (strict objects,
+    types, unique part ids, no engineering assemblies or materials)."""
     import re
 
-    assert set(doc) <= {"schema", "id", "name", "createdAt", "updatedAt", "capture", "sources", "parts"}, (
-        doc.keys()
-    )
-    assert doc["schema"] == "aio.procmodel/1"
+    keys = {"schema", "id", "name", "createdAt", "updatedAt", "capture", "sources", "parts"}
+    assert set(doc) <= keys | {"materials", "assemblies"}, doc.keys()
+    assert doc["schema"] == "aio.procmodel/2"
+    assert doc["materials"] == [] and doc["assemblies"] == []
     assert re.match(r"^[A-Za-z0-9][A-Za-z0-9_-]{0,80}$", doc["id"])
     assert isinstance(doc["name"], str) and 1 <= len(doc["name"]) <= 200
     iso = re.compile(r"^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d(\.\d+)?(Z|[+-]\d\d:\d\d)$")

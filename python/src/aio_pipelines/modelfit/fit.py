@@ -8,8 +8,10 @@ Parameters as ``ModelFitParams`` in ``@aio/schema``. Steps (each resumable):
 - ``fit``: per cluster the best of a vertical cylinder, a box, an extrusion and a straight pipe
   (``ransac.py``), ranked by inlier share and residual; a cluster no primitive explains (noise)
   gives no part;
-- ``commit``: append the draft parts to ``models/<id>.procmodel.json`` (``aio.procmodel/1``)
-  atomically, with a ``.bak`` of the previous file.
+- ``commit``: append the draft parts to ``models/<id>.procmodel.json`` (``aio.procmodel/2``)
+  atomically, with a ``.bak`` of the previous file. An ``aio.procmodel/1`` file is upgraded the way
+  the app's migrator does it (empty ``materials`` and ``assemblies``); everything else in a ``/2``
+  file (assemblies, materials, family, run) is kept; a newer file is refused untouched.
 """
 
 from __future__ import annotations
@@ -25,6 +27,9 @@ import numpy as np
 from ..params import known_keys, number, text
 from ..runtime import JobError, Step, StepContext, atomic_write_json, now_iso, safe_project_path
 from . import ransac, segment
+
+PROCMODEL_V1 = "aio.procmodel/1"
+PROCMODEL_SCHEMA = "aio.procmodel/2"
 
 KINDS = ("extrusion", "cylinder", "box", "pipe", "sphere")
 DEFAULT_KINDS = ("extrusion", "cylinder", "box", "pipe")
@@ -42,6 +47,26 @@ def _manifest(project: Path) -> dict[str, Any]:
 def _slug(s: str) -> str:
     out = re.sub(r"[^A-Za-z0-9_-]+", "-", s).strip("-_")[:70]
     return out if out and out[0].isalnum() else "cloud"
+
+
+def upgraded(model: Any, rel: str) -> dict[str, Any]:
+    """An existing model file as ``aio.procmodel/2``: a ``/1`` file gains empty ``materials`` and
+    ``assemblies`` (as the app's migrator does), a ``/2`` file is kept whole, anything newer or
+    unknown is refused before anything is written."""
+    if not isinstance(model, dict):
+        raise JobError(f"{rel} is not a model file; fix or remove it, then fit again.")
+    schema = model.get("schema")
+    if schema == PROCMODEL_V1:
+        return {**model, "schema": PROCMODEL_SCHEMA, "materials": [], "assemblies": []}
+    if schema == PROCMODEL_SCHEMA:
+        return model
+    m = re.fullmatch(r"aio\.procmodel/(\d+)", schema) if isinstance(schema, str) else None
+    if m and int(m.group(1)) > 2:
+        raise JobError(
+            f"{rel} was saved by a newer version of the app ({schema}). Update the app to fit into it. "
+            "The file was not changed."
+        )
+    raise JobError(f"{rel} is not a model file ({schema}); fix or remove it, then fit again.")
 
 
 class ModelFitCloud:
@@ -168,17 +193,21 @@ class ModelFitCloud:
                     model = json.loads(path.read_text("utf-8"))
                 except ValueError as e:
                     raise JobError(f"{rel} is not valid JSON; fix or remove it, then fit again.") from e
+                model = upgraded(model, rel)
             else:
                 model = {
-                    "schema": "aio.procmodel/1",
+                    "schema": PROCMODEL_SCHEMA,
                     "id": model_id,
                     "name": f"Model from {params['layer']}",
                     "createdAt": now,
                     "updatedAt": now,
                     "parts": [],
+                    "materials": [],
+                    "assemblies": [],
                 }
             parts = model.setdefault("parts", [])
-            taken = {p.get("id") for p in parts}
+            # a part id may not repeat a part's or an assembly's
+            taken = {p.get("id") for p in parts} | {a.get("id") for a in model.get("assemblies", [])}
             counts: dict[str, int] = {}
             for p in parts:
                 k = p.get("kind")

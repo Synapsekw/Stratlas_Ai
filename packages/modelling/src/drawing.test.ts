@@ -81,6 +81,19 @@ describe('imported drawings', () => {
     );
     expect(() => readDrawingParts({ schema: 'x' })).toThrow(/Import it again/);
   });
+
+  it('reads a parts file of an older build (aio.procmodel/1) as the current model', () => {
+    const parts = readDrawingParts({
+      schema: 'aio.procmodel/1',
+      id: 'plan',
+      name: 'plan.dxf',
+      createdAt: '2026-10-06T08:00:00Z',
+      updatedAt: '2026-10-06T08:00:00Z',
+      sources: [{ kind: 'drawing', ref: 'drawings/plan.dxf' }],
+      parts: [],
+    });
+    expect(parts).toMatchObject({ schema: 'aio.procmodel/2', materials: [], assemblies: [] });
+  });
 });
 
 describe('drawings from pictures and PDF pages', () => {

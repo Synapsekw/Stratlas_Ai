@@ -5,12 +5,23 @@
  * only. `model:build` meshes the accepted parts (or, for the draft preview, every part but the
  * rejected ones) with `@aio/modelling` and adds or updates the model's mesh layer
  * (`derived: { kind: 'model', source: [id] }`), tagged by part so a click on a tank selects it.
+ * Files are `aio.procmodel/2`: an older `/1` file is read through the migrator and written back as
+ * `/2` on its next save (the `.bak` keeps the `/1` text); a newer one is refused untouched. A model
+ * with engineering assemblies is built with `buildEngineeringGlb` (one node per accepted assembly,
+ * then its parts).
  */
-import { checkProcModel, meshProcModel, summarise } from '@aio/modelling';
+import { brand } from '@aio/brand';
+import {
+  buildEngineeringGlb,
+  checkProcModel,
+  meshProcModel,
+  readProcModel,
+  summarise,
+} from '@aio/modelling';
 import {
   PROCMODEL_DIR,
-  ProcModel,
   type Layer,
+  type ProcModel,
   type ProcModelSummary,
   type ProjectManifest,
 } from '@aio/schema';
@@ -79,8 +90,9 @@ function parseModel(
   } catch {
     return { ok: false, error: `${rel} is not valid JSON.` };
   }
-  const r = ProcModel.safeParse(json);
-  if (r.success) return { ok: true, model: r.data };
+  const r = readProcModel(json, { appName: brand.productName, what: rel });
+  if (r.ok) return { ok: true, model: r.value };
+  if (r.reason !== 'invalid') return { ok: false, error: r.error };
   const first = checkProcModel(json)[0]?.message ?? 'The model file is not valid.';
   return { ok: false, error: `${rel}: ${first}` };
 }
@@ -126,6 +138,46 @@ async function writeBytesAtomic(file: string, data: Uint8Array): Promise<void> {
     await rm(tmp, { force: true });
     throw e;
   }
+}
+
+/**
+ * The GLB of a model and the layer tags of its nodes: a plain parts model with the parts mesher
+ * (as before `/2`), a model with assemblies with the engineering builder at the model's run
+ * detail (standard when it has none).
+ */
+function meshModel(
+  model: ProcModel,
+  draft: boolean,
+): { glb: Uint8Array; nodes: string[]; tags: NonNullable<MeshLayer['tags']> } {
+  if (model.assemblies.length > 0) {
+    const built = buildEngineeringGlb(model, {
+      detail: model.run?.detail ?? 'standard',
+      drafts: draft,
+      generator: `${brand.productName} model builder`,
+    });
+    const assemblyIds = new Set(model.assemblies.map((a) => a.id));
+    const tags: NonNullable<MeshLayer['tags']> = [];
+    for (const n of built.nodes) {
+      if (n.tag === undefined) continue;
+      if (assemblyIds.has(n.node)) {
+        tags.push({ node: n.node, tag: n.tag, ...(n.area ? { area: n.area } : {}) });
+        continue;
+      }
+      // a part node is tagged as the parts mesher tags it: only a part with a tag, by its class
+      const part = model.parts.find((p) => p.tag === n.tag);
+      if (part?.tag)
+        tags.push({ node: n.node, tag: part.tag, ...(part.class ? { area: part.class } : {}) });
+    }
+    return { glb: built.glb, nodes: built.nodes.map((n) => n.node), tags };
+  }
+  const meshed = meshProcModel(model, { parts: draft ? 'all' : 'accepted' });
+  const tags: NonNullable<MeshLayer['tags']> = [];
+  meshed.nodes.forEach((node, i) => {
+    const part = model.parts.find((p) => p.id === meshed.partIds[i]);
+    if (!part?.tag) return;
+    tags.push({ node, tag: part.tag, ...(part.class ? { area: part.class } : {}) });
+  });
+  return { glb: meshed.glb, nodes: meshed.nodes, tags };
 }
 
 export function registerModelBuilderIpc({
@@ -234,24 +286,21 @@ export function registerModelBuilderIpc({
       })
       .find((p) => p.partId !== undefined);
     if (problem) return { ok: false, error: problem.message };
-    const meshed = meshProcModel(model, { parts: draft ? 'all' : 'accepted' });
+    const meshed = meshModel(model, draft);
     if (!draft && meshed.nodes.length === 0) {
-      return { ok: false, error: 'Accept at least one part, then build the model.' };
+      return {
+        ok: false,
+        error:
+          model.assemblies.length > 0
+            ? 'Accept at least one part or component, then build the model.'
+            : 'Accept at least one part, then build the model.',
+      };
     }
     const glbRel = modelGlb(id, draft);
     await mkdir(join(root, PROCMODEL_DIR), { recursive: true });
     await writeBytesAtomic(join(root, ...glbRel.split('/')), meshed.glb);
 
-    const tags: NonNullable<MeshLayer['tags']> = [];
-    meshed.nodes.forEach((node, i) => {
-      const part = model.parts.find((p) => p.id === meshed.partIds[i]);
-      if (!part?.tag) return;
-      tags.push({
-        node,
-        tag: part.tag,
-        ...(part.class ? { area: part.class } : {}),
-      });
-    });
+    const tags: NonNullable<MeshLayer['tags']> = meshed.tags;
     const layerId = modelLayerId(id, draft);
     const layer: MeshLayer = {
       kind: 'mesh',

@@ -2,7 +2,7 @@
 
 Geometry is taken to the local frame first (metres, x east, z south), so the "within 3 m" rules
 hold whatever the drawing units or the control point scale. Every part is a draft
-(``aio.procmodel/1``, data-conventions section 15) with ``origin.by = 'drawing'``.
+(``aio.procmodel/2``, data-conventions section 15) with ``origin.by = 'drawing'``.
 """
 
 from __future__ import annotations
