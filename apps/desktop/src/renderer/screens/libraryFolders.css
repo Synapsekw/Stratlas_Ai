@@ -1,0 +1,183 @@
+/* ---------- library folders: the tile row, the back link, drag feedback ---------- */
+.frow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 18px;
+}
+.ftile {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
+  min-width: 168px;
+  max-width: 260px;
+  height: 44px;
+  padding: 0 12px 0 10px;
+  background: var(--bg-1);
+  border: 1px solid var(--line-soft);
+  border-radius: var(--r-6);
+  color: var(--fg-1);
+  cursor: pointer;
+  user-select: none;
+  transition:
+    border-color 140ms,
+    background-color 140ms,
+    box-shadow 160ms var(--ease);
+}
+.ftile:hover {
+  border-color: var(--line-strong);
+}
+.ftile:focus-visible {
+  outline: 2px solid var(--acc);
+  outline-offset: 1px;
+}
+.ftile-ic {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 26px;
+  height: 26px;
+  border-radius: var(--r-4);
+  background: var(--bg-0);
+  color: var(--fg-2);
+  transition:
+    background-color 140ms,
+    color 140ms;
+}
+.ftile-name {
+  min-width: 0;
+  font-size: var(--t-12);
+  font-weight: 500;
+  color: var(--fg-0);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.ftile-count {
+  margin-inline-start: auto;
+  padding-inline-start: 8px;
+  font-size: var(--t-11);
+  color: var(--fg-3);
+}
+
+/* while a card is dragged, every place that takes it says so quietly ... */
+.frow.dragging .ftile,
+.fback.dragging {
+  border-style: dashed;
+  border-color: var(--acc-a40);
+}
+/* ... and the one under the pointer clearly */
+.ftile.over,
+.frow.dragging .ftile.over {
+  border-style: solid;
+  border-color: var(--acc);
+  background: var(--acc-a20);
+  box-shadow: 0 0 0 3px var(--acc-a20);
+}
+.ftile.over .ftile-ic {
+  background: var(--acc);
+  color: var(--bg-0);
+}
+.ftile.over .ftile-count {
+  color: var(--acc-strong);
+}
+
+/* the way back from an open folder; also a drop target that takes a card out of the folder */
+.fback {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 24px;
+  margin: 0 0 6px -6px;
+  padding: 0 8px 0 6px;
+  border: 1px solid transparent;
+  border-radius: var(--r-4);
+  background: none;
+  color: var(--fg-2);
+  font-size: var(--t-12);
+  cursor: pointer;
+  transition:
+    border-color 140ms,
+    background-color 140ms,
+    color 140ms;
+}
+.fback:hover {
+  color: var(--fg-0);
+}
+.fback:focus-visible {
+  outline: 2px solid var(--acc);
+  outline-offset: 1px;
+}
+.fback.over {
+  border-style: solid;
+  border-color: var(--acc);
+  background: var(--acc-a20);
+  color: var(--acc-strong);
+}
+
+/* the card being dragged stays in place, faded */
+.pcard-wrap.dragged {
+  opacity: 0.45;
+}
+
+/* a card's folder, shown while a search spans every folder */
+.pc-folder {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  max-width: 100%;
+  min-width: 0;
+  color: var(--fg-2);
+}
+.pc-folder > span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.folder-empty {
+  padding: 24px 0;
+}
+
+/* Move to folder: one choice per folder */
+.mf-list {
+  display: grid;
+  gap: 2px;
+  max-height: 280px;
+  overflow-y: auto;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+.mf-opt {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  min-height: 32px;
+  padding: 0 8px;
+  border-radius: var(--r-4);
+  font-size: var(--t-12);
+  color: var(--fg-1);
+  cursor: pointer;
+}
+.mf-opt:hover {
+  background: var(--bg-3);
+}
+.mf-opt:has(input:checked) {
+  background: var(--acc-a20);
+  color: var(--fg-0);
+}
+.mf-opt input {
+  margin: 0;
+  accent-color: var(--acc);
+}
+.mf-opt > span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.mf-opt .ftile-count {
+  flex: none;
+}

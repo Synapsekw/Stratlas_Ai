@@ -16,6 +16,14 @@ import { build, formatBuildTime } from '../buildStamp';
 import { shell, useCall, useShell } from '../shell';
 import { BrandLoader } from '../shell/BrandMotion';
 import { FirstStart, SetupChecklist } from './FirstStart';
+import {
+  DRAG_TYPE,
+  folderCounts,
+  settlePlace,
+  visibleEntries,
+  type LibraryPlace,
+} from './libraryFolderModel';
+import { FolderBack, FolderRow, NewFolderButton } from './LibraryFolders';
 import { ProjectMenu, type MenuAt } from './ProjectMenu';
 
 const LAYER_CHIPS: { key: string; icon: IconName; label: string }[] = [
@@ -81,20 +89,42 @@ function ProjectCard({
   entry,
   opening,
   current,
+  folderName,
+  onDrag,
 }: {
   entry: LibraryEntry;
   opening: boolean;
   current: boolean;
+  /** The card's folder, shown while a search spans every folder. */
+  folderName?: string | undefined;
+  /** A drag of this card starts (true) or ends (false). */
+  onDrag?: (on: boolean) => void;
 }) {
   const counts = entry.layerCounts ?? {};
   const chips = LAYER_CHIPS.filter((c) => (counts[c.key] ?? 0) > 0);
   const where = [entry.customer, entry.site].filter(Boolean).join(' · ');
   const [menu, setMenu] = useState<MenuAt | null>(null);
+  const [dragged, setDragged] = useState(false);
   return (
     // the card and its three dots are two buttons side by side: a click on the card opens the
-    // project, the dots (or a right-click anywhere on the card) open the project's menu
+    // project, the dots (or a right-click anywhere on the card) open the project's menu; the card
+    // drags onto a folder tile
     <div
-      className="pcard-wrap"
+      className={`pcard-wrap${dragged ? ' dragged' : ''}`}
+      draggable
+      data-project-id={entry.id}
+      onDragStart={(e) => {
+        // not a drag that started inside a dialog of the menu (portals bubble here through React)
+        if (!e.currentTarget.contains(e.target as Node)) return;
+        e.dataTransfer.setData(DRAG_TYPE, entry.id);
+        e.dataTransfer.effectAllowed = 'move';
+        setDragged(true);
+        onDrag?.(true);
+      }}
+      onDragEnd={() => {
+        setDragged(false);
+        onDrag?.(false);
+      }}
       onContextMenu={(e) => {
         // not a right-click inside a dialog of the menu (portals bubble here through React)
         if (!e.currentTarget.contains(e.target as Node)) return;
@@ -145,6 +175,14 @@ function ProjectCard({
               <span className="pc-size mono">{formatBytes(entry.sizeBytes)}</span>
             )}
           </div>
+          {folderName !== undefined && (
+            <div className="pc-row">
+              <span className="pc-folder lchip" data-testid="card-folder">
+                <Icon name="folder" size={12} />
+                <span dir="auto">{folderName}</span>
+              </span>
+            </div>
+          )}
           {chips.length > 0 && (
             <div className="pc-chips">
               {chips.map((c) => (
@@ -349,8 +387,17 @@ export function ProjectsScreen() {
   const openError = useShell((s) => s.openError);
   const dataRoot = useShell((s) => s.settings.dataRoot);
   const currentRoot = useWorkspace((s) => s.project?.root);
+  const folders = useShell((s) => s.folders);
+  const libraryNotice = useShell((s) => s.libraryNotice);
   const [query, setQuery] = useState('');
   const [sort, setSort] = useState<Sort>('recent');
+  const [chosen, setChosen] = useState<LibraryPlace>({ kind: 'all' });
+  const [dragging, setDragging] = useState(false);
+  const [moveError, setMoveError] = useState<string | null>(null);
+  // a folder deleted while it is open (or by another window) falls back to All
+  const place = useMemo(() => settlePlace(chosen, folders), [chosen, folders]);
+  const searching = query.trim() !== '';
+  const openFolder = place.kind === 'folder' ? folders.find((f) => f.id === place.id) : undefined;
 
   // read the data folder again whenever the library is shown or the window comes back, so a
   // project copied into it while the app runs appears without a restart
@@ -365,13 +412,28 @@ export function ProjectsScreen() {
     };
   }, []);
 
-  const shown = useMemo(() => {
-    const q = query.trim().toLowerCase();
-    const list = (library ?? []).filter(
-      (e) => !q || [e.name, e.customer, e.site].some((v) => v?.toLowerCase().includes(q)),
-    );
-    return sortEntries(list, sort);
-  }, [library, query, sort]);
+  const shown = useMemo(
+    () => sortEntries(visibleEntries(library ?? [], place, query, folders), sort),
+    [library, place, query, folders, sort],
+  );
+  const counts = useMemo(() => folderCounts(library ?? []), [library]);
+  const folderNames = useMemo(() => new Map(folders.map((f) => [f.id, f.name])), [folders]);
+
+  /** A card dropped on a tile (a folder id) or on the way back to All (null). */
+  const dropCard = (projectId: string, folderId: string | null) => {
+    const entry = (library ?? []).find((e) => e.id === projectId);
+    if (!entry) return;
+    const from =
+      entry.folderId !== undefined && folderNames.has(entry.folderId) ? entry.folderId : null;
+    if (from === folderId) return;
+    setMoveError(null);
+    void shell
+      .getState()
+      .moveToFolder(entry, folderId)
+      .then((failed) => {
+        if (failed !== null) setMoveError(failed);
+      });
+  };
 
   const total = (library ?? []).reduce((n, e) => n + (e.sizeBytes ?? 0), 0);
   const empty = library !== null && library.length === 0;
@@ -384,7 +446,20 @@ export function ProjectsScreen() {
       <div className="home-main">
         <header className="home-h">
           <div>
-            <h1>Project library</h1>
+            {openFolder && (
+              <FolderBack
+                dragging={dragging}
+                onBack={() => {
+                  setChosen({ kind: 'all' });
+                }}
+                onCard={(id) => {
+                  dropCard(id, null);
+                }}
+              />
+            )}
+            <h1 dir="auto" data-testid="library-place">
+              {openFolder ? openFolder.name : 'Project library'}
+            </h1>
             <p className="muted">
               {library === null
                 ? 'Reading the library'
@@ -424,6 +499,7 @@ export function ProjectsScreen() {
                     Name
                   </button>
                 </div>
+                <NewFolderButton />
               </>
             )}
             <button
@@ -471,6 +547,19 @@ export function ProjectsScreen() {
             </button>
           </div>
         )}
+        {libraryNotice && (
+          <div className="notice" role="status" data-testid="library-notice">
+            <Icon name="check" size={14} />
+            <span>{libraryNotice}</span>
+            <button
+              type="button"
+              className="btn ghost sm"
+              onClick={shell.getState().dismissLibraryNotice}
+            >
+              Dismiss
+            </button>
+          </div>
+        )}
         {library === null && (
           <div className="pgrid" aria-busy="true">
             {[0, 1, 2].map((i) => (
@@ -488,8 +577,40 @@ export function ProjectsScreen() {
                 {libraryError}
               </p>
             )}
+            {moveError && (
+              <div className="notice danger" role="alert">
+                <Icon name="warn" size={14} />
+                <span>{moveError}</span>
+                <button
+                  type="button"
+                  className="btn ghost sm"
+                  onClick={() => {
+                    setMoveError(null);
+                  }}
+                >
+                  Dismiss
+                </button>
+              </div>
+            )}
+            {!searching && place.kind === 'all' && (
+              <FolderRow
+                folders={folders}
+                counts={counts}
+                dragging={dragging}
+                onOpen={(id) => {
+                  setChosen({ kind: 'folder', id });
+                }}
+                onCard={dropCard}
+              />
+            )}
             {shown.length === 0 ? (
-              <p className="faint no-match">No project matches “{query}”.</p>
+              searching ? (
+                <p className="faint no-match">No project matches “{query}”.</p>
+              ) : place.kind === 'folder' ? (
+                <p className="faint folder-empty" data-testid="folder-empty">
+                  {t('library.folders.empty')}
+                </p>
+              ) : null
             ) : (
               <div className="pgrid">
                 {shown.map((e) => (
@@ -498,6 +619,12 @@ export function ProjectsScreen() {
                     entry={e}
                     opening={opening === e.path}
                     current={currentRoot === e.path}
+                    folderName={
+                      searching && e.folderId !== undefined
+                        ? folderNames.get(e.folderId)
+                        : undefined
+                    }
+                    onDrag={setDragging}
                   />
                 ))}
               </div>
