@@ -91,7 +91,7 @@ Each project grades issues with its own severity model: levels with a colour, cr
 
 Each project sorts findings into classes: a name, a colour, an optional hotkey and the severity scale its issues are graded on. **Settings**, **Classes** lists the classes of the open project.
 
-- **Rename** a class in its name field and press Enter. **Colour** opens the palette. **Hotkey** takes one letter.
+- **Rename** a class in its name field and press Enter. **Colour** opens the palette. **Hotkey** takes one letter, not `a` or `u` (the sighting picker uses those) and not a digit (digits pick severity).
 - **Severity scale** can be changed while no issue uses the class.
 - **Delete** a class nobody uses at once. When issues or waiting detections use it, you pick the class that takes them over; their severities move to the nearest level of that class's scale.
 - **Save to my class library** keeps the class on this computer. A new project offers library classes under **From your class library**.
