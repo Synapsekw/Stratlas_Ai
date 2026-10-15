@@ -136,7 +136,7 @@ test('@realdata detection review: AI drafts, reject and accept with the keyboard
     await expect(win.getByTestId('det-counts')).toContainText('4 waiting');
     await expect(sheet.locator('.det-tile')).toHaveCount(4);
     const inspector = win.getByTestId('det-inspector');
-    await expect(inspector).toContainText('Proposed by claude-opus-5-5, prompt detect-v1.');
+    await expect(inspector).toContainText('Proposed by claude-opus-5-5, prompt detect-v2.');
     await expect(inspector).toContainText('Confidence 90%');
     await expect(win.getByTestId('det-class')).toHaveValue('light');
     await expect(win.getByTestId('det-editor').locator('svg .shape')).toHaveCount(1);
@@ -186,7 +186,7 @@ test('@realdata detection review: AI drafts, reject and accept with the keyboard
     });
     expect(issue?.sightings[0]).toMatchObject({ on: 'image', photo: 'p002' });
     expect(issue?.note).toContain(
-      'Detected by claude-opus-5-5 (prompt detect-v1, confidence 80 %)',
+      'Detected by claude-opus-5-5 (prompt detect-v2, confidence 80 %)',
     );
     // The AI run is one pass file, aio.detections/1, beside any other passes.
     const passFile = async () => {
@@ -216,7 +216,7 @@ test('@realdata detection review: AI drafts, reject and accept with the keyboard
       schema: 'aio.detections/1',
       source: 'ai',
       assessed: ['p001', 'p002', 'p003', 'p004'],
-      run: { model: 'claude-opus-5-5', promptVersion: 'detect-v1', images: 4 },
+      run: { model: 'claude-opus-5-5', promptVersion: 'detect-v2', images: 4 },
     });
     expect(pass?.detections[1]?.issueId).toBe(issue?.id);
     expect(pass?.detections[2]).toMatchObject({

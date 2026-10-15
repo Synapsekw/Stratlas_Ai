@@ -10,7 +10,7 @@ import { z } from 'zod';
 import { estimateCostUsd } from './pricing';
 
 /** Bump when the prompt or the reply format changes; stored with every detection. */
-export const DETECT_PROMPT_VERSION = 'detect-v1';
+export const DETECT_PROMPT_VERSION = 'detect-v2';
 /** Marks a detection request (the scripted test model answers it with detections). */
 export const DETECT_MARKER = '<aio-detect>';
 /** Images per request. Several images share one prompt; more than a few dilutes attention. */
@@ -44,7 +44,10 @@ export function detectInstructions(input: DetectPromptInput): string {
     'You find visible defects in drone inspection photos of industrial assets for an inspection engineer.',
     'Every finding is a proposal that a person reviews; do not guess. Leave out anything you are not able to see clearly, and mark doubtful findings uncertain.',
     '',
-    `Classes (JSON, use the id): ${JSON.stringify(classes)}`,
+    input.classes.length > 0
+      ? `Classes (JSON, use the id): ${JSON.stringify(classes)}`
+      : 'The project has no classes yet.',
+    'If none of these classes fit a defect you see clearly, use "class":"new:<short name>" with a short name of two to four words. A person decides whether to create that class.',
   ];
   if (input.severity && input.severity.levels.length > 0) {
     const levels = input.severity.levels.map((l) => ({
@@ -150,6 +153,8 @@ export interface AiDetection {
   /** Class id when the model used one of ours; else empty and `label` holds its word. */
   classId: string;
   label: string;
+  /** The model asked for a new class (`new:<name>`); `label` is the name. */
+  suggestedNew?: boolean | undefined;
   box?: [number, number, number, number] | undefined;
   polygon?: [number, number][] | undefined;
   confidence?: number | undefined;
@@ -200,6 +205,9 @@ export interface ParsedReply {
 
 const clamp01 = (n: number) => Math.min(1, Math.max(0, n));
 
+/** A class answer of the form `new:<name>` asks for a class the project does not have. */
+const NEW_CLASS = /^new\s*:\s*/i;
+
 /**
  * Read a detection answer for `count` images. An answer that is not the JSON asked for is an
  * error (string); single malformed proposals are skipped with a warning.
@@ -233,10 +241,17 @@ export function parseDetectReply(
         );
         continue;
       }
-      const word = r.data.class.trim();
+      const said = r.data.class.trim();
+      const proposed = NEW_CLASS.test(said);
+      const word = proposed ? said.replace(NEW_CLASS, '').trim().slice(0, 60) : said;
+      if (!word) {
+        warnings.push(`Image ${String(img.image)}: one proposal named no class and was skipped.`);
+        continue;
+      }
       const key = word.toLowerCase();
       const classId = byId.get(key) ?? byLabel.get(key) ?? '';
       const out: AiDetection = { classId, label: word };
+      if (proposed && !classId) out.suggestedNew = true;
       if (r.data.box) {
         const [x = 0, y = 0, w = 0, h = 0] = r.data.box;
         out.box = [clamp01(x), clamp01(y), clamp01(w), clamp01(h)];

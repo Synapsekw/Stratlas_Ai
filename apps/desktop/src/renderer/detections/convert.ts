@@ -48,9 +48,23 @@ export interface ConvertInput {
   newId: () => string;
 }
 
+/** The severity model most classes use (the one sent with a request), else the first. */
+export function topModelId(
+  models: readonly SeverityModel[],
+  catalogues: readonly ClassCatalogue[],
+): string | undefined {
+  const uses = new Map<string, number>();
+  for (const c of catalogues.flatMap((k) => k.classes)) {
+    uses.set(c.severityModel, (uses.get(c.severityModel) ?? 0) + 1);
+  }
+  const top = [...uses.entries()].sort((a, b) => b[1] - a[1])[0]?.[0];
+  return (models.find((m) => m.id === top) ?? models[0])?.id;
+}
+
 export function toDraftDetections(o: ConvertInput): { detections: Detection[]; skipped: number } {
   const classes = new Map(o.catalogues.flatMap((c) => c.classes).map((c) => [c.id, c]));
   const models = new Map(o.models.map((m) => [m.id, m]));
+  const fallbackModel = models.get(topModelId(o.models, o.catalogues) ?? '');
   const bySource = new Map<string, Detection[]>();
   for (const d of o.existing) {
     if (d.status === 'rejected') continue;
@@ -81,7 +95,11 @@ export function toDraftDetections(o: ConvertInput): { detections: Detection[]; s
         skipped++;
         continue;
       }
-      const model = cls ? models.get(cls.severityModel) : undefined;
+      const model = cls
+        ? models.get(cls.severityModel)
+        : a.suggestedNew
+          ? fallbackModel
+          : undefined;
       const severity =
         typeof a.severity === 'number' && model?.levels.some((l) => l.value === a.severity)
           ? a.severity
@@ -109,6 +127,7 @@ export function toDraftDetections(o: ConvertInput): { detections: Detection[]; s
         updatedAt: o.now,
       };
       if (a.confidence !== undefined) d.confidence = a.confidence;
+      if (a.suggestedNew && !cls) d.suggestedNew = true;
       out.push(d);
       here.push(d);
       bySource.set(r.key, here);
@@ -124,10 +143,7 @@ export function promptTaxonomy(
 ): { classes: DetectClass[]; severity?: DetectSeverity } {
   const all = catalogues.flatMap((c) => c.classes);
   const classes = all.map((c) => ({ id: c.id, label: c.label }));
-  const uses = new Map<string, number>();
-  for (const c of all) uses.set(c.severityModel, (uses.get(c.severityModel) ?? 0) + 1);
-  const top = [...uses.entries()].sort((a, b) => b[1] - a[1])[0]?.[0];
-  const model = models.find((m) => m.id === top) ?? models[0];
+  const model = models.find((m) => m.id === topModelId(models, catalogues));
   if (!model) return { classes };
   return {
     classes,

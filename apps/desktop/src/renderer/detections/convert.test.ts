@@ -189,3 +189,40 @@ describe('what is sent', () => {
     expect(sampleTimes(0, 10, 5)).toEqual([]);
   });
 });
+
+describe('suggested new classes', () => {
+  it('keeps a suggested new class with its severity on the most used model', () => {
+    const { detections } = convert([
+      {
+        key: itemKey(frame),
+        detections: [
+          {
+            classId: '',
+            label: 'Spalling',
+            suggestedNew: true,
+            box: [0, 0, 0.5, 0.5],
+            severity: 2,
+          },
+        ],
+      },
+    ]);
+    expect(detections[0]).toMatchObject({
+      classId: '',
+      label: 'Spalling',
+      suggestedNew: true,
+      severity: 2,
+    });
+  });
+
+  it('does not flag a detection whose class resolved', () => {
+    const { detections } = convert([
+      {
+        key: itemKey(frame),
+        detections: [
+          { classId: 'light', label: 'Light staining', suggestedNew: true, box: [0, 0, 0.5, 0.5] },
+        ],
+      },
+    ]);
+    expect(detections[0]?.suggestedNew).toBeUndefined();
+  });
+});

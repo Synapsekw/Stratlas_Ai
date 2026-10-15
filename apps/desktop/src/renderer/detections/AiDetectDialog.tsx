@@ -156,9 +156,8 @@ export function AiDetectDialog({
     : status
       ? status.error
       : null;
-  const noClasses = taxonomy.classes.length === 0;
   const running = progress?.phase === 'running';
-  const canSend = ready && !noClasses && items.length > 0 && !running;
+  const canSend = ready && items.length > 0 && !running;
 
   const send = () => {
     if (!canSend || !manifest) return;
@@ -345,7 +344,6 @@ export function AiDetectDialog({
               <h3 className="caps">{t('infer.dlg.source')}</h3>
               <ModeSwitch mode="cloud" onChange={setMode} />
             </section>
-            {noClasses && <p className="ann-error">{t('det.ai.noClasses')}</p>}
             {blocked && (
               <p className="ann-error" role="alert" data-testid="det-ai-blocked">
                 {blocked}

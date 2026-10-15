@@ -355,3 +355,39 @@ describe('scripted detections (e2e)', () => {
     expect(res.ok && res.results.map((x) => x.detections.length)).toEqual([1, 1]);
   });
 });
+
+describe('new classes (ANN-7)', () => {
+  it('asks for new:<short name> when no class fits', () => {
+    const text = detectInstructions({ classes: [{ id: 'crack', label: 'Crack' }] });
+    expect(text).toContain('"class":"new:<short name>"');
+  });
+
+  it('reads new:<name> as a suggested class, and a known name as that class', () => {
+    const r = parseDetectReply(
+      '{"images":[{"image":1,"detections":[' +
+        '{"class":"new: Spalling ","box":[0.1,0.1,0.2,0.2]},' +
+        '{"class":"NEW:moderate","box":[0.3,0.3,0.2,0.2]},' +
+        '{"class":"new:","box":[0.5,0.5,0.2,0.2]}' +
+        ']}]}',
+      1,
+      classes,
+    );
+    if (typeof r === 'string') throw new Error(r);
+    expect(r.results[0]?.map((d) => [d.classId, d.label, d.suggestedNew])).toEqual([
+      ['', 'Spalling', true],
+      ['moderate', 'moderate', undefined],
+    ]);
+    expect(r.warnings).toEqual(['Image 1: one proposal named no class and was skipped.']);
+  });
+
+  it('resolves a new: name that matches a class label to that class', () => {
+    const r = parseDetectReply(
+      '{"images":[{"image":1,"detections":[{"class":"new:Heavy visible deterioration","box":[0.1,0.1,0.2,0.2]}]}]}',
+      1,
+      classes,
+    );
+    if (typeof r === 'string') throw new Error(r);
+    expect(r.results[0]?.[0]).toMatchObject({ classId: 'heavy' });
+    expect(r.results[0]?.[0]?.suggestedNew).toBeUndefined();
+  });
+});
