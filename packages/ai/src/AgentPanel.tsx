@@ -14,6 +14,7 @@ import { formatMeter, totalUsage } from './pricing';
 import { WINDOW_LABELS, WINDOW_SUBJECTS } from './prompt';
 import { defaultToolContext } from './renderer-tools';
 import { modelLabel, PROVIDER_LABELS } from './routes';
+import { SendDialog } from './SendDialog';
 import {
   AgentSession,
   type AgentFix,
@@ -454,52 +455,12 @@ function PreviewDialog({
     sendRef.current?.focus();
   }, []);
   return (
-    <div
-      className="ag-modal-back"
-      onKeyDown={(e) => {
-        if (e.key === 'Escape') onCancel();
-      }}
-    >
-      <div className="ag-modal" role="dialog" aria-modal="true" aria-labelledby="ag-prev-h">
-        <h4 id="ag-prev-h">Send to {providerName(preview.route.provider)}?</h4>
-        <p className="ag-sub">
-          This is the first message to a cloud provider in {projectName}. This is exactly what
-          leaves this workstation:
-        </p>
-        <dl className="ag-sent">
-          <dt>Provider and model</dt>
-          <dd className="ag-mono">
-            {providerName(preview.route.provider)} · {preview.route.model}
-          </dd>
-          <dt>Your message</dt>
-          <dd>{preview.text}</dd>
-          <dt>Window context (text)</dt>
-          <dd>
-            <pre>{JSON.stringify(preview.context, null, 2)}</pre>
-          </dd>
-          <dt>Attached frame</dt>
-          <dd>
-            {preview.image ? (
-              <img src={preview.image} alt="The frame that will be sent" />
-            ) : (
-              <span className="ag-faint">None</span>
-            )}
-          </dd>
-        </dl>
-        <p className="ag-sub">
-          Later frames and other data-sending steps still ask before they run.
-        </p>
-        <label className="ag-check">
-          <input
-            type="checkbox"
-            checked={always}
-            onChange={(e) => {
-              setAlways(e.target.checked);
-            }}
-          />
-          Always allow for this project
-        </label>
-        <div className="ag-modal-acts">
+    <SendDialog
+      titleId="ag-prev-h"
+      title={<>Send to {providerName(preview.route.provider)}?</>}
+      onCancel={onCancel}
+      actions={
+        <>
           <button type="button" className="ag-btn" onClick={onCancel}>
             Cancel
           </button>
@@ -514,9 +475,45 @@ function PreviewDialog({
             <Icon name="send" size={12} />
             Send
           </button>
-        </div>
-      </div>
-    </div>
+        </>
+      }
+    >
+      <p className="ag-sub">
+        This is the first message to a cloud provider in {projectName}. This is exactly what leaves
+        this workstation:
+      </p>
+      <dl className="ag-sent">
+        <dt>Provider and model</dt>
+        <dd className="ag-mono">
+          {providerName(preview.route.provider)} · {preview.route.model}
+        </dd>
+        <dt>Your message</dt>
+        <dd>{preview.text}</dd>
+        <dt>Window context (text)</dt>
+        <dd>
+          <pre>{JSON.stringify(preview.context, null, 2)}</pre>
+        </dd>
+        <dt>Attached frame</dt>
+        <dd>
+          {preview.image ? (
+            <img src={preview.image} alt="The frame that will be sent" />
+          ) : (
+            <span className="ag-faint">None</span>
+          )}
+        </dd>
+      </dl>
+      <p className="ag-sub">Later frames and other data-sending steps still ask before they run.</p>
+      <label className="ag-check">
+        <input
+          type="checkbox"
+          checked={always}
+          onChange={(e) => {
+            setAlways(e.target.checked);
+          }}
+        />
+        Always allow for this project
+      </label>
+    </SendDialog>
   );
 }
 

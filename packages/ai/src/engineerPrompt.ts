@@ -5,6 +5,55 @@
  * new prompt. Pure: safe for the renderer (the preview shows what will be sent).
  */
 import { AssemblyKind, ModelFamily } from '@aio/schema';
+import type { EngineerImageKind, EngineerPayload } from './engineer';
+
+/**
+ * The consent an evidence image needs to go to a cloud model: ordinary photos and crops of them
+ * need `aiCloudPhotos`; renders, slices and generated views of the scan need `aiCloudScans`.
+ */
+export function evidenceNeed(kind: EngineerImageKind): 'photos' | 'scans' {
+  return kind === 'photo' || kind === 'crop' ? 'photos' : 'scans';
+}
+
+/** One image of the send preview: the bytes that are sent, as a data URL. */
+export interface EvidencePreviewImage {
+  id: string;
+  kind: EngineerImageKind;
+  label: string;
+  /** `data:<type>;base64,...` of exactly the bytes that are sent. */
+  thumb: string;
+  bytes: number;
+  width: number;
+  height: number;
+  resized: boolean;
+}
+
+/** What the send preview shows, made from the payload the request is built from. */
+export interface EvidencePreviewContent {
+  text: string;
+  images: EvidencePreviewImage[];
+  leftOut: string[];
+  bytes: number;
+}
+
+/** The preview content of a payload: same text, same images, same counts. */
+export function payloadPreview(p: EngineerPayload): EvidencePreviewContent {
+  return {
+    text: p.text,
+    images: p.images.map((im) => ({
+      id: im.id,
+      kind: im.kind,
+      label: im.label,
+      thumb: `data:${im.mediaType};base64,${im.base64}`,
+      bytes: im.bytes,
+      width: im.width,
+      height: im.height,
+      resized: im.resized,
+    })),
+    leftOut: [...p.leftOut],
+    bytes: p.bytes,
+  };
+}
 
 export const PROMPT_VERSION = 'eng-1';
 

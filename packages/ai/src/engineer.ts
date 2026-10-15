@@ -30,6 +30,7 @@ import {
   engineerRepairText,
   engineerSystem,
   engineerUserText,
+  evidenceNeed,
   imageLabel,
   PROMPT_VERSION,
   type EngineerSetupView,
@@ -373,9 +374,6 @@ function stripJpeg(b: Buffer): Buffer {
 const IMAGE_ID = /^[A-Za-z0-9][A-Za-z0-9._-]{0,39}$/;
 const VIEW = /^[A-Za-z0-9 .,%°-]{0,40}$/;
 
-/** Kinds made from the scan (renders, slices, generated views): need `aiCloudScans`. */
-const SCAN_KINDS: ReadonlySet<EngineerImageKind> = new Set(['side', 'top', 'slice', 'generated']);
-
 /** Windows drive and UNC paths, and absolute POSIX paths under the usual roots. */
 const PATHS = [
   /\b[A-Za-z]:[\\/][^\s"',;)]*/g,
@@ -664,8 +662,8 @@ export async function runEngineer(c: EngineerCall, host: EngineerHost): Promise<
           'This project does not allow sending its data to cloud AI. A local model set up in Settings, AI providers, can still be used.',
       };
     }
-    const photos = c.images.some((im) => !SCAN_KINDS.has(im.kind));
-    const scans = c.images.some((im) => SCAN_KINDS.has(im.kind));
+    const photos = c.images.some((im) => evidenceNeed(im.kind) === 'photos');
+    const scans = c.images.some((im) => evidenceNeed(im.kind) === 'scans');
     if (photos && !policy.photos) {
       return {
         kind: 'refused',

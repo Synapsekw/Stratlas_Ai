@@ -108,7 +108,7 @@ describe('engineerReady', () => {
     expect(r.reason).toContain('acme-vlm-2');
     expect(r.reason).toContain('"Treat as vision model"');
     expect(r.reason).toContain('Settings, AI providers');
-    expect(r.reason).not.toMatch(/[–—]/);
+    expect(r.reason).not.toMatch(new RegExp(`[${String.fromCharCode(0x2013, 0x2014)}]`));
   });
 
   it('accepts an unknown cloud model with "Treat as vision model" on, with conservative caps', () => {

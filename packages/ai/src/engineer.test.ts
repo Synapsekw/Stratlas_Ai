@@ -16,7 +16,7 @@ import {
   type EngineerHost,
   type EngineerUsage,
 } from './engineer';
-import { PROMPT_VERSION } from './engineerPrompt';
+import { evidenceNeed, payloadPreview, PROMPT_VERSION } from './engineerPrompt';
 import { describeError, InvalidProposalError } from './errors';
 import { builtInProviders, createProviderRegistry } from './providers';
 import type { ModelRoute } from './routes';
@@ -835,6 +835,14 @@ describe('payload bounds', () => {
       expect(body).toContain(im.base64);
       expect(body).toContain(im.label);
     }
+    // the send preview is made from the same payload: same text, same bytes
+    const preview = payloadPreview(built.payload);
+    expect(preview.text).toBe(built.payload.text);
+    expect(preview.images.map((im) => im.thumb.split(',')[1])).toEqual(
+      built.payload.images.map((im) => im.base64),
+    );
+    expect(preview.images.map((im) => im.kind)).toEqual(['photo', 'side']);
+    expect(built.payload.images.map((im) => evidenceNeed(im.kind))).toEqual(['photos', 'scans']);
     expect(built.payload.bytes).toBe(
       built.payload.images.reduce((n, im) => n + im.bytes, 0) + built.payload.text.length,
     );
