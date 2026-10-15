@@ -1,10 +1,19 @@
 // @vitest-environment jsdom
+import type * as Engine from '@aio/engine';
 import type { EngineerRun, ProcModel, ProjectManifest } from '@aio/schema';
 import { workspace } from '@aio/workspace';
 import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { EngineerLayer } from './EngineerLayer';
+
+/** What a click in the 3D view hits (the scene's raycast). */
+const scene = { hit: { point: { x: 12, y: 4, z: -7 } } as unknown };
+vi.mock('@aio/engine', async (importOriginal) => ({
+  ...(await importOriginal<typeof Engine>()),
+  getActiveScene: () => ({ raycast: () => scene.hit }),
+}));
+
+const { EngineerLayer } = await import('./EngineerLayer');
 import { ENGINEERING_MODEL_UI } from './flags';
 import { activeEngineerSession } from '../modeller/engineerTools';
 import { engineerHost } from './host';
@@ -95,6 +104,32 @@ afterEach(() => {
 });
 
 const q = (id: string) => document.querySelector<HTMLElement>(`[data-testid="${id}"]`);
+function must<T>(v: T | null | undefined): T {
+  if (v === null || v === undefined) throw new Error('missing');
+  return v;
+}
+
+/** The 3D view's pane, with a canvas, for the pick to listen on. */
+function pane(): HTMLElement {
+  const el = document.createElement('div');
+  el.className = 'pane-3d';
+  const canvas = document.createElement('canvas');
+  canvas.getBoundingClientRect = () => ({ left: 0, top: 0, width: 800, height: 600 }) as DOMRect;
+  el.append(canvas);
+  document.body.append(el);
+  return el;
+}
+
+/** A click (no drag) in the 3D view. */
+function clickScene(el: HTMLElement) {
+  act(() => {
+    el.dispatchEvent(new MouseEvent('pointerdown', { clientX: 400, clientY: 300, button: 0 }));
+    el.dispatchEvent(new MouseEvent('pointerup', { clientX: 400, clientY: 300, button: 0 }));
+  });
+}
+
+const setupShown = () =>
+  must(q('eng-setup')).closest<HTMLElement>('.dlg-scrim')?.style.display !== 'none';
 
 describe('EngineerLayer', () => {
   it('is on, makes a run store for the open project and hands the agent a session', () => {
@@ -157,6 +192,104 @@ describe('EngineerLayer', () => {
       await Promise.resolve();
     });
     expect(a.accept).toHaveBeenCalled();
+  });
+
+  it('picks a region and an anchor in the 3D view and keeps every other choice', async () => {
+    fake({ run: null, preview: null });
+    const el = pane();
+    try {
+      act(() => {
+        engineerUi.getState().show(['scan']);
+      });
+      act(() => q('eng-detail-fast')?.click());
+      act(() => q('eng-region-pick')?.click());
+      // the setup steps aside (still there, with its choices) while the bar says what to do
+      expect(setupShown()).toBe(false);
+      expect(q('eng-pick-bar')?.textContent).toContain(
+        'Click the asset in the 3D view. Escape cancels.',
+      );
+      expect(el.dataset.picking).toBe('true');
+      clickScene(el);
+      await act(async () => {
+        await Promise.resolve();
+      });
+      expect(q('eng-pick-bar')).toBeNull();
+      expect(setupShown()).toBe(true);
+      expect(q('eng-region')?.textContent).toBe('Around E 12 N 7, 30 m');
+      expect((q('eng-detail-fast') as HTMLInputElement).checked).toBe(true);
+      expect((q('eng-source-scan') as HTMLInputElement).checked).toBe(true);
+
+      act(() => q('eng-placement-anchor')?.click());
+      act(() => q('eng-anchor-pick')?.click());
+      expect(setupShown()).toBe(false);
+      scene.hit = { point: { x: 1, y: 2, z: -3 } };
+      clickScene(el);
+      await act(async () => {
+        await Promise.resolve();
+      });
+      expect(q('eng-anchor')?.textContent).toBe('At E 1 N 3 H 2');
+      expect(q('eng-region')?.textContent).toBe('Around E 12 N 7, 30 m');
+    } finally {
+      el.remove();
+      scene.hit = { point: { x: 12, y: 4, z: -7 } };
+    }
+  });
+
+  it('Escape or Cancel on the bar lets the pick go and brings the setup back unchanged', async () => {
+    fake({ run: null, preview: null });
+    const el = pane();
+    try {
+      act(() => {
+        engineerUi.getState().show(['scan']);
+      });
+      act(() => q('eng-region-pick')?.click());
+      act(() => {
+        document.body.dispatchEvent(
+          new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }),
+        );
+      });
+      await act(async () => {
+        await Promise.resolve();
+      });
+      expect(q('eng-pick-bar')).toBeNull();
+      expect(el.dataset.picking).toBeUndefined();
+      expect(setupShown()).toBe(true);
+      expect(q('eng-region')).toBeNull();
+      act(() => q('eng-region-pick')?.click());
+      act(() => q('eng-pick-cancel')?.click());
+      expect(q('eng-pick-bar')).toBeNull();
+      expect(setupShown()).toBe(true);
+    } finally {
+      el.remove();
+    }
+  });
+
+  it('lets a pick go when the setup is closed or another project opens', () => {
+    fake({ run: null, preview: null });
+    const el = pane();
+    try {
+      act(() => {
+        engineerUi.getState().show(['scan']);
+      });
+      act(() => q('eng-region-pick')?.click());
+      act(() => {
+        engineerUi.getState().hide();
+      });
+      expect(q('eng-pick-bar')).toBeNull();
+      expect(el.dataset.picking).toBeUndefined();
+      act(() => {
+        engineerUi.getState().show(['scan']);
+      });
+      expect(setupShown()).toBe(true);
+      act(() => q('eng-region-pick')?.click());
+      act(() => {
+        workspace.getState().openProject({ id: 'q', root: 'E:/q', manifest });
+      });
+      expect(q('eng-pick-bar')).toBeNull();
+      expect(el.dataset.picking).toBeUndefined();
+    } finally {
+      el.remove();
+    }
   });
 
   it('shows a send waiting for consent, whether or not the panel is open; Cancel declines', () => {

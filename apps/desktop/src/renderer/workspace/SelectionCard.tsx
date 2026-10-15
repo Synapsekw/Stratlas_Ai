@@ -1,3 +1,4 @@
+import { useAnnotateReadOnly } from '@aio/annotate';
 import type { ComponentDimension, ComponentInfo } from '@aio/engine';
 import { clipKeys, correctedPhoto, looksEstimated, photoCorrection } from '@aio/geo';
 import type { Issue, Layer, OrientationFile, PoseSample, ProjectManifest, Vec3 } from '@aio/schema';
@@ -530,6 +531,7 @@ export function SelectionCard() {
   const t = useT();
   const issues = useWorkspace((s) => s.issues);
   const pkg = useShell((s) => s.pkg);
+  const readOnly = useAnnotateReadOnly();
   const nowMs = useWorkspace((s) => (s.selection?.kind === 'clip' ? s.nowMs : 0));
   const orientation = useWorkspace((s) => s.orientation);
   const { durations, flights } = useMedia(project);
@@ -551,8 +553,18 @@ export function SelectionCard() {
         />
       </div>
     ) : null;
+  // with a component list the card and the list scroll together in a capped host, so the last
+  // rows stay reachable in a small window (the agent keeps its share of the panel)
+  const host = (children: ReactNode) =>
+    list ? (
+      <div className="sel-scroll" data-testid="selection-scroll">
+        {children}
+      </div>
+    ) : (
+      <>{children}</>
+    );
   if (component && meshLayer?.kind === 'mesh' && selection)
-    return (
+    return host(
       <>
         <ComponentCard
           info={component}
@@ -562,7 +574,7 @@ export function SelectionCard() {
           provisional={meshLayer.georef?.scale.status === 'provisional'}
         />
         {list}
-      </>
+      </>,
     );
 
   const card = describe(selection, m, issues, nowMs, durations, flights, orientation);
@@ -576,7 +588,7 @@ export function SelectionCard() {
     .filter((x) => x.n > 0)
     .reverse();
 
-  return (
+  return host(
     <>
       <section className="ctx" aria-label={t('selection.title')} onKeyDown={clearOnEscape}>
         <div className="panel-h">
@@ -672,7 +684,7 @@ export function SelectionCard() {
               </div>
             ))}
           </dl>
-          {selection?.kind === 'layer' && meshLayer && !pkg && (
+          {selection?.kind === 'layer' && meshLayer && !pkg && !readOnly && (
             <div className="acts">
               <button
                 type="button"
@@ -690,6 +702,6 @@ export function SelectionCard() {
         </div>
       </section>
       {list}
-    </>
+    </>,
   );
 }

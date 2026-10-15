@@ -354,6 +354,113 @@ engTest(
   },
 );
 
+/** A chimney with many warning lights (over 30 components), in a project of its own. */
+async function writeLongProject(dataRoot: DataRoot): Promise<number> {
+  const id = 'e2e-eng-long';
+  const dir = join(dataRoot.root, 'projects', id);
+  await mkdir(join(dir, 'models'), { recursive: true });
+  const base = stackModel();
+  const light = base.assemblies.find((a) => a.kind === 'warningLight');
+  if (light?.kind !== 'warningLight') throw new Error('no warning light in the stack');
+  const [x, , z] = light.params.centre;
+  const extra = Array.from({ length: 16 }, (_, i) => ({
+    ...light,
+    id: `light-x-${String(i + 1).padStart(2, '0')}`,
+    params: { ...light.params, centre: [x, 6 + i * 6, z] as V3 },
+  }));
+  const model = { ...base, assemblies: [...base.assemblies, ...extra] };
+  const { glb } = buildEngineeringGlb(model, { detail: 'fast', drafts: true, generator: 'e2e' });
+  await writeFile(join(dir, 'models', 'long.glb'), glb);
+  const input: ProjectManifestInput = {
+    schema: SCHEMA_VERSION,
+    id,
+    name: 'E2E engineering long list',
+    customer: 'E2E',
+    site: 'Synthetic site',
+    crs: { epsg: 32639 },
+    origin: ORIGIN,
+    captures: [],
+    layers: [
+      {
+        kind: 'mesh',
+        id: 'long',
+        name: 'Synthetic chimney, many lights',
+        src: { path: 'models/long.glb' },
+        transform: IDENTITY,
+      },
+    ],
+    severityModels: [],
+    classCatalogues: [],
+  };
+  await writeFile(
+    join(dir, 'manifest.json'),
+    JSON.stringify(ProjectManifest.parse(input), null, 2),
+  );
+  await writeFile(
+    join(dir, 'issues.json'),
+    JSON.stringify({ schema: 'aio.issues/1', issues: [] }, null, 2),
+  );
+  return model.assemblies.length;
+}
+
+test('a long component list scrolls to its last row at 1100 x 720', async ({
+  app,
+  win,
+  dataRoot,
+}) => {
+  test.setTimeout(180_000);
+  const count = await writeLongProject(dataRoot);
+  expect(count).toBeGreaterThanOrEqual(30);
+  await app.evaluate(({ BrowserWindow }) => {
+    BrowserWindow.getAllWindows()[0]?.setContentSize(1100, 720);
+  });
+  await openByName(win, 'E2E engineering long list', 'e2e-eng-long');
+  await expect
+    .poll(
+      () =>
+        win.evaluate(
+          () => (window as unknown as Probe).__stratlas.stage()?.components('long').length ?? 0,
+        ),
+      { timeout: 60_000 },
+    )
+    .toBe(count);
+  await win.evaluate(() => {
+    (
+      window as unknown as {
+        __stratlas: { workspace: { getState(): { select(s: unknown): void } } };
+      }
+    ).__stratlas.workspace
+      .getState()
+      .select({ kind: 'layer', id: 'long' });
+  });
+  const list = win.getByTestId('component-list');
+  const rows = list.getByTestId('component-row');
+  await expect(rows).toHaveCount(count);
+  const last = rows.last();
+  const lastId = await last.getAttribute('data-id');
+  const height = await win.evaluate(() => window.innerHeight);
+  // the last row starts out of sight; the wheel over the list brings it into the window
+  const before = await last.boundingBox();
+  expect((before?.y ?? 0) + (before?.height ?? 0)).toBeGreaterThan(height);
+  const host = await win.getByTestId('selection-scroll').boundingBox();
+  if (!host) throw new Error('no scrolling host');
+  await win.mouse.move(host.x + host.width / 2, host.y + host.height / 2);
+  for (let i = 0; i < 30; i++) await win.mouse.wheel(0, 400);
+  await win.waitForTimeout(300);
+  const box = await last.boundingBox();
+  if (!box) throw new Error('no last row');
+  expect(box.y + box.height).toBeLessThanOrEqual(height);
+  expect(box.y + box.height).toBeLessThanOrEqual(host.y + host.height + 1);
+  // a real click there selects it (nothing covers it)
+  const name = await last.locator('.cl-name').boundingBox();
+  if (!name) throw new Error('no row name');
+  await win.mouse.click(name.x + 10, name.y + name.height / 2);
+  await expect.poll(() => selection(win)).toMatchObject({ kind: 'asset', id: lastId });
+  // the agent below keeps its share of the panel
+  const agent = await win.locator('.right .agent').boundingBox();
+  expect(agent?.height ?? 0).toBeGreaterThan(150);
+});
+
 /** Make the next native open dialog return these files (Electron main process). */
 async function nextOpenDialog(app: ElectronApplication, paths: string[]) {
   await app.evaluate(({ dialog }, files) => {

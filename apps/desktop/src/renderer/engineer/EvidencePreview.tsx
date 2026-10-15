@@ -6,6 +6,7 @@ import {
   type EvidencePreviewImage,
   type ModelRoute,
 } from '@aio/ai';
+import { useT, type MessageKey } from '@aio/ui';
 import { useEffect, useRef, useState } from 'react';
 
 type Need = 'photos' | 'scans';
@@ -32,29 +33,21 @@ export interface EvidencePreviewProps {
   onCancel: () => void;
 }
 
-const GROUPS: readonly { need: Need; title: string; once: string; none: string }[] = [
-  {
-    need: 'photos',
-    title: 'Photos',
-    once: 'Send photos this once',
-    none: 'Photos of the asset, as taken.',
-  },
-  {
-    need: 'scans',
-    title: 'Scan views',
-    once: 'Send scan views this once',
-    none: 'Renders and slices of the point cloud.',
-  },
+const GROUPS: readonly { need: Need; title: MessageKey; once: MessageKey }[] = [
+  { need: 'photos', title: 'eng.ev.photos', once: 'eng.ev.photosOnce' },
+  { need: 'scans', title: 'eng.ev.scans', once: 'eng.ev.scansOnce' },
 ];
 
-const KIND_LABELS: Record<EvidencePreviewImage['kind'], string> = {
-  photo: 'Photo',
-  crop: 'Photo crop',
-  side: 'Side view',
-  top: 'Top view',
-  slice: 'Slice',
-  generated: 'Generated view',
+const KIND_LABELS: Record<EvidencePreviewImage['kind'], MessageKey> = {
+  photo: 'eng.ev.kind.photo',
+  crop: 'eng.ev.kind.crop',
+  side: 'eng.ev.kind.side',
+  top: 'eng.ev.kind.top',
+  slice: 'eng.ev.kind.slice',
+  generated: 'eng.ev.kind.generated',
 };
+
+type T = ReturnType<typeof useT>;
 
 /** 117 KB, 1.4 MB. */
 export function formatBytes(n: number): string {
@@ -63,15 +56,15 @@ export function formatBytes(n: number): string {
   return `${(n / (1024 * 1024)).toFixed(1)} MB`;
 }
 
-function imagesText(count: number, bytes: number): string {
-  return `${String(count)} ${count === 1 ? 'image' : 'images'}, ${formatBytes(bytes)}`;
+function imagesText(t: T, count: number, bytes: number): string {
+  return t('eng.ev.imageCount', { count, size: formatBytes(bytes) });
 }
 
-function costText(usd: number | undefined, local: boolean): string {
-  if (local) return 'No cost: the model runs on this workstation.';
-  if (usd === undefined) return 'Price not known for this model';
-  if (usd < 0.01) return 'Under US$0.01';
-  return `About US$${usd.toFixed(2)}`;
+function costText(t: T, usd: number | undefined, local: boolean): string {
+  if (local) return t('eng.ev.costLocal');
+  if (usd === undefined) return t('eng.ev.costUnknown');
+  if (usd < 0.01) return t('eng.ev.costUnder');
+  return t('eng.ev.costAbout', { usd: usd.toFixed(2) });
 }
 
 /**
@@ -81,6 +74,7 @@ function costText(usd: number | undefined, local: boolean): string {
  * main process checks it again for every request.
  */
 export function EvidencePreview(p: EvidencePreviewProps) {
+  const t = useT();
   const local = p.route.provider === 'local';
   const provider = PROVIDER_LABELS[p.route.provider];
   const [once, setOnce] = useState({ photos: false, scans: false });
@@ -100,11 +94,17 @@ export function EvidencePreview(p: EvidencePreviewProps) {
   const left = p.content.leftOut;
   const missing = GROUPS.filter(
     (g) => !local && byNeed(g.need).length > 0 && !p.flags[g.need] && !once[g.need],
-  ).map((g) => g.title.toLowerCase());
+  ).map((g) => g.need);
+  const kinds: MessageKey =
+    missing.length > 1
+      ? 'eng.ev.whyKinds.both'
+      : missing[0] === 'scans'
+        ? 'eng.ev.whyKinds.scans'
+        : 'eng.ev.whyKinds.photos';
   const why = !consented
-    ? `Allow ${missing.join(' and ')} for this project, or tick them for this send.`
+    ? t('eng.ev.whyConsent', { kinds: t(kinds) })
     : !priced
-      ? 'Confirm sending without a cost estimate.'
+      ? t('eng.ev.whyCost')
       : null;
 
   return (
@@ -112,12 +112,12 @@ export function EvidencePreview(p: EvidencePreviewProps) {
       standalone
       className="ag-ev"
       titleId="eng-ev-h"
-      title={local ? 'Run on the local model?' : `Send evidence to ${provider}?`}
+      title={local ? t('eng.ev.titleLocal') : t('eng.ev.title', { provider })}
       onCancel={p.onCancel}
       actions={
         <>
           <button ref={cancelRef} type="button" className="ag-btn" onClick={p.onCancel}>
-            Cancel
+            {t('eng.ev.cancel')}
           </button>
           <button
             type="button"
@@ -131,30 +131,26 @@ export function EvidencePreview(p: EvidencePreviewProps) {
               });
             }}
           >
-            {local ? 'Run' : 'Send once'}
+            {local ? t('eng.ev.run') : t('eng.ev.sendOnce')}
           </button>
         </>
       }
     >
-      <p className="ag-sub">
-        {local
-          ? 'Nothing leaves this workstation. This is what the local model reads for the engineering step:'
-          : 'This is exactly what leaves this workstation for the engineering step:'}
-      </p>
+      <p className="ag-sub">{local ? t('eng.ev.subLocal') : t('eng.ev.sub')}</p>
       <dl className="ag-sent">
-        <dt>Provider and model</dt>
+        <dt>{t('eng.ev.provider')}</dt>
         <dd className="ag-mono">
           {provider}, {p.route.model}
         </dd>
-        <dt>Images</dt>
-        <dd>{imagesText(p.content.images.length, total)} in all</dd>
-        <dt>Request size</dt>
-        <dd>{formatBytes(p.content.bytes)} with the text</dd>
-        <dt>Estimated cost</dt>
+        <dt>{t('eng.ev.images')}</dt>
+        <dd>{t('eng.ev.imagesAll', { images: imagesText(t, p.content.images.length, total) })}</dd>
+        <dt>{t('eng.ev.size')}</dt>
+        <dd>{t('eng.ev.sizeWithText', { size: formatBytes(p.content.bytes) })}</dd>
+        <dt>{t('eng.ev.cost')}</dt>
         <dd className={p.estimateUsd === undefined && !local ? 'ag-ev-cost unknown' : 'ag-ev-cost'}>
-          {costText(p.estimateUsd, local)}
+          {costText(t, p.estimateUsd, local)}
         </dd>
-        <dt>Request text</dt>
+        <dt>{t('eng.ev.text')}</dt>
         <dd>
           <pre>{p.content.text}</pre>
         </dd>
@@ -172,16 +168,17 @@ export function EvidencePreview(p: EvidencePreviewProps) {
             aria-labelledby={`eng-ev-${g.need}`}
           >
             <div className="ag-ev-head">
-              <b id={`eng-ev-${g.need}`}>{g.title}</b>
+              <b id={`eng-ev-${g.need}`}>{t(g.title)}</b>
               <span className="ag-faint">
                 {imagesText(
+                  t,
                   images.length,
                   images.reduce((n, im) => n + im.bytes, 0),
                 )}
               </span>
               {!local &&
                 (allowed ? (
-                  <span className="ag-ev-ok">Allowed for this project</span>
+                  <span className="ag-ev-ok">{t('eng.ev.allowed')}</span>
                 ) : (
                   <button
                     type="button"
@@ -190,7 +187,7 @@ export function EvidencePreview(p: EvidencePreviewProps) {
                       p.onAllowProject(g.need);
                     }}
                   >
-                    Allow for this project
+                    {t('eng.ev.allow')}
                   </button>
                 ))}
             </div>
@@ -201,11 +198,15 @@ export function EvidencePreview(p: EvidencePreviewProps) {
                     <img src={im.thumb} alt={im.label} width={96} height={96} />
                     <figcaption>
                       <b>{im.id}</b>
-                      <span>{KIND_LABELS[im.kind]}</span>
+                      <span>{t(KIND_LABELS[im.kind])}</span>
                       <span>
-                        {String(im.width)} x {String(im.height)}, {formatBytes(im.bytes)}
+                        {t('eng.ev.imageSize', {
+                          width: String(im.width),
+                          height: String(im.height),
+                          size: formatBytes(im.bytes),
+                        })}
                       </span>
-                      {im.resized && <span>made smaller</span>}
+                      {im.resized && <span>{t('eng.ev.resized')}</span>}
                     </figcaption>
                   </figure>
                 </li>
@@ -221,7 +222,7 @@ export function EvidencePreview(p: EvidencePreviewProps) {
                     setOnce((o) => ({ ...o, [g.need]: checked }));
                   }}
                 />
-                {g.once}
+                {t(g.once)}
               </label>
             )}
           </section>
@@ -230,8 +231,7 @@ export function EvidencePreview(p: EvidencePreviewProps) {
 
       {left.length > 0 && (
         <p className="ag-faint">
-          Not sent: {String(left.length)} {left.length === 1 ? 'image' : 'images'} over this
-          model&apos;s limit ({left.join(', ')}).
+          {t('eng.ev.leftOut', { count: left.length, ids: left.join(', ') })}
         </p>
       )}
       {!local && p.estimateUsd === undefined && (
@@ -243,7 +243,7 @@ export function EvidencePreview(p: EvidencePreviewProps) {
               setCostConfirmed(e.target.checked);
             }}
           />
-          Send without a cost estimate
+          {t('eng.ev.noEstimate')}
         </label>
       )}
       {why && (

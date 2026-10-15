@@ -55,10 +55,15 @@ const NO_COMPONENTS: ComponentInfo[] = [];
 const POLL_MS = 400;
 const POLL_TRIES = 25;
 
+/** Whether two component lists say the same (ids, names, dimensions, every field). */
+const sameList = (a: readonly ComponentInfo[], b: readonly ComponentInfo[]) =>
+  a.length === b.length && JSON.stringify(a) === JSON.stringify(b);
+
 /**
  * The engineering components of a mesh layer in the active 3D view (empty for other layers). A
  * layer still loading is looked at again until it has loaded (for a few seconds at most); a
- * loaded layer without components is not asked again.
+ * loaded layer without components is not asked again. A layer that loads again (a model rebuilt
+ * by a correction) is read again, so the list and the card follow it.
  */
 export function useLayerComponents(layerId: string): ComponentInfo[] {
   const [state, setState] = useState<{ layerId: string; list: ComponentInfo[] }>(() => ({
@@ -69,22 +74,36 @@ export function useLayerComponents(layerId: string): ComponentInfo[] {
     if (!layerId) return;
     let tries = 0;
     let timer: ReturnType<typeof setTimeout> | undefined;
-    const look = () => {
+    const read = () => {
       const stage = getActiveStage();
       const found = stage?.components(layerId) ?? [];
       setState((prev) =>
-        prev.layerId === layerId &&
-        prev.list.length === found.length &&
-        prev.list.every((c, i) => c.id === found[i]?.id)
-          ? prev
-          : { layerId, list: found },
+        prev.layerId === layerId && sameList(prev.list, found) ? prev : { layerId, list: found },
       );
-      if (stage?.layerLoaded(layerId)) return;
+      return stage;
+    };
+    const look = () => {
+      if (read()?.layerLoaded(layerId)) return;
       if (++tries < POLL_TRIES) timer = setTimeout(look, POLL_MS);
     };
     look();
+    let offLoaded: (() => void) | undefined;
+    const watch = () => {
+      offLoaded?.();
+      offLoaded = getActiveStage()?.onLayerLoaded((id) => {
+        if (id === layerId) read();
+      });
+    };
+    watch();
+    // another view became active: follow its loads, and read its copy of the layer
+    const offScene = onActiveScene(() => {
+      watch();
+      read();
+    });
     return () => {
       if (timer !== undefined) clearTimeout(timer);
+      offScene();
+      offLoaded?.();
     };
   }, [layerId]);
   return layerId && state.layerId === layerId ? state.list : NO_COMPONENTS;

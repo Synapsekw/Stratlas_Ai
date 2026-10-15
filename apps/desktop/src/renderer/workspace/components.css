@@ -159,3 +159,16 @@
 .comp-card .comp-values li span:last-child {
   color: var(--fg-3);
 }
+
+/* The selection card with a component list: card and list scroll together in a host capped to
+   most of the right panel, so a long list stays reachable in a 1100 x 720 window and the agent
+   below keeps its share. */
+.ctx-wrap:has(> .sel-scroll) {
+  flex: 0 1 auto;
+  max-height: 62%;
+}
+.sel-scroll {
+  flex: 0 1 auto;
+  min-height: 0;
+  overflow: auto;
+}

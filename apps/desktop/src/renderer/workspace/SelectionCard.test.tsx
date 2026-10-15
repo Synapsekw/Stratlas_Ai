@@ -209,6 +209,58 @@ describe('SelectionCard for an engineering component', () => {
     builder.getState().stopAlign();
   });
 
+  it('follows a rebuilt layer: new components and changed values show at once', () => {
+    act(() => {
+      workspace.getState().select({ kind: 'layer', id: 'chimney' });
+    });
+    const rows = () =>
+      [...host.querySelectorAll('[data-testid="component-row"]')].map((r) =>
+        r.getAttribute('data-id'),
+      );
+    expect(rows()).toEqual(['light-l1-2', 'flue-1']);
+    const flue2: ComponentInfo = { id: 'flue-2', name: 'Flue 2', category: 'Structure' };
+    act(() => {
+      stage.load('chimney', [flue, flue2, light]);
+    });
+    expect(rows()).toEqual(['light-l1-2', 'flue-1', 'flue-2']);
+    // same ids, a corrected value: the card shows the new one
+    selectLight();
+    act(() => {
+      stage.load('chimney', [
+        flue,
+        flue2,
+        { ...light, dimensions: { ...light.dimensions, height: { value: 25, unit: 'm' } } },
+      ]);
+    });
+    const values = [...host.querySelectorAll('[data-testid="component-value"]')].map(
+      (v) => v.textContent,
+    );
+    expect(values[0]).toBe('Height25 m · Measured');
+  });
+
+  it('puts the card and a long list in one scrolling host', () => {
+    act(() => {
+      workspace.getState().select({ kind: 'layer', id: 'chimney' });
+    });
+    const scroller = host.querySelector('[data-testid="selection-scroll"]');
+    expect(scroller).not.toBeNull();
+    expect(scroller?.querySelector('[data-testid="component-list"]')).toBeInstanceOf(HTMLElement);
+    expect(scroller?.querySelector('section.ctx')).toBeInstanceOf(HTMLElement);
+  });
+
+  it('leaves Place model out of a read-only package', async () => {
+    const { setAnnotateReadOnly } = await import('@aio/annotate');
+    act(() => {
+      setAnnotateReadOnly(true);
+      workspace.getState().select({ kind: 'layer', id: 'chimney' });
+    });
+    expect(q('layer-place-model')).toBeNull();
+    act(() => {
+      setAnnotateReadOnly(false);
+    });
+    expect(q('layer-place-model')).not.toBeNull();
+  });
+
   it('keeps the plain asset card for a node without a component record', () => {
     act(() => {
       workspace.getState().select({ kind: 'asset', id: 'Pipe_3', layer: 'chimney' });

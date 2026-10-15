@@ -215,7 +215,9 @@ export function PlaceModel({
     if (at) gizmo.current?.attach(layerId, at, basisRef.current ?? undefined);
   }, [frame, layerId]);
 
-  // Escape: a pick that is armed lets go; otherwise the panel closes as Cancel does
+  // Escape: a pick that is armed lets go; otherwise the panel closes as Cancel does. It listens
+  // before the 3D view (capture) and marks the key taken, so the same press does not also clear
+  // the selection there; a menu or another dialog keeps its own Escape.
   const manifestTransform = layer?.transform;
   useEffect(() => {
     const onKey = (e: globalThis.KeyboardEvent) => {
@@ -223,9 +225,13 @@ export function PlaceModel({
       const el = e.target;
       if (
         el instanceof HTMLElement &&
-        (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.isContentEditable)
+        (el.tagName === 'INPUT' ||
+          el.tagName === 'TEXTAREA' ||
+          el.isContentEditable ||
+          el.closest('[role="dialog"],[role="menu"],[role="listbox"]') !== null)
       )
         return;
+      e.preventDefault();
       if (armed) {
         setArmed(false);
         setSay(null);
@@ -236,9 +242,9 @@ export function PlaceModel({
       gizmo.current = null;
       builder.getState().stopAlign();
     };
-    window.addEventListener('keydown', onKey);
+    window.addEventListener('keydown', onKey, true);
     return () => {
-      window.removeEventListener('keydown', onKey);
+      window.removeEventListener('keydown', onKey, true);
     };
   }, [armed, manifestTransform]);
 

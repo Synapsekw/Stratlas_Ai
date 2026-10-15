@@ -180,3 +180,27 @@
   font-size: var(--t-12);
   color: var(--fg-2);
 }
+
+/* A pick in the 3D view for the setup (the region, the anchor): one line at the top of the view,
+   with Cancel, while the setup steps aside. */
+.eng-pickbar {
+  position: fixed;
+  top: calc(var(--tb-h) + 56px);
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 60;
+  max-width: calc(100vw - 32px);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 6px 6px 12px;
+  background: var(--bg-1);
+  color: var(--fg-1);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-6);
+  box-shadow: 0 16px 40px oklch(0.08 0.01 250 / 0.55);
+  font-size: var(--t-13);
+}
+.eng-pickbar > span {
+  min-width: 0;
+}

@@ -162,6 +162,12 @@ async function runToReview(win: Page, o: { send: boolean } = { send: true }) {
 }
 
 interface RunFile {
+  setup: {
+    placement: string;
+    anchor?: number[];
+    region?: { kind: string; centre: number[] };
+    detail: string;
+  };
   usage: { costUsd: number; inputTokens: number };
   stages: Record<string, { status: string; message?: string }>;
   reconstruction?: string;
@@ -275,6 +281,63 @@ engTest('A: from a partial chimney cloud to an accepted model layer', async ({ e
   const accepted = manifest.layers.filter((l) => l.kind === 'mesh' && l.id === `model-${model.id}`);
   expect(accepted).toHaveLength(1);
 });
+
+/** A click (no drag) in the middle of the 3D view. */
+async function clickScene(win: Page) {
+  const box = await win.locator('.pane-3d:not(.pane-compare) canvas').first().boundingBox();
+  if (!box) throw new Error('no 3D view');
+  await win.mouse.click(box.x + box.width / 2, box.y + box.height / 2);
+}
+
+engTest(
+  'B: a region and an anchor picked in the 3D view keep the setup and start anchored',
+  async ({ eng, win }) => {
+    test.setTimeout(240_000);
+    await openProject(win);
+    const setup = await setupFromCloud(win);
+    await setup.getByTestId('eng-detail-fast').check();
+    const bar = win.getByTestId('eng-pick-bar');
+
+    // the region: the setup steps aside while the bar says what to do; Escape lets it go
+    await setup.getByTestId('eng-region-pick').click();
+    await expect(bar).toContainText('Click the asset in the 3D view. Escape cancels.');
+    await expect(setup).toBeHidden();
+    await win.keyboard.press('Escape');
+    await expect(bar).toHaveCount(0);
+    await expect(setup).toBeVisible();
+    await expect(setup.getByTestId('eng-region')).toHaveCount(0);
+    await expect(setup.getByTestId('eng-detail-fast')).toBeChecked();
+    // picked for real: the region shows, every other choice is as it was
+    await setup.getByTestId('eng-region-pick').click();
+    await expect(setup).toBeHidden();
+    await clickScene(win);
+    await expect(setup).toBeVisible();
+    await expect(setup.getByTestId('eng-region')).toContainText('Around E');
+    await expect(setup.getByTestId('eng-detail-fast')).toBeChecked();
+    await expect(setup.getByTestId('eng-source-scan')).toBeChecked();
+
+    // the anchor: Start waits for it, then takes it
+    await setup.getByTestId('eng-placement-anchor').check();
+    await expect(setup.getByTestId('eng-start')).toBeDisabled();
+    await setup.getByTestId('eng-anchor-pick').click();
+    await expect(bar).toBeVisible();
+    await clickScene(win);
+    await expect(setup.getByTestId('eng-anchor')).toContainText('At E');
+    await expect(setup.getByTestId('eng-region')).toContainText('Around E');
+    await expect(setup.getByTestId('eng-start')).toBeEnabled();
+    await setup.getByTestId('eng-start').click();
+    await expect(win.getByTestId('eng-run')).toBeVisible({ timeout: 30_000 });
+    await expect
+      .poll(async () => (await readRun(eng.dir).catch(() => null))?.setup ?? null, {
+        timeout: 30_000,
+      })
+      .toMatchObject({ placement: 'anchor', detail: 'fast', region: { kind: 'circle' } });
+    const run = await readRun(eng.dir);
+    expect(run.setup.anchor).toHaveLength(3);
+    if (await win.getByTestId('eng-cancel').isVisible())
+      await win.getByTestId('eng-cancel').click();
+  },
+);
 
 engTest(
   'C: one photo only: a provisional scale and an unplaced model',
@@ -406,6 +469,30 @@ test('D: corrections regenerate only what they touch, keep ids and survive a res
     const before = await readModel(eng.dir);
     const flueIds = before.assemblies.filter((a) => a.kind === 'flue').map((a) => a.id);
     const shaftBefore = before.assemblies.find((a) => a.kind === 'shaft');
+    // the draft layer's component list, open before the correction: it follows the rebuild
+    await win.evaluate((id) => {
+      (
+        window as unknown as {
+          __stratlas: { workspace: { getState(): { select(s: unknown): void } } };
+        }
+      ).__stratlas.workspace
+        .getState()
+        .select({ kind: 'layer', id });
+    }, `model-draft-${before.id}`);
+    /** How many rows of the list are flues of the model as saved now. */
+    const flueRows = async () => {
+      const ids = (await readModel(eng.dir)).assemblies
+        .filter((a) => a.kind === 'flue')
+        .map((a) => a.id);
+      return win
+        .getByTestId('component-list')
+        .locator('[data-testid="component-row"]')
+        .evaluateAll(
+          (rows, want) => rows.filter((r) => want.includes(r.getAttribute('data-id') ?? '')).length,
+          ids,
+        );
+    };
+    await expect.poll(flueRows, { timeout: 30_000 }).toBe(flueIds.length);
 
     await ask(win, 'there are four flues, not three');
     await approveAgent(win, 'set_count');
@@ -417,6 +504,8 @@ test('D: corrections regenerate only what they touch, keep ids and survive a res
         },
       )
       .toBe(4);
+    // the list shows the four flues without selecting the layer again
+    await expect.poll(flueRows, { timeout: 60_000 }).toBe(4);
     const after = await readModel(eng.dir);
     for (const id of flueIds) expect(after.assemblies.map((a) => a.id)).toContain(id);
     // what the correction did not touch is the same object

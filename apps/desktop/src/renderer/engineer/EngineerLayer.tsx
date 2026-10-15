@@ -26,9 +26,23 @@ const DEFAULT_RADIUS_M = 30;
 
 const pickingStore = createStore<{ picking: Picking }>(() => ({ picking: null }));
 
+/** Let a waiting pick go: the setup hears "cancelled" and comes back as it was. */
+function cancelPick() {
+  const p = pickingStore.getState().picking;
+  if (!p) return;
+  pickingStore.setState({ picking: null });
+  p.done(null);
+}
+
+/**
+ * While the setup waits for a pick: the click in the 3D view, and a bar that says what to do,
+ * with Cancel. Escape cancels too (before the 3D view, so it does not also clear the selection).
+ */
 function ScenePick() {
+  const tt = useT();
   const picking = useStore(pickingStore, (s) => s.picking);
-  useStagePick(picking !== null, (hit) => {
+  const armed = picking !== null;
+  useStagePick(armed, (hit) => {
     const p = pickingStore.getState().picking;
     if (!p) return;
     pickingStore.setState({ picking: null });
@@ -36,7 +50,33 @@ function ScenePick() {
       p.done(hit ? { centre: [hit.point.x, hit.point.z], radiusM: DEFAULT_RADIUS_M } : null);
     else p.done(hit ? [hit.point.x, hit.point.y, hit.point.z] : null);
   });
-  return null;
+  useEffect(() => {
+    if (!armed) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape' || e.defaultPrevented) return;
+      e.preventDefault();
+      cancelPick();
+    };
+    window.addEventListener('keydown', onKey, true);
+    return () => {
+      window.removeEventListener('keydown', onKey, true);
+    };
+  }, [armed]);
+  if (!armed) return null;
+  return (
+    <div className="eng-pickbar" role="status" data-testid="eng-pick-bar">
+      <Icon name={picking.kind === 'region' ? 'target' : 'point'} size={14} />
+      <span>{tt('eng.pick.say')}</span>
+      <button
+        type="button"
+        className="btn ghost sm"
+        data-testid="eng-pick-cancel"
+        onClick={cancelPick}
+      >
+        {tt('eng.pick.cancel')}
+      </button>
+    </div>
+  );
 }
 
 function engineerRoute(routes: readonly ModelRoute[]): ModelRoute | null {
@@ -277,6 +317,20 @@ function PendingSend() {
 export function EngineerLayer() {
   const on = engineeringUiOn();
   useEffect(() => (on ? followProject() : undefined), [on]);
+  // a pick waits only while its setup is open and its project is the open one
+  useEffect(() => {
+    const offUi = engineerUi.subscribe((s, prev) => {
+      if (prev.open && !s.open) cancelPick();
+    });
+    const offProject = workspace.subscribe((s, prev) => {
+      if (s.project?.id !== prev.project?.id) cancelPick();
+    });
+    return () => {
+      offUi();
+      offProject();
+      cancelPick();
+    };
+  }, []);
   const open = useStore(engineerUi, (s) => s.open);
   const preselect = useStore(engineerUi, (s) => s.preselect);
   const picking = useStore(pickingStore, (s) => s.picking !== null);
@@ -295,8 +349,9 @@ export function EngineerLayer() {
       <PendingSend />
       {/* the Model builder takes that place while it is open (the review); the run comes back after */}
       {open && run && !builderOpen && <RunPanel />}
-      {open && !picking && !run && (
+      {open && !run && (
         <SetupDialog
+          hidden={picking}
           layers={layers}
           route={engineerRoute(routes)}
           online={online}

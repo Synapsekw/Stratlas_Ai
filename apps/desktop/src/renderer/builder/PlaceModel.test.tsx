@@ -201,6 +201,28 @@ describe('Place model', () => {
     expect(gizmo.detached).toBeGreaterThan(0);
   });
 
+  it('takes an Escape for itself: the 3D view does not also clear the selection', () => {
+    // the stage listens on the window from before the panel opened, and leaves an Escape that
+    // something else took (defaultPrevented)
+    const seen: boolean[] = [];
+    const stageKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') seen.push(e.defaultPrevented);
+    };
+    window.addEventListener('keydown', stageKey);
+    try {
+      open();
+      act(() => {
+        document.body.dispatchEvent(
+          new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }),
+        );
+      });
+      expect(builder.getState().align).toBeNull();
+      expect(seen).toEqual([true]);
+    } finally {
+      window.removeEventListener('keydown', stageKey);
+    }
+  });
+
   it('takes E N H in the project CRS and latitude, longitude through WGS84', () => {
     open();
     type('place-typed', '500020 4000030 15', 'enter');

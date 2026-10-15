@@ -80,6 +80,11 @@ export interface SetupDialogProps {
   onClose: () => void;
   /** Layers chosen as sources when the dialog opens (the layer it was opened from). */
   initial?: readonly string[] | undefined;
+  /**
+   * Out of sight while a pick in the 3D view waits (the region, the anchor): the dialog stays
+   * mounted, so every choice made so far is there when it comes back.
+   */
+  hidden?: boolean | undefined;
 }
 
 /**
@@ -93,7 +98,8 @@ export function SetupDialog(props: SetupDialogProps) {
   const t = useT();
   const id = useId();
   const dlg = useRef<HTMLDivElement>(null);
-  useFocusTrap(dlg, true);
+  const hidden = props.hidden === true;
+  useFocusTrap(dlg, !hidden);
   const sources = props.layers.filter(isSource);
   const [chosen, setChosen] = useState<ReadonlySet<string>>(
     () => new Set((props.initial ?? []).filter((id) => sources.some((l) => l.id === id))),
@@ -207,6 +213,8 @@ export function SetupDialog(props: SetupDialogProps) {
   return (
     <div
       className="dlg-scrim"
+      style={hidden ? { display: 'none' } : undefined}
+      aria-hidden={hidden || undefined}
       onMouseDown={(e) => {
         if (e.target === e.currentTarget) props.onClose();
       }}
@@ -517,7 +525,7 @@ export function SetupDialog(props: SetupDialogProps) {
                   {t('eng.setup.anchorPick')}
                 </button>
                 {anchor ? (
-                  <span className="eng-at mono">
+                  <span className="eng-at mono" data-testid="eng-anchor">
                     {t('eng.setup.anchorAt', {
                       e: fmt(anchor[0]),
                       n: fmt(-anchor[2]),
