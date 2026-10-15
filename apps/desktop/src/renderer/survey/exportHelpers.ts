@@ -10,6 +10,7 @@ import {
   type DesignsFile,
   type HeightTiles,
   type MeasurementsFile,
+  type PointcloudCleanup,
   type ProjectManifest,
   type SurveyOverlaysFile,
   type SurveySettings,
@@ -241,6 +242,8 @@ export interface ExportChoice {
   measurements: readonly string[];
   /** For measurements and sections: the prepared surface to sample or clip. */
   surface: string | null;
+  /** A cloud export: the layer's cleanup recipe when Apply cleanup is on. */
+  cleanup?: PointcloudCleanup | null;
 }
 
 /** Why an export cannot be made as chosen (a sentence), or null. */
@@ -272,6 +275,7 @@ export function exportParams(c: ExportChoice, out: string): SurveyExportParams {
   };
   if (hasDetail(c.what, c.format) && c.detail < 1) p.decimate = c.detail;
   if (c.source) Object.assign(p, c.source.param);
+  if (c.what === 'cloud' && c.cleanup) p.cleanup = c.cleanup;
   if (c.what === 'measurements' || c.what === 'section') {
     p.measurements = [...c.measurements];
     if (c.surface) p.surface = c.surface;

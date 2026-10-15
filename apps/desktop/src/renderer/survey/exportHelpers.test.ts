@@ -1,4 +1,9 @@
-import { defaultSurveySettings, type DesignsFile, type MeasurementsFile } from '@aio/schema';
+import {
+  defaultSurveySettings,
+  emptyCleanup,
+  type DesignsFile,
+  type MeasurementsFile,
+} from '@aio/schema';
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import {
@@ -180,5 +185,25 @@ describe('sources and parameters', () => {
     expect(measurementIds(file, { kind: 'all' }, false)).toEqual(['a', 'b']);
     expect(measurementIds(file, { kind: 'folder', folder: 'Piles' }, false)).toEqual(['a']);
     expect(measurementIds(file, { kind: 'selected', ids: ['a', 'b'] }, true)).toEqual(['b']);
+  });
+});
+
+describe('exportParams and the cleanup', () => {
+  const base = {
+    what: 'cloud' as const,
+    format: 'laz' as const,
+    crs: 'site' as const,
+    units: 'm' as const,
+    detail: 1,
+    source: { key: 'layer:cloud-a', label: 'Scan', param: { layer: 'cloud-a' } },
+    measurements: [],
+    surface: null,
+  };
+
+  it('sends cleanup only for a cloud export with a recipe', () => {
+    const r = { ...emptyCleanup('cloud-a'), hiddenClasses: [7] };
+    expect(exportParams({ ...base, cleanup: r }, 'C:/x.laz').cleanup).toEqual(r);
+    expect(exportParams({ ...base, cleanup: null }, 'C:/x.laz')).not.toHaveProperty('cleanup');
+    expect(exportParams(base, 'C:/x.laz')).not.toHaveProperty('cleanup');
   });
 });

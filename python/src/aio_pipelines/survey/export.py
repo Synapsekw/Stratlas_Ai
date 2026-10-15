@@ -800,6 +800,59 @@ def _las_wkt(frame: Frame) -> str:
         return frame.wkt
 
 
+def _cleaned_las(ctx: StepContext, cleanup: dict[str, Any], layer_src: Path, pdal: str) -> Any:
+    """The cloud with the cleanup recipe applied, as a LAS 1.4 of point format 6 or 7.
+
+    PDAL stages the cloud (the noise run's working copy when the recipe has one) as LAS 1.4 point
+    format 6, or 7 when the source has colour, whatever format the source file has, since the
+    streaming filter reads those formats only; the filter keeps what a saved copy would keep and
+    writes set-class selections with their class."""
+    from ..change.las import read_las
+    from ..pointcloud import _run
+    from ..pointcloud_cleanup.evaluate import evaluate, kept_for_save
+    from ..pointcloud_cleanup.lasstream import filter_las
+    from ..runtime import atomic_write_json
+
+    noise = cleanup.get("noise")
+    # the noise run's working copy carries the noise marks the recipe hides
+    src = ctx.input(noise["path"]) if noise else layer_src
+    try:
+        with open(src, "rb") as f:
+            head = f.read(110)
+        colour = (head[104] & 0x3F) in (2, 3, 7, 8) if len(head) >= 105 else True
+    except OSError:
+        colour = True
+    plain = ctx.stage("work/cloud-clean-src.las")
+    pipe = ctx.stage("work/pdal-clean.json")
+    atomic_write_json(
+        pipe,
+        {
+            "pipeline": [
+                str(src),
+                {
+                    "type": "writers.las",
+                    "filename": str(plain),
+                    "minor_version": 4,
+                    "dataformat_id": 7 if colour else 6,
+                    "forward": "all",
+                },
+            ]
+        },
+    )
+    _run(ctx, [pdal, "pipeline", str(pipe)], "Read the point cloud")
+    kept = ctx.stage("work/cloud-cleaned.las")
+
+    def rule(xyz: np.ndarray, cls: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+        state, new_cls = evaluate(cleanup, xyz, cls)
+        return kept_for_save(state), new_cls
+
+    res = filter_las(plain, kept, rule, check=ctx.check)
+    if not res["points_out"]:
+        raise JobError("The cleanup removes every point of this cloud, so there is nothing to export.")
+    ctx.log(f"Cleanup: {res['points_out']:,} of {res['points_in']:,} points kept.")
+    return read_las(kept)
+
+
 def export_cloud(ctx: StepContext, params: dict[str, Any], frame: Frame, out: Out) -> dict[str, Any]:
     from ..change.las import LasError, read_las
     from ..change.surface import Surface as CloudSurface
@@ -812,6 +865,9 @@ def export_cloud(ctx: StepContext, params: dict[str, Any], frame: Frame, out: Ou
     layer = _manifest_layer(manifest, lid)
     if layer is None or layer.get("kind") != "pointcloud":
         raise JobError(f'"{lid}" is not a point cloud layer of the project.')
+    cleanup = params.get("cleanup")
+    if cleanup and layer.get("format") != "copc":
+        raise JobError("A cleanup applies to COPC clouds only.")
     path = out.file(str(layer.get("name") or lid), frame, "laz")
     laz = path.suffix.lower() != ".las"
     pdal = find_pdal()
@@ -819,7 +875,11 @@ def export_cloud(ctx: StepContext, params: dict[str, Any], frame: Frame, out: Ou
         raise JobError(PDAL_NEEDED)
     cs = CloudSurface(ctx.project, manifest, {"layer": lid, "kind": "cloud"})
     las = None
-    if layer.get("format") != "kit-packed":
+    if cleanup:
+        if not pdal:
+            raise JobError(PDAL_NEEDED)
+        las = _cleaned_las(ctx, cleanup, cs.path, pdal)
+    elif layer.get("format") != "kit-packed":
         src = cs.path
         if src.suffix.lower() == ".las":
             try:
@@ -1184,6 +1244,7 @@ class SurveyExport:
             "layer",
             "overlay",
             "measurements",
+            "cleanup",
             "out",
         }
     )
@@ -1196,6 +1257,13 @@ class SurveyExport:
 
     def validate(self, params: dict[str, Any]) -> dict[str, Any]:
         known_keys(params, set(self.keys), self.name)
+        cleanup = params.get("cleanup")
+        if cleanup is not None:
+            if params.get("what") != "cloud":
+                raise JobError("A cleanup applies to a point cloud export only.")
+            from ..pointcloud_cleanup.recipe import validate_recipe
+
+            validate_recipe(cleanup, params.get("layer"))
         missing = sorted(k for k in self.required if params.get(k) is None)
         if missing:
             raise JobError(f"{self.name} needs: {', '.join(missing)}.")
@@ -1253,7 +1321,10 @@ class SurveyExport:
         return dict(params)
 
     def inputs(self, params: dict[str, Any]) -> list[str]:
+        noise = (params.get("cleanup") or {}).get("noise")
+        extra = [noise["path"]] if isinstance(noise, dict) and isinstance(noise.get("path"), str) else []
         return [
+            *extra,
             "survey/settings.json",
             "survey/calibration.json",
             "survey/surfaces",
