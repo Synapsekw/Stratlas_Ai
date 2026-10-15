@@ -25,7 +25,16 @@ export {
 export { cataloguesProblem, updateClasses } from './classes';
 export * from './altitude';
 export * from './drawingPlacement';
-export { glbBounds, lasBounds, layerExtent, layerExtents, type LocalExtent } from './extents';
+export {
+  fullLayerExtent,
+  geojsonLonLat,
+  glbBounds,
+  lasBounds,
+  layerExtent,
+  layerExtents,
+  pmtilesBounds,
+  type LocalExtent,
+} from './extents';
 export { recentreBlockers, recentreProject, recentred } from './recentre';
 export {
   placeImportedGlb,

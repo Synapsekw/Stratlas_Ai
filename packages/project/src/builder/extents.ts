@@ -1,7 +1,8 @@
-import { projectToLocal } from '@aio/geo';
-import type { Layer, ProjectManifest, Vec3 } from '@aio/schema';
+import { correctPos, fromWgs84, photoCorrection, projectToLocal } from '@aio/geo';
+import type { Layer, OrientationFile, ProjectManifest, Vec3 } from '@aio/schema';
 import { open, readFile } from 'node:fs/promises';
 import { join } from 'node:path';
+import { readTiffGeo, tiffCorners } from './tiff';
 
 const applyMat4 = (t: readonly number[], p: Vec3): Vec3 => {
   const e = (i: number) => t[i] ?? 0;
@@ -91,6 +92,7 @@ export async function layerExtent(
   root: string,
   m: ProjectManifest,
   l: Layer,
+  orientation: OrientationFile | null = null,
 ): Promise<LocalExtent | null> {
   try {
     if (l.kind === 'mesh' && 'path' in l.src) {
@@ -111,7 +113,12 @@ export async function layerExtent(
       }
       return null;
     }
-    if (l.kind === 'photos') return boxOf(l.items.flatMap((p) => (p.pos ? [p.pos] : [])));
+    if (l.kind === 'photos')
+      return boxOf(
+        l.items.flatMap((p) =>
+          p.pos ? [correctPos(p.pos, photoCorrection(orientation, l.id, p.id))] : [],
+        ),
+      );
     if (l.kind === 'raster' && l.corners) {
       const { tl, tr, bl } = l.corners;
       const br: Vec3 = [tr[0] + bl[0] - tl[0], tr[1] + bl[1] - tl[1], tr[2] + bl[2] - tl[2]];
@@ -127,11 +134,129 @@ export async function layerExtent(
 export async function layerExtents(
   root: string,
   m: ProjectManifest,
+  orientation: OrientationFile | null = null,
 ): Promise<{ layerId: string; min: Vec3; max: Vec3 }[]> {
   const out: { layerId: string; min: Vec3; max: Vec3 }[] = [];
   for (const l of m.layers) {
-    const e = await layerExtent(root, m, l);
+    const e = await layerExtent(root, m, l, orientation);
     if (e) out.push({ layerId: l.id, ...e });
   }
   return out;
+}
+
+/** PMTiles v3 header bounds (degrees): min lon, min lat, max lon, max lat. */
+export function pmtilesBounds(head: Uint8Array): [number, number, number, number] | null {
+  if (
+    head.length < 127 ||
+    new TextDecoder().decode(head.subarray(0, 7)) !== 'PMTiles' ||
+    head[7] !== 3
+  )
+    return null;
+  const v = new DataView(head.buffer, head.byteOffset, head.byteLength);
+  const d = (o: number) => v.getInt32(o, true) / 1e7;
+  return [d(102), d(106), d(110), d(114)];
+}
+
+/** Every lon/lat pair of a GeoJSON object, in document order (heights dropped). */
+export function geojsonLonLat(json: unknown): [number, number][] {
+  const out: [number, number][] = [];
+  const walk = (c: unknown): void => {
+    if (!Array.isArray(c)) return;
+    if (typeof c[0] === 'number' && typeof c[1] === 'number') {
+      out.push([c[0], c[1]]);
+      return;
+    }
+    for (const x of c) walk(x);
+  };
+  const visit = (o: unknown): void => {
+    if (!o || typeof o !== 'object') return;
+    const g = o as {
+      type?: string;
+      coordinates?: unknown;
+      features?: unknown[];
+      geometry?: unknown;
+      geometries?: unknown[];
+    };
+    if (Array.isArray(g.features)) for (const f of g.features) visit(f);
+    if (g.geometry) visit(g.geometry);
+    if (Array.isArray(g.geometries)) for (const x of g.geometries) visit(x);
+    if (g.coordinates !== undefined) walk(g.coordinates);
+  };
+  visit(json);
+  return out;
+}
+
+const epsgOf = (m: ProjectManifest) => ('epsg' in m.crs ? m.crs.epsg : null);
+
+/**
+ * The extent Properties and Zoom to show: what `layerExtent` reads, plus panoramas, walks placed
+ * on the model, kit pyramids, GeoTIFFs in the project CRS, PMTiles and GeoJSON. `layerExtents`
+ * does not use it, so the far-content check sees the kinds it always saw.
+ */
+export async function fullLayerExtent(
+  root: string,
+  m: ProjectManifest,
+  l: Layer,
+  orientation: OrientationFile | null,
+): Promise<LocalExtent | null> {
+  const known = await layerExtent(root, m, l, orientation);
+  if (known) return known;
+  const epsg = epsgOf(m);
+  const fromLonLat = (pts: readonly [number, number][]) =>
+    epsg === null
+      ? null
+      : boxOf(
+          pts.map(([lon, lat]) =>
+            projectToLocal(fromWgs84([lon, lat, m.origin[2]], epsg), m.origin),
+          ),
+        );
+  try {
+    if (l.kind === 'panoramas') return boxOf(l.items.map((p) => p.pos));
+    if (l.kind === 'walk')
+      return boxOf(
+        (l.place?.pins ?? []).flatMap((p) =>
+          p.surface === '@model' ? [[p.at[0], p.y ?? 0, p.at[1]] as Vec3] : [],
+        ),
+      );
+    if (l.kind === 'vector' && 'path' in l.src)
+      return fromLonLat(
+        geojsonLonLat(JSON.parse(await readFile(join(root, l.src.path), 'utf8')) as unknown),
+      );
+    if (l.kind === 'raster' && 'path' in l.src) {
+      const file = join(root, l.src.path);
+      if (l.format === 'kit-pyramid') {
+        const idx = JSON.parse(await readFile(file, 'utf8')) as {
+          corners?: { tl: Vec3; tr: Vec3; bl: Vec3 };
+        };
+        if (!idx.corners) return null;
+        const { tl, tr, bl } = idx.corners;
+        return boxOf([
+          tl,
+          tr,
+          bl,
+          [tr[0] + bl[0] - tl[0], tr[1] + bl[1] - tl[1], tr[2] + bl[2] - tl[2]],
+        ]);
+      }
+      if (l.format === 'pmtiles') {
+        const b = pmtilesBounds(await readHead(file, 127));
+        return b
+          ? fromLonLat([
+              [b[0], b[1]],
+              [b[2], b[3]],
+            ])
+          : null;
+      }
+      if (l.format === 'cog') {
+        const t = readTiffGeo(await readHead(file, 64 * 1024));
+        if (t.geo.epsg !== undefined && t.geo.epsg !== epsg) return null;
+        const c = tiffCorners(t);
+        const at = (p: [number, number]) => projectToLocal([p[0], p[1], m.origin[2]], m.origin);
+        const br: [number, number] = [c.tr[0] + c.bl[0] - c.tl[0], c.tr[1] + c.bl[1] - c.tl[1]];
+        return boxOf([at(c.tl), at(c.tr), at(c.bl), at(br)]);
+      }
+    }
+  } catch {
+    // a file that cannot be read has no extent
+  }
+  return null;
 }

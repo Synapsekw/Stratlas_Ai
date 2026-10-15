@@ -235,6 +235,33 @@ function decompress(c: number, data: Uint8Array, expected: number): Uint8Array {
   }
 }
 
+/** GeoTIFF placement from the tags of the first directory. */
+function geoOf(tags: Tags): TiffGeo {
+  const geo: TiffGeo = { pixelIsPoint: false };
+  const scale = list(tags, 33550);
+  if (scale.length >= 2) geo.pixelScale = [scale[0] ?? 1, scale[1] ?? 1];
+  const tie = list(tags, 33922);
+  if (tie.length >= 6) geo.tiepoint = [tie[0] ?? 0, tie[1] ?? 0, tie[3] ?? 0, tie[4] ?? 0];
+  const tr = list(tags, 34264);
+  if (tr.length === 16) geo.transform = tr;
+  const keys = list(tags, 34735);
+  for (let i = 4; i + 3 < keys.length; i += 4) {
+    const id = keys[i];
+    const value = keys[i + 3];
+    if (keys[i + 1] !== 0) continue;
+    if (value !== undefined && (id === 3072 || (id === 2048 && geo.epsg === undefined)))
+      geo.epsg = value;
+    if (id === 1025) geo.pixelIsPoint = value === 2;
+  }
+  return geo;
+}
+
+/** Size and GeoTIFF placement from the first directory (a COG keeps it at the start), no pixels. */
+export function readTiffGeo(b: Uint8Array): { width: number; height: number; geo: TiffGeo } {
+  const { tags } = readTags(b);
+  return { width: first(tags, 256, 0) ?? 0, height: first(tags, 257, 0) ?? 0, geo: geoOf(tags) };
+}
+
 /** Decode a whole (Geo)TIFF into memory. */
 export function decodeTiff(b: Uint8Array): TiffImage {
   const { tags, le, bigTiff } = readTags(b);
@@ -307,22 +334,7 @@ export function decodeTiff(b: Uint8Array): TiffImage {
     for (let i = 0; i < n; i++) data[i] = dv.getFloat32(i * 4, le);
   }
 
-  const geo: TiffGeo = { pixelIsPoint: false };
-  const scale = list(tags, 33550);
-  if (scale.length >= 2) geo.pixelScale = [scale[0] ?? 1, scale[1] ?? 1];
-  const tie = list(tags, 33922);
-  if (tie.length >= 6) geo.tiepoint = [tie[0] ?? 0, tie[1] ?? 0, tie[3] ?? 0, tie[4] ?? 0];
-  const tr = list(tags, 34264);
-  if (tr.length === 16) geo.transform = tr;
-  const keys = list(tags, 34735);
-  for (let i = 4; i + 3 < keys.length; i += 4) {
-    const id = keys[i];
-    const value = keys[i + 3];
-    if (keys[i + 1] !== 0) continue;
-    if (value !== undefined && (id === 3072 || (id === 2048 && geo.epsg === undefined)))
-      geo.epsg = value;
-    if (id === 1025) geo.pixelIsPoint = value === 2;
-  }
+  const geo = geoOf(tags);
   const nd = tags.get(42113);
   const img: TiffImage = { width, height, samples, bits, format, data, geo };
   if (typeof nd === 'string' && nd.trim() !== '' && Number.isFinite(Number(nd)))

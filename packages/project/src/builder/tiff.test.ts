@@ -10,6 +10,7 @@ import {
   epsgFromPrj,
   parseWorldFile,
   rasterToRgba,
+  readTiffGeo,
   readTiffHeader,
   tiffCorners,
 } from './tiff';
@@ -86,6 +87,24 @@ describe('decodeTiff', () => {
 });
 
 describe('georeference', () => {
+  it('reads the placement without decoding the strips', () => {
+    const b = makeTiff(
+      {
+        width: 200,
+        height: 120,
+        samples: 3,
+        bits: 8,
+        values: new Array<number>(200 * 120 * 3).fill(90),
+        epsg: 32639,
+        pixelScale: [0.5, 0.5],
+        tiepoint: [1000, 2000],
+      },
+      deflate,
+    );
+    const head = b.subarray(0, 1024);
+    expect(readTiffGeo(head)).toEqual({ width: 200, height: 120, geo: decodeTiff(b).geo });
+  });
+
   it('gives the outer corners from the tiepoint and pixel size', () => {
     const c = tiffCorners({
       width: 100,

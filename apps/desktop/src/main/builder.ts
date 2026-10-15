@@ -17,6 +17,7 @@ import { basename, extname, join, resolve, sep } from 'node:path';
 import { promisify } from 'node:util';
 import { createImportRuns } from './importRuns';
 import { writeBytesAtomic } from './modelBuilder';
+import { readOrientation } from './orientation';
 import { readManifest, type ProjectRegistry } from './project';
 import { stitchProgress, walkToolsFor } from './walks';
 
@@ -546,9 +547,11 @@ export async function builderLayerExtents(
   try {
     const l = await lib();
     const m = await l.readManifestFile(root);
+    const o = await readOrientation(root);
+    const orientation = o.ok ? o.file : null;
     return {
       ok: true,
-      extents: await l.layerExtents(root, m),
+      extents: await l.layerExtents(root, m, orientation),
       recentre: { blockers: await l.recentreBlockers(root, m) },
     };
   } catch (e) {

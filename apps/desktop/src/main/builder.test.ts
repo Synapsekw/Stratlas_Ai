@@ -657,3 +657,34 @@ it('answers layer extents and the re-centre blockers, and re-centres an open pro
     ok: false,
   });
 });
+
+it('answers photo extents with their hand corrections', async () => {
+  const dir = join(base, 'projects', 'corrected');
+  await writeProject(
+    dir,
+    sampleManifest({
+      layers: [
+        {
+          kind: 'photos',
+          id: 'ph',
+          name: 'Photos',
+          visible: true,
+          items: [
+            { id: 'a', src: { path: 'photos/ph/a.jpg' }, pos: [100, 10, -200] },
+            { id: 'b', src: { path: 'photos/ph/b.jpg' }, pos: [102, 12, -198] },
+          ],
+        },
+      ],
+    }),
+    {
+      'orientation.json': JSON.stringify({
+        schema: 'aio.orientation/1',
+        photos: { ph: { a: { yawDeg: 0, pitchDeg: 0, rollDeg: 0, offsetM: [-100, 0, 200] } } },
+      }),
+    },
+  );
+  const registry = new ProjectRegistry();
+  const projectId = registry.register(dir);
+  const ex = await builderLayerExtents({ projectId }, registry);
+  expect(ex.ok && ex.extents).toEqual([{ layerId: 'ph', min: [0, 10, -198], max: [102, 12, 0] }]);
+});

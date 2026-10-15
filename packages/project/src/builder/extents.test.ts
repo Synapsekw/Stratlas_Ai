@@ -1,11 +1,24 @@
-import type { Vec3 } from '@aio/schema';
-import { mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { toWgs84 } from '@aio/geo';
+import { emptyOrientation, type Layer, type OrientationFile, type Vec3 } from '@aio/schema';
+import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, expect, it } from 'vitest';
 import { encodeGlb } from '../import/glb';
 import { createProject, readManifestFile } from './create';
-import { lasBounds, layerExtents } from './extents';
+import {
+  fullLayerExtent,
+  geojsonLonLat,
+  lasBounds,
+  layerExtent,
+  layerExtents,
+  pmtilesBounds,
+} from './extents';
+
+const toWgs84Pair = ([e, n]: [number, number]): [number, number] => {
+  const [lon, lat] = toWgs84([e, n, 0], 32639);
+  return [lon, lat];
+};
 
 let dir: string;
 beforeEach(async () => {
@@ -104,4 +117,109 @@ it('gives each placed layer its local extent', async () => {
     { layerId: 'mesh-m', min: [100, 0, 0], max: [102, 3, 0] },
     { layerId: 'photos', min: [1, 2, 3], max: [1, 2, 3] },
   ]);
+});
+
+const photosLayer = {
+  kind: 'photos',
+  id: 'ph',
+  name: 'Photos',
+  visible: true,
+  items: [
+    { id: 'a', src: { path: 'photos/ph/a.jpg' }, pos: [100, 10, -200] },
+    { id: 'b', src: { path: 'photos/ph/b.jpg' }, pos: [102, 12, -198] },
+    { id: 'c', src: { path: 'photos/ph/c.jpg' } },
+  ],
+} as unknown as Layer;
+
+it('a photos extent reads positions with their hand corrections', async () => {
+  const root = await project();
+  const m = await readManifestFile(root);
+  const o: OrientationFile = {
+    ...emptyOrientation(),
+    photos: { ph: { a: { yawDeg: 0, pitchDeg: 0, rollDeg: 0, offsetM: [-100, 0, 200] } } },
+  };
+  expect(await layerExtent(root, m, photosLayer, null)).toEqual({
+    min: [100, 10, -200],
+    max: [102, 12, -198],
+  });
+  expect(await layerExtent(root, m, photosLayer, o)).toEqual({
+    min: [0, 10, -198],
+    max: [102, 12, 0],
+  });
+});
+
+it('reads the bounds in a PMTiles v3 header', () => {
+  const b = new Uint8Array(127);
+  b.set(new TextEncoder().encode('PMTiles'), 0);
+  b[7] = 3;
+  const v = new DataView(b.buffer);
+  [47.9, 29.3, 48.1, 29.5].forEach((d, i) => {
+    v.setInt32(102 + i * 4, Math.round(d * 1e7), true);
+  });
+  expect(pmtilesBounds(b)).toEqual([47.9, 29.3, 48.1, 29.5]);
+  expect(pmtilesBounds(new Uint8Array(127))).toBeNull();
+});
+
+it('collects lon/lat pairs from any GeoJSON geometry', () => {
+  const fc = {
+    type: 'FeatureCollection',
+    features: [
+      { geometry: { type: 'Point', coordinates: [1, 2] } },
+      {
+        geometry: {
+          type: 'Polygon',
+          coordinates: [
+            [
+              [3, 4],
+              [5, 6, 7],
+              [3, 4],
+            ],
+          ],
+        },
+      },
+      { geometry: null },
+    ],
+  };
+  expect(geojsonLonLat(fc)).toEqual([
+    [1, 2],
+    [3, 4],
+    [5, 6],
+    [3, 4],
+  ]);
+});
+
+it('gives panoramas, kit pyramids and GeoJSON an extent for Properties only', async () => {
+  const root = await project();
+  const m = await readManifestFile(root);
+  await mkdir(join(root, 'vectors'), { recursive: true });
+  // 500 m east and 300 m north of the origin (EPSG 32639, origin 500000, 3200000, 20)
+  const [lon, lat] = toWgs84Pair([500500, 3200300]);
+  await writeFile(
+    join(root, 'vectors', 'v.geojson'),
+    JSON.stringify({
+      type: 'FeatureCollection',
+      features: [{ geometry: { type: 'Point', coordinates: [lon, lat] } }],
+    }),
+  );
+  const vector = {
+    kind: 'vector',
+    id: 'v',
+    name: 'V',
+    visible: true,
+    src: { path: 'vectors/v.geojson' },
+    format: 'geojson',
+  } as unknown as Layer;
+  const e = await fullLayerExtent(root, m, vector, null);
+  expect(e?.min[0]).toBeCloseTo(500, 1);
+  expect(e?.min[2]).toBeCloseTo(-300, 1);
+  const panos = {
+    kind: 'panoramas',
+    id: 'pn',
+    name: 'P',
+    visible: true,
+    items: [{ id: 'x', src: { path: 'p.jpg' }, pos: [1, 2, 3], headingDeg: 0 }],
+  } as unknown as Layer;
+  expect(await fullLayerExtent(root, m, panos, null)).toEqual({ min: [1, 2, 3], max: [1, 2, 3] });
+  // the far-content list is unchanged: no vector, no panoramas
+  expect(await layerExtent(root, m, vector, null)).toBeNull();
 });
