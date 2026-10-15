@@ -43,6 +43,8 @@ export interface CameraRequest {
         dir?: Vec3;
       }
     | { kind: 'selection'; selection: Selection }
+    /** Frame a box in the local frame (Zoom to a dataset or a date). */
+    | { kind: 'box'; min: Vec3; max: Vec3 }
     | { kind: 'home' }
     /**
      * Centre on project: the models and clouds, else what lies within FAR_M of the origin

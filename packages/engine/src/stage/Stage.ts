@@ -68,6 +68,7 @@ import { skyDirection, solarPosition } from './solar';
 import { estimateGpuBytes, formatPerf, type PerfStats } from './perf';
 import { Highlighter } from './highlight';
 import { forgetHiddenNodes, hiddenNodesOf, onHiddenNodes, setNodeHidden } from './nodeVisibility';
+import { layerBox } from './layerBox';
 import { drawnObjects, ProgramWarmup } from './programWarmup';
 import { moduleTextures } from './sharedTextures';
 import { reducedMotion } from '../motion';
@@ -1395,6 +1396,12 @@ export class Stage implements EngineStage {
         t.distance,
         t.dir ? new Vector3(...t.dir) : undefined,
       );
+    } else if (t.kind === 'box') {
+      const box = new Box3(new Vector3(...t.min), new Vector3(...t.max));
+      if (!box.isEmpty()) pose = frameBox(box, current, this.camera.fov, this.aspect);
+    } else if (t.selection.kind === 'layer') {
+      const box = layerBox(this.scene, t.selection.layer ?? t.selection.id);
+      if (box) pose = frameBox(box, current, this.camera.fov, this.aspect);
     } else {
       const hit =
         t.selection.kind === 'asset' ? this.findNode(t.selection.id, t.selection.layer) : null;

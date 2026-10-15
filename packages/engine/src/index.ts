@@ -93,5 +93,6 @@ export {
 } from './tools/pcselect';
 export { PALETTE } from './palette';
 export { reducedMotion } from './motion';
+export { layerBox } from './stage/layerBox';
 export { solarPosition, skyDirection, utcOffsetHours, type SolarPosition } from './stage/solar';
 export { defaultEnvironment, defaultMode, defaultTime, siteLocation } from './stage/envDefaults';

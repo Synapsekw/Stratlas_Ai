@@ -90,6 +90,7 @@ function boxAdapter(handles: { visible: boolean; disposed: boolean }[]): LayerAd
     create: async (layer, ctx) => {
       await Promise.resolve(); // loading is asynchronous, like a real GLB fetch
       const root = new Group();
+      root.userData.layerId = layer.id; // the real mesh adapter tags its root the same way
       const node = new Group();
       node.name = 'TANK-1';
       node.userData = { aioNode: true, tag: 'TANK-1', name: 'Test tank' };
@@ -623,6 +624,26 @@ describe('Stage', () => {
     expect(store.getState().camera).toBeNull();
     store.getState().flyTo({ kind: 'point', p: [100, 0, 100], distance: 50 });
     expect(store.getState().camera).toBeNull();
+    stage.dispose();
+  });
+
+  it('flies to a box and frames a layer selection', async () => {
+    vi.stubGlobal('matchMedia', () => ({ matches: true })); // reduced motion: no animation
+    const { stage, store, resize } = make();
+    resize(800, 600);
+    store.getState().openProject(project([meshLayer('plant')]));
+    await flush();
+    store.getState().flyTo({ kind: 'box', min: [100, 0, 100], max: [110, 10, 110] });
+    expect(store.getState().camera).toBeNull();
+    let v = stage.saveView();
+    expect(v.target[0]).toBeCloseTo(105);
+    expect(v.target[2]).toBeCloseTo(105);
+    const id = store.getState().project?.manifest.layers[0]?.id ?? '';
+    store.getState().flyTo({ kind: 'selection', selection: { kind: 'layer', id, layer: id } });
+    expect(store.getState().camera).toBeNull();
+    v = stage.saveView();
+    expect(v.target[0]).toBeCloseTo(0);
+    expect(v.target[2]).toBeCloseTo(0);
     stage.dispose();
   });
 

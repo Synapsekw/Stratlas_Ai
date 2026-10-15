@@ -1286,6 +1286,16 @@ export function createMapController(
         zoom = Math.log2((40_075_016.686 * Math.cos((at[1] * Math.PI) / 180)) / (512 * wantMpp));
       }
       map.easeTo({ center: at, zoom: Math.min(22, Math.max(3, zoom)), duration: ms(500) });
+    } else if (t.kind === 'box') {
+      const a = proj.toLonLat(t.min);
+      const b = proj.toLonLat(t.max);
+      map.fitBounds(
+        [
+          [Math.min(a[0], b[0]), Math.min(a[1], b[1])],
+          [Math.max(a[0], b[0]), Math.max(a[1], b[1])],
+        ],
+        { padding: 40, maxZoom: 19, duration: ms(500) },
+      );
     } else if (t.selection.kind === 'issue') {
       const id = t.selection.id;
       const issue = s.issues.find((i) => i.id === id);
