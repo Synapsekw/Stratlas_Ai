@@ -267,6 +267,29 @@ describe('georefToLayerTransform', () => {
     expect(Math.abs(r.projectionScale - 1.573)).toBeLessThan(0.01);
   });
 
+  it('places within one CRS the registry does not know: identical WKT or the same EPSG', () => {
+    const wkt = 'LOCAL_CS["site grid",LOCAL_DATUM["x",0],UNIT["metre",1]]';
+    for (const crs of [{ wkt }, { epsg: 2056 }]) {
+      const project: ProjectGeo = { ...A, crs };
+      const r = placed(georefToLayerTransform(g({ crs }), project));
+      expect(r.headingDeltaDeg).toBe(0);
+      expect(r.projectionScale).toBe(1);
+      expect(r.transform).toEqual(placed(georefToLayerTransform(g(), A)).transform);
+      // and Place model's record round-trips there too
+      const back = layerTransformToGeoref(r.transform, project, g({ crs }), 'place-model');
+      expect(back.crs).toEqual(crs);
+      expectClose(back.anchor, g().anchor, 1e-6);
+      expect(back.scale.factor).toBeCloseTo(1, 9);
+    }
+    // a different WKT, or 4326 on both sides, is still never guessed
+    expect(
+      georefToLayerTransform(g({ crs: { wkt } }), { ...A, crs: { wkt: `${wkt} ` } }).kind,
+    ).toBe('needed');
+    expect(
+      georefToLayerTransform(g({ crs: { epsg: 4326 } }), { ...A, crs: { epsg: 4326 } }).kind,
+    ).toBe('needed');
+  });
+
   it('unsupported CRS gives placement needed', () => {
     expect(georefToLayerTransform(g({ crs: { wkt: 'LOCAL_CS["x"]' } }), A).kind).toBe('needed');
     expect(georefToLayerTransform(g({ crs: { epsg: 2056 } }), A).kind).toBe('needed');
@@ -468,5 +491,18 @@ describe('layerTransformToGeoref', () => {
     const r = placed(georefToLayerTransform(back, A));
     for (const p of probe)
       expectClose(worldOfModelPoint(r.transform, A, p), worldOfModelPoint(t, A, p), 0.001);
+  });
+
+  it("Place model keeps the model's known height datum (now set by the person)", () => {
+    const t = placed(georefToLayerTransform(g(), A)).transform;
+    const prev = g({ vertical: { datum: 'EGM2008', status: 'from-source' } });
+    expect(layerTransformToGeoref(t, A, prev, 'place-model').vertical).toEqual({
+      datum: 'EGM2008',
+      status: 'user',
+    });
+    expect(layerTransformToGeoref(t, A, g(), 'place-model').vertical).toEqual({
+      datum: 'unknown',
+      status: 'unknown',
+    });
   });
 });

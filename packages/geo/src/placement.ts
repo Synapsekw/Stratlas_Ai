@@ -157,6 +157,16 @@ function metricEpsg(crs: { epsg: number } | { wkt: string }): number | null {
   return crs.epsg !== 4326 && isKnownCrs(crs.epsg) ? crs.epsg : null;
 }
 
+/**
+ * One metric CRS on both sides: the same EPSG code (not 4326, which is in degrees), or WKT text
+ * that is identical. Such a pair needs no registry.
+ */
+function sameCrs(a: { epsg: number } | { wkt: string }, b: { epsg: number } | { wkt: string }) {
+  if ('epsg' in a && 'epsg' in b) return a.epsg === b.epsg && a.epsg !== 4326;
+  if ('wkt' in a && 'wkt' in b) return a.wkt.trim() !== '' && a.wkt === b.wkt;
+  return false;
+}
+
 const crsLabel = (crs: { epsg: number } | { wkt: string }) =>
   'epsg' in crs ? `EPSG:${String(crs.epsg)}` : 'a WKT definition';
 
@@ -165,7 +175,8 @@ const knownDatum = (d: string | undefined): string | null =>
 
 /**
  * The layer transform that puts a georeferenced model in a project, or why it cannot be placed.
- * Same CRS: the record's matrix moved into the local frame. Another supported CRS: the model
+ * Same CRS (one EPSG code, or identical WKT, even one the registry does not read): the record's
+ * matrix moved into the local frame. Another supported CRS: the model
  * origin's image (the pivot) is carried through WGS84 and the horizontal Jacobian of the CRS change
  * there is applied about it, always: the convergence turn, the projection scale difference
  * (`projectionScale`) and, for EPSG:3857, its east/north difference. The record's own scale is
@@ -180,14 +191,16 @@ export function georefToLayerTransform(
   project: ProjectGeo,
   o: PlacementOptions = {},
 ): PlacementResult {
-  const to = metricEpsg(project.crs);
-  if (to === null)
+  // within one CRS no registry is needed: the record's matrix moves into the local frame as it is
+  const same = sameCrs(g.crs, project.crs);
+  const to = same ? null : metricEpsg(project.crs);
+  if (!same && to === null)
     return {
       kind: 'needed',
       reason: `The project's coordinate system (${crsLabel(project.crs)}) cannot be used for placement.`,
     };
-  const from = metricEpsg(g.crs);
-  if (from === null)
+  const from = same ? null : metricEpsg(g.crs);
+  if (!same && from === null)
     return {
       kind: 'needed',
       reason: `The model's coordinate system (${crsLabel(g.crs)}) is not one this app can read.`,
@@ -202,7 +215,7 @@ export function georefToLayerTransform(
   let scaleNote: string | undefined;
   let approxNote: string | undefined;
   const extentM = o.extentM ?? DEFAULT_EXTENT_M;
-  if (from !== to) {
+  if (from !== null && to !== null && from !== to) {
     // The pivot is the model origin's image (where the vertices are), not the anchor field.
     const pivot = apply(m, [0, 0, 0]);
     const moved = transformPoint(pivot, from, to);
@@ -315,7 +328,6 @@ function headingOf(m: readonly number[]): number {
   return h;
 }
 
-/**
 /** The mean length of a matrix's three axis columns. */
 function scaleOf(m: readonly number[]): number {
   let s = 0;
@@ -356,10 +368,16 @@ export function layerTransformToGeoref(
   })();
   const projectDatum = knownDatum(project.verticalDatum);
   const user = by === 'place-model';
+  // Place model sets the height in the project frame: the project's datum when it names one, else
+  // the model's own known datum (now set by the person), else unknown
+  const prevDatum =
+    prev && prev.vertical.status !== 'unknown' ? knownDatum(prev.vertical.datum) : null;
   const vertical: Georef['vertical'] = user
     ? projectDatum !== null
       ? { datum: projectDatum, status: 'user' }
-      : { datum: 'unknown', status: 'unknown' }
+      : prevDatum !== null
+        ? { datum: prevDatum, status: 'user' }
+        : { datum: 'unknown', status: 'unknown' }
     : (prev?.vertical ??
       (projectDatum !== null
         ? { datum: projectDatum, status: 'from-source' }
