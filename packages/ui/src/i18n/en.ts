@@ -774,6 +774,9 @@ export const en = {
   'cleanup.menu.noise': 'Remove noise…',
   'cleanup.menu.save': 'Save cleaned copy…',
   'cleanup.menu.reset': 'Reset cleanup',
+  'cleanup.legend.title': 'Classes: {name}',
+  'cleanup.legend.note':
+    'Clouds with cleanup keep their own classes. Open Clean up to change them.',
   'cleanup.export.apply': 'Apply cleanup',
   'cleanup.export.removes': 'Removes {parts}.',
   'cleanup.export.nothing': 'Nothing is removed: the cleanup only hides points in the view.',
