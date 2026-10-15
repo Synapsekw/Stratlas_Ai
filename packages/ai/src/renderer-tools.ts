@@ -20,6 +20,7 @@ import './camera-tools';
 import './class-tools';
 import './collab-tools';
 import './photo-tools';
+import './placement-tools';
 import { clipStartUtcMs, selectionLabel } from './context';
 import { parseFlight, passNear } from './geometry';
 import { targetPoint } from './places';
@@ -57,6 +58,12 @@ export {
   type IssueViewFilter,
   type PhotoViewFilter,
   type PhotoRunRead,
+  type AddSightingRequest,
+  type AddSightingResult,
+  type PlaceOnModelRequest,
+  type PlaceOnModelResult,
+  type PlaceOutcome,
+  type SightingAt,
   type PhotoViewResult,
   type ProcessPhotosRequest,
   type ProcessPhotosStarted,
@@ -287,11 +294,16 @@ function nextAgentCode(issues: readonly Issue[]): string {
   return `AG${String(n + 1).padStart(2, '0')}`;
 }
 
-function pointSighting(ctx: RendererToolContext, p: Vec3, layer?: string): Sighting {
+function pointSighting(ctx: RendererToolContext, p: Vec3, layer?: string, named = false): Sighting {
   const layers = project(ctx).manifest.layers;
-  const mesh =
-    layers.find((l) => l.id === layer && l.kind === 'mesh') ??
-    layers.find((l) => l.kind === 'mesh');
+  const pick = layer ? layers.find((l) => l.id === layer || l.name === layer) : undefined;
+  if (named && layer && pick?.kind !== 'mesh' && pick?.kind !== 'pointcloud')
+    throw new ToolError(
+      `There is no mesh or point cloud layer "${layer}". Use list_layers for the layer ids.`,
+    );
+  if (pick?.kind === 'pointcloud')
+    return { on: 'pointcloud', layer: pick.id, geom: { type: 'point3', p } };
+  const mesh = (pick?.kind === 'mesh' ? pick : undefined) ?? layers.find((l) => l.kind === 'mesh');
   if (mesh) return { on: 'mesh', layer: mesh.id, geom: { type: 'spoint', p, n: [0, 1, 0] } };
   const cloud = layers.find((l) => l.kind === 'pointcloud');
   if (cloud) return { on: 'pointcloud', layer: cloud.id, geom: { type: 'point3', p } };
@@ -302,6 +314,7 @@ function pointSighting(ctx: RendererToolContext, p: Vec3, layer?: string): Sight
 async function draftLocation(
   ctx: RendererToolContext,
   at: Target | undefined,
+  layer: string | undefined,
 ): Promise<{ sightings: Sighting[]; classId?: string }> {
   const ws = ctx.workspace.getState();
   const target: Target | null =
@@ -314,21 +327,22 @@ async function draftLocation(
       'Say where the issue is: select an asset or issue, or give a place or a point, then try again.',
     );
   }
-  if (target.kind === 'issue') {
+  if (target.kind === 'issue' && !layer) {
     const src = findIssue(ctx, target.id);
     const first = src.sightings[0];
     if (!first) throw new ToolError(`Issue ${src.code} has no location to copy.`);
     return { sightings: [first], classId: src.classId };
   }
   const p = await targetPoint(ctx, target);
-  const layer = target.kind === 'asset' ? assetRef(ctx, target.id)?.layer.id : undefined;
-  return { sightings: [pointSighting(ctx, p, layer)] };
+  if (layer) return { sightings: [pointSighting(ctx, p, layer, true)] };
+  const assetLayer = target.kind === 'asset' ? assetRef(ctx, target.id)?.layer.id : undefined;
+  return { sightings: [pointSighting(ctx, p, assetLayer)] };
 }
 
 define('create_issue_draft', async (input, ctx) => {
   const m = project(ctx).manifest;
   const classes = issueClasses(ctx);
-  const { sightings, classId: inferred } = await draftLocation(ctx, input.at);
+  const { sightings, classId: inferred } = await draftLocation(ctx, input.at, input.layer);
   const cls = issueClass(
     ctx,
     input.classId ?? inferred ?? (classes.length === 1 ? classes[0]?.id : undefined),
