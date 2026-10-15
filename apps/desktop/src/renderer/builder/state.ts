@@ -22,7 +22,11 @@ import { terrainHeightAt } from './pick';
 /** What an import read its survey date from (the import card's "Read from ..." line). */
 export type DateSource = 'photos' | 'video' | 'both' | null;
 
-export type AlignTool = { kind: 'mesh'; layerId: string } | { kind: 'video'; layerId: string };
+export type AlignTool =
+  | { kind: 'mesh'; layerId: string }
+  | { kind: 'video'; layerId: string }
+  /** Place model: move, turn, tilt and scale a mesh layer with a handle and number fields. */
+  | { kind: 'place'; layerId: string };
 
 export interface BuilderState {
   wizardOpen: boolean;

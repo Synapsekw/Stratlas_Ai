@@ -475,6 +475,8 @@ export interface LayerDateMenuProps {
   onDelete?: ((layerIds: string[]) => void) | undefined;
   /** False with survey dates off: no "File under" list, only Compare and Delete. Default true. */
   dateMoves?: boolean | undefined;
+  /** Place model... at the top (one model row in an editable project). */
+  onPlaceModel?: (() => void) | undefined;
 }
 
 /**
@@ -492,6 +494,7 @@ export function LayerDateMenu({
   onMove,
   onDelete,
   dateMoves,
+  onPlaceModel,
 }: LayerDateMenuProps) {
   const t = useT();
   const list = useRef<HTMLDivElement>(null);
@@ -504,7 +507,8 @@ export function LayerDateMenu({
   const del = canEdit && onDelete !== undefined;
   // nothing to compare, file or delete (read-only, or dates off on a row that cannot be deleted):
   // there is nothing to show, so do not open an empty menu
-  const empty = !compare && !moves && !del;
+  const place = canEdit ? onPlaceModel : undefined;
+  const empty = !compare && !moves && !del && !place;
   useEffect(() => {
     if (empty) onClose();
   }, [empty, onClose]);
@@ -564,6 +568,24 @@ export function LayerDateMenu({
           <div className="dmenu-h faint">
             {moves ? `${t('tree.dates.move.title')} · ${menu.name}` : menu.name}
           </div>
+          {place && (
+            <>
+              <button
+                type="button"
+                role="menuitem"
+                className="dmenu-item"
+                data-testid="menu-place-model"
+                onClick={() => {
+                  onClose();
+                  place();
+                }}
+              >
+                <Icon name="target" size={14} />
+                <span>{t('place.menu')}</span>
+              </button>
+              {(compare || moves || del) && <div className="dmenu-sep" role="separator" />}
+            </>
+          )}
           {compare && (
             <button
               type="button"

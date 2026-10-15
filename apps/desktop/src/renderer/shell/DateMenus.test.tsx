@@ -305,6 +305,18 @@ describe('LayerDateMenu', () => {
     expect(q('move-to-nov')?.textContent).not.toContain('2024-11-06');
   });
 
+  it('offers Place model... for a model in an editable project only', () => {
+    const onPlaceModel = vi.fn();
+    const { onClose } = open('oct', true, { onPlaceModel });
+    expect(q('menu-place-model')?.textContent).toBe('Place model...');
+    click('menu-place-model');
+    expect(onPlaceModel).toHaveBeenCalledTimes(1);
+    expect(onClose).toHaveBeenCalled();
+    act(() => root?.unmount());
+    open('oct', false, { onPlaceModel });
+    expect(q('menu-place-model')).toBeNull();
+  });
+
   it('files the dataset under the picked date, or under none', () => {
     const { onMove, onClose } = open('oct');
     click('move-to-sep');

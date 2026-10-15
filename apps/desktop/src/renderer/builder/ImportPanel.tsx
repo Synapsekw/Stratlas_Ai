@@ -342,6 +342,12 @@ function PanoCheckingCard() {
   );
 }
 
+/** A model the import could not place for sure (no georeference, or a first guess). */
+export function needsPlacing(layerId: string | undefined, layers: readonly Layer[]): boolean {
+  const l = layers.find((x) => x.id === layerId);
+  return l?.kind === 'mesh' && (l.placement === 'needed' || l.placement === 'provisional');
+}
+
 function ImportStatus() {
   const t = useT();
   const importing = useBuilder((s) => s.importing);
@@ -465,6 +471,20 @@ function ImportStatus() {
               {/* a skipped or failed row says why in its destination line already */}
               {it.message && it.status !== 'skipped' && it.status !== 'error' && (
                 <p>{it.message}</p>
+              )}
+              {needsPlacing(it.layerId, layers) && it.layerId && (
+                <button
+                  type="button"
+                  className="btn sm"
+                  data-testid="import-place-model"
+                  onClick={() => {
+                    if (it.layerId)
+                      builder.getState().startAlign({ kind: 'place', layerId: it.layerId });
+                  }}
+                >
+                  <Icon name="target" size={12} />
+                  {t('place.import')}
+                </button>
               )}
             </li>
           ))}

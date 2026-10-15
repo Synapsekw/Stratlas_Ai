@@ -554,6 +554,20 @@ export function Palette() {
               builder.getState().startAlign({ kind: 'mesh', layerId: first.id });
             },
           });
+          // the selected model (its layer, or a component of it), else the first
+          const sel = ws.selection;
+          const chosen =
+            meshes.find((l) => sel && (l.id === sel.layer || l.id === sel.id)) ?? first;
+          list.push({
+            id: 'builder:place-model',
+            title: t('place.palette'),
+            group: 'Actions',
+            icon: 'target',
+            keywords: ['place', 'move', 'rotate', 'turn', 'tilt', 'scale', 'gizmo', 'position'],
+            run: () => {
+              builder.getState().startAlign({ kind: 'place', layerId: chosen.id });
+            },
+          });
         }
         const clip =
           layers.find((l) => l.kind === 'video' && l.id === ws.activeClip) ??

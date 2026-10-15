@@ -33,6 +33,7 @@ import {
 import { dateTags, useWorkspace, workspace } from '@aio/workspace';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { openAuditTrail } from '../audit/auditView';
+import type { Layer } from '@aio/schema';
 import { builder } from '../builder/state';
 import { DrawingControls } from '../drawings/DrawingControls';
 import { drawings, unplacedOf, useDrawings } from '../drawings/store';
@@ -237,6 +238,19 @@ function ProjectSwitcher({ collapsed }: { collapsed: boolean }) {
       )}
     </div>
   );
+}
+
+/** Place model... for a right-click on one model row (any mesh layer); nothing otherwise. */
+function placeModelOf(
+  layers: readonly Layer[],
+  layerIds: readonly string[],
+): (() => void) | undefined {
+  const [id] = layerIds;
+  if (layerIds.length !== 1 || !layers.some((l) => l.id === id && l.kind === 'mesh'))
+    return undefined;
+  return () => {
+    if (id) builder.getState().startAlign({ kind: 'place', layerId: id });
+  };
 }
 
 function Datasets({ collapsed }: { collapsed: boolean }) {
@@ -781,6 +795,7 @@ function Datasets({ collapsed }: { collapsed: boolean }) {
           }}
           onMove={onMove}
           onDelete={canEdit && deletable(itemMenu.layerIds).length > 0 ? askLayers : undefined}
+          onPlaceModel={placeModelOf(project.manifest.layers, itemMenu.layerIds)}
         />
       )}
     </div>
