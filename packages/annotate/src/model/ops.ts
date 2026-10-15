@@ -11,6 +11,7 @@ import {
   type SeverityModel,
   type Sighting,
 } from '@aio/schema';
+import { dropFrom, keepSightings, shiftFrom } from './placed';
 
 /** What every issue change is checked against: the project's severity models and catalogues. */
 export interface IssueContext {
@@ -142,7 +143,7 @@ export function removeSighting(issue: Issue, index: number, now: string): Result
   }
   return ok({
     ...issue,
-    sightings: issue.sightings.filter((_, i) => i !== index),
+    sightings: keepSightings(issue.sightings, (_, i) => i !== index),
     updatedAt: now,
   });
 }
@@ -160,10 +161,10 @@ export function moveSighting(
   const s = from.sightings[index];
   if (!s) return err(`Issue ${from.code} has no sighting ${index + 1}`);
   if (from.id === to.id) return err('A sighting cannot be moved to the issue it belongs to');
-  const rest = from.sightings.filter((_, i) => i !== index);
+  const rest = keepSightings(from.sightings, (_, i) => i !== index);
   return ok({
     from: rest.length ? { ...from, sightings: rest, updatedAt: now } : null,
-    to: addSighting(to, s, now),
+    to: addSighting(to, dropFrom(s), now),
   });
 }
 
@@ -172,7 +173,7 @@ export function mergeIssues(target: Issue, source: Issue, now: string): Issue {
   const line = `Merged ${source.code}: ${source.title}`;
   return {
     ...target,
-    sightings: [...target.sightings, ...source.sightings],
+    sightings: [...target.sightings, ...shiftFrom(source.sightings, target.sightings.length)],
     note: target.note ? `${target.note}\n${line}` : line,
     updatedAt: now,
   };

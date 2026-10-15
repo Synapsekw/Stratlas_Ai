@@ -4,12 +4,17 @@ import { afterEach, describe, expect, it } from 'vitest';
 import {
   annotateUi,
   beginSighting,
+  cameraSources,
   cancelSighting,
   confirmSighting,
   focusIssue,
+  getIssueListActions,
+  imageSizeOf,
   issueEditor,
   issueSaver,
+  rememberImageSize,
   setAnnotateReadOnly,
+  setIssueListActions,
 } from './runtime';
 import { catalogue, makeIssue, meshSighting, photoSighting, tankModel } from './testing';
 
@@ -91,5 +96,23 @@ describe('annotation runtime', () => {
       p: [1, 2, 3],
       distance: 4,
     });
+  });
+
+  it('shares remembered sizes and the issue list actions', () => {
+    rememberImageSize('photos', 'F09', [640, 480]);
+    expect(imageSizeOf('photos', 'F09')).toEqual([640, 480]);
+    expect(cameraSources.imageSize('photos', 'F09')).toEqual([640, 480]);
+    expect(imageSizeOf('photos', 'nope')).toBeNull();
+    const placeOnModel = (ids: readonly string[]) => ids.length;
+    const off = setIssueListActions({ placeOnModel });
+    expect(getIssueListActions().placeOnModel).toBe(placeOnModel);
+    // a stale remover does not take away actions set after it
+    const later = { placeOnModel: (ids: readonly string[]) => ids.length + 1 };
+    const offLater = setIssueListActions(later);
+    off();
+    expect(getIssueListActions().placeOnModel).toBe(later.placeOnModel);
+    offLater();
+    expect(getIssueListActions()).toEqual({});
+    expect(getIssueListActions().placeOnModel).toBeUndefined();
   });
 });

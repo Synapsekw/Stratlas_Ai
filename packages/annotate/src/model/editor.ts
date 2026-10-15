@@ -76,6 +76,11 @@ export interface IssueEditor {
   /** Create many issues as one undo step (Accept all); nothing is created when one is refused. */
   createMany(inputs: readonly CreateInput[], label: string): Result<Issue[]>;
   /**
+   * Write issues computed elsewhere (findings placed on a model, a confirmed match) as one undo
+   * step, validated; nothing is written when one is refused or unknown.
+   */
+  commitIssues(issues: readonly Issue[], label: string): Result<null>;
+  /**
    * Move every issue of class `fromId` to class `toId` in one undo step (a class is deleted),
    * mapping each severity onto the new class's model (`mapSeverity`).
    */
@@ -419,6 +424,16 @@ export function createIssueEditor(opts: IssueEditorOptions): IssueEditor {
       }
       const c = commit(label, after);
       return c.ok ? ok(out) : err(c.error);
+    },
+    commitIssues(issues, label) {
+      if (readOnly()) return fail(READ_ONLY_ERROR);
+      if (issues.length === 0) return ok(null);
+      const after: Record<string, Issue> = {};
+      for (const i of issues) {
+        if (!get(i.id)) return fail(`Issue "${i.id}" does not exist`);
+        after[i.id] = i;
+      }
+      return commit(label, after);
     },
     reassignClass(fromId, toId) {
       if (fromId === toId) return { changed: 0, skipped: [] };
