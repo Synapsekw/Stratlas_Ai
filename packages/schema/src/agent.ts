@@ -13,7 +13,8 @@ export const WindowKind = z.enum([
 ]);
 /** `local` is an OpenAI-compatible endpoint on this machine (for example Ollama); it needs no key. */
 export const AiProvider = z.enum(['anthropic', 'openai', 'google', 'local']);
-export const AiTask = z.enum(['chat', 'vision', 'report', 'extract', 'build']);
+/** `engineer`: the engineering model run's structured vision calls (defaults to the vision route). */
+export const AiTask = z.enum(['chat', 'vision', 'report', 'extract', 'build', 'engineer']);
 /**
  * Provider errors the app can offer a fix for in place. `anthropic-workspace`: the Anthropic key is
  * not scoped to a workspace, so requests need the `anthropic-workspace-id` header (the workspace ID

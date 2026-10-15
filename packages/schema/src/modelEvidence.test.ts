@@ -1,0 +1,114 @@
+import { describe, expect, it } from 'vitest';
+import { EVIDENCE_LIMITS, EvidencePack, ModelEvidenceParams } from './modelEvidence';
+
+function must<T>(x: T | undefined | null): T {
+  if (x === undefined || x === null) throw new Error('expected a value');
+  return x;
+}
+
+const base = { run: 'run-1', clouds: [{ layer: 'cloud-a' }], meshes: [], photos: [] };
+
+describe('ModelEvidenceParams', () => {
+  it('limits default per detail', () => {
+    for (const detail of ['fast', 'standard', 'detailed'] as const) {
+      const r = ModelEvidenceParams.safeParse({ ...base, detail });
+      expect(r.success).toBe(true);
+      expect(must(r.data).limits).toEqual(EVIDENCE_LIMITS[detail]);
+    }
+    expect(EVIDENCE_LIMITS.fast).toEqual({ maxPoints: 300_000, maxImages: 12, maxPx: 1024 });
+    expect(EVIDENCE_LIMITS.standard).toEqual({ maxPoints: 1_000_000, maxImages: 24, maxPx: 1568 });
+    expect(EVIDENCE_LIMITS.detailed).toEqual({ maxPoints: 2_000_000, maxImages: 40, maxPx: 1568 });
+  });
+  it('keeps explicit limits', () => {
+    const limits = { maxPoints: 500_000, maxImages: 8, maxPx: 800 };
+    const r = ModelEvidenceParams.safeParse({ ...base, detail: 'fast', limits });
+    expect(must(r.data).limits).toEqual(limits);
+  });
+  it('refuses 5 clouds and 401 photos', () => {
+    const clouds = Array.from({ length: 5 }, (_, i) => ({ layer: `c${String(i)}` }));
+    expect(ModelEvidenceParams.safeParse({ ...base, clouds, detail: 'fast' }).success).toBe(false);
+    const photos = Array.from({ length: 401 }, (_, i) => ({ path: `p${String(i)}.jpg` }));
+    expect(ModelEvidenceParams.safeParse({ ...base, photos, detail: 'fast' }).success).toBe(false);
+  });
+  it('accepts a circle or box region and refuses unknown keys', () => {
+    const circle = { centre: [0, 0], radiusM: 30 };
+    const box = { min: [-1, -1, 0], max: [1, 1, 50] };
+    for (const region of [circle, box]) {
+      expect(ModelEvidenceParams.safeParse({ ...base, region, detail: 'fast' }).success).toBe(true);
+    }
+    expect(ModelEvidenceParams.safeParse({ ...base, detail: 'fast', extra: 1 }).success).toBe(
+      false,
+    );
+  });
+});
+
+const slice = (y: number, coverage: number) => ({
+  y,
+  centre: [0, 0],
+  r: 3 - y * 0.01,
+  residualM: 0.02,
+  support: 900,
+  coverage,
+});
+
+const pack = (slices: unknown[]) => ({
+  schema: 'aio.evidence/1',
+  run: 'run-1',
+  crs: { epsg: 32633 },
+  units: 'm',
+  bounds: { min: [-4, 0, -4], max: [4, 80, 4] },
+  samples: { read: 1_200_000, kept: 1_000_000, ground: 40_000 },
+  axis: { point: [0, 0, 0], dir: [0, 1, 0], tiltDeg: 0.2 },
+  base: [0, 0, 0],
+  height: 80,
+  slices,
+  taper: {
+    profile: [
+      { y: 0, r: 3 },
+      { y: 80, r: 2.2 },
+    ],
+    residualM: 0.03,
+  },
+  members: [
+    {
+      kind: 'flue',
+      items: [
+        { centre: [0.5, 80, 0], size: 0.4, support: 120, azimuthDeg: 0 },
+        { centre: [-0.5, 80, 0], size: 0.4, support: 110, azimuthDeg: 180 },
+      ],
+      metrics: { residualM: 0.01, regularity: 0.9 },
+    },
+  ],
+  familyHints: { fillRatio: 0.8, slenderness: 13, topFeatures: 2, suggested: 'chimney' },
+  colours: [{ y0: 70, y1: 80, rgb: [200, 30, 30] }],
+  photos: [],
+  images: [
+    {
+      id: 'img-side-n',
+      file: 'img/side-n.png',
+      kind: 'side',
+      view: 'north',
+      w: 1024,
+      h: 1024,
+      bytes: 123_456,
+      sha1: 'a'.repeat(40),
+    },
+  ],
+  reconstruction: 'not-needed',
+  warnings: [],
+});
+
+describe('EvidencePack', () => {
+  it('parses a pack with two slices and a flue group', () => {
+    const r = EvidencePack.safeParse(pack([slice(10, 0.9), slice(40, 0.7)]));
+    expect(r.success).toBe(true);
+    const p = must(r.data);
+    expect(p.slices).toHaveLength(2);
+    expect(must(p.slices[0]).shape).toBe('circle');
+    expect(must(p.members[0]).items).toHaveLength(2);
+  });
+  it('refuses slice coverage outside 0..1', () => {
+    expect(EvidencePack.safeParse(pack([slice(10, 1.2)])).success).toBe(false);
+    expect(EvidencePack.safeParse(pack([slice(10, -0.1)])).success).toBe(false);
+  });
+});
