@@ -12,6 +12,8 @@ The original file is never written. A cancelled job leaves only its staging fold
 from __future__ import annotations
 
 import json
+import re
+import shutil
 from pathlib import Path
 from typing import Any
 
@@ -22,7 +24,6 @@ from ..pointcloud import (
     PDAL_MISSING,
     UNTWINE_TEMP_BYTES_PER_POINT,
     _run,
-    check_space,
     find_pdal,
     read_summary,
 )
@@ -31,12 +32,16 @@ from .lasstream import class_histogram
 from .recipe import NOISE_CLASS, validate_recipe
 
 NOISE_DIR = "edits/pointcloud"
+# the spec's noise defaults; a missing setting takes these, a missing elm is off
+OUTLIER_DEFAULTS = {"meanK": 8, "multiplier": 2.0}
+ELM_DEFAULTS = {"cell": 10.0, "threshold": 1.0}
+# the layer ids main accepts for cleanup files (SAFE_ID in apps/desktop/src/main/pointcloudCleanup.ts)
+SAFE_ID = re.compile(r"[A-Za-z0-9][A-Za-z0-9._ -]{0,127}")
 
 
 def _layer_id(params: dict[str, Any]) -> str:
-    lid = text(params, "layerId", required=True)
-    assert lid is not None
-    if len(lid) > 128 or any(c in lid for c in '/\\:*?"<>|') or ".." in lid:
+    lid = params.get("layerId")
+    if not isinstance(lid, str) or not SAFE_ID.fullmatch(lid) or ".." in lid:
         raise JobError("layerId must be a layer id.")
     return lid
 
@@ -51,12 +56,15 @@ def _src(params: dict[str, Any]) -> str:
 
 
 def _outlier(raw: Any) -> dict[str, Any]:
+    if raw is None:
+        return dict(OUTLIER_DEFAULTS)
     if not isinstance(raw, dict):
         raise JobError("outlier needs meanK and multiplier.")
     known_keys(raw, {"meanK", "multiplier"}, "outlier")
+    d = OUTLIER_DEFAULTS
     return {
-        "meanK": number(raw, "meanK", None, 2, 64, integer=True),
-        "multiplier": number(raw, "multiplier", None, 0.1, 10),
+        "meanK": number(raw, "meanK", d["meanK"], 2, 64, integer=True),
+        "multiplier": number(raw, "multiplier", d["multiplier"], 0.1, 10),
     }
 
 
@@ -64,7 +72,11 @@ def _elm(raw: Any) -> dict[str, Any]:
     if not isinstance(raw, dict):
         raise JobError("elm needs cell and threshold.")
     known_keys(raw, {"cell", "threshold"}, "elm")
-    return {"cell": number(raw, "cell", None, 0.5, 100), "threshold": number(raw, "threshold", None, 0.1, 50)}
+    d = ELM_DEFAULTS
+    return {
+        "cell": number(raw, "cell", d["cell"], 0.5, 100),
+        "threshold": number(raw, "threshold", d["threshold"], 0.1, 50),
+    }
 
 
 def _manifest(project: Path) -> tuple[Path, dict[str, Any]]:
@@ -104,10 +116,39 @@ def _las_writer(path: Path) -> dict[str, Any]:
     }
 
 
+def _check_memory(count: int) -> None:
+    """PDAL's outlier filters hold the whole cloud: refuse up front, as write_copc's PDAL fallback does."""
+    from ..photo import cloud_out, native
+
+    budget = native.memory_budget()
+    if count * cloud_out.PDAL_COPC_BYTES_PER_POINT > budget:
+        raise JobError(
+            f"The point cloud has {count:,} points, more than PDAL can search for noise within the "
+            f"memory budget ({budget / 1e9:.1f} GB). Raise the memory limit in Settings or crop the cloud first."
+        )
+
+
+def _check_space(folder: Path, needed: int) -> None:
+    """Refuse up front, with both numbers, when the staging drive cannot hold the cleanup."""
+    from ..photo import native
+
+    try:
+        native.check_disk(folder, needed)
+    except JobError:
+        free = shutil.disk_usage(folder).free
+        drive = Path(folder).resolve().anchor.rstrip("\\/") or str(folder)
+        raise JobError(
+            f"Cleaning up this point cloud needs about {needed / 1024**3:.1f} GB free on {drive}, "
+            f"which has {free / 1024**3:.1f} GB. Free some space or move the project to a larger drive."
+        ) from None
+
+
 def _stage_las(ctx: StepContext, pdal: str, src: Path, out: Path, band: tuple[float, float]) -> int:
-    """The COPC as a staged LAS; refuses up front when the staging drive is too small. Answers the count."""
+    """The COPC as a staged LAS; refuses up front when the cloud is too big for the memory budget or the
+    staging drive is too small. Answers the count."""
     count = int(read_summary(ctx, pdal, src).get("num_points") or 0)
-    check_space(
+    _check_memory(count)
+    _check_space(
         ctx.staging, count * (2 * DEFAULT_RECORD + UNTWINE_TEMP_BYTES_PER_POINT + COPC_BYTES_PER_POINT)
     )
     pipe = ctx.stage("work/to-las.json")

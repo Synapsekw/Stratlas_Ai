@@ -9,9 +9,10 @@ import pytest
 
 from aio_pipelines.pipelines import all_pipelines
 from aio_pipelines.pointcloud import find_pdal
+from aio_pipelines.pointcloud_cleanup import pipeline as pcc_pipeline
 from aio_pipelines.pointcloud_cleanup.lasstream import class_histogram
 from aio_pipelines.pointcloud_cleanup.pipeline import PointcloudClean
-from aio_pipelines.runtime import JobError
+from aio_pipelines.runtime import Cancelled, JobError
 from conftest import run_job
 from pccleanup_synth import cloud_project, copc_to_las, planted_cloud
 
@@ -115,4 +116,86 @@ def test_refuses_a_layer_that_is_not_copc_or_has_moved(tmp_path):
     (root / "manifest.json").write_text(json.dumps(manifest), "utf-8")
     with pytest.raises(JobError, match="COPC"):
         run_job(PointcloudClean(), root, NOISE, job_id="j-png")
+    assert not (root / "edits").exists()
+
+
+def test_validate_defaults_missing_settings_explicitly():
+    v = PointcloudClean().validate
+    assert v({**NOISE, "outlier": None})["outlier"] == {"meanK": 8, "multiplier": 2.0}
+    assert v({**NOISE, "outlier": {"meanK": 12}})["outlier"] == {"meanK": 12, "multiplier": 2.0}
+    assert v({**NOISE, "elm": {}})["elm"] == {"cell": 10.0, "threshold": 1.0}
+    assert "elm" not in v(NOISE)  # no elm: off
+
+
+@pytest.mark.parametrize("lid", ["Scan 2.v1", "a", "A_b-c"])
+def test_validate_takes_the_ids_main_takes(lid):
+    assert PointcloudClean().validate({**NOISE, "layerId": lid})["layerId"] == lid
+
+
+@pytest.mark.parametrize("lid", [" lead", "-x", "a/b", "a*b", "a..b", "x" * 129])
+def test_validate_refuses_ids_main_refuses(lid):
+    with pytest.raises(JobError, match="layer id"):
+        PointcloudClean().validate({**NOISE, "layerId": lid})
+
+
+def _spy_pdal(monkeypatch):
+    calls = []
+    real = pcc_pipeline._run
+
+    def spy(ctx, args, what, *rest, **kw):
+        calls.append(what)
+        return real(ctx, args, what, *rest, **kw)
+
+    monkeypatch.setattr(pcc_pipeline, "_run", spy)
+    return calls
+
+
+@needs_pdal
+def test_refuses_a_cloud_too_big_for_the_memory_budget_before_pdal_runs(tmp_path, monkeypatch):
+    from aio_pipelines.photo import native
+
+    xyz, cls, _ = planted_cloud(ground_step=2.0, high=2, low=0)
+    root = cloud_project(tmp_path, xyz, cls)
+    monkeypatch.setattr(native, "memory_budget", lambda: 1000)
+    calls = _spy_pdal(monkeypatch)
+    with pytest.raises(JobError, match="memory budget"):
+        run_job(PointcloudClean(), root, NOISE, job_id="j-mem")
+    assert calls == []  # no PDAL pipeline started
+    assert not (root / "edits").exists()
+
+
+@needs_pdal
+def test_refuses_when_the_staging_drive_is_too_small(tmp_path, monkeypatch):
+    import shutil
+    from collections import namedtuple
+
+    xyz, cls, _ = planted_cloud(ground_step=2.0, high=2, low=0)
+    root = cloud_project(tmp_path, xyz, cls)
+    usage = namedtuple("usage", "total used free")
+    monkeypatch.setattr(shutil, "disk_usage", lambda p: usage(10**12, 10**12 - 1000, 1000))
+    calls = _spy_pdal(monkeypatch)
+    with pytest.raises(JobError, match="Cleaning up this point cloud needs"):
+        run_job(PointcloudClean(), root, NOISE, job_id="j-disk")
+    assert calls == []
+    assert not (root / "edits").exists()
+
+
+@needs_pdal
+def test_a_cancelled_run_leaves_no_project_files(tmp_path, monkeypatch):
+    import threading
+
+    xyz, cls, _ = planted_cloud(ground_step=2.0, high=2, low=0)
+    root = cloud_project(tmp_path, xyz, cls)
+    cancel = threading.Event()
+    real = pcc_pipeline._run
+
+    def cancel_after_marking(ctx, args, what, *rest, **kw):
+        out = real(ctx, args, what, *rest, **kw)
+        if what == "Finding noise":
+            cancel.set()  # the next ctx.check raises
+        return out
+
+    monkeypatch.setattr(pcc_pipeline, "_run", cancel_after_marking)
+    with pytest.raises(Cancelled):
+        run_job(PointcloudClean(), root, NOISE, job_id="j-cancel", cancel=cancel)
     assert not (root / "edits").exists()
