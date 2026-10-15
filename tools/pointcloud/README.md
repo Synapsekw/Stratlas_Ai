@@ -93,3 +93,15 @@ pdal translate synth.csv packages/pointcloud/test-data/synthetic.copc.laz -w wri
   --writers.copc.scale_z=0.001 --writers.copc.offset_x=auto --writers.copc.offset_y=auto `
   --writers.copc.offset_z=auto
 ```
+
+`packages/pointcloud/test-data/noisy.copc.laz`: the same cloud with 40 high and 20 low isolated
+points, class 1, for the cleanup e2e (16 060 points):
+
+```powershell
+node tools/pointcloud/synthetic-cloud.mjs noisy.csv 16000 40
+pdal translate noisy.csv packages/pointcloud/test-data/noisy.copc.laz -w writers.copc `
+  --writers.copc.a_srs=EPSG:32639 --writers.copc.scale_x=0.001 --writers.copc.scale_y=0.001 `
+  --writers.copc.scale_z=0.001 --writers.copc.offset_x=auto --writers.copc.offset_y=auto `
+  --writers.copc.offset_z=auto
+pdal info --summary packages/pointcloud/test-data/noisy.copc.laz   # num_points 16060
+```
