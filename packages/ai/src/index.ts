@@ -26,6 +26,8 @@ export type {
   EngineerImage,
   EngineerImageKind,
   EngineerOutcome,
+  EngineerPayload,
+  EngineerPayloadImage,
   EngineerUsage,
 } from './engineer';
 export {

@@ -25,7 +25,7 @@ import {
   type UserContent,
 } from 'ai';
 import { z } from 'zod';
-import { capsFor, engineerReady, type LocalCaps, type ModelCaps } from './capabilities';
+import { engineerReady, type LocalCaps, type ModelCaps } from './capabilities';
 import {
   engineerRepairText,
   engineerSystem,
@@ -51,6 +51,10 @@ export const ENGINEER_TIMEOUT_MS = 600_000;
 /** Output tokens a reply may use, and the output part of the cost estimate. */
 export const ENGINEER_MAX_OUTPUT_TOKENS = 8_000;
 const ESTIMATE_OUTPUT_TOKENS = 4_000;
+/** Longest measurement summary sent (characters); a longer one is refused, not cut. */
+export const SUMMARY_MAX_CHARS = 40_000;
+/** Longest bad reply sent back in the repair request (characters). */
+const REPAIR_REPLY_MAX = 20_000;
 /** Version of the reply format (the wire schema below and its mapping to `EngineerProposal`). */
 const PROPOSAL_FORMAT = 'proposal-1';
 
@@ -116,6 +120,8 @@ export interface EngineerHost {
   providers: ProviderRegistry;
   /** What the local model probe found, when the route runs on the local model. */
   localCaps?(): LocalCaps | undefined;
+  /** The local server address when the route runs on the local model (part of the cache key). */
+  endpoint?(): string | undefined;
   /** Downscale an image so its longest side is at most `maxPx` (Electron `nativeImage` in main). */
   resize?(dataUrl: string, maxPx: number): Promise<string>;
   /** Provider retries per request; 2 by default. */
@@ -255,12 +261,29 @@ export function imageSize(b: Buffer): { w: number; h: number } | null {
   return null;
 }
 
-/** PNG chunks that carry text, EXIF or times: never sent. */
-const PNG_DROP = new Set(['tEXt', 'zTXt', 'iTXt', 'eXIf', 'tIME']);
+/** PNG chunks that are sent (allow-list): pixels and the colour basics, nothing else. */
+const PNG_KEEP = new Set(['IHDR', 'PLTE', 'IDAT', 'IEND', 'tRNS', 'gAMA', 'sRGB']);
+/** WebP chunks that are sent (allow-list): image data, alpha and animation. */
+const WEBP_KEEP = new Set(['VP8 ', 'VP8L', 'VP8X', 'ALPH', 'ANIM', 'ANMF']);
+/** VP8X flags for chunks that are left out: ICC profile, EXIF, XMP. */
+const VP8X_METADATA = 0x20 | 0x08 | 0x04;
 
 /**
- * The image without metadata: JPEG APP1 to APP15 (EXIF, XMP, IPTC) and comments, PNG text, EXIF
- * and time chunks, WebP EXIF and XMP chunks. The pixels are untouched. Throws on a broken file.
+ * JPEG markers that are sent (allow-list): frame and scan headers, tables, restart interval, and
+ * APP14 (Adobe colour transform, needed to decode some files). Every other APPn (EXIF, XMP, ICC,
+ * MPF previews), comments and anything after the first end of image are left out.
+ */
+function jpegKeeps(marker: number, b: Buffer, at: number): boolean {
+  if (marker >= 0xc0 && marker <= 0xcf) return true; // SOFn, DHT, JPG, DAC
+  if (marker === 0xdb || marker === 0xdd) return true; // DQT, DRI
+  if (marker === 0xee) return b.toString('latin1', at + 4, at + 9) === 'Adobe';
+  return false;
+}
+
+/**
+ * The image without metadata, by allow-list: PNG and WebP keep only image chunks, JPEG only its
+ * frame, tables and scans, cut at the first end of image (an appended preview with its own EXIF
+ * never goes along). The pixels are untouched. Throws on a broken file.
  */
 export function stripImageMetadata(b: Buffer, mediaType: Mime): Buffer {
   if (mediaType === 'image/png') {
@@ -272,45 +295,28 @@ export function stripImageMetadata(b: Buffer, mediaType: Mime): Buffer {
       const type = b.toString('latin1', i + 4, i + 8);
       const end = i + 12 + len;
       if (end > b.length) throw new Error('broken PNG');
-      if (!PNG_DROP.has(type)) parts.push(b.subarray(i, end));
+      if (PNG_KEEP.has(type)) parts.push(b.subarray(i, end));
       i = end;
-      if (type === 'IEND') break;
+      if (type === 'IEND') return Buffer.concat(parts);
     }
-    return Buffer.concat(parts);
+    throw new Error('broken PNG');
   }
-  if (mediaType === 'image/jpeg') {
-    if (b[0] !== 0xff || b[1] !== 0xd8) throw new Error('not a JPEG');
-    const parts: Buffer[] = [b.subarray(0, 2)];
-    let i = 2;
-    while (i + 4 <= b.length) {
-      if (b[i] !== 0xff) throw new Error('broken JPEG');
-      const marker = b[i + 1] ?? 0;
-      if (marker === 0xda) {
-        parts.push(b.subarray(i));
-        return Buffer.concat(parts);
-      }
-      const end = i + 2 + b.readUInt16BE(i + 2);
-      if (end > b.length) throw new Error('broken JPEG');
-      const drop = (marker >= 0xe1 && marker <= 0xef) || marker === 0xfe;
-      if (!drop) parts.push(b.subarray(i, end));
-      i = end;
-    }
-    throw new Error('broken JPEG');
-  }
-  // WebP: RIFF chunks; drop EXIF and XMP, clear their flags in VP8X, fix the RIFF size.
+  if (mediaType === 'image/jpeg') return stripJpeg(b);
+  // WebP: RIFF chunks within the RIFF size; keep the image chunks, clear the metadata flags.
   if (b.toString('latin1', 0, 4) !== 'RIFF' || b.toString('latin1', 8, 12) !== 'WEBP') {
     throw new Error('not a WebP');
   }
+  const riffEnd = Math.min(b.length, 8 + b.readUInt32LE(4));
   const parts: Buffer[] = [];
   let i = 12;
-  while (i + 8 <= b.length) {
+  while (i + 8 <= riffEnd) {
     const type = b.toString('latin1', i, i + 4);
     const len = b.readUInt32LE(i + 4);
     const end = i + 8 + len + (len % 2);
-    if (i + 8 + len > b.length) throw new Error('broken WebP');
-    if (type !== 'EXIF' && type !== 'XMP ') {
-      const chunk = Buffer.from(b.subarray(i, Math.min(end, b.length)));
-      if (type === 'VP8X') chunk[8] = (chunk[8] ?? 0) & ~0x0c;
+    if (i + 8 + len > riffEnd) throw new Error('broken WebP');
+    if (WEBP_KEEP.has(type)) {
+      const chunk = Buffer.from(b.subarray(i, Math.min(end, riffEnd)));
+      if (type === 'VP8X') chunk[8] = (chunk[8] ?? 0) & ~VP8X_METADATA;
       parts.push(chunk);
     }
     i = end;
@@ -321,6 +327,47 @@ export function stripImageMetadata(b: Buffer, mediaType: Mime): Buffer {
   head.writeUInt32LE(body.length + 4, 4);
   head.write('WEBP', 8, 'latin1');
   return Buffer.concat([head, body]);
+}
+
+/**
+ * JPEG by allow-list, through every scan of a baseline or progressive file, up to the first EOI.
+ * Inside entropy-coded data `FF 00` (stuffing), `FF D0..D7` (restarts) and `FF FF` (fill) are data.
+ */
+function stripJpeg(b: Buffer): Buffer {
+  if (b[0] !== 0xff || b[1] !== 0xd8) throw new Error('not a JPEG');
+  const parts: Buffer[] = [b.subarray(0, 2)];
+  let i = 2;
+  while (i + 2 <= b.length) {
+    if (b[i] !== 0xff) throw new Error('broken JPEG');
+    const marker = b[i + 1] ?? 0;
+    if (marker === 0xff) {
+      i += 1;
+      continue;
+    }
+    if (marker === 0xd9) {
+      parts.push(b.subarray(i, i + 2));
+      return Buffer.concat(parts);
+    }
+    if (i + 4 > b.length) break;
+    const end = i + 2 + b.readUInt16BE(i + 2);
+    if (end > b.length) throw new Error('broken JPEG');
+    if (marker === 0xda) {
+      // the scan header, then its entropy-coded data up to the next real marker
+      let j = end;
+      while (j + 1 < b.length) {
+        const next = b[j + 1] ?? 0;
+        if (b[j] === 0xff && next !== 0x00 && next !== 0xff && (next < 0xd0 || next > 0xd7)) break;
+        j += 1;
+      }
+      if (j + 1 >= b.length) throw new Error('broken JPEG');
+      parts.push(b.subarray(i, j));
+      i = j;
+      continue;
+    }
+    if (jpegKeeps(marker, b, i)) parts.push(b.subarray(i, end));
+    i = end;
+  }
+  throw new Error('broken JPEG');
 }
 
 const IMAGE_ID = /^[A-Za-z0-9][A-Za-z0-9._-]{0,39}$/;
@@ -366,10 +413,17 @@ const sha1 = (b: Buffer | string) => createHash('sha1').update(b).digest('hex');
 
 /**
  * The cache key: sha256 over the image ids, kinds, views and content sha1s, the summary, the
- * setup, the pass, the previous proposal, the prompt version, the reply format, provider and model.
- * Run and project ids are left out, so a resumed or repeated run reuses the reply.
+ * setup, the pass, the previous proposal, the prompt version, the reply format, provider, model,
+ * the "Treat as vision model" setting, the image limits the request is built with, and the local
+ * server address (another server may serve another model under the same name). Run and project
+ * ids are left out, so a resumed or repeated run reuses the reply.
  */
-export function engineerCacheKey(c: EngineerCall, route: ModelRoute): string {
+export function engineerCacheKey(
+  c: EngineerCall,
+  route: ModelRoute,
+  caps: ModelCaps,
+  endpoint?: string,
+): string {
   const images = c.images.map((im) => ({
     id: im.id,
     kind: im.kind,
@@ -381,6 +435,10 @@ export function engineerCacheKey(c: EngineerCall, route: ModelRoute): string {
     format: PROPOSAL_FORMAT,
     provider: route.provider,
     model: route.model,
+    treatAsVision: route.treatAsVision === true,
+    maxImages: caps.maxImages,
+    maxImagePx: caps.maxImagePx,
+    endpoint: route.provider === 'local' ? (endpoint ?? '') : '',
     pass: c.pass,
     summary: c.summary,
     setup: c.setup,
@@ -391,13 +449,9 @@ export function engineerCacheKey(c: EngineerCall, route: ModelRoute): string {
 }
 
 /** Limits to estimate and send with: the model's, else conservative ones. */
-function limitsFor(route: ModelRoute, local?: LocalCaps): ModelCaps {
-  return (
-    capsFor(route.provider, route.model, {
-      treatAsVision: true,
-      ...(local ? { local } : {}),
-    }) ?? { vision: true, structured: true, maxImages: 8, maxImagePx: 1024 }
-  );
+export function engineerLimits(route: ModelRoute, local?: LocalCaps): ModelCaps {
+  const ready = engineerReady(route, local);
+  return ready.ok ? ready.caps : { vision: true, structured: true, maxImages: 8, maxImagePx: 1024 };
 }
 
 /** Image tokens: (w * h) / 750 after fitting the longest side into `maxPx`. */
@@ -407,83 +461,148 @@ function imageTokens(dims: { w: number; h: number } | null, maxPx: number): numb
   return Math.ceil((w * s * (h * s)) / 750);
 }
 
+/** The text part of the request: setup, bounded and redacted summary, previous proposal. */
+function requestText(c: EngineerCall, imageCount: number): string {
+  return engineerUserText({
+    summary: redactPaths(c.summary),
+    setup: setupView(c.setup),
+    pass: c.pass,
+    imageCount,
+    ...(c.previous ? { previous: c.previous } : {}),
+  });
+}
+
 /**
  * The estimated cost of one engineer request in US dollars: images at (w * h) / 750 tokens each
- * (capped by the model's image size), the summary and the system text at four characters a token,
- * and 4000 output tokens, priced with the meter's table. 0 on the local model; undefined when the
- * model has no price.
+ * after fitting into the model's image size, the system text, the request text (setup, summary,
+ * previous proposal) and the image labels at four characters a token, and 4000 output tokens,
+ * priced with the meter's table. 0 on the local model; undefined when the model has no price.
  */
 export function estimateEngineerCostUsd(
   c: EngineerCall,
   route: ModelRoute,
-  local?: LocalCaps,
+  caps: ModelCaps = engineerLimits(route),
 ): number | undefined {
   if (route.provider === 'local') return 0;
-  const caps = limitsFor(route, local);
   const images = c.images.slice(0, caps.maxImages);
+  const labels = images.map((im) => imageLabel(im.id, im.kind, im.view)).join('\n');
+  const text = engineerSystem().length + requestText(c, images.length).length + labels.length;
   const inputTokens =
     images.reduce((n, im) => {
       const d = decodeDataUrl(im.dataUrl);
       return n + imageTokens(d ? imageSize(d.bytes) : null, caps.maxImagePx);
-    }, 0) +
-    Math.ceil((c.summary.length + engineerSystem().length) / 4) +
-    (c.previous ? Math.ceil(JSON.stringify(c.previous).length / 4) : 0);
+    }, 0) + Math.ceil(text / 4);
   return priceUsd(route.model, { inputTokens, outputTokens: ESTIMATE_OUTPUT_TOKENS });
 }
 
-// ---------------------------------------------------------------- the call
+// ---------------------------------------------------------------- the payload
 
-interface Prepared {
-  content: UserContent;
-  leftOut: number;
+/** One image exactly as it is sent: metadata stripped, downscaled to the model's limit. */
+export interface EngineerPayloadImage {
+  id: string;
+  kind: EngineerImageKind;
+  view?: string;
+  /** The label sent before the image, `Image <id> (<kind>, <view>)`. */
+  label: string;
+  mediaType: Mime;
+  base64: string;
+  bytes: number;
+  width: number;
+  height: number;
+  /** Made smaller to fit the model's image size. */
+  resized: boolean;
 }
 
-/** The user content: setup and summary text, then each image after its label. */
-async function prepare(
+/** What one engineer request sends besides the fixed system text: shown as is in the preview. */
+export interface EngineerPayload {
+  /** The request text: setup, the redacted summary, the previous proposal. */
+  text: string;
+  images: EngineerPayloadImage[];
+  /** Ids of the images left out by the model's per-request limit. */
+  leftOut: string[];
+  /** Image bytes plus text characters. */
+  bytes: number;
+}
+
+/**
+ * Build the request content: the one function behind both the send preview and the request, so
+ * the preview shows exactly what goes. Refuses a summary over `SUMMARY_MAX_CHARS`, an unreadable
+ * image, or one over the model's size that cannot be made smaller.
+ */
+export async function buildEngineerPayload(
   c: EngineerCall,
   caps: ModelCaps,
-  host: EngineerHost,
-): Promise<Prepared | { refused: string }> {
-  const images = c.images.slice(0, caps.maxImages);
-  const content: UserContent = [
-    {
-      type: 'text',
-      text: engineerUserText({
-        summary: redactPaths(c.summary),
-        setup: setupView(c.setup),
-        pass: c.pass,
-        imageCount: images.length,
-        ...(c.previous ? { previous: c.previous } : {}),
-      }),
-    },
-  ];
-  for (const im of images) {
+  resize?: EngineerHost['resize'],
+): Promise<{ ok: true; payload: EngineerPayload } | { ok: false; reason: string }> {
+  if (c.summary.length > SUMMARY_MAX_CHARS) {
+    return {
+      ok: false,
+      reason: `The measurement summary is too long to send (${String(c.summary.length)} characters, at most ${String(SUMMARY_MAX_CHARS)}).`,
+    };
+  }
+  const bad = c.images.find((im) => !IMAGE_ID.test(im.id) || !VIEW.test(im.view ?? ''));
+  if (bad) return { ok: false, reason: 'An image id or view label is not valid.' };
+  const chosen = c.images.slice(0, caps.maxImages);
+  const images: EngineerPayloadImage[] = [];
+  for (const im of chosen) {
     let decoded = decodeDataUrl(im.dataUrl);
-    if (!decoded) return { refused: `Image ${im.id} is not a PNG, JPEG or WebP image.` };
-    const dims = imageSize(decoded.bytes);
-    if (!dims) return { refused: `Image ${im.id} could not be read.` };
+    if (!decoded) return { ok: false, reason: `Image ${im.id} is not a PNG, JPEG or WebP image.` };
+    let dims = imageSize(decoded.bytes);
+    if (!dims) return { ok: false, reason: `Image ${im.id} could not be read.` };
+    let resized = false;
     if (Math.max(dims.w, dims.h) > caps.maxImagePx) {
-      if (!host.resize) {
+      if (!resize) {
         return {
-          refused: `Image ${im.id} is larger than this model accepts (${String(caps.maxImagePx)} px) and cannot be made smaller here.`,
+          ok: false,
+          reason: `Image ${im.id} is larger than this model accepts (${String(caps.maxImagePx)} px) and cannot be made smaller here.`,
         };
       }
-      decoded = decodeDataUrl(await host.resize(im.dataUrl, caps.maxImagePx));
-      const after = decoded ? imageSize(decoded.bytes) : null;
-      if (!decoded || !after || Math.max(after.w, after.h) > caps.maxImagePx) {
-        return { refused: `Image ${im.id} could not be made smaller for this model.` };
+      decoded = decodeDataUrl(await resize(im.dataUrl, caps.maxImagePx));
+      dims = decoded ? imageSize(decoded.bytes) : null;
+      if (!decoded || !dims || Math.max(dims.w, dims.h) > caps.maxImagePx) {
+        return { ok: false, reason: `Image ${im.id} could not be made smaller for this model.` };
       }
+      resized = true;
     }
     let clean: Buffer;
     try {
       clean = stripImageMetadata(decoded.bytes, decoded.mediaType);
     } catch {
-      return { refused: `Image ${im.id} could not be read.` };
+      return { ok: false, reason: `Image ${im.id} could not be read.` };
     }
-    content.push({ type: 'text', text: imageLabel(im.id, im.kind, im.view) });
-    content.push({ type: 'file', data: clean.toString('base64'), mediaType: decoded.mediaType });
+    images.push({
+      id: im.id,
+      kind: im.kind,
+      ...(im.view ? { view: im.view } : {}),
+      label: imageLabel(im.id, im.kind, im.view),
+      mediaType: decoded.mediaType,
+      base64: clean.toString('base64'),
+      bytes: clean.length,
+      width: dims.w,
+      height: dims.h,
+      resized,
+    });
   }
-  return { content, leftOut: c.images.length - images.length };
+  const text = requestText(c, images.length);
+  return {
+    ok: true,
+    payload: {
+      text,
+      images,
+      leftOut: c.images.slice(caps.maxImages).map((im) => im.id),
+      bytes: images.reduce((n, im) => n + im.bytes, 0) + text.length,
+    },
+  };
+}
+
+/** The user content of the request, from the payload. */
+function contentOf(p: EngineerPayload): UserContent {
+  const content: UserContent = [{ type: 'text', text: p.text }];
+  for (const im of p.images) {
+    content.push({ type: 'text', text: im.label });
+    content.push({ type: 'file', data: im.base64, mediaType: im.mediaType });
+  }
+  return content;
 }
 
 function costOf(
@@ -535,14 +654,6 @@ export async function runEngineer(c: EngineerCall, host: EngineerHost): Promise<
       reason: `${label} is not available. Choose another model in Settings, AI providers.`,
     };
   }
-  const bad = c.images.find((im) => !IMAGE_ID.test(im.id) || !VIEW.test(im.view ?? ''));
-  if (bad) {
-    return {
-      kind: 'refused',
-      code: 'capability',
-      reason: 'An image id or view label is not valid.',
-    };
-  }
   if (cloud) {
     const policy = host.policy();
     if (policy.ai === 'forbid') {
@@ -577,7 +688,11 @@ export async function runEngineer(c: EngineerCall, host: EngineerHost): Promise<
     return { kind: 'refused', code: 'no-key', reason: missingKeyMessage(label) };
   }
 
-  const cacheKey = engineerCacheKey(c, route);
+  const built = await buildEngineerPayload(c, ready.caps, host.resize?.bind(host));
+  if (!built.ok) return { kind: 'refused', code: 'capability', reason: built.reason };
+  const payload = built.payload;
+
+  const cacheKey = engineerCacheKey(c, route, ready.caps, host.endpoint?.());
   const hit = await host.cache.get(cacheKey).catch(() => null);
   const cached = hit ? EngineerProposal.safeParse(hit) : null;
   if (cached?.success) {
@@ -586,7 +701,7 @@ export async function runEngineer(c: EngineerCall, host: EngineerHost): Promise<
 
   const capUsd = host.budgetUsd;
   let spent = host.spent(c.runId);
-  const estimate = estimateEngineerCostUsd(c, route, local);
+  const estimate = estimateEngineerCostUsd(c, route, ready.caps);
   const over = estimate === undefined ? !c.costConfirmed : spent + estimate > capUsd;
   if (over) {
     const err = new BudgetReachedError({ capUsd, spentUsd: spent, estimateUsd: estimate });
@@ -603,11 +718,6 @@ export async function runEngineer(c: EngineerCall, host: EngineerHost): Promise<
       };
     }
     return { kind: 'refused', code: 'budget', reason: err.message };
-  }
-
-  const prepared = await prepare(c, ready.caps, host);
-  if ('refused' in prepared) {
-    return { kind: 'refused', code: 'capability', reason: prepared.refused };
   }
 
   const timeout = AbortSignal.timeout(ENGINEER_TIMEOUT_MS);
@@ -663,25 +773,33 @@ export async function runEngineer(c: EngineerCall, host: EngineerHost): Promise<
     }
   };
 
-  const messages: ModelMessage[] = [{ role: 'user', content: prepared.content }];
+  const messages: ModelMessage[] = [{ role: 'user', content: contentOf(payload) }];
   try {
     let answer = await ask(messages);
     if (!answer.ok) {
-      if (estimate !== undefined && spent + estimate > capUsd) {
+      // the repair resends the request plus the bad reply and the issues
+      const extra = priceUsd(route.model, {
+        inputTokens: Math.ceil(
+          (Math.min(answer.raw.length, REPAIR_REPLY_MAX) + Math.min(answer.issues.length, 2_000)) /
+            4,
+        ),
+        outputTokens: 0,
+      });
+      if (estimate !== undefined && spent + estimate + (extra ?? 0) > capUsd) {
         throw new InvalidProposalError(`${answer.issues} (no retry: the AI cost cap was reached)`);
       }
       answer = await ask([
         ...messages,
-        { role: 'assistant', content: answer.raw.slice(0, 20_000) || '(empty reply)' },
+        { role: 'assistant', content: answer.raw.slice(0, REPAIR_REPLY_MAX) || '(empty reply)' },
         { role: 'user', content: engineerRepairText(answer.issues.slice(0, 2_000)) },
       ]);
       if (!answer.ok) throw new InvalidProposalError(answer.issues);
     }
     let proposal = answer.proposal;
-    if (prepared.leftOut > 0) {
+    if (payload.leftOut.length > 0) {
       proposal = withNote(
         proposal,
-        `${String(prepared.leftOut)} images were not sent: this model takes ${String(ready.caps.maxImages)} per request.`,
+        `${String(payload.leftOut.length)} images were not sent: this model takes ${String(ready.caps.maxImages)} per request.`,
       );
     }
     const conflict = !proposal.identity.sameAsset || proposal.identity.conflicts.length > 0;

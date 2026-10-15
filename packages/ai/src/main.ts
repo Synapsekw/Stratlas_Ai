@@ -80,9 +80,14 @@ export {
   type DescribedError,
 } from './errors';
 export {
+  buildEngineerPayload,
   ENGINEER_MAX_OUTPUT_TOKENS,
   ENGINEER_TIMEOUT_MS,
   engineerCacheKey,
+  engineerLimits,
+  SUMMARY_MAX_CHARS,
+  type EngineerPayload,
+  type EngineerPayloadImage,
   estimateEngineerCostUsd,
   fileEngineerCache,
   imageSize,

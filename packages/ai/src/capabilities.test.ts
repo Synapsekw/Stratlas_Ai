@@ -41,6 +41,21 @@ describe('capsFor', () => {
   it('does not guess at a model it does not know', () => {
     expect(capsFor('anthropic', 'claude-2')).toBeNull();
     expect(capsFor('openai', 'gpt-3.5-turbo')).toBeNull();
+    // speech, realtime and search variants of known families, and look-alike ids
+    for (const m of [
+      'gpt-4o-audio-preview',
+      'gpt-4o-realtime-preview',
+      'gpt-4o-mini-transcribe',
+      'gpt-4o-mini-tts',
+      'gpt-4o-search-preview',
+      'gpt-5-realtime',
+      'gpt-50',
+      'gpt-4oo',
+    ]) {
+      expect(capsFor('openai', m), m).toBeNull();
+    }
+    expect(capsFor('openai', 'gpt-5.5')?.vision).toBe(true);
+    expect(capsFor('openai', 'gpt-4.1-mini')?.vision).toBe(true);
     expect(capsFor('openai', 'acme-vlm-2')).toBeNull();
     expect(capsFor('google', 'gemini-3.5-flash')).toBeNull();
     // a pattern belongs to its provider only

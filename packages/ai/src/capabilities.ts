@@ -20,7 +20,7 @@ export type LocalCaps = NonNullable<LocalModelSettings['capabilities']>;
  * Known models by provider and id pattern, never by one current id: a new model of a known family
  * is covered without a code change. Anything else is unknown (`null`).
  */
-const TABLE: readonly { provider: string; pattern: RegExp; caps: ModelCaps }[] = [
+const TABLE: readonly { provider: string; pattern: RegExp; exclude?: RegExp; caps: ModelCaps }[] = [
   {
     provider: 'anthropic',
     pattern: /^claude-(opus|sonnet)-/,
@@ -33,7 +33,10 @@ const TABLE: readonly { provider: string; pattern: RegExp; caps: ModelCaps }[] =
   },
   {
     provider: 'openai',
-    pattern: /^gpt-(4o|4\.1|5|6)/,
+    // the family must end at a separator (gpt-5.5, gpt-6-luna, not gpt-50); speech, realtime and
+    // search variants of those families do not take images with structured output
+    pattern: /^gpt-(4o|4\.1|5|6)(?:[.-]|$)/,
+    exclude: /-(audio|realtime|transcribe|tts|search)(?:-|$)/,
     caps: { vision: true, structured: true, maxImages: 20, maxImagePx: 2048 },
   },
 ];
@@ -55,7 +58,9 @@ export function capsFor(
   if (provider === 'local') {
     if (o.local) return o.local.vision ? { ...CONSERVATIVE } : { ...TEXT_ONLY };
   } else {
-    const known = TABLE.find((e) => e.provider === provider && e.pattern.test(model));
+    const known = TABLE.find(
+      (e) => e.provider === provider && e.pattern.test(model) && !e.exclude?.test(model),
+    );
     if (known) return { ...known.caps };
   }
   return o.treatAsVision ? { ...CONSERVATIVE } : null;
