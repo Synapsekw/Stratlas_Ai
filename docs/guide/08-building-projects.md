@@ -147,7 +147,7 @@ Detections are boxes or outlines on photos and video frames, from you, a model o
    - **Reject** (**X**) a false alarm. **Reopen** takes the decision back.
 4. Set **Class** (**C**), **Severity** (number keys), **Uncertain (U)** and **Note (N)** in the inspector.
 5. When the detector named something the project has no class for, the inspector shows what it said and **Create class 'name'**. One click makes the class; every detection with that word takes it.
-6. **Accept all (N)**, with N the count of waiting detections in the list you are looking at, turns each of them into a draft issue (filter and minimum confidence applied), after a question that also says how many are skipped for lack of a class or severity. **Reject all (N)** rejects them. Each is one step: **Ctrl+Z** in the review undoes the whole batch.
+6. **Accept all (N)**, with N the waiting detections in the list you are looking at that have a class and a severity, turns each of them into a draft issue (filter and minimum confidence applied), after a question that also says how many are skipped for lack of a class or severity. **Reject all (N)** rejects every waiting detection in the list. Each is one step: **Ctrl+Z** in the review undoes the whole batch.
 7. **J** and **K** step through the detections. The confidence slider hides proposals under "Confidence N% and up".
 
 **Ctrl Z** and **Ctrl Y** undo and redo. **Ctrl**+click selects several tiles; **Clear selection** empties it. The state reads **Saved** once your decisions are written into the detection file.

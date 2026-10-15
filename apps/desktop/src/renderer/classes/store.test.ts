@@ -229,4 +229,35 @@ describe('class store', () => {
     expect(h.calls).toHaveLength(0);
     expect(labels()).toEqual(['Crack', 'Rust']);
   });
+
+  it('undo of a create is refused while an unsaved issue uses the class', async () => {
+    await createClass('Spalling');
+    // the picker assigns the new class; the saver has not written issues.json yet
+    workspace.setState({ issues: [issue('i1', 'F01', 'spalling'), issue('i2', 'F02', 'rust')] });
+    h.calls = [];
+    h.order = [];
+    expect(await undoClassEdit()).toBe(false);
+    expect(h.calls).toHaveLength(0);
+    expect(h.order).toEqual([]);
+    expect(labels()).toEqual(['Crack', 'Rust', 'Spalling']);
+    expect(classes.getState().past).toHaveLength(1);
+    expect(classes.getState().notice).toMatchObject({
+      text: 'Classes not saved: Class "spalling" still has issues. Move them to another class first.',
+      error: true,
+    });
+  });
+
+  it('undo of a create flushes the issue saver before writing', async () => {
+    await createClass('Spalling');
+    h.order = [];
+    expect(await undoClassEdit()).toBe(true);
+    expect(h.order).toEqual(['flush', 'builder:updateClasses']);
+  });
+
+  it("a later edit clears the notice, so the notice's Undo cannot undo it", async () => {
+    await createClass('Spalling');
+    expect(classes.getState().notice?.undo).toBe(true);
+    expect(await editClass('crack', { label: 'Wide crack' })).toBeNull();
+    expect(classes.getState().notice).toBeNull();
+  });
 });

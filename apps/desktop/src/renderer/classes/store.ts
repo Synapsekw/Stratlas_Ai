@@ -117,8 +117,24 @@ async function write(projectId: string, next: ClassCatalogue[]): Promise<string 
   return null;
 }
 
+/** A new edit; an earlier edit's notice goes, so its Undo never undoes this one. */
 function push(edit: ClassEdit): void {
-  classes.setState((s) => ({ past: [...s.past, edit].slice(-LIMIT), future: [] }));
+  classes.setState((s) => ({ past: [...s.past, edit].slice(-LIMIT), future: [], notice: null }));
+}
+
+/**
+ * Main checks only issues.json, so an issue not saved yet could still use a class that going
+ * from `from` to `to` removes. The sentence main gives for that, or null.
+ */
+function stillUsed(from: readonly ClassCatalogue[], to: readonly ClassCatalogue[]): string | null {
+  const kept = new Set(to.flatMap((c) => c.classes.map((k) => k.id)));
+  const gone = new Set(
+    from.flatMap((c) => c.classes.map((k) => k.id)).filter((id) => !kept.has(id)),
+  );
+  const issue = workspace.getState().issues.find((i) => gone.has(i.classId));
+  return issue
+    ? `Class "${issue.classId}" still has issues. Move them to another class first.`
+    : null;
 }
 
 /** A class from a name (and, from the library, a colour and hotkey). Throws with the sentence. */
@@ -241,6 +257,14 @@ export function undoClassEdit(): Promise<boolean> {
     const edit = classes.getState().past.at(-1);
     const projectId = openProjectId();
     if (!edit || readOnlyReason() || edit.projectId !== projectId) return false;
+    // undoing a create removes a class: refuse while an issue uses it, saved or not
+    const used = stillUsed(edit.after, edit.before);
+    if (used) {
+      notify(t('classes.notSaved', { error: used }), { error: true });
+      return false;
+    }
+    await issueSaver.flush();
+    if (openProjectId() !== projectId) return false;
     // the class comes back first, then its issues
     if (await write(projectId, edit.before)) return false;
     if (edit.issueCommand && issueEditor.state.undoLabel === edit.issueCommand) issueEditor.undo();
@@ -260,11 +284,16 @@ export function redoClassEdit(): Promise<boolean> {
     if (!edit || readOnlyReason() || edit.projectId !== projectId) return false;
     // issues move away first, then the class goes
     const movedIssues = !!edit.issueCommand && issueEditor.state.redoLabel === edit.issueCommand;
-    if (movedIssues) {
-      issueEditor.redo();
-      await issueSaver.flush();
-      if (openProjectId() !== projectId) return false;
+    if (movedIssues) issueEditor.redo();
+    // a redo that removes a class: refuse while an issue still uses it, saved or not
+    const used = stillUsed(edit.before, edit.after);
+    if (used) {
+      if (movedIssues) issueEditor.undo();
+      notify(t('classes.notSaved', { error: used }), { error: true });
+      return false;
     }
+    await issueSaver.flush();
+    if (openProjectId() !== projectId) return false;
     if (await write(projectId, edit.after)) {
       if (movedIssues && openProjectId() === projectId) issueEditor.undo();
       return false;

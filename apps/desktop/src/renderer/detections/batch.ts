@@ -34,9 +34,25 @@ export const rejectLabel = (count: number) => `Reject ${n(count, 'detection')}`;
 
 export type UndoStep = 'none' | 'review' | 'with-issues' | 'blocked';
 
-/** What undo may do with the review's last change, given the issue editor's undo label. */
-export function undoStep(top: ReviewChange | undefined, editorLabel: string | null): UndoStep {
+/** The issues an Accept all change made (the `issueId` of each accepted detection). */
+export function batchIssueIds(change: ReviewChange): string[] {
+  return Object.values(change.after).flatMap((d) => (d?.issueId ? [d.issueId] : []));
+}
+
+/**
+ * What undo (or redo) may do with the review's last change, given the issue editor's undo (or
+ * redo) label. Two Accept alls of the same size share a label, so the editor's command must also
+ * be this batch's: for undo every issue of the change is there (`present` true), for redo none is
+ * (`present` false). `has` says whether an issue is in the register.
+ */
+export function undoStep(
+  top: ReviewChange | undefined,
+  editorLabel: string | null,
+  has: (issueId: string) => boolean = () => true,
+  present = true,
+): UndoStep {
   if (!top) return 'none';
   if (!top.issues) return 'review';
-  return editorLabel === top.label ? 'with-issues' : 'blocked';
+  if (editorLabel !== top.label) return 'blocked';
+  return batchIssueIds(top).every((id) => has(id) === present) ? 'with-issues' : 'blocked';
 }

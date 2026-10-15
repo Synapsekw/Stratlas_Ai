@@ -56,4 +56,25 @@ describe('undo step needs the issue editor matching command', () => {
     expect(undoStep(batch, 'Accept 2 detections')).toBe('with-issues');
     expect(undoStep(batch, 'Edit F03')).toBe('blocked');
   });
+
+  it('pairs a batch with its own issues, not another batch of the same size', () => {
+    const second: ReviewChange = {
+      label: 'Accept 2 detections',
+      before: { d3: det('d3'), d4: det('d4') },
+      after: {
+        d3: det('d3', { status: 'accepted', issueId: 'i3' }),
+        d4: det('d4', { status: 'accepted', issueId: 'i4' }),
+      },
+      issues: true,
+    };
+    // the second batch's issues were undone in the register; the editor's top is the first batch
+    const firstOnly = new Set(['i1', 'i2']);
+    const has = (id: string) => firstOnly.has(id);
+    expect(undoStep(second, 'Accept 2 detections', has)).toBe('blocked');
+    const both = new Set(['i1', 'i2', 'i3', 'i4']);
+    expect(undoStep(second, 'Accept 2 detections', (id) => both.has(id))).toBe('with-issues');
+    // redo: the batch's issues must not be in the register yet
+    expect(undoStep(second, 'Accept 2 detections', has, false)).toBe('with-issues');
+    expect(undoStep(second, 'Accept 2 detections', (id) => both.has(id), false)).toBe('blocked');
+  });
 });

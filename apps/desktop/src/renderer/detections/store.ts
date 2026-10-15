@@ -467,10 +467,12 @@ export function rejectAll(list: readonly Detection[]): number {
   return ids.length;
 }
 
+const hasIssue = (id: string) => workspace.getState().issues.some((i) => i.id === id);
+
 /** Undo in the review: an Accept all is undone with its issues, or not at all. */
 export function undoReview(): void {
   const s = detections.getState();
-  const step = undoStep(s.review.past.at(-1), issueEditor.state.undoLabel);
+  const step = undoStep(s.review.past.at(-1), issueEditor.state.undoLabel, hasIssue);
   if (step === 'none') return;
   if (step === 'blocked') {
     detections.setState({ issueError: t('det.error.batchUndoMoved') });
@@ -483,7 +485,7 @@ export function undoReview(): void {
 /** Redo in the review: an Accept all is redone with its issues, or not at all. */
 export function redoReview(): void {
   const s = detections.getState();
-  const step = undoStep(s.review.future.at(-1), issueEditor.state.redoLabel);
+  const step = undoStep(s.review.future.at(-1), issueEditor.state.redoLabel, hasIssue, false);
   if (step === 'none') return;
   if (step === 'blocked') {
     detections.setState({ issueError: t('det.error.batchUndoMoved') });
