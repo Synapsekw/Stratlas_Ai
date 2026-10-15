@@ -108,3 +108,13 @@ export { boxInverseWorld, localToWorld, mul4, worldToLocal, type M4 } from './cl
 export { pointInPolygon, ringOf, type Ring } from './cleanup/polygon';
 export { createCleanupRecipes, pointcloudCleanup, type CleanupRecipes } from './cleanup/store';
 export { WORKER_MIN_POINTS, chunkMask, type ChunkMask } from './cleanup/chunk';
+export { cloudRayProvider, pointsInPrism } from './cloudRay';
+export {
+  pointsInPrismOf,
+  raycastPoints,
+  type Prism,
+  type RayChunk,
+  type RayPointHit,
+  type RayPointOptions,
+} from './rayMath';
+export { refineAround, type LodFocus, type RefineResult } from './refine';

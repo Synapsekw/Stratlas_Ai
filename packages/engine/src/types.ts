@@ -73,14 +73,19 @@ export interface SceneHandle {
   /**
    * Cast a world-space ray (camera poses of photos and video frames) against visible content,
    * then the ground plane y = 0. Section planes are ignored: the camera saw the real asset.
-   * Mesh hits name their layer through `userData.layerId` on the layer root.
+   * Mesh hits name their layer through `userData.layerId` on the layer root. With `opts.layer`,
+   * only that layer: its meshes and the ray providers that have it (point clouds), no ground.
    */
-  raycastRay(origin: Vector3, dir: Vector3): Intersection | null;
+  raycastRay(origin: Vector3, dir: Vector3, opts?: RayOptions): Intersection | null;
   /**
    * Add a picker that `raycast` consults besides meshes (point clouds); the nearest hit wins.
    * Returns an unsubscribe function.
    */
   addRaycastProvider(provider: RaycastProvider): () => void;
+  /** Add content `raycastRay` reaches by layer (point clouds). Returns an unsubscribe function. */
+  addRayProvider?(provider: RayProvider): () => void;
+  /** Layers `raycastRay` can hit now: shown raycast targets and the ray providers' layers. */
+  rayLayers?(): ReadonlySet<string>;
   /**
    * Section planes shared by every layer. Assign this exact array to `material.clippingPlanes`
    * (and set `clipShadows`) so the section tool cuts meshes and clouds together. The engine
@@ -124,6 +129,25 @@ export interface SceneHandle {
 
 /** Extra content for `SceneHandle.raycast`, e.g. point picking within a few pixels. */
 export type RaycastProvider = (ndcX: number, ndcY: number) => Intersection | null;
+
+/** Options of `SceneHandle.raycastRay`. */
+export interface RayOptions {
+  /** Only this layer: its raycast targets and the ray providers that have it; no ground plane. */
+  layer?: string;
+  /** Half-angle (radians) of the cone a point-cloud provider searches around the ray. */
+  coneRad?: number;
+}
+
+/**
+ * Content that `raycastRay` reaches only when asked for one of its layers (point clouds: a ray
+ * meets no point exactly, so a provider searches a cone around it). Registered by the stream
+ * that draws the content.
+ */
+export interface RayProvider {
+  /** Layers it can hit now (shown, with content loaded). */
+  layers(): readonly string[];
+  cast(origin: Vector3, dir: Vector3, layer: string, opts: RayOptions): Intersection | null;
+}
 
 /**
  * `clipbox` and `pcselect` are the point cloud cleanup tools (tools/clipbox.ts, tools/pcselect.ts):

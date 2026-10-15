@@ -106,6 +106,35 @@ describe('the English catalogue', () => {
     expect(en['change.surveyDateNew']).toBe('New survey date...');
   });
 
+  it('has the strings for placing findings on a model', () => {
+    expect(t('place.offer', { count: 2 })).toBe('Connect 2 findings to a model?');
+    expect(t('place.offer', { count: 1 })).toBe('Connect 1 finding to a model?');
+    expect(t('place.result', { placed: 12, count: 14, layer: 'Mesh 3 Mar' })).toBe(
+      'Placed 12 of 14 on Mesh 3 Mar.',
+    );
+    expect(t('place.missed', { count: 2 })).toBe('2 missed the model.');
+    expect(t('place.match', { code: 'AI-31', other: 'AI-12', date: '3 Mar' })).toBe(
+      'AI-31 looks like AI-12 from 3 Mar',
+    );
+    expect(t('place.menu', { count: 1 })).toBe('Place on model...');
+    expect(t('place.menu', { count: 3 })).toBe('Place 3 on model...');
+    expect(t('place.changed', { count: 1 })).toBe('1 changed while placing and was left as it is.');
+    expect(t('place.changed', { count: 2 })).toBe(
+      '2 changed while placing and were left as they are.',
+    );
+    expect(t('place.selectionFailed', { count: 1, error: 'disk full' })).toBe(
+      'The points of 1 finding could not be saved: disk full',
+    );
+    expect(t('place.selectionFailed', { count: 3, error: 'disk full' })).toBe(
+      'The points of 3 findings could not be saved: disk full',
+    );
+    expect(t('place.undoStale')).toBe(
+      'Not undone: another change came after the placement. Ctrl+Z undoes one step at a time.',
+    );
+    for (const [k, v] of Object.entries(en))
+      if (k.startsWith('place.')) expect(v, k).not.toMatch(/\p{Extended_Pictographic}/u);
+  });
+
   it('finds missing keys and placeholder mismatches in a translation', () => {
     expect(placeholders('{count} of {total}')).toEqual(['count', 'total']);
     const bad: Catalogue = { 'library.count_one': '{n} مشروع', 'nope.key': 'x' };

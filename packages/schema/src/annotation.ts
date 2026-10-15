@@ -62,6 +62,8 @@ export const PointSelection = z.object({
   type: z.literal('selection'),
   src: AssetRef,
   count: z.number().int().positive(),
+  /** The octree depth the selection was cut at, so a later recut knows it is partial. */
+  lod: z.number().int().nonnegative().optional(),
 });
 export const CloudGeom = z.discriminatedUnion('type', [Point3, Box3, Polygon3, PointSelection]);
 
@@ -73,8 +75,15 @@ export const SphericalPolygon = z.object({
 
 export const VideoKeyframe = z.object({ t: z.number().nonnegative(), geom: FrameGeom });
 
+/**
+ * The image or video sighting of the same issue that a 3D sighting was projected from (its
+ * index in `sightings`): a placed area, or the automatic crossview pin (a mesh `spoint` with
+ * `from`). Hand-placed sightings never carry it.
+ */
+export const ProjectedFrom = z.object({ sighting: z.number().int().nonnegative() }).strict();
+
 export const Sighting = z.discriminatedUnion('on', [
-  z.object({ on: z.literal('mesh'), layer: Id, geom: MeshGeom }),
+  z.object({ on: z.literal('mesh'), layer: Id, geom: MeshGeom, from: ProjectedFrom.optional() }),
   z.object({ on: z.literal('image'), layer: Id, photo: Id, geom: ImageGeom }),
   z.object({
     on: z.literal('video'),
@@ -97,7 +106,12 @@ export const Sighting = z.discriminatedUnion('on', [
       }),
     range: z.tuple([z.number().nonnegative(), z.number().nonnegative()]).optional(),
   }),
-  z.object({ on: z.literal('pointcloud'), layer: Id, geom: CloudGeom }),
+  z.object({
+    on: z.literal('pointcloud'),
+    layer: Id,
+    geom: CloudGeom,
+    from: ProjectedFrom.optional(),
+  }),
   z.object({ on: z.literal('map'), layer: Id, geojson: z.record(z.string(), z.unknown()) }),
   z.object({ on: z.literal('pano'), layer: Id, pano: Id, geom: SphericalPolygon }),
 ]);

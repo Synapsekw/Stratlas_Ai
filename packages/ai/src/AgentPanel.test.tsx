@@ -411,6 +411,23 @@ describe('describeStep', () => {
   });
 });
 
+describe('describeStep for the placement tools', () => {
+  it('says how many findings go on which layer, and where a sighting is added', () => {
+    expect(
+      describeStep({ name: 'place_on_model', input: { ids: ['F01', 'F02'], layer: 'Site model' } }),
+    ).toBe('Place 2 findings on Site model');
+    expect(describeStep({ name: 'place_on_model', input: { ids: ['F01'], layer: 'cloud' } })).toBe(
+      'Place 1 finding on cloud',
+    );
+    expect(
+      describeStep({
+        name: 'add_sighting',
+        input: { issue: 'F05', layer: 'Site model', at: { kind: 'point', p: [0, 0, 0] } },
+      }),
+    ).toBe('Add a place to F05 on Site model');
+  });
+});
+
 describe('describeStep for propose_class', () => {
   it('asks to create the named class', () => {
     expect(describeStep({ name: 'propose_class', input: { label: 'Spalling' } })).toBe(

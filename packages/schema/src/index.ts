@@ -2,6 +2,8 @@ export * from './common';
 export * from './layers';
 export * from './severity';
 export * from './annotation';
+// Findings on a model: the point selection file (selections/<name>.sel)
+export * from './selection';
 export * from './manifest';
 export * from './road';
 export * from './agent';

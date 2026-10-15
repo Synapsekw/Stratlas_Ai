@@ -243,6 +243,38 @@ describe('navigate tools', () => {
 });
 
 describe('write and send tools', () => {
+  it('create_issue_draft writes the kind the named layer needs', async () => {
+    const c = ctx();
+    await runRendererTool(
+      'create_issue_draft',
+      {
+        title: 'On the cloud',
+        severity: 2,
+        classId: 'coating',
+        layer: 'pc1',
+        at: { kind: 'point', p: [4, 5, 6] },
+      },
+      c,
+    );
+    const created = c.workspace.getState().issues.find((i) => i.title === 'On the cloud');
+    expect(created?.sightings).toEqual([
+      { on: 'pointcloud', layer: 'pc1', geom: { type: 'point3', p: [4, 5, 6] } },
+    ]);
+    await expect(
+      runRendererTool(
+        'create_issue_draft',
+        {
+          title: 'x',
+          severity: 2,
+          classId: 'coating',
+          layer: 'v1',
+          at: { kind: 'point', p: [0, 0, 0] },
+        },
+        c,
+      ),
+    ).rejects.toThrow('no mesh or point cloud layer "v1"');
+  });
+
   it('create_issue_draft adds a valid agent draft at a point, undo removes it', async () => {
     const c = ctx();
     const r = await runRendererTool(

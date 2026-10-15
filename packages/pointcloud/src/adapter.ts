@@ -6,6 +6,7 @@ import type { StoreApi } from 'zustand/vanilla';
 import { pointcloudCleanup, type CleanupRecipes } from './cleanup/store';
 import { withScalar } from './copc';
 import { copcChunkSeeds } from './copcLayer';
+import { cloudRayProvider } from './cloudRay';
 import { CloudManager, type ChunkSeed, type CopcLayerInfo } from './manager';
 import { pickPoint } from './pick';
 import { parsePngCloudIndex, type PngCloudIndex } from './pngIndex';
@@ -44,6 +45,7 @@ export const KIT_BASE_SIZE = 0.025;
 
 const managers = new WeakMap<SceneHandle, CloudManager>();
 const pickers = new WeakMap<SceneHandle, () => void>();
+const rays = new WeakMap<SceneHandle, () => void>();
 
 /** The cloud manager of a scene, if it shows any cloud. Used by picking. */
 export function getCloudManager(handle: SceneHandle): CloudManager | undefined {
@@ -160,6 +162,8 @@ export function createPointcloudAdapter(
         handle,
         handle.addRaycastProvider((x, y) => pickPoint(handle, { x, y })),
       );
+      // and in SceneHandle.raycastRay by layer (placing findings from photos)
+      rays.set(handle, handle.addRayProvider?.(cloudRayProvider(handle)) ?? (() => undefined));
     }
     return manager;
   };
@@ -169,6 +173,8 @@ export function createPointcloudAdapter(
     managers.delete(handle);
     pickers.get(handle)?.();
     pickers.delete(handle);
+    rays.get(handle)?.();
+    rays.delete(handle);
   };
 
   return {

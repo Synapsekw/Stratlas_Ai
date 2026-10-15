@@ -115,6 +115,52 @@ export interface PhotoRunRead {
   gcp: GcpFile | null;
 }
 
+/** What placing one finding came to (`place_on_model`). */
+export interface PlaceOutcome {
+  /** The id the model gave: an issue code or id, or a detection id. */
+  id: string;
+  /** The issue's code, once there is an issue. */
+  code?: string;
+  /** What was placed: one entry per sighting written. */
+  placed?: { on: 'mesh' | 'pointcloud'; type: string }[];
+  /** Why nothing was placed (missed, no-photo-shape, layer-not-loaded, unknown, an accept problem). */
+  reason?: string;
+}
+
+export interface PlaceOnModelRequest {
+  ids: readonly string[];
+  /** Layer id or name. */
+  layer: string;
+}
+
+export interface PlaceOnModelResult {
+  layer: { id: string; name: string };
+  outcomes: PlaceOutcome[];
+  /** Takes the placement back (the issues it changed), when nothing changed them since. */
+  undo?: () => void;
+}
+
+/** Where `add_sighting` adds a place: a point, or a box on a photo to project onto the layer. */
+export type SightingAt =
+  | { kind: 'point'; p: Vec3 }
+  | { kind: 'photo'; photo: string; box: [number, number, number, number] };
+
+export interface AddSightingRequest {
+  /** Issue code or id. */
+  issue: string;
+  /** Layer id or name. */
+  layer: string;
+  at: SightingAt;
+}
+
+export interface AddSightingResult {
+  code: string;
+  placed: { on: 'mesh' | 'pointcloud'; type: string }[];
+  /** Why nothing was placed (for example the photo box missed the model). */
+  reason?: string;
+  undo?: () => void;
+}
+
 /**
  * Seams to the host app, registered once at startup (apps/desktop). Every hook is optional: a
  * tool that needs a missing one fails with a fixed message.
@@ -153,6 +199,10 @@ export interface AppHooks {
   viewFilters?: () => ViewFilters;
   /** Create an issue class in the open project (after the person approved `propose_class`). */
   createClass?: (label: string) => Promise<{ id: string; label: string }>;
+  /** Place findings on a mesh or point cloud layer (accepting waiting detections first). */
+  placeOnModel?: (req: PlaceOnModelRequest) => Promise<PlaceOnModelResult>;
+  /** Add a place on a mesh or point cloud layer to an existing issue. */
+  addSighting?: (req: AddSightingRequest) => Promise<AddSightingResult>;
 }
 
 export const appHooks: AppHooks = {};

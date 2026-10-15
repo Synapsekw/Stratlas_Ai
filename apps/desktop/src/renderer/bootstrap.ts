@@ -35,6 +35,7 @@ import { graphicsReport, memoryWatch } from './memoryWatch';
 import { requestGlobe } from './globe/request';
 import { mediaView } from './screens/mediaView';
 import { agentPhotoRuns, agentProcessPhotos } from './photogrammetry/agentHooks';
+import { placement, startPlacement } from './placement';
 import { closeCleanupWithProject } from './pointcloud/CleanupHost';
 import { cleanupDebug } from './pointcloud/cleanupScene';
 import { cleanup } from './pointcloud/cleanupStore';
@@ -119,6 +120,8 @@ export function bootstrap(): void {
   // The agent opens screens, sets the Media and Issues filters and puts the view back on undo;
   // the bounds of the tagged assets are measured as soon as the model has loaded.
   registerAgentHooks();
+  // Findings on a model: the issue list's "Place on model..." opens the placement offer.
+  startPlacement();
   startAssetWarm();
   // Stockpiles and road chainages for find_places and fly_to.
   registerAgentPlaces();
@@ -166,6 +169,8 @@ export function bootstrap(): void {
       mediaView,
       issueView,
       evidence,
+      /** Findings on a model: the offer, the result and the match suggestions (e2e). */
+      placement,
       /**
        * The bounds of the tagged assets remembered for the open project: the status of the asset
        * index and how many assets have their box; null without a project (agent tests: the

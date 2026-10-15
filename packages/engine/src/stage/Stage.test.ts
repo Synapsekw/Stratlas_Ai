@@ -334,6 +334,40 @@ describe('Stage', () => {
     stage.dispose();
   });
 
+  it('casts at one layer only, asking the ray providers that have it, without the ground', async () => {
+    const { stage, store, resize } = make();
+    resize(800, 600);
+    store.getState().openProject(project([meshLayer('plant')]));
+    await flush();
+    const o = new Vector3(0, 5, 50);
+    const d = new Vector3(0, 0, -1);
+    expect(stage.raycastRay(o, d, { layer: 'plant' })?.object.type).toBe('Mesh');
+    // another layer: nothing, and no ground fallback
+    const down = new Vector3(0, -1, 0);
+    expect(stage.raycastRay(new Vector3(30, 10, 30), down, { layer: 'x' })).toBeNull();
+    const cast = vi.fn(
+      (origin: Vector3, _dir: Vector3, _layer: string, opts: { coneRad?: number }) => ({
+        distance: 3,
+        point: origin.clone().add(new Vector3(0, 0, -3)),
+        object: new Points(),
+        index: Math.round((opts.coneRad ?? 0) * 1000),
+      }),
+    );
+    const off = stage.addRayProvider({ layers: () => ['cloud'], cast });
+    const hit = stage.raycastRay(o, d, { layer: 'cloud', coneRad: 0.002 });
+    expect(hit?.distance).toBe(3);
+    expect(hit?.index).toBe(2);
+    expect(cast).toHaveBeenCalledTimes(1);
+    // without a layer the providers are never asked: the mesh and the ground as before
+    expect(stage.raycastRay(o, d)?.object.type).toBe('Mesh');
+    expect(cast).toHaveBeenCalledTimes(1);
+    expect([...stage.rayLayers()].sort()).toEqual(['cloud', 'plant']);
+    off();
+    expect(stage.raycastRay(o, d, { layer: 'cloud' })).toBeNull();
+    expect([...stage.rayLayers()]).toEqual(['plant']);
+    stage.dispose();
+  });
+
   it('keeps the nearest of mesh hits and raycast providers', async () => {
     const { stage, store, resize } = make();
     resize(800, 600);
