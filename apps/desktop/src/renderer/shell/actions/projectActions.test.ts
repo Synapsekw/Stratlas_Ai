@@ -46,6 +46,16 @@ describe('project actions', () => {
     ]);
   });
 
+  it('Exports greys the project report of a project with no data, with the reason', () => {
+    const empty = { captures: [], layers: [] } as unknown as ProjectManifest;
+    const sub = (m: ProjectManifest) =>
+      menu({ manifest: m })
+        .find((i) => i.id === 'project.exports')
+        ?.sub.find((x) => x.id === 'house-pdf')?.disabled;
+    expect(sub(empty)).toBe('Add data to the project first.');
+    expect(sub(manifest)).toBe(false);
+  });
+
   it('Show all and Hide all appear only when they would change something', () => {
     expect(idsOf()).not.toContain('project.showAll');
     expect(idsOf()).toContain('project.hideAll');

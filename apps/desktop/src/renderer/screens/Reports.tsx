@@ -13,7 +13,7 @@ import { formatBytes, Icon, SevChip, t } from '@aio/ui';
 import { assetUrl, useWorkspace } from '@aio/workspace';
 import { useState } from 'react';
 import { FocusZone } from '../FocusZone';
-import { actionAllowed } from '../exports/exportModel';
+import { actionAllowed, exportUnavailable } from '../exports/exportModel';
 import { runExportAction } from '../exports/exports';
 import { AuditScreen } from '../audit/AuditScreen';
 import { closeAuditTrail, openAuditTrail, useAuditOpen } from '../audit/auditView';
@@ -218,7 +218,7 @@ export function ReportsScreen() {
           <ProjectReport
             allowed={actionAllowed('house-pdf', pkg)}
             sections={offeredSections(withData)}
-            empty={project.manifest.layers.length === 0 && issues.length === 0}
+            empty={exportUnavailable('house-pdf', project.manifest, issues) !== null}
             defaultPages={defaultIssuePages(
               houseKind(project.manifest, issues, roadOpen ? { road: true } : {}),
             )}

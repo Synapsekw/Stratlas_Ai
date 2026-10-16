@@ -5,7 +5,7 @@ import {
   type PackageInfo,
   type ProjectManifest,
 } from '@aio/schema';
-import type { IconName } from '@aio/ui';
+import { t, type IconName } from '@aio/ui';
 import { createStore } from 'zustand/vanilla';
 
 export type ExportActionId = ExportFormat | 'snapshot';
@@ -120,6 +120,21 @@ export function actionAllowed(id: ExportActionId, pkg: PackageInfo | null): bool
   if (NEEDS_FOLDER.includes(id)) return false;
   const kind = id === 'snapshot' ? 'snapshot' : EXPORT_FORMAT_KIND[id];
   return pkg.header.exports.includes(kind);
+}
+
+/**
+ * Why an export cannot run on this project yet, or null: the project report of a project with no
+ * datasets and no issues has nothing to report. Reports, the Export menu, the project menu and the
+ * palette all ask here.
+ */
+export function exportUnavailable(
+  id: ExportActionId,
+  manifest: Pick<ProjectManifest, 'layers'>,
+  issues: readonly unknown[],
+): string | null {
+  if (id === 'house-pdf' && manifest.layers.length === 0 && issues.length === 0)
+    return t('reports.house.noData');
+  return null;
 }
 
 /** The export actions offered for the open project (menu, palette). */

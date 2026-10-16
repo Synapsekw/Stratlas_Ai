@@ -339,6 +339,11 @@
 .xmenu-item:focus-visible {
   background: var(--bg-3);
 }
+/* an export that cannot run yet: greyed, its reason in place of the hint */
+.xmenu-item[aria-disabled='true'] {
+  color: var(--fg-3);
+  cursor: default;
+}
 .xmenu-item .muted {
   font-size: var(--t-11);
 }

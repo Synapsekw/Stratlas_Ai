@@ -4,6 +4,7 @@ import {
   createToastStore,
   doneMessage,
   EXPORT_ACTIONS,
+  exportUnavailable,
   legendEntries,
   snapshotName,
 } from './exportModel';
@@ -90,5 +91,17 @@ describe('toast store', () => {
     s.getState().finish('j1', 'error', 'Disk full');
     s.getState().progress('j1', 'late', 1, 2);
     expect(s.getState().toasts[0]).toMatchObject({ state: 'error', phase: '' });
+  });
+});
+
+describe('exports that need data', () => {
+  const empty = { layers: [] } as unknown as ProjectManifest;
+  const withLayer = { layers: [{ kind: 'mesh', id: 'm' }] } as unknown as ProjectManifest;
+
+  it('greys the project report of a project with no datasets and no issues, with the reason', () => {
+    expect(exportUnavailable('house-pdf', empty, [])).toBe('Add data to the project first.');
+    expect(exportUnavailable('house-pdf', withLayer, [])).toBeNull();
+    expect(exportUnavailable('house-pdf', empty, [{ id: 'i' }])).toBeNull();
+    expect(exportUnavailable('csv', empty, [])).toBeNull();
   });
 });

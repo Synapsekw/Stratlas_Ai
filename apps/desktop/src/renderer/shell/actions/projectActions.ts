@@ -12,7 +12,7 @@ import { workspace } from '@aio/workspace';
 import { builder } from '../../builder/state';
 import { farNotice } from '../../builder/farSession';
 import { pickTileset } from '../../builder/ImportTileset';
-import { allowedActions, type ExportActionId } from '../../exports/exportModel';
+import { allowedActions, exportUnavailable, type ExportActionId } from '../../exports/exportModel';
 import { runExportAction } from '../../exports/exports';
 import { pickAndScanPanos } from '../../panos/panos';
 import { shell } from '../../shell';
@@ -102,11 +102,12 @@ const projectItems: Action[] = [
     icon: 'download',
     section: 'file',
     targets: ['project'],
-    submenu: () =>
+    submenu: (_t, ctx) =>
       allowedActions(shell.getState().pkg).map((a) => ({
         id: a.id,
         label: a.label,
         icon: a.icon,
+        disabled: exportUnavailable(a.id, ctx.manifest, workspace.getState().issues) ?? false,
       })),
     run: (_t, _ctx, sub) => {
       if (sub) runExportAction(sub as ExportActionId, { legend: true });

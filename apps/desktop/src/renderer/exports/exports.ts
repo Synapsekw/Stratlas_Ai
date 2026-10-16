@@ -8,6 +8,7 @@ import {
   actionLabel,
   createToastStore,
   doneMessage,
+  exportUnavailable,
   legendEntries,
   snapshotName,
   type ExportActionId,
@@ -197,6 +198,15 @@ export async function saveSnapshot(legend: boolean): Promise<void> {
 /** Run a menu or palette export action. */
 export function runExportAction(id: ExportActionId, opts: { legend?: boolean } = {}): void {
   if (!actionAllowed(id, shell.getState().pkg)) return;
+  // from the palette or a menu: say why it does not run instead of making an empty report
+  const { project, issues } = workspace.getState();
+  const why = project ? exportUnavailable(id, project.manifest, issues) : null;
+  if (why !== null) {
+    const toast = toasts.getState();
+    toast.start(id, actionLabel(id));
+    toast.finish(id, 'error', why);
+    return;
+  }
   if (id === 'snapshot') void saveSnapshot(opts.legend ?? true);
   else void exportIssues(id);
 }

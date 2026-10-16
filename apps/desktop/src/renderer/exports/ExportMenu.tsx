@@ -1,7 +1,8 @@
 import { arrowFocus, Icon, useFocusTrap } from '@aio/ui';
 import { useEffect, useRef, useState, type KeyboardEvent } from 'react';
+import { useWorkspace } from '@aio/workspace';
 import { useShell } from '../shell';
-import { allowedActions } from './exportModel';
+import { allowedActions, exportUnavailable } from './exportModel';
 import { runExportAction } from './exports';
 
 /**
@@ -11,6 +12,10 @@ import { runExportAction } from './exports';
 export function ExportMenu() {
   const pkg = useShell((s) => s.pkg);
   const actions = allowedActions(pkg);
+  const manifest = useWorkspace((s) => s.project?.manifest);
+  const issues = useWorkspace((s) => s.issues);
+  const why = (id: (typeof actions)[number]['id']) =>
+    manifest ? exportUnavailable(id, manifest, issues) : null;
   const [open, setOpen] = useState(false);
   const [legend, setLegend] = useState(true);
   const root = useRef<HTMLDivElement>(null);
@@ -57,22 +62,29 @@ export function ExportMenu() {
       </button>
       {open && (
         <div ref={list} className="xmenu-list" role="menu" aria-label="Export" onKeyDown={arrows}>
-          {actions.map((a) => (
-            <button
-              key={a.id}
-              type="button"
-              role="menuitem"
-              className="xmenu-item"
-              onClick={() => {
-                setOpen(false);
-                runExportAction(a.id, { legend });
-              }}
-            >
-              <Icon name={a.icon} size={14} />
-              <span>{a.label}</span>
-              <span className="muted">{a.hint}</span>
-            </button>
-          ))}
+          {actions.map((a) => {
+            // greyed with its reason where it would make an empty report (as on Reports)
+            const reason = why(a.id);
+            return (
+              <button
+                key={a.id}
+                type="button"
+                role="menuitem"
+                className="xmenu-item"
+                aria-disabled={reason ? true : undefined}
+                title={reason ?? undefined}
+                onClick={() => {
+                  if (reason) return;
+                  setOpen(false);
+                  runExportAction(a.id, { legend });
+                }}
+              >
+                <Icon name={a.icon} size={14} />
+                <span>{a.label}</span>
+                <span className="muted">{reason ?? a.hint}</span>
+              </button>
+            );
+          })}
           {actions.some((a) => a.id === 'snapshot') && (
             <button
               type="button"
