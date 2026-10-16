@@ -432,6 +432,7 @@ def test_the_job_writes_a_copc_with_a_distance_field_a_layer_and_a_change_set(tm
     assert "Distance" in dims and dims["Distance"]["type"] == "floating" and dims["Distance"]["size"] == 4
 
     cs = validate_change_set(json.loads((root / "change" / "c1-c2-cloud.json").read_text()))
+    assert "lineUp" not in cs
     assert cs["producer"] == "change.cloud" and cs["layers"] == ["c1-c2-cloud"]
     assert cs["registration"]["ok"] is True
     added = [i for i in cs["items"] if i["verdict"] == "added"]
@@ -783,3 +784,7 @@ def test_cloud_change_job_applies_the_date_shift(tmp_path):
     cs = json.loads((root / "change" / "c1-c2-cloud.json").read_text())
     assert cs["registration"]["ok"] is True
     assert cs["registration"]["shiftM"] < 0.05
+    assert cs["lineUp"] == {
+        "from": {"eastM": 0.0, "northM": 0.0},
+        "to": {"eastM": -2.0, "northM": 0.0},
+    }

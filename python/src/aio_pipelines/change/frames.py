@@ -25,7 +25,7 @@ from typing import Any
 
 import numpy as np
 
-from ..captures import date_shift, local_delta
+from ..captures import capture_shift, date_shift, local_delta
 from ..params import known_keys, number, text
 from ..runtime import JobError, Step, StepContext, atomic_write_bytes, commit_files, now_iso
 from .changeset import change_set, change_set_id, dump_change_set, merge_reviews, read_change_set
@@ -440,6 +440,7 @@ class ChangeFrames:
         det_name = f"change-frames-{run}.json"
         set_id = change_set_id(frm, to, NAME)
         at = now_iso()
+        manifest = _read_manifest(ctx.project)
 
         detections: list[dict[str, Any]] = []
         items: list[dict[str, Any]] = []
@@ -521,6 +522,7 @@ class ChangeFrames:
             items,
             stats=stats,
             run={"jobId": run, "at": at, "params": {k: v for k, v in ctx.params.items() if k != "pairs"}},
+            line_up=(capture_shift(manifest, frm), capture_shift(manifest, to)),
         )
         dest = ctx.out(f"change/{set_id}.json")
         merged = merge_reviews(cs, read_change_set(dest) if dest.exists() else None)

@@ -36,7 +36,7 @@ from typing import Any, ClassVar, Protocol
 
 import numpy as np
 
-from ..captures import date_shift
+from ..captures import capture_shift, date_shift
 from ..params import known_keys, number, text
 from ..pointcloud import PDAL_MISSING, find_pdal, pdal_env
 from ..runtime import JobError, Step, StepContext, atomic_write_bytes, commit_files, replace_over
@@ -1075,6 +1075,7 @@ class ChangeCloud:
                 "p95M": round(hist_quantile(res.hist, 0.95), 4),
                 "shiftM": reg["shiftM"],
             }
+            manifest = read_manifest(ctx.project)
             cs = change_set(
                 prep["setId"],
                 prep["from"],
@@ -1085,6 +1086,7 @@ class ChangeCloud:
                 stats=stats,
                 run={"jobId": ctx.job.job_id, "params": dict(params)},
                 registration=reg,
+                line_up=(capture_shift(manifest, prep["from"]), capture_shift(manifest, prep["to"])),
             )
             atomic_write_bytes(ctx.stage("changeset.json"), dump_change_set(cs))
             ctx.log(

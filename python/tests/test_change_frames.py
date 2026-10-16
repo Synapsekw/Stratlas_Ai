@@ -224,6 +224,7 @@ def test_the_dates_alone_pair_photos_by_pose(tmp_path, frames):
     assert result["status"] == "done"
     cs = json.loads((project / "change" / "c1-c2-frames.json").read_text("utf-8"))
     assert [(i["a"]["photo"], i["b"]["photo"]) for i in cs["items"]] == [("a1", "b1")]
+    assert "lineUp" not in cs
 
 
 def test_the_dates_come_from_the_layers_when_not_given(tmp_path, frames):
@@ -265,6 +266,7 @@ def test_pose_pairs_use_shifted_positions(tmp_path, frames):
     [item] = cs["items"]
     assert (item["a"]["photo"], item["b"]["photo"]) == ("a1", "b1")
     assert item["poseM"] < 0.05
+    assert cs["lineUp"] == {"from": {"eastM": 0.0, "northM": 0.0}, "to": {"eastM": -2.0, "northM": 0.5}}
 
 
 def test_the_pose_gap_takes_each_layers_local_delta():
