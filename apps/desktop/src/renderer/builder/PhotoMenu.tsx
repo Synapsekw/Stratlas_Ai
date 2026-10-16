@@ -2,9 +2,20 @@ import { getActiveScene, onActiveScene, type SceneHandle } from '@aio/engine';
 import { correctedPhoto, localToProject, photoCorrection, toWgs84 } from '@aio/geo';
 import { getActiveMap, onActiveMap, type MapController } from '@aio/maps';
 import type { Layer, PhotoRef } from '@aio/schema';
-import { arrowFocus, Icon, useFocusTrap, useT, type IconName } from '@aio/ui';
+import {
+  actionsFor,
+  arrowFocus,
+  ContextMenu,
+  Icon,
+  makeActionCtx,
+  useFocusTrap,
+  useT,
+  type IconName,
+  type PhotoPick,
+} from '@aio/ui';
 import { DEFAULT_PHOTO_LENS } from '@aio/video';
 import { useWorkspace, workspace } from '@aio/workspace';
+import { useAnnotateReadOnly } from '@aio/annotate';
 import { useCallback, useEffect, useRef, useState, type KeyboardEvent } from 'react';
 import { createPortal } from 'react-dom';
 import { Quaternion, Vector3, type InstancedMesh } from 'three';
@@ -13,6 +24,7 @@ import { chooseSide, type SplitPref } from '../workspace/splitModel';
 import { stagePrefs } from '../workspace/stagePrefs';
 import { photoAlign, usePhotoAlign } from './alignSession';
 import { isClaimed, paneRay } from './droneHits';
+import { photoPicks, usePhotoPicks } from './photoPicks';
 
 type PhotosLayer = Extract<Layer, { kind: 'photos' }>;
 
@@ -44,7 +56,7 @@ const setOf = (id: string): PhotosLayer | null => {
 };
 
 /** The photos under a right-click in 3D: a frustum's image plane or a (merged) marker. */
-function photosAt3d(h: SceneHandle, pane: HTMLElement, x: number, y: number) {
+export function photosAt3d(h: SceneHandle, pane: HTMLElement, x: number, y: number) {
   const groups = h.scene.children.filter(
     (o) => typeof o.userData.photosLayer === 'string' && o.visible,
   );
@@ -132,7 +144,10 @@ export function PhotoMenu() {
   const project = useWorkspace((s) => s.project);
   const footprint = usePhotoAlign((s) => s.footprint);
   const orientation = useWorkspace((s) => s.orientation);
+  const picks = usePhotoPicks((s) => s.picks);
+  const lookOnly = useAnnotateReadOnly();
   const [menu, setMenuState] = useState<MenuAt | null>(null);
+  const [alignAt, setAlignAt] = useState<{ x: number; y: number; picks: PhotoPick[] } | null>(null);
   const list = useRef<HTMLDivElement>(null);
   const setMenu = useCallback((m: MenuAt | null) => {
     setMenuState(m);
@@ -245,9 +260,31 @@ export function PhotoMenu() {
     },
   });
 
-  if (!menu || !project) return null;
+  const alignMenu =
+    alignAt && project ? (
+      <ContextMenu
+        items={actionsFor(
+          { kind: 'photos', picks: alignAt.picks },
+          makeActionCtx({
+            manifest: project.manifest,
+            canEdit: !pkg && !lookOnly,
+            pkg: !!pkg,
+          }),
+        )}
+        x={alignAt.x}
+        y={alignAt.y}
+        label={t('align.photoMenu.alignTo')}
+        title={t('align.photoMenu.picked', { count: alignAt.picks.length })}
+        testId="ctx-menu"
+        initialSub="photos.alignTo"
+        onClose={() => {
+          setAlignAt(null);
+        }}
+      />
+    ) : null;
+  if (!menu || !project) return alignMenu;
   const set = setOf(menu.layerId);
-  if (!set) return null;
+  if (!set) return alignMenu;
   const close = () => {
     setMenu(null);
   };
@@ -258,6 +295,56 @@ export function PhotoMenu() {
   const keys = (e: KeyboardEvent<HTMLDivElement>) => {
     if (list.current && arrowFocus(list.current, e.key)) e.preventDefault();
   };
+
+  const photoIdsOf = (id: string): PhotoPick => ({ layerId: menu.layerId, photoId: id });
+  const pickedHere =
+    menu.photoIds.length === 1 &&
+    picks.length > 1 &&
+    picks.some((p) => p.layerId === menu.layerId && p.photoId === menu.photoIds[0]);
+  if (pickedHere)
+    return createPortal(
+      <div
+        ref={list}
+        className="dmenu"
+        role="menu"
+        aria-label={t('align.photoMenu.picked', { count: picks.length })}
+        style={style}
+        data-testid="photo-menu"
+        onKeyDown={keys}
+        onContextMenu={(e) => {
+          e.preventDefault();
+        }}
+      >
+        <div className="dmenu-h faint">{t('align.photoMenu.picked', { count: picks.length })}</div>
+        <button
+          type="button"
+          role="menuitem"
+          className="dmenu-item primary"
+          data-testid="photo-menu-alignTo"
+          onClick={() => {
+            setMenu(null);
+            setAlignAt({ x: menu.x, y: menu.y, picks: [...picks] });
+          }}
+        >
+          <Icon name="target" size={14} />
+          <span>{t('align.photoMenu.alignTo')}</span>
+        </button>
+        <button
+          type="button"
+          role="menuitem"
+          className="dmenu-item"
+          data-testid="photo-menu-clearPicks"
+          onClick={() => {
+            setMenu(null);
+            photoPicks.getState().clear();
+          }}
+        >
+          <Icon name="x" size={14} />
+          <span>{t('align.photoMenu.clearPicks')}</span>
+        </button>
+      </div>,
+      document.body,
+    );
 
   if (menu.photoIds.length > 1)
     return createPortal(
@@ -344,6 +431,10 @@ export function PhotoMenu() {
           },
           { primary: true, disabled: !posed },
         )}
+      {!readOnly &&
+        item('alignTo', 'target', t('align.photoMenu.alignTo'), () => {
+          setAlignAt({ x: menu.x, y: menu.y, picks: [photoIdsOf(photo.id)] });
+        })}
       {item('open', 'photo', t('align.photoMenu.open'), () => {
         openPhoto(set.id, photo.id);
       })}

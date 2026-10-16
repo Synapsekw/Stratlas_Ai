@@ -1,8 +1,9 @@
-import { Icon } from '@aio/ui';
+import { Icon, useT } from '@aio/ui';
 import { useStore } from 'zustand';
 import { AlignNotice } from '../builder/AlignNotice';
 import { AlignToNotice } from '../builder/AlignToNotice';
 import { PhotoAlignNotice } from '../builder/PhotoAlignNotice';
+import { photoPicks, usePhotoPicks } from '../builder/photoPicks';
 import { DiskChangedNotice } from '../DiskChangedNotice';
 import { GraphicsNotice } from '../GraphicsNotice';
 import { FarContentNotice } from '../builder/FarContentNotice';
@@ -12,6 +13,31 @@ import { PlaceOnModelNotice } from '../placement/PlaceOnModelNotice';
 import { ProcessingToolsNotice } from '../ProcessingToolsNotice';
 import { SyncNotices } from '../team/SyncNotices';
 import { cancelExport, toasts } from './exports';
+
+/** "3 photos picked" with Clear, while several photo pins are picked. */
+function PhotoPicksNotice() {
+  const t = useT();
+  const count = usePhotoPicks((s) => s.picks.length);
+  if (count < 1) return null;
+  return (
+    <div className="toast" data-testid="photo-picks">
+      <div className="toast-h">
+        <Icon name="photo" size={14} />
+        <b>{t('align.photoMenu.picked', { count })}</b>
+        <span className="toast-grow" />
+        <button
+          type="button"
+          className="btn ghost sm"
+          onClick={() => {
+            photoPicks.getState().clear();
+          }}
+        >
+          {t('align.photoMenu.clearPicks')}
+        </button>
+      </div>
+    </div>
+  );
+}
 
 /**
  * Export progress toasts and the graphics memory notice, bottom right. The live region stays mounted so screen readers hear an
@@ -28,6 +54,7 @@ export function Toasts() {
       <AlignNotice />
       <PhotoAlignNotice />
       <AlignToNotice />
+      <PhotoPicksNotice />
       <PlaceOnModelNotice store={placement} />
       <ProjectMapNotice />
       <FarContentNotice />

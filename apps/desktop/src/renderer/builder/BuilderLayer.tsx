@@ -10,6 +10,7 @@ import { CalibrateVideo } from './CalibrateVideo';
 import { DroneMenu } from './DroneMenu';
 import { loadOrientation } from './orientationFile';
 import { PhotoMenu } from './PhotoMenu';
+import { PhotoPickInput } from './PhotoPickInput';
 import { PlaceModel } from './PlaceModel';
 import { EmptyProjectHint, ImportLayer } from './ImportPanel';
 import { NewProjectWizard } from './NewProjectWizard';
@@ -83,6 +84,7 @@ export function BuilderLayer() {
       )}
       {screen === 'scene' && projectId && <DroneMenu />}
       {screen === 'scene' && projectId && <PhotoMenu />}
+      {screen === 'scene' && projectId && <PhotoPickInput />}
       {screen === 'scene' && aligning && <AlignCamera />}
       {screen === 'scene' && aligningPhoto && <AlignPhoto />}
     </>

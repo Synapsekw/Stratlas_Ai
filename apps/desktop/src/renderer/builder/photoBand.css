@@ -1,0 +1,7 @@
+.photo-band {
+  position: fixed;
+  z-index: 40;
+  pointer-events: none;
+  border: 1px solid var(--accent, #4aa3ff);
+  background: color-mix(in srgb, var(--accent, #4aa3ff) 18%, transparent);
+}
