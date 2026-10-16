@@ -83,7 +83,16 @@ export function spotEntries(input: EntryInputs): SpotEntry[] {
         });
     } else if (l.kind === 'walk' && input.walkSamples) {
       const samples = input.walkSamples(l);
-      if (samples !== undefined) out.push({ kind: 'walk', layer: l.id, capture, samples });
+      if (samples !== undefined)
+        out.push({
+          kind: 'walk',
+          layer: l.id,
+          capture,
+          samples:
+            samples && shift
+              ? samples.map((f) => ({ ...f, pos: shiftLocal(f.pos, shift) }))
+              : samples,
+        });
     }
   }
   return out;

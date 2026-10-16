@@ -216,6 +216,12 @@ describe('defect rows', () => {
     );
     expect(moved[0]?.at[0]).toBeCloseTo(12, 9);
     expect(moved[0]?.km).toBeCloseTo(0.012, 6);
+    // north moves z the other way (z is south)
+    const north = defectRows([issue('1', 'potholes', 3, 10, 2)], manifest, road, toLocal, () => ({
+      eastM: 0,
+      northM: 4,
+    }));
+    expect(north[0]?.at[1]).toBeCloseTo(-4, 9);
   });
 
   it('filters by severity, class, chainage range and search', () => {

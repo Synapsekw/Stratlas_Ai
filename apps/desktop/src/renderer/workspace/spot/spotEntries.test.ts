@@ -1,4 +1,4 @@
-import type { Layer, ProjectManifest } from '@aio/schema';
+import type { Layer, ProjectManifest, Vec3 } from '@aio/schema';
 import type { Flight } from '@aio/video';
 import { captureIndex } from '@aio/workspace';
 import { describe, expect, it } from 'vitest';
@@ -139,6 +139,38 @@ describe('spotEntries', () => {
       { kind: 'walk', layer: 'w-track', capture: 'd1', samples: [sample] },
       { kind: 'walk', layer: 'w-unplaced', capture: 'd1', samples: null },
     ]);
+  });
+});
+
+describe('spotEntries on a lined-up date', () => {
+  const walk = {
+    kind: 'walk',
+    id: 'w',
+    name: 'w',
+    visible: true,
+    capture: 'd1',
+  } as unknown as Layer;
+  it('moves a walk track by its date (east and north)', () => {
+    const sample: TrackSample = { t: 0, pos: [5, 1.7, 7], groundY: 0, bearingDeg: 30 };
+    const got = spotEntries({
+      layers: [walk],
+      index,
+      walkSamples: () => [sample],
+      shiftOf: () => ({ eastM: 2, northM: 3 }),
+    });
+    const e = got[0];
+    expect(e?.kind === 'walk' && e.samples?.[0]).toEqual({ ...sample, pos: [7, 1.7, 4] });
+  });
+  it('turns a clip frame by nothing when its date moves', () => {
+    const pose = { pos: [1, 2, 3] as Vec3, q: lookQuat(40), lens: LENS };
+    const got = spotEntries({
+      layers: [clip],
+      index,
+      videoSamples: () => [{ t: 0, pose }],
+      shiftOf: () => ({ eastM: 2, northM: 3 }),
+    });
+    const e = got[0];
+    expect(e?.kind === 'video' && e.samples?.[0]?.pose.q).toEqual(pose.q);
   });
 });
 

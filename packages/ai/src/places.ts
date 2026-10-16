@@ -400,19 +400,20 @@ export function boxOfPoints(points: readonly Vec3[]): PlaceBox | undefined {
 }
 
 /** Every 3D point of an issue's sightings. */
-export function issuePoints(issue: Issue): Vec3[] {
+export function issuePoints(issue: Issue, shiftOf?: (layerId: string) => DateShift | null): Vec3[] {
   const out: Vec3[] = [];
   for (const s of issue.sightings) {
+    const at = (p: Vec3) => (shiftOf ? shiftLocal(p, shiftOf(s.layer)) : p);
     if (s.on === 'mesh') {
       const g = s.geom;
-      if (g.type === 'spoint') out.push(g.p);
-      else if (g.type === 'spolyline' || g.type === 'spolygon') out.push(...g.points);
-      else if (g.center) out.push(g.center);
+      if (g.type === 'spoint') out.push(at(g.p));
+      else if (g.type === 'spolyline' || g.type === 'spolygon') out.push(...g.points.map(at));
+      else if (g.center) out.push(at(g.center));
     } else if (s.on === 'pointcloud') {
       const g = s.geom;
-      if (g.type === 'point3') out.push(g.p);
-      else if (g.type === 'box3') out.push(g.min, g.max);
-      else if (g.type === 'polygon3') out.push(...g.points);
+      if (g.type === 'point3') out.push(at(g.p));
+      else if (g.type === 'box3') out.push(at(g.min), at(g.max));
+      else if (g.type === 'polygon3') out.push(...g.points.map(at));
     }
   }
   return out;
@@ -583,7 +584,7 @@ export function placeIndex(ctx: RendererToolContext, opts: IndexOptions = {}): P
   }
 
   for (const i of issues) {
-    const pts = issuePoints(i);
+    const pts = issuePoints(i, (id) => dateShiftOf(m, id));
     const box = boxOfPoints(pts);
     const photos = [...new Set(i.sightings.flatMap((s) => (s.on === 'image' ? [s.photo] : [])))];
     const eye = pts.length ? undefined : photoEye(ctx, photos[0]);

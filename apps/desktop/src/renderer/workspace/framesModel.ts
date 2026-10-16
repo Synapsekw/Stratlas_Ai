@@ -1,10 +1,4 @@
-import {
-  shiftedDirectionKeys,
-  shiftedLayer,
-  shiftLocal,
-  type DateShift,
-  type Layer,
-} from '@aio/schema';
+import { shiftedLayer, shiftLocal, type DateShift, type Layer } from '@aio/schema';
 import { calibratedVideoPose, type Flight, type FramesMode, type ViewPose } from '@aio/video';
 import type { CaptureIndex, Selection } from '@aio/workspace';
 import { createStore } from 'zustand/vanilla';
@@ -158,8 +152,8 @@ export function shiftPose(pose: ViewPose, shift: DateShift | null): ViewPose {
 }
 
 /**
- * A clip's calibrated camera as drawn on its lined-up date: the pairing's pose (from the layer as
- * stored, with the look-at targets moved) with the shift added to its position.
+ * A clip's calibrated camera as drawn on its lined-up date: the pairing's pose (from the layer and
+ * keys as stored: the aim comes from the stored place) with the shift added to its position.
  */
 export function placedVideoPose(
   layer: VideoLayer,
@@ -168,7 +162,7 @@ export function placedVideoPose(
   keys: Parameters<typeof calibratedVideoPose>[3],
   shift: DateShift | null,
 ): ViewPose {
-  return shiftPose(calibratedVideoPose(layer, flight, v, shiftedDirectionKeys(keys, shift)), shift);
+  return shiftPose(calibratedVideoPose(layer, flight, v, keys), shift);
 }
 
 /**

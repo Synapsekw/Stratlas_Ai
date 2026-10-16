@@ -5,6 +5,7 @@
  * the agent says the model is still loading instead of answering that an asset has no findings.
  */
 import type { Issue, Vec3 } from '@aio/schema';
+import { dateShiftOf } from '@aio/workspace';
 import {
   boxCentre,
   boxOfPoints,
@@ -119,8 +120,10 @@ function tagNames(ctx: RendererToolContext): string[] {
 }
 
 /** The point an issue sits at: the centre of the box around its 3D sightings. */
-function pointOf(issue: Issue): Vec3 | null {
-  const box = boxOfPoints(issuePoints(issue));
+function pointOf(ctx: RendererToolContext, issue: Issue): Vec3 | null {
+  // where the pins are drawn (the scene boxes they are matched with are, too)
+  const m = project(ctx).manifest;
+  const box = boxOfPoints(issuePoints(issue, (id) => dateShiftOf(m, id)));
   return box ? boxCentre(box) : null;
 }
 
@@ -159,7 +162,7 @@ export function assetIndex(ctx: RendererToolContext): AssetIndex {
 
   const links = new Map<string, AssetLink>();
   for (const issue of issues) {
-    const p = pointOf(issue);
+    const p = pointOf(ctx, issue);
     const link = p ? assetOfPoint(p, boxes) : null;
     if (link) links.set(issue.id, link);
   }
@@ -259,7 +262,7 @@ export function describeIssue(
   index: AssetIndex,
 ): IssueDetail {
   const link = index.links.get(issue.id);
-  const p = pointOf(issue);
+  const p = pointOf(ctx, issue);
   const photos = new Set(issue.sightings.flatMap((s) => (s.on === 'image' ? [s.photo] : [])));
   return {
     ...issueRow(issue),

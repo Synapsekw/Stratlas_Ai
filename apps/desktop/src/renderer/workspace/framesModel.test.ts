@@ -1,4 +1,4 @@
-import type { Layer } from '@aio/schema';
+import type { Layer, Vec3 } from '@aio/schema';
 import { captureIndex } from '@aio/workspace';
 import { describe, expect, it } from 'vitest';
 import {
@@ -178,6 +178,19 @@ describe('lined-up dates', () => {
     const moved = placedVideoPose(clip, flight, 0.5, null, { eastM: 2, northM: 3 });
     expect(moved.pos[0]).toBeCloseTo(base.pos[0] + 2, 9);
     expect(moved.pos[1]).toBeCloseTo(base.pos[1], 9);
+    expect(moved.pos[2]).toBeCloseTo(base.pos[2] - 3, 9);
+  });
+
+  it('aims a lined-up clip at its target from the shifted place, turning nothing', () => {
+    const keys = [
+      { t: 0, yaw: 0, pitch: -30, roll: 0, fill: 'lookAt' as const, target: [10, 0, -20] as Vec3 },
+    ];
+    const shift = { eastM: 2, northM: 3 };
+    const base = placedVideoPose(clip, flight, 0.5, keys, null);
+    const moved = placedVideoPose(clip, flight, 0.5, keys, shift);
+    // only the position moves: the aim is the stored camera's, translated with the date
+    expect(moved.q).toEqual(base.q);
+    expect(moved.pos[0]).toBeCloseTo(base.pos[0] + 2, 9);
     expect(moved.pos[2]).toBeCloseTo(base.pos[2] - 3, 9);
   });
 

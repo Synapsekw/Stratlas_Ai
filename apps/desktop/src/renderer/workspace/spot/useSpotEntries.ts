@@ -1,5 +1,5 @@
 import { clipKeys, photoCorrection, type WalkFit } from '@aio/geo';
-import { shiftedDirectionKeys, WALK_HEIGHT_M, type WalkLayer } from '@aio/schema';
+import { WALK_HEIGHT_M, type WalkLayer } from '@aio/schema';
 import { loadFlight, type Flight, type VideoLayer } from '@aio/video';
 import { dateShiftOf, useWorkspace } from '@aio/workspace';
 import { useEffect, useMemo, useState } from 'react';
@@ -113,12 +113,7 @@ export function useSpotEntries(active: boolean): { entries: SpotEntry[]; reading
       videoSamples: (l) => {
         if (!map) return undefined;
         const f = map.get(l.id);
-        // a look-at target moves with the date; the spot entries add the shift to the positions
-        const keys = shiftedDirectionKeys(
-          clipKeys(orientation, l.id),
-          dateShiftOf(project.manifest, l.id),
-        );
-        return f ? cachedSamples(project.id, l, f, keys) : null;
+        return f ? cachedSamples(project.id, l, f, clipKeys(orientation, l.id)) : null;
       },
       walkSamples: (l) => {
         if (!placed.has(l.id)) return null;

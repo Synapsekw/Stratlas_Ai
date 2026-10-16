@@ -54,7 +54,10 @@ const issue = {
 } as unknown as Issue;
 
 describe('openEvidence', () => {
-  afterEach(() => vi.restoreAllMocks());
+  afterEach(() => {
+    vi.restoreAllMocks();
+    workspace.getState().closeProject();
+  });
 
   it('flies to the pin where its lined-up date is drawn', () => {
     workspace.getState().openProject({ id: 'p', root: 'C:/p', manifest }, [issue]);

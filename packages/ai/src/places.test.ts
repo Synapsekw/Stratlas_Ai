@@ -1,7 +1,7 @@
 import { emptyOrientation, type Issue, type ProjectManifest } from '@aio/schema';
 import { createWorkspace } from '@aio/workspace';
 import { describe, expect, it } from 'vitest';
-import { placeIndex } from './places';
+import { issuePoints, placeIndex } from './places';
 import type { RendererToolContext } from './tool-kit';
 
 describe('placeIndex with moved photos', () => {
@@ -98,5 +98,20 @@ describe('placeIndex with a lined-up date', () => {
     expect(places.find((p) => p.id === 'photo:a')?.eye?.pos).toEqual([12, 50, 19]);
     expect(places.find((p) => p.id === 'layer:ph')?.p).toEqual([12, 50, 19]);
     expect(places.find((p) => p.id === 'issue:D1')?.eye?.pos).toEqual([12, 50, 19]);
+  });
+});
+
+describe('issue points on a lined-up date', () => {
+  it('places an issue pin where its date is drawn', () => {
+    const issue = {
+      id: 'i1',
+      code: 'D1',
+      title: 't',
+      severity: 1,
+      status: 'open',
+      sightings: [{ on: 'mesh', layer: 'm', geom: { type: 'spoint', p: [10, 4, 20] } }],
+    } as unknown as Issue;
+    expect(issuePoints(issue)).toEqual([[10, 4, 20]]);
+    expect(issuePoints(issue, () => ({ eastM: 2, northM: 1 }))).toEqual([[12, 4, 19]]);
   });
 });
