@@ -1,10 +1,13 @@
 import { clipKeys } from '@aio/geo';
-import type { OrientationFile } from '@aio/schema';
+import { emptyOrientation, type OrientationFile } from '@aio/schema';
 import { workspace, type DirectionDraft } from '@aio/workspace';
 import { useStore } from 'zustand';
 import { getMedia, loadFlight } from '../media';
 import { shell } from '../shell';
+import { appBoundsDeps } from '../shell/appBounds';
+import { boundsOf, groundAt } from '../shell/layerBounds';
 import { createAlignStore, type AlignStore } from './alignStore';
+import { createAlignToStore, type AlignToStore } from './alignToStore';
 import { createPhotoAlignStore, type PhotoAlignStore } from './photoAlignStore';
 import {
   retryOrientation,
@@ -58,6 +61,25 @@ photoAlign.subscribe((s, p) => {
 
 export function usePhotoAlign<T>(selector: (s: PhotoAlignStore) => T): T {
   return useStore(photoAlign, selector);
+}
+
+/** Align to: one move of photo sets or picked photos onto another dataset, with Undo. */
+export const alignTo = createAlignToStore({
+  workspace,
+  save: (fixes) =>
+    saveOrientationEdit((file) =>
+      Object.entries(fixes).reduce(
+        (f, [layerId, fx]) => withPhotoFixes(f, layerId, fx),
+        file ?? emptyOrientation(),
+      ),
+    ),
+  bounds: (id) => boundsOf([id], appBoundsDeps()),
+  ground: (x, z) => groundAt(x, z, appBoundsDeps()),
+  reload: retryOrientation,
+});
+
+export function useAlignTo<T>(selector: (s: AlignToStore) => T): T {
+  return useStore(alignTo, selector);
 }
 
 const videoOf = (layerId: string) => {

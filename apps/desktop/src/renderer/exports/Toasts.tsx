@@ -1,6 +1,7 @@
 import { Icon } from '@aio/ui';
 import { useStore } from 'zustand';
 import { AlignNotice } from '../builder/AlignNotice';
+import { AlignToNotice } from '../builder/AlignToNotice';
 import { PhotoAlignNotice } from '../builder/PhotoAlignNotice';
 import { DiskChangedNotice } from '../DiskChangedNotice';
 import { GraphicsNotice } from '../GraphicsNotice';
@@ -26,6 +27,7 @@ export function Toasts() {
       <SyncNotices />
       <AlignNotice />
       <PhotoAlignNotice />
+      <AlignToNotice />
       <PlaceOnModelNotice store={placement} />
       <ProjectMapNotice />
       <FarContentNotice />
