@@ -30,10 +30,14 @@ export * from './tree/dateModel';
 export {
   DatasetTree,
   VisibilityEye,
+  isMenuKey,
+  keyMenuPoint,
   menuPoint,
   type DatasetTreeProps,
+  type GroupFold,
   type MenuPoint,
 } from './tree/DatasetTree';
+export { RenameField } from './tree/RenameField';
 export {
   DateTree,
   type DateFolderMenuRequest,

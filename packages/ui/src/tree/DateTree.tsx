@@ -1,16 +1,20 @@
-import { useRef, useState, type CSSProperties, type DragEvent } from 'react';
+import { useState, type CSSProperties, type DragEvent } from 'react';
 import type { DateTag } from '@aio/workspace';
 import { useT } from '../i18n';
 import { Icon } from '../icons/Icon';
 import {
   DatasetTree,
   VisibilityEye,
+  isMenuKey,
+  keyMenuPoint,
   menuPoint,
   type DatasetTreeProps,
+  type GroupFold,
   type MenuPoint,
 } from './DatasetTree';
+import { RenameField } from './RenameField';
 import { EVERY_DATE, dateIcon, dropCapture, type DateFolder } from './dateModel';
-import { datableLayerIds, groupDatableLayerIds, type TreeItem } from './model';
+import { datableLayerIds, groupDatableLayerIds, type TreeGroupKind, type TreeItem } from './model';
 
 /** A folder's menu was asked for: where, and how the folder stands in the tree right now. */
 export interface DateFolderMenuRequest extends MenuPoint {
@@ -30,6 +34,10 @@ export interface DateItemMenuRequest extends MenuPoint {
   layerIds: string[];
   /** The folder the row or group sits in (`EVERY_DATE` or a capture id). */
   from: string;
+  /** Set for a group header: its fold state, for Expand and Collapse. */
+  fold?: GroupFold | undefined;
+  /** Set for a group header: which group. */
+  group?: TreeGroupKind | undefined;
 }
 
 export interface DateTreeProps extends Omit<
@@ -64,58 +72,6 @@ export interface DateTreeProps extends Omit<
   onRename?: ((capture: string, name: string) => void) | undefined;
   /** The name field closed (committed or cancelled). */
   onRenameEnd?: (() => void) | undefined;
-}
-
-/** The inline name field of a folder: Enter or leaving it saves, Escape cancels. */
-function RenameField({
-  initial,
-  label,
-  placeholder,
-  onCommit,
-  onEnd,
-}: {
-  initial: string;
-  label: string;
-  placeholder: string;
-  onCommit: (name: string) => void;
-  onEnd: () => void;
-}) {
-  const done = useRef(false);
-  const finish = (value: string | null) => {
-    if (done.current) return;
-    done.current = true;
-    if (value !== null && value.trim() !== initial) onCommit(value.trim());
-    onEnd();
-  };
-  return (
-    <input
-      className="input drename"
-      type="text"
-      defaultValue={initial}
-      maxLength={80}
-      aria-label={label}
-      placeholder={placeholder}
-      data-testid="date-rename"
-      // the field stands where the name was: the person who asked to rename types right away
-      autoFocus
-      onFocus={(e) => {
-        e.currentTarget.select();
-      }}
-      onKeyDown={(e) => {
-        e.stopPropagation();
-        if (e.key === 'Enter') {
-          e.preventDefault();
-          finish(e.currentTarget.value);
-        } else if (e.key === 'Escape') {
-          e.preventDefault();
-          finish(null);
-        }
-      }}
-      onBlur={(e) => {
-        finish(e.currentTarget.value);
-      }}
-    />
-  );
 }
 
 export function DateTree(props: DateTreeProps) {
@@ -222,7 +178,24 @@ export function DateTree(props: DateTreeProps) {
                 onFolderMenu
                   ? (e) => {
                       e.preventDefault();
+                      // empty space around the folders must not also open the project menu
+                      e.stopPropagation();
                       onFolderMenu({ folder: f, expanded, toggle, ...menuPoint(e) });
+                    }
+                  : undefined
+              }
+              onKeyDown={
+                onFolderMenu
+                  ? (e) => {
+                      if (!isMenuKey(e)) return;
+                      e.preventDefault();
+                      e.stopPropagation();
+                      onFolderMenu({
+                        folder: f,
+                        expanded,
+                        toggle,
+                        ...keyMenuPoint(e.currentTarget),
+                      });
                     }
                   : undefined
               }
@@ -245,6 +218,7 @@ export function DateTree(props: DateTreeProps) {
                     initial={f.sub ?? ''}
                     label={t('tree.dates.nameOf', { date: f.label })}
                     placeholder={t('tree.dates.namePlaceholder')}
+                    testId="date-rename"
                     onCommit={(name) => {
                       if (f.capture) onRename?.(f.capture.id, name);
                     }}
@@ -334,15 +308,19 @@ export function DateTree(props: DateTreeProps) {
                 onItemMenu={
                   onItemMenu
                     ? (item, at) => {
-                        const layerIds = datableLayerIds(item);
-                        if (layerIds.length > 0)
-                          onItemMenu({ name: item.name, item, layerIds, from: f.id, ...at });
+                        onItemMenu({
+                          name: item.name,
+                          item,
+                          layerIds: datableLayerIds(item),
+                          from: f.id,
+                          ...at,
+                        });
                       }
                     : undefined
                 }
                 onGroupMenu={
                   onItemMenu
-                    ? (g, layerIds, at) => {
+                    ? (g, layerIds, at, fold) => {
                         onItemMenu({
                           name: t('tree.dates.move.group', {
                             group: g.label,
@@ -350,6 +328,8 @@ export function DateTree(props: DateTreeProps) {
                           }),
                           layerIds,
                           from: f.id,
+                          fold,
+                          group: g.kind,
                           ...at,
                         });
                       }

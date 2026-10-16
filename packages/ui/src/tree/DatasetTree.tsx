@@ -4,6 +4,7 @@ import {
   useRef,
   useState,
   type DragEvent,
+  type KeyboardEvent,
   type MouseEvent,
   type ReactNode,
 } from 'react';
@@ -19,6 +20,7 @@ import {
   type Visibility,
 } from './model';
 import type { MarkMods } from './marks';
+import { RenameField } from './RenameField';
 
 export interface DatasetTreeProps {
   groups: readonly TreeGroup[];
@@ -73,7 +75,18 @@ export interface DatasetTreeProps {
    */
   dragGroupIds?: ((group: TreeGroup) => string[]) | undefined;
   /** Right-click, or the menu key, on a group header that carries layers. */
-  onGroupMenu?: ((group: TreeGroup, layerIds: string[], at: MenuPoint) => void) | undefined;
+  onGroupMenu?:
+    ((group: TreeGroup, layerIds: string[], at: MenuPoint, fold: GroupFold) => void) | undefined;
+  /** The layer whose name is a field now, and its F2, save and close. */
+  renamingLayer?: string | null | undefined;
+  onRenameLayerStart?: ((layerId: string) => void) | undefined;
+  onRenameLayer?: ((layerId: string, name: string) => void) | undefined;
+  onRenameLayerEnd?: (() => void) | undefined;
+  /**
+   * Ask the confirm of Remove placement on a walk row (a menu item does): a new `seq` opens it
+   * for `id`.
+   */
+  unplaceRequest?: { id: string; seq: number } | null | undefined;
   /** The one badge a row carries (a walk's placing state), or null for none. */
   rowBadge?: ((item: TreeItem) => TreeRowBadge | null) | undefined;
   /**
@@ -131,8 +144,24 @@ export interface MenuPoint {
  */
 export function menuPoint(e: MouseEvent<HTMLElement>): MenuPoint {
   if (e.clientX !== 0 || e.clientY !== 0) return { x: e.clientX, y: e.clientY };
-  const r = e.currentTarget.getBoundingClientRect();
+  return keyMenuPoint(e.currentTarget);
+}
+
+/** Shift+F10 and the Menu key: open the focused element's menu. */
+export function isMenuKey(e: { key: string; shiftKey: boolean }): boolean {
+  return (e.key === 'F10' && e.shiftKey) || e.key === 'ContextMenu';
+}
+
+/** Where a menu opened from the keyboard goes: just inside the element, under it. */
+export function keyMenuPoint(el: HTMLElement): MenuPoint {
+  const r = el.getBoundingClientRect();
   return { x: r.left + 24, y: r.bottom };
+}
+
+/** A group's fold state, handed to its menu so Expand and Collapse can act on it. */
+export interface GroupFold {
+  expanded: boolean;
+  toggle: () => void;
 }
 
 // 360 walks are open so a walk's "Needs placing" badge is seen without a click, and panoramas so
@@ -204,6 +233,12 @@ export function DatasetTree(props: DatasetTreeProps) {
    * its files stay), so it asks in the row.
    */
   const [unplacing, setUnplacing] = useState<string | null>(null);
+  // a menu item asks for the confirm: adjusted during render, not in an effect
+  const [seenUnplace, setSeenUnplace] = useState(props.unplaceRequest?.seq ?? 0);
+  if (props.unplaceRequest && props.unplaceRequest.seq !== seenUnplace) {
+    setSeenUnplace(props.unplaceRequest.seq);
+    setUnplacing(props.unplaceRequest.id);
+  }
   /** The rows drawn now, by item id: where focus goes back to when the confirm closes. */
   const rowEls = useRef(new Map<string, HTMLDivElement>());
   /** The row focus goes back to once the confirm has left the page (its buttons held focus till then). */
@@ -371,6 +406,7 @@ export function DatasetTree(props: DatasetTreeProps) {
     const extra = unplaceConfirm(it) ?? props.rowExtra?.(it) ?? null;
     const badge = props.rowBadge?.(it) ?? null;
     const walkActs = walkButtons(it);
+    const renamingHere = it.layerId !== undefined && props.renamingLayer === it.layerId;
     const drawingSettings = it.drawing === true ? props.onDrawingSettings : undefined;
     const line = (
       <div
@@ -401,6 +437,17 @@ export function DatasetTree(props: DatasetTreeProps) {
         onKeyDown={(e) => {
           // keys on a button inside the row are the button's
           if (e.target !== e.currentTarget) return;
+          if (isMenuKey(e) && props.onItemMenu) {
+            e.preventDefault();
+            e.stopPropagation();
+            props.onItemMenu(it, keyMenuPoint(e.currentTarget));
+            return;
+          }
+          if (e.key === 'F2' && it.layerId && props.onRenameLayerStart) {
+            e.preventDefault();
+            props.onRenameLayerStart(it.layerId);
+            return;
+          }
           const onMark = props.onMark;
           const id = it.layerId;
           if (onMark && id !== undefined && e.key === ' ' && (e.ctrlKey || e.metaKey)) {
@@ -441,7 +488,23 @@ export function DatasetTree(props: DatasetTreeProps) {
         {it.layerId === activeClip && it.layerKind === 'video' && (
           <span className="live" title="Active clip" />
         )}
-        <span className="tn">{it.name}</span>
+        {renamingHere ? (
+          <RenameField
+            testId="layer-rename"
+            initial={it.name}
+            label={t('tree.renameLayer', { name: it.name })}
+            placeholder={it.name}
+            onCommit={(n) => {
+              props.onRenameLayer?.(it.layerId ?? '', n);
+            }}
+            onEnd={() => {
+              props.onRenameLayerEnd?.();
+              pendingFocus.current = it.id;
+            }}
+          />
+        ) : (
+          <span className="tn">{it.name}</span>
+        )}
         {it.meta && <span className="tm">{it.meta}</span>}
         {badge && (
           <span
@@ -456,8 +519,8 @@ export function DatasetTree(props: DatasetTreeProps) {
           <button
             type="button"
             className="eye tact"
-            aria-label={`Point cloud colour and display: ${it.name}`}
-            title="Colour by RGB, elevation, intensity or flight; size and budget"
+            aria-label={t('tree.row.cloud', { name: it.name })}
+            title={t('tree.row.cloudTip')}
             onClick={(e) => {
               e.stopPropagation();
               props.onLayerSettings?.(it);
@@ -470,9 +533,9 @@ export function DatasetTree(props: DatasetTreeProps) {
           <button
             type="button"
             className="eye tact"
-            aria-label={`Drawing display and placement: ${it.name}`}
+            aria-label={t('tree.row.drawing', { name: it.name })}
             aria-expanded={extra !== null}
-            title="Opacity, on top, place on the site, open side by side"
+            title={t('tree.row.drawingTip')}
             data-testid={`drawing-settings-${it.id}`}
             onClick={(e) => {
               e.stopPropagation();
@@ -486,9 +549,9 @@ export function DatasetTree(props: DatasetTreeProps) {
           <button
             type="button"
             className={`eye${off ? ' off' : ''}`}
-            aria-label={`${off ? 'Show' : 'Hide'} ${it.name}`}
+            aria-label={t(off ? 'tree.row.show' : 'tree.row.hide', { name: it.name })}
             aria-pressed={!off}
-            title={off ? 'Show' : 'Hide'}
+            title={t(off ? 'tree.row.showTip' : 'tree.row.hideTip')}
             onClick={(e) => {
               e.stopPropagation();
               if (it.layerId) props.onToggleVisible(it.layerId, off);
@@ -534,6 +597,13 @@ export function DatasetTree(props: DatasetTreeProps) {
             setFlightOpen((o) => ({ ...o, [it.id]: !open }));
           }}
           onKeyDown={(e) => {
+            if (e.target !== e.currentTarget) return;
+            if (isMenuKey(e) && props.onItemMenu) {
+              e.preventDefault();
+              e.stopPropagation();
+              props.onItemMenu(it, keyMenuPoint(e.currentTarget));
+              return;
+            }
             if (e.key === 'Enter' || e.key === ' ') {
               e.preventDefault();
               setFlightOpen((o) => ({ ...o, [it.id]: !open }));
@@ -593,6 +663,12 @@ export function DatasetTree(props: DatasetTreeProps) {
         const groupMenu = carried.length > 0 ? props.onGroupMenu : undefined;
         const groupDrag = carried.length > 0 && props.onDragItem !== undefined;
         const action = collapsed ? undefined : props.groupAction?.(g);
+        const fold: GroupFold = {
+          expanded,
+          toggle: () => {
+            setOpen((o) => ({ ...o, [g.kind]: !isOpen(g.kind) }));
+          },
+        };
         return (
           <div key={g.kind} role="treeitem" aria-expanded={expanded} aria-selected={false}>
             <div
@@ -617,7 +693,13 @@ export function DatasetTree(props: DatasetTreeProps) {
                     onContextMenu: (e: MouseEvent<HTMLElement>) => {
                       e.preventDefault();
                       e.stopPropagation();
-                      groupMenu(g, carried, menuPoint(e));
+                      groupMenu(g, carried, menuPoint(e), fold);
+                    },
+                    onKeyDown: (e: KeyboardEvent<HTMLElement>) => {
+                      if (!isMenuKey(e)) return;
+                      e.preventDefault();
+                      e.stopPropagation();
+                      groupMenu(g, carried, keyMenuPoint(e.currentTarget), fold);
                     },
                   }
                 : {})}
@@ -682,7 +764,9 @@ export function DatasetTree(props: DatasetTreeProps) {
                     }}
                   >
                     <span className="tn">
-                      {hiddenRows > 0 ? `${String(hiddenRows)} more` : 'Show fewer'}
+                      {hiddenRows > 0
+                        ? t('tree.row.more', { count: hiddenRows })
+                        : t('tree.row.fewer')}
                     </span>
                   </button>
                 )}
