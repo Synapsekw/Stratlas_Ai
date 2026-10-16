@@ -18,8 +18,11 @@ const KIND_ICON: Record<PlannedKind, IconName> = {
   world: 'globe',
 };
 
-/** "3 of 7 projects have no detailed street map", or that all of them have one. */
-function summaryText(s: CoverageSummary): string {
+/**
+ * "3 of 7 projects have no detailed street map", or that all of them have one. Demo projects are
+ * not counted (they need no download), so an empty count means none of your own yet.
+ */
+export function summaryText(s: CoverageSummary): string {
   if (s.total === 0) return t('maps.coverage.noProjects');
   if (s.located === 0) return t('maps.coverage.nonePlaced');
   if (s.missing === 0) return t('maps.coverage.allDetailed', { count: s.located });

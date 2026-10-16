@@ -1313,7 +1313,7 @@ export const en = {
   'maps.coverage.offlineOnly':
     'This workstation is set to Offline only, so nothing is downloaded. To download these areas, switch to Online in the title bar or in Settings, Privacy and cloud. On a machine with no network, bring the packs in with Import pack file.',
   'maps.coverage.error': 'The projects could not be checked: {error}',
-  'maps.coverage.noProjects': 'No projects in the library yet',
+  'maps.coverage.noProjects': 'No projects of your own yet',
   'maps.coverage.nonePlaced': 'No project is placed on the Earth yet',
   'maps.coverage.missing_one': '{count} of {total} projects has no detailed street map',
   'maps.coverage.missing_other': '{count} of {total} projects have no detailed street map',
