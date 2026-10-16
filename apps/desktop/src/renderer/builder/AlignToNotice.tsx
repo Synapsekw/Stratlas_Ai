@@ -4,6 +4,7 @@ import { useEffect } from 'react';
 import { cleanup } from '../pointcloud/cleanupStore';
 import { shell } from '../shell';
 import { alignCamera, alignTo, photoAlign, useAlignTo } from './alignSession';
+import { builder } from './state';
 
 /** Fields, and the panels that keep their own undo (issues, cleanup, volumes). */
 const OWN_UNDO =
@@ -18,7 +19,10 @@ export function otherUndo(e: KeyboardEvent): boolean {
     cleanup.store.getState().panelOpen ||
     volumetric.getState().edit !== null ||
     alignCamera.getState().session !== null ||
-    photoAlign.getState().session !== null
+    photoAlign.getState().session !== null ||
+    // Place model, Georeference model or Calibrate video: the panel holds the layer as it opened,
+    // and its own Undo and Done would overwrite a write made under it
+    builder.getState().align !== null
   );
 }
 

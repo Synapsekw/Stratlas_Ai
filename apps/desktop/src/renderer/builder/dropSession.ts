@@ -3,13 +3,19 @@ import { cloudLowHeight } from '@aio/pointcloud';
 import { workspace } from '@aio/workspace';
 import { useStore } from 'zustand';
 import { appBoundsDeps } from '../shell/appBounds';
+import { alignTo } from './alignSession';
 import { boundsOf } from '../shell/layerBounds';
 import { createDropStore, type DropStore } from './dropStore';
 import { DROP_CLOUD_PERCENTILE } from './dropToGround';
 import { modelBaseY } from './modelPlacement';
 import { builder } from './state';
 
-/** A model's low point: its lowest vertex as drawn (Place model's measure), else its file extent. */
+/**
+ * A model's low point: its lowest vertex as drawn (Place model's measure), else its file extent.
+ * That extent (`layer:info`, `layerExtent` in @aio/project) is the GLB's POSITION bounds with the
+ * layer transform applied, so it is in the local frame that `transform[13]` moves (node transforms
+ * inside the GLB are not applied there: a rough fallback until the 3D view has drawn the model).
+ */
 async function meshLow(layerId: string): Promise<number | null> {
   const y = modelBaseY(layerId);
   if (y !== null) return y;
@@ -38,6 +44,15 @@ export const dropToGround = createDropStore({
     }
     return null;
   },
+});
+
+// one Ctrl+Z owner: both notices take the key, so a newer notice with Undo or Redo sends the other
+// away (else the older one would win and undo the wrong thing)
+dropToGround.subscribe((s, prev) => {
+  if (s.notice?.action && s.notice !== prev.notice) alignTo.getState().dismiss();
+});
+alignTo.subscribe((s, prev) => {
+  if (s.notice?.action && s.notice !== prev.notice) dropToGround.getState().dismiss();
 });
 
 export function useDrop<T>(selector: (s: DropStore) => T): T {
