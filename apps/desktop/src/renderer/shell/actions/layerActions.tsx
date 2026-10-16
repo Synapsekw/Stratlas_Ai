@@ -219,7 +219,7 @@ export function registerLayerActions(): () => void {
             swatch: '',
             testId: 'move-to-every',
             checked: from === EVERY_DATE,
-            disabled: from === EVERY_DATE ? t('tree.dates.move.none') : false,
+            disabled: from === EVERY_DATE ? t('tree.dates.move.here') : false,
           },
           ...dates.map((c): SubItem => ({
             id: c.id,
@@ -227,7 +227,7 @@ export function registerLayerActions(): () => void {
             swatch: ctx.tags[c.id]?.colour ?? '',
             testId: `move-to-${c.id}`,
             checked: from === c.id,
-            disabled: from === c.id ? dateLabel(c) : false,
+            disabled: from === c.id ? t('tree.dates.move.here') : false,
           })),
         ];
       },

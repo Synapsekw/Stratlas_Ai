@@ -131,6 +131,17 @@ describe('dataset actions', () => {
     ]);
   });
 
+  it('File under greys the current folder with a reason, not its own name again', () => {
+    for (const from of ['oct', 'every']) {
+      const move = items(['v'], { host: { ...NO_HOST, from } }).find(
+        (i) => i.id === 'layer.moveToDate',
+      );
+      const current = move?.sub.find((s) => s.checked);
+      expect(current?.disabled).toBe('Filed here now');
+      expect(current?.disabled).not.toBe(current?.label);
+    }
+  });
+
   it('File under sends the layers to the picked date, or to none', () => {
     const moveLayers = vi.fn();
     const move = items(['v'], { host: { ...NO_HOST, from: 'oct', moveLayers } }).find(

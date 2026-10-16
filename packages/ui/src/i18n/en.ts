@@ -606,6 +606,7 @@ export const en = {
   'tree.dates.move.group_one': '{group} · 1 dataset',
   'tree.dates.move.group_other': '{group} · {count} datasets',
   'tree.dates.move.none': 'Every date (no date)',
+  'tree.dates.move.here': 'Filed here now',
   'tree.dates.move.stays_one':
     '{name} carries {date} in its name, so it stays filed under that date. Move it to another date to override the name.',
   'tree.dates.move.stays_other':
