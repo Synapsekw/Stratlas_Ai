@@ -110,7 +110,7 @@ export const PANEL_CSS = `
 .aio-agent .ag-ev-thumbs figcaption { display: grid; font-size: var(--t-11); line-height: 1.35; color: var(--fg-2); font-variant-numeric: tabular-nums; min-width: 0; }
 .aio-agent .ag-ev-thumbs figcaption b { font: 500 var(--t-11)/1.35 var(--f-mono); color: var(--fg-1); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .aio-agent .ag-ev-cost { font-variant-numeric: tabular-nums; }
-.aio-agent .ag-ev-cost.unknown { color: var(--warn, var(--fg-0)); }
+.aio-agent .ag-ev-cost.unknown { color: var(--warn-ink); }
 @keyframes aio-agent-blink { 50% { opacity: 0.25; } }
 @media (prefers-reduced-motion: reduce) { .aio-agent .typing i { animation: none; } }
 `;

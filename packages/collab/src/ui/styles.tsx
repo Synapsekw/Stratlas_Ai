@@ -17,7 +17,7 @@ textarea.clb-input { height: auto; min-height: 52px; padding: 6px 8px; line-heig
 .clb-err { color: var(--danger); font: 400 var(--t-12)/1.4 var(--f-ui); }
 .clb-ok { color: var(--ok); font: 400 var(--t-12)/1.4 var(--f-ui); }
 .clb-tag { display: inline-flex; align-items: center; height: 18px; padding: 0 6px; border: 1px solid var(--line); border-radius: var(--r-4); font: 500 var(--t-11)/1 var(--f-ui); color: var(--fg-2); white-space: nowrap; }
-.clb-tag.warn { border-color: var(--warn, var(--danger)); color: var(--warn, var(--danger)); }
+.clb-tag.warn { border-color: var(--warn, var(--danger)); color: var(--warn-ink); }
 .clb-tag.good { border-color: var(--ok); color: var(--ok); }
 .clb-who { display: inline-flex; align-items: center; justify-content: center; min-width: 22px; height: 22px; padding: 0 3px; border-radius: 11px; background: var(--bg-3); color: var(--fg-1); font: 600 var(--t-11)/1 var(--f-ui); flex: none; }
 .clb-list { display: flex; flex-direction: column; gap: 8px; margin: 0; padding: 0; list-style: none; }

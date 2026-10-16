@@ -141,7 +141,7 @@
     "title": 5
   },
   "apps/desktop/src/renderer/modeller/modeller.css": {
-    "colour": 17,
+    "colour": 16,
     "shadow": 2,
     "zIndex": 1
   },
@@ -301,7 +301,7 @@
     "title": 2
   },
   "apps/desktop/src/renderer/survey/measure.css": {
-    "colour": 8,
+    "colour": 7,
     "shadow": 3,
     "zIndex": 5
   },

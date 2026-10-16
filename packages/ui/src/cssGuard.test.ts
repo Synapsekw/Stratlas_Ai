@@ -1,4 +1,4 @@
-import { readdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join, relative, sep } from 'node:path';
 import { describe, expect, it } from 'vitest';
 
@@ -84,12 +84,20 @@ describe('css guard', () => {
   });
 
   it('uses amber as text only through --warn-ink, never --s3 or --warn', () => {
+    // Stylesheets, and the CSS-in-JS strings and style objects of every package; a fallback
+    // (`var(--s3, #f0a030)`) is still amber text.
+    const PACKAGES = join(REPO, 'packages');
+    const roots = [
+      join(REPO, 'apps/desktop/src/renderer'),
+      ...readdirSync(PACKAGES).map((p) => join(PACKAGES, p, 'src')),
+    ].filter((p) => existsSync(p));
     const offenders: string[] = [];
-    for (const root of ROOTS) {
+    for (const root of roots) {
       for (const file of walk(root)) {
-        if (!file.endsWith('.css') || file.endsWith(`${sep}tokens.css`)) continue;
+        if (!/\.(css|tsx?)$/.test(file) || /\.test\.tsx?$/.test(file)) continue;
+        if (file.endsWith(`${sep}tokens.css`)) continue;
         const css = readFileSync(file, 'utf8').replace(/\/\*[\s\S]*?\*\//g, '');
-        const n = count(css, /(?<![\w-])color\s*:\s*var\(--(?:s3|warn)\)/g);
+        const n = count(css, /(?<![\w-])color\s*:\s*['"`]?var\(--(?:s3|warn)[,)]/g);
         if (n) offenders.push(`${relative(REPO, file)}: ${String(n)}`);
       }
     }

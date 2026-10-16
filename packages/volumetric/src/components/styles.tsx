@@ -60,7 +60,7 @@ const css = `
 .vol-pill { font: 600 10.5px/1 var(--f-ui); letter-spacing: .06em; text-transform: uppercase; padding: 4px 7px; border-radius: var(--r-2); border: 1px solid var(--line); color: var(--fg-2); }
 .vol-pill.vol-cut { color: #e8794f; border-color: #e8794f66; }
 .vol-pill.vol-fill { color: #6aa6e8; border-color: #6aa6e866; }
-.vol-pill.edit { color: var(--s3); border-color: var(--s3-a); }
+.vol-pill.edit { color: var(--warn-ink); border-color: var(--s3-a); }
 .vol-dens { display: flex; align-items: center; gap: 8px; font-size: var(--t-12); color: var(--fg-2); }
 .vol-dens input { width: 64px; height: 24px; padding: 0 6px; border: 1px solid var(--line); border-radius: var(--r-4); background: var(--bg-2); color: var(--fg-0); font: 400 var(--t-12)/1 var(--f-mono); }
 .vol-dens span { color: var(--fg-3); font-size: var(--t-11); }

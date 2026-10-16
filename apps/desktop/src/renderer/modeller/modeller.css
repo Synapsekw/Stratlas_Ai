@@ -151,7 +151,7 @@
   border-color: currentColor;
 }
 .mb-st.draft {
-  color: var(--s3, #f0a030);
+  color: var(--warn-ink);
   border-color: currentColor;
 }
 .mb-st.rejected {

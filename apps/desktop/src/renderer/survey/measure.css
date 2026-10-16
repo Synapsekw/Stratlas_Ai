@@ -482,7 +482,7 @@ textarea.sv-input {
   color: var(--fg-0);
 }
 .sv-magic .warn {
-  color: var(--warn, #ffb454);
+  color: var(--warn-ink);
 }
 .sv-magic-range {
   display: inline-flex;
