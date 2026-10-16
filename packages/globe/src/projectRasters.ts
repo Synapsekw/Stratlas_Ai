@@ -4,7 +4,7 @@
  * focus shows and in what order. Pure: the imagery provider in `view/` builds on it.
  */
 import { localToProject } from '@aio/geo';
-import type { GlobeSite, Vec3 } from '@aio/schema';
+import { shiftCorners, type DateShift, type GlobeSite, type Vec3 } from '@aio/schema';
 import { projectToLonLat, type SiteGeoref } from './geodesy';
 
 /** A kit pyramid index as the Globe reads it. */
@@ -81,13 +81,16 @@ const GRID_MAX = 32;
  * bilinearly within a cell, and `toUv` inverts that by Newton's method, seeded by the affine map
  * of the three corners. The bilinear term a single affine map misses (a degree of longitude
  * shrinks northward: 3 cm at the far corner of a 600 m pyramid) is then left to the cells,
- * where it is well under a millimetre.
+ * where it is well under a millimetre. A date shift (metres east and north) moves the corners
+ * first, as `shiftCorners` does for every other reader of a raster's place.
  */
 export function pyramidPlacement(
   index: PyramidIndex,
   frame: Pick<SiteGeoref, 'crs' | 'origin'>,
+  shift?: DateShift | null,
 ): PyramidPlacement {
-  const { tl, tr, bl } = index.corners;
+  // the date's shift is added after the pyramid's own placement; (u, v) are unchanged
+  const { tl, tr, bl } = shiftCorners(index.corners, shift ?? null);
   const span = Math.max(
     Math.hypot(tr[0] - tl[0], tr[2] - tl[2]),
     Math.hypot(bl[0] - tl[0], bl[2] - tl[2]),

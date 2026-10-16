@@ -5,7 +5,7 @@
  * tilesets and layers as they are). The scene is reached through a host, so this holds no
  * CesiumJS of its own: the controller is the host.
  */
-import type { TilesetEntry } from '@aio/schema';
+import type { DateShift, TilesetEntry } from '@aio/schema';
 import type { SiteGeoref } from '../geodesy';
 import type { PyramidIndex } from '../projectRasters';
 
@@ -14,7 +14,13 @@ export interface SiteOutputRaster {
   layerId: string;
   src: string;
   index: PyramidIndex;
+  /** The date shift of the raster's layer, metres east and north; absent for none. */
+  shift?: DateShift;
 }
+
+/** A shift as a comparison key, to the millimetre; empty for none. */
+const shiftKeyOf = (s: DateShift | undefined): string =>
+  s ? `${Math.round(s.eastM * 1000)},${Math.round(s.northM * 1000)}` : '';
 
 /** What one site in focus draws on the Globe. */
 export interface SiteOutputs {
@@ -46,6 +52,7 @@ export interface SiteOutputHost<T, L, P> {
 
 interface RasterState<L, P> {
   src: string;
+  shiftKey: string;
   layer: L;
   provider: P;
 }
@@ -106,7 +113,9 @@ export class SiteOutputLayers<T, L, P> {
       }
       const shown = new Map(site.rasters.map((r) => [r.layerId, r]));
       for (const [layerId, r] of state.rasters) {
-        if (shown.get(layerId)?.src === r.src) continue;
+        const now = shown.get(layerId);
+        // another place (a date lined up, or taken back) is a new provider
+        if (now?.src === r.src && shiftKeyOf(now.shift) === r.shiftKey) continue;
         this.host.removeLayer(r.layer);
         this.host.disposeProvider(r.provider);
         state.rasters.delete(layerId);
@@ -116,6 +125,7 @@ export class SiteOutputLayers<T, L, P> {
         const provider = this.host.createProvider(site, raster);
         state.rasters.set(raster.layerId, {
           src: raster.src,
+          shiftKey: shiftKeyOf(raster.shift),
           provider,
           layer: this.host.addLayer(provider),
         });

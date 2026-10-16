@@ -36,7 +36,7 @@ import {
   type TilesetEntry,
 } from '@aio/schema';
 import { Icon, t, useT } from '@aio/ui';
-import { useWorkspace, workspace } from '@aio/workspace';
+import { dateShiftOf, useWorkspace, workspace } from '@aio/workspace';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useGraphics } from '../graphics';
 import { drawnBase } from '../maps/mapMenuModel';
@@ -54,7 +54,7 @@ import {
   clearPyramids,
   focusSites,
   loadPyramid,
-  pyramidKey,
+  outputRasters,
   shownOf,
   useSiteOutputs,
 } from './siteOutputsStore';
@@ -245,13 +245,15 @@ export default function GlobeScreen() {
         if (!georef) return [];
         const on = s?.frame ? new Set(shownOf(shown, s)) : new Set<string>();
         const rasters = s
-          ? rasterOrder(
-              (s.rasters ?? []).filter((r) => on.has(r.layerId)),
-              s.captures,
-            ).flatMap((r) => {
-              const index = indexes[pyramidKey(projectId, r.src)];
-              return index ? [{ layerId: r.layerId, src: r.src, index }] : [];
-            })
+          ? outputRasters(
+              projectId,
+              rasterOrder(
+                (s.rasters ?? []).filter((r) => on.has(r.layerId)),
+                s.captures,
+              ),
+              indexes,
+              open?.manifest ?? null,
+            )
           : [];
         return [{ projectId, georef, tilesets: entries, rasters }];
       }),
@@ -262,7 +264,9 @@ export default function GlobeScreen() {
     return {
       projectId: project.id,
       georef: georefOf(project.manifest),
-      pins: issuePins(issues, project.manifest),
+      pins: issuePins(issues, project.manifest, (layerId) =>
+        dateShiftOf(project.manifest, layerId),
+      ),
     };
   }, [project, issues, prefs.showIssues]);
   // an issue's card goes when its pin does: issues hidden, another project opened, the issue closed

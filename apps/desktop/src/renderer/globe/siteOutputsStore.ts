@@ -7,7 +7,8 @@
  * `./SiteOutputs` would find it on a case-insensitive disk (Windows).
  */
 import { defaultShown, parsePyramid, type PyramidIndex } from '@aio/globe';
-import type { GlobeSite } from '@aio/schema';
+import type { DateShift, GlobeRaster, GlobeSite, ProjectManifest } from '@aio/schema';
+import { layerDateShifts } from '@aio/workspace';
 import { create } from 'zustand';
 
 /** At most two sites in focus: the open project, then the picked site when it is another one. */
@@ -23,6 +24,27 @@ export type SwitchSite = Pick<GlobeSite, 'projectId' | 'captures' | 'rasters'>;
 
 /** The key of a pyramid index in `indexes` and the cache. */
 export const pyramidKey = (projectId: string, src: string): string => `${projectId}\n${src}`;
+
+/**
+ * The rasters a site in focus draws: each with its index (one not read yet is left out) and the
+ * date shift of its layer, so a lined-up date is drawn at its corrected place. `rasters` come in
+ * draw order. Only the open project has a manifest to take the shifts from; another site is
+ * drawn where its files are.
+ */
+export function outputRasters(
+  projectId: string,
+  rasters: readonly GlobeRaster[],
+  indexes: Readonly<Record<string, PyramidIndex | null | undefined>>,
+  manifest: Pick<ProjectManifest, 'captures' | 'layers'> | null,
+): { layerId: string; src: string; index: PyramidIndex; shift?: DateShift }[] {
+  const shifts = manifest ? layerDateShifts(manifest) : {};
+  return rasters.flatMap((r) => {
+    const index = indexes[pyramidKey(projectId, r.src)];
+    if (!index) return [];
+    const shift = shifts[r.layerId];
+    return [{ layerId: r.layerId, src: r.src, index, ...(shift ? { shift } : {}) }];
+  });
+}
 
 export interface SiteOutputsState {
   /** Shown layer ids per project; undefined means the site's defaults (`defaultShown`). */

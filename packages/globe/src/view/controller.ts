@@ -318,7 +318,7 @@ export class GlobeController {
       this.rasterTiles ??= new DecodedTileCache(budget);
       return new KitPyramidImageryProvider(
         raster.index,
-        pyramidPlacement(raster.index, site.georef),
+        pyramidPlacement(raster.index, site.georef, raster.shift),
         (path) => readProjectTile(site.projectId, path),
         { cacheTiles: budget, cache: this.rasterTiles },
       );

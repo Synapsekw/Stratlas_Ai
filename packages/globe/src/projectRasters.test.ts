@@ -153,6 +153,38 @@ describe('pyramidPlacement', () => {
     },
   );
 
+  it('places a pyramid with a date shift', () => {
+    const index = pyramid();
+    const shift = { eastM: 2, northM: 0 };
+    const [lon, lat] = pyramidPlacement(index, UTM, shift).toLonLat(0, 0);
+    const { tl } = index.corners;
+    const [elon, elat] = projectToLonLat(
+      localToProject([tl[0] + 2, tl[1], tl[2]], UTM.origin),
+      UTM.crs,
+    );
+    const [mx, my] = metresPerDegree(elat);
+    expect(Math.hypot((lon - elon) * mx, (lat - elat) * my)).toBeLessThan(0.02);
+    // north is minus z in the local frame
+    const [nlon, nlat] = pyramidPlacement(index, UTM, { eastM: 0, northM: 3 }).toLonLat(0, 0);
+    const [wlon, wlat] = projectToLonLat(
+      localToProject([tl[0], tl[1], tl[2] - 3], UTM.origin),
+      UTM.crs,
+    );
+    expect(Math.hypot((nlon - wlon) * mx, (nlat - wlat) * my)).toBeLessThan(0.02);
+    // a shifted pyramid still inverts to the same (u, v)
+    const place = pyramidPlacement(index, UTM, shift);
+    const [u, v] = place.toUv(...place.toLonLat(0.3, 0.6));
+    expect(Math.abs(u - 0.3)).toBeLessThan(1e-9);
+    expect(Math.abs(v - 0.6)).toBeLessThan(1e-9);
+  });
+
+  it('places without a shift, or a zero one, as before', () => {
+    const index = pyramid();
+    const a = pyramidPlacement(index, UTM).toLonLat(0.5, 0.5);
+    expect(pyramidPlacement(index, UTM, undefined).toLonLat(0.5, 0.5)).toEqual(a);
+    expect(pyramidPlacement(index, UTM, { eastM: 0, northM: 0 }).toLonLat(0.5, 0.5)).toEqual(a);
+  });
+
   it('the WKT places like the EPSG code', () => {
     const index = pyramid();
     const a = pyramidPlacement(index, UTM).toLonLat(0.5, 0.5);

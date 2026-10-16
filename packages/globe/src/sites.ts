@@ -1,4 +1,13 @@
-import type { GlobeSite, Issue, ProjectManifest, SeverityModel, Sighting, Vec3 } from '@aio/schema';
+import {
+  shiftLocal,
+  type DateShift,
+  type GlobeSite,
+  type Issue,
+  type ProjectManifest,
+  type SeverityModel,
+  type Sighting,
+  type Vec3,
+} from '@aio/schema';
 
 /**
  * Library projects and their issues as pins on the Globe: where each pin goes and what it says.
@@ -48,16 +57,22 @@ export interface IssuePin {
   severity: Issue['severity'];
 }
 
-/** Open issues (not closed) with a 3D anchor, as pins. */
+/**
+ * Open issues (not closed) with a 3D anchor, as pins. `shiftOf` gives the date shift of a layer
+ * (null for none): a pin sits at its sighting's lined-up place.
+ */
 export function issuePins(
   issues: readonly Issue[],
   manifest: Pick<ProjectManifest, 'severityModels'>,
+  shiftOf?: (layerId: string) => DateShift | null,
 ): IssuePin[] {
   const out: IssuePin[] = [];
   for (const i of issues) {
     if (i.status === 'closed') continue;
-    const local = i.sightings.map(sightingAnchor).find((a) => a !== null);
-    if (!local) continue;
+    const at = i.sightings.find((s) => sightingAnchor(s) !== null);
+    const anchor = at ? sightingAnchor(at) : null;
+    if (!at || !anchor) continue;
+    const local = shiftLocal(anchor, shiftOf?.(at.layer) ?? null);
     out.push({
       id: i.id,
       code: i.code,
