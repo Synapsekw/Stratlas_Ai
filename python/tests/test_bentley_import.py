@@ -179,3 +179,95 @@ def test_the_capture_comes_from_photos_in_the_layer(tmp_path, monkeypatch):
     (layer,) = [x for x in m["layers"] if x["kind"] == "photos"]
     assert len(layer["items"]) == 2 and layer["capture"] == "capture-2026-03-04"
     assert [c["date"] for c in m["captures"]] == ["2026-03-04"]
+
+
+def _with_offset(root, offset):
+    m = _manifest(root)
+    m["verticalDatum"] = {"absAltOffsetM": offset}
+    (root / "manifest.json").write_text(json.dumps(m), "utf-8")
+
+
+def _sparse_heights(root, run_id):
+    """Camera centre heights (grid frame) from the run's COLMAP images.txt, sorted."""
+    import numpy as np
+
+    from aio_pipelines.opf.geometry import quat_wxyz_to_matrix
+
+    lines = (root / "photogrammetry" / run_id / "sparse" / "images.txt").read_text("utf-8").splitlines()
+    rows = [ln for ln in lines if not ln.startswith("#")]  # pose line, then its (empty) points line
+    out = []
+    for row in rows[::2]:
+        f = row.split()
+        q, t = [float(v) for v in f[1:5]], [float(v) for v in f[5:8]]
+        out.append(float((-quat_wxyz_to_matrix(q).T @ np.asarray(t))[2]))
+    return sorted(out)
+
+
+def _photo_heights(layer):
+    return sorted(item["pos"][1] for item in layer["items"])
+
+
+def _raw_heights(off=0.0):
+    return sorted(c[2] - bs.ORIGIN[2] + off for c in bs.CENTRES)
+
+
+def _run(root, layer):
+    path = root / "photogrammetry" / layer["id"].removeprefix("photos-") / "run.json"
+    return json.loads(path.read_text("utf-8"))
+
+
+def test_photos_and_the_cloud_take_the_same_photo_altitude_correction(tmp_path, monkeypatch):
+    """A block SRS with no vertical CRS: the photo poses take the project's photo altitude
+    correction (verticalDatum.absAltOffsetM), as a .zpc cloud of the same block does, so
+    photo Z = raw Z + the cloud's heightOffsetM."""
+    from aio_pipelines import pointcloud as pc
+
+    root, out = _setup(tmp_path)
+    _with_offset(root, -30.8104)  # rounded to the mm, as the cloud's offset is
+    z = bs.make_zpc(tmp_path / "c.zpc", tiles=1)
+    monkeypatch.setattr(pc, "find_pdal", lambda: "pdal")
+
+    def convert(ctx, pdal, src, epsg):
+        ctx.stage("cloud.copc.laz").write_bytes(b"copc")
+        return {"points": 500, "bytes": 4, "tiles": 1, "source": "zpc", "vertical": False}
+
+    monkeypatch.setattr(pc, "convert_zpc", convert)
+    cloud_job, _ = run_job(pc.PointcloudToCopc(), root, {"src": z["zpc"], "epsg": bs.EPSG}, job_id="c1")
+    assert cloud_job["status"] == "done", cloud_job
+    result, rec = run_job(BentleyImport(), root, {"xml": out["xml"], "photos": out["photos"]})
+    assert result["status"] == "done", result
+    m = _manifest(root)
+    (cloud,) = [x for x in m["layers"] if x["kind"] == "pointcloud"]
+    (layer,) = [x for x in m["layers"] if x["kind"] == "photos"]
+    off = cloud["heightOffsetM"]
+    assert off == -30.81
+    assert _photo_heights(layer) == pytest.approx(_raw_heights(off), abs=1e-4)
+    assert _sparse_heights(root, layer["id"].removeprefix("photos-")) == pytest.approx(
+        _raw_heights(off), abs=1e-6
+    )
+    (line,) = [p["message"] for p in rec.of("log") if "photo altitude correction" in p["message"]]
+    assert "-30.81 m" in line and "verticalDatum.absAltOffsetM" in line
+    assert "ellipsoid" not in line and "geoid" not in line
+    assert _run(root, layer)["settings"]["bentley"]["heightOffsetM"] == -30.81
+
+
+def test_a_block_srs_with_a_vertical_crs_keeps_the_photo_heights(tmp_path):
+    root = bs.make_project(tmp_path / "proj")
+    out = bs.make_block(tmp_path / "bentley", srs=f"EPSG:{bs.EPSG}+5773")
+    _with_offset(root, -30.81)
+    result, rec = run_job(BentleyImport(), root, {"xml": out["xml"], "photos": out["photos"]})
+    assert result["status"] == "done", result
+    (layer,) = [x for x in _manifest(root)["layers"] if x["kind"] == "photos"]
+    assert _photo_heights(layer) == pytest.approx(_raw_heights(), abs=1e-4)
+    assert "heightOffsetM" not in _run(root, layer)["settings"]["bentley"]
+    assert not [p for p in rec.of("log") if "photo altitude correction" in p["message"]]
+
+
+def test_a_project_without_a_photo_altitude_correction_keeps_the_photo_heights(tmp_path):
+    root, out = _setup(tmp_path)
+    result, rec = run_job(BentleyImport(), root, {"xml": out["xml"], "photos": out["photos"]})
+    assert result["status"] == "done", result
+    (layer,) = [x for x in _manifest(root)["layers"] if x["kind"] == "photos"]
+    assert _photo_heights(layer) == pytest.approx(_raw_heights(), abs=1e-4)
+    assert "heightOffsetM" not in _run(root, layer)["settings"]["bentley"]
+    assert not [p for p in rec.of("log") if "photo altitude correction" in p["message"]]

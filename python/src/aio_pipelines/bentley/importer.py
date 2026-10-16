@@ -63,10 +63,11 @@ def plan_import(block, frame, manifest: dict[str, Any], matching, name: str, roo
 
     from ..opf import colmap
     from ..opf.geometry import lens_to_colmap
-    from .convert import camera_pose, lens_of, lens_record
+    from .convert import camera_pose, lens_of, lens_record, photo_altitude_offset
     from .match import photo_id
 
     origin = [float(v) for v in (manifest.get("origin") or [0, 0, 0])]
+    height_offset = photo_altitude_offset(frame, manifest)
     lenses = {g.index: lens_of(g) for g in block.groups}
     model = colmap.Model()
     for g in block.groups:
@@ -79,7 +80,7 @@ def plan_import(block, frame, manifest: dict[str, Any], matching, name: str, roo
         f = matching.found.get(p.id)
         if f is None:
             continue
-        pose = camera_pose(p, frame, origin)
+        pose = camera_pose(p, frame, origin, height_offset)
         g = block.groups[p.group]
         key = f.relative_to(root).as_posix()  # the photo key: model image name, photos.json key
         rec = {
@@ -134,6 +135,7 @@ def plan_import(block, frame, manifest: dict[str, Any], matching, name: str, roo
         "rejected": rejected,
         "groups": groups,
         "badDates": bad_dates,
+        **({"heightOffsetM": height_offset} if height_offset else {}),
         "warnings": frame.notes,
         "summary": {
             "photos": len(block.photos),
@@ -225,6 +227,13 @@ class BentleyImport:
                     f"{plan['badDates']} photos have a date that could not be read; "
                     "the survey date comes from the others.",
                     "warn",
+                )
+            if plan.get("heightOffsetM"):
+                ctx.log(
+                    "The block's SRS names no height datum; its photos carry the same uncorrected "
+                    "photo altitudes as a cloud built from them, so they are shifted by the project's "
+                    f"photo altitude correction (verticalDatum.absAltOffsetM), {plan['heightOffsetM']:+.2f} m. "
+                    "Use Align to if the photos are off."
                 )
             for w in plan["warnings"]:
                 ctx.log(w, "warn")
@@ -325,7 +334,12 @@ def _commit(ctx: StepContext, plan: dict[str, Any], params: dict[str, Any]) -> d
         "crs": manifest.get("crs"),
         **({"capture": capture} if capture else {}),
         "settings": {
-            "bentley": {"xml": Path(params["xml"]).name, "photos": plan["root"], "version": plan["version"]}
+            "bentley": {
+                "xml": Path(params["xml"]).name,
+                "photos": plan["root"],
+                "version": plan["version"],
+                **({"heightOffsetM": plan["heightOffsetM"]} if plan.get("heightOffsetM") else {}),
+            }
         },
         "stages": [
             {"name": "inspect", "state": "done", "message": "Read from the Bentley block"},

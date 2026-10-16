@@ -6,7 +6,10 @@
 - **Frame**: the block SRS must be a projected CRS with an EPSG code. It is read through
   ``opf.geometry.SceneFrame`` with a zero shift, a unit scale and the label "block", so a block in
   another CRS than the project is reprojected horizontally and its camera axes turn with the grid,
-  exactly as ``opf.import`` does; heights are used as they are. The frame's notes speak of the
+  exactly as ``opf.import`` does. Heights are used as they are, except that a block SRS naming no
+  vertical CRS takes the project's photo altitude correction (``verticalDatum.absAltOffsetM``),
+  applied because the photos carry the same uncorrected photo altitudes as a ``.zpc`` cloud of
+  the block, which takes it too (``photo_altitude_offset``). The frame's notes speak of the
   block, never of OPF.
 - **Lens**: focal and principal point in pixels; Bentley's Brown model on normalised
   coordinates. Its tangential terms are taken to be in the other order from OpenCV's
@@ -75,11 +78,29 @@ class Pose:
     enh: np.ndarray  # project easting, northing, height
 
 
-def camera_pose(photo: BlockPhoto, frame: SceneFrame, origin) -> Pose:
-    """An aligned photo's pose in the project frame, for the photos layer and for COLMAP."""
+def photo_altitude_offset(frame: SceneFrame, manifest: dict[str, Any]) -> float:
+    """Metres added to the block's photo heights (Decision 7): the project's photo altitude
+    correction (``verticalDatum.absAltOffsetM``, rounded to the mm), applied because the block's
+    photos carry the same uncorrected photo altitudes as a ``.zpc`` cloud of it, which takes the
+    same correction. 0 when the block SRS names a vertical CRS or the project has no correction."""
+    raw = (manifest.get("verticalDatum") or {}).get("absAltOffsetM")
+    if (
+        not isinstance(raw, int | float)
+        or isinstance(raw, bool)
+        or not np.isfinite(raw)
+        or frame.info.vertical
+    ):
+        return 0.0
+    return round(float(raw), 3) or 0.0
+
+
+def camera_pose(photo: BlockPhoto, frame: SceneFrame, origin, height_offset: float = 0.0) -> Pose:
+    """An aligned photo's pose in the project frame, for the photos layer and for COLMAP;
+    ``height_offset`` metres are added to its height (``photo_altitude_offset``)."""
     if photo.rotation is None or photo.centre is None:
         raise JobError(f"The photo {photo.id} is not aligned.")
     enh = frame.to_project(photo.centre)[0]
+    enh[2] += height_offset
     r_enu = frame.axes_at(photo.centre) @ (photo.rotation.T @ FLIP)
     pos, q = local_pose(r_enu, enh, origin)
     qvec, tvec = opf_to_colmap(r_enu, enh)

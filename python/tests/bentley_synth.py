@@ -209,6 +209,8 @@ if __name__ == "__main__":
                 "zpc": z["zpc"],
                 "points": z["points"],
                 "headerDay": z["headerDay"],
+                # the camera centres' raw heights in the block, before any correction
+                "centreHeights": [c[2] for c in CENTRES],
             }
         )
     )

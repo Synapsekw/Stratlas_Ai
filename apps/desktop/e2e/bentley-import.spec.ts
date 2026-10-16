@@ -20,8 +20,9 @@ import {
  * from the tiles' LAS header (the export day); the cloud becomes one COPC layer filed under the
  * day picked, the photos one layer of three posed cameras under the same date, and a photo opens
  * from Media. The project has a photo altitude correction
- * (`verticalDatum.absAltOffsetM`) and the synthetic .zpc names no height datum, so the cloud takes
- * that correction as its `heightOffsetM`.
+ * (`verticalDatum.absAltOffsetM`) and neither the synthetic .zpc nor the block's SRS names a
+ * height datum, so the cloud takes that correction as its `heightOffsetM` and the photo poses
+ * take it in their heights: photos and cloud agree.
  */
 const SYNTH = join(import.meta.dirname, '..', '..', '..', 'python', 'tests', 'bentley_synth.py');
 
@@ -78,7 +79,14 @@ test.describe('Bentley import', () => {
       execFileSync(VENV_PYTHON, [SYNTH, join(dataRoot.base, 'bentley')], {
         encoding: 'utf8',
       }).trim(),
-    ) as { xml: string; photos: string; zpc: string; points: number; headerDay: string };
+    ) as {
+      xml: string;
+      photos: string;
+      zpc: string;
+      points: number;
+      headerDay: string;
+      centreHeights: number[];
+    };
     await win.getByTestId('project-card').filter({ hasText: 'E2E tiny project' }).click();
     await expect(win.locator('[data-scene-view] canvas')).toBeVisible();
 
@@ -128,6 +136,15 @@ test.describe('Bentley import', () => {
       expect(item.pos).toHaveLength(3);
       expect(item.lens).toMatchObject({ model: 'pinhole', cx: 322.5 });
     }
+    // the block's SRS names no height datum either: the photos take the same correction as the
+    // cloud, so they sit where the cloud does (pos[1] = raw height - origin height + offset)
+    const offset = cloud?.kind === 'pointcloud' ? (cloud.heightOffsetM ?? 0) : 0;
+    const heights = photos.items.map((i) => i.pos?.[1] ?? Number.NaN).sort((a, b) => a - b);
+    const expected = fx.centreHeights.map((h) => h - m.origin[2] + offset).sort((a, b) => a - b);
+    expect(heights).toHaveLength(expected.length);
+    expected.forEach((h, i) => {
+      expect(heights[i]).toBeCloseTo(h, 3);
+    });
     // the cloud and the photos share one date: the day picked, not the export day
     const sameDay = m.captures.filter((c) => c.date === '2026-03-04');
     expect(sameDay).toHaveLength(1);
