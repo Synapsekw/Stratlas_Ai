@@ -8,7 +8,7 @@ import type { Selection, Workspace } from './index';
  */
 
 /** Layer kinds that can belong to one survey date. Basemaps and retired viewers never do. */
-const DATED_KINDS: ReadonlySet<Layer['kind']> = new Set([
+export const DATED_KINDS: ReadonlySet<Layer['kind']> = new Set([
   'mesh',
   'pointcloud',
   'raster',

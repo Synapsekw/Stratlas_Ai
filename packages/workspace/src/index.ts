@@ -359,3 +359,5 @@ export {
   useLayerDisplay,
 } from './layerDisplay';
 export type { LayerDisplay, LayerDisplayState } from './layerDisplay';
+
+export { captureShift, dateShiftOf, hintOnlyLayers, layerDateShifts, shiftKey } from './dateShifts';
