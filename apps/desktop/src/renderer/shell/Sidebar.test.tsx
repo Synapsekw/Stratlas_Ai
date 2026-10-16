@@ -301,3 +301,84 @@ describe('Datasets: Delete in the menus', () => {
     expect(asked).toEqual([[{ layer: 'walk-a' }]]);
   });
 });
+
+describe('Datasets: menus', () => {
+  const rightClickAt = (el: Element) => {
+    act(() => {
+      el.dispatchEvent(
+        new MouseEvent('contextmenu', {
+          bubbles: true,
+          cancelable: true,
+          clientX: 30,
+          clientY: 30,
+        }),
+      );
+    });
+  };
+
+  it('a right-click on empty space opens the project menu, on a row it does not', () => {
+    render(null);
+    rightClickAt(document.body.querySelector('.sb-tree .tree-h') ?? document.body);
+    expect(q('ctx-menu')).not.toBeNull();
+    expect(q('ctx-item-project.addData')).not.toBeNull();
+    act(() => {
+      document.body.dispatchEvent(new Event('pointerdown', { bubbles: true }));
+    });
+    expect(q('ctx-menu')).toBeNull();
+    rightClick('tree-row-walk-a');
+    expect(q('ctx-menu')).toBeNull();
+    expect(q('move-menu')).not.toBeNull();
+  });
+
+  it('Shift+F10 with focus in the section header opens the project menu', () => {
+    render(null);
+    const header = document.body.querySelector('.sb-tree .tree-h');
+    const e = new KeyboardEvent('keydown', {
+      key: 'F10',
+      shiftKey: true,
+      bubbles: true,
+      cancelable: true,
+    });
+    act(() => {
+      header?.dispatchEvent(e);
+    });
+    expect(e.defaultPrevented).toBe(true);
+    expect(q('ctx-item-project.addData')).not.toBeNull();
+  });
+
+  it('a basemap row opens a menu', () => {
+    render(null, withKept);
+    rightClick('tree-row-bm');
+    expect(q('move-menu')).not.toBeNull();
+  });
+
+  it('the Issues row opens a menu', () => {
+    const issue = {
+      id: 'i1',
+      status: 'draft',
+    };
+    render(null);
+    act(() => {
+      workspace.setState({ issues: [issue] } as unknown as Partial<
+        ReturnType<typeof workspace.getState>
+      >);
+    });
+    const row = [...document.body.querySelectorAll('.titem')].find((el) =>
+      el.textContent.startsWith('Issues'),
+    );
+    if (!row) throw new Error('no Issues row');
+    rightClickAt(row);
+    expect(q('ctx-menu')).not.toBeNull();
+    expect(q('ctx-item-annotations.open')).not.toBeNull();
+  });
+
+  it('marked rows open one menu for all of them', () => {
+    render(null);
+    click('tree-row-walk-a', { ctrlKey: true });
+    click('tree-row-walk-b', { ctrlKey: true });
+    rightClick('tree-row-walk-a');
+    expect(q('move-menu')?.textContent).toContain('2 datasets');
+    click('menu-delete');
+    expect(asked).toEqual([[{ layer: 'walk-a' }, { layer: 'walk-b' }]]);
+  });
+});

@@ -11,12 +11,14 @@ import {
   type MenuTarget,
   type SubItem,
 } from '@aio/ui';
+import { volumetric } from '@aio/volumetric';
 import { captureIndex, workspace } from '@aio/workspace';
 import { Fragment } from 'react';
 import { builder } from '../../builder/state';
 import { listenExportProgress, toasts } from '../../exports/exports';
 import { graphics } from '../../graphics';
 import { bridge, shell } from '../../shell';
+import { volumeHints } from '../../workspace/compare';
 import { compareTargets, compareWith, COMPARE_WITH_ACTIONS } from '../../workspace/compareWith';
 import type { CompareContext, CompareRequest } from '../../workspace/compareWith';
 import { layerCapture } from '../../workspace/framesModel';
@@ -106,11 +108,11 @@ export async function exportLayersFlow(layerIds: readonly string[]): Promise<voi
 }
 
 /** What "Compare with" reads, taken from the stores and the menu's manifest (no hooks). */
-function compareContextFor(ctx: ActionCtx): CompareContext {
+export function compareContextFor(ctx: ActionCtx): CompareContext {
   const project = workspace.getState().project;
   return {
     layers: ctx.manifest.layers,
-    index: captureIndex(ctx.manifest),
+    index: captureIndex(ctx.manifest, volumeHints(volumetric.getState())),
     stageMode: shell.getState().stageMode,
     split:
       (project ? stagePrefs.getState().byProject[project.id]?.split : undefined) ?? DEFAULT_SPLIT,

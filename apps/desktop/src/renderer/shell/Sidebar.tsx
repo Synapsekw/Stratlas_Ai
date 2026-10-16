@@ -5,7 +5,6 @@ import {
   buildDatasetTree,
   buildDateTree,
   captureLabelFor,
-  datableLayerIds,
   DatasetTree,
   DateTree,
   EVERY_DATE,
@@ -13,6 +12,10 @@ import {
   formatDate,
   groupDatableLayerIds,
   Icon,
+  isMenuKey,
+  keyMenuPoint,
+  makeActionCtx,
+  menuPoint,
   nextMarks,
   NO_MARKS,
   t,
@@ -22,6 +25,11 @@ import {
   VisibilityEye,
   type DateFolderMenuRequest,
   type DateItemMenuRequest,
+  type GroupFold,
+  type MenuPoint,
+  type TreeGroupKind,
+  NO_HOST,
+  type ActionHost,
   type IconName,
   type MarkMods,
   type Marks,
@@ -33,11 +41,7 @@ import {
 import { dateTags, useWorkspace, workspace } from '@aio/workspace';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { openAuditTrail } from '../audit/auditView';
-import type { Layer } from '@aio/schema';
 import { builder } from '../builder/state';
-import { createEngineeringModel, ENGINEERING_SOURCES, engineeringUiOn } from '../engineer/ui';
-import { CLEANUP_ACTIONS, cleanupActionContext } from '../pointcloud/cleanupActions';
-import { useCleanup } from '../pointcloud/cleanupStore';
 import { DrawingControls } from '../drawings/DrawingControls';
 import { drawings, unplacedOf, useDrawings } from '../drawings/store';
 import { useMedia } from '../media';
@@ -58,13 +62,18 @@ import { selectClip } from '../workspace/pickClip';
 import { timeline, useTimeline } from '../workspace/timeline';
 import { moveLayersToDate, undoDateMove, updateCapture } from './dateFolders';
 import { AddSurveyDateButton } from './AddSurveyDate';
-import { DateFolderMenu, LayerDateMenu, type LayerMenuAction } from './DateMenus';
+import { registerSidebarActions } from './actions';
+import { commitLayerRename } from './actions/layerActions';
+import { TreeMenu, type TreeMenuRequest } from './DateMenus';
 import { DateNotes, type DateNote } from './DateNotes';
+import { menuTitle, rowTarget } from './menuTargets';
+import { renameRequest, useRenameRequest } from './renameRequest';
 import { askRemove, removal, useRemoval } from './removal';
 import { EmptyTrashDialog } from './RemoveHost';
 import './surveyDates.css';
 
 watchPanoStitches();
+registerSidebarActions();
 
 interface NavDef {
   screen: Screen;
@@ -243,33 +252,6 @@ function ProjectSwitcher({ collapsed }: { collapsed: boolean }) {
   );
 }
 
-/** Place model... for a right-click on one model row (any mesh layer); nothing otherwise. */
-function placeModelOf(
-  layers: readonly Layer[],
-  layerIds: readonly string[],
-): (() => void) | undefined {
-  const [id] = layerIds;
-  if (layerIds.length !== 1 || !layers.some((l) => l.id === id && l.kind === 'mesh'))
-    return undefined;
-  return () => {
-    if (id) builder.getState().startAlign({ kind: 'place', layerId: id });
-  };
-}
-
-/** Create engineering model... for one point cloud, model or photos row; nothing otherwise. */
-export function engineeringOf(
-  layers: readonly Layer[],
-  layerIds: readonly string[],
-): (() => void) | undefined {
-  const [id] = layerIds;
-  if (!engineeringUiOn() || layerIds.length !== 1) return undefined;
-  const layer = layers.find((l) => l.id === id);
-  if (!layer || !ENGINEERING_SOURCES.includes(layer.kind)) return undefined;
-  return () => {
-    createEngineeringModel([layer.id]);
-  };
-}
-
 function Datasets({ collapsed }: { collapsed: boolean }) {
   const project = useWorkspace((s) => s.project);
   const issues = useWorkspace((s) => s.issues);
@@ -328,27 +310,9 @@ function Datasets({ collapsed }: { collapsed: boolean }) {
   // and not for a reviewer who may only look
   const lookOnly = useAnnotateReadOnly();
   const canEdit = !readOnly && !lookOnly;
-  const [folderMenu, setFolderMenu] = useState<DateFolderMenuRequest | null>(null);
-  const [itemMenu, setItemMenu] = useState<DateItemMenuRequest | null>(null);
-  const cleanupLayers = useCleanup((s) => s.layers);
-  const layerActions = (m: DateItemMenuRequest): LayerMenuAction[] => {
-    const [only] = m.layerIds;
-    const layer =
-      m.layerIds.length === 1 ? project?.manifest.layers.find((l) => l.id === only) : undefined;
-    if (!layer) return [];
-    const target = {
-      layer,
-      readOnly: !canEdit,
-      hasRecipe: Boolean(cleanupLayers[layer.id]?.present),
-    };
-    return CLEANUP_ACTIONS.filter((a) => a.applies(target)).map((a) => ({
-      id: a.id,
-      label: t(a.label),
-      testId: `menu-${a.id.replace('.', '-')}`,
-      danger: a.id === 'pointcloud.resetCleanup',
-      run: () => void a.run(target, cleanupActionContext),
-    }));
-  };
+  const [menu, setMenu] = useState<TreeMenuRequest | null>(null);
+  const layerRenaming = useRenameRequest((st) => st.layerId);
+  const [unplace, setUnplace] = useState<{ id: string; seq: number } | null>(null);
   const [renaming, setRenaming] = useState<string | null>(null);
   const [note, setNote] = useState<DateNote | null>(null);
   // rows marked with Ctrl or Shift for one Delete
@@ -362,8 +326,8 @@ function Datasets({ collapsed }: { collapsed: boolean }) {
   const [notedFor, setNotedFor] = useState(projectId);
   if (notedFor !== projectId) {
     setNotedFor(projectId);
-    setFolderMenu(null);
-    setItemMenu(null);
+    setMenu(null);
+    setUnplace(null);
     setRenaming(null);
     setNote(null);
     setMarks(NO_MARKS);
@@ -452,6 +416,102 @@ function Datasets({ collapsed }: { collapsed: boolean }) {
     const capture = project.manifest.captures.find((c) => c.id === captureId);
     if (!capture) return;
     void updateCapture(captureId, { label: captureLabelFor(capture, name) }).then(failed);
+  };
+
+  const askEmpty = () => {
+    // what an earlier Empty held is forgotten, so this one's held entries note again
+    removal.setState({ held: 0 });
+    setEmptying(true);
+  };
+
+  // what the registered actions read and call; rebuilt every render so an open menu stays live
+  const host: Partial<ActionHost> = {
+    note: (text, danger) => {
+      setNote({ text, danger: danger === true });
+    },
+    renameDate: setRenaming,
+    moveLayers: onMove,
+    askUnplace: (id) => {
+      setUnplace((u) => ({ id, seq: (u?.seq ?? 0) + 1 }));
+    },
+    emptyTrash: askEmpty,
+  };
+  const ctx = makeActionCtx({
+    manifest: project.manifest,
+    hidden,
+    canEdit,
+    pkg: readOnly,
+    datesOn,
+    focus,
+    tags,
+    folderLayers: Object.fromEntries(folders.map((f) => [f.id, f.layerIds])),
+    trashEntries: trash?.entries ?? 0,
+    drafts: issues.filter((i) => i.status === 'draft').length,
+    host: { ...NO_HOST, ...host },
+  });
+
+  const openProject = (at: MenuPoint) => {
+    const name = project.manifest.name;
+    setMenu({
+      target: { kind: 'project' },
+      ...at,
+      title: name,
+      label: t('actions.menu.label', { name }),
+      testId: 'ctx-menu',
+      host: {},
+    });
+  };
+  /** A row's menu: the marked rows when it is one of them, else the row. */
+  const openRow = (item: TreeItem, at: MenuPoint, from: string) => {
+    const target = rowTarget(item, marks.marked);
+    if (!target) return;
+    setMenu({
+      target,
+      ...at,
+      title: menuTitle(target, ctx, item.name),
+      label: t('actions.menu.label', { name: item.name }),
+      testId: target.kind === 'layers' ? 'move-menu' : 'ctx-menu',
+      host: { from },
+    });
+  };
+  /** A group heading's menu; every heading has one, one without layers too. */
+  const openGroup = (
+    group: TreeGroupKind,
+    title: string,
+    layerIds: string[],
+    at: MenuPoint,
+    from: string,
+    fold: GroupFold,
+  ) => {
+    const target = {
+      kind: 'group' as const,
+      group,
+      layerIds,
+      captureId: from === EVERY_DATE ? null : from,
+    };
+    setMenu({
+      target,
+      ...at,
+      title,
+      label: t('actions.menu.label', { name: title }),
+      testId: 'move-menu',
+      host: { toggle: fold.toggle, expanded: fold.expanded, from },
+    });
+  };
+  const openFolder = (m: DateFolderMenuRequest) => {
+    setMenu({
+      target: { kind: 'date', captureId: m.folder.capture?.id ?? null },
+      x: m.x,
+      y: m.y,
+      title: m.folder.sub ? `${m.folder.label} · ${m.folder.sub}` : m.folder.label,
+      label: t('tree.dates.menu.label', { date: m.folder.label }),
+      testId: 'date-menu',
+      host: { toggle: m.toggle, expanded: m.expanded, from: m.folder.id },
+    });
+  };
+  const onDatesMenu = (m: DateItemMenuRequest) => {
+    if (m.item) openRow(m.item, m, m.from);
+    else if (m.group && m.fold) openGroup(m.group, m.name, m.layerIds, m, m.from, m.fold);
   };
 
   const selectedId =
@@ -580,6 +640,21 @@ function Datasets({ collapsed }: { collapsed: boolean }) {
 
   // Ctrl+click, Shift+click, Ctrl+Space and Shift+ArrowUp/Down mark rows (not in a package, nor
   // for a reviewer who may only look)
+  const layerRenameProps = {
+    renamingLayer: canEdit ? layerRenaming : null,
+    onRenameLayerStart: canEdit
+      ? (id: string) => {
+          renameRequest.getState().ask(id);
+        }
+      : undefined,
+    onRenameLayer: (id: string, name: string) => {
+      void commitLayerRename(id, name).then(failed);
+    },
+    onRenameLayerEnd: () => {
+      renameRequest.getState().done();
+    },
+    unplaceRequest: unplace,
+  };
   const markProps = { marked: marks.marked, onMark: canEdit ? onMark : undefined };
 
   // while rows are marked the header offers their Delete in place of the count and the add tools
@@ -589,11 +664,23 @@ function Datasets({ collapsed }: { collapsed: boolean }) {
   return (
     <div
       className="sb-sec sb-tree"
+      onContextMenu={(e) => {
+        // rows, groups and folders handle their own; a field keeps the system menu
+        if (e.defaultPrevented) return;
+        if (e.target instanceof Element && e.target.closest('input, textarea')) return;
+        e.preventDefault();
+        openProject(menuPoint(e));
+      }}
       onKeyDown={(e) => {
         // keys typed in a menu or dialog the tree opened (portals) are theirs, not the tree's
         if (!(e.target instanceof Element) || !e.currentTarget.contains(e.target)) return;
         // and keys typed in a field (a date's name) are the field's
         if (e.target.closest('input, textarea, select, [contenteditable]')) return;
+        if (isMenuKey(e)) {
+          e.preventDefault();
+          openProject(keyMenuPoint(e.target as HTMLElement));
+          return;
+        }
         if (marked && e.key === 'Escape') {
           e.stopPropagation();
           setMarks(NO_MARKS);
@@ -718,15 +805,16 @@ function Datasets({ collapsed }: { collapsed: boolean }) {
           {...drawingProps}
           {...walkProps}
           {...markProps}
-          onFolderMenu={setFolderMenu}
+          onFolderMenu={openFolder}
           onMove={canEdit ? onMove : undefined}
-          onItemMenu={setItemMenu}
+          onItemMenu={onDatesMenu}
           renaming={canEdit ? renaming : null}
           onRenameStart={canEdit ? setRenaming : undefined}
           onRename={onRename}
           onRenameEnd={() => {
             setRenaming(null);
           }}
+          {...layerRenameProps}
         />
       ) : (
         <DatasetTree
@@ -748,18 +836,19 @@ function Datasets({ collapsed }: { collapsed: boolean }) {
           }}
           // survey dates off: rows and group headers still have a menu (Compare, Delete)
           onItemMenu={(it, at) => {
-            const layerIds = datableLayerIds(it);
-            if (layerIds.length > 0)
-              setItemMenu({ name: it.name, item: it, layerIds, from: EVERY_DATE, ...at });
+            openRow(it, at, EVERY_DATE);
           }}
           dragGroupIds={groupDatableLayerIds}
-          onGroupMenu={(g, layerIds, at) => {
-            setItemMenu({
-              name: t('tree.dates.move.group', { group: g.label, count: layerIds.length }),
+          {...layerRenameProps}
+          onGroupMenu={(g, layerIds, at, fold) => {
+            openGroup(
+              g.kind,
+              t('tree.dates.move.group', { group: g.label, count: layerIds.length }),
               layerIds,
-              from: EVERY_DATE,
-              ...at,
-            });
+              at,
+              EVERY_DATE,
+              fold,
+            );
           }}
         />
       )}
@@ -772,11 +861,7 @@ function Datasets({ collapsed }: { collapsed: boolean }) {
             type="button"
             className="tree-foot-btn"
             data-testid="tree-trash-empty"
-            onClick={() => {
-              // what an earlier Empty held is forgotten, so this one's held entries note again
-              removal.setState({ held: 0 });
-              setEmptying(true);
-            }}
+            onClick={askEmpty}
           >
             {t('tree.trash.empty')}
           </button>
@@ -790,50 +875,13 @@ function Datasets({ collapsed }: { collapsed: boolean }) {
           }}
         />
       )}
-      {datesOn && folderMenu && (
-        <DateFolderMenu
-          menu={folderMenu}
-          folder={folders.find((f) => f.id === folderMenu.folder.id) ?? folderMenu.folder}
-          tag={tags[folderMenu.folder.id]}
-          focused={folderMenu.folder.id === focus}
-          hidden={hidden}
-          canEdit={canEdit}
+      {menu && (
+        <TreeMenu
+          request={menu}
+          ctx={ctx}
           onClose={() => {
-            setFolderMenu(null);
+            setMenu(null);
           }}
-          onFocus={(id) => {
-            timeline.getState().focusSurvey(id);
-          }}
-          onSetVisible={setVisible}
-          onRename={setRenaming}
-          onStyle={(id, patch) => {
-            void updateCapture(id, patch).then(failed);
-          }}
-          onDelete={
-            canEdit
-              ? (capture) => {
-                  askRemove([{ capture }]);
-                }
-              : undefined
-          }
-        />
-      )}
-      {itemMenu && (
-        <LayerDateMenu
-          menu={itemMenu}
-          captures={project.manifest.captures}
-          tags={tags}
-          every={EVERY_DATE}
-          canEdit={canEdit}
-          dateMoves={datesOn}
-          actions={layerActions(itemMenu)}
-          onClose={() => {
-            setItemMenu(null);
-          }}
-          onMove={onMove}
-          onDelete={canEdit && deletable(itemMenu.layerIds).length > 0 ? askLayers : undefined}
-          onPlaceModel={placeModelOf(project.manifest.layers, itemMenu.layerIds)}
-          onCreateEngineering={engineeringOf(project.manifest.layers, itemMenu.layerIds)}
         />
       )}
     </div>

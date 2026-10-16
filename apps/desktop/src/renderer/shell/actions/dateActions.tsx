@@ -1,4 +1,4 @@
-import type { Capture, ProjectManifest } from '@aio/schema';
+import type { Capture } from '@aio/schema';
 import {
   actionsFor,
   DATE_ICONS,
@@ -12,39 +12,21 @@ import {
   type IconName,
   type MessageKey,
 } from '@aio/ui';
-import { captureIndex, DATE_COLOURS, workspace } from '@aio/workspace';
-import { volumetric } from '@aio/volumetric';
+import { DATE_COLOURS, workspace } from '@aio/workspace';
 import { builder } from '../../builder/state';
-import { graphics } from '../../graphics';
-import { shell } from '../../shell';
 import { timeline } from '../../workspace/timeline';
-import { volumeHints } from '../../workspace/compare';
 import {
   COMPARE_WITH_ACTIONS,
   compareTargets,
   compareWith,
-  type CompareContext,
   type CompareRequest,
 } from '../../workspace/compareWith';
-import { DEFAULT_SPLIT } from '../../workspace/splitModel';
-import { stagePrefs } from '../../workspace/stagePrefs';
 import { updateCapture } from '../dateFolders';
 import { askRemove } from '../removal';
 import { boundsOf, padBox } from '../layerBounds';
 import { appBoundsDeps } from '../appBounds';
+import { compareContextFor } from './layerActions';
 import { editBlocked } from './projectActions';
-
-/** What "Compare with" reads, built outside React from the menu's manifest. */
-export function compareContextFor(m: ProjectManifest): CompareContext {
-  const id = workspace.getState().project?.id;
-  return {
-    layers: m.layers,
-    index: captureIndex(m, volumeHints(volumetric.getState())),
-    stageMode: shell.getState().stageMode,
-    split: (id ? stagePrefs.getState().byProject[id]?.split : undefined) ?? DEFAULT_SPLIT,
-    tier: graphics().getState().tier,
-  };
-}
 
 function dateLabel(c: Capture): string {
   return c.label !== c.date ? `${formatDate(c.date)} · ${c.label}` : formatDate(c.date);
@@ -180,27 +162,23 @@ const dateItems: Action[] = [
       const from = d.captureId;
       if (from === null) return [];
       const byId = new Map(ctx.manifest.captures.map((c) => [c.id, c]));
-      return compareTargets(from, undefined, compareContextFor(ctx.manifest)).map(
-        ({ capture, reason }) => {
-          const c = byId.get(capture);
-          const request: CompareRequest = { from, to: capture };
-          return {
-            id: capture,
-            label: c ? dateLabel(c) : capture,
-            swatch: ctx.tags[capture]?.colour ?? 'var(--fg-3)',
-            disabled: reason ? t(reason) : false,
-            testId: `compare-to-${capture}`,
-            ...(reason
-              ? {}
-              : {
-                  after: (close: () => void) =>
-                    COMPARE_WITH_ACTIONS.map((A, i) => (
-                      <A key={i} request={request} close={close} />
-                    )),
-                }),
-          };
-        },
-      );
+      return compareTargets(from, undefined, compareContextFor(ctx)).map(({ capture, reason }) => {
+        const c = byId.get(capture);
+        const request: CompareRequest = { from, to: capture };
+        return {
+          id: capture,
+          label: c ? dateLabel(c) : capture,
+          swatch: ctx.tags[capture]?.colour ?? 'var(--fg-3)',
+          disabled: reason ? t(reason) : false,
+          testId: `compare-to-${capture}`,
+          ...(reason
+            ? {}
+            : {
+                after: (close: () => void) =>
+                  COMPARE_WITH_ACTIONS.map((A, i) => <A key={i} request={request} close={close} />),
+              }),
+        };
+      });
     },
     run: (d, _ctx, sub) => {
       if (d.captureId !== null && sub) compareWith({ from: d.captureId, to: sub });

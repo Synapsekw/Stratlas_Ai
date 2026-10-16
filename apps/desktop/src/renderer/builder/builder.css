@@ -756,6 +756,15 @@
   color: var(--fg-3);
   cursor: default;
 }
+.dmenu-item[aria-disabled='true'] {
+  opacity: 0.45;
+  cursor: default;
+}
+.dmenu-kbd {
+  margin-left: auto;
+  font: var(--mono-11);
+  color: var(--fg-3);
+}
 .dmenu-item.primary {
   font-weight: 600;
   color: var(--acc);
