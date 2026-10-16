@@ -1,4 +1,5 @@
 import { setActiveScene, type SceneHandle } from '@aio/engine';
+import { toWgs84 } from '@aio/geo';
 import type { Issue, ProjectManifest, Vec3 } from '@aio/schema';
 import { captureIndex, createWorkspace, scopedStore } from '@aio/workspace';
 import {
@@ -9,7 +10,7 @@ import {
   type WebGLRenderer,
 } from 'three';
 import { afterEach, describe, expect, it } from 'vitest';
-import { catalogue, makeIssue, photoSighting, tankModel } from '../testing';
+import { catalogue, linedUp, makeIssue, photoSighting, tankModel } from '../testing';
 import type { OcclusionFactory } from './occlusion';
 import { createPinDisplay } from './pinDisplay';
 import { installIssueOverlay, ndcOf } from './scene';
@@ -183,6 +184,55 @@ describe('installIssueOverlay', () => {
     expect(drape?.children).toHaveLength(1);
     uninstall();
     expect(handle.scene.getObjectByName('annotate-map-shapes')).toBeUndefined();
+  });
+
+  it('draws the pins and shapes of a lined-up date at the corrected place', () => {
+    const store = createWorkspace();
+    const ll = (e: number, n: number) => toWgs84([e, n, 0], 32639).slice(0, 2);
+    store.getState().openProject({ id: 'demo', root: 'r', manifest: linedUp }, [
+      makeIssue({
+        id: 'pin',
+        sightings: [
+          { on: 'mesh', layer: 'model-d2', geom: { type: 'spoint', p: [0, 2, 0], n: [0, 1, 0] } },
+        ],
+      }),
+      makeIssue({
+        id: 'shape',
+        code: 'F02',
+        sightings: [
+          {
+            on: 'map',
+            layer: 'ortho-d2',
+            geojson: {
+              type: 'Polygon',
+              coordinates: [
+                [
+                  ll(500010, 3200005),
+                  ll(500011, 3200005),
+                  ll(500011, 3200006),
+                  ll(500010, 3200005),
+                ],
+              ],
+            },
+          },
+        ],
+      }),
+    ]);
+    const uninstall = installIssueOverlay(store, createPinDisplay(null));
+    const { handle, frames } = fakeHandle();
+    setActiveScene(handle);
+    frame(frames);
+    const discs = pinGroup(handle)?.getObjectByName('annotate-pin-discs') as Points | undefined;
+    const pos = discs?.geometry.getAttribute('position');
+    expect([pos?.getX(0), pos?.getY(0), pos?.getZ(0)]).toEqual([2, 2, 0]);
+    const lines = handle.scene
+      .getObjectByName('annotate-map-shapes')
+      ?.children.find((c) => (c as { isLineSegments?: boolean }).isLineSegments) as
+      Points | undefined;
+    const first = lines?.geometry.getAttribute('position');
+    expect(first?.getX(0)).toBeCloseTo(12, 2);
+    expect(first?.getZ(0)).toBeCloseTo(-5, 2);
+    uninstall();
   });
 
   it('leaves occluded pins out of the view and the badges, and follows new snapshots', () => {

@@ -29,6 +29,7 @@ import {
   type IssueArea,
 } from './areas';
 import { hitItem, layoutPins, pinPasses, type PinItem, type PinLabel } from './declutter';
+import { shiftOfManifest } from '../model/dateFrame';
 import { mapToLocal, type MapToLocal } from './drape';
 import { createDrapeLayer } from './drapeLayer';
 import { issuePins, type IssuePin } from './mesh';
@@ -463,7 +464,7 @@ export function installIssueOverlay(
       const s = store.getState();
       const m = s.project?.manifest;
       const f = display.getState().filter;
-      toLocal = m ? mapToLocal(m.crs, m.origin) : null;
+      toLocal = m ? mapToLocal(m.crs, m.origin, shiftOfManifest(m)) : null;
       drape.shapes(
         f === 'all' ? shown : shown.filter((i) => pinPasses(i.severity, f)),
         m?.severityModels ?? [],
@@ -485,12 +486,15 @@ export function installIssueOverlay(
       const d = display.getState();
       const sel = s.selection?.kind === 'issue' ? s.selection.id : null;
       const models = s.project?.manifest.severityModels ?? [];
-      areas = issueAreas(shown, models, sel, d.filter, s.hidden);
-      pins = issuePins(shown, models, sel, d.filter, new Set(areas.map((a) => a.issueId)));
+      // a lined-up date's pins and areas sit where its layers are drawn
+      const shiftOf = shiftOfManifest(s.project?.manifest);
+      areas = issueAreas(shown, models, sel, d.filter, s.hidden, shiftOf);
+      const drawn = new Set(areas.map((a) => a.issueId));
+      pins = issuePins(shown, models, sel, d.filter, drawn, shiftOf);
       writeAreas();
       // the heat map follows a severity threshold, and still shows with the pins off
       const heatPins = d.heat
-        ? issuePins(shown, models, null, d.filter === 'off' ? 'all' : d.filter)
+        ? issuePins(shown, models, null, d.filter === 'off' ? 'all' : d.filter, undefined, shiftOf)
         : [];
       heatBuf.ensure(heatPins.length);
       const hp = heatBuf.array('position');

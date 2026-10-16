@@ -1,5 +1,5 @@
 import { correctedPhoto, photoCorrection } from '@aio/geo';
-import type { ImageGeom, Sighting } from '@aio/schema';
+import { shiftLocal, type ImageGeom, type Sighting } from '@aio/schema';
 import { assetUrl, issuesOnScreen, useWorkspace, workspace } from '@aio/workspace';
 import {
   useCallback,
@@ -30,6 +30,7 @@ import {
   useAnnotateUi,
   type ImageTool,
 } from '../runtime';
+import { shiftOfManifest } from '../model/dateFrame';
 import { bestAnchor, severityColor } from '../tools/mesh';
 import { useTaxonomy } from './common';
 import { DrawLayer, type ShapeItem } from './DrawLayer';
@@ -205,6 +206,7 @@ export function PhotoViewer({
     };
   }, []);
 
+  const shiftOf = useMemo(() => shiftOfManifest(project?.manifest), [project]);
   const shapes = useMemo<ShapeItem[]>(() => {
     const out: ShapeItem[] = [];
     for (const issue of issues) {
@@ -225,13 +227,12 @@ export function PhotoViewer({
         });
       }
       // ANN-9: a 3D sighting shows in every posed photo that sees it.
+      // both where they are drawn: the photo and the 3D sighting through their date shifts
       if (projected && !onPhoto && natural && photo?.pos && photo.q && photo.lens) {
-        const p = bestAnchor(issue);
+        const p = bestAnchor(issue, shiftOf);
+        const pos = shiftLocal(photo.pos, shiftOf(layerId));
         const px = p
-          ? worldToPixel({ pos: photo.pos, q: photo.q }, photo.lens, p, [
-              natural.width,
-              natural.height,
-            ])
+          ? worldToPixel({ pos, q: photo.q }, photo.lens, p, [natural.width, natural.height])
           : null;
         if (px) {
           out.push({
@@ -256,6 +257,7 @@ export function PhotoViewer({
     readOnly,
     editOutlines,
     projected,
+    shiftOf,
   ]);
 
   const masks = useMemo(() => {

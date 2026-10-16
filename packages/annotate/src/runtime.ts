@@ -7,6 +7,7 @@ import { createStore } from 'zustand/vanilla';
 import { useStore } from 'zustand';
 import type { CameraSources } from './crossview/camera';
 import { createDeriver } from './crossview/derive';
+import { shiftOfManifest, sightingInDateFrame } from './model/dateFrame';
 import { createIssueEditor, type EditorState, type IssueEditor } from './model/editor';
 import { createIssueSaver, ipcWriteIssues } from './model/persist';
 import { bestAnchor } from './tools/mesh';
@@ -62,6 +63,7 @@ export const cameraSources: CameraSources = {
   flight: getFlightPoses,
   imageSize: imageSizeOf,
   orientation: () => workspace.getState().orientation,
+  shiftOf: (layerId) => shiftOfManifest(workspace.getState().project?.manifest)(layerId),
 };
 
 // ---- the app-wide issue editor ----
@@ -175,7 +177,7 @@ export function useIssueEditorState(): EditorState {
 export function focusIssue(issue: Issue): void {
   const ws = workspace.getState();
   ws.select({ kind: 'issue', id: issue.id });
-  const p = bestAnchor(issue);
+  const p = bestAnchor(issue, shiftOfManifest(ws.project?.manifest));
   ws.flyTo(
     p
       ? { kind: 'point', p, distance: 4 }
@@ -255,11 +257,14 @@ export async function rotatePhoto(layerId: string, photoId: string): Promise<Pho
 
 /**
  * A tool finished a shape. Attach it to the selected issue (when that mode is on) or open the
- * class and severity picker for a new issue.
+ * class and severity picker for a new issue. A shape picked on a lined-up date is kept in the
+ * date's own frame (its shift taken off), so it moves with the date.
  */
-export function beginSighting(sighting: Sighting, at?: { x: number; y: number }): void {
+export function beginSighting(picked: Sighting, at?: { x: number; y: number }): void {
   if (isAnnotateReadOnly()) return;
-  const sel = workspace.getState().selection;
+  const ws = workspace.getState();
+  const sighting = sightingInDateFrame(picked, ws.project?.manifest);
+  const sel = ws.selection;
   if (annotateUi.getState().attachToSelected && sel?.kind === 'issue') {
     issueEditor.addSighting(sel.id, sighting);
     return;

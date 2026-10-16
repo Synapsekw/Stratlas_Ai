@@ -11,6 +11,7 @@ import {
   useIssueEditorState,
   useTeamPolicy,
 } from '../runtime';
+import { shiftOfManifest } from '../model/dateFrame';
 import { sightingAnchor, severityColor } from '../tools/mesh';
 import { projectMsFromVideo } from '../video/track';
 import { SeverityBadge, kindLabel, sevStyle, sightingLabel, useTaxonomy } from './common';
@@ -31,7 +32,7 @@ export function openSighting(issue: Issue, s: Sighting, layers: readonly Layer[]
     if (layer?.kind === 'video') ws.setTime(projectMsFromVideo(layer, s.track[0]?.t ?? 0));
     return;
   }
-  const p = sightingAnchor(s);
+  const p = sightingAnchor(s, shiftOfManifest(ws.project?.manifest));
   if (p) ws.flyTo({ kind: 'point', p, distance: 4 });
 }
 

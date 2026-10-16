@@ -1,7 +1,8 @@
 import type { SceneHandle } from '@aio/engine';
-import type { Issue, SeverityModel, Sighting, Vec3 } from '@aio/schema';
+import { shiftLocal, type Issue, type SeverityModel, type Sighting, type Vec3 } from '@aio/schema';
 import { Vector3, type Intersection } from 'three';
 import { layerOf } from '../crossview/backproject';
+import type { ShiftOf } from '../model/dateFrame';
 import { isPlacedArea } from '../model/placed';
 import { pinPasses, sevRank, type PinFilter } from './declutter';
 
@@ -14,8 +15,16 @@ export const centroid = (pts: readonly Vec3[]): Vec3 => {
   return [s[0] / n, s[1] / n, s[2] / n];
 };
 
-/** A 3D point that stands for a sighting (pin position, fly-to target); null for 2D sightings. */
-export function sightingAnchor(s: Sighting): Vec3 | null {
+/**
+ * A 3D point that stands for a sighting (pin position, fly-to target); null for 2D sightings.
+ * With `shiftOf`, where it is drawn: moved by its layer's date shift.
+ */
+export function sightingAnchor(s: Sighting, shiftOf?: ShiftOf): Vec3 | null {
+  const p = storedAnchor(s);
+  return p && shiftOf ? shiftLocal(p, shiftOf(s.layer)) : p;
+}
+
+function storedAnchor(s: Sighting): Vec3 | null {
   if (s.on === 'mesh') {
     switch (s.geom.type) {
       case 'spoint':
@@ -42,18 +51,18 @@ export function sightingAnchor(s: Sighting): Vec3 | null {
   return null;
 }
 
-/** The issue's best 3D anchor: mesh sightings first, then point clouds. */
-export function bestAnchor(issue: Issue): Vec3 | null {
+/** The issue's best 3D anchor: mesh sightings first, then point clouds (`shiftOf` as above). */
+export function bestAnchor(issue: Issue, shiftOf?: ShiftOf): Vec3 | null {
   // a placed area stands for the issue first (its centre), then the pins as before
   for (const s of issue.sightings) {
     if (!isPlacedArea(s)) continue;
-    const a = sightingAnchor(s);
+    const a = sightingAnchor(s, shiftOf);
     if (a) return a;
   }
   for (const kind of ['mesh', 'pointcloud'] as const) {
     for (const s of issue.sightings) {
       if (s.on !== kind) continue;
-      const a = sightingAnchor(s);
+      const a = sightingAnchor(s, shiftOf);
       if (a) return a;
     }
   }
@@ -90,12 +99,14 @@ export function issuePins(
   filter: PinFilter = 'all',
   /** Issues drawn as areas instead (findings on a model): no pin. */
   skip: ReadonlySet<string> = NONE,
+  /** Date shifts of the layers: a pin sits where its sighting is drawn. */
+  shiftOf?: ShiftOf,
 ): IssuePin[] {
   const out: IssuePin[] = [];
   for (const i of issues) {
     if (skip.has(i.id)) continue;
     if (i.id !== selectedId && !pinPasses(i.severity, filter)) continue;
-    const p = bestAnchor(i);
+    const p = bestAnchor(i, shiftOf);
     if (!p) continue;
     out.push({
       issueId: i.id,

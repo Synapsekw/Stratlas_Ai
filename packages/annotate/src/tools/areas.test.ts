@@ -48,6 +48,14 @@ describe('issueAreas', () => {
     expect(issueAreas([low], [tankModel], null, 4, {})).toEqual([]);
     expect(issueAreas([low], [tankModel], low.id, 4, {})).toHaveLength(2);
   });
+
+  it('draws the area of a lined-up date where its layer is drawn', () => {
+    const shiftOf = (id: string) => (id === 'cloud' ? { eastM: 2, northM: 1 } : null);
+    const [surface, box] = issueAreas([placed()], [tankModel], null, 'all', {}, shiftOf);
+    expect(surface?.ring[0]).toEqual([0, 0, 0]);
+    expect(box?.ring[0]).toEqual([2, 0, -1]);
+    expect(box?.centre).toEqual([3, 0.5, 0]);
+  });
 });
 
 describe('areaBuffers', () => {

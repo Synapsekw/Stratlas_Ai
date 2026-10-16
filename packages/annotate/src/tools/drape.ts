@@ -1,21 +1,33 @@
 import { fromWgs84, isKnownCrs, projectToLocal } from '@aio/geo';
-import type { Issue, ProjectManifest, SeverityModel, Vec3 } from '@aio/schema';
+import {
+  shiftLocal,
+  type Issue,
+  type ProjectManifest,
+  type SeverityModel,
+  type Vec3,
+} from '@aio/schema';
 import { ShapeUtils, Vector2 } from 'three';
+import type { ShiftOf } from '../model/dateFrame';
 import { severityColor } from './mesh';
 
-/** Local ground (x, z) of a lon/lat. */
-export type MapToLocal = (lon: number, lat: number) => [number, number];
+/** Local ground (x, z) of a lon/lat, drawn where `layer`'s date sits when one is given. */
+export type MapToLocal = (lon: number, lat: number, layer?: string) => [number, number];
 
-/** Lon/lat to the local frame (x east, z south) for a project CRS, or null if the CRS is unknown. */
+/**
+ * Lon/lat to the local frame (x east, z south) for a project CRS, or null if the CRS is unknown.
+ * With `shiftOf`, a position of a layer is moved by its date shift after the conversion.
+ */
 export function mapToLocal(
   crs: ProjectManifest['crs'],
   origin: Vec3 | readonly [number, number, number],
+  shiftOf?: ShiftOf,
 ): MapToLocal | null {
   if (!('epsg' in crs) || !isKnownCrs(crs.epsg)) return null;
   const epsg = crs.epsg;
   const o: Vec3 = [origin[0], origin[1], origin[2]];
-  return (lon, lat) => {
-    const local = projectToLocal(fromWgs84([lon, lat, o[2]], epsg), o);
+  return (lon, lat, layer) => {
+    const p = projectToLocal(fromWgs84([lon, lat, o[2]], epsg), o);
+    const local = layer !== undefined && shiftOf ? shiftLocal(p, shiftOf(layer)) : p;
     return [local[0], local[2]];
   };
 }
@@ -69,7 +81,7 @@ export function drapedShapes(
       if (s.on !== 'map') continue;
       for (const poly of polygonsOf(s.geojson)) {
         const rings = poly.map((ring) => {
-          const pts = ring.map(([lon = 0, lat = 0]) => toLocal(lon, lat));
+          const pts = ring.map(([lon = 0, lat = 0]) => toLocal(lon, lat, s.layer));
           const first = pts[0];
           const last = pts[pts.length - 1];
           const closed = first !== undefined && first[0] === last?.[0] && first[1] === last[1];
