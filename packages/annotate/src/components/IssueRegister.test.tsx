@@ -313,6 +313,7 @@ describe('IssueRegister right-click menu', () => {
     const ui = mount(
       <IssueRegister
         title="Issue register"
+        titleLevel={2}
         actions={
           <button type="button" data-testid="extra">
             Export
@@ -320,8 +321,11 @@ describe('IssueRegister right-click menu', () => {
         }
       />,
     );
-    const heads = [...ui.el.querySelectorAll('h1, h2, h3')].map((h) => h.textContent);
-    expect(heads).toEqual(['Issue register']);
+    // under the screen's h1: an h2, so the heading levels go up by one
+    const heads = [...ui.el.querySelectorAll('h1, h2, h3')].map(
+      (h) => `${h.tagName} ${h.textContent}`,
+    );
+    expect(heads).toEqual(['H2 Issue register']);
     const row = ui.q('.ann-h');
     expect(row?.querySelector('[data-testid="extra"]')).not.toBeNull();
     expect(row?.textContent).toContain('Undo');

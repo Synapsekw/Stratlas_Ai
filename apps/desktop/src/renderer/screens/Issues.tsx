@@ -16,7 +16,12 @@ export function IssuesScreen() {
       <h1 className="sr-only">{t('nav.issues')}</h1>
       <div className="iss-main">
         {/* one header row: the register's title, count, save state, undo and redo, and Export */}
-        <IssueRegister className="fill-col" title={t('issues.register')} actions={<ExportMenu />} />
+        <IssueRegister
+          className="fill-col"
+          title={t('issues.register')}
+          titleLevel={2}
+          actions={<ExportMenu />}
+        />
       </div>
       <aside className="iss-side" aria-label={t('card.title')}>
         {issueId ? (

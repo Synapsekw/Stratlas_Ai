@@ -146,12 +146,16 @@ function useViewport(ref: React.RefObject<HTMLDivElement | null>) {
 export function IssueRegister({
   className,
   title = 'Issues',
+  titleLevel = 3,
   actions,
 }: {
   className?: string;
   title?: string;
+  /** The heading level of the title: 2 where the register is a screen's main content. */
+  titleLevel?: 2 | 3;
   actions?: ReactNode;
 }) {
+  const Title = titleLevel === 2 ? 'h2' : 'h3';
   useUndoHotkeys();
   const issues = useWorkspace((s) => s.issues);
   const selection = useWorkspace((s) => s.selection);
@@ -395,7 +399,7 @@ export function IssueRegister({
     <div className={`ann-panel ${className ?? ''}`} data-testid="issue-register">
       <AnnotateStyles />
       <div className="ann-h">
-        <h3>{title}</h3>
+        <Title>{title}</Title>
         <span className="sub">
           {shown.length === issues.length ? issues.length : `${shown.length} of ${issues.length}`}
         </span>

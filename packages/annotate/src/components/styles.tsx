@@ -6,7 +6,7 @@
 const css = `
 .ann-panel { display: flex; flex-direction: column; min-height: 0; height: 100%; background: var(--bg-1); color: var(--fg-1); font: 400 var(--t-13)/1.4 var(--f-ui); }
 .ann-h { display: flex; align-items: center; gap: 8px; height: 36px; padding: 0 12px; border-bottom: 1px solid var(--line); flex: none; }
-.ann-h h3 { margin: 0; font: 600 var(--t-12)/1 var(--f-ui); letter-spacing: .06em; text-transform: uppercase; color: var(--fg-2); }
+.ann-h h2, .ann-h h3 { margin: 0; font: 600 var(--t-12)/1 var(--f-ui); letter-spacing: .06em; text-transform: uppercase; color: var(--fg-2); }
 .ann-h .sub { font: 400 var(--t-11)/1 var(--f-mono); color: var(--fg-3); }
 .ann-h .acts { margin-left: auto; display: flex; gap: 4px; align-items: center; }
 .ann-btn { display: inline-flex; align-items: center; gap: 6px; height: 24px; padding: 0 8px; border: 1px solid var(--line); border-radius: var(--r-4); background: var(--bg-2); color: var(--fg-1); font: 500 var(--t-12)/1 var(--f-ui); cursor: pointer; transition: background .15s var(--ease), border-color .15s var(--ease); }
