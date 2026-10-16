@@ -26,6 +26,7 @@ from __future__ import annotations
 
 import contextlib
 import json
+import math
 import os
 import re
 import shutil
@@ -758,7 +759,10 @@ class PointcloudToCopc:
                 raw_off = (manifest.get("verticalDatum") or {}).get("absAltOffsetM")
                 off = (
                     round(float(raw_off), 3)
-                    if isinstance(raw_off, int | float) and not isinstance(raw_off, bool) and raw_off
+                    if isinstance(raw_off, int | float)
+                    and not isinstance(raw_off, bool)
+                    and math.isfinite(raw_off)
+                    and raw_off
                     else 0.0
                 )
                 height_offset: float | None = None

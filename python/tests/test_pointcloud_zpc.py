@@ -344,6 +344,12 @@ def test_a_project_without_a_height_offset_gives_none(tmp_path, monkeypatch):
     assert not any("height offset" in m for m in logs)
 
 
+@pytest.mark.parametrize("offset", [float("nan"), float("inf")])
+def test_a_non_finite_project_offset_gives_none(tmp_path, monkeypatch, offset):
+    layers, _ = _import_zpc(tmp_path, monkeypatch, offset, False)
+    assert "heightOffsetM" not in layers[0]
+
+
 def test_reimport_keeps_the_layer_offset(tmp_path, monkeypatch):
     existing = {
         "kind": "pointcloud",
