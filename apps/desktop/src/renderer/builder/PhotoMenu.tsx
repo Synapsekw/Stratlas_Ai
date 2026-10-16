@@ -76,7 +76,7 @@ function showPhotoFrustums(h: SceneHandle, on: boolean) {
 }
 
 /** Show the photo in the split view's photo pane (beside the 3D view). */
-function openPhoto(layerId: string, photoId: string) {
+export function openPhoto(layerId: string, photoId: string) {
   const w = workspace.getState();
   w.select({ kind: 'photo', id: photoId, layer: layerId });
   const id = w.project?.id;

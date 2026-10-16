@@ -13,7 +13,7 @@ type PanoLayer = Extract<Layer, { kind: 'panoramas' }>;
  * that was stitched before (its `cov` has left and right) is stitched as wide again; anything else
  * is a sphere, so a sphere missing a frame is never cropped.
  */
-const shapeOf = (p: PanoRef) =>
+export const shapeOf = (p: PanoRef) =>
   p.cov?.left !== undefined && p.cov.right !== undefined ? 'wide' : 'sphere';
 
 function open(layerId: string, p: PanoRef) {
