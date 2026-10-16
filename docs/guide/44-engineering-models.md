@@ -58,6 +58,8 @@ The engineering model opens in the Model builder with the **Components** list.
 3. Use the handle (**Move**, **Turn**, **Tilt**, **Scale**) or the fields (**East offset**, **North offset**, **Up offset**, **Heading**, **Tilt forward**, **Tilt sideways**, **Scale**). **Drop to ground** sets the height to what is under the origin.
 4. Click **Done**. The previous manifest is kept as `manifest.json.bak`. **Undo** and **Reset** are there until then.
 
+**Drop to ground** is the quick way to set a model's height: right-click the model in **Datasets** and pick **Drop to ground**. It uses the same placement as **Place model**: the model's lowest point goes onto the ground, and the georeference and the placed state are saved as **Place model** saves them. The ground is the DSM under the model's footprint if there is one, otherwise the project ground level. Use **Place model** for the rest (**Move**, **Turn**, **Tilt**, **Scale**); it keeps its own **Drop to ground** for the height under the origin.
+
 A model that carries its own georeference (see Exports) is placed where it belongs when you import it. A model from another project in a different coordinate system is converted on import. A model whose position cannot be read is put at the project origin and marked as needing placement. A model made from photos only is placed provisionally, and the photos' GPS positions are never taken as the asset's position.
 
 ## Exports

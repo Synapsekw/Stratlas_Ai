@@ -245,7 +245,7 @@ Current limits only; each is removed from this list when fixed.
 
 - Import reads cameras, calibration, control points, the sparse cloud and products, but no meshes. Uncalibrated photos bring their positions only.
 - Export writes the sparse model, not the dense cloud. Tested against the specification's examples and our own exports, not yet against Pix4D itself.
-- Vertical CRS heights are taken as they are, without conversion.
+- Vertical CRS heights are taken as they are, without conversion; a point cloud can be moved with a height offset or Drop to ground (see "Cloud heights and Drop to ground").
 
 ### Globe
 
@@ -316,7 +316,7 @@ Current limits only; each is removed from this list when fixed.
 - In the 3D view an engineering model draws its components separately (about 1.7 draw calls per component); merging them into one batched mesh is not built.
 - Warning light lenses are red only. Joint rings on a shaft are drawn with flat facets. On lattice towers and monopoles the ladder follows the nearest axis of the structure, not the leg or the face.
 - Placement through Web Mercator (EPSG:3857) is approximate away from the anchor (about 3 mm at 100 m at mid latitudes); the app says so. Between other coordinate systems the scale change of the projection is always applied, however small.
-- A project does not name a height datum, so a model's heights are taken as they are, whatever datum the model names, and the placement says so; a height of unknown datum stays unknown. Check the height of a model from another source, and set it with Place model when it is off.
+- A project does not name a height datum, so a model's heights are taken as they are, whatever datum the model names, and the placement says so; a height of unknown datum stays unknown. Check the height of a model from another source, and set it with Place model or Drop to ground when it is off.
 - The project journal records an engineering model's component list as one value, not one entry per component: when two copies change components of the same model at the same time, the merge keeps the later list whole and the other copy's component change is lost.
 - Deleting an engineering model on one copy does not delete it on the others in a collaboration merge: the model file is kept there as it was (the merge finds the emptied record not valid and leaves the file alone, without telling the person).
 - A project holding an engineering model without a georeference cannot be re-centred until the model is placed or georeferenced (its values are in the project's local frame).
@@ -330,3 +330,13 @@ Current limits only; each is removed from this list when fixed.
 - **Selections reach through the cloud.** A box or lasso selects every point that falls inside it in the view it was drawn in, near and far, also the points not loaded at the time. Undo a selection that caught too much.
 - **Packages carry recipes, not working copies.** A package of a project keeps each cloud's cleanup recipe but not the noise working copy, so noise marks are not shown there; save a cleaned copy before packaging.
 - **Cleanup of a large cloud is not shared in a team folder as one step.** Each step rewrites the layer's recipe file (last writer wins, like other whole-file records).
+
+## Cloud heights and Drop to ground
+
+- **A cloud keeps the heights in its file** unless you set a **Height offset (m)** on it. Nothing in a LAS or LAZ file without a vertical coordinate system says whether its heights are ellipsoidal, so a generic LAS or LAZ gets no automatic offset; the import job logs a hint to use **Drop to ground** instead.
+- **A Bentley `.zpc` cloud whose tiles name no height datum takes the project's height offset at import.** That is right only when the offset is the difference between the ellipsoid and the project's heights. Check the cloud against the ground and change it in Properties when it is off. Importing the same file again leaves a layer's offset as you set it.
+- **Bentley photos keep their heights as they are.** Move them with **Align to** if they float.
+- **Clouds packed into the kit format cannot be moved.** Convert them to COPC first.
+- **Drop to ground uses the DSM under the item's footprint, or else the project ground level.** Where there is no DSM, a cloud over a hill is lowered to the flat project level, not to the hill.
+- **Results made before an offset changed keep the old height.** A 3D Tiles set and a change result are made from the heights at the time; make them again after changing an offset.
+- **Older builds ignore the offset.** A build from before this one draws the cloud at its file heights and drops the offset the next time it saves the project.
