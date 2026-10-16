@@ -39,6 +39,18 @@ button {
   border: 0;
   padding: 0;
 }
+/* a link in running text (a licence, a download, the privacy policy): the accent and an underline,
+   never the browser's blue; underlined because the accent alone is too close to the body text to
+   mark a link (WCAG 1.4.1) */
+a {
+  color: var(--acc);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+a:hover {
+  color: var(--acc-strong);
+  text-decoration-thickness: 2px;
+}
 :focus-visible {
   outline: 1.5px solid var(--acc);
   outline-offset: 1px;
