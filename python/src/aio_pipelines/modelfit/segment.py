@@ -104,10 +104,13 @@ def load_layer_points(ctx: StepContext, manifest: dict[str, Any], layer_id: str,
     path = asset_path(ctx.project, layer.get("src"))
     if path is None or not path.is_file():
         raise JobError(f'The file of "{layer.get("name", layer_id)}" is missing.')
+    from ..change.sources import height_offset_m
+
+    lift = np.array([0.0, height_offset_m(layer), 0.0])
     if fmt == "kit-packed":
-        return voxel_thin(read_kit_packed(path), voxel)
+        return voxel_thin(read_kit_packed(path) + lift, voxel)
     if fmt == "png-packed":
-        return voxel_thin(read_png_packed(ctx.project, path, ctx.check), voxel)
+        return voxel_thin(read_png_packed(ctx.project, path, ctx.check) + lift, voxel)
     # COPC: PDAL writes a plain LAS into the job folder, read here in chunks
     from ..pointcloud import PDAL_MISSING, _run, find_pdal
     from ..volumetric.cloud import read_las_chunks
@@ -121,7 +124,7 @@ def load_layer_points(ctx: StepContext, manifest: dict[str, Any], layer_id: str,
     origin = manifest.get("origin") or [0, 0, 0]
     parts = []
     for x, y, z, _rgb in read_las_chunks(las, ctx.check):
-        local = np.column_stack([x - origin[0], z - origin[2], origin[1] - y])
+        local = np.column_stack([x - origin[0], z - origin[2] + lift[1], origin[1] - y])
         parts.append(voxel_thin(local, voxel))
     return voxel_thin(np.concatenate(parts), voxel) if parts else np.zeros((0, 3))
 

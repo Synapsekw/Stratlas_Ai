@@ -188,3 +188,15 @@ def test_a_cancelled_save_leaves_no_project_files(tmp_path, monkeypatch):
     assert (root / "manifest.json").read_text("utf-8") == manifest
     assert not (root / "manifest.json.bak").exists()
     assert sorted(p.name for p in (root / "clouds").iterdir()) == ["cloud-a.copc.laz"]
+
+def test_cleaned_copy_keeps_the_source_offset(tmp_path):
+    xyz, cls, _ = planted_cloud()
+    root = cloud_project(tmp_path, xyz, cls)
+    mpath = root / "manifest.json"
+    manifest = json.loads(mpath.read_text("utf-8"))
+    manifest["layers"][0]["heightOffsetM"] = -31.2
+    mpath.write_text(json.dumps(manifest), "utf-8")
+    save(root, recipe(hiddenClasses=[1]))
+    original, copy = json.loads(mpath.read_text("utf-8"))["layers"]
+    assert original["heightOffsetM"] == -31.2
+    assert copy["heightOffsetM"] == -31.2

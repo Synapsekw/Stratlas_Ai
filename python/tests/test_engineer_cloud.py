@@ -11,7 +11,7 @@ import numpy as np
 import pytest
 
 from aio_pipelines.engineer.axis import estimate_axis
-from aio_pipelines.engineer.cloud import read_region, remove_ground
+from aio_pipelines.engineer.cloud import pdal_translate_args, read_region, remove_ground
 from aio_pipelines.engineer.sections import fit_sections, fit_taper
 from aio_pipelines.pointcloud import find_pdal
 from synth_assets import MONOPOLE, STACK, monopole_cloud, radius_at, stack_cloud, write_las
@@ -181,3 +181,23 @@ def test_read_region_copc_through_pdal(tmp_path):  # pragma: no cover - needs PD
     assert info["read"] == len(xyz) > 0
     assert np.hypot(xyz[:, 0], xyz[:, 2]).max() <= 3.002
     assert MONOPOLE["height"] > 0
+
+def test_read_region_carries_the_offset(tmp_path):
+    cloud, _ = monopole_cloud(seed=1)
+    origin = (400000.0, 5600000.0, 10.0)
+    las = write_las(cloud, tmp_path / "o.las", crs_epsg=32633, offset=origin)
+    plain, _ = read_region(las, "las", None, 1_000_000, CTX, origin=origin)
+    lifted, info = read_region(las, "las", None, 1_000_000, CTX, origin=origin, offset_m=5.0)
+    assert np.allclose(lifted[:, 1], plain[:, 1] + 5.0, atol=1e-9)
+    assert info["bounds"]["min"][1] == pytest.approx(plain[:, 1].min() + 5.0)
+    # a box in drawn heights picks the points that were 5 m lower in the file
+    box = {"min": [-1.0, 5.0, -1.0], "max": [1.0, 10.0, 1.0]}
+    inbox, _ = read_region(las, "las", box, 1_000_000, CTX, origin=origin, offset_m=5.0)
+    file_box = {"min": [-1.0, 0.0, -1.0], "max": [1.0, 5.0, 1.0]}
+    same, _ = read_region(las, "las", file_box, 1_000_000, CTX, origin=origin)
+    assert len(inbox) == len(same) > 0
+    # the PDAL bounds query is in file heights
+    args = pdal_translate_args("pdal", "a.copc.laz", "o.las", "copc", box, origin, 5.0)
+    assert "[10.0,15.0])" in args[-1].replace(" ", "")
+    plain_args = pdal_translate_args("pdal", "a.copc.laz", "o.las", "copc", box, origin)
+    assert "[15.0,20.0])" in plain_args[-1].replace(" ", "")

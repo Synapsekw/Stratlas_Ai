@@ -17,6 +17,7 @@ from typing import Any
 
 import numpy as np
 
+from ..change.sources import height_offset_m
 from ..params import known_keys, number, text
 from ..runtime import (
     JobError,
@@ -316,7 +317,9 @@ class ModelEvidence:
                 if path is None or not path.is_file():
                     raise JobError(f'The file of "{layer.get("name", c["layer"])}" is missing.')
                 reconstructed = reconstructed or _is_reconstruction(layer)
-                xyz, info = read_region(path, layer.get("format", ""), region, cap, ctx, origin, SEED + i)
+                xyz, info = read_region(
+                    path, layer.get("format", ""), region, cap, ctx, origin, SEED + i, height_offset_m(layer)
+                )
                 parts.append(xyz)
                 colours.append(info["rgb"])
                 if info["crs"]:

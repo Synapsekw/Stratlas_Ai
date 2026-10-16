@@ -365,6 +365,26 @@ def test_a_cloud_becomes_a_points_tileset_keeping_every_point_once(cloud_project
     assert result["outputs"]["tile"]["points"] == len(local)
 
 
+def test_cloud_tiles_carry_the_offset(cloud_project):
+    project, _ = cloud_project
+
+    def root_centre(tid):
+        job = {"layer": "cloud-1", "id": tid, "maxPointsPerTile": 4000}
+        run_job(TilesCloud(), project, job, job_id=tid)
+        ts = json.loads((project / "tiles" / tid / "tileset.json").read_text("utf-8"))
+        return np.array(ts["root"]["boundingVolume"]["box"][:3]), ts
+
+    plain, _ = root_centre("plain")
+    mpath = project / "manifest.json"
+    m = json.loads(mpath.read_text("utf-8"))
+    m["layers"][0]["heightOffsetM"] = 5.0
+    mpath.write_text(json.dumps(m), "utf-8")
+    lifted, ts = root_centre("lifted")
+    assert check_tileset(project / "tiles" / "lifted") == []
+    # the root transform puts local up along the site's up axis, so 5 m of height is 5 m along it
+    assert np.linalg.norm(lifted - plain) == pytest.approx(5.0, abs=1e-3)
+
+
 def test_the_copc_info_record_sets_the_cube():
     info = struct.pack("<5d", 1.0, 2.0, 3.0, 50.0, 0.5) + bytes(120)
     cube = cube_of({("copc", 1): info}, (0, 1, 0, 1, 0, 1))

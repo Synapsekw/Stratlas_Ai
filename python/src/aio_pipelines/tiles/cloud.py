@@ -83,8 +83,12 @@ def cube_of(vlrs: dict[tuple[str, int], bytes], bounds: tuple[float, ...]) -> Cu
     return Cube((lo + hi) / 2, half, 2 * half / 128)
 
 
-def read_points(ctx: StepContext, path: Path) -> tuple[np.ndarray, np.ndarray | None, Cube]:
-    """Points in the file CRS (float64), colours (uint8 RGB) or None, and the octree cube."""
+def read_points(
+    ctx: StepContext, path: Path, offset_m: float = 0.0
+) -> tuple[np.ndarray, np.ndarray | None, Cube]:
+    """Points in the file CRS (float64), colours (uint8 RGB) or None, and the octree cube.
+
+    `offset_m` is the layer's height offset: added to every z and to the cube's centre z."""
     from ..change.las import LasError, read_las
 
     compressed, vlrs, bounds = las_header(path)
@@ -100,6 +104,9 @@ def read_points(ctx: StepContext, path: Path) -> tuple[np.ndarray, np.ndarray | 
         if plain != path:
             plain.unlink(missing_ok=True)
     xyz = las.xyz
+    if offset_m:
+        xyz = xyz + np.array([0.0, 0.0, offset_m])
+        cube = Cube(cube.centre + np.array([0.0, 0.0, offset_m]), cube.half, cube.spacing)
     rgb = None
     if las.pdrf in (7, 8):
         c = np.stack([las.field("Red"), las.field("Green"), las.field("Blue")], axis=1)
@@ -252,6 +259,7 @@ class TilesCloud:
     def plan(self, params: dict[str, Any]) -> list[Step]:
         def read(ctx: StepContext) -> dict[str, Any]:
             from ..change.derived import find_layer, layer_file, read_manifest
+            from ..change.sources import height_offset_m
 
             m = read_manifest(ctx.project)
             layer = find_layer(m, params["layer"], "pointcloud", "point cloud layer")
@@ -261,6 +269,7 @@ class TilesCloud:
                 "id": params.get("id") or safe_tileset_id(f"{layer['id']}-tiles"),
                 "name": params.get("name") or layer.get("name") or layer["id"],
                 "capture": layer.get("capture"),
+                "heightOffsetM": height_offset_m(layer),
             }
 
         def tile(ctx: StepContext) -> dict[str, Any]:
@@ -270,7 +279,7 @@ class TilesCloud:
             m = read_manifest(ctx.project)
             frame = SiteFrame.of(m)
             t0 = time.monotonic()
-            xyz, rgb, cube = read_points(ctx, Path(info["path"]))
+            xyz, rgb, cube = read_points(ctx, Path(info["path"]), float(info.get("heightOffsetM") or 0.0))
             if not len(xyz):
                 raise JobError("The point cloud has no points.")
             enu = frame.local_to_enu(crs_to_local(xyz, frame.origin))

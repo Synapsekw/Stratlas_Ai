@@ -42,19 +42,26 @@ def _inside(xyz: np.ndarray, region: Region | None) -> np.ndarray:
     return np.all((xyz >= lo) & (xyz <= hi), axis=1)
 
 
-def _world_bounds(region: Region, origin: tuple[float, float, float]) -> str:
-    """A PDAL `bounds` string (x east, y north, z up) that contains the region."""
+def _world_bounds(region: Region, origin: tuple[float, float, float], offset_m: float = 0.0) -> str:
+    """A PDAL `bounds` string (x east, y north, z up) that contains the region. The region is in the
+    drawn frame; `offset_m` is the cloud's height offset, taken off so the query is in file heights."""
     ox, oy, oz = origin
     if "radiusM" in region:
         cx, cz = region["centre"]
         r = float(region["radiusM"])
         return f"([{ox + cx - r},{ox + cx + r}],[{oy - cz - r},{oy - cz + r}])"
     (x0, y0, z0), (x1, y1, z1) = region["min"], region["max"]
-    return f"([{ox + x0},{ox + x1}],[{oy - z1},{oy - z0}],[{oz + y0},{oz + y1}])"
+    return f"([{ox + x0},{ox + x1}],[{oy - z1},{oy - z0}],[{oz + y0 - offset_m},{oz + y1 - offset_m}])"
 
 
 def pdal_translate_args(
-    pdal: str, src: Path, dst: Path, fmt: str, region: Region | None, origin: tuple[float, float, float]
+    pdal: str,
+    src: Path,
+    dst: Path,
+    fmt: str,
+    region: Region | None,
+    origin: tuple[float, float, float],
+    offset_m: float = 0.0,
 ) -> list[str]:
     """`pdal translate` to a plain LAS with the region applied at the source: a COPC reader takes
     `bounds` (only that part is decompressed); LAZ and LAS have no spatial index, so `filters.crop`
@@ -62,7 +69,7 @@ def pdal_translate_args(
     header (scale, offset, CRS) is forwarded, so the coordinates keep their precision."""
     args = [pdal, "translate", str(src), str(dst), "--writers.las.forward=all"]
     if region is not None:
-        bounds = _world_bounds(region, origin)
+        bounds = _world_bounds(region, origin, offset_m)
         if fmt == "copc":
             args.append(f"--readers.copc.bounds={bounds}")
         else:
@@ -148,13 +155,18 @@ class _Reservoir:
 
 
 def _stream_las(
-    las: Path, region: Region | None, origin: tuple[float, float, float], res: _Reservoir, check
+    las: Path,
+    region: Region | None,
+    origin: tuple[float, float, float],
+    res: _Reservoir,
+    check,
+    offset_m: float = 0.0,
 ) -> int:
     """Crop every chunk of a plain LAS to the region into `res`; return how many points were inside."""
     ox, oy, oz = origin
     inside = 0
     for x, y, z, rgb in read_las_chunks(las, check):
-        local = np.column_stack([x - ox, z - oz, oy - y])
+        local = np.column_stack([x - ox, z - oz + offset_m, oy - y])
         inside_mask = _inside(local, region)
         local = local[inside_mask]
         inside += len(local)
@@ -178,8 +190,12 @@ def read_region(
     ctx: Any,
     origin: tuple[float, float, float] = (0.0, 0.0, 0.0),
     seed: int = 0,
+    offset_m: float = 0.0,
 ) -> tuple[np.ndarray, dict[str, Any]]:
     """The points of a cloud inside `region` (local frame, or all when None), at most `max_points`.
+
+    `offset_m` is the layer's height offset: it is added to every point's y, and the region (drawn
+    heights) is turned back into file heights for the PDAL query.
 
     `origin` is the project origin `[E, N, H]`. Returns the local xyz and
     `{"read": points inside the region, "kept": points returned, "crs": {...} | None,
@@ -198,7 +214,7 @@ def read_region(
     if fmt == "las":
         LasHeader(layer_path)  # a clear error for a file that is not an uncompressed LAS
         crs = las_crs(layer_path)
-        read = _stream_las(layer_path, region, origin, res, check)
+        read = _stream_las(layer_path, region, origin, res, check, offset_m)
     elif fmt in PDAL_FORMATS:
         from ..pointcloud import PDAL_MISSING, _run, find_pdal
 
@@ -206,10 +222,10 @@ def read_region(
         if not pdal:
             raise JobError(PDAL_MISSING)
         out = ctx.job.dir / "region.las"
-        _run(ctx, pdal_translate_args(pdal, layer_path, out, fmt, region, origin), "Read the asset region")
+        _run(ctx, pdal_translate_args(pdal, layer_path, out, fmt, region, origin, offset_m), "Read the asset region")
         try:
             crs = las_crs(out)
-            read = _stream_las(out, region, origin, res, check)
+            read = _stream_las(out, region, origin, res, check, offset_m)
         finally:
             out.unlink(missing_ok=True)
     else:
@@ -218,6 +234,8 @@ def read_region(
             if fmt == "kit-packed"
             else read_png_packed(ctx.project, layer_path, check)
         )
+        if offset_m:
+            pts = pts + np.array([0.0, offset_m, 0.0])
         pts = pts[_inside(pts, region)]
         read = len(pts)
         res.add(pts)

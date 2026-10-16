@@ -333,3 +333,19 @@ def test_refusals_name_the_layer_and_the_fix(tmp_path, monkeypatch):
         run_job(ModelFitCloud(), tmp_path, {"layer": "nope"}, job_id="j2")
     with pytest.raises(JobError, match="kinds must be"):
         ModelFitCloud().validate({"layer": "scan", "kinds": ["cone"]})
+
+def test_fit_points_carry_the_offset(tmp_path):
+    from types import SimpleNamespace
+
+    from aio_pipelines.modelfit.segment import load_layer_points
+
+    pts = scene(np.random.default_rng(1))
+    project(tmp_path, pts)
+    ctx = SimpleNamespace(project=tmp_path, check=lambda: None)
+    manifest = json.loads((tmp_path / "manifest.json").read_text("utf-8"))
+    plain = load_layer_points(ctx, manifest, "scan", 0.0)
+    manifest["layers"][0]["heightOffsetM"] = 5.0
+    lifted = load_layer_points(ctx, manifest, "scan", 0.0)
+    assert len(lifted) == len(plain)
+    assert np.allclose(np.sort(lifted[:, 1]), np.sort(plain[:, 1]) + 5.0, atol=1e-6)
+    assert np.allclose(np.sort(lifted[:, 0]), np.sort(plain[:, 0]), atol=1e-6)

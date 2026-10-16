@@ -21,6 +21,7 @@ from typing import Any
 
 import numpy as np
 
+from ..change.sources import height_offset_m
 from ..params import known_keys, number, text
 from ..pointcloud import (
     COPC_BYTES_PER_POINT,
@@ -455,6 +456,7 @@ class PointcloudClean:
                     "name": f"{params['name']} (cleaned)",
                     "visible": True,
                     **({"capture": source["capture"]} if source.get("capture") else {}),
+                    **({"heightOffsetM": source["heightOffsetM"]} if height_offset_m(source) else {}),
                     "src": {"path": rel},
                     "format": "copc",
                     "pointCount": points,
