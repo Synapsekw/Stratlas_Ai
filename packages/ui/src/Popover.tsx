@@ -113,7 +113,7 @@ export function Popover({
           <button
             type="button"
             className="pop-close"
-            aria-label={closeLabel ?? t('keys.dialog.close')}
+            aria-label={closeLabel ?? t('dialog.close')}
             onClick={() => {
               close.current();
             }}
