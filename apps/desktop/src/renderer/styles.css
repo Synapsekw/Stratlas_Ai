@@ -214,7 +214,11 @@ code {
   overflow: hidden;
   text-overflow: ellipsis;
 }
+/* the page does not shrink while a crumb before it can; only a window too narrow for the page name
+   alone ends it in an ellipsis */
 .crumbs b {
+  flex-shrink: 0;
+  max-width: 100%;
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
