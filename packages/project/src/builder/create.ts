@@ -195,6 +195,7 @@ function patchLayers(
   const r6 = (v: number) => Math.round(v * 1e6) / 1e6;
   const layers = m.layers.map((l) => {
     if (!want.has(l.id)) return l;
+    if ('name' in patch) return { ...l, name: patch.name.trim() };
     if ('capture' in patch) {
       if (patch.capture !== null && !m.captures.some((c) => c.id === patch.capture))
         throw new Error(`Capture "${patch.capture}" is not in this project.`);
