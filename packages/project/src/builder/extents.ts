@@ -1,4 +1,5 @@
 import { correctPos, fromWgs84, photoCorrection, projectToLocal } from '@aio/geo';
+import { cloudFrameOrigin } from '@aio/schema';
 import type { Layer, OrientationFile, ProjectManifest, Vec3 } from '@aio/schema';
 import { open, readFile } from 'node:fs/promises';
 import { join } from 'node:path';
@@ -103,13 +104,28 @@ export async function layerExtent(
       if (l.format === 'copc') {
         // COPC is in the project CRS (data-conventions section 4)
         const b = lasBounds(await readHead(join(root, l.src.path), 227));
-        return b ? boxOf(corners(b).map((p) => projectToLocal(p, m.origin))) : null;
+        return b
+          ? boxOf(
+              corners(b).map((p) =>
+                projectToLocal(
+                  p,
+                  cloudFrameOrigin(m.origin, { heightOffsetM: l.heightOffsetM ?? 0 }),
+                ),
+              ),
+            )
+          : null;
       }
       if (l.format === 'png-packed') {
         const idx = JSON.parse(await readFile(join(root, l.src.path), 'utf8')) as {
           bounds?: LocalExtent;
         };
-        return idx.bounds ?? null;
+        const off = l.heightOffsetM ?? 0;
+        const { bounds } = idx;
+        if (!bounds) return null;
+        return {
+          min: [bounds.min[0], bounds.min[1] + off, bounds.min[2]],
+          max: [bounds.max[0], bounds.max[1] + off, bounds.max[2]],
+        };
       }
       return null;
     }

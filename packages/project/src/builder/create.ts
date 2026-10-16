@@ -106,7 +106,8 @@ function roundOrientation(o: CameraOrientation): CameraOrientation {
  * `lens`, `orientation` and `positionOffsetM` to video layers (calibration), the `capture` (survey
  * date) of any layer (`null` clears it), the `corners` of a picture laid on the ground (placing a
  * drawing, which also shows it and marks its placement file as placed), or the `walk` placement of
- * a walk layer (`null` clears it). A walk patch, and new corners of a drawing a walk has pins on,
+ * a walk layer (`null` clears it), or the `heightOffsetM` of a COPC or png-packed point cloud
+ * (millimetres; `0` or `null` removes it). A walk patch, and new corners of a drawing a walk has pins on,
  * rewrite that walk's pose file (`walks/<id>/pose.json`, put in place only once the manifest is
  * saved, so a refused save leaves the old one) and set its `flight` and its quality as
  * the fit gives it here (the renderer's quality is a preview). Lines for the project log about walk
@@ -265,6 +266,19 @@ function patchLayers(
         const place = WalkCalibration.parse(patch.walk);
         next.place = { ...place, pins: [...place.pins].sort((a, b) => a.t - b.t) };
       }
+      return next;
+    }
+    if ('heightOffsetM' in patch) {
+      if (l.kind !== 'pointcloud')
+        throw new Error(
+          `"${l.name}" is not a point cloud; only point clouds take a height offset.`,
+        );
+      if (l.format === 'kit-packed')
+        throw new Error(`"${l.name}" is a kit-packed cloud, which cannot be moved.`);
+      const next = { ...l };
+      const off = patch.heightOffsetM === null ? 0 : Math.round(patch.heightOffsetM * 1000) / 1000;
+      if (off === 0) delete next.heightOffsetM;
+      else next.heightOffsetM = off;
       return next;
     }
     if (l.kind !== 'video')

@@ -119,6 +119,49 @@ it('gives each placed layer its local extent', async () => {
   ]);
 });
 
+it('lifts a COPC extent by its height offset', async () => {
+  const root = await project();
+  await writeFile(
+    join(root, 'clouds', 'c.copc.laz'),
+    lasHead([530000, 3199900, 10], [530100, 3200000, 40]),
+  );
+  await mkdir(join(root, 'clouds', 'p'), { recursive: true });
+  await writeFile(
+    join(root, 'clouds', 'p', 'index.json'),
+    JSON.stringify({ bounds: { min: [0, 1, 2], max: [3, 4, 5] } }),
+  );
+  const m = await readManifestFile(root);
+  const copc = (extra: object): Layer => ({
+    kind: 'pointcloud',
+    id: 'c',
+    name: 'c',
+    visible: true,
+    src: { path: 'clouds/c.copc.laz' },
+    format: 'copc',
+    ...extra,
+  });
+  const packed = (extra: object): Layer => ({
+    kind: 'pointcloud',
+    id: 'p',
+    name: 'p',
+    visible: true,
+    src: { path: 'clouds/p/index.json' },
+    format: 'png-packed',
+    ...extra,
+  });
+  const plain = await layerExtent(root, m, copc({}));
+  const lifted = await layerExtent(root, m, copc({ heightOffsetM: 10 }));
+  expect(plain && lifted).toBeTruthy();
+  expect(lifted?.min[1]).toBeCloseTo((plain?.min[1] ?? 0) + 10);
+  expect(lifted?.max[1]).toBeCloseTo((plain?.max[1] ?? 0) + 10);
+  expect(lifted?.min[0]).toBe(plain?.min[0]);
+  expect(lifted?.max[2]).toBe(plain?.max[2]);
+  expect(await layerExtent(root, m, packed({ heightOffsetM: 10 }))).toEqual({
+    min: [0, 11, 2],
+    max: [3, 14, 5],
+  });
+});
+
 const photosLayer = {
   kind: 'photos',
   id: 'ph',

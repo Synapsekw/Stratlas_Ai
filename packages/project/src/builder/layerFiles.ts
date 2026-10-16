@@ -74,6 +74,9 @@ export function crsSidecar(m: ProjectManifest, l: Layer): Record<string, unknown
     frame: 'local metres from origin: x east, y up, z south',
     ...(l.kind === 'mesh' ? { transform: l.transform } : {}),
     ...(l.kind === 'raster' && l.corners ? { corners: l.corners } : {}),
+    ...(l.kind === 'pointcloud' && l.heightOffsetM !== undefined
+      ? { heightOffsetM: l.heightOffsetM }
+      : {}),
   };
 }
 

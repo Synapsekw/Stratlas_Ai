@@ -93,6 +93,21 @@ describe('layer files', () => {
     expect(crsSidecar(m, vector)).toBeNull();
   });
 
+  it('writes the cloud height offset into the sidecar', () => {
+    const cloud = (extra: object) =>
+      ({
+        kind: 'pointcloud',
+        id: 'c',
+        name: 'Cloud',
+        visible: true,
+        src: { path: 'clouds/c/index.json' },
+        format: 'png-packed',
+        ...extra,
+      }) as unknown as Layer;
+    expect(crsSidecar(m, cloud({ heightOffsetM: -30.81 }))?.heightOffsetM).toBe(-30.81);
+    expect(crsSidecar(m, cloud({}))).not.toHaveProperty('heightOffsetM');
+  });
+
   it('reads files, sizes, count and extent', async () => {
     const info = await readLayerInfo(root, m, photos, null);
     expect(info.files).toEqual([
