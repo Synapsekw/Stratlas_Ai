@@ -195,6 +195,7 @@ import { packArchivePlaces, registerPipelinePackIpc } from './jobs/packInstall';
 import { createKeyVault } from './keys';
 import { createClassLibraryStore } from './classLibrary';
 import { addToLibrary, createLibraryStore, listLibrary } from './library';
+import { registerLayerIpc } from './layers';
 import { registerLibraryActionsIpc, samePath } from './libraryActions';
 import {
   applyLibraryView,
@@ -952,6 +953,15 @@ function registerIpc(): void {
     release: (root) => journal.close(root),
     forget: (root) => journal.forget(root),
   });
+  // Properties, Export and Reveal in folder of one dataset
+  const layerJobs = registerLayerIpc({
+    handle,
+    projects: registry,
+    reveal: (path) => {
+      shell.showItemInFolder(path);
+    },
+    emit: emitExportProgress,
+  });
 
   handle('project:open', async ({ path, passphrase }) => {
     // a bundled demo project opens as its working copy in userData (never written in resources)
@@ -1361,7 +1371,9 @@ function registerIpc(): void {
   });
 
   handle('export:run', (req) => exportJobs.run(req));
-  handle('export:cancel', ({ jobId }) => ({ ok: exportJobs.cancel(jobId) }));
+  handle('export:cancel', ({ jobId }) => ({
+    ok: exportJobs.cancel(jobId) || layerJobs.cancel(jobId),
+  }));
   handle('report:readNarrative', ({ projectId }) => {
     const root = registry.root(projectId);
     if (root !== undefined) return readNarrative(root);

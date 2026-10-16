@@ -42,6 +42,15 @@ export {
   readGlbJsonFromFile,
   type ImportedPlacement,
 } from './glbGeoref';
+export {
+  crsSidecar,
+  exportLayers,
+  exportPlan,
+  isLocalFrame,
+  layerFolderName,
+  mainFile,
+  readLayerInfo,
+} from './layerFiles';
 export { writeExportFolder, type ExportFolderOptions } from './exportFolder';
 export {
   DRAWING_ADDED,
