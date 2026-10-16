@@ -1866,6 +1866,7 @@ export const en = {
   'narr.findings.none': 'No issues were recorded.',
   'narr.findings.todo': '[Describe the pattern of the findings and what should be done first.]',
   // Reports screen: the house report and its text
+  'issues.register': 'Issue register',
   'reports.viewer.none':
     'No PDF report to read yet. Export the project report or the issue register to make one.',
   'reports.viewer.pick': 'Pick a report to read it here.',

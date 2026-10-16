@@ -12,6 +12,7 @@ import {
   useState,
   type KeyboardEvent,
   type MouseEvent,
+  type ReactNode,
 } from 'react';
 import { STATUS_ORDER } from '../model/ops';
 import {
@@ -138,7 +139,19 @@ function useViewport(ref: React.RefObject<HTMLDivElement | null>) {
  * an issue selects it in every view. In a read-only package (player mode) the register only
  * browses: no checkboxes, bulk actions, undo or save state. Owner: stream S7.
  */
-export function IssueRegister({ className }: { className?: string }) {
+/**
+ * The issue list with its filters. `title` names it in its header row (a screen that shows only the
+ * register passes its own title and `actions`, so the screen has one heading and one header row).
+ */
+export function IssueRegister({
+  className,
+  title = 'Issues',
+  actions,
+}: {
+  className?: string;
+  title?: string;
+  actions?: ReactNode;
+}) {
   useUndoHotkeys();
   const issues = useWorkspace((s) => s.issues);
   const selection = useWorkspace((s) => s.selection);
@@ -382,7 +395,7 @@ export function IssueRegister({ className }: { className?: string }) {
     <div className={`ann-panel ${className ?? ''}`} data-testid="issue-register">
       <AnnotateStyles />
       <div className="ann-h">
-        <h3>Issues</h3>
+        <h3>{title}</h3>
         <span className="sub">
           {shown.length === issues.length ? issues.length : `${shown.length} of ${issues.length}`}
         </span>
@@ -414,6 +427,7 @@ export function IssueRegister({ className }: { className?: string }) {
               </button>
             </>
           )}
+          {actions}
         </div>
       </div>
       {scope && (

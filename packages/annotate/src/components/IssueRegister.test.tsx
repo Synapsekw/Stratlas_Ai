@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import type { Issue, ProjectManifest } from '@aio/schema';
 import { workspace } from '@aio/workspace';
-import { act } from 'react';
+import { act, type ReactElement } from 'react';
 import { createRoot } from 'react-dom/client';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { setIssueView, issueView } from '../model/view';
@@ -40,12 +40,12 @@ const many = (n: number): Issue[] =>
     }),
   );
 
-function mount() {
+function mount(ui: ReactElement = <IssueRegister />) {
   const el = document.createElement('div');
   document.body.append(el);
   const root = createRoot(el);
   act(() => {
-    root.render(<IssueRegister />);
+    root.render(ui);
   });
   const q = (sel: string) => el.querySelector(sel);
   return {
@@ -305,6 +305,26 @@ describe('IssueRegister right-click menu', () => {
     const ui = mount();
     expect(rightClick(ui, 'D0001').defaultPrevented).toBe(false);
     expect(document.querySelector('[data-testid="issue-row-menu"]')).toBeNull();
+    ui.unmount();
+  });
+
+  it('takes the screen title and actions into its own header row, so a screen has one heading', () => {
+    workspace.getState().openProject({ id: 'big', root: 'r', manifest }, many(3));
+    const ui = mount(
+      <IssueRegister
+        title="Issue register"
+        actions={
+          <button type="button" data-testid="extra">
+            Export
+          </button>
+        }
+      />,
+    );
+    const heads = [...ui.el.querySelectorAll('h1, h2, h3')].map((h) => h.textContent);
+    expect(heads).toEqual(['Issue register']);
+    const row = ui.q('.ann-h');
+    expect(row?.querySelector('[data-testid="extra"]')).not.toBeNull();
+    expect(row?.textContent).toContain('Undo');
     ui.unmount();
   });
 });
