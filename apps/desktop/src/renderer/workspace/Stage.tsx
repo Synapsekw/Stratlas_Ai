@@ -17,16 +17,7 @@ import {
   type MapDrawSeam,
   type MapIssueDisplay,
 } from '@aio/maps';
-import {
-  arrowFocus,
-  ariaKeys,
-  Icon,
-  isShortcut,
-  matchShortcut,
-  shortcutHint,
-  useT,
-  type IconName,
-} from '@aio/ui';
+import { arrowFocus, ariaKeys, Icon, isShortcut, matchShortcut, shortcutHint, useT } from '@aio/ui';
 import { setDroneTelemetry, setFlightPaths, videoRig } from '@aio/video';
 import { useVolumetric, VolumetricStage } from '@aio/volumetric';
 import { useWorkspace, workspace } from '@aio/workspace';
@@ -43,14 +34,7 @@ import {
 import { CloudChangeLegend } from '../change/producers/CloudChangeLegend';
 import { EnvironmentTool, useStageEnvironment } from '../environment/EnvironmentTool';
 import { FocusZone } from '../FocusZone';
-import {
-  CloseupDock,
-  MeasureBar,
-  PciUnitCard,
-  RoadLegend,
-  RoadToolGroup,
-  useRoadKeys,
-} from '../road/RoadTools';
+import { CloseupDock, MeasureBar, PciUnitCard, RoadLegend, useRoadKeys } from '../road/RoadTools';
 import { useRoad } from '../road/store';
 import { useRoadSetupMap } from '../road/RoadSetup';
 import { useRoadMap } from '../road/useRoadMap';
@@ -99,19 +83,7 @@ import { useTimeline } from './timeline';
 import { hiddenPathClips, togglePaths } from './flightPaths';
 import { telemetryLabels, toggleTelemetry, useTelemetryOn } from './telemetryPref';
 import { flightPathModel, updateFlightPaths, useFlightPathModel } from './pathModel';
-import {
-  AnnotateToggle,
-  CloudTools,
-  DisplayTools,
-  MeasureTools,
-  nextLabelMode,
-  PopTool,
-  toggleSection,
-  Tool,
-  useEngineStage,
-  VideoTools,
-  ViewTools,
-} from './StageTools';
+import { nextLabelMode, PopTool, toggleSection, Tool, useEngineStage } from './StageTools';
 import { createToolbarFit, GAP, GROUP_LABEL, type GroupId } from './toolbarFit';
 import { toggleTimeline } from './timelinePref';
 import {
@@ -122,20 +94,13 @@ import {
   useCutawayPref,
   useCutawayState,
 } from './useCutaway';
-import { VolumeTools } from './VolumeTools';
-import { MeasureMount, MeasureToolbar } from '../survey/MeasureToolbar';
+import { fullGroup, MODES } from './island/groups';
+import { MeasureMount } from '../survey/MeasureToolbar';
 import { SurveyQaMount } from '../survey/Qa';
 import { useGroundFollowsLayers, useSiteBasemapLayer, wantsSiteBasemap } from './siteBasemap';
 import { useStreetMap3d } from './streetMap3d';
-import { StreetMapTool } from './StreetMapTool';
 import { MapViewMenu, SceneMapMenu } from './MapMenus';
 import { useSiteTiles } from './siteTiles';
-
-const MODES: { mode: StageMode; label: string; icon: IconName; keys: string }[] = [
-  { mode: '3d', label: '3D', icon: 'scene', keys: '1' },
-  { mode: 'map', label: 'Map', icon: 'map', keys: '2' },
-  { mode: 'split', label: 'Split', icon: 'split', keys: '3' },
-];
 
 function ScenePane({
   hidden,
@@ -275,34 +240,7 @@ function StageToolbar({
     };
   }, [barRef, fit]);
 
-  const render = (g: GroupId): ReactNode => {
-    switch (g) {
-      case 'view':
-        return <ViewTools stage={stage} map={map} />;
-      case 'measure':
-        // on the map only the survey measurements (the scene's own tools need the 3D view);
-        // the site data (designs, survey QA, overlays, hydrology, haul road) are in the Survey
-        // measurements popover
-        return map ? <MeasureToolbar /> : <MeasureTools stage={stage} />;
-      case 'display':
-        return (
-          <>
-            <DisplayTools stage={stage} map={map} />
-            {!map && <StreetMapTool />}
-          </>
-        );
-      case 'clouds':
-        return <CloudTools />;
-      case 'volumes':
-        return <VolumeTools />;
-      case 'video':
-        return <VideoTools stage={stage} map={map} />;
-      case 'annotate':
-        return <AnnotateToggle />;
-      case 'road':
-        return <RoadToolGroup />;
-    }
-  };
+  const render = (g: GroupId): ReactNode => fullGroup(g, { stage, map });
 
   return (
     // The tools sit on the stage (street map, imagery), which is dark in every theme.

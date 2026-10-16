@@ -28,32 +28,43 @@ import { chooseCapture, compareSplit, PER_CAPTURE, type PaneKind, type Side } fr
  */
 export const COMPARE_TOOLS: ((p: { split: SplitModel }) => ReactNode)[] = [];
 
+export interface CompareDates {
+  /** The project has two survey dates to compare. */
+  available: boolean;
+  /** Both sides of the split show one kind of pane, one date each. */
+  twin: boolean;
+  /** "Compare dates", or "Leave the comparison" while comparing. */
+  label: string;
+  /**
+   * Compare (or leave the comparison). `captures` picks the two dates, first on the left; by
+   * default the first and the last survey.
+   */
+  open: (captures?: readonly string[]) => void;
+}
+
 /**
- * "Compare dates" beside the view modes: opens the split with the first survey date on the left
- * and the last on the right, as two 3D views (from 3D or the split) or two maps (from the map).
- * On the Low graphics tier one 3D view runs: the volumetric swipe, or two maps, with a notice.
- * Pressed again, it leaves the comparison (the choice stays remembered for the split).
+ * "Compare dates": opens the split with the first survey date on the left and the last on the
+ * right, as two 3D views (from 3D or the split) or two maps (from the map). On the Low graphics
+ * tier one 3D view runs: the volumetric swipe, or two maps, with a notice. Again while comparing,
+ * it leaves the comparison (the choice stays remembered for the split).
  */
-export function CompareButton({ split }: { split: SplitModel }) {
+export function useCompareDates(split: SplitModel): CompareDates {
   const t = useT();
   const mode = useShell((s) => s.stageMode);
   const tier = useGraphics((s) => s.tier);
   const volumes = useVolumetric((s) => s.status === 'ready');
   const index = split.index;
-  // "Show changes": change pins on the compared views (and on one view outside the comparison)
-  useChangeOverlays(split);
-  const showChanges = useChange((s) => s.show);
-  if (!index || !canCompare(index)) return null;
-  const twin = mode === 'split' && isTwin(split);
-  const captures = index.captures.map((c) => c.id);
+  const available = index !== null && canCompare(index);
+  const twin = available && mode === 'split' && isTwin(split);
   const label = t(twin ? 'stage.compare.leave' : 'stage.compare.button');
-
-  const open = () => {
+  const open = (picked?: readonly string[]) => {
+    if (!index) return;
     const sh = shell.getState();
     if (twin) {
       sh.setStageMode(split.sides.left === 'map' ? 'map' : '3d');
       return;
     }
+    const captures = picked ?? index.captures.map((c) => c.id);
     const kind: PaneKind =
       mode === 'map'
         ? 'map'
@@ -76,6 +87,20 @@ export function CompareButton({ split }: { split: SplitModel }) {
     split.set(compareSplit(split.sides, kind, { captures }));
     sh.setStageMode('split');
   };
+  return { available, twin, label, open };
+}
+
+/**
+ * "Compare dates" beside the view modes (`useCompareDates`), and while comparing, Show changes,
+ * the compare tools of later streams and help.
+ */
+export function CompareButton({ split }: { split: SplitModel }) {
+  const t = useT();
+  const { available, twin, label, open } = useCompareDates(split);
+  // "Show changes": change pins on the compared views (and on one view outside the comparison)
+  useChangeOverlays(split);
+  const showChanges = useChange((s) => s.show);
+  if (!available) return null;
 
   return (
     <div className="tgroup-h overlay-box" data-fixed="">
@@ -85,7 +110,9 @@ export function CompareButton({ split }: { split: SplitModel }) {
         data-testid="compare-dates"
         aria-pressed={twin}
         aria-label={label}
-        onClick={open}
+        onClick={() => {
+          open();
+        }}
       >
         <Icon name="history" />
         <span className="tip">{label}</span>

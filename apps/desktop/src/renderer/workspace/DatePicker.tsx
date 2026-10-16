@@ -1,19 +1,13 @@
 import { Calendar, Icon, Popover, formatDate, useT, type CalendarDay } from '@aio/ui';
-import { dateTags } from '@aio/workspace';
+import { dateTags, type CaptureIndex } from '@aio/workspace';
 import { useMemo, useRef, useState } from 'react';
 import { timeline, useTimeline } from './timeline';
 
-/**
- * The focused survey date as a button that opens the calendar. `up` opens the calendar above the
- * button (the timeline and the date row sit at the bottom of the window), rendered on the page
- * body so a scrolling box around the button (the lane timeline's body) does not clip it.
- */
-export function DatePicker({ up = false }: { up?: boolean }) {
-  const t = useT();
-  const index = useTimeline((s) => s.index);
-  const focus = useTimeline((s) => s.focus);
-  const [open, setOpen] = useState(false);
-  const opener = useRef<HTMLButtonElement>(null);
+/** The project's survey dates as calendar days, each in its date colour. */
+export function useCalendarDays(index: CaptureIndex | null): {
+  days: CalendarDay[];
+  colour: (id: string) => string | undefined;
+} {
   const tags = useMemo(() => (index ? dateTags(index.captures) : {}), [index]);
   const days: CalendarDay[] = useMemo(
     () =>
@@ -26,6 +20,21 @@ export function DatePicker({ up = false }: { up?: boolean }) {
       })),
     [index, tags],
   );
+  return { days, colour: (id) => tags[id]?.colour };
+}
+
+/**
+ * The focused survey date as a button that opens the calendar. `up` opens the calendar above the
+ * button (the timeline and the date row sit at the bottom of the window), rendered on the page
+ * body so a scrolling box around the button (the lane timeline's body) does not clip it.
+ */
+export function DatePicker({ up = false }: { up?: boolean }) {
+  const t = useT();
+  const index = useTimeline((s) => s.index);
+  const focus = useTimeline((s) => s.focus);
+  const [open, setOpen] = useState(false);
+  const opener = useRef<HTMLButtonElement>(null);
+  const { days, colour } = useCalendarDays(index);
   const current = index?.captures.find((c) => c.id === focus);
   if (!index || !focus || !current) return null;
 
@@ -43,7 +52,7 @@ export function DatePicker({ up = false }: { up?: boolean }) {
           setOpen((o) => !o);
         }}
       >
-        <span className="dtag" style={{ background: tags[focus]?.colour }} aria-hidden="true" />
+        <span className="dtag" style={{ background: colour(focus) }} aria-hidden="true" />
         {formatDate(current.date)}
       </button>
       <Popover

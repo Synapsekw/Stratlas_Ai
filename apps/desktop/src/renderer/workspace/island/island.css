@@ -1,0 +1,556 @@
+/* The stage island (D1, D8): one capsule at the top centre of the stage, a pill at rest and
+   16 px rounded open. Its size morphs between the states; its content crossfades. The stage is
+   dark in every theme, so the island reads the dark tokens (data-surface="dark"). */
+
+.island-wrap {
+  --d-island: 400ms;
+  --ease-island: cubic-bezier(0.32, 0.72, 0, 1);
+  --isl-bg: color-mix(in oklch, var(--bg-1) 94%, transparent);
+  position: absolute;
+  top: var(--sp-4);
+  inset-inline: 0;
+  margin-inline: auto;
+  inline-size: fit-content;
+  max-inline-size: calc(100% - var(--sp-6));
+  z-index: var(--z-stage-ui);
+  display: flex;
+  align-items: flex-start;
+  gap: var(--sp-4);
+  pointer-events: none;
+  outline: none;
+}
+.island-wrap:focus-visible > .island {
+  outline: 1.5px solid var(--acc);
+  outline-offset: 2px;
+}
+
+.island {
+  position: relative;
+  pointer-events: auto;
+  overflow: hidden;
+  background: var(--isl-bg);
+  border: 1px solid var(--line);
+  box-shadow: var(--el-2);
+  /* a pill while it is one line, 16 px when open */
+  border-radius: min(calc(var(--isl-h, 24px) / 2), 16px);
+  cursor: pointer;
+  transition:
+    width var(--d-island) var(--ease-island),
+    height var(--d-island) var(--ease-island),
+    border-radius var(--d-island) var(--ease-island),
+    border-color var(--d-2) var(--ease),
+    box-shadow var(--d-2) var(--ease);
+}
+.island:hover {
+  border-color: var(--line-strong);
+}
+.island-wrap[data-state='tools'] .island,
+.island-wrap[data-state='date'] .island {
+  cursor: default;
+}
+.island-wrap[data-state='tools'] .island:hover,
+.island-wrap[data-state='date'] .island:hover {
+  border-color: var(--line);
+}
+/* the sidebar's front tab shows the island's live item (D10) */
+.island-wrap[data-linked] .island,
+.island-wrap[data-linked] .island:hover {
+  border-color: var(--acc);
+  box-shadow:
+    var(--el-2),
+    0 0 0 3px var(--acc-a12);
+}
+
+/* the content: measured, then laid over the capsule so the capsule can morph around it */
+.isl-layer {
+  inline-size: max-content;
+  animation: isl-in var(--d-3) var(--ease) 70ms both;
+}
+.island[data-sized] > .isl-layer {
+  position: absolute;
+  top: 0;
+  inset-inline-start: 50%;
+  translate: -50% 0;
+}
+:dir(rtl) .island[data-sized] > .isl-layer {
+  translate: 50% 0;
+}
+@keyframes isl-in {
+  from {
+    opacity: 0;
+    scale: 0.96;
+    filter: blur(3px);
+  }
+}
+
+/* ---------------------------------------------------------------- the one line */
+
+.isl-line {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-5);
+  block-size: 32px;
+  padding-inline: var(--sp-5);
+  white-space: nowrap;
+  font-size: var(--t-12);
+  color: var(--fg-2);
+}
+.isl-line.ready {
+  gap: var(--sp-2);
+  padding-inline: var(--sp-3);
+}
+.isl-line.ready .isl-sep {
+  margin-inline: var(--sp-2);
+}
+.isl-sep {
+  inline-size: 1px;
+  block-size: 14px;
+  background: var(--line);
+  flex: none;
+}
+.isl-dots {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  inline-size: 34px;
+  block-size: 20px;
+  margin-inline: calc(var(--sp-5) * -1);
+}
+.isl-dots i {
+  inline-size: 4px;
+  block-size: 4px;
+  border-radius: 50%;
+  background: var(--fg-3);
+}
+.isl-line:has(> .isl-dots:only-child) {
+  block-size: 20px;
+}
+.isl-acc {
+  color: var(--acc);
+  flex: none;
+}
+.isl-name {
+  color: var(--fg-0);
+}
+
+/* the date */
+.isl-date {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-1);
+}
+.isl-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  block-size: 24px;
+  padding-inline: 7px;
+  border-radius: var(--r-pill);
+  font-size: var(--t-12);
+  font-weight: 500;
+  color: var(--fg-0);
+  transition: background-color var(--d-1);
+}
+.isl-pill:hover {
+  background: var(--bg-3);
+}
+.isl-line:not(.ready) .isl-pill {
+  padding-inline: 0;
+}
+.isl-line:not(.ready) .isl-pill:hover {
+  background: none;
+}
+.isl-swatch {
+  inline-size: 8px;
+  block-size: 8px;
+  border-radius: var(--r-2);
+  flex: none;
+}
+.isl-count {
+  font-size: var(--t-11);
+  font-weight: 400;
+  color: var(--fg-3);
+}
+.island .btn.isl-arrow {
+  block-size: 24px;
+  inline-size: 22px;
+  border-color: transparent;
+  border-radius: var(--r-pill);
+  background: none;
+  color: var(--fg-2);
+}
+.island .btn.isl-arrow:hover {
+  background: var(--bg-3);
+  color: var(--fg-0);
+}
+.isl-arrow.prev svg {
+  transform: scaleX(-1);
+}
+:dir(rtl) .isl-arrow.prev svg {
+  transform: none;
+}
+:dir(rtl) .isl-arrow.next svg {
+  transform: scaleX(-1);
+}
+
+/* Tools, while the island is open */
+.island .btn.isl-open {
+  block-size: 24px;
+  gap: 7px;
+  padding-inline: 7px;
+  border-radius: var(--r-pill);
+  font-size: var(--t-12);
+  color: var(--fg-0);
+}
+.isl-mode {
+  color: var(--fg-2);
+}
+.isl-open .kbd {
+  font-size: var(--t-11);
+  padding: 1px 4px;
+}
+
+/* a live reading */
+.isl-live {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-4);
+}
+.isl-value {
+  font: 600 var(--t-13) / 1 var(--f-mono);
+  color: var(--fg-0);
+  letter-spacing: -0.01em;
+  font-feature-settings: 'tnum' 1;
+}
+.isl-value.sm {
+  font-size: var(--t-12);
+  font-weight: 500;
+}
+.isl-bar {
+  inline-size: 64px;
+  block-size: 3px;
+  border-radius: var(--r-2);
+  background: var(--bg-3);
+  overflow: hidden;
+}
+.isl-bar i {
+  display: block;
+  block-size: 100%;
+  background: var(--acc);
+}
+.isl-more {
+  font: 500 var(--t-11) / 1 var(--f-mono);
+  color: var(--fg-2);
+}
+.isl-ring {
+  display: block;
+  rotate: -90deg;
+  flex: none;
+}
+.isl-ring .tr {
+  stroke: var(--bg-3);
+}
+.isl-ring .pr {
+  stroke: var(--acc);
+  transition: stroke-dasharray var(--d-island) var(--ease);
+}
+.isl-cdot {
+  inline-size: 7px;
+  block-size: 7px;
+  border-radius: 50%;
+  flex: none;
+}
+.isl-cdot.off {
+  border: 1.5px solid var(--warn);
+}
+.isl-cdot.ok {
+  background: var(--ok);
+}
+.isl-spin {
+  inline-size: 12px;
+  block-size: 12px;
+  border-radius: 50%;
+  border: 1.5px solid var(--line-strong);
+  border-top-color: var(--fg-1);
+  animation: isl-spin 0.9s linear infinite;
+  flex: none;
+}
+@keyframes isl-spin {
+  to {
+    rotate: 360deg;
+  }
+}
+
+/* the second live item, beside the island: a click swaps them (D2) */
+.island-wrap .btn.isl-bubble {
+  pointer-events: auto;
+  inline-size: 32px;
+  block-size: 32px;
+  padding: 0;
+  border-radius: var(--r-pill);
+  background: var(--isl-bg);
+  border: 1px solid var(--line);
+  box-shadow: var(--el-2);
+  color: var(--acc);
+  animation: isl-bubble var(--d-island) var(--ease-island) both;
+}
+.island-wrap .btn.isl-bubble:hover {
+  border-color: var(--line-strong);
+  background: var(--isl-bg);
+}
+@keyframes isl-bubble {
+  from {
+    opacity: 0;
+    scale: 0.4;
+  }
+}
+
+/* comparing: its controls beside the island */
+.isl-side {
+  pointer-events: auto;
+}
+
+/* ---------------------------------------------------------------- tools */
+
+.isl-tools {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-4);
+  padding: var(--sp-4);
+  max-inline-size: calc(100cqi - var(--sp-6) * 2);
+}
+.isl-r1 {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+}
+.isl-vsep {
+  align-self: stretch;
+  inline-size: 1px;
+  margin: var(--sp-3) var(--sp-2);
+  background: var(--line);
+  flex: none;
+}
+/* the group tabs: segmented look without the frame */
+.seg.isl-groups {
+  border-color: transparent;
+  background: none;
+  padding: 0;
+  gap: var(--sp-1);
+}
+.seg.isl-groups button {
+  block-size: 26px;
+  padding-inline: 9px;
+}
+.seg.isl-groups button svg {
+  display: none;
+}
+.seg.isl-groups button.isl-shown:not([aria-selected='true']) {
+  color: var(--fg-0);
+  background: var(--bg-2);
+}
+.seg.isl-groups button[aria-selected='true'] svg {
+  color: var(--acc);
+}
+.island .btn.isl-x {
+  margin-inline-start: auto;
+  block-size: 26px;
+  padding-inline: var(--sp-3);
+  gap: var(--sp-3);
+  color: var(--fg-3);
+}
+.isl-x .kbd {
+  font-size: var(--t-11);
+  padding: 1px 4px;
+}
+
+.isl-r2 {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: stretch;
+  gap: var(--sp-1);
+  padding-block-start: var(--sp-4);
+  border-block-start: 1px solid var(--line-soft);
+  animation: isl-row var(--d-3) var(--ease-island);
+}
+@keyframes isl-row {
+  from {
+    opacity: 0;
+    translate: 0 -3px;
+  }
+}
+.island .btn.isl-tile {
+  position: relative;
+  flex-direction: column;
+  gap: var(--sp-3);
+  inline-size: 76px;
+  block-size: 58px;
+  padding: 0;
+  color: var(--fg-1);
+}
+.island .btn.isl-tile:hover {
+  background: var(--bg-3);
+  color: var(--fg-0);
+}
+.island .btn.isl-tile[aria-pressed='true'] {
+  background: var(--acc-a20);
+  border-color: var(--acc-a40);
+  color: var(--acc-strong);
+}
+.isl-tl {
+  max-inline-size: 72px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-size: var(--t-11);
+  font-weight: 400;
+  line-height: 1.15;
+  color: var(--fg-2);
+}
+.isl-tile:hover .isl-tl,
+.isl-tile[aria-pressed='true'] .isl-tl {
+  color: var(--fg-0);
+}
+.isl-tk {
+  font: 500 var(--t-11) / 1 var(--f-mono);
+  color: var(--fg-3);
+}
+.isl-tile .isl-tk {
+  position: absolute;
+  top: var(--sp-2);
+  inset-inline-end: 5px;
+}
+.isl-tile .caret {
+  position: absolute;
+  inset-inline-end: var(--sp-2);
+  bottom: var(--sp-2);
+  border-inline-start: 4px solid transparent;
+  border-bottom: 4px solid currentColor;
+  opacity: 0.55;
+}
+.island .btn.isl-to-side .isl-tl {
+  color: var(--acc-strong);
+}
+.island .btn.isl-to-side svg {
+  color: var(--acc);
+}
+.island .btn.isl-to-side:hover {
+  background: var(--acc-a12);
+}
+.isl-choice {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--sp-3);
+  block-size: 58px;
+  padding-inline: var(--sp-4);
+}
+.isl-cl {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: var(--t-11);
+  color: var(--fg-3);
+  white-space: nowrap;
+}
+
+/* narrow stages: the group tabs drop their names, the shown one keeps it (D6) */
+@container (max-width: 760px) {
+  .seg.isl-groups button:not([aria-selected='true']) .isl-gl,
+  .isl-ml {
+    display: none;
+  }
+  .seg.isl-groups button svg {
+    display: inline;
+  }
+  .seg.isl-groups button {
+    padding-inline: 7px;
+  }
+}
+
+/* ---------------------------------------------------------------- the calendar */
+
+.isl-cal {
+  display: grid;
+  gap: var(--sp-4);
+  padding: var(--sp-4) var(--sp-5) var(--sp-5);
+}
+.isl-cal .cal {
+  inline-size: 276px;
+  padding: 0;
+  background: none;
+  border: 0;
+  box-shadow: none;
+}
+.isl-cal-list {
+  display: grid;
+  gap: var(--sp-1);
+  max-block-size: 180px;
+  overflow-y: auto;
+  padding-block-start: var(--sp-4);
+  border-block-start: 1px solid var(--line-soft);
+}
+.isl-cal-list button {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  block-size: 30px;
+  padding-inline: var(--sp-4);
+  border-radius: var(--r-4);
+  font-size: var(--t-12);
+  color: var(--fg-1);
+  text-align: start;
+}
+.isl-cal-list button:hover {
+  background: var(--bg-2);
+  color: var(--fg-0);
+}
+.isl-cal-list button[aria-pressed='true'] {
+  background: var(--bg-3);
+  color: var(--fg-0);
+}
+.isl-cal-list b {
+  font-weight: 600;
+  color: var(--fg-0);
+}
+.isl-faint {
+  margin-inline-start: auto;
+  font-size: var(--t-11);
+  color: var(--fg-3);
+}
+.isl-cal-list .isl-compare svg {
+  color: var(--acc);
+}
+
+/* a group's full set, centred under the island (stage 1) */
+.island-wrap > .isl-full {
+  position: absolute;
+  top: calc(100% + var(--sp-4));
+  inset-inline: 0;
+  margin-inline: auto;
+  inline-size: max-content;
+  padding-block-end: var(--sp-4);
+  pointer-events: auto;
+  animation: isl-in var(--d-3) var(--ease) both;
+}
+.isl-full-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-2);
+  padding-inline: var(--sp-5);
+}
+
+/* reduced motion: every morph and fade is instant */
+.island-wrap[data-motion='reduce'],
+.island-wrap[data-motion='reduce'] * {
+  transition: none !important;
+  animation: none !important;
+}
+@media (prefers-reduced-motion: reduce) {
+  .island-wrap,
+  .island-wrap * {
+    transition: none !important;
+    animation: none !important;
+  }
+}

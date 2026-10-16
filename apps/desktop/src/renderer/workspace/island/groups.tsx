@@ -1,0 +1,757 @@
+/**
+ * The island's tool groups: the stage view switch, each group's quick row (a few tiles and inline
+ * switches, D5) and, until the workbenches land, each group's full set as the stage toolbar had it.
+ */
+import { pinDisplay, usePinDisplay } from '@aio/annotate';
+import type { EngineStage } from '@aio/engine';
+import {
+  Button,
+  Icon,
+  shortcutHint,
+  useT,
+  type IconName,
+  type MessageKey,
+  type ShortcutId,
+} from '@aio/ui';
+import { setCameraMode, videoRig, type CameraMode } from '@aio/video';
+import { useVolumetric, volumetric, type BodyMode, type SurfaceMode } from '@aio/volumetric';
+import { useWorkspace, workspace } from '@aio/workspace';
+import { useReducer, type ReactNode } from 'react';
+import { openCleanupPanel } from '../../pointcloud/cleanupActions';
+import { cleanup, useCleanup } from '../../pointcloud/cleanupStore';
+import { RoadToolGroup, toggleMeasure } from '../../road/RoadTools';
+import { setRoad, useRoad } from '../../road/store';
+import { shell, useShell } from '../../shell';
+import { PANEL_ID } from '../../shell/PanelHandle';
+import type { StageMode } from '../../store';
+import { MeasureToolbar } from '../../survey/MeasureToolbar';
+import { startTool, stopTool, useMeasure } from '../../survey/measureStore';
+import type { CompareDates } from '../CompareControls';
+import { PATH_MODES, setPathMode } from '../flightPaths';
+import { updateFlightPaths, useFlightPathModel } from '../pathModel';
+import {
+  AnnotateToggle,
+  CloudTools,
+  DisplayTools,
+  LABEL_MODES,
+  MeasureTools,
+  toggleSection,
+  VideoTools,
+  ViewTools,
+} from '../StageTools';
+import { siteBasemap, streetMapTool } from '../siteBasemap';
+import { StreetMapTool } from '../StreetMapTool';
+import { useStreetMap3d } from '../streetMap3d';
+import { toggleTelemetry, useTelemetryOn } from '../telemetryPref';
+import { toggleTimeline, useTimelineShown } from '../timelinePref';
+import { insideView } from '../useCutaway';
+import { VolumeTools } from '../VolumeTools';
+import type { GroupId } from './islandModel';
+
+/** The stage views, keys 1, 2 and 3. */
+export const MODES: { mode: StageMode; label: string; icon: IconName; keys: string }[] = [
+  { mode: '3d', label: '3D', icon: 'scene', keys: '1' },
+  { mode: 'map', label: 'Map', icon: 'map', keys: '2' },
+  { mode: 'split', label: 'Split', icon: 'split', keys: '3' },
+];
+
+/** The group tabs' short names. */
+export const GROUP_NAME: Record<GroupId, MessageKey> = {
+  view: 'island.group.view',
+  measure: 'island.group.measure',
+  display: 'island.group.display',
+  clouds: 'island.group.clouds',
+  volumes: 'island.group.volumes',
+  video: 'island.group.video',
+  road: 'island.group.road',
+  annotate: 'island.group.annotate',
+};
+
+export const GROUP_ICON: Record<GroupId, IconName> = {
+  view: 'maximize',
+  measure: 'ruler',
+  display: 'layers',
+  clouds: 'cloud',
+  volumes: 'pile',
+  video: 'video',
+  road: 'road',
+  annotate: 'anno',
+};
+
+export interface GroupCtx {
+  stage: EngineStage | null;
+  /** The tools work on the map only. */
+  map: boolean;
+  /** Open the group's full set (stage 1: a popover under the island). */
+  openFull: (g: GroupId) => void;
+  /** Compare dates, for the View tile. */
+  compare: CompareDates;
+}
+
+/** A group's full set, as the stage toolbar showed it. */
+export function fullGroup(g: GroupId, ctx: Pick<GroupCtx, 'stage' | 'map'>): ReactNode {
+  const { stage, map } = ctx;
+  switch (g) {
+    case 'view':
+      return <ViewTools stage={stage} map={map} />;
+    case 'measure':
+      // on the map only the survey measurements (the scene's own tools need the 3D view); the
+      // site data (designs, survey QA, overlays, hydrology, haul road) are in the Survey
+      // measurements popover
+      return map ? <MeasureToolbar /> : <MeasureTools stage={stage} />;
+    case 'display':
+      return (
+        <>
+          <DisplayTools stage={stage} map={map} />
+          {!map && <StreetMapTool />}
+        </>
+      );
+    case 'clouds':
+      return <CloudTools />;
+    case 'volumes':
+      return <VolumeTools />;
+    case 'video':
+      return <VideoTools stage={stage} map={map} />;
+    case 'annotate':
+      return <AnnotateToggle />;
+    case 'road':
+      return <RoadToolGroup />;
+  }
+}
+
+/* ----------------------------------------------------------------------- tiles */
+
+interface TileProps {
+  icon: IconName;
+  /** The short name under the icon. */
+  label: string;
+  /** The accessible name and tooltip, when longer than the label. */
+  name?: string | undefined;
+  shortcut?: ShortcutId | undefined;
+  pressed?: boolean | undefined;
+  disabled?: boolean | undefined;
+  /** Opens a panel (the corner caret). */
+  caret?: boolean;
+  /** Opens the group's full set: the accent tile at the end of a row. */
+  toSide?: boolean;
+  flip?: boolean;
+  testId?: string;
+  onClick: () => void;
+}
+
+/** A quick tile: icon, short name and key. */
+export function Tile({
+  icon,
+  label,
+  name,
+  shortcut,
+  pressed,
+  disabled,
+  caret,
+  toSide,
+  flip,
+  testId,
+  onClick,
+}: TileProps) {
+  // a single key in the corner; a combination ("Ctrl J") only in the tooltip
+  const hint = shortcut ? shortcutHint(shortcut) : '';
+  const corner = hint && !hint.includes(' ') ? hint : '';
+  return (
+    <Button
+      variant="quiet"
+      className={`isl-tile${toSide ? ' isl-to-side' : ''}`}
+      aria-label={name ?? label}
+      tip={name ?? label}
+      data-testid={testId}
+      onClick={onClick}
+      {...(pressed !== undefined ? { pressed } : {})}
+      {...(disabled !== undefined ? { disabled } : {})}
+      {...(shortcut ? { shortcut } : {})}
+    >
+      <Icon name={icon} size={20} {...(flip ? { className: 'flip' } : {})} />
+      <span className="isl-tl">{label}</span>
+      {corner && (
+        <span className="isl-tk" aria-hidden="true">
+          {corner}
+        </span>
+      )}
+      {caret && <span className="caret" aria-hidden="true" />}
+    </Button>
+  );
+}
+
+interface ChoiceProps<V extends string> {
+  label: string;
+  shortcut?: ShortcutId;
+  options: readonly { value: V; label: string; disabled?: boolean }[];
+  value: V | null;
+  disabled?: boolean;
+  onPick: (v: V) => void;
+}
+
+/** An inline switch with its caption under it. */
+export function Choice<V extends string>({
+  label,
+  shortcut,
+  options,
+  value,
+  disabled,
+  onPick,
+}: ChoiceProps<V>) {
+  return (
+    <div className="isl-choice" role="group" aria-label={label}>
+      <div className="seg">
+        {options.map((o) => (
+          <button
+            key={o.value}
+            type="button"
+            aria-pressed={value === o.value}
+            disabled={disabled === true || o.disabled === true}
+            onClick={() => {
+              onPick(o.value);
+            }}
+          >
+            {o.label}
+          </button>
+        ))}
+      </div>
+      <span className="isl-cl" aria-hidden="true">
+        {label}
+        {shortcut && <span className="isl-tk">{shortcutHint(shortcut)}</span>}
+      </span>
+    </div>
+  );
+}
+
+const Sep = () => <span className="isl-vsep" aria-hidden="true" />;
+
+/** The tile that opens the group's full set (the right panel, from stage 2). */
+function AllTools({ g, ctx }: { g: GroupId; ctx: GroupCtx }) {
+  const t = useT();
+  return (
+    <>
+      <Sep />
+      <Tile
+        icon="sidebar"
+        flip
+        caret
+        toSide
+        label={t('island.allTools')}
+        name={`${t(GROUP_NAME[g])}: ${t('island.allTools')}`}
+        onClick={() => {
+          ctx.openFull(g);
+        }}
+      />
+    </>
+  );
+}
+
+/* ----------------------------------------------------------------------- the quick rows */
+
+const PRESETS = [
+  { value: 'iso', label: 'Iso' },
+  { value: 'top', label: 'Top' },
+  { value: 'north', label: 'North' },
+] as const;
+
+/** The agent sits in the right panel on the Scene: show it and put the cursor in its box. */
+function askAgent(): void {
+  if (shell.getState().rightCollapsed) shell.getState().toggleRight();
+  requestAnimationFrame(() => {
+    document
+      .getElementById(PANEL_ID.right)
+      ?.querySelector<HTMLTextAreaElement>('textarea[aria-label="Message the agent"]')
+      ?.focus();
+  });
+}
+
+function ViewRow({ ctx }: { ctx: GroupCtx }) {
+  const t = useT();
+  const { stage, map, compare } = ctx;
+  const selection = useWorkspace((s) => s.selection);
+  const project = useWorkspace((s) => s.project);
+  const timelineOn = useTimelineShown(project);
+  const rightCollapsed = useShell((s) => s.rightCollapsed);
+  return (
+    <>
+      <Tile
+        icon="maximize"
+        label="Whole site"
+        shortcut="scene.home"
+        onClick={() => {
+          workspace.getState().flyTo({ kind: 'home' });
+        }}
+      />
+      <Tile
+        icon="crosshair"
+        label="Centre"
+        name="Centre on project"
+        shortcut="scene.site"
+        onClick={() => {
+          workspace.getState().flyTo({ kind: 'site' });
+        }}
+      />
+      <Tile
+        icon="target"
+        label="Fly to"
+        name="Fly to selection"
+        shortcut="scene.flySelection"
+        disabled={!selection}
+        onClick={() => {
+          if (selection) workspace.getState().flyTo({ kind: 'selection', selection });
+        }}
+      />
+      {!map && stage && (
+        <Choice
+          label="View preset"
+          options={PRESETS}
+          value={null}
+          onPick={(p) => {
+            stage.setViewPreset(p);
+          }}
+        />
+      )}
+      {!map && stage && (
+        <Tile
+          icon="sun"
+          label="Sky and time"
+          name="Environment and time of day"
+          caret
+          onClick={() => {
+            ctx.openFull('view');
+          }}
+        />
+      )}
+      {compare.available && (
+        <Tile
+          icon="history"
+          label="Compare"
+          name={compare.label}
+          pressed={compare.twin}
+          testId="compare-dates"
+          onClick={() => {
+            compare.open();
+          }}
+        />
+      )}
+      <Tile
+        icon="track"
+        label={t('island.timeline')}
+        pressed={timelineOn}
+        disabled={!project}
+        onClick={() => {
+          toggleTimeline(workspace.getState().project);
+        }}
+      />
+      <Tile
+        icon="agent"
+        label="Ask agent"
+        name={t('island.askAgent')}
+        shortcut="global.agent"
+        onClick={askAgent}
+      />
+      <Sep />
+      <Tile
+        icon="sidebar"
+        flip
+        label={t('island.toRightPanel')}
+        name={rightCollapsed ? 'Show the right panel' : 'Hide the right panel'}
+        shortcut="global.rightPanel"
+        pressed={!rightCollapsed}
+        onClick={shell.getState().toggleRight}
+      />
+    </>
+  );
+}
+
+function MeasureRow({ ctx }: { ctx: GroupCtx }) {
+  const { stage, map } = ctx;
+  const active = useMeasure((s) => s.tool);
+  const readOnly = useMeasure((s) => s.readOnly);
+  const pkg = useShell((s) => s.pkg !== null);
+  const survey = !readOnly && !pkg;
+  const quick = stage?.tool === 'measure';
+  const tool = (v: 'elevation' | 'area' | 'volume', icon: IconName, label: string) => (
+    <Tile
+      icon={icon}
+      label={label}
+      pressed={active?.tool === v && !active.template}
+      onClick={() => {
+        if (active?.tool === v && !active.template) stopTool();
+        else startTool(v);
+      }}
+    />
+  );
+  return (
+    <>
+      {!map ? (
+        <Tile
+          icon="ruler"
+          label="Distance"
+          name="Measure a distance"
+          shortcut="scene.measure"
+          pressed={quick}
+          disabled={!stage}
+          onClick={() => stage?.setTool(quick ? 'select' : 'measure')}
+        />
+      ) : (
+        survey && (
+          <Tile
+            icon="ruler"
+            label="Distance"
+            pressed={active?.tool === 'distance' && !active.template}
+            onClick={() => {
+              if (active?.tool === 'distance' && !active.template) stopTool();
+              else startTool('distance');
+            }}
+          />
+        )
+      )}
+      {survey && tool('elevation', 'point', 'Elevation')}
+      {survey && tool('area', 'polygon', 'Area')}
+      {survey && tool('volume', 'pile', 'Volume')}
+      {!map && stage && (
+        <Tile
+          icon="section"
+          label="Section"
+          name="Section plane"
+          shortcut="scene.section"
+          pressed={stage.section.enabled}
+          onClick={() => {
+            toggleSection(stage);
+          }}
+        />
+      )}
+      <AllTools g="measure" ctx={ctx} />
+    </>
+  );
+}
+
+function DisplayRow({ ctx }: { ctx: GroupCtx }) {
+  const t = useT();
+  const { stage, map } = ctx;
+  const pins = usePinDisplay((s) => s.filter !== 'off');
+  const labelMode = useShell((s) => s.labelMode);
+  return (
+    <>
+      <Tile
+        icon="pin"
+        label="Issue pins"
+        name={pins ? t('stage.pins.hide') : t('stage.pins.show')}
+        shortcut="scene.pins"
+        pressed={pins}
+        onClick={() => {
+          pinDisplay.getState().togglePins();
+        }}
+      />
+      {!map && (
+        <Choice
+          label="Labels"
+          shortcut="scene.labels"
+          disabled={!stage}
+          options={LABEL_MODES.map((m) => ({ value: m.mode, label: m.label }))}
+          value={labelMode}
+          onPick={(m) => {
+            shell.getState().setLabelMode(m);
+          }}
+        />
+      )}
+      {!map && <StreetMapTile />}
+      <AllTools g="display" ctx={ctx} />
+    </>
+  );
+}
+
+/** The street map under the site in 3D; greyed out, with the reason as its name, without a pack. */
+function StreetMapTile() {
+  const t = useT();
+  const state = useStreetMap3d();
+  const tool = streetMapTool(state);
+  const { projectId, on } = state;
+  if (!tool || !projectId) return null;
+  return (
+    <Tile
+      icon="map"
+      label="Street map"
+      name={t(tool.label)}
+      pressed={tool.pressed}
+      disabled={tool.disabled}
+      testId="street-map-3d"
+      onClick={() => {
+        siteBasemap.getState().set(projectId, !on);
+      }}
+    />
+  );
+}
+
+function CloudRow({ ctx }: { ctx: GroupCtx }) {
+  const t = useT();
+  const ids = useWorkspace((s) =>
+    (s.project?.manifest.layers ?? [])
+      .filter((l) => l.kind === 'pointcloud')
+      .map((l) => l.id)
+      .join('|'),
+  );
+  const shown = useWorkspace((s) => ids.split('|').some((id) => id && !s.hidden[id]));
+  const cleanupOpen = useCleanup((s) => s.panelOpen);
+  return (
+    <>
+      <Tile
+        icon="cloud"
+        label="Show"
+        name="Show the point cloud"
+        pressed={shown}
+        onClick={() => {
+          for (const id of ids.split('|')) workspace.getState().setLayerVisible(id, !shown);
+        }}
+      />
+      <Tile
+        icon="boxclip"
+        label="Clean up"
+        name={t('cleanup.tool')}
+        caret
+        pressed={cleanupOpen}
+        onClick={() => {
+          if (cleanupOpen) cleanup.closePanel();
+          else openCleanupPanel();
+        }}
+      />
+      <AllTools g="clouds" ctx={ctx} />
+    </>
+  );
+}
+
+const SURFACES: readonly { value: SurfaceMode; label: string }[] = [
+  { value: 'photo', label: 'Photo' },
+  { value: 'elev', label: 'Elevation' },
+  { value: 'change', label: 'Cut / fill' },
+];
+const BODIES: readonly { value: BodyMode; label: string }[] = [
+  { value: 'lift', label: 'Lifted' },
+  { value: 'place', label: 'In place' },
+  { value: 'off', label: 'Hidden' },
+];
+
+function VolumeRow({ ctx }: { ctx: GroupCtx }) {
+  const captures = useVolumetric((s) => s.file?.captures ?? []);
+  const epoch = useVolumetric((s) => s.epoch);
+  const swipe = useVolumetric((s) => s.swipe);
+  const surface = useVolumetric((s) => s.surface);
+  const body = useVolumetric((s) => s.body);
+  const editing = useVolumetric((s) => s.edit !== null);
+  const v = volumetric.getState();
+  const SWIPE = '\u0000swipe';
+  return (
+    <>
+      <Choice
+        label="Survey date"
+        options={[
+          ...captures.map((c) => ({ value: c.epoch, label: c.label.replace(/ 20\d\d$/, '') })),
+          { value: SWIPE, label: 'Swipe', disabled: captures.length < 2 || editing },
+        ]}
+        value={swipe ? SWIPE : surface === 'change' ? null : epoch}
+        onPick={(e) => {
+          if (surface === 'change') v.setSurface('photo');
+          if (e === SWIPE) {
+            v.setSwipe(!swipe);
+            return;
+          }
+          if (swipe) v.setSwipe(false);
+          v.setEpoch(e);
+        }}
+      />
+      <Choice
+        label="Surface"
+        options={SURFACES.map((s) => ({ ...s, disabled: s.value === 'change' && editing }))}
+        value={surface}
+        onPick={(s) => {
+          if (swipe) v.setSwipe(false);
+          v.setSurface(s);
+        }}
+      />
+      <Choice
+        label="Bodies"
+        options={BODIES}
+        value={body}
+        onPick={(b) => {
+          v.setBody(b);
+        }}
+      />
+      <AllTools g="volumes" ctx={ctx} />
+    </>
+  );
+}
+
+const CAMERA: readonly { value: CameraMode; label: string }[] = [
+  { value: 'free', label: 'Free orbit' },
+  { value: 'follow', label: 'Follow' },
+  { value: 'drone', label: 'Drone eye' },
+];
+
+function VideoRow({ ctx }: { ctx: GroupCtx }) {
+  const t = useT();
+  const { stage, map } = ctx;
+  const activeClip = useWorkspace((s) => s.activeClip);
+  const videoHidden = useShell((s) => s.videoHidden);
+  const paths = useFlightPathModel();
+  const telemetry = useTelemetryOn();
+  const [, bump] = useReducer((n: number) => n + 1, 0);
+  const showVideo = activeClip !== null && !videoHidden;
+  const camera = stage && activeClip ? videoRig(stage).cameraMode : 'free';
+  return (
+    <>
+      <Tile
+        icon="video"
+        label="Video window"
+        name={showVideo ? 'Hide the video window' : 'Show the video window'}
+        shortcut="scene.video"
+        pressed={showVideo}
+        disabled={activeClip === null}
+        onClick={() => {
+          shell.getState().setVideoHidden(!videoHidden);
+        }}
+      />
+      {!map && paths && (
+        <Choice
+          label="Flight paths"
+          shortcut="scene.flightPaths"
+          options={PATH_MODES.map((p) => ({ value: p.mode, label: p.label }))}
+          value={paths.pref.mode}
+          onPick={(m) => {
+            updateFlightPaths((pref) => setPathMode(pref, m));
+          }}
+        />
+      )}
+      {!map && paths && (
+        <Tile
+          icon="telemetry"
+          label="Telemetry"
+          name={telemetry ? t('stage.telemetry.hide') : t('stage.telemetry.show')}
+          shortcut="scene.telemetry"
+          pressed={telemetry}
+          onClick={toggleTelemetry}
+        />
+      )}
+      {!map && (
+        <Choice
+          label="Camera"
+          disabled={!stage}
+          options={CAMERA.map((c) => ({
+            ...c,
+            disabled: c.value !== 'free' && activeClip === null,
+          }))}
+          value={camera}
+          onPick={(m) => {
+            if (!stage) return;
+            setCameraMode(stage, m);
+            bump();
+          }}
+        />
+      )}
+      {!map && stage && (
+        <Tile
+          icon="cutaway"
+          label="See inside"
+          name={t('stage.cutaway.insideView')}
+          shortcut="scene.inside"
+          disabled={activeClip === null}
+          onClick={() => {
+            insideView(stage);
+          }}
+        />
+      )}
+      <AllTools g="video" ctx={ctx} />
+    </>
+  );
+}
+
+function RoadRow({ ctx }: { ctx: GroupCtx }) {
+  const overlay = useRoad((s) => s.overlay);
+  const measuring = useRoad((s) => s.measure.mode !== null);
+  const closeup = useRoad((s) => s.closeup);
+  return (
+    <>
+      <Tile
+        icon="photo"
+        label="Close-up"
+        name="Close-up of the selected defect"
+        shortcut="road.closeup"
+        pressed={closeup}
+        onClick={() => {
+          setRoad({ closeup: !closeup });
+        }}
+      />
+      <Tile
+        icon="filter"
+        label="PCI grid"
+        shortcut="road.pci"
+        pressed={overlay === 'pci'}
+        onClick={() => {
+          setRoad({ overlay: overlay === 'pci' ? 'none' : 'pci' });
+        }}
+      />
+      <Tile
+        icon="raster"
+        label="Density"
+        name="Defect density"
+        shortcut="road.density"
+        pressed={overlay === 'density'}
+        onClick={() => {
+          setRoad({ overlay: overlay === 'density' ? 'none' : 'density' });
+        }}
+      />
+      <Tile
+        icon="ruler"
+        label="Measure"
+        name="Measure on the map"
+        shortcut="road.measure"
+        pressed={measuring}
+        onClick={() => {
+          toggleMeasure();
+        }}
+      />
+      <AllTools g="road" ctx={ctx} />
+    </>
+  );
+}
+
+function AnnotateRow({ ctx }: { ctx: GroupCtx }) {
+  const on = useShell((s) => s.annotating);
+  return (
+    <>
+      <Tile
+        icon="anno"
+        label="Annotate"
+        name={on ? 'Close the annotation tools' : 'Annotate: pins, lines, areas, cloud regions'}
+        shortcut="scene.annotate"
+        pressed={on}
+        onClick={() => {
+          shell.getState().setAnnotating(!on);
+        }}
+      />
+      <AllTools g="annotate" ctx={ctx} />
+    </>
+  );
+}
+
+/** A group's quick row (D5): a few tiles and switches, then the way to its full set. */
+export function quickRow(g: GroupId, ctx: GroupCtx): ReactNode {
+  switch (g) {
+    case 'view':
+      return <ViewRow ctx={ctx} />;
+    case 'measure':
+      return <MeasureRow ctx={ctx} />;
+    case 'display':
+      return <DisplayRow ctx={ctx} />;
+    case 'clouds':
+      return <CloudRow ctx={ctx} />;
+    case 'volumes':
+      return <VolumeRow ctx={ctx} />;
+    case 'video':
+      return <VideoRow ctx={ctx} />;
+    case 'road':
+      return <RoadRow ctx={ctx} />;
+    case 'annotate':
+      return <AnnotateRow ctx={ctx} />;
+  }
+}
