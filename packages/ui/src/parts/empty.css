@@ -1,1 +1,29 @@
-/* one empty state. Filled in by its task; imported from mission.css. */
+/* one empty state */
+.empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--sp-4);
+  padding: var(--sp-7) var(--sp-6);
+  text-align: center;
+  color: var(--fg-2);
+}
+.empty .i {
+  color: var(--fg-3);
+}
+.empty-title {
+  margin: 0;
+  font-size: var(--t-14);
+  font-weight: 600;
+  color: var(--fg-0);
+}
+.empty-body {
+  max-width: 40ch;
+  font-size: var(--t-13);
+  line-height: 1.5;
+  color: var(--fg-2);
+}
+.empty-act {
+  margin-top: var(--sp-3);
+}

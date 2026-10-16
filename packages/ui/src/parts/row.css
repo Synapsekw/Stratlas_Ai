@@ -1,1 +1,67 @@
-/* one row base. Filled in by its task; imported from mission.css. */
+/* one row base: nav 32, tree 26, menu 30, palette 34. Selection is --bg-3 with an accent label and icon; no leading bar. */
+.row {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-4);
+  width: 100%;
+  min-width: 0;
+  height: 32px;
+  padding: 0 var(--sp-4);
+  border-radius: var(--r-4);
+  font-size: var(--t-13);
+  color: var(--fg-1);
+  text-align: start;
+  text-decoration: none;
+  cursor: pointer;
+  transition:
+    background-color 120ms var(--ease),
+    color 120ms var(--ease);
+}
+.row[data-kind='tree'] {
+  height: 26px;
+  font-size: var(--t-12);
+}
+.row[data-kind='menu'] {
+  height: 30px;
+}
+.row[data-kind='palette'] {
+  height: 34px;
+}
+.row:hover {
+  background: var(--bg-2);
+  color: var(--fg-0);
+}
+.row[data-selected] {
+  background: var(--bg-3);
+  color: var(--acc);
+}
+.row[data-selected] .i {
+  color: var(--acc);
+}
+.row-label {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.row-count {
+  flex: none;
+  font-size: var(--t-11);
+  color: var(--fg-3);
+}
+.row-acts {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  visibility: hidden;
+}
+.row-acts > * {
+  min-width: 24px;
+  min-height: 24px;
+}
+.row:hover .row-acts,
+.row:focus-within .row-acts,
+.row[data-selected] .row-acts {
+  visibility: visible;
+}

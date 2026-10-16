@@ -61,3 +61,28 @@
   background: transparent;
   box-shadow: inset 0 0 0 1.5px var(--fg-3);
 }
+.tag.off {
+  color: var(--fg-3);
+}
+.tag.warn {
+  border-color: var(--warn-line);
+  color: var(--warn-ink);
+}
+.tag.danger {
+  border-color: var(--danger-line);
+  color: var(--danger-ink);
+}
+.chip-status[data-tone='acc'] .dot {
+  background: var(--acc);
+}
+.chip-status[data-tone='off'] .dot {
+  background: transparent;
+  border: 1.5px solid var(--fg-3);
+  box-sizing: border-box;
+}
+.chip-status[data-tone='warn'] .dot {
+  background: var(--warn);
+}
+.chip-status[data-tone='danger'] .dot {
+  background: var(--danger);
+}
