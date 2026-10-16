@@ -3539,7 +3539,6 @@ export const en = {
   'spot.close': 'Close',
   'spot.keys':
     '← → dates · ↑ ↓ other images of the date · C compare · Esc leave Compare, then close',
-<<<<<<< ours
 
   // Engineering model components: the hover brief, the component list, the selection card
   'component.brief.select': 'Click to select',
@@ -4143,7 +4142,6 @@ export const en = {
   'tree.row.drawingTip': 'Opacity, on top, place on the site, open side by side',
   'tree.row.more': '{count} more',
   'tree.row.fewer': 'Show fewer',
->>>>>>> theirs
 } as const satisfies Record<string, string>;
 
 /** Every key in the catalogue, plural forms included. */
