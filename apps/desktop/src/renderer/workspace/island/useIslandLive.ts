@@ -4,7 +4,14 @@
  * pure `liveItems` decides the list; `useIslandLive` reads the real stores into it. The survey date
  * is not a live item: it stays visible beside a live reading.
  */
-import { formatRow, MIN_POINTS, measurementFrom, measurementReadout } from '@aio/survey';
+import {
+  formatRow,
+  MIN_POINTS,
+  measurementFrom,
+  measurementReadout,
+  TOOL_LABELS,
+} from '@aio/survey';
+import type { MeasurementTool } from '@aio/schema';
 import { t } from '@aio/ui';
 import { telemetryAt } from '@aio/video';
 import { clipStartMs, useWorkspace } from '@aio/workspace';
@@ -99,18 +106,23 @@ export function createBackOnline() {
     });
   };
   return {
-    update(nowUp: boolean) {
-      if (nowUp === up) return;
+    /**
+     * `nowUp` is the real network; `quiet` hides the item (offline only is on). "Back" shows only
+     * on a real down-to-up change while not quiet.
+     */
+    update(nowUp: boolean, quiet = false) {
+      const wentUp = nowUp && !up;
       up = nowUp;
-      clearTimeout(timer);
-      if (!nowUp) {
-        set('offline');
-        return;
+      if (quiet || !nowUp) {
+        clearTimeout(timer);
+        set(quiet ? null : 'offline');
+      } else if (wentUp) {
+        clearTimeout(timer);
+        set('back');
+        timer = setTimeout(() => {
+          set(null);
+        }, BACK_MS);
       }
-      set('back');
-      timer = setTimeout(() => {
-        set(null);
-      }, BACK_MS);
     },
     get: (): ConnectionState | null => current,
     subscribe(l: () => void) {
@@ -126,14 +138,21 @@ const back = createBackOnline();
 const subscribeBack = (l: () => void) => back.subscribe(l);
 const getBack = () => back.get();
 
+// "Reconnecting..." (`state: 'reconnecting'`) has no source yet: navigator.onLine is the only
+// network signal, so only offline and back are produced.
 function useConnectionLive(): ConnectionState | null {
   const up = useNetworkUp();
   // offline only is the person's choice, not an unhealthy connection
   const chosen = useShell((s) => s.settings.offlineOnly === true);
   useEffect(() => {
-    back.update(chosen ? true : up);
+    back.update(up, chosen);
   }, [up, chosen]);
   return useSyncExternalStore(subscribeBack, getBack, () => null);
+}
+
+/** The name the drawing bar shows: the template's name, else the tool's. */
+export function toolLabel(tool: MeasurementTool, template: { name: string } | null): string {
+  return template?.name ?? TOOL_LABELS[tool];
 }
 
 function useToolLive(): LiveInput['tool'] {
@@ -143,8 +162,10 @@ function useToolLive(): LiveInput['tool'] {
   const units = useMeasure((s) => s.settings.units);
   const precision = useMeasure((s) => s.settings.precision);
   return useMemo(() => {
+    // Quick measure has no reading: the engine exposes none. Task 13 replaces it with the survey
+    // Distance tool, which has one.
     if (!active) return quick ? { label: t('island.group.measure'), reading: null } : null;
-    const label = active.template?.name ?? active.tool;
+    const label = toolLabel(active.tool, active.template);
     let reading: string | null = null;
     if (draw) {
       const pts = draw.cursor ? [...draw.points, draw.cursor] : draw.points;

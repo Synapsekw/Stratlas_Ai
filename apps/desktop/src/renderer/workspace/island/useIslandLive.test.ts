@@ -5,6 +5,7 @@ import {
   liveItems,
   livePairKey,
   playbackTelemetry,
+  toolLabel,
   type LiveInput,
 } from './useIslandLive';
 
@@ -103,5 +104,30 @@ describe('createBackOnline', () => {
     b.update(false);
     vi.advanceTimersByTime(BACK_MS);
     expect(b.get()).toBe('offline');
+  });
+
+  it('turning offline only on while the network is down shows nothing, not Back online', () => {
+    const b = createBackOnline();
+    b.update(false);
+    b.update(false, true);
+    expect(b.get()).toBeNull();
+    b.update(true, true);
+    expect(b.get()).toBeNull();
+    b.update(true, false);
+    expect(b.get()).toBeNull();
+  });
+
+  it('offline only off while the network is still down shows offline', () => {
+    const b = createBackOnline();
+    b.update(false, true);
+    b.update(false, false);
+    expect(b.get()).toBe('offline');
+  });
+});
+
+describe('toolLabel', () => {
+  it('names a real tool, not its id', () => {
+    expect(toolLabel('elevation-difference', null)).toBe('Elevation difference');
+    expect(toolLabel('distance', { name: 'Haul road' })).toBe('Haul road');
   });
 });
