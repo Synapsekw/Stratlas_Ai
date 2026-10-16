@@ -116,7 +116,8 @@ test('the Issues card and the agent column are dragged wider', async ({ win }) =
     .poll(async () => Math.abs((await width(card)) - cardExpected))
     .toBeLessThanOrEqual(2);
 
-  // the agent column: open, today's width, dragged 40 px wider; the screen gives it the room
+  // the agent column: open, today's width, dragged 40 px wider (the screen keeps 448 px); the
+  // screen gives it the room
   await win.getByTestId('agent-toggle').click();
   const dock = win.locator('#agent-dock');
   await expect(dock).toBeVisible();
@@ -129,7 +130,7 @@ test('the Issues card and the agent column are dragged wider', async ({ win }) =
     1,
   );
   await drag(win, dockHandle, -40);
-  const dockExpected = grown(dockBefore, 40, main, main * 0.5, 280);
+  const dockExpected = grown(dockBefore, 40, main, main * 0.5, 448);
   await expect
     .poll(async () => Math.abs((await width(dock)) - dockExpected))
     .toBeLessThanOrEqual(2);

@@ -11,7 +11,7 @@ import {
 } from 'react';
 import { useStore } from 'zustand';
 import { t } from '../i18n';
-import { clampSplit, keyStep, maxPx, snapsToCollapse, type SplitLimits } from './model';
+import { clampSplit, keyStep, maxPx, minPx, snapsToCollapse, type SplitLimits } from './model';
 import { splitPrefs, type SplitPref } from './prefs';
 
 export interface SplitOptions extends SplitLimits {
@@ -25,8 +25,8 @@ export interface SplitOptions extends SplitLimits {
   onCollapsedChange?: (collapsed: boolean) => void;
 }
 
-export interface ResizableSplitState {
-  containerRef: RefObject<HTMLDivElement | null>;
+export interface ResizableSplitState<E extends HTMLElement = HTMLDivElement> {
+  containerRef: RefObject<E | null>;
   separatorProps: HTMLAttributes<HTMLDivElement> & { role: 'separator' };
   collapsed: boolean;
   // properties, not methods, so callers can destructure them
@@ -61,6 +61,17 @@ const isRtl = (el: Element) => el.closest('[dir]')?.getAttribute('dir') === 'rtl
 const round2 = (n: number) => Math.round(n * 100) / 100;
 const round4 = (n: number) => Math.round(n * 10000) / 10000;
 
+/**
+ * Whether a size the person asked for (`px`, from the drawn `from`) is worth saving as `next`
+ * (in the pref's unit) over the saved `size`: only when the edge really moves, and never in the
+ * other direction (a step that shrinks the pane never grows the saved size, say when it is drawn
+ * at a minimum above it, or where a narrow container gives way).
+ */
+function moves(px: number, from: number, next: number, size: number): boolean {
+  if (Math.round(px) === Math.round(from)) return false;
+  return px < from ? next <= size : next >= size;
+}
+
 /** The size and collapse state a split shows for its options and saved pref. */
 function resolve(o: SplitOptions, pref: SplitPref | undefined) {
   const saved = pref?.size;
@@ -82,11 +93,13 @@ function saveSplit(o: SplitOptions, size: number, collapsed: boolean) {
  * container. Pointer moves write it inside `requestAnimationFrame` without a React render; the
  * size is saved to `splitPrefs` on pointer up, double-click, keys and toggle.
  */
-export function useResizableSplit(o: SplitOptions): ResizableSplitState {
+export function useResizableSplit<E extends HTMLElement = HTMLDivElement>(
+  o: SplitOptions,
+): ResizableSplitState<E> {
   const uid = useId();
   const handleId = `${uid}split-handle`;
   const paneId = `${uid}split-pane`;
-  const containerRef = useRef<HTMLDivElement | null>(null);
+  const containerRef = useRef<E | null>(null);
   const dragRef = useRef<Drag | null>(null);
   const optionsRef = useRef(o);
   const pref = useStore(splitPrefs, (s) => s.byId[o.id]);
@@ -133,9 +146,10 @@ export function useResizableSplit(o: SplitOptions): ResizableSplitState {
     if (!handle) return;
     const now = Math.round(v.px);
     const max = v.container > 0 ? clampSplit(Infinity, v.container, o) : maxPx(o.max, 0) || o.min;
+    const min = v.container > 0 ? minPx(o, v.container) : o.min;
     const text = t('split.readout', { px: now });
     handle.setAttribute('aria-valuenow', String(now));
-    handle.setAttribute('aria-valuemin', String(Math.min(now, o.min)));
+    handle.setAttribute('aria-valuemin', String(Math.min(now, Math.round(min))));
     handle.setAttribute('aria-valuemax', String(Math.round(max)));
     handle.setAttribute('aria-valuetext', text);
     const readout = handle.querySelector('.split-readout');
@@ -149,7 +163,12 @@ export function useResizableSplit(o: SplitOptions): ResizableSplitState {
     if (!el || dragRef.current) return;
     el.dataset.orientation = o.orientation;
     el.dataset.sized = o.sized;
-    el.style.setProperty('--split-min', `${String(o.min)}px`);
+    // with a give-way share the CSS minimum is the same as minPx: min(360px, 60%)
+    const min =
+      o.minShare === undefined
+        ? `${String(o.min)}px`
+        : `min(${String(o.min)}px, ${String(round2(o.minShare * 100))}%)`;
+    el.style.setProperty('--split-min', min);
     const max = typeof o.max === 'number' ? `${String(o.max)}px` : o.max;
     el.style.setProperty('--split-max', `min(${max}, 100% - ${String(o.otherMin)}px)`);
     paint(el, restingView(el));
@@ -230,12 +249,16 @@ export function useResizableSplit(o: SplitOptions): ResizableSplitState {
       if (!d) return;
       d.stop();
       if (commit && d.moved) {
-        paintDrag(el, d);
-        el.removeAttribute('data-dragging');
         // a drag into collapse keeps the size it started from, for the way back
-        if (d.collapsed) save(d.size, true);
-        else save(toUnit(d.px, d.container), false);
-        return;
+        const next = toUnit(d.px, d.container);
+        const keep = d.collapsed || collapsed || moves(d.px, d.startPx, next, d.size);
+        if (keep) {
+          paintDrag(el, d);
+          el.removeAttribute('data-dragging');
+          if (d.collapsed) save(d.size, true);
+          else save(next, false);
+          return;
+        }
       }
       el.removeAttribute('data-dragging');
       paint(el, restingView(el));
@@ -293,13 +316,20 @@ export function useResizableSplit(o: SplitOptions): ResizableSplitState {
       return;
     }
     const { container } = measure(el);
-    let px: number;
     // the first arrow on a collapsed split opens it to its remembered size
-    if (collapsed && typeof step === 'number') px = clampSplit(toPx(size, container), container, o);
-    else if (step === 'min') px = o.min;
+    if (collapsed) {
+      if (typeof step === 'number') save(size, false);
+      else if (step === 'min') save(toUnit(minPx(o, container), container), false);
+      else save(toUnit(clampSplit(Infinity, container, o), container), false);
+      return;
+    }
+    const from = restingPx(container);
+    let px: number;
+    if (step === 'min') px = minPx(o, container);
     else if (step === 'max') px = clampSplit(Infinity, container, o);
-    else px = clampSplit(restingPx(container) + step, container, o);
-    save(toUnit(px, container), false);
+    else px = clampSplit(from + step, container, o);
+    const next = toUnit(px, container);
+    if (moves(px, from, next, size)) save(next, false);
   };
 
   return {

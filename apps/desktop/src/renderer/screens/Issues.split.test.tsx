@@ -52,4 +52,28 @@ describe('Issues on a split', () => {
     expect(host.querySelector('.split-pane > .iss-main')).not.toBeNull();
     expect(host.querySelector('.split-pane > .iss-side')).not.toBeNull();
   });
+
+  it('gives the list room in a narrow screen, says what is drawn and keeps the saved size', () => {
+    vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockReturnValue({
+      x: 0,
+      y: 0,
+      top: 0,
+      left: 0,
+      right: 488,
+      bottom: 600,
+      width: 488,
+      height: 600,
+      toJSON: () => ({}),
+    });
+    root = createRoot(host);
+    act(() => root?.render(<IssuesScreen />));
+    const handle = host.querySelector<HTMLElement>('[role="separator"]');
+    // the card gives way to 55%, so the list keeps 220 px
+    expect(handle?.getAttribute('aria-valuenow')).toBe('268');
+    act(() => {
+      handle?.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowLeft', bubbles: true }));
+    });
+    expect(splitPrefs.getState().byId['issues.card']).toBeUndefined();
+    vi.restoreAllMocks();
+  });
 });

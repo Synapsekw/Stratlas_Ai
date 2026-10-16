@@ -4,6 +4,7 @@ export {
   SPLIT_STEP_BIG,
   clampSplit,
   keyStep,
+  minPx,
   snapsToCollapse,
   type SplitLimits,
 } from './model';

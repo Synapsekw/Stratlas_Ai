@@ -11,6 +11,11 @@ export interface SplitLimits {
   min: number; // sized pane, px
   max: number | `${number}%`; // sized pane
   otherMin: number; // the other pane, px
+  /**
+   * The share of the container (0 to 1) the sized pane gives way to when the container is too
+   * small for both minimums, so the other pane keeps room; absent: the sized pane keeps `min`.
+   */
+  minShare?: number;
 }
 
 /** The sized pane's maximum in px for a container of `container` px. */
@@ -18,14 +23,20 @@ export function maxPx(max: SplitLimits['max'], container: number): number {
   return typeof max === 'number' ? max : (container * Number.parseFloat(max)) / 100;
 }
 
+/** The sized pane's minimum in px for a container of `container` px: `min`, or its share. */
+export function minPx(l: SplitLimits, container: number): number {
+  return l.minShare === undefined ? l.min : Math.min(l.min, l.minShare * container);
+}
+
 /**
  * The sized pane's size within its limits: at most its max and what leaves the other pane its
  * minimum, at least its own minimum. When both cannot hold, the sized pane (chrome) keeps its
- * minimum and the other pane gives way.
+ * minimum and the other pane gives way; with a `minShare`, the sized pane gives way first, down
+ * to its share of the container.
  */
 export function clampSplit(size: number, container: number, l: SplitLimits): number {
   const upper = Math.min(maxPx(l.max, container), container - l.otherMin);
-  return Math.max(l.min, Math.min(size, upper));
+  return Math.max(minPx(l, container), Math.min(size, upper));
 }
 
 /** Whether a dragged size is far enough below the minimum to snap to collapsed. */

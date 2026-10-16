@@ -235,6 +235,43 @@ describe('ResizableSplit', () => {
     expect(splitPrefs.getState().byId['test.split']).toEqual({ size: 0.6, collapsed: false });
   });
 
+  it('gives way to its share where both minimums do not fit, says what is drawn and saves nothing', () => {
+    vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockReturnValue({
+      x: 0,
+      y: 0,
+      left: 0,
+      top: 0,
+      right: 488,
+      bottom: 700,
+      width: 488,
+      height: 700,
+      toJSON: () => ({}),
+    });
+    const squeeze = { sized: 'end', unit: 'fraction', defaultSize: 0.54, min: 360 } as const;
+    render({ ...squeeze, max: '80%', otherMin: 200, minShare: 0.6 });
+    expect(container().style.getPropertyValue('--split-min')).toBe('min(360px, 60%)');
+    const sep = separator();
+    expect(sep.getAttribute('aria-valuenow')).toBe('293');
+    expect(sep.getAttribute('aria-valuemin')).toBe('293');
+    expect(sep.getAttribute('aria-valuemax')).toBe('293');
+    // the handle cannot move: no key and no drag saves a size taken from the squeeze
+    for (const k of ['ArrowLeft', 'ArrowRight', 'Home', 'End']) key(k);
+    drag(200, 100);
+    drag(200, 300);
+    expect(splitPrefs.getState().byId['test.split']).toBeUndefined();
+  });
+
+  it('never grows the saved size on a step that shrinks the pane', () => {
+    // 0.25 of 1100 is 275 px, drawn at the 360 px minimum
+    splitPrefs.getState().save('test.split', { size: 0.25, collapsed: false });
+    render({ sized: 'end', unit: 'fraction', defaultSize: 0.5, min: 360, max: '80%' });
+    expect(separator().getAttribute('aria-valuenow')).toBe('360');
+    key('ArrowRight');
+    key('Home');
+    drag(700, 900);
+    expect(splitPrefs.getState().byId['test.split']).toEqual({ size: 0.25, collapsed: false });
+  });
+
   it('follows a controlled collapsed prop', () => {
     render({ collapsedSize: 52, collapsed: true });
     expect(size()).toBe('52px');

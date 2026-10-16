@@ -2628,13 +2628,9 @@ svg.flip {
    main area, the Scene's right panel in look. Unfolded, the screen beside it gives it the room;
    folded, it takes none. It opens and closes at once, so there is no motion to still. Its width is
    the `agent.dock` split's: AgentDock.tsx writes the split's variables on `.main` whenever the
-   column is on the screen, 360 px or a third of the window until the person drags it. */
+   column is on the screen (360 px or a third of the window until the person drags it). */
 .main {
-  --agent-dock-w: clamp(
-    var(--split-min, 280px),
-    var(--split-size, min(360px, 33vw)),
-    var(--split-max, 50%)
-  );
+  --agent-dock-w: clamp(var(--split-min), var(--split-size), var(--split-max));
 }
 .app[data-agent-dock='open'] .main > .screen {
   inset-inline-end: var(--agent-dock-w);
@@ -2731,13 +2727,9 @@ svg.flip {
 /* ---------- issues ----------
    The list and the card on the `issues.card` split (Issues.tsx): the card 420 px until dragged;
    the split's hairline is the line between them. In a screen too small for both minimums (the
-   agent column open in a small window) the card gives way to 55%, as before, so the list keeps
-   room. */
+   agent column open in a small window) the card gives way to 55% (`minShare`), as before. */
 .issues-screen {
   grid-template-columns: minmax(0, 1fr);
-}
-.split.iss-split {
-  --split-track: clamp(min(var(--split-min), 55%), var(--split-size), var(--split-max));
 }
 .iss-split > .split-pane {
   display: flex;
@@ -2774,12 +2766,9 @@ svg.flip {
    The library and the open photo on the `media.viewer` split (Media.tsx): the viewer 54% until
    dragged; the split's hairline is the line between them. With nothing open, the library alone.
    In a screen too small for both minimums (the agent column open in a small window) the viewer
-   gives way to 60%, as before, so the library keeps room for its tiles. */
+   gives way to 60% (`minShare`), as before. */
 .media {
   grid-template-columns: minmax(0, 1fr);
-}
-.split.media-split {
-  --split-track: clamp(min(var(--split-min), 60%), var(--split-size), var(--split-max));
 }
 .media:not(.with-viewer) > .split.media-split {
   grid-template-columns: minmax(0, 1fr);

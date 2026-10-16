@@ -37,7 +37,7 @@ function useDockSplit(open: boolean) {
   // the default is taken when the column first opens, from the window as it is then
   const [firstOpen, setFirstOpen] = useState<number | null>(null);
   if (open && firstOpen === null) setFirstOpen(dockDefault());
-  const split = useResizableSplit({
+  const split = useResizableSplit<HTMLElement>({
     id: 'agent.dock',
     orientation: 'horizontal',
     sized: 'end',
@@ -45,16 +45,17 @@ function useDockSplit(open: boolean) {
     defaultSize: firstOpen ?? 360,
     min: 280,
     max: '50%',
-    otherMin: 280,
+    // the screen beside it keeps 448 px, so in the smallest window the Issues list keeps its
+    // 200 px beside the card (45% of the screen) and Media a column of tiles beside the photo
+    otherMin: 448,
   });
   const { containerRef } = split;
-  // The column's parent is the container. `.main` is a <main>, not a <div>; the hook uses only
-  // what every element has (its box, style, attributes).
+  // the column's parent, `.main`, is the container
   const attach = useCallback(
     (column: HTMLElement | null) => {
       const main = column?.parentElement;
       if (!main) return;
-      containerRef.current = main as HTMLDivElement;
+      containerRef.current = main;
       return () => {
         containerRef.current = null;
         for (const p of SPLIT_PROPS) main.style.removeProperty(p);

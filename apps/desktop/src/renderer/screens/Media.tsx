@@ -222,6 +222,9 @@ function useViewerSplit() {
     min: 360,
     max: '80%',
     otherMin: 200,
+    // a screen too narrow for both (the agent column open in a small window): the viewer gives
+    // way to 60%, as before, so the library keeps room for its tiles
+    minShare: 0.6,
   });
 }
 

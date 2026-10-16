@@ -25,6 +25,7 @@ export function IssuesScreen() {
         min={320}
         max="60%"
         otherMin={280}
+        minShare={0.55}
         label={t('split.issues')}
         start={
           <div className="iss-main">

@@ -5,6 +5,7 @@ import {
   SPLIT_STEP_BIG,
   clampSplit,
   keyStep,
+  minPx,
   snapsToCollapse,
 } from './model';
 
@@ -26,6 +27,22 @@ describe('clampSplit', () => {
 
   it('lets the other pane give way only after the sized pane reached its minimum', () => {
     expect(clampSplit(400, 500, limits)).toBe(280);
+  });
+});
+
+describe('a give-way share', () => {
+  const squeeze = { min: 360, max: '80%', otherMin: 200, minShare: 0.6 } as const;
+
+  it('lowers the minimum to its share of a container too small for both minimums', () => {
+    expect(minPx(squeeze, 488)).toBeCloseTo(292.8);
+    expect(clampSplit(9999, 488, squeeze)).toBeCloseTo(292.8);
+    expect(clampSplit(0, 488, squeeze)).toBeCloseTo(292.8);
+  });
+
+  it('keeps the minimum where there is room', () => {
+    expect(minPx(squeeze, 1000)).toBe(360);
+    expect(clampSplit(0, 1000, squeeze)).toBe(360);
+    expect(minPx(limits, 488)).toBe(280);
   });
 });
 

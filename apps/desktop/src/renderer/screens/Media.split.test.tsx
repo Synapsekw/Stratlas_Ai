@@ -95,6 +95,30 @@ describe('Media on a split', () => {
     ).toBe('54%');
   });
 
+  it('gives the library room in a narrow screen, says what is drawn and keeps the saved size', () => {
+    vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockReturnValue({
+      x: 0,
+      y: 0,
+      top: 0,
+      left: 0,
+      right: 488,
+      bottom: 600,
+      width: 488,
+      height: 600,
+      toJSON: () => ({}),
+    });
+    workspace.getState().select({ kind: 'photo', id: 'DJI_0001', layer: 'photos' });
+    render();
+    const handle = separator();
+    // the viewer gives way to 60% so the library keeps its tiles
+    expect(handle?.getAttribute('aria-valuenow')).toBe('293');
+    act(() => {
+      handle?.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true }));
+      handle?.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowLeft', bubbles: true }));
+    });
+    expect(splitPrefs.getState().byId['media.viewer']).toBeUndefined();
+  });
+
   it('has no handle while no photo is open', () => {
     render();
     expect(host.querySelector('.media-main')).not.toBeNull();
