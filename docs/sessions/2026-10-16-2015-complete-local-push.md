@@ -2,7 +2,7 @@
 type: session
 date: 2026-10-16-2015
 branch: fix/engineering-model-quality
-status: in-progress
+status: verified-locally
 related:
   - docs/plans/2026-10-16-engineering-model-quality.md
   - docs/sessions/2026-10-16-1700-engineering-model-quality.md
@@ -30,7 +30,9 @@ Independent review identified photo pixel direction and metadata inconsistencies
 
 The engineering-quality record contains the original repair and replay checks. Its two CI follow-ups passed focused unit tests, independent review, all seven engineering UI tests and all nineteen Globe tests. Cancel/retry and street-pack drawing each passed three local runs. Local UI jobs use the shared development Python installation; direct Python tests and CI exercise the repaired pipeline source.
 
-The combined desktop build and all quick demos passed. All 46 affected Electron cases passed with one worker under CI conditions (1100 x 720, scale 1, WARP, including explicit smallest-window cases): photo rotation 1, measurement/walk changes 9, related scene workflows 10, and engineering/Globe 26. Photo rotation additionally passed 33 focused unit tests; walk/picking changes passed 171. Independent review approved the production fixes and the final real-Electron rotation test. Full repository checks and remote CI remain required. No installer is requested or built.
+The combined desktop build and all quick demos passed. All 46 affected Electron cases passed with one worker under CI conditions (1100 x 720, scale 1, WARP, including explicit smallest-window cases): photo rotation 1, measurement/walk changes 9, related scene workflows 10, and engineering/Globe 26. Photo rotation additionally passed 33 focused unit tests; walk/picking changes passed 171. Independent review approved the production fixes and the final real-Electron rotation test. No installer is requested or built.
+
+The complete repository check passed on `7399f57a`: lint, formatting, TypeScript, 980 test files passed (4 skipped), and 9,949 tests passed (14 skipped), with retries disabled. The earlier isolated filesystem timeout did not recur. A fresh fetch confirmed remote main is already an ancestor; `finish-task --no-rebase` preserves both the published branch history and the five integrated local commits. The final follow-up changes documentation only. Added-line and commit-message scans pass; the contract table retains unrelated legacy names that predate this branch.
 
 The completed planning branch and the original class-picker commit have been published separately. The main integration remains gated on the combined checks.
 
@@ -41,4 +43,4 @@ The completed planning branch and the original class-picker commit have been pub
 3. Open a photo beside the scene, rotate a supported photo, and verify that observations stay aligned. Switch projects during an operation and confirm the new project stays correct.
 4. Check walk placement at both endpoints and street-map placement below visible orthophoto/DSM data.
 
-Final validation and integration status will be recorded when the combined checks finish.
+Remote CI and final integration status are recorded on [PR #157](https://github.com/Synapsekw/Stratlas_Ai/pull/157). Main may advance only to the exact green commit. This record does not claim a live-provider quality benchmark: the engineering replay uses saved inputs, and the model remains limited by the available component library.

@@ -87,7 +87,7 @@ Tasks 1, 2 and 3 run in parallel with exclusive file ownership. Task 4 depends o
 - [x] Render the replayed GLB and visually inspect it against source views. No private data enters git.
 - [x] Run `pnpm check`, Python checks/tests, demo preparation and affected end-to-end tests under CI window/scale/renderer settings.
 - [x] Independent whole-change review; address material findings and repeat covering checks.
-- [ ] Record validation, outstanding limits and concrete app test steps. Commit on this branch and follow repository integration process once checks permit.
+- [x] Record validation, outstanding limits and concrete app test steps. Commit on this branch and follow repository integration process once checks permit. The final complete-push integration is tracked below and on PR #157.
 
 ## Execution record
 
@@ -133,7 +133,7 @@ Execution DAG: inventory and isolated merge -> parallel photo-rotation repairs /
 - [x] Verify and repair rotation direction, asynchronous project identity, unsupported mask handling and camera ray consistency with synthetic regression coverage. Independent review approved the fixes; focused photo tests pass.
 - [x] Verify and repair coincident walk endpoint constraints and telecom picks on unmeasured drawing/imagery planes. Independent review approved the fixes; 171 focused tests, TypeScript and lint pass.
 - [x] Independently review fixes; build desktop and all quick demos; run changed telecom/measurement/walk specs, related scene/annotation specs, engineering and Globe workflows under CI conditions. All 46 Electron tests passed without skips or retries; photo regression coverage adds 33 passing unit tests.
-- [ ] Run full repository checks on the combined result, update the PR around the complete scope, and publish the completed planning branch.
+- [x] Run full repository checks on the combined result and publish the completed planning branch. `7399f57a` passes lint, formatting, TypeScript, 980 test files (4 skipped), and 9,949 tests (14 skipped), with retries disabled. PR #157 carries the combined scope and remains the remote CI gate.
 - [ ] Land only the exact green commit, confirm local and remote main agree, and clean up this task's worktree.
 
 The pre-integration follow-up repository check had one unrelated five-second filesystem timeout in `pointcloudCleanup.test.ts`; all 13 tests in that file passed on a focused rerun. The combined result still needs its own full check.
