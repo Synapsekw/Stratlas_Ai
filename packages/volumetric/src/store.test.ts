@@ -146,10 +146,29 @@ function memoryPrefs(): VolumePrefStore {
 }
 
 function setup(
-  opts: { edits?: BoundaryEdit[]; noVolumes?: boolean; prefs?: VolumePrefStore } = {},
+  opts: {
+    edits?: BoundaryEdit[];
+    noVolumes?: boolean;
+    prefs?: VolumePrefStore;
+    /** The survey date `s2` lined up by this much. */
+    s2Shift?: { eastM: number; northM: number };
+  } = {},
 ) {
   const ws = createWorkspace();
-  ws.getState().openProject({ id: 'masafi', root: 'E:/m', manifest });
+  const opened: ProjectManifest = opts.s2Shift
+    ? {
+        ...manifest,
+        captures: [
+          {
+            id: 's2',
+            label: '10 Jan 2021',
+            date: '2021-01-10',
+            lineUp: { ...opts.s2Shift, with: 's1', at: '2026-10-16T08:00:00.000Z' },
+          },
+        ],
+      }
+    : manifest;
+  ws.getState().openProject({ id: 'masafi', root: 'E:/m', manifest: opened });
   const calls: { channel: IpcChannel; req: unknown }[] = [];
   const bridge: AioBridge = {
     invoke: (<C extends IpcChannel>(channel: C, req: IpcRequest<C>) => {
@@ -504,6 +523,26 @@ describe('volumetric store: boundary editor', () => {
     expect(s.edit).toBeNull();
     expect(s.piles.find((p) => p.id === 'P01')?.edited).toEqual(['e2']);
     expect(s.piles.find((p) => p.id === 'P01')?.epochs.e2?.volumes.tin.net).toBe(80);
+  });
+
+  it('saves an edited epoch ring without the shift', async () => {
+    const { store, calls, service } = setup({ s2Shift: { eastM: 2, northM: -1 } });
+    await store.getState().load();
+    store.getState().select('P01');
+    await store.getState().startEdit();
+    // drawn on the lined-up date: the stored corner (20, -20) shows 2 m east and 1 m south of it
+    expect(store.getState().edit?.ring).toContainEqual([1022, 2019]);
+    // the worker measures the date's own, unshifted ground
+    const asked = (
+      service.edit as unknown as { mock: { calls: [{ ring: [number, number][] }][] } }
+    ).mock.calls.at(-1)?.[0].ring;
+    expect(asked).toContainEqual([1020, 2020]);
+    await store.getState().moveVertex(0, [1001, 2001]);
+    expect(await store.getState().saveEdit()).toBe(true);
+    const call = calls.find((c) => c.channel === 'project:writeBoundaries');
+    const req = call?.req as { file: { edits: BoundaryEdit[] } };
+    // picked at (1001, 2001) on the shifted scene: stored at (999, 2002), local (-1, -2)
+    expect(req.file.edits[0]?.ring[0]).toEqual([-1, -2]);
   });
 
   it('never edits or saves boundaries in a read-only package', async () => {

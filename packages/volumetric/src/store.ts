@@ -6,14 +6,16 @@
  */
 import {
   BoundaryEditsFile,
+  shiftEN,
   type AioBridge,
+  type DateShift,
   type IpcResponse,
   type BaseVolumes,
   type BoundaryEdit,
   type VolumeBaseId,
   type VolumesFile,
 } from '@aio/schema';
-import { assetUrl, workspace as appWorkspace, type Workspace } from '@aio/workspace';
+import { assetUrl, captureShift, workspace as appWorkspace, type Workspace } from '@aio/workspace';
 import { useStore } from 'zustand';
 import { createStore, type StoreApi } from 'zustand/vanilla';
 import type { EditResponse } from './model/compute';
@@ -177,6 +179,11 @@ export interface VolumetricActions {
   setSurface(surface: SurfaceMode): void;
   /** The survey on screen: the last one under the change colours, else the chosen one. */
   shownEpoch(): string;
+  /**
+   * The shift of a survey's date (line up dates), or null. Boundaries are stored and measured
+   * where the survey saw them; the editor draws and picks them on the lined-up scene.
+   */
+  epochShift(epoch: string): DateShift | null;
   setBody(body: BodyMode): void;
   setDensity(density: number): void;
   setSort(key: SortKey): void;
@@ -286,6 +293,16 @@ export function createVolumetricStore(deps: VolumetricDeps): StoreApi<Volumetric
 
   return createStore<Volumetric>()((set, get) => {
     const ws = () => deps.workspace.getState();
+    const epochShift = (epoch: string): DateShift | null => {
+      const manifest = ws().project?.manifest;
+      const capture = get().file?.captures.find((c) => c.epoch === epoch);
+      return manifest && capture ? captureShift(manifest, capture.captureId) : null;
+    };
+    /** The ring of the edit as the survey measured it (the editor holds it on the lined-up scene). */
+    const unshifted = (ring: EN[], epoch: string): EN[] => {
+      const shift = epochShift(epoch);
+      return shift ? ring.map((q) => shiftEN(q, shift, -1)) : ring;
+    };
     const toLocal = (ring: EN[]) =>
       ring.map((q) => {
         const [x, z] = enToLocal(get().origin, q);
@@ -402,7 +419,7 @@ export function createVolumetricStore(deps: VolumetricDeps): StoreApi<Volumetric
         const live = await svc.edit({
           pile: ed.pile,
           epoch: ed.epoch,
-          ring: ed.ring,
+          ring: unshifted(ed.ring, ed.epoch),
           base: get().base,
         });
         const now = get().edit;
@@ -569,6 +586,8 @@ export function createVolumetricStore(deps: VolumetricDeps): StoreApi<Volumetric
         showLayers();
       },
 
+      epochShift,
+
       shownEpoch() {
         const s = get();
         return s.surface === 'change' ? (s.file?.captures.at(-1)?.epoch ?? s.epoch) : s.epoch;
@@ -707,7 +726,8 @@ export function createVolumetricStore(deps: VolumetricDeps): StoreApi<Volumetric
         const epoch = s.epoch;
         const ep = pile.epochs[epoch];
         const src = ep?.ring ?? pile.zoneRing;
-        const en = src.map((q) => localToEN(s.origin, q));
+        const shift = epochShift(epoch);
+        const en = src.map((q) => shiftEN(localToEN(s.origin, q), shift));
         const ring = pile.edited.includes(epoch) ? en : simplifyRing(en, 0.6);
         set({
           edit: {
@@ -774,7 +794,8 @@ export function createVolumetricStore(deps: VolumetricDeps): StoreApi<Volumetric
         const pile = s.piles.find((p) => p.id === ed?.pile);
         if (!ed || !pile) return;
         const auto = pile.auto[ed.epoch]?.ring ?? pile.zoneRing;
-        await changeRing(auto.map((q) => localToEN(s.origin, q)));
+        const shift = epochShift(ed.epoch);
+        await changeRing(auto.map((q) => shiftEN(localToEN(s.origin, q), shift)));
         const now = get().edit;
         if (now) set({ edit: { ...now, resetToAuto: true } });
       },
@@ -805,7 +826,7 @@ export function createVolumetricStore(deps: VolumetricDeps): StoreApi<Volumetric
         const edit: BoundaryEdit = {
           pile: ed.pile,
           epoch: ed.epoch,
-          ring: toLocal(ed.ring),
+          ring: toLocal(unshifted(ed.ring, ed.epoch)),
           volumes: live.result.volumes,
           areaM2: live.result.areaM2,
           topM: live.result.topM,

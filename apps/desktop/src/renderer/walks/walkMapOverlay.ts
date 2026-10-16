@@ -1,6 +1,6 @@
 import { walkPathPoints, type XZ } from '@aio/geo';
 import { MAP_INK, oklchHex, type MapOverlay, type OverlayLayer } from '@aio/maps';
-import type { Vec3, WalkLayer } from '@aio/schema';
+import { shiftLocal, type DateShift, type Vec3, type WalkLayer } from '@aio/schema';
 import type { Feature, FeatureCollection } from 'geojson';
 import { walkPinPoints, walkShown, type SheetWalk, type WalkDrawOptions } from './walkOverlay';
 
@@ -43,6 +43,15 @@ export function resolveCssColour(colour: string, el: Element = document.document
   const v = getComputedStyle(el).getPropertyValue(m[1]).trim();
   return v ? mapColour(v) : MAP_INK.fg1;
 }
+
+/**
+ * A point of a walk (model x/z as measured) on the map: moved with its survey date when the date
+ * is lined up.
+ */
+const onMap =
+  (proj: { toLonLat(v: Vec3): [number, number] }, shift: DateShift | null) =>
+  (xz: XZ): [number, number] =>
+    proj.toLonLat(shiftLocal([xz[0], 0, xz[1]], shift));
 
 /** The map overlay id of a walk layer. */
 export const walkOverlayId = (layerId: string): string => `walk-${layerId}`;
@@ -189,10 +198,10 @@ export function walkMapOverlays(
   colourOf: (l: WalkLayer) => string,
   opts: WalkDrawOptions,
 ): MapOverlay[] {
-  const ll = (xz: XZ): [number, number] => proj.toLonLat([xz[0], 0, xz[1]]);
   const out: MapOverlay[] = [];
-  for (const { layer, fit, raw } of walks) {
+  for (const { layer, fit, raw, shift } of walks) {
     if (!walkShown(layer, opts)) continue;
+    const ll = onMap(proj, shift ?? null);
     const placing = layer.id === opts.placingId;
     const path = walkPathPoints(fit, raw, layer.durationS);
     const features: Feature[] = [];
@@ -237,7 +246,7 @@ export function walkNowMapOverlay(
   if (nowT === null || !Number.isFinite(nowT)) return null;
   const a = walk.fit.at(nowT);
   if (!a) return null;
-  const ll = (xz: XZ): [number, number] => proj.toLonLat([xz[0], 0, xz[1]]);
+  const ll = onMap(proj, walk.shift ?? null);
   const tip: XZ = [
     a.xz[0] - TICK_M * Math.sin(a.headingRad),
     a.xz[1] - TICK_M * Math.cos(a.headingRad),
@@ -294,8 +303,10 @@ export function walkPreviewMapOverlay(
   colour: string,
   ghost: boolean,
   tooClose: boolean,
+  shift: DateShift | null = null,
 ): MapOverlay | null {
   if (xz.length < 2) return null;
+  const ll = onMap(proj, shift);
   const data: FeatureCollection = {
     type: 'FeatureCollection',
     features: [
@@ -304,7 +315,7 @@ export function walkPreviewMapOverlay(
         properties: { kind: 'preview' },
         geometry: {
           type: 'LineString',
-          coordinates: xz.map((p) => proj.toLonLat([p[0], 0, p[1]])),
+          coordinates: xz.map(ll),
         },
       },
     ],

@@ -1,6 +1,6 @@
 import type { EngineStage } from '@aio/engine';
-import type { ProjectManifest } from '@aio/schema';
-import { useWorkspace, workspace } from '@aio/workspace';
+import { shiftLocal, unshiftLocal, type DateShift, type ProjectManifest } from '@aio/schema';
+import { dateShiftOf, useWorkspace, workspace } from '@aio/workspace';
 import { useEffect, useMemo, useRef } from 'react';
 import { Box3, Vector3 } from 'three';
 import { useStore } from 'zustand';
@@ -36,32 +36,54 @@ export function scenePlacing(
   s: Pick<PlaceState, 'layerId' | 'step' | 'surface' | 'fit' | 'pins' | 'preview' | 'armed'>,
   colour: string,
   durationS: number,
+  shift: DateShift | null = null,
 ): WalkScenePlacing | null {
   if (s.layerId === null || s.surface?.kind !== '3d') return null;
   const fit = s.pins.length >= 2 ? s.fit : null;
   return {
-    walk: fit ? { id: s.layerId, colour, runs: sceneRuns(fit, durationS) } : null,
+    walk: fit ? { id: s.layerId, colour, runs: shiftRuns(sceneRuns(fit, durationS), shift) } : null,
     preview: s.preview
       ? {
-          pts: previewPoints(s.preview.xz, s.preview.y),
+          pts: previewPoints(s.preview.xz, s.preview.y).map((p) => shiftLocal(p, shift)),
           ghost: s.preview.ghost,
           tooClose: s.preview.tooClose,
         }
       : null,
-    handles: sessionHandles(s).map((h) => ({ id: h.handle, at: [h.xz[0], h.y ?? 0, h.xz[1]] })),
+    handles: sessionHandles(s).map((h) => ({
+      id: h.handle,
+      at: shiftLocal([h.xz[0], h.y ?? 0, h.xz[1]], shift),
+    })),
     clicks: wantsSurfaceClick(s),
   };
 }
 
+/** The runs of a walk moved with its survey date. */
+function shiftRuns(runs: WalkSceneWalk['runs'], shift: DateShift | null): WalkSceneWalk['runs'] {
+  return shift ? runs.map((r) => ({ ...r, pts: r.pts.map((p) => shiftLocal(p, shift)) })) : runs;
+}
+
+/** The shift of the walk the session places (null: none, or a walk not on a lined-up date). */
+function sessionShift(): DateShift | null {
+  const id = placeSession.getState().layerId;
+  const m = workspace.getState().project?.manifest;
+  return id !== null && m ? dateShiftOf(m, id) : null;
+}
+
+/** A pick on the 3D view as model x/z of the walk's own frame (the writer subtracts the shift). */
+const picked = (at: [number, number]): [number, number] => {
+  const p = unshiftLocal([at[0], 0, at[1]], sessionShift());
+  return [p[0], p[2]];
+};
+
 const INPUT: WalkSceneInput = {
   hover: (at, y) => {
-    placeSession.getState().hover(at, y);
+    placeSession.getState().hover(at ? picked(at) : null, y);
   },
   click: (at, y) => {
-    placeSession.getState().click(at, y);
+    placeSession.getState().click(picked(at), y);
   },
   drag: (h, at, y) => {
-    placeSession.getState().dragHandle(h, at, y);
+    placeSession.getState().dragHandle(h, picked(at), y);
   },
   endDrag: () => {
     placeSession.getState().endDrag();
@@ -83,7 +105,7 @@ export function scenePlacedWalks(
     .map((w) => ({
       id: w.layer.id,
       colour: colourOf(w),
-      runs: sceneRuns(w.fit, w.layer.durationS),
+      runs: shiftRuns(sceneRuns(w.fit, w.layer.durationS), w.shift ?? null),
     }));
 }
 
@@ -154,7 +176,12 @@ function pushPlacing(
   const layer = m?.layers.find((l) => l.kind === 'walk' && l.id === s.layerId);
   const walk = layer?.kind === 'walk' ? layer : undefined;
   const colour = m && walk ? resolveCssColour(walkColour(m, walk)) : '#ffffff';
-  const p = scenePlacing(s, colour, walk?.durationS ?? 0);
+  const p = scenePlacing(
+    s,
+    colour,
+    walk?.durationS ?? 0,
+    m && walk ? dateShiftOf(m, walk.id) : null,
+  );
   v.setPlacing(p, p ? INPUT : null);
   last.current = p !== null;
   // the camera may back off far enough to see the whole walk, however small the model

@@ -95,6 +95,38 @@ describe('VideoRig flight paths', () => {
     rig.dispose();
   });
 
+  it('draws the flight path of a lined-up video at the corrected place', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(() => Promise.resolve(new Response(JSON.stringify(flight)))),
+    );
+    const store = createWorkspace();
+    const manifest = { layers: [] } as unknown as ProjectManifest;
+    store.getState().openProject({ id: 'p', root: 'x', manifest });
+    store.getState().setActiveClip(null);
+    configureVideo({ store, resolveUrl: (_p, ref) => ('path' in ref ? ref.path : ref.hash) });
+    const rig = new VideoRig(handle());
+    const url = (r: { path: string } | { hash: string }) =>
+      'path' in r ? `aio://${r.path}` : r.hash;
+    await rig.addLayer(clip(0, 'flights/a.json'), {
+      scene: rig.handle,
+      url,
+      shiftOf: () => ({ eastM: 2, northM: -1 }),
+    });
+    // a second clip of the same flight on a date that did not move draws its own path
+    await rig.addLayer(clip(1, 'flights/a.json'), { scene: rig.handle, url });
+    const first = (id: string) => {
+      const line = lines(rig).find((l) => l.userData.videoLayer === id) as Line;
+      return Array.from(line.geometry.getAttribute('position').array.slice(0, 3));
+    };
+    expect(lines(rig)).toHaveLength(2);
+    expect(first('v0')).toEqual([2, 1, 1]);
+    expect(first('v1')).toEqual([0, 1, 0]);
+    rig.removeLayer('v0');
+    expect(lines(rig)).toHaveLength(1);
+    rig.dispose();
+  });
+
   it('shows every, only the active or no flight path, and hides single flights', async () => {
     vi.stubGlobal(
       'fetch',
