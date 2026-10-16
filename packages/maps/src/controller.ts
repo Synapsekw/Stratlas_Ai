@@ -1124,7 +1124,10 @@ export function createMapController(
       shiftedVectors.set(key, null);
       const p = proj;
       void fetch(assetUrl(id, l.src))
-        .then((res) => res.json() as Promise<GeoJSON.GeoJSON>)
+        .then((res) => {
+          if (!res.ok) throw new Error(`HTTP ${String(res.status)}`);
+          return res.json() as Promise<GeoJSON.GeoJSON>;
+        })
         .then((gj) => {
           if (disposed || projectId !== id) return;
           const moved = shiftedGeoJson(gj, shift, p);
@@ -1141,6 +1144,8 @@ export function createMapController(
           applyVisibility(store.getState());
         })
         .catch((e: unknown) => {
+          // forget the marker: the next sync tries again
+          shiftedVectors.delete(key);
           console.warn(`Map: vector ${l.id} not shown`, e);
         });
     }

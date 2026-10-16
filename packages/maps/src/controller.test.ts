@@ -469,7 +469,7 @@ describe('lined-up dates on the map', () => {
     style: {},
     ...(capture ? { capture } : {}),
   });
-  const manifest = (layers: unknown[]) => ({
+  const manifest = (layers: unknown[], eastM = 2, northM = 0) => ({
     crs: { epsg: 32633 },
     origin: ORIGIN,
     captures: [
@@ -478,18 +478,26 @@ describe('lined-up dates on the map', () => {
         id: 'd2',
         label: 'Second',
         date: '2026-02-10',
-        lineUp: { eastM: 2, northM: 0, with: 'd1', at: '2026-10-16T08:00:00Z' },
+        lineUp: { eastM, northM, with: 'd1', at: '2026-10-16T08:00:00Z' },
       },
     ],
     layers,
   });
-  const open = (layers: unknown[]) => {
-    const started = start();
-    started.store.setState({
-      project: { id: 'p1', manifest: manifest(layers) } as unknown as ReturnType<
-        typeof started.store.getState
+  const setProject = (
+    store: ReturnType<typeof createWorkspace>,
+    layers: unknown[],
+    eastM = 2,
+    northM = 0,
+  ) => {
+    store.setState({
+      project: { id: 'p1', manifest: manifest(layers, eastM, northM) } as unknown as ReturnType<
+        typeof store.getState
       >['project'],
     });
+  };
+  const open = (layers: unknown[], eastM = 2, northM = 0) => {
+    const started = start();
+    setProject(started.store, layers, eastM, northM);
     return started;
   };
   const flush = () => new Promise((r) => setTimeout(r, 0));
@@ -524,6 +532,7 @@ describe('lined-up dates on the map', () => {
       'fetch',
       vi.fn(() =>
         Promise.resolve({
+          ok: true,
           json: () => Promise.resolve({ type: 'Point', coordinates: at }),
         }),
       ),
@@ -536,6 +545,162 @@ describe('lined-up dates on the map', () => {
     if (g?.type !== 'Point') throw new Error('point');
     const [x] = proj.toLocal(g.coordinates[0] ?? 0, g.coordinates[1] ?? 0);
     expect(x).toBeCloseTo(7, 3);
+    ctl.dispose();
+  });
+
+  const eastNorth = (lon: number, lat: number) => {
+    if (!proj) throw new Error('projection');
+    const [x, , z] = proj.toLocal(lon, lat);
+    return { east: x, north: -z };
+  };
+  const vectorData = (map: InstanceType<typeof FakeMap>, id: string) =>
+    map.specs.get(`aio-ov-layer-${id}`)?.data as GeoJSON.FeatureCollection;
+  const pointOf = (fcData: GeoJSON.FeatureCollection) => {
+    const g = fcData.features[0]?.geometry;
+    if (g?.type !== 'Point') throw new Error('point');
+    return eastNorth(g.coordinates[0] ?? 0, g.coordinates[1] ?? 0);
+  };
+  const deferred = () => {
+    let resolve: (v: unknown) => void = () => undefined;
+    const promise = new Promise((r) => {
+      resolve = r;
+    });
+    return { promise, resolve };
+  };
+  const reply = (at: [number, number]) => ({
+    ok: true,
+    json: () => Promise.resolve({ type: 'Point', coordinates: at }),
+  });
+  const quadStart = (map: InstanceType<typeof FakeMap>, id: string) => {
+    const c = (map.specs.get(`aio-raster-${id}-0`)?.coordinates ?? []) as [number, number][];
+    const p = c[0];
+    if (!p) throw new Error('quad');
+    return eastNorth(p[0], p[1]);
+  };
+
+  it('shows nothing of a lined-up vector before its shifted data arrives', async () => {
+    const d = deferred();
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(() => d.promise),
+    );
+    const { map, ctl } = open([vector('moved', 'd2')]);
+    await flush();
+    const data = vectorData(map, 'moved');
+    expect(data).not.toBe('aio://project/p1/moved.geojson');
+    expect(data.features).toEqual([]);
+    ctl.dispose();
+  });
+
+  it('ends on the current shift when two fetches resolve out of order', async () => {
+    if (!proj) throw new Error('projection');
+    const at = proj.toLonLat([5, 0, 5]);
+    const first = deferred();
+    const second = deferred();
+    const fetchMock = vi
+      .fn()
+      .mockReturnValueOnce(first.promise)
+      .mockReturnValueOnce(second.promise);
+    vi.stubGlobal('fetch', fetchMock);
+    const { map, store, ctl } = open([vector('moved', 'd2')], 2);
+    await flush();
+    // the date is lined up again before the first answer comes back
+    setProject(store, [vector('moved', 'd2')], 5);
+    await flush();
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    second.resolve(reply(at));
+    await flush();
+    first.resolve(reply(at));
+    await flush();
+    expect(pointOf(vectorData(map, 'moved')).east).toBeCloseTo(10, 3);
+    ctl.dispose();
+  });
+
+  it('tries a failed vector fetch again on the next sync', async () => {
+    if (!proj) throw new Error('projection');
+    const at = proj.toLonLat([5, 0, 5]);
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce({ ok: false, status: 500, json: () => Promise.resolve({}) })
+      .mockResolvedValue(reply(at));
+    vi.stubGlobal('fetch', fetchMock);
+    const { map, store, ctl } = open([vector('moved', 'd2')]);
+    await flush();
+    await flush();
+    expect(warn).toHaveBeenCalledTimes(1);
+    expect(vectorData(map, 'moved').features).toEqual([]);
+    store.setState({ hidden: { other: true } });
+    await flush();
+    await flush();
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(pointOf(vectorData(map, 'moved')).east).toBeCloseTo(7, 3);
+    warn.mockRestore();
+    ctl.dispose();
+  });
+
+  it('moves a lined-up vector 1 m south for a negative north shift', async () => {
+    if (!proj) throw new Error('projection');
+    const at = proj.toLonLat([5, 0, 5]);
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(() => Promise.resolve(reply(at))),
+    );
+    const { map, ctl } = open([vector('moved', 'd2')], 0, -1);
+    await flush();
+    await flush();
+    const base = eastNorth(at[0], at[1]);
+    const moved = pointOf(vectorData(map, 'moved'));
+    expect(moved.north - base.north).toBeCloseTo(-1, 3);
+    expect(moved.east - base.east).toBeCloseTo(0, 3);
+    ctl.dispose();
+  });
+
+  it('places a lined-up ortho quad 1 m south for a negative north shift', async () => {
+    const { map, ctl } = open([ortho('moved', 'd2'), ortho('still', 'd1')], 0, -1);
+    await flush();
+    expect(quadStart(map, 'moved').north - quadStart(map, 'still').north).toBeCloseTo(-1, 3);
+    ctl.dispose();
+  });
+
+  it('draws a lined-up flight path at the corrected place', async () => {
+    const samples = [0, 1000, 2000].map((t) => ({ t, pos: [t / 100, 30, 0], q: [0, 0, 0, 1] }));
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(() => Promise.resolve({ ok: true, json: () => Promise.resolve({ samples }) })),
+    );
+    const flight = (id: string, capture: string) => ({
+      kind: 'video',
+      id,
+      name: id,
+      visible: true,
+      capture,
+      flight: { src: { path: `${id}.json` }, startUtcMs: 0 },
+    });
+    const { map, ctl } = open([flight('moved', 'd2'), flight('still', 'd1')], 2);
+    await flush();
+    await flush();
+    const data = map.specs.get('aio-flights')?.data as GeoJSON.FeatureCollection;
+    const start = (id: string) => {
+      const g = data.features.find((f) => f.id === id)?.geometry;
+      if (g?.type !== 'LineString') throw new Error('line');
+      const p = g.coordinates[0];
+      return eastNorth(p?.[0] ?? 0, p?.[1] ?? 0);
+    };
+    expect(start('moved').east - start('still').east).toBeCloseTo(2, 3);
+    ctl.dispose();
+  });
+
+  it('places a waiting raster at the corrected place when it is first shown', async () => {
+    const plan = (id: string, capture: string) => ({ ...ortho(id, capture), role: 'plan' });
+    const { map, store, ctl } = start();
+    store.setState({ hidden: { moved: true, still: true } });
+    setProject(store, [plan('moved', 'd2'), plan('still', 'd1')], 2);
+    await flush();
+    expect(map.specs.has('aio-raster-moved-0')).toBe(false);
+    store.setState({ hidden: {} });
+    await flush();
+    expect(quadStart(map, 'moved').east - quadStart(map, 'still').east).toBeCloseTo(2, 3);
     ctl.dispose();
   });
 });
