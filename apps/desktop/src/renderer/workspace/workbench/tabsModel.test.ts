@@ -229,3 +229,24 @@ describe('paneWidth', () => {
     expect(paneWidth(380, volumes, 360, 200)).toBe(0);
   });
 });
+
+describe('onToolStop attention', () => {
+  it('keeps another tool pending dot when a tab the tool opened closes', () => {
+    const tabs: Tab[] = [
+      { id: 'measure', live: true, pinned: false, fixed: false },
+      { id: 'issues', live: false, pinned: false, fixed: true },
+    ];
+    const out = onToolStop(
+      { tabs, front: 'issues', issueEditing: true, attention: 'display' },
+      'measure',
+      { openedByTool: true },
+    );
+    expect(out.attention).toBe('display');
+    const own = onToolStop(
+      { tabs, front: 'issues', issueEditing: true, attention: 'measure' },
+      'measure',
+      { openedByTool: true },
+    );
+    expect(own.attention).toBeNull();
+  });
+});

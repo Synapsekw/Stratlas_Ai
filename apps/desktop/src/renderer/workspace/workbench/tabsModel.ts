@@ -105,7 +105,8 @@ export function onToolStop(
   return {
     tabs: orderTabs(tabs),
     front: state.front === id ? 'selection' : state.front,
-    attention: null,
+    // another tool's pending dot stays
+    attention,
   };
 }
 

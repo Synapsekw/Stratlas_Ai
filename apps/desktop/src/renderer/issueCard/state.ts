@@ -115,3 +115,20 @@ export function lightboxDispatch(a: LightboxAction): void {
 export function openLightbox(issueId: string, index: number): void {
   lightboxDispatch({ type: 'open', issueId, index });
 }
+
+// ---- issue edit state ----
+
+/** The issue whose edit form is open, if any. The workbench never takes the front from it. */
+export const issueEdit = createStore<{ id: string | null }>(() => ({ id: null }));
+
+export function setIssueEditing(id: string | null): void {
+  issueEdit.setState({ id });
+}
+
+export function isIssueEditing(): boolean {
+  return issueEdit.getState().id !== null;
+}
+
+export function useIssueEditing(): boolean {
+  return useStore(issueEdit, (s) => s.id !== null);
+}

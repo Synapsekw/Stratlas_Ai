@@ -43,7 +43,7 @@ import {
   type PhotoEvidence,
   type VideoEvidence,
 } from './model';
-import { openLightbox } from './state';
+import { openLightbox, setIssueEditing } from './state';
 
 export type CardPlace = 'scene' | 'issues' | 'media' | 'road';
 
@@ -349,6 +349,15 @@ export function IssueCard({
   const [edit, setEdit] = useState(editOpen);
   const ownOrder = useMemo(() => order ?? issueOrder(issues), [order, issues]);
   const body = useRef<HTMLDivElement>(null);
+  // report the open edit form so the workbench never takes the front from an issue being edited
+  const editing = edit && !readOnly && issue !== undefined;
+  useEffect(() => {
+    if (!editing) return;
+    setIssueEditing(issueId);
+    return () => {
+      setIssueEditing(null);
+    };
+  }, [editing, issueId]);
   // a new issue starts at the top of the card
   useEffect(() => {
     body.current?.scrollTo({ top: 0 });
