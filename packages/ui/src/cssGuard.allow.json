@@ -1,0 +1,472 @@
+{
+  "apps/desktop/src/renderer/agent/AgentToggle.tsx": {
+    "title": 1
+  },
+  "apps/desktop/src/renderer/audit/AuditScreen.tsx": {
+    "title": 1
+  },
+  "apps/desktop/src/renderer/audit/HistoryPanel.tsx": {
+    "title": 4
+  },
+  "apps/desktop/src/renderer/builder/AlignCamera.tsx": {
+    "title": 6
+  },
+  "apps/desktop/src/renderer/builder/AlignPhoto.tsx": {
+    "title": 3
+  },
+  "apps/desktop/src/renderer/builder/builder.css": {
+    "fontPx": 2,
+    "colour": 8,
+    "shadow": 6,
+    "zIndex": 8
+  },
+  "apps/desktop/src/renderer/builder/CalibrateVideo.tsx": {
+    "title": 2
+  },
+  "apps/desktop/src/renderer/builder/FarContentNotice.tsx": {
+    "title": 1
+  },
+  "apps/desktop/src/renderer/builder/ImportPanel.tsx": {
+    "title": 1
+  },
+  "apps/desktop/src/renderer/builder/photoBand.css": {
+    "colour": 2,
+    "zIndex": 1
+  },
+  "apps/desktop/src/renderer/builder/PhotoMenu.tsx": {
+    "title": 2
+  },
+  "apps/desktop/src/renderer/builder/VolumetricSurveys.tsx": {
+    "title": 2
+  },
+  "apps/desktop/src/renderer/change/SurveyDate.tsx": {
+    "title": 1
+  },
+  "apps/desktop/src/renderer/detections/ContactSheet.tsx": {
+    "title": 2
+  },
+  "apps/desktop/src/renderer/detections/detections.css": {
+    "fontPx": 3,
+    "shadow": 3,
+    "zIndex": 1
+  },
+  "apps/desktop/src/renderer/detections/Inspector.tsx": {
+    "title": 7
+  },
+  "apps/desktop/src/renderer/diagnostics/diagnostics.css": {
+    "colour": 1,
+    "shadow": 1,
+    "zIndex": 1
+  },
+  "apps/desktop/src/renderer/drawings/DrawingControls.tsx": {
+    "title": 1
+  },
+  "apps/desktop/src/renderer/drawings/DrawingPane.tsx": {
+    "title": 1
+  },
+  "apps/desktop/src/renderer/drawings/drawings.css": {
+    "shadow": 2
+  },
+  "apps/desktop/src/renderer/engineer/engineer.css": {
+    "colour": 1,
+    "shadow": 1,
+    "zIndex": 1
+  },
+  "apps/desktop/src/renderer/engineer/EvidencePreview.tsx": {
+    "title": 1
+  },
+  "apps/desktop/src/renderer/engineer/SetupDialog.tsx": {
+    "title": 1
+  },
+  "apps/desktop/src/renderer/environment/environment.css": {
+    "fontPx": 1
+  },
+  "apps/desktop/src/renderer/gate/gate.css": {
+    "fontPx": 3,
+    "colour": 2,
+    "shadow": 3,
+    "zIndex": 5
+  },
+  "apps/desktop/src/renderer/globe/globe-map-menu.css": {
+    "shadow": 1,
+    "zIndex": 1
+  },
+  "apps/desktop/src/renderer/globe/globe-search.css": {
+    "shadow": 2
+  },
+  "apps/desktop/src/renderer/globe/globe.css": {
+    "shadow": 3,
+    "zIndex": 3
+  },
+  "apps/desktop/src/renderer/globe/GlobeScreen.tsx": {
+    "title": 4
+  },
+  "apps/desktop/src/renderer/help/help.css": {
+    "fontPx": 6,
+    "shadow": 1,
+    "zIndex": 1
+  },
+  "apps/desktop/src/renderer/help/HelpPanel.tsx": {
+    "title": 2
+  },
+  "apps/desktop/src/renderer/help/print.css": {
+    "fontPx": 7,
+    "colour": 4
+  },
+  "apps/desktop/src/renderer/issueCard/issueCard.css": {
+    "fontPx": 3,
+    "colour": 2,
+    "shadow": 2,
+    "zIndex": 2
+  },
+  "apps/desktop/src/renderer/issueCard/IssueCard.tsx": {
+    "title": 8
+  },
+  "apps/desktop/src/renderer/issueCard/Lightbox.tsx": {
+    "title": 8
+  },
+  "apps/desktop/src/renderer/library/cover.css": {
+    "shadow": 2
+  },
+  "apps/desktop/src/renderer/library/CoverPicker.tsx": {
+    "title": 1
+  },
+  "apps/desktop/src/renderer/maps/mapMenu.css": {
+    "fontPx": 1,
+    "colour": 2,
+    "shadow": 7,
+    "zIndex": 2
+  },
+  "apps/desktop/src/renderer/maps/MapMenu.tsx": {
+    "title": 5
+  },
+  "apps/desktop/src/renderer/modeller/modeller.css": {
+    "colour": 17,
+    "shadow": 2,
+    "zIndex": 1
+  },
+  "apps/desktop/src/renderer/package.css": {
+    "colour": 2,
+    "shadow": 1,
+    "zIndex": 1
+  },
+  "apps/desktop/src/renderer/panos/panos.css": {
+    "fontPx": 2
+  },
+  "apps/desktop/src/renderer/panos/PanoSphereRows.tsx": {
+    "title": 1
+  },
+  "apps/desktop/src/renderer/photogrammetry/photo.css": {
+    "colour": 2,
+    "shadow": 2
+  },
+  "apps/desktop/src/renderer/photogrammetry/PhotoRuns.tsx": {
+    "title": 1
+  },
+  "apps/desktop/src/renderer/pointcloud/cleanup.css": {
+    "shadow": 4,
+    "zIndex": 4
+  },
+  "apps/desktop/src/renderer/pointcloud/CleanupPanel.tsx": {
+    "title": 8
+  },
+  "apps/desktop/src/renderer/processing/JobList.tsx": {
+    "title": 1
+  },
+  "apps/desktop/src/renderer/processing/processing.css": {
+    "fontPx": 6,
+    "colour": 1,
+    "shadow": 1,
+    "zIndex": 1
+  },
+  "apps/desktop/src/renderer/processing/ProcessingChip.tsx": {
+    "title": 1
+  },
+  "apps/desktop/src/renderer/report/PdfViewer.tsx": {
+    "title": 7
+  },
+  "apps/desktop/src/renderer/report/reports.css": {
+    "colour": 10,
+    "shadow": 5,
+    "zIndex": 3
+  },
+  "apps/desktop/src/renderer/road/ChainageRuler.tsx": {
+    "title": 2
+  },
+  "apps/desktop/src/renderer/road/road.css": {
+    "shadow": 2,
+    "zIndex": 2
+  },
+  "apps/desktop/src/renderer/road/RoadPanel.tsx": {
+    "title": 2
+  },
+  "apps/desktop/src/renderer/road/RoadSetup.tsx": {
+    "title": 1
+  },
+  "apps/desktop/src/renderer/screens/Detections.tsx": {
+    "title": 4
+  },
+  "apps/desktop/src/renderer/screens/libraryFolders.css": {
+    "shadow": 1
+  },
+  "apps/desktop/src/renderer/screens/LibraryFolders.tsx": {
+    "title": 3
+  },
+  "apps/desktop/src/renderer/screens/Media.tsx": {
+    "title": 3
+  },
+  "apps/desktop/src/renderer/screens/Projects.tsx": {
+    "title": 3
+  },
+  "apps/desktop/src/renderer/screens/Reports.tsx": {
+    "title": 1
+  },
+  "apps/desktop/src/renderer/screens/Settings.tsx": {
+    "title": 3
+  },
+  "apps/desktop/src/renderer/screens/settings/About.tsx": {
+    "title": 1
+  },
+  "apps/desktop/src/renderer/screens/settings/classes.css": {
+    "shadow": 1,
+    "zIndex": 1
+  },
+  "apps/desktop/src/renderer/screens/settings/Classes.tsx": {
+    "title": 5
+  },
+  "apps/desktop/src/renderer/screens/settings/detectionModels.css": {
+    "fontPx": 1
+  },
+  "apps/desktop/src/renderer/screens/settings/GeoidPacks.tsx": {
+    "title": 1
+  },
+  "apps/desktop/src/renderer/screens/settings/localModel.css": {
+    "fontPx": 2
+  },
+  "apps/desktop/src/renderer/screens/settings/ProcessingEngine.tsx": {
+    "title": 1
+  },
+  "apps/desktop/src/renderer/screens/settings/ProcessingTools.tsx": {
+    "title": 3
+  },
+  "apps/desktop/src/renderer/shell/AddSurveyDate.tsx": {
+    "title": 1
+  },
+  "apps/desktop/src/renderer/shell/ConnectionStatus.tsx": {
+    "title": 3
+  },
+  "apps/desktop/src/renderer/shell/DateMenus.tsx": {
+    "title": 1
+  },
+  "apps/desktop/src/renderer/shell/DateNotes.tsx": {
+    "title": 1
+  },
+  "apps/desktop/src/renderer/shell/removal.css": {
+    "shadow": 1
+  },
+  "apps/desktop/src/renderer/shell/Sidebar.tsx": {
+    "title": 3
+  },
+  "apps/desktop/src/renderer/shell/TitleBar.tsx": {
+    "title": 3
+  },
+  "apps/desktop/src/renderer/styles.css": {
+    "fontPx": 26,
+    "colour": 25,
+    "shadow": 15,
+    "zIndex": 18
+  },
+  "apps/desktop/src/renderer/survey/Cleanup.tsx": {
+    "title": 1
+  },
+  "apps/desktop/src/renderer/survey/Comparison.tsx": {
+    "title": 1
+  },
+  "apps/desktop/src/renderer/survey/Compliance.tsx": {
+    "title": 1
+  },
+  "apps/desktop/src/renderer/survey/Designs.tsx": {
+    "title": 1
+  },
+  "apps/desktop/src/renderer/survey/ElevationHistory.tsx": {
+    "title": 1
+  },
+  "apps/desktop/src/renderer/survey/HaulRoad.tsx": {
+    "title": 3
+  },
+  "apps/desktop/src/renderer/survey/HydroForms.tsx": {
+    "title": 3
+  },
+  "apps/desktop/src/renderer/survey/MagicPolygon.tsx": {
+    "title": 2
+  },
+  "apps/desktop/src/renderer/survey/measure.css": {
+    "colour": 8,
+    "shadow": 3,
+    "zIndex": 5
+  },
+  "apps/desktop/src/renderer/survey/MeasurementList.tsx": {
+    "title": 2
+  },
+  "apps/desktop/src/renderer/survey/MeasureToolbar.tsx": {
+    "title": 1
+  },
+  "apps/desktop/src/renderer/survey/qa.css": {
+    "shadow": 1,
+    "zIndex": 2
+  },
+  "apps/desktop/src/renderer/survey/section.css": {
+    "colour": 2,
+    "zIndex": 2
+  },
+  "apps/desktop/src/renderer/survey/SectionBody.tsx": {
+    "title": 1
+  },
+  "apps/desktop/src/renderer/survey/SiteSettings.tsx": {
+    "title": 3
+  },
+  "apps/desktop/src/renderer/survey/TemplateEditor.tsx": {
+    "title": 1
+  },
+  "apps/desktop/src/renderer/survey/WholeSite.tsx": {
+    "title": 1
+  },
+  "apps/desktop/src/renderer/team/Exchange.tsx": {
+    "title": 2
+  },
+  "apps/desktop/src/renderer/team/files.css": {
+    "colour": 1,
+    "shadow": 1,
+    "zIndex": 1
+  },
+  "apps/desktop/src/renderer/team/Members.tsx": {
+    "title": 3
+  },
+  "apps/desktop/src/renderer/team/Share.tsx": {
+    "title": 6
+  },
+  "apps/desktop/src/renderer/team/SyncStatus.tsx": {
+    "title": 2
+  },
+  "apps/desktop/src/renderer/team/team.css": {
+    "fontPx": 2
+  },
+  "apps/desktop/src/renderer/walks/placeWalk.css": {
+    "shadow": 1
+  },
+  "apps/desktop/src/renderer/walks/PlaceWalkStrip.tsx": {
+    "title": 5
+  },
+  "apps/desktop/src/renderer/walks/Walk360Pane.tsx": {
+    "title": 6
+  },
+  "apps/desktop/src/renderer/walks/WalkProcessLine.tsx": {
+    "title": 2
+  },
+  "apps/desktop/src/renderer/workspace/ComponentList.tsx": {
+    "title": 1
+  },
+  "apps/desktop/src/renderer/workspace/components.css": {
+    "shadow": 1,
+    "zIndex": 1
+  },
+  "apps/desktop/src/renderer/workspace/CutawayTool.tsx": {
+    "title": 1
+  },
+  "apps/desktop/src/renderer/workspace/DateRow.tsx": {
+    "title": 1
+  },
+  "apps/desktop/src/renderer/workspace/DatesOnScreen.tsx": {
+    "title": 2
+  },
+  "apps/desktop/src/renderer/workspace/FloatingVideo.tsx": {
+    "title": 4
+  },
+  "apps/desktop/src/renderer/workspace/FramesPane.tsx": {
+    "title": 5
+  },
+  "apps/desktop/src/renderer/workspace/mapMenus.css": {
+    "zIndex": 2
+  },
+  "apps/desktop/src/renderer/workspace/mapSwipe.css": {
+    "colour": 1,
+    "shadow": 1,
+    "zIndex": 5
+  },
+  "apps/desktop/src/renderer/workspace/PanoPane.tsx": {
+    "title": 2
+  },
+  "apps/desktop/src/renderer/workspace/RasterPane.tsx": {
+    "title": 1
+  },
+  "apps/desktop/src/renderer/workspace/SelectionCard.tsx": {
+    "title": 2
+  },
+  "apps/desktop/src/renderer/workspace/SplitPanes.tsx": {
+    "title": 9
+  },
+  "apps/desktop/src/renderer/workspace/spot/spot.css": {
+    "fontPx": 2,
+    "colour": 2,
+    "shadow": 1,
+    "zIndex": 1
+  },
+  "apps/desktop/src/renderer/workspace/spot/SpotHistoryEntry.tsx": {
+    "title": 1
+  },
+  "apps/desktop/src/renderer/workspace/spot/SpotStrip.tsx": {
+    "title": 1
+  },
+  "apps/desktop/src/renderer/workspace/spot/SpotViewer.tsx": {
+    "title": 2
+  },
+  "apps/desktop/src/renderer/workspace/Stage.tsx": {
+    "title": 3
+  },
+  "apps/desktop/src/renderer/workspace/StageLegends.tsx": {
+    "title": 1
+  },
+  "apps/desktop/src/renderer/workspace/StageTools.tsx": {
+    "title": 2
+  },
+  "apps/desktop/src/renderer/workspace/VolumeTools.tsx": {
+    "title": 3
+  },
+  "apps/desktop/src/renderer/workspace/WorkspaceScreen.tsx": {
+    "title": 1
+  },
+  "packages/ui/src/actions/ContextMenu.tsx": {
+    "title": 3
+  },
+  "packages/ui/src/controls.tsx": {
+    "title": 1
+  },
+  "packages/ui/src/mission.css": {
+    "fontPx": 10,
+    "colour": 2,
+    "shadow": 11,
+    "zIndex": 6
+  },
+  "packages/ui/src/parts/chip.css": {
+    "fontPx": 1,
+    "shadow": 1
+  },
+  "packages/ui/src/parts/tip.css": {
+    "zIndex": 1
+  },
+  "packages/ui/src/timeline/LaneTimeline.tsx": {
+    "title": 4
+  },
+  "packages/ui/src/timeline/parts.tsx": {
+    "title": 5
+  },
+  "packages/ui/src/timeline/Timeline.tsx": {
+    "title": 4
+  },
+  "packages/ui/src/tree/DatasetTree.tsx": {
+    "title": 11
+  },
+  "packages/ui/src/tree/DateTree.tsx": {
+    "title": 2
+  }
+}

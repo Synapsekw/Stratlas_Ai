@@ -1,4 +1,13 @@
 /* Mission base and components. Tokens live in tokens.css; this file only consumes them. */
+/* parts: one file per shared component, imported first so the base below can still override */
+@import './parts/button.css';
+@import './parts/tip.css';
+@import './parts/surface.css';
+@import './parts/tabs.css';
+@import './parts/chip.css';
+@import './parts/row.css';
+@import './parts/empty.css';
+@import './parts/split.css';
 * {
   box-sizing: border-box;
   scrollbar-width: thin;
@@ -54,7 +63,6 @@ a:hover {
 :focus-visible {
   outline: 1.5px solid var(--acc);
   outline-offset: 1px;
-  border-radius: var(--r-2);
 }
 h1,
 h2,
@@ -124,119 +132,6 @@ svg.i {
   border-radius: 3px;
   padding: 2px 4px;
   white-space: nowrap;
-}
-.btn {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 6px;
-  height: 28px;
-  padding: 0 10px;
-  border-radius: var(--r-4);
-  border: 1px solid var(--line);
-  background: var(--bg-2);
-  color: var(--fg-0);
-  font-size: var(--t-12);
-  font-weight: 500;
-  white-space: nowrap;
-  transition:
-    background-color 120ms,
-    border-color 120ms;
-}
-.btn:hover {
-  background: var(--bg-3);
-  border-color: var(--line-strong);
-}
-.btn:active {
-  transform: translateY(0.5px);
-}
-.btn.primary {
-  background: var(--acc);
-  border-color: transparent;
-  color: var(--acc-ink);
-}
-.btn.primary:hover {
-  background: var(--acc-strong);
-}
-.btn.ghost {
-  background: none;
-  border-color: transparent;
-  color: var(--fg-2);
-}
-.btn.ghost:hover {
-  background: var(--bg-2);
-  color: var(--fg-0);
-}
-/* a toggle button that is on (Only with findings, Mine): the pressed look of the stage tools */
-.btn[aria-pressed='true'] {
-  background: var(--acc-a20);
-  border-color: var(--acc-a40);
-  color: var(--acc-strong);
-}
-.btn[aria-pressed='true']:hover {
-  border-color: var(--acc);
-}
-.btn.sm {
-  height: 24px;
-  padding: 0 8px;
-  font-size: var(--t-11);
-}
-.btn.icon {
-  width: 28px;
-  padding: 0;
-}
-.btn.icon.sm {
-  width: 24px;
-}
-.btn:disabled,
-.btn[aria-disabled='true'] {
-  opacity: 0.45;
-  pointer-events: none;
-}
-/* holds a disabled button and its reason as a tooltip: the button itself takes no pointer */
-.why-wrap {
-  display: inline-flex;
-}
-/* a primary that cannot be pressed yet (Save key with no key) drops its accent fill, so it does
-   not read as the thing to click */
-.btn.primary:disabled,
-.btn.primary[aria-disabled='true'] {
-  background: var(--bg-2);
-  border-color: var(--line);
-  color: var(--fg-1);
-}
-.seg {
-  display: inline-flex;
-  border: 1px solid var(--line);
-  border-radius: var(--r-4);
-  padding: 1px;
-  background: var(--bg-1);
-}
-.seg button {
-  height: 24px;
-  padding: 0 8px;
-  border-radius: 3px;
-  font-size: var(--t-12);
-  color: var(--fg-2);
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  transition:
-    background-color 120ms,
-    color 120ms;
-}
-.seg button:hover {
-  color: var(--fg-0);
-}
-.seg button[aria-pressed='true'],
-.seg button[role='tab'][aria-selected='true'] {
-  background: var(--bg-3);
-  color: var(--fg-0);
-}
-.seg.icons button {
-  width: 28px;
-  padding: 0;
-  justify-content: center;
 }
 .input {
   height: 28px;
@@ -309,69 +204,6 @@ select.input option {
 .switch:disabled {
   opacity: 0.5;
   cursor: default;
-}
-.sev {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  height: 20px;
-  padding: 0 6px;
-  border-radius: 3px;
-  font: 600 11px/1 var(--f-mono);
-  color: var(--fg-0);
-  white-space: nowrap;
-  background: var(--sev-a, var(--bg-3));
-}
-.sev i {
-  width: 7px;
-  height: 7px;
-  border-radius: 1.5px;
-  display: block;
-  background: var(--sev, var(--s1));
-}
-.sev-dot {
-  width: 8px;
-  height: 8px;
-  border-radius: 2px;
-  flex: none;
-}
-.tag {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  height: 20px;
-  padding: 0 6px;
-  border: 1px solid var(--line);
-  border-radius: 3px;
-  font-size: 11px;
-  color: var(--fg-2);
-  white-space: nowrap;
-}
-.tag.acc {
-  border-color: var(--acc-a40);
-  color: var(--acc);
-}
-.chip-status {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  height: 24px;
-  padding: 0 8px;
-  border: 1px solid var(--line);
-  border-radius: var(--r-4);
-  font-size: var(--t-12);
-  color: var(--fg-1);
-  white-space: nowrap;
-}
-.chip-status .dot {
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  background: var(--ok);
-}
-.chip-status .dot.off {
-  background: transparent;
-  box-shadow: inset 0 0 0 1.5px var(--fg-3);
 }
 .state {
   display: inline-flex;
@@ -468,31 +300,6 @@ select.input option {
   display: block;
   height: 100%;
   background: var(--acc);
-}
-
-/* tooltips (rail, tools) */
-.tip {
-  position: absolute;
-  inset-inline-start: calc(100% + 10px);
-  top: 50%;
-  transform: translate(-4px, -50%);
-  background: var(--bg-3);
-  color: var(--fg-0);
-  border: 1px solid var(--line-strong);
-  border-radius: var(--r-4);
-  font-size: var(--t-12);
-  font-weight: 400;
-  padding: 4px 8px;
-  white-space: nowrap;
-  pointer-events: none;
-  opacity: 0;
-  transition:
-    opacity 120ms var(--ease),
-    transform 160ms var(--ease);
-  z-index: 50;
-}
-.tip .kbd {
-  margin-inline-start: 6px;
 }
 
 /* stage tools */

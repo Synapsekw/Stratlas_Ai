@@ -15,7 +15,7 @@ function block(selector: string): Map<string, string> {
   return out;
 }
 
-const NON_COLOUR = /^--(f-|t-|r-|ease|sb-|tb-)/;
+const NON_COLOUR = /^--(f-|t-|r-|ease|sb-|tb-|sp-|el-|z-|d-|caps-|fw-)/;
 
 describe('design tokens', () => {
   const dark = block(':root');
@@ -58,6 +58,41 @@ describe('design tokens', () => {
       for (const bg of ['--bg-0', '--bg-1', '--bg-2', '--bg-3'])
         expect(contrast(ink, oklch(theme.get(bg) ?? '')), bg).toBeGreaterThanOrEqual(4.5);
     }
+  });
+
+  it('has the spacing, elevation, layer, duration and type role tokens', () => {
+    const want = {
+      '--sp-1': '2px',
+      '--sp-2': '4px',
+      '--sp-3': '6px',
+      '--sp-4': '8px',
+      '--sp-5': '12px',
+      '--sp-6': '16px',
+      '--sp-7': '24px',
+      '--sp-8': '32px',
+      '--z-stage-ui': '10',
+      '--z-panel': '20',
+      '--z-pop': '40',
+      '--z-drawer': '60',
+      '--z-toast': '70',
+      '--z-modal': '80',
+      '--d-1': '120ms',
+      '--d-2': '180ms',
+      '--d-3': '260ms',
+      '--t-title': 'var(--t-13)',
+      '--fw-title': '600',
+      '--caps-ls': '.06em',
+      '--r-pill': '999px',
+      '--el-1': '0 0 0 1px var(--line)',
+      '--el-2': '0 12px 32px var(--shadow)',
+      '--el-3': '0 24px 64px var(--shadow)',
+    };
+    for (const [k, v] of Object.entries(want)) expect(dark.get(k), k).toBe(v);
+  });
+
+  it('gives amber text its own ink in both themes', () => {
+    expect(dark.get('--warn-ink')).toBe('var(--s3)');
+    expect(light.get('--warn-ink')).toBe('oklch(0.5 0.12 75)');
   });
 });
 

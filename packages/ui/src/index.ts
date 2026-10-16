@@ -13,7 +13,46 @@ export const TOKENS_CSS_PATH = './tokens.css';
 
 export { Icon, ICONS, type IconName, type IconProps, type IconSize } from './icons/Icon';
 export { Compass, type CompassProps } from './Compass';
-export { Kbd, SevChip, Switch, type SevChipProps, type SwitchProps } from './controls';
+export {
+  Button,
+  IconButton,
+  Kbd,
+  SevChip,
+  Switch,
+  type ButtonProps,
+  type ButtonSize,
+  type ButtonVariant,
+  type IconButtonProps,
+  type SevChipProps,
+  type SwitchProps,
+} from './controls';
+export { Tip, TIP_DELAY_MS, TIP_SKIP_MS, type TipProps } from './Tip';
+export { Menu, type MenuEntry, type MenuProps } from './Menu';
+export { Tabs, type TabItem, type TabsProps } from './Tabs';
+export { Chip, type ChipKind, type ChipProps } from './Chip';
+export { Row, type RowKind, type RowProps } from './Row';
+export { EmptyState, type EmptyStateProps } from './EmptyState';
+export {
+  PortalRoot,
+  portalSurfaceAttrs,
+  type PortalRootProps,
+  type PortalSurfaceAttrs,
+} from './portal';
+export { contrastRatio } from './contrast';
+export {
+  ResizableSplit,
+  SNAP_MARGIN,
+  SPLIT_STEP,
+  SPLIT_STEP_BIG,
+  clampSplit,
+  splitPrefs,
+  useResizableSplit,
+  type ResizableSplitProps,
+  type SplitLimits,
+  type SplitOptions,
+  type SplitPref,
+  type SplitPrefsState,
+} from './split';
 export * from './format';
 export { isMacPlatform, platformKeys } from './shortcut';
 export * from './coords';

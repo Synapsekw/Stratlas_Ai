@@ -1,4 +1,13 @@
-import type { CSSProperties, ReactNode } from 'react';
+import {
+  forwardRef,
+  type ButtonHTMLAttributes,
+  type CSSProperties,
+  type ForwardRefExoticComponent,
+  type ReactNode,
+  type RefAttributes,
+} from 'react';
+import type { IconName } from './icons/Icon';
+import type { ShortcutId } from './shortcuts';
 
 export interface SevChipProps {
   /** Level colour from the project's severity model. */
@@ -49,3 +58,36 @@ export function Switch({ checked, onChange, label, disabled }: SwitchProps) {
 export function Kbd({ children }: { children: ReactNode }) {
   return <span className="kbd">{children}</span>;
 }
+
+export type ButtonSize = 'sm' | 'md' | 'lg';
+export type ButtonVariant = 'primary' | 'secondary' | 'quiet' | 'danger' | 'icon' | 'link';
+
+export interface ButtonProps extends Omit<ButtonHTMLAttributes<HTMLButtonElement>, 'disabled'> {
+  size?: ButtonSize; // default 'sm'
+  variant?: ButtonVariant; // default 'secondary'
+  pressed?: boolean; // a toggle: sets aria-pressed
+  busy?: boolean;
+  disabled?: boolean; // no reason: native disabled
+  disabledReason?: string; // aria-disabled, click ignored, reason in the tooltip
+  icon?: IconName;
+  shortcut?: ShortcutId;
+  tip?: string;
+}
+
+/** Stub: built in the button task. */
+export const Button: ForwardRefExoticComponent<ButtonProps & RefAttributes<HTMLButtonElement>> =
+  forwardRef<HTMLButtonElement, ButtonProps>(() => {
+    throw new Error('not built');
+  });
+
+export interface IconButtonProps extends Omit<ButtonProps, 'variant' | 'children' | 'icon'> {
+  icon: IconName;
+  label: string; // the accessible name and the tooltip
+}
+
+/** Stub: built in the button task. */
+export const IconButton: ForwardRefExoticComponent<
+  IconButtonProps & RefAttributes<HTMLButtonElement>
+> = forwardRef<HTMLButtonElement, IconButtonProps>(() => {
+  throw new Error('not built');
+});

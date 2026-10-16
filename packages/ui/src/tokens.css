@@ -84,6 +84,36 @@
   --sb-w: 252px;
   --sb-w-c: 52px;
   --tb-h: 40px;
+  --r-pill: 999px;
+  /* spacing, 2px base */
+  --sp-1: 2px;
+  --sp-2: 4px;
+  --sp-3: 6px;
+  --sp-4: 8px;
+  --sp-5: 12px;
+  --sp-6: 16px;
+  --sp-7: 24px;
+  --sp-8: 32px;
+  /* elevation: hairline, popover, dialog */
+  --el-1: 0 0 0 1px var(--line);
+  --el-2: 0 12px 32px var(--shadow);
+  --el-3: 0 24px 64px var(--shadow);
+  /* layers */
+  --z-stage-ui: 10;
+  --z-panel: 20;
+  --z-pop: 40;
+  --z-drawer: 60;
+  --z-toast: 70;
+  --z-modal: 80;
+  /* durations */
+  --d-1: 120ms;
+  --d-2: 180ms;
+  --d-3: 260ms;
+  /* type roles */
+  --t-title: var(--t-13);
+  --fw-title: 600;
+  /* prettier-ignore */
+  --caps-ls: .06em;
 }
 /* Light theme: secondary (DIRECTION.md) but complete. Same hues, contrast tuned for a light
    surface; overlay ink on imagery stays light because imagery stays dark. */
