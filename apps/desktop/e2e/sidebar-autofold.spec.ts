@@ -7,9 +7,11 @@
  * one lets it fold with QUADRION_E2E_AUTOFOLD=1.
  */
 import type { ElectronApplication, Page } from '@playwright/test';
-import { expect, launchApp, NetworkGuard, test, type DataRoot } from './fixtures';
+import { expect, launchApp, NetworkGuard, reportWindow, test, type DataRoot } from './fixtures';
 
-const ENV = { QUADRION_E2E_AUTOFOLD: '1', QUADRION_WINDOW_SIZE: '1100x720' };
+const ENV = { QUADRION_E2E_AUTOFOLD: '1' };
+/** The CI window: narrower than 1280 px, where the sidebar folds on its own. */
+const SIZE: [number, number] = [1100, 720];
 /** tokens.css: the sidebar and its icon rail. */
 const SIDEBAR = 252;
 const RAIL = 52;
@@ -20,12 +22,19 @@ interface Run {
   network: NetworkGuard;
 }
 
-async function start(dataRoot: DataRoot): Promise<Run> {
+async function start(dataRoot: DataRoot, report = false): Promise<Run> {
   const app = await launchApp(dataRoot, ENV);
   const network = new NetworkGuard();
   await network.attach(app);
   const win = await app.firstWindow();
   await win.waitForLoadState('domcontentloaded');
+  // the run's window, as the fixtures report it ("[e2e] window 1100 x 720 px ..."), then the
+  // CI window whatever the run's size
+  if (report) await reportWindow(win);
+  await app.evaluate(({ BrowserWindow }, [w, h]) => {
+    BrowserWindow.getAllWindows()[0]?.setContentSize(w, h);
+  }, SIZE);
+  await expect.poll(() => win.evaluate(() => window.innerWidth)).toBe(SIZE[0]);
   return { app, win, network };
 }
 
@@ -53,7 +62,7 @@ test('the sidebar folds to its rail in a narrow window, and stays open once reop
   dataRoot,
 }) => {
   test.setTimeout(120_000);
-  const first = await start(dataRoot);
+  const first = await start(dataRoot, true);
   try {
     const { win } = first;
     // the window is narrower than 1280 px (the CI window, 1100 x 720)

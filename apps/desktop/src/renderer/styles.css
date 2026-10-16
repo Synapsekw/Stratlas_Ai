@@ -557,9 +557,10 @@ button.chip-status:hover {
 .app[data-sb='collapsed'] .sb-rail {
   opacity: 1;
 }
-/* the tab rides the sliding edge, then the grid snap puts it where it ends */
+/* the tab rides the sliding edge, then the grid snap puts it where it ends (--sb-fold-dx: the
+   distance in px, measured as the slide starts, App.tsx) */
 .app[data-fold='closing'] .ph[data-side='left'] {
-  transform: translateX(calc(var(--sb-fold-x) * (var(--sb-col) - var(--sb-w-c))));
+  transform: translateX(calc(var(--sb-fold-x) * var(--sb-fold-dx, 0px)));
   transition: transform var(--d-2) var(--ease);
 }
 .app[data-fold='opening'] .ph[data-side='left'] {
@@ -567,7 +568,7 @@ button.chip-status:hover {
 }
 @keyframes sb-edge-in {
   from {
-    transform: translateX(calc(var(--sb-fold-x) * (var(--sb-col) - var(--sb-w-c))));
+    transform: translateX(calc(var(--sb-fold-x) * var(--sb-fold-dx, 0px)));
   }
 }
 /* The drag handle of the sidebar's width: 8 px inside its inner edge, so it never takes a click
@@ -1460,23 +1461,37 @@ button.chip-status:hover {
   grid-template-areas: 'dbar right' 'stage right' 'tl right';
 }
 .ws[data-collapsed] {
-  --rp-col: var(--split-size, var(--ph-w));
+  --rp-col: var(--split-size, calc(var(--ph-w) + 1px));
 }
 [dir='rtl'] .ws {
   --rp-fold-x: -1;
 }
-/* Folding, the panel and its tab slide out with a transform until only the strip shows, then the
-   grid snaps once; opening, the grid snaps first and they slide in. The stage is resized once. */
-.ws[data-fold='closing'] > :is(.right, .ph[data-side='right']) {
-  transform: translateX(calc(var(--rp-fold-x) * (var(--rp-col) - var(--ph-w))));
+/* Folding, the panel and its tab slide out with a transform until only the strip (its border and
+   the tab) shows, then the grid snaps once; opening, the grid snaps first and they slide in. The
+   stage is resized once. The panel moves by its own width; the tab by --rp-fold-dx, the same
+   distance in px, measured as the slide starts (WorkspaceScreen.tsx). */
+.ws[data-fold='closing'] > .right {
+  transform: translateX(calc(var(--rp-fold-x) * (100% - var(--ph-w) - 1px)));
   transition: transform var(--d-2) var(--ease);
 }
-.ws[data-fold='opening'] > :is(.right, .ph[data-side='right']) {
+.ws[data-fold='closing'] > .ph[data-side='right'] {
+  transform: translateX(calc(var(--rp-fold-x) * var(--rp-fold-dx, 0px)));
+  transition: transform var(--d-2) var(--ease);
+}
+.ws[data-fold='opening'] > .right {
+  animation: rp-panel-in var(--d-2) var(--ease);
+}
+.ws[data-fold='opening'] > .ph[data-side='right'] {
   animation: rp-edge-in var(--d-2) var(--ease);
+}
+@keyframes rp-panel-in {
+  from {
+    transform: translateX(calc(var(--rp-fold-x) * (100% - var(--ph-w) - 1px)));
+  }
 }
 @keyframes rp-edge-in {
   from {
-    transform: translateX(calc(var(--rp-fold-x) * (var(--rp-col) - var(--ph-w))));
+    transform: translateX(calc(var(--rp-fold-x) * var(--rp-fold-dx, 0px)));
   }
 }
 /* The drag handle of the panel's width: 8 px inside its inner edge, never over the stage; the tab
@@ -2440,13 +2455,6 @@ svg.flip {
     border-color 120ms var(--ease),
     background-color 120ms var(--ease);
 }
-/* folded, the tab is the whole strip after the panel's border (the strip is --ph-w wide) */
-.ws[data-collapsed] > .ph[data-side='right'] {
-  width: calc(var(--ph-w) - 1px);
-}
-.ws[data-collapsed] > .ph[data-side='right'] > .ph-tab {
-  overflow: clip;
-}
 /* folded to its strip, the content keeps a panel's width, out of sight: nothing reflows to 12 px */
 .ws[data-collapsed] > .right > * {
   width: var(--rp-w);
@@ -2466,11 +2474,43 @@ svg.flip {
   flex-direction: column;
   overflow: hidden;
 }
-/* the context fills its pane; the split's line is its lower border */
-.rp-split > .split-pane > .ctx-wrap {
+/* moved once, the context fills its pane; the split's line is its lower border */
+.right .rp-split:not(.auto) > .split-pane > .ctx-wrap {
   flex: 1 1 auto;
   max-height: none;
   border-bottom: 0;
+}
+/* Until the divider is moved (ContextAgentSplit), the context and the agent keep the sizes they
+   always had: the panes step aside and the two share the column as flex items, the divider a
+   zero-height item on their shared edge. */
+.rp-split.auto {
+  display: flex;
+  flex-direction: column;
+}
+.rp-split.auto > .split-pane {
+  display: contents;
+}
+.right .rp-split.auto[data-orientation] > .split-handle {
+  position: relative;
+  inset: auto;
+  flex: none;
+  margin-block: -4px;
+}
+.right .rp-split.auto[data-orientation] > .split-handle::before {
+  content: none;
+}
+.rp-split.auto .ctx-wrap.tall {
+  flex: 0 1 62%;
+}
+.rp-split.auto .ctx-wrap.tall.vol {
+  flex: 0 1 80%;
+}
+.ws.road .rp-split.auto .ctx-wrap.tall {
+  flex: 0 1 72%;
+}
+.rp-split.auto > .split-pane > .agent {
+  /* Keep the conversation usable while the context and telecom sections scroll above it. */
+  min-height: 180px;
 }
 .ctx-wrap {
   flex: none;

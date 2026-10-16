@@ -531,3 +531,123 @@ test('the folded panels are still folded after a restart', async ({ dataRoot }) 
     await stop(second);
   }
 });
+
+/**
+ * Fold one panel by its tab and stop each slide just before its end: how far each sliding element
+ * has travelled by then, in px along x (the transform's translation).
+ */
+async function slideEnds(win: Page, side: 'left' | 'right', selectors: string[]) {
+  return win.evaluate(
+    async ({ side, selectors }) => {
+      document.querySelector<HTMLElement>(`[data-testid="panel-handle-${side}"]`)?.click();
+      const frame = () => new Promise((r) => requestAnimationFrame(r));
+      await frame();
+      await frame();
+      const out: Record<string, number | null> = {};
+      for (const s of selectors) {
+        const el = document.querySelector(s);
+        const t = el?.getAnimations().find((a) => a instanceof CSSTransition);
+        if (!el || !t) {
+          out[s] = null;
+          continue;
+        }
+        t.pause();
+        t.currentTime = Number(t.effect?.getTiming().duration ?? 0) - 0.01;
+        out[s] = new DOMMatrix(getComputedStyle(el).transform).m41;
+        t.finish();
+      }
+      return out;
+    },
+    { side, selectors },
+  );
+}
+
+test('a fold slides the whole panel out before the grid snaps once', async ({ dataRoot }) => {
+  const run = await start(dataRoot);
+  const { win } = run;
+  try {
+    await openScene(win);
+    await expectWidth(win, '.right', RIGHT);
+    // right: the panel and its tab travel until only the strip is left (360 - 13)
+    const right = await slideEnds(win, 'right', ['.right', '.ph[data-side="right"]']);
+    expect(right['.right'] ?? 0).toBeCloseTo(RIGHT - STRIP, 0);
+    expect(right['.ph[data-side="right"]'] ?? 0).toBeCloseTo(RIGHT - STRIP, 0);
+    await expectWidth(win, '.right', STRIP);
+    // the strip is today's: the panel's border and a 12 px tab, nothing clipped
+    expect(await width(win, '[data-testid="panel-handle-right"]')).toBe(12);
+    // left: the surface leaves whole, the tab rides the edge to the rail (252 - 52)
+    const left = await slideEnds(win, 'left', ['.sb-surface', '.ph[data-side="left"]']);
+    expect(left['.sb-surface'] ?? 0).toBeCloseTo(-SIDEBAR, 0);
+    expect(left['.ph[data-side="left"]'] ?? 0).toBeCloseTo(-(SIDEBAR - RAIL), 0);
+    await expectWidth(win, '.sidebar', RAIL);
+  } finally {
+    await stop(run);
+  }
+});
+
+test('the right panel is as wide as it is dragged, and the model builder keeps clear of it', async ({
+  dataRoot,
+}) => {
+  const run = await start(dataRoot);
+  const { win } = run;
+  try {
+    await openScene(win);
+    await expectWidth(win, '.right', RIGHT);
+    const live = () =>
+      win.evaluate(() =>
+        getComputedStyle(document.querySelector('.app') ?? document.body)
+          .getPropertyValue('--rp-live')
+          .trim(),
+      );
+    await expect.poll(live).toBe(`${String(RIGHT)}px`);
+    // the keyboard way of the drag: Shift+Left widens the panel by 64 px
+    await win.getByRole('separator', { name: 'Resize right sidebar' }).focus();
+    await win.keyboard.press('Shift+ArrowLeft');
+    await expectWidth(win, '.right', RIGHT + 64);
+    await expect.poll(live).toBe(`${String(RIGHT + 64)}px`);
+  } finally {
+    await stop(run);
+  }
+});
+
+test('the context and the agent keep their sizes until the divider between them is moved', async ({
+  dataRoot,
+}) => {
+  const run = await start(dataRoot);
+  const { win } = run;
+  try {
+    await openScene(win);
+    const boxes = () =>
+      win.evaluate(() => {
+        const r = (s: string) => document.querySelector(s)?.getBoundingClientRect();
+        const ctx = r('.right .ctx-wrap');
+        const agent = r('.right .agent');
+        const split = r('.right .rp-split');
+        return {
+          ctx: ctx?.height ?? 0,
+          natural: document.querySelector('.right .ctx-wrap')?.scrollHeight ?? 0,
+          agent: agent?.height ?? 0,
+          split: split?.height ?? 0,
+        };
+      });
+    // as today: the selection card at its own height, the agent the rest (at least 180 px)
+    const before = await boxes();
+    expect(before.ctx).toBeLessThan(before.split * 0.62 - 20);
+    // (its height has its 1 px lower border, which scrollHeight leaves out)
+    expect(Math.abs(before.ctx - 1 - before.natural)).toBeLessThanOrEqual(1);
+    expect(before.agent).toBeGreaterThanOrEqual(180);
+    // moved once (here by the keyboard), the divider keeps the size it was given
+    const divider = win.getByRole('separator', { name: 'Resize the agent' });
+    await divider.focus();
+    await win.keyboard.press('ArrowDown');
+    await expect
+      .poll(async () => Math.round((await boxes()).ctx - before.ctx))
+      .toBeGreaterThanOrEqual(15);
+    // one 16 px step from where it stood, not a jump to a default
+    expect((await boxes()).ctx - before.ctx).toBeLessThanOrEqual(18);
+    const stored = await win.evaluate(() => localStorage.getItem('quadrion.splits'));
+    expect(JSON.parse(stored ?? '{}') as unknown).toMatchObject({ 'scene.ctxAgent': {} });
+  } finally {
+    await stop(run);
+  }
+});

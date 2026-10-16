@@ -19,7 +19,7 @@ import {
 import { getPlayer } from '@aio/video';
 import { volumetric, VolumetricStyles } from '@aio/volumetric';
 import { workspace } from '@aio/workspace';
-import { lazy, Suspense, useEffect, type TransitionEvent } from 'react';
+import { lazy, Suspense, useEffect, useLayoutEffect, type TransitionEvent } from 'react';
 import { getMedia } from './media';
 import { nextClipInFlight, startPlaybackLoop } from './playback';
 import { IssuesScreen } from './screens/Issues';
@@ -245,6 +245,9 @@ function Screen() {
  * person's (`sidebarCollapsed`) or the window's (shell/autoFold.ts). The panel slides out with a
  * transform and the grid snaps once at the end; opening, the grid snaps first (useFold.ts).
  */
+/** The icon rail the sidebar folds to (tokens.css `--sb-w-c`). */
+const SIDEBAR_RAIL = 52;
+
 function useSidebarSplit() {
   const folded = useShell(isSidebarFolded);
   const fold = useFold(folded);
@@ -258,7 +261,7 @@ function useSidebarSplit() {
     min: 220,
     max: 320,
     otherMin: 600,
-    collapsedSize: 52,
+    collapsedSize: SIDEBAR_RAIL,
     collapsed: fold.layoutFolded,
     // dragged to the rail or out of it: the panel is there already, so it does not slide
     onCollapsedChange: (next) => {
@@ -278,15 +281,28 @@ function useSidebarSplit() {
       window.removeEventListener('resize', follow);
     };
   }, []);
-  const { settle } = fold;
+  const { settle, phase } = fold;
+  const { containerRef } = split;
+  // The tab slides as far as the edge moves: the open width less the rail, measured in px when
+  // the slide starts (the column's width is a clamp with percentages, which mean the tab's own
+  // box inside a transform). Opening, the grid has already snapped open here.
+  useLayoutEffect(() => {
+    const sidebar = containerRef.current?.querySelector(':scope > .sidebar');
+    if (!containerRef.current || !sidebar || !phase) return;
+    const open = sidebar.getBoundingClientRect().width;
+    containerRef.current.style.setProperty(
+      '--sb-fold-dx',
+      `${String(Math.max(0, open - SIDEBAR_RAIL))}px`,
+    );
+  }, [phase, containerRef]);
   const onTransitionEnd = (e: TransitionEvent<HTMLDivElement>) => {
     const el = e.target as Element;
     if (e.propertyName === 'transform' && el.classList.contains('sb-surface')) settle();
   };
   return {
     folded,
-    phase: fold.phase,
-    containerRef: split.containerRef,
+    phase,
+    containerRef,
     separatorProps: split.separatorProps,
     onTransitionEnd,
   };

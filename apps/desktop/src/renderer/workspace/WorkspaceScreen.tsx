@@ -6,6 +6,7 @@ import {
   Icon,
   neighbourClip,
   ResizableSplit,
+  splitPrefs,
   Timeline,
   type TimelineModel,
   useResizableSplit,
@@ -13,7 +14,16 @@ import {
 } from '@aio/ui';
 import { useVolumetric, VolumesPanel } from '@aio/volumetric';
 import { canCompare, useWorkspace, workspace } from '@aio/workspace';
-import { useState, type AnimationEvent, type TransitionEvent } from 'react';
+import {
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+  type AnimationEvent,
+  type ReactNode,
+  type TransitionEvent,
+} from 'react';
+import { useStore } from 'zustand';
 import { ChangesTab, useChangesTabSeq } from '../change';
 import { IssueCard } from '../issueCard/IssueCard';
 import { useCardFocusSeq } from '../issueCard/state';
@@ -155,7 +165,7 @@ function ContextPanel() {
       : (chosen ?? (volumes ? 'volumes' : 'selection'));
   const tall = tab === 'issues' || tab === 'volumes' || tab === 'changes' || issueId !== null;
   return (
-    <div className={`ctx-wrap${tall ? ' tall' : ''}`}>
+    <div className={`ctx-wrap${tall ? ' tall' : ''}${tab === 'volumes' ? ' vol' : ''}`}>
       <div className="seg ctx-tabs" role="tablist" aria-label="Context">
         {volumes && (
           <button
@@ -224,7 +234,10 @@ function ContextPanel() {
  * drag), it is the 12 px strip. The panel slides with a transform and the grid snaps once, so
  * the 3D view and the map are resized once (shell/useFold.ts).
  */
-function useRightSplit(collapsed: boolean, volumes: boolean) {
+/** The strip the right panel folds to: its border and the 12 px tab (`--ph-w`), as before. */
+const RIGHT_STRIP = 13;
+
+function useRightSplit(collapsed: boolean, volumes: boolean, hasProject: boolean) {
   const fold = useFold(collapsed);
   const { snap } = fold;
   const split = useResizableSplit({
@@ -237,27 +250,116 @@ function useRightSplit(collapsed: boolean, volumes: boolean) {
     min: 280,
     max: '50%',
     otherMin: 360,
-    collapsedSize: 12,
+    collapsedSize: RIGHT_STRIP,
     collapsed: fold.layoutFolded,
     onCollapsedChange: (next) => {
       snap(next);
       shell.getState().setRight(next);
     },
   });
-  const { settle } = fold;
+  const { settle, phase } = fold;
+  const { containerRef } = split;
+  // The tab slides as far as the panel: its open width less the strip, measured in px when the
+  // slide starts (the column's width is a clamp with percentages, which mean the tab's own box
+  // inside a transform). Opening, the grid has already snapped open here.
+  useLayoutEffect(() => {
+    const el = containerRef.current;
+    const panel = el?.querySelector(':scope > .right');
+    if (!el || !panel || !phase) return;
+    const open = panel.getBoundingClientRect().width;
+    el.style.setProperty('--rp-fold-dx', `${String(Math.max(0, open - RIGHT_STRIP))}px`);
+  }, [phase, containerRef]);
+  // The panel's live width, for what is placed beside it outside the Scene (the Model builder):
+  // `--rp-live` on `.app`, following drags without a render.
+  useEffect(() => {
+    const el = containerRef.current;
+    const panel = el?.querySelector(':scope > .right');
+    const app = el?.closest<HTMLElement>('.app');
+    if (!panel || !app || typeof ResizeObserver === 'undefined') return;
+    const write = () => {
+      app.style.setProperty(
+        '--rp-live',
+        `${String(Math.round(panel.getBoundingClientRect().width))}px`,
+      );
+    };
+    write();
+    const watch = new ResizeObserver(write);
+    watch.observe(panel);
+    return () => {
+      watch.disconnect();
+      app.style.removeProperty('--rp-live');
+    };
+  }, [hasProject, containerRef]);
   // the panel's slide ended (not one of the many transitions inside it)
   const onSlideEnd = (e: TransitionEvent | AnimationEvent) => {
     if ((e.target as Element).classList.contains('right')) settle();
   };
   return {
-    phase: fold.phase,
-    containerRef: split.containerRef,
+    phase,
+    containerRef,
     separatorProps: split.separatorProps,
     onTransitionEnd: (e: TransitionEvent) => {
       if (e.propertyName === 'transform') onSlideEnd(e);
     },
     onAnimationEnd: onSlideEnd,
   };
+}
+
+const CTX_AGENT = 'scene.ctxAgent';
+/** The agent keeps this much height, as before the divider could be moved. */
+const AGENT_MIN = 180;
+
+/**
+ * The right panel's context above and agent below, on the `scene.ctxAgent` split. Until the
+ * person moves the divider they keep the sizes they always had (styles.css, `.rp-split.auto`):
+ * the selection card at its own height, a tall tab 62% (Volumes 80%, a road 72%), the agent the
+ * rest. The split then starts from where the divider stands, and once moved its fraction is
+ * remembered (ruling R11).
+ */
+function ContextAgentSplit({ context, agent }: { context: ReactNode; agent: ReactNode }) {
+  const t = useT();
+  const moved = useStore(splitPrefs, (s) => s.byId[CTX_AGENT] !== undefined);
+  const [standing, setStanding] = useState(0.62);
+  const agentRef = useRef<HTMLDivElement | null>(null);
+  // where the divider stands while it follows the content, so a drag or a key starts there
+  useEffect(() => {
+    const el = agentRef.current;
+    const split = el?.closest('.rp-split');
+    if (moved || !el || !split || typeof ResizeObserver === 'undefined') return;
+    const measure = () => {
+      const box = split.getBoundingClientRect();
+      if (box.height <= 0) return;
+      const at = (el.getBoundingClientRect().top - box.top) / box.height;
+      setStanding(Math.round(Math.min(1, Math.max(0, at)) * 1000) / 1000 || 0.62);
+    };
+    measure();
+    const watch = new ResizeObserver(measure);
+    watch.observe(el);
+    watch.observe(split);
+    return () => {
+      watch.disconnect();
+    };
+  }, [moved]);
+  return (
+    <ResizableSplit
+      id={CTX_AGENT}
+      className={moved ? 'rp-split' : 'rp-split auto'}
+      orientation="vertical"
+      sized="start"
+      unit="fraction"
+      defaultSize={standing}
+      min={160}
+      max="100%"
+      otherMin={AGENT_MIN}
+      label={t('panel.resizeAgent')}
+      start={context}
+      end={
+        <div className="agent" ref={agentRef}>
+          {agent}
+        </div>
+      }
+    />
+  );
 }
 
 export function WorkspaceScreen() {
@@ -271,7 +373,7 @@ export function WorkspaceScreen() {
   const modellerOpen = useModeller((s) => s.open);
   const road = useIsRoad();
   const volumes = useVolumetric((s) => s.status === 'ready');
-  const right = useRightSplit(rightCollapsed, volumes);
+  const right = useRightSplit(rightCollapsed, volumes, hasProject);
   const { containerRef: rightSplitRef, separatorProps: rightResize } = right;
   const project = useWorkspace((s) => s.project);
   const timeline = useTimelineShown(project);
@@ -330,18 +432,8 @@ export function WorkspaceScreen() {
         inert={rightCollapsed}
       >
         <TelecomTools />
-        <ResizableSplit
-          id="scene.ctxAgent"
-          className="rp-split"
-          orientation="vertical"
-          sized="start"
-          unit="fraction"
-          defaultSize={0.62}
-          min={160}
-          max="100%"
-          otherMin={96}
-          label={t('panel.resizeAgent')}
-          start={
+        <ContextAgentSplit
+          context={
             road ? (
               <RoadPanel />
             ) : (
@@ -351,11 +443,7 @@ export function WorkspaceScreen() {
               </>
             )
           }
-          end={
-            <div className="agent">
-              <AgentHost window={focused} task={modellerOpen ? 'build' : undefined} />
-            </div>
-          }
+          agent={<AgentHost window={focused} task={modellerOpen ? 'build' : undefined} />}
         />
       </aside>
     </section>

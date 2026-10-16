@@ -840,7 +840,7 @@ let windowReported = false;
  * specs really run at. CI asks for no size (the runner's screen decides), so its log is where
  * that size is read; CONTRIBUTING.md, "End to end the way CI runs it", says how to match it.
  */
-async function reportWindow(win: Page): Promise<void> {
+export async function reportWindow(win: Page): Promise<void> {
   if (windowReported) return;
   windowReported = true;
   const [w, h, scale] = await win

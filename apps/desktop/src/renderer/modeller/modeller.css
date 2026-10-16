@@ -17,7 +17,8 @@
 /* beside the Scene's right panel, not over it: the agent and the selection stay usable while the
    builder is open (an agent correction is approved there) */
 .app:has(.ws:not(.right-off)) .mb {
-  right: calc(var(--rp-w) + 16px);
+  /* --rp-live: the panel's width as dragged (WorkspaceScreen.tsx) */
+  right: calc(var(--rp-live, var(--rp-w)) + 16px);
 }
 .mb > header {
   display: flex;
