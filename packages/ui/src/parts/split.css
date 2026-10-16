@@ -1,1 +1,174 @@
-/* resizable split divider. Filled in by its task; imported from mission.css. */
+/* resizable split (split/useResizableSplit.ts): two panes and one handle on their shared edge.
+   The hook writes --split-size (px or %), --split-min, --split-max and the data attributes. */
+.split {
+  /* the sized pane keeps its min first: clamp() lets the max give way, then the other pane */
+  --split-track: clamp(var(--split-min, 0px), var(--split-size, 50%), var(--split-max, 100%));
+  position: relative;
+  isolation: isolate;
+  display: grid;
+  min-inline-size: 0;
+  min-block-size: 0;
+  /* snap, reset and collapse; never while dragging */
+  transition:
+    grid-template-columns 180ms var(--ease),
+    grid-template-rows 180ms var(--ease);
+}
+.split[data-collapsed] {
+  --split-track: var(--split-size);
+}
+.split[data-orientation='horizontal'] {
+  grid-template-columns: var(--split-track) minmax(0, 1fr);
+  grid-template-rows: minmax(0, 1fr);
+}
+.split[data-orientation='horizontal'][data-sized='end'] {
+  grid-template-columns: minmax(0, 1fr) var(--split-track);
+}
+.split[data-orientation='vertical'] {
+  grid-template-rows: var(--split-track) minmax(0, 1fr);
+  grid-template-columns: minmax(0, 1fr);
+}
+.split[data-orientation='vertical'][data-sized='end'] {
+  grid-template-rows: minmax(0, 1fr) var(--split-track);
+}
+.split-pane {
+  container-type: inline-size;
+  min-inline-size: 0;
+  min-block-size: 0;
+}
+
+/* the handle: an 8 px hit area centred on the edge, drawn as a 1 px hairline */
+.split-handle {
+  position: absolute;
+  z-index: var(--z-panel);
+  touch-action: none;
+  transition-property: inset-inline-start, inset-inline-end, inset-block-start, inset-block-end;
+  transition-duration: 180ms;
+  transition-timing-function: var(--ease);
+}
+.split-handle::before {
+  content: '';
+  position: absolute;
+  background: var(--line-soft);
+  transition:
+    background-color 120ms var(--ease),
+    inline-size 120ms var(--ease),
+    block-size 120ms var(--ease),
+    margin 120ms var(--ease);
+}
+.split[data-orientation='horizontal'] > .split-handle {
+  inset-block: 0;
+  inline-size: 8px;
+  cursor: col-resize;
+}
+.split[data-orientation='horizontal'][data-sized='start'] > .split-handle {
+  inset-inline-start: var(--split-track);
+  margin-inline-start: -4px;
+}
+.split[data-orientation='horizontal'][data-sized='end'] > .split-handle {
+  inset-inline-end: var(--split-track);
+  margin-inline-end: -4px;
+}
+.split[data-orientation='horizontal'] > .split-handle::before {
+  inset-block: 0;
+  inset-inline-start: 50%;
+  inline-size: 1px;
+  margin-inline-start: -0.5px;
+}
+.split[data-orientation='vertical'] > .split-handle {
+  inset-inline: 0;
+  block-size: 8px;
+  cursor: row-resize;
+}
+.split[data-orientation='vertical'][data-sized='start'] > .split-handle {
+  inset-block-start: var(--split-track);
+  margin-block-start: -4px;
+}
+.split[data-orientation='vertical'][data-sized='end'] > .split-handle {
+  inset-block-end: var(--split-track);
+  margin-block-end: -4px;
+}
+.split[data-orientation='vertical'] > .split-handle::before {
+  inset-inline: 0;
+  inset-block-start: 50%;
+  block-size: 1px;
+  margin-block-start: -0.5px;
+}
+
+/* hover: after 150 ms the hairline lights to 2 px; keyboard focus lights it at once */
+.split-handle:hover::before {
+  transition-delay: 150ms;
+  background: var(--acc-a40);
+}
+.split-handle:focus-visible::before {
+  background: var(--acc-a40);
+}
+.split[data-orientation='horizontal'] > .split-handle:hover::before,
+.split[data-orientation='horizontal'] > .split-handle:focus-visible::before {
+  inline-size: 2px;
+  margin-inline-start: -1px;
+}
+.split[data-orientation='vertical'] > .split-handle:hover::before,
+.split[data-orientation='vertical'] > .split-handle:focus-visible::before {
+  block-size: 2px;
+  margin-block-start: -1px;
+}
+
+/* dragging: accent hairline, no transitions, the size beside the pointer */
+.split[data-dragging],
+.split[data-dragging] > .split-handle,
+.split[data-dragging] > .split-handle::before {
+  transition: none;
+}
+.split[data-dragging] {
+  user-select: none;
+}
+.split[data-dragging][data-orientation='horizontal'] {
+  cursor: col-resize;
+}
+.split[data-dragging][data-orientation='vertical'] {
+  cursor: row-resize;
+}
+.split[data-dragging] > .split-handle::before {
+  background: var(--acc);
+}
+.split[data-dragging][data-orientation='horizontal'] > .split-handle::before {
+  inline-size: 2px;
+  margin-inline-start: -1px;
+}
+.split[data-dragging][data-orientation='vertical'] > .split-handle::before {
+  block-size: 2px;
+  margin-block-start: -1px;
+}
+.split-readout {
+  display: none;
+  position: absolute;
+  pointer-events: none;
+  background: var(--bg-3);
+}
+.split[data-dragging] > .split-handle > .split-readout {
+  display: block;
+}
+.split[data-orientation='horizontal'] > .split-handle > .split-readout {
+  inset-block-start: var(--split-pointer, 50%);
+  inset-inline-start: calc(100% + 8px);
+  translate: 0 -50%;
+}
+.split[data-orientation='vertical'] > .split-handle > .split-readout {
+  inset-inline-start: var(--split-pointer, 50%);
+  inset-block-start: calc(100% + 8px);
+  translate: -50% 0;
+}
+
+/* reduced motion: instant (the OS setting, or Settings, Appearance, Reduce motion) */
+@media (prefers-reduced-motion: reduce) {
+  .split,
+  .split-handle,
+  .split-handle::before {
+    transition: none;
+  }
+}
+:root[data-motion='reduce'] .split,
+:root[data-motion='reduce'] .split-handle,
+:root[data-motion='reduce'] .split-handle::before {
+  transition: none;
+}

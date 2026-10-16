@@ -4184,6 +4184,9 @@ export const en = {
   'tree.row.drawingTip': 'Opacity, on top, place on the site, open side by side',
   'tree.row.more': '{count} more',
   'tree.row.fewer': 'Show fewer',
+
+  // The resizable split (split/useResizableSplit.ts): the size readout while dragging
+  'split.readout': '{px} px',
 } as const satisfies Record<string, string>;
 
 /** Every key in the catalogue, plural forms included. */
