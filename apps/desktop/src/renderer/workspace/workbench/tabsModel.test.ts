@@ -1,9 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import {
-  fitTabs,
   onToolStart,
   onToolStop,
   openPanel,
+  overflowOrderFor,
   orderTabs,
   paneWidth,
   type Tab,
@@ -109,6 +109,13 @@ describe('onToolStart', () => {
     expect(next.tabs.find((t) => t.id === 'measure')?.live).toBe(true);
   });
 
+  it('does not leave front on a panel it just closed while an issue is edited', () => {
+    const tabs = openPanel(fixedTabs(), 'display', { pinned: false });
+    const next = onToolStart({ tabs, front: 'display', issueEditing: true }, 'measure');
+    expect(next.front).toBe('selection');
+    expect(next.attention).toBe('measure');
+  });
+
   it('makes a fixed tab live in place', () => {
     const next = onToolStart(
       { tabs: fixedTabs(), front: 'selection', issueEditing: false },
@@ -141,6 +148,27 @@ describe('onToolStop', () => {
     expect(next.front).toBe('measure');
   });
 
+  it('clears a pending attention dot for the stopped tool only', () => {
+    const tabs = onToolStart(
+      { tabs: fixedTabs(), front: 'issues', issueEditing: true },
+      'measure',
+    ).tabs;
+    const base = { tabs, front: 'issues' as TabId, issueEditing: true };
+    expect(
+      onToolStop({ ...base, attention: 'measure' }, 'measure', { openedByTool: true }).attention,
+    ).toBeNull();
+    expect(
+      onToolStop({ ...base, attention: 'video' }, 'measure', { openedByTool: false }).attention,
+    ).toBe('video');
+  });
+
+  it('closes a pinned panel the tool opened and keeps one it did not', () => {
+    const tabs = [...fixedTabs(), tab('measure', { pinned: true, live: true })];
+    const s = { tabs, front: 'measure' as TabId, issueEditing: false };
+    expect(ids(onToolStop(s, 'measure', { openedByTool: true }).tabs)).not.toContain('measure');
+    expect(ids(onToolStop(s, 'measure', { openedByTool: false }).tabs)).toContain('measure');
+  });
+
   it('leaves another front tab alone, and keeps a fixed tab', () => {
     const tabs = onToolStart(
       { tabs: fixedTabs(), front: 'issues', issueEditing: true },
@@ -154,41 +182,35 @@ describe('onToolStop', () => {
   });
 });
 
-describe('fitTabs', () => {
-  const widths = new Map<TabId, number>(
-    (['measure', 'display', 'selection', 'issues', 'volumes', 'changes'] as TabId[]).map((i) => [
-      i,
-      60,
-    ]),
-  );
-  const ordered = orderTabs([...fixedTabs(), tab('display'), tab('measure', { live: true })]);
+describe('overflowOrderFor', () => {
+  // Tabs contract: higher value leaves first.
+  const tabs = [
+    ...fixedTabs(),
+    tab('display'),
+    tab('clouds', { pinned: true }),
+    tab('measure', { live: true }),
+    tab('video', { live: true }),
+  ];
+  const leaving = () => {
+    const order = overflowOrderFor({ tabs });
+    return tabs.map((t) => t.id).sort((a, b) => order(b) - order(a));
+  };
 
-  it('shows everything when it fits', () => {
-    const r = fitTabs(widths, ordered, 'measure', 400);
-    expect(r.overflow).toEqual([]);
-    expect(r.shown).toEqual(ids(ordered));
+  it('fixed leave first, then panels, then selection, live last', () => {
+    expect(leaving()).toEqual([
+      'changes',
+      'volumes',
+      'issues',
+      'clouds',
+      'display',
+      'selection',
+      'video',
+      'measure',
+    ]);
   });
 
-  it('at 240 px keeps the live and front tabs and overflows fixed tabs first', () => {
-    const r = fitTabs(widths, ordered, 'selection', 240);
-    expect(r.shown).toEqual(['measure', 'display', 'selection', 'issues']);
-    expect(r.overflow).toEqual(['volumes', 'changes']);
-  });
-
-  it('then overflows panels, keeping selection and live', () => {
-    const r = fitTabs(widths, ordered, 'selection', 120);
-    expect(r.shown).toEqual(['measure', 'selection']);
-    expect(r.overflow).toEqual(['display', 'issues', 'volumes', 'changes']);
-  });
-
-  it('never overflows the front tab, even a fixed one', () => {
-    const r = fitTabs(widths, ordered, 'changes', 120);
-    expect(r.shown).toEqual(['measure', 'changes']);
-  });
-
-  it('drops selection before a live tab', () => {
-    const r = fitTabs(widths, ordered, 'measure', 60);
-    expect(r.shown).toEqual(['measure']);
+  it('gives unknown ids 0', () => {
+    expect(overflowOrderFor({ tabs })('hydro')).toBe(0);
   });
 });
 

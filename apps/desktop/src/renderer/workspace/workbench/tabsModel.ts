@@ -31,6 +31,8 @@ export interface TabsState {
   tabs: Tab[];
   front: TabId;
   issueEditing: boolean;
+  /** A tool tab waiting behind an issue edit (dot plus "Show it"); optional. */
+  attention?: TabId | null;
 }
 
 export interface TabsChange {
@@ -62,7 +64,7 @@ export function orderTabs(tabs: readonly Tab[]): Tab[] {
   return [...live, ...panels, ...fixed];
 }
 
-/** Opens a workbench or tool panel. An unpinned panel replaces the previous unpinned one (D15). */
+/** Opens a workbench (the caller sets the front; pinning a fixed tab is ignored) or tool panel. An unpinned panel replaces the previous unpinned one (D15). */
 export function openPanel(tabs: readonly Tab[], id: TabId, { pinned }: { pinned: boolean }): Tab[] {
   const existing = tabs.find((t) => t.id === id);
   if (existing) {
@@ -81,8 +83,9 @@ export function onToolStart(state: TabsState, id: TabId): TabsChange {
   const tabs = kept.some((t) => t.id === id)
     ? kept.map((t) => (t.id === id ? { ...t, live: true } : t))
     : [...kept, { id, live: true, pinned: false, fixed: false }];
+  const front = tabs.some((t) => t.id === state.front) ? state.front : 'selection';
   return state.issueEditing
-    ? { tabs: orderTabs(tabs), front: state.front, attention: id }
+    ? { tabs: orderTabs(tabs), front, attention: id }
     : { tabs: orderTabs(tabs), front: id, attention: null };
 }
 
@@ -95,8 +98,9 @@ export function onToolStop(
   id: TabId,
   { openedByTool }: { openedByTool: boolean },
 ): TabsChange {
+  const attention = state.attention === id ? null : (state.attention ?? null);
   const stopped = state.tabs.map((t) => (t.id === id ? { ...t, live: false } : t));
-  if (!openedByTool) return { tabs: orderTabs(stopped), front: state.front, attention: null };
+  if (!openedByTool) return { tabs: orderTabs(stopped), front: state.front, attention };
   const tabs = stopped.filter((t) => t.id !== id || t.fixed);
   return {
     tabs: orderTabs(tabs),
@@ -105,44 +109,27 @@ export function onToolStop(
   };
 }
 
-/** Lower leaves the row first: fixed tabs, then panels, then Selection, live last. */
-const overflowRank = (t: Tab): number => {
-  if (t.live) return 3;
-  if (t.id === 'selection') return 2;
-  return t.fixed ? 0 : 1;
-};
-
 /**
- * One row: tabs leave until the rest fit `available`. Within a rank the later tab leaves first;
- * the front tab never does. Tabs missing from `widths` count as 0. Both lists keep `ordered` order.
+ * The `overflowOrder` for the foundation `Tabs` part (higher value leaves first; Tabs never
+ * drops the selected tab): fixed tabs leave first, then panels, then Selection, live tabs last.
+ * Within a group the later tab leaves first. Unknown ids get 0.
  */
-export function fitTabs(
-  widths: ReadonlyMap<TabId, number>,
-  ordered: readonly Tab[],
-  front: TabId,
-  available: number,
-): { shown: TabId[]; overflow: TabId[] } {
-  const hidden = new Set<TabId>();
-  const width = (t: Tab) => widths.get(t.id) ?? 0;
-  let total = ordered.reduce((sum, t) => sum + width(t), 0);
-  const leaving = ordered
-    .map((t, index) => ({ t, index }))
-    .filter(({ t }) => t.id !== front)
-    .sort((a, b) => overflowRank(a.t) - overflowRank(b.t) || b.index - a.index);
-  for (const { t } of leaving) {
-    if (total <= available) break;
-    hidden.add(t.id);
-    total -= width(t);
-  }
-  return {
-    shown: ordered.filter((t) => !hidden.has(t.id)).map((t) => t.id),
-    overflow: ordered.filter((t) => hidden.has(t.id)).map((t) => t.id),
+export function overflowOrderFor(state: Pick<TabsState, 'tabs'>): (id: TabId) => number {
+  const ordered = orderTabs(state.tabs);
+  const group = (t: Tab): number => {
+    if (t.live) return 0;
+    if (t.id === 'selection') return 1;
+    return t.fixed ? 3 : 2;
   };
+  const order = new Map(ordered.map((t, index) => [t.id, group(t) * 100 + index]));
+  return (id) => order.get(id) ?? 0;
 }
 
 /**
  * Pane width: the preference raised to the front tab's minimum (D17), then clamped so the stage
- * keeps `stageMin`. `available` is the width shared by stage and pane.
+ * keeps `stageMin`. `available` is the width shared by stage AND pane (not the room left for the
+ * pane). A result below `front.minWidth` means the stage floor won: chrome (rail, margins) must
+ * give way first, or the tab is shown cramped.
  */
 export function paneWidth(pref: number, front: Tab, stageMin: number, available: number): number {
   const wanted = Math.max(pref, front.minWidth ?? 0);
