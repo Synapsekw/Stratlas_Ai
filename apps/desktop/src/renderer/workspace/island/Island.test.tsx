@@ -5,6 +5,7 @@ import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { threeDates } from '../__fixtures__/threeDates';
+import { shell } from '../../shell';
 import { timeline } from '../timeline';
 import { Island } from './Island';
 import type { LiveItem } from './islandModel';
@@ -19,13 +20,15 @@ vi.mock('./useIslandLive', async (importOriginal) => ({
 
 // Compare dates opens the split; here only that the island asks for it
 const compareOpen = vi.fn();
+let comparing = false;
 vi.mock('../CompareControls', () => ({
   useCompareDates: () => ({
     available: true,
-    twin: false,
-    label: 'Compare dates',
+    twin: comparing,
+    label: comparing ? 'Leave the comparison' : 'Compare dates',
     open: compareOpen,
   }),
+  CompareButton: () => null,
 }));
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -37,6 +40,7 @@ beforeEach(() => {
   // jsdom draws nothing (a stage module probes the canvas)
   vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockReturnValue(null);
   live = [];
+  comparing = false;
   localStorage.clear();
   timeline.setState({ byProject: {} });
   host = document.createElement('div');
@@ -59,7 +63,7 @@ afterEach(() => {
 const render = async (linked = false) => {
   root ??= createRoot(host);
   await act(async () => {
-    root?.render(<Island stage={null} mode="3d" tools="3d" compare={null} linked={linked} />);
+    root?.render(<Island stage={null} mode="3d" tools="3d" linked={linked} />);
     await Promise.resolve();
   });
 };
@@ -103,7 +107,7 @@ describe('Island', () => {
     expect(island()?.dataset.state).toBe('ready');
     expect(button('Previous survey')?.getAttribute('aria-keyshortcuts')).toBe('Alt+ArrowLeft');
     expect(button('Next survey')).not.toBeNull();
-    expect(host.querySelector('[data-testid="date-bar-count"]')?.textContent).toContain('3 of 3');
+    expect(host.querySelector('[data-testid="date-bar-count"]')?.textContent).toBe('3 of 3');
     expect(button('Tools')?.textContent).toContain('3D');
     act(() => button('Previous survey')?.click());
     expect(timeline.getState().focus).toBe('oct');
@@ -246,5 +250,51 @@ describe('Island', () => {
     live = [{ kind: 'tool', label: 'Distance', reading: null }];
     await render(true);
     expect(island()?.hasAttribute('data-linked')).toBe(true);
+  });
+
+  it('follows the app setting Reduce motion', async () => {
+    const settings = shell.getState().settings;
+    shell.setState({ settings: { ...settings, motion: 'reduce' } });
+    try {
+      await render();
+      expect(island()?.dataset.motion).toBe('reduce');
+    } finally {
+      shell.setState({ settings });
+    }
+  });
+
+  it('gives Compare dates one owner: the View tile, not while comparing', async () => {
+    await render();
+    openTools();
+    expect(host.querySelectorAll('[data-testid="compare-dates"]')).toHaveLength(1);
+    act(() => host.querySelector<HTMLButtonElement>('[data-testid="compare-dates"]')?.click());
+    expect(compareOpen).toHaveBeenCalled();
+    comparing = true;
+    await render();
+    openTools();
+    expect(host.querySelector('[data-testid="compare-dates"]')).toBeNull();
+  });
+
+  it('hangs the bubble beside the capsule, outside its centring', async () => {
+    live = [
+      { kind: 'tool', label: 'Distance', reading: '12.40 m' },
+      { kind: 'connection', state: 'offline' },
+    ];
+    await render();
+    const swap = button('Swap');
+    expect(swap?.parentElement?.classList.contains('isl-aside')).toBe(true);
+    expect(
+      island()
+        ?.querySelector('.island')
+        ?.contains(swap ?? null),
+    ).toBe(false);
+  });
+
+  it('closes from its close button and gives focus back to the island', async () => {
+    await render();
+    openTools();
+    act(() => button('Close')?.click());
+    expect(island()?.dataset.state).toBe('rest');
+    expect(document.activeElement).toBe(island());
   });
 });

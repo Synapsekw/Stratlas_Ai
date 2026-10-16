@@ -94,29 +94,41 @@ export function useCompareDates(split: SplitModel): CompareDates {
  * "Compare dates" beside the view modes (`useCompareDates`), and while comparing, Show changes,
  * the compare tools of later streams and help.
  */
-export function CompareButton({ split }: { split: SplitModel }) {
+export function CompareButton({
+  split,
+  whileComparing = false,
+}: {
+  split: SplitModel;
+  /**
+   * Only what belongs to a comparison under way (the stage island, whose View row owns Compare
+   * dates): Leave the comparison, Show changes, the compare tools and help; nothing otherwise.
+   */
+  whileComparing?: boolean;
+}) {
   const t = useT();
   const { available, twin, label, open } = useCompareDates(split);
   // "Show changes": change pins on the compared views (and on one view outside the comparison)
   useChangeOverlays(split);
   const showChanges = useChange((s) => s.show);
-  if (!available) return null;
+  if (!available || (whileComparing && !twin && !showChanges)) return null;
 
   return (
     <div className="tgroup-h overlay-box" data-fixed="">
-      <button
-        type="button"
-        className="tool"
-        data-testid="compare-dates"
-        aria-pressed={twin}
-        aria-label={label}
-        onClick={() => {
-          open();
-        }}
-      >
-        <Icon name="history" />
-        <span className="tip">{label}</span>
-      </button>
+      {(!whileComparing || twin) && (
+        <button
+          type="button"
+          className="tool"
+          data-testid="compare-dates"
+          aria-pressed={twin}
+          aria-label={label}
+          onClick={() => {
+            open();
+          }}
+        >
+          <Icon name="history" />
+          <span className="tip">{label}</span>
+        </button>
+      )}
       {(twin || showChanges) && (
         <button
           type="button"

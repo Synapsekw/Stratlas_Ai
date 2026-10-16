@@ -114,7 +114,7 @@ export function IslandDate({
         <span className="isl-day">{shortDate(current.date)}</span>
         {steps && many && (
           <span className="isl-count" data-testid="date-bar-count">
-            {t('datebar.count', { n: at + 1, total: dates.order.length })}
+            {t('island.dateCount', { n: at + 1, total: dates.order.length })}
           </span>
         )}
       </button>

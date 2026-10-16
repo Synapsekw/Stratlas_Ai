@@ -306,8 +306,17 @@
   }
 }
 
-/* comparing: its controls beside the island */
-.isl-side {
+/* the bubble and a comparison's controls hang beside the capsule, outside its centring (D2) */
+.isl-aside {
+  position: absolute;
+  top: 0;
+  inset-inline-start: calc(100% + var(--sp-4));
+  display: flex;
+  align-items: flex-start;
+  gap: var(--sp-4);
+  inline-size: max-content;
+}
+.isl-aside > * {
   pointer-events: auto;
 }
 
@@ -541,7 +550,10 @@
   padding-inline: var(--sp-5);
 }
 
-/* reduced motion: every morph and fade is instant */
+/* reduced motion (the system's, or the app's own setting on the root): every morph and fade is
+   instant */
+:root[data-motion='reduce'] .island-wrap,
+:root[data-motion='reduce'] .island-wrap *,
 .island-wrap[data-motion='reduce'],
 .island-wrap[data-motion='reduce'] * {
   transition: none !important;

@@ -4,7 +4,6 @@
  * a second live item as a bubble that swaps with it; open, the view switch, the group tabs and a
  * group's quick row. Its size morphs between the states (instant under reduced motion).
  */
-import { useChange } from '@aio/change';
 import type { EngineStage } from '@aio/engine';
 import {
   announce,
@@ -34,7 +33,7 @@ import { isTyping } from '../../keys';
 import { useRoad } from '../../road/store';
 import { useShell } from '../../shell';
 import type { StageMode } from '../../store';
-import { useCompareDates } from '../CompareControls';
+import { CompareButton, useCompareDates } from '../CompareControls';
 import type { Side } from '../splitModel';
 import { paneCapture, useSplit } from '../SplitPanes';
 import { useTimeline } from '../timeline';
@@ -98,13 +97,11 @@ export interface IslandProps {
   mode: StageMode;
   /** The panes the tools work on (a split may show neither the 3D view nor the map). */
   tools: StageMode;
-  /** Compare dates and, while comparing, its controls (kept mounted for the change overlays). */
-  compare: ReactNode;
   /** The sidebar's front tab is the island's live item (D10). */
   linked: boolean;
 }
 
-export function Island({ stage, mode, tools, compare, linked }: IslandProps) {
+export function Island({ stage, mode, tools, linked }: IslandProps) {
   const t = useT();
   const [s, dispatch] = useReducer(islandReducer, INITIAL);
   const [full, setFull] = useState<GroupId | null>(null);
@@ -113,7 +110,10 @@ export function Island({ stage, mode, tools, compare, linked }: IslandProps) {
   const capsule = useRef<HTMLDivElement>(null);
   const layer = useRef<HTMLDivElement>(null);
   const dateBox = useRef<HTMLDivElement>(null);
-  const motion = useSyncExternalStore(subscribeMotion, reducedMotion, () => false);
+  // the app's own Reduce motion setting, or the system's
+  const osStill = useSyncExternalStore(subscribeMotion, reducedMotion, () => false);
+  const appStill = useShell((x) => x.settings.motion === 'reduce');
+  const motion = osStill || appStill;
 
   // which groups the project has data for (D6)
   const map = tools === 'map';
@@ -137,7 +137,6 @@ export function Island({ stage, mode, tools, compare, linked }: IslandProps) {
   const dates = islandDates(index, focus, splitting ? split : null, side);
   const rest = islandRest(dates ? dates.order.length : 0);
   const compareDates = useCompareDates(split);
-  const showChanges = useChange((x) => x.show);
   const left = splitting ? paneCapture(split, 'left') : undefined;
   const right = splitting ? paneCapture(split, 'right') : undefined;
   const onCompare =
@@ -201,7 +200,9 @@ export function Island({ stage, mode, tools, compare, linked }: IslandProps) {
     const onMove = (e: PointerEvent) => {
       if (root.current?.contains(e.target as Node)) return;
       const top = stageEl.getBoundingClientRect().top;
-      dispatch({ type: e.clientY - top < NEAR_PX ? 'near' : 'leave' });
+      if (e.clientY - top < NEAR_PX) dispatch({ type: 'near' });
+      // keyboard focus on a control of the open line keeps it
+      else if (!layer.current?.contains(document.activeElement)) dispatch({ type: 'leave' });
     };
     const onLeave = () => {
       if (!layer.current?.contains(document.activeElement)) dispatch({ type: 'leave' });
@@ -279,6 +280,7 @@ export function Island({ stage, mode, tools, compare, linked }: IslandProps) {
         preview={s.preview}
         ctx={ctx}
         dispatch={dispatch}
+        onClose={close}
       />
     );
   } else if (s.open === 'date' && dates) {
@@ -347,7 +349,7 @@ export function Island({ stage, mode, tools, compare, linked }: IslandProps) {
       ref={root}
       className="island-wrap"
       role="toolbar"
-      aria-label="Stage tools"
+      aria-label={t('island.label')}
       data-surface="dark"
       data-state={s.open}
       data-linked={isLinked ? '' : undefined}
@@ -386,21 +388,23 @@ export function Island({ stage, mode, tools, compare, linked }: IslandProps) {
           {content}
         </div>
       </div>
-      {secondary && !open && (
-        <Button
-          variant="quiet"
-          className="isl-bubble"
-          aria-label={t('island.swap')}
-          tip={liveText(secondary)}
-          onClick={() => {
-            dispatch({ type: 'swap' });
-          }}
-        >
-          <LiveGlyph item={secondary} />
-        </Button>
-      )}
-      <div className="isl-side" hidden={!(compareDates.twin || showChanges)}>
-        {compare}
+      {/* beside the capsule, outside the centring: the bubble and a comparison's controls */}
+      <div className="isl-aside">
+        {secondary && !open && (
+          <Button
+            variant="quiet"
+            className="isl-bubble"
+            aria-label={t('island.swap')}
+            tip={liveText(secondary)}
+            onClick={() => {
+              dispatch({ type: 'swap' });
+            }}
+          >
+            <LiveGlyph item={secondary} />
+          </Button>
+        )}
+        {/* Compare dates itself is the View tile; while comparing, Leave and its tools show here */}
+        <CompareButton split={split} whileComparing />
       </div>
       <Popover
         open={full !== null}

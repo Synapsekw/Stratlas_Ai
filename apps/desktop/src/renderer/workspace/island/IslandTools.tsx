@@ -66,6 +66,7 @@ export function IslandTools({
   preview,
   ctx,
   dispatch,
+  onClose,
 }: {
   mode: StageMode;
   groups: readonly GroupId[];
@@ -75,6 +76,8 @@ export function IslandTools({
   preview: GroupId | null;
   ctx: GroupCtx;
   dispatch: Dispatch<IslandEvent>;
+  /** Close the tools and give focus back to the island. */
+  onClose: () => void;
 }) {
   const t = useT();
   const id = useId();
@@ -88,7 +91,7 @@ export function IslandTools({
       }}
     >
       <div className="isl-r1" data-isl-row="">
-        <div className="seg isl-modes" role="group" aria-label="Stage view">
+        <div className="seg isl-modes" role="group" aria-label={t('island.stageView')}>
           {MODES.map((m) => (
             <Tip key={m.mode} content={m.label} shortcut={MODE_KEY[m.mode]} repeatsName>
               <button
@@ -137,9 +140,7 @@ export function IslandTools({
           className="isl-x"
           aria-label={t('dialog.close')}
           tip={t('dialog.close')}
-          onClick={() => {
-            dispatch({ type: 'escape' });
-          }}
+          onClick={onClose}
         >
           <span className="kbd">Esc</span>
           <Icon name="chevup" size={14} />

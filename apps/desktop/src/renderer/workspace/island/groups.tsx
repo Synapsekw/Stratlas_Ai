@@ -248,11 +248,11 @@ function AllTools({ g, ctx }: { g: GroupId; ctx: GroupCtx }) {
 
 /* ----------------------------------------------------------------------- the quick rows */
 
-const PRESETS = [
-  { value: 'iso', label: 'Iso' },
-  { value: 'top', label: 'Top' },
-  { value: 'north', label: 'North' },
-] as const;
+const PRESETS: readonly { value: 'iso' | 'top' | 'north'; label: MessageKey }[] = [
+  { value: 'iso', label: 'island.tile.presetIso' },
+  { value: 'top', label: 'island.tile.presetTop' },
+  { value: 'north', label: 'island.tile.presetNorth' },
+];
 
 /** The agent sits in the right panel on the Scene: show it and put the cursor in its box. */
 function askAgent(): void {
@@ -276,7 +276,7 @@ function ViewRow({ ctx }: { ctx: GroupCtx }) {
     <>
       <Tile
         icon="maximize"
-        label="Whole site"
+        label={t('island.tile.wholeSite')}
         shortcut="scene.home"
         onClick={() => {
           workspace.getState().flyTo({ kind: 'home' });
@@ -284,8 +284,8 @@ function ViewRow({ ctx }: { ctx: GroupCtx }) {
       />
       <Tile
         icon="crosshair"
-        label="Centre"
-        name="Centre on project"
+        label={t('island.tile.centre')}
+        name={t('island.tile.centreName')}
         shortcut="scene.site"
         onClick={() => {
           workspace.getState().flyTo({ kind: 'site' });
@@ -293,8 +293,8 @@ function ViewRow({ ctx }: { ctx: GroupCtx }) {
       />
       <Tile
         icon="target"
-        label="Fly to"
-        name="Fly to selection"
+        label={t('island.tile.flyTo')}
+        name={t('island.tile.flyToName')}
         shortcut="scene.flySelection"
         disabled={!selection}
         onClick={() => {
@@ -303,8 +303,8 @@ function ViewRow({ ctx }: { ctx: GroupCtx }) {
       />
       {!map && stage && (
         <Choice
-          label="View preset"
-          options={PRESETS}
+          label={t('island.tile.viewPreset')}
+          options={PRESETS.map((p) => ({ value: p.value, label: t(p.label) }))}
           value={null}
           onPick={(p) => {
             stage.setViewPreset(p);
@@ -314,18 +314,19 @@ function ViewRow({ ctx }: { ctx: GroupCtx }) {
       {!map && stage && (
         <Tile
           icon="sun"
-          label="Sky and time"
-          name="Environment and time of day"
+          label={t('island.tile.skyTime')}
+          name={t('island.tile.skyTimeName')}
           caret
           onClick={() => {
             ctx.openFull('view');
           }}
         />
       )}
-      {compare.available && (
+      {/* while comparing, Leave the comparison sits beside the island (one owner) */}
+      {compare.available && !compare.twin && (
         <Tile
           icon="history"
-          label="Compare"
+          label={t('island.tile.compare')}
           name={compare.label}
           pressed={compare.twin}
           testId="compare-dates"
@@ -345,7 +346,7 @@ function ViewRow({ ctx }: { ctx: GroupCtx }) {
       />
       <Tile
         icon="agent"
-        label="Ask agent"
+        label={t('island.tile.askAgent')}
         name={t('island.askAgent')}
         shortcut="global.agent"
         onClick={askAgent}
@@ -355,7 +356,7 @@ function ViewRow({ ctx }: { ctx: GroupCtx }) {
         icon="sidebar"
         flip
         label={t('island.toRightPanel')}
-        name={rightCollapsed ? 'Show the right panel' : 'Hide the right panel'}
+        name={rightCollapsed ? t('island.tile.showRight') : t('island.tile.hideRight')}
         shortcut="global.rightPanel"
         pressed={!rightCollapsed}
         onClick={shell.getState().toggleRight}
@@ -365,6 +366,7 @@ function ViewRow({ ctx }: { ctx: GroupCtx }) {
 }
 
 function MeasureRow({ ctx }: { ctx: GroupCtx }) {
+  const t = useT();
   const { stage, map } = ctx;
   const active = useMeasure((s) => s.tool);
   const readOnly = useMeasure((s) => s.readOnly);
@@ -387,8 +389,8 @@ function MeasureRow({ ctx }: { ctx: GroupCtx }) {
       {!map ? (
         <Tile
           icon="ruler"
-          label="Distance"
-          name="Measure a distance"
+          label={t('island.tile.distance')}
+          name={t('island.tile.measureDistance')}
           shortcut="scene.measure"
           pressed={quick}
           disabled={!stage}
@@ -398,7 +400,7 @@ function MeasureRow({ ctx }: { ctx: GroupCtx }) {
         survey && (
           <Tile
             icon="ruler"
-            label="Distance"
+            label={t('island.tile.distance')}
             pressed={active?.tool === 'distance' && !active.template}
             onClick={() => {
               if (active?.tool === 'distance' && !active.template) stopTool();
@@ -407,14 +409,14 @@ function MeasureRow({ ctx }: { ctx: GroupCtx }) {
           />
         )
       )}
-      {survey && tool('elevation', 'point', 'Elevation')}
-      {survey && tool('area', 'polygon', 'Area')}
-      {survey && tool('volume', 'pile', 'Volume')}
+      {survey && tool('elevation', 'point', t('island.tile.elevation'))}
+      {survey && tool('area', 'polygon', t('island.tile.area'))}
+      {survey && tool('volume', 'pile', t('island.tile.volume'))}
       {!map && stage && (
         <Tile
           icon="section"
-          label="Section"
-          name="Section plane"
+          label={t('island.tile.section')}
+          name={t('island.tile.sectionPlane')}
           shortcut="scene.section"
           pressed={stage.section.enabled}
           onClick={() => {
@@ -436,7 +438,7 @@ function DisplayRow({ ctx }: { ctx: GroupCtx }) {
     <>
       <Tile
         icon="pin"
-        label="Issue pins"
+        label={t('island.tile.issuePins')}
         name={pins ? t('stage.pins.hide') : t('stage.pins.show')}
         shortcut="scene.pins"
         pressed={pins}
@@ -446,7 +448,7 @@ function DisplayRow({ ctx }: { ctx: GroupCtx }) {
       />
       {!map && (
         <Choice
-          label="Labels"
+          label={t('island.tile.labels')}
           shortcut="scene.labels"
           disabled={!stage}
           options={LABEL_MODES.map((m) => ({ value: m.mode, label: m.label }))}
@@ -472,7 +474,7 @@ function StreetMapTile() {
   return (
     <Tile
       icon="map"
-      label="Street map"
+      label={t('island.tile.streetMap')}
       name={t(tool.label)}
       pressed={tool.pressed}
       disabled={tool.disabled}
@@ -498,8 +500,8 @@ function CloudRow({ ctx }: { ctx: GroupCtx }) {
     <>
       <Tile
         icon="cloud"
-        label="Show"
-        name="Show the point cloud"
+        label={t('island.tile.cloudShow')}
+        name={t('island.tile.cloudShowName')}
         pressed={shown}
         onClick={() => {
           for (const id of ids.split('|')) workspace.getState().setLayerVisible(id, !shown);
@@ -507,7 +509,7 @@ function CloudRow({ ctx }: { ctx: GroupCtx }) {
       />
       <Tile
         icon="boxclip"
-        label="Clean up"
+        label={t('island.tile.cleanUp')}
         name={t('cleanup.tool')}
         caret
         pressed={cleanupOpen}
@@ -521,18 +523,19 @@ function CloudRow({ ctx }: { ctx: GroupCtx }) {
   );
 }
 
-const SURFACES: readonly { value: SurfaceMode; label: string }[] = [
-  { value: 'photo', label: 'Photo' },
-  { value: 'elev', label: 'Elevation' },
-  { value: 'change', label: 'Cut / fill' },
+const SURFACES: readonly { value: SurfaceMode; label: MessageKey }[] = [
+  { value: 'photo', label: 'island.tile.photo' },
+  { value: 'elev', label: 'island.tile.elevation' },
+  { value: 'change', label: 'island.tile.cutFill' },
 ];
-const BODIES: readonly { value: BodyMode; label: string }[] = [
-  { value: 'lift', label: 'Lifted' },
-  { value: 'place', label: 'In place' },
-  { value: 'off', label: 'Hidden' },
+const BODIES: readonly { value: BodyMode; label: MessageKey }[] = [
+  { value: 'lift', label: 'island.tile.lifted' },
+  { value: 'place', label: 'island.tile.inPlace' },
+  { value: 'off', label: 'island.tile.hidden' },
 ];
 
 function VolumeRow({ ctx }: { ctx: GroupCtx }) {
+  const t = useT();
   const captures = useVolumetric((s) => s.file?.captures ?? []);
   const epoch = useVolumetric((s) => s.epoch);
   const swipe = useVolumetric((s) => s.swipe);
@@ -544,10 +547,10 @@ function VolumeRow({ ctx }: { ctx: GroupCtx }) {
   return (
     <>
       <Choice
-        label="Survey date"
+        label={t('island.tile.surveyDate')}
         options={[
           ...captures.map((c) => ({ value: c.epoch, label: c.label.replace(/ 20\d\d$/, '') })),
-          { value: SWIPE, label: 'Swipe', disabled: captures.length < 2 || editing },
+          { value: SWIPE, label: t('island.tile.swipe'), disabled: captures.length < 2 || editing },
         ]}
         value={swipe ? SWIPE : surface === 'change' ? null : epoch}
         onPick={(e) => {
@@ -561,8 +564,12 @@ function VolumeRow({ ctx }: { ctx: GroupCtx }) {
         }}
       />
       <Choice
-        label="Surface"
-        options={SURFACES.map((s) => ({ ...s, disabled: s.value === 'change' && editing }))}
+        label={t('island.tile.surface')}
+        options={SURFACES.map((s) => ({
+          value: s.value,
+          label: t(s.label),
+          disabled: s.value === 'change' && editing,
+        }))}
         value={surface}
         onPick={(s) => {
           if (swipe) v.setSwipe(false);
@@ -570,8 +577,8 @@ function VolumeRow({ ctx }: { ctx: GroupCtx }) {
         }}
       />
       <Choice
-        label="Bodies"
-        options={BODIES}
+        label={t('island.tile.bodies')}
+        options={BODIES.map((b) => ({ value: b.value, label: t(b.label) }))}
         value={body}
         onPick={(b) => {
           v.setBody(b);
@@ -582,10 +589,10 @@ function VolumeRow({ ctx }: { ctx: GroupCtx }) {
   );
 }
 
-const CAMERA: readonly { value: CameraMode; label: string }[] = [
-  { value: 'free', label: 'Free orbit' },
-  { value: 'follow', label: 'Follow' },
-  { value: 'drone', label: 'Drone eye' },
+const CAMERA: readonly { value: CameraMode; label: MessageKey }[] = [
+  { value: 'free', label: 'island.tile.free' },
+  { value: 'follow', label: 'island.tile.follow' },
+  { value: 'drone', label: 'island.tile.droneEye' },
 ];
 
 function VideoRow({ ctx }: { ctx: GroupCtx }) {
@@ -602,8 +609,8 @@ function VideoRow({ ctx }: { ctx: GroupCtx }) {
     <>
       <Tile
         icon="video"
-        label="Video window"
-        name={showVideo ? 'Hide the video window' : 'Show the video window'}
+        label={t('island.tile.videoWindow')}
+        name={showVideo ? t('island.tile.hideVideo') : t('island.tile.showVideo')}
         shortcut="scene.video"
         pressed={showVideo}
         disabled={activeClip === null}
@@ -613,7 +620,7 @@ function VideoRow({ ctx }: { ctx: GroupCtx }) {
       />
       {!map && paths && (
         <Choice
-          label="Flight paths"
+          label={t('island.tile.flightPaths')}
           shortcut="scene.flightPaths"
           options={PATH_MODES.map((p) => ({ value: p.mode, label: p.label }))}
           value={paths.pref.mode}
@@ -625,7 +632,7 @@ function VideoRow({ ctx }: { ctx: GroupCtx }) {
       {!map && paths && (
         <Tile
           icon="telemetry"
-          label="Telemetry"
+          label={t('island.tile.telemetry')}
           name={telemetry ? t('stage.telemetry.hide') : t('stage.telemetry.show')}
           shortcut="scene.telemetry"
           pressed={telemetry}
@@ -634,10 +641,11 @@ function VideoRow({ ctx }: { ctx: GroupCtx }) {
       )}
       {!map && (
         <Choice
-          label="Camera"
+          label={t('island.tile.camera')}
           disabled={!stage}
           options={CAMERA.map((c) => ({
-            ...c,
+            value: c.value,
+            label: t(c.label),
             disabled: c.value !== 'free' && activeClip === null,
           }))}
           value={camera}
@@ -651,7 +659,7 @@ function VideoRow({ ctx }: { ctx: GroupCtx }) {
       {!map && stage && (
         <Tile
           icon="cutaway"
-          label="See inside"
+          label={t('island.tile.seeInside')}
           name={t('stage.cutaway.insideView')}
           shortcut="scene.inside"
           disabled={activeClip === null}
@@ -666,6 +674,7 @@ function VideoRow({ ctx }: { ctx: GroupCtx }) {
 }
 
 function RoadRow({ ctx }: { ctx: GroupCtx }) {
+  const t = useT();
   const overlay = useRoad((s) => s.overlay);
   const measuring = useRoad((s) => s.measure.mode !== null);
   const closeup = useRoad((s) => s.closeup);
@@ -673,8 +682,8 @@ function RoadRow({ ctx }: { ctx: GroupCtx }) {
     <>
       <Tile
         icon="photo"
-        label="Close-up"
-        name="Close-up of the selected defect"
+        label={t('island.tile.closeup')}
+        name={t('island.tile.closeupName')}
         shortcut="road.closeup"
         pressed={closeup}
         onClick={() => {
@@ -683,7 +692,7 @@ function RoadRow({ ctx }: { ctx: GroupCtx }) {
       />
       <Tile
         icon="filter"
-        label="PCI grid"
+        label={t('island.tile.pci')}
         shortcut="road.pci"
         pressed={overlay === 'pci'}
         onClick={() => {
@@ -692,8 +701,8 @@ function RoadRow({ ctx }: { ctx: GroupCtx }) {
       />
       <Tile
         icon="raster"
-        label="Density"
-        name="Defect density"
+        label={t('island.tile.density')}
+        name={t('island.tile.densityName')}
         shortcut="road.density"
         pressed={overlay === 'density'}
         onClick={() => {
@@ -702,8 +711,8 @@ function RoadRow({ ctx }: { ctx: GroupCtx }) {
       />
       <Tile
         icon="ruler"
-        label="Measure"
-        name="Measure on the map"
+        label={t('island.tile.roadMeasure')}
+        name={t('island.tile.roadMeasureName')}
         shortcut="road.measure"
         pressed={measuring}
         onClick={() => {
@@ -716,13 +725,14 @@ function RoadRow({ ctx }: { ctx: GroupCtx }) {
 }
 
 function AnnotateRow({ ctx }: { ctx: GroupCtx }) {
+  const t = useT();
   const on = useShell((s) => s.annotating);
   return (
     <>
       <Tile
         icon="anno"
-        label="Annotate"
-        name={on ? 'Close the annotation tools' : 'Annotate: pins, lines, areas, cloud regions'}
+        label={t('island.tile.annotate')}
+        name={on ? t('island.tile.annotateClose') : t('island.tile.annotateOpen')}
         shortcut="scene.annotate"
         pressed={on}
         onClick={() => {
@@ -734,7 +744,12 @@ function AnnotateRow({ ctx }: { ctx: GroupCtx }) {
   );
 }
 
-/** A group's quick row (D5): a few tiles and switches, then the way to its full set. */
+/**
+ * A group's quick row (D5): a few tiles and switches, then the way to its full set.
+ * TODO(stage 2, ruling I-R13): D5 items carried to the workbench tasks: the point cloud colour
+ * switch RGB / Elevation / Intensity / Flight (Task 14), the Annotate tiles 3D pin, line, area,
+ * cloud point, cloud box and map point, line, area (Task 15), Display's "Layers →" (Task 17).
+ */
 export function quickRow(g: GroupId, ctx: GroupCtx): ReactNode {
   switch (g) {
     case 'view':
