@@ -902,7 +902,7 @@ export function Stage() {
         barRef={barRef}
         compare={<CompareButton split={split} />}
       />
-      <div className="stage-under">
+      <div className="stage-under" data-surface="dark">
         {annotating && (
           <div className="ann-subbar overlay-box" role="group" aria-label="Annotation tools">
             {show3d && <AnnotationToolbar className="stage-ann" store={primaryScene} />}

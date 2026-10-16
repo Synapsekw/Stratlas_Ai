@@ -83,6 +83,19 @@ describe('css guard', () => {
     expect(fewer, 'lower the allow list (CSS_GUARD_WRITE=1)').toEqual([]);
   });
 
+  it('uses amber as text only through --warn-ink, never --s3 or --warn', () => {
+    const offenders: string[] = [];
+    for (const root of ROOTS) {
+      for (const file of walk(root)) {
+        if (!file.endsWith('.css') || file.endsWith(`${sep}tokens.css`)) continue;
+        const css = readFileSync(file, 'utf8').replace(/\/\*[\s\S]*?\*\//g, '');
+        const n = count(css, /(?<![\w-])color\s*:\s*var\(--(?:s3|warn)\)/g);
+        if (n) offenders.push(`${relative(REPO, file)}: ${String(n)}`);
+      }
+    }
+    expect(offenders, 'amber text: use var(--warn-ink)').toEqual([]);
+  });
+
   it('keeps the global :focus-visible from changing border radius', () => {
     const css = readFileSync(join(import.meta.dirname, 'mission.css'), 'utf8');
     const start = css.search(/^:focus-visible \{/m);

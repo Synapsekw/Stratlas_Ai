@@ -27,8 +27,13 @@ describe('contrastRatio', () => {
     );
   });
 
-  it('puts the light amber text ink at AA on the panel surface', () => {
-    expect(contrastRatio(light('--warn-ink'), light('--bg-1'))).toBeGreaterThanOrEqual(4.5);
+  const SURFACES = ['--bg-0', '--bg-1', '--bg-2', '--bg-3'];
+  const TEXT = ['--fg-0', '--fg-1', '--fg-2', '--fg-3', '--acc', '--danger-ink', '--warn-ink'];
+
+  it.each(TEXT)('puts light %s text at AA (4.5:1) on every surface', (ink) => {
+    for (const bg of SURFACES) {
+      expect(contrastRatio(light(ink), light(bg)), `${ink} on ${bg}`).toBeGreaterThanOrEqual(4.5);
+    }
   });
 
   it('shows why amber text needs its own ink: the swatch fails on the light panel', () => {
