@@ -17,6 +17,29 @@ export function loadRaw(name: 'synthetic' | 'broken'): WalkRawPath {
   );
 }
 
+/** A closed square, with metric raw coordinates and no placement heading. */
+export function closedRaw(): WalkRawPath {
+  const raw = loadRaw('synthetic');
+  return {
+    ...raw,
+    walking: { startT: 0, endT: 4 },
+    stills: [
+      [0, 0],
+      [10, 0],
+      [10, 10],
+      [0, 10],
+      [0, 0],
+    ].map(([x = 0, z = 0], t) => ({
+      n: t * 30,
+      t,
+      pos: [x, 0, z],
+      q: [0, 0, 0, 1],
+      segment: 0,
+      steps: t,
+    })),
+  };
+}
+
 export function loadOrientationRows(): Float64Array[] {
   const header = WalkOrientation.parse(
     JSON.parse(readFileSync(new URL('orientation.synthetic.json', dir), 'utf8')) as unknown,

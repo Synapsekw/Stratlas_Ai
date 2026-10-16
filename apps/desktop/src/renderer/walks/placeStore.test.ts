@@ -609,7 +609,7 @@ describe('createPlaceStore', () => {
     expect(s().armed).toBeNull();
   });
 
-  it('armMove again on the same pin lets go; a finish on the start is kept', () => {
+  it('armMove again lets go; an incompatible finish on the start preserves the last valid pin', () => {
     const { s } = fineTuning();
     s().armMove(1);
     s().armMove(1);
@@ -617,11 +617,11 @@ describe('createPlaceStore', () => {
     expect(s().moving).toBeNull();
     s().armMove(1);
     const start = truthXZ(4);
+    const previous = s().pins[1];
     s().click(start);
-    expect(s().error).toBeNull();
-    expect(s().pins[1]?.at).toEqual(start);
-    expect(s().armed).toBeNull();
-    s().armMove(1);
+    expect(s().error).toMatch(/raw path does not return/);
+    expect(s().pins[1]).toEqual(previous);
+    expect(s().armed).toBe('move');
     s().click(truthXZ(lastT));
     expect(s().error).toBeNull();
     expect(s().armed).toBeNull();

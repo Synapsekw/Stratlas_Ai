@@ -90,6 +90,7 @@ export function PhotoViewer({
   handle?: Ref<PhotoViewerHandle>;
 }) {
   const project = useWorkspace((s) => s.project);
+  const openSeq = useWorkspace((s) => s.openSeq);
   const allIssues = useWorkspace((s) => s.issues);
   const dates = useWorkspace((s) => s.dates);
   const hidden = useWorkspace((s) => s.hidden);
@@ -110,7 +111,7 @@ export function PhotoViewer({
   const [view, setView] = useState<ViewTransform>({ scale: 1, x: 0, y: 0 });
   const [opacity, setOpacity] = useState(0.6);
   const [showOverlay, setShowOverlay] = useState(true);
-  const [rotating, setRotating] = useState(false);
+  const [rotatingId, setRotatingId] = useState<string | null>(null);
   const [spin, setSpin] = useState<{ id: string; turn: number; note: string | null }>({
     id: '',
     turn: 0,
@@ -126,7 +127,8 @@ export function PhotoViewer({
     ? correctedPhoto(found, photoCorrection(orientation, layerId, found.id))
     : undefined;
   const url = project && photo ? assetUrl(project.id, photo.src) : null;
-  const spinId = `${layerId}/${photoId}`;
+  const spinId = `${String(openSeq)}/${layerId}/${photoId}`;
+  const rotating = rotatingId === spinId;
   const turn = spin.id === spinId ? spin.turn : 0;
   const rotateNote = spin.id === spinId ? spin.note : null;
   const shown = url && turn > 0 ? `${url}?v=${String(turn)}` : url;
@@ -136,10 +138,11 @@ export function PhotoViewer({
 
   const onRotate = useCallback(() => {
     if (readOnly || rotating) return;
-    setRotating(true);
+    setRotatingId(spinId);
     setSpin((s) => ({ id: spinId, turn: s.id === spinId ? s.turn : 0, note: null }));
     void rotatePhoto(layerId, photoId)
       .then((r) => {
+        if (workspace.getState().openSeq !== openSeq || !workspace.getState().project) return;
         if (!r.ok) {
           setSpin((s) => ({
             id: spinId,
@@ -148,8 +151,6 @@ export function PhotoViewer({
           }));
           return;
         }
-        if (r.manifest) workspace.getState().replaceManifest(r.manifest);
-        workspace.setState({ issues: r.issues });
         setSpin((s) => ({
           id: spinId,
           turn: (s.id === spinId ? s.turn : 0) + 1,
@@ -157,6 +158,7 @@ export function PhotoViewer({
         }));
       })
       .catch((e: unknown) => {
+        if (workspace.getState().openSeq !== openSeq || !workspace.getState().project) return;
         setSpin((s) => ({
           id: spinId,
           turn: s.id === spinId ? s.turn : 0,
@@ -164,9 +166,9 @@ export function PhotoViewer({
         }));
       })
       .finally(() => {
-        setRotating(false);
+        setRotatingId((current) => (current === spinId ? null : current));
       });
-  }, [layerId, photoId, readOnly, rotating, spinId]);
+  }, [layerId, photoId, readOnly, rotating, spinId, openSeq]);
 
   const fit = useCallback(() => {
     const el = stageRef.current;

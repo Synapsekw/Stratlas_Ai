@@ -1,10 +1,24 @@
 import { describe, expect, it } from 'vitest';
 import type { XZ } from './horizontal';
-import { applySim2, sim2FromPairs, sim2Through, sim2Yaw } from './similarity2';
+import { applySim2, sim2Between, sim2FromPairs, sim2Through, sim2Yaw } from './similarity2';
 
 const close = (a: XZ, b: XZ) => {
   expect(Math.hypot(a[0] - b[0], a[1] - b[1])).toBeLessThan(1e-9);
 };
+
+describe('sim2Between', () => {
+  it('refuses a transform that would ignore the finish constraint', () => {
+    expect(sim2Between([0, 0], [10, 0], [5, 5], [5, 5])).toBeNull();
+  });
+
+  it('anchors a truly closed raw pair without collapsing its shape', () => {
+    const m = sim2Between([0, 0], [0, 0], [5, 5], [5, 5]);
+    if (!m) throw new Error('no closed transform');
+    close(applySim2(m, [0, 0]), [5, 5]);
+    close(applySim2(m, [10, 0]), [15, 5]);
+    expect(m.s).toBe(1);
+  });
+});
 
 describe('sim2FromPairs', () => {
   it('maps both pairs exactly', () => {

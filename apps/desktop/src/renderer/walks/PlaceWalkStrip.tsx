@@ -164,7 +164,7 @@ export function PlaceWalkStrip({
   const pathState = flow.pathState();
   const pinsOnly = u.inputs.raw === null || u.inputs.raw.source === 'pins-only';
   const enough = st.pins.length >= 2;
-  const problem = removeError ?? u.note ?? st.error;
+  const problem = removeError ?? u.note ?? st.error ?? st.fit?.warning;
   const checking = st.step === 'check';
   // on the check the notice's sentence stays beside a problem: why the path is unknown still holds
   const hint = checking ? hintFor(st, pathState) : (problem ?? hintFor(st, pathState));

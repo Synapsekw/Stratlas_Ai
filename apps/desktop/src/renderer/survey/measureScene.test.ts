@@ -2,7 +2,16 @@
 import type { EngineStage } from '@aio/engine';
 import { emptyMeasurements, type SitePoint, type SurveyMeasurement } from '@aio/schema';
 import { measurementReadout } from '@aio/survey';
-import { Mesh, PerspectiveCamera, Scene, Vector3, type Line } from 'three';
+import {
+  Group,
+  Mesh,
+  Points,
+  PerspectiveCamera,
+  Scene,
+  Vector3,
+  type Object3D,
+  type Line,
+} from 'three';
 import { beforeEach, expect, it, vi } from 'vitest';
 import { attach3d, frameOf, snapProviders } from './measureScene';
 import {
@@ -29,12 +38,11 @@ beforeEach(() => {
   });
 });
 
-function scene(epsg?: number) {
+function scene(epsg?: number, object: Object3D = new Mesh()) {
   let claim: (event: PointerEvent) => boolean = () => false;
   let frame: () => void = () => undefined;
   const canvas = document.createElement('canvas');
   document.body.append(canvas);
-  const object = new Mesh();
   const point = new Vector3(0, 10, 0);
   const stage = {
     scene: new Scene(),
@@ -97,6 +105,38 @@ it('requires real geometry for telecom picks and preserves model height', () => 
   ]);
   s.detach();
 });
+
+it.each(['plan', 'ortho', 'dsm'])(
+  'ignores flat %s raster plates even through a parent group',
+  (role) => {
+    const s = scene();
+    const root = new Group();
+    root.userData.aioRaster = true;
+    root.userData.aioLayer = `raster-${role}`;
+    root.add(s.object);
+    startTool('clearance');
+    s.click(10);
+    expect(measureStore.getState().draw?.points).toHaveLength(0);
+    expect(measureStore.getState().file.measurements).toHaveLength(0);
+    s.detach();
+  },
+);
+
+it.each([new Mesh(), new Points(), Object.assign(new Mesh(), { userData: { type: 'terrain' } })])(
+  'keeps measured mesh, cloud and terrain heights',
+  (object) => {
+    const s = scene(undefined, object);
+    startTool('clearance');
+    s.click(10);
+    s.point.y = 15;
+    s.click(20);
+    expect(measureStore.getState().file.measurements[0]?.points).toEqual([
+      [100, 200, 310],
+      [100, 200, 315],
+    ]);
+    s.detach();
+  },
+);
 
 it('renders the facing arrow in local north and reverses it when flipped', () => {
   const s = scene();

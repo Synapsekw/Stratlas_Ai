@@ -336,6 +336,38 @@ describe('PlaceWalkStrip: the path check', () => {
 });
 
 describe('PlaceWalkStrip: placing', () => {
+  it('shows a scale and heading warning when a closed raw loop is anchored only at its start', async () => {
+    const loop: WalkRawPath = {
+      ...raw,
+      walking: { startT: 0, endT: 4 },
+      stills: [
+        [0, 0],
+        [10, 0],
+        [10, 10],
+        [0, 10],
+        [0, 0],
+      ].map(([x = 0, z = 0], t) => ({
+        n: t * 30,
+        t,
+        pos: [x, 0, z],
+        q: [0, 0, 0, 1],
+        segment: 0,
+        steps: t,
+      })),
+    };
+    const { session } = await open(walkWithPath({ durationS: 4 }), {
+      inputs: { raw: loop, orientation: null },
+    });
+    act(() => {
+      session.getState().click([5, 5], 0);
+    });
+    act(() => {
+      session.getState().click([5, 5], 0);
+    });
+    expect(session.getState().fit?.error).toBeNull();
+    expect(hint()).toContain('scale and heading');
+  });
+
   it('Esc on End takes the start back', async () => {
     const { session } = await open(walkWithPath());
     act(() => {

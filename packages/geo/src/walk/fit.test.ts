@@ -1,8 +1,16 @@
 import type { WalkPin, WalkRawPath } from '@aio/schema';
 import { describe, expect, it } from 'vitest';
-import { dist, lastT, loadRaw, noDrawings, pinAtTruth, truthXZ } from '../__fixtures__/walk';
+import {
+  closedRaw,
+  dist,
+  lastT,
+  loadRaw,
+  noDrawings,
+  pinAtTruth,
+  truthXZ,
+} from '../__fixtures__/walk';
 import { fitWalk, type SurfaceFrame, type WalkFit } from './fit';
-import { walkQuality } from './quality';
+import { walkBadgeText, walkQuality } from './quality';
 
 const raw = loadRaw('synthetic');
 const broken = loadRaw('broken');
@@ -49,7 +57,7 @@ describe('fitWalk', () => {
     expect(dist(at(fit, end).xz, pins[1]?.at ?? [0, 0])).toBeLessThan(1e-6);
   });
 
-  it('keeps the walk shape when the finish is the same place as the start', () => {
+  it('refuses closure pins that cannot both be met by the raw path', () => {
     const start = pinAtTruth(raw, 4);
     const fit = fitWalk(
       raw,
@@ -60,10 +68,36 @@ describe('fitWalk', () => {
       noDrawings,
       dur,
     );
+    expect(fit.error).toMatch(/raw path does not return/);
+    expect(fit.at(4)).toBeNull();
+    expect(fit.at(end)).toBeNull();
+    expect(walkQuality(fit)).toBe('unplaced');
+  });
+
+  it('preserves a truly closed loop, satisfies both pins and warns about unknown scale and heading', () => {
+    const pins: WalkPin[] = [0, 4].map((t) => ({ t, surface: '@model', at: [5, 5] }));
+    const fit = fitWalk(closedRaw(), { pins, yawOffsetDeg: 0 }, noDrawings, 4);
     expect(fit.error).toBeNull();
-    expect(dist(at(fit, 4).xz, start.at)).toBeLessThan(1e-6);
-    // a loop that returns still has a path, it does not collapse to the pin
-    expect(dist(at(fit, 30).xz, start.at)).toBeGreaterThan(1);
+    expect(at(fit, 0).xz).toEqual([5, 5]);
+    expect(at(fit, 4).xz).toEqual([5, 5]);
+    expect(at(fit, 2).xz).toEqual([15, 15]);
+    expect(walkQuality(fit)).toBe('check');
+    expect(walkBadgeText(fit, String)).toMatch(/scale and heading/);
+  });
+
+  it('uses the measured scale and heading when a closed loop has another pin', () => {
+    const pins: WalkPin[] = [
+      { t: 0, surface: '@model', at: [5, 5] },
+      { t: 4, surface: '@model', at: [5, 5] },
+      { t: 5, surface: '@model', at: [5, 25] },
+    ];
+    const r = closedRaw();
+    r.stills.push({ n: 150, t: 5, pos: [10, 0, 0], q: [0, 0, 0, 1], segment: 0, steps: 5 });
+    const fit = fitWalk(r, { pins, yawOffsetDeg: 0 }, noDrawings, 5);
+    expect(at(fit, 0).xz).toEqual([5, 5]);
+    expect(at(fit, 4).xz).toEqual([5, 5]);
+    expect(at(fit, 2).xz[0]).toBeCloseTo(-15);
+    expect(at(fit, 2).xz[1]).toBeCloseTo(25);
   });
 
   it('refuses two pins at the same raw position', () => {

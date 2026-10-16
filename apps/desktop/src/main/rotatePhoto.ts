@@ -5,7 +5,7 @@ import { mkdir, rename, rm, writeFile } from 'node:fs/promises';
 import { dirname, extname, join } from 'node:path';
 import { readIssues, readManifest, writeIssues } from './project';
 import { resolveInside } from './protocol/paths';
-import { turnLens90 } from './rotateBgra';
+import { turnLens90, turnQuat90 } from './rotateBgra';
 import { bitmapSize, turnNativeImage } from './rotateNative';
 import { projectThumbPath } from './thumbs';
 
@@ -70,6 +70,24 @@ export async function rotateProjectPhoto(
     return fail('Only a JPEG or PNG photo can be turned.');
   }
 
+  const issues = await readIssues(root);
+  if (!issues.ok) return fail(issues.error);
+  if (
+    issues.value.some((issue) =>
+      issue.sightings.some(
+        (s) =>
+          s.on === 'image' &&
+          s.layer === req.layerId &&
+          s.photo === req.photoId &&
+          s.geom.type === 'mask',
+      ),
+    )
+  ) {
+    return fail(
+      'This photo has mask annotations. Rotation is unavailable because the mask and its overlay must stay aligned.',
+    );
+  }
+
   const img = nativeImage.createFromPath(resolved.path);
   if (img.isEmpty()) return fail('The image could not be decoded.');
   let pixels: { width: number; height: number };
@@ -78,12 +96,17 @@ export async function rotateProjectPhoto(
   } catch (e) {
     return fail(e instanceof Error ? e.message : String(e));
   }
+  let lens: typeof photo.lens;
+  try {
+    lens = photo.lens ? turnLens90(photo.lens, pixels.width, pixels.height) : undefined;
+  } catch (e) {
+    return fail(e instanceof Error ? e.message : String(e));
+  }
+  const q = photo.q ? turnQuat90(photo.q) : undefined;
   const turned = turnNativeImage(img, 1);
   const bytes = ext === '.png' ? turned.toPNG() : turned.toJPEG(90);
 
   const { turnIssueSightings } = await import('@aio/project/import');
-  const issues = await readIssues(root);
-  if (!issues.ok) return fail(issues.error);
   const sightings = turnIssueSightings(
     issues.value,
     req.layerId,
@@ -125,10 +148,9 @@ export async function rotateProjectPhoto(
     }
   }
 
-  if (!photo.lens) {
+  if (!lens && !q) {
     return { ok: true, issues: sightings.issues, manifest: manifest.value };
   }
-  const lens = turnLens90(photo.lens, pixels.width, pixels.height);
   const updated = await updateManifestFile(root, (current) => ({
     manifest: {
       ...current,
@@ -136,7 +158,15 @@ export async function rotateProjectPhoto(
         if (l.id !== req.layerId || l.kind !== 'photos') return l;
         return {
           ...l,
-          items: l.items.map((p) => (p.id === req.photoId ? { ...p, lens } : p)),
+          items: l.items.map((p) =>
+            p.id === req.photoId
+              ? {
+                  ...p,
+                  ...(lens ? { lens } : {}),
+                  ...(q ? { q } : {}),
+                }
+              : p,
+          ),
         };
       }),
     },

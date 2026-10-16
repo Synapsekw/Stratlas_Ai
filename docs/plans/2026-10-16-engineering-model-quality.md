@@ -121,4 +121,21 @@ Sixteen remote checks passed. The desktop shard's documented street-tile timeout
 - [x] Reproduce a delayed watchdog callback arriving before queued map events. Preserve inactivity detection and a finite total draw limit, clean up listeners on settlement/disposal, and keep the end-to-end assertion strict. Four regressions failed before the fix; all five new tests and 302 maps/Globe tests pass.
 - [x] Independent review approved both narrow fixes.
 - [x] Rebuild and verify the updated desktop flows serially: engineering 7/7, Globe 19/19, plus two additional successful repetitions of each CI failure case. Local UI jobs resolve the shared interpreter's main-checkout Python; repaired pipeline code is covered by direct Python tests and remote CI.
-- [ ] Verify repository checks and remote CI before integration. Keep the isolated worktree while shared-main coordination remains unresolved.
+- [ ] Verify repository checks and remote CI before integration. The complete-push authorization below resolves the earlier shared-main coordination hold.
+
+## Complete push of committed local work
+
+The user confirmed this is the last active session and requested a complete push. This supersedes the earlier local-only integration restriction. Five unpublished local-main commits are combined with this branch in merge commit `f1302b4a`, preserving both histories without rewriting published commits: class creation/severity scales, telecom measurements, photo opening beside the scene, walk/photo placement and rotation, and street-map placement below survey data. The separate asset-region branch contains a completed plan only; publish that branch without presenting its planned features as implemented. Older retained WIP branches and uncommitted design files are outside this push.
+
+Execution DAG: inventory and isolated merge -> parallel photo-rotation repairs / walk-and-picking repairs -> independent review -> shared desktop/demo build -> serial affected UI suites -> complete repository checks -> publish combined PR and planning branch -> green remote CI -> fast-forward and push main -> verify remote commits and clean up this worktree.
+
+- [x] Inventory local branches, preserve the five main commits, and resolve documentation conflicts by retaining both records and the latest push authorization.
+- [x] Verify and repair rotation direction, asynchronous project identity, unsupported mask handling and camera ray consistency with synthetic regression coverage. Independent review approved the fixes; focused photo tests pass.
+- [x] Verify and repair coincident walk endpoint constraints and telecom picks on unmeasured drawing/imagery planes. Independent review approved the fixes; 171 focused tests, TypeScript and lint pass.
+- [x] Independently review fixes; build desktop and all quick demos; run changed telecom/measurement/walk specs, related scene/annotation specs, engineering and Globe workflows under CI conditions. All 46 Electron tests passed without skips or retries; photo regression coverage adds 33 passing unit tests.
+- [ ] Run full repository checks on the combined result, update the PR around the complete scope, and publish the completed planning branch.
+- [ ] Land only the exact green commit, confirm local and remote main agree, and clean up this task's worktree.
+
+The pre-integration follow-up repository check had one unrelated five-second filesystem timeout in `pointcloudCleanup.test.ts`; all 13 tests in that file passed on a focused rerun. The combined result still needs its own full check.
+
+The planning branch `fix/engineer-asset-region` and the original class-picker commit on `fix/class-picker` are now preserved on origin. The latter is patch-equivalent to the class-picker commit already in the combined history.

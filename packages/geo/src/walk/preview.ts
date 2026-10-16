@@ -68,7 +68,7 @@ export function outlineAt(o: WalkOutline, t: number): XZ {
 
 /**
  * The shape laid between `start` (where the outline is at `startT`) and `cursor` (where it is at
- * `endT`): rotated, scaled and moved, every point. Null when the outline's two anchors coincide.
+ * `endT`): rotated, scaled and moved, every point. Null for incompatible coincident anchors.
  */
 export function previewPath(
   o: WalkOutline,

@@ -15,6 +15,7 @@ export function walkQuality(fit: WalkFit): WalkCalibration['quality'] {
     residuals.some((r) => r > WALK_CHECK_M) ||
     fit.gaps.length > 0 ||
     fit.pins.some((p) => !p.active) ||
+    !!fit.warning ||
     fit.pinsOnly
   )
     return 'check';
@@ -29,5 +30,5 @@ export function walkBadgeText(fit: WalkFit, fmt: (s: number) => string): string 
   if (fit.error) return fit.error;
   const gap = fit.gaps[0];
   if (gap) return `Path broken ${fmt(gap.fromT)} to ${fmt(gap.toT)}: add a pin after the gap`;
-  return null;
+  return fit.warning ?? null;
 }

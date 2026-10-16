@@ -1,7 +1,7 @@
 // packages/geo/src/walk/preview.test.ts
 import type { WalkRawPath } from '@aio/schema';
 import { describe, expect, it } from 'vitest';
-import { loadRaw, truthXZ } from '../__fixtures__/walk';
+import { closedRaw, loadRaw, truthXZ } from '../__fixtures__/walk';
 import {
   GHOST_FALLBACK_M,
   ghostLengthM,
@@ -70,6 +70,19 @@ describe('previewPath', () => {
     const last = pts?.at(-1);
     if (!last) throw new Error('no end');
     expect(dist(last, [0, -100])).toBeLessThan(0.5);
+  });
+
+  it('refuses a closed target pair for an open raw outline', () => {
+    expect(previewPath(o, 4, 62, [5, 5], [5, 5])).toBeNull();
+  });
+
+  it('keeps both endpoints and shape for a truly closed outline', () => {
+    const loop = walkOutline(closedRaw());
+    if (!loop) throw new Error('no closed outline');
+    const pts = previewPath(loop, 0, 4, [5, 5], [5, 5]);
+    expect(pts?.[0]).toEqual([5, 5]);
+    expect(pts?.at(-1)).toEqual([5, 5]);
+    expect(pts?.[2]).toEqual([15, 15]);
   });
 
   it('is null when the outline does not move between its anchors', () => {

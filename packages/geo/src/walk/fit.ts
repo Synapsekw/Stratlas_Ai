@@ -9,7 +9,14 @@ import {
   type LevelStill,
   type XZ,
 } from './horizontal';
-import { applySim2, sim2Between, sim2Through, sim2Yaw, type Sim2 } from './similarity2';
+import {
+  applySim2,
+  sim2Between,
+  sim2FromPairs,
+  sim2Through,
+  sim2Yaw,
+  type Sim2,
+} from './similarity2';
 
 /*
  * The walk fit (design "The fit"): pins on drawings or on the model turn the walk's raw path
@@ -21,6 +28,10 @@ import { applySim2, sim2Between, sim2Through, sim2Yaw, type Sim2 } from './simil
 export const BLEND_S = 2;
 /** The refusal of pins that share one raw position, so the path has no direction to fit. */
 export const PIN_SPAN_ERROR = 'These pins are at the same moment of the walk. Pick another moment.';
+const CLOSURE_ERROR =
+  'The raw path does not return to this point. Move the finish or add a pin along the walk.';
+const CLOSURE_WARNING =
+  'These pins do not determine scale and heading. The raw path is retained; add a pin along the loop to check the fit.';
 
 /** A drawing's affine from image px to model x/z (from its corners) and its base height. */
 export interface SurfaceFrame {
@@ -92,6 +103,8 @@ export interface WalkFit {
   notToScale: boolean;
   /** Why the walk cannot be placed (pins at one raw position), else null. */
   error: string | null;
+  /** Placement uncertainty that does not prevent displaying the raw trajectory. */
+  warning?: string | null;
 }
 
 /** What the pose file needs beyond {@link WalkFitSample}. */
@@ -125,6 +138,7 @@ interface SegFit {
 
 interface Built {
   error: string | null;
+  warning?: string | null;
   pinsOnly: boolean;
   gaps: { fromT: number; toT: number }[];
   at(t: number): WalkFitDetail | null;
@@ -376,20 +390,39 @@ function build(
   }
 
   let sameRaw = false;
+  let warning: string | null = null;
   for (const d of drafts) {
     if (d.pins.length < 2) continue;
     const raws = d.pins.map((p) => rawAt(d.stills, p.t).xz);
-    const sims: (Sim2 | null)[] = [];
+    let sims: (Sim2 | null)[] = [];
+    const closures: (Sim2 | null)[] = [];
     for (let k = 0; k + 1 < d.pins.length; k++) {
       const a = d.pins[k];
       const b = d.pins[k + 1];
       const ra = raws[k];
       const rb = raws[k + 1];
-      sims.push(a && b && ra && rb ? sim2Between(ra, rb, a.target, b.target) : null);
+      if (a && b && ra && rb) {
+        const targetSpan = dist(a.target, b.target);
+        const rawSpan = dist(ra, rb);
+        if (targetSpan < 1e-9 && rawSpan >= 1e-9) return { ...none, error: CLOSURE_ERROR };
+        // Coincident pairs borrow a measured turn/scale from another stretch when available.
+        sims.push(sim2FromPairs(ra, rb, a.target, b.target));
+        closures.push(
+          rawSpan < 1e-9 && targetSpan < 1e-9 ? sim2Between(ra, rb, a.target, b.target) : null,
+        );
+      } else {
+        sims.push(null);
+        closures.push(null);
+      }
     }
     if (sims.every((m) => m === null)) {
-      sameRaw = true;
-      continue;
+      if (closures.every((m) => m !== null)) {
+        sims = closures;
+        warning = CLOSURE_WARNING;
+      } else {
+        sameRaw = true;
+        continue;
+      }
     }
     const filled = sims.map((m, k): Sim2 => {
       if (m) return m;
@@ -493,6 +526,7 @@ function build(
 
   return {
     error: null,
+    warning,
     pinsOnly,
     gaps,
     at: (t) => {
@@ -601,6 +635,7 @@ export function fitWalk(
     pinsOnly,
     notToScale: onlyFrame?.provisional === true,
     error: main.error,
+    warning: main.warning ?? null,
   };
   details.set(fit, detail);
   return fit;

@@ -198,11 +198,16 @@ const isTyping = (t: EventTarget | null) =>
 /** Keys the drawing takes while a tool is drawing. */
 const DRAW_KEYS = /^([0-9.\-'" ]|Backspace|Tab|Enter|Escape)$/;
 
-/** The environment plane and map drape are navigation surfaces, not measured geometry. */
-function isGround(object: Object3D): boolean {
+/** Flat reference images and navigation planes carry no measured surface height. */
+function isReferenceSurface(object: Object3D): boolean {
   let node: Object3D | null = object;
   while (node) {
-    if (node.name === 'env:ground' || node.userData.aioGround === true) return true;
+    if (
+      node.name === 'env:ground' ||
+      node.userData.aioGround === true ||
+      node.userData.aioRaster === true
+    )
+      return true;
     node = node.parent;
   }
   return false;
@@ -261,7 +266,7 @@ export function attach3d(
     const hit = stage.raycast(ndc.x, ndc.y);
     const s = measureStore.getState();
     const tool = s.tool?.tool ?? s.file.measurements.find((m) => m.id === s.focus)?.tool;
-    if (tool && isTelecomTool(tool) && (!hit || isGround(hit.object))) return null;
+    if (tool && isTelecomTool(tool) && (!hit || isReferenceSurface(hit.object))) return null;
     return hit ? frame.toSite([hit.point.x, hit.point.y, hit.point.z]) : null;
   };
 

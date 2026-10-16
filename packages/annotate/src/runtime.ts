@@ -229,9 +229,28 @@ export function setPhotoRotator(fn: PhotoRotator | null): void {
   photoRotator = fn;
 }
 
-export function rotatePhoto(layerId: string, photoId: string): Promise<PhotoRotateAnswer> {
-  if (!photoRotator) return Promise.resolve({ ok: false, error: 'Rotate is not available.' });
-  return photoRotator(layerId, photoId);
+export async function rotatePhoto(layerId: string, photoId: string): Promise<PhotoRotateAnswer> {
+  if (!photoRotator) return { ok: false, error: 'Rotate is not available.' };
+  const { project, openSeq } = workspace.getState();
+  if (!project) return { ok: false, error: 'No project is open.' };
+  const result = await photoRotator(layerId, photoId);
+  const current = workspace.getState();
+  if (current.openSeq !== openSeq || current.project?.id !== project.id) {
+    return {
+      ok: false,
+      error:
+        'The project changed while the photo was turning. Reopen it to see the saved rotation.',
+    };
+  }
+  if (result.ok) {
+    if (result.manifest) current.replaceManifest(result.manifest);
+    workspace.setState((state) =>
+      state.openSeq === openSeq && state.project?.id === project.id
+        ? { issues: result.issues }
+        : {},
+    );
+  }
+  return result;
 }
 
 /**
