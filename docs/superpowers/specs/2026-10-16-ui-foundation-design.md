@@ -31,7 +31,7 @@ Order: 1 and 5 now, in parallel. 2 after 1 (it is built from these parts). 3 and
 
 ## Goals
 
-1. Tokens for spacing, elevation, z layers, durations, a caps letter-spacing and a type step for panel titles, plus `--warn-ink` for amber text. Guarded by a test so new raw values do not creep back.
+1. Tokens for spacing, elevation, z layers, durations, a caps letter-spacing and a role token for panel titles, plus `--warn-ink` for amber text. Guarded by a test so new raw values do not creep back.
 2. One button family, one floating surface (menus and popovers), one page tab style, three chip kinds, one row base, one empty state, one tooltip. All in `packages/ui`.
 3. Every state has one look: hover, pressed, selected, focus, disabled with a reason, busy.
 4. One shared resizable split, adopted by the app shell and the layouts the founder named.
@@ -51,13 +51,19 @@ Order: 1 and 5 now, in parallel. 2 after 1 (it is built from these parts). 3 and
 It fails, even if it technically works, if:
 
 - the app looks like a generic component kit (rounded pill buttons, big shadows, gradients, bigger everything). Density stays; contrast is added at the edges of the scale.
-- an e2e spec has to change because a `data-testid` or an accessible name moved, or a shortcut stopped working.
+- an e2e spec has to change its behaviour or its assertions on what the user sees, or a shortcut stopped working. Selectors may be rewritten when a class is migrated (see Constraints); what the spec does and checks may not. _My call_, settling the conflict between this anti-goal and the class migration.
 - a resizable area makes the data side smaller than today by default. Defaults keep today's sizes except where noted; the person can give the data more room, chrome gives way first.
 - a migration leaves two styles for one thing ("the old `.tool` and the new `.btn.tool`"). Each migrated class is deleted, not aliased forever.
 
 ## Constraints
 
 - **Keep every `data-testid`, `aria-label`, `aria-keyshortcuts` and shortcut.** e2e specs in `apps/desktop/e2e/` find controls by test id and by accessible name. Run the changed and affected specs the way CI does (CONTRIBUTING.md, "End to end the way CI runs it": 1100 x 720 window, display scale 1, WARP renderer, every demo built).
+- **e2e selectors when a class migrates** (_my call_):
+  - A spec that finds a control by a migrated class gets its selector rewritten to a `data-testid` or to role and accessible name, in the same commit as the migration.
+  - A spec that asserts a `title` on a control whose tooltip moves to `<Tip>`: the control keeps an accessible name or description (`aria-label` or `aria-describedby`) carrying that text, and the spec asserts that instead.
+  - A native `<select>` replaced by a menu (decision 3): the spec switches from `selectOption` to opening the menu and clicking the item.
+  - The plan has a step listing every spec touched and why.
+- **e2e fixtures pin the left sidebar open** through a test pref by default, so the 1100 px CI window does not auto-fold it (decision 10, row 3) under existing specs. Dedicated specs cover the auto-fold and the remembered re-open (_my call_).
 - **i18n.** Every new visible string (tooltip text, "why disabled" reasons, separator labels) goes through `packages/ui/src/i18n`. No em or en dashes in copy.
 - **Reduced motion.** The global rule (`mission.css`, about line 1574, plus `data-motion`) stays; new motion is instant under it.
 - **Dark stage surface.** `[data-surface='dark']` stays dark in every theme; parts placed on the stage use the dark values.
@@ -74,7 +80,7 @@ It fails, even if it technically works, if:
 - **Elevation:** `--el-1` hairline (inline popover), `--el-2` = `0 12px 32px var(--shadow)` (menus, popovers), `--el-3` = `0 24px 64px var(--shadow)` (dialogs). The seven hard-coded black shadows move to these, so the light theme gets its own shadow colour.
 - **Layers:** `--z-stage-ui 10`, `--z-panel 20`, `--z-pop 40`, `--z-drawer 60`, `--z-toast 70`, `--z-modal 80`. Every existing z-index maps onto one of these (my call: values in between become the nearest layer; anything that must sit above another inside one layer uses a local stacking context, not a new number).
 - **Durations:** `--d-1 120ms` (hover, colour), `--d-2 180ms` (popover, fold), `--d-3 260ms` (morphs). Bare `ease` is replaced by `var(--ease)`. The island's 0.4 s morph is project 2's own value and is added there.
-- **Type:** the scale becomes 11 caps / 12 body / 13 row / **15 panel title (600)** / 20 page title. Add `--t-15`, drop 9, 9.5, 10, 10.5, 11.5, 12.5 and 14.5 px. Add `--caps-ls: .06em` for every caps label (10 values today). Mono stays for numbers.
+- **Type:** the scale becomes 11 caps / 12 body / 13 row / **13 panel title (600, `--fg-0`)** / 20 page title. Panel titles stay at 13 px (founder, 16 Oct 2026; not 15) and stand apart from rows by weight and colour: rows are 13/400 in `--fg-1`, titles 13/600 in `--fg-0`. No `--t-15`: add a role token `--t-title` (= `--t-13`) with `--fw-title: 600`, so titles are styled by role and the size can change in one place. Drop 9, 9.5, 10, 10.5, 11.5, 12.5 and 14.5 px. Add `--caps-ls: .06em` for every caps label (10 values today). Mono stays for numbers.
 - **Radius:** controls use `--r-4`; `--r-2` only for kbd and badges; a new `--r-pill` only for status dots. The 29 uses of `3px` become `--r-4`.
 - **Amber text:** add `--warn-ink` (light `oklch(0.52 0.12 75)`, dark the same as `--s3`), on the pattern of `--danger-ink`. `--s3` stays for fills and swatches only.
 - **Guard:** a test (beside `tokens.test.ts`, my call: a vitest that scans renderer and `packages/ui` CSS, not a new stylelint dependency) fails on raw px `font-size`, raw colours, raw `box-shadow` and raw `z-index` outside `reportPage/` (print styles keep their own values). Existing exceptions are listed in an allow list that only ever shrinks.
@@ -95,7 +101,8 @@ It fails, even if it technically works, if:
 
 - `.surface-pop` (bg-1, `--line`, `--r-6`, `--el-2`, `--z-pop`) for every menu and popover; `.surface-dlg` (`--el-3`, `--z-modal`) for dialogs.
 - `<Popover>` and `<Menu>` in `packages/ui` become the only floating components (today `<Popover>` has one user). The shared context menu's styles move from `builder/builder.css` into `mission.css`. The 11 surfaces (`.dmenu`, `.proj-menu`, `.stage-pop`, `.xmenu` and the rest) adopt them.
-- **Popover anatomy:** optional title row (12/600) with close, body, optional footer. Checkboxes align on one column; native `<select>` inside popovers is replaced by the menu or `.seg` where it has 2 to 4 options (my call: longer lists keep a native select restyled to the token look, because a custom listbox is accessibility work this project does not need).
+- **Portals inherit the opener's surface** (_my call_): `<Tip>`, `<Popover>` and `<Menu>` render in a portal, and the portal root copies the nearest `data-surface` (and the theme attributes) from the opener, so a popover opened from the stage stays dark in the light theme.
+- **Popover anatomy:** optional title row (the panel title step, 13/600 `--fg-0`) with close, body, optional footer. Checkboxes align on one column; native `<select>` inside popovers is replaced by the menu or `.seg` where it has 2 to 4 options (my call: longer lists keep a native select restyled to the token look, because a custom listbox is accessibility work this project does not need).
 - **Stacking rule:** opening a popover from a menu closes the menu (the review saw More and its child popover half covering each other).
 - **Toasts** move to `mission.css`: leading status icon, no side stripe, logical `inset-inline-end`.
 
@@ -108,12 +115,12 @@ It fails, even if it technically works, if:
 
 ### 5. Rows
 
-- One `.row` base for nav (32 px), tree (26), menu items (30) and palette items (34): hover `--bg-2`, **selected `--bg-3` plus a mint marker or glyph** (the one selected look; replaces the four), focus the global ring. Counts are mono 11 `--fg-3`, right aligned.
+- One `.row` base for nav (32 px), tree (26), menu items (30) and palette items (34): hover `--bg-2`, **selected `--bg-3` with the row's label and icon in the mint accent (`--acc` as the text tint)** (the one selected look; replaces the four), focus the global ring. No leading bar, no dot and no reserved slot for one; never a side stripe (_my call_). Counts are mono 11 `--fg-3`, right aligned.
 - **Visible affordances:** the eye toggle shows at `--fg-4` at rest and brightens on hover (no `opacity: 0`); row actions are one trailing "⋯" button, 24 x 24, visible on the selected row and on hover, opening the same menu as right-click. Every row action hit target is at least 24 px.
 
 ### 6. Tooltips
 
-- One `<Tip>` in `packages/ui` (a portal, triggered by hover and keyboard focus): 400 ms delay on first show, 0 ms while moving between tips, 120 ms fade; content is the label plus the `.kbd` shortcut. `aria-label` stays the accessible name; the tip is `aria-hidden` when it repeats the name.
+- One `<Tip>` in `packages/ui` (a portal, triggered by hover and keyboard focus): 400 ms delay on first show, 0 ms while moving between tips, 120 ms fade; content is the label plus the `.kbd` shortcut. `aria-label` stays the accessible name; the tip is `aria-hidden` when it repeats the name. When a native `title=` goes, its text stays on the control as `aria-label` or through `aria-describedby`, so specs that asserted the `title` assert that instead (Constraints).
 - Every icon-only control uses it. The 219 native `title=` tooltips are replaced **progressively**: in this project, every icon-only control in `packages/ui`, the app shell (sidebars, title bar until project 2 removes it) and the stage toolbar's surroundings that project 2 does not replace. The rest are replaced as projects 2 to 4 touch their screens (my call: a full sweep of 219 now would touch files the other projects are about to rewrite). The guard in decision 1 counts `title=` and the count may only go down.
 
 ### 7. Focus
@@ -123,7 +130,7 @@ It fails, even if it technically works, if:
 ### 8. Motion
 
 - Animate `transform` and `opacity` only.
-- **Panel fold:** `.sidebar { transition: width }` and `.ws { transition: grid-template-columns }` go. The panel slides with a transform; the grid snaps once (at the end when closing, at the start when opening); the stage canvas keeps its size during the slide and resizes once.
+- **Panel fold:** `.sidebar { transition: width }` and `.ws { transition: grid-template-columns }` go. The full panel slides out with a transform, then the grid snaps once (at the end when closing, at the start when opening); the stage canvas keeps its size during the slide and resizes once. The 52 px rail is a separate element that fades in; nothing animates width (_my call_).
 - Durations from decision 1. Nothing bounces. Reduced motion is instant.
 
 ### 9. Light theme contrast
@@ -141,20 +148,20 @@ One primitive, `<SplitPane>` plus a `useSplit` hook. FloatingVideo (per project 
 3. **Memory.** Saved per screen and layout key in the existing prefs store, the way `useStagePrefs` (`workspace/stagePrefs.ts`) does, on pointer up (not every move). Chrome sizes in px, data to data splits (3D | Map, gallery | viewer) as a fraction. Per computer, not per project (my call: the founder said "width remembered"; per project memory is FloatingVideo's choice because a video's size depends on the project, a sidebar's does not).
 4. **Keyboard.** `role="separator"`, `aria-orientation`, `aria-valuenow/min/max`, `aria-controls`, `tabIndex=0`, an accessible name ("Resize the library"). Arrows step 16 px, Shift 64 px, Home min, End max, Enter toggles collapse.
 5. **Double-click** resets to the default.
-6. **Collapse.** Dragging below min minus 48 px snaps to collapsed: a 12 px strip, or the 52 px rail for the left sidebar. `PanelHandle` re-opens it. Collapse and size are one state, so today's fold flags migrate into it (Ctrl+B and Ctrl+Alt+B keep working).
-7. **Motion.** No transition while dragging. Snap, reset and collapse use a 180 ms transform; canvases resize once at the end. Instant under reduced motion.
+6. **Collapse.** Dragging below min minus 48 px snaps to collapsed: a 12 px strip, or the 52 px rail for the left sidebar. `PanelHandle` re-opens it. Collapse and size are one state, so today's fold flags migrate into it (Ctrl+B and Ctrl+Alt+B keep working). The left sidebar uses the shared split for its width and the rail for collapsed (_my call_).
+7. **Motion.** No transition while dragging. Snap, reset and collapse use a 180 ms transform (the full panel slides, then the grid snaps once; the rail fades in as its own element, decision 8); canvases resize once at the end. Instant under reduced motion.
 8. **Content.** Panes get `container-type: inline-size` so their content adapts with `@container`, not `@media` on window width.
 
 **Adopted in this project** (founder's priority first):
 
-| #   | Layout                                                | Default                                     | Min / max                              | Notes                                                                                                                                                                    |
-| --- | ----------------------------------------------------- | ------------------------------------------- | -------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| 1   | Media: gallery \| viewer                              | viewer 54% (today's 46% gallery, unchanged) | gallery 200, viewer 360                | The founder's example. Project 4 changes the default to photo first; this project makes it draggable.                                                                    |
-| 2   | Workspace: stage \| right panel                       | 360 px (400 on volumetric, as today)        | panel 280 to 50%                       | Project 2 builds the workbench on this split. The 360/400 jump stays until project 2 (it is a workbench decision).                                                       |
-| 3   | Left sidebar width                                    | 252 px                                      | 220 to 320, collapse to the 52 px rail | Plus auto-collapse to the rail below 1280 px window width when a data pane is open (my call, from the review; the person can re-open it, and that choice is remembered). |
-| 4   | Agent dock width (Issues, Media, Detections, Reports) | `min(360px, 33vw)` as today                 | 280 to 50%                             |                                                                                                                                                                          |
-| 5   | Issues: list \| card                                  | card 420 px                                 | list 280, card 320                     |                                                                                                                                                                          |
-| 6   | Right panel: context \| agent (vertical)              | 62% as today                                | context 160 px, agent 96 px            | Project 2 adds maximise and minimise on top of this split.                                                                                                               |
+| #   | Layout                                                | Default                                     | Min / max                              | Notes                                                                                                                                                                                                                            |
+| --- | ----------------------------------------------------- | ------------------------------------------- | -------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 1   | Media: gallery \| viewer                              | viewer 54% (today's 46% gallery, unchanged) | gallery 200, viewer 360                | The founder's example. Project 4 changes the default to photo first; this project makes it draggable.                                                                                                                            |
+| 2   | Workspace: stage \| right panel                       | 360 px (400 on volumetric, as today)        | panel 280 to 50%                       | Project 2 builds the workbench on this split. The 360/400 jump stays until project 2 (it is a workbench decision).                                                                                                               |
+| 3   | Left sidebar width                                    | 252 px                                      | 220 to 320, collapse to the 52 px rail | Folds to the rail on its own below about 1280 px window width when the Scene or a data screen is open (founder). If the person re-opens it, that choice is remembered in its own pref, separate from the split's collapse state. |
+| 4   | Agent dock width (Issues, Media, Detections, Reports) | `min(360px, 33vw)` as today                 | 280 to 50%                             |                                                                                                                                                                                                                                  |
+| 5   | Issues: list \| card                                  | card 420 px                                 | list 280, card 320                     |                                                                                                                                                                                                                                  |
+| 6   | Right panel: context \| agent (vertical)              | 62% as today                                | context 160 px, agent 96 px            | Project 2 adds maximise and minimise on top of this split.                                                                                                                                                                       |
 
 **Left to later projects**, which re-lay out these screens: Split 3D | Map, timeline height, the photo and video dock beside the view (project 2); Detections' three columns, Reports' controls | preview (project 4). Settings, Help and Photogrammetry nav columns stay fixed and shrink to icons when their container is narrow (project 3 moves the Settings list into the left sidebar anyway).
 
@@ -164,6 +171,8 @@ One primitive, `<SplitPane>` plus a `useSplit` hook. FloatingVideo (per project 
 - Areas are resizable so data gets priority; Media library vs image is the named example.
 - The sidebar width is set by a drag handle and remembered (decided for the island's workbench; applied here to every split).
 - Keep the app's own look and evolve it; the review's eight principles (below) are the direction.
+- **Panel titles are 13 px, not 15** (16 Oct 2026). They stand apart from rows by weight (600) and colour (`--fg-0`), not size (decision 1, type).
+- **The left sidebar folds to its 52 px rail on its own below about 1280 px** when the Scene or a data screen is open (16 Oct 2026). If the person re-opens it, that choice is remembered in its own pref, separate from the split's collapse state (decision 10, row 3).
 
 ## Design direction (evolved Mission)
 
@@ -171,7 +180,7 @@ One primitive, `<SplitPane>` plus a `useSplit` hook. FloatingVideo (per project 
 2. **One place per kind of thing.** Rail = where am I. Island = what am I doing. Workbench = what is selected. Palette = everything. (Projects 2 and 3 implement it; this project gives them the parts.)
 3. **One glyph, one meaning, one verb.** (Project 3.)
 4. **Quiet surfaces, loud selection.** Mint means active, selected or go; never decoration or a stripe. Amber, red and blue mean severity only.
-5. **Hierarchy through steps, not boxes.** Five type steps with a real jump at panel titles; caps for section labels; mono for numbers; space, not cards, to group.
+5. **Hierarchy through steps, not boxes.** Five type steps; panel titles stand apart by weight and colour; caps for section labels; mono for numbers; space, not cards, to group.
 6. **Show, then reveal.** Affordances are faintly visible at rest; hover brightens; every icon tells its name and shortcut within 400 ms.
 7. **Motion explains, never decorates.** 120, 180, 260 ms, transform and opacity only, instant under reduced motion.
 8. **Dense but touchable.** 24 px minimum hit target, a 4 and 8 px rhythm from tokens, 11 px only for caps and metadata.
@@ -192,10 +201,9 @@ One primitive, `<SplitPane>` plus a `useSplit` hook. FloatingVideo (per project 
 
 - **Size of the migration.** 85 button classes and 11 surfaces touch many files that projects 2 to 4 will also change. Merge this project before they start building, and keep each migration commit to one part kind so a conflict is easy to read.
 - **Parallel work in the repo.** Other sessions work in `workspace/` and `survey/`. This branch touches CSS in many areas; it should merge early and announce the token names so other branches use them.
-- **e2e selectors.** Some specs may find a button by a class. The builder greps `apps/desktop/e2e/` for class selectors of migrated classes before deleting them.
+- **e2e selectors.** Some specs may find a button by a class. The builder greps `apps/desktop/e2e/` for class selectors of migrated classes before deleting them and rewrites them as set out in Constraints.
 - **Light theme stage chips.** If the general rule in decision 9 changes how something on the stage reads in dark, it is wrong: dark must look exactly as today there.
 
 ## Questions for the founder
 
-1. **Panel titles grow from 12 to 15 px (decision 1, type).** It is the most visible change in this project: every panel and popover title gets bigger and bolder. Keep it, or hold titles at 13 px?
-2. **The left sidebar folds to its 52 px rail on its own below a 1280 px window when a data pane is open (decision 10, row 3).** Keep it, or only fold when the person asks?
+None open. Both questions were answered on 16 Oct 2026 (see "What the founder decided"): titles at 13 px, and the sidebar auto-folds with the re-open remembered.
