@@ -39,7 +39,7 @@ import {
   shortcutHint,
 } from '@aio/ui';
 import { dateTags, useWorkspace, workspace } from '@aio/workspace';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState, type HTMLAttributes } from 'react';
 import { openAuditTrail } from '../audit/auditView';
 import { builder } from '../builder/state';
 import { DrawingControls } from '../drawings/DrawingControls';
@@ -54,7 +54,7 @@ import { openWalk, placeWalk, removeWalkPlacement, useWalks } from '../walks/wal
 import { WalkRowProcess } from '../walks/WalkProcessLine';
 import { walkFilesMissing, walkRecordKey } from '../walks/walkStore';
 import { PANEL_ID, PanelHandle } from './PanelHandle';
-import type { Screen } from '../store';
+import { isSidebarFolded, type Screen } from '../store';
 import { useCaptureIndex } from '../workspace/compare';
 import { flightPathShown, toggleFlightPath } from '../workspace/flightPaths';
 import { updateFlightPaths, useFlightPathModel } from '../workspace/pathModel';
@@ -905,15 +905,23 @@ function Datasets({ collapsed }: { collapsed: boolean }) {
   );
 }
 
-export function Sidebar() {
+export interface SidebarProps {
+  /** The `shell.sidebar` split's separator (App.tsx): the drag handle on the inner edge. */
+  resize?: HTMLAttributes<HTMLDivElement>;
+}
+
+export function Sidebar({ resize }: SidebarProps = {}) {
   useT();
   const screen = useShell((s) => s.screen);
-  const collapsed = useShell((s) => s.settings.sidebarCollapsed);
+  const collapsed = useShell(isSidebarFolded);
   const libCount = useShell((s) => s.library?.length);
   const issueCount = useWorkspace((s) => (s.project ? s.issues.length : undefined));
 
   return (
     <aside className="sidebar" id={PANEL_ID.left} aria-label={t('nav.primary')}>
+      {/* the panel's surface slides out as it folds, and the rail's fades in (styles.css) */}
+      <div className="sb-surface" aria-hidden="true" />
+      <div className="sb-rail" aria-hidden="true" />
       <div className="sb-scroll">
         <nav className="sb-sec sb-nav" aria-label={t('nav.sections')}>
           {NAV.map((n) => (
@@ -957,6 +965,16 @@ export function Sidebar() {
           </span>
         </button>
       </div>
+      {resize && (
+        <div
+          {...resize}
+          className="split-handle sb-resize"
+          aria-label={t('panel.resizeLeft')}
+          aria-controls={PANEL_ID.left}
+        >
+          <span className="kbd split-readout" aria-hidden="true" />
+        </div>
+      )}
       <PanelHandle
         side="left"
         collapsed={collapsed}

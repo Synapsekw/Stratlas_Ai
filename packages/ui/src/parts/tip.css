@@ -22,6 +22,11 @@
 .tip .kbd {
   margin-inline-start: 6px;
 }
+/* a Button's disabled reason under its tip */
+.tip-reason {
+  display: block;
+  color: var(--fg-2);
+}
 
 /* the one tooltip: Tip renders it into the portal root */
 .tip-pop {

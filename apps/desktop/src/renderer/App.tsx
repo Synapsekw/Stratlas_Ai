@@ -14,11 +14,12 @@ import {
   LiveAnnouncer,
   matchShortcut,
   t,
+  useResizableSplit,
 } from '@aio/ui';
 import { getPlayer } from '@aio/video';
 import { volumetric, VolumetricStyles } from '@aio/volumetric';
 import { workspace } from '@aio/workspace';
-import { lazy, Suspense, useEffect } from 'react';
+import { lazy, Suspense, useEffect, type TransitionEvent } from 'react';
 import { getMedia } from './media';
 import { nextClipInFlight, startPlaybackLoop } from './playback';
 import { IssuesScreen } from './screens/Issues';
@@ -54,6 +55,8 @@ import { PackageExportDialog } from './shell/PackageExport';
 import { Palette } from './shell/Palette';
 import { UnlockDialog } from './shell/UnlockDialog';
 import { Sidebar } from './shell/Sidebar';
+import { useFold } from './shell/useFold';
+import { isSidebarFolded } from './store';
 import { TitleBar } from './shell/TitleBar';
 import { applyAppearance, OS_QUERIES } from './theme';
 import { HelpPanel } from './help/HelpPanel';
@@ -236,8 +239,62 @@ function Screen() {
   }
 }
 
+/**
+ * The left sidebar on the `shell.sidebar` split: its width is the `.app` grid's first column,
+ * dragged on its inner edge and remembered; folded, it is the 52 px rail. The fold is the
+ * person's (`sidebarCollapsed`) or the window's (shell/autoFold.ts). The panel slides out with a
+ * transform and the grid snaps once at the end; opening, the grid snaps first (useFold.ts).
+ */
+function useSidebarSplit() {
+  const folded = useShell(isSidebarFolded);
+  const fold = useFold(folded);
+  const { snap } = fold;
+  const split = useResizableSplit({
+    id: 'shell.sidebar',
+    orientation: 'horizontal',
+    sized: 'start',
+    unit: 'px',
+    defaultSize: 252,
+    min: 220,
+    max: 320,
+    otherMin: 600,
+    collapsedSize: 52,
+    collapsed: fold.layoutFolded,
+    // dragged to the rail or out of it: the panel is there already, so it does not slide
+    onCollapsedChange: (next) => {
+      snap(next);
+      const s = shell.getState();
+      if (next !== isSidebarFolded(s)) void s.toggleSidebar();
+    },
+  });
+  // the window's width folds the sidebar on its own (shell/autoFold.ts)
+  useEffect(() => {
+    const follow = () => {
+      shell.getState().setWindowWidth(window.innerWidth);
+    };
+    follow();
+    window.addEventListener('resize', follow);
+    return () => {
+      window.removeEventListener('resize', follow);
+    };
+  }, []);
+  const { settle } = fold;
+  const onTransitionEnd = (e: TransitionEvent<HTMLDivElement>) => {
+    const el = e.target as Element;
+    if (e.propertyName === 'transform' && el.classList.contains('sb-surface')) settle();
+  };
+  return {
+    folded,
+    phase: fold.phase,
+    containerRef: split.containerRef,
+    separatorProps: split.separatorProps,
+    onTransitionEnd,
+  };
+}
+
 export function App() {
-  const collapsed = useShell((s) => s.settings.sidebarCollapsed);
+  const sidebar = useSidebarSplit();
+  const { containerRef: sidebarSplitRef, separatorProps: sidebarResize } = sidebar;
   const theme = useShell((s) => s.settings.theme);
   const direction = useShell((s) => s.settings.direction);
   const contrast = useShell((s) => s.settings.contrast);
@@ -437,15 +494,18 @@ export function App() {
 
   return (
     <div
+      ref={sidebarSplitRef}
       className="app"
-      data-sb={collapsed ? 'collapsed' : 'expanded'}
+      data-sb={sidebar.folded ? 'collapsed' : 'expanded'}
+      data-fold={sidebar.phase ?? undefined}
+      onTransitionEnd={sidebar.onTransitionEnd}
       data-screen={screen}
       data-agent-dock={agentDockOpen ? 'open' : undefined}
     >
       <AnnotateStyles />
       <VolumetricStyles />
       <TitleBar />
-      <Sidebar />
+      <Sidebar resize={sidebarResize} />
       <main className="main">
         <Screen />
         <AgentDock />

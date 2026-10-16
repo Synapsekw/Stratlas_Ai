@@ -8,11 +8,27 @@
 }
 
 .app {
+  /* The sidebar's column: the shell.sidebar split (App.tsx) writes --split-size, --split-min and
+     --split-max here, so the width can be dragged and is remembered; folded, it is the rail. */
+  --sb-col: clamp(var(--split-min, 0px), var(--split-size, var(--sb-w)), var(--split-max, 100%));
+  /* the sidebar slides out towards the window's start edge */
+  --sb-fold-x: -1;
   height: 100vh;
   display: grid;
   grid-template-rows: var(--tb-h) minmax(0, 1fr);
-  grid-template-columns: auto minmax(0, 1fr);
+  grid-template-columns: var(--sb-col) minmax(0, 1fr);
   grid-template-areas: 'tb tb' 'sb main';
+}
+.app[data-collapsed] {
+  --sb-col: var(--split-size, var(--sb-w-c));
+}
+[dir='rtl'] .app {
+  --sb-fold-x: 1;
+}
+/* dragging the sidebar's edge */
+.app[data-dragging] {
+  cursor: col-resize;
+  user-select: none;
 }
 .fill {
   position: absolute;
@@ -142,12 +158,9 @@ code {
   display: flex;
   align-items: center;
   gap: 10px;
-  width: calc(var(--sb-w) - 14px);
+  /* as wide as the sidebar's column, which snaps once when it folds (nothing animates width) */
+  width: calc(var(--sb-col) - 14px);
   flex: none;
-  transition: width var(--panel-ms) var(--ease);
-}
-.app[data-sb='collapsed'] .brand {
-  width: calc(var(--sb-w-c) - 14px);
 }
 /* The outlined wordmark (shell/BrandMark.tsx): QUADRION in the foreground, AI in the accent. */
 .wordmark {
@@ -500,24 +513,98 @@ button.chip-status:hover {
 /* ---------- sidebar ---------- */
 .sidebar {
   grid-area: sb;
-  width: var(--sb-w);
-  background: var(--bg-chrome);
-  border-inline-end: 1px solid var(--line-soft);
   display: flex;
   flex-direction: column;
   min-height: 0;
+  min-width: 0;
   /* clip, not hidden: the tool tips that wait beside the rows make the sidebar wider inside than
      it shows, and nothing may scroll it sideways (bringing the tab on its edge into view did) */
   overflow: clip;
-  transition:
-    width var(--panel-ms) var(--ease),
-    border-color 120ms var(--ease);
   position: relative;
-  z-index: 20;
+  z-index: var(--z-panel);
 }
 .app[data-sb='collapsed'] .sidebar {
-  width: var(--sb-w-c);
   overflow: visible;
+}
+/* The panel's surface and the rail's. Folding, the surface slides out with a transform while the
+   rail fades in; the grid column snaps to the rail once, at the end (opening: at the start), so
+   the main view is resized once (App.tsx, shell/useFold.ts). Nothing animates a width. */
+.sb-surface,
+.sb-rail {
+  position: absolute;
+  inset-block: 0;
+  inset-inline-start: 0;
+  background: var(--bg-chrome);
+  border-inline-end: 1px solid var(--line-soft);
+  pointer-events: none;
+}
+.sb-surface {
+  inline-size: 100%;
+  transition:
+    transform var(--d-2) var(--ease),
+    border-color var(--d-1) var(--ease);
+}
+.app[data-sb='collapsed'] .sb-surface {
+  transform: translateX(calc(var(--sb-fold-x) * 100%));
+}
+.sb-rail {
+  inline-size: var(--sb-w-c);
+  opacity: 0;
+  transition:
+    opacity var(--d-2) var(--ease),
+    border-color var(--d-1) var(--ease);
+}
+.app[data-sb='collapsed'] .sb-rail {
+  opacity: 1;
+}
+/* the tab rides the sliding edge, then the grid snap puts it where it ends */
+.app[data-fold='closing'] .ph[data-side='left'] {
+  transform: translateX(calc(var(--sb-fold-x) * (var(--sb-col) - var(--sb-w-c))));
+  transition: transform var(--d-2) var(--ease);
+}
+.app[data-fold='opening'] .ph[data-side='left'] {
+  animation: sb-edge-in var(--d-2) var(--ease);
+}
+@keyframes sb-edge-in {
+  from {
+    transform: translateX(calc(var(--sb-fold-x) * (var(--sb-col) - var(--sb-w-c))));
+  }
+}
+/* The drag handle of the sidebar's width: 8 px inside its inner edge, so it never takes a click
+   meant for the main view; the tab lies over it at mid-height. The panel's border is its line. */
+.sidebar > .sb-resize {
+  inset-block: 0;
+  inset-inline-end: 0;
+  inline-size: 8px;
+  z-index: auto;
+  cursor: col-resize;
+}
+.sidebar > .sb-resize::before {
+  content: none;
+}
+.sidebar > .sb-resize::after {
+  inset-block: 0;
+  inset-inline-end: 0;
+  inline-size: 2px;
+  transform: scaleX(0.5);
+}
+.app[data-dragging] .sb-resize::after {
+  background: var(--acc);
+  opacity: 1;
+  transform: none;
+  transition: none;
+}
+/* the size beside the pointer, placed on the window: the sidebar clips what leaves it */
+.app[data-dragging] .sb-resize > .split-readout {
+  display: block;
+  position: fixed;
+  inset-block-start: var(--split-pointer, 50%);
+  inset-inline-start: calc(var(--sb-col) + 8px);
+  translate: 0 -50%;
+}
+.sb-scroll,
+.sb-foot {
+  position: relative;
 }
 .sb-scroll {
   flex: 1;
@@ -743,7 +830,7 @@ button.chip-status:hover {
   display: flex;
   flex-direction: column;
   gap: 2px;
-  width: var(--sb-w);
+  width: 100%;
 }
 
 /* ---------- main and screens ---------- */
@@ -770,9 +857,10 @@ button.chip-status:hover {
   align-items: center;
   color: var(--fg-1);
 }
-/* Left: against the sidebar's border, from inside. It moves with the sidebar as it folds. */
+/* Left: against the sidebar's border, from inside. It moves with the sidebar as it folds. (The
+   border is drawn by the panel's surface and the rail's, so the tab keeps 1 px clear of it.) */
 .ph[data-side='left'] {
-  inset-inline-end: 0;
+  inset-inline-end: 1px;
   z-index: 1; /* over the rows, under the sidebar's tool tips and menus */
 }
 /* Right: in the Scene's grid, in the panel's column (an absolutely placed grid item is laid out
@@ -833,7 +921,7 @@ button.chip-status:hover {
   outline-offset: -2px;
 }
 /* the edge the tab moves lights up while the pointer is on it */
-.sidebar:has(> .ph:hover) {
+.sidebar:has(> .ph:hover) > :is(.sb-surface, .sb-rail) {
   border-inline-end-color: var(--acc);
 }
 .ws:has(> .ph:hover) > .right {
@@ -858,10 +946,7 @@ button.chip-status:hover {
 .ph[data-side='left'] .tip {
   position: fixed;
   top: calc(var(--tb-h) + (100vh - var(--tb-h)) / 2);
-  inset-inline-start: calc(var(--sb-w) + 10px);
-}
-.app[data-sb='collapsed'] .ph[data-side='left'] .tip {
-  inset-inline-start: calc(var(--sb-w-c) + 10px);
+  inset-inline-start: calc(var(--sb-col) + 10px);
 }
 .ph[data-side='right'] .tip {
   inset-inline-start: auto;
@@ -1365,14 +1450,71 @@ button.chip-status:hover {
 
 /* ---------- workspace ---------- */
 .ws {
-  grid-template-columns: minmax(0, 1fr) var(--rp-w);
+  /* The right panel's column: the scene.right split (WorkspaceScreen.tsx) writes --split-size,
+     --split-min and --split-max here; folded, it is the strip that brings the panel back. */
+  --rp-col: clamp(var(--split-min, 0px), var(--split-size, var(--rp-w)), var(--split-max, 100%));
+  /* the panel slides out towards the window's end edge */
+  --rp-fold-x: 1;
+  grid-template-columns: minmax(0, 1fr) var(--rp-col);
   grid-template-rows: auto minmax(0, 1fr) auto;
   grid-template-areas: 'dbar right' 'stage right' 'tl right';
-  transition: grid-template-columns var(--panel-ms) var(--ease);
 }
-.ws.right-off {
-  /* the panel's border and the tab: the strip that brings the panel back */
-  grid-template-columns: minmax(0, 1fr) calc(var(--ph-w) + 1px);
+.ws[data-collapsed] {
+  --rp-col: var(--split-size, var(--ph-w));
+}
+[dir='rtl'] .ws {
+  --rp-fold-x: -1;
+}
+/* Folding, the panel and its tab slide out with a transform until only the strip shows, then the
+   grid snaps once; opening, the grid snaps first and they slide in. The stage is resized once. */
+.ws[data-fold='closing'] > :is(.right, .ph[data-side='right']) {
+  transform: translateX(calc(var(--rp-fold-x) * (var(--rp-col) - var(--ph-w))));
+  transition: transform var(--d-2) var(--ease);
+}
+.ws[data-fold='opening'] > :is(.right, .ph[data-side='right']) {
+  animation: rp-edge-in var(--d-2) var(--ease);
+}
+@keyframes rp-edge-in {
+  from {
+    transform: translateX(calc(var(--rp-fold-x) * (var(--rp-col) - var(--ph-w))));
+  }
+}
+/* The drag handle of the panel's width: 8 px inside its inner edge, never over the stage; the tab
+   lies over it at mid-height (and over all of it when folded). The panel's border is its line. */
+.ws > .rp-resize {
+  grid-column: 2 / 3;
+  grid-row: 1 / -1;
+  inset-block: 0;
+  /* after the panel's border, as the tab: a point on the stage's last pixel stays the stage's */
+  inset-inline-start: 1px;
+  inline-size: 8px;
+  z-index: var(--z-stage-ui);
+  cursor: col-resize;
+}
+.ws > .rp-resize::before {
+  content: none;
+}
+.ws > .rp-resize::after {
+  inset-block: 0;
+  inset-inline-start: 0;
+  inline-size: 2px;
+  transform: scaleX(0.5);
+}
+.ws[data-dragging] {
+  cursor: col-resize;
+  user-select: none;
+}
+.ws[data-dragging] > .rp-resize::after {
+  background: var(--acc);
+  opacity: 1;
+  transform: none;
+  transition: none;
+}
+.ws[data-dragging] > .rp-resize > .split-readout {
+  display: block;
+  inset-block-start: var(--split-pointer, 50%);
+  inset-inline-end: calc(100% + 8px);
+  translate: 0 -50%;
 }
 .dbar {
   grid-area: dbar;
@@ -2075,9 +2217,6 @@ svg.flip {
 .ws-vol {
   --rp-w: 400px;
 }
-.ctx-wrap.tall.vol {
-  flex: 0 1 80%;
-}
 .stbar .ann-toolbar.stage-ann {
   border-radius: var(--r-4);
   backdrop-filter: none;
@@ -2301,13 +2440,37 @@ svg.flip {
     border-color 120ms var(--ease),
     background-color 120ms var(--ease);
 }
-.right > * {
+/* folded, the tab is the whole strip after the panel's border (the strip is --ph-w wide) */
+.ws[data-collapsed] > .ph[data-side='right'] {
+  width: calc(var(--ph-w) - 1px);
+}
+.ws[data-collapsed] > .ph[data-side='right'] > .ph-tab {
+  overflow: clip;
+}
+/* folded to its strip, the content keeps a panel's width, out of sight: nothing reflows to 12 px */
+.ws[data-collapsed] > .right > * {
   width: var(--rp-w);
 }
 /* folded to its strip, the panel shows nothing of its content (once it has finished folding) */
 .ws.right-off > .right > * {
   visibility: hidden;
-  transition: visibility 0s linear var(--panel-ms);
+  transition: visibility 0s linear var(--d-2);
+}
+/* the context above, the agent below: the scene.ctxAgent split */
+.right > .rp-split {
+  flex: 1;
+  min-height: 0;
+}
+.rp-split > .split-pane {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+/* the context fills its pane; the split's line is its lower border */
+.rp-split > .split-pane > .ctx-wrap {
+  flex: 1 1 auto;
+  max-height: none;
+  border-bottom: 0;
 }
 .ctx-wrap {
   flex: none;
@@ -2315,9 +2478,6 @@ svg.flip {
   flex-direction: column;
   min-height: 0;
   border-bottom: 1px solid var(--line);
-}
-.ctx-wrap.tall {
-  flex: 0 1 62%;
 }
 .ctx-tabs {
   margin: 8px 12px 0;
@@ -2417,10 +2577,6 @@ svg.flip {
   min-height: 0;
   display: flex;
   flex-direction: column;
-}
-.right > .agent {
-  /* Keep the conversation usable while the context and telecom sections scroll above it. */
-  min-height: 180px;
 }
 .agent-host {
   flex: 1;

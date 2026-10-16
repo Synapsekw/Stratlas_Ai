@@ -12,10 +12,19 @@ export interface PanelPrefs {
   rightCollapsed: boolean;
   /** The agent column of Issues, Media, Detections and Reports is folded away. */
   agentDockCollapsed: boolean;
+  /**
+   * The person reopened the left sidebar the window had folded on its own (shell/autoFold.ts):
+   * it stays open in a narrow window from then on.
+   */
+  sidebarReopened: boolean;
 }
 
 /** The Scene's panel is shown; the agent column takes room from a screen only once asked for. */
-export const DEFAULT_PANEL_PREFS: PanelPrefs = { rightCollapsed: false, agentDockCollapsed: true };
+export const DEFAULT_PANEL_PREFS: PanelPrefs = {
+  rightCollapsed: false,
+  agentDockCollapsed: true,
+  sidebarReopened: false,
+};
 
 export const PANEL_PREFS_KEY = 'quadrion.panels';
 
@@ -32,17 +41,23 @@ export function browserStorage(): PanelStorage | null {
 
 /**
  * Anything that is not a stored choice falls back to its default, field by field: a value stored
- * before the agent column existed keeps its right panel choice.
+ * before the agent column (or the sidebar's reopen) existed keeps its right panel choice.
  */
 export function parsePanelPrefs(raw: string | null | undefined): PanelPrefs {
   if (!raw) return DEFAULT_PANEL_PREFS;
   try {
     const v = JSON.parse(raw) as unknown;
     if (!v || typeof v !== 'object') return DEFAULT_PANEL_PREFS;
-    const { rightCollapsed: right, agentDockCollapsed: dock } = v as Record<string, unknown>;
+    const {
+      rightCollapsed: right,
+      agentDockCollapsed: dock,
+      sidebarReopened: reopened,
+    } = v as Record<string, unknown>;
     return {
       rightCollapsed: typeof right === 'boolean' ? right : DEFAULT_PANEL_PREFS.rightCollapsed,
       agentDockCollapsed: typeof dock === 'boolean' ? dock : DEFAULT_PANEL_PREFS.agentDockCollapsed,
+      sidebarReopened:
+        typeof reopened === 'boolean' ? reopened : DEFAULT_PANEL_PREFS.sidebarReopened,
     };
   } catch {
     return DEFAULT_PANEL_PREFS;

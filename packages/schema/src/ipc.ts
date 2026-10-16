@@ -3897,6 +3897,13 @@ export interface AioBridge {
    * `auto` (then `Settings.launchScreen` decides). Optional: absent outside Electron means `auto`.
    */
   launchGate?(): LaunchGateMode;
+  /**
+   * Switches for this run, read before the first frame. `autoFold`: the left sidebar may fold to
+   * its rail on its own in a narrow window; false when main started the window with
+   * `--quadrion-autofold=0` (an e2e run, unless QUADRION_E2E_AUTOFOLD=1). Optional: absent outside
+   * Electron means false.
+   */
+  flags?: { autoFold: boolean };
 }
 
 /** See `AioBridge.launchGate`. */

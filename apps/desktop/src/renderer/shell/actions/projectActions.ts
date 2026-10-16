@@ -16,6 +16,7 @@ import { allowedActions, exportUnavailable, type ExportActionId } from '../../ex
 import { runExportAction } from '../../exports/exports';
 import { pickAndScanPanos } from '../../panos/panos';
 import { shell } from '../../shell';
+import { isSidebarFolded } from '../../store';
 import { addDateMenu } from '../AddSurveyDate';
 import { layerProps } from '../LayerProperties';
 import { editBlocked } from './reasons';
@@ -53,7 +54,7 @@ const projectItems: Action[] = [
   ),
   edit('project.addSurveyDate', 'palette.addSurveyDate', 'calendar-plus', 'edit', () => {
     const s = shell.getState();
-    if (s.settings.sidebarCollapsed) void s.toggleSidebar();
+    if (isSidebarFolded(s)) void s.toggleSidebar();
     addDateMenu.getState().set(true);
   }),
   defineAction({

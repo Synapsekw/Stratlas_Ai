@@ -25,6 +25,9 @@ export const en = {
   'panel.expandLeft': 'Expand left sidebar',
   'panel.collapseRight': 'Collapse right sidebar',
   'panel.expandRight': 'Expand right sidebar',
+  'panel.resizeLeft': 'Resize left sidebar',
+  'panel.resizeRight': 'Resize right sidebar',
+  'panel.resizeAgent': 'Resize the agent',
   'nav.noProject': 'No project open',
   'nav.chooseProject': 'Choose a project from the library',
 

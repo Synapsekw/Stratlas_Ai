@@ -5,17 +5,20 @@ import {
   formatDate,
   Icon,
   neighbourClip,
+  ResizableSplit,
   Timeline,
   type TimelineModel,
+  useResizableSplit,
   useT,
 } from '@aio/ui';
 import { useVolumetric, VolumesPanel } from '@aio/volumetric';
 import { canCompare, useWorkspace, workspace } from '@aio/workspace';
-import { useState } from 'react';
+import { useState, type AnimationEvent, type TransitionEvent } from 'react';
 import { ChangesTab, useChangesTabSeq } from '../change';
 import { IssueCard } from '../issueCard/IssueCard';
 import { useCardFocusSeq } from '../issueCard/state';
 import { PANEL_ID, PanelHandle } from '../shell/PanelHandle';
+import { useFold } from '../shell/useFold';
 import { AgentHost } from '../agent/AgentHost';
 import { useModeller } from '../modeller';
 import { shell, useShell } from '../shell';
@@ -152,7 +155,7 @@ function ContextPanel() {
       : (chosen ?? (volumes ? 'volumes' : 'selection'));
   const tall = tab === 'issues' || tab === 'volumes' || tab === 'changes' || issueId !== null;
   return (
-    <div className={`ctx-wrap${tall ? ' tall' : ''}${tab === 'volumes' ? ' vol' : ''}`}>
+    <div className={`ctx-wrap${tall ? ' tall' : ''}`}>
       <div className="seg ctx-tabs" role="tablist" aria-label="Context">
         {volumes && (
           <button
@@ -215,6 +218,48 @@ function ContextPanel() {
   );
 }
 
+/**
+ * The stage and the right panel on the `scene.right` split: the panel's width is the grid's
+ * second column, dragged on its inner edge and remembered; folded (Ctrl+Alt+B, the tab, or a
+ * drag), it is the 12 px strip. The panel slides with a transform and the grid snaps once, so
+ * the 3D view and the map are resized once (shell/useFold.ts).
+ */
+function useRightSplit(collapsed: boolean, volumes: boolean) {
+  const fold = useFold(collapsed);
+  const { snap } = fold;
+  const split = useResizableSplit({
+    id: 'scene.right',
+    orientation: 'horizontal',
+    sized: 'end',
+    unit: 'px',
+    // volumetric projects: a wider panel for the pile register
+    defaultSize: volumes ? 400 : 360,
+    min: 280,
+    max: '50%',
+    otherMin: 360,
+    collapsedSize: 12,
+    collapsed: fold.layoutFolded,
+    onCollapsedChange: (next) => {
+      snap(next);
+      shell.getState().setRight(next);
+    },
+  });
+  const { settle } = fold;
+  // the panel's slide ended (not one of the many transitions inside it)
+  const onSlideEnd = (e: TransitionEvent | AnimationEvent) => {
+    if ((e.target as Element).classList.contains('right')) settle();
+  };
+  return {
+    phase: fold.phase,
+    containerRef: split.containerRef,
+    separatorProps: split.separatorProps,
+    onTransitionEnd: (e: TransitionEvent) => {
+      if (e.propertyName === 'transform') onSlideEnd(e);
+    },
+    onAnimationEnd: onSlideEnd,
+  };
+}
+
 export function WorkspaceScreen() {
   const t = useT();
   const hasProject = useWorkspace((s) => s.project !== null);
@@ -226,6 +271,8 @@ export function WorkspaceScreen() {
   const modellerOpen = useModeller((s) => s.open);
   const road = useIsRoad();
   const volumes = useVolumetric((s) => s.status === 'ready');
+  const right = useRightSplit(rightCollapsed, volumes);
+  const { containerRef: rightSplitRef, separatorProps: rightResize } = right;
   const project = useWorkspace((s) => s.project);
   const timeline = useTimelineShown(project);
   const dateIndex = useTimeline((s) => s.index);
@@ -234,8 +281,12 @@ export function WorkspaceScreen() {
 
   return (
     <section
+      ref={rightSplitRef}
       className={`screen ws${rightCollapsed ? ' right-off' : ''}${road ? ' road' : ''}${volumes ? ' ws-vol' : ''}`}
       aria-label="Scene"
+      data-fold={right.phase ?? undefined}
+      onTransitionEnd={right.onTransitionEnd}
+      onAnimationEnd={right.onAnimationEnd}
     >
       <h1 className="sr-only">{t('nav.scene')}</h1>
       {!lanes && <DateBar />}
@@ -257,6 +308,14 @@ export function WorkspaceScreen() {
           <TimelineBar />
         )}
       </div>
+      <div
+        {...rightResize}
+        className="split-handle rp-resize"
+        aria-label={t('panel.resizeRight')}
+        aria-controls={PANEL_ID.right}
+      >
+        <span className="kbd split-readout" aria-hidden="true" />
+      </div>
       <PanelHandle
         side="right"
         collapsed={rightCollapsed}
@@ -271,17 +330,33 @@ export function WorkspaceScreen() {
         inert={rightCollapsed}
       >
         <TelecomTools />
-        {road ? (
-          <RoadPanel />
-        ) : (
-          <>
-            <RoadSetupCard />
-            <ContextPanel />
-          </>
-        )}
-        <div className="agent">
-          <AgentHost window={focused} task={modellerOpen ? 'build' : undefined} />
-        </div>
+        <ResizableSplit
+          id="scene.ctxAgent"
+          className="rp-split"
+          orientation="vertical"
+          sized="start"
+          unit="fraction"
+          defaultSize={0.62}
+          min={160}
+          max="100%"
+          otherMin={96}
+          label={t('panel.resizeAgent')}
+          start={
+            road ? (
+              <RoadPanel />
+            ) : (
+              <>
+                <RoadSetupCard />
+                <ContextPanel />
+              </>
+            )
+          }
+          end={
+            <div className="agent">
+              <AgentHost window={focused} task={modellerOpen ? 'build' : undefined} />
+            </div>
+          }
+        />
       </aside>
     </section>
   );

@@ -347,6 +347,8 @@ const bridge: AioBridge = {
   },
   // The launch screen decides before its first frame, so synchronously from the environment.
   launchGate: () => launchGateMode(process.env),
+  // Main pins the sidebar open for an e2e run (index.ts, additionalArguments).
+  flags: { autoFold: !process.argv.includes('--quadrion-autofold=0') },
   processMemory: async () => {
     try {
       const m = await process.getProcessMemoryInfo(); // kilobytes

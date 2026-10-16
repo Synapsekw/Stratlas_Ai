@@ -14,8 +14,15 @@ import type { Workspace } from '@aio/workspace';
 import { useStore } from 'zustand';
 import { createStore, type StoreApi } from 'zustand/vanilla';
 import { createBridge, type Bridge } from './bridge';
-import { browserStorage, readPanelPrefs, writePanelPrefs, type PanelStorage } from './panelPrefs';
+import {
+  browserStorage,
+  readPanelPrefs,
+  writePanelPrefs,
+  type PanelPrefs,
+  type PanelStorage,
+} from './panelPrefs';
 import { isPlayer } from './player';
+import { sidebarFolded } from './shell/autoFold';
 import { samePathText } from './screens/projectMenuModel';
 import { videoFirst } from './stageDefault';
 
@@ -110,6 +117,15 @@ export interface ShellState {
    * machine, panelPrefs.ts). Folded until the person asks for it.
    */
   agentDockCollapsed: boolean;
+  /**
+   * The person reopened the left sidebar the window had folded on its own (remembered on this
+   * machine, panelPrefs.ts): it stays open in a narrow window from then on (shell/autoFold.ts).
+   */
+  sidebarReopened: boolean;
+  /** The window's width in CSS px, which folds the left sidebar on its own (shell/autoFold.ts). */
+  windowWidth: number;
+  /** The left sidebar may fold on its own; false where e2e pins it open (`aio.flags.autoFold`). */
+  autoFold: boolean;
   videoDocked: boolean;
   videoHidden: boolean;
   /** Component callouts in 3D: off, one per group, or all. */
@@ -156,7 +172,12 @@ export interface ShellActions {
     start: () => Promise<T>,
     settingsOf: (answer: T) => Settings | null,
   ) => Promise<T>;
+  /**
+   * Ctrl+B: folds the left sidebar (the `sidebarCollapsed` setting) or opens it. A sidebar the
+   * window folded on its own opens and stays open (`sidebarReopened`) without a setting change.
+   */
   toggleSidebar: () => Promise<void>;
+  setWindowWidth: (width: number) => void;
   openProject: (path: string, passphrase?: string) => Promise<void>;
   cancelUnlock: () => void;
   /** Pick a `.aio` file and open it. */
@@ -217,11 +238,33 @@ export interface ShellOptions {
    * storage by default.
    */
   storage?: PanelStorage | null;
+  /** May the left sidebar fold on its own in a narrow window? `window.aio.flags.autoFold` by default. */
+  autoFold?: boolean;
   /**
    * The scene of this project is being left (another screen, another project, closed) while its
    * 3D view is still on screen. Called synchronously, before the view goes; must not block.
    */
   onLeaveView?: (projectId: string) => void;
+}
+
+/** `window.aio.flags.autoFold` from the preload; off where there is no bridge (unit tests). */
+function autoFoldFlag(): boolean {
+  if (typeof window === 'undefined') return false;
+  const aio = (window as { aio?: { flags?: { autoFold?: boolean } } }).aio;
+  return aio?.flags?.autoFold === true;
+}
+
+/** Whether the left sidebar shows as its rail: the person's choice, or folded by the window. */
+export function isSidebarFolded(
+  s: Pick<ShellState, 'settings' | 'windowWidth' | 'screen' | 'autoFold' | 'sidebarReopened'>,
+): boolean {
+  return sidebarFolded({
+    setting: s.settings.sidebarCollapsed,
+    windowWidth: s.windowWidth,
+    screen: s.screen,
+    autoFold: s.autoFold,
+    reopened: s.sidebarReopened,
+  });
 }
 
 /** The answer of a library change: null when it worked, else the sentence to show. */
@@ -251,6 +294,10 @@ export function createShellStore(
   };
   const storage = options.storage === undefined ? browserStorage() : options.storage;
   const panels = readPanelPrefs(storage);
+  // the panels are stored as one value: write them all, so none forgets the others
+  const savePanels = ({ rightCollapsed, agentDockCollapsed, sidebarReopened }: PanelPrefs) => {
+    writePanelPrefs(storage, { rightCollapsed, agentDockCollapsed, sidebarReopened });
+  };
   const store = createStore<Shell>()((set, get) => ({
     screen: 'projects',
     settingsFocus: null,
@@ -268,6 +315,9 @@ export function createShellStore(
     stageAuto: false,
     rightCollapsed: panels.rightCollapsed,
     agentDockCollapsed: panels.agentDockCollapsed,
+    sidebarReopened: panels.sidebarReopened,
+    windowWidth: typeof window === 'undefined' ? Infinity : window.innerWidth,
+    autoFold: options.autoFold ?? autoFoldFlag(),
     videoDocked: false,
     videoHidden: false,
     labelMode: 'key',
@@ -352,7 +402,22 @@ export function createShellStore(
     },
 
     toggleSidebar: async () => {
-      await get().updateSettings({ sidebarCollapsed: !get().settings.sidebarCollapsed });
+      const s = get();
+      if (!isSidebarFolded(s)) {
+        await s.updateSettings({ sidebarCollapsed: true });
+        return;
+      }
+      // Opening. Where the window folds it on its own, the reopen is remembered (not a setting),
+      // so it stays open in a narrow window from now on.
+      const open = { ...s.settings, sidebarCollapsed: false };
+      if (isSidebarFolded({ ...s, settings: open })) {
+        set({ sidebarReopened: true });
+        savePanels(get());
+      }
+      if (s.settings.sidebarCollapsed) await s.updateSettings({ sidebarCollapsed: false });
+    },
+    setWindowWidth: (windowWidth) => {
+      if (get().windowWidth !== windowWidth) set({ windowWidth });
     },
 
     openProject: async (path, passphrase) => {
@@ -544,8 +609,7 @@ export function createShellStore(
     setRight: (rightCollapsed) => {
       if (get().rightCollapsed === rightCollapsed) return;
       set({ rightCollapsed });
-      // the two panels are stored as one value: write both, so neither forgets the other
-      writePanelPrefs(storage, { rightCollapsed, agentDockCollapsed: get().agentDockCollapsed });
+      savePanels(get());
     },
     toggleAgentDock: () => {
       get().setAgentDock(!get().agentDockCollapsed);
@@ -553,7 +617,7 @@ export function createShellStore(
     setAgentDock: (agentDockCollapsed) => {
       if (get().agentDockCollapsed === agentDockCollapsed) return;
       set({ agentDockCollapsed });
-      writePanelPrefs(storage, { rightCollapsed: get().rightCollapsed, agentDockCollapsed });
+      savePanels(get());
     },
     setVideoDocked: (videoDocked) => {
       set({ videoDocked });

@@ -165,9 +165,6 @@
   flex-direction: column;
   overflow: hidden;
 }
-.ws.road .ctx-wrap.tall {
-  flex: 0 1 72%;
-}
 .rr-sum {
   overflow: auto;
   padding: 12px;

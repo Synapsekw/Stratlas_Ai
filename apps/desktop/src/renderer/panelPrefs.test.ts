@@ -31,7 +31,7 @@ const blocked: PanelStorage = {
 };
 
 describe('panel preferences', () => {
-  const DEFAULTS = { rightCollapsed: false, agentDockCollapsed: true };
+  const DEFAULTS = { rightCollapsed: false, agentDockCollapsed: true, sidebarReopened: false };
 
   it('shows the right panel and folds the agent column when nothing is stored', () => {
     expect(DEFAULT_PANEL_PREFS).toEqual(DEFAULTS);
@@ -41,19 +41,27 @@ describe('panel preferences', () => {
 
   it('reads back what it wrote, both panels', () => {
     const storage = memoryStorage();
-    writePanelPrefs(storage, { rightCollapsed: true, agentDockCollapsed: false });
+    const both = { rightCollapsed: true, agentDockCollapsed: false, sidebarReopened: false };
+    writePanelPrefs(storage, both);
     expect(storage.data[PANEL_PREFS_KEY]).toBe(
-      '{"rightCollapsed":true,"agentDockCollapsed":false}',
+      '{"rightCollapsed":true,"agentDockCollapsed":false,"sidebarReopened":false}',
     );
-    expect(readPanelPrefs(storage)).toEqual({ rightCollapsed: true, agentDockCollapsed: false });
-    writePanelPrefs(storage, { rightCollapsed: false, agentDockCollapsed: true });
-    expect(readPanelPrefs(storage)).toEqual({ rightCollapsed: false, agentDockCollapsed: true });
+    expect(readPanelPrefs(storage)).toEqual(both);
+    writePanelPrefs(storage, DEFAULTS);
+    expect(readPanelPrefs(storage)).toEqual(DEFAULTS);
+  });
+
+  it('remembers that the person reopened the sidebar the window folded', () => {
+    const storage = memoryStorage();
+    writePanelPrefs(storage, { ...DEFAULTS, sidebarReopened: true });
+    expect(readPanelPrefs(storage)).toEqual({ ...DEFAULTS, sidebarReopened: true });
   });
 
   it('keeps a value stored before the agent column existed', () => {
     expect(parsePanelPrefs('{"rightCollapsed":true}')).toEqual({
       rightCollapsed: true,
       agentDockCollapsed: true,
+      sidebarReopened: false,
     });
     expect(parsePanelPrefs('{"rightCollapsed":false}')).toEqual(DEFAULTS);
   });
@@ -69,11 +77,12 @@ describe('panel preferences', () => {
       '{"rightCollapsed":"yes"}',
       '{"agentDockCollapsed":"no"}',
       '{"agentDockCollapsed":0}',
+      '{"sidebarReopened":"yes"}',
     ])
       expect(parsePanelPrefs(raw)).toEqual(DEFAULTS);
     expect(parsePanelPrefs(undefined)).toEqual(DEFAULTS);
     expect(parsePanelPrefs('{"agentDockCollapsed":false}')).toEqual({
-      rightCollapsed: false,
+      ...DEFAULTS,
       agentDockCollapsed: false,
     });
   });
@@ -81,10 +90,10 @@ describe('panel preferences', () => {
   it('survives storage that refuses to read or write', () => {
     expect(readPanelPrefs(blocked)).toEqual(DEFAULTS);
     expect(() => {
-      writePanelPrefs(blocked, { rightCollapsed: true, agentDockCollapsed: true });
+      writePanelPrefs(blocked, { ...DEFAULTS, rightCollapsed: true });
     }).not.toThrow();
     expect(() => {
-      writePanelPrefs(null, { rightCollapsed: true, agentDockCollapsed: true });
+      writePanelPrefs(null, { ...DEFAULTS, rightCollapsed: true });
     }).not.toThrow();
   });
 });

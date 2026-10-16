@@ -151,7 +151,7 @@
 }
 /* --split-pointer is the pointer's distance from the left edge, so this one is physical */
 .split[data-orientation='vertical'] > .split-handle > .split-readout {
-  left: var(--split-pointer, 50%);
+  left: var(--split-pointer, 50%); /* physical: the pointer is measured from the left edge */
   inset-block-start: calc(100% + 8px);
   translate: -50% 0;
 }

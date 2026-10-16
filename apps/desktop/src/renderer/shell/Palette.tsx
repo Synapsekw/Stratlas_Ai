@@ -24,7 +24,7 @@ import { processing } from '../processing/store';
 import { pickAndScanPanos } from '../panos/panos';
 import { openProcessingTools } from '../processingTools';
 import { shell, useShell } from '../shell';
-import type { Screen } from '../store';
+import { isSidebarFolded, type Screen } from '../store';
 import { PATH_MODES, setPathMode, togglePaths } from '../workspace/flightPaths';
 import { updateFlightPaths } from '../workspace/pathModel';
 import { useMapViewMenuModel } from '../workspace/MapMenus';
@@ -85,7 +85,7 @@ export function Palette() {
   const hidden = useWorkspace((s) => s.hidden);
   const playing = useWorkspace((s) => s.playing);
   const pkg = useShell((s) => s.pkg);
-  const leftCollapsed = useShell((s) => s.settings.sidebarCollapsed);
+  const leftCollapsed = useShell(isSidebarFolded);
   const rightCollapsed = useShell((s) => s.rightCollapsed);
   const surveys = useTimeline((s) => s.index);
   const lookOnly = useAnnotateReadOnly();
@@ -351,7 +351,7 @@ export function Palette() {
           icon: 'history',
           keywords: ['survey', 'date', 'new date', 'capture', 'timeline'],
           run: () => {
-            if (shell.getState().settings.sidebarCollapsed) void shell.getState().toggleSidebar();
+            if (isSidebarFolded(shell.getState())) void shell.getState().toggleSidebar();
             addDateMenu.getState().set(true);
           },
         });

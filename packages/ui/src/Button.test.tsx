@@ -216,3 +216,58 @@ describe('IconButton', () => {
     expect(btn().className.split(' ')).toContain('btn');
   });
 });
+
+describe('Button tips', () => {
+  const tip = () => document.body.querySelector<HTMLElement>('[role="tooltip"]');
+  const focusAndWait = (ms: number) => {
+    act(() => {
+      btn().focus();
+    });
+    act(() => {
+      vi.advanceTimersByTime(ms);
+    });
+  };
+  beforeEach(() => {
+    vi.useFakeTimers();
+    vi.setSystemTime(Date.now() + 3_600_000); // outside any other tip's skip window
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it('shows the reason of a disabled-with-reason button on keyboard focus, after 400 ms', () => {
+    render(<Button disabledReason="Add photos first">Go</Button>);
+    focusAndWait(399);
+    expect(tip()).toBeNull();
+    act(() => {
+      vi.advanceTimersByTime(1);
+    });
+    expect(tip()?.textContent).toContain('Add photos first');
+  });
+
+  it('shows its tip with the shortcut', () => {
+    render(
+      <Button tip="Search commands" shortcut="global.palette">
+        Search
+      </Button>,
+    );
+    focusAndWait(400);
+    expect(tip()?.textContent).toContain('Search commands');
+    expect(tip()?.querySelector('.kbd')).not.toBeNull();
+    expect(btn().getAttribute('aria-describedby')).toBe(tip()?.id);
+  });
+
+  it('has no tip without a tip, a reason or a shortcut', () => {
+    render(<Button>Go</Button>);
+    focusAndWait(400);
+    expect(tip()).toBeNull();
+  });
+
+  it("shows an icon button's label as its tip, hidden from the accessible description", () => {
+    render(<IconButton icon="plus" label="Add" />);
+    focusAndWait(400);
+    expect(tip()?.textContent).toBe('Add');
+    expect(tip()?.getAttribute('aria-hidden')).toBe('true');
+    expect(btn().hasAttribute('aria-describedby')).toBe(false);
+  });
+});

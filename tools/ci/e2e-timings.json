@@ -78,6 +78,7 @@
   "e2e/sections.spec.ts": 20,
   "e2e/shared-folder.spec.ts": 7,
   "e2e/shell.spec.ts": 6,
+  "e2e/sidebar-autofold.spec.ts": 8,
   "e2e/site-crs.spec.ts": 13,
   "e2e/smoke.spec.ts": 4,
   "e2e/soak.spec.ts": 1,

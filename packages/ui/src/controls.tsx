@@ -14,6 +14,7 @@ import {
 import { Icon } from './icons/Icon';
 import type { IconName } from './icons/paths';
 import { ariaKeys, type ShortcutId } from './shortcuts';
+import { Tip } from './Tip';
 
 export interface SevChipProps {
   /** Level colour from the project's severity model. */
@@ -85,7 +86,8 @@ const ICON_PX = { sm: 12, md: 14, lg: 16 } as const;
 /**
  * The one button. `disabledReason` keeps the button focusable (aria-disabled,
  * clicks ignored) and describes why; `busy` swaps the icon for a spinner and
- * locks the width so the label does not jump.
+ * locks the width so the label does not jump. `tip`, `shortcut` and
+ * `disabledReason` show in the one tooltip (`Tip`) on hover and keyboard focus.
  */
 export const Button: ForwardRefExoticComponent<ButtonProps & RefAttributes<HTMLButtonElement>> =
   forwardRef<HTMLButtonElement, ButtonProps>(function Button(
@@ -98,8 +100,6 @@ export const Button: ForwardRefExoticComponent<ButtonProps & RefAttributes<HTMLB
       disabledReason,
       icon,
       shortcut,
-      // Kept out of the DOM; rendered through Tip once the tooltip lands (integration task).
-      // eslint-disable-next-line @typescript-eslint/no-unused-vars
       tip,
       className,
       children,
@@ -138,7 +138,7 @@ export const Button: ForwardRefExoticComponent<ButtonProps & RefAttributes<HTMLB
     const inert = Boolean(busy) || Boolean(disabledReason);
     const describe = [describedBy, disabledReason ? reasonId : undefined].filter(Boolean).join(' ');
     const cls = ['btn', size, variant, className].filter(Boolean).join(' ');
-    return (
+    const button = (
       <button
         {...rest}
         ref={setRefs}
@@ -173,11 +173,33 @@ export const Button: ForwardRefExoticComponent<ButtonProps & RefAttributes<HTMLB
         ) : null}
       </button>
     );
+    if (!tip && !disabledReason && !shortcut) return button;
+    // The reason is described already (the sr-only span): in the tip it is for the eye only. A
+    // tip that says what the accessible name says is not read twice either.
+    const silent = !tip || tip === rest['aria-label'];
+    return (
+      <Tip
+        repeatsName={silent}
+        {...(shortcut ? { shortcut } : {})}
+        content={
+          <>
+            {tip}
+            {disabledReason ? (
+              <span className={tip ? 'tip-reason' : undefined} aria-hidden="true">
+                {disabledReason}
+              </span>
+            ) : null}
+          </>
+        }
+      >
+        {button}
+      </Tip>
+    );
   });
 
 export interface IconButtonProps extends Omit<ButtonProps, 'variant' | 'children' | 'icon'> {
   icon: IconName;
-  label: string; // the accessible name and the tooltip
+  label: string; // the accessible name, and the tooltip unless `tip` says otherwise
 }
 
 /** A square, icon-only button; `label` is its accessible name. */
@@ -187,5 +209,14 @@ export const IconButton: ForwardRefExoticComponent<
   { label, icon, ...rest },
   ref,
 ) {
-  return <Button {...rest} ref={ref} variant="icon" icon={icon} aria-label={label} />;
+  return (
+    <Button
+      {...rest}
+      ref={ref}
+      variant="icon"
+      icon={icon}
+      aria-label={label}
+      tip={rest.tip ?? label}
+    />
+  );
 });

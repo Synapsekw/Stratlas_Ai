@@ -2,7 +2,7 @@ import type { IpcChannel, LibraryEntry, ProjectManifest, Settings } from '@aio/s
 import { createWorkspace } from '@aio/workspace';
 import { describe, expect, it, vi } from 'vitest';
 import type { Bridge, Res } from './bridge';
-import { createShellStore, DEFAULT_SETTINGS } from './store';
+import { createShellStore, DEFAULT_SETTINGS, isSidebarFolded } from './store';
 
 type Handlers = Partial<Record<IpcChannel, (req: unknown) => unknown>>;
 
@@ -205,6 +205,50 @@ describe('shell store', () => {
     expect(s.getState().settings.sidebarCollapsed).toBe(true);
   });
 
+  it('reopens a sidebar the window folded without touching the setting, and remembers it', async () => {
+    const { bridge, calls } = fakeBridge({
+      'settings:set': (req) => ({ ...DEFAULT_SETTINGS, ...(req as Partial<Settings>) }),
+    });
+    const data: Record<string, string> = {};
+    const storage = {
+      getItem: (k: string) => data[k] ?? null,
+      setItem: (k: string, v: string) => {
+        data[k] = v;
+      },
+    };
+    const s = createShellStore(bridge, createWorkspace(), { storage, autoFold: true });
+    s.getState().setWindowWidth(1100);
+    s.setState({ screen: 'scene' });
+    expect(isSidebarFolded(s.getState())).toBe(true);
+    // Ctrl+B on the folded rail opens it, as a remembered choice of this machine
+    await s.getState().toggleSidebar();
+    expect(isSidebarFolded(s.getState())).toBe(false);
+    expect(s.getState().settings.sidebarCollapsed).toBe(false);
+    expect(calls.some((c) => c.channel === 'settings:set')).toBe(false);
+    expect(JSON.parse(data['quadrion.panels'] ?? '{}')).toMatchObject({ sidebarReopened: true });
+    expect(
+      createShellStore(bridge, createWorkspace(), { storage }).getState().sidebarReopened,
+    ).toBe(true);
+    // Ctrl+B again folds it as the person's own choice, as it always did
+    await s.getState().toggleSidebar();
+    expect(s.getState().settings.sidebarCollapsed).toBe(true);
+    expect(calls).toContainEqual({ channel: 'settings:set', req: { sidebarCollapsed: true } });
+  });
+
+  it('folds the sidebar on its own only with the flag, in a narrow window, on a data screen', () => {
+    const s = createShellStore(fakeBridge({}).bridge, createWorkspace(), { autoFold: false });
+    s.getState().setWindowWidth(1100);
+    s.setState({ screen: 'scene' });
+    expect(isSidebarFolded(s.getState())).toBe(false);
+    s.setState({ autoFold: true });
+    expect(isSidebarFolded(s.getState())).toBe(true);
+    s.setState({ screen: 'settings' });
+    expect(isSidebarFolded(s.getState())).toBe(false);
+    s.setState({ screen: 'media' });
+    s.getState().setWindowWidth(1440);
+    expect(isSidebarFolded(s.getState())).toBe(false);
+  });
+
   it('keeps a local sidebar state when persisting fails', async () => {
     const { bridge } = fakeBridge({});
     const s = createShellStore(bridge, createWorkspace());
@@ -225,7 +269,9 @@ describe('shell store', () => {
     expect(s.getState().rightCollapsed).toBe(false);
     s.getState().toggleRight();
     expect(s.getState().rightCollapsed).toBe(true);
-    expect(data['quadrion.panels']).toBe('{"rightCollapsed":true,"agentDockCollapsed":true}');
+    expect(data['quadrion.panels']).toBe(
+      '{"rightCollapsed":true,"agentDockCollapsed":true,"sidebarReopened":false}',
+    );
     // the choice belongs to this workstation: it is not a setting
     expect(calls).toEqual([]);
     // the next start of the app begins folded
@@ -233,7 +279,9 @@ describe('shell store', () => {
     expect(again.getState().rightCollapsed).toBe(true);
     again.getState().toggleRight();
     expect(again.getState().rightCollapsed).toBe(false);
-    expect(data['quadrion.panels']).toBe('{"rightCollapsed":false,"agentDockCollapsed":true}');
+    expect(data['quadrion.panels']).toBe(
+      '{"rightCollapsed":false,"agentDockCollapsed":true,"sidebarReopened":false}',
+    );
   });
 
   it('keeps the agent column folded until asked for, and remembers that it was opened', () => {
@@ -249,14 +297,18 @@ describe('shell store', () => {
     expect(s.getState().agentDockCollapsed).toBe(true);
     s.getState().toggleAgentDock();
     expect(s.getState().agentDockCollapsed).toBe(false);
-    expect(data['quadrion.panels']).toBe('{"rightCollapsed":false,"agentDockCollapsed":false}');
+    expect(data['quadrion.panels']).toBe(
+      '{"rightCollapsed":false,"agentDockCollapsed":false,"sidebarReopened":false}',
+    );
     expect(calls).toEqual([]);
     // the next start of the app begins with the column open
     const again = createShellStore(bridge, createWorkspace(), { storage });
     expect(again.getState().agentDockCollapsed).toBe(false);
     again.getState().toggleAgentDock();
     expect(again.getState().agentDockCollapsed).toBe(true);
-    expect(data['quadrion.panels']).toBe('{"rightCollapsed":false,"agentDockCollapsed":true}');
+    expect(data['quadrion.panels']).toBe(
+      '{"rightCollapsed":false,"agentDockCollapsed":true,"sidebarReopened":false}',
+    );
   });
 
   it('remembers each of the two panels when the other one changes', () => {
@@ -270,9 +322,13 @@ describe('shell store', () => {
     const s = createShellStore(fakeBridge({}).bridge, createWorkspace(), { storage });
     s.getState().setAgentDock(false);
     s.getState().setRight(true);
-    expect(data['quadrion.panels']).toBe('{"rightCollapsed":true,"agentDockCollapsed":false}');
+    expect(data['quadrion.panels']).toBe(
+      '{"rightCollapsed":true,"agentDockCollapsed":false,"sidebarReopened":false}',
+    );
     s.getState().setAgentDock(true);
-    expect(data['quadrion.panels']).toBe('{"rightCollapsed":true,"agentDockCollapsed":true}');
+    expect(data['quadrion.panels']).toBe(
+      '{"rightCollapsed":true,"agentDockCollapsed":true,"sidebarReopened":false}',
+    );
     const again = createShellStore(fakeBridge({}).bridge, createWorkspace(), { storage });
     expect(again.getState()).toMatchObject({ rightCollapsed: true, agentDockCollapsed: true });
   });
@@ -292,7 +348,9 @@ describe('shell store', () => {
     expect(writes).toEqual([]);
     s.getState().setAgentDock(false);
     s.getState().setAgentDock(false);
-    expect(writes).toEqual(['{"rightCollapsed":true,"agentDockCollapsed":false}']);
+    expect(writes).toEqual([
+      '{"rightCollapsed":true,"agentDockCollapsed":false,"sidebarReopened":false}',
+    ]);
   });
 
   it('folds the agent column without storage (blocked, or none)', () => {
@@ -316,7 +374,9 @@ describe('shell store', () => {
     expect(s.getState().rightCollapsed).toBe(false);
     s.getState().setRight(false);
     expect(s.getState().rightCollapsed).toBe(false);
-    expect(writes).toEqual(['{"rightCollapsed":false,"agentDockCollapsed":true}']);
+    expect(writes).toEqual([
+      '{"rightCollapsed":false,"agentDockCollapsed":true,"sidebarReopened":false}',
+    ]);
   });
 
   it('folds the right panel without storage (blocked, or none)', () => {

@@ -358,6 +358,10 @@ export async function quietStreetMapOffer(
  * are copied first (`copyRealProjects`, `realProject`). The app runs with QUADRION_E2E=1, so its
  * own guard refuses any write under QUADRION_REAL_DATA_ROOT; `app.close()` then throws when it
  * refused one, failing the test even if the app swallowed the error.
+ *
+ * The left sidebar stays open at any window width: main pins it for an e2e run (the preload's
+ * `aio.flags.autoFold` is false), so a spec at the CI width (1100) finds it as it expects. Pass
+ * `QUADRION_E2E_AUTOFOLD: '1'` in `env` to let it fold to its rail (`sidebar-autofold.spec.ts`).
  */
 export async function launchApp(
   dataRoot: DataRoot,
