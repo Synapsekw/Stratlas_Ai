@@ -14,8 +14,8 @@ export interface BoundsDeps {
   sceneBox(layerId: string): Box | null;
   /** What main reads from the files (`layer:info` extent), or null. */
   fileExtent(layerId: string): Promise<Box | null>;
-  /** Height of the first thing straight down at (x, z) in the 3D view, or null. */
-  rayDown(x: number, z: number): number | null;
+  /** Height of the layer's surface straight down at (x, z) in the 3D view, or null. */
+  rayDown(x: number, z: number, layerId: string): number | null;
 }
 
 export function boxOfPoints(points: readonly Vec3[]): Box | null {
@@ -101,15 +101,15 @@ export async function boundsOf(layerIds: readonly string[], deps: BoundsDeps): P
 }
 
 /**
- * The target ground of Align to: where a DSM covers (x, z), the first hit straight down in the
- * 3D view; else null (the caller then takes the target's lowest point).
+ * The target ground of Align to: where a DSM covers (x, z), the DSM's surface straight down in the
+ * 3D view (nothing else in the scene counts); else null.
  */
 export async function groundAt(x: number, z: number, deps: BoundsDeps): Promise<number | null> {
   for (const l of deps.manifest.layers) {
     if (l.kind !== 'raster' || l.role !== 'dsm') continue;
     const b = await layerBounds(l.id, deps);
     if (!b || x < b.min[0] || x > b.max[0] || z < b.min[2] || z > b.max[2]) continue;
-    const y = deps.rayDown(x, z);
+    const y = deps.rayDown(x, z, l.id);
     if (y !== null) return y;
   }
   return null;

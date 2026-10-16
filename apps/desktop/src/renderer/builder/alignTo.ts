@@ -70,10 +70,16 @@ export function alignSources(
   return out;
 }
 
+/**
+ * `ground` is the DSM height under the target centre, or null. Without it the target's lowest point
+ * stands in, unless `boundsFloor` is false (a photo or panorama target: the camera heights of a
+ * drone flight are no ground), and then the heights are kept.
+ */
 export function planAlign(
   sources: readonly AlignSource[],
   target: AlignBox,
   ground: number | null,
+  { boundsFloor = true }: { boundsFloor?: boolean } = {},
 ): AlignPlan {
   const placed = sources.flatMap((s) =>
     s.pos ? [{ s, at: correctPos(s.pos, s.correction) }] : [],
@@ -95,9 +101,9 @@ export function planAlign(
   const tz = (target.min[2] + target.max[2]) / 2;
   const dx = tx - (lo(0) + hi(0)) / 2;
   const dz = tz - (lo(2) + hi(2)) / 2;
-  const g = ground ?? target.min[1];
+  const g = ground ?? (boundsFloor ? target.min[1] : null);
   const low = lo(1);
-  const dy = low < g || low > g + MAX_ABOVE_GROUND_M ? g + EYE_HEIGHT_M - low : 0;
+  const dy = g !== null && (low < g || low > g + MAX_ABOVE_GROUND_M) ? g + EYE_HEIGHT_M - low : 0;
   const shift: Vec3 = [mm(dx), mm(dy), mm(dz)];
   const distance = Math.hypot(dx, dy, dz);
   if (distance < MIN_SHIFT_M) return { ...empty, shift, distance, moved: 0 };

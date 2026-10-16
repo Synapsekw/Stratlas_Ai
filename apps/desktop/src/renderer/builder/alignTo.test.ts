@@ -45,6 +45,19 @@ describe('planAlign', () => {
     expect(planAlign([src('a', [0, 299, 0])], target, null).shift[1]).toBe(0);
   });
 
+  it('a photo or panorama target without a DSM keeps the heights', () => {
+    // drone photos at 100 m: their lowest point is no ground to put the source on
+    const drone = {
+      min: [-10, 100, -10] as [number, number, number],
+      max: [10, 120, 10] as [number, number, number],
+    };
+    const p = planAlign([src('a', [500, 40, 0])], drone, null, { boundsFloor: false });
+    expect(p.shift).toEqual([-500, 0, 0]);
+    // a DSM height still counts
+    const onDsm = planAlign([src('a', [500, 40, 0])], drone, 50, { boundsFloor: false });
+    expect(onDsm.shift[1]).toBeCloseTo(50 + 1.6 - 40);
+  });
+
   it('adds the shift to an existing correction and keeps its angles', () => {
     const p = planAlign([src('a', [500, 10, 0], [10, 0, 0])], target, null);
     // corrected at 510 east; the target centre is at 0: the offset goes from 10 to -500

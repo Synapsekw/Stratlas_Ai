@@ -1,10 +1,26 @@
 import { Icon, useT } from '@aio/ui';
+import { volumetric } from '@aio/volumetric';
 import { useEffect } from 'react';
-import { alignTo, useAlignTo } from './alignSession';
+import { cleanup } from '../pointcloud/cleanupStore';
+import { shell } from '../shell';
+import { alignCamera, alignTo, photoAlign, useAlignTo } from './alignSession';
 
-const editable = (el: EventTarget | null) =>
-  el instanceof HTMLElement &&
-  el.closest('input, textarea, select, [contenteditable="true"]') !== null;
+/** Fields, and the panels that keep their own undo (issues, cleanup, volumes). */
+const OWN_UNDO =
+  'input, textarea, select, [contenteditable="true"], [data-testid="issue-register"], ' +
+  '[data-testid="issue-card"], [data-testid="cleanup-panel"], .vol-panel';
+
+/** Whether Ctrl+Z belongs elsewhere: another screen, a field, or a panel or tool with its own undo. */
+function otherUndo(e: KeyboardEvent): boolean {
+  if (shell.getState().screen !== 'scene') return true;
+  if (e.target instanceof Element && e.target.closest(OWN_UNDO) !== null) return true;
+  return (
+    cleanup.store.getState().panelOpen ||
+    volumetric.getState().edit !== null ||
+    alignCamera.getState().session !== null ||
+    photoAlign.getState().session !== null
+  );
+}
 
 /** "Aligned 214 photos to Site model (moved 91.2 km)" with Undo; Ctrl+Z and Ctrl+Y while it shows. */
 export function AlignToNotice() {
@@ -14,7 +30,7 @@ export function AlignToNotice() {
     if (!notice?.action) return;
     const kind = notice.action.kind;
     const onKey = (e: KeyboardEvent) => {
-      if (!(e.ctrlKey || e.metaKey) || editable(e.target)) return;
+      if (!(e.ctrlKey || e.metaKey) || otherUndo(e)) return;
       const k = e.key.toLowerCase();
       const undo = k === 'z' && !e.shiftKey;
       const redo = k === 'y' || (k === 'z' && e.shiftKey);

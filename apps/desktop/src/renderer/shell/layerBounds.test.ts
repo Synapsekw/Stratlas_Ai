@@ -120,4 +120,10 @@ describe('layerBounds', () => {
     expect(await groundAt(500, 0, deps())).toBeNull();
     expect(await groundAt(0, 0, deps({ rayDown: () => null }))).toBeNull();
   });
+
+  it('casts the ground ray against the DSM layer only', async () => {
+    const rayDown = vi.fn(() => 4);
+    await groundAt(1, 2, deps({ rayDown }));
+    expect(rayDown).toHaveBeenCalledWith(1, 2, 'dsm');
+  });
 });

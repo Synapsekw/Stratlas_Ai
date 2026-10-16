@@ -15,6 +15,8 @@ export interface OffsetStep {
 export type OffsetSteps = Record<string, Record<string, OffsetStep>>;
 
 export interface AlignToNoticeState {
+  /** The project it was raised for: another project takes it away, and its Undo writes nothing. */
+  projectId: string | null;
   text: string;
   action: { kind: 'undo' | 'redo'; steps: OffsetSteps } | null;
 }
@@ -66,11 +68,16 @@ function stepFix(
 export function createAlignToStore(deps: AlignToDeps): StoreApi<AlignToStore> {
   // one write at a time: a key held down or a double click must not start a second
   let busy = false;
-  return createStore<AlignToStore>()((set, get) => {
+  const store = createStore<AlignToStore>()((set, get) => {
+    const openId = () => deps.workspace.getState().project?.id ?? null;
+    /** A notice for the open project. */
+    const say = (text: string, action: AlignToNoticeState['action'] = null) => {
+      set({ notice: { projectId: openId(), text, action } });
+    };
     const unread = () => {
       if (deps.workspace.getState().orientationLoaded) return false;
       deps.reload();
-      set({ notice: { text: t('align.direction.say.notLoaded'), action: null } });
+      say(t('align.direction.say.notLoaded'));
       return true;
     };
     return {
@@ -79,37 +86,34 @@ export function createAlignToStore(deps: AlignToDeps): StoreApi<AlignToStore> {
         if (busy) return;
         busy = true;
         try {
-          const first = deps.workspace.getState().project?.manifest;
+          const first = deps.workspace.getState().project;
           if (!first || unread()) return;
-          const target = first.layers.find((l) => l.id === targetId);
+          const target = first.manifest.layers.find((l) => l.id === targetId);
           const box = await deps.bounds(targetId);
           if (!target || !box) {
-            set({
-              notice: {
-                text: t('actions.reason.noBounds', { name: target?.name ?? targetId }),
-                action: null,
-              },
-            });
+            say(t('actions.reason.noBounds', { name: target?.name ?? targetId }));
             return;
           }
           const g = await deps.ground((box.min[0] + box.max[0]) / 2, (box.min[2] + box.max[2]) / 2);
           // read again: the project or the corrections may have changed while we waited
           const ws = deps.workspace.getState();
           const m = ws.project?.manifest;
-          if (!m || unread()) return;
+          if (!m || ws.project?.id !== first.id || unread()) return;
           const sources = alignSources(m, ws.orientation, source);
           if (!sources.some((s) => s.pos)) {
-            set({ notice: { text: t('actions.reason.noPositions'), action: null } });
+            say(t('actions.reason.noPositions'));
             return;
           }
-          const plan = planAlign(sources, box, g);
+          // camera heights of photos or panoramas are no ground: only a DSM sets the height then
+          const boundsFloor = target.kind !== 'photos' && target.kind !== 'panoramas';
+          const plan = planAlign(sources, box, g, { boundsFloor });
           if (plan.inPlace) {
-            set({ notice: { text: t('align.to.inPlace'), action: null } });
+            say(t('align.to.inPlace'));
             return;
           }
           const err = await deps.save(() => plan.fixes);
           if (err) {
-            set({ notice: { text: err, action: null } });
+            say(err);
             return;
           }
           const steps: OffsetSteps = {};
@@ -123,16 +127,28 @@ export function createAlignToStore(deps: AlignToDeps): StoreApi<AlignToStore> {
           });
           const skipped =
             plan.skipped > 0 ? ` ${t('align.to.skipped', { count: plan.skipped })}` : '';
-          set({ notice: { text: `${done}.${skipped}`, action: { kind: 'undo', steps } } });
+          set({
+            notice: {
+              projectId: first.id,
+              text: `${done}.${skipped}`,
+              action: { kind: 'undo', steps },
+            },
+          });
         } catch (e) {
-          set({ notice: { text: errorText(e), action: null } });
+          say(errorText(e));
         } finally {
           busy = false;
         }
       },
       apply: async () => {
-        const a = get().notice?.action;
-        if (!a || busy) return;
+        const n = get().notice;
+        const a = n?.action;
+        if (!n || !a || busy) return;
+        // the steps name another project's photos: never write them into this one
+        if (n.projectId !== openId()) {
+          set({ notice: null });
+          return;
+        }
         busy = true;
         try {
           if (unread()) return;
@@ -155,14 +171,15 @@ export function createAlignToStore(deps: AlignToDeps): StoreApi<AlignToStore> {
           // a failed write keeps the action, so the notice can try again
           set({
             notice: err
-              ? { text: err, action: a }
+              ? { projectId: n.projectId, text: err, action: a }
               : {
+                  projectId: n.projectId,
                   text: t(a.kind === 'undo' ? 'align.to.undone' : 'align.to.redone'),
                   action: { kind: a.kind === 'undo' ? 'redo' : 'undo', steps: inverse },
                 },
           });
         } catch (e) {
-          set({ notice: { text: errorText(e), action: a } });
+          set({ notice: { projectId: n.projectId, text: errorText(e), action: a } });
         } finally {
           busy = false;
         }
@@ -172,4 +189,11 @@ export function createAlignToStore(deps: AlignToDeps): StoreApi<AlignToStore> {
       },
     };
   });
+  // a notice belongs to the project it was raised for (like farSession and diskChanged)
+  deps.workspace.subscribe((s, prev) => {
+    if (s.project?.id === prev.project?.id) return;
+    const n = store.getState().notice;
+    if (n && n.projectId !== (s.project?.id ?? null)) store.getState().dismiss();
+  });
+  return store;
 }

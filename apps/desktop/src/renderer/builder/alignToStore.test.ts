@@ -19,6 +19,13 @@ const manifest = {
       ],
     },
     { kind: 'mesh', id: 'm', name: 'Site model', visible: true, src: { path: 'm' }, transform: [] },
+    {
+      kind: 'photos',
+      id: 'drone',
+      name: 'Drone',
+      visible: true,
+      items: [{ id: 'd', src: { path: 'd' }, pos: [0, 100, 0] }],
+    },
   ],
 } as unknown as ProjectManifest;
 
@@ -138,6 +145,29 @@ describe('alignTo store', () => {
     await store.getState().apply();
     expect(store.getState().notice?.text).toBe('Disk full');
     expect(store.getState().notice?.action?.kind).toBe('undo');
+  });
+
+  it('aligning to a drone photo set at 100 m with no DSM keeps the source heights', async () => {
+    const { store, saved } = setup({ min: [0, 100, 0], max: [0, 100, 0] });
+    await store.getState().alignTo({ layerIds: ['ph'] }, 'drone');
+    expect(saved).toHaveLength(1);
+    expect(saved[0]?.ph?.a?.offsetM?.[1]).toBe(0);
+    expect(saved[0]?.ph?.b?.offsetM?.[1]).toBe(0);
+  });
+
+  it('a project switch dismisses the notice, and its Undo afterwards writes nothing', async () => {
+    const { store, saved, ws } = setup();
+    await store.getState().alignTo({ layerIds: ['ph'] }, 'm');
+    const old = store.getState().notice;
+    expect(old?.projectId).toBe('p');
+    ws.getState().openProject({ id: 'q', root: 'C:/q', manifest });
+    ws.getState().setOrientation(emptyOrientation());
+    expect(store.getState().notice).toBeNull();
+    // a notice that outlived its project (shown again by a stale handle) refuses to write
+    store.setState({ notice: old });
+    await store.getState().apply();
+    expect(saved).toHaveLength(1);
+    expect(store.getState().notice).toBeNull();
   });
 
   it('a rejected lookup shows its message', async () => {

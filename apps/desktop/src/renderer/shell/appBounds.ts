@@ -23,9 +23,12 @@ export function appBoundsDeps(): BoundsDeps {
       return b ? { min: b.min.toArray(), max: b.max.toArray() } : null;
     },
     fileExtent: (id) => fileExtentSource(id),
-    rayDown: (x, z) => {
+    rayDown: (x, z, layerId) => {
       const h = getActiveScene();
-      const hit = h?.raycastRay(new Vector3(x, 20_000, z), new Vector3(0, -1, 0));
+      // that layer's objects only: no other model, and no y = 0 plane when the DSM is missed
+      const hit = h?.raycastRay(new Vector3(x, 20_000, z), new Vector3(0, -1, 0), {
+        layer: layerId,
+      });
       return hit ? hit.point.y : null;
     },
   };

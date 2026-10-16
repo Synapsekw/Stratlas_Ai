@@ -4,6 +4,7 @@ import { workspace } from '@aio/workspace';
 import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { shell } from '../shell';
 import { AlignToNotice } from './AlignToNotice';
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -59,6 +60,7 @@ describe('AlignToNotice', () => {
     host = document.body.appendChild(document.createElement('div'));
     workspace.getState().openProject({ id: 'p', root: 'C:/p', manifest });
     workspace.getState().setOrientation(emptyOrientation());
+    shell.setState({ screen: 'scene' });
   });
   afterEach(async () => {
     const { alignTo } = await import('./alignSession');
@@ -112,5 +114,58 @@ describe('AlignToNotice', () => {
     press({ key: 'z', ctrlKey: true });
     expect(spy).toHaveBeenCalledTimes(1);
     window.removeEventListener('keydown', spy);
+  });
+
+  it('leaves Ctrl+Z to other screens and to a panel with its own undo', async () => {
+    const { alignTo } = await import('./alignSession');
+    root = createRoot(host);
+    act(() => root?.render(<AlignToNotice />));
+    await act(async () => {
+      await alignTo.getState().alignTo({ layerIds: ['ph'] }, 'm');
+    });
+    expect(byId('align-to-undo')).not.toBeNull();
+    const spy = vi.fn();
+    window.addEventListener('keydown', spy);
+
+    // another screen: its own Ctrl+Z
+    act(() => {
+      shell.setState({ screen: 'issues' });
+    });
+    press({ key: 'z', ctrlKey: true });
+    expect(spy).toHaveBeenCalledTimes(1);
+    expect(saves).toHaveLength(1);
+
+    // the scene, but the issue register beside it has the focus
+    act(() => {
+      shell.setState({ screen: 'scene' });
+    });
+    const panel = document.body.appendChild(document.createElement('div'));
+    panel.setAttribute('data-testid', 'issue-register');
+    const row = panel.appendChild(document.createElement('button'));
+    act(() => {
+      row.dispatchEvent(
+        new KeyboardEvent('keydown', { key: 'z', ctrlKey: true, bubbles: true, cancelable: true }),
+      );
+    });
+    expect(spy).toHaveBeenCalledTimes(2);
+    expect(saves).toHaveLength(1);
+    panel.remove();
+    window.removeEventListener('keydown', spy);
+  });
+
+  it('a project switch takes the notice away', async () => {
+    const { alignTo } = await import('./alignSession');
+    root = createRoot(host);
+    act(() => root?.render(<AlignToNotice />));
+    await act(async () => {
+      await alignTo.getState().alignTo({ layerIds: ['ph'] }, 'm');
+    });
+    expect(byId('align-to-notice')).not.toBeNull();
+    act(() => {
+      workspace.getState().openProject({ id: 'q', root: 'C:/q', manifest });
+    });
+    expect(byId('align-to-notice')).toBeNull();
+    press({ key: 'z', ctrlKey: true });
+    expect(saves).toHaveLength(1);
   });
 });
