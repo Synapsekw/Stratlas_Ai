@@ -2,6 +2,8 @@ import type { HeightTiles, MeasurementsFile, SurveyMeasurement } from '@aio/sche
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import type { ProjectManifest } from '@aio/schema';
+import { workspace } from '@aio/workspace';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const call = vi.fn((channel: string) =>
@@ -14,8 +16,15 @@ const call = vi.fn((channel: string) =>
 vi.mock('../shell', () => ({ bridge: { call } }));
 vi.mock('../author', () => ({ authorName: () => '' }));
 
-const { compareStore, compute, engineClient, scheduleCheck, setEnginePort, setEngineStarter } =
-  await import('./compareStore');
+const {
+  compareStore,
+  compute,
+  engineClient,
+  followMeasurements,
+  scheduleCheck,
+  setEnginePort,
+  setEngineStarter,
+} = await import('./compareStore');
 const { isDirty, measureStore, patchMeasurement, revertMeasurements, saveMeasurements } =
   await import('./measureStore');
 const { serveEngine } = await import('./engineServe');
@@ -320,5 +329,48 @@ describe('an engine that dies', () => {
       ch.port1.close();
       ch.port2.close();
     }
+  });
+});
+
+describe('a live run while editing a lined-up date', () => {
+  it('receives the stored-frame ring, as the saved runs do', async () => {
+    const manifest: ProjectManifest = {
+      schema: 'aio.project/1',
+      id: 'p1',
+      name: 'P',
+      crs: { epsg: 32640 },
+      origin: [0, 0, 0],
+      captures: [
+        { id: 'c1', label: 'One', date: '2026-01-01' },
+        {
+          id: 'c2',
+          label: 'Two',
+          date: '2026-02-01',
+          lineUp: { eastM: 2, northM: -1, with: 'c1', at: '2026-10-16T08:00:00Z' },
+        },
+      ],
+      layers: [],
+      severityModels: [],
+      classCatalogues: [],
+    };
+    workspace.getState().openProject({ id: 'p1', root: 'E:/t', manifest });
+    const file: MeasurementsFile = {
+      schema: 'aio.measurements/1',
+      measurements: [{ ...pit, scope: { kind: 'survey', capture: 'c2' } }],
+    };
+    measureStore.setState({ file, savedText: JSON.stringify(file), autosave: false });
+    const off = followMeasurements();
+    // the vertices as drawn: the date's shift (2 m east, 1 m south) added
+    const drawn = ring.map(([e, n, z]): [number, number, number] => [e + 2, n - 1, z]);
+    measureStore.setState({
+      focus: 'm1',
+      editing: { points: drawn, dragging: null, selected: null } as never,
+    });
+    await vi.waitFor(() => {
+      expect(compareStore.getState().computed.m1?.live).toBe(true);
+    });
+    expect(compareStore.getState().computed.m1?.ringKey).toContain('302018');
+    expect(compareStore.getState().computed.m1?.ringKey).not.toContain('302020');
+    off();
   });
 });

@@ -92,6 +92,28 @@ describe('moving a measurement to another scope', () => {
     ]);
   });
 
+  it('marks the results stale when it rewrites the points, and leaves equal frames alone', () => {
+    const result = { item: 'a', status: 'ok' } as never;
+    const file = measureStore.getState().file;
+    const jan = { ...measurement('m-jan', { kind: 'survey', capture: 'jan' }), results: [result] };
+    measureStore.setState({
+      file: {
+        ...file,
+        measurements: [
+          ...file.measurements.map((m) => (m.id === 'm-site' ? { ...m, results: [result] } : m)),
+          jan,
+        ],
+      },
+    });
+    setScope('m-site', { kind: 'survey', capture: 'jun' });
+    expect(stored('m-site')?.results[0]?.status).toBe('stale');
+    // a date without a shift and the site share one frame: nothing is rewritten
+    const before = stored('m-jan');
+    setScope('m-jan', { kind: 'site' });
+    expect(stored('m-jan')?.points).toBe(before?.points);
+    expect(stored('m-jan')?.results[0]?.status).toBe('ok');
+  });
+
   it('keeps a copy where the original is drawn', () => {
     copyToSurvey('m-jun', 'jan');
     const copy = measureStore.getState().file.measurements.at(-1);

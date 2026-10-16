@@ -50,12 +50,12 @@ import {
   type SnapSettings,
   type SnapSource,
 } from '@aio/survey';
+import { shiftKey, workspace } from '@aio/workspace';
 import { createStore, useStore } from 'zustand';
-import { workspace } from '@aio/workspace';
 import { authorName } from '../author';
 import { bridge } from '../shell';
 import { designs, loadDesigns } from './designsStore';
-import { drawnPoints, storedPoints } from './measureDates';
+import { drawnPoints, scopeShift, storedPoints } from './measureDates';
 
 export type MeasureDialog =
   | { kind: 'units'; target: 'site' | 'measurement' }
@@ -402,7 +402,9 @@ export function copyToSurvey(id: string, capture: string): void {
   if (by) copy.createdBy = by;
   else delete copy.createdBy;
   // it stays where the original is drawn, whatever shift either date carries
-  copy.points = storedPoints(drawnPoints(m, openManifest()), copy.scope, openManifest());
+  const manifest = openManifest();
+  if (shiftKey(scopeShift(m.scope, manifest)) !== shiftKey(scopeShift(copy.scope, manifest)))
+    copy.points = storedPoints(drawnPoints(m, manifest), copy.scope, manifest);
   addMeasurement(copy);
 }
 
@@ -411,7 +413,16 @@ export function setScope(id: string, scope: MeasurementScope): void {
   if (!m) return;
   const manifest = openManifest();
   // the shape stays where it is drawn: its points are saved in the new scope's frame
-  patchMeasurement(id, { scope, points: storedPoints(drawnPoints(m, manifest), scope, manifest) });
+  // two scopes with the same shift share one frame: the points stay as they are
+  if (shiftKey(scopeShift(m.scope, manifest)) === shiftKey(scopeShift(scope, manifest))) {
+    patchMeasurement(id, { scope });
+    return;
+  }
+  patchMeasurement(id, {
+    scope,
+    points: storedPoints(drawnPoints(m, manifest), scope, manifest),
+    results: m.results.map((r) => ({ ...r, status: 'stale' as const })),
+  });
 }
 
 // ---------------------------------------------------------------- selection and panels

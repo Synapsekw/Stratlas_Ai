@@ -19,10 +19,12 @@ import type {
   SurveyPrepareParams,
 } from '@aio/schema';
 import { createStore, useStore } from 'zustand';
+import { workspace } from '@aio/workspace';
 import { bridge } from '../shell';
 import { connectEngine, RunCancelled, startEngineWorker, type EngineClient } from './engineClient';
 import { designs as designsStore } from './designsStore';
 import type { EnginePort, HeatGrid, ItemShare, RunReply } from './engineProtocol';
+import { storedPoints } from './measureDates';
 import { measureStore, setComputedResults, updateMeasurement } from './measureStore';
 
 export interface CaptureInfo {
@@ -439,6 +441,18 @@ function scheduleLive(id: string, points: readonly SitePoint[]): void {
   }, 40);
 }
 
+/**
+ * The vertices being edited as the saved runs see them. Editing happens where a measurement is
+ * drawn (its date's shift added); every run, live or saved, reads the stored frame.
+ */
+export function editedStoredPoints(
+  m: Pick<SurveyMeasurement, 'scope'>,
+  edited: readonly SitePoint[],
+  manifest: Parameters<typeof storedPoints>[2],
+): SitePoint[] {
+  return storedPoints(edited, m.scope, manifest);
+}
+
 let unsubscribe: (() => void) | null = null;
 /** Follow the measurements store and the site's designs (once). */
 export function followMeasurements(): () => void {
@@ -450,7 +464,10 @@ export function followMeasurements(): () => void {
     if (s.editing && s.focus && s.editing.points !== prev.editing?.points) {
       const m = s.file.measurements.find((x) => x.id === s.focus);
       if (m?.family === 'polygon' && m.items.length > 0 && s.editing.points.length >= 3)
-        scheduleLive(m.id, s.editing.points);
+        scheduleLive(
+          m.id,
+          editedStoredPoints(m, s.editing.points, workspace.getState().project?.manifest ?? null),
+        );
     }
     if (
       s.file !== prev.file ||
