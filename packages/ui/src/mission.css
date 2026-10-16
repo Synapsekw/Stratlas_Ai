@@ -983,14 +983,36 @@ select.input option {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  gap: 8px;
   padding: 6px 10px 4px;
   height: 30px;
+  /* the header's own width decides whether Add data shows its label (below) */
+  container-type: inline-size;
+}
+/* the label and its count, with a gap: "DATASETS 10", not "DATASETS10" */
+.tree-h-title {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  min-width: 0;
 }
 .tree-h-end {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 4px;
   margin-inline-end: -6px;
+}
+/* in the sidebar's width the label and five actions do not fit: Add data keeps only its icon (the
+   label stays its accessible name, drawn in no room as .sr-only is) */
+@container (max-width: 300px) {
+  .tree-h .tree-add .lbl {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
 }
 .tree-h .caps {
   color: var(--fg-3);
@@ -1441,6 +1463,18 @@ select.input option {
 .dtree-note > span {
   flex: 1;
   min-width: 0;
+}
+/* the survey date prompt: the text takes the full width and File them / Not now go on a row
+   below it (beside the text they squeezed it to one word a line) */
+.dtree-note.date-prompt {
+  flex-wrap: wrap;
+  row-gap: 4px;
+}
+.dtree-note.date-prompt > span {
+  flex-basis: 100%;
+}
+.dtree-note.date-prompt > .dtree-undo:first-of-type {
+  margin-inline-start: -4px;
 }
 .dtree-note > button {
   all: unset;

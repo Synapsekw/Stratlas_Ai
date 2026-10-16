@@ -709,14 +709,17 @@ function Datasets({ collapsed }: { collapsed: boolean }) {
       }}
     >
       <div className="tree-h sb-hide">
-        <span className="caps">Datasets</span>
-        <span className="tree-h-end">
+        {/* the count sits with its label ("DATASETS 10"), the actions at the end */}
+        <span className="tree-h-title">
+          <span className="caps">Datasets</span>
           {/* a retired viewer of an older project has no row, so it is not counted */}
           {!marking && (
             <span className="mono faint">
               {project.manifest.layers.filter((l) => l.kind !== 'legacy').length}
             </span>
           )}
+        </span>
+        <span className="tree-h-end">
           {marking && (
             <button
               type="button"
@@ -738,7 +741,7 @@ function Datasets({ collapsed }: { collapsed: boolean }) {
               onClick={() => void builder.getState().pickAndImport()}
             >
               <Icon name="import" size={14} />
-              {t('tree.addData')}
+              <span className="lbl">{t('tree.addData')}</span>
             </button>
           )}
           {!readOnly && !marking && (
