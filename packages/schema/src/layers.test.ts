@@ -3,6 +3,24 @@ import { LayerPatch } from './builder';
 import { Layer } from './layers';
 import { parseManifest } from './manifest';
 
+describe('point cloud height offset', () => {
+  const cloud = {
+    kind: 'pointcloud',
+    id: 'c',
+    name: 'C',
+    src: { path: 'c.laz' },
+    format: 'copc',
+  };
+  it('keeps a point cloud height offset', () => {
+    expect(Layer.parse({ ...cloud, heightOffsetM: -30.81 })).toMatchObject({
+      heightOffsetM: -30.81,
+    });
+  });
+  it('refuses a height offset beyond 2000 m', () => {
+    expect(Layer.safeParse({ ...cloud, heightOffsetM: 2500 }).success).toBe(false);
+  });
+});
+
 const georef = {
   schema: 'aio.georef/1',
   crs: { epsg: 32633 },

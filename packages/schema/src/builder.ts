@@ -242,6 +242,11 @@ export const LayerPatch = z.union([
    * (`drawings/<stem>/plan.png`) the save also shows the layer and marks its placement as placed.
    */
   z.object({ corners: RasterCorners }).strict(),
+  /**
+   * The height offset of a point cloud (metres added to the file's Z; point clouds other than
+   * kit-packed); `null` clears it.
+   */
+  z.object({ heightOffsetM: z.number().min(-2000).max(2000).nullable() }).strict(),
   /** A new name for any layer kind (the Datasets menu's Rename, F2). Nothing else changes. */
   z.object({ name: z.string().trim().min(1).max(120) }).strict(),
   /** The placement of a `walk` layer (its pins and corrections); `null` clears it. */

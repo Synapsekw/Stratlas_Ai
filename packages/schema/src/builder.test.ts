@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   ImportItem,
   ipc,
+  LayerPatch,
   NewProjectRequest,
   PhotoEstimate,
   ProjectManifest,
@@ -22,6 +23,14 @@ const base = {
   severityModels: [],
   classCatalogues: [],
 };
+
+describe('LayerPatch height offset', () => {
+  it('takes a height offset patch and null', () => {
+    expect(LayerPatch.safeParse({ heightOffsetM: 12.5 }).success).toBe(true);
+    expect(LayerPatch.safeParse({ heightOffsetM: null }).success).toBe(true);
+    expect(LayerPatch.safeParse({ heightOffsetM: 1, name: 'x' }).success).toBe(false);
+  });
+});
 
 describe('project type', () => {
   it('is optional and one of the builder types', () => {

@@ -191,6 +191,8 @@ export const Layer = z.discriminatedUnion('kind', [
     pointCount: z.number().int().nonnegative().optional(),
     /** An extra per-point scalar the viewer can colour by (M8 change: `Distance`). */
     scalar: PointcloudScalar.optional(),
+    /** Metres added to the file's heights (Z); never written into the file. Absent means 0. */
+    heightOffsetM: z.number().min(-2000).max(2000).optional(),
   }),
   z.object({
     kind: z.literal('basemap'),
