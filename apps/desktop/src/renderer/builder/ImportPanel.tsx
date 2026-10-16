@@ -12,7 +12,7 @@ import { engineeringAction, importDestination, importHeadline } from './importSu
 import { createEngineeringModel } from '../engineer/ui';
 import { TilesetImportCard } from './ImportTileset';
 import { ProjectKindTag, ProjectStarter } from './ProjectStarter';
-import { builder, useBuilder, type PanoOffer } from './state';
+import { builder, panoOfferCopy, useBuilder, type PanoOffer } from './state';
 import { rawCameraImported } from './rawCamera';
 import { ImportSurveyDate } from './SurveyDate';
 
@@ -264,9 +264,11 @@ function PanoNote() {
 
 function PanoOfferCard({ o }: { o: PanoOffer }) {
   const t = useT();
+  const copy = panoOfferCopy(o);
   return (
     <PanoCardShell>
-      <p className="small">{t('pano.offer.text', { frames: o.frames.length, count: o.spheres })}</p>
+      <p className="small">{copy.body}</p>
+      {copy.extra ? <p className="small">{copy.extra}</p> : null}
       <PanoNote />
       <div className="b-heights-actions">
         <button
@@ -285,7 +287,7 @@ function PanoOfferCard({ o }: { o: PanoOffer }) {
           data-testid="pano-offer-no"
           onClick={() => void builder.getState().declinePanoOffer()}
         >
-          {t('pano.offer.no')}
+          {copy.skip}
         </button>
         <button
           type="button"

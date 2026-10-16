@@ -154,24 +154,45 @@ export interface PanoOffer {
   paths: readonly string[];
   altitude?: AltitudeChoice;
   scan: PanoScan;
-  /** The sphere frames, absolute: left out of the photo import when the offer is taken. */
+  /** The sphere frames, absolute. Ready-made files are on `scan.ready`, not here. */
   frames: string[];
   spheres: number;
 }
 
-/** The offer to import a scan's spheres as panoramas, or null when it found none. */
+/** The offer to import spheres or ready-made panoramas, or null when the scan found neither. */
 export function panoOfferFrom(
   paths: readonly string[],
   scan: PanoScan,
   altitude?: AltitudeChoice,
 ): PanoOffer | null {
-  if (scan.spheres.length === 0) return null;
+  if (scan.spheres.length === 0 && scan.ready.length === 0) return null;
   return {
     paths,
     ...(altitude ? { altitude } : {}),
     scan,
     frames: scan.spheres.flatMap((s) => s.files),
     spheres: scan.spheres.length,
+  };
+}
+
+/**
+ * Files a yes or a no leaves out of the photo import: the sphere frames, and every ready-made
+ * panorama (a stitched 360 must not also land in Photos).
+ */
+export function panoOfferExcluded(o: PanoOffer): string[] {
+  return [...o.frames, ...o.scan.ready.map((r) => r.file)];
+}
+
+/** The offer card's sentences. A drop of only stitched 360s is not described as raw frames. */
+export function panoOfferCopy(o: PanoOffer): { body: string; extra: string | null; skip: string } {
+  const ready = o.scan.ready.length;
+  return {
+    body:
+      o.spheres > 0
+        ? t('pano.offer.text', { frames: o.frames.length, count: o.spheres })
+        : t('pano.offer.ready', { count: ready }),
+    extra: o.spheres > 0 && ready > 0 ? t('pano.offer.readyAlso', { count: ready }) : null,
+    skip: o.spheres > 0 ? t('pano.offer.no') : t('pano.offer.noReady'),
   };
 }
 
@@ -357,8 +378,9 @@ async function runImport(
   altitude: AltitudeChoice | undefined,
   opts: ImportOptions | undefined,
 ): Promise<boolean> {
-  // drone sphere frames go to the panorama import, not into a photo layer (spec section 2); a
-  // queued drop is scanned when its turn comes, like any other. `exclude` says it was answered.
+  // drone sphere frames and ready-made 360s go to the panorama import, not into a photo layer
+  // (spec section 2); a queued drop is scanned when its turn comes, like any other. `exclude`
+  // says it was answered.
   if (!opts?.drawings && !opts?.as360 && opts?.exclude === undefined) {
     preparing = true;
     builder.setState({ panoScanning: true, importResult: null });
@@ -785,14 +807,14 @@ export const builder = createStore<Builder>()((set, get) => ({
     } finally {
       previewing = false;
     }
-    await get().importFiles(o.paths, o.altitude, { exclude: o.frames });
+    await get().importFiles(o.paths, o.altitude, { exclude: panoOfferExcluded(o) });
   },
   declinePanoOffer: async () => {
     const o = get().panoOffer;
     if (!o) return;
     set({ panoOffer: null });
-    // the sphere frames never become map photos: only the other files come in
-    await get().importFiles(o.paths, o.altitude, { exclude: o.frames });
+    // sphere frames and ready-made panoramas never become map photos: only the other files come in
+    await get().importFiles(o.paths, o.altitude, { exclude: panoOfferExcluded(o) });
   },
   dismissPanoOffer: () => {
     set({ panoOffer: null, panoFailed: null });

@@ -2361,8 +2361,15 @@ export const en = {
     '{frames} of these frames are {count} drone panorama. Import it as a panorama?',
   'pano.offer.text_other':
     '{frames} of these frames are {count} drone panoramas. Import them as panoramas?',
+  'pano.offer.ready_one':
+    '{count} of these files is a ready-made 360 panorama. Import it as a panorama?',
+  'pano.offer.ready_other':
+    '{count} of these files are ready-made 360 panoramas. Import them as panoramas?',
+  'pano.offer.readyAlso_one': '{count} ready-made panorama in this drop is included.',
+  'pano.offer.readyAlso_other': '{count} ready-made panoramas in this drop are included.',
   'pano.offer.yes': 'Import as panoramas',
   'pano.offer.no': 'Skip these frames',
+  'pano.offer.noReady': 'Skip these panoramas',
   'pano.offer.cancel': 'Cancel',
   'pano.offer.checking': 'Checking for drone panoramas…',
   'pano.offer.failed': 'Could not check these files for drone panoramas.',

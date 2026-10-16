@@ -31,7 +31,7 @@ vi.stubGlobal('window', {});
 
 import { panoImport } from '../panos/panos';
 import { QUEUED_NOTE } from './importSummary';
-import { builder, panoOfferFrom } from './state';
+import { builder, panoOfferCopy, panoOfferFrom } from './state';
 
 const frames = Array.from(
   { length: 25 },
@@ -58,6 +58,23 @@ const scan: PanoScan = {
   day: '2026-09-10',
 };
 const none: PanoScan = { ...scan, spheres: [] };
+/** A drop of already-stitched 360s: no raw sphere frames, one ready-made panorama. */
+const readyFile = 'D:/Pano/sphere.jpg';
+const readyOnly: PanoScan = {
+  ...none,
+  ready: [
+    {
+      key: 'r1',
+      file: readyFile,
+      bytes: 20_000_000,
+      lat: 25.2,
+      lon: 55.3,
+      takenAt: '2026-09-10T10:00:00',
+    },
+  ],
+  files: 1,
+  skipped: [],
+};
 /** What main answers for a drop without a JPEG (a model, a cloud, a video). */
 const empty: PanoScan = {
   scanId: 'scan-2',
@@ -134,6 +151,30 @@ describe('panoOfferFrom', () => {
       paths: ['D:/card'],
     });
   });
+
+  it('offers a drop that holds only ready-made panoramas', () => {
+    const offer = panoOfferFrom(['D:/Pano'], readyOnly);
+    expect(offer).toMatchObject({
+      frames: [],
+      spheres: 0,
+      paths: ['D:/Pano'],
+      scan: readyOnly,
+    });
+    expect(offer && panoOfferCopy(offer)).toEqual({
+      body: '1 of these files is a ready-made 360 panorama. Import it as a panorama?',
+      extra: null,
+      skip: 'Skip these panoramas',
+    });
+  });
+
+  it('keeps the sphere sentence and mentions a ready-made panorama in the same drop', () => {
+    const offer = panoOfferFrom(['D:/card'], { ...scan, ready: readyOnly.ready });
+    expect(offer && panoOfferCopy(offer)).toEqual({
+      body: '25 of these frames are 1 drone panorama. Import it as a panorama?',
+      extra: '1 ready-made panorama in this drop is included.',
+      skip: 'Skip these frames',
+    });
+  });
 });
 
 describe('Add data and drone spheres', () => {
@@ -194,6 +235,47 @@ describe('Add data and drone spheres', () => {
       expect.objectContaining({ paths: ['D:/site/model.glb', 'D:/site/cloud.las', 'D:/walk.mp4'] }),
     ]);
     expect(imports()[0]?.exclude).toBeUndefined();
+  });
+
+  it('stops at the offer when the drop is only ready-made panoramas', async () => {
+    main(readyOnly);
+    await builder.getState().importFiles(['D:/Pano']);
+    expect(builder.getState().panoOffer).toMatchObject({ spheres: 0, paths: ['D:/Pano'] });
+    expect(imports()).toEqual([]);
+  });
+
+  it('opens the preview for ready-made panoramas and leaves them out of the photos', async () => {
+    main(readyOnly);
+    await builder.getState().importFiles(['D:/Pano']);
+    const accepting = builder.getState().acceptPanoOffer();
+    expect(openPanoScan).toHaveBeenCalledWith(readyOnly);
+    await Promise.resolve();
+    expect(imports()).toEqual([]);
+    panoImport.setState({ open: false });
+    await accepting;
+    expect(imports()).toEqual([
+      expect.objectContaining({ paths: ['D:/Pano'], exclude: [readyFile] }),
+    ]);
+  });
+
+  it('leaves ready-made panoramas out of the photos when the offer is declined', async () => {
+    main(readyOnly);
+    await builder.getState().importFiles(['D:/Pano']);
+    await builder.getState().declinePanoOffer();
+    expect(openPanoScan).not.toHaveBeenCalled();
+    expect(imports()).toEqual([
+      expect.objectContaining({ paths: ['D:/Pano'], exclude: [readyFile] }),
+    ]);
+  });
+
+  it('leaves a ready-made panorama out of the photos when spheres are in the same drop', async () => {
+    const mixed: PanoScan = { ...scan, ready: readyOnly.ready };
+    main(mixed);
+    await builder.getState().importFiles(['D:/card']);
+    await builder.getState().declinePanoOffer();
+    expect(imports()).toEqual([
+      expect.objectContaining({ paths: ['D:/card'], exclude: [...frames, readyFile] }),
+    ]);
   });
 
   it('goes straight on when there is no sphere, and never checks drawings or 360 video', async () => {
