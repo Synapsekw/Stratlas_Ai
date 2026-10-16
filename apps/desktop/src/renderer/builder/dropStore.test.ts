@@ -138,6 +138,29 @@ describe('drop store', () => {
     );
   });
 
+  it('names a hidden cloud and writes nothing', async () => {
+    const { store, save, ws } = setup(undefined, { lows: { c: null, m: 2 } });
+    ws.getState().setLayerVisible('c', false);
+    await store.getState().drop(['m', 'c']);
+    expect(save).not.toHaveBeenCalled();
+    expect(store.getState().notice?.text).toBe('Cloud is hidden. Show it, then try again.');
+  });
+
+  it('names several hidden datasets', async () => {
+    const { store, save, ws } = setup([
+      cloud('c', 'Cloud'),
+      cloud('d', 'Other'),
+      model('m', 'Model'),
+    ]);
+    ws.getState().setLayerVisible('c', false);
+    ws.getState().setLayerVisible('d', false);
+    await store.getState().drop(['c', 'd', 'm']);
+    expect(save).not.toHaveBeenCalled();
+    expect(store.getState().notice?.text).toBe(
+      'Cloud, Other are hidden. Show them, then try again.',
+    );
+  });
+
   it('refuses a kit-packed cloud', async () => {
     const { store, save } = setup([cloud('c', 'Cloud', { format: 'kit-packed' })]);
     await store.getState().drop(['c']);

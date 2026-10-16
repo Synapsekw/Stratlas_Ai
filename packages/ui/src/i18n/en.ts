@@ -4094,6 +4094,8 @@ export const en = {
   'drop.onProject': 'to the project ground level',
   'drop.inPlace': 'Already on the ground',
   'drop.notLoaded': '{name} has not loaded yet. Show it, let it load, then try again.',
+  'drop.hidden_one': '{names} is hidden. Show it, then try again.',
+  'drop.hidden_other': '{names} are hidden. Show them, then try again.',
   'drop.set': 'Height offset of {name} set to {distance}.',
   'drop.undone': 'Drop undone.',
   'drop.redone': 'Dropped again.',

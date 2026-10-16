@@ -117,6 +117,17 @@ export function createDropStore(deps: DropDeps): StoreApi<DropStore> {
           if (!first) return;
           const measured: { id: string; low: number; ground: ReturnType<typeof groundUnder> }[] =
             [];
+          // a hidden dataset draws nothing to measure: say so, and write nothing
+          const hiddenNow = deps.workspace.getState().hidden;
+          const hiddenNames: string[] = [];
+          for (const id of layerIds) {
+            const l = layerOf(first.manifest, id);
+            if (l && hiddenNow[id] && droppable(l) === 'ok') hiddenNames.push(l.name);
+          }
+          if (hiddenNames.length > 0) {
+            say(t('drop.hidden', { count: hiddenNames.length, names: hiddenNames.join(', ') }));
+            return;
+          }
           for (const id of layerIds) {
             const l = layerOf(first.manifest, id);
             if (!l) continue;
