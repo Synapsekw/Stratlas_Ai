@@ -1,6 +1,6 @@
 import type { Layer } from '@aio/schema';
 import { describe, expect, it } from 'vitest';
-import { flightCards, flightOf, panoCard } from './mediaModel';
+import { flightCards, flightOf, mediaSummary, panoCard, showsClipList } from './mediaModel';
 
 const T0 = Date.UTC(2023, 10, 22, 5, 0, 0);
 
@@ -69,5 +69,29 @@ describe('panoCard', () => {
         asset: undefined,
         stitched: false,
       });
+  });
+});
+
+describe('media summary and clip list', () => {
+  it('counts in the singular for one', () => {
+    expect(mediaSummary({ clips: 1, photos: 1, panoramas: 0 })).toBe(
+      '1 clip · 1 photo · 0 panoramas',
+    );
+    expect(mediaSummary({ clips: 2, photos: 1182, panoramas: 3 })).toBe(
+      '2 clips · 1,182 photos · 3 panoramas',
+    );
+  });
+
+  it('lists the clips of a flight only when it has more than one (its card is the clip)', () => {
+    const cards = flightCards(
+      [
+        clip('a1', 'Flight 101', T0, 0),
+        clip('a2', 'Flight 101', T0, 60_000),
+        clip('b1', 'Flight 102', T0 + 600_000, 0),
+      ],
+      {},
+    );
+    expect(cards.map(showsClipList)).toEqual([true, false]);
+    expect(showsClipList(null)).toBe(false);
   });
 });

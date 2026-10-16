@@ -415,10 +415,11 @@ test('@realdata the tank is cut or made transparent only by hand; photos and fli
   await expect.poll(cloudsHidden).toBe(false);
   expect(await section()).toBe(false);
 
-  // Media lists the 10 flights, one continuous clip each.
+  // Media lists the 10 flights, one continuous clip each: the flight card is the clip, so no
+  // second list of clips repeats it.
   await win.locator('.nav-item', { hasText: 'Media' }).first().click();
   await expect(win.locator('.m-flight')).toHaveCount(10);
-  await expect(win.locator('#m-flight-clips .m-card')).toHaveCount(1);
+  await expect(win.locator('#m-flight-clips')).toHaveCount(0);
 });
 
 /** Off-screen screenshots for the founder's review (outside the repo). */

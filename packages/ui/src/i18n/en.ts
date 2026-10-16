@@ -1964,6 +1964,12 @@ export const en = {
   'evidence.full': 'Open full size',
 
   // Media: photos with findings
+  'media.count.clips_one': '{n} clip',
+  'media.count.clips_other': '{n} clips',
+  'media.count.photos_one': '{n} photo',
+  'media.count.photos_other': '{n} photos',
+  'media.count.panoramas_one': '{n} panorama',
+  'media.count.panoramas_other': '{n} panoramas',
   'media.findings.tools': 'Findings',
   'media.findings.summary_one': '{count} photo with findings',
   'media.findings.summary_other': '{count} photos with findings',

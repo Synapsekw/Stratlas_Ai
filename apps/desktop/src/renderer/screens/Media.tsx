@@ -28,7 +28,14 @@ import {
   type PhotoFindings,
   type PhotoOrder,
 } from './mediaFindings';
-import { flightCards, flightOf, panoCard, type FlightCard } from './mediaModel';
+import {
+  flightCards,
+  flightOf,
+  mediaSummary,
+  panoCard,
+  showsClipList,
+  type FlightCard,
+} from './mediaModel';
 import {
   noPhotoMatches,
   photosInView,
@@ -68,15 +75,18 @@ function FlightTile({
   playing: boolean;
   onOpen: () => void;
 }) {
+  const t = useT();
   const first = flight.clips[0];
   const n = flight.clips.length;
+  // a one-clip flight lists no clips under it: there is nothing to expand
+  const listed = showsClipList(flight);
   return (
     <div className={`m-card m-flight${open ? ' on' : ''}`}>
       <button
         type="button"
         className="m-flight-main"
-        aria-expanded={open}
-        aria-controls="m-flight-clips"
+        aria-expanded={listed ? open : undefined}
+        aria-controls={listed ? 'm-flight-clips' : undefined}
         onClick={onOpen}
       >
         <div className="m-poster">
@@ -90,7 +100,8 @@ function FlightTile({
         <div className="m-meta">
           <b>{flight.name}</b>
           <span className="mono">
-            {formatClock(flight.startMs)} UTC · {n} {n === 1 ? 'clip' : 'clips'}
+            {formatClock(flight.startMs)} UTC ·{' '}
+            {t('media.count.clips', { count: n, n: formatCount(n) })}
           </span>
         </div>
       </button>
@@ -268,9 +279,11 @@ export function MediaScreen() {
         <header className="page-h">
           <h1>Media</h1>
           <p className="muted">
-            {formatCount(clips.length)} clips ·{' '}
-            {formatCount(photoSets.reduce((n, l) => n + l.items.length, 0))} photos ·{' '}
-            {formatCount(panoSets.reduce((n, l) => n + l.items.length, 0))} panoramas
+            {mediaSummary({
+              clips: clips.length,
+              photos: photoSets.reduce((n, l) => n + l.items.length, 0),
+              panoramas: panoSets.reduce((n, l) => n + l.items.length, 0),
+            })}
           </p>
           {photoSets.length > 0 && (
             <div className="m-tools" role="group" aria-label={t('media.findings.tools')}>
@@ -389,7 +402,7 @@ export function MediaScreen() {
             </div>
           </section>
         )}
-        {shownFlight && (
+        {shownFlight && showsClipList(shownFlight) && (
           <section
             className="m-sec"
             id="m-flight-clips"
@@ -397,7 +410,12 @@ export function MediaScreen() {
           >
             <h2 className="caps">
               {shownFlight.name}{' '}
-              <span className="mono faint">{formatCount(shownFlight.clips.length)} clips</span>
+              <span className="mono faint">
+                {t('media.count.clips', {
+                  count: shownFlight.clips.length,
+                  n: formatCount(shownFlight.clips.length),
+                })}
+              </span>
             </h2>
             <div className="m-grid clips">
               {shownFlight.clips.map((c) => {

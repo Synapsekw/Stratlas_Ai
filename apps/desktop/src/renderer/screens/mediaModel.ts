@@ -1,6 +1,6 @@
 import { panoOpenable } from '@aio/engine';
 import type { AssetRef, Layer, PanoRef } from '@aio/schema';
-import { DEFAULT_CLIP_MS, flightGroups } from '@aio/ui';
+import { DEFAULT_CLIP_MS, flightGroups, formatCount, t } from '@aio/ui';
 
 type VideoLayer = Extract<Layer, { kind: 'video' }>;
 
@@ -49,6 +49,23 @@ export function flightCards(
       };
     })
     .sort((a, b) => a.startMs - b.startMs);
+}
+
+/**
+ * The clips of a flight are listed under the flights only when it has several: the card of a
+ * one-clip flight is that clip already (it plays it), so a list would show the video twice.
+ */
+export function showsClipList(flight: FlightCard | null): boolean {
+  return (flight?.clips.length ?? 0) > 1;
+}
+
+/** "1 clip · 9 photos · 0 panoramas" under the Media title. */
+export function mediaSummary(n: { clips: number; photos: number; panoramas: number }): string {
+  return [
+    t('media.count.clips', { count: n.clips, n: formatCount(n.clips) }),
+    t('media.count.photos', { count: n.photos, n: formatCount(n.photos) }),
+    t('media.count.panoramas', { count: n.panoramas, n: formatCount(n.panoramas) }),
+  ].join(' · ');
 }
 
 /** The flight holding a clip, or the first flight. */
