@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { act, useImperativeHandle, type Ref } from 'react';
+import { act, useImperativeHandle, useState, type Ref } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { splitPrefs } from './prefs';
@@ -246,6 +246,7 @@ describe('ResizableSplit', () => {
 interface HarnessApi {
   toggle: () => void;
   reset: () => void;
+  firstToggle: () => void; // the toggle of the first render, as a shortcut registered once keeps it
 }
 
 let renders = 0;
@@ -264,7 +265,8 @@ function Harness({
 }) {
   onRender();
   const { containerRef, separatorProps, toggle, reset } = useResizableSplit(options);
-  useImperativeHandle(api, () => ({ toggle, reset }), [toggle, reset]);
+  const [firstToggle] = useState(() => toggle);
+  useImperativeHandle(api, () => ({ toggle, reset, firstToggle }), [toggle, reset, firstToggle]);
   return (
     <div ref={containerRef} className="split">
       <div>a</div>
@@ -317,5 +319,30 @@ describe('useResizableSplit', () => {
     expect(container().hasAttribute('data-collapsed')).toBe(false);
     act(() => api.current?.toggle());
     expect(size()).toBe('12px');
+  });
+
+  it('keeps toggle working when kept from the first render', () => {
+    const { api } = mount();
+    act(() => api.current?.firstToggle());
+    expect(size()).toBe('12px');
+    act(() => api.current?.firstToggle());
+    expect(size()).toBe('260px');
+    act(() => api.current?.firstToggle());
+    expect(size()).toBe('12px');
+  });
+
+  it('opens a collapsed split to its remembered size on the first arrow', () => {
+    splitPrefs.setState({ byId: { 'test.hook': { size: 340, collapsed: true } } });
+    mount();
+    expect(size()).toBe('12px');
+    key('ArrowRight');
+    expect(size()).toBe('340px');
+    expect(container().hasAttribute('data-collapsed')).toBe(false);
+  });
+
+  it('ignores a saved fraction outside 0 to 1', () => {
+    splitPrefs.setState({ byId: { 'test.hook': { size: 300 } } });
+    mount({ ...options, unit: 'fraction', defaultSize: 0.4, max: '80%' });
+    expect(size()).toBe('40%');
   });
 });

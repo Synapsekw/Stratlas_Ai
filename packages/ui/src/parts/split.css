@@ -8,10 +8,8 @@
   display: grid;
   min-inline-size: 0;
   min-block-size: 0;
-  /* snap, reset and collapse; never while dragging */
-  transition:
-    grid-template-columns 180ms var(--ease),
-    grid-template-rows 180ms var(--ease);
+  /* Size changes are instant: tracks and insets never animate (the stage canvas would resize
+     every frame). A layout that wants a fold to slide keys a transform off [data-collapsed]. */
 }
 .split[data-collapsed] {
   --split-track: var(--split-size);
@@ -36,24 +34,27 @@
   min-block-size: 0;
 }
 
-/* the handle: an 8 px hit area centred on the edge, drawn as a 1 px hairline */
+/* the handle: an 8 px hit area centred on the edge, drawn as a 1 px hairline (::before);
+   ::after is the 2 px highlight, shown with opacity and scale only */
 .split-handle {
   position: absolute;
   z-index: var(--z-panel);
   touch-action: none;
-  transition-property: inset-inline-start, inset-inline-end, inset-block-start, inset-block-end;
-  transition-duration: 180ms;
-  transition-timing-function: var(--ease);
 }
-.split-handle::before {
+.split-handle::before,
+.split-handle::after {
   content: '';
   position: absolute;
+}
+.split-handle::before {
   background: var(--line-soft);
+}
+.split-handle::after {
+  background: var(--acc-a40);
+  opacity: 0;
   transition:
-    background-color 120ms var(--ease),
-    inline-size 120ms var(--ease),
-    block-size 120ms var(--ease),
-    margin 120ms var(--ease);
+    opacity var(--d-1) var(--ease),
+    transform var(--d-1) var(--ease);
 }
 .split[data-orientation='horizontal'] > .split-handle {
   inset-block: 0;
@@ -74,6 +75,13 @@
   inline-size: 1px;
   margin-inline-start: -0.5px;
 }
+.split[data-orientation='horizontal'] > .split-handle::after {
+  inset-block: 0;
+  inset-inline-start: 50%;
+  inline-size: 2px;
+  margin-inline-start: -1px;
+  transform: scaleX(0.5);
+}
 .split[data-orientation='vertical'] > .split-handle {
   inset-inline: 0;
   block-size: 8px;
@@ -93,32 +101,25 @@
   block-size: 1px;
   margin-block-start: -0.5px;
 }
-
-/* hover: after 150 ms the hairline lights to 2 px; keyboard focus lights it at once */
-.split-handle:hover::before {
-  transition-delay: 150ms;
-  background: var(--acc-a40);
-}
-.split-handle:focus-visible::before {
-  background: var(--acc-a40);
-}
-.split[data-orientation='horizontal'] > .split-handle:hover::before,
-.split[data-orientation='horizontal'] > .split-handle:focus-visible::before {
-  inline-size: 2px;
-  margin-inline-start: -1px;
-}
-.split[data-orientation='vertical'] > .split-handle:hover::before,
-.split[data-orientation='vertical'] > .split-handle:focus-visible::before {
+.split[data-orientation='vertical'] > .split-handle::after {
+  inset-inline: 0;
+  inset-block-start: 50%;
   block-size: 2px;
   margin-block-start: -1px;
+  transform: scaleY(0.5);
 }
 
-/* dragging: accent hairline, no transitions, the size beside the pointer */
-.split[data-dragging],
-.split[data-dragging] > .split-handle,
-.split[data-dragging] > .split-handle::before {
-  transition: none;
+/* hover: after 150 ms the hairline lights to 2 px; keyboard focus lights it at once */
+.split-handle:hover::after {
+  transition-delay: 150ms;
 }
+.split-handle:hover::after,
+.split-handle:focus-visible::after {
+  opacity: 1;
+  transform: none;
+}
+
+/* dragging: accent hairline, the size beside the pointer */
 .split[data-dragging] {
   user-select: none;
 }
@@ -128,16 +129,11 @@
 .split[data-dragging][data-orientation='vertical'] {
   cursor: row-resize;
 }
-.split[data-dragging] > .split-handle::before {
+.split[data-dragging] > .split-handle::after {
   background: var(--acc);
-}
-.split[data-dragging][data-orientation='horizontal'] > .split-handle::before {
-  inline-size: 2px;
-  margin-inline-start: -1px;
-}
-.split[data-dragging][data-orientation='vertical'] > .split-handle::before {
-  block-size: 2px;
-  margin-block-start: -1px;
+  opacity: 1;
+  transform: none;
+  transition: none;
 }
 .split-readout {
   display: none;
@@ -153,22 +149,19 @@
   inset-inline-start: calc(100% + 8px);
   translate: 0 -50%;
 }
+/* --split-pointer is the pointer's distance from the left edge, so this one is physical */
 .split[data-orientation='vertical'] > .split-handle > .split-readout {
-  inset-inline-start: var(--split-pointer, 50%);
+  left: var(--split-pointer, 50%);
   inset-block-start: calc(100% + 8px);
   translate: -50% 0;
 }
 
 /* reduced motion: instant (the OS setting, or Settings, Appearance, Reduce motion) */
 @media (prefers-reduced-motion: reduce) {
-  .split,
-  .split-handle,
-  .split-handle::before {
+  .split-handle::after {
     transition: none;
   }
 }
-:root[data-motion='reduce'] .split,
-:root[data-motion='reduce'] .split-handle,
-:root[data-motion='reduce'] .split-handle::before {
+:root[data-motion='reduce'] .split-handle::after {
   transition: none;
 }
