@@ -496,11 +496,18 @@ class SurveyPrepare:
             src = spec["source"]
             files = source_files(ctx.project, manifest, src)
             hashes = [_sha256(f) if f.is_file() else "" for f in files]
+            key: dict[str, Any] = {"v": PREPARE_VERSION, "source": src, "cellM": cell, "files": hashes}
+            if src["kind"] == "cloud":
+                from ..change.sources import height_offset_m
+
+                off = height_offset_m(_layer(manifest, src["layer"]))
+                if off:  # a cloud without an offset keeps the fingerprint it always had
+                    key["heightOffsetM"] = off
             fp = (
                 "sha256:"
                 + hashlib.sha256(
                     json.dumps(
-                        {"v": PREPARE_VERSION, "source": src, "cellM": cell, "files": hashes},
+                        key,
                         sort_keys=True,
                         separators=(",", ":"),
                     ).encode()

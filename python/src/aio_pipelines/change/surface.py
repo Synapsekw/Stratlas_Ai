@@ -55,7 +55,7 @@ from .imagery import (
     write_pyramid,
 )
 from .register import estimate_shift, refusal
-from .sources import GridSource, cloud_source, grid_source
+from .sources import GridSource, cloud_source, grid_source, height_offset_m
 
 PRODUCER = "change.surface"
 #: Founder defaults (``ChangeThresholds.surface`` and ``.registration``).
@@ -156,13 +156,16 @@ class Surface:
     # -- clouds
 
     def points(self, ctx: StepContext) -> np.ndarray:
-        """(n, 3) local x, y, z of the cloud."""
+        """(n, 3) local x, y, z of the cloud, its layer's height offset included (callers add none)."""
+        off = height_offset_m(self.layer)
         if self.layer.get("format") == "kit-packed":
             raw = np.fromfile(self.path, dtype=np.uint8)
             n = raw.size // 7
             if n == 0 or raw.size != n * 7:
                 raise JobError(f'The point cloud "{self.name}" is not a kit-packed file.')
-            return raw[: 6 * n].view("<i2").reshape(n, 3).astype(np.float64) / 1000.0
+            pts = raw[: 6 * n].view("<i2").reshape(n, 3).astype(np.float64) / 1000.0
+            pts[:, 1] += off
+            return pts
         from ..pointcloud import PDAL_MISSING, _run, find_pdal
         from ..runtime import atomic_write_json
         from ..volumetric.cloud import read_las_chunks
@@ -189,7 +192,7 @@ class Surface:
         o = self.origin
         parts = []
         for x, y, z, _ in read_las_chunks(las, ctx.check):
-            parts.append(np.stack([x - o[0], z - o[2], o[1] - y], axis=1))
+            parts.append(np.stack([x - o[0], z - o[2] + off, o[1] - y], axis=1))
         return np.concatenate(parts) if parts else np.zeros((0, 3))
 
     def footprint(self, ctx: StepContext) -> None:

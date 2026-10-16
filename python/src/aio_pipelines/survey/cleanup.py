@@ -302,6 +302,15 @@ def run_dtm_filter(ctx: StepContext, layer: str, preset: str):
     _run(ctx, [pdal, "pipeline", str(pipe)], "filter the ground")
     parts = [np.stack([x, y, z], axis=1) for x, y, z, _ in read_las_chunks(ground, ctx.check)]
     pts = np.concatenate(parts) if parts else np.zeros((0, 3))
+    if pts.size:
+        from ..change.imagery import find_layer
+        from ..change.sources import height_offset_m
+
+        lyr = find_layer(manifest, layer)
+        if lyr.get("format") != "kit-packed":
+            # a LAS or COPC is read in file heights; a kit-packed cloud's points came through
+            # Surface.points, which already added the offset
+            pts[:, 2] += height_offset_m(lyr)
     ctx.progress(0.5, "Ground grid")
     return grid_ground(pts[:, 0], pts[:, 1], pts[:, 2])
 

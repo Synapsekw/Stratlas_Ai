@@ -134,6 +134,47 @@ def test_height_grids_and_clouds_are_prepared(tmp_path, kind):
     assert np.isfinite(h).sum() * m["cellM"] ** 2 > 0.9 * 60 * 60
 
 
+def set_cloud_offset(project, lid, offset):
+    path = project / "manifest.json"
+    m = json.loads(path.read_text("utf-8"))
+    for layer in m["layers"]:
+        if layer["id"] == lid:
+            layer["heightOffsetM"] = offset
+    path.write_text(json.dumps(m), "utf-8")
+
+
+CLOUD_PARAMS = {"surfaces": [{"id": "s2", "name": "Later", "source": {"kind": "cloud", "layer": "surf-b"}}]}
+
+
+def test_prepare_reruns_when_the_offset_changes(tmp_path):
+    surface_project(tmp_path, kinds=("cloud", "cloud"))
+    run_job(pipeline(), tmp_path, CLOUD_PARAMS)
+    first = meta(tmp_path, "s2")["fingerprint"]
+    result, _ = run_job(pipeline(), tmp_path, CLOUD_PARAMS, job_id="j2")
+    assert result["outputs"]["surface-1"].get("skipped") is True
+    set_cloud_offset(tmp_path, "surf-b", 5.0)
+    result, _ = run_job(pipeline(), tmp_path, CLOUD_PARAMS, job_id="j3")
+    assert not result["outputs"]["surface-1"].get("skipped")
+    assert meta(tmp_path, "s2")["fingerprint"] != first
+
+
+def test_prepare_heights_carry_the_offset(tmp_path):
+    surface_project(tmp_path, kinds=("cloud", "cloud"))
+    run_job(pipeline(), tmp_path, CLOUD_PARAMS)
+    m = meta(tmp_path, "s2")
+    s = TileSurface(tmp_path / "survey" / "surfaces" / "s2", m)
+    plain = s.read(0, 0, s.nx, s.ny)
+    set_cloud_offset(tmp_path, "surf-b", 5.0)
+    run_job(pipeline(), tmp_path, CLOUD_PARAMS, job_id="j2")
+    m2 = meta(tmp_path, "s2")
+    s2 = TileSurface(tmp_path / "survey" / "surfaces" / "s2", m2)
+    lifted = s2.read(0, 0, s2.nx, s2.ny)
+    assert plain.shape == lifted.shape
+    ok = np.isfinite(plain) & np.isfinite(lifted)
+    assert ok.any()
+    assert np.allclose(lifted[ok] - plain[ok], 5.0, atol=1e-3)
+
+
 def write_design(project, offset=0.0):
     e0, n0 = ORIGIN[0], ORIGIN[1]
     v = []

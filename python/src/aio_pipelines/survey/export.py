@@ -858,7 +858,11 @@ def export_cloud(ctx: StepContext, params: dict[str, Any], frame: Frame, out: Ou
             las = read_las(plain)
     ctx.progress(0.3, "Read the point cloud")
     if las is not None:
-        xyz = las.xyz
+        from ..change.sources import height_offset_m
+
+        # a LAS, COPC or cleaned file is in file heights; the kit-packed branch below gets the
+        # offset from Surface.points
+        xyz = las.xyz + np.array([0.0, 0.0, height_offset_m(layer)])
     else:
         pts = cs.points(ctx)
         o = manifest.get("origin") or [0, 0, 0]

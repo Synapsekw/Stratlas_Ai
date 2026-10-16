@@ -430,3 +430,68 @@ def test_a_grid_above_the_triangle_limit_is_refused_with_the_level_that_fits(tmp
     run(root, tmp_path / "b.geojson", "j3", what="surface", format="geojson", surface="plane")
     (f,) = json.loads((tmp_path / "b.geojson").read_text("utf-8"))["features"]
     assert f["geometry"]["type"] == "Polygon"
+
+
+def cloud_project(tmp_path, name, fmt, offset):
+    from pccleanup_synth import write_las14
+
+    rng = np.random.default_rng(4)
+    x, y = rng.uniform(-8, 8, 400), rng.uniform(-8, 8, 400)
+    z = 2.0 + 0.1 * x
+    layer = {
+        "kind": "pointcloud",
+        "id": "c",
+        "name": "Cloud",
+        "visible": True,
+        "capture": "d1",
+        "format": fmt,
+        "pointCount": 400,
+    }
+    if offset:
+        layer["heightOffsetM"] = offset
+    root = project(tmp_path, name, layers=[layer])
+    if fmt == "kit-packed":
+        # local x, height above the origin, z south
+        q = np.round(np.column_stack([x, z, -y]) * 1000).astype("<i2")
+        (root / "clouds").mkdir()
+        (root / "clouds" / "c.bin").write_bytes(q.tobytes() + np.full(400, 128, np.uint8).tobytes())
+        layer["src"] = {"path": "clouds/c.bin"}
+    else:
+        (root / "sources").mkdir()
+        xyz = np.column_stack([520010.0 + x, 2750010.0 + y, 100.0 + z])
+        write_las14(root / "sources" / "c.las", xyz, np.full(400, 2, np.uint8))
+        layer["src"] = {"path": "clouds/c/index.json"}
+    write_json(
+        root / "manifest.json",
+        {
+            "schema": "aio.project/1",
+            "crs": {"epsg": 32639},
+            "origin": [520010.0, 2750010.0, 100.0],
+            "layers": [layer],
+            "captures": [{"id": "d1", "date": "2026-10-01"}],
+        },
+    )
+    return root
+
+
+@pytest.mark.parametrize("fmt", ["png-packed", "kit-packed"])
+def test_export_cloud_carries_the_offset(tmp_path, monkeypatch, fmt):
+    import shutil
+
+    import aio_pipelines.export.las as el
+    import aio_pipelines.pointcloud as pc
+    from aio_pipelines.change.las import read_las
+
+    monkeypatch.setattr(pc, "find_pdal", lambda: "pdal")
+    monkeypatch.setattr(pc, "pdal_env", lambda p: {})
+    monkeypatch.setattr(el, "compress_laz", lambda pdal, las, laz, env: shutil.copy(las, laz))
+    z = {}
+    for name, offset in (("plain", 0.0), ("lifted", 5.0)):
+        root = cloud_project(tmp_path, name, fmt, offset)
+        out_dir = tmp_path / f"out-{name}"
+        out_dir.mkdir()
+        res = run(root, out_dir / "cloud.laz", what="cloud", format="laz", layer="c")
+        las = read_las(Path(res["files"][0]))
+        z[name] = np.sort(las.xyz[:, 2])
+    assert z["plain"].shape == z["lifted"].shape
+    assert np.allclose(z["lifted"] - z["plain"], 5.0, atol=0.01)

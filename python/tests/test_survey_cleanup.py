@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import json
 import math
+from pathlib import Path
 
 import numpy as np
 import pytest
@@ -297,6 +298,53 @@ def test_a_dtm_without_pdal_is_refused_clearly(tmp_path, monkeypatch):
     manifest(tmp_path, [], [SITE_E0, SITE_N0, 0.0])
     with pytest.raises(JobError, match="The DTM filter presets run in PDAL"):
         run_job(pipeline(), tmp_path, {"dtmFilter": {"layer": "cloud-1", "preset": "equipment"}})
+
+
+@pytest.mark.parametrize("kind", ["las", "cloud"])
+def test_dtm_filter_reads_offset_heights(tmp_path, monkeypatch, kind):
+    # PDAL is replaced by a pass-through: every point is ground. A png-packed cloud is read from
+    # its LAS (the offset is added here), a kit-packed one through Surface.points (added once).
+    from types import SimpleNamespace
+
+    import aio_pipelines.pointcloud as pc
+    import aio_pipelines.survey.cleanup as cl
+    from aio_pipelines.volumetric.cloud import read_las_chunks
+    from imagery_synth import surface_project
+    from synth import write_las
+
+    def fake_run(ctx, cmd, label):
+        stages = json.loads(Path(cmd[2]).read_text("utf-8"))["pipeline"]
+        reader = stages[0]
+        if reader.get("type") == "readers.text":
+            xyz = np.loadtxt(reader["filename"], delimiter=",", skiprows=1)
+        else:
+            parts = [np.stack(c[:3], axis=1) for c in read_las_chunks(Path(reader["filename"]), lambda: None)]
+            xyz = np.concatenate(parts)
+        write_las(Path(stages[-1]["filename"]), xyz, SITE_EPSG)
+
+    monkeypatch.setattr(pc, "find_pdal", lambda: "pdal")
+    monkeypatch.setattr(pc, "_run", fake_run)
+    surface_project(tmp_path, kinds=(kind, kind))
+    ctx = SimpleNamespace(
+        project=tmp_path,
+        check=lambda: None,
+        progress=lambda *a, **k: None,
+        log=lambda *a, **k: None,
+        stage=lambda rel: (tmp_path / "stage" / rel).parent.mkdir(parents=True, exist_ok=True)
+        or tmp_path / "stage" / rel,
+    )
+    path = tmp_path / "manifest.json"
+    base = json.loads(path.read_text("utf-8"))
+    plain = cl.run_dtm_filter(ctx, "surf-a", "equipment")
+    for layer in base["layers"]:
+        if layer["id"] == "surf-a":
+            layer["heightOffsetM"] = 5.0
+    path.write_text(json.dumps(base), "utf-8")
+    lifted = cl.run_dtm_filter(ctx, "surf-a", "equipment")
+    assert plain.h.shape == lifted.h.shape
+    ok = np.isfinite(plain.h) & np.isfinite(lifted.h)
+    assert ok.any()
+    assert np.allclose(lifted.h[ok] - plain.h[ok], 5.0, atol=0.01)
 
 
 def test_put_surface_helper_round_trips(tmp_path):

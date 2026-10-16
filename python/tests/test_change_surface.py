@@ -235,3 +235,70 @@ def test_bad_parameters_are_refused(tmp_path, params, message):
     surface_project(tmp_path)
     with pytest.raises(JobError, match=message):
         run_job(pipeline(), tmp_path, params)
+
+
+# ----------------------------------------------------------------------------- cloud height offset
+
+
+def points_ctx(tmp_path):
+    from types import SimpleNamespace
+
+    def stage(rel):
+        p = tmp_path / "stage" / rel
+        p.parent.mkdir(parents=True, exist_ok=True)
+        return p
+
+    return SimpleNamespace(check=lambda: None, stage=stage, log=lambda *a, **k: None, progress=lambda *a, **k: None)
+
+
+def surface_points(project, lid, ctx, offset=None):
+    from aio_pipelines.change.surface import Surface
+
+    m = json.loads((project / "manifest.json").read_text("utf-8"))
+    for layer in m["layers"]:
+        if layer["id"] == lid:
+            if offset is None:
+                layer.pop("heightOffsetM", None)
+            else:
+                layer["heightOffsetM"] = offset
+    return Surface(project, m, {"layer": lid, "kind": "cloud"}).points(ctx)
+
+
+def assert_lifted(plain, lifted):
+    assert plain.shape == lifted.shape
+    plain = plain[np.lexsort((plain[:, 2], plain[:, 0]))]
+    lifted = lifted[np.lexsort((lifted[:, 2], lifted[:, 0]))]
+    assert np.allclose(lifted[:, 0], plain[:, 0])
+    assert np.allclose(lifted[:, 2], plain[:, 2])
+    assert np.allclose(lifted[:, 1] - plain[:, 1], 5.0, atol=1e-6)
+
+
+@pytest.mark.parametrize("kind", ["cloud", "las"])
+def test_surface_points_carry_the_height_offset(tmp_path, kind):
+    # kit-packed, and the LAS source of a png-packed viewing layer
+    surface_project(tmp_path, kinds=(kind, kind))
+    ctx = points_ctx(tmp_path)
+    plain = surface_points(tmp_path, "surf-a", ctx)
+    lifted = surface_points(tmp_path, "surf-a", ctx, 5.0)
+    assert_lifted(plain, lifted)
+
+
+def test_surface_points_carry_the_height_offset_for_a_copc(tmp_path):
+    from aio_pipelines.pointcloud import find_pdal
+
+    if find_pdal() is None:
+        pytest.skip("PDAL is not installed (AIO_PDAL)")
+    from pccleanup_synth import to_copc
+
+    surface_project(tmp_path, kinds=("las", "las"))
+    to_copc(tmp_path / "sources" / "surf-a.las", tmp_path / "clouds" / "surf-a.copc.laz")
+    m = json.loads((tmp_path / "manifest.json").read_text("utf-8"))
+    for layer in m["layers"]:
+        if layer["id"] == "surf-a":
+            layer["format"] = "copc"
+            layer["src"] = {"path": "clouds/surf-a.copc.laz"}
+    (tmp_path / "manifest.json").write_text(json.dumps(m), "utf-8")
+    ctx = points_ctx(tmp_path)
+    plain = surface_points(tmp_path, "surf-a", ctx)
+    lifted = surface_points(tmp_path, "surf-a", ctx, 5.0)
+    assert_lifted(plain, lifted)
