@@ -9,6 +9,7 @@ import {
   parseCombo,
   SHORTCUT_SCOPES,
   SHORTCUTS,
+  shortcut,
   shortcutConflicts,
   shortcutHint,
   type Shortcut,
@@ -28,6 +29,23 @@ const press = (
 });
 
 describe('shortcut registry', () => {
+  it('T opens the island tools', () => {
+    expect(matchShortcut('scene', press('t'))).toBe('scene.tools');
+  });
+
+  it('the timeline has no key', () => {
+    expect(shortcut('scene.timeline').keys).toEqual([]);
+    for (const k of 'abcdefghijklmnopqrstuvwxyz0123456789')
+      expect(matchShortcut('scene', press(k))).not.toBe('scene.timeline');
+    expect(shortcutHint('scene.timeline')).toBe('');
+    expect(ariaKeys('scene.timeline')).toBe('');
+  });
+
+  it('Ctrl+J opens the agent', () => {
+    expect(matchShortcut('global', press('j', { ctrl: true }))).toBe('global.agent');
+    expect(matchShortcut('global', press('j'))).toBeNull();
+  });
+
   it('has no two shortcuts on one key in scopes that are live together', () => {
     // A conflict means one key press would do two things. Either move one of them to another
     // key or, when one should win (road keys over the stage keys), list it in `shadows`.

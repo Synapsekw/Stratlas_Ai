@@ -104,6 +104,7 @@ export const SHORTCUTS = [
     keys: ['Alt+Right'],
     label: 'keys.global.nextSurvey',
   },
+  { id: 'global.agent', scope: 'global', keys: ['Ctrl+J'], label: 'keys.global.agent' },
   { id: 'global.help', scope: 'global', keys: ['F1'], label: 'keys.global.help' },
 
   // the 3D, map and split stage
@@ -121,7 +122,9 @@ export const SHORTCUTS = [
   { id: 'scene.flightPaths', scope: 'scene', keys: ['P'], label: 'keys.scene.flightPaths' },
   { id: 'scene.telemetry', scope: 'scene', keys: ['D'], label: 'keys.scene.telemetry' },
   { id: 'scene.pins', scope: 'scene', keys: ['I'], label: 'keys.scene.pins' },
-  { id: 'scene.timeline', scope: 'scene', keys: ['T'], label: 'keys.scene.timeline' },
+  { id: 'scene.tools', scope: 'scene', keys: ['T'], label: 'keys.scene.tools' },
+  // no key since the island (T opens the tools); the action lives in the View tile
+  { id: 'scene.timeline', scope: 'scene', keys: [], label: 'keys.scene.timeline' },
   { id: 'scene.inside', scope: 'scene', keys: ['C'], label: 'keys.scene.inside' },
   { id: 'scene.escape', scope: 'scene', keys: ['Esc'], label: 'keys.scene.escape' },
   { id: 'scene.drawFinish', scope: 'scene', keys: ['Enter'], label: 'keys.scene.drawFinish' },
@@ -654,7 +657,8 @@ export function ariaKeys(id: ShortcutId, mac: boolean = isMacPlatform()): string
 
 /** The first combo of a shortcut, as people read it (tool tips). */
 export function shortcutHint(id: ShortcutId, mac: boolean = isMacPlatform()): string {
-  return keyLabel(shortcut(id).keys[0] ?? '', mac);
+  const first = shortcut(id).keys[0];
+  return first ? keyLabel(first, mac) : '';
 }
 
 /** A combo in one canonical spelling, so `Ctrl+Shift+Z` and `Shift+Ctrl+Z` compare equal. */
