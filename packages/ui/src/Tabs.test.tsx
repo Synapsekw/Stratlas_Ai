@@ -2,7 +2,7 @@
 import { act, useState, type ReactElement } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { t, type MessageKey } from './i18n';
+import { t } from './i18n';
 import type { MenuProps } from './Menu';
 import { Tabs, type TabItem } from './Tabs';
 
@@ -119,7 +119,7 @@ describe('Tabs', () => {
 
   it('shows a live dot with a text label', () => {
     render(<Harness items={[{ id: 'a', label: 'Alpha', live: true }, ...base.slice(1)]} />);
-    const label = t('tabs.live' as MessageKey);
+    const label = t('tabs.live');
     expect(tab(0).querySelector(`[aria-label="${label}"]`)).not.toBeNull();
   });
 
@@ -269,7 +269,7 @@ describe('Tabs', () => {
       if (!c || !d || c === 'separator' || d === 'separator') throw new Error('no items');
       expect(c.label).toContain('3');
       expect(c.checked).toBe(true);
-      expect(d.label).toContain(t('tabs.live' as MessageKey));
+      expect(d.label).toContain(t('tabs.live'));
     });
 
     it('shows no more button when everything fits', () => {

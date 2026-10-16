@@ -6,7 +6,7 @@ import {
   type MouseEvent,
   type ReactElement,
 } from 'react';
-import { t, type MessageKey, type Vars } from './i18n';
+import { t } from './i18n';
 import { Icon, type IconName } from './icons/Icon';
 import { Menu, type MenuEntry } from './Menu';
 
@@ -34,9 +34,6 @@ export interface TabsProps<K extends string> {
 /** Gap between tabs (matches `.tabs` in parts/tabs.css) and the room kept for the "⋯ n" button. */
 const GAP = 2;
 const MORE_WIDTH = 56;
-
-/** Strings: tabs.live, tabs.more, tabs.close ({label}), tabs.pin ({label}) live in i18n/en.ts. */
-const tt = (key: string, vars?: Vars) => t(key as MessageKey, vars);
 
 /** Which tabs do not fit `avail`. Widest-order first; the selected tab never leaves. */
 function overflowing<K extends string>(
@@ -146,7 +143,7 @@ export function Tabs<K extends string>({
     label: [
       it.label,
       it.count !== undefined ? String(it.count) : null,
-      it.live ? tt('tabs.live') : null,
+      it.live ? t('tabs.live') : null,
     ]
       .filter(Boolean)
       .join(' · '),
@@ -196,7 +193,7 @@ export function Tabs<K extends string>({
                 {it.icon ? <Icon name={it.icon} size={14} /> : null}
                 {it.label}
                 {it.live ? (
-                  <span className="tab-live" role="img" aria-label={tt('tabs.live')}>
+                  <span className="tab-live" role="img" aria-label={t('tabs.live')}>
                     <i />
                   </span>
                 ) : null}
@@ -207,7 +204,7 @@ export function Tabs<K extends string>({
                   type="button"
                   className="tab-pin"
                   aria-pressed={!!it.pinned}
-                  aria-label={tt('tabs.pin', { label: it.label })}
+                  aria-label={t('tabs.pin', { label: it.label })}
                   onClick={() => {
                     it.onPinChange?.(!it.pinned);
                   }}
@@ -219,7 +216,7 @@ export function Tabs<K extends string>({
                 <button
                   type="button"
                   className="tab-x"
-                  aria-label={tt('tabs.close', { label: it.label })}
+                  aria-label={t('tabs.close', { label: it.label })}
                   onClick={() => {
                     it.onClose?.();
                   }}
@@ -239,7 +236,7 @@ export function Tabs<K extends string>({
             className={tucked.some((it) => it.live) ? 'tabs-more acc' : 'tabs-more'}
             aria-haspopup="menu"
             aria-expanded={menuOpen}
-            aria-label={tt('tabs.more')}
+            aria-label={t('tabs.more')}
             onClick={() => {
               setMenuOpen((o) => !o);
             }}
@@ -253,7 +250,7 @@ export function Tabs<K extends string>({
               setMenuOpen(false);
             }}
             opener={moreRef}
-            label={tt('tabs.more')}
+            label={t('tabs.more')}
             items={menuItems}
           />
         </>

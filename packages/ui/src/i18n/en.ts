@@ -4187,6 +4187,13 @@ export const en = {
 
   // The resizable split (split/useResizableSplit.ts): the size readout while dragging
   'split.readout': '{px} px',
+
+  // Tabs (Tabs.tsx) and the shared dialog close button
+  'tabs.live': 'Live',
+  'tabs.more': 'More tabs',
+  'tabs.close': 'Close {label}',
+  'tabs.pin': 'Pin {label}',
+  'dialog.close': 'Close',
 } as const satisfies Record<string, string>;
 
 /** Every key in the catalogue, plural forms included. */
