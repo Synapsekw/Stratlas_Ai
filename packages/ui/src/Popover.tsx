@@ -7,8 +7,10 @@ import {
   type ReactNode,
   type RefObject,
 } from 'react';
-import { createPortal } from 'react-dom';
 import { useFocusTrap } from './focus';
+import { useT } from './i18n';
+import { Icon } from './icons/Icon';
+import { PortalRoot } from './portal';
 
 export interface PopoverProps {
   open: boolean;
@@ -22,6 +24,11 @@ export interface PopoverProps {
    * place and `className` positions it.
    */
   anchor?: 'above' | 'below' | undefined;
+  /** A title row (at the title size) with a close button. */
+  title?: ReactNode;
+  footer?: ReactNode;
+  /** The close button's name; default "Close". */
+  closeLabel?: string;
   children: ReactNode;
 }
 
@@ -45,7 +52,18 @@ function anchoredStyle(anchor: 'above' | 'below', r: DOMRect, w: number): CSSPro
  * A popover box: a press outside it (and outside its opener) or Escape closes it, Tab stays
  * inside, and focus goes back to the opener. Place it with `className`, or with `anchor`.
  */
-export function Popover({ open, onClose, opener, className, anchor, children }: PopoverProps) {
+export function Popover({
+  open,
+  onClose,
+  opener,
+  className,
+  anchor,
+  title,
+  footer,
+  closeLabel,
+  children,
+}: PopoverProps) {
+  const t = useT();
   const pop = useRef<HTMLDivElement>(null);
   const close = useRef(onClose);
   const [style, setStyle] = useState<CSSProperties | undefined>(undefined);
@@ -86,20 +104,39 @@ export function Popover({ open, onClose, opener, className, anchor, children }: 
     };
   }, [open, anchor, opener]);
   if (!open) return null;
+  const cls = className ? `surface-pop ${className}` : 'surface-pop';
+  const inner = (
+    <>
+      {title !== undefined && (
+        <div className="pop-head">
+          <h2 className="pop-title">{title}</h2>
+          <button
+            type="button"
+            className="pop-close"
+            aria-label={closeLabel ?? t('keys.dialog.close')}
+            onClick={() => {
+              close.current();
+            }}
+          >
+            <Icon name="x" size={14} />
+          </button>
+        </div>
+      )}
+      {children}
+      {footer !== undefined && <div className="pop-foot">{footer}</div>}
+    </>
+  );
   if (anchor)
-    return createPortal(
-      <div
-        ref={pop}
-        className={className}
-        style={style ?? { position: 'fixed', visibility: 'hidden' }}
-      >
-        {children}
-      </div>,
-      document.body,
+    return (
+      <PortalRoot opener={opener.current}>
+        <div ref={pop} className={cls} style={style ?? { position: 'fixed', visibility: 'hidden' }}>
+          {inner}
+        </div>
+      </PortalRoot>
     );
   return (
-    <div ref={pop} className={className}>
-      {children}
+    <div ref={pop} className={cls}>
+      {inner}
     </div>
   );
 }

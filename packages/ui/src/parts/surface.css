@@ -1,1 +1,314 @@
-/* floating surface: popover, menu, dialog, toast. Filled in by its task; imported from mission.css. */
+/* floating surface: popover, menu, dialog, toast. */
+.surface-pop {
+  background: var(--bg-1);
+  border: 1px solid var(--line);
+  border-radius: var(--r-6);
+  box-shadow: var(--el-2);
+  z-index: var(--z-pop);
+  color: var(--fg-1);
+  font-size: var(--t-12);
+}
+.surface-dlg {
+  background: var(--bg-1);
+  border: 1px solid var(--line);
+  border-radius: var(--r-6);
+  box-shadow: var(--el-3);
+  z-index: var(--z-modal);
+}
+.pop-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 8px 4px 12px;
+}
+.pop-title {
+  flex: 1;
+  margin: 0;
+  font-size: var(--t-title);
+  font-weight: var(--fw-title);
+  color: var(--fg-0);
+}
+.pop-close {
+  all: unset;
+  box-sizing: border-box;
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  border-radius: var(--r-4);
+  color: var(--fg-2);
+  cursor: pointer;
+}
+.pop-close:hover,
+.pop-close:focus-visible {
+  background: var(--bg-3);
+  color: var(--fg-0);
+}
+.pop-close:focus-visible {
+  outline: 2px solid var(--acc);
+  outline-offset: -2px;
+}
+.pop-foot {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  padding: 8px 12px;
+  border-top: 1px solid var(--line-soft);
+}
+
+/* Menu: rows are .row[data-kind='menu']; a leading column holds the check or the icon */
+.menu-pop {
+  min-width: 180px;
+  padding: 4px;
+}
+.menu-list {
+  display: grid;
+  align-content: start;
+}
+.menu-list > .row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  text-align: start;
+  cursor: pointer;
+}
+.menu-list > .row[aria-disabled='true'] {
+  opacity: 0.45;
+  cursor: default;
+}
+.menu-list > .row[data-danger] {
+  color: var(--s5);
+}
+.menu-lead {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 18px;
+}
+.menu-label {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.menu-kbd {
+  flex: none;
+  font: var(--mono-11);
+  color: var(--fg-3);
+}
+.menu-sep {
+  height: 1px;
+  margin: 4px 0;
+  background: var(--line);
+}
+
+/* ---------- context menu (moved from builder.css) ---------- */
+.dmenu {
+  position: fixed;
+  z-index: var(--z-pop);
+  padding: 4px;
+  display: grid;
+  align-content: start;
+  box-sizing: border-box;
+  overflow-y: auto; /* a menu taller than the window scrolls; its max-height is set inline */
+  overscroll-behavior: contain;
+  background: var(--bg-2);
+  border: 1px solid var(--line);
+  border-radius: var(--r-6);
+  box-shadow: var(--el-2);
+  font-size: var(--t-12);
+}
+.dmenu-h {
+  padding: 4px 8px 6px;
+  font-size: var(--t-11);
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.dmenu-item {
+  /* one line: icon, label, shortcut or reason, chevron (a grid pushed items without an icon into
+     the 18px icon column, so their labels wrapped) */
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  white-space: nowrap;
+  padding: 7px 8px;
+  border: 0;
+  border-radius: var(--r-4);
+  background: none;
+  color: var(--fg-0);
+  text-align: start;
+  cursor: pointer;
+}
+.dmenu-item > svg,
+.dmenu-item > .sw {
+  flex: none;
+  width: 18px;
+}
+.dmenu-item > span:not(.sw) {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.dmenu-item > span:not(.sw):not(.dmenu-kbd):not(.faint) {
+  flex: 1 1 auto;
+}
+.dmenu-item > .dmenu-kbd {
+  flex: none;
+}
+.dmenu-item > .faint:not(svg) {
+  flex: 0 1 auto; /* a long reason shrinks with the label; the item's title holds it whole */
+}
+.dmenu-item:hover:not(:disabled),
+.dmenu-item:focus-visible {
+  background: var(--bg-3);
+}
+.dmenu-item:disabled {
+  color: var(--fg-3);
+  cursor: default;
+}
+.dmenu-item[aria-disabled='true'] {
+  opacity: 0.45;
+  cursor: default;
+}
+.dmenu-kbd {
+  margin-inline-start: auto;
+  font: var(--mono-11);
+  color: var(--fg-3);
+}
+.dmenu-item.primary {
+  font-weight: 600;
+  color: var(--acc);
+}
+/* the survey date folder's menu: a rule, then a row of colours and a grid of icons */
+.dmenu-sep {
+  height: 1px;
+  margin: 4px 0;
+  background: var(--line);
+}
+.dmenu-row {
+  display: grid;
+  grid-template-columns: 52px minmax(0, 1fr);
+  align-items: start;
+  gap: 8px;
+  padding: 5px 8px;
+  color: var(--fg-2);
+}
+.dmenu-row > span {
+  line-height: 22px;
+}
+.dmenu-picks {
+  display: grid;
+  grid-template-columns: repeat(8, 22px);
+  gap: 2px;
+}
+.dmenu-pick {
+  all: unset;
+  box-sizing: border-box;
+  display: grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  border-radius: var(--r-4);
+  color: var(--fg-1);
+  cursor: pointer;
+}
+.dmenu-pick:hover,
+.dmenu-pick:focus-visible {
+  background: var(--bg-3);
+  color: var(--fg-0);
+}
+.dmenu-pick:focus-visible {
+  outline: 2px solid var(--acc);
+  outline-offset: -2px;
+}
+.dmenu-pick[aria-checked='true'] {
+  background: var(--bg-3);
+  box-shadow: inset 0 0 0 1px var(--fg-2);
+}
+.dmenu .sw {
+  box-sizing: border-box;
+  width: 12px;
+  height: 12px;
+  border-radius: 3px;
+  background: var(--sw);
+  justify-self: center;
+}
+.dmenu .sw.none {
+  background: transparent;
+  border: 1px solid var(--fg-3);
+}
+.dmenu-scroll {
+  display: grid;
+  max-height: 260px;
+  overflow: auto;
+}
+
+/* ---------- toasts (moved from reports.css) ---------- */
+.toasts {
+  position: fixed;
+  inset-inline-end: 16px;
+  bottom: 16px;
+  z-index: var(--z-toast);
+  display: grid;
+  gap: 8px;
+  width: 360px;
+}
+.toast {
+  padding: 10px 12px;
+  background: var(--bg-2);
+  border: 1px solid var(--line);
+  border-radius: var(--r-6);
+  box-shadow: var(--el-2);
+  display: grid;
+  gap: 6px;
+  font-size: var(--t-12);
+  color: var(--fg-1);
+}
+.toast-ic {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 16px;
+  color: var(--acc);
+}
+.toast.error .toast-ic {
+  color: var(--s5);
+}
+.toast-h {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--fg-0);
+}
+.toast-grow {
+  flex: 1;
+}
+.toast-p {
+  overflow-wrap: anywhere;
+}
+.toast-bar {
+  height: 3px;
+  background: var(--bg-3);
+  border-radius: 2px;
+  overflow: hidden;
+}
+.toast-bar i {
+  display: block;
+  height: 100%;
+  background: var(--acc);
+  transition: width 0.2s ease-out;
+}
+.toast-bar.busy i {
+  animation: toast-busy 1.1s ease-in-out infinite;
+}
+@keyframes toast-busy {
+  from {
+    transform: translateX(-100%);
+  }
+  to {
+    transform: translateX(340%);
+  }
+}

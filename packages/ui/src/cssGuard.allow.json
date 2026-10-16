@@ -16,9 +16,9 @@
   },
   "apps/desktop/src/renderer/builder/builder.css": {
     "fontPx": 2,
-    "colour": 8,
-    "shadow": 6,
-    "zIndex": 8
+    "colour": 7,
+    "shadow": 4,
+    "zIndex": 7
   },
   "apps/desktop/src/renderer/builder/CalibrateVideo.tsx": {
     "title": 2
@@ -186,9 +186,9 @@
     "title": 7
   },
   "apps/desktop/src/renderer/report/reports.css": {
-    "colour": 10,
-    "shadow": 5,
-    "zIndex": 3
+    "colour": 9,
+    "shadow": 4,
+    "zIndex": 2
   },
   "apps/desktop/src/renderer/road/ChainageRuler.tsx": {
     "title": 2
@@ -449,6 +449,9 @@
   },
   "packages/ui/src/parts/chip.css": {
     "fontPx": 1,
+    "shadow": 1
+  },
+  "packages/ui/src/parts/surface.css": {
     "shadow": 1
   },
   "packages/ui/src/parts/tip.css": {

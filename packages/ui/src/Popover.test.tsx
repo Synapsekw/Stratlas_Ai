@@ -140,3 +140,66 @@ describe('Popover anchored to its opener', () => {
     expect(onClose).toHaveBeenCalledTimes(1);
   });
 });
+
+describe('Popover title, footer and surface', () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+  it('draws a title row with a close button that closes', () => {
+    const onClose = vi.fn();
+    root = createRoot(host);
+    function Titled() {
+      const opener = useRef<HTMLButtonElement>(null);
+      return (
+        <>
+          <button ref={opener} type="button">
+            open
+          </button>
+          <Popover open onClose={onClose} opener={opener} title="Layers" closeLabel="Dismiss">
+            <span>body</span>
+          </Popover>
+        </>
+      );
+    }
+    act(() => root?.render(<Titled />));
+    expect(host.querySelector('h2')?.textContent).toBe('Layers');
+    const btn = host.querySelector<HTMLButtonElement>('button[aria-label="Dismiss"]');
+    expect(btn).not.toBeNull();
+    act(() => btn?.click());
+    expect(onClose).toHaveBeenCalledTimes(1);
+  });
+  it('renders the footer', () => {
+    root = createRoot(host);
+    function Footed() {
+      const opener = useRef<HTMLButtonElement>(null);
+      return (
+        <Popover open onClose={vi.fn()} opener={opener} footer={<i data-testid="foot" />}>
+          x
+        </Popover>
+      );
+    }
+    act(() => root?.render(<Footed />));
+    expect(host.querySelector('.pop-foot [data-testid="foot"]')).not.toBeNull();
+  });
+  it('an anchored popover wears the opener surface and the surface-pop class', () => {
+    root = createRoot(host);
+    function OnDark() {
+      const opener = useRef<HTMLButtonElement>(null);
+      return (
+        <div data-surface="dark">
+          <button ref={opener} type="button">
+            open
+          </button>
+          <Popover open onClose={vi.fn()} opener={opener} anchor="below">
+            <span data-testid="in">x</span>
+          </Popover>
+        </div>
+      );
+    }
+    act(() => root?.render(<OnDark />));
+    const box = document.body.querySelector<HTMLElement>('.surface-pop');
+    expect(box).not.toBeNull();
+    expect(box?.parentElement?.getAttribute('data-surface')).toBe('dark');
+    expect(host.contains(box)).toBe(false);
+  });
+});
