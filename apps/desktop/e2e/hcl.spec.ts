@@ -419,6 +419,9 @@ test('@realdata the tank is cut or made transparent only by hand; photos and fli
   // second list of clips repeats it.
   await win.locator('.nav-item', { hasText: 'Media' }).first().click();
   await expect(win.locator('.m-flight')).toHaveCount(10);
+  await expect(win.locator('.m-flight .m-meta .mono').filter({ hasText: /· 1 clip$/ })).toHaveCount(
+    10,
+  );
   await expect(win.locator('#m-flight-clips')).toHaveCount(0);
 });
 

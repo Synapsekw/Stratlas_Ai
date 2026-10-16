@@ -62,7 +62,7 @@ function playClip(c: Extract<Layer, { kind: 'video' }>) {
   shell.getState().go('scene');
 }
 
-function FlightTile({
+export function FlightTile({
   flight,
   projectId,
   open,
@@ -78,7 +78,7 @@ function FlightTile({
   const t = useT();
   const first = flight.clips[0];
   const n = flight.clips.length;
-  // a one-clip flight lists no clips under it: there is nothing to expand
+  // a one-clip flight lists no clips under it: there is nothing to expand, the card plays
   const listed = showsClipList(flight);
   return (
     <div className={`m-card m-flight${open ? ' on' : ''}`}>
@@ -87,7 +87,11 @@ function FlightTile({
         className="m-flight-main"
         aria-expanded={listed ? open : undefined}
         aria-controls={listed ? 'm-flight-clips' : undefined}
-        onClick={onOpen}
+        onClick={() => {
+          // the card of a one-clip flight is that clip: it plays it, as the play icon does
+          if (!listed && first) playClip(first);
+          else onOpen();
+        }}
       >
         <div className="m-poster">
           <MediaThumb projectId={projectId} asset={flight.poster} icon="video" thumb={false} />

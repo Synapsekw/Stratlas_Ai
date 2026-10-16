@@ -52,8 +52,9 @@ export function flightCards(
 }
 
 /**
- * The clips of a flight are listed under the flights only when it has several: the card of a
- * one-clip flight is that clip already (it plays it), so a list would show the video twice.
+ * The clips of a flight are listed under the flights only when it has several. The card of a
+ * one-clip flight stands for that clip (a click on it plays it), so a list would show the video
+ * twice.
  */
 export function showsClipList(flight: FlightCard | null): boolean {
   return (flight?.clips.length ?? 0) > 1;
