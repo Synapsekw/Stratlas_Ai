@@ -62,7 +62,7 @@ The founder's earlier Cursor canvases (`C:\Users\D\.cursor\projects\e-Dev-AIO-So
 
 ### The right sidebar as workbench
 
-11. **Tabs, in order**: one per live activity (with a dot, in island priority order), then the open workbench or tool panel, then the fixed tabs (Selection, Issues, plus Volumes and Changes where they exist today). The tab bar is one row; whatever does not fit goes into a "⋯ n" menu. Fixed tabs leave first, then panels, then Selection; live tabs leave last and the tab in front never does. The ⋯ turns accent when a live tab is inside it. The fixed tabs keep their position at the end of the row so contextual tabs do not shuffle them (_my call_, from the Scene audit P1-2).
+11. **Tabs, in order**: one per live activity (with a dot, in island priority order), then the open workbench or tool panel, then the fixed tabs (Selection, Issues, plus Volumes and Changes where they exist today). **A live activity's tab is its group's workbench, not a second tab**: a live survey tool shows as "Measure ●" (the Measure workbench in its live morph, decision 13), a playing clip as "Video ●" (the Video workbench with the player card on top), so the same thing never has two tabs. A running processing job has its own "Job ●" tab: progress ring, steps, log, Cancel and "Open the job" (the existing processing drawer and run panel stay its full view). The Volumes group's workbench _is_ the fixed Volumes tab. The tab bar is one row; whatever does not fit goes into a "⋯ n" menu. Fixed tabs leave first, then panels, then Selection; live tabs leave last and the tab in front never does. The ⋯ turns accent when a live tab is inside it. The fixed tabs keep their position at the end of the row so contextual tabs do not shuffle them (_my call_, from the Scene audit P1-2).
 12. **Workbenches.** Every big group has a full tab:
     - **Measure**: search; Favourites and recent (star any row); every tool as a row (icon, name, one-line hint, shortcut) in families: Point (Elevation, Elevation difference, Annotation), Line (Distance, Grade and slope, Vertex differences, Berm check, Cross-section), Polygon (Area, Volume), Telecom (Antenna azimuth, Physical tilt, Clearance), Markup (Freehand), Section plane (X). Then Site data (Designs, Survey QA and cleanup, Terrain overlays, Hydrology, Haul road, Export survey data), Drawing aids, Templates, and "Saved in this project" with Show all / Hide all and an eye per row. Read-only packages hide the survey tools, as today.
     - **Display**: labels, issue pins with severity filter and heat map, the full layer tree by kind with eyes, street map.
@@ -75,7 +75,7 @@ The founder's earlier Cursor canvases (`C:\Users\D\.cursor\projects\e-Dev-AIO-So
 14. **Following.** Starting a tool brings its tab to the front. Exception (founder): **never take over from an issue being edited**. While the Issues tab has an issue in edit, the new live tab only gets a pulsing dot and a small "Show it" note. Stopping a tool or closing a panel returns to Selection.
 15. **Pins.** Workbenches and tool panels opened from the island are tabs with a pin. An unpinned one closes when a tool starts, and a new unpinned one replaces the previous unpinned one (like preview tabs).
 16. **Collapsible sections** in every workbench: a header row with chevron, title and count; click, Enter or Space toggles; the height animates with the motion token and is instant under reduced motion. State is remembered per tab. "Collapse all / Expand all" is one icon button in the workbench header. Defaults: Favourites and recent plus the live tool's family open, the rest collapsed (Display opens Labels and Pins). Search opens sections with matches and hides empty ones; clearing it restores the remembered state. The live tool's family stays open while it is live.
-17. **Width.** A drag handle on the sidebar's left edge (the foundation's `ResizableSplit`), width remembered per computer. Tabs may declare a minimum: Volumes and Changes open at least 470 px wide and return to the person's width when left. The width no longer jumps between 400 and 360 px with the project (`.ws-vol { --rp-w: 400px }`, `styles.css:2043`, goes).
+17. **Width.** A drag handle on the sidebar's left edge (the foundation's `ResizableSplit`), width remembered per computer. Like the section states (16), the agent height (21) and favourites (12), it is a per-computer view preference, never written into the project. The panel toggle stays a button at the stage's top right (as today and in the prototype) as well as the View tile and Ctrl+Alt+B. Tabs may declare a minimum: Volumes and Changes open at least 470 px wide and return to the person's width when left. The width no longer jumps between 400 and 360 px with the project (`.ws-vol { --rp-w: 400px }`, `styles.css:2043`, goes).
 18. **Former floating panels become tabs**: the measurement list, Survey QA, Terrain overlays, Hydrology and Point cloud cleanup. The survey draw bar and the two stacked floating panels ("Measurements", "Distance 1") go; their content lives in the Measure workbench and the island's live line.
 19. **One measuring system.** "Measure a distance" (view tools) and "Survey measurements → Distance" become one Distance tool. A result stays on the canvas, and Save (Enter) puts it in "Saved in this project". The plan decides how the two code paths merge (`StageTools.tsx` `MeasureTools` and `survey/MeasureToolbar.tsx`); the saved-measurement data model of the survey system is the one kept.
 20. **Sidebar hidden** (Ctrl+Alt+B): the same content slides in as a drawer over the right edge of the stage when something goes live or the island is clicked, and slides out when it ends or on Esc. The drawer has no agent dock.
@@ -133,7 +133,7 @@ If the foundation lands late, the plan may build against the foundation branch, 
 
 ## e2e specs touched
 
-These specs click toolbar, title-bar or date-row controls and will need their locators checked or moved (a first pass found 22): `a11y`, `agent-show`, `change-cloud`, `compare`, `compliance`, `connection`, `designs`, `environment`, `globe`, `haul`, `hcl`, `help`, `hydro`, `ringroad`, `small-window`, `smoke`, `stage-display`, `street-map-3d`, `survey-gaps`, `survey-qa`, `timeline-lanes`, `volumetric-build`. Where a control now sits behind the island, specs open the island first through a shared fixture helper instead of each spec learning the island. New specs: island states and keys, sidebar following with the issue-edit exception, workbench sections and search, sidebar and agent resizing, the hidden-sidebar drawer, and the 1100 × 720 layout (`small-window`). All run the CI way (CONTRIBUTING.md, "End to end the way CI runs it").
+These specs click toolbar, title-bar or date-row controls and will need their locators checked or moved (a first pass found 22, including two road-demo specs named after their sample sites; find them with `git grep` on the locators): `a11y`, `agent-show`, `change-cloud`, `compare`, `compliance`, `connection`, `designs`, `environment`, `globe`, `haul`, `help`, `hydro`, `small-window`, `smoke`, `stage-display`, `street-map-3d`, `survey-gaps`, `survey-qa`, `timeline-lanes`, `volumetric-build`. Where a control now sits behind the island, specs open the island first through a shared fixture helper instead of each spec learning the island. New specs: island states and keys, sidebar following with the issue-edit exception, workbench sections and search, sidebar and agent resizing, the hidden-sidebar drawer, and the 1100 × 720 layout (`small-window`). All run the CI way (CONTRIBUTING.md, "End to end the way CI runs it").
 
 ## Accessibility
 
@@ -143,7 +143,13 @@ The island is a `role="toolbar"` with an accessible name; arrow keys move betwee
 
 No em or en dashes in UI text. Labels as in the prototype: "Tools", "All tools", "Show it", "Collapse all", "Expand all", "Agent off · Turn on", "Ask about ‹context›", "Offline", "Reconnecting…", "Back online", "How compare works". Dates "13 Apr 2026", never a native date input.
 
+## Contract
+
+No IPC or file-format change is expected: everything is renderer layout and per-computer view preferences. `titleBarOverlay` keeps its height and `chrome()` colours. If the plan stores preferences through main (rather than renderer storage), that is an additive settings change and gets a row in `docs/architecture/contract-changes.md`. New shortcut entries (`scene.tools`, `global.agent`) and the changed `scene.timeline` go in `packages/ui/src/shortcuts.ts`, with their labels in every locale file.
+
 ## Left to the builder
+
+- Where the island sits in Split view: centred over the whole stage, with the pane headers (decision 31) below it (_my call_; the builder may adjust if the panes need it).
 
 - How the island's state machine and the sidebar's tab model are split into stores and components, and how existing tool state (survey session, measure session, playback, jobs, connection) feeds them.
 - Exact pixel sizes within the prototype's look, as long as the 1100 × 720 window keeps the island and stage usable.
@@ -159,6 +165,12 @@ No em or en dashes in UI text. Labels as in the prototype: "Tools", "All tools",
 
 ## Risks and open points
 
-- **Size.** This is the largest of the five projects and touches most e2e specs. The plan should land it in stages behind no flags: island and title bar first, then workbenches, then overlays and Split.
+- **Size.** This is the largest of the five projects and touches most e2e specs. The plan should land it in stages behind no flags: island and title bar first, then workbenches, then overlays and Split. Every stage must leave `main` usable: in the first stage the island's group tiles may open today's popovers anchored under the island, and the second stage moves their content into the workbenches (_my call_).
 - **T for the timeline.** People who use T for the timeline lose it. The View tile, the island's Tools hint and a one-time notice ("T now opens the tools; the timeline is in View") cover the change.
 - **Hover to switch group tabs** can fire by accident while crossing the island; hover only previews, click commits.
+
+## Open for the founder
+
+1. **Groups the project has no data for**: hidden (decision 6, _my call_, as today) or shown disabled with a reason (the Scene audit's suggestion, so a tool's place never changes between projects)?
+2. **Left sidebar auto-collapse below about 1280 px on the Scene** (decision 32, _my call_): keep, or leave it expanded and let the person collapse it?
+3. **Unpinned panels replace each other** like preview tabs (decision 15, _my call_), and **Volumes / Changes open at least 470 px** (decision 17, _my call_): confirm both.
