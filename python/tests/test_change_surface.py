@@ -248,7 +248,12 @@ def points_ctx(tmp_path):
         p.parent.mkdir(parents=True, exist_ok=True)
         return p
 
-    return SimpleNamespace(check=lambda: None, stage=stage, log=lambda *a, **k: None, progress=lambda *a, **k: None)
+    (tmp_path / "stage").mkdir(exist_ok=True)
+    return SimpleNamespace(
+        job=SimpleNamespace(dir=tmp_path / "stage"),
+        cancel_event=threading.Event(),
+        check=lambda: None,
+        stage=stage, log=lambda *a, **k: None, progress=lambda *a, **k: None)
 
 
 def surface_points(project, lid, ctx, offset=None):
@@ -291,6 +296,7 @@ def test_surface_points_carry_the_height_offset_for_a_copc(tmp_path):
     from pccleanup_synth import to_copc
 
     surface_project(tmp_path, kinds=("las", "las"))
+    (tmp_path / "clouds").mkdir(exist_ok=True)
     to_copc(tmp_path / "sources" / "surf-a.las", tmp_path / "clouds" / "surf-a.copc.laz")
     m = json.loads((tmp_path / "manifest.json").read_text("utf-8"))
     for layer in m["layers"]:
