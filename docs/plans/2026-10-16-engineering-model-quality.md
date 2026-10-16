@@ -85,7 +85,7 @@ Tasks 1, 2 and 3 run in parallel with exclusive file ownership. Task 4 depends o
 - [x] Verify all three task reports and independently review their diffs for correctness and scope.
 - [x] Replay private saved point samples and proposals into a temporary output directory using repaired code; compare height, radius, antenna grouping and lights with the previous output.
 - [x] Render the replayed GLB and visually inspect it against source views. No private data enters git.
-- [ ] Run `pnpm check`, Python checks/tests, demo preparation and affected end-to-end tests under CI window/scale/renderer settings.
+- [x] Run `pnpm check`, Python checks/tests, demo preparation and affected end-to-end tests under CI window/scale/renderer settings.
 - [x] Independent whole-change review; address material findings and repeat covering checks.
 - [ ] Record validation, outstanding limits and concrete app test steps. Commit on this branch and follow repository integration process once checks permit.
 
@@ -108,3 +108,5 @@ Tasks 1, 2 and 3 run in parallel with exclusive file ownership. Task 4 depends o
 
 - Final Python verification: 67 engineering/model-evidence tests passed; two PDAL-dependent tests skipped because that executable was not configured in this test invocation. Runtime/checkpoint coverage: 32 passed. Python-wide Ruff lint and format checks passed (318 files). The invalid standing-axis case is rejected before base calculation or evidence publication.
 - Final desktop rebuild and a repeat of all 7 engineering workflow tests passed after antenna and checkpoint fixes; no skips or retries. Independent whole-change review approved all code deltas.
+
+- Repository finish check passed on `ddb64a94` after rebase onto current remote main: lint, formatting, TypeScript, 965 test files passed (4 skipped), 9,838 tests passed (14 skipped). The final verification record is a documentation-only follow-up.

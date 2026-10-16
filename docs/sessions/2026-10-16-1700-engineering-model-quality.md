@@ -2,7 +2,7 @@
 type: session
 date: 2026-10-16-1700
 branch: fix/engineering-model-quality
-status: in-progress
+status: verified
 related:
   - docs/plans/2026-10-16-engineering-model-quality.md
   - docs/guide/44-engineering-models.md
@@ -33,7 +33,7 @@ A low equipment compound could dominate the section fit of a tall pole, producin
 - Independent review caught shaft truncation across short interruptions and a downstream fallback that resurrected explicitly withheld heights. Fresh evidence replay also exposed a merged crown being used as one large antenna; regressions cover all three repairs. Independent review approved all final changes.
 
 - Final engineering Python run: 67 passed, two PDAL-dependent tests skipped because the executable was not configured for that invocation. Runtime/checkpoint suite: 32 passed. Python-wide Ruff lint and formatting passed (318 files).
-- Final desktop rebuild and repeat of all 7 engineering workflow tests passed after the last antenna/checkpoint changes. Full repository checks and integration remain pending.
+- Final desktop rebuild and repeat of all 7 engineering workflow tests passed after the last antenna/checkpoint changes. `finish-task.mjs` passed after rebasing onto the latest remote main: lint, formatting, TypeScript and 9,838 unit tests passed, with 14 skipped. Integration remains subject to the repository merge lock and remote CI.
 
 ## How to test
 
@@ -46,10 +46,10 @@ A low equipment compound could dominate the section fit of a tall pole, producin
 
 ## Open threads
 
-- Finish the repository-wide checks and integration. All targeted checks, private replay and independent reviews are complete.
+- Integrate the verified branch after remote CI. All local checks, private replay and independent reviews are complete.
 - Geometry remains an editable approximation: the existing circular headframe, step bolts, grated platforms, foundations and fences have representation limits.
 - No installer or live provider evaluation is part of this repair. The next packaged build must carry the repaired processing pack.
 
 ## Next session entry point
 
-Continue the execution record in the linked plan, then integrate the validated repair branch according to the repository process.
+Use the test walkthrough in the next build with processing tools 0.13.1. The repair was developed and verified in its isolated worktree; remote integration status is recorded by the pull request.
