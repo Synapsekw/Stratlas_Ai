@@ -333,8 +333,8 @@ Current limits only; each is removed from this list when fixed.
 
 ## Cloud heights and Drop to ground
 
-- **A cloud keeps the heights in its file** unless you set a **Height offset (m)** on it. Nothing in a LAS or LAZ file without a vertical coordinate system says whether its heights are ellipsoidal, so a generic LAS or LAZ gets no automatic offset; the import job logs a hint to use **Drop to ground** instead.
-- **A Bentley `.zpc` cloud whose tiles name no height datum takes the project's height offset at import.** That is right only when the offset is the difference between the ellipsoid and the project's heights. Check the cloud against the ground and change it in Properties when it is off. Importing the same file again leaves a layer's offset as you set it.
+- **A cloud keeps the heights in its file** unless you set a **Height offset (m)** on it. Nothing in a LAS or LAZ file without a vertical coordinate system says how its heights were made, so a generic LAS or LAZ gets no automatic offset; the import job logs a hint to use **Drop to ground** instead.
+- **A Bentley `.zpc` cloud whose tiles name no height datum takes the project's photo altitude correction (`verticalDatum.absAltOffsetM`) at import,** applied because the cloud was built from the same uncorrected photo altitudes. That is right only when the cloud was made from this project's photos. Check the cloud against the ground and change it in Properties when it is off. Importing the same file again leaves a layer's offset as you set it.
 - **Bentley photos keep their heights as they are.** Move them with **Align to** if they float.
 - **Clouds packed into the kit format cannot be moved.** Convert them to COPC first.
 - **Drop to ground uses the DSM under the item's footprint, or else the project ground level.** Where there is no DSM, a cloud over a hill is lowered to the flat project level, not to the hill.

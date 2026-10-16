@@ -327,9 +327,9 @@ def test_a_zpc_without_vertical_crs_takes_the_project_offset(tmp_path, monkeypat
     (line,) = [m for m in logs if "-30.81 m" in m]
     assert "Drop to ground" in line
     assert line == (
-        "The tiles name no height datum; heights are taken as ellipsoidal (a Bentley export) and "
-        "shifted by the project's height offset, -30.81 m. The points are unchanged; use Drop to "
-        "ground if the cloud is off."
+        "The tiles name no height datum; the cloud was built from the same uncorrected photo "
+        "altitudes, so it is shifted by the project's photo altitude correction, -30.81 m. The "
+        "points are unchanged; use Drop to ground if the cloud is off."
     )
 
 

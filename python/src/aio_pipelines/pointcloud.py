@@ -752,7 +752,9 @@ class PointcloudToCopc:
             points = int(done.get("points") or 0)
             capture: str | None = None
             if existing is None:
-                # Decision 7: only a Bentley export without a height datum is known to be ellipsoidal
+                # Decision 7: a Bentley .zpc without a height datum was built from the drone photos'
+                # uncorrected altitudes, so it takes the project's photo altitude correction
+                # (verticalDatum.absAltOffsetM), as the photos do
                 raw_off = (manifest.get("verticalDatum") or {}).get("absAltOffsetM")
                 off = (
                     round(float(raw_off), 3)
@@ -764,10 +766,10 @@ class PointcloudToCopc:
                     if done.get("source") == "zpc":
                         height_offset = off
                         ctx.log(
-                            "The tiles name no height datum; heights are taken as ellipsoidal "
-                            "(a Bentley export) and shifted by the project's height offset, "
-                            f"{off:+.2f} m. The points are unchanged; use Drop to ground if the "
-                            "cloud is off."
+                            "The tiles name no height datum; the cloud was built from the same "
+                            "uncorrected photo altitudes, so it is shifted by the project's photo "
+                            f"altitude correction, {off:+.2f} m. The points are unchanged; use "
+                            "Drop to ground if the cloud is off."
                         )
                     else:
                         ctx.log(
