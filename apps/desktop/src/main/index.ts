@@ -1315,14 +1315,13 @@ function registerIpc(): void {
       const busy = photoBusyRefusal(pipeline, others) ?? odmGuard.busy(pipeline);
       if (busy) return { ok: false, error: busy };
     }
-    // walk.process and pano.stitch on processing tools older than their first pack: the update
-    // path, not a failed job
+    // Check feature minimums for new jobs and the resolved pipeline of resumed jobs alike.
+    // An old installed pack gets the update path before the runner can launch it.
     if (
-      'pipeline' in req &&
-      (req.pipeline === 'walk.process' ||
-        req.pipeline === 'pano.stitch' ||
-        req.pipeline === 'model.evidence' ||
-        req.pipeline === 'pointcloud.clean')
+      pipeline === 'walk.process' ||
+      pipeline === 'pano.stitch' ||
+      pipeline === 'model.evidence' ||
+      pipeline === 'pointcloud.clean'
     ) {
       const found = await findPack({
         dataRoot: settings.current().dataRoot,
@@ -1331,10 +1330,10 @@ function registerIpc(): void {
       });
       const version = found.pack?.version ?? null;
       const tooOld =
-        walkPackRefusal(req.pipeline, version) ??
-        panoPackRefusal(req.pipeline, version) ??
-        evidencePackRefusal(req.pipeline, version) ??
-        cleanPackRefusal(req.pipeline, version);
+        walkPackRefusal(pipeline, version) ??
+        panoPackRefusal(pipeline, version) ??
+        evidencePackRefusal(pipeline, version) ??
+        cleanPackRefusal(pipeline, version);
       if (tooOld) return { ok: false, error: tooOld };
     }
     // a drone panorama stitch waits for the one running (one at a time on this computer)

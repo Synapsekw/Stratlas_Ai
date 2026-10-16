@@ -309,7 +309,9 @@ Current limits only; each is removed from this list when fixed.
 
 - An engineering model is a review aid: not fabrication-ready and not an as-built survey. Rules fill what the sources do not show, and every value says whether it was measured, observed, inferred or entered by you.
 - A model made from photos only, without a known dimension, has a provisional scale: its lengths are not true metres until you enter one dimension. Photo GPS positions are camera positions and are never taken as the asset's position; such a model is placed provisionally.
-- The assemblers and the measuring were tuned on synthetic assets only.
+- Measuring an engineered asset requires processing tools 0.13.1 or later. Older installed packs are refused with an update message; saved models are not repaired automatically. Start a new run to measure again with the repaired tools.
+- A known reference height wins over an automatic height and remains a reference, not a scan measurement. Dense clutter and partial scans can still leave the shaft dimensions uncertain; check the region, proportions and component counts against the sources.
+- Distinct antenna groups preserve their own types, sizes, levels and bearings, but the available component templates still approximate the equipment. A syntactically valid model file is not proof of an accurate model.
 - Point clouds in COPC format are read through PDAL; that path is not tested on a computer without the PDAL tools.
 - The check that photos show the same asset uses colour and camera distance only; two similar structures can pass it.
 - Meshes used as a source are sampled for their shape only, without their colours.
@@ -321,6 +323,7 @@ Current limits only; each is removed from this list when fixed.
 - Deleting an engineering model on one copy does not delete it on the others in a collaboration merge: the model file is kept there as it was (the merge finds the emptied record not valid and leaves the file alone, without telling the person).
 - A project holding an engineering model without a georeference cannot be re-centred until the model is placed or georeferenced (its values are in the project's local frame).
 - The AI step's request and token limits per run are fixed per detail level; a run that reaches them stops with the best result so far and needs a new run for more.
+- Later AI passes reserve generated model views alongside representative source views and rotate source photos within the existing image cap. They do not see every original photo. A one-image limit cannot support visual comparison of source and draft; the request says so. The separate photo and scan consents cover only the selected images shown in that preview.
 
 ## Point cloud cleanup
 

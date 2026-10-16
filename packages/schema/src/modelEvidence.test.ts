@@ -195,8 +195,8 @@ describe('EvidencePack', () => {
       }).success,
     ).toBe(false);
   });
-  it('names the first pack with model.evidence', () => {
-    expect(MODEL_EVIDENCE_MIN_PACK).toBe('0.11.0');
+  it('requires the pack with the engineering measurement repairs', () => {
+    expect(MODEL_EVIDENCE_MIN_PACK).toBe('0.13.1');
   });
   it('parses the pack the pipeline wrote for the partial synthetic stack', () => {
     const raw: unknown = JSON.parse(

@@ -1,5 +1,5 @@
 /*
- * The `model.evidence` job needs the processing tools of pipeline pack 0.11.0 or later. `jobs:start`
+ * The `model.evidence` job needs the repaired processing tools of pack 0.13.1 or later. `jobs:start`
  * asks here first, so an older pack gets the update message, not a failed job (as for
  * `pano.stitch` in `panos.ts` and `walk.process` in `walks.ts`).
  */

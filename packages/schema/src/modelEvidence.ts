@@ -8,8 +8,8 @@ import { Detail, EvidenceRegion, RunId } from './engineer';
  * and atomic: crop, ground, axis, sections, members, renders, photos, pack.
  */
 
-/** The first pipeline pack with `model.evidence`, and how Settings, Processing tools names it. */
-export const MODEL_EVIDENCE_MIN_PACK = '0.11.0';
+/** The minimum pack with the engineering measurement repairs, and its Settings feature name. */
+export const MODEL_EVIDENCE_MIN_PACK = '0.13.1';
 export const MODEL_EVIDENCE_FEATURE = 'Measuring an engineered asset';
 
 /** Default sampling and image limits per detail. */
