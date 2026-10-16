@@ -59,6 +59,12 @@ describe('islandGroups', () => {
     expect(islandGroups({ ...flags, mode: '3d' })).not.toContain('road');
     expect(islandGroups({ ...flags, mode: 'split' })).toContain('road');
   });
+  it('hides point clouds and volumes in the map view', () => {
+    const g = islandGroups({ ...flags, map: true });
+    expect(g).not.toContain('clouds');
+    expect(g).not.toContain('volumes');
+    expect(islandGroups({ ...flags, map: false, mode: '3d' })).toContain('clouds');
+  });
   it('keeps the fixed order and hides groups without data', () => {
     const all: GroupId[] = [
       'view',
@@ -70,7 +76,7 @@ describe('islandGroups', () => {
       'road',
       'annotate',
     ];
-    expect(islandGroups(flags)).toEqual(all);
+    expect(islandGroups({ ...flags, map: false })).toEqual(all);
     expect(
       islandGroups({ ...flags, clouds: false, volumes: false, video: false, road: false }),
     ).toEqual(['view', 'measure', 'display', 'annotate']);
@@ -100,6 +106,24 @@ describe('islandReducer', () => {
     expect(islandReducer(near, { type: 'leave' }).open).toBe('rest');
     const tools = { ...rest, open: 'tools' as const };
     expect(islandReducer(tools, { type: 'leave' }).open).toBe('tools');
+  });
+  it('swaps back and clears the swap when the live pair changes', () => {
+    const sw = islandReducer(rest, { type: 'swap' });
+    expect(islandReducer(sw, { type: 'swap' }).swapped).toBe(false);
+    expect(islandReducer(sw, { type: 'liveChanged' }).swapped).toBe(false);
+    expect(islandReducer(sw, { type: 'pickGroup', group: 'view' }).swapped).toBe(true);
+  });
+  it('clears the preview on leave and escape, and escapes the date', () => {
+    const hov = { ...rest, open: 'ready' as const, preview: 'display' as const };
+    expect(islandReducer(hov, { type: 'leave' }).preview).toBeNull();
+    expect(islandReducer({ ...hov, open: 'tools' }, { type: 'escape' })).toMatchObject({
+      open: 'rest',
+      preview: null,
+    });
+    const date = islandReducer(rest, { type: 'openDate' });
+    expect(islandReducer(date, { type: 'leave' }).open).toBe('date');
+    expect(islandReducer(date, { type: 'escape' }).open).toBe('rest');
+    expect(islandReducer({ ...rest, open: 'tools' }, { type: 'near' }).open).toBe('tools');
   });
   it('opens the date and swaps', () => {
     expect(islandReducer(rest, { type: 'openDate' }).open).toBe('date');

@@ -1,7 +1,18 @@
 /** Stage toolbar groups and how many fit on one row. */
 import type { GroupId } from './island/islandModel';
 
-export { GROUP_LABEL, type GroupId } from './island/islandModel';
+export type { GroupId };
+
+export const GROUP_LABEL: Record<GroupId, string> = {
+  view: 'View',
+  measure: 'Measure and section',
+  display: 'Labels and layers',
+  clouds: 'Point clouds',
+  volumes: 'Volumes',
+  video: 'Video and camera',
+  annotate: 'Annotate',
+  road: 'Road layers and measure',
+};
 
 /**
  * Groups move into the overflow menu in this order as the stage narrows. The point cloud control

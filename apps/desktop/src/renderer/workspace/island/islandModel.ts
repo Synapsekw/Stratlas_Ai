@@ -4,17 +4,6 @@ import type { StageMode } from '../../store';
 export type GroupId =
   'view' | 'measure' | 'display' | 'clouds' | 'volumes' | 'video' | 'road' | 'annotate';
 
-export const GROUP_LABEL: Record<GroupId, string> = {
-  view: 'View',
-  measure: 'Measure and section',
-  display: 'Labels and layers',
-  clouds: 'Point clouds',
-  volumes: 'Volumes',
-  video: 'Video and camera',
-  annotate: 'Annotate',
-  road: 'Road layers and measure',
-};
-
 export type LiveItem =
   | { kind: 'tool'; label: string; reading: string | null }
   | { kind: 'playback'; clip: string; progress: number; telemetry: string | null }
@@ -25,7 +14,8 @@ const PRIORITY: LiveItem['kind'][] = ['tool', 'playback', 'job', 'connection'];
 
 /**
  * The two live readings to show: the highest priority one and the next. Running jobs collapse
- * into the newest (last in the list) with `more` counting the others.
+ * into the newest (last in the list); for the other kinds the first in the list wins. Send
+ * `liveChanged` to the reducer when the picked pair changes, so a swap does not outlive it with `more` counting the others.
  */
 export function pickLive(items: readonly LiveItem[]): {
   primary: LiveItem | null;
@@ -62,8 +52,9 @@ export function islandGroups(input: {
   pkg: boolean;
 }): GroupId[] {
   const groups: GroupId[] = ['view', 'measure', 'display'];
-  if (input.clouds) groups.push('clouds');
-  if (input.volumes) groups.push('volumes');
+  // the map has no point clouds or volumes
+  if (input.clouds && !input.map) groups.push('clouds');
+  if (input.volumes && !input.map) groups.push('volumes');
   if (input.video) groups.push('video');
   if (input.road && input.mode !== '3d') groups.push('road');
   if (!input.pkg) groups.push('annotate');
@@ -85,14 +76,16 @@ export type IslandEvent =
   | { type: 'hoverGroup'; group: GroupId }
   | { type: 'pickGroup'; group: GroupId }
   | { type: 'swap' }
+  | { type: 'liveChanged' }
   | { type: 'escape' };
 
 export function islandReducer(s: IslandState, e: IslandEvent): IslandState {
   switch (e.type) {
     case 'near':
       return s.open === 'rest' ? { ...s, open: 'ready' } : s;
+    // leave only closes the ready state: tools and date stay until chosen or escaped
     case 'leave':
-      return s.open === 'ready' ? { ...s, open: 'rest' } : s;
+      return s.open === 'ready' ? { ...s, open: 'rest', preview: null } : s;
     case 'toggleTools':
       return { ...s, open: s.open === 'tools' ? 'rest' : 'tools', preview: null };
     case 'openDate':
@@ -103,6 +96,8 @@ export function islandReducer(s: IslandState, e: IslandEvent): IslandState {
       return { ...s, group: e.group, preview: null, open: 'rest' };
     case 'swap':
       return { ...s, swapped: !s.swapped };
+    case 'liveChanged':
+      return s.swapped ? { ...s, swapped: false } : s;
     case 'escape':
       return { ...s, open: 'rest', preview: null };
   }
