@@ -306,6 +306,20 @@ def monopole_cloud(seed=1, noise=0.005, ground=True, points=25_000):
     return cloud, truth
 
 
+def compound_pole_cloud(seed=11):
+    """A 31 m pole inside dense connected low equipment, all synthetic.
+
+    The 3.8 m equipment wall dominates the first five sections. A horizontal
+    canopy joins it to the pole, so connected-component isolation cannot remove it.
+    """
+    rng = np.random.default_rng(seed)
+    pole = _shaft(rng, 30_000, [{"y": 0, "r": 0.45}, {"y": 31, "r": 0.22}], 0, 31, 0.004)
+    wall = _ring(rng, 65_000, 3.8, 0.2, 3.2)
+    canopy = _disc(rng, 15_000, 0, 3.8, 1.8, 0.02)
+    ground = _disc(rng, 20_000, 0, 20, 0, 0.01)
+    return np.vstack([pole, wall, canopy, ground])
+
+
 def write_las(points, path, crs_epsg=32633, offset=(400000, 5600000, 0), rgb=None):
     """Write local points (x east, y up, z south) as a LAS 1.2, point format 0 file (format 2 with
     `rgb`, uint8 (N, 3), stored as 16-bit channels).

@@ -26,7 +26,7 @@ from aio_pipelines.pointcloud import find_pdal
 from aio_pipelines.runtime import INPUTS_CHANGED, Cancelled, JobError
 from aio_pipelines.selftest import SelfTest  # noqa: F401  (the registry import must keep working)
 from conftest import run_job
-from synth_assets import monopole_cloud, radius_at, stack_cloud, synth_photos, write_las
+from synth_assets import compound_pole_cloud, monopole_cloud, radius_at, stack_cloud, synth_photos, write_las
 
 ORIGIN = (500000.0, 3200000.0, 10.0)
 FIXTURE = (
@@ -94,6 +94,28 @@ def params(**kw):
 
 def read_pack(project: Path) -> dict:
     return json.loads((project / "engineering" / "run-test" / "evidence.json").read_text("utf-8"))
+
+
+@pytest.mark.parametrize("base_occluded", [False, True])
+def test_compound_pole_pack_measures_the_tall_shaft(tmp_path, base_occluded):
+    cloud = compound_pole_cloud()
+    if base_occluded:
+        cloud = cloud[~((cloud[:, 1] < 5) & (np.hypot(cloud[:, 0], cloud[:, 2]) < 0.6))]
+    make_project(tmp_path, cloud)
+    if base_occluded:
+        # The isolated low compound cannot establish the disconnected shaft's
+        # axis or a spatial base. Reject it before intersecting a horizontal PCA
+        # direction with the ground and publishing coordinates far off site.
+        with pytest.raises(JobError, match="standing asset"):
+            run_job(ModelEvidence(), tmp_path, params())
+        assert not (tmp_path / "engineering" / "run-test" / "evidence.json").exists()
+        return
+    run_job(ModelEvidence(), tmp_path, params())
+    pack = read_pack(tmp_path)
+    assert pack["height"] == pytest.approx(31, abs=0.7)
+    assert max(s["r"] for s in pack["slices"]) < 0.6
+    assert pack["familyHints"]["suggested"] == "telecom-monopole"
+    assert pack["slices"][0]["y"] < 1
 
 
 @pytest.fixture(scope="module")

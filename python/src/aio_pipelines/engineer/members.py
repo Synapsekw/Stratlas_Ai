@@ -480,6 +480,12 @@ def family_hints(
     top = float(h.max()) if len(xyz) else 0.0
     base = h < max(0.05 * top, 0.5)
     foot = max(float(np.ptp(u[base])), float(np.ptp(w[base]))) if base.sum() > 3 else 0.0
+    # The observed bottom footprint may be connected compound equipment. Only
+    # a profile supported over most of the height can replace that footprint.
+    if len(slices) >= 5 and slices[-1].y - slices[0].y >= 0.6 * top:
+        shaft_width = 2 * float(np.median([s.r for s in slices[:5]]))
+        if foot > 1.5 * shaft_width:
+            foot = shaft_width
     slender = top / foot if foot > 0 else 0.0
     fill = _fill_ratio(xyz, axis, seed) if len(xyz) > 200 else 0.0
     reasons = [f"fill {fill:.2f}", f"slenderness {slender:.1f}"]
@@ -493,7 +499,14 @@ def family_hints(
             rng = np.random.default_rng(seed)
             a = fit_ring(np.column_stack([u[sel], w[sel]]), rng)
             b = fit_ring(np.column_stack([u[lower], w[lower]]), rng)
-            tip = bool(a and b and 0.5 <= a[2] / b[2] <= 0.95 and a[4] > 0.6 * len(sel))
+            # A smooth taper is not a burner. Compare the crown with the
+            # extrapolated shaft, rather than the larger radius far below it.
+            shaft = [s for s in slices if 0.3 * top <= s.y <= 0.85 * top]
+            expected = b[2] if b else 0.0
+            if len(shaft) >= 4:
+                slope, intercept = np.polyfit([s.y for s in shaft], [s.r for s in shaft], 1)
+                expected = float(slope * float(np.mean(h[sel])) + intercept)
+            tip = bool(a and expected > 0 and 0.5 <= a[2] / expected <= 0.9 and a[4] > 0.6 * len(sel))
     if fill < 0.35 and 3 <= len(legs) <= 4:
         family = "telecom-lattice"
         reasons.append(f"{len(legs)} legs in an open frame")

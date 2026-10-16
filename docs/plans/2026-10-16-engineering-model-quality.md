@@ -49,11 +49,11 @@ Tasks 1, 2 and 3 run in parallel with exclusive file ownership. Task 4 depends o
 
 **Interfaces:** Existing `EvidencePack` remains readable. Output `height`, `slices`, `taper`, `familyHints` and `warnings` must describe the coherent tall asset. Existing photo image records and budget are retained.
 
-- [ ] Add and run a failing synthetic regression: a roughly 30 m slender pole above dense 2 to 4 m compound clutter yields full pole height and sub-metre radii, with no compound fit labelled as the shaft.
-- [ ] Cover taper, stepped shapes, absent base and unrelated neighbours using existing fixtures plus focused additions.
-- [ ] Implement coherent section selection and height plausibility, with explanatory warnings for incomplete or ambiguous fits.
-- [ ] Add photo selection regression for redundant sharp views versus available coverage; implement deterministic diversity within the existing cap.
-- [ ] Run affected Python tests and report exact red/green results. Prepare instructions for replaying saved asset points without a live provider.
+- [x] Add and run a failing synthetic regression: a roughly 30 m slender pole above dense 2 to 4 m compound clutter yields full pole height and sub-metre radii, with no compound fit labelled as the shaft.
+- [x] Cover taper, stepped shapes, absent base and unrelated neighbours using existing fixtures plus focused additions.
+- [x] Implement coherent section selection and height plausibility, with explanatory warnings for incomplete or ambiguous fits.
+- [x] Add photo selection regression for redundant sharp views versus available coverage; implement deterministic diversity within the existing cap.
+- [x] Run affected Python tests and report exact red/green results. Prepare instructions for replaying saved asset points without a live provider.
 
 ### Task 2: Preserve reference dimensions and component distinctions
 
@@ -61,11 +61,11 @@ Tasks 1, 2 and 3 run in parallel with exclusive file ownership. Task 4 depends o
 
 **Interfaces:** `assemble(AssembleInput)` remains the public API. Existing proposal components retain their role/type/size/level identity. Existing quality and scale records remain truthful.
 
-- [ ] Failing regression: reference height 31 over stale 2.4 m evidence gives 31 m, with reference provenance; a compound-only profile must not become a 7.5 m-wide pole when the source extent and proposal contradict it.
-- [ ] Failing regression: 12 large panels, four small panels and a whip remain distinct sizes/types/levels rather than becoming 17 identical panels.
-- [ ] Failing regression: unconfirmed low candidates and multi-metre canopy-sized candidates do not become aviation lights; valid confirmed lights and user overrides survive.
-- [ ] Implement the smallest corresponding fixes, preserving IDs and accepted edits across rebuilds, and using existing omni geometry for whip proposals.
-- [ ] Run assembly, builder and model acceptance suites. Report representation limits honestly.
+- [x] Failing regression: reference height 31 over stale 2.4 m evidence gives 31 m, with reference provenance; a compound-only profile must not become a 7.5 m-wide pole when the source extent and proposal contradict it.
+- [x] Failing regression: 12 large panels, four small panels and a whip remain distinct sizes/types/levels rather than becoming 17 identical panels.
+- [x] Failing regression: unconfirmed low candidates and multi-metre canopy-sized candidates do not become aviation lights; valid confirmed lights and user overrides survive.
+- [x] Implement the smallest corresponding fixes, preserving IDs and accepted edits across rebuilds, and using existing omni geometry for whip proposals.
+- [x] Run assembly, builder and model acceptance suites. Report representation limits honestly.
 
 ### Task 3: Make visual critique see the result
 
@@ -73,20 +73,20 @@ Tasks 1, 2 and 3 run in parallel with exclusive file ownership. Task 4 depends o
 
 **Interfaces:** The preview and actual payload use one deterministic image-selection policy; provider cap and consent remain enforced; cache includes actual selection and updated prompt version.
 
-- [ ] Failing regression: 24 evidence images plus five generated views with cap 20 includes generated geometry and representative scan/photo evidence; repeats can cover omitted sources.
-- [ ] Cover low-cap models, first pass, exclusions, consent checks, preview agreement and cache invalidation.
-- [ ] Implement bounded selection with explicit review priority and an instruction to compare the generated model with source observations and flag measurement conflicts.
-- [ ] Run AI engineer, run-store, preview and affected end-to-end tests; report exact red/green evidence.
+- [x] Failing regression: 24 evidence images plus five generated views with cap 20 includes generated geometry and representative scan/photo evidence; repeats can cover omitted sources.
+- [x] Cover low-cap models, first pass, exclusions, consent checks, preview agreement and cache invalidation.
+- [x] Implement bounded selection with explicit review priority and an instruction to compare the generated model with source observations and flag measurement conflicts.
+- [x] Run AI engineer, run-store, preview and affected end-to-end tests; report exact red/green evidence. Unit coverage and all 7 engineering workflow tests are green.
 
 ### Task 4: Integrate, replay, review and finish
 
 **Owns:** Integration acceptance tests, guide/known-limit updates, contract-change entry if required, session note and this plan's execution record.
 
-- [ ] Verify all three task reports and independently review their diffs for correctness and scope.
-- [ ] Replay private saved point samples and proposals into a temporary output directory using repaired code; compare height, radius, antenna grouping and lights with the previous output.
-- [ ] Render the replayed GLB and visually inspect it against source views. No private data enters git.
+- [x] Verify all three task reports and independently review their diffs for correctness and scope.
+- [x] Replay private saved point samples and proposals into a temporary output directory using repaired code; compare height, radius, antenna grouping and lights with the previous output.
+- [x] Render the replayed GLB and visually inspect it against source views. No private data enters git.
 - [ ] Run `pnpm check`, Python checks/tests, demo preparation and affected end-to-end tests under CI window/scale/renderer settings.
-- [ ] Independent whole-change review; address material findings and repeat covering checks.
+- [x] Independent whole-change review; address material findings and repeat covering checks.
 - [ ] Record validation, outstanding limits and concrete app test steps. Commit on this branch and follow repository integration process once checks permit.
 
 ## Execution record
@@ -94,7 +94,17 @@ Tasks 1, 2 and 3 run in parallel with exclusive file ownership. Task 4 depends o
 - Worktree created from latest remote main; dependencies installed. Main checkout's pre-existing untracked landing studies left untouched.
 - Investigation already established the reproduction using saved models, proposals, evidence and rendered GLBs. Repair scope approved by the user's instruction to fix it.
 - No contract expansion is planned. The changes are corrections to interpretation and assembly of existing inputs.
-- Task 2: 13 regression tests now cover the diagnosed errors and independent-review findings. Modelling suite: 363 passed; TypeScript and targeted lint passed. Review caught candidate reassignment from disabled groups and accepted-component duplication; both reproduced, fixed and approved on re-review.
+- Task 2: 18 regression tests now cover the diagnosed errors and independent-review findings. Modelling suite: 368 passed; TypeScript and targeted lint passed. Review caught candidate reassignment from disabled groups and accepted-component duplication; both reproduced, fixed and approved on re-review.
 - Task 3: saturated requests retain generated feedback, rotate omitted photos and use one selection for consent, preview, cache and request. AI suite: 628 passed, plus renderer coverage and type/lint checks. Independent review approved, including the additional omitted-kind consent regression and distinct-group prompt.
 - Private assembly replay: a supplied 31 m height yields 31 m, twelve large panels, four small panels and one slender omni/whip; six false low lights are absent and the remaining uncertain crown light stays inferred. The replay uses saved inputs and writes outside the repository.
 - Integration choice: pipeline pack 0.13.1, with the engineering minimum raised to that version, so installed clients cannot claim the repaired measurement behavior while using older processing code. No file format changes.
+
+- Task 2 and 3 implementation committed as `9e6b65b3`. Desktop build passed; fresh evidence replay and full checks remain pending.
+
+- Desktop validation: all four quick demos passed, followed by 7/7 engineering workflow tests without skips or retries at 1100 x 720, scale 1 and WARP. No real project writes or live provider calls.
+- Integration committed as `6114ddf5`; independent review also closed the resumed-job minimum-version bypass.
+
+- Fresh evidence replay recovers a narrow observed shaft through the equipment clutter and correctly suggests a telecom monopole. The supplied height remains a reference. A merged crown candidate exposed a further antenna assignment error; two regressions now reject oversized aggregate measurements and retain missing proposal sectors. The combined GLB renders successfully with distinct large/small/whip groups and a compact crown.
+
+- Final Python verification: 67 engineering/model-evidence tests passed; two PDAL-dependent tests skipped because that executable was not configured in this test invocation. Runtime/checkpoint coverage: 32 passed. Python-wide Ruff lint and format checks passed (318 files). The invalid standing-axis case is rejected before base calculation or evidence publication.
+- Final desktop rebuild and a repeat of all 7 engineering workflow tests passed after antenna and checkpoint fixes; no skips or retries. Independent whole-change review approved all code deltas.

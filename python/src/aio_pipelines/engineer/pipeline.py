@@ -190,6 +190,12 @@ def _shaft_height(kept: np.ndarray, axis: Axis, taper: Taper, step: float, famil
         return float(h.max())
     ys = [p[0] for p in taper.profile]
     rs = [p[1] for p in taper.profile]
+    # A low equipment fit cannot become an authoritative asset height when a
+    # substantial, centred structure continues far above it. Do not substitute
+    # the cloud maximum: an unrelated object or an antenna may be taller.
+    central = h[np.hypot(u, w) <= max(rs) * 1.5]
+    if len(central) >= 40 and ys[-1] + step < 0.9 * float(np.percentile(central, 99)):
+        return None
     wall = np.hypot(u, w) >= 0.85 * np.interp(h, ys, rs)
     sel = wall & (h <= ys[-1] + step)
     return float(h[sel].max()) if sel.any() else float(ys[-1])
@@ -388,6 +394,10 @@ class ModelEvidence:
 
             asset, grd = load(ctx, "asset"), load(ctx, "ground")
             axis = estimate_axis(asset, seed=SEED)
+            if axis.dir[1] < 0.5:
+                raise JobError(
+                    "The selected points do not define a standing asset. Narrow the region to the shaft, or choose another source."
+                )
             ctx.check()
             surface = ground_surface(grd) if len(grd) else (lambda xz: np.zeros(len(xz)))
             base, axis = find_base(axis, asset, GroundSplit(asset, grd, surface))
@@ -712,6 +722,10 @@ class ModelEvidence:
                     "profile": [{"y": by + y * dy, "r": r} for y, r in prof][:64],
                     "residualM": sec["taper"]["residual"],
                 }
+                if prof[0][0] > max(2 * sec["step"], 0.05 * prof[-1][0]):
+                    warnings.append(
+                        "The lower shaft sections could not be separated from the base or clutter; the profile starts above them."
+                    )
             else:
                 warnings.append("No section of the asset could be fitted, so there is no taper.")
             rej = sec["rejected"]
@@ -727,6 +741,10 @@ class ModelEvidence:
                     warnings.append(f"Skipped {total} slices ({why}).")
             doc["members"] = mem["members"][:16]
             doc["height"] = mem["height"] if mem["height"] and mem["height"] > 0 else None
+            if doc["height"] is None and sec["slices"]:
+                warnings.append(
+                    "The fitted sections do not explain the asset's vertical extent, so no reliable shaft height is reported."
+                )
             doc["familyHints"] = mem["hints"]
             doc["colours"] = [
                 {"y0": by + b["y0"] * dy, "y1": by + b["y1"] * dy, "rgb": b["rgb"]} for b in mem["colours"]

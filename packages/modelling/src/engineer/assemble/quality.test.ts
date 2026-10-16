@@ -105,6 +105,44 @@ describe('engineering model quality regressions', () => {
     expect(pole.quality.profile?.basis).toBe('observed');
   });
 
+  it.each([
+    { estimate: undefined, reference: undefined, height: 30, status: 'provisional' },
+    { estimate: 31, reference: undefined, height: 31, status: 'provisional' },
+    { estimate: undefined, reference: 31, height: 31, status: 'reference' },
+  ] as const)(
+    'keeps an explicitly unknown height unknown with estimate $estimate and reference $reference',
+    ({ estimate, reference, height, status }) => {
+      const evidence = monopoleEvidence();
+      evidence.height = null;
+      evidence.bounds = { min: [-1, 0, -1], max: [1, 31, 1] };
+      evidence.taper = {
+        profile: [
+          { y: 0, r: 0.5 },
+          { y: 20, r: 0.35 },
+        ],
+        residualM: 0.01,
+      };
+      const p = proposal();
+      p.components = [
+        component('pole', 'monopole', 1, {
+          rBase: 0.6,
+          rTop: 0.4,
+          ...(estimate === undefined ? {} : { height: estimate }),
+        }),
+      ];
+      const setup = setupFor('telecom-monopole');
+      if (reference !== undefined) setup.reference = { what: 'height', valueM: reference };
+      const result = assemble({ ...input(), setup, evidence, proposal: p });
+      expect(result.model.scale?.status).toBe(status);
+      const pole = must(byKind(result.model, 'monopole')[0]);
+      expect(pole.params.profile.at(-1)?.y).toBe(height);
+      expect(pole.params.profile[0]?.r).toBe(0.5);
+      expect(pole.params.profile.at(-1)?.r).toBe(0.35);
+      expect(pole.quality.profile?.basis).toBe('measured');
+      expect(pole.quality.base?.basis).toBe('measured');
+    },
+  );
+
   it('keeps large panels, small panels and a whip distinct in the generated geometry', () => {
     const result = assemble(input());
     const ants = byKind(result.model, 'antenna');
@@ -125,6 +163,62 @@ describe('engineering model quality regressions', () => {
     expect(
       buildEngineeringGlb(result.model, { detail: 'fast', drafts: true, generator: 'test' }).failed,
     ).toEqual([]);
+  });
+
+  it('does not turn one merged headframe candidate into an individual panel or a single long row', () => {
+    const evidence = monopoleEvidence();
+    evidence.members = [
+      {
+        kind: 'antenna-candidate',
+        metrics: {},
+        items: [{ centre: [0, 28, 0], size: 5.9, support: 280_000, azimuthDeg: 354 }],
+      },
+    ];
+    const result = assemble({ ...input(), evidence });
+    const antennas = byKind(result.model, 'antenna');
+    expect(antennas).toHaveLength(17);
+    expect(
+      antennas.filter((a) => a.params.kind === 'panel' && a.params.size[1] === 2.1),
+    ).toHaveLength(12);
+    expect(
+      antennas.filter((a) => a.params.kind === 'panel' && a.params.size[1] === 0.6),
+    ).toHaveLength(4);
+    expect(antennas.filter((a) => a.params.kind === 'omni')).toHaveLength(1);
+    expect(
+      [
+        ...new Set(
+          antennas.filter((a) => a.params.size[1] === 2.1).map((a) => a.params.azimuthDeg),
+        ),
+      ].sort((a, b) => a - b),
+    ).toEqual([0, 120, 240]);
+    expect(antennas.every((a) => Math.hypot(a.params.centre[0], a.params.centre[2]) < 3)).toBe(
+      true,
+    );
+    expect(antennas.every((a) => a.quality.centre?.basis !== 'measured')).toBe(true);
+    expect(result.unresolved.some((s) => /antenna.*candidate|candidate.*antenna/i.test(s))).toBe(
+      true,
+    );
+  });
+
+  it('keeps a valid measured panel without forcing all unseen panels into its single observed sector', () => {
+    const evidence = monopoleEvidence();
+    evidence.members = [
+      {
+        kind: 'antenna-candidate',
+        metrics: {},
+        items: [{ centre: [0, 26.97, -1.2], size: 2.1, support: 300, azimuthDeg: 0 }],
+      },
+    ];
+    const result = assemble({ ...input(), evidence });
+    const large = byKind(result.model, 'antenna').filter((a) => a.params.size[1] === 2.1);
+    expect(large).toHaveLength(12);
+    const measured = large.filter((a) => a.quality.centre?.basis === 'measured');
+    expect(measured).toHaveLength(1);
+    expect(must(measured[0]).params.centre).toEqual([0, 26.97, -1.2]);
+    expect([...new Set(large.map((a) => a.params.azimuthDeg))].sort((a, b) => a - b)).toEqual([
+      0, 120, 240,
+    ]);
+    expect(large.every((a) => Math.hypot(a.params.centre[0], a.params.centre[2]) < 3)).toBe(true);
   });
 
   it('preserves accepted group IDs and user edits when proposals reorder', () => {

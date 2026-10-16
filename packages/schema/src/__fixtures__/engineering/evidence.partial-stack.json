@@ -1320,7 +1320,7 @@
  ],
  "reconstruction": "not-needed",
  "warnings": [
-  "Skipped 4 slices (4 radius-jump).",
+  "Skipped 4 slices (4 off-axis).",
   "Some photos do not look like the same asset; they are flagged, not blended."
  ],
  "baseInfo": {
@@ -1335,8 +1335,8 @@
  },
  "rejectedSlices": {
   "noFit": 0,
-  "radiusJump": 4,
-  "offAxis": 0
+  "radiusJump": 0,
+  "offAxis": 4
  },
  "identity": {
   "sameAsset": false,

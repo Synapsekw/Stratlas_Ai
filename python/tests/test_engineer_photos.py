@@ -89,6 +89,27 @@ def test_max_images_keeps_the_sharpest_and_copies_are_bounded(tmp_path):
             assert max(c.size) <= 500
 
 
+def test_image_budget_keeps_a_less_sharp_view_from_another_side_and_height(tmp_path):
+    shots = synth_photos(tmp_path / "s", n=4, seed=5, size=(1600, 1200))
+    paths = []
+    for k, shot in enumerate(shots):
+        exif = Image.Exif()
+        gps = exif.get_ifd(0x8825)
+        gps[1], gps[2], gps[3] = "N", (48, 0, 0), "E"
+        gps[4] = (11, 0, 0 if k < 3 else 3)
+        gps[5], gps[6] = 0, 100 if k < 3 else 130
+        with Image.open(shot) as im:
+            ImageDraw.Draw(im).rectangle([100 + 300 * k, 900, 300 + 300 * k, 1100], fill=(10, 10, 10))
+            paths.append(_jpeg(tmp_path / f"p{k}.jpg", im.filter(ImageFilter.GaussianBlur(0.4 * k)), exif))
+    result = ingest_photos(paths, tmp_path / "out", 640, 2)
+    chosen = {it["original"] for it in result.items if it["id"] in result.kept}
+    sharpest = max(result.items, key=lambda it: it["blur"])
+    assert sharpest["original"] in chosen
+    assert str(paths[3]) in chosen  # the other coverage survives even though it is less sharp
+    repeated = ingest_photos(list(reversed(paths)), tmp_path / "repeat", 640, 2)
+    assert repeated.kept == result.kept
+
+
 def test_no_gps_or_text_leaves_the_photo_but_the_camera_position(tmp_path):
     exif = Image.Exif()
     exif[0x010E] = "Tower at the north gate, ask for J. Smith"

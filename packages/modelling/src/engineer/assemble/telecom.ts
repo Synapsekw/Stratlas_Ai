@@ -439,7 +439,16 @@ function antennas(ctx: FamilyCtx, hostId: string, reach: HostReach): Assembly[] 
     const eligible = ordered.map((c, i) => ({ c, i }));
     eligible.sort((a, b) => score(a.c) - score(b.c));
     const nearest = eligible[0];
-    if (nearest) assigned[nearest.i]?.push(it);
+    if (nearest) {
+      const size = ctx.len(nearest.c, 'size');
+      if (nearest.c.observed && size !== undefined && it.size > 2 * size) {
+        ctx.note(
+          `An antenna candidate is much larger than the observed ${nearest.c.role} components; it may merge several objects and was not used as an individual antenna.`,
+        );
+        continue;
+      }
+      assigned[nearest.i]?.push(it);
+    }
   }
   const desired = ordered.map(
     (c) => (c.role === 'antenna' ? undefined : ctx.userCount(c.role)) ?? c.count,
@@ -503,6 +512,26 @@ function antennaGroup(
       }),
     );
     facingsOf = sectors.map((s) => meanBearing(s.map((x) => x.facing)));
+    const proposedSectors = num(c, 'sectors');
+    if (seen.length < n && c?.observed && proposedSectors !== undefined) {
+      const k = clamp(Math.round(proposedSectors), 1, n);
+      const start = num(c, 'azimuthDeg') ?? 0;
+      for (const facing of evenFrom(start, k)) {
+        if (sectors.length >= k) break;
+        if (
+          facingsOf.some(
+            (seenFacing) => angleBetween(seenFacing, facing) <= Math.min(SECTOR_GAP_DEG, 180 / k),
+          )
+        )
+          continue;
+        sectors.push([]);
+        facingsOf.push(facing);
+      }
+      if (sectors.some((s) => !s.length))
+        ctx.note(
+          'Only some antenna sectors were measured; the remaining sectors use the proposed bearings as a guess.',
+        );
+    }
   } else {
     const k = clamp(Math.round(num(c, 'sectors') ?? Math.min(n, 3)), 1, n);
     const start = num(c, 'azimuthDeg') ?? 0;

@@ -85,7 +85,7 @@ def ingest_photos(
 
     Unreadable photos and those failing the quality gate are rejected. Exact duplicates (same sha1)
     and near duplicates (dhash distance 4 or less, the sharper one kept) are dropped with `dupOf`;
-    of the rest the `max_images` sharpest are kept. Dropped photos stay in `items` (`review` says
+    the remaining budget balances sharpness with camera and perceptual coverage. Dropped photos stay in `items` (`review` says
     why) so the run can show them. `check` is called between photos (cancellation).
     """
     result = IngestResult()
@@ -128,7 +128,19 @@ def ingest_photos(
         }
         if meta.has_gps and meta.lat is not None and meta.lon is not None:
             item["gpsCamera"] = [float(meta.lon), float(meta.lat), float(meta.altitude or 0.0)]
-        ph: dict[str, Any] = {"item": item, "dhash": _dhash(gray), "path": p}
+        ph: dict[str, Any] = {
+            "item": item,
+            "dhash": _dhash(gray),
+            "path": p,
+            # Selection-only metadata: never copied into a review image or the pack.
+            "view": {
+                "lon": meta.lon,
+                "lat": meta.lat,
+                "alt": meta.altitude,
+                "yaw": meta.yaw,
+                "pitch": meta.pitch,
+            },
+        }
         loaded.append(ph)
         if max(full_w, full_h) < MIN_LONG_SIDE_PX or item["blur"] < MIN_BLUR_SCORE:
             why = (
@@ -173,8 +185,13 @@ def ingest_photos(
     limit = max(0, int(max_images))
     for ph in keepers[limit:]:
         ph["item"]["review"] = "over the image limit, not used"
-    used = keepers[:limit]
+    used = _coverage_selection(keepers, limit)
     used_ids = {ph["item"]["id"] for ph in used}
+    for ph in keepers:
+        if ph["item"]["id"] in used_ids:
+            ph["item"].pop("review", None)
+        else:
+            ph["item"]["review"] = "over the image limit, not used"
     for ph in unique:  # copies of photos that are not used are not kept
         if ph["item"]["id"] not in used_ids:
             ph["copy"].unlink(missing_ok=True)
@@ -184,6 +201,48 @@ def ingest_photos(
     _flag_identity(used, result)
     result.items = [ph["item"] for ph in loaded]
     return result
+
+
+def _coverage_selection(photos: list[dict[str, Any]], limit: int) -> list[dict[str, Any]]:
+    """Deterministic, sharpness-weighted farthest views within the existing cap.
+
+    Missing pose metadata falls back to perceptual distance; quality remains a
+    weight so a blurred novelty does not displace a usable sharp observation.
+    Only small signatures and numeric camera metadata are retained in memory.
+    """
+    if limit <= 0 or not photos:
+        return []
+    if len(photos) <= limit:
+        return photos
+    scales = {}
+    for key, minimum in (("lon", 0.00002), ("lat", 0.00002), ("alt", 5.0), ("pitch", 15.0)):
+        values = [p["view"][key] for p in photos if p["view"][key] is not None]
+        scales[key] = max(float(np.ptp(values)), minimum) if values else minimum
+
+    def distance(a: dict[str, Any], b: dict[str, Any]) -> float:
+        d = _hamming(a["dhash"], b["dhash"]) / 64.0
+        for key, scale in scales.items():
+            va, vb = a["view"][key], b["view"][key]
+            if va is not None and vb is not None:
+                d = max(d, min(1.0, abs(va - vb) / scale))
+        ya, yb = a["view"]["yaw"], b["view"]["yaw"]
+        if ya is not None and yb is not None:
+            d = max(d, abs((ya - yb + 180) % 360 - 180) / 180)
+        return d
+
+    selected = [0]  # the sharpest first (photos already have a stable quality order)
+    remaining = list(range(1, len(photos)))
+    nearest = {i: distance(photos[i], photos[0]) for i in remaining}
+    best_blur = photos[0]["item"]["blur"]
+    while remaining and len(selected) < limit:
+        pick = max(
+            remaining, key=lambda i: (nearest[i] * math.sqrt(photos[i]["item"]["blur"] / best_blur), -i)
+        )
+        selected.append(pick)
+        remaining.remove(pick)
+        for i in remaining:
+            nearest[i] = min(nearest[i], distance(photos[i], photos[pick]))
+    return [photos[i] for i in selected]
 
 
 def _flag(result: IngestResult, ids: list[str], reason: str) -> None:

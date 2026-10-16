@@ -3,10 +3,77 @@
 from __future__ import annotations
 
 import numpy as np
+import pytest
 
+from aio_pipelines.engineer.axis import Axis
 from aio_pipelines.engineer.cloud import pdal_translate_args, region_centre
 from aio_pipelines.engineer.measure import measure_shaft
-from synth_assets import monopole_cloud, radius_at, stack_cloud
+from aio_pipelines.engineer.members import family_hints
+from aio_pipelines.engineer.pipeline import _shaft_height
+from aio_pipelines.engineer.sections import SliceFit, Taper, _coherent_sections, fit_sections, fit_taper
+from synth_assets import compound_pole_cloud, monopole_cloud, radius_at, stack_cloud
+
+
+def test_connected_compound_does_not_become_the_shaft():
+    m = measure_shaft(compound_pole_cloud(), centre=(0.0, 0.0), step=0.4)
+    assert len(m.slices) >= 50
+    assert max(s.r for s in m.slices) < 0.6
+    assert max(s.y for s in m.slices) > 30
+    assert _shaft_height(m.kept, m.axis, m.taper, 0.4, "telecom-monopole") == pytest.approx(31, abs=0.6)
+    assert family_hints(m.kept, m.axis, m.slices, []).suggested == "telecom-monopole"
+
+
+def test_a_short_low_profile_cannot_claim_the_height_of_a_tall_asset():
+    cloud = compound_pole_cloud()
+    axis = Axis((0, 0, 0), (0, 1, 0), 0)
+    assert _shaft_height(cloud, axis, Taper([(0.4, 3.8), (2.0, 3.8)], 0), 0.4, "chimney") is None
+
+
+def test_an_isolated_bracket_does_not_cut_the_shaft_in_half():
+    sections = [SliceFit(i * 0.4, (0, 0), 1.5 if i == 38 else 0.5, 0.002, 100, 1) for i in range(76)]
+    kept = _coherent_sections(sections, 0.4)
+    assert len(kept) == 75
+    assert kept[0].y == 0 and kept[-1].y == 30
+
+
+def test_dense_upper_attachments_do_not_hide_observed_shaft_sections():
+    rng = np.random.default_rng(8)
+    y = rng.uniform(0, 31, 30_000)
+    a = rng.uniform(0, 2 * np.pi, len(y))
+    r = 0.45 - y * 0.007
+    pole = np.column_stack([r * np.cos(a), y, r * np.sin(a)])
+    y = rng.uniform(24, 30, 30_000)
+    a = rng.uniform(0, 2 * np.pi, len(y))
+    equipment = np.column_stack([1.4 * np.cos(a), y, 1.4 * np.sin(a)])
+    axis = Axis((0, 0, 0), (0, 1, 0), 0)
+    slices = fit_sections(np.vstack([pole, equipment]), axis, 0.4)
+    assert max(s.y for s in slices) > 30
+    assert min(s.y for s in slices if s.y > 24) < 25
+    assert all(s.r < 0.6 for s in slices)
+
+
+def test_section_rejoin_cannot_bridge_a_long_gap_or_a_different_axis():
+    low = [SliceFit(i * 0.4, (0, 0), 0.5, 0.002, 100, 1) for i in range(35)]
+    high = [SliceFit(20 + i * 0.4, (0, 0), 0.5, 0.002, 100, 1) for i in range(20)]
+    assert _coherent_sections(low + high, 0.4) == low
+    other = [SliceFit(14 + i * 0.4, (3, 0), 0.5, 0.002, 100, 1) for i in range(20)]
+    assert _coherent_sections(low + other, 0.4) == low
+
+
+@pytest.mark.parametrize("partial", [False, True])
+def test_coherent_sections_keep_a_real_step_in_the_shaft(partial):
+    rng = np.random.default_rng(31)
+    y = rng.uniform(0, 30, 30_000)
+    a = rng.uniform(0, np.pi if partial else 2 * np.pi, len(y))
+    r = np.where(y < 15, 0.8, 0.4) + rng.normal(0, 0.003, len(y))
+    xyz = np.column_stack([r * np.sin(a), y, r * np.cos(a)])
+    slices = fit_sections(xyz, Axis((0, 0, 0), (0, 1, 0), 0), 0.4)
+    assert len([s for s in slices if s.y < 14]) > 25
+    assert len([s for s in slices if s.y > 16]) > 25
+    taper = fit_taper(slices)
+    assert _shaft_height(xyz, Axis((0, 0, 0), (0, 1, 0), 0), taper, 0.4, "telecom-monopole") == pytest.approx(
+        30, abs=0.4
+    )
 
 
 def _r_at(m, y):

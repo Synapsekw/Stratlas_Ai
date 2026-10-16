@@ -398,6 +398,17 @@ class Job:
         self.dir.mkdir(parents=True, exist_ok=True)
         self.staging.mkdir(parents=True, exist_ok=True)
         self.steps_dir.mkdir(parents=True, exist_ok=True)
+        if prev and self.pipeline.name == "model.evidence":
+            recorded_version = str(prev.get("version", ""))
+            release = re.fullmatch(r"(\d+)\.(\d+)\.(\d+)(?:\+[0-9A-Za-z.-]+)?", recorded_version)
+            predates_repair = release is None or tuple(map(int, release.groups())) < (0, 13, 1)
+            if predates_repair and (release is None or recorded_version != __version__):
+                # Remove every checkpoint before relabelling job.json. If interrupted here, its
+                # old version remains and the next resume retries the invalidation. Downstream
+                # stages must not reuse old sections or members after the measuring repair.
+                for checkpoint in self.steps_dir.glob("*.json"):
+                    checkpoint.unlink()
+                self.log("Processing tools changed. Re-measuring this asset with the repaired tools.", "warn")
         states = ["pending"] * len(self.steps)
         self._manifest("running", states=states)
         self.emit(

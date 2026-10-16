@@ -158,12 +158,13 @@ function resolveScale(
 ): { height: number; scale: ScaleRecord; metric: boolean } {
   const ev = input.evidence;
   const ref = input.setup.reference;
-  const shaft = input.proposal?.components.find((c) => c.kind === 'shaft');
+  const shaft = input.proposal?.components.find((c) => c.kind === 'shaft' || c.kind === 'monopole');
   const taper = ev?.taper?.profile ?? [];
   const baseY = ev?.base?.[1] ?? ev?.axis?.point[1] ?? 0;
-  const spanned = taper.length >= 2 ? (taper.at(-1)?.y ?? baseY) - baseY : undefined;
-  const measured = ev?.height ?? (spanned !== undefined && spanned > 0 ? spanned : undefined);
-  const metric = ev !== null && measured !== undefined;
+  // A null height is an explicit measurement rejection, not permission to reconstruct one from
+  // the taper endpoint. Its radii and positions can still be valid measurements in metres.
+  const measured = ev?.height ?? undefined;
+  const metric = ev !== null && (ev.height !== null || ev.taper !== null || ev.samples.kept > 0);
   const sourceHeight = ev?.bounds ? ev.bounds.max[1] - baseY : 0;
   const shortBaseFit =
     measured !== undefined &&
