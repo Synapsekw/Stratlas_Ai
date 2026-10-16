@@ -662,6 +662,13 @@ class ProjectSurfaces:
             self._manifest = read_manifest(self.project)
         return self._manifest
 
+    def _shift_of(self, capture: str) -> tuple[float, float]:
+        """A date's line-up; zero in a folder with no readable manifest (surfaces alone)."""
+        try:
+            return capture_shift(self.manifest(), capture)
+        except JobError:
+            return ZERO
+
     def scope_shift(self, measurement: str) -> tuple[float, float]:
         """The shift to add to a stored measurement's ring: its survey date's, zero for a
         site-wide or unknown measurement (those rings are already where the dates are lined up)."""
@@ -678,7 +685,7 @@ class ProjectSurfaces:
                     if isinstance(scope, dict) and scope.get("kind") == "survey":
                         self._scopes[str(m.get("id"))] = str(scope.get("capture"))
         cap = self._scopes.get(measurement)
-        return capture_shift(self.manifest(), cap) if cap else ZERO
+        return self._shift_of(cap) if cap else ZERO
 
     def captures(self) -> list[str]:
         m = self.manifest()
@@ -710,7 +717,7 @@ class ProjectSurfaces:
             capture=cap,
             grid=self._grids[sid],
             extent=_extent(meta),
-            shift=capture_shift(self.manifest(), str(cap)) if cap else ZERO,
+            shift=self._shift_of(str(cap)) if cap else ZERO,
         )
 
     def current_previous(self) -> tuple[str | None, str | None]:
