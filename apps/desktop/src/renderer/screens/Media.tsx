@@ -7,10 +7,11 @@ import {
   formatDuration,
   Icon,
   shortcutHint,
+  useResizableSplit,
   useT,
 } from '@aio/ui';
 import { assetUrl, useWorkspace, workspace } from '@aio/workspace';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useId, useMemo, useRef, useState } from 'react';
 import { loadDetections, useDetections } from '../detections/store';
 import { FocusZone } from '../FocusZone';
 import { IssueCard } from '../issueCard/IssueCard';
@@ -206,8 +207,28 @@ function usePhotoFindings(projectId: string | null): ReadonlyMap<string, PhotoFi
   );
 }
 
+/**
+ * The library and the opened photo (or a finding's card) side by side on the `media.viewer`
+ * split: the viewer is 54% of the screen until the person drags the handle between them, and the
+ * size is remembered. With nothing open the library has the whole screen and there is no handle.
+ */
+function useViewerSplit() {
+  return useResizableSplit({
+    id: 'media.viewer',
+    orientation: 'horizontal',
+    sized: 'end',
+    unit: 'fraction',
+    defaultSize: 0.54,
+    min: 360,
+    max: '80%',
+    otherMin: 200,
+  });
+}
+
 export function MediaScreen() {
   const t = useT();
+  const viewerId = useId();
+  const { containerRef: splitRef, separatorProps: splitHandle } = useViewerSplit();
   const project = useWorkspace((s) => s.project);
   const activeClip = useWorkspace((s) => s.activeClip);
   const selection = useWorkspace((s) => s.selection);
@@ -277,315 +298,327 @@ export function MediaScreen() {
     0,
   );
 
+  const viewerOpen = photo !== null || issueId !== null;
+
   return (
-    <section className={`screen media${photo || issueId ? ' with-viewer' : ''}`} aria-label="Media">
-      <div className="media-main" ref={photoRef} data-thumb-root>
-        <header className="page-h">
-          <h1>Media</h1>
-          <p className="muted">
-            {mediaSummary({
-              clips: clips.length,
-              photos: photoSets.reduce((n, l) => n + l.items.length, 0),
-              panoramas: panoSets.reduce((n, l) => n + l.items.length, 0),
-            })}
-          </p>
-          {photoSets.length > 0 && (
-            <div className="m-tools" role="group" aria-label={t('media.findings.tools')}>
-              <span
-                className={`m-fsum${withFindings > 0 ? ' on' : ''}`}
-                data-testid="media-findings-count"
-              >
-                <i />
-                {t('media.findings.summary', { count: withFindings })}
-              </span>
-              <button
-                type="button"
-                className="btn sm"
-                aria-pressed={onlyFindings}
-                data-testid="media-only-findings"
-                disabled={withFindings === 0 && !onlyFindings}
-                onClick={() => {
-                  setMediaView({ onlyFindings: !onlyFindings });
-                }}
-              >
-                <Icon name="filter" size={14} />
-                {t('media.findings.only')}
-              </button>
-              <label className="m-order">
-                <span>{t('media.findings.sort')}</span>
-                <select
-                  className="input sm"
-                  value={order}
-                  data-testid="media-order"
-                  onChange={(e) => {
-                    setMediaView({ order: e.target.value as PhotoOrder });
+    <section className={`screen media${viewerOpen ? ' with-viewer' : ''}`} aria-label="Media">
+      {/* the library stays in place when a photo opens beside it: its scroll and state are kept */}
+      <div className="split media-split" ref={splitRef}>
+        <div className="media-main" ref={photoRef} data-thumb-root>
+          <header className="page-h">
+            <h1>Media</h1>
+            <p className="muted">
+              {mediaSummary({
+                clips: clips.length,
+                photos: photoSets.reduce((n, l) => n + l.items.length, 0),
+                panoramas: panoSets.reduce((n, l) => n + l.items.length, 0),
+              })}
+            </p>
+            {photoSets.length > 0 && (
+              <div className="m-tools" role="group" aria-label={t('media.findings.tools')}>
+                <span
+                  className={`m-fsum${withFindings > 0 ? ' on' : ''}`}
+                  data-testid="media-findings-count"
+                >
+                  <i />
+                  {t('media.findings.summary', { count: withFindings })}
+                </span>
+                <button
+                  type="button"
+                  className="btn sm"
+                  aria-pressed={onlyFindings}
+                  data-testid="media-only-findings"
+                  disabled={withFindings === 0 && !onlyFindings}
+                  onClick={() => {
+                    setMediaView({ onlyFindings: !onlyFindings });
                   }}
                 >
-                  <option value="file">{t('media.findings.sort.file')}</option>
-                  <option value="severity">{t('media.findings.sort.severity')}</option>
-                  <option value="count">{t('media.findings.sort.count')}</option>
-                </select>
-              </label>
-              {severityChoices && (
+                  <Icon name="filter" size={14} />
+                  {t('media.findings.only')}
+                </button>
                 <label className="m-order">
-                  <span>{t('media.findings.severity')}</span>
+                  <span>{t('media.findings.sort')}</span>
                   <select
                     className="input sm"
-                    value={severity === null ? '' : String(severity)}
-                    data-testid="media-severity"
+                    value={order}
+                    data-testid="media-order"
                     onChange={(e) => {
-                      const v = e.target.value;
-                      setMediaView({
-                        severity: v === '' ? null : v === 'uncertain' ? 'uncertain' : Number(v),
-                      });
+                      setMediaView({ order: e.target.value as PhotoOrder });
                     }}
                   >
-                    <option value="">{t('media.findings.severity.any')}</option>
-                    {severityChoices.map((o) =>
-                      o === 'uncertain' ? (
-                        <option key={o} value={o}>
-                          {t('media.findings.severity.uncertain')}
-                        </option>
-                      ) : (
-                        <option key={o.value} value={String(o.value)}>
-                          {o.label || String(o.value)}
-                        </option>
-                      ),
-                    )}
+                    <option value="file">{t('media.findings.sort.file')}</option>
+                    <option value="severity">{t('media.findings.sort.severity')}</option>
+                    <option value="count">{t('media.findings.sort.count')}</option>
                   </select>
                 </label>
-              )}
-              {scope && (
-                <span className="scope-chip" data-testid="media-scope-chip">
-                  {scope.label}
-                  <button
-                    type="button"
-                    aria-label={t('view.scope.clear', { label: scope.label })}
-                    onClick={() => {
-                      setMediaView({ scope: null });
-                    }}
-                  >
-                    <Icon name="x" size={12} />
-                  </button>
-                </span>
-              )}
+                {severityChoices && (
+                  <label className="m-order">
+                    <span>{t('media.findings.severity')}</span>
+                    <select
+                      className="input sm"
+                      value={severity === null ? '' : String(severity)}
+                      data-testid="media-severity"
+                      onChange={(e) => {
+                        const v = e.target.value;
+                        setMediaView({
+                          severity: v === '' ? null : v === 'uncertain' ? 'uncertain' : Number(v),
+                        });
+                      }}
+                    >
+                      <option value="">{t('media.findings.severity.any')}</option>
+                      {severityChoices.map((o) =>
+                        o === 'uncertain' ? (
+                          <option key={o} value={o}>
+                            {t('media.findings.severity.uncertain')}
+                          </option>
+                        ) : (
+                          <option key={o.value} value={String(o.value)}>
+                            {o.label || String(o.value)}
+                          </option>
+                        ),
+                      )}
+                    </select>
+                  </label>
+                )}
+                {scope && (
+                  <span className="scope-chip" data-testid="media-scope-chip">
+                    {scope.label}
+                    <button
+                      type="button"
+                      aria-label={t('view.scope.clear', { label: scope.label })}
+                      onClick={() => {
+                        setMediaView({ scope: null });
+                      }}
+                    >
+                      <Icon name="x" size={12} />
+                    </button>
+                  </span>
+                )}
+              </div>
+            )}
+          </header>
+          {empty && (
+            <div className="side-empty">
+              <Icon name="media" size={20} />
+              <p>This project has no video, photos or panoramas.</p>
             </div>
           )}
-        </header>
-        {empty && (
-          <div className="side-empty">
-            <Icon name="media" size={20} />
-            <p>This project has no video, photos or panoramas.</p>
-          </div>
-        )}
-        {flights.length > 0 && (
-          <section className="m-sec">
-            <h2 className="caps">
-              Flights <span className="mono faint">{formatCount(flights.length)}</span>
-            </h2>
-            <div className="m-grid flights">
-              {flights.map((f) => (
-                <FlightTile
-                  key={f.id}
-                  flight={f}
-                  projectId={project.id}
-                  open={f.id === shownFlight?.id}
-                  playing={f.clips.some((c) => c.id === activeClip)}
-                  onOpen={() => {
-                    setOpenFlight(f.id);
-                    requestAnimationFrame(() => {
-                      document.getElementById('m-flight-clips')?.scrollIntoView({
-                        block: 'nearest',
-                        behavior:
-                          document.documentElement.dataset.motion === 'reduce' ? 'auto' : 'smooth',
-                      });
-                    });
-                  }}
-                />
-              ))}
-            </div>
-          </section>
-        )}
-        {shownFlight && showsClipList(shownFlight) && (
-          <section
-            className="m-sec"
-            id="m-flight-clips"
-            aria-label={`Clips of ${shownFlight.name}`}
-          >
-            <h2 className="caps">
-              {shownFlight.name}{' '}
-              <span className="mono faint">
-                {t('media.count.clips', {
-                  count: shownFlight.clips.length,
-                  n: formatCount(shownFlight.clips.length),
-                })}
-              </span>
-            </h2>
-            <div className="m-grid clips">
-              {shownFlight.clips.map((c) => {
-                const start = c.flight.startUtcMs + c.offsetMs;
-                const d = durations[c.id];
-                return (
-                  <button
-                    key={c.id}
-                    type="button"
-                    className={`m-card${c.id === activeClip ? ' on' : ''}`}
-                    title={`Play ${c.name} in the scene`}
-                    onClick={() => {
-                      playClip(c);
-                    }}
-                  >
-                    <MediaThumb
-                      projectId={project.id}
-                      asset={c.poster}
-                      icon="video"
-                      thumb={false}
-                    />
-                    <div className="m-meta">
-                      <b>{clipLabel(c.name, shownFlight.name)}</b>
-                      <span className="mono">
-                        {formatClock(start)}
-                        {d !== undefined ? ` · ${formatDuration(d)}` : ''}
-                      </span>
-                    </div>
-                  </button>
-                );
-              })}
-            </div>
-          </section>
-        )}
-        {noMatch && (
-          <div className="side-empty" data-testid="media-no-match">
-            <Icon name="filter" size={20} />
-            <p>No photos match this filter.</p>
-          </div>
-        )}
-        {photoSets.map((set) => {
-          const filtered = onlyFindings || severity !== null || scope !== null;
-          const items = photosInView(set.items, set.id, findings, view);
-          if (filtered && items.length === 0) return null;
-          return (
-            <section className="m-sec" key={set.id}>
+          {flights.length > 0 && (
+            <section className="m-sec">
               <h2 className="caps">
-                {set.name}{' '}
+                Flights <span className="mono faint">{formatCount(flights.length)}</span>
+              </h2>
+              <div className="m-grid flights">
+                {flights.map((f) => (
+                  <FlightTile
+                    key={f.id}
+                    flight={f}
+                    projectId={project.id}
+                    open={f.id === shownFlight?.id}
+                    playing={f.clips.some((c) => c.id === activeClip)}
+                    onOpen={() => {
+                      setOpenFlight(f.id);
+                      requestAnimationFrame(() => {
+                        document.getElementById('m-flight-clips')?.scrollIntoView({
+                          block: 'nearest',
+                          behavior:
+                            document.documentElement.dataset.motion === 'reduce'
+                              ? 'auto'
+                              : 'smooth',
+                        });
+                      });
+                    }}
+                  />
+                ))}
+              </div>
+            </section>
+          )}
+          {shownFlight && showsClipList(shownFlight) && (
+            <section
+              className="m-sec"
+              id="m-flight-clips"
+              aria-label={`Clips of ${shownFlight.name}`}
+            >
+              <h2 className="caps">
+                {shownFlight.name}{' '}
                 <span className="mono faint">
-                  {filtered
-                    ? `${formatCount(items.length)} / ${formatCount(set.items.length)}`
-                    : formatCount(set.items.length)}
+                  {t('media.count.clips', {
+                    count: shownFlight.clips.length,
+                    n: formatCount(shownFlight.clips.length),
+                  })}
                 </span>
               </h2>
-              <div className="m-grid">
-                {items.slice(0, PHOTO_LIMIT).map((p) => {
-                  const f = findings.get(photoKey(set.id, p.id));
-                  const on = photo?.photoId === p.id && photo.layerId === set.id;
-                  const when = p.takenAt ? ` · ${formatDate(p.takenAt)}` : '';
-                  const what = f
-                    ? ` · ${f.label ? t('media.findings.tile', { count: f.count, severity: f.label }) : t('media.findings.tileUngraded', { count: f.count })}`
-                    : '';
+              <div className="m-grid clips">
+                {shownFlight.clips.map((c) => {
+                  const start = c.flight.startUtcMs + c.offsetMs;
+                  const d = durations[c.id];
                   return (
                     <button
-                      key={p.id}
+                      key={c.id}
                       type="button"
-                      data-photo={p.id}
-                      data-findings={f ? f.count : undefined}
-                      className={`m-card sq${on ? ' on' : ''}${f ? ' has-f' : ''}`}
-                      style={f ? { ['--c' as string]: f.color } : undefined}
+                      className={`m-card${c.id === activeClip ? ' on' : ''}`}
+                      title={`Play ${c.name} in the scene`}
                       onClick={() => {
-                        workspace.getState().select({ kind: 'photo', id: p.id, layer: set.id });
+                        playClip(c);
                       }}
-                      title={`${p.id}${when}${what}`}
-                      aria-label={`${p.id}${what}`}
                     >
                       <MediaThumb
                         projectId={project.id}
-                        asset={p.src}
-                        icon="photo"
-                        overlay={
-                          f ? (
-                            <FindingsOverlay projectId={project.id} asset={p.src} findings={f} />
-                          ) : undefined
-                        }
+                        asset={c.poster}
+                        icon="video"
+                        thumb={false}
                       />
-                      {f && <FindingsBadge findings={f} />}
+                      <div className="m-meta">
+                        <b>{clipLabel(c.name, shownFlight.name)}</b>
+                        <span className="mono">
+                          {formatClock(start)}
+                          {d !== undefined ? ` · ${formatDuration(d)}` : ''}
+                        </span>
+                      </div>
                     </button>
                   );
                 })}
               </div>
-              {items.length > PHOTO_LIMIT && (
-                <p className="faint small">
-                  {t('media.photoLimit', {
-                    limit: PHOTO_LIMIT,
-                    total: formatCount(items.length),
-                    keys: shortcutHint('global.palette'),
-                  })}
-                </p>
-              )}
             </section>
-          );
-        })}
-        {panoSets.map((set) => (
-          <section className="m-sec" key={set.id}>
-            <h2 className="caps">
-              {set.name} <span className="mono faint">{formatCount(set.items.length)}</span>
-            </h2>
-            <div className="m-grid wide">
-              {set.items.map((p) => (
+          )}
+          {noMatch && (
+            <div className="side-empty" data-testid="media-no-match">
+              <Icon name="filter" size={20} />
+              <p>No photos match this filter.</p>
+            </div>
+          )}
+          {photoSets.map((set) => {
+            const filtered = onlyFindings || severity !== null || scope !== null;
+            const items = photosInView(set.items, set.id, findings, view);
+            if (filtered && items.length === 0) return null;
+            return (
+              <section className="m-sec" key={set.id}>
+                <h2 className="caps">
+                  {set.name}{' '}
+                  <span className="mono faint">
+                    {filtered
+                      ? `${formatCount(items.length)} / ${formatCount(set.items.length)}`
+                      : formatCount(set.items.length)}
+                  </span>
+                </h2>
+                <div className="m-grid">
+                  {items.slice(0, PHOTO_LIMIT).map((p) => {
+                    const f = findings.get(photoKey(set.id, p.id));
+                    const on = photo?.photoId === p.id && photo.layerId === set.id;
+                    const when = p.takenAt ? ` · ${formatDate(p.takenAt)}` : '';
+                    const what = f
+                      ? ` · ${f.label ? t('media.findings.tile', { count: f.count, severity: f.label }) : t('media.findings.tileUngraded', { count: f.count })}`
+                      : '';
+                    return (
+                      <button
+                        key={p.id}
+                        type="button"
+                        data-photo={p.id}
+                        data-findings={f ? f.count : undefined}
+                        className={`m-card sq${on ? ' on' : ''}${f ? ' has-f' : ''}`}
+                        style={f ? { ['--c' as string]: f.color } : undefined}
+                        onClick={() => {
+                          workspace.getState().select({ kind: 'photo', id: p.id, layer: set.id });
+                        }}
+                        title={`${p.id}${when}${what}`}
+                        aria-label={`${p.id}${what}`}
+                      >
+                        <MediaThumb
+                          projectId={project.id}
+                          asset={p.src}
+                          icon="photo"
+                          overlay={
+                            f ? (
+                              <FindingsOverlay projectId={project.id} asset={p.src} findings={f} />
+                            ) : undefined
+                          }
+                        />
+                        {f && <FindingsBadge findings={f} />}
+                      </button>
+                    );
+                  })}
+                </div>
+                {items.length > PHOTO_LIMIT && (
+                  <p className="faint small">
+                    {t('media.photoLimit', {
+                      limit: PHOTO_LIMIT,
+                      total: formatCount(items.length),
+                      keys: shortcutHint('global.palette'),
+                    })}
+                  </p>
+                )}
+              </section>
+            );
+          })}
+          {panoSets.map((set) => (
+            <section className="m-sec" key={set.id}>
+              <h2 className="caps">
+                {set.name} <span className="mono faint">{formatCount(set.items.length)}</span>
+              </h2>
+              <div className="m-grid wide">
+                {set.items.map((p) => (
+                  <button
+                    key={p.id}
+                    type="button"
+                    className="m-card"
+                    onClick={() => {
+                      workspace.getState().select({ kind: 'pano', id: p.id, layer: set.id });
+                      shell.getState().go('scene');
+                    }}
+                  >
+                    <MediaThumb projectId={project.id} asset={panoCard(p).asset} icon="pano" />
+                    <div className="m-meta">
+                      <b>{p.id}</b>
+                      {panoCard(p).stitched ? (
+                        <span className="mono">HDG {String(p.headingDeg)}°</span>
+                      ) : (
+                        <span className="faint" data-testid="media-pano-unstitched">
+                          {t('pano.notStitched')}
+                        </span>
+                      )}
+                    </div>
+                  </button>
+                ))}
+              </div>
+            </section>
+          ))}
+        </div>
+        {viewerOpen && (
+          <div {...splitHandle} aria-label={t('split.media')} aria-controls={viewerId}>
+            <span className="kbd split-readout" aria-hidden="true" />
+          </div>
+        )}
+        {issueId && !photo && (
+          <aside id={viewerId} className="media-viewer media-card" aria-label={t('card.title')}>
+            <IssueCard issueId={issueId} place="media" className="fill-col" />
+          </aside>
+        )}
+        {photo && (
+          <FocusZone id={viewerId} kind="photo" className="media-viewer" aria-label="Photo">
+            <div className="panel-h">
+              <h2>
+                <Icon name="photo" size={14} />
+                {photo.photoId}
+              </h2>
+              <div className="acts">
+                {spotOpen && <SpotHistoryButton open={spotOpen} />}
                 <button
-                  key={p.id}
                   type="button"
-                  className="m-card"
+                  className="btn icon sm ghost"
+                  aria-label="Close the photo"
                   onClick={() => {
-                    workspace.getState().select({ kind: 'pano', id: p.id, layer: set.id });
-                    shell.getState().go('scene');
+                    workspace.getState().select(null);
                   }}
                 >
-                  <MediaThumb projectId={project.id} asset={panoCard(p).asset} icon="pano" />
-                  <div className="m-meta">
-                    <b>{p.id}</b>
-                    {panoCard(p).stitched ? (
-                      <span className="mono">HDG {String(p.headingDeg)}°</span>
-                    ) : (
-                      <span className="faint" data-testid="media-pano-unstitched">
-                        {t('pano.notStitched')}
-                      </span>
-                    )}
-                  </div>
+                  <Icon name="x" size={14} />
                 </button>
-              ))}
+              </div>
             </div>
-          </section>
-        ))}
+            <PhotoViewer layerId={photo.layerId} photoId={photo.photoId} className="fill-col" />
+            {spotOpen && <InlineSpotStrip open={spotOpen} />}
+          </FocusZone>
+        )}
       </div>
-      {issueId && !photo && (
-        <aside className="media-viewer media-card" aria-label={t('card.title')}>
-          <IssueCard issueId={issueId} place="media" className="fill-col" />
-        </aside>
-      )}
-      {photo && (
-        <FocusZone kind="photo" className="media-viewer" aria-label="Photo">
-          <div className="panel-h">
-            <h2>
-              <Icon name="photo" size={14} />
-              {photo.photoId}
-            </h2>
-            <div className="acts">
-              {spotOpen && <SpotHistoryButton open={spotOpen} />}
-              <button
-                type="button"
-                className="btn icon sm ghost"
-                aria-label="Close the photo"
-                onClick={() => {
-                  workspace.getState().select(null);
-                }}
-              >
-                <Icon name="x" size={14} />
-              </button>
-            </div>
-          </div>
-          <PhotoViewer layerId={photo.layerId} photoId={photo.photoId} className="fill-col" />
-          {spotOpen && <InlineSpotStrip open={spotOpen} />}
-        </FocusZone>
-      )}
     </section>
   );
 }

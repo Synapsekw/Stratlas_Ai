@@ -82,6 +82,7 @@
   "e2e/site-crs.spec.ts": 13,
   "e2e/smoke.spec.ts": 4,
   "e2e/soak.spec.ts": 1,
+  "e2e/split-resize.spec.ts": 14,
   "e2e/stage-display.spec.ts": 1,
   "e2e/survey-demo.spec.ts": 13,
   "e2e/survey-export.spec.ts": 17,

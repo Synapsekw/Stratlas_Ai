@@ -2626,9 +2626,15 @@ svg.flip {
 /* ---------- the agent column (agent/AgentDock.tsx) and its title bar chip ----------
    On Issues, Media, Detections and Reports the agent sits in a column on the right edge of the
    main area, the Scene's right panel in look. Unfolded, the screen beside it gives it the room;
-   folded, it takes none. It opens and closes at once, so there is no motion to still. */
-.app {
-  --agent-dock-w: min(360px, 33vw);
+   folded, it takes none. It opens and closes at once, so there is no motion to still. Its width is
+   the `agent.dock` split's: AgentDock.tsx writes the split's variables on `.main` whenever the
+   column is on the screen, 360 px or a third of the window until the person drags it. */
+.main {
+  --agent-dock-w: clamp(
+    var(--split-min, 280px),
+    var(--split-size, min(360px, 33vw)),
+    var(--split-max, 50%)
+  );
 }
 .app[data-agent-dock='open'] .main > .screen {
   inset-inline-end: var(--agent-dock-w);
@@ -2648,15 +2654,42 @@ svg.flip {
 .agent-dock[aria-hidden='true'] {
   display: none;
 }
+/* the handle of its width: 8 px inside its inner edge, never over the screen beside it; the
+   column's border is its line, and the size shows inside the column while dragging */
+.agent-dock > .dock-resize {
+  inset-block: 0;
+  inset-inline-start: 0;
+  inline-size: 8px;
+  cursor: col-resize;
+}
+.agent-dock > .dock-resize::before {
+  content: none;
+}
+.agent-dock > .dock-resize::after {
+  inset-block: 0;
+  inset-inline-start: 0;
+  inline-size: 2px;
+  transform: scaleX(0.5);
+}
+.main[data-dragging] {
+  cursor: col-resize;
+  user-select: none;
+}
+.main[data-dragging] .dock-resize::after {
+  background: var(--acc);
+  opacity: 1;
+  transform: none;
+  transition: none;
+}
+.main[data-dragging] .dock-resize > .split-readout {
+  display: block;
+  inset-block-start: var(--split-pointer, 50%);
+  inset-inline-start: calc(100% + 8px);
+  translate: 0 -50%;
+}
 /* In a small window the open column leaves a screen little room: the screen's fixed side columns
    give way in proportion, so nothing is pushed under the column. With room they are as wide as
-   they always are. */
-.app[data-agent-dock='open'] .issues-screen {
-  grid-template-columns: minmax(0, 1fr) min(420px, 55%);
-}
-.app[data-agent-dock='open'] .media.with-viewer {
-  grid-template-columns: minmax(0, 1fr) minmax(min(380px, 60%), 46%);
-}
+   they always are. (Issues and Media are on splits, which give way the same way below.) */
 .app[data-agent-dock='open'] .det-body {
   grid-template-columns: minmax(min(260px, 34%), 34%) minmax(0, 1fr) min(300px, 36%);
 }
@@ -2695,11 +2728,23 @@ svg.flip {
   }
 }
 
-/* ---------- issues ---------- */
+/* ---------- issues ----------
+   The list and the card on the `issues.card` split (Issues.tsx): the card 420 px until dragged;
+   the split's hairline is the line between them. In a screen too small for both minimums (the
+   agent column open in a small window) the card gives way to 55%, as before, so the list keeps
+   room. */
 .issues-screen {
-  grid-template-columns: minmax(0, 1fr) 420px;
+  grid-template-columns: minmax(0, 1fr);
+}
+.split.iss-split {
+  --split-track: clamp(min(var(--split-min), 55%), var(--split-size), var(--split-max));
+}
+.iss-split > .split-pane {
+  display: flex;
+  flex-direction: column;
 }
 .iss-main {
+  flex: 1;
   display: flex;
   flex-direction: column;
   min-width: 0;
@@ -2707,11 +2752,11 @@ svg.flip {
   background: var(--bg-0);
 }
 .iss-side {
+  flex: 1;
   display: flex;
   flex-direction: column;
   min-height: 0;
   background: var(--bg-1);
-  border-inline-start: 1px solid var(--line-soft);
 }
 .side-empty {
   margin: auto;
@@ -2725,12 +2770,19 @@ svg.flip {
   font-size: var(--t-12);
 }
 
-/* ---------- media ---------- */
+/* ---------- media ----------
+   The library and the open photo on the `media.viewer` split (Media.tsx): the viewer 54% until
+   dragged; the split's hairline is the line between them. With nothing open, the library alone.
+   In a screen too small for both minimums (the agent column open in a small window) the viewer
+   gives way to 60%, as before, so the library keeps room for its tiles. */
 .media {
   grid-template-columns: minmax(0, 1fr);
 }
-.media.with-viewer {
-  grid-template-columns: minmax(0, 1fr) minmax(380px, 46%);
+.split.media-split {
+  --split-track: clamp(min(var(--split-min), 60%), var(--split-size), var(--split-max));
+}
+.media:not(.with-viewer) > .split.media-split {
+  grid-template-columns: minmax(0, 1fr);
 }
 .media-main {
   overflow-y: auto;
@@ -2872,9 +2924,9 @@ svg.flip {
 .media-viewer {
   display: flex;
   flex-direction: column;
+  min-width: 0;
   min-height: 0;
   background: var(--bg-1);
-  border-inline-start: 1px solid var(--line-soft);
 }
 
 /* ---------- pages (reports, settings) ---------- */

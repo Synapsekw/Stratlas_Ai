@@ -139,6 +139,25 @@ describe('AgentDock', () => {
     expect(mark()).toBeUndefined();
   });
 
+  it('has a handle on its inner edge while open, and none while folded', async () => {
+    await show('media');
+    const handle = () => dock()?.querySelector<HTMLElement>('[role="separator"]') ?? null;
+    expect(handle()).toBeNull();
+    act(() => {
+      shell.getState().setAgentDock(false);
+    });
+    expect(handle()?.getAttribute('aria-label')).toBe('Resize the assistant');
+    expect(handle()?.getAttribute('aria-controls')).toBe('agent-dock');
+    // today's width: 360 px, or a third of a narrow window
+    expect(handle()?.getAttribute('aria-valuenow')).toBe(
+      String(Math.min(360, Math.round(window.innerWidth * 0.33))),
+    );
+    act(() => {
+      shell.getState().toggleAgentDock();
+    });
+    expect(handle()).toBeNull();
+  });
+
   it('is on Issues, Media, Detections and Reports only', async () => {
     shell.getState().setAgentDock(false);
     await show('issues');

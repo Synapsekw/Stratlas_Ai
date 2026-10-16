@@ -4190,6 +4190,10 @@ export const en = {
 
   // The resizable split (split/useResizableSplit.ts): the size readout while dragging
   'split.readout': '{px} px',
+  // the splits of Media, Issues and the agent column: the handle's name
+  'split.media': 'Resize the library',
+  'split.issues': 'Resize the issue list',
+  'split.agentDock': 'Resize the assistant',
 
   // Tabs (Tabs.tsx) and the shared dialog close button
   'tabs.live': 'Live',
