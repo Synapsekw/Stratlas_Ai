@@ -104,6 +104,9 @@ export const Button: ForwardRefExoticComponent<ButtonProps & RefAttributes<HTMLB
       className,
       children,
       onClick,
+      onKeyDown,
+      onMouseDown,
+      onPointerDown,
       style,
       type = 'button',
       'aria-describedby': describedBy,
@@ -148,6 +151,9 @@ export const Button: ForwardRefExoticComponent<ButtonProps & RefAttributes<HTMLB
         aria-pressed={pressed}
         aria-keyshortcuts={shortcut ? ariaKeys(shortcut) : undefined}
         aria-describedby={describe || undefined}
+        onKeyDown={inert ? undefined : onKeyDown}
+        onMouseDown={inert ? undefined : onMouseDown}
+        onPointerDown={inert ? undefined : onPointerDown}
         onClick={(e) => {
           if (inert) {
             // Inert: no caller handler, and no default action (a submit button must not submit).

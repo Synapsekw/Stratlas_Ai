@@ -159,6 +159,25 @@ describe('Button inert and sizing behaviour', () => {
     },
   );
 
+  it('does not forward keydown, mousedown or pointerdown handlers when inert', () => {
+    const onKeyDown = vi.fn();
+    const onMouseDown = vi.fn();
+    const onPointerDown = vi.fn();
+    render(
+      <Button busy onKeyDown={onKeyDown} onMouseDown={onMouseDown} onPointerDown={onPointerDown}>
+        Go
+      </Button>,
+    );
+    act(() => {
+      btn().dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+      btn().dispatchEvent(new MouseEvent('mousedown', { bubbles: true }));
+      btn().dispatchEvent(new MouseEvent('pointerdown', { bubbles: true }));
+    });
+    expect(onKeyDown).not.toHaveBeenCalled();
+    expect(onMouseDown).not.toHaveBeenCalled();
+    expect(onPointerDown).not.toHaveBeenCalled();
+  });
+
   it('submits a form when active', () => {
     const onSubmit = vi.fn((e: React.SyntheticEvent) => {
       e.preventDefault();
