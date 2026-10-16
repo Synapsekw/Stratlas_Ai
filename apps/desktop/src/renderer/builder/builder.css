@@ -722,6 +722,10 @@
   z-index: 80;
   padding: 4px;
   display: grid;
+  align-content: start;
+  box-sizing: border-box;
+  overflow-y: auto; /* a menu taller than the window scrolls; its max-height is set inline */
+  overscroll-behavior: contain;
   background: var(--bg-2);
   border: 1px solid var(--line);
   border-radius: var(--r-6);
@@ -736,10 +740,13 @@
   text-overflow: ellipsis;
 }
 .dmenu-item {
-  display: grid;
-  grid-template-columns: 18px minmax(0, 1fr);
+  /* one line: icon, label, shortcut or reason, chevron (a grid pushed items without an icon into
+     the 18px icon column, so their labels wrapped) */
+  display: flex;
   align-items: center;
   gap: 8px;
+  min-width: 0;
+  white-space: nowrap;
   padding: 7px 8px;
   border: 0;
   border-radius: var(--r-4);
@@ -747,6 +754,25 @@
   color: var(--fg-0);
   text-align: start;
   cursor: pointer;
+}
+.dmenu-item > svg,
+.dmenu-item > .sw {
+  flex: none;
+  width: 18px;
+}
+.dmenu-item > span:not(.sw) {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.dmenu-item > span:not(.sw):not(.dmenu-kbd):not(.faint) {
+  flex: 1 1 auto;
+}
+.dmenu-item > .dmenu-kbd {
+  flex: none;
+}
+.dmenu-item > .faint:not(svg) {
+  flex: 0 1 auto; /* a long reason shrinks with the label; the item's title holds it whole */
 }
 .dmenu-item:hover:not(:disabled),
 .dmenu-item:focus-visible {

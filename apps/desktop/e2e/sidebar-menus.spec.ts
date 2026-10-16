@@ -179,8 +179,7 @@ test('a row: Rename persists, Properties shows its file, Hide hides', async ({
     capture: 'sep',
   });
   await row.click({ button: 'right' });
-  // dispatched, as the model row's menu is taller than the window (see the fit test below)
-  await win.getByTestId('ctx-item-layer.properties').dispatchEvent('click');
+  await win.getByTestId('ctx-item-layer.properties').click();
   await expect(win.getByTestId('layer-props')).toContainText('models/');
   await win.getByTestId('layer-props-close').click();
   await row.focus();

@@ -18,9 +18,20 @@ import { SECTION_ORDER, type ResolvedItem, type SubItem } from './types';
 export const MENU_WIDTH = 286;
 const TYPE_AHEAD_MS = 700;
 
-/** Where a menu of `w` by `h` opened at (x, y) goes so that it stays inside the window. */
+const EDGE = 8;
+
+/**
+ * Where a menu of `w` by `h` opened at (x, y) goes so that it stays inside the window, and the
+ * tallest it may be (a taller menu scrolls inside it).
+ */
 export function placeMenu(x: number, y: number, w: number, h: number, vw: number, vh: number) {
-  return { left: Math.max(8, Math.min(x, vw - w - 8)), top: Math.max(8, Math.min(y, vh - h - 8)) };
+  const maxHeight = Math.max(0, vh - 2 * EDGE);
+  const used = Math.min(h, maxHeight);
+  return {
+    left: Math.max(EDGE, Math.min(x, vw - w - EDGE)),
+    top: Math.max(EDGE, Math.min(y, vh - used - EDGE)),
+    maxHeight,
+  };
 }
 
 export interface ContextMenuProps {

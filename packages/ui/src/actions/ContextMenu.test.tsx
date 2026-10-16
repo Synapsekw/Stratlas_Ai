@@ -183,7 +183,35 @@ describe('ContextMenu', () => {
 
 describe('placeMenu', () => {
   it('keeps a tall menu inside the window', () => {
-    expect(placeMenu(1000, 650, 286, 520, 1100, 700)).toEqual({ left: 806, top: 172 });
-    expect(placeMenu(-5, -5, 286, 100, 1100, 700)).toEqual({ left: 8, top: 8 });
+    expect(placeMenu(1000, 650, 286, 520, 1100, 700)).toEqual({
+      left: 806,
+      top: 172,
+      maxHeight: 684,
+    });
+    expect(placeMenu(-5, -5, 286, 100, 1100, 700)).toEqual({ left: 8, top: 8, maxHeight: 684 });
+  });
+  it('keeps a menu taller than a small window inside it and caps its height', () => {
+    // 860 px of items in a 720 px window: top at the margin, height capped to the window less 16
+    const p = placeMenu(40, 500, 286, 860, 1100, 720);
+    expect(p).toEqual({ left: 40, top: 8, maxHeight: 704 });
+    expect(p.top + Math.min(860, p.maxHeight) + 8).toBeLessThanOrEqual(720);
+  });
+  it('caps the rendered menu to the window and scrolls inside it', () => {
+    const was = window.innerHeight;
+    window.innerHeight = 300;
+    root = createRoot(host);
+    act(() => {
+      root?.render(
+        <ContextMenu
+          items={[item('a'), item('b')]}
+          x={10}
+          y={290}
+          label="Menu"
+          onClose={() => undefined}
+        />,
+      );
+    });
+    expect(q('ctx-menu')?.style.maxHeight).toBe('284px');
+    window.innerHeight = was;
   });
 });
