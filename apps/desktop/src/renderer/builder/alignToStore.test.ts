@@ -1,4 +1,4 @@
-import { emptyOrientation, type ProjectManifest } from '@aio/schema';
+import { emptyOrientation, type OrientationFile, type ProjectManifest } from '@aio/schema';
 import { createWorkspace } from '@aio/workspace';
 import { describe, expect, it, vi } from 'vitest';
 import type { Fixes } from './alignTo';
@@ -33,7 +33,8 @@ function setup(
   ws.getState().setOrientation(emptyOrientation());
   const saved: Fixes[] = [];
   // like the app's save: the written file goes into the workspace
-  const save = vi.fn((f: Fixes) => {
+  const save = vi.fn((change: (file: OrientationFile | null) => Fixes) => {
+    const f = change(ws.getState().orientation);
     saved.push(f);
     ws.getState().setOrientation(
       Object.entries(f).reduce(
@@ -50,7 +51,7 @@ function setup(
     ground: () => Promise.resolve(null),
     reload: vi.fn(),
   });
-  return { store, save, saved };
+  return { store, save, saved, ws };
 }
 
 describe('alignTo store', () => {
@@ -95,5 +96,62 @@ describe('alignTo store', () => {
     await store.getState().alignTo({ picks: [{ layerId: 'ph', photoId: 'c' }] }, 'm');
     expect(save).not.toHaveBeenCalled();
     expect(store.getState().notice?.text).toBe('None of these photos has a position.');
+  });
+
+  it('undo keeps a rotation set after the alignment and restores only the offset', async () => {
+    const { store, saved, ws } = setup();
+    await store.getState().alignTo({ layerIds: ['ph'] }, 'm');
+    const aligned = saved[0]?.ph?.a?.offsetM;
+    ws.getState().setOrientation(
+      withPhotoFixes(ws.getState().orientation, 'ph', {
+        a: { yawDeg: 12, pitchDeg: 0, rollDeg: 0, offsetM: aligned },
+      }),
+    );
+    await store.getState().apply();
+    expect(saved[1]?.ph?.a).toEqual({ yawDeg: 12, pitchDeg: 0, rollDeg: 0, offsetM: [0, 0, 0] });
+    expect(saved[1]?.ph?.b).toBeNull();
+    await store.getState().apply();
+    expect(saved[2]?.ph?.a).toEqual({ yawDeg: 12, pitchDeg: 0, rollDeg: 0, offsetM: aligned });
+  });
+
+  it('undo restores the exact previous correction when the photo had one', async () => {
+    const { store, saved, ws } = setup();
+    ws.getState().setOrientation(
+      withPhotoFixes(ws.getState().orientation, 'ph', {
+        a: { yawDeg: 5, pitchDeg: 1, rollDeg: 0, offsetM: [3, 0, 4] },
+      }),
+    );
+    await store.getState().alignTo({ layerIds: ['ph'] }, 'm');
+    expect(saved[0]?.ph?.a?.yawDeg).toBe(5);
+    await store.getState().apply();
+    expect(saved[1]?.ph?.a).toEqual({ yawDeg: 5, pitchDeg: 1, rollDeg: 0, offsetM: [3, 0, 4] });
+  });
+
+  it('ignores a second call while a write is under way, and keeps Undo after a failed write', async () => {
+    const { store, save } = setup();
+    await Promise.all([
+      store.getState().alignTo({ layerIds: ['ph'] }, 'm'),
+      store.getState().alignTo({ layerIds: ['ph'] }, 'm'),
+    ]);
+    expect(save).toHaveBeenCalledTimes(1);
+    save.mockImplementationOnce(() => Promise.resolve('Disk full'));
+    await store.getState().apply();
+    expect(store.getState().notice?.text).toBe('Disk full');
+    expect(store.getState().notice?.action?.kind).toBe('undo');
+  });
+
+  it('a rejected lookup shows its message', async () => {
+    const ws = createWorkspace();
+    ws.getState().openProject({ id: 'p', root: 'C:/p', manifest });
+    ws.getState().setOrientation(emptyOrientation());
+    const s2 = createAlignToStore({
+      workspace: ws,
+      save: () => Promise.resolve(null),
+      bounds: () => Promise.reject(new Error('No model')),
+      ground: () => Promise.resolve(null),
+      reload: vi.fn(),
+    });
+    await s2.getState().alignTo({ layerIds: ['ph'] }, 'm');
+    expect(s2.getState().notice?.text).toBe('No model');
   });
 });

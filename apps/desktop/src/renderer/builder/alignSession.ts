@@ -66,9 +66,9 @@ export function usePhotoAlign<T>(selector: (s: PhotoAlignStore) => T): T {
 /** Align to: one move of photo sets or picked photos onto another dataset, with Undo. */
 export const alignTo = createAlignToStore({
   workspace,
-  save: (fixes) =>
+  save: (change) =>
     saveOrientationEdit((file) =>
-      Object.entries(fixes).reduce(
+      Object.entries(change(file)).reduce(
         (f, [layerId, fx]) => withPhotoFixes(f, layerId, fx),
         file ?? emptyOrientation(),
       ),
