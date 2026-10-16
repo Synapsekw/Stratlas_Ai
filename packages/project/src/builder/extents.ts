@@ -189,9 +189,9 @@ export function geojsonLonLat(json: unknown): [number, number][] {
 const epsgOf = (m: ProjectManifest) => ('epsg' in m.crs ? m.crs.epsg : null);
 
 /**
- * The extent Properties and Zoom to show: what `layerExtent` reads, plus panoramas, walks placed
- * on the model, kit pyramids, GeoTIFFs in the project CRS, PMTiles and GeoJSON. `layerExtents`
- * does not use it, so the far-content check sees the kinds it always saw.
+ * The extent Properties and Zoom to show: what `layerExtent` reads, plus panoramas, kit pyramids,
+ * GeoTIFFs in the project CRS, PMTiles and GeoJSON (walks: see `layer:info`). `layerExtents` does
+ * not use it, so the far-content check sees the kinds it always saw.
  */
 export async function fullLayerExtent(
   root: string,
@@ -212,12 +212,6 @@ export async function fullLayerExtent(
         );
   try {
     if (l.kind === 'panoramas') return boxOf(l.items.map((p) => p.pos));
-    if (l.kind === 'walk')
-      return boxOf(
-        (l.place?.pins ?? []).flatMap((p) =>
-          p.surface === '@model' ? [[p.at[0], p.y ?? 0, p.at[1]] as Vec3] : [],
-        ),
-      );
     if (l.kind === 'vector' && 'path' in l.src)
       return fromLonLat(
         geojsonLonLat(JSON.parse(await readFile(join(root, l.src.path), 'utf8')) as unknown),

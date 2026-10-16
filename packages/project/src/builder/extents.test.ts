@@ -220,6 +220,15 @@ it('gives panoramas, kit pyramids and GeoJSON an extent for Properties only', as
     items: [{ id: 'x', src: { path: 'p.jpg' }, pos: [1, 2, 3], headingDeg: 0 }],
   } as unknown as Layer;
   expect(await fullLayerExtent(root, m, panos, null)).toEqual({ min: [1, 2, 3], max: [1, 2, 3] });
+  // a walk's extent comes from its placed path (layer:info), never from its pins
+  const walk = {
+    kind: 'walk',
+    id: 'w',
+    name: 'W',
+    visible: true,
+    place: { pins: [{ surface: 'drawing', at: [400, 300] }] },
+  } as unknown as Layer;
+  expect(await fullLayerExtent(root, m, walk, null)).toBeNull();
   // the far-content list is unchanged: no vector, no panoramas
   expect(await layerExtent(root, m, vector, null)).toBeNull();
 });
