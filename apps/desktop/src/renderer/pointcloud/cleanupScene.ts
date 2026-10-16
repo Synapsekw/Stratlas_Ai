@@ -16,7 +16,13 @@ import {
   type PointSelection,
 } from '@aio/engine';
 import { applyRegions, className, compileCleanup, countDrawn } from '@aio/pointcloud';
-import { MAX_REGIONS, emptyCleanup, type PointcloudCleanup, type RegionAction } from '@aio/schema';
+import {
+  MAX_REGIONS,
+  cloudFrameOrigin,
+  emptyCleanup,
+  type PointcloudCleanup,
+  type RegionAction,
+} from '@aio/schema';
 import { isShortcut, t } from '@aio/ui';
 import { workspace } from '@aio/workspace';
 import { isTyping } from '../keys';
@@ -98,7 +104,19 @@ export const cleanupDebug = {
   handleScreen: (h: BoxHandle) => liveBox?.handleScreen(h) ?? null,
 };
 
-const originOf = (): V3 | null => workspace.getState().project?.manifest.origin ?? null;
+/**
+ * The origin a cloud's local frame is taken from: the project origin lowered by the layer's
+ * height offset (cloudFrameOrigin), so the gizmo sits on the cloud as drawn while the recipe keeps
+ * file coordinates.
+ */
+const frameOf = (layerId: string): V3 | null => {
+  const m = workspace.getState().project?.manifest;
+  if (!m) return null;
+  const layer = m.layers.find((l) => l.id === layerId);
+  return cloudFrameOrigin(m.origin, layer?.kind === 'pointcloud' ? layer : {});
+};
+
+const sameOrigin = (a: V3, b: V3) => a[0] === b[0] && a[1] === b[1] && a[2] === b[2];
 
 export function mountCleanupScene(stage: EngineStage, c: Cleanup = appCleanup): () => void {
   let box: {
@@ -107,6 +125,8 @@ export function mountCleanupScene(stage: EngineStage, c: Cleanup = appCleanup): 
     layerId: string;
     /** The recipe the gizmo last showed: a new one (undo, redo, elsewhere) moves it. */
     shown: PointcloudCleanup | null;
+    /** The layer frame origin it showed it in: a new height offset moves it too. */
+    origin: V3;
   } | null = null;
   let select: { tool: PointSelectTool; off: () => void; layerId: string } | null = null;
 
@@ -117,8 +137,8 @@ export function mountCleanupScene(stage: EngineStage, c: Cleanup = appCleanup): 
 
   const sync = () => {
     const s = c.store.getState();
-    const origin = originOf();
     const layerId = s.active;
+    const origin = layerId ? frameOf(layerId) : null;
     const wantBox =
       stage.tool === 'clipbox' && layerId && origin && !s.readOnly ? boxOf(layerId, origin) : null;
     if (box && (!wantBox || box.layerId !== layerId)) {
@@ -126,24 +146,31 @@ export function mountCleanupScene(stage: EngineStage, c: Cleanup = appCleanup): 
       box = null;
       liveBox = null;
     }
-    if (box && origin && c.recipeOf(box.layerId) !== box.shown) {
+    if (
+      box &&
+      origin &&
+      (c.recipeOf(box.layerId) !== box.shown || !sameOrigin(origin, box.origin))
+    ) {
       box.shown = c.recipeOf(box.layerId);
+      box.origin = origin;
       const local = boxOf(box.layerId, origin);
       if (local) box.tool.setBox(local);
     }
     if (wantBox && layerId && origin && !box) {
       const id = layerId;
-      const o = origin;
+      /** The frame the gizmo shows the box in now (it follows the layer's height offset). */
+      const frame = () => box?.origin ?? origin;
       /** The recipe again in the view and on the gizmo (a refused or unchanged release). */
       const restore = () => {
         const r = c.recipeOf(id);
         c.preview(id, r);
-        const local = boxOf(id, o);
+        const local = boxOf(id, frame());
         if (box?.layerId === id && local) box.tool.setBox(local);
       };
       const tool = new ClipBoxTool(stage, {
         box: wantBox,
         onChange: (local, done) => {
+          const o = frame();
           const base = c.recipeOf(id) ?? emptyCleanup(id);
           const current = base.clipBox ? boxToLocal(base.clipBox, o) : null;
           if (done && current && sameLocalBox(local, current)) {
@@ -162,7 +189,7 @@ export function mountCleanupScene(stage: EngineStage, c: Cleanup = appCleanup): 
           });
         },
       });
-      box = { tool, off: tool.attach(), layerId: id, shown: c.recipeOf(id) };
+      box = { tool, off: tool.attach(), layerId: id, shown: c.recipeOf(id), origin };
       liveBox = tool;
     }
     const wantSelect = stage.tool === 'pcselect' && !s.readOnly;
@@ -172,11 +199,12 @@ export function mountCleanupScene(stage: EngineStage, c: Cleanup = appCleanup): 
     }
     if (wantSelect && layerId && origin && !select) {
       const id = layerId;
-      const o = origin;
       const tool = new PointSelectTool(stage, {
         shape: s.selectShape,
         onSelect: (sel: PointSelection) => {
-          // the stage camera's view maps the local frame to clip; the recipe stores world to clip
+          // the stage camera's view maps the local frame to clip; the recipe stores world to clip,
+          // through the layer's frame origin at the time of the selection
+          const o = frameOf(id) ?? origin;
           const count = countDrawn(stage, id, selectionTest(sel.viewProj, sel.polygon)).drawn;
           c.setPending({
             layerId: id,
@@ -198,6 +226,10 @@ export function mountCleanupScene(stage: EngineStage, c: Cleanup = appCleanup): 
 
   const offStage = stage.onStateChange(sync);
   const offStore = c.store.subscribe(sync);
+  // a layer's height offset changing (Properties, Drop to ground) moves the gizmo with the cloud
+  const offProject = workspace.subscribe((s, prev) => {
+    if (s.project?.manifest !== prev.project?.manifest) sync();
+  });
   const onKey = (e: KeyboardEvent) => {
     cleanupKey(e, c, stage.tool === 'clipbox' || stage.tool === 'pcselect');
   };
@@ -207,6 +239,7 @@ export function mountCleanupScene(stage: EngineStage, c: Cleanup = appCleanup): 
     window.removeEventListener('keydown', onKey, { capture: true });
     offStage();
     offStore();
+    offProject();
     box?.off();
     select?.off();
     box = null;

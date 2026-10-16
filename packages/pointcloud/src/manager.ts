@@ -21,7 +21,7 @@ import { WORKER_MIN_POINTS, chunkMask, type ChunkMask } from './cleanup/chunk';
 import { cleanupUniformsOf, compileCleanup, type CompiledCleanup } from './cleanup/evaluate';
 import { pointcloudCleanup, type CleanupRecipes } from './cleanup/store';
 import { EdlPass } from './edl';
-import { robustHeightRange, type HeightSample, type HeightStats } from './heights';
+import { lowHeight, robustHeightRange, type HeightSample, type HeightStats } from './heights';
 import {
   DEFAULT_CHANGE_RANGE,
   FLIGHT_PALETTE,
@@ -444,17 +444,20 @@ export class CloudManager {
     if (!this.heightsDirty) return this.heights;
     this.heightsDirty = false;
     const samples: HeightSample[] = [];
-    for (const l of this.layers.values()) {
-      if (!l.visible) continue;
-      let top = Infinity;
-      for (const c of l.chunks) if (c.heights?.length && c.lod < top) top = c.lod;
-      for (const c of l.chunks) {
-        if (c.lod !== top || !c.heights?.length) continue;
-        samples.push({ heights: c.heights, weight: Math.max(c.points, 1) / c.heights.length });
-      }
-    }
+    for (const l of this.layers.values()) if (l.visible) samples.push(...coarsestSamples(l));
     this.heights = robustHeightRange(samples);
     return this.heights;
+  }
+
+  /**
+   * The low point of one shown cloud, local Y: the `p` weighted percentile of the heights sampled
+   * from its coarsest decoded level (as heightStats). Null when the layer is unknown, hidden or
+   * has not streamed yet.
+   */
+  lowHeight(layerId: string, p: number): number | null {
+    const l = this.layers.get(layerId);
+    if (!l?.visible) return null;
+    return lowHeight(coarsestSamples(l), p);
   }
 
   /** The automatic elevation range (see heightStats); null before any cloud is decoded. */
@@ -996,6 +999,21 @@ export class CloudManager {
     this.decoder?.dispose();
     pointcloudStats.getState().forget(this.handle);
   }
+}
+
+/**
+ * The height samples of a cloud's coarsest decoded level (the octree root, the overview chunk, a
+ * whole kit cloud), each weighted by the points it stands for.
+ */
+function coarsestSamples(l: CloudLayerState): HeightSample[] {
+  let top = Infinity;
+  for (const c of l.chunks) if (c.heights?.length && c.lod < top) top = c.lod;
+  const out: HeightSample[] = [];
+  for (const c of l.chunks) {
+    if (c.lod !== top || !c.heights?.length) continue;
+    out.push({ heights: c.heights, weight: Math.max(c.points, 1) / c.heights.length });
+  }
+  return out;
 }
 
 /** The change field summary with one more shown change cloud. */

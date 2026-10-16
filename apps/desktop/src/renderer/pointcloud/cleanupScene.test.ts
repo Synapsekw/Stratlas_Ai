@@ -15,6 +15,8 @@ const h = vi.hoisted(() => ({
     set: unknown[];
   }[],
   selects: [] as { opts: { onSelect(s: unknown): void; onCancel(): void } }[],
+  /** The open project's manifest: its origin and the layers (a cloud's height offset). */
+  manifest: { origin: [500000, 3200000, 5], layers: [] as unknown[] },
 }));
 
 vi.mock('../shell', () => ({
@@ -29,7 +31,7 @@ vi.mock('@aio/workspace', async (importOriginal) => {
       ...actual.workspace,
       getState: () => ({
         ...actual.workspace.getState(),
-        project: { manifest: { origin: [500000, 3200000, 5] } },
+        project: { manifest: h.manifest },
       }),
     },
   };
@@ -294,6 +296,60 @@ describe('the stage tools on the active layer', () => {
     expect(tool?.set.at(-1)).toEqual(boxToLocal(clipBox, ORIGIN));
     off();
     expect(stage.tool).toBe('select');
+  });
+
+  it('converts the clip box with the layer frame origin', async () => {
+    h.boxes.length = 0;
+    h.manifest.layers = [{ ...cloud, heightOffsetM: -30 }];
+    try {
+      const c = await store();
+      await c.commit('a', { ...emptyCleanup('a'), clipBox });
+      const stage = fakeStage('clipbox');
+      const off = mountCleanupScene(stage as unknown as EngineStage, c);
+      const tool = h.boxes[0];
+      const shown = tool?.opts.box as ClipBoxLocal;
+      // the recipe box (file heights) shows 30 m lower, where the cloud is drawn
+      expect(shown.center[1]).toBeCloseTo(boxToLocal(clipBox, ORIGIN).center[1] - 30, 9);
+      expect(shown).toEqual(boxToLocal(clipBox, [ORIGIN[0], ORIGIN[1], ORIGIN[2] + 30]));
+      // a box drawn there converts back to the same file coordinates
+      const moved = { ...shown, yaw: 0.5 };
+      tool?.opts.onChange(moved, true);
+      await vi.waitFor(() => {
+        expect(c.recipeOf('a')?.clipBox?.yaw).toBe(0.5);
+      });
+      const saved = c.recipeOf('a')?.clipBox;
+      expect(saved?.center[0]).toBeCloseTo(clipBox.center[0], 6);
+      expect(saved?.center[1]).toBeCloseTo(clipBox.center[1], 6);
+      expect(saved?.center[2]).toBeCloseTo(clipBox.center[2], 6);
+      // a new offset (Properties, Drop to ground) moves the gizmo with the cloud
+      h.manifest.layers = [{ ...cloud, heightOffsetM: 0 }];
+      stage.setTool('clipbox');
+      expect((tool?.set.at(-1) as ClipBoxLocal | undefined)?.center[1]).toBeCloseTo(
+        boxToLocal(saved ?? clipBox, ORIGIN).center[1],
+        9,
+      );
+      expect(h.boxes).toHaveLength(1);
+      off();
+    } finally {
+      h.manifest.layers = [];
+    }
+  });
+
+  it('stores a selection of an offset cloud as world to clip in file heights', async () => {
+    h.selects.length = 0;
+    h.manifest.layers = [{ ...cloud, heightOffsetM: 2 }];
+    try {
+      const c = await store();
+      const off = mountCleanupScene(fakeStage('pcselect') as unknown as EngineStage, c);
+      const local = [2, 0, 0, 0, 0, 2, 0, 0, 0, 0, -1, -1, 0, 0, -0.2, 0];
+      h.selects[0]?.opts.onSelect({ shape: 'box', polygon: [[0, 0]], viewProj: local });
+      expect(c.store.getState().pending?.viewProj).toEqual(
+        worldViewProj(local, [ORIGIN[0], ORIGIN[1], ORIGIN[2] - 2]),
+      );
+      off();
+    } finally {
+      h.manifest.layers = [];
+    }
   });
 
   it('stores a drawn selection with its view as world to clip', async () => {

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { HEIGHT_SAMPLES, robustHeightRange, sampleHeights } from './heights';
+import { HEIGHT_SAMPLES, lowHeight, robustHeightRange, sampleHeights } from './heights';
 
 describe('sampleHeights', () => {
   it('keeps every height of a small chunk', () => {
@@ -64,5 +64,22 @@ describe('robustHeightRange', () => {
   it('falls back to the extent for a flat cloud', () => {
     const heights = [...new Array<number>(200).fill(3), 3.5];
     expect(robustHeightRange([{ heights }])?.range).toEqual([3, 3.5]);
+  });
+});
+
+describe('lowHeight', () => {
+  it('takes a low percentile that ignores a stray point', () => {
+    const heights = [...new Array<number>(999).fill(10), -50];
+    expect(lowHeight([{ heights }], 0.02)).toBe(10);
+    expect(lowHeight([{ heights }], 0)).toBe(-50);
+    expect(lowHeight([], 0.02)).toBeNull();
+    expect(lowHeight([{ heights: [NaN] }], 0.02)).toBeNull();
+  });
+
+  it('weights each sample by the points it stands for', () => {
+    // 10 low samples standing for 1 point each against 10 high ones standing for 100 each
+    const low = { heights: new Array<number>(10).fill(0), weight: 1 };
+    const high = { heights: new Array<number>(10).fill(5), weight: 100 };
+    expect(lowHeight([low, high], 0.02)).toBe(5);
   });
 });

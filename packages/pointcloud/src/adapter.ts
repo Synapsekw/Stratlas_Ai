@@ -1,5 +1,5 @@
 import { getAdapter, registerAdapter, type LayerAdapter, type SceneHandle } from '@aio/engine';
-import type { Layer, PointcloudScalar } from '@aio/schema';
+import { cloudFrameOrigin, type Layer, type PointcloudScalar } from '@aio/schema';
 import { workspace } from '@aio/workspace';
 import { Box3, Vector3 } from 'three';
 import type { StoreApi } from 'zustand/vanilla';
@@ -202,22 +202,27 @@ export function createPointcloudAdapter(
         baseSize = KIT_BASE_SIZE;
       } else if (layer.format === 'png-packed') {
         const idx = parsePngCloudIndex(await fetchJson(url));
+        // png-packed points are already local (y = H): the height offset lifts them as decoded
+        const dy = layer.heightOffsetM ?? 0;
+        const lift = (v: V3): [number, number, number] => [v[0], v[1] + dy, v[2]];
         chunks = idx.chunks.map((c) => ({
           key: `${layer.id}#${c.id}`,
           source: {
             kind: 'png',
             url: resolveChunkUrl(c.file, idx, url, (path) => ctx.url({ path })),
-            quant: c.quant,
+            quant: { offset: lift(c.quant.offset), scale: c.quant.scale },
           },
           points: c.points,
-          bounds: c.bounds,
+          bounds: { min: lift(c.bounds.min), max: lift(c.bounds.max) },
           lod: c.lod,
         }));
         baseSize = pngBaseSize(idx);
-        box = new Box3(new Vector3(...idx.bounds.min), new Vector3(...idx.bounds.max));
+        box = new Box3(new Vector3(...lift(idx.bounds.min)), new Vector3(...lift(idx.bounds.max)));
       } else if (layer.format === 'copc') {
-        const origin = originOf();
-        if (!origin) throw new Error('A COPC layer needs the project origin');
+        const project = originOf();
+        if (!project) throw new Error('A COPC layer needs the project origin');
+        // the layer's height offset: decoded against [E, N, H - heightOffsetM]
+        const origin = cloudFrameOrigin([...project], layer);
         const m = managerFor(handle);
         noisePath = cleanup.getState().recipes[layer.id]?.noise?.path ?? null;
         try {
@@ -259,8 +264,9 @@ export function createPointcloudAdapter(
         if (want === noisePath) return;
         noisePath = want;
         const mine = ++swap;
-        const origin = originOf();
-        if (!origin) return;
+        const project = originOf();
+        if (!project) return;
+        const origin = cloudFrameOrigin([...project], layer);
         const streams = (u: string) => m.layers.get(layer.id)?.copc?.url === u;
         const show = (r: LoadedCopc) => {
           if (mine !== swap || disposed) return;
@@ -319,7 +325,19 @@ export function cloudSourceUrl(handle: SceneHandle, layerId: string): string | n
   return getCloudManager(handle)?.layers.get(layerId)?.copc?.url ?? null;
 }
 
-/** A COPC layer's bounds in the project CRS (the header's, else the octree cube). */
+/**
+ * The low point of a shown cloud, local Y (its height offset included): the `p` percentile of the
+ * heights sampled from its coarsest decoded level, so stray points below the ground are ignored.
+ * Null when the layer is unknown, hidden, or has not streamed yet.
+ */
+export function cloudLowHeight(handle: SceneHandle, layerId: string, p = 0.02): number | null {
+  return getCloudManager(handle)?.lowHeight(layerId, p) ?? null;
+}
+
+/**
+ * A COPC layer's bounds in the project CRS, file heights (the header's, else the octree cube):
+ * without the layer's height offset, as the cleanup recipes and the save job read them.
+ */
 export function cloudWorldBounds(
   handle: SceneHandle,
   layerId: string,

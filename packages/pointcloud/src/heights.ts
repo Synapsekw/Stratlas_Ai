@@ -53,6 +53,26 @@ export function robustHeightRange(
   lo: number = RANGE_PERCENTILES[0],
   hi: number = RANGE_PERCENTILES[1],
 ): HeightStats | null {
+  const w = weighted(samples);
+  if (!w) return null;
+  const extent: [number, number] = [w.sorted[0] ?? 0, w.sorted[w.sorted.length - 1] ?? 0];
+  const a = w.at(Math.min(lo, hi));
+  const b = w.at(Math.max(lo, hi));
+  return { range: b - a > 1e-3 ? [a, b] : extent, extent };
+}
+
+/**
+ * The low point of weighted samples: their `p` weighted percentile (as robustHeightRange), so a
+ * few stray points under the ground do not set it; null without any finite height.
+ */
+export function lowHeight(samples: readonly HeightSample[], p: number): number | null {
+  return weighted(samples)?.at(p) ?? null;
+}
+
+/** The finite heights sorted, with their weighted percentile; null without any. */
+function weighted(
+  samples: readonly HeightSample[],
+): { sorted: number[]; at: (f: number) => number } | null {
   const ys: number[] = [];
   const ws: number[] = [];
   for (const s of samples) {
@@ -77,8 +97,5 @@ export function robustHeightRange(
     }
     return sorted[sorted.length - 1] ?? 0;
   };
-  const extent: [number, number] = [sorted[0] ?? 0, sorted[sorted.length - 1] ?? 0];
-  const a = at(Math.min(lo, hi));
-  const b = at(Math.max(lo, hi));
-  return { range: b - a > 1e-3 ? [a, b] : extent, extent };
+  return { sorted, at };
 }

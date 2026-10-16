@@ -17,7 +17,9 @@ export {
   type LodCandidate,
   type SelectOptions,
 } from './lod';
+export { lowHeight, type HeightSample } from './heights';
 export {
+  cloudLowHeight,
   cloudSourceUrl,
   cloudWorldBounds,
   createPointcloudAdapter,

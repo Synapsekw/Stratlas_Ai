@@ -1,10 +1,16 @@
 import type { AdapterContext, SceneHandle } from '@aio/engine';
 import { clearAdapters, getAdapter } from '@aio/engine';
-import type { Layer } from '@aio/schema';
+import { emptyCleanup, type Layer } from '@aio/schema';
 import type { BufferGeometry, Vector2, Box3 } from 'three';
 import { PerspectiveCamera, Plane, Points, Scene, Vector3 } from 'three';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { createPointcloudAdapter, registerPointcloudAdapters } from './adapter';
+import {
+  cloudLowHeight,
+  createPointcloudAdapter,
+  getCloudManager,
+  registerPointcloudAdapters,
+} from './adapter';
+import { createCleanupRecipes } from './cleanup/store';
 import { pointSizePx, type PointMaterial } from './material';
 import { createPointcloudSettings } from './settings';
 import { pointcloudStats } from './stats';
@@ -451,6 +457,7 @@ describe('COPC layers', () => {
     hier: Record<number, CopcHierarchy>,
     eye: [number, number, number],
     heights?: (offset: number) => Float32Array,
+    opts: { layer?: CloudLayer; origin?: [number, number, number] } = {},
   ) {
     const { handle, frame, bounds } = fakeHandle();
     handle.camera.position.set(...eye);
@@ -459,16 +466,18 @@ describe('COPC layers', () => {
     const d = copcDecoder(hier, heights);
     const settings = createPointcloudSettings(null);
     settings.getState().setEdl(false);
+    const origin = opts.origin ?? [0, 64, 0];
     const adapter = createPointcloudAdapter({
       decoder: () => d.decoder,
       settings,
-      origin: () => [0, 64, 0],
+      origin: () => origin,
     });
-    const layer = await adapter.create(copcLayer, {
+    const ctx: AdapterContext = {
       scene: handle,
       url: (r) => ('path' in r ? `aio://project/p/${r.path}` : 'x'),
-    });
-    return { handle, frame, d, layer, settings, bounds };
+    };
+    const layer = await adapter.create(opts.layer ?? copcLayer, ctx);
+    return { handle, frame, d, layer, settings, bounds, adapter, ctx };
   }
 
   /** The elevation uniform of every drawn node. */
@@ -685,5 +694,125 @@ describe('COPC layers', () => {
     expect(counts).toEqual([1, 2, 3, 4, 4]);
     // with its children loaded the root draws at their (finer) spacing, like them
     expect(sizes()).toEqual([0.5, 0.5, 0.5, 0.5]);
+  });
+
+  const rootOnly = { 10: { nodes: { '0-0-0-0': info(500, 1000) }, pages: {} } };
+
+  it('streams a COPC from the layer frame origin', async () => {
+    const { frame, d, handle, bounds } = await open(rootOnly, [32, 5000, 32], undefined, {
+      layer: { ...copcLayer, heightOffsetM: -30 },
+      origin: [0, 64, 100],
+    });
+    frame();
+    // y = Z - (H - heightOffsetM): decoded against H 130
+    expect(d.jobs.map((j) => (j.kind === 'copc' ? j.origin : null))).toEqual([[0, 64, 130]]);
+    const seeds = getCloudManager(handle)?.layers.get('full')?.chunks ?? [];
+    expect(seeds.length).toBeGreaterThan(0);
+    for (const c of seeds) {
+      expect(c.source.kind === 'copc' ? c.source.origin : null).toEqual([0, 64, 130]);
+    }
+    // the header bounds (Z 0..5) frame Home 30 m lower
+    expect(bounds[0]?.get()?.min.y).toBe(-130);
+    expect(bounds[0]?.get()?.max.y).toBe(-125);
+  });
+
+  it('re-streams the cloud at the new height when its offset changes', async () => {
+    // the stage disposes a layer whose definition changed and creates it again (LayerSync)
+    const { frame, d, handle, bounds, layer, adapter, ctx } = await open(rootOnly, [32, 5000, 32]);
+    frame();
+    await flush();
+    expect(d.jobs.at(-1)).toMatchObject({ origin: [0, 64, 0] });
+    layer.dispose();
+    const moved = await adapter.create({ ...copcLayer, heightOffsetM: 2.5 }, ctx);
+    frame();
+    await flush();
+    expect(d.jobs.at(-1)).toMatchObject({ origin: [0, 64, -2.5] });
+    expect(bounds).toHaveLength(1);
+    expect(bounds[0]?.get()?.min.y).toBe(2.5);
+    expect(getCloudManager(handle)?.layers.get('full')?.copc?.origin).toEqual([0, 64, -2.5]);
+    moved.dispose();
+  });
+
+  it('keeps the layer frame origin when a noise run swaps the streamed file', async () => {
+    const cleanup = createCleanupRecipes();
+    const { handle } = fakeHandle();
+    const d = copcDecoder(rootOnly);
+    const adapter = createPointcloudAdapter({
+      decoder: () => d.decoder,
+      settings: createPointcloudSettings(null),
+      origin: () => [0, 64, 0],
+      cleanup,
+    });
+    await adapter.create(
+      { ...copcLayer, heightOffsetM: 4 },
+      { scene: handle, url: (r) => ('path' in r ? `aio://project/p/${r.path}` : 'x') },
+    );
+    const path = 'edits/pointcloud/full.noise-j1.copc.laz';
+    cleanup.getState().set('full', {
+      ...emptyCleanup('full'),
+      noise: {
+        path,
+        params: { outlier: { meanK: 8, multiplier: 2 } },
+        marked: 3,
+        total: 10,
+        runId: 'j1',
+      },
+    });
+    await flush();
+    await flush();
+    const l = getCloudManager(handle)?.layers.get('full');
+    expect(l?.copc?.url).toBe(`aio://project/p/${path}`);
+    expect(l?.copc?.origin).toEqual([0, 64, -4]);
+  });
+
+  it('gives the low height of a streamed, shown cloud only', async () => {
+    const { frame, handle, layer } = await open(rootOnly, [32, 5000, 32]);
+    // not streamed yet: no samples
+    expect(cloudLowHeight(handle, 'full')).toBeNull();
+    frame();
+    await flush();
+    frame();
+    // the 2nd percentile of the root heights: the stray point at -500 is ignored
+    expect(cloudLowHeight(handle, 'full')).toBeCloseTo(0.18, 2);
+    expect(cloudLowHeight(handle, 'full', 0)).toBe(-500);
+    expect(cloudLowHeight(handle, 'other')).toBeNull();
+    layer.setVisible(false);
+    expect(cloudLowHeight(handle, 'full')).toBeNull();
+    layer.setVisible(true);
+    expect(cloudLowHeight(handle, 'full')).not.toBeNull();
+  });
+});
+
+describe('png-packed height offset', () => {
+  it('lifts png-packed chunks by the offset', async () => {
+    const { handle, frame, bounds } = fakeHandle();
+    const d = fakeDecoder(10);
+    const index = {
+      schema: 'aio.pngcloud/1',
+      bounds: { min: [0, 0, 0], max: [50, 10, 50] },
+      chunks: [{ file: 'clouds/c0.png', points: 10, lod: 0, bounds: index0 }],
+    };
+    const adapter = createPointcloudAdapter({
+      decoder: () => d.decoder,
+      settings: createPointcloudSettings(null),
+      fetchJson: () => Promise.resolve(index),
+    });
+    await adapter.create(
+      {
+        ...kitLayer('pc'),
+        format: 'png-packed',
+        src: { path: 'clouds/pc.json' },
+        heightOffsetM: 2,
+      },
+      { scene: handle, url: (r) => ('path' in r ? `aio://project/p/${r.path}` : 'x') },
+    );
+    const seed = getCloudManager(handle)?.layers.get('pc')?.chunks[0];
+    expect(seed?.bounds.min[1]).toBe(2);
+    expect(seed?.bounds.max[1]).toBe(12);
+    expect(seed?.source.kind === 'png' ? seed.source.quant.offset[1] : null).toBe(2);
+    expect(bounds[0]?.get()?.min.y).toBe(2);
+    expect(bounds[0]?.get()?.max.y).toBe(12);
+    frame();
+    expect(d.jobs[0]).toMatchObject({ kind: 'png', quant: { offset: [0, 2, 0] } });
   });
 });
