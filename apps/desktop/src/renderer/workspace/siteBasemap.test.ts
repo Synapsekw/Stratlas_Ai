@@ -1,5 +1,6 @@
 import type { EngineStage } from '@aio/engine';
 import type { Layer, ProjectManifest } from '@aio/schema';
+import { cloudLowHeight } from '@aio/pointcloud';
 import { BoxGeometry, Group, Mesh, Scene } from 'three';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
@@ -51,6 +52,8 @@ const basemap = {
 function manifest(layers: Layer[], crs: ProjectManifest['crs'] = { epsg: 32639 }) {
   return { crs, origin: [208800, 3255128, 0], layers } as unknown as ProjectManifest;
 }
+
+vi.mock('@aio/pointcloud', () => ({ cloudLowHeight: vi.fn(() => null) }));
 
 describe('site street map', () => {
   it('is offered for every project placed on the Earth without a basemap layer', () => {
@@ -286,6 +289,8 @@ describe('the rings kept for the second view', () => {
 describe('the ground under the models', () => {
   afterEach(() => {
     vi.useRealTimers();
+    vi.mocked(cloudLowHeight).mockReset();
+    vi.mocked(cloudLowHeight).mockReturnValue(null);
   });
 
   const meshLayer = {
@@ -341,5 +346,44 @@ describe('the ground under the models', () => {
     low.root.visible = true;
     resettle(stage);
     expect(ground.position.y).toBeCloseTo(groundLevel(null), 6);
+  });
+
+  const cloudLayer = {
+    kind: 'pointcloud',
+    id: 'cl',
+    name: 'Cloud',
+    visible: true,
+  } as unknown as Layer;
+
+  it('lowers the floor under a cloud below the models', () => {
+    const m = model('m', -1);
+    const stage = stageWith(m.root);
+    vi.mocked(cloudLowHeight).mockReturnValue(-6);
+    expect(contentFloor(stage, manifestOf(m.layer, cloudLayer))).toBeCloseTo(-6, 6);
+    expect(cloudLowHeight).toHaveBeenCalledWith(stage, 'cl', 0.02);
+  });
+
+  it('ignores a cloud with no samples or hidden', () => {
+    const m = model('m', -1);
+    const stage = stageWith(m.root);
+    expect(contentFloor(stage, manifestOf(m.layer, cloudLayer))).toBeCloseTo(-1, 6);
+    expect(contentFloor(stage, manifestOf(cloudLayer))).toBeNull();
+  });
+
+  it('places the ground again when a cloud streams in after the fast checks ended', () => {
+    vi.useFakeTimers();
+    const stage = stageWith();
+    const manifest = manifestOf(cloudLayer);
+    const ground = new Group();
+    const stop = settleUnder(stage, () => contentFloor(stage, manifest), ground, 0);
+    vi.advanceTimersByTime(60_000);
+    expect(ground.position.y).toBeCloseTo(groundLevel(null), 6);
+    vi.mocked(cloudLowHeight).mockReturnValue(-30);
+    vi.advanceTimersByTime(5_000);
+    expect(ground.position.y).toBeCloseTo(groundLevel(-30), 6);
+    stop();
+    vi.mocked(cloudLowHeight).mockReturnValue(-50);
+    vi.advanceTimersByTime(10_000);
+    expect(ground.position.y).toBeCloseTo(groundLevel(-30), 6);
   });
 });

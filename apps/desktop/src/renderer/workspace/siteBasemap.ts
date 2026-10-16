@@ -16,6 +16,7 @@ import {
   type GroundExtent,
   type GroundRingsHandle,
 } from '@aio/maps';
+import { cloudLowHeight } from '@aio/pointcloud';
 import type { AioBridge, Layer, MapPackInfo, ProjectManifest, Vec3 } from '@aio/schema';
 import type { MessageKey } from '@aio/ui';
 import { loadFlight } from '@aio/video';
@@ -324,13 +325,19 @@ function drawn(o: { visible: boolean; parent: unknown }): boolean {
 }
 
 /**
- * Lowest point of the project's shown mesh layers in the scene (the street map goes just under
- * it). A model hidden in the sidebar, or by the date shown, is left out: its group in the scene
- * is not visible.
+ * Lowest point of the project's shown mesh and point cloud layers in the scene (the street map
+ * goes just under it). A model hidden in the sidebar, or by the date shown, is left out: its group
+ * in the scene is not visible. A cloud counts by the low end of its streamed heights (its offset
+ * included), and not at all while hidden or before its first points arrive.
  */
 export function contentFloor(stage: EngineStage, manifest: ProjectManifest): number | null {
   let min = Infinity;
   for (const l of manifest.layers) {
+    if (l.kind === 'pointcloud') {
+      const low = cloudLowHeight(stage, l.id, 0.02);
+      if (low !== null && Number.isFinite(low)) min = Math.min(min, low);
+      continue;
+    }
     if (l.kind !== 'mesh') continue;
     const root = stage.scene.getObjectByName(`layer:${l.id}`);
     if (!root || !drawn(root)) continue;
@@ -370,8 +377,9 @@ export function resettle(stage: object): void {
 
 /**
  * Lay `object`, built with its ground at `builtAt` (local y), at `groundLevel` of `floor()`: now,
- * and again every 1.5 s for 30 s, as terrain loads in its own time, and on `resettle`. Returns
- * the function that stops it.
+ * and again every 1.5 s for 30 s, as terrain loads in its own time, then every 5 s (a cloud
+ * streams in, or is made again after a height offset changed, at any time), and on `resettle`.
+ * Returns the function that stops it.
  */
 export function settleUnder(
   stage: Pick<EngineStage, 'requestRender'>,
@@ -388,9 +396,12 @@ export function settleUnder(
       stage.requestRender();
     }
   };
-  const timer = setInterval(() => {
+  let timer = setInterval(() => {
     place();
-    if (++tries > 20) clearInterval(timer);
+    if (++tries > 20) {
+      clearInterval(timer);
+      timer = setInterval(place, 5000);
+    }
   }, 1500);
   place();
   const placed = grounds.get(stage) ?? new Set<() => void>();
