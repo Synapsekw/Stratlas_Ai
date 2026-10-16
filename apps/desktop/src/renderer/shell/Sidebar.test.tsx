@@ -372,6 +372,28 @@ describe('Datasets: menus', () => {
     expect(q('ctx-item-annotations.open')).not.toBeNull();
   });
 
+  it('a right-click inside the Empty trash dialog opens no menu', () => {
+    render({ bytes: 1024, entries: 2 });
+    click('tree-trash-empty');
+    rightClickAt(q('trash-empty') ?? document.body);
+    expect(q('ctx-menu')).toBeNull();
+  });
+
+  it('Shift+F10 on a button inside a row opens that row’s menu', () => {
+    render(null);
+    const e = new KeyboardEvent('keydown', {
+      key: 'F10',
+      shiftKey: true,
+      bubbles: true,
+      cancelable: true,
+    });
+    act(() => {
+      q('walk-remove-walk-a')?.dispatchEvent(e);
+    });
+    expect(q('move-menu')).not.toBeNull();
+    expect(q('ctx-menu')).toBeNull();
+  });
+
   it('marked rows open one menu for all of them', () => {
     render(null);
     click('tree-row-walk-a', { ctrlKey: true });

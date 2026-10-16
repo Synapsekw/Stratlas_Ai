@@ -15,21 +15,11 @@ export function rowTarget(item: TreeItem, marked: ReadonlySet<string>): MenuTarg
 }
 
 /**
- * The heading of a menu. A date folder and a project name come as `name`; a group says how many
- * datasets it holds; one row says "Move to date" when it can be filed; several rows are counted.
+ * The heading of a menu. A date folder, a group and a project come with their title as `name`;
+ * one row says "Move to date" when it can be filed; several rows are counted.
  */
-export function menuTitle(
-  target: MenuTarget,
-  ctx: ActionCtx,
-  name: string,
-  groupLabel?: string,
-): string {
+export function menuTitle(target: MenuTarget, ctx: ActionCtx, name: string): string {
   switch (target.kind) {
-    case 'group':
-      return t('tree.dates.move.group', {
-        group: groupLabel ?? name,
-        count: target.layerIds.length,
-      });
     case 'layers': {
       if (target.layerIds.length > 1)
         return t('actions.header.layers', { count: target.layerIds.length });

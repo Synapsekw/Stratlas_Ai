@@ -16,6 +16,7 @@ vi.mock('../../builder/alignSession', () => ({
 const { alignTargets, registerKindActions } = await import('./kindActions');
 const { pinDisplay } = await import('@aio/annotate');
 const { jobs } = await import('../../shell');
+const { engineerUi } = await import('../../engineer/ui');
 
 const L = (o: Record<string, unknown>) => ({ visible: true, ...o });
 const manifest = {
@@ -77,6 +78,7 @@ beforeEach(() => {
 });
 afterEach(() => {
   off();
+  engineerUi.setState({ open: false, preselect: [] });
 });
 
 describe('actions per kind', () => {
@@ -99,6 +101,32 @@ describe('actions per kind', () => {
       'annotations.open',
       'annotations.pins',
     ]);
+  });
+
+  it('Create engineering model is offered for one source layer, not a vector layer or two layers', () => {
+    const plain = {
+      ...manifest,
+      layers: [
+        ...manifest.layers,
+        L({
+          kind: 'vector',
+          id: 'plan',
+          name: 'Plan',
+          src: { path: 'p.geojson' },
+          format: 'geojson',
+        }),
+      ],
+    } as unknown as ProjectManifest;
+    const c = makeActionCtx({ manifest: plain });
+    expect(ids(on('cloud'), c)).toContain('engineering.create');
+    expect(ids(on('setA'), c)).toContain('engineering.create');
+    expect(ids(on('plan'), c)).not.toContain('engineering.create');
+    expect(ids(on('cloud', 'mesh'), c)).not.toContain('engineering.create');
+  });
+
+  it('Create engineering model opens the setup with that layer chosen and starts nothing', () => {
+    item(on('cloud'), 'engineering.create')?.run();
+    expect(engineerUi.getState()).toMatchObject({ open: true, preselect: ['cloud'] });
   });
 
   it('offers Colour by RGB only for a png-packed cloud', () => {

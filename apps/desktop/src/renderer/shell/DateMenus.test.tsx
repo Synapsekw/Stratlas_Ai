@@ -86,10 +86,12 @@ const disabled = (id: string) => q(id)?.getAttribute('aria-disabled') === 'true'
 
 interface Opts extends Partial<ActionCtx> {
   hostExtra?: Partial<ActionCtx['host']>;
+  title?: string;
+  label?: string;
 }
 function open(target: MenuTarget, testId: string, from: string, o: Opts = {}) {
   const onClose = vi.fn();
-  const { hostExtra, ...over } = o;
+  const { hostExtra, title, label, ...over } = o;
   const manifest = over.manifest ?? manifestOf();
   const ctx = makeActionCtx({
     manifest,
@@ -102,8 +104,8 @@ function open(target: MenuTarget, testId: string, from: string, o: Opts = {}) {
     target,
     x: 10,
     y: 10,
-    title: 'Title',
-    label: 'Survey date 2024-09-04',
+    title: title ?? 'Title',
+    label: label ?? 'Survey date 2024-09-04',
     testId,
     host: { from, toggle: vi.fn(), expanded: false },
   };
@@ -281,6 +283,10 @@ describe('dataset menu', () => {
     expect(ids).toEqual(['move-to-every', 'move-to-nov', 'move-to-oct', 'move-to-sep']);
     expect(q('move-menu')).not.toBeNull();
     expect(disabled('move-to-every')).toBe(true);
+    expect(q('move-to-every')?.getAttribute('aria-checked')).toBe('true');
+    expect(q('move-to-oct')?.getAttribute('aria-checked')).toBe('false');
+    // a name beside the date, unless the label only repeats the date
+    expect(q('move-to-nov')?.textContent).not.toContain('2024-11-06');
     expect(q('move-to-oct')?.textContent).toContain('Baseline');
   });
 
@@ -292,6 +298,24 @@ describe('dataset menu', () => {
     click('move-to-every');
     expect(moveLayers).toHaveBeenLastCalledWith(['design'], null);
     expect(onClose).toHaveBeenCalledTimes(2);
+  });
+
+  it('the current date is marked and off', () => {
+    layers(['a'], 'sep');
+    expect(q('move-to-sep')?.getAttribute('aria-checked')).toBe('true');
+    expect(disabled('move-to-sep')).toBe(true);
+  });
+
+  it('heads the menu of a group with the group and its count, and names it', () => {
+    open(
+      { kind: 'group', group: 'models', layerIds: ['a', 'b'], captureId: 'nov' },
+      'move-menu',
+      'nov',
+      { title: 'Models · 2 datasets', label: 'Models menu' },
+    );
+    const menu = q('move-menu');
+    expect(menu?.textContent).toContain('Models · 2 datasets');
+    expect(menu?.getAttribute('aria-label')).toBe('Models menu');
   });
 
   it('a group carries all its layers to the picked date', () => {
@@ -367,11 +391,23 @@ describe('dataset menu', () => {
   it('closes on Escape, and Back returns to the menu', () => {
     const { onClose } = layers(['design'], 'oct');
     click('move-compare');
-    click('ctx-back');
+    // Escape inside the Compare view goes back; Escape on the menu closes it
+    act(() => {
+      q('compare-to-nov')?.dispatchEvent(
+        new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }),
+      );
+    });
+    expect(onClose).not.toHaveBeenCalled();
     expect(q('move-compare')).not.toBeNull();
     act(() => {
       q('move-menu')?.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
     });
     expect(onClose).toHaveBeenCalledTimes(1);
+  });
+
+  it('an empty menu asks to be closed', () => {
+    const { onClose } = open({ kind: 'photos', picks: [] }, 'ctx-menu', 'x');
+    expect(q('ctx-menu')).toBeNull();
+    expect(onClose).toHaveBeenCalled();
   });
 });

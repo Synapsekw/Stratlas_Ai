@@ -665,8 +665,10 @@ function Datasets({ collapsed }: { collapsed: boolean }) {
     <div
       className="sb-sec sb-tree"
       onContextMenu={(e) => {
-        // rows, groups and folders handle their own; a field keeps the system menu
+        // rows, groups and folders handle their own; a field keeps the system menu; a dialog
+        // the tree opened (a portal) is not empty space
         if (e.defaultPrevented) return;
+        if (!(e.target instanceof Element) || !e.currentTarget.contains(e.target)) return;
         if (e.target instanceof Element && e.target.closest('input, textarea')) return;
         e.preventDefault();
         openProject(menuPoint(e));
@@ -678,7 +680,19 @@ function Datasets({ collapsed }: { collapsed: boolean }) {
         if (e.target.closest('input, textarea, select, [contenteditable]')) return;
         if (isMenuKey(e)) {
           e.preventDefault();
-          openProject(keyMenuPoint(e.target as HTMLElement));
+          // a button inside a row (eye, gear) opens that row's menu
+          const row = e.target.closest<HTMLElement>('[data-mark]');
+          const id = row?.dataset.mark;
+          const layer = id ? project.manifest.layers.find((l) => l.id === id) : undefined;
+          if (row && layer) {
+            const folder = row.closest<HTMLElement>('[data-testid^="date-folder-"]');
+            const from = folder?.dataset.testid?.slice('date-folder-'.length) ?? EVERY_DATE;
+            openRow(
+              { id: layer.id, layerId: layer.id, layerKind: layer.kind, name: layer.name },
+              keyMenuPoint(row),
+              from,
+            );
+          } else openProject(keyMenuPoint(e.target as HTMLElement));
           return;
         }
         if (marked && e.key === 'Escape') {

@@ -1,3 +1,4 @@
+import { useEffect } from 'react';
 import { actionsFor, ContextMenu, type ActionCtx, type ActionHost, type MenuTarget } from '@aio/ui';
 // the menu look is the drone and photo menus' (`.dmenu`)
 import '../builder/builder.css';
@@ -24,7 +25,12 @@ export function TreeMenu({
   onClose: () => void;
 }) {
   const items = actionsFor(request.target, { ...ctx, host: { ...ctx.host, ...request.host } });
-  if (items.length === 0) return null;
+  const empty = items.length === 0;
+  // an empty menu draws nothing; let go of it so it does not reappear later
+  useEffect(() => {
+    if (empty) onClose();
+  }, [empty, onClose]);
+  if (empty) return null;
   return (
     <ContextMenu
       items={items}
