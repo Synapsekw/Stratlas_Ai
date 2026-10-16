@@ -4,7 +4,7 @@
   justify-content: center;
   gap: var(--sp-3);
   height: calc(var(--sp-7) + var(--sp-2));
-  padding: 0 var(--sp-5);
+  padding: 0 10px;
   border-radius: var(--r-4);
   border: 1px solid var(--line);
   background: var(--bg-2);
@@ -118,7 +118,4 @@
 }
 .btn[aria-busy='true'] {
   cursor: progress;
-}
-.btn[aria-busy='true'] > .i {
-  display: none;
 }

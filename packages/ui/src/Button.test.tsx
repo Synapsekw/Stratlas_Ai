@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { act } from 'react';
+import { act, createRef } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { Button, IconButton } from './controls';
@@ -28,7 +28,7 @@ const btn = () => {
 };
 const click = () => {
   act(() => {
-    btn().dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    btn().dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
   });
 };
 
@@ -112,6 +112,80 @@ describe('Button', () => {
   it('advertises its shortcut keys', () => {
     render(<Button shortcut="global.palette">Go</Button>);
     expect(btn().getAttribute('aria-keyshortcuts')).toMatch(/K/);
+  });
+});
+
+describe('Button inert and sizing behaviour', () => {
+  it('locks min-width to the pre-busy width', () => {
+    let width = 80;
+    const spy = vi
+      .spyOn(HTMLElement.prototype, 'offsetWidth', 'get')
+      .mockImplementation(() => width);
+    try {
+      render(<Button icon="plus">Go</Button>);
+      width = 60; // the spinner swap shrinks the button
+      act(() =>
+        root?.render(
+          <Button icon="plus" busy>
+            Go
+          </Button>,
+        ),
+      );
+      expect(btn().style.minWidth).toBe('80px');
+      act(() => root?.render(<Button icon="plus">Go</Button>));
+      expect(btn().style.minWidth).toBe('');
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
+  it.each([{ busy: true }, { disabledReason: 'Not yet' }])(
+    'does not submit a form or call onClick when inert (%o)',
+    (props) => {
+      const onClick = vi.fn();
+      const onSubmit = vi.fn((e: React.SyntheticEvent) => {
+        e.preventDefault();
+      });
+      render(
+        <form onSubmit={onSubmit}>
+          <Button type="submit" onClick={onClick} {...props}>
+            Go
+          </Button>
+        </form>,
+      );
+      click();
+      expect(onClick).not.toHaveBeenCalled();
+      expect(onSubmit).not.toHaveBeenCalled();
+    },
+  );
+
+  it('submits a form when active', () => {
+    const onSubmit = vi.fn((e: React.SyntheticEvent) => {
+      e.preventDefault();
+    });
+    render(
+      <form onSubmit={onSubmit}>
+        <Button type="submit">Go</Button>
+      </form>,
+    );
+    click();
+    expect(onSubmit).toHaveBeenCalledTimes(1);
+  });
+
+  it('forwards the ref to the button element', () => {
+    const ref = createRef<HTMLButtonElement>();
+    render(<Button ref={ref}>Go</Button>);
+    expect(ref.current).toBe(btn());
+  });
+
+  it('lets disabledReason win over disabled: focusable, not natively disabled', () => {
+    render(
+      <Button disabled disabledReason="Why">
+        Go
+      </Button>,
+    );
+    expect(btn().hasAttribute('disabled')).toBe(false);
+    expect(btn().getAttribute('aria-disabled')).toBe('true');
   });
 });
 

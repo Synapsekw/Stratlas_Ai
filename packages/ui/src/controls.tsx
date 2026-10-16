@@ -122,9 +122,14 @@ export const Button: ForwardRefExoticComponent<ButtonProps & RefAttributes<HTMLB
       },
       [ref],
     );
-    // Width lock: measure on the busy edge, release when it ends.
+    // Width lock: the last settled (non-busy) width, applied as min-width while busy.
+    // Busy renders already swapped the icon for the spinner, so measuring then is too late.
+    const settledWidth = useRef<number | undefined>(undefined);
     useLayoutEffect(() => {
-      setLock(busy && inner.current ? inner.current.offsetWidth : undefined);
+      if (!busy) settledWidth.current = inner.current?.offsetWidth;
+    });
+    useLayoutEffect(() => {
+      setLock(busy ? settledWidth.current : undefined);
     }, [busy]);
 
     const inert = Boolean(busy) || Boolean(disabledReason);
@@ -143,7 +148,14 @@ export const Button: ForwardRefExoticComponent<ButtonProps & RefAttributes<HTMLB
         aria-pressed={pressed}
         aria-keyshortcuts={shortcut ? ariaKeys(shortcut) : undefined}
         aria-describedby={describe || undefined}
-        onClick={inert ? undefined : onClick}
+        onClick={(e) => {
+          if (inert) {
+            // Inert: no caller handler, and no default action (a submit button must not submit).
+            e.preventDefault();
+            return;
+          }
+          onClick?.(e);
+        }}
       >
         {busy ? <span className="spin" aria-hidden="true" /> : null}
         {icon && !busy ? <Icon name={icon} size={ICON_PX[size]} /> : null}
