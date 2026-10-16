@@ -156,14 +156,21 @@ export function Tabs<K extends string>({
 
   return (
     <div ref={boxRef} className="tabs" data-overflow={overflow}>
-      <div className="tabs-list" role="tablist" aria-label={label}>
+      {/* A tablist may hold only tabs, and each tab's pin and close sit beside it: so the tablist
+          owns the tabs through aria-owns, and the row keeps tab, pin, close in keyboard order. */}
+      <div
+        className="tabs-owner"
+        role="tablist"
+        aria-label={label}
+        aria-owns={shown.map((it) => `${idPrefix}-tab-${it.id}`).join(' ')}
+      />
+      <div className="tabs-list">
         {shown.map((it) => {
           const selected = it.id === value;
           return (
             <div
               key={it.id}
               className="tab-wrap"
-              role="presentation"
               data-tab={it.id}
               data-selected={selected ? '' : undefined}
               onMouseDown={(e: MouseEvent) => {

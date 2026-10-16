@@ -170,6 +170,33 @@ describe('Tabs', () => {
     expect(onChange).not.toHaveBeenCalled();
   });
 
+  it('keeps pin and close out of the tablist, which owns only the tabs (axe aria-required-children)', () => {
+    render(
+      <Harness
+        items={[
+          { id: 'a', label: 'Alpha', onPinChange: vi.fn(), onClose: vi.fn() },
+          { id: 'b', label: 'Beta', onClose: vi.fn() },
+          ...base.slice(2),
+        ]}
+      />,
+    );
+    const list = q('[role="tablist"]');
+    // nothing in the tablist's subtree but tabs and plain containers
+    const inside = [...list.querySelectorAll('*')].filter(
+      (el) => el.getAttribute('role') !== 'tab' && !el.closest('[role="tab"]'),
+    );
+    expect(inside.filter((el) => el.matches('button, [tabindex], [role]'))).toEqual([]);
+    expect(list.contains(q('.tab-pin'))).toBe(false);
+    expect(list.contains(q('.tab-x'))).toBe(false);
+    // every tab belongs to it, by descent or by aria-owns, and it owns nothing else
+    const owned = (list.getAttribute('aria-owns') ?? '').split(/\s+/).filter(Boolean);
+    const ownedEls = owned.map((id) => document.getElementById(id));
+    expect(ownedEls.every((el) => el?.getAttribute('role') === 'tab')).toBe(true);
+    for (const t of host.querySelectorAll('[role="tab"]')) {
+      expect(list.contains(t) || owned.includes(t.id), t.id).toBe(true);
+    }
+  });
+
   it('pin toggles with aria-pressed', () => {
     const onPinChange = vi.fn();
     render(

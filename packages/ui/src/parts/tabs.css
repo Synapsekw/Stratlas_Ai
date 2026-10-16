@@ -40,6 +40,10 @@
   min-width: 0;
   border-bottom: 1px solid var(--line-soft);
 }
+/* the tablist itself: empty, it owns the tabs (Tabs.tsx); out of the flow so it adds no gap */
+.tabs-owner {
+  position: absolute;
+}
 .tabs-list {
   display: flex;
   flex-wrap: wrap;
