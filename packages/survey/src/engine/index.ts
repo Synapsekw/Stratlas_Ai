@@ -14,6 +14,7 @@ export {
   type CompareOptions,
   type GridOut,
   type Resolve,
+  type Shift,
   type ResolvedSurface,
   type Shared,
   type SiteContext,
@@ -72,4 +73,9 @@ export {
   type TinFile,
 } from './tin';
 export { Accumulator, type Accumulated } from './accumulate';
-export { projectResolver, SurfaceNotFound, type ProjectSurfacesInput } from './resolver';
+export {
+  projectResolver,
+  ringShifts,
+  SurfaceNotFound,
+  type ProjectSurfacesInput,
+} from './resolver';

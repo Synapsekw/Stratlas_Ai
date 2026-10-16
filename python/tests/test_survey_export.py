@@ -577,9 +577,9 @@ def test_export_carries_the_shift_dsm(tmp_path):
         run(root, out, what="surface", format="geotiff", layer="dsm")
         with rasterio.open(out) as ds:
             bounds[name] = ds.bounds
-    assert bounds["moved"].left - bounds["plain"].left == pytest.approx(2.0, abs=1.01)
-    assert bounds["moved"].top - bounds["plain"].top == pytest.approx(-1.0, abs=1.01)
-    assert bounds["moved"].right - bounds["plain"].right == pytest.approx(2.0, abs=1.01)
+    assert bounds["moved"].left - bounds["plain"].left == pytest.approx(2.0, abs=0.05)
+    assert bounds["moved"].top - bounds["plain"].top == pytest.approx(-1.0, abs=0.05)
+    assert bounds["moved"].right - bounds["plain"].right == pytest.approx(2.0, abs=0.05)
 
 
 @pytest.mark.parametrize("fmt", ["png-packed", "kit-packed"])

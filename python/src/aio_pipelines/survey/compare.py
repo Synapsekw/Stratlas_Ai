@@ -111,8 +111,10 @@ class Resolved:
     offset: float = 0.0
     #: Where the surface has data (min E, min N, max E, max N), when known.
     extent: tuple[float, float, float, float] | None = None
-    #: The line-up of the survey date it was prepared from (east, north metres), zero for none.
+    #: The line-up the surface was prepared with (``dateShiftM`` in its tiles.json), zero for none.
     shift: tuple[float, float] = (0.0, 0.0)
+    #: The line-up its survey date has now (manifest): differs from ``shift`` until prepared again.
+    current: tuple[float, float] = (0.0, 0.0)
     _tins: dict[tuple[float, float], Tin] = field(default_factory=dict)
 
     def tin(self, le: float, ln: float) -> Tin:
@@ -183,7 +185,7 @@ def fingerprint(
     rf: Resolved | None,
     rt: Resolved | None,
     site: dict[str, Any] | None,
-    ring_shift: tuple[float, float] = (0.0, 0.0),
+    ring_current: tuple[float, float] = (0.0, 0.0),
 ) -> str:
     obj: dict[str, Any] = {
         "engine": ENGINE_VERSION,
@@ -201,9 +203,9 @@ def fingerprint(
     shifts = {
         k: list(v)
         for k, v in (
-            ("from", rf.shift if rf else ZERO),
-            ("to", rt.shift if rt else ZERO),
-            ("ring", ring_shift),
+            ("from", rf.current if rf else ZERO),
+            ("to", rt.current if rt else ZERO),
+            ("ring", ring_current),
         )
         if v != ZERO
     }
@@ -385,12 +387,14 @@ def compare_item(
     now: str | None = None,
     grid_out: list[GridOut] | None = None,
     ring_shift: tuple[float, float] = ZERO,
+    ring_current: tuple[float, float] | None = None,
 ) -> dict[str, Any]:
     """One ``ComparisonResult`` (``engine: 'py'``) of ``item`` over the polygon ``ring`` (E, N).
 
     ``ring`` is as stored. A survey's own measurement is stored in that survey's unshifted frame
-    while its prepared surface sits where the date is lined up: ``ring_shift`` (that date's shift)
-    is added before sampling. A site-wide ring is already in the lined-up frame (no shift).
+    while its prepared surface sits where the date was lined up when it was prepared: ``ring_shift``
+    (that surface's ``dateShiftM``) is added before sampling; ``ring_current`` (the date's shift now,
+    default ``ring_shift``) joins the fingerprint, so a result reads stale after a line-up. A site-wide ring is already in the lined-up frame (no shift).
     """
     ring_n = normal_ring(ring)
     frm, to = item["from"], item["to"]
@@ -403,7 +407,7 @@ def compare_item(
             rt = resolve(to)
     except JobError as e:
         problem = str(e)
-    fp = fingerprint(ring_n, item, rf, rt, site, ring_shift)
+    fp = fingerprint(ring_n, item, rf, rt, site, ring_shift if ring_current is None else ring_current)
     if ring_shift != ZERO:
         ring_n = [(e + ring_shift[0], n + ring_shift[1]) for e, n in ring_n]
     res = _result(item, side_label(frm, rf), side_label(to, rt), rf, rt, fp, now)
@@ -663,15 +667,15 @@ class ProjectSurfaces:
         return self._manifest
 
     def _shift_of(self, capture: str) -> tuple[float, float]:
-        """A date's line-up; zero in a folder with no readable manifest (surfaces alone)."""
-        try:
-            return capture_shift(self.manifest(), capture)
-        except JobError:
+        """A date's line-up; zero in a folder with no manifest at all (surfaces alone)."""
+        if not (self.project / "manifest.json").is_file():
             return ZERO
+        return capture_shift(self.manifest(), capture)
 
-    def scope_shift(self, measurement: str) -> tuple[float, float]:
-        """The shift to add to a stored measurement's ring: its survey date's, zero for a
-        site-wide or unknown measurement (those rings are already where the dates are lined up)."""
+    def scope_shifts(self, measurement: str) -> tuple[tuple[float, float], tuple[float, float]]:
+        """``(prepared, current)`` shifts to put on a stored measurement's ring: its survey date's
+        surface as prepared, and the date's line-up now (for the fingerprint). Zero for a site-wide
+        or unknown measurement (those rings are already where the dates are lined up)."""
         if self._scopes is None:
             self._scopes = {}
             p = self.project / "survey" / "measurements.json"
@@ -685,7 +689,11 @@ class ProjectSurfaces:
                     if isinstance(scope, dict) and scope.get("kind") == "survey":
                         self._scopes[str(m.get("id"))] = str(scope.get("capture"))
         cap = self._scopes.get(measurement)
-        return self._shift_of(cap) if cap else ZERO
+        if not cap:
+            return ZERO, ZERO
+        current = self._shift_of(cap)
+        sid = self.surface_of_capture(cap)
+        return (_prepared_shift(self.metas()[sid]) if sid else current), current
 
     def captures(self) -> list[str]:
         m = self.manifest()
@@ -717,7 +725,8 @@ class ProjectSurfaces:
             capture=cap,
             grid=self._grids[sid],
             extent=_extent(meta),
-            shift=self._shift_of(str(cap)) if cap else ZERO,
+            shift=_prepared_shift(meta),
+            current=self._shift_of(str(cap)) if cap else ZERO,
         )
 
     def current_previous(self) -> tuple[str | None, str | None]:
@@ -785,6 +794,13 @@ class ProjectSurfaces:
         if settings.get("calibration"):
             out["calibration"] = settings["calibration"]
         return out
+
+
+def _prepared_shift(meta: dict[str, Any]) -> tuple[float, float]:
+    d = meta.get("dateShiftM")
+    if not isinstance(d, dict):
+        return ZERO
+    return (float(d.get("eastM", 0.0)), float(d.get("northM", 0.0)))
 
 
 def _extent(meta: dict[str, Any]) -> tuple[float, float, float, float] | None:
@@ -891,13 +907,15 @@ class SurveyCompare:
                 ctx.check()
                 cap = it.get("capture")
                 ps = by_capture.setdefault(cap, ProjectSurfaces(ctx.project, cap))
+                prepared, current = ps.scope_shifts(it["measurement"])
                 r = compare_item(
                     it["ring"],
                     it["item"],
                     ps.resolve,
                     site,
                     ctx.check,
-                    ring_shift=ps.scope_shift(it["measurement"]),
+                    ring_shift=prepared,
+                    ring_current=current,
                 )
                 counts[r["status"]] = counts.get(r["status"], 0) + 1
                 results.append({"measurement": it["measurement"], "result": r})

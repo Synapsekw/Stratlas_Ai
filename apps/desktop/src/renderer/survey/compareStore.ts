@@ -19,7 +19,7 @@ import type {
   SurveyPrepareParams,
 } from '@aio/schema';
 import { createStore, useStore } from 'zustand';
-import { workspace } from '@aio/workspace';
+import { captureShift, workspace } from '@aio/workspace';
 import { bridge } from '../shell';
 import { connectEngine, RunCancelled, startEngineWorker, type EngineClient } from './engineClient';
 import { designs as designsStore } from './designsStore';
@@ -210,13 +210,28 @@ export async function refreshSurfaces(): Promise<void> {
   scheduleCheck();
 }
 
+/** The line-up each survey date has now, for the engine's fingerprints (dates without one left out). */
+export function currentShifts(
+  manifest: Parameters<typeof captureShift>[0] | null | undefined,
+): Record<string, [number, number]> {
+  const out: Record<string, [number, number]> = {};
+  if (!manifest) return out;
+  for (const c of manifest.captures) {
+    const s = captureShift(manifest, c.id);
+    if (s) out[c.id] = [s.eastM, s.northM];
+  }
+  return out;
+}
+
 function pushContext(projectId: string, surfaces: HeightTiles[], designs: DesignEntry[]): void {
   const settings = measureStore.getState().settings;
+  const shifts = currentShifts(workspace.getState().project?.manifest);
   client().setContext({
     base: `aio://project/${encodeURIComponent(projectId)}/`,
     surfaces,
     captures: get().captures.map((c) => c.id),
     designs,
+    ...(Object.keys(shifts).length > 0 ? { shifts } : {}),
     site: {
       verticalDatum: settings.verticalDatum,
       ...(settings.calibration ? { calibration: settings.calibration } : {}),
@@ -460,6 +475,17 @@ export function followMeasurements(): () => void {
   const offDesigns = designsStore.subscribe((s, prev) => {
     if (s.file && s.file !== prev.file && s.projectId === get().projectId) takeDesigns(s.file);
   });
+  // a line-up changes the fingerprints: hand the engine the new shifts, then check again
+  let shiftsKey = JSON.stringify(currentShifts(workspace.getState().project?.manifest));
+  const offShifts = workspace.subscribe((ws) => {
+    const key = JSON.stringify(currentShifts(ws.project?.manifest));
+    if (key === shiftsKey) return;
+    shiftsKey = key;
+    const { projectId, status, surfaces, designs } = get();
+    if (!projectId || status !== 'ready') return;
+    pushContext(projectId, surfaces, designs);
+    scheduleCheck();
+  });
   const off = measureStore.subscribe((s, prev) => {
     if (s.editing && s.focus && s.editing.points !== prev.editing?.points) {
       const m = s.file.measurements.find((x) => x.id === s.focus);
@@ -480,6 +506,7 @@ export function followMeasurements(): () => void {
   unsubscribe = () => {
     off();
     offDesigns();
+    offShifts();
     unsubscribe = null;
   };
   return unsubscribe;

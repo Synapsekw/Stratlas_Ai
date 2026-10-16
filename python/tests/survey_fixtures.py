@@ -179,6 +179,20 @@ def cases() -> list[dict[str, Any]]:
     ring = circle(10, 10, 8)
     add("cone-over-flat", ring, item("a", SV("flat"), SV("cone")), "Survey to survey, fill only")
     add("flat-over-cone", ring, item("a", SV("cone"), SV("flat")), "Survey to survey, cut only")
+    # lined up: a survey-scoped ring is stored 2 m west and 1 m south of where its prepared surface
+    # sits (shift 2 E, -1 N): sampled shifted it is the same ring as above; the dates' shifts now
+    # (3.5, 0.5 for the ring's date) are in the fingerprint only
+    add(
+        "cone-over-flat-lined-up",
+        circle(8, 11, 8),
+        item("a", SV("flat"), SV("cone")),
+        "A survey-scoped ring on a lined-up date: shifted before sampling, the shifts in the fingerprint",
+        lineUp={
+            "current": {"flat": [0.0, 0.0], "cone": [3.5, 0.5]},
+            "ringShift": [2.0, -1.0],
+            "ringCurrent": [3.5, 0.5],
+        },
+    )
     add(
         "previous-current",
         ring,
@@ -364,7 +378,11 @@ def resolver(surfs: dict[str, Any], case: dict[str, Any]):
     def resolve(ref: dict[str, Any]) -> Resolved:
         k = ref["kind"]
         if k == "survey":
-            return resolved(surfs[ref["surface"]], ref.get("capture"))
+            r = resolved(surfs[ref["surface"]], ref.get("capture"))
+            r.current = tuple(
+                ((case.get("lineUp") or {}).get("current") or {}).get(ref["surface"], (0.0, 0.0))
+            )
+            return r
         if k in ("current", "previous"):
             c = case["captures"][k]
             return resolved(surfs[c["surface"]], c["capture"])
@@ -374,7 +392,16 @@ def resolver(surfs: dict[str, Any], case: dict[str, Any]):
 
 
 def run_case(surfs: dict[str, Any], case: dict[str, Any]) -> dict[str, Any]:
-    r = compare_item(case["ring"], case["item"], resolver(surfs, case), case.get("site"), now=NOW)
+    up = case.get("lineUp") or {}
+    r = compare_item(
+        case["ring"],
+        case["item"],
+        resolver(surfs, case),
+        case.get("site"),
+        now=NOW,
+        ring_shift=tuple(up.get("ringShift", (0.0, 0.0))),
+        ring_current=tuple(up["ringCurrent"]) if "ringCurrent" in up else None,
+    )
     r.pop("computedAt", None)
     r.pop("engine", None)
     return r

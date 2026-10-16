@@ -21,9 +21,10 @@ surface or layer id when it has no capture).
   holes left by removed objects filled linearly from the ground around them (inside the hull of the
   ground points). The preset and its parameters are recorded in ``tiles.json`` (``filter``).
 
-A DTM filter is a product of one date and stays in that date's frame (a line-up applies when a
-layer is read, not to what a job makes from one date alone); edits apply to a prepared surface,
-which already sits where its date is lined up.
+A DTM filter is survey preparation: it reads its cloud where the cloud's date is lined up (the
+date's shift after the layer's own placement) and records the shift as ``dateShiftM`` in
+``tiles.json`` (only when not zero), so every surface in ``survey/surfaces/`` is in the lined-up
+frame. Edits apply to a prepared surface, which already is.
 
 The derived surface carries no ``capture``: comparisons use it only when a person picks it (its
 ``source.of`` names the surface it was made from). The delivered DSM, cloud and ortho, the original
@@ -284,11 +285,7 @@ def _cloud_reader(ctx: StepContext, manifest: dict[str, Any], lid: str) -> dict[
     pts = s.points(ctx)
     o = manifest.get("origin") or [0, 0, 0]
     txt = ctx.stage(f"work/{lid}.xyz")
-    # A DTM is a product of one date and stays in that date's frame (Decision 5): the shift
-    # Surface.points added comes off again, so a kit-packed cloud is read where its file has it
-    # (as a LAS or COPC is) and the shift applies when the surface is read like any layer.
-    east, north = s.shift
-    xyz = np.stack([pts[:, 0] + o[0] - east, o[1] - pts[:, 2] - north, pts[:, 1] + o[2]], axis=1)
+    xyz = np.stack([pts[:, 0] + o[0], o[1] - pts[:, 2], pts[:, 1] + o[2]], axis=1)
     np.savetxt(txt, xyz, fmt="%.4f", delimiter=",", header="X,Y,Z", comments="")
     return {"type": "readers.text", "filename": str(txt)}
 
@@ -311,6 +308,7 @@ def run_dtm_filter(ctx: StepContext, layer: str, preset: str):
     parts = [np.stack([x, y, z], axis=1) for x, y, z, _ in read_las_chunks(ground, ctx.check)]
     pts = np.concatenate(parts) if parts else np.zeros((0, 3))
     if pts.size:
+        from ..captures import date_shift
         from ..change.imagery import find_layer
         from ..change.sources import height_offset_m
 
@@ -319,6 +317,9 @@ def run_dtm_filter(ctx: StepContext, layer: str, preset: str):
             # a LAS or COPC is read in file heights; a kit-packed cloud's points came through
             # Surface.points, which already added the offset
             pts[:, 2] += height_offset_m(lyr)
+            east, north = date_shift(manifest, layer)  # a kit-packed cloud got it from Surface.points
+            pts[:, 0] += east
+            pts[:, 1] += north
     ctx.progress(0.5, "Ground grid")
     return grid_ground(pts[:, 0], pts[:, 1], pts[:, 2])
 
@@ -426,6 +427,7 @@ class SurveyCleanup:
             return {"id": out, "name": name[:200], "source": {"kind": "dtm", "layer": f["layer"]}}
 
         def surface(ctx: StepContext) -> dict[str, Any]:
+            from ..captures import date_shift
             from ..change.imagery import read_manifest
             from .prepare import _crs_of
 
@@ -436,7 +438,11 @@ class SurveyCleanup:
             from ..change.sources import height_offset_m
 
             key: dict[str, Any] = {"dtm": f, "preset": DTM_PRESETS[f["preset"]]}
-            off = height_offset_m(find_layer(read_manifest(ctx.project), f["layer"]))
+            man = read_manifest(ctx.project)
+            shift = date_shift(man, f["layer"])
+            if shift != (0.0, 0.0):  # a date without a line-up keeps the fingerprint it always had
+                key["dateShiftM"] = list(shift)
+            off = height_offset_m(find_layer(man, f["layer"]))
             if off:  # a cloud without an offset keeps the fingerprint it always had
                 key["heightOffsetM"] = off
             fp = "sha256:" + hashlib.sha256(json.dumps(key, sort_keys=True).encode()).hexdigest()
@@ -452,6 +458,7 @@ class SurveyCleanup:
                 "originN": g.on,
                 **fields,
                 "filter": {"preset": f["preset"], "pdal": DTM_PRESETS[f["preset"]]},
+                **({"dateShiftM": {"eastM": shift[0], "northM": shift[1]}} if shift != (0.0, 0.0) else {}),
                 "fingerprint": fp,
                 "preparedAt": now_iso(),
             }

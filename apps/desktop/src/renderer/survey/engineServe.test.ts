@@ -31,7 +31,7 @@ const ring: [number, number][] = Array.from({ length: 24 }, (_, k) => [
   2574010 + 8 * Math.sin((2 * Math.PI * k) / 24),
 ]);
 
-function engine(delayMs = 0) {
+function engine(delayMs = 0, extra: Partial<EngineContext> = {}) {
   const { port1, port2 } = new MessageChannel();
   const urls: string[] = [];
   serveEngine(port2, async (url) => {
@@ -50,6 +50,7 @@ function engine(delayMs = 0) {
     captures: ['c1', 'c2'],
     designs: [],
     site: { verticalDatum: { kind: 'project' } },
+    ...extra,
   };
   client.setContext(context);
   return {
@@ -62,6 +63,56 @@ function engine(delayMs = 0) {
     },
   };
 }
+
+describe('the survey engine worker with a lined-up date', () => {
+  const item = {
+    id: 'a',
+    from: { kind: 'reference' as const, mode: 'level' as const, levelM: 100 },
+    to: { kind: 'current' as const },
+    useDeadband: false,
+  };
+  // the cone's date was prepared lined up by 2 m east, 1 m south; the date is lined up again since
+  const lined: Partial<EngineContext> = {
+    surfaces: [
+      { ...cone, capture: 'c2', dateShiftM: { eastM: 2, northM: -1 } },
+      { ...cone, id: 'flat', capture: 'c1', fingerprint: 'fp-flat' },
+    ],
+    shifts: { c2: [3.5, 0.5] },
+  };
+  // a survey's own ring is stored 2 m west and 1 m north of where its prepared surface sits
+  const stored: [number, number][] = ring.map(([e, n]) => [e - 2, n + 1]);
+
+  it('adds the prepared shift to a survey-scoped ring and fingerprints the shift now', async () => {
+    const { client, close } = engine(0, lined);
+    try {
+      const r = await client.run({ ring: stored, items: [item], capture: 'c2' });
+      const want = cases.cases.find((c) => c.id === 'cone-over-flat')?.expected.fillM3 ?? 0;
+      expect(r.results[0]?.fillM3).toBeCloseTo(want, 9);
+      const [fp] = await client.fingerprints({ ring: stored, items: [item], capture: 'c2' });
+      expect(fp).toBe(r.results[0]?.fingerprint);
+      // the same ring as a site-wide one is not moved: it samples another place
+      const site = await client.run({ ring: stored, items: [item] });
+      expect(site.results[0]?.fillM3).not.toBeCloseTo(want, 3);
+    } finally {
+      close();
+    }
+  });
+
+  it('reads stale after a line-up the surface was not prepared with', async () => {
+    const a = engine(0, lined);
+    const b = engine(0, { ...lined, shifts: { c2: [4, 0] } });
+    try {
+      const req = { ring: stored, items: [item], capture: 'c2' };
+      const fa = (await a.client.run(req)).results[0];
+      const fb = (await b.client.run(req)).results[0];
+      expect(fb?.fillM3).toBeCloseTo(fa?.fillM3 ?? 0, 9);
+      expect(fb?.fingerprint).not.toBe(fa?.fingerprint);
+    } finally {
+      a.close();
+      b.close();
+    }
+  });
+});
 
 describe('the survey engine worker', () => {
   it('runs items over the prepared tiles through aio:// and returns heat grids', async () => {

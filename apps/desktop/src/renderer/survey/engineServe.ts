@@ -14,6 +14,7 @@ import {
   normalRing,
   projectResolver,
   resolveCurrentPrevious,
+  ringShifts,
   TileCache,
   toleranceShare,
   type GridOut,
@@ -62,12 +63,18 @@ export class EngineSession {
         captures: this.ctx.captures,
         ...(capture !== undefined ? { capture } : {}),
         designs: this.ctx.designs,
+        ...(this.ctx.shifts ? { shifts: this.ctx.shifts } : {}),
         fetchBytes: (path) => this.fetch(joinUrl(this.ctx.base, path)),
         cache: this.cache,
       });
       this.resolvers.set(key, r);
     }
     return r;
+  }
+
+  /** The ring of a survey-scoped measurement is stored unshifted: see `ringShifts`. */
+  private ringShifts(capture: string | undefined) {
+    return ringShifts(this.ctx.surfaces, this.ctx.shifts, capture);
   }
 
   async run(req: RunRequest, signal?: AbortSignal): Promise<RunReply> {
@@ -84,7 +91,12 @@ export class EngineSession {
         req.ring,
         item,
         resolve,
-        { site: this.ctx.site, ...(signal ? { signal } : {}), shared },
+        {
+          site: this.ctx.site,
+          ...(signal ? { signal } : {}),
+          shared,
+          ...this.ringShifts(req.capture),
+        },
         out,
       );
       results.push(r);
@@ -114,7 +126,14 @@ export class EngineSession {
     const out: string[] = [];
     for (const item of req.items)
       out.push(
-        await fingerprint(ring, item, await side(item.from), await side(item.to), this.ctx.site),
+        await fingerprint(
+          ring,
+          item,
+          await side(item.from),
+          await side(item.to),
+          this.ctx.site,
+          this.ringShifts(req.capture).ringCurrent,
+        ),
       );
     return out;
   }

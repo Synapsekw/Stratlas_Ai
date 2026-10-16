@@ -364,6 +364,8 @@ export const HeightTiles = z.looseObject({
   /** Tiles that exist at level 0, as `col_row` (absent tiles are all nodata). */
   tiles: z.array(z.string().regex(/^\d+_\d+$/)).max(1_000_000),
   sourceSha256: Sha256Hex.optional(),
+  /** The date's line-up the surface was prepared with (absent: none). Its cells sit that far over. */
+  dateShiftM: z.object({ eastM: z.number(), northM: z.number() }).strict().optional(),
   fingerprint: z.string().min(1).max(200),
   preparedAt: IsoTime,
 });

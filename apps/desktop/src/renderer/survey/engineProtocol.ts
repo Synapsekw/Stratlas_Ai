@@ -21,6 +21,8 @@ export interface EngineContext {
   captures: string[];
   designs: DesignEntry[];
   site: SiteContext;
+  /** The line-up each survey date has now, `[eastM, northM]` (dates without one are absent). */
+  shifts?: Record<string, [number, number]>;
 }
 
 /** The difference of one item on a coarse grid for heat maps (row 0 south). */

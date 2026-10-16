@@ -501,10 +501,17 @@ class SurveyPrepare:
             files = source_files(ctx.project, manifest, src)
             hashes = [_sha256(f) if f.is_file() else "" for f in files]
             key: dict[str, Any] = {"v": PREPARE_VERSION, "source": src, "cellM": cell, "files": hashes}
+            shift = (0.0, 0.0)
             if src["kind"] in ("dsm", "dtm", "cloud"):
                 shift = date_shift(manifest, src["layer"])
                 if shift != (0.0, 0.0):  # a date without a line-up keeps the fingerprint it always had
                     key["dateShiftM"] = list(shift)
+            elif src["kind"] == "derived":  # made from a prepared surface: the shift it was prepared with
+                try:
+                    prior = read_tiles_json(ctx.project / SURFACES_DIR / src["of"]).get("dateShiftM") or {}
+                    shift = (float(prior.get("eastM", 0.0)), float(prior.get("northM", 0.0)))
+                except (JobError, TypeError, ValueError):
+                    pass
             if src["kind"] == "cloud":
                 from ..change.sources import height_offset_m
 
@@ -547,6 +554,7 @@ class SurveyPrepare:
                 "source": src,
                 **({"capture": spec["capture"]} if spec.get("capture") else {}),
                 "crs": _crs_of(manifest),
+                **({"dateShiftM": {"eastM": shift[0], "northM": shift[1]}} if shift != (0.0, 0.0) else {}),
                 "cellM": g.cell,
                 "tileSize": TILE,
                 "originE": g.oe,

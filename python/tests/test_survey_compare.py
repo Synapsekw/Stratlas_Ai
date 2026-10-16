@@ -510,3 +510,30 @@ def test_a_survey_ring_is_moved_with_its_lined_up_date(tmp_path):
     assert got["fillM3"] == pytest.approx(want["fillM3"], rel=1e-3)
     assert got["cutM3"] == pytest.approx(want["cutM3"], abs=0.5)
     assert got["fingerprint"] != site["fingerprint"]
+
+
+def test_a_survey_ring_uses_the_shift_its_surface_was_prepared_with(tmp_path):
+    plain = tmp_path / "plain"
+    prepared(plain)
+    want = pile_result(plain, ring=SNUG)
+    moved = tmp_path / "moved"
+    surface_project(moved, pile=1000.0, pit=300.0)
+    line_up(moved, 2.0, -1.0)
+    prep = {
+        "surfaces": [
+            {"id": "dsm-c1", "name": "DSM 1", "source": {"kind": "dsm", "layer": "surf-a"}, "capture": "c1"},
+            {"id": "dsm-c2", "name": "DSM 2", "source": {"kind": "dsm", "layer": "surf-b"}, "capture": "c2"},
+        ]
+    }
+    run_job(all_pipelines()["survey.prepare"], moved, prep, job_id="prep")
+    meta = json.loads((moved / "survey/surfaces/dsm-c2/tiles.json").read_text("utf-8"))
+    assert meta["dateShiftM"] == {"eastM": 2.0, "northM": -1.0}
+    save_measurements(moved, measurement("pile", {"kind": "survey", "capture": "c2"}))
+    first = pile_result(moved, ring=SNUG)
+    # the date is lined up again, the surfaces are not prepared again: the volume is still right
+    # (the ring takes the prepared shift) and the result reads stale (the fingerprint has the new one)
+    line_up(moved, 3.5, 0.5)
+    second = pile_result(moved, "j2", ring=SNUG)
+    assert second["fillM3"] == pytest.approx(want["fillM3"], rel=1e-3)
+    assert first["fillM3"] == pytest.approx(want["fillM3"], rel=1e-3)
+    assert second["fingerprint"] != first["fingerprint"]

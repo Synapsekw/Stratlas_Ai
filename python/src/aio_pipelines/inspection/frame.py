@@ -138,10 +138,10 @@ def load_meshes(
             sc = trimesh.load(path, force="scene")
         except Exception as e:  # a broken file should name itself
             raise JobError(f"Could not read the model {path.name}: {e}") from e
-        moved = (
-            shift_transform(layer.get("transform"), date_shift(manifest, layer["id"])) if manifest else None
-        )
-        L = layer_matrix(moved if manifest else layer.get("transform"))
+        transform = layer.get("transform")
+        if manifest:
+            transform = shift_transform(transform, date_shift(manifest, layer["id"]))
+        L = layer_matrix(transform)
         for node in sc.graph.nodes_geometry:
             T, gname = sc.graph[node]
             g = sc.geometry[gname]

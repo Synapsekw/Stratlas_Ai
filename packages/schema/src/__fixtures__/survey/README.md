@@ -35,6 +35,7 @@ design refs (`{ kind: 'design', design, layer }`) name `<design>/<layer>`, and `
 - `item`: a `ComparisonItem` (`@aio/schema` `survey.ts`);
 - `site`: what the fingerprint records of the site (`verticalDatum`, `calibration?`);
 - `captures` (optional): `{ current, previous }`, each `{ surface, capture }`;
+- `lineUp` (optional): a lined-up date, `{ current?: { <surface id>: [east, north] }, ringShift?, ringCurrent? }`: the surfaces' shifts now, the shift added to the stored ring before sampling (the prepared one) and the ring date's shift now; only the "now" shifts join the fingerprint;
 - `expected`: the Python core's `ComparisonResult` without `engine` and `computedAt`.
 
 ## `tiles/cone/`
