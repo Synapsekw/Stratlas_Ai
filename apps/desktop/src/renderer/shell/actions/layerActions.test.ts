@@ -4,6 +4,8 @@ import { actionsFor, makeActionCtx, NO_HOST } from '@aio/ui';
 import { workspace } from '@aio/workspace';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { builder } from '../../builder/state';
+import { toasts } from '../../exports/exports';
+import { bridge } from '../../shell';
 import { askRemove } from '../removal';
 import { renameRequest } from '../renameRequest';
 import { commitLayerRename, registerLayerActions } from './layerActions';
@@ -93,7 +95,7 @@ describe('dataset actions', () => {
   });
 
   it('a basemap among the marked rows drops the actions it cannot take part in', () => {
-    expect(items(['v', 'bm']).map((i) => i.id)).toEqual(['layer.hide', 'layer.delete']);
+    expect(items(['v', 'bm']).map((i) => i.id)).toEqual(['layer.hide']);
   });
 
   it('a package greys Export and Reveal, a read-only project greys Delete and File under', () => {
@@ -158,5 +160,46 @@ describe('dataset actions', () => {
     save.mockClear();
     await commitLayerRename('v', 'Site outline');
     expect(save.mock.calls).toEqual([[['v'], { name: 'Site outline' }]]);
+  });
+
+  describe('Export', () => {
+    let sent: [string, unknown][] = [];
+    let spy: { mockRestore(): void } | null = null;
+    afterEach(() => {
+      spy?.mockRestore();
+    });
+    const reply = (picked: string | null, exported?: unknown) => {
+      sent = [];
+      spy = vi.spyOn(bridge, 'call').mockImplementation(((channel: string, req: unknown) => {
+        sent.push([channel, req]);
+        return Promise.resolve(
+          channel === 'dialog:openFolder'
+            ? { ok: true, value: { path: picked } }
+            : { ok: true, value: exported },
+        );
+      }) as unknown as typeof bridge.call);
+    };
+    const run = async () => {
+      items(['v'])
+        .find((i) => i.id === 'layer.export')
+        ?.run();
+      await new Promise((r) => setTimeout(r, 20));
+    };
+
+    it('exports into the picked folder and reports the layers it skipped', async () => {
+      reply('C:/out', { ok: true, written: 1, skipped: ['Old'], cancelled: false });
+      await run();
+      const exp = sent.find((c) => c[0] === 'layer:export');
+      expect(exp?.[1]).toMatchObject({ projectId: 'p', layerIds: ['v'], dir: 'C:/out' });
+      const last = toasts.getState().toasts.at(-1);
+      expect(last?.state).toBe('done');
+      expect(last?.message).toContain('Old');
+    });
+
+    it('does nothing when the folder picker is cancelled', async () => {
+      reply(null);
+      await run();
+      expect(sent.map((c) => c[0])).toEqual(['dialog:openFolder']);
+    });
   });
 });

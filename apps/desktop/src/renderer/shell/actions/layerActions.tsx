@@ -14,7 +14,7 @@ import {
 import { captureIndex, workspace } from '@aio/workspace';
 import { Fragment } from 'react';
 import { builder } from '../../builder/state';
-import { toasts } from '../../exports/exports';
+import { listenExportProgress, toasts } from '../../exports/exports';
 import { graphics } from '../../graphics';
 import { bridge, shell } from '../../shell';
 import { compareTargets, compareWith, COMPARE_WITH_ACTIONS } from '../../workspace/compareWith';
@@ -31,8 +31,7 @@ import { renameRequest } from '../renameRequest';
 
 type LayerTarget = Extract<MenuTarget, { kind: 'layers' | 'group' }>;
 
-const withPlain = (l: Layer) => l.kind !== 'basemap' && l.kind !== 'legacy';
-const deletable = (l: Layer) => l.kind !== 'basemap' && l.kind !== 'legacy';
+const editable = (l: Layer) => l.kind !== 'basemap' && l.kind !== 'legacy';
 
 const idsOf = (target: LayerTarget): string[] => target.layerIds;
 
@@ -70,16 +69,6 @@ export async function zoomToLayers(
   workspace.getState().flyTo({ kind: 'box', ...padBox(box) });
 }
 
-let listening = false;
-/** Export progress reaches the toasts through the same channel the other exports use. */
-function listenProgress(): void {
-  if (listening || typeof window.aio === 'undefined') return;
-  listening = true;
-  window.aio.on('export:progress', (p) => {
-    toasts.getState().progress(p.jobId, p.phase, p.done, p.total);
-  });
-}
-
 /** Ask for a folder, then copy the datasets into it with a progress toast. */
 export async function exportLayersFlow(layerIds: readonly string[]): Promise<void> {
   const p = workspace.getState().project;
@@ -87,7 +76,7 @@ export async function exportLayersFlow(layerIds: readonly string[]): Promise<voi
   const pick = await bridge.call('dialog:openFolder', { title: t('layerExport.pick') });
   if (!pick.ok || !pick.value.path) return;
   const dir = pick.value.path;
-  listenProgress();
+  listenExportProgress();
   const jobId = `layers-${String(Date.now())}`;
   const ts = toasts.getState();
   ts.start(jobId, t('layerExport.title'));
@@ -189,7 +178,7 @@ export function registerLayerActions(): () => void {
       section: 'view',
       targets: ['layers', 'group'],
       multi: true,
-      appliesTo: (target, ctx) => everyLayer(target, ctx, withPlain),
+      appliesTo: (target, ctx) => everyLayer(target, ctx, editable),
       run: (target, ctx) =>
         zoomToLayers(idsOf(target), (text) => {
           ctx.host.note(text);
@@ -215,7 +204,7 @@ export function registerLayerActions(): () => void {
       targets: ['layers', 'group'],
       multi: true,
       present: 'inline',
-      appliesTo: (target, ctx) => ctx.datesOn && everyLayer(target, ctx, withPlain),
+      appliesTo: (target, ctx) => ctx.datesOn && everyLayer(target, ctx, editable),
       disabled: (_t, ctx) => readOnly(ctx),
       submenu: (_t, ctx): SubItem[] => {
         const from = ctx.host.from;
@@ -252,7 +241,7 @@ export function registerLayerActions(): () => void {
       multi: true,
       testId: 'move-compare',
       appliesTo: (target, ctx) =>
-        everyLayer(target, ctx, withPlain) && captureIndex(ctx.manifest).captures.length > 1,
+        everyLayer(target, ctx, editable) && captureIndex(ctx.manifest).captures.length > 1,
       disabled: (target, ctx) =>
         commonDate(target, ctx) === undefined ? t('actions.reason.mixedDates') : false,
       submenuTitle: (target, ctx) => {
@@ -301,7 +290,7 @@ export function registerLayerActions(): () => void {
       section: 'file',
       targets: ['layers', 'group'],
       multi: true,
-      appliesTo: (target, ctx) => everyLayer(target, ctx, withPlain),
+      appliesTo: (target, ctx) => everyLayer(target, ctx, editable),
       disabled: (_t, ctx) => inPackage(ctx),
       run: (target) => exportLayersFlow(idsOf(target)),
     }),
@@ -310,7 +299,7 @@ export function registerLayerActions(): () => void {
       label: 'actions.layer.reveal',
       section: 'file',
       targets: ['layers'],
-      appliesTo: (target, ctx) => everyLayer(target, ctx, withPlain),
+      appliesTo: (target, ctx) => everyLayer(target, ctx, editable),
       disabled: (_t, ctx) => inPackage(ctx),
       run: async (target, ctx) => {
         const [id] = target.layerIds;
@@ -337,11 +326,10 @@ export function registerLayerActions(): () => void {
       multi: true,
       testId: 'menu-delete',
       shortcut: 'tree.delete',
-      appliesTo: (target, ctx) => targetLayers(target, ctx).some(deletable),
+      appliesTo: (target, ctx) => everyLayer(target, ctx, editable),
       disabled: (_t, ctx) => readOnly(ctx),
-      run: (target, ctx) => {
-        const ok = targetLayers(target, ctx).filter(deletable);
-        if (ok.length > 0) askRemove(ok.map((layer) => ({ layer: layer.id })));
+      run: (target) => {
+        askRemove(idsOf(target).map((layer) => ({ layer })));
       },
     }),
   ]);

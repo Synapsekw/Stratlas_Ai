@@ -17,7 +17,8 @@ import {
 export const toasts = createToastStore();
 
 let listening = false;
-function listen(): void {
+/** Subscribe once to export progress (the dataset export uses it too). */
+export function listenExportProgress(): void {
   if (listening || typeof window.aio === 'undefined') return;
   listening = true;
   window.aio.on('export:progress', (p) => {
@@ -31,7 +32,7 @@ const jobId = () => globalThis.crypto.randomUUID().slice(0, 32);
 export async function exportIssues(format: ExportFormat): Promise<void> {
   const project = workspace.getState().project;
   if (!project) return;
-  listen();
+  listenExportProgress();
   // The export reads issues.json: write any pending edit first.
   await issueSaver.flush();
   const id = jobId();
