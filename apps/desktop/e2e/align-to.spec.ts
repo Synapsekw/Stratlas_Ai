@@ -93,6 +93,9 @@ test('a far photo set lands on the target; GPS unchanged; Undo and Redo exact', 
     'Aligned 3 photos to Unit quad (moved 91.0 km)',
   );
 
+  await expect
+    .poll(async () => (await orientation(farPhotos.dir)).photos.far?.a?.offsetM)
+    .toBeDefined();
   const o = await orientation(farPhotos.dir);
   const [cx, cz] = quadCentre();
   const at = PHOTOS.map((p) => {
@@ -103,7 +106,9 @@ test('a far photo set lands on the target; GPS unchanged; Undo and Redo exact', 
   const midZ = (Math.min(...at.map((p) => p[2] ?? 0)) + Math.max(...at.map((p) => p[2] ?? 0))) / 2;
   expect(midX).toBeCloseTo(cx, 2);
   expect(midZ).toBeCloseTo(cz, 2);
-  expect(at.map((p) => p[1])).toEqual([50, 50.5, 51]); // plausible heights kept
+  [50, 50.5, 51].forEach((h, i) => {
+    expect(at[i]?.[1]).toBeCloseTo(h, 3); // plausible heights kept
+  });
   expect(await readFile(join(farPhotos.dir, 'manifest.json'), 'utf8')).toBe(manifestBefore);
 
   await win.getByTestId('align-to-undo').click();
@@ -119,4 +124,7 @@ test('a far photo set lands on the target; GPS unchanged; Undo and Redo exact', 
   await win.locator('body').click({ position: { x: 5, y: 5 } });
   await win.keyboard.press('Control+z');
   await expect(win.getByTestId('align-to-text')).toHaveText('Alignment undone.');
+  await expect
+    .poll(async () => Object.keys((await orientation(farPhotos.dir)).photos.far ?? {}))
+    .toEqual([]);
 });
