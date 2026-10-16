@@ -1,3 +1,4 @@
+import type { CSSProperties } from 'react';
 import { Icon, useT } from '@aio/ui';
 import { useStore } from 'zustand';
 import { AlignNotice } from '../builder/AlignNotice';
@@ -106,7 +107,7 @@ export function Toasts() {
                   )}
                 </div>
                 <div className={`toast-bar${pct === null ? ' busy' : ''}`} aria-hidden="true">
-                  <i style={{ width: `${String(pct ?? 30)}%` }} />
+                  <i style={{ '--p': (pct ?? 100) / 100 } as CSSProperties} />
                 </div>
               </>
             ) : (

@@ -7,7 +7,7 @@
  * Other screens get here with `openProcessingEngine()` (renderer/odm.ts).
  */
 import { Icon, t, type IconName } from '@aio/ui';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, type CSSProperties } from 'react';
 import { odm, useOdm } from '../../odm';
 import { resumeAfterTools, useProcessingTools } from '../../processingTools';
 import { shell, useShell } from '../../shell';
@@ -297,7 +297,7 @@ export function ProcessingEngine() {
             aria-valuemax={100}
             {...(view.progress.pct === null ? {} : { 'aria-valuenow': view.progress.pct })}
           >
-            <i style={{ width: `${String(view.progress.pct ?? 30)}%` }} />
+            <i style={{ '--p': (view.progress.pct ?? 100) / 100 } as CSSProperties} />
           </div>
         </div>
       )}

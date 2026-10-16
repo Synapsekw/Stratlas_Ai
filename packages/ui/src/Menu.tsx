@@ -82,7 +82,7 @@ export function Menu({
                   <Icon name={it.icon} size={14} />
                 ) : null}
               </span>
-              <span className="menu-label">{it.label}</span>
+              <span className="row-label">{it.label}</span>
               {it.shortcut && <span className="menu-kbd">{shortcutHint(it.shortcut)}</span>}
             </button>
           );

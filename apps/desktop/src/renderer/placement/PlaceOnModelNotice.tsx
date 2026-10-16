@@ -181,7 +181,7 @@ export function PlaceOnModelNotice({ store }: { store: StoreApi<PlacementState> 
             {t('place.placing', { layer: busyLayer })}
           </div>
           <div className="toast-bar busy" aria-hidden="true">
-            <i style={{ width: '30%' }} />
+            <i />
           </div>
         </>
       )}

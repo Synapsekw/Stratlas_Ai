@@ -65,13 +65,6 @@
   display: grid;
   align-content: start;
 }
-.menu-list > .row {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  text-align: start;
-  cursor: pointer;
-}
 .menu-list > .row[aria-disabled='true'] {
   opacity: 0.45;
   cursor: default;
@@ -84,13 +77,6 @@
   display: grid;
   place-items: center;
   width: 18px;
-}
-.menu-label {
-  flex: 1 1 auto;
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
 .menu-kbd {
   flex: none;
@@ -106,7 +92,8 @@
 /* ---------- context menu (moved from builder.css) ---------- */
 .dmenu {
   position: fixed;
-  z-index: var(--z-pop);
+  /* the old layer (80): builder.css still has raw layers 60-95 until Merge B tokenises them */
+  z-index: var(--z-modal);
   padding: 4px;
   display: grid;
   align-content: start;
@@ -267,14 +254,12 @@
   font-size: var(--t-12);
   color: var(--fg-1);
 }
-.toast-ic {
+/* the leading status icon; the error one is the cue the left stripe used to give */
+.toast-h > .i:first-child {
   flex: none;
-  display: grid;
-  place-items: center;
-  width: 16px;
   color: var(--acc);
 }
-.toast.error .toast-ic {
+.toast.error .toast-h > .i:first-child {
   color: var(--s5);
 }
 .toast-h {
@@ -298,10 +283,18 @@
 .toast-bar i {
   display: block;
   height: 100%;
+  width: 100%;
   background: var(--acc);
-  transition: width 0.2s ease-out;
+  transform: scaleX(var(--p, 1));
+  transform-origin: left center;
+  transition: transform 0.2s ease-out;
+}
+[dir='rtl'] .toast-bar i {
+  transform-origin: right center;
 }
 .toast-bar.busy i {
+  width: 30%;
+  transform: none;
   animation: toast-busy 1.1s ease-in-out infinite;
 }
 @keyframes toast-busy {
@@ -310,5 +303,15 @@
   }
   to {
     transform: translateX(340%);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .toast-bar i {
+    transition: none;
+  }
+  .toast-bar.busy i {
+    animation: none;
+    width: 100%;
+    opacity: 0.5;
   }
 }

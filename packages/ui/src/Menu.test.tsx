@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { act, useRef } from 'react';
+import { act, useRef, useState } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { Menu, type MenuEntry } from './Menu';
@@ -92,11 +92,36 @@ describe('Menu', () => {
     act(() => r?.click());
     expect(onSelect).not.toHaveBeenCalled();
   });
-  it('Escape closes and focus returns to the opener', () => {
-    const onClose = vi.fn();
-    show(abc, onClose);
+  it('Escape closes and focus returns to the opener', async () => {
+    function H() {
+      const opener = useRef<HTMLButtonElement>(null);
+      const [open, setOpen] = useState(true);
+      return (
+        <>
+          <button ref={opener} type="button" data-testid="opener">
+            open
+          </button>
+          <Menu
+            open={open}
+            onClose={() => {
+              setOpen(false);
+            }}
+            opener={opener}
+            label="Actions"
+            items={abc}
+          />
+        </>
+      );
+    }
+    root = createRoot(host);
+    act(() => root?.render(<H />));
     rows()[0]?.focus();
+    expect(document.activeElement).toBe(rows()[0]);
     key(document.activeElement, 'Escape');
-    expect(onClose).toHaveBeenCalledTimes(1);
+    await act(async () => {
+      await Promise.resolve();
+    });
+    expect(document.body.querySelector('[role="menu"]')).toBeNull();
+    expect(document.activeElement).toBe(host.querySelector('[data-testid="opener"]'));
   });
 });
