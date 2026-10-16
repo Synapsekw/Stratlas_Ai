@@ -1,4 +1,4 @@
-import { emptyOrientation, type ProjectManifest } from '@aio/schema';
+import { emptyOrientation, type Issue, type ProjectManifest } from '@aio/schema';
 import { createWorkspace } from '@aio/workspace';
 import { describe, expect, it } from 'vitest';
 import { placeIndex } from './places';
@@ -42,5 +42,61 @@ describe('placeIndex with moved photos', () => {
     const places = placeIndex(ctx);
     expect(places.find((p) => p.id === 'layer:ph')?.p).toEqual([0, 50, 0]);
     expect(places.find((p) => p.id === 'photo:a')?.eye?.pos).toEqual([0, 50, 0]);
+  });
+});
+
+describe('placeIndex with a lined-up date', () => {
+  it('puts photos, their eyes and the issue eye where the date is drawn', () => {
+    const ws = createWorkspace();
+    const manifest = {
+      schema: 'aio.project/1',
+      id: 'p',
+      name: 'P',
+      crs: { epsg: 32639 },
+      origin: [0, 0, 0],
+      captures: [
+        {
+          id: 'd1',
+          label: 'd1',
+          date: '2025-01-01',
+          lineUp: { eastM: 2, northM: 1, with: 'd0', at: '2026-01-01T00:00:00Z' },
+        },
+      ],
+      layers: [
+        {
+          kind: 'photos',
+          id: 'ph',
+          name: 'Flight',
+          visible: true,
+          capture: 'd1',
+          items: [{ id: 'a', src: { path: 'a.jpg' }, pos: [10, 50, 20] }],
+        },
+      ],
+      severityModels: [],
+      classCatalogues: [],
+    } as unknown as ProjectManifest;
+    const issues = [
+      {
+        id: 'i1',
+        code: 'D1',
+        title: 't',
+        severity: 1,
+        status: 'open',
+        sightings: [{ on: 'image', layer: 'ph', photo: 'a', geom: { type: 'point', x: 1, y: 1 } }],
+      } as unknown as Issue,
+    ] as Issue[];
+    ws.getState().openProject({ id: 'p', root: 'C:/p', manifest }, issues);
+    const ctx: RendererToolContext = {
+      workspace: ws,
+      window: 'scene3d',
+      scene: () => null,
+      fetchJson: () => Promise.resolve(null),
+      captureFrame: () => Promise.resolve(null),
+      now: () => new Date(0),
+    };
+    const places = placeIndex(ctx);
+    expect(places.find((p) => p.id === 'photo:a')?.eye?.pos).toEqual([12, 50, 19]);
+    expect(places.find((p) => p.id === 'layer:ph')?.p).toEqual([12, 50, 19]);
+    expect(places.find((p) => p.id === 'issue:D1')?.eye?.pos).toEqual([12, 50, 19]);
   });
 });

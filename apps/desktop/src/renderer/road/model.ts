@@ -1,4 +1,12 @@
-import type { Issue, PciRating, ProjectManifest, RoadModel, Vec3 } from '@aio/schema';
+import {
+  shiftLocal,
+  type DateShift,
+  type Issue,
+  type PciRating,
+  type ProjectManifest,
+  type RoadModel,
+  type Vec3,
+} from '@aio/schema';
 
 /**
  * Pure road-survey logic for the road workspace: chainage along the centreline, PCI ratings,
@@ -137,7 +145,8 @@ export interface DefectRow {
   haystack: string;
 }
 
-function mapCentroid(issue: Issue): [number, number] | null {
+/** The centroid of the issue's first map sighting, with the layer it was drawn on. */
+function mapCentroid(issue: Issue): { at: [number, number]; layer: string } | null {
   for (const s of issue.sightings) {
     if (s.on !== 'map') continue;
     const pts: [number, number][] = [];
@@ -154,7 +163,10 @@ function mapCentroid(issue: Issue): [number, number] | null {
     if (pts.length > 2 && closed) pts.pop();
     if (!pts.length) continue;
     const n = pts.length;
-    return [pts.reduce((a, p) => a + p[0], 0) / n, pts.reduce((a, p) => a + p[1], 0) / n];
+    return {
+      at: [pts.reduce((a, p) => a + p[0], 0) / n, pts.reduce((a, p) => a + p[1], 0) / n],
+      layer: s.layer,
+    };
   }
   return null;
 }
@@ -165,6 +177,8 @@ export function defectRows(
   manifest: Pick<ProjectManifest, 'severityModels' | 'classCatalogues'>,
   road: RoadModel,
   toLocal: (lon: number, lat: number) => [number, number],
+  /** The date shift of a layer: a defect on a lined-up date sits where that date is drawn. */
+  shiftOf?: (layerId: string) => DateShift | null,
 ): DefectRow[] {
   const classes = new Map<string, { label: string; color: string }>();
   for (const c of manifest.classCatalogues) for (const k of c.classes) classes.set(k.id, k);
@@ -173,7 +187,9 @@ export function defectRows(
   for (const issue of issues) {
     const c = mapCentroid(issue);
     if (!c) continue;
-    const [x, z] = toLocal(c[0], c[1]);
+    const [lx, lz] = toLocal(c.at[0], c.at[1]);
+    const moved = shiftOf ? shiftLocal([lx, 0, lz], shiftOf(c.layer)) : null;
+    const [x, z] = moved ? [moved[0], moved[2]] : [lx, lz];
     const ch = chainageAt(road, x, z);
     const sev = issue.severity === 'uncertain' ? 0 : issue.severity;
     const level = models.get(issue.severityModelId)?.levels.find((l) => l.value === sev);

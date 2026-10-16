@@ -1,7 +1,15 @@
-import { useAnnotateReadOnly } from '@aio/annotate';
+import { shiftOfManifest, useAnnotateReadOnly, type ShiftOf } from '@aio/annotate';
 import type { ComponentDimension, ComponentInfo } from '@aio/engine';
 import { clipKeys, correctedPhoto, looksEstimated, photoCorrection } from '@aio/geo';
-import type { Issue, Layer, OrientationFile, PoseSample, ProjectManifest, Vec3 } from '@aio/schema';
+import {
+  shiftLocal,
+  type Issue,
+  type Layer,
+  type OrientationFile,
+  type PoseSample,
+  type ProjectManifest,
+  type Vec3,
+} from '@aio/schema';
 import {
   crsLabel,
   formatClock,
@@ -19,7 +27,7 @@ import {
   type MessageKey,
 } from '@aio/ui';
 import { interpolatePose } from '@aio/video';
-import { useWorkspace, workspace, type Selection } from '@aio/workspace';
+import { dateShiftOf, useWorkspace, workspace, type Selection } from '@aio/workspace';
 import { useEffect, type KeyboardEvent as ReactKeyboardEvent, type ReactNode } from 'react';
 import { alignCamera } from '../builder/alignSession';
 import { builder } from '../builder/state';
@@ -109,13 +117,16 @@ interface CardModel {
   chips?: ReactNode;
 }
 
-function firstPoint(issue: Issue): Vec3 | undefined {
+/** The first pin of the issue, where its date's line-up draws it. */
+export function firstPoint(issue: Issue, shiftOf?: ShiftOf): Vec3 | undefined {
+  const at = (s: Issue['sightings'][number], p: Vec3 | undefined) =>
+    p && shiftOf ? shiftLocal(p, shiftOf(s.layer)) : p;
   for (const s of issue.sightings) {
-    if (s.on === 'mesh' && s.geom.type === 'spoint') return s.geom.p;
+    if (s.on === 'mesh' && s.geom.type === 'spoint') return at(s, s.geom.p);
     if (s.on === 'mesh' && (s.geom.type === 'spolyline' || s.geom.type === 'spolygon'))
-      return s.geom.points[0];
-    if (s.on === 'mesh' && s.geom.type === 'spatch') return s.geom.center;
-    if (s.on === 'pointcloud' && s.geom.type === 'point3') return s.geom.p;
+      return at(s, s.geom.points[0]);
+    if (s.on === 'mesh' && s.geom.type === 'spatch') return at(s, s.geom.center);
+    if (s.on === 'pointcloud' && s.geom.type === 'point3') return at(s, s.geom.p);
   }
   return undefined;
 }
@@ -157,7 +168,7 @@ function describe(
         icon: 'issues',
         title: `${issue.code} · ${issue.title}`,
         subtitle: `${cls?.label ?? issue.classId} · ${issue.status}`,
-        position: firstPoint(issue),
+        position: firstPoint(issue, shiftOfManifest(m)),
         chips: (
           <SevChip color={severityColor(m.severityModels, issue.severityModelId, issue.severity)}>
             {String(issue.severity)}
@@ -185,7 +196,7 @@ function describe(
       icon: 'video',
       title: v.name,
       subtitle: `${v.lens.model === 'ftheta' ? 'f-theta' : 'pinhole'} ${String(v.lens.hfovDeg)}° lens`,
-      position: pose?.pos,
+      position: pose ? shiftLocal(pose.pos, dateShiftOf(m, v.id)) : undefined,
       rows: [
         ['Starts', `${formatDate(new Date(start).toISOString())} · ${formatClock(start)} UTC`],
         ['Length', dur !== undefined ? formatDuration(dur) : 'Reading video'],
@@ -204,7 +215,7 @@ function describe(
       icon: 'photo',
       title: photo?.id ?? sel.id,
       subtitle: layer.name,
-      position: photo?.pos,
+      position: photo?.pos ? shiftLocal(photo.pos, dateShiftOf(m, layer.id)) : undefined,
       rows: [
         [
           'Taken',
@@ -223,7 +234,7 @@ function describe(
       icon: 'pano',
       title: pano?.id ?? sel.id,
       subtitle: layer.name,
-      position: pano?.pos,
+      position: pano ? shiftLocal(pano.pos, dateShiftOf(m, layer.id)) : undefined,
       rows: [['Heading', pano ? `${String(pano.headingDeg)}°` : 'Unknown']],
     };
   }

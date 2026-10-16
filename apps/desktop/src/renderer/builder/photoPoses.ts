@@ -6,12 +6,12 @@ import {
   type LayerHandle,
 } from '@aio/engine';
 import { correctedPhoto } from '@aio/geo';
-import type { OrientationFile } from '@aio/schema';
+import { shiftLocal, type OrientationFile } from '@aio/schema';
 import { workspace as appWorkspace, type Workspace } from '@aio/workspace';
 import type { StoreApi } from 'zustand/vanilla';
 
 /*
- * Photos in 3D drawn with their hand corrections ("Align photo to map", orientation.json): the
+ * Photos in 3D drawn with their hand corrections ("Align photo to map", orientation.json) and their date's line-up: the
  * engine's own photos adapter, given each set's photos with corrected poses and built again when
  * that set's corrections change. The engine and the photo records stay as they are.
  */
@@ -32,7 +32,14 @@ export function createCorrectedPhotosAdapter(
       const build = async () => {
         const mine = ++built;
         const fixes = fixesOf(store.getState().orientation, layer.id);
-        const items = fixes ? layer.items.map((p) => correctedPhoto(p, fixes[p.id])) : layer.items;
+        const corrected = fixes
+          ? layer.items.map((p) => correctedPhoto(p, fixes[p.id]))
+          : layer.items;
+        // the date's line-up comes after the hand correction (readers add, spec call 10)
+        const shift = ctx.shiftOf?.(layer.id) ?? null;
+        const items = shift
+          ? corrected.map((p) => (p.pos ? { ...p, pos: shiftLocal(p.pos, shift) } : p))
+          : corrected;
         const h = await inner.create({ ...layer, items }, ctx);
         if (disposed || mine !== built) {
           h.dispose();

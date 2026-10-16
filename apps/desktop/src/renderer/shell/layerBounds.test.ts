@@ -12,6 +12,7 @@ import {
 } from './layerBounds';
 
 const manifest = {
+  captures: [],
   layers: [
     { kind: 'mesh', id: 'm', name: 'M', visible: true, src: { path: 'm.glb' }, transform: [] },
     {
@@ -136,5 +137,27 @@ describe('layerBounds', () => {
     const rayDown = vi.fn(() => 4);
     await groundAt(1, 2, deps({ rayDown }));
     expect(rayDown).toHaveBeenCalledWith(1, 2, 'dsm');
+  });
+});
+
+describe('layerBounds with a line-up', () => {
+  const lined = {
+    captures: [
+      {
+        id: 'd1',
+        label: 'd1',
+        date: '2025-01-01',
+        lineUp: { eastM: 3, northM: 1, with: 'd0', at: '2026-01-01T00:00:00Z' },
+      },
+    ],
+    layers: manifest.layers.map((l) => (l.kind === 'basemap' ? l : { ...l, capture: 'd1' })),
+  } as unknown as ProjectManifest;
+  const d = deps({ manifest: lined });
+  it('frames a lined-up raster at its corrected place', async () => {
+    expect(await layerBounds('img', d)).toEqual({ min: [3, 0, -1], max: [7, 0, 1] });
+  });
+  it('frames lined-up photos and panoramas at their corrected place', async () => {
+    expect(await layerBounds('ph', d)).toEqual({ min: [13, 1, 9], max: [15, 3, 13] });
+    expect(await layerBounds('pn', d)).toEqual({ min: [8, 0, 4], max: [8, 0, 4] });
   });
 });

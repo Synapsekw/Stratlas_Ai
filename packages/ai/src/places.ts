@@ -18,7 +18,15 @@ import {
   projectToLocal,
   toWgs84,
 } from '@aio/geo';
-import { shiftLocal, type Issue, type PhotoRef, type Quat, type Vec3 } from '@aio/schema';
+import {
+  shiftCorners,
+  shiftLocal,
+  type DateShift,
+  type Issue,
+  type PhotoRef,
+  type Quat,
+  type Vec3,
+} from '@aio/schema';
 import { assetUrl, dateShiftOf } from '@aio/workspace';
 import { Box3, Vector3, type Object3D } from 'three';
 import { clipStartUtcMs } from './context';
@@ -498,9 +506,14 @@ export function placeIndex(ctx: RendererToolContext, opts: IndexOptions = {}): P
 
   const scene = ctx.scene();
   const orientation = ctx.workspace.getState().orientation;
+  // a photo as drawn: its hand correction, then its date's line-up
   const drawn = (layerId: string, p: PhotoRef) =>
-    correctedPhoto(p, photoCorrection(orientation, layerId, p.id));
+    placedPhoto(
+      correctedPhoto(p, photoCorrection(orientation, layerId, p.id)),
+      dateShiftOf(m, layerId),
+    );
   for (const l of m.layers) {
+    const shift = dateShiftOf(m, l.id);
     const place: Place = {
       id: `layer:${l.id}`,
       kind: 'layer',
@@ -510,7 +523,7 @@ export function placeIndex(ctx: RendererToolContext, opts: IndexOptions = {}): P
     };
     let box: PlaceBox | undefined;
     if (l.kind === 'raster' && l.corners) {
-      const { tl, tr, bl } = l.corners;
+      const { tl, tr, bl } = shiftCorners(l.corners, shift);
       const br: Vec3 = [tr[0] + bl[0] - tl[0], tr[1] + bl[1] - tl[1], tr[2] + bl[2] - tl[2]];
       box = boxOfPoints([tl, tr, bl, br]);
     } else if (l.kind === 'photos') {
@@ -521,7 +534,7 @@ export function placeIndex(ctx: RendererToolContext, opts: IndexOptions = {}): P
         }),
       );
     } else if (l.kind === 'panoramas') {
-      box = boxOfPoints(l.items.map((i) => i.pos));
+      box = boxOfPoints(l.items.map((i) => shiftLocal(i.pos, shift)));
     } else if (opts.measureLayers && scene && (l.kind === 'mesh' || l.kind === 'pointcloud')) {
       const roots = scene.scene.children.filter((o) => o.userData.layerId === l.id);
       box = roots.length ? boxOf(roots) : undefined;
@@ -552,8 +565,8 @@ export function placeIndex(ctx: RendererToolContext, opts: IndexOptions = {}): P
           name: i.id,
           detail: l.name,
           layer: l.id,
-          p: i.pos,
-          eye: { pos: i.pos, headingDeg: i.headingDeg },
+          p: shiftLocal(i.pos, shift),
+          eye: { pos: shiftLocal(i.pos, shift), headingDeg: i.headingDeg },
         });
       }
     } else if (l.kind === 'video') {
@@ -595,13 +608,22 @@ export function placeIndex(ctx: RendererToolContext, opts: IndexOptions = {}): P
   return out;
 }
 
+/** A photo with its position moved by its date's line-up (the same photo for no shift). */
+function placedPhoto(p: PhotoRef, shift: DateShift | null): PhotoRef {
+  return shift && p.pos ? { ...p, pos: shiftLocal(p.pos, shift) } : p;
+}
+
 function photoEye(ctx: RendererToolContext, id: string | undefined): Eye | undefined {
   if (!id) return undefined;
   for (const l of project(ctx).manifest.layers) {
     if (l.kind !== 'photos') continue;
     const raw = l.items.find((x) => x.id === id);
+    const ws = ctx.workspace.getState();
     const i = raw
-      ? correctedPhoto(raw, photoCorrection(ctx.workspace.getState().orientation, l.id, raw.id))
+      ? placedPhoto(
+          correctedPhoto(raw, photoCorrection(ws.orientation, l.id, raw.id)),
+          ws.project ? dateShiftOf(ws.project.manifest, l.id) : null,
+        )
       : undefined;
     if (i?.pos) return { pos: i.pos, ...(i.q ? { q: i.q } : {}) };
   }
