@@ -12,6 +12,7 @@ import {
   MeasurementsFile,
   type MeasurementScope,
   type MeasurementTool,
+  type SitePoint,
   type SurveyMeasurement,
   type SurveySettings,
   type SurveyTemplate,
@@ -50,9 +51,11 @@ import {
   type SnapSource,
 } from '@aio/survey';
 import { createStore, useStore } from 'zustand';
+import { workspace } from '@aio/workspace';
 import { authorName } from '../author';
 import { bridge } from '../shell';
 import { designs, loadDesigns } from './designsStore';
+import { drawnPoints, storedPoints } from './measureDates';
 
 export type MeasureDialog =
   | { kind: 'units'; target: 'site' | 'measurement' }
@@ -130,6 +133,25 @@ export interface MeasureState {
 }
 
 const now = () => new Date().toISOString();
+const openManifest = () => workspace.getState().project?.manifest ?? null;
+
+/**
+ * Edited (drawn) points as they are saved: the date's shift subtracted. A vertex that was not
+ * moved keeps its stored value exactly, so adding and taking off the shift does not drift it.
+ */
+function savedEdit(
+  edited: readonly SitePoint[],
+  m: SurveyMeasurement,
+  manifest: ReturnType<typeof openManifest>,
+): SitePoint[] {
+  const was = new Map<string, SitePoint>();
+  const drawn = drawnPoints(m, manifest);
+  drawn.forEach((p, i) => {
+    const kept = m.points[i];
+    if (kept) was.set(p.join(','), kept);
+  });
+  return edited.map((p) => was.get(p.join(',')) ?? storedPoints([p], m.scope, manifest)[0] ?? p);
+}
 const text = (f: MeasurementsFile) => JSON.stringify(f);
 
 let counter = 0;
@@ -379,11 +401,17 @@ export function copyToSurvey(id: string, capture: string): void {
   const by = authorName();
   if (by) copy.createdBy = by;
   else delete copy.createdBy;
+  // it stays where the original is drawn, whatever shift either date carries
+  copy.points = storedPoints(drawnPoints(m, openManifest()), copy.scope, openManifest());
   addMeasurement(copy);
 }
 
 export function setScope(id: string, scope: MeasurementScope): void {
-  patchMeasurement(id, { scope });
+  const m = get().file.measurements.find((x) => x.id === id);
+  if (!m) return;
+  const manifest = openManifest();
+  // the shape stays where it is drawn: its points are saved in the new scope's frame
+  patchMeasurement(id, { scope, points: storedPoints(drawnPoints(m, manifest), scope, manifest) });
 }
 
 // ---------------------------------------------------------------- selection and panels
@@ -606,7 +634,13 @@ export function startEditing(): void {
   const s = get();
   const m = s.file.measurements.find((x) => x.id === s.focus);
   if (!m || s.readOnly) return;
-  set({ editing: initialEdit(m.points), tool: null, draw: null, measurementsVisible: true });
+  // vertices are edited where they are drawn: a survey's own shift added
+  set({
+    editing: initialEdit(drawnPoints(m, openManifest())),
+    tool: null,
+    draw: null,
+    measurementsVisible: true,
+  });
 }
 
 export function stopEditing(): void {
@@ -622,9 +656,10 @@ export function editEvent(e: EditEvent): void {
   const next = editReducer(s.editing, e, m.family);
   set({ editing: next });
   if (e.type === 'up' || e.type === 'delete' || e.type === 'set' || e.type === 'escape') {
-    if (JSON.stringify(next.points) !== JSON.stringify(m.points))
+    const manifest = openManifest();
+    if (JSON.stringify(next.points) !== JSON.stringify(drawnPoints(m, manifest)))
       patchMeasurement(m.id, {
-        points: next.points,
+        points: savedEdit(next.points, m, manifest),
         results: m.results.map((r) => ({ ...r, status: 'stale' as const })),
       });
   }

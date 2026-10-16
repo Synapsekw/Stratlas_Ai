@@ -50,9 +50,9 @@ const F01 = {
   ],
 } as unknown as Issue;
 
-function setup() {
+function setup(project: ProjectManifest = manifest) {
   const ws = createWorkspace();
-  ws.getState().openProject({ id: 'p', root: 'r', manifest }, [F01]);
+  ws.getState().openProject({ id: 'p', root: 'r', manifest: project }, [F01]);
   const summary = (ids: readonly string[]): PlaceSummary => ({
     layerId: 'model',
     layerName: 'Site model',
@@ -161,6 +161,36 @@ describe('assistant placement hooks', () => {
       geom: { type: 'point3', p: [1, 2, 3] },
     });
     expect(r).toMatchObject({ code: 'F01', placed: [{ on: 'pointcloud', type: 'point3' }] });
+  });
+
+  it('add_sighting saves a drawn point in the frame of its lined-up date', async () => {
+    const dated = {
+      ...manifest,
+      captures: [
+        {
+          id: 'd1',
+          label: 'First',
+          date: '2026-03-03',
+          lineUp: { eastM: 2, northM: -1, with: 'd0', at: '2026-10-16T08:00:00Z' },
+        },
+      ],
+      layers: manifest.layers.map((l) =>
+        l.id === 'model' || l.id === 'cloud' ? { ...l, capture: 'd1' } : l,
+      ),
+    } as unknown as ProjectManifest;
+    const { m, hooks } = setup(dated);
+    await hooks.addSighting({ issue: 'F01', layer: 'cloud', at: { kind: 'point', p: [3, 2, 4] } });
+    expect(m.addSighting).toHaveBeenCalledWith('i1', {
+      on: 'pointcloud',
+      layer: 'cloud',
+      geom: { type: 'point3', p: [1, 2, 3] },
+    });
+    await hooks.addSighting({ issue: 'F01', layer: 'model', at: { kind: 'point', p: [3, 2, 4] } });
+    expect(m.addSighting).toHaveBeenLastCalledWith('i1', {
+      on: 'mesh',
+      layer: 'model',
+      geom: { type: 'spoint', p: [1, 2, 3], n: [0, 1, 0] },
+    });
   });
 
   it('add_sighting from a photo box adds the box, then projects it onto the layer', async () => {

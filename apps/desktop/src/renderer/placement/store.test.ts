@@ -118,10 +118,14 @@ const OLD = issue('e', 'F04', [
   },
 ]);
 
-function setup(over: Partial<PlacementDeps> = {}, results: Record<string, PlaceResult> = {}) {
+function setup(
+  over: Partial<PlacementDeps> = {},
+  results: Record<string, PlaceResult> = {},
+  project: ProjectManifest = manifest,
+) {
   const ws = createWorkspace();
-  ws.getState().openProject({ id: 'p', root: 'r', manifest }, [A, B, PIN, OLD]);
-  ws.getState().setDates(captureIndex(manifest));
+  ws.getState().openProject({ id: 'p', root: 'r', manifest: project }, [A, B, PIN, OLD]);
+  ws.getState().setDates(captureIndex(project));
   const state: EditorState = {
     canUndo: false,
     canRedo: false,
@@ -182,6 +186,74 @@ describe('the placement offer', () => {
     expect(store.getState().offer).toBeNull();
     store.getState().offerIds(['c'], 'menu');
     expect(store.getState().offer).toBeNull();
+  });
+});
+
+/** The second date lined up 2 m east and 1 m south: its layers are drawn at x + 2, z + 1. */
+const linedUp: ProjectManifest = {
+  ...manifest,
+  captures: manifest.captures.map((c) =>
+    c.id === 'd2'
+      ? { ...c, lineUp: { eastM: 2, northM: -1, with: 'd1', at: '2026-10-16T08:00:00Z' } }
+      : c,
+  ),
+};
+/** A square as drawn on the lined-up date. */
+const drawnSquare = (): Vec3[] => square(2).map(([x, y, z]): Vec3 => [x, y, z + 1]);
+
+describe('placing on a lined-up date', () => {
+  it("writes a selection of a lined-up cloud in the date's own frame", async () => {
+    const positions = new Float32Array([3, 5, 4, 6, 7, 8]);
+    const cloudResult: PlaceResult = {
+      ok: true,
+      sightings: [
+        {
+          on: 'pointcloud',
+          layer: 'cloud-d2',
+          geom: { type: 'polygon3', points: drawnSquare(), height: 0.2 },
+          from: { sighting: 0 },
+        },
+      ],
+      from: 0,
+      hitRate: 1,
+      selection: { positions, count: 2, lod: 3 },
+    };
+    const { store, ws, deps } = setup({}, { a: cloudResult }, linedUp);
+    await store.getState().placeIds(['a'], 'cloud-d2');
+    const bytes = vi.mocked(deps.writeSelection).mock.calls[0]?.[2] ?? new Uint8Array();
+    expect(Array.from(decodeSelection(bytes)?.positions ?? [])).toEqual([1, 5, 3, 4, 7, 7]);
+    const poly = ws
+      .getState()
+      .issues.find((i) => i.id === 'a')
+      ?.sightings.find((s) => s.on === 'pointcloud' && s.geom.type === 'polygon3');
+    expect(
+      poly?.on === 'pointcloud' && poly.geom.type === 'polygon3' ? poly.geom.points : null,
+    ).toEqual(square(0));
+  });
+
+  it('writes a placed area of a lined-up model in the date own frame', async () => {
+    const drawn: PlaceResult = {
+      ok: true,
+      sightings: [
+        {
+          on: 'mesh',
+          layer: 'model-d2',
+          geom: { type: 'spolygon', points: drawnSquare() },
+          from: { sighting: 0 },
+        },
+      ],
+      from: 0,
+      hitRate: 1,
+    };
+    const { store, ws } = setup({}, { a: drawn }, linedUp);
+    await store.getState().placeIds(['a'], 'model-d2');
+    const s = ws
+      .getState()
+      .issues.find((i) => i.id === 'a')
+      ?.sightings.at(-1);
+    expect(s?.on === 'mesh' && s.geom.type === 'spolygon' ? s.geom.points : null).toEqual(
+      square(0),
+    );
   });
 });
 
