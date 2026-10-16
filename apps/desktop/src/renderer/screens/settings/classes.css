@@ -16,7 +16,9 @@
 .cls-h,
 .cls-row {
   display: grid;
-  grid-template-columns: 32px minmax(0, 1fr) 48px minmax(120px, 180px) 52px 64px;
+  /* the first column fits its COLOUR header, not only the swatch: at 32 px the header ran into
+     NAME and read COLOURNAME */
+  grid-template-columns: 56px minmax(0, 1fr) 48px minmax(120px, 180px) 52px 64px;
   gap: 10px;
   align-items: center;
   padding: 6px 10px;
@@ -29,6 +31,11 @@
   padding-block: 8px;
 }
 .cls-h span {
+  /* a header longer than its column (another language) ends in an ellipsis, never in the next one */
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
   font: 500 11px/1 var(--f-cond);
   text-transform: uppercase;
   letter-spacing: 0.06em;
@@ -145,7 +152,7 @@
 @media (max-width: 900px) {
   .cls-h,
   .cls-row {
-    grid-template-columns: 28px minmax(0, 1fr) 40px minmax(96px, 140px) 40px 60px;
+    grid-template-columns: 52px minmax(0, 1fr) 40px minmax(96px, 140px) 40px 60px;
     gap: 8px;
   }
 }
