@@ -269,6 +269,13 @@ export const SCHEMA_REGISTRY: readonly SchemaEntry[] = [
   },
   { family: 'aio.audit', version: 1, home: 'exchange', where: 'audit-json export', since: '0.9' },
   {
+    family: 'aio.layer-crs',
+    version: 1,
+    home: 'exchange',
+    where: '<dataset>.crs.json beside an exported dataset',
+    since: '0.17',
+  },
+  {
     family: 'aio.journal-cache',
     version: 1,
     home: 'userData',
