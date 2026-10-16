@@ -77,15 +77,11 @@ describe('date actions', () => {
 
   it('Show and Hide grey out when nothing would change', () => {
     const shown = items('sep');
-    expect(shown.find((i) => i.id === 'date.show')?.disabled).toBe(
-      t('actions.reason.nothingToChange'),
-    );
+    expect(shown.find((i) => i.id === 'date.show')?.disabled).toBe('Nothing to change.');
     expect(shown.find((i) => i.id === 'date.hide')?.disabled).toBe(false);
     const hidden = items('sep', { hidden: { a: true, b: true } });
     expect(hidden.find((i) => i.id === 'date.show')?.disabled).toBe(false);
-    expect(hidden.find((i) => i.id === 'date.hide')?.disabled).toBe(
-      t('actions.reason.nothingToChange'),
-    );
+    expect(hidden.find((i) => i.id === 'date.hide')?.disabled).toBe('Nothing to change.');
   });
 
   it('a read-only project greys rename, colour, icon, add data and delete with the reason', () => {

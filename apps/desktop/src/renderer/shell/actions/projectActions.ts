@@ -108,8 +108,8 @@ const projectItems: Action[] = [
     icon: 'download',
     section: 'file',
     targets: ['project'],
-    submenu: (_t, ctx) =>
-      allowedActions(ctx.pkg ? shell.getState().pkg : null).map((a) => ({
+    submenu: () =>
+      allowedActions(shell.getState().pkg).map((a) => ({
         id: a.id,
         label: a.label,
         icon: a.icon,

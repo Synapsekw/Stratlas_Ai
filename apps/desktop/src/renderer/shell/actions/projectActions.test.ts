@@ -142,4 +142,20 @@ describe('project actions', () => {
     expect(closeProject).toHaveBeenCalledOnce();
     shell.setState({ closeProject: before });
   });
+
+  it('Exports lists the package-allowed exports in a package and all of them otherwise', () => {
+    const subIds = () =>
+      menu()
+        .find((i) => i.id === 'project.exports')
+        ?.sub.map((s) => s.id) ?? [];
+    const all = subIds();
+    expect(all).toContain('csv');
+    const pkg = { header: { exports: ['snapshot'] } } as unknown as ReturnType<
+      typeof shell.getState
+    >['pkg'];
+    shell.setState({ pkg });
+    expect(subIds()).toEqual(['snapshot']);
+    shell.setState({ pkg: null });
+    expect(subIds()).toEqual(all);
+  });
 });
