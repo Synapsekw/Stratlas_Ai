@@ -5,12 +5,14 @@ import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { IssueCard } from './IssueCard';
-import { isIssueEditing, setIssueEditing } from './state';
+import { clearIssueEditing, isIssueEditing } from './state';
+
+const flags = vi.hoisted(() => ({ readOnly: false }));
 
 vi.mock('@aio/annotate', async (importOriginal) => ({
   ...(await importOriginal<typeof Annotate>()),
   IssueDetail: () => <div data-testid="issue-detail" />,
-  useAnnotateReadOnly: () => false,
+  useAnnotateReadOnly: () => flags.readOnly,
 }));
 
 const manifest = {
@@ -57,11 +59,11 @@ afterEach(() => {
   root = undefined;
   host.remove();
   workspace.setState({ project: null, issues: [] });
-  setIssueEditing(null);
+  clearIssueEditing();
 });
 
-const toggle = (open: boolean) => {
-  const details = host.querySelector<HTMLDetailsElement>('details.ic-edit');
+const toggle = (open: boolean, at = 0) => {
+  const details = host.querySelectorAll<HTMLDetailsElement>('details.ic-edit')[at];
   if (!details) throw new Error('no edit form');
   act(() => {
     details.open = open;
@@ -84,5 +86,43 @@ describe('IssueCard reports its edit state', () => {
     act(() => root?.unmount());
     root = undefined;
     expect(isIssueEditing()).toBe(false);
+  });
+
+  it('stays editing while a second card is still open, after the first closes', () => {
+    const second = document.createElement('div');
+    host.append(second);
+    const other = createRoot(second);
+    act(() => {
+      other.render(<IssueCard issueId="i1" place="scene" />);
+    });
+    // each card starts closed, whatever the other did
+    expect(isIssueEditing()).toBe(false);
+    toggle(true, 0);
+    toggle(true, 1);
+    toggle(false, 0);
+    expect(isIssueEditing()).toBe(true);
+    act(() => {
+      other.unmount();
+    });
+    expect(isIssueEditing()).toBe(false);
+  });
+
+  it('does not report once the issue is gone', () => {
+    toggle(true);
+    expect(isIssueEditing()).toBe(true);
+    act(() => {
+      workspace.setState({ issues: [] });
+    });
+    expect(isIssueEditing()).toBe(false);
+  });
+
+  it('does not report for a read-only card (no edit form)', () => {
+    act(() => root?.unmount());
+    flags.readOnly = true;
+    root = createRoot(host);
+    act(() => root?.render(<IssueCard issueId="i1" place="issues" />));
+    expect(host.querySelector('details.ic-edit')).toBeNull();
+    expect(isIssueEditing()).toBe(false);
+    flags.readOnly = false;
   });
 });

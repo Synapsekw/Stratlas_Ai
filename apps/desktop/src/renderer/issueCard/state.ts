@@ -118,17 +118,32 @@ export function openLightbox(issueId: string, index: number): void {
 
 // ---- issue edit state ----
 
-/** The issue whose edit form is open, if any. The workbench never takes the front from it. */
-export const issueEdit = createStore<{ id: string | null }>(() => ({ id: null }));
+/**
+ * Open edit forms, one token per card instance. "Editing" means an edit form is open: not focus
+ * (clicking the viewport would blur it with text unsaved) and not dirty text (not reported). While
+ * any form is open the workbench never takes the front from the issue.
+ */
+export const issueEdit = createStore<{ open: readonly string[] }>(() => ({ open: [] }));
 
-export function setIssueEditing(id: string | null): void {
-  issueEdit.setState({ id });
+/** Report an open edit form for `token`; call the returned function when it closes. */
+export function beginIssueEdit(token: string): () => void {
+  issueEdit.setState((s) => ({ open: [...s.open, token] }));
+  return () => {
+    issueEdit.setState((s) => {
+      const at = s.open.indexOf(token);
+      return at < 0 ? s : { open: s.open.filter((_, i) => i !== at) };
+    });
+  };
+}
+
+export function clearIssueEditing(): void {
+  issueEdit.setState({ open: [] });
 }
 
 export function isIssueEditing(): boolean {
-  return issueEdit.getState().id !== null;
+  return issueEdit.getState().open.length > 0;
 }
 
 export function useIssueEditing(): boolean {
-  return useStore(issueEdit, (s) => s.id !== null);
+  return useStore(issueEdit, (s) => s.open.length > 0);
 }

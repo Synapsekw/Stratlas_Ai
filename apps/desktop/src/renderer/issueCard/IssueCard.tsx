@@ -26,7 +26,7 @@ import {
   type MessageKey,
 } from '@aio/ui';
 import { assetUrl, useWorkspace, workspace } from '@aio/workspace';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useId, useMemo, useRef, useState } from 'react';
 import { frameImage, type FrameImage } from '../detections/prepare';
 import { shell } from '../shell';
 import { setEvidenceEnabled, useEvidence } from './evidence';
@@ -43,7 +43,7 @@ import {
   type PhotoEvidence,
   type VideoEvidence,
 } from './model';
-import { openLightbox, setIssueEditing } from './state';
+import { beginIssueEdit, openLightbox } from './state';
 
 export type CardPlace = 'scene' | 'issues' | 'media' | 'road';
 
@@ -323,9 +323,6 @@ function SplitSwitch() {
   );
 }
 
-/** Remembered for the session: is the edit form unfolded. */
-let editOpen = false;
-
 export function IssueCard({
   issueId,
   place,
@@ -346,18 +343,16 @@ export function IssueCard({
   const issues = useWorkspace((s) => s.issues);
   const project = useWorkspace((s) => s.project);
   const readOnly = useAnnotateReadOnly();
-  const [edit, setEdit] = useState(editOpen);
+  const [edit, setEdit] = useState(false);
   const ownOrder = useMemo(() => order ?? issueOrder(issues), [order, issues]);
   const body = useRef<HTMLDivElement>(null);
+  const instance = useId();
   // report the open edit form so the workbench never takes the front from an issue being edited
   const editing = edit && !readOnly && issue !== undefined;
   useEffect(() => {
     if (!editing) return;
-    setIssueEditing(issueId);
-    return () => {
-      setIssueEditing(null);
-    };
-  }, [editing, issueId]);
+    return beginIssueEdit(`${instance}:${issueId}`);
+  }, [editing, issueId, instance]);
   // a new issue starts at the top of the card
   useEffect(() => {
     body.current?.scrollTo({ top: 0 });
@@ -532,8 +527,7 @@ export function IssueCard({
             className="ic-edit"
             open={edit}
             onToggle={(e) => {
-              editOpen = e.currentTarget.open;
-              setEdit(editOpen);
+              setEdit(e.currentTarget.open);
             }}
           >
             <summary>{t('card.edit')}</summary>

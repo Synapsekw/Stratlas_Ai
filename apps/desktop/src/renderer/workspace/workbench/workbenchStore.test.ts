@@ -1,6 +1,6 @@
 import { workspace } from '@aio/workspace';
 import { afterEach, describe, expect, it } from 'vitest';
-import { setIssueEditing } from '../../issueCard/state';
+import { beginIssueEdit, clearIssueEditing } from '../../issueCard/state';
 import { createWorkbenchStore, startWorkbenchReset, type WorkbenchState } from './workbenchStore';
 
 function memory(seed: Record<string, string> = {}) {
@@ -15,7 +15,7 @@ function memory(seed: Record<string, string> = {}) {
 const ids = (s: WorkbenchState) => s.tabs.map((t) => t.id);
 
 afterEach(() => {
-  setIssueEditing(null);
+  clearIssueEditing();
 });
 
 describe('workbench store', () => {
@@ -39,7 +39,7 @@ describe('workbench store', () => {
   it('toolStarted(measure) while an issue is edited keeps issues in front', () => {
     const store = createWorkbenchStore(memory());
     store.getState().open('issues');
-    setIssueEditing('i1');
+    beginIssueEdit('a');
     store.getState().toolStarted('measure');
     expect(store.getState().front).toBe('issues');
     expect(store.getState().attention).toBe('measure');
@@ -48,10 +48,24 @@ describe('workbench store', () => {
     expect(store.getState().attention).toBeNull();
   });
 
+  it('a second tool starting keeps the first tool dot', () => {
+    const store = createWorkbenchStore(memory());
+    store.getState().open('issues');
+    beginIssueEdit('a');
+    store.getState().toolStarted('measure');
+    store.getState().toolStarted('display');
+    expect(store.getState().front).toBe('issues');
+    expect(store.getState().attention).toBe('measure');
+    store.getState().show('measure');
+    expect(store.getState().attention).toBe('display');
+    store.getState().toolStopped('display');
+    expect(store.getState().attention).toBeNull();
+  });
+
   it('show-it fronts the tab and clears the dot', () => {
     const store = createWorkbenchStore(memory());
     store.getState().open('issues');
-    setIssueEditing('i1');
+    beginIssueEdit('a');
     store.getState().toolStarted('measure');
     store.getState().show('measure');
     expect(store.getState().front).toBe('measure');

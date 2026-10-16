@@ -25,6 +25,8 @@ export interface WorkbenchState {
   front: TabId;
   /** A tool tab waiting behind an issue edit (dot plus "Show it"). */
   attention: TabId | null;
+  /** Every tool tab waiting behind an issue edit; `attention` is the first. */
+  waiting: readonly TabId[];
   /** Tabs a tool created, which close when it stops. */
   openedByTool: Set<TabId>;
   open(id: TabId, opts?: { pinned?: boolean }): void;
@@ -50,26 +52,31 @@ function readPins(storage: Storage | null): TabId[] {
 export function createWorkbenchStore(
   storage: Storage | null = browserStorage(),
 ): StoreApi<WorkbenchState> {
-  const base = (): Pick<WorkbenchState, 'tabs' | 'front' | 'attention' | 'openedByTool'> => {
+  const base = (): Pick<
+    WorkbenchState,
+    'tabs' | 'front' | 'attention' | 'waiting' | 'openedByTool'
+  > => {
     let tabs = fixedTabs();
     for (const id of readPins(storage)) {
       if (!FIXED.includes(id)) tabs = openPanel(tabs, id, { pinned: true });
     }
-    return { tabs, front: 'selection', attention: null, openedByTool: new Set() };
+    return { tabs, front: 'selection', attention: null, waiting: [], openedByTool: new Set() };
   };
 
   const store = createStore<WorkbenchState>()((set, get) => {
-    const apply = (c: TabsChange, openedByTool: Set<TabId>) => {
-      set({ tabs: c.tabs, front: c.front, attention: c.attention, openedByTool });
+    const apply = (c: TabsChange, openedByTool: Set<TabId>, waiting: readonly TabId[]) => {
+      set({ tabs: c.tabs, front: c.front, waiting, attention: waiting[0] ?? null, openedByTool });
     };
     return {
       ...base(),
       open: (id, opts) => {
-        const { tabs, attention } = get();
+        const { tabs, waiting } = get();
+        const left = waiting.filter((w) => w !== id);
         set({
           tabs: openPanel(tabs, id, { pinned: opts?.pinned ?? false }),
           front: id,
-          attention: attention === id ? null : attention,
+          waiting: left,
+          attention: left[0] ?? null,
         });
       },
       pin: (id, on) => {
@@ -83,24 +90,35 @@ export function createWorkbenchStore(
           return {
             tabs: s.tabs.filter((t) => t.id !== id),
             front: s.front === id ? 'selection' : s.front,
-            attention: s.attention === id ? null : s.attention,
+            waiting: s.waiting.filter((w) => w !== id),
+            attention: s.waiting.find((w) => w !== id) ?? null,
           };
         });
       },
       show: (id) => {
-        set((s) => ({ front: id, attention: s.attention === id ? null : s.attention }));
+        set((s) => {
+          const left = s.waiting.filter((w) => w !== id);
+          return { front: id, waiting: left, attention: left[0] ?? null };
+        });
       },
       toolStarted: (id) => {
         const s = get();
         const opened = new Set(s.openedByTool);
         if (!s.tabs.some((t) => t.id === id)) opened.add(id);
-        apply(onToolStart({ ...s, issueEditing: isIssueEditing() }, id), opened);
+        const c = onToolStart({ ...s, issueEditing: isIssueEditing() }, id);
+        const waiting = c.attention && !s.waiting.includes(id) ? [...s.waiting, id] : s.waiting;
+        apply(c, opened, waiting);
       },
       toolStopped: (id) => {
         const s = get();
         const opened = new Set(s.openedByTool);
         const openedByTool = opened.delete(id);
-        apply(onToolStop({ ...s, issueEditing: isIssueEditing() }, id, { openedByTool }), opened);
+        const c = onToolStop({ ...s, issueEditing: isIssueEditing() }, id, { openedByTool });
+        apply(
+          c,
+          opened,
+          s.waiting.filter((w) => w !== id),
+        );
       },
       reset: () => {
         set(base());
