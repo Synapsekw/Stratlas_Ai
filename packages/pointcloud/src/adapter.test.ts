@@ -457,7 +457,11 @@ describe('COPC layers', () => {
     hier: Record<number, CopcHierarchy>,
     eye: [number, number, number],
     heights?: (offset: number) => Float32Array,
-    opts: { layer?: CloudLayer; origin?: [number, number, number] } = {},
+    opts: {
+      layer?: CloudLayer;
+      origin?: [number, number, number];
+      shift?: { eastM: number; northM: number };
+    } = {},
   ) {
     const { handle, frame, bounds } = fakeHandle();
     handle.camera.position.set(...eye);
@@ -475,6 +479,7 @@ describe('COPC layers', () => {
     const ctx: AdapterContext = {
       scene: handle,
       url: (r) => ('path' in r ? `aio://project/p/${r.path}` : 'x'),
+      ...(opts.shift ? { shiftOf: () => opts.shift ?? null } : {}),
     };
     const layer = await adapter.create(opts.layer ?? copcLayer, ctx);
     return { handle, frame, d, layer, settings, bounds, adapter, ctx };
@@ -716,6 +721,15 @@ describe('COPC layers', () => {
     expect(bounds[0]?.get()?.max.y).toBe(-125);
   });
 
+  it('streams a COPC from the shifted frame origin', async () => {
+    const { frame, d } = await open(rootOnly, [32, 5000, 32], undefined, {
+      origin: [0, 0, 100],
+      shift: { eastM: 2, northM: 1 },
+    });
+    frame();
+    expect(d.jobs.map((j) => (j.kind === 'copc' ? j.origin : null))).toEqual([[-2, -1, 100]]);
+  });
+
   it('re-streams the cloud at the new height when its offset changes', async () => {
     // the stage disposes a layer whose definition changed and creates it again (LayerSync)
     const { frame, d, handle, bounds, layer, adapter, ctx } = await open(rootOnly, [32, 5000, 32]);
@@ -935,5 +949,41 @@ describe('png-packed height offset', () => {
     expect(bounds[0]?.get()?.max.y).toBe(12);
     frame();
     expect(d.jobs[0]).toMatchObject({ kind: 'png', quant: { offset: [0, 2, 0] } });
+  });
+});
+
+describe('png-packed date shift', () => {
+  it('moves png-packed chunks with the date', async () => {
+    const { handle, frame, bounds } = fakeHandle();
+    const d = fakeDecoder(10);
+    const index = {
+      schema: 'aio.pngcloud/1',
+      bounds: { min: [0, 0, 0], max: [50, 10, 50] },
+      chunks: [{ file: 'clouds/c0.png', points: 10, lod: 0, bounds: index0 }],
+    };
+    const adapter = createPointcloudAdapter({
+      decoder: () => d.decoder,
+      settings: createPointcloudSettings(null),
+      fetchJson: () => Promise.resolve(index),
+    });
+    await adapter.create(
+      { ...kitLayer('pc'), format: 'png-packed', src: { path: 'clouds/pc.json' } },
+      {
+        scene: handle,
+        url: (r) => ('path' in r ? `aio://project/p/${r.path}` : 'x'),
+        shiftOf: () => ({ eastM: 2, northM: 1 }),
+      },
+    );
+    const seed = getCloudManager(handle)?.layers.get('pc')?.chunks[0];
+    expect(seed?.bounds.min[0]).toBe(2);
+    expect(seed?.bounds.min[2]).toBe(-1);
+    expect(seed?.bounds.max[0]).toBe(22);
+    expect(seed?.bounds.max[2]).toBe(19);
+    expect(seed?.source.kind === 'png' ? seed.source.quant.offset[0] : null).toBe(2);
+    expect(seed?.source.kind === 'png' ? seed.source.quant.offset[2] : null).toBe(-1);
+    expect(bounds[0]?.get()?.min.x).toBe(2);
+    expect(bounds[0]?.get()?.max.z).toBe(49);
+    frame();
+    expect(d.jobs[0]).toMatchObject({ kind: 'png', quant: { offset: [2, 0, -1] } });
   });
 });

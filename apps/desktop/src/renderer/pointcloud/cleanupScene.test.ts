@@ -16,7 +16,7 @@ const h = vi.hoisted(() => ({
   }[],
   selects: [] as { opts: { onSelect(s: unknown): void; onCancel(): void } }[],
   /** The open project's manifest: its origin and the layers (a cloud's height offset). */
-  manifest: { origin: [500000, 3200000, 5], layers: [] as unknown[] },
+  manifest: { origin: [500000, 3200000, 5], layers: [] as unknown[], captures: [] as unknown[] },
 }));
 
 vi.mock('../shell', () => ({
@@ -74,6 +74,7 @@ vi.mock('@aio/engine', async (importOriginal) => ({
 
 const ORIGIN = [500000, 3200000, 5] as const;
 
+const LINE_UP = { eastM: 2, northM: 1, with: 'other', at: '2026-02-01T00:00:00.000Z' };
 const cloud = {
   kind: 'pointcloud',
   id: 'a',
@@ -332,6 +333,40 @@ describe('the stage tools on the active layer', () => {
       off();
     } finally {
       h.manifest.layers = [];
+    }
+  });
+
+  it('converts the clip box of a lined-up cloud back to file coordinates', async () => {
+    h.boxes.length = 0;
+    // a fresh manifest object: the shift resolver memoises per manifest
+    const before = h.manifest;
+    h.manifest = {
+      ...before,
+      layers: [{ ...cloud, capture: 'cap' }],
+      captures: [{ id: 'cap', name: 'cap', date: '2026-01-01', lineUp: LINE_UP }],
+    };
+    try {
+      const c = await store();
+      await c.commit('a', { ...emptyCleanup('a'), clipBox });
+      const stage = fakeStage('clipbox');
+      const off = mountCleanupScene(stage as unknown as EngineStage, c);
+      const tool = h.boxes[0];
+      const shown = tool?.opts.box as ClipBoxLocal;
+      // the recipe box (file coordinates) shows where the cloud is drawn: frame origin minus the shift
+      expect(shown).toEqual(
+        boxToLocal(clipBox, [ORIGIN[0] - LINE_UP.eastM, ORIGIN[1] - LINE_UP.northM, ORIGIN[2]]),
+      );
+      tool?.opts.onChange({ ...shown, yaw: 0.5 }, true);
+      await vi.waitFor(() => {
+        expect(c.recipeOf('a')?.clipBox?.yaw).toBe(0.5);
+      });
+      const saved = c.recipeOf('a')?.clipBox;
+      expect(saved?.center[0]).toBeCloseTo(clipBox.center[0], 6);
+      expect(saved?.center[1]).toBeCloseTo(clipBox.center[1], 6);
+      expect(saved?.center[2]).toBeCloseTo(clipBox.center[2], 6);
+      off();
+    } finally {
+      h.manifest = before;
     }
   });
 

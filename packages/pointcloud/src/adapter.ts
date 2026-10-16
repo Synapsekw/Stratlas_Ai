@@ -217,6 +217,8 @@ export function createPointcloudAdapter(
         }
         return { setVisible: () => undefined, dispose: () => undefined };
       };
+      // the date's shift, applied here: point clouds are not moved by the engine's shiftedLayer
+      const shift = ctx.shiftOf?.(layer.id) ?? null;
       if (layer.format === 'kit-packed') {
         chunks = [
           {
@@ -231,8 +233,13 @@ export function createPointcloudAdapter(
       } else if (layer.format === 'png-packed') {
         const idx = parsePngCloudIndex(await fetchJson(url));
         // png-packed points are already local (y = H): the height offset lifts them as decoded
+        // the date shift moves them like the COPC frame origin: x += east, z -= north
         const dy = layer.heightOffsetM ?? 0;
-        const lift = (v: V3): [number, number, number] => [v[0], v[1] + dy, v[2]];
+        const lift = (v: V3): [number, number, number] => [
+          v[0] + (shift?.eastM ?? 0),
+          v[1] + dy,
+          v[2] - (shift?.northM ?? 0),
+        ];
         chunks = idx.chunks.map((c) => ({
           key: `${layer.id}#${c.id}`,
           source: {
@@ -250,7 +257,7 @@ export function createPointcloudAdapter(
         const project = originOf();
         if (!project) throw new Error('A COPC layer needs the project origin');
         // the layer's height offset: decoded against [E, N, H - heightOffsetM]
-        const origin = cloudFrameOrigin([...project], layer);
+        const origin = cloudFrameOrigin([...project], layer, shift);
         const m = managerFor(handle);
         noisePath = cleanup.getState().recipes[layer.id]?.noise?.path ?? null;
         try {
@@ -299,7 +306,7 @@ export function createPointcloudAdapter(
         const mine = ++swap;
         const project = originOf();
         if (!project) return;
-        const origin = cloudFrameOrigin([...project], layer);
+        const origin = cloudFrameOrigin([...project], layer, shift);
         const streams = (u: string) => m.layers.get(layer.id)?.copc?.url === u;
         const show = (r: LoadedCopc) => {
           if (mine !== swap || disposed || !owns()) return;
