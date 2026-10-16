@@ -1,6 +1,7 @@
 import { SignOff } from '@aio/collab/ui';
-import { defaultIssuePages, HOUSE_SECTIONS, houseKind } from '@aio/project/export';
+import { defaultIssuePages, houseKind } from '@aio/project/export';
 import {
+  defaultSurveySettings,
   reportSectionOn,
   type IssuePagesRule,
   type IssueStatus,
@@ -21,6 +22,7 @@ import { PdfViewer } from '../report/PdfViewer';
 import { ExtractPackage } from '../shell/ExtractPackage';
 import { shell, useCall, useShell } from '../shell';
 import { NoProject } from './NoProject';
+import { offeredSections, sectionsWithData } from './reportSections';
 import { useRoad } from '../road/store';
 
 const STATUSES: IssueStatus[] = ['draft', 'reviewed', 'approved', 'closed'];
@@ -41,6 +43,8 @@ function saveContents(next: ReportContentsSettings) {
 /** The house report: which sections it prints, which issues get a page, and the export. */
 function ProjectReport(props: {
   allowed: boolean;
+  /** The sections this project has something to print in, in report order. */
+  sections: readonly ReportSectionId[];
   /** The issue page rule when none is chosen (it follows the project kind). */
   defaultPages: IssuePagesRule;
   onText: () => void;
@@ -57,7 +61,7 @@ function ProjectReport(props: {
       <p className="faint small rep-note">{t('reports.brandingHint')}</p>
       <fieldset className="rep-sections">
         <legend className="caps">{t('reports.house.sections')}</legend>
-        {HOUSE_SECTIONS.map((id) => (
+        {props.sections.map((id) => (
           <label key={id} className="rep-check">
             <input
               type="checkbox"
@@ -140,12 +144,40 @@ function ReportList(props: {
   );
 }
 
+/**
+ * The survey and run sections the open project has data for (null while they are read), so the
+ * Reports screen offers no landfill, haul-road or hydrology section to a project without any.
+ */
+function useSectionsWithData(projectId: string | null): ReportSectionId[] | null {
+  const req = { projectId: projectId ?? '' };
+  const measurements = useCall('survey:readMeasurements', req, projectId);
+  const settings = useCall('survey:readSettings', req, projectId);
+  const templates = useCall('survey:readTemplates', req, projectId);
+  const haul = useCall('survey:readHaulRuns', req, projectId);
+  const hydro = useCall('survey:readHydroRuns', req, projectId);
+  if (!measurements || !settings || !templates || !haul || !hydro) return null;
+  const ok = <T,>(r: { ok: true; value: T } | { ok: false }) => (r.ok ? r.value : null);
+  const m = ok(measurements);
+  const s = ok(settings);
+  const tpl = ok(templates);
+  const h = ok(haul);
+  const y = ok(hydro);
+  return sectionsWithData({
+    measurements: m?.ok ? m.file.measurements : [],
+    settings: s?.ok ? s.settings : defaultSurveySettings(),
+    templates: tpl?.ok ? tpl.project : null,
+    haulRuns: h?.ok ? h.runs.length : 0,
+    hydroRuns: y?.ok ? y.runs.length : 0,
+  });
+}
+
 export function ReportsScreen() {
   const project = useWorkspace((s) => s.project);
   const issues = useWorkspace((s) => s.issues);
   const pkg = useShell((s) => s.pkg);
   const roadOpen = useRoad((s) => s.status === 'ready' || s.status === 'setup');
   const listed = useCall('report:list', { projectId: project?.id ?? '' }, project?.id ?? null);
+  const withData = useSectionsWithData(project?.id ?? null);
   const [picked, setPicked] = useState<Record<string, string>>({});
   const [textOpen, setTextOpen] = useState(false);
   const auditOpen = useAuditOpen();
@@ -179,6 +211,7 @@ export function ReportsScreen() {
           </section>
           <ProjectReport
             allowed={actionAllowed('house-pdf', pkg)}
+            sections={offeredSections(withData)}
             defaultPages={defaultIssuePages(
               houseKind(project.manifest, issues, roadOpen ? { road: true } : {}),
             )}
@@ -320,11 +353,7 @@ export function ReportsScreen() {
         ) : (
           <div className="side-empty">
             <Icon name="report" size={20} />
-            <p>
-              {files?.length === 0
-                ? 'Export the issue register to make a PDF report of this project.'
-                : 'Pick a report to read it here.'}
-            </p>
+            <p>{files?.length === 0 ? t('reports.viewer.none') : t('reports.viewer.pick')}</p>
           </div>
         )}
       </section>

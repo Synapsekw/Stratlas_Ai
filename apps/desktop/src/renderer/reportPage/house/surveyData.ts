@@ -149,14 +149,22 @@ export async function readSurveyFiles(
     measurements: file.measurements,
     designs: parsed<DesignsFile>(DesignsFile, designsRaw)?.designs ?? [],
     surfaces,
-    templates: [
-      ...(project?.templates ?? []),
-      ...industryTemplates(settings.templateSets).filter(
-        (x) => !project?.templates.some((p) => p.id === x.id),
-      ),
-    ],
+    templates: surveyTemplateList(project, settings),
     weighbridge: typeof weigh === 'string' ? parseWeighbridge(weigh) : [],
   };
+}
+
+/** The project's templates and the enabled industry sets (a project template wins its id). */
+export function surveyTemplateList(
+  project: SurveyTemplatesFile | null,
+  settings: SurveySettings,
+): SurveyTemplate[] {
+  return [
+    ...(project?.templates ?? []),
+    ...industryTemplates(settings.templateSets).filter(
+      (x) => !project?.templates.some((p) => p.id === x.id),
+    ),
+  ];
 }
 
 // ---------------------------------------------------------------- what each measurement is
@@ -239,7 +247,9 @@ export function surveyPlan(files: Pick<SurveyFiles, 'measurements' | 'settings' 
 }
 
 /** The survey sections that have something to print. */
-export function surveySectionIds(files: SurveyFiles): ReportSectionId[] {
+export function surveySectionIds(
+  files: Pick<SurveyFiles, 'measurements' | 'settings' | 'templates'>,
+): ReportSectionId[] {
   const plan = surveyPlan(files);
   const has: Record<(typeof SURVEY_SECTIONS)[number], boolean> = {
     measurements: files.measurements.length > 0,

@@ -1866,6 +1866,9 @@ export const en = {
   'narr.findings.none': 'No issues were recorded.',
   'narr.findings.todo': '[Describe the pattern of the findings and what should be done first.]',
   // Reports screen: the house report and its text
+  'reports.viewer.none':
+    'No PDF report to read yet. Export the project report or the issue register to make one.',
+  'reports.viewer.pick': 'Pick a report to read it here.',
   'reports.house.title': 'Project report',
   'reports.house.text':
     'The full report in the house format: cover, contents, executive summary, scope and method, site and data, statistics, register, one page per issue and appendices.',
