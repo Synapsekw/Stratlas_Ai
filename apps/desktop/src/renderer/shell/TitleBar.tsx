@@ -1,7 +1,6 @@
 import { brand } from '@aio/brand';
 import { ariaKeys, formatDate, Icon, shortcutHint, t, useT, type MessageKey } from '@aio/ui';
 import { useWorkspace } from '@aio/workspace';
-import { Fragment } from 'react';
 import { AgentToggle } from '../agent/AgentToggle';
 import { shell, useShell } from '../shell';
 import type { Screen } from '../store';
@@ -46,18 +45,22 @@ export function TitleBar() {
         <BrandWordmark />
       </div>
       <nav className="crumbs" aria-label={t('titlebar.location')}>
-        {crumbs.map((c, i) => (
-          <Fragment key={`${String(i)}-${c}`}>
-            {i > 0 && <span className="sep">/</span>}
-            {i === crumbs.length - 1 ? (
-              <b aria-current="page" dir="auto">
+        {/* in a narrow window the crumbs before the page give way first (the customer, then the
+            project), each ending in an ellipsis with its slash; the page keeps its name */}
+        {crumbs.map((c, i) =>
+          i === crumbs.length - 1 ? (
+            <b key={`${String(i)}-${c}`} aria-current="page" dir="auto">
+              {c}
+            </b>
+          ) : (
+            <span key={`${String(i)}-${c}`} className="crumb" title={c}>
+              <span className="crumb-text" dir="auto">
                 {c}
-              </b>
-            ) : (
-              <span dir="auto">{c}</span>
-            )}
-          </Fragment>
-        ))}
+              </span>
+              <span className="sep">/</span>
+            </span>
+          ),
+        )}
       </nav>
       <div className="tb-spacer" />
       <button

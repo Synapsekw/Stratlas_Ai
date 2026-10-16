@@ -197,15 +197,32 @@ code {
   white-space: nowrap;
   overflow: hidden;
 }
-.crumbs > span:not(.sep) {
+/* a crumb before the page, with its slash: it shrinks long before the page does (the customer
+   first), its text ends in an ellipsis, and squeezed past that it takes its slash with it */
+.crumbs > .crumb {
+  display: flex;
+  gap: 6px;
+  min-width: 0;
+  overflow: hidden;
+  flex: 0 1000 auto;
+}
+.crumbs > .crumb:first-child:not(:nth-last-child(2)) {
+  flex-shrink: 4000;
+}
+.crumbs .crumb-text {
+  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 .crumbs b {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
   color: var(--fg-0);
   font-weight: 500;
 }
 .crumbs .sep {
+  flex: none;
   color: var(--fg-4);
 }
 .tb-spacer {
