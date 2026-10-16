@@ -281,3 +281,45 @@ describe('overlay pyramids (M11 G5)', () => {
     expect(few.map((t) => t.z)).toEqual([1, 1, 1, 1]);
   });
 });
+
+describe('issue anchors of a lined-up layer', () => {
+  const issue = (sightings: Issue['sightings']): Issue => ({
+    id: 'i1',
+    code: 'F01',
+    classId: 'crack',
+    severityModelId: 'm',
+    severity: 5,
+    status: 'draft',
+    title: 'Crack',
+    note: '',
+    author: 'a',
+    createdAt: '2026-10-03T00:00:00Z',
+    updatedAt: '2026-10-03T00:00:00Z',
+    source: 'human',
+    sightings,
+  });
+  const shiftOf = (id: string) => (id === 'moved' ? { eastM: 2, northM: 0 } : null);
+  const eastOf = (a: [number, number] | null, b: [number, number] | null) => {
+    if (!a || !b) throw new Error('anchor');
+    return proj.toLocal(b[0], b[1])[0] - proj.toLocal(a[0], a[1])[0];
+  };
+
+  it('moves a map sighting of a lined-up layer', () => {
+    const at = proj.toLonLat([3, 0, 4]);
+    const mk = (layer: string) =>
+      issue([{ on: 'map', layer, geojson: { type: 'Point', coordinates: at } }]);
+    expect(issueAnchor(mk('common'), proj, shiftOf)).toEqual(at);
+    const moved = issueAnchor(mk('moved'), proj, shiftOf);
+    expect(eastOf(at, moved)).toBeCloseTo(2, 3);
+    const z = moved && proj.toLocal(moved[0], moved[1])[2];
+    expect(z).toBeCloseTo(4, 3);
+  });
+
+  it('moves a mesh sighting of a lined-up layer', () => {
+    const mk = (layer: string) =>
+      issue([{ on: 'mesh', layer, geom: { type: 'spoint', p: [0, 10, 0], n: [0, 1, 0] } }]);
+    expect(
+      eastOf(issueAnchor(mk('common'), proj, shiftOf), issueAnchor(mk('moved'), proj, shiftOf)),
+    ).toBeCloseTo(2, 3);
+  });
+});

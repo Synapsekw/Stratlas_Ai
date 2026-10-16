@@ -1,9 +1,21 @@
-import type { Issue, LensModel, PoseSample, SeverityModel, Vec3 } from '@aio/schema';
+import {
+  shiftLocal,
+  type DateShift,
+  type Issue,
+  type LensModel,
+  type PoseSample,
+  type SeverityModel,
+  type Vec3,
+} from '@aio/schema';
 import { Quaternion, Vector3 } from 'three';
 import type { FrameProjection } from './geo';
 import { pyramidView, type PyramidIndex, type PyramidTile } from './pyramid';
+import { shiftLonLat } from './shiftGeoJson';
 
 export type LonLat = [number, number];
+
+/** The date shift of a layer (line up dates), or null when it does not move. */
+export type ShiftOf = (layerId: string) => DateShift | null;
 
 /** Local raster corners (data-conventions section 5) to a MapLibre image quad: tl, tr, br, bl. */
 export function rasterQuad(
@@ -132,11 +144,18 @@ function geojsonPositions(g: unknown, out: LonLat[] = []): LonLat[] {
 }
 
 /** Where an issue sits on the map: a map sighting, else the first 3D sighting. Null if none. */
-export function issueAnchor(issue: Issue, proj: FrameProjection | null): LonLat | null {
+export function issueAnchor(
+  issue: Issue,
+  proj: FrameProjection | null,
+  shiftOf?: ShiftOf,
+): LonLat | null {
   for (const s of issue.sightings) {
     if (s.on !== 'map') continue;
     const c = centroid(geojsonPositions(s.geojson));
-    if (c) return [c[0] ?? 0, c[1] ?? 0];
+    if (!c) continue;
+    const at: LonLat = [c[0] ?? 0, c[1] ?? 0];
+    const shift = shiftOf?.(s.layer) ?? null;
+    return proj && shift ? shiftLonLat(at, shift, proj) : at;
   }
   if (!proj) return null;
   for (const s of issue.sightings) {
@@ -152,7 +171,10 @@ export function issueAnchor(issue: Issue, proj: FrameProjection | null): LonLat 
       else if (g.type === 'box3') local = centroid([g.min, g.max]);
       else if (g.type === 'polygon3') local = centroid(g.points);
     }
-    if (local) return proj.toLonLat([local[0] ?? 0, local[1] ?? 0, local[2] ?? 0]);
+    if (local) {
+      const at: Vec3 = [local[0] ?? 0, local[1] ?? 0, local[2] ?? 0];
+      return proj.toLonLat(shiftLocal(at, shiftOf?.(s.layer) ?? null));
+    }
   }
   return null;
 }

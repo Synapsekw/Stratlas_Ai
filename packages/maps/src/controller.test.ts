@@ -43,12 +43,23 @@ class FakeMap {
   addControl(): void {
     /* controls draw nothing here */
   }
-  addSource(id: string): void {
+  /** What each source was added with. */
+  readonly specs = new Map<string, Record<string, unknown>>();
+  addSource(id: string, spec: Record<string, unknown> = {}): void {
     this.sources.add(id);
+    this.specs.set(id, spec);
   }
   getSource(id: string) {
     this.sourceReads++;
-    return this.sources.has(id) ? { setData: () => Promise.resolve() } : undefined;
+    return this.sources.has(id)
+      ? {
+          setData: (d: unknown) => {
+            const spec = this.specs.get(id);
+            if (spec) spec.data = d;
+            return Promise.resolve();
+          },
+        }
+      : undefined;
   }
   removeSource(id: string): void {
     this.sources.delete(id);
@@ -431,5 +442,100 @@ describe('framing the project while a walk is placed on the map', () => {
     openProjectOnLastMap();
     await settle();
     expect(map.getZoom()).toBe(15);
+  });
+});
+
+describe('lined-up dates on the map', () => {
+  const ORIGIN: [number, number, number] = [500_000, 4_000_000, 0];
+  const corners = { tl: [0, 0, 0], tr: [10, 0, 0], bl: [0, 0, 10] };
+  const ortho = (id: string, capture: string) => ({
+    kind: 'raster',
+    id,
+    name: id,
+    visible: true,
+    src: { path: `${id}.png` },
+    format: 'image',
+    role: 'ortho',
+    corners,
+    capture,
+  });
+  const vector = (id: string, capture?: string) => ({
+    kind: 'vector',
+    id,
+    name: id,
+    visible: true,
+    src: { path: `${id}.geojson` },
+    format: 'geojson',
+    style: {},
+    ...(capture ? { capture } : {}),
+  });
+  const manifest = (layers: unknown[]) => ({
+    crs: { epsg: 32633 },
+    origin: ORIGIN,
+    captures: [
+      { id: 'd1', label: 'First', date: '2026-01-10' },
+      {
+        id: 'd2',
+        label: 'Second',
+        date: '2026-02-10',
+        lineUp: { eastM: 2, northM: 0, with: 'd1', at: '2026-10-16T08:00:00Z' },
+      },
+    ],
+    layers,
+  });
+  const open = (layers: unknown[]) => {
+    const started = start();
+    started.store.setState({
+      project: { id: 'p1', manifest: manifest(layers) } as unknown as ReturnType<
+        typeof started.store.getState
+      >['project'],
+    });
+    return started;
+  };
+  const flush = () => new Promise((r) => setTimeout(r, 0));
+  const proj = geo.frameProjection({ epsg: 32633 }, ORIGIN);
+
+  it('places a lined-up ortho quad at the corrected place', async () => {
+    if (!proj) throw new Error('projection');
+    const { map, ctl } = open([ortho('moved', 'd2'), ortho('still', 'd1')]);
+    await flush();
+    const coords = (id: string) =>
+      (map.specs.get(`aio-raster-${id}-0`)?.coordinates ?? []) as [number, number][];
+    const tl = coords('moved')[0];
+    const still = coords('still')[0];
+    if (!tl || !still) throw new Error('quads');
+    const [x] = proj.toLocal(tl[0], tl[1]);
+    const [x0] = proj.toLocal(still[0], still[1]);
+    expect(x - x0).toBeCloseTo(2, 3);
+    ctl.dispose();
+  });
+
+  it('keeps a common vector on its URL', async () => {
+    const { map, ctl } = open([vector('common'), vector('dated', 'd1')]);
+    await flush();
+    expect(map.specs.get('aio-ov-layer-common')?.data).toBe('aio://project/p1/common.geojson');
+    ctl.dispose();
+  });
+
+  it('moves a lined-up vector layer by the shift', async () => {
+    if (!proj) throw new Error('projection');
+    const at = proj.toLonLat([5, 0, 5]);
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(() =>
+        Promise.resolve({
+          json: () => Promise.resolve({ type: 'Point', coordinates: at }),
+        }),
+      ),
+    );
+    const { map, ctl } = open([vector('moved', 'd2')]);
+    await flush();
+    await flush();
+    const data = map.specs.get('aio-ov-layer-moved')?.data as GeoJSON.FeatureCollection;
+    const g = data.features[0]?.geometry;
+    if (g?.type !== 'Point') throw new Error('point');
+    const [x] = proj.toLocal(g.coordinates[0] ?? 0, g.coordinates[1] ?? 0);
+    expect(x).toBeCloseTo(7, 3);
+    ctl.dispose();
   });
 });
