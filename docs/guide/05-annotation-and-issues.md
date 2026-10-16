@@ -85,7 +85,7 @@ Click **Issues** in the sidebar.
 
 ## Severity models
 
-Each project grades issues with its own severity model: levels with a colour, criteria and a recommended action. **Settings**, **Severity models** shows the model of the open project (read only in this version). You choose the model when you create a project.
+Each project grades issues with its own severity model: levels with a colour, criteria and a recommended action. **Settings**, **Severity models** shows the models of the open project. You choose the first model when you create a project. While you annotate, **New class** can also generate another scale, **1 to 3** or **1 to 5**, and you can rename the grades before it is saved. Scales already in the project are not edited here.
 
 ## Classes
 
@@ -97,4 +97,4 @@ Each project sorts findings into classes: a name, a colour, an optional hotkey a
 - **Save to my class library** keeps the class on this computer. A new project offers library classes under **From your class library**.
 - **Ctrl+Z** in the page, or **Undo** on the notice, takes the last class change back.
 
-You can also make a class while you work: choose **+ New class...** in the class picker of a new shape, in **Set class** of the Issues register, in the class field of a detection, or in the class mapping of a local model, type the name and press Enter.
+You can also make a class while you work. After a shape, the class panel lists the classes with room to search them and shows each grade of the selected class by name. **New class** asks for a name, a colour, an optional hotkey and a severity scale (one the project has, or a new one). **+ New class...** in **Set class** of the Issues register, in the class field of a detection, or in the class mapping of a local model still takes just the name: type it and press Enter.

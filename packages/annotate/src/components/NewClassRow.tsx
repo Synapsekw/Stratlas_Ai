@@ -1,14 +1,19 @@
-import type { IssueClass } from '@aio/schema';
+import type { IssueClass, SeverityModel } from '@aio/schema';
 import { useRef, useState, useSyncExternalStore } from 'react';
+import type { NewClass } from '../model/catalogueOps';
 import { useAnnotateReadOnly } from '../runtime';
 
 /*
  * "+ New class..." (ANN-7): a row that turns into a name field; Enter creates the class and hands
  * it back, Escape cancels. The package does no IO: the app registers how a class is created
- * (`registerClassCreator`), and pickers in this package read it with `useNewClass`.
+ * (`registerClassCreator`) and how a severity scale is added (`registerSeverityCreator`). Pickers
+ * in this package read them with `useNewClass` and `useNewSeverity`.
  */
 
-export type ClassCreator = (label: string) => Promise<IssueClass>;
+export type ClassCreator = (label: string, extra?: Omit<NewClass, 'label'>) => Promise<IssueClass>;
+
+/** Adds one severity scale to the open project and hands that scale back. */
+export type SeverityCreator = (model: SeverityModel) => Promise<SeverityModel>;
 
 /** Option value a class `<select>` uses for its "+ New class..." entry. */
 export const NEW_CLASS_OPTION = '__new-class__';
@@ -49,6 +54,50 @@ export function useNewClass(): { create: ClassCreator | null; disabledReason: st
   return {
     create,
     disabledReason: readOnly ? 'This project is read-only, so classes cannot be added.' : null,
+  };
+}
+
+let severityCreator: SeverityCreator | null = null;
+const severityListeners = new Set<() => void>();
+const emitSeverity = () => {
+  for (const l of severityListeners) l();
+};
+
+/** The app's severity-scale creator (one at a time); the returned function takes it back. */
+export function registerSeverityCreator(fn: SeverityCreator): () => void {
+  severityCreator = fn;
+  emitSeverity();
+  return () => {
+    if (severityCreator !== fn) return;
+    severityCreator = null;
+    emitSeverity();
+  };
+}
+
+export function useSeverityCreator(): SeverityCreator | null {
+  return useSyncExternalStore(
+    (cb) => {
+      severityListeners.add(cb);
+      return () => {
+        severityListeners.delete(cb);
+      };
+    },
+    () => severityCreator,
+  );
+}
+
+/** For the sighting picker: the registered scale creator and why it is off. */
+export function useNewSeverity(): {
+  create: SeverityCreator | null;
+  disabledReason: string | null;
+} {
+  const create = useSeverityCreator();
+  const readOnly = useAnnotateReadOnly();
+  return {
+    create,
+    disabledReason: readOnly
+      ? 'This project is read-only, so severity scales cannot be added.'
+      : null,
   };
 }
 

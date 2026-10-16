@@ -69,6 +69,7 @@ import {
   builderTemplates,
   builderUpdateCapture,
   builderUpdateClasses,
+  builderAddSeverityModel,
   builderRemoveCapture,
   builderLayerExtents,
   builderRecentre,
@@ -1613,6 +1614,10 @@ function registerIpc(): void {
   handle(
     'builder:updateClasses',
     (req) => packageRefusal(req.projectId) ?? builderUpdateClasses(req, registry),
+  );
+  handle(
+    'builder:addSeverityModel',
+    (req) => packageRefusal(req.projectId) ?? builderAddSeverityModel(req, registry),
   );
   handle(
     'builder:removeCapture',

@@ -1021,6 +1021,7 @@ export const en = {
   'classes.readOnly': 'This project is read-only, so its classes cannot be changed.',
   'classes.notSaved': 'Classes not saved: {error}',
   'classes.created': 'Class {label} created.',
+  'classes.scaleCreated': 'Severity scale {label} created.',
   'classes.deleted': 'Class {label} deleted.',
   'classes.savedToLibrary': '{label} saved to your class library.',
   'classes.undo': 'Undo',

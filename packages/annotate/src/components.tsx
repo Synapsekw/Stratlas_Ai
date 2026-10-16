@@ -13,10 +13,14 @@ export {
   NEW_CLASS_OPTION,
   NewClassRow,
   registerClassCreator,
+  registerSeverityCreator,
   useClassCreator,
   useNewClass,
+  useNewSeverity,
+  useSeverityCreator,
   type ClassCreator,
   type NewClassRowProps,
+  type SeverityCreator,
 } from './components/NewClassRow';
 export { useMapDraw, type MapDraw } from './components/MapDraw';
 export { AnnotateStyles } from './components/styles';
