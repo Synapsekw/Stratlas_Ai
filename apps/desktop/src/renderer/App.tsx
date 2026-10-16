@@ -2,7 +2,9 @@ import {
   AnnotateStyles,
   issueSaver,
   registerClassCreator,
+  registerSeverityCreator,
   setAnnotationPeople,
+  setPhotoRotator,
 } from '@aio/annotate';
 import { changeStore } from '@aio/change';
 import {
@@ -32,7 +34,7 @@ import { SettingsScreen } from './screens/Settings';
 import { WelcomeScreen } from './screens/Welcome';
 import { initAuthor } from './author';
 import { ClassNotice } from './classes/ClassNotice';
-import { createClass } from './classes/store';
+import { createClass, createSeverityModel } from './classes/store';
 import { detections, loadDetections } from './detections/store';
 import { roadStore, startRoadSync } from './road/store';
 import { Toasts } from './exports/Toasts';
@@ -270,6 +272,13 @@ export function App() {
     // the change producers of the Changes panel (C2 to C4), once
     registerAppChangeProducers();
     // a finished conversion (point cloud to COPC) adds a layer: reload the open manifest
+    setPhotoRotator(async (layerId, photoId) => {
+      const projectId = workspace.getState().project?.id;
+      if (!projectId) return { ok: false, error: 'No project is open.' };
+      const r = await bridge.call('builder:rotatePhoto', { projectId, layerId, photoId });
+      if (!r.ok) return { ok: false, error: r.error };
+      return r.value;
+    });
     const stopFarWatch = startFarWatch();
     const stopJobReload = jobs.subscribe((s, prev) => {
       const project = workspace.getState().project;
@@ -380,6 +389,7 @@ export function App() {
       if (s.project !== prev.project) void volumetric.getState().load();
     });
     return () => {
+      setPhotoRotator(null);
       stopOpenPath();
       stopMenu();
       stopJournal();
@@ -403,7 +413,8 @@ export function App() {
   }, []);
 
   // "+ New class..." in every picker creates through the class store (ANN-7)
-  useEffect(() => registerClassCreator((label) => createClass(label)), []);
+  useEffect(() => registerClassCreator((label, extra) => createClass(label, extra)), []);
+  useEffect(() => registerSeverityCreator((model) => createSeverityModel(model)), []);
 
   useEffect(() => {
     const dark = window.matchMedia(OS_QUERIES.dark);

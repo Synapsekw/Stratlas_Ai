@@ -31,6 +31,18 @@ describe('class editing contracts (ANN-7)', () => {
     expect(req.safeParse({ projectId: '', catalogues: [] }).success).toBe(false);
   });
 
+  it('builder:addSeverityModel takes a project and one scale, nothing else', () => {
+    const req = ipc['builder:addSeverityModel'].request;
+    const model = {
+      id: 'coat',
+      name: 'Coating',
+      levels: [{ value: 1, label: 'Minor', color: '#78b3d6', criteria: 'Monitor' }],
+    };
+    expect(req.safeParse({ projectId: 'p', model }).success).toBe(true);
+    expect(req.safeParse({ projectId: 'p', model, extra: 1 }).success).toBe(false);
+    expect(req.safeParse({ projectId: 'p', model: { ...model, levels: [] } }).success).toBe(false);
+  });
+
   it('a library class has a label and a colour; a hotkey is one character', () => {
     expect(LibraryClass.safeParse({ label: 'Spalling', color: '#aabbcc' }).success).toBe(true);
     expect(LibraryClass.safeParse({ label: '   ', color: '#aabbcc' }).success).toBe(false);

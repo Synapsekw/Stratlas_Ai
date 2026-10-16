@@ -11,6 +11,7 @@ import type {
 import { formatNumber, formatQuantity, localeOf, type NumberLocale, type Quantity } from '@aio/geo';
 import { sampleProfile, type HeightSampler } from './geometry';
 import { bermCheck, components, elevationDifference, lineMetrics, polygonAreas } from './measure';
+import { antennaAzimuth, antennaTilt, clearance, isTelecomTool } from './telecom';
 
 /**
  * What each tool shows: readout rows in SI, ordered by the template's `items` when it names them.
@@ -40,6 +41,9 @@ export const TOOL_FAMILY: Record<MeasurementTool, MeasurementFamily> = {
   'vertex-table': 'line',
   'berm-check': 'line',
   section: 'line',
+  azimuth: 'line',
+  'antenna-tilt': 'line',
+  clearance: 'line',
   area: 'polygon',
   volume: 'polygon',
   freehand: 'markup',
@@ -55,6 +59,9 @@ export const TOOL_LABELS: Record<MeasurementTool, string> = {
   'vertex-table': 'Vertex differences',
   'berm-check': 'Berm check',
   section: 'Cross-section',
+  azimuth: 'Azimuth',
+  'antenna-tilt': 'Antenna tilt',
+  clearance: 'Clearance',
   area: 'Area',
   volume: 'Volume',
   freehand: 'Freehand markup',
@@ -105,6 +112,11 @@ export const ITEM_LABELS: Record<string, string> = {
   total: 'Total moved',
   uncovered: 'Not covered',
   vertices: 'Vertices',
+  azimuth: 'Azimuth from project/grid north (clockwise)',
+  inclination: 'Physical inclination from vertical',
+  'direct-gap': 'Direct 3D distance',
+  'horizontal-gap': 'Horizontal separation',
+  'vertical-gap': 'Absolute vertical gap',
 };
 
 /** The rows each tool shows when its template does not choose. */
@@ -118,6 +130,9 @@ export const DEFAULT_ITEMS: Record<MeasurementTool, string[]> = {
   'vertex-table': ['horizontal', 'slope-length', 'height-change', 'vertices'],
   'berm-check': ['crest-z', 'crest-width', 'base-width', 'height-left', 'height-right'],
   section: ['horizontal', 'bearing'],
+  azimuth: ['azimuth'],
+  'antenna-tilt': ['inclination'],
+  clearance: ['direct-gap', 'horizontal-gap', 'vertical-gap'],
   area: ['area', 'terrain-area', 'slope-area', 'perimeter'],
   volume: ['cut', 'fill', 'net', 'total', 'area'],
   freehand: ['vertices'],
@@ -149,6 +164,24 @@ export function allRows(m: Geometry, ctx: ReadoutContext = {}): ReadoutRow[] {
   const family = TOOL_FAMILY[m.tool];
   const out: ReadoutRow[] = [row('vertices', pts.length, 'count')];
   const first = pts[0];
+  if (isTelecomTool(m.tool)) {
+    if (m.tool === 'azimuth') {
+      const a = antennaAzimuth(pts);
+      out.push(row('azimuth', a.ok ? a.bearingDeg : null, 'text', a.ok ? undefined : a.message));
+    } else if (m.tool === 'antenna-tilt') {
+      const a = antennaTilt(pts);
+      out.push(row('inclination', a.ok ? a.angleDeg : null, 'text', a.ok ? undefined : a.message));
+    } else {
+      const gap = clearance(pts);
+      for (const [key, value] of [
+        ['direct-gap', gap.ok ? gap.directM : null],
+        ['horizontal-gap', gap.ok ? gap.horizontalM : null],
+        ['vertical-gap', gap.ok ? gap.verticalM : null],
+      ] as const)
+        out.push(row(key, value, 'distance', gap.ok ? undefined : gap.message));
+    }
+    return out;
+  }
   if (family === 'point' && first) {
     out.push(row('e', first[0], 'coordinate'), row('n', first[1], 'coordinate'));
     out.push(row('z', first[2], 'coordinate'));

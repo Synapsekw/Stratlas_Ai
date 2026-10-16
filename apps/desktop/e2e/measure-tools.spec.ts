@@ -114,5 +114,16 @@ test.describe('survey measurement tools', () => {
     await expect
       .poll(async () => (await readSaved(root)).measurements[0]?.units)
       .toEqual({ distance: 'us-ft' });
+
+    // The bulk view controls also cover the existing linear measurement tools.
+    const list = win.getByTestId('survey-list');
+    const beforeVisibility = await readSaved(root);
+    await expect(win.locator('.sv-label')).toHaveCount(1);
+    await list.getByTestId('survey-hide-all').click();
+    await expect(win.locator('.sv-label')).toHaveCount(0);
+    await expect(win.getByTestId('survey-item')).toHaveCount(1);
+    await list.getByTestId('survey-show-all').click();
+    await expect(win.locator('.sv-label')).toHaveCount(1);
+    expect(await readSaved(root)).toEqual(beforeVisibility);
   });
 });

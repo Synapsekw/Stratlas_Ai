@@ -777,8 +777,8 @@ function Severity() {
         <div className="sev-title">
           <b>{current.name}</b>
           <span className="faint">
-            {issues.filter((i) => i.severityModelId === current.id).length} issues graded · read
-            only in this build
+            {issues.filter((i) => i.severityModelId === current.id).length} issues graded. New
+            scales are added from the class picker.
           </span>
         </div>
         <div className="levels">

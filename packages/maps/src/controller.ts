@@ -47,8 +47,10 @@ import {
   addPhotoPins,
   PHOTO_PIN_LAYERS,
   PHOTO_SOURCE,
+  photoMapClickHandler,
   photoPinData,
   photoPoints,
+  photosFromClusterLeaves,
 } from './photoPins';
 import { installBasemap } from './runtime';
 import { buildStyle } from './style';
@@ -1381,7 +1383,35 @@ export function createMapController(
       | undefined;
     const st = store.getState();
     const ov = props ? null : overlayAt(e);
+    const modified =
+      e.originalEvent.ctrlKey ||
+      e.originalEvent.metaKey ||
+      e.originalEvent.shiftKey ||
+      e.originalEvent.altKey;
+    const photoClick = modified ? null : photoMapClickHandler();
     if (props?.cluster_id !== undefined && hit?.geometry.type === 'Point') {
+      if (photoClick && hit.source === PHOTO_SOURCE) {
+        // A plain click lists the photos in the cluster so each one can open. Zooming would
+        // move the map under that list. Other clusters (issues) still zoom apart.
+        const clusterId = props.cluster_id;
+        const at = { x: e.originalEvent.clientX, y: e.originalEvent.clientY };
+        const src = map.getSource(hit.source) as
+          | {
+              getClusterLeaves(
+                id: number,
+                limit: number,
+                offset: number,
+              ): Promise<{ properties: { photoLayer?: string; photoId?: string } | null }[]>;
+            }
+          | undefined;
+        void src?.getClusterLeaves(clusterId, 60, 0).then((leaves) => {
+          const photos = photosFromClusterLeaves(leaves);
+          const one = photos.length === 1 ? photos[0] : undefined;
+          if (one) photoClick({ kind: 'pin', layerId: one.layerId, photoId: one.photoId });
+          else if (photos.length > 1) photoClick({ kind: 'cluster', ...at, photos });
+        });
+        return;
+      }
       // Expand a badge: zoom to where it splits.
       const center = hit.geometry.coordinates as [number, number];
       const src = map.getSource<GeoJSONSource>(hit.source);
@@ -1391,6 +1421,10 @@ export function createMapController(
     } else if (props?.issueId) {
       st.select({ kind: 'issue', id: props.issueId });
     } else if (props?.photoId && props.photoLayer) {
+      if (photoClick) {
+        photoClick({ kind: 'pin', layerId: props.photoLayer, photoId: props.photoId });
+        return;
+      }
       st.select({ kind: 'photo', id: props.photoId, layer: props.photoLayer });
     } else if (props?.layerId) {
       st.setActiveClip(props.layerId);

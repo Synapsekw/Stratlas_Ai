@@ -1,7 +1,7 @@
 // packages/geo/src/walk/preview.ts
 import type { WalkRawPath } from '@aio/schema';
 import { levelStills, type XZ } from './horizontal';
-import { applySim2, sim2FromPairs } from './similarity2';
+import { applySim2, sim2Between } from './similarity2';
 
 /*
  * The walk's shape while it is being placed (design "Walk placing by start and end"): pure
@@ -77,7 +77,7 @@ export function previewPath(
   start: XZ,
   cursor: XZ,
 ): XZ[] | null {
-  const m = sim2FromPairs(outlineAt(o, startT), outlineAt(o, endT), start, cursor);
+  const m = sim2Between(outlineAt(o, startT), outlineAt(o, endT), start, cursor);
   return m ? o.xz.map((p) => applySim2(m, p)) : null;
 }
 

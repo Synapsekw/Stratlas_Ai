@@ -37,15 +37,33 @@ describe('fitWalk', () => {
     expect(at(fit, 50).headingRad).toBeCloseTo(0, 5);
   });
 
-  it('refuses pins under 5 m', () => {
+  it('fits a finish within 5 m of the start', () => {
+    const start = pinAtTruth(raw, 4);
+    const pins = [
+      start,
+      { ...pinAtTruth(raw, end), at: [start.at[0] + 1, start.at[1]] as [number, number] },
+    ];
+    const fit = fitWalk(raw, { pins, yawOffsetDeg: 0 }, noDrawings, dur);
+    expect(fit.error).toBeNull();
+    expect(dist(at(fit, 4).xz, pins[0]?.at ?? [0, 0])).toBeLessThan(1e-6);
+    expect(dist(at(fit, end).xz, pins[1]?.at ?? [0, 0])).toBeLessThan(1e-6);
+  });
+
+  it('keeps the walk shape when the finish is the same place as the start', () => {
+    const start = pinAtTruth(raw, 4);
     const fit = fitWalk(
       raw,
-      { pins: [pinAtTruth(raw, 4), pinAtTruth(raw, 7)], yawOffsetDeg: 0 },
+      {
+        pins: [start, { ...pinAtTruth(raw, end), at: [start.at[0], start.at[1]] }],
+        yawOffsetDeg: 0,
+      },
       noDrawings,
       dur,
     );
-    expect(fit.error).toMatch(/at least 5 m/);
-    expect(fit.at(10)).toBeNull();
+    expect(fit.error).toBeNull();
+    expect(dist(at(fit, 4).xz, start.at)).toBeLessThan(1e-6);
+    // a loop that returns still has a path, it does not collapse to the pin
+    expect(dist(at(fit, 30).xz, start.at)).toBeGreaterThan(1);
   });
 
   it('refuses two pins at the same raw position', () => {
@@ -55,7 +73,7 @@ describe('fitWalk', () => {
       { t: 3, surface: '@model', at: [10, 0] },
     ];
     const fit = fitWalk(raw, { pins, yawOffsetDeg: 0 }, noDrawings, dur);
-    expect(fit.error).toMatch(/at least 5 m/);
+    expect(fit.error).toMatch(/same moment/);
   });
 
   it('sorts pins by t', () => {

@@ -1180,7 +1180,7 @@ Test it on 0.12.0. A walk is placed on a drawing, on the map (in a project with 
 - [ ] Press **Place walk** on the processed walk and choose the drawing in **Place on**. The **Scene** goes to **Split** with the drawing on one side and the 3D view on the other (no 360 video). A slim toolbar sits above the drawing, never over it. A walk without a survey date has a **Survey date** field in it.
 - [ ] Move the pointer over the drawing: the hint reads "Click where the walk started. Its shape follows the pointer." and a faint copy of the walk's shape follows the pointer. Move off the drawing: the shape goes; move back: it comes back.
 - [ ] Click where the walk started. The shape now turns and scales between the start and the pointer, and the hint reads "Click where the walk ended."
-- [ ] Bring the pointer within 5 m of the start: the hint reads "Put the end at least 5 m from the start.", and a click there does nothing.
+- [ ] Put the finish on the start: the walk is placed as a loop and the path does not collapse to one point.
 - [ ] Click where it ended. The walk shows in the colour of the survey date with a round **Start** handle (hollow) and **End** handle (filled), and the hint reads "Drag Start or End to adjust the walk, then Save." The walk keeps its bends; it is not a straight line.
 - [ ] Drag **End**: the shape follows while you drag. Dragging it within 5 m of Start keeps it at its last allowed spot.
 - [ ] **Fine-tune**: the 360 video opens beside the drawing. Scrub to a moment in the middle, press **Pin here** ("Click the true spot for this moment.") and click the spot: a numbered pin appears and the walk passes through it. Each pin shows "set" or a distance in metres; its small cross removes it.

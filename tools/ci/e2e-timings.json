@@ -89,6 +89,7 @@
   "e2e/survey-reports.spec.ts": 21,
   "e2e/team-server-sync.spec.ts": 16,
   "e2e/team-server.spec.ts": 4,
+  "e2e/telecom-measurements.spec.ts": 17,
   "e2e/telemetry.spec.ts": 1,
   "e2e/templates.spec.ts": 5,
   "e2e/tilesets.spec.ts": 13,

@@ -1079,6 +1079,7 @@ describe('journal service', () => {
       'builder:recentre',
       'builder:updateCapture',
       'builder:updateClasses',
+      'builder:addSeverityModel',
       'builder:ensureCapture',
       'builder:removeCapture',
       'walks:remove',

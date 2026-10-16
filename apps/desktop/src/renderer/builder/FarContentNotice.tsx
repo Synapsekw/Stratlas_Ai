@@ -36,7 +36,13 @@ export function FarContentNotice() {
     <div className="toast" data-testid="far-content-notice">
       <div className="toast-h">
         <Icon name="target" size={14} />
-        <b>{n.done ? 'Project origin' : 'Far from the project origin'}</b>
+        <b>
+          {n.done
+            ? 'Project origin'
+            : n.photoLayers.length > 0 && n.far.length === 0
+              ? 'Photos away from the survey'
+              : 'Far from the project origin'}
+        </b>
         <span className="toast-grow" />
         <button
           type="button"

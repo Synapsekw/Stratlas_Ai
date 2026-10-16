@@ -18,7 +18,7 @@ import {
   Vector3,
 } from 'three';
 import type { StoreApi } from 'zustand/vanilla';
-import { FAR_M } from '../config';
+import { engineConfig, FAR_M } from '../config';
 import { PALETTE } from '../palette';
 import type { LayerAdapter, LayerHandle } from '../types';
 import { MarkerLayer } from './markers';
@@ -179,10 +179,10 @@ const SELECTED = new Color(PALETTE.acc);
  * outlines and one instanced mesh for the image planes, which is also what clicks hit. Every place
  * photos were taken from gets one marker (photos within STATION_M share it; icons that would
  * overlap on screen merge with a count, see MarkerLayer); where the frustums would be lost at the
- * scale of the scene (a few photos over a site) the places also get a stem to the ground. A click
- * on a frustum or a single marker selects the photo in the workspace; a merged marker lists its
- * photos
- * (`{ kind: 'photo', id, layer }`); the selected photo is drawn in the accent colour.
+ * scale of the scene (a few photos over a site) the places also get a stem to the ground. A plain
+ * click on a frustum, a single marker, or a row of a merged marker's list tells `onPhotoOpen` (the
+ * app opens that photo beside the 3D view); with no handler, or a Ctrl, Shift or Alt click, it
+ * selects the photo (`{ kind: 'photo', id, layer }`). The selected photo is drawn in the accent colour.
  */
 export function createPhotosAdapter(
   store: StoreApi<Workspace> = appWorkspace,
@@ -289,9 +289,14 @@ export function createPhotosAdapter(
       scene.scene.add(group);
 
       const selectedIds = new Set<number>();
-      const select = (i: number) => {
+      const choose = (photoId: string, plain: boolean) => {
+        const hook = plain ? engineConfig().onPhotoOpen : null;
+        if (hook) hook(layer.id, photoId);
+        else store.getState().select({ kind: 'photo', id: photoId, layer: layer.id });
+      };
+      const select = (i: number, how?: { split?: boolean }) => {
         const p = located[i];
-        if (p) store.getState().select({ kind: 'photo', id: p.id, layer: layer.id });
+        if (p) choose(p.id, how?.split !== false);
       };
       const markers = new MarkerLayer({
         scene,
@@ -365,7 +370,7 @@ export function createPhotosAdapter(
         if (behind && behind.object !== planes && behind.distance < hit.distance - depth * 0.5)
           return;
         const photo = photos[hit.instanceId];
-        if (photo) store.getState().select({ kind: 'photo', id: photo.id, layer: layer.id });
+        if (photo) choose(photo.id, !(e.ctrlKey || e.metaKey || e.shiftKey || e.altKey));
       };
       el.addEventListener('pointerdown', onDown);
       el.addEventListener('pointerup', onUp);

@@ -11,6 +11,7 @@ import {
   type WebGLRenderer,
 } from 'three';
 import { describe, expect, it } from 'vitest';
+import { configureEngine } from '../config';
 import type { SceneHandle } from '../types';
 import {
   createPhotosAdapter,
@@ -210,6 +211,42 @@ describe('photo frustums', () => {
     expect(store.getState().selection).toBeNull();
     lh.dispose();
     expect(h.scene.getObjectByName('photos:photos')).toBeUndefined();
+  });
+
+  it('asks the app to open a plain click instead of only selecting the photo', async () => {
+    const opened: string[] = [];
+    configureEngine({
+      onPhotoOpen: (_layerId, photoId) => {
+        opened.push(photoId);
+      },
+    });
+    try {
+      const store = createWorkspace();
+      const canvas = document.createElement('canvas');
+      canvas.getBoundingClientRect = () =>
+        ({ left: 0, top: 0, width: 200, height: 200 }) as DOMRect;
+      const h = handle(canvas);
+      const lh = await createPhotosAdapter(store).create(layer, { url: () => '', scene: h });
+      canvas.dispatchEvent(
+        new PointerEvent('pointerdown', { clientX: 100, clientY: 100, button: 0 }),
+      );
+      canvas.dispatchEvent(
+        new PointerEvent('pointerup', { clientX: 100, clientY: 100, button: 0 }),
+      );
+      expect(opened).toEqual(['p2']);
+      expect(store.getState().selection).toBeNull();
+      canvas.dispatchEvent(
+        new PointerEvent('pointerdown', { clientX: 100, clientY: 100, button: 0, ctrlKey: true }),
+      );
+      canvas.dispatchEvent(
+        new PointerEvent('pointerup', { clientX: 100, clientY: 100, button: 0, ctrlKey: true }),
+      );
+      expect(opened).toEqual(['p2']);
+      expect(store.getState().selection).toEqual({ kind: 'photo', id: 'p2', layer: 'photos' });
+      lh.dispose();
+    } finally {
+      configureEngine({ onPhotoOpen: null });
+    }
   });
 
   it('draws one marker per place, lists a merged place and stems site-scale photos', async () => {

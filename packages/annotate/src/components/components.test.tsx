@@ -111,6 +111,9 @@ describe('components render', () => {
     expect(renderToString(<PhotoViewer layerId="photos" photoId="F01" />)).toContain(
       'aio://project/hcl/photos/F01.jpg',
     );
+    expect(renderToString(<PhotoViewer layerId="photos" photoId="F01" viewOnly />)).toContain(
+      'Turn 90 degrees clockwise',
+    );
     expect(renderToString(<VideoAnnotator layerId="f108" />)).toContain('Annotate');
     expect(renderToString(<AnnotationToolbar />)).toContain('Cloud box');
   });
@@ -142,6 +145,7 @@ describe('components render', () => {
       const photo = renderToString(<PhotoViewer layerId="photos" photoId="F01" />);
       expect(photo).toContain('aio://project/hcl/photos/F01.jpg');
       expect(photo).not.toContain('Rotated box');
+      expect(photo).not.toContain('Turn 90 degrees clockwise');
     } finally {
       setAnnotateReadOnly(false);
     }

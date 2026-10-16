@@ -69,6 +69,7 @@ import {
   builderTemplates,
   builderUpdateCapture,
   builderUpdateClasses,
+  builderAddSeverityModel,
   builderRemoveCapture,
   builderLayerExtents,
   builderRecentre,
@@ -76,6 +77,7 @@ import {
   createBuilderProject,
   photoGps,
 } from './builder';
+import { rotateProjectPhoto } from './rotatePhoto';
 import { builderPipelineJobs } from './builderJobs';
 import {
   listProjectWalks,
@@ -1456,6 +1458,10 @@ function registerIpc(): void {
         }
       : null;
   handle(
+    'builder:rotatePhoto',
+    (req) => packageRefusal(req.projectId) ?? rotateProjectPhoto(registry, req),
+  );
+  handle(
     'builder:import',
     (req) =>
       packageRefusal(req.projectId) ??
@@ -1612,6 +1618,10 @@ function registerIpc(): void {
   handle(
     'builder:updateClasses',
     (req) => packageRefusal(req.projectId) ?? builderUpdateClasses(req, registry),
+  );
+  handle(
+    'builder:addSeverityModel',
+    (req) => packageRefusal(req.projectId) ?? builderAddSeverityModel(req, registry),
   );
   handle(
     'builder:removeCapture',

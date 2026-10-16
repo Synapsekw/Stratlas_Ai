@@ -1,0 +1,285 @@
+import { getActiveStage, onActiveScene } from '@aio/engine';
+import type { SitePoint, SurveyMeasurement } from '@aio/schema';
+import {
+  effectiveUnits,
+  formatRow,
+  isTelecomTool,
+  measurementReadout,
+  telecomPointCount,
+  TOOL_LABELS,
+  type TelecomTool,
+} from '@aio/survey';
+import { useWorkspace } from '@aio/workspace';
+import { useSyncExternalStore } from 'react';
+import { shell, useShell } from '../shell';
+import {
+  drawEvent,
+  editEvent,
+  flipAzimuth,
+  isDirty,
+  patchMeasurement,
+  saveMeasurements,
+  setListOpen,
+  startEditing,
+  startTool,
+  stopEditing,
+  stopTool,
+  useMeasure,
+} from './measureStore';
+import './telecom.css';
+
+const TOOLS: TelecomTool[] = ['azimuth', 'antenna-tilt', 'clearance'];
+const GUIDANCE: Record<TelecomTool, string> = {
+  azimuth:
+    'Pick three points spread across the antenna front face. Check the facing arrow, then flip it if needed.',
+  'antenna-tilt':
+    'Pick bottom and top on the same straight antenna edge. Physical inclination from project vertical, not electrical tilt or signed downtilt.',
+  clearance:
+    'Pick two endpoints across the chosen gap. Reports direct 3D distance, horizontal separation and absolute vertical gap.',
+};
+const MEANING: Record<TelecomTool, string> = {
+  azimuth:
+    'Clockwise from project/grid north. The facing arrow shows the chosen outward direction.',
+  'antenna-tilt':
+    'Unsigned physical inclination from project vertical: 0 degrees upright, 90 degrees horizontal. Not electrical tilt or signed downtilt.',
+  clearance: 'The chosen endpoint gap only. This does not check for an obstacle-free volume.',
+};
+
+/** Small manual measurement controls in the Mission context sidebar. */
+export function TelecomTools() {
+  const stage = useSyncExternalStore(onActiveScene, getActiveStage, getActiveStage);
+  const mode = useShell((s) => s.stageMode);
+  const pkg = useShell((s) => s.pkg);
+  const local = useWorkspace((s) => !!s.project && !('epsg' in s.project.manifest.crs));
+  const tool = useMeasure((s) => s.tool);
+  const draw = useMeasure((s) => s.draw);
+  const readOnly = useMeasure((s) => s.readOnly) || pkg !== null;
+  const ready = useMeasure((s) => s.status === 'ready');
+  const focused = useMeasure((s) => s.file.measurements.find((m) => m.id === s.focus));
+  const message = useMeasure((s) => s.message);
+  const editing = useMeasure((s) => s.editing);
+  const settings = useMeasure((s) => s.settings);
+  const dirty = useMeasure(isDirty);
+  const saving = useMeasure((s) => s.saving);
+  const active = tool && isTelecomTool(tool.tool) ? tool.tool : null;
+  const measurement = focused && isTelecomTool(focused.tool) ? focused : null;
+  const unavailable = readOnly
+    ? 'This package is read only. Open a writable project to draw.'
+    : mode === 'map'
+      ? 'Switch to 3D or Split to pick points on a point cloud or mesh.'
+      : !stage
+        ? 'Open the 3D view to pick points on a point cloud or mesh.'
+        : !ready
+          ? 'Measurements are loading or unavailable.'
+          : null;
+  const preview =
+    active && draw
+      ? {
+          tool: active,
+          points:
+            draw.cursor && draw.points.length < telecomPointCount(active)
+              ? [...draw.points, draw.cursor]
+              : draw.points,
+        }
+      : null;
+  const result =
+    preview ?? (measurement && editing ? { ...measurement, points: editing.points } : measurement);
+  const rows = result ? measurementReadout(result) : [];
+  const units = effectiveUnits(settings.units, preview ? undefined : measurement?.units);
+
+  return (
+    <section
+      className="telecom-tools"
+      aria-label="Telecom measurements"
+      data-testid="telecom-tools"
+      onKeyDown={(event) => {
+        // Keep native Space activation here; the app otherwise uses it for global playback.
+        if (event.key === ' ') event.stopPropagation();
+      }}
+    >
+      <header>
+        <b>Telecom measurements</b>
+        <button
+          type="button"
+          className="btn ghost sm"
+          onClick={() => {
+            setListOpen(true);
+          }}
+        >
+          Measurements
+        </button>
+      </header>
+      <div className="telecom-actions" role="group" aria-label="Telecom tools">
+        {TOOLS.map((t) => (
+          <button
+            key={t}
+            type="button"
+            className="btn sm"
+            aria-pressed={active === t}
+            disabled={unavailable !== null}
+            data-testid={`telecom-tool-${t}`}
+            onClick={() => {
+              shell.getState().setAnnotating(false);
+              stage?.setTool('select');
+              startTool(t);
+            }}
+          >
+            {TOOL_LABELS[t]}
+          </button>
+        ))}
+      </div>
+      <p className="telecom-help" id="telecom-guidance">
+        {unavailable ??
+          (active
+            ? GUIDANCE[active]
+            : measurement && isTelecomTool(measurement.tool)
+              ? MEANING[measurement.tool]
+              : 'Pick on point clouds or meshes in 3D. Heights come from the picked surface.')}
+      </p>
+      {(active === 'azimuth' || measurement?.tool === 'azimuth') && (
+        <p className="telecom-help">
+          {local
+            ? 'Project north is local; no surveyed orientation is assumed.'
+            : 'Grid north follows the project CRS; this is not true north.'}
+        </p>
+      )}
+      {(active !== null || measurement !== null) && (
+        <div className="telecom-result" aria-live="polite">
+          {active && draw && (
+            <span className="mono small">
+              {draw.points.length} / {telecomPointCount(active)} points picked
+            </span>
+          )}
+          {!active && measurement && (
+            <input
+              className="sv-input"
+              aria-label="Measurement name"
+              value={measurement.label}
+              readOnly={readOnly}
+              onChange={(e) => {
+                if (e.target.value.trim())
+                  patchMeasurement(measurement.id, { label: e.target.value.slice(0, 200) });
+              }}
+            />
+          )}
+          <dl data-testid="telecom-readout">
+            {rows.map((r) => (
+              <div key={r.key} data-key={r.key}>
+                <dt>{r.label}</dt>
+                <dd className="mono">{formatRow(r, units, settings.precision)}</dd>
+              </div>
+            ))}
+          </dl>
+        </div>
+      )}
+      {message && (
+        <p className="telecom-help" role="status">
+          {message}
+        </p>
+      )}
+      {active && draw && (
+        <div className="telecom-actions">
+          <button
+            type="button"
+            className="btn sm"
+            disabled={draw.points.length === 0}
+            onClick={() => {
+              drawEvent({ type: 'undo' }, { view: '3d' });
+            }}
+          >
+            Undo last point
+          </button>
+          <button type="button" className="btn ghost sm" onClick={stopTool}>
+            Cancel
+          </button>
+        </div>
+      )}
+      {!active && measurement && !readOnly && (
+        <>
+          <div className="telecom-actions">
+            {measurement.tool === 'azimuth' && (
+              <button
+                type="button"
+                className="btn sm"
+                data-testid="telecom-flip-direction"
+                onClick={() => {
+                  flipAzimuth(measurement.id);
+                }}
+              >
+                Flip direction
+              </button>
+            )}
+            <button
+              type="button"
+              className="btn sm"
+              disabled={unavailable !== null}
+              aria-pressed={editing !== null}
+              onClick={() => {
+                if (editing) stopEditing();
+                else startEditing();
+              }}
+            >
+              {editing ? 'Done editing' : 'Edit endpoints in 3D'}
+            </button>
+          </div>
+          <details className="telecom-vertices">
+            <summary>Endpoint coordinates</summary>
+            <TelecomVertices measurement={measurement} />
+          </details>
+        </>
+      )}
+      {dirty && !readOnly && (
+        <button
+          type="button"
+          className="btn sm primary"
+          disabled={saving}
+          data-testid="telecom-save"
+          onClick={() => void saveMeasurements()}
+        >
+          Save measurements
+        </button>
+      )}
+    </section>
+  );
+}
+
+function TelecomVertices({ measurement: m }: { measurement: SurveyMeasurement }) {
+  return (
+    <div className="telecom-coordinates">
+      {m.points.map((point, i) => (
+        <fieldset key={i}>
+          <legend>Point {i + 1}</legend>
+          {(['E', 'N', 'Z'] as const).map((label, axis) => (
+            <label key={label}>
+              {label}
+              <input
+                className="sv-input mono"
+                type="number"
+                step="0.001"
+                aria-label={`Vertex ${i + 1} ${label}`}
+                value={point[axis]}
+                onChange={(e) => {
+                  if (e.target.value === '') return;
+                  const value = e.target.valueAsNumber;
+                  if (!Number.isFinite(value)) return;
+                  const next: SitePoint = [point[0], point[1], point[2]];
+                  if (axis === 0) next[0] = value;
+                  else if (axis === 1) next[1] = value;
+                  else next[2] = value;
+                  // Use the same edit path as scene dragging; fixed-count guards apply in one place.
+                  startEditing();
+                  editEvent({
+                    type: 'set',
+                    vertex: i,
+                    coords: { e: next[0], n: next[1], z: next[2] },
+                  });
+                  stopEditing();
+                }}
+              />
+            </label>
+          ))}
+        </fieldset>
+      ))}
+    </div>
+  );
+}

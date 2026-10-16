@@ -34,6 +34,22 @@ export function sim2FromPairs(a0: XZ, a1: XZ, b0: XZ, b1: XZ): Sim2 | null {
   };
 }
 
+/**
+ * The similarity taking raw pair `a0`, `a1` onto target pair `b0`, `b1`. When the targets are the
+ * same place but the raw points are not (a walk that returns to its start), the raw shape is kept
+ * in its own metres and heading, anchored on the start. Null when the raw points coincide.
+ */
+export function sim2Between(a0: XZ, a1: XZ, b0: XZ, b1: XZ): Sim2 | null {
+  const mapped = sim2FromPairs(a0, a1, b0, b1);
+  if (mapped) return mapped;
+  const raw = Math.hypot(a1[0] - a0[0], a1[1] - a0[1]);
+  const target = Math.hypot(b1[0] - b0[0], b1[1] - b0[1]);
+  if (raw >= 1e-9 && target < 1e-4) {
+    return { s: 1, cos: 1, sin: 0, tx: b0[0] - a0[0], tz: b0[1] - a0[1] };
+  }
+  return null;
+}
+
 export function applySim2(m: Sim2, p: XZ): XZ {
   const x = m.s * (m.cos * p[0] - m.sin * p[1]) + m.tx;
   const z = m.s * (m.sin * p[0] + m.cos * p[1]) + m.tz;

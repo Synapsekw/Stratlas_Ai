@@ -20,6 +20,7 @@ import {
   pyramidSize,
   resolveSplit,
   sideOf,
+  splitWithPhoto,
   takenBy,
   tilePath,
   visibleTiles,
@@ -364,5 +365,34 @@ describe('the Panoramas pane and the picker grouped by date', () => {
       dates,
     );
     expect([s.right, s.rightCapture, s.leftCapture]).toEqual(['pano', 'oct', 'nov']);
+  });
+});
+
+describe('a clicked photo beside the view', () => {
+  it('puts the map on the left and the photo on the right', () => {
+    expect(splitWithPhoto({ left: '3d', right: 'map', raster: 'o' }, 'map')).toEqual({
+      left: 'map',
+      right: 'photo',
+      raster: 'o',
+    });
+  });
+
+  it('keeps the 3D view where it is and gives the photo the other side', () => {
+    expect(splitWithPhoto({ left: '3d', right: 'map' }, '3d')).toEqual({
+      left: '3d',
+      right: 'photo',
+    });
+    expect(splitWithPhoto({ left: 'raster', right: '3d', raster: 'o' }, '3d')).toEqual({
+      left: 'photo',
+      right: '3d',
+      raster: 'o',
+    });
+  });
+
+  it('brings the 3D view back on the left when the split was not showing it', () => {
+    expect(splitWithPhoto({ left: 'map', right: 'photo' }, '3d')).toEqual({
+      left: '3d',
+      right: 'photo',
+    });
   });
 });

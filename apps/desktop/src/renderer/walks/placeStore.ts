@@ -1,7 +1,6 @@
 import {
   ghostLengthM,
   ghostPath,
-  MIN_PIN_SPAN_M,
   PIN_SPAN_ERROR,
   pinTarget,
   previewPath,
@@ -416,14 +415,12 @@ export function createPlaceStore(deps: {
           set({ preview: null });
           return;
         }
-        const tooClose =
-          Math.hypot(cursor[0] - from.xz[0], cursor[1] - from.xz[1]) < MIN_PIN_SPAN_M;
         const xz = outline
           ? previewPath(outline, startT(), endT(), from.xz, cursor)
           : [from.xz, cursor];
         const y0 = from.y;
         set({
-          preview: previewOf(xz, false, tooClose, y0 !== null && yy !== null ? [y0, yy] : null),
+          preview: previewOf(xz, false, false, y0 !== null && yy !== null ? [y0, yy] : null),
         });
       },
 
@@ -461,7 +458,7 @@ export function createPlaceStore(deps: {
         const next = byT([...st.pins, pin]);
         const fit = fitOf(next, st.yawOffsetDeg);
         if (fit?.error) {
-          // too close to the start: ignored, the hint already says why; any other refusal says so
+          // pins at one moment of the walk: ignored; any other refusal says so
           if (fit.error !== PIN_SPAN_ERROR) set({ error: fit.error });
           get().hover(at, y);
           return;
@@ -483,7 +480,7 @@ export function createPlaceStore(deps: {
         const next = st.pins.map((p, k) => (k === i ? pin : p));
         const fit = fitOf(next, st.yawOffsetDeg);
         if (fit?.error) {
-          // within 5 m of the other end: the handle stays at its last allowed spot
+          // the pins cannot be fitted: the handle stays at its last allowed spot
           set({ dragging: { handle: h, refused: true } });
           return;
         }
@@ -612,7 +609,7 @@ export function createPlaceStore(deps: {
       const next = st.pins.map((p, k) => (k === st.moving ? pin : p));
       const refused = next.length >= 2 ? (fitOf(next, st.yawOffsetDeg)?.error ?? null) : null;
       if (refused) {
-        // refused (the start and end closer than 5 m): the pin stays, the spot is asked again
+        // refused (the pins cannot be fitted): the pin stays, the spot is asked again
         set({ error: refused });
         return;
       }

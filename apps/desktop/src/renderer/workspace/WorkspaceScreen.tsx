@@ -1,4 +1,5 @@
 import { IssueRegister } from '@aio/annotate';
+import { TelecomTools } from '../survey/TelecomTools';
 import {
   ariaKeys,
   formatDate,
@@ -269,6 +270,7 @@ export function WorkspaceScreen() {
         aria-hidden={rightCollapsed}
         inert={rightCollapsed}
       >
+        <TelecomTools />
         {road ? (
           <RoadPanel />
         ) : (

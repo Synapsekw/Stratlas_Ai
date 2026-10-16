@@ -28,7 +28,7 @@ import {
 } from './builder';
 import { SELECTION_MAX_POINTS, SelectionName, selectionByteLength } from './selection';
 import { ProjectManifest } from './manifest';
-import { ClassCatalogue, LibraryClass } from './severity';
+import { ClassCatalogue, LibraryClass, SeverityModel } from './severity';
 import { HexColor, IsoDate, ProjectPath, Vec3 } from './common';
 import { CleanupLayerId, NoiseRun, PointcloudCleanup } from './pointcloudCleanup';
 import { PanoQuality, PanoScan } from './panoStitch';
@@ -1374,6 +1374,27 @@ export const ipc = {
     ]),
   },
   /** GPS position and capture time of a photo (wizard: origin from the first GPS photo). */
+  /**
+   * Turn one project photo 90 degrees clockwise. Rewrites the file and its thumbnail, turns
+   * image sightings with the pixels, and updates the lens so it still matches. Refused on a package.
+   */
+  'builder:rotatePhoto': {
+    request: z
+      .object({
+        projectId: z.string().min(1),
+        layerId: z.string().min(1),
+        photoId: z.string().min(1),
+      })
+      .strict(),
+    response: z.discriminatedUnion('ok', [
+      z.object({
+        ok: z.literal(true),
+        issues: z.array(Issue),
+        manifest: ProjectManifest,
+      }),
+      z.object({ ok: z.literal(false), error: z.string() }),
+    ]),
+  },
   'builder:photoGps': {
     request: z.object({ path: z.string().min(1) }).strict(),
     response: z.discriminatedUnion('ok', [
@@ -1872,6 +1893,17 @@ export const ipc = {
         catalogues: z.array(ClassCatalogue),
       })
       .strict(),
+    response: z.discriminatedUnion('ok', [
+      z.object({ ok: z.literal(true), manifest: ProjectManifest, backup: z.string() }),
+      z.object({ ok: z.literal(false), error: z.string() }),
+    ]),
+  },
+  /**
+   * Append one severity scale. Validated (unique id and name, at least one grade in order),
+   * backed up and journaled like `builder:updateClasses`. Scales already in the project stay.
+   */
+  'builder:addSeverityModel': {
+    request: z.object({ projectId: z.string().min(1), model: SeverityModel }).strict(),
     response: z.discriminatedUnion('ok', [
       z.object({ ok: z.literal(true), manifest: ProjectManifest, backup: z.string() }),
       z.object({ ok: z.literal(false), error: z.string() }),

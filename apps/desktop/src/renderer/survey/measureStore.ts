@@ -26,6 +26,10 @@ import {
   industryTemplates,
   initialDraw,
   initialEdit,
+  isTelecomTool,
+  telecomPointCount,
+  telecomProblem,
+  flipFace,
   measurementFrom,
   missingRoles,
   removeTemplate,
@@ -115,6 +119,8 @@ export interface MeasureState {
   focus: string | null;
   editing: EditState | null;
   listOpen: boolean;
+  /** View-only overlay visibility for every saved tool; reset when changing projects. */
+  measurementsVisible: boolean;
   dialog: MeasureDialog;
   snap: SnapSettings;
   /** The surface readouts sample (the 3D view's terrain until G2's prepared surfaces). */
@@ -152,6 +158,7 @@ const initial = (): Omit<MeasureState, 'snap' | 'autosave' | 'surface'> => ({
   focus: null,
   editing: null,
   listOpen: false,
+  measurementsVisible: true,
   dialog: null,
   rolePrompt: null,
 });
@@ -339,7 +346,7 @@ export function addMeasurement(m: SurveyMeasurement): void {
   if (s.readOnly) return;
   changed(
     { ...s.file, measurements: [...s.file.measurements, m] },
-    { selected: [m.id], focus: m.id },
+    { selected: [m.id], focus: m.id, measurementsVisible: true },
   );
 }
 
@@ -396,6 +403,11 @@ export function setListOpen(open: boolean): void {
   set({ listOpen: open });
 }
 
+/** View visibility does not mutate saved data, so it is also available in read-only packages. */
+export function setMeasurementsVisible(visible: boolean): void {
+  set({ measurementsVisible: visible, ...(!visible ? { editing: null } : {}) });
+}
+
 export function openDialog(dialog: MeasureDialog): void {
   set({ dialog });
 }
@@ -422,12 +434,16 @@ export function startTool(
   forOther?: DrawFor,
 ): void {
   if (get().readOnly) return;
+  const projectId = get().projectId;
   const begin = (picks: RolePicks) => {
+    if (get().readOnly || get().projectId !== projectId) return;
     set({
       tool: { tool, template, picks, ...(forOther ?? {}) },
+      measurementsVisible: true,
       draw: initialDraw(TOOL_FAMILY[tool]),
       editing: null,
       message: null,
+      ...(isTelecomTool(tool) ? { listOpen: false } : {}),
     });
   };
   if (template) void withDesignLayers(template, begin);
@@ -495,6 +511,15 @@ export function stopTool(): void {
   set({ tool: null, draw: null });
 }
 
+/** The face winding carries the normal choice through the existing save pipeline. */
+export function flipAzimuth(id: string): void {
+  const s = get();
+  const m = s.file.measurements.find((x) => x.id === id);
+  if (m?.tool !== 'azimuth' || s.readOnly) return;
+  patchMeasurement(id, { points: flipFace(m.points) });
+  if (s.focus === id && s.editing) set({ editing: initialEdit(flipFace(s.editing.points)) });
+}
+
 function nextLabel(base: string): string {
   const taken = new Set(get().file.measurements.map((m) => m.label));
   for (let n = 1; ; n++) {
@@ -517,9 +542,27 @@ export function setDrawInterceptor(f: DrawInterceptor | null): void {
 /** Feed a drawing event; a finished shape becomes a measurement (unsaved until Save). */
 export function drawEvent(e: DrawEvent, env: DrawEnv): void {
   const s = get();
-  if (!s.draw || !s.tool) return;
-  if (interceptor?.(e, env)) return;
-  const next = drawReducer(s.draw, e, env);
+  if (!s.draw || !s.tool || s.readOnly) return;
+  const telecom = isTelecomTool(s.tool.tool);
+  if (telecom && env.view !== '3d') return;
+  if (telecom && e.type === 'key' && !['Escape', 'Backspace'].includes(e.key)) return;
+  if (telecom && (e.type === 'finish' || e.type === 'stroke')) return;
+  if (!telecom && interceptor?.(e, env)) return;
+  // Telecom picks keep their actual height and position, without plan-angle or typed aids.
+  const event = telecom && (e.type === 'click' || e.type === 'move') ? { ...e, shift: false } : e;
+  let next = drawReducer(s.draw, event, telecom ? {} : env);
+  if (
+    telecom &&
+    isTelecomTool(s.tool.tool) &&
+    next.points.length === telecomPointCount(s.tool.tool)
+  ) {
+    const problem = telecomProblem(s.tool.tool, next.points);
+    if (problem) {
+      set({ draw: { ...next, points: s.draw.points, cursor: null }, message: problem });
+      return;
+    }
+    next = { ...next, done: true };
+  }
   if (next.cancelled) {
     stopTool();
     return;
@@ -539,6 +582,10 @@ export function drawEvent(e: DrawEvent, env: DrawEnv): void {
       picks,
     );
     addMeasurement(m);
+    if (telecom) {
+      stopTool();
+      return;
+    }
     if (s.tool.then) {
       // a one-shot drawing for another tool: hand the shape over and stop
       stopTool();
@@ -550,7 +597,7 @@ export function drawEvent(e: DrawEvent, env: DrawEnv): void {
     set({ draw: initialDraw(TOOL_FAMILY[tool]), listOpen: true });
     return;
   }
-  set({ draw: next });
+  set({ draw: next, message: null });
 }
 
 // ---------------------------------------------------------------- vertex editing
@@ -559,7 +606,7 @@ export function startEditing(): void {
   const s = get();
   const m = s.file.measurements.find((x) => x.id === s.focus);
   if (!m || s.readOnly) return;
-  set({ editing: initialEdit(m.points), tool: null, draw: null });
+  set({ editing: initialEdit(m.points), tool: null, draw: null, measurementsVisible: true });
 }
 
 export function stopEditing(): void {
@@ -570,7 +617,8 @@ export function stopEditing(): void {
 export function editEvent(e: EditEvent): void {
   const s = get();
   const m = s.file.measurements.find((x) => x.id === s.focus);
-  if (!s.editing || !m) return;
+  if (!s.editing || !m || s.readOnly) return;
+  if (isTelecomTool(m.tool) && (e.type === 'delete' || e.type === 'down-mid')) return;
   const next = editReducer(s.editing, e, m.family);
   set({ editing: next });
   if (e.type === 'up' || e.type === 'delete' || e.type === 'set' || e.type === 'escape') {

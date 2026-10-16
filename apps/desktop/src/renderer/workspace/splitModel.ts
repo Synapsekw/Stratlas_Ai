@@ -222,6 +222,18 @@ export function chooseSide(
   return withCaptures({ ...pref, [side]: kind }, dates);
 }
 
+/**
+ * A photo opened from a click. From the map: the map stays on the left and the photo takes the
+ * right. From the 3D view: the 3D view stays where it is and the photo takes the other side;
+ * when the split was not showing the 3D view, it comes back on the left.
+ */
+export function splitWithPhoto(sides: SplitPref, beside: '3d' | 'map'): SplitPref {
+  if (beside === 'map') return { ...sides, left: 'map', right: 'photo' };
+  if (sides.left === '3d') return { ...sides, right: 'photo' };
+  if (sides.right === '3d') return { ...sides, left: 'photo' };
+  return { ...sides, left: '3d', right: 'photo' };
+}
+
 /** Show `kind` on `side` at `capture` (null: any date), as one choice from the grouped picker. */
 export function chooseAt(
   pref: SplitPref,

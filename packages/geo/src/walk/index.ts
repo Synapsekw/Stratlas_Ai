@@ -1,9 +1,8 @@
 export { horizontalPath, type XZ } from './horizontal';
-export { applySim2, sim2FromPairs, type Sim2 } from './similarity2';
+export { applySim2, sim2Between, sim2FromPairs, type Sim2 } from './similarity2';
 export {
   BLEND_S,
   fitWalk,
-  MIN_PIN_SPAN_M,
   PIN_SPAN_ERROR,
   pinTarget,
   type FitPin,

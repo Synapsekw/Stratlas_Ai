@@ -8,15 +8,17 @@ import {
   issueEditor,
   useAnnotateUi,
 } from '../runtime';
-import { severityColor } from '../tools/mesh';
-import { sevStyle, useTaxonomy } from './common';
-import { NewClassRow, useNewClass } from './NewClassRow';
+import { ClassComposer, SeverityList } from './ClassComposer';
+import { useNewClass, useNewSeverity } from './NewClassRow';
 import { AnnotateStyles } from './styles';
+import { useTaxonomy } from './common';
 
 /**
- * Class and severity popover for a finished shape. Keyboard: the class hotkey from the catalogue
- * picks the class, then a digit picks the severity (`u` for uncertain); Enter creates the issue,
- * `a` adds the shape to the selected issue, Esc cancels.
+ * Class and severity panel for a finished shape. The class list and the selected class's grades
+ * stay on screen together. Keyboard: a class hotkey picks the class, then a digit picks the
+ * severity (`u` for uncertain); Enter creates the issue, `a` adds the shape to the selected
+ * issue, Esc cancels. New class opens a form for a name, colour, hotkey and severity scale,
+ * including a scale generated as 1 to 3 or 1 to 5.
  *
  * Mount one per viewer with `kinds` naming the sightings it owns (MapView mounts `['map']`).
  */
@@ -30,9 +32,11 @@ export function SightingPicker({ kinds }: { kinds: readonly Sighting['on'][] }) 
   );
   const { classes, models } = useTaxonomy();
   const { create, disabledReason } = useNewClass();
+  const { create: createModel } = useNewSeverity();
   const [classId, setClassId] = useState<string | null>(null);
   const [severity, setSeverity] = useState<Issue['severity'] | null>(null);
-  const [stage, setStage] = useState<'class' | 'severity'>('class');
+  const [query, setQuery] = useState('');
+  const [composing, setComposing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const open = pending !== null && kinds.includes(pending.sighting.on);
 
@@ -42,16 +46,31 @@ export function SightingPicker({ kinds }: { kinds: readonly Sighting['on'][] }) 
     setPendingSeen(pending);
     setClassId(lastClassId ?? classes[0]?.id ?? null);
     setSeverity(lastSeverity);
-    setStage('class');
+    setQuery('');
+    setComposing(false);
     setError(null);
   }
 
   const cls = classes.find((c) => c.id === classId);
-  const model = models.find((m) => m.id === cls?.severityModel) ?? models[0];
+  const model = models.find((m) => m.id === cls?.severityModel) ?? null;
   const levels: Issue['severity'][] = [
     ...(model?.levels.map((l) => l.value) ?? []),
     ...(model?.uncertain ? (['uncertain'] as const) : []),
   ];
+  const q = query.trim().toLowerCase();
+  const shown = q ? classes.filter((c) => c.label.toLowerCase().includes(q)) : classes;
+
+  const pickClass = (id: string) => {
+    setClassId(id);
+    const next = classes.find((c) => c.id === id);
+    const nextModel = models.find((m) => m.id === next?.severityModel);
+    const values = new Set<Issue['severity']>([
+      ...(nextModel?.levels.map((l) => l.value) ?? []),
+      ...(nextModel?.uncertain ? (['uncertain'] as const) : []),
+    ]);
+    if (severity !== null && !values.has(severity)) setSeverity(null);
+    setError(null);
+  };
 
   const confirm = () => {
     if (!classId || severity === null) {
@@ -72,25 +91,25 @@ export function SightingPicker({ kinds }: { kinds: readonly Sighting['on'][] }) 
     if (!open) return;
     const onKey = (e: KeyboardEvent) => {
       if (e.ctrlKey || e.metaKey || e.altKey) return;
-      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
+      const typing =
+        e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement;
+      if (typing) return;
       const k = e.key.toLowerCase();
-      if (k === 'escape') {
+      if (composing) {
+        if (k === 'escape') setComposing(false);
+        else return;
+      } else if (k === 'escape') {
         cancelSighting();
       } else if (k === 'enter') {
         confirm();
-      } else if (k === 'a' && selectedIssue && stage === 'class') {
+      } else if (k === 'a' && selectedIssue) {
         attach();
-      } else if (stage === 'class') {
-        const hit = classes.find((c) => c.hotkey?.toLowerCase() === k);
-        if (!hit) return;
-        setClassId(hit.id);
-        setStage('severity');
-      } else if (k === 'u' && model?.uncertain) {
-        setSeverity('uncertain');
-      } else if (/^\d$/.test(k) && levels.includes(Number(k))) {
-        setSeverity(Number(k));
       } else {
-        return;
+        const hit = classes.find((c) => c.hotkey?.toLowerCase() === k);
+        if (hit) pickClass(hit.id);
+        else if (k === 'u' && model?.uncertain) setSeverity('uncertain');
+        else if (/^\d$/.test(k) && levels.includes(Number(k))) setSeverity(Number(k));
+        else return;
       }
       e.preventDefault();
       e.stopPropagation();
@@ -102,9 +121,9 @@ export function SightingPicker({ kinds }: { kinds: readonly Sighting['on'][] }) 
   });
 
   if (!open) return null;
-  const at = pending.at ?? { x: window.innerWidth / 2 - 124, y: window.innerHeight / 3 };
-  const left = Math.max(8, Math.min(at.x + 12, window.innerWidth - 260));
-  const top = Math.max(8, Math.min(at.y + 12, window.innerHeight - 380));
+  const at = pending.at ?? { x: window.innerWidth / 2 - 320, y: window.innerHeight / 5 };
+  const left = Math.max(8, Math.min(at.x + 12, window.innerWidth - 656));
+  const top = Math.max(8, Math.min(at.y + 12, window.innerHeight - 520));
 
   return (
     <div
@@ -117,108 +136,160 @@ export function SightingPicker({ kinds }: { kinds: readonly Sighting['on'][] }) 
       }}
     >
       <AnnotateStyles />
-      <div className="ann-faint">
-        {stage === 'class' ? 'Class (hotkey)' : 'Severity (digit, u = uncertain)'}
+      <div className="ann-pop-h">
+        <b>New issue</b>
+        <span className="ann-faint">
+          Pick a class, then a severity. A letter picks the class, a digit picks the grade.
+        </span>
       </div>
-      <div className="classes" role="listbox" aria-label="Class">
-        {classes.length === 0 && (
-          <div className="ann-faint">
-            {create && !disabledReason
-              ? 'No classes yet. Create one below.'
-              : 'This project has no class catalogue yet.'}
+      {composing && create ? (
+        <ClassComposer
+          classes={classes}
+          models={models}
+          onCreateClass={create}
+          onCreateModel={createModel}
+          onCancel={() => {
+            setComposing(false);
+            setError(null);
+          }}
+          onCreated={(created) => {
+            setClassId(created.id);
+            setSeverity(null);
+            setQuery('');
+            setComposing(false);
+            setError(null);
+          }}
+        />
+      ) : (
+        <>
+          <div className="ann-pop-body">
+            <div className="ann-pop-col">
+              <input
+                className="ann-input ann-pop-search"
+                aria-label="Find a class"
+                placeholder="Find a class"
+                value={query}
+                onChange={(e) => {
+                  setQuery(e.target.value);
+                }}
+              />
+              <div className="classes" role="listbox" aria-label="Class">
+                {classes.length === 0 && (
+                  <div className="ann-faint ann-pop-pad">
+                    {create && !disabledReason
+                      ? 'No classes yet. Create one below.'
+                      : 'This project has no class catalogue yet.'}
+                  </div>
+                )}
+                {classes.length > 0 && shown.length === 0 && (
+                  <div className="ann-faint ann-pop-pad">No class matches.</div>
+                )}
+                {shown.map((c) => (
+                  <button
+                    key={c.id}
+                    type="button"
+                    className="cls"
+                    aria-pressed={c.id === classId}
+                    onClick={() => {
+                      pickClass(c.id);
+                    }}
+                  >
+                    <span className="ann-dot" style={{ ['--sev' as string]: c.color }} />
+                    <span className="cls-text">
+                      <span className="cls-name">{c.label}</span>
+                      {models.length > 1 && (
+                        <span className="cls-meta">
+                          {models.find((m) => m.id === c.severityModel)?.name ?? ''}
+                        </span>
+                      )}
+                    </span>
+                    {c.hotkey && <kbd>{c.hotkey}</kbd>}
+                  </button>
+                ))}
+              </div>
+              {create && (
+                <button
+                  type="button"
+                  className="ann-btn ghost new-class"
+                  data-testid="picker-new-class"
+                  disabled={disabledReason !== null}
+                  title={disabledReason ?? 'Create a class, and a severity scale if you need one'}
+                  onClick={() => {
+                    setComposing(true);
+                    setError(null);
+                  }}
+                >
+                  New class
+                </button>
+              )}
+            </div>
+            <div className="ann-pop-col">
+              <div className="ann-pop-col-h">
+                <b>{cls?.label ?? 'Severity'}</b>
+                {model && <span className="ann-faint">{model.name}</span>}
+              </div>
+              {cls ? (
+                <SeverityList
+                  model={model}
+                  severity={severity}
+                  onPick={(v) => {
+                    setSeverity(v);
+                    setError(null);
+                  }}
+                />
+              ) : (
+                <div className="ann-faint ann-pop-pad">Pick a class to see its grades.</div>
+              )}
+            </div>
           </div>
-        )}
-        {classes.map((c) => (
-          <button
-            key={c.id}
-            type="button"
-            className="cls"
-            aria-pressed={c.id === classId}
-            onClick={() => {
-              setClassId(c.id);
-              setStage('severity');
-            }}
-          >
-            <span className="ann-dot" style={sevStyle(c.color)} />
-            {c.label}
-            {c.hotkey && <kbd>{c.hotkey}</kbd>}
-          </button>
-        ))}
-        {create && (
-          <NewClassRow
-            onCreate={create}
-            disabledReason={disabledReason}
-            testId="picker-new-class"
-            onCreated={(cls) => {
-              setClassId(cls.id);
-              setStage('severity');
-            }}
-          />
-        )}
-      </div>
-      <div className="sevs" role="group" aria-label="Severity">
-        {levels.map((v) => (
-          <button
-            key={String(v)}
-            type="button"
-            className={`ann-sev${v === 'uncertain' ? ' unc' : ''}`}
-            style={sevStyle(severityColor(model, v))}
-            aria-pressed={severity === v}
-            title={
-              v === 'uncertain'
-                ? model?.uncertain?.label
-                : `${model?.levels.find((l) => l.value === v)?.label ?? ''}: ${model?.levels.find((l) => l.value === v)?.criteria ?? ''}`
-            }
-            onClick={() => {
-              setSeverity(v);
-            }}
-          >
-            <i />
-            {v === 'uncertain' ? '?' : v}
-          </button>
-        ))}
-      </div>
-      {error && <div className="ann-error">{error}</div>}
-      <div style={{ display: 'flex', gap: 4, justifyContent: 'flex-end' }}>
-        <button type="button" className="ann-btn ghost" onClick={cancelSighting}>
-          Cancel
-        </button>
-        {selectedIssue && (
-          <button
-            type="button"
-            className="ann-btn"
-            title={`Add this shape to ${selectedIssue.code} (a)`}
-            onClick={attach}
-          >
-            Add to {selectedIssue.code}
-          </button>
-        )}
-        <button type="button" className="ann-btn primary" onClick={confirm}>
-          Create issue
-        </button>
-      </div>
+          {error && <div className="ann-error ann-pop-error">{error}</div>}
+          <div className="ann-pop-foot">
+            <button type="button" className="ann-btn ghost" onClick={cancelSighting}>
+              Cancel
+            </button>
+            {selectedIssue && (
+              <button
+                type="button"
+                className="ann-btn"
+                title={`Add this shape to ${selectedIssue.code} (a)`}
+                onClick={attach}
+              >
+                Add to {selectedIssue.code}
+              </button>
+            )}
+            <button type="button" className="ann-btn primary" onClick={confirm}>
+              Create issue
+            </button>
+          </div>
+        </>
+      )}
     </div>
   );
 }
 
 /**
- * Place the popover next to the click in window coordinates and inside the area that hosts it
+ * Place the panel next to the click in window coordinates and inside the area that hosts it
  * (an ancestor marked `data-pop-bounds`, such as the stage, else the window), so side panels never
  * cover its buttons. A transformed or filtered ancestor makes `position: fixed` relative to
- * itself; its offset is measured and taken out.
+ * itself; its offset is measured and taken out. The panel narrows and stacks when the host is
+ * tight.
  */
 function keepInside(el: HTMLElement, at: { x: number; y: number }): void {
   const host = el.closest('[data-pop-bounds]');
   const r = host
     ? host.getBoundingClientRect()
     : { left: 0, top: 0, right: window.innerWidth, bottom: window.innerHeight };
-  const w = el.offsetWidth || 248;
-  const h = el.offsetHeight || 372;
   const right = Math.min(r.right, window.innerWidth);
   const bottom = Math.min(r.bottom, window.innerHeight);
+  const availW = Math.max(280, right - r.left - 16);
+  const availH = Math.max(280, bottom - r.top - 16);
+  el.style.width = `${String(Math.min(640, availW))}px`;
+  el.style.maxHeight = `${String(Math.min(680, availH))}px`;
+  el.dataset.stack = availW < 520 ? 'true' : 'false';
+  const w = el.offsetWidth || Math.min(640, availW);
+  const h = el.offsetHeight || Math.min(560, availH);
   const x = Math.max(r.left + 8, Math.min(at.x + 12, right - w - 8));
   const y = Math.max(r.top + 8, Math.min(at.y + 12, bottom - h - 8));
-  // the containing block's origin: where `left: 0; top: 0` lands in the window
   const now = el.getBoundingClientRect();
   const originX = now.left - (parseFloat(el.style.left) || 0);
   const originY = now.top - (parseFloat(el.style.top) || 0);

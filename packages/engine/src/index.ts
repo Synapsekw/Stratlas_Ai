@@ -13,6 +13,7 @@ export { SceneView, type SceneViewProps } from './SceneView';
 export {
   FAR_M,
   configureEngine,
+  engineConfig,
   type EngineConfig,
   type EngineMemory,
   type EngineText,

@@ -55,6 +55,7 @@ import { useRoad } from '../road/store';
 import { useRoadSetupMap } from '../road/RoadSetup';
 import { useRoadMap } from '../road/useRoadMap';
 import { isTyping } from '../keys';
+import { photoSplitIsOpen } from '../builder/photoOpen';
 import { shell, useShell } from '../shell';
 import { PANEL_ID } from '../shell/PanelHandle';
 import type { StageMode } from '../store';
@@ -568,11 +569,6 @@ export function Stage() {
   const show3d = mode === '3d' || sides3d.length > 0;
   const showMap = mode === 'map' || sidesMap.length > 0;
   const videoPane = splitting && sideOf(sides, 'video') !== undefined;
-  const photoSide = splitting && sideOf(sides, 'photo') !== undefined;
-  const photoPane = useRef(photoSide);
-  useEffect(() => {
-    photoPane.current = photoSide;
-  }, [photoSide]);
   const at = (kind: '3d' | 'map') => (kind === '3d' ? sides3d[0] : sidesMap[0]);
   const chooser = (kind: '3d' | 'map') => {
     const side = at(kind);
@@ -720,12 +716,12 @@ export function Stage() {
     setDroneTelemetry(engine, { on: telemetry, labels: telemetryLabels() });
   }, [engine, telemetry, tr]);
 
-  // A photo picked in 3D (or from an issue's sightings) opens in the Media photo viewer.
+  // A photo picked from an issue's sightings opens in the Media photo viewer. A click on the
+  // photo itself opens it in the split view first (photoOpen), and then stays on the scene.
   useEffect(
     () =>
       workspace.subscribe((s, prev) => {
-        // (unless a split side shows photos: the photo opens there)
-        if (s.selection !== prev.selection && s.selection?.kind === 'photo' && !photoPane.current)
+        if (s.selection !== prev.selection && s.selection?.kind === 'photo' && !photoSplitIsOpen())
           shell.getState().go('media');
       }),
     [],

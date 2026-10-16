@@ -1,0 +1,73 @@
+.telecom-tools {
+  flex: 0 1 auto;
+  min-height: 110px;
+  max-height: 48%;
+  overflow: auto;
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--line);
+  color: var(--fg-1);
+  font-size: var(--t-12);
+}
+.telecom-tools > header,
+.telecom-actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+.telecom-tools > header {
+  justify-content: space-between;
+  margin-bottom: 8px;
+}
+.telecom-tools > header b {
+  font-size: var(--t-13);
+  color: var(--fg-0);
+}
+.telecom-help {
+  margin: 8px 0;
+  line-height: 1.4;
+  color: var(--fg-2);
+}
+.telecom-result {
+  margin: 8px 0;
+}
+.telecom-result dl {
+  margin: 6px 0;
+}
+.telecom-result dl > div {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 6px;
+  margin: 4px 0;
+}
+.telecom-result dt {
+  min-width: 0;
+}
+.telecom-result dd {
+  margin: 0;
+  text-align: right;
+  max-width: 24ch;
+  overflow-wrap: anywhere;
+}
+.telecom-vertices {
+  margin: 8px 0;
+}
+.telecom-vertices summary {
+  cursor: pointer;
+}
+.telecom-coordinates fieldset {
+  display: flex;
+  gap: 4px;
+  border: 0;
+  padding: 4px 0;
+  margin: 4px 0;
+  min-width: 0;
+}
+.telecom-coordinates label {
+  flex: 1;
+  min-width: 0;
+}
+.telecom-coordinates input {
+  width: 100%;
+  min-width: 0;
+}

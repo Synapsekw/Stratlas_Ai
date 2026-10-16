@@ -1,7 +1,7 @@
 /**
  * Placing a walk on a drawing (the walk layer and placing by start and end): in a project with no
  * coordinate system, the walk's shape follows the pointer, a start click and an end click place
- * it (an end too close to the start is refused), its End handle is dragged, Fine-tune opens the
+ * it (an end in the same area as the start is allowed), its End handle is dragged, Fine-tune opens the
  * 360, and Save writes a pose that keeps the walk's L; Edit placement reopens it and Remove
  * placement clears it. A walk is removed from its row, and its folder goes to the project trash.
  * A walk that was never processed shows why, offers Process walk and draws no line. The toolbar
@@ -142,14 +142,12 @@ test.describe('placing a walk', () => {
     // start and end, as the synthetic walk went: 40 m east, then 30 m north (0.2 m a pixel)
     await clickSheet(win, [100, 175]);
     await expect(strip).toHaveAttribute('data-step', 'end');
-    // an end 1 m from the start is refused
+    // an end 1 m from the start is allowed: a walk can finish where it began
     const near = await sheetPoint(win, [105, 175]);
     await win.mouse.move(near.x, near.y);
     await expect(strip.getByTestId('walk-place-hint')).toHaveText(
-      'Put the end at least 5 m from the start.',
+      'Click where the walk ended. Esc moves the start.',
     );
-    await win.mouse.click(near.x, near.y);
-    await expect(strip).toHaveAttribute('data-step', 'end');
     await clickSheet(win, [300, 25]);
     await expect(strip).toHaveAttribute('data-step', 'placed');
     await expect(view.getByTestId('walk-line').first()).toBeVisible();

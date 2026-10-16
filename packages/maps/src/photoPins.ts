@@ -109,3 +109,41 @@ export function photoPinData(s: Workspace, proj: FrameProjection): FeatureCollec
 export function photoPoints(s: Workspace, proj: FrameProjection): [number, number][] {
   return placed(s, proj).map((p) => p.at);
 }
+
+export interface PhotoMapPin {
+  layerId: string;
+  photoId: string;
+}
+
+/** A plain click on the photo pins: one photo, or the photos inside a cluster. */
+export type PhotoMapClick =
+  | ({ kind: 'pin' } & PhotoMapPin)
+  | { kind: 'cluster'; x: number; y: number; photos: PhotoMapPin[] };
+
+type PhotoMapClickHandler = (hit: PhotoMapClick) => void;
+
+let onPhotoMapClick: PhotoMapClickHandler | null = null;
+
+/**
+ * The app opens a clicked map photo (a pin, or a row of a cluster's list). Unset: a pin is
+ * selected and a cluster zooms until it splits.
+ */
+export function setPhotoMapClickHandler(handler: PhotoMapClickHandler | null): void {
+  onPhotoMapClick = handler;
+}
+
+export function photoMapClickHandler(): PhotoMapClickHandler | null {
+  return onPhotoMapClick;
+}
+
+/** The photos named on cluster leaves (MapLibre's getClusterLeaves). */
+export function photosFromClusterLeaves(
+  leaves: readonly { properties?: { photoLayer?: string; photoId?: string } | null }[],
+): PhotoMapPin[] {
+  const out: PhotoMapPin[] = [];
+  for (const leaf of leaves) {
+    const p = leaf.properties;
+    if (p?.photoLayer && p.photoId) out.push({ layerId: p.photoLayer, photoId: p.photoId });
+  }
+  return out;
+}

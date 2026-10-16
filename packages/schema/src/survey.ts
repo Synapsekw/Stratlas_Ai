@@ -385,6 +385,9 @@ export const MeasurementTool = z.enum([
   'vertex-table',
   'berm-check',
   'section',
+  'azimuth',
+  'antenna-tilt',
+  'clearance',
   // polygon
   'area',
   'volume',

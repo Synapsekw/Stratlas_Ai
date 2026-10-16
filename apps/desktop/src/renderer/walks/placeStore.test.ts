@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { fitWalk, PIN_SPAN_ERROR, walkPoseSamples } from '@aio/geo';
+import { fitWalk, walkPoseSamples } from '@aio/geo';
 import {
   ProjectManifest,
   readWalkOrientationData,
@@ -216,16 +216,16 @@ describe('start and end', () => {
     expect(Math.hypot((last?.[0] ?? 0) - end[0], (last?.[1] ?? 0) - end[1])).toBeLessThan(0.5);
   });
 
-  it('an end closer than 5 m is flagged while hovering and its click is ignored', () => {
+  it('an end in the same area as the start is placed', () => {
     const s = session();
     s.getState().chooseSurface({ kind: '3d' });
     const a = modelAt(4);
     s.getState().click(a);
     s.getState().hover([a[0] + 3, a[1]]);
-    expect(s.getState().preview?.tooClose).toBe(true);
+    expect(s.getState().preview?.tooClose).toBe(false);
     s.getState().click([a[0] + 3, a[1]]);
-    expect(s.getState().step).toBe('end');
-    expect(s.getState().pins).toHaveLength(1);
+    expect(s.getState().step).toBe('placed');
+    expect(s.getState().pins).toHaveLength(2);
     expect(s.getState().error).toBeNull();
   });
 
@@ -403,7 +403,7 @@ describe('on a drawing', () => {
 });
 
 describe('handles', () => {
-  it('dragging End refits live; a spot within 5 m of Start is refused and the handle stays', () => {
+  it('dragging End refits live, including a spot in the same area as Start', () => {
     const s = placeTwo();
     const before = s.getState().pins[1]?.at;
     s.getState().dragHandle('end', [45, -30], 0);
@@ -412,8 +412,8 @@ describe('handles', () => {
     expect(s.getState().dragging).toEqual({ handle: 'end', refused: false });
     const start = s.getState().pins[0]?.at ?? [0, 0];
     s.getState().dragHandle('end', [start[0] + 1, start[1]], 0);
-    expect(s.getState().pins[1]?.at).toEqual([45, -30]);
-    expect(s.getState().dragging?.refused).toBe(true);
+    expect(s.getState().pins[1]?.at).toEqual([start[0] + 1, start[1]]);
+    expect(s.getState().dragging?.refused).toBe(false);
     s.getState().endDrag();
     expect(s.getState().dragging).toBeNull();
     expect(before).not.toEqual([45, -30]);
@@ -609,18 +609,19 @@ describe('createPlaceStore', () => {
     expect(s().armed).toBeNull();
   });
 
-  it('armMove again on the same pin lets go; a move under 5 m is refused and asked again', () => {
+  it('armMove again on the same pin lets go; a finish on the start is kept', () => {
     const { s } = fineTuning();
     s().armMove(1);
     s().armMove(1);
     expect(s().armed).toBeNull();
     expect(s().moving).toBeNull();
-    const before = s().pins;
     s().armMove(1);
-    s().click(truthXZ(4)); // onto the start pin
-    expect(s().error).toBe(PIN_SPAN_ERROR);
-    expect(s().pins).toEqual(before);
-    expect(s().armed).toBe('move');
+    const start = truthXZ(4);
+    s().click(start);
+    expect(s().error).toBeNull();
+    expect(s().pins[1]?.at).toEqual(start);
+    expect(s().armed).toBeNull();
+    s().armMove(1);
     s().click(truthXZ(lastT));
     expect(s().error).toBeNull();
     expect(s().armed).toBeNull();

@@ -390,7 +390,7 @@ describe('PlaceWalkStrip: placing', () => {
     act(() => {
       session.getState().hover([2, 0], 0);
     });
-    expect(hint()).toBe('Put the end at least 5 m from the start.');
+    expect(hint()).toBe('Click where the walk ended. Esc moves the start.');
     act(() => {
       session.getState().click([40, -30], 0);
     });
@@ -398,7 +398,7 @@ describe('PlaceWalkStrip: placing', () => {
     act(() => {
       session.getState().dragHandle('end', [1, 0], 0);
     });
-    expect(hint()).toBe('Start and End stay at least 5 m apart.');
+    expect(hint()).toBe('Drag Start or End to adjust the walk, then Save.');
     act(() => {
       session.getState().endDrag();
     });

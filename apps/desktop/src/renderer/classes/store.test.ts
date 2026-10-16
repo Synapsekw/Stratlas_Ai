@@ -16,9 +16,23 @@ const h = vi.hoisted(() => ({
 vi.mock('../shell', () => ({
   shell: { getState: () => ({ pkg: null }) },
   bridge: {
-    call: (channel: string, req: { catalogues?: unknown }) => {
+    call: (
+      channel: string,
+      req: { catalogues?: unknown; model?: { id: string; name: string } },
+    ) => {
       h.calls.push({ channel, req });
       h.order.push(channel);
+      if (channel === 'builder:addSeverityModel' && req.model) {
+        const m = workspace.getState().project?.manifest;
+        return Promise.resolve({
+          ok: true,
+          value: {
+            ok: true,
+            backup: 'b',
+            manifest: { ...m, severityModels: [...(m?.severityModels ?? []), req.model] },
+          },
+        });
+      }
       if (channel === 'builder:updateClasses') {
         const answer = h.answer;
         const m = workspace.getState().project?.manifest;
@@ -42,8 +56,15 @@ vi.mock('../detections/store', () => ({
   },
 }));
 
-const { classes, createClass, deleteClass, editClass, undoClassEdit, redoClassEdit } =
-  await import('./store');
+const {
+  classes,
+  createClass,
+  createSeverityModel,
+  deleteClass,
+  editClass,
+  undoClassEdit,
+  redoClassEdit,
+} = await import('./store');
 
 const manifest: ProjectManifest = {
   schema: 'aio.project/1',
@@ -134,6 +155,21 @@ describe('class store', () => {
     expect(labels()).toEqual(['Crack', 'Rust']);
     expect(await redoClassEdit()).toBe(true);
     expect(labels()).toEqual(['Crack', 'Rust', 'Spalling']);
+  });
+
+  it('adds a severity scale and keeps the ones already there', async () => {
+    const model = {
+      id: 'coat',
+      name: 'Coating',
+      levels: [{ value: 1, label: 'Minor', color: '#78b3d6', criteria: 'M' }],
+    };
+    const saved = await createSeverityModel(model);
+    expect(saved.id).toBe('coat');
+    expect(workspace.getState().project?.manifest.severityModels.map((s) => s.id)).toEqual([
+      'sev',
+      'coat',
+    ]);
+    expect(classes.getState().notice).toMatchObject({ text: 'Severity scale Coating created.' });
   });
 
   it('returns the existing class for a known label without writing', async () => {

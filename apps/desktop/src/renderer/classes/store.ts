@@ -15,7 +15,7 @@ import {
   type ClassPatch,
   type NewClass,
 } from '@aio/annotate';
-import type { ClassCatalogue, IssueClass, LibraryClass } from '@aio/schema';
+import type { ClassCatalogue, IssueClass, LibraryClass, SeverityModel } from '@aio/schema';
 import { t } from '@aio/ui';
 import { workspace } from '@aio/workspace';
 import { useStore } from 'zustand';
@@ -162,6 +162,26 @@ export function createClass(
     });
     notify(t('classes.created', { label: r.value.cls.label }), { undo: true });
     return r.value.cls;
+  });
+}
+
+/** A severity scale generated while annotating. Throws with the sentence. Not undone with classes. */
+export function createSeverityModel(model: SeverityModel): Promise<SeverityModel> {
+  return serial(async () => {
+    const reason = readOnlyReason();
+    if (reason) throw new Error(reason);
+    const projectId = openProjectId();
+    if (!projectId) throw new Error(t('classes.noProject'));
+    const r = await bridge.call('builder:addSeverityModel', { projectId, model });
+    if (openProjectId() !== projectId) throw new Error(PROJECT_CHANGED);
+    if (!r.ok) throw new Error(r.error);
+    if (!r.value.ok) {
+      notify(t('classes.notSaved', { error: r.value.error }), { error: true });
+      throw new Error(r.value.error);
+    }
+    workspace.getState().replaceManifest(r.value.manifest);
+    notify(t('classes.scaleCreated', { label: model.name }));
+    return r.value.manifest.severityModels.find((s) => s.id === model.id) ?? model;
   });
 }
 
