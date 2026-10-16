@@ -118,9 +118,10 @@ test('street maps stay dark in the light theme: coverage map and Map view', asyn
   expect(lightness(map?.background)).toBeLessThan(0.1);
   expect(lightness(map?.surface)).toBeLessThan(0.1);
   expect(lightness(map?.controls)).toBeLessThan(0.25);
-  // The chrome around it follows the light theme.
+  // The chrome around it follows the light theme. The sidebar's surface (.sb-surface) paints its
+  // background since the sidebar became a resizable split; .sidebar itself is transparent.
   const chrome = await win
-    .locator('.sidebar')
+    .locator('.sidebar > .sb-surface')
     .evaluate((el) => getComputedStyle(el).backgroundColor);
   expect(lightness(chrome)).toBeGreaterThan(0.8);
 });
