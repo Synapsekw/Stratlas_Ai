@@ -38,7 +38,7 @@ describe('shortcut registry', () => {
     for (const k of 'abcdefghijklmnopqrstuvwxyz0123456789')
       expect(matchShortcut('scene', press(k))).not.toBe('scene.timeline');
     expect(shortcutHint('scene.timeline')).toBe('');
-    expect(ariaKeys('scene.timeline')).toBe('');
+    expect(ariaKeys('scene.timeline')).toBeUndefined();
   });
 
   it('Ctrl+J opens the agent', () => {

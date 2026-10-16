@@ -641,9 +641,11 @@ const ARIA: Record<string, string> = {
  * `aria-keyshortcuts` for a shortcut: `Control+K` (`Meta+K` on macOS), several combos separated
  * by spaces.
  */
-export function ariaKeys(id: ShortcutId, mac: boolean = isMacPlatform()): string {
-  return shortcut(id)
-    .keys.map((k) => {
+export function ariaKeys(id: ShortcutId, mac: boolean = isMacPlatform()): string | undefined {
+  const keys = shortcut(id).keys;
+  if (keys.length === 0) return undefined;
+  return keys
+    .map((k) => {
       const c = parseCombo(k);
       const mods = [
         c.ctrl && (mac ? 'Meta' : 'Control'),
