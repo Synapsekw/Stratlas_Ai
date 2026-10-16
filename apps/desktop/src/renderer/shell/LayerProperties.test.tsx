@@ -6,10 +6,11 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { LayerProperties, layerProps } from './LayerProperties';
 import { renameRequest } from './renameRequest';
 
+const shellPkg = vi.hoisted(() => ({ value: null as object | null }));
 const call = vi.fn<(...a: unknown[]) => Promise<unknown>>();
 vi.mock('../shell', () => ({
   bridge: { call: (...a: unknown[]) => call(...a) },
-  useShell: (f: (s: { pkg: null }) => unknown) => f({ pkg: null }),
+  useShell: (f: (s: { pkg: object | null }) => unknown) => f({ pkg: shellPkg.value }),
 }));
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -41,6 +42,7 @@ beforeEach(() => {
       },
     },
   } as unknown as Partial<ReturnType<typeof workspace.getState>>);
+  shellPkg.value = null;
   call.mockReset();
   call.mockResolvedValue({
     ok: true,
@@ -79,7 +81,8 @@ describe('LayerProperties', () => {
     const d = document.querySelector('[data-testid="layer-props"]');
     expect(d?.getAttribute('role')).toBe('dialog');
     expect(d?.textContent).toContain('Properties of Model');
-    expect(d?.textContent).toContain('Model'); // kind
+    const kind = [...(d?.querySelectorAll('dt') ?? [])].find((e) => e.textContent === 'Kind');
+    expect(kind?.nextElementSibling?.textContent).toBe('Model');
     expect(d?.textContent).toContain('models/m.glb');
     expect(d?.textContent).toContain('2.0 KB');
     expect(d?.textContent).toContain('6 by 4 m, 2 m high');
@@ -95,7 +98,10 @@ describe('LayerProperties', () => {
       layerProps.getState().openLayer('m');
       await Promise.resolve();
     });
-    act(() => document.querySelector<HTMLElement>('[data-testid="layer-props-reveal"]')?.click());
+    await act(async () => {
+      document.querySelector<HTMLElement>('[data-testid="layer-props-reveal"]')?.click();
+      await Promise.resolve();
+    });
     expect(call).toHaveBeenCalledWith('layer:reveal', { projectId: 'p', layerId: 'm' });
     act(() => document.querySelector<HTMLElement>('[data-testid="layer-props-rename"]')?.click());
     expect(renameRequest.getState().layerId).toBe('m');
@@ -112,5 +118,114 @@ describe('LayerProperties', () => {
       'Project properties',
     );
     expect(call).not.toHaveBeenCalled();
+  });
+
+  const openM = async () => {
+    root = createRoot(host);
+    act(() => root?.render(<LayerProperties />));
+    await act(async () => {
+      layerProps.getState().openLayer('m');
+      await Promise.resolve();
+    });
+  };
+  const text = () => document.querySelector('[data-testid="layer-props"]')?.textContent ?? '';
+
+  it('shows the reading state before main answers', () => {
+    call.mockReturnValue(new Promise(() => undefined));
+    root = createRoot(host);
+    act(() => root?.render(<LayerProperties />));
+    act(() => {
+      layerProps.getState().openLayer('m');
+    });
+    expect(text()).toContain('Reading the files...');
+  });
+
+  it('Escape closes the dialog', async () => {
+    await openM();
+    act(() => {
+      document
+        .querySelector('[data-testid="layer-props"]')
+        ?.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    });
+    expect(document.querySelector('[data-testid="layer-props"]')).toBeNull();
+  });
+
+  it('a failed layer:info shows an error line', async () => {
+    call.mockResolvedValue({ ok: false, error: 'boom' });
+    await openM();
+    expect(document.querySelector('[data-testid="layer-props-error"]')?.textContent).toBe(
+      'Could not read the files of this dataset.',
+    );
+  });
+
+  it('a failed read is not cached', async () => {
+    call.mockResolvedValueOnce({ ok: false, error: 'boom' });
+    await openM();
+    act(() => {
+      layerProps.getState().close();
+    });
+    await openM();
+    expect(call).toHaveBeenCalledTimes(2);
+    expect(text()).toContain('models/m.glb');
+  });
+
+  it('hides Extent and Centre when the extent is null', async () => {
+    call.mockResolvedValue({
+      ok: true,
+      value: {
+        ok: true,
+        info: {
+          layerId: 'm',
+          name: 'Model',
+          kind: 'mesh',
+          files: [],
+          bytes: null,
+          count: null,
+          countKind: null,
+          extent: null,
+          crs: { epsg: 32639 },
+          importedAt: null,
+          mainFile: null,
+        },
+      },
+    });
+    await openM();
+    expect(text()).not.toContain('Extent');
+    expect(text()).not.toContain('Centre');
+    expect(text()).toContain('Not known');
+  });
+
+  it('hides Rename and Reveal inside a package', async () => {
+    shellPkg.value = {};
+    await openM();
+    expect(document.querySelector('[data-testid="layer-props-rename"]')).toBeNull();
+    expect(document.querySelector('[data-testid="layer-props-reveal"]')).toBeNull();
+  });
+
+  it('shows a short message when Reveal fails', async () => {
+    await openM();
+    call.mockResolvedValue({ ok: true, value: { ok: false, error: 'ENOENT C:/x' } });
+    await act(async () => {
+      document.querySelector<HTMLElement>('[data-testid="layer-props-reveal"]')?.click();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    expect(document.querySelector('[role="alert"]')?.textContent).toBe(
+      'Could not show the file in its folder.',
+    );
+  });
+
+  it('closes when the dataset is no longer in the manifest', async () => {
+    await openM();
+    act(() => {
+      const ws = workspace.getState().project;
+      if (ws) {
+        workspace.setState({
+          project: { ...ws, manifest: { ...ws.manifest, layers: [] } },
+        } as unknown as Partial<ReturnType<typeof workspace.getState>>);
+      }
+    });
+    expect(document.querySelector('[data-testid="layer-props"]')).toBeNull();
+    expect(layerProps.getState().open).toBeNull();
   });
 });

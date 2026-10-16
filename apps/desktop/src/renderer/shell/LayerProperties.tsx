@@ -84,7 +84,11 @@ function PropsDialog({ open }: { open: NonNullable<Open> }) {
       live = false;
     };
   }, [layerId]);
-  if (!project) return null;
+  const gone = layerId !== null && !project?.manifest.layers.some((l) => l.id === layerId);
+  useEffect(() => {
+    if (gone) layerProps.getState().close();
+  }, [gone]);
+  if (!project || gone) return null;
   const manifest = project.manifest;
   const layer = layerId ? manifest.layers.find((l) => l.id === layerId) : undefined;
   const capture = layer?.capture
@@ -181,7 +185,15 @@ function PropsDialog({ open }: { open: NonNullable<Open> }) {
           </>
         ) : (
           <>
-            <Row label={t('layerProps.files')}>{unknown}</Row>
+            <Row label={t('layerProps.files')}>
+              {pkg ? (
+                unknown
+              ) : (
+                <span role="alert" data-testid="layer-props-error">
+                  {t('layerProps.failed')}
+                </span>
+              )}
+            </Row>
             <Row label={t('layerProps.size')}>{unknown}</Row>
           </>
         )}
@@ -239,7 +251,9 @@ function PropsDialog({ open }: { open: NonNullable<Open> }) {
               className="btn ghost"
               onClick={() => {
                 setError(null);
-                void revealLayer(layerId).then(setError);
+                void revealLayer(layerId).then((e) => {
+                  setError(e === null ? null : t('layerProps.revealFailed'));
+                });
               }}
               data-testid="layer-props-reveal"
             >
