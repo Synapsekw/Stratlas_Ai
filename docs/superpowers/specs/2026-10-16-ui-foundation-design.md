@@ -110,6 +110,7 @@ It fails, even if it technically works, if:
 
 - `.seg` stays for 2 to 4 option switches (view modes, Off/Key/All).
 - Page level tabs use one underline style: promote `.ph-tabs` to `.tabs`. The right panel's `.seg ctx-tabs` keeps working until project 2 replaces it with the workbench tab bar.
+- `Tabs` items may carry a live dot, a count, an icon, a pin toggle and a close button; `overflow: 'menu'` keeps one row and moves non-fitting tabs (caller-ordered, the selected one never) into a "⋯ n" menu that shows the accent while a live tab is inside. The workbench tab bar of project 2 is a plain consumer.
 - **Chips:** three kinds only: `.tag` (metadata), `.chip-status` (live state with a dot), `.sev` (severity). The other nine chip classes are retired onto these.
 - **No side stripes.** The six `border-left: 3px` accents (toast, help, package, road twice, the date folder) become a leading status icon or a tinted fill.
 

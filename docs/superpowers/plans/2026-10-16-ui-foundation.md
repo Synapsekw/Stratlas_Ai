@@ -320,6 +320,11 @@ export interface TabItem<K extends string> {
   id: K;
   label: string;
   count?: number;
+  icon?: IconName;
+  live?: boolean; // accent dot with a text label (aria-label t('tabs.live'))
+  pinned?: boolean;
+  onPinChange?: (pinned: boolean) => void; // shows a pin toggle
+  onClose?: () => void; // shows a close button; click or middle-click only, no shortcut
 }
 export interface TabsProps<K extends string> {
   items: readonly TabItem<K>[];
@@ -327,6 +332,8 @@ export interface TabsProps<K extends string> {
   onChange: (id: K) => void;
   label: string; // the tablist's name
   idPrefix: string; // tab ids `${idPrefix}-tab-${id}`, panels `${idPrefix}-panel-${id}`
+  overflow?: 'wrap' | 'menu'; // default 'wrap'; 'menu' keeps one row, non-fitting tabs go to a "⋯ n" Menu
+  overflowOrder?: (id: K) => number; // higher leaves first; the selected tab never leaves
 }
 export function Tabs<K extends string>(props: TabsProps<K>): ReactElement;
 
@@ -360,7 +367,7 @@ export interface EmptyStateProps {
 export function EmptyState(props: EmptyStateProps): ReactElement;
 ```
 
-- [ ] **Step 1: Write the failing tests.** Tabs: `role="tablist"` named `label`, the selected tab has `aria-selected="true"` and `tabIndex 0`, others `-1`; ArrowRight and ArrowLeft move and call `onChange` (reversed under `dir="rtl"`); a `count` renders in a mono span. Chip: `kind="tag"` gives class `tag`, `status` gives `chip-status` with a `.dot`, `sev` gives `sev` with `--sev` set from `color`. Row: class `row`, `data-kind`, `data-selected` when selected; the count is in `.row-count`; `actions` render in `.row-acts`. EmptyState: a heading with `title`, the body, and the action.
+- [ ] **Step 1: Write the failing tests.** Tabs: `role="tablist"` named `label`, the selected tab has `aria-selected="true"` and `tabIndex 0`, others `-1`; ArrowRight and ArrowLeft move and call `onChange` (reversed under `dir="rtl"`); a `count` renders in a mono span; a `live` item renders a dot with text label; `onClose` renders a close button that calls it (also on middle-click) without selecting the tab; `onPinChange` toggles `pinned` with `aria-pressed`; with `overflow="menu"` and a mocked container width, the tabs that do not fit (highest `overflowOrder` first) are in the "⋯ n" `Menu` and selecting one calls `onChange`; the selected tab never overflows; the ⋯ button carries the accent class when a `live` tab is inside it. Chip: `kind="tag"` gives class `tag`, `status` gives `chip-status` with a `.dot`, `sev` gives `sev` with `--sev` set from `color`. Row: class `row`, `data-kind`, `data-selected` when selected; the count is in `.row-count`; `actions` render in `.row-acts`. EmptyState: a heading with `title`, the body, and the action.
 - [ ] **Step 2: Run** `pnpm vitest run packages/ui/src/Tabs.test.tsx packages/ui/src/Chip.test.tsx packages/ui/src/Row.test.tsx packages/ui/src/EmptyState.test.tsx`; FAIL.
 - [ ] **Step 3: Implement** the four components.
 - [ ] **Step 4: Style.** `parts/tabs.css`: `.tabs` (today's `.ph-tabs` underline look from `photogrammetry/photo.css`, promoted; leave `.ph-tabs` until Task 14). `parts/chip.css`: `.tag` tones. `parts/row.css`: `.row` heights per `data-kind`; hover `--bg-2`; `[data-selected]` = `--bg-3` with label and icon in `--acc`; no leading bar; count mono 11 `--fg-3`; `.row-acts` visible on hover and on `[data-selected]`, each target at least 24 px. `parts/empty.css`: one `.empty` look.
