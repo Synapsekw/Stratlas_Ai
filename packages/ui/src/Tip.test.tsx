@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { act, type ReactElement } from 'react';
+import { act, createRef, type ReactElement } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { Tip } from './Tip';
@@ -7,9 +7,11 @@ import { Tip } from './Tip';
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 let host: HTMLDivElement;
 let root: Root | null = null;
+let clock = 1_000_000;
 beforeEach(() => {
   vi.useFakeTimers();
-  vi.setSystemTime(1_000_000);
+  clock += 60_000; // the skip window is module state: keep tests apart
+  vi.setSystemTime(clock);
   host = document.createElement('div');
   document.body.append(host);
 });
@@ -149,5 +151,47 @@ describe('Tip', () => {
     focus();
     wait(400);
     expect(tip()?.textContent).toContain('Save');
+  });
+
+  it('does not open after a mouse click focuses the child, but does for Tab focus', () => {
+    render(save());
+    fire(btn(), new PointerEvent('pointerdown', { bubbles: true, pointerType: 'mouse' }));
+    focus();
+    fire(btn(), new PointerEvent('pointerup', { bubbles: true, pointerType: 'mouse' }));
+    wait(500);
+    expect(tip()).toBeNull();
+    blur();
+    focus();
+    wait(400);
+    expect(tip()).not.toBeNull();
+  });
+
+  it('still hands the element to the caller ref', () => {
+    const ref = createRef<HTMLButtonElement>();
+    render(
+      <Tip content="Save">
+        <button id="a" type="button" ref={ref}>
+          s
+        </button>
+      </Tip>,
+    );
+    expect(ref.current).toBe(btn());
+  });
+
+  it('closes a hover-opened tip on Escape pressed anywhere', () => {
+    render(save());
+    fire(btn(), new PointerEvent('pointerover', { bubbles: true, pointerType: 'mouse' }));
+    wait(400);
+    expect(tip()).not.toBeNull();
+    fire(document.body, new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    expect(tip()).toBeNull();
+  });
+
+  it('ignores touch hover and leaves no aria-describedby while closed', () => {
+    render(save());
+    expect(btn().hasAttribute('aria-describedby')).toBe(false);
+    fire(btn(), new PointerEvent('pointerover', { bubbles: true, pointerType: 'touch' }));
+    wait(500);
+    expect(tip()).toBeNull();
   });
 });

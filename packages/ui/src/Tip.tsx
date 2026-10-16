@@ -76,12 +76,12 @@ export function Tip({
   const child = children as ReactElement<ChildProps>;
   const childProps = child.props;
 
+  const [byPointer, setByPointer] = useState(false);
+  const childRef = childProps.ref as Ref<Element> | undefined;
+
   const hide = useCallback(() => {
     setWanted(false);
-    setOpen((was) => {
-      if (was) lastHiddenAt = Date.now();
-      return false;
-    });
+    setOpen(false);
   }, []);
   const show = useCallback(() => {
     setWanted(true);
@@ -98,6 +98,34 @@ export function Tip({
     };
   }, [wanted]);
 
+  // The skip window starts when an open tip closes (or unmounts), whatever closed it.
+  useEffect(() => {
+    if (!open) return;
+    return () => {
+      lastHiddenAt = Date.now();
+    };
+  }, [open]);
+
+  // Escape dismisses a tip however it opened, without moving focus (WCAG 1.4.13).
+  useEffect(() => {
+    if (!wanted && !open) return;
+    const onKey = (event: KeyboardEvent): void => {
+      if (event.key === 'Escape') hide();
+    };
+    document.addEventListener('keydown', onKey);
+    return () => {
+      document.removeEventListener('keydown', onKey);
+    };
+  }, [wanted, open, hide]);
+
+  const mergedRef = useCallback(
+    (node: Element | null) => {
+      setOpener(node);
+      setRef(childRef, node);
+    },
+    [childRef],
+  );
+
   useLayoutEffect(() => {
     const pop = popRef.current;
     if (!open || !opener || !pop) return;
@@ -105,27 +133,33 @@ export function Tip({
     setPos(place(opener.getBoundingClientRect(), pop.getBoundingClientRect(), placement, rtl));
   }, [open, opener, placement, content, shortcut]);
 
-  const chain = (name: string, own: () => void) => (event: never) => {
-    own();
-    (childProps[name] as Handler | undefined)?.(event);
-  };
+  const chain =
+    (name: string, own: (event: never) => void) =>
+    (event: never): void => {
+      own(event);
+      (childProps[name] as Handler | undefined)?.(event);
+    };
 
   const props: ChildProps = {
-    ref: (node: Element | null) => {
-      setOpener(node);
-      setRef((child as unknown as { ref?: Ref<Element> }).ref, node);
-    },
-    onPointerEnter: chain('onPointerEnter', show),
+    ref: mergedRef,
+    onPointerEnter: chain('onPointerEnter', (event: { pointerType?: string }) => {
+      if (event.pointerType !== 'touch') show();
+    }),
     onPointerLeave: chain('onPointerLeave', hide),
-    onFocus: chain('onFocus', show),
+    onPointerDown: chain('onPointerDown', () => {
+      setByPointer(true);
+      hide();
+    }),
+    onPointerUp: chain('onPointerUp', () => {
+      setByPointer(false);
+    }),
+    // Only keyboard focus opens the tip: a click focuses the child too, and must not.
+    onFocus: chain('onFocus', () => {
+      if (!byPointer) show();
+    }),
     onBlur: chain('onBlur', hide),
-    onPointerDown: chain('onPointerDown', hide),
-    onKeyDown: (event: { key: string }) => {
-      if (event.key === 'Escape') hide();
-      (childProps.onKeyDown as Handler | undefined)?.(event as never);
-    },
   };
-  if (!repeatsName) {
+  if (!repeatsName && open) {
     const existing = childProps['aria-describedby'] as string | undefined;
     props['aria-describedby'] = existing ? `${existing} ${id}` : id;
   }
