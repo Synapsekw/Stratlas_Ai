@@ -4,7 +4,7 @@
 
 **Goal:** Give every screen one set of parts (tokens, buttons, one floating surface, tabs, chips, rows, tooltips, empty state) and one resizable split, without re-laying out any screen.
 
-**Architecture:** New tokens and every new part live in `packages/ui` (`tokens.css`, a `parts/` folder of CSS files imported by `mission.css`, and React components exported from `packages/ui/src/index.ts`). The desktop renderer adopts `<SplitPane>` for six layouts and drops the width and grid animations. The work lands in two merges: **Merge A** adds the parts and the six splits (project 2 starts after it lands); **Merge B** migrates the one-off classes onto them.
+**Architecture:** New tokens and every new part live in `packages/ui` (`tokens.css`, a `parts/` folder of CSS files imported by `mission.css`, and React components exported from `packages/ui/src/index.ts`). The desktop renderer adopts `<ResizableSplit>` for six layouts and drops the width and grid animations. The work lands in two merges: **Merge A** adds the parts and the six splits (project 2 starts after it lands); **Merge B** migrates the one-off classes onto them.
 
 **Tech Stack:** React 19, TypeScript, plain CSS custom properties, zustand (prefs stores), vitest (jsdom for components), Playwright for Electron e2e.
 
@@ -12,6 +12,7 @@
 
 ## Global Constraints
 
+- **Naming:** the renderer already exports `SplitPane` and `useSplit` for the 3D/Map split view (`workspace/SplitPanes.tsx`). The shared divider is therefore `ResizableSplit` / `useResizableSplit` (from `@aio/ui`); never rename or touch the existing ones.
 - Keep every `data-testid`, `aria-label`, `aria-keyshortcuts` and shortcut (Ctrl+B and Ctrl+Alt+B included).
 - An e2e spec may have its selector rewritten when a class migrates (to a `data-testid` or role and name, in the same commit); it may never change what it does or asserts the user sees.
 - Every new visible string goes through `packages/ui/src/i18n` (`en.ts`); no em or en dashes in copy.
@@ -39,20 +40,20 @@
 
 `packages/ui/src/`
 
-| File                                                                                             | Responsibility                                                                                                               |
-| ------------------------------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------- |
-| `tokens.css`                                                                                     | New tokens (decision 1).                                                                                                     |
-| `tokens.test.ts`                                                                                 | `NON_COLOUR` learns `sp-`, `el-`, `z-`, `d-`, `caps-`, `fw-`; checks the new tokens exist.                                   |
-| `cssGuard.test.ts` + `cssGuard.allow.json`                                                       | Fails on raw px `font-size`, raw colours, raw `box-shadow`, raw `z-index`, and counts `title=`; the allow list only shrinks. |
-| `contrast.ts` + `contrast.test.ts`                                                               | oklch to sRGB contrast for token pairs; asserts every text pair in light at 4.5:1.                                           |
-| `portal.ts` + `portal.test.ts`                                                                   | `portalSurfaceAttrs` and `PortalRoot`: a portal copies the opener's surface and theme.                                       |
-| `mission.css`                                                                                    | Base styles; `@import`s the `parts/` files at its top; the global `:focus-visible` (decision 7).                             |
-| `parts/button.css`, `controls.tsx` (`Button`, `IconButton`)                                      | Decision 2.                                                                                                                  |
-| `parts/tip.css`, `Tip.tsx`                                                                       | Decision 6.                                                                                                                  |
-| `parts/surface.css`, `Popover.tsx`, `Menu.tsx`                                                   | Decision 3 (menus, popovers, dialogs, toasts).                                                                               |
-| `parts/tabs.css`, `Tabs.tsx`; `parts/chip.css`, `Chip.tsx`                                       | Decision 4.                                                                                                                  |
-| `parts/row.css`, `Row.tsx`; `parts/empty.css`, `EmptyState.tsx`                                  | Decision 5 and the one empty state.                                                                                          |
-| `split/` (`model.ts`, `prefs.ts`, `useSplit.ts`, `SplitPane.tsx`, `index.ts`), `parts/split.css` | Decision 10.                                                                                                                 |
+| File                                                                                                           | Responsibility                                                                                                               |
+| -------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------- |
+| `tokens.css`                                                                                                   | New tokens (decision 1).                                                                                                     |
+| `tokens.test.ts`                                                                                               | `NON_COLOUR` learns `sp-`, `el-`, `z-`, `d-`, `caps-`, `fw-`; checks the new tokens exist.                                   |
+| `cssGuard.test.ts` + `cssGuard.allow.json`                                                                     | Fails on raw px `font-size`, raw colours, raw `box-shadow`, raw `z-index`, and counts `title=`; the allow list only shrinks. |
+| `contrast.ts` + `contrast.test.ts`                                                                             | oklch to sRGB contrast for token pairs; asserts every text pair in light at 4.5:1.                                           |
+| `portal.ts` + `portal.test.ts`                                                                                 | `portalSurfaceAttrs` and `PortalRoot`: a portal copies the opener's surface and theme.                                       |
+| `mission.css`                                                                                                  | Base styles; `@import`s the `parts/` files at its top; the global `:focus-visible` (decision 7).                             |
+| `parts/button.css`, `controls.tsx` (`Button`, `IconButton`)                                                    | Decision 2.                                                                                                                  |
+| `parts/tip.css`, `Tip.tsx`                                                                                     | Decision 6.                                                                                                                  |
+| `parts/surface.css`, `Popover.tsx`, `Menu.tsx`                                                                 | Decision 3 (menus, popovers, dialogs, toasts).                                                                               |
+| `parts/tabs.css`, `Tabs.tsx`; `parts/chip.css`, `Chip.tsx`                                                     | Decision 4.                                                                                                                  |
+| `parts/row.css`, `Row.tsx`; `parts/empty.css`, `EmptyState.tsx`                                                | Decision 5 and the one empty state.                                                                                          |
+| `split/` (`model.ts`, `prefs.ts`, `useResizableSplit.ts`, `ResizableSplit.tsx`, `index.ts`), `parts/split.css` | Decision 10.                                                                                                                 |
 
 `apps/desktop/`
 
@@ -104,7 +105,7 @@ Critical path B: the whole chain. Every migration touches `styles.css` and the a
 | 3    | `Tip.test.tsx`                                                                            | none                                                                                                                                                                      | none                                                                                  | ui                                     |
 | 4    | `Popover.test.tsx` (extended), `Menu.test.tsx`                                            | none                                                                                                                                                                      | none                                                                                  | ui, desktop (CSS moves)                |
 | 5    | `Tabs.test.tsx`, `Chip.test.tsx`, `Row.test.tsx`, `EmptyState.test.tsx`                   | none                                                                                                                                                                      | none                                                                                  | ui                                     |
-| 6    | `split/model.test.ts`, `split/prefs.test.ts`, `split/SplitPane.test.tsx`                  | none                                                                                                                                                                      | none                                                                                  | ui                                     |
+| 6    | `split/model.test.ts`, `split/prefs.test.ts`, `split/ResizableSplit.test.tsx`             | none                                                                                                                                                                      | none                                                                                  | ui                                     |
 | 7    | `autoFold.test.ts`, `panelPrefs.test.ts`, `App` shell test                                | add `sidebar-autofold.spec.ts`; change `fixtures.ts` (pin); run `panels.spec.ts`, `shell.spec.ts`, `a11y.spec.ts`, `sidebar-menus.spec.ts`, `sidebar-multi.spec.ts`       | `aio.flags` on the preload bridge: one row in `docs/architecture/contract-changes.md` | desktop (main, preload, renderer, e2e) |
 | 8    | `Media` split test, `Issues` split test, `AgentDock` test                                 | add `split-resize.spec.ts`; run the Media spec (`*-media.spec.ts`), `issue-card.spec.ts`, `agent.spec.ts`, `agent-show.spec.ts`                                           | none                                                                                  | desktop                                |
 | 9    | `contrast.test.ts` (all light pairs), `cssGuard` amber count                              | run `a11y.spec.ts`                                                                                                                                                        | none                                                                                  | ui, desktop                            |
@@ -134,7 +135,7 @@ Critical path B: the whole chain. Every migration touches `styles.css` and the a
   - `contrastRatio(a: string, b: string): number` (oklch strings as in tokens.css).
   - `portalSurfaceAttrs(opener: Element | null): Partial<Record<'data-surface' | 'data-theme' | 'data-contrast' | 'data-motion' | 'dir', string>>`: the nearest values walking up from the opener, falling back to `<html>`.
   - `PortalRoot({ opener, children, className }: { opener: Element | null; children: ReactNode; className?: string }): ReactPortal` rendering into `document.body` with those attributes on its wrapper.
-  - Stub signatures for `Button`, `IconButton`, `Tip`, `Menu`, `Tabs`, `Chip`, `Row`, `EmptyState`, `SplitPane`, `useSplit` exactly as in Tasks 2 to 6 (body `throw new Error('not built')`), with their prop types exported.
+  - Stub signatures for `Button`, `IconButton`, `Tip`, `Menu`, `Tabs`, `Chip`, `Row`, `EmptyState`, `ResizableSplit`, `useResizableSplit` exactly as in Tasks 2 to 6 (body `throw new Error('not built')`), with their prop types exported.
 
 - [ ] **Step 1: Write the failing token tests** in `tokens.test.ts`
 
@@ -365,12 +366,12 @@ export function EmptyState(props: EmptyStateProps): ReactElement;
 - [ ] **Step 4: Style.** `parts/tabs.css`: `.tabs` (today's `.ph-tabs` underline look from `photogrammetry/photo.css`, promoted; leave `.ph-tabs` until Task 14). `parts/chip.css`: `.tag` tones. `parts/row.css`: `.row` heights per `data-kind`; hover `--bg-2`; `[data-selected]` = `--bg-3` with label and icon in `--acc`; no leading bar; count mono 11 `--fg-3`; `.row-acts` visible on hover and on `[data-selected]`, each target at least 24 px. `parts/empty.css`: one `.empty` look.
 - [ ] **Step 5: Run**; PASS. **Step 6: Commit** `feat(ui): tabs, chips, one row base and one empty state`.
 
-### Task 6: SplitPane
+### Task 6: ResizableSplit
 
 **Files:**
 
-- Create: `packages/ui/src/split/model.ts`, `split/prefs.ts`, `split/useSplit.ts`, `split/SplitPane.tsx`; modify `split/index.ts`, `parts/split.css`, `i18n/en.ts` (`split.readout`: "{px} px")
-- Test: `split/model.test.ts`, `split/prefs.test.ts`, `split/SplitPane.test.tsx`
+- Create: `packages/ui/src/split/model.ts`, `split/prefs.ts`, `split/useResizableSplit.ts`, `split/ResizableSplit.tsx`; modify `split/index.ts`, `parts/split.css`, `i18n/en.ts` (`split.readout`: "{px} px")
+- Test: `split/model.test.ts`, `split/prefs.test.ts`, `split/ResizableSplit.test.tsx`
 
 **Interfaces:**
 
@@ -399,7 +400,7 @@ export function createSplitPrefs(storage?: Pick<Storage, 'getItem' | 'setItem'> 
 }>;
 export const splitPrefs: StoreApi<...>; // the app's instance on localStorage
 
-// useSplit.ts
+// useResizableSplit.ts
 export interface SplitOptions extends SplitLimits {
   id: string; // prefs key, e.g. 'media.viewer'
   orientation: 'horizontal' | 'vertical'; // horizontal: side by side, col-resize
@@ -410,7 +411,7 @@ export interface SplitOptions extends SplitLimits {
   collapsed?: boolean; // controlled collapse (shortcuts keep working)
   onCollapsedChange?: (collapsed: boolean) => void;
 }
-export function useSplit(o: SplitOptions): {
+export function useResizableSplit(o: SplitOptions): {
   containerRef: RefObject<HTMLDivElement | null>;
   separatorProps: HTMLAttributes<HTMLDivElement> & { role: 'separator' };
   collapsed: boolean;
@@ -418,14 +419,14 @@ export function useSplit(o: SplitOptions): {
   toggle(): void;
 };
 
-// SplitPane.tsx
-export interface SplitPaneProps extends SplitOptions {
+// ResizableSplit.tsx
+export interface ResizableSplitProps extends SplitOptions {
   label: string; // the separator's accessible name, e.g. "Resize the library"
   start: ReactNode;
   end: ReactNode;
   className?: string;
 }
-export function SplitPane(p: SplitPaneProps): ReactElement;
+export function ResizableSplit(p: ResizableSplitProps): ReactElement;
 ```
 
 The container carries `--split-size` (px, or a fraction times 100 as `%`); the panes are a grid `var(--split-size) minmax(0, 1fr)` (or reversed for `sized: 'end'`); each pane has `container-type: inline-size`.
@@ -434,7 +435,7 @@ The container carries `--split-size` (px, or a fraction times 100 as `%`); the p
 - [ ] **Step 2: Write the failing prefs tests**: a fresh store has `{}`; `save('media.viewer', { size: 0.6 })` writes `{"media.viewer":{"size":0.6}}` under `quadrion.splits`; a store read from `"x"`, from `{"media.viewer":{"size":"wide"}}`, or from a `getItem` that throws has `{}`; a `setItem` that throws keeps the value in memory.
 - [ ] **Step 3: Write the failing component tests** (jsdom, stubbed `getBoundingClientRect` and `requestAnimationFrame`): the separator has `role="separator"`, `aria-orientation="vertical"` for horizontal splits, `aria-valuenow/min/max`, `aria-controls` the sized pane, `tabIndex 0` and the `label`; pointer down, move by 40 px and up sets `--split-size` and calls `save` **once** (on up), not per move; ArrowLeft on a `sized: 'end'` split grows the end pane by 16; double-click resets to `defaultSize` and saves; dragging below `min - 48` sets `collapsed` and calls `onCollapsedChange(true)`; `toggle()` after a drag-collapse restores the last size, not the default; under `dir="rtl"` pointer moves invert; no React render happens during pointer moves (count renders with a ref).
 - [ ] **Step 4: Run** `pnpm vitest run packages/ui/src/split`; FAIL.
-- [ ] **Step 5: Implement** `model.ts`, `prefs.ts`, `useSplit.ts`, `SplitPane.tsx`. Pointer moves write the variable inside `requestAnimationFrame`; `save` runs on pointer up, double-click, key and toggle. FloatingVideo (`apps/desktop/src/renderer/workspace/videoWindow.ts`) and MapSwipe are the references for keyboard and reset.
+- [ ] **Step 5: Implement** `model.ts`, `prefs.ts`, `useResizableSplit.ts`, `ResizableSplit.tsx`. Pointer moves write the variable inside `requestAnimationFrame`; `save` runs on pointer up, double-click, key and toggle. FloatingVideo (`apps/desktop/src/renderer/workspace/videoWindow.ts`) and MapSwipe are the references for keyboard and reset.
 - [ ] **Step 6: Style** `parts/split.css`: the handle is a 1 px `--line-soft` hairline with an 8 px hit area; after 150 ms hover, 2 px `--acc-a40` and the resize cursor; while dragging `--acc` and the `.kbd` readout "420 px" beside the pointer; snap, reset and collapse use a 180 ms transform; reduced motion instant.
 - [ ] **Step 7: Run**; PASS. **Step 8: Commit** `feat(ui): one resizable split with keyboard, memory, reset and collapse`.
 
@@ -448,7 +449,7 @@ The container carries `--split-size` (px, or a fraction times 100 as `%`); the p
 
 **Interfaces:**
 
-- Consumes: `SplitPane`, `useSplit` (Task 6); `Tip` is not needed here (PanelHandle keeps its own tip until Task 16).
+- Consumes: `ResizableSplit`, `useResizableSplit` (Task 6); `Tip` is not needed here (PanelHandle keeps its own tip until Task 16).
 - Produces:
 
 ```ts
@@ -488,13 +489,13 @@ Split ids: `shell.sidebar` (px, default 252, min 220, max 320, collapsedSize 52)
 
 **Interfaces:**
 
-- Consumes: `SplitPane` (Task 6); `i18n` keys `split.media`, `split.issues`, `split.agentDock` ("Resize the library", "Resize the issue list", "Resize the assistant").
+- Consumes: `ResizableSplit` (Task 6); `i18n` keys `split.media`, `split.issues`, `split.agentDock` ("Resize the library", "Resize the issue list", "Resize the assistant").
 
 Split ids: `media.viewer` (fraction, sized `end`, default 0.54, gallery min 200 â†’ `otherMin: 200`, viewer `min: 360`, max `80%`), `issues.card` (px, sized `end`, default 420, min 320, otherMin 280, max `60%`), `agent.dock` (px, sized `end`, default `min(360, 33% of window)` computed at first open, min 280, max `50%`).
 
 - [ ] **Step 1: Write the failing tests**: Media with a photo open renders a separator named "Resize the library" whose `aria-valuenow` corresponds to 54%; without a photo there is no separator; Issues renders "Resize the issue list" with `aria-valuenow` 420; the open dock renders "Resize the assistant"; the closed dock renders none.
 - [ ] **Step 2: Run** the three tests; FAIL.
-- [ ] **Step 3: Implement**: wrap each layout in `SplitPane`; delete the fixed `grid-template-columns` rules and their agent-dock overrides that the splits now own (chrome gives way through `clampSplit`).
+- [ ] **Step 3: Implement**: wrap each layout in `ResizableSplit`; delete the fixed `grid-template-columns` rules and their agent-dock overrides that the splits now own (chrome gives way through `clampSplit`).
 - [ ] **Step 4: Write `split-resize.spec.ts`**: open the demo tank farm, Media, open a photo; drag the handle 200 px toward the gallery: the viewer grows; reload: the size is kept; double-click: back to the default; focus the handle and press ArrowLeft 3 times: `aria-valuenow` changes by 48 px; Issues: drag the card wider; open the agent dock and drag it.
 - [ ] **Step 5: Run** the unit tests, `pnpm check`, then the CI way: `split-resize.spec.ts`, the Media spec (`*-media.spec.ts`), `issue-card.spec.ts`, `agent.spec.ts`, `agent-show.spec.ts`; pass.
 - [ ] **Step 6: Commit** `feat(desktop): resizable Media viewer, Issues card and agent dock`.

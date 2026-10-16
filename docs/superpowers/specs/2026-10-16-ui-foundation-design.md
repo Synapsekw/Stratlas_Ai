@@ -141,7 +141,7 @@ It fails, even if it technically works, if:
 
 ### 10. ResizableSplit (`packages/ui/src/split/`)
 
-One primitive, `<SplitPane>` plus a `useSplit` hook. FloatingVideo (per project memory, keyboard, double-click reset) and MapSwipe are the reference implementations.
+One primitive, `<ResizableSplit>` plus a `useResizableSplit` hook. (Named so it does not clash with the renderer's existing `SplitPane` / `useSplit` for the 3D/Map split view in `workspace/SplitPanes.tsx`.) FloatingVideo (per project memory, keyboard, double-click reset) and MapSwipe are the reference implementations.
 
 1. **Handle.** At rest a 1 px `--line-soft` hairline (the border it replaces) with an 8 px invisible hit area. On hover, after 150 ms, it lights to 2 px `--acc-a40` with a `col-resize` or `row-resize` cursor. While dragging it is `--acc` and shows a kbd style readout ("420 px") beside the pointer. The existing `PanelHandle` tab (`shell/PanelHandle.tsx`) sits centred on the same edge and keeps its behaviour and test.
 2. **Constraints.** Each side declares a min (px) and a max (px or %). Data panes get the larger min: viewer 360, gallery 200, list 280, workbench 280, chrome max 50%. When the window shrinks, chrome gives way first, proportionally.
@@ -191,9 +191,9 @@ One primitive, `<SplitPane>` plus a `useSplit` hook. FloatingVideo (per project 
 
 ## Left to the builder
 
-- The order of work and how to split it into reviewable commits (tokens first is natural: everything else uses them). The project may land in **two merges** (my call): first tokens, the guard, `<SplitPane>` with its six adoptions, `<Tip>`, focus and motion fixes, light contrast, and the new `<Button>`, `<Menu>`, `.row`, chips and empty state in `packages/ui`; then the migration of the one-off classes and surfaces. Project 2 may start building after the first merge.
+- The order of work and how to split it into reviewable commits (tokens first is natural: everything else uses them). The project may land in **two merges** (my call): first tokens, the guard, `<ResizableSplit>` with its six adoptions, `<Tip>`, focus and motion fixes, light contrast, and the new `<Button>`, `<Menu>`, `.row`, chips and empty state in `packages/ui`; then the migration of the one-off classes and surfaces. Project 2 may start building after the first merge.
 - The full list of one-off classes and which modifier each becomes.
-- The exact API of `<Button>`, `<Tip>`, `<Menu>`, `<SplitPane>` / `useSplit`, within the behaviour above.
+- The exact API of `<Button>`, `<Tip>`, `<Menu>`, `<ResizableSplit>` / `useResizableSplit`, within the behaviour above.
 - How the prefs key for each split is named.
 - Unit tests for each primitive (keyboard on the separator, min and max, collapse snap, memory on pointer up, tip delay and skip delay, busy and disabled reason) and screenshots at 1100 x 720 and 1440 x 900, dark and light, of every screen touched, compared with the review's screenshots.
 
