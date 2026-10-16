@@ -1043,14 +1043,20 @@ real.describe('@realdata Al-Zour with a synthetic second survey', () => {
             { id: 'survey-2023-08-30', label: 'Synthetic resurvey', date: '2023-08-30' },
           ],
           layers: [
-            plant,
+            { ...plant, capture: undefined },
             ortho,
-            { ...ortho, id: 'ortho-2023-08-30', name: 'Drone orthomosaic, 30 Aug 2023' },
+            {
+              ...ortho,
+              capture: 'survey-2023-08-30',
+              id: 'ortho-2023-08-30',
+              name: 'Drone orthomosaic, 30 Aug 2023',
+            },
             // the thinned cloud (hidden in the delivered project, which shows the COPC one)
             { ...cloud, visible: true },
             {
               ...cloud,
               visible: true,
+              capture: 'survey-2023-08-30',
               id: 'cloud-2023-08-30',
               name: 'Photogrammetry point cloud, 30 Aug 2023',
             },
