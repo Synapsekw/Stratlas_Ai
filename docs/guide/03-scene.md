@@ -91,7 +91,7 @@ A cloud whose heights are off (for example a cloud built from photo altitudes th
 
 - Right-click the cloud in **Datasets** and pick **Drop to ground**. The cloud's lowest point goes onto the ground, and a notice says how far it moved, with **Undo**. Press **Ctrl+Z** to take it back. You can mark several datasets and drop them together.
 - The ground is the DSM under the item's footprint if there is one, otherwise the project ground level.
-- In **Properties**, **Height offset (m)** shows the offset and can be edited. Type a value and click **Save offset**; the cloud moves at once, and **Undo** or **Ctrl+Z** takes it back. The street map lowers under the cloud as it does under a model.
+- In **Properties**, **Height offset (m)** shows the offset and can be edited. Type a value and click **Save offset**; the cloud moves at once, and **Undo** or **Ctrl+Z** takes it back. The street map lowers under the cloud as it does under a model, an orthophoto or an elevation model.
 - The file is never rewritten. A cloud from a Bentley `.zpc` that names no height datum takes the project's photo altitude correction when imported, because it was built from the same uncorrected photo altitudes. The photos of a Bentley AT export take the same correction, so they stay with that cloud. A generic LAS or LAZ gets none, so use **Drop to ground** on it. Clouds in the kit format cannot be moved: convert them to COPC first.
 
 ## Clean up a point cloud

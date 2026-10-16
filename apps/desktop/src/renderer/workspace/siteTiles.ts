@@ -456,7 +456,7 @@ export interface Surroundings extends Settled {
  * is: the stage's plain ground goes, which would otherwise lie a few centimetres over it and
  * cover it, or (seen from far off, when the plain ground drops lower) tie with it in the depth
  * buffer and cut the view off at a ragged line. A flat landscape (an online map, or imagery
- * without terrain) lies where the street map lies, under the lowest model. Projected video lands
+ * without terrain) lies where the street map lies, under the lowest survey surface. Projected video lands
  * on it, as on the ground it hides. Returns the function that takes it away (the caller disposes
  * of the mesh).
  */

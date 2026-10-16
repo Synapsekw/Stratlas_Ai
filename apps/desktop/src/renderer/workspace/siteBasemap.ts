@@ -325,10 +325,11 @@ function drawn(o: { visible: boolean; parent: unknown }): boolean {
 }
 
 /**
- * Lowest point of the project's shown mesh and point cloud layers in the scene (the street map
- * goes just under it). A model hidden in the sidebar, or by the date shown, is left out: its group
- * in the scene is not visible. A cloud counts by the low end of its streamed heights (its offset
- * included), and not at all while hidden or before its first points arrive.
+ * Lowest point of the project's shown survey surfaces (the street map goes just under it):
+ * models, point clouds, orthophotos and DSMs. A layer hidden in the sidebar, or by the date
+ * shown, is left out: its group in the scene is not visible. A cloud counts by the low end of
+ * its streamed heights (its offset included), and not at all while hidden or before its first
+ * points arrive. A drawing is not the ground.
  */
 export function contentFloor(stage: EngineStage, manifest: ProjectManifest): number | null {
   let min = Infinity;
@@ -338,7 +339,9 @@ export function contentFloor(stage: EngineStage, manifest: ProjectManifest): num
       if (low !== null && Number.isFinite(low)) min = Math.min(min, low);
       continue;
     }
-    if (l.kind !== 'mesh') continue;
+    const sheet =
+      l.kind === 'mesh' || (l.kind === 'raster' && (l.role === 'ortho' || l.role === 'dsm'));
+    if (!sheet) continue;
     const root = stage.scene.getObjectByName(`layer:${l.id}`);
     if (!root || !drawn(root)) continue;
     root.updateMatrixWorld(true);
@@ -355,7 +358,7 @@ export function contentFloor(stage: EngineStage, manifest: ProjectManifest): num
 
 /**
  * Where a map laid flat under the site lies (the street map, and a landscape without heights,
- * `siteTiles.ts`): just under the lowest model (`floor`), and never above 0.25 m under the origin.
+ * `siteTiles.ts`): just under the lowest survey surface (`floor`), and never above 0.25 m under the origin.
  */
 export function groundLevel(floor: number | null): number {
   return Math.min(-0.25, (floor ?? 0) - 0.4);

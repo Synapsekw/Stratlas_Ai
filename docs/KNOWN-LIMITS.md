@@ -29,7 +29,7 @@ Current limits only; each is removed from this list when fixed.
 
 - Report branding is one setting for all projects (no per-project override yet).
 - Road project reports default to issue pages for all but the lowest level (a page per Ring Road defect would be over 2,000 pages); pick **Every graded issue** to print them all.
-- The street map under a site in 3D is flat: it lies just under the lowest model and does not follow the terrain (turn on **Terrain around the site** for a landscape that does). It is drawn as up to three nested pictures, so street names can be cut where two of them meet, and far from the site it is coarser.
+- The street map under a site in 3D is flat: it lies just under the lowest model, point cloud, orthophoto or elevation model that is showing, and it does not follow the terrain (turn on **Terrain around the site** for a landscape that does). It is drawn as up to three nested pictures, so street names can be cut where two of them meet, and far from the site it is coarser.
 
 ## Builder
 

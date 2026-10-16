@@ -33,7 +33,7 @@ Imagery and terrain packs come from your disk. A map type with no imagery for th
 
 In 3D, the same **Map** chip sits at the top right of the view, once the project is placed on the Earth. It chooses the ground around the site:
 
-- **Streets**: the offline street map under the site, sharp there and running out to the horizon, wherever an installed pack covers the site. Turn it off and on with the street map button in the stage toolbar (under **More tools** in a narrow window); the choice is remembered for the project on this computer. The button is greyed out when no installed pack covers the site.
+- **Streets**: the offline street map under the site, sharp there and running out to the horizon, wherever an installed pack covers the site. It sits just under the lowest model, point cloud, orthophoto or elevation model that is showing, so a survey below the project origin is not buried under it. Turn it off and on with the street map button in the stage toolbar (under **More tools** in a narrow window); the choice is remembered for the project on this computer. The button is greyed out when no installed pack covers the site.
 - An online map (**Esri**, **Mapbox** or **Sentinel-2**): the imagery lies on the ground around the site in place of the plain grey ground. Needs Medium graphics or higher.
 - **On top** has **Imagery packs around the site** and **Terrain around the site**, which drape your imagery packs and the relief on the land around the site. They also need Medium graphics or higher and a pack that covers the site.
 

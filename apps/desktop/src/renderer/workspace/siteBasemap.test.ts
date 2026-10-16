@@ -370,6 +370,42 @@ describe('the ground under the models', () => {
     expect(contentFloor(stage, manifestOf(cloudLayer))).toBeNull();
   });
 
+  const sheet = (id: string, role: 'ortho' | 'dsm' | 'plan', y: number) => {
+    const built = model(id, y);
+    return {
+      root: built.root,
+      layer: {
+        kind: 'raster',
+        id,
+        name: id,
+        visible: true,
+        src: { path: `rasters/${id}.tif` },
+        role,
+        format: 'cog',
+      } as Layer,
+    };
+  };
+
+  it('lowers the floor under an orthophoto or a DSM, and leaves a drawing out', () => {
+    const m = model('m', -1);
+    const ortho = sheet('ortho', 'ortho', -12);
+    const dsm = sheet('dsm', 'dsm', -8);
+    const plan = sheet('plan', 'plan', -40);
+    const stage = stageWith(m.root, ortho.root, dsm.root, plan.root);
+    expect(
+      contentFloor(stage, manifestOf(m.layer, ortho.layer, dsm.layer, plan.layer)),
+    ).toBeCloseTo(-12, 6);
+    // hidden in the sidebar, or by the date shown: the ground comes up under what remains
+    ortho.root.visible = false;
+    expect(
+      contentFloor(stage, manifestOf(m.layer, ortho.layer, dsm.layer, plan.layer)),
+    ).toBeCloseTo(-8, 6);
+    dsm.root.visible = false;
+    expect(contentFloor(stage, manifestOf(m.layer, plan.layer))).toBeCloseTo(-1, 6);
+    // not drawn yet: nothing to sit under
+    expect(contentFloor(stageWith(), manifestOf(ortho.layer))).toBeNull();
+  });
+
   it('places the ground again when a cloud streams in after the fast checks ended', () => {
     vi.useFakeTimers();
     const stage = stageWith();
