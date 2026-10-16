@@ -662,3 +662,20 @@ def test_leaving_the_watch_does_not_wait_forever_for_a_stuck_sample(tmp_path, mo
     finally:
         release.set()
         t.join(25)
+
+
+def test_a_las_never_gets_an_automatic_offset(tmp_path, monkeypatch):
+    src, _, _ = fake_cloud(tmp_path, monkeypatch, UTM39)
+    root = project(tmp_path)
+    m = json.loads((root / "manifest.json").read_text())
+    m["verticalDatum"] = {"absAltOffsetM": -30.81}
+    (root / "manifest.json").write_text(json.dumps(m))
+    result, rec = run_job(PointcloudToCopc(), root, {"src": str(src), "epsg": 32639})
+    assert result["status"] == "done", result
+    layer = json.loads((root / "manifest.json").read_text())["layers"][0]
+    assert "heightOffsetM" not in layer
+    logs = [p["message"] for p in rec.of("log")]
+    assert (
+        "The file names no height datum; its heights are used as they are. If the cloud floats or "
+        "sinks, use Drop to ground." in logs
+    )

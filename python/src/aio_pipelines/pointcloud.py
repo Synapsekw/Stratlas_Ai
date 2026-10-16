@@ -543,6 +543,21 @@ def build_copc(ctx: StepContext, las: Path, staged: Path, count: int, epsg: int 
         raise
 
 
+_VERTICAL_WKT = ("COMPD_CS", "COMPOUNDCRS", "VERT_CS", "VERTCRS")
+
+
+def has_vertical_crs(srs: dict[str, Any]) -> bool:
+    """Whether PDAL's summary of a file names a vertical CRS (a height datum): a vertical part, or
+    a compound CRS in WKT or PROJJSON."""
+    if str(srs.get("vertical") or "").strip():
+        return True
+    wkt = str(srs.get("wkt") or "").upper()
+    if any(f"{k}[" in wkt for k in _VERTICAL_WKT):
+        return True
+    crs = srs.get("json")
+    return isinstance(crs, dict) and crs.get("type") == "CompoundCRS"
+
+
 def convert_zpc(ctx: StepContext, pdal: str, src: Path, epsg: int | None) -> dict[str, Any]:
     """A ``.zpc``'s tiles as one COPC in ``staging/cloud.copc.laz``: unpacked, read, reprojected
     tile by tile when they declare another CRS, then built from the folder of tiles. The unpacked
@@ -567,12 +582,14 @@ def convert_zpc(ctx: StepContext, pdal: str, src: Path, epsg: int | None) -> dic
         # (a custom or local CRS has a CRS all the same, and PDAL reprojects from it)
         crss: set[tuple[str, Any] | None] = set()
         tile_epsg: int | None = None
+        vertical = False
         for t, f in zip(tiles, files, strict=True):
             try:
                 s = read_summary(ctx, pdal, f)
             except JobError as e:
                 raise JobError(f"Tile {t.name} of {src.name} could not be read: {e}") from None
             srs = s.get("srs") or {}
+            vertical = vertical or has_vertical_crs(srs)
             if srs.get("wkt") or srs.get("json"):
                 tile_epsg = source_epsg(srs)
                 own = srs.get("wkt") or json.dumps(srs.get("json"), sort_keys=True)
@@ -610,7 +627,13 @@ def convert_zpc(ctx: StepContext, pdal: str, src: Path, epsg: int | None) -> dic
         for d in (raw, las_dir):
             shutil.rmtree(d, ignore_errors=True)
     ctx.log(f"Built the viewable cloud with {writer}.")
-    return {"points": count, "bytes": staged.stat().st_size, "tiles": len(tiles)}
+    return {
+        "points": count,
+        "bytes": staged.stat().st_size,
+        "tiles": len(tiles),
+        "source": "zpc",
+        "vertical": vertical,
+    }
 
 
 def _layer_id(out_rel: str, taken: set[str]) -> str:
@@ -704,7 +727,12 @@ class PointcloudToCopc:
                 if prepared is not None:
                     prepared.unlink(missing_ok=True)  # as big as the cloud: never keep it
             ctx.log(f"Built the viewable cloud with {writer}.")
-            return {"points": count, "bytes": staged.stat().st_size}
+            return {
+                "points": count,
+                "bytes": staged.stat().st_size,
+                "source": "file",
+                "vertical": has_vertical_crs(srs),
+            }
 
         def register(ctx: StepContext) -> dict[str, Any]:
             out_rel = str(params["out"]).replace("\\", "/")
@@ -720,9 +748,32 @@ class PointcloudToCopc:
                 ),
                 None,
             )
-            points = int(ctx.outputs("convert").get("points") or 0)
+            done = ctx.outputs("convert")
+            points = int(done.get("points") or 0)
             capture: str | None = None
             if existing is None:
+                # Decision 7: only a Bentley export without a height datum is known to be ellipsoidal
+                raw_off = (manifest.get("verticalDatum") or {}).get("absAltOffsetM")
+                off = (
+                    round(float(raw_off), 3)
+                    if isinstance(raw_off, int | float) and not isinstance(raw_off, bool) and raw_off
+                    else 0.0
+                )
+                height_offset: float | None = None
+                if off and not done.get("vertical"):
+                    if done.get("source") == "zpc":
+                        height_offset = off
+                        ctx.log(
+                            "The tiles name no height datum; heights are taken as ellipsoidal "
+                            "(a Bentley export) and shifted by the project's height offset, "
+                            f"{off:+.2f} m. The points are unchanged; use Drop to ground if the "
+                            "cloud is off."
+                        )
+                    else:
+                        ctx.log(
+                            "The file names no height datum; its heights are used as they are. "
+                            "If the cloud floats or sinks, use Drop to ground."
+                        )
                 lid = _layer_id(out_rel, {str(layer.get("id")) for layer in layers})
                 if params.get("surveyDate"):
                     capture = capture_for_date(manifest, params["surveyDate"])
@@ -736,6 +787,7 @@ class PointcloudToCopc:
                         "format": "copc",
                         **({"pointCount": points} if points else {}),
                         **({"capture": capture} if capture else {}),
+                        **({"heightOffsetM": height_offset} if height_offset is not None else {}),
                     }
                 )
                 # keep the previous manifest beside it, as the app's own saves do

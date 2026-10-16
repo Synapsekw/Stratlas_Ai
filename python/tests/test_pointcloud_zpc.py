@@ -277,3 +277,83 @@ def test_tiles_already_in_the_project_crs_are_not_reprojected(tmp_path, monkeypa
     )
     assert result["status"] == "done", result
     assert calls == []
+
+
+COMPOUND_WKT = 'COMPD_CS["x",PROJCS["UTM 39N",GEOGCS["WGS 84"]],VERT_CS["EGM96 height"]]'
+PLAIN_WKT = 'PROJCS["UTM 39N",GEOGCS["WGS 84"]]'
+
+
+def test_has_vertical_crs_reads_compound_and_vertical():
+    from aio_pipelines.pointcloud import has_vertical_crs
+
+    assert has_vertical_crs({"wkt": COMPOUND_WKT})
+    assert has_vertical_crs({"vertical": "EGM96 height"})
+    assert has_vertical_crs({"json": {"type": "CompoundCRS"}})
+    assert has_vertical_crs({"wkt": 'VERTCRS["EGM96 height"]'})
+    assert not has_vertical_crs({"wkt": PLAIN_WKT})
+    assert not has_vertical_crs({"json": {"type": "ProjectedCRS"}})
+    assert not has_vertical_crs({})
+
+
+def _import_zpc(tmp_path, monkeypatch, offset, vertical, existing=None):
+    """Imports a stubbed .zpc into a project with ``offset`` as its absAltOffsetM. Gives
+    (layers, log messages)."""
+    from aio_pipelines import pointcloud as pc
+
+    z = bs.make_zpc(tmp_path / "c.zpc", tiles=1)
+    monkeypatch.setattr(pc, "find_pdal", lambda: "pdal")
+
+    def convert(ctx, pdal, src, epsg):
+        ctx.stage("cloud.copc.laz").write_bytes(b"copc")
+        return {"points": 500, "bytes": 4, "tiles": 1, "source": "zpc", "vertical": vertical}
+
+    monkeypatch.setattr(pc, "convert_zpc", convert)
+    root = project(tmp_path)
+    m = json.loads((root / "manifest.json").read_text())
+    if offset is not None:
+        m["verticalDatum"] = {"absAltOffsetM": offset}
+    if existing is not None:
+        m["layers"].append(existing)
+    (root / "manifest.json").write_text(json.dumps(m), "utf-8")
+    result, rec = run_job(PointcloudToCopc(), root, {"src": z["zpc"], "epsg": bs.EPSG})
+    assert result["status"] == "done", result
+    layers = json.loads((root / "manifest.json").read_text())["layers"]
+    return layers, [p["message"] for p in rec.of("log")]
+
+
+def test_a_zpc_without_vertical_crs_takes_the_project_offset(tmp_path, monkeypatch):
+    layers, logs = _import_zpc(tmp_path, monkeypatch, -30.81, False)
+    assert layers[0]["heightOffsetM"] == -30.81
+    (line,) = [m for m in logs if "-30.81 m" in m]
+    assert "Drop to ground" in line
+    assert line == (
+        "The tiles name no height datum; heights are taken as ellipsoidal (a Bentley export) and "
+        "shifted by the project's height offset, -30.81 m. The points are unchanged; use Drop to "
+        "ground if the cloud is off."
+    )
+
+
+def test_a_zpc_with_a_vertical_crs_gets_no_offset(tmp_path, monkeypatch):
+    layers, _ = _import_zpc(tmp_path, monkeypatch, -30.81, True)
+    assert "heightOffsetM" not in layers[0]
+
+
+def test_a_project_without_a_height_offset_gives_none(tmp_path, monkeypatch):
+    layers, logs = _import_zpc(tmp_path, monkeypatch, None, False)
+    assert "heightOffsetM" not in layers[0]
+    assert not any("height offset" in m for m in logs)
+
+
+def test_reimport_keeps_the_layer_offset(tmp_path, monkeypatch):
+    existing = {
+        "kind": "pointcloud",
+        "id": "cloud-c",
+        "name": "c.zpc",
+        "visible": True,
+        "src": {"path": "clouds/c.copc.laz"},
+        "format": "copc",
+        "heightOffsetM": -5,
+    }
+    layers, _ = _import_zpc(tmp_path, monkeypatch, -30.81, False, existing)
+    (layer,) = layers
+    assert layer["heightOffsetM"] == -5
