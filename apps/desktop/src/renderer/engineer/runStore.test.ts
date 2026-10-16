@@ -498,6 +498,90 @@ describe('engineering run store', () => {
     expect(s.getState().run?.stages.identify?.status).toBe('cancelled');
   });
 
+  it.each(['cancelled', 'failed', 'interrupted', 'done'] as const)(
+    'retry waits for an acknowledged cancellation to become %s, then continues the same run',
+    async (terminal) => {
+      const p = new FakeProject();
+      const ipc = p.ipc();
+      let cancellingPolls = 0;
+      p.ipc = () => ({
+        ...ipc,
+        cancelJob: async (id) => {
+          await ipc.cancelJob(id);
+          const job = p.jobs.get(id);
+          if (job) job.status = 'cancelling';
+        },
+        jobStatus: (id) => {
+          const job = p.jobs.get(id);
+          if (job?.status === 'cancelling') {
+            if (++cancellingPolls === 2) {
+              job.status = terminal;
+              if (terminal === 'done') p.evidence.set('run-test-1', p.makeEvidence('run-test-1'));
+            }
+            return Promise.resolve({ ...job });
+          }
+          return ipc.jobStatus(id);
+        },
+      });
+      const s = store(p);
+      let cancelled = false;
+      s.subscribe((st) => {
+        if (!cancelled && st.run?.stages.inspect?.status === 'running') {
+          cancelled = true;
+          void st.cancel();
+        }
+      });
+      await s.getState().start(setup());
+      expect(p.jobs.get('job-1')?.status).toBe('cancelling');
+      await s.getState().retry();
+      expect(s.getState().error).toBeNull();
+      expect(statuses(s.getState())).toEqual(['done', 'done', 'done', 'done', 'done', 'done']);
+      expect(p.engineerCalls).toBe(1);
+      expect(p.calls.filter((c) => c.channel === 'jobs:start').map((c) => c.payload)).toEqual([
+        { params: expect.objectContaining({ run: 'run-test-1' }) as unknown },
+        ...(terminal === 'done' ? [] : [{ resume: 'job-1' }]),
+      ]);
+    },
+  );
+
+  it('a new cancel during the retry wait stops without resuming the old job or sending evidence', async () => {
+    const p = new FakeProject();
+    const ipc = p.ipc();
+    let retrying = false;
+    let polls = 0;
+    p.ipc = () => ({
+      ...ipc,
+      cancelJob: async (id) => {
+        await ipc.cancelJob(id);
+        const job = p.jobs.get(id);
+        if (job) job.status = 'cancelling';
+      },
+      jobStatus: (id) => {
+        const job = p.jobs.get(id);
+        if (job?.status === 'cancelling') {
+          if (retrying && ++polls === 2) void s.getState().cancel();
+          return Promise.resolve({ ...job });
+        }
+        return ipc.jobStatus(id);
+      },
+    });
+    const s = store(p);
+    let cancelled = false;
+    s.subscribe((st) => {
+      if (!cancelled && st.run?.stages.inspect?.status === 'running') {
+        cancelled = true;
+        void st.cancel();
+      }
+    });
+    await s.getState().start(setup());
+    retrying = true;
+    await s.getState().retry();
+    expect(s.getState().run?.stages.inspect?.status).toBe('cancelled');
+    expect(s.getState().busy).toBe(false);
+    expect(p.jobsStarted).toBe(1);
+    expect(p.engineerCalls).toBe(0);
+  });
+
   it('a declined send skips identify and still builds the measured draft', async () => {
     const p = new FakeProject();
     const s = store(p, { autoSend: false });

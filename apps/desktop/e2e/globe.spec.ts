@@ -1040,7 +1040,7 @@ test('street packs draw as the street map of the Globe, offline under the app CS
   // (land is about 16, 19, 23 and water about 1, 20, 31: blue well over red, whatever the GPU)
   expect((px?.[2] ?? 0) - (px?.[0] ?? 0)).toBeGreaterThan(13);
   const state = await inspect(win);
-  expect(state?.street?.timeouts).toBe(0);
+  expect(state?.street?.timeouts, describeGlobe(state)).toBe(0);
   expect(state?.street?.lastError ?? null).toBeNull();
   // the Natural Earth look draws no street tiles
   await setLook(win, 'natural-earth');

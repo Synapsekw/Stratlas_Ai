@@ -112,3 +112,13 @@ Tasks 1, 2 and 3 run in parallel with exclusive file ownership. Task 4 depends o
 - Repository finish check passed on `ddb64a94` after rebase onto current remote main: lint, formatting, TypeScript, 965 test files passed (4 skipped), 9,838 tests passed (14 skipped). The final verification record is a documentation-only follow-up.
 
 - The two previously skipped compressed-cloud checks were then run with the installed PDAL executable configured explicitly: both passed. Total final engineering/model-evidence coverage is 69 passed across the main run and this follow-up, with no remaining skipped cases in that scope.
+
+## CI follow-up
+
+Sixteen remote checks passed. The desktop shard's documented street-tile timeout repeated after its permitted rerun, which also exposed an immediate engineering Retry race. The follow-up execution DAG is two independent fixes (run-store cancellation and street-renderer waiting), then independent review, one desktop rebuild, serial CI-condition engineering/Globe tests, repository checks and remote CI.
+
+- [x] Reproduce delayed cancellation completion; wait for the old job before resuming, preserve new cancellation, and cover terminal outcomes. Three regressions failed before the fix; focused renderer coverage passes 47 tests.
+- [x] Reproduce a delayed watchdog callback arriving before queued map events. Preserve inactivity detection and a finite total draw limit, clean up listeners on settlement/disposal, and keep the end-to-end assertion strict. Four regressions failed before the fix; all five new tests and 302 maps/Globe tests pass.
+- [x] Independent review approved both narrow fixes.
+- [x] Rebuild and verify the updated desktop flows serially: engineering 7/7, Globe 19/19, plus two additional successful repetitions of each CI failure case. Local UI jobs resolve the shared interpreter's main-checkout Python; repaired pipeline code is covered by direct Python tests and remote CI.
+- [ ] Verify repository checks and remote CI before integration. Keep the isolated worktree while shared-main coordination remains unresolved.

@@ -30,8 +30,12 @@ const MARGIN = 128;
  * Globe asks for that so a coarser tile shows the same labels as the finer tile beside it.
  */
 export const STREET_STYLE_STEPS = 2;
-/** A tile that is not drawn after this long is handed over as it is. */
+/** Inactivity before an unfinished tile is handed over. Progress keeps a slow draw alive. */
 const IDLE_TIMEOUT_MS = 8000;
+/** Even a map that keeps rendering without completing cannot hold the tile queue forever. */
+const DRAW_LIMIT_MS = 30_000;
+/** An overdue watchdog cannot distinguish its own blocked UI thread from a stalled map. */
+const WATCHDOG_DELAY_MS = 1000;
 
 export interface StreetTileStats {
   tiles: number;
@@ -146,6 +150,7 @@ export function createStreetTiles(
   let map: MapLibreMap | null = null;
   let ready: Promise<void> | null = null;
   const state = { busy: false, disposed: false, step: 0 };
+  const lifetime = new AbortController();
   /** Asked again after every wait: `dispose` may run while a tile is being drawn. */
   const gone = (): boolean => state.disposed;
 
@@ -189,16 +194,51 @@ export function createStreetTiles(
     return ready;
   };
 
-  /** Resolves when everything for the current view is drawn; false after the timeout. */
-  const idle = (m: MapLibreMap): Promise<boolean> =>
+  /** Wait for this view's final frame, bounded by inactivity and a total draw limit. */
+  const idle = (m: MapLibreMap): Promise<'idle' | 'timeout' | 'cancelled'> =>
     new Promise((resolve) => {
-      const timer = setTimeout(() => {
-        resolve(false);
-      }, IDLE_TIMEOUT_MS);
-      void m.once('idle').then(() => {
+      const started = performance.now();
+      let armedAt = started;
+      let timer: ReturnType<typeof setTimeout>;
+      let settled = false;
+      const finish = (result: 'idle' | 'timeout' | 'cancelled') => {
+        if (settled) return;
+        settled = true;
         clearTimeout(timer);
-        resolve(true);
-      });
+        clearTimeout(limit);
+        m.off('idle', complete);
+        m.off('render', progress);
+        m.off('data', progress);
+        lifetime.signal.removeEventListener('abort', cancel);
+        resolve(result);
+      };
+      const progress = () => {
+        clearTimeout(timer);
+        armedAt = performance.now();
+        timer = setTimeout(check, IDLE_TIMEOUT_MS);
+      };
+      const check = () => {
+        const now = performance.now();
+        if (now - started >= DRAW_LIMIT_MS) finish('timeout');
+        // WARP can hold the UI thread past the deadline. Its queued map frame/data callbacks
+        // must get a turn before an overdue watchdog declares that map inactive.
+        else if (now - armedAt > IDLE_TIMEOUT_MS + WATCHDOG_DELAY_MS) progress();
+        else finish('timeout');
+      };
+      const complete = () => {
+        finish('idle');
+      };
+      const cancel = () => {
+        finish('cancelled');
+      };
+      const limit = setTimeout(() => {
+        finish('timeout');
+      }, DRAW_LIMIT_MS);
+      m.on('idle', complete);
+      m.on('render', progress);
+      m.on('data', progress);
+      lifetime.signal.addEventListener('abort', cancel, { once: true });
+      progress();
     });
 
   const draw = async (
@@ -221,6 +261,7 @@ export function createStreetTiles(
       host.style.height = `${String(view * scale)}px`;
       m.setPixelRatio(ratio / scale);
     }
+    const drawn = idle(m);
     m.jumpTo({
       center: [(west + east) / 2, midLatitude(z, y)],
       zoom: z + step,
@@ -228,7 +269,7 @@ export function createStreetTiles(
       pitch: 0,
     });
     m.triggerRepaint();
-    if (!(await idle(m))) stats.timeouts++;
+    if ((await drawn) === 'timeout') stats.timeouts++;
     if (gone()) return null;
     const t1 = performance.now();
     // where the tile landed: MapLibre keeps the view inside the poles, so the first rows of
@@ -278,6 +319,7 @@ export function createStreetTiles(
     stats: () => ({ ...stats }),
     dispose() {
       state.disposed = true;
+      lifetime.abort();
       map?.remove();
       host?.remove();
       map = null;

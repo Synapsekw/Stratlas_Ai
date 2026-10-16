@@ -18,6 +18,8 @@ related:
 - Low unconfirmed and oversized warning-light candidates do not become measured aviation fixtures.
 - Photo selection balances sharpness with camera and perceptual coverage. AI review requests retain generated model views alongside source evidence; preview, consent, cost and cache share that selection.
 - Processing tools 0.13.1 are required for new and resumed evidence jobs. Upgraded jobs invalidate pre-repair checkpoints before recording the new version, so old measurements are recomputed.
+- Immediate Retry waits for the previous job's cancellation to finish before resuming it. Cancelling again during that wait remains effective.
+- The Globe street renderer distinguishes delayed watchdog callbacks and continuing draw progress from genuine inactivity, with a finite draw limit and cleanup on disposal.
 
 ## Why
 
@@ -29,8 +31,11 @@ Low equipment could dominate the section fit of a tall pole, producing a short, 
 - Modelling package: 368 passed. AI package: 628 passed, with focused renderer coverage. These suites include regressions reproduced before fixes and independent-review follow-ups.
 - Engineering/model-evidence Python: 69 passed across the main run and an explicit PDAL follow-up. Both initially skipped compressed-cloud cases passed with the executable configured. Runtime/checkpoint suite: 32 passed. Python-wide Ruff lint and formatting passed (318 files).
 - Desktop build and all four synthetic demos passed. The final engineering workflow passed all seven tests without skips or retries at 1100 x 720, display scale 1, WARP and one off-screen worker.
+- Local UI tests use the shared development interpreter, whose isolated job process resolves the main checkout's editable Python package. The direct Python suites and remote CI use the repaired source; local UI results establish the renderer and workflow behavior, not a separate installed-pack validation.
 - Fresh measurements and a private saved proposal replayed into a coherent narrow shaft, distinct large/small/whip antenna groups and no oversized low lights. The GLB built without failures; full and crown renders were inspected. Inputs stayed read-only and artifacts remain outside the repository.
 - Independent whole-change review approved all final deltas, including shaft continuity, height provenance, group identity, aggregate candidates, checkpoint upgrades and invalid standing-axis rejection.
+- Remote CI passed sixteen checks, but the remaining desktop shard failed a documented street-tile timeout. Its single permitted rerun repeated that failure and exposed the immediate engineering Retry race. Both were reproduced with deterministic regressions and fixed; independent review approved both follow-ups. Focused renderer coverage passed 47 tests, and maps/Globe coverage passed 302 tests. Final integration remains gated on CI for the updated commit.
+- The follow-up desktop build passed, followed serially by all seven engineering tests and all nineteen Globe tests at the CI window/scale/renderer settings. Cancel/retry and street-pack drawing each passed two additional repetitions, three successful runs of each case in total.
 
 ## How to test
 

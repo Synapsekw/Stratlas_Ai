@@ -337,6 +337,18 @@ export function createRunStore(deps: RunDeps): StoreApi<RunState> {
         throw new StageFailed(runText.noSources());
       const known = statusOf('inspect')?.output;
       let rec = known ? await deps.ipc.jobStatus(known) : null;
+      // Cancel acknowledges the request before the runtime exits. A retry belongs to this
+      // drive, so first let the previous cancellation finish, then resume its saved job.
+      // Otherwise the old job's eventual cancelled state would cancel this new drive too.
+      while (rec?.status === 'cancelling') {
+        check(t);
+        await sleep(1000);
+        check(t);
+        const next = await deps.ipc.jobStatus(rec.id);
+        if (!next) throw new StageFailed(runText.jobGone());
+        rec = next;
+      }
+      check(t);
       if (
         rec &&
         (rec.status === 'failed' || rec.status === 'cancelled' || rec.status === 'interrupted')
