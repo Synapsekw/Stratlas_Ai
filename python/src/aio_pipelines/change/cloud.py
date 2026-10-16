@@ -15,7 +15,10 @@ Bounded memory: both clouds are read by PDAL (``readers.copc``, optional ``resol
 a time, each with a margin of ``cap`` so the tiled result equals the untiled one. A cloud layer
 packed for viewing (``png-packed``) is read from its ``sources/<id>.las`` instead (``readers.las``
 cropped to the tile, see ``sources.py``); the result is a COPC all the same. Tiles are kept in
-the job's staging folder, so a cancelled job resumes at the next tile. PDAL is found as in
+the job's staging folder, so a cancelled job resumes at the next tile. A layer's ``heightOffsetM``
+is added to its file's Z as it is read (and taken off the z range sent to PDAL), so both dates are
+compared in project heights; the change cloud is written in those heights and carries no offset
+of its own. PDAL is found as in
 ``pointcloud.py`` (``AIO_PDAL``, the pack's ``tools/pdal``, the PATH).
 """
 
@@ -51,7 +54,7 @@ from .derived import (
     upsert_layer,
 )
 from .las import Las, read_las, write_las
-from .sources import cloud_source
+from .sources import cloud_source, height_offset_m
 
 #: Founder defaults (``DEFAULT_CHANGE_THRESHOLDS``, 6 Oct 2026).
 SIGNIFICANT_M = 0.05
@@ -669,6 +672,7 @@ class PdalSource:
         pdrf: int,
         resolution: float | None,
         copc: bool = True,
+        offset: float = 0.0,
     ):
         self.ctx, self.pdal, self.path, self.name, self.pdrf, self.resolution = (
             ctx,
@@ -679,14 +683,24 @@ class PdalSource:
             resolution,
         )
         self.copc = copc
+        #: The layer's ``heightOffsetM``: added to the file's Z of every point read.
+        self.offset = offset
+        #: Height range to read, in project heights (the offset applied); converted to file heights
+        #: for PDAL.
         self.z: tuple[float, float] | None = None
 
     def read(self, box: Box) -> TileData:
         work = self.ctx.job.dir / "work"
         work.mkdir(parents=True, exist_ok=True)
         tmp = work / f"{self.name}.las"
-        bounds = f"([{box[0]!r}, {box[1]!r}], [{box[2]!r}, {box[3]!r}]"
-        bounds += f", [{self.z[0]!r}, {self.z[1]!r}])" if self.z else ")"
+        # plain floats: the repr of a numpy float (np.float64(...)) is not a PDAL number
+        x0, x1, y0, y1 = (float(v) for v in box)
+        bounds = f"([{x0!r}, {x1!r}], [{y0!r}, {y1!r}]"
+        if self.z:
+            z0, z1 = float(self.z[0]) - self.offset, float(self.z[1]) - self.offset
+            bounds += f", [{z0!r}, {z1!r}])"
+        else:
+            bounds += ")"
         stages: list[dict[str, Any]]
         if self.copc:
             reader: dict[str, Any] = {"type": "readers.copc", "filename": str(self.path), "bounds": bounds}
@@ -726,18 +740,25 @@ class PdalSource:
         _pdal(self.ctx, [self.pdal, "pipeline", str(pipe)], f"read {self.path.name}")
         las = read_las(tmp)
         tmp.unlink(missing_ok=True)
+        if self.offset:
+            # the offset goes into the tile's coordinate frame, so its points and the change cloud
+            # written from it (records kept, write_las with a template) are in project heights
+            o = las.offset
+            las = replace(las, offset=(o[0], o[1], o[2] + self.offset))
         return TileData(las.xyz, las)
 
 
-def _info(ctx: StepContext, pdal: str, path: Path) -> dict[str, Any]:
+def _info(ctx: StepContext, pdal: str, path: Path, offset: float = 0.0) -> dict[str, Any]:
+    """Point count and bounds of a cloud file; the z bounds carry the layer's height ``offset``."""
     info = json.loads(_pdal(ctx, [pdal, "info", "--summary", str(path)], f"read {path.name}"))
     s = info.get("summary") or {}
     b = s.get("bounds") or {}
     if not {"minx", "maxx", "miny", "maxy"} <= set(b):
         raise JobError(f"PDAL found no points in {path.name}.")
+    zmin, zmax = float(b.get("minz", 0)) + offset, float(b.get("maxz", 0)) + offset
     return {
         "count": int(s.get("num_points") or 0),
-        "bounds": [b["minx"], b["maxx"], b["miny"], b["maxy"], b.get("minz", 0), b.get("maxz", 0)],
+        "bounds": [b["minx"], b["maxx"], b["miny"], b["maxy"], zmin, zmax],
     }
 
 
@@ -848,7 +869,16 @@ class ChangeCloud:
             b = find_layer(manifest, params["layerTo"], "pointcloud", "point cloud")
             frm, to = capture_pair(params, a, b)
             files = [_cloud_file(ctx.project, layer) for layer in (a, b)]
-            return {"manifest": manifest, "a": a, "b": b, "from": frm, "to": to, "files": files}
+            offsets = [height_offset_m(layer) for layer in (a, b)]
+            return {
+                "manifest": manifest,
+                "a": a,
+                "b": b,
+                "from": frm,
+                "to": to,
+                "files": files,
+                "offsets": offsets,
+            }
 
         def sources(ctx: StepContext, prep: dict[str, Any]) -> tuple[PdalSource, PdalSource]:
             pdal = find_pdal()
@@ -856,9 +886,12 @@ class ChangeCloud:
                 raise JobError(PDAL_MISSING)
             res = params.get("spacingM")
             copc = prep.get("copc") or [True, True]
-            sa = PdalSource(ctx, pdal, Path(prep["files"][0]), "from", int(prep["pdrf"][0]), res, copc[0])
-            sb = PdalSource(ctx, pdal, Path(prep["files"][1]), "to", int(prep["pdrf"][1]), res, copc[1])
+            off = [float(v) for v in prep.get("offsets") or [0.0, 0.0]]
+            files, pdrf = prep["files"], prep["pdrf"]
+            sa = PdalSource(ctx, pdal, Path(files[0]), "from", int(pdrf[0]), res, copc[0], off[0])
+            sb = PdalSource(ctx, pdal, Path(files[1]), "to", int(pdrf[1]), res, copc[1], off[1])
             if prep.get("zRange"):
+                # in project heights; each source turns it into its own file heights
                 sa.z = sb.z = tuple(prep["zRange"])  # type: ignore[assignment]
             return sa, sb
 
@@ -868,7 +901,7 @@ class ChangeCloud:
             if not pdal:
                 raise JobError(PDAL_MISSING)
             files = c["files"]
-            infos = [_info(ctx, pdal, f) for f in files]
+            infos = [_info(ctx, pdal, f, off) for f, off in zip(files, c["offsets"], strict=True)]
             pdrfs = [_pdrf(ctx, pdal, f) for f in files]
             ba, bb = infos[0]["bounds"], infos[1]["bounds"]
             box = [max(ba[0], bb[0]), min(ba[1], bb[1]), max(ba[2], bb[2]), min(ba[3], bb[3])]
@@ -894,6 +927,7 @@ class ChangeCloud:
                 "files": [str(f) for f in files],
                 "pdrf": pdrfs,
                 "copc": [c["a"].get("format") == "copc", c["b"].get("format") == "copc"],
+                "offsets": c["offsets"],
                 "zRange": z_range,
             }
             # registration on a sample at the centre of the overlap, before the long work

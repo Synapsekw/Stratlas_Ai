@@ -7,6 +7,7 @@ is skipped with a reason when PDAL is not available, as in test_pointcloud.py.
 import json
 import subprocess
 import threading
+from pathlib import Path
 
 import numpy as np
 import pytest
@@ -573,3 +574,118 @@ def test_the_distance_tile_reads_back_through_pdal(tmp_path):
     assert stats["Distance"]["minimum"] == pytest.approx(0)
     assert stats["Distance"]["maximum"] == pytest.approx(1)
     assert stats["X"]["count"] == 500
+
+
+# ---------------------------------------------------------------- height offsets (heightOffsetM)
+
+
+def _offset_project(tmp_path, before, after, offsets=(None, None)):
+    """Two COPC layers of one ground; ``offsets`` are the layers' ``heightOffsetM`` (None: no key)."""
+    root = _project(tmp_path, [])
+    layers = []
+    for lid, xyz, cap, off in (("before", before, "c1", offsets[0]), ("after", after, "c2", offsets[1])):
+        layer = {
+            "kind": "pointcloud",
+            "id": lid,
+            "name": lid.title(),
+            "src": {"path": _copc(tmp_path, root, lid, xyz)},
+            "format": "copc",
+            "capture": cap,
+        }
+        if off is not None:
+            layer["heightOffsetM"] = off
+        layers.append(layer)
+    m = json.loads((root / "manifest.json").read_text())
+    m["layers"] = layers
+    (root / "manifest.json").write_text(json.dumps(m))
+    return root
+
+
+def _z_bounds(path):
+    info = json.loads(
+        subprocess.run([PDAL, "info", "--summary", str(path)], check=True, capture_output=True).stdout
+    )
+    b = info["summary"]["bounds"]
+    return b["minz"], b["maxz"]
+
+
+@needs_pdal
+def test_cloud_change_applies_each_side_offset(tmp_path):
+    rng = np.random.default_rng(8)
+    g = plane(rng, 0, 6, 0, 6, spacing=0.06)
+    # the later file is the same ground 5 m higher, put back down by its offset
+    later = g + rng.normal(0, 0.002, g.shape) + np.array([0, 0, 5.0])
+    root = _offset_project(tmp_path, g, later, (None, -5.0))
+    result, _ = _run(root, {"layerFrom": "before", "layerTo": "after"})
+    assert result["status"] == "done"
+    cs = json.loads((root / "change" / "c1-c2-cloud.json").read_text())
+    assert cs["registration"]["ok"] is True
+    assert cs["stats"]["medianM"] < 0.01 and cs["stats"]["p95M"] < 0.02
+    assert cs["stats"]["regions"] == 0
+
+
+@needs_pdal
+def test_cloud_change_offsets_on_both_sides_cancel(tmp_path):
+    rng = np.random.default_rng(9)
+    g = plane(rng, 0, 6, 0, 6, spacing=0.06)
+    # files 3 m apart, offsets that bring both to the same height
+    root = _offset_project(tmp_path, g + np.array([0, 0, 1.0]), g + np.array([0, 0, 4.0]), (2.0, -1.0))
+    result, _ = _run(root, {"layerFrom": "before", "layerTo": "after"})
+    assert result["status"] == "done"
+    cs = json.loads((root / "change" / "c1-c2-cloud.json").read_text())
+    assert cs["stats"]["medianM"] < 0.01 and cs["stats"]["regions"] == 0
+
+
+@needs_pdal
+def test_cloud_change_crop_bounds_follow_the_offset(tmp_path, monkeypatch):
+    from aio_pipelines.change import cloud as cloud_mod
+
+    rng = np.random.default_rng(10)
+    g = plane(rng, 0, 6, 0, 6, spacing=0.06)
+    root = _offset_project(tmp_path, g, g + np.array([0, 0, 5.0]), (None, -5.0))
+    seen: dict[str, set] = {}
+    original = cloud_mod._pdal
+
+    def spy(ctx, args, what):
+        if args[1] == "pipeline":
+            pipe = Path(args[2])
+            reader = json.loads(pipe.read_text())["pipeline"][0]
+            if "bounds" in reader:
+                # the z range sent to PDAL: the last [lo, hi] of the bounds
+                z = reader["bounds"].rsplit("[", 1)[1].rstrip("])").split(",")
+                seen.setdefault(pipe.stem, set()).add(tuple(float(v) for v in z))
+        return original(ctx, args, what)
+
+    monkeypatch.setattr(cloud_mod, "_pdal", spy)
+    # a local region (x east, y up, z south) inside the ground, heights -1 to 2 m in project heights
+    region = {"min": [0.5, -1.0, -5.5], "max": [5.5, 2.0, -0.5]}
+    result, _ = _run(root, {"layerFrom": "before", "layerTo": "after", "region": region})
+    assert result["status"] == "done"
+    # in file heights: the earlier file has no offset, the later file's are 5 m above the project's
+    assert seen["from"] == {(-1.0, 2.0)}
+    assert seen["to"] == {(4.0, 7.0)}
+    m = json.loads((root / "manifest.json").read_text())
+    layer = next(x for x in m["layers"] if x["id"] == "c1-c2-cloud")
+    # the later points inside the region were all read (none cropped away by the z range)
+    assert layer["pointCount"] > 0.95 * len(g) * 25 / 36
+
+
+@needs_pdal
+def test_the_change_layer_has_no_offset(tmp_path):
+    rng = np.random.default_rng(11)
+    g = plane(rng, 0, 6, 0, 6, spacing=0.06)
+    root = _offset_project(tmp_path, g, g + np.array([0, 0, 5.0]), (None, -5.0))
+    result, _ = _run(root, {"layerFrom": "before", "layerTo": "after"})
+    assert result["status"] == "done"
+    m = json.loads((root / "manifest.json").read_text())
+    layer = next(x for x in m["layers"] if x["id"] == "c1-c2-cloud")
+    assert "heightOffsetM" not in layer
+    # the offset is baked into the change cloud: its heights are the corrected ones
+    lo, hi = _z_bounds(root / layer["src"]["path"])
+    assert lo == pytest.approx(0, abs=0.05) and hi == pytest.approx(0, abs=0.05)
+    # a recompute replaces an offset someone set on the change layer
+    layer["heightOffsetM"] = 3.0
+    (root / "manifest.json").write_text(json.dumps(m))
+    _run(root, {"layerFrom": "before", "layerTo": "after"}, job_id="j2")
+    m = json.loads((root / "manifest.json").read_text())
+    assert "heightOffsetM" not in next(x for x in m["layers"] if x["id"] == "c1-c2-cloud")
