@@ -1374,6 +1374,27 @@ export const ipc = {
     ]),
   },
   /** GPS position and capture time of a photo (wizard: origin from the first GPS photo). */
+  /**
+   * Turn one project photo 90 degrees clockwise. Rewrites the file and its thumbnail, turns
+   * image sightings with the pixels, and updates the lens so it still matches. Refused on a package.
+   */
+  'builder:rotatePhoto': {
+    request: z
+      .object({
+        projectId: z.string().min(1),
+        layerId: z.string().min(1),
+        photoId: z.string().min(1),
+      })
+      .strict(),
+    response: z.discriminatedUnion('ok', [
+      z.object({
+        ok: z.literal(true),
+        issues: z.array(Issue),
+        manifest: ProjectManifest,
+      }),
+      z.object({ ok: z.literal(false), error: z.string() }),
+    ]),
+  },
   'builder:photoGps': {
     request: z.object({ path: z.string().min(1) }).strict(),
     response: z.discriminatedUnion('ok', [

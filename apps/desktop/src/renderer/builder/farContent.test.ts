@@ -1,5 +1,12 @@
 import { describe, expect, it, vi } from 'vitest';
-import { createFarNotice, farLayers, freshLayerIds, planGap, recentreTarget } from './farContent';
+import {
+  createFarNotice,
+  farLayers,
+  freshLayerIds,
+  photosOffSurvey,
+  planGap,
+  recentreTarget,
+} from './farContent';
 
 const box = (x: number, z: number, s = 50) =>
   ({ min: [x - s, 0, z - s], max: [x + s, 20, z + s] }) as const;
@@ -348,6 +355,41 @@ describe('handheld camera GPS', () => {
       expect(n?.canRecentre).toBe(true);
       expect(n?.target).toEqual([530_000, 3_200_000]);
     });
+  });
+
+  it('a photo a few hundred metres from the survey is offered an align, in metres', async () => {
+    const d = depsWith([
+      { layerId: 'cloud', ...box(0, 0) },
+      { layerId: 'photos', ...box(300, 0) },
+    ]);
+    const s = createFarNotice(d);
+    await s.getState().check('p', new Set());
+    const n = s.getState().notice;
+    expect(n?.canRecentre).toBe(false);
+    expect(n?.far).toEqual([]);
+    expect(n?.photoLayers).toEqual(['photos']);
+    expect(n?.text).toContain('Photos is 200 m from the survey.');
+    expect(n?.text).toContain('Align the photos onto the project');
+    expect(
+      photosOffSurvey(
+        [
+          { layerId: 'cloud', ...box(0, 0) },
+          { layerId: 'photos', ...box(150, 0) },
+        ],
+        (id) => id === 'photos',
+      ),
+    ).toEqual([]);
+  });
+
+  it('a photo on the origin is quiet when the survey is the layer that is far', async () => {
+    const s = createFarNotice(
+      depsWith([
+        { layerId: 'photos', ...box(0, 0) },
+        { layerId: 'cloud', ...box(91_250, 0) },
+      ]),
+    );
+    await s.getState().check('p', new Set());
+    expect(s.getState().notice).toBeNull();
   });
 
   it('a failed clear says so and keeps the photos', async () => {

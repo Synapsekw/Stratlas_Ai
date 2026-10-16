@@ -20,6 +20,8 @@ export interface FixtureExif {
   dji?: Record<string, string>;
   /** Big-endian TIFF ("MM") instead of little-endian ("II"). */
   bigEndian?: boolean;
+  /** EXIF Orientation, 1 to 8. */
+  orientation?: number;
 }
 
 interface Entry {
@@ -76,6 +78,7 @@ export function exifSegment(o: FixtureExif): Uint8Array {
   };
   if (o.make) add(ifd0, 0x010f, ASCII, ascii(o.make));
   if (o.model) add(ifd0, 0x0110, ASCII, ascii(o.model));
+  if (o.orientation !== undefined) add(ifd0, 0x0112, SHORT, u16(o.orientation));
   if (o.dateTimeOriginal) add(exif, 0x9003, ASCII, ascii(o.dateTimeOriginal));
   if (o.offsetTimeOriginal) add(exif, 0x9011, ASCII, ascii(o.offsetTimeOriginal));
   if (o.focalMm !== undefined) add(exif, 0x920a, RATIONAL, rational([o.focalMm]));

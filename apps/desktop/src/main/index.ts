@@ -77,6 +77,7 @@ import {
   createBuilderProject,
   photoGps,
 } from './builder';
+import { rotateProjectPhoto } from './rotatePhoto';
 import { builderPipelineJobs } from './builderJobs';
 import {
   listProjectWalks,
@@ -1457,6 +1458,10 @@ function registerIpc(): void {
           error: PACKAGE_REFUSAL,
         }
       : null;
+  handle(
+    'builder:rotatePhoto',
+    (req) => packageRefusal(req.projectId) ?? rotateProjectPhoto(registry, req),
+  );
   handle(
     'builder:import',
     (req) =>

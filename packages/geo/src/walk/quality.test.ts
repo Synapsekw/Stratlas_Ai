@@ -25,9 +25,9 @@ describe('walkQuality', () => {
       walkQuality(fitOf([pinAtTruth(raw, 4), pinAtTruth(raw, 30, [2.5, 0]), pinAtTruth(raw, end)])),
     ).toBe('poor');
   });
-  it('one pin is unplaced, so is a refusal', () => {
+  it('one pin is unplaced, and a finish near the start is still placed', () => {
     expect(walkQuality(fitOf([pinAtTruth(raw, 4)]))).toBe('unplaced');
-    expect(walkQuality(fitOf([pinAtTruth(raw, 4), pinAtTruth(raw, 6)]))).toBe('unplaced');
+    expect(walkQuality(fitOf([pinAtTruth(raw, 4), pinAtTruth(raw, 6)]))).toBe('good');
   });
   it('a gap asks for a check', () => {
     expect(walkQuality(fitOf([pinAtTruth(broken, 4), pinAtTruth(broken, 25)], broken))).toBe(
@@ -55,10 +55,13 @@ describe('walkBadgeText', () => {
     const fit = fitOf([pinAtTruth(broken, 4), pinAtTruth(broken, 25)], broken);
     expect(walkBadgeText(fit, mss)).toBe('Path broken 0:30 to 1:02: add a pin after the gap');
   });
-  it('shows the refusal, and nothing for a good walk', () => {
-    expect(walkBadgeText(fitOf([pinAtTruth(raw, 4), pinAtTruth(raw, 6)]), mss)).toMatch(
-      /at least 5 m/,
-    );
+  it('shows the refusal when two pins share a moment, and nothing for a good walk', () => {
+    const same: WalkPin[] = [
+      { t: 1, surface: '@model', at: [0, 0] },
+      { t: 3, surface: '@model', at: [10, 0] },
+    ];
+    expect(walkBadgeText(fitOf(same), mss)).toMatch(/same moment/);
+    expect(walkBadgeText(fitOf([pinAtTruth(raw, 4), pinAtTruth(raw, 6)]), mss)).toBeNull();
     expect(walkBadgeText(fitOf([pinAtTruth(raw, 4), pinAtTruth(raw, end)]), mss)).toBeNull();
   });
 });

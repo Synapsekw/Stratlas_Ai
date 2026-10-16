@@ -25,6 +25,23 @@ export interface PhotoMeta {
   };
   /** XMP `GPano` (a ready-made panorama): its projection, e.g. `equirectangular`. */
   gpano?: { projection: string };
+  /**
+   * EXIF Orientation (1 to 8). 1 is upright. 3, 6 and 8 are turns with no mirror;
+   * {@link orientationQuarters} is how many clockwise quarter turns make the pixels upright.
+   */
+  orientation?: number;
+}
+
+/**
+ * Clockwise quarter turns that make stored pixels match EXIF Orientation.
+ * 6 is 90 clockwise, 3 is 180, 8 is 90 counter-clockwise. Mirrors (2, 4, 5, 7) and an
+ * unknown tag stay 0: a turn alone would not match them.
+ */
+export function orientationQuarters(orientation: number | undefined): 0 | 1 | 2 | 3 {
+  if (orientation === 6) return 1;
+  if (orientation === 3) return 2;
+  if (orientation === 8) return 3;
+  return 0;
 }
 
 const TYPE_SIZE: Record<number, number> = { 1: 1, 2: 1, 3: 2, 4: 4, 5: 8, 7: 1, 9: 4, 10: 8 };
@@ -101,6 +118,9 @@ function parseExif(payload: Uint8Array, meta: PhotoMeta): void {
   if (make) meta.make = make;
   const model = str(ifd0.get(0x0110));
   if (model) meta.model = model;
+  const orientation = num(ifd0.get(0x0112));
+  if (orientation !== undefined && orientation >= 1 && orientation <= 8)
+    meta.orientation = orientation;
   const exifAt = num(ifd0.get(0x8769));
   if (exifAt !== undefined) {
     const exif = readIfd(t, exifAt);

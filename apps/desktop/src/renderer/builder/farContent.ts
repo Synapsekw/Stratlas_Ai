@@ -10,6 +10,9 @@ import { createStore, type StoreApi } from 'zustand/vanilla';
  */
 export { FAR_M };
 
+/** A photo this far from the nearest survey layer, and from the origin, is offered an align. */
+export const PHOTO_OFF_SURVEY_M = 100;
+
 export interface Extent {
   layerId: string;
   min: readonly number[];
@@ -49,6 +52,32 @@ export function farLayers(
     .filter((e) => !older.has(e.layerId))
     .map((e) => ({ ...e, distanceM: planGap(origin, e) }))
     .filter((e) => e.distanceM > limitM && old.every((o) => planGap(o, e) > limitM))
+    .sort((a, b) => a.distanceM - b.distanceM);
+}
+
+/**
+ * Photo layers whose nearest survey layer (anything that is not photos) is more than `limitM`
+ * away, and which themselves sit more than `limitM` from the origin. A photo on the origin is
+ * left alone when the survey is the layer that is far. Empty when the project has no survey
+ * extent to measure against.
+ */
+export function photosOffSurvey(
+  extents: readonly Extent[],
+  isPhoto: (layerId: string) => boolean,
+  limitM = PHOTO_OFF_SURVEY_M,
+): { layerId: string; distanceM: number }[] {
+  const survey = extents.filter((e) => !isPhoto(e.layerId));
+  if (survey.length === 0) return [];
+  const origin = { min: [0, 0, 0], max: [0, 0, 0] };
+  return extents
+    .filter((e) => isPhoto(e.layerId))
+    .map((e) => ({
+      layerId: e.layerId,
+      distanceM: Math.min(...survey.map((s) => planGap(e, s))),
+      fromOriginM: planGap(origin, e),
+    }))
+    .filter((e) => e.distanceM > limitM && e.fromOriginM > limitM)
+    .map(({ layerId, distanceM }) => ({ layerId, distanceM }))
     .sort((a, b) => a.distanceM - b.distanceM);
 }
 
@@ -110,9 +139,12 @@ export interface FarNoticeState {
 }
 
 const km = (m: number) => `${(m / 1000).toFixed(1)} km`;
+const away = (m: number) => (m < 1000 ? `${String(Math.round(m))} m` : km(m));
 const PHOTOS_FAR =
   "These photos are far from the survey data: a camera's GPS can be kilometres out. Ignore their" +
   ' GPS to keep them in Media without a place.';
+const PHOTOS_OFF =
+  'A phone GPS fix is often off. Align the photos onto the project, or ignore their GPS to keep them in Media without a place.';
 const PHOTOS_ONLY =
   ' Only photos placed this project so far; survey data is the better place for the origin.';
 const message = (e: unknown) => (e instanceof Error ? e.message : String(e));
@@ -127,6 +159,13 @@ const farLines = (p: FarProject, far: readonly FarLayer[]) =>
     .map(
       (f) =>
         `${p.manifest.layers.find((l) => l.id === f.layerId)?.name ?? f.layerId} lies ${km(f.distanceM)} from the project origin.`,
+    )
+    .join(' ');
+const offLines = (p: FarProject, off: readonly { layerId: string; distanceM: number }[]) =>
+  off
+    .map(
+      (f) =>
+        `${p.manifest.layers.find((l) => l.id === f.layerId)?.name ?? f.layerId} is ${away(f.distanceM)} from the survey.`,
     )
     .join(' ');
 
@@ -187,6 +226,24 @@ export function createFarNotice(deps: {
         .map((e) => ({ ...e, distanceM: planGap({ min: [0, 0, 0], max: [0, 0, 0] }, e) }));
       const far = [...kept, ...added].sort((a, b) => a.distanceM - b.distanceM);
       if (far.length === 0) {
+        // a photo a phone GPS put beside the survey, under the 10 km line, still needs a place
+        const holdingFar = prev?.projectId === projectId && !prev.done && prev.far.length > 0;
+        const off = holdingFar ? [] : photosOffSurvey(r.extents, (id) => isPhotos(p, id));
+        if (off.length > 0) {
+          set({
+            notice: {
+              projectId,
+              text: `${offLines(p, off)} ${PHOTOS_OFF}`,
+              canRecentre: false,
+              target: null,
+              busy: false,
+              done: false,
+              far: [],
+              photoLayers: off.map((f) => f.layerId),
+            },
+          });
+          return;
+        }
         set({
           notice:
             fresh === 'all'
@@ -298,17 +355,21 @@ export function createFarNotice(deps: {
       const survey = x.extents.map((e) => e.layerId).filter((id) => !isPhotos(now, id));
       if (survey.length === 0) return;
       const far = farLayers(x.extents, new Set(survey));
-      if (far.length === 0) return;
+      const off = far.length > 0 ? [] : photosOffSurvey(x.extents, (id) => isPhotos(now, id));
+      if (far.length === 0 && off.length === 0) return;
       set({
         notice: {
           projectId: n.projectId,
-          text: `${moved} ${farLines(now, far)} ${PHOTOS_FAR}`,
+          text:
+            far.length > 0
+              ? `${moved} ${farLines(now, far)} ${PHOTOS_FAR}`
+              : `${moved} ${offLines(now, off)} ${PHOTOS_OFF}`,
           canRecentre: false,
           target: null,
           busy: false,
           done: false,
           far,
-          photoLayers: far.map((f) => f.layerId),
+          photoLayers: (far.length > 0 ? far : off).map((f) => f.layerId),
         },
       });
     },

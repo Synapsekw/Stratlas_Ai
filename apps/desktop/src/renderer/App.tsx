@@ -4,6 +4,7 @@ import {
   registerClassCreator,
   registerSeverityCreator,
   setAnnotationPeople,
+  setPhotoRotator,
 } from '@aio/annotate';
 import { changeStore } from '@aio/change';
 import {
@@ -271,6 +272,13 @@ export function App() {
     // the change producers of the Changes panel (C2 to C4), once
     registerAppChangeProducers();
     // a finished conversion (point cloud to COPC) adds a layer: reload the open manifest
+    setPhotoRotator(async (layerId, photoId) => {
+      const projectId = workspace.getState().project?.id;
+      if (!projectId) return { ok: false, error: 'No project is open.' };
+      const r = await bridge.call('builder:rotatePhoto', { projectId, layerId, photoId });
+      if (!r.ok) return { ok: false, error: r.error };
+      return r.value;
+    });
     const stopFarWatch = startFarWatch();
     const stopJobReload = jobs.subscribe((s, prev) => {
       const project = workspace.getState().project;
@@ -381,6 +389,7 @@ export function App() {
       if (s.project !== prev.project) void volumetric.getState().load();
     });
     return () => {
+      setPhotoRotator(null);
       stopOpenPath();
       stopMenu();
       stopJournal();

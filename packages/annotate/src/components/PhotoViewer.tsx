@@ -25,6 +25,7 @@ import {
   beginSighting,
   issueEditor,
   rememberImageSize,
+  rotatePhoto,
   useAnnotateReadOnly,
   useAnnotateUi,
   type ImageTool,
@@ -77,8 +78,9 @@ export function PhotoViewer({
   /** The selected issue's outline shows vertex handles to edit it (default true). */
   editOutlines?: boolean;
   /**
-   * Look only: no annotation tools or toolbar, a click never changes the selection, and the
+   * Look only: no annotation tools, a click never changes the selection, and the
    * F, +, - and M keys are left to the host (which drives the view through `handle`).
+   * Rotate stays, unless the project is read only.
    */
   viewOnly?: boolean;
   /** Issue shapes and mask overlays drawn (default true). */
@@ -108,6 +110,12 @@ export function PhotoViewer({
   const [view, setView] = useState<ViewTransform>({ scale: 1, x: 0, y: 0 });
   const [opacity, setOpacity] = useState(0.6);
   const [showOverlay, setShowOverlay] = useState(true);
+  const [rotating, setRotating] = useState(false);
+  const [spin, setSpin] = useState<{ id: string; turn: number; note: string | null }>({
+    id: '',
+    turn: 0,
+    note: null,
+  });
   const pinch = useRef<Pinch>({ pointers: new Map(), dist: 0 });
 
   const layer = project?.manifest.layers.find((l) => l.id === layerId);
@@ -118,9 +126,47 @@ export function PhotoViewer({
     ? correctedPhoto(found, photoCorrection(orientation, layerId, found.id))
     : undefined;
   const url = project && photo ? assetUrl(project.id, photo.src) : null;
-  const natural = loaded?.url === url ? loaded.size : null;
-  const failed = loaded !== null && loaded.url === url && loaded.size === null;
+  const spinId = `${layerId}/${photoId}`;
+  const turn = spin.id === spinId ? spin.turn : 0;
+  const rotateNote = spin.id === spinId ? spin.note : null;
+  const shown = url && turn > 0 ? `${url}?v=${String(turn)}` : url;
+  const natural = loaded?.url === shown ? loaded.size : null;
+  const failed = loaded !== null && loaded.url === shown && loaded.size === null;
   const selectedIssueId = selection?.kind === 'issue' ? selection.id : null;
+
+  const onRotate = useCallback(() => {
+    if (readOnly || rotating) return;
+    setRotating(true);
+    setSpin((s) => ({ id: spinId, turn: s.id === spinId ? s.turn : 0, note: null }));
+    void rotatePhoto(layerId, photoId)
+      .then((r) => {
+        if (!r.ok) {
+          setSpin((s) => ({
+            id: spinId,
+            turn: s.id === spinId ? s.turn : 0,
+            note: r.error,
+          }));
+          return;
+        }
+        if (r.manifest) workspace.getState().replaceManifest(r.manifest);
+        workspace.setState({ issues: r.issues });
+        setSpin((s) => ({
+          id: spinId,
+          turn: (s.id === spinId ? s.turn : 0) + 1,
+          note: null,
+        }));
+      })
+      .catch((e: unknown) => {
+        setSpin((s) => ({
+          id: spinId,
+          turn: s.id === spinId ? s.turn : 0,
+          note: e instanceof Error ? e.message : String(e),
+        }));
+      })
+      .finally(() => {
+        setRotating(false);
+      });
+  }, [layerId, photoId, readOnly, rotating, spinId]);
 
   const fit = useCallback(() => {
     const el = stageRef.current;
@@ -331,21 +377,21 @@ export function PhotoViewer({
         </div>
       )}
       {failed && <div className="ann-empty">The photo could not be loaded.</div>}
-      {url && (
+      {shown && (
         <img
           className="ann-img"
-          src={url}
+          src={shown}
           alt=""
           draggable={false}
           style={imgStyle}
           onLoad={(e) => {
             const im = e.currentTarget;
             const size = { width: im.naturalWidth, height: im.naturalHeight };
-            setLoaded({ url, size });
+            setLoaded({ url: shown, size });
             rememberImageSize(layerId, photoId, [size.width, size.height]);
           }}
           onError={() => {
-            if (url) setLoaded({ url, size: null });
+            setLoaded({ url: shown, size: null });
           }}
         />
       )}
@@ -384,9 +430,10 @@ export function PhotoViewer({
           }}
         />
       )}
-      {!viewOnly && (
+      {(!viewOnly || !readOnly) && (
         <div className="ann-toolbar" role="toolbar" aria-label="Photo annotation tools">
-          {!readOnly &&
+          {!viewOnly &&
+            !readOnly &&
             IMAGE_TOOLS.map((t) => (
               <button
                 key={t.id}
@@ -401,7 +448,7 @@ export function PhotoViewer({
                 {t.label}
               </button>
             ))}
-          {masks.length > 0 && (
+          {!viewOnly && masks.length > 0 && (
             <>
               <span className="sep" />
               <button
@@ -431,10 +478,24 @@ export function PhotoViewer({
               </label>
             </>
           )}
-          <span className="sep" />
-          <button type="button" className="ann-btn ghost" title="Fit (F)" onClick={fit}>
-            Fit
-          </button>
+          {!viewOnly && <span className="sep" />}
+          {!viewOnly && (
+            <button type="button" className="ann-btn ghost" title="Fit (F)" onClick={fit}>
+              Fit
+            </button>
+          )}
+          {!readOnly && (
+            <button
+              type="button"
+              className="ann-btn ghost"
+              title="Turn 90 degrees clockwise"
+              disabled={rotating}
+              onClick={onRotate}
+            >
+              {rotating ? 'Turning' : 'Rotate'}
+            </button>
+          )}
+          {rotateNote && <span>{rotateNote}</span>}
         </div>
       )}
       <div className="ann-zoom">{Math.round(view.scale * 100)}%</div>

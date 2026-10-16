@@ -1,6 +1,6 @@
 import { getActiveScene } from '@aio/engine';
 import { normaliseSamples } from '@aio/geo';
-import type { Issue, Layer, PoseSample, Sighting, Vec2 } from '@aio/schema';
+import type { Issue, Layer, PoseSample, ProjectManifest, Sighting, Vec2 } from '@aio/schema';
 import { assetUrl, workspace } from '@aio/workspace';
 import { useSyncExternalStore } from 'react';
 import { createStore } from 'zustand/vanilla';
@@ -215,6 +215,23 @@ export const annotateUi = createStore<AnnotateUiState>()(() => ({
 
 export function useAnnotateUi<T>(selector: (s: AnnotateUiState) => T): T {
   return useStore(annotateUi, selector);
+}
+
+export type PhotoRotateAnswer =
+  { ok: true; issues: Issue[]; manifest?: ProjectManifest } | { ok: false; error: string };
+
+type PhotoRotator = (layerId: string, photoId: string) => Promise<PhotoRotateAnswer>;
+
+let photoRotator: PhotoRotator | null = null;
+
+/** The desktop app registers the call that turns a photo on disk. Null outside the app. */
+export function setPhotoRotator(fn: PhotoRotator | null): void {
+  photoRotator = fn;
+}
+
+export function rotatePhoto(layerId: string, photoId: string): Promise<PhotoRotateAnswer> {
+  if (!photoRotator) return Promise.resolve({ ok: false, error: 'Rotate is not available.' });
+  return photoRotator(layerId, photoId);
 }
 
 /**

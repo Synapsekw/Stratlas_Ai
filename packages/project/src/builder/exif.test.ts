@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { readPhotoMeta } from './exif';
+import { orientationQuarters, readPhotoMeta } from './exif';
 import { withExif } from './testing';
 
 describe('readPhotoMeta', () => {
@@ -64,6 +64,14 @@ describe('readPhotoMeta', () => {
       gimbal: { yaw: 63.1, pitch: -45.4, roll: 0 },
       flightYaw: 63.8,
     });
+  });
+
+  it('reads Orientation 6 as one clockwise quarter turn', () => {
+    expect(readPhotoMeta(withExif({ orientation: 6 })).orientation).toBe(6);
+    expect(orientationQuarters(6)).toBe(1);
+    expect(orientationQuarters(3)).toBe(2);
+    expect(orientationQuarters(8)).toBe(3);
+    expect(orientationQuarters(2)).toBe(0);
   });
 
   it('takes the frame size from the JPEG when EXIF has none', () => {

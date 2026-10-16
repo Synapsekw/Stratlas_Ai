@@ -55,9 +55,9 @@ import './placeWalk.css';
 const SAY = {
   start: 'Click where the walk started. Its shape follows the pointer.',
   end: 'Click where the walk ended. Esc moves the start.',
-  tooClose: 'Put the end at least 5 m from the start.',
+  tooClose: 'These pins are at the same moment of the walk. Pick another moment.',
   placed: 'Drag Start or End to adjust the walk, then Save.',
-  dragRefused: 'Start and End stay at least 5 m apart.',
+  dragRefused: 'These pins are at the same moment of the walk. Pick another moment.',
   fineTune: 'Scrub to a moment, then Pin here and click the true spot.',
   pin: 'Click the true spot for this moment.',
   align360: 'Click a landmark in the 360 view',

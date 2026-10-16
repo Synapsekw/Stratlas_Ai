@@ -9,7 +9,7 @@ import {
   type LevelStill,
   type XZ,
 } from './horizontal';
-import { applySim2, sim2FromPairs, sim2Through, sim2Yaw, type Sim2 } from './similarity2';
+import { applySim2, sim2Between, sim2Through, sim2Yaw, type Sim2 } from './similarity2';
 
 /*
  * The walk fit (design "The fit"): pins on drawings or on the model turn the walk's raw path
@@ -17,12 +17,10 @@ import { applySim2, sim2FromPairs, sim2Through, sim2Yaw, type Sim2 } from './sim
  * in the renderer and again in main when the pose file is written.
  */
 
-/** Two pins closer than this on the target are refused. */
-export const MIN_PIN_SPAN_M = 5;
 /** Half width of the blend between two stretches at an inner pin, seconds. */
 export const BLEND_S = 2;
-/** The refusal of pins that are too close (or at the same raw position). */
-export const PIN_SPAN_ERROR = 'Put the end pin at least 5 m from the start';
+/** The refusal of pins that share one raw position, so the path has no direction to fit. */
+export const PIN_SPAN_ERROR = 'These pins are at the same moment of the walk. Pick another moment.';
 
 /** A drawing's affine from image px to model x/z (from its corners) and its base height. */
 export interface SurfaceFrame {
@@ -92,7 +90,7 @@ export interface WalkFit {
   gaps: { fromT: number; toT: number }[];
   pinsOnly: boolean;
   notToScale: boolean;
-  /** Why the walk cannot be placed (the 5 m refusal), else null. */
+  /** Why the walk cannot be placed (pins at one raw position), else null. */
   error: string | null;
 }
 
@@ -230,17 +228,6 @@ function evalSeg(
   return { xz: r.xz, fitYaw: r.yaw, rawQ: raw.q, still: raw.still };
 }
 
-function maxSpan(pins: readonly ActivePin[]): number {
-  let m = 0;
-  for (let i = 0; i < pins.length; i++)
-    for (let j = i + 1; j < pins.length; j++) {
-      const a = pins[i];
-      const b = pins[j];
-      if (a && b) m = Math.max(m, dist(a.target, b.target));
-    }
-  return m;
-}
-
 /** Ground height at t: the pins' heights interpolated by time, else `fallback`. */
 function groundAt(pins: readonly ActivePin[], fallback: number, t: number): number {
   const withY = pins.filter((p): p is ActivePin & { y: number } => p.y !== null);
@@ -343,7 +330,6 @@ function build(
 ): Built {
   const none = { pinsOnly, gaps: [], at: () => null };
   if (pins.length < 2) return { ...none, error: null };
-  if (maxSpan(pins) < MIN_PIN_SPAN_M) return { ...none, error: PIN_SPAN_ERROR };
   if (pinsOnly) return { error: null, pinsOnly, gaps: [], at: buildPinsOnly(stills, pins, ground) };
 
   // Registered stills by segment.
@@ -399,7 +385,7 @@ function build(
       const b = d.pins[k + 1];
       const ra = raws[k];
       const rb = raws[k + 1];
-      sims.push(a && b && ra && rb ? sim2FromPairs(ra, rb, a.target, b.target) : null);
+      sims.push(a && b && ra && rb ? sim2Between(ra, rb, a.target, b.target) : null);
     }
     if (sims.every((m) => m === null)) {
       sameRaw = true;
