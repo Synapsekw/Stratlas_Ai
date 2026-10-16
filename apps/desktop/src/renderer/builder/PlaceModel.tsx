@@ -8,18 +8,11 @@ import {
   type GizmoMode,
   type PlaceGizmoHandle,
 } from '@aio/engine';
-import {
-  fromWgs84,
-  layerTransformToGeoref,
-  localToProject,
-  projectToLocal,
-  toWgs84,
-} from '@aio/geo';
+import { fromWgs84, localToProject, projectToLocal, toWgs84 } from '@aio/geo';
 import { LocationPicker } from '@aio/maps';
-import type { Georef, Layer, LayerPatch, Mat4, Placement, Vec3 } from '@aio/schema';
+import type { Layer, LayerPatch, Mat4, Vec3 } from '@aio/schema';
 import { Icon, useT, type MessageKey } from '@aio/ui';
 import { useWorkspace, workspace } from '@aio/workspace';
-import { Box3 } from 'three';
 import {
   useCallback,
   useEffect,
@@ -32,6 +25,7 @@ import { useShell } from '../shell';
 import { ExtractPackage } from '../shell/ExtractPackage';
 import { parseCoordinate } from './model';
 import { terrainHeightAt, useStagePick } from './pick';
+import { modelBaseY, patchOf, placedPatch, type SavedPlacement } from './modelPlacement';
 import { builder } from './state';
 
 type MeshLayer = Extract<Layer, { kind: 'mesh' }>;
@@ -55,32 +49,13 @@ const FIELDS: { id: Field; label: MessageKey }[] = [
 
 const num = (v: number) => String(Number(v.toFixed(3)));
 
-/** What a saved placement was before, for Undo after Done: all of it goes back in one write. */
-interface Saved {
-  transform: Mat4;
-  georef?: Georef | undefined;
-  placement?: Placement | undefined;
-}
-
-const patchOf = (s: Saved): LayerPatch =>
-  s.georef !== undefined || s.placement !== undefined
-    ? {
-        transform: s.transform,
-        ...(s.georef !== undefined ? { georef: s.georef } : {}),
-        ...(s.placement !== undefined ? { placement: s.placement } : {}),
-      }
-    : { transform: s.transform };
-
 /**
  * How far the model's lowest point lies below its origin, as drawn now (the layer's bounds in the
  * 3D view); 0 without a 3D view. Drop to ground lands that point, not the origin.
  */
 function originAboveBase(layerId: string, originY: number): number {
-  const group = getActiveStage()?.scene.getObjectByName(`layer:${layerId}`);
-  if (!group) return 0;
-  group.updateMatrixWorld(true);
-  const box = new Box3().setFromObject(group);
-  return box.isEmpty() ? 0 : originY - box.min.y;
+  const base = modelBaseY(layerId);
+  return base === null ? 0 : originY - base;
 }
 
 /**
@@ -132,7 +107,7 @@ export function PlaceModel({
   const [start, setStart] = useState<Mat4 | null>(layer ? [...layer.transform] : null);
   const [current, setCurrent] = useState<Mat4 | null>(layer ? [...layer.transform] : null);
   const [history, setHistory] = useState<Mat4[]>([]);
-  const [previous, setPrevious] = useState<Saved | null>(null);
+  const [previous, setPrevious] = useState<SavedPlacement | null>(null);
   const [mode, setMode] = useState<GizmoMode>('move');
   const [armed, setArmed] = useState(false);
   const [mapOpen, setMapOpen] = useState(false);
@@ -344,33 +319,19 @@ export function PlaceModel({
     else after();
   };
   const done = () => {
-    const before: Saved = {
+    const before: SavedPlacement = {
       transform: start ?? layer.transform,
       georef: layer.georef,
       placement: layer.placement,
     };
     // a georeferenced model keeps a record of where it sits, now set by the person; a model that
     // waited for placing is placed; all with the transform, in one write
-    const placing = layer.georef !== undefined || (layer.placement ?? 'placed') !== 'placed';
-    const georef = layer.georef
-      ? layerTransformToGeoref(
-          current,
-          { crs: project.manifest.crs, origin },
-          layer.georef,
-          'place-model',
-        )
-      : undefined;
-    void save(
-      placing
-        ? patchOf({ transform: current, georef, placement: 'placed' })
-        : patchOf({ transform: current }),
-      () => {
-        setPrevious(before);
-        setStart(current);
-        setHistory([]);
-        setSay({ text: t('place.saved') });
-      },
-    );
+    void save(placedPatch(layer, current, { crs: project.manifest.crs, origin }), () => {
+      setPrevious(before);
+      setStart(current);
+      setHistory([]);
+      setSay({ text: t('place.saved') });
+    });
   };
   const undo = () => {
     const last = history.at(-1);

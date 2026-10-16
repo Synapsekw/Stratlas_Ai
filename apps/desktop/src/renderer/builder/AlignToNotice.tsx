@@ -11,7 +11,7 @@ const OWN_UNDO =
   '[data-testid="issue-card"], [data-testid="cleanup-panel"], .vol-panel';
 
 /** Whether Ctrl+Z belongs elsewhere: another screen, a field, or a panel or tool with its own undo. */
-function otherUndo(e: KeyboardEvent): boolean {
+export function otherUndo(e: KeyboardEvent): boolean {
   if (shell.getState().screen !== 'scene') return true;
   if (e.target instanceof Element && e.target.closest(OWN_UNDO) !== null) return true;
   return (
