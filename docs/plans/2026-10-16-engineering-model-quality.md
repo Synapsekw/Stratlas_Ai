@@ -110,3 +110,5 @@ Tasks 1, 2 and 3 run in parallel with exclusive file ownership. Task 4 depends o
 - Final desktop rebuild and a repeat of all 7 engineering workflow tests passed after antenna and checkpoint fixes; no skips or retries. Independent whole-change review approved all code deltas.
 
 - Repository finish check passed on `ddb64a94` after rebase onto current remote main: lint, formatting, TypeScript, 965 test files passed (4 skipped), 9,838 tests passed (14 skipped). The final verification record is a documentation-only follow-up.
+
+- The two previously skipped compressed-cloud checks were then run with the installed PDAL executable configured explicitly: both passed. Total final engineering/model-evidence coverage is 69 passed across the main run and this follow-up, with no remaining skipped cases in that scope.
