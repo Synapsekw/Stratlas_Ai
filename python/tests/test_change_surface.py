@@ -272,7 +272,10 @@ def points_ctx(tmp_path):
         job=SimpleNamespace(dir=tmp_path / "stage"),
         cancel_event=threading.Event(),
         check=lambda: None,
-        stage=stage, log=lambda *a, **k: None, progress=lambda *a, **k: None)
+        stage=stage,
+        log=lambda *a, **k: None,
+        progress=lambda *a, **k: None,
+    )
 
 
 def surface_points(project, lid, ctx, offset=None):

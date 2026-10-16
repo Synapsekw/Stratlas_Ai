@@ -182,6 +182,7 @@ def test_read_region_copc_through_pdal(tmp_path):  # pragma: no cover - needs PD
     assert np.hypot(xyz[:, 0], xyz[:, 2]).max() <= 3.002
     assert MONOPOLE["height"] > 0
 
+
 def test_read_region_carries_the_offset(tmp_path):
     cloud, _ = monopole_cloud(seed=1)
     origin = (400000.0, 5600000.0, 10.0)

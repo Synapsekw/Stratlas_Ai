@@ -330,8 +330,9 @@ def test_dtm_filter_reads_offset_heights(tmp_path, monkeypatch, kind):
         check=lambda: None,
         progress=lambda *a, **k: None,
         log=lambda *a, **k: None,
-        stage=lambda rel: (tmp_path / "stage" / rel).parent.mkdir(parents=True, exist_ok=True)
-        or tmp_path / "stage" / rel,
+        stage=lambda rel: (
+            (tmp_path / "stage" / rel).parent.mkdir(parents=True, exist_ok=True) or tmp_path / "stage" / rel
+        ),
     )
     path = tmp_path / "manifest.json"
     base = json.loads(path.read_text("utf-8"))

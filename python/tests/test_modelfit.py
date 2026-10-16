@@ -334,6 +334,7 @@ def test_refusals_name_the_layer_and_the_fix(tmp_path, monkeypatch):
     with pytest.raises(JobError, match="kinds must be"):
         ModelFitCloud().validate({"layer": "scan", "kinds": ["cone"]})
 
+
 def test_fit_points_carry_the_offset(tmp_path):
     from types import SimpleNamespace
 

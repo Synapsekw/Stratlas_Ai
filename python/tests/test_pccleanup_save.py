@@ -189,6 +189,7 @@ def test_a_cancelled_save_leaves_no_project_files(tmp_path, monkeypatch):
     assert not (root / "manifest.json.bak").exists()
     assert sorted(p.name for p in (root / "clouds").iterdir()) == ["cloud-a.copc.laz"]
 
+
 def test_cleaned_copy_keeps_the_source_offset(tmp_path):
     xyz, cls, _ = planted_cloud()
     root = cloud_project(tmp_path, xyz, cls)

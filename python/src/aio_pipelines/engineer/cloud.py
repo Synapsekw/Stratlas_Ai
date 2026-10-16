@@ -222,7 +222,11 @@ def read_region(
         if not pdal:
             raise JobError(PDAL_MISSING)
         out = ctx.job.dir / "region.las"
-        _run(ctx, pdal_translate_args(pdal, layer_path, out, fmt, region, origin, offset_m), "Read the asset region")
+        _run(
+            ctx,
+            pdal_translate_args(pdal, layer_path, out, fmt, region, origin, offset_m),
+            "Read the asset region",
+        )
         try:
             crs = las_crs(out)
             read = _stream_las(out, region, origin, res, check, offset_m)
