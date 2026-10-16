@@ -1,5 +1,6 @@
 import { clipCamera, clipKeys, clipPoseAt, correctedPhoto, photoCorrection } from '@aio/geo';
 import {
+  shiftedDirectionKeys,
   shiftedLayer,
   shiftLocal,
   type FrameGeom,
@@ -61,7 +62,7 @@ export function sightingCamera(s: Sighting, src: CameraSources): SightingCamera 
       Math.round(1280 / layer.lens.aspect),
     ];
     // the camera as every view draws it: direction keyframes, else the log with its bias
-    const keys = clipKeys(src.orientation?.(), layer.id);
+    const keys = shiftedDirectionKeys(clipKeys(src.orientation?.(), layer.id), shift);
     const at = clipPoseAt(samples, layer.offsetMs + key.t * 1000, clipCamera(layer, keys));
     return { pose: { pos: at.pos, q: at.q }, lens: layer.lens, size, geom: key.geom };
   }

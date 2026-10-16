@@ -104,3 +104,19 @@ export function shiftedLayer(layer: Layer, s: DateShift | null): Layer {
       return layer;
   }
 }
+
+/**
+ * Video direction keyframes as drawn on a lined-up date: a `lookAt` keyframe's `target` (a local
+ * point in orientation.json) moves with the date like the clip's camera; other keyframes are
+ * directions and stay. The same array for no shift (or none given).
+ */
+export function shiftedDirectionKeys<K extends { fill: string; target?: Vec3 | undefined }>(
+  keys: readonly K[] | null | undefined,
+  s: DateShift | null,
+): readonly K[] | null | undefined {
+  if (!keys || !s || isZeroShift(s)) return keys;
+  if (!keys.some((k) => k.fill === 'lookAt' && k.target)) return keys;
+  return keys.map((k) =>
+    k.fill === 'lookAt' && k.target ? { ...k, target: shiftLocal(k.target, s) } : k,
+  );
+}

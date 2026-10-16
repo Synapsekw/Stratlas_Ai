@@ -5,9 +5,16 @@ import {
   directionFromQuat,
   type CameraDirection,
 } from '@aio/geo';
-import type { DirectionFill, DirectionKey, Layer, PoseSample, Vec3 } from '@aio/schema';
+import {
+  unshiftLocal,
+  type DirectionFill,
+  type DirectionKey,
+  type Layer,
+  type PoseSample,
+  type Vec3,
+} from '@aio/schema';
 import { t } from '@aio/ui';
-import type { Workspace } from '@aio/workspace';
+import { dateShiftOf, type Workspace } from '@aio/workspace';
 import { createStore, type StoreApi } from 'zustand/vanilla';
 import {
   clipTimeMs,
@@ -321,15 +328,18 @@ export function createAlignStore(deps: AlignDeps): StoreApi<AlignStore> {
         patch({ keys: setFill(s.keys, i, f), history: push(s), picking: false });
       },
 
-      pick: (target) => {
+      pick: (picked) => {
         const s = get().session;
         const clip = s ? clipOf(s.layerId) : null;
         if (!s || !clip) return;
-        if (!target) {
+        if (!picked) {
           patch({ picking: false });
           set({ say: { text: t('align.direction.say.noPick'), tone: 'bad' } });
           return;
         }
+        // picked where the clip's date is drawn; kept in the date's own frame, like its flight
+        const m = ws.getState().project?.manifest;
+        const target = unshiftLocal(picked, m ? dateShiftOf(m, clip.id) : null);
         const i = segmentKey(s.keys, nowClipMs(clip));
         if (i < 0) return;
         patch({ keys: setFill(s.keys, i, 'lookAt', target), history: push(s), picking: false });

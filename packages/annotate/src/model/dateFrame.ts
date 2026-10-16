@@ -33,12 +33,16 @@ export function shiftOfManifest(
 
 type Crs = ProjectManifest['crs'];
 
-/** A GeoJSON's positions ([lon, lat, ...]) moved in the project CRS; others kept. */
+/**
+ * A GeoJSON's positions ([lon, lat, ...]) moved in the project CRS; others kept. A `bbox` is
+ * dropped (optional in GeoJSON, and no longer true once the positions move).
+ */
 function moveGeoJson(v: unknown, s: DateShift, sign: 1 | -1, epsg: number): unknown {
   if (!Array.isArray(v)) {
     if (!v || typeof v !== 'object') return v;
     const o = v as Record<string, unknown>;
     const out: Record<string, unknown> = { ...o };
+    delete out.bbox;
     for (const k of ['coordinates', 'geometry', 'features', 'geometries'] as const)
       if (k in o) out[k] = moveGeoJson(o[k], s, sign, epsg);
     return out;

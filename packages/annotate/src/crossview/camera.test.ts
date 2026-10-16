@@ -1,4 +1,5 @@
 import type { Layer, PoseSample, Quat, Sighting } from '@aio/schema';
+import { Quaternion, Vector3 } from 'three';
 import { describe, expect, it } from 'vitest';
 import { sightingCamera, type CameraSources } from './camera';
 
@@ -98,5 +99,57 @@ describe('sightingCamera', () => {
     expect(moved[0]).toBeCloseTo((plain[0] ?? 0) + 2, 6);
     expect(moved[1]).toBeCloseTo(plain[1] ?? 0, 6);
     expect(moved[2]).toBeCloseTo((plain[2] ?? 0) - 3, 6);
+  });
+
+  it('aims a lined-up clip at the shifted target', () => {
+    const video: Layer = {
+      kind: 'video',
+      id: 'clip',
+      name: 'Flight',
+      visible: true,
+      src: { path: 'video/a.mp4' },
+      flight: { src: { path: 'flights/a.json' }, startUtcMs: 0 },
+      lens: { model: 'ftheta', hfovDeg: 114, aspect: 16 / 9 },
+      offsetMs: 0,
+    };
+    // hovering at x = 0, looking at a stored target 10 m east on the ground
+    const samples: PoseSample[] = [
+      { t: 0, pos: [0, 10, 0], q: down },
+      { t: 10_000, pos: [0, 10, 0], q: down },
+    ];
+    const s: Sighting = {
+      on: 'video',
+      layer: 'clip',
+      track: [{ t: 5, geom: { type: 'box', x: 0, y: 0, w: 1, h: 1 } }],
+    };
+    const src = (shift: { eastM: number; northM: number } | null): CameraSources => ({
+      layers: () => [video],
+      flight: () => samples,
+      imageSize: () => [1280, 720],
+      shiftOf: () => shift,
+      orientation: () => ({
+        schema: 'aio.orientation/1',
+        clips: {
+          clip: {
+            keys: [{ t: 0, yaw: 90, pitch: -45, roll: 0, fill: 'lookAt', target: [10, 0, 0] }],
+          },
+        },
+        photos: {},
+      }),
+    });
+    const forward = (q: Quat) => new Vector3(0, 0, -1).applyQuaternion(new Quaternion(...q));
+    const plain = sightingCamera(s, src(null));
+    const moved = sightingCamera(s, src({ eastM: 2, northM: 0 }));
+    if (!plain || !moved) throw new Error('no camera');
+    // camera and target move together: the same aim from 2 m east
+    expect(moved.pose.pos[0]).toBeCloseTo(2, 6);
+    const a = forward(plain.pose.q);
+    const b = forward(moved.pose.q);
+    expect(b.x).toBeCloseTo(a.x, 6);
+    expect(b.y).toBeCloseTo(a.y, 6);
+    expect(b.z).toBeCloseTo(a.z, 6);
+    // and it aims at the target: down 45 degrees towards east
+    expect(a.x).toBeCloseTo(Math.SQRT1_2, 3);
+    expect(a.y).toBeCloseTo(-Math.SQRT1_2, 3);
   });
 });

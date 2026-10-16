@@ -18,8 +18,8 @@ import {
   projectToLocal,
   toWgs84,
 } from '@aio/geo';
-import type { Issue, PhotoRef, Quat, Vec3 } from '@aio/schema';
-import { assetUrl } from '@aio/workspace';
+import { shiftLocal, type Issue, type PhotoRef, type Quat, type Vec3 } from '@aio/schema';
+import { assetUrl, dateShiftOf } from '@aio/workspace';
 import { Box3, Vector3, type Object3D } from 'three';
 import { clipStartUtcMs } from './context';
 import { parseFlight, type FlightFile } from './geometry';
@@ -727,9 +727,12 @@ async function droneEye(ctx: RendererToolContext, l: VideoLayer, utcMs: number):
   const samples = flight?.samples;
   if (!samples?.length) throw new ToolError(`The flight of clip ${l.name} could not be read.`);
   // the camera as every view draws it: direction keyframes, else the log with its bias
-  const keys = clipKeys(ctx.workspace.getState().orientation, l.id);
+  const ws = ctx.workspace.getState();
+  const keys = clipKeys(ws.orientation, l.id);
   const p = clipPoseAt(samples, utcMs - l.flight.startUtcMs, clipCamera(l, keys));
-  return { pos: p.pos, q: p.q };
+  // in the date's own frame (stored flight and look-at targets), then where the date is drawn
+  const m = ws.project?.manifest;
+  return { pos: shiftLocal(p.pos, m ? dateShiftOf(m, l.id) : null), q: p.q };
 }
 
 /** "13:25" or "13:25:10" on the project day (site time), or an ISO time, to UTC ms. */

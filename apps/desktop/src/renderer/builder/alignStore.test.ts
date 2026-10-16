@@ -44,12 +44,12 @@ const key = (t: number, yaw: number, extra: Partial<DirectionKey> = {}): Directi
   ...extra,
 });
 
-function setup(keys?: DirectionKey[], loaded = true) {
+function setup(keys?: DirectionKey[], loaded = true, manifest: Partial<ProjectManifest> = {}) {
   const ws = createWorkspace();
   ws.getState().openProject({
     id: 'p',
     root: 'x',
-    manifest: { layers: [clip] } as unknown as ProjectManifest,
+    manifest: { layers: [clip], captures: [], ...manifest } as unknown as ProjectManifest,
   });
   // the saved keyframes live in orientation.json, held by the workspace
   if (keys) ws.getState().setOrientation(withClipKeys(null, 'clip-1', keys));
@@ -281,6 +281,26 @@ describe('align camera to map', () => {
     a().pick([50, 0, -50]);
     expect(a().session?.keys[0]).toMatchObject({ fill: 'lookAt', target: [50, 0, -50] });
     expect(a().session?.picking).toBe(false);
+  });
+
+  it("keeps a look-at picked on a lined-up date in the date's own frame", () => {
+    const { store } = setup(undefined, true, {
+      captures: [
+        {
+          id: 'd2',
+          label: 'Second',
+          date: '2026-02-10',
+          lineUp: { eastM: 2, northM: 1, with: 'd1', at: '2026-10-16T08:00:00Z' },
+        },
+      ],
+      layers: [{ ...clip, capture: 'd2' }],
+    });
+    const a = () => store.getState();
+    a().start('clip-1');
+    a().firstLast();
+    a().fill('lookAt');
+    a().pick([52, 0, -51]);
+    expect(a().session?.keys[0]).toMatchObject({ fill: 'lookAt', target: [50, 0, -50] });
   });
 
   it('cancels without saving and clears saved keyframes with undo', async () => {

@@ -6,6 +6,7 @@ import {
 } from '@aio/engine';
 import { clipCamera, clipKeys, clipPoseAt } from '@aio/geo';
 import {
+  shiftedDirectionKeys,
   shiftLocal,
   type CameraOrientation,
   type DateShift,
@@ -92,6 +93,8 @@ interface ClipEntry {
   /** Key of the drawn path this clip shares (its flight and the shift of its date). */
   pathKey: string | null;
   visible: boolean;
+  /** The shift of its date: the engine hands the layer shifted, its look-at targets move here. */
+  shift: DateShift | null;
 }
 
 /** One drawn path per flight log; long flights are delivered as many clips sharing it. */
@@ -333,14 +336,14 @@ export class VideoRig {
   }
 
   async addLayer(layer: VideoLayer, ctx: AdapterContext): Promise<void> {
-    const entry: ClipEntry = { layer, flight: null, pathKey: null, visible: true };
+    const shift = ctx.shiftOf?.(layer.id) ?? null;
+    const entry: ClipEntry = { layer, flight: null, pathKey: null, visible: true, shift };
     this.clips.set(layer.id, entry);
     const flight = await loadFlight(ctx.url(layer.flight.src));
     if (this.clips.get(layer.id) !== entry) return;
     entry.flight = flight;
     // one path per flight log and date shift: clips of one log on dates that moved differently
     // each draw their own
-    const shift = ctx.shiftOf?.(layer.id) ?? null;
     let flightId = this.flightIds.get(flight);
     if (flightId === undefined) {
       flightId = ++this.flightCount;
@@ -689,10 +692,12 @@ export class VideoRig {
     const off = this.positionOverride ?? entry.layer.positionOffsetM;
     // one rule for every reader: keyframes (an unsaved draft first, else orientation.json) when
     // the clip has any, else the log with its bias
-    const keys =
+    const keys = shiftedDirectionKeys(
       s.directionDraft?.layerId === entry.layer.id
         ? s.directionDraft.keys
-        : clipKeys(s.orientation, entry.layer.id);
+        : clipKeys(s.orientation, entry.layer.id),
+      entry.shift,
+    );
     const p = clipPoseAt(flight.samples, flightMs, {
       ...clipCamera(entry.layer, keys, flight.startUtcMs),
       orientation: this.orientationOverride ?? entry.layer.orientation,

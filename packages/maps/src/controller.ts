@@ -5,6 +5,7 @@ import { getActiveScene, onActiveScene, reducedMotion, type SceneHandle } from '
 import { clipCamera, clipKeys, clipPoseAt, normaliseSamples } from '@aio/geo';
 import {
   shiftCorners,
+  shiftedDirectionKeys,
   shiftLocal,
   type DateShift,
   type Issue,
@@ -930,10 +931,13 @@ export function createMapController(
     }
     // the camera as every view draws it: direction keyframes (an unsaved draft first), else the
     // log turned by the clip's calibration
-    const keys =
+    // the samples carry the date shift, so the look-at targets take it too
+    const keys = shiftedDirectionKeys(
       s.directionDraft?.layerId === f.layer.id
         ? s.directionDraft.keys
-        : clipKeys(s.orientation, f.layer.id);
+        : clipKeys(s.orientation, f.layer.id),
+      shiftOf(f.layer.id),
+    );
     const flightMs = s.nowMs - f.layer.flight.startUtcMs;
     const cam = clipPoseAt(f.samples, flightMs, clipCamera(f.layer, keys));
     const pose: PoseSample = { t: flightMs, pos: cam.log.pos, q: cam.log.q };

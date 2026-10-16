@@ -227,7 +227,7 @@ export function PhotoViewer({
         });
       }
       // ANN-9: a 3D sighting shows in every posed photo that sees it.
-      // both where they are drawn: the photo and the 3D sighting through their date shifts
+      // project with both as drawn: the photo's camera and the 3D anchor each take their date's shift
       if (projected && !onPhoto && natural && photo?.pos && photo.q && photo.lens) {
         const p = bestAnchor(issue, shiftOf);
         const pos = shiftLocal(photo.pos, shiftOf(layerId));

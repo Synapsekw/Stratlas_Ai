@@ -79,9 +79,11 @@ describe('sightings drawn on a lined-up date', () => {
     const drawn: Sighting = {
       on: 'map',
       layer: 'ortho-d2',
-      geojson: { type: 'Point', coordinates: at },
+      geojson: { type: 'Point', coordinates: at, bbox: [...at, ...at] },
     };
     const stored = sightingInDateFrame(drawn, linedUp);
+    // a bounding box no longer holds once the positions move
+    expect(stored.on === 'map' && 'bbox' in stored.geojson).toBe(false);
     const c = stored.on === 'map' ? (stored.geojson.coordinates as number[]) : [];
     const [e, n] = fromWgs84([c[0] ?? 0, c[1] ?? 0, 0], 32639);
     expect(e).toBeCloseTo(500010, 3);

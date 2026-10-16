@@ -1,10 +1,10 @@
 import { getActiveScene, onActiveScene, type SceneHandle } from '@aio/engine';
 import { clipCamera, clipPoseAt, type CameraDirection } from '@aio/geo';
 import { frameProjection, getActiveMap, onActiveMap, type MapController } from '@aio/maps';
-import type { DirectionFill } from '@aio/schema';
+import { shiftLocal, type DirectionFill } from '@aio/schema';
 import { Icon, useT } from '@aio/ui';
 import { getPlayer, setFramePlane } from '@aio/video';
-import { useWorkspace, workspace } from '@aio/workspace';
+import { dateShiftOf, useWorkspace, workspace } from '@aio/workspace';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { Vector3 } from 'three';
@@ -79,6 +79,11 @@ export function AlignCamera() {
     const l = project?.manifest.layers.find((x) => x.id === session?.layerId);
     return l?.kind === 'video' ? l : null;
   }, [project, session?.layerId]);
+  // a lined-up date's clip is drawn where the date is: its drone and look-at target move with it
+  const shift = useMemo(
+    () => (project && clip ? dateShiftOf(project.manifest, clip.id) : null),
+    [project, clip],
+  );
   const samples = clip ? (flights[clip.id] ?? null) : null;
   const keys = session?.keys ?? [];
   const preview = useMemo(
@@ -88,12 +93,14 @@ export function AlignCamera() {
   const clipMs = clip ? clipTimeMs(clip, nowMs) : 0;
   const pose = useMemo(() => {
     if (!clip || !samples?.length) return null;
-    return clipPoseAt(
+    // in the date's own frame (the stored target with the stored flight), then moved as drawn
+    const p = clipPoseAt(
       samples,
       nowMs - clip.flight.startUtcMs,
       clipCamera(clip, preview.length ? preview : null),
     );
-  }, [clip, samples, nowMs, preview]);
+    return shift ? { ...p, pos: shiftLocal(p.pos, shift) } : p;
+  }, [clip, samples, nowMs, preview, shift]);
   // every render: the direction shown, from the store's own rule (a turn not set yet wins)
   const dir: CameraDirection | null = session && samples ? alignCamera.getState().current() : null;
 
@@ -178,7 +185,10 @@ export function AlignCamera() {
           ? { source: v, width: v.videoWidth, height: v.videoHeight }
           : null,
       opacity,
-      target: keys[segmentKey(keys, clipMs)]?.target ?? null,
+      target: (() => {
+        const target = keys[segmentKey(keys, clipMs)]?.target;
+        return target ? shiftLocal(target, shift) : null;
+      })(),
       picking: session?.picking ?? false,
     });
   });

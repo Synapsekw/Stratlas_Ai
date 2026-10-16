@@ -9,9 +9,11 @@ import {
   shiftEN,
   shiftLocal,
   shiftTransform,
+  shiftedDirectionKeys,
   shiftedLayer,
   unshiftLocal,
   type Capture,
+  type DirectionKey,
   type Layer,
 } from './index';
 
@@ -133,6 +135,28 @@ describe('date shift helpers', () => {
     expect(isZeroShift(null)).toBe(true);
     expect(isZeroShift({ eastM: 0.0004, northM: -0.0004 })).toBe(true);
     expect(isZeroShift({ eastM: 0.001, northM: 0 })).toBe(false);
+  });
+});
+
+describe('shiftedDirectionKeys', () => {
+  const keys: DirectionKey[] = [
+    { t: 0, yaw: 10, pitch: -30, roll: 0, fill: 'smooth' },
+    { t: 1000, yaw: 0, pitch: -45, roll: 0, fill: 'lookAt', target: [10, 0, -5] },
+  ];
+
+  it('moves a look-at target with the date and leaves directions alone', () => {
+    const out = shiftedDirectionKeys(keys, S);
+    expect(out?.[0]).toBe(keys[0]);
+    expect(out?.[1]).toEqual({ ...keys[1], target: [12, 0, -6] });
+    expect(keys[1]?.target).toEqual([10, 0, -5]);
+  });
+
+  it('is the same array for no shift', () => {
+    expect(shiftedDirectionKeys(keys, null)).toBe(keys);
+    expect(shiftedDirectionKeys(keys, { eastM: 0, northM: 0.0001 })).toBe(keys);
+    const plain = keys.slice(0, 1);
+    expect(shiftedDirectionKeys(plain, S)).toBe(plain);
+    expect(shiftedDirectionKeys(null, S)).toBeNull();
   });
 });
 
