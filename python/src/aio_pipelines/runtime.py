@@ -40,7 +40,15 @@ PROGRESS_MIN_INTERVAL_S = 0.2
 
 
 class JobError(Exception):
-    """A failure the person can act on; the message is shown as is."""
+    """A failure the person can act on; the message is shown as is.
+
+    ``code`` (lowercase words and dashes) and ``data`` let the app offer a fix, not only text.
+    """
+
+    def __init__(self, message: str, *, code: str | None = None, data: dict[str, Any] | None = None):
+        super().__init__(message)
+        self.code = code
+        self.data = data or {}
 
 
 class Cancelled(Exception):
@@ -333,7 +341,11 @@ class Job:
 
     # manifests
     def _manifest(
-        self, status: str, error: str | None = None, states: list[str] | None = None
+        self,
+        status: str,
+        error: str | None = None,
+        states: list[str] | None = None,
+        failure: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         path = self.dir / "job.json"
         prev: dict[str, Any] = {}
@@ -359,6 +371,8 @@ class Job:
             m["inputs"] = inputs
         if error:
             m["error"] = error
+        if failure:
+            m["failure"] = failure
         atomic_write_json(path, m)
         return m
 
@@ -463,8 +477,16 @@ class Job:
             raise
         except JobError as e:
             states[current] = "failed"
-            self._manifest("failed", error=str(e), states=states)
-            self.emit("error", {"jobId": self.job_id, "step": self.steps[current].name, "message": str(e)})
+            payload: dict[str, Any] = {
+                "jobId": self.job_id,
+                "step": self.steps[current].name,
+                "message": str(e),
+            }
+            failure = {"code": e.code, "data": e.data} if e.code else None
+            if failure:
+                payload.update(failure)
+            self._manifest("failed", error=str(e), states=states, failure=failure)
+            self.emit("error", payload)
             raise
         except Exception as e:
             states[current] = "failed"

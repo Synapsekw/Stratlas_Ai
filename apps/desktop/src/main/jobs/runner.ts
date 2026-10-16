@@ -1,5 +1,6 @@
 import {
   JobEvent,
+  JobFailure,
   newJobId,
   pipelineParams,
   type IpcRequest,
@@ -102,6 +103,12 @@ function parseLogText(text: string): JobLogLine[] {
 
 const isObj = (v: unknown): v is Record<string, unknown> => typeof v === 'object' && v !== null;
 const str = (v: unknown): string | undefined => (typeof v === 'string' ? v : undefined);
+
+/** The failure code and data of an `error` event; absent or malformed means no failure code. */
+function failureOf(params: Record<string, unknown>): JobFailure | undefined {
+  const r = JobFailure.safeParse({ code: params.code, data: params.data ?? {} });
+  return r.success ? r.data : undefined;
+}
 const num = (v: unknown): number | undefined =>
   typeof v === 'number' && Number.isFinite(v) ? v : undefined;
 
@@ -157,6 +164,7 @@ export class JobRunner {
         updatedAt: this.iso(),
       };
       delete job.error;
+      delete job.failure;
       delete job.finishedAt;
     } else {
       const parsed = pipelineParams(req.pipeline).safeParse(
@@ -552,7 +560,8 @@ export class JobRunner {
         this.writeLog(id, { level: 'error', message, ...(step ? { step } : {}) });
         const tb = str(params.traceback);
         if (tb) this.writeLog(id, { level: 'debug', message: tb, ...(step ? { step } : {}) });
-        this.update(id, (j) => ({ ...j, error: message }));
+        const failure = failureOf(params);
+        this.update(id, (j) => ({ ...j, error: message, ...(failure ? { failure } : {}) }));
         return;
       }
       default:

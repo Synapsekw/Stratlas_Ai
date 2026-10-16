@@ -1264,6 +1264,13 @@ export const JobStep = z.object({
 
 export const JobArtifact = z.object({ path: z.string(), kind: z.string() });
 
+/** A machine-readable reason a job ended, so a panel can offer a fix (for example `misaligned`). */
+export const JobFailure = z.object({
+  code: z.string().regex(/^[a-z][a-z0-9-]{0,40}$/),
+  data: z.record(z.string(), z.unknown()),
+});
+export type JobFailure = z.infer<typeof JobFailure>;
+
 export const JobRecord = z.object({
   id: JobId,
   pipeline: PipelineName,
@@ -1277,6 +1284,8 @@ export const JobRecord = z.object({
   /** Latest progress message. */
   message: z.string().optional(),
   error: z.string().optional(),
+  /** Why the job failed, when the pipeline gave a code. Older records have none. */
+  failure: JobFailure.optional(),
   artifacts: z.array(JobArtifact),
   createdAt: z.string(),
   updatedAt: z.string(),

@@ -136,6 +136,19 @@ describe('job ids, records and events', () => {
     expect(id).toMatch(/^[A-Za-z0-9][A-Za-z0-9._-]{0,79}$/);
   });
 
+  it('keeps a job failure code', () => {
+    const failed = {
+      ...record,
+      status: 'failed',
+      failure: { code: 'misaligned', data: { shiftM: 2.01 } },
+    };
+    expect(JobRecord.parse(failed).failure).toEqual({ code: 'misaligned', data: { shiftM: 2.01 } });
+    expect(JobRecord.parse(record).failure).toBeUndefined();
+    expect(
+      JobRecord.safeParse({ ...failed, failure: { code: 'Bad Code', data: {} } }).success,
+    ).toBe(false);
+  });
+
   it('validates a job record and the jobs:event union', () => {
     expect(JobRecord.safeParse(record).success).toBe(true);
     expect(ipcEvents['jobs:event'].safeParse({ type: 'update', job: record }).success).toBe(true);
