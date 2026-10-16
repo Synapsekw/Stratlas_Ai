@@ -4071,6 +4071,7 @@ export const en = {
   'actions.reason.mixedDates': 'These datasets are on different survey dates.',
   'actions.reason.oneDate': 'The project has only one survey date.',
   'actions.reason.trashEmpty': 'The trash is empty.',
+  'actions.reason.nothingToChange': 'Nothing to change.',
   'actions.reason.inView': 'This date is already in view.',
   'actions.reason.noPositions': 'None of these photos has a position.',
   'actions.reason.noTargets': 'No other dataset has a known position.',

@@ -2,6 +2,9 @@
 import type { ProjectManifest } from '@aio/schema';
 import { actionsFor, makeActionCtx, t, type ActionCtx, type MenuTarget } from '@aio/ui';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { builder } from '../../builder/state';
+import { shell } from '../../shell';
+import { addDateMenu } from '../AddSurveyDate';
 import { registerProjectActions } from './projectActions';
 
 const manifest = {
@@ -92,5 +95,51 @@ describe('project actions', () => {
   it('a package greys the group add items', () => {
     const items = menu({ pkg: true }, { kind: 'group', group: 'drawings', layerIds: [] });
     expect(items[0]?.disabled).toBe(t('actions.reason.package'));
+  });
+
+  it('Add data runs the same import as the Add data button', () => {
+    const pick = vi.spyOn(builder.getState(), 'pickAndImport').mockResolvedValue();
+    menu()
+      .find((i) => i.id === 'project.addData')
+      ?.run();
+    expect(pick).toHaveBeenCalledOnce();
+    pick.mockRestore();
+  });
+
+  it('Add survey date opens a collapsed sidebar and the popover', () => {
+    const toggleSidebar = vi.fn(() => Promise.resolve());
+    const before = shell.getState();
+    shell.setState({ toggleSidebar, settings: { ...before.settings, sidebarCollapsed: true } });
+    menu()
+      .find((i) => i.id === 'project.addSurveyDate')
+      ?.run();
+    expect(toggleSidebar).toHaveBeenCalledOnce();
+    expect(addDateMenu.getState().open).toBe(true);
+    addDateMenu.getState().set(false);
+    shell.setState({ toggleSidebar: before.toggleSidebar, settings: before.settings });
+  });
+
+  it('Add survey date leaves an open sidebar alone', () => {
+    const toggleSidebar = vi.fn(() => Promise.resolve());
+    const before = shell.getState();
+    shell.setState({ toggleSidebar, settings: { ...before.settings, sidebarCollapsed: false } });
+    menu()
+      .find((i) => i.id === 'project.addSurveyDate')
+      ?.run();
+    expect(toggleSidebar).not.toHaveBeenCalled();
+    expect(addDateMenu.getState().open).toBe(true);
+    addDateMenu.getState().set(false);
+    shell.setState({ toggleSidebar: before.toggleSidebar });
+  });
+
+  it('Close project closes the project', () => {
+    const closeProject = vi.fn();
+    const before = shell.getState().closeProject;
+    shell.setState({ closeProject });
+    menu()
+      .find((i) => i.id === 'project.close')
+      ?.run();
+    expect(closeProject).toHaveBeenCalledOnce();
+    shell.setState({ closeProject: before });
   });
 });

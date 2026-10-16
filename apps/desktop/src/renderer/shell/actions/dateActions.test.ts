@@ -1,8 +1,10 @@
 // @vitest-environment jsdom
 import type { ProjectManifest } from '@aio/schema';
 import { actionsFor, makeActionCtx, t, type ActionCtx } from '@aio/ui';
-import { dateTags } from '@aio/workspace';
+import { dateTags, workspace } from '@aio/workspace';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { builder } from '../../builder/state';
+import { askRemove } from '../removal';
 import { updateCapture } from '../dateFolders';
 import { registerDateActions } from './dateActions';
 
@@ -10,6 +12,7 @@ vi.mock('../dateFolders', () => ({
   updateCapture: vi.fn(() => Promise.resolve(null)),
   moveLayersToDate: vi.fn(),
 }));
+vi.mock('../removal', () => ({ askRemove: vi.fn() }));
 vi.mock('../../workspace/compareWith', () => ({
   COMPARE_WITH_ACTIONS: [],
   compareWith: vi.fn(() => true),
@@ -74,11 +77,15 @@ describe('date actions', () => {
 
   it('Show and Hide grey out when nothing would change', () => {
     const shown = items('sep');
-    expect(shown.find((i) => i.id === 'date.show')?.disabled).toBeTruthy();
+    expect(shown.find((i) => i.id === 'date.show')?.disabled).toBe(
+      t('actions.reason.nothingToChange'),
+    );
     expect(shown.find((i) => i.id === 'date.hide')?.disabled).toBe(false);
     const hidden = items('sep', { hidden: { a: true, b: true } });
     expect(hidden.find((i) => i.id === 'date.show')?.disabled).toBe(false);
-    expect(hidden.find((i) => i.id === 'date.hide')?.disabled).toBeTruthy();
+    expect(hidden.find((i) => i.id === 'date.hide')?.disabled).toBe(
+      t('actions.reason.nothingToChange'),
+    );
   });
 
   it('a read-only project greys rename, colour, icon, add data and delete with the reason', () => {
@@ -151,5 +158,33 @@ describe('date actions', () => {
       .find((i) => i.id === 'date.rename')
       ?.run();
     expect(renameDate).toHaveBeenCalledWith('sep');
+  });
+
+  it('Show all and Hide all set the folder layers visible or hidden', () => {
+    const setLayersVisible = vi.spyOn(workspace.getState(), 'setLayersVisible');
+    const list = items('sep', { hidden: { a: true } });
+    list.find((i) => i.id === 'date.show')?.run();
+    expect(setLayersVisible).toHaveBeenLastCalledWith(['a', 'b'], true);
+    list.find((i) => i.id === 'date.hide')?.run();
+    expect(setLayersVisible).toHaveBeenLastCalledWith(['a', 'b'], false);
+    setLayersVisible.mockRestore();
+  });
+
+  it('Delete asks the shared removal dialog for the date', () => {
+    items('sep')
+      .find((i) => i.id === 'date.delete')
+      ?.run();
+    expect(askRemove).toHaveBeenCalledWith([{ capture: 'sep' }]);
+  });
+
+  it('Add data to this date runs the same import as Add data', async () => {
+    const pick = vi.spyOn(builder.getState(), 'pickAndImport').mockResolvedValue();
+    items('sep')
+      .find((i) => i.id === 'date.addData')
+      ?.run();
+    await vi.waitFor(() => {
+      expect(pick).toHaveBeenCalledOnce();
+    });
+    pick.mockRestore();
   });
 });

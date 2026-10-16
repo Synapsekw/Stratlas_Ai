@@ -60,9 +60,6 @@ function layersOf(captureId: string | null, ctx: ActionCtx): readonly string[] {
   return ctx.folderLayers[captureId ?? EVERY_DATE] ?? [];
 }
 
-/** Shown on Show all and Hide all when they would change nothing (no tooltip text of their own). */
-const NOTHING_TO_CHANGE = ' ';
-
 /** Say what a failed save returned. */
 async function saved(ctx: ActionCtx, done: Promise<string | null>): Promise<void> {
   const error = await done;
@@ -71,7 +68,7 @@ async function saved(ctx: ActionCtx, done: Promise<string | null>): Promise<void
 
 /** Add data into a date: whatever the import brings in is filed under it. */
 async function importIntoDate(captureId: string, ctx: ActionCtx): Promise<void> {
-  const before = new Set(ctx.manifest.layers.map((l) => l.id));
+  const before = new Set((workspace.getState().project?.manifest.layers ?? []).map((l) => l.id));
   await builder.getState().pickAndImport();
   const now = workspace.getState().project?.manifest.layers ?? [];
   const added = now.map((l) => l.id).filter((id) => !before.has(id));
@@ -134,7 +131,9 @@ const dateItems: Action[] = [
     testId: 'date-menu-show',
     appliesTo: (d, ctx) => layersOf(d.captureId, ctx).length > 0,
     disabled: (d, ctx) =>
-      layersOf(d.captureId, ctx).some((id) => ctx.hidden[id]) ? false : NOTHING_TO_CHANGE,
+      layersOf(d.captureId, ctx).some((id) => ctx.hidden[id])
+        ? false
+        : t('actions.reason.nothingToChange'),
     run: (d, ctx) => {
       workspace.getState().setLayersVisible([...layersOf(d.captureId, ctx)], true);
     },
@@ -148,7 +147,9 @@ const dateItems: Action[] = [
     testId: 'date-menu-hide',
     appliesTo: (d, ctx) => layersOf(d.captureId, ctx).length > 0,
     disabled: (d, ctx) =>
-      layersOf(d.captureId, ctx).every((id) => ctx.hidden[id]) ? NOTHING_TO_CHANGE : false,
+      layersOf(d.captureId, ctx).every((id) => ctx.hidden[id])
+        ? t('actions.reason.nothingToChange')
+        : false,
     run: (d, ctx) => {
       workspace.getState().setLayersVisible([...layersOf(d.captureId, ctx)], false);
     },
