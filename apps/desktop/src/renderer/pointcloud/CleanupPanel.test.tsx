@@ -1,5 +1,7 @@
 // @vitest-environment jsdom
 import { setAnnotateReadOnly } from '@aio/annotate';
+import { cloudWorldBounds } from '@aio/pointcloud';
+import type * as Pointcloud from '@aio/pointcloud';
 import { ProjectManifest, emptyCleanup, type Layer } from '@aio/schema';
 import { workspace } from '@aio/workspace';
 import { act } from 'react';
@@ -15,6 +17,11 @@ vi.mock('../shell', () => ({
   shell: { getState: () => ({ pkg: null }) },
   bridge: { call: () => Promise.resolve({ ok: false, error: 'no bridge in tests' }) },
   jobs: { getState: () => ({ jobs: [] }), subscribe: () => () => undefined },
+}));
+
+vi.mock('@aio/pointcloud', async (original) => ({
+  ...(await original<typeof Pointcloud>()),
+  cloudWorldBounds: vi.fn(() => null),
 }));
 
 vi.mock('./cleanupJobs', async (original) => ({
@@ -298,6 +305,49 @@ describe('CleanupPanel', () => {
     expect(min.getAttribute('aria-invalid')).toBe('true');
     expect(q('cleanup-error')).not.toBeNull();
     commit.mockRestore();
+  });
+
+  describe('a cloud lifted by a height offset', () => {
+    const lifted = (): Layer => ({ ...copc('a'), heightOffsetM: -30 }) as Layer;
+    const withBounds = () => {
+      vi.mocked(cloudWorldBounds).mockReturnValue({ min: [0, 0, 100], max: [10, 10, 140] });
+      const stage = { tool: 'select', setTool: vi.fn(), onStateChange: () => () => undefined };
+      root = createRoot(host);
+      act(() => root?.render(<CleanupPanel stage={stage as never} />));
+    };
+    afterEach(() => {
+      vi.mocked(cloudWorldBounds).mockReturnValue(null);
+    });
+
+    it('shows the range limits and stored values with the offset added', () => {
+      project([lifted()]);
+      cleanup.store.setState({
+        layers: {
+          a: { past: [], present: { ...emptyCleanup('a'), height: { min: 110 } }, future: [] },
+        },
+      });
+      withBounds();
+      expect((q('cleanup-height-min') as HTMLInputElement).value).toBe('80');
+      expect((q('cleanup-height-min') as HTMLInputElement).placeholder).toBe('70');
+      expect((q('cleanup-height-max') as HTMLInputElement).placeholder).toBe('110');
+      const sliders = document.body.querySelectorAll<HTMLInputElement>('.cleanup-range input');
+      expect(sliders[0]?.min).toBe('70');
+      expect(sliders[0]?.max).toBe('110');
+      expect(sliders[0]?.value).toBe('80');
+    });
+
+    it('stores a range set in the panel in file Z', () => {
+      project([lifted()]);
+      const commit = vi.spyOn(cleanup, 'commit').mockResolvedValue(true);
+      withBounds();
+      const max = q('cleanup-height-max') as HTMLInputElement;
+      act(() => {
+        setValue(max, '95');
+        max.dispatchEvent(new FocusEvent('focusout', { bubbles: true }));
+      });
+      expect(commit).toHaveBeenCalledWith('a', expect.objectContaining({ height: { max: 125 } }));
+      commit.mockRestore();
+    });
   });
 
   it('clamps the noise settings to their ranges', () => {

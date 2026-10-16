@@ -75,6 +75,11 @@ const clamp = (s: string, fallback: number, lo: number, hi: number): number =>
   Math.min(hi, Math.max(lo, num(s) ?? fallback));
 const fmt = (v: number | undefined) => (v === undefined ? '' : String(Math.round(v * 100) / 100));
 
+/** File Z to the height the cloud is drawn at, and back (rounded so an offset adds no float noise). */
+const toShown = (z: number, off: number): number => Math.round((z + off) * 1e6) / 1e6;
+const toFile = (h: number, off: number): number =>
+  off === 0 ? h : Math.round((h - off) * 1e6) / 1e6;
+
 /** A recipe with or without its height range (no undefined keys in a recipe). */
 function withHeight(r: PointcloudCleanup, min?: number, max?: number): PointcloudCleanup {
   const rest = { ...r };
@@ -143,20 +148,24 @@ export function CleanupPanel({ stage }: { stage: EngineStage | null }) {
   }, [stage, tool, box]);
 
   /* ---------------------------------------------------------------- height range */
+  // the recipe keeps file Z; the panel shows the height the cloud is drawn at (file Z + offset)
+  const off = layer && 'heightOffsetM' in layer ? (layer.heightOffsetM ?? 0) : 0;
   const hMin = recipe?.height?.min;
   const hMax = recipe?.height?.max;
-  const [minDraft, setMinDraft] = useState(fmt(hMin));
-  const [maxDraft, setMaxDraft] = useState(fmt(hMax));
+  const shownMin = hMin === undefined ? undefined : toShown(hMin, off);
+  const shownMax = hMax === undefined ? undefined : toShown(hMax, off);
+  const [minDraft, setMinDraft] = useState(fmt(shownMin));
+  const [maxDraft, setMaxDraft] = useState(fmt(shownMax));
   const [name, setName] = useState(layer?.name ?? '');
   const [bad, setBad] = useState({ min: false, max: false });
   // another layer, or its range changed elsewhere (undo, redo): the fields follow, during render
-  const shown = `${id ?? ''}|${layer?.name ?? ''}|${String(hMin)}|${String(hMax)}`;
+  const shown = `${id ?? ''}|${layer?.name ?? ''}|${String(hMin)}|${String(hMax)}|${off}`;
   const [seen, setSeen] = useState(shown);
   if (seen !== shown) {
     const [seenId, seenName] = seen.split('|');
     setSeen(shown);
-    setMinDraft(fmt(hMin));
-    setMaxDraft(fmt(hMax));
+    setMinDraft(fmt(shownMin));
+    setMaxDraft(fmt(shownMax));
     setBad({ min: false, max: false });
     if (seenId !== (id ?? '') || seenName !== (layer?.name ?? '')) {
       setName(layer?.name ?? '');
@@ -179,10 +188,13 @@ export function CleanupPanel({ stage }: { stage: EngineStage | null }) {
   };
   /** Blur or Enter: only an end whose text the user changed is read; the other keeps its value. */
   const commitFields = () => {
-    const minChanged = minDraft !== fmt(hMin);
-    const maxChanged = maxDraft !== fmt(hMax);
-    const min = minChanged ? parseHeight(minDraft) : hMin;
-    const max = maxChanged ? parseHeight(maxDraft) : hMax;
+    const minChanged = minDraft !== fmt(shownMin);
+    const maxChanged = maxDraft !== fmt(shownMax);
+    const typedMin = minChanged ? parseHeight(minDraft) : hMin;
+    const typedMax = maxChanged ? parseHeight(maxDraft) : hMax;
+    // typed values are shown heights: back to file Z for the recipe
+    const min = minChanged && typeof typedMin === 'number' ? toFile(typedMin, off) : typedMin;
+    const max = maxChanged && typeof typedMax === 'number' ? toFile(typedMax, off) : typedMax;
     const nowBad = { min: min === 'bad', max: max === 'bad' };
     setBad(nowBad);
     if (min === 'bad' || max === 'bad') {
@@ -195,21 +207,24 @@ export function CleanupPanel({ stage }: { stage: EngineStage | null }) {
     }
     commitHeight(min, max);
   };
-  const lo = bounds ? bounds.min[2] : null;
-  const hi = bounds ? bounds.max[2] : null;
+  const lo = bounds ? toShown(bounds.min[2], off) : null;
+  const hi = bounds ? toShown(bounds.max[2], off) : null;
   const span = lo !== null && hi !== null && hi > lo ? hi - lo : null;
   const step = span ? Math.max(0.01, Math.round((span / 200) * 100) / 100) : 0.1;
   /** A thumb at its end of the layer's range means no limit on that side. */
   const thumbs = useRef({ min: 0, max: 0 });
-  const sliderMin = hMin ?? lo ?? 0;
-  const sliderMax = hMax ?? hi ?? 0;
+  const sliderMin = shownMin ?? lo ?? 0;
+  const sliderMax = shownMax ?? hi ?? 0;
   const releaseThumbs = () => {
     if (lo === null || hi === null) return;
     const a = thumbs.current.min;
     const b = thumbs.current.max;
     const min = Math.min(a, b);
     const max = Math.max(a, b);
-    commitHeight(min <= lo ? undefined : min, max >= hi ? undefined : max);
+    commitHeight(
+      min <= lo ? undefined : toFile(min, off),
+      max >= hi ? undefined : toFile(max, off),
+    );
   };
   const minRange = useRef<HTMLInputElement>(null);
   const maxRange = useRef<HTMLInputElement>(null);
@@ -236,7 +251,11 @@ export function CleanupPanel({ stage }: { stage: EngineStage | null }) {
     setMaxDraft(max >= hi ? '' : fmt(max));
     cleanup.preview(
       id,
-      withHeight(base(), min <= lo ? undefined : min, max >= hi ? undefined : max),
+      withHeight(
+        base(),
+        min <= lo ? undefined : toFile(min, off),
+        max >= hi ? undefined : toFile(max, off),
+      ),
     );
   };
 
