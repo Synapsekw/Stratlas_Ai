@@ -34,8 +34,11 @@ export interface MarkerLayerOptions {
   kind: 'photo' | 'pano';
   sites: MarkerSite[];
   member(i: number): MarkerMember;
-  /** Open one member (select the photo, enter the panorama). */
-  open(i: number): void;
+  /**
+   * Open one member (select the photo, enter the panorama).
+   * `split: false` is a modified click (Ctrl, Shift, Alt): select only, do not open the photo pane.
+   */
+  open(i: number, how?: { split?: boolean }): void;
   /** Member indices currently selected. */
   selected(): ReadonlySet<number>;
 }
@@ -269,7 +272,8 @@ export class MarkerLayer {
     if (!c) return false;
     const members = this.membersOf(c);
     const only = members.length === 1 ? members[0] : undefined;
-    if (only !== undefined) this.o.open(only);
+    const plain = !(e.ctrlKey || e.metaKey || e.shiftKey || e.altKey);
+    if (only !== undefined) this.o.open(only, { split: plain });
     else this.openList(c, members);
     return true;
   }

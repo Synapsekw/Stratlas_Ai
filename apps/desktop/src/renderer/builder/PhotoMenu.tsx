@@ -1,6 +1,12 @@
-import { getActiveScene, onActiveScene, type SceneHandle } from '@aio/engine';
+import {
+  configureEngine,
+  engineConfig,
+  getActiveScene,
+  onActiveScene,
+  type SceneHandle,
+} from '@aio/engine';
 import { correctedPhoto, localToProject, photoCorrection, toWgs84 } from '@aio/geo';
-import { getActiveMap, onActiveMap, type MapController } from '@aio/maps';
+import { getActiveMap, onActiveMap, setPhotoMapClickHandler, type MapController } from '@aio/maps';
 import type { Layer, PhotoRef } from '@aio/schema';
 import {
   actionsFor,
@@ -22,15 +28,19 @@ import { Quaternion, Vector3, type InstancedMesh } from 'three';
 import { useShell } from '../shell';
 import { editBlocked } from '../shell/actions/reasons';
 import { toastHost } from '../shell/actions/toastHost';
-import { chooseSide, type SplitPref } from '../workspace/splitModel';
-import { stagePrefs } from '../workspace/stagePrefs';
 import { photoAlign, usePhotoAlign } from './alignSession';
 import { isClaimed, paneRay } from './droneHits';
+import { openPhoto } from './photoOpen';
 import { photoPicks, usePhotoPicks } from './photoPicks';
 
 type PhotosLayer = Extract<Layer, { kind: 'photos' }>;
 
 export const CLICK_PX = 5;
+
+interface MenuPhoto {
+  layerId: string;
+  photoId: string;
+}
 
 interface MenuAt {
   x: number;
@@ -38,6 +48,10 @@ interface MenuAt {
   layerId: string;
   /** One photo: its menu; several (a cluster or a merged marker): the list first. */
   photoIds: string[];
+  /** Which view the menu was opened on. Open puts the photo beside that view. */
+  from: '3d' | 'map';
+  /** A left click on a map cluster: choosing a row opens that photo, it does not open this menu. */
+  photos?: MenuPhoto[];
 }
 
 export function useScene(): SceneHandle | null {
@@ -89,19 +103,7 @@ function showPhotoFrustums(h: SceneHandle, on: boolean) {
   h.requestRender();
 }
 
-/** Show the photo in the split view's photo pane (beside the 3D view). */
-export function openPhoto(layerId: string, photoId: string) {
-  const w = workspace.getState();
-  w.select({ kind: 'photo', id: photoId, layer: layerId });
-  const id = w.project?.id;
-  if (!id) return;
-  const saved: SplitPref = stagePrefs.getState().byProject[id]?.split ?? {
-    left: '3d',
-    right: 'map',
-  };
-  if (saved.left !== 'photo' && saved.right !== 'photo')
-    stagePrefs.getState().update(id, { split: chooseSide(saved, 'right', 'photo') });
-}
+export { openPhoto };
 
 /** Put the 3D camera where the photo was taken, looking as it looked. */
 function lookThrough(h: SceneHandle, layerId: string, p: PhotoRef) {
@@ -136,7 +138,8 @@ function positionText(layerId: string, p: PhotoRef): string | null {
 /**
  * Right-click on a photo (its pin on the map, its frustum or marker in 3D; a cluster or a merged
  * marker lists its photos first): Align photo to map, open it, look through its camera, show or
- * hide the footprint, reset its alignment, copy its position.
+ * hide the footprint, reset its alignment, copy its position. A plain left click opens that photo
+ * in the split view (the 3D model beside it, or the map on the left).
  */
 export function PhotoMenu() {
   const t = useT();
@@ -155,6 +158,38 @@ export function PhotoMenu() {
     setMenuState(m);
   }, []);
 
+  // A plain click opens the photo in the split view. A merged map cluster lists its photos first.
+  useEffect(() => {
+    const prev = engineConfig().onPhotoOpen;
+    configureEngine({
+      onPhotoOpen: (layerId, photoId) => {
+        setMenu(null);
+        openPhoto(layerId, photoId, '3d');
+      },
+    });
+    setPhotoMapClickHandler((hit) => {
+      if (hit.kind === 'pin') {
+        setMenu(null);
+        openPhoto(hit.layerId, hit.photoId, 'map');
+        return;
+      }
+      const first = hit.photos[0];
+      if (!first) return;
+      setMenu({
+        x: hit.x,
+        y: hit.y,
+        layerId: first.layerId,
+        photoIds: hit.photos.map((p) => p.photoId),
+        from: 'map',
+        photos: hit.photos,
+      });
+    });
+    return () => {
+      configureEngine({ onPhotoOpen: prev ?? null });
+      setPhotoMapClickHandler(null);
+    };
+  }, [setMenu]);
+
   // 3D
   useEffect(() => {
     const pane = document.querySelector<HTMLElement>('.pane-3d');
@@ -171,7 +206,7 @@ export function PhotoMenu() {
       const hit = photosAt3d(scene, pane, e.clientX, e.clientY);
       if (!hit) return;
       e.preventDefault();
-      setMenu({ x: e.clientX, y: e.clientY, ...hit });
+      setMenu({ x: e.clientX, y: e.clientY, ...hit, from: '3d' });
     };
     pane.addEventListener('pointerdown', pd, true);
     pane.addEventListener('contextmenu', ctx);
@@ -211,7 +246,7 @@ export function PhotoMenu() {
         cluster_id?: number;
       } | null;
       if (props?.photoId && props.photoLayer) {
-        setMenu({ ...at, layerId: props.photoLayer, photoIds: [props.photoId] });
+        setMenu({ ...at, layerId: props.photoLayer, photoIds: [props.photoId], from: 'map' });
         return;
       }
       if (props?.cluster_id === undefined) return;
@@ -230,7 +265,7 @@ export function PhotoMenu() {
         const ids = leaves
           .filter((l) => l.properties?.photoLayer === first)
           .flatMap((l) => (l.properties?.photoId ? [l.properties.photoId] : []));
-        setMenu({ ...at, layerId: first, photoIds: ids });
+        setMenu({ ...at, layerId: first, photoIds: ids, from: 'map' });
       });
     };
     m.on('mousedown', md);
@@ -286,6 +321,47 @@ export function PhotoMenu() {
       />
     ) : null;
   if (!menu || !project) return alignMenu;
+  if (menu.photos && menu.photos.length > 0) {
+    const photos = menu.photos;
+    const width = 260;
+    return createPortal(
+      <div
+        ref={list}
+        className="dmenu"
+        role="menu"
+        aria-label={t('align.photoMenu.list', { count: photos.length })}
+        style={{
+          left: Math.min(menu.x, window.innerWidth - width - 8),
+          top: Math.min(menu.y, window.innerHeight - 320),
+          width,
+        }}
+        data-testid="photo-map-list"
+        onKeyDown={(e) => {
+          if (list.current && arrowFocus(list.current, e.key)) e.preventDefault();
+        }}
+      >
+        <div className="dmenu-h faint">{t('align.photoMenu.list', { count: photos.length })}</div>
+        <div className="dmenu-scroll">
+          {photos.map((p) => (
+            <button
+              key={`${p.layerId}/${p.photoId}`}
+              type="button"
+              role="menuitem"
+              className="dmenu-item"
+              onClick={() => {
+                setMenu(null);
+                openPhoto(p.layerId, p.photoId, 'map');
+              }}
+            >
+              <Icon name="photo" size={14} />
+              <span className="mono">{p.photoId}</span>
+            </button>
+          ))}
+        </div>
+      </div>,
+      document.body,
+    );
+  }
   const set = setOf(menu.layerId);
   if (!set) return alignMenu;
   const close = () => {
@@ -442,7 +518,7 @@ export function PhotoMenu() {
           setAlignAt({ x: menu.x, y: menu.y, picks: [photoIdsOf(photo.id)] });
         })}
       {item('open', 'photo', t('align.photoMenu.open'), () => {
-        openPhoto(set.id, photo.id);
+        openPhoto(set.id, photo.id, menu.from);
       })}
       {scene &&
         item(

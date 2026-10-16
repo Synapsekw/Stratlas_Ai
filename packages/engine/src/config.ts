@@ -73,6 +73,11 @@ export interface EngineConfig {
   memory: EngineMemory;
   /** Told when a stage loses or regains its WebGL context. */
   onGpuEvent: ((e: GpuEvent) => void) | null;
+  /**
+   * A plain click on a photo in 3D (its marker, a row of a merged marker's list, or its frustum).
+   * The app opens that photo beside the 3D view. Unset: the click only selects the photo.
+   */
+  onPhotoOpen: ((layerId: string, photoId: string) => void) | null;
 }
 
 const config: EngineConfig = {
@@ -89,6 +94,7 @@ const config: EngineConfig = {
   text: (key, vars) => (vars ? `${key} ${Object.values(vars).map(String).join(' ')}` : key),
   memory: { maxTextureSize: 16384, rasterTiles: 9 },
   onGpuEvent: null,
+  onPhotoOpen: null,
 };
 
 /** Configure the engine before mounting SceneView (dev harness, tests, app composition). */
