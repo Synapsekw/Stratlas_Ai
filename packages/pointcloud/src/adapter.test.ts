@@ -767,20 +767,45 @@ describe('COPC layers', () => {
 
   /** A COPC decoder whose headers arrive only when the test releases them, in any order. */
   function gatedCopc() {
-    const d = copcDecoder(rootOnly);
     const gates: (() => void)[] = [];
-    d.decoder.copcSource = () =>
-      new Promise<CopcSource>((resolve) => {
-        gates.push(() => {
-          resolve(source);
-        });
-      });
+    /** A fresh decoder per manager that, like the worker pool, fails once disposed. */
+    const makeDecoder = (): Decoder => {
+      const d = copcDecoder(rootOnly);
+      let dead = false;
+      const alive = () => {
+        if (dead) throw new Error('decoder disposed');
+      };
+      const page = d.decoder.copcPage?.bind(d.decoder);
+      const decode = d.decoder.decode.bind(d.decoder);
+      return {
+        ...d.decoder,
+        decode: (job) => {
+          alive();
+          return decode(job);
+        },
+        copcSource: () =>
+          new Promise<CopcSource>((resolve, reject) => {
+            gates.push(() => {
+              if (dead) reject(new Error('decoder disposed'));
+              else resolve(source);
+            });
+          }),
+        copcPage: (url, p) => {
+          alive();
+          if (!page) throw new Error('no copcPage');
+          return page(url, p);
+        },
+        dispose: () => {
+          dead = true;
+        },
+      };
+    };
     const { handle } = fakeHandle();
     const settings = createPointcloudSettings(null);
     // EDL off: the clouds' groups live in the main scene
     settings.getState().setEdl(false);
     const adapter = createPointcloudAdapter({
-      decoder: () => d.decoder,
+      decoder: makeDecoder,
       settings,
       origin: () => [0, 64, 0],
     });
@@ -814,6 +839,21 @@ describe('COPC layers', () => {
     expect(getCloudManager(handle)?.layers.get('full')?.copc?.origin).toEqual([0, 64, -2.5]);
     b.dispose();
     expect(groups()).toEqual([]);
+    expect(getCloudManager(handle)).toBeUndefined();
+  });
+
+  it('keeps the decoder alive for the newer create when the stale one resolves first', async () => {
+    const { handle, adapter, ctx, gates, groups } = gatedCopc();
+    const older = adapter.create(copcLayer, ctx);
+    const newer = adapter.create({ ...copcLayer, heightOffsetM: 2.5 }, ctx);
+    await flush();
+    gates[0]?.();
+    (await older).dispose();
+    gates[1]?.();
+    const b = await newer;
+    expect(groups()).toEqual(['pointcloud:full']);
+    expect(getCloudManager(handle)?.layers.get('full')?.copc?.origin).toEqual([0, 64, -2.5]);
+    b.dispose();
     expect(getCloudManager(handle)).toBeUndefined();
   });
 

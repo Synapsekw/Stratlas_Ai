@@ -1,4 +1,10 @@
-import { getAdapter, registerAdapter, type LayerAdapter, type SceneHandle } from '@aio/engine';
+import {
+  getAdapter,
+  registerAdapter,
+  type LayerAdapter,
+  type LayerHandle,
+  type SceneHandle,
+} from '@aio/engine';
 import { cloudFrameOrigin, type Layer, type PointcloudScalar } from '@aio/schema';
 import { workspace } from '@aio/workspace';
 import { Box3, Vector3 } from 'three';
@@ -202,6 +208,15 @@ export function createPointcloudAdapter(
       }
       gens.set(layer.id, gen);
       const newest = () => latest.get(handle)?.get(layer.id) === gen;
+      /** A newer create superseded this one: add nothing and hand back a handle that does nothing. */
+      const dropStale = (): LayerHandle => {
+        // while that newer create is still loading it needs the scene's manager and decoder
+        if (!latest.get(handle)?.has(layer.id)) {
+          const stale = managers.get(handle);
+          if (stale) release(handle, stale);
+        }
+        return { setVisible: () => undefined, dispose: () => undefined };
+      };
       if (layer.format === 'kit-packed') {
         chunks = [
           {
@@ -250,6 +265,8 @@ export function createPointcloudAdapter(
           }
           ({ chunks, baseSize, copc, scalar, box } = r);
         } catch (e) {
+          // a superseded create fails quietly (its decoder may be gone with the newer layer)
+          if (!newest()) return dropStale();
           release(handle, m);
           throw e;
         }
@@ -257,11 +274,7 @@ export function createPointcloudAdapter(
         throw new Error(`Point cloud format "${layer.format}" is not supported yet`);
       }
 
-      if (!newest()) {
-        const stale = managers.get(handle);
-        if (stale) release(handle, stale);
-        return { setVisible: () => undefined, dispose: () => undefined };
-      }
+      if (!newest()) return dropStale();
       const m = managerFor(handle);
       // png-packed clouds carry colour; COPC does in point formats 7 and 8
       const rgbHint =
