@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
-import type { ProjectManifest } from '@aio/schema';
+import type { PackageInfo, ProjectManifest } from '@aio/schema';
+import { t } from '@aio/ui';
 import { workspace } from '@aio/workspace';
 import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
@@ -7,7 +8,14 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
-const { align } = vi.hoisted(() => ({ align: vi.fn(() => Promise.resolve()) }));
+const { align, flags } = vi.hoisted(() => ({
+  align: vi.fn(() => Promise.resolve()),
+  flags: { readOnly: false },
+}));
+vi.mock('@aio/annotate', async (orig) => ({
+  ...(await orig<Record<string, unknown>>()),
+  useAnnotateReadOnly: () => flags.readOnly,
+}));
 vi.mock('./alignSession', () => ({
   alignTo: { getState: () => ({ alignTo: align }) },
   alignCamera: { getState: () => ({ start: vi.fn() }) },
@@ -67,6 +75,7 @@ describe('FarContentNotice Align to', () => {
     off();
     farNotice.setState({ notice: null });
     shell.setState({ pkg: null });
+    flags.readOnly = false;
   });
 
   it('opens the Align to list for the far photos and aligns to the pick', () => {
@@ -86,10 +95,22 @@ describe('FarContentNotice Align to', () => {
     expect(byId('far-align-to')).toBeNull();
   });
 
-  it('has no button in a package', () => {
+  it('greys the button in a package and says why', () => {
     farNotice.setState({ notice: notice(['ph']) });
-    shell.setState({ pkg: { path: 'x.aio' } as never });
+    shell.setState({ pkg: { file: 'x.aio' } as unknown as PackageInfo });
     mount();
-    expect(byId('far-align-to')).toBeNull();
+    const b = byId('far-align-to');
+    expect(b).toBeInstanceOf(HTMLButtonElement);
+    expect((b as HTMLButtonElement).disabled).toBe(true);
+    expect(b?.title).toBe(t('actions.reason.package'));
+  });
+
+  it('greys the button for a reviewer who may only look', () => {
+    farNotice.setState({ notice: notice(['ph']) });
+    flags.readOnly = true;
+    mount();
+    const b = byId('far-align-to');
+    expect((b as HTMLButtonElement).disabled).toBe(true);
+    expect(b?.title).toBe(t('actions.reason.readOnly'));
   });
 });

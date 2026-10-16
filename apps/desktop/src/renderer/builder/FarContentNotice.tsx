@@ -1,5 +1,6 @@
+import { useAnnotateReadOnly } from '@aio/annotate';
 import { ContextMenu, Icon, actionsFor, makeActionCtx, t } from '@aio/ui';
-import { workspace } from '@aio/workspace';
+import { useWorkspace } from '@aio/workspace';
 import { useState } from 'react';
 import { useShell } from '../shell';
 import { farNotice, useFarNotice } from './farSession';
@@ -13,15 +14,16 @@ const ALIGN_TO = 'photos.alignTo';
 export function FarContentNotice() {
   const n = useFarNotice((s) => s.notice);
   const pkg = useShell((s) => s.pkg);
+  const lookOnly = useAnnotateReadOnly();
+  const manifest = useWorkspace((s) => s.project?.manifest);
   const [at, setAt] = useState<{ x: number; y: number } | null>(null);
   if (!n) return null;
-  const project = workspace.getState().project;
   // the menu holds Align to only: the notice offers that one way out besides ignoring the GPS
   const items =
-    at && project
+    at && manifest
       ? actionsFor(
           { kind: 'layers', layerIds: n.photoLayers },
-          makeActionCtx({ manifest: project.manifest, pkg: pkg !== null }),
+          makeActionCtx({ manifest, pkg: pkg !== null, canEdit: !lookOnly && pkg === null }),
         ).filter((i) => i.id === ALIGN_TO)
       : [];
   return (
@@ -66,12 +68,19 @@ export function FarContentNotice() {
               Ignore their GPS
             </button>
           )}
-          {n.photoLayers.length > 0 && !pkg && (
+          {n.photoLayers.length > 0 && (
             <button
               type="button"
               className="btn sm"
               data-testid="far-align-to"
-              disabled={n.busy}
+              disabled={n.busy || lookOnly || pkg !== null}
+              title={
+                pkg !== null
+                  ? t('actions.reason.package')
+                  : lookOnly
+                    ? t('actions.reason.readOnly')
+                    : undefined
+              }
               onClick={(e) => {
                 const r = e.currentTarget.getBoundingClientRect();
                 setAt({ x: r.left, y: r.bottom + 4 });
