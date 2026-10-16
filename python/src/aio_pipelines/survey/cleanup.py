@@ -424,12 +424,14 @@ class SurveyCleanup:
             g = run_dtm_filter(ctx, f["layer"], f["preset"])
             spec = spec_of(ctx)
             fields = write_tiles(ctx, g, f"surfaces/{spec['id']}")
-            fp = (
-                "sha256:"
-                + hashlib.sha256(
-                    json.dumps({"dtm": f, "preset": DTM_PRESETS[f["preset"]]}, sort_keys=True).encode()
-                ).hexdigest()
-            )
+            from ..change.imagery import find_layer
+            from ..change.sources import height_offset_m
+
+            key: dict[str, Any] = {"dtm": f, "preset": DTM_PRESETS[f["preset"]]}
+            off = height_offset_m(find_layer(read_manifest(ctx.project), f["layer"]))
+            if off:  # a cloud without an offset keeps the fingerprint it always had
+                key["heightOffsetM"] = off
+            fp = "sha256:" + hashlib.sha256(json.dumps(key, sort_keys=True).encode()).hexdigest()
             meta = {
                 "schema": "aio.height-tiles/1",
                 "id": spec["id"],

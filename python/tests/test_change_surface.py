@@ -135,6 +135,25 @@ def test_a_height_grid_that_changed_since_the_job_started_is_refused(tmp_path):
         Job("j1", pipeline(), tmp_path, surface_params(kinds), Recorder(), threading.Event()).run()
 
 
+def test_a_cloud_offset_that_changed_since_the_job_started_is_refused(tmp_path):
+    kinds = ("cloud", "cloud")
+    surface_project(tmp_path, kinds=kinds)
+    cancel = threading.Event()
+
+    def emit(method, params):
+        if method == "progress" and params.get("step") == "read" and params.get("state") == "done":
+            cancel.set()
+
+    with pytest.raises(Cancelled):
+        Job("j1", pipeline(), tmp_path, surface_params(kinds), emit, cancel).run()
+    path = tmp_path / "manifest.json"
+    m = json.loads(path.read_text("utf-8"))
+    m["layers"][1]["heightOffsetM"] = 5.0
+    path.write_text(json.dumps(m), "utf-8")
+    with pytest.raises(JobError, match="changed since this job started"):
+        Job("j1", pipeline(), tmp_path, surface_params(kinds), Recorder(), threading.Event()).run()
+
+
 def test_areas_report_their_own_volumes(tmp_path):
     from rasterio.warp import transform
 

@@ -24,6 +24,8 @@ surfaces its cut and fill. Every region is a proposal a person confirms.
 
 from __future__ import annotations
 
+import hashlib
+import json
 import math
 from pathlib import Path
 from typing import Any
@@ -89,6 +91,16 @@ REGION_STYLE = {
     "colorBy": {"field": "sign", "stops": [[-1, "#2166ac"], [1, "#b2182b"]]},
 }
 INPUTS_CHANGED = "The surfaces changed since this job started. Start the job again."
+
+
+def surface_fingerprint(project: Path, surfaces: Any) -> dict[str, Any]:
+    """The files' fingerprint, plus each cloud layer's non-zero height offset (unchanged when none)."""
+    base = input_fingerprint(project, [f for s in surfaces for f in s.files])
+    offsets = [height_offset_m(s.layer) if s.kind != "dsm" else 0.0 for s in surfaces]
+    if any(offsets):
+        blob = base["hash"] + json.dumps(offsets)
+        base = {**base, "hash": hashlib.sha256(blob.encode()).hexdigest()[:32]}
+    return base
 
 
 # ------------------------------------------------------------------------------------- surfaces
@@ -417,14 +429,14 @@ class ChangeSurface:
 
         def check_inputs(ctx: StepContext, pair) -> None:
             want = ctx.outputs("read").get("inputs")
-            now = input_fingerprint(ctx.project, [f for s in pair for f in s.files])
+            now = surface_fingerprint(ctx.project, pair)
             if want and want.get("hash") != now["hash"]:
                 raise JobError(INPUTS_CHANGED)
 
         def read(ctx: StepContext) -> dict[str, Any]:
             m, (sa, sb) = surfaces(ctx)
             ids(m)
-            inputs = input_fingerprint(ctx.project, [f for s in (sa, sb) for f in s.files])
+            inputs = surface_fingerprint(ctx.project, (sa, sb))
             sa.footprint(ctx)
             sb.footprint(ctx)
             box = intersect(sa.box, sb.box)

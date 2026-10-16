@@ -347,6 +347,37 @@ def test_dtm_filter_reads_offset_heights(tmp_path, monkeypatch, kind):
     assert np.allclose(lifted.h[ok] - plain.h[ok], 5.0, atol=0.01)
 
 
+def test_dtm_fingerprint_follows_the_cloud_offset(tmp_path, monkeypatch):
+    import aio_pipelines.pointcloud as pc
+    from aio_pipelines.volumetric.cloud import read_las_chunks
+    from imagery_synth import surface_project
+    from synth import write_las
+
+    def fake_run(ctx, cmd, label):
+        stages = json.loads(Path(cmd[2]).read_text("utf-8"))["pipeline"]
+        parts = [np.stack(c[:3], axis=1) for c in read_las_chunks(Path(stages[0]["filename"]), lambda: None)]
+        write_las(Path(stages[-1]["filename"]), np.concatenate(parts), SITE_EPSG)
+
+    monkeypatch.setattr(pc, "find_pdal", lambda: "pdal")
+    monkeypatch.setattr(pc, "_run", fake_run)
+    surface_project(tmp_path, kinds=("las", "las"))
+    params = {"dtmFilter": {"layer": "surf-a", "preset": "equipment"}, "out": "dtm"}
+
+    def fingerprint():
+        return json.loads((tmp_path / "survey" / "surfaces" / "dtm" / "tiles.json").read_text("utf-8"))[
+            "fingerprint"
+        ]
+
+    run_job(pipeline(), tmp_path, params)
+    plain = fingerprint()
+    path = tmp_path / "manifest.json"
+    m = json.loads(path.read_text("utf-8"))
+    m["layers"][0]["heightOffsetM"] = 5.0
+    path.write_text(json.dumps(m), "utf-8")
+    run_job(pipeline(), tmp_path, params, job_id="j2")
+    assert fingerprint() != plain
+
+
 def test_put_surface_helper_round_trips(tmp_path):
     h = np.arange(12.0).reshape(3, 4)
     put_surface(tmp_path, "t", h, 10.0, 20.0, 1.0)
