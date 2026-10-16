@@ -15,7 +15,7 @@ import { SyncNotices } from '../team/SyncNotices';
 import { cancelExport, toasts } from './exports';
 
 /** "3 photos picked" with Clear, while several photo pins are picked. */
-function PhotoPicksNotice() {
+export function PhotoPicksNotice() {
   const t = useT();
   const count = usePhotoPicks((s) => s.picks.length);
   if (count < 1) return null;

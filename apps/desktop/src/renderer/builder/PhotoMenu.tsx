@@ -28,7 +28,7 @@ import { photoPicks, usePhotoPicks } from './photoPicks';
 
 type PhotosLayer = Extract<Layer, { kind: 'photos' }>;
 
-const CLICK_PX = 5;
+export const CLICK_PX = 5;
 
 interface MenuAt {
   x: number;
@@ -38,13 +38,13 @@ interface MenuAt {
   photoIds: string[];
 }
 
-function useScene(): SceneHandle | null {
+export function useScene(): SceneHandle | null {
   const [h, setH] = useState<SceneHandle | null>(() => getActiveScene());
   useEffect(() => onActiveScene(setH), []);
   return h;
 }
 
-function useMap(): MapController | null {
+export function useMap(): MapController | null {
   const [m, setM] = useState<MapController | null>(() => getActiveMap());
   useEffect(() => onActiveMap(setM), []);
   return m;
@@ -321,6 +321,7 @@ export function PhotoMenu() {
           role="menuitem"
           className="dmenu-item primary"
           data-testid="photo-menu-alignTo"
+          disabled={!!pkg || lookOnly}
           onClick={() => {
             setMenu(null);
             setAlignAt({ x: menu.x, y: menu.y, picks: [...picks] });

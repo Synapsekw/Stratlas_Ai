@@ -1,14 +1,15 @@
-import { getActiveScene, onActiveScene, type SceneHandle } from '@aio/engine';
+import type { SceneHandle } from '@aio/engine';
 import { correctPos, photoCorrection } from '@aio/geo';
-import { getActiveMap, onActiveMap, type MapController } from '@aio/maps';
+import { MAP_INK } from '@aio/maps';
+import type { Map as MapLibreMap } from 'maplibre-gl';
 import type { Layer } from '@aio/schema';
 import type { PhotoPick } from '@aio/ui';
 import { workspace } from '@aio/workspace';
-import { useEffect, useState } from 'react';
+import { useEffect } from 'react';
 import { Vector3 } from 'three';
 import { photosInRect } from './photoBox';
-import { nextPicks, photoPicks } from './photoPicks';
-import { photosAt3d } from './PhotoMenu';
+import { nextPicks, photoPicks, usePhotoPicks } from './photoPicks';
+import { CLICK_PX, photosAt3d, useMap, useScene } from './PhotoMenu';
 import './photoBand.css';
 
 type PhotosLayer = Extract<Layer, { kind: 'photos' }>;
@@ -19,19 +20,42 @@ interface Rect {
   y1: number;
 }
 
-const CLICK_PX = 5;
 const PHOTO_SOURCE = 'aio-photos';
 
-function useScene(): SceneHandle | null {
-  const [h, setH] = useState<SceneHandle | null>(() => getActiveScene());
-  useEffect(() => onActiveScene(setH), []);
-  return h;
+const HIGHLIGHT = 'aio-photos-picked';
+
+/** The picks whose photo set and photo are still in the manifest. */
+export function prunePicks(picks: readonly PhotoPick[], layers: readonly Layer[]): PhotoPick[] {
+  return picks.filter((p) =>
+    layers.some(
+      (l) => l.kind === 'photos' && l.id === p.layerId && l.items.some((i) => i.id === p.photoId),
+    ),
+  );
 }
 
-function useMap(): MapController | null {
-  const [m, setM] = useState<MapController | null>(() => getActiveMap());
-  useEffect(() => onActiveMap(setM), []);
-  return m;
+/** A ring over the picked pins (re-added when the map style reloads). */
+function showPicked(m: MapLibreMap, picks: readonly PhotoPick[]) {
+  if (!m.isStyleLoaded() || !m.getSource('aio-photos')) return;
+  const keys = picks.map((p) => `${p.layerId}/${p.photoId}`);
+  const filter: unknown[] = [
+    'all',
+    ['!', ['has', 'point_count']],
+    ['in', ['concat', ['get', 'photoLayer'], '/', ['get', 'photoId']], ['literal', keys]],
+  ];
+  if (!m.getLayer(HIGHLIGHT))
+    m.addLayer({
+      id: HIGHLIGHT,
+      type: 'circle',
+      source: 'aio-photos',
+      paint: {
+        'circle-radius': 10,
+        'circle-color': MAP_INK.accStrong,
+        'circle-opacity': 0.25,
+        'circle-stroke-color': MAP_INK.accStrong,
+        'circle-stroke-width': 2,
+      },
+    });
+  m.setFilter(HIGHLIGHT, filter as never);
 }
 
 /** The rubber band of an Alt+drag, drawn in client pixels. */
@@ -85,6 +109,38 @@ export function PhotoPickInput() {
   const scene = useScene();
   const map = useMap();
 
+  // picks live only as long as this scene and the photos they name
+  useEffect(() => {
+    let id = workspace.getState().project?.id;
+    const off = workspace.subscribe((w) => {
+      const now = w.project?.id;
+      const picks = photoPicks.getState().picks;
+      if (now !== id) {
+        id = now;
+        photoPicks.getState().clear();
+      } else if (picks.length) {
+        const kept = prunePicks(picks, w.project?.manifest.layers ?? []);
+        if (kept.length !== picks.length) photoPicks.setState({ picks: kept });
+      }
+    });
+    const key = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape' || e.defaultPrevented) return;
+      const t = e.target;
+      if (
+        t instanceof HTMLElement &&
+        t.closest('input, textarea, select, [contenteditable="true"]')
+      )
+        return;
+      photoPicks.getState().clear();
+    };
+    window.addEventListener('keydown', key);
+    return () => {
+      off();
+      window.removeEventListener('keydown', key);
+      photoPicks.getState().clear();
+    };
+  }, []);
+
   // 3D
   useEffect(() => {
     const pane = document.querySelector<HTMLElement>('.pane-3d');
@@ -115,6 +171,7 @@ export function PhotoPickInput() {
       if (box) {
         const rect = { x0: box.x0, y0: box.y0, x1: e.clientX, y1: e.clientY };
         end();
+        if (Math.hypot(rect.x1 - rect.x0, rect.y1 - rect.y0) <= CLICK_PX) return;
         photoPicks.getState().add(photosInRect(projectedPhotos(scene, pane), rect));
         return;
       }
@@ -135,13 +192,19 @@ export function PhotoPickInput() {
         ),
       });
     };
+    const pc = () => {
+      down = null;
+      end();
+    };
     pane.addEventListener('pointerdown', pd, true);
     window.addEventListener('pointermove', pm);
     window.addEventListener('pointerup', pu, true);
+    window.addEventListener('pointercancel', pc, true);
     return () => {
       pane.removeEventListener('pointerdown', pd, true);
       window.removeEventListener('pointermove', pm);
       window.removeEventListener('pointerup', pu, true);
+      window.removeEventListener('pointercancel', pc, true);
       end();
     };
   }, [scene]);
@@ -166,6 +229,7 @@ export function PhotoPickInput() {
     };
     const click = (e: { originalEvent: MouseEvent; point: { x: number; y: number } }) => {
       const o = e.originalEvent;
+      if (o.altKey) return;
       const ctrl = o.ctrlKey || o.metaKey;
       if (!ctrl && !o.shiftKey) {
         photoPicks.getState().clear();
@@ -179,11 +243,14 @@ export function PhotoPickInput() {
     };
     const canvas = m.getCanvasContainer();
     let box: { x0: number; y0: number; el: HTMLDivElement } | null = null;
+    let panWas = false;
     const end = () => {
+      if (box && panWas) m.dragPan.enable();
       box?.el.remove();
       box = null;
       window.removeEventListener('pointermove', pm);
       window.removeEventListener('pointerup', pu, true);
+      window.removeEventListener('pointercancel', end, true);
     };
     const pm = (e: PointerEvent) => {
       if (box) drawBand(box.el, { x0: box.x0, y0: box.y0, x1: e.clientX, y1: e.clientY });
@@ -198,7 +265,7 @@ export function PhotoPickInput() {
         y1: e.clientY - r.top,
       };
       end();
-      m.dragPan.enable();
+      if (Math.hypot(rect.x1 - rect.x0, rect.y1 - rect.y0) <= CLICK_PX) return;
       const seen = new Set<string>();
       const points: (PhotoPick & { x: number; y: number })[] = [];
       for (const f of m.querySourceFeatures(PHOTO_SOURCE)) {
@@ -216,12 +283,14 @@ export function PhotoPickInput() {
     };
     const pd = (e: PointerEvent) => {
       if (e.button !== 0 || !e.altKey) return;
-      m.dragPan.disable();
       end();
+      panWas = m.dragPan.isEnabled();
+      m.dragPan.disable();
       box = { x0: e.clientX, y0: e.clientY, el: makeBand() };
       drawBand(box.el, { x0: e.clientX, y0: e.clientY, x1: e.clientX, y1: e.clientY });
       window.addEventListener('pointermove', pm);
       window.addEventListener('pointerup', pu, true);
+      window.addEventListener('pointercancel', end, true);
     };
     m.on('click', click);
     canvas.addEventListener('pointerdown', pd, true);
@@ -229,9 +298,24 @@ export function PhotoPickInput() {
       m.off('click', click);
       canvas.removeEventListener('pointerdown', pd, true);
       end();
-      m.dragPan.enable();
     };
   }, [map]);
+
+  // a ring on the picked pins
+  const picks = usePhotoPicks((s) => s.picks);
+  useEffect(() => {
+    const m = map?.map;
+    if (!m) return;
+    const show = () => {
+      showPicked(m, picks);
+    };
+    show();
+    m.on('styledata', show);
+    return () => {
+      m.off('styledata', show);
+      if (m.getLayer(HIGHLIGHT)) m.removeLayer(HIGHLIGHT);
+    };
+  }, [map, picks]);
 
   return null;
 }
