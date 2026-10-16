@@ -1,6 +1,7 @@
 export * from './common';
 export * from './layers';
 export * from './cloudFrame';
+export * from './dateShift';
 export * from './severity';
 export * from './annotation';
 // Findings on a model: the point selection file (selections/<name>.sel)

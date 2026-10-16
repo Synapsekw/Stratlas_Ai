@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { Id, IsoDate, Vec3, err, ok, uniqueIds, type Result } from './common';
+import { CaptureLineUp } from './dateShift';
 import { Layer } from './layers';
 import { ClassCatalogue, SeverityModel } from './severity';
 import { ProjectPurpose, ProjectType, VerticalDatum } from './builder';
@@ -23,6 +24,8 @@ export const Capture = z.object({
     .string()
     .regex(/^[a-z0-9-]{1,32}$/)
     .optional(),
+  /** Where the date really lies against the others; absent means no shift. */
+  lineUp: CaptureLineUp.optional(),
 });
 
 export const Crs = z.union([

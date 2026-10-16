@@ -1,0 +1,376 @@
+{
+  "cases": [
+    {
+      "name": "explicit capture",
+      "manifest": {
+        "schema": "aio.project/1",
+        "id": "demo",
+        "name": "Demo",
+        "crs": {
+          "epsg": 32639
+        },
+        "origin": [500000, 3200000, 0],
+        "captures": [
+          {
+            "id": "c1",
+            "label": "First",
+            "date": "2026-01-10"
+          },
+          {
+            "id": "c2",
+            "label": "Second",
+            "date": "2026-02-10",
+            "lineUp": {
+              "eastM": 2,
+              "northM": -1,
+              "with": "c1",
+              "at": "2026-10-16T08:00:00Z"
+            }
+          }
+        ],
+        "layers": [
+          {
+            "kind": "pointcloud",
+            "id": "a",
+            "name": "Scan",
+            "visible": true,
+            "src": {
+              "path": "clouds/a.copc.laz"
+            },
+            "format": "copc",
+            "capture": "c2"
+          },
+          {
+            "kind": "pointcloud",
+            "id": "b",
+            "name": "Scan",
+            "visible": true,
+            "src": {
+              "path": "clouds/b.copc.laz"
+            },
+            "format": "copc",
+            "capture": "c1"
+          }
+        ],
+        "severityModels": [],
+        "classCatalogues": []
+      },
+      "expected": {
+        "a": {
+          "eastM": 2,
+          "northM": -1
+        }
+      }
+    },
+    {
+      "name": "date token in the name",
+      "manifest": {
+        "schema": "aio.project/1",
+        "id": "demo",
+        "name": "Demo",
+        "crs": {
+          "epsg": 32639
+        },
+        "origin": [500000, 3200000, 0],
+        "captures": [
+          {
+            "id": "c1",
+            "label": "First",
+            "date": "2026-01-10"
+          },
+          {
+            "id": "c2",
+            "label": "Second",
+            "date": "2026-02-10",
+            "lineUp": {
+              "eastM": 2,
+              "northM": -1,
+              "with": "c1",
+              "at": "2026-10-16T08:00:00Z"
+            }
+          }
+        ],
+        "layers": [
+          {
+            "kind": "pointcloud",
+            "id": "a",
+            "name": "Cloud 2026-02-10",
+            "visible": true,
+            "src": {
+              "path": "clouds/a.copc.laz"
+            },
+            "format": "copc"
+          },
+          {
+            "kind": "pointcloud",
+            "id": "b",
+            "name": "Cloud 2026-01-10",
+            "visible": true,
+            "src": {
+              "path": "clouds/b.copc.laz"
+            },
+            "format": "copc"
+          }
+        ],
+        "severityModels": [],
+        "classCatalogues": []
+      },
+      "expected": {
+        "a": {
+          "eastM": 2,
+          "northM": -1
+        }
+      }
+    },
+    {
+      "name": "two dates in one name are common",
+      "manifest": {
+        "schema": "aio.project/1",
+        "id": "demo",
+        "name": "Demo",
+        "crs": {
+          "epsg": 32639
+        },
+        "origin": [500000, 3200000, 0],
+        "captures": [
+          {
+            "id": "c1",
+            "label": "First",
+            "date": "2026-01-10"
+          },
+          {
+            "id": "c2",
+            "label": "Second",
+            "date": "2026-02-10",
+            "lineUp": {
+              "eastM": 2,
+              "northM": -1,
+              "with": "c1",
+              "at": "2026-10-16T08:00:00Z"
+            }
+          }
+        ],
+        "layers": [
+          {
+            "kind": "raster",
+            "id": "a",
+            "name": "Ortho 2026-01-10 to 2026-02-10",
+            "visible": true,
+            "src": {
+              "path": "r/a.tif"
+            },
+            "role": "ortho",
+            "format": "cog"
+          }
+        ],
+        "severityModels": [],
+        "classCatalogues": []
+      },
+      "expected": {}
+    },
+    {
+      "name": "a change result layer is not shifted",
+      "manifest": {
+        "schema": "aio.project/1",
+        "id": "demo",
+        "name": "Demo",
+        "crs": {
+          "epsg": 32639
+        },
+        "origin": [500000, 3200000, 0],
+        "captures": [
+          {
+            "id": "c1",
+            "label": "First",
+            "date": "2026-01-10"
+          },
+          {
+            "id": "c2",
+            "label": "Second",
+            "date": "2026-02-10",
+            "lineUp": {
+              "eastM": 2,
+              "northM": -1,
+              "with": "c1",
+              "at": "2026-10-16T08:00:00Z"
+            }
+          }
+        ],
+        "layers": [
+          {
+            "kind": "raster",
+            "id": "a",
+            "name": "Change 2026-02-10",
+            "visible": true,
+            "src": {
+              "path": "r/a.tif"
+            },
+            "role": "ortho",
+            "format": "cog",
+            "capture": "c2",
+            "derived": {
+              "kind": "change",
+              "source": ["x", "y"],
+              "runId": "j1"
+            }
+          }
+        ],
+        "severityModels": [],
+        "classCatalogues": []
+      },
+      "expected": {}
+    },
+    {
+      "name": "a basemap with a capture is not shifted",
+      "manifest": {
+        "schema": "aio.project/1",
+        "id": "demo",
+        "name": "Demo",
+        "crs": {
+          "epsg": 32639
+        },
+        "origin": [500000, 3200000, 0],
+        "captures": [
+          {
+            "id": "c1",
+            "label": "First",
+            "date": "2026-01-10"
+          },
+          {
+            "id": "c2",
+            "label": "Second",
+            "date": "2026-02-10",
+            "lineUp": {
+              "eastM": 2,
+              "northM": -1,
+              "with": "c1",
+              "at": "2026-10-16T08:00:00Z"
+            }
+          }
+        ],
+        "layers": [
+          {
+            "kind": "basemap",
+            "id": "a",
+            "name": "Base",
+            "visible": true,
+            "pack": "osm",
+            "style": "dark",
+            "capture": "c2"
+          }
+        ],
+        "severityModels": [],
+        "classCatalogues": []
+      },
+      "expected": {}
+    },
+    {
+      "name": "a capture without lineUp has no shift",
+      "manifest": {
+        "schema": "aio.project/1",
+        "id": "demo",
+        "name": "Demo",
+        "crs": {
+          "epsg": 32639
+        },
+        "origin": [500000, 3200000, 0],
+        "captures": [
+          {
+            "id": "c1",
+            "label": "First",
+            "date": "2026-01-10"
+          },
+          {
+            "id": "c2",
+            "label": "Second",
+            "date": "2026-02-10",
+            "lineUp": {
+              "eastM": 2,
+              "northM": -1,
+              "with": "c1",
+              "at": "2026-10-16T08:00:00Z"
+            }
+          }
+        ],
+        "layers": [
+          {
+            "kind": "pointcloud",
+            "id": "a",
+            "name": "Scan",
+            "visible": true,
+            "src": {
+              "path": "clouds/a.copc.laz"
+            },
+            "format": "copc",
+            "capture": "c1"
+          }
+        ],
+        "severityModels": [],
+        "classCatalogues": []
+      },
+      "expected": {}
+    },
+    {
+      "name": "an explicit capture wins over the name",
+      "manifest": {
+        "schema": "aio.project/1",
+        "id": "demo",
+        "name": "Demo",
+        "crs": {
+          "epsg": 32639
+        },
+        "origin": [500000, 3200000, 0],
+        "captures": [
+          {
+            "id": "c1",
+            "label": "First",
+            "date": "2026-01-10"
+          },
+          {
+            "id": "c2",
+            "label": "Second",
+            "date": "2026-02-10",
+            "lineUp": {
+              "eastM": 2,
+              "northM": -1,
+              "with": "c1",
+              "at": "2026-10-16T08:00:00Z"
+            }
+          }
+        ],
+        "layers": [
+          {
+            "kind": "pointcloud",
+            "id": "a",
+            "name": "Cloud 2026-01-10",
+            "visible": true,
+            "src": {
+              "path": "clouds/a.copc.laz"
+            },
+            "format": "copc",
+            "capture": "c2"
+          },
+          {
+            "kind": "pointcloud",
+            "id": "b",
+            "name": "Cloud 2026-02-10",
+            "visible": true,
+            "src": {
+              "path": "clouds/b.copc.laz"
+            },
+            "format": "copc",
+            "capture": "c1"
+          }
+        ],
+        "severityModels": [],
+        "classCatalogues": []
+      },
+      "expected": {
+        "a": {
+          "eastM": 2,
+          "northM": -1
+        }
+      }
+    }
+  ]
+}

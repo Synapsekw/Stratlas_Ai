@@ -113,6 +113,36 @@ describe('parseManifest', () => {
   it('rejects non-objects', () => {
     expect(parseManifest('nope').ok).toBe(false);
   });
+
+  const lined = (eastM: number) => {
+    const m = manifest();
+    m.captures = [
+      {
+        id: 'c1',
+        label: 'Survey',
+        date: '2023-02-21',
+        lineUp: { eastM, northM: -1.25, with: 'c0', spreadM: 0.02, at: '2026-10-16T08:00:00Z' },
+      },
+    ];
+    return parseManifest(m);
+  };
+
+  it('keeps a capture line-up', () => {
+    const r = lined(2.01);
+    expect(r.ok && r.value.captures[0]?.lineUp).toEqual({
+      eastM: 2.01,
+      northM: -1.25,
+      with: 'c0',
+      spreadM: 0.02,
+      at: '2026-10-16T08:00:00Z',
+    });
+  });
+
+  it('refuses a line-up beyond 500 m', () => {
+    expect(lined(500).ok).toBe(true);
+    expect(lined(500.5).ok).toBe(false);
+    expect(lined(-501).ok).toBe(false);
+  });
 });
 
 describe('issues', () => {

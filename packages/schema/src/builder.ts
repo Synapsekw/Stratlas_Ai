@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { Id, IsoDate, Mat4, Vec3 } from './common';
+import { CaptureLineUp } from './dateShift';
 import { Georef, Placement } from './georef';
 import { CameraOrientation, LensModel } from './layers';
 import { ClassCatalogue, SeverityModel } from './severity';
@@ -269,11 +270,18 @@ export const CapturePatch = z
       .regex(/^[a-z0-9-]{1,32}$/)
       .nullable()
       .optional(),
+    /** The date's measured shift (`null` removes it). */
+    lineUp: CaptureLineUp.nullable().optional(),
   })
   .strict()
-  .refine((p) => p.label !== undefined || p.colour !== undefined || p.icon !== undefined, {
-    message: 'Give label, colour or icon',
-  });
+  .refine(
+    (p) =>
+      p.label !== undefined ||
+      p.colour !== undefined ||
+      p.icon !== undefined ||
+      p.lineUp !== undefined,
+    { message: 'Give label, colour, icon or lineUp' },
+  );
 
 export type ProjectType = z.infer<typeof ProjectType>;
 export type ProjectPurpose = z.infer<typeof ProjectPurpose>;
