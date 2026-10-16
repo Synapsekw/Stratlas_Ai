@@ -689,3 +689,97 @@ def test_the_change_layer_has_no_offset(tmp_path):
     _run(root, {"layerFrom": "before", "layerTo": "after"}, job_id="j2")
     m = json.loads((root / "manifest.json").read_text())
     assert "heightOffsetM" not in next(x for x in m["layers"] if x["id"] == "c1-c2-cloud")
+
+
+# ---------------------------------------------------------------- date shifts (captures[].lineUp)
+
+
+def _fake_pdal(monkeypatch, file_xyz, seen):
+    """Stands in for PDAL's reader: crops ``file_xyz`` (file coordinates) by the pipeline's bounds."""
+    import re
+
+    from aio_pipelines.change import cloud
+
+    def fake(ctx, args, what):
+        spec = json.loads(Path(args[-1]).read_text())["pipeline"]
+        seen.append(spec)
+        bounds = next(s["bounds"] for s in spec if "bounds" in s)
+        lo_hi = [float(v) for v in re.findall(r"-?\d+\.?\d*(?:e-?\d+)?", bounds)]
+        x0, x1, y0, y1 = lo_hi[:4]
+        keep = (
+            (file_xyz[:, 0] >= x0) & (file_xyz[:, 0] <= x1) & (file_xyz[:, 1] >= y0) & (file_xyz[:, 1] <= y1)
+        )
+        write_las(Path(spec[-1]["filename"]), file_xyz[keep], pdrf=6)
+        return ""
+
+    monkeypatch.setattr(cloud, "_pdal", fake)
+
+
+def _source(tmp_path, name, shift):
+    from types import SimpleNamespace
+
+    from aio_pipelines.change.cloud import PdalSource
+
+    ctx = SimpleNamespace(job=SimpleNamespace(dir=tmp_path))
+    return PdalSource(ctx, "pdal", tmp_path / f"{name}.copc.laz", name, 6, None, True, 0.0, shift)
+
+
+def test_cloud_change_applies_the_date_shift(tmp_path, monkeypatch):
+    rng = np.random.default_rng(31)
+    base = plane(rng, 0, 8, 0, 8, spacing=0.08) + np.array([500000, 3200000, 0])
+    moved = base + np.array([2.0, 0.0, 0.0])  # the same ground, 2 m east in its file
+    seen: list = []
+    _fake_pdal(monkeypatch, base, seen)
+    pa = _source(tmp_path, "from", (0.0, 0.0)).read((500001.0, 500006.0, 3200001.0, 3200006.0))
+    _fake_pdal(monkeypatch, moved, seen)
+    pb = _source(tmp_path, "to", (-2.0, 0.0)).read((500001.0, 500006.0, 3200001.0, 3200006.0))
+    assert len(pb.xyz) > 100
+    assert np.median(np.abs(c2c_distances(pa.xyz, pb.xyz, cap=1.0))) < 0.05
+    assert pb.xyz[:, 0].min() >= 500001.0 - 1e-6
+
+
+def test_cloud_crop_bounds_are_in_file_coordinates(tmp_path, monkeypatch):
+    seen: list = []
+    _fake_pdal(monkeypatch, np.array([[500002.0, 3200003.0, 0.0]]), seen)
+    src = _source(tmp_path, "to", (-2.0, 1.5))
+    src.read((500000.0, 500010.0, 3200000.0, 3200010.0))
+    bounds = seen[0][0]["bounds"]
+    assert bounds == "([500002.0, 500012.0], [3199998.5, 3200008.5])"
+
+
+def test_cloud_info_bounds_are_where_the_date_is_lined_up(tmp_path, monkeypatch):
+    from types import SimpleNamespace
+
+    from aio_pipelines.change import cloud
+
+    summary = {
+        "summary": {
+            "num_points": 5,
+            "bounds": {"minx": 0, "maxx": 4, "miny": 10, "maxy": 14, "minz": 1, "maxz": 2},
+        }
+    }
+    monkeypatch.setattr(cloud, "_pdal", lambda *a, **k: json.dumps(summary))
+    info = cloud._info(SimpleNamespace(), "pdal", tmp_path / "a.laz", 0.5, (-2.0, 1.0))
+    assert info["bounds"] == [-2.0, 2.0, 11.0, 15.0, 1.5, 2.5]
+
+
+@needs_pdal
+def test_cloud_change_job_applies_the_date_shift(tmp_path):
+    rng = np.random.default_rng(32)
+    ground = plane(rng, 0, 8, 0, 8, spacing=0.06)
+    root = _project(tmp_path, [])
+    layers = [
+        {"kind": "pointcloud", "id": "a", "name": "A", "capture": "c1", "format": "copc",
+         "src": {"path": _copc(tmp_path, root, "a", ground)}},
+        {"kind": "pointcloud", "id": "b", "name": "B", "capture": "c2", "format": "copc",
+         "src": {"path": _copc(tmp_path, root, "b", ground + np.array([2.0, 0, 0]))}},
+    ]  # fmt: skip
+    m = json.loads((root / "manifest.json").read_text())
+    m["layers"] = layers
+    m["captures"][1]["lineUp"] = {"eastM": -2.0, "northM": 0.0, "with": "c1", "at": "2026-10-16T00:00:00Z"}
+    (root / "manifest.json").write_text(json.dumps(m))
+    result, _ = _run(root, {"layerFrom": "a", "layerTo": "b", "captures": {"from": "c1", "to": "c2"}})
+    assert result["status"] == "done"
+    cs = json.loads((root / "change" / "c1-c2-cloud.json").read_text())
+    assert cs["registration"]["ok"] is True
+    assert cs["registration"]["shiftM"] < 0.05

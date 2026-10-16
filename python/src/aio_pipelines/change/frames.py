@@ -25,6 +25,7 @@ from typing import Any
 
 import numpy as np
 
+from ..captures import date_shift, local_delta
 from ..params import known_keys, number, text
 from ..runtime import JobError, Step, StepContext, atomic_write_bytes, commit_files, now_iso
 from .changeset import change_set, change_set_id, dump_change_set, merge_reviews, read_change_set
@@ -189,22 +190,38 @@ def _rotate(q: list[float], v: tuple[float, float, float]) -> np.ndarray:
     return vv + 2 * w * np.cross(u, vv) + 2 * np.cross(u, np.cross(u, vv))
 
 
-def _pose(item: dict[str, Any]) -> tuple[np.ndarray, np.ndarray] | None:
+def _pose(
+    item: dict[str, Any], delta: tuple[float, float] = (0.0, 0.0)
+) -> tuple[np.ndarray, np.ndarray] | None:
+    """Camera position and view direction in the local frame; ``delta`` (x, z) is the photo layer's
+    date shift (``captures.local_delta``), added to the position."""
     pos, q = item.get("pos"), item.get("q")
     if not (isinstance(pos, list) and isinstance(q, list) and len(pos) == 3 and len(q) == 4):
         return None
     n = math.sqrt(sum(c * c for c in q)) or 1.0
-    return np.array(pos, dtype=float), _rotate([c / n for c in q], (0.0, 0.0, -1.0))
+    return np.array(pos, dtype=float) + np.array((delta[0], 0.0, delta[1])), _rotate(
+        [c / n for c in q], (0.0, 0.0, -1.0)
+    )
 
 
-def pose_gap(pa: dict[str, Any], pb: dict[str, Any]) -> tuple[float, float] | None:
-    """Camera distance (m) and view angle (degrees) between two posed photos."""
-    a, b = _pose(pa), _pose(pb)
+def pose_gap(
+    pa: dict[str, Any],
+    pb: dict[str, Any],
+    delta_a: tuple[float, float] = (0.0, 0.0),
+    delta_b: tuple[float, float] = (0.0, 0.0),
+) -> tuple[float, float] | None:
+    """Camera distance (m) and view angle (degrees) between two posed photos, each where its date
+    is lined up (``delta_*``: the local shift of its layer)."""
+    a, b = _pose(pa, delta_a), _pose(pb, delta_b)
     if not a or not b:
         return None
     d = float(np.linalg.norm(a[0] - b[0]))
     cos = float(np.clip(np.dot(a[1], b[1]) / (np.linalg.norm(a[1]) * np.linalg.norm(b[1])), -1, 1))
     return d, math.degrees(math.acos(cos))
+
+
+def _layer_delta(manifest: dict[str, Any], layer_id: str) -> tuple[float, float]:
+    return local_delta(date_shift(manifest, layer_id))
 
 
 def _ref_key(ref: dict[str, Any]) -> str:
@@ -294,7 +311,7 @@ class ChangeFrames:
         if frm == to:
             raise JobError(f"The two dates are the same ({frm}).")
         if not pairs:
-            pairs = self._pose_pairs(ctx, layers, captures, frm, to)
+            pairs = self._pose_pairs(ctx, manifest, layers, captures, frm, to)
 
         out: list[dict[str, Any]] = []
         skipped = 0
@@ -317,20 +334,20 @@ class ChangeFrames:
                 )
                 continue
             rec: dict[str, Any] = {"a": a, "b": b, "aSrc": pa.get("src"), "bSrc": pb.get("src")}
-            gap = pose_gap(pa, pb)
+            gap = pose_gap(pa, pb, _layer_delta(manifest, a["layer"]), _layer_delta(manifest, b["layer"]))
             if gap:
                 rec["poseM"], rec["angleDeg"] = gap
             out.append(rec)
         ctx.log(f"{len(out)} pairs to compare between {frm} and {to}.")
         return {"from": frm, "to": to, "pairs": out, "skipped": skipped}
 
-    def _pose_pairs(self, ctx, layers, captures, frm, to) -> list[dict[str, Any]]:
+    def _pose_pairs(self, ctx, manifest, layers, captures, frm, to) -> list[dict[str, Any]]:
         max_d = number(ctx.params, "maxPoseM", DEFAULT_MAX_POSE_M) or DEFAULT_MAX_POSE_M
         max_a = number(ctx.params, "maxAngleDeg", DEFAULT_MAX_ANGLE_DEG) or DEFAULT_MAX_ANGLE_DEG
 
-        def posed(cap: str) -> list[tuple[str, dict[str, Any]]]:
+        def posed(cap: str) -> list[tuple[str, dict[str, Any], tuple[float, float]]]:
             return [
-                (lay["id"], it)
+                (lay["id"], it, _layer_delta(manifest, lay["id"]))
                 for lay in layers.values()
                 if lay.get("kind") == "photos" and layer_capture(lay, captures) == cap
                 for it in lay.get("items", [])
@@ -339,10 +356,10 @@ class ChangeFrames:
 
         a_list, b_list = posed(frm), posed(to)
         pairs = []
-        for la, pa in a_list:
+        for la, pa, da in a_list:
             best: tuple[float, str, dict[str, Any]] | None = None
-            for lb, pb in b_list:
-                gap = pose_gap(pa, pb)
+            for lb, pb, db in b_list:
+                gap = pose_gap(pa, pb, da, db)
                 if not gap or gap[0] > max_d or gap[1] > max_a:
                     continue
                 cost = gap[0] / max_d + gap[1] / max_a

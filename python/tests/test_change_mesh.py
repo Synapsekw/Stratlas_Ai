@@ -203,3 +203,27 @@ def test_a_small_dent_on_a_large_tank_is_a_change(tmp_path, monkeypatch):
     monkeypatch.undo()
     run(root, params, job_id="j2")
     assert verdicts() == {"T1": "changed", "B1": "unchanged"}
+
+
+def test_mesh_change_applies_the_date_shift(tmp_path):
+    before, _ = scenes()
+    # the same model, 2 m east and 1 m north in its file (local: x + 2, z - 1)
+    after = {n.replace("_e1", "_e2"): m.copy().apply_translation([2.0, 0, -1.0]) for n, m in before.items()}
+    root = project(tmp_path, before, after)
+    with pytest.raises(JobError, match="not aligned"):
+        run(root, {"layerFrom": "e1", "layerTo": "e2", "samples": 2000})
+
+    manifest = json.loads((root / "manifest.json").read_text())
+    manifest["captures"][1]["lineUp"] = {
+        "eastM": -2.0,
+        "northM": -1.0,
+        "with": "c1",
+        "at": "2026-10-16T00:00:00Z",
+    }
+    (root / "manifest.json").write_text(json.dumps(manifest))
+    result = run(root, {"layerFrom": "e1", "layerTo": "e2", "samples": 2000}, job_id="j2")
+    assert result["status"] == "done"
+    cs = validate_change_set(json.loads((root / "change" / "c1-c2-mesh.json").read_text()))
+    assert cs["registration"]["ok"] is True
+    assert cs["registration"]["shiftM"] < 0.05
+    assert {i["verdict"] for i in cs["items"]} == {"unchanged"}
