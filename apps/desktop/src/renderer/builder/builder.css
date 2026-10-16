@@ -350,7 +350,7 @@
 .b-import li > .btn {
   grid-column: 2 / 4;
   justify-self: start;
-  margin-top: 4px;
+  margin-block-start: 4px;
 }
 /* the survey date of what was imported, inset like the rows below it */
 .b-import > .survey-date {
