@@ -1,13 +1,19 @@
 import {
   forwardRef,
+  useCallback,
+  useId,
+  useLayoutEffect,
+  useRef,
+  useState,
   type ButtonHTMLAttributes,
   type CSSProperties,
   type ForwardRefExoticComponent,
   type ReactNode,
   type RefAttributes,
 } from 'react';
-import type { IconName } from './icons/Icon';
-import type { ShortcutId } from './shortcuts';
+import { Icon } from './icons/Icon';
+import type { IconName } from './icons/paths';
+import { ariaKeys, type ShortcutId } from './shortcuts';
 
 export interface SevChipProps {
   /** Level colour from the project's severity model. */
@@ -74,10 +80,81 @@ export interface ButtonProps extends Omit<ButtonHTMLAttributes<HTMLButtonElement
   tip?: string;
 }
 
-/** Stub: built in the button task. */
+const ICON_PX = { sm: 12, md: 14, lg: 16 } as const;
+
+/**
+ * The one button. `disabledReason` keeps the button focusable (aria-disabled,
+ * clicks ignored) and describes why; `busy` swaps the icon for a spinner and
+ * locks the width so the label does not jump.
+ */
 export const Button: ForwardRefExoticComponent<ButtonProps & RefAttributes<HTMLButtonElement>> =
-  forwardRef<HTMLButtonElement, ButtonProps>(() => {
-    throw new Error('not built');
+  forwardRef<HTMLButtonElement, ButtonProps>(function Button(
+    {
+      size = 'sm',
+      variant = 'secondary',
+      pressed,
+      busy,
+      disabled,
+      disabledReason,
+      icon,
+      shortcut,
+      // Kept out of the DOM; rendered through Tip once the tooltip lands (integration task).
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars
+      tip,
+      className,
+      children,
+      onClick,
+      style,
+      type = 'button',
+      'aria-describedby': describedBy,
+      ...rest
+    },
+    ref,
+  ) {
+    const inner = useRef<HTMLButtonElement | null>(null);
+    const reasonId = useId();
+    const [lock, setLock] = useState<number | undefined>(undefined);
+    const setRefs = useCallback(
+      (node: HTMLButtonElement | null) => {
+        inner.current = node;
+        if (typeof ref === 'function') ref(node);
+        else if (ref) ref.current = node;
+      },
+      [ref],
+    );
+    // Width lock: measure on the busy edge, release when it ends.
+    useLayoutEffect(() => {
+      setLock(busy && inner.current ? inner.current.offsetWidth : undefined);
+    }, [busy]);
+
+    const inert = Boolean(busy) || Boolean(disabledReason);
+    const describe = [describedBy, disabledReason ? reasonId : undefined].filter(Boolean).join(' ');
+    const cls = ['btn', size, variant, className].filter(Boolean).join(' ');
+    return (
+      <button
+        {...rest}
+        ref={setRefs}
+        type={type}
+        className={cls}
+        style={lock ? { ...style, minWidth: lock } : style}
+        disabled={disabled && !disabledReason ? true : undefined}
+        aria-disabled={disabledReason ? true : undefined}
+        aria-busy={busy ? true : undefined}
+        aria-pressed={pressed}
+        aria-keyshortcuts={shortcut ? ariaKeys(shortcut) : undefined}
+        aria-describedby={describe || undefined}
+        onClick={inert ? undefined : onClick}
+      >
+        {busy ? <span className="spin" aria-hidden="true" /> : null}
+        {icon && !busy ? <Icon name={icon} size={ICON_PX[size]} /> : null}
+        {children}
+        {disabledReason ? (
+          <span id={reasonId} className="sr-only">
+            {disabledReason}
+          </span>
+        ) : null}
+      </button>
+    );
   });
 
 export interface IconButtonProps extends Omit<ButtonProps, 'variant' | 'children' | 'icon'> {
@@ -85,9 +162,12 @@ export interface IconButtonProps extends Omit<ButtonProps, 'variant' | 'children
   label: string; // the accessible name and the tooltip
 }
 
-/** Stub: built in the button task. */
+/** A square, icon-only button; `label` is its accessible name. */
 export const IconButton: ForwardRefExoticComponent<
   IconButtonProps & RefAttributes<HTMLButtonElement>
-> = forwardRef<HTMLButtonElement, IconButtonProps>(() => {
-  throw new Error('not built');
+> = forwardRef<HTMLButtonElement, IconButtonProps>(function IconButton(
+  { label, icon, ...rest },
+  ref,
+) {
+  return <Button {...rest} ref={ref} variant="icon" icon={icon} aria-label={label} />;
 });

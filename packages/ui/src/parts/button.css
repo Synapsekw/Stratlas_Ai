@@ -2,9 +2,9 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 6px;
-  height: 28px;
-  padding: 0 10px;
+  gap: var(--sp-3);
+  height: calc(var(--sp-7) + var(--sp-2));
+  padding: 0 var(--sp-5);
   border-radius: var(--r-4);
   border: 1px solid var(--line);
   background: var(--bg-2);
@@ -50,20 +50,55 @@
   border-color: var(--acc);
 }
 .btn.sm {
-  height: 24px;
-  padding: 0 8px;
+  height: var(--sp-7);
+  padding: 0 var(--sp-4);
   font-size: var(--t-11);
 }
-.btn.icon {
-  width: 28px;
-  padding: 0;
+.btn.md {
+  height: calc(var(--sp-7) + var(--sp-2));
 }
-.btn.icon.sm {
-  width: 24px;
+.btn.lg {
+  height: var(--sp-8);
+  padding: 0 var(--sp-5);
+}
+.btn.quiet {
+  background: none;
+  border-color: transparent;
+  color: var(--fg-2);
+}
+.btn.quiet:hover {
+  background: var(--bg-2);
+  color: var(--fg-0);
+}
+.btn.link {
+  height: auto;
+  padding: 0;
+  background: none;
+  border-color: transparent;
+  color: var(--acc);
+  text-decoration: underline;
+}
+.btn.link:hover {
+  background: none;
+  color: var(--acc-strong);
+}
+.btn.danger {
+  color: var(--danger-ink);
+  border-color: var(--danger-line);
+}
+.btn.danger:hover {
+  background: var(--s5-a);
+}
+/* Icon-only: square, as tall as its size. */
+.btn.icon {
+  padding: 0;
+  aspect-ratio: 1;
 }
 .btn:disabled,
 .btn[aria-disabled='true'] {
   opacity: 0.45;
+}
+.btn:disabled {
   pointer-events: none;
 }
 /* holds a disabled button and its reason as a tooltip: the button itself takes no pointer */
@@ -77,4 +112,13 @@
   background: var(--bg-2);
   border-color: var(--line);
   color: var(--fg-1);
+}
+.btn[aria-disabled='true'] {
+  color: var(--fg-3);
+}
+.btn[aria-busy='true'] {
+  cursor: progress;
+}
+.btn[aria-busy='true'] > .i {
+  display: none;
 }

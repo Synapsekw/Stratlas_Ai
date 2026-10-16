@@ -3389,13 +3389,6 @@ svg.flip {
 .notice.warn svg {
   color: var(--warn-ink);
 }
-.btn.danger {
-  color: var(--danger-ink);
-  border-color: var(--danger-line);
-}
-.btn.danger:hover {
-  background: var(--s5-a);
-}
 .packs-top {
   display: grid;
   grid-template-columns: minmax(0, 1fr);
