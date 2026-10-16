@@ -1,0 +1,62 @@
+/* Workbench sections. The body folds with grid rows (0fr to 1fr) and opacity on plain list
+   content; a canvas container is never sized this way (the foundation motion rule). */
+.wb-section-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  padding: 6px 8px;
+  border: 0;
+  background: transparent;
+  color: var(--fg-0);
+  font-size: var(--t-title);
+  font-weight: var(--fw-title);
+  text-align: start;
+  cursor: pointer;
+}
+.wb-section-head svg {
+  flex: none;
+  transition: transform var(--d-2) var(--ease);
+}
+.wb-section[data-open='true'] > .wb-section-head svg {
+  transform: rotate(90deg);
+}
+.wb-section-title {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.wb-section-count {
+  color: var(--fg-3);
+  font-variant-numeric: tabular-nums;
+}
+.wb-section-body {
+  display: grid;
+  grid-template-rows: 0fr;
+  opacity: 0;
+  transition:
+    grid-template-rows var(--d-2) var(--ease),
+    opacity var(--d-2) var(--ease);
+}
+.wb-section[data-open='true'] > .wb-section-body {
+  grid-template-rows: 1fr;
+  opacity: 1;
+}
+.wb-section-inner {
+  min-height: 0;
+  overflow: hidden;
+}
+
+/* reduced motion: instant (the OS setting, or Settings, Appearance, Reduce motion) */
+@media (prefers-reduced-motion: reduce) {
+  .wb-section-head svg,
+  .wb-section-body {
+    transition: none;
+  }
+}
+:root[data-motion='reduce'] .wb-section-head svg,
+:root[data-motion='reduce'] .wb-section-body {
+  transition: none;
+}
