@@ -11,7 +11,7 @@
 }
 .team-chip.offline {
   border-color: var(--warn);
-  color: var(--warn);
+  color: var(--warn-ink);
 }
 .team-chip.syncing svg {
   animation: team-spin 1.2s linear infinite;

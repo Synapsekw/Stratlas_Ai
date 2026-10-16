@@ -63,7 +63,7 @@ code {
   margin: 0 0 14px;
 }
 .notice svg {
-  color: var(--s3);
+  color: var(--warn-ink);
 }
 .notice.danger {
   border-color: var(--danger-line);
@@ -408,7 +408,7 @@ button.chip-status:hover {
 .conn-note .i {
   flex: none;
   margin-top: 2px;
-  color: var(--s3);
+  color: var(--warn-ink);
 }
 .conn-links {
   display: grid;
@@ -3355,7 +3355,7 @@ svg.flip {
   color: var(--acc);
 }
 .notice.warn svg {
-  color: var(--s3);
+  color: var(--warn-ink);
 }
 .btn.danger {
   color: var(--danger-ink);
@@ -3465,7 +3465,7 @@ svg.flip {
 .pack-job[data-state='failed'] .pj-head svg,
 .pack-job[data-state='interrupted'] .pj-head svg,
 .pack-job[data-state='cancelled'] .pj-head svg {
-  color: var(--s3);
+  color: var(--warn-ink);
 }
 .pj-state {
   margin-inline-start: auto;
@@ -3995,7 +3995,7 @@ svg.flip {
   background: var(--s5);
 }
 .job-state.warn {
-  color: var(--s3);
+  color: var(--warn-ink);
 }
 .job-state.warn i {
   background: var(--s3);
@@ -4265,7 +4265,7 @@ svg.flip {
 }
 .job-log .warn .lv,
 .job-log .warn .lm {
-  color: var(--s3);
+  color: var(--warn-ink);
 }
 .job-log .error .lv,
 .job-log .error .lm {

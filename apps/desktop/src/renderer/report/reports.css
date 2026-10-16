@@ -509,7 +509,7 @@
   color: var(--fg-3);
 }
 .nar-state.dirty {
-  color: var(--warn);
+  color: var(--warn-ink);
 }
 .nar-text {
   width: 100%;
@@ -530,7 +530,7 @@
   color: var(--fg-2);
 }
 .nar-hint {
-  color: var(--warn);
+  color: var(--warn-ink);
   margin: 0;
 }
 .nar-versions summary {

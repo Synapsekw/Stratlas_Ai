@@ -47,7 +47,7 @@
 }
 .proc-chip[data-state='attention'] {
   border-color: var(--warn);
-  color: var(--warn);
+  color: var(--warn-ink);
 }
 
 /* ---------- processing: the drawer's list ---------- */

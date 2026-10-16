@@ -34,7 +34,7 @@
 }
 .ph-warn li {
   font-size: var(--t-12);
-  color: var(--s3);
+  color: var(--warn-ink);
 }
 .ph-radios,
 .ph-products {
@@ -618,7 +618,7 @@
 .ph-note svg {
   flex: none;
   margin-top: 2px;
-  color: var(--s3);
+  color: var(--warn-ink);
 }
 .ph-q.quiet p svg,
 .ph-note svg {
@@ -675,7 +675,7 @@
   text-align: center;
 }
 .ph-blocked svg {
-  color: var(--s3);
+  color: var(--warn-ink);
 }
 .ph-blocked h3 {
   margin: 4px 0 0;

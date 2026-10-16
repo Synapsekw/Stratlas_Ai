@@ -55,7 +55,7 @@
   font-size: var(--t-12);
 }
 .qa-banner > svg {
-  color: var(--warn);
+  color: var(--warn-ink);
   flex: none;
 }
 .qa-banner-text {
@@ -91,7 +91,7 @@
 .qa-pill.qa-hold,
 .qa-pill.qa-fail {
   border-color: var(--warn-line);
-  color: var(--warn);
+  color: var(--warn-ink);
 }
 
 .qa-error {
@@ -142,7 +142,7 @@
   border-bottom: 1px solid var(--line-soft);
 }
 .qa-table tr.qa-far td {
-  color: var(--warn);
+  color: var(--warn-ink);
 }
 
 .qa-hist {

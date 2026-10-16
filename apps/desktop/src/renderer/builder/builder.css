@@ -361,7 +361,7 @@
 .b-import li.needs-pipeline svg,
 .b-import li.needs-pipeline .st,
 .b-import li.queued .st {
-  color: var(--s3);
+  color: var(--warn-ink);
 }
 .b-heights {
   display: flex;

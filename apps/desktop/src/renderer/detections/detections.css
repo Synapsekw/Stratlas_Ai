@@ -243,7 +243,7 @@
 }
 .det-chip.draft {
   background: color-mix(in oklch, var(--warn) 18%, transparent);
-  color: var(--warn);
+  color: var(--warn-ink);
 }
 .det-chip.accepted {
   background: color-mix(in oklch, var(--ok) 18%, transparent);

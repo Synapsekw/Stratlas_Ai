@@ -363,7 +363,7 @@ select.input option {
   box-shadow: inset 0 0 0 1.5px var(--fg-3);
 }
 .state.warn {
-  color: var(--s3);
+  color: var(--warn-ink);
 }
 .state.warn i {
   background: var(--s3);
@@ -1215,7 +1215,7 @@ select.input option {
 }
 .titem .tbadge.warn {
   border-color: var(--warn-line);
-  color: var(--warn);
+  color: var(--warn-ink);
 }
 /* a walk row's Open, Place walk and Remove walk take the place of its length and badge */
 .titem .tacts {

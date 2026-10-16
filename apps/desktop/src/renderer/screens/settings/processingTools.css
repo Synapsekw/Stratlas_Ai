@@ -19,7 +19,7 @@
   color: var(--ok);
 }
 .processing-tools .pt-state.warn svg {
-  color: var(--s3);
+  color: var(--warn-ink);
 }
 .processing-tools .pt-needs {
   margin: 0 0 10px;

@@ -60,6 +60,8 @@
   --danger-ink: oklch(0.8 0.12 25);
   --danger-line: oklch(0.66 0.19 25 / 0.45);
   --warn-line: oklch(0.84 0.14 92 / 0.35);
+  /* amber for text and icons that carry a warning; --s3 is for fills and swatches */
+  --warn-ink: var(--s3);
   /* ink on solid severity swatches */
   --sev-ink: oklch(0.15 0.02 250);
 
@@ -139,6 +141,8 @@
   --danger-ink: oklch(0.5 0.18 25);
   --danger-line: oklch(0.58 0.2 25 / 0.4);
   --warn-line: oklch(0.7 0.15 85 / 0.5);
+  /* --s3 is 2.2:1 on the light panels: text takes a darker amber (4.5:1 on --bg-0 to --bg-3) */
+  --warn-ink: oklch(0.5 0.12 75);
   --sev-ink: oklch(0.15 0.02 250);
 }
 /* More contrast: <html data-contrast='more'> when the OS asks for it (prefers-contrast: more) or

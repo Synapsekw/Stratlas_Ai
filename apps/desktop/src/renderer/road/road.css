@@ -544,7 +544,7 @@
   color: var(--ok);
 }
 .rr-setup .bad {
-  color: var(--s3);
+  color: var(--warn-ink);
 }
 .rr-setup-acts {
   display: flex;
