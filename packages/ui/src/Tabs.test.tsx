@@ -144,6 +144,32 @@ describe('Tabs', () => {
     expect(onChange).not.toHaveBeenCalled();
   });
 
+  it('pin and close are reachable by keyboard and leave the selection alone', () => {
+    const onPinChange = vi.fn();
+    const onClose = vi.fn();
+    const onChange = vi.fn();
+    render(
+      <Harness
+        onChange={onChange}
+        items={[{ id: 'a', label: 'Alpha', onPinChange, onClose }, ...base.slice(1)]}
+      />,
+    );
+    expect(q('.tab-pin').tabIndex).toBe(0);
+    expect(q('.tab-x').tabIndex).toBe(0);
+    expect(q('.tab-pin').getAttribute('aria-label')).toBeTruthy();
+    expect(q('.tab-x').getAttribute('aria-label')).toBeTruthy();
+    const order = [...host.querySelectorAll<HTMLElement>('button')].filter((b) => b.tabIndex >= 0);
+    expect(order.slice(0, 3).map((b) => b.className)).toEqual(['tab', 'tab-pin', 'tab-x']);
+    // Native buttons turn Enter and Space into a click; the click must not select the tab.
+    act(() => {
+      q('.tab-pin').click();
+      q('.tab-x').click();
+    });
+    expect(onPinChange).toHaveBeenCalledTimes(1);
+    expect(onClose).toHaveBeenCalledTimes(1);
+    expect(onChange).not.toHaveBeenCalled();
+  });
+
   it('pin toggles with aria-pressed', () => {
     const onPinChange = vi.fn();
     render(
@@ -226,6 +252,24 @@ describe('Tabs', () => {
       size(270);
       render(<Over items={[...base.slice(0, 3), { id: 'd', label: 'Delta', live: true }]} />);
       expect(q('.tabs-more').classList.contains('acc')).toBe(true);
+    });
+
+    it('keeps the count, live and pinned marks on overflowed menu entries', () => {
+      size(270);
+      render(
+        <Over
+          items={[
+            ...base.slice(0, 2),
+            { id: 'c', label: 'Gamma', count: 3, pinned: true },
+            { id: 'd', label: 'Delta', live: true },
+          ]}
+        />,
+      );
+      const [c, d] = lastItems();
+      if (!c || !d || c === 'separator' || d === 'separator') throw new Error('no items');
+      expect(c.label).toContain('3');
+      expect(c.checked).toBe(true);
+      expect(d.label).toContain(t('tabs.live' as MessageKey));
     });
 
     it('shows no more button when everything fits', () => {

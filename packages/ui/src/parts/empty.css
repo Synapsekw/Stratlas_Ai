@@ -14,8 +14,8 @@
 }
 .empty-title {
   margin: 0;
-  font-size: var(--t-14);
-  font-weight: 600;
+  font-size: var(--t-title);
+  font-weight: var(--fw-title);
   color: var(--fg-0);
 }
 .empty-body {

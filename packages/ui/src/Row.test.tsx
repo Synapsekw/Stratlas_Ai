@@ -54,6 +54,11 @@ describe('Row', () => {
     expect(row().querySelector('.row-acts button')?.textContent).toBe('m');
   });
 
+  it('defaults a button row to type=button', () => {
+    render(<Row kind="menu" as="button" label="Go" />);
+    expect(row().getAttribute('type')).toBe('button');
+  });
+
   it('renders the element named by as, and an icon', () => {
     render(<Row kind="palette" as="button" label="Go" icon="map" />);
     expect(row().tagName).toBe('BUTTON');

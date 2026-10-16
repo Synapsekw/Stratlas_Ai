@@ -109,14 +109,13 @@
 }
 .tab-pin,
 .tab-x {
-  visibility: hidden;
+  color: var(--fg-4);
 }
 .tab-wrap:hover .tab-pin,
 .tab-wrap:hover .tab-x,
-.tab-wrap:focus-within .tab-pin,
-.tab-wrap:focus-within .tab-x,
-.tab-pin[aria-pressed='true'] {
-  visibility: visible;
+.tab-pin:focus-visible,
+.tab-x:focus-visible {
+  color: var(--fg-1);
 }
 .tabs-more {
   flex: none;

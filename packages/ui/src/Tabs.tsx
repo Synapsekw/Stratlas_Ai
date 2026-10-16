@@ -138,9 +138,19 @@ export function Tabs<K extends string>({
     if (target) go(target.id);
   };
 
+  // The menu cannot stay open with nothing in it, or it would reopen by itself on the next overflow.
+  if (tucked.length === 0 && menuOpen) setMenuOpen(false);
+
   const menuItems: MenuEntry[] = tucked.map((it) => ({
     id: it.id,
-    label: it.label,
+    label: [
+      it.label,
+      it.count !== undefined ? String(it.count) : null,
+      it.live ? tt('tabs.live') : null,
+    ]
+      .filter(Boolean)
+      .join(' · '),
+    ...(it.pinned ? { checked: true } : {}),
     ...(it.icon ? { icon: it.icon } : {}),
     onSelect: () => {
       onChange(it.id);
@@ -196,7 +206,6 @@ export function Tabs<K extends string>({
                 <button
                   type="button"
                   className="tab-pin"
-                  tabIndex={-1}
                   aria-pressed={!!it.pinned}
                   aria-label={tt('tabs.pin', { label: it.label })}
                   onClick={() => {
@@ -210,7 +219,6 @@ export function Tabs<K extends string>({
                 <button
                   type="button"
                   className="tab-x"
-                  tabIndex={-1}
                   aria-label={tt('tabs.close', { label: it.label })}
                   onClick={() => {
                     it.onClose?.();

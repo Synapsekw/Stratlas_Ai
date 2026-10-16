@@ -28,6 +28,7 @@ export function Row({
   return createElement(
     as,
     {
+      ...(as === 'button' ? { type: 'button' } : {}),
       ...rest,
       className: className ? `row ${className}` : 'row',
       'data-kind': kind,
