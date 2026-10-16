@@ -26,7 +26,7 @@ import { useEffect, useMemo, useState, type KeyboardEvent } from 'react';
 import { authorName } from '../author';
 import { AiDetectDialog } from '../detections/AiDetectDialog';
 import { ContactSheet, type SheetItem } from '../detections/ContactSheet';
-import { itemKey, type DetectItem } from '../detections/convert';
+import { hasDetectable, itemKey, type DetectItem } from '../detections/convert';
 import { ReviewEditor, type EditorShape } from '../detections/Editor';
 import { Inspector } from '../detections/Inspector';
 import { reviewCommand, typingIn } from '../detections/keys';
@@ -115,6 +115,8 @@ export function DetectionsScreen() {
     () => layers.filter((l): l is PhotosLayer => l.kind === 'photos'),
     [layers],
   );
+  // Detect with AI needs a photo or a clip to look at
+  const detectable = hasDetectable(layers);
   const current = currentOf(review);
   const queue = useMemo(() => queueOf(review), [review]);
   // `classes` is a dependency so the counts follow a class added while working.
@@ -520,20 +522,24 @@ export function DetectionsScreen() {
           <i />
           {readOnly ? t('det.save.readOnly') : t(`det.save.${save.state}`)}
         </span>
-        <button
-          type="button"
-          className="btn primary sm"
-          data-testid="det-ai-open"
-          disabled={readOnly}
-          onClick={() => {
-            setAiOpen(true);
-          }}
-        >
-          <Icon name="agent" size={14} />
-          {selected.size > 0
-            ? t('det.ai.openSelected', { count: selected.size })
-            : t('det.ai.open')}
-        </button>
+        {/* nothing to look at yet: greyed, and the wrapper says why (a disabled button gets no
+            pointer, so it could not show its own tooltip) */}
+        <span title={detectable ? undefined : t('det.ai.nothing')} className="why-wrap">
+          <button
+            type="button"
+            className="btn primary sm"
+            data-testid="det-ai-open"
+            disabled={readOnly || !detectable}
+            onClick={() => {
+              setAiOpen(true);
+            }}
+          >
+            <Icon name="agent" size={14} />
+            {selected.size > 0
+              ? t('det.ai.openSelected', { count: selected.size })
+              : t('det.ai.open')}
+          </button>
+        </span>
         {project.manifest.type === 'inspection' && (
           <button
             type="button"

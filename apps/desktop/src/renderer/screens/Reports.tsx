@@ -45,6 +45,8 @@ function ProjectReport(props: {
   allowed: boolean;
   /** The sections this project has something to print in, in report order. */
   sections: readonly ReportSectionId[];
+  /** The project has no datasets and no issues yet: there is nothing to report. */
+  empty: boolean;
   /** The issue page rule when none is chosen (it follows the project kind). */
   defaultPages: IssuePagesRule;
   onText: () => void;
@@ -96,16 +98,20 @@ function ProjectReport(props: {
           {t('reports.text.open')}
         </button>
         {props.allowed ? (
-          <button
-            type="button"
-            className="btn primary"
-            onClick={() => {
-              runExportAction('house-pdf');
-            }}
-          >
-            <Icon name="download" size={14} />
-            {t('reports.house.export')}
-          </button>
+          // a disabled button takes no pointer: the wrapper carries the reason as its tooltip
+          <span className="why-wrap" title={props.empty ? t('reports.house.noData') : undefined}>
+            <button
+              type="button"
+              className="btn primary"
+              disabled={props.empty}
+              onClick={() => {
+                runExportAction('house-pdf');
+              }}
+            >
+              <Icon name="download" size={14} />
+              {t('reports.house.export')}
+            </button>
+          </span>
         ) : (
           <p className="faint small">This package does not allow PDF exports.</p>
         )}
@@ -212,6 +218,7 @@ export function ReportsScreen() {
           <ProjectReport
             allowed={actionAllowed('house-pdf', pkg)}
             sections={offeredSections(withData)}
+            empty={project.manifest.layers.length === 0 && issues.length === 0}
             defaultPages={defaultIssuePages(
               houseKind(project.manifest, issues, roadOpen ? { road: true } : {}),
             )}

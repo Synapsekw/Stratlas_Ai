@@ -193,6 +193,10 @@ svg.i {
   opacity: 0.45;
   pointer-events: none;
 }
+/* holds a disabled button and its reason as a tooltip: the button itself takes no pointer */
+.why-wrap {
+  display: inline-flex;
+}
 /* a primary that cannot be pressed yet (Save key with no key) drops its accent fill, so it does
    not read as the thing to click */
 .btn.primary:disabled,

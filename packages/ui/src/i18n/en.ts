@@ -441,6 +441,7 @@ export const en = {
   'det.error.missing': 'That detection no longer exists.',
   'det.error.duplicate': 'That detection exists already.',
   'det.ai.open': 'Detect with AI',
+  'det.ai.nothing': 'Add photos or a video to the project first.',
   'det.ai.openSelected_one': 'Detect with AI ({count} photo)',
   'det.ai.openSelected_other': 'Detect with AI ({count} photos)',
   'det.ai.title': 'Detect with AI',
@@ -1874,6 +1875,7 @@ export const en = {
   'reports.house.text':
     'The full report in the house format: cover, contents, executive summary, scope and method, site and data, statistics, register, one page per issue and appendices.',
   'reports.house.export': 'Export project report PDF',
+  'reports.house.noData': 'Add data to the project first.',
   'reports.house.sections': 'Sections',
   'reports.house.issuePages': 'Issue pages',
   'reports.house.pages.all': 'Every graded issue',

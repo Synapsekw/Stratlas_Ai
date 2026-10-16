@@ -1,7 +1,8 @@
 import type { Detection } from '@aio/annotate/detections';
-import type { ClassCatalogue, SeverityModel } from '@aio/schema';
+import type { ClassCatalogue, Layer, SeverityModel } from '@aio/schema';
 import { describe, expect, it } from 'vitest';
 import {
+  hasDetectable,
   itemKey,
   promptTaxonomy,
   sampleTimes,
@@ -237,5 +238,23 @@ describe('suggested new classes', () => {
       },
     ]);
     expect(detections[0]?.suggestedNew).toBeUndefined();
+  });
+});
+
+describe('something to detect on', () => {
+  const photos = (n: number) =>
+    ({
+      kind: 'photos',
+      id: 'p',
+      items: Array.from({ length: n }, (_, i) => ({ id: `d${String(i)}` })),
+    }) as unknown as Layer;
+  const video = { kind: 'video', id: 'v' } as unknown as Layer;
+  const mesh = { kind: 'mesh', id: 'm' } as unknown as Layer;
+
+  it('is a photo or a video clip; a project with neither has nothing for Detect with AI', () => {
+    expect(hasDetectable([])).toBe(false);
+    expect(hasDetectable([mesh, photos(0)])).toBe(false);
+    expect(hasDetectable([mesh, photos(2)])).toBe(true);
+    expect(hasDetectable([video])).toBe(true);
   });
 });

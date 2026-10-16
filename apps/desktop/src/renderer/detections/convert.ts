@@ -13,7 +13,7 @@ import {
   type Detection,
   type DetectionSource,
 } from '@aio/annotate/detections';
-import type { ClassCatalogue, SeverityModel } from '@aio/schema';
+import type { ClassCatalogue, Layer, SeverityModel } from '@aio/schema';
 
 /** A photo or a video frame to send. */
 export type DetectItem =
@@ -26,6 +26,11 @@ export function itemSource(i: DetectItem): DetectionSource {
 }
 
 export const itemKey = (i: DetectItem) => sourceKey(itemSource(i));
+
+/** Whether the project holds anything Detect with AI can look at: a photo, or a video clip. */
+export function hasDetectable(layers: readonly Layer[]): boolean {
+  return layers.some((l) => (l.kind === 'photos' && l.items.length > 0) || l.kind === 'video');
+}
 
 /** Proposals overlapping an earlier one of the same class this much are repeats. */
 const REPEAT_IOU = 0.7;

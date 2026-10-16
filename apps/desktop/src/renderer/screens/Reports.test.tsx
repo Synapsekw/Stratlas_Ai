@@ -74,4 +74,14 @@ describe('Reports screen', () => {
     for (const name of ['Landfill airspace and compaction', 'Haul-road compliance', 'Hydrology'])
       expect(sections).not.toContain(name);
   });
+
+  it('greys the project report export of a project with no data yet, and says why', () => {
+    const exportBtn = [...host.querySelectorAll('button')].find(
+      (b) => b.textContent === 'Export project report PDF',
+    );
+    expect(exportBtn?.disabled).toBe(true);
+    expect(exportBtn?.closest('[title]')?.getAttribute('title')).toBe(
+      'Add data to the project first.',
+    );
+  });
 });

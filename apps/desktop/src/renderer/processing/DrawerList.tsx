@@ -78,9 +78,11 @@ export function DrawerList({
   return (
     <div className="proc-list">
       {own && (
+        // without the tools it cannot run: it opens the dialog that says so, and the update below
+        // is the primary instead
         <button
           type="button"
-          className="btn primary proc-go"
+          className={toolsMissing ? 'btn proc-go' : 'btn primary proc-go'}
           data-testid="create-maps"
           onClick={onCreateMaps}
         >
@@ -92,7 +94,7 @@ export function DrawerList({
         <div className="proc-tools" data-testid="proc-tools">
           <Icon name="warn" size={14} />
           <span>{t('processing.toolsMissing')}</span>
-          <button type="button" className="btn sm" onClick={onUpdateTools}>
+          <button type="button" className="btn sm primary" onClick={onUpdateTools}>
             {t('processing.toolsUpdate')}
           </button>
         </div>

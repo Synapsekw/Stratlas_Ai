@@ -158,6 +158,16 @@ describe('the processing list of a project', () => {
     expect(props.onUpdateTools).toHaveBeenCalledTimes(1);
   });
 
+  it('makes the tools update the primary while the tools are missing, not Create maps', () => {
+    show({ toolsMissing: true });
+    expect(q('create-maps')?.classList.contains('primary')).toBe(false);
+    expect(q('proc-tools')?.querySelector('button')?.classList.contains('primary')).toBe(true);
+    act(() => root?.unmount());
+    root = undefined;
+    show({ toolsMissing: false });
+    expect(q('create-maps')?.classList.contains('primary')).toBe(true);
+  });
+
   it('names the project of what runs elsewhere', () => {
     const other = job({ project: 'D:\\Sites\\B', status: 'running' });
     show({ elsewhere: [{ job: other, project: 'North quarry' }] });
