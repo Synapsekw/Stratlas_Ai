@@ -1,21 +1,25 @@
 import type { Layer, LayerInfo, OrientationFile, ProjectManifest, Vec3 } from '@aio/schema';
 import { constants } from 'node:fs';
 import { copyFile, mkdir, readFile, rm, stat, writeFile } from 'node:fs/promises';
-import { dirname, isAbsolute, join, relative } from 'node:path';
+import { dirname, isAbsolute, join, relative, sep } from 'node:path';
 import { fullLayerExtent } from './extents';
 import { layerRefs } from './removePlan';
 
 const RESERVED = /^(con|prn|aux|nul|com[1-9]|lpt[1-9])$/i;
 
+/** A file that would be read or written outside its folder: the layer is skipped. */
+class Escaping extends Error {}
+
 /** True for a project-relative ref that stays inside the project (no drive, no `..`). */
 export function insideRef(p: string): boolean {
-  return p !== '' && !isAbsolute(p) && !/^[a-zA-Z]:/.test(p) && !p.split('/').includes('..');
+  const n = p.replace(/\\/g, '/');
+  return n !== '' && !n.startsWith('/') && !/^[a-zA-Z]:/.test(n) && !n.split('/').includes('..');
 }
 
 /** True when `target` lies below `base`. */
-const within = (base: string, target: string): boolean => {
+export const within = (base: string, target: string): boolean => {
   const r = relative(base, target);
-  return r !== '' && !r.startsWith('..') && !isAbsolute(r);
+  return r !== '' && r !== '..' && !r.startsWith(`..${sep}`) && !isAbsolute(r);
 };
 
 /** True when every file ref of the layer stays inside the project. */
@@ -57,7 +61,7 @@ export function exportPlan(l: Layer): { from: string; to: string }[] {
 
 /** The file Reveal in folder shows: the layer's first file (a walk's playback copy). */
 export function mainFile(l: Layer): string | null {
-  if (l.kind === 'walk' && 'path' in l.src) return l.src.path;
+  if (l.kind === 'walk' && 'path' in l.src) return l.src.path.replace(/\\/g, '/');
   return layerRefs(l)[0] ?? null;
 }
 
@@ -89,8 +93,10 @@ const sizeOf = async (file: string) => {
  */
 async function walkExtent(root: string, l: Layer): Promise<{ min: Vec3; max: Vec3 } | null> {
   if (l.kind !== 'walk' || !l.flight || !('path' in l.flight.src)) return null;
+  const ref = l.flight.src.path.replace(/\\/g, '/');
+  if (!insideRef(ref)) return null;
   try {
-    const j = JSON.parse(await readFile(join(root, l.flight.src.path), 'utf8')) as {
+    const j = JSON.parse(await readFile(join(root, ...ref.split('/')), 'utf8')) as {
       samples?: { pos?: unknown }[];
     };
     const min: Vec3 = [Infinity, Infinity, Infinity];
@@ -127,7 +133,8 @@ export async function readLayerInfo(
   );
   const known = sizes.filter((s) => s !== null);
   const main = mainFile(l);
-  const mainStat = main && insideRef(main) ? await sizeOf(join(root, main)) : null;
+  const mainPath = main && insideRef(main) ? join(root, ...main.split('/')) : null;
+  const mainStat = mainPath && within(root, mainPath) ? await sizeOf(mainPath) : null;
   const inside = refsInside(l);
   const count =
     l.kind === 'photos' || l.kind === 'panoramas'
@@ -203,8 +210,7 @@ export async function exportLayers(
         if (o.signal?.aborted) throw new Error('cancelled');
         const from = join(root, ...f.from.split('/'));
         const to = join(folder, ...f.to.split('/'));
-        if (!within(root, from) || !within(folder, to))
-          throw new Error('A file leaves its folder.');
+        if (!within(root, from) || !within(folder, to)) throw new Escaping();
         await mkdir(dirname(to), { recursive: true });
         await copyFile(from, to, constants.COPYFILE_EXCL);
         o.progress?.(++done, total, f.to);
@@ -219,6 +225,10 @@ export async function exportLayers(
       written++;
     } catch (e) {
       await rm(folder, { recursive: true, force: true });
+      if (e instanceof Escaping) {
+        skipped.push(l.name);
+        continue;
+      }
       if (o.signal?.aborted) return { written, skipped, cancelled: true };
       throw e;
     }

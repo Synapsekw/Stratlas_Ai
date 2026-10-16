@@ -7,6 +7,7 @@ import {
   crsSidecar,
   exportLayers,
   exportPlan,
+  insideRef,
   isLocalFrame,
   layerFolderName,
   mainFile,
@@ -186,6 +187,25 @@ describe('layer files', () => {
     expect(info.files).toEqual([{ path: '../y.jpg', bytes: null }]);
     expect(info.extent).toBeNull();
     expect(info.importedAt).toBeNull();
+  });
+
+  it('rejects backslash escapes and reads a walk playback copy only inside the project', async () => {
+    expect(insideRef('a\\..\\..\\b')).toBe(false);
+    expect(insideRef('a/..\\..\\b')).toBe(false);
+    expect(insideRef('a/..foo.jpg')).toBe(true);
+    await writeFile(join(base, 'x.mp4'), 'outside');
+    const walk = {
+      kind: 'walk',
+      id: 'walk-w',
+      name: 'Walk',
+      visible: true,
+      record: { path: 'walks/w/walk.json' },
+      src: { path: '..\\..\\x.mp4' },
+      durationS: 3,
+    } as unknown as Layer;
+    const info = await readLayerInfo(root, m, walk, null);
+    expect(info.importedAt).toBeNull();
+    expect(info.mainFile).toBe('../../x.mp4');
   });
 
   it('truncates a long name without a trailing dot and keeps long twins apart', async () => {

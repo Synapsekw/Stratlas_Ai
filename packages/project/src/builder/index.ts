@@ -52,6 +52,7 @@ export {
   mainFile,
   readLayerInfo,
   refsInside,
+  within,
 } from './layerFiles';
 export { writeExportFolder, type ExportFolderOptions } from './exportFolder';
 export {

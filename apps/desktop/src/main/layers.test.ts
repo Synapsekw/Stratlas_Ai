@@ -95,6 +95,26 @@ describe('layer channels', () => {
     });
     expect((await t.call('layer:reveal', { projectId: 'p1', layerId: 'bad' })).ok).toBe(false);
     expect(reveal).not.toHaveBeenCalled();
+    const walk = {
+      kind: 'walk',
+      id: 'walk-w',
+      name: 'Walk',
+      visible: true,
+      record: { path: 'walks/w/walk.json' },
+      src: { path: '..\\..\\x.mp4' },
+      durationS: 3,
+    };
+    const dir2 = await writeProject(join(base, 'q'), { ...manifest, layers: [walk] }, {});
+    const t2 = collectHandlers((handle) => {
+      registerLayerIpc({
+        handle,
+        projects: { root: () => dir2, package: () => undefined },
+        reveal,
+        emit: vi.fn(),
+      });
+    });
+    expect((await t2.call('layer:reveal', { projectId: 'p1', layerId: 'walk-w' })).ok).toBe(false);
+    expect(reveal).not.toHaveBeenCalled();
     const rel = await t.call('layer:export', {
       projectId: 'p1',
       jobId: 'r',

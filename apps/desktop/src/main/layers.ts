@@ -54,6 +54,7 @@ export function registerLayerIpc(deps: LayerIpcDeps): { cancel(jobId: string): b
       if (!file || !o.l.insideRef(file)) return none;
       const path = join(o.root, ...file.split('/'));
       if (
+        !o.l.within(o.root, path) ||
         !(await stat(path).then(
           () => true,
           () => false,
