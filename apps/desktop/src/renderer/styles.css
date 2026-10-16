@@ -2444,6 +2444,8 @@ svg.flip {
 /* right panel */
 .right {
   grid-area: right;
+  /* the size the auto context shares are taken of (cqh in .rp-split.auto) */
+  container-type: size;
   background: var(--bg-1);
   border-inline-start: 1px solid var(--line-soft);
   display: flex;
@@ -2499,14 +2501,16 @@ svg.flip {
 .right .rp-split.auto[data-orientation] > .split-handle::before {
   content: none;
 }
+/* shares of the whole panel (cqh, .right is the size container), as before the split: the
+   cards above the split (telecom) count, or a tall context leaves its list no height */
 .rp-split.auto .ctx-wrap.tall {
-  flex: 0 1 62%;
+  flex: 0 1 62cqh;
 }
 .rp-split.auto .ctx-wrap.tall.vol {
-  flex: 0 1 80%;
+  flex: 0 1 80cqh;
 }
 .ws.road .rp-split.auto .ctx-wrap.tall {
-  flex: 0 1 72%;
+  flex: 0 1 72cqh;
 }
 .rp-split.auto > .split-pane > .agent {
   /* Keep the conversation usable while the context and telecom sections scroll above it. */
