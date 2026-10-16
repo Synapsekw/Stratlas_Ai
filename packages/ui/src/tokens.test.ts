@@ -44,6 +44,14 @@ describe('design tokens', () => {
     }
   });
 
+  it('gives warning text a still darker amber in the light theme with more contrast', () => {
+    const more = block(":root[data-theme='light'][data-contrast='more']");
+    expect(more.get('--warn-ink')).toBe('oklch(0.42 0.1 75)');
+    const ink = oklch(more.get('--warn-ink') ?? '');
+    for (const bg of ['--bg-0', '--bg-1', '--bg-2', '--bg-3'])
+      expect(contrast(ink, oklch(light.get(bg) ?? '')), bg).toBeGreaterThanOrEqual(6.5);
+  });
+
   it('gives warning text an amber that reads at 4.5:1 on every surface of both themes', () => {
     for (const theme of [dark, light]) {
       const ink = oklch(theme.get('--warn-ink') ?? '');
