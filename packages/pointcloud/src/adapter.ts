@@ -151,6 +151,11 @@ export function createPointcloudAdapter(
   const fetchJson = opts.fetchJson ?? defaultFetchJson;
   const originOf = opts.origin ?? projectOrigin;
   const cleanup = opts.cleanup ?? pointcloudCleanup;
+  // The newest create of each layer in a scene. The stage re-creates a layer whose definition
+  // changed (a new height offset), so two creates of one id can be in flight: a stale one that
+  // resolves late, or after the newer one was disposed, is dropped instead of drawn.
+  let seq = 0;
+  const latest = new WeakMap<SceneHandle, Map<string, number>>();
 
   const managerFor = (handle: SceneHandle): CloudManager => {
     let manager = managers.get(handle);
@@ -189,6 +194,14 @@ export function createPointcloudAdapter(
       let noisePath: string | null = null;
       const url = ctx.url(layer.src);
       const handle = ctx.scene;
+      const gen = ++seq;
+      let gens = latest.get(handle);
+      if (!gens) {
+        gens = new Map();
+        latest.set(handle, gens);
+      }
+      gens.set(layer.id, gen);
+      const newest = () => latest.get(handle)?.get(layer.id) === gen;
       if (layer.format === 'kit-packed') {
         chunks = [
           {
@@ -244,12 +257,19 @@ export function createPointcloudAdapter(
         throw new Error(`Point cloud format "${layer.format}" is not supported yet`);
       }
 
+      if (!newest()) {
+        const stale = managers.get(handle);
+        if (stale) release(handle, stale);
+        return { setVisible: () => undefined, dispose: () => undefined };
+      }
       const m = managerFor(handle);
       // png-packed clouds carry colour; COPC does in point formats 7 and 8
       const rgbHint =
         layer.format === 'png-packed' ||
         (copc !== null && copc.source.layout.pointDataRecordFormat !== 6);
-      m.addLayer(layer.id, chunks, baseSize, rgbHint, copc, scalar);
+      // the manager's state for this layer that this handle owns (a noise swap replaces it)
+      let own = m.addLayer(layer.id, chunks, baseSize, rgbHint, copc, scalar);
+      const owns = () => m.layers.get(layer.id) === own;
       if (!layer.visible) m.setVisible(layer.id, false);
       let shown = layer.visible;
       const framed = box;
@@ -269,10 +289,8 @@ export function createPointcloudAdapter(
         const origin = cloudFrameOrigin([...project], layer);
         const streams = (u: string) => m.layers.get(layer.id)?.copc?.url === u;
         const show = (r: LoadedCopc) => {
-          if (mine !== swap || disposed) return;
-          const tint = m.layers.get(layer.id)?.tint;
-          m.removeLayer(layer.id);
-          m.addLayer(layer.id, r.chunks, r.baseSize, rgbHint, r.copc, r.scalar, tint);
+          if (mine !== swap || disposed || !owns()) return;
+          own = m.addLayer(layer.id, r.chunks, r.baseSize, rgbHint, r.copc, r.scalar, own.tint);
           if (!shown) m.setVisible(layer.id, false);
         };
         const target = want ? ctx.url({ path: want }) : url;
@@ -299,14 +317,15 @@ export function createPointcloudAdapter(
       return {
         setVisible: (v) => {
           shown = v;
-          m.setVisible(layer.id, v);
+          if (owns()) m.setVisible(layer.id, v);
           (handle as Partial<{ contentUpdated(): void }>).contentUpdated?.();
         },
         dispose: () => {
           disposed = true;
           offNoise();
           unframe();
-          m.removeLayer(layer.id);
+          if (newest()) latest.get(handle)?.delete(layer.id);
+          if (owns()) m.removeLayer(layer.id);
           release(handle, m);
         },
       };

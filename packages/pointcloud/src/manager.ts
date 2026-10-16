@@ -275,6 +275,8 @@ export class CloudManager {
     /** Keep a colour the layer already had (the noise copy swap); default the next palette entry. */
     tint?: string,
   ) {
+    // a second add for the same id replaces the first, so its group is never left drawn untracked
+    this.removeLayer(id);
     const group = new Group();
     group.name = `pointcloud:${id}`;
     group.userData.layerId = id;

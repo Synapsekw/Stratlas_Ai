@@ -765,6 +765,87 @@ describe('COPC layers', () => {
     expect(l?.copc?.origin).toEqual([0, 64, -4]);
   });
 
+  /** A COPC decoder whose headers arrive only when the test releases them, in any order. */
+  function gatedCopc() {
+    const d = copcDecoder(rootOnly);
+    const gates: (() => void)[] = [];
+    d.decoder.copcSource = () =>
+      new Promise<CopcSource>((resolve) => {
+        gates.push(() => {
+          resolve(source);
+        });
+      });
+    const { handle } = fakeHandle();
+    const settings = createPointcloudSettings(null);
+    // EDL off: the clouds' groups live in the main scene
+    settings.getState().setEdl(false);
+    const adapter = createPointcloudAdapter({
+      decoder: () => d.decoder,
+      settings,
+      origin: () => [0, 64, 0],
+    });
+    const ctx: AdapterContext = {
+      scene: handle,
+      url: (r) => ('path' in r ? `aio://project/p/${r.path}` : 'x'),
+    };
+    /** Every cloud group drawn in the scene. */
+    const groups = () => {
+      const out: string[] = [];
+      handle.scene.traverse((o) => {
+        if (o.name.startsWith('pointcloud:')) out.push(o.name);
+      });
+      return out;
+    };
+    return { handle, adapter, ctx, gates, groups };
+  }
+
+  it('keeps one group, the newest, when two creates of a layer resolve out of order', async () => {
+    const { handle, adapter, ctx, gates, groups } = gatedCopc();
+    // the stage dropped the first (offset changed) and created the layer again
+    const older = adapter.create(copcLayer, ctx);
+    const newer = adapter.create({ ...copcLayer, heightOffsetM: 2.5 }, ctx);
+    await flush();
+    gates[1]?.();
+    const b = await newer;
+    gates[0]?.();
+    const a = await older;
+    a.dispose(); // the stage disposes the stale handle it no longer wants
+    expect(groups()).toEqual(['pointcloud:full']);
+    expect(getCloudManager(handle)?.layers.get('full')?.copc?.origin).toEqual([0, 64, -2.5]);
+    b.dispose();
+    expect(groups()).toEqual([]);
+    expect(getCloudManager(handle)).toBeUndefined();
+  });
+
+  it('adds nothing when a create resolves after the newer one was disposed', async () => {
+    const { handle, adapter, ctx, gates, groups } = gatedCopc();
+    const older = adapter.create(copcLayer, ctx);
+    const newer = adapter.create({ ...copcLayer, heightOffsetM: 1 }, ctx);
+    await flush();
+    gates[1]?.();
+    (await newer).dispose();
+    gates[0]?.();
+    const a = await older;
+    expect(groups()).toEqual([]);
+    expect(getCloudManager(handle)).toBeUndefined();
+    a.dispose();
+    expect(groups()).toEqual([]);
+  });
+
+  it('replaces, not duplicates, a layer the manager is given twice', async () => {
+    const { handle, layer } = await open(rootOnly, [32, 5000, 32]);
+    const m = getCloudManager(handle);
+    const first = m?.layers.get('full');
+    m?.addLayer('full', [], 1);
+    let n = 0;
+    m?.root.traverse((o) => {
+      if (o.name === 'pointcloud:full') n += 1;
+    });
+    expect(n).toBe(1);
+    expect(first?.group.parent).toBeNull();
+    layer.dispose();
+  });
+
   it('gives the low height of a streamed, shown cloud only', async () => {
     const { frame, handle, layer } = await open(rootOnly, [32, 5000, 32]);
     // not streamed yet: no samples
