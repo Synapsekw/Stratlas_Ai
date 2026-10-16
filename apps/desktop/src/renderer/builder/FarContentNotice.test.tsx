@@ -25,6 +25,7 @@ const { FarContentNotice } = await import('./FarContentNotice');
 const { farNotice } = await import('./farSession');
 const { registerKindActions } = await import('../shell/actions/kindActions');
 const { shell } = await import('../shell');
+const { toasts } = await import('../exports/exports');
 
 const manifest = {
   captures: [],
@@ -87,6 +88,20 @@ describe('FarContentNotice Align to', () => {
     expect(byId('align-to-ph')).toBeNull();
     act(() => byId('align-to-mesh')?.click());
     expect(align).toHaveBeenCalledWith({ layerIds: ['ph'] }, 'mesh');
+  });
+
+  it('a failed Align to says so in a toast', async () => {
+    align.mockImplementationOnce(() => Promise.reject(new Error('Disk full')));
+    farNotice.setState({ notice: notice(['ph']) });
+    mount();
+    act(() => byId('far-align-to')?.click());
+    act(() => byId('align-to-mesh')?.click());
+    await vi.waitFor(() => {
+      expect(toasts.getState().toasts.at(-1)).toMatchObject({
+        state: 'error',
+        message: 'Disk full',
+      });
+    });
   });
 
   it('has no button without photo layers', () => {

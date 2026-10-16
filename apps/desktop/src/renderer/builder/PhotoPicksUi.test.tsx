@@ -5,7 +5,10 @@ import { workspace } from '@aio/workspace';
 import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { t } from '@aio/ui';
+import { toasts } from '../exports/exports';
 import { PhotoPicksNotice } from '../exports/Toasts';
+import { alignTo } from './alignSession';
 import { shell } from '../shell';
 import { registerSidebarActions } from '../shell/actions';
 import { PhotoMenu } from './PhotoMenu';
@@ -130,6 +133,25 @@ describe('picked photos', () => {
     act(() => root?.render(<PhotoMenu />));
     rightClickA();
     expect(byId('photo-menu-alignTo')?.hasAttribute('disabled')).toBe(true);
+    expect(byId('photo-menu-alignTo')?.title).toBe(t('actions.reason.package'));
+  });
+
+  it('a failed Align to on the picks says so in a toast', async () => {
+    const align = vi
+      .spyOn(alignTo.getState(), 'alignTo')
+      .mockImplementationOnce(() => Promise.reject(new Error('Disk full')));
+    photoPicks.getState().add([a, b]);
+    act(() => root?.render(<PhotoMenu />));
+    rightClickA();
+    click(byId('photo-menu-alignTo'));
+    click(byId('align-to-m'));
+    await vi.waitFor(() => {
+      expect(toasts.getState().toasts.at(-1)).toMatchObject({
+        state: 'error',
+        message: 'Disk full',
+      });
+    });
+    align.mockRestore();
   });
 
   it('a photo that is not picked keeps its own menu, with Align to...', () => {

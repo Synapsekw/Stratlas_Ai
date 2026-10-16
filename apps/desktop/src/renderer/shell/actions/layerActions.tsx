@@ -1,4 +1,4 @@
-import type { Capture, Layer } from '@aio/schema';
+import type { Layer } from '@aio/schema';
 import {
   defineAction,
   EVERY_DATE,
@@ -30,6 +30,7 @@ import { layerProps } from '../LayerProperties';
 import { revealLayer } from '../layerInfo';
 import { askRemove } from '../removal';
 import { renameRequest } from '../renameRequest';
+import { dateLabel, inPackage, readOnly } from './reasons';
 
 type LayerTarget = Extract<MenuTarget, { kind: 'layers' | 'group' }>;
 
@@ -37,8 +38,11 @@ const editable = (l: Layer) => l.kind !== 'basemap' && l.kind !== 'legacy';
 
 const idsOf = (target: LayerTarget): string[] => target.layerIds;
 
-const dateLabel = (c: Capture): string =>
-  c.label !== c.date ? `${formatDate(c.date)} · ${c.label}` : formatDate(c.date);
+/** The rows Delete takes: datasets, not basemaps or retired viewers (as the marked header). */
+const deletableIds = (target: LayerTarget, ctx: ActionCtx): string[] =>
+  targetLayers(target, ctx)
+    .filter(editable)
+    .map((l) => l.id);
 
 /** Rename a dataset; a layer whose date comes from its name keeps that date first. */
 export async function commitLayerRename(layerId: string, name: string): Promise<string | null> {
@@ -129,11 +133,6 @@ function commonDate(target: LayerTarget, ctx: ActionCtx): string | undefined {
   const [only] = [...dates];
   return dates.size === 1 ? only : undefined;
 }
-
-const readOnly = (ctx: ActionCtx): string | false =>
-  ctx.canEdit ? false : t('actions.reason.readOnly');
-const inPackage = (ctx: ActionCtx): string | false =>
-  ctx.pkg ? t('actions.reason.package') : false;
 
 const shown = (id: string, ctx: ActionCtx): boolean => ctx.hidden[id] !== true;
 
@@ -324,16 +323,19 @@ export function registerLayerActions(): () => void {
     }),
     defineAction<'layers' | 'group'>({
       id: 'layer.delete',
-      label: 'tree.delete',
+      label: (target, ctx) =>
+        target.layerIds.length > 1
+          ? t('actions.layer.deleteCount', { count: deletableIds(target, ctx).length })
+          : t('tree.delete'),
       section: 'danger',
       targets: ['layers', 'group'],
       multi: true,
       testId: 'menu-delete',
       shortcut: 'tree.delete',
-      appliesTo: (target, ctx) => everyLayer(target, ctx, editable),
+      appliesTo: (target, ctx) => deletableIds(target, ctx).length > 0,
       disabled: (_t, ctx) => readOnly(ctx),
-      run: (target) => {
-        askRemove(idsOf(target).map((layer) => ({ layer })));
+      run: (target, ctx) => {
+        askRemove(deletableIds(target, ctx).map((layer) => ({ layer })));
       },
     }),
   ]);

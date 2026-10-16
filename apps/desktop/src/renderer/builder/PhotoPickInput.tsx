@@ -1,7 +1,6 @@
 import type { SceneHandle } from '@aio/engine';
 import { correctPos, photoCorrection } from '@aio/geo';
-import { MAP_INK } from '@aio/maps';
-import type { Map as MapLibreMap } from 'maplibre-gl';
+import { MAP_INK, type MapController } from '@aio/maps';
 import type { Layer } from '@aio/schema';
 import type { PhotoPick } from '@aio/ui';
 import { workspace } from '@aio/workspace';
@@ -13,6 +12,7 @@ import { CLICK_PX, photosAt3d, useMap, useScene } from './PhotoMenu';
 import './photoBand.css';
 
 type PhotosLayer = Extract<Layer, { kind: 'photos' }>;
+type MapLibreMap = MapController['map'];
 interface Rect {
   x0: number;
   y0: number;

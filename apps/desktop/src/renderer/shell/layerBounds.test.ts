@@ -1,4 +1,4 @@
-import { emptyOrientation, type ProjectManifest } from '@aio/schema';
+import { emptyOrientation, type Layer, type ProjectManifest } from '@aio/schema';
 import { describe, expect, it, vi } from 'vitest';
 import {
   boundsOf,
@@ -119,6 +119,17 @@ describe('layerBounds', () => {
     expect(await groundAt(0, 0, deps())).toBe(4);
     expect(await groundAt(500, 0, deps())).toBeNull();
     expect(await groundAt(0, 0, deps({ rayDown: () => null }))).toBeNull();
+  });
+
+  it('a walk knows where it lies once its path is placed, not from pins alone', () => {
+    const walk = (o: object) =>
+      ({ kind: 'walk', id: 'w', name: 'W', visible: true, ...o }) as unknown as Layer;
+    expect(knowsWhere(walk({ place: { pins: [{}, {}], quality: 'good' } }))).toBe(false);
+    expect(
+      knowsWhere(
+        walk({ place: { pins: [{}, {}] }, flight: { src: { path: 'f' }, startUtcMs: 1 } }),
+      ),
+    ).toBe(true);
   });
 
   it('casts the ground ray against the DSM layer only', async () => {

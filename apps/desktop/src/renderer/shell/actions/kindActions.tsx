@@ -6,7 +6,6 @@ import {
   defineAction,
   everyLayer,
   flightGroups,
-  formatDate,
   isDrawingPlanLayer,
   registerActions,
   t,
@@ -37,6 +36,7 @@ import { flightPathShown, toggleFlightPath } from '../../workspace/flightPaths';
 import { flightPathModel, updateFlightPaths } from '../../workspace/pathModel';
 import { stagePrefs } from '../../workspace/stagePrefs';
 import { knowsWhere } from '../layerBounds';
+import { dateLabel, editBlocked } from './reasons';
 
 type Panoramas = Extract<Layer, { kind: 'panoramas' }>;
 type Walk = Extract<Layer, { kind: 'walk' }>;
@@ -56,10 +56,6 @@ function oneOf<K extends Layer['kind']>(
   const l = only(tg, ctx);
   return l?.kind === kind ? (l as Extract<Layer, { kind: K }>) : null;
 }
-
-/** Why an action that writes the project cannot run now, or false. */
-const editBlock = (ctx: ActionCtx): string | false =>
-  ctx.pkg ? t('actions.reason.package') : ctx.canEdit ? false : t('actions.reason.readOnly');
 
 /** A walk with a saved placement (two pins or more, not marked unplaced). */
 const walkPlaced = (w: Walk): boolean =>
@@ -94,11 +90,7 @@ export function alignTargets(ctx: ActionCtx, exclude: ReadonlySet<string>): SubI
   return rows.map(({ l, c }) => ({
     id: l.id,
     label: l.name,
-    group: c
-      ? c.label !== c.date
-        ? `${formatDate(c.date)} · ${c.label}`
-        : formatDate(c.date)
-      : t('actions.noDate'),
+    group: c ? dateLabel(c) : t('actions.noDate'),
     testId: `align-to-${l.id}`,
   }));
 }
@@ -157,7 +149,7 @@ const actions: readonly Action[] = [
       if (m) pointcloudSettings.getState().setColourMode(m.id);
     },
   }),
-  // point cloud cleanup (the records of pointcloud/cleanupActions.ts)
+  // point cloud cleanup: open the panel, at its noise or save section (pointcloud/cleanupActions.ts)
   ...(
     [
       { id: 'pointcloud.cleanup', label: 'cleanup.menu.open', section: undefined },
@@ -175,7 +167,7 @@ const actions: readonly Action[] = [
         const l = only(tg, ctx);
         return l !== null && isCleanable(l);
       },
-      disabled: (_tg, ctx) => (c.section === undefined ? false : editBlock(ctx)),
+      disabled: (_tg, ctx) => (c.section === undefined ? false : editBlocked(ctx)),
       run: (tg, ctx) => {
         const l = only(tg, ctx);
         if (l) cleanupActionContext.openPanel(l.id, c.section);
@@ -194,7 +186,7 @@ const actions: readonly Action[] = [
         l !== null && isCleanable(l) && Boolean(cleanup.store.getState().layers[l.id]?.present)
       );
     },
-    disabled: (_tg, ctx) => editBlock(ctx),
+    disabled: (_tg, ctx) => editBlocked(ctx),
     run: async (tg, ctx) => {
       const l = only(tg, ctx);
       if (l) await cleanupActionContext.reset(l.id);
@@ -207,7 +199,7 @@ const actions: readonly Action[] = [
     section: 'edit',
     targets: ['layers'],
     appliesTo: (tg, ctx) => oneOf(tg, ctx, 'mesh') !== null,
-    disabled: (_tg, ctx) => editBlock(ctx),
+    disabled: (_tg, ctx) => editBlocked(ctx),
     run: (tg, ctx) => {
       const l = only(tg, ctx);
       if (l) builder.getState().startAlign({ kind: 'mesh', layerId: l.id });
@@ -221,7 +213,7 @@ const actions: readonly Action[] = [
     targets: ['layers'],
     testId: 'menu-place-model',
     appliesTo: (tg, ctx) => oneOf(tg, ctx, 'mesh') !== null,
-    disabled: (_tg, ctx) => editBlock(ctx),
+    disabled: (_tg, ctx) => editBlocked(ctx),
     run: (tg, ctx) => {
       const l = only(tg, ctx);
       if (l) builder.getState().startAlign({ kind: 'place', layerId: l.id });
@@ -238,7 +230,7 @@ const actions: readonly Action[] = [
       const l = only(tg, ctx);
       return engineeringUiOn() && l !== null && ENGINEERING_SOURCES.includes(l.kind);
     },
-    disabled: (_tg, ctx) => editBlock(ctx),
+    disabled: (_tg, ctx) => editBlocked(ctx),
     run: (tg, ctx) => {
       const l = only(tg, ctx);
       if (l) createEngineeringModel([l.id]);
@@ -288,7 +280,7 @@ const actions: readonly Action[] = [
       const l = only(tg, ctx);
       return l !== null && isDrawingPlanLayer(l) && drawings.getState().placed[l.id] !== undefined;
     },
-    disabled: (_tg, ctx) => editBlock(ctx),
+    disabled: (_tg, ctx) => editBlocked(ctx),
     run: (tg, ctx) => {
       const l = only(tg, ctx);
       if (l) startPlacing(l.id);
@@ -340,7 +332,7 @@ const actions: readonly Action[] = [
     section: 'edit',
     targets: ['layers'],
     appliesTo: (tg, ctx) => oneOf(tg, ctx, 'walk') !== null,
-    disabled: (_tg, ctx) => editBlock(ctx),
+    disabled: (_tg, ctx) => editBlocked(ctx),
     run: (tg, ctx) => {
       const l = only(tg, ctx);
       if (l) placeWalk(l.id);
@@ -355,7 +347,7 @@ const actions: readonly Action[] = [
       const w = oneOf(tg, ctx, 'walk');
       return w !== null && walkPlaced(w);
     },
-    disabled: (_tg, ctx) => editBlock(ctx),
+    disabled: (_tg, ctx) => editBlocked(ctx),
     run: (tg, ctx) => {
       const l = only(tg, ctx);
       if (l) ctx.host.askUnplace(l.id);
@@ -368,7 +360,7 @@ const actions: readonly Action[] = [
     section: 'edit',
     targets: ['layers'],
     appliesTo: (tg, ctx) => oneOf(tg, ctx, 'video') !== null,
-    disabled: (_tg, ctx) => editBlock(ctx),
+    disabled: (_tg, ctx) => editBlocked(ctx),
     run: (tg, ctx) => {
       const l = only(tg, ctx);
       if (l) builder.getState().startAlign({ kind: 'video', layerId: l.id });
@@ -380,7 +372,7 @@ const actions: readonly Action[] = [
     section: 'edit',
     targets: ['layers'],
     appliesTo: (tg, ctx) => oneOf(tg, ctx, 'video') !== null,
-    disabled: (_tg, ctx) => editBlock(ctx),
+    disabled: (_tg, ctx) => editBlocked(ctx),
     run: (tg, ctx) => {
       const l = only(tg, ctx);
       if (l) alignCamera.getState().start(l.id);
@@ -413,7 +405,7 @@ const actions: readonly Action[] = [
     present: 'submenu',
     appliesTo: (tg, ctx) => photosOnly(tg, ctx),
     disabled: (tg, ctx) => {
-      const block = editBlock(ctx);
+      const block = editBlocked(ctx);
       if (block) return block;
       const hasPos = alignSources(ctx.manifest, null, alignSource(tg)).some(
         (s) => s.pos !== undefined,
@@ -443,7 +435,7 @@ const actions: readonly Action[] = [
     section: 'file',
     targets: ['layers'],
     appliesTo: (tg, ctx) => oneOf(tg, ctx, 'photos') !== null,
-    disabled: (_tg, ctx) => editBlock(ctx),
+    disabled: (_tg, ctx) => editBlocked(ctx),
     run: () => {
       photoUi.getState().openWizard();
     },
@@ -494,7 +486,7 @@ const actions: readonly Action[] = [
         targetLayers(tg, ctx).some((l) => l.kind === 'panoramas' && stitchable(l, root).length > 0)
       );
     },
-    disabled: (_tg, ctx) => editBlock(ctx),
+    disabled: (_tg, ctx) => editBlocked(ctx),
     run: async (tg, ctx) => {
       const root = workspace.getState().project?.root;
       if (root === undefined) return;

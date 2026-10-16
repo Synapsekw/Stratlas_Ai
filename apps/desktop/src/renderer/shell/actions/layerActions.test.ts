@@ -95,7 +95,19 @@ describe('dataset actions', () => {
   });
 
   it('a basemap among the marked rows drops the actions it cannot take part in', () => {
-    expect(items(['v', 'bm']).map((i) => i.id)).toEqual(['layer.hide']);
+    expect(items(['v', 'bm']).map((i) => i.id)).toEqual(['layer.hide', 'layer.delete']);
+  });
+
+  it('Delete on marked rows counts and deletes only the deletable ones, like the header', () => {
+    vi.mocked(askRemove).mockClear();
+    const del = items(['v', 'bm']).find((i) => i.id === 'layer.delete');
+    expect(del?.label).toBe('Delete 1 dataset…');
+    expect(items(['v', 'quad-sep']).find((i) => i.id === 'layer.delete')?.label).toBe(
+      'Delete 2 datasets…',
+    );
+    expect(items(['v']).find((i) => i.id === 'layer.delete')?.label).toBe('Delete…');
+    del?.run();
+    expect(askRemove).toHaveBeenCalledWith([{ layer: 'v' }]);
   });
 
   it('a package greys Export and Reveal, a read-only project greys Delete and File under', () => {

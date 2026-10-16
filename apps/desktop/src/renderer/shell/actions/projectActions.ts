@@ -18,13 +18,7 @@ import { pickAndScanPanos } from '../../panos/panos';
 import { shell } from '../../shell';
 import { addDateMenu } from '../AddSurveyDate';
 import { layerProps } from '../LayerProperties';
-
-/** Why a change to the project is greyed (a package, a reviewer who may only look), or false. */
-export function editBlocked(ctx: ActionCtx): string | false {
-  if (ctx.pkg) return t('actions.reason.package');
-  if (!ctx.canEdit) return t('actions.reason.readOnly');
-  return false;
-}
+import { editBlocked } from './reasons';
 
 /** The layers the show and hide all items count: everything but the retired viewers. */
 function datasetIds(ctx: ActionCtx): string[] {

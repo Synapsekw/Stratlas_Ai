@@ -2,7 +2,10 @@ import { workspace } from '@aio/workspace';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { appBoundsDeps, setFileExtentSource } from './appBounds';
 
-const { scene } = vi.hoisted(() => ({ scene: { current: null } }));
+const { scene } = vi.hoisted(() => {
+  const held: { current: object | null } = { current: null };
+  return { scene: held };
+});
 vi.mock('@aio/engine', async (importOriginal) => ({
   ...(await importOriginal<Record<string, unknown>>()),
   getActiveScene: () => scene.current,

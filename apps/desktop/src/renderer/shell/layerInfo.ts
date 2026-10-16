@@ -5,15 +5,19 @@ import { bridge } from '../shell';
 import { setFileExtentSource } from './appBounds';
 
 let cache = new Map<string, Promise<LayerInfo | null>>();
-let cachedFor: unknown = null;
+let cachedFor: { manifest: unknown; orientation: unknown } | null = null;
 
-/** `layer:info` for a dataset of the open project, kept until the manifest changes. */
+/**
+ * `layer:info` for a dataset of the open project, kept until the manifest or the photo corrections
+ * change (an Align to moves a photo set's extent without touching the manifest).
+ */
 export function readLayerInfo(layerId: string): Promise<LayerInfo | null> {
-  const p = workspace.getState().project;
+  const ws = workspace.getState();
+  const p = ws.project;
   if (!p) return Promise.resolve(null);
-  if (cachedFor !== p.manifest) {
+  if (cachedFor?.manifest !== p.manifest || cachedFor.orientation !== ws.orientation) {
     cache = new Map();
-    cachedFor = p.manifest;
+    cachedFor = { manifest: p.manifest, orientation: ws.orientation };
   }
   const hit = cache.get(layerId);
   if (hit) return hit;

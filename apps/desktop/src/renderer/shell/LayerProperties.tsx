@@ -2,12 +2,15 @@ import { useAnnotateReadOnly } from '@aio/annotate';
 import { localToProject, toWgs84 } from '@aio/geo';
 import type { LayerInfo } from '@aio/schema';
 import { Icon, formatBytes, formatCount, formatDate, useFocusTrap, useT } from '@aio/ui';
-import { useWorkspace } from '@aio/workspace';
+import { volumetric } from '@aio/volumetric';
+import { captureIndex, useWorkspace } from '@aio/workspace';
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import { useStore } from 'zustand';
 import { createStore } from 'zustand/vanilla';
 import { useShell } from '../shell';
+import { volumeHints } from '../workspace/compare';
+import { layerCapture } from '../workspace/framesModel';
 import { readLayerInfo, revealLayer } from './layerInfo';
 import { renameRequest } from './renameRequest';
 
@@ -91,9 +94,11 @@ function PropsDialog({ open }: { open: NonNullable<Open> }) {
   if (!project || gone) return null;
   const manifest = project.manifest;
   const layer = layerId ? manifest.layers.find((l) => l.id === layerId) : undefined;
-  const capture = layer?.capture
-    ? manifest.captures.find((c) => c.id === layer.capture)
+  // the date the tree files it under: its own, else the one its name (or the volumes file) carries
+  const captureId = layer
+    ? layerCapture(layer, captureIndex(manifest, volumeHints(volumetric.getState())))
     : undefined;
+  const capture = manifest.captures.find((c) => c.id === captureId);
   const title =
     open.kind === 'project'
       ? t('layerProps.projectTitle')

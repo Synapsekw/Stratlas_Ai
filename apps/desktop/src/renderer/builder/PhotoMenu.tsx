@@ -20,6 +20,8 @@ import { useCallback, useEffect, useRef, useState, type KeyboardEvent } from 're
 import { createPortal } from 'react-dom';
 import { Quaternion, Vector3, type InstancedMesh } from 'three';
 import { useShell } from '../shell';
+import { editBlocked } from '../shell/actions/reasons';
+import { toastHost } from '../shell/actions/toastHost';
 import { chooseSide, type SplitPref } from '../workspace/splitModel';
 import { stagePrefs } from '../workspace/stagePrefs';
 import { photoAlign, usePhotoAlign } from './alignSession';
@@ -269,6 +271,7 @@ export function PhotoMenu() {
             manifest: project.manifest,
             canEdit: !pkg && !lookOnly,
             pkg: !!pkg,
+            host: toastHost(t('align.to.notice')),
           }),
         )}
         x={alignAt.x}
@@ -297,6 +300,7 @@ export function PhotoMenu() {
   };
 
   const photoIdsOf = (id: string): PhotoPick => ({ layerId: menu.layerId, photoId: id });
+  const alignBlocked = editBlocked({ pkg: !!pkg, canEdit: !pkg && !lookOnly });
   const pickedHere =
     menu.photoIds.length === 1 &&
     picks.length > 1 &&
@@ -321,7 +325,8 @@ export function PhotoMenu() {
           role="menuitem"
           className="dmenu-item primary"
           data-testid="photo-menu-alignTo"
-          disabled={!!pkg || lookOnly}
+          disabled={alignBlocked !== false}
+          title={alignBlocked || undefined}
           onClick={() => {
             setMenu(null);
             setAlignAt({ x: menu.x, y: menu.y, picks: [...picks] });

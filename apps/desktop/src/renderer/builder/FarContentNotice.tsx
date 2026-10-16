@@ -3,6 +3,7 @@ import { ContextMenu, Icon, actionsFor, makeActionCtx, t } from '@aio/ui';
 import { useWorkspace } from '@aio/workspace';
 import { useState } from 'react';
 import { useShell } from '../shell';
+import { toastHost } from '../shell/actions/toastHost';
 import { farNotice, useFarNotice } from './farSession';
 
 const ALIGN_TO = 'photos.alignTo';
@@ -23,7 +24,12 @@ export function FarContentNotice() {
     at && manifest
       ? actionsFor(
           { kind: 'layers', layerIds: n.photoLayers },
-          makeActionCtx({ manifest, pkg: pkg !== null, canEdit: !lookOnly && pkg === null }),
+          makeActionCtx({
+            manifest,
+            pkg: pkg !== null,
+            canEdit: !lookOnly && pkg === null,
+            host: toastHost(t('align.to.notice')),
+          }),
         ).filter((i) => i.id === ALIGN_TO)
       : [];
   return (

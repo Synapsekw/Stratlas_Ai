@@ -55,7 +55,8 @@ export function knowsWhere(l: Layer): boolean {
     case 'photos':
       return l.items.some((p) => p.pos !== undefined);
     case 'walk':
-      return (l.place?.pins.length ?? 0) > 0;
+      // pins alone are no place: the fitted path (`flight`) is written once a placement is saved
+      return l.flight !== undefined;
     default:
       return false;
   }

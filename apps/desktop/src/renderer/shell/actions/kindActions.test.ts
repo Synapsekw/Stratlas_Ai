@@ -146,7 +146,7 @@ describe('actions per kind', () => {
     expect(a?.sub.map((s) => [s.id, s.group])).toEqual([
       ['cloud', `${formatDate('2026-10-01')} · After rain`],
       ['mesh', formatDate('2026-09-01')],
-      ['walk', 'No date'],
+      // the walk has pins but no fitted path: where it lies is not known yet
       ['panos', 'No date'],
     ]);
     expect(a?.sub.map((s) => s.id)).not.toContain('setA');

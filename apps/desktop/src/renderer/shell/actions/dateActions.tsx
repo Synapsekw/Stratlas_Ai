@@ -1,6 +1,5 @@
 import type { Capture } from '@aio/schema';
 import {
-  actionsFor,
   DATE_ICONS,
   defineAction,
   EVERY_DATE,
@@ -23,14 +22,8 @@ import {
 } from '../../workspace/compareWith';
 import { updateCapture } from '../dateFolders';
 import { askRemove } from '../removal';
-import { boundsOf, padBox } from '../layerBounds';
-import { appBoundsDeps } from '../appBounds';
-import { compareContextFor } from './layerActions';
-import { editBlocked } from './projectActions';
-
-function dateLabel(c: Capture): string {
-  return c.label !== c.date ? `${formatDate(c.date)} · ${c.label}` : formatDate(c.date);
-}
+import { compareContextFor, exportLayersFlow, zoomToLayers } from './layerActions';
+import { dateLabel, editBlocked, inPackage } from './reasons';
 
 /** The capture a date target names, or undefined on Every date. */
 function captureOf(captureId: string | null, ctx: ActionCtx): Capture | undefined {
@@ -40,6 +33,15 @@ function captureOf(captureId: string | null, ctx: ActionCtx): Capture | undefine
 /** The layer ids of the folder a date target names (Every date: the shared folder). */
 function layersOf(captureId: string | null, ctx: ActionCtx): readonly string[] {
   return ctx.folderLayers[captureId ?? EVERY_DATE] ?? [];
+}
+
+/** The folder's datasets that have files and a place (no basemap, no retired viewer). */
+function datasetsOf(captureId: string | null, ctx: ActionCtx): string[] {
+  const kinds = new Map(ctx.manifest.layers.map((l) => [l.id, l.kind]));
+  return layersOf(captureId, ctx).filter((id) => {
+    const k = kinds.get(id);
+    return k !== 'basemap' && k !== 'legacy';
+  });
 }
 
 /** Say what a failed save returned. */
@@ -137,13 +139,17 @@ const dateItems: Action[] = [
     },
   }),
   onCapture('date.zoomTo', 'actions.date.zoomTo', 'target', 'view', undefined, async (id, ctx) => {
-    const box = await boundsOf(layersOf(id, ctx), appBoundsDeps());
-    const capture = captureOf(id, ctx);
-    if (box) workspace.getState().flyTo({ kind: 'box', ...padBox(box) });
-    else
+    const ids = datasetsOf(id, ctx);
+    if (ids.length === 0) {
+      const capture = captureOf(id, ctx);
       ctx.host.note(
         t('actions.reason.noBounds', { name: capture ? formatDate(capture.date) : id }),
       );
+      return;
+    }
+    await zoomToLayers(ids, (text) => {
+      ctx.host.note(text);
+    });
   }),
   defineAction({
     id: 'date.compare',
@@ -282,15 +288,9 @@ const dateItems: Action[] = [
     section: 'file',
     targets: ['date'],
     appliesTo: (d, ctx) =>
-      captureOf(d.captureId, ctx) !== undefined && layersOf(d.captureId, ctx).length > 0,
-    disabled: (_d, ctx) => (ctx.pkg ? t('actions.reason.package') : false),
-    run: (d, ctx) => {
-      // Task 16 registers layer.export; the date runs it on the folder's layers
-      const layerIds = [...layersOf(d.captureId, ctx)];
-      actionsFor({ kind: 'layers', layerIds }, ctx)
-        .find((i) => i.id === 'layer.export')
-        ?.run();
-    },
+      captureOf(d.captureId, ctx) !== undefined && datasetsOf(d.captureId, ctx).length > 0,
+    disabled: (_d, ctx) => inPackage(ctx),
+    run: (d, ctx) => exportLayersFlow(datasetsOf(d.captureId, ctx)),
   }),
   onCapture(
     'date.delete',

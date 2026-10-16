@@ -1,9 +1,12 @@
 // @vitest-environment jsdom
+import { emptyOrientation } from '@aio/schema';
+import { formatDate } from '@aio/ui';
 import { workspace } from '@aio/workspace';
 import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { LayerProperties, layerProps } from './LayerProperties';
+import { readLayerInfo } from './layerInfo';
 import { renameRequest } from './renameRequest';
 
 const shellPkg = vi.hoisted(() => ({ value: null as object | null }));
@@ -167,6 +170,34 @@ describe('LayerProperties', () => {
     await openM();
     expect(call).toHaveBeenCalledTimes(2);
     expect(text()).toContain('models/m.glb');
+  });
+
+  it('reads the files again once the photo corrections change (an Align to moved a set)', async () => {
+    await readLayerInfo('m');
+    await readLayerInfo('m');
+    expect(call).toHaveBeenCalledTimes(1);
+    workspace.setState({ orientation: emptyOrientation() });
+    await readLayerInfo('m');
+    expect(call).toHaveBeenCalledTimes(2);
+  });
+
+  it('shows the survey date the tree infers from the name', async () => {
+    const p = workspace.getState().project;
+    if (!p) throw new Error('no project');
+    const [m] = p.manifest.layers;
+    workspace.setState({
+      project: {
+        ...p,
+        manifest: {
+          ...p.manifest,
+          captures: [...p.manifest.captures, { id: 'c2', label: 'c2', date: '2026-04-01' }],
+          layers: [{ ...m, capture: undefined, name: 'Model 2026-03-02' }],
+        },
+      },
+    } as unknown as Partial<ReturnType<typeof workspace.getState>>);
+    await openM();
+    const dt = [...document.querySelectorAll('dt')].find((e) => e.textContent === 'Survey date');
+    expect(dt?.nextElementSibling?.textContent).toBe(formatDate('2026-03-02'));
   });
 
   it('hides Extent and Centre when the extent is null', async () => {

@@ -7,12 +7,18 @@ import { builder } from '../../builder/state';
 import { askRemove } from '../removal';
 import { updateCapture } from '../dateFolders';
 import { registerDateActions } from './dateActions';
+import { exportLayersFlow, zoomToLayers } from './layerActions';
 
 vi.mock('../dateFolders', () => ({
   updateCapture: vi.fn(() => Promise.resolve(null)),
   moveLayersToDate: vi.fn(),
 }));
 vi.mock('../removal', () => ({ askRemove: vi.fn() }));
+vi.mock('./layerActions', async (importOriginal) => ({
+  ...(await importOriginal<Record<string, unknown>>()),
+  zoomToLayers: vi.fn(() => Promise.resolve()),
+  exportLayersFlow: vi.fn(() => Promise.resolve()),
+}));
 vi.mock('../../workspace/compareWith', () => ({
   COMPARE_WITH_ACTIONS: [],
   compareWith: vi.fn(() => true),
@@ -182,5 +188,22 @@ describe('date actions', () => {
       expect(pick).toHaveBeenCalledOnce();
     });
     pick.mockRestore();
+  });
+
+  it('Zoom to and Export run the dataset flows on the folder, basemaps left out', async () => {
+    const withLayers = {
+      captures,
+      layers: [
+        { kind: 'mesh', id: 'a', name: 'A', visible: true },
+        { kind: 'basemap', id: 'b', name: 'Streets', visible: true },
+      ],
+    } as unknown as ProjectManifest;
+    const list = items('sep', { manifest: withLayers });
+    list.find((i) => i.id === 'date.zoomTo')?.run();
+    list.find((i) => i.id === 'date.export')?.run();
+    await vi.waitFor(() => {
+      expect(zoomToLayers).toHaveBeenCalledWith(['a'], expect.any(Function));
+      expect(exportLayersFlow).toHaveBeenCalledWith(['a']);
+    });
   });
 });
