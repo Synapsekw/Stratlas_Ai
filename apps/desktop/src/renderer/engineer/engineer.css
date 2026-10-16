@@ -154,10 +154,8 @@
 .eng-run {
   width: 340px;
   right: auto;
-  left: calc(var(--sb-w) + 16px);
-}
-.app[data-sb='collapsed'] .eng-run {
-  left: calc(var(--sb-w-c) + 16px);
+  /* --sb-col: the sidebar's live column on .app, as dragged, or the rail when folded */
+  left: calc(var(--sb-col) + 16px);
 }
 .eng-run .sec p {
   margin: 0;
