@@ -12,6 +12,7 @@ import {
   bookmarks,
   FAMILY_LABELS,
   industryTemplates,
+  isTelecomTool,
   parseBearing,
   templateLibrary,
   TOOL_FAMILY,
@@ -51,6 +52,7 @@ import {
   setSurface,
   startTool,
   stopTool,
+  stopEditing,
   useMeasure,
 } from './measureStore';
 import { TemplateEditor } from './TemplateEditor';
@@ -352,11 +354,16 @@ export function MeasureMount({ stage }: { stage: EngineStage | null }) {
 export function MeasureLayer({ stage }: { stage: EngineStage | null }) {
   const project = useWorkspace((s) => s.project);
   const projectId = project?.id ?? null;
+  const stageMode = useShell((s) => s.stageMode);
+  const annotating = useShell((s) => s.annotating);
+  const pkg = useShell((s) => s.pkg);
   const manifest = project?.manifest ?? null;
   const map = useActiveMap();
   const frame = useMemo(() => (manifest ? frameOf(manifest) : null), [manifest]);
   const listOpen = useMeasure((s) => s.listOpen);
   const focus = useMeasure((s) => s.focus);
+  const focusTool = useMeasure((s) => s.file.measurements.find((m) => m.id === s.focus)?.tool);
+  const activeTool = useMeasure((s) => s.tool?.tool);
   const dialog = useMeasure((s) => s.dialog);
   const overlaysOpen = useOverlays((s) => s.open);
   useOverlaysLoad();
@@ -395,14 +402,29 @@ export function MeasureLayer({ stage }: { stage: EngineStage | null }) {
     stopTool();
   }, [projectId]);
 
+  useEffect(() => {
+    if (
+      (stageMode === 'map' || annotating || pkg || !stage) &&
+      activeTool &&
+      isTelecomTool(activeTool)
+    )
+      stopTool();
+    if (
+      (stageMode === 'map' || annotating || pkg || !stage) &&
+      focusTool &&
+      isTelecomTool(focusTool)
+    )
+      stopEditing();
+  }, [stageMode, annotating, pkg, stage, activeTool, focusTool]);
+
   if (!projectId) return null;
   return createPortal(
     <>
       <DrawBar />
-      {(listOpen || focus) && (
+      {(listOpen || (focus && focusTool && !isTelecomTool(focusTool))) && (
         <aside className="sv-side" aria-label="Survey measurements" data-testid="survey-side">
           {listOpen && <MeasurementList stage={stage} />}
-          {focus && <MeasurementPanel />}
+          {focus && focusTool && !isTelecomTool(focusTool) && <MeasurementPanel />}
           <BulkTotals />
         </aside>
       )}
@@ -426,6 +448,7 @@ function DrawBar() {
   const dirty = useMeasure(isDirty);
   const saving = useMeasure((s) => s.saving);
   const editing = useMeasure((s) => s.editing !== null);
+  const focusTool = useMeasure((s) => s.file.measurements.find((m) => m.id === s.focus)?.tool);
   const [, setTick] = useState(0);
   if (!tool || !draw) {
     if (!dirty && !editing) return null;
@@ -437,9 +460,11 @@ function DrawBar() {
         data-surface="dark"
       >
         <span className="small">
-          {editing
-            ? 'Editing vertices: drag, Alt+click deletes, the blue dots insert.'
-            : 'Unsaved measurement changes.'}
+          {editing && focusTool && isTelecomTool(focusTool)
+            ? 'Editing endpoints: drag a point. Vertex count stays fixed.'
+            : editing
+              ? 'Editing vertices: drag, Alt+click deletes, the blue dots insert.'
+              : 'Unsaved measurement changes.'}
         </span>
         {dirty && (
           <button
@@ -457,6 +482,7 @@ function DrawBar() {
       </div>
     );
   }
+  if (isTelecomTool(tool.tool)) return null;
   const bearing = parseBearing(draw.typing.bearing);
   const env = { distanceUnit: units.distance };
   return (

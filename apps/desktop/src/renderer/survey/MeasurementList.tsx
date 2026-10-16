@@ -31,6 +31,7 @@ import {
   setAutosave,
   setFolder,
   setListOpen,
+  setMeasurementsVisible,
   toggleSelected,
   useMeasure,
 } from './measureStore';
@@ -44,6 +45,7 @@ const SORTS: { v: MeasurementSort; t: string }[] = [
 
 export function MeasurementList({ stage }: { stage: EngineStage | null }) {
   const file = useMeasure((s) => s.file);
+  const measurementsVisible = useMeasure((s) => s.measurementsVisible);
   const templates = useMeasure((s) => s.templates);
   const settings = useMeasure((s) => s.settings);
   const selected = useMeasure((s) => s.selected);
@@ -113,6 +115,41 @@ export function MeasurementList({ stage }: { stage: EngineStage | null }) {
           <Icon name="x" size={14} />
         </button>
       </header>
+      <div
+        className="sv-row sv-wrap"
+        role="group"
+        aria-label="Measurement visibility"
+        onKeyDown={(event) => {
+          // Let Space activate these controls instead of the app's playback shortcut.
+          if (event.key === ' ') event.stopPropagation();
+        }}
+      >
+        <button
+          type="button"
+          className="btn sm"
+          data-testid="survey-show-all"
+          disabled={measurementsVisible || file.measurements.length === 0}
+          onClick={() => {
+            setMeasurementsVisible(true);
+          }}
+        >
+          Show all
+        </button>
+        <button
+          type="button"
+          className="btn sm"
+          data-testid="survey-hide-all"
+          disabled={!measurementsVisible || file.measurements.length === 0}
+          onClick={() => {
+            setMeasurementsVisible(false);
+          }}
+        >
+          Hide all
+        </button>
+        <span className="small faint">
+          {measurementsVisible ? 'Shown in active surveys' : 'Hidden in views'}
+        </span>
+      </div>
       {status === 'error' && (
         <p className="notice danger small" role="alert">
           <Icon name="warn" size={14} />

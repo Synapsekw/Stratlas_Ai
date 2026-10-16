@@ -15,6 +15,7 @@ import {
   TOOL_LABELS,
   vertexTable,
   formatBearing,
+  isTelecomTool,
   type RolePicks,
 } from '@aio/survey';
 import { Icon } from '@aio/ui';
@@ -69,7 +70,9 @@ export function MeasurementPanel() {
   }, [m, surface, tpl]);
 
   if (!m || !focus) return null;
-  const family = all.filter((t) => t.family === m.family);
+  const family = all.filter(
+    (t) => t.family === m.family && (!isTelecomTool(t.tool) || t.tool === m.tool),
+  );
   const ro = readOnly;
   const setStyle = (patch: Partial<MeasurementStyle>) => {
     patchMeasurement(m.id, { style: { color: MEASURE_COLOR, ...(m.style ?? {}), ...patch } });
@@ -543,7 +546,7 @@ function VertexRow({
       {order === 'ENZ' ? cell(1) : cell(0)}
       {cell(2)}
       <td>
-        {!ro && (
+        {!ro && !isTelecomTool(m.tool) && (
           <button
             type="button"
             className="btn ghost sm"

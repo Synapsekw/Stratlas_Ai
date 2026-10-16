@@ -17,6 +17,8 @@ import {
   measurementReadout,
   measurementSnaps,
   effectiveUnits,
+  antennaAzimuth,
+  isTelecomTool,
   type DrawEnv,
   type ScreenPt,
   type SnapProvider,
@@ -35,6 +37,7 @@ import {
   Vector2,
   Vector3,
   type Material,
+  type Object3D,
 } from 'three';
 import type { StoreApi } from 'zustand/vanilla';
 import { measurementsOn as drawn, type DatesOnScreen } from './measureDates';
@@ -75,6 +78,7 @@ interface Shape {
   selected: boolean;
   label: string | null;
   labelSize: number;
+  tool: SurveyMeasurement['tool'];
 }
 
 /** How one view draws the measurements when it is not the only view (a split). */
@@ -106,7 +110,11 @@ function onDatesChange(dates: StoreApi<Workspace>, redraw: () => void): () => vo
   });
 }
 
-function shapesOf(s: MeasureState, ws: DatesOnScreen): Shape[] {
+function shapesOf(
+  s: MeasureState,
+  ws: DatesOnScreen,
+  north: 'project north' | 'grid north',
+): Shape[] {
   const units = s.settings.units;
   const precision = s.settings.precision;
   return drawn(s, ws).map((m) => {
@@ -116,14 +124,15 @@ function shapesOf(s: MeasureState, ws: DatesOnScreen): Shape[] {
     const only = style?.labelOnlyWhenSelected === true;
     return {
       id: m.id,
+      tool: m.tool,
       points,
-      closed: isClosed(m.family),
+      closed: m.tool === 'azimuth' || isClosed(m.family),
       color: style?.color ?? MEASURE_COLOR,
       selected,
       label:
         only && !selected
           ? null
-          : labelOf({ ...m, points }, units, precision, style?.showPropertyName === true, s),
+          : labelOf({ ...m, points }, units, precision, style?.showPropertyName === true, s, north),
       labelSize: style?.labelSize ?? 12,
     };
   });
@@ -136,10 +145,19 @@ function labelOf(
   precision: MeasureState['settings']['precision'],
   showName: boolean,
   s: MeasureState,
+  north: 'project north' | 'grid north',
 ): string {
   const tpl = knownTemplates(s).find((t) => t.id === m.template);
-  const row = measurementReadout(m, {}, tpl?.items).find((r) => r.value !== null);
+  const row = isTelecomTool(m.tool)
+    ? measurementReadout(m)[0]
+    : measurementReadout(m, {}, tpl?.items).find((r) => r.value !== null);
   const value = row ? formatRow(row, effectiveUnits(site, m.units), precision) : '';
+  if (isTelecomTool(m.tool)) {
+    const suffix =
+      m.tool === 'azimuth' ? ` ${north}` : m.tool === 'antenna-tilt' ? ' from vertical' : '';
+    const result = row?.value === null ? 'Invalid picks: adjust endpoints' : `${value}${suffix}`;
+    return [m.label, result].filter(Boolean).join(' · ');
+  }
   const named = showName && row ? `${row.label}: ${value}` : value;
   return [m.label, named].filter(Boolean).join(' · ');
 }
@@ -180,6 +198,16 @@ const isTyping = (t: EventTarget | null) =>
 /** Keys the drawing takes while a tool is drawing. */
 const DRAW_KEYS = /^([0-9.\-'" ]|Backspace|Tab|Enter|Escape)$/;
 
+/** The environment plane and map drape are navigation surfaces, not measured geometry. */
+function isGround(object: Object3D): boolean {
+  let node: Object3D | null = object;
+  while (node) {
+    if (node.name === 'env:ground' || node.userData.aioGround === true) return true;
+    node = node.parent;
+  }
+  return false;
+}
+
 /**
  * Draw the measurements in the 3D stage and drive the active tool and vertex editing there.
  * Returns the detach. With `opts.display` the view draws only (see `MeasureViewOptions`).
@@ -202,6 +230,10 @@ export function attach3d(
   labels.setAttribute('aria-hidden', 'true');
   host.appendChild(labels);
   const tmp = new Vector3();
+  const endInput = () => {
+    // Clear all input together so the store subscriber cannot reselect a tool while editing.
+    measureStore.setState({ tool: null, draw: null, editing: null });
+  };
 
   const toScreen: ToScreen = (p) => {
     const l = frame.toLocal(p);
@@ -214,6 +246,7 @@ export function attach3d(
   const env = (): DrawEnv => {
     const s = measureStore.getState();
     return {
+      view: '3d',
       snap: (screen) => findSnap(screen, snapProviders(s, dates.getState()), toScreen, s.snap),
       clampZ,
       distanceUnit: effectiveUnits(s.settings.units).distance,
@@ -226,6 +259,9 @@ export function attach3d(
       -((e.clientY - r.top) / r.height) * 2 + 1,
     );
     const hit = stage.raycast(ndc.x, ndc.y);
+    const s = measureStore.getState();
+    const tool = s.tool?.tool ?? s.file.measurements.find((m) => m.id === s.focus)?.tool;
+    if (tool && isTelecomTool(tool) && (!hit || isGround(hit.object))) return null;
     return hit ? frame.toSite([hit.point.x, hit.point.y, hit.point.z]) : null;
   };
 
@@ -287,15 +323,47 @@ export function attach3d(
   };
 
   let shapes: Shape[] = [];
+  const addFacing = (pts: readonly SitePoint[], color: string, name: string) => {
+    const face = antennaAzimuth(pts);
+    if (!face.ok) return;
+    const span = Math.max(
+      ...pts.map((p) =>
+        Math.hypot(p[0] - face.center[0], p[1] - face.center[1], p[2] - face.center[2]),
+      ),
+    );
+    const length = Math.max(0.5, Math.min(span, 5));
+    const [e, n, z] = face.center;
+    const [de, dn] = face.direction;
+    const tip: SitePoint = [e + de * length, n + dn * length, z];
+    addLine([face.center, tip], false, color, name);
+    addLine(
+      [
+        [
+          tip[0] - de * length * 0.25 + dn * length * 0.15,
+          tip[1] - dn * length * 0.25 - de * length * 0.15,
+          z,
+        ],
+        tip,
+        [
+          tip[0] - de * length * 0.25 - dn * length * 0.15,
+          tip[1] - dn * length * 0.25 + de * length * 0.15,
+          z,
+        ],
+      ],
+      false,
+      color,
+    );
+  };
   const rebuild = () => {
     const s = measureStore.getState();
     disposeGroup();
-    shapes = shapesOf(s, dates.getState());
+    shapes = shapesOf(s, dates.getState(), frame.epsg === null ? 'project north' : 'grid north');
     for (const sh of shapes) {
       // named after the measurement: which view draws which is read from the scene (tests)
       const name = `measure:${sh.id}`;
       addLine(sh.points, sh.closed, sh.selected ? '#ffffff' : sh.color, name);
       addPoints(sh.points, sh.color, sh.selected ? 8 : 5, name);
+      if (sh.tool === 'azimuth') addFacing(sh.points, sh.color, `measure-facing:${sh.id}`);
     }
     if (s.editing && !display) {
       const m = s.file.measurements.find((x) => x.id === s.focus);
@@ -308,7 +376,8 @@ export function attach3d(
       for (let i = 0; i < n; i++) {
         const a = s.editing.points[i];
         const b = s.editing.points[(i + 1) % s.editing.points.length];
-        if (a && b) mids.push([(a[0] + b[0]) / 2, (a[1] + b[1]) / 2, (a[2] + b[2]) / 2]);
+        if (a && b && m && !isTelecomTool(m.tool))
+          mids.push([(a[0] + b[0]) / 2, (a[1] + b[1]) / 2, (a[2] + b[2]) / 2]);
       }
       addPoints(s.editing.points, '#ffffff', 10);
       addPoints(mids, DRAFT_COLOR, 6);
@@ -319,6 +388,7 @@ export function attach3d(
       addLine(pts, d.family === 'polygon', DRAFT_COLOR);
       addPoints(d.points, DRAFT_COLOR, 7);
       if (d.cursor) addPoints([d.cursor], d.snap ? SNAP_COLOR : DRAFT_COLOR, d.snap ? 12 : 6);
+      if (s.tool?.tool === 'azimuth') addFacing(pts, DRAFT_COLOR, 'measure-facing:draft');
     }
     placeLabels();
     stage.requestRender();
@@ -351,7 +421,13 @@ export function attach3d(
       el.style.transform = `translate(${String(Math.round(p.x - hr.left))}px, ${String(Math.round(p.y - hr.top))}px)`;
     });
   };
-  const offFrame = stage.onFrame(placeLabels);
+  const offFrame = stage.onFrame(() => {
+    const s = measureStore.getState();
+    if (!display && stage.tool !== 'select' && (s.draw || s.editing)) {
+      endInput();
+    }
+    placeLabels();
+  });
 
   // -------------------------------------------------- input
   let last: { raw: SitePoint; screen: ScreenPt; shift: boolean } | null = null;
@@ -367,7 +443,12 @@ export function attach3d(
     }
     if (!s.draw) return;
     const raw = pick(e);
-    if (!raw) return;
+    if (!raw) {
+      last = null;
+      if (s.tool && isTelecomTool(s.tool.tool) && s.draw.cursor)
+        measureStore.setState({ draw: { ...s.draw, cursor: null } });
+      return;
+    }
     last = { raw, screen: { x: e.clientX, y: e.clientY }, shift: e.shiftKey };
     drawEvent({ type: 'move', ...last }, env());
   };
@@ -389,7 +470,9 @@ export function attach3d(
       e.stopImmediatePropagation();
       return;
     }
-    const seg = hitMidpoint(s.editing.points, isClosed(m.family), at, toScreen, 9);
+    const seg = isTelecomTool(m.tool)
+      ? null
+      : hitMidpoint(s.editing.points, isClosed(m.family), at, toScreen, 9);
     if (seg !== null) {
       editEvent({ type: 'down-mid', seg });
       dragging = true;
@@ -405,6 +488,10 @@ export function attach3d(
   };
   const claim = (e: PointerEvent) => {
     const s = measureStore.getState();
+    if (stage.tool !== 'select' && (s.draw || s.editing)) {
+      endInput();
+      return false;
+    }
     if (s.editing) return true;
     if (!s.draw) return false;
     const t = performance.now();
@@ -420,6 +507,11 @@ export function attach3d(
         { type: 'click', raw, screen: { x: e.clientX, y: e.clientY }, shift: e.shiftKey },
         env(),
       );
+    else if (s.tool && isTelecomTool(s.tool.tool))
+      measureStore.setState({
+        message:
+          'Pick a visible point cloud or mesh surface. Empty space and the ground plane cannot be measured.',
+      });
     return true;
   };
   const offClaim = display ? null : stage.claimClicks(claim);
@@ -441,6 +533,8 @@ export function attach3d(
       return;
     }
     if (!s.draw) return;
+    // Telecom has no typed drawing aids. Leave navigation and button activation to the browser.
+    if (s.tool && isTelecomTool(s.tool.tool) && !['Escape', 'Backspace'].includes(e.key)) return;
     if (e.key === 'Shift' && last) {
       drawEvent({ type: 'move', ...last, shift: true }, env());
       return;
@@ -465,8 +559,13 @@ export function attach3d(
     window.addEventListener('keyup', onKeyUp, { capture: true });
   }
   const offStore = measureStore.subscribe((s, prev) => {
+    if (!display && dragging && !s.editing) {
+      dragging = false;
+      stage.controls.enabled = true;
+    }
     if (
       s.file !== prev.file ||
+      s.measurementsVisible !== prev.measurementsVisible ||
       s.draw !== prev.draw ||
       s.selected !== prev.selected ||
       s.editing !== prev.editing ||
@@ -566,6 +665,7 @@ export function attachMap(
   const env = (): DrawEnv => {
     const s = measureStore.getState();
     return {
+      view: 'map',
       snap: (screen) => findSnap(screen, snapProviders(s, dates.getState()), toScreen, s.snap),
       clampZ,
       distanceUnit: effectiveUnits(s.settings.units).distance,
@@ -579,7 +679,11 @@ export function attachMap(
   const data = () => {
     const s = measureStore.getState();
     const features: unknown[] = [];
-    for (const sh of shapesOf(s, dates.getState())) {
+    for (const sh of shapesOf(
+      s,
+      dates.getState(),
+      frame.epsg === null ? 'project north' : 'grid north',
+    )) {
       const coords = sh.points.map(toLngLat);
       const props = { color: sh.selected ? '#ffffff' : sh.color, id: sh.id };
       if (coords.length === 1)
@@ -727,6 +831,7 @@ export function attachMap(
   const offStore = measureStore.subscribe((s, prev) => {
     if (
       s.file !== prev.file ||
+      s.measurementsVisible !== prev.measurementsVisible ||
       s.draw !== prev.draw ||
       s.selected !== prev.selected ||
       s.editing !== prev.editing

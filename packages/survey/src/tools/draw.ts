@@ -226,6 +226,8 @@ export type DrawEvent =
   | { type: 'cancel' };
 
 export interface DrawEnv {
+  /** Telecom measurements accept picks only from the 3D view. */
+  view?: '3d' | 'map';
   /** The snap under the cursor (`findSnap` with this view's providers and projection). */
   snap?: ((screen: ScreenPt) => SnapHit | null) | undefined;
   /** Terrain height at (E, N) for points the aids construct, or null where there is none. */

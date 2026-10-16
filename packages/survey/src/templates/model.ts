@@ -11,6 +11,7 @@ import {
   type SurveyTemplatesFile,
 } from '@aio/schema';
 import { DEFAULT_ITEMS, ITEM_LABELS, TOOL_FAMILY, TOOL_LABELS } from '../tools/readout';
+import { isTelecomTool, telecomPointCount } from '../tools/telecom';
 import { resolvePreset, type RolePicks } from './designRoles';
 
 /**
@@ -42,6 +43,7 @@ export function uniqueId(name: string, taken: Iterable<string>, fallback = 'item
 /** Items a tool can show, in the order the editor offers them. */
 export function availableItems(tool: MeasurementTool): string[] {
   const own = DEFAULT_ITEMS[tool];
+  if (isTelecomTool(tool)) return [...own];
   const family = TOOL_FAMILY[tool];
   const extra: Record<string, string[]> = {
     point: ['e', 'n', 'z', 'surface-z', 'dz'],
@@ -340,6 +342,7 @@ export function changeTemplate(
     return next;
   }
   if (t.family !== m.family) return null;
+  if (isTelecomTool(t.tool) && m.points.length !== telecomPointCount(t.tool)) return null;
   const have = new Set(m.items.map((i) => JSON.stringify([i.from, i.to])));
   const missing = t.comparisons.flatMap((preset) => {
     const p = resolvePreset(preset, picks);
