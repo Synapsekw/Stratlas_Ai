@@ -568,8 +568,9 @@ export function createRunStore(deps: RunDeps): StoreApi<RunState> {
         let images = evidenceImages;
         if (pass > 1) {
           if (!deps.renderViews || !proposal) break;
+          const excluded = new Set(get().excludedImages);
           const views = (get().evidence?.images ?? [])
-            .filter((i) => i.kind === 'side' || i.kind === 'top')
+            .filter((i) => !excluded.has(i.id) && (i.kind === 'side' || i.kind === 'top'))
             .map((i) => ({ id: `gen-${i.view}`.slice(0, 40), view: i.view }));
           if (views.length === 0) break;
           images = [...evidenceImages, ...(await deps.renderViews(draftFor(proposal), views))];

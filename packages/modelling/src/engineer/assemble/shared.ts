@@ -178,6 +178,16 @@ export function profileOf(
           H,
         )
       : undefined;
+  // Old packs can fit a low compound rather than its tall asset. Do not extrapolate that short
+  // base fit over the entire source, even when its circle residual happens to be excellent.
+  const sourceHeight = ev?.bounds ? ev.bounds.max[1] - b[1] : 0;
+  const fitTop = taper?.profile.at(-1)?.y;
+  const incompleteBaseFit =
+    fitTop !== undefined && sourceHeight > 5 && fitTop - b[1] < 0.5 * sourceHeight;
+  if (measuredProfile && incompleteBaseFit)
+    ctx.note(
+      'The measured profile covers only the low part of a much taller source; it was not used as the asset profile. Check the shaft dimensions.',
+    );
   const slices = ev?.slices ?? [];
   const rB = ctx.len(c, 'rBase');
   const rT = ctx.len(c, 'rTop') ?? rB;
@@ -191,7 +201,7 @@ export function profileOf(
         ]
       : undefined;
   return ctx.value<Profile>(id, 'profile', {
-    ...(measuredProfile && taper
+    ...(measuredProfile && taper && !incompleteBaseFit
       ? {
           measured: {
             v: measuredProfile,
@@ -425,14 +435,47 @@ export function lights(
     const h = moved ?? level.h;
     const levelBasis: ValueBasis = moved !== undefined ? 'user' : level.basis;
     const y = b[1] + h;
+    const confirmed = ctx
+      .proposals('warningLight')
+      .find(
+        (c) => c.observed && c.count > 0 && c.levels?.some((r) => Math.abs(r * H - level.h) <= tol),
+      );
+    const explicit = ctx.userCount(level.role) ?? ctx.userCount('light');
+    const editedIds = new Set([
+      ...Object.keys(ctx.input.user.params).filter(
+        (id) => indexInRole(level.role, id) !== undefined,
+      ),
+      ...(ctx.input.previous?.assemblies ?? []).flatMap((a) =>
+        a.kind === 'warningLight' &&
+        indexInRole(level.role, a.id) !== undefined &&
+        Object.values(a.quality).some((q) => q.basis === 'user')
+          ? [a.id]
+          : [],
+      ),
+    ]);
+    const roleEdited = ctx.input.user.params[level.role] !== undefined;
+    const edited = roleEdited || editedIds.size > 0;
+    const userConfirmed =
+      explicit !== undefined || moved !== undefined || level.basis === 'user' || edited;
+    const low = level.h < Math.min(5, 0.2 * H);
+    // Red signs and canopies are candidates, not measured aviation fixtures. Keep their level
+    // numbering for existing user edits, but require confirmation close to the ground and never
+    // import a multi-metre candidate size. Explicit choices still generate ordinary fixtures.
+    const usable = level.items.filter((it) => it.size <= 1.5);
+    if (usable.length !== level.items.length || (low && !confirmed && !userConfirmed))
+      ctx.note(
+        `Light candidates at ${level.h.toFixed(1)} m need review: low unconfirmed or oversized candidates were not used.`,
+      );
+    if (low && !confirmed && !userConfirmed) continue;
+    if (level.items.length && !usable.length && !confirmed && !userConfirmed) continue;
     const { n } = chooseCount(ctx, {
       what: `lights at ${h.toFixed(1)} m`,
-      user: ctx.userCount(level.role) ?? ctx.userCount('light'),
-      proposed: lightC ? [lightC] : [],
-      evidence: level.basis === 'measured' ? level.items.length : undefined,
+      user: explicit ?? (edited ? level.items.length : undefined),
+      proposed: confirmed ? [confirmed] : lightC ? [lightC] : [],
+      evidence: level.basis === 'measured' && usable.length ? usable.length : undefined,
     });
     if (n <= 0) continue;
-    const seen = [...level.items].sort(bySupport(ctx)).slice(0, n);
+    const seen = [...usable].sort(bySupport(ctx)).slice(0, n);
     const seenAz = seen.map((it) => itemAz(ctx, it));
     const userEven = ctx.userParam(level.role, 'arrangement') === 'even';
     const even = userEven || (!seen.length && str(lightC, 'arrangement') === 'even');
@@ -501,7 +544,14 @@ export function lights(
         },
       );
     });
-    out.push(...made.sort(byIndex(level.role)));
+    const onlyEdited =
+      !confirmed &&
+      explicit === undefined &&
+      moved === undefined &&
+      level.basis !== 'user' &&
+      !roleEdited &&
+      (low || (level.items.length > 0 && !usable.length));
+    out.push(...made.filter((a) => !onlyEdited || editedIds.has(a.id)).sort(byIndex(level.role)));
   }
   return out;
 }

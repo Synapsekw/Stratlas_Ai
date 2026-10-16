@@ -430,6 +430,45 @@ function setupView(s: EngineerSetup): EngineerSetupView {
   };
 }
 
+/**
+ * Preserve the first pass's evidence order. Review passes reserve draft views and source views
+ * together, rather than letting a full pack evict the draft. Photos omitted by the first pass
+ * come first on pass 2; later passes advance the same window. No new evidence is introduced.
+ */
+function selectEngineerImages(c: EngineerCall, maxImages: number): EngineerImage[] {
+  const limit = Math.max(0, Math.floor(maxImages));
+  const generated = c.images.filter((im) => im.kind === 'generated');
+  if (c.pass <= 1 || generated.length === 0 || c.images.length <= limit)
+    return c.images.slice(0, limit);
+  const sources = c.images.filter((im) => im.kind !== 'generated');
+  if (sources.length === 0) return generated.slice(0, limit);
+  // One image cannot show both the observation and the result. Keep the observation and tell
+  // the model it has no visual feedback, instead of implying a comparison occurred.
+  if (limit < 2) return sources.slice(0, limit);
+  const sourceViews = new Set(sources.map((im) => im.view).filter(Boolean));
+  const drafts = [...generated]
+    .sort((a, b) => Number(sourceViews.has(b.view)) - Number(sourceViews.has(a.view)))
+    .slice(0, Math.min(limit - 1, Math.max(limit - sources.length, 1, Math.floor(limit / 3))));
+  const sourceSlots = limit - drafts.length;
+  const draftViews = new Set(drafts.map((im) => im.view).filter(Boolean));
+  const scanRank = (im: EngineerImage) =>
+    im.kind === 'side' || im.kind === 'top' ? (draftViews.has(im.view) ? 0 : 1) : 2;
+  const scans = sources
+    .filter((im) => im.kind !== 'photo')
+    .sort((a, b) => scanRank(a) - scanRank(b));
+  const photos = sources.filter((im) => im.kind === 'photo');
+  let scanSlots = Math.min(
+    scans.length,
+    photos.length ? Math.max(1, Math.floor(sourceSlots / 2)) : sourceSlots,
+  );
+  const photoSlots = Math.min(photos.length, sourceSlots - scanSlots);
+  scanSlots = Math.min(scans.length, sourceSlots - photoSlots);
+  const alreadySeen = sources.slice(0, limit).filter((im) => im.kind === 'photo').length;
+  const offset = photos.length ? (alreadySeen + (c.pass - 2) * photoSlots) % photos.length : 0;
+  const rotated = [...photos.slice(offset), ...photos.slice(0, offset)];
+  return [...scans.slice(0, scanSlots), ...rotated.slice(0, photoSlots), ...drafts];
+}
+
 // ---------------------------------------------------------------- cache key and estimate
 
 const sha1 = (b: Buffer | string) => createHash('sha1').update(b).digest('hex');
@@ -467,6 +506,7 @@ export function engineerCacheKey(
     setup: c.setup,
     previous: c.previous ?? null,
     images,
+    selectedImageIds: selectEngineerImages(c, caps.maxImages).map((im) => im.id),
   });
   return createHash('sha256').update(material).digest('hex');
 }
@@ -485,12 +525,13 @@ function imageTokens(dims: { w: number; h: number } | null, maxPx: number): numb
 }
 
 /** The text part of the request: setup, bounded and redacted summary, previous proposal. */
-function requestText(c: EngineerCall, imageCount: number): string {
+function requestText(c: EngineerCall, images: readonly EngineerImage[]): string {
   return engineerUserText({
     summary: redactPaths(c.summary),
     setup: setupView(c.setup),
     pass: c.pass,
-    imageCount,
+    imageCount: images.length,
+    generatedCount: images.filter((im) => im.kind === 'generated').length,
     ...(c.previous ? { previous: c.previous } : {}),
   });
 }
@@ -507,9 +548,9 @@ export function estimateEngineerCostUsd(
   caps: ModelCaps = engineerLimits(route),
 ): number | undefined {
   if (route.provider === 'local') return 0;
-  const images = c.images.slice(0, caps.maxImages);
+  const images = selectEngineerImages(c, caps.maxImages);
   const labels = images.map((im) => imageLabel(im.id, im.kind, im.view)).join('\n');
-  const text = engineerSystem().length + requestText(c, images.length).length + labels.length;
+  const text = engineerSystem().length + requestText(c, images).length + labels.length;
   const inputTokens =
     images.reduce((n, im) => {
       const d = decodeDataUrl(im.dataUrl);
@@ -565,7 +606,7 @@ export async function buildEngineerPayload(
   }
   const bad = c.images.find((im) => !IMAGE_ID.test(im.id) || !VIEW.test(im.view ?? ''));
   if (bad) return { ok: false, reason: 'An image id or view label is not valid.' };
-  const chosen = c.images.slice(0, caps.maxImages);
+  const chosen = selectEngineerImages(c, caps.maxImages);
   const images: EngineerPayloadImage[] = [];
   for (const im of chosen) {
     let decoded = decodeDataUrl(im.dataUrl);
@@ -606,13 +647,13 @@ export async function buildEngineerPayload(
       resized,
     });
   }
-  const text = requestText(c, images.length);
+  const text = requestText(c, chosen);
   return {
     ok: true,
     payload: {
       text,
       images,
-      leftOut: c.images.slice(caps.maxImages).map((im) => im.id),
+      leftOut: c.images.filter((im) => !chosen.includes(im)).map((im) => im.id),
       bytes: images.reduce((n, im) => n + im.bytes, 0) + text.length,
     },
   };
@@ -687,8 +728,11 @@ export async function runEngineer(c: EngineerCall, host: EngineerHost): Promise<
           'This project does not allow sending its data to cloud AI. A local model set up in Settings, AI providers, can still be used.',
       };
     }
-    const photos = c.images.some((im) => evidenceNeed(im.kind) === 'photos');
-    const scans = c.images.some((im) => evidenceNeed(im.kind) === 'scans');
+    // The preview offers consent for the selected payload only. Omitted images never leave
+    // this machine and must not require a sharing flag the preview cannot offer.
+    const selected = selectEngineerImages(c, ready.caps.maxImages);
+    const photos = selected.some((im) => evidenceNeed(im.kind) === 'photos');
+    const scans = selected.some((im) => evidenceNeed(im.kind) === 'scans');
     if (photos && !policy.photos) {
       return {
         kind: 'refused',

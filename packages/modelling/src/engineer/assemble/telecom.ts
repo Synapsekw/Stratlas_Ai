@@ -295,10 +295,10 @@ export function latticeOf(
  * previous sector (the mean bearing its antennas faced) keeps that sector's number; new sectors
  * are numbered after the highest previous one, clockwise from north.
  */
-function sectorRoles(ctx: FamilyCtx, facings: readonly number[]): string[] {
+function sectorRoles(ctx: FamilyCtx, facings: readonly number[], namespace = 'antenna'): string[] {
   const byK = new Map<number, number[]>();
   for (const a of ctx.input.previous?.assemblies ?? []) {
-    const m = /^antenna-s([1-9][0-9]*)-[1-9][0-9]*$/.exec(a.id);
+    const m = new RegExp(`^${namespace}-s([1-9][0-9]*)-[1-9][0-9]*$`).exec(a.id);
     if (!m?.[1] || a.kind !== 'antenna') continue;
     const k = Number(m[1]);
     byK.set(k, [...(byK.get(k) ?? []), a.params.azimuthDeg]);
@@ -323,7 +323,7 @@ function sectorRoles(ctx: FamilyCtx, facings: readonly number[]): string[] {
     .forEach(({ i }) => {
       out[i] ??= ++next;
     });
-  return out.map((k, i) => `antenna-s${String(k ?? i + 1)}`);
+  return out.map((k, i) => `${namespace}-s${String(k ?? i + 1)}`);
 }
 
 interface Spot {
@@ -333,28 +333,165 @@ interface Spot {
   basis: ValueBasis;
 }
 
+/** Reuse prior group namespaces before numbering additions. Size and level changes are not ids. */
+function antennaNamespaces(ctx: FamilyCtx, props: readonly ProposalComponent[]): string[] {
+  const prior = new Map<string, Extract<Assembly, { kind: 'antenna' }>[]>();
+  for (const a of ctx.input.previous?.assemblies ?? []) {
+    if (a.kind !== 'antenna') continue;
+    const namespace = /^(.*)-s[1-9][0-9]*-[1-9][0-9]*$/.exec(a.id)?.[1];
+    if (namespace) prior.set(namespace, [...(prior.get(namespace) ?? []), a]);
+  }
+  const out: (string | undefined)[] = props.map(() => undefined);
+  const used = new Set<string>();
+  const baseOf = (c: ProposalComponent) => (c.role === 'antenna' ? 'antenna' : `antenna-${c.role}`);
+  const pairs = props.flatMap((c, i) => {
+    const base = baseOf(c);
+    const matches = new RegExp(`^${base}(?:-g[1-9][0-9]*)?$`);
+    return [...prior].flatMap(([namespace, assemblies]) => {
+      if (!matches.test(namespace)) return [];
+      const type = str(c, 'type') ?? str(c, 'kind') ?? 'panel';
+      const kind = type === 'whip' ? 'omni' : type;
+      const size = ctx.len(c, 'size');
+      const level = c.levels?.[0];
+      const imageIds = new Set(
+        assemblies.flatMap((a) => a.sources.filter((s) => s.kind === 'photo').map((s) => s.ref)),
+      );
+      const overlap = c.imageIds.filter((id) => imageIds.has(id)).length;
+      const score =
+        (c.description !== undefined && assemblies.some((a) => a.description === c.description)
+          ? -100
+          : 0) -
+        (overlap / Math.max(1, c.imageIds.length)) * 10 +
+        mean(
+          assemblies.map(
+            (a) =>
+              (a.params.kind === kind ? 0 : 5) +
+              (size === undefined
+                ? 0
+                : Math.abs(a.params.size[1] - size) / Math.max(a.params.size[1], size)) +
+              (level === undefined
+                ? 0
+                : Math.abs(a.params.centre[1] - ctx.base[1] - level * ctx.height)),
+          ),
+        );
+      return [{ i, namespace, score }];
+    });
+  });
+  pairs.sort((a, b) => a.score - b.score || a.namespace.localeCompare(b.namespace) || a.i - b.i);
+  for (const pair of pairs) {
+    if (out[pair.i] !== undefined || used.has(pair.namespace)) continue;
+    out[pair.i] = pair.namespace;
+    used.add(pair.namespace);
+  }
+  // Reserve unmatched previous groups as well: accepted components can still own those ids.
+  const reserved = new Set([...prior.keys(), ...used]);
+  props.forEach((c, i) => {
+    if (out[i] !== undefined) return;
+    const base = baseOf(c);
+    let namespace = base;
+    let n = 0;
+    while (reserved.has(namespace)) namespace = `${base}-g${String(++n)}`;
+    reserved.add(namespace);
+    out[i] = namespace;
+  });
+  return out.map((namespace) => namespace ?? 'antenna');
+}
+
 /**
  * Antennas and their mounts on host `hostId` whose surface is `reach` from the axis. Counts by
  * `chooseCount` over the `antenna` proposals and the `antenna-candidate` members.
  */
 function antennas(ctx: FamilyCtx, hostId: string, reach: HostReach): Assembly[] {
+  const props = ctx.proposals('antenna');
+  const items = group(ctx, 'antenna-candidate')?.items ?? [];
+  if (!props.length) return antennaGroup(ctx, hostId, reach, undefined, items);
+
+  // A proposal entry is a group, not just another contribution to one undifferentiated count.
+  // Assign each measured candidate once to the closest proposed group before choosing counts.
+  const fingerprint = (c: ProposalComponent) =>
+    JSON.stringify([
+      Object.entries(c.params).sort(([a], [b]) => a.localeCompare(b)),
+      c.levels ?? [],
+      c.units,
+    ]);
+  const ordered = [...props].sort(
+    (a, b) => a.role.localeCompare(b.role) || fingerprint(a).localeCompare(fingerprint(b)),
+  );
+  const repeated = new Map<string, number>();
+  for (const c of ordered) repeated.set(c.role, (repeated.get(c.role) ?? 0) + 1);
+  const namespaces = antennaNamespaces(ctx, ordered);
+  if ([...repeated.values()].some((n) => n > 1))
+    ctx.note(
+      'Some antenna groups share a role label; they were numbered separately. Give each group a distinct role to keep its identity through later changes.',
+    );
+  const assigned = ordered.map((): MemberItem[] => []);
+  for (const it of items) {
+    const score = (c: ProposalComponent) => {
+      const h = c.levels?.[0];
+      const size = ctx.len(c, 'size');
+      return (
+        (h === undefined
+          ? 0
+          : (Math.abs(it.centre[1] - ctx.base[1] - h * ctx.height) / ctx.height) * 4) +
+        (size === undefined ? 0 : Math.abs(it.size - size) / size)
+      );
+    };
+    const eligible = ordered.map((c, i) => ({ c, i }));
+    eligible.sort((a, b) => score(a.c) - score(b.c));
+    const nearest = eligible[0];
+    if (nearest) assigned[nearest.i]?.push(it);
+  }
+  const desired = ordered.map(
+    (c) => (c.role === 'antenna' ? undefined : ctx.userCount(c.role)) ?? c.count,
+  );
+  let remaining = ctx.userCount('antenna');
+  if (remaining !== undefined && remaining > desired.reduce((s, n) => s + n, 0))
+    desired[0] = (desired[0] ?? 0) + remaining - desired.reduce((s, n) => s + n, 0);
+  return ordered.flatMap((c, i) => {
+    const count = remaining === undefined ? undefined : Math.min(remaining, desired[i] ?? 0);
+    if (remaining !== undefined) remaining -= count ?? 0;
+    const ownCount = c.role === 'antenna' ? undefined : ctx.userCount(c.role);
+    const namespace = namespaces[i] ?? 'antenna';
+    const scoped: FamilyCtx = {
+      ...ctx,
+      userCount: (role) => (role === 'antenna' ? (count ?? ownCount) : ctx.userCount(role)),
+      userLevels: (role) =>
+        role === 'antenna'
+          ? (ctx.userLevels(c.role) ?? ctx.userLevels('antenna'))
+          : ctx.userLevels(role),
+      sources: (kind, options) =>
+        ctx
+          .sources(kind, options)
+          .filter((r) => kind !== 'antenna' || r.kind !== 'photo' || c.imageIds.includes(r.ref)),
+    };
+    return antennaGroup(scoped, hostId, reach, c, assigned[i] ?? [], namespace);
+  });
+}
+
+/** One independently numbered proposal group; the historical `antenna` role keeps its old ids. */
+function antennaGroup(
+  ctx: FamilyCtx,
+  hostId: string,
+  reach: HostReach,
+  c: ProposalComponent | undefined,
+  candidates: readonly MemberItem[],
+  namespace = 'antenna',
+): Assembly[] {
   const H = ctx.height;
   const b = ctx.base;
   const top = b[1] + H;
-  const props = ctx.proposals('antenna');
-  const c = props[0];
+  const props = c ? [c] : [];
   const mountC = ctx.proposals('antennaMount')[0];
-  const ag = group(ctx, 'antenna-candidate');
   const { n } = chooseCount(ctx, {
     what: 'antennas',
     user: ctx.userCount('antenna'),
     proposed: props,
-    evidence: ag?.items.length,
+    evidence: candidates.length ? candidates.length : undefined,
   });
   if (n <= 0) return [];
   const facingOf = (it: MemberItem) =>
     it.azimuthDeg ?? azimuthDeg(it.centre[0] - b[0], it.centre[2] - b[2]);
-  const seen = [...(ag?.items ?? [])].sort(bySupport(ctx)).slice(0, n);
+  const seen = [...candidates].sort(bySupport(ctx)).slice(0, n);
   // sectors: clusters of the bearings seen, else the proposal's spread evenly from its bearing
   let sectors: Spot[][];
   let facingsOf: number[];
@@ -383,15 +520,16 @@ function antennas(ctx: FamilyCtx, hostId: string, reach: HostReach): Assembly[] 
     });
     sectors[k]?.push({ facing: facingsOf[k] ?? 0, basis: 'inferred' });
   }
-  const roles = sectorRoles(ctx, facingsOf);
-  const aiKind = str(c, 'type') ?? str(c, 'kind');
+  const roles = sectorRoles(ctx, facingsOf, namespace);
+  const proposedKind = str(c, 'type') ?? str(c, 'kind');
+  const aiKind = proposedKind === 'whip' ? 'omni' : proposedKind;
   const aiTilt = num(c, 'tiltDeg');
   const aiMount = str(mountC, 'type') ?? str(mountC, 'kind');
   const userLevel = ctx.userLevels('antenna')?.[0];
   const aiLevel = c?.levels?.[0];
   const out: Assembly[] = [];
   sectors.forEach((sector, si) => {
-    const role = roles[si] ?? `antenna-s${String(si + 1)}`;
+    const role = roles[si] ?? `${namespace}-s${String(si + 1)}`;
     const sFacing = facingsOf[si] ?? 0;
     const seenYs = sector.flatMap((s) => (s.it ? [s.it.centre[1]] : []));
     const level =
@@ -401,7 +539,7 @@ function antennas(ctx: FamilyCtx, hostId: string, reach: HostReach): Assembly[] 
           ? { y: mean(seenYs), basis: 'measured' as ValueBasis }
           : aiLevel !== undefined
             ? {
-                y: b[1] + Math.min(aiLevel * H, H - 0.5),
+                y: b[1] + Math.min(aiLevel * H, 1.2 * H),
                 basis: (c?.observed ? 'observed' : 'inferred') as ValueBasis,
               }
             : { y: top - clamp(0.05 * H, 1, 3), basis: 'inferred' as ValueBasis };

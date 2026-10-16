@@ -629,6 +629,35 @@ describe('engineering run store', () => {
   });
 
   describe('passes 2 and 3 keep a correction only when the silhouettes do not get worse', () => {
+    it('does not render a dropped source view or send an extra critique without retained source views', async () => {
+      const p = new FakeProject();
+      const rendered: string[] = [];
+      const s = store(p, {
+        renderViews: (_m, views) => {
+          rendered.push(...views.map((v) => v.view));
+          return Promise.resolve(
+            views.map((v) => ({
+              ...v,
+              kind: 'generated' as const,
+              dataUrl: PNG,
+              bytes: 8,
+            })),
+          );
+        },
+      });
+      await s.getState().start(setup({ detail: 'standard' }));
+      expect(rendered).toEqual(['north']);
+      const asked = p.engineerCalls;
+      rendered.length = 0;
+      await s.getState().dropImages(['img-side-n']);
+      expect(rendered).toEqual([]);
+      expect(p.engineerCalls - asked).toBe(1);
+      const requests = p.calls
+        .filter((c) => c.channel === 'ai:engineer')
+        .map((c) => c.payload as IpcRequest<'ai:engineer'>);
+      expect(requests.at(-1)?.images.map((i) => i.id)).toEqual(['img-photo-1']);
+    });
+
     /** Pass 1 answers two flues, later passes three; the silhouette scores by flue count. */
     function twoPasses(scores: Record<number, number>) {
       const p = new FakeProject();

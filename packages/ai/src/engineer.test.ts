@@ -16,7 +16,7 @@ import {
   type EngineerHost,
   type EngineerUsage,
 } from './engineer';
-import { evidenceNeed, payloadPreview, PROMPT_VERSION } from './engineerPrompt';
+import { engineerSystem, evidenceNeed, payloadPreview, PROMPT_VERSION } from './engineerPrompt';
 import { describeError, InvalidProposalError } from './errors';
 import { builtInProviders, createProviderRegistry } from './providers';
 import type { ModelRoute } from './routes';
@@ -142,6 +142,36 @@ function call(over: Partial<EngineerCall> = {}): EngineerCall {
     setup: SETUP,
     ...over,
   };
+}
+
+/** A saturated standard pack: nine scan views, fifteen photos and five draft views. */
+function reviewCall(pass = 2): EngineerCall {
+  const views = ['top', 'north', 'east', 'south', 'west'];
+  const scans: EngineerCall['images'] = Array.from({ length: 9 }, (_, i) => ({
+    id: `scan-${String(i)}`,
+    kind: i === 0 ? 'top' : i < 5 ? 'side' : 'crop',
+    view: views[i] ?? 'detail',
+    dataUrl: png(64, 128),
+    bytes: 80,
+  }));
+  const photos: EngineerCall['images'] = Array.from({ length: 15 }, (_, i) => ({
+    id: `photo-${String(i)}`,
+    kind: 'photo',
+    dataUrl: jpeg(128, 64),
+    bytes: 120,
+  }));
+  const generated: EngineerCall['images'] = views.map((view) => ({
+    id: `gen-${view}`,
+    kind: 'generated',
+    view,
+    dataUrl: png(64, 128),
+    bytes: 80,
+  }));
+  return call({
+    pass,
+    images: [...scans, ...photos, ...(pass > 1 ? generated : [])],
+    ...(pass > 1 ? { previous: stackProposal() } : {}),
+  });
 }
 
 // ------------------------------------------------------------------ provider fakes
@@ -361,6 +391,49 @@ describe('runEngineer', () => {
     if (r.kind === 'refused') expect(r.reason).toContain('photos');
     expect(calls.length + keyReads.length).toBe(0);
   });
+
+  it.each(['photo', 'side'] as const)(
+    'requires consent only for selected %s images and rechecks it before a cache hit',
+    async (kind) => {
+      const source = call().images.find((im) => im.kind === kind);
+      const omitted = call().images.find((im) => im.kind !== kind);
+      if (!source || !omitted) throw new Error('Missing synthetic image.');
+      const c = call({
+        costConfirmed: true,
+        images: [
+          ...Array.from({ length: 8 }, (_, i) => ({ ...source, id: `selected-${String(i)}` })),
+          { ...omitted, id: 'omitted-kind' },
+        ],
+      });
+      const photos = kind === 'photo';
+      const t = mockHost({
+        model: 'acme-vlm-2',
+        route: { treatAsVision: true },
+        policy: { photos, scans: !photos },
+      });
+      const built = await buildEngineerPayload(c, {
+        vision: true,
+        structured: true,
+        maxImages: 8,
+        maxImagePx: 1024,
+      });
+      if (!built.ok) throw new Error(built.reason);
+      expect(payloadPreview(built.payload).images.map((im) => im.kind)).toEqual(
+        Array(8).fill(kind),
+      );
+      expect(built.payload.leftOut).toEqual(['omitted-kind']);
+      expect(await runEngineer(c, t.host)).toMatchObject({ kind: 'proposal', cached: false });
+      expect(countImages(t.bodies[0])).toBe(8);
+      expect(JSON.stringify(t.bodies[0])).not.toContain('Image omitted-kind (');
+      expect(await runEngineer(c, t.host)).toMatchObject({ kind: 'proposal', cached: true });
+      expect(t.calls).toHaveLength(1);
+      t.host.policy = () => ({ ai: 'allow', photos: false, scans: false });
+      const keyReads = t.keyReads.length;
+      expect(await runEngineer(c, t.host)).toMatchObject({ kind: 'refused', code: 'policy' });
+      expect(t.calls).toHaveLength(1);
+      expect(t.keyReads).toHaveLength(keyReads);
+    },
+  );
 
   it('scan views without aiCloudScans are refused; photos alone then pass', async () => {
     const t = mockHost({ policy: { scans: false } });
@@ -649,7 +722,7 @@ describe('engineerCacheKey', () => {
     ];
     for (const c of changed) expect(c).not.toBe(k);
     expect(new Set(changed).size).toBe(changed.length);
-    expect(PROMPT_VERSION).toBe('eng-1');
+    expect(PROMPT_VERSION).toBe('eng-2');
   });
 
   it('does not change with the run id or project (resume in another run)', () => {
@@ -809,6 +882,120 @@ describe('image helpers', () => {
 });
 
 describe('payload bounds', () => {
+  it('instructs the model to preserve distinct groups of the same component kind', () => {
+    const text = engineerSystem();
+    expect(text).toContain('one entry per distinct component group');
+    expect(text).toContain('unique stable role');
+    expect(text).toContain('incompatible types, sizes, levels or bearings');
+    expect(text).not.toContain('one entry per kind of component');
+  });
+
+  const caps = { vision: true, structured: true, maxImages: 20, maxImagePx: 1568 };
+  async function payload(c: EngineerCall, maxImages = 20) {
+    const built = await buildEngineerPayload(c, { ...caps, maxImages });
+    if (!built.ok) throw new Error(built.reason);
+    return built.payload;
+  }
+
+  it('reviews generated geometry with scan and photo evidence even when the source pack fills the cap', async () => {
+    const p = await payload(reviewCall());
+    expect(p.images).toHaveLength(20);
+    expect(p.images.filter((i) => i.kind === 'generated')).toHaveLength(5);
+    expect(p.images.some((i) => i.kind === 'side')).toBe(true);
+    expect(p.images.some((i) => i.kind === 'top')).toBe(true);
+    expect(p.images.some((i) => i.kind === 'photo')).toBe(true);
+    expect(p.images.map((i) => i.id)).toEqual(expect.arrayContaining(['photo-11', 'photo-14']));
+    expect(p.leftOut).toHaveLength(9);
+    expect(p.leftOut.some((id) => id.startsWith('gen-'))).toBe(false);
+  });
+
+  it('keeps the first pass order and rotates source photos reproducibly on later passes', async () => {
+    const first = await payload(reviewCall(1));
+    expect(first.images.map((i) => i.id)).toEqual(
+      reviewCall(1)
+        .images.slice(0, 20)
+        .map((i) => i.id),
+    );
+    const second = await payload(reviewCall(2));
+    const third = await payload(reviewCall(3));
+    expect(await payload(reviewCall(2))).toEqual(second);
+    const photos = (p: typeof first) => p.images.filter((i) => i.kind === 'photo').map((i) => i.id);
+    expect(photos(third)).not.toEqual(photos(second));
+    expect(new Set([...photos(first), ...photos(second), ...photos(third)]).size).toBe(15);
+  });
+
+  it('reserves a matching source and generated view under a two-image cap', async () => {
+    const p = await payload(reviewCall(), 2);
+    const generated = p.images.find((i) => i.kind === 'generated');
+    const source = p.images.find((i) => i.kind !== 'generated');
+    expect(generated).toBeDefined();
+    expect(source).toBeDefined();
+    expect(generated?.view).toBe(source?.view);
+    expect((await payload(reviewCall(), 3)).images.map((i) => i.kind)).toEqual(
+      expect.arrayContaining(['generated', 'top', 'photo']),
+    );
+  });
+
+  it('keeps source evidence under a one-image cap and discloses the missing visual feedback', async () => {
+    const p = await payload(reviewCall(), 1);
+    expect(p.images).toHaveLength(1);
+    expect(p.images[0]?.kind).not.toBe('generated');
+    expect(p.text).toContain('No generated model views are attached');
+    expect((await payload(reviewCall(), 0)).images).toEqual([]);
+  });
+
+  it('uses spare review slots for draft views when only one source image remains', async () => {
+    const c = reviewCall();
+    c.images = c.images.filter((i) => i.id === 'scan-0' || i.kind === 'generated');
+    const p = await payload(c, 4);
+    expect(p.images).toHaveLength(4);
+    expect(p.images.filter((i) => i.kind === 'generated')).toHaveLength(3);
+    expect(p.images.some((i) => i.id === 'scan-0')).toBe(true);
+  });
+
+  it('discloses absent source observations if a request has only draft images', async () => {
+    const c = reviewCall();
+    c.images = c.images.filter((i) => i.kind === 'generated');
+    const p = await payload(c, 2);
+    expect(p.images).toHaveLength(2);
+    expect(p.text).toContain('No source images are attached');
+  });
+
+  it('asks for visual comparison and measurement conflict checks using only attached evidence', async () => {
+    const p = await payload(reviewCall());
+    expect(p.text).toContain('Compare the generated model views');
+    expect(p.text).toContain('measurement conflicts');
+    expect(p.text).toContain('not new observations');
+    expect(p.text).toContain('5 generated');
+  });
+
+  it('sends exactly the selected preview on a review pass and still enforces cloud consent', async () => {
+    const c = reviewCall();
+    const p = await payload(c);
+    const preview = payloadPreview(p);
+    const t = mockHost();
+    await runEngineer(c, t.host);
+    const body = JSON.stringify(t.bodies[0]);
+    expect(countImages(t.bodies[0])).toBe(20);
+    for (const image of preview.images) expect(body).toContain(image.label);
+    for (const id of preview.leftOut) expect(body).not.toContain(`Image ${id} (`);
+    expect(body).toContain(JSON.stringify(preview.text).slice(1, -1));
+    const selected = new Set(p.images.map((im) => im.id));
+    expect(estimateEngineerCostUsd(c, t.host.route(), caps)).toBe(
+      estimateEngineerCostUsd(
+        { ...c, images: c.images.filter((im) => selected.has(im.id)) },
+        t.host.route(),
+        caps,
+      ),
+    );
+    const noScans = mockHost({ policy: { scans: false } });
+    expect(await runEngineer(c, noScans.host)).toMatchObject({ kind: 'refused', code: 'policy' });
+    expect(noScans.calls).toHaveLength(0);
+    const offline = mockHost({ offline: true });
+    expect(await runEngineer(c, offline.host)).toMatchObject({ kind: 'refused', code: 'offline' });
+    expect(offline.calls).toHaveLength(0);
+  });
+
   it('refuses a summary over the limit before any request, and estimates with what is sent', async () => {
     const t = mockHost();
     const long = 'x'.repeat(SUMMARY_MAX_CHARS + 1);

@@ -289,6 +289,35 @@ describe('ai:engineer', () => {
     if (r.kind === 'refused') expect(r.reason).toContain('scan views');
   });
 
+  it('accepts consent for exactly the selected preview kinds, with project flags reread', async () => {
+    const t = setup();
+    const req = request({
+      images: [
+        ...Array.from({ length: 20 }, (_, i) => ({
+          id: `side-${String(i)}`,
+          kind: 'side' as const,
+          dataUrl: PNG,
+          bytes: 40,
+          view: 'north',
+        })),
+        { id: 'omitted-photo', kind: 'photo', dataUrl: PNG, bytes: 40 },
+      ],
+    });
+    const p = await t.runtime.engineerPreview(preview(req));
+    if (!p.ok) throw new Error(p.error);
+    expect(p.content.images.map((im) => im.kind)).toEqual(Array(20).fill('side'));
+    expect(p.content.leftOut).toEqual(['omitted-photo']);
+    const r = await t.runtime.engineer({
+      ...req,
+      consent: { token: p.consent, photos: false, scans: true },
+    });
+    expect(r).toMatchObject({ kind: 'proposal' });
+    expect(t.requests()).toBe(1);
+    expect(t.policyReads).toEqual(['p1', 'p1']);
+    expect(await send(t.runtime, req)).toMatchObject({ kind: 'refused', code: 'policy' });
+    expect(t.requests()).toBe(1);
+  });
+
   it('the project consents spare the boxes, not the preview', async () => {
     const t = setup({ flags: ALLOWED });
     expect(await send(t.runtime, request())).toMatchObject({ kind: 'proposal' });

@@ -7,8 +7,8 @@
  * see it) > template default (inferred); the winning basis is written to `quality` under the
  * parameter's top-level name. Only a value taken from the evidence is ever `measured`.
  *
- * Scale: a metric evidence pack (a cloud) measures the height. Without one, the person's reference
- * dimension scales the AI's ratios (`reference`); without that, the model is `provisional`, built
+ * Scale: a person's reference height wins over the automated height, with reference provenance.
+ * Otherwise a metric evidence pack measures the height; without that, the model is `provisional`, built
  * round an assumed height recorded in `scale.reference` with an "assumed" label and listed as
  * unresolved, never as measured.
  */
@@ -151,7 +151,7 @@ const MAX_TEXT = 200;
 
 const clip = (s: string) => (s.length > MAX_TEXT ? `${s.slice(0, MAX_TEXT - 3)}...` : s);
 
-/** The asset height and scale record, by source: evidence, reference, the AI's metres, assumed. */
+/** The asset height and scale record, by source: reference height, evidence, AI, assumed. */
 function resolveScale(
   input: AssembleInput,
   notes: string[],
@@ -163,15 +163,28 @@ function resolveScale(
   const baseY = ev?.base?.[1] ?? ev?.axis?.point[1] ?? 0;
   const spanned = taper.length >= 2 ? (taper.at(-1)?.y ?? baseY) - baseY : undefined;
   const measured = ev?.height ?? (spanned !== undefined && spanned > 0 ? spanned : undefined);
-  if (ev && measured !== undefined) {
-    if (ref?.what === 'height' && Math.abs(ref.valueM - measured) > 0.05 * measured)
+  const metric = ev !== null && measured !== undefined;
+  const sourceHeight = ev?.bounds ? ev.bounds.max[1] - baseY : 0;
+  const shortBaseFit =
+    measured !== undefined &&
+    sourceHeight > 5 &&
+    measured < 0.5 * sourceHeight &&
+    taper.length >= 2 &&
+    (taper.at(-1)?.y ?? Infinity) - baseY < 0.5 * sourceHeight;
+  if (ref?.what === 'height') {
+    if (measured !== undefined && Math.abs(ref.valueM - measured) > 0.05 * measured)
       notes.push(
-        `The reference height (${ref.valueM.toFixed(1)} m) differs from the measured height (${measured.toFixed(1)} m); the measured one is used.`,
+        `The reference height (${ref.valueM.toFixed(1)} m) differs from the automated height (${measured.toFixed(1)} m); your reference is used.`,
       );
+    return { height: ref.valueM, scale: { status: 'reference', reference: ref }, metric };
+  }
+  if (ev && measured !== undefined && !shortBaseFit) {
     return { height: measured, scale: { status: 'measured' }, metric: true };
   }
-  if (ref?.what === 'height')
-    return { height: ref.valueM, scale: { status: 'reference', reference: ref }, metric: false };
+  if (shortBaseFit)
+    notes.push(
+      'The automated height covers only a low fit in a much taller source; the asset height is uncertain. Give a reference height.',
+    );
   const rBase = shaft?.params.rBase;
   if (
     ref?.what === 'diameter' &&
@@ -189,7 +202,7 @@ function resolveScale(
     notes.push(
       'The scale is the AI estimate of the height, not a measurement: give a reference dimension.',
     );
-    return { height: aiHeight, scale: { status: 'provisional' }, metric: false };
+    return { height: aiHeight, scale: { status: 'provisional' }, metric };
   }
   const assumed = ASSUMED_HEIGHT_M[input.family];
   notes.push(
@@ -201,7 +214,7 @@ function resolveScale(
       status: 'provisional',
       reference: { what: 'height', valueM: assumed, label: 'assumed height, not measured' },
     },
-    metric: false,
+    metric,
   };
 }
 
