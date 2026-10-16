@@ -87,7 +87,7 @@ It fails, even if it technically works, if:
   - **Pressed toggle:** `aria-pressed="true"` = mint 20% fill and mint glyph. (The bug sweep fixes the one toggle that shows no difference today, "Only with findings"; this project makes the look part of `.btn` so every toggle gets it.)
   - **Disabled with a reason:** `aria-disabled="true"`, pointer events kept, the click does nothing, and the tooltip says why ("Add photos first"). `disabled` stays only where no reason applies. The project menu already does this (`styles.css`, about line 979); generalise it.
   - **Busy:** `.btn[aria-busy='true']`: a spinner replaces the icon, the width is locked, the click does nothing.
-- **Migration:** the 85 other button classes fold into `.btn` with modifiers. Named in the review: `.tool`, `.tl-bar-btn`, `.search-btn`, `.help-btn`, `.tree-add`, `.tree-foot-btn`, `.ann-btn`, `.ag-btn`, `.rr-chip` (as a toggle), `.mm-chip`, `.dbar-date` (drops `all: unset`). `.cmdk-item` is a row, not a button (decision 5). The builder makes the full list from the CSS and migrates it; each old class is deleted when its last use goes.
+- **Migration:** the 85 other button classes fold into `.btn` with modifiers. Named in the review: `.tool`, `.tl-bar-btn`, `.search-btn`, `.help-btn`, `.tree-add`, `.tree-foot-btn`, `.ann-btn`, `.ag-btn`, `.rr-chip` (as a toggle), `.mm-chip`, `.dbar-date` (drops `all: unset`). `.cmdk-item` is a row, not a button (decision 5). The builder makes the full list from the CSS and migrates it; each old class is deleted when its last use goes. **Skip what project 2 deletes** (my call): the stage toolbar row (`.stbar` and the `.tool` buttons and popovers that live only in it, `StageToolbar`, `toolbarFit.ts`) and the date row (`.dbar-date`, `DateRow`) are replaced by the island, so they get tokens only, not a migration. `.tool` uses outside the stage toolbar are migrated.
 - **`.btn.danger`** moves from the map packs section of `styles.css` into `mission.css`.
 - Component: `<Button>` in `packages/ui/src/controls.tsx` (size, variant, pressed, busy, disabledReason, icon, shortcut). JSX that already writes `className="btn ..."` may stay as markup; new code uses the component.
 
@@ -182,7 +182,7 @@ One primitive, `<SplitPane>` plus a `useSplit` hook. FloatingVideo (per project 
 
 ## Left to the builder
 
-- The order of work and how to split it into reviewable commits (tokens first is natural: everything else uses them).
+- The order of work and how to split it into reviewable commits (tokens first is natural: everything else uses them). The project may land in **two merges** (my call): first tokens, the guard, `<SplitPane>` with its six adoptions, `<Tip>`, focus and motion fixes, light contrast, and the new `<Button>`, `<Menu>`, `.row`, chips and empty state in `packages/ui`; then the migration of the one-off classes and surfaces. Project 2 may start building after the first merge.
 - The full list of one-off classes and which modifier each becomes.
 - The exact API of `<Button>`, `<Tip>`, `<Menu>`, `<SplitPane>` / `useSplit`, within the behaviour above.
 - How the prefs key for each split is named.
@@ -194,3 +194,8 @@ One primitive, `<SplitPane>` plus a `useSplit` hook. FloatingVideo (per project 
 - **Parallel work in the repo.** Other sessions work in `workspace/` and `survey/`. This branch touches CSS in many areas; it should merge early and announce the token names so other branches use them.
 - **e2e selectors.** Some specs may find a button by a class. The builder greps `apps/desktop/e2e/` for class selectors of migrated classes before deleting them.
 - **Light theme stage chips.** If the general rule in decision 9 changes how something on the stage reads in dark, it is wrong: dark must look exactly as today there.
+
+## Questions for the founder
+
+1. **Panel titles grow from 12 to 15 px (decision 1, type).** It is the most visible change in this project: every panel and popover title gets bigger and bolder. Keep it, or hold titles at 13 px?
+2. **The left sidebar folds to its 52 px rail on its own below a 1280 px window when a data pane is open (decision 10, row 3).** Keep it, or only fold when the person asks?
