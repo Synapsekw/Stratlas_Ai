@@ -168,6 +168,37 @@ describe('layer files', () => {
     expect(await readdir(out)).toEqual(expect.arrayContaining(['Flight A', 'Flight A (v)']));
   });
 
+  it('skips a layer whose refs leave the project, writing nothing outside', async () => {
+    await writeFile(join(base, 'y.jpg'), 'outside');
+    const bad = {
+      kind: 'photos',
+      id: 'bad',
+      name: 'Bad',
+      visible: true,
+      items: [{ id: 'y', src: { path: '../y.jpg' }, pos: [0, 0, 0] }],
+    } as unknown as Layer;
+    const mm = { ...m, layers: [bad, mesh] };
+    const r = await exportLayers(root, mm, ['bad', 'gone', 'm'], out);
+    expect(r).toEqual({ written: 1, skipped: ['Bad', 'gone'], cancelled: false });
+    expect((await readdir(base)).sort()).toEqual(['out', 'project', 'y.jpg']);
+    expect(await readdir(out)).toEqual(['Site_ model_']);
+    const info = await readLayerInfo(root, mm, bad, null);
+    expect(info.files).toEqual([{ path: '../y.jpg', bytes: null }]);
+    expect(info.extent).toBeNull();
+    expect(info.importedAt).toBeNull();
+  });
+
+  it('truncates a long name without a trailing dot and keeps long twins apart', async () => {
+    const long = `${'a'.repeat(99)}.b`;
+    expect(layerFolderName(long)).toBe('a'.repeat(99));
+    const one = { ...mesh, id: 'one', name: long };
+    const two = { ...mesh, id: 'two', name: long };
+    const mm = { ...m, layers: [one, two] };
+    const r = await exportLayers(root, mm, ['one', 'two'], out);
+    expect(r.written).toBe(2);
+    expect(await readdir(out)).toHaveLength(2);
+  });
+
   it('stops when cancelled and removes the half-written folder', async () => {
     const ac = new AbortController();
     const r = await exportLayers(root, m, ['ph'], out, {

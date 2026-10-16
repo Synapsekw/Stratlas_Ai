@@ -74,4 +74,59 @@ describe('layer channels', () => {
     expect(pkg.ok).toBe(false);
     expect((await t.call('layer:info', { projectId: 'nope', layerId: 'm' })).ok).toBe(false);
   });
+
+  it('refuses a layer that points outside the project, and a relative folder', async () => {
+    const bad = {
+      kind: 'photos',
+      id: 'bad',
+      name: 'Bad',
+      visible: true,
+      items: [{ id: 'y', src: { path: '../y.jpg' }, pos: [0, 0, 0] }],
+    };
+    const dir = await writeProject(join(base, 'p'), { ...manifest, layers: [bad] }, {});
+    const reveal = vi.fn();
+    const t = collectHandlers((handle) => {
+      registerLayerIpc({
+        handle,
+        projects: { root: () => dir, package: () => undefined },
+        reveal,
+        emit: vi.fn(),
+      });
+    });
+    expect((await t.call('layer:reveal', { projectId: 'p1', layerId: 'bad' })).ok).toBe(false);
+    expect(reveal).not.toHaveBeenCalled();
+    const rel = await t.call('layer:export', {
+      projectId: 'p1',
+      jobId: 'r',
+      layerIds: ['bad'],
+      dir: 'out',
+    });
+    expect(rel.ok).toBe(false);
+  });
+
+  it('cancels a running export and refuses the same job id twice', async () => {
+    const files: Record<string, string> = {};
+    const items = Array.from({ length: 60 }, (_, i) => {
+      files[`photos/p/${String(i)}.jpg`] = 'x';
+      return { id: `i${String(i)}`, src: { path: `photos/p/${String(i)}.jpg` }, pos: [0, 0, 0] };
+    });
+    const photos = { kind: 'photos', id: 'p', name: 'P', visible: true, items };
+    const dir = await writeProject(join(base, 'p'), { ...manifest, layers: [photos] }, files);
+    let jobs: { cancel(id: string): boolean } | undefined;
+    const t = collectHandlers((handle) => {
+      jobs = registerLayerIpc({
+        handle,
+        projects: { root: () => dir, package: () => undefined },
+        reveal: vi.fn(),
+        emit: (e) => {
+          if (e.done === 1) jobs?.cancel('c');
+        },
+      });
+    });
+    const req = { projectId: 'p1', jobId: 'c', layerIds: ['p'], dir: join(base, 'out') };
+    const first = t.call('layer:export', req);
+    const again = await t.call('layer:export', req);
+    expect(again.ok).toBe(false);
+    expect(await first).toMatchObject({ ok: true, cancelled: true, written: 0 });
+  });
 });

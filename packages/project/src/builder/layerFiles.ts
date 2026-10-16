@@ -1,18 +1,34 @@
 import type { Layer, LayerInfo, OrientationFile, ProjectManifest, Vec3 } from '@aio/schema';
 import { constants } from 'node:fs';
 import { copyFile, mkdir, readFile, rm, stat, writeFile } from 'node:fs/promises';
-import { dirname, join } from 'node:path';
+import { dirname, isAbsolute, join, relative } from 'node:path';
 import { fullLayerExtent } from './extents';
 import { layerRefs } from './removePlan';
 
 const RESERVED = /^(con|prn|aux|nul|com[1-9]|lpt[1-9])$/i;
+
+/** True for a project-relative ref that stays inside the project (no drive, no `..`). */
+export function insideRef(p: string): boolean {
+  return p !== '' && !isAbsolute(p) && !/^[a-zA-Z]:/.test(p) && !p.split('/').includes('..');
+}
+
+/** True when `target` lies below `base`. */
+const within = (base: string, target: string): boolean => {
+  const r = relative(base, target);
+  return r !== '' && !r.startsWith('..') && !isAbsolute(r);
+};
+
+/** True when every file ref of the layer stays inside the project. */
+export function refsInside(l: Layer): boolean {
+  return layerRefs(l).every(insideRef);
+}
 
 /** A folder name Windows accepts for a layer name. */
 export function layerFolderName(name: string): string {
   let s = Array.from(name, (c) => (/[<>:"/\\|?*]/.test(c) || c.charCodeAt(0) < 32 ? '_' : c)).join(
     '',
   );
-  s = s.replace(/[. ]+$/, '').slice(0, 100);
+  s = s.slice(0, 100).replace(/[. ]+$/, '');
   if (s === '') return 'dataset';
   return RESERVED.test(s) ? `${s}_` : s;
 }
@@ -105,10 +121,14 @@ export async function readLayerInfo(
   orientation: OrientationFile | null,
 ): Promise<LayerInfo> {
   const refs = layerRefs(l);
-  const sizes = await Promise.all(refs.map((p) => sizeOf(join(root, p))));
+  // a ref that leaves the project is listed but never read
+  const sizes = await Promise.all(
+    refs.map((p) => (insideRef(p) ? sizeOf(join(root, p)) : Promise.resolve(null))),
+  );
   const known = sizes.filter((s) => s !== null);
   const main = mainFile(l);
-  const mainStat = main ? await sizeOf(join(root, main)) : null;
+  const mainStat = main && insideRef(main) ? await sizeOf(join(root, main)) : null;
+  const inside = refsInside(l);
   const count =
     l.kind === 'photos' || l.kind === 'panoramas'
       ? l.items.length
@@ -123,8 +143,9 @@ export async function readLayerInfo(
     bytes: known.length > 0 ? known.reduce((a, s) => a + s.bytes, 0) : null,
     count,
     countKind: count === null ? null : l.kind === 'pointcloud' ? 'points' : 'items',
-    extent:
-      l.kind === 'walk'
+    extent: !inside
+      ? null
+      : l.kind === 'walk'
         ? await walkExtent(root, l)
         : await fullLayerExtent(root, m, l, orientation),
     crs: m.crs,
@@ -140,33 +161,52 @@ export async function exportLayers(
   dir: string,
   o: { signal?: AbortSignal; progress?: (done: number, total: number, file: string) => void } = {},
 ): Promise<{ written: number; skipped: string[]; cancelled: boolean }> {
-  const layers = layerIds.flatMap((id) => {
+  const skipped: string[] = [];
+  const plans: {
+    l: Layer;
+    files: { from: string; to: string }[];
+    side: Record<string, unknown> | null;
+  }[] = [];
+  for (const id of layerIds) {
     const l = m.layers.find((x) => x.id === id);
-    return l ? [l] : [];
-  });
-  const plans = layers.map((l) => ({ l, files: exportPlan(l), side: crsSidecar(m, l) }));
+    if (!l) skipped.push(id);
+    else if (!refsInside(l)) skipped.push(l.name);
+    else plans.push({ l, files: exportPlan(l), side: crsSidecar(m, l) });
+  }
   const total = plans.reduce((n, p) => n + p.files.length + (p.side ? 1 : 0), 0);
   const used = new Set<string>();
   let done = 0;
   let written = 0;
-  const skipped: string[] = [];
+  await mkdir(dir, { recursive: true });
   for (const { l, files, side } of plans) {
     let name = layerFolderName(l.name);
-    if (used.has(name.toLowerCase())) name = layerFolderName(`${l.name} (${l.id})`);
+    if (used.has(name.toLowerCase())) {
+      const suffix = ` (${l.id})`;
+      name = layerFolderName(l.name.slice(0, Math.max(1, 100 - suffix.length)) + suffix);
+    }
     used.add(name.toLowerCase());
     const folder = join(dir, name);
-    if (await sizeOf(folder)) {
+    if (!within(dir, folder)) {
+      skipped.push(l.name);
+      continue;
+    }
+    try {
+      await mkdir(folder);
+    } catch (e) {
+      if ((e as { code?: unknown }).code !== 'EEXIST') throw e;
       skipped.push(l.name);
       done += files.length + (side ? 1 : 0);
       continue;
     }
-    await mkdir(folder, { recursive: true });
     try {
       for (const f of files) {
         if (o.signal?.aborted) throw new Error('cancelled');
+        const from = join(root, ...f.from.split('/'));
         const to = join(folder, ...f.to.split('/'));
+        if (!within(root, from) || !within(folder, to))
+          throw new Error('A file leaves its folder.');
         await mkdir(dirname(to), { recursive: true });
-        await copyFile(join(root, ...f.from.split('/')), to, constants.COPYFILE_EXCL);
+        await copyFile(from, to, constants.COPYFILE_EXCL);
         o.progress?.(++done, total, f.to);
       }
       if (side) {

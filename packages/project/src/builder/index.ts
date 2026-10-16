@@ -46,10 +46,12 @@ export {
   crsSidecar,
   exportLayers,
   exportPlan,
+  insideRef,
   isLocalFrame,
   layerFolderName,
   mainFile,
   readLayerInfo,
+  refsInside,
 } from './layerFiles';
 export { writeExportFolder, type ExportFolderOptions } from './exportFolder';
 export {

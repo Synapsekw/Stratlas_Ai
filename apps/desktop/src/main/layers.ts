@@ -1,5 +1,6 @@
 import type { IpcEvent } from '@aio/schema';
-import { join } from 'node:path';
+import { stat } from 'node:fs/promises';
+import { isAbsolute, join } from 'node:path';
 import type { Handle } from './notYet';
 import { readOrientation } from './orientation';
 
@@ -49,8 +50,17 @@ export function registerLayerIpc(deps: LayerIpcDeps): { cancel(jobId: string): b
       const o = await open(projectId, layerId);
       if ('error' in o) return { ok: false, error: o.error };
       const file = o.l.mainFile(o.layer);
-      if (!file) return { ok: false, error: `${o.layer.name} has no file in the project.` };
-      deps.reveal(join(o.root, ...file.split('/')));
+      const none = { ok: false as const, error: `${o.layer.name} has no file in the project.` };
+      if (!file || !o.l.insideRef(file)) return none;
+      const path = join(o.root, ...file.split('/'));
+      if (
+        !(await stat(path).then(
+          () => true,
+          () => false,
+        ))
+      )
+        return none;
+      deps.reveal(path);
       return { ok: true };
     } catch (e) {
       return { ok: false, error: errorText(e) };
@@ -61,6 +71,8 @@ export function registerLayerIpc(deps: LayerIpcDeps): { cancel(jobId: string): b
     if (projects.package(projectId) !== undefined) return { ok: false, error: PACKAGE };
     const root = projects.root(projectId);
     if (root === undefined) return { ok: false, error: `Project "${projectId}" is not open.` };
+    if (!isAbsolute(dir)) return { ok: false, error: 'Choose a full folder path.' };
+    if (running.has(jobId)) return { ok: false, error: 'That export is already running.' };
     const ac = new AbortController();
     running.set(jobId, ac);
     try {
