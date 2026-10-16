@@ -170,7 +170,6 @@
 }
 .mf-opt input {
   margin: 0;
-  accent-color: var(--acc);
 }
 .mf-opt > span {
   min-width: 0;

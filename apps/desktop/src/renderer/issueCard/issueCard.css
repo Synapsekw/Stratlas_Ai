@@ -460,11 +460,6 @@
   border-color: var(--s4);
   background: var(--s4);
 }
-.m-tools .btn[aria-pressed='true'] {
-  background: var(--acc-a20);
-  border-color: var(--acc-a40);
-  color: var(--acc-strong);
-}
 .m-order {
   display: inline-flex;
   align-items: center;

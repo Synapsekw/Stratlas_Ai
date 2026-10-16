@@ -126,7 +126,6 @@
   background: none;
   pointer-events: none;
   appearance: none;
-  accent-color: var(--acc);
 }
 .cleanup-range input[type='range']::-webkit-slider-runnable-track {
   height: 20px;

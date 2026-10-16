@@ -111,7 +111,6 @@
 }
 .pkg-layer input,
 .pkg-check input {
-  accent-color: var(--acc);
   margin: 0;
 }
 .pkg-size {

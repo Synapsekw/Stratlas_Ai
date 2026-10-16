@@ -170,7 +170,6 @@
   color: var(--fg-1);
 }
 .globe-check input {
-  accent-color: var(--acc);
   margin: 0;
 }
 .globe-key {

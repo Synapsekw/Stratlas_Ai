@@ -1982,11 +1982,9 @@ svg.flip {
 .pop-row input[type='range'] {
   flex: 1;
   min-width: 0;
-  accent-color: var(--acc);
 }
 .pop-row input[type='checkbox'] {
   margin-inline-start: auto;
-  accent-color: var(--acc);
 }
 .pop-row .mono {
   font-size: 11px;
@@ -3503,7 +3501,6 @@ svg.flip {
 }
 .pm-plan input[type='checkbox'] {
   display: block;
-  accent-color: var(--acc);
 }
 .pm-plan tfoot td {
   border-top: 1px solid var(--line-soft);

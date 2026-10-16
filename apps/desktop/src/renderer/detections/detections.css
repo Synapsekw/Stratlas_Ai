@@ -59,7 +59,6 @@
 }
 .det-conf input {
   width: 110px;
-  accent-color: var(--acc);
 }
 .det-keys {
   font-size: var(--t-11);
