@@ -3,8 +3,9 @@
 .split {
   /* the sized pane keeps its min first: clamp() lets the max give way, then the other pane */
   --split-track: clamp(var(--split-min, 0px), var(--split-size, 50%), var(--split-max, 100%));
+  /* positioned for the handle, but no stacking context (no isolation, z-index or transform): a
+     popover or dialog inside a pane must be able to rise above the shell around the split */
   position: relative;
-  isolation: isolate;
   display: grid;
   min-inline-size: 0;
   min-block-size: 0;

@@ -26,3 +26,15 @@ describe('split.css motion', () => {
     expect(css).not.toMatch(/transition-duration\s*:\s*\d/);
   });
 });
+
+describe('split.css stacking', () => {
+  it('opens no stacking context, so a popover or dialog inside a pane can rise above the shell', () => {
+    // An isolated split trapped the Issues "My work" list under the sidebar's resize handle and
+    // the agent's send preview under the Model builder.
+    const split = /(^|\n)\.split \{([^}]*)\}/.exec(css)?.[2] ?? '';
+    expect(split).toContain('display: grid');
+    expect(split).not.toMatch(/isolation\s*:\s*isolate|z-index|contain\s*:|transform|filter/);
+    const pane = /(^|\n)\.split-pane \{([^}]*)\}/.exec(css)?.[2] ?? '';
+    expect(pane).not.toMatch(/isolation\s*:\s*isolate|z-index|contain\s*:|transform|filter/);
+  });
+});
