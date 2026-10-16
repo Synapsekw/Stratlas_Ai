@@ -8,6 +8,8 @@ import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import { useStore } from 'zustand';
 import { createStore } from 'zustand/vanilla';
+import { dropToGround } from '../builder/dropSession';
+import { droppable } from '../builder/dropToGround';
 import { useShell } from '../shell';
 import { volumeHints } from '../workspace/compare';
 import { layerCapture } from '../workspace/framesModel';
@@ -51,6 +53,77 @@ function Row({ label, children }: { label: string; children: ReactNode }) {
       <dt>{label}</dt>
       <dd>{children}</dd>
     </>
+  );
+}
+
+/** Largest height offset the manifest accepts, in metres. */
+const MAX_OFFSET_M = 2000;
+
+/** The typed height offset, or null when it is not a number within +-2000 m. */
+function parseOffset(text: string): number | null {
+  if (text.trim() === '') return null;
+  const v = Number(text);
+  return Number.isFinite(v) && Math.abs(v) <= MAX_OFFSET_M ? v : null;
+}
+
+/** The height offset row of a point cloud: a number in metres, saved through Drop to ground's undo. */
+function OffsetRow({
+  layerId,
+  current,
+  locked,
+}: {
+  layerId: string;
+  current: number;
+  locked: boolean;
+}) {
+  const t = useT();
+  const [text, setText] = useState(String(current));
+  // follow the manifest: an Undo or a menu drop changes the offset under the open dialog
+  const [seen, setSeen] = useState(current);
+  if (seen !== current) {
+    setSeen(current);
+    setText(String(current));
+  }
+  const value = parseOffset(text);
+  const save = () => {
+    if (value === null || locked) return;
+    void dropToGround.getState().setOffset(layerId, value === 0 ? null : value);
+  };
+  return (
+    <Row label={t('layerProps.heightOffset')}>
+      <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+        <input
+          className="input"
+          type="number"
+          step={0.01}
+          min={-MAX_OFFSET_M}
+          max={MAX_OFFSET_M}
+          value={text}
+          disabled={locked}
+          aria-label={t('layerProps.heightOffset')}
+          aria-invalid={value === null}
+          data-testid="layer-props-height-offset"
+          onChange={(e) => {
+            setText(e.target.value);
+          }}
+          onKeyDown={(e) => {
+            if (e.key !== 'Enter') return;
+            e.preventDefault();
+            save();
+          }}
+          style={{ width: 110 }}
+        />
+        <button
+          type="button"
+          className="btn"
+          disabled={locked || value === null}
+          onClick={save}
+          data-testid="layer-props-height-save"
+        >
+          {t('layerProps.heightOffsetSave')}
+        </button>
+      </div>
+    </Row>
   );
 }
 
@@ -157,6 +230,9 @@ function PropsDialog({ open }: { open: NonNullable<Open> }) {
         <Row label={t('layerProps.date')}>
           {capture ? formatDate(capture.date) : t('actions.noDate')}
         </Row>
+        {layer.kind === 'pointcloud' && droppable(layer) === 'ok' && !pkg && (
+          <OffsetRow layerId={layer.id} current={layer.heightOffsetM ?? 0} locked={readOnly} />
+        )}
         {reading ? (
           <Row label={t('layerProps.files')}>{t('layerProps.reading')}</Row>
         ) : info ? (

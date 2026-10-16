@@ -19,6 +19,8 @@ import {
 import { captureIndex, workspace } from '@aio/workspace';
 import { alignSources } from '../../builder/alignTo';
 import { alignCamera, alignTo } from '../../builder/alignSession';
+import { dropToGround } from '../../builder/dropSession';
+import { droppable } from '../../builder/dropToGround';
 import { openPhoto } from '../../builder/PhotoMenu';
 import { builder } from '../../builder/state';
 import { drawings } from '../../drawings/store';
@@ -217,6 +219,25 @@ const actions: readonly Action[] = [
     run: (tg, ctx) => {
       const l = only(tg, ctx);
       if (l) builder.getState().startAlign({ kind: 'place', layerId: l.id });
+    },
+  }),
+  defineAction({
+    id: 'layer.dropToGround',
+    label: 'actions.layer.dropToGround',
+    icon: 'target',
+    section: 'edit',
+    targets: ['layers'],
+    multi: true,
+    testId: 'menu-drop-to-ground',
+    appliesTo: (tg, ctx) => {
+      const ls = targetLayers(tg, ctx);
+      return ls.length > 0 && ls.every((l) => droppable(l) !== 'no');
+    },
+    disabled: (tg, ctx) =>
+      editBlocked(ctx) ||
+      (targetLayers(tg, ctx).some((l) => droppable(l) === 'kit') && t('actions.reason.kitCloud')),
+    run: (tg) => {
+      void dropToGround.getState().drop(tg.layerIds);
     },
   }),
   defineAction({

@@ -10,6 +10,10 @@ import { readLayerInfo } from './layerInfo';
 import { renameRequest } from './renameRequest';
 
 const shellPkg = vi.hoisted(() => ({ value: null as object | null }));
+const setOffset = vi.hoisted(() => vi.fn());
+vi.mock('../builder/dropSession', () => ({
+  dropToGround: { getState: () => ({ setOffset }) },
+}));
 const call = vi.fn<(...a: unknown[]) => Promise<unknown>>();
 vi.mock('../shell', () => ({
   bridge: { call: (...a: unknown[]) => call(...a) },
@@ -47,6 +51,7 @@ beforeEach(() => {
   } as unknown as Partial<ReturnType<typeof workspace.getState>>);
   shellPkg.value = null;
   call.mockReset();
+  setOffset.mockReset();
   call.mockResolvedValue({
     ok: true,
     value: {
@@ -258,5 +263,116 @@ describe('LayerProperties', () => {
     });
     expect(document.querySelector('[data-testid="layer-props"]')).toBeNull();
     expect(layerProps.getState().open).toBeNull();
+  });
+
+  describe('height offset of a cloud', () => {
+    const withCloud = (extra: Record<string, unknown> = {}) => {
+      const p = workspace.getState().project;
+      if (!p) throw new Error('no project');
+      workspace.setState({
+        project: {
+          ...p,
+          manifest: {
+            ...p.manifest,
+            layers: [
+              ...p.manifest.layers,
+              {
+                kind: 'pointcloud',
+                id: 'c',
+                name: 'Cloud',
+                visible: true,
+                format: 'copc',
+                capture: 'c1',
+                ...extra,
+              },
+            ],
+          },
+        },
+      } as unknown as Partial<ReturnType<typeof workspace.getState>>);
+    };
+    const openC = async () => {
+      root = createRoot(host);
+      act(() => root?.render(<LayerProperties />));
+      await act(async () => {
+        layerProps.getState().openLayer('c');
+        await Promise.resolve();
+      });
+    };
+    const field = () =>
+      document.querySelector<HTMLInputElement>('[data-testid="layer-props-height-offset"]');
+    const save = () =>
+      document.querySelector<HTMLButtonElement>('[data-testid="layer-props-height-save"]');
+    const type = (v: string) => {
+      act(() => {
+        const el = field();
+        if (!el) throw new Error('no field');
+        Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set?.call(el, v);
+        el.dispatchEvent(new Event('input', { bubbles: true }));
+      });
+    };
+
+    it('edits a cloud height offset', async () => {
+      withCloud();
+      await openC();
+      expect(field()?.value).toBe('0');
+      type('-30.81');
+      expect(save()?.disabled).toBe(false);
+      act(() => save()?.click());
+      expect(setOffset).toHaveBeenCalledWith('c', -30.81);
+    });
+
+    it('saves on Enter, and zero clears the offset', async () => {
+      withCloud({ heightOffsetM: 5 });
+      await openC();
+      expect(field()?.value).toBe('5');
+      type('0');
+      act(() => {
+        field()?.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+      });
+      expect(setOffset).toHaveBeenCalledWith('c', null);
+    });
+
+    it('follows the manifest after an Undo', async () => {
+      withCloud({ heightOffsetM: 5 });
+      await openC();
+      const p = workspace.getState().project;
+      if (!p) throw new Error('no project');
+      act(() => {
+        workspace.setState({
+          project: {
+            ...p,
+            manifest: {
+              ...p.manifest,
+              layers: p.manifest.layers.map((l) =>
+                l.id === 'c' ? { ...l, heightOffsetM: 31 } : l,
+              ),
+            },
+          },
+        } as unknown as Partial<ReturnType<typeof workspace.getState>>);
+      });
+      expect(field()?.value).toBe('31');
+    });
+
+    it('disables Save for a non-number or beyond 2000 m', async () => {
+      withCloud();
+      await openC();
+      for (const v of ['', 'abc', '2001', '-2001']) {
+        type(v);
+        expect(save()?.disabled, v).toBe(true);
+      }
+      type('2000');
+      expect(save()?.disabled).toBe(false);
+    });
+
+    it('shows no height offset for a model or in a package', async () => {
+      await openM();
+      expect(field()).toBeNull();
+      act(() => root?.unmount());
+      shellPkg.value = {};
+      withCloud();
+      await openC();
+      expect(field()).toBeNull();
+      expect(save()).toBeNull();
+    });
   });
 });

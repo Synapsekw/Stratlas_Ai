@@ -13,6 +13,11 @@ vi.mock('../../builder/alignSession', () => ({
   alignCamera: { getState: () => ({ start: vi.fn() }) },
 }));
 
+const { drop } = vi.hoisted(() => ({ drop: vi.fn(() => Promise.resolve()) }));
+vi.mock('../../builder/dropSession', () => ({
+  dropToGround: { getState: () => ({ drop }) },
+}));
+
 const { alignTargets, registerKindActions } = await import('./kindActions');
 const { pinDisplay } = await import('@aio/annotate');
 const { jobs } = await import('../../shell');
@@ -70,6 +75,7 @@ let off: () => void;
 beforeEach(() => {
   off = registerKindActions();
   align.mockClear();
+  drop.mockClear();
   start.mockClear();
   jobs.setState({ start } as never);
   workspace.setState({
@@ -82,6 +88,62 @@ afterEach(() => {
 });
 
 describe('actions per kind', () => {
+  it('offers Drop to ground on clouds and models, also marked together', () => {
+    expect(ids(on('cloud'))).toContain('layer.dropToGround');
+    expect(ids(on('mesh'))).toContain('layer.dropToGround');
+    const both = item(on('cloud', 'mesh'), 'layer.dropToGround');
+    expect(both?.disabled).toBe(false);
+    expect(both?.testId).toBe('menu-drop-to-ground');
+  });
+
+  it('greys Drop to ground for a kit-packed cloud with its reason', () => {
+    const kit = {
+      ...manifest,
+      layers: [
+        L({ kind: 'pointcloud', id: 'kit', name: 'Kit', format: 'kit-packed' }),
+        ...manifest.layers,
+      ],
+    } as unknown as ProjectManifest;
+    const c = makeActionCtx({ manifest: kit });
+    expect(item(on('kit'), 'layer.dropToGround', c)?.disabled).toBe(
+      'This cloud format cannot be moved.',
+    );
+    expect(item(on('kit', 'mesh'), 'layer.dropToGround', c)?.disabled).toBe(
+      'This cloud format cannot be moved.',
+    );
+  });
+
+  it('leaves Drop to ground off photos and change results', () => {
+    const m = {
+      ...manifest,
+      layers: [
+        L({
+          kind: 'mesh',
+          id: 'chg',
+          name: 'Change',
+          derived: { kind: 'change' },
+        }),
+        ...manifest.layers,
+      ],
+    } as unknown as ProjectManifest;
+    const c = makeActionCtx({ manifest: m });
+    expect(ids(on('setA'), c)).not.toContain('layer.dropToGround');
+    expect(ids(on('chg'), c)).not.toContain('layer.dropToGround');
+    expect(ids(on('cloud', 'setA'), c)).not.toContain('layer.dropToGround');
+  });
+
+  it('drops the marked set', () => {
+    item(on('cloud', 'mesh'), 'layer.dropToGround')?.run();
+    expect(drop).toHaveBeenCalledWith(['cloud', 'mesh']);
+  });
+
+  it('Drop to ground is greyed in a package', () => {
+    const c = makeActionCtx({ manifest, pkg: true, canEdit: false });
+    expect(item(on('cloud'), 'layer.dropToGround', c)?.disabled).toBe(
+      'This is a package: its files stay inside it.',
+    );
+  });
+
   it('each kind lists its extras', () => {
     expect(ids(on('cloud'))).toEqual(expect.arrayContaining(['cloud.settings', 'cloud.colourBy']));
     expect(ids(on('mesh'))).toEqual(

@@ -22,6 +22,10 @@ vi.mock('../../builder/alignSession', () => ({
   alignCamera: { getState: () => ({ start: vi.fn() }) },
 }));
 
+vi.mock('../../builder/dropSession', () => ({
+  dropToGround: { getState: () => ({ drop: vi.fn() }) },
+}));
+
 const { registerDateActions } = await import('./dateActions');
 const { registerLayerActions } = await import('./layerActions');
 const { registerKindActions } = await import('./kindActions');
