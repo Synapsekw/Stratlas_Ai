@@ -2,6 +2,7 @@ import {
   AnnotateStyles,
   issueSaver,
   registerClassCreator,
+  registerSeverityCreator,
   setAnnotationPeople,
 } from '@aio/annotate';
 import { changeStore } from '@aio/change';
@@ -32,7 +33,7 @@ import { SettingsScreen } from './screens/Settings';
 import { WelcomeScreen } from './screens/Welcome';
 import { initAuthor } from './author';
 import { ClassNotice } from './classes/ClassNotice';
-import { createClass } from './classes/store';
+import { createClass, createSeverityModel } from './classes/store';
 import { detections, loadDetections } from './detections/store';
 import { roadStore, startRoadSync } from './road/store';
 import { Toasts } from './exports/Toasts';
@@ -403,7 +404,8 @@ export function App() {
   }, []);
 
   // "+ New class..." in every picker creates through the class store (ANN-7)
-  useEffect(() => registerClassCreator((label) => createClass(label)), []);
+  useEffect(() => registerClassCreator((label, extra) => createClass(label, extra)), []);
+  useEffect(() => registerSeverityCreator((model) => createSeverityModel(model)), []);
 
   useEffect(() => {
     const dark = window.matchMedia(OS_QUERIES.dark);

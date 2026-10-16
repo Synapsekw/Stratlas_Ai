@@ -112,6 +112,7 @@ const CHANNELS = {
   'builder:recentre': true,
   'builder:updateCapture': true,
   'builder:updateClasses': true,
+  'builder:addSeverityModel': true,
   'builder:removeCapture': true,
   'builder:ensureCapture': true,
   'builder:addDrawingPage': true,

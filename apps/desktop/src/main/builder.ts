@@ -594,6 +594,25 @@ export async function builderUpdateCapture(
   }
 }
 
+/** Append one severity scale: only `manifest.severityModels` grows. */
+export async function builderAddSeverityModel(
+  req: IpcRequest<'builder:addSeverityModel'>,
+  registry: ProjectRegistry,
+): Promise<IpcResponse<'builder:addSeverityModel'>> {
+  const root = registry.root(req.projectId);
+  if (root === undefined)
+    return {
+      ok: false,
+      error: `Project "${req.projectId}" is not open. Open it, then save again.`,
+    };
+  try {
+    const r = await (await lib()).addSeverityModel(root, req.model);
+    return { ok: true, manifest: r.manifest, backup: r.backup };
+  } catch (e) {
+    return { ok: false, error: errorText(e) };
+  }
+}
+
 /** Replace the project's class catalogues (ANN-7): only `manifest.classCatalogues` changes. */
 export async function builderUpdateClasses(
   req: IpcRequest<'builder:updateClasses'>,

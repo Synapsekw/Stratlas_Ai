@@ -23,6 +23,7 @@ export {
   type ManifestUpdate,
 } from './create';
 export { cataloguesProblem, updateClasses } from './classes';
+export { addSeverityModel, addedModelProblem } from './severityModels';
 export * from './altitude';
 export * from './drawingPlacement';
 export {

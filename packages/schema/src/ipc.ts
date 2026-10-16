@@ -28,7 +28,7 @@ import {
 } from './builder';
 import { SELECTION_MAX_POINTS, SelectionName, selectionByteLength } from './selection';
 import { ProjectManifest } from './manifest';
-import { ClassCatalogue, LibraryClass } from './severity';
+import { ClassCatalogue, LibraryClass, SeverityModel } from './severity';
 import { HexColor, IsoDate, ProjectPath, Vec3 } from './common';
 import { CleanupLayerId, NoiseRun, PointcloudCleanup } from './pointcloudCleanup';
 import { PanoQuality, PanoScan } from './panoStitch';
@@ -1872,6 +1872,17 @@ export const ipc = {
         catalogues: z.array(ClassCatalogue),
       })
       .strict(),
+    response: z.discriminatedUnion('ok', [
+      z.object({ ok: z.literal(true), manifest: ProjectManifest, backup: z.string() }),
+      z.object({ ok: z.literal(false), error: z.string() }),
+    ]),
+  },
+  /**
+   * Append one severity scale. Validated (unique id and name, at least one grade in order),
+   * backed up and journaled like `builder:updateClasses`. Scales already in the project stay.
+   */
+  'builder:addSeverityModel': {
+    request: z.object({ projectId: z.string().min(1), model: SeverityModel }).strict(),
     response: z.discriminatedUnion('ok', [
       z.object({ ok: z.literal(true), manifest: ProjectManifest, backup: z.string() }),
       z.object({ ok: z.literal(false), error: z.string() }),
