@@ -65,6 +65,7 @@ import { DrawingsLayer } from './drawings/DrawingsLayer';
 import { ModellerLayer } from './modeller/ModellerLayer';
 import { EngineerLayer } from './engineer/EngineerLayer';
 import { Lightbox } from './issueCard/Lightbox';
+import { LayerProperties } from './shell/LayerProperties';
 import { RemoveHost } from './shell/RemoveHost';
 import { SpotViewer } from './workspace/spot/SpotViewer';
 import { CrashNotice } from './diagnostics/CrashNotice';
@@ -453,6 +454,7 @@ export function App() {
       <EngineerLayer />
       <Lightbox />
       <RemoveHost />
+      <LayerProperties />
       <SpotViewer />
       <ReportProblemDialog />
       <CrashNotice />
