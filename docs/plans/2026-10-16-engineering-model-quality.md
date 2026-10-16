@@ -139,3 +139,11 @@ Execution DAG: inventory and isolated merge -> parallel photo-rotation repairs /
 The pre-integration follow-up repository check had one unrelated five-second filesystem timeout in `pointcloudCleanup.test.ts`; all 13 tests in that file passed on a focused rerun. The combined result still needs its own full check.
 
 The planning branch `fix/engineer-asset-region` and the original class-picker commit on `fix/class-picker` are now preserved on origin. The latter is patch-equivalent to the class-picker commit already in the combined history.
+
+### Combined CI follow-up
+
+The combined commit `5d8fc97c` passed 16 of 17 CI checks. Its sole failure was the engineering inspector's existing long-list test at 1100 x 720: the assistant panel measured 131.8125 px against the required height above 150 px. The same failure reproduced locally. Review identified the new telecom controls consuming sidebar space while the component inspector still sized its cap against the whole sidebar.
+
+Execution DAG: exact failing-case reproduction -> narrow sidebar allocation repair -> independent review -> one desktop build and affected inspector/engineering/telecom/small-window UI tests -> full repository checks -> new exact-head CI -> main fast-forward and push. Keep the existing height assertion and all controls available; no contract change is needed.
+
+The Scene assistant now retains a 180 px minimum height while the existing context and telecom sections shrink and scroll. Independent review approved the narrow CSS correction and stronger long-list coverage at both 720 px and 700 px heights, including message-box bounds and pointer reachability. The desktop rebuild and all 23 inspector, engineering, telecom and small-window Electron tests passed with no skips or retries. Full checks and updated remote CI remain the integration gate.

@@ -36,6 +36,8 @@ The complete repository check passed on `7399f57a`: lint, formatting, TypeScript
 
 The completed planning branch and the original class-picker commit have been published separately. The main integration remains gated on the combined checks.
 
+Combined CI passed 16 of 17 checks on `5d8fc97c`. The sole failure exposed the new telecom controls reducing the assistant panel to 131.8125 px in the engineering inspector; the same failure reproduced locally. A Scene-only 180 px minimum now preserves the message area while the upper panels retain shrinking and scrolling. Independent review approved the repair, and the desktop rebuild plus all 23 affected inspector/engineering/telecom/small-window tests passed. The existing long-list assertion remains and now covers 720 px and 700 px heights, message-box containment and actual pointer reachability. This follow-up must pass full checks and new remote CI before main advances.
+
 ## How to test
 
 1. Use the next build with processing tools 0.13.1 or later. Create an engineering model from a cloud and photos with a known height, then check the shaft, distinct antenna groups and generated views in the AI review preview.

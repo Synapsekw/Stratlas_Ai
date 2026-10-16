@@ -410,61 +410,76 @@ const longTest = test.extend<{ longCount: number }>({
   },
 });
 
-longTest(
-  'a long component list scrolls to its last row at 1100 x 720',
-  async ({ longCount: count, app, win }) => {
-    test.setTimeout(180_000);
-    expect(count).toBeGreaterThanOrEqual(30);
-    await app.evaluate(({ BrowserWindow }) => {
-      BrowserWindow.getAllWindows()[0]?.setContentSize(1100, 720);
-    });
-    await openByName(win, 'E2E engineering long list', 'e2e-eng-long');
-    await expect
-      .poll(
-        () =>
-          win.evaluate(
-            () => (window as unknown as Probe).__stratlas.stage()?.components('long').length ?? 0,
-          ),
-        { timeout: 60_000 },
-      )
-      .toBe(count);
-    await win.evaluate(() => {
-      (
-        window as unknown as {
-          __stratlas: { workspace: { getState(): { select(s: unknown): void } } };
-        }
-      ).__stratlas.workspace
-        .getState()
-        .select({ kind: 'layer', id: 'long' });
-    });
-    const list = win.getByTestId('component-list');
-    const rows = list.getByTestId('component-row');
-    await expect(rows).toHaveCount(count);
-    const last = rows.last();
-    const lastId = await last.getAttribute('data-id');
-    const height = await win.evaluate(() => window.innerHeight);
-    // the last row starts out of sight; the wheel over the list brings it into the window
-    const before = await last.boundingBox();
-    expect((before?.y ?? 0) + (before?.height ?? 0)).toBeGreaterThan(height);
-    const host = await win.getByTestId('selection-scroll').boundingBox();
-    if (!host) throw new Error('no scrolling host');
-    await win.mouse.move(host.x + host.width / 2, host.y + host.height / 2);
-    for (let i = 0; i < 30; i++) await win.mouse.wheel(0, 400);
-    await win.waitForTimeout(300);
-    const box = await last.boundingBox();
-    if (!box) throw new Error('no last row');
-    expect(box.y + box.height).toBeLessThanOrEqual(height);
-    expect(box.y + box.height).toBeLessThanOrEqual(host.y + host.height + 1);
-    // a real click there selects it (nothing covers it)
-    const name = await last.locator('.cl-name').boundingBox();
-    if (!name) throw new Error('no row name');
-    await win.mouse.click(name.x + 10, name.y + name.height / 2);
-    await expect.poll(() => selection(win)).toMatchObject({ kind: 'asset', id: lastId });
-    // the agent below keeps its share of the panel
-    const agent = await win.locator('.right .agent').boundingBox();
-    expect(agent?.height ?? 0).toBeGreaterThan(150);
-  },
-);
+for (const windowHeight of [720, 700]) {
+  longTest(
+    `a long component list scrolls to its last row at 1100 x ${String(windowHeight)}`,
+    async ({ longCount: count, app, win }) => {
+      test.setTimeout(180_000);
+      expect(count).toBeGreaterThanOrEqual(30);
+      await app.evaluate(({ BrowserWindow }, h) => {
+        BrowserWindow.getAllWindows()[0]?.setContentSize(1100, h);
+      }, windowHeight);
+      await openByName(win, 'E2E engineering long list', 'e2e-eng-long');
+      await expect
+        .poll(
+          () =>
+            win.evaluate(
+              () => (window as unknown as Probe).__stratlas.stage()?.components('long').length ?? 0,
+            ),
+          { timeout: 60_000 },
+        )
+        .toBe(count);
+      await win.evaluate(() => {
+        (
+          window as unknown as {
+            __stratlas: { workspace: { getState(): { select(s: unknown): void } } };
+          }
+        ).__stratlas.workspace
+          .getState()
+          .select({ kind: 'layer', id: 'long' });
+      });
+      const list = win.getByTestId('component-list');
+      const rows = list.getByTestId('component-row');
+      await expect(rows).toHaveCount(count);
+      const last = rows.last();
+      const lastId = await last.getAttribute('data-id');
+      const height = await win.evaluate(() => window.innerHeight);
+      // the last row starts out of sight; the wheel over the list brings it into the window
+      const before = await last.boundingBox();
+      expect((before?.y ?? 0) + (before?.height ?? 0)).toBeGreaterThan(height);
+      const host = await win.getByTestId('selection-scroll').boundingBox();
+      if (!host) throw new Error('no scrolling host');
+      await win.mouse.move(host.x + host.width / 2, host.y + host.height / 2);
+      for (let i = 0; i < 30; i++) await win.mouse.wheel(0, 400);
+      await win.waitForTimeout(300);
+      const box = await last.boundingBox();
+      if (!box) throw new Error('no last row');
+      expect(box.y + box.height).toBeLessThanOrEqual(height);
+      expect(box.y + box.height).toBeLessThanOrEqual(host.y + host.height + 1);
+      // a real click there selects it (nothing covers it)
+      const name = await last.locator('.cl-name').boundingBox();
+      if (!name) throw new Error('no row name');
+      await win.mouse.click(name.x + 10, name.y + name.height / 2);
+      await expect.poll(() => selection(win)).toMatchObject({ kind: 'asset', id: lastId });
+      // the agent below keeps its share of the panel
+      const agent = await win.locator('.right .agent').boundingBox();
+      expect(agent?.height ?? 0).toBeGreaterThan(150);
+      const composer = win.getByRole('textbox', { name: 'Message the agent' });
+      await expect(composer).toBeVisible();
+      const input = await composer.boundingBox();
+      if (!agent || !input) throw new Error('no agent composer');
+      expect(input.y).toBeGreaterThanOrEqual(agent.y);
+      expect(input.y + input.height).toBeLessThanOrEqual(agent.y + agent.height);
+      expect(input.y + input.height).toBeLessThanOrEqual(height);
+      expect(
+        await composer.evaluate((element) => {
+          const r = element.getBoundingClientRect();
+          return document.elementFromPoint(r.x + r.width / 2, r.y + r.height / 2) === element;
+        }),
+      ).toBe(true);
+    },
+  );
+}
 
 /** Make the next native open dialog return these files (Electron main process). */
 async function nextOpenDialog(app: ElectronApplication, paths: string[]) {

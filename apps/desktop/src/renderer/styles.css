@@ -2386,6 +2386,10 @@ svg.flip {
   display: flex;
   flex-direction: column;
 }
+.right > .agent {
+  /* Keep the conversation usable while the context and telecom sections scroll above it. */
+  min-height: 180px;
+}
 .agent-host {
   flex: 1;
   min-height: 0;
