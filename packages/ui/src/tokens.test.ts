@@ -37,6 +37,18 @@ describe('design tokens', () => {
     expect(css).toMatch(/:root\[data-theme='light'\] \{\s*color-scheme: light;/);
   });
 
+  it('derives the accent tints from the accent itself in both themes', () => {
+    const base = (v: string | undefined) => /^oklch\(([\d.]+ [\d.]+ [\d.]+)/.exec(v ?? '')?.[1];
+    for (const [name, theme] of [
+      ['dark', dark],
+      ['light', light],
+    ] as const) {
+      for (const k of ['--acc-a12', '--acc-a20', '--acc-a40']) {
+        expect(base(theme.get(k)), `${name} ${k}`).toBe(base(theme.get('--acc')));
+      }
+    }
+  });
+
   it('has the semantic tokens the shell needs in both themes', () => {
     for (const k of ['--shadow', '--scrollbar', '--map-bg', '--danger-ink', '--warn-line']) {
       expect(dark.has(k), k).toBe(true);
