@@ -33,7 +33,7 @@ function setup(
   ws.getState().setOrientation(emptyOrientation());
   const saved: Fixes[] = [];
   // like the app's save: the written file goes into the workspace
-  const save = vi.fn((change: (file: OrientationFile | null) => Fixes) => {
+  const save = vi.fn((change: (file: OrientationFile | null) => Fixes): Promise<string | null> => {
     const f = change(ws.getState().orientation);
     saved.push(f);
     ws.getState().setOrientation(
