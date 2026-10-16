@@ -35,16 +35,16 @@ describe('EmptyState', () => {
       />,
     );
     expect(host.querySelector('h3')?.textContent).toBe('No media yet');
-    expect(host.querySelector('.empty')).not.toBeNull();
+    expect(host.querySelector('.empty-state')).not.toBeNull();
     expect(host.querySelector('#b')?.textContent).toBe('Import a flight.');
-    expect(host.querySelector('.empty-act button')?.textContent).toBe('Import');
+    expect(host.querySelector('.empty-state-act button')?.textContent).toBe('Import');
     expect(host.querySelector('svg')).not.toBeNull();
   });
 
   it('omits what is not given', () => {
     render(<EmptyState title="Nothing" />);
     expect(host.querySelector('svg')).toBeNull();
-    expect(host.querySelector('.empty-body')).toBeNull();
-    expect(host.querySelector('.empty-act')).toBeNull();
+    expect(host.querySelector('.empty-state-body')).toBeNull();
+    expect(host.querySelector('.empty-state-act')).toBeNull();
   });
 });

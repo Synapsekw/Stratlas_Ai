@@ -1,5 +1,5 @@
-/* one empty state */
-.empty {
+/* one empty state (.empty is taken by older screens: date folders, spot slots, timeline tracks) */
+.empty-state {
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -9,21 +9,21 @@
   text-align: center;
   color: var(--fg-2);
 }
-.empty .i {
+.empty-state .i {
   color: var(--fg-3);
 }
-.empty-title {
+.empty-state-title {
   margin: 0;
   font-size: var(--t-title);
   font-weight: var(--fw-title);
   color: var(--fg-0);
 }
-.empty-body {
+.empty-state-body {
   max-width: 40ch;
   font-size: var(--t-13);
   line-height: 1.5;
   color: var(--fg-2);
 }
-.empty-act {
+.empty-state-act {
   margin-top: var(--sp-3);
 }

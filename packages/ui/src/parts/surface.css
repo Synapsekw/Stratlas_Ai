@@ -21,7 +21,7 @@
   gap: 8px;
   padding: 8px 8px 4px 12px;
 }
-.pop-title {
+.pop-head > .pop-title {
   flex: 1;
   margin: 0;
   font-size: var(--t-title);
@@ -65,11 +65,11 @@
   display: grid;
   align-content: start;
 }
-.menu-list > .row[aria-disabled='true'] {
+.menu-list > .row[data-kind][aria-disabled='true'] {
   opacity: 0.45;
   cursor: default;
 }
-.menu-list > .row[data-danger] {
+.menu-list > .row[data-kind][data-danger] {
   color: var(--s5);
 }
 .menu-lead {

@@ -96,6 +96,26 @@ describe('css guard', () => {
     expect(offenders, 'amber text: use var(--warn-ink)').toEqual([]);
   });
 
+  it('keeps the part styles off class names the app already uses with another meaning', () => {
+    // .row, .empty and .pop-title predate the parts: a bare rule restyles every old use.
+    const BARE = [
+      { re: /\.row(?![\w-]|\[data-kind)/g, fix: '.row[data-kind]' },
+      { re: /\.empty(?![\w-])/g, fix: '.empty-state' },
+      { re: /(?<!\.pop-head > )\.pop-title(?![\w-])/g, fix: '.pop-head > .pop-title' },
+    ];
+    const offenders: string[] = [];
+    const dir = join(import.meta.dirname, 'parts');
+    for (const name of readdirSync(dir)) {
+      if (!name.endsWith('.css')) continue;
+      const css = readFileSync(join(dir, name), 'utf8').replace(/\/\*[\s\S]*?\*\//g, '');
+      for (const { re, fix } of BARE) {
+        const n = count(css, re);
+        if (n) offenders.push(`parts/${name}: ${String(n)} bare, scope as ${fix}`);
+      }
+    }
+    expect(offenders).toEqual([]);
+  });
+
   it('keeps the global :focus-visible from changing border radius', () => {
     const css = readFileSync(join(import.meta.dirname, 'mission.css'), 'utf8');
     const start = css.search(/^:focus-visible \{/m);
