@@ -481,3 +481,47 @@ def test_merge_takes_codes_nobody_uses():
 def test_issue_hash_ignores_how_numbers_are_written():
     a = {**USER_ISSUE, "severity": 1.0}
     assert issue_hash(a) == issue_hash(USER_ISSUE)
+
+
+# ------------------------------------------------------------------------------ lined-up dates
+
+
+def line_up_project(root, east=2.0, north=-1.0, layers=("stack", "photos")):
+    path = root / "manifest.json"
+    m = json.loads(path.read_text())
+    m["captures"] = [{"id": "c1", "label": "Survey", "date": "2026-01-02",
+                      "lineUp": {"eastM": east, "northM": north, "with": "c0", "at": "2026-10-16T09:00:00Z"}}]  # fmt: skip
+    for layer in m["layers"]:
+        if layer["id"] in layers:
+            layer["capture"] = "c1"
+    path.write_text(json.dumps(m))
+
+
+def test_inspection_meshes_carry_the_shift(project):
+    from aio_pipelines.inspection import frame as Fr
+
+    native_project(project)
+    plain = Fr.footprint(Fr.load_meshes(project, Fr.mesh_layers(Fr.read_manifest(project)), lambda *a: None))
+    line_up_project(project)
+    m = Fr.read_manifest(project)
+    moved = Fr.footprint(Fr.load_meshes(project, Fr.mesh_layers(m), lambda *a: None, m))
+    assert moved["min"][0] - plain["min"][0] == pytest.approx(2.0)
+    assert moved["max"][0] - plain["max"][0] == pytest.approx(2.0)
+    assert moved["min"][2] - plain["min"][2] == pytest.approx(1.0)  # 1 m south: z grows
+    assert moved["min"][1] == pytest.approx(plain["min"][1])
+
+
+def test_a_lined_up_date_gives_findings_in_its_stored_frame(project):
+    # model and photos both sit where the date is lined up while the job runs; what it saves is in
+    # the layer's own (stored) frame, so the issues are where an unshifted project puts them
+    standard(project)
+    run_job(InspectionRun(), project, {})
+    want = {i["code"]: mesh_point(i) for i in issues_of(project)[1:]}
+    line_up_project(project)
+    (project / "issues.json").write_text(json.dumps({"schema": "aio.issues/1", "issues": [USER_ISSUE]}))
+    result, _ = run_job(InspectionRun(), project, {}, job_id="j2")
+    assert result["outputs"]["place"] == {"points": 3, "unmapped": 0}
+    got = {i["code"]: mesh_point(i) for i in issues_of(project)[1:]}
+    assert got.keys() == want.keys()
+    for code in want:
+        assert got[code] == pytest.approx(want[code], abs=0.15)

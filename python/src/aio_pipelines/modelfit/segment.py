@@ -86,7 +86,9 @@ def read_png_packed(project: Path, index_path: Path, check: Callable[[], None]) 
 
 
 def load_layer_points(ctx: StepContext, manifest: dict[str, Any], layer_id: str, voxel: float) -> np.ndarray:
-    """The points of a point cloud layer in the local frame (x east, y up, z south), thinned."""
+    """The points of a point cloud layer in the local frame (x east, y up, z south), thinned, where
+    the layer's survey date is lined up: the fit combines the cloud with other data, so the date's
+    shift comes after the layer's own placement (``heightOffsetM``)."""
     layer = next((lay for lay in manifest.get("layers", []) if lay.get("id") == layer_id), None)
     if layer is None:
         raise JobError(f'The project has no layer "{layer_id}".')
@@ -104,9 +106,11 @@ def load_layer_points(ctx: StepContext, manifest: dict[str, Any], layer_id: str,
     path = asset_path(ctx.project, layer.get("src"))
     if path is None or not path.is_file():
         raise JobError(f'The file of "{layer.get("name", layer_id)}" is missing.')
+    from ..captures import date_shift, local_delta
     from ..change.sources import height_offset_m
 
-    lift = np.array([0.0, height_offset_m(layer), 0.0])
+    dx, dz = local_delta(date_shift(manifest, layer_id))
+    lift = np.array([dx, height_offset_m(layer), dz])
     if fmt == "kit-packed":
         return voxel_thin(read_kit_packed(path) + lift, voxel)
     if fmt == "png-packed":
@@ -124,7 +128,7 @@ def load_layer_points(ctx: StepContext, manifest: dict[str, Any], layer_id: str,
     origin = manifest.get("origin") or [0, 0, 0]
     parts = []
     for x, y, z, _rgb in read_las_chunks(las, ctx.check):
-        local = np.column_stack([x - origin[0], z - origin[2] + lift[1], origin[1] - y])
+        local = np.column_stack([x - origin[0] + lift[0], z - origin[2] + lift[1], origin[1] - y + lift[2]])
         parts.append(voxel_thin(local, voxel))
     return voxel_thin(np.concatenate(parts), voxel) if parts else np.zeros((0, 3))
 

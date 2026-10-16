@@ -34,6 +34,7 @@ from typing import Any
 
 import numpy as np
 
+from ..captures import date_shift
 from ..params import known_keys
 from ..runtime import (
     JobError,
@@ -167,6 +168,8 @@ def read_raster(
         return _resample(Heights(oe, on, g.res, h), cell)
     path = asset_path(ctx.project, layer)
     dst_crs = project_crs(manifest)
+    # the date's shift moves the file east and north (a height grid got it from grid_source)
+    east, north = date_shift(manifest, str(layer.get("id")))
     with rasterio.open(path) as ds:
         same = ds.crs is None or dst_crs is None or ds.crs == dst_crs
         res = min(abs(ds.res[0]), abs(ds.res[1]))
@@ -176,22 +179,23 @@ def read_raster(
             data = ds.read(1, masked=True).astype(np.float64).filled(np.nan)
             if abs(abs(ds.res[0]) - abs(ds.res[1])) > 1e-9:
                 raise JobError(f"The DSM {path.name} has cells that are not square; give a cell size.")
-            return Heights(b.left, b.bottom, res, data[::-1].copy())
+            return Heights(b.left + east, b.bottom + north, res, data[::-1].copy())
         from rasterio.warp import transform_bounds
 
         left, bottom, right, top = transform_bounds(ds.crs, dst_crs, *ds.bounds) if not same else ds.bounds
+        left, right, bottom, top = left + east, right + east, bottom + north, top + north
         c = float(cell or res)
         oe, on = _aligned(left, c), _aligned(bottom, c)
         nx, ny = math.ceil((right - oe) / c), math.ceil((top - on) / c)
         _check_size(nx, ny, c)
-        from rasterio.transform import from_origin
+        from rasterio.transform import Affine, from_origin
 
         nodata = -3.0e38
         out = np.full((ny, nx), nodata, np.float32)
         reproject(
             rasterio.band(ds, 1),
             out,
-            src_transform=ds.transform,
+            src_transform=Affine.translation(east, north) @ ds.transform,
             src_crs=ds.crs or dst_crs,
             src_nodata=ds.nodata,
             dst_transform=from_origin(oe, on + ny * c, c, c),
@@ -497,6 +501,10 @@ class SurveyPrepare:
             files = source_files(ctx.project, manifest, src)
             hashes = [_sha256(f) if f.is_file() else "" for f in files]
             key: dict[str, Any] = {"v": PREPARE_VERSION, "source": src, "cellM": cell, "files": hashes}
+            if src["kind"] in ("dsm", "dtm", "cloud"):
+                shift = date_shift(manifest, src["layer"])
+                if shift != (0.0, 0.0):  # a date without a line-up keeps the fingerprint it always had
+                    key["dateShiftM"] = list(shift)
             if src["kind"] == "cloud":
                 from ..change.sources import height_offset_m
 

@@ -358,3 +358,51 @@ def test_the_site_tables_are_written_through_g1_when_it_is_there(tmp_path, monke
     # geodesy: false leaves them alone
     result, _ = run_job(pipeline(), tmp_path, {**TWO, "geodesy": False}, job_id="j2")
     assert "geodesy" not in result["outputs"] and len(calls) == 1
+
+
+# ------------------------------------------------------------------------------ lined-up dates
+
+
+def line_up(project, capture, east, north):
+    path = project / "manifest.json"
+    m = json.loads(path.read_text("utf-8"))
+    for c in m["captures"]:
+        if c["id"] == capture:
+            c["lineUp"] = {"eastM": east, "northM": north, "with": "c1", "at": "2026-10-16T09:00:00Z"}
+    path.write_text(json.dumps(m), "utf-8")
+
+
+S2 = {"surfaces": [{"id": "s2", "name": "Later", "source": {"kind": "dsm", "layer": "surf-b"}}]}
+
+
+@pytest.mark.parametrize("kind", ["dsm", "grid", "cloud"])
+def test_prepare_reads_the_shift_and_reruns_on_it(tmp_path, kind):
+    surface_project(tmp_path, kinds=(kind, kind))
+    params = CLOUD_PARAMS if kind == "cloud" else S2
+    run_job(pipeline(), tmp_path, params)
+    plain = meta(tmp_path, "s2")
+    line_up(tmp_path, "c2", 2.0, -1.0)
+    result, _ = run_job(pipeline(), tmp_path, params, job_id="j2")
+    assert not result["outputs"]["surface-1"].get("skipped")  # the file did not change, the shift did
+    moved = meta(tmp_path, "s2")
+    assert moved["fingerprint"] != plain["fingerprint"]
+    assert moved["originE"] - plain["originE"] == pytest.approx(2.0, abs=moved["cellM"] * 1.01)
+    assert moved["originN"] - plain["originN"] == pytest.approx(-1.0, abs=moved["cellM"] * 1.01)
+    # the same shift again is the same fingerprint, so nothing runs
+    result, _ = run_job(pipeline(), tmp_path, params, job_id="j3")
+    assert result["outputs"]["surface-1"].get("skipped") is True
+
+
+def test_prepared_dsm_heights_are_where_the_date_is_lined_up(tmp_path):
+    surface_project(tmp_path)
+    run_job(pipeline(), tmp_path, S2)
+    m = meta(tmp_path, "s2")
+    plain = TileSurface(tmp_path / "survey" / "surfaces" / "s2", m).read(0, 0, 600, 600)
+    line_up(tmp_path, "c2", 2.0, -1.0)
+    run_job(pipeline(), tmp_path, S2, job_id="j2")
+    m2 = meta(tmp_path, "s2")
+    moved = TileSurface(tmp_path / "survey" / "surfaces" / "s2", m2).read(0, 0, 600, 600)
+    assert m2["originE"] == pytest.approx(m["originE"] + 2.0) and m2["originN"] == pytest.approx(
+        m["originN"] - 1.0
+    )
+    assert np.allclose(moved, plain, equal_nan=True)  # the same grid, one place over

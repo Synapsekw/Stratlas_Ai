@@ -860,9 +860,10 @@ def export_cloud(ctx: StepContext, params: dict[str, Any], frame: Frame, out: Ou
     if las is not None:
         from ..change.sources import height_offset_m
 
-        # a LAS, COPC or cleaned file is in file heights; the kit-packed branch below gets the
-        # offset from Surface.points
-        xyz = las.xyz + np.array([0.0, 0.0, height_offset_m(layer)])
+        # a LAS, COPC or cleaned file is in file coordinates; the kit-packed branch below gets the
+        # offset and the date's shift from Surface.points
+        east, north = cs.shift
+        xyz = las.xyz + np.array([east, north, height_offset_m(layer)])
     else:
         pts = cs.points(ctx)
         o = manifest.get("origin") or [0, 0, 0]

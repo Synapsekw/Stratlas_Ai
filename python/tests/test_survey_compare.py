@@ -437,3 +437,76 @@ def test_change_surface_weights_are_the_core_coverage_in_its_frame():
     assert t.fill == pytest.approx(2 * a, rel=1e-12) and t.cut == 0
     t = weighted_volumes(dz, w, 0.5, deadband=3.0, use_deadband=True)
     assert t.fill == 0 and t.area_unchanged == pytest.approx(a, rel=1e-12)
+
+
+# ------------------------------------------------------------------------------ lined-up dates
+
+
+def line_up(project, east, north, captures=("c1", "c2")):
+    path = project / "manifest.json"
+    m = json.loads(path.read_text("utf-8"))
+    for c in m["captures"]:
+        if c["id"] in captures:
+            c["lineUp"] = {"eastM": east, "northM": north, "with": "c0", "at": "2026-10-16T09:00:00Z"}
+    path.write_text(json.dumps(m), "utf-8")
+
+
+def measurement(mid, scope):
+    return {"id": mid, "scope": scope}
+
+
+def save_measurements(project, *ms):
+    (project / "survey").mkdir(exist_ok=True)
+    (project / "survey" / "measurements.json").write_text(
+        json.dumps({"schema": "aio.survey-measurements/1", "measurements": list(ms)}), "utf-8"
+    )
+
+
+PILE_ITEM = {"id": "a", "from": {"kind": "previous"}, "to": {"kind": "current"}, "useDeadband": False}
+
+
+def pile_result(project, job_id="j1", ring=None):
+    items = [{"measurement": "pile", "ring": ring or PILE, "item": PILE_ITEM}]
+    result, _ = run_job(pipeline(), project, {"items": items}, job_id=job_id)
+    doc = json.loads((project / result["outputs"]["commit"]["out"]).read_text("utf-8"))
+    return doc["results"][0]["result"]
+
+
+def test_comparison_is_stale_after_a_line_up(tmp_path):
+    prepared(tmp_path)
+    before = pile_result(tmp_path)
+    again = pile_result(tmp_path, "j2")
+    assert again["fingerprint"] == before["fingerprint"]
+    line_up(tmp_path, 2.0, -1.0, captures=("c2",))  # the surfaces are not prepared again
+    after = pile_result(tmp_path, "j3")
+    assert after["fingerprint"] != before["fingerprint"]
+
+
+SNUG = around(ORIGIN[0] - 10, ORIGIN[1] + 8, 13)  # a metre or so from the pile's foot: a shift cuts it
+
+
+def test_a_survey_ring_is_moved_with_its_lined_up_date(tmp_path):
+    plain = tmp_path / "plain"
+    prepared(plain)
+    want = pile_result(plain, ring=SNUG)
+    moved = tmp_path / "moved"
+    surface_project(moved, pile=1000.0, pit=300.0)
+    line_up(moved, 2.0, -1.0)  # both dates, so the pair keeps its shape and moves as one
+    prep = {
+        "surfaces": [
+            {"id": "dsm-c1", "name": "DSM 1", "source": {"kind": "dsm", "layer": "surf-a"}, "capture": "c1"},
+            {"id": "dsm-c2", "name": "DSM 2", "source": {"kind": "dsm", "layer": "surf-b"}, "capture": "c2"},
+        ]
+    }
+    run_job(all_pipelines()["survey.prepare"], moved, prep, job_id="prep")
+    # a site-wide ring is already where the dates are lined up: nothing is added
+    save_measurements(moved, measurement("pile", {"kind": "site"}))
+    site = pile_result(moved, ring=SNUG)
+    assert site["fillM3"] < want["fillM3"] * 0.99
+    # a survey's own ring is stored in its unshifted frame: the date's shift is added before sampling
+    save_measurements(moved, measurement("pile", {"kind": "survey", "capture": "c2"}))
+    got = pile_result(moved, "j2", ring=SNUG)
+    assert got["status"] == "ok"
+    assert got["fillM3"] == pytest.approx(want["fillM3"], rel=1e-3)
+    assert got["cutM3"] == pytest.approx(want["cutM3"], abs=0.5)
+    assert got["fingerprint"] != site["fingerprint"]

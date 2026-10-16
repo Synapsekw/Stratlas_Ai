@@ -40,6 +40,7 @@ from typing import Any
 
 import numpy as np
 
+from ..captures import capture_shift
 from ..params import known_keys
 from ..runtime import JobError, Step, StepContext, atomic_write_json, now_iso
 from ..stub import exactly_one
@@ -82,6 +83,9 @@ BASE_BOTH_SIDES = "At least one side must be a surface: a base is sampled on the
 Check = Callable[[], None]
 
 
+ZERO = (0.0, 0.0)
+
+
 def _no_check() -> None:
     return None
 
@@ -107,6 +111,8 @@ class Resolved:
     offset: float = 0.0
     #: Where the surface has data (min E, min N, max E, max N), when known.
     extent: tuple[float, float, float, float] | None = None
+    #: The line-up of the survey date it was prepared from (east, north metres), zero for none.
+    shift: tuple[float, float] = (0.0, 0.0)
     _tins: dict[tuple[float, float], Tin] = field(default_factory=dict)
 
     def tin(self, le: float, ln: float) -> Tin:
@@ -177,6 +183,7 @@ def fingerprint(
     rf: Resolved | None,
     rt: Resolved | None,
     site: dict[str, Any] | None,
+    ring_shift: tuple[float, float] = (0.0, 0.0),
 ) -> str:
     obj: dict[str, Any] = {
         "engine": ENGINE_VERSION,
@@ -190,6 +197,18 @@ def fingerprint(
         obj["cellM"] = item["cellM"]
     if site is not None:
         obj["site"] = site
+    # the dates' shifts: a comparison made before a line-up is another one (absent when none)
+    shifts = {
+        k: list(v)
+        for k, v in (
+            ("from", rf.shift if rf else ZERO),
+            ("to", rt.shift if rt else ZERO),
+            ("ring", ring_shift),
+        )
+        if v != ZERO
+    }
+    if shifts:
+        obj["lineUp"] = shifts
     return "sha256:" + hashlib.sha256(canonical(obj).encode("utf-8")).hexdigest()
 
 
@@ -365,8 +384,14 @@ def compare_item(
     check: Check = _no_check,
     now: str | None = None,
     grid_out: list[GridOut] | None = None,
+    ring_shift: tuple[float, float] = ZERO,
 ) -> dict[str, Any]:
-    """One ``ComparisonResult`` (``engine: 'py'``) of ``item`` over the polygon ``ring`` (E, N)."""
+    """One ``ComparisonResult`` (``engine: 'py'``) of ``item`` over the polygon ``ring`` (E, N).
+
+    ``ring`` is as stored. A survey's own measurement is stored in that survey's unshifted frame
+    while its prepared surface sits where the date is lined up: ``ring_shift`` (that date's shift)
+    is added before sampling. A site-wide ring is already in the lined-up frame (no shift).
+    """
     ring_n = normal_ring(ring)
     frm, to = item["from"], item["to"]
     rf = rt = None
@@ -378,7 +403,9 @@ def compare_item(
             rt = resolve(to)
     except JobError as e:
         problem = str(e)
-    fp = fingerprint(ring_n, item, rf, rt, site)
+    fp = fingerprint(ring_n, item, rf, rt, site, ring_shift)
+    if ring_shift != ZERO:
+        ring_n = [(e + ring_shift[0], n + ring_shift[1]) for e, n in ring_n]
     res = _result(item, side_label(frm, rf), side_label(to, rt), rf, rt, fp, now)
     if problem:
         return _refuse(res, problem)
@@ -611,6 +638,8 @@ class ProjectSurfaces:
         self._metas: dict[str, dict[str, Any]] | None = None
         self._grids: dict[str, TileSurface] = {}
         self._tins: dict[str, Resolved] = {}
+        self._manifest: dict[str, Any] | None = None
+        self._scopes: dict[str, str] | None = None
 
     def metas(self) -> dict[str, dict[str, Any]]:
         if self._metas is None:
@@ -626,10 +655,33 @@ class ProjectSurfaces:
             self._metas = found
         return self._metas
 
-    def captures(self) -> list[str]:
-        from ..change.imagery import read_manifest
+    def manifest(self) -> dict[str, Any]:
+        if self._manifest is None:
+            from ..change.imagery import read_manifest
 
-        m = read_manifest(self.project)
+            self._manifest = read_manifest(self.project)
+        return self._manifest
+
+    def scope_shift(self, measurement: str) -> tuple[float, float]:
+        """The shift to add to a stored measurement's ring: its survey date's, zero for a
+        site-wide or unknown measurement (those rings are already where the dates are lined up)."""
+        if self._scopes is None:
+            self._scopes = {}
+            p = self.project / "survey" / "measurements.json"
+            if p.is_file():
+                try:
+                    doc = json.loads(p.read_text("utf-8"))
+                except (OSError, ValueError) as e:
+                    raise JobError(f"The measurements could not be read: {e}") from e
+                for m in doc.get("measurements") or []:
+                    scope = m.get("scope") if isinstance(m, dict) else None
+                    if isinstance(scope, dict) and scope.get("kind") == "survey":
+                        self._scopes[str(m.get("id"))] = str(scope.get("capture"))
+        cap = self._scopes.get(measurement)
+        return capture_shift(self.manifest(), cap) if cap else ZERO
+
+    def captures(self) -> list[str]:
+        m = self.manifest()
         caps = [c for c in m.get("captures") or [] if isinstance(c, dict) and c.get("id")]
         order = sorted(range(len(caps)), key=lambda i: (str(caps[i].get("date") or ""), i))
         return [str(caps[i]["id"]) for i in order]
@@ -650,13 +702,15 @@ class ProjectSurfaces:
             raise JobError(f'The surface "{sid}" is not prepared; run Prepare surfaces first.')
         if sid not in self._grids:
             self._grids[sid] = TileSurface(self.project / "survey" / "surfaces" / sid, meta)
+        cap = capture or meta.get("capture")
         return Resolved(
             kind="grid",
             name=str(meta.get("name") or sid),
             fingerprint=str(meta.get("fingerprint")),
-            capture=capture or meta.get("capture"),
+            capture=cap,
             grid=self._grids[sid],
             extent=_extent(meta),
+            shift=capture_shift(self.manifest(), str(cap)) if cap else ZERO,
         )
 
     def current_previous(self) -> tuple[str | None, str | None]:
@@ -803,7 +857,14 @@ class SurveyCompare:
         return dict(params)
 
     def inputs(self, params: dict[str, Any]) -> list[str]:
-        return ["survey/surfaces", "survey/designs.json", "survey/designs", "survey/settings.json"]
+        return [
+            "manifest.json",
+            "survey/surfaces",
+            "survey/designs.json",
+            "survey/designs",
+            "survey/settings.json",
+            "survey/measurements.json",
+        ]
 
     def plan(self, params: dict[str, Any]) -> list[Step]:
         if params.get("items") is not None:
@@ -823,7 +884,14 @@ class SurveyCompare:
                 ctx.check()
                 cap = it.get("capture")
                 ps = by_capture.setdefault(cap, ProjectSurfaces(ctx.project, cap))
-                r = compare_item(it["ring"], it["item"], ps.resolve, site, ctx.check)
+                r = compare_item(
+                    it["ring"],
+                    it["item"],
+                    ps.resolve,
+                    site,
+                    ctx.check,
+                    ring_shift=ps.scope_shift(it["measurement"]),
+                )
                 counts[r["status"]] = counts.get(r["status"], 0) + 1
                 results.append({"measurement": it["measurement"], "result": r})
                 ctx.progress((k + 1) / len(items), f"{k + 1} of {len(items)}")

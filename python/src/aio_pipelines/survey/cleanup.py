@@ -21,6 +21,10 @@ surface or layer id when it has no capture).
   holes left by removed objects filled linearly from the ground around them (inside the hull of the
   ground points). The preset and its parameters are recorded in ``tiles.json`` (``filter``).
 
+A DTM filter is a product of one date and stays in that date's frame (a line-up applies when a
+layer is read, not to what a job makes from one date alone); edits apply to a prepared surface,
+which already sits where its date is lined up.
+
 The derived surface carries no ``capture``: comparisons use it only when a person picks it (its
 ``source.of`` names the surface it was made from). The delivered DSM, cloud and ortho, the original
 prepared surface and the edits file are never changed, and nothing is deleted.
@@ -280,7 +284,11 @@ def _cloud_reader(ctx: StepContext, manifest: dict[str, Any], lid: str) -> dict[
     pts = s.points(ctx)
     o = manifest.get("origin") or [0, 0, 0]
     txt = ctx.stage(f"work/{lid}.xyz")
-    xyz = np.stack([pts[:, 0] + o[0], o[1] - pts[:, 2], pts[:, 1] + o[2]], axis=1)
+    # A DTM is a product of one date and stays in that date's frame (Decision 5): the shift
+    # Surface.points added comes off again, so a kit-packed cloud is read where its file has it
+    # (as a LAS or COPC is) and the shift applies when the surface is read like any layer.
+    east, north = s.shift
+    xyz = np.stack([pts[:, 0] + o[0] - east, o[1] - pts[:, 2] - north, pts[:, 1] + o[2]], axis=1)
     np.savetxt(txt, xyz, fmt="%.4f", delimiter=",", header="X,Y,Z", comments="")
     return {"type": "readers.text", "filename": str(txt)}
 

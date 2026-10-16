@@ -348,6 +348,54 @@ def test_dtm_filter_reads_offset_heights(tmp_path, monkeypatch, kind):
     assert np.allclose(lifted.h[ok] - plain.h[ok], 5.0, atol=0.01)
 
 
+@pytest.mark.parametrize("kind", ["las", "cloud"])
+def test_dtm_filter_stays_in_the_date_frame(tmp_path, monkeypatch, kind):
+    # A product of one date stays in that date's frame (Decision 5): the ground grid is where the
+    # file has it, line-up or not; the shift applies when the surface is read like any layer.
+    from types import SimpleNamespace
+
+    import aio_pipelines.pointcloud as pc
+    import aio_pipelines.survey.cleanup as cl
+    from aio_pipelines.volumetric.cloud import read_las_chunks
+    from imagery_synth import surface_project
+    from synth import write_las
+
+    def fake_run(ctx, cmd, label):
+        stages = json.loads(Path(cmd[2]).read_text("utf-8"))["pipeline"]
+        reader = stages[0]
+        if reader.get("type") == "readers.text":
+            xyz = np.loadtxt(reader["filename"], delimiter=",", skiprows=1)
+        else:
+            parts = [np.stack(c[:3], axis=1) for c in read_las_chunks(Path(reader["filename"]), lambda: None)]
+            xyz = np.concatenate(parts)
+        write_las(Path(stages[-1]["filename"]), xyz, SITE_EPSG)
+
+    monkeypatch.setattr(pc, "find_pdal", lambda: "pdal")
+    monkeypatch.setattr(pc, "_run", fake_run)
+    surface_project(tmp_path, kinds=(kind, kind))
+    ctx = SimpleNamespace(
+        project=tmp_path,
+        check=lambda: None,
+        progress=lambda *a, **k: None,
+        log=lambda *a, **k: None,
+        stage=lambda rel: (
+            (tmp_path / "stage" / rel).parent.mkdir(parents=True, exist_ok=True) or tmp_path / "stage" / rel
+        ),
+    )
+    plain = cl.run_dtm_filter(ctx, "surf-a", "equipment")
+    path = tmp_path / "manifest.json"
+    m = json.loads(path.read_text("utf-8"))
+    for c in m["captures"]:
+        if c["id"] == "c1":
+            c["lineUp"] = {"eastM": 2.0, "northM": -1.0, "with": "c2", "at": "2026-10-16T09:00:00Z"}
+    path.write_text(json.dumps(m), "utf-8")
+    moved = cl.run_dtm_filter(ctx, "surf-a", "equipment")
+    assert (moved.oe, moved.on, moved.cell) == pytest.approx((plain.oe, plain.on, plain.cell), abs=0.011)
+    assert plain.h.shape == moved.h.shape
+    ok = np.isfinite(plain.h) & np.isfinite(moved.h)
+    assert np.allclose(moved.h[ok], plain.h[ok], atol=0.01)
+
+
 def test_dtm_fingerprint_follows_the_cloud_offset(tmp_path, monkeypatch):
     import aio_pipelines.pointcloud as pc
     from aio_pipelines.volumetric.cloud import read_las_chunks
