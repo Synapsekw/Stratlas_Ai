@@ -14,14 +14,15 @@ export function RenameField({
   placeholder: string;
   testId: string;
   onCommit: (name: string) => void;
-  onEnd: () => void;
+  /** `how` is blur when focus left the field, so the caller keeps focus where the person put it. */
+  onEnd: (how: 'enter' | 'escape' | 'blur') => void;
 }) {
   const done = useRef(false);
-  const finish = (value: string | null) => {
+  const finish = (value: string | null, how: 'enter' | 'escape' | 'blur') => {
     if (done.current) return;
     done.current = true;
     if (value !== null && value.trim() !== initial) onCommit(value.trim());
-    onEnd();
+    onEnd(how);
   };
   return (
     <input
@@ -41,14 +42,21 @@ export function RenameField({
         e.stopPropagation();
         if (e.key === 'Enter') {
           e.preventDefault();
-          finish(e.currentTarget.value);
+          finish(e.currentTarget.value, 'enter');
         } else if (e.key === 'Escape') {
           e.preventDefault();
-          finish(null);
+          finish(null, 'escape');
         }
       }}
       onBlur={(e) => {
-        finish(e.currentTarget.value);
+        finish(e.currentTarget.value, 'blur');
+      }}
+      // clicks and presses in the field are the field's, not the row's (select, mark, drag)
+      onClick={(e) => {
+        e.stopPropagation();
+      }}
+      onPointerDown={(e) => {
+        e.stopPropagation();
       }}
     />
   );

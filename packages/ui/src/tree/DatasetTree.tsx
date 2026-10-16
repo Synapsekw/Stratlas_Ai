@@ -370,7 +370,9 @@ export function DatasetTree(props: DatasetTreeProps) {
 
   /** Drag and menu wiring of a row; nothing when the tree is not editable. */
   const moving = (it: TreeItem) => {
-    const ids = props.onDragItem ? (props.dragIds?.(it) ?? []) : [];
+    // a row being renamed is not draggable: the field takes the pointer
+    const renaming = it.layerId !== undefined && props.renamingLayer === it.layerId;
+    const ids = props.onDragItem && !renaming ? (props.dragIds?.(it) ?? []) : [];
     const menu = props.onItemMenu;
     return {
       ...(ids.length > 0
@@ -497,9 +499,9 @@ export function DatasetTree(props: DatasetTreeProps) {
             onCommit={(n) => {
               props.onRenameLayer?.(it.layerId ?? '', n);
             }}
-            onEnd={() => {
+            onEnd={(how) => {
               props.onRenameLayerEnd?.();
-              pendingFocus.current = it.id;
+              if (how !== 'blur') pendingFocus.current = it.id;
             }}
           />
         ) : (
@@ -660,13 +662,17 @@ export function DatasetTree(props: DatasetTreeProps) {
         const hiddenRows = g.items.length - rows.length;
         // a header carries its whole group, the rows behind "more" too; never in rail mode
         const carried = collapsed ? [] : (props.dragGroupIds?.(g) ?? []);
-        const groupMenu = carried.length > 0 ? props.onGroupMenu : undefined;
+        // every heading has a menu, one without layers too (the caller picks its items)
+        const groupMenu = props.onGroupMenu;
         const groupDrag = carried.length > 0 && props.onDragItem !== undefined;
         const action = collapsed ? undefined : props.groupAction?.(g);
         const fold: GroupFold = {
           expanded,
           toggle: () => {
-            setOpen((o) => ({ ...o, [g.kind]: !isOpen(g.kind) }));
+            setOpen((o) => ({
+              ...o,
+              [g.kind]: !(o[g.kind] ?? (props.defaultOpen ?? DEFAULT_OPEN).includes(g.kind)),
+            }));
           },
         };
         return (

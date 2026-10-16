@@ -483,12 +483,14 @@ describe('DateTree: a whole group onto a date folder', () => {
     expect(onMove).toHaveBeenCalledWith(['ortho'], 'oct');
   });
 
-  it('a group with nothing that can be dated stays put and has no menu', () => {
+  it('a group with nothing that can be dated stays put and its menu carries no layers', () => {
     const onItemMenu = vi.fn();
     renderWith({ folders: withNov([basemapOnly], ['base']), onMove: vi.fn(), onItemMenu });
     expect(head('nov', 'maps')?.getAttribute('draggable')).toBeNull();
     rightClick(head('nov', 'maps'), 12, 34);
-    expect(onItemMenu).not.toHaveBeenCalled();
+    expect(onItemMenu).toHaveBeenCalledWith(
+      expect.objectContaining({ layerIds: [], group: 'maps' }),
+    );
   });
 
   it('group headers do not drag in a read-only project', () => {

@@ -88,6 +88,30 @@ describe('menu keys on the tree', () => {
     });
   });
 
+  it('a group heading without layers has a menu on right-click and Shift+F10', () => {
+    const p = render();
+    const head = host.querySelector('[data-testid="tree-group-annotations"]');
+    act(() => {
+      head?.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true }));
+    });
+    expect(p.onGroupMenu).toHaveBeenCalledWith(groups[1], [], expect.anything(), expect.anything());
+    press(host.querySelector('[data-testid="tree-group-toggle-annotations"]'), 'F10', true);
+    expect(p.onGroupMenu).toHaveBeenCalledTimes(2);
+  });
+
+  it('a rename that ends by blur does not pull focus back to the row', () => {
+    render({ renamingLayer: 'm', onRenameLayerEnd: vi.fn() });
+    const field = host.querySelector<HTMLInputElement>('[data-testid="layer-rename"]');
+    const row = host.querySelector<HTMLElement>('[data-testid="tree-row-m"]');
+    expect(row?.getAttribute('draggable')).toBeNull();
+    const focus = vi.spyOn(HTMLElement.prototype, 'focus');
+    act(() => {
+      field?.dispatchEvent(new FocusEvent('focusout', { bubbles: true }));
+    });
+    expect(focus).not.toHaveBeenCalled();
+    focus.mockRestore();
+  });
+
   it('F2 starts a rename; the field saves on Enter and the row shows it in place', () => {
     const start = vi.fn();
     render({ onRenameLayerStart: start });
