@@ -1,4 +1,12 @@
-import type { Layer, LayerInfo, OrientationFile, ProjectManifest, Vec3 } from '@aio/schema';
+import type {
+  DateShift,
+  Layer,
+  LayerInfo,
+  OrientationFile,
+  ProjectManifest,
+  Vec3,
+} from '@aio/schema';
+import { shiftLocal } from '@aio/schema';
 import { constants } from 'node:fs';
 import { copyFile, mkdir, readFile, rm, stat, writeFile } from 'node:fs/promises';
 import { dirname, isAbsolute, join, relative, sep } from 'node:path';
@@ -65,7 +73,11 @@ export function mainFile(l: Layer): string | null {
   return layerRefs(l)[0] ?? null;
 }
 
-export function crsSidecar(m: ProjectManifest, l: Layer): Record<string, unknown> | null {
+export function crsSidecar(
+  m: ProjectManifest,
+  l: Layer,
+  shift: DateShift | null = null,
+): Record<string, unknown> | null {
   if (!isLocalFrame(l)) return null;
   return {
     schema: 'aio.layer-crs/1',
@@ -77,6 +89,7 @@ export function crsSidecar(m: ProjectManifest, l: Layer): Record<string, unknown
     ...(l.kind === 'pointcloud' && l.heightOffsetM !== undefined
       ? { heightOffsetM: l.heightOffsetM }
       : {}),
+    ...(shift ? { dateShiftM: { eastM: shift.eastM, northM: shift.northM } } : {}),
   };
 }
 
@@ -123,11 +136,16 @@ async function walkExtent(root: string, l: Layer): Promise<{ min: Vec3; max: Vec
   }
 }
 
+function shiftedBox(b: { min: Vec3; max: Vec3 } | null, s: DateShift | null) {
+  return b && s ? { min: shiftLocal(b.min, s), max: shiftLocal(b.max, s) } : b;
+}
+
 export async function readLayerInfo(
   root: string,
   m: ProjectManifest,
   l: Layer,
   orientation: OrientationFile | null,
+  shift: DateShift | null = null,
 ): Promise<LayerInfo> {
   const refs = layerRefs(l);
   // a ref that leaves the project is listed but never read
@@ -156,8 +174,8 @@ export async function readLayerInfo(
     extent: !inside
       ? null
       : l.kind === 'walk'
-        ? await walkExtent(root, l)
-        : await fullLayerExtent(root, m, l, orientation),
+        ? shiftedBox(await walkExtent(root, l), shift)
+        : await fullLayerExtent(root, m, l, orientation, shift),
     crs: m.crs,
     importedAt: mainStat ? mainStat.born.toISOString() : null,
     mainFile: main,
@@ -169,7 +187,12 @@ export async function exportLayers(
   m: ProjectManifest,
   layerIds: readonly string[],
   dir: string,
-  o: { signal?: AbortSignal; progress?: (done: number, total: number, file: string) => void } = {},
+  o: {
+    signal?: AbortSignal;
+    progress?: (done: number, total: number, file: string) => void;
+    /** The date shift of each layer that has one, by layer id (written into the sidecar). */
+    shifts?: Readonly<Record<string, DateShift>>;
+  } = {},
 ): Promise<{ written: number; skipped: string[]; cancelled: boolean }> {
   const skipped: string[] = [];
   const plans: {
@@ -181,7 +204,7 @@ export async function exportLayers(
     const l = m.layers.find((x) => x.id === id);
     if (!l) skipped.push(id);
     else if (!refsInside(l)) skipped.push(l.name);
-    else plans.push({ l, files: exportPlan(l), side: crsSidecar(m, l) });
+    else plans.push({ l, files: exportPlan(l), side: crsSidecar(m, l, o.shifts?.[l.id] ?? null) });
   }
   const total = plans.reduce((n, p) => n + p.files.length + (p.side ? 1 : 0), 0);
   const used = new Set<string>();

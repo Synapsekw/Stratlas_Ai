@@ -10,6 +10,7 @@ import type {
 } from '@aio/project/builder';
 import { PROCMODEL_DIR, ProcModelId } from '@aio/schema';
 import type { IpcEvent, IpcRequest, IpcResponse, ProjectManifest } from '@aio/schema';
+import { layerDateShifts } from '@aio/workspace';
 import { readMp4VideoInfo, parseDjiSrt, srtTimingCheck, srtToFlight } from '@aio/video/telemetry';
 import { execFile } from 'node:child_process';
 import { open, readdir, stat } from 'node:fs/promises';
@@ -551,7 +552,7 @@ export async function builderLayerExtents(
     const orientation = o.ok ? o.file : null;
     return {
       ok: true,
-      extents: await l.layerExtents(root, m, orientation),
+      extents: await l.layerExtents(root, m, orientation, layerDateShifts(m)),
       recentre: { blockers: await l.recentreBlockers(root, m) },
     };
   } catch (e) {

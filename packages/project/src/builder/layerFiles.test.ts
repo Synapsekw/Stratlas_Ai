@@ -93,6 +93,14 @@ describe('layer files', () => {
     expect(crsSidecar(m, vector)).toBeNull();
   });
 
+  it('writes the date shift into the sidecar', () => {
+    expect(crsSidecar(m, mesh, { eastM: 2.5, northM: -1 })).toMatchObject({
+      dateShiftM: { eastM: 2.5, northM: -1 },
+    });
+    expect(crsSidecar(m, mesh)).not.toHaveProperty('dateShiftM');
+    expect(crsSidecar(m, mesh, null)).not.toHaveProperty('dateShiftM');
+  });
+
   it('writes the cloud height offset into the sidecar', () => {
     const cloud = (extra: object) =>
       ({

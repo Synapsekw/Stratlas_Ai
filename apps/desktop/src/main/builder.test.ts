@@ -688,3 +688,42 @@ it('answers photo extents with their hand corrections', async () => {
   const ex = await builderLayerExtents({ projectId }, registry);
   expect(ex.ok && ex.extents).toEqual([{ layerId: 'ph', min: [0, 10, -198], max: [102, 12, 0] }]);
 });
+
+it('sends extents with the date shifts', async () => {
+  const dir = join(base, 'projects', 'dated');
+  await writeProject(
+    dir,
+    sampleManifest({
+      captures: [
+        {
+          id: 'c1',
+          label: 'Before',
+          date: '2026-01-01',
+          lineUp: {
+            eastM: 2,
+            northM: 1,
+            with: 'c2',
+            at: '2026-10-16T08:00:00.000Z',
+          },
+        },
+        { id: 'c2', label: 'After', date: '2026-02-01' },
+      ],
+      layers: [
+        {
+          kind: 'photos',
+          id: 'ph',
+          name: 'Photos',
+          visible: true,
+          capture: 'c1',
+          items: [{ id: 'a', src: { path: 'photos/ph/a.jpg' }, pos: [100, 10, -200] }],
+        },
+      ],
+    }),
+  );
+  const registry = new ProjectRegistry();
+  const projectId = registry.register(dir);
+  const ex = await builderLayerExtents({ projectId }, registry);
+  expect(ex.ok && ex.extents).toEqual([
+    { layerId: 'ph', min: [102, 10, -201], max: [102, 10, -201] },
+  ]);
+});

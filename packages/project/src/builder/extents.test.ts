@@ -275,3 +275,88 @@ it('gives panoramas, kit pyramids and GeoJSON an extent for Properties only', as
   // the far-content list is unchanged: no vector, no panoramas
   expect(await layerExtent(root, m, vector, null)).toBeNull();
 });
+
+it('moves a dated extent by its shift', async () => {
+  const root = await project();
+  await writeFile(
+    join(root, 'clouds', 'c.copc.laz'),
+    lasHead([530000, 3199900, 10], [530100, 3200000, 40]),
+  );
+  const glb = encodeGlb({
+    generator: 't',
+    nodes: [{ name: 'm', mesh: 0 }],
+    scene: [0],
+    meshes: [
+      {
+        name: 'm',
+        primitives: [
+          {
+            material: 0,
+            positions: new Float32Array([0, 0, 0, 2, 0, 0, 0, 3, 0]),
+            normals: new Float32Array(9),
+            indices: new Uint32Array([0, 1, 2]),
+          },
+        ],
+      },
+    ],
+    materials: [{ name: 'a' }],
+    images: [],
+  });
+  await writeFile(join(root, 'models', 'm.glb'), glb);
+  const m = await readManifestFile(root);
+  m.layers.push(
+    {
+      kind: 'pointcloud',
+      id: 'cloud-c',
+      name: 'c',
+      visible: true,
+      src: { path: 'clouds/c.copc.laz' },
+      format: 'copc',
+    },
+    {
+      kind: 'mesh',
+      id: 'mesh-m',
+      name: 'm',
+      visible: true,
+      src: { path: 'models/m.glb' },
+      transform: [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 100, 0, 0, 1],
+    },
+    {
+      kind: 'photos',
+      id: 'photos',
+      name: 'P',
+      visible: true,
+      items: [{ id: 'a', src: { path: 'photos/a.jpg' }, pos: [1, 2, 3] }],
+    },
+    {
+      kind: 'raster',
+      id: 'ras',
+      name: 'R',
+      visible: true,
+      src: { path: 'maps/r.png' },
+      role: 'ortho',
+      format: 'image',
+      corners: { tl: [0, 0, 0], tr: [10, 0, 0], bl: [0, 0, 20] },
+    },
+  );
+  const s = { eastM: 3, northM: 2 };
+  const shifts = { 'cloud-c': s, 'mesh-m': s, photos: s, ras: s };
+  const out = await layerExtents(root, m, null, shifts);
+  expect(out).toEqual([
+    { layerId: 'cloud-c', min: [30003, -10, -2], max: [30103, 20, 98] },
+    { layerId: 'mesh-m', min: [103, 0, -2], max: [105, 3, -2] },
+    { layerId: 'photos', min: [4, 2, 1], max: [4, 2, 1] },
+    { layerId: 'ras', min: [3, 0, -2], max: [13, 0, 18] },
+  ]);
+  // a layer with no entry does not move
+  expect((await layerExtents(root, m, null, { photos: s }))[1]).toEqual({
+    layerId: 'mesh-m',
+    min: [100, 0, 0],
+    max: [102, 3, 0],
+  });
+  const photoLayer = m.layers.find((l) => l.id === 'photos');
+  expect(photoLayer && (await layerExtent(root, m, photoLayer, null, s))).toEqual({
+    min: [4, 2, 1],
+    max: [4, 2, 1],
+  });
+});
