@@ -143,3 +143,22 @@ def test_point_format_2_reads_without_pdal(tmp_path):
     [(x, y, z, rgb)] = list(read_las_chunks(path))
     assert np.column_stack([x, y, z]) == pytest.approx(xyz)
     assert rgb.shape == (2, 3)
+
+
+def test_grid_source_carries_the_shift(tmp_path):
+    grid(tmp_path)
+    plain = grid_source(tmp_path, DSM, MANIFEST)
+    dated = {**DSM, "capture": "c2"}
+    manifest = {
+        **MANIFEST,
+        "captures": [
+            {"id": "c1", "label": "Survey", "date": "2026-01-10"},
+            {"id": "c2", "label": "Survey", "date": "2026-03-01", "lineUp": {"eastM": 2.0, "northM": -1.0}},
+        ],
+        "layers": [dated],
+    }
+    g = grid_source(tmp_path, dated, manifest)
+    assert (g.x0, g.y1) == (plain.x0 + 2.0, plain.y1 - 1.0)
+    t = g.transform()
+    assert (t.c, t.f) == (301002.0, 2574999.0)
+    assert np.array_equal(g.heights(), plain.heights(), equal_nan=True)

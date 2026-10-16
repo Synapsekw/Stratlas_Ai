@@ -32,6 +32,7 @@ from typing import Any
 
 import numpy as np
 
+from ..captures import capture_shift, date_shift, local_delta
 from ..params import known_keys, number, text
 from ..runtime import JobError, Step, StepContext, input_fingerprint
 from ..survey.compare import ring_weights
@@ -56,7 +57,7 @@ from .imagery import (
     save_arrays,
     write_pyramid,
 )
-from .register import estimate_shift, refusal
+from .register import estimate_shift, misaligned
 from .sources import GridSource, cloud_source, grid_source, height_offset_m
 
 PRODUCER = "change.surface"
@@ -94,11 +95,14 @@ INPUTS_CHANGED = "The surfaces changed since this job started. Start the job aga
 
 
 def surface_fingerprint(project: Path, surfaces: Any) -> dict[str, Any]:
-    """The files' fingerprint, plus each cloud layer's non-zero height offset (unchanged when none)."""
+    """The files' fingerprint, plus each cloud layer's non-zero height offset and each surface's
+    date shift (unchanged when there are none)."""
     base = input_fingerprint(project, [f for s in surfaces for f in s.files])
     offsets = [height_offset_m(s.layer) if s.kind != "dsm" else 0.0 for s in surfaces]
-    if any(offsets):
-        blob = base["hash"] + json.dumps(offsets)
+    shifts = [list(s.shift) for s in surfaces]
+    moved = any(v for sh in shifts for v in sh)
+    if any(offsets) or moved:
+        blob = base["hash"] + json.dumps(offsets) + (json.dumps(shifts) if moved else "")
         base = {**base, "hash": hashlib.sha256(blob.encode()).hexdigest()[:32]}
     return base
 
@@ -107,7 +111,12 @@ def surface_fingerprint(project: Path, surfaces: Any) -> dict[str, Any]:
 
 
 class Surface:
-    """A DSM raster or a point cloud layer as heights in the local frame (y up)."""
+    """A DSM raster or a point cloud layer as heights in the local frame (y up).
+
+    Placed where its date is lined up: the date's shift (``captures.date_shift``) comes after the
+    layer's own placement (``heightOffsetM`` for a cloud). A height grid gets it from
+    ``grid_source``; a GeoTIFF and the points get it here.
+    """
 
     def __init__(self, project: Path, manifest: dict[str, Any], spec: dict[str, Any]):
         self.project = project
@@ -116,6 +125,7 @@ class Surface:
         self.kind = spec["kind"]
         self.name = str(self.layer.get("name") or self.layer.get("id"))
         self.origin = manifest.get("origin") or [0, 0, 0]
+        self.shift = date_shift(manifest, str(self.layer.get("id")))
         self.grid: GridSource | None = None
         if self.kind == "dsm":
             if self.layer.get("kind") != "raster" or self.layer.get("role") != "dsm":
@@ -125,7 +135,7 @@ class Surface:
                 self.files = [str(self.path)]
                 self._dsm_footprint()
             else:
-                # a shaded relief for viewing: the heights are in its aio.grid/1 source
+                # a shaded relief for viewing: the heights are in its aio.grid/1 source (shifted)
                 self.grid = grid_source(project, self.layer, manifest)
                 self.path = self.grid.image
                 self.files = self.grid.files
@@ -163,20 +173,23 @@ class Surface:
                 left, bottom, right, top = b.left, b.bottom, b.right, b.top
                 self.res = min(abs(ds.res[0]), abs(ds.res[1]))
         o = self.origin
-        self.box = (left - o[0], o[1] - top, right - o[0], o[1] - bottom)
+        east, north = self.shift
+        self.box = (left + east - o[0], o[1] - top - north, right + east - o[0], o[1] - bottom - north)
 
     # -- clouds
 
     def points(self, ctx: StepContext) -> np.ndarray:
-        """(n, 3) local x, y, z of the cloud, its layer's height offset included (callers add none)."""
+        """(n, 3) local x, y, z of the cloud, its layer's height offset and date shift included
+        (callers add none)."""
         off = height_offset_m(self.layer)
+        dx, dz = local_delta(self.shift)
         if self.layer.get("format") == "kit-packed":
             raw = np.fromfile(self.path, dtype=np.uint8)
             n = raw.size // 7
             if n == 0 or raw.size != n * 7:
                 raise JobError(f'The point cloud "{self.name}" is not a kit-packed file.')
             pts = raw[: 6 * n].view("<i2").reshape(n, 3).astype(np.float64) / 1000.0
-            pts[:, 1] += off
+            pts += (dx, off, dz)
             return pts
         from ..pointcloud import PDAL_MISSING, _run, find_pdal
         from ..runtime import atomic_write_json
@@ -204,7 +217,7 @@ class Surface:
         o = self.origin
         parts = []
         for x, y, z, _ in read_las_chunks(las, ctx.check):
-            parts.append(np.stack([x - o[0], z - o[2] + off, o[1] - y], axis=1))
+            parts.append(np.stack([x - o[0] + dx, z - o[2] + off, o[1] - y + dz], axis=1))
         return np.concatenate(parts) if parts else np.zeros((0, 3))
 
     def footprint(self, ctx: StepContext) -> None:
@@ -259,6 +272,10 @@ class Surface:
                 resampling=Resampling.bilinear,
             )
         else:
+            from rasterio.transform import Affine
+
+            # the date's shift moves the file east and north: the grid is read that much back
+            east, north = self.shift
             with rasterio.open(self.path) as ds:
                 src_crs = ds.crs or dst_crs
                 reproject(
@@ -267,7 +284,7 @@ class Surface:
                     src_transform=ds.transform,
                     src_crs=src_crs,
                     src_nodata=ds.nodata,
-                    dst_transform=grid.crs_transform(self.origin),
+                    dst_transform=Affine.translation(-east, -north) @ grid.crs_transform(self.origin),
                     dst_crs=dst_crs or src_crs,
                     dst_nodata=nodata,
                     resampling=Resampling.bilinear,
@@ -461,7 +478,7 @@ class ChangeSurface:
             }
 
         def register(ctx: StepContext) -> dict[str, Any]:
-            _, pair = surfaces(ctx)
+            m, pair = surfaces(ctx)
             check_inputs(ctx, pair)
             grid = Grid.of(ctx.outputs("read")["grid"])
             arr = load_arrays(ctx.stage("work/surfaces.npz"))
@@ -481,7 +498,8 @@ class ChangeSurface:
                 "toleranceM": MAX_VERTICAL_M,
             }
             if shift["px"] > MAX_SHIFT_PX:
-                raise JobError(refusal(shift["px"], grid.cell, MAX_SHIFT_PX))
+                a, b, _ = ids(m)
+                raise misaligned(shift, grid.cell, MAX_SHIFT_PX, a, b)
             if abs(vertical) > MAX_VERTICAL_M:
                 word = "higher" if vertical > 0 else "lower"
                 raise JobError(
@@ -621,6 +639,7 @@ class ChangeSurface:
                 run={"jobId": ctx.job.job_id, "params": dict(params)},
                 registration=reg["registration"],
                 coverage=r["coverage"],
+                line_up=(capture_shift(m, a), capture_shift(m, b)),
             )
             atomic_write_json(ctx.stage("work/change-set.json"), cs)
             return {"items": len(items), "setId": sid, "out": out_dir}

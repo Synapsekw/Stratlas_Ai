@@ -13,6 +13,8 @@ from typing import Any
 
 import numpy as np
 
+from ..runtime import JobError
+
 TILE = 128
 #: A tile needs this much high-passed texture (standard deviation of log brightness).
 MIN_TEXTURE = 0.01
@@ -101,5 +103,26 @@ def registration(shift: dict[str, Any], cell: float, max_px: float) -> dict[str,
 def refusal(px: float, cell: float, max_px: float) -> str:
     return (
         f"The two dates are {px:.1f} px ({px * cell:.2f} m) apart; the largest shift allowed is "
-        f"{max_px:g} px. Align the layers first, or allow a larger shift."
+        f"{max_px:g} px. Line up the dates first."
+    )
+
+
+def misaligned(shift: dict[str, Any], cell: float, max_px: float, from_c: str, to_c: str) -> JobError:
+    """The refusal of a pair beyond its tolerance, coded so the app can offer to line up the dates.
+
+    ``eastM`` and ``northM`` say where the later date's content sits relative to the earlier one
+    (content 2 m east gives ``eastM`` about +2): ``shift`` moves the later grid back, columns east
+    and rows south, so it is the opposite east and the same north.
+    """
+    return JobError(
+        refusal(shift["px"], cell, max_px),
+        code="misaligned",
+        data={
+            "from": from_c,
+            "to": to_c,
+            "shiftM": round(shift["px"] * cell, 3),
+            "shiftPx": round(shift["px"], 2),
+            "eastM": round(-shift["dx"] * cell, 3) + 0.0,
+            "northM": round(shift["dy"] * cell, 3) + 0.0,
+        },
     )

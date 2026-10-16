@@ -330,3 +330,94 @@ def test_surface_points_carry_the_height_offset_for_a_copc(tmp_path):
     plain = surface_points(tmp_path, "surf-a", ctx)
     lifted = surface_points(tmp_path, "surf-a", ctx, 5.0)
     assert_lifted(plain, lifted)
+
+
+# ------------------------------------------------------------------------------ lined-up dates
+
+
+def line_up(project, capture, east, north):
+    path = project / "manifest.json"
+    m = json.loads(path.read_text("utf-8"))
+    for c in m["captures"]:
+        if c["id"] == capture:
+            c["lineUp"] = {"eastM": east, "northM": north, "with": "c1", "at": "2026-10-16T09:00:00Z"}
+    path.write_text(json.dumps(m), "utf-8")
+
+
+@pytest.mark.parametrize("kind", ["cloud", "las"])
+def test_surface_points_carry_the_shift(tmp_path, kind):
+    surface_project(tmp_path, kinds=(kind, kind))
+    ctx = points_ctx(tmp_path)
+    plain = surface_points(tmp_path, "surf-a", ctx)
+    line_up(tmp_path, "c1", 2.0, -1.0)
+    moved = surface_points(tmp_path, "surf-a", ctx)
+    assert plain.shape == moved.shape
+    assert np.allclose(moved[:, 0] - plain[:, 0], 2.0)
+    assert np.allclose(moved[:, 1], plain[:, 1])
+    assert np.allclose(moved[:, 2] - plain[:, 2], 1.0)  # 1 m south: z grows
+
+
+def test_surface_fingerprint_changes_with_a_line_up(tmp_path):
+    from aio_pipelines.change.surface import Surface, surface_fingerprint
+
+    surface_project(tmp_path)
+
+    def fingerprint():
+        m = json.loads((tmp_path / "manifest.json").read_text("utf-8"))
+        pair = [Surface(tmp_path, m, s) for s in (surface_params()["from"], surface_params()["to"])]
+        return surface_fingerprint(tmp_path, pair)["hash"]
+
+    plain = fingerprint()
+    line_up(tmp_path, "c2", 0.0, 0.0)
+    assert fingerprint() == plain  # a zero shift is no shift
+    line_up(tmp_path, "c2", 0.5, 0.0)
+    moved = fingerprint()
+    assert moved != plain
+    line_up(tmp_path, "c2", 0.0, 0.5)
+    assert fingerprint() not in (plain, moved)
+
+
+def shift_later_surface(project, kind, east):
+    """Move the later surface's file ``east`` metres east."""
+    if kind == "dsm":
+        import rasterio
+        from rasterio.transform import Affine
+
+        with rasterio.open(project / "rasters" / "surf-b.tif", "r+") as d:
+            t = d.transform
+            d.transform = Affine(t.a, t.b, t.c + east, t.d, t.e, t.f)
+    else:
+        p = project / "sources" / "surf-b.json"
+        g = json.loads(p.read_text("utf-8"))
+        g["x0"] += east
+        p.write_text(json.dumps(g), "utf-8")
+
+
+@pytest.mark.parametrize("kind", ["dsm", "grid"])
+def test_surface_refusal_has_the_misaligned_code(tmp_path, kind):
+    surface_project(tmp_path, kinds=(kind, kind), pit=0)
+    shift_later_surface(tmp_path, kind, 1.5)
+    with pytest.raises(JobError, match=r"Line up the dates first\.$") as err:
+        run_job(pipeline(), tmp_path, surface_params((kind, kind)))
+    assert err.value.code == "misaligned"
+    job = json.loads((tmp_path / "jobs" / "j1" / "job.json").read_text("utf-8"))
+    data = job["failure"]["data"]
+    assert job["failure"]["code"] == "misaligned"
+    assert (data["from"], data["to"]) == ("c1", "c2")
+    assert abs(data["eastM"] - 1.5) < 0.1
+    assert abs(data["northM"]) < 0.1
+
+
+@pytest.mark.parametrize("kind", ["dsm", "grid"])
+def test_a_lined_up_surface_pair_runs(tmp_path, kind):
+    surface_project(tmp_path, kinds=(kind, kind), pit=0)
+    shift_later_surface(tmp_path, kind, 1.5)
+    line_up(tmp_path, "c2", -1.5, 0.0)
+    result, _ = run_job(pipeline(), tmp_path, surface_params((kind, kind)))
+    assert result["status"] == "done"
+    cs = read_set(tmp_path)
+    assert cs["registration"]["shiftPx"] < 0.5
+    assert cs["lineUp"]["to"] == {"eastM": -1.5, "northM": 0.0}
+    [fill] = by_verdict(cs, "fill")
+    assert fill["volume"]["fillM3"] == pytest.approx(1000, rel=0.02)
+    assert fill["at"][0] == pytest.approx(-10, abs=0.5)

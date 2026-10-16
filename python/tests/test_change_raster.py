@@ -336,3 +336,83 @@ def test_the_other_methods_find_the_square_too(tmp_path, method):
     assert len(items) == 1
     assert items[0]["method"] == method
     assert items[0]["areaM2"] == pytest.approx(SQUARE * SQUARE * CELL * CELL, rel=0.05)
+
+
+# ------------------------------------------------------------------------------ lined-up dates
+
+
+def line_up(project, capture, east, north):
+    """Save a date shift on ``capture`` in the project's manifest."""
+    path = project / "manifest.json"
+    m = json.loads(path.read_text("utf-8"))
+    for c in m["captures"]:
+        if c["id"] == capture:
+            c["lineUp"] = {"eastM": east, "northM": north, "with": "c1", "at": "2026-10-16T09:00:00Z"}
+    path.write_text(json.dumps(m), "utf-8")
+    return m
+
+
+@pytest.mark.parametrize("fmt", ["kit-pyramid", "cog"])
+def test_ortho_reads_with_the_date_shift(tmp_path, fmt):
+    from aio_pipelines.change.imagery import Grid, Ortho
+
+    a, b = dates()
+    ortho_project(tmp_path, a, b, CELL, fmt)
+    plain_m = json.loads((tmp_path / "manifest.json").read_text("utf-8"))
+    moved_m = line_up(tmp_path, "c1", 2.0, 0.0)
+    layer = next(x for x in plain_m["layers"] if x["id"] == "ortho-a")
+    plain = Ortho(tmp_path, plain_m, layer)
+    moved = Ortho(tmp_path, moved_m, layer)
+    assert moved.box == pytest.approx((plain.box[0] + 2, plain.box[1], plain.box[2] + 2, plain.box[3]))
+    here = Grid(-20.0, -20.0, CELL, 80, 80)
+    east = Grid(-18.0, -20.0, CELL, 80, 80)
+    rgb, ok = plain.sample(here)
+    rgb2, ok2 = moved.sample(east)
+    assert ok.all() and ok2.all()
+    assert np.abs(rgb2 - rgb).max() < 1e-3
+
+
+def test_raster_refusal_has_the_misaligned_code(tmp_path):
+    a, b = dates(shift=8)  # the later date's content sits 8 px (2 m) east
+    ortho_project(tmp_path, a, b, CELL)
+    with pytest.raises(JobError, match=r"Line up the dates first\.$") as err:
+        run_job(pipeline(), tmp_path, raster_params())
+    job = json.loads((tmp_path / "jobs" / "j1" / "job.json").read_text("utf-8"))
+    failure = job["failure"]
+    assert failure["code"] == "misaligned" == err.value.code
+    data = failure["data"]
+    assert (data["from"], data["to"]) == ("c1", "c2")
+    assert abs(data["eastM"] - 2.0) < 0.1
+    assert abs(data["northM"]) < 0.1
+    assert data["shiftPx"] == pytest.approx(8, abs=0.3)
+    assert data["shiftM"] == pytest.approx(2, abs=0.1)
+    assert not (tmp_path / "change").exists()
+
+
+def test_a_lined_up_pair_runs(tmp_path):
+    a, b = dates(shift=8)
+    ortho_project(tmp_path, a, b, CELL)
+    line_up(tmp_path, "c2", -2.0, 0.0)
+    result, _ = run_job(pipeline(), tmp_path, raster_params())
+    assert result["status"] == "done"
+    cs = read_set(tmp_path)
+    assert cs["registration"]["shiftPx"] < 0.5
+    assert cs["lineUp"] == {"from": {"eastM": 0.0, "northM": 0.0}, "to": {"eastM": -2.0, "northM": 0.0}}
+
+
+def test_a_line_up_since_the_job_started_is_refused(tmp_path):
+    a, b = dates()
+    ortho_project(tmp_path, a, b, CELL)
+    cancel = threading.Event()
+
+    def emit(method, params):
+        if method == "progress" and params.get("step") == "read" and params.get("state") == "done":
+            cancel.set()
+
+    from aio_pipelines.runtime import Cancelled
+
+    with pytest.raises(Cancelled):
+        Job("j1", pipeline(), tmp_path, raster_params(), emit, cancel).run()
+    line_up(tmp_path, "c2", 1.0, 0.0)
+    with pytest.raises(JobError, match="changed since this job started"):
+        Job("j1", pipeline(), tmp_path, raster_params(), Recorder(), threading.Event()).run()

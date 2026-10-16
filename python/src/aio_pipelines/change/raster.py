@@ -27,10 +27,13 @@ and ``rgb`` (plain colour distance, sensitive to light). Every region is a propo
 
 from __future__ import annotations
 
+import hashlib
+import json
 from typing import Any
 
 import numpy as np
 
+from ..captures import capture_shift
 from ..params import known_keys, number, text
 from ..runtime import JobError, Step, StepContext, input_fingerprint
 from .changeset import change_set, change_set_id
@@ -53,7 +56,7 @@ from .imagery import (
     union,
     write_pyramid,
 )
-from .register import estimate_shift, refusal, registration
+from .register import estimate_shift, misaligned, registration
 
 PRODUCER = "change.raster"
 METHODS = ("gradient", "ssim", "rgb")
@@ -378,13 +381,13 @@ class ChangeRaster:
 
         def check_inputs(ctx: StepContext, pair) -> None:
             want = ctx.outputs("read").get("inputs")
-            now = input_fingerprint(ctx.project, [f for o in pair for f in o.files])
+            now = ortho_fingerprint(ctx.project, pair)
             if want and want.get("hash") != now["hash"]:
                 raise JobError(INPUTS_CHANGED)
 
         def read(ctx: StepContext) -> dict[str, Any]:
             m, (oa, ob) = orthos(ctx)
-            inputs = input_fingerprint(ctx.project, [f for o in (oa, ob) for f in o.files])
+            inputs = ortho_fingerprint(ctx.project, (oa, ob))
             box = intersect(oa.box, ob.box)
             if box is None:
                 raise JobError("The two orthos do not overlap.")
@@ -449,7 +452,7 @@ class ChangeRaster:
             reg = registration(shift, grid.cell, max_px)
             ctx.log(reg["message"], "info" if reg["ok"] else "warn")
             if not reg["ok"]:
-                raise JobError(refusal(shift["px"], grid.cell, max_px))
+                raise misaligned(shift, grid.cell, max_px, params["from"], params["to"])
             return {"shift": shift, "registration": reg}
 
         def compare(ctx: StepContext) -> dict[str, Any]:
@@ -572,13 +575,12 @@ class ChangeRaster:
                 run={"jobId": ctx.job.job_id, "params": dict(params)},
                 registration=reg,
                 coverage=r["coverage"],
+                line_up=(capture_shift(m, params["from"]), capture_shift(m, params["to"])),
             )
             atomic_write_json(ctx.stage("work/change-set.json"), cs)
             return {"items": len(items)}
 
         def commit(ctx: StepContext) -> dict[str, Any]:
-            import json
-
             m = read_manifest(ctx.project)
             cs = json.loads(ctx.stage("work/change-set.json").read_text("utf-8"))
             a, b = params["from"], params["to"]
@@ -617,6 +619,16 @@ class ChangeRaster:
             Step("compare", "Find the changes", compare, 3.0),
             Step("commit", "Add the change layers", commit, 1.0),
         ]
+
+
+def ortho_fingerprint(project, pair) -> dict[str, Any]:
+    """The files' fingerprint, plus the orthos' date shifts when either is not zero."""
+    base = input_fingerprint(project, [f for o in pair for f in o.files])
+    shifts = [list(o.shift) for o in pair]
+    if any(v for s in shifts for v in s):
+        blob = base["hash"] + json.dumps(shifts)
+        base = {**base, "hash": hashlib.sha256(blob.encode()).hexdigest()[:32]}
+    return base
 
 
 def _label(manifest: dict[str, Any], cid: str) -> str:
