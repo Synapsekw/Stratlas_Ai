@@ -1,9 +1,17 @@
 import { ProjectManifest } from '@aio/schema';
 import { execFileSync } from 'node:child_process';
-import { readFile } from 'node:fs/promises';
+import { readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import type { ElectronApplication, Page } from '@playwright/test';
-import { expect, hasPdal, hasPipelinePython, PIPELINE_ENV, test, VENV_PYTHON } from './fixtures';
+import {
+  expect,
+  hasPdal,
+  hasPipelinePython,
+  PIPELINE_ENV,
+  test,
+  tinyManifest,
+  VENV_PYTHON,
+} from './fixtures';
 
 /**
  * Bentley import through Add data against the development pipeline runtime: a synthetic
@@ -11,7 +19,9 @@ import { expect, hasPdal, hasPipelinePython, PIPELINE_ENV, test, VENV_PYTHON } f
  * client data) come into the tiny project. Add data asks for the cloud's survey day, prefilled
  * from the tiles' LAS header (the export day); the cloud becomes one COPC layer filed under the
  * day picked, the photos one layer of three posed cameras under the same date, and a photo opens
- * from Media.
+ * from Media. The project has a photo altitude correction
+ * (`verticalDatum.absAltOffsetM`) and the synthetic .zpc names no height datum, so the cloud takes
+ * that correction as its `heightOffsetM`.
  */
 const SYNTH = join(import.meta.dirname, '..', '..', '..', 'python', 'tests', 'bentley_synth.py');
 
@@ -48,6 +58,14 @@ test.describe('Bentley import', () => {
   test.skip(!hasPipelinePython(), `no Python with aio_pipelines at ${VENV_PYTHON}`);
   test.skip(!hasPdal(), 'the .zpc cloud needs PDAL (AIO_PDAL)');
   test.use({ appEnv: PIPELINE_ENV });
+
+  test.beforeEach(async ({ dataRoot }) => {
+    const m = ProjectManifest.parse({
+      ...tinyManifest(),
+      verticalDatum: { absAltOffsetM: -30.81 },
+    });
+    await writeFile(join(dataRoot.projectDir, 'manifest.json'), JSON.stringify(m, null, 2));
+  });
 
   test('a .zpc becomes one cloud and an AT export a layer of posed photos that open', async ({
     dataRoot,
@@ -101,6 +119,8 @@ test.describe('Bentley import', () => {
     const m = await manifestOf(dataRoot.projectDir);
     const cloud = m.layers.find((l) => l.kind === 'pointcloud' && l.name === 'synthetic.zpc');
     expect(cloud).toMatchObject({ format: 'copc', pointCount: fx.points });
+    // the tiles name no height datum: the cloud takes the project's photo altitude correction
+    expect(cloud?.kind === 'pointcloud' ? cloud.heightOffsetM : undefined).toBe(-30.81);
     const photos = m.layers.find((l) => l.kind === 'photos');
     if (photos?.kind !== 'photos') throw new Error('no photos layer');
     expect(photos.items).toHaveLength(3);
