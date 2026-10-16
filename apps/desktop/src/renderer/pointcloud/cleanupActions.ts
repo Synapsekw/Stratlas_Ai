@@ -1,76 +1,14 @@
 /**
- * The point cloud cleanup actions of a layer's right-click menu, as plain records in the shape of
- * the sidebar's shared action registry (feat/sidebar-context-menus moves them there when it
- * rebases): `{ id, label, applies(target), multi, run(target, ctx) }`. The menu calls `run`; no
- * handler logic lives in JSX.
+ * Opening the point cloud Clean up panel from a menu or the stage tools. The menu items
+ * themselves are the `pointcloud.*` actions in shell/actions/kindActions.tsx.
  */
-import type { Layer } from '@aio/schema';
-import type { MessageKey } from '@aio/ui';
 import { shell } from '../shell';
-import { cleanup, isCleanable } from './cleanupStore';
-
-export interface CleanupTarget {
-  layer: Layer;
-  readOnly: boolean;
-  hasRecipe: boolean;
-}
+import { cleanup } from './cleanupStore';
 
 export interface CleanupActionContext {
   openPanel(layerId: string, section?: 'noise' | 'save'): void;
   reset(layerId: string): Promise<boolean>;
 }
-
-export interface CleanupAction {
-  id:
-    | 'pointcloud.cleanup'
-    | 'pointcloud.removeNoise'
-    | 'pointcloud.saveCleaned'
-    | 'pointcloud.resetCleanup';
-  label: MessageKey;
-  applies(target: CleanupTarget): boolean;
-  multi: false;
-  /** The menu may await the result (a promise) or ignore it. */
-  run(target: CleanupTarget, ctx: CleanupActionContext): unknown;
-}
-
-const editable = (t: CleanupTarget) => isCleanable(t.layer) && !t.readOnly;
-
-export const CLEANUP_ACTIONS: readonly CleanupAction[] = [
-  {
-    id: 'pointcloud.cleanup',
-    label: 'cleanup.menu.open',
-    applies: (t) => isCleanable(t.layer),
-    multi: false,
-    run: (t, ctx) => {
-      ctx.openPanel(t.layer.id);
-    },
-  },
-  {
-    id: 'pointcloud.removeNoise',
-    label: 'cleanup.menu.noise',
-    applies: editable,
-    multi: false,
-    run: (t, ctx) => {
-      ctx.openPanel(t.layer.id, 'noise');
-    },
-  },
-  {
-    id: 'pointcloud.saveCleaned',
-    label: 'cleanup.menu.save',
-    applies: editable,
-    multi: false,
-    run: (t, ctx) => {
-      ctx.openPanel(t.layer.id, 'save');
-    },
-  },
-  {
-    id: 'pointcloud.resetCleanup',
-    label: 'cleanup.menu.reset',
-    applies: (t) => editable(t) && t.hasRecipe,
-    multi: false,
-    run: (t, ctx) => ctx.reset(t.layer.id),
-  },
-];
 
 /**
  * Open the Clean up panel where it lives, on the 3D view: from Map mode switch the stage to 3D
