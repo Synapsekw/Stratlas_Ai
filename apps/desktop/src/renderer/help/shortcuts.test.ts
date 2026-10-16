@@ -21,7 +21,7 @@ function shortcutsSection(): string {
     'The same list is in **Settings**, **Keyboard**. On a Mac, Ctrl is ⌘ (Command) and Alt is ⌥ (Option); {product} shows the Mac keys there and in its tool tips.',
   ];
   for (const { scope, label } of SHORTCUT_SCOPES) {
-    const rows = SHORTCUTS.filter((s) => s.scope === scope);
+    const rows = SHORTCUTS.filter((s) => s.scope === scope && s.keys.length > 0);
     if (rows.length === 0) continue;
     out.push('', `### ${t(label)}`, '', '| Keys | Does |', '| --- | --- |');
     for (const s of rows) {

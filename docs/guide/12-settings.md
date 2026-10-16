@@ -104,6 +104,7 @@ The same list is in **Settings**, **Keyboard**. On a Mac, Ctrl is ⌘ (Command) 
 | Space      | Play or pause the video and the timeline |
 | Alt ←      | Go to the previous survey date           |
 | Alt →      | Go to the next survey date               |
+| Ctrl J     | Ask the agent                            |
 | F1         | Open or close the user guide             |
 
 ### Scene: 3D, map and split
@@ -124,7 +125,7 @@ The same list is in **Settings**, **Keyboard**. On a Mac, Ctrl is ⌘ (Command) 
 | P            | Flight paths: all, active clip, off                       |
 | D            | Drone telemetry on or off                                 |
 | I            | Issue pins on or off                                      |
-| T            | Show or hide the timeline                                 |
+| T            | Open the tools                                            |
 | C            | Inside the asset: view from the drone camera              |
 | Esc          | Stop the current tool, close the photo beside the 3D view |
 | Enter        | Finish the shape you are drawing                          |

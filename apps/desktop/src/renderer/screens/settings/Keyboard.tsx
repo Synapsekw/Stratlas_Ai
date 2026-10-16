@@ -17,12 +17,15 @@ interface Row {
 
 /** Every shortcut as text people search: its keys, its action and where it works. */
 function rows(): Row[] {
-  return (SHORTCUTS as readonly Shortcut[]).map((s) => ({
-    id: s.id,
-    scope: s.scope,
-    keys: s.keys.map((k) => keyLabel(k)),
-    action: t(s.label),
-  }));
+  // a shortcut with no key (the timeline) is reached from a button, so the key map skips it
+  return (SHORTCUTS as readonly Shortcut[])
+    .filter((s) => s.keys.length > 0)
+    .map((s) => ({
+      id: s.id,
+      scope: s.scope,
+      keys: s.keys.map((k) => keyLabel(k)),
+      action: t(s.label),
+    }));
 }
 
 /** Rows whose keys, action or place match every word of the query. */
