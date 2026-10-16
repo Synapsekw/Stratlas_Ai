@@ -1,4 +1,4 @@
-import type { AssetRef, Layer, LayerKind } from '@aio/schema';
+import type { AssetRef, DateShift, Layer, LayerKind } from '@aio/schema';
 import type {
   Box3,
   Intersection,
@@ -285,6 +285,12 @@ export interface AdapterContext {
   /** Resolve an asset reference to a fetchable aio:// URL. */
   url(ref: AssetRef): string;
   scene: SceneHandle;
+  /**
+   * The date shift of a layer (line up dates), or null when it does not move. The layer sync
+   * already hands adapters the layer with the shift applied (`shiftedLayer`); this is for what
+   * that cannot carry (a cloud's frame, photo corrections). Absent means no layer moves.
+   */
+  shiftOf?(layerId: string): DateShift | null;
 }
 
 /**

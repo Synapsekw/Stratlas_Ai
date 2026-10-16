@@ -1,4 +1,4 @@
-import type { Layer } from '@aio/schema';
+import { shiftCorners, type Layer } from '@aio/schema';
 import { layerDisplay, type LayerDisplay } from '@aio/workspace';
 import type { MeshLambertMaterial } from 'three';
 import {
@@ -375,7 +375,12 @@ async function imageRaster(layer: RasterLayer, ctx: AdapterContext): Promise<Lay
 async function pyramidRaster(layer: RasterLayer, ctx: AdapterContext): Promise<LayerHandle> {
   const res = await fetch(ctx.url(layer.src));
   if (!res.ok) throw new Error(`Tile index for "${layer.name}" not found (${res.status})`);
-  const index: TileIndex = parseTileIndex(await res.json());
+  const stored = parseTileIndex(await res.json());
+  // the tiles index holds the placement: a lined-up date moves it here
+  const index: TileIndex = {
+    ...stored,
+    corners: shiftCorners(stored.corners, ctx.shiftOf?.(layer.id) ?? null),
+  };
   const group = new Group();
   group.name = `layer:${layer.id}`;
   group.userData.aioRaster = true;

@@ -1,5 +1,11 @@
 import type { AssetRef, Layer, LayerKind } from '@aio/schema';
-import type { CameraRequest, OpenProject, Selection, Workspace } from '@aio/workspace';
+import {
+  dateShiftOf,
+  type CameraRequest,
+  type OpenProject,
+  type Selection,
+  type Workspace,
+} from '@aio/workspace';
 import {
   Box3,
   DoubleSide,
@@ -1147,7 +1153,12 @@ export class Stage implements EngineStage {
     if (project) {
       const sync = new LayerSync({
         getAdapter: this.getAdapter,
-        ctx: { url: (ref) => this.opts.resolveUrl(project.id, ref), scene: this },
+        ctx: {
+          url: (ref) => this.opts.resolveUrl(project.id, ref),
+          scene: this,
+          // the open manifest's: a saved line-up re-creates the layers of its date
+          shiftOf: (layerId) => dateShiftOf((this.project ?? project).manifest, layerId),
+        },
         onLoaded: (layer, handle) => {
           // a layer made again draws every node: hide again what the record hides
           this.appliedHidden.delete(layer.id);
