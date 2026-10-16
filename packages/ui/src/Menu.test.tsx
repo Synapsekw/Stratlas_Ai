@@ -124,4 +124,28 @@ describe('Menu', () => {
     expect(document.body.querySelector('[role="menu"]')).toBeNull();
     expect(document.activeElement).toBe(host.querySelector('[data-testid="opener"]'));
   });
+
+  it('opens above the dialog its opener sits in', () => {
+    function InDialog() {
+      const opener = useRef<HTMLButtonElement>(null);
+      return (
+        <div role="dialog" aria-modal="true" aria-label="Export">
+          <button ref={opener} type="button">
+            open
+          </button>
+          <Menu open onClose={vi.fn()} opener={opener} label="Actions" items={abc} />
+        </div>
+      );
+    }
+    root = createRoot(host);
+    act(() => root?.render(<InDialog />));
+    const pop = document.body.querySelector('.menu-pop');
+    expect(pop?.parentElement?.getAttribute('data-layer')).toBe('top');
+  });
+
+  it('stays on the popover layer outside a dialog', () => {
+    show(abc);
+    const pop = document.body.querySelector('.menu-pop');
+    expect(pop?.parentElement?.hasAttribute('data-layer')).toBe(false);
+  });
 });

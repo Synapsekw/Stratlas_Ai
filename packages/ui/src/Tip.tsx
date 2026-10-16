@@ -168,7 +168,7 @@ export function Tip({
     <>
       {cloneElement(child, props)}
       {open ? (
-        <PortalRoot opener={opener}>
+        <PortalRoot layer="top" opener={opener}>
           <div
             ref={popRef}
             id={id}

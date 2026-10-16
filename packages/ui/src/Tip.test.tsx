@@ -144,6 +144,7 @@ describe('Tip', () => {
     expect(host.contains(wrapper)).toBe(false);
     expect(wrapper.parentElement).toBe(document.body);
     expect(wrapper.getAttribute('data-surface')).toBe('dark');
+    expect(wrapper.getAttribute('data-layer'), 'above every dialog and scrim').toBe('top');
   });
 
   it('shows on focus for an aria-disabled child', () => {

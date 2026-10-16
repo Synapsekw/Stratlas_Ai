@@ -31,7 +31,8 @@
 /* the one tooltip: Tip renders it into the portal root */
 .tip-pop {
   position: fixed;
-  z-index: var(--z-toast);
+  /* above every dialog and scrim: a tip or disabled reason inside a dialog must show */
+  z-index: var(--z-top);
   max-inline-size: 280px;
   background: var(--bg-3);
   color: var(--fg-0);

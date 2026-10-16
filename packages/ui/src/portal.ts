@@ -23,16 +23,30 @@ export function portalSurfaceAttrs(opener: Element | null): PortalSurfaceAttrs {
   return out;
 }
 
+/** A dialog, a modal or a scrim: the app's dialogs sit on scrims between 80 and 110. */
+const MODAL = '[role="dialog"], [role="alertdialog"], [aria-modal="true"], [class*="scrim"]';
+
 export interface PortalRootProps {
   opener: Element | null;
   children: ReactNode;
   className?: string;
+  /** 'top' always renders above every dialog (tips); otherwise only when the opener is in one. */
+  layer?: 'top' | undefined;
 }
 
-/** Renders floating UI into document.body, wearing the opener's surface attributes. */
-export function PortalRoot({ opener, children, className }: PortalRootProps): ReactPortal {
+/**
+ * Renders floating UI into document.body, wearing the opener's surface attributes. Under body it
+ * competes with the dialogs' layers, so an opener inside a dialog lifts it to the top layer
+ * (`data-layer="top"`, `--z-top`); elsewhere it keeps its own layer (`--z-pop`).
+ */
+export function PortalRoot({ opener, children, className, layer }: PortalRootProps): ReactPortal {
+  const top = layer === 'top' || opener?.closest(MODAL) != null;
   return createPortal(
-    createElement('div', { className, ...portalSurfaceAttrs(opener) }, children),
+    createElement(
+      'div',
+      { className, 'data-layer': top ? 'top' : undefined, ...portalSurfaceAttrs(opener) },
+      children,
+    ),
     document.body,
   );
 }

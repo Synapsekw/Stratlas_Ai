@@ -8,6 +8,10 @@
   color: var(--fg-1);
   font-size: var(--t-12);
 }
+/* a menu or popover opened inside a dialog renders above it (PortalRoot sets data-layer) */
+[data-layer='top'] > .surface-pop {
+  z-index: var(--z-top);
+}
 .surface-dlg {
   background: var(--bg-1);
   border: 1px solid var(--line);

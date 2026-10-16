@@ -105,6 +105,8 @@
   --z-drawer: 60;
   --z-toast: 70;
   --z-modal: 80;
+  /* above every dialog and scrim (the app's dialogs reach 110): tips, and menus opened inside a dialog */
+  --z-top: 120;
   /* durations */
   --d-1: 120ms;
   --d-2: 180ms;
