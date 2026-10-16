@@ -17,7 +17,8 @@ vi.mock('@aio/annotate', async (orig) => ({
   useAnnotateReadOnly: () => flags.readOnly,
 }));
 vi.mock('./alignSession', () => ({
-  alignTo: { getState: () => ({ alignTo: align }) },
+  // dropSession subscribes at import (one Ctrl+Z owner between the two notices)
+  alignTo: { getState: () => ({ alignTo: align }), subscribe: () => () => undefined },
   alignCamera: { getState: () => ({ start: vi.fn() }) },
 }));
 
