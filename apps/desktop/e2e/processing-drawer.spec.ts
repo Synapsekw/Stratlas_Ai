@@ -31,7 +31,7 @@ const TINY = 'E2E tiny project';
 
 async function openTiny(win: Page): Promise<void> {
   await win.getByTestId('project-card').filter({ hasText: TINY }).click();
-  await expect(win.locator('.crumbs')).toContainText(TINY);
+  await expect(win.locator('.proj-switch')).toContainText(TINY);
 }
 
 test('the chip opens the open project processing, and closing gives the focus back', async ({
@@ -176,7 +176,7 @@ test('finished jobs leave the list one by one or all at once, for good, and keep
 test('a project that is not an inspection has no Turn detections into issues', async ({ win }) => {
   await openTiny(win);
   await win.locator('.sb-nav .nav-item', { hasText: 'Detections' }).click();
-  await expect(win.locator('.crumbs b')).toHaveText('Detections');
+  await expect(win.locator('.nav-item[aria-current="page"] .lbl')).toHaveText('Detections');
   await expect(win.getByTestId('det-to-issues')).toHaveCount(0);
 });
 

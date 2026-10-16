@@ -220,7 +220,7 @@ test('classes on the fly, Accept all with one undo, rename, delete-and-move, lib
     const win = await app.firstWindow();
     await win.waitForLoadState('domcontentloaded');
     await win.getByTestId('project-card').filter({ hasText: 'E2E classes' }).click();
-    await expect(win.locator('.crumbs')).toContainText('E2E classes');
+    await expect(win.locator('.proj-switch')).toContainText('E2E classes');
     await win.locator('.nav-item', { hasText: 'Detections' }).click();
     await expect(win.getByTestId('det-counts')).toContainText('4 waiting');
 

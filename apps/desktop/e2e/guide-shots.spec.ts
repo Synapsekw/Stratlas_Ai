@@ -110,7 +110,7 @@ for (const shot of GUIDE_SHOTS) {
         // The first open copies the demo to its working folder (openChangeDemo waits the same way).
         const { id } = shot.project;
         await expect.poll(async () => (await openProject(win)).id, { timeout: 60_000 }).toBe(id);
-        await expect(win.locator('.crumbs')).toContainText(shot.project.name);
+        await expect(win.locator('.proj-switch')).toContainText(shot.project.name);
       }
       await shot.setup(win);
       // let the 3D view and the thumbnails settle; hide the build stamp (it changes every build)

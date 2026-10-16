@@ -24,6 +24,7 @@ import { shell, useCall, useShell } from '../shell';
 import { NoProject } from './NoProject';
 import { offeredSections, sectionsWithData } from './reportSections';
 import { useRoad } from '../road/store';
+import { PageHeader } from '../shell/PageHeader';
 
 const STATUSES: IssueStatus[] = ['draft', 'reviewed', 'approved', 'closed'];
 
@@ -185,13 +186,19 @@ export function ReportsScreen() {
   const [picked, setPicked] = useState<Record<string, string>>({});
   const [textOpen, setTextOpen] = useState(false);
   const auditOpen = useAuditOpen();
-  if (!project) return <NoProject view="Reports" />;
+  if (!project)
+    return (
+      <>
+        <PageHeader heading="nav.reports" />
+        <NoProject view="Reports" />
+      </>
+    );
   const files = listed === null ? null : listed.ok ? listed.value.files : [];
   const selected = picked[project.id] ?? files?.[0]?.path ?? null;
   const file = files?.find((f) => f.path === selected) ?? null;
   const models = project.manifest.severityModels;
 
-  return (
+  const page = (
     <FocusZone kind="report" className="screen reports" aria-label="Reports">
       <h1 className="sr-only">Reports</h1>
       <aside className="rep-side" aria-label="Report files">
@@ -363,5 +370,11 @@ export function ReportsScreen() {
         )}
       </section>
     </FocusZone>
+  );
+  return (
+    <>
+      <PageHeader heading="nav.reports" />
+      {page}
+    </>
   );
 }

@@ -5,7 +5,7 @@ import { useShell } from '../shell';
 import { AgentHost } from './AgentHost';
 import { dockWindow, isDockScreen, type DockScreen } from './dockScreens';
 
-/** The element the title bar button (AgentToggle) folds and unfolds. */
+/** The element the page header's Agent button (AgentToggle) folds and unfolds. */
 export const AGENT_DOCK_ID = 'agent-dock';
 
 /** The screen the agent column is on now: one of its four, with a project open; else null. */

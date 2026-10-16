@@ -101,7 +101,7 @@ async function start(data: DataRoot, network: NetworkGuard) {
   const win = await app.firstWindow();
   await win.waitForLoadState('domcontentloaded');
   await win.getByTestId('project-card').filter({ hasText: NAME }).click();
-  await expect(win.locator('.crumbs')).toContainText(NAME, { timeout: 60_000 });
+  await expect(win.locator('.proj-switch')).toContainText(NAME, { timeout: 60_000 });
   return { app, win };
 }
 

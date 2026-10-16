@@ -249,7 +249,7 @@ test('right-click a photo cluster, align a photo to the map, correct its flight'
   const p2 = before[1]?.id ?? '';
 
   await win.getByTestId('project-card').filter({ hasText: NAME }).first().click();
-  await expect(win.locator('.crumbs')).toContainText(NAME);
+  await expect(win.locator('.proj-switch')).toContainText(NAME);
   // the map and 3D side by side, so the photos show as pins
   await win.evaluate(() => {
     (

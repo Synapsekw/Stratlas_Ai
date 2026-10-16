@@ -131,6 +131,6 @@ test('isolated test profiles open windows off-screen without a taskbar button', 
   if (process.platform !== 'darwin') expect(placed.right).toBeLessThan(placed.left);
   expect(placed.focused).toBe(false);
   // It still renders: the shell is on the page.
-  await expect(win.locator('.titlebar')).toBeVisible();
+  await expect(win.locator('.sb-top')).toBeVisible();
   await app.close();
 });

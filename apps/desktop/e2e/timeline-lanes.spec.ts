@@ -105,7 +105,7 @@ test.setTimeout(120_000);
 
 async function openLanes(win: Page) {
   await win.getByTestId('project-card').filter({ hasText: NAME }).first().click();
-  await expect(win.locator('.crumbs')).toContainText(NAME);
+  await expect(win.locator('.proj-switch')).toContainText(NAME);
   await expect(win.getByTestId('lane-timeline')).toBeVisible({ timeout: 30_000 });
 }
 const state = (win: Page) =>

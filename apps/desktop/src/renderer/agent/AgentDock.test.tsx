@@ -227,14 +227,16 @@ describe('AgentDock', () => {
 });
 
 describe('AgentToggle', () => {
-  it('is a title bar chip that names the column and says whether it is open', async () => {
+  it('is a header button that names the column and says whether it is open', async () => {
     await show('media');
     const button = toggle();
     expect(button?.tagName).toBe('BUTTON');
     expect(button?.type).toBe('button');
-    expect(button?.classList.contains('chip-status')).toBe(true);
+    expect(button?.classList.contains('btn')).toBe(true);
     expect(button?.textContent).toBe('Agent');
-    expect(button?.title).toBe('Show or hide the agent');
+    // its tip is the shared Tip (described by), not a native title
+    expect(button?.title).toBe('');
+    expect(button?.getAttribute('aria-keyshortcuts')).toBeTruthy();
     expect(button?.getAttribute('aria-controls')).toBe('agent-dock');
     expect(button?.getAttribute('aria-expanded')).toBe('false');
     expect(button?.querySelector('svg')).not.toBeNull();

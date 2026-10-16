@@ -175,7 +175,7 @@ test('library, import wizard, command search and every Settings section', async 
   await expect(newProject).toBeFocused();
 
   // command search from the title bar button, and back
-  const search = win.locator('.search-btn');
+  const search = win.locator('.sb-search');
   await search.focus();
   await win.keyboard.press('Enter');
   const palette = win.getByRole('dialog', { name: 'Command search' });
@@ -253,7 +253,7 @@ test('user guide and report a problem keep focus inside and hold still', async (
   await expect(win.locator('html')).toHaveAttribute('data-motion', 'reduce');
 
   // F1: the guide takes focus in its search box, keeps Tab inside, Esc hands focus back
-  const search = win.locator('.search-btn');
+  const search = win.locator('.sb-search');
   await search.focus();
   await win.keyboard.press('F1');
   const guide = win.getByRole('dialog', { name: 'User guide' });
@@ -434,7 +434,7 @@ test.describe('a synthetic project', () => {
 
     for (const screen of ['Issues', 'Media', 'Detections', 'Reports']) {
       await nav(win, screen);
-      await expect(win.locator('.crumbs b')).toHaveText(screen);
+      await expect(win.locator('.nav-item[aria-current="page"] .lbl')).toHaveText(screen);
       await expectAccessible(win, screen);
     }
 

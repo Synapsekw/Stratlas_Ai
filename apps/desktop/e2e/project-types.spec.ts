@@ -88,7 +88,7 @@ async function toProjects(win: Page) {
 
 async function open(win: Page, name: string) {
   await win.getByTestId('project-card').filter({ hasText: name }).click();
-  await expect(win.locator('.crumbs')).toContainText(name);
+  await expect(win.locator('.proj-switch')).toContainText(name);
   await expect(hint(win)).toBeVisible({ timeout: 30_000 });
 }
 

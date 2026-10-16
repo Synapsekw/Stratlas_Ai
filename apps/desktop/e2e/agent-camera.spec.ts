@@ -60,7 +60,7 @@ async function open(id: string, name: string, packs: string[] = []): Promise<Run
     const { win } = run;
     await win.evaluate(() => window.aio.invoke('settings:set', { cloudAi: true }));
     await win.getByTestId('project-card').filter({ hasText: name }).click();
-    await expect(win.locator('.crumbs')).toContainText(name);
+    await expect(win.locator('.proj-switch')).toContainText(name);
     return run;
   } catch (e) {
     await run.close().catch(() => undefined);

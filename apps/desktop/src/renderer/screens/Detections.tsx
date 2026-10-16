@@ -49,6 +49,7 @@ import { bridge, shell, useCall } from '../shell';
 import { processing } from '../processing/store';
 import { findingsIndex, photoKey, type PhotoFindings } from './mediaFindings';
 import { NoProject } from './NoProject';
+import { PageHeader } from '../shell/PageHeader';
 
 const FILTERS: QueueFilter[] = ['draft', 'all', 'accepted', 'rejected'];
 const ERROR_KEY: Record<ReviewError, MessageKey> = {
@@ -230,7 +231,13 @@ export function DetectionsScreen() {
       });
   }, [shownSource, review.detections, review.currentId, review.filter, classById]);
 
-  if (!project) return <NoProject view={t('nav.detections')} />;
+  if (!project)
+    return (
+      <>
+        <PageHeader heading="nav.detections" />
+        <NoProject view={t('nav.detections')} />
+      </>
+    );
 
   const position = current
     ? { index: queue.findIndex((d) => d.id === current.id) + 1, total: queue.length }
@@ -407,7 +414,7 @@ export function DetectionsScreen() {
   }
   const lastSeverity = current?.severity ?? null;
 
-  return (
+  const page = (
     <FocusZone
       kind="photo"
       className="screen det-screen"
@@ -757,5 +764,11 @@ export function DetectionsScreen() {
         />
       )}
     </FocusZone>
+  );
+  return (
+    <>
+      <PageHeader heading="nav.detections" />
+      {page}
+    </>
   );
 }

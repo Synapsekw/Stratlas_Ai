@@ -71,7 +71,7 @@ async function start(data: DataRoot, env: Record<string, string> = {}) {
 
 async function openTiny(win: Page) {
   await win.getByTestId('project-card').filter({ hasText: 'E2E tiny project' }).click();
-  await expect(win.locator('.crumbs')).toContainText('E2E tiny project');
+  await expect(win.locator('.proj-switch')).toContainText('E2E tiny project');
 }
 
 /** Issues in the open project (runs in the renderer). */

@@ -26,6 +26,7 @@ import {
 import { FolderBack, FolderRow, NewFolderButton } from './LibraryFolders';
 import { ProjectMenu, type MenuAt } from './ProjectMenu';
 import { samePathText } from './projectMenuModel';
+import { PageHeader } from '../shell/PageHeader';
 
 const LAYER_CHIPS: { key: string; icon: IconName; label: string }[] = [
   { key: 'mesh', icon: 'scene', label: 'Models' },
@@ -442,7 +443,7 @@ export function ProjectsScreen() {
   const demos = (library ?? []).filter((e) => e.demo);
   const firstStart = demos.length > 0 && demos.length === (library ?? []).length;
 
-  return (
+  const page = (
     <section className="screen home" aria-label="Projects">
       <div className="home-main">
         <header className="home-h">
@@ -635,5 +636,11 @@ export function ProjectsScreen() {
       </div>
       <Workstation />
     </section>
+  );
+  return (
+    <>
+      <PageHeader heading="nav.projects" />
+      {page}
+    </>
   );
 }

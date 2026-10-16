@@ -1995,9 +1995,12 @@ function createWindow(): BrowserWindow {
     show: false,
     ...placement(size.width),
     titleBarStyle: 'hidden',
+    // No title bar in the renderer: on Windows the caption buttons are drawn over its top rows
+    // (40 px, about 138 px wide); on macOS the traffic lights sit in the left sidebar's logo row.
     ...(process.platform === 'win32'
       ? { titleBarOverlay: { color: chrome().overlay, symbolColor: chrome().symbols, height: 40 } }
       : {}),
+    ...(process.platform === 'darwin' ? { trafficLightPosition: { x: 16, y: 12 } } : {}),
     webPreferences: {
       preload: join(import.meta.dirname, '../preload/index.cjs'),
       backgroundThrottling: winMode !== 'offscreen',

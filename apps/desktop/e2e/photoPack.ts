@@ -286,7 +286,7 @@ export const photoFixtures: Fixtures<
 /** Open the photo project from the library. */
 export async function openPhotoSite(win: Page): Promise<void> {
   await win.getByTestId('project-card').filter({ hasText: PHOTO_PROJECT.name }).first().click();
-  await expect(win.locator('.crumbs')).toContainText(PHOTO_PROJECT.name);
+  await expect(win.locator('.proj-switch')).toContainText(PHOTO_PROJECT.name);
 }
 
 /**

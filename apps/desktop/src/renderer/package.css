@@ -205,12 +205,6 @@
   color: var(--fg-3);
 }
 
-/* ---------- title bar chip ---------- */
-.chip-status.ro {
-  color: var(--acc);
-  border-color: var(--acc-a40);
-}
-
 /* ---------- customer welcome ---------- */
 .welcome {
   overflow-y: auto;

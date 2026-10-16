@@ -152,7 +152,7 @@ test.setTimeout(120_000);
 
 test('a video-only project is placed on the map and framed in 3D at once', async ({ win }) => {
   await win.getByTestId('project-card').filter({ hasText: NAME }).first().click();
-  await expect(win.locator('.crumbs')).toContainText(NAME);
+  await expect(win.locator('.proj-switch')).toContainText(NAME);
 
   // the 3D view and the map side by side
   await expect(win.locator('.stage')).toHaveAttribute('data-mode', 'split');

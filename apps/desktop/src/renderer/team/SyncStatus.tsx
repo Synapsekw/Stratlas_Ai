@@ -1,4 +1,4 @@
-import { Icon, t, useT } from '@aio/ui';
+import { Button, t, useT } from '@aio/ui';
 import { useWorkspace, workspace } from '@aio/workspace';
 import { useEffect, useState } from 'react';
 import { bridge, useShell } from '../shell';
@@ -28,21 +28,17 @@ export async function syncNow(
 }
 
 /**
- * The title bar chip of a folder project: Share when the project is private, else how it syncs
- * (exchange files, or a shared folder with its last sync, things to send and conflicts). It opens
- * the Team dialog, and owns the auto-sync after saves.
+ * What a folder project's sharing runs in the background, wherever its chip is shown or not: the
+ * status refresh, the auto-sync after saves and the Team and exchange dialogs. App.tsx mounts it
+ * once; the chip (SyncStatus) sits in the right sidebar's header or a page header.
  */
-export function SyncStatus() {
-  useT();
+export function SyncHost() {
   const project = useWorkspace((s) => s.project);
   const issues = useWorkspace((s) => s.issues);
   const pkg = useShell((s) => s.pkg);
   const team = useShell((s) => s.settings.team);
   const status = useTeamUi((s) => s.status);
-  const syncing = useTeamUi((s) => s.syncing);
-  const syncError = useTeamUi((s) => s.syncError);
   const dialog = useTeamUi((s) => s.dialog);
-  const [now, setNow] = useState(() => Date.now());
   const projectId = pkg ? null : (project?.id ?? null);
   const root = project?.root ?? null;
 
@@ -52,10 +48,9 @@ export function SyncStatus() {
     if (projectId) void refreshTeamStatus(projectId);
   }, [projectId]);
 
-  // the minutes since the last sync, and a status refresh now and then
+  // a status refresh now and then
   useEffect(() => {
     const id = setInterval(() => {
-      setNow(Date.now());
       if (projectId) void refreshTeamStatus(projectId);
     }, 30_000);
     return () => {
@@ -81,6 +76,41 @@ export function SyncStatus() {
       clearTimeout(id);
     };
   }, [issues, autoHub, projectId]);
+
+  if (!projectId) return null;
+  return (
+    <>
+      {dialog === 'team' && <TeamDialog projectId={projectId} />}
+      {dialog === 'export' && <ExchangeExportDialog projectId={projectId} />}
+      {dialog === 'import' && <ExchangeImportDialog projectId={projectId} />}
+    </>
+  );
+}
+
+/**
+ * The chip of a folder project: Share when the project is private, else how it syncs (exchange
+ * files, or a shared folder with its last sync, things to send and conflicts). It opens the Team
+ * dialog (SyncHost).
+ */
+export function SyncStatus() {
+  useT();
+  const project = useWorkspace((s) => s.project);
+  const pkg = useShell((s) => s.pkg);
+  const status = useTeamUi((s) => s.status);
+  const syncing = useTeamUi((s) => s.syncing);
+  const syncError = useTeamUi((s) => s.syncError);
+  const [now, setNow] = useState(() => Date.now());
+  const projectId = pkg ? null : (project?.id ?? null);
+
+  // the minutes since the last sync
+  useEffect(() => {
+    const id = setInterval(() => {
+      setNow(Date.now());
+    }, 30_000);
+    return () => {
+      clearInterval(id);
+    };
+  }, []);
 
   if (!projectId) return null;
   const mode = status?.mode ?? 'off';
@@ -112,46 +142,38 @@ export function SyncStatus() {
   const state = mode === 'off' ? 'off' : syncing ? 'syncing' : offline ? 'offline' : 'ok';
 
   return (
-    <>
-      <button
-        type="button"
-        className={`chip-status team-chip ${state}`}
-        title={tip}
-        data-testid="sync-chip"
-        data-mode={mode}
-        data-state={state}
-        onClick={() => {
-          teamUi.getState().open('team');
-        }}
-      >
-        <Icon
-          name={mode === 'off' ? 'link' : offline ? 'offline' : synced ? 'refresh' : 'send'}
-          size={14}
-        />
-        <span>{label}</span>
-        {status && status.pending > 0 && (
-          <span className="team-badge" data-testid="sync-pending">
-            {t('team.chip.pending', { count: status.pending })}
-          </span>
-        )}
-        {status && status.conflicts > 0 && (
-          <span className="team-badge warn" data-testid="sync-conflicts">
-            {t('team.chip.conflicts', { count: status.conflicts })}
-          </span>
-        )}
-        {status?.online && status.online.length > 0 && (
-          <span
-            className="team-badge"
-            data-testid="sync-online"
-            title={status.online.map((p) => p.name).join(', ')}
-          >
-            {status.online.map((p) => p.initials).join(' ')}
-          </span>
-        )}
-      </button>
-      {dialog === 'team' && <TeamDialog projectId={projectId} />}
-      {dialog === 'export' && <ExchangeExportDialog projectId={projectId} />}
-      {dialog === 'import' && <ExchangeImportDialog projectId={projectId} />}
-    </>
+    <Button
+      variant="quiet"
+      className={`team-chip ${state}`}
+      icon={mode === 'off' ? 'link' : offline ? 'offline' : synced ? 'refresh' : 'send'}
+      tip={tip}
+      data-testid="sync-chip"
+      data-mode={mode}
+      data-state={state}
+      onClick={() => {
+        teamUi.getState().open('team');
+      }}
+    >
+      <span>{label}</span>
+      {status && status.pending > 0 && (
+        <span className="team-badge" data-testid="sync-pending">
+          {t('team.chip.pending', { count: status.pending })}
+        </span>
+      )}
+      {status && status.conflicts > 0 && (
+        <span className="team-badge warn" data-testid="sync-conflicts">
+          {t('team.chip.conflicts', { count: status.conflicts })}
+        </span>
+      )}
+      {status?.online && status.online.length > 0 && (
+        <span
+          className="team-badge"
+          data-testid="sync-online"
+          title={status.online.map((p) => p.name).join(', ')}
+        >
+          {status.online.map((p) => p.initials).join(' ')}
+        </span>
+      )}
+    </Button>
   );
 }

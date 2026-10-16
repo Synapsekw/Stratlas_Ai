@@ -1,7 +1,7 @@
 import { useAnnotateReadOnly } from '@aio/annotate';
 import {
-  arrowFocus,
   ariaKeys,
+  Button,
   buildDatasetTree,
   buildDateTree,
   captureLabelFor,
@@ -20,7 +20,6 @@ import {
   NO_MARKS,
   t,
   treeLayerIds,
-  useFocusTrap,
   useT,
   VisibilityEye,
   type DateFolderMenuRequest,
@@ -39,8 +38,7 @@ import {
   shortcutHint,
 } from '@aio/ui';
 import { dateTags, useWorkspace, workspace } from '@aio/workspace';
-import { useEffect, useMemo, useRef, useState, type HTMLAttributes } from 'react';
-import { openAuditTrail } from '../audit/auditView';
+import { useEffect, useMemo, useState, type HTMLAttributes } from 'react';
 import { builder } from '../builder/state';
 import { DrawingControls } from '../drawings/DrawingControls';
 import { drawings, unplacedOf, useDrawings } from '../drawings/store';
@@ -70,6 +68,9 @@ import { menuTitle, rowTarget } from './menuTargets';
 import { renameRequest, useRenameRequest } from './renameRequest';
 import { askRemove, removal, useRemoval } from './removal';
 import { EmptyTrashDialog } from './RemoveHost';
+import { SidebarStatus } from './SidebarStatus';
+import { SidebarTop } from './SidebarTop';
+import { help } from '../help/store';
 import './surveyDates.css';
 
 watchPanoStitches();
@@ -114,141 +115,6 @@ function NavItem({
       {count !== undefined && <span className="count">{count}</span>}
       <span className="tip">{t(def.label)}</span>
     </button>
-  );
-}
-
-function ProjectSwitcher({ collapsed }: { collapsed: boolean }) {
-  const manifest = useWorkspace((s) => s.project?.manifest);
-  const root = useWorkspace((s) => s.project?.root);
-  const library = useShell((s) => s.library);
-  const [open, setOpen] = useState(false);
-  const ref = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    if (!open) return;
-    const close = (e: PointerEvent) => {
-      if (!ref.current?.contains(e.target as Node)) setOpen(false);
-    };
-    window.addEventListener('pointerdown', close);
-    return () => {
-      window.removeEventListener('pointerdown', close);
-    };
-  }, [open]);
-  const menu = useRef<HTMLDivElement>(null);
-  const button = useRef<HTMLButtonElement>(null);
-  // focus into the menu, Esc closes it and focus returns to the switcher
-  useFocusTrap(menu, open, {
-    onEscape: () => {
-      setOpen(false);
-    },
-    returnTo: () => button.current,
-  });
-
-  const capture = manifest?.captures.at(-1);
-  const meta = manifest
-    ? [
-        manifest.customer,
-        manifest.site?.split(',').pop()?.trim(),
-        capture && formatDate(capture.date),
-      ]
-        .filter(Boolean)
-        .join(' · ')
-    : t('nav.chooseProject');
-
-  return (
-    <div className="proj-wrap" ref={ref}>
-      <button
-        ref={button}
-        type="button"
-        className="proj-switch"
-        aria-expanded={open}
-        aria-haspopup="menu"
-        onClick={() => {
-          if (collapsed) {
-            void shell.getState().toggleSidebar();
-            setOpen(true);
-          } else setOpen(!open);
-        }}
-      >
-        <span className="pglyph">
-          <Icon name={manifest ? 'layers' : 'projects'} />
-        </span>
-        <span className="pt">
-          <b dir="auto">{manifest?.name ?? t('nav.noProject')}</b>
-          <span>{meta}</span>
-        </span>
-        <Icon name="updown" size={14} className="faint" />
-        <span className="tip">{manifest?.name ?? 'Projects'}</span>
-      </button>
-      {open && (
-        <div
-          ref={menu}
-          className="proj-menu"
-          role="menu"
-          aria-label={t('titlebar.project')}
-          onKeyDown={(e) => {
-            if (menu.current && arrowFocus(menu.current, e.key)) e.preventDefault();
-          }}
-        >
-          {(library ?? []).map((e) => (
-            <button
-              key={e.id}
-              type="button"
-              role="menuitem"
-              aria-current={e.path === root ? 'true' : undefined}
-              onClick={() => {
-                setOpen(false);
-                void shell.getState().openProject(e.path);
-              }}
-            >
-              <Icon name={e.path === root ? 'check' : 'layers'} size={14} />
-              <span className="pm-n">{e.name}</span>
-              {e.customer && <span className="mono">{e.customer}</span>}
-            </button>
-          ))}
-          {(library ?? []).length === 0 && <div className="pm-empty">The library is empty.</div>}
-          <div className="pm-sep" role="separator" />
-          <button
-            type="button"
-            role="menuitem"
-            onClick={() => {
-              setOpen(false);
-              shell.getState().go('projects');
-            }}
-          >
-            <Icon name="projects" size={14} />
-            <span className="pm-n">All projects</span>
-          </button>
-          {manifest && (
-            <button
-              type="button"
-              role="menuitem"
-              data-testid="menu-audit-trail"
-              onClick={() => {
-                setOpen(false);
-                openAuditTrail();
-              }}
-            >
-              <Icon name="history" size={14} />
-              <span className="pm-n">{t('audit.title')}</span>
-            </button>
-          )}
-          {manifest && (
-            <button
-              type="button"
-              role="menuitem"
-              onClick={() => {
-                setOpen(false);
-                shell.getState().closeProject();
-              }}
-            >
-              <Icon name="x" size={14} />
-              <span className="pm-n">Close project</span>
-            </button>
-          )}
-        </div>
-      )}
-    </div>
   );
 }
 
@@ -922,29 +788,43 @@ export function Sidebar({ resize }: SidebarProps = {}) {
       {/* the panel's surface slides out as it folds, and the rail's fades in (styles.css) */}
       <div className="sb-surface" aria-hidden="true" />
       <div className="sb-rail" aria-hidden="true" />
-      <div className="sb-scroll">
-        <nav className="sb-sec sb-nav" aria-label={t('nav.sections')}>
-          {NAV.map((n) => (
-            <NavItem
-              key={n.screen}
-              def={n}
-              current={screen === n.screen}
-              count={
-                n.screen === 'projects' ? libCount : n.screen === 'issues' ? issueCount : undefined
-              }
-            />
-          ))}
-        </nav>
-        <div className="sb-sec">
-          <ProjectSwitcher collapsed={collapsed} />
-        </div>
-        <Datasets collapsed={collapsed} />
-      </div>
+      <SidebarTop />
+      {/* the nav stays put above the tree, which scrolls on its own */}
+      <nav className="sb-sec sb-nav" aria-label={t('nav.sections')}>
+        {NAV.map((n) => (
+          <NavItem
+            key={n.screen}
+            def={n}
+            current={screen === n.screen}
+            count={
+              n.screen === 'projects' ? libCount : n.screen === 'issues' ? issueCount : undefined
+            }
+          />
+        ))}
+      </nav>
+      {/* the dataset tree is the Scene's; on the other screens the space stays empty */}
+      <div className="sb-scroll">{screen === 'scene' && <Datasets collapsed={collapsed} />}</div>
       <div className="sb-foot">
-        <NavItem
-          def={{ screen: 'settings', label: 'nav.settings', icon: 'settings' }}
-          current={screen === 'settings'}
-        />
+        <SidebarStatus />
+        <div className="sb-foot-row">
+          <NavItem
+            def={{ screen: 'settings', label: 'nav.settings', icon: 'settings' }}
+            current={screen === 'settings'}
+          />
+          <Button
+            variant="icon"
+            className="help-btn sb-hide"
+            aria-label={t('help.open')}
+            aria-keyshortcuts="F1"
+            tip={t('help.open')}
+            data-testid="help-open"
+            onClick={() => {
+              help.getState().openHelp();
+            }}
+          >
+            ?
+          </Button>
+        </div>
         <button
           type="button"
           className="nav-item"

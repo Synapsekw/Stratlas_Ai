@@ -100,7 +100,7 @@ test('@realdata detection review: AI drafts, reject and accept with the keyboard
     opened = app;
     await win.evaluate(() => window.aio.invoke('settings:set', { cloudAi: true }));
     await win.getByTestId('project-card').filter({ hasText: 'EBSM review copy' }).click();
-    await expect(win.locator('.crumbs')).toContainText('EBSM review copy');
+    await expect(win.locator('.proj-switch')).toContainText('EBSM review copy');
     await win.locator('.nav-item', { hasText: 'Detections' }).click();
 
     // Nothing to review yet: the sheet shows every photo.

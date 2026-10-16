@@ -46,7 +46,7 @@ function PrintedGuide() {
           ))}
         </ol>
         <p className="pg-note">
-          The same guide is in the app: press F1, or click ? in the title bar. It works offline and
+          The same guide is in the app: press F1, or click ? beside Settings. It works offline and
           can be searched.
         </p>
       </section>

@@ -19,7 +19,14 @@ import {
 import { getPlayer } from '@aio/video';
 import { volumetric, VolumetricStyles } from '@aio/volumetric';
 import { workspace } from '@aio/workspace';
-import { lazy, Suspense, useEffect, useLayoutEffect, type TransitionEvent } from 'react';
+import {
+  lazy,
+  Suspense,
+  useEffect,
+  useLayoutEffect,
+  type CSSProperties,
+  type TransitionEvent,
+} from 'react';
 import { getMedia } from './media';
 import { nextClipInFlight, startPlaybackLoop } from './playback';
 import { IssuesScreen } from './screens/Issues';
@@ -57,7 +64,8 @@ import { UnlockDialog } from './shell/UnlockDialog';
 import { Sidebar } from './shell/Sidebar';
 import { useFold } from './shell/useFold';
 import { isSidebarFolded } from './store';
-import { TitleBar } from './shell/TitleBar';
+import { captionInset, rendererPlatform } from './shell/caption';
+import { SyncHost } from './team/SyncStatus';
 import { applyAppearance, OS_QUERIES } from './theme';
 import { HelpPanel } from './help/HelpPanel';
 import { help } from './help/store';
@@ -245,6 +253,17 @@ function Screen() {
  * person's (`sidebarCollapsed`) or the window's (shell/autoFold.ts). The panel slides out with a
  * transform and the grid snaps once at the end; opening, the grid snaps first (useFold.ts).
  */
+/**
+ * No title bar: the window's own buttons sit over the app's top rows (main/index.ts), and the rows
+ * under them keep clear through these (shell/caption.ts, styles.css).
+ */
+const PLATFORM = rendererPlatform();
+const CAPTION = captionInset(PLATFORM);
+const CAPTION_VARS = {
+  '--caption-end': `${String(CAPTION.inlineEnd)}px`,
+  '--caption-start': `${String(CAPTION.inlineStart)}px`,
+} as CSSProperties;
+
 /** The icon rail the sidebar folds to (tokens.css `--sb-w-c`). */
 const SIDEBAR_RAIL = 52;
 
@@ -517,10 +536,11 @@ export function App() {
       onTransitionEnd={sidebar.onTransitionEnd}
       data-screen={screen}
       data-agent-dock={agentDockOpen ? 'open' : undefined}
+      data-platform={PLATFORM}
+      style={CAPTION_VARS}
     >
       <AnnotateStyles />
       <VolumetricStyles />
-      <TitleBar />
       <Sidebar resize={sidebarResize} />
       <main className="main">
         <Screen />
@@ -546,6 +566,7 @@ export function App() {
       <ReportProblemDialog />
       <CrashNotice />
       <HelpPanel />
+      <SyncHost />
     </div>
   );
 }

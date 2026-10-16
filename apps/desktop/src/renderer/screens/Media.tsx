@@ -47,6 +47,7 @@ import {
   useMediaView,
 } from './mediaView';
 import { NoProject } from './NoProject';
+import { PageHeader } from '../shell/PageHeader';
 
 const PHOTO_LIMIT = 600;
 
@@ -286,7 +287,13 @@ export function MediaScreen() {
     if (!takeMediaReveal()) return;
     photoRef.current?.querySelector('.m-card.sq[data-photo]')?.scrollIntoView({ block: 'nearest' });
   }, [revealAsked]);
-  if (!project) return <NoProject view="Media" />;
+  if (!project)
+    return (
+      <>
+        <PageHeader heading="nav.media" />
+        <NoProject view="Media" />
+      </>
+    );
 
   const clips = layers.filter((l): l is Extract<Layer, { kind: 'video' }> => l.kind === 'video');
   const panoSets = layers.filter(
@@ -303,7 +310,7 @@ export function MediaScreen() {
 
   const viewerOpen = photo !== null || issueId !== null;
 
-  return (
+  const page = (
     <section className={`screen media${viewerOpen ? ' with-viewer' : ''}`} aria-label="Media">
       {/* the library stays in place when a photo opens beside it: its scroll and state are kept */}
       <div className="split media-split" ref={splitRef}>
@@ -623,5 +630,11 @@ export function MediaScreen() {
         )}
       </div>
     </section>
+  );
+  return (
+    <>
+      <PageHeader heading="nav.media" />
+      {page}
+    </>
   );
 }

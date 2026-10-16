@@ -30,6 +30,7 @@ import { useCardFocusSeq } from '../issueCard/state';
 import { PANEL_ID, PanelHandle } from '../shell/PanelHandle';
 import { useFold } from '../shell/useFold';
 import { AgentHost } from '../agent/AgentHost';
+import { RightHeader } from '../shell/RightHeader';
 import { useModeller } from '../modeller';
 import { shell, useShell } from '../shell';
 import { ChainageRuler } from '../road/ChainageRuler';
@@ -431,6 +432,7 @@ export function WorkspaceScreen() {
         aria-hidden={rightCollapsed}
         inert={rightCollapsed}
       >
+        <RightHeader />
         <TelecomTools />
         <ContextAgentSplit
           context={

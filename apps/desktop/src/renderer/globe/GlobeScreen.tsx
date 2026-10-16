@@ -59,6 +59,7 @@ import {
   useSiteOutputs,
 } from './siteOutputsStore';
 import { GLOBE_PALETTE, useStreetTiles } from './street';
+import { PageHeader } from '../shell/PageHeader';
 
 /** Where the renderer build serves its copy of Cesium (electron.vite.config.ts `cesiumAssets`). */
 const CESIUM_BASE = new URL('cesium/', document.baseURI).href;
@@ -449,7 +450,7 @@ export default function GlobeScreen() {
     </div>
   );
 
-  return (
+  const page = (
     <section
       className="globe-screen"
       aria-label={t('globe.nav')}
@@ -604,5 +605,11 @@ export default function GlobeScreen() {
         <span>CesiumJS (Apache-2.0)</span>
       </footer>
     </section>
+  );
+  return (
+    <>
+      <PageHeader heading="globe.nav" />
+      {page}
+    </>
   );
 }

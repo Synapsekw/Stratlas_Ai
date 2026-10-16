@@ -85,7 +85,7 @@ async function writeProject(dataRoot: string, id: string, name: string, withOutl
 
 /** Nothing of the retired viewer is offered anywhere in the window. */
 async function expectNoReview(win: Page) {
-  await expect(win.locator('.crumbs b')).toHaveText('Scene');
+  await expect(win.locator('.nav-item[aria-current="page"] .lbl')).toHaveText('Scene');
   await expect(win.locator('.sb-nav .nav-item', { hasText: 'Scene' })).toBeVisible();
   await expect(win.locator('.sb-nav .nav-item', { hasText: 'Original review' })).toHaveCount(0);
   await expect(win.getByTestId('tree-row-review')).toHaveCount(0);

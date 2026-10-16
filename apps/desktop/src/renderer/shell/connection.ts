@@ -2,7 +2,7 @@ import type { IconName, MessageKey } from '@aio/ui';
 import { useSyncExternalStore } from 'react';
 
 /**
- * What the title bar says about the network: the mode the workstation is in (`offlineOnly` in
+ * What the sidebar's status row and the agent's header say about the network: the mode the workstation is in (`offlineOnly` in
  * Settings, the one switch main checks before any network use) and what that leaves of cloud AI.
  * One function decides both, so the pair cannot disagree: offline only never comes with a cloud AI
  * that reads as on.

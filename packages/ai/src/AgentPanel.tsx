@@ -56,6 +56,8 @@ export interface AgentPanelProps {
    * resets it when the project changes and keeps its tool context; the panel only shows it.
    */
   session?: AgentSession | undefined;
+  /** A status beside the binding in the header, as the app has it (cloud AI on or off). */
+  status?: ReactNode;
 }
 
 const CAPTURE_WINDOWS: readonly WindowKind[] = ['video', 'scene3d', 'pointcloud', 'photo', 'map'];
@@ -82,6 +84,7 @@ export function AgentPanel({
   task,
   settingsKey,
   session: given,
+  status,
 }: AgentPanelProps) {
   const taskRef = useRef(task);
   useEffect(() => {
@@ -203,6 +206,7 @@ export function AgentPanel({
         <span className="ag-bind" title={`This agent sees the ${WINDOW_LABELS[win]} window`}>
           {binding}
         </span>
+        {status}
         <div className="acts">
           <button
             type="button"

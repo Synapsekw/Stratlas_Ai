@@ -1,5 +1,5 @@
 /**
- * The Processing chip of the title bar: what the open project is processing, in a word, and the
+ * The Processing chip of the sidebar status row (shell/SidebarStatus.tsx): what the open project is processing, in a word, and the
  * button that opens its drawer. With no project of its own (none open, or a read-only package)
  * it shows only while another project is running something.
  */

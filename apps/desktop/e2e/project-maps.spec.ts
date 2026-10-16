@@ -157,7 +157,7 @@ test('lists the areas the projects lack with their sizes; offline-only downloads
     // nor does opening a project without a street map say or start anything
     await win.locator('.nav-item', { hasText: 'Projects' }).click();
     await win.getByTestId('project-card').filter({ hasText: 'Harbour Yard' }).click();
-    await expect(win.locator('.crumbs')).toContainText('Harbour Yard');
+    await expect(win.locator('.proj-switch')).toContainText('Harbour Yard');
     await expect(win.getByTestId('project-map-notice')).toHaveCount(0);
     expect(await readdir(join(data.root, 'packs'))).toEqual([]);
     expect(await guard.outbound()).toEqual([]);
@@ -194,10 +194,10 @@ test('an opened project without a detailed street map says so once and leads to 
     // answered: the same project does not ask again; a project that is not placed never asks
     await win.locator('.nav-item', { hasText: 'Projects' }).click();
     await win.getByTestId('project-card').filter({ hasText: 'Shed Model' }).click();
-    await expect(win.locator('.crumbs')).toContainText('Shed Model');
+    await expect(win.locator('.proj-switch')).toContainText('Shed Model');
     await win.locator('.nav-item', { hasText: 'Projects' }).click();
     await win.getByTestId('project-card').filter({ hasText: 'Harbour Yard' }).click();
-    await expect(win.locator('.crumbs')).toContainText('Harbour Yard');
+    await expect(win.locator('.proj-switch')).toContainText('Harbour Yard');
     await expect(notice).toHaveCount(0);
     expect(await readdir(join(data.root, 'packs'))).toEqual([]);
     expect(await guard.outbound()).toEqual([]);

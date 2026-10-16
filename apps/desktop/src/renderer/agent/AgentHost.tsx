@@ -2,7 +2,8 @@ import { AgentPanel } from '@aio/ai';
 import type { AiTask, WindowKind } from '@aio/schema';
 import { useEffect } from 'react';
 import { cloudAiBlocked } from '../player';
-import { useShell } from '../shell';
+import { shell, useShell } from '../shell';
+import { CloudChip } from '../shell/ConnectionStatus';
 import { AgentFixCard } from '../workspace/AgentFixCard';
 import { appAgentSession, setAgentTask, setAgentWindow } from './session';
 
@@ -38,9 +39,14 @@ export function AgentHost({
 
   if (cloudAiBlocked(pkg)) {
     return (
-      <p className="faint small" style={{ padding: 12 }} data-testid="agent-blocked">
-        This package does not allow cloud AI. Nothing from it is sent to any provider.
-      </p>
+      <>
+        <div className="agent-blocked-h">
+          <CloudChip store={shell} />
+        </div>
+        <p className="faint small" style={{ padding: 12 }} data-testid="agent-blocked">
+          This package does not allow cloud AI. Nothing from it is sent to any provider.
+        </p>
+      </>
     );
   }
   return (
@@ -51,6 +57,8 @@ export function AgentHost({
       settingsKey={aiKey}
       className={className ? `agent-host ${className}` : 'agent-host'}
       renderFix={(controls) => <AgentFixCard {...controls} />}
+      // cloud AI as it is now, in the header (the title bar showed it before it went)
+      status={<CloudChip store={shell} />}
     />
   );
 }

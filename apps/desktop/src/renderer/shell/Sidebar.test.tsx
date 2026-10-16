@@ -107,6 +107,8 @@ beforeEach(() => {
   loadTrash.mockClear();
   shell.setState({
     pkg: null,
+    // the dataset tree is the Scene's
+    screen: 'scene',
     settings: { ...shell.getState().settings, sidebarCollapsed: false },
   });
   host = document.createElement('div');
@@ -117,6 +119,33 @@ afterEach(() => {
   root = undefined;
   workspace.getState().closeProject();
   host.remove();
+});
+
+describe('Sidebar layout', () => {
+  it('shows the dataset tree only on the Scene', () => {
+    render(null);
+    expect(q('tree-row-walk-a')).not.toBeNull();
+    act(() => {
+      shell.setState({ screen: 'issues' });
+    });
+    expect(q('tree-row-walk-a')).toBeNull();
+    expect(document.body.querySelector('.sb-tree')).toBeNull();
+  });
+
+  it('keeps the nav out of the scrolling tree', () => {
+    render(null);
+    const nav = document.body.querySelector('.sb-nav');
+    expect(nav).not.toBeNull();
+    expect(nav?.closest('.sb-scroll')).toBeNull();
+  });
+
+  it('has help beside Settings', () => {
+    render(null);
+    const help = q('help-open');
+    const row = help?.closest('.sb-foot-row');
+    expect(row).not.toBeNull();
+    expect(row?.querySelector('.nav-item')?.textContent).toContain('Settings');
+  });
 });
 
 describe('Datasets: Delete', () => {

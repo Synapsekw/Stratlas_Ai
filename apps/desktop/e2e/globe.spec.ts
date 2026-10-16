@@ -1599,7 +1599,7 @@ test('Open site here hands over to the site view; the Globe comes back to the sa
   const before = await camera();
   await win.getByTestId('globe-card').getByRole('button', { name: 'Open site here' }).click();
   await expect(win.locator('.app')).toHaveAttribute('data-screen', 'scene');
-  await expect(win.locator('.crumbs')).toContainText(SITE_A.name);
+  await expect(win.locator('.proj-switch')).toContainText(SITE_A.name);
   // the Globe released its WebGL context when it closed
   await expect(win.getByTestId('globe-canvas')).toHaveCount(0);
   await win.locator('.sb-nav .nav-item', { hasText: 'Globe' }).click();

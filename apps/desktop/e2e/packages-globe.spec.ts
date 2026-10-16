@@ -251,7 +251,7 @@ test('a processed project travels as a package with its ticked imagery; the play
 
   // ---- the builder shares the project, with the imagery ticked
   await win.getByTestId('project-card').filter({ hasText: SITE.name }).click();
-  await expect(win.locator('.crumbs')).toContainText(SITE.name, { timeout: 60_000 });
+  await expect(win.locator('.proj-switch')).toContainText(SITE.name, { timeout: 60_000 });
   await win.locator('.nav-item', { hasText: 'Reports' }).first().click();
   await win.getByTestId('export-package').click();
   const dialog = win.getByTestId('package-export');

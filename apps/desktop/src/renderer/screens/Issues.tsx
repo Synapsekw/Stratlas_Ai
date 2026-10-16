@@ -5,14 +5,21 @@ import { ExportMenu } from '../exports/ExportMenu';
 import { FocusZone } from '../FocusZone';
 import { IssueCard } from '../issueCard/IssueCard';
 import { NoProject } from './NoProject';
+import { PageHeader } from '../shell/PageHeader';
 
 /** The issue list and the card of the picked issue, on the `issues.card` split (420 px card). */
 export function IssuesScreen() {
   const t = useT();
   const hasProject = useWorkspace((s) => s.project !== null);
   const issueId = useWorkspace((s) => (s.selection?.kind === 'issue' ? s.selection.id : null));
-  if (!hasProject) return <NoProject view="Issues" />;
-  return (
+  if (!hasProject)
+    return (
+      <>
+        <PageHeader heading="nav.issues" />
+        <NoProject view="Issues" />
+      </>
+    );
+  const page = (
     <FocusZone kind="issues" className="screen issues-screen" aria-label="Issues">
       <h1 className="sr-only">{t('nav.issues')}</h1>
       <ResizableSplit
@@ -52,5 +59,11 @@ export function IssuesScreen() {
         }
       />
     </FocusZone>
+  );
+  return (
+    <>
+      <PageHeader heading="nav.issues" />
+      {page}
+    </>
   );
 }

@@ -111,7 +111,7 @@ async function expectFits(win: Page, ...inside: (string | Locator)[]): Promise<v
 
 async function openTinyProject(win: Page): Promise<void> {
   await win.getByTestId('project-card').filter({ hasText: 'E2E tiny project' }).click();
-  await expect(win.locator('.crumbs')).toContainText('E2E tiny project');
+  await expect(win.locator('.proj-switch')).toContainText('E2E tiny project');
 }
 
 /** The version of the processing tools the job runner would use, or null. */

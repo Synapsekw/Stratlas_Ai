@@ -62,8 +62,8 @@ test('open a project, drive the shell and keep the sidebar state', async () => {
     const card = win.getByTestId('project-card').filter({ hasText: 'Al-Zour LNG Terminal' });
     await expect(card).toBeVisible();
     await card.click();
-    await expect(win.locator('.crumbs')).toContainText('Al-Zour LNG Terminal');
-    await expect(win.locator('.crumbs b')).toHaveText('Scene');
+    await expect(win.locator('.proj-switch')).toContainText('Al-Zour LNG Terminal');
+    await expect(win.locator('.nav-item[aria-current="page"] .lbl')).toHaveText('Scene');
 
     // Dataset tree groups the manifest layers with counts.
     const tree = win.getByRole('tree', { name: 'Datasets' });
@@ -103,7 +103,7 @@ test('open a project, drive the shell and keep the sidebar state', async () => {
     await win.keyboard.type('F01');
     await win.keyboard.press('Enter');
     await expect(palette).toBeHidden();
-    await expect(win.locator('.crumbs b')).toHaveText('Issues');
+    await expect(win.locator('.nav-item[aria-current="page"] .lbl')).toHaveText('Issues');
 
     // Settings: providers, routing and cloud AI off by default.
     await win.locator('.sb-foot .nav-item', { hasText: 'Settings' }).click();

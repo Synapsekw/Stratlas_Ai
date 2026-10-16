@@ -1,4 +1,4 @@
-/* Quadrion AI shell: frame, title bar, sidebar and screens. Components live in @aio/ui/mission.css. */
+/* Quadrion AI shell: frame, sidebar and screens. Components live in @aio/ui/mission.css. */
 :root {
   --rp-w: 360px;
   /* folding a side panel away and back: short and ease-out, so the views settle at once */
@@ -15,9 +15,12 @@
   --sb-fold-x: -1;
   height: 100vh;
   display: grid;
-  grid-template-rows: var(--tb-h) minmax(0, 1fr);
+  /* No title bar: the sidebar and the main area run to the top of the window. The window's own
+     buttons sit over the top rows: --caption-end (Windows) and --caption-start (macOS) are the
+     room they take (App.tsx, shell/caption.ts). */
+  grid-template-rows: minmax(0, 1fr);
   grid-template-columns: var(--sb-col) minmax(0, 1fr);
-  grid-template-areas: 'tb tb' 'sb main';
+  grid-template-areas: 'sb main';
 }
 .app[data-collapsed] {
   --sb-col: var(--split-size, var(--sb-w-c));
@@ -134,33 +137,20 @@ code {
   animation: pulse 1.6s var(--ease) infinite;
 }
 
-/* ---------- title bar ---------- */
-.titlebar {
-  grid-area: tb;
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  background: var(--bg-chrome);
-  border-bottom: 1px solid var(--line-soft);
-  padding-left: 14px; /* physical: the caption buttons stay on the right in RTL too */
-  /* Leave room for the Windows caption buttons drawn by the title bar overlay. */
-  padding-right: calc(100vw - env(titlebar-area-x, 0px) - env(titlebar-area-width, 100vw) + 10px);
-  user-select: none;
-  position: relative;
-  z-index: 30;
+/* ---------- window drag regions ----------
+   No title bar (main/index.ts keeps `titleBarStyle: 'hidden'`): the left sidebar's logo row, the
+   right sidebar's header row and a screen's page header drag the window; their controls do not.
+   The stage's top is not a drag region. */
+.sb-top,
+.right-head,
+.pg-head {
   app-region: drag;
-  min-width: 0;
+  user-select: none;
 }
-.titlebar button {
+.sb-top :is(button, a, input, [tabindex]),
+.right-head :is(button, a, input, [tabindex]),
+.pg-head :is(button, a, input, select, [tabindex]) {
   app-region: no-drag;
-}
-.brand {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  /* as wide as the sidebar's column, which snaps once when it folds (nothing animates width) */
-  width: calc(var(--sb-col) - 14px);
-  flex: none;
 }
 /* The outlined wordmark (shell/BrandMark.tsx): QUADRION in the foreground, AI in the accent. */
 .wordmark {
@@ -177,8 +167,8 @@ code {
 .mark-tail {
   fill: var(--acc);
 }
-.app[data-sb='collapsed'] .wordmark {
-  opacity: 0;
+.app[data-sb='collapsed'] .sb-top .wordmark {
+  display: none;
 }
 .mark {
   width: 21px;
@@ -199,81 +189,6 @@ code {
 .lockup-word {
   height: 15px;
   width: auto;
-}
-.crumbs {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  color: var(--fg-2);
-  font-size: var(--t-13);
-  min-width: 0;
-  white-space: nowrap;
-  overflow: hidden;
-}
-/* a crumb before the page, with its slash: it shrinks long before the page does (the customer
-   first), its text ends in an ellipsis, and squeezed past that it takes its slash with it */
-.crumbs > .crumb {
-  display: flex;
-  gap: 6px;
-  min-width: 0;
-  overflow: hidden;
-  flex: 0 1000 auto;
-}
-.crumbs > .crumb:first-child:not(:nth-last-child(2)) {
-  flex-shrink: 4000;
-}
-.crumbs .crumb-text {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-/* the page does not shrink while a crumb before it can; only a window too narrow for the page name
-   alone ends it in an ellipsis */
-.crumbs b {
-  flex-shrink: 0;
-  max-width: 100%;
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  color: var(--fg-0);
-  font-weight: 500;
-}
-.crumbs .sep {
-  flex: none;
-  color: var(--fg-4);
-}
-.tb-spacer {
-  flex: 1;
-}
-.search-btn {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  height: 26px;
-  width: 264px;
-  flex: 0 1 264px;
-  min-width: 140px;
-  padding-block: 0;
-  padding-inline: 8px 6px;
-  border: 1px solid var(--line);
-  border-radius: var(--r-4);
-  color: var(--fg-3);
-  background: var(--bg-1);
-  font-size: var(--t-12);
-  white-space: nowrap;
-  overflow: hidden;
-}
-.search-btn:hover {
-  border-color: var(--line-strong);
-  color: var(--fg-2);
-}
-.search-btn .kbd {
-  margin-inline-start: auto;
-}
-.tb-status {
-  display: flex;
-  align-items: center;
-  gap: 8px;
 }
 button.chip-status:hover {
   border-color: var(--line-strong);
@@ -326,7 +241,7 @@ button.chip-status:hover {
 .conn > .conn-cloud[data-state='blocked'] {
   color: var(--fg-3);
 }
-/* a narrow window: the pair gives its spare room back to the breadcrumbs and the search */
+/* a narrow window: the pair gives its spare room back to what is beside it */
 @media (max-width: 1280px) {
   .conn > .chip-status {
     gap: 5px;
@@ -836,6 +751,135 @@ button.chip-status:hover {
   width: 100%;
 }
 
+/* The logo row: the logo, and the search that opens the command palette. On macOS the traffic
+   lights take its start (--caption-start); in the rail they keep its top and the logo goes below. */
+.sb-top {
+  position: relative;
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  height: 40px;
+  padding-block: 0;
+  padding-inline: calc(15px + var(--caption-start, 0px)) 8px;
+  border-bottom: 1px solid var(--line-soft);
+}
+.app[data-sb='collapsed'] .sb-top {
+  width: var(--sb-w-c);
+  padding-inline: 0;
+  justify-content: center;
+}
+.app[data-platform='darwin'][data-sb='collapsed'] .sb-top {
+  height: 72px;
+  align-items: flex-end;
+  padding-block-end: 10px;
+}
+.sb-logo {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+.sb-top-fill {
+  flex: 1;
+}
+.app[data-sb='collapsed'] .sb-top-fill,
+.app[data-sb='collapsed'] .sb-search {
+  display: none;
+}
+.sb-proj,
+.sb-nav {
+  position: relative;
+  flex: none;
+}
+.sb-nav {
+  border-bottom: 1px solid var(--line-soft);
+}
+/* Settings and help on one row */
+.sb-foot-row {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+.sb-foot-row > .nav-item {
+  flex: 1;
+  min-width: 0;
+}
+.help-btn {
+  flex: none;
+  font-weight: 600;
+}
+.app[data-sb='collapsed'] .sb-foot-row > :not(.nav-item) {
+  display: none;
+}
+/* The status row (shell/SidebarStatus.tsx): "● Online · Processing", and the package under it. */
+.sb-status {
+  display: grid;
+  gap: 4px;
+  padding-block-end: 4px;
+  min-width: 0;
+}
+.sb-status-row {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  min-width: 0;
+  font-size: var(--t-12);
+}
+.sb-status-row .chip-status {
+  border-color: transparent;
+  background: none;
+  height: 24px;
+  padding: 0 6px;
+  min-width: 0;
+}
+.sb-status-row .chip-status:hover,
+.sb-status-row .chip-status[aria-expanded='true'] {
+  background: var(--bg-2);
+  color: var(--fg-0);
+}
+.sb-status-row .proc-chip {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.sb-status-row > .conn + .proc-chip::before {
+  content: '·';
+  margin-inline-end: 2px;
+  color: var(--fg-4);
+}
+.conn-foot .dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--ok);
+}
+.conn-foot .dot.off {
+  background: var(--fg-3);
+}
+.conn-foot .conn-pop {
+  /* placed on the window, above the chip (ConnectionStatus.tsx): the sidebar clips */
+  transform-origin: bottom;
+}
+.app[data-sb='collapsed'] .sb-status-row .conn-label,
+.app[data-sb='collapsed'] .sb-status-row .proc-chip {
+  display: none;
+}
+.app[data-sb='collapsed'] .sb-status-row {
+  justify-content: center;
+}
+.sb-status-pkg {
+  display: flex;
+  min-width: 0;
+  padding-inline: 6px;
+}
+.sb-status-pkg .tag {
+  max-width: 100%;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
 /* ---------- main and screens ---------- */
 .main {
   grid-area: main;
@@ -948,7 +992,7 @@ button.chip-status:hover {
    the left one is placed on the window instead: beside the sidebar, at the tab's height. */
 .ph[data-side='left'] .tip {
   position: fixed;
-  top: calc(var(--tb-h) + (100vh - var(--tb-h)) / 2);
+  top: 50vh;
   inset-inline-start: calc(var(--sb-col) + 10px);
 }
 .ph[data-side='right'] .tip {
@@ -972,6 +1016,66 @@ button.chip-status:hover {
   display: grid;
   min-height: 0;
   min-width: 0;
+}
+/* A screen other than the Scene (shell/PageHeader.tsx): a 40 px header row over the screen, its
+   end clear of the window's caption buttons; the screen and the agent column start under it. */
+.main > .pg-head {
+  position: absolute;
+  inset-block-start: 0;
+  inset-inline: 0;
+  z-index: var(--z-panel);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 40px;
+  padding-inline: 16px calc(8px + var(--caption-end, 0px));
+  background: var(--bg-chrome);
+  border-bottom: 1px solid var(--line-soft);
+}
+.main > .pg-head ~ .screen,
+.main > .pg-head ~ .agent-dock {
+  inset-block-start: 40px;
+}
+.pg-title {
+  font-size: var(--t-13);
+  font-weight: 500;
+  color: var(--fg-0);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.pg-fill {
+  flex: 1;
+  align-self: stretch;
+}
+.pg-acts {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+/* The right sidebar's header row (shell/RightHeader.tsx): Agent and Share, clear of the caption
+   buttons. */
+.right-head {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  height: 40px;
+  padding-inline: 6px calc(8px + var(--caption-end, 0px));
+  border-bottom: 1px solid var(--line-soft);
+}
+/* cloud AI in the agent's header (shell/ConnectionStatus.tsx CloudChip) */
+.ag-cloud {
+  height: 20px;
+  padding: 0 6px;
+  gap: 5px;
+  font-size: var(--t-11);
+  flex: none;
+}
+.agent-blocked-h {
+  display: flex;
+  padding: 10px 12px 0;
 }
 
 .page-h h1,
@@ -2629,7 +2733,7 @@ svg.flip {
   min-height: 0;
 }
 
-/* ---------- the agent column (agent/AgentDock.tsx) and its title bar chip ----------
+/* ---------- the agent column (agent/AgentDock.tsx) and its Agent button ----------
    On Issues, Media, Detections and Reports the agent sits in a column on the right edge of the
    main area, the Scene's right panel in look. Unfolded, the screen beside it gives it the room;
    folded, it takes none. It opens and closes at once, so there is no motion to still. Its width is
@@ -2700,10 +2804,8 @@ svg.flip {
 .app[data-agent-dock='open'] .screen.reports {
   grid-template-columns: min(320px, 65%) minmax(0, 1fr);
 }
-/* the Agent chip (agent/AgentToggle.tsx): the Processing chip's neighbour, lit while the column
-   is open, as the connection chip is while its menu is */
+/* the Agent button (agent/AgentToggle.tsx) of a page header: lit while the column is open */
 .agent-toggle {
-  app-region: no-drag;
   cursor: pointer;
 }
 .agent-toggle[aria-expanded='true'] {
@@ -2717,7 +2819,7 @@ svg.flip {
     padding: 0 6px;
   }
 }
-/* narrower than 1280 px: the icon alone, so the breadcrumbs keep the name of the screen. The
+/* narrower than 1280 px: the icon alone, so the page header keeps room for its title. The
    label stays in the button for its accessible name, drawn in no room (as .sr-only is). */
 @media (max-width: 1279px) {
   .agent-toggle > .lbl {

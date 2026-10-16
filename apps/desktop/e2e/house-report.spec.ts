@@ -70,7 +70,7 @@ async function answerSaves(app: ElectronApplication, dir: string): Promise<void>
 
 async function openReports(win: Page, name: string): Promise<void> {
   await win.getByTestId('project-card').filter({ hasText: name }).click();
-  await expect(win.locator('.crumbs')).toContainText(name, { timeout: 60_000 });
+  await expect(win.locator('.proj-switch')).toContainText(name, { timeout: 60_000 });
   await win.locator('.sb-nav .nav-item', { hasText: 'Reports' }).click();
   await expect(win.getByTestId('house-report')).toBeVisible();
 }
@@ -243,7 +243,9 @@ test.describe('@realdata DAMAC', () => {
       await win.getByRole('button', { name: 'Export project report PDF' }).click();
       await expect(toast).toContainText('Drawing issue pages', { timeout: 120_000 });
       await win.locator('.sb-nav .nav-item', { hasText: 'Issues' }).click();
-      await expect(win.locator('.crumbs')).toContainText('Issues', { timeout: 5_000 });
+      await expect(win.locator('.nav-item[aria-current="page"] .lbl')).toContainText('Issues', {
+        timeout: 5_000,
+      });
       await win.locator('.sb-nav .nav-item', { hasText: 'Reports' }).click();
       await expect(win.getByTestId('export-toast-message').last()).toContainText('saved to', {
         timeout: 600_000,

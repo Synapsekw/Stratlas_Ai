@@ -80,6 +80,7 @@ vi.mock('../shell', () => ({
     selector({ library: [], settings: {} }),
 }));
 vi.mock('../shell/BrandMotion', () => ({ BrandLoader: () => null }));
+vi.mock('../shell/PageHeader', () => ({ PageHeader: () => null }));
 vi.mock('../graphics', () => ({
   useGraphics: (selector: (s: { tier: string }) => unknown) => selector({ tier: 'high' }),
 }));

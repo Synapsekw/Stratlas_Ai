@@ -46,6 +46,7 @@ import { ProcessingTools } from './settings/ProcessingTools';
 import { ProviderConnection } from './settings/ProviderConnection';
 import { ReportBranding } from './settings/ReportBranding';
 import { TeamServer } from './settings/TeamServer';
+import { PageHeader } from '../shell/PageHeader';
 
 type Page = SettingsPage;
 
@@ -845,12 +846,12 @@ const HEAD: Record<Page, { title: MessageKey; text: MessageKey }> = {
 export function SettingsScreen() {
   useT();
   const [picked, setPicked] = useState<Page>('ai');
-  // a page asked for from outside (the title bar's Download maps, "Offline maps" of the map type
+  // a page asked for from outside (the connection menu's Download maps, "Offline maps" of the map type
   // picker) holds until one is picked here
   const asked = useShell((s) => s.settingsPage);
   const page = asked ?? picked;
   const error = useShell((s) => s.settingsError);
-  return (
+  const screen = (
     <section className="screen settings" aria-label={t('settings.title')}>
       <nav className="set-nav" aria-label={t('settings.sections')}>
         <h2>{t('settings.title')}</h2>
@@ -923,5 +924,11 @@ export function SettingsScreen() {
         </div>
       </div>
     </section>
+  );
+  return (
+    <>
+      <PageHeader heading="nav.settings" />
+      {screen}
+    </>
   );
 }

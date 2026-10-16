@@ -55,7 +55,7 @@ async function expectSidebar(win: Page, expected: number): Promise<void> {
 
 async function openScene(win: Page): Promise<void> {
   await win.getByTestId('project-card').filter({ hasText: 'E2E tiny project' }).click();
-  await expect(win.locator('.crumbs b')).toHaveText('Scene');
+  await expect(win.locator('.nav-item[aria-current="page"] .lbl')).toHaveText('Scene');
 }
 
 test('the sidebar folds to its rail in a narrow window, and stays open once reopened', async ({
@@ -84,13 +84,13 @@ test('the sidebar folds to its rail in a narrow window, and stays open once reop
 
     // Settings has no data to make room for: open at 1100
     await win.locator('.sb-foot .nav-item', { hasText: 'Settings' }).click();
-    await expect(win.locator('.crumbs b')).toHaveText('Settings');
+    await expect(win.locator('.nav-item[aria-current="page"] .lbl')).toHaveText('Settings');
     await expect(win.locator('.app')).toHaveAttribute('data-sb', 'expanded');
     await expectSidebar(win, SIDEBAR);
 
     // back on the Scene it folds again; Ctrl+B opens it
     await win.locator('.sb-nav .nav-item', { hasText: 'Scene' }).click();
-    await expect(win.locator('.crumbs b')).toHaveText('Scene');
+    await expect(win.locator('.nav-item[aria-current="page"] .lbl')).toHaveText('Scene');
     await expect(win.locator('.app')).toHaveAttribute('data-sb', 'collapsed');
     await expectSidebar(win, RAIL);
     await win.keyboard.press('Control+B');

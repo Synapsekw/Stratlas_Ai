@@ -193,7 +193,7 @@ const finished = async (trash: string) =>
 
 async function openTiny(win: Page): Promise<void> {
   await win.getByTestId('project-card').filter({ hasText: TINY }).first().click();
-  await expect(win.locator('.crumbs')).toContainText(TINY);
+  await expect(win.locator('.proj-switch')).toContainText(TINY);
 }
 
 /**

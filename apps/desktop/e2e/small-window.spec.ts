@@ -34,7 +34,7 @@ async function openProject(win: Page): Promise<void> {
   expect(Math.abs(w - 1100), `window width ${String(w)}`).toBeLessThanOrEqual(2);
   expect(Math.abs(h - 700), `window height ${String(h)}`).toBeLessThanOrEqual(2);
   await win.getByTestId('project-card').filter({ hasText: 'E2E tiny project' }).click();
-  await expect(win.locator('.crumbs b')).toHaveText('Scene');
+  await expect(win.locator('.nav-item[aria-current="page"] .lbl')).toHaveText('Scene');
   await expect(win.locator('[data-scene-view] canvas')).toBeVisible(VIEW_READY);
 }
 

@@ -18,7 +18,7 @@ async function openIdentity(win: Page) {
 async function openTiny(win: Page) {
   await win.locator('.nav-item', { hasText: 'Projects' }).click();
   await win.getByTestId('project-card').filter({ hasText: 'E2E tiny project' }).click();
-  await expect(win.locator('.crumbs')).toContainText('E2E tiny project');
+  await expect(win.locator('.proj-switch')).toContainText('E2E tiny project');
 }
 
 async function setField(win: Page, label: string, value: string) {

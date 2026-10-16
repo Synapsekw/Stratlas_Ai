@@ -235,7 +235,7 @@ test('a project card has a menu: rename keeps after a restart, delete moves the 
 
     // a plain click on the card still opens the project
     await card(win, 'Renamed yard').click();
-    await expect(win.locator('.crumbs')).toContainText('Renamed yard');
+    await expect(win.locator('.proj-switch')).toContainText('Renamed yard');
     expect((await openProject(win)).id).toBe(YARD_ID);
     await win.locator('.nav-item', { hasText: 'Projects' }).first().click();
     await expect(card(win, 'Renamed yard')).toContainText('Open');
@@ -308,7 +308,7 @@ test('a project card has a menu: rename keeps after a restart, delete moves the 
 
     // the other card still opens with a plain click
     await card(win, 'E2E tiny project').click();
-    await expect(win.locator('.crumbs')).toContainText('E2E tiny project');
+    await expect(win.locator('.proj-switch')).toContainText('E2E tiny project');
     expect((await openProject(win)).id).toBe(dataRoot.projectId);
     expect(await run.network.outbound()).toEqual([]);
   } finally {

@@ -44,7 +44,7 @@ const settingsPage = (name: string) => async (win: Page) => {
 
 const screen = (name: string, heading: RegExp) => async (win: Page) => {
   await palette(win, `Go to ${name}`);
-  await win.locator('.crumbs b').filter({ hasText: name }).waitFor();
+  await win.locator('.nav-item[aria-current="page"] .lbl').filter({ hasText: name }).waitFor();
   await win.getByRole('heading', { name: heading }).first().waitFor();
 };
 
@@ -91,7 +91,10 @@ export const GUIDE_SHOTS: GuideShot[] = [
     chapter: 'scene',
     project: SHOT_PROJECT,
     setup: async (win) => {
-      await win.locator('.crumbs b').filter({ hasText: 'Scene' }).waitFor();
+      await win
+        .locator('.nav-item[aria-current="page"] .lbl')
+        .filter({ hasText: 'Scene' })
+        .waitFor();
       await win.keyboard.press('h');
     },
   },
@@ -100,7 +103,10 @@ export const GUIDE_SHOTS: GuideShot[] = [
     chapter: 'annotation-and-issues',
     project: SHOT_PROJECT,
     setup: async (win) => {
-      await win.locator('.crumbs b').filter({ hasText: 'Scene' }).waitFor();
+      await win
+        .locator('.nav-item[aria-current="page"] .lbl')
+        .filter({ hasText: 'Scene' })
+        .waitFor();
       await palette(win, 'F01');
       await win.getByText('F01').first().waitFor();
     },

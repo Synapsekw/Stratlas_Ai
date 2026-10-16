@@ -41,7 +41,7 @@ async function start(data: DataRoot) {
   await network.attach(app);
   const win = await app.firstWindow();
   await win.waitForLoadState('domcontentloaded');
-  await expect(win.locator('.titlebar')).toBeVisible();
+  await expect(win.locator('.sb-top')).toBeVisible();
   return { app, network, win };
 }
 
@@ -226,7 +226,7 @@ test('the connection pair fits the title bar at the smallest window, in its long
     await command(win, 'Turn cloud AI on');
     await command(win, 'Work offline only');
     await win.getByTestId('project-card').filter({ hasText: 'E2E tiny project' }).click();
-    await expect(win.locator('.crumbs')).toContainText('E2E tiny project');
+    await expect(win.locator('.proj-switch')).toContainText('E2E tiny project');
     await expect(win.getByTestId('sync-chip')).toBeVisible();
     // The smallest window is 1100 wide (main/index.ts), and on Windows the title bar keeps clear
     // of the caption buttons on its right. A resized test viewport has no such buttons, so their
