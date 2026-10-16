@@ -105,6 +105,11 @@ def _number(d: dict[str, Any], key: str) -> float | None:
     return float(v)
 
 
+def height_offset_m(layer: dict[str, Any]) -> float:
+    """The layer's ``heightOffsetM`` (metres added to a cloud's Z); a bool, a non-number or a non-finite value is 0."""
+    return _number(layer, "heightOffsetM") or 0.0
+
+
 def grid_source(project: Path, layer: dict[str, Any], manifest: dict[str, Any] | None = None) -> GridSource:
     """The ``aio.grid/1`` height grid of a DSM layer that is not a GeoTIFF (validated)."""
     name = _name(layer)

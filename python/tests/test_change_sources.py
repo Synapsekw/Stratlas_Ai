@@ -11,7 +11,7 @@ import numpy as np
 import pytest
 from PIL import Image
 
-from aio_pipelines.change.sources import cloud_source, grid_source
+from aio_pipelines.change.sources import cloud_source, grid_source, height_offset_m
 from aio_pipelines.runtime import JobError
 from synth import write_las
 
@@ -110,6 +110,27 @@ def test_a_cloud_source_is_the_las_named_by_the_layer(tmp_path):
     assert cloud_source(tmp_path, CLOUD) == las
     with pytest.raises(JobError, match="convert it"):
         cloud_source(tmp_path, {**CLOUD, "id": "other"}, "convert it")
+
+
+def test_height_offset_reads_the_layer():
+    assert height_offset_m({"heightOffsetM": -30.81}) == -30.81
+    assert height_offset_m({"heightOffsetM": 12}) == 12.0
+
+
+@pytest.mark.parametrize(
+    "layer",
+    [
+        {},
+        {"heightOffsetM": None},
+        {"heightOffsetM": "x"},
+        {"heightOffsetM": float("nan")},
+        {"heightOffsetM": float("inf")},
+        {"heightOffsetM": True},
+        {"heightOffsetM": False},
+    ],
+)
+def test_height_offset_defaults_to_zero(layer):
+    assert height_offset_m(layer) == 0.0
 
 
 def test_point_format_2_reads_without_pdal(tmp_path):
