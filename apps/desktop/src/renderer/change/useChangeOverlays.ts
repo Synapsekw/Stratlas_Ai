@@ -1,5 +1,5 @@
 import { changeMarkers, changeStore, orderPair, setsOfPair, useChange } from '@aio/change';
-import { useWorkspace } from '@aio/workspace';
+import { dateShiftOf, useWorkspace } from '@aio/workspace';
 import { useEffect, useReducer } from 'react';
 import { createStore } from 'zustand/vanilla';
 import { useStore } from 'zustand';
@@ -87,7 +87,13 @@ export function useChangeOverlays(split: SplitModel): void {
       return;
     }
     const pairSets = setsOfPair(sets, pair);
-    const input = { sets: pairSets, filter, selected, issues };
+    const input = {
+      sets: pairSets,
+      filter,
+      selected,
+      issues,
+      shiftOf: (layerId: string) => dateShiftOf(manifest, layerId),
+    };
     const pins = (capture: string | undefined) => changeMarkers({ ...input, capture });
     const offs: (() => void)[] = [];
     const summary = (m: ReturnType<typeof pins>) =>

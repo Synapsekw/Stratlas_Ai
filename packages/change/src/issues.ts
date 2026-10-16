@@ -1,10 +1,12 @@
-import type {
-  ChangeItem,
-  ChangeThresholds,
-  Issue,
-  Layer,
-  ProjectManifest,
-  Vec3,
+import {
+  shiftLocal,
+  type ChangeItem,
+  type ChangeThresholds,
+  type DateShift,
+  type Issue,
+  type Layer,
+  type ProjectManifest,
+  type Vec3,
 } from '@aio/schema';
 import { cameraSees, dist3, mean3, polygonArea3, polylineLength3 } from './geometry';
 import { footprintOf, footprintOverlap, MIN_OVERLAP, type XZ } from './footprint';
@@ -24,6 +26,9 @@ import type { DateIndex } from './pairs';
  *
  * Every verdict is a proposal; nothing here changes an issue.
  */
+
+/** The date shift of a layer, or null when it does not move. */
+export type ShiftOf = (layerId: string) => DateShift | null;
 
 type IssueItem = Extract<ChangeItem, { kind: 'issue' }>;
 
@@ -62,7 +67,9 @@ export function issueDate(
 /** Where the issue is in 3D: its mesh or point cloud sighting (project local frame). */
 export function issuePosition(
   issue: Pick<Issue, 'sightings'>,
+  shiftOf?: ShiftOf,
 ): { p: Vec3; method: 'mesh' | 'pointcloud' } | null {
+  const at = (p: Vec3, layer: string): Vec3 => (shiftOf ? shiftLocal(p, shiftOf(layer)) : p);
   for (const s of issue.sightings) {
     if (s.on === 'mesh') {
       const g = s.geom;
@@ -72,7 +79,7 @@ export function issuePosition(
           : g.type === 'spatch'
             ? (g.center ?? null)
             : mean3(g.type === 'spolygon' ? g.points : g.points);
-      if (p) return { p, method: 'mesh' };
+      if (p) return { p: at(p, s.layer), method: 'mesh' };
     } else if (s.on === 'pointcloud') {
       const g = s.geom;
       const p =
@@ -83,7 +90,7 @@ export function issuePosition(
             : g.type === 'polygon3'
               ? mean3(g.points)
               : null;
-      if (p) return { p, method: 'pointcloud' };
+      if (p) return { p: at(p, s.layer), method: 'pointcloud' };
     }
   }
   return null;
@@ -117,12 +124,14 @@ export function issueSize(
  * Whether a posed photo of the date looked at `p`. False is "no photo of the date saw it", not
  * "nobody looked": callers use it only to tell `resolved` from `not-seen`.
  */
-export function seenOn(p: Vec3, layers: readonly Layer[]): boolean {
+export function seenOn(p: Vec3, layers: readonly Layer[], shiftOf?: ShiftOf): boolean {
   for (const l of layers) {
     if (l.kind !== 'photos') continue;
+    const shift = shiftOf?.(l.id) ?? null;
     for (const ph of l.items) {
       if (!ph.pos || !ph.q || !ph.lens) continue;
-      if (cameraSees({ pos: ph.pos, q: ph.q }, ph.lens, p, SEEN_RANGE_M)) return true;
+      if (cameraSees({ pos: shiftLocal(ph.pos, shift), q: ph.q }, ph.lens, p, SEEN_RANGE_M))
+        return true;
     }
   }
   return false;
@@ -135,6 +144,8 @@ export interface IssueChangeInput {
   from: string;
   to: string;
   thresholds: Pick<ChangeThresholds, 'grown'>;
+  /** The date shift of a layer (lined-up dates): positions are compared where they are drawn. */
+  shiftOf?: ShiftOf;
 }
 
 interface Placed {
@@ -146,7 +157,11 @@ interface Placed {
 /** Issue change items of a date pair, earlier-date issues first, then the new ones. */
 export function issueChanges(input: IssueChangeInput): IssueItem[] {
   const { index, from, to, thresholds } = input;
-  const place = (i: Issue): Placed => ({ issue: i, at: issuePosition(i), foot: footprintOf(i) });
+  const place = (i: Issue): Placed => ({
+    issue: i,
+    at: issuePosition(i, input.shiftOf),
+    foot: footprintOf(i, input.shiftOf),
+  });
   const a = input.issues.filter((i) => issueDate(i, index) === from).map(place);
   const b = input.issues.filter((i) => issueDate(i, index) === to).map(place);
   const ys = [...a, ...b].flatMap((x) => (x.at ? [x.at.p[1]] : []));
@@ -206,7 +221,7 @@ export function issueChanges(input: IssueChangeInput): IssueItem[] {
       items.push(matched(x, m.b, m.method, thresholds));
       continue;
     }
-    const seen = x.at ? seenOn(x.at.p, later) : false;
+    const seen = x.at ? seenOn(x.at.p, later, input.shiftOf) : false;
     items.push({
       kind: 'issue',
       id: `issue:${x.issue.code}`,

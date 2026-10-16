@@ -8,6 +8,7 @@ import type {
   ProjectManifest,
   Vec3,
 } from '@aio/schema';
+import { dateShiftOf } from '@aio/workspace';
 import { detectionChanges, photoDetectionLocator, type DetectionPass } from './detections';
 import { issueChanges } from './issues';
 import {
@@ -19,6 +20,7 @@ import {
   type InAppKind,
 } from './pairs';
 import { buildChangeSet, mergeReviews } from './register';
+import { lineUpOfPair } from './stale';
 import { vectorChanges } from './vector';
 
 /**
@@ -78,6 +80,8 @@ export async function computeInApp(
   const todo = inAppKinds(kinds);
   if (todo.length === 0)
     throw new Error('Issues, detections and map layers are compared in the app; pick one of them.');
+  const shiftOf = (layerId: string) => dateShiftOf(src.manifest, layerId);
+  const lineUp = lineUpOfPair(src.manifest, from, to);
   const out: ChangeSet[] = [];
   let done = 0;
   const step = (phase: string) => {
@@ -96,6 +100,7 @@ export async function computeInApp(
         from,
         to,
         thresholds: src.thresholds,
+        shiftOf,
       });
     } else if (kind === 'detection') {
       const passes = await src.passes();
@@ -129,6 +134,8 @@ export async function computeInApp(
             from: ga,
             to: gb,
             ...(src.toLocal ? { toLocal: src.toLocal } : {}),
+            shiftFrom: shiftOf(la.id),
+            shiftTo: shiftOf(lb.id),
           }),
         );
       }
@@ -143,6 +150,7 @@ export async function computeInApp(
       items,
       createdAt: now,
       run: { at: now, ...(src.jobId ? { jobId: src.jobId } : {}) },
+      lineUp,
     });
     out.push(mergeReviews(await src.previous(id), fresh));
     done += 1;

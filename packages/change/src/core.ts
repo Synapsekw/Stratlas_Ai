@@ -13,6 +13,7 @@ export {
   issueSize,
   seenOn,
   suggestMatches,
+  type ShiftOf,
   type MatchSuggestion,
 } from './issues';
 export {
@@ -54,4 +55,5 @@ export {
   type RegisterSort,
   type ReviewStatus,
 } from './register';
+export { changeSetStale, lineUpOfPair } from './stale';
 export { DEFAULT_VECTOR_KEYS, vectorChanges, type VectorChangeInput } from './vector';

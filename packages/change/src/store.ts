@@ -32,6 +32,15 @@ export interface ChangeRun {
   total: number;
 }
 
+export interface Misaligned {
+  from: string;
+  to: string;
+  /** The measured gap in metres. */
+  shiftM: number;
+  /** The producer that was refused (run again after the line-up). */
+  producer: string;
+}
+
 export interface ChangeState {
   projectId: string | null;
   readOnly: boolean;
@@ -47,6 +56,8 @@ export interface ChangeState {
   /** "Show changes" in Compare dates: pins and outlines on both views. */
   show: boolean;
   run: ChangeRun | null;
+  /** A run the pipeline refused because the two dates sit apart (the panel offers a line-up). */
+  misaligned: Misaligned | null;
   error: string | null;
   /** Bumped on every change, for overlays. */
   version: number;
@@ -60,6 +71,8 @@ export interface ChangeActions {
   setSort(sort: RegisterSort): void;
   select(sel: SelectedItem | null): void;
   setShow(on: boolean): void;
+  /** Keep (or clear, with null) a refused run for the panel. */
+  setMisaligned(m: Misaligned | null): void;
   /** Run the in-app producers for the pair; true when sets were written. */
   compute(kinds?: readonly ChangeKind[]): Promise<boolean>;
   cancel(): Promise<void>;
@@ -98,6 +111,7 @@ const initial: ChangeState = {
   selected: null,
   show: false,
   run: null,
+  misaligned: null,
   error: null,
   version: 0,
 };
@@ -159,12 +173,19 @@ export function createChangeStore() {
       setShow(on) {
         bump({ show: on });
       },
+      setMisaligned(m) {
+        bump({ misaligned: m });
+      },
       async compute(kinds = IN_APP_KINDS) {
         const { projectId, pair } = get();
         if (!projectId || !pair || get().run) return false;
         runSeq += 1;
         const jobId = `change-${String(Date.now())}-${String(runSeq)}`;
-        bump({ run: { jobId, phase: 'start', done: 0, total: kinds.length }, error: null });
+        bump({
+          run: { jobId, phase: 'start', done: 0, total: kinds.length },
+          misaligned: null,
+          error: null,
+        });
         const off = bridge()?.on('change:progress', (e) => {
           if (e.jobId === jobId && get().run?.jobId === jobId) bump({ run: { ...e } });
         });
