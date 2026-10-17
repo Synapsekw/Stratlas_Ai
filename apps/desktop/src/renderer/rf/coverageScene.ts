@@ -3,10 +3,13 @@
  * at the tower-base ground height (Phase 1 assumes flat ground, D17), and each source's
  * boresight as a thin arrow from the antenna, along its azimuth and mechanical downtilt. Project
  * E, N, Z map to the local frame as everywhere else: x east, y up, z south (`projectToLocal`).
- * The eye hides the whole group; the opacity is the sheet's.
+ * The eye hides the whole group; the opacity is the sheet's. While the sheet shows, the stage may
+ * back the camera off far enough to see all of it (`setReach`): the coverage reaches kilometres
+ * beyond a tower model of a few tens of metres.
  */
-import type { SceneHandle } from '@aio/engine';
+import { isEngineStage, type SceneHandle } from '@aio/engine';
 import {
+  Box3,
   BufferGeometry,
   DataTexture,
   DoubleSide,
@@ -21,12 +24,15 @@ import {
   RGBAFormat,
   SRGBColorSpace,
   UnsignedByteType,
+  Vector3,
 } from 'three';
 import type { CoverageImage } from './coverageImage';
 
 /** The sheet floats this far above the ground, so it does not fight the ground for depth. */
 export const DRAPE_LIFT_M = 0.3;
 export const SCENE_GROUP = 'rf-coverage';
+/** The stage's reach key for the drape. */
+export const REACH_KEY = 'rf-coverage';
 
 export interface SceneArrow {
   /** Local frame start. */
@@ -90,6 +96,9 @@ export function attachCoverageScene(scene: SceneHandle): CoverageSceneView {
     polygonOffset: true,
     polygonOffsetFactor: -2,
     polygonOffsetUnits: -2,
+    // the ramp as the legend shows it: no tone mapping, no fog
+    toneMapped: false,
+    fog: false,
   });
   let mesh: Mesh<PlaneGeometry, MeshBasicMaterial> | null = null;
   let texture: DataTexture | null = null;
@@ -97,6 +106,9 @@ export function attachCoverageScene(scene: SceneHandle): CoverageSceneView {
   const lineMaterials: LineBasicMaterial[] = [];
   let lines: LineSegments[] = [];
   scene.scene.add(group);
+  const reach = (box: Box3 | null) => {
+    if (isEngineStage(scene)) scene.setReach(REACH_KEY, box);
+  };
 
   const clearLines = () => {
     for (const l of lines) {
@@ -153,11 +165,29 @@ export function attachCoverageScene(scene: SceneHandle): CoverageSceneView {
         mesh.scale.set(s.sizeM[0], s.sizeM[1], 1);
         mesh.position.set(s.centre[0], s.groundY + DRAPE_LIFT_M, s.centre[1]);
       }
+      reach(
+        s && d.visible
+          ? new Box3(
+              new Vector3(s.centre[0] - s.sizeM[0] / 2, s.groundY, s.centre[1] - s.sizeM[1] / 2),
+              new Vector3(
+                s.centre[0] + s.sizeM[0] / 2,
+                s.groundY + 1,
+                s.centre[1] + s.sizeM[1] / 2,
+              ),
+            )
+          : null,
+      );
       clearLines();
       for (const a of d.arrows) {
         const g = new BufferGeometry();
         g.setAttribute('position', new Float32BufferAttribute(arrowSegments(a), 3));
-        const m = new LineBasicMaterial({ color: a.colour, depthTest: false, transparent: true });
+        const m = new LineBasicMaterial({
+          color: a.colour,
+          depthTest: false,
+          transparent: true,
+          toneMapped: false,
+          fog: false,
+        });
         lineMaterials.push(m);
         const l = new LineSegments(g, m);
         l.renderOrder = 2;
@@ -167,6 +197,7 @@ export function attachCoverageScene(scene: SceneHandle): CoverageSceneView {
       scene.requestRender();
     },
     dispose() {
+      reach(null);
       clearLines();
       if (mesh) mesh.geometry.dispose();
       texture?.dispose();
