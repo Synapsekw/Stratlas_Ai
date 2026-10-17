@@ -65,6 +65,14 @@ export function Drawer() {
   useEffect(() => {
     if (!available) drawerStore.getState().close();
   }, [available]);
+  // and another project opening: its bench is not the one the drawer was opened for
+  const projectId = useWorkspace((s) => s.project?.id ?? null);
+  const seenProject = useRef(projectId);
+  useEffect(() => {
+    if (seenProject.current === projectId) return;
+    seenProject.current = projectId;
+    drawerStore.getState().close();
+  }, [projectId]);
 
   // a click on the island itself (not one of its buttons) at rest opens it
   useEffect(() => {
@@ -83,16 +91,24 @@ export function Drawer() {
     };
   }, [available]);
 
-  // Esc closes a drawer a tool opened, unless something nearer already took it (a menu, a
-  // popover, the tool's own Esc); a click-opened one traps focus (below)
+  // Esc closes a drawer a tool opened, unless something else took it (a menu, a popover, the
+  // tool's own Esc). Read once the key has reached every listener: one on the window added after
+  // this one (the map drawing's) runs later, and one Esc must not do both
   useEffect(() => {
     if (!open || opened !== 'live') return;
+    const timers = new Set<ReturnType<typeof setTimeout>>();
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape' && !e.defaultPrevented) hide();
+      if (e.key !== 'Escape' || e.defaultPrevented) return;
+      const timer = setTimeout(() => {
+        timers.delete(timer);
+        if (!e.defaultPrevented) hide();
+      }, 0);
+      timers.add(timer);
     };
     window.addEventListener('keydown', onKey);
     return () => {
       window.removeEventListener('keydown', onKey);
+      for (const timer of timers) clearTimeout(timer);
     };
   }, [open, opened]);
   useFocusTrap(panel, open && opened === 'click', {

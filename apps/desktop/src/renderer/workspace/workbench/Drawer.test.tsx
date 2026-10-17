@@ -195,23 +195,62 @@ describe('Drawer', () => {
   });
 
   it('closes on Esc anywhere when a live start opened it', () => {
+    vi.useFakeTimers();
     render();
     startTool();
     act(() => {
       window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+      vi.runOnlyPendingTimers();
     });
     expect(drawer()?.dataset.open).toBeUndefined();
   });
 
   it('leaves Esc to what took it first: a defaultPrevented Esc keeps a live drawer open', () => {
+    vi.useFakeTimers();
     render();
     startTool();
     act(() => {
       const esc = new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true });
       esc.preventDefault();
       window.dispatchEvent(esc);
+      vi.runOnlyPendingTimers();
     });
     expect(drawer()?.dataset.open).toBe('');
+  });
+
+  it("leaves Esc to a listener after its own, as the map drawing's on the window", () => {
+    vi.useFakeTimers();
+    render();
+    startTool();
+    // registered after the drawer's, as a map mode picked after the tool started is
+    const drawing = (e: KeyboardEvent) => {
+      e.preventDefault();
+    };
+    window.addEventListener('keydown', drawing);
+    try {
+      act(() => {
+        window.dispatchEvent(
+          new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }),
+        );
+        vi.runOnlyPendingTimers();
+      });
+      expect(drawer()?.dataset.open).toBe('');
+    } finally {
+      window.removeEventListener('keydown', drawing);
+    }
+  });
+
+  it('closes when another project opens', () => {
+    render();
+    act(() => {
+      host.querySelector<HTMLElement>('[data-testid="island-line"]')?.click();
+    });
+    expect(drawer()?.dataset.open).toBe('');
+    act(() => {
+      workspace.getState().openProject({ id: 'p4', root: '/p4', manifest: threeDates });
+    });
+    expect(drawer()?.dataset.open).toBeUndefined();
+    expect(drawerStore.getState().opened).toBeNull();
   });
 
   it('closes when the sidebar comes back', () => {
