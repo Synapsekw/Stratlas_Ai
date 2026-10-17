@@ -31,7 +31,7 @@ vi.mock('@aio/maps', async (load) => ({
   onActiveMap: maps.onActiveMap,
 }));
 
-const { useMap, useScene } = await import('./PhotoMenu');
+const { useMap, useScene } = await import('./activeViews');
 
 const scene = { scene: { children: [] } } as unknown as SceneHandle;
 const map = { map: {} } as unknown as MapController;

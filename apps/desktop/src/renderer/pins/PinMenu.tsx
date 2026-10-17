@@ -6,8 +6,10 @@ import { useWorkspace, workspace } from '@aio/workspace';
 import { useCallback, useEffect, useState } from 'react';
 import { Vector3 } from 'three';
 import { claimEvent, isClaimed } from '../builder/droneHits';
-import { CLICK_PX, photosAt3d, useMap, useScene } from '../builder/PhotoMenu';
+import { useMap, useScene } from '../builder/activeViews';
+import { CLICK_PX, photosAt3d } from '../builder/PhotoMenu';
 import { usePinActionCtx } from '../shell/actions/pinActions';
+import { toDraw } from './pinFrame';
 import { drawnPins, mediaItem, pinsAt, type MediaKey } from './pinModel';
 import { mediaName } from './placePin';
 
@@ -26,8 +28,8 @@ interface Point {
 
 const hiddenSet = (): ReadonlySet<string> => new Set(Object.keys(workspace.getState().hidden));
 
-/** Placed 360s of the shown layers, where their markers are. */
-function placedPanos(
+/** Placed 360s of the shown layers, where their markers draw (moved by their date's line-up). */
+export function placedPanos(
   m: ProjectManifest,
   hidden: ReadonlySet<string>,
 ): { key: MediaKey; pos: Vec3 }[] {
@@ -35,7 +37,7 @@ function placedPanos(
   for (const l of m.layers) {
     if (l.kind !== 'panoramas' || !l.visible || hidden.has(l.id)) continue;
     for (const p of l.items.filter(hasPos))
-      out.push({ key: { kind: 'pano', layerId: l.id, itemId: p.id }, pos: p.pos });
+      out.push({ key: { kind: 'pano', layerId: l.id, itemId: p.id }, pos: toDraw(p.pos, m, l.id) });
   }
   return out;
 }

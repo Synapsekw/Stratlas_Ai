@@ -1,18 +1,16 @@
 import { getActiveScene, onActiveScene, type SceneHandle } from '@aio/engine';
 import {
   frameProjection,
-  getActiveMap,
   mediaPinData,
-  onActiveMap,
   removeMediaPins,
   setMapPanoOpenHandler,
   setMediaPins,
-  type MapController,
   type MapPin,
 } from '@aio/maps';
 import type { ProjectManifest } from '@aio/schema';
 import { useWorkspace, workspace } from '@aio/workspace';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo } from 'react';
+import { useMap } from '../builder/activeViews';
 import { shell } from '../shell';
 import type { SplitPref } from '../workspace/splitModel';
 import { stagePrefs } from '../workspace/stagePrefs';
@@ -138,12 +136,11 @@ export function showPinArrows(map: MapLibreMap, data: ArrowData): () => void {
 }
 
 export function PinMapMount(): null {
-  const [ctl, setCtl] = useState<MapController | null>(() => getActiveMap());
+  // a store read, not a state set in an effect: a map that comes up with this mount is seen
+  const ctl = useMap();
   const manifest = useWorkspace((s) => s.project?.manifest);
   const hiddenMap = useWorkspace((s) => s.hidden);
   const hidden = useMemo(() => new Set(Object.keys(hiddenMap)), [hiddenMap]);
-
-  useEffect(() => onActiveMap(setCtl), []);
 
   useEffect(() => {
     setMapPanoOpenHandler(openPanoFromMap);

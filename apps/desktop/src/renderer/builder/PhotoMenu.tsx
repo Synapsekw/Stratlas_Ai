@@ -1,12 +1,6 @@
-import {
-  configureEngine,
-  engineConfig,
-  getActiveScene,
-  onActiveScene,
-  type SceneHandle,
-} from '@aio/engine';
+import { configureEngine, engineConfig, type SceneHandle } from '@aio/engine';
 import { correctedPhoto, localToProject, photoCorrection, toWgs84 } from '@aio/geo';
-import { getActiveMap, onActiveMap, setPhotoMapClickHandler, type MapController } from '@aio/maps';
+import { setPhotoMapClickHandler } from '@aio/maps';
 import type { Layer, PhotoRef } from '@aio/schema';
 import {
   actionsFor,
@@ -22,23 +16,20 @@ import {
 import { DEFAULT_PHOTO_LENS } from '@aio/video';
 import { useWorkspace, workspace } from '@aio/workspace';
 import { useAnnotateReadOnly } from '@aio/annotate';
-import {
-  useCallback,
-  useEffect,
-  useRef,
-  useState,
-  useSyncExternalStore,
-  type KeyboardEvent,
-} from 'react';
+import { useCallback, useEffect, useRef, useState, type KeyboardEvent } from 'react';
 import { createPortal } from 'react-dom';
 import { Quaternion, Vector3, type InstancedMesh } from 'three';
 import { useShell } from '../shell';
 import { editBlocked } from '../shell/actions/reasons';
 import { toastHost } from '../shell/actions/toastHost';
+import { useMap, useScene } from './activeViews';
 import { photoAlign, usePhotoAlign } from './alignSession';
 import { isClaimed, paneRay } from './droneHits';
 import { openPhoto } from './photoOpen';
 import { photoPicks, usePhotoPicks } from './photoPicks';
+
+// the views as stores live in `activeViews.ts`; kept here for the menus that import them from here
+export { useMap, useScene };
 
 type PhotosLayer = Extract<Layer, { kind: 'photos' }>;
 
@@ -67,22 +58,6 @@ interface MenuAt {
   from: '3d' | 'map';
   /** A left click on a map cluster: choosing a row opens that photo, it does not open this menu. */
   photos?: MenuPhoto[];
-}
-
-/*
- * The 3D view and the map on screen. Read as external stores: the views come up in the same
- * commit as the menus (the scene is set in the 3D view's effect, after a menu's first render and
- * before its effect would listen), and a store read again after subscribing does not miss that.
- */
-const subscribeScene = (cb: () => void) => onActiveScene(cb);
-const subscribeMap = (cb: () => void) => onActiveMap(cb);
-
-export function useScene(): SceneHandle | null {
-  return useSyncExternalStore(subscribeScene, getActiveScene);
-}
-
-export function useMap(): MapController | null {
-  return useSyncExternalStore(subscribeMap, getActiveMap);
 }
 
 const setOf = (id: string): PhotosLayer | null => {

@@ -76,7 +76,7 @@ function state(hidden: Record<string, true> = {}) {
   const select = vi.fn();
   const openPano = vi.fn();
   const s = {
-    project: { id: 'p', manifest: { layers } },
+    project: { id: 'p', manifest: { layers, captures: [] } },
     hidden,
     orientation: null,
     selection: null,
@@ -193,6 +193,37 @@ describe('MapMediaMarkers', () => {
     expect(m.at(101, 101)).toEqual({ kind: 'photo', layerId: 'ph', id: 'gps' });
     expect(m.at(299, 201)).toEqual({ kind: 'pano', layerId: 'pa', id: 'sphere' });
     expect(m.at(10, 10)).toBeNull();
+    m.dispose();
+  });
+
+  it("draws photos and 360s of a lined-up date moved by that date's shift", () => {
+    const { map, proj } = fakeMap();
+    const m = new MapMediaMarkers({ map, proj, url });
+    const { s } = state();
+    const dated = {
+      ...s,
+      project: {
+        id: 'p',
+        manifest: {
+          layers: layers.map((l) => ({ ...l, capture: 'd2' })),
+          captures: [
+            { id: 'd1', label: 'First', date: '2026-01-10' },
+            {
+              id: 'd2',
+              label: 'Second',
+              date: '2026-02-10',
+              lineUp: { eastM: 50, northM: -40, with: 'd1', at: '2026-10-16T08:00:00Z' },
+            },
+          ],
+        },
+      },
+    } as unknown as Workspace;
+    m.update(dated);
+    // x east plus 50, z south plus 40 (north minus 40)
+    expect(m.at(150, 140)).toEqual({ kind: 'photo', layerId: 'ph', id: 'gps' });
+    expect(m.at(350, 240)).toEqual({ kind: 'pano', layerId: 'pa', id: 'sphere' });
+    expect(m.at(100, 100)).toBeNull();
+    expect(m.at(300, 200)).toBeNull();
     m.dispose();
   });
 

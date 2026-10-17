@@ -1,7 +1,7 @@
-import { onActiveScene, getActiveScene, type SceneHandle } from '@aio/engine';
 import { useWorkspace } from '@aio/workspace';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef } from 'react';
 import { useStore } from 'zustand';
+import { useScene } from '../builder/activeViews';
 import { pinSession } from './placePin';
 import { drawnPins, keyString, type MediaKey } from './pinModel';
 import { attachPinScene, type PinSceneView } from './pinScene';
@@ -19,15 +19,14 @@ function onArrowDrop(key: MediaKey, headingDeg: number): void {
 }
 
 export function PinSceneMount(): null {
-  const [scene, setScene] = useState<SceneHandle | null>(() => getActiveScene());
+  // a store read, not a state set in an effect: a 3D view that comes up with this mount is seen
+  const scene = useScene();
   const view = useRef<PinSceneView | null>(null);
   const manifest = useWorkspace((s) => s.project?.manifest);
   const hiddenMap = useWorkspace((s) => s.hidden);
   const hidden = useMemo(() => new Set(Object.keys(hiddenMap)), [hiddenMap]);
   const target = useStore(pinSession, (s) => s.target);
   const selected = target ? keyString(target) : null;
-
-  useEffect(() => onActiveScene(setScene), []);
 
   useEffect(() => {
     if (!scene) return;

@@ -90,6 +90,7 @@ describe('openPanoFromMap', () => {
 
 describe('pin arrows on the map', () => {
   const manifest = {
+    captures: [],
     layers: [
       {
         kind: 'photos',

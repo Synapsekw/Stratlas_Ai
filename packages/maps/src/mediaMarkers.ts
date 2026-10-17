@@ -8,8 +8,8 @@ import {
   type MarkerView,
 } from '@aio/engine';
 import { correctedPhoto, photoCorrection } from '@aio/geo';
-import type { AssetRef, PanoRef, PhotoRef, Vec3 } from '@aio/schema';
-import type { Workspace } from '@aio/workspace';
+import { shiftLocal, type AssetRef, type PanoRef, type PhotoRef, type Vec3 } from '@aio/schema';
+import { dateShiftOf, type Workspace } from '@aio/workspace';
 import type { Map as MapLibreMap } from 'maplibre-gl';
 import type { FrameProjection } from './geo';
 import { photoMapClickHandler } from './photoPins';
@@ -162,16 +162,19 @@ export class MapMediaMarkers {
     this.ws = s;
     const photos: Placed<PhotoRef>[] = [];
     const panos: Placed<PanoRef>[] = [];
-    for (const l of s.project?.manifest.layers ?? []) {
+    const m = s.project?.manifest;
+    for (const l of m?.layers ?? []) {
       if (s.hidden[l.id]) continue;
+      // where the 3D view draws them: on their date's line-up (after a photo's hand correction)
+      const shift = m ? dateShiftOf(m, l.id) : null;
       if (l.kind === 'photos') {
         for (const item of l.items) {
           const c = correctedPhoto(item, photoCorrection(s.orientation, l.id, item.id));
-          if (c.pos) photos.push({ layerId: l.id, item, pos: c.pos });
+          if (c.pos) photos.push({ layerId: l.id, item, pos: shiftLocal(c.pos, shift) });
         }
       } else if (l.kind === 'panoramas') {
         for (const item of l.items.filter(hasPos))
-          panos.push({ layerId: l.id, item, pos: item.pos });
+          panos.push({ layerId: l.id, item, pos: shiftLocal(item.pos, shift) });
       }
     }
     this.photos = photos;
