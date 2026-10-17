@@ -74,6 +74,7 @@ describe('pipeline params', () => {
       'change.cloud',
       'change.mesh',
       'change.frames',
+      'change.lineup',
       'drawing.import',
       'model.fit_cloud',
       'photo.align',
@@ -105,6 +106,18 @@ describe('pipeline params', () => {
       'pointcloud.clean',
     ]);
     for (const p of PIPELINES) expect(p.title.length).toBeGreaterThan(3);
+  });
+
+  it('knows the change.lineup pipeline and its params', () => {
+    expect(PIPELINES.find((x) => x.name === 'change.lineup')?.title).toBe('Line up dates');
+    const p = pipelineParams('change.lineup');
+    expect(p.safeParse({ keep: 'd1', move: 'd2' }).success).toBe(true);
+    expect(
+      p.safeParse({ keep: 'd1', move: 'd2', layerKeep: 'ortho-d1', layerMove: 'dsm-d2' }).success,
+    ).toBe(true);
+    expect(p.safeParse({ keep: 'd1' }).success).toBe(false);
+    expect(p.safeParse({ keep: 'd1', move: 'd1' }).success).toBe(false);
+    expect(p.safeParse({ keep: 'd1', move: 'd2', maxShiftPx: 2 }).success).toBe(false);
   });
 
   it('takes the road builder inputs: one ortho or several blocks, units along the road or a grid', () => {

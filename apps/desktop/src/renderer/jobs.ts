@@ -573,6 +573,8 @@ export const FORMS: Record<PipelineName, Field[]> = {
     { key: 'maxShiftPx', label: 'Largest shift (px)', kind: 'number', placeholder: '2' },
   ],
   'change.surface': [],
+  // Line up dates: run by the line-up step, which fills both dates and their layers
+  'change.lineup': [],
   'change.cloud': [
     { key: 'layerFrom', label: 'Earlier point cloud layer id', kind: 'text', required: true },
     { key: 'layerTo', label: 'Later point cloud layer id', kind: 'text', required: true },

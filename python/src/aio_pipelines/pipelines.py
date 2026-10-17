@@ -6,6 +6,7 @@ from .aik.pipelines import AikCameras, AikProject, AikRecords
 from .bentley.importer import BentleyImport
 from .change.cloud import ChangeCloud
 from .change.frames import ChangeFrames
+from .change.lineup import ChangeLineUp
 from .change.mesh import ChangeMesh
 from .change.raster import ChangeRaster
 from .change.surface import ChangeSurface
@@ -63,6 +64,7 @@ def all_pipelines() -> dict[str, Pipeline]:
         ChangeCloud(),
         ChangeMesh(),
         ChangeFrames(),
+        ChangeLineUp(),
         DrawingImport(),
         ModelFitCloud(),
         # M10 (pipeline pack 0.4.0); each stream fills its own module
