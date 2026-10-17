@@ -24,29 +24,8 @@ function useBases() {
   return useVolumetric((s) => s.file?.bases ?? []);
 }
 
-function DateSeg() {
-  const captures = useVolumetric((s) => s.file?.captures ?? []);
-  const epoch = useVolumetric((s) => s.epoch);
-  const surface = useVolumetric((s) => s.surface);
-  return (
-    <div className="seg vol-seg" role="group" aria-label="Survey date">
-      {captures.map((c) => (
-        <button
-          key={c.epoch}
-          type="button"
-          aria-pressed={surface !== 'change' && c.epoch === epoch}
-          title={c.label}
-          onClick={() => {
-            volumetric.getState().setSurface(surface === 'change' ? 'photo' : surface);
-            volumetric.getState().setEpoch(c.epoch);
-          }}
-        >
-          {short(c.label)}
-        </button>
-      ))}
-    </div>
-  );
-}
+// The survey date switch is the Volumes workbench's, above this panel (desktop VolumesBench):
+// the register and a pile's detail have no second one.
 
 export function BaseSelect({ compact }: { compact?: boolean }) {
   const bases = useBases();
@@ -111,7 +90,6 @@ function Register() {
         </button>
       </div>
       <div className="vol-row vol-ctl">
-        <DateSeg />
         <BaseSelect />
       </div>
       <table className="vol-reg" data-testid="vol-register">
@@ -516,7 +494,6 @@ function PileDetail({ id }: { id: string }) {
           <span className={`vol-pill ${pill[0] ?? ''}`}>{pill[1]}</span>
         </div>
         <div className="vol-row vol-ctl">
-          <DateSeg />
           <BaseSelect />
         </div>
         {ep || live ? (

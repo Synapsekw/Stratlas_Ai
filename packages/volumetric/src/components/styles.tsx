@@ -12,7 +12,6 @@ const css = `
 .vol-note { margin: 0; font-size: var(--t-12); color: var(--fg-3); line-height: 1.45; }
 .vol-note.pad { padding: 16px 12px; }
 .vol-note b { color: var(--fg-1); font-weight: 600; }
-.vol-seg button { height: 24px; font: 500 var(--t-12)/1 var(--f-mono); }
 .vol-base { display: inline-flex; align-items: center; gap: 6px; font-size: var(--t-11); color: var(--fg-3); }
 .vol-base select { height: 24px; padding: 0 6px; border: 1px solid var(--line); border-radius: var(--r-4); background: var(--bg-2); color: var(--fg-0); font: 400 var(--t-12)/1 var(--f-ui); }
 .vol-kpis { display: grid; grid-template-columns: 1fr 1fr; border: 1px solid var(--line-soft); border-radius: var(--r-4); }
