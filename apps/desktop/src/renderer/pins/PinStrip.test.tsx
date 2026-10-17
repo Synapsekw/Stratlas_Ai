@@ -112,12 +112,40 @@ describe('PinStrip', () => {
     expect(input?.step).toBe('0.1');
     expect(input?.min).toBe('0');
     expect(input?.max).toBe('10');
+    const type = (v: string) => {
+      act(() => {
+        if (!input) return;
+        Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set?.call(input, v);
+        input.dispatchEvent(new Event('input', { bubbles: true }));
+      });
+    };
+    // typing 1.5 saves once, when the field is left
+    for (const v of ['1', '1.', '1.5']) type(v);
+    expect(setEyeM).not.toHaveBeenCalled();
     act(() => {
-      if (!input) return;
-      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set?.call(input, '2');
-      input.dispatchEvent(new Event('input', { bubbles: true }));
+      input?.dispatchEvent(new FocusEvent('focusout', { bubbles: true }));
     });
-    expect(setEyeM).toHaveBeenCalledWith(2);
+    expect(setEyeM).toHaveBeenCalledTimes(1);
+    expect(setEyeM).toHaveBeenCalledWith(1.5);
+    // Enter saves too
+    type('2');
+    act(() => {
+      input?.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+    });
+    expect(setEyeM).toHaveBeenCalledTimes(2);
+    expect(setEyeM).toHaveBeenLastCalledWith(2);
+  });
+
+  it('an Escape typed in the eye field does not cancel the session', () => {
+    const s = store();
+    const cancel = vi.fn();
+    s.setState({ target: photo, step: 'aim', ground: [0, 0, 0], cancel });
+    mount(s);
+    const input = document.querySelector<HTMLInputElement>('[data-testid="pin-eye-height"]');
+    act(() => {
+      input?.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    });
+    expect(cancel).not.toHaveBeenCalled();
   });
 
   it('Escape and Cancel cancel; Done finishes', () => {

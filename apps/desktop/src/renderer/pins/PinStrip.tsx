@@ -2,6 +2,7 @@ import { Button, t } from '@aio/ui';
 import { useWorkspace } from '@aio/workspace';
 import { useEffect, useId, useState, type ReactElement } from 'react';
 import { createPortal } from 'react-dom';
+import { useShell } from '../shell';
 import { mediaItem } from './pinModel';
 import { mediaName, pinSession, usePinPicking, usePinSession, type PinSession } from './placePin';
 import './pins.css';
@@ -14,14 +15,20 @@ import './pins.css';
 
 /** The stage element (the 3D view, the map and the split live in it) while it is mounted. */
 function useStageEl(watch: boolean): HTMLElement | null {
+  const screen = useShell((s) => s.screen);
   const [el, setEl] = useState<HTMLElement | null>(null);
   useEffect(() => {
     if (!watch) return;
-    const find = (): void => {
-      setEl(document.querySelector<HTMLElement>('.stage'));
+    // watched only until it is found; leaving the scene (the stage goes) looks again
+    const find = (): boolean => {
+      const found = document.querySelector<HTMLElement>('.stage');
+      setEl(found);
+      return found !== null;
     };
-    find();
-    const mo = new MutationObserver(find);
+    if (find()) return;
+    const mo = new MutationObserver(() => {
+      if (find()) mo.disconnect();
+    });
     mo.observe(document.querySelector('.main') ?? document.body, {
       childList: true,
       subtree: true,
@@ -29,8 +36,8 @@ function useStageEl(watch: boolean): HTMLElement | null {
     return () => {
       mo.disconnect();
     };
-  }, [watch]);
-  return watch ? el : null;
+  }, [watch, screen]);
+  return watch && el?.isConnected ? el : null;
 }
 
 export function PinStrip({ store = pinSession }: { store?: PinSession }): ReactElement | null {
@@ -51,6 +58,13 @@ export function PinStrip({ store = pinSession }: { store?: PinSession }): ReactE
 
   if (!target || !item || !stage) return null;
   const actions = store.getState();
+  /** The typed eye height saves once, on Enter or leaving the field. */
+  const commitEye = (): void => {
+    if (draft === null) return;
+    setDraft(null);
+    const n = Number(draft);
+    if (draft.trim() !== '' && Number.isFinite(n) && n !== eyeM) void actions.setEyeM(n);
+  };
   const strip = (
     <div className="pin-strip" role="toolbar" aria-label={t('pin.place')} data-testid="pin-strip">
       <p className="pin-strip-say" data-step={step}>
@@ -75,14 +89,13 @@ export function PinStrip({ store = pinSession }: { store?: PinSession }): ReactE
             value={draft ?? String(eyeM)}
             data-testid="pin-eye-height"
             onChange={(e) => {
-              const v = e.currentTarget.value;
-              setDraft(v);
-              const n = Number(v);
-              if (v.trim() !== '' && Number.isFinite(n)) void actions.setEyeM(n);
+              setDraft(e.currentTarget.value);
             }}
-            onBlur={() => {
-              setDraft(null);
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') commitEye();
+              else if (e.key === 'Escape') setDraft(null);
             }}
+            onBlur={commitEye}
           />
         </label>
       )}

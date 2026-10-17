@@ -1,6 +1,7 @@
 import { getActiveScene } from '@aio/engine';
 import { getActiveMap, onActiveMap, type MapController } from '@aio/maps';
 import { LayerPatch, type PanoRef, type PhotoRef, type Vec3 } from '@aio/schema';
+import { t } from '@aio/ui';
 import { workspace } from '@aio/workspace';
 import { useEffect, useState } from 'react';
 import { useStore } from 'zustand';
@@ -9,6 +10,7 @@ import type { Intersection } from 'three';
 import { groundHit } from '../builder/droneHits';
 import { hitLayer, terrainHeightAt, useStagePick } from '../builder/pick';
 import { builder } from '../builder/state';
+import { isTyping } from '../keys';
 import { setPanoPick } from '../workspace/panoPickHook';
 import { openPanoBeside } from './openBeside';
 import { createPinStore, type PinActions, type PinState, type PinStep } from './pinStore';
@@ -26,7 +28,7 @@ export const pinSession: PinSession = createPinStore({
   manifest: () => workspace.getState().project?.manifest ?? null,
   save: async (layerId, patch) => {
     const parsed = LayerPatch.safeParse(patch);
-    if (!parsed.success) return parsed.error.issues[0]?.message ?? 'Invalid pin.';
+    if (!parsed.success) return t('pin.strip.invalid');
     return builder.getState().saveLayers([layerId], parsed.data);
   },
   openPanoBeside: (layerId, panoId) => {
@@ -51,30 +53,31 @@ export function mediaName(item: PhotoRef | PanoRef): string {
   return base === '' ? item.id : base;
 }
 
-/** A point on the site for the step the session is at. */
-function sitePoint(store: PinSession, p: Vec3, heightKnown: boolean): void {
+/** A point on the site for the step the session is at; resolves once it is handled. */
+function sitePoint(store: PinSession, p: Vec3, heightKnown: boolean): Promise<void> {
   const s = store.getState();
-  if (s.step === 'pick') void s.pickSurface(p, heightKnown);
-  else if (s.step === 'scene') void s.pickLandmark(p);
-  else if (s.step === 'aim') void s.aim(p);
+  if (s.step === 'pick') return s.pickSurface(p, heightKnown);
+  if (s.step === 'scene') return s.pickLandmark(p);
+  if (s.step === 'aim') return s.aim(p);
+  return Promise.resolve();
 }
 
 /** A 3D click: a hit on a layer's surface has its height; the bare ground plane has none. */
 function sceneClick(store: PinSession, hit: Intersection | null, x: number, y: number): void {
   if (hit) {
-    sitePoint(store, [hit.point.x, hit.point.y, hit.point.z], hitLayer(hit) !== null);
+    void sitePoint(store, [hit.point.x, hit.point.y, hit.point.z], hitLayer(hit) !== null);
     return;
   }
   const h = getActiveScene();
   const pane = document.querySelector<HTMLElement>('.pane-3d');
   const p = h && pane ? groundHit(h, pane, x, y) : null;
-  if (p) sitePoint(store, p, false);
+  if (p) void sitePoint(store, p, false);
 }
 
 /** A map click: the map has no height, so the model under the point gives it when there is one. */
-function mapClick(store: PinSession, local: Vec3): void {
+function mapClick(store: PinSession, local: Vec3): Promise<void> {
   const y = terrainHeightAt(local[0], local[2]);
-  sitePoint(store, [local[0], y ?? 0, local[2]], y !== null);
+  return sitePoint(store, [local[0], y ?? 0, local[2]], y !== null);
 }
 
 /**
@@ -97,11 +100,18 @@ export function usePinPicking(store: PinSession = pinSession): void {
   useEffect(() => {
     if (!onSite || !map) return;
     let off: (() => void) | null = null;
+    // the pick re-arms at once (the map's pick is one-shot), so a click while the last one is
+    // still being handled (its save running) is dropped
+    let handling = false;
     const arm = (): void => {
       off = map.pickPoint(
         (local) => {
-          mapClick(store, local);
           arm();
+          if (handling) return;
+          handling = true;
+          void mapClick(store, local).finally(() => {
+            handling = false;
+          });
         },
         () => {
           store.getState().cancel();
@@ -129,13 +139,18 @@ export function usePinPicking(store: PinSession = pinSession): void {
 
   useEffect(() => {
     if (!target) return;
+    // first (capture on the window) and only this: an Escape that ends the session does not
+    // also reset the 3D tool, cancel a map drawing or close the split; one typed in a field
+    // only leaves the field
     const onKey = (e: KeyboardEvent): void => {
-      if (e.key !== 'Escape' || e.defaultPrevented) return;
+      if (e.key !== 'Escape' || e.defaultPrevented || isTyping(e.target)) return;
+      e.preventDefault();
+      e.stopPropagation();
       store.getState().cancel();
     };
-    window.addEventListener('keydown', onKey);
+    window.addEventListener('keydown', onKey, true);
     return () => {
-      window.removeEventListener('keydown', onKey);
+      window.removeEventListener('keydown', onKey, true);
     };
   }, [target, store]);
 }

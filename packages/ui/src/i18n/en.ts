@@ -2381,6 +2381,7 @@ export const en = {
   'pin.strip.disagree': 'The two landmarks disagree. The first one is kept.',
   'pin.strip.heightUnknown': 'Height unknown here: the pin sits at 0 m.',
   'pin.strip.saveFailed': 'The pin was not saved: {reason}',
+  'pin.strip.invalid': 'The eye height or the place is out of range.',
   'pin.eyeHeight': 'Eye height (m)',
   'pin.done': 'Done',
   'pin.cancel': 'Cancel',

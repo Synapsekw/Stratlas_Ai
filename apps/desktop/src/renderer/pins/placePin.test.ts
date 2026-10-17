@@ -205,15 +205,64 @@ describe('usePinPicking', () => {
     expect(panoPicks.filter((p) => p !== null)).toHaveLength(0);
   });
 
-  it('Escape cancels the session', () => {
+  it('Escape cancels the session and goes no further', () => {
     const store = sessionStore();
     const cancel = vi.fn();
     store.setState({ target: photo, step: 'pick', cancel });
     mount(store);
+    const others = vi.fn();
+    window.addEventListener('keydown', others);
+    const e = new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true });
     act(() => {
-      window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
+      document.body.dispatchEvent(e);
     });
-    expect(cancel).toHaveBeenCalled();
+    window.removeEventListener('keydown', others);
+    expect(cancel).toHaveBeenCalledTimes(1);
+    expect(e.defaultPrevented).toBe(true);
+    expect(others).not.toHaveBeenCalled();
+  });
+
+  it('an Escape typed in a field is left to the field', () => {
+    const store = sessionStore();
+    const cancel = vi.fn();
+    store.setState({ target: photo, step: 'pick', cancel });
+    mount(store);
+    const field = document.createElement('input');
+    document.body.append(field);
+    act(() => {
+      field.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    });
+    field.remove();
+    expect(cancel).not.toHaveBeenCalled();
+  });
+
+  it('a second map click while the first is being saved is dropped', async () => {
+    mapOn = true;
+    const store = sessionStore();
+    let finish: () => void = () => undefined;
+    const pickSurface = vi.fn(
+      () =>
+        new Promise<void>((resolve) => {
+          finish = resolve;
+        }),
+    );
+    store.setState({ target: photo, step: 'pick', pickSurface });
+    mount(store);
+    act(() => {
+      mapPicks[0]?.([5, 0, 7]);
+    });
+    act(() => {
+      mapPicks[1]?.([6, 0, 8]);
+    });
+    expect(pickSurface).toHaveBeenCalledTimes(1);
+    await act(async () => {
+      finish();
+      await Promise.resolve();
+    });
+    act(() => {
+      mapPicks.at(-1)?.([6, 0, 8]);
+    });
+    expect(pickSurface).toHaveBeenCalledTimes(2);
   });
 });
 
