@@ -4,6 +4,7 @@
 import { splitPrefs, type SplitPrefsState } from '@aio/ui';
 import { useStore } from 'zustand';
 import { createStore, type StoreApi } from 'zustand/vanilla';
+import type { TabId } from '../workspace/workbench/tabsModel';
 import { workbench, type WorkbenchState } from '../workspace/workbench/workbenchStore';
 
 /** The split the bench and the agent share (the foundation's, Task 7). */
@@ -71,9 +72,19 @@ export function useAgentPane<T>(selector: (s: AgentPaneState) => T): T {
   return useStore(agentPane, selector);
 }
 
-/** Live tabs that are not a tool's: a playing clip and running jobs leave the agent alone. */
-const NOT_TOOLS = new Set(['jobs', 'video']);
-const toolLive = (s: WorkbenchState) => s.tabs.some((t) => t.live && !NOT_TOOLS.has(t.id));
+/**
+ * The live tabs of activities that are not a person's tool (ruling I-R43): a playing clip and
+ * running jobs go live in the island and the sidebar, but leave the agent as it is.
+ */
+const ACTIVITIES: ReadonlySet<TabId> = new Set<TabId>(['jobs', 'video']);
+
+/**
+ * A tool the person started is live: a tab `toolStarted` made live (the only way a tab goes live,
+ * tabsModel `onToolStart`), other than playback and jobs.
+ */
+export function toolLive(s: Pick<WorkbenchState, 'tabs'>): boolean {
+  return s.tabs.some((t) => t.live && !ACTIVITIES.has(t.id));
+}
 
 /**
  * The agent follows the tools (a tab going live, D23) and the divider (sized by the person or

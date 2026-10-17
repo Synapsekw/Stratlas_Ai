@@ -2,9 +2,9 @@
 export const PANEL_CSS = `
 .aio-agent { display: flex; flex-direction: column; min-height: 0; height: 100%; background: var(--bg-1); color: var(--fg-1); font: 400 var(--t-13)/1.5 var(--f-ui); }
 .aio-agent .ag-h { display: flex; align-items: center; gap: 8px; height: 36px; padding: 0 8px 0 12px; border-bottom: 1px solid var(--line-soft); flex: none; }
-.aio-agent .ag-h h3 { display: flex; align-items: center; gap: 6px; margin: 0; font-size: var(--t-13); font-weight: 600; color: var(--fg-0); }
-.aio-agent .ag-bind { display: inline-flex; align-items: center; gap: 5px; height: 20px; padding: 0 6px; border-radius: 3px; background: var(--bg-2); border: 1px solid var(--line); font-size: var(--t-11); color: var(--fg-1); min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; font-variant-numeric: tabular-nums; }
-.aio-agent .ag-h .acts { margin-left: auto; display: flex; gap: 2px; }
+.aio-agent .ag-h h3 { flex: none; display: flex; align-items: center; gap: 6px; margin: 0; font-size: var(--t-13); font-weight: 600; color: var(--fg-0); }
+.aio-agent .ag-bind { display: block; flex: 0 1 auto; line-height: 18px; height: 20px; padding: 0 6px; border-radius: 3px; background: var(--bg-2); border: 1px solid var(--line); font-size: var(--t-11); color: var(--fg-1); min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; font-variant-numeric: tabular-nums; }
+.aio-agent .ag-h .acts { flex: none; margin-left: auto; display: flex; gap: 2px; }
 .aio-agent .ag-log { flex: 1; min-height: 0; overflow-y: auto; padding: 12px; display: flex; flex-direction: column; gap: 12px; scrollbar-width: thin; }
 .aio-agent .ag-msg { white-space: pre-wrap; overflow-wrap: anywhere; }
 .aio-agent .ag-msg.user { align-self: flex-end; max-width: 88%; background: var(--bg-3); color: var(--fg-0); padding: 8px 10px; border-radius: 8px 8px 2px 8px; }

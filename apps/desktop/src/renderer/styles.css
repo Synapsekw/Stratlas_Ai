@@ -2543,7 +2543,7 @@ svg.flip {
   max-height: none;
   border-bottom: 0;
 }
-/* Until the divider is moved (ContextAgentSplit), the context and the agent keep the sizes they
+/* Until the divider is moved (agent/AgentPane.tsx), the context and the agent keep the sizes they
    always had: the panes step aside and the two share the column as flex items, the divider a
    zero-height item on their shared edge. */
 .rp-split.auto {

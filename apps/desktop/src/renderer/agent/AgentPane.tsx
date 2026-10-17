@@ -9,11 +9,12 @@ import type { AiTask, WindowKind } from '@aio/schema';
 import {
   ariaKeys,
   Icon,
-  IconButton,
   Kbd,
   shortcutHint,
+  SplitHandle,
   splitPrefs,
   t,
+  Tip,
   useResizableSplit,
   useT,
   type MessageKey,
@@ -60,27 +61,52 @@ function useAgentOff(): boolean {
   return state.availability.status === 'disabled' && state.turns.length === 0;
 }
 
-/** The first thing in the pane the cursor can go to: its message box, else its first control. */
-function focusIn(pane: HTMLElement | null) {
+/**
+ * The first thing in the pane the cursor can go to: its message box, else the off panel's Check
+ * again, else its first control.
+ */
+function focusIn(pane: Element | null | undefined) {
   const target =
     pane?.querySelector<HTMLElement>('textarea:not(:disabled)') ??
+    pane?.querySelector<HTMLElement>('.ag-off button:not(:disabled)') ??
     pane?.querySelector<HTMLElement>('button:not(:disabled)');
   target?.focus();
 }
 
+/** One of the header's own buttons (the package's borderless `ag-btn`), its name in a Tip. */
+function HeadButton({
+  icon,
+  label,
+  pressed,
+  onClick,
+}: {
+  icon: 'minus' | 'maximize';
+  label: string;
+  pressed?: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <Tip content={label} repeatsName>
+      <button
+        type="button"
+        className="ag-btn ghost icon"
+        aria-label={label}
+        aria-pressed={pressed}
+        onClick={onClick}
+      >
+        <Icon name={icon} />
+      </button>
+    </Tip>
+  );
+}
+
 /** Minimise, and Maximise or Restore, at the end of the agent's header. */
-function PaneActions({ mode }: { mode: AgentPaneMode }) {
+function PaneActions({ mode, onMinimise }: { mode: AgentPaneMode; onMinimise: () => void }) {
   const set = agentPane.getState().setMode;
   return (
     <>
-      <IconButton
-        icon="minus"
-        label={t('agent.minimise')}
-        onClick={() => {
-          set('min');
-        }}
-      />
-      <IconButton
+      <HeadButton icon="minus" label={t('agent.minimise')} onClick={onMinimise} />
+      <HeadButton
         icon="maximize"
         label={mode === 'max' ? t('agent.restore') : t('agent.maximise')}
         pressed={mode === 'max'}
@@ -147,13 +173,29 @@ export function AgentPane({
   });
   const paneId = separatorProps['aria-controls'];
 
-  // a reveal (Ctrl+J, Ask the agent, the one line) ends in the input once it shows
+  // a reveal (Ctrl+J, Ask the agent, the one line) ends in the input once it shows; with the AI
+  // off, on the off row's Turn on
   const seenFocus = useRef(focusSeq);
+  const offRow = layout === 'off';
   useLayoutEffect(() => {
     if (seenFocus.current === focusSeq) return;
     seenFocus.current = focusSeq;
-    focusIn(agentRef.current);
-  }, [focusSeq]);
+    const pane = agentRef.current;
+    if (offRow) pane?.querySelector<HTMLElement>('.ag-line')?.focus();
+    else focusIn(pane);
+  }, [focusSeq, offRow]);
+  // a click that hides the control it was on hands the focus on: Minimise to the one line (which
+  // restores), Turn on to the opened panel
+  const [handOn, setHandOn] = useState<{ to: 'line' | 'panel'; n: number } | null>(null);
+  useLayoutEffect(() => {
+    if (!handOn) return;
+    const pane = agentRef.current;
+    if (handOn.to === 'line') pane?.querySelector<HTMLElement>('.ag-line')?.focus();
+    else focusIn(pane?.querySelector('.agent-body'));
+  }, [handOn]);
+  const handFocus = (to: 'line' | 'panel') => {
+    setHandOn((h) => ({ to, n: (h?.n ?? 0) + 1 }));
+  };
 
   const context = t(CONTEXT[win]);
   const keys = shortcutHint('global.agent');
@@ -165,17 +207,15 @@ export function AgentPane({
       <div className="split-pane" id={paneId} hidden={layout === 'max'}>
         {bench}
       </div>
-      <div
-        {...separatorProps}
+      <SplitHandle
+        separatorProps={separatorProps}
+        label={t('panel.resizeAgent')}
         hidden={layout !== 'normal'}
-        aria-label={t('panel.resizeAgent')}
         // back to 60 / 40, wherever the divider stood (D21)
         onDoubleClick={() => {
           splitPrefs.getState().save(CTX_AGENT, { size: AGENT_SPLIT_DEFAULT, collapsed: false });
         }}
-      >
-        <span className="kbd split-readout" aria-hidden="true" />
-      </div>
+      />
       <div className="split-pane">
         <div className="agent" ref={agentRef}>
           {layout === 'off' && (
@@ -184,6 +224,7 @@ export function AgentPane({
               className="ag-line"
               onClick={() => {
                 setOffOpen(true);
+                handFocus('panel');
               }}
             >
               <Icon name="agent" size={14} />
@@ -205,7 +246,19 @@ export function AgentPane({
             </button>
           )}
           <div className="agent-body" hidden={layout === 'off' || layout === 'min'}>
-            <AgentHost window={win} task={task} actions={<PaneActions mode={mode} />} />
+            <AgentHost
+              window={win}
+              task={task}
+              actions={
+                <PaneActions
+                  mode={mode}
+                  onMinimise={() => {
+                    agentPane.getState().setMode('min');
+                    handFocus('line');
+                  }}
+                />
+              }
+            />
           </div>
         </div>
       </div>

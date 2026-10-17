@@ -131,6 +131,19 @@ describe('AgentPane', () => {
     expect(document.activeElement).toBe(input());
   });
 
+  it('Minimise hands the focus to the one line, which restores; the header buttons are the panel ones', () => {
+    render();
+    const minimise = byName('Minimise');
+    expect(minimise?.className).toBe('ag-btn ghost icon');
+    expect(byName('Maximise')?.className).toBe('ag-btn ghost icon');
+    expect(minimise?.hasAttribute('title')).toBe(false);
+    act(() => {
+      minimise?.focus();
+    });
+    click(minimise);
+    expect(document.activeElement).toBe(byName('Ask about'));
+  });
+
   it('a tool start minimises the agent, and its stop brings it back', () => {
     const pane = createAgentPaneStore();
     const bench = createWorkbenchStore(null);
@@ -162,6 +175,27 @@ describe('AgentPane', () => {
     });
     expect(shown(input())).toBe(true);
     stopLocal();
+  });
+
+  it('playback and jobs going live leave the agent as it is (I-R43)', () => {
+    const pane = createAgentPaneStore();
+    const bench = createWorkbenchStore(null);
+    const stop = startAgentPaneFollow(pane, bench, createSplitPrefs(null));
+    bench.getState().toolStarted('video');
+    bench.getState().toolStarted('jobs');
+    expect(
+      bench
+        .getState()
+        .tabs.filter((tab) => tab.live)
+        .map((tab) => tab.id),
+    ).toEqual(['video', 'jobs']);
+    expect(pane.getState().mode).toBe('normal');
+    // a tool the person starts beside them still folds it, and its stop brings it back
+    bench.getState().toolStarted('measure');
+    expect(pane.getState().mode).toBe('min');
+    bench.getState().toolStopped('measure');
+    expect(pane.getState().mode).toBe('normal');
+    stop();
   });
 
   it('after a manual resize a tool start leaves the agent as it is', () => {
@@ -211,6 +245,30 @@ describe('AgentPane', () => {
     click(row);
     expect(shown(input())).toBe(true);
     expect(byName('Agent off')).toBeUndefined();
+  });
+
+  it('Turn on hands the focus to the opened panel', async () => {
+    await setReady(false);
+    render();
+    const row = byName('Agent off');
+    act(() => {
+      row?.focus();
+    });
+    click(row);
+    expect(document.activeElement).toBe(input());
+  });
+
+  it('with the AI off, Ctrl+J opens a minimised agent at its off row and focuses Turn on', async () => {
+    await setReady(false);
+    render();
+    act(() => {
+      agentPane.getState().setMode('min');
+    });
+    act(() => {
+      openAgent();
+    });
+    expect(agentPane.getState().mode).toBe('normal');
+    expect(document.activeElement).toBe(byName('Agent off'));
   });
 
   it('Ctrl+J opens a folded sidebar and a minimised agent, and puts the cursor in its input', () => {
