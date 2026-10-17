@@ -12,7 +12,7 @@ import {
   type WebGLRenderer,
 } from 'three';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { setFlightPaths, VideoRig } from './rig';
+import { setDroneTelemetry, setFlightPaths, VideoRig } from './rig';
 import { configureVideo } from './runtime';
 
 const flight = {
@@ -216,6 +216,22 @@ describe('VideoRig flight paths', () => {
     expect(rig.flightPaths.mode).toBe('off');
     expect([...rig.flightPaths.hiddenClips]).toEqual(['v1']);
     rig.dispose();
+  });
+
+  it('draws the trace without its HUD plate when the app shows the telemetry elsewhere', () => {
+    const h = handle();
+    const rig = new VideoRig(h);
+    expect(rig.trace.hudShown).toBe(true);
+    rig.setDroneTelemetry({ hud: false });
+    expect(rig.trace.hudShown).toBe(false);
+    // the trace itself stays on
+    expect(rig.droneTelemetry).toBe(true);
+    rig.dispose();
+    // the scene's choice: a rig built later starts without it
+    setDroneTelemetry(h, { hud: false });
+    const next = new VideoRig(h);
+    expect(next.trace.hudShown).toBe(false);
+    next.dispose();
   });
 });
 

@@ -1765,11 +1765,6 @@ button.chip-status:hover {
   container-type: inline-size;
 }
 .dates-on {
-  position: absolute;
-  top: 8px;
-  left: 50%;
-  transform: translateX(-50%);
-  z-index: 5;
   display: flex;
   gap: 10px;
   padding: 3px 10px;
@@ -1802,22 +1797,34 @@ button.chip-status:hover {
 .stage {
   --dock-w: clamp(320px, 36%, 560px);
 }
-.stage-panes.with-video {
-  grid-template-columns: minmax(0, 1fr) var(--dock-w);
+/* the views and, docked, the video beside or under them with a divider (VideoDock, D30): the
+   split's own grid, from @aio/ui parts/split.css; floating, the views take the whole stage */
+.stage > .stage-body {
+  position: absolute;
+  inset: 0;
 }
-.stage-panes.with-video[data-mode='split'] {
-  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) var(--dock-w);
+.stage-views {
+  position: relative;
+  min-inline-size: 0;
+  min-block-size: 0;
+  block-size: 100%;
 }
-.stage.docked .stage-rp {
-  inset-inline-end: calc(var(--dock-w) + var(--sp-5));
+.stage-dock {
+  display: flex;
+  min-block-size: 0;
+}
+.stage-body[data-dock='bottom'] > .stage-dock > .vwin.docked {
+  border-inline-start: 0;
+  border-block-start: 1px solid var(--line);
 }
 /* the right panel folded, the stage reaches the window's edge: the toggle sits left of the window's
    own buttons (D28), never under them, where a click would close or maximise the window */
 .ws.right-off .stage-rp {
-  inset-inline-end: calc(var(--caption-inline-end, 0px) + var(--sp-5));
+  inset-inline-end: calc(max(var(--vdock-w, 0px), var(--caption-inline-end, 0px)) + var(--sp-5));
 }
-.ws.right-off .stage.docked .stage-rp {
-  inset-inline-end: calc(max(var(--dock-w), var(--caption-inline-end, 0px)) + var(--sp-5));
+/* and the docked video's own buttons stay clear of them */
+.ws.right-off .stage-body[data-dock='side'] .vwin.docked .vh {
+  padding-inline: 10px calc(var(--caption-inline-end, 0px) + var(--sp-2));
 }
 .pane {
   position: relative;
@@ -1850,8 +1857,7 @@ button.chip-status:hover {
 .stage-panes[data-mode='split'] > .pane {
   border-inline-start: 0;
 }
-.stage-panes[data-mode='split'] > [data-side='right'],
-.stage-panes[data-mode='split'] > .vwin.docked {
+.stage-panes[data-mode='split'] > [data-side='right'] {
   border-inline-start: 1px solid var(--line);
 }
 /* a pane other than the 3D view or the map: its content starts below the toolbar row and the
@@ -1984,7 +1990,8 @@ button.chip-status:hover {
   white-space: normal;
 }
 /* in a split the status chips stay clear of the left pane's chooser */
-.stage[data-mode='split'] .stage-under {
+.stage[data-mode='split'] .stage-slot[data-slot='tl'],
+.stage[data-mode='split'] .stage-slot[data-slot='bl'] {
   max-width: max(180px, calc(50% - 240px));
 }
 /* the map's zoom buttons move below the chooser in a split */
@@ -2035,18 +2042,44 @@ button.chip-status:hover {
   /* clear of the engine's compass in the bottom-right corner */
   inset-inline-end: 80px;
   bottom: 14px;
+  padding-block: var(--sp-1);
+  padding-inline: var(--sp-3);
+  border-radius: var(--r-4);
+  /* a scrim, so it reads on a light ground (D30) */
+  background: var(--scrim);
   font: 400 10.5px/1.5 var(--f-mono);
   color: var(--ov-dim);
   text-align: end;
   pointer-events: none;
   z-index: 4;
-  text-shadow: 0 1px 2px oklch(0.1 0.01 250 / 0.9);
+  /* its own half of the pane's foot: a narrow stage wraps it, never under the other corner; with
+     that corner free, the width of the foot */
+  max-inline-size: calc(50% - 80px - var(--sp-5));
+  overflow-wrap: anywhere;
 }
-/* the right panel's toggle at the stage's top right (D17); the island holds the tools */
+.cursor-ro.wide {
+  max-inline-size: calc(100% - 80px - 2 * var(--sp-5));
+}
+/* the 3D view at the stage's end edge: the readout keeps clear of the drawer (left to right; right
+   to left the drawer covers the other edge of the left-to-right panes) */
+html:not([dir='rtl']) .stage-panes:not([data-mode='split']) > .pane-3d .cursor-ro,
+html:not([dir='rtl']) .stage-panes[data-mode='split'] > .pane-3d[data-side='right'] .cursor-ro {
+  inset-inline-end: calc(var(--drawer-inline, 0px) + 80px);
+  max-inline-size: calc((100% - var(--drawer-inline, 0px)) / 2 - 80px - var(--sp-5));
+}
+html:not([dir='rtl']) .stage-panes:not([data-mode='split']) > .pane-3d .cursor-ro.wide,
+html:not([dir='rtl'])
+  .stage-panes[data-mode='split']
+  > .pane-3d[data-side='right']
+  .cursor-ro.wide {
+  max-inline-size: calc(100% - var(--drawer-inline, 0px) - 80px - 2 * var(--sp-5));
+}
+/* the right panel's toggle at the stage's top right (D17); the island holds the tools. It stands
+   left of a video docked beside the views (--vdock-w, from VideoDock). */
 .stage-rp {
   position: absolute;
   top: var(--sp-5);
-  inset-inline-end: var(--sp-5);
+  inset-inline-end: calc(var(--vdock-w, 0px) + var(--sp-5));
   z-index: var(--z-stage-ui);
   display: flex;
   padding: var(--sp-1);
@@ -2074,19 +2107,74 @@ svg.flip {
   opacity: 0.55;
 }
 
-/* under the island: annotation tools, then the playing and cut-away status; below the open
-   island's bottom edge while it is open (--isl-open-b, set by Island.tsx; I-R18) */
-.stage-under {
+/* The stage's corner slots (D30, overlaySlots.ts): one overlay in each, around the top-centre
+   island. The top ones start under the island's row and below the open island's bottom edge
+   while it is open (--isl-open-b, set by Island.tsx; I-R18); the end ones keep clear of the
+   drawer (--drawer-inline, Drawer.tsx) and of the road's close-up dock. */
+.stage-slot {
+  --slot-end: max(var(--drawer-inline, 0px), var(--slot-dock, 0px));
   position: absolute;
-  inset-inline-start: 12px;
+  z-index: var(--z-stage-ui);
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-4);
+  /* its own half of the views the drawer leaves: the corners never reach into each other */
+  max-inline-size: calc((100% - var(--slot-end)) / 2 - var(--sp-5) - var(--sp-2));
+  pointer-events: none;
+}
+.stage-slot > .dates-on {
+  flex-wrap: wrap;
+}
+.stage-slot > * {
+  pointer-events: auto;
+}
+.stage-views:has(> .stage-panes.with-dock) > .stage-slot {
+  --slot-dock: var(--dock-w);
+}
+.stage-slot[data-slot='tl'] {
+  inset-inline-start: var(--sp-5);
   top: max(54px, calc(var(--isl-open-b, 0px) + var(--sp-4)));
+  align-items: flex-start;
+}
+/* under the right panel's toggle and, on the map, under its zoom buttons (corner at 50px, 10px
+   margin, two 29px buttons): the Map menu chip stays put as the view changes */
+.stage-slot[data-slot='tr'] {
+  inset-inline-end: calc(var(--slot-end) + 10px);
+  top: max(126px, calc(var(--isl-open-b, 0px) + var(--sp-4)));
+  align-items: flex-end;
+}
+/* in a split the map's zoom buttons sit below the pane chooser, and so does the slot */
+.stage[data-mode='split'] .stage-slot[data-slot='tr'] {
+  top: max(168px, calc(var(--isl-open-b, 0px) + var(--sp-4)));
+}
+/* over the map's scale bar and the 3D view's foot */
+.stage-slot[data-slot='bl'] {
+  inset-inline-start: var(--sp-5);
+  bottom: 40px;
+  align-items: flex-start;
+}
+/* left of the engine's compass and above the map's credits */
+.stage-slot[data-slot='br'] {
+  inset-inline-end: calc(var(--slot-end) + 80px);
+  bottom: 40px;
+  align-items: flex-end;
+}
+/* an open Map menu rises over the other overlays */
+.stage-slot:has(.mm-anchor[data-open]) {
+  z-index: var(--z-pop);
+}
+/* the island centres on the views beside a docked video, as it does beside the drawer (I-R42) */
+.ws > .stage > .island-wrap {
+  inset-inline-end: max(var(--drawer-inline, 0px), var(--vdock-w, 0px));
+}
+/* the status chips: annotation tools, the cut-away state and the compare notice (no playing
+   or paused chip: playback is the island's live item, D30) */
+.stage-under {
   display: flex;
   flex-direction: column;
   align-items: flex-start;
-  gap: 8px;
-  z-index: 7;
+  gap: var(--sp-4);
   pointer-events: none;
-  max-width: calc(100% - 24px);
 }
 .stage-under > * {
   pointer-events: auto;
@@ -2125,53 +2213,10 @@ svg.flip {
   pointer-events: auto;
   max-width: 100%;
 }
-.ss-chip > i {
-  width: 7px;
-  height: 7px;
-  border-radius: 1px;
-  background: var(--fg-3);
-  flex: none;
-}
-.ss-chip b {
-  font: 600 var(--t-11) / 1 var(--f-mono);
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-  color: var(--fg-2);
-}
-.ss-chip.live {
-  border-color: var(--acc-a40);
-}
-.ss-chip.live > i {
-  border-radius: 50%;
-  background: var(--acc);
-  box-shadow: 0 0 0 0 var(--acc-a40);
-  animation: live 1.6s var(--ease) infinite;
-}
-.ss-chip.live b {
-  color: var(--acc-strong);
-}
-@keyframes live {
-  0% {
-    box-shadow: 0 0 0 0 var(--acc-a40);
-  }
-  70% {
-    box-shadow: 0 0 0 6px transparent;
-  }
-  100% {
-    box-shadow: 0 0 0 0 transparent;
-  }
-}
 @media (prefers-reduced-motion: reduce) {
-  .ss-chip.live > i,
   .ann-subbar {
     animation: none;
   }
-}
-.ss-name {
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  min-width: 0;
 }
 .ss-cut {
   padding-inline-end: 3px;
@@ -2442,6 +2487,7 @@ svg.flip {
 }
 .vwin.docked {
   position: relative;
+  flex: 1;
   border: 0;
   border-inline-start: 1px solid var(--line);
   border-radius: 0;
@@ -2449,8 +2495,22 @@ svg.flip {
   resize: none;
   max-width: none;
   min-width: 0;
+  min-height: 0;
   display: flex;
   flex-direction: column;
+}
+.vwin.docked > .vwin-in {
+  flex: 1;
+  min-height: 0;
+}
+.vwin.docked .vframe {
+  flex: 1;
+  min-height: 0;
+  aspect-ratio: auto;
+}
+/* the dock-at-the-bottom glyph: the split icon turned a quarter */
+.vh .rot90 {
+  transform: rotate(90deg);
 }
 .vwin-in {
   display: flex;

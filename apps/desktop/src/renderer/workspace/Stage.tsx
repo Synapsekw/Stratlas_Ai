@@ -17,7 +17,7 @@ import { useRoadMap } from '../road/useRoadMap';
 import { photoSplitIsOpen } from '../builder/photoOpen';
 import { shell, useShell } from '../shell';
 import { PANEL_ID } from '../shell/PanelHandle';
-import { FloatingVideo } from './FloatingVideo';
+import { FloatingVideo, VideoDock } from './FloatingVideo';
 import { useAnnotateStageBridge } from './workbench/benches/annotateStage';
 import {
   compareRuntime,
@@ -48,7 +48,7 @@ import {
   type FocusFollow,
   type Side,
 } from './splitModel';
-import { DatesOnScreen } from './DatesOnScreen';
+import { DatesOnScreen, datesOnScreen } from './DatesOnScreen';
 import { useWalkMapOverlays, useWalkMapPointer } from '../walks/walkMapStore';
 import { PlaceWalkHere } from '../walks/PlaceWalkStrip';
 import { usePlacedWalksOnMap, usePlacingOn } from '../walks/placeWalk';
@@ -74,7 +74,8 @@ import { MeasureMount } from '../survey/MeasureToolbar';
 import { SurveyQaMount } from '../survey/Qa';
 import { useGroundFollowsLayers, useSiteBasemapLayer } from './siteBasemap';
 import { useStreetMap3d } from './streetMap3d';
-import { MapViewMenu, SceneMapMenu } from './MapMenus';
+import { StageBasemapChip, useStageBasemap } from './MapMenus';
+import { assignSlots, type Corner, type SlotRequest } from './overlaySlots';
 import { useSiteTiles } from './siteTiles';
 
 function ScenePane({
@@ -83,6 +84,8 @@ function ScenePane({
   side,
   capture,
   corner,
+  cursorHidden = false,
+  cursorWide = false,
 }: {
   hidden: boolean;
   engine: EngineStage | null;
@@ -91,6 +94,10 @@ function ScenePane({
   /** The survey date its side shows (a split that shows dates). */
   capture?: string | undefined;
   corner?: ReactNode;
+  /** The stage corner of the coordinates readout went to another overlay (D30). */
+  cursorHidden?: boolean;
+  /** The other bottom corner is free: the readout may take the width of the foot. */
+  cursorWide?: boolean;
 }) {
   const { cursor, onMove, onLeave } = useSceneCursor(getActiveScene);
   // with a date of its own the pane draws that survey's volumes, and its legends read its own
@@ -114,7 +121,7 @@ function ScenePane({
         {/* one date at a time while the split shows dates (compare.ts) */}
         <SceneView className="scene-fill" store={primaryScene} />
       </div>
-      <CursorReadout text={cursor} />
+      {!cursorHidden && <CursorReadout text={cursor} wide={cursorWide} />}
       {!hidden && <StageComponentBrief engine={engine} />}
       <StageElevationLegend view={view} />
       <VolumetricStage stage={engine} epoch={epoch} />
@@ -122,7 +129,6 @@ function ScenePane({
       {!hidden && <CleanupHost engine={engine} />}
       <CloudChangeLegend view={view} />
       <ChangeLegends />
-      {!hidden && <SceneMapMenu />}
       {corner}
     </FocusZone>
   );
@@ -154,27 +160,25 @@ function RightPanelToggle() {
 
 /* ----------------------------------------------------------------------- status */
 
-/** What plays in 3D, and how the asset is opened (chosen by hand) when the drone is inside it. */
-function StageStatus({ stage }: { stage: EngineStage | null }) {
-  const t = useT();
-  const playing = useWorkspace((s) => s.playing);
-  const clip = useWorkspace((s) =>
-    s.activeClip ? s.project?.manifest.layers.find((l) => l.id === s.activeClip) : undefined,
-  );
+/** Whether the cut-away chip shows: the asset opened by hand, or the drone inside it. */
+function useCutawayStatus(stage: EngineStage | null) {
   const inside = useCutawayState((s) => s.inside);
   const engaged = useCutawayState((s) => s.engaged);
   const { mode } = useCutawayPref();
   const open = engaged && mode !== 'off';
-  if (!clip && !open) return null;
+  return { inside, open, mode, shown: stage !== null && (open || inside) };
+}
+
+/**
+ * How the asset is opened (chosen by hand) when the drone is inside it. What plays is the island's
+ * live item, so no playing or paused chip shows here (D30).
+ */
+function StageStatus({ stage }: { stage: EngineStage | null }) {
+  const t = useT();
+  const { inside, open, mode, shown } = useCutawayStatus(stage);
+  if (!shown) return null;
   return (
     <div className="stage-status" role="status">
-      {clip && (
-        <span className={`ss-chip${playing ? ' live' : ''}`}>
-          <i aria-hidden />
-          <b>{playing ? 'Playing' : 'Paused'}</b>
-          <span className="ss-name">{clip.name}</span>
-        </span>
-      )}
       {stage && (open || inside) && (
         <span className="ss-chip ss-cut" data-testid="cutaway-status">
           <Icon name="cutaway" size={14} />
@@ -237,6 +241,100 @@ function StageStatus({ stage }: { stage: EngineStage | null }) {
   );
 }
 
+/* ----------------------------------------------------------------------- corners */
+
+const NO_CORNERS: readonly Corner[] = [];
+
+/** The layer kinds whose survey dates the dates chip lists. */
+const DATE_KINDS = ['mesh', 'pointcloud', 'raster', 'vector', 'panoramas'] as const;
+
+/** Whether the survey dates chip shows: two dates or more on screen (DatesOnScreen). */
+function useDatesShown(): boolean {
+  const index = useTimeline((s) => s.index);
+  const hidden = useWorkspace((s) => s.hidden);
+  const layers = useWorkspace((s) => s.project?.manifest.layers);
+  return useMemo(
+    () => !!index && !!layers && datesOnScreen(index, hidden, layers, DATE_KINDS).length >= 2,
+    [index, hidden, layers],
+  );
+}
+
+export interface StageCornersInput {
+  engine: EngineStage | null;
+  show3d: boolean;
+  showMap: boolean;
+  splitting: boolean;
+  /** The road map's measuring bar is up. */
+  roadMeasure: boolean;
+  /** The corners the floating video takes as it rests (none: docked, hidden or no clip). */
+  video: readonly Corner[];
+  /** The stage corner the 3D view's coordinates readout stands in (null: not at a corner). */
+  cursor: Corner | null;
+}
+
+/**
+ * The stage's corner overlays (D30), each in a corner of its own around the top-centre island:
+ * the floating video where it rests, the status chips, the one Map menu chip, the survey dates and
+ * the coordinates readout, served in that order; one left without a free corner is hidden. The
+ * telemetry is the island's live line and the Video workbench, never a box on the model.
+ */
+export function useStageCorners(o: StageCornersInput): {
+  cursorHidden: boolean;
+  cursorWide: boolean;
+  corners: ReactNode;
+} {
+  const notice = useCompareNotice();
+  const cutaway = useCutawayStatus(o.engine).shown && o.show3d;
+  const basemap = useStageBasemap(o.show3d, o.showMap);
+  const dates = useDatesShown() && !o.splitting;
+  const status = o.roadMeasure || cutaway || notice !== null;
+  const slots = useMemo(() => {
+    const items: SlotRequest[] = [
+      ...o.video.map((c) => ({ id: `video-${c}`, want: [c] })),
+      { id: 'status', want: status ? ['tl', 'bl'] : [] },
+      { id: 'basemap', want: basemap ? ['tr', 'br'] : [] },
+      { id: 'dates', want: dates ? ['tl', 'bl', 'tr'] : [] },
+      { id: 'cursor', want: o.cursor ? [o.cursor] : [] },
+    ];
+    return assignSlots(items);
+  }, [o.video, o.cursor, status, basemap, dates]);
+  const at = (id: string, node: ReactNode) => {
+    const corner = slots.get(id);
+    if (!corner || corner === 'hidden') return null;
+    return (
+      <div className="stage-slot" data-slot={corner} data-surface="dark">
+        {node}
+      </div>
+    );
+  };
+  return {
+    cursorHidden: o.cursor !== null && slots.get('cursor') === 'hidden',
+    // nothing in the other bottom corner: the readout need not keep to its half
+    cursorWide: ![...slots.values()].includes(o.cursor === 'bl' ? 'br' : 'bl'),
+    corners: (
+      <>
+        {at(
+          'status',
+          <div className="stage-under">
+            {o.roadMeasure && <MeasureBar />}
+            {cutaway && <StageStatus stage={o.engine} />}
+            {notice && (
+              <div className="stage-status" role="status">
+                <span className="ss-chip compare-notice" data-testid="compare-notice">
+                  <Icon name="warn" size={14} />
+                  <span>{notice}</span>
+                </span>
+              </div>
+            )}
+          </div>,
+        )}
+        {basemap && at('basemap', <StageBasemapChip view={basemap} />)}
+        {at('dates', <DatesOnScreen kinds={DATE_KINDS} />)}
+      </>
+    ),
+  };
+}
+
 /* ----------------------------------------------------------------------- stage */
 
 /** Map sightings go on the project's first map layer (or the plain basemap). */
@@ -270,6 +368,11 @@ export function Stage() {
     return side ? <PaneChooser side={side} split={split} /> : null;
   };
   const showVideo = activeClip !== null && !videoHidden && !videoPane;
+  // the corners the floating video takes as it rests, which the corner overlays keep out of (D30)
+  const [videoCorners, setVideoCorners] = useState<readonly Corner[]>([]);
+  const onVideoCorners = useCallback((c: readonly Corner[]) => {
+    setVideoCorners((prev) => (prev.join() === c.join() ? prev : c));
+  }, []);
   const engine = useEngineStage();
   const index = split.index;
   const linked = !sides.unlinked;
@@ -335,13 +438,12 @@ export function Stage() {
     },
     [],
   );
-  const notice = useCompareNotice();
   const keepOut = useCallback(() => {
     const root = stageRef.current;
     if (!root) return [];
     return [
       ...root.querySelectorAll(
-        '.island, .stage-rp, .stage-under > *, .vwin:not(.docked), .cursor-ro, .stage-pop, .surface-pop, .elev-legend, .pane-chooser, .vol-legend',
+        '.island, .isl-notice, .stage-rp, .stage-slot > *, .vwin:not(.docked), .cursor-ro, .stage-pop, .surface-pop, .elev-legend, .pane-chooser, .vol-legend',
       ),
     ].map((e) => e.getBoundingClientRect());
   }, []);
@@ -367,6 +469,19 @@ export function Stage() {
   );
   const hasPhoto = useRoad((s) => s.rows.some((r) => r.id === selectedIssue && r.photo));
   const closeup = roadMap !== null && closeupOn && hasPhoto && showMap;
+  const roadMeasuring = useRoad((s) => Boolean(s.measure.mode));
+  // the 3D view's readout is at the views' bottom end (the panes keep left-to-right geometry),
+  // a stage corner unless the split shows the 3D view on the left
+  const rtl = typeof document !== 'undefined' && document.documentElement.dir === 'rtl';
+  const { cursorHidden, cursorWide, corners } = useStageCorners({
+    engine,
+    show3d,
+    showMap,
+    splitting,
+    roadMeasure: roadMap !== null && showMap && roadMeasuring,
+    video: showVideo && !docked ? videoCorners : NO_CORNERS,
+    cursor: show3d && (!splitting || side3d === 'right') ? (rtl ? 'bl' : 'br') : null,
+  });
   // road keys first: they run before the stage keys below
   useRoadKeys(roadMap !== null);
   // the pins of a survey date follow that date's layers as the 3D view shows them
@@ -406,12 +521,13 @@ export function Stage() {
     });
   }, [engine, pathPref, pathFlights]);
 
-  // Drone telemetry (trace and HUD of the playing clip), per project, independent of the paths.
+  // Drone telemetry (the trace of the playing clip), per project, independent of the paths. Its
+  // readings are the island's live line and the Video workbench, not a HUD on the model (D30).
   const telemetry = useTelemetryOn();
   const tr = useT();
   useEffect(() => {
     if (!engine) return;
-    setDroneTelemetry(engine, { on: telemetry, labels: telemetryLabels() });
+    setDroneTelemetry(engine, { on: telemetry, labels: telemetryLabels(), hud: false });
   }, [engine, telemetry, tr]);
 
   // A photo picked from an issue's sightings opens in the Media photo viewer. A click on the
@@ -478,85 +594,81 @@ export function Stage() {
     };
 
   return (
-    <div
-      className={`stage${docked && showVideo ? ' docked' : ''}`}
-      ref={stageRef}
-      data-mode={mode}
-      data-pop-bounds
-    >
-      {/* 3D and map panes keep their geometry in a right-to-left UI. */}
-      <div
-        className={`stage-panes${docked && showVideo ? ' with-video' : ''}${closeup ? ' with-dock' : ''}`}
-        data-mode={mode}
-        dir="ltr"
+    <div className="stage" ref={stageRef} data-mode={mode} data-pop-bounds>
+      <VideoDock
+        video={docked && showVideo && activeClip ? { layerId: activeClip, stageRef } : null}
       >
-        <ScenePane
-          hidden={!show3d}
-          engine={engine}
-          side={at('3d')}
-          capture={sceneCapture}
-          corner={chooser('3d')}
-        />
-        {second3d && secondCapture3d && index && (
-          <CompareScene
-            key={projectId}
-            side={second3d}
-            capture={secondCapture3d}
-            index={index}
-            main={engine}
-            linked={linked}
-            corner={<PaneChooser side={second3d} split={split} />}
-            stageRef={stageRef}
-            keepOut={keepOut}
+        {/* 3D and map panes keep their geometry in a right-to-left UI. */}
+        <div className={`stage-panes${closeup ? ' with-dock' : ''}`} data-mode={mode} dir="ltr">
+          <ScenePane
+            hidden={!show3d}
+            engine={engine}
+            side={at('3d')}
+            capture={sceneCapture}
+            corner={chooser('3d')}
+            cursorHidden={cursorHidden}
+            cursorWide={cursorWide}
           />
-        )}
-        {secondMap && secondCaptureMap && index && (
-          <CompareMap
-            key={projectId}
-            side={secondMap}
-            capture={secondCaptureMap}
-            index={index}
-            issues={mapIssues}
-            onController={onSecondMap}
-            corner={<PaneChooser side={secondMap} split={split} />}
-          />
-        )}
-        {showMap && (
-          <FocusZone
-            kind="map"
-            className={`pane pane-map${placingOnMap ? ' walk-placing' : ''}`}
-            data-side={at('map')}
-          >
-            <PlaceWalkHere at={MAP_SURFACE} />
-            <div className="fill">
-              <MapView
-                className="scene-fill"
-                draw={seam}
-                issues={mapIssues}
-                store={primaryMap}
-                onController={onMainMap}
-                pointer={walkPointer}
-                {...(mapOverlays ? { overlays: mapOverlays } : {})}
-                {...(roadMap
-                  ? {
-                      issueFilter: roadMap.issueFilter,
-                      issueColorBy: roadMap.issueColorBy,
-                    }
-                  : {})}
-              />
-            </div>
-            <MapViewMenu />
-            {roadMap && <RoadLegend />}
-            <ChangeLegends />
-            {roadMap && <PciUnitCard />}
-            {chooser('map')}
-          </FocusZone>
-        )}
-        {splitting && <SplitPane side="left" split={split} />}
-        {splitting && <SplitPane side="right" split={split} />}
-        {closeup && <CloseupDock />}
-        {docked && showVideo && <FloatingVideo layerId={activeClip} docked stageRef={stageRef} />}
-      </div>
+          {second3d && secondCapture3d && index && (
+            <CompareScene
+              key={projectId}
+              side={second3d}
+              capture={secondCapture3d}
+              index={index}
+              main={engine}
+              linked={linked}
+              corner={<PaneChooser side={second3d} split={split} />}
+              stageRef={stageRef}
+              keepOut={keepOut}
+            />
+          )}
+          {secondMap && secondCaptureMap && index && (
+            <CompareMap
+              key={projectId}
+              side={secondMap}
+              capture={secondCaptureMap}
+              index={index}
+              issues={mapIssues}
+              onController={onSecondMap}
+              corner={<PaneChooser side={secondMap} split={split} />}
+            />
+          )}
+          {showMap && (
+            <FocusZone
+              kind="map"
+              className={`pane pane-map${placingOnMap ? ' walk-placing' : ''}`}
+              data-side={at('map')}
+            >
+              <PlaceWalkHere at={MAP_SURFACE} />
+              <div className="fill">
+                <MapView
+                  className="scene-fill"
+                  draw={seam}
+                  issues={mapIssues}
+                  store={primaryMap}
+                  onController={onMainMap}
+                  pointer={walkPointer}
+                  {...(mapOverlays ? { overlays: mapOverlays } : {})}
+                  {...(roadMap
+                    ? {
+                        issueFilter: roadMap.issueFilter,
+                        issueColorBy: roadMap.issueColorBy,
+                      }
+                    : {})}
+                />
+              </div>
+              {roadMap && <RoadLegend />}
+              <ChangeLegends />
+              {roadMap && <PciUnitCard />}
+              {chooser('map')}
+            </FocusZone>
+          )}
+          {splitting && <SplitPane side="left" split={split} />}
+          {splitting && <SplitPane side="right" split={split} />}
+          {closeup && <CloseupDock />}
+        </div>
+        {corners}
+      </VideoDock>
       <Island
         stage={engine}
         mode={mode}
@@ -571,25 +683,15 @@ export function Stage() {
       <HydroMount />
       <HaulRoadMount stage={engine} />
       <DesignsMount stage={engine} />
-      <div className="stage-under" data-surface="dark">
-        {roadMap && showMap && <MeasureBar />}
-        {show3d && <StageStatus stage={engine} />}
-        {notice && (
-          <div className="stage-status" role="status">
-            <span className="ss-chip compare-notice" data-testid="compare-notice">
-              <Icon name="warn" size={14} />
-              <span>{notice}</span>
-            </span>
-          </div>
-        )}
-      </div>
-      {!splitting && (
-        <DatesOnScreen kinds={['mesh', 'pointcloud', 'raster', 'vector', 'panoramas']} />
-      )}
       <SightingPicker kinds={['map']} />
       <SightingPicker kinds={['mesh', 'pointcloud']} />
       {!docked && showVideo && (
-        <FloatingVideo layerId={activeClip} docked={false} stageRef={stageRef} />
+        <FloatingVideo
+          layerId={activeClip}
+          docked={false}
+          stageRef={stageRef}
+          onCorners={onVideoCorners}
+        />
       )}
     </div>
   );

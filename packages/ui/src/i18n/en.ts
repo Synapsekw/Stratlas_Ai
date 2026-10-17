@@ -4707,6 +4707,12 @@ export const en = {
   'wb.heading': 'Workbench',
   // the island's way to the Jobs workbench, with or without jobs running (I-R47)
   'island.tile.jobsName': 'Show the jobs',
+
+  // Task 21: the docked video's divider and its side or bottom dock (D30)
+  'stage.video.resizeDock': 'Resize the video dock',
+  'stage.video.dockBottom': 'Dock the video at the bottom',
+  'stage.video.dockSide': 'Dock the video at the side',
+  'stage.video.dockSideNarrow': 'The stage is too narrow to dock the video at its side',
 } as const satisfies Record<string, string>;
 
 /** Every key in the catalogue, plural forms included. */

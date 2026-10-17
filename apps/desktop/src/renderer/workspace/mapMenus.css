@@ -1,27 +1,7 @@
-/* Where the Map menu's chip sits in the Map view and in the 3D scene (MapMenus.tsx). The menu's
-   own look is renderer/maps/mapMenu.css. */
+/* The stage's one Map menu chip (MapMenus.tsx, D30): a corner slot of the stage places it
+   (`.stage-slot` in styles.css), so the chip itself sets no position but the one its pop opens
+   from. The menu's own look is renderer/maps/mapMenu.css. */
 
-.bm-anchor {
-  position: absolute;
-  /* under the zoom buttons: their corner starts at 50px, 10px margin, two 29px buttons */
-  top: 126px;
-  right: 10px; /* physical: the map pane keeps left-to-right geometry */
-  z-index: 6;
-}
-/* in a split the zoom buttons sit below the pane chooser, and so does the chip */
-.stage-panes[data-mode='split'] .bm-anchor {
-  top: 168px;
-}
-
-/* the 3D view: the same spot as on the map, so the chip stays put when the view changes (the
-   engine's compass is in the bottom-right corner; checked at 1100 x 720, 14 Oct 2026) */
-.scene-map-anchor {
-  position: absolute;
-  top: 126px;
-  right: 10px;
-  z-index: 6;
-}
-/* in a split it sits below the pane chooser (top 54px), level with the map's chip */
-.stage-panes[data-mode='split'] .scene-map-anchor {
-  top: 168px;
+.stage-basemap {
+  position: relative;
 }

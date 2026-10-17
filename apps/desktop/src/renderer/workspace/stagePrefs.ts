@@ -9,6 +9,8 @@ import { parseVideoRect, type VideoRect } from './videoWindow';
 export interface StagePref {
   /** Where the floating video window sits and how wide it is (absent: the default place). */
   video?: VideoRect;
+  /** Where the docked video sits: beside the views or under them (absent: beside). */
+  videoDock?: 'side' | 'bottom';
   /** Off, Cut or Transparent, and the see-through opacity (absent: off). */
   cutaway?: CutawayPref;
   /** What each side of the split stage shows (absent: 3D left, map right). */
@@ -27,6 +29,7 @@ function parsePref(v: unknown): StagePref {
   const out: StagePref = {};
   const video = parseVideoRect(raw.video);
   if (video) out.video = video;
+  if (raw.videoDock === 'side' || raw.videoDock === 'bottom') out.videoDock = raw.videoDock;
   const cutaway = parseCutawayPref(raw.cutaway);
   if (cutaway) out.cutaway = cutaway;
   const split = parseSplitPref(raw.split);

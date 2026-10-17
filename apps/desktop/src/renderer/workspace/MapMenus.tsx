@@ -1,9 +1,10 @@
 /**
  * The Map menu of the Map view and of the 3D scene (plan 2026-10-14-satellite-providers): the
- * shared `MapMenu` over each view's own choices in `rasterPacks` (`siteTiles.ts`). The Map view
- * keeps its chip under the zoom buttons; the 3D scene has a chip of its own, which took over the
- * ground rows the stage's Layers popover once had. An online source used for the first time asks first, in the
- * menu (`pickBase`, `OnlineSatelliteNotice`).
+ * shared `MapMenu` over each view's own choices in `rasterPacks` (`siteTiles.ts`). The stage shows
+ * one chip, never one per pane (D30): the Map view's while a map shows, else the 3D scene's, which
+ * took over the ground rows the stage's Layers popover once had. It stands in a corner slot of the
+ * stage (`overlaySlots.ts`). An online source used for the first time asks first, in the menu
+ * (`pickBase`, `OnlineSatelliteNotice`).
  */
 import { ONLINE_SOURCES, type AioBridge } from '@aio/schema';
 import { useWorkspace } from '@aio/workspace';
@@ -76,7 +77,7 @@ export function MapViewMenu() {
     <MapMenu
       model={model}
       testIds={{ chip: 'basemap-button', pop: 'basemap-pop' }}
-      className="bm-anchor"
+      className="stage-basemap"
       place="stage"
       dark
       onPick={(id) => {
@@ -133,7 +134,7 @@ export function SceneMapMenu() {
     <MapMenu
       model={model}
       testIds={{ chip: 'scene-map-button', pop: 'scene-map-pop' }}
-      className="scene-map-anchor"
+      className="stage-basemap"
       place="stage"
       dark
       onPick={(id) => {
@@ -148,4 +149,19 @@ export function SceneMapMenu() {
       notice={<OnlineSatelliteNotice className="mm-notice" />}
     />
   );
+}
+
+/**
+ * Which view's Map menu the stage shows (D30): the Map view's while a map shows (in a split too),
+ * else the 3D scene's for a site placed on the map; null: none.
+ */
+export function useStageBasemap(show3d: boolean, showMap: boolean): 'map' | 'scene' | null {
+  const placed = useWorkspace((s) => siteLonLat(s.project?.manifest ?? null) !== null);
+  if (showMap) return 'map';
+  return show3d && placed ? 'scene' : null;
+}
+
+/** The stage's one Map menu chip, for the view `useStageBasemap` picked. */
+export function StageBasemapChip({ view }: { view: 'map' | 'scene' }) {
+  return view === 'map' ? <MapViewMenu /> : <SceneMapMenu />;
 }

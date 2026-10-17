@@ -81,6 +81,8 @@ const pathChoice = new WeakMap<SceneHandle, FlightPathOptions>();
 export interface DroneTelemetryOptions {
   on?: boolean;
   labels?: TraceLabels;
+  /** The HUD plate beside the drone (absent: on); off, the trace draws without it. */
+  hud?: boolean;
 }
 const telemetryChoice = new WeakMap<SceneHandle, DroneTelemetryOptions>();
 
@@ -398,6 +400,7 @@ export class VideoRig {
   /** Drone telemetry (trace and HUD) on or off, and the HUD words. */
   setDroneTelemetry(o: DroneTelemetryOptions) {
     if (o.labels) this.trace.setLabels(o.labels);
+    if (o.hud !== undefined) this.trace.setHud(o.hud);
     if (o.on !== undefined) {
       this.trace.setEnabled(o.on);
       this.stylePaths();

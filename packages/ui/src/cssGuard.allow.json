@@ -257,9 +257,9 @@
   },
   "apps/desktop/src/renderer/styles.css": {
     "fontPx": 25,
-    "colour": 25,
-    "shadow": 15,
-    "zIndex": 14
+    "colour": 24,
+    "shadow": 11,
+    "zIndex": 12
   },
   "apps/desktop/src/renderer/survey/Cleanup.tsx": {
     "title": 1
@@ -360,9 +360,6 @@
   },
   "apps/desktop/src/renderer/workspace/FramesPane.tsx": {
     "title": 5
-  },
-  "apps/desktop/src/renderer/workspace/mapMenus.css": {
-    "zIndex": 2
   },
   "apps/desktop/src/renderer/workspace/mapSwipe.css": {
     "colour": 1,

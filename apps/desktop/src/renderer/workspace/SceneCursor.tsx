@@ -10,12 +10,17 @@ import {
   useSiteDisplay,
 } from '../survey/SiteSettings';
 
-export function CursorReadout({ text }: { text: string | null }) {
+/** `wide`: the other bottom corner of the pane is free, so the readout may run across it. */
+export function CursorReadout({ text, wide = false }: { text: string | null; wide?: boolean }) {
   const crs = useWorkspace((s) => (s.project ? crsLabel(s.project.manifest.crs) : ''));
   // M11 G1: the site's display CRS, heights and unit once the site has settings
   const site = useSiteDisplay((s) => (s.exists && s.settings ? siteCursorTitle() : null));
   return (
-    <div className="cursor-ro" aria-live="off" data-testid="cursor-readout">
+    <div
+      className={wide ? 'cursor-ro wide' : 'cursor-ro'}
+      aria-live="off"
+      data-testid="cursor-readout"
+    >
       <span style={{ pointerEvents: 'auto' }}>
         <SiteSettingsButton />
       </span>

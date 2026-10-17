@@ -346,6 +346,8 @@ export class DroneTrace {
   private overlay: TraceOverlay | null = null;
   private labels: TraceLabels = DEFAULT_TRACE_LABELS;
   private enabled = true;
+  /** The HUD plate beside the drone; off where the app reads the telemetry elsewhere. */
+  private hudOn = true;
 
   private profile: TraceProfile | null = null;
   private key = '';
@@ -445,6 +447,18 @@ export class DroneTrace {
 
   get isEnabled(): boolean {
     return this.enabled;
+  }
+
+  get hudShown(): boolean {
+    return this.hudOn;
+  }
+
+  /** The HUD plate (and its leader) on or off; the trail, ticks and start tag stay. */
+  setHud(on: boolean) {
+    this.hudOn = on;
+    this.overlay?.hud.style.setProperty('display', on ? '' : 'none');
+    if (!on) this.overlay?.setLeader(null);
+    this.handle.requestRender();
   }
 
   setLabels(l: TraceLabels) {
@@ -711,14 +725,12 @@ export class DroneTrace {
     o.setValue('speed', `${r.groundSpeedMps.toFixed(1)} m/s`, r.groundSpeedMps);
     o.setValue('heading', `${String(Math.round(r.headingDeg) % 360).padStart(3, '0')}°`);
     o.setValue('gimbal', `${r.gimbalDeg.toFixed(0)}°`, r.gimbalDeg);
-    o.measure();
+    if (this.hudOn) o.measure();
 
-    // HUD: beside the drone with a leader, else docked in a free corner
+    // HUD: beside the drone with a leader, else docked in a free corner (unless it is off)
     const hostRect = (canvas.parentElement ?? canvas).getBoundingClientRect();
     const { ui: keep, labels: stageLabels } = this.uiKeepOut(hostRect);
     const bounds: Box = { x: 4, y: 4, w: W - 8, h: H - 8 };
-    const hw = o.hudW;
-    const hh = o.hudH;
     const hits = (list: readonly Box[], b: Box) =>
       list.some((q) => q.x < b.x + b.w && b.x < q.x + q.w && q.y < b.y + b.h && b.y < q.y + q.h);
     /** Inside the stage, off the UI; `strict` also off the callouts and markers. */
@@ -730,6 +742,62 @@ export class DroneTrace {
       !hits(keep, b) &&
       !(strict && hits(stageLabels, b));
     const ds2 = f.droneEye ? null : this.screen(cam, f.pos, W, H);
+    const hud = this.hudOn ? this.placeHud(o, ds2, W, H, free) : null;
+
+    // labels: tick distances and the start tag, clear of the HUD, the UI and each other
+    const cands: LabelCandidate[] = [];
+    const texts = new Map<string, { text: string; x: number; y: number }>();
+    const startPos = pointAtDistance(p, 0).pos;
+    const s0 = this.screen(cam, this.v2.set(startPos[0], startPos[1], startPos[2]), W, H);
+    if (s0) {
+      const w = labelWidth(this.labels.start) + 4;
+      cands.push({ id: 'start', x: s0.x - w / 2, y: s0.y - 22, w, h: 15, priority: 1e9 });
+      texts.set('start', { text: this.labels.start, x: s0.x - w / 2, y: s0.y - 22 });
+    }
+    const n = tickPts.length;
+    tickPts.forEach((tk, i) => {
+      const s = this.screen(cam, tk.pos, W, H);
+      if (!s) return;
+      const text = formatDistance(tk.d);
+      const w = labelWidth(text);
+      const id = `t${String(tk.d)}`;
+      const major = tk.d % (step * 5) === 0;
+      // newest first, round distances before the rest
+      cands.push({ id, x: s.x + 8, y: s.y - 15, w, h: 13, priority: (major ? n : 0) + i });
+      texts.set(id, { text, x: s.x + 8, y: s.y - 15 });
+    });
+    const obstacles: Box[] = [...keep, ...stageLabels];
+    if (hud) obstacles.push(hud);
+    if (ds2) obstacles.push({ x: ds2.x - 18, y: ds2.y - 18, w: 36, h: 36 });
+    const placed = placeLabels(cands, obstacles, bounds);
+    o.beginLabels();
+    let startShown = false;
+    for (const id of placed) {
+      const tx = texts.get(id);
+      if (!tx) continue;
+      if (id === 'start') {
+        startShown = true;
+        o.start.style.transform = `translate(${Math.round(tx.x)}px, ${Math.round(tx.y)}px)`;
+      } else o.label(tx.text, tx.x, tx.y);
+    }
+    o.endLabels();
+    o.start.style.display = startShown ? '' : 'none';
+    this.lastReadout = { distanceM: flownM, step, ticks: t, labels: placed.size };
+  }
+
+  /**
+   * Places the HUD plate: beside the drone with a leader, else docked in a free corner. Returns
+   * its box (the labels keep clear of it).
+   */
+  private placeHud(
+    o: TraceOverlay,
+    ds2: { x: number; y: number } | null,
+    W: number,
+    H: number,
+    free: (b: Box, strict: boolean) => boolean,
+  ): Box | null {
+    const hw = o.hudW;
+    const hh = o.hudH;
     // places beside the drone (with a leader), then docks in the stage corners; the place used
     // last frame first, so the HUD does not hop while the view moves
     const spots: { b: Box; leader: [number, number][] | null }[] = [];
@@ -795,46 +863,7 @@ export class DroneTrace {
     if (hud) o.hud.style.transform = `translate(${Math.round(hud.x)}px, ${Math.round(hud.y)}px)`;
     o.hud.dataset.docked = leader ? 'false' : 'true';
     o.setLeader(leader);
-
-    // labels: tick distances and the start tag, clear of the HUD, the UI and each other
-    const cands: LabelCandidate[] = [];
-    const texts = new Map<string, { text: string; x: number; y: number }>();
-    const startPos = pointAtDistance(p, 0).pos;
-    const s0 = this.screen(cam, this.v2.set(startPos[0], startPos[1], startPos[2]), W, H);
-    if (s0) {
-      const w = labelWidth(this.labels.start) + 4;
-      cands.push({ id: 'start', x: s0.x - w / 2, y: s0.y - 22, w, h: 15, priority: 1e9 });
-      texts.set('start', { text: this.labels.start, x: s0.x - w / 2, y: s0.y - 22 });
-    }
-    const n = tickPts.length;
-    tickPts.forEach((tk, i) => {
-      const s = this.screen(cam, tk.pos, W, H);
-      if (!s) return;
-      const text = formatDistance(tk.d);
-      const w = labelWidth(text);
-      const id = `t${String(tk.d)}`;
-      const major = tk.d % (step * 5) === 0;
-      // newest first, round distances before the rest
-      cands.push({ id, x: s.x + 8, y: s.y - 15, w, h: 13, priority: (major ? n : 0) + i });
-      texts.set(id, { text, x: s.x + 8, y: s.y - 15 });
-    });
-    const obstacles: Box[] = [...keep, ...stageLabels];
-    if (hud) obstacles.push(hud);
-    if (ds2) obstacles.push({ x: ds2.x - 18, y: ds2.y - 18, w: 36, h: 36 });
-    const placed = placeLabels(cands, obstacles, bounds);
-    o.beginLabels();
-    let startShown = false;
-    for (const id of placed) {
-      const tx = texts.get(id);
-      if (!tx) continue;
-      if (id === 'start') {
-        startShown = true;
-        o.start.style.transform = `translate(${Math.round(tx.x)}px, ${Math.round(tx.y)}px)`;
-      } else o.label(tx.text, tx.x, tx.y);
-    }
-    o.endLabels();
-    o.start.style.display = startShown ? '' : 'none';
-    this.lastReadout = { distanceM: flownM, step, ticks: t, labels: placed.size };
+    return hud;
   }
 
   dispose() {
