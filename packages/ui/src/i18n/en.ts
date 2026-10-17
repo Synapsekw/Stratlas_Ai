@@ -4082,6 +4082,8 @@ export const en = {
   'actions.header.photos_one': '{count} photo',
   'actions.header.photos_other': '{count} photos',
   'actions.project.title': 'Project',
+  'actions.rf.coverage': 'Coverage…',
+  'actions.rf.running': 'A coverage run is in progress.',
   'actions.project.addData': 'Add data...',
   'actions.project.addPanos': 'Add drone panoramas...',
   'actions.project.addDrawing': 'Add drawing...',

@@ -7,6 +7,8 @@ import { workbench, type WorkbenchState } from '../workspace/workbench/workbench
 import type { StoreApi } from 'zustand';
 import { focusRfUnit, rfStore, startCoverage, type StartResult } from './rfStore';
 
+// TODO(antenna-detection merge 2): pass Edit RF… to AntennaInventory extra actions
+// TODO(stage-3): Coverage tile in the island Measure group
 /** Bring the RF tab to the front (opening it when it is not there), showing `antennaId` if given. */
 export function openRfTab(antennaId?: string, bench: StoreApi<WorkbenchState> = workbench): void {
   if (antennaId !== undefined) focusRfUnit(antennaId);

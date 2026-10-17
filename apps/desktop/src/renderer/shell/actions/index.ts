@@ -3,6 +3,7 @@ import { registerKindActions } from './kindActions';
 import { registerLayerActions } from './layerActions';
 import { registerPinActions } from './pinActions';
 import { registerProjectActions } from './projectActions';
+import { registerRfActions } from './rfActions';
 
 let done = false;
 
@@ -15,4 +16,5 @@ export function registerSidebarActions(): void {
   registerLayerActions();
   registerKindActions();
   registerPinActions();
+  registerRfActions();
 }
