@@ -8,6 +8,7 @@ import { ProjectManifest } from '@aio/schema';
 import type { ElectronApplication, Page } from '@playwright/test';
 import { readdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
+import { openAgentOff } from './agentPane';
 import {
   createDataRoot,
   expect,
@@ -206,6 +207,7 @@ test('agent: a package that forbids cloud AI keeps the agent off', async () => {
     const run = await start(data);
     await run.win.evaluate(() => window.aio.invoke('settings:set', { cloudAi: true }));
     await openTiny(run.win);
+    await openAgentOff(run.win);
     await expect(agent(run.win)).toContainText(
       'This project does not allow sending its data to cloud AI',
     );

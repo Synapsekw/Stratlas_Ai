@@ -6,7 +6,7 @@
  * (Volumes and Changes, 470 px) while it is in front.
  */
 import { IssueRegister } from '@aio/annotate';
-import { IconButton, ResizableSplit, splitPrefs, useResizableSplit, useT } from '@aio/ui';
+import { IconButton, useResizableSplit, useT } from '@aio/ui';
 import { useVolumetric } from '@aio/volumetric';
 import { canCompare, useWorkspace } from '@aio/workspace';
 import {
@@ -14,13 +14,10 @@ import {
   useLayoutEffect,
   useMemo,
   useRef,
-  useState,
   type AnimationEvent,
-  type ReactNode,
   type TransitionEvent,
 } from 'react';
 import { useStore } from 'zustand';
-import { AgentHost } from '../../agent/AgentHost';
 import { ChangesTab, useChangesTabSeq } from '../../change';
 import { IssueCard } from '../../issueCard/IssueCard';
 import { useCardFocusSeq } from '../../issueCard/state';
@@ -61,6 +58,9 @@ import { DisplayBench } from './benches/DisplayBench';
 import { AnnotateBench, useAnnotateFollow } from './benches/AnnotateBench';
 import { JobsBench } from './benches/JobsBench';
 import { VideoBench } from './benches/VideoBench';
+// Agent pane: the agent below the bench, maximised, minimised or off (Task 18)
+import { AgentPane } from '../../agent/AgentPane';
+import { agentPane } from '../../agent/agentPaneStore';
 import './workbench.css';
 
 /** The workbenches with collapsible sections, whose header holds Collapse all (D16). */
@@ -192,62 +192,6 @@ export function useSidebarSplit(collapsed: boolean, hasProject: boolean) {
     },
     onAnimationEnd: onSlideEnd,
   };
-}
-
-const CTX_AGENT = 'scene.ctxAgent';
-/** The agent keeps this much height, as before the divider could be moved. */
-const AGENT_MIN = 180;
-
-/**
- * The workbench above and agent below, on the `scene.ctxAgent` split. Until the person moves the
- * divider they keep the sizes they always had (styles.css, `.rp-split.auto`): the selection card
- * at its own height, a tall tab 62% (Volumes 80%, a road 72%), the agent the rest. The split then
- * starts from where the divider stands, and once moved its fraction is remembered (ruling R11).
- */
-function ContextAgentSplit({ context, agent }: { context: ReactNode; agent: ReactNode }) {
-  const t = useT();
-  const moved = useStore(splitPrefs, (s) => s.byId[CTX_AGENT] !== undefined);
-  const [standing, setStanding] = useState(0.62);
-  const agentRef = useRef<HTMLDivElement | null>(null);
-  // where the divider stands while it follows the content, so a drag or a key starts there
-  useEffect(() => {
-    const el = agentRef.current;
-    const split = el?.closest('.rp-split');
-    if (moved || !el || !split || typeof ResizeObserver === 'undefined') return;
-    const measure = () => {
-      const box = split.getBoundingClientRect();
-      if (box.height <= 0) return;
-      const at = (el.getBoundingClientRect().top - box.top) / box.height;
-      setStanding(Math.round(Math.min(1, Math.max(0, at)) * 1000) / 1000 || 0.62);
-    };
-    measure();
-    const watch = new ResizeObserver(measure);
-    watch.observe(el);
-    watch.observe(split);
-    return () => {
-      watch.disconnect();
-    };
-  }, [moved]);
-  return (
-    <ResizableSplit
-      id={CTX_AGENT}
-      className={moved ? 'rp-split' : 'rp-split auto'}
-      orientation="vertical"
-      sized="start"
-      unit="fraction"
-      defaultSize={standing}
-      min={160}
-      max="100%"
-      otherMin={AGENT_MIN}
-      label={t('panel.resizeAgent')}
-      start={context}
-      end={
-        <div className="agent" ref={agentRef}>
-          {agent}
-        </div>
-      }
-    />
-  );
 }
 
 /**
@@ -393,6 +337,8 @@ export function RightSidebar() {
         counts={{ issues, volumes: piles }}
         onShow={(tab) => {
           workbench.getState().show(tab);
+          // a tab clicked over the maximised agent brings the workbench back (D22)
+          if (agentPane.getState().mode === 'max') agentPane.getState().setMode('normal');
         }}
         onPin={(tab, on) => {
           workbench.getState().pin(tab, on);
@@ -401,8 +347,10 @@ export function RightSidebar() {
           workbench.getState().close(tab);
         }}
       />
-      <ContextAgentSplit
-        context={
+      <AgentPane
+        window={focused}
+        task={modellerOpen ? 'build' : undefined}
+        bench={
           <>
             {!road && <RoadSetupCard />}
             <div
@@ -417,7 +365,6 @@ export function RightSidebar() {
             </div>
           </>
         }
-        agent={<AgentHost window={focused} task={modellerOpen ? 'build' : undefined} />}
       />
     </aside>
   );

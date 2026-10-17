@@ -14,6 +14,7 @@ import { join } from 'node:path';
 import { shortcutHint } from '@aio/ui';
 import { sampleIssue } from '../src/main/testing';
 import { expectAccessible } from './a11y';
+import { openAgentOff } from './agentPane';
 import { expect, launchApp, NetworkGuard, test, type DataRoot } from './fixtures';
 
 const SIZE: [number, number] = [1440, 900];
@@ -620,6 +621,7 @@ test('the context and the agent keep their sizes until the divider between them 
   const { win } = run;
   try {
     await openScene(win);
+    await openAgentOff(win);
     const boxes = () =>
       win.evaluate(() => {
         const r = (s: string) => document.querySelector(s)?.getBoundingClientRect();

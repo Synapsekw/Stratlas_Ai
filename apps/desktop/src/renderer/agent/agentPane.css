@@ -1,0 +1,67 @@
+/* The Scene's agent pane (agent/AgentPane.tsx) on the scene.ctxAgent split. Normal, the split
+   lays it out as before (styles.css, .rp-split). Maximised, the agent has the column below the tab
+   bar; minimised, or with the AI off, it is one line and the bench has the rest. In those three
+   the panes step aside and the column is a flex column, the divider hidden. Sizes snap, as the
+   split's do. */
+.right > .rp-split > [hidden],
+.agent > .agent-body[hidden] {
+  display: none;
+}
+.agent > .agent-body {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+.right > .rp-split:is(.ag-max, .ag-min, .ag-off) {
+  display: flex;
+  flex-direction: column;
+}
+.right > .rp-split:is(.ag-max, .ag-min, .ag-off) > .split-pane {
+  display: contents;
+}
+/* the bench fills what the one line leaves */
+.right > .rp-split:is(.ag-min, .ag-off) > .split-pane > .ctx-wrap.wb-body {
+  flex: 1 1 auto;
+  max-height: none;
+}
+.right > .rp-split:is(.ag-min, .ag-off) > .split-pane > .agent {
+  flex: none;
+  min-height: 0;
+}
+.right > .rp-split.ag-max > .split-pane > .agent {
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+/* the one line: "Ask about 3D view · Ctrl J", or "Agent off · Turn on" */
+.ag-line {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  inline-size: 100%;
+  block-size: 40px;
+  padding-inline: var(--sp-4);
+  border: 0;
+  background: transparent;
+  color: var(--fg-1);
+  font: inherit;
+  font-size: var(--t-12);
+  text-align: start;
+  cursor: pointer;
+}
+.ag-line:hover {
+  background: var(--bg-2);
+  color: var(--fg-0);
+}
+.ag-line > svg {
+  flex: none;
+  color: var(--acc);
+}
+.ag-line-t {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}

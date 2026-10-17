@@ -15,6 +15,7 @@ import { offlineRoutes } from '@aio/ai/routes';
 import type { Page } from '@playwright/test';
 import { readFile, rm } from 'node:fs/promises';
 import { join } from 'node:path';
+import { openAgentOff } from './agentPane';
 import { GREETING, startFakeLlm } from './fake-llm';
 import { createDataRoot, expect, launchApp, NetworkGuard, test, TINY_PROJECT_ID } from './fixtures';
 
@@ -152,6 +153,7 @@ test('offline-only: no cloud AI request leaves, and the app says why', async () 
     // The assistant says why it is off, and cannot be asked.
     await win.locator('.nav-item', { hasText: 'Projects' }).click();
     await openTiny(win);
+    await openAgentOff(win);
     await expect(agent(win)).toContainText(MESSAGES.offlineOnly);
     await expect(box(win)).toBeDisabled();
     await shot(win, 'offline-only-agent');
@@ -225,6 +227,7 @@ test('offline-only: a local model on this machine still answers, one elsewhere d
     // the panel checks its route when it opens (the setting was changed past the Settings screen)
     await win.locator('.nav-item', { hasText: 'Issues' }).click();
     await win.locator('.nav-item', { hasText: 'Scene' }).click();
+    await openAgentOff(win);
     await expect(agent(win)).toContainText(MESSAGES.offlineOnly);
     await expect(box(win)).toBeDisabled();
     expect(fake.requests.length).toBe(before);

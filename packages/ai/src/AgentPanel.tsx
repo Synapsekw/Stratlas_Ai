@@ -58,6 +58,8 @@ export interface AgentPanelProps {
   session?: AgentSession | undefined;
   /** A status beside the binding in the header, as the app has it (cloud AI on or off). */
   status?: ReactNode;
+  /** The app's own buttons at the end of the header (the Scene's Minimise and Maximise). */
+  actions?: ReactNode;
 }
 
 const CAPTURE_WINDOWS: readonly WindowKind[] = ['video', 'scene3d', 'pointcloud', 'photo', 'map'];
@@ -85,6 +87,7 @@ export function AgentPanel({
   settingsKey,
   session: given,
   status,
+  actions,
 }: AgentPanelProps) {
   const taskRef = useRef(task);
   useEffect(() => {
@@ -242,6 +245,7 @@ export function AgentPanel({
           >
             <Icon name="new" />
           </button>
+          {actions}
         </div>
       </header>
 

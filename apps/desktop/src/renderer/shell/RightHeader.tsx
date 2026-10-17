@@ -2,6 +2,7 @@ import { Button, t, useT } from '@aio/ui';
 import { workspace } from '@aio/workspace';
 import { AGENT_DOCK_ID } from '../agent/AgentDock';
 import { AgentToggle } from '../agent/AgentToggle';
+import { agentPane } from '../agent/agentPaneStore';
 import { isDockScreen } from '../agent/dockScreens';
 import { shell, useShell } from '../shell';
 import { SyncStatus } from '../team/SyncStatus';
@@ -36,6 +37,8 @@ const dockAgent = () => document.getElementById(AGENT_DOCK_ID)?.querySelector('.
 
 /** Takes the person to the Scene's agent, the lower pane of the right panel (`scene.ctxAgent`). */
 export function focusSceneAgent(): void {
+  // a minimised agent opens again and its pane puts the cursor in it (Task 18)
+  agentPane.getState().reveal();
   focusAgentIn(sceneAgent());
 }
 
@@ -53,6 +56,8 @@ export function openAgent(): void {
   let pane: () => Element | null | undefined;
   if (s.screen === 'scene') {
     if (s.rightCollapsed) s.toggleRight();
+    // a minimised agent opens again (Task 18)
+    agentPane.getState().reveal();
     pane = sceneAgent;
   } else if (isDockScreen(s.screen) && workspace.getState().project) {
     if (s.agentDockCollapsed) s.setAgentDock(false);

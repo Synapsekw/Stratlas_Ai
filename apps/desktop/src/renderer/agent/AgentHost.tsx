@@ -1,6 +1,6 @@
 import { AgentPanel } from '@aio/ai';
 import type { AiTask, WindowKind } from '@aio/schema';
-import { useEffect } from 'react';
+import { useEffect, type ReactNode } from 'react';
 import { cloudAiBlocked } from '../player';
 import { shell, useShell } from '../shell';
 import { CloudChip } from '../shell/ConnectionStatus';
@@ -16,10 +16,13 @@ export function AgentHost({
   window: win,
   task,
   className,
+  actions,
 }: {
   window: WindowKind;
   task?: AiTask | undefined;
   className?: string;
+  /** Buttons at the end of the agent's header (the Scene's pane: Minimise and Maximise). */
+  actions?: ReactNode;
 }) {
   const pkg = useShell((s) => s.pkg);
   // the agent checks its route again when the AI settings change
@@ -59,6 +62,7 @@ export function AgentHost({
       renderFix={(controls) => <AgentFixCard {...controls} />}
       // cloud AI as it is now, in the header (the title bar showed it before it went)
       status={<CloudChip store={shell} testId="agent-cloud-chip" />}
+      actions={actions}
     />
   );
 }

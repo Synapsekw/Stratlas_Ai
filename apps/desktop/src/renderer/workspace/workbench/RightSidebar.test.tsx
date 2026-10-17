@@ -12,6 +12,7 @@ import type * as LiveModule from '../island/useIslandLive';
 import type * as AnnotateModule from '@aio/annotate';
 import type * as VolumetricModule from '@aio/volumetric';
 import type * as ChangeModule from '../../change';
+import { agentPane } from '../../agent/agentPaneStore';
 import { RightSidebar, useIslandLinked, useSidebarSplit } from './RightSidebar';
 import { workbench } from './workbenchStore';
 
@@ -107,6 +108,7 @@ beforeEach(() => {
   shell.getState().setRight(false);
   workspace.getState().openProject({ id: 'p3', root: '/p3', manifest: threeDates });
   workbench.getState().reset();
+  agentPane.getState().setMode('normal');
   host = document.createElement('div');
   document.body.append(host);
 });
@@ -153,6 +155,20 @@ describe('RightSidebar', () => {
     });
     expect(workbench.getState().front).toBe('issues');
     expect(host.textContent).toContain('register');
+  });
+
+  it('brings the workbench back from the maximised agent when a tab is clicked (D22)', () => {
+    render();
+    act(() => {
+      agentPane.getState().setMode('max');
+    });
+    expect(host.querySelector('[role="tabpanel"]')?.closest('[hidden]')).not.toBeNull();
+    expect(host.querySelector('[role="tablist"]')?.closest('[hidden]')).toBeNull();
+    act(() => {
+      document.getElementById('wb-tab-issues')?.click();
+    });
+    expect(agentPane.getState().mode).toBe('normal');
+    expect(host.querySelector('[role="tabpanel"]')?.closest('[hidden]')).toBeNull();
   });
 
   it('moves the tabs that do not fit at 300 px into "More tabs"', () => {

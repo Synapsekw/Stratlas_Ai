@@ -13,6 +13,7 @@ import { ProjectManifest, SCHEMA_VERSION, type ProjectManifestInput } from '@aio
 import type { ElectronApplication, Page } from '@playwright/test';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
+import { openAgentOff } from './agentPane';
 import { expect, launchApp, NetworkGuard, test, type DataRoot } from './fixtures';
 
 type V3 = [number, number, number];
@@ -420,6 +421,7 @@ for (const windowHeight of [720, 700]) {
         BrowserWindow.getAllWindows()[0]?.setContentSize(1100, h);
       }, windowHeight);
       await openByName(win, 'E2E engineering long list', 'e2e-eng-long');
+      await openAgentOff(win);
       await expect
         .poll(
           () =>
