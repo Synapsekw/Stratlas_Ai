@@ -33,28 +33,29 @@ It never throws, whatever the JSON (fuzzed in `tools/compat/fuzz.test.mjs`). `ne
 
 An audit of every reader (7 Oct 2026) found that only the manifest, the package header and `road.json` said "newer"; the others treated a newer file as invalid or missing, and six of them could then write over it. The M9 integration closed that: those six refuse a newer file before their own parse, through `apps/desktop/src/main/newer.ts` (`newerThanThisBuild` on the parsed file, `newerOnDisk` before a write replaces one), and their writers never run after a refused read.
 
-| File                                       | Reader                                             | On a `/2` file now                                          | Risk of overwrite  |
-| ------------------------------------------ | -------------------------------------------------- | ----------------------------------------------------------- | ------------------ |
-| `ai-projects.json` (userData)              | `main/aiProjects.ts`                               | refused with the update message                             | No (fixed in M9)   |
-| `change/*.json`                            | `main/change.ts`                                   | refused with the update message                             | No (fixed in M9)   |
-| `report/narrative.json`                    | `main/narrative.ts`, `NarrativeEditor.tsx`         | refused with the update message                             | No (fixed in M9)   |
-| `detections/*.json`                        | `main/detections.ts`, `main/inference/electron.ts` | refused with the update message                             | No (fixed in M9)   |
-| `updates/journal.json` (userData)          | `main/update/rollback.ts`                          | refused with the update message                             | No (fixed in M9)   |
-| `launch.json` (userData)                   | `main/launchSettings.ts`                           | shown (defaults); a change gets the update message          | No                 |
-| `online.json` (userData)                   | `main/onlineSettings.ts`                           | off (defaults); a change gets the update message            | No                 |
-| `library.json` (userData, `aio.library/1`) | `main/library.ts`                                  | refused with the update message; a file without an id is /1 | No (fixed in M9)   |
-| `library-view.json` (userData)             | `main/libraryView.ts`                              | read as empty; a change gets the update message             | No                 |
-| `issues.json`                              | `main/project.ts`                                  | project does not open; message says "invalid"               | No                 |
-| `volumes.json`, `edits/boundaries.json`    | `main/boundaries.ts`                               | error                                                       | No in practice     |
-| `models/*.procmodel.json`                  | `main/modelBuilder.ts`                             | left out of the list silently                               | Low                |
-| `package-origin.json`                      | `main/project.ts`                                  | ignored                                                     | No                 |
-| `conversations/*.json`                     | `main/conversations.ts`                            | left out of the list                                        | Unlikely           |
-| pipeline pack `manifest.json`              | `main/jobs/pack.ts`                                | "runtime not found"                                         | No                 |
-| `models/detect/*/model.json`               | `main/inference/models.ts`                         | model left out                                              | No                 |
-| `drawings/*/placement.json`                | `packages/modelling/src/drawing.ts`                | throws, advice is "import the drawing again"                | Through the advice |
-| `rf/sectors.json`, `rf/catalogue.json`     | `main/rf.ts` (RF tab, `parseRfSectors`)            | refused with the update message                             | No (never written) |
-| `rf/runs/*/run.json`                       | `main/rf.ts` (`parseRfRun`)                        | left out of the run list; a write never touches it          | No                 |
-| tiles, flight poses, panoramas             | `packages/engine`, `packages/video`                | throws or defaults                                          | No (read only)     |
+| File                                       | Reader                                             | On a `/2` file now                                                | Risk of overwrite  |
+| ------------------------------------------ | -------------------------------------------------- | ----------------------------------------------------------------- | ------------------ |
+| `ai-projects.json` (userData)              | `main/aiProjects.ts`                               | refused with the update message                                   | No (fixed in M9)   |
+| `change/*.json`                            | `main/change.ts`                                   | refused with the update message                                   | No (fixed in M9)   |
+| `report/narrative.json`                    | `main/narrative.ts`, `NarrativeEditor.tsx`         | refused with the update message                                   | No (fixed in M9)   |
+| `detections/*.json`                        | `main/detections.ts`, `main/inference/electron.ts` | refused with the update message                                   | No (fixed in M9)   |
+| `updates/journal.json` (userData)          | `main/update/rollback.ts`                          | refused with the update message                                   | No (fixed in M9)   |
+| `launch.json` (userData)                   | `main/launchSettings.ts`                           | shown (defaults); a change gets the update message                | No                 |
+| `online.json` (userData)                   | `main/onlineSettings.ts`                           | off (defaults); a change gets the update message                  | No                 |
+| `library.json` (userData, `aio.library/1`) | `main/library.ts`                                  | refused with the update message; a file without an id is /1       | No (fixed in M9)   |
+| `library-view.json` (userData)             | `main/libraryView.ts`                              | read as empty; a change gets the update message                   | No                 |
+| `issues.json`                              | `main/project.ts`                                  | project does not open; message says "invalid"                     | No                 |
+| `volumes.json`, `edits/boundaries.json`    | `main/boundaries.ts`                               | error                                                             | No in practice     |
+| `models/*.procmodel.json`                  | `main/modelBuilder.ts`                             | left out of the list silently                                     | Low                |
+| `package-origin.json`                      | `main/project.ts`                                  | ignored                                                           | No                 |
+| `conversations/*.json`                     | `main/conversations.ts`                            | left out of the list                                              | Unlikely           |
+| pipeline pack `manifest.json`              | `main/jobs/pack.ts`                                | "runtime not found"                                               | No                 |
+| `models/detect/*/model.json`               | `main/inference/models.ts`                         | model left out                                                    | No                 |
+| `drawings/*/placement.json`                | `packages/modelling/src/drawing.ts`                | throws, advice is "import the drawing again"                      | Through the advice |
+| `rf/sectors.json`, `rf/catalogue.json`     | `main/rf.ts` (Task 7, `parseRfSectors`)            | refused with the update message                                   | No (never written) |
+| `rf-catalogue/*.json` (userData)           | `main/rf.ts` (Task 7, `parseRfCatalogue`)          | entry file left out of the list; a change gets the update message | No                 |
+| `rf/runs/*/run.json`                       | `main/rf.ts` (Task 7, `parseRfRun`)                | left out of the run list; a write never touches it                | No                 |
+| tiles, flight poses, panoramas             | `packages/engine`, `packages/video`                | throws or defaults                                                | No (read only)     |
 
 The M9 files (journal, identity, team, exchange, hub) are read with unknown keys kept and unknown op kinds accepted, so a 1.x file of a later minor version still reads.
 

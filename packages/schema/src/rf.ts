@@ -454,3 +454,22 @@ export function etiltProblems(
     `E-tilt ${String(tilt)} fits no port of ${ant.id} (${ant.ports.map((p) => rangeText(p.etilt)).join(', ')} degrees).`,
   ];
 }
+
+/**
+ * Carrier fields that do not fit the equipment, in plain words; empty when they do. An AAU has
+ * its radio and antenna built in, so its carriers name neither `radioUnit` nor `port`. The
+ * schema cannot say this per carrier alone, because the equipment kind sits beside the carriers.
+ */
+export function carrierProblems(s: RfAntennaSettings): string[] {
+  if (s.equipment?.kind !== 'aau') return [];
+  return s.carriers.flatMap((c) => [
+    ...(c.radioUnit === undefined
+      ? []
+      : [`Carrier ${c.id} of ${s.antennaId} names a radio, but an AAU has its radio built in.`]),
+    ...(c.port === undefined
+      ? []
+      : [
+          `Carrier ${c.id} of ${s.antennaId} names a port, but an AAU has no separate antenna port.`,
+        ]),
+  ]);
+}

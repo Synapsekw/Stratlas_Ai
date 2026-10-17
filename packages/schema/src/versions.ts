@@ -608,21 +608,21 @@ export const SCHEMA_REGISTRY: readonly SchemaEntry[] = [
     version: 1,
     home: 'project',
     where: 'rf/sectors.json',
-    since: '0.17',
+    since: '0.20',
   },
   {
     family: 'aio.rf-catalogue',
     version: 1,
     home: 'project',
     where: 'rf/catalogue.json (also userData rf-catalogue/)',
-    since: '0.17',
+    since: '0.20',
   },
   {
     family: 'aio.rf-run',
     version: 1,
     home: 'project',
     where: 'rf/runs/<runId>/run.json',
-    since: '0.17',
+    since: '0.20',
   },
 ];
 

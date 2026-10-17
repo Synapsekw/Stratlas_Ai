@@ -9,6 +9,7 @@ import {
   RfCatalogue,
   RfRun,
   RfSectorsFile,
+  carrierProblems,
   etiltProblems,
   parseRfCatalogue,
   parseRfRun,
@@ -377,5 +378,32 @@ describe('contract wiring', () => {
     ).toBe(true);
     expect(p.safeParse({ runId: '../x' }).success).toBe(false);
     expect(p.safeParse({ runId: 'rf-x1', bogus: 1 }).success).toBe(false);
+  });
+});
+
+describe('carriers against the equipment', () => {
+  const aau = (carrier: object) =>
+    ({
+      antennaId: 'ant-c',
+      equipment: { kind: 'aau', aau: 'generic-aau-64t' },
+      carriers: [{ id: 'c1', tech: 'nr', band: 'n78', bandwidthMhz: 100, ...carrier }],
+    }) as never;
+
+  it('accepts an AAU carrier without a radio or port, and any separate carrier', () => {
+    expect(carrierProblems(aau({}))).toEqual([]);
+    const sep = {
+      antennaId: 'ant-a',
+      equipment: { kind: 'separate', antenna: 'x' },
+      carriers: [
+        { id: 'c1', radioUnit: 'r', port: 'p1', tech: 'lte', band: 'B3', bandwidthMhz: 20 },
+      ],
+    } as never;
+    expect(carrierProblems(sep)).toEqual([]);
+  });
+
+  it('refuses a radio or port on an AAU carrier', () => {
+    expect(carrierProblems(aau({ radioUnit: 'generic-rru-2t2r' }))).toHaveLength(1);
+    expect(carrierProblems(aau({ port: 'p1' }))).toHaveLength(1);
+    expect(carrierProblems(aau({ radioUnit: 'r', port: 'p1' }))).toHaveLength(2);
   });
 });
