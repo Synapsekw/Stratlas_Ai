@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import type { RasterCorners } from './builder';
-import { Id, type Vec3 } from './common';
+import { Id, type Mat4, type Vec3 } from './common';
 import type { Layer } from './layers';
 import type { Capture } from './manifest';
 
@@ -81,6 +81,26 @@ export function shiftTransform(
 export function shiftCorners(c: RasterCorners, s: DateShift | null): RasterCorners {
   if (!s || isZeroShift(s)) return c;
   return { tl: shiftLocal(c.tl, s), tr: shiftLocal(c.tr, s), bl: shiftLocal(c.bl, s) };
+}
+
+/** Raster corners drawn on a lined-up date as the raster stores them (the inverse of `shiftCorners`). */
+export function unshiftCorners(c: RasterCorners, s: DateShift | null): RasterCorners {
+  if (!s || isZeroShift(s)) return c;
+  return { tl: unshiftLocal(c.tl, s), tr: unshiftLocal(c.tr, s), bl: unshiftLocal(c.bl, s) };
+}
+
+/**
+ * A stored layer transform as drawn on its date (drawn = stored + shift). The builder tools show
+ * and edit placements in this frame, as the person sees them, and save `storedTransform` of it.
+ */
+export function drawnTransform(t: Mat4, s: DateShift | null): Mat4 {
+  return shiftTransform(t, s) ?? t;
+}
+
+/** What a builder tool saves for a transform drawn on a lined-up date (stored = drawn - shift). */
+export function storedTransform(t: Mat4, s: DateShift | null): Mat4 {
+  if (!s || isZeroShift(s)) return t;
+  return shiftTransform(t, { eastM: -s.eastM, northM: -s.northM }) ?? t;
 }
 
 /**

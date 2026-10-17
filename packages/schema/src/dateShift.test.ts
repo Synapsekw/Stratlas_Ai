@@ -5,12 +5,15 @@ import {
   DateShiftSchema,
   ProjectManifest,
   isZeroShift,
+  drawnTransform,
   shiftCorners,
   shiftEN,
   shiftLocal,
   shiftTransform,
   shiftedDirectionKeys,
   shiftedLayer,
+  storedTransform,
+  unshiftCorners,
   unshiftLocal,
   type Capture,
   type DirectionKey,
@@ -135,6 +138,23 @@ describe('date shift helpers', () => {
     expect(isZeroShift(null)).toBe(true);
     expect(isZeroShift({ eastM: 0.0004, northM: -0.0004 })).toBe(true);
     expect(isZeroShift({ eastM: 0.001, northM: 0 })).toBe(false);
+  });
+});
+
+describe('drawn and stored placements (builder tools)', () => {
+  it('draws a stored transform shifted and stores a drawn one unshifted', () => {
+    const t = [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 5, 6, 7, 1];
+    const drawn = drawnTransform(t, S);
+    expect(drawn.slice(12)).toEqual([7, 6, 6, 1]);
+    expect(storedTransform(drawn, S)).toEqual(t);
+    expect(storedTransform(t, null)).toBe(t);
+    expect(drawnTransform(t, { eastM: 0, northM: 0 })).toBe(t);
+  });
+
+  it('stores drawn raster corners unshifted', () => {
+    const c = { tl: [0, 0, 0], tr: [10, 0, 0], bl: [0, 0, 10] } as const;
+    const drawn = shiftCorners({ tl: [...c.tl], tr: [...c.tr], bl: [...c.bl] }, S);
+    expect(unshiftCorners(drawn, S)).toEqual(c);
   });
 });
 
