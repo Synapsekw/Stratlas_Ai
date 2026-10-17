@@ -195,7 +195,7 @@ A ground photo or a 360 taken without GPS still comes in. Its Media tile says **
 
 ### Import
 
-- **Add data** finds 360s by their shape (an image twice as wide as it is high). If some have no GPS, the offer says so: they import as not placed, ready to pin. The project needs a coordinate system given as an EPSG code for this import.
+- **Add data** finds 360s by their shape (an image twice as wide as it is high). If some have no GPS, the offer says so: they import as not placed, ready to pin. A 360 with no GPS imports on any project, including one with a plain site grid. A 360 with GPS, and drone spheres to stitch, are placed on the map, so they need a coordinate system given as an EPSG code; on a site grid the import lists them as needing one and leaves them out.
 - Insta360 `.insp` stills import like JPEGs. A still the camera has not stitched yet is two fisheye circles, not a 360. It is left out, and the offer says why: export it as a 360 photo from Insta360 Studio first, then add the exported file.
 
 ### Place on site

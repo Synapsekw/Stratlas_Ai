@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
 import type { PanoScan } from '@aio/schema';
+import { workspace } from '@aio/workspace';
 import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -114,6 +115,74 @@ describe('PanoImportDialog', () => {
     expect(q('pano-skipped')?.textContent).toContain(
       'Two fisheye circles, not a 360 yet: export it as a 360 photo from Insta360 Studio first.',
     );
+  });
+
+  describe('on a project with a site grid and no EPSG code', () => {
+    const open = (crs: object) => {
+      workspace.getState().openProject({
+        id: 'p1',
+        root: 'D:/projects/p1',
+        manifest: {
+          schema: 'aio.project/1',
+          id: 'p1',
+          name: 'P',
+          crs,
+          origin: [0, 0, 0],
+          captures: [],
+          layers: [],
+          severityModels: [],
+          classCatalogues: [],
+        },
+      } as never);
+    };
+    afterEach(() => {
+      workspace.getState().closeProject();
+    });
+    const mixed = (): PanoScan => ({
+      ...scan,
+      ready: [
+        { key: 'r1', file: 'D:/Pano/placed.jpg', bytes: 1, lat: 46.5005, lon: 7.5005 },
+        { key: 'r2', file: 'D:/Pano/ground.jpg', bytes: 1 },
+      ],
+    });
+
+    it('leaves out what needs the coordinate system and says why; takes the 360 with no GPS', () => {
+      open({ wkt: 'LOCAL_CS["Site grid",UNIT["metre",1]]' });
+      panoImport.setState({ scan: mixed() });
+      act(() => {
+        root.render(<PanoImportDialog />);
+      });
+      for (const k of ['s1', 's2', 'r1']) {
+        expect(q(`pano-row-${k}`)?.querySelector('input')?.disabled).toBe(true);
+        expect(q(`pano-row-${k}`)?.querySelector('input')?.checked).toBe(false);
+        expect(q(`pano-row-${k}`)?.textContent).toContain('Needs an EPSG coordinate system');
+      }
+      expect(q('pano-row-r2')?.querySelector('input')?.checked).toBe(true);
+      expect(q('pano-row-r2')?.querySelector('input')?.disabled).toBe(false);
+      expect(q('pano-left-out')?.textContent).toContain('3 items were left out');
+      expect(q('pano-summary')?.textContent).toBe(
+        '1 360 found · 1 file is not panorama frames · about 1 B copied',
+      );
+    });
+
+    it('says nothing of the kind on an EPSG project', () => {
+      open({ epsg: 32639 });
+      panoImport.setState({ scan: mixed() });
+      act(() => {
+        root.render(<PanoImportDialog />);
+      });
+      expect(q('pano-left-out')).toBeNull();
+      expect(q('pano-row-s1')?.querySelector('input')?.disabled).toBe(false);
+    });
+
+    it('titles a drop of 360s only "Add 360s"', () => {
+      open({ epsg: 32639 });
+      panoImport.setState({ scan: { ...mixed(), spheres: [] } });
+      act(() => {
+        root.render(<PanoImportDialog />);
+      });
+      expect(host.querySelector('#pano-import-title')?.textContent).toBe('Add 360s');
+    });
   });
 
   it('draws no map when no panorama has a place', () => {

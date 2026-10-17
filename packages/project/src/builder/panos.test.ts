@@ -186,6 +186,54 @@ describe('importPanoGroups', () => {
     expect(r.stitch).toEqual([]);
   });
 
+  describe('on a project with a local grid (no EPSG code)', () => {
+    beforeEach(async () => {
+      const m = await readManifestFile(root);
+      await writeManifestFile(root, {
+        ...m,
+        crs: { wkt: 'LOCAL_CS["Site grid",UNIT["metre",1]]' },
+        origin: [0, 0, 0],
+      });
+    });
+    const message = 'Drone panoramas need a project CRS given as an EPSG code.';
+
+    it('imports ready-made 360s with no GPS, unplaced', async () => {
+      const g = await grouping();
+      const lone = join(card, 'ground.jpg');
+      await writeFile(lone, 'ground');
+      g.ready = [{ file: lone, bytes: 6, width: 2560, height: 1280 }];
+      const r = await importPanoGroups(root, keyGrouping(g), { ...choice, keys: ['r1'] }, deps());
+      const layer = (await readManifestFile(root)).layers.find((l) => l.id === r.layerId);
+      if (layer?.kind !== 'panoramas') throw new Error('expected a panoramas layer');
+      expect(layer.items).toHaveLength(1);
+      expect(layer.items[0] && 'pos' in layer.items[0]).toBe(false);
+      expect(layer.items[0]?.headingDeg).toBe(0);
+      expect(r.stitch).toEqual([]);
+    });
+
+    it('still refuses a 360 with GPS, which would be placed', async () => {
+      await expect(
+        importPanoGroups(root, keyGrouping(await grouping()), { ...choice, keys: ['r1'] }, deps()),
+      ).rejects.toThrow(message);
+    });
+
+    it('still refuses spheres to stitch', async () => {
+      await expect(
+        importPanoGroups(root, keyGrouping(await grouping()), { ...choice, keys: ['s1'] }, deps()),
+      ).rejects.toThrow(message);
+    });
+
+    it('leaves nothing behind when it refuses', async () => {
+      await importPanoGroups(
+        root,
+        keyGrouping(await grouping()),
+        { ...choice, keys: ['s1'] },
+        deps(),
+      ).catch(() => undefined);
+      expect((await readManifestFile(root)).layers.some((l) => l.kind === 'panoramas')).toBe(false);
+    });
+  });
+
   it('writes a sphere whose frames give no camera place without pos, not at the origin', async () => {
     const g = await grouping();
     const [s1] = g.spheres;

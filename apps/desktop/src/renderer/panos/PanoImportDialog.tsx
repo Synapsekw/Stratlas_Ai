@@ -1,12 +1,16 @@
 ﻿import type { PanoQuality, PanoScan } from '@aio/schema';
 import { Icon, t, useFocusTrap } from '@aio/ui';
+import { useWorkspace } from '@aio/workspace';
 import { useMemo, useRef, useState } from 'react';
 import {
+  blockedKeys,
   canUseHigh,
   closePanoImport,
   defaultKeys,
   defaultLayerName,
+  dialogTitle,
   importPanos,
+  isLocalGrid,
   maxTextureSize,
   summaryText,
   usePanoImport,
@@ -87,7 +91,15 @@ function Dialog() {
   const { scan, busy, error, notStarted } = usePanoImport((s) => s);
   const dlg = useRef<HTMLDivElement>(null);
   useFocusTrap(dlg, true);
-  const [keys, setKeys] = useState<Set<string>>(() => new Set(scan ? defaultKeys(scan) : []));
+  const localGrid = useWorkspace((s) => isLocalGrid(s.project?.manifest));
+  const [keys, setKeys] = useState<Set<string>>(
+    () => new Set(scan ? defaultKeys(scan, localGrid) : []),
+  );
+  // a site grid has no EPSG code: what needs one cannot be placed, so it is left out
+  const blocked = useMemo(
+    () => (scan && localGrid ? blockedKeys(scan) : new Set<string>()),
+    [scan, localGrid],
+  );
   const [name, setName] = useState(() => defaultLayerName(scan?.day ?? null));
   const [date, setDate] = useState(scan?.day ?? '');
   const [quality, setQuality] = useState<PanoQuality>('standard');
@@ -130,7 +142,7 @@ function Dialog() {
       >
         <div className="dlg-h">
           <Icon name="pano" size={16} />
-          <h2 id="pano-import-title">{t('pano.preview.title')}</h2>
+          <h2 id="pano-import-title">{dialogTitle(scan)}</h2>
           <button
             type="button"
             className="btn ghost icon sm"
@@ -150,6 +162,12 @@ function Dialog() {
             <p className="notice danger" role="alert">
               <Icon name="warn" size={14} />
               {error}
+            </p>
+          )}
+          {blocked.size > 0 && !notStarted && (
+            <p className="notice" role="status" data-testid="pano-left-out">
+              <Icon name="warn" size={14} />
+              {t('pano.preview.leftOut', { count: blocked.size })}
             </p>
           )}
           {notStarted && (
@@ -176,7 +194,7 @@ function Dialog() {
                     <input
                       type="checkbox"
                       checked={keys.has(s.key)}
-                      disabled={copying}
+                      disabled={copying || blocked.has(s.key)}
                       onChange={() => {
                         toggle(s.key);
                       }}
@@ -191,6 +209,9 @@ function Dialog() {
                     )}
                     {s.incomplete && (
                       <span className="tbadge warn">{t('pano.preview.incomplete')}</span>
+                    )}
+                    {blocked.has(s.key) && (
+                      <span className="tbadge warn">{t('pano.preview.needsCrs')}</span>
                     )}
                     {s.alreadyIn && (
                       <span className="tbadge warn">
@@ -208,7 +229,7 @@ function Dialog() {
                     <input
                       type="checkbox"
                       checked={keys.has(r.key)}
-                      disabled={copying}
+                      disabled={copying || blocked.has(r.key)}
                       onChange={() => {
                         toggle(r.key);
                       }}
@@ -220,6 +241,9 @@ function Dialog() {
                     </span>
                     <span className="tbadge info">{t('pano.preview.ready')}</span>
                     {!placed(r) && <span className="tbadge">{t('pin.notPlaced')}</span>}
+                    {blocked.has(r.key) && (
+                      <span className="tbadge warn">{t('pano.preview.needsCrs')}</span>
+                    )}
                   </label>
                 ))}
               </section>

@@ -8,8 +8,10 @@ vi.mock('../shell', () => ({ bridge: { call } }));
 import { timeline } from '../workspace/timeline';
 import {
   canUseHigh,
+  blockedKeys,
   defaultKeys,
   defaultLayerName,
+  dialogTitle,
   closePanoImport,
   importPanos,
   panoImport,
@@ -81,6 +83,53 @@ describe('preview text', () => {
     expect(summaryText(scan, ['s1', 's2'])).toBe(
       '2 panoramas found (26 + 26 frames) · 2 files are not panorama frames · about 992 MB copied',
     );
+  });
+
+  describe('360s only', () => {
+    const ready = (key: string, over: Partial<PanoScan['ready'][number]> = {}) => ({
+      key,
+      file: `D:/drop/${key}.jpg`,
+      bytes: 3 * 1024 * 1024,
+      ...over,
+    });
+    const only: PanoScan = {
+      ...scan,
+      spheres: [],
+      ready: [ready('r1'), ready('r2')],
+      skipped: [],
+    };
+
+    it('shows no frame count when nothing to stitch is chosen', () => {
+      expect(summaryText(only, ['r1', 'r2'])).toBe('2 360s found · about 6.0 MB copied');
+      expect(summaryText({ ...only, ready: [ready('r1')] }, ['r1'])).toBe(
+        '1 360 found · about 3.0 MB copied',
+      );
+    });
+
+    it('is titled by what the drop holds', () => {
+      expect(dialogTitle(only)).toBe('Add 360s');
+      expect(dialogTitle(scan)).toBe('Add drone panoramas');
+      expect(dialogTitle({ ...only, ready: [] })).toBe('Add drone panoramas');
+    });
+  });
+
+  describe('on a local grid', () => {
+    const mixed: PanoScan = {
+      ...scan,
+      ready: [
+        { key: 'r1', file: 'a.jpg', bytes: 1 },
+        { key: 'r2', file: 'b.jpg', bytes: 1, lat: 1, lon: 2 },
+      ],
+    };
+
+    it('blocks the spheres and the 360s with a position, not the ones without', () => {
+      expect([...blockedKeys(mixed)].sort()).toEqual(['r2', 's1', 's2', 's3']);
+    });
+
+    it('checks only what needs no coordinates', () => {
+      expect(defaultKeys(mixed, true)).toEqual(['r1']);
+      expect(defaultKeys(mixed)).toEqual(['s1', 's2', 'r1', 'r2']);
+    });
   });
 
   it('offers High only on GPUs that take 16384 px textures', () => {

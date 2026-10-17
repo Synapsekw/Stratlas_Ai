@@ -91,11 +91,11 @@ const GB = 1024 ** 3;
 const size = (n: number) =>
   n >= GB ? `${(n / GB).toFixed(1)} GB` : `${String(Math.round(n / 1024 ** 2))} MB`;
 
-function epsgOf(m: ProjectManifest): number {
-  if (!('epsg' in m.crs))
-    throw new Error('Drone panoramas need a project CRS given as an EPSG code.');
-  return m.crs.epsg;
-}
+const NEEDS_EPSG = 'Drone panoramas need a project CRS given as an EPSG code.';
+
+/** A ready-made 360 is placed on the site only with a full GPS position. */
+const hasPlace = (r: { lat?: number; lon?: number }) =>
+  r.lat !== undefined && r.lon !== undefined && Number.isFinite(r.lat) && Number.isFinite(r.lon);
 
 const itemId = (n: number) => `p${String(n).padStart(2, '0')}`;
 
@@ -199,18 +199,22 @@ export async function importPanoGroups(
   deps: PanoImportDeps,
 ): Promise<PanoImportResult> {
   const atStart = await readManifestFile(root);
-  const epsg = epsgOf(atStart);
-  const frame: PhotoFrame = {
-    epsg,
-    origin: atStart.origin,
-    utcOffsetMin: defaultUtcOffsetMin(atStart.origin, epsg),
-    heights: resolveHeights(atStart).rule,
-  };
   const chosen = new Set(choice.keys);
   const spheres = g.spheres.filter((s) => chosen.has(s.key));
   const ready = g.ready.filter((r) => chosen.has(r.key));
   if (spheres.length + ready.length === 0)
     throw new PanoImportError('Choose at least one panorama to import.', 'empty');
+  // A local grid has no EPSG code: spheres to stitch and 360s with a position need one to be
+  // placed; a 360 with no GPS is placed by hand later, so it needs no coordinates.
+  const epsg = 'epsg' in atStart.crs ? atStart.crs.epsg : null;
+  if (epsg === null && (spheres.length > 0 || ready.some(hasPlace))) throw new Error(NEEDS_EPSG);
+  const frame: PhotoFrame = {
+    // unread on a local grid: only unplaced 360s get this far, and they have no position to convert
+    epsg: epsg ?? 0,
+    origin: atStart.origin,
+    utcOffsetMin: epsg === null ? 0 : defaultUtcOffsetMin(atStart.origin, epsg),
+    heights: resolveHeights(atStart).rule,
+  };
   const total = spheres.reduce((n, s) => n + s.frames.length, 0) + ready.length;
   const bytes = spheres.reduce((n, s) => n + s.bytes, 0) + ready.reduce((n, r) => n + r.bytes, 0);
   const free = await deps.freeBytes(root);

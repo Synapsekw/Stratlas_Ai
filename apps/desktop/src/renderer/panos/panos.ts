@@ -38,11 +38,35 @@ export function defaultLayerName(day: string | null): string {
   return t('pano.layerName', { date: `${String(Number(m[2]))} ${MONTHS[Number(m[1]) - 1] ?? ''}` });
 }
 
-export function defaultKeys(scan: PanoScan): string[] {
+/**
+ * The scan keys that need the project's EPSG coordinate system: spheres to stitch and 360s with a
+ * GPS position (they get placed). A 360 without GPS needs none: it is pinned by hand later.
+ */
+export function blockedKeys(scan: PanoScan): Set<string> {
+  return new Set([
+    ...scan.spheres.map((s) => s.key),
+    ...scan.ready.filter((r) => r.lat !== undefined && r.lon !== undefined).map((r) => r.key),
+  ]);
+}
+
+/** The open project has a site grid and no EPSG code. */
+export function isLocalGrid(manifest: { crs: object } | undefined): boolean {
+  return !!manifest && !('epsg' in manifest.crs);
+}
+
+export function defaultKeys(scan: PanoScan, localGrid = false): string[] {
+  const blocked = localGrid ? blockedKeys(scan) : new Set<string>();
   return [
     ...scan.spheres.filter((s) => s.alreadyIn === undefined).map((s) => s.key),
     ...scan.ready.map((r) => r.key),
-  ];
+  ].filter((k) => !blocked.has(k));
+}
+
+/** A drop of ready-made 360s only is not "drone panoramas". */
+export function dialogTitle(scan: PanoScan | null): string {
+  return scan?.spheres.length === 0 && scan.ready.length > 0
+    ? t('pano.preview.title360')
+    : t('pano.preview.title');
 }
 
 export function summaryText(scan: PanoScan, keys: readonly string[]): string {
@@ -50,10 +74,13 @@ export function summaryText(scan: PanoScan, keys: readonly string[]): string {
   const spheres = scan.spheres.filter((s) => chosen.has(s.key));
   const ready = scan.ready.filter((r) => chosen.has(r.key));
   const count = spheres.length + ready.length;
-  const frames = spheres.map((s) => String(s.frames)).join(' + ') || '0';
+  const frames = spheres.map((s) => String(s.frames)).join(' + ');
   const bytes = spheres.reduce((n, s) => n + s.bytes, 0) + ready.reduce((n, r) => n + r.bytes, 0);
   if (count === 0) return t('pano.preview.noneSelected');
-  const parts = [t('pano.preview.found', { count, frames })];
+  // frames are counted only for spheres to stitch; ready-made 360s have none
+  const parts = [
+    frames ? t('pano.preview.found', { count, frames }) : t('pano.preview.foundReady', { count }),
+  ];
   if (scan.skipped.length) parts.push(t('pano.preview.skipped', { count: scan.skipped.length }));
   parts.push(t('pano.preview.copied', { size: formatBytes(bytes) }));
   return parts.join(' · ');

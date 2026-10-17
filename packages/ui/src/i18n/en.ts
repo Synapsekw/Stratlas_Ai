@@ -2331,6 +2331,14 @@ export const en = {
   'pano.scanning': 'Looking for panoramas: {done} of {total} files',
   'pano.none': 'No drone panoramas were found there.',
   'pano.preview.title': 'Add drone panoramas',
+  'pano.preview.title360': 'Add 360s',
+  'pano.preview.foundReady_one': '{count} 360 found',
+  'pano.preview.foundReady_other': '{count} 360s found',
+  'pano.preview.needsCrs': 'Needs an EPSG coordinate system',
+  'pano.preview.leftOut_one':
+    '{count} item was left out: it has a position or needs stitching, and this project has a site grid without an EPSG coordinate system, so it could not be placed. 360s without GPS import as not placed.',
+  'pano.preview.leftOut_other':
+    '{count} items were left out: they have a position or need stitching, and this project has a site grid without an EPSG coordinate system, so they could not be placed. 360s without GPS import as not placed.',
   'pano.preview.found_one': '{count} panorama found ({frames} frames)',
   'pano.preview.found_other': '{count} panoramas found ({frames} frames)',
   'pano.preview.skipped_one': '{count} file is not panorama frames',

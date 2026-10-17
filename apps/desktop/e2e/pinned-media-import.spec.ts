@@ -58,7 +58,6 @@ test('360s without GPS import as not placed; a 2:1 photo becomes a 360 and back'
   dataRoot,
 }) => {
   test.setTimeout(180_000);
-  // the panorama import asks for an EPSG frame, even for 360s with no GPS
   const dir = await createPinProject(dataRoot.root, { crs: 'utm' });
   const drop = join(dataRoot.base, 'drop');
   await mkdir(drop, { recursive: true });
@@ -118,4 +117,43 @@ test('360s without GPS import as not placed; a 2:1 photo becomes a 360 and back'
   await tileAction(win, { pano: 'ph2' }, 'Treat as photo');
   await expect.poll(() => idsOf(PHOTO_LAYER), { timeout: 30_000 }).toContain('ph2');
   expect(await idsOf(PANO_LAYER)).not.toContain('ph2');
+});
+
+test('a project with a site grid (no EPSG code) takes a 360 with no GPS, not placed', async ({
+  app,
+  win,
+  dataRoot,
+}) => {
+  test.setTimeout(180_000);
+  const dir = await createPinProject(dataRoot.root); // the default: a local grid, no EPSG code
+  const drop = join(dataRoot.base, 'drop-local');
+  await mkdir(drop, { recursive: true });
+  const file = join(drop, 'ground360.jpg');
+  await writeFile(file, await equirect());
+  await win.reload();
+  await openPinProject(win);
+  await expect(win.locator('[data-scene-view] canvas').first()).toBeVisible({ timeout: 30_000 });
+
+  await nextOpenDialog(app, [file]);
+  await win.getByTestId('add-data').click();
+  const offer = win.getByTestId('pano-offer');
+  await expect(offer.getByTestId('pano-offer-unplaced')).toContainText('1 360 has no GPS', {
+    timeout: 60_000,
+  });
+  await offer.getByTestId('pano-offer-yes').click();
+  const dlg = win.getByTestId('pano-import');
+  await expect(dlg).toContainText('Add 360s');
+  await expect(dlg.getByTestId('pano-summary')).not.toContainText('frames');
+  await dlg.getByTestId('pano-import-go').click();
+  await expect(dlg).toBeHidden({ timeout: 60_000 });
+
+  // the 360 is in the project with no place (p1 of the fixture is the other one)
+  const unplaced = async () =>
+    (await readPinManifest(dir)).layers
+      .filter((l) => l.kind === 'panoramas')
+      .flatMap((l) => l.items ?? [])
+      .filter((i) => i.pos === undefined).length;
+  await expect.poll(unplaced, { timeout: 60_000 }).toBe(2);
+  await openMedia(win);
+  await expect(win.getByTestId('media-not-placed')).toHaveCount(4, { timeout: 30_000 });
 });
