@@ -32,7 +32,7 @@ import { useTimeline } from '../timeline';
 import type { TabId } from '../workbench/tabsModel';
 import { MODES, type GroupCtx } from './groups';
 import { liveTab } from '../workbench/view';
-import { followRoadMeasure, GROUP_TAB, openBenchFromIsland } from './islandBench';
+import { GROUP_TAB, openBenchFromIsland } from './islandBench';
 import { IslandCalendar, IslandDate, islandDates } from './IslandDate';
 import { IslandLive, LiveGlyph, liveSay, liveText } from './IslandLive';
 import { IslandTools } from './IslandTools';
@@ -192,9 +192,6 @@ export function Island({ stage, mode, tools, split, linked }: IslandProps) {
     [showBench],
   );
   const ctx: GroupCtx = { stage, map, openBench: showBench, done, compare: compareDates };
-
-  // the road's measure on the map makes the Road tab live while it draws (D14)
-  useEffect(() => followRoadMeasure(), []);
 
   // size morph: the capsule takes its content's size (CSS animates width and height)
   useLayoutEffect(() => {

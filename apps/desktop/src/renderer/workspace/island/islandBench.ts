@@ -1,10 +1,10 @@
 /**
  * What the island opens in the right sidebar (stage island D4, D10, D12, D14): each group's
- * workbench, the panel tabs its caret tiles open, and the Road tab while the road's measure on the
- * map draws. The tab of the live item a click on the island brings back is `liveTab` (view.ts).
+ * workbench and the panel tabs its caret tiles open. The tab of the live item a click on the
+ * island brings back is `liveTab` (view.ts); the Road tab's tool follow is `followRoadMeasure`
+ * (measureFollow.ts).
  */
 import type { StoreApi } from 'zustand/vanilla';
-import { roadStore, type RoadState } from '../../road/store';
 import { showBench } from '../workbench/followTool';
 import type { TabId } from '../workbench/tabsModel';
 import { workbench, type WorkbenchState } from '../workbench/workbenchStore';
@@ -30,21 +30,4 @@ export const GROUP_TAB: Record<GroupId, TabId | null> = {
  */
 export function openBenchFromIsland(id: TabId, bench: StoreApi<WorkbenchState> = workbench): void {
   showBench(id, bench);
-}
-
-/**
- * The road's measure on the map is a tool (D14): while it draws the Road tab is live, in front
- * unless an issue is being edited, and it closes again when it opened for the tool. Whichever way
- * it starts (the island's tile, the Road workbench, the key). Returns unsubscribe.
- */
-export function followRoadMeasure(
-  road: Pick<StoreApi<RoadState>, 'subscribe'> = roadStore,
-  bench: StoreApi<WorkbenchState> = workbench,
-): () => void {
-  return road.subscribe((s, prev) => {
-    const now = s.measure.mode !== null;
-    if (now === (prev.measure.mode !== null)) return;
-    if (now) bench.getState().toolStarted('road');
-    else bench.getState().toolStopped('road');
-  });
 }

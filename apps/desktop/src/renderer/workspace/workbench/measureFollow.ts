@@ -8,6 +8,7 @@ import { isTelecomTool } from '@aio/survey';
 import { useEffect } from 'react';
 import type { StoreApi } from 'zustand/vanilla';
 import { isIssueEditing } from '../../issueCard/state';
+import { roadStore, type RoadState } from '../../road/store';
 import { hydro } from '../../survey/hydroStore';
 import { measureFavourites, type FavouritesState } from '../../survey/measureCatalogue';
 import { measureStore, type MeasureState } from '../../survey/measureStore';
@@ -122,11 +123,36 @@ export function linkPanelTab<S>(
   };
 }
 
-/** While mounted: the Measure tab follows the tools, and the survey panels are tabs. */
+/**
+ * The road's measure on the map is a tool (D14): while it draws the Road tab is live, in front
+ * unless an issue is being edited, and it closes again when it opened for the tool. Whichever way
+ * it starts (the island's tile, the Road workbench, the key). Unmounted mid-measure, the live tab
+ * is let go too, so it never stays live with nothing following it. Returns unsubscribe.
+ */
+export function followRoadMeasure(
+  road: Pick<StoreApi<RoadState>, 'subscribe'> = roadStore,
+  bench: StoreApi<WorkbenchState> = workbench,
+): () => void {
+  let live = false;
+  const off = road.subscribe((s, prev) => {
+    const now = s.measure.mode !== null;
+    if (now === (prev.measure.mode !== null)) return;
+    live = now;
+    if (now) bench.getState().toolStarted('road');
+    else bench.getState().toolStopped('road');
+  });
+  return () => {
+    off();
+    if (live) bench.getState().toolStopped('road');
+  };
+}
+
+/** While mounted: the Measure and Road tabs follow the tools, and the survey panels are tabs. */
 export function useMeasureFollow(): void {
   useEffect(() => {
     const off = [
       followMeasureTool(),
+      followRoadMeasure(),
       followRecent(),
       linkPanelTab(
         'overlays',

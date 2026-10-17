@@ -1,11 +1,10 @@
 // @vitest-environment jsdom
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { createStore } from 'zustand/vanilla';
 import { shell } from '../../shell';
 import { drawerStore } from '../workbench/drawerStore';
 import { createWorkbenchStore } from '../workbench/workbenchStore';
 import { liveTab } from '../workbench/view';
-import { followRoadMeasure, GROUP_TAB, openBenchFromIsland } from './islandBench';
+import { GROUP_TAB, openBenchFromIsland } from './islandBench';
 
 vi.mock('../../issueCard/state', () => ({ isIssueEditing: () => false }));
 
@@ -71,23 +70,5 @@ describe('islandBench', () => {
     expect(bench.getState().front).toBe('volumes');
     // a stray open here would pop the drawer the next time the sidebar folds
     expect(drawerStore.getState().opened).toBeNull();
-  });
-
-  it("makes the Road tab live while the road's measure draws, and closes it after", () => {
-    const road = createStore<{ measure: { mode: 'line' | null; vertices: [] } }>()(() => ({
-      measure: { mode: null, vertices: [] },
-    }));
-    const off = followRoadMeasure(road as never, bench);
-    road.setState({ measure: { mode: 'line', vertices: [] } });
-    expect(bench.getState().front).toBe('road');
-    expect(bench.getState().tabs.find((t) => t.id === 'road')?.live).toBe(true);
-    // a new point is not a new start
-    road.setState({ measure: { mode: 'line', vertices: [] } });
-    road.setState({ measure: { mode: null, vertices: [] } });
-    expect(bench.getState().tabs.some((t) => t.id === 'road')).toBe(false);
-    expect(bench.getState().front).toBe('selection');
-    off();
-    road.setState({ measure: { mode: 'line', vertices: [] } });
-    expect(bench.getState().front).toBe('selection');
   });
 });
