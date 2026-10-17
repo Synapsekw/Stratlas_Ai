@@ -5,7 +5,8 @@ import { join } from 'node:path';
 import { AntennasFile } from '@aio/schema';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
-const policy = vi.hoisted(() => ({
+type PolicyResult = { ai: 'allow' | 'forbid'; photos: boolean; scans: boolean } | { error: string };
+const policy = vi.hoisted((): { value: PolicyResult } => ({
   value: { ai: 'allow', photos: true, scans: false },
 }));
 vi.mock('./evidencePolicy', () => ({
