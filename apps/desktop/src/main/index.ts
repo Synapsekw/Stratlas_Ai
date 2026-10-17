@@ -77,6 +77,7 @@ import {
   createBuilderProject,
   photoGps,
 } from './builder';
+import { convertMedia } from './convertMedia';
 import { rotateProjectPhoto } from './rotatePhoto';
 import { builderPipelineJobs } from './builderJobs';
 import {
@@ -1461,6 +1462,7 @@ function registerIpc(): void {
     'builder:rotatePhoto',
     (req) => packageRefusal(req.projectId) ?? rotateProjectPhoto(registry, req),
   );
+  handle('builder:convertMedia', (req) => convertMedia(registry, req));
   handle(
     'builder:import',
     (req) =>

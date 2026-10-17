@@ -22,7 +22,14 @@ export {
   type ManifestChange,
   type ManifestUpdate,
 } from './create';
+export { applyMediaPin, type MediaPinPatch } from './mediaPin';
 export { cataloguesProblem, updateClasses } from './classes';
+export {
+  convertMediaManifest,
+  type ConvertMediaError,
+  type ConvertMediaRequest,
+  type ConvertMediaResult,
+} from './convertMedia';
 export { addSeverityModel, addedModelProblem } from './severityModels';
 export * from './altitude';
 export * from './drawingPlacement';

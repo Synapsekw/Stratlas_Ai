@@ -102,6 +102,7 @@ const CHANNELS = {
   'builder:createProject': true,
   'builder:photoGps': true,
   'builder:rotatePhoto': true,
+  'builder:convertMedia': true,
   'builder:import': true,
   'builder:altitudePlan': true,
   'builder:cloudDates': true,
