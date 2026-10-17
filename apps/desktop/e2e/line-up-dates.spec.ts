@@ -25,7 +25,7 @@ import {
   type DataRoot,
 } from './fixtures';
 import { expectRegionsMatchTruth, type Item, type RasterTruth } from './changeRaster';
-import { toggleCompareDates } from './island';
+import { openBench, toggleCompareDates } from './island';
 import { choosePane } from './panoFixtures';
 
 interface Misaligned {
@@ -467,7 +467,7 @@ test('imagery change refused, lined up from the Changes panel, then runs clean',
   await openMisaligned(win, misaligned.id);
 
   // 1. the run is refused, and the panel says why
-  await win.getByTestId('tab-changes').click();
+  await openBench(win, 'changes');
   const run = win.getByTestId('change-panel').getByTestId('change-producer-raster');
   await expect(run).toBeEnabled();
   await run.click();

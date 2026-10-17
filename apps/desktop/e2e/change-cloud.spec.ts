@@ -24,7 +24,7 @@ import {
   tinyManifest,
   VENV_PYTHON,
 } from './fixtures';
-import { islandGroup } from './island';
+import { islandGroup, openBench } from './island';
 
 const repo = join(import.meta.dirname, '..', '..', '..');
 const CHANGE_COPC = join(repo, 'packages', 'pointcloud', 'test-data', 'change.copc.laz');
@@ -253,7 +253,7 @@ test.describe('change runs on the change demo', () => {
 
   /** Changes tab, then the producer's Run button. */
   async function runProducer(win: Page, id: string) {
-    await win.getByTestId('tab-changes').click();
+    await openBench(win, 'changes');
     const panel = win.getByTestId('change-panel');
     await expect(panel).toBeVisible();
     const run = panel.getByTestId(`change-producer-${id}`);

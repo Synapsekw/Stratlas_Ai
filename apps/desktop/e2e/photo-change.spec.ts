@@ -31,6 +31,7 @@ import {
   test,
   VENV_PYTHON,
 } from './fixtures';
+import { openBench } from './island';
 import { ODM_FAKE_DIR, odmEnv } from './photoPack';
 
 const FIXTURE = join(import.meta.dirname, 'photo-two-surveys-fixture.py');
@@ -268,7 +269,7 @@ const layersNow = (win: Page) =>
 
 /** The Changes tab's Run button of a producer, enabled with no sentence of what is missing. */
 async function producerButton(win: Page, producer: string) {
-  await win.getByTestId('tab-changes').click();
+  await openBench(win, 'changes');
   const button = win.getByTestId('change-panel').getByTestId(`change-producer-${producer}`);
   await expect(button).toBeEnabled({ timeout: 30_000 });
   const label = (await button.textContent()) ?? '';

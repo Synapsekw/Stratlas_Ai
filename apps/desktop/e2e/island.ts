@@ -3,6 +3,7 @@
  * it. Specs reach them through these helpers rather than learning the island each.
  */
 import { expect, type Locator, type Page } from '@playwright/test';
+import type { TabId } from '../src/renderer/workspace/workbench/tabsModel';
 
 /** The island's group tabs, by the short names it shows (`island.group.*`). */
 export type GroupId =
@@ -102,16 +103,32 @@ export async function toggleCompareDates(win: Page): Promise<void> {
  */
 export async function islandGroup(win: Page, g: GroupId): Promise<Locator> {
   if (g === 'view') return islandRow(win, 'view');
-  const bar = await openIslandTools(win);
-  // by key: the capsule is still morphing to its open size, so a click could land beside the tab
-  await bar.getByRole('tab', { name: GROUP_NAME[g], exact: true }).focus();
-  await win.keyboard.press('Enter');
-  // the island goes back to rest, its workbench in front
-  await expect(bar).not.toHaveAttribute('data-state', 'tools');
   const bench = win.locator(`#wb-panel-${g}`);
-  await expect(bench).toBeVisible();
+  await pickGroupTab(win, g, bench);
   await unfoldAll(bench);
   return bench;
+}
+
+/**
+ * Pick a group's tab in the open island, by key: the capsule is still morphing to its open size,
+ * so a click could land beside the tab. An Enter pressed while it morphs can be lost too, so the
+ * pick is tried again until the island is back at rest with `bench` showing.
+ */
+async function pickGroupTab(win: Page, g: GroupId, bench: Locator): Promise<void> {
+  const bar = island(win);
+  let tries = 0;
+  await expect(async () => {
+    const resting = (await bar.getAttribute('data-state')) !== 'tools';
+    if (tries === 0 || !resting || !(await bench.isVisible())) {
+      tries += 1;
+      await openIslandTools(win);
+      await bar.getByRole('tab', { name: GROUP_NAME[g], exact: true }).focus();
+      await win.keyboard.press('Enter');
+    }
+    // the island goes back to rest, its workbench in front
+    await expect(bar).not.toHaveAttribute('data-state', 'tools', { timeout: 3_000 });
+    await expect(bench).toBeVisible({ timeout: 3_000 });
+  }).toPass({ timeout: 30_000 });
 }
 
 /** A tool button of a group's full set (the set opened, so it shows). */
@@ -201,13 +218,7 @@ export async function islandCutOff(win: Page): Promise<string[]> {
  */
 export async function measureBench(win: Page): Promise<Locator> {
   const bench = win.getByTestId('survey-tools');
-  if (!(await bench.isVisible())) {
-    const bar = await openIslandTools(win);
-    // by key: the capsule is still morphing to its open size, so a click could land beside it
-    await bar.getByRole('tab', { name: GROUP_NAME.measure, exact: true }).focus();
-    await win.keyboard.press('Enter');
-    await expect(bar).not.toHaveAttribute('data-state', 'tools');
-  }
+  if (!(await bench.isVisible())) await pickGroupTab(win, 'measure', bench);
   await expect(bench).toBeVisible();
   return bench;
 }
@@ -271,4 +282,57 @@ export async function measurementsList(win: Page): Promise<Locator> {
  */
 export function measureStrip(win: Page): Locator {
   return win.getByRole('group', { name: 'Measure tools', exact: true });
+}
+
+/** The workbench tabs' names (`wb.tab.*`); Issues and Volumes add a count after theirs. */
+const TAB_NAME: Record<TabId, string> = {
+  measure: 'Measure',
+  display: 'Display',
+  clouds: 'Point cloud',
+  volumes: 'Volumes',
+  video: 'Video',
+  road: 'Road',
+  annotate: 'Annotate',
+  jobs: 'Jobs',
+  selection: 'Selection',
+  issues: 'Issues',
+  changes: 'Changes',
+  qa: 'Survey QA',
+  overlays: 'Terrain overlays',
+  hydro: 'Hydrology',
+  cleanup: 'Point cloud cleanup',
+  environment: 'Environment',
+  cutaway: 'Cutaway',
+};
+
+/**
+ * Bring a workbench tab that is open in the right sidebar to the front, and return its panel. A
+ * tab that does not fit on the row sits in the row's "More tabs" menu (its element leaves the DOM:
+ * `tab-changes` too), so it is picked there. The tabs are owned by the tablist through
+ * `aria-owns`, so they are found by their ids, not inside the tablist. The sidebar is shown
+ * first when it is folded.
+ */
+export async function openBench(win: Page, id: TabId): Promise<Locator> {
+  const side = win.locator('.ws > .right');
+  if (await win.locator('.ws.right-off').count()) {
+    await win.locator('.stage-rp button').click();
+    await expect(win.locator('.ws.right-off')).toHaveCount(0);
+  }
+  const tab = side.locator(`#wb-tab-${id}`);
+  if (await tab.isVisible()) await tab.click();
+  else {
+    await side.getByRole('button', { name: 'More tabs', exact: true }).click();
+    // the item says the tab's name, then its count and Live ("Issues · 3"); a pinned tab is a
+    // checked item
+    const name = new RegExp(`^${TAB_NAME[id]}( · .*)?$`);
+    await win
+      .getByRole('menu', { name: 'More tabs' })
+      .locator('[role="menuitem"], [role="menuitemcheckbox"]')
+      .filter({ hasText: name })
+      .click();
+  }
+  await expect(side.locator(`#wb-tab-${id}`)).toHaveAttribute('aria-selected', 'true');
+  const panel = side.locator(`#wb-panel-${id}`);
+  await expect(panel).toBeVisible();
+  return panel;
 }

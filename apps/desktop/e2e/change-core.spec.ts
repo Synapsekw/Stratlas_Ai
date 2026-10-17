@@ -10,7 +10,7 @@ import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { expectAccessible } from './a11y';
 import { CHANGE_DEMO, expect, openChangeDemo, test } from './fixtures';
-import { toggleCompareDates } from './island';
+import { openBench, toggleCompareDates } from './island';
 
 interface Inspect {
   __stratlas: {
@@ -152,7 +152,7 @@ test('the change demo: compare dates, find changes as truth.json says, review an
     })
     .toBe(true);
   await openChangeDemo(win);
-  await win.getByTestId('tab-changes').click();
+  await openBench(win, 'changes');
   const again = win.getByTestId('change-panel');
   await expect(
     again.locator(`[data-testid="change-row"][data-id="issue:${code}"]`),

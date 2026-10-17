@@ -15,6 +15,7 @@ import {
   VENV_PYTHON,
   type ChangeDemoTruth,
 } from './fixtures';
+import { openBench } from './island';
 
 test.use({ appEnv: PIPELINE_ENV });
 
@@ -189,7 +190,7 @@ test('Find changes in matched frames: one frame change per photo pair, drafts on
   test.setTimeout(240_000);
   const { win, truth } = demoProject;
   const photos = pairs(truth, 'photos');
-  await win.getByTestId('tab-changes').click();
+  await openBench(win, 'changes');
   const panel = win.getByTestId('change-panel');
   await expect(panel).toBeVisible();
   const run = panel.getByTestId('change-producer-frames');
