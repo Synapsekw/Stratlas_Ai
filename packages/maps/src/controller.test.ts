@@ -77,6 +77,12 @@ class FakeMap {
   getContainer(): HTMLElement {
     return this.canvas.parentElement ?? this.canvas;
   }
+  getBearing(): number {
+    return 0;
+  }
+  getPitch(): number {
+    return 0;
+  }
   triggerRepaint(): void {
     this.fire('render');
   }

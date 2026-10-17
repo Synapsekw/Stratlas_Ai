@@ -21,7 +21,7 @@ const ARROW = 'aio-media-pin-arrow';
 export const MEDIA_PIN_LAYERS = [ARROW] as const;
 
 /** The arrow image: drawn at twice its map size. */
-const PX = 32;
+const PX = 40;
 const RATIO = 2;
 
 /** One point per pin at its ground point; `heading` only when the pin has one. */
@@ -76,15 +76,16 @@ function edgeDistance(poly: readonly (readonly [number, number])[], x: number, y
 }
 
 /**
- * An arrowhead pointing up (north before rotation), jade with a dark rim, as raw pixels (no 2D
- * canvas needed): four samples a pixel smooth its edges.
+ * An arrowhead pointing up (north before rotation): jade, with a thin dark rim outside it so it
+ * reads on light ground too, as raw pixels (no 2D canvas needed); four samples a pixel smooth its
+ * edges.
  */
 function arrowImage(): { width: number; height: number; data: Uint8Array } {
   const head: [number, number][] = [
-    [16, 3],
-    [27, 27],
-    [16, 21],
-    [5, 27],
+    [20, 4],
+    [33, 34],
+    [20, 27],
+    [7, 34],
   ];
   const fill = rgb(MAP_INK.accStrong);
   const rim = rgb(MAP_INK.bg0);
@@ -99,9 +100,8 @@ function arrowImage(): { width: number; height: number; data: Uint8Array } {
           const px = x + sx;
           const py = y + sy;
           if (inside(head, px, py)) {
-            if (edgeDistance(head, px, py) > 2.2) nf++;
-            else nr++;
-          } else if (edgeDistance(head, px, py) <= 1.2) nr++;
+            nf++;
+          } else if (edgeDistance(head, px, py) <= 1.6) nr++;
         }
       const n = nf + nr;
       if (!n) continue;
@@ -132,7 +132,7 @@ export function setMediaPins(map: MapLibreMap, data: FeatureCollection<Point>): 
       'icon-rotate': ['get', 'heading'],
       'icon-rotation-alignment': 'map',
       // ahead of the 18 px plate, in the heading's direction (the offset turns with the icon)
-      'icon-offset': [0, -19],
+      'icon-offset': [0, -21],
       'icon-allow-overlap': true,
       'icon-ignore-placement': true,
     },

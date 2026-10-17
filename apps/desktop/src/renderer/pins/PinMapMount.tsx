@@ -10,6 +10,7 @@ import {
   type MapController,
   type MapPin,
 } from '@aio/maps';
+import type { ProjectManifest } from '@aio/schema';
 import { useWorkspace, workspace } from '@aio/workspace';
 import { useEffect, useMemo, useState } from 'react';
 import { shell } from '../shell';
@@ -22,6 +23,9 @@ import { drawnPins, keyString } from './pinModel';
  * map when no 3D view is on screen), and pinned items with a heading show an arrow on the map.
  * The marker plates and the photo click are the map's own (`@aio/maps` mediaMarkers).
  */
+
+type MapLibreMap = Parameters<typeof setMediaPins>[0];
+type ArrowData = Parameters<typeof setMediaPins>[1];
 
 /** How long a 3D view that is only now opening may take to load the 360's layer. */
 const WAIT_MS = 20_000;
@@ -103,6 +107,36 @@ export function openPanoFromMap(layerId: string, id: string): void {
   });
 }
 
+/** The pins of the shown layers that have a heading, as map arrows. */
+export function arrowPins(manifest: ProjectManifest, hidden: ReadonlySet<string>): MapPin[] {
+  return drawnPins(manifest, hidden).flatMap((p) =>
+    p.headingDeg === undefined
+      ? []
+      : [{ id: keyString(p.key), kind: p.key.kind, ground: p.ground, headingDeg: p.headingDeg }],
+  );
+}
+
+/**
+ * Draw these arrows on the map now, or once it is idle when its style is busy (sources reloading
+ * after a save: 'load' has long fired). Returns a function that stops a waiting draw.
+ */
+export function showPinArrows(map: MapLibreMap, data: ArrowData): () => void {
+  let live = true;
+  const draw = () => {
+    if (!live) return;
+    if (!map.isStyleLoaded()) {
+      map.once('idle', draw);
+      return;
+    }
+    setMediaPins(map, data);
+  };
+  draw();
+  return () => {
+    live = false;
+    map.off('idle', draw);
+  };
+}
+
 export function PinMapMount(): null {
   const [ctl, setCtl] = useState<MapController | null>(() => getActiveMap());
   const manifest = useWorkspace((s) => s.project?.manifest);
@@ -121,35 +155,13 @@ export function PinMapMount(): null {
 
   useEffect(() => {
     const map = ctl?.map;
-    if (!map) return;
-    const proj = manifest ? frameProjection(manifest.crs, manifest.origin) : null;
-    const pins: MapPin[] =
-      manifest && proj
-        ? drawnPins(manifest, hidden).flatMap((p) =>
-            p.headingDeg === undefined
-              ? []
-              : [
-                  {
-                    id: keyString(p.key),
-                    kind: p.key.kind,
-                    ground: p.ground,
-                    headingDeg: p.headingDeg,
-                  },
-                ],
-          )
-        : [];
-    const apply = () => {
-      if (proj)
-        setMediaPins(
-          map,
-          mediaPinData(pins, (g) => proj.toLonLat(g)),
-        );
-    };
-    if (map.isStyleLoaded()) apply();
-    else map.once('load', apply);
-    return () => {
-      map.off('load', apply);
-    };
+    if (!map || !manifest) return;
+    const proj = frameProjection(manifest.crs, manifest.origin);
+    if (!proj) return;
+    return showPinArrows(
+      map,
+      mediaPinData(arrowPins(manifest, hidden), (g) => proj.toLonLat(g)),
+    );
   }, [ctl, manifest, hidden]);
 
   useEffect(() => {

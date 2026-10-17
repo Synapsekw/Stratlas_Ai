@@ -22,6 +22,10 @@ function fakeMap() {
     getCanvasContainer: () => canvasContainer,
     getCanvas: () => canvas,
     project: (ll: [number, number]) => ({ x: ll[0], y: ll[1] }),
+    getCenter: () => ({ lng: 0, lat: 0 }),
+    getZoom: () => 18,
+    getBearing: () => 0,
+    getPitch: () => 0,
     on: (type: string, cb: () => void) => {
       if (type === 'render') renders.add(cb);
     },
@@ -140,10 +144,23 @@ describe('MapMediaMarkers', () => {
     expect(photo).toHaveBeenCalledTimes(1);
     expect(select).toHaveBeenCalledWith({ kind: 'photo', id: 'pinned', layer: 'ph' });
 
+    // a double click on a plate does not zoom the map
+    const mapDouble = vi.fn();
+    canvasContainer.addEventListener('dblclick', mapDouble);
+    click(canvas, 100, 100, { ctrlKey: true });
+    canvas.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    click(canvas, 100, 100, { ctrlKey: true });
+    canvas.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    canvas.dispatchEvent(new MouseEvent('dblclick', { bubbles: true }));
+    expect(mapDouble).not.toHaveBeenCalled();
+    expect(mapClick).not.toHaveBeenCalled();
+
     // a press away from the markers is MapLibre's
     click(canvas, 20, 20);
     canvas.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    canvas.dispatchEvent(new MouseEvent('dblclick', { bubbles: true }));
     expect(mapClick).toHaveBeenCalledTimes(1);
+    expect(mapDouble).toHaveBeenCalledTimes(1);
     m.dispose();
   });
 
@@ -154,6 +171,18 @@ describe('MapMediaMarkers', () => {
     m.update(s);
     click(canvas, 300, 200);
     expect(openPano).toHaveBeenCalledWith('pa', 'sphere');
+    m.dispose();
+  });
+
+  it('skips re-projecting on a render that did not move the view', () => {
+    const { map, proj } = fakeMap();
+    const project = vi.spyOn(map, 'project');
+    const m = new MapMediaMarkers({ map, proj, url });
+    m.update(state().s);
+    const after = project.mock.calls.length;
+    expect(after).toBeGreaterThan(0);
+    map.triggerRepaint();
+    expect(project.mock.calls.length).toBe(after);
     m.dispose();
   });
 

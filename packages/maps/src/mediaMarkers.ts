@@ -23,7 +23,8 @@ import { photoMapClickHandler } from './photoPins';
 
 /**
  * Markers over a MapLibre map: positions through the frame projection, a layout on every map
- * render, and a click a marker took kept from MapLibre (its `click` never fires for that press).
+ * render that moved the view, and a click a marker took kept from MapLibre (its `click` never
+ * fires for that press, nor the `dblclick` zoom when a double click lands on a plate).
  * `busy`: another tool owns the pointer (a pick, a drawing), so markers take no hover or clicks.
  */
 export function mapMarkerView(
@@ -53,24 +54,36 @@ export function mapMarkerView(
     requestFrame: () => {
       map.triggerRepaint();
     },
+    viewKey: () => {
+      const c = map.getCenter();
+      const el = map.getCanvas();
+      const size = `${String(el.clientWidth)}x${String(el.clientHeight)}`;
+      return `${size} ${String(c.lng)} ${String(c.lat)} ${String(map.getZoom())} ${String(map.getBearing())} ${String(map.getPitch())}`;
+    },
     claimClick: () => {
-      // MapLibre listens for `click` on its canvas container (bubbling): stop this press's click
-      // on the way down, at the map container
+      // MapLibre listens for `click` and `dblclick` on its canvas container (bubbling): stop this
+      // press's click, and the double click it may end, on the way down at the map container
       drop?.();
-      const stop = (e: Event) => {
+      const stopClick = (e: Event) => {
+        e.stopPropagation();
+        container.removeEventListener('click', stopClick, true);
+      };
+      const stopDouble = (e: Event) => {
         e.stopPropagation();
         off();
       };
       // a press that sends no click must not swallow a later one: the next press or a moment
-      // later drops the stop
+      // later drops the stops (a double click's second press claims again)
       const off = () => {
-        container.removeEventListener('click', stop, true);
+        container.removeEventListener('click', stopClick, true);
+        container.removeEventListener('dblclick', stopDouble, true);
         container.removeEventListener('pointerdown', off, true);
         clearTimeout(timer);
         if (drop === off) drop = null;
       };
       const timer = setTimeout(off, 400);
-      container.addEventListener('click', stop, true);
+      container.addEventListener('click', stopClick, true);
+      container.addEventListener('dblclick', stopDouble, true);
       container.addEventListener('pointerdown', off, true);
       drop = off;
     },
