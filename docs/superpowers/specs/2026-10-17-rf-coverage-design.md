@@ -145,11 +145,11 @@ Owned by the antenna-detection work: `packages/schema/src/antennas.ts`, `apps/de
 - **Two engines** (TypeScript preview, Python job) can drift; the shared golden vectors are the guard.
 - **Grid azimuth without a CRS:** coverage is refused (D2). Projects without a CRS need one first.
 
-## Open for the founder
+## Answered by the founder (17 Oct)
 
-1. Ship a seed catalogue of about 20 real products (marked unverified until checked), or only the generic entries plus import?
-2. Should a coverage run be included when a project is packaged (`.aio`)? Default yes for `run.json` and the composite grids, no for the per-sector cache.
-3. Is the CSV import format worth agreeing with a pilot operator before Phase 1 ends?
+1. **Seed catalogue: yes.** Ship about 20 real radio units, AAUs and antennas from public datasheets, each marked unverified until checked against the unit's own datasheet, alongside the generic entries and MSI import.
+2. **Packaging: yes.** A packaged project (`.aio`) includes coverage runs: `run.json` and the composite grids. The per-sector path-loss cache is left out and rebuilt on demand.
+3. **No pilot operator.** The CSV format is ours, documented in the guide, with no external agreement. The founder's reference tower project is the real-data check for Phase 1; tests stay on synthetic fixtures (the repo is public).
 
 ## Sources
 
