@@ -34,6 +34,7 @@ import { AntennaAiLabel, AntennasFile } from './antennas';
 import { CleanupLayerId, NoiseRun, PointcloudCleanup } from './pointcloudCleanup';
 import { PanoQuality, PanoScan } from './panoStitch';
 import {
+  AntennaId,
   CatalogueId,
   CatalogueOrigin,
   RfCatalogueEntry,
@@ -3452,12 +3453,19 @@ export const ipc = {
   /**
    * `rf/sectors.json` (`aio.rf-sectors/1`); `file` is null when the project has none. A file saved
    * by a newer version answers a failure with the update message and is left unchanged.
-   * `readOnly` for a package.
+   * `readOnly` for a package. `orphans` are the antenna ids in the file that the antenna
+   * inventory no longer has as a usable unit (removed, rejected or not found in the latest run);
+   * they are flagged, never deleted (D9). Empty when `telecom/antennas.json` does not exist.
    */
   'rf:readSectors': {
     request: z.object({ projectId: ProjectId }).strict(),
     response: z.discriminatedUnion('ok', [
-      z.object({ ok: z.literal(true), file: RfSectorsFile.nullable(), readOnly: z.boolean() }),
+      z.object({
+        ok: z.literal(true),
+        file: RfSectorsFile.nullable(),
+        readOnly: z.boolean(),
+        orphans: z.array(AntennaId),
+      }),
       Failure,
     ]),
   },
@@ -3479,6 +3487,8 @@ export const ipc = {
       z.object({
         ok: z.literal(true),
         entries: z.array(z.object({ origin: CatalogueOrigin, entry: RfCatalogueEntry }).strict()),
+        /** Catalogue files that could not be read (the rest are still listed). */
+        warnings: z.array(z.string()),
       }),
       Failure,
     ]),

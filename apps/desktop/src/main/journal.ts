@@ -194,6 +194,11 @@ const WRITERS: Partial<
     rel: 'edits/boundaries.json',
     after: r.file,
   }),
+  'rf:writeSectors': (r: IpcRequest<'rf:writeSectors'>) => ({
+    projectId: r.projectId,
+    rel: 'rf/sectors.json',
+    after: r.file,
+  }),
   'report:writeNarrative': (r: IpcRequest<'report:writeNarrative'>) => ({
     projectId: r.projectId,
     rel: 'report/narrative.json',

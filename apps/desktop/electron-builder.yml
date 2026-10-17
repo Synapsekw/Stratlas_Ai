@@ -35,6 +35,9 @@ compression: normal
 extraResources:
   - from: demo
     to: demo
+  # RF coverage catalogue (read only); main/rf.ts reads it from resources/rf-catalogue
+  - from: ../../packages/rf/catalogue
+    to: rf-catalogue
 
 # Electron fuses, flipped at package time (SPEC section 8, tech-evaluation section 1).
 electronFuses:

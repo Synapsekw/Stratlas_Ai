@@ -241,6 +241,7 @@ import { appUserModelId } from './appUserModel';
 import { linkPathFromArgv, parseAppLink } from './appLink';
 import { popupAction } from './popup';
 import {
+  checkExport,
   createPackageJobs,
   createPlanCache,
   exportFormatRefusal,
@@ -249,6 +250,7 @@ import {
   ProjectPolicy,
   stagePackageExport,
 } from './packages';
+import { createRf } from './rf';
 import { openProject, ProjectRegistry, readManifest, writeProjectIssues } from './project';
 import { readPackageVolumes, readVolumes, writeBoundaries } from './boundaries';
 import { folderFiles, packageFiles, readDetectionPasses, writeDetectionPass } from './detections';
@@ -1079,6 +1081,29 @@ function registerIpc(): void {
       return { ok: false, error: `Project "${projectId}" is not open. Open it, then save again.` };
     return writeCentreline(root, coordinates);
   });
+
+  // RF coverage: sectors, catalogue, runs and exports (main/rf.ts).
+  const rf = createRf({
+    // the catalogue shipped with the app: beside the repo in development, in resources once packaged
+    userDir: join(app.getPath('userData'), 'rf-catalogue'),
+    builtinDir: app.isPackaged
+      ? join(process.resourcesPath, 'rf-catalogue')
+      : join(app.getAppPath(), '..', '..', 'packages', 'rf', 'catalogue'),
+    projects: { root: (id) => registry.root(id), package: (id) => registry.package(id) },
+    choose: (defaultName, format) =>
+      chooseSavePath(join(app.getPath('downloads'), defaultName), {
+        name: format === 'geotiff' ? 'GeoTIFF' : format === 'geojson' ? 'GeoJSON' : 'CSV',
+        extensions: [format === 'geotiff' ? 'tif' : format],
+      }),
+    refuse: (id, name) => checkExport(registry.package(id)?.header, name),
+  });
+  handle('rf:readSectors', (req) => rf.readSectors(req));
+  handle('rf:writeSectors', (req) => rf.writeSectors(req));
+  handle('rf:listCatalogue', (req) => rf.listCatalogue(req));
+  handle('rf:importCatalogue', (req) => rf.importCatalogue(req));
+  handle('rf:listRuns', (req) => rf.listRuns(req));
+  handle('rf:readRun', (req) => rf.readRun(req));
+  handle('rf:export', (req) => rf.export(req));
 
   // Detection review (BLD-5) and AI-assisted detection (BLD-6).
   handle('detections:read', async ({ projectId }) => {
