@@ -1,0 +1,38 @@
+{
+  "about": "Path loss per antenna and frequency, dB, little-endian Float32, row 0 at the top, NaN outside the study radius.",
+  "grid": {
+    "origin": [499750.0, 2700275.0],
+    "width": 21,
+    "height": 21,
+    "resolutionM": 25.0,
+    "radiusM": 250.0
+  },
+  "grids": [
+    {
+      "key": "77f598e0faf65726d171aad0",
+      "file": "ant-s1-1842.5mhz.f32",
+      "antennaId": "ant-s1",
+      "carrierIds": ["l1800"],
+      "frequencyMhz": 1842.5,
+      "heightM": 40.0,
+      "ueHeightM": 1.5,
+      "model": "tr38901",
+      "environment": "uma",
+      "east": 500000.0,
+      "north": 2700000.6
+    },
+    {
+      "key": "c2b39d83c7b53b111fbff3cb",
+      "file": "ant-s2-1842.5mhz.f32",
+      "antennaId": "ant-s2",
+      "carrierIds": ["l1800"],
+      "frequencyMhz": 1842.5,
+      "heightM": 40.0,
+      "ueHeightM": 1.5,
+      "model": "tr38901",
+      "environment": "uma",
+      "east": 500000.9,
+      "north": 2699999.6
+    }
+  ]
+}

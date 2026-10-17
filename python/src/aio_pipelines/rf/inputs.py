@@ -28,6 +28,11 @@ from .grid import NO_CRS
 SECTORS_SCHEMA = "aio.rf-sectors/1"
 CATALOGUE_SCHEMA = "aio.rf-catalogue/1"
 ANTENNAS_PATH = "telecom/antennas.json"
+#: The antenna-detection file family and the newest version read. The family and the number stay
+#: apart: a whole id literal would read as a file schema to the registry scan, and that schema
+#: belongs to the antenna-detection work.
+ANTENNAS_FAMILY = "aio." + "antennas"
+ANTENNAS_VERSION = 1
 SECTORS_PATH = "rf/sectors.json"
 CATALOGUE_PATH = "rf/catalogue.json"
 #: Ground below the tower read from a DSM: a low percentile within this radius of the antenna,
@@ -88,8 +93,20 @@ def study_of(sectors_file: dict[str, Any]) -> dict[str, Any]:
 
 
 def read_antennas(project: Path) -> dict[str, Any]:
+    """The antenna inventory. A newer major version is refused before anything in it is read."""
     doc = _read_json(project, ANTENNAS_PATH, "the antenna inventory; run Detect antennas first")
-    if not isinstance(doc, dict) or not isinstance(doc.get("units"), list):
+    if not isinstance(doc, dict):
+        raise JobError(f"{ANTENNAS_PATH} is not an antenna inventory.")
+    sid = doc.get("schema")
+    m = re.fullmatch(rf"{re.escape(ANTENNAS_FAMILY)}/(\d+)", sid) if isinstance(sid, str) else None
+    if m is None:
+        raise JobError(f"{ANTENNAS_PATH} is not an antenna inventory ({ANTENNAS_FAMILY} file).")
+    if int(m.group(1)) > ANTENNAS_VERSION:
+        raise JobError(
+            f"{ANTENNAS_PATH} was saved by a newer version of the antenna detection ({sid}); this version reads "
+            f"version {ANTENNAS_VERSION} only. Update the processing tools to predict coverage from it."
+        )
+    if not isinstance(doc.get("units"), list):
         raise JobError(f"{ANTENNAS_PATH} has no units list.")
     return doc
 
@@ -142,13 +159,14 @@ def exclusion(
     """
     uid = u.get("id")
     status = u.get("status")
+    user = u.get("user")
+    if user is not None and not isinstance(user, dict):
+        return f"{uid} has an unreadable user field in the antenna inventory."
     if status == "rejected":
         return f"{uid} was rejected in the antenna inventory."
     if u.get("notFoundInLatest") is True:
         return f"{uid} was not found in the latest antenna detection."
-    if (settings is not None and settings.get("active") is False) or (u.get("user") or {}).get(
-        "active"
-    ) is False:
+    if (settings is not None and settings.get("active") is False) or (user or {}).get("active") is False:
         return f"{uid} is marked inactive."
     kind = u.get("kind")
     if kind in ("dish", "other"):
@@ -244,10 +262,30 @@ class Resolved:
     excluded: list[str]
 
 
+def band_range(e: dict[str, Any]) -> tuple[float, float] | None:
+    """A catalogue entry's or port's ``bandRangeMhz`` as (low, high), or None when it is malformed."""
+    r = e.get("bandRangeMhz")
+    if not isinstance(r, list | tuple) or len(r) != 2:
+        return None
+    lo, hi = _num(r[0]), _num(r[1])
+    if lo is None or hi is None or not lo < hi:
+        return None
+    return lo, hi
+
+
 def _port_for(
     entry: dict[str, Any], carrier: dict[str, Any], f: float, warn: list[str], aid: str
 ) -> dict[str, Any] | None:
-    ports = [p for p in entry.get("ports") or [] if isinstance(p, dict)]
+    ports = []
+    for p in entry.get("ports") or []:
+        if not isinstance(p, dict):
+            continue
+        if band_range(p) is None:
+            warn.append(
+                f"{aid}: port {p.get('id')} of {entry.get('id')} has no readable band range; left out."
+            )
+            continue
+        ports.append(p)
     if not ports:
         warn.append(f"{aid}: antenna {entry.get('id')} has no ports in the catalogue.")
         return None
@@ -260,8 +298,8 @@ def _port_for(
             )
         return hit
     for p in ports:
-        lo, hi = (p.get("bandRangeMhz") or [0, 0])[:2]
-        if lo <= f <= hi:
+        rng = band_range(p)
+        if rng is not None and rng[0] <= f <= rng[1]:
             return p
     warn.append(f"{aid}: no port of {entry.get('id')} covers {f:g} MHz; port {ports[0].get('id')} used.")
     return ports[0]
@@ -306,8 +344,9 @@ def resolve(
     sector_ids: list[str] | None,
     include_unreviewed: bool,
 ) -> Resolved:
-    sectors = [s for s in sectors_file["sectors"] if isinstance(s, dict)]
-    known = {s.get("id") for s in sectors}
+    # indices into the file's own list, so best server indexes run.inputs.sectors.sectors exactly
+    sectors = list(sectors_file["sectors"])
+    known = {s.get("id") for s in sectors if isinstance(s, dict)}
     if sector_ids is not None:
         missing = [s for s in sector_ids if s not in known]
         if missing:
@@ -334,9 +373,13 @@ def resolve(
         }
 
     for index, sec in enumerate(sectors):
+        if not isinstance(sec, dict):
+            excluded.append(f"Sector {index + 1} of rf/sectors.json is not readable; left out.")
+            continue
         if sector_ids is not None and sec.get("id") not in sector_ids:
             continue
-        for aid in sec.get("antennaIds") or []:
+        members = sec.get("antennaIds")
+        for aid in members if isinstance(members, list) else []:
             candidates += 1
             u = units.get(aid)
             if u is None:

@@ -1,0 +1,157 @@
+{
+  "schema": "aio.rf-run/1",
+  "runId": "rf-py-fixture",
+  "createdAt": "2026-10-17T10:42:24Z",
+  "status": "done",
+  "inputs": {
+    "sectors": {
+      "schema": "aio.rf-sectors/1",
+      "sectors": [
+        {
+          "id": "sec-s1",
+          "name": "S1",
+          "antennaIds": ["ant-s1"]
+        },
+        {
+          "id": "sec-s2",
+          "name": "S2",
+          "antennaIds": ["ant-s2"]
+        }
+      ],
+      "antennas": [
+        {
+          "antennaId": "ant-s1",
+          "equipment": {
+            "kind": "separate",
+            "antenna": "generic-panel-65-17",
+            "radio": "generic-rru-2x40w"
+          },
+          "etiltDeg": 4.0,
+          "active": true,
+          "carriers": [
+            {
+              "id": "l1800",
+              "radioUnit": "generic-rru-2x40w",
+              "port": "p1",
+              "tech": "lte",
+              "band": "B3",
+              "bandwidthMhz": 20,
+              "powerDbmPerPort": 43.0,
+              "feederLossDb": 0.5
+            }
+          ]
+        },
+        {
+          "antennaId": "ant-s2",
+          "equipment": {
+            "kind": "separate",
+            "antenna": "generic-panel-65-17",
+            "radio": "generic-rru-2x40w"
+          },
+          "etiltDeg": 4.0,
+          "active": true,
+          "carriers": [
+            {
+              "id": "l1800",
+              "radioUnit": "generic-rru-2x40w",
+              "port": "p1",
+              "tech": "lte",
+              "band": "B3",
+              "bandwidthMhz": 20,
+              "powerDbmPerPort": 43.0,
+              "feederLossDb": 0.5
+            }
+          ]
+        }
+      ],
+      "study": {
+        "model": "tr38901",
+        "environment": "uma",
+        "ueHeightM": 1.5,
+        "marginPreset": "outdoor",
+        "bodyLossDb": 3,
+        "edgeProbability": 0.9,
+        "shadowSigmaDb": 8,
+        "thresholds": {
+          "excellentDbm": -80,
+          "goodDbm": -95,
+          "fairDbm": -105,
+          "poorDbm": -115
+        },
+        "gridResolutionM": 25,
+        "radiusM": 250
+      }
+    },
+    "antennas": [
+      {
+        "id": "ant-s1",
+        "centre": [500000.0, 2700000.6, 52.0],
+        "groundZ": 12.0,
+        "heightM": 40.0,
+        "azimuthGridDeg": 0.0,
+        "convergenceDeg": 0.8,
+        "downtiltDeg": 2.0,
+        "status": "accepted"
+      },
+      {
+        "id": "ant-s2",
+        "centre": [500000.9, 2699999.6, 52.0],
+        "groundZ": 12.0,
+        "heightM": 40.0,
+        "azimuthGridDeg": 180.0,
+        "convergenceDeg": 0.8,
+        "downtiltDeg": 2.0,
+        "status": "accepted"
+      }
+    ]
+  },
+  "catalogue": [
+    {
+      "id": "generic-rru-2x40w",
+      "kind": "radio",
+      "verified": false
+    },
+    {
+      "id": "generic-panel-65-17",
+      "kind": "antenna",
+      "verified": false
+    }
+  ],
+  "model": {
+    "model": "tr38901",
+    "environment": "uma"
+  },
+  "grid": {
+    "crs": "EPSG:32640",
+    "resolutionM": 25.0,
+    "radiusM": 250.0,
+    "origin": [499750.0, 2700275.0],
+    "width": 21,
+    "height": 21,
+    "nodata": -9999.0
+  },
+  "timings": {
+    "totalMs": 210.5,
+    "pathLossMs": 44.7,
+    "budgetMs": 1.2,
+    "writeMs": 162.4
+  },
+  "warnings": [],
+  "usedUnreviewed": false,
+  "patterns": [
+    {
+      "antennaId": "ant-s1",
+      "source": "generic"
+    },
+    {
+      "antennaId": "ant-s2",
+      "source": "generic"
+    }
+  ],
+  "outputs": {
+    "rsrp": "rsrp.tif",
+    "bestServer": "best-server.tif",
+    "overlap": "overlap.tif",
+    "pathLossDir": "pathloss"
+  }
+}

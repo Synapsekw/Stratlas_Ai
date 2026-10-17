@@ -322,6 +322,9 @@ class RfCoverage:
                 pl = np.asarray(maps[(s.antenna_id, s.frequency_mhz)][r0:r1], dtype=np.float64)
                 de = cols[None, :] - s.east
                 dn = rows - s.north
+                # The pattern angle takes the study's UE height as set, as preview.ts does
+                # (dz = ueHeightM - heightM); only the 38.901 formulas clamp it, inside the
+                # path-loss model (TR38901_MIN_UE_HEIGHT_M). Keep the two engines identical.
                 du = np.full_like(pl, hut - s.height_m)
                 az, down = antenna_angles(
                     np.broadcast_to(de, pl.shape),

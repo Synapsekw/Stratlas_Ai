@@ -85,10 +85,24 @@ def ref_angles(de, dn, du, az_grid, mech):
     return math.degrees(math.atan2(r, fwd)), -math.degrees(math.atan2(up, math.hypot(fwd, r)))
 
 
+def job_classes(root: Path, run: dict) -> dict[str, int]:
+    rsrp = read_grid(root, run, "rsrp")
+    th = run["inputs"]["sectors"]["study"]["thresholds"]
+    v = rsrp[rsrp != run["grid"]["nodata"]]
+    return {
+        "excellent": int(np.sum(v >= th["excellentDbm"])),
+        "good": int(np.sum((v >= th["goodDbm"]) & (v < th["excellentDbm"]))),
+        "fair": int(np.sum((v >= th["fairDbm"]) & (v < th["goodDbm"]))),
+        "poor": int(np.sum((v >= th["poorDbm"]) & (v < th["fairDbm"]))),
+        "none": int(np.sum(v < th["poorDbm"])),
+    }
+
+
 def ref_classes(run: dict) -> dict[str, int]:
     g = run["grid"]
     study = run["inputs"]["sectors"]["study"]
     th = study["thresholds"]
+    ue = study["ueHeightM"]
     port = S.ANTENNA["ports"][0]
     margin = 0 + study["bodyLossDb"] + 1.2815515655446004 * study["shadowSigmaDb"]
     per_re = 10 * math.log10(12 * 100)
@@ -106,8 +120,9 @@ def ref_classes(run: dict) -> dict[str, int]:
                 d2 = math.hypot(de, dn)
                 if d2 > g["radiusM"]:
                     continue
-                pl = REF.tr38901("uma", 1842.5, d2, S.HEIGHT_M, 1.5)[3]
-                az, down = ref_angles(de, dn, 1.5 - S.HEIGHT_M, u["azimuthGridDeg"], u["downtiltDeg"])
+                # the generator clamps the UE inside the model; the angle takes the study UE as set
+                pl = REF.tr38901("uma", 1842.5, d2, S.HEIGHT_M, ue)[3]
+                az, down = ref_angles(de, dn, ue - S.HEIGHT_M, u["azimuthGridDeg"], u["downtiltDeg"])
                 ah = min(12 * (az / port["hBeamwidthDeg"]) ** 2, port["frontToBackDb"])
                 av = min(12 * ((down - S.ETILT) / port["vBeamwidthDeg"]) ** 2, 30)
                 best = max(best, const - min(ah + av, port["frontToBackDb"]) - pl)
@@ -201,19 +216,10 @@ def test_three_sector_site_matches_the_reference_class_areas(tmp_path):
     assert np.all(overlap[valid] >= 1) and np.all(overlap[valid] <= 3)
     assert np.all(overlap[~valid] == 0)
 
-    want = ref_classes(r)
-    th = r["inputs"]["sectors"]["study"]["thresholds"]
-    v = rsrp[valid]
-    got = {
-        "excellent": int(np.sum(v >= th["excellentDbm"])),
-        "good": int(np.sum((v >= th["goodDbm"]) & (v < th["excellentDbm"]))),
-        "fair": int(np.sum((v >= th["fairDbm"]) & (v < th["goodDbm"]))),
-        "poor": int(np.sum((v >= th["poorDbm"]) & (v < th["fairDbm"]))),
-        "none": int(np.sum(v < th["poorDbm"])),
-    }
-    assert sum(got.values()) == sum(want.values())
-    for k in got:  # Float32 storage can move a pixel that sits on a floor
-        assert abs(got[k] - want[k]) <= 2, (k, got, want)
+    # Exact, pixel for pixel per class. Float32 storage could in principle move a pixel lying
+    # within about 1e-5 dB of a class floor; none does on this site, so no tolerance is allowed.
+    got, want = job_classes(root, r), ref_classes(r)
+    assert got == want
     # 43 dBm over 20 MHz with a 13.3 dB margin: no excellent pixels, every other class present
     assert got["good"] > 0 and got["fair"] > 0 and got["poor"] > 0 and got["none"] > 0
     assert result["outputs"]["predict"]["classAreasM2"]["good"] == got["good"] * 25 * 25
@@ -343,10 +349,14 @@ def test_height_falls_back_to_the_override_and_warns_without_ground(tmp_path):
     assert any("ant-s2" in w and "height" in w for w in r["warnings"])
 
 
-def test_low_ue_is_clamped_with_a_warning(tmp_path):
+def test_low_ue_is_clamped_in_path_loss_only_as_the_preview_does(tmp_path):
+    """preview.ts takes the study UE (0.5 m) for the pattern angle; 38.901 clamps it to 1.5 m
+    inside the path loss. The scalar reference does the same and must match exactly."""
     root = S.write_site(tmp_path, study={"ueHeightM": 0.5})
     run(root, "rf-ue")
-    assert any("1.5 m used" in w for w in read_run(root, "rf-ue")["warnings"])
+    r = read_run(root, "rf-ue")
+    assert any("1.5 m used" in w for w in r["warnings"])
+    assert job_classes(root, r) == ref_classes(r)
 
 
 def test_a_model_out_of_its_band_is_refused_with_the_range(tmp_path):
@@ -406,3 +416,50 @@ def test_ten_km_grid_at_thirty_metres_runs_quickly(tmp_path):
     assert r["grid"]["width"] >= 333
     print(f"10 x 10 km at 30 m, 3 sectors: {elapsed:.2f} s ({r['grid']['width']} x {r['grid']['height']})")
     assert elapsed < 20
+
+
+def test_a_non_dict_user_field_leaves_the_unit_out_with_a_warning(tmp_path):
+    units = [S.unit(k, az) for k, az in enumerate(S.AZIMUTHS)]
+    units[1]["user"] = "inactive"
+    root = S.write_site(tmp_path, units=units)
+    run(root, "rf-user")
+    r = read_run(root, "rf-user")
+    assert [a["id"] for a in r["inputs"]["antennas"]] == ["ant-s1", "ant-s3"]
+    assert any("ant-s2" in w and "user field" in w for w in r["warnings"])
+
+
+def test_a_short_band_range_leaves_the_port_out_with_a_warning(tmp_path):
+    good = json.loads(json.dumps(S.ANTENNA))
+    bad = json.loads(json.dumps(S.ANTENNA))
+    bad["id"] = "generic-panel-broken"
+    bad["ports"][0]["bandRangeMhz"] = [698]
+    ids = [f"ant-s{k + 1}" for k in range(3)]
+    antennas = [S.settings(i) for i in ids]
+    antennas[2]["equipment"] = {"kind": "separate", "antenna": bad["id"], "radio": S.RADIO["id"]}
+    root = S.write_site(tmp_path, antennas=antennas, catalogue=[good, bad, S.RADIO])
+    run(root, "rf-band")
+    r = read_run(root, "rf-band")
+    assert [a["id"] for a in r["inputs"]["antennas"]] == ["ant-s1", "ant-s2"]
+    assert any("ant-s3" in w and "band range" in w for w in r["warnings"])
+
+
+def test_a_newer_antenna_file_is_refused_before_it_is_read(tmp_path):
+    root = S.write_site(tmp_path, antennas_version=2)
+    with pytest.raises(JobError, match="newer version of the antenna detection"):
+        run(root)
+    assert not (root / "rf" / "runs").exists()
+
+
+def test_an_unreadable_sector_entry_keeps_best_server_indices_on_the_file_list(tmp_path):
+    root = S.write_site(tmp_path)
+    path = root / "rf" / "sectors.json"
+    doc = json.loads(path.read_text("utf-8"))
+    doc["sectors"].insert(0, "not a sector")
+    path.write_text(json.dumps(doc), "utf-8")
+    run(root, "rf-idx")
+    r = read_run(root, "rf-idx")
+    best = read_grid(root, r, "bestServer")
+    valid = best != r["grid"]["nodata"]
+    # indices into run.inputs.sectors.sectors, which keeps the unreadable entry at 0
+    assert r["inputs"]["sectors"]["sectors"][0] == "not a sector"
+    assert set(np.unique(best[valid]).astype(int)) == {1, 2, 3}

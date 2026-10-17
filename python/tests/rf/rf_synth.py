@@ -131,6 +131,7 @@ def write_site(
     crs: dict[str, Any] | None = None,
     ground_z: float | None = GROUND_Z,
     catalogue: list[dict[str, Any]] | None = None,
+    antennas_version: int = 1,
 ) -> Path:
     units = units if units is not None else [unit(k, az) for k, az in enumerate(AZIMUTHS)]
     (root / "telecom").mkdir(parents=True, exist_ok=True)
@@ -152,7 +153,7 @@ def write_site(
         run["groundZ"] = ground_z
     # the antenna-detection file id is built in two parts (schema registry scan)
     (root / "telecom" / "antennas.json").write_text(
-        json.dumps({"schema": "aio." + "antennas/1", "run": run, "units": units}), "utf-8"
+        json.dumps({"schema": f"aio.antennas/{antennas_version}", "run": run, "units": units}), "utf-8"
     )
     ids = [u["id"] for u in units]
     sectors_file = {
