@@ -2,9 +2,12 @@ import { fitWalk, walkHeadingAt, type WalkFit, type XZ } from '@aio/geo';
 import type { MapOverlay, MapPointerSession } from '@aio/maps';
 import {
   readWalkOrientationData,
+  shiftLocal,
+  unshiftLocal,
   WalkOrientation,
   WalkRawPath,
   type AssetRef,
+  type DateShift,
   type JobRecord,
   type LayerPatch,
   type ProjectManifest,
@@ -15,6 +18,7 @@ import { t } from '@aio/ui';
 import {
   assetUrl,
   captureIndex,
+  dateShiftOf,
   dateTags,
   useWorkspace,
   workspace,
@@ -619,29 +623,44 @@ export function followMap(
   ui: StoreApi<PlaceUi>,
   project: () => OpenProject | null,
 ): () => void {
-  let pathFor: { fit: WalkFit | null; layer: WalkLayer | null; overlay: MapOverlay | null } = {
-    fit: null,
-    layer: null,
-    overlay: null,
-  };
+  let pathFor: {
+    fit: WalkFit | null;
+    layer: WalkLayer | null;
+    shift: DateShift | null;
+    overlay: MapOverlay | null;
+  } = { fit: null, layer: null, shift: null, overlay: null };
   let shown = false;
+  const sessionShift = (layerId: string | null): DateShift | null => {
+    const m = project()?.manifest;
+    return m && layerId !== null ? dateShiftOf(m, layerId) : null;
+  };
+  /** A pick on the map as model x/z of the walk's own frame (the writer subtracts the shift). */
+  const pickedAt = (local: Vec3): [number, number] => {
+    const p = unshiftLocal(local, sessionShift(session.getState().layerId));
+    return [p[0], p[2]];
+  };
   // one object for the life of the session: the map cancels a drag when its session is replaced
   const pointer: MapPointerSession = {
+    // the map shows the walk where its date lies: a pick is saved without the shift, a handle
+    // is drawn with it
     onMove: (local) => {
-      session.getState().hover(local ? [local[0], local[2]] : null, local?.[1]);
+      const at = local ? pickedAt(local) : null;
+      session.getState().hover(at, local?.[1]);
     },
     onClick: (local) => {
       if (wantsSurfaceClick(session.getState()))
-        session.getState().click([local[0], local[2]], local[1]);
+        session.getState().click(pickedAt(local), local[1]);
     },
-    handles: () =>
-      sessionHandles(session.getState()).map((h) => ({
+    handles: () => {
+      const shift = sessionShift(session.getState().layerId);
+      return sessionHandles(session.getState()).map((h) => ({
         id: h.handle,
-        local: [h.xz[0], h.y ?? 0, h.xz[1]] as Vec3,
-      })),
+        local: shiftLocal([h.xz[0], h.y ?? 0, h.xz[1]], shift),
+      }));
+    },
     onDrag: (id, local) => {
       if (id === 'start' || id === 'end')
-        session.getState().dragHandle(id, [local[0], local[2]], local[1]);
+        session.getState().dragHandle(id, pickedAt(local), local[1]);
     },
     onDragEnd: () => {
       session.getState().endDrag();
@@ -657,7 +676,7 @@ export function followMap(
       publishMap();
     }
     shown = false;
-    pathFor = { fit: null, layer: null, overlay: null };
+    pathFor = { fit: null, layer: null, shift: null, overlay: null };
     if (walkMap.getState().pointer === pointer) setWalkMapPointer(null);
   };
   const update = (): void => {
@@ -674,16 +693,18 @@ export function followMap(
     const proj = { toLonLat };
     const colour = (l: WalkLayer): string => resolveCssColour(walkColour(p.manifest, l));
     const raw = ui.getState().inputs.raw;
+    const shift = dateShiftOf(p.manifest, layer.id);
     // from the start click on: a lone start pin stays drawn while the cursor is off the map
-    if (s.pins.length === 0) pathFor = { fit: null, layer: null, overlay: null };
-    else if (pathFor.fit !== s.fit || pathFor.layer !== layer) {
+    if (s.pins.length === 0) pathFor = { fit: null, layer: null, shift: null, overlay: null };
+    else if (pathFor.fit !== s.fit || pathFor.layer !== layer || pathFor.shift !== shift) {
       const shownLayer = { ...layer, visible: true };
-      const [ov] = walkMapOverlays([{ layer: shownLayer, fit: s.fit, raw }], proj, colour, {
+      const [ov] = walkMapOverlays([{ layer: shownLayer, fit: s.fit, raw, shift }], proj, colour, {
         placingId: layer.id,
       });
       pathFor = {
         fit: s.fit,
         layer,
+        shift,
         overlay: ov
           ? {
               ...ov,
@@ -693,7 +714,7 @@ export function followMap(
           : null,
       };
     }
-    const now = walkNowMapOverlay({ layer, fit: s.fit, raw }, proj, colour, s.timeS);
+    const now = walkNowMapOverlay({ layer, fit: s.fit, raw, shift }, proj, colour, s.timeS);
     const preview = s.preview
       ? walkPreviewMapOverlay(
           layer.id,
@@ -702,6 +723,7 @@ export function followMap(
           colour(layer),
           s.preview.ghost,
           s.preview.tooClose,
+          shift,
         )
       : null;
     sessionMap = [pathFor.overlay, now, preview].filter((o): o is MapOverlay => o !== null);
@@ -905,7 +927,7 @@ export function placedWalkFits(
     const inputs = inputsOf(layer);
     if (!inputs || !layer.place) return [];
     const fit = fitWalk(inputs.raw, layer.place, frames, layer.durationS);
-    return fit.error ? [] : [{ layer, fit, raw: inputs.raw }];
+    return fit.error ? [] : [{ layer, fit, raw: inputs.raw, shift: dateShiftOf(m, layer.id) }];
   });
 }
 

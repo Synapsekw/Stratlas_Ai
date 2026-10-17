@@ -34,6 +34,7 @@ import { jobTitle } from './processing/pipelines';
 import { PipelineDialog } from './processing/PipelineDialog';
 import { ProcessingDrawer } from './processing/ProcessingDrawer';
 import { startFarWatch } from './builder/farSession';
+import { startLineUpSession } from './lineup/lineUpStart';
 import { MediaScreen } from './screens/Media';
 import { DetectionsScreen } from './screens/Detections';
 import { ProjectsScreen } from './screens/Projects';
@@ -46,13 +47,14 @@ import { createClass, createSeverityModel } from './classes/store';
 import { detections, loadDetections } from './detections/store';
 import { roadStore, startRoadSync } from './road/store';
 import { Toasts } from './exports/Toasts';
+import { LineUpDialog } from './lineup/LineUpDialog';
 import { isTypingTarget, spaceIsPlayPause } from './keys';
 import {
   finishedChangeJob,
   finishedIssuesJob,
   finishedManifestJob,
   finishedProjectJob,
-  jobsEnded,
+  watchJobEnds,
   mergeDiskIssues,
 } from './jobs';
 import { bridge, jobs, shell, useShell } from './shell';
@@ -372,6 +374,8 @@ export function App() {
       return r.value;
     });
     const stopFarWatch = startFarWatch();
+    // line up dates: the step, its notice and the background check
+    const stopLineUp = startLineUpSession();
     const stopJobReload = jobs.subscribe((s, prev) => {
       const project = workspace.getState().project;
       if (!project || !finishedManifestJob(prev.jobs, s.jobs, project.root)) return;
@@ -408,13 +412,15 @@ export function App() {
       });
     });
     // a job that ends is said aloud wherever the person is
-    const stopJobAnnounce = jobs.subscribe((s, prev) => {
-      for (const { job, ok } of jobsEnded(prev.jobs, s.jobs)) {
-        announce(
-          t(ok ? 'announce.jobDone' : 'announce.jobFailed', { job: jobTitle(job.pipeline) }),
-          ok ? 'polite' : 'assertive',
-        );
-      }
+    const stopJobAnnounce = watchJobEnds(jobs, ({ job, ok }) => {
+      announce(
+        t(ok ? 'announce.jobDone' : 'announce.jobFailed', { job: jobTitle(job.pipeline) }),
+        ok ? 'polite' : 'assertive',
+      );
+    });
+    // another project: quiet ids of jobs that are over go with it
+    const stopQuietPrune = workspace.subscribe((s, prev) => {
+      if (s.project?.id !== prev.project?.id) jobs.getState().pruneQuiet();
     });
     void initAuthor(bridge);
     // the agent's one conversation: it listens for as long as the app runs, whatever screen shows
@@ -488,6 +494,7 @@ export function App() {
       stopPeople();
       stopJobReload();
       stopFarWatch();
+      stopLineUp();
       stopChangeReload();
       stopIssueReload();
       stopRoad();
@@ -496,6 +503,7 @@ export function App() {
       window.removeEventListener('keydown', onKeyDown);
       stopFocus();
       stopJobAnnounce();
+      stopQuietPrune();
       stopPlayback();
       stopContinue();
       stopCard();
@@ -553,6 +561,7 @@ export function App() {
       <PackageExportDialog />
       <PanoImportDialog />
       <Toasts />
+      <LineUpDialog />
       <ClassNotice />
       <LiveAnnouncer />
       <BuilderLayer />

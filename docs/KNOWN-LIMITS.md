@@ -75,7 +75,20 @@ Current limits only; each is removed from this list when fixed.
 ### Change between dates
 
 - Change is found only where both dates have data; outside the overlap nothing is reported.
-- Change on dates that are not registered is refused: more than 2 px (orthos, surfaces), 5 cm (point clouds) or a 5 cm height offset (surfaces) apart. Align the layers first; there is no setting in the app for a larger tolerance.
+- Change on dates that are not registered is refused: more than 2 px (orthos, surfaces), 5 cm (point clouds) or a 5 cm height offset (surfaces) apart. Use **Line up dates** to correct a sideways gap; there is no setting in the app for a larger tolerance.
+- Line up dates: manual point picking is not available yet.
+- Line up dates only shifts sideways. It does not turn, scale or change height.
+- A 3D Tiles set built before a line-up stays at the old place on the globe until you build it again.
+- A change result made before a line-up keeps the old place. It is marked out of date: use **Run again**.
+- A site picked on the globe that isn't the open project draws its imagery without its line-up.
+- A point cloud exported as COPC from a lined-up date is written at its file position. It doesn't carry the correction. The same goes for a GeoTIFF or COG ortho or DSM, a vector and a video exported from a lined-up date with **Export...** on the dataset: the files are copied as they are, with no sidecar that says the correction. Survey exports of surfaces, orthos, clouds and measurements do carry it.
+- Survey compare uses the scope a measurement has on disk. After changing a measurement's scope, save before you compare.
+- A build from before line-up shows the date at its file position and drops the line-up on its next save.
+- The background check needs the pipeline Python. With an older pipeline pack installed, measuring doesn't work: the step says it couldn't measure, and the background check stays quiet.
+- When one date has several orthos, the first one is measured.
+- On small images the largest gap that can be measured drops below about 60 m. Quadrion refuses rather than guess.
+- The swipe preview in the step only shows imagery for orthos processed into Quadrion's own tiles. Other orthos and DSM-only dates show an empty preview, but the line-up still works.
+- If the date that stayed in place is moved later, dates lined up with it earlier don't follow. The background check measures them again and offers a new line-up.
 - The change thresholds are the defaults (`Settings.change`); there is no Settings page for them yet.
 - Issues marked only on photos or frames (no 3D sighting) are not matched across dates, so they are never **Resolved** or **Grown**.
 - An issue is **Resolved** only when photos of the later date cover its place; other later layers do not count, so it shows **Not seen**.

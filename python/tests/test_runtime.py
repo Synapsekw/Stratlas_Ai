@@ -38,7 +38,8 @@ class TwoSteps:
     title = "Two steps"
     description = "test"
 
-    def __init__(self, fail_in=None, cancel_in=None):
+    def __init__(self, fail_in=None, cancel_in=None, fail_code=None):
+        self.fail_code = fail_code
         self.runs = {"make": 0, "commit": 0}
         self.fail_in = fail_in
         self.cancel_in = cancel_in
@@ -56,6 +57,10 @@ class TwoSteps:
                 ctx.progress((i + 1) / 4, f"part {i + 1}")
             if self.fail_in == "make":
                 raise RuntimeError("boom")
+            if self.fail_in == "coded":
+                raise JobError("x", code="misaligned", data={"shiftM": 2.01})
+            if self.fail_in == "plain":
+                raise JobError("x")
             atomic_write_bytes(ctx.stage("out.txt"), params["text"].encode())
             return {"bytes": len(params["text"])}
 
@@ -110,6 +115,27 @@ def test_a_failed_job_leaves_the_project_untouched_and_resumes_from_the_failed_s
     job, rec = run(tmp_path, p)
     assert job.run()["status"] == "done"
     assert p.runs == {"make": 2, "commit": 1}
+
+
+def test_job_error_code_reaches_job_json(tmp_path):
+    job, rec = run(tmp_path, TwoSteps(fail_in="coded"))
+    with pytest.raises(JobError):
+        job.run()
+    manifest = json.loads((tmp_path / "jobs" / "j1" / "job.json").read_text())
+    assert manifest["error"] == "x"
+    assert manifest["failure"] == {"code": "misaligned", "data": {"shiftM": 2.01}}
+    event = rec.of("error")[0]
+    assert event["code"] == "misaligned" and event["data"] == {"shiftM": 2.01}
+
+
+def test_plain_job_error_has_no_failure(tmp_path):
+    job, rec = run(tmp_path, TwoSteps(fail_in="plain"))
+    with pytest.raises(JobError):
+        job.run()
+    manifest = json.loads((tmp_path / "jobs" / "j1" / "job.json").read_text())
+    assert manifest["error"] == "x"
+    assert "failure" not in manifest
+    assert "code" not in rec.of("error")[0]
 
 
 def test_a_cancelled_job_resumes_without_redoing_finished_steps(tmp_path):

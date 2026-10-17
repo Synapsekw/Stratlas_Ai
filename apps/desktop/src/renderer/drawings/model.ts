@@ -1,5 +1,5 @@
 import { applyMat4, fitSimilarity3D } from '@aio/geo';
-import type { RasterCorners, Vec3 } from '@aio/schema';
+import { unshiftLocal, type DateShift, type RasterCorners, type Vec3 } from '@aio/schema';
 import type { SplitPref } from '../workspace/splitModel';
 
 /**
@@ -157,11 +157,17 @@ const r6 = (v: number) => Math.round(v * 1e6) / 1e6;
  * Where a drawing lies from two or more point pairs: the level similarity fit the model alignment
  * uses (turn about the vertical, one scale, shift), so a sheet is never sheared or mirrored. Its
  * base is the mean height of the pairs that have one, else the project base.
+ *
+ * `shift`: the date shift of a dated drawing. Its site points are picked where the date is drawn,
+ * so they are taken less the shift and the corners come back in the raster's own frame (what is
+ * saved; the engine adds the shift when it draws them).
  */
 export function cornersFromPairs(
-  pairs: readonly PlacePair[],
+  picked: readonly PlacePair[],
   size: { width: number; height: number },
+  shift: DateShift | null = null,
 ): PlaceFit | { error: string } {
+  const pairs = shift ? picked.map((p) => ({ ...p, local: unshiftLocal(p.local, shift) })) : picked;
   if (pairs.length < 2) return { error: 'Give at least two point pairs.' };
   // The fit refuses drawing points that coincide; site points that do would give a sheet of no
   // size (scale 0). A millimetre apart on the site is one spot.

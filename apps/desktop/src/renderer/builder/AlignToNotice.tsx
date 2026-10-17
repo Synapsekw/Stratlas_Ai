@@ -1,6 +1,7 @@
 import { Icon, useT } from '@aio/ui';
 import { volumetric } from '@aio/volumetric';
 import { useEffect } from 'react';
+import { lineUpApp } from '../lineup/lineUpStore';
 import { cleanup } from '../pointcloud/cleanupStore';
 import { shell } from '../shell';
 import { alignCamera, alignTo, photoAlign, useAlignTo } from './alignSession';
@@ -22,7 +23,9 @@ export function otherUndo(e: KeyboardEvent): boolean {
     photoAlign.getState().session !== null ||
     // Place model, Georeference model or Calibrate video: the panel holds the layer as it opened,
     // and its own Undo and Done would overwrite a write made under it
-    builder.getState().align !== null
+    builder.getState().align !== null ||
+    // Line up dates: the step is open, and a notice's Undo would change the dates it measured
+    (lineUpApp.getState().store?.getState().dialog ?? null) !== null
   );
 }
 

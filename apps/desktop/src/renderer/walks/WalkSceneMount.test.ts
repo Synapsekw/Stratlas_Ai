@@ -96,6 +96,16 @@ describe('scenePlacedWalks', () => {
     expect(out[0]?.runs.length).toBeGreaterThan(0);
   });
 
+  it('a walk of a lined-up date is drawn shifted', () => {
+    const moved = { ...walk('walk-a'), shift: { eastM: 2, northM: -1 } };
+    const [still, shifted] = [walk('walk-a'), moved].map(
+      (w) => scenePlacedWalks([w], new Set(), null, () => '#fff')[0]?.runs[0]?.pts[0],
+    );
+    expect(shifted?.[0]).toBeCloseTo((still?.[0] ?? NaN) + 2, 9);
+    expect(shifted?.[1]).toBeCloseTo(still?.[1] ?? NaN, 9);
+    expect(shifted?.[2]).toBeCloseTo((still?.[2] ?? NaN) + 1, 9);
+  });
+
   it('nothing edited: every visible walk', () => {
     expect(scenePlacedWalks(fits, new Set(), null, () => '#fff').map((w) => w.id)).toEqual([
       'walk-a',

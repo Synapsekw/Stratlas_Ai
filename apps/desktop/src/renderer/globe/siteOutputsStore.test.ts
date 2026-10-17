@@ -1,9 +1,11 @@
-import type { GlobeSite } from '@aio/schema';
+import { parsePyramid } from '@aio/globe';
+import type { GlobeSite, ProjectManifest } from '@aio/schema';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   clearPyramids,
   focusSites,
   loadPyramid,
+  outputRasters,
   pyramidKey,
   shownOf,
   useSiteOutputs,
@@ -119,5 +121,43 @@ describe('loadPyramid', () => {
     land({ ok: true, json: () => Promise.resolve(INDEX) });
     await pending;
     expect(useSiteOutputs.getState().indexes).toEqual({});
+  });
+});
+
+describe('outputRasters', () => {
+  const index = parsePyramid(INDEX);
+  const manifest = {
+    captures: [
+      { id: 'c1', label: 'First', date: '2026-10-07' },
+      {
+        id: 'c2',
+        label: 'Second',
+        date: '2026-10-21',
+        lineUp: { eastM: 2, northM: -1, with: 'c1', at: '2026-10-22T00:00:00.000Z' },
+      },
+    ],
+    layers: [
+      { id: 'o1', name: 'Ortho 1', kind: 'raster', capture: 'c1' },
+      { id: 'o2', name: 'Ortho 2', kind: 'raster', capture: 'c2' },
+    ],
+  } as unknown as Pick<ProjectManifest, 'captures' | 'layers'>;
+  const indexes = {
+    [pyramidKey('p1', 'a/tiles.json')]: index,
+    [pyramidKey('p1', 'b/tiles.json')]: index,
+  };
+
+  it('passes the date shift of each raster', () => {
+    const out = outputRasters('p1', site.rasters ?? [], indexes, manifest);
+    expect(out.map((r) => [r.layerId, r.shift])).toEqual([
+      ['o1', undefined],
+      ['o2', { eastM: 2, northM: -1 }],
+    ]);
+  });
+
+  it('leaves out a raster whose index is not read, and shifts nothing without a manifest', () => {
+    const out = outputRasters('p1', site.rasters ?? [], indexes, null);
+    expect(out.map((r) => r.layerId)).toEqual(['o1', 'o2']);
+    expect(out.every((r) => r.shift === undefined)).toBe(true);
+    expect(outputRasters('p1', site.rasters ?? [], {}, manifest)).toEqual([]);
   });
 });

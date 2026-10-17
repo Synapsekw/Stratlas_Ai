@@ -1,6 +1,6 @@
-import { PANO_HIGH_MIN_TEXTURE, type PanoQuality, type PanoScan } from '@aio/schema';
+import { PANO_HIGH_MIN_TEXTURE, shiftLocal, type PanoQuality, type PanoScan } from '@aio/schema';
 import { formatBytes, t } from '@aio/ui';
-import { workspace } from '@aio/workspace';
+import { dateShiftOf, workspace } from '@aio/workspace';
 import { useStore } from 'zustand';
 import { createStore } from 'zustand/vanilla';
 import { bridge } from '../shell';
@@ -134,7 +134,11 @@ export function revealPanoLayer(layerId: string): void {
   const capture = layer.capture;
   const projectId = workspace.getState().project?.id;
   const fly = () => {
-    const spots = layer.items.flatMap((p) => (p.pos ? [p.pos] : []));
+    // where the spheres are drawn: their date's line-up added (read when the camera moves);
+    // a 360 that is not placed yet has no spot
+    const m = workspace.getState().project?.manifest;
+    const shift = m ? dateShiftOf(m, layer.id) : null;
+    const spots = layer.items.flatMap((p) => (p.pos ? [shiftLocal(p.pos, shift)] : []));
     if (spots.length === 0) return;
     const lo = [Infinity, Infinity, Infinity];
     const hi = [-Infinity, -Infinity, -Infinity];

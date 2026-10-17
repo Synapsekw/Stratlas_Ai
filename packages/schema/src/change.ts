@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { Id, IsoTime, Vec3 } from './common';
+import { DateShiftSchema } from './dateShift';
 
 /**
  * Change between two capture dates (M8, FUS-12): one register for every layer type. Each producer
@@ -223,6 +224,25 @@ export const ChangeRegistration = z
   })
   .strict();
 
+/** The `lineup.json` result of `change.lineup`: the correction still needed between two dates. */
+export const LineUpMeasure = z
+  .object({
+    keep: Id,
+    move: Id,
+    layerKeep: Id,
+    layerMove: Id,
+    source: z.enum(['ortho', 'dsm']),
+    eastM: z.number(),
+    northM: z.number(),
+    totalM: z.number(),
+    cellM: z.number(),
+    tolerancePx: z.number(),
+    spreadPx: z.number(),
+    tiles: z.number(),
+    verdict: z.enum(['ok', 'aligned', 'texture', 'disagree', 'overlap']),
+  })
+  .strict();
+
 export const ChangeSet = z
   .object({
     schema: z.literal(CHANGE_SCHEMA),
@@ -249,6 +269,11 @@ export const ChangeSet = z
     registration: ChangeRegistration.optional(),
     /** Share of the area both dates cover, 0 to 1. */
     coverage: z.number().min(0).max(1).optional(),
+    /** The shifts of the two dates when the set was computed; a later difference marks it out of date. */
+    lineUp: z
+      .object({ from: DateShiftSchema.optional(), to: DateShiftSchema.optional() })
+      .strict()
+      .optional(),
   })
   .superRefine((s, ctx) => {
     if (s.from === s.to)
@@ -331,6 +356,7 @@ export type ChangeReview = z.infer<typeof ChangeReview>;
 export type ChangeItem = z.infer<typeof ChangeItem>;
 export type ChangeRegistration = z.infer<typeof ChangeRegistration>;
 export type ChangeSet = z.infer<typeof ChangeSet>;
+export type LineUpMeasure = z.infer<typeof LineUpMeasure>;
 export type ChangeSetInput = z.input<typeof ChangeSet>;
 export type ChangeSetSummary = z.infer<typeof ChangeSetSummary>;
 export type ChangeThresholds = z.infer<typeof ChangeThresholds>;

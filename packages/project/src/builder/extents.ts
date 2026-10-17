@@ -1,6 +1,6 @@
 import { correctPos, fromWgs84, photoCorrection, projectToLocal } from '@aio/geo';
-import { cloudFrameOrigin } from '@aio/schema';
-import type { Layer, OrientationFile, ProjectManifest, Vec3 } from '@aio/schema';
+import { cloudFrameOrigin, shiftCorners, shiftLocal } from '@aio/schema';
+import type { DateShift, Layer, OrientationFile, ProjectManifest, Vec3 } from '@aio/schema';
 import { open, readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { readTiffGeo, tiffCorners } from './tiff';
@@ -29,6 +29,12 @@ function boxOf(points: readonly Vec3[]): LocalExtent | null {
   const lo = (k: 0 | 1 | 2) => Math.min(...axis(k));
   const hi = (k: 0 | 1 | 2) => Math.max(...axis(k));
   return { min: [lo(0), lo(1), lo(2)], max: [hi(0), hi(1), hi(2)] };
+}
+
+/** The box moved by a date shift (x += east, z -= north); the same box for none. */
+function shiftBox(b: LocalExtent | null, s: DateShift | null | undefined): LocalExtent | null {
+  if (!b || !s) return b;
+  return { min: shiftLocal(b.min, s), max: shiftLocal(b.max, s) };
 }
 
 function corners(b: LocalExtent): Vec3[] {
@@ -94,11 +100,12 @@ export async function layerExtent(
   m: ProjectManifest,
   l: Layer,
   orientation: OrientationFile | null = null,
+  shift: DateShift | null = null,
 ): Promise<LocalExtent | null> {
   try {
     if (l.kind === 'mesh' && 'path' in l.src) {
       const b = glbBounds(await glbJson(join(root, l.src.path)));
-      return b ? boxOf(corners(b).map((p) => applyMat4(l.transform, p))) : null;
+      return b ? shiftBox(boxOf(corners(b).map((p) => applyMat4(l.transform, p))), shift) : null;
     }
     if (l.kind === 'pointcloud' && 'path' in l.src) {
       if (l.format === 'copc') {
@@ -109,7 +116,7 @@ export async function layerExtent(
               corners(b).map((p) =>
                 projectToLocal(
                   p,
-                  cloudFrameOrigin(m.origin, { heightOffsetM: l.heightOffsetM ?? 0 }),
+                  cloudFrameOrigin(m.origin, { heightOffsetM: l.heightOffsetM ?? 0 }, shift),
                 ),
               ),
             )
@@ -122,21 +129,27 @@ export async function layerExtent(
         const off = l.heightOffsetM ?? 0;
         const { bounds } = idx;
         if (!bounds) return null;
-        return {
-          min: [bounds.min[0], bounds.min[1] + off, bounds.min[2]],
-          max: [bounds.max[0], bounds.max[1] + off, bounds.max[2]],
-        };
+        return shiftBox(
+          {
+            min: [bounds.min[0], bounds.min[1] + off, bounds.min[2]],
+            max: [bounds.max[0], bounds.max[1] + off, bounds.max[2]],
+          },
+          shift,
+        );
       }
       return null;
     }
     if (l.kind === 'photos')
-      return boxOf(
-        l.items.flatMap((p) =>
-          p.pos ? [correctPos(p.pos, photoCorrection(orientation, l.id, p.id))] : [],
+      return shiftBox(
+        boxOf(
+          l.items.flatMap((p) =>
+            p.pos ? [correctPos(p.pos, photoCorrection(orientation, l.id, p.id))] : [],
+          ),
         ),
+        shift,
       );
     if (l.kind === 'raster' && l.corners) {
-      const { tl, tr, bl } = l.corners;
+      const { tl, tr, bl } = shift ? shiftCorners(l.corners, shift) : l.corners;
       const br: Vec3 = [tr[0] + bl[0] - tl[0], tr[1] + bl[1] - tl[1], tr[2] + bl[2] - tl[2]];
       return boxOf([tl, tr, bl, br]);
     }
@@ -151,10 +164,11 @@ export async function layerExtents(
   root: string,
   m: ProjectManifest,
   orientation: OrientationFile | null = null,
+  shifts: Readonly<Record<string, DateShift>> = {},
 ): Promise<{ layerId: string; min: Vec3; max: Vec3 }[]> {
   const out: { layerId: string; min: Vec3; max: Vec3 }[] = [];
   for (const l of m.layers) {
-    const e = await layerExtent(root, m, l, orientation);
+    const e = await layerExtent(root, m, l, orientation, shifts[l.id] ?? null);
     if (e) out.push({ layerId: l.id, ...e });
   }
   return out;
@@ -214,9 +228,19 @@ export async function fullLayerExtent(
   m: ProjectManifest,
   l: Layer,
   orientation: OrientationFile | null,
+  shift: DateShift | null = null,
 ): Promise<LocalExtent | null> {
-  const known = await layerExtent(root, m, l, orientation);
+  const known = await layerExtent(root, m, l, orientation, shift);
   if (known) return known;
+  return shiftBox(await unshiftedExtent(root, m, l), shift);
+}
+
+/** The kinds `layerExtent` does not read, as stored (the caller adds the date shift). */
+async function unshiftedExtent(
+  root: string,
+  m: ProjectManifest,
+  l: Layer,
+): Promise<LocalExtent | null> {
   const epsg = epsgOf(m);
   const fromLonLat = (pts: readonly [number, number][]) =>
     epsg === null

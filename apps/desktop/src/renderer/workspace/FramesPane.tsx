@@ -4,7 +4,6 @@ import { Icon, useT } from '@aio/ui';
 import {
   FrameImage,
   FramesCompare,
-  calibratedVideoPose,
   createViewFollower,
   groundHomography,
   loadFlight,
@@ -17,7 +16,14 @@ import {
   type FramesMode,
   type ViewPose,
 } from '@aio/video';
-import { assetUrl, canCompare, captureIndex, useWorkspace, workspace } from '@aio/workspace';
+import {
+  assetUrl,
+  canCompare,
+  captureIndex,
+  dateShiftOf,
+  useWorkspace,
+  workspace,
+} from '@aio/workspace';
 import { useEffect, useMemo, useState } from 'react';
 import { useStore } from 'zustand';
 import { dropEvidence } from '../issueCard/evidence';
@@ -29,6 +35,9 @@ import {
   layerCapture,
   otherCapture,
   pickSource,
+  placedLayers,
+  placedVideoPose,
+  shiftPose,
   splitWithFrames,
   stepPhoto,
   type FramesSource,
@@ -172,12 +181,20 @@ export function FramesPane() {
   const follow = useMemo(
     () =>
       createViewFollower(
-        pick.bCapture && flights ? viewSources(layers, pick.bCapture, pick.of, flights) : [],
+        pick.bCapture && flights
+          ? viewSources(
+              project ? placedLayers(layers, (id) => dateShiftOf(project.manifest, id)) : layers,
+              pick.bCapture,
+              pick.of,
+              flights,
+            )
+          : [],
       ),
-    [layers, pick, flights],
+    [layers, pick, flights, project],
   );
 
   if (!project || !index) return null;
+  const shiftA = aLayer ? dateShiftOf(project.manifest, aLayer.id) : null;
   const dated = index.captures.filter((c) => (index.layers[c.id]?.length ?? 0) > 0).length;
   if (dated < 2) return <Message text={t('frames.oneDate')} />;
   if (!source || !aLayer) return <Message text={t('frames.noSource')} />;
@@ -200,7 +217,7 @@ export function FramesPane() {
         nowMs,
       );
       aTime = frameTime(Math.min(vMax, Math.max(0, raw)));
-      poseA = calibratedVideoPose(aLayer, flight, aTime, clipKeys(orientation, aLayer.id));
+      poseA = placedVideoPose(aLayer, flight, aTime, clipKeys(orientation, aLayer.id), shiftA);
       aText = t('frames.atTime', { time: aTime.toFixed(1) });
     }
   } else if (aLayer.kind === 'photos' && source.kind === 'photo') {
@@ -208,7 +225,8 @@ export function FramesPane() {
     const item = aLayer.items.find((p) => p.id === source.photo);
     if (item) {
       aUrl = assetUrl(project.id, item.src);
-      poseA = photoPose(item, photoCorrection(orientation, aLayer.id, item.id));
+      const pose = photoPose(item, photoCorrection(orientation, aLayer.id, item.id));
+      poseA = pose ? shiftPose(pose, shiftA) : null;
       aText = item.id;
     }
   }

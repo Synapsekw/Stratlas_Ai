@@ -28,6 +28,7 @@ from typing import Any, ClassVar
 
 import numpy as np
 
+from ..captures import capture_shift, date_shift, shift_transform
 from ..params import number
 from ..runtime import JobError, Step, StepContext, atomic_write_bytes, commit_files
 from .changeset import change_set, change_set_id, dump_change_set, write_change_set
@@ -134,8 +135,13 @@ class ChangeMesh:
             frm, to = capture_pair(params, a, b)
             set_id = change_set_id(frm, to, self.name)
             ctx.progress(0.05, "Read the models")
-            before = load_parts(layer_file(ctx.project, a), a.get("transform"))
-            after = load_parts(layer_file(ctx.project, b), b.get("transform"))
+            # each model where its date is lined up: the date's shift comes after its own transform
+            before = load_parts(
+                layer_file(ctx.project, a), shift_transform(a.get("transform"), date_shift(manifest, a["id"]))
+            )
+            after = load_parts(
+                layer_file(ctx.project, b), shift_transform(b.get("transform"), date_shift(manifest, b["id"]))
+            )
             ctx.check()
 
             whole_a = trimesh.util.concatenate([m for _, m in before.values()])
@@ -210,6 +216,7 @@ class ChangeMesh:
                 stats=stats,
                 run={"jobId": ctx.job.job_id, "params": dict(params)},
                 registration=reg,
+                line_up=(capture_shift(manifest, frm), capture_shift(manifest, to)),
             )
             atomic_write_bytes(ctx.stage("changeset.json"), dump_change_set(cs))
             ctx.log(

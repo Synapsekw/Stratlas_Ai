@@ -1,4 +1,5 @@
 import type { IpcEvent } from '@aio/schema';
+import { dateShiftOf, layerDateShifts } from '@aio/workspace';
 import { stat } from 'node:fs/promises';
 import { isAbsolute, join } from 'node:path';
 import type { Handle } from './notYet';
@@ -38,7 +39,13 @@ export function registerLayerIpc(deps: LayerIpcDeps): { cancel(jobId: string): b
       const or = await readOrientation(o.root);
       return {
         ok: true,
-        info: await o.l.readLayerInfo(o.root, o.m, o.layer, or.ok ? or.file : null),
+        info: await o.l.readLayerInfo(
+          o.root,
+          o.m,
+          o.layer,
+          or.ok ? or.file : null,
+          dateShiftOf(o.m, o.layer.id),
+        ),
       };
     } catch (e) {
       return { ok: false, error: errorText(e) };
@@ -81,6 +88,7 @@ export function registerLayerIpc(deps: LayerIpcDeps): { cancel(jobId: string): b
       const m = await l.readManifestFile(root);
       const r = await l.exportLayers(root, m, layerIds, dir, {
         signal: ac.signal,
+        shifts: layerDateShifts(m),
         progress: (done, total, file) => {
           deps.emit({ jobId, phase: file, done, total });
         },

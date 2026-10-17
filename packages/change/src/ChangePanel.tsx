@@ -1,11 +1,14 @@
 import { ChangeCollab } from '@aio/collab/ui';
 import type { ChangeItem, ChangeKind, ChangeVerdict } from '@aio/schema';
 import { useT, type MessageKey } from '@aio/ui';
+import { workspace } from '@aio/workspace';
 import { useEffect, useMemo, useState, useSyncExternalStore } from 'react';
+import { useStore } from 'zustand';
 import { VERDICT_COLOR } from './overlay';
 import { changeProducers, subscribeChangeProducers, type ChangePairContext } from './producers';
 import { registerRows, verdictCounts, type RegisterRow, type ReviewStatus } from './register';
-import { changeStore, setsOfPair, useChange } from './store';
+import { changeSetStale } from './stale';
+import { changeStore, runProducer, setsOfPair, useChange } from './store';
 
 /**
  * The Changes panel (FUS-12): the register of the chosen date pair with filters and sort, the
@@ -35,6 +38,10 @@ export interface ChangePanelProps {
   /** What C2 to C4's producers need to know of the pair; null when unknown. */
   context: (pair: { from: string; to: string }) => ChangePairContext | null;
   actions: ChangeRowActions;
+  /** Open Line up dates for the two dates (offered when a run was refused for their gap). */
+  onLineUp?: (from: string, to: string) => void;
+  /** Run a producer's set again (offered on an out of date set); an error sentence or null. */
+  onRerun?: (producer: string) => Promise<string | null>;
   className?: string | undefined;
 }
 
@@ -135,9 +142,12 @@ export function ChangePanel({
   defaultPair,
   context,
   actions,
+  onLineUp,
+  onRerun,
   className,
 }: ChangePanelProps) {
   const t = useT();
+  const manifest = useStore(workspace, (w) => w.project?.manifest ?? null);
   const s = useChange((x) => x);
   const [note, setNote] = useState('');
   const [notice, setNotice] = useState<{ ok: boolean; text: string } | null>(null);
@@ -165,6 +175,10 @@ export function ChangePanel({
     [pairSets, s.filter, s.sort],
   );
   const all = useMemo(() => registerRows(pairSets), [pairSets]);
+  const stale = useMemo(
+    () => (manifest ? pairSets.filter((x) => changeSetStale(x, manifest)) : []),
+    [pairSets, manifest],
+  );
   const counts = useMemo(() => verdictCounts(all), [all]);
   const open = all.filter((r) => r.status === 'open').length;
   const selectedRow = rows.find(
@@ -191,6 +205,8 @@ export function ChangePanel({
     );
 
   const pair = s.pair;
+  const refused =
+    pair && s.misaligned?.from === pair.from && s.misaligned.to === pair.to ? s.misaligned : null;
   const ctx = pair ? context(pair) : null;
   const label = (id: string) => captures.find((c) => c.id === id)?.label ?? id;
 
@@ -311,12 +327,7 @@ export function ChangePanel({
                 disabled={ok !== true || !!s.run}
                 title={ok === true ? p.label : t('change.producerMissing', { why: ok })}
                 onClick={() => {
-                  if (ctx)
-                    void act(async () => {
-                      const r = await p.run(ctx);
-                      if (r.ok && r.ids?.length) await changeStore.getState().load(ctx.projectId);
-                      return r.ok ? null : r.error;
-                    });
+                  if (ctx) void act(() => runProducer(p, ctx));
                 }}
               >
                 {p.label}
@@ -428,6 +439,42 @@ export function ChangePanel({
           {s.error}
         </p>
       )}
+      {refused && pair && (
+        <div className="chg-bar" data-testid="chg-misaligned">
+          <span className="chg-note">
+            {t('change.misaligned', { distance: `${refused.shiftM.toFixed(2)} m` })}
+          </span>
+          {onLineUp && !s.readOnly && (
+            <button
+              type="button"
+              className="chg-btn primary"
+              data-testid="chg-lineup"
+              onClick={() => {
+                onLineUp(pair.from, pair.to);
+              }}
+            >
+              {t('lineUp.action')}
+            </button>
+          )}
+        </div>
+      )}
+      {stale.map((x) => (
+        <div className="chg-bar" key={x.id} data-testid="chg-stale">
+          <span className="chg-note">{t('change.stale')}</span>
+          {onRerun && !s.readOnly && !s.run && (
+            <button
+              type="button"
+              className="chg-btn"
+              data-testid="chg-rerun"
+              onClick={() => {
+                void act(async () => (await onRerun(x.producer)) ?? null);
+              }}
+            >
+              {t('change.rerun')}
+            </button>
+          )}
+        </div>
+      ))}
       {notice && (
         <p className={notice.ok ? 'chg-ok' : 'chg-err'} role="status" data-testid="change-notice">
           {notice.text}

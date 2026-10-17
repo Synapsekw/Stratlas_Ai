@@ -39,6 +39,7 @@ import {
 } from './measureStore';
 import { Calculators } from './Calculators';
 import { Comparisons } from './Comparison';
+import { drawnPoints } from './measureDates';
 import { MEASURE_COLOR } from './measureScene';
 import { HoldNote } from './Qa';
 
@@ -53,23 +54,31 @@ export function MeasurementPanel() {
   const surface = useMeasure((s) => s.surface);
   const editing = useMeasure((s) => s.editing);
   const captures = useWorkspace((s) => s.project?.manifest.captures ?? []);
+  const manifest = useWorkspace((s) => s.project?.manifest ?? null);
+  // where the measurement is drawn (its date's line-up added): the readouts, the terrain samples
+  // and the vertex fields are of what the person sees; edits go back through the shift
+  const shown = useMemo(
+    () => (m ? { ...m, points: drawnPoints(m, manifest) } : null),
+    [m, manifest],
+  );
   const [copyTo, setCopyTo] = useState('');
 
   const all = useMemo(() => knownTemplates({ templates, settings }), [templates, settings]);
   const tpl = m?.template ? all.find((t) => t.id === m.template) : undefined;
   const units = effectiveUnits(settings.units, m?.units);
   const rows = useMemo(() => {
-    if (!m) return [];
+    if (!shown) return [];
     // the 3D view's terrain as the surface, sampled at a step that keeps the panel quick
-    const len = m.points.reduce(
-      (s, p, i) => s + (i > 0 && m.points[i - 1] ? horizontalDistance(m.points[i - 1] ?? p, p) : 0),
+    const pts = shown.points;
+    const len = pts.reduce(
+      (s, p, i) => s + (i > 0 && pts[i - 1] ? horizontalDistance(pts[i - 1] ?? p, p) : 0),
       0,
     );
-    const stepM = m.family === 'polygon' ? Math.max(0.5, len / 60) : Math.max(0.25, len / 400);
-    return measurementReadout(m, { surface: surface ?? undefined, stepM }, tpl?.items);
-  }, [m, surface, tpl]);
+    const stepM = shown.family === 'polygon' ? Math.max(0.5, len / 60) : Math.max(0.25, len / 400);
+    return measurementReadout(shown, { surface: surface ?? undefined, stepM }, tpl?.items);
+  }, [shown, surface, tpl]);
 
-  if (!m || !focus) return null;
+  if (!m || !shown || !focus) return null;
   const family = all.filter(
     (t) => t.family === m.family && (!isTelecomTool(t.tool) || t.tool === m.tool),
   );
@@ -127,7 +136,7 @@ export function MeasurementPanel() {
           ))}
         </tbody>
       </table>
-      {m.tool === 'vertex-table' && <VertexTable m={m} />}
+      {m.tool === 'vertex-table' && <VertexTable m={shown} />}
 
       <details className="sv-sec" open>
         <summary>Details</summary>
@@ -463,7 +472,7 @@ export function MeasurementPanel() {
             {m.points.slice(0, MAX_VERTEX_ROWS).map((_, i) => (
               <VertexRow
                 key={`${String(i)}-${String(m.points.length)}`}
-                m={m}
+                m={shown}
                 i={i}
                 order={settings.order}
                 ro={ro}

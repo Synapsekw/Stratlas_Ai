@@ -2,7 +2,7 @@ import { fromWgs84, toWgs84 } from '@aio/geo';
 import { LocationPicker } from '@aio/maps';
 import type { Layer, Vec3 } from '@aio/schema';
 import { Icon, isDrawingPlanLayer, useT } from '@aio/ui';
-import { useWorkspace, workspace } from '@aio/workspace';
+import { dateShiftOf, useWorkspace, workspace } from '@aio/workspace';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { parseCoordinate } from '../builder/model';
 import { useStagePick, usePickMarkers, type Marker } from '../builder/pick';
@@ -88,9 +88,11 @@ function PlaceStrip({
     drawings.getState().addSite([hit.point.x, hit.point.y, hit.point.z], false);
   });
 
+  // a dated drawing on a lined-up date is drawn shifted: the corners saved are its own
+  const shift = project ? dateShiftOf(project.manifest, layer.id) : null;
   const fit = useMemo(
-    () => (pairs.length >= 2 ? cornersFromPairs(pairs, size) : null),
-    [pairs, size],
+    () => (pairs.length >= 2 ? cornersFromPairs(pairs, size, shift) : null),
+    [pairs, size, shift],
   );
   const markers = useMemo<Marker[]>(
     () => pairs.map((p) => ({ pos: p.local, color: 0xf4b740 })),

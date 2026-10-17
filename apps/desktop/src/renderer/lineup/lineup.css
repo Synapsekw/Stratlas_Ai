@@ -1,0 +1,167 @@
+/* Line up dates: the step uses the app's dialog frame (.dlg, package.css) and its toasts. It
+   fits the smallest window, 1100 x 700: the preview gives up height first. */
+
+.lu-dialog .dlg-b {
+  gap: var(--sp-5);
+}
+.lu-flush {
+  margin: 0;
+}
+
+/* which date stays: two choices side by side, each in its date colour */
+.lu-keep p {
+  margin-bottom: var(--sp-4);
+}
+.lu-dates {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--sp-4);
+}
+.lu-date {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-4);
+  min-width: 0;
+  padding: var(--sp-4) var(--sp-5);
+  border: 1px solid var(--line);
+  border-radius: var(--r-4);
+  background: var(--bg-0);
+  color: var(--fg-1);
+  font-size: var(--t-13);
+  text-align: start;
+  transition:
+    border-color 120ms var(--ease),
+    background-color 120ms var(--ease);
+}
+.lu-date:hover {
+  border-color: var(--line-strong);
+  color: var(--fg-0);
+}
+.lu-date[aria-checked='true'] {
+  border-color: var(--acc);
+  background: var(--acc-a12);
+  color: var(--fg-0);
+}
+.lu-date:focus-visible {
+  outline: 2px solid var(--acc);
+  outline-offset: 2px;
+}
+.lu-swatch {
+  flex: none;
+  width: 10px;
+  height: 10px;
+  border-radius: 2px;
+}
+.lu-date-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* measuring */
+.lu-busy {
+  display: grid;
+  gap: var(--sp-4);
+  margin: 0;
+  color: var(--fg-2);
+  font-size: var(--t-12);
+}
+.lu-busy-bar {
+  position: relative;
+  height: 3px;
+  overflow: hidden;
+  border-radius: 2px;
+  background: var(--bg-3);
+}
+.lu-busy-bar::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  width: 30%;
+  background: var(--acc);
+  animation: toast-busy 1.1s var(--ease) infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  .lu-busy-bar::after {
+    animation: none;
+    width: 100%;
+    opacity: 0.5;
+  }
+}
+
+/* the measurement: shift, confidence, what moves */
+.lu-facts {
+  display: grid;
+  grid-template-columns: 16px 1fr;
+  gap: var(--sp-3) var(--sp-4);
+  align-items: baseline;
+  margin: 0;
+  font-size: var(--t-13);
+}
+.lu-facts dt {
+  color: var(--fg-3);
+  line-height: 1;
+}
+.lu-facts dd {
+  margin: 0;
+  color: var(--fg-1);
+  font-variant-numeric: tabular-nums;
+}
+.lu-facts dd:first-of-type {
+  color: var(--fg-0);
+  font-weight: 600;
+}
+
+/* Before and After */
+.lu-preview {
+  display: grid;
+  gap: var(--sp-4);
+}
+.lu-preview-h {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.lu-preview-h h3 {
+  margin: 0;
+}
+.lu-stage {
+  position: relative;
+  border: 1px solid var(--line-soft);
+  border-radius: var(--r-4);
+  background: var(--bg-0);
+  overflow: hidden;
+}
+.lu-stage canvas {
+  display: block;
+  width: 100%;
+  height: clamp(120px, calc(100vh - 560px), 300px);
+  object-fit: contain;
+}
+.lu-side {
+  position: absolute;
+  top: var(--sp-3);
+  max-width: 45%;
+  padding: var(--sp-1) var(--sp-3);
+  border-radius: var(--r-2);
+  background: var(--scrim);
+  color: var(--fg-0);
+  font-size: var(--t-11);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  pointer-events: none;
+}
+.lu-side-l {
+  left: var(--sp-3);
+}
+.lu-side-r {
+  right: var(--sp-3);
+}
+.lu-divider {
+  width: 100%;
+  margin: 0;
+  accent-color: var(--acc);
+}

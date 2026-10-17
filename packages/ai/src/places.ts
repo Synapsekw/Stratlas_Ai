@@ -18,8 +18,16 @@ import {
   projectToLocal,
   toWgs84,
 } from '@aio/geo';
-import type { Issue, PhotoRef, Quat, Vec3 } from '@aio/schema';
-import { assetUrl } from '@aio/workspace';
+import {
+  shiftCorners,
+  shiftLocal,
+  type DateShift,
+  type Issue,
+  type PhotoRef,
+  type Quat,
+  type Vec3,
+} from '@aio/schema';
+import { assetUrl, dateShiftOf } from '@aio/workspace';
 import { Box3, Vector3, type Object3D } from 'three';
 import { clipStartUtcMs } from './context';
 import { parseFlight, type FlightFile } from './geometry';
@@ -392,19 +400,20 @@ export function boxOfPoints(points: readonly Vec3[]): PlaceBox | undefined {
 }
 
 /** Every 3D point of an issue's sightings. */
-export function issuePoints(issue: Issue): Vec3[] {
+export function issuePoints(issue: Issue, shiftOf?: (layerId: string) => DateShift | null): Vec3[] {
   const out: Vec3[] = [];
   for (const s of issue.sightings) {
+    const at = (p: Vec3) => (shiftOf ? shiftLocal(p, shiftOf(s.layer)) : p);
     if (s.on === 'mesh') {
       const g = s.geom;
-      if (g.type === 'spoint') out.push(g.p);
-      else if (g.type === 'spolyline' || g.type === 'spolygon') out.push(...g.points);
-      else if (g.center) out.push(g.center);
+      if (g.type === 'spoint') out.push(at(g.p));
+      else if (g.type === 'spolyline' || g.type === 'spolygon') out.push(...g.points.map(at));
+      else if (g.center) out.push(at(g.center));
     } else if (s.on === 'pointcloud') {
       const g = s.geom;
-      if (g.type === 'point3') out.push(g.p);
-      else if (g.type === 'box3') out.push(g.min, g.max);
-      else if (g.type === 'polygon3') out.push(...g.points);
+      if (g.type === 'point3') out.push(at(g.p));
+      else if (g.type === 'box3') out.push(at(g.min), at(g.max));
+      else if (g.type === 'polygon3') out.push(...g.points.map(at));
     }
   }
   return out;
@@ -498,9 +507,14 @@ export function placeIndex(ctx: RendererToolContext, opts: IndexOptions = {}): P
 
   const scene = ctx.scene();
   const orientation = ctx.workspace.getState().orientation;
+  // a photo as drawn: its hand correction, then its date's line-up
   const drawn = (layerId: string, p: PhotoRef) =>
-    correctedPhoto(p, photoCorrection(orientation, layerId, p.id));
+    placedPhoto(
+      correctedPhoto(p, photoCorrection(orientation, layerId, p.id)),
+      dateShiftOf(m, layerId),
+    );
   for (const l of m.layers) {
+    const shift = dateShiftOf(m, l.id);
     const place: Place = {
       id: `layer:${l.id}`,
       kind: 'layer',
@@ -510,7 +524,7 @@ export function placeIndex(ctx: RendererToolContext, opts: IndexOptions = {}): P
     };
     let box: PlaceBox | undefined;
     if (l.kind === 'raster' && l.corners) {
-      const { tl, tr, bl } = l.corners;
+      const { tl, tr, bl } = shiftCorners(l.corners, shift);
       const br: Vec3 = [tr[0] + bl[0] - tl[0], tr[1] + bl[1] - tl[1], tr[2] + bl[2] - tl[2]];
       box = boxOfPoints([tl, tr, bl, br]);
     } else if (l.kind === 'photos') {
@@ -521,7 +535,7 @@ export function placeIndex(ctx: RendererToolContext, opts: IndexOptions = {}): P
         }),
       );
     } else if (l.kind === 'panoramas') {
-      box = boxOfPoints(l.items.flatMap((i) => (i.pos ? [i.pos] : [])));
+      box = boxOfPoints(l.items.flatMap((i) => (i.pos ? [shiftLocal(i.pos, shift)] : [])));
     } else if (opts.measureLayers && scene && (l.kind === 'mesh' || l.kind === 'pointcloud')) {
       const roots = scene.scene.children.filter((o) => o.userData.layerId === l.id);
       box = roots.length ? boxOf(roots) : undefined;
@@ -552,7 +566,12 @@ export function placeIndex(ctx: RendererToolContext, opts: IndexOptions = {}): P
           name: i.id,
           detail: l.name,
           layer: l.id,
-          ...(i.pos ? { p: i.pos, eye: { pos: i.pos, headingDeg: i.headingDeg } } : {}),
+          ...(i.pos
+            ? {
+                p: shiftLocal(i.pos, shift),
+                eye: { pos: shiftLocal(i.pos, shift), headingDeg: i.headingDeg },
+              }
+            : {}),
         });
       }
     } else if (l.kind === 'video') {
@@ -569,7 +588,7 @@ export function placeIndex(ctx: RendererToolContext, opts: IndexOptions = {}): P
   }
 
   for (const i of issues) {
-    const pts = issuePoints(i);
+    const pts = issuePoints(i, (id) => dateShiftOf(m, id));
     const box = boxOfPoints(pts);
     const photos = [...new Set(i.sightings.flatMap((s) => (s.on === 'image' ? [s.photo] : [])))];
     const eye = pts.length ? undefined : photoEye(ctx, photos[0]);
@@ -594,13 +613,22 @@ export function placeIndex(ctx: RendererToolContext, opts: IndexOptions = {}): P
   return out;
 }
 
+/** A photo with its position moved by its date's line-up (the same photo for no shift). */
+function placedPhoto(p: PhotoRef, shift: DateShift | null): PhotoRef {
+  return shift && p.pos ? { ...p, pos: shiftLocal(p.pos, shift) } : p;
+}
+
 function photoEye(ctx: RendererToolContext, id: string | undefined): Eye | undefined {
   if (!id) return undefined;
   for (const l of project(ctx).manifest.layers) {
     if (l.kind !== 'photos') continue;
     const raw = l.items.find((x) => x.id === id);
+    const ws = ctx.workspace.getState();
     const i = raw
-      ? correctedPhoto(raw, photoCorrection(ctx.workspace.getState().orientation, l.id, raw.id))
+      ? placedPhoto(
+          correctedPhoto(raw, photoCorrection(ws.orientation, l.id, raw.id)),
+          ws.project ? dateShiftOf(ws.project.manifest, l.id) : null,
+        )
       : undefined;
     if (i?.pos) return { pos: i.pos, ...(i.q ? { q: i.q } : {}) };
   }
@@ -726,9 +754,12 @@ async function droneEye(ctx: RendererToolContext, l: VideoLayer, utcMs: number):
   const samples = flight?.samples;
   if (!samples?.length) throw new ToolError(`The flight of clip ${l.name} could not be read.`);
   // the camera as every view draws it: direction keyframes, else the log with its bias
-  const keys = clipKeys(ctx.workspace.getState().orientation, l.id);
+  const ws = ctx.workspace.getState();
+  const keys = clipKeys(ws.orientation, l.id);
   const p = clipPoseAt(samples, utcMs - l.flight.startUtcMs, clipCamera(l, keys));
-  return { pos: p.pos, q: p.q };
+  // in the date's own frame (stored flight and look-at targets), then where the date is drawn
+  const m = ws.project?.manifest;
+  return { pos: shiftLocal(p.pos, m ? dateShiftOf(m, l.id) : null), q: p.q };
 }
 
 /** "13:25" or "13:25:10" on the project day (site time), or an ISO time, to UTC ms. */

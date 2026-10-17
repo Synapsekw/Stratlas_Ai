@@ -495,3 +495,144 @@ def test_export_cloud_carries_the_offset(tmp_path, monkeypatch, fmt):
         z[name] = np.sort(las.xyz[:, 2])
     assert z["plain"].shape == z["lifted"].shape
     assert np.allclose(z["lifted"] - z["plain"], 5.0, atol=0.01)
+
+
+# ------------------------------------------------------------------------------ lined-up dates
+
+
+def line_up_d1(root, east=2.0, north=-1.0):
+    path = root / "manifest.json"
+    m = json.loads(path.read_text("utf-8"))
+    m["captures"][0]["lineUp"] = {"eastM": east, "northM": north, "with": "d0", "at": "2026-10-16T09:00:00Z"}
+    path.write_text(json.dumps(m), "utf-8")
+
+
+def ortho_bounds(tmp_path, name, shifted):
+    import rasterio
+    from PIL import Image
+
+    layer = {
+        "id": "ortho",
+        "name": "Ortho",
+        "kind": "raster",
+        "role": "ortho",
+        "format": "image",
+        "capture": "d1",
+        "src": {"path": "rasters/ortho.png"},
+        "corners": {"tl": [-10.0, 0.0, -20.0], "tr": [15.0, 0.0, -20.0], "bl": [-10.0, 0.0, 0.0]},
+    }
+    root = project(tmp_path, name, layers=[layer])
+    (root / "rasters").mkdir()
+    Image.fromarray(np.full((40, 50, 3), 90, np.uint8)).save(root / "rasters" / "ortho.png")
+    if shifted:
+        line_up_d1(root)
+    out = tmp_path / f"{name}.tif"
+    run(root, out, what="ortho", format="geotiff", layer="ortho")
+    with rasterio.open(out) as ds:
+        return ds.bounds
+
+
+def test_export_carries_the_shift_ortho(tmp_path):
+    a = ortho_bounds(tmp_path, "plain", False)
+    b = ortho_bounds(tmp_path, "moved", True)
+    assert b.left - a.left == pytest.approx(2.0, abs=0.51)
+    assert b.right - a.right == pytest.approx(2.0, abs=0.51)
+    assert b.top - a.top == pytest.approx(-1.0, abs=0.51)
+    assert b.bottom - a.bottom == pytest.approx(-1.0, abs=0.51)
+
+
+def test_export_carries_the_shift_dsm(tmp_path):
+    import rasterio
+    from rasterio.transform import from_origin
+
+    layer = {
+        "id": "dsm",
+        "name": "DSM",
+        "kind": "raster",
+        "role": "dsm",
+        "format": "cog",
+        "capture": "d1",
+        "src": {"path": "rasters/dsm.tif"},
+    }
+    bounds = {}
+    for name, shifted in (("plain", False), ("moved", True)):
+        root = project(tmp_path, name, layers=[layer])
+        (root / "rasters").mkdir()
+        with rasterio.open(
+            root / "rasters" / "dsm.tif",
+            "w",
+            driver="GTiff",
+            height=20,
+            width=30,
+            count=1,
+            dtype="float32",
+            crs="EPSG:32639",
+            transform=from_origin(520000.0, 2750020.0, 1.0, 1.0),
+            nodata=-10000,
+        ) as d:
+            d.write(np.full((20, 30), 105.0, np.float32), 1)
+        if shifted:
+            line_up_d1(root)
+        out = tmp_path / f"{name}.tif"
+        run(root, out, what="surface", format="geotiff", layer="dsm")
+        with rasterio.open(out) as ds:
+            bounds[name] = ds.bounds
+    assert bounds["moved"].left - bounds["plain"].left == pytest.approx(2.0, abs=0.05)
+    assert bounds["moved"].top - bounds["plain"].top == pytest.approx(-1.0, abs=0.05)
+    assert bounds["moved"].right - bounds["plain"].right == pytest.approx(2.0, abs=0.05)
+
+
+@pytest.mark.parametrize("fmt", ["png-packed", "kit-packed"])
+def test_export_carries_the_shift_cloud(tmp_path, monkeypatch, fmt):
+    import shutil
+
+    import aio_pipelines.export.las as el
+    import aio_pipelines.pointcloud as pc
+    from aio_pipelines.change.las import read_las
+
+    monkeypatch.setattr(pc, "find_pdal", lambda: "pdal")
+    monkeypatch.setattr(pc, "pdal_env", lambda p: {})
+    monkeypatch.setattr(el, "compress_laz", lambda pdal, las, laz, env: shutil.copy(las, laz))
+    xyz = {}
+    for name, shifted in (("plain", False), ("moved", True)):
+        root = cloud_project(tmp_path, name, fmt, 0.0)
+        if shifted:
+            line_up_d1(root)
+        out_dir = tmp_path / f"out-{name}"
+        out_dir.mkdir()
+        res = run(root, out_dir / "cloud.laz", what="cloud", format="laz", layer="c")
+        pts = read_las(Path(res["files"][0])).xyz
+        xyz[name] = pts[np.lexsort((pts[:, 2], pts[:, 1], pts[:, 0]))]
+    # a 2 m shift reorders nothing: the sort by x, y, z pairs the same points
+    assert np.allclose(xyz["moved"][:, 0] - xyz["plain"][:, 0], 2.0, atol=0.01)
+    assert np.allclose(xyz["moved"][:, 1] - xyz["plain"][:, 1], -1.0, atol=0.01)
+    assert np.allclose(xyz["moved"][:, 2], xyz["plain"][:, 2], atol=0.01)
+
+
+def test_export_carries_the_shift_measurements(tmp_path):
+    # measurement exports write the lined-up frame (data-conventions section 38): a measurement of
+    # a lined-up date goes out where it is drawn; a site-wide one stays as saved
+    root = full_project(tmp_path)
+    path = root / "survey" / "measurements.json"
+    doc = json.loads(path.read_text("utf-8"))
+    for m in doc["measurements"]:
+        if m["id"] in ("m-pt", "m-line"):
+            m["scope"] = {"kind": "survey", "capture": "d1"}
+    path.write_text(json.dumps(doc), "utf-8")
+    line_up_d1(root)
+    run(root, tmp_path / "m.csv", what="measurements", format="csv", measurements=["m-pt", "m-poly"])
+    pts = read_csv_points(tmp_path / "m.csv").points[0].points
+    ms = {m["id"]: m for m in doc["measurements"]}
+    spot = ms["m-pt"]["points"][0]
+    assert (pts[0].e, pts[0].n, pts[0].z) == (spot[0] + 2.0, spot[1] - 1.0, spot[2])
+    pile = ms["m-poly"]["points"][0]
+    assert (pts[1].e, pts[1].n) == (pile[0], pile[1])
+    # a section is cut along the line where it is drawn
+    run(
+        root, tmp_path / "s.csv", "j2", what="section", format="csv", measurements=["m-line"], surface="plane"
+    )
+    rows = (tmp_path / "s.csv").read_text("utf-8").splitlines()[1:]
+    first = rows[0].split(",")
+    line = ms["m-line"]["points"][0]
+    assert float(first[2]) == pytest.approx(line[0] + 2.0)
+    assert float(first[3]) == pytest.approx(line[1] - 1.0)

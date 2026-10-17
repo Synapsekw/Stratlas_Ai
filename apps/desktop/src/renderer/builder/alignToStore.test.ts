@@ -6,6 +6,7 @@ import { createAlignToStore } from './alignToStore';
 import { withPhotoFixes } from './orientationEdit';
 
 const manifest = {
+  captures: [],
   layers: [
     {
       kind: 'photos',

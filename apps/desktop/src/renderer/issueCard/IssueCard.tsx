@@ -25,7 +25,7 @@ import {
   useT,
   type MessageKey,
 } from '@aio/ui';
-import { assetUrl, useWorkspace, workspace } from '@aio/workspace';
+import { assetUrl, dateShiftOf, useWorkspace, workspace } from '@aio/workspace';
 import { useEffect, useId, useMemo, useRef, useState } from 'react';
 import { frameImage, type FrameImage } from '../detections/prepare';
 import { shell } from '../shell';
@@ -380,7 +380,8 @@ export function IssueCard({
       if (next) focusIssue(next);
     }
   };
-  const loc = issueLocation(m, issue);
+  // where its pin is drawn: the sighting's date shift added (line up dates)
+  const loc = issueLocation(m, issue, (layerId) => dateShiftOf(m, layerId));
   const sevText =
     issue.severity === 'uncertain'
       ? facts.severityLabel

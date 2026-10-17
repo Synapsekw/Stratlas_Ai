@@ -1,5 +1,13 @@
 import { correctPos, photoCorrection } from '@aio/geo';
-import type { OrientationFile, PhotoCorrection, ProjectManifest, Vec3 } from '@aio/schema';
+import {
+  shiftLocal,
+  type DateShift,
+  type OrientationFile,
+  type PhotoCorrection,
+  type ProjectManifest,
+  type Vec3,
+} from '@aio/schema';
+import { dateShiftOf } from '@aio/workspace';
 
 /*
  * Align to (spec section 6): move a block of photos in plan onto a target's centre and fix its
@@ -24,6 +32,8 @@ export interface AlignSource {
   photoId: string;
   pos: Vec3 | undefined;
   correction: PhotoCorrection | undefined;
+  /** The shift of the photo's date: it is drawn (and compared) there; the move saved is a delta. */
+  shift?: DateShift | null;
 }
 
 /** Corrections by photo set id and photo id; null removes one. */
@@ -57,6 +67,7 @@ export function alignSources(
   for (const id of sets) {
     const l = m.layers.find((x) => x.id === id);
     if (l?.kind !== 'photos') continue;
+    const shift = dateShiftOf(m, l.id);
     for (const p of l.items) {
       if (wanted && !wanted.has(`${l.id}\n${p.id}`)) continue;
       out.push({
@@ -64,6 +75,7 @@ export function alignSources(
         photoId: p.id,
         pos: p.pos,
         correction: photoCorrection(o, l.id, p.id),
+        ...(shift ? { shift } : {}),
       });
     }
   }
@@ -81,8 +93,9 @@ export function planAlign(
   ground: number | null,
   { boundsFloor = true }: { boundsFloor?: boolean } = {},
 ): AlignPlan {
+  // where each photo is drawn (its correction, then its date's line-up), as the target box is
   const placed = sources.flatMap((s) =>
-    s.pos ? [{ s, at: correctPos(s.pos, s.correction) }] : [],
+    s.pos ? [{ s, at: shiftLocal(correctPos(s.pos, s.correction), s.shift ?? null) }] : [],
   );
   const skipped = sources.length - placed.length;
   const empty: AlignPlan = {

@@ -399,6 +399,7 @@ class TilesMesh:
 
     def plan(self, params: dict[str, Any]) -> list[Step]:
         def read(ctx: StepContext) -> dict[str, Any]:
+            from ..captures import date_shift, shift_transform
             from ..change.derived import find_layer, layer_file, read_manifest
 
             m = read_manifest(ctx.project)
@@ -406,7 +407,8 @@ class TilesMesh:
                 layer = find_layer(m, params["layer"], "mesh", "mesh layer")
                 path = layer_file(ctx.project, layer)
                 default_id, default_name = layer["id"], layer.get("name") or layer["id"]
-                transform = layer.get("transform")
+                # the date's line-up comes after the layer's own placement
+                transform = shift_transform(layer.get("transform"), date_shift(m, str(layer["id"])))
                 capture = layer.get("capture")
             else:
                 path = safe_project_path(ctx.project, params["src"])

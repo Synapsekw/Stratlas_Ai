@@ -620,3 +620,52 @@ def test_copc_pack_through_pdal(tmp_path):  # pragma: no cover - needs PDAL
     run_job(ModelEvidence(), tmp_path, params())
     pack = read_pack(tmp_path)
     assert len(pack["members"]) >= 1 and abs(pack["height"] - truth["height"]) < 2.0
+
+
+def line_up(root: Path, layer: str, east: float, north: float) -> None:
+    path = root / "manifest.json"
+    m = json.loads(path.read_text("utf-8"))
+    m["captures"] = [
+        {
+            "id": "c1",
+            "label": "Survey",
+            "date": "2026-10-01",
+            "lineUp": {"eastM": east, "northM": north, "with": "c0", "at": "2026-10-16T09:00:00Z"},
+        }
+    ]
+    for lyr in m["layers"]:
+        if lyr["id"] == layer:
+            lyr["capture"] = "c1"
+    path.write_text(json.dumps(m), "utf-8")
+
+
+def test_engineer_crop_carries_the_shift(tmp_path):
+    cloud, _ = stack_cloud(seed=7, noise=0.03)
+    plain, moved = tmp_path / "plain", tmp_path / "moved"
+    for root in (plain, moved):
+        root.mkdir()
+        make_project(root, cloud)
+    line_up(moved, "scan", 2.0, -1.0)
+    run_job(ModelEvidence(), plain, params())
+    # the region is drawn where the date is lined up: 2 m east and 1 m south of the file's
+    run_job(ModelEvidence(), moved, params(region={"centre": [2.0, 1.0], "radiusM": 40.0}))
+    a, b = read_pack(plain), read_pack(moved)
+    assert b["samples"]["kept"] == a["samples"]["kept"]
+    assert b["base"][0] - a["base"][0] == pytest.approx(2.0, abs=0.05)
+    assert b["base"][2] - a["base"][2] == pytest.approx(1.0, abs=0.05)
+    assert b["base"][1] == pytest.approx(a["base"][1], abs=0.05)
+    assert b["height"] == pytest.approx(a["height"], abs=0.1)
+
+
+def test_engineer_mesh_carries_the_shift(tmp_path):
+    plain, moved = tmp_path / "plain", tmp_path / "moved"
+    for root in (plain, moved):
+        root.mkdir()
+        _mesh_project(root)
+    line_up(moved, "m0", 2.0, -1.0)
+    kw = {"clouds": [], "meshes": [{"layer": "m0"}]}
+    run_job(ModelEvidence(), plain, params(region={"centre": [0.0, 0.0], "radiusM": 20.0}, **kw))
+    run_job(ModelEvidence(), moved, params(region={"centre": [2.0, 1.0], "radiusM": 20.0}, **kw))
+    a, b = read_pack(plain), read_pack(moved)
+    assert b["axis"]["point"][0] - a["axis"]["point"][0] == pytest.approx(2.0, abs=0.1)
+    assert b["axis"]["point"][2] - a["axis"]["point"][2] == pytest.approx(1.0, abs=0.1)

@@ -1,6 +1,6 @@
 import { frameProjection, type MapLngLat } from '@aio/maps';
 import { parseRoadModel, type PciSeverity, type RoadModel } from '@aio/schema';
-import { assetUrl, workspace, type Workspace } from '@aio/workspace';
+import { assetUrl, dateShiftOf, workspace, type Workspace } from '@aio/workspace';
 import { useStore } from 'zustand';
 import { createStore } from 'zustand/vanilla';
 import {
@@ -84,10 +84,16 @@ function rowsFor(ws: Workspace, road: RoadModel): DefectRow[] {
   if (!project) return [];
   const proj = frameProjection(project.manifest.crs, project.manifest.origin);
   if (!proj) return [];
-  return defectRows(ws.issues, project.manifest, road, (lon, lat) => {
-    const p = proj.toLocal(lon, lat);
-    return [p[0], p[2]];
-  });
+  return defectRows(
+    ws.issues,
+    project.manifest,
+    road,
+    (lon, lat) => {
+      const p = proj.toLocal(lon, lat);
+      return [p[0], p[2]];
+    },
+    (id) => dateShiftOf(project.manifest, id),
+  );
 }
 
 /** `road.json` of the project, or null when it has none (404). */

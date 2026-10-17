@@ -19,7 +19,7 @@ import {
 } from '@aio/schema';
 import { brand } from '@aio/brand';
 import { Icon, t, useFocusTrap } from '@aio/ui';
-import { assetUrl, useWorkspace } from '@aio/workspace';
+import { assetUrl, dateShiftOf, useWorkspace } from '@aio/workspace';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { authorName } from '../author';
 import { reportIfChangedOnDisk, useDiskChanged } from '../diskChanged';
@@ -192,6 +192,7 @@ export function NarrativeEditor({ onClose }: { onClose: () => void }) {
       houseReportModel({
         manifest: project.manifest,
         issues,
+        shiftOf: (layerId) => dateShiftOf(project.manifest, layerId),
         branding: resolveReportBranding(undefined, brand.productName),
         volumes: extras.volumes?.ok ? extras.volumes.volumes : null,
         edits: extras.volumes?.ok ? extras.volumes.edits : null,

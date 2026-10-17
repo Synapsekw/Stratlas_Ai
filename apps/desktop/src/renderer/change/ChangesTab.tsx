@@ -1,9 +1,11 @@
-import { ChangePanel, layersOf, type ChangePairContext } from '@aio/change';
+import { changeStore, ChangePanel, layersOf, type ChangePairContext } from '@aio/change';
 import { formatDate } from '@aio/ui';
 import { useWorkspace } from '@aio/workspace';
 import { useMemo } from 'react';
 import { useCaptureIndex } from '../workspace/compare';
 import { useSplit } from '../workspace/SplitPanes';
+import { openLineUp } from '../lineup/lineUpActions';
+import { rerunProducer } from './rerun';
 import { createChangeActions } from './actions';
 import { useChangeProject, useComparedPair } from './useChangeOverlays';
 
@@ -32,6 +34,11 @@ export function ChangesTab({ className }: { className?: string }) {
     layersFrom: layersOf(index, project.manifest.layers, pair.from),
     layersTo: layersOf(index, project.manifest.layers, pair.to),
   });
+  /** Run a producer again for the panel's pair; the error comes back for the panel to show. */
+  const rerun = (name: string): Promise<string | null> => {
+    const pair = changeStore.getState().pair;
+    return rerunProducer(name, pair ? context(pair) : null);
+  };
   return (
     <ChangePanel
       className={className}
@@ -39,6 +46,22 @@ export function ChangesTab({ className }: { className?: string }) {
       defaultPair={compared}
       context={context}
       actions={actions}
+      onLineUp={(from, to) => {
+        // after a saved line-up the refused run starts again by itself
+        const refused = changeStore.getState().misaligned?.producer;
+        openLineUp(
+          from,
+          to,
+          refused
+            ? () => {
+                void rerun(refused).then((error) => {
+                  if (error) changeStore.getState().setError(error);
+                });
+              }
+            : undefined,
+        );
+      }}
+      onRerun={rerun}
     />
   );
 }

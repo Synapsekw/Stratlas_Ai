@@ -23,13 +23,29 @@ export interface JobDraft {
   values: Record<string, string>;
 }
 
+/**
+ * A job record as the renderer holds it: main's record plus a local mark. `quiet` is set (and
+ * never cleared) for jobs started with `startQuiet`; absent means not quiet. Main never sends it.
+ */
+export type JobEntry = JobRecord & { quiet?: true };
+
+/** `job` with the quiet mark of `known` (or of the quiet ids) carried over. */
+function withQuiet(job: JobRecord, known?: JobEntry, ids?: readonly string[]): JobEntry {
+  return known?.quiet || ids?.includes(job.id) ? { ...job, quiet: true } : job;
+}
+
 export interface JobsState {
   /** null until the first jobs:list answer. */
   runtime: RuntimeInfo | null;
   /** Newest first. */
-  jobs: JobRecord[];
+  jobs: JobEntry[];
   logs: Record<string, JobLogLine[]>;
   selected: string | null;
+  /**
+   * Ids of jobs started quietly (background work): never selected, never announced. An id leaves
+   * once its job has ended and been seen (`watchJobEnds`), is removed, or is gone (`pruneQuiet`).
+   */
+  quiet: string[];
   error: string | null;
 }
 
@@ -40,6 +56,13 @@ export interface JobsActions {
   select: (id: string | null) => Promise<void>;
   /** Start a job; returns an error sentence or null. */
   start: (req: IpcRequest<'jobs:start'>) => Promise<string | null>;
+  /**
+   * Start a job as background work: it joins the list but does not take the Processing selection
+   * and its end is not announced. Returns the job id, or why it did not start.
+   */
+  /** Forget the quiet ids of jobs that are no longer at work (ended, removed or unknown). */
+  pruneQuiet: () => void;
+  startQuiet: (req: IpcRequest<'jobs:start'>) => Promise<{ jobId: string } | { error: string }>;
   cancel: (id: string) => Promise<string | null>;
   /**
    * Take finished jobs off the list for good (main forgets them); a job still at work is left
@@ -61,7 +84,8 @@ export function applyJobEvent(
     // An invoke answer can arrive after newer pushed events; never go back in time.
     const known = s.jobs[i];
     if (known && known.updatedAt > e.job.updatedAt) return s;
-    const jobs = i < 0 ? [e.job, ...s.jobs] : s.jobs.map((j, k) => (k === i ? e.job : j));
+    const next = withQuiet(e.job, known);
+    const jobs = i < 0 ? [next, ...s.jobs] : s.jobs.map((j, k) => (k === i ? next : j));
     return { jobs, logs: s.logs };
   }
   const prev = s.logs[e.jobId] ?? [];
@@ -235,9 +259,11 @@ export function mergeDiskIssues(
 export function jobsEnded(
   prev: readonly JobRecord[],
   next: readonly JobRecord[],
+  quiet: ReadonlySet<string> = new Set(),
 ): { job: JobRecord; ok: boolean }[] {
   return next
     .filter((j) => {
+      if (quiet.has(j.id)) return false;
       if (j.status !== 'done' && j.status !== 'failed') return false;
       const before = prev.find((p) => p.id === j.id);
       return before !== undefined && before.status !== j.status;
@@ -245,8 +271,54 @@ export function jobsEnded(
     .map((job) => ({ job, ok: job.status === 'done' }));
 }
 
+/**
+ * Call `onEnd` for each job that ends, except quiet ones, then forget the quiet ids of ended jobs
+ * (the list must not grow for the life of the app). Returns the stop.
+ */
+export function watchJobEnds(
+  store: StoreApi<Jobs>,
+  onEnd: (ended: { job: JobRecord; ok: boolean }) => void,
+): () => void {
+  return store.subscribe((s, prev) => {
+    for (const ended of jobsEnded(prev.jobs, s.jobs, new Set(s.quiet))) onEnd(ended);
+    if (s.quiet.length > 0) s.pruneQuiet();
+  });
+}
+
 export function isActive(job: Pick<JobRecord, 'status'>): boolean {
   return job.status === 'starting' || job.status === 'running' || job.status === 'cancelling';
+}
+
+/**
+ * The finished record of job `id` once it is no longer at work (done, failed, cancelled or
+ * interrupted), as the store holds it. Null when the store does not know the job, and when
+ * `signal` aborts first (the caller gave up waiting).
+ */
+export function waitForJob(
+  store: StoreApi<Jobs>,
+  id: string,
+  signal?: AbortSignal,
+): Promise<JobRecord | null> {
+  const find = () => store.getState().jobs.find((j) => j.id === id);
+  const known = find();
+  if (!known || signal?.aborted) return Promise.resolve(null);
+  if (!isActive(known)) return Promise.resolve(known);
+  return new Promise((resolve) => {
+    const done = (job: JobRecord | null) => {
+      off();
+      signal?.removeEventListener('abort', onAbort);
+      resolve(job);
+    };
+    const onAbort = () => {
+      done(null);
+    };
+    const off = store.subscribe(() => {
+      const job = find();
+      if (!job) done(null);
+      else if (!isActive(job)) done(job);
+    });
+    signal?.addEventListener('abort', onAbort, { once: true });
+  });
 }
 
 export function canResume(job: Pick<JobRecord, 'status'>): boolean {
@@ -260,6 +332,7 @@ export function createJobsStore(bridge: Bridge, on: AioBridge['on'] | undefined)
     jobs: [],
     logs: {},
     selected: null,
+    quiet: [],
     error: null,
 
     init: async () => {
@@ -280,7 +353,13 @@ export function createJobsStore(bridge: Bridge, on: AioBridge['on'] | undefined)
       }
       set((s) => ({
         runtime: r.value.runtime,
-        jobs: r.value.jobs,
+        jobs: r.value.jobs.map((j) =>
+          withQuiet(
+            j,
+            s.jobs.find((k) => k.id === j.id),
+            s.quiet,
+          ),
+        ),
         error: null,
         selected: s.selected ?? r.value.jobs[0]?.id ?? null,
       }));
@@ -293,6 +372,28 @@ export function createJobsStore(bridge: Bridge, on: AioBridge['on'] | undefined)
       if (!id) return;
       const r = await bridge.call('jobs:log', { jobId: id, tail: 1000 });
       if (r.ok) set((s) => ({ logs: { ...s.logs, [id]: mergeLog(r.value.lines, s.logs[id]) } }));
+    },
+
+    pruneQuiet: () => {
+      const { jobs: list, quiet } = get();
+      const live = quiet.filter((id) => list.some((j) => j.id === id && isActive(j)));
+      if (live.length !== quiet.length) set({ quiet: live });
+    },
+
+    startQuiet: async (req) => {
+      const r = await bridge.call('jobs:start', req);
+      if (!r.ok) return { error: r.error };
+      if (!r.value.ok) return { error: r.value.error };
+      const job = r.value.job;
+      set((s) => ({
+        ...applyJobEvent(s, { type: 'update', job }),
+        jobs: applyJobEvent(s, { type: 'update', job }).jobs.map((j) =>
+          j.id === job.id ? { ...j, quiet: true as const } : j,
+        ),
+        quiet: [...s.quiet, job.id],
+        logs: s.logs[job.id] ? s.logs : { ...s.logs, [job.id]: [] },
+      }));
+      return { jobId: job.id };
     },
 
     start: async (req) => {
@@ -329,6 +430,7 @@ export function createJobsStore(bridge: Bridge, on: AioBridge['on'] | undefined)
           jobs: s.jobs.filter((j) => !gone.has(j.id)),
           logs,
           selected: s.selected !== null && gone.has(s.selected) ? null : s.selected,
+          quiet: s.quiet.filter((id) => !gone.has(id)),
         };
       });
       return null;
@@ -573,6 +675,8 @@ export const FORMS: Record<PipelineName, Field[]> = {
     { key: 'maxShiftPx', label: 'Largest shift (px)', kind: 'number', placeholder: '2' },
   ],
   'change.surface': [],
+  // Line up dates: run by the line-up step, which fills both dates and their layers
+  'change.lineup': [],
   'change.cloud': [
     { key: 'layerFrom', label: 'Earlier point cloud layer id', kind: 'text', required: true },
     { key: 'layerTo', label: 'Later point cloud layer id', kind: 'text', required: true },

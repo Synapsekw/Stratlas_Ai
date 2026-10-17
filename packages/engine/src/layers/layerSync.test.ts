@@ -1,4 +1,4 @@
-import type { Layer, LayerKind } from '@aio/schema';
+import type { DateShift, Layer, LayerKind } from '@aio/schema';
 import { describe, expect, it, vi } from 'vitest';
 import type { AdapterContext, LayerAdapter, LayerHandle } from '../types';
 import { LayerSync } from './layerSync';
@@ -52,10 +52,10 @@ function deferredAdapter(kind: LayerKind) {
   return { adapter, pending, fake };
 }
 
-const ctx = {} as AdapterContext;
 const flush = () => new Promise((r) => setTimeout(r, 0));
 
-function setup() {
+function setup(shifts: Record<string, DateShift> = {}) {
+  const ctx = { shiftOf: (id: string) => shifts[id] ?? null } as AdapterContext;
   const m = deferredAdapter('mesh');
   const onError = vi.fn();
   const onMissing = vi.fn();
@@ -67,7 +67,7 @@ function setup() {
     onMissing,
     onLoaded,
   });
-  return { m, sync, onError, onMissing, onLoaded };
+  return { m, sync, onError, onMissing, onLoaded, shifts };
 }
 
 describe('LayerSync', () => {
@@ -151,5 +151,42 @@ describe('LayerSync', () => {
     await flush();
     expect(ha.disposed).toBe(true);
     expect(hb.disposed).toBe(true);
+  });
+
+  it('creates a dated mesh with the date shift in its transform', () => {
+    const { m, sync } = setup({ a: { eastM: 2, northM: -1 } });
+    sync.sync([mesh('a')], {});
+    const drawn = m.pending[0]?.layer;
+    expect(drawn?.kind === 'mesh' ? drawn.transform : null).toEqual([
+      1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 2, 0, 1, 1,
+    ]);
+    // the drawn layer is the one the sync keeps
+    expect(sync.layer('a')).toBe(drawn);
+  });
+
+  it('recreates a layer when its date shift changes', async () => {
+    const { m, sync, shifts } = setup();
+    const a = mesh('a');
+    sync.sync([a], {});
+    const h1 = m.fake();
+    m.pending[0]?.resolve(h1);
+    await flush();
+    // the same layer object: only the date moved
+    shifts.a = { eastM: 0.5, northM: 0 };
+    sync.sync([a], {});
+    expect(h1.disposed).toBe(true);
+    expect(m.pending).toHaveLength(2);
+    const drawn = m.pending[1]?.layer;
+    expect(drawn?.kind === 'mesh' ? drawn.transform[12] : null).toBe(0.5);
+    // nothing more moves: no further rebuild
+    sync.sync([a], {});
+    expect(m.pending).toHaveLength(2);
+  });
+
+  it('leaves a common layer where it is', () => {
+    const { m, sync } = setup({ other: { eastM: 3, northM: 4 } });
+    const a = mesh('a');
+    sync.sync([a], {});
+    expect(m.pending[0]?.layer).toBe(a);
   });
 });

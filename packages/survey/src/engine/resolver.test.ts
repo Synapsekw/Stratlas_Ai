@@ -4,7 +4,7 @@ import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import { compareItem } from './compare';
-import { projectResolver } from './resolver';
+import { projectResolver, ringShifts } from './resolver';
 
 const DIR = join(
   fileURLToPath(new URL('.', import.meta.url)),
@@ -76,5 +76,34 @@ describe('projectResolver', () => {
     });
     await expect(first({ kind: 'previous' })).rejects.toThrow('There is no previous survey');
     await expect(resolve({ kind: 'survey', surface: 'nope' })).rejects.toThrow('not prepared');
+  });
+});
+
+describe('ringShifts', () => {
+  const surfaces: HeightTiles[] = [
+    { ...cone, capture: 'c2', dateShiftM: { eastM: 2, northM: -1 } },
+  ];
+  it('takes the prepared shift to sample with and the shift now for the fingerprint', () => {
+    expect(ringShifts(surfaces, { c2: [3.5, 0.5] }, 'c2')).toEqual({
+      ringShift: [2, -1],
+      ringCurrent: [3.5, 0.5],
+    });
+  });
+  it('uses the shift now for a surface prepared before any line-up, and none for a site ring', () => {
+    const plain: HeightTiles[] = [{ ...cone, capture: 'c2' }];
+    expect(ringShifts(plain, { c2: [3, 0] }, 'c2')).toEqual({
+      ringShift: [3, 0],
+      ringCurrent: [3, 0],
+    });
+    expect(ringShifts(surfaces, { c2: [3, 0] }, undefined)).toEqual({});
+  });
+  it('puts the date shift now on the surfaces it resolves', async () => {
+    const resolve = projectResolver({
+      surfaces,
+      captures: ['c2'],
+      shifts: { c2: [3.5, 0.5] },
+      fetchBytes: () => Promise.resolve(null),
+    });
+    expect((await resolve({ kind: 'current' })).current).toEqual([3.5, 0.5]);
   });
 });

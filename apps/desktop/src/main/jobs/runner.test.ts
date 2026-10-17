@@ -127,6 +127,16 @@ describe('JobRunner', () => {
     expect((await finished(runner, job.id)).status).toBe('failed');
   });
 
+  it('carries a failure code from job.json', async () => {
+    const { runner } = setup('coded');
+    const r = await runner.start({ ...START, project });
+    if (!r.ok) throw new Error(r.error);
+    const job = await finished(runner, r.job.id);
+    expect(job.status).toBe('failed');
+    expect(job.error).toBe('x');
+    expect(job.failure).toEqual({ code: 'misaligned', data: { shiftM: 2.01 } });
+  });
+
   it('cancel asks the runtime to stop, and the job can resume with the same id', async () => {
     const { runner } = setup('slow');
     const r = await runner.start({ ...START, project });

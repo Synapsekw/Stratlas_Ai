@@ -8,7 +8,8 @@
  * `aio://project/<id>/...`), once each.
  */
 import type { DesignEntry, HeightTiles, SurfaceRef } from '@aio/schema';
-import type { Resolve, ResolvedSurface } from './compare';
+import type { Resolve, ResolvedSurface, Shift } from './compare';
+import { surfaceOfCapture } from '../calc/pickers';
 import { sha256Hex } from './fingerprint';
 import { TileCache, TileSurface } from './tiles';
 import { readTin } from './tin';
@@ -25,9 +26,27 @@ export interface ProjectSurfacesInput {
   /** Bytes of a project file (`survey/...`), or null when it is missing. */
   fetchBytes: (path: string) => Promise<Uint8Array | null>;
   cache?: TileCache;
+  /** The line-up each survey date has now (`[eastM, northM]`, absent: none), for fingerprints. */
+  shifts?: Readonly<Record<string, Shift>>;
 }
 
-const RANK: Record<string, number> = { derived: 0, dsm: 1, cloud: 2, dtm: 3, design: 4 };
+/**
+ * The shifts of a survey-scoped ring (the capture its measurement belongs to): `ringShift` is what
+ * its prepared surface sits at (its `dateShiftM`), added to the stored ring before sampling, so a
+ * line-up since then does not move the answer; `ringCurrent` is the date's shift now, for the
+ * fingerprint (the result reads stale until the surface is prepared again).
+ */
+export function ringShifts(
+  surfaces: readonly HeightTiles[],
+  shifts: Readonly<Record<string, Shift>> | undefined,
+  capture: string | undefined,
+): { ringShift?: Shift; ringCurrent?: Shift } {
+  if (capture === undefined) return {};
+  const current: Shift = shifts?.[capture] ?? [0, 0];
+  const s = surfaceOfCapture(surfaces, capture);
+  const prepared: Shift = s?.dateShiftM ? [s.dateShiftM.eastM, s.dateShiftM.northM] : current;
+  return { ringShift: prepared, ringCurrent: current };
+}
 
 export class SurfaceNotFound extends Error {}
 
@@ -37,19 +56,7 @@ export function projectResolver(inp: ProjectSurfacesInput): Resolve {
   const tins = new Map<string, Promise<ResolvedSurface>>();
   const byId = new Map(inp.surfaces.map((s) => [s.id, s]));
 
-  const ofCapture = (c: string): HeightTiles | null => {
-    let best: HeightTiles | null = null;
-    let bestRank = Infinity;
-    for (const s of inp.surfaces) {
-      if (s.capture !== c) continue;
-      const r = RANK[s.source.kind] ?? 9;
-      if (!best || r < bestRank || (r === bestRank && s.id < best.id)) {
-        best = s;
-        bestRank = r;
-      }
-    }
-    return best;
-  };
+  const ofCapture = (c: string): HeightTiles | null => surfaceOfCapture(inp.surfaces, c);
 
   const grid = (s: HeightTiles, capture?: string): ResolvedSurface => {
     let g = grids.get(s.id);
@@ -68,6 +75,7 @@ export function projectResolver(inp: ProjectSurfacesInput): Resolve {
       name: s.name,
       fingerprint: s.fingerprint,
       ...(cap !== undefined ? { capture: cap } : {}),
+      ...(cap !== undefined && inp.shifts?.[cap] ? { current: inp.shifts[cap] } : {}),
       grid: g,
     };
   };

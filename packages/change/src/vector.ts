@@ -1,4 +1,4 @@
-import type { ChangeItem, Vec3 } from '@aio/schema';
+import { shiftLocal, type ChangeItem, type DateShift, type Vec3 } from '@aio/schema';
 import { box2, boxGap, centroid2, hausdorff, lonLatToMetres, type Box2, type XY } from './geometry';
 
 /**
@@ -36,6 +36,12 @@ export interface VectorChangeInput {
   keys?: readonly string[];
   /** Lon/lat to the project local frame, for `at` (fly to). */
   toLocal?: (lonLat: [number, number]) => Vec3;
+  /**
+   * The date shifts of the two layers (lined-up dates): their features are compared where the
+   * shift puts them, metres east and north.
+   */
+  shiftFrom?: DateShift | null;
+  shiftTo?: DateShift | null;
 }
 
 interface F {
@@ -48,6 +54,8 @@ interface F {
   box: Box2;
   c: [number, number];
   cll: [number, number];
+  /** The date shift of the feature's layer. */
+  shift: DateShift | null;
 }
 
 function coords(g: unknown, out: [number, number][]): void {
@@ -87,8 +95,16 @@ export function vectorChanges(input: VectorChangeInput): VectorItem[] {
   const geoB = rawB.map(geometryOf);
   for (const g of [...geoA, ...geoB]) all.push(...g.ll);
   const origin = all.length ? centroid2(all) : ([0, 0] as [number, number]);
-  const make = (f: GeoFeature, g: { type: string; ll: [number, number][] }, i: number): F => {
-    const m = g.ll.map((p) => lonLatToMetres(p, origin));
+  const make = (
+    f: GeoFeature,
+    g: { type: string; ll: [number, number][] },
+    i: number,
+    shift: DateShift | null,
+  ): F => {
+    const m = g.ll.map((p): XY => {
+      const [x, y] = lonLatToMetres(p, origin);
+      return [x + (shift?.eastM ?? 0), y + (shift?.northM ?? 0)];
+    });
     return {
       index: i,
       props: (f.properties && typeof f.properties === 'object' ? f.properties : {}) as Record<
@@ -102,10 +118,15 @@ export function vectorChanges(input: VectorChangeInput): VectorItem[] {
       box: box2(m),
       c: centroid2(m),
       cll: centroid2(g.ll),
+      shift,
     };
   };
-  const A = rawA.map((f, i) => make(f, geoA[i] ?? { type: 'none', ll: [] }, i));
-  const B = rawB.map((f, i) => make(f, geoB[i] ?? { type: 'none', ll: [] }, i));
+  const A = rawA.map((f, i) =>
+    make(f, geoA[i] ?? { type: 'none', ll: [] }, i, input.shiftFrom ?? null),
+  );
+  const B = rawB.map((f, i) =>
+    make(f, geoB[i] ?? { type: 'none', ll: [] }, i, input.shiftTo ?? null),
+  );
 
   const pairs: { a: F; b: F; key: string; by: string }[] = [];
   const doneA = new Set<F>();
@@ -155,7 +176,7 @@ export function vectorChanges(input: VectorChangeInput): VectorItem[] {
 
   const name = (f: F, key: string) => text(f.props.name) ?? text(f.props.id) ?? key;
   const at = (f: F): Pick<VectorItem, 'at'> =>
-    input.toLocal && f.ll.length ? { at: input.toLocal(f.cll) } : {};
+    input.toLocal && f.ll.length ? { at: shiftLocal(input.toLocal(f.cll), f.shift) } : {};
   const items: VectorItem[] = [];
   for (const { a, b, key, by } of pairs) {
     const h = hausdorff(a.m, b.m);

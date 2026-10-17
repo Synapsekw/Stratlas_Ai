@@ -135,6 +135,60 @@ describe('the English catalogue', () => {
       if (k.startsWith('place.')) expect(v, k).not.toMatch(/\p{Extended_Pictographic}/u);
   });
 
+  it('has the strings for lining up dates', () => {
+    const keys = [
+      'lineUp.title',
+      'lineUp.action',
+      'lineUp.confirm',
+      'lineUp.cancel',
+      'lineUp.notNow',
+      'lineUp.keep',
+      'lineUp.keepHint',
+      'lineUp.measuring',
+      'lineUp.shift',
+      'lineUp.east',
+      'lineUp.west',
+      'lineUp.north',
+      'lineUp.south',
+      'lineUp.confident',
+      'lineUp.moves',
+      'lineUp.layers_one',
+      'lineUp.layers_other',
+      'lineUp.items_one',
+      'lineUp.items_other',
+      'lineUp.before',
+      'lineUp.after',
+      'lineUp.done',
+      'lineUp.undone',
+      'lineUp.redone',
+      'lineUp.removed',
+      'lineUp.offer',
+      'lineUp.source.ortho',
+      'lineUp.source.dsm',
+      'lineUp.refuse.texture',
+      'lineUp.refuse.disagree',
+      'lineUp.refuse.overlap',
+      'lineUp.refuse.aligned',
+      'lineUp.refuse.noImagery',
+      'lineUp.failed',
+      'lineUp.folder',
+      'lineUp.remove',
+      'change.misaligned',
+      'change.stale',
+      'change.rerun',
+    ];
+    for (const k of keys) {
+      const v = (en as Record<string, string>)[k];
+      expect(v, k).toBeTruthy();
+      expect(v, k).not.toMatch(/[–—]/);
+    }
+    expect(t('lineUp.items', { count: 1 })).toBe('1 drawn item');
+    expect(t('lineUp.items', { count: 3 })).toBe('3 drawn items');
+    expect(t('lineUp.layers', { count: 1 })).toBe('1 dataset');
+    expect(t('lineUp.layers', { count: 2 })).toBe('2 datasets');
+    expect(t('change.misaligned', { distance: '2.01 m' })).toBe('These dates are 2.01 m apart.');
+  });
+
   it('finds missing keys and placeholder mismatches in a translation', () => {
     expect(placeholders('{count} of {total}')).toEqual(['count', 'total']);
     const bad: Catalogue = { 'library.count_one': '{n} مشروع', 'nope.key': 'x' };

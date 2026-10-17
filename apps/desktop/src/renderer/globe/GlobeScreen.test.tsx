@@ -1,4 +1,5 @@
 // @vitest-environment jsdom
+import type * as WorkspaceModule from '@aio/workspace';
 import type { GlobeCamera } from '@aio/globe';
 import type { GlobeController, GlobeViewProps } from '@aio/globe/view';
 import type { GlobeSite } from '@aio/schema';
@@ -64,9 +65,12 @@ vi.mock('@aio/globe/view', () => ({
   },
 }));
 vi.mock('@aio/engine', () => ({ reducedMotion: () => true }));
-vi.mock('@aio/workspace', () => {
+vi.mock('@aio/workspace', async (importOriginal) => {
+  const real = await importOriginal<typeof WorkspaceModule>();
   const state = () => ({ project: app.project, issues: app.issues });
   return {
+    dateShiftOf: real.dateShiftOf,
+    layerDateShifts: real.layerDateShifts,
     useWorkspace: (selector: (s: ReturnType<typeof state>) => unknown) => selector(state()),
     workspace: { getState: state },
   };
@@ -111,7 +115,13 @@ const YARD = site('yard', 'Harbour yard');
 /** The quarry as the open project, and one open issue of it with a place in 3D (so it has a pin). */
 const QUARRY_PROJECT = {
   id: 'quarry',
-  manifest: { crs: { epsg: 4326 }, origin: [0, 0, 0], severityModels: [] },
+  manifest: {
+    crs: { epsg: 4326 },
+    origin: [0, 0, 0],
+    severityModels: [],
+    captures: [],
+    layers: [],
+  },
 };
 const LOOSE_ROCK = {
   id: 'i1',

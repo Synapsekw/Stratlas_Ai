@@ -202,3 +202,46 @@ def test_read_region_carries_the_offset(tmp_path):
     assert "[10.0,15.0])" in args[-1].replace(" ", "")
     plain_args = pdal_translate_args("pdal", "a.copc.laz", "o.las", "copc", box, origin)
     assert "[15.0,20.0])" in plain_args[-1].replace(" ", "")
+
+
+# ------------------------------------------------------------------------------ lined-up dates
+
+SHIFT = (2.0, -1.0)  # metres east, north: local x + 2, z + 1
+
+
+@pytest.mark.parametrize("fmt", ["las", "kit-packed"])
+def test_read_region_carries_the_shift(tmp_path, fmt):
+    cloud, _ = monopole_cloud(seed=1)
+    origin = (400000.0, 5600000.0, 10.0)
+    if fmt == "las":
+        path = write_las(cloud, tmp_path / "s.las", crs_epsg=32633, offset=origin)
+    else:
+        path = tmp_path / "s.bin"
+        q = np.round(cloud * 1000).astype("<i2")
+        path.write_bytes(q.tobytes() + np.full(len(cloud), 128, np.uint8).tobytes())
+    plain, _ = read_region(path, fmt, None, 1_000_000, CTX, origin=origin)
+    moved, info = read_region(path, fmt, None, 1_000_000, CTX, origin=origin, shift=SHIFT)
+    assert np.allclose(moved[:, 0] - plain[:, 0], 2.0, atol=1e-9)
+    assert np.allclose(moved[:, 1], plain[:, 1], atol=1e-9)
+    assert np.allclose(moved[:, 2] - plain[:, 2], 1.0, atol=1e-9)
+    assert info["bounds"]["min"][0] == pytest.approx(plain[:, 0].min() + 2.0)
+    # the region is drawn where the date is lined up: the same points as the unshifted region
+    centre = {"centre": [0.0, 0.0], "radiusM": 3.0}
+    here, _ = read_region(path, fmt, centre, 1_000_000, CTX, origin=origin)
+    drawn = {"centre": [2.0, 1.0], "radiusM": 3.0}
+    there, _ = read_region(path, fmt, drawn, 1_000_000, CTX, origin=origin, shift=SHIFT)
+    assert len(there) == len(here) > 0
+    assert np.allclose(np.sort(there[:, 1]), np.sort(here[:, 1]))
+
+
+def test_pdal_bounds_stay_in_file_coordinates():
+    origin = (1000.0, 2000.0, 10.0)
+    circle = {"centre": [12.0, 31.0], "radiusM": 4.0}
+    box = {"min": [10.0, 0.0, 30.0], "max": [14.0, 5.0, 34.0]}
+    plain = pdal_translate_args("pdal", "a.copc.laz", "o.las", "copc", circle, origin)
+    moved = pdal_translate_args("pdal", "a.copc.laz", "o.las", "copc", circle, origin, 0.0, SHIFT)
+    # drawn 2 m east and 1 m south of the file: the query goes back to where the file has it
+    assert plain[-1] == "--readers.copc.bounds=([1008.0,1016.0],[1965.0,1973.0])"
+    assert moved[-1] == "--readers.copc.bounds=([1006.0,1014.0],[1966.0,1974.0])"
+    laz = pdal_translate_args("pdal", "a.laz", "o.las", "laz", box, origin, 0.0, SHIFT)
+    assert laz[-1] == "--filters.crop.bounds=([1008.0,1012.0],[1967.0,1971.0],[10.0,15.0])"

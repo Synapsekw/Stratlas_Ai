@@ -1,6 +1,8 @@
 import type { Sighting } from '@aio/schema';
+import { toWgs84 } from '@aio/geo';
 import { describe, expect, it } from 'vitest';
-import { makeIssue, tankModel } from '../testing';
+import { shiftOfManifest } from '../model/dateFrame';
+import { linedUp, makeIssue, tankModel } from '../testing';
 import { drapedShapes, mapToLocal } from './drape';
 
 const square: Sighting = {
@@ -65,5 +67,31 @@ describe('map sightings draped on the ground', () => {
     expect((a?.[0] ?? 0) - (b?.[0] ?? 0)).toBeCloseTo(-10, 6);
     // z points south: seen from an origin 20 m further north the point is 20 m more south
     expect((a?.[1] ?? 0) - (b?.[1] ?? 0)).toBeCloseTo(-20, 6);
+  });
+
+  it('drapes a map polygon of a lined-up date shifted', () => {
+    const f = mapToLocal(linedUp.crs, linedUp.origin, shiftOfManifest(linedUp));
+    const [lon, lat] = toWgs84([500010, 3200005, 0], 32639);
+    // the lined-up ortho's shapes sit 2 m east; a layer of no date stays
+    const moved = f?.(lon, lat, 'ortho-d2');
+    const still = f?.(lon, lat, 'model-d1');
+    expect(moved?.[0]).toBeCloseTo(12, 3);
+    expect(moved?.[1]).toBeCloseTo(-5, 3);
+    expect(still?.[0]).toBeCloseTo(10, 3);
+    expect(f?.(lon, lat)[0]).toBeCloseTo(10, 3);
+    // the drape asks for each sighting's layer
+    const asked: (string | undefined)[] = [];
+    const d = drapedShapes(
+      [makeIssue({ id: 'a', sightings: [{ ...square, layer: 'ortho-d2' }] })],
+      [tankModel],
+      null,
+      (x, y, layer) => {
+        asked.push(layer);
+        return [x + (layer === 'ortho-d2' ? 2 : 0), 0 - y];
+      },
+      0,
+    );
+    expect(new Set(asked)).toEqual(new Set(['ortho-d2']));
+    expect(d.lines.positions.slice(0, 6)).toEqual(new Float32Array([2, 0, 0, 12, 0, 0]));
   });
 });

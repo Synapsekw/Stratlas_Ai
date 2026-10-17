@@ -1,4 +1,4 @@
-import type { Issue } from '@aio/schema';
+import type { DateShift, Issue } from '@aio/schema';
 
 /**
  * Plan-view footprints of issues placed as areas on a model (findings on a model): the convex
@@ -80,7 +80,10 @@ export function footprintOverlap(a: readonly XZ[], b: readonly XZ[]): number {
 }
 
 /** The issue's plan-view footprint: its first outline or prism, as a convex hull. */
-export function footprintOf(issue: Pick<Issue, 'sightings'>): XZ[] | null {
+export function footprintOf(
+  issue: Pick<Issue, 'sightings'>,
+  shiftOf?: (layerId: string) => DateShift | null,
+): XZ[] | null {
   for (const s of issue.sightings) {
     const pts =
       s.on === 'mesh' && s.geom.type === 'spolygon'
@@ -89,7 +92,10 @@ export function footprintOf(issue: Pick<Issue, 'sightings'>): XZ[] | null {
           ? s.geom.points
           : null;
     if (!pts) continue;
-    const hull = convexHullXZ(pts.map((p): XZ => [p[0], p[2]]));
+    const at = shiftOf?.(s.layer) ?? null;
+    const hull = convexHullXZ(
+      pts.map((p): XZ => [p[0] + (at?.eastM ?? 0), p[2] - (at?.northM ?? 0)]),
+    );
     if (hull.length >= 3 && areaXZ(hull) > 1e-9) return hull;
   }
   return null;

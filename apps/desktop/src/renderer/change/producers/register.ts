@@ -9,11 +9,12 @@
  * Player mode (a `.aio` package) never computes: the producers see no project folder there.
  */
 import { setChangeProducerRunner, type ChangeProducerRun } from '@aio/ai';
-import { changeProducers, layersOf, type ChangePairContext } from '@aio/change';
+import { changeProducers, changeStore, layersOf, type ChangePairContext } from '@aio/change';
 import { DEFAULT_CHANGE_THRESHOLDS } from '@aio/schema';
 import { pointcloudSettings } from '@aio/pointcloud';
 import { volumetric } from '@aio/volumetric';
 import { captureIndex, workspace } from '@aio/workspace';
+import { waitForJob } from '../../jobs';
 import { jobs, shell } from '../../shell';
 import { volumeHints } from '../../workspace/compare';
 import { cloudChangeFinished, registerCloudChangeProducers, type ChangeJob } from './cloud';
@@ -94,6 +95,11 @@ export function registerAppChangeProducers(): void {
       const r = await startChangeJob({ pipeline, project, params });
       if ('error' in r) return r;
       return r.jobId ? { jobId: r.jobId } : { error: 'The job did not start.' };
+    },
+    projectId: () => workspace.getState().project?.id ?? null,
+    finished: (jobId) => waitForJob(jobs, jobId),
+    setMisaligned: (m) => {
+      changeStore.getState().setMisaligned(m);
     },
   });
   registerCloudChangeProducers({

@@ -28,7 +28,7 @@ import {
   type Page,
 } from '@playwright/test';
 import { existsSync, readFileSync } from 'node:fs';
-import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { cp, mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import {
@@ -731,6 +731,66 @@ export async function openChangeDemo(win: Page): Promise<{ root: string }> {
     .poll(async () => (await openProject(win)).id, { timeout: 60_000 })
     .toBe(CHANGE_DEMO.id);
   return { root: (await openProject(win)).root ?? '' };
+}
+
+export const MISALIGNED_PROJECT_ID = 'e2e-misaligned';
+
+/**
+ * The change demo copied into the data root as project `e2e-misaligned`, with date `d2` moved
+ * `shift.eastM` east and `shift.northM` north in its stored data only (the demo folder stays as
+ * it is: its truth and the specs on it assume aligned dates). Moved: the `model-d2` transform,
+ * the corners of `ortho-d2` and `dsm-d2` (layer and `tiles.json`), the origin of
+ * `sources/dsm-d2.json` and the positions of `photos-d2`. The clouds stay. Local frame: x grows
+ * east and z grows south. Skip the test first when `hasChangeDemo()` is false.
+ */
+export async function createMisalignedDemo(
+  dataRoot: DataRoot,
+  shift: { eastM: number; northM: number },
+): Promise<{ id: string; root: string }> {
+  const root = join(dataRoot.root, 'projects', MISALIGNED_PROJECT_ID);
+  await mkdir(join(dataRoot.root, 'projects'), { recursive: true });
+  await cp(join(DEMO_FOLDER, CHANGE_DEMO.id), root, { recursive: true });
+  type Vec = [number, number, number];
+  interface Corners {
+    tl: Vec;
+    tr: Vec;
+    bl: Vec;
+  }
+  interface Manifest {
+    id: string;
+    name: string;
+    layers: { id: string; transform?: number[]; corners?: Corners; items?: { pos: Vec }[] }[];
+  }
+  const move = (v: Vec): Vec => [v[0] + shift.eastM, v[1], v[2] - shift.northM];
+  const moveCorners = (c: Corners): Corners => ({ tl: move(c.tl), tr: move(c.tr), bl: move(c.bl) });
+  const load = async (file: string): Promise<unknown> =>
+    JSON.parse(await readFile(join(root, file), 'utf8'));
+  const save = (file: string, json: unknown) =>
+    writeFile(join(root, file), JSON.stringify(json, null, 2));
+
+  const manifest = (await load('manifest.json')) as Manifest;
+  manifest.id = MISALIGNED_PROJECT_ID;
+  manifest.name = 'E2E misaligned dates';
+  for (const layer of manifest.layers) {
+    if (layer.id === 'model-d2' && layer.transform) {
+      layer.transform[12] = (layer.transform[12] ?? 0) + shift.eastM;
+      layer.transform[14] = (layer.transform[14] ?? 0) - shift.northM;
+    }
+    if ((layer.id === 'ortho-d2' || layer.id === 'dsm-d2') && layer.corners)
+      layer.corners = moveCorners(layer.corners);
+    if (layer.id === 'photos-d2') for (const item of layer.items ?? []) item.pos = move(item.pos);
+  }
+  await save('manifest.json', manifest);
+  for (const id of ['ortho-d2', 'dsm-d2']) {
+    const tiles = (await load(`rasters/${id}/tiles.json`)) as { corners: Corners };
+    tiles.corners = moveCorners(tiles.corners);
+    await save(`rasters/${id}/tiles.json`, tiles);
+  }
+  const grid = (await load('sources/dsm-d2.json')) as { x0: number; y1: number };
+  grid.x0 += shift.eastM;
+  grid.y1 += shift.northM;
+  await save('sources/dsm-d2.json', grid);
+  return { id: MISALIGNED_PROJECT_ID, root };
 }
 
 /** What the `demoProject` fixture hands a test: the app with the change demo open. */

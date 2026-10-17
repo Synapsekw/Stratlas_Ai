@@ -1,7 +1,7 @@
 import { clipKeys, photoCorrection, type WalkFit } from '@aio/geo';
 import { WALK_HEIGHT_M, type WalkLayer } from '@aio/schema';
 import { loadFlight, type Flight, type VideoLayer } from '@aio/video';
-import { useWorkspace } from '@aio/workspace';
+import { dateShiftOf, useWorkspace } from '@aio/workspace';
 import { useEffect, useMemo, useState } from 'react';
 import { inputsKey, placedWalks, usePlacedWalkFits, viewHeading } from '../../walks/placeWalk';
 import { useCaptureIndex } from '../compare';
@@ -109,6 +109,7 @@ export function useSpotEntries(active: boolean): { entries: SpotEntry[]; reading
       layers,
       index,
       correction: (l, p) => photoCorrection(orientation, l, p) ?? null,
+      shiftOf: (l) => dateShiftOf(project.manifest, l),
       videoSamples: (l) => {
         if (!map) return undefined;
         const f = map.get(l.id);

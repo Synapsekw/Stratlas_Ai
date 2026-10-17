@@ -1,10 +1,10 @@
 import { getActiveScene, onActiveScene, type SceneHandle } from '@aio/engine';
 import { clipCamera, clipKeys, clipPoseAt, localToProject, toWgs84 } from '@aio/geo';
 import { frameProjection, getActiveMap, onActiveMap, type MapController } from '@aio/maps';
-import type { Layer } from '@aio/schema';
+import { shiftLocal, type Layer } from '@aio/schema';
 import { arrowFocus, Icon, useFocusTrap, useT, type IconName } from '@aio/ui';
 import { setCameraMode, videoRig } from '@aio/video';
-import { useWorkspace, workspace } from '@aio/workspace';
+import { dateShiftOf, useWorkspace, workspace } from '@aio/workspace';
 import { useCallback, useEffect, useRef, useState, type KeyboardEvent } from 'react';
 import { createPortal } from 'react-dom';
 import { getMedia, loadFlight } from '../media';
@@ -68,11 +68,15 @@ function positionText(layerId: string): string | null {
   const clip = videos().find((c) => c.id === layerId);
   const samples = getMedia().flights[layerId];
   if (!project || !clip || !samples?.length || !('epsg' in project.manifest.crs)) return null;
-  const p = clipPoseAt(
-    samples,
-    workspace.getState().nowMs - clip.flight.startUtcMs,
-    clipCamera(clip, clipKeys(workspace.getState().orientation, clip.id)),
-  ).pos;
+  // the drone as drawn: its date's shift after the stored flight and keyframes
+  const p = shiftLocal(
+    clipPoseAt(
+      samples,
+      workspace.getState().nowMs - clip.flight.startUtcMs,
+      clipCamera(clip, clipKeys(workspace.getState().orientation, clip.id)),
+    ).pos,
+    dateShiftOf(project.manifest, clip.id),
+  );
   const e = localToProject(p, project.manifest.origin);
   const [lon, lat, h] = toWgs84(e, project.manifest.crs.epsg);
   return `${lat.toFixed(7)}, ${lon.toFixed(7)}, ${h.toFixed(1)} m`;

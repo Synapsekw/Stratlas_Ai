@@ -157,7 +157,7 @@ export function reportModel(
   const rows: ReportRow[] = issues.map((issue) => {
     const sev = severityInfo(m, issue);
     const cls = classInfo(m, issue.classId);
-    const loc = issueLocation(m, issue);
+    const loc = issueLocation(m, issue, ctx.shiftOf);
     const coords = loc
       ? `E ${loc.project[0].toFixed(2)}, N ${loc.project[1].toFixed(2)}${
           loc.project[2] === null ? '' : `, H ${loc.project[2].toFixed(2)}`
@@ -184,7 +184,7 @@ export function reportModel(
       updatedAt: issue.updatedAt.slice(0, 10),
       sightings: issue.sightings.length,
       photo: bestPhoto(m, issue),
-      position: issuePosition(issue),
+      position: issuePosition(issue, ctx.shiftOf),
       normal: normalOf(issue),
     };
   });

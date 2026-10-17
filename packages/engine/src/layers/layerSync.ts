@@ -1,4 +1,5 @@
-import type { Layer, LayerKind } from '@aio/schema';
+import { shiftedLayer, type Layer, type LayerKind } from '@aio/schema';
+import { shiftKey } from '@aio/workspace';
 import type { AdapterContext, LayerAdapter, LayerHandle } from '../types';
 
 export interface LayerSyncDeps {
@@ -12,6 +13,7 @@ export interface LayerSyncDeps {
 }
 
 interface Entry {
+  /** The layer as drawn: with its date shift applied. */
   layer: Layer;
   key: string;
   handle: LayerHandle | null;
@@ -19,9 +21,10 @@ interface Entry {
   dead: boolean;
 }
 
-/** Stable identity of a layer definition; visibility is not part of it. */
-function layerKey(layer: Layer): string {
-  return JSON.stringify({ ...layer, visible: undefined });
+/** Stable identity of a layer definition and its date shift; visibility is not part of it. */
+function layerKey(layer: Layer, ctx: AdapterContext): string {
+  const shift = shiftKey(ctx.shiftOf?.(layer.id) ?? null);
+  return JSON.stringify({ ...layer, visible: undefined }) + shift;
 }
 
 /**
@@ -39,7 +42,7 @@ export class LayerSync {
     const wanted = new Map(layers.map((l) => [l.id, l]));
     for (const [id, e] of this.entries) {
       const next = wanted.get(id);
-      if (!next || layerKey(next) !== e.key) this.drop(id, e);
+      if (!next || layerKey(next, this.deps.ctx) !== e.key) this.drop(id, e);
     }
     for (const layer of layers) {
       const visible = !hidden[layer.id];
@@ -59,6 +62,7 @@ export class LayerSync {
     return this.entries.get(layerId)?.handle ?? undefined;
   }
 
+  /** The layer as drawn (with its date shift). */
   layer(layerId: string): Layer | undefined {
     return this.entries.get(layerId)?.layer;
   }
@@ -81,9 +85,12 @@ export class LayerSync {
       this.deps.onMissing?.(layer);
       return;
     }
-    const entry: Entry = { layer, key: layerKey(layer), handle: null, visible, dead: false };
+    const { ctx } = this.deps;
+    const drawn = shiftedLayer(layer, ctx.shiftOf?.(layer.id) ?? null);
+    const key = layerKey(layer, ctx);
+    const entry: Entry = { layer: drawn, key, handle: null, visible, dead: false };
     this.entries.set(layer.id, entry);
-    adapter.create(layer, this.deps.ctx).then(
+    adapter.create(drawn, ctx).then(
       (handle) => {
         if (entry.dead) {
           handle.dispose();

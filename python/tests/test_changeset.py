@@ -83,3 +83,14 @@ def test_invalid_change_sets_are_refused(change):
 def test_set_ids_are_readable_and_file_name_safe():
     assert change_set_id("c1", "c2", "change.raster") == "c1-c2-raster"
     assert change_set_id("2026 Jan", "2026/Jun", "issues") == "2026-Jan-2026-Jun-issues"
+
+
+def test_change_set_records_the_shifts():
+    plain = change_set("c1-c2-raster", "c1", "c2", "change.raster", [], line_up=((0.0, 0.0), (0.0, 0.0)))
+    assert "lineUp" not in plain
+    assert "lineUp" not in change_set("c1-c2-raster", "c1", "c2", "change.raster", [])
+    cs = change_set(
+        "c1-c2-raster", "c1", "c2", "change.raster", [], line_up=((0.0, -0.0), (-2.00049, 1.23456))
+    )
+    assert cs["lineUp"] == {"from": {"eastM": 0.0, "northM": 0.0}, "to": {"eastM": -2.0, "northM": 1.235}}
+    assert json.dumps(cs["lineUp"]).count("-0.0") == 0

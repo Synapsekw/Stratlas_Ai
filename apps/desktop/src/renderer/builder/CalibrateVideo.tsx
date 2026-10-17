@@ -1,5 +1,11 @@
 import { getActiveScene, onActiveScene, type SceneHandle } from '@aio/engine';
-import type { CameraOrientation, Layer, LensModel, Vec3 } from '@aio/schema';
+import {
+  unshiftLocal,
+  type CameraOrientation,
+  type Layer,
+  type LensModel,
+  type Vec3,
+} from '@aio/schema';
 import { Icon, useT } from '@aio/ui';
 import {
   NO_ORIENTATION,
@@ -22,7 +28,7 @@ import {
   type LensPair,
   type PoseLookup,
 } from '@aio/video';
-import { assetUrl, useWorkspace, workspace } from '@aio/workspace';
+import { assetUrl, dateShiftOf, useWorkspace, workspace } from '@aio/workspace';
 import { useEffect, useMemo, useRef, useState, type PointerEvent } from 'react';
 import { createPortal } from 'react-dom';
 import { clipVideoTime, parseCoordinate } from './model';
@@ -110,6 +116,10 @@ function grabFrame(v: HTMLVideoElement, width: number, aspect: number) {
  * offset from point pairs (frame pixel and model point) by least squares with the position fixed
  * by the log. Saves `offsetMs`, `lens` and `orientation` to the clip (lens to clips of the same
  * frame size, orientation to the clips of the same flight).
+ *
+ * On a lined-up date the fit runs in the clip's own frame: a model point picked in the scene (or
+ * typed) is drawn with the date shift, so the pair keeps it less the shift, and the position offset
+ * tried and saved is the clip's own; the rig adds the shift to it as it does to the saved one.
  */
 export function CalibrateVideo({ layerId }: { layerId: string }) {
   const t = useT();
@@ -208,9 +218,10 @@ export function CalibrateVideo({ layerId }: { layerId: string }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [scene, clip, pairs.length]);
 
-  const addPair = (world: Vec3) => {
+  const addPair = (drawn: Vec3) => {
     const pose = scene ? videoRig(scene).loggedPose() : null;
-    if (!pendingImage || !pose) return;
+    if (!pendingImage || !pose || !project || !clip) return;
+    const world = unshiftLocal(drawn, dateShiftOf(project.manifest, clip.id));
     setPairs((p) => [...p, { image: pendingImage, world, pos: pose.pos, q: pose.q, videoMs }]);
     setPendingImage(null);
     setStep(null);

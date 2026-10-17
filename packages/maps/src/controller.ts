@@ -3,10 +3,21 @@
 // clicks back as selections.
 import { getActiveScene, onActiveScene, reducedMotion, type SceneHandle } from '@aio/engine';
 import { clipCamera, clipKeys, clipPoseAt, normaliseSamples } from '@aio/geo';
-import type { Issue, Layer, PoseSample, Vec3 } from '@aio/schema';
+import {
+  shiftCorners,
+  shiftedDirectionKeys,
+  shiftLocal,
+  type DateShift,
+  type Issue,
+  type Layer,
+  type PoseSample,
+  type Vec3,
+} from '@aio/schema';
 import {
   assetUrl,
+  dateShiftOf,
   issuesOnScreen,
+  shiftKey,
   layerDisplay,
   sameItems,
   type createWorkspace,
@@ -38,7 +49,9 @@ import {
   severityRankColors,
   type LonLat,
   type MapIssueDisplay,
+  type ShiftOf,
 } from './overlays';
+import { shiftedGeoJson } from './shiftGeoJson';
 import { bboxOf, orderPacks, type MapPack } from './packs';
 import { pyramidView, type PyramidIndex } from './pyramid';
 import { issueFeatures, issueShapeBounds, styleLayers, type MapOverlay } from './vector';
@@ -223,6 +236,12 @@ export function createMapController(
   let disposed = false;
   let proj: FrameProjection | null = null;
   let projectId: string | null = null;
+
+  /** The date shift of a layer in the open project (line up dates), or null. */
+  const shiftOf: ShiftOf = (layerId) => {
+    const m = store.getState().project?.manifest;
+    return m ? dateShiftOf(m, layerId) : null;
+  };
   let rasterIds: string[] = [];
   const flights = new Map<string, { layer: VideoLayer; samples: PoseSample[] }>();
   const cleanups: (() => void)[] = [];
@@ -646,7 +665,10 @@ export function createMapController(
   async function rasterImages(layer: RasterLayer, p: FrameProjection, id: string) {
     const out: { url: string; quad: [LonLat, LonLat, LonLat, LonLat] }[] = [];
     if (layer.format === 'image' && layer.corners) {
-      out.push({ url: assetUrl(id, layer.src), quad: rasterQuad(layer.corners, p) });
+      out.push({
+        url: assetUrl(id, layer.src),
+        quad: rasterQuad(shiftCorners(layer.corners, shiftOf(layer.id)), p),
+      });
     } else if (layer.format === 'kit-pyramid') {
       // One coarse level stays as a backdrop (at most 16 tiles); finer tiles follow the view.
       const res = await fetch(assetUrl(id, layer.src));
@@ -654,7 +676,10 @@ export function createMapController(
         levels?: { z: number; tileSize: number; cols: number; rows: number; pattern: string }[];
         corners?: { tl: Vec3; tr: Vec3; bl: Vec3 };
       };
-      const corners = tiles.corners ?? layer.corners;
+      // the placement is the tiles index's, else the layer's; a lined-up date moves it. The
+      // pyramid index keeps the moved corners, so the finer tiles land there too.
+      const placed = tiles.corners ?? layer.corners;
+      const corners = placed ? shiftCorners(placed, shiftOf(layer.id)) : undefined;
       if (corners && tiles.levels?.length)
         pyramids.push({ layer, index: { levels: tiles.levels, corners } });
       const levels = [...(tiles.levels ?? [])].sort((a, b) => b.cols * b.rows - a.cols * a.rows);
@@ -721,7 +746,7 @@ export function createMapController(
       // a hidden drawing is only placed in the bounds; its picture waits for its first show
       if (!loadsWithProject(layer, store.getState().hidden[layer.id] === true) && layer.corners) {
         waitingRasters.set(layer.id, layer);
-        all.push(...rasterQuad(layer.corners, p));
+        all.push(...rasterQuad(shiftCorners(layer.corners, shiftOf(layer.id)), p));
         continue;
       }
       let images: Awaited<ReturnType<typeof rasterImages>> = [];
@@ -744,7 +769,10 @@ export function createMapController(
       if (s.hidden[id] === true || !layer.corners) continue;
       waitingRasters.delete(id);
       addRasterImages(layer, [
-        { url: assetUrl(projectId, layer.src), quad: rasterQuad(layer.corners, proj) },
+        {
+          url: assetUrl(projectId, layer.src),
+          quad: rasterQuad(shiftCorners(layer.corners, shiftOf(layer.id)), proj),
+        },
       ]);
     }
   }
@@ -837,6 +865,7 @@ export function createMapController(
     }
     rasterIds = [];
     waitingRasters.clear();
+    shiftedVectors.clear();
     flights.clear();
     for (const id of Object.values(SRC)) setData(id, EMPTY);
   }
@@ -848,7 +877,10 @@ export function createMapController(
       layers.map(async (layer) => {
         try {
           const res = await fetch(assetUrl(id, layer.flight.src));
-          const samples = parsePoses(await res.json());
+          const shift = shiftOf(layer.id);
+          const samples = parsePoses(await res.json()).map((s) =>
+            shift ? { ...s, pos: shiftLocal(s.pos, shift) } : s,
+          );
           if (disposed || projectId !== id) return;
           flights.set(layer.id, { layer, samples });
           for (const s of samples) all.push(p.toLonLat(s.pos));
@@ -892,10 +924,13 @@ export function createMapController(
     }
     // the camera as every view draws it: direction keyframes (an unsaved draft first), else the
     // log turned by the clip's calibration
-    const keys =
+    // the samples carry the date shift, so the look-at targets take it too
+    const keys = shiftedDirectionKeys(
       s.directionDraft?.layerId === f.layer.id
         ? s.directionDraft.keys
-        : clipKeys(s.orientation, f.layer.id);
+        : clipKeys(s.orientation, f.layer.id),
+      shiftOf(f.layer.id),
+    );
     const flightMs = s.nowMs - f.layer.flight.startUtcMs;
     const cam = clipPoseAt(f.samples, flightMs, clipCamera(f.layer, keys));
     const pose: PoseSample = { t: flightMs, pos: cam.log.pos, q: cam.log.q };
@@ -973,6 +1008,7 @@ export function createMapController(
       catalogues: manifest?.classCatalogues ?? [],
       selectedId: s.selection?.kind === 'issue' ? s.selection.id : null,
       proj,
+      shiftOf,
       only: issueFilter,
       display: issueDisplay?.() ?? ALL_ISSUES,
       hoverId: hoverIssue,
@@ -1077,15 +1113,58 @@ export function createMapController(
     return m ? { o: m.overlay, props: hit.properties } : null;
   }
 
+  /** Lined-up vector layers: their GeoJSON fetched once per shift and rewritten (null: loading). */
+  const shiftedVectors = new Map<string, FeatureCollection | null>();
+
+  function shiftedVectorData(l: VectorLayer, id: string, shift: DateShift): FeatureCollection {
+    const key = `${l.id}|${shiftKey(shift)}`;
+    const hit = shiftedVectors.get(key);
+    if (hit) return hit;
+    if (hit === undefined && proj) {
+      shiftedVectors.set(key, null);
+      const p = proj;
+      void fetch(assetUrl(id, l.src))
+        .then((res) => {
+          if (!res.ok) throw new Error(`HTTP ${String(res.status)}`);
+          return res.json() as Promise<GeoJSON.GeoJSON>;
+        })
+        .then((gj) => {
+          if (disposed || projectId !== id) return;
+          const moved = shiftedGeoJson(gj, shift, p);
+          shiftedVectors.set(
+            key,
+            moved.type === 'FeatureCollection'
+              ? moved
+              : fc([
+                  moved.type === 'Feature'
+                    ? moved
+                    : { type: 'Feature', properties: {}, geometry: moved },
+                ]),
+          );
+          applyVisibility(store.getState());
+        })
+        .catch((e: unknown) => {
+          // forget the marker: the next sync tries again
+          shiftedVectors.delete(key);
+          console.warn(`Map: vector ${l.id} not shown`, e);
+        });
+    }
+    // not the unshifted drawing while the moved one loads
+    return EMPTY;
+  }
+
   function vectorOverlaysFor(layers: readonly Layer[], id: string, s: Workspace): MapOverlay[] {
     return layers
       .filter((l): l is VectorLayer => l.kind === 'vector')
-      .map((l) => ({
-        id: `layer-${l.id}`,
-        data: assetUrl(id, l.src),
-        layers: styleLayers(l.style),
-        visible: !s.hidden[l.id],
-      }));
+      .map((l) => {
+        const shift = shiftOf(l.id);
+        return {
+          id: `layer-${l.id}`,
+          data: shift ? shiftedVectorData(l, id, shift) : assetUrl(id, l.src),
+          layers: styleLayers(l.style),
+          visible: !s.hidden[l.id],
+        };
+      });
   }
 
   // ----- hover tooltip over issues and overlays -----
@@ -1239,7 +1318,9 @@ export function createMapController(
     paintClusters(now);
     renderIssues(now);
     applyVisibility(now);
-    const issuePts = now.issues.map((i) => issueAnchor(i, proj)).filter((x): x is LonLat => !!x);
+    const issuePts = now.issues
+      .map((i) => issueAnchor(i, proj, shiftOf))
+      .filter((x): x is LonLat => !!x);
     const photoPts = photoPoints(now, proj);
     const box = bboxOf([...rasterPts, ...flightPts, ...issuePts, ...photoPts]);
     projectBox = box;
@@ -1311,7 +1392,7 @@ export function createMapController(
   }
 
   function focusIssueOnMap(issue: Issue): void {
-    const b = issueShapeBounds(issue);
+    const b = issueShapeBounds(issue, proj, shiftOf);
     if (b) {
       // Small defects get context around them; large ones fill the view.
       const padM = 4;
@@ -1326,7 +1407,7 @@ export function createMapController(
       );
       return;
     }
-    const at = issueAnchor(issue, proj);
+    const at = issueAnchor(issue, proj, shiftOf);
     if (at) map.easeTo({ center: at, zoom: Math.max(map.getZoom(), 18), duration: ms(500) });
   }
 
@@ -1334,7 +1415,7 @@ export function createMapController(
     if (s.selection?.kind !== 'issue') return;
     const id = s.selection.id;
     const issue = s.issues.find((i) => i.id === id);
-    const at = issue ? issueAnchor(issue, proj) : null;
+    const at = issue ? issueAnchor(issue, proj, shiftOf) : null;
     if (at && !map.getBounds().contains(at)) map.easeTo({ center: at, duration: ms(300) });
   }
 

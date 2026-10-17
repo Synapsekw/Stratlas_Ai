@@ -4,7 +4,7 @@
  * workspace and project files; export_issues writes a file (approval first).
  */
 import type { GlobeSite, Issue } from '@aio/schema';
-import { assetUrl } from '@aio/workspace';
+import { assetUrl, dateShiftOf } from '@aio/workspace';
 import { z } from 'zod';
 import { changeSetsOf, changeSummary, verdictLine } from './change-tools';
 import { issuesCsv } from './exporting';
@@ -243,8 +243,10 @@ define('find_issues_near', async ({ target, radiusM, limit }, ctx) => {
   const p = await targetPoint(ctx, target);
   let withoutLocation = 0;
   const hits: { issue: Issue; d: number }[] = [];
+  // the target is where the view draws it: so are the pins, with their date's line-up
+  const m = project(ctx).manifest;
   for (const issue of ctx.workspace.getState().issues) {
-    const q = issuePoint(issue);
+    const q = issuePoint(issue, (id) => dateShiftOf(m, id));
     if (!q) {
       withoutLocation += 1;
       continue;
@@ -349,7 +351,7 @@ define('export_issues', async (filters, ctx) => {
     if (!ctx.saveFile) throw new ToolError('Exporting files works in the desktop app only.');
     saved = await ctx.saveFile(
       `${p.manifest.name} issues.csv`,
-      issuesCsv(issues, classLabels(ctx)),
+      issuesCsv(issues, classLabels(ctx), (id) => dateShiftOf(p.manifest, id)),
     );
   }
   if (saved.error) throw new ToolError(saved.error);

@@ -107,4 +107,23 @@ describe('the Changes store', () => {
     );
     expect(s.getState().run).toBeNull();
   });
+
+  it('keeps a refused run for the panel until a run starts or the project changes', async () => {
+    fakeBridge();
+    const s = createChangeStore();
+    const refused = { from: 'd1', to: 'd2', shiftM: 2.01, producer: 'imagery' };
+    await s.getState().load('p');
+    expect(s.getState().misaligned).toBeNull();
+    s.getState().setMisaligned(refused);
+    expect(s.getState().misaligned).toEqual(refused);
+    s.getState().setMisaligned(null);
+    expect(s.getState().misaligned).toBeNull();
+    s.getState().setMisaligned(refused);
+    s.getState().setPair({ from: 'd1', to: 'd2' });
+    await s.getState().compute(['issue']);
+    expect(s.getState().misaligned).toBeNull();
+    s.getState().setMisaligned(refused);
+    await s.getState().load('other');
+    expect(s.getState().misaligned).toBeNull();
+  });
 });

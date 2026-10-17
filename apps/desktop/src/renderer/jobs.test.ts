@@ -1,5 +1,5 @@
 import type { IpcChannel, Issue, JobEvent, JobRecord } from '@aio/schema';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import type { Bridge, Res } from './bridge';
 import {
   applyJobEvent,
@@ -13,6 +13,8 @@ import {
   isActive,
   jobsEnded,
   mergeDiskIssues,
+  waitForJob,
+  watchJobEnds,
 } from './jobs';
 
 const job = (over: Partial<JobRecord> = {}): JobRecord => ({
@@ -313,5 +315,164 @@ describe('jobsEnded', () => {
       ['b', false],
     ]);
     expect(jobsEnded([], after)).toEqual([]);
+  });
+});
+
+describe('waitForJob', () => {
+  const started = (status: JobRecord['status'] = 'starting') =>
+    fakeBridge({ 'jobs:start': () => ({ ok: true, job: job({ id: 'q1', status }) }) });
+
+  it('resolves null at once for a job the store does not know', async () => {
+    const { bridge } = fakeBridge({});
+    const store = createJobsStore(bridge, undefined);
+    expect(await waitForJob(store, 'nope')).toBeNull();
+  });
+
+  it('resolves null when the signal aborts while the job is at work', async () => {
+    const { bridge } = started();
+    const store = createJobsStore(bridge, undefined);
+    await store.getState().start({ pipeline: 'aik.cameras', project: 'E:/p', params: {} });
+    const ctl = new AbortController();
+    const waiting = waitForJob(store, 'q1', ctl.signal);
+    ctl.abort();
+    expect(await waiting).toBeNull();
+  });
+
+  it('resolves the record once the job ends', async () => {
+    const { bridge } = started();
+    const store = createJobsStore(bridge, undefined);
+    await store.getState().start({ pipeline: 'aik.cameras', project: 'E:/p', params: {} });
+    const waiting = waitForJob(store, 'q1');
+    store.setState((s) => ({
+      jobs: s.jobs.map((j) => ({ ...j, status: 'done', updatedAt: 'z' })),
+    }));
+    expect((await waiting)?.status).toBe('done');
+  });
+});
+
+describe('a quiet start', () => {
+  it('keeps the selection and is not announced', async () => {
+    const { bridge } = fakeBridge({
+      'jobs:start': () => ({ ok: true, job: job({ id: 'q2', pipeline: 'change.lineup' }) }),
+    });
+    const store = createJobsStore(bridge, undefined);
+    store.setState({ selected: 'other' });
+    const r = await store
+      .getState()
+      .startQuiet({ pipeline: 'change.lineup', project: 'E:/p', params: {} });
+    expect(r).toEqual({ jobId: 'q2' });
+    expect(store.getState().selected).toBe('other');
+    expect(store.getState().jobs.map((j) => j.id)).toContain('q2');
+    const before = [job({ id: 'q2', status: 'running' })];
+    const after = [job({ id: 'q2', status: 'done' })];
+    expect(jobsEnded(before, after, new Set(store.getState().quiet))).toEqual([]);
+    expect(jobsEnded(before, after)).toHaveLength(1);
+  });
+
+  it('says why it did not start', async () => {
+    const { bridge } = fakeBridge({ 'jobs:start': () => ({ ok: false, error: 'No pack.' }) });
+    const store = createJobsStore(bridge, undefined);
+    expect(
+      await store.getState().startQuiet({ pipeline: 'change.lineup', project: 'p', params: {} }),
+    ).toEqual({ error: 'No pack.' });
+  });
+});
+
+describe('the quiet list', () => {
+  const quietStore = async () => {
+    const { bridge } = fakeBridge({
+      'jobs:start': () => ({ ok: true, job: job({ id: 'q3', pipeline: 'change.lineup' }) }),
+      'jobs:remove': () => ({ removed: ['q3'] }),
+    });
+    const store = createJobsStore(bridge, undefined);
+    await store.getState().startQuiet({ pipeline: 'change.lineup', project: 'E:/p', params: {} });
+    return store;
+  };
+  const end = (store: ReturnType<typeof createJobsStore>) => {
+    store.setState((s) => ({
+      jobs: s.jobs.map((j) => ({ ...j, status: 'done', updatedAt: 'z' })),
+    }));
+  };
+
+  it('empties once a quiet job has ended, and the end is still not announced', async () => {
+    const store = await quietStore();
+    const ended = vi.fn();
+    const stop = watchJobEnds(store, ended);
+    expect(store.getState().quiet).toEqual(['q3']);
+    end(store);
+    expect(ended).not.toHaveBeenCalled();
+    expect(store.getState().quiet).toEqual([]);
+    stop();
+  });
+
+  it('still announces a job that was not quiet', () => {
+    const { bridge } = fakeBridge({});
+    const store = createJobsStore(bridge, undefined);
+    store.setState({ jobs: [job({ id: 'n1', status: 'running' })] });
+    const ended = vi.fn();
+    const stop = watchJobEnds(store, ended);
+    store.setState({ jobs: [job({ id: 'n1', status: 'done' })] });
+    expect(ended).toHaveBeenCalledTimes(1);
+    stop();
+  });
+
+  it('drops the ids of removed jobs and of jobs that are gone on a prune', async () => {
+    const store = await quietStore();
+    end(store);
+    await store.getState().remove(['q3']);
+    expect(store.getState().quiet).toEqual([]);
+    const again = await quietStore();
+    again.setState({ jobs: [] });
+    again.getState().pruneQuiet();
+    expect(again.getState().quiet).toEqual([]);
+    const running = await quietStore();
+    running.getState().pruneQuiet();
+    expect(running.getState().quiet).toEqual(['q3']);
+  });
+});
+
+describe('the quiet flag on the record', () => {
+  const setup = async () => {
+    const { bridge } = fakeBridge({
+      'jobs:start': () => ({ ok: true, job: job({ id: 'q3', pipeline: 'change.lineup' }) }),
+      'jobs:list': () => ({
+        runtime: null,
+        jobs: [
+          job({ id: 'n1', updatedAt: 'b' }),
+          job({ id: 'q3', status: 'done', updatedAt: 'b' }),
+        ],
+      }),
+    });
+    const store = createJobsStore(bridge, undefined);
+    await store.getState().startQuiet({ pipeline: 'change.lineup', project: 'E:/p', params: {} });
+    return store;
+  };
+  const rec = (store: ReturnType<typeof createJobsStore>, id: string) =>
+    store.getState().jobs.find((j) => j.id === id);
+
+  it('is set on a quiet job, before and after an update from main', async () => {
+    const store = await setup();
+    expect(rec(store, 'q3')?.quiet).toBe(true);
+    store.setState((s) =>
+      applyJobEvent(s, { type: 'update', job: job({ id: 'q3', status: 'done', updatedAt: 'z' }) }),
+    );
+    expect(rec(store, 'q3')).toMatchObject({ status: 'done', quiet: true });
+  });
+
+  it('survives a list refresh and the quiet list being pruned', async () => {
+    const store = await setup();
+    await store.getState().refresh();
+    store.getState().pruneQuiet();
+    expect(store.getState().quiet).toEqual([]);
+    expect(rec(store, 'q3')?.quiet).toBe(true);
+    await store.getState().refresh();
+    expect(rec(store, 'q3')?.quiet).toBe(true);
+  });
+
+  it('is absent on a normal job', async () => {
+    const store = await setup();
+    await store.getState().refresh();
+    expect(rec(store, 'n1')).toBeDefined();
+    expect('quiet' in (rec(store, 'n1') ?? {})).toBe(false);
   });
 });

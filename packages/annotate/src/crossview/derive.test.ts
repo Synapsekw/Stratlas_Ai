@@ -83,6 +83,27 @@ describe('createDeriver', () => {
     expect(out[0].geom.p[0]).toBeCloseTo(5, 5);
   });
 
+  it("stores the pin of a lined-up surface in the date's own frame", () => {
+    const shifted = createDeriver({
+      layers: () => layers,
+      scene: () => scene,
+      flight: () => null,
+      imageSize: () => [1200, 900],
+      shiftOf: (id) => (id === 'site' ? { eastM: 2, northM: 0 } : null),
+    });
+    const s: Sighting = {
+      on: 'image',
+      layer: 'photos',
+      photo: 'F01',
+      geom: { type: 'point', x: 600, y: 450 },
+    };
+    const pin = shifted(s, makeIssue({ sightings: [s] }))[0];
+    if (pin?.on !== 'mesh' || pin.geom.type !== 'spoint') throw new Error('expected a pin');
+    // the ray hits the drawn surface at x = 3; stored without the 2 m
+    expect(pin.geom.p[0]).toBeCloseTo(1);
+    expect(pin.geom.p[2]).toBeCloseTo(4);
+  });
+
   it('adds nothing when the issue already has a mesh sighting', () => {
     expect(
       deriver()(photoSighting, makeIssue({ sightings: [meshSighting, photoSighting] })),

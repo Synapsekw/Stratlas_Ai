@@ -40,7 +40,7 @@ import {
   type Object3D,
 } from 'three';
 import type { StoreApi } from 'zustand/vanilla';
-import { measurementsOn as drawn, type DatesOnScreen } from './measureDates';
+import { drawnPoints, measurementsOn as drawn, type DatesOnScreen } from './measureDates';
 import {
   drawEvent,
   editEvent,
@@ -110,16 +110,23 @@ function onDatesChange(dates: StoreApi<Workspace>, redraw: () => void): () => vo
   });
 }
 
-function shapesOf(
+/**
+ * The shapes a view draws. A survey-scoped measurement is drawn through its date's shift; the
+ * one being edited already holds drawn points (`startEditing`).
+ */
+export function shapesOf(
   s: MeasureState,
   ws: DatesOnScreen,
+  manifest: Pick<ProjectManifest, 'captures' | 'layers'> | null,
   north: 'project north' | 'grid north',
 ): Shape[] {
   const units = s.settings.units;
   const precision = s.settings.precision;
   return drawn(s, ws).map((m) => {
     const selected = s.selected.includes(m.id);
-    const points = s.editing && m.id === s.focus ? s.editing.points : m.points;
+    const live = s.editing && m.id === s.focus ? s.editing.points : null;
+    // drawn points, and the label reads them out: positions are where the person sees them
+    const points = live ?? drawnPoints(m, manifest);
     const style = m.style;
     const only = style?.labelOnlyWhenSelected === true;
     return {
@@ -162,16 +169,20 @@ function labelOf(
   return [m.label, named].filter(Boolean).join(' · ');
 }
 
+/** The open project's dates and layers, which decide how far a date's measurements are shifted. */
+const openManifest = () => workspace.getState().project?.manifest ?? null;
+
 /** Snap targets: saved measurements (G6 adds designs, alignments and guides as providers). */
 export function snapProviders(
   s: MeasureState,
   ws: DatesOnScreen = workspace.getState(),
 ): SnapProvider[] {
+  const manifest = openManifest();
   return [
     measurementSnaps(
       drawn(s, ws)
         .filter((m) => !(s.editing && m.id === s.focus))
-        .map((m) => ({ points: m.points, closed: isClosed(m.family) })),
+        .map((m) => ({ points: drawnPoints(m, manifest), closed: isClosed(m.family) })),
     ),
   ];
 }
@@ -362,7 +373,12 @@ export function attach3d(
   const rebuild = () => {
     const s = measureStore.getState();
     disposeGroup();
-    shapes = shapesOf(s, dates.getState(), frame.epsg === null ? 'project north' : 'grid north');
+    shapes = shapesOf(
+      s,
+      dates.getState(),
+      openManifest(),
+      frame.epsg === null ? 'project north' : 'grid north',
+    );
     for (const sh of shapes) {
       // named after the measurement: which view draws which is read from the scene (tests)
       const name = `measure:${sh.id}`;
@@ -621,11 +637,16 @@ function anchorOf(points: readonly SitePoint[], closed: boolean): SitePoint | nu
 }
 
 /** A local-frame point to centre the camera on a measurement. */
-export function focusPoint(m: SurveyMeasurement, frame: Frame): { p: Vec3; distance: number } {
-  const xs = m.points.map((p) => p[0]);
-  const ys = m.points.map((p) => p[1]);
+export function focusPoint(
+  m: SurveyMeasurement,
+  frame: Frame,
+  manifest: Pick<ProjectManifest, 'captures' | 'layers'> | null = openManifest(),
+): { p: Vec3; distance: number } {
+  const points = drawnPoints(m, manifest);
+  const xs = points.map((p) => p[0]);
+  const ys = points.map((p) => p[1]);
   const span = Math.max(Math.max(...xs) - Math.min(...xs), Math.max(...ys) - Math.min(...ys), 5);
-  const c = anchorOf(m.points, true) ?? m.points[0] ?? [0, 0, 0];
+  const c = anchorOf(points, true) ?? points[0] ?? [0, 0, 0];
   return { p: frame.toLocal(c), distance: span * 2 };
 }
 
@@ -687,6 +708,7 @@ export function attachMap(
     for (const sh of shapesOf(
       s,
       dates.getState(),
+      openManifest(),
       frame.epsg === null ? 'project north' : 'grid north',
     )) {
       const coords = sh.points.map(toLngLat);

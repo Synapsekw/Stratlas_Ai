@@ -4,6 +4,7 @@ import {
   CHANGE_VERDICTS,
   ChangeSet,
   ChangeThresholds,
+  LineUpMeasure,
   DEFAULT_CHANGE_THRESHOLDS,
   type ChangeSetInput,
 } from './index';
@@ -34,6 +35,36 @@ const base = (): ChangeSetInput => ({
 });
 
 describe('change sets (aio.change/1)', () => {
+  it('keeps the shifts a change set was computed with', () => {
+    const lineUp = { from: { eastM: 1.2, northM: -0.5 }, to: { eastM: 0, northM: 0 } };
+    const r = ChangeSet.safeParse({ ...base(), lineUp });
+    expect(r.success && r.data.lineUp).toEqual(lineUp);
+    expect(
+      ChangeSet.safeParse({ ...base(), lineUp: { from: { eastM: 501, northM: 0 } } }).success,
+    ).toBe(false);
+    expect(ChangeSet.safeParse({ ...base(), lineUp: { extra: 1 } }).success).toBe(false);
+  });
+
+  it('parses a line-up measurement', () => {
+    const m: LineUpMeasure = {
+      keep: 'c1',
+      move: 'c2',
+      layerKeep: 'ortho-1',
+      layerMove: 'ortho-2',
+      source: 'ortho',
+      eastM: 2,
+      northM: -0.2,
+      totalM: 2.01,
+      cellM: 0.05,
+      tolerancePx: 2,
+      spreadPx: 0.4,
+      tiles: 12,
+      verdict: 'ok',
+    };
+    expect(LineUpMeasure.parse(m)).toEqual(m);
+    expect(LineUpMeasure.safeParse({ ...m, verdict: 'maybe' }).success).toBe(false);
+  });
+
   it('accepts every shared fixture (also read by the Python writer tests)', () => {
     const names = readdirSync(fixtures).filter((n) => n.endsWith('.json'));
     expect(names.length).toBeGreaterThan(0);

@@ -1,5 +1,5 @@
 import { walkPathPoints, type SurfaceFrame, type WalkFit, type XZ } from '@aio/geo';
-import type { WalkLayer, WalkRawPath } from '@aio/schema';
+import type { DateShift, WalkLayer, WalkRawPath } from '@aio/schema';
 
 /*
  * The walk on a drawing (design "What the surface shows"): its path line, kept stills, pins and
@@ -64,6 +64,8 @@ export interface SheetWalk {
   layer: WalkLayer;
   fit: WalkFit;
   raw: WalkRawPath | null;
+  /** The shift of the walk's survey date (line up dates): map and 3D draw it there. */
+  shift?: DateShift | null;
 }
 
 export interface WalkDrawOptions {

@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  CapturePatch,
   ImportItem,
   ipc,
   LayerPatch,
@@ -128,6 +129,19 @@ describe('capture colour and icon', () => {
     expect(withCapture({ colour: 9 }).success).toBe(false);
     expect(withCapture({ colour: 1.5 }).success).toBe(false);
     expect(withCapture({ icon: '../x' }).success).toBe(false);
+  });
+});
+
+describe('capture line-up patch', () => {
+  it('takes a lineUp patch and null', () => {
+    const lineUp = { eastM: 1, northM: -2, with: 'c0', at: '2026-10-16T08:00:00Z' };
+    expect(CapturePatch.safeParse({ lineUp }).success).toBe(true);
+    expect(CapturePatch.safeParse({ lineUp: null }).success).toBe(true);
+    expect(CapturePatch.safeParse({ lineUp: { ...lineUp, eastM: 600 } }).success).toBe(false);
+    const empty = CapturePatch.safeParse({});
+    expect(!empty.success && empty.error.issues[0]?.message).toBe(
+      'Give label, colour, icon or lineUp',
+    );
   });
 });
 

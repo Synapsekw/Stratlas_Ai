@@ -36,6 +36,7 @@ from typing import Any, ClassVar, Protocol
 
 import numpy as np
 
+from ..captures import Shift, capture_shift, date_shift
 from ..params import known_keys, number, text
 from ..pointcloud import PDAL_MISSING, find_pdal, pdal_env
 from ..runtime import JobError, Step, StepContext, atomic_write_bytes, commit_files, replace_over
@@ -673,6 +674,7 @@ class PdalSource:
         resolution: float | None,
         copc: bool = True,
         offset: float = 0.0,
+        shift: tuple[float, float] = (0.0, 0.0),
     ):
         self.ctx, self.pdal, self.path, self.name, self.pdrf, self.resolution = (
             ctx,
@@ -685,6 +687,9 @@ class PdalSource:
         self.copc = copc
         #: The layer's ``heightOffsetM``: added to the file's Z of every point read.
         self.offset = offset
+        #: The layer's date shift (east, north): added to the X and Y of every point read. The boxes
+        #: this source is asked for are where the date is lined up; PDAL gets them in file coordinates.
+        self.shift = shift
         #: Height range to read, in project heights (the offset applied); converted to file heights
         #: for PDAL.
         self.z: tuple[float, float] | None = None
@@ -695,6 +700,8 @@ class PdalSource:
         tmp = work / f"{self.name}.las"
         # plain floats: the repr of a numpy float (np.float64(...)) is not a PDAL number
         x0, x1, y0, y1 = (float(v) for v in box)
+        east, north = self.shift
+        x0, x1, y0, y1 = x0 - east, x1 - east, y0 - north, y1 - north  # file coordinates
         bounds = f"([{x0!r}, {x1!r}], [{y0!r}, {y1!r}]"
         if self.z:
             z0, z1 = float(self.z[0]) - self.offset, float(self.z[1]) - self.offset
@@ -740,16 +747,20 @@ class PdalSource:
         _pdal(self.ctx, [self.pdal, "pipeline", str(pipe)], f"read {self.path.name}")
         las = read_las(tmp)
         tmp.unlink(missing_ok=True)
-        if self.offset:
-            # the offset goes into the tile's coordinate frame, so its points and the change cloud
-            # written from it (records kept, write_las with a template) are in project heights
+        if self.offset or east or north:
+            # the offset and the date shift go into the tile's coordinate frame, so its points and the
+            # change cloud written from it (records kept, write_las with a template) are in project
+            # heights and where the date is lined up; the change cloud keeps no shift of its own
             o = las.offset
-            las = replace(las, offset=(o[0], o[1], o[2] + self.offset))
+            las = replace(las, offset=(o[0] + east, o[1] + north, o[2] + self.offset))
         return TileData(las.xyz, las)
 
 
-def _info(ctx: StepContext, pdal: str, path: Path, offset: float = 0.0) -> dict[str, Any]:
-    """Point count and bounds of a cloud file; the z bounds carry the layer's height ``offset``."""
+def _info(
+    ctx: StepContext, pdal: str, path: Path, offset: float = 0.0, shift: tuple[float, float] = (0.0, 0.0)
+) -> dict[str, Any]:
+    """Point count and bounds of a cloud file; the z bounds carry the layer's height ``offset`` and
+    the x and y bounds its date ``shift``, so they are where the date is lined up."""
     info = json.loads(_pdal(ctx, [pdal, "info", "--summary", str(path)], f"read {path.name}"))
     s = info.get("summary") or {}
     b = s.get("bounds") or {}
@@ -758,7 +769,14 @@ def _info(ctx: StepContext, pdal: str, path: Path, offset: float = 0.0) -> dict[
     zmin, zmax = float(b.get("minz", 0)) + offset, float(b.get("maxz", 0)) + offset
     return {
         "count": int(s.get("num_points") or 0),
-        "bounds": [b["minx"], b["maxx"], b["miny"], b["maxy"], zmin, zmax],
+        "bounds": [
+            b["minx"] + shift[0],
+            b["maxx"] + shift[0],
+            b["miny"] + shift[1],
+            b["maxy"] + shift[1],
+            zmin,
+            zmax,
+        ],
     }
 
 
@@ -870,6 +888,9 @@ class ChangeCloud:
             frm, to = capture_pair(params, a, b)
             files = [_cloud_file(ctx.project, layer) for layer in (a, b)]
             offsets = [height_offset_m(layer) for layer in (a, b)]
+            shifts = [list(date_shift(manifest, str(layer.get("id")))) for layer in (a, b)]
+            # the dates' line-ups as the points are read: what the change set is stamped with
+            line_up = [list(capture_shift(manifest, frm)), list(capture_shift(manifest, to))]
             return {
                 "manifest": manifest,
                 "a": a,
@@ -878,6 +899,8 @@ class ChangeCloud:
                 "to": to,
                 "files": files,
                 "offsets": offsets,
+                "shifts": shifts,
+                "lineUp": line_up,
             }
 
         def sources(ctx: StepContext, prep: dict[str, Any]) -> tuple[PdalSource, PdalSource]:
@@ -888,8 +911,9 @@ class ChangeCloud:
             copc = prep.get("copc") or [True, True]
             off = [float(v) for v in prep.get("offsets") or [0.0, 0.0]]
             files, pdrf = prep["files"], prep["pdrf"]
-            sa = PdalSource(ctx, pdal, Path(files[0]), "from", int(pdrf[0]), res, copc[0], off[0])
-            sb = PdalSource(ctx, pdal, Path(files[1]), "to", int(pdrf[1]), res, copc[1], off[1])
+            sh = [(float(v[0]), float(v[1])) for v in prep.get("shifts") or [(0.0, 0.0), (0.0, 0.0)]]
+            sa = PdalSource(ctx, pdal, Path(files[0]), "from", int(pdrf[0]), res, copc[0], off[0], sh[0])
+            sb = PdalSource(ctx, pdal, Path(files[1]), "to", int(pdrf[1]), res, copc[1], off[1], sh[1])
             if prep.get("zRange"):
                 # in project heights; each source turns it into its own file heights
                 sa.z = sb.z = tuple(prep["zRange"])  # type: ignore[assignment]
@@ -901,7 +925,10 @@ class ChangeCloud:
             if not pdal:
                 raise JobError(PDAL_MISSING)
             files = c["files"]
-            infos = [_info(ctx, pdal, f, off) for f, off in zip(files, c["offsets"], strict=True)]
+            infos = [
+                _info(ctx, pdal, f, off, (sh[0], sh[1]))
+                for f, off, sh in zip(files, c["offsets"], c["shifts"], strict=True)
+            ]
             pdrfs = [_pdrf(ctx, pdal, f) for f in files]
             ba, bb = infos[0]["bounds"], infos[1]["bounds"]
             box = [max(ba[0], bb[0]), min(ba[1], bb[1]), max(ba[2], bb[2]), min(ba[3], bb[3])]
@@ -928,6 +955,8 @@ class ChangeCloud:
                 "pdrf": pdrfs,
                 "copc": [c["a"].get("format") == "copc", c["b"].get("format") == "copc"],
                 "offsets": c["offsets"],
+                "shifts": c["shifts"],
+                "lineUp": c["lineUp"],
                 "zRange": z_range,
             }
             # registration on a sample at the centre of the overlap, before the long work
@@ -1050,6 +1079,7 @@ class ChangeCloud:
                 "p95M": round(hist_quantile(res.hist, 0.95), 4),
                 "shiftM": reg["shiftM"],
             }
+            manifest = read_manifest(ctx.project)
             cs = change_set(
                 prep["setId"],
                 prep["from"],
@@ -1060,6 +1090,7 @@ class ChangeCloud:
                 stats=stats,
                 run={"jobId": ctx.job.job_id, "params": dict(params)},
                 registration=reg,
+                line_up=_line_up_read(prep, manifest, params),
             )
             atomic_write_bytes(ctx.stage("changeset.json"), dump_change_set(cs))
             ctx.log(
@@ -1114,6 +1145,26 @@ class ChangeCloud:
             Step("regions", "Find the change regions", regions, weight=1),
             Step("commit", "Add the layer and the change set", commit, weight=0.5),
         ]
+
+
+INPUTS_CHANGED = "The clouds changed since this job started. Start the job again."
+
+
+def _line_up_read(
+    prep: dict[str, Any], manifest: dict[str, Any], params: dict[str, Any]
+) -> tuple[Shift, Shift]:
+    """The line-ups the points were read with, for the change set: those stamped when the run was
+    prepared, so a line-up saved while it runs leaves the set Out of date. A run prepared before
+    they were stamped is checked instead: its clouds were read with ``prep["shifts"]`` (none
+    when absent), and a date shift that changed since refuses."""
+    stamped = prep.get("lineUp")
+    if stamped:
+        return (float(stamped[0][0]), float(stamped[0][1])), (float(stamped[1][0]), float(stamped[1][1]))
+    read = [tuple(float(x) for x in v) for v in prep.get("shifts") or [(0.0, 0.0), (0.0, 0.0)]]
+    now = [date_shift(manifest, str(params[k])) for k in ("layerFrom", "layerTo")]
+    if any(abs(r[0] - n[0]) > 5e-4 or abs(r[1] - n[1]) > 5e-4 for r, n in zip(read, now, strict=True)):
+        raise JobError(INPUTS_CHANGED)
+    return capture_shift(manifest, prep["from"]), capture_shift(manifest, prep["to"])
 
 
 def _save_tile(path: Path, r: TileResult) -> None:

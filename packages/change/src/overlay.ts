@@ -1,5 +1,5 @@
 import type { ChangeItem, ChangeSet, ChangeVerdict, Issue, Vec3 } from '@aio/schema';
-import { issuePosition } from './issues';
+import { issuePosition, type ShiftOf } from './issues';
 import { registerRows, type RegisterFilter } from './register';
 import type { SelectedItem } from './store';
 
@@ -53,13 +53,15 @@ export interface MarkerInput {
   /** The date the view shows (absent: one view, every item at its place). */
   capture?: string | undefined;
   issues?: readonly Issue[];
+  /** The date shift of a layer: issue pins are drawn where the line-up puts them. */
+  shiftOf?: ShiftOf;
 }
 
 export function changeMarkers(input: MarkerInput): ChangeMarker[] {
   const issues = new Map((input.issues ?? []).map((i) => [i.id, i]));
   const where = (id: string | undefined) => {
     const i = id ? issues.get(id) : undefined;
-    return i ? (issuePosition(i)?.p ?? null) : null;
+    return i ? (issuePosition(i, input.shiftOf)?.p ?? null) : null;
   };
   const out: ChangeMarker[] = [];
   for (const row of registerRows(input.sets, input.filter ?? {})) {

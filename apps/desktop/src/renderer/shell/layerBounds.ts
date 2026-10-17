@@ -1,6 +1,14 @@
 import { hasPos } from '@aio/engine';
 import { correctPos, photoCorrection } from '@aio/geo';
-import type { Layer, OrientationFile, ProjectManifest, Vec3 } from '@aio/schema';
+import {
+  shiftCorners,
+  shiftLocal,
+  type Layer,
+  type OrientationFile,
+  type ProjectManifest,
+  type Vec3,
+} from '@aio/schema';
+import { dateShiftOf } from '@aio/workspace';
 
 /** An axis-aligned box in the local frame (x east, y up, z south), metres. */
 export interface Box {
@@ -66,6 +74,8 @@ export function knowsWhere(l: Layer): boolean {
 export async function layerBounds(layerId: string, deps: BoundsDeps): Promise<Box | null> {
   const l = layerOf(deps.manifest, layerId);
   if (!l) return null;
+  // scene boxes and file extents are already where the date lines up; what is read here is not
+  const shift = dateShiftOf(deps.manifest, l.id);
   switch (l.kind) {
     case 'mesh':
     case 'pointcloud':
@@ -73,14 +83,16 @@ export async function layerBounds(layerId: string, deps: BoundsDeps): Promise<Bo
     case 'photos':
       return boxOfPoints(
         l.items.flatMap((p) =>
-          p.pos ? [correctPos(p.pos, photoCorrection(deps.orientation, l.id, p.id))] : [],
+          p.pos
+            ? [shiftLocal(correctPos(p.pos, photoCorrection(deps.orientation, l.id, p.id)), shift)]
+            : [],
         ),
       );
     case 'panoramas':
-      return boxOfPoints(l.items.flatMap((p) => (p.pos ? [p.pos] : [])));
+      return boxOfPoints(l.items.flatMap((p) => (p.pos ? [shiftLocal(p.pos, shift)] : [])));
     case 'raster': {
       if (l.corners) {
-        const { tl, tr, bl } = l.corners;
+        const { tl, tr, bl } = shiftCorners(l.corners, shift);
         return boxOfPoints([
           tl,
           tr,

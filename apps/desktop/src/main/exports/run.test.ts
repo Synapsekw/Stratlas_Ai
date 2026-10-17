@@ -122,6 +122,48 @@ describe('runExport', () => {
     expect(kit.findings.map((f) => f.group)).toEqual(['F02']);
   });
 
+  it('writes an issue of a lined-up date where it is drawn', async () => {
+    const manifest = sampleManifest({
+      captures: [
+        {
+          id: 'c1',
+          label: 'Survey',
+          date: '2023-02-21',
+          lineUp: { eastM: 2, northM: 1, with: 'c2', at: '2026-10-16T08:00:00Z' },
+        },
+      ],
+      layers: [
+        {
+          kind: 'mesh',
+          id: 'plant',
+          name: 'Plant model',
+          visible: true,
+          capture: 'c1',
+          src: { path: 'models/plant.glb' },
+          transform: [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1],
+        },
+      ],
+    });
+    const issues = [
+      sampleIssue({
+        id: 'b',
+        code: 'F01',
+        sightings: [
+          { on: 'mesh', layer: 'plant', geom: { type: 'spoint', p: [1, 2, 3], n: [0, 1, 0] } },
+        ],
+      }),
+    ];
+    const root = await writeProject(join(dir, 'lined'), manifest, {
+      'issues.json': JSON.stringify({ schema: 'aio.issues/1', issues }),
+    });
+    const out = join(dir, 'lined.json');
+    await runExport({ root, format: 'kit-json', outPath: out });
+    const kit = JSON.parse(await readFile(out, 'utf8')) as {
+      issues: { position_local: number[] | null }[];
+    };
+    expect(kit.issues[0]?.position_local).toEqual([3, 2, 2]);
+  });
+
   it('draws masks and overlays into a ZIP with an index', async () => {
     const root = await project();
     const out = join(dir, 'masks.zip');

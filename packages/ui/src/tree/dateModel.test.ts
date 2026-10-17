@@ -46,6 +46,21 @@ describe('buildDateTree', () => {
     expect(folders.find((f) => f.id === 'a')?.sub).toBe('Survey A');
     expect(folders.find((f) => f.id === 'b')?.sub).toBeUndefined();
   });
+  it('carries the line-up sentence of a lined-up date only', () => {
+    const tipped = buildDateTree(
+      manifest,
+      [],
+      {},
+      { captures, of },
+      {
+        ...labels,
+        lineUp: (c) => (c.id === 'b' ? 'Lined up with Survey A (2.01 m)' : undefined),
+      },
+    );
+    expect(tipped.find((f) => f.id === 'b')?.lineUp).toBe('Lined up with Survey A (2.01 m)');
+    expect(tipped.find((f) => f.id === 'a')?.lineUp).toBeUndefined();
+    expect(folders.find((f) => f.id === 'b')?.lineUp).toBeUndefined();
+  });
   it('keeps the annotations of no date in Every date', () => {
     // the mock issue is marked on a clip that belongs to no date
     const every = folders.find((f) => f.id === EVERY_DATE);

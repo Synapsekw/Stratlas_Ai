@@ -432,6 +432,7 @@ def test_the_job_writes_a_copc_with_a_distance_field_a_layer_and_a_change_set(tm
     assert "Distance" in dims and dims["Distance"]["type"] == "floating" and dims["Distance"]["size"] == 4
 
     cs = validate_change_set(json.loads((root / "change" / "c1-c2-cloud.json").read_text()))
+    assert "lineUp" not in cs
     assert cs["producer"] == "change.cloud" and cs["layers"] == ["c1-c2-cloud"]
     assert cs["registration"]["ok"] is True
     added = [i for i in cs["items"] if i["verdict"] == "added"]
@@ -689,3 +690,183 @@ def test_the_change_layer_has_no_offset(tmp_path):
     _run(root, {"layerFrom": "before", "layerTo": "after"}, job_id="j2")
     m = json.loads((root / "manifest.json").read_text())
     assert "heightOffsetM" not in next(x for x in m["layers"] if x["id"] == "c1-c2-cloud")
+
+
+# ---------------------------------------------------------------- date shifts (captures[].lineUp)
+
+
+def _fake_pdal(monkeypatch, file_xyz, seen):
+    """Stands in for PDAL's reader: crops ``file_xyz`` (file coordinates) by the pipeline's bounds."""
+    import re
+
+    from aio_pipelines.change import cloud
+
+    def fake(ctx, args, what):
+        spec = json.loads(Path(args[-1]).read_text())["pipeline"]
+        seen.append(spec)
+        bounds = next(s["bounds"] for s in spec if "bounds" in s)
+        lo_hi = [float(v) for v in re.findall(r"-?\d+\.?\d*(?:e-?\d+)?", bounds)]
+        x0, x1, y0, y1 = lo_hi[:4]
+        keep = (
+            (file_xyz[:, 0] >= x0) & (file_xyz[:, 0] <= x1) & (file_xyz[:, 1] >= y0) & (file_xyz[:, 1] <= y1)
+        )
+        write_las(Path(spec[-1]["filename"]), file_xyz[keep], pdrf=6)
+        return ""
+
+    monkeypatch.setattr(cloud, "_pdal", fake)
+
+
+def _source(tmp_path, name, shift):
+    from types import SimpleNamespace
+
+    from aio_pipelines.change.cloud import PdalSource
+
+    ctx = SimpleNamespace(job=SimpleNamespace(dir=tmp_path))
+    return PdalSource(ctx, "pdal", tmp_path / f"{name}.copc.laz", name, 6, None, True, 0.0, shift)
+
+
+def test_cloud_change_applies_the_date_shift(tmp_path, monkeypatch):
+    rng = np.random.default_rng(31)
+    base = plane(rng, 0, 8, 0, 8, spacing=0.08) + np.array([500000, 3200000, 0])
+    moved = base + np.array([2.0, 0.0, 0.0])  # the same ground, 2 m east in its file
+    seen: list = []
+    _fake_pdal(monkeypatch, base, seen)
+    pa = _source(tmp_path, "from", (0.0, 0.0)).read((500001.0, 500006.0, 3200001.0, 3200006.0))
+    _fake_pdal(monkeypatch, moved, seen)
+    pb = _source(tmp_path, "to", (-2.0, 0.0)).read((500001.0, 500006.0, 3200001.0, 3200006.0))
+    assert len(pb.xyz) > 100
+    assert np.median(np.abs(c2c_distances(pa.xyz, pb.xyz, cap=1.0))) < 0.05
+    assert pb.xyz[:, 0].min() >= 500001.0 - 1e-6
+
+
+def test_cloud_crop_bounds_are_in_file_coordinates(tmp_path, monkeypatch):
+    seen: list = []
+    _fake_pdal(monkeypatch, np.array([[500002.0, 3200003.0, 0.0]]), seen)
+    src = _source(tmp_path, "to", (-2.0, 1.5))
+    src.read((500000.0, 500010.0, 3200000.0, 3200010.0))
+    bounds = seen[0][0]["bounds"]
+    assert bounds == "([500002.0, 500012.0], [3199998.5, 3200008.5])"
+
+
+def test_cloud_info_bounds_are_where_the_date_is_lined_up(tmp_path, monkeypatch):
+    from types import SimpleNamespace
+
+    from aio_pipelines.change import cloud
+
+    summary = {
+        "summary": {
+            "num_points": 5,
+            "bounds": {"minx": 0, "maxx": 4, "miny": 10, "maxy": 14, "minz": 1, "maxz": 2},
+        }
+    }
+    monkeypatch.setattr(cloud, "_pdal", lambda *a, **k: json.dumps(summary))
+    info = cloud._info(SimpleNamespace(), "pdal", tmp_path / "a.laz", 0.5, (-2.0, 1.0))
+    assert info["bounds"] == [-2.0, 2.0, 11.0, 15.0, 1.5, 2.5]
+
+
+@needs_pdal
+def test_cloud_change_job_applies_the_date_shift(tmp_path):
+    rng = np.random.default_rng(32)
+    ground = plane(rng, 0, 8, 0, 8, spacing=0.06)
+    root = _project(tmp_path, [])
+    layers = [
+        {"kind": "pointcloud", "id": "a", "name": "A", "capture": "c1", "format": "copc",
+         "src": {"path": _copc(tmp_path, root, "a", ground)}},
+        {"kind": "pointcloud", "id": "b", "name": "B", "capture": "c2", "format": "copc",
+         "src": {"path": _copc(tmp_path, root, "b", ground + np.array([2.0, 0, 0]))}},
+    ]  # fmt: skip
+    m = json.loads((root / "manifest.json").read_text())
+    m["layers"] = layers
+    m["captures"][1]["lineUp"] = {"eastM": -2.0, "northM": 0.0, "with": "c1", "at": "2026-10-16T00:00:00Z"}
+    (root / "manifest.json").write_text(json.dumps(m))
+    result, _ = _run(root, {"layerFrom": "a", "layerTo": "b", "captures": {"from": "c1", "to": "c2"}})
+    assert result["status"] == "done"
+    cs = json.loads((root / "change" / "c1-c2-cloud.json").read_text())
+    assert cs["registration"]["ok"] is True
+    assert cs["registration"]["shiftM"] < 0.05
+    assert cs["lineUp"] == {
+        "from": {"eastM": 0.0, "northM": 0.0},
+        "to": {"eastM": -2.0, "northM": 0.0},
+    }
+
+
+def _regions_step(tmp_path, root, prep):
+    """The regions step alone, on a prepared run with no tiles (no PDAL needed)."""
+    from types import SimpleNamespace
+
+    params = ChangeCloud().validate(
+        {"layerFrom": "a", "layerTo": "b", "captures": {"from": "c1", "to": "c2"}}
+    )
+    step = next(s for s in ChangeCloud().plan(params) if s.name == "regions")
+    stage = tmp_path / "stage"
+    stage.mkdir(exist_ok=True)
+    ctx = SimpleNamespace(
+        project=root,
+        outputs=lambda name: prep,
+        stage=lambda rel: stage / rel,
+        log=lambda *a, **k: None,
+        check=lambda: None,
+        job=SimpleNamespace(job_id="j1"),
+    )
+    step.run(ctx)
+    return json.loads((stage / "changeset.json").read_text("utf-8"))
+
+
+def _lined_up_cloud_project(tmp_path):
+    root = _project(
+        tmp_path,
+        [
+            {
+                "kind": "pointcloud",
+                "id": "a",
+                "name": "A",
+                "capture": "c1",
+                "format": "copc",
+                "src": {"path": "a.laz"},
+            },
+            {
+                "kind": "pointcloud",
+                "id": "b",
+                "name": "B",
+                "capture": "c2",
+                "format": "copc",
+                "src": {"path": "b.laz"},
+            },
+        ],
+    )
+    return root
+
+
+def _line_up_c2(root, east):
+    m = json.loads((root / "manifest.json").read_text())
+    m["captures"][1]["lineUp"] = {"eastM": east, "northM": 0.0, "with": "c1", "at": "2026-10-16T00:00:00Z"}
+    (root / "manifest.json").write_text(json.dumps(m))
+
+
+PREP = {
+    "tiles": [],
+    "setId": "c1-c2-cloud",
+    "from": "c1",
+    "to": "c2",
+    "registration": {"ok": True, "shiftM": 0.01},
+}
+
+
+def test_a_line_up_saved_during_the_run_stamps_the_shifts_the_points_were_read_with(tmp_path):
+    # the clouds were read with no shift; the date is lined up while the long run goes on
+    root = _lined_up_cloud_project(tmp_path)
+    _line_up_c2(root, -2.0)
+    prep = {**PREP, "shifts": [[0.0, 0.0], [0.0, 0.0]], "lineUp": [[0.0, 0.0], [0.0, 0.0]]}
+    cs = _regions_step(tmp_path, root, prep)
+    # labelled with the frame it was computed in, so the set reads Out of date
+    assert "lineUp" not in cs
+
+
+def test_a_run_prepared_without_its_shifts_refuses_when_they_changed(tmp_path):
+    root = _lined_up_cloud_project(tmp_path)
+    _line_up_c2(root, -2.0)
+    with pytest.raises(JobError, match="changed since this job started"):
+        _regions_step(tmp_path, root, {**PREP, "shifts": [[0.0, 0.0], [0.0, 0.0]]})
+    # unchanged: stamped with the shifts it was read with
+    cs = _regions_step(tmp_path, root, {**PREP, "shifts": [[0.0, 0.0], [-2.0, 0.0]]})
+    assert cs["lineUp"]["to"] == {"eastM": -2.0, "northM": 0.0}

@@ -122,13 +122,15 @@ class InspectionRun:
         def read(ctx: StepContext) -> dict[str, Any]:
             from PIL import Image
 
+            from ..captures import date_shift, local_delta
             from . import frame as Fr
             from .detections import Catalogue
 
             manifest = Fr.read_manifest(ctx.project)
             cat = Catalogue(manifest)
             ctx.progress(0.05, "Reading the models")
-            parts = Fr.load_meshes(ctx.project, Fr.mesh_layers(manifest), ctx.log)
+            mesh_layers = Fr.mesh_layers(manifest)
+            parts = Fr.load_meshes(ctx.project, mesh_layers, ctx.log, manifest)
             ctx.check()
             fp = Fr.footprint(parts)
             ax = (fp["min"][0] + fp["max"][0]) / 2
@@ -146,6 +148,8 @@ class InspectionRun:
             unplaced: list[str] = []
             missing: list[str] = []
             for layer in Fr.photo_layers(manifest):
+                # photos sit where their date is lined up, like the models they are projected on
+                dx, dz = local_delta(date_shift(manifest, str(layer["id"])))
                 for item in layer.get("items", []):
                     path = Fr.asset_path(ctx.project, item.get("src"))
                     if path is None or not path.exists():
@@ -154,6 +158,9 @@ class InspectionRun:
                     if not item.get("pos"):
                         unplaced.append(item["id"])
                         continue
+                    pos = item["pos"]
+                    if dx or dz:
+                        item = {**item, "pos": [pos[0] + dx, pos[1], pos[2] + dz]}
                     photos.append({**item, "_layer": layer["id"], "_file": str(path)})
             if missing:
                 ctx.log(
@@ -225,7 +232,8 @@ class InspectionRun:
             atomic_write_json(
                 ctx.stage("read.json"),
                 {"axis": [ax, az], "height": height, "footprint": fp, "nodes": nodes, "cameras": index,
-                 "profile": profile, "unplaced": unplaced, "missing": missing},
+                 "profile": profile, "unplaced": unplaced, "missing": missing,
+                 "shifts": {layer["id"]: list(date_shift(manifest, layer["id"])) for layer in mesh_layers}},
             )  # fmt: skip
             ctx.log(f"{len(cams)} placed photos; kit profile {profile}")
             return {"photos": len(cams), "unplaced": len(unplaced), "missing": len(missing), "profile": profile,
@@ -338,6 +346,7 @@ class InspectionRun:
         # ------------------------------------------------------------ cluster
         def cluster(ctx: StepContext) -> dict[str, Any]:
             from ..aik import records as R_
+            from ..captures import local_delta
             from . import frame as Fr
             from .detections import Catalogue
             from .issues import links, proposals
@@ -354,6 +363,15 @@ class InspectionRun:
             layer_of = layer_finder(ctx.stage("kit/model.glb"), st["nodes"])
             props = proposals(R, meta["meta"], cat, frame, st["cameras"], layer_of)
             linked = links(R, meta["meta"], frame, layer_of)
+            # the job ran where the dates are lined up; a finding is saved in its layer's own frame
+            shifts = st.get("shifts") or {}
+            for sighting in [s for p in props for s in p["sightings"]] + [
+                x["mesh"] for x in linked if x["mesh"]
+            ]:
+                dx, dz = local_delta(tuple(shifts.get(sighting.get("layer"), (0.0, 0.0))))
+                if (dx or dz) and sighting.get("on") == "mesh":
+                    p = sighting["geom"]["p"]
+                    sighting["geom"]["p"] = [round(p[0] - dx, 4), p[1], round(p[2] - dz, 4)]
             summary = R_.summary(R)
             summary["stats"]["detections"] = len(R["findings"])
             summary["stats"]["skipped"] = meta["skipped"]

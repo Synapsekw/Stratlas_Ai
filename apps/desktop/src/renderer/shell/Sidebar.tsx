@@ -43,6 +43,7 @@ import { builder } from '../builder/state';
 import { DrawingControls } from '../drawings/DrawingControls';
 import { drawings, unplacedOf, useDrawings } from '../drawings/store';
 import { help } from '../help/store';
+import { lineUpTip } from '../lineup/planLineUp';
 import { useMedia } from '../media';
 import { watchPanoStitches } from '../panos/panoJobs';
 import { pickAndScanPanos } from '../panos/panos';
@@ -166,6 +167,7 @@ function Datasets({ collapsed }: { collapsed: boolean }) {
             {
               every: t('tree.dates.every'),
               dateLabel: (c) => formatDate(c.date),
+              lineUp: (c) => lineUpTip(project.manifest, c.id, t) ?? undefined,
             },
             { unplaced },
           )

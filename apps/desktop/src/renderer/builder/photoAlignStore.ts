@@ -8,9 +8,16 @@ import {
   sameFlightPhotos,
   type CameraDirection,
 } from '@aio/geo';
-import type { Layer, PhotoCorrection, PhotoRef, Quat, Vec3 } from '@aio/schema';
+import {
+  shiftLocal,
+  type Layer,
+  type PhotoCorrection,
+  type PhotoRef,
+  type Quat,
+  type Vec3,
+} from '@aio/schema';
 import { t } from '@aio/ui';
-import type { Workspace } from '@aio/workspace';
+import { dateShiftOf, type Workspace } from '@aio/workspace';
 import { createStore, type StoreApi } from 'zustand/vanilla';
 
 type PhotosLayer = Extract<Layer, { kind: 'photos' }>;
@@ -45,7 +52,11 @@ export interface PhotoAlignState {
 
 export interface PhotoAlignActions {
   start(layerId: string, photoId: string): void;
-  /** The photo's camera as it is shown now (with the correction being edited). */
+  /**
+   * The photo's camera as it is shown now: the correction being edited, then its date's line-up
+   * (as `photoPoses` draws it). The correction itself is the person's move from the imported pose
+   * and is saved as it is, without the shift.
+   */
   pose(): { pos: Vec3; q: Quat } | null;
   current(): CameraDirection | null;
   gesture(active: boolean): void;
@@ -156,7 +167,9 @@ export function createPhotoAlignStore(deps: PhotoAlignDeps): StoreApi<PhotoAlign
         const s = get().session;
         const p = s ? photoOf(s.layerId, s.photoId) : null;
         if (!s || !p?.pos || !p.q) return null;
-        return { pos: correctPos(p.pos, s.corr), q: correctQuat(p.q, s.corr) };
+        const m = ws.getState().project?.manifest;
+        const shift = m ? dateShiftOf(m, s.layerId) : null;
+        return { pos: shiftLocal(correctPos(p.pos, s.corr), shift), q: correctQuat(p.q, s.corr) };
       },
 
       current: () => {

@@ -59,15 +59,33 @@ export const isSurface = (ref: { kind: string }): boolean => SURFACE_KINDS.inclu
 
 /** A resolved surface side: a grid, or a TIN (absolute vertices, the offset not added). */
 export type ResolvedSurface =
-  | { kind: 'grid'; name: string; fingerprint: string; capture?: string; grid: GridSurface }
-  | {
+  | ({
+      kind: 'grid';
+      name: string;
+      fingerprint: string;
+      capture?: string;
+      grid: GridSurface;
+    } & Lined)
+  | ({
       kind: 'tin';
       name: string;
       fingerprint: string;
       capture?: string;
       tin: TinFile;
       offsetM: number;
-    };
+    } & Lined);
+
+/** A date's line-up as `[eastM, northM]`. */
+export type Shift = readonly [number, number];
+
+/**
+ * What a prepared surface knows of its date's line-up: `current` is the date's shift now (it joins
+ * the fingerprint, so a result reads stale after a line-up), the prepared shift (`dateShiftM` in
+ * its tiles.json) is what its cells sit at. Absent means no shift.
+ */
+interface Lined {
+  current?: Shift;
+}
 
 export type Resolve = (ref: SurfaceRef) => Promise<ResolvedSurface>;
 
@@ -83,6 +101,14 @@ export interface CompareOptions {
   now?: () => string;
   /** Work shared between the items of one polygon (`compareItems` makes one). */
   shared?: Shared;
+  /**
+   * The ring is as stored. A survey's own measurement is stored in its unshifted frame while the
+   * prepared surface sits where its date was lined up: `ringShift` (the surface's `dateShiftM`)
+   * is added before sampling; `ringCurrent` (the date's shift now, default `ringShift`) joins the
+   * fingerprint. A site-wide ring is already in the lined-up frame (no shift).
+   */
+  ringShift?: Shift;
+  ringCurrent?: Shift;
 }
 
 /** Coverage and surface samples of one polygon, reused by its items (same grid, same cells). */
@@ -114,7 +140,15 @@ export async function fingerprint(
   rf: ResolvedSurface | null,
   rt: ResolvedSurface | null,
   site?: SiteContext,
+  ringCurrent?: Shift,
 ): Promise<string> {
+  const lineUp: Record<string, Json> = {};
+  for (const [k, v] of [
+    ['from', rf?.current],
+    ['to', rt?.current],
+    ['ring', ringCurrent],
+  ] as const)
+    if (v && (v[0] !== 0 || v[1] !== 0)) lineUp[k] = [v[0], v[1]];
   const obj: Record<string, Json | undefined> = {
     engine: ENGINE_VERSION,
     ring: ring.map((p) => [p[0], p[1]]),
@@ -124,6 +158,7 @@ export async function fingerprint(
     useDeadband: item.useDeadband,
     cellM: item.cellM,
     site: site as unknown as Json | undefined,
+    lineUp: Object.keys(lineUp).length > 0 ? lineUp : undefined,
   };
   return `sha256:${await sha256Hex(canonical(obj))}`;
 }
@@ -296,7 +331,10 @@ export async function compareItem(
   gridOut?: GridOut[],
 ): Promise<ComparisonResult> {
   const { signal } = opts;
-  const ringN = normalRing(ring);
+  const storedRing = normalRing(ring);
+  const [rsE, rsN] = opts.ringShift ?? [0, 0];
+  const ringN: [number, number][] =
+    rsE === 0 && rsN === 0 ? storedRing : storedRing.map(([e, n]) => [e + rsE, n + rsN]);
   const from = item.from;
   const to = item.to;
   let rf: ResolvedSurface | null = null;
@@ -328,7 +366,14 @@ export async function compareItem(
     usedDeadband: item.useDeadband,
     cellM: 0,
     engine: 'ts',
-    fingerprint: await fingerprint(ringN, item, rf, rt, opts.site),
+    fingerprint: await fingerprint(
+      storedRing,
+      item,
+      rf,
+      rt,
+      opts.site,
+      opts.ringCurrent ?? opts.ringShift,
+    ),
     computedAt: (opts.now ?? (() => new Date().toISOString()))(),
   };
   if (rf?.capture !== undefined) res.fromCapture = rf.capture;

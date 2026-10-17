@@ -1,5 +1,6 @@
 import { correctedPhoto, photoCorrection } from '@aio/geo';
-import type { Workspace } from '@aio/workspace';
+import { shiftLocal } from '@aio/schema';
+import { dateShiftOf, type Workspace } from '@aio/workspace';
 import type { Feature, FeatureCollection } from 'geojson';
 import type { Map as MapLibreMap } from 'maplibre-gl';
 import type { FrameProjection } from './geo';
@@ -63,9 +64,12 @@ function placed(
   const out: { layer: string; id: string; at: [number, number] }[] = [];
   for (const l of s.project?.manifest.layers ?? []) {
     if (l.kind !== 'photos' || s.hidden[l.id]) continue;
+    const shift = s.project ? dateShiftOf(s.project.manifest, l.id) : null;
     for (const item of l.items) {
       const c = correctedPhoto(item, photoCorrection(s.orientation, l.id, item.id));
-      if (c.pos) out.push({ layer: l.id, id: item.id, at: proj.toLonLat(c.pos) });
+      // the date's line-up comes after the hand correction
+      if (c.pos)
+        out.push({ layer: l.id, id: item.id, at: proj.toLonLat(shiftLocal(c.pos, shift)) });
     }
   }
   return out;

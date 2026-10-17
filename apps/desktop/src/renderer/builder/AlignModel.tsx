@@ -9,9 +9,16 @@ import {
   type UpAxis,
 } from '@aio/geo';
 import { LocationPicker } from '@aio/maps';
-import type { Layer, LayerPatch, Vec3 } from '@aio/schema';
+import {
+  drawnTransform,
+  shiftLocal,
+  storedTransform,
+  type Layer,
+  type LayerPatch,
+  type Vec3,
+} from '@aio/schema';
 import { Icon } from '@aio/ui';
-import { useWorkspace, workspace } from '@aio/workspace';
+import { dateShiftOf, shiftKey, useWorkspace, workspace } from '@aio/workspace';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { modelPoint, parseCoordinate } from './model';
 import { hitLayer, useStagePick, usePickMarkers, type Marker } from './pick';
@@ -66,10 +73,18 @@ export function AlignModel({ layerId }: { layerId: string }) {
 
   const origin = project?.manifest.origin;
   const epsg = project && 'epsg' in project.manifest.crs ? project.manifest.crs.epsg : null;
+  // On a lined-up date the pairs are picked where the model is drawn (its transform plus the
+  // date shift): the fit is of that drawn placement, and what is saved is it less the shift.
+  const shift = project && layer ? dateShiftOf(project.manifest, layer.id) : null;
+  const drawn = useMemo(
+    () => (layer ? drawnTransform(layer.transform, shift) : null),
+    [layer, shift],
+  );
 
-  // A moved origin (a re-centre) changes the local frame: the targets of the pairs and the
-  // transform Undo would restore belong to the old one, so both go.
-  const frame = origin ? origin.join(' ') : '';
+  // A moved origin (a re-centre) or a new date shift changes the frame the pairs were picked
+  // in: the targets of the pairs and the transform Undo would restore belong to the old one, so
+  // both go.
+  const frame = origin ? `${origin.join(' ')}|${shiftKey(shift)}` : '';
   const [pairsFrame, setPairsFrame] = useState(frame);
   if (pairsFrame !== frame) {
     setPairsFrame(frame);
@@ -122,7 +137,7 @@ export function AlignModel({ layerId }: { layerId: string }) {
         setSay({ text: `That is not on ${layer.name}. Click a point on the model.`, tone: 'bad' });
         return;
       }
-      setPending(modelPoint(layer.transform, [hit.point.x, hit.point.y, hit.point.z]));
+      setPending(modelPoint(drawn ?? layer.transform, [hit.point.x, hit.point.y, hit.point.z]));
       setArmed(null);
       setSay({ text: 'Now give the true position of that point.', tone: 'armed' });
     } else if (armed === 'scene') {
@@ -139,7 +154,7 @@ export function AlignModel({ layerId }: { layerId: string }) {
 
   const markers = useMemo<Marker[]>(() => {
     if (!layer) return [];
-    const t = fit.fit?.matrix ?? layer.transform;
+    const t = fit.fit?.matrix ?? drawn ?? layer.transform;
     const apply = (p: Vec3): Vec3 => [
       (t[0] ?? 0) * p[0] + (t[4] ?? 0) * p[1] + (t[8] ?? 0) * p[2] + (t[12] ?? 0),
       (t[1] ?? 0) * p[0] + (t[5] ?? 0) * p[1] + (t[9] ?? 0) * p[2] + (t[13] ?? 0),
@@ -152,7 +167,7 @@ export function AlignModel({ layerId }: { layerId: string }) {
     }
     if (pending) out.push({ pos: apply(pending), color: 0x60d3b2 });
     return out;
-  }, [pairs, pending, layer, fit.fit]);
+  }, [pairs, pending, layer, fit.fit, drawn]);
   usePickMarkers(markers);
 
   const lonLat = (p: Vec3): [number, number] | null => {
@@ -164,9 +179,12 @@ export function AlignModel({ layerId }: { layerId: string }) {
     .filter((p) => p.from === 'map')
     .map((p) => lonLat(p.dst))
     .filter((p): p is [number, number] => p !== null);
-  const photos = (project?.manifest.layers ?? []).flatMap((l) =>
-    l.kind === 'photos' ? l.items.flatMap((p) => (p.pos ? [{ id: p.id, pos: p.pos }] : [])) : [],
-  );
+  // photo GPS positions where the 3D view draws them: with their own date's line-up
+  const photos = (project?.manifest.layers ?? []).flatMap((l) => {
+    if (l.kind !== 'photos' || !project) return [];
+    const s = dateShiftOf(project.manifest, l.id);
+    return l.items.flatMap((p) => (p.pos ? [{ id: p.id, pos: shiftLocal(p.pos, s) }] : []));
+  });
 
   /** The patch that puts the layer at `transform`. */
   const placeAt = (transform: number[]): LayerPatch | null => {
@@ -530,7 +548,7 @@ export function AlignModel({ layerId }: { layerId: string }) {
               className="btn primary"
               disabled={!fit.fit || saving}
               onClick={() => {
-                if (fit.fit) void save(placeAt(fit.fit.matrix));
+                if (fit.fit) void save(placeAt(storedTransform(fit.fit.matrix, shift)));
               }}
               data-testid="align-save"
             >

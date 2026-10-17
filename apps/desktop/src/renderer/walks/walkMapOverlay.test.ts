@@ -54,6 +54,53 @@ const colour = () => '#3a7bd5';
 const features = (data: FeatureCollection | string): Feature[] =>
   typeof data === 'string' ? [] : data.features;
 
+describe('a walk of a lined-up date', () => {
+  const shift = { eastM: 2, northM: -1 };
+  const first = (o: { data: FeatureCollection | string } | null | undefined, kind: string) => {
+    const g = features(o?.data ?? '').find((f) => f.properties?.kind === kind)?.geometry;
+    return g?.type === 'LineString' ? g.coordinates[0] : g?.type === 'Point' ? g.coordinates : null;
+  };
+
+  it('draws a walk of a lined-up date shifted', () => {
+    const [o] = walkMapOverlays(
+      [{ layer: layer('walk-a'), fit: fit(), raw: null, shift }],
+      proj,
+      colour,
+      { placingId: null },
+    );
+    // the walk starts at x 0, z 0 as measured: 2 m east and 1 m south of that on the map
+    expect(first(o, 'line')).toEqual([2, 1]);
+    const [plain] = walkMapOverlays(
+      [{ layer: layer('walk-a'), fit: fit(), raw: null }],
+      proj,
+      colour,
+      { placingId: null },
+    );
+    expect(first(plain, 'line')).toEqual([0, 0]);
+    // its position and the shape being placed take the same shift
+    const now = walkNowMapOverlay(
+      { layer: layer('walk-a'), fit: fit(), raw: null, shift },
+      proj,
+      colour,
+      3,
+    );
+    expect(first(now, 'now')).toEqual([5, 7]);
+    const preview = walkPreviewMapOverlay(
+      'walk-a',
+      [
+        [0, 0],
+        [4, 0],
+      ],
+      proj,
+      '#fff',
+      false,
+      false,
+      shift,
+    );
+    expect(first(preview, 'preview')).toEqual([2, 1]);
+  });
+});
+
 describe('walkMapOverlays', () => {
   it('map overlay: a line layer, a circle layer for stills, one for pins, in the date colour', () => {
     const [o] = walkMapOverlays([{ layer: layer('walk-a'), fit: fit(), raw: null }], proj, colour, {

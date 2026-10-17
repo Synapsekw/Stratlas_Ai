@@ -305,6 +305,7 @@ class ModelEvidence:
         def crop(ctx: StepContext) -> dict[str, Any]:
             if not has_cloud:
                 return {"points": 0}
+            from ..captures import date_shift, shift_transform
             from ..inspection.frame import asset_path, read_manifest
 
             manifest = read_manifest(ctx.project)
@@ -324,7 +325,15 @@ class ModelEvidence:
                     raise JobError(f'The file of "{layer.get("name", c["layer"])}" is missing.')
                 reconstructed = reconstructed or _is_reconstruction(layer)
                 xyz, info = read_region(
-                    path, layer.get("format", ""), region, cap, ctx, origin, SEED + i, height_offset_m(layer)
+                    path,
+                    layer.get("format", ""),
+                    region,
+                    cap,
+                    ctx,
+                    origin,
+                    SEED + i,
+                    height_offset_m(layer),
+                    date_shift(manifest, c["layer"]),
                 )
                 parts.append(xyz)
                 colours.append(info["rgb"])
@@ -338,7 +347,9 @@ class ModelEvidence:
                 path = asset_path(ctx.project, layer.get("src"))
                 if path is None or not path.is_file():
                     raise JobError(f'The file of "{layer.get("name", m["layer"])}" is missing.')
-                pts = sample_mesh_surface(path, layer.get("transform"), region, cap, SEED + len(clouds) + j)
+                # the region is drawn where the date is lined up: the shift comes after the transform
+                moved = shift_transform(layer.get("transform"), date_shift(manifest, m["layer"]))
+                pts = sample_mesh_surface(path, moved, region, cap, SEED + len(clouds) + j)
                 parts.append(pts)
                 colours.append(None)  # a mesh surface has no scanned colour
                 read += len(pts)

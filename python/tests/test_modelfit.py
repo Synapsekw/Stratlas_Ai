@@ -350,3 +350,45 @@ def test_fit_points_carry_the_offset(tmp_path):
     assert len(lifted) == len(plain)
     assert np.allclose(np.sort(lifted[:, 1]), np.sort(plain[:, 1]) + 5.0, atol=1e-6)
     assert np.allclose(np.sort(lifted[:, 0]), np.sort(plain[:, 0]), atol=1e-6)
+
+
+@pytest.mark.parametrize("fmt", ["kit-packed", "png-packed", "copc"])
+def test_fit_points_carry_the_shift(tmp_path, monkeypatch, fmt):
+    from types import SimpleNamespace
+
+    import aio_pipelines.pointcloud as pc
+    from aio_pipelines.modelfit.segment import load_layer_points
+    from synth_assets import write_las
+
+    pts = scene(np.random.default_rng(1))
+    if fmt == "png-packed":
+        png_packed(tmp_path, pts)
+    else:
+        project(tmp_path, pts, layer_format=fmt)
+    if fmt == "copc":
+        # PDAL is replaced by a writer of the same points as a plain LAS
+        monkeypatch.setattr(pc, "find_pdal", lambda: "pdal")
+        monkeypatch.setattr(
+            pc, "_run", lambda ctx, cmd, label: write_las(pts, Path(cmd[-1]), offset=(500000, 3200000, 0))
+        )
+    job_dir = tmp_path / "job"
+    job_dir.mkdir()
+    ctx = SimpleNamespace(project=tmp_path, check=lambda: None, job=SimpleNamespace(dir=job_dir))
+    path = tmp_path / "manifest.json"
+    manifest = json.loads(path.read_text("utf-8"))
+    plain = load_layer_points(ctx, manifest, "scan", 0.0)
+    manifest["captures"] = [
+        {
+            "id": "c1",
+            "label": "Survey",
+            "date": "2026-10-01",
+            "lineUp": {"eastM": 2.0, "northM": -1.0, "with": "c0", "at": "2026-10-16T09:00:00Z"},
+        }
+    ]
+    manifest["layers"][0]["capture"] = "c1"
+    moved = load_layer_points(ctx, manifest, "scan", 0.0)
+    assert len(moved) == len(plain)
+    # 2 m east is local x + 2; 1 m south is local z + 1; heights stay
+    assert np.allclose(np.sort(moved[:, 0]), np.sort(plain[:, 0]) + 2.0, atol=2e-3)
+    assert np.allclose(np.sort(moved[:, 1]), np.sort(plain[:, 1]), atol=2e-3)
+    assert np.allclose(np.sort(moved[:, 2]), np.sort(plain[:, 2]) + 1.0, atol=2e-3)

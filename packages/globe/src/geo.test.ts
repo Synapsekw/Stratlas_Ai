@@ -614,6 +614,17 @@ describe('sites and issue pins', () => {
     expect(sightingAnchor({ on: 'map', layer: 'm', geojson: {} })).toBeNull();
   });
 
+  it('pins at the lined-up place of the sighting layer', () => {
+    const pins = issuePins(issues, { severityModels: models }, (layer) =>
+      layer === 'm' ? { eastM: 2, northM: 1 } : null,
+    );
+    // x += east, z -= north; the box on layer c does not move
+    expect(pins.map((p) => [p.code, p.local])).toEqual([
+      ['F01', [3, 2, 2]],
+      ['F02', [1, 2, 3]],
+    ]);
+  });
+
   it('frames every site and names the last capture', () => {
     expect(sitesBounds([])).toBeNull();
     expect(sitesBounds([{ lonLat: [48, 29] }, { lonLat: [51, 25] }], 1)).toEqual([47, 24, 52, 30]);

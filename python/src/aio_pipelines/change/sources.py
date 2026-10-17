@@ -24,6 +24,7 @@ from typing import Any
 
 import numpy as np
 
+from ..captures import date_shift
 from ..runtime import JobError
 
 SOURCES = "sources"
@@ -111,7 +112,11 @@ def height_offset_m(layer: dict[str, Any]) -> float:
 
 
 def grid_source(project: Path, layer: dict[str, Any], manifest: dict[str, Any] | None = None) -> GridSource:
-    """The ``aio.grid/1`` height grid of a DSM layer that is not a GeoTIFF (validated)."""
+    """The ``aio.grid/1`` height grid of a DSM layer that is not a GeoTIFF (validated).
+
+    With the ``manifest``, the grid is where its date is lined up: the date's shift is added to
+    ``x0`` and ``y1`` (callers add none).
+    """
     name = _name(layer)
     where = _source_dir(project, layer)
     rel = f"{SOURCES}/{layer.get('id')}.json"
@@ -155,11 +160,12 @@ def grid_source(project: Path, layer: dict[str, Any], manifest: dict[str, Any] |
     want = ((manifest or {}).get("crs") or {}).get("epsg")
     if isinstance(epsg, int) and isinstance(want, int) and epsg != want:
         raise JobError(f"{bad} is in EPSG:{epsg}; the project is in EPSG:{want}.")
+    east, north = date_shift(manifest, str(layer.get("id"))) if manifest else (0.0, 0.0)
     return GridSource(
         json_path=path,
         image=image,
-        x0=x0,
-        y1=y1,
+        x0=x0 + east,
+        y1=y1 + north,
         res=res,
         width=int(width),
         height=int(height),
@@ -171,7 +177,11 @@ def grid_source(project: Path, layer: dict[str, Any], manifest: dict[str, Any] |
 
 
 def cloud_source(project: Path, layer: dict[str, Any], why: str = "") -> Path:
-    """``sources/<id>.las`` (or ``.laz``) of a point cloud layer packed for viewing."""
+    """``sources/<id>.las`` (or ``.laz``) of a point cloud layer packed for viewing.
+
+    The points are in the file's own place: the reader adds the layer's date shift
+    (``captures.date_shift``), as it adds its ``heightOffsetM``.
+    """
     name = _name(layer)
     where = _source_dir(project, layer)
     if where is not None:

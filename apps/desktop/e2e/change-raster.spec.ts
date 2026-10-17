@@ -11,6 +11,7 @@ import type { Page } from '@playwright/test';
 import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { expect, hasPipelinePython, PIPELINE_ENV, test, VENV_PYTHON } from './fixtures';
+import { expectRegionsMatchTruth, inside, type Item, type RasterTruth } from './changeRaster';
 import { toggleCompareDates } from './island';
 import { choosePane } from './panoFixtures';
 
@@ -22,12 +23,6 @@ interface Win {
   };
 }
 
-type XZ = [number, number];
-interface RasterTruth {
-  expected: { id: string; verdict: string; outlineLocal: XZ[] }[];
-  clean: { id: string; outlineLocal: XZ[] }[];
-  counts: { expected: number; large: number; clean: number };
-}
 interface SurfaceTruth {
   regions: {
     id: string;
@@ -37,46 +32,12 @@ interface SurfaceTruth {
   }[];
   totals: { cutM3: number; fillM3: number };
 }
-interface Item {
-  verdict: string;
-  at?: number[];
-  bounds?: { min: number[]; max: number[] };
-  areaM2?: number;
-  volume?: { cutM3: number; fillM3: number };
-}
-
 const layerIds = (win: Page) =>
   win.evaluate(() =>
     ((window as unknown as Win).__stratlas.workspace.getState().project?.manifest.layers ?? []).map(
       (l) => l.id,
     ),
   );
-
-/** The x and z extent of an outline, widened by `margin` metres. */
-function box(outline: XZ[], margin = 0) {
-  const xs = outline.map((p) => p[0]);
-  const zs = outline.map((p) => p[1]);
-  return {
-    x0: Math.min(...xs) - margin,
-    x1: Math.max(...xs) + margin,
-    z0: Math.min(...zs) - margin,
-    z1: Math.max(...zs) + margin,
-  };
-}
-const inside = (at: number[] | undefined, b: ReturnType<typeof box>) =>
-  at !== undefined &&
-  (at[0] ?? NaN) >= b.x0 &&
-  (at[0] ?? NaN) <= b.x1 &&
-  (at[2] ?? NaN) >= b.z0 &&
-  (at[2] ?? NaN) <= b.z1;
-
-/** True when a region's bounds (x and z) meet the box. */
-const meets = (i: Item, b: ReturnType<typeof box>) =>
-  i.bounds !== undefined &&
-  (i.bounds.min[0] ?? NaN) <= b.x1 &&
-  (i.bounds.max[0] ?? NaN) >= b.x0 &&
-  (i.bounds.min[2] ?? NaN) <= b.z1 &&
-  (i.bounds.max[2] ?? NaN) >= b.z0;
 
 /** Changes tab, the producer's Run button, then its layers in the reloaded manifest. */
 async function run(win: Page, producer: string, layers: string[]) {
@@ -108,29 +69,7 @@ test('imagery and surface change on the change demo, then swipe and blend', asyn
   ) as { items: Item[]; registration: { ok: boolean } };
   expect(raster.registration.ok).toBe(true);
   const rt = truth.changes.raster as unknown as RasterTruth;
-  // the large changes (the markers are smaller than the default smallest area)
-  const large = rt.expected.filter((e) => {
-    const b = box(e.outlineLocal);
-    return (b.x1 - b.x0) * (b.z1 - b.z0) >= 2;
-  });
-  expect(large).toHaveLength(rt.counts.large);
-  // each large change lies in a region (a region may hold two changes that touch)
-  for (const e of large)
-    expect(
-      raster.items.some((i) => meets(i, box(e.outlineLocal, 0.5))),
-      e.id,
-    ).toBe(true);
-  for (const c of rt.clean)
-    expect(
-      raster.items.some((i) => inside(i.at, box(c.outlineLocal))),
-      c.id,
-    ).toBe(false);
-  // every region holds one of truth's changes: nothing from light, tint or noise
-  for (const i of raster.items)
-    expect(
-      rt.expected.some((e) => meets(i, box(e.outlineLocal, 0.5))),
-      JSON.stringify(i.at),
-    ).toBe(true);
+  expectRegionsMatchTruth(raster.items, rt);
 
   // 2. surface change on the DSM height grids: truth's cut and fill regions and volumes
   await run(win, 'surface', [`${pair}-surface-heat`, `${pair}-surface-regions`]);

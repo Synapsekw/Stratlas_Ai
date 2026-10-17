@@ -84,11 +84,13 @@ def cube_of(vlrs: dict[tuple[str, int], bytes], bounds: tuple[float, ...]) -> Cu
 
 
 def read_points(
-    ctx: StepContext, path: Path, offset_m: float = 0.0
+    ctx: StepContext, path: Path, offset_m: float = 0.0, shift: tuple[float, float] = (0.0, 0.0)
 ) -> tuple[np.ndarray, np.ndarray | None, Cube]:
-    """Points in the file CRS (float64), colours (uint8 RGB) or None, and the octree cube.
+    """Points in the project CRS (float64), colours (uint8 RGB) or None, and the octree cube.
 
-    `offset_m` is the layer's height offset: added to every z and to the cube's centre z."""
+    `offset_m` is the layer's height offset: added to every z and to the cube's centre z. `shift`
+    is its date's line-up (east, north metres): added to every E and N and to the cube's centre,
+    after the offset (the same as `local_delta` in the local frame)."""
     from ..change.las import LasError, read_las
 
     compressed, vlrs, bounds = las_header(path)
@@ -107,6 +109,10 @@ def read_points(
     if offset_m:
         xyz = xyz + np.array([0.0, 0.0, offset_m])
         cube = Cube(cube.centre + np.array([0.0, 0.0, offset_m]), cube.half, cube.spacing)
+    if shift != (0.0, 0.0):
+        move = np.array([shift[0], shift[1], 0.0])
+        xyz = xyz + move
+        cube = Cube(cube.centre + move, cube.half, cube.spacing)
     rgb = None
     if las.pdrf in (7, 8):
         c = np.stack([las.field("Red"), las.field("Green"), las.field("Blue")], axis=1)
@@ -258,6 +264,7 @@ class TilesCloud:
 
     def plan(self, params: dict[str, Any]) -> list[Step]:
         def read(ctx: StepContext) -> dict[str, Any]:
+            from ..captures import date_shift
             from ..change.derived import find_layer, layer_file, read_manifest
             from ..change.sources import height_offset_m
 
@@ -270,6 +277,7 @@ class TilesCloud:
                 "name": params.get("name") or layer.get("name") or layer["id"],
                 "capture": layer.get("capture"),
                 "heightOffsetM": height_offset_m(layer),
+                "shift": list(date_shift(m, str(layer["id"]))),
             }
 
         def tile(ctx: StepContext) -> dict[str, Any]:
@@ -279,7 +287,10 @@ class TilesCloud:
             m = read_manifest(ctx.project)
             frame = SiteFrame.of(m)
             t0 = time.monotonic()
-            xyz, rgb, cube = read_points(ctx, Path(info["path"]), float(info.get("heightOffsetM") or 0.0))
+            east, north = info.get("shift") or (0.0, 0.0)
+            xyz, rgb, cube = read_points(
+                ctx, Path(info["path"]), float(info.get("heightOffsetM") or 0.0), (float(east), float(north))
+            )
             if not len(xyz):
                 raise JobError("The point cloud has no points.")
             enu = frame.local_to_enu(crs_to_local(xyz, frame.origin))

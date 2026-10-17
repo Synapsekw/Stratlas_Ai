@@ -95,6 +95,38 @@ describe('VideoRig flight paths', () => {
     rig.dispose();
   });
 
+  it('draws the flight path of a lined-up video at the corrected place', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(() => Promise.resolve(new Response(JSON.stringify(flight)))),
+    );
+    const store = createWorkspace();
+    const manifest = { layers: [] } as unknown as ProjectManifest;
+    store.getState().openProject({ id: 'p', root: 'x', manifest });
+    store.getState().setActiveClip(null);
+    configureVideo({ store, resolveUrl: (_p, ref) => ('path' in ref ? ref.path : ref.hash) });
+    const rig = new VideoRig(handle());
+    const url = (r: { path: string } | { hash: string }) =>
+      'path' in r ? `aio://${r.path}` : r.hash;
+    await rig.addLayer(clip(0, 'flights/a.json'), {
+      scene: rig.handle,
+      url,
+      shiftOf: () => ({ eastM: 2, northM: -1 }),
+    });
+    // a second clip of the same flight on a date that did not move draws its own path
+    await rig.addLayer(clip(1, 'flights/a.json'), { scene: rig.handle, url });
+    const first = (id: string) => {
+      const line = lines(rig).find((l) => l.userData.videoLayer === id) as Line;
+      return Array.from(line.geometry.getAttribute('position').array.slice(0, 3));
+    };
+    expect(lines(rig)).toHaveLength(2);
+    expect(first('v0')).toEqual([2, 1, 1]);
+    expect(first('v1')).toEqual([0, 1, 0]);
+    rig.removeLayer('v0');
+    expect(lines(rig)).toHaveLength(1);
+    rig.dispose();
+  });
+
   it('shows every, only the active or no flight path, and hides single flights', async () => {
     vi.stubGlobal(
       'fetch',
@@ -351,6 +383,112 @@ describe('VideoRig drone-eye', () => {
     expect(heading()).toBeCloseTo(330, 3);
     store.getState().setDirectionDraft(null);
     expect(heading()).toBeCloseTo(110, 3);
+    rig.dispose();
+  });
+
+  it('aims a lined-up clip at the shifted target', async () => {
+    const still = {
+      ...flight,
+      samples: [
+        { t: 0, pos: [0, 10, 0], q: [0, 0, 0, 1] },
+        { t: 1000, pos: [0, 10, 0], q: [0, 0, 0, 1] },
+      ],
+    };
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(() => Promise.resolve(new Response(JSON.stringify(still)))),
+    );
+    const shift = { eastM: 10, northM: 0 };
+    const stored = { ...clip(0, 'flights/aim.json'), offsetMs: 0 };
+    // the engine hands the adapter the layer as placed on its date
+    const layer = { ...stored, positionOffsetM: [10, 0, 0] as [number, number, number] };
+    const store = createWorkspace();
+    store.getState().openProject({
+      id: 'p',
+      root: 'x',
+      manifest: { layers: [stored] } as unknown as ProjectManifest,
+    });
+    // stored 10 m east of the stored drone position, on the ground
+    store.getState().setOrientation({
+      schema: 'aio.orientation/1',
+      clips: {
+        [layer.id]: {
+          keys: [{ t: 0, yaw: 0, pitch: 0, roll: 0, fill: 'lookAt', target: [10, 0, 0] }],
+        },
+      },
+      photos: {},
+    });
+    configureVideo({ store, resolveUrl: (_p, ref) => ('path' in ref ? ref.path : ref.hash) });
+    const frames: (() => void)[] = [];
+    const h = Object.assign(handle(), {
+      onFrame: (cb: () => void) => {
+        frames.push(cb);
+        return () => undefined;
+      },
+    });
+    const rig = new VideoRig(h);
+    await rig.addLayer(layer, {
+      scene: h,
+      url: (r) => ('path' in r ? r.path : r.hash),
+      shiftOf: () => shift,
+    });
+    store.getState().setActiveClip(layer.id);
+    store.getState().setTime(flight.startUtcMs + 500);
+    for (const f of frames) f();
+    const pose = rig.currentPose();
+    expect(pose?.pos.x).toBeCloseTo(10, 6);
+    // drone and target moved together: it still looks 10 m east and 10 m down
+    const d = new Vector3(0, 0, -1).applyQuaternion(pose?.q ?? new Quaternion());
+    expect(d.x).toBeCloseTo(Math.SQRT1_2, 3);
+    expect(d.y).toBeCloseTo(-Math.SQRT1_2, 3);
+    rig.dispose();
+  });
+  it('tries a calibration position on a lined-up clip relative to its date', async () => {
+    const still = {
+      ...flight,
+      samples: [
+        { t: 0, pos: [0, 10, 0], q: [0, 0, 0, 1] },
+        { t: 1000, pos: [0, 10, 0], q: [0, 0, 0, 1] },
+      ],
+    };
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(() => Promise.resolve(new Response(JSON.stringify(still)))),
+    );
+    const shift = { eastM: 2, northM: 1 };
+    const stored = { ...clip(0, 'flights/trial.json'), offsetMs: 0 };
+    // the engine hands the adapter the layer as placed on its date
+    const layer = { ...stored, positionOffsetM: [2, 0, -1] as [number, number, number] };
+    const store = createWorkspace();
+    store.getState().openProject({
+      id: 'p',
+      root: 'x',
+      manifest: { layers: [stored] } as unknown as ProjectManifest,
+    });
+    configureVideo({ store, resolveUrl: (_p, ref) => ('path' in ref ? ref.path : ref.hash) });
+    const frames: (() => void)[] = [];
+    const h = Object.assign(handle(), {
+      onFrame: (cb: () => void) => {
+        frames.push(cb);
+        return () => undefined;
+      },
+    });
+    const rig = new VideoRig(h);
+    await rig.addLayer(layer, {
+      scene: h,
+      url: (r) => ('path' in r ? r.path : r.hash),
+      shiftOf: () => shift,
+    });
+    store.getState().setActiveClip(layer.id);
+    store.getState().setTime(flight.startUtcMs + 500);
+    // the clip's own (stored) offset tried: the camera stays where the date has it
+    rig.setPositionOverride([0, 0, 0]);
+    for (const f of frames) f();
+    expect(rig.currentPose()?.pos.toArray()).toEqual([2, 10, -1]);
+    // a trial offset adds to the date's shift
+    rig.setPositionOverride([1, 0, 0]);
+    for (const f of frames) f();
+    expect(rig.currentPose()?.pos.toArray()).toEqual([3, 10, -1]);
     rig.dispose();
   });
 });

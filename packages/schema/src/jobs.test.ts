@@ -74,6 +74,7 @@ describe('pipeline params', () => {
       'change.cloud',
       'change.mesh',
       'change.frames',
+      'change.lineup',
       'drawing.import',
       'model.fit_cloud',
       'photo.align',
@@ -107,6 +108,18 @@ describe('pipeline params', () => {
     for (const p of PIPELINES) expect(p.title.length).toBeGreaterThan(3);
   });
 
+  it('knows the change.lineup pipeline and its params', () => {
+    expect(PIPELINES.find((x) => x.name === 'change.lineup')?.title).toBe('Line up dates');
+    const p = pipelineParams('change.lineup');
+    expect(p.safeParse({ keep: 'd1', move: 'd2' }).success).toBe(true);
+    expect(
+      p.safeParse({ keep: 'd1', move: 'd2', layerKeep: 'ortho-d1', layerMove: 'dsm-d2' }).success,
+    ).toBe(true);
+    expect(p.safeParse({ keep: 'd1' }).success).toBe(false);
+    expect(p.safeParse({ keep: 'd1', move: 'd1' }).success).toBe(false);
+    expect(p.safeParse({ keep: 'd1', move: 'd2', maxShiftPx: 2 }).success).toBe(false);
+  });
+
   it('takes the road builder inputs: one ortho or several blocks, units along the road or a grid', () => {
     const p = pipelineParams('road.build');
     expect(p.safeParse({ centreline: 'road/centreline-drawn.geojson' }).success).toBe(true);
@@ -134,6 +147,19 @@ describe('job ids, records and events', () => {
     const id = newJobId('volumetric.process', new Date(2026, 9, 4, 10, 15, 0), () => 0.5);
     expect(id).toMatch(/^20261004-101500-volumetric-process-[0-9a-z]{4}$/);
     expect(id).toMatch(/^[A-Za-z0-9][A-Za-z0-9._-]{0,79}$/);
+  });
+
+  it('keeps a job failure code', () => {
+    const failed = {
+      ...record,
+      status: 'failed',
+      failure: { code: 'misaligned', data: { shiftM: 2.01 } },
+    };
+    expect(JobRecord.parse(failed).failure).toEqual({ code: 'misaligned', data: { shiftM: 2.01 } });
+    expect(JobRecord.parse(record).failure).toBeUndefined();
+    expect(
+      JobRecord.safeParse({ ...failed, failure: { code: 'Bad Code', data: {} } }).success,
+    ).toBe(false);
   });
 
   it('validates a job record and the jobs:event union', () => {

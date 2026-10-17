@@ -8,6 +8,7 @@
 import type { EngineStage } from '@aio/engine';
 import type { VolumeBaseId } from '@aio/schema';
 import { t } from '@aio/ui';
+import { shiftKey } from '@aio/workspace';
 import {
   BufferAttribute,
   BufferGeometry,
@@ -231,6 +232,16 @@ export class VolumetricScene {
     return toLocalFn(this.store.getState().origin);
   }
 
+  /**
+   * Local-frame positions for what a survey measured: moved with its date when the date is lined
+   * up. The zone ring and the change colours belong to neither date and use `local`.
+   */
+  private localOf(epoch: string): ToLocal {
+    const shift = this.store.getState().epochShift(epoch);
+    const local = this.local;
+    return shift ? (E, N, H) => local(E + shift.eastM, N + shift.northM, H) : local;
+  }
+
   /** Local-frame position of (E, N, H). */
   world(E: number, N: number, H: number): Vector3 {
     return new Vector3(...this.local(E, N, H));
@@ -293,7 +304,13 @@ export class VolumetricScene {
       selected: s.selected,
       piles,
     };
-    const key = JSON.stringify([req, s.body, this.editing(), this.swiping()]);
+    const key = JSON.stringify([
+      req,
+      s.body,
+      this.editing(),
+      this.swiping(),
+      chg ? '' : shiftKey(s.epochShift(epoch)),
+    ]);
     if (key === this.sceneKey) return;
     this.sceneKey = key;
     const seq = ++this.sceneSeq;
@@ -310,7 +327,8 @@ export class VolumetricScene {
   private drawBodies(piles: ScenePile[], chg: boolean): void {
     const s = this.store.getState();
     disposeGroup(this.bodies);
-    const local = this.local;
+    // the toe lines and solids of a survey follow its date; in change mode they are the zone's
+    const local = chg ? this.local : this.localOf(this.epoch());
     const clip = this.stage.clippingPlanes;
     const editing = this.editing();
     const swipe = this.swiping();
@@ -466,7 +484,8 @@ export class VolumetricScene {
     this.liveDrawn = live;
     disposeGroup(this.editG);
     if (!ed) return;
-    const local = this.local;
+    // the measured result follows its date; the line being dragged is picked on the scene
+    const local = this.localOf(ed.epoch);
     const clip = this.stage.clippingPlanes;
     if (live) {
       const b = live.body;
@@ -523,6 +542,7 @@ export class VolumetricScene {
     const ed = this.store.getState().edit;
     if (!ed) return;
     const local = this.local;
+    const measured = this.localOf(ed.epoch);
     const pts: number[] = [];
     if (this.dragRing) {
       const { ring, z } = this.dragRing;
@@ -537,7 +557,7 @@ export class VolumetricScene {
     } else if (ed.live) {
       const t = ed.live.toe;
       for (let i = 0; i + 2 < t.length; i += 3)
-        pts.push(...local(t[i] ?? 0, t[i + 1] ?? 0, (t[i + 2] ?? 0) + 0.4));
+        pts.push(...measured(t[i] ?? 0, t[i + 1] ?? 0, (t[i + 2] ?? 0) + 0.4));
     }
     if (pts.length < 6) return;
     const l = new LineLoop(

@@ -151,6 +151,35 @@ describe('saves of one manifest take turns', () => {
     expect(await partials(root)).toEqual([]);
   });
 
+  it('saves, rounds and removes a line-up', async () => {
+    const root = await project();
+    const at = '2026-10-16T08:00:00.000Z';
+    await updateCapture(root, 'c1', {
+      lineUp: { eastM: 1.23456, northM: -0.0004, with: 'c2', spreadM: 0.02, at },
+    });
+    expect((await readManifest(root)).captures[0]?.lineUp).toEqual({
+      eastM: 1.235,
+      northM: 0,
+      with: 'c2',
+      spreadM: 0.02,
+      at,
+    });
+    await updateCapture(root, 'c1', { lineUp: null });
+    expect((await readManifest(root)).captures[0]).not.toHaveProperty('lineUp');
+  });
+
+  it('refuses a line-up with itself', async () => {
+    const root = await project();
+    const at = '2026-10-16T08:00:00.000Z';
+    await expect(
+      updateCapture(root, 'c1', { lineUp: { eastM: 1, northM: 1, with: 'c1', at } }),
+    ).rejects.toThrow('A date cannot be lined up with itself.');
+    await expect(
+      updateCapture(root, 'c1', { lineUp: { eastM: 1, northM: 1, with: 'c9', at } }),
+    ).rejects.toThrow('Capture "c9" is not in this project.');
+    expect((await readManifest(root)).captures[0]).not.toHaveProperty('lineUp');
+  });
+
   it('keeps a renamed survey date and a placed layer saved at the same moment', async () => {
     const root = await project();
     await Promise.all([

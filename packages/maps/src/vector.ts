@@ -1,7 +1,14 @@
 import type { ClassCatalogue, Issue, SeverityModel, VectorStyle } from '@aio/schema';
 import type { Feature, FeatureCollection, Geometry, Point } from 'geojson';
 import type { FrameProjection } from './geo';
-import { ALL_ISSUES, issueAnchor, type LonLat, type MapIssueDisplay } from './overlays';
+import {
+  ALL_ISSUES,
+  issueAnchor,
+  type LonLat,
+  type MapIssueDisplay,
+  type ShiftOf,
+} from './overlays';
+import { shiftedGeoJson } from './shiftGeoJson';
 
 /** One MapLibre style layer of an overlay (the source is the overlay's own). */
 export interface OverlayLayer {
@@ -164,6 +171,8 @@ export interface IssueFeatureOptions {
   display?: MapIssueDisplay;
   /** The hovered issue, drawn again on top with its code. */
   hoverId?: string | null;
+  /** The date shift of a layer: sightings follow their layer (line up dates). */
+  shiftOf?: ShiftOf;
 }
 
 /** Map features for the issues; see `issueFeatures`. */
@@ -182,12 +191,15 @@ const NEUTRAL = '#95a0ab';
 
 type Shape = Extract<Geometry, { type: 'Polygon' | 'MultiPolygon' }>;
 
-function shapeOf(issue: Issue): Shape | null {
+function shapeOf(issue: Issue, proj?: FrameProjection | null, shiftOf?: ShiftOf): Shape | null {
   for (const s of issue.sightings) {
     if (s.on !== 'map') continue;
     const g = s.geojson as { type?: unknown; coordinates?: unknown; geometry?: unknown };
     const geom = (g.type === 'Feature' ? g.geometry : g) as Geometry | undefined;
-    if (geom && (geom.type === 'Polygon' || geom.type === 'MultiPolygon')) return geom;
+    if (geom && (geom.type === 'Polygon' || geom.type === 'MultiPolygon')) {
+      const shift = shiftOf?.(s.layer) ?? null;
+      return proj && shift ? (shiftedGeoJson(geom, shift, proj) as Shape) : geom;
+    }
   }
   return null;
 }
@@ -210,6 +222,7 @@ export function issueFeatures(
     only,
     display = ALL_ISSUES,
     hoverId = null,
+    shiftOf,
   }: IssueFeatureOptions,
 ): IssueFeatureSet {
   const modelById = new Map(models.map((m) => [m.id, m]));
@@ -236,7 +249,7 @@ export function issueFeatures(
       issue.severity === 'uncertain'
         ? (model?.uncertain?.color ?? NEUTRAL)
         : (level?.color ?? NEUTRAL);
-    const shape = shapeOf(issue);
+    const shape = shapeOf(issue, proj, shiftOf);
     const properties = {
       issueId: issue.id,
       code: issue.code,
@@ -251,7 +264,7 @@ export function issueFeatures(
     };
     if (shape && (shown || selected))
       out.shapes.push({ type: 'Feature', properties, geometry: shape });
-    const at = issueAnchor(issue, proj);
+    const at = issueAnchor(issue, proj, shiftOf);
     if (!at) continue;
     const geometry: Point = { type: 'Point', coordinates: at };
     if (display.heat && kept) {
@@ -271,8 +284,12 @@ export function issueFeatures(
 }
 
 /** Bounding box [w, s, e, n] of an issue's map sighting shape, or null. */
-export function issueShapeBounds(issue: Issue): [number, number, number, number] | null {
-  const g = shapeOf(issue);
+export function issueShapeBounds(
+  issue: Issue,
+  proj?: FrameProjection | null,
+  shiftOf?: ShiftOf,
+): [number, number, number, number] | null {
+  const g = shapeOf(issue, proj, shiftOf);
   if (!g) return null;
   const rings = g.type === 'Polygon' ? g.coordinates : g.coordinates.flat();
   let w = Infinity;

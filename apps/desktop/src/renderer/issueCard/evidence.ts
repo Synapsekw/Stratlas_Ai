@@ -8,7 +8,7 @@
  *
  * On by default; the card has a switch to turn it off, remembered on this machine.
  */
-import { bestAnchor } from '@aio/annotate';
+import { bestAnchor, shiftOfManifest } from '@aio/annotate';
 import { isShortcut } from '@aio/ui';
 import { workspace } from '@aio/workspace';
 import { useStore } from 'zustand';
@@ -99,7 +99,7 @@ export function openEvidence(issueId: string): boolean {
     }
   }
   // the 3D side looks at the issue
-  const p = bestAnchor(issue);
+  const p = bestAnchor(issue, shiftOfManifest(project.manifest));
   if (p) ws.flyTo({ kind: 'point', p, distance: 4 });
   return true;
 }

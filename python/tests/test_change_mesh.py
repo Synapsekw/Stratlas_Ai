@@ -144,6 +144,7 @@ def test_parts_added_removed_moved_and_a_dent_are_found(tmp_path):
     assert by_part["P05"]["at"][2] == pytest.approx(10, abs=0.01)
     assert cs["registration"]["ok"] is True
     assert cs["stats"]["parts"] == 5 and cs["stats"]["moved"] == 1
+    assert "lineUp" not in cs
 
     m = json.loads((root / "manifest.json").read_text())
     layer = next(x for x in m["layers"] if x["id"] == "c1-c2-mesh")
@@ -203,3 +204,31 @@ def test_a_small_dent_on_a_large_tank_is_a_change(tmp_path, monkeypatch):
     monkeypatch.undo()
     run(root, params, job_id="j2")
     assert verdicts() == {"T1": "changed", "B1": "unchanged"}
+
+
+def test_mesh_change_applies_the_date_shift(tmp_path):
+    before, _ = scenes()
+    # the same model, 2 m east and 1 m north in its file (local: x + 2, z - 1)
+    after = {n.replace("_e1", "_e2"): m.copy().apply_translation([2.0, 0, -1.0]) for n, m in before.items()}
+    root = project(tmp_path, before, after)
+    with pytest.raises(JobError, match="not aligned"):
+        run(root, {"layerFrom": "e1", "layerTo": "e2", "samples": 2000})
+
+    manifest = json.loads((root / "manifest.json").read_text())
+    manifest["captures"][1]["lineUp"] = {
+        "eastM": -2.0,
+        "northM": -1.0,
+        "with": "c1",
+        "at": "2026-10-16T00:00:00Z",
+    }
+    (root / "manifest.json").write_text(json.dumps(manifest))
+    result = run(root, {"layerFrom": "e1", "layerTo": "e2", "samples": 2000}, job_id="j2")
+    assert result["status"] == "done"
+    cs = validate_change_set(json.loads((root / "change" / "c1-c2-mesh.json").read_text()))
+    assert cs["registration"]["ok"] is True
+    assert cs["registration"]["shiftM"] < 0.05
+    assert cs["lineUp"] == {
+        "from": {"eastM": 0.0, "northM": 0.0},
+        "to": {"eastM": -2.0, "northM": -1.0},
+    }
+    assert {i["verdict"] for i in cs["items"]} == {"unchanged"}

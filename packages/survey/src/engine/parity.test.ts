@@ -63,6 +63,12 @@ interface FixtureCase {
   item: ComparisonItem;
   site?: SiteContext;
   captures?: Record<'current' | 'previous', { surface: string; capture: string }>;
+  /** A lined-up date: the surfaces' shifts now, the ring's prepared shift and its shift now. */
+  lineUp?: {
+    current?: Record<string, [number, number]>;
+    ringShift?: [number, number];
+    ringCurrent?: [number, number];
+  };
   expected: Pick<
     ComparisonResult,
     | (typeof NUMBERS)[number]
@@ -88,7 +94,11 @@ function readFixtures(): { surfaces: Record<string, FixtureSurface>; cases: Fixt
   return { surfaces, cases };
 }
 
-function fixtureSurface(s: FixtureSurface, capture?: string): ResolvedSurface {
+function fixtureSurface(
+  s: FixtureSurface,
+  capture?: string,
+  current?: [number, number],
+): ResolvedSurface {
   if (s.kind === 'grid') {
     const h = Float64Array.from(s.z, (k) => (k === null ? NaN : s.base + k * s.scale));
     return {
@@ -96,6 +106,7 @@ function fixtureSurface(s: FixtureSurface, capture?: string): ResolvedSurface {
       name: s.name,
       fingerprint: s.fingerprint,
       ...(capture !== undefined ? { capture } : {}),
+      ...(current ? { current } : {}),
       grid: new ArraySurface(s.originE, s.originN, s.cellM, s.nx, s.ny, h),
     };
   }
@@ -117,7 +128,7 @@ function fixtureResolver(surfaces: Record<string, FixtureSurface>, c: FixtureCas
     const pick = (id: string, capture?: string) => {
       const s = surfaces[id];
       if (!s) return Promise.reject(new Error(`No fixture surface ${id}`));
-      return Promise.resolve(fixtureSurface(s, capture));
+      return Promise.resolve(fixtureSurface(s, capture, c.lineUp?.current?.[id]));
     };
     switch (ref.kind) {
       case 'survey':
@@ -166,6 +177,8 @@ describe('TypeScript executor against the Python core (shared fixtures)', () => 
   it.each(cases.map((c) => [c.id, c] as const))('%s', async (_id, c) => {
     const r = await compareItem(c.ring, c.item, fixtureResolver(surfaces, c), {
       ...(c.site ? { site: c.site } : {}),
+      ...(c.lineUp?.ringShift ? { ringShift: c.lineUp.ringShift } : {}),
+      ...(c.lineUp?.ringCurrent ? { ringCurrent: c.lineUp.ringCurrent } : {}),
       now: () => '2026-10-09T00:00:00Z',
     });
     const e = c.expected;

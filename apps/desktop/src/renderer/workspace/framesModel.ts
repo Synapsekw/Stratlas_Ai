@@ -1,5 +1,5 @@
-import type { Layer } from '@aio/schema';
-import type { FramesMode } from '@aio/video';
+import { shiftedLayer, shiftLocal, type DateShift, type Layer } from '@aio/schema';
+import { calibratedVideoPose, type Flight, type FramesMode, type ViewPose } from '@aio/video';
 import type { CaptureIndex, Selection } from '@aio/workspace';
 import { createStore } from 'zustand/vanilla';
 import type { SplitPref } from './splitModel';
@@ -142,4 +142,44 @@ export function stepPhoto(layer: PhotoLayer, photo: string, dir: 1 | -1): string
 /** Video seconds of the project clock, on the frame grid (30 per second). */
 export function frameTime(v: number, fps = 30): number {
   return Math.max(0, Math.round(v * fps) / fps);
+}
+
+type VideoLayer = Extract<Layer, { kind: 'video' }>;
+
+/** A camera moved by its date's line-up (the same pose for no shift). */
+export function shiftPose(pose: ViewPose, shift: DateShift | null): ViewPose {
+  return shift ? { ...pose, pos: shiftLocal(pose.pos, shift) } : pose;
+}
+
+/**
+ * A clip's calibrated camera as drawn on its lined-up date: the pairing's pose (from the layer and
+ * keys as stored: the aim comes from the stored place) with the shift added to its position.
+ */
+export function placedVideoPose(
+  layer: VideoLayer,
+  flight: Flight,
+  v: number,
+  keys: Parameters<typeof calibratedVideoPose>[3],
+  shift: DateShift | null,
+): ViewPose {
+  return shiftPose(calibratedVideoPose(layer, flight, v, keys), shift);
+}
+
+/**
+ * The layers as the other date's views are searched: clips with their offset moved, photos with
+ * their positions moved (their hand correction is added on top by the search).
+ */
+export function placedLayers(
+  layers: readonly Layer[],
+  shiftOf: (layerId: string) => DateShift | null,
+): Layer[] {
+  return layers.map((l) => {
+    const s = shiftOf(l.id);
+    if (!s) return l;
+    if (l.kind !== 'photos') return shiftedLayer(l, s);
+    return {
+      ...l,
+      items: l.items.map((p) => (p.pos ? { ...p, pos: shiftLocal(p.pos, s) } : p)),
+    };
+  });
 }

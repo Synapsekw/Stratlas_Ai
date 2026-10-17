@@ -1,4 +1,4 @@
-import type { Layer, ProjectManifest } from '@aio/schema';
+import type { Layer, ProjectManifest, Vec3 } from '@aio/schema';
 import type { Flight } from '@aio/video';
 import { captureIndex } from '@aio/workspace';
 import { describe, expect, it } from 'vitest';
@@ -74,6 +74,35 @@ describe('spotEntries', () => {
       pos: [9, 5, 6],
     });
   });
+  it('matches spots across lined-up dates', () => {
+    const lined = spotEntries({
+      layers: [
+        photos('p1', 'd1', [
+          { id: 'x', src: { path: 'x.jpg' }, pos: [0, 0, 0], q: lookQuat(0), lens: LENS },
+        ]),
+        photos('p2', 'd2', [
+          { id: 'y', src: { path: 'y.jpg' }, pos: [2, 0, 0], q: lookQuat(0), lens: LENS },
+        ]),
+      ],
+      index,
+      shiftOf: (l) => (l === 'p2' ? { eastM: -2, northM: 0 } : null),
+    });
+    const at = (id: string) => lined.find((x) => x.kind === 'photo' && x.id === id);
+    expect(at('y')).toMatchObject({ pos: [0, 0, 0] });
+    expect(at('y')?.kind === 'photo' && at('y')).toMatchObject({ pose: { pos: [0, 0, 0] } });
+    expect(at('x')).toMatchObject({ pos: [0, 0, 0] });
+  });
+  it('moves a panorama and a clip frame by their date', () => {
+    const shifted = spotEntries({
+      layers: manifest.layers,
+      index,
+      videoSamples: () => [{ t: 0, pose: { pos: [1, 2, 3], q: lookQuat(0), lens: LENS } }],
+      shiftOf: () => ({ eastM: 1, northM: 2 }),
+    });
+    expect(shifted.find((x) => x.kind === 'pano')).toMatchObject({ pos: [10, 0, 7] });
+    const v = shifted.find((x) => x.kind === 'video');
+    expect(v?.kind === 'video' && v.samples?.[0]?.pose.pos).toEqual([2, 2, 1]);
+  });
   it('keeps undated layers, without a date', () => {
     expect(e.find((x) => x.kind === 'photo' && x.id === 'u')?.capture).toBeUndefined();
   });
@@ -110,6 +139,38 @@ describe('spotEntries', () => {
       { kind: 'walk', layer: 'w-track', capture: 'd1', samples: [sample] },
       { kind: 'walk', layer: 'w-unplaced', capture: 'd1', samples: null },
     ]);
+  });
+});
+
+describe('spotEntries on a lined-up date', () => {
+  const walk = {
+    kind: 'walk',
+    id: 'w',
+    name: 'w',
+    visible: true,
+    capture: 'd1',
+  } as unknown as Layer;
+  it('moves a walk track by its date (east and north)', () => {
+    const sample: TrackSample = { t: 0, pos: [5, 1.7, 7], groundY: 0, bearingDeg: 30 };
+    const got = spotEntries({
+      layers: [walk],
+      index,
+      walkSamples: () => [sample],
+      shiftOf: () => ({ eastM: 2, northM: 3 }),
+    });
+    const e = got[0];
+    expect(e?.kind === 'walk' && e.samples?.[0]).toEqual({ ...sample, pos: [7, 1.7, 4] });
+  });
+  it('turns a clip frame by nothing when its date moves', () => {
+    const pose = { pos: [1, 2, 3] as Vec3, q: lookQuat(40), lens: LENS };
+    const got = spotEntries({
+      layers: [clip],
+      index,
+      videoSamples: () => [{ t: 0, pose }],
+      shiftOf: () => ({ eastM: 2, northM: 3 }),
+    });
+    const e = got[0];
+    expect(e?.kind === 'video' && e.samples?.[0]?.pose.q).toEqual(pose.q);
   });
 });
 

@@ -20,6 +20,7 @@ from collections.abc import Iterable, Mapping
 from pathlib import Path
 from typing import Any
 
+from ..captures import ZERO_M
 from ..runtime import JobError, atomic_write_bytes, now_iso
 
 CHANGE_SCHEMA = "aio.change/1"
@@ -103,9 +104,15 @@ def change_set(
     run: Mapping[str, Any] | None = None,
     registration: Mapping[str, Any] | None = None,
     coverage: float | None = None,
+    line_up: tuple[tuple[float, float], tuple[float, float]] | None = None,
     created_at: str | None = None,
 ) -> dict[str, Any]:
-    """Build and check a change set."""
+    """Build and check a change set.
+
+    ``line_up`` is the (east, north) shift of each date (``from``, ``to``) when it was computed;
+    written as ``lineUp`` only when either is not zero, so the app can tell a set made before a
+    later line-up.
+    """
     data: dict[str, Any] = {
         "schema": CHANGE_SCHEMA,
         "id": set_id,
@@ -123,7 +130,14 @@ def change_set(
         data["registration"] = dict(registration)
     if coverage is not None:
         data["coverage"] = float(coverage)
+    if line_up is not None and any(abs(v) > ZERO_M for s in line_up for v in s):
+        data["lineUp"] = {k: _metres(s) for k, s in zip(("from", "to"), line_up, strict=True)}
     return validate_change_set(data)
+
+
+def _metres(shift: tuple[float, float]) -> dict[str, float]:
+    # + 0.0: never a "-0.0" in the file
+    return {"eastM": round(float(shift[0]), 3) + 0.0, "northM": round(float(shift[1]), 3) + 0.0}
 
 
 def read_change_set(path: Path) -> dict[str, Any] | None:

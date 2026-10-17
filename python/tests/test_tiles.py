@@ -385,6 +385,47 @@ def test_cloud_tiles_carry_the_offset(cloud_project):
     assert np.linalg.norm(lifted - plain) == pytest.approx(5.0, abs=1e-3)
 
 
+def line_up_c1(project, east=2.0, north=-1.0):
+    path = project / "manifest.json"
+    m = json.loads(path.read_text("utf-8"))
+    m["captures"][0]["lineUp"] = {"eastM": east, "northM": north, "with": "c0", "at": "2026-10-16T09:00:00Z"}
+    for layer in m["layers"]:
+        layer["capture"] = "c1"
+    path.write_text(json.dumps(m), "utf-8")
+
+
+def test_cloud_tiles_carry_the_shift(cloud_project):
+    from scipy.spatial import cKDTree
+
+    project, local = cloud_project
+    line_up_c1(project)
+    run_job(TilesCloud(), project, {"layer": "cloud-1", "maxPointsPerTile": 4000})
+    folder = project / "tiles" / "cloud-1-tiles"
+    ts = json.loads((folder / "tileset.json").read_text("utf-8"))
+    assert check_tileset(folder) == []
+    ecef, _ = to_ecef(ts, (folder / ts["root"]["content"]["uri"]).read_bytes())
+    # 2 m east and 1 m south of where the file has them: local x + 2, z + 1
+    truth = ecef_truth(local + np.array([2.0, 0.0, 1.0]))
+    d, _ = cKDTree(truth).query(ecef[:50])
+    assert d.max() < 1e-3
+
+
+def test_mesh_tiles_carry_the_shift(mesh_project):
+    project, local_verts = mesh_project
+    line_up_c1(project)
+    run_job(TilesMesh(), project, {"layer": "mesh-1", "maxTrianglesPerTile": 3000, "textureMaxPx": 128})
+    folder = project / "tiles" / "mesh-1-tiles"
+    ts = json.loads((folder / "tileset.json").read_text("utf-8"))
+    truth = ecef_truth((local_verts[0] + np.array([2.0, 0.0, 1.0]))[None])[0]
+    best = np.inf
+    for t, _ in walk(ts["root"]):
+        if t.get("children"):
+            continue
+        ecef, _ = to_ecef(ts, (folder / t["content"]["uri"]).read_bytes())
+        best = min(best, float(np.linalg.norm(ecef - truth, axis=1).min()))
+    assert best < 1e-3
+
+
 def test_the_copc_info_record_sets_the_cube():
     info = struct.pack("<5d", 1.0, 2.0, 3.0, 50.0, 0.5) + bytes(120)
     cube = cube_of({("copc", 1): info}, (0, 1, 0, 1, 0, 1))

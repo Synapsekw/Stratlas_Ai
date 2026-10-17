@@ -1,4 +1,5 @@
 import type { Issue, SeverityModel, Vec3 } from '@aio/schema';
+import { movedSighting, type ShiftOf } from '../model/dateFrame';
 import { isPlacedArea } from '../model/placed';
 import { pinPasses, type PinFilter } from './declutter';
 import { centroid, severityColor } from './mesh';
@@ -26,6 +27,8 @@ export function issueAreas(
   selectedId: string | null,
   filter: PinFilter,
   hidden: Readonly<Record<string, true>>,
+  /** Date shifts of the layers: an area sits where its layer is drawn. */
+  shiftOf?: ShiftOf,
 ): IssueArea[] {
   const out: IssueArea[] = [];
   for (const i of issues) {
@@ -34,8 +37,9 @@ export function issueAreas(
       models.find((m) => m.id === i.severityModelId),
       i.severity,
     );
-    for (const s of i.sightings) {
-      if (!isPlacedArea(s) || hidden[s.layer]) continue;
+    for (const stored of i.sightings) {
+      if (!isPlacedArea(stored) || hidden[stored.layer]) continue;
+      const s = shiftOf ? movedSighting(stored, shiftOf(stored.layer), 1) : stored;
       const base = { issueId: i.id, code: i.code, title: i.title, color, layer: s.layer };
       if (s.on === 'mesh' && s.geom.type === 'spolygon')
         out.push({

@@ -64,7 +64,7 @@ export function issuesKitAssessment(ctx: ExportContext, now = new Date()): KitAs
   for (const issue of sortByCode(ctx.issues)) {
     const severity = issue.severity === 'uncertain' ? null : issue.severity;
     const sev = severityInfo(m, issue);
-    const loc = issueLocation(m, issue);
+    const loc = issueLocation(m, issue, ctx.shiftOf);
     issues.push({
       id: issue.id,
       code: issue.code,
@@ -75,7 +75,7 @@ export function issuesKitAssessment(ctx: ExportContext, now = new Date()): KitAs
       status: issue.status,
       zone: issueZone(issue),
       note: issue.note,
-      position_local: issuePosition(issue),
+      position_local: issuePosition(issue, ctx.shiftOf),
       position_crs: loc?.project ?? null,
     });
     for (const s of issue.sightings) {

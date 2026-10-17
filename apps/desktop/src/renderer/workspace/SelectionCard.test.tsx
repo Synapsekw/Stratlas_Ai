@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import type * as Engine from '@aio/engine';
 import type { ComponentInfo } from '@aio/engine';
-import type { ProjectManifest } from '@aio/schema';
+import type { Issue, ProjectManifest } from '@aio/schema';
 import { workspace } from '@aio/workspace';
 import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
@@ -37,7 +37,7 @@ vi.mock('@aio/engine', async (importOriginal) => ({
   getActiveStage: () => stage,
 }));
 
-const { SelectionCard } = await import('./SelectionCard');
+const { SelectionCard, firstPoint } = await import('./SelectionCard');
 
 const I = [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1];
 const manifest = (georef?: unknown) =>
@@ -267,5 +267,15 @@ describe('SelectionCard for an engineering component', () => {
     });
     expect(q('component-card')).toBeNull();
     expect(host.textContent).toContain('Pipe_3');
+  });
+});
+
+describe('firstPoint', () => {
+  it('reads an issue pin where its lined-up date is drawn', () => {
+    const issue = {
+      sightings: [{ on: 'mesh', layer: 'chimney', geom: { type: 'spoint', p: [10, 4, 20] } }],
+    } as unknown as Issue;
+    expect(firstPoint(issue)).toEqual([10, 4, 20]);
+    expect(firstPoint(issue, () => ({ eastM: 2, northM: 1 }))).toEqual([12, 4, 19]);
   });
 });

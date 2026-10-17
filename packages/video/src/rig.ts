@@ -5,7 +5,16 @@ import {
   type SceneHandle,
 } from '@aio/engine';
 import { clipCamera, clipKeys, clipPoseAt } from '@aio/geo';
-import type { CameraOrientation, LensModel, Quat, Vec3 } from '@aio/schema';
+import {
+  shiftedDirectionKeys,
+  shiftLocal,
+  type CameraOrientation,
+  type DateShift,
+  type LensModel,
+  type Quat,
+  type Vec3,
+} from '@aio/schema';
+import { shiftKey } from '@aio/workspace';
 import {
   Box3,
   BufferAttribute,
@@ -81,7 +90,11 @@ const PATH_END = new Color('#ff5a5a');
 interface ClipEntry {
   layer: VideoLayer;
   flight: Flight | null;
+  /** Key of the drawn path this clip shares (its flight and the shift of its date). */
+  pathKey: string | null;
   visible: boolean;
+  /** The shift of its date: the engine hands the layer shifted, its look-at targets move here. */
+  shift: DateShift | null;
 }
 
 /** One drawn path per flight log; long flights are delivered as many clips sharing it. */
@@ -177,7 +190,9 @@ export class VideoRig {
   readonly projector: Projector;
   readonly group = new Group();
   private readonly clips = new Map<string, ClipEntry>();
-  private readonly paths = new Map<Flight, FlightPath>();
+  private readonly paths = new Map<string, FlightPath>();
+  private readonly flightIds = new WeakMap<Flight, number>();
+  private flightCount = 0;
   private readonly flightBoxes = new WeakMap<Flight, Box3>();
   private readonly drone = new Group();
   private gimbal: Object3D | null = null;
@@ -321,16 +336,26 @@ export class VideoRig {
   }
 
   async addLayer(layer: VideoLayer, ctx: AdapterContext): Promise<void> {
-    const entry: ClipEntry = { layer, flight: null, visible: true };
+    const shift = ctx.shiftOf?.(layer.id) ?? null;
+    const entry: ClipEntry = { layer, flight: null, pathKey: null, visible: true, shift };
     this.clips.set(layer.id, entry);
     const flight = await loadFlight(ctx.url(layer.flight.src));
     if (this.clips.get(layer.id) !== entry) return;
     entry.flight = flight;
-    let path = this.paths.get(flight);
+    // one path per flight log and date shift: clips of one log on dates that moved differently
+    // each draw their own
+    let flightId = this.flightIds.get(flight);
+    if (flightId === undefined) {
+      flightId = ++this.flightCount;
+      this.flightIds.set(flight, flightId);
+    }
+    const key = `${String(flightId)}|${shiftKey(shift)}`;
+    entry.pathKey = key;
+    let path = this.paths.get(key);
     if (!path) {
-      path = { line: this.buildPath(flight), clips: new Set() };
+      path = { line: this.buildPath(flight, shift), clips: new Set() };
       path.line.userData.videoLayer = layer.id;
-      this.paths.set(flight, path);
+      this.paths.set(key, path);
       this.group.add(path.line);
     }
     path.clips.add(layer.id);
@@ -342,11 +367,11 @@ export class VideoRig {
     const e = this.clips.get(id);
     if (!e) return;
     this.clips.delete(id);
-    const path = e.flight ? this.paths.get(e.flight) : undefined;
-    if (path && e.flight) {
+    const path = e.pathKey ? this.paths.get(e.pathKey) : undefined;
+    if (path && e.pathKey) {
       path.clips.delete(id);
       if (path.clips.size === 0) {
-        this.paths.delete(e.flight);
+        this.paths.delete(e.pathKey);
         this.group.remove(path.line);
         path.line.geometry.dispose();
         (path.line.material as LineBasicMaterial).dispose();
@@ -459,7 +484,8 @@ export class VideoRig {
 
   /**
    * Try a camera position offset (local frame, metres) on the active clip without saving it;
-   * `null` restores the layer's own offset.
+   * `null` restores the layer's own offset. The offset is the clip's own, as saved: on a lined-up
+   * date the rig adds the date shift to it, as it does to the saved one.
    */
   setPositionOverride(offset: Vec3 | null) {
     this.positionOverride = offset;
@@ -554,14 +580,14 @@ export class VideoRig {
     return this.pose.valid ? { pos: this.pose.pos.clone(), q: this.pose.q.clone() } : null;
   }
 
-  private buildPath(f: Flight): Line {
+  private buildPath(f: Flight, shift: DateShift | null): Line {
     const n = f.samples.length;
     const pos = new Float32Array(n * 3);
     const col = new Float32Array(n * 3);
     const c = new Color();
     const dur = Math.max(1, f.durationMs);
     f.samples.forEach((s, i) => {
-      pos.set(s.pos, i * 3);
+      pos.set(shiftLocal(s.pos, shift), i * 3);
       c.copy(PATH_START).lerp(PATH_END, s.t / dur);
       col.set([c.r, c.g, c.b], i * 3);
     });
@@ -664,13 +690,18 @@ export class VideoRig {
     }
     const layerVisible = entry.visible && !s.hidden[entry.layer.id];
     const flightMs = s.nowMs - flight.startUtcMs;
-    const off = this.positionOverride ?? entry.layer.positionOffsetM;
+    // a trial offset is the clip's own (stored) one: it moves with the date like the saved one
+    const off = this.positionOverride
+      ? shiftLocal(this.positionOverride, entry.shift)
+      : entry.layer.positionOffsetM;
     // one rule for every reader: keyframes (an unsaved draft first, else orientation.json) when
     // the clip has any, else the log with its bias
-    const keys =
+    const keys = shiftedDirectionKeys(
       s.directionDraft?.layerId === entry.layer.id
         ? s.directionDraft.keys
-        : clipKeys(s.orientation, entry.layer.id);
+        : clipKeys(s.orientation, entry.layer.id),
+      entry.shift,
+    );
     const p = clipPoseAt(flight.samples, flightMs, {
       ...clipCamera(entry.layer, keys, flight.startUtcMs),
       orientation: this.orientationOverride ?? entry.layer.orientation,

@@ -2,6 +2,7 @@ import { localToProject, toWgs84 } from '@aio/geo';
 import type { Issue, Sighting, Vec3 } from '@aio/schema';
 import {
   classInfo,
+  drawnSighting,
   epsgOf,
   issueLocation,
   issueZone,
@@ -130,7 +131,8 @@ export function issuesGeoJson(ctx: ExportContext): IssueFeatureCollection {
   for (const issue of sortByCode(ctx.issues)) {
     const props = baseProps(ctx, issue);
     issue.sightings.forEach((s, i) => {
-      const geometry = geometryOf(s, toLonLat);
+      // where the sighting is drawn: its layer's date shift (exports write the lined-up frame)
+      const geometry = geometryOf(drawnSighting(s, ctx.shiftOf, epsg), toLonLat);
       if (!geometry) return;
       features.push({
         type: 'Feature',
@@ -157,7 +159,7 @@ function baseProps(
 ): Omit<IssueFeatureProps, 'sighting' | 'layer'> {
   const m = ctx.manifest;
   const sev = severityInfo(m, issue);
-  const loc = issueLocation(m, issue);
+  const loc = issueLocation(m, issue, ctx.shiftOf);
   return {
     issueId: issue.id,
     code: issue.code,

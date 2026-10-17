@@ -55,6 +55,8 @@ export const PipelineName = z.enum([
   'change.cloud',
   'change.mesh',
   'change.frames',
+  // Line up dates (16 Oct 2026)
+  'change.lineup',
   'drawing.import',
   'model.fit_cloud',
   // M10 (pipeline pack 0.4.0)
@@ -173,6 +175,12 @@ export const PIPELINES: readonly { name: PipelineName; title: string; descriptio
     title: 'Change in matched frames',
     description:
       'Frame and photo pairs of two dates aligned by features; changes become draft detections.',
+  },
+  {
+    name: 'change.lineup',
+    title: 'Line up dates',
+    description:
+      'How far one survey date sits from another, measured on their orthos (or DSM slopes) coarse to fine.',
   },
   {
     name: 'drawing.import',
@@ -620,12 +628,30 @@ export const ChangeFramesParams = z
     message: 'Give the frame pairs, or the two dates to pair.',
   });
 
+/**
+ * `change.lineup` (python `aio_pipelines/change/lineup.py`): the correction `move` still needs to
+ * line up with `keep`, both read where they are lined up now. Its result is `jobs/<id>/lineup.json`,
+ * a `LineUpMeasure` (`change.ts`); the job never writes the manifest.
+ */
+export const ChangeLineUpParams = z
+  .object({
+    /** The date that stays and the date that moves. */
+    keep: Id,
+    move: Id,
+    /** Layers to measure; default each date's ortho, else its DSM. */
+    layerKeep: Id.optional(),
+    layerMove: Id.optional(),
+  })
+  .strict()
+  .refine((p) => p.keep !== p.move, { message: 'Line up two different dates.' });
+
 /** Parsed parameters of the M8 change pipelines (producers build them in the app). */
 export type ChangeRasterParams = z.infer<typeof ChangeRasterParams>;
 export type ChangeSurfaceParams = z.infer<typeof ChangeSurfaceParams>;
 export type ChangeCloudParams = z.infer<typeof ChangeCloudParams>;
 export type ChangeMeshParams = z.infer<typeof ChangeMeshParams>;
 export type ChangeFramesParams = z.infer<typeof ChangeFramesParams>;
+export type ChangeLineUpParams = z.infer<typeof ChangeLineUpParams>;
 
 /** One control point: a drawing coordinate and where it lies on the map or in the model. */
 export const DrawingControlPoint = z
@@ -1189,6 +1215,7 @@ const PARAMS = {
   'change.cloud': ChangeCloudParams,
   'change.mesh': ChangeMeshParams,
   'change.frames': ChangeFramesParams,
+  'change.lineup': ChangeLineUpParams,
   'drawing.import': DrawingImportParams,
   'model.fit_cloud': ModelFitParams,
   'photo.align': PhotoAlignParams,
@@ -1264,6 +1291,13 @@ export const JobStep = z.object({
 
 export const JobArtifact = z.object({ path: z.string(), kind: z.string() });
 
+/** A machine-readable reason a job ended, so a panel can offer a fix (for example `misaligned`). */
+export const JobFailure = z.object({
+  code: z.string().regex(/^[a-z][a-z0-9-]{0,40}$/),
+  data: z.record(z.string(), z.unknown()),
+});
+export type JobFailure = z.infer<typeof JobFailure>;
+
 export const JobRecord = z.object({
   id: JobId,
   pipeline: PipelineName,
@@ -1277,6 +1311,8 @@ export const JobRecord = z.object({
   /** Latest progress message. */
   message: z.string().optional(),
   error: z.string().optional(),
+  /** Why the job failed, when the pipeline gave a code. Older records have none. */
+  failure: JobFailure.optional(),
   artifacts: z.array(JobArtifact),
   createdAt: z.string(),
   updatedAt: z.string(),

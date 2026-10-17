@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import type { Layer } from '@aio/schema';
+import { shiftedLayer, type Layer } from '@aio/schema';
 import { createWorkspace } from '@aio/workspace';
 import type { Box3 } from 'three';
 import { PerspectiveCamera, Scene, Vector3, type Plane, type WebGLRenderer } from 'three';
@@ -190,6 +190,32 @@ describe('panoramas layer', () => {
     expect(off).not.toHaveBeenCalled();
     lh.dispose();
     expect(off).toHaveBeenCalledTimes(1);
+    host.remove();
+  });
+
+  it('moves panorama markers and the camera centre with the date', async () => {
+    const { host, canvas, camera, h } = setup();
+    let box: Box3 | null = null;
+    h.addContentBounds = (b) => {
+      box = b();
+      return () => undefined;
+    };
+    const store = createWorkspace();
+    // the layer as the layer sync hands it over: its date lies 2 m east and 1 m south
+    const dated = shiftedLayer(layer, { eastM: 2, northM: -1 }) as PanoLayer;
+    const lh = await createPanoramasAdapter(store).create(dated, {
+      url: () => '',
+      scene: h,
+      shiftOf: () => ({ eastM: 2, northM: -1 }),
+    });
+    const b = box as Box3 | null;
+    expect(b?.min.toArray()).toEqual([1, -1, -100]);
+    expect(b?.max.toArray()).toEqual([303, 41, -98]);
+    // entering the sphere puts the camera at its corrected centre
+    click(canvas, 100, 100);
+    expect(store.getState().selection).toEqual({ kind: 'pano', id: 'a', layer: 'panos' });
+    expect(camera.position.toArray()).toEqual([2, 40, -99]);
+    lh.dispose();
     host.remove();
   });
 

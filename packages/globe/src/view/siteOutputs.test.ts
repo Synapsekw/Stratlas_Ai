@@ -1,4 +1,4 @@
-import type { Vec3 } from '@aio/schema';
+import type { DateShift, Vec3 } from '@aio/schema';
 import { describe, expect, it, vi, type Mock } from 'vitest';
 import { planGlobeLayers } from '../layers';
 import type { PyramidIndex } from '../projectRasters';
@@ -82,6 +82,33 @@ const names = (layers: readonly Layer[]) =>
   layers.map((l) => (typeof l.provider === 'string' ? l.provider : l.provider.layerId));
 
 describe('SiteOutputLayers', () => {
+  it('hands the raster, with its date shift, to the provider and builds it again when the shift changes', async () => {
+    const scene = fakeScene();
+    const created: (DateShift | undefined)[] = [];
+    const host = {
+      ...scene.host,
+      createProvider: (o: SiteOutputs, r: SiteOutputs['rasters'][number]) => {
+        created.push(r.shift);
+        return scene.host.createProvider(o, r);
+      },
+    };
+    const outputs = new SiteOutputLayers(host);
+    const shifted = (shift?: DateShift): SiteOutputs => ({
+      ...site('A', ['ortho']),
+      rasters: [{ ...raster('ortho'), ...(shift ? { shift } : {}) }],
+    });
+    await outputs.set([shifted({ eastM: 2, northM: 0 })]);
+    const first = outputs.rasters()[0]?.provider;
+    await outputs.set([shifted({ eastM: 2, northM: 0 })]);
+    expect(outputs.rasters()[0]?.provider).toBe(first);
+    await outputs.set([shifted({ eastM: 2.5, northM: 0 })]);
+    expect(outputs.rasters()[0]?.provider).not.toBe(first);
+    expect(first?.dispose).toHaveBeenCalledTimes(1);
+    await outputs.set([shifted(undefined)]);
+    expect(created).toEqual([{ eastM: 2, northM: 0 }, { eastM: 2.5, northM: 0 }, undefined]);
+    expect(scene.layers).toHaveLength(1);
+  });
+
   it('adds a heat map as one layer on top, keeping the ortho, with no removeAll', async () => {
     const scene = fakeScene();
     scene.layers.push({ provider: 'street' });

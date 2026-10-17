@@ -1,4 +1,11 @@
-import type { ClassCatalogue, Issue, SeverityModel, Sighting } from '@aio/schema';
+import type {
+  ClassCatalogue,
+  Issue,
+  Layer,
+  ProjectManifest,
+  SeverityModel,
+  Sighting,
+} from '@aio/schema';
 import type { IssueContext } from './model/ops';
 
 /** Shared fixtures for unit tests (not exported from the package). */
@@ -84,3 +91,60 @@ export function makeIssue(over: Partial<Issue> = {}): Issue {
     ...over,
   };
 }
+
+const IDENTITY = [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1];
+const datedMesh = (id: string, capture: string): Layer => ({
+  kind: 'mesh',
+  id,
+  name: id,
+  visible: true,
+  src: { path: `models/${id}.glb` },
+  transform: IDENTITY,
+  capture,
+});
+
+/**
+ * Two survey dates, d2 lined up 2 m east: `model-d2`, `cloud-d2`, `ortho-d2` and `photos-d2`
+ * take the shift, `model-d1` does not.
+ */
+export const linedUp: ProjectManifest = {
+  schema: 'aio.project/1',
+  id: 'demo',
+  name: 'Demo',
+  crs: { epsg: 32639 },
+  origin: [500000, 3200000, 0],
+  captures: [
+    { id: 'd1', label: 'First', date: '2026-01-10' },
+    {
+      id: 'd2',
+      label: 'Second',
+      date: '2026-02-10',
+      lineUp: { eastM: 2, northM: 0, with: 'd1', at: '2026-10-16T08:00:00Z' },
+    },
+  ],
+  layers: [
+    datedMesh('model-d1', 'd1'),
+    datedMesh('model-d2', 'd2'),
+    {
+      kind: 'pointcloud',
+      id: 'cloud-d2',
+      name: 'Cloud',
+      visible: true,
+      src: { path: 'clouds/c.copc.laz' },
+      format: 'copc',
+      capture: 'd2',
+    },
+    {
+      kind: 'raster',
+      id: 'ortho-d2',
+      name: 'Ortho',
+      visible: true,
+      src: { path: 'rasters/o.tif' },
+      role: 'ortho',
+      format: 'cog',
+      capture: 'd2',
+    },
+  ],
+  severityModels: [tankModel],
+  classCatalogues: [catalogue],
+};

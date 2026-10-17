@@ -24,7 +24,7 @@ import {
   type RegionAction,
 } from '@aio/schema';
 import { isShortcut, t } from '@aio/ui';
-import { workspace } from '@aio/workspace';
+import { dateShiftOf, workspace } from '@aio/workspace';
 import { isTyping } from '../keys';
 import { boxToLocal, boxToWorld, sameLocalBox, worldViewProj } from './cleanupFrame';
 import { cleanup as appCleanup, type Cleanup } from './cleanupStore';
@@ -106,14 +106,18 @@ export const cleanupDebug = {
 
 /**
  * The origin a cloud's local frame is taken from: the project origin lowered by the layer's
- * height offset (cloudFrameOrigin), so the gizmo sits on the cloud as drawn while the recipe keeps
+ * height offset and its date's shift (cloudFrameOrigin), so the gizmo sits on the cloud as drawn while the recipe keeps
  * file coordinates.
  */
 const frameOf = (layerId: string): V3 | null => {
   const m = workspace.getState().project?.manifest;
   if (!m) return null;
   const layer = m.layers.find((l) => l.id === layerId);
-  return cloudFrameOrigin(m.origin, layer?.kind === 'pointcloud' ? layer : {});
+  return cloudFrameOrigin(
+    m.origin,
+    layer?.kind === 'pointcloud' ? layer : {},
+    dateShiftOf(m, layerId),
+  );
 };
 
 const sameOrigin = (a: V3, b: V3) => a[0] === b[0] && a[1] === b[1] && a[2] === b[2];

@@ -1,6 +1,12 @@
 import { hasPos, panoOpenable } from '@aio/engine';
 import { correctedPhoto } from '@aio/geo';
-import type { Layer, PhotoCorrection, WalkLayer } from '@aio/schema';
+import {
+  shiftLocal,
+  type DateShift,
+  type Layer,
+  type PhotoCorrection,
+  type WalkLayer,
+} from '@aio/schema';
 import {
   calibratedVideoPose,
   photoPose,
@@ -22,17 +28,23 @@ export interface EntryInputs {
   videoSamples?: (layer: VideoLayer) => readonly FrameSample[] | null | undefined;
   /** The same for walks (Task 12). Absent: walks left out. */
   walkSamples?: (layer: WalkLayer) => readonly TrackSample[] | null | undefined;
+  /** The date shift of a layer (line up dates), added after the correction. Absent: none. */
+  shiftOf?: (layer: string) => DateShift | null;
 }
 
 export function spotEntries(input: EntryInputs): SpotEntry[] {
   const out: SpotEntry[] = [];
   for (const l of input.layers) {
     const capture = layerCapture(l, input.index);
+    const shift = input.shiftOf?.(l.id) ?? null;
     if (l.kind === 'photos') {
       for (const p of l.items) {
         const correction = input.correction?.(l.id, p.id) ?? null;
-        const pose = photoPose(p, correction);
-        const pos = pose?.pos ?? correctedPhoto(p, correction).pos;
+        const basePose = photoPose(p, correction);
+        const pose =
+          basePose && shift ? { ...basePose, pos: shiftLocal(basePose.pos, shift) } : basePose;
+        const base = basePose?.pos ?? correctedPhoto(p, correction).pos;
+        const pos = base && shift ? shiftLocal(base, shift) : base;
         out.push({
           kind: 'photo',
           layer: l.id,
@@ -51,15 +63,36 @@ export function spotEntries(input: EntryInputs): SpotEntry[] {
           layer: l.id,
           capture,
           id: p.id,
-          pos: p.pos,
+          pos: shiftLocal(p.pos, shift),
           headingDeg: p.headingDeg,
         });
     } else if (l.kind === 'video' && input.videoSamples) {
       const samples = input.videoSamples(l);
-      if (samples !== undefined) out.push({ kind: 'video', layer: l.id, capture, samples });
+      if (samples !== undefined)
+        out.push({
+          kind: 'video',
+          layer: l.id,
+          capture,
+          samples:
+            samples && shift
+              ? samples.map((f) => ({
+                  ...f,
+                  pose: { ...f.pose, pos: shiftLocal(f.pose.pos, shift) },
+                }))
+              : samples,
+        });
     } else if (l.kind === 'walk' && input.walkSamples) {
       const samples = input.walkSamples(l);
-      if (samples !== undefined) out.push({ kind: 'walk', layer: l.id, capture, samples });
+      if (samples !== undefined)
+        out.push({
+          kind: 'walk',
+          layer: l.id,
+          capture,
+          samples:
+            samples && shift
+              ? samples.map((f) => ({ ...f, pos: shiftLocal(f.pos, shift) }))
+              : samples,
+        });
     }
   }
   return out;

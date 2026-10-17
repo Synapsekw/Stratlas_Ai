@@ -56,6 +56,8 @@ export interface DateFolder {
   capture: Capture | null;
   label: string;
   sub?: string;
+  /** Said in the folder's tooltip when the date is lined up with another (`lineUp.folder`). */
+  lineUp?: string;
   groups: TreeGroup[];
   layerIds: string[];
 }
@@ -65,7 +67,12 @@ export function buildDateTree(
   issues: readonly Issue[],
   durations: Readonly<Record<string, number>>,
   dates: { captures: readonly Capture[]; of: Readonly<Record<string, string>> },
-  labels: { every: string; dateLabel: (c: Capture) => string },
+  labels: {
+    every: string;
+    dateLabel: (c: Capture) => string;
+    /** The sentence for a lined-up date; absent or undefined: nothing to say. */
+    lineUp?: (c: Capture) => string | undefined;
+  },
   opts: TreeOptions = {},
 ): DateFolder[] {
   const folders: DateFolder[] = [];
@@ -99,11 +106,13 @@ export function buildDateTree(
         : [];
     const label = labels.dateLabel(c);
     const name = captureName(c, label);
+    const lineUp = labels.lineUp?.(c);
     folders.push({
       id: c.id,
       capture: c,
       label,
       ...(name !== undefined ? { sub: name } : {}),
+      ...(lineUp !== undefined ? { lineUp } : {}),
       groups,
       layerIds: treeLayerIds(groups),
     });

@@ -1,4 +1,4 @@
-import type { Issue, Vec3 } from '@aio/schema';
+import type { Issue, ProjectManifest, Vec3 } from '@aio/schema';
 import { createWorkspace } from '@aio/workspace';
 import { BoxGeometry, Group, Mesh } from 'three';
 import { beforeEach, describe, expect, it } from 'vitest';
@@ -355,5 +355,50 @@ describe('describeIssue', () => {
       photos: 0,
       photoOnly: false,
     });
+  });
+});
+
+describe('describeIssue on a lined-up date', () => {
+  it('reports the position where the date is drawn', () => {
+    const ws = createWorkspace();
+    const manifest = {
+      schema: 'aio.project/1',
+      id: 'p',
+      name: 'P',
+      crs: { epsg: 32639 },
+      origin: [0, 0, 0],
+      captures: [
+        {
+          id: 'd1',
+          label: 'd1',
+          date: '2025-01-01',
+          lineUp: { eastM: 2, northM: 1, with: 'd0', at: '2026-01-01T00:00:00Z' },
+        },
+      ],
+      layers: [
+        { kind: 'mesh', id: 'm', name: 'M', visible: true, capture: 'd1', src: { path: 'm.glb' } },
+      ],
+      severityModels: [],
+      classCatalogues: [],
+    } as unknown as ProjectManifest;
+    const issue = {
+      id: 'i1',
+      code: 'D1',
+      title: 't',
+      severity: 1,
+      status: 'open',
+      sightings: [{ on: 'mesh', layer: 'm', geom: { type: 'spoint', p: [10, 4, 20] } }],
+    } as unknown as Issue;
+    ws.getState().openProject({ id: 'p', root: 'C:/p', manifest }, [issue]);
+    const c: RendererToolContext = {
+      workspace: ws,
+      window: 'photo',
+      scene: () => null,
+      fetchJson: () => Promise.resolve(null),
+      captureFrame: () => Promise.resolve(null),
+      now: () => new Date(0),
+    };
+    const none = { status: 'none' as const, boxes: [], links: new Map(), unplaced: [] };
+    expect(describeIssue(c, issue, none).position).toEqual([12, 4, 19]);
   });
 });

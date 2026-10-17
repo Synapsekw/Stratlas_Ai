@@ -331,6 +331,15 @@ export async function updateCapture(
       else if (patch.colour !== undefined) next.colour = patch.colour;
       if (patch.icon === null) delete next.icon;
       else if (patch.icon !== undefined) next.icon = patch.icon;
+      if (patch.lineUp === null) delete next.lineUp;
+      else if (patch.lineUp !== undefined) {
+        const { lineUp } = patch;
+        if (lineUp.with === captureId) throw new Error('A date cannot be lined up with itself.');
+        if (!m.captures.some((x) => x.id === lineUp.with))
+          throw new Error(`Capture "${lineUp.with}" is not in this project.`);
+        const mm = (v: number) => Math.round(v * 1000) / 1000;
+        next.lineUp = { ...lineUp, eastM: mm(lineUp.eastM), northM: mm(lineUp.northM) };
+      }
       return next;
     });
     return { manifest: { ...m, captures } };

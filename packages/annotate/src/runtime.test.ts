@@ -1,4 +1,4 @@
-import type { ProjectManifest } from '@aio/schema';
+import type { ProjectManifest, Sighting } from '@aio/schema';
 import { workspace } from '@aio/workspace';
 import { afterEach, describe, expect, it } from 'vitest';
 import {
@@ -16,7 +16,7 @@ import {
   setAnnotateReadOnly,
   setIssueListActions,
 } from './runtime';
-import { catalogue, makeIssue, meshSighting, photoSighting, tankModel } from './testing';
+import { catalogue, linedUp, makeIssue, meshSighting, photoSighting, tankModel } from './testing';
 
 const manifest: ProjectManifest = {
   schema: 'aio.project/1',
@@ -83,6 +83,30 @@ describe('annotation runtime', () => {
     annotateUi.setState({ attachToSelected: true });
     beginSighting(photoSighting);
     expect(workspace.getState().issues[0]?.sightings).toEqual([meshSighting, photoSighting]);
+  });
+
+  it("keeps a shape drawn on a lined-up date in the date's own frame", () => {
+    workspace.getState().openProject({ id: 'demo', root: 'r', manifest: linedUp }, []);
+    const picked: Sighting = {
+      on: 'mesh',
+      layer: 'model-d2',
+      geom: { type: 'spoint', p: [12, 0, 0], n: [0, 1, 0] },
+    };
+    beginSighting(picked);
+    expect(annotateUi.getState().pending?.sighting).toEqual({
+      ...picked,
+      geom: { type: 'spoint', p: [10, 0, 0], n: [0, 1, 0] },
+    });
+    // flown to where it is drawn, and the cameras of the date are shifted
+    const pending = annotateUi.getState().pending?.sighting;
+    const issue = makeIssue({ sightings: pending ? [pending] : [] });
+    focusIssue(issue);
+    expect(workspace.getState().camera?.target).toEqual({
+      kind: 'point',
+      p: [12, 0, 0],
+      distance: 4,
+    });
+    expect(cameraSources.shiftOf?.('model-d2')).toEqual({ eastM: 2, northM: 0 });
   });
 
   it('focusing an issue selects it and flies to its best sighting', () => {

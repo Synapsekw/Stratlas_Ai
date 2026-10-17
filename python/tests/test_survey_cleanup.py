@@ -348,6 +348,54 @@ def test_dtm_filter_reads_offset_heights(tmp_path, monkeypatch, kind):
     assert np.allclose(lifted.h[ok] - plain.h[ok], 5.0, atol=0.01)
 
 
+@pytest.mark.parametrize("kind", ["las", "cloud"])
+def test_dtm_filter_reads_where_the_date_is_lined_up(tmp_path, monkeypatch, kind):
+    # The DTM filter is survey preparation: the ground grid is where the date is lined up.
+    from types import SimpleNamespace
+
+    import aio_pipelines.pointcloud as pc
+    import aio_pipelines.survey.cleanup as cl
+    from aio_pipelines.volumetric.cloud import read_las_chunks
+    from imagery_synth import surface_project
+    from synth import write_las
+
+    def fake_run(ctx, cmd, label):
+        stages = json.loads(Path(cmd[2]).read_text("utf-8"))["pipeline"]
+        reader = stages[0]
+        if reader.get("type") == "readers.text":
+            xyz = np.loadtxt(reader["filename"], delimiter=",", skiprows=1)
+        else:
+            parts = [np.stack(c[:3], axis=1) for c in read_las_chunks(Path(reader["filename"]), lambda: None)]
+            xyz = np.concatenate(parts)
+        write_las(Path(stages[-1]["filename"]), xyz, SITE_EPSG)
+
+    monkeypatch.setattr(pc, "find_pdal", lambda: "pdal")
+    monkeypatch.setattr(pc, "_run", fake_run)
+    surface_project(tmp_path, kinds=(kind, kind))
+    ctx = SimpleNamespace(
+        project=tmp_path,
+        check=lambda: None,
+        progress=lambda *a, **k: None,
+        log=lambda *a, **k: None,
+        stage=lambda rel: (
+            (tmp_path / "stage" / rel).parent.mkdir(parents=True, exist_ok=True) or tmp_path / "stage" / rel
+        ),
+    )
+    plain = cl.run_dtm_filter(ctx, "surf-a", "equipment")
+    path = tmp_path / "manifest.json"
+    m = json.loads(path.read_text("utf-8"))
+    for c in m["captures"]:
+        if c["id"] == "c1":
+            c["lineUp"] = {"eastM": 2.0, "northM": -1.0, "with": "c2", "at": "2026-10-16T09:00:00Z"}
+    path.write_text(json.dumps(m), "utf-8")
+    moved = cl.run_dtm_filter(ctx, "surf-a", "equipment")
+    assert (moved.oe - plain.oe, moved.on - plain.on) == pytest.approx((2.0, -1.0), abs=moved.cell * 1.01)
+    assert moved.cell == pytest.approx(plain.cell)
+    assert plain.h.shape == moved.h.shape
+    ok = np.isfinite(plain.h) & np.isfinite(moved.h)
+    assert np.allclose(moved.h[ok], plain.h[ok], atol=0.01)
+
+
 def test_dtm_fingerprint_follows_the_cloud_offset(tmp_path, monkeypatch):
     import aio_pipelines.pointcloud as pc
     from aio_pipelines.volumetric.cloud import read_las_chunks
@@ -384,3 +432,43 @@ def test_put_surface_helper_round_trips(tmp_path):
     put_surface(tmp_path, "t", h, 10.0, 20.0, 1.0)
     s = TileSurface(tmp_path / "survey" / "surfaces" / "t")
     assert np.allclose(s.read(0, 0, 4, 3), h, atol=1e-5)
+
+
+def test_a_dtm_records_the_line_up_and_an_edits_surface_keeps_it(tmp_path, monkeypatch):
+    import aio_pipelines.pointcloud as pc
+    from aio_pipelines.volumetric.cloud import read_las_chunks
+    from imagery_synth import surface_project
+    from synth import write_las
+
+    def fake_run(ctx, cmd, label):
+        stages = json.loads(Path(cmd[2]).read_text("utf-8"))["pipeline"]
+        parts = [np.stack(c[:3], axis=1) for c in read_las_chunks(Path(stages[0]["filename"]), lambda: None)]
+        write_las(Path(stages[-1]["filename"]), np.concatenate(parts), SITE_EPSG)
+
+    monkeypatch.setattr(pc, "find_pdal", lambda: "pdal")
+    monkeypatch.setattr(pc, "_run", fake_run)
+    surface_project(tmp_path, kinds=("las", "las"))
+    params = {"dtmFilter": {"layer": "surf-a", "preset": "equipment"}, "out": "dtm"}
+
+    def meta(sid):
+        return json.loads((tmp_path / "survey" / "surfaces" / sid / "tiles.json").read_text("utf-8"))
+
+    run_job(pipeline(), tmp_path, params)
+    plain = meta("dtm")
+    assert "dateShiftM" not in plain
+    path = tmp_path / "manifest.json"
+    m = json.loads(path.read_text("utf-8"))
+    for c in m["captures"]:
+        if c["id"] == "c1":
+            c["lineUp"] = {"eastM": 2.0, "northM": -1.0, "with": "c2", "at": "2026-10-16T09:00:00Z"}
+    path.write_text(json.dumps(m), "utf-8")
+    run_job(pipeline(), tmp_path, params, job_id="j2")
+    moved = meta("dtm")
+    assert moved["fingerprint"] != plain["fingerprint"]
+    assert moved["dateShiftM"] == {"eastM": 2.0, "northM": -1.0}
+    assert moved["originE"] - plain["originE"] == pytest.approx(2.0, abs=moved["cellM"] * 1.01)
+    # an edits surface made from it sits in the same frame and carries the same shift
+    run_job(pipeline(), tmp_path, {"surface": "dtm", "edits": [], "out": "dtm-clean"}, job_id="j3")
+    clean = meta("dtm-clean")
+    assert clean["dateShiftM"] == moved["dateShiftM"]
+    assert (clean["originE"], clean["originN"]) == (moved["originE"], moved["originN"])

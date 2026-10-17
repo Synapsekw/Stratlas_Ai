@@ -114,9 +114,16 @@ def photo_layers(manifest: dict[str, Any], ids: list[str] | None = None) -> list
     return out
 
 
-def load_meshes(project: Path, layers: list[dict[str, Any]], log=print):
-    """Every mesh layer's geometry in the local frame: ``[(layer id, node name, trimesh)]``."""
+def load_meshes(
+    project: Path, layers: list[dict[str, Any]], log=print, manifest: dict[str, Any] | None = None
+):
+    """Every mesh layer's geometry in the local frame: ``[(layer id, node name, trimesh)]``.
+
+    With the project's ``manifest``, each layer is where its survey date is lined up (the date's
+    shift after the layer's own transform): the job combines it with photos and findings."""
     import trimesh
+
+    from ..captures import date_shift, shift_transform
 
     parts = []
     for layer in layers:
@@ -131,7 +138,10 @@ def load_meshes(project: Path, layers: list[dict[str, Any]], log=print):
             sc = trimesh.load(path, force="scene")
         except Exception as e:  # a broken file should name itself
             raise JobError(f"Could not read the model {path.name}: {e}") from e
-        L = layer_matrix(layer.get("transform"))
+        transform = layer.get("transform")
+        if manifest:
+            transform = shift_transform(transform, date_shift(manifest, layer["id"]))
+        L = layer_matrix(transform)
         for node in sc.graph.nodes_geometry:
             T, gname = sc.graph[node]
             g = sc.geometry[gname]

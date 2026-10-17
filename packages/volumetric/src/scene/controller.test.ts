@@ -95,11 +95,34 @@ const manifest: ProjectManifest = {
 const raster = (): Raster => ({ width: 2, height: 2, data: new Uint8ClampedArray(16).fill(255) });
 
 /** A loaded volumetric store over a fake worker. */
-async function ready() {
+async function ready(s2Shift?: { eastM: number; northM: number }) {
   const ws = createWorkspace();
-  ws.getState().openProject({ id: 'yard', root: 'E:/y', manifest });
-  const scene = vi.fn<(req: SceneRequest) => Promise<{ piles: ScenePile[] }>>(() =>
-    Promise.resolve({ piles: [] }),
+  ws.getState().openProject({
+    id: 'yard',
+    root: 'E:/y',
+    manifest: s2Shift
+      ? {
+          ...manifest,
+          captures: [
+            {
+              id: 's2',
+              label: '10 Jan 2021',
+              date: '2021-01-10',
+              lineUp: { ...s2Shift, with: 's1', at: '2026-10-16T08:00:00.000Z' },
+            },
+          ],
+        }
+      : manifest,
+  });
+  const scene = vi.fn<(req: SceneRequest) => Promise<{ piles: ScenePile[] }>>((req) =>
+    Promise.resolve({
+      piles: req.piles.map((p) => ({
+        id: p.id,
+        body: null,
+        toe: new Float64Array([1000, 2000, 50, 1010, 2000, 50, 1010, 1990, 50]),
+        toeBase: null,
+      })),
+    }),
   );
   const reliefRaster = vi.fn<(epoch: string) => Promise<Raster>>(() => Promise.resolve(raster()));
   const changeRaster = vi.fn(() => Promise.resolve(raster()));
@@ -284,6 +307,36 @@ describe('VolumetricScene: one view of two', () => {
     expect(asked).toContain('chg/e2');
     main.detach();
     second.detach();
+  });
+
+  it('moves an epoch ring with its date and leaves the zone ring', async () => {
+    const { store, scene } = await ready({ eastM: 2, northM: -1 });
+    const { stage, scene: three, frame } = fakeStage();
+    store.getState().setAllPilesVisible(true);
+    const v = new VolumetricScene(stage, store);
+    v.attach();
+    await settle(frame);
+    const toe = () => {
+      const line = three.getObjectByName('volumetric')?.getObjectByName('toe');
+      return Array.from((line as Mesh).geometry.getAttribute('position').array.slice(0, 3));
+    };
+    // the lined-up date: its toe line sits 2 m east and 1 m south of where it was measured
+    expect(store.getState().epoch).toBe('e2');
+    expect(toe()).toEqual([2, 0.25, 1]);
+    // the worker still measures the date's own ground
+    expect(scene.mock.calls.at(-1)?.[0].piles[0]?.ring[0]).toEqual([1000, 2000]);
+    // the date that did not move stays
+    v.setEpoch('e1');
+    await settle(frame);
+    expect(toe()).toEqual([0, 0.25, 0]);
+    // the zone ring (change) belongs to neither date
+    store.getState().setSurface('change');
+    await settle(frame);
+    expect(toe()).toEqual([0, 0.25, 0]);
+    v.setEpoch('e2');
+    await settle(frame);
+    expect(toe()).toEqual([0, 0.25, 0]);
+    v.detach();
   });
 
   it('a display view draws no boundary edit', async () => {

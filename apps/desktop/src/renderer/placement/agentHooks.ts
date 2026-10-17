@@ -5,8 +5,8 @@
  */
 import { ToolError, type AppHooks, type PlaceOutcome } from '@aio/ai';
 import { READ_ONLY_ERROR, type IssueEditor } from '@aio/annotate';
-import type { Issue, Layer, Sighting } from '@aio/schema';
-import type { Workspace } from '@aio/workspace';
+import { unshiftLocal, type Issue, type Layer, type Sighting } from '@aio/schema';
+import { dateShiftOf, type Workspace } from '@aio/workspace';
 import type { StoreApi } from 'zustand/vanilla';
 import type { acceptByIds } from '../detections/store';
 import type { PlaceOutcome as Placed, PlaceSummary } from './store';
@@ -126,7 +126,9 @@ export function createPlacementHooks(
       const issue = issueOf(req.issue);
       if (!issue) throw new ToolError(`No issue "${req.issue}". Use list_issues for the codes.`);
       if (req.at.kind === 'point') {
-        const p = req.at.p;
+        // the assistant's point is where the layer is drawn (its date's shift added); a sighting
+        // is saved in the date's own frame
+        const p = unshiftLocal(req.at.p, dateShiftOf(manifest(), layer.id));
         const s: Sighting =
           layer.kind === 'pointcloud'
             ? { on: 'pointcloud', layer: layer.id, geom: { type: 'point3', p } }

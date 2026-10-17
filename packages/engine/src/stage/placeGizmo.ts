@@ -155,6 +155,10 @@ interface StageExtras {
  * about the vertical; tilt about the level axes; scale uniformly. The camera stops orbiting while
  * a handle is dragged, and a click on a handle is not a selection. Every change moves the layer
  * at once and is reported through `onChange`; nothing is saved here.
+ *
+ * The transforms in and out are the ones drawn: on a lined-up date that is the layer's transform
+ * with the date shift (`drawnTransform`), which the caller takes off again before it saves
+ * (`storedTransform`), as Place model does.
  */
 export function createPlaceGizmo(stage: EngineStage): PlaceGizmoHandle {
   const listeners = new Set<(t: Mat4) => void>();

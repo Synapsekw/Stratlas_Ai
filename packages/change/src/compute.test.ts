@@ -1,4 +1,9 @@
-import { ChangeSet, DEFAULT_CHANGE_THRESHOLDS, type Layer } from '@aio/schema';
+import {
+  ChangeSet,
+  DEFAULT_CHANGE_THRESHOLDS,
+  type Layer,
+  type ProjectManifest,
+} from '@aio/schema';
 import { captureIndex } from '@aio/workspace/captures';
 import { describe, expect, it } from 'vitest';
 import { ChangeCancelled, computeInApp, type ComputeSources } from './compute';
@@ -52,6 +57,75 @@ function sources(over: Partial<ComputeSources> = {}): ComputeSources {
     ...over,
   };
 }
+
+const lineUpOf = (
+  m: ProjectManifest,
+  capture: string,
+  eastM: number,
+  northM = 0,
+): ProjectManifest => ({
+  ...m,
+  captures: m.captures.map((c) =>
+    c.id === capture
+      ? { ...c, lineUp: { eastM, northM, with: 'd1', at: '2026-10-10T00:00:00.000Z' } }
+      : c,
+  ),
+});
+
+function shifted(eastM: number, over: Partial<ComputeSources> = {}): ComputeSources {
+  const base = sources(over);
+  const manifest = lineUpOf(base.manifest, 'd2', eastM);
+  return { ...base, manifest, index: captureIndex(manifest) };
+}
+
+describe('lined-up dates in the in-app producers', () => {
+  // the fence, 2 m east of itself in the later file
+  const east = (m: number) => {
+    const f = fc(0);
+    return {
+      ...f,
+      features: f.features.map((x) => ({
+        ...x,
+        geometry: {
+          ...x.geometry,
+          coordinates: x.geometry.coordinates.map(([lon, lat]) => [(lon ?? 0) + m * M, lat]),
+        },
+      })),
+    };
+  };
+
+  it('compares vectors of a lined-up date at the corrected place', async () => {
+    const geojson: ComputeSources['geojson'] = (l) =>
+      Promise.resolve(l.id === 'tracks-d1' ? fc(0) : east(2));
+    const [plain] = await computeInApp(sources({ geojson }), 'd1', 'd2', ['vector']);
+    expect(plain?.items[0]?.verdict).toBe('moved');
+    const [fixed] = await computeInApp(shifted(-2, { geojson }), 'd1', 'd2', ['vector']);
+    expect(fixed?.items[0]?.verdict).toBe('unchanged');
+  });
+
+  it('compares issues of a lined-up date at the corrected place', async () => {
+    const issues = () =>
+      Promise.resolve([
+        issue({ code: 'F01', layer: 'model-d1', at: [0, 0, 0] }),
+        issue({ code: 'F11', layer: 'model-d2', at: [20, 0, 0] }),
+      ]);
+    const [plain] = await computeInApp(sources({ issues }), 'd1', 'd2', ['issue']);
+    expect(plain?.items.map((i) => i.verdict).sort()).toEqual(['new', 'resolved']);
+    const [fixed] = await computeInApp(shifted(-20, { issues }), 'd1', 'd2', ['issue']);
+    expect(fixed?.items).toHaveLength(1);
+    expect(fixed?.items[0]?.method).toBe('mesh');
+  });
+
+  it('records the shifts on a saved set', async () => {
+    const [none] = await computeInApp(sources(), 'd1', 'd2', ['issue']);
+    expect(none?.lineUp).toBeUndefined();
+    const sets = await computeInApp(shifted(-2.0004), 'd1', 'd2', ['issue', 'vector']);
+    for (const s of sets) {
+      expect(ChangeSet.safeParse(s).success).toBe(true);
+      expect(s.lineUp).toEqual({ to: { eastM: -2, northM: 0 } });
+    }
+  });
+});
 
 describe('the in-app producers of a pair', () => {
   it('writes one valid set per kind, named by pair and producer, earlier date first', async () => {

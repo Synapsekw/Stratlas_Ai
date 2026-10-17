@@ -6,6 +6,7 @@ import {
   cropKey,
   cropWindow,
   drawTransform,
+  layerCorners,
   overlaps,
   parseTiles,
   placementUv,
@@ -171,6 +172,35 @@ describe('composing a crop', () => {
     );
     expect(r.ok).toBe(true);
     expect(drawn.map((d) => d.url).sort()).toEqual(['t/0/0_0.webp', 't/0/1_0.webp']);
+  });
+
+  it('crops an ortho of a lined-up date where it is drawn, image and tiles alike', async () => {
+    // the date is lined up 100 m east and 10 m north
+    const shift = { eastM: 100, northM: 10 };
+    const moved = {
+      tl: [0, 0, -60] as Vec3,
+      tr: [200, 0, -60] as Vec3,
+      bl: [0, 0, 40] as Vec3,
+    };
+    const img = fakeIo({ 'rasters/ortho.png': { width: 2000, height: 1000 } });
+    expect(await layerCorners(layer({}), img.io, shift)).toEqual(moved);
+    const w = cropWindow([500_050, 2_800_000], 8, 8);
+    expect((await composeCrop(layer({}), w, origin, img.io, shift)).ok).toBe(true);
+    expect(img.drawn[0]?.t).toEqual(drawTransform(moved, 2000, 1000, w, origin));
+    // a pyramid: the click 50 m east of the origin is on the west tile once the ortho moved
+    const tiles = {
+      schema: 'aio.tiles/1',
+      corners,
+      levels: [{ z: 0, tileSize: 256, cols: 2, rows: 1, pattern: 't/{z}/{x}_{y}.webp' }],
+    };
+    const pyr = fakeIo(
+      { 't/0/0_0.webp': { width: 256, height: 256 }, 't/0/1_0.webp': { width: 256, height: 256 } },
+      tiles,
+    );
+    const kit = layer({ format: 'kit-pyramid', src: { path: 't/tiles.json' } });
+    expect(await layerCorners(kit, pyr.io, shift)).toEqual(moved);
+    expect((await composeCrop(kit, w, origin, pyr.io, shift)).ok).toBe(true);
+    expect(pyr.drawn.map((d) => d.url)).toEqual(['t/0/0_0.webp']);
   });
 
   it('says why when the ortho cannot be read', async () => {

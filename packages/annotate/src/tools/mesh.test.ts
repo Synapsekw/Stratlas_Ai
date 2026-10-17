@@ -1,6 +1,8 @@
+import type { Sighting, Vec3 } from '@aio/schema';
 import { BoxGeometry, Group, Mesh, MeshBasicMaterial, Raycaster, Vector3 } from 'three';
 import { describe, expect, it } from 'vitest';
-import { makeIssue, photoSighting, tankModel } from '../testing';
+import { shiftOfManifest } from '../model/dateFrame';
+import { linedUp, makeIssue, photoSighting, tankModel } from '../testing';
 import {
   bestAnchor,
   issuePins,
@@ -185,5 +187,37 @@ describe('placed areas', () => {
     expect(
       issuePins([a, b], [tankModel], null, 'all', new Set(['a'])).map((p) => p.issueId),
     ).toEqual(['b']);
+  });
+});
+
+describe('pins of a lined-up date', () => {
+  const shiftOf = shiftOfManifest(linedUp);
+  const on = (layer: string, p: Vec3): Sighting => ({
+    on: 'mesh',
+    layer,
+    geom: { type: 'spoint', p, n: [0, 1, 0] },
+  });
+
+  it('draws a pin of a lined-up mesh at the corrected place', () => {
+    const moved = makeIssue({ id: 'a', sightings: [on('model-d2', [10, 1, -3])] });
+    const still = makeIssue({ id: 'b', code: 'F02', sightings: [on('model-d1', [10, 1, -3])] });
+    const pins = issuePins([moved, still], [tankModel], null, 'all', undefined, shiftOf);
+    expect(pins.map((p) => [p.issueId, p.p])).toEqual([
+      ['a', [12, 1, -3]],
+      ['b', [10, 1, -3]],
+    ]);
+    // without the shifts the stored place
+    expect(issuePins([moved], [tankModel], null).map((p) => p.p)).toEqual([[10, 1, -3]]);
+  });
+
+  it('anchors a sighting and an issue through their layer shift', () => {
+    const cloud: Sighting = {
+      on: 'pointcloud',
+      layer: 'cloud-d2',
+      geom: { type: 'box3', min: [0, 0, 0], max: [2, 2, 2] },
+    };
+    expect(sightingAnchor(cloud, shiftOf)).toEqual([3, 1, 1]);
+    expect(bestAnchor(makeIssue({ sightings: [cloud] }), shiftOf)).toEqual([3, 1, 1]);
+    expect(sightingAnchor(photoSighting, shiftOf)).toBeNull();
   });
 });

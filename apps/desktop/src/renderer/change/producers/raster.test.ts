@@ -3,12 +3,14 @@ import {
   ChangeRasterParams,
   ChangeSurfaceParams,
   ChangeThresholds,
+  type JobRecord,
   type Layer,
   type ProjectManifest,
 } from '@aio/schema';
 import { describe, expect, it, vi } from 'vitest';
 import {
   imageryProducers,
+  misalignedOf,
   orthoPair,
   rasterParams,
   registerImageryProducers,
@@ -177,5 +179,100 @@ describe('registration with the Changes panel', () => {
     expect(changeProducers().find((p) => p.id === 'surface')?.label).toBe('Run surface change');
     off();
     expect(changeProducers().map((p) => p.id)).not.toContain('raster');
+  });
+});
+
+describe('a refused run', () => {
+  const failed = (over: Partial<JobRecord> = {}): JobRecord =>
+    ({
+      id: 'job-1',
+      pipeline: 'change.raster',
+      status: 'failed',
+      error: 'The dates are 2.01 m apart. Line up the dates first.',
+      failure: {
+        code: 'misaligned',
+        data: { from: 'c1', to: 'c2', shiftM: 2.01, shiftPx: 40, eastM: -2, northM: 0.2 },
+      },
+      ...over,
+    }) as JobRecord;
+  const orthos = pair([raster('o1', 'ortho')], [raster('o2', 'ortho')]);
+  const dsms = pair([raster('s1', 'dsm', 'cog')], [raster('s2', 'dsm', 'cog')]);
+  const run = async (id: string, job: JobRecord | null, over: Partial<ProducerDeps> = {}) => {
+    const setMisaligned = vi.fn();
+    const d = deps({ finished: () => Promise.resolve(job), setMisaligned, ...over });
+    const producer = imageryProducers(d).find((p) => p.id === id);
+    const r = await producer?.run(id === 'surface' ? dsms : orthos);
+    // the end of the job is read after the run was handed back
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    return { r, setMisaligned };
+  };
+
+  it('turns a misaligned refusal into the panel state', async () => {
+    const imagery = await run('raster', failed());
+    expect(imagery.r).toEqual({ ok: true, jobId: 'job-1' });
+    expect(imagery.setMisaligned).toHaveBeenNthCalledWith(1, null);
+    expect(imagery.setMisaligned).toHaveBeenLastCalledWith({
+      from: 'c1',
+      to: 'c2',
+      shiftM: 2.01,
+      producer: 'raster',
+    });
+    const surface = await run('surface', failed({ pipeline: 'change.surface' }));
+    expect(surface.setMisaligned).toHaveBeenLastCalledWith(
+      expect.objectContaining({ producer: 'surface' }),
+    );
+  });
+
+  it('leaves another failure as it is', async () => {
+    const other = failed({ error: 'Out of memory.' });
+    delete other.failure;
+    for (const job of [
+      other,
+      failed({ failure: { code: 'other', data: {} } }),
+      failed({ status: 'done' }),
+      failed({ failure: { code: 'misaligned', data: { from: 'c1' } } }),
+      null,
+    ]) {
+      const { setMisaligned } = await run('raster', job);
+      // only the clearing call before the run: nothing is kept for the panel
+      expect(setMisaligned).toHaveBeenCalledTimes(1);
+      expect(setMisaligned).toHaveBeenCalledWith(null);
+    }
+    expect(misalignedOf(other, 'raster')).toBeNull();
+  });
+
+  it('ignores a late refusal after the project changed or a newer run started', async () => {
+    let finish: (job: JobRecord) => void = () => undefined;
+    const waits: Promise<JobRecord | null>[] = [];
+    let project = 'p1';
+    const setMisaligned = vi.fn();
+    const d = deps({
+      projectId: () => project,
+      setMisaligned,
+      finished: () => {
+        const w = new Promise<JobRecord | null>((resolve) => {
+          finish = resolve;
+        });
+        waits.push(w);
+        return w;
+      },
+    });
+    const producer = imageryProducers(d).find((p) => p.id === 'raster');
+    await producer?.run(orthos);
+    project = 'p2';
+    finish(failed());
+    await waits[0];
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(setMisaligned).toHaveBeenCalledTimes(1);
+    expect(setMisaligned).toHaveBeenCalledWith(null);
+
+    project = 'p1';
+    await producer?.run(orthos);
+    const first = finish;
+    await producer?.run(orthos);
+    first(failed());
+    await waits[1];
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(setMisaligned).not.toHaveBeenCalledWith(expect.objectContaining({ shiftM: 2.01 }));
   });
 });

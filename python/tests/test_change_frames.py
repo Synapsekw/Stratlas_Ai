@@ -16,7 +16,7 @@ from scipy import ndimage as ndi
 from skimage.transform import ProjectiveTransform, warp
 
 from aio_pipelines.change.changeset import validate_change_set
-from aio_pipelines.change.frames import ChangeFrames, frame_change
+from aio_pipelines.change.frames import ChangeFrames, frame_change, pose_gap
 from aio_pipelines.pipelines import all_pipelines
 from aio_pipelines.runtime import JobError
 from conftest import run_job
@@ -106,7 +106,7 @@ def _png(path: Path, img: np.ndarray) -> None:
     Image.fromarray((np.clip(img, 0, 1) * 255).astype(np.uint8), "L").convert("RGB").save(path)
 
 
-def _project(tmp_path: Path, frames, patch=True) -> Path:
+def _project(tmp_path: Path, frames, patch=True, b_pos=(0.5, 30, 0.2), line_up=None) -> Path:
     a, b = frames
     _png(tmp_path / "photos" / "a1.png", a)
     _png(tmp_path / "photos" / "b1.png", with_patch(b) if patch else b)
@@ -117,7 +117,7 @@ def _project(tmp_path: Path, frames, patch=True) -> Path:
         "name": "Synthetic two dates",
         "captures": [
             {"id": "c1", "label": "First", "date": "2026-01-01"},
-            {"id": "c2", "label": "Second", "date": "2026-06-01"},
+            {"id": "c2", "label": "Second", "date": "2026-06-01", **({"lineUp": line_up} if line_up else {})},
         ],
         "layers": [
             {
@@ -132,7 +132,7 @@ def _project(tmp_path: Path, frames, patch=True) -> Path:
                 "id": "photos-b",
                 "name": "Photos B",
                 "capture": "c2",
-                "items": [{"id": "b1", "src": {"path": "photos/b1.png"}, "pos": [0.5, 30, 0.2], "q": q}],
+                "items": [{"id": "b1", "src": {"path": "photos/b1.png"}, "pos": list(b_pos), "q": q}],
             },
             {
                 "kind": "video",
@@ -224,6 +224,7 @@ def test_the_dates_alone_pair_photos_by_pose(tmp_path, frames):
     assert result["status"] == "done"
     cs = json.loads((project / "change" / "c1-c2-frames.json").read_text("utf-8"))
     assert [(i["a"]["photo"], i["b"]["photo"]) for i in cs["items"]] == [("a1", "b1")]
+    assert "lineUp" not in cs
 
 
 def test_the_dates_come_from_the_layers_when_not_given(tmp_path, frames):
@@ -253,3 +254,46 @@ def test_a_missing_photo_file_fails_the_pair_not_the_job(tmp_path, frames):
     assert cs["items"] == []
     assert cs["stats"]["skipped"] == 1
     assert any("b1" in m["message"] for m in rec.of("log"))
+
+
+def test_pose_pairs_use_shifted_positions(tmp_path, frames):
+    # the second photo is 2 m east and 0.5 m south of the first in its file; its date is lined up
+    # (east -2, north +0.5 puts it back: local x - 2, z - 0.5)
+    shift = {"eastM": -2.0, "northM": 0.5, "with": "c1", "at": "2026-10-16T00:00:00Z"}
+    project = _project(tmp_path, frames, b_pos=(2.0, 30, 0.5), line_up=shift)
+    run_job(ChangeFrames(), project, {"from": "c1", "to": "c2", "minAreaPx": 150})
+    cs = json.loads((project / "change" / "c1-c2-frames.json").read_text("utf-8"))
+    [item] = cs["items"]
+    assert (item["a"]["photo"], item["b"]["photo"]) == ("a1", "b1")
+    assert item["poseM"] < 0.05
+    assert cs["lineUp"] == {"from": {"eastM": 0.0, "northM": 0.0}, "to": {"eastM": -2.0, "northM": 0.5}}
+
+
+def test_a_line_up_saved_after_the_pairing_stamps_the_shifts_the_pairs_were_made_with(
+    tmp_path, frames, monkeypatch
+):
+    # the photos were paired with no shift; the date is lined up while the frames are compared
+    shift = {"eastM": -2.0, "northM": 0.5, "with": "c1", "at": "2026-10-16T00:00:00Z"}
+    project = _project(tmp_path, frames)
+    compare = ChangeFrames._compare
+
+    def compare_then_line_up(self, ctx):
+        out = compare(self, ctx)
+        m = json.loads((project / "manifest.json").read_text("utf-8"))
+        m["captures"][1]["lineUp"] = shift
+        (project / "manifest.json").write_text(json.dumps(m), "utf-8")
+        return out
+
+    monkeypatch.setattr(ChangeFrames, "_compare", compare_then_line_up)
+    run_job(ChangeFrames(), project, {"from": "c1", "to": "c2", "minAreaPx": 150})
+    cs = json.loads((project / "change" / "c1-c2-frames.json").read_text("utf-8"))
+    # labelled with the frame the pairs were made in, so the set reads Out of date
+    assert "lineUp" not in cs
+
+
+def test_the_pose_gap_takes_each_layers_local_delta():
+    q = [0.0, 0.0, 0.0, 1.0]
+    a = {"pos": [0, 30, 0], "q": q}
+    b = {"pos": [2, 30, 0.5], "q": q}
+    assert pose_gap(a, b)[0] == pytest.approx(np.hypot(2, 0.5))
+    assert pose_gap(a, b, (0.0, 0.0), (-2.0, -0.5))[0] == pytest.approx(0.0)

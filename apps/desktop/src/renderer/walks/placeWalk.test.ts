@@ -691,6 +691,53 @@ describe('the walk on the map while it is placed there', () => {
     stop();
   });
 
+  const lined = (): { current: OpenProject } => {
+    const p = projectWith([plan, walkLayer()]);
+    return {
+      current: {
+        ...p,
+        manifest: {
+          ...p.manifest,
+          captures: [
+            {
+              id: 'c1',
+              label: 'First',
+              date: '2026-01-01',
+              lineUp: { eastM: 2, northM: -1, with: 'c0', at: '2026-10-16T08:00:00.000Z' },
+            },
+          ],
+        },
+      },
+    };
+  };
+
+  it('saves a walk placement without the shift', async () => {
+    const project = lined();
+    const { flow, session, ui } = flowFor(project);
+    const stop = followMap(session, ui, () => project.current);
+    await flow.begin('walk-a');
+    flow.placeAnyway();
+    flow.chooseSurface({ kind: 'map' });
+    const pointer = walkMap.getState().pointer;
+    // picked on the lined-up map at x 12, z 7: the walk's own frame is 2 m west, 1 m north of it
+    pointer?.onClick?.([12, 0.5, 7]);
+    pointer?.onClick?.([42, 0, 7]);
+    expect(session.getState().pins.map((p) => p.at)).toEqual([
+      [10, 6],
+      [40, 6],
+    ]);
+    // the handles and the drawn path sit where they were picked
+    expect(pointer?.handles?.().map((h) => h.local)).toEqual([
+      [12, 0.5, 7],
+      [42, 0, 7],
+    ]);
+    pointer?.onDrag?.('end', [45, 0, 9]);
+    expect(session.getState().pins[1]?.at).toEqual([43, 8]);
+    pointer?.onDragEnd?.('end', [45, 0, 9]);
+    flow.discard();
+    stop();
+  });
+
   it('draws the path once placed; a time tick keeps the same path overlay', async () => {
     const project = { current: projectWith([plan, walkLayer()]) };
     const { flow, session, ui } = flowFor(project);

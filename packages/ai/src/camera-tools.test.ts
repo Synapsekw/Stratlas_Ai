@@ -539,6 +539,31 @@ describe('find_places', () => {
     expect(pos.latLon[1]).toBeCloseTo(lon, 5);
   });
 
+  it('frames a clip of a lined-up date by its flight where it is drawn', async () => {
+    const c = ctx();
+    const m = c.workspace.getState().project?.manifest;
+    if (!m) throw new Error('fixture');
+    c.workspace.getState().replaceManifest({
+      ...m,
+      captures: [
+        {
+          id: 'd1',
+          label: 'Survey',
+          date: '2023-02-21',
+          lineUp: { eastM: 2, northM: 1, with: 'd0', at: '2026-10-16T08:00:00Z' },
+        },
+      ],
+      layers: m.layers.map((l) =>
+        l.kind === 'video' ? { ...l, capture: 'd1', positionOffsetM: [0, 10, 0] } : l,
+      ),
+    });
+    const clips = await runRendererTool('find_places', { kinds: ['clip'] }, c);
+    // the flight's own offset (10 m up) and the date's line-up (2 m east, 1 m north)
+    expect(clips.result).toMatchObject({
+      places: [{ id: 'clip:clip-0658', position: { local: [302, 110, -1] } }],
+    });
+  });
+
   it('finds issues with their photos, photos, panoramas and clips by kind', async () => {
     const c = ctx();
     const issue = await runRendererTool('find_places', { query: 'issue F05' }, c);

@@ -14,9 +14,17 @@ import {
   type PlaceResult,
 } from '@aio/annotate';
 import { issueDate, suggestMatches, trackPair } from '@aio/change';
-import { encodeSelection, type Issue, type Layer, type Sighting } from '@aio/schema';
+import {
+  encodeSelection,
+  unshiftLocal,
+  type DateShift,
+  type Issue,
+  type Layer,
+  type Sighting,
+  type Vec3,
+} from '@aio/schema';
 import { formatDate } from '@aio/ui';
-import type { Workspace } from '@aio/workspace';
+import { dateShiftOf, type Workspace } from '@aio/workspace';
 import { createStore, type StoreApi } from 'zustand/vanilla';
 import { hasPhotoShape, layerChoices } from './layers';
 
@@ -123,6 +131,38 @@ export function stepSelectionName(issueId: string, layer: string, now: string): 
   return `${selectionName(issueId, layer).slice(0, 119 - stamp.length)}-${stamp}`;
 }
 
+/**
+ * The projection gives areas and points in the drawn frame (the layer's date shift added); a
+ * sighting is saved in the date's own frame, so the shift comes off once here.
+ */
+function unshiftSightings(list: readonly Sighting[], shift: DateShift | null): Sighting[] {
+  if (!shift) return [...list];
+  const at = (p: Vec3) => unshiftLocal(p, shift);
+  return list.map((s): Sighting => {
+    if (s.on === 'mesh' && s.geom.type === 'spolygon')
+      return { ...s, geom: { ...s.geom, points: s.geom.points.map(at) } };
+    if (s.on === 'pointcloud' && s.geom.type === 'polygon3')
+      return { ...s, geom: { ...s.geom, points: s.geom.points.map(at) } };
+    return s;
+  });
+}
+
+/** Flat x, y, z positions in the drawn frame back to the date's own frame. */
+function unshiftPositions(positions: Float32Array, shift: DateShift | null): Float32Array {
+  if (!shift) return positions;
+  const out = new Float32Array(positions.length);
+  for (let i = 0; i + 2 < positions.length; i += 3) {
+    const p = unshiftLocal(
+      [positions[i] ?? 0, positions[i + 1] ?? 0, positions[i + 2] ?? 0],
+      shift,
+    );
+    out[i] = p[0];
+    out[i + 1] = p[1];
+    out[i + 2] = p[2];
+  }
+  return out;
+}
+
 /** What one issue's projection gave, before it is committed onto the issue as it is then. */
 interface Computed {
   id: string;
@@ -195,13 +235,14 @@ export function createPlacementStore(deps: PlacementDeps): StoreApi<PlacementSta
             outcomes.set(id, { id, code: issue.code, ok: false, reason: r.reason });
             continue;
           }
-          let sightings = r.sightings;
+          const shift = dateShiftOf(open.manifest, layer.id);
+          let sightings = unshiftSightings(r.sightings, shift);
           let selectionError: string | undefined;
           if (r.selection) {
             const w = await deps.writeSelection(
               open.id,
               stepSelectionName(issue.id, layer.id, deps.now()),
-              encodeSelection(r.selection.positions, r.selection.lod),
+              encodeSelection(unshiftPositions(r.selection.positions, shift), r.selection.lod),
             );
             if ('path' in w)
               sightings = [

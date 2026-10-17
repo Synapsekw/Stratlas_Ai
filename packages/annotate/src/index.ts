@@ -60,6 +60,12 @@ export {
   type PrismQuery,
 } from './crossview/place';
 export {
+  movedSighting,
+  shiftOfManifest,
+  sightingInDateFrame,
+  type ShiftOf,
+} from './model/dateFrame';
+export {
   dropFrom,
   hasPlacedArea,
   isAutoPin,
