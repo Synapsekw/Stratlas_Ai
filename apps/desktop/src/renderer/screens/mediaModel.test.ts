@@ -1,6 +1,13 @@
 import type { Layer } from '@aio/schema';
 import { describe, expect, it } from 'vitest';
-import { flightCards, flightOf, mediaSummary, panoCard, showsClipList } from './mediaModel';
+import {
+  flightCards,
+  flightOf,
+  isNear2to1,
+  mediaSummary,
+  panoCard,
+  showsClipList,
+} from './mediaModel';
 
 const T0 = Date.UTC(2023, 10, 22, 5, 0, 0);
 
@@ -93,5 +100,15 @@ describe('media summary and clip list', () => {
     );
     expect(cards.map(showsClipList)).toEqual([true, false]);
     expect(showsClipList(null)).toBe(false);
+  });
+});
+
+describe('isNear2to1', () => {
+  it('takes a 2:1 image within the importer tolerance', () => {
+    expect(isNear2to1(2560, 1280)).toBe(true);
+    expect(isNear2to1(5760, 2880)).toBe(true);
+    expect(isNear2to1(4000, 3000)).toBe(false);
+    expect(isNear2to1(2600, 1280)).toBe(false);
+    expect(isNear2to1(2560, 0)).toBe(false);
   });
 });

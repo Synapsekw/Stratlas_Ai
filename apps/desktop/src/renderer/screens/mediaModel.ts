@@ -81,3 +81,12 @@ export function flightOf(cards: readonly FlightCard[], clipId: string | null): F
 export function panoCard(p: PanoRef): { asset: AssetRef | undefined; stitched: boolean } {
   return panoOpenable(p) ? { asset: p.src, stitched: true } : { asset: undefined, stitched: false };
 }
+
+/** 2:1 within this reads as an equirect 360 (the importer's tolerance, `panoGroups.ts`). */
+const EQUIRECT_TOLERANCE = 0.02;
+
+/** Whether an image of `w` by `h` pixels is near 2:1 (a 360 that came in as a photo). */
+export function isNear2to1(w: number, h: number): boolean {
+  if (!(w > 0) || !(h > 0)) return false;
+  return Math.abs(w / h - 2) < EQUIRECT_TOLERANCE;
+}

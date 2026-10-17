@@ -5,6 +5,7 @@ import { workspace } from '@aio/workspace';
 import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { registerPinActions } from '../shell/actions/pinActions';
 import { MediaScreen } from './Media';
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -15,6 +16,11 @@ vi.mock('@aio/annotate', async (load) => ({
   PhotoViewer: () => <div data-testid="photo-viewer" />,
 }));
 vi.mock('../issueCard/IssueCard', () => ({ IssueCard: () => <div data-testid="issue-card" /> }));
+// a photo's size from its header: the wide one is 2:1
+vi.mock('../thumbs/photoSize', () => ({
+  photoSize: (url: string) =>
+    Promise.resolve(url.includes('wide') ? ([2560, 1280] as const) : ([4000, 3000] as const)),
+}));
 
 const manifest = {
   schema: 'aio.project/1',
@@ -133,5 +139,85 @@ describe('Media on a split', () => {
     });
     expect(separator()).not.toBeNull();
     expect(host.querySelector('.media-main')).toBe(main);
+  });
+});
+
+describe('Media and pinned media', () => {
+  const placing = {
+    ...manifest,
+    layers: [
+      {
+        id: 'set',
+        kind: 'photos',
+        name: 'Photos',
+        visible: true,
+        items: [
+          { id: 'wide', src: { path: 'photos/wide.jpg' } },
+          { id: 'gps', src: { path: 'photos/gps.jpg' }, pos: [1, 2, 3] },
+        ],
+      },
+      {
+        id: 'panos',
+        kind: 'panoramas',
+        name: '360s',
+        visible: true,
+        items: [
+          { id: 'free', src: { path: 'panos/free.jpg' }, headingDeg: 0 },
+          {
+            id: 'pinned',
+            src: { path: 'panos/pinned.jpg' },
+            headingDeg: 0,
+            pos: [0, 1.6, 0],
+            pin: { ground: [0, 0, 0], eyeM: 1.6 },
+          },
+        ],
+      },
+    ],
+  } as unknown as ProjectManifest;
+
+  let off: () => void;
+  beforeEach(() => {
+    off = registerPinActions();
+    workspace.getState().openProject({ id: 'p1', root: 'E:/projects/p1', manifest: placing });
+  });
+  afterEach(() => {
+    off();
+  });
+
+  const notPlaced = () =>
+    [...host.querySelectorAll<HTMLElement>('[data-testid="media-not-placed"]')].map(
+      (e) => e.dataset.item,
+    );
+
+  it('says Not placed on an unplaced 360 and photo, and Not lined up yet on a pin without heading', () => {
+    render();
+    expect(notPlaced().sort()).toEqual(['free', 'wide']);
+    expect(host.textContent).toContain('Not placed');
+    expect(host.textContent).toContain('Not lined up yet');
+  });
+
+  it('says Looks like a 360 on a 2:1 photo, with Treat as 360', async () => {
+    render();
+    await act(async () => {
+      await Promise.resolve();
+    });
+    const tile = host.querySelector('[data-photo="wide"]')?.closest('.m-tile');
+    expect(tile?.textContent).toContain('Looks like a 360');
+    expect(tile?.querySelector('[data-testid="media-treat-360"]')?.textContent).toBe(
+      'Treat as 360',
+    );
+    const other = host.querySelector('[data-photo="gps"]')?.closest('.m-tile');
+    expect(other?.textContent ?? '').not.toContain('Looks like a 360');
+  });
+
+  it('opens the pin actions on a right-click of a tile', () => {
+    render();
+    const tile = host.querySelector<HTMLElement>('[data-photo="gps"]');
+    act(() => {
+      tile?.dispatchEvent(
+        new MouseEvent('contextmenu', { bubbles: true, cancelable: true, clientX: 5, clientY: 5 }),
+      );
+    });
+    expect(document.querySelector('[data-testid="ctx-item-media.move"]')).not.toBeNull();
   });
 });

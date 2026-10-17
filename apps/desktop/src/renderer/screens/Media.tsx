@@ -46,6 +46,7 @@ import {
   useMediaRevealAsked,
   useMediaView,
 } from './mediaView';
+import { PanoPinChips, PhotoPinChips, useTileMenu } from './MediaPins';
 import { NoProject } from './NoProject';
 import { PageHeader } from '../shell/PageHeader';
 
@@ -253,6 +254,7 @@ export function MediaScreen() {
     [photoSets, findings, view],
   );
   const [openFlight, setOpenFlight] = useState<string | null>(null);
+  const tileMenu = useTileMenu();
   const shownFlight = flights.find((f) => f.id === openFlight) ?? flightOf(flights, activeClip);
   // The photo viewer follows the selection: a photo picked here, in 3D or from an issue.
   const photo =
@@ -520,31 +522,43 @@ export function MediaScreen() {
                       ? ` · ${f.label ? t('media.findings.tile', { count: f.count, severity: f.label }) : t('media.findings.tileUngraded', { count: f.count })}`
                       : '';
                     return (
-                      <button
+                      <div
                         key={p.id}
-                        type="button"
-                        data-photo={p.id}
-                        data-findings={f ? f.count : undefined}
-                        className={`m-card sq${on ? ' on' : ''}${f ? ' has-f' : ''}`}
-                        style={f ? { ['--c' as string]: f.color } : undefined}
-                        onClick={() => {
-                          workspace.getState().select({ kind: 'photo', id: p.id, layer: set.id });
+                        className="m-tile"
+                        onContextMenu={(e) => {
+                          tileMenu.open(e, { kind: 'photo', layerId: set.id, itemId: p.id });
                         }}
-                        title={`${p.id}${when}${what}`}
-                        aria-label={`${p.id}${what}`}
                       >
-                        <MediaThumb
-                          projectId={project.id}
-                          asset={p.src}
-                          icon="photo"
-                          overlay={
-                            f ? (
-                              <FindingsOverlay projectId={project.id} asset={p.src} findings={f} />
-                            ) : undefined
-                          }
-                        />
-                        {f && <FindingsBadge findings={f} />}
-                      </button>
+                        <button
+                          type="button"
+                          data-photo={p.id}
+                          data-findings={f ? f.count : undefined}
+                          className={`m-card sq${on ? ' on' : ''}${f ? ' has-f' : ''}`}
+                          style={f ? { ['--c' as string]: f.color } : undefined}
+                          onClick={() => {
+                            workspace.getState().select({ kind: 'photo', id: p.id, layer: set.id });
+                          }}
+                          title={`${p.id}${when}${what}`}
+                          aria-label={`${p.id}${what}`}
+                        >
+                          <MediaThumb
+                            projectId={project.id}
+                            asset={p.src}
+                            icon="photo"
+                            overlay={
+                              f ? (
+                                <FindingsOverlay
+                                  projectId={project.id}
+                                  asset={p.src}
+                                  findings={f}
+                                />
+                              ) : undefined
+                            }
+                          />
+                          {f && <FindingsBadge findings={f} />}
+                        </button>
+                        <PhotoPinChips projectId={project.id} layerId={set.id} photo={p} />
+                      </div>
                     );
                   })}
                 </div>
@@ -571,9 +585,13 @@ export function MediaScreen() {
                     key={p.id}
                     type="button"
                     className="m-card"
+                    data-pano={p.id}
                     onClick={() => {
                       workspace.getState().select({ kind: 'pano', id: p.id, layer: set.id });
                       shell.getState().go('scene');
+                    }}
+                    onContextMenu={(e) => {
+                      tileMenu.open(e, { kind: 'pano', layerId: set.id, itemId: p.id });
                     }}
                   >
                     <MediaThumb projectId={project.id} asset={panoCard(p).asset} icon="pano" />
@@ -586,12 +604,14 @@ export function MediaScreen() {
                           {t('pano.notStitched')}
                         </span>
                       )}
+                      <PanoPinChips pano={p} />
                     </div>
                   </button>
                 ))}
               </div>
             </section>
           ))}
+          {tileMenu.menu}
         </div>
         {viewerOpen && (
           <div {...splitHandle} aria-label={t('split.media')} aria-controls={viewerId}>

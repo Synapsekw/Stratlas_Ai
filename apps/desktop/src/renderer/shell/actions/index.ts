@@ -1,6 +1,7 @@
 import { registerDateActions } from './dateActions';
 import { registerKindActions } from './kindActions';
 import { registerLayerActions } from './layerActions';
+import { registerPinActions } from './pinActions';
 import { registerProjectActions } from './projectActions';
 
 let done = false;
@@ -13,4 +14,5 @@ export function registerSidebarActions(): void {
   registerDateActions();
   registerLayerActions();
   registerKindActions();
+  registerPinActions();
 }

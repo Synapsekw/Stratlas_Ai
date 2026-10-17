@@ -1,6 +1,7 @@
 import { useWorkspace } from '@aio/workspace';
 import { useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
+import { PinMediaHost } from '../pins/PinMediaHost';
 import { useShell } from '../shell';
 import { AlignCamera } from './AlignCamera';
 import { AlignPhoto } from './AlignPhoto';
@@ -84,6 +85,7 @@ export function BuilderLayer() {
       )}
       {screen === 'scene' && projectId && <DroneMenu />}
       {screen === 'scene' && projectId && <PhotoMenu />}
+      {screen === 'scene' && projectId && <PinMediaHost />}
       {screen === 'scene' && projectId && <PhotoPickInput />}
       {screen === 'scene' && aligning && <AlignCamera />}
       {screen === 'scene' && aligningPhoto && <AlignPhoto />}
