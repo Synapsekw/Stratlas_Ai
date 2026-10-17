@@ -40,6 +40,7 @@ from .survey.overlay import SurveyOverlay
 from .survey.prepare import SurveyPrepare
 from .survey.qa import SurveyQa
 from .survey.section import SurveySection
+from .telecom.pipeline import TelecomAntennas
 from .tiles.cloud import TilesCloud
 from .tiles.mesh import TilesMesh
 from .volumetric.build import VolumetricBuild
@@ -100,5 +101,7 @@ def all_pipelines() -> dict[str, Pipeline]:
         ModelEvidence(),
         # Point cloud cleanup (pipeline pack POINTCLOUD_CLEAN_MIN_PACK)
         PointcloudClean(),
+        # Telecom (pipeline pack 0.14.0)
+        TelecomAntennas(),
     ]
     return {p.name: p for p in items}
