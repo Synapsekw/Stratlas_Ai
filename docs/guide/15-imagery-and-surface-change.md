@@ -46,21 +46,21 @@ Two surveys of one site often sit a little apart, because each was placed on its
 There are two ways in:
 
 - **A notice.** When a new survey arrives and its ortho or DSM sits too far from another date's, a notice says so with **Line up dates** and **Not now**.
-- **On demand.** Click **Line up dates** in the **Changes** tab (it also appears when a change run is refused for a gap), or in the menu of a survey date.
+- **On demand.** In the **Changes** tab, after a change run is refused for a gap, click **Line up dates**, or use the menu of a survey date.
 
 In the step:
 
 1. Under **Keep in place**, choose the date that stays where it is. The other date moves onto it.
-2. Quadrion measures the gap and shows it as a shift to the east or west and to the north or south, with the total. A line says how confident the measurement is. If it cannot be trusted, the step says why and does not line up.
+2. {product} measures the gap and shows it as a shift to the east or west and to the north or south, with the total. A line says how confident the measurement is. If it cannot be trusted, the step says why and does not line up.
 3. A line lists what moves with the date: its datasets and the items drawn on it.
 4. Drag the divider in the preview to compare **Before** and **After**.
 5. Click **Line up**. A notice confirms it.
 
 After a change run was refused for a gap, it starts again by itself once the line-up is saved.
 
-**Undo.** The notice has **Undo**, or press Ctrl+Z. Ctrl+Y does it again.
+**Undo.** The notice has **Undo**, or press Ctrl+Z. Ctrl+Y does it again. Undo also works after **Remove line-up**.
 
-**Remove line-up.** The lined-up date shows "Lined up with ..." in its folder. Use **Remove line-up** there to put the date back at its file position.
+**Remove line-up.** A lined-up date's folder shows "Lined up with ..." as its tool tip. **Remove line-up** is an item in the date's menu: use it to put the date back at its file position.
 
 **What never moves:** common layers (those with no survey date), basemaps, terrain, and change results made before the line-up. Those results are marked out of date; click **Run again** to make them in the lined-up frame.
 
