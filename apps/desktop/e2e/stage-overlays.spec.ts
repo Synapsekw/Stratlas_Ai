@@ -15,7 +15,7 @@ import { mkdir } from 'node:fs/promises';
 import { join } from 'node:path';
 import { captionArea } from './caption';
 import { DEMO_FOLDER, expect, test } from './fixtures';
-import { closeIslandTools, islandGroup, islandSettled, stageMode } from './island';
+import { closeIslandTools, island, islandGroup, islandSettled, stageMode } from './island';
 import { openDemo } from './surveyJobs';
 
 test.use({ appEnv: { QUADRION_WINDOW_SIZE: '1100x720', QUADRION_DEMO: DEMO_FOLDER } });
@@ -314,6 +314,40 @@ test('docked, the video shares the stage across a divider, under or beside the v
   await win.getByRole('button', { name: 'Float the video window' }).click();
   await expect(divider).toHaveCount(0);
   await expect(win.getByTestId('video-window')).toBeVisible();
+});
+
+test.describe('a wider stage', () => {
+  test.use({ appEnv: { QUADRION_WINDOW_SIZE: '1400x800', QUADRION_DEMO: DEMO_FOLDER } });
+
+  test('the open island moves only the top corners it reaches across', async ({ win }, info) => {
+    await openTankFarm(win);
+    await foldRight(win);
+    const stage = win.locator('.ws > .stage');
+    const dates = stage.getByTestId('dates-on-screen');
+    const chip = stage.locator('[data-testid="basemap-button"], [data-testid="scene-map-button"]');
+    await expect(dates).toBeVisible(VIEW_READY);
+    const before = { dates: await dates.boundingBox(), chip: await chip.boundingBox() };
+    await win.locator('[data-scene-view] canvas').first().focus();
+    await win.keyboard.press('t');
+    await expect(island(win)).toHaveAttribute('data-state', 'tools');
+    await islandSettled(win);
+    // the island leaves both top corners clear: the dates and the Map menu chip stay up, where
+    // they were, beside it
+    await expect(stage).toHaveAttribute('data-isl-clear', 'tl tr');
+    const capsule = await win.locator('.island').boundingBox();
+    const after = { dates: await dates.boundingBox(), chip: await chip.boundingBox() };
+    expect(capsule && after.dates && after.chip && before.dates && before.chip).toBeTruthy();
+    if (capsule && after.dates && after.chip && before.dates && before.chip) {
+      expect(Math.round(after.dates.y)).toBe(Math.round(before.dates.y));
+      expect(Math.round(after.chip.y)).toBe(Math.round(before.chip.y));
+      expect(after.dates.y).toBeLessThan(capsule.y + capsule.height);
+      for (const b of [after.dates, after.chip])
+        expect(b.x + b.width <= capsule.x || capsule.x + capsule.width <= b.x).toBe(true);
+    }
+    await shot(win, info, 'island-open-corners-clear-1400.png');
+    await win.keyboard.press('Escape');
+    await expect(stage).not.toHaveAttribute('data-isl-clear');
+  });
 });
 
 test('a click through the volumes hint picks the pile under it', async ({ win }, info) => {

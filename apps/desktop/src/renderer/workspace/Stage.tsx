@@ -282,10 +282,10 @@ export interface StageCornersInput {
   /** The corners the Map menu chip wants: at the map's side of a split (default: the end). */
   basemapAt?: readonly Corner[];
   /**
-   * The open island reaches past the middle of the stage: the top corners are not free, or an
-   * overlay pushed under it would meet the bottom ones.
+   * The top corners the open island reaches across and past the middle of the stage: not free,
+   * or an overlay pushed under it would meet the bottom ones (useIslandReach).
    */
-  topTaken?: boolean;
+  topTaken?: readonly TopCorner[];
 }
 
 const END: readonly Corner[] = ['tr', 'br'];
@@ -330,12 +330,12 @@ export function useStageCorners(o: StageCornersInput): {
   const volHint = useVolumeHint() && o.show3d;
   const status = o.roadMeasure || cutaway || notice !== null;
   const basemapAt = o.basemapAt ?? END;
-  const topTaken = o.topTaken ?? false;
+  const topTaken = o.topTaken ?? NO_CORNERS;
   const slots = useMemo(() => {
     const items: SlotRequest[] = [
       ...o.video.map((c) => ({ id: `video-${c}`, want: [c] })),
-      // the top corners while the open island reaches past the middle
-      ...(topTaken ? (['tl', 'tr'] as const).map((c) => ({ id: `island-${c}`, want: [c] })) : []),
+      // the top corners the open island reaches across and past the middle
+      ...topTaken.map((c) => ({ id: `island-${c}`, want: [c] })),
       { id: 'status', want: status ? ['tl', 'bl'] : [] },
       { id: 'basemap', want: basemap ? basemapAt : [] },
       // the volumes hint at the foot, the corner away from the readout first (I-R51); in a split
@@ -401,23 +401,69 @@ const rtlUi = () => typeof document !== 'undefined' && document.documentElement.
 /** Room kept below the open island for a top overlay: a chip and its gap. */
 const TOP_SLOT_ROOM = 48;
 
+type TopCorner = 'tl' | 'tr';
+const TOP: readonly TopCorner[] = ['tl', 'tr'];
+
+export interface IslandReach {
+  /** The top corners the open island leaves clear: their overlays keep their place. */
+  clear: readonly TopCorner[];
+  /** The top corners it reaches across so far down that they are not free (topTaken). */
+  taken: readonly TopCorner[];
+}
+
+const NO_REACH: IslandReach = { clear: [], taken: [] };
+const sameCorners = (a: readonly TopCorner[], b: readonly TopCorner[]) =>
+  a.length === b.length && a.every((c, i) => c === b[i]);
+
 /**
- * Whether the open island (its bottom edge is --isl-open-b on the stage, Island.tsx) reaches so far
- * down that a top overlay under it would pass the middle of the stage. Also asks the stage to
- * draw again as the island and its T notice come, go and settle: the callouts read their
- * keep-out on a rendered frame, so they move off the notice then.
+ * Which top corners the open island (its bottom edge is --isl-open-b on the stage, Island.tsx)
+ * reaches across: a corner whose overlay lies beside the capsule and its T notice keeps its place
+ * (`clear`); one under them moves below the island, and when that passes the middle of the
+ * stage the corner is not free (`taken`) while it does, so its overlay does not come and go as
+ * the corner empties. Also asks the stage to draw again as the island and its T notice
+ * come, go and settle: the callouts read their keep-out on a rendered frame, so they move off
+ * the notice then.
  */
 function useIslandReach(
   stageRef: RefObject<HTMLDivElement | null>,
   engine: EngineStage | null,
-): boolean {
-  const [taken, setTaken] = useState(false);
+): IslandReach {
+  const [reach, setReach] = useState<IslandReach>(NO_REACH);
   useEffect(() => {
     const el = stageRef.current;
     if (!el) return;
+    // taken while the open island reaches past the middle: the corner it empties is not
+    // measured again (its overlay would come back, and go again)
+    let held = new Set<TopCorner>();
     const read = () => {
       const bottom = Number.parseFloat(el.style.getPropertyValue('--isl-open-b')) || 0;
-      setTaken(bottom > 0 && bottom + TOP_SLOT_ROOM > el.clientHeight / 2);
+      if (bottom <= 0) {
+        held = new Set();
+        setReach((r) => (r.clear.length || r.taken.length ? NO_REACH : r));
+        return;
+      }
+      const span = [
+        el.querySelector(':scope > .island-wrap .island'),
+        el.querySelector(':scope > .island-wrap > .isl-notice'),
+      ]
+        .map((e) => e?.getBoundingClientRect())
+        .filter((r): r is DOMRect => r !== undefined && r.width > 0);
+      const left = Math.min(...span.map((r) => r.left));
+      const right = Math.max(...span.map((r) => r.right));
+      const low = bottom + TOP_SLOT_ROOM > el.clientHeight / 2;
+      if (!low) held = new Set();
+      const clear: TopCorner[] = [];
+      for (const c of TOP) {
+        if (held.has(c)) continue;
+        const slot = el.querySelector(`.stage-slot[data-slot='${c}']`)?.getBoundingClientRect();
+        const under = slot !== undefined && slot.left < right && left < slot.right;
+        if (!under) clear.push(c);
+        else if (low) held.add(c);
+      }
+      const taken = TOP.filter((c) => held.has(c));
+      setReach((r) =>
+        sameCorners(r.clear, clear) && sameCorners(r.taken, taken) ? r : { clear, taken },
+      );
     };
     const redraw = () => {
       engine?.requestRender();
@@ -435,17 +481,21 @@ function useIslandReach(
     const wrap = el.querySelector(':scope > .island-wrap');
     const notice = new MutationObserver(redraw);
     if (wrap) notice.observe(wrap, { childList: true });
-    el.addEventListener('transitionend', redraw);
-    el.addEventListener('animationend', redraw);
+    const settled = () => {
+      read();
+      redraw();
+    };
+    el.addEventListener('transitionend', settled);
+    el.addEventListener('animationend', settled);
     return () => {
       ro.disconnect();
       style.disconnect();
       notice.disconnect();
-      el.removeEventListener('transitionend', redraw);
-      el.removeEventListener('animationend', redraw);
+      el.removeEventListener('transitionend', settled);
+      el.removeEventListener('animationend', settled);
     };
   }, [stageRef, engine]);
-  return taken;
+  return reach;
 }
 
 /** Map sightings go on the project's first map layer (or the plain basemap). */
@@ -584,7 +634,7 @@ export function Stage() {
   const divided = splitting && !closeup;
   const { containerRef: panesRef, handle: splitHandle } = useSplitDivider(divided);
   const roadMeasuring = useRoad((s) => Boolean(s.measure.mode));
-  const topTaken = useIslandReach(stageRef, engine);
+  const islandReach = useIslandReach(stageRef, engine);
   // the Map menu chip stands at the map's side of a split (physical sides: the panes are
   // left to right)
   const mapAtStart = splitting && sideMap !== undefined && (sideMap === 'left') !== rtlUi();
@@ -600,7 +650,7 @@ export function Stage() {
     video: showVideo && !docked ? videoCorners : NO_CORNERS,
     cursor: readoutCorner(show3d, splitting ? side3d : undefined, rtl),
     basemapAt: mapAtStart ? START : END,
-    topTaken,
+    topTaken: islandReach.taken,
   });
   // road keys first: they run before the stage keys below
   useRoadKeys(roadMap !== null);
@@ -714,7 +764,13 @@ export function Stage() {
     };
 
   return (
-    <div className="stage" ref={stageRef} data-mode={mode} data-pop-bounds>
+    <div
+      className="stage"
+      ref={stageRef}
+      data-mode={mode}
+      data-pop-bounds
+      data-isl-clear={islandReach.clear.length ? islandReach.clear.join(' ') : undefined}
+    >
       <VideoDock
         video={docked && showVideo && activeClip ? { layerId: activeClip, stageRef } : null}
       >

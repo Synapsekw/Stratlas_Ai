@@ -2185,7 +2185,7 @@ svg.flip {
 
 /* The stage's corner slots (D30, overlaySlots.ts): one overlay in each, around the top-centre
    island. The top ones start under the island's row and below the open island's bottom edge
-   while it is open (--isl-open-b, set by Island.tsx; I-R18); the end ones keep clear of the
+   while it is open and reaches across them (--isl-open-b, set by Island.tsx; I-R18); the end ones keep clear of the
    drawer where it covers the views (--views-cover) and of the road's close-up dock. */
 .stage-slot {
   --slot-end: max(var(--views-cover), var(--slot-dock, 0px));
@@ -2230,6 +2230,20 @@ svg.flip {
 /* in a split the map's zoom buttons sit below the pane chooser, and so does the slot */
 .stage[data-mode='split'] .stage-slot[data-slot='tr'] {
   top: max(calc(var(--pane-head-top) + 114px), calc(var(--isl-open-b, 0px) + var(--sp-4)));
+}
+/* a top corner the open island leaves clear keeps its place (data-isl-clear, useIslandReach in
+   Stage.tsx): the Map menu chip and the dates stay up beside a medium stage's island */
+.stage[data-isl-clear~='tl'] .stage-slot[data-slot='tl'] {
+  top: 54px;
+}
+.stage[data-isl-clear~='tr'] .stage-slot[data-slot='tr'] {
+  top: 126px;
+}
+.stage[data-mode='split'][data-isl-clear~='tl'] .stage-slot[data-slot='tl'] {
+  top: calc(var(--pane-head-top) + 40px);
+}
+.stage[data-mode='split'][data-isl-clear~='tr'] .stage-slot[data-slot='tr'] {
+  top: calc(var(--pane-head-top) + 114px);
 }
 /* over the map's scale bar and the 3D view's foot */
 .stage-slot[data-slot='bl'] {

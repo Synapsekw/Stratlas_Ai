@@ -183,12 +183,20 @@ describe('the stage corners', () => {
   });
 
   it('keeps the top corners free while the open island reaches past the middle', () => {
-    render({ video: [], topTaken: true });
+    render({ video: [], topTaken: ['tl', 'tr'] });
     expect(slots().map((s) => s.corner)).not.toContain('tl');
     expect(slots().map((s) => s.corner)).not.toContain('tr');
     // the dates and the Map menu chip go to the foot, the readout gives way
     expect(slotOf('dates-on-screen')).toBe('bl');
     expect(slotOf('scene-map-button')).toBe('br');
+  });
+
+  it('keeps only the top corner the open island reaches across', () => {
+    render({ video: [], topTaken: ['tl'] });
+    expect(slots().map((s) => s.corner)).not.toContain('tl');
+    // the Map menu chip keeps its corner; the dates go to the foot
+    expect(slotOf('scene-map-button')).toBe('tr');
+    expect(slotOf('dates-on-screen')).toBe('bl');
   });
 
   it('puts the Map menu chip at the map side of a split', () => {
