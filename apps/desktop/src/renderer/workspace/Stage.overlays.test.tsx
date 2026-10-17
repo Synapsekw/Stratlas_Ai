@@ -6,6 +6,10 @@ import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { threeDates } from './__fixtures__/threeDates';
+import type { CoverageGrids } from '../rf/coverageGrids';
+import { rfLayer } from '../rf/coverageDisplay';
+import { clearCoverage, coverage } from '../rf/coverageStore';
+import { resetRf, rfStore } from '../rf/rfStore';
 import { compareNotice } from './compare';
 import { readoutCorner, useStageCorners, type StageCornersInput } from './Stage';
 import { timeline } from './timeline';
@@ -44,6 +48,7 @@ function Corners(p: Partial<StageCornersInput>) {
     roadMeasure: false,
     video: [],
     cursor: 'br',
+    rfLegend: false,
     ...p,
   });
   return (
@@ -89,7 +94,18 @@ afterEach(() => {
   volumetric.setState({ status: 'idle' });
   timeline.getState().attach(null, null);
   workspace.getState().closeProject();
+  clearCoverage();
+  resetRf();
+  rfLayer.setState({ visible: true });
 });
+
+/** The Coverage layer draws a live preview (the working copy has changes). */
+function coverageShown() {
+  rfStore.setState({ dirty: true, view: 'rsrp' });
+  coverage.setState({
+    preview: { key: 'p1', source: 'preview', sectorIds: [] } as unknown as CoverageGrids,
+  });
+}
 
 describe('the stage corners', () => {
   it('shows no PAUSED or playing chip for the active clip: playback is the island live item', () => {
@@ -213,6 +229,34 @@ describe('the stage corners', () => {
   it('puts the Map menu chip at the map side of a split', () => {
     render({ show3d: true, showMap: true, splitting: true, basemapAt: ['tl', 'bl'] });
     expect(slotOf('basemap-button')).toBe('tl');
+  });
+
+  it('gives the coverage legend and the volumes hint bottom corners of their own (1100 px)', () => {
+    // the CI window, 1100 px wide: no video, the readout at the foot of the end
+    volumetric.setState({ status: 'ready', surface: 'photo', selected: null, shown: [] });
+    coverageShown();
+    render({ video: [], rfLegend: true });
+    expect(slotOf('vol-hint')).toBe('bl');
+    expect(slotOf('rf-legend')).toBe('br');
+    // the readout gives way to the legend in its corner
+    expect(host.querySelector('.stage')?.hasAttribute('data-cursor-hidden')).toBe(true);
+    // right to left the readout stands at bl: the hint takes br, the legend bl
+    render({ video: [], rfLegend: true, cursor: 'bl' });
+    expect(slotOf('vol-hint')).toBe('br');
+    expect(slotOf('rf-legend')).toBe('bl');
+    const corners = slots().map((s) => s.corner);
+    expect(new Set(corners).size).toBe(corners.length);
+  });
+
+  it('gives the coverage legend no slot while it is off', () => {
+    coverageShown();
+    render({ video: [], rfLegend: false });
+    expect(slotOf('rf-legend')).toBeUndefined();
+    // the readout keeps its corner
+    expect(host.querySelector('.stage')?.hasAttribute('data-cursor-hidden')).toBe(false);
+    // on, it takes the foot of the end, before the readout
+    render({ video: [], rfLegend: true });
+    expect(slotOf('rf-legend')).toBe('br');
   });
 
   it('hides the coordinates readout when the video rests in its corner', () => {

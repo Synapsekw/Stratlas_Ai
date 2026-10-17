@@ -3,10 +3,9 @@
  * (three accepted panels, one draft, no `rf/` folder, `rfFixtures.ts`), the Coverage… project
  * action, the RF tab, the real `rf.coverage` pipeline job in the development venv (as the antenna
  * detection spec runs its job), the live preview, a second run, a GeoTIFF export and a reload.
- *
- * The coverage legend is not mounted on the stage until stage 3 (ruling R4, `TODO(stage-3 T21)`
- * in `rf/RfLayer.tsx`), so the classes are checked in the RF tab's class table and in the Display
- * bench's Coverage group instead. When the legend is mounted, assert on `rf-legend-<class>` here.
+ * The classes are checked in the RF tab's class table, the Display bench's Coverage group and the
+ * coverage legend in its stage corner (ruling I3), which keeps clear of the readout, the volumes
+ * hint and the island.
  */
 import type { ElectronApplication, Locator, Page } from '@playwright/test';
 import { mkdir, readdir, readFile, stat } from 'node:fs/promises';
@@ -33,6 +32,7 @@ const TINY_ORIGIN = tinyManifest().origin;
 const AAU = 'generic-aau-64t64r-n78';
 const AAU_NAME = /AAU 64T64R 3\.5 GHz 200 W/;
 const CLASS_NAMES = ['Excellent', 'Good', 'Fair', 'Poor', 'No service'];
+const CLASS_KEYS = ['excellent', 'good', 'fair', 'poor', 'none'];
 
 /**
  * Screenshots for a person to look at, only when AIO_EVIDENCE_DIR names a folder (never on CI);
@@ -140,6 +140,40 @@ async function viewSiteFromAbove(win: Page): Promise<void> {
   );
 }
 
+/**
+ * What the coverage legend covers on the stage: the coordinates readout, the volumes hint, the
+ * island and any other corner overlay, by name (none when it keeps clear of them all).
+ */
+const legendCovers = (win: Page) =>
+  win.evaluate(() => {
+    const box = (el: Element | null) => {
+      const r = el?.getBoundingClientRect();
+      return r && r.width > 0 && r.height > 0 ? r : null;
+    };
+    const legend = box(document.querySelector('[data-testid="rf-legend"]'));
+    if (!legend) return ['no legend'];
+    const others: [string, Element | null][] = [
+      ['readout', document.querySelector('.pane-3d:not(.is-hidden) .cursor-ro')],
+      ['volumes hint', document.querySelector('[data-testid="vol-hint"]')],
+      ['island', document.querySelector('[role="toolbar"][aria-label="Stage tools"]')],
+      ...[...document.querySelectorAll('.stage-slot')]
+        .filter((s) => !s.querySelector('[data-testid="rf-legend"]'))
+        .map((s): [string, Element] => [`slot ${(s as HTMLElement).dataset.slot ?? ''}`, s]),
+    ];
+    return others
+      .filter(([, el]) => {
+        const b = box(el);
+        return (
+          b !== null &&
+          legend.left < b.right &&
+          b.left < legend.right &&
+          legend.top < b.bottom &&
+          b.top < legend.bottom
+        );
+      })
+      .map(([name]) => name);
+  });
+
 async function stubSaveDialog(app: ElectronApplication, file: string): Promise<void> {
   await app.evaluate(({ dialog }, target) => {
     dialog.showSaveDialog = () => Promise.resolve({ canceled: false, filePath: target });
@@ -235,9 +269,17 @@ test('coverage from the project menu: run, preview, new run, GeoTIFF, reopen', a
   // the run is drawn in the 3D view and on the map
   await expect.poll(() => sceneCoverageVisible(win), { timeout: 30_000 }).toBe(true);
   await viewSiteFromAbove(win);
+  // the legend in its stage corner: every class, clear of the readout, the hint and the island
+  const legend = win.getByTestId('rf-legend');
+  await expect(legend).toBeVisible();
+  for (const c of CLASS_KEYS) await expect(legend.getByTestId(`rf-legend-${c}`)).toBeVisible();
+  await expect(legend.locator('.rf-legend-row')).toHaveCount(CLASS_KEYS.length);
+  await expect.poll(() => legendCovers(win)).toEqual([]);
   await evidence(win, 'coverage-in-3d');
   await stageMode(win, 'Map');
   await expect.poll(() => mapHasCoverage(win), { timeout: 60_000 }).toBe(true);
+  await expect(legend).toBeVisible();
+  await expect.poll(() => legendCovers(win)).toEqual([]);
   await evidence(win, 'coverage-on-map');
   await stageMode(win, '3D');
 
