@@ -25,6 +25,7 @@ import {
   type DataRoot,
 } from './fixtures';
 import { expectRegionsMatchTruth, type Item, type RasterTruth } from './changeRaster';
+import { toggleCompareDates } from './island';
 import { choosePane } from './panoFixtures';
 
 interface Misaligned {
@@ -557,7 +558,7 @@ test('the lined-up date lines up in 3D, on the map and for pins', async ({ lined
 
   // two maps: both dates' orthos start at the same corner
   await win.keyboard.press('2');
-  await win.getByTestId('compare-dates').click();
+  await toggleCompareDates(win);
   await expect(win.getByTestId('pane-map-compare')).toBeVisible();
   for (const side of [0, 1]) {
     await expect
@@ -571,7 +572,7 @@ test('the lined-up date lines up in 3D, on the map and for pins', async ({ lined
 
   // Swipe: leave the two maps, put the orthos side by side and drag the divider over them. The
   // tanks and buildings stand at the same columns whichever date shows (no 2 m step at an edge).
-  await win.getByTestId('compare-dates').click();
+  await toggleCompareDates(win);
   await win.keyboard.press('3');
   await choosePane(win, 'left', 'raster', 'd1');
   await choosePane(win, 'right', 'raster', 'd2');
