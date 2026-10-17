@@ -33,7 +33,7 @@
 .compare-view {
   position: absolute;
   /* the row above the pane headers, under Compare's tools beside the island */
-  top: calc(var(--pane-head-top, 122px) - 36px);
+  top: calc(var(--pane-head-top) - var(--compare-view-h));
   left: 50%;
   transform: translateX(-50%);
   z-index: 9;

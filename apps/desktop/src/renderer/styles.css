@@ -1796,9 +1796,15 @@ button.chip-status:hover {
 }
 .stage {
   --dock-w: clamp(320px, 36%, 560px);
-  /* where a split pane's header strip stands: under the island, and under Compare's tools and
-     "How compare works" beside it while two dates are compared (CompareControls.tsx) */
-  --pane-head-top: 54px;
+  /* The split's header heights, in one place (D31). A pane's header strip stands under the
+     island's row (--isl-row-b), and further down under Compare's "How compare works" (one row)
+     and two maps' Side by side, Swipe and Blend row (--compare-view-h) while they show: the
+     three states of --pane-head-top below. A pane's own content starts under the strip. */
+  --isl-row-b: 54px;
+  --compare-how-h: 32px;
+  --compare-view-h: 36px;
+  --pane-head-top: var(--isl-row-b);
+  --pane-content-top: calc(var(--pane-head-top) + 36px);
   /* how much of the views the drawer covers: the drawer's cover of the stage's end edge
      (--drawer-inline, Drawer.tsx) less a video docked beside the views (--vdock-w) */
   --views-cover: max(0px, var(--drawer-inline, 0px) - var(--vdock-w, 0px));
@@ -1873,7 +1879,7 @@ button.chip-status:hover {
 .pane-x {
   display: flex;
   flex-direction: column;
-  padding-top: calc(var(--pane-head-top) + 36px);
+  padding-top: var(--pane-content-top);
   background: var(--bg-0);
 }
 .pane-x > .scene-fill,
@@ -2042,12 +2048,12 @@ button.chip-status:hover {
 }
 /* Compare's tools beside the island, "How compare works" under them; the pane headers below */
 .stage:has(.isl-aside .compare-how) {
-  --pane-head-top: 86px;
+  --pane-head-top: calc(var(--isl-row-b) + var(--compare-how-h));
 }
 /* and two maps or orthos compared: Side by side, Swipe and Blend (MapSwipe.tsx) take the row above
    the headers */
 .stage:has(.stage-panes > .compare-view) {
-  --pane-head-top: 122px;
+  --pane-head-top: calc(var(--isl-row-b) + var(--compare-how-h) + var(--compare-view-h));
 }
 .compare-group {
   display: flex;
