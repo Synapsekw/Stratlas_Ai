@@ -271,6 +271,8 @@ export function DetectAntennas(): ReactElement | null {
       )}
       {showPanel && (
         <section ref={panel} data-testid="antenna-panel" aria-label={t('telecom.antennas.title')}>
+          {/* the scene's h1 is above; the unit details below are an h3 */}
+          <h2 className="sr-only">{t('telecom.antennas.title')}</h2>
           {(s.message ?? note) && (
             <p className="telecom-help" role="status">
               {s.message ?? note}

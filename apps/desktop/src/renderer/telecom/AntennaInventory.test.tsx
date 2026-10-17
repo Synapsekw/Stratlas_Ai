@@ -90,6 +90,7 @@ describe('AntennaInventory', () => {
     });
     const heads = [...host.querySelectorAll('h4')].map((h) => h.textContent);
     expect(heads).toEqual(['Panel antennas', 'Microwave dishes', 'Other equipment']);
+    expect([...host.querySelectorAll('h4[aria-hidden="true"]')]).toHaveLength(3);
     expect(rows().map((r) => r.textContent.slice(0, 2))).toEqual(['A1', 'A2', 'A3']);
     const two = fileOf([mk('ant-1', 'panel'), mk('ant-2', 'short'), mk('ant-3', 'other')]);
     show({ file: two });

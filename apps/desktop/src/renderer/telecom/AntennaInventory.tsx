@@ -173,7 +173,8 @@ export function AntennaInventory(props: AntennaInventoryProps): ReactElement {
     .filter((s): s is string => s !== null)
     .join(' · ');
   return (
-    <div style={{ display: 'grid', gap: 'var(--sp-4)' }}>
+    // minmax(0, 1fr): a long row ellipsizes in a narrow aside instead of widening the column
+    <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr)', gap: 'var(--sp-4)' }}>
       <p className="mono" data-testid="antenna-summary" style={{ margin: 0 }}>
         {summary}
       </p>
@@ -183,7 +184,9 @@ export function AntennaInventory(props: AntennaInventoryProps): ReactElement {
           if (units.length === 0) return null;
           return (
             <div key={kind} role="group" aria-label={t(`telecom.antennas.kind.${kind}`)}>
+              {/* the group's label says it; a tree holds groups and items, not headings */}
               <h4
+                aria-hidden="true"
                 style={{
                   margin: 0,
                   padding: 'var(--sp-3) var(--sp-4)',
