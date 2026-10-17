@@ -93,7 +93,7 @@ describe('the coverage legend', () => {
   it('carries the indicative and assumptions line', () => {
     show('rsrp');
     expect(text('rf-legend-indicative')).toBe(
-      'Indicative: flat ground, no buildings, untuned model, about 8 dB either way. Assumes Outdoor (0 dB margin), phone at 1.5 m.',
+      'Indicative: flat ground, no buildings, untuned model, about 8 dB either way. Assumes Outdoor, 13.3 dB of margin in all, phone at 1.5 m.',
     );
   });
 

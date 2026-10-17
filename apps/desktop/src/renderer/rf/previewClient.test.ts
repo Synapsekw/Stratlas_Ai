@@ -171,6 +171,29 @@ describe('the preview Worker round trip', () => {
     expect(new Set(r.output.bestServer).size).toBeGreaterThanOrEqual(3);
   });
 
+  it('drops the grids a new plan no longer uses, so the Worker does not keep every old one', async () => {
+    const s = setup();
+    const first = previewPlan(s, new Map());
+    if (!first) throw new Error('no plan');
+    const { client: port, posted } = channel();
+    const client = connectPreview(port);
+    client.pathLoss(first.grid, first.radiusM, first.pathLoss);
+    await client.preview(first.request);
+    // a typed height: a new path-loss key for every antenna
+    const rows = s.rows.map((r) => ({ ...r, height: { ...r.height, heightM: 25 } }));
+    const second = previewPlan({ ...s, rows }, new Map());
+    if (!second) throw new Error('no plan');
+    const oldKey = first.pathLoss[0]?.key ?? '';
+    expect(second.pathLoss.map((j) => j.key)).not.toContain(oldKey);
+    client.pathLoss(second.grid, second.radiusM, second.pathLoss);
+    expect(posted.filter((m) => m.type === 'path-loss:drop')).toEqual([
+      { type: 'path-loss:drop', key: oldKey },
+    ]);
+    // the new plan still previews; the dropped grid is gone from the Worker
+    await expect(client.preview(second.request)).resolves.toBeDefined();
+    await expect(client.preview(first.request)).rejects.toThrow(/path-loss/);
+  });
+
   it('answers a refused request with its reason, and fails what is out when it is closed', async () => {
     const plan = previewPlan(setup(), new Map());
     if (!plan) throw new Error('no plan');

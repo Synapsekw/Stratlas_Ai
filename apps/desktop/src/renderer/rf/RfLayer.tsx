@@ -7,7 +7,8 @@
  */
 import { assetUrl, useWorkspace } from '@aio/workspace';
 import { useEffect, useMemo, useRef } from 'react';
-import { Vector3 } from 'three';
+import { shiftEN } from '@aio/schema';
+import { appBoundsDeps } from '../shell/appBounds';
 import { useMap, useScene } from '../builder/activeViews';
 import { imageUrl } from './coverageCanvas';
 import { coverageImage } from './coverageImage';
@@ -60,31 +61,39 @@ function useDsmGround(): void {
   const scene = useScene();
   const manifest = useWorkspace((s) => s.project?.manifest ?? null);
   const projectId = useRf((s) => s.projectId);
-  const needed = useRf((s) => s.antennas !== null && s.antennas.run.groundZ === undefined);
+  const antennas = useRf((s) => s.antennas);
+  const needed = antennas !== null && antennas.run.groundZ === undefined;
   useEffect(() => {
     if (!needed || !scene || !manifest) return;
     const dsm = manifest.layers
       .filter((l) => l.kind === 'raster' && l.role === 'dsm')
       .map((l) => l.id);
     if (dsm.length === 0) return;
-    setDsmGroundProvider(
-      dsmGroundProvider(dsm, manifest.origin, (x, z, layer) => {
-        const hit = scene.raycastRay(new Vector3(x, 20_000, z), new Vector3(0, -1, 0), { layer });
-        return hit ? hit.point.y : null;
-      }),
+    // the shell's ray straight down onto one layer (Drop to ground's DSM ground)
+    const deps = appBoundsDeps();
+    const provider = dsmGroundProvider(dsm, manifest.origin, (x, z, layer) =>
+      deps.rayDown(x, z, layer),
     );
+    // the inventory is stored unshifted; its tower is drawn moved by its date's line-up shift
+    const shift = coverageShift(antennas, manifest);
+    setDsmGroundProvider((east, north) => {
+      const [e, n] = shiftEN([east, north] as [number, number], shift);
+      return provider(e, n);
+    });
     refreshPreview();
     return () => {
       setDsmGroundProvider(null);
     };
-  }, [needed, scene, manifest, projectId]);
+  }, [needed, scene, manifest, projectId, antennas]);
 }
 
 export function RfLayer(): null {
   useRfProject();
   useDsmGround();
 
-  // the run and preview controller, with the preview Worker started when first needed
+  // the run and preview controller, with the preview Worker started when first needed; a new
+  // project starts both again, so no path-loss grid of the last project stays in memory
+  const projectId = useWorkspace((s) => s.project?.id ?? null);
   useEffect(() => {
     let client: PreviewClient | null = null;
     const stop = startCoverage({
@@ -95,7 +104,7 @@ export function RfLayer(): null {
       stop();
       client?.dispose();
     };
-  }, []);
+  }, [projectId]);
 
   const manifest = useWorkspace((s) => s.project?.manifest ?? null);
   const dirty = useRf((s) => s.dirty);
@@ -148,12 +157,12 @@ export function RfLayer(): null {
   );
   useEffect(() => {
     mapView.current?.draw({
-      image: url && placed ? { url, corners: placed.corners } : null,
+      image: url && placed ? { key: imageKey, url, corners: placed.corners } : null,
       arrows: placed?.arrows ?? [],
       visible,
       opacity,
     });
-  }, [map, url, placed, visible, opacity]);
+  }, [map, url, imageKey, placed, visible, opacity]);
 
   // ---- the 3D view
   const scene = useScene();

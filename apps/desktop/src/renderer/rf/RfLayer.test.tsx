@@ -32,6 +32,9 @@ import { patchSettings, resetRf, rfStore } from './rfStore';
 const h = vi.hoisted(() => ({
   antennas: null as AntennasFile | null,
   sectors: null as RfSectorsFile | null,
+  runs: [] as unknown[],
+  workers: { started: 0, terminated: 0 },
+  rays: [] as [number, number][],
   map: null as object | null,
   scene: null as object | null,
 }));
@@ -39,7 +42,7 @@ const h = vi.hoisted(() => ({
 vi.mock('../shell', async (importOriginal) => ({
   ...(await importOriginal<typeof ShellModule>()),
   bridge: {
-    call: vi.fn((channel: string) => {
+    call: vi.fn((channel: string, req?: unknown) => {
       switch (channel) {
         case 'telecom:readAntennas':
           return Promise.resolve({
@@ -61,7 +64,15 @@ vi.mock('../shell', async (importOriginal) => ({
             },
           });
         case 'rf:listRuns':
-          return Promise.resolve({ ok: true, value: { ok: true, runs: [] } });
+          return Promise.resolve({ ok: true, value: { ok: true, runs: structuredClone(h.runs) } });
+        case 'rf:readRun': {
+          const runs = h.runs as { runId: string }[];
+          const run = runs.find((r) => r.runId === (req as { runId: string }).runId);
+          return Promise.resolve({
+            ok: true,
+            value: run ? { ok: true, run } : { ok: false, error: 'no' },
+          });
+        }
         default:
           return Promise.resolve({ ok: true, value: { ok: true } });
       }
@@ -74,6 +85,15 @@ vi.mock('../builder/activeViews', () => ({
   useMap: () => h.map,
   useScene: () => h.scene,
 }));
+// the shell's ray straight down onto a layer: a flat DSM 5 m above the project origin
+vi.mock('../shell/appBounds', () => ({
+  appBoundsDeps: () => ({
+    rayDown: (x: number, z: number) => {
+      h.rays.push([x, z]);
+      return 5;
+    },
+  }),
+}));
 // jsdom has no canvas: any URL stands for the picture
 vi.mock('./coverageCanvas', () => ({
   imageUrl: (img: { width: number; height: number }) =>
@@ -85,8 +105,12 @@ vi.mock('./previewClient', async (importOriginal) => {
   return {
     ...real,
     startPreviewWorker: () => {
+      h.workers.started++;
       const client: PreviewClientPort = {
         onmessage: null,
+        terminate() {
+          h.workers.terminated++;
+        },
         postMessage(m) {
           queueMicrotask(() => worker.onmessage?.({ data: m }));
         },
@@ -106,6 +130,7 @@ vi.mock('./previewClient', async (importOriginal) => {
 /** A MapLibre stand-in: its sources, its layers and their visibility. */
 function fakeMap() {
   const sources = new Map<string, Record<string, unknown>>();
+  const order: string[] = [];
   const layers = new Map<
     string,
     { layout: Record<string, unknown>; paint: Record<string, unknown> }
@@ -122,14 +147,19 @@ function fakeMap() {
     },
     removeSource: (id: string) => sources.delete(id),
     getLayer: (id: string) => layers.get(id),
-    addLayer: (l: {
-      id: string;
-      layout?: Record<string, unknown>;
-      paint?: Record<string, unknown>;
-    }) => {
+    addLayer: (
+      l: { id: string; layout?: Record<string, unknown>; paint?: Record<string, unknown> },
+      before?: string,
+    ) => {
       layers.set(l.id, { layout: { ...l.layout }, paint: { ...l.paint } });
+      const at = before === undefined ? -1 : order.indexOf(before);
+      if (at < 0) order.push(l.id);
+      else order.splice(at, 0, l.id);
     },
-    removeLayer: (id: string) => layers.delete(id),
+    removeLayer: (id: string) => {
+      order.splice(order.indexOf(id), 1);
+      return layers.delete(id);
+    },
     setPaintProperty: (id: string, k: string, v: unknown) => {
       const l = layers.get(id);
       if (l) l.paint[k] = v;
@@ -142,7 +172,7 @@ function fakeMap() {
     off: () => undefined,
     once: () => undefined,
   };
-  return { ctl: { map }, sources, layers };
+  return { ctl: { map }, sources, layers, order };
 }
 
 function fakeScene() {
@@ -174,6 +204,8 @@ async function until(fn: () => boolean, label: string) {
 
 beforeEach(async () => {
   resetRf();
+  h.runs = [];
+  h.workers = { started: 0, terminated: 0 };
   setRfLayerStorage(null);
   loadRfLayer(null);
   const file = antennasFile([unit('ant-a', 0), unit('ant-b', 120), unit('ant-c', 240)]);
@@ -325,5 +357,97 @@ describe('the Coverage layer', () => {
     await until(() => !map.sources.has(COVERAGE_SOURCE), 'cleared');
     expect(rfStore.getState().preview.status).toBe('idle');
     expect(rfStore.getState().classStats).toBeNull();
+  });
+
+  it('draws the picture under the boresight arrows, whichever came first', async () => {
+    // the arrows' layer is there before any picture (the first draw has none)
+    expect(map.order).toContain(BORESIGHT_LAYER);
+    await preview();
+    expect(map.order.indexOf(COVERAGE_LAYER)).toBeLessThan(map.order.indexOf(BORESIGHT_LAYER));
+  });
+
+  it('puts the preview Worker away and starts a new one for another project', async () => {
+    await preview();
+    expect(h.workers).toEqual({ started: 1, terminated: 0 });
+    act(() => {
+      workspace.getState().openProject({ id: 'p-rf-2', root: '/p-rf-2', manifest: threeDates });
+    });
+    await until(() => rfStore.getState().projectId === 'p-rf-2', 'second project');
+    expect(h.workers.terminated).toBe(1);
+    expect(coverage.getState().preview).toBeNull();
+  });
+});
+
+describe('a project that opens with runs', () => {
+  it('shows its newest finished run once, and a later "No run chosen" stays', async () => {
+    const r = (runId: string, createdAt: string, status: 'done' | 'failed') => ({
+      runId,
+      createdAt,
+      status,
+    });
+    act(() => {
+      root.unmount();
+    });
+    resetRf();
+    h.runs = [
+      r('rf-failed', '2026-10-17T12:00:00Z', 'failed'),
+      r('rf-new', '2026-10-17T11:00:00Z', 'done'),
+      r('rf-old', '2026-10-17T10:00:00Z', 'done'),
+    ];
+    workspace.getState().openProject({ id: 'p-runs', root: '/p-runs', manifest: threeDates });
+    root = createRoot(host);
+    act(() => {
+      root.render(<RfLayer />);
+    });
+    await until(() => rfStore.getState().selectedRunId !== null, 'selected');
+    expect(rfStore.getState().selectedRunId).toBe('rf-new');
+    const { selectRun, refreshRuns } = await import('./rfStore');
+    await act(async () => {
+      await selectRun(null);
+      await refreshRuns();
+    });
+    await wait(50);
+    expect(rfStore.getState().selectedRunId).toBeNull();
+  });
+});
+
+describe('the DSM ground', () => {
+  it('samples the DSM around the tower where it is drawn, line-up shift applied', async () => {
+    act(() => {
+      root.unmount();
+    });
+    resetRf();
+    h.rays = [];
+    const file = antennasFile([unit('ant-a', 0)], null);
+    h.antennas = { ...file, run: { ...file.run, captureId: 'cap-1' } };
+    const p = workspace.getState().project;
+    if (!p) throw new Error('no project');
+    const manifest = {
+      ...p.manifest,
+      layers: [
+        ...p.manifest.layers,
+        {
+          kind: 'raster',
+          id: 'dsm-1',
+          name: 'DSM',
+          role: 'dsm',
+          format: 'cog',
+          src: { path: 'dsm.tif' },
+          corners: { tl: [0, 0, 0], tr: [1, 0, 0], bl: [0, 0, 1] },
+        },
+      ],
+    } as unknown as ProjectManifest;
+    workspace.getState().openProject({ id: 'p-dsm', root: '/p-dsm', manifest });
+    root = createRoot(host);
+    act(() => {
+      root.render(<RfLayer />);
+    });
+    await until(() => rfStore.getState().rows[0]?.height.basis === 'estimated', 'estimated height');
+    // the unit at E 500000, N 2700000 drawn 12 m east and 7 m south: local x 12, z 7
+    const mean = (k: 0 | 1) => h.rays.reduce((a, r) => a + r[k], 0) / h.rays.length;
+    expect(mean(0)).toBeCloseTo(12, 6);
+    expect(mean(1)).toBeCloseTo(7, 6);
+    // the DSM at 5 m local is 105 m: the box centre at 131.5 m is 26.5 m above it
+    expect(rfStore.getState().rows[0]?.height.heightM).toBeCloseTo(26.5, 6);
   });
 });

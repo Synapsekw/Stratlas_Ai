@@ -16,7 +16,7 @@ import {
   type RfRun,
   type RfThresholds,
 } from '@aio/schema';
-import { captureShift, dateShiftOf } from '@aio/workspace';
+import { antennaShift } from '../telecom/antennaScene';
 import { RSRP_CLASSES, classOf } from './coverageRamp';
 import type { RfClassStat } from './rfStore';
 
@@ -149,20 +149,14 @@ export function classStatsOf(g: CoverageGrids): RfClassStat[] {
 }
 
 /**
- * The line-up shift of the survey date the antenna inventory belongs to (its run's `captureId`,
- * else the cloud layer's date in an older file); null when that date is not lined up. The
- * coverage is computed from that inventory, so it moves with it (R9).
+ * The line-up shift of the survey date the antenna inventory belongs to, by the inventory's own
+ * rule (telecom `antennaShift`: its run's `captureId`, else the cloud layer's date); null when that
+ * date is not lined up. The coverage is computed from that inventory, so it moves with it (R9).
  */
-export function coverageShift(
-  antennas: Pick<AntennasFile, 'run'> | null,
+export const coverageShift: (
+  antennas: AntennasFile | null,
   manifest: Pick<ProjectManifest, 'captures' | 'layers'> | null,
-): DateShift | null {
-  if (!antennas || !manifest) return null;
-  const { captureId, cloudLayer } = antennas.run;
-  return captureId !== undefined
-    ? captureShift(manifest, captureId)
-    : dateShiftOf(manifest, cloudLayer);
-}
+) => DateShift | null = antennaShift;
 
 /** Project CRS (east, north) corners of the grid as drawn: tl, tr, br, bl, line-up shift applied. */
 export function gridCorners(

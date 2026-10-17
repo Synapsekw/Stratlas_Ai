@@ -1,7 +1,7 @@
 /**
  * The Coverage group of the Display bench's layer list (spec D12, D23a; ruling R3): built from the
  * RF store, not the manifest. One row with an eye that hides the coverage on the map and in the
- * 3D view together, and the opacity slider the legend also shows (one state, `rfLayer.ts`).
+ * 3D view together, and the opacity slider the legend also shows (one state, `coverageDisplay.ts`).
  * Shown when the project has an antenna inventory or a coverage run.
  */
 import { IconButton, Row, useT } from '@aio/ui';

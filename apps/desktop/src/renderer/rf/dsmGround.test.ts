@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { dsmGroundAt, dsmGroundProvider, percentileOf } from './dsmGround';
+import { dsmGroundAt, dsmGroundProvider } from './dsmGround';
 
 const ORIGIN = [500_000, 2_700_000, 100] as const;
 
@@ -42,11 +42,5 @@ describe('the DSM ground near a tower base', () => {
     const n = second;
     expect(p(500_000, 2_700_000)).toBe(105);
     expect(second).toBe(n);
-  });
-
-  it('interpolates percentiles like numpy', () => {
-    expect(percentileOf([1, 2, 3, 4, 5], 50)).toBe(3);
-    expect(percentileOf([0, 10], 5)).toBeCloseTo(0.5, 10);
-    expect(percentileOf([], 5)).toBeNull();
   });
 });

@@ -16,8 +16,11 @@ export const BORESIGHT_LAYER = 'aio-rf-boresight';
 type LonLat = [number, number];
 
 export interface CoverageMapDraw {
-  /** The picture as an image URL (PNG data URL) and its corners tl, tr, br, bl; null: nothing. */
-  image: { url: string; corners: [LonLat, LonLat, LonLat, LonLat] } | null;
+  /**
+   * The picture as an image URL (PNG data URL), what it shows (`key`: the grids, view and look;
+   * compared instead of the URL) and its corners tl, tr, br, bl; null: nothing.
+   */
+  image: { key: string; url: string; corners: [LonLat, LonLat, LonLat, LonLat] } | null;
   /** Boresight arrows as lon/lat polylines with a colour each. */
   arrows: { path: LonLat[]; colour: string }[];
   visible: boolean;
@@ -49,7 +52,7 @@ const EMPTY = { type: 'FeatureCollection', features: [] };
 
 /** The picture and where it lies: a moved grid (a new line-up shift) is placed again. */
 const imageKey = (i: NonNullable<CoverageMapDraw['image']>): string =>
-  `${i.url}|${i.corners.map((c) => c.join(',')).join(';')}`;
+  `${i.key}|${i.corners.map((c) => c.join(',')).join(';')}`;
 
 function arrowData(d: CoverageMapDraw) {
   return {
@@ -66,7 +69,7 @@ function arrowData(d: CoverageMapDraw) {
 export function attachCoverageMap(ctl: { map: CoverageMapLike }): CoverageMapView {
   const map = ctl.map;
   let last: CoverageMapDraw | null = null;
-  let shownUrl: string | null = null;
+  let shownKey: string | null = null;
   let disposed = false;
   let waiting = false;
 
@@ -92,8 +95,8 @@ export function attachCoverageMap(ctl: { map: CoverageMapLike }): CoverageMapVie
       if (!d.image) {
         if (map.getLayer(COVERAGE_LAYER)) map.removeLayer(COVERAGE_LAYER);
         if (has) map.removeSource(COVERAGE_SOURCE);
-        shownUrl = null;
-      } else if (!has || shownUrl !== imageKey(d.image)) {
+        shownKey = null;
+      } else if (!has || shownKey !== imageKey(d.image)) {
         const src = map.getSource(COVERAGE_SOURCE) as
           { updateImage?: (o: { url: string; coordinates: LonLat[] }) => unknown } | undefined;
         if (src?.updateImage) src.updateImage({ url: d.image.url, coordinates: d.image.corners });
@@ -103,7 +106,7 @@ export function attachCoverageMap(ctl: { map: CoverageMapLike }): CoverageMapVie
             url: d.image.url,
             coordinates: d.image.corners,
           });
-        shownUrl = imageKey(d.image);
+        shownKey = imageKey(d.image);
       }
       if (d.image && !map.getLayer(COVERAGE_LAYER))
         map.addLayer(
@@ -118,7 +121,8 @@ export function attachCoverageMap(ctl: { map: CoverageMapLike }): CoverageMapVie
               'raster-resampling': 'nearest',
             },
           },
-          before(),
+          // under the arrows (added on the first draw, before any picture), above the rasters
+          map.getLayer(BORESIGHT_LAYER) ? BORESIGHT_LAYER : before(),
         );
       if (map.getLayer(COVERAGE_LAYER)) {
         map.setPaintProperty(COVERAGE_LAYER, 'raster-opacity', d.opacity);
@@ -149,7 +153,7 @@ export function attachCoverageMap(ctl: { map: CoverageMapLike }): CoverageMapVie
 
   const onStyle = () => {
     // a new style dropped our sources: put them back
-    if (map.getSource(COVERAGE_SOURCE) === undefined) shownUrl = null;
+    if (map.getSource(COVERAGE_SOURCE) === undefined) shownKey = null;
     apply();
   };
   map.on('styledata', onStyle);

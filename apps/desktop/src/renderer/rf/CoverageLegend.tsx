@@ -7,8 +7,8 @@
  * TODO(stage-3 T21): mount it on the stage as one `assignSlots()` item wanting `bl` or `br`
  * (`RfLayer.tsx` holds the mount point). Until stage 3 lands it is not mounted.
  */
-import { OVERLAP_WINDOW_DB } from '@aio/rf';
-import { MARGIN_PRESET_DB, type RfStudy } from '@aio/schema';
+import { OVERLAP_WINDOW_DB, margins } from '@aio/rf';
+import type { RfStudy } from '@aio/schema';
 import { Switch, useT, type MessageKey, type Vars } from '@aio/ui';
 import type { ReactNode } from 'react';
 import {
@@ -234,7 +234,8 @@ export function CoverageLegend({ view, study, sectors, source }: CoverageLegendP
         <b>{t('rf.results.indicative')}</b> {t('rf.legend.indicativeBody')}{' '}
         {t('rf.legend.assumptions', {
           margin: t(MARGIN_KEY[study.marginPreset]),
-          db: MARGIN_PRESET_DB[study.marginPreset],
+          // the whole margin the preview and the job take off: penetration, body loss and fade
+          db: margins(study).totalDb.toFixed(1),
           ue: study.ueHeightM,
         })}
       </p>

@@ -27,7 +27,11 @@ export interface PreviewResult {
 }
 
 export interface PreviewClient {
-  /** Work these path-loss grids out (once per key) on `grid` within `radiusM` of each antenna. */
+  /**
+   * Work these path-loss grids out (once per key) on `grid` within `radiusM` of each antenna, and
+   * drop the grids an earlier plan asked for that this one no longer uses (a height step or a
+   * moved grid makes new keys; the Worker would otherwise keep every old grid).
+   */
   pathLoss(grid: PreviewGrid, radiusM: number, jobs: readonly PathLossJob[]): void;
   preview(request: PreviewRequest): Promise<PreviewResult>;
   dispose(): void;
@@ -57,6 +61,12 @@ export function connectPreview(port: PreviewClientPort): PreviewClient {
   return {
     pathLoss(grid, radiusM, jobs) {
       if (closed) return;
+      const wanted = new Set(jobs.map((j) => j.key));
+      for (const key of [...asked]) {
+        if (wanted.has(key)) continue;
+        asked.delete(key);
+        port.postMessage({ type: 'path-loss:drop', key });
+      }
       for (const j of jobs) {
         if (asked.has(j.key)) continue;
         asked.add(j.key);

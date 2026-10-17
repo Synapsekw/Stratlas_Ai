@@ -6,10 +6,12 @@
  *
  * The renderer reads the DSM where the 3D view draws it: `sample(x, z, layerId)` is the height
  * straight down onto one DSM layer in the local frame, or null off it (the shell's `rayDown`).
- * A point the DSM has not loaded under yet answers null and is asked again later.
+ * A point the DSM has not loaded under yet answers null and is asked again later. The caller moves
+ * the base by the inventory's line-up shift first, so it is sampled where the tower is drawn.
  */
 import { DSM_GROUND_PERCENTILE, DSM_GROUND_RADIUS_M } from '@aio/rf';
 import type { Vec3 } from '@aio/schema';
+import { percentile } from '../builder/dropToGround';
 import type { DsmGroundAt } from './rfModel';
 
 /** Sample spacing inside the disc, metres (the job reads every DSM pixel; this is close enough). */
@@ -18,18 +20,6 @@ export const DSM_GROUND_STEP_M = 2;
 export const DSM_GROUND_MIN_HITS = 20;
 /** A miss is asked again after this long (the DSM may still be loading). */
 const RETRY_MS = 3000;
-
-/** The `p` percentile (0 to 100) of the values, linear between neighbours (numpy's default). */
-export function percentileOf(values: readonly number[], p: number): number | null {
-  const v = values.filter(Number.isFinite).sort((a, b) => a - b);
-  if (v.length === 0) return null;
-  const at = (Math.min(100, Math.max(0, p)) / 100) * (v.length - 1);
-  const lo = Math.floor(at);
-  const hi = Math.min(v.length - 1, lo + 1);
-  const a = v[lo] ?? 0;
-  const b = v[hi] ?? a;
-  return a + (b - a) * (at - lo);
-}
 
 /** The DSM ground at one base from a height sampler over one layer; null when it does not cover it. */
 export function dsmGroundAt(
@@ -49,7 +39,8 @@ export function dsmGroundAt(
       if (y !== null && Number.isFinite(y)) hits.push(y);
     }
   if (hits.length < DSM_GROUND_MIN_HITS) return null;
-  const y = percentileOf(hits, DSM_GROUND_PERCENTILE);
+  // the same linear percentile as Drop to ground (numpy's default), as a fraction
+  const y = percentile(hits, DSM_GROUND_PERCENTILE / 100);
   return y === null ? null : y + origin[2];
 }
 

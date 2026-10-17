@@ -5125,7 +5125,7 @@ export const en = {
   'rf.legend.showFrom.good': 'Good and better',
   'rf.legend.hatch': 'Hatch the classes',
   'rf.legend.indicativeBody': 'flat ground, no buildings, untuned model, about 8 dB either way.',
-  'rf.legend.assumptions': 'Assumes {margin} ({db} dB margin), phone at {ue} m.',
+  'rf.legend.assumptions': 'Assumes {margin}, {db} dB of margin in all, phone at {ue} m.',
 } as const satisfies Record<string, string>;
 
 /** Every key in the catalogue, plural forms included. */
