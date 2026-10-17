@@ -80,9 +80,12 @@ function SphereRow({
           act('open', 'pano', t('pano.action.open', { name }), () => {
             open(layer.id, item);
           })}
-        {act('fly', 'target', t('pano.action.flyTo', { name }), () => {
-          workspace.getState().flyTo({ kind: 'point', p: item.pos, distance: PANO_FLY_DISTANCE_M });
-        })}
+        {item.pos !== undefined &&
+          act('fly', 'target', t('pano.action.flyTo', { name }), () => {
+            const at = item.pos;
+            if (at)
+              workspace.getState().flyTo({ kind: 'point', p: at, distance: PANO_FLY_DISTANCE_M });
+          })}
         {canEdit &&
           (status.kind === 'queued' || status.kind === 'failed') &&
           act('stitch', 'refresh', t('pano.action.stitch', { name }), () => {

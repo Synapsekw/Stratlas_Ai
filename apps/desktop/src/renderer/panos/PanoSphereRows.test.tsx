@@ -121,6 +121,18 @@ describe('PanoSphereRows', () => {
     });
   });
 
+  it('offers no fly button for a 360 that is not placed yet', () => {
+    const unplaced: PanoLayer = {
+      ...layer,
+      items: [{ id: 'u01', src: { path: 'z' }, headingDeg: 0, name: 'Pano U' }],
+    };
+    act(() => {
+      root.render(<PanoSphereRows layer={unplaced} canEdit />);
+    });
+    expect(q('pano-sphere-panos-2026-09-10-u01')).not.toBeNull();
+    expect(q('pano-fly-u01')).toBeNull();
+  });
+
   it('stitches a wide panorama as wide and a never-stitched sphere as a sphere', () => {
     const more: PanoLayer = {
       ...layer,

@@ -134,7 +134,7 @@ export function revealPanoLayer(layerId: string): void {
   const capture = layer.capture;
   const projectId = workspace.getState().project?.id;
   const fly = () => {
-    const spots = layer.items.map((p) => p.pos);
+    const spots = layer.items.flatMap((p) => (p.pos ? [p.pos] : []));
     if (spots.length === 0) return;
     const lo = [Infinity, Infinity, Infinity];
     const hi = [-Infinity, -Infinity, -Infinity];

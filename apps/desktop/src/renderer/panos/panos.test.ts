@@ -341,6 +341,20 @@ describe('revealPanoLayer', () => {
     expect(workspace.getState().lastCamera).toBe(before);
   });
 
+  it('does not fly for a layer of 360s that are not placed yet', () => {
+    place();
+    const m = workspace.getState().project?.manifest;
+    const l = m?.layers[0];
+    if (!m || l?.kind !== 'panoramas') throw new Error('setup');
+    workspace.getState().replaceManifest({
+      ...m,
+      layers: [{ ...l, items: [{ id: 'u', src: { path: 'panoramas/u.jpg' }, headingDeg: 0 }] }],
+    });
+    const before = workspace.getState().lastCamera;
+    revealPanoLayer('panos-1');
+    expect(workspace.getState().lastCamera).toBe(before);
+  });
+
   it('does nothing for a layer that is not panoramas', () => {
     place();
     const before = workspace.getState().lastCamera;
