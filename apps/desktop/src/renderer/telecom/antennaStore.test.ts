@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { readFileSync } from 'node:fs';
-import { resolve } from 'node:path';
+import { join } from 'node:path';
 import { AntennasFile, TOWER_HINT_NEEDED, type JobRecord } from '@aio/schema';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
@@ -69,7 +69,10 @@ const bridgeCall = vi.mocked(shell.bridge.call);
 
 const contract = JSON.parse(
   readFileSync(
-    resolve(process.cwd(), '../../packages/schema/src/__fixtures__/antennas-contract.json'),
+    join(
+      import.meta.dirname,
+      '../../../../../packages/schema/src/__fixtures__/antennas-contract.json',
+    ),
     'utf8',
   ),
 ) as { example: unknown };

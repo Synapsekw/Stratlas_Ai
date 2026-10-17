@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 /* eslint-disable @typescript-eslint/no-non-null-assertion -- DOM lookups that fail the test when missing */
 import { readFileSync } from 'node:fs';
-import { resolve } from 'node:path';
+import { join } from 'node:path';
 import { AntennasFile } from '@aio/schema';
 import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
@@ -102,7 +102,10 @@ const scene = await import('../telecom/antennaScene');
 
 const contract = JSON.parse(
   readFileSync(
-    resolve(process.cwd(), '../../packages/schema/src/__fixtures__/antennas-contract.json'),
+    join(
+      import.meta.dirname,
+      '../../../../../packages/schema/src/__fixtures__/antennas-contract.json',
+    ),
     'utf8',
   ),
 ) as { example: unknown };

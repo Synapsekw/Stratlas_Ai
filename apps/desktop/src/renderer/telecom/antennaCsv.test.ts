@@ -1,12 +1,14 @@
 import { readFileSync } from 'node:fs';
-import { resolve } from 'node:path';
 import { AntennasFile } from '@aio/schema';
 import { describe, expect, it } from 'vitest';
 import { antennasToCsv, CSV_COLUMNS } from './antennaCsv';
 
 const contract = JSON.parse(
   readFileSync(
-    resolve(process.cwd(), '../../packages/schema/src/__fixtures__/antennas-contract.json'),
+    new URL(
+      '../../../../../packages/schema/src/__fixtures__/antennas-contract.json',
+      import.meta.url,
+    ),
     'utf8',
   ),
 ) as { example: unknown };
