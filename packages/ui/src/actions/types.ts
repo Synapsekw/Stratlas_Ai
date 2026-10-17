@@ -17,6 +17,13 @@ export interface PhotoPick {
   photoId: string;
 }
 
+/** One photo or 360 an action targets (keyed so ground video can join later). */
+export interface MediaPick {
+  layerId: string;
+  itemId: string;
+  kind: 'photo' | 'pano';
+}
+
 export type MenuTarget =
   | { kind: 'project' }
   /** null: the Every date folder. */
@@ -25,6 +32,8 @@ export type MenuTarget =
   /** One row, or the marked rows. */
   | { kind: 'layers'; layerIds: string[] }
   | { kind: 'photos'; picks: PhotoPick[] }
+  /** 360s and pins (photos keep `photos`). */
+  | { kind: 'media'; picks: MediaPick[] }
   /** The Issues and Drafts rows of the Annotations group (they carry no layer). */
   | { kind: 'annotations'; row: 'issues' | 'drafts' };
 

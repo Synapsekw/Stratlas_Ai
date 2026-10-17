@@ -38,6 +38,13 @@ export function defineAction<K extends MenuTarget['kind']>(
 export function targetCount(t: MenuTarget): number {
   if (t.kind === 'layers') return t.layerIds.length;
   if (t.kind === 'photos') return new Set(t.picks.map((p) => `${p.layerId}\n${p.photoId}`)).size;
+  if (t.kind === 'media')
+    return new Set(
+      t.picks.map(
+        (p) => `${p.layerId}
+${p.itemId}`,
+      ),
+    ).size;
   return 1;
 }
 
@@ -46,7 +53,7 @@ export function targetLayers(t: MenuTarget, ctx: ActionCtx): Layer[] {
   const ids =
     t.kind === 'layers' || t.kind === 'group'
       ? t.layerIds
-      : t.kind === 'photos'
+      : t.kind === 'photos' || t.kind === 'media'
         ? [...new Set(t.picks.map((p) => p.layerId))]
         : [];
   return ids.flatMap((id) => {

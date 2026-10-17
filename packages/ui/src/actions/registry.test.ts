@@ -159,4 +159,11 @@ describe('actionsFor', () => {
     actionsFor({ kind: 'layers', layerIds: ['m'] }, ctx)[0]?.run();
     expect(run).toHaveBeenCalledTimes(1);
   });
+
+  it('offers a media action on a media target and not on a photos target', () => {
+    reg(act('t.media', { targets: ['media'] }));
+    const picks = [{ layerId: 'l', itemId: 'i', kind: 'pano' as const }];
+    expect(actionsFor({ kind: 'media', picks }, ctx).map((r) => r.id)).toEqual(['t.media']);
+    expect(actionsFor({ kind: 'photos', picks: [] }, ctx)).toEqual([]);
+  });
 });
