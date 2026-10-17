@@ -13,12 +13,18 @@ first, each unit at most once.
   units are dropped (a rejected unit that is not found again has nothing left to reject).
 - New units are drafts named `A<n>` after the highest number in use, numbered clockwise from north
   around the units' middle, with ids `ant-<run>-<k>`.
+
+Units are stored in their own survey date's frame. When the previous file came from another date,
+`in_capture_frame` first moves its units into the new date's frame (`date_frame_delta`), so the
+match compares one frame and the merged file is entirely in the new date's frame.
 """
 
 from __future__ import annotations
 
 import math
 import re
+
+from ..captures import local_delta
 
 MATCH_RADIUS_M = 0.3
 #: Fields a run measures; the rest (id, name, status, kind from AI or a person, user) is review.
@@ -37,6 +43,34 @@ GEOMETRY = (
 )
 ID_MAX = 60  # characters after "ant-" (the unit id pattern ^ant-[a-z0-9-]{1,60}$)
 _NAME = re.compile(r"^A(\d+)$")
+
+
+def date_frame_delta(
+    previous_shift: tuple[float, float], new_shift: tuple[float, float]
+) -> tuple[float, float]:
+    """The (east, north) metres that move a point stored in the previous date's own frame into the
+    new date's own frame. A point P drawn lined up is stored as P minus its date's shift, so the
+    move is the previous shift minus the new one, taken through `captures.local_delta` (x east,
+    z south) like every other line-up."""
+    ax, az = local_delta(previous_shift)
+    bx, bz = local_delta(new_shift)
+    dx, dz = ax - bx, az - bz
+    return dx + 0.0, -dz + 0.0
+
+
+def in_capture_frame(previous: dict | None, delta_en: tuple[float, float]) -> dict | None:
+    """`previous` with each unit's box centre moved by `delta_en` (east, north); unchanged for a
+    zero move. The units are copies: the caller's file is not changed."""
+    if previous is None or (not delta_en[0] and not delta_en[1]):
+        return previous
+    units = []
+    for u in previous.get("units") or []:
+        if isinstance(u, dict) and isinstance(u.get("box"), dict) and u["box"].get("centre") is not None:
+            e, n, z = _centre(u)
+            centre = [round(e + delta_en[0], 3) + 0.0, round(n + delta_en[1], 3) + 0.0, z]
+            u = {**u, "box": {**u["box"], "centre": centre}}
+        units.append(u)
+    return {**previous, "units": units}
 
 
 def _centre(u: dict) -> tuple[float, float, float]:

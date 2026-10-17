@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import math
 import re
 import struct
 import threading
@@ -367,3 +368,63 @@ def test_left_out_candidates_are_a_run_warning(tmp_path):
     logs = " ".join(str(p.get("message", "")) for p in rec.of("log"))
     assert "Candidate boxes left out:" in logs and "part of a listed unit" in logs
     assert "against a cap of" in logs
+
+
+def _dated(root: Path, capture: str, shifts: dict[str, tuple[float, float]]) -> None:
+    """Two survey dates, each lined up by its own shift; the cloud layer belongs to `capture`."""
+    p = root / "manifest.json"
+    m = json.loads(p.read_text("utf-8"))
+    m["captures"] = [
+        {
+            "id": cid,
+            "label": "Survey",
+            "date": cid[len("capture-") :],
+            "lineUp": {"eastM": e, "northM": n, "with": "capture-2026-01-01", "at": "2026-10-17T00:00:00Z"},
+        }
+        for cid, (e, n) in shifts.items()
+    ]
+    for layer in m["layers"]:
+        if layer.get("kind") == "pointcloud":
+            layer["capture"] = capture
+    p.write_text(json.dumps(m, indent=1), encoding="utf-8")
+
+
+def test_rerun_on_another_date_moves_the_inventory_into_its_frame(tmp_path, monopole):
+    # Date A is lined up 3 m east, 2 m south; date B 1 m west, 1.5 m north. Both scan the same
+    # physical tower, so B's own coordinates are A's plus (shift A - shift B) = (+4 E, -3.5 N).
+    xyz, _ = monopole
+    a, b = "capture-2026-02-01", "capture-2026-06-01"
+    shifts = {a: (3.0, -2.0), b: (-1.0, 1.5)}
+    de, dn = 4.0, -3.5
+    root = make_tower_project(tmp_path / "p", xyz)
+    _dated(root, a, shifts)
+    assert run_job(pipeline(), root, {"run": "run-a"})[0]["status"] == "done"
+    first = read_file(root)
+    assert first["run"]["captureId"] == a and len(first["units"]) > 0
+    kept = first["units"][0]
+    first["units"][0] = {**kept, "status": "accepted"}
+    (root / "telecom" / "antennas.json").write_text(json.dumps(first), encoding="utf-8")
+
+    # the same tower in date B's own frame (local x east, z south)
+    moved = np.array(xyz, dtype=np.float64)
+    moved[:, 0] += de
+    moved[:, 2] -= dn
+    make_tower_project(tmp_path / "b", moved)
+    (root / "clouds" / "tower.las").write_bytes((tmp_path / "b" / "clouds" / "tower.las").read_bytes())
+    _dated(root, b, shifts)
+    assert run_job(pipeline(), root, {"run": "run-b"}, job_id="jb")[0]["status"] == "done"
+    second = read_file(root)
+    assert second["run"]["captureId"] == b
+    assert not any(u.get("notFoundInLatest") for u in second["units"])
+    assert len(second["units"]) == len(first["units"])
+    same = [u for u in second["units"] if u["id"] == kept["id"]]
+    assert len(same) == 1 and same[0]["status"] == "accepted" and same[0]["name"] == kept["name"]
+    # stored in B's frame, and no draft was added on top of it
+    want = [kept["box"]["centre"][0] + de, kept["box"]["centre"][1] + dn, kept["box"]["centre"][2]]
+    assert same[0]["box"]["centre"] == pytest.approx(want, abs=0.05)
+    near = [
+        u
+        for u in second["units"]
+        if u["id"] != kept["id"] and math.dist(u["box"]["centre"], same[0]["box"]["centre"]) < 0.3
+    ]
+    assert near == []

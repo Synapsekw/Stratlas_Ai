@@ -7,7 +7,7 @@ import json
 import re
 from pathlib import Path
 
-from aio_pipelines.telecom.merge import MATCH_RADIUS_M, merge_runs
+from aio_pipelines.telecom.merge import MATCH_RADIUS_M, date_frame_delta, in_capture_frame, merge_runs
 
 CONTRACT = Path(__file__).resolve().parents[2] / "packages/schema/src/__fixtures__/antennas-contract.json"
 Q = {"basis": "measured", "residualM": 0.004, "support": 900, "coverage": 0.8}
@@ -206,3 +206,15 @@ def test_merge_takes_new_photos_only_when_found():
     newer = [{"layer": "ph", "id": "p2", "score": 0.7}]
     u = merge_runs(prev(a), [unit((0.0, 0.0, 30.0), photos=newer)], "run-new")[0]
     assert u["photos"] == newer and "crop" not in u
+
+
+def test_previous_units_move_into_the_new_date_frame():
+    # stored = drawn - own shift, so A's stored point + (shift A - shift B) is B's stored point
+    assert date_frame_delta((3.0, -2.0), (-1.0, 1.5)) == (4.0, -3.5)
+    assert date_frame_delta((2.0, 1.0), (2.0, 1.0)) == (0.0, 0.0)
+    prev = {"run": {"captureId": "a"}, "units": [{**unit((10.0, 20.0, 30.0)), "id": "ant-a-1"}]}
+    moved = in_capture_frame(prev, (4.0, -3.5))
+    assert moved["units"][0]["box"]["centre"] == [14.0, 16.5, 30.0]
+    assert prev["units"][0]["box"]["centre"] == [10.0, 20.0, 30.0]  # the caller's copy is untouched
+    assert moved["units"][0]["box"]["axes"] == prev["units"][0]["box"]["axes"]
+    assert in_capture_frame(prev, (0.0, 0.0)) is prev

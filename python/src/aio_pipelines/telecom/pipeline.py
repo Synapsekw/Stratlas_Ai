@@ -364,7 +364,8 @@ class TelecomAntennas:
             created = now_iso()
             units = _run_units(measured, photos, run_id, created)
             # final ids first (the merge), so each crop is named by the id it will have
-            merged = merge_with_sources(_read_previous(ctx.project), units, run_id)
+            framed = _in_run_frame(manifest, _read_previous(ctx.project), ctx.outputs("crown"))
+            merged = merge_with_sources(framed, units, run_id)
             crops: dict[str, str] = {}
             n = max(1, len(merged))
             for j, (u, src) in enumerate(merged):
@@ -391,7 +392,7 @@ class TelecomAntennas:
             units = new_units(ctx)
             staged_crops: dict[str, str] = ctx.outputs("photos").get("crops") or {}
             previous = _read_previous(ctx.project)
-            merged = merge_with_sources(previous, units, run_id)
+            merged = merge_with_sources(_in_run_frame(manifest, previous, crown), units, run_id)
             moves: list[tuple[str, str]] = []
             final: list[dict[str, Any]] = []
             for u, src in merged:
@@ -467,6 +468,30 @@ class TelecomAntennas:
             Step("photos", "Picking the best photos", photos_step, weight=1.0),
             Step("commit", "Saving the inventory", commit_step, weight=0.2),
         ]
+
+
+def _in_run_frame(manifest: dict, previous: dict | None, crown: dict) -> dict | None:
+    """The previous inventory in this run's survey date frame. Units are stored in their own date's
+    frame and the file names one `run.captureId`, so a previous run on another date (or on an
+    undated cloud, which has no line-up) has its units moved by the difference of the two line-ups
+    before the merge compares them; the merged file is then all in this run's frame."""
+    from ..captures import capture_shift
+    from .merge import date_frame_delta, in_capture_frame
+
+    if previous is None:
+        return None
+    run = previous.get("run")
+    before = run.get("captureId") if isinstance(run, dict) else None
+    before = before if isinstance(before, str) and before else None
+    now = str(crown["captureId"]) if crown.get("captureId") else None
+    if before == now:
+        return previous
+    zero = (0.0, 0.0)
+    delta = date_frame_delta(
+        capture_shift(manifest, before) if before else zero,
+        capture_shift(manifest, now) if now else zero,
+    )
+    return in_capture_frame(previous, delta)
 
 
 def _run_units(measured: list[dict], photos: list[list[dict]], run_id: str, created: str) -> list[dict]:
