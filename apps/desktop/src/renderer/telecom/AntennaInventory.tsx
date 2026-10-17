@@ -199,14 +199,14 @@ export function AntennaInventory(props: AntennaInventoryProps): ReactElement {
   if (!file)
     return (
       <EmptyState
-        title={t('telecom.antennas.empty.none.title')}
+        {...{ title: t('telecom.antennas.empty.none.title') }}
         body={t('telecom.antennas.empty.none.body')}
       />
     );
   if (file.units.length === 0)
     return (
       <EmptyState
-        title={t('telecom.antennas.empty.nothing.title')}
+        {...{ title: t('telecom.antennas.empty.nothing.title') }}
         body={t('telecom.antennas.empty.nothing.body')}
       />
     );

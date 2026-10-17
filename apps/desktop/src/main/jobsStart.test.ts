@@ -45,6 +45,7 @@ function jobsStart(version: string, status: 'failed' | 'cancelled' | 'interrupte
     walkPackRefusal: () => null,
     panoPackRefusal: () => null,
     cleanPackRefusal: () => null,
+    antennaPackRefusal: () => null,
     evidencePackRefusal,
     laneSphere: () => null,
   }) as (req: IpcRequest<'jobs:start'>) => Promise<{ ok: boolean; error?: string }>;
