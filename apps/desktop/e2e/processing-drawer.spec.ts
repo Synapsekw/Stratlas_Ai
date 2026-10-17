@@ -253,6 +253,7 @@ test('Settings, Advanced holds every pipeline by area and every job on this comp
     'Import and convert',
     'Map packs',
     'Road survey',
+    'Telecom coverage',
     'System',
   ]);
   const values = await pick
