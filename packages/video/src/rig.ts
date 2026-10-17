@@ -484,7 +484,8 @@ export class VideoRig {
 
   /**
    * Try a camera position offset (local frame, metres) on the active clip without saving it;
-   * `null` restores the layer's own offset.
+   * `null` restores the layer's own offset. The offset is the clip's own, as saved: on a lined-up
+   * date the rig adds the date shift to it, as it does to the saved one.
    */
   setPositionOverride(offset: Vec3 | null) {
     this.positionOverride = offset;
@@ -689,7 +690,10 @@ export class VideoRig {
     }
     const layerVisible = entry.visible && !s.hidden[entry.layer.id];
     const flightMs = s.nowMs - flight.startUtcMs;
-    const off = this.positionOverride ?? entry.layer.positionOffsetM;
+    // a trial offset is the clip's own (stored) one: it moves with the date like the saved one
+    const off = this.positionOverride
+      ? shiftLocal(this.positionOverride, entry.shift)
+      : entry.layer.positionOffsetM;
     // one rule for every reader: keyframes (an unsaved draft first, else orientation.json) when
     // the clip has any, else the log with its bias
     const keys = shiftedDirectionKeys(
