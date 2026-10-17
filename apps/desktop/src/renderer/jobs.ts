@@ -23,11 +23,22 @@ export interface JobDraft {
   values: Record<string, string>;
 }
 
+/**
+ * A job record as the renderer holds it: main's record plus a local mark. `quiet` is set (and
+ * never cleared) for jobs started with `startQuiet`; absent means not quiet. Main never sends it.
+ */
+export type JobEntry = JobRecord & { quiet?: true };
+
+/** `job` with the quiet mark of `known` (or of the quiet ids) carried over. */
+function withQuiet(job: JobRecord, known?: JobEntry, ids?: readonly string[]): JobEntry {
+  return known?.quiet || ids?.includes(job.id) ? { ...job, quiet: true } : job;
+}
+
 export interface JobsState {
   /** null until the first jobs:list answer. */
   runtime: RuntimeInfo | null;
   /** Newest first. */
-  jobs: JobRecord[];
+  jobs: JobEntry[];
   logs: Record<string, JobLogLine[]>;
   selected: string | null;
   /**
@@ -73,7 +84,8 @@ export function applyJobEvent(
     // An invoke answer can arrive after newer pushed events; never go back in time.
     const known = s.jobs[i];
     if (known && known.updatedAt > e.job.updatedAt) return s;
-    const jobs = i < 0 ? [e.job, ...s.jobs] : s.jobs.map((j, k) => (k === i ? e.job : j));
+    const next = withQuiet(e.job, known);
+    const jobs = i < 0 ? [next, ...s.jobs] : s.jobs.map((j, k) => (k === i ? next : j));
     return { jobs, logs: s.logs };
   }
   const prev = s.logs[e.jobId] ?? [];
@@ -341,7 +353,13 @@ export function createJobsStore(bridge: Bridge, on: AioBridge['on'] | undefined)
       }
       set((s) => ({
         runtime: r.value.runtime,
-        jobs: r.value.jobs,
+        jobs: r.value.jobs.map((j) =>
+          withQuiet(
+            j,
+            s.jobs.find((k) => k.id === j.id),
+            s.quiet,
+          ),
+        ),
         error: null,
         selected: s.selected ?? r.value.jobs[0]?.id ?? null,
       }));
@@ -369,6 +387,9 @@ export function createJobsStore(bridge: Bridge, on: AioBridge['on'] | undefined)
       const job = r.value.job;
       set((s) => ({
         ...applyJobEvent(s, { type: 'update', job }),
+        jobs: applyJobEvent(s, { type: 'update', job }).jobs.map((j) =>
+          j.id === job.id ? { ...j, quiet: true as const } : j,
+        ),
         quiet: [...s.quiet, job.id],
         logs: s.logs[job.id] ? s.logs : { ...s.logs, [job.id]: [] },
       }));

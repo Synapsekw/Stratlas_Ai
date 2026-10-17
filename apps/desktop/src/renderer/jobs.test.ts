@@ -430,3 +430,49 @@ describe('the quiet list', () => {
     expect(running.getState().quiet).toEqual(['q3']);
   });
 });
+
+describe('the quiet flag on the record', () => {
+  const setup = async () => {
+    const { bridge } = fakeBridge({
+      'jobs:start': () => ({ ok: true, job: job({ id: 'q3', pipeline: 'change.lineup' }) }),
+      'jobs:list': () => ({
+        runtime: null,
+        jobs: [
+          job({ id: 'n1', updatedAt: 'b' }),
+          job({ id: 'q3', status: 'done', updatedAt: 'b' }),
+        ],
+      }),
+    });
+    const store = createJobsStore(bridge, undefined);
+    await store.getState().startQuiet({ pipeline: 'change.lineup', project: 'E:/p', params: {} });
+    return store;
+  };
+  const rec = (store: ReturnType<typeof createJobsStore>, id: string) =>
+    store.getState().jobs.find((j) => j.id === id);
+
+  it('is set on a quiet job, before and after an update from main', async () => {
+    const store = await setup();
+    expect(rec(store, 'q3')?.quiet).toBe(true);
+    store.setState((s) =>
+      applyJobEvent(s, { type: 'update', job: job({ id: 'q3', status: 'done', updatedAt: 'z' }) }),
+    );
+    expect(rec(store, 'q3')).toMatchObject({ status: 'done', quiet: true });
+  });
+
+  it('survives a list refresh and the quiet list being pruned', async () => {
+    const store = await setup();
+    await store.getState().refresh();
+    store.getState().pruneQuiet();
+    expect(store.getState().quiet).toEqual([]);
+    expect(rec(store, 'q3')?.quiet).toBe(true);
+    await store.getState().refresh();
+    expect(rec(store, 'q3')?.quiet).toBe(true);
+  });
+
+  it('is absent on a normal job', async () => {
+    const store = await setup();
+    await store.getState().refresh();
+    expect(rec(store, 'n1')).toBeDefined();
+    expect('quiet' in (rec(store, 'n1') ?? {})).toBe(false);
+  });
+});
