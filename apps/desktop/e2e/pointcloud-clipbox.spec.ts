@@ -41,7 +41,9 @@ test('a clip box hides the points outside it, and Reset and Undo bring them back
   await expect.poll(() => drawn(win)).toBe(NOISY_POINTS);
 
   // straight down on the cloud: the east and west handles lie right and left of the middle
-  await setView(win, [20, 90, -20], [20, 0, -20.01]);
+  // (high enough that both stay on the stage at 1100 x 720: without the date strips the stage is
+  // taller, so the same view draws the box wider)
+  await setView(win, [20, 120, -20], [20, 0, -20.01]);
   await win.getByTestId('cleanup-box-edit').click();
   await expect(win.getByTestId('cleanup-box-edit')).toHaveAttribute('aria-pressed', 'true');
   const east = await handleAt(win, 'east');

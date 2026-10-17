@@ -123,14 +123,18 @@ test.describe('stockpile survey date', () => {
     await win.getByTestId('date-name-d1').click();
     await expect(win.getByTestId('date-bar-open')).toHaveAccessibleName(/4 Sep 2024/);
     // a project without video starts with the timeline folded: the island's View tile shows it
+    const timeline = win.locator('.tl-wrap [aria-label="Timeline"]');
+    await expect(timeline).toHaveCount(0);
     const toggle = await timelineToggle(win);
     await expect(toggle).toHaveAttribute('aria-pressed', 'false');
     await toggle.click();
     await expect(toggle).toHaveAttribute('aria-pressed', 'true');
     await closeIslandTools(win);
+    await expect(timeline).toBeVisible();
     await reopen(win, stockpile.id);
     await expect(win.getByTestId('date-bar-open')).toHaveAccessibleName(/4 Sep 2024/);
     await expect.poll(async () => (await volumes(win)).epoch).toBe('e1');
+    await expect(timeline).toBeVisible();
     await expect(await timelineToggle(win)).toHaveAttribute('aria-pressed', 'true');
   });
 });

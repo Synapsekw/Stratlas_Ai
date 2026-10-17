@@ -77,14 +77,16 @@ export async function timelineToggle(win: Page): Promise<Locator> {
 }
 
 /**
- * Compare dates: beside the island while comparing (where it leaves the comparison), else the
- * View row's tile (the island's tools open).
+ * Compare dates: the View row's tile (the island's tools open), or beside the island while
+ * comparing, where it leaves the comparison.
  */
 export async function compareDatesButton(win: Page): Promise<Locator> {
-  const beside = win.locator('.isl-aside').getByTestId('compare-dates');
-  if (await beside.isVisible()) return beside;
-  const row = await islandRow(win, 'view');
-  return row.getByTestId('compare-dates');
+  // the View row has the tile only while not comparing, so its absence says which one it is
+  const tile = (await islandRow(win, 'view')).getByTestId('compare-dates');
+  if ((await tile.count()) > 0) return tile;
+  await closeIslandTools(win);
+  // (none at all when the project has nothing to compare)
+  return win.locator('.isl-aside').getByTestId('compare-dates');
 }
 
 /** Start or leave Compare dates, and close the island's tools again if they were opened. */
@@ -171,11 +173,15 @@ export async function islandCutOff(win: Page): Promise<string[]> {
   return win.evaluate(() => {
     const capsule = document.querySelector('.island')?.getBoundingClientRect();
     if (!capsule) return ['no island'];
-    return [...document.querySelectorAll('.isl-r1 button')]
+    const cut = [...document.querySelectorAll('.isl-r1 button')]
       .filter((b) => {
         const r = b.getBoundingClientRect();
         return r.width === 0 || r.left < capsule.left - 0.5 || r.right > capsule.right + 0.5;
       })
       .map((b) => b.getAttribute('aria-label') ?? b.textContent.trim());
+    // a tab scrolled out of sight in the tablist (its last resort) is cut off too
+    const tabs = document.querySelector('.isl-r1 [role="tablist"]');
+    if (tabs && tabs.scrollWidth > tabs.clientWidth + 0.5) cut.push('the tabs scroll');
+    return cut;
   });
 }

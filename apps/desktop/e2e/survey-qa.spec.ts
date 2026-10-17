@@ -47,8 +47,8 @@ async function journalText(root: string): Promise<string> {
 }
 
 /**
- * The Survey QA and cleanup menu: its tool is in the Survey measurements popover, which sits on
- * the toolbar, or in the island's Measure group.
+ * The Survey QA and cleanup menu: its tool is in the Survey measurements popover, in the island's
+ * Measure set (opened here unless an earlier step left it open).
  */
 async function openQaMenu(win: Page): Promise<void> {
   const survey = win.getByRole('button', { name: 'Survey measurements', exact: true });

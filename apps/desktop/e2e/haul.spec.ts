@@ -25,8 +25,8 @@ async function open(win: Page, p: SurveyDemoProject): Promise<void> {
 }
 
 /**
- * The Haul road button is in the Survey measurements popover (Site data), whose tool sits on the
- * toolbar, or in the island's Measure group.
+ * The Haul road button is in the Survey measurements popover (Site data), in the island's Measure
+ * set (opened here unless an earlier step left it open).
  */
 async function openHaulRoad(win: Page): Promise<void> {
   const survey = win.getByRole('button', { name: 'Survey measurements', exact: true });

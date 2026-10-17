@@ -296,16 +296,48 @@ test.describe('in the window CI runs, 1100 x 720', () => {
       if (u.box) expect(overlap(u.box, capsule), `${u.name} under the capsule`).toBe(false);
     expect(await centreClick(win), 'with the tools open').toBe('the view');
 
-    // the widest group, its full set open: still no tab cut off, the centre still the view's
+    // the View group's full set, measured while it is open: inside the stage, every control in
+    // it in view, and the centre still the view's
     await islandGroup(win, 'view');
     await islandSettled(win);
-    const full = await openLayout(win);
-    expect(
-      full.controls
-        .filter((c) => !c.box || c.box.right > capsule.right + 0.5 || c.box.left < capsule.left)
-        .map((c) => c.name),
-    ).toEqual([]);
-    await closeIslandTools(win);
+    const set = await win.evaluate(() => {
+      const box = (el: Element | null) => {
+        const r = el?.getBoundingClientRect();
+        return r && r.width > 0 && r.height > 0
+          ? { left: r.left, right: r.right, top: r.top, bottom: r.bottom }
+          : null;
+      };
+      const full = document.querySelector('.isl-full');
+      return {
+        stage: box(document.querySelector('.ws > .stage')),
+        full: box(full),
+        controls: [...(full?.querySelectorAll('button') ?? [])].map((b) => ({
+          name: b.getAttribute('aria-label') ?? b.textContent.trim(),
+          box: box(b),
+        })),
+      };
+    });
+    expect(set.full, 'the View set is open').not.toBeNull();
+    expect(set.controls.length, 'controls in the View set').toBeGreaterThan(4);
+    if (set.full && set.stage) {
+      const { full: f, stage: st } = set;
+      expect(f.left, 'the set starts inside the stage').toBeGreaterThanOrEqual(st.left);
+      expect(f.right, 'the set ends inside the stage').toBeLessThanOrEqual(st.right);
+      expect(
+        set.controls
+          .filter(
+            (c) =>
+              !c.box ||
+              c.box.left < Math.max(f.left, st.left) - 0.5 ||
+              c.box.right > Math.min(f.right, st.right) + 0.5,
+          )
+          .map((c) => c.name),
+        'View set controls cut off',
+      ).toEqual([]);
+    }
+    expect(await centreClick(win), 'with the View set open').toBe('the view');
+    await win.keyboard.press('Escape');
+    await expect(win.locator('.isl-full')).toHaveCount(0);
     expect(await centreClick(win), 'closed again').toBe('the view');
   });
 });

@@ -65,7 +65,7 @@ async function openDemo(win: Page, p: SurveyDemoProject) {
   await expect(win.locator('[data-scene-view] canvas').first()).toBeVisible();
 }
 
-/** The Survey measurements popover, in the island's Measure set. */
+/** The Survey measurements popover, in the island's Measure set (opened unless already open). */
 async function openSurveyTools(win: Page) {
   const survey = win.getByRole('button', { name: 'Survey measurements', exact: true });
   if (!(await survey.isVisible())) await islandGroup(win, 'measure');

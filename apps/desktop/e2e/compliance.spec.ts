@@ -63,7 +63,7 @@ async function saved(win: Page, dir: string, id: string) {
   return { m, result };
 }
 
-/** The Designs panel, in the Survey measurements popover (in the island's Measure group). */
+/** The Designs panel, in the Survey measurements popover (in the island's Measure set). */
 async function openDesigns(win: Page): Promise<Locator> {
   const survey = win.getByRole('button', { name: 'Survey measurements', exact: true });
   if (!(await survey.isVisible())) await islandGroup(win, 'measure');

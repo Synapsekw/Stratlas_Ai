@@ -135,8 +135,8 @@ async function answerOpenDialog(app: ElectronApplication, path: string): Promise
 }
 
 /**
- * The Designs button is in the Survey measurements popover, whose tool sits on the toolbar, or
- * in the island's Measure group.
+ * The Designs button is in the Survey measurements popover, in the island's Measure set (opened
+ * here unless an earlier step left it open).
  */
 async function openDesigns(win: Page): Promise<void> {
   const survey = win.getByRole('button', { name: 'Survey measurements', exact: true });
