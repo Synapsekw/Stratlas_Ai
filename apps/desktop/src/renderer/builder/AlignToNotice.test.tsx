@@ -34,6 +34,7 @@ vi.mock('../shell/layerBounds', () => ({
 vi.mock('../shell/appBounds', () => ({ appBoundsDeps: () => ({}) }));
 
 const manifest = {
+  captures: [],
   layers: [
     {
       kind: 'photos',
