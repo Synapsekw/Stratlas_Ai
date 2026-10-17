@@ -3,7 +3,8 @@
  * hosts (`App.tsx`), it loads the RF store for the open project, follows the selected run and the
  * live preview (`coverageStore.ts`), gives the store the DSM ground (`dsmGround.ts`), and draws
  * the shown view on whichever map and 3D view are on screen through the active-view registry
- * (`useMap`, `useScene`), as the pinned media do. The stage files are not touched (ruling R5).
+ * (`useMap`, `useScene`), as the pinned media do. The stage files are not touched (ruling R5); the
+ * legend's corner is the one marked block in `Stage.tsx` (ruling I3).
  */
 import { assetUrl, useWorkspace } from '@aio/workspace';
 import { useEffect, useMemo, useRef } from 'react';
@@ -218,8 +219,6 @@ export function RfLayer(): null {
     });
   }, [scene, grids, image, imageKey, manifest, shift, bores, ground, visible, opacity]);
 
-  // TODO(stage-3 T21): mount <CoverageLegend> here as one `assignSlots()` item wanting `bl` or
-  // `br`, shown while `grids` is not null and the layer is visible:
-  //   <CoverageLegend view={view} study={sectors.study} sectors={sectors.sectors} source={...} />
+  // the legend is not drawn here: the stage gives it a corner slot (StageCoverageLegend.tsx)
   return null;
 }

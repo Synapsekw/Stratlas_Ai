@@ -2,10 +2,8 @@
  * The coverage legend (spec D23, D23a, D26): for the view shown, every class with its name and
  * range (never colour alone), the swatch with its optional hatch, the opacity slider (in sync with
  * the Display bench row), "Show from" and the hatch switch, and the indicative and assumptions
- * line. It has no position of its own: the stage places it in a corner slot.
- *
- * TODO(stage-3 T21): mount it on the stage as one `assignSlots()` item wanting `bl` or `br`
- * (`RfLayer.tsx` holds the mount point). Until stage 3 lands it is not mounted.
+ * line. It has no position of its own: the stage places it in a corner slot (`rfLegend`, wanting
+ * `br` then `bl`), through `StageCoverageLegend.tsx`.
  */
 import { OVERLAP_WINDOW_DB } from '@aio/rf';
 import type { RfStudy } from '@aio/schema';

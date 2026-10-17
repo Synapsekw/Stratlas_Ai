@@ -88,6 +88,9 @@ import { useStreetMap3d } from './streetMap3d';
 import { StageBasemapChip, useStageBasemap } from './MapMenus';
 import { assignSlots, type Corner, type SlotRequest } from './overlaySlots';
 import { useSiteTiles } from './siteTiles';
+// --- RF coverage legend (rf-ui) ---
+import { StageCoverageLegend, useCoverageLegendShown } from '../rf/StageCoverageLegend';
+// --- end RF coverage legend ---
 
 function ScenePane({
   hidden,
@@ -295,6 +298,10 @@ export interface StageCornersInput {
    * or an overlay pushed under it would meet the bottom ones (useIslandReach).
    */
   topTaken?: readonly TopCorner[];
+  // --- RF coverage legend (rf-ui) ---
+  /** The coverage legend wants a bottom corner: the Coverage layer is on and draws something. */
+  rfLegend: boolean;
+  // --- end RF coverage legend ---
 }
 
 const END: readonly Corner[] = ['tr', 'br'];
@@ -351,11 +358,27 @@ export function useStageCorners(o: StageCornersInput): {
       // the 3D pane's own foot, the readout giving way while it shows (the other pane's foot is
       // another view's: the map's scale and credits)
       { id: 'volHint', want: volHint ? hintCorners(o.cursor, o.splitting) : [] },
+      // --- RF coverage legend (rf-ui) ---
+      { id: 'rfLegend', want: o.rfLegend ? ['br', 'bl'] : [] },
+      // --- end RF coverage legend ---
       { id: 'dates', want: dates ? ['tl', 'bl', 'tr'] : [] },
       { id: 'cursor', want: o.cursor ? [o.cursor] : [] },
     ];
     return assignSlots(items);
-  }, [o.video, o.cursor, o.splitting, status, basemap, basemapAt, volHint, dates, topTaken]);
+  }, [
+    o.video,
+    o.cursor,
+    o.splitting,
+    status,
+    basemap,
+    basemapAt,
+    volHint,
+    dates,
+    topTaken,
+    // --- RF coverage legend (rf-ui) ---
+    o.rfLegend,
+    // --- end RF coverage legend ---
+  ]);
   // the callouts keep out of the overlays: placed again as the overlays move (they read their
   // keep-out on a rendered frame)
   const engine = o.engine;
@@ -401,6 +424,9 @@ export function useStageCorners(o: StageCornersInput): {
         )}
         {basemap && at('basemap', <StageBasemapChip view={basemap} />)}
         {at('volHint', <VolumeHint />)}
+        {/* // --- RF coverage legend (rf-ui) --- */}
+        {at('rfLegend', <StageCoverageLegend />)}
+        {/* // --- end RF coverage legend --- */}
         {at('dates', <DatesOnScreen kinds={DATE_KINDS} />)}
       </>
     ),
@@ -686,6 +712,9 @@ export function Stage() {
   // the 3D view's readout is at the views' bottom end (the panes keep left-to-right geometry),
   // a stage corner unless the split shows the 3D view on the left
   const rtl = rtlUi();
+  // --- RF coverage legend (rf-ui) ---
+  const rfLegend = useCoverageLegendShown();
+  // --- end RF coverage legend ---
   const { cursorHidden, cursorWide, corners } = useStageCorners({
     engine,
     show3d,
@@ -697,6 +726,9 @@ export function Stage() {
     readoutClear: splitting && side3d === 'left' && pane3dWide,
     basemapAt: mapAtStart ? START : END,
     topTaken: islandReach.taken,
+    // --- RF coverage legend (rf-ui) ---
+    rfLegend,
+    // --- end RF coverage legend ---
   });
   // road keys first: they run before the stage keys below
   useRoadKeys(roadMap !== null);
