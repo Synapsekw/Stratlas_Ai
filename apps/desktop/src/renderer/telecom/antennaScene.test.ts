@@ -11,6 +11,7 @@ import {
 import { describe, expect, it, vi } from 'vitest';
 import { frameOf } from '../survey/measureScene';
 import {
+  antennaShift,
   buildAntennaGroup,
   KIND_COLOURS,
   pickAntennaAt,
@@ -171,6 +172,51 @@ describe('antenna scene', () => {
     cam.lookAt(3, 10, -4);
     expect(pickAntennaAt(g, cam, [0, 0])).toBe('ant-acc');
     expect(pickAntennaAt(g, cam, [0.9, 0.9])).toBeNull();
+  });
+
+  it('draws boxes and arrows where their survey date is drawn (its line-up shift)', () => {
+    // stored in the date's own frame at (1003, 2004, 60); the date is lined up 2 m east, 1 m south
+    const g = buildAntennaGroup(state({ shift: { eastM: 2, northM: -1 } }), frame);
+    const box = g.getObjectByName('antenna-box:ant-acc') as Mesh;
+    // x = 3 + 2 east, y = 10, z = -4 + 1 (south is +z)
+    expect([box.position.x, box.position.y, box.position.z]).toEqual([5, 10, -3]);
+    expect(outline(g, 'ant-acc').position.toArray()).toEqual([5, 10, -3]);
+    const east = arrow(g, 'ant-acc');
+    expect(east.c).toEqual([5, 10, -3]);
+    expect(east.tip[0] - east.c[0]).toBeCloseTo(1.2, 5);
+    // a pick at the drawn place finds it; the stored place is empty
+    const cam = new PerspectiveCamera(50, 1, 0.1, 100);
+    cam.position.set(5, 10, 9);
+    cam.lookAt(5, 10, -3);
+    expect(pickAntennaAt(g, cam, [0, 0])).toBe('ant-acc');
+    cam.position.set(3, 10, 8);
+    cam.lookAt(3, 10, -40);
+    expect(pickAntennaAt(g, cam, [0, 0])).toBeNull();
+    // no shift (or a null one) draws them where they are stored
+    const plain = buildAntennaGroup(state({ shift: null }), frame);
+    expect((plain.getObjectByName('antenna-box:ant-acc') as Mesh).position.toArray()).toEqual([
+      3, 10, -4,
+    ]);
+  });
+
+  it("takes the shift of the run's survey date from the manifest", () => {
+    const lineUp = { eastM: 2, northM: -1, with: 'd1', at: '2026-10-17T00:00:00.000Z' };
+    const manifest = {
+      captures: [
+        { id: 'd1', label: 'Survey', date: '2026-01-01' },
+        { id: 'd2', label: 'Survey', date: '2026-05-01', lineUp },
+      ],
+      layers: [{ kind: 'pointcloud', id: 'cloud-b', name: 'Cloud', capture: 'd2' }],
+    } as never;
+    const run = (over: Record<string, unknown>) =>
+      ({ ...file(units), run: { cloudLayer: 'cloud-b', ...over } }) as AntennasFile;
+    expect(antennaShift(run({ captureId: 'd2' }), manifest)).toEqual({ eastM: 2, northM: -1 });
+    expect(antennaShift(run({ captureId: 'd1' }), manifest)).toBeNull();
+    // an older file without the capture id: the cloud layer's date
+    expect(antennaShift(run({}), manifest)).toEqual({ eastM: 2, northM: -1 });
+    expect(antennaShift(run({ cloudLayer: 'gone' }), manifest)).toBeNull();
+    expect(antennaShift(null, manifest)).toBeNull();
+    expect(antennaShift(run({ captureId: 'd2' }), null)).toBeNull();
   });
 
   it('draws nothing without a file', () => {

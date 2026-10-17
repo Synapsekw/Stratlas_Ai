@@ -22,7 +22,7 @@ import { AntennaDetails } from '../telecom/AntennaDetails';
 import { AntennaInventory } from '../telecom/AntennaInventory';
 import { AntennaSendPreview } from '../telecom/AntennaSendPreview';
 import { antennasToCsv } from '../telecom/antennaCsv';
-import { armTowerPick, attachAntennaLayer } from '../telecom/antennaScene';
+import { antennaShift, armTowerPick, attachAntennaLayer } from '../telecom/antennaScene';
 import {
   antennaStore,
   applyAiLabels,
@@ -93,13 +93,19 @@ export function DetectAntennas(): ReactElement | null {
   const file = s.file;
   const showPanel = hasCloud && (file !== null || s.running || s.needsHint);
 
-  // the boxes in the 3D view while the panel is shown
+  // the boxes in the 3D view while the panel is shown, where their survey date is drawn: a new
+  // manifest (a date lined up again) draws them afresh
   useEffect(() => {
     if (!showPanel || !stage || !frame) return;
     return attachAntennaLayer(stage, frame, {
       getState: () => {
         const a = antennaStore.getState();
-        return { file: a.file, selected: a.selected, hidden: a.hidden };
+        return {
+          file: a.file,
+          selected: a.selected,
+          hidden: a.hidden,
+          shift: antennaShift(a.file, manifest),
+        };
       },
       subscribe: (cb) => antennaStore.subscribe(cb),
       onPick: (id) => {
@@ -107,7 +113,7 @@ export function DetectAntennas(): ReactElement | null {
         selectAntenna(id);
       },
     });
-  }, [showPanel, stage, frame]);
+  }, [showPanel, stage, frame, manifest]);
 
   // a pick in the scene brings its row into view
   useEffect(() => {

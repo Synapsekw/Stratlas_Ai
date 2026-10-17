@@ -3,9 +3,22 @@
  * outline style (never colour alone), a facing arrow, a highlight for the selected unit, and
  * picking a box with a click. Project E, N, Z map to the local frame as in the survey measure
  * scene (`../survey/measureScene`): x east, y up, z south.
+ *
+ * The inventory is stored in its survey date's own frame, like survey measurements: the boxes and
+ * arrows are drawn moved by that date's line-up shift (`antennaShift`), as `measureDates`
+ * `drawnPoints` moves a dated measurement.
  */
 import type { EngineStage } from '@aio/engine';
-import type { AntennaKind, AntennasFile, AntennaUnit, Vec3 } from '@aio/schema';
+import {
+  shiftEN,
+  type AntennaKind,
+  type AntennasFile,
+  type AntennaUnit,
+  type DateShift,
+  type ProjectManifest,
+  type Vec3,
+} from '@aio/schema';
+import { captureShift, dateShiftOf } from '@aio/workspace';
 import {
   BoxGeometry,
   BufferGeometry,
@@ -38,6 +51,24 @@ export interface AntennaSceneState {
   file: AntennasFile | null;
   selected: string | null;
   hidden: Record<string, true>;
+  /** The line-up shift of the run's survey date (`antennaShift`); none when absent or null. */
+  shift?: DateShift | null;
+}
+
+/**
+ * How far the inventory is drawn from where it is stored: the line-up shift of the survey date
+ * its cloud belongs to (the run's `captureId`, else the cloud layer's date in an older file), or
+ * null when that date is not lined up or there is no open manifest.
+ */
+export function antennaShift(
+  file: AntennasFile | null,
+  manifest: Pick<ProjectManifest, 'captures' | 'layers'> | null,
+): DateShift | null {
+  if (!file || !manifest) return null;
+  const { captureId, cloudLayer } = file.run;
+  return captureId !== undefined
+    ? captureShift(manifest, captureId)
+    : dateShiftOf(manifest, cloudLayer);
 }
 
 const HIGHLIGHT_COLOUR = '#ffffff';
@@ -125,7 +156,7 @@ export function buildAntennaGroup(state: AntennaSceneState, frame: Frame): Group
     if (state.hidden[unit.id]) continue;
     const colour = KIND_COLOURS[unit.kind];
     const [w, h, d] = unit.box.extents;
-    const centre = frame.toLocal(unit.box.centre);
+    const centre = frame.toLocal(shiftEN(unit.box.centre, state.shift ?? null));
     const quat = orientation(unit.box);
     const boxGeometry = new BoxGeometry(w, h, d);
     const rejected = unit.status === 'rejected';

@@ -138,7 +138,7 @@ export const TelecomAntennasParams = z
       .object({ layer: z.string().min(1).max(128) })
       .strict()
       .optional(),
-    /** A click on the tower in the 3D view: local x and z. */
+    /** A click on the tower in the 3D view: local x and z where the view draws it (lined up). */
     towerHint: z.tuple([z.number(), z.number()]).optional(),
     floorFraction: z.number().min(0.3).max(0.95).optional(),
   })
@@ -151,6 +151,12 @@ export const AntennaRun = z
     at: IsoTime,
     params: TelecomAntennasParams,
     cloudLayer: z.string().min(1).max(128),
+    /**
+     * The survey date (manifest capture id) the cloud layer belongs to. Units are stored in that
+     * date's own frame, without its line-up shift (like survey measurements), and drawn shifted by
+     * the capture's `lineUp`. Absent when the cloud has no date, and in older files.
+     */
+    captureId: z.string().min(1).max(128).optional(),
     axis: z
       .object({ point: Vec3, dir: Vec3, source: z.enum(['evidence', 'auto', 'hint']) })
       .strict(),

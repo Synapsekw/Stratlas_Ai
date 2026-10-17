@@ -133,6 +133,24 @@ describe('antennas contract', () => {
     const bad = AntennasFile.safeParse({ ...file, run: { ...file.run, groundZ: '12' } });
     expect(bad.success).toBe(false);
   });
+
+  it('takes an optional capture id in the run: the survey date of the cloud', () => {
+    const file = AntennasFile.parse(contract.example);
+    expect(file.run.captureId).toBeUndefined();
+    const dated = AntennasFile.parse({
+      ...file,
+      run: { ...file.run, captureId: 'capture-2026-05-01' },
+    });
+    expect(dated.run.captureId).toBe('capture-2026-05-01');
+    expect(AntennasFile.parse(JSON.parse(JSON.stringify(dated))).run.captureId).toBe(
+      'capture-2026-05-01',
+    );
+    for (const captureId of ['', 7, 'x'.repeat(129)]) {
+      expect(AntennasFile.safeParse({ ...file, run: { ...file.run, captureId } }).success).toBe(
+        false,
+      );
+    }
+  });
 });
 
 describe('antennas channels and versions', () => {
