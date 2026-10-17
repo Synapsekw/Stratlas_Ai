@@ -3,7 +3,7 @@
  * and drone-eye modes).
  */
 import type { EngineStage } from '@aio/engine';
-import type { IconName } from '@aio/ui';
+import { useT, type IconName } from '@aio/ui';
 import { setCameraMode, videoRig, type CameraMode } from '@aio/video';
 import { useWorkspace } from '@aio/workspace';
 import { useReducer } from 'react';
@@ -11,15 +11,15 @@ import { PATH_MODES, setPathMode } from '../flightPaths';
 import { updateFlightPaths, useFlightPathModel } from '../pathModel';
 
 /** All, active clip only or no flight paths: the segmented choice and its note (P toggles them). */
-export function FlightPathPanel({ showTitle = true }: { showTitle?: boolean }) {
+export function FlightPathPanel() {
+  const t = useT();
   const m = useFlightPathModel();
   if (!m) return null;
   const { mode } = m.pref;
   const current = PATH_MODES.find((p) => p.mode === mode);
   return (
     <div className="pop-form" data-testid="path-panel">
-      {showTitle && <span className="pop-title">Flight paths</span>}
-      <div className="seg pop-seg" role="group" aria-label="Flight paths">
+      <div className="seg pop-seg" role="group" aria-label={t('bench.video.paths')}>
         {PATH_MODES.map((p) => (
           <button
             key={p.mode}

@@ -24,13 +24,13 @@ const HINT: Record<CutawayMode, MessageKey> = {
   transparent: 'stage.cutaway.transparentHint',
 };
 
-/** The panel of the stage's cut-away tool: Off, Cut or Transparent, opacity and Inside view. */
-export function CutawayPanel({ stage, tab = false }: { stage: EngineStage | null; tab?: boolean }) {
+/** The Cutaway tab's panel: Off, Cut or Transparent, opacity and Inside view. */
+export function CutawayPanel({ stage }: { stage: EngineStage | null }) {
   const t = useT();
   const { mode, opacity } = useCutawayPref();
   const inside = useCutawayState((s) => s.inside);
   return (
-    <div className={`pop-form${tab ? ' wb-pop-form' : ''}`} data-testid="cutaway-panel">
+    <div className="pop-form wb-pop-form" data-testid="cutaway-panel">
       <span className="pop-title">{t('stage.cutaway.title')}</span>
       <div className="seg pop-seg" role="group" aria-label={t('stage.cutaway.modes')}>
         {CUTAWAY_MODES.map((m) => (
@@ -98,7 +98,7 @@ export function CutawayTab() {
   }
   return (
     <div className="wb-scroll">
-      <CutawayPanel stage={stage} tab />
+      <CutawayPanel stage={stage} />
     </div>
   );
 }

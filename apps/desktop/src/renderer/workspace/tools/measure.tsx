@@ -13,7 +13,7 @@ function cameraBearing(stage: EngineStage): number {
 }
 
 /** The Distance tool is on (the plain tool, not a template built on it). */
-export function distanceOn(): boolean {
+function distanceOn(): boolean {
   const tool = measureStore.getState().tool;
   return tool?.tool === 'distance' && !tool.template;
 }

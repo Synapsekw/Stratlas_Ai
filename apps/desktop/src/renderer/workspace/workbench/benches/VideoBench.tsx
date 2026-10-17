@@ -215,7 +215,7 @@ export function VideoBench() {
       </Section>
       {paths && (
         <Section id="video-paths" bench="video" title={t('bench.video.paths')} defaultOpen>
-          <FlightPathPanel showTitle={false} />
+          <FlightPathPanel />
         </Section>
       )}
       <Section id="video-telemetry" bench="video" title={t('bench.video.telemetry')} defaultOpen>
