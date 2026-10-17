@@ -7,8 +7,12 @@
  * Rasters are placed in the local frame (data-conventions section 5): x east, z south, a pure
  * translation of the project CRS by the manifest origin. Each image or tile is drawn into the
  * crop with the affine that maps its pixels to the crop's.
+ *
+ * An ortho of a lined-up date is read where it is drawn (line up dates): `shift` (its
+ * `dateShiftOf`) moves the image's corners and every tile's, so the crop shows what the person
+ * clicked on.
  */
-import type { Layer, Vec3 } from '@aio/schema';
+import { isZeroShift, shiftCorners, type DateShift, type Layer, type Vec3 } from '@aio/schema';
 
 export type RasterLayer = Extract<Layer, { kind: 'raster' }>;
 
@@ -35,10 +39,14 @@ export function cropWindow(at: readonly [number, number], sideM: number, size = 
   return { x0: at[0] - sideM / 2, y1: at[1] + sideM / 2, res: sideM / size, size };
 }
 
-/** A name for a crop: equal names are equal pixels (layer and window, to the millimetre). */
-export function cropKey(layerId: string, w: CropWindow): string {
+/**
+ * A name for a crop: equal names are equal pixels (layer, its date shift and window, to the
+ * millimetre).
+ */
+export function cropKey(layerId: string, w: CropWindow, shift: DateShift | null = null): string {
   const mm = (v: number) => Math.round(v * 1000).toString();
-  return `${layerId}@${mm(w.x0)},${mm(w.y1)},${mm(w.res * w.size)},${String(w.size)}`;
+  const moved = shift && !isZeroShift(shift) ? `~${mm(shift.eastM)},${mm(shift.northM)}` : '';
+  return `${layerId}${moved}@${mm(w.x0)},${mm(w.y1)},${mm(w.res * w.size)},${String(w.size)}`;
 }
 
 /**
@@ -225,11 +233,19 @@ export interface CropIo {
   };
 }
 
-/** The placement of a layer's whole image (`image`) or pyramid (`kit-pyramid`), or null. */
-export async function layerCorners(layer: RasterLayer, io: CropIo): Promise<Corners | null> {
-  if (layer.format === 'image') return layer.corners ?? null;
+/**
+ * The placement of a layer's whole image (`image`) or pyramid (`kit-pyramid`) as drawn on its
+ * date (`shift`), or null.
+ */
+export async function layerCorners(
+  layer: RasterLayer,
+  io: CropIo,
+  shift: DateShift | null = null,
+): Promise<Corners | null> {
+  if (layer.format === 'image') return layer.corners ? shiftCorners(layer.corners, shift) : null;
   if (layer.format !== 'kit-pyramid') return null;
-  return parseTiles(await io.fetchJson(io.url(layer.src)))?.corners ?? null;
+  const c = parseTiles(await io.fetchJson(io.url(layer.src)))?.corners;
+  return c ? shiftCorners(c, shift) : null;
 }
 
 /**
@@ -241,6 +257,7 @@ export async function composeCrop(
   w: CropWindow,
   origin: Vec3,
   io: CropIo,
+  shift: DateShift | null = null,
 ): Promise<{ ok: true; rgb: Uint8Array<ArrayBuffer> } | { ok: false; error: string }> {
   if (!CROP_FORMATS.includes(layer.format)) {
     return {
@@ -261,12 +278,14 @@ export async function composeCrop(
   };
   if (layer.format === 'image') {
     if (!layer.corners) return { ok: false, error: `The ortho "${layer.name}" has no placement.` };
-    if (!(await draw(io.url(layer.src), layer.corners))) {
+    if (!(await draw(io.url(layer.src), shiftCorners(layer.corners, shift)))) {
       return { ok: false, error: `The ortho "${layer.name}" could not be read.` };
     }
   } else {
-    const index = parseTiles(await io.fetchJson(io.url(layer.src)));
-    if (!index) return { ok: false, error: `The ortho "${layer.name}" has no valid tile index.` };
+    const read = parseTiles(await io.fetchJson(io.url(layer.src)));
+    if (!read) return { ok: false, error: `The ortho "${layer.name}" has no valid tile index.` };
+    // every tile's corners follow from the index's: moving those moves them all
+    const index = { ...read, corners: shiftCorners(read.corners, shift) };
     const tiles = tilesFor(index, w, origin);
     if (!tiles.length) return { ok: false, error: 'The click is outside the ortho.' };
     const drawn = await Promise.all(tiles.map((t) => draw(io.url({ path: t.path }), t.corners)));

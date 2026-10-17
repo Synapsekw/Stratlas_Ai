@@ -10,7 +10,7 @@
  */
 import type { IpcResponse, ProjectManifest, SitePoint } from '@aio/schema';
 import type { DrawEnv, DrawEvent } from '@aio/survey';
-import { assetUrl, useWorkspace, workspace } from '@aio/workspace';
+import { assetUrl, dateShiftOf, shiftKey, useWorkspace, workspace } from '@aio/workspace';
 import { useEffect } from 'react';
 import { createStore, useStore } from 'zustand';
 import { openProcessingTools } from '../processingTools';
@@ -130,10 +130,10 @@ const cornersCache = new Map<string, Corners | null>();
 
 /**
  * The ortho under a click: the visible ortho layers the crop can read, the one drawn on top
- * first (later in the manifest), that covers the point.
+ * first (later in the manifest), that covers the point where it is drawn (its date's line-up).
  */
 export async function orthoAt(
-  manifest: Pick<ProjectManifest, 'layers' | 'origin'>,
+  manifest: Pick<ProjectManifest, 'layers' | 'origin' | 'captures'>,
   hidden: Readonly<Record<string, true>>,
   at: readonly [number, number],
   io: CropIo,
@@ -148,9 +148,10 @@ export async function orthoAt(
     )
     .reverse();
   for (const l of orthos) {
-    const key = `${l.id}:${JSON.stringify(l.src)}`;
+    const shift = dateShiftOf(manifest, l.id);
+    const key = `${l.id}:${JSON.stringify(l.src)}:${shiftKey(shift)}`;
     if (!cornersCache.has(key)) {
-      cornersCache.set(key, await layerCorners(l, io).catch(() => null));
+      cornersCache.set(key, await layerCorners(l, io, shift).catch(() => null));
     }
     const c = cornersCache.get(key);
     if (c && covers(c, at, manifest.origin)) return l;
@@ -184,11 +185,18 @@ async function suggest(
     : s.last;
   if (!target) return;
   set({ busy: true, message: req ? 'Finding the outline...' : null });
-  const key = cropKey(target.layer.id, target.window);
+  const shift = dateShiftOf(project.manifest, target.layer.id);
+  const key = cropKey(target.layer.id, target.window, shift);
   const ask = async (withPixels: boolean) => {
     let rgb: Uint8Array<ArrayBuffer> | undefined;
     if (withPixels) {
-      const crop = await composeCrop(target.layer, target.window, project.manifest.origin, io);
+      const crop = await composeCrop(
+        target.layer,
+        target.window,
+        project.manifest.origin,
+        io,
+        shift,
+      );
       if (!crop.ok) return { ok: false as const, error: crop.error };
       rgb = crop.rgb;
     }
@@ -345,13 +353,14 @@ export function projectOutline(): Outline | null {
   return async (click, window) => {
     const layer = await orthoAt(project.manifest, ws.hidden, click, io);
     if (!layer) return { ok: false, error: 'No ortho is shown here.' };
-    const crop = await composeCrop(layer, window, project.manifest.origin, io);
+    const shift = dateShiftOf(project.manifest, layer.id);
+    const crop = await composeCrop(layer, window, project.manifest.origin, io, shift);
     if (!crop.ok) return crop;
     const res = await bridge.call('surveyAi:suggest', {
       projectId: project.id,
       layer: layer.id,
       click,
-      crop: { key: cropKey(layer.id, window), ...window, rgb: crop.rgb },
+      crop: { key: cropKey(layer.id, window, shift), ...window, rgb: crop.rgb },
     });
     if (!res.ok) return { ok: false, error: res.error };
     return res.value.ok
