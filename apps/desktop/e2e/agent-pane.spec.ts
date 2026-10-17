@@ -87,6 +87,13 @@ test('the agent pane: off row, maximise, minimise, a live tool, the divider and 
           inner,
           clipped: el.scrollWidth > el.clientWidth,
           ellipsis: cs.textOverflow,
+          // text-overflow draws its ellipsis only on a block container that clips its own text
+          display: cs.display,
+          overflow: cs.overflowX,
+          // the chip's own box ends inside the header: the cut is its ellipsis, not the row's edge
+          inside:
+            el.getBoundingClientRect().right <=
+            (el.parentElement?.getBoundingClientRect().right ?? 0) + 0.5,
           window: window.innerWidth,
         };
       });
@@ -94,6 +101,13 @@ test('the agent pane: off row, maximise, minimise, a live tool, the divider and 
     expect(chip.text).toMatch(/^3D view, /);
     expect(chip.inner, JSON.stringify(chip)).toBeGreaterThanOrEqual(chip.label);
     expect(chip.ellipsis).toBe('ellipsis');
+    // the rest is cut at an ellipsis by the chip itself (the old header cut it at its edge,
+    // after "3D view,"): the text overflows the chip, which clips and ellipsizes it
+    expect(chip.clipped, JSON.stringify(chip)).toBe(true);
+    // a flex box (the old inline-flex chip) ignores text-overflow: no ellipsis is drawn
+    expect(chip.display).toBe('block');
+    expect(chip.overflow).toBe('hidden');
+    expect(chip.inside, JSON.stringify(chip)).toBe(true);
     for (const name of ['Minimise', 'Maximise']) {
       await expect(agent(win).getByRole('button', { name })).toHaveClass('ag-btn ghost icon');
     }
