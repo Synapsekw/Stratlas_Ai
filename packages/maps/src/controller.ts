@@ -43,15 +43,8 @@ import { bboxOf, orderPacks, type MapPack } from './packs';
 import { pyramidView, type PyramidIndex } from './pyramid';
 import { issueFeatures, issueShapeBounds, styleLayers, type MapOverlay } from './vector';
 import { MAP_INK } from './ink';
-import {
-  addPhotoPins,
-  PHOTO_PIN_LAYERS,
-  PHOTO_SOURCE,
-  photoMapClickHandler,
-  photoPinData,
-  photoPoints,
-  photosFromClusterLeaves,
-} from './photoPins';
+import { MapMediaMarkers } from './mediaMarkers';
+import { addPhotoPins, PHOTO_SOURCE, photoPinData, photoPoints } from './photoPins';
 import { installBasemap } from './runtime';
 import { buildStyle } from './style';
 
@@ -947,9 +940,12 @@ export function createMapController(
     );
   }
 
-  // ----- photos -----
+  // ----- photos and 360s -----
+  /** The photo and 360 marker plates of the open project (they take their own clicks). */
+  let media: MapMediaMarkers | null = null;
   function renderPhotos(s: Workspace): void {
     if (proj && map.getSource(PHOTO_SOURCE)) setData(PHOTO_SOURCE, photoPinData(s, proj));
+    media?.update(s);
   }
 
   // ----- issues -----
@@ -1217,8 +1213,17 @@ export function createMapController(
     const project = s.project;
     projectId = project?.id ?? null;
     proj = project ? frameProjection(project.manifest.crs, project.manifest.origin) : null;
+    media?.dispose();
+    media = null;
     if (!project || !proj) return;
     const id = project.id;
+    media = new MapMediaMarkers({
+      map,
+      proj,
+      url: (src) => assetUrl(id, src),
+      // a pick, a pointer session or a drawing takes every click (onClick)
+      busy: () => picking !== null || session !== null || draw?.()?.mode != null,
+    });
     const layers = project.manifest.layers;
     const rasters = layers.filter((l): l is RasterLayer => l.kind === 'raster');
     const videos = layers.filter((l): l is VideoLayer => l.kind === 'video');
@@ -1365,53 +1370,17 @@ export function createMapController(
         });
       return;
     }
+    // photos and 360s are marker plates that take their own clicks (mediaMarkers.ts)
     const hit = map.queryRenderedFeatures(e.point, {
-      layers: ISSUE_LAYERS.concat(
-        'aio-drone-point',
-        'aio-flights-line',
-        ...PHOTO_PIN_LAYERS,
-      ).filter((l) => map.getLayer(l)),
+      layers: ISSUE_LAYERS.concat('aio-drone-point', 'aio-flights-line').filter((l) =>
+        map.getLayer(l),
+      ),
     })[0];
     const props = hit?.properties as
-      | {
-          issueId?: string;
-          layerId?: string;
-          cluster_id?: number;
-          photoLayer?: string;
-          photoId?: string;
-        }
-      | undefined;
+      { issueId?: string; layerId?: string; cluster_id?: number } | undefined;
     const st = store.getState();
     const ov = props ? null : overlayAt(e);
-    const modified =
-      e.originalEvent.ctrlKey ||
-      e.originalEvent.metaKey ||
-      e.originalEvent.shiftKey ||
-      e.originalEvent.altKey;
-    const photoClick = modified ? null : photoMapClickHandler();
     if (props?.cluster_id !== undefined && hit?.geometry.type === 'Point') {
-      if (photoClick && hit.source === PHOTO_SOURCE) {
-        // A plain click lists the photos in the cluster so each one can open. Zooming would
-        // move the map under that list. Other clusters (issues) still zoom apart.
-        const clusterId = props.cluster_id;
-        const at = { x: e.originalEvent.clientX, y: e.originalEvent.clientY };
-        const src = map.getSource(hit.source) as
-          | {
-              getClusterLeaves(
-                id: number,
-                limit: number,
-                offset: number,
-              ): Promise<{ properties: { photoLayer?: string; photoId?: string } | null }[]>;
-            }
-          | undefined;
-        void src?.getClusterLeaves(clusterId, 60, 0).then((leaves) => {
-          const photos = photosFromClusterLeaves(leaves);
-          const one = photos.length === 1 ? photos[0] : undefined;
-          if (one) photoClick({ kind: 'pin', layerId: one.layerId, photoId: one.photoId });
-          else if (photos.length > 1) photoClick({ kind: 'cluster', ...at, photos });
-        });
-        return;
-      }
       // Expand a badge: zoom to where it splits.
       const center = hit.geometry.coordinates as [number, number];
       const src = map.getSource<GeoJSONSource>(hit.source);
@@ -1420,12 +1389,6 @@ export function createMapController(
       });
     } else if (props?.issueId) {
       st.select({ kind: 'issue', id: props.issueId });
-    } else if (props?.photoId && props.photoLayer) {
-      if (photoClick) {
-        photoClick({ kind: 'pin', layerId: props.photoLayer, photoId: props.photoId });
-        return;
-      }
-      st.select({ kind: 'photo', id: props.photoId, layer: props.photoLayer });
     } else if (props?.layerId) {
       st.setActiveClip(props.layerId);
       st.select({ kind: 'clip', id: props.layerId });
@@ -1449,12 +1412,7 @@ export function createMapController(
       d.onFinish();
     });
     const drawing = () => picking !== null || session !== null || draw?.()?.mode != null;
-    for (const id of [
-      'aio-flights-line',
-      'aio-drone-point',
-      'aio-photos-pt',
-      'aio-photos-cluster',
-    ]) {
+    for (const id of ['aio-flights-line', 'aio-drone-point']) {
       map.on('mouseenter', id, () => {
         if (!drawing()) map.getCanvas().style.cursor = 'pointer';
       });
@@ -1636,6 +1594,8 @@ export function createMapController(
       if (pyrTimer) clearTimeout(pyrTimer);
       tip.remove();
       for (const c of cleanups.splice(0)) c();
+      media?.dispose();
+      media = null;
       map.remove();
       // The container may outlive the map (a detached tree a listener still holds): drop the test
       // hook so it does not keep the map, its style and its WebGL context alive.

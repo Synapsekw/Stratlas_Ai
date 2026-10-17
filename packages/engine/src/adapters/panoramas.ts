@@ -19,7 +19,7 @@ import {
 import type { StoreApi } from 'zustand/vanilla';
 import { FONT_MONO, FONT_UI, PALETTE } from '../palette';
 import { isEngineStage } from '../registry';
-import { MarkerLayer } from './markers';
+import { MarkerLayer, sceneMarkerView } from './markers';
 import type { AdapterContext, LayerAdapter, LayerHandle, SavedView } from '../types';
 import {
   FULL_SPHERE,
@@ -288,7 +288,7 @@ export function createPanoramasAdapter(
       const canvas = scene.renderer.domElement;
       const selectedIds = new Set<number>();
       const markers = new MarkerLayer({
-        scene,
+        view: sceneMarkerView(scene),
         kind: 'pano',
         sites: items.map((p, i) => ({ pos: p.pos, members: [i] })),
         member: (i) => {

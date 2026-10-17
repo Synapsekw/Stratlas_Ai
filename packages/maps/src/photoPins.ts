@@ -6,15 +6,23 @@ import type { FrameProjection } from './geo';
 import { MAP_INK } from './ink';
 
 /*
- * Where photos were taken, as pins on the map (clustered): placed with their hand corrections
- * (orientation.json), selectable, and what the photo right-click menu finds.
+ * Where photos were taken, as points on the map (clustered): placed with their hand corrections
+ * (orientation.json). The points draw nothing: the photos show as marker plates
+ * (`mediaMarkers.ts`), and these stay as the source the photo right-click menu and the tests query
+ * (a 14 px target, as the plates).
  */
 
 export const PHOTO_SOURCE = 'aio-photos';
-/** The pin and cluster layers (clicks, right-clicks, the pointer cursor). */
+/** The point and cluster layers (what right-clicks query). */
 export const PHOTO_PIN_LAYERS = ['aio-photos-pt', 'aio-photos-cluster'] as const;
 
-const INK = MAP_INK;
+/** Invisible circles: queryable, never drawn. */
+const UNSEEN = {
+  'circle-radius': 14,
+  'circle-color': MAP_INK.bg0,
+  'circle-opacity': 0,
+  'circle-stroke-opacity': 0,
+} as const;
 
 /** The clustered photo source and its layers (call once the style has loaded). */
 export function addPhotoPins(map: MapLibreMap, before?: string): void {
@@ -31,29 +39,7 @@ export function addPhotoPins(map: MapLibreMap, before?: string): void {
       type: 'circle',
       source: PHOTO_SOURCE,
       filter: ['has', 'point_count'],
-      paint: {
-        'circle-radius': ['step', ['get', 'point_count'], 9, 10, 11, 50, 14],
-        'circle-color': INK.bg0,
-        'circle-stroke-color': INK.fg1,
-        'circle-stroke-width': 1.5,
-      },
-    },
-    before,
-  );
-  map.addLayer(
-    {
-      id: 'aio-photos-count',
-      type: 'symbol',
-      source: PHOTO_SOURCE,
-      filter: ['has', 'point_count'],
-      layout: {
-        'text-field': ['get', 'point_count_abbreviated'],
-        'text-font': ['Noto Sans Medium'],
-        'text-size': 10,
-        'text-allow-overlap': true,
-        'text-ignore-placement': true,
-      },
-      paint: { 'text-color': INK.fg0 },
+      paint: UNSEEN,
     },
     before,
   );
@@ -63,12 +49,7 @@ export function addPhotoPins(map: MapLibreMap, before?: string): void {
       type: 'circle',
       source: PHOTO_SOURCE,
       filter: ['!', ['has', 'point_count']],
-      paint: {
-        'circle-radius': ['case', ['get', 'selected'], 6, 4.5],
-        'circle-color': ['case', ['get', 'selected'], INK.accStrong, INK.bg0],
-        'circle-stroke-color': INK.fg1,
-        'circle-stroke-width': 1.5,
-      },
+      paint: UNSEEN,
     },
     before,
   );

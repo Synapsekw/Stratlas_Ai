@@ -30,6 +30,14 @@ export {
 } from './adapters/photos';
 export { registerRasterFormat, type RasterFormatHandler } from './adapters/raster';
 export { createPanoramasAdapter } from './adapters/panoramas';
+export {
+  MarkerLayer,
+  sceneMarkerView,
+  type MarkerLayerOptions,
+  type MarkerMember,
+  type MarkerSite,
+  type MarkerView,
+} from './adapters/markers';
 export { PANO_SPHERE_R, panoSphereMaterial, type PanoSphereMaterial } from './adapters/panoSphere';
 export {
   FULL_SPHERE,
@@ -39,6 +47,7 @@ export {
   dragLook,
   imageCentreDeg,
   itemCoverage,
+  panoMarkerStatus,
   panoOpenable,
   hasPos,
   panoUv,

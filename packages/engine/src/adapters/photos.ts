@@ -21,7 +21,7 @@ import type { StoreApi } from 'zustand/vanilla';
 import { engineConfig, FAR_M } from '../config';
 import { PALETTE } from '../palette';
 import type { LayerAdapter, LayerHandle } from '../types';
-import { MarkerLayer } from './markers';
+import { MarkerLayer, pickingOver, sceneMarkerView } from './markers';
 
 type PhotosLayer = Extract<Layer, { kind: 'photos' }>;
 export type PosedPhoto = PhotoRef & {
@@ -299,7 +299,7 @@ export function createPhotosAdapter(
         if (p) choose(p.id, how?.split !== false);
       };
       const markers = new MarkerLayer({
-        scene,
+        view: sceneMarkerView(scene),
         kind: 'photo',
         sites: stations.map((st) => ({ pos: st.pos, members: st.photos })),
         member: (i) => {
@@ -359,6 +359,8 @@ export function createPhotosAdapter(
         down = null;
         if (!d || !group.visible || Math.hypot(e.clientX - d.x, e.clientY - d.y) > CLICK_SLOP_PX)
           return;
+        // an armed pick takes this click
+        if (pickingOver(el)) return;
         if (markers.hits(e.clientX, e.clientY)) return;
         const r = el.getBoundingClientRect();
         const x = ((e.clientX - r.left) / r.width) * 2 - 1;

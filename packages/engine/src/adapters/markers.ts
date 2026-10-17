@@ -1,4 +1,4 @@
-import { Matrix4, Vector3 } from 'three';
+import { Vector3 } from 'three';
 import { engineConfig } from '../config';
 import { isEngineStage } from '../registry';
 import type { SceneHandle } from '../types';
@@ -29,8 +29,94 @@ export interface MarkerMember {
   full?: string | undefined;
 }
 
+/**
+ * Where a marker layer draws and takes the pointer: the 3D stage (`sceneMarkerView`) or a map
+ * (`@aio/maps` `mapMarkerView`).
+ */
+export interface MarkerView {
+  /** The element the layer's icons are added to, laid over `surface`. */
+  host: HTMLElement;
+  /** The element under the pointer (hover, clicks, the cursor); icon positions are relative to it. */
+  surface: HTMLElement;
+  /** Where a local point shows on `surface` (CSS px), or null when it is behind the view. */
+  project(pos: readonly [number, number, number]): { x: number; y: number } | null;
+  /** Run before every drawn frame; returns an unsubscribe. */
+  onFrame(cb: () => void): () => void;
+  /** The layer took this click (pointer-up): the view does not act on it too. */
+  claimClick?(e: PointerEvent): void;
+  /** Ask for a frame (the layer lays out in `onFrame`); without it the layer lays out at once. */
+  requestFrame?(): void;
+  /**
+   * Changes whenever the projection does (camera, size), read before each layout's `project`
+   * calls; while it holds the layer keeps its icons. Without it every frame lays out again.
+   */
+  viewKey?(): string;
+  /**
+   * The view hands clicks to the layer itself, before acting on them (the 3D stage); the handler
+   * returns true when it took the click. Without it the layer listens to `surface` itself.
+   */
+  claimClicks?(handler: (e: PointerEvent) => boolean): () => void;
+  /** Another tool owns the pointer now (a pick, a drawing): no hover, no clicks. */
+  busy?(): boolean;
+}
+
+/** The size `el` is drawn at (its client size, else its box). */
+function sizeOf(el: HTMLElement): { w: number; h: number } {
+  let w = el.clientWidth;
+  let h = el.clientHeight;
+  if (!w || !h) {
+    const r = el.getBoundingClientRect();
+    w = r.width;
+    h = r.height;
+  }
+  return { w, h };
+}
+
+/**
+ * A point pick is armed on the pane holding `el` (`data-picking`, set by the app's pick hook): its
+ * clicks belong to the pick, so markers and photo planes do not open what lies under them.
+ */
+export function pickingOver(el: Element): boolean {
+  return el.closest('[data-picking="true"]') !== null;
+}
+
+/** Markers over a 3D scene: icons over the canvas, clicks through the stage's own claims. */
+export function sceneMarkerView(scene: SceneHandle): MarkerView {
+  const canvas = scene.renderer.domElement;
+  const v = new Vector3();
+  let size = sizeOf(canvas);
+  return {
+    host: canvas.parentElement ?? canvas,
+    surface: canvas,
+    project: (pos) => {
+      const p = v.set(pos[0], pos[1], pos[2]).project(scene.camera);
+      if (p.z > 1 || p.z < -1) return null;
+      return { x: ((p.x + 1) / 2) * size.w, y: ((1 - p.y) / 2) * size.h };
+    },
+    onFrame: (cb) =>
+      scene.onFrame(() => {
+        cb();
+      }),
+    requestFrame: () => {
+      scene.requestRender();
+    },
+    busy: () => pickingOver(canvas),
+    viewKey: () => {
+      const cam = scene.camera;
+      cam.updateMatrixWorld();
+      size = sizeOf(canvas);
+      const view = cam.matrixWorld.elements.join(',');
+      const lens = cam.projectionMatrix.elements.join(',');
+      return `${String(size.w)}x${String(size.h)} ${view} ${lens}`;
+    },
+    ...(isEngineStage(scene)
+      ? { claimClicks: (h: (e: PointerEvent) => boolean) => scene.claimClicks(h) }
+      : {}),
+  };
+}
+
 export interface MarkerLayerOptions {
-  scene: SceneHandle;
+  view: MarkerView;
   kind: 'photo' | 'pano';
   sites: MarkerSite[];
   member(i: number): MarkerMember;
@@ -74,6 +160,7 @@ const CSS = `
 .aio-mk-n{position:absolute;left:18px;top:1px;box-sizing:border-box;min-width:15px;height:13px;padding:0 3px;border-radius:7px;background:var(--acc,oklch(0.79 0.115 172));color:var(--acc-ink,oklch(0.2 0.03 172));font:600 9.5px/13px var(--f-mono,'IBM Plex Mono',ui-monospace,monospace);text-align:center;font-variant-numeric:tabular-nums;box-shadow:0 0 0 1.5px oklch(0.15 0.01 250 / .85)}
 .aio-mk-tip{position:absolute;left:0;top:0;pointer-events:none;white-space:nowrap;padding:4px 8px 5px;border-radius:4px;background:var(--scrim,oklch(0.13 0.01 250 / .84));border:1px solid var(--line-strong,oklch(0.36 0.012 250));color:var(--ov,oklch(0.96 0.008 250));font:500 11px/15px var(--f-mono,'IBM Plex Mono',ui-monospace,monospace);z-index:2}
 .aio-mk-tip i{display:block;font-style:normal;color:var(--ov-dim,oklch(0.96 0.008 250 / .55))}
+.aio-mk-tip img{display:block;width:128px;height:84px;margin:1px 0 5px;object-fit:cover;border-radius:2px;background:var(--bg-3,#222a34)}
 .aio-mk-list{position:absolute;z-index:6;max-height:260px;overflow-y:auto;min-width:200px;max-width:300px;padding:4px;background:var(--bg-1,#12161c);border:1px solid var(--line-strong,#39424e);border-radius:6px;box-shadow:0 12px 32px rgba(0,0,0,.45);color:var(--fg-0,#eef1f5);font:500 12px/1.2 var(--f-mono,'IBM Plex Mono',ui-monospace,monospace);pointer-events:auto}
 .aio-mk-list button{display:flex;align-items:center;gap:8px;width:100%;min-height:32px;padding:3px 6px;border:0;border-radius:4px;background:transparent;color:inherit;font:inherit;cursor:pointer;text-align:left}
 .aio-mk-list button:hover,.aio-mk-list button:focus-visible{background:var(--bg-3,#222a34);outline:none}
@@ -93,8 +180,8 @@ function injectStyle() {
   document.head.append(s);
 }
 
-/** The marker layers of each scene, so photos and panoramas share hover, clicks and space. */
-const layersOf = new WeakMap<SceneHandle, Set<MarkerLayer>>();
+/** The marker layers of each view surface, so photos and panoramas share hover, clicks and space. */
+const layersOf = new WeakMap<HTMLElement, Set<MarkerLayer>>();
 /** A panorama icon on (almost) the same spot as a photo icon steps aside by this much. */
 const NUDGE_PX = 16;
 
@@ -117,20 +204,22 @@ export class MarkerLayer {
   private hovered = -1;
   private visible = true;
   private dirty = true;
-  private readonly lastView = new Matrix4();
-  private lastSize = '';
-  private readonly v = new Vector3();
+  private lastView: string | null = null;
   private readonly offs: (() => void)[] = [];
   private down: { x: number; y: number } | null = null;
   private closeList: (() => void) | null = null;
   private hoverRaf = 0;
   private hoverAt: { x: number; y: number } | null = null;
+  /** This layer set the pointer cursor (and puts it back when the pointer leaves its icons). */
+  private pointing = false;
+  private tipImg: HTMLImageElement | null = null;
 
   constructor(private readonly o: MarkerLayerOptions) {
     injectStyle();
-    const canvas = o.scene.renderer.domElement;
-    const host = canvas.parentElement;
-    if (host && typeof document !== 'undefined') {
+    const view = o.view;
+    const canvas = view.surface;
+    const host = view.host;
+    if (typeof document !== 'undefined') {
       this.root = document.createElement('div');
       this.root.className = 'aio-mk-layer';
       this.root.dataset.markers = o.kind;
@@ -143,11 +232,11 @@ export class MarkerLayer {
       this.root = null;
       this.tip = null;
     }
-    let peers = layersOf.get(o.scene);
-    if (!peers) layersOf.set(o.scene, (peers = new Set()));
+    let peers = layersOf.get(canvas);
+    if (!peers) layersOf.set(canvas, (peers = new Set()));
     peers.add(this);
     this.offs.push(() => peers.delete(this));
-    this.offs.push(o.scene.onFrame(this.layout));
+    this.offs.push(view.onFrame(this.layout));
     const onDown = (e: PointerEvent) => {
       this.down = e.button === 0 ? { x: e.clientX, y: e.clientY } : null;
     };
@@ -174,13 +263,13 @@ export class MarkerLayer {
       canvas.removeEventListener('pointerleave', onLeave);
       cancelAnimationFrame(this.hoverRaf);
     });
-    const scene = o.scene;
-    if (isEngineStage(scene)) this.offs.push(scene.claimClicks((e) => this.click(e)));
+    if (view.claimClicks) this.offs.push(view.claimClicks((e) => this.click(e)));
     else {
       const onUp = (e: PointerEvent) => {
         const d = this.down;
         this.down = null;
-        if (d && Math.hypot(e.clientX - d.x, e.clientY - d.y) <= CLICK_SLOP_PX) this.click(e);
+        if (!d || Math.hypot(e.clientX - d.x, e.clientY - d.y) > CLICK_SLOP_PX) return;
+        if (this.click(e)) view.claimClick?.(e);
       };
       canvas.addEventListener('pointerup', onUp);
       this.offs.push(() => {
@@ -203,22 +292,27 @@ export class MarkerLayer {
     }
     // the other layers' icons may step aside for these, or stop doing so
     for (const p of this.peers()) p.dirty = true;
-    this.o.scene.requestRender();
+    this.redraw();
   }
 
-  /** Selection changed: repaint on the next frame. */
+  /** Selection (or the sites) changed: repaint on the next frame. */
   refresh() {
     this.dirty = true;
-    this.o.scene.requestRender();
+    this.redraw();
+  }
+
+  private redraw() {
+    if (this.o.view.requestFrame) this.o.view.requestFrame();
+    else this.layout();
   }
 
   private canvasXY(clientX: number, clientY: number) {
-    const r = this.o.scene.renderer.domElement.getBoundingClientRect();
+    const r = this.o.view.surface.getBoundingClientRect();
     return { x: clientX - r.left, y: clientY - r.top };
   }
 
   private peers(): MarkerLayer[] {
-    return [...(layersOf.get(this.o.scene) ?? [])];
+    return [...(layersOf.get(this.o.view.surface) ?? [])];
   }
 
   /** Distance (px) from a stage point to this layer's nearest icon within reach, else Infinity. */
@@ -263,8 +357,14 @@ export class MarkerLayer {
     return c ? this.membersOf(c) : null;
   }
 
+  /** The member under a pointer (a merged icon: its first), or null. */
+  memberAt(clientX: number, clientY: number): { index: number } | null {
+    const i = this.membersAt(clientX, clientY)?.[0];
+    return i === undefined ? null : { index: i };
+  }
+
   private click(e: PointerEvent): boolean {
-    if (!this.visible) return false;
+    if (!this.visible || this.o.view.busy?.()) return false;
     for (const p of this.peers()) p.layout();
     const { x, y } = this.canvasXY(e.clientX, e.clientY);
     const k = this.hitAt(x, y);
@@ -284,6 +384,10 @@ export class MarkerLayer {
 
   private hover(clientX: number, clientY: number) {
     if (!this.visible) return;
+    if (this.o.view.busy?.()) {
+      this.setHover(-1);
+      return;
+    }
     // no tooltips over an open list
     if (this.peers().some((p) => p.closeList)) {
       this.setHover(-1);
@@ -292,14 +396,53 @@ export class MarkerLayer {
     const { x, y } = this.canvasXY(clientX, clientY);
     const k = this.hitAt(x, y);
     this.setHover(k);
-    if (k >= 0) this.o.scene.renderer.domElement.style.cursor = 'pointer';
+    const surface = this.o.view.surface;
+    if (k >= 0) {
+      surface.style.cursor = 'pointer';
+      this.pointing = true;
+    } else if (this.pointing) {
+      // put back only the cursor this layer set (a tool may have set its own since)
+      if (surface.style.cursor === 'pointer') surface.style.cursor = '';
+      this.pointing = false;
+    }
   }
 
   private setHover(k: number) {
     if (k === this.hovered) return;
     this.hovered = k;
     this.dirty = true;
-    this.o.scene.requestRender();
+    this.redraw();
+  }
+
+  /**
+   * The picture in a one-member icon's tip: its thumbnail; a photo falls back to its image (a
+   * 360's full image is too large for a tip).
+   */
+  private tipImage(c: SiteCluster): HTMLImageElement | null {
+    const members = this.membersOf(c);
+    const only = members.length === 1 ? members[0] : undefined;
+    const m = only === undefined ? undefined : this.o.member(only);
+    const full = this.o.kind === 'photo' ? m?.full : undefined;
+    const src = m?.thumb ?? full;
+    if (!src) return null;
+    let img = this.tipImg;
+    if (!img) {
+      img = document.createElement('img');
+      img.alt = '';
+      img.decoding = 'async';
+      this.tipImg = img;
+    }
+    const el = img;
+    if (el.dataset.want !== src) {
+      el.dataset.want = src;
+      el.style.display = '';
+      el.onerror = () => {
+        if (full && el.getAttribute('src') !== full) el.src = full;
+        else el.style.display = 'none';
+      };
+      el.src = src;
+    }
+    return el;
   }
 
   private tipText(c: SiteCluster): [string, string] {
@@ -439,28 +582,18 @@ export class MarkerLayer {
 
   /** Project the sites, merge close ones and write the icons (only when the view changed). */
   private readonly layout = () => {
-    const cam = this.o.scene.camera;
-    const canvas = this.o.scene.renderer.domElement;
-    let W = canvas.clientWidth;
-    let H = canvas.clientHeight;
-    if (!W || !H) {
-      const r = canvas.getBoundingClientRect();
-      W = r.width;
-      H = r.height;
-    }
-    cam.updateMatrixWorld();
-    const size = `${String(W)}x${String(H)}`;
-    if (!this.dirty && size === this.lastSize && this.lastView.equals(cam.matrixWorld)) return;
-    this.lastView.copy(cam.matrixWorld);
-    this.lastSize = size;
+    const view = this.o.view;
+    const key = view.viewKey?.() ?? null;
+    if (!this.dirty && key !== null && key === this.lastView) return;
+    this.lastView = key;
+    const { w: W, h: H } = sizeOf(view.surface);
     this.dirty = false;
     if (!this.visible) return;
     const pts: ScreenSite[] = [];
     this.o.sites.forEach((s, i) => {
-      const v = this.v.set(s.pos[0], s.pos[1], s.pos[2]).project(cam);
-      if (v.z > 1 || v.z < -1) return;
-      const x = ((v.x + 1) / 2) * W;
-      const y = ((1 - v.y) / 2) * H;
+      const at = view.project(s.pos);
+      if (!at) return;
+      const { x, y } = at;
       if (x < -20 || y < -20 || x > W + 20 || y > H + 20) return;
       pts.push({ i, x, y, n: s.members.length });
     });
@@ -520,7 +653,10 @@ export class MarkerLayer {
     if (tip) {
       if (hc) {
         const [head, sub] = this.tipText(hc);
-        tip.textContent = head;
+        tip.textContent = '';
+        const img = this.tipImage(hc);
+        if (img) tip.append(img);
+        tip.append(head);
         if (sub) {
           const i = document.createElement('i');
           i.textContent = sub;

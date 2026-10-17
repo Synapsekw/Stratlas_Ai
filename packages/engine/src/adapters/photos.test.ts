@@ -213,6 +213,27 @@ describe('photo frustums', () => {
     expect(h.scene.getObjectByName('photos:photos')).toBeUndefined();
   });
 
+  it('leaves a click on a photo to an armed pick (the pane is picking)', async () => {
+    const store = createWorkspace();
+    const pane = document.createElement('div');
+    const canvas = document.createElement('canvas');
+    canvas.getBoundingClientRect = () => ({ left: 0, top: 0, width: 200, height: 200 }) as DOMRect;
+    pane.append(canvas);
+    document.body.append(pane);
+    const lh = await createPhotosAdapter(store).create(layer, {
+      url: () => '',
+      scene: handle(canvas),
+    });
+    pane.dataset.picking = 'true';
+    click(canvas, 100, 100);
+    expect(store.getState().selection).toBeNull();
+    delete pane.dataset.picking;
+    click(canvas, 100, 100);
+    expect(store.getState().selection).toEqual({ kind: 'photo', id: 'p2', layer: 'photos' });
+    lh.dispose();
+    pane.remove();
+  });
+
   it('asks the app to open a plain click instead of only selecting the photo', async () => {
     const opened: string[] = [];
     configureEngine({

@@ -73,6 +73,13 @@ class FakeMap {
   getCanvas(): HTMLCanvasElement {
     return this.canvas;
   }
+  /** The photo and 360 markers lay out over these (mediaMarkers.ts). */
+  getContainer(): HTMLElement {
+    return this.canvas.parentElement ?? this.canvas;
+  }
+  triggerRepaint(): void {
+    this.fire('render');
+  }
   queryRenderedFeatures(): unknown[] {
     return [];
   }
