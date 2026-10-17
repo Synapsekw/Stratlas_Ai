@@ -176,6 +176,8 @@ export function planPackage(
   manifest: ProjectManifest,
   files: readonly SourceFile[],
   exclude: readonly string[],
+  /** Project folders (or files) left out whole, e.g. a run's path-loss folder (`rfPathLossDirs`). */
+  skipDirs: readonly string[] = [],
 ): PackagePlanResult {
   const ids = new Set(manifest.layers.map((l) => l.id));
   const drafts = manifest.layers.filter((l) => l.derived?.draft === true).map((l) => l.id);
@@ -222,6 +224,7 @@ export function planPackage(
   for (const f of files) {
     const path = f.path.replace(/\\/g, '/');
     if (SKIP.some((re) => re.test(path))) continue;
+    if (skipDirs.some((d) => path === d || path.startsWith(`${d}/`))) continue;
     const owners = ownersOf(path);
     if (!runFileTravels(path) && !ownedBeyondRun(path)) continue;
     if (orphanViewer && owners.length === 0 && path.startsWith(RETIRED_DIR)) {

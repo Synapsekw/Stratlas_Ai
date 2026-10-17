@@ -21,6 +21,7 @@
     { "path": "../../packages/ui" },
     { "path": "../../packages/volumetric" },
     { "path": "../../packages/project" },
+    { "path": "../../packages/rf" },
     { "path": "../../packages/geo" },
     { "path": "../../packages/globe" },
     { "path": "../../packages/change" },

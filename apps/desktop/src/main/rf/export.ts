@@ -66,6 +66,23 @@ export function epsgOf(crs: string): number | null {
   return m?.[1] ? Number(m[1]) : null;
 }
 
+/**
+ * The projected EPSG code a GeoTIFF names for `crs`. The pixel size is in metres, so a geographic
+ * CRS (degrees, EPSG 4000 to 4999) is refused; a code above 65535 does not fit a GeoKey.
+ */
+function projectedEpsg(crs: string): number {
+  const epsg = epsgOf(crs);
+  if (epsg === null)
+    throw new Error(`The grid's CRS "${crs}" is not an EPSG code, so a GeoTIFF cannot name it.`);
+  if (epsg > 65_535)
+    throw new Error(`EPSG:${String(epsg)} is above 65535, which a GeoTIFF cannot store.`);
+  if (epsg >= 4000 && epsg <= 4999)
+    throw new Error(
+      `EPSG:${String(epsg)} is a geographic CRS (degrees). The coverage grid is in metres, so a GeoTIFF needs a projected CRS.`,
+    );
+  return epsg;
+}
+
 interface Entry {
   tag: number;
   type: number;
@@ -96,11 +113,7 @@ export function writeGridTiff(data: Float32Array, geo: GridGeo): Buffer {
     throw new Error(
       `The grid is ${String(width)} x ${String(height)}: expected ${String(width * height)} values, got ${String(data.length)}.`,
     );
-  const epsg = epsgOf(geo.crs);
-  if (epsg === null)
-    throw new Error(
-      `The grid's CRS "${geo.crs}" is not an EPSG code, so a GeoTIFF cannot name it.`,
-    );
+  const epsg = projectedEpsg(geo.crs);
 
   const rowBytes = width * 4;
   const rowsPerStrip = Math.max(1, Math.min(height, Math.floor(STRIP_BYTES / rowBytes)));
@@ -237,6 +250,11 @@ export function readGridTiff(bytes: Buffer): GridTiff {
   if (one(T.samples, 1) !== 1) throw new Error('Only single band TIFF grids are read.');
   const bits = one(T.bits, 1);
   const format = one(T.sampleFormat, 1);
+  // tiles (tags 322 to 325) or no strips at all: the pixels would read as zeros, so refuse
+  if (tags.has(322) || tags.has(323) || tags.has(324) || tags.has(325) || !tags.has(T.stripOffsets))
+    throw new Error(
+      'This TIFF is tiled, which is not read. Save the grid as a stripped, uncompressed TIFF (GDAL: -co TILED=NO -co COMPRESS=NONE).',
+    );
   const offsets = nums(T.stripOffsets);
   const counts = nums(T.stripBytes);
   const rowsPerStrip = one(T.rowsPerStrip, height);
@@ -510,10 +528,12 @@ export function coverageGeoJson(
   for (const c of RSRP_CLASSES) {
     const polys = contourPolygons(rsrp, geo, floorOf(thresholds, c));
     if (polys.length === 0) continue;
-    const areaM2 = polys.reduce(
-      (sum, p) => sum + p.reduce((a, ring) => a + signedArea(ring), 0),
-      0,
-    );
+    // pixel count times pixel area, so it agrees with the CSV (the contour's own area differs by
+    // the half pixel each edge is drawn out to)
+    const floor = floorOf(thresholds, c);
+    let pixels = 0;
+    for (const v of rsrp) if (valid(v, geo.nodata) && v >= floor) pixels++;
+    const areaM2 = pixels * geo.resolutionM * geo.resolutionM;
     features.push({
       type: 'Feature',
       properties: { class: c, thresholdDbm: floorOf(thresholds, c), areaM2: Math.round(areaM2) },

@@ -9,7 +9,7 @@ import {
   type PackageHeaderInput,
   type ProjectManifest,
 } from '@aio/schema';
-import { readdir, stat, statfs } from 'node:fs/promises';
+import { readFile, readdir, stat, statfs } from 'node:fs/promises';
 import { basename, dirname, join, relative } from 'node:path';
 import { planPackage, type SourceFile } from './plan';
 import { openZip, ZipError, type ZipArchive } from './reader';
@@ -34,6 +34,35 @@ export async function scanProject(root: string): Promise<SourceFile[]> {
     }
   };
   await walk(root);
+  return out;
+}
+
+/**
+ * The path-loss cache folders that coverage runs name in `run.json` (`outputs.pathLossDir`, relative
+ * to the run folder). They are rebuilt on demand, so a package leaves them out whatever they are
+ * called. An unreadable or odd `run.json` names nothing.
+ */
+export async function rfPathLossDirs(
+  root: string,
+  files: readonly SourceFile[],
+): Promise<string[]> {
+  const out: string[] = [];
+  for (const f of files) {
+    const m = /^rf\/runs\/([^/]+)\/run\.json$/.exec(f.path.replaceAll('\\', '/'));
+    if (!m?.[1]) continue;
+    try {
+      const run = JSON.parse(await readFile(join(root, f.path), 'utf8')) as {
+        outputs?: { pathLossDir?: unknown };
+      };
+      const dir = run.outputs?.pathLossDir;
+      if (typeof dir !== 'string') continue;
+      const clean = dir.replaceAll('\\', '/').replace(/^\.\//, '').replace(/\/+$/, '');
+      if (clean === '' || clean.startsWith('/') || clean.split('/').includes('..')) continue;
+      out.push(`rf/runs/${m[1]}/${clean}`);
+    } catch {
+      // not a readable run record: nothing to leave out
+    }
+  }
   return out;
 }
 
@@ -77,7 +106,7 @@ const FIRST = ['manifest.json', 'issues.json', 'thumbnail.jpg'];
  */
 export async function exportPackage(o: ExportPackageOptions): Promise<{ bytes: number }> {
   const files = o.files ?? (await scanProject(o.root));
-  const plan = planPackage(o.manifest, files, o.exclude);
+  const plan = planPackage(o.manifest, files, o.exclude, await rfPathLossDirs(o.root, files));
   const header = PackageHeader.parse({
     ...o.header,
     schema: PACKAGE_SCHEMA,

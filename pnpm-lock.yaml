@@ -163,6 +163,9 @@ importers:
       '@aio/project':
         specifier: workspace:*
         version: link:../../packages/project
+      '@aio/rf':
+        specifier: workspace:*
+        version: link:../../packages/rf
       '@aio/schema':
         specifier: workspace:*
         version: link:../../packages/schema

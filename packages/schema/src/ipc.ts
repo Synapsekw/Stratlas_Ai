@@ -3475,7 +3475,11 @@ export const ipc = {
    */
   'rf:writeSectors': {
     request: z.object({ projectId: ProjectId, file: RfSectorsFile }).strict(),
-    response: OkOrFailure,
+    /** `warnings`: pattern files that could not be copied into the project. */
+    response: z.discriminatedUnion('ok', [
+      z.object({ ok: z.literal(true), warnings: z.array(z.string()).optional() }),
+      Failure,
+    ]),
   },
   /**
    * Catalogue entries: built in (read only), the person's own (userData `rf-catalogue/`) and, with

@@ -3,6 +3,7 @@ import {
   extractProject,
   extractRefusal,
   planPackage,
+  rfPathLossDirs,
   scanProject,
   volumeFreeBytes,
   type PackagePlanResult,
@@ -162,7 +163,8 @@ export function createPlanCache(ttlMs = 60_000) {
       manifest: ProjectManifest,
       exclude: readonly string[],
     ): Promise<PackagePlanResult> {
-      return planPackage(manifest, await files(root), exclude);
+      const list = await files(root);
+      return planPackage(manifest, list, exclude, await rfPathLossDirs(root, list));
     },
     forget(root: string): void {
       scans.delete(root);

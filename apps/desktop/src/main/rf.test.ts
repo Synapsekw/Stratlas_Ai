@@ -628,3 +628,43 @@ describe('rf:export', () => {
     expect(r.ok && r.path).toBeTruthy();
   });
 });
+
+describe('fix round 1', () => {
+  it('leaves a pattern that could not be copied out of the project catalogue and warns', async () => {
+    const rf = createRf(deps);
+    await rm(join(builtinDir, 'patterns', 'generic-65-18-1800-2.msi'));
+    const r = await rf.writeSectors({ projectId: 'p', file: sectors() });
+    expect(r).toMatchObject({
+      ok: true,
+      warnings: [expect.stringMatching(/generic-65-18/) as string],
+    });
+    const cat = JSON.parse(await readFile(join(root, 'rf', 'catalogue.json'), 'utf8')) as {
+      entries: { id: string; ports?: { patterns: unknown[] }[] }[];
+    };
+    const ant = cat.entries.find((e) => e.id === 'generic-65-18');
+    expect(ant?.ports?.[0]?.patterns).toEqual([]);
+  });
+
+  it('refuses a run whose run.json names another run than its folder', async () => {
+    const rf = createRf(deps);
+    await putRun('rf-a', '2026-10-01T10:00:00.000Z');
+    await mkdir(join(root, 'rf', 'runs', 'rf-b'), { recursive: true });
+    await writeFile(
+      join(root, 'rf', 'runs', 'rf-b', 'run.json'),
+      JSON.stringify(run('rf-a', '2026-10-02T10:00:00.000Z')),
+    );
+    expect((await rf.readRun({ projectId: 'p', runId: 'rf-b' })).ok).toBe(false);
+    const list = await rf.listRuns({ projectId: 'p' });
+    expect(list.ok && list.runs.map((x) => x.runId)).toEqual(['rf-a']);
+  });
+
+  it('refuses an MSI file with no GAIN', async () => {
+    const rf = createRf(deps);
+    const file = join(base, 'nogain.msi');
+    await writeFile(file, msi().replace('GAIN 17.8 dBi\n', ''));
+    const attach = { entryId: 'generic-65-18', portId: 'p1' };
+    const r = await rf.importCatalogue({ path: file, format: 'msi', attach });
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.error).toMatch(/GAIN/);
+  });
+});

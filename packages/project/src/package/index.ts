@@ -2,6 +2,7 @@
 export {
   exportPackage,
   openPackage,
+  rfPathLossDirs,
   scanProject,
   volumeFreeBytes,
   type ExportPackageOptions,

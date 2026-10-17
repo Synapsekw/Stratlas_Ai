@@ -1,3 +1,5 @@
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import {
   classAreasCsv,
@@ -57,6 +59,35 @@ describe('GeoTIFF', () => {
 
   it('refuses a file that is not a TIFF', () => {
     expect(() => readGridTiff(Buffer.from('not a tiff at all'))).toThrow(/TIFF/);
+  });
+});
+
+describe('GeoTIFF from another tool', () => {
+  const fixture = (name: string): Buffer => readFileSync(join(__dirname, '__fixtures__', name));
+
+  it('reads a stripped Float32 GeoTIFF written by rasterio', () => {
+    const t = readGridTiff(fixture('stripped.tif'));
+    expect([t.width, t.height]).toEqual([4, 3]);
+    expect([...t.data]).toEqual([
+      -70.5, -80.25, -90, -100, -110.125, -9999, -85, -95, -105, -115, -75, -65.75,
+    ]);
+    expect(t.epsg).toBe(32640);
+    expect(t.origin).toEqual([500_000, 2_700_000]);
+    expect(t.pixelSize).toEqual([10, 10]);
+    expect(t.nodata).toBe(-9999);
+  });
+
+  it('refuses a tiled GeoTIFF instead of reading zeros', () => {
+    expect(() => readGridTiff(fixture('tiled.tif'))).toThrow(/tiled/);
+  });
+
+  it('refuses a geographic CRS and a code a GeoKey cannot hold', () => {
+    expect(() => writeGridTiff(new Float32Array(12), { ...geo, crs: 'EPSG:4326' })).toThrow(
+      /geographic/,
+    );
+    expect(() => writeGridTiff(new Float32Array(12), { ...geo, crs: 'EPSG:100000' })).toThrow(
+      /65535/,
+    );
   });
 });
 
@@ -228,6 +259,9 @@ describe('coverageGeoJson', () => {
     // higher classes are smaller
     const areas = fc.features.map((f) => f.properties.areaM2);
     expect(areas).toEqual([...areas].sort((a, b) => b - a));
+    // pixel count times 100 m2: poor is the 8 pixels at or above -115, excellent the 2 at -70
+    expect(areas[0]).toBe(800);
+    expect(areas[3]).toBe(200);
   });
 });
 

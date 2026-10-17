@@ -493,3 +493,30 @@ describe('an engineering model through a .aio package (acceptance E)', () => {
     for (const f of MODEL_FILES) expect(opened.value.archive.entries.has(f), f).toBe(false);
   });
 });
+
+describe('an rf coverage run through a .aio package', () => {
+  it('carries run.json and the composite grids but not the folder run.json names as its cache', async () => {
+    const run = 'rf/runs/rf-20261017-0900';
+    const put = async (rel: string, body: string): Promise<void> => {
+      await mkdir(dirname(join(root, rel)), { recursive: true });
+      await writeFile(join(root, rel), body);
+    };
+    await put('rf/sectors.json', '{}');
+    await put(`${run}/run.json`, JSON.stringify({ outputs: { pathLossDir: 'tiles' } }));
+    await put(`${run}/rsrp.tif`, 'tif');
+    await put(`${run}/tiles/sec-a.f32`, 'cache');
+    await put(`${run}/pathloss/sec-b.f32`, 'cache');
+    const out = join(dir, 'rf.aio');
+    await exportPackage({
+      root,
+      out,
+      manifest: manifest(),
+      exclude: [],
+      header: { readOnly: true, aiPolicy: 'allow', exports: [] },
+    });
+    const opened = await openPackage(out);
+    if (!opened.ok) throw new Error(opened.error);
+    const names = [...opened.value.archive.entries.keys()].filter((n) => n.startsWith('rf/'));
+    expect(names.sort()).toEqual([`${run}/rsrp.tif`, `${run}/run.json`, 'rf/sectors.json']);
+  });
+});

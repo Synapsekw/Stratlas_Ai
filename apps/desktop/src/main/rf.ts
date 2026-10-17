@@ -25,6 +25,7 @@ import {
 } from '@aio/schema';
 import { copyFile, mkdir, readFile, readdir, stat, writeFile } from 'node:fs/promises';
 import { basename, dirname, join } from 'node:path';
+import { parseMsi, type MsiPattern } from '@aio/rf';
 import { z } from 'zod';
 import { isChangedOnDisk, readJson, readJsonSeen, writeJsonAtomic, writeJsonSeen } from './fsutil';
 import {
@@ -227,6 +228,17 @@ function patternFiles(e: RfCatalogueEntry): string[] {
   return [];
 }
 
+/** The entry without the pattern references whose file is in `missing`. */
+function withoutPatterns(e: RfCatalogueEntry, missing: ReadonlySet<string>): RfCatalogueEntry {
+  if (missing.size === 0) return e;
+  const keep = <T extends { file: string }>(list: T[]): T[] =>
+    list.filter((p) => !missing.has(p.file));
+  if (e.kind === 'antenna')
+    return { ...e, ports: e.ports.map((p) => ({ ...p, patterns: keep(p.patterns) })) };
+  if (e.kind === 'aau' && e.patterns) return { ...e, patterns: keep(e.patterns) };
+  return e;
+}
+
 async function copyPatterns(from: string, to: string, files: string[]): Promise<string[]> {
   const missing: string[] = [];
   for (const f of files) {
@@ -238,51 +250,6 @@ async function copyPatterns(from: string, to: string, files: string[]): Promise<
     }
   }
   return missing;
-}
-
-// ---- MSI header check ----------------------------------------------------------------------------
-
-interface MsiHeader {
-  frequencyMhz: number;
-  etiltDeg: number | null;
-  warnings: string[];
-}
-
-/**
- * The header facts the catalogue needs from an MSI / Planet file, and a check that both cuts are
- * there. The patterns themselves are parsed by `packages/rf` when a run needs them.
- */
-function inspectMsi(text: string): { ok: true; header: MsiHeader } | Fail {
-  const lines = text.split(/\r?\n/);
-  const cut = (name: 'HORIZONTAL' | 'VERTICAL'): string | null => {
-    const i = lines.findIndex((l) => new RegExp(`^\\s*${name}\\s+\\d+`, 'i').test(l));
-    if (i < 0) return `The file has no ${name} 360 cut.`;
-    const n = Number(/(\d+)/.exec(lines[i] ?? '')?.[1]);
-    let values = 0;
-    for (const l of lines.slice(i + 1)) {
-      if (/^\s*[A-Za-z]/.test(l)) break;
-      if (/\d/.test(l)) values++;
-    }
-    return values >= n
-      ? null
-      : `The ${name} cut has ${String(values)} values; ${String(n)} are needed.`;
-  };
-  const missing = cut('HORIZONTAL') ?? cut('VERTICAL');
-  if (missing) return fail(missing);
-  const warnings: string[] = [];
-  const f = /^\s*FREQUENCY\s*[:=]?\s*(\d+(?:\.\d+)?)/im.exec(text)?.[1];
-  if (f === undefined)
-    return fail('The file has no FREQUENCY line, so the band of the pattern is unknown.');
-  let frequencyMhz = Number(f);
-  if (frequencyMhz < 100) {
-    frequencyMhz *= 1000;
-    warnings.push(`FREQUENCY ${f} was read as GHz (${String(frequencyMhz)} MHz).`);
-  }
-  const t = /^\s*(?:ELECTRICAL[_ ]?TILT|TILT)\s*[:=]?\s*(-?\d+(?:\.\d+)?)/im.exec(text)?.[1];
-  return {
-    ok: true,
-    header: { frequencyMhz, etiltDeg: t === undefined ? null : Number(t), warnings },
-  };
 }
 
 const MAX_MSI_BYTES = 5 * 1024 * 1024;
@@ -303,7 +270,10 @@ async function readRunFrom(src: Source, runId: string): Promise<RunRead> {
   }
   if (raw === undefined) return fail(`There is no coverage run ${runId} in this project.`);
   const r = parseRfRun(raw);
-  return r.ok ? { ok: true, run: r.value } : fail(r.error);
+  if (!r.ok) return fail(r.error);
+  if (r.value.runId !== runId)
+    return fail(`${rel} is for run ${r.value.runId}, not ${runId}, so it is not used.`);
+  return { ok: true, run: r.value };
 }
 
 /** A grid file of a run as Float32, checked against the run's grid. */
@@ -437,15 +407,16 @@ export function createRf(deps: RfDeps) {
         );
       }
 
+      const warnings: string[] = [];
       try {
-        await copyUsedEntries(root, src, used);
+        warnings.push(...(await copyUsedEntries(root, src, used)));
         await mkdir(join(root, 'rf'), { recursive: true });
         await writeJsonSeen(target, file, { backup: true, name: RF_SECTORS_PATH });
       } catch (e) {
         if (isChangedOnDisk(e)) return fail(e.message);
         return fail(`Could not save ${target}: ${why(e)}`);
       }
-      return { ok: true };
+      return warnings.length > 0 ? { ok: true, warnings } : { ok: true };
     },
 
     async listCatalogue(
@@ -558,28 +529,39 @@ export function createRf(deps: RfDeps) {
     root: string,
     src: Source,
     used: Map<string, RfCatalogueEntry>,
-  ): Promise<void> {
-    if (used.size === 0) return;
+  ): Promise<string[]> {
+    const warnings: string[] = [];
+    if (used.size === 0) return warnings;
     const project = await readProjectCatalogue(src);
     const have = new Set(project.entries.map((e) => e.id));
     const fresh = [...used.values()].filter((e) => !have.has(e.id));
-    if (fresh.length === 0) return;
+    if (fresh.length === 0) return warnings;
     const rfDir = join(root, 'rf');
     await mkdir(rfDir, { recursive: true });
     // the copy beside the entry's own catalogue folder: user entries first, then built in
     const userIds = new Set((await readCatalogueDir(deps.userDir)).entries.map((e) => e.id));
+    const copies: RfCatalogueEntry[] = [];
     for (const e of fresh) {
       const from = userIds.has(e.id) ? deps.userDir : deps.builtinDir;
-      if (from !== null) await copyPatterns(from, rfDir, patternFiles(e));
+      const missing = new Set(
+        from === null ? patternFiles(e) : await copyPatterns(from, rfDir, patternFiles(e)),
+      );
+      if (missing.size > 0) {
+        warnings.push(
+          `Pattern files of ${e.id} could not be copied into the project (${[...missing].join(', ')}). Those patterns are left out, so the generic pattern is used for them.`,
+        );
+      }
+      copies.push(withoutPatterns(e, missing));
     }
     await writeJsonSeen(
       join(rfDir, 'catalogue.json'),
-      catalogueDoc([...project.entries, ...fresh]),
+      catalogueDoc([...project.entries, ...copies]),
       {
         backup: true,
         name: RF_CATALOGUE_PATH,
       },
     );
+    return warnings;
   }
 
   async function saveUserEntries(changed: RfCatalogueEntry[]): Promise<string[]> {
@@ -634,8 +616,12 @@ export function createRf(deps: RfDeps) {
     if (!attach) return fail('Choose the antenna and port the pattern file belongs to.');
     if ((await stat(req.path)).size > MAX_MSI_BYTES) return fail('The pattern file is too large.');
     const text = await readFile(req.path, 'utf8');
-    const checked = inspectMsi(text);
-    if (!checked.ok) return checked;
+    let parsed: MsiPattern;
+    try {
+      parsed = parseMsi(text);
+    } catch (e) {
+      return fail(`${basename(req.path)}: ${why(e).replace(/^MSI: /, '')}`);
+    }
     const user = await readCatalogueFile(join(deps.userDir, USER_FILE));
     const pool = [...user.entries, ...(await readCatalogueDir(deps.builtinDir)).entries];
     const entry = pool.find((e) => e.id === attach.entryId);
@@ -645,8 +631,9 @@ export function createRf(deps: RfDeps) {
     const port = entry.ports[portIndex];
     if (!port) return fail(`${attach.entryId} has no port ${attach.portId}.`);
 
-    const { frequencyMhz, warnings } = checked.header;
-    let etiltDeg = checked.header.etiltDeg;
+    const { frequencyMhz } = parsed;
+    const warnings: string[] = [];
+    let etiltDeg = parsed.etiltDeg ?? null;
     if (etiltDeg === null) {
       if (port.etilt.minDeg !== port.etilt.maxDeg)
         return fail('The file does not say its electrical tilt (a TILT line with a number).');

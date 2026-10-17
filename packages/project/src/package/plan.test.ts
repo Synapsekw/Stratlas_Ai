@@ -374,3 +374,24 @@ describe('rf coverage runs', () => {
     expect(p.baseBytes).toBe(7 * 10);
   });
 });
+
+describe('rf path-loss folders named by run.json', () => {
+  const run = 'rf/runs/rf-20261017-0900';
+  const files: SourceFile[] = [
+    `${run}/run.json`,
+    `${run}/rsrp.tif`,
+    `${run}/cache/sec-a.f32`,
+    `${run}/cache/deeper/sec-b.f32`,
+    `${run}/cached-not/keep.txt`,
+  ].map((path) => ({ path, size: 10 }));
+
+  it('leaves out the folder the run names, and only that folder', () => {
+    const p = planPackage(manifest(), files, [], [`${run}/cache`]);
+    expect(
+      p.members
+        .map((m) => m.path)
+        .filter((x) => x.startsWith('rf/'))
+        .sort(),
+    ).toEqual([`${run}/cached-not/keep.txt`, `${run}/rsrp.tif`, `${run}/run.json`]);
+  });
+});

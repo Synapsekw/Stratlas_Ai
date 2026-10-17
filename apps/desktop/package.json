@@ -40,6 +40,7 @@
     "@aio/modelling": "workspace:*",
     "@aio/pointcloud": "workspace:*",
     "@aio/project": "workspace:*",
+    "@aio/rf": "workspace:*",
     "@aio/schema": "workspace:*",
     "@aio/survey": "workspace:*",
     "@aio/tiles": "workspace:*",
