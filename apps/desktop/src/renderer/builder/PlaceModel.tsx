@@ -10,13 +10,21 @@ import {
 } from '@aio/engine';
 import { fromWgs84, localToProject, projectToLocal, toWgs84 } from '@aio/geo';
 import { LocationPicker } from '@aio/maps';
-import type { Layer, LayerPatch, Mat4, Vec3 } from '@aio/schema';
+import {
+  drawnTransform,
+  storedTransform,
+  type Layer,
+  type LayerPatch,
+  type Mat4,
+  type Vec3,
+} from '@aio/schema';
 import { Icon, useT, type MessageKey } from '@aio/ui';
-import { useWorkspace, workspace } from '@aio/workspace';
+import { dateShiftOf, shiftKey, useWorkspace, workspace } from '@aio/workspace';
 import {
   useCallback,
   useEffect,
   useLayoutEffect,
+  useMemo,
   useRef,
   useState,
   type KeyboardEvent,
@@ -83,6 +91,10 @@ function groundBelow(layerId: string): (x: number, z: number) => number | null {
  * the model where it was. A saved placement can be undone too (the previous transform is saved
  * back). A model with a georeference gets one set by the person (statuses `user`), and one that
  * waited for placing is marked placed.
+ *
+ * On a lined-up date the panel works where the model is drawn (its transform plus the date
+ * shift): the handle, picks, typed positions and the readout are all in that frame, and Done saves
+ * the transform less the shift, so the model reloads where it was put.
  */
 export function PlaceModel({
   layerId,
@@ -99,13 +111,19 @@ export function PlaceModel({
     (l): l is MeshLayer => l.kind === 'mesh' && l.id === layerId,
   );
   const origin = project?.manifest.origin;
+  const shift = project && layer ? dateShiftOf(project.manifest, layer.id) : null;
+  const shiftAt = shiftKey(shift);
+  // the transform as drawn on its date: what the panel shows and edits
+  const stored = layer?.transform;
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- the shift is keyed by `shiftAt`
+  const drawn = useMemo(() => (stored ? drawnTransform(stored, shift) : null), [stored, shiftAt]);
   const epsg = project && 'epsg' in project.manifest.crs ? project.manifest.crs.epsg : null;
   // what the edits keep (the up axis, the model's own scale, a mirroring), fixed at open
   const [basis, setBasis] = useState<Mat4 | null>(() =>
-    layer ? splitPlacement(layer.transform).basis : null,
+    drawn ? splitPlacement(drawn).basis : null,
   );
-  const [start, setStart] = useState<Mat4 | null>(layer ? [...layer.transform] : null);
-  const [current, setCurrent] = useState<Mat4 | null>(layer ? [...layer.transform] : null);
+  const [start, setStart] = useState<Mat4 | null>(drawn ? [...drawn] : null);
+  const [current, setCurrent] = useState<Mat4 | null>(drawn ? [...drawn] : null);
   const [history, setHistory] = useState<Mat4[]>([]);
   const [previous, setPrevious] = useState<SavedPlacement | null>(null);
   const [mode, setMode] = useState<GizmoMode>('move');
@@ -131,14 +149,15 @@ export function PlaceModel({
   }, [basis]);
   const readOnly = pkg !== null;
 
-  // A moved origin (a re-centre) changes the local frame: everything held belongs to the old one.
-  const frame = origin ? origin.join(' ') : '';
+  // A moved origin (a re-centre) or a new date shift changes the frame the model is drawn in:
+  // everything held belongs to the old one.
+  const frame = origin ? `${origin.join(' ')}|${shiftAt}` : '';
   const [heldFrame, setHeldFrame] = useState(frame);
   if (heldFrame !== frame) {
     setHeldFrame(frame);
-    setBasis(layer ? splitPlacement(layer.transform).basis : null);
-    setStart(layer ? [...layer.transform] : null);
-    setCurrent(layer ? [...layer.transform] : null);
+    setBasis(drawn ? splitPlacement(drawn).basis : null);
+    setStart(drawn ? [...drawn] : null);
+    setCurrent(drawn ? [...drawn] : null);
     setHistory([]);
     setPrevious(null);
   }
@@ -150,7 +169,11 @@ export function PlaceModel({
     if (!stage) return;
     const g = createPlaceGizmo(stage);
     gizmo.current = g;
-    g.attach(layer.id, currentRef.current ?? layer.transform, basisRef.current ?? undefined);
+    g.attach(
+      layer.id,
+      currentRef.current ?? drawnTransform(layer.transform, shift),
+      basisRef.current ?? undefined,
+    );
     g.setMode('move');
     const offChange = g.onChange((next) => {
       keep(next);
@@ -193,7 +216,7 @@ export function PlaceModel({
   // Escape: a pick that is armed lets go; otherwise the panel closes as Cancel does. It listens
   // before the 3D view (capture) and marks the key taken, so the same press does not also clear
   // the selection there; a menu or another dialog keeps its own Escape.
-  const manifestTransform = layer?.transform;
+  const manifestTransform = drawn;
   useEffect(() => {
     const onKey = (e: globalThis.KeyboardEvent) => {
       if (e.key !== 'Escape' || e.defaultPrevented) return;
@@ -320,13 +343,15 @@ export function PlaceModel({
   };
   const done = () => {
     const before: SavedPlacement = {
-      transform: start ?? layer.transform,
+      transform: start ? storedTransform(start, shift) : layer.transform,
       georef: layer.georef,
       placement: layer.placement,
     };
     // a georeferenced model keeps a record of where it sits, now set by the person; a model that
-    // waited for placing is placed; all with the transform, in one write
-    void save(placedPatch(layer, current, { crs: project.manifest.crs, origin }), () => {
+    // waited for placing is placed; all with the transform, in one write. Saved in the date's own
+    // frame: the engine adds the shift again when it draws the model.
+    const toSave = storedTransform(current, shift);
+    void save(placedPatch(layer, toSave, { crs: project.manifest.crs, origin }), () => {
       setPrevious(before);
       setStart(current);
       setHistory([]);
@@ -343,16 +368,17 @@ export function PlaceModel({
     if (previous) {
       const back = previous;
       void save(patchOf(back), () => {
+        const shown = drawnTransform(back.transform, shift);
         setPrevious(null);
-        setStart(back.transform);
-        apply(back.transform, false);
+        setStart(shown);
+        apply(shown, false);
         setSay(null);
       });
     }
   };
   const close = () => {
     // what was not saved goes: the model is drawn where the manifest has it
-    gizmo.current?.set(layer.transform);
+    gizmo.current?.set(drawnTransform(layer.transform, shift));
     gizmo.current?.detach();
     gizmo.current = null;
     builder.getState().stopAlign();

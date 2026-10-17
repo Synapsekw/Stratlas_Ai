@@ -313,6 +313,43 @@ describe('Place model', () => {
     expect(saved[1]?.patch).toEqual({ transform: I });
   });
 
+  it('saves a placement on a lined-up date that reloads where it was put', async () => {
+    // the date is lined up 2 m east and 1 m north: the model is drawn at x 2, z -1
+    const layer = { ...mesh(), capture: 'd2' } as Layer;
+    const m: ProjectManifest = {
+      ...manifest(layer),
+      captures: [
+        {
+          id: 'd2',
+          label: 'Second',
+          date: '2026-02-10',
+          lineUp: { eastM: 2, northM: 1, with: 'd1', at: '2026-10-16T08:00:00Z' },
+        },
+      ],
+    };
+    workspace.getState().openProject({ id: 'p', root: 'E:/p', manifest: m });
+    act(() => {
+      root = createRoot(host);
+      root.render(<PlaceModel layerId="tower" groundAt={() => 3} />);
+    });
+    // the handle opens on the model where it is drawn: no jump back to the file position
+    expect(gizmo.attached[0]?.slice(12, 15)).toEqual([2, 0, -1]);
+    expect(q('place-position')?.textContent).toContain('500002.00');
+    // a click in the scene puts it there as drawn
+    act(() => q('place-pick-scene')?.click());
+    act(() => {
+      scenePick?.({ point: { x: 12, y: 4, z: -7 } } as unknown as Intersection);
+    });
+    expect(placed().anchor).toEqual([12, 4, -7]);
+    await act(async () => {
+      q('place-done')?.click();
+      await Promise.resolve();
+    });
+    // saved in the date's own frame: drawn again with the shift, it is where it was put
+    const t = (saved[0]?.patch as { transform: Mat4 }).transform;
+    expect(t.slice(12, 15)).toEqual([10, 4, -6]);
+  });
+
   it('marks a georeferenced or waiting model placed with a georef the person set', async () => {
     open(mesh({ georef: GEOREF, placement: 'needed' }));
     type('place-north', '20');
