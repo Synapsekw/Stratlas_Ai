@@ -10,10 +10,11 @@ import {
   lteSettings,
   sectorsFile,
   unit,
-} from './rfTestData';
+} from './__fixtures__/rfData';
 import {
   addSector,
   applyProposal,
+  deleteSector,
   loadRf,
   moveUnit,
   patchSettings,
@@ -29,7 +30,7 @@ import {
   setIncludeUnreviewed,
   setPackStatus,
   setRunning,
-  setTerrainProvider,
+  setDsmGroundProvider,
 } from './rfStore';
 
 type Call = [string, Record<string, unknown>];
@@ -121,6 +122,7 @@ function site(opts: { groundZ?: number | undefined; conv?: number | null } = {})
 
 beforeEach(() => {
   resetRf();
+  setPackStatus({ state: 'ok', version: RF_COVERAGE_MIN_PACK });
   h.calls = [];
   h.antennas = null;
   h.sectors = null;
@@ -141,7 +143,7 @@ describe('height above ground', () => {
     expect(s().check.refusals).toEqual([]);
   });
 
-  it('without groundZ and without terrain the unit has no height and is left out', async () => {
+  it('without groundZ and without a DSM ground the unit has no height and is left out', async () => {
     site({ groundZ: undefined });
     await loadRf('p1');
     expect(row('ant-a').height).toMatchObject({ heightM: null, basis: null, issue: 'no-ground' });
@@ -149,15 +151,15 @@ describe('height above ground', () => {
     expect(s().check.refusals).toEqual(['no-height']);
   });
 
-  it('without groundZ the terrain at the base gives an estimated height', async () => {
+  it('without groundZ the DSM ground near the base gives an estimated height', async () => {
     site({ groundZ: undefined });
     await loadRf('p1');
     const at = vi.fn(() => 98);
-    setTerrainProvider(at);
+    setDsmGroundProvider(at);
     expect(at).toHaveBeenCalledWith(500000, 2700000);
     expect(row('ant-a').height).toMatchObject({ heightM: 33.5, basis: 'estimated', groundZ: 98 });
     expect(s().check.refusals).toEqual([]);
-    setTerrainProvider(null);
+    setDsmGroundProvider(null);
     expect(row('ant-a').excluded).toBe('no-height');
   });
 
@@ -169,6 +171,24 @@ describe('height above ground', () => {
     expect(s().dirty).toBe(true);
     setHeightOverride('ant-a', undefined);
     expect(row('ant-a').height).toMatchObject({ heightM: 31.5, basis: 'measured' });
+  });
+
+  it('the typed height also wins over a DSM estimate', async () => {
+    site({ groundZ: undefined });
+    await loadRf('p1');
+    setDsmGroundProvider(() => 98);
+    expect(row('ant-a').height).toMatchObject({ heightM: 33.5, basis: 'estimated' });
+    setHeightOverride('ant-a', 25);
+    expect(row('ant-a').height).toMatchObject({ heightM: 25, basis: 'user' });
+  });
+
+  it('the ground provider does not carry over to the next project', async () => {
+    site({ groundZ: undefined });
+    await loadRf('p1');
+    setDsmGroundProvider(() => 98);
+    await loadRf('p2');
+    expect(row('ant-a').height.basis).toBeNull();
+    expect(s().pack).toEqual({ state: 'ok', version: RF_COVERAGE_MIN_PACK });
   });
 
   it('a typed height saves a unit with no settings yet, and clearing it leaves the rest', async () => {
@@ -367,7 +387,9 @@ describe('eligibility and the run check', () => {
     setPackStatus({ state: 'dev' });
     expect(s().check.refusals).toEqual([]);
     setPackStatus(null);
-    expect(s().check.refusals).toEqual([]);
+    expect(s().check.refusals).toEqual(['pack-unknown']);
+    setPackStatus({ state: 'ok' });
+    expect(s().check.refusals).toEqual(['pack-unknown']);
   });
 });
 
@@ -395,13 +417,68 @@ describe('orphans', () => {
     );
     await loadRf('p1');
     expect(s().orphans.map((o) => o.antennaId)).toEqual(['ant-a']);
-    expect(reassignOrphanEntry('ant-a', 'ant-b')).toMatch(/already has RF settings/);
+    expect(reassignOrphanEntry('ant-a', 'ant-b')).toBe('target-has-settings');
     expect(s().sectors.antennas).toHaveLength(2);
     expect(reassignOrphanEntry('ant-a', 'ant-d')).toBeNull();
     expect(s().orphans).toEqual([]);
     expect(s().sectors.sectors[0]?.antennaIds).toEqual(['ant-d', 'ant-b']);
     removeOrphanEntry('ant-b');
     expect(s().sectors.antennas.map((a) => a.antennaId)).toEqual(['ant-d']);
+  });
+
+  it('keeps the place of an orphan across applyProposal and deleteSector', async () => {
+    site();
+    h.antennas = antennasFile([unit('ant-b', 120), unit('ant-c', 240)]);
+    // ant-a is an orphan in sec-s1 (no settings entry of its own beyond the site() ones)
+    h.sectors = sectorsFile(
+      [
+        { id: 'sec-s1', antennaIds: ['ant-a'] },
+        { id: 'sec-s9', antennaIds: ['ant-z'] },
+      ],
+      [lteSettings('ant-b'), lteSettings('ant-c')],
+    );
+    await loadRf('p1');
+    expect(s().orphans.map((o) => o.antennaId)).toEqual(['ant-a', 'ant-z']);
+    applyProposal();
+    const places = s().sectors.sectors.map((x) => [x.id, x.antennaIds]);
+    // ant-a joins the proposed sector with its id; ant-z keeps its old sector, alone
+    expect(places).toEqual([
+      ['sec-s1', ['ant-b', 'ant-a']],
+      ['sec-s2', ['ant-c']],
+      ['sec-s9', ['ant-z']],
+    ]);
+    expect(s().orphans.map((o) => [o.antennaId, o.sectorId])).toEqual([
+      ['ant-a', 'sec-s1'],
+      ['ant-z', 'sec-s9'],
+    ]);
+    deleteSector('sec-s1');
+    expect(s().sectors.sectors.find((x) => x.id === 'sec-s1')?.antennaIds).toEqual(['ant-a']);
+    deleteSector('sec-s2');
+    expect(s().sectors.sectors.map((x) => x.id)).toEqual(['sec-s1', 'sec-s9']);
+  });
+
+  it('counts an orphan member as a candidate: it stops an all-without-CRS refusal', async () => {
+    h.antennas = antennasFile([unit('ant-a', 0, { convergenceDeg: null })]);
+    h.sectors = sectorsFile(
+      [{ id: 'sec-s1', antennaIds: ['ant-a', 'ant-gone'] }],
+      [lteSettings('ant-a')],
+    );
+    await loadRf('p1');
+    expect(s().check.excluded).toEqual([
+      { antennaId: 'ant-a', reason: 'no-crs' },
+      { antennaId: 'ant-gone', reason: 'removed' },
+    ]);
+    expect(s().check.refusals).toEqual(['no-accepted-panels']);
+  });
+
+  it('checks the height before the equipment, like the job', async () => {
+    site({ groundZ: undefined });
+    h.sectors = sectorsFile(
+      [{ id: 'sec-s1', antennaIds: ['ant-a'] }],
+      [{ antennaId: 'ant-a', active: true, carriers: [] }],
+    );
+    await loadRf('p1');
+    expect(row('ant-a').excluded).toBe('no-height');
   });
 
   it('flags nothing when the project has no inventory', async () => {
@@ -509,7 +586,7 @@ describe('saving', () => {
     await loadRf('p1');
     patchStudy({ radiusM: 5000 });
     expect(s().dirty).toBe(true);
-    expect(await saveRf()).toBeNull();
+    expect(await saveRf()).toEqual({ ok: true });
     expect(s().dirty).toBe(false);
     expect(s().writeWarnings).toEqual(['pattern a.msi was not copied']);
     expect(h.sectors?.study.radiusM).toBe(5000);
@@ -521,7 +598,7 @@ describe('saving', () => {
     h.writeError = 'Newer on disk.';
     await loadRf('p1');
     patchStudy({ radiusM: 5000 });
-    expect(await saveRf()).toBe('Newer on disk.');
+    expect(await saveRf()).toEqual({ ok: false, code: 'refused', message: 'Newer on disk.' });
     expect(s().dirty).toBe(true);
     expect(s().message).toBe('Newer on disk.');
     expect(s().saving).toBe(false);
@@ -533,7 +610,8 @@ describe('saving', () => {
     await loadRf('p1');
     patchStudy({ radiusM: 5000 });
     expect(s().dirty).toBe(false);
-    expect(await saveRf()).toMatch(/read only/);
+    expect(await saveRf()).toEqual({ ok: false, code: 'read-only' });
+    expect(reassignOrphanEntry('ant-a', 'ant-b')).toBe('read-only');
     expect(h.calls.some(([c]) => c === 'rf:writeSectors')).toBe(false);
   });
 

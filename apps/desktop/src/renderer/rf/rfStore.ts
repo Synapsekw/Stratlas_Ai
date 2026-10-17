@@ -4,7 +4,7 @@
  * tab (T9), the coverage layer (T10) and the entry action (T11) read from them.
  *
  * - Height above ground: the person's value, else box centre minus `run.groundZ` (measured), else
- *   the DSM or terrain at the base (estimated, through `setTerrainProvider`), else unknown.
+ *   the job's DSM ground near the base (estimated, through `setDsmGroundProvider`), else unknown.
  * - Sectors: `proposed` is the automatic grouping by bearing; `applyProposal()` takes it. A
  *   person can regroup afterwards; grouping never changes the physics.
  * - Orphans (RF entries for units detection no longer has) stay in the file until the person
@@ -37,7 +37,7 @@ import {
   proposalFor,
   type RfUnitRow,
   type RunCheck,
-  type TerrainAt,
+  type DsmGroundAt,
 } from './rfModel';
 
 export type {
@@ -46,7 +46,7 @@ export type {
   RefusalCode,
   RfUnitRow,
   RunCheck,
-  TerrainAt,
+  DsmGroundAt,
   UnitHeight,
 } from './rfModel';
 
@@ -94,7 +94,7 @@ export interface RfState {
   check: RunCheck;
 }
 
-let terrainAt: TerrainAt | null = null;
+let dsmGroundAt: DsmGroundAt | null = null;
 /** Guards a slow read against a newer load or a project switch. */
 let loadSeq = 0;
 /** Writes run one after the other. */
@@ -140,7 +140,7 @@ function derived(b: Base): Pick<RfState, 'rows' | 'proposed' | 'unassigned' | 'o
     sectors: b.sectors,
     catalogue: b.catalogue.map((c) => c.entry),
     includeUnreviewed: b.includeUnreviewed,
-    terrainAt,
+    dsmGroundAt,
   });
   const unassigned = rows
     .filter((r) => r.sectorId === null && r.excluded === 'not-in-sector')
@@ -151,6 +151,7 @@ function derived(b: Base): Pick<RfState, 'rows' | 'proposed' | 'unassigned' | 'o
     unassigned,
     orphans: orphansFor(b.antennas, b.sectors),
     check: checkRun(rows, {
+      sectorMembers: b.sectors.sectors.flatMap((x) => x.antennaIds),
       hasAntennas: b.antennas !== null,
       readOnly: b.readOnly,
       running: b.running,
@@ -180,7 +181,7 @@ const set = (patch: Partial<Base>): void => {
 /** Resets the store (project closed, or a test). */
 export function resetRf(): void {
   loadSeq++;
-  terrainAt = null;
+  dsmGroundAt = null;
   queue = Promise.resolve();
   rfStore.setState(initial());
 }
@@ -196,7 +197,12 @@ export async function loadRf(projectId: string, opts: { keepEdits?: boolean } = 
   const seq = ++loadSeq;
   const same = get().projectId === projectId;
   if (same) set({ status: get().antennas || get().hasFile ? get().status : 'loading' });
-  else rfStore.setState({ ...initial(), projectId, status: 'loading' });
+  else {
+    // The installed pack belongs to the app, not the project; the ground provider to the project.
+    dsmGroundAt = null;
+    rfStore.setState({ ...initial(), pack: get().pack, projectId, status: 'loading' });
+    set({});
+  }
   const [ant, sec, cat, runs] = await Promise.all([
     bridge.call('telecom:readAntennas', { projectId }),
     bridge.call('rf:readSectors', { projectId }),
@@ -272,9 +278,13 @@ export function setPackStatus(status: Pick<PipelinePackStatus, 'state' | 'versio
   });
 }
 
-/** Where the ground is when the antenna file has no tower-base ground (DSM or terrain); null clears it. */
-export function setTerrainProvider(fn: TerrainAt | null): void {
-  terrainAt = fn;
+/**
+ * The DSM ground near a tower base, used when the antenna file has no tower-base ground. It must
+ * do what the job does (see `DsmGroundAt`). Cleared when the project changes, so set it after
+ * `loadRf`; null clears it.
+ */
+export function setDsmGroundProvider(fn: DsmGroundAt | null): void {
+  dsmGroundAt = fn;
   set({});
 }
 
@@ -339,13 +349,37 @@ export function patchStudy(patch: Partial<RfStudy>): void {
   edit((f) => ({ ...f, study: { ...f.study, ...patch } }));
 }
 
-/** Replace the sectors with the automatic proposal; RF settings are kept. */
+/** Sector places of RF entries for units detection no longer has (D9: never dropped silently). */
+function orphanPlaces(f: RfSectorsFile): Map<string, string[]> {
+  const out = new Map<string, string[]>();
+  for (const o of get().orphans) {
+    if (o.sectorId === null || !f.sectors.some((x) => x.id === o.sectorId)) continue;
+    out.set(o.sectorId, [...(out.get(o.sectorId) ?? []), o.antennaId]);
+  }
+  return out;
+}
+
+/**
+ * Replace the sectors with the automatic proposal; RF settings are kept, and so is every orphan's
+ * place: in the proposed sector with the same id, else in its old sector, which stays with only
+ * the orphans in it.
+ */
 export function applyProposal(): void {
   const proposal = get().proposed;
-  edit((f) => ({
-    ...f,
-    sectors: proposal.map<RfSector>((p) => ({ id: p.id, name: p.name, antennaIds: p.antennaIds })),
-  }));
+  edit((f) => {
+    const places = orphanPlaces(f);
+    const next = proposal.map<RfSector>((p) => ({
+      id: p.id,
+      name: p.name,
+      antennaIds: [...p.antennaIds, ...(places.get(p.id) ?? [])],
+    }));
+    const kept = f.sectors.flatMap<RfSector>((old) =>
+      places.has(old.id) && !next.some((n) => n.id === old.id)
+        ? [{ ...old, antennaIds: places.get(old.id) ?? [] }]
+        : [],
+    );
+    return { ...f, sectors: [...next, ...kept] };
+  });
 }
 
 export function renameSector(sectorId: string, name: string): void {
@@ -384,8 +418,18 @@ export function addSector(): string {
   return id;
 }
 
+/** Delete a sector. Orphans in it stay (D9): the sector remains with only them until they are removed or reassigned. */
 export function deleteSector(sectorId: string): void {
-  edit((f) => ({ ...f, sectors: f.sectors.filter((s) => s.id !== sectorId) }));
+  edit((f) => {
+    const orphans = orphanPlaces(f).get(sectorId) ?? [];
+    return {
+      ...f,
+      sectors:
+        orphans.length === 0
+          ? f.sectors.filter((s) => s.id !== sectorId)
+          : f.sectors.map((s) => (s.id === sectorId ? { ...s, antennaIds: orphans } : s)),
+    };
+  });
 }
 
 /** The person's Remove on an orphan: its settings and place go. */
@@ -393,37 +437,45 @@ export function removeOrphanEntry(antennaId: string): void {
   edit((f) => removeOrphan(f, antennaId));
 }
 
-/** The person's Reassign: an orphan's settings and place move to another unit. Answers a failure message. */
-export function reassignOrphanEntry(fromId: string, toId: string): string | null {
+export type ReassignResult = null | 'read-only' | 'target-has-settings' | 'failed';
+
+/** The person's Reassign: an orphan's settings and place move to another unit. Answers null or why not. */
+export function reassignOrphanEntry(fromId: string, toId: string): ReassignResult {
+  if (get().readOnly) return 'read-only';
+  if (get().sectors.antennas.some((a) => a.antennaId === toId && fromId !== toId))
+    return 'target-has-settings';
   try {
     edit((f) => reassignOrphan(f, fromId, toId));
     return null;
-  } catch (e) {
-    const message = e instanceof Error ? e.message : String(e);
-    set({ message });
-    return message;
+  } catch {
+    return 'failed';
   }
 }
 
 // ---------------------------------------------------------------- saving
 
+export type SaveResult =
+  | { ok: true }
+  | { ok: false; code: 'no-project' | 'read-only' }
+  /** Main refused or failed the write; `message` is main's text. */
+  | { ok: false; code: 'refused'; message: string };
+
 /**
- * Write the working copy. Answers null on success or the failure message. The warnings main
- * returns (pattern files it could not copy) are kept in `writeWarnings`. Saves run one after the
- * other, and a failed one leaves the edits as they are.
+ * Write the working copy. The warnings main returns (pattern files it could not copy) are kept in
+ * `writeWarnings`. Saves run one after the other, and a failed one leaves the edits as they are.
  */
-export function saveRf(): Promise<string | null> {
-  const run = async (): Promise<string | null> => {
+export function saveRf(): Promise<SaveResult> {
+  const run = async (): Promise<SaveResult> => {
     const { projectId, sectors, readOnly } = get();
-    if (!projectId) return 'No project is open.';
-    if (readOnly) return 'This project is read only.';
+    if (!projectId) return { ok: false, code: 'no-project' };
+    if (readOnly) return { ok: false, code: 'read-only' };
     set({ saving: true });
     const r = await bridge.call('rf:writeSectors', { projectId, file: sectors });
-    if (get().projectId !== projectId) return null;
+    if (get().projectId !== projectId) return { ok: true };
     if (!r.ok || !r.value.ok) {
       const error = !r.ok ? r.error : r.value.ok ? '' : r.value.error;
       set({ saving: false, message: error });
-      return error || 'The file could not be saved.';
+      return { ok: false, code: 'refused', message: error };
     }
     // An edit made while the write was in flight stays dirty.
     const unchanged = get().sectors === sectors;
@@ -434,7 +486,7 @@ export function saveRf(): Promise<string | null> {
       dirty: !unchanged,
       writeWarnings: r.value.warnings ?? [],
     });
-    return null;
+    return { ok: true };
   };
   const next = queue.then(run, run);
   queue = next.catch(() => null);

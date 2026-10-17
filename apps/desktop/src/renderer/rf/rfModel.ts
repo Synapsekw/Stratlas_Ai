@@ -7,6 +7,7 @@
  */
 import {
   findOrphans,
+  getEntry,
   proposeSectors,
   unitEligibility,
   type EligibilityReason,
@@ -28,7 +29,7 @@ import { resolveCarrier, type DefaultWarning, type ResolvedCarrier } from './rfD
 
 // ---------------------------------------------------------------- height
 
-/** How the height above ground is known: measured from the detected tower base, estimated from a DSM or terrain, or typed. */
+/** How the height above ground is known: measured from the detected tower base, estimated from the DSM, or typed. */
 export type HeightBasis = 'measured' | 'estimated' | 'user';
 
 export interface UnitHeight {
@@ -41,19 +42,25 @@ export interface UnitHeight {
   issue: 'no-ground' | 'not-above-ground' | null;
 }
 
-/** Ground height at a point (project CRS), from a DSM or the terrain; null when unknown. */
-export type TerrainAt = (east: number, north: number) => number | null;
+/**
+ * The job's DSM ground at a tower base (project CRS, vertical datum of the DSM); null when no DSM
+ * covers it. Python (`ground_from_dsm`) is the source of truth: the first project DSM (COG) that
+ * covers the point, the `DSM_GROUND_PERCENTILE` (5th) percentile of its values within
+ * `DSM_GROUND_RADIUS_M` (30 m) of the base (both exported by `@aio/rf`). Never terrain, and never
+ * the DSM at the single point (that is the tower top, a height near 0).
+ */
+export type DsmGroundAt = (east: number, north: number) => number | null;
 
 /**
  * Height above ground (D4): the person's value wins (basis user); else the box centre minus the
- * detected tower-base ground, `run.groundZ` (measured); else the DSM or terrain at the base
- * (estimated); else unknown. A height of 0 or less is not usable (the job leaves the unit out).
+ * detected tower-base ground, `run.groundZ` (measured); else the DSM ground near the base
+ * (estimated, the job's DSM ground); else unknown. A height of 0 or less is not usable (the job leaves the unit out).
  */
 export function unitHeight(
   unit: Pick<AntennaUnit, 'box'>,
   groundZ: number | undefined,
   overrideM: number | undefined,
-  terrainAt: TerrainAt | null,
+  dsmGroundAt: DsmGroundAt | null,
 ): UnitHeight {
   const [east, north, z] = unit.box.centre;
   const checked = (h: number, basis: HeightBasis, ground: number | null): UnitHeight =>
@@ -62,7 +69,7 @@ export function unitHeight(
       : { heightM: null, basis, groundZ: ground, issue: 'not-above-ground' };
   if (overrideM !== undefined) return checked(overrideM, 'user', groundZ ?? null);
   if (groundZ !== undefined) return checked(z - groundZ, 'measured', groundZ);
-  const ground = terrainAt?.(east, north) ?? null;
+  const ground = dsmGroundAt?.(east, north) ?? null;
   if (ground !== null && Number.isFinite(ground)) return checked(z - ground, 'estimated', ground);
   return { heightM: null, basis: null, groundZ: null, issue: 'no-ground' };
 }
@@ -105,7 +112,7 @@ export interface DeriveInput {
   sectors: RfSectorsFile;
   catalogue: readonly RfCatalogueEntry[];
   includeUnreviewed: boolean;
-  terrainAt: TerrainAt | null;
+  dsmGroundAt: DsmGroundAt | null;
 }
 
 function rfUnit(u: AntennaUnit): RfUnit {
@@ -145,7 +152,7 @@ export function deriveRows(i: DeriveInput): RfUnitRow[] {
       included: includedByHand(u, sectorId !== null, i.includeUnreviewed),
       rfActive: settings?.active ?? true,
     });
-    const height = unitHeight(u, groundZ, settings?.heightOverrideM, i.terrainAt);
+    const height = unitHeight(u, groundZ, settings?.heightOverrideM, i.dsmGroundAt);
     const carriers: ResolvedCarrier[] = [];
     const warnings: DefaultWarning[] = [];
     if (settings?.equipment)
@@ -154,13 +161,14 @@ export function deriveRows(i: DeriveInput): RfUnitRow[] {
         warnings.push(...r.warnings);
         if (r.carrier) carriers.push(r.carrier);
       }
+    // The job's order (`exclusion`, then height, then equipment, then carriers).
     let excluded: ExclusionCode | null = el.reason;
     if (!excluded && sectorId === null) excluded = 'not-in-sector';
     else if (!excluded && !settings) excluded = 'no-settings';
-    else if (!excluded && !settings?.equipment) excluded = 'no-equipment';
     else if (!excluded && height.issue === 'no-ground') excluded = 'no-height';
     else if (!excluded && height.issue === 'not-above-ground') excluded = 'not-above-ground';
-    else if (!excluded && settings?.equipment && carriersEntryMissing(settings, i.catalogue))
+    else if (!excluded && !settings?.equipment) excluded = 'no-equipment';
+    else if (!excluded && settings && entryMissing(settings, i.catalogue))
       excluded = 'no-equipment-entry';
     else if (!excluded && carriers.length === 0) excluded = 'no-carrier';
     return {
@@ -180,15 +188,11 @@ export function deriveRows(i: DeriveInput): RfUnitRow[] {
   });
 }
 
-function carriersEntryMissing(
-  s: RfAntennaSettings,
-  catalogue: readonly RfCatalogueEntry[],
-): boolean {
+function entryMissing(s: RfAntennaSettings, catalogue: readonly RfCatalogueEntry[]): boolean {
   const eq = s.equipment;
   if (!eq) return false;
-  const id = eq.kind === 'aau' ? eq.aau : eq.antenna;
-  const want = eq.kind === 'aau' ? 'aau' : 'antenna';
-  return !catalogue.some((e) => e.id === id && e.kind === want);
+  const e = getEntry(catalogue, eq.kind === 'aau' ? eq.aau : eq.antenna);
+  return e?.kind !== (eq.kind === 'aau' ? 'aau' : 'antenna');
 }
 
 // ---------------------------------------------------------------- run check
@@ -198,6 +202,7 @@ export type RefusalCode =
   | 'running'
   | 'pack-missing'
   | 'pack-too-old'
+  | 'pack-unknown'
   | 'no-antennas'
   | 'no-sectors'
   | 'no-crs'
@@ -218,50 +223,59 @@ export interface RunCheck {
 }
 
 /**
- * Pack check (R9). `null` status (not asked yet) refuses nothing here; main refuses a start the
- * pack cannot serve. A pack from the environment (`dev`) is trusted.
+ * Pack check (R9). Not asked yet, or an installed pack with no version, is `pack-unknown`: the
+ * tab must not start a run it cannot vouch for. A pack from the environment (`dev`) is trusted.
+ * Main checks the minimum again at `jobs:start` (`rfPack.ts`).
  */
 export function packRefusal(
   status: Pick<PipelinePackStatus, 'state' | 'version'> | null,
-): 'pack-missing' | 'pack-too-old' | null {
-  if (!status || status.state === 'dev') return null;
+): 'pack-missing' | 'pack-too-old' | 'pack-unknown' | null {
+  if (!status) return 'pack-unknown';
+  if (status.state === 'dev') return null;
   if (status.state === 'missing' || status.state === 'incompatible') return 'pack-missing';
   if (status.state === 'too-old') return 'pack-too-old';
-  if (status.version !== undefined && compareVersions(status.version, RF_COVERAGE_MIN_PACK) < 0)
-    return 'pack-too-old';
-  return null;
+  if (status.version === undefined) return 'pack-unknown';
+  return compareVersions(status.version, RF_COVERAGE_MIN_PACK) < 0 ? 'pack-too-old' : null;
 }
 
 export function checkRun(
   rows: readonly RfUnitRow[],
   i: {
+    /** Every antenna id listed in a sector, including ones the inventory no longer has. */
+    sectorMembers: readonly string[];
     hasAntennas: boolean;
     readOnly: boolean;
     running: boolean;
     pack: Pick<PipelinePackStatus, 'state' | 'version'> | null;
   },
 ): RunCheck {
+  const known = new Set(rows.map((r) => r.id));
   const members = rows.filter((r) => r.sectorId !== null);
   const participants = members.filter((r) => r.excluded === null);
-  const excluded = members.flatMap((r) =>
-    r.excluded === null ? [] : [{ antennaId: r.id, reason: r.excluded }],
-  );
+  // Orphan members count as candidates, like the job (they stop an "all without CRS" refusal).
+  const gone = i.sectorMembers.filter((id) => !known.has(id));
+  const excluded: { antennaId: string; reason: ExclusionCode }[] = [
+    ...members.flatMap((r) =>
+      r.excluded === null ? [] : [{ antennaId: r.id, reason: r.excluded }],
+    ),
+    ...gone.map((antennaId) => ({ antennaId, reason: 'removed' as const })),
+  ];
   const refusals: RefusalCode[] = [];
   if (i.readOnly) refusals.push('read-only');
   if (i.running) refusals.push('running');
   const pack = packRefusal(i.pack);
   if (pack) refusals.push(pack);
   if (!i.hasAntennas) refusals.push('no-antennas');
-  else if (members.length === 0) refusals.push('no-sectors');
+  else if (members.length + gone.length === 0) refusals.push('no-sectors');
   else if (participants.length === 0) {
     // The job's own order: every candidate without a CRS is the CRS message, else what is left.
     const reasons = new Set(excluded.map((e) => e.reason));
     if (reasons.size === 1 && reasons.has('no-crs')) refusals.push('no-crs');
+    else if (reasons.has('no-height') || reasons.has('not-above-ground'))
+      refusals.push('no-height');
     else if (reasons.has('no-equipment') || reasons.has('no-equipment-entry'))
       refusals.push('no-equipment');
     else if (reasons.has('no-carrier') || reasons.has('no-settings')) refusals.push('no-band');
-    else if (reasons.has('no-height') || reasons.has('not-above-ground'))
-      refusals.push('no-height');
     else refusals.push('no-accepted-panels');
   }
   return {

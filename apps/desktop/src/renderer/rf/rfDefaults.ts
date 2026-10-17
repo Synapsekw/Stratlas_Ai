@@ -13,7 +13,14 @@
  *
  * Warnings are codes with a subject (the UI owns the words). Pattern files are not read here.
  */
-import { bandById, BANDS, getEntry, subcarrierCount, type Band, type Tech } from '@aio/rf';
+import {
+  bandOfName,
+  DEFAULT_AM_DB,
+  DEFAULT_H_BEAMWIDTH_DEG,
+  getEntry,
+  subcarrierCount,
+  type Tech,
+} from '@aio/rf';
 import type {
   CataloguePort,
   EtiltRange,
@@ -39,17 +46,6 @@ export interface DefaultWarning {
   carrierId: string;
   /** The value involved (a band, a port id, a number), for the UI sentence. */
   detail?: string | number;
-}
-
-/** A band row from a carrier's band name: `B3`, `n78` or a band id such as `b3-n3`. */
-export function bandOfName(name: string): Band | undefined {
-  const key = name.trim().toLowerCase();
-  const byId = bandById(key);
-  if (byId) return byId;
-  const lte = /^b(\d+)$/.exec(key);
-  if (lte) return BANDS.find((b) => b.lteBands.includes(Number(lte[1])));
-  if (/^n\d+$/.test(key)) return BANDS.find((b) => b.nrBand === key);
-  return undefined;
 }
 
 /** 0 degrees clamped into the range (the job's default when no e-tilt is set). */
@@ -90,8 +86,8 @@ export interface ResolvedCarrier {
   powerDbm: number;
   powerBasis: PowerBasis;
   feederLossDb: number;
-  /** Front-to-back (port) as the generic pattern's cap, dB; null for an AAU. */
-  frontToBackDb: number | null;
+  /** Front-to-back as the generic pattern's cap, dB (the job's default for an AAU or a port without one). */
+  frontToBackDb: number;
   hBeamwidthDeg: number;
   vBeamwidthDeg: number;
   etiltRange: EtiltRange | null;
@@ -103,7 +99,6 @@ export interface CarrierResolution {
   warnings: DefaultWarning[];
 }
 
-const DEFAULT_H_BEAMWIDTH_DEG = 65;
 const DEFAULT_V_BEAMWIDTH_DEG = 10;
 
 /** One carrier of one unit with every default the job applies. */
@@ -174,7 +169,7 @@ export function resolveCarrier(
         powerDbm,
         powerBasis,
         feederLossDb,
-        frontToBackDb: null,
+        frontToBackDb: DEFAULT_AM_DB,
         hBeamwidthDeg: entry.ssbHBeamwidthDeg || DEFAULT_H_BEAMWIDTH_DEG,
         vBeamwidthDeg: entry.ssbVBeamwidthDeg || DEFAULT_V_BEAMWIDTH_DEG,
         etiltRange: entry.etilt ?? null,
@@ -221,7 +216,7 @@ export function resolveCarrier(
       powerDbm,
       powerBasis,
       feederLossDb,
-      frontToBackDb: port.frontToBackDb,
+      frontToBackDb: port.frontToBackDb || DEFAULT_AM_DB,
       hBeamwidthDeg: port.hBeamwidthDeg || DEFAULT_H_BEAMWIDTH_DEG,
       vBeamwidthDeg: port.vBeamwidthDeg || DEFAULT_V_BEAMWIDTH_DEG,
       etiltRange: port.etilt,
