@@ -22,7 +22,14 @@ import {
 import { DEFAULT_PHOTO_LENS } from '@aio/video';
 import { useWorkspace, workspace } from '@aio/workspace';
 import { useAnnotateReadOnly } from '@aio/annotate';
-import { useCallback, useEffect, useRef, useState, type KeyboardEvent } from 'react';
+import {
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  useSyncExternalStore,
+  type KeyboardEvent,
+} from 'react';
 import { createPortal } from 'react-dom';
 import { Quaternion, Vector3, type InstancedMesh } from 'three';
 import { useShell } from '../shell';
@@ -62,16 +69,20 @@ interface MenuAt {
   photos?: MenuPhoto[];
 }
 
+/*
+ * The 3D view and the map on screen. Read as external stores: the views come up in the same
+ * commit as the menus (the scene is set in the 3D view's effect, after a menu's first render and
+ * before its effect would listen), and a store read again after subscribing does not miss that.
+ */
+const subscribeScene = (cb: () => void) => onActiveScene(cb);
+const subscribeMap = (cb: () => void) => onActiveMap(cb);
+
 export function useScene(): SceneHandle | null {
-  const [h, setH] = useState<SceneHandle | null>(() => getActiveScene());
-  useEffect(() => onActiveScene(setH), []);
-  return h;
+  return useSyncExternalStore(subscribeScene, getActiveScene);
 }
 
 export function useMap(): MapController | null {
-  const [m, setM] = useState<MapController | null>(() => getActiveMap());
-  useEffect(() => onActiveMap(setM), []);
-  return m;
+  return useSyncExternalStore(subscribeMap, getActiveMap);
 }
 
 const setOf = (id: string): PhotosLayer | null => {
