@@ -253,12 +253,17 @@ test('@realdata stage polish: island tools in view, label modes, annotate tools 
   await expect.poll(async () => (await clock(win)).playing).toBe(false);
   await win.keyboard.press('Escape');
 
-  // The map's zoom buttons sit clear of the right panel toggle.
+  // The map's zoom buttons sit clear of the stage's right panel toggle (hidden while the island's
+  // tools are open, whose View row has its own Right panel tile).
+  await closeIslandTools(win);
   await win.keyboard.press('2');
   const zoom = win.locator('.maplibregl-ctrl-top-right');
   await expect(zoom).toBeVisible({ timeout: 15_000 });
   const z = await zoom.boundingBox();
-  const t = await win.getByRole('button', { name: /right panel/ }).boundingBox();
+  const t = await win
+    .locator('.stage-rp')
+    .getByRole('button', { name: /^(Show|Hide) the right panel$/ })
+    .boundingBox();
   if (!z || !t) throw new Error('no zoom control or panel toggle');
   expect(z.y >= t.y + t.height || t.y >= z.y + z.height || z.x >= t.x + t.width).toBe(true);
   await win.keyboard.press('1');
@@ -577,7 +582,8 @@ test('@realdata the eye over all layers and the group eyes switch many layers at
   win,
 }) => {
   await openHcl(app, win);
-  const master = win.locator('.tree-h .eye');
+  // the eye over all layers: the header's other icon buttons share the .eye look
+  const master = win.locator('.tree-h .eye[data-visibility]');
   await expect(master).toHaveAttribute('data-visibility', 'all');
   const start = await layerState(win);
   expect(start.hidden).toBe(0);
