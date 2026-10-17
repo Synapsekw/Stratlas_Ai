@@ -1,14 +1,14 @@
 # /wrapup: record this working block in `docs/sessions/` and refresh the north star
 
-Write a session note `docs/sessions/YYYY-MM-DD-HHmm-<slug>.md`, overwrite section 3 of `docs/NORTH-STAR.md` so the next session starts from reality, and commit both on a branch the Orchestrator will merge.
+Write a session note `docs/sessions/YYYY-MM-DD-HHmm-<slug>.md`, overwrite section 3 of `docs/NORTH-STAR.md` so the next session starts from reality, and commit both on the feature branch, so they ride in the same PR as the work.
 
 ## Steps
 
 1. **Gather state in one call:** `node tools/agent/wrapup-context.mjs`. It prints the date and note id, whether you are in a linked worktree and where the main checkout is, branch and HEAD, `git status --short`, ahead and behind against `origin/main`, the full north-star section 3, any `_draft-*.md` left by the Stop hook, the three newest session notes and the branch's commits since `origin/main`. Do not rebuild that with separate `git` or `date` calls. For "What changed" detail you may still read `git log` or diffs.
 
 2. **Pick where to commit.** Notes never go on `main` and never into the main checkout (CLAUDE.md).
-   - In your own worktree on a task branch: commit the note there; it travels with the branch to the Orchestrator.
-   - In the main checkout, or your branch has already been handed off: `node tools/agent/start-task.mjs wrapup-<slug> --type docs`, write the note in that worktree, and hand that branch off with `node tools/agent/finish-task.mjs --docs`.
+   - Default: in your own worktree on the feature branch, before you hand off or ask for the merge. Commit the note and the north-star change there, so they go out in the same PR as the work and CI runs once. In the note, say "this PR", never a merge SHA (the SHA does not exist yet).
+   - Exception: work with no branch of its own (research, audits, design-only sessions), or a branch that has already merged. Then `node tools/agent/start-task.mjs wrapup-<slug> --type docs`, write the note in that worktree, and hand that branch off with `node tools/agent/finish-task.mjs --docs`. Do not cut a separate docs branch for work that still has an open feature branch.
 
 3. **Slug and title.** 3 to 6 kebab-case words for the most prominent work (`globe-street-map`, `survey-engine-restart`, `agent-workflow-setup`) and a short headline to match.
 
@@ -33,7 +33,7 @@ Write a session note `docs/sessions/YYYY-MM-DD-HHmm-<slug>.md`, overwrite sectio
 
 9. **Commit only the notes.** `git add docs/sessions/<note>.md docs/NORTH-STAR.md` (plus any ADR or ROADMAP row you touched), then `git commit -m "docs(sessions): <slug>"`. Never `git add -A`, never sweep in source changes.
 
-10. **Report** the note path, the commit, one line on what changed in the north star, and whether the branch still needs handing to the Orchestrator.
+10. **Report** the note path, the commit, one line on what changed in the north star, and whether the branch is ready for `finish-task` and the merge.
 
 ## Discipline
 

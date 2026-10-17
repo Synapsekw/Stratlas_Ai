@@ -51,11 +51,11 @@ A red result goes back to step 4. Never hand off a red branch.
 
 ### 6. Hand off
 
-Run `node tools/agent/finish-task.mjs` in the worktree. It rebases onto the latest `origin/main`, runs `pnpm check` again, checks the commit messages for client and site names and prints the hand-off message. On a rebase conflict it aborts cleanly: resolve it on the branch and run it again. Fill in the summary, e2e and merge-order lines and SendMessage it to the session named "Orchestrator" (find it with ListAgents; if there is none, follow CLAUDE.md "When no orchestrator is running").
+Do step 7 first, so the `/wrapup` commit is on the branch. Then run `node tools/agent/finish-task.mjs` in the worktree. It rebases onto the latest `origin/main`, runs `pnpm check` again, checks the commit messages for client and site names and prints the hand-off message. On a rebase conflict it aborts cleanly: resolve it on the branch and run it again. Fill in the summary, e2e and merge-order lines and SendMessage it to the session named "Orchestrator" (find it with ListAgents; if there is none, follow CLAUDE.md "When no orchestrator is running").
 
 ### 7. How to test, and wrap up
 
-Give the founder a numbered "How to test" walkthrough (where in the app, what to click, what should happen), or the one line for work with nothing user-facing. Then run `/wrapup`; its note rides the same branch if the Orchestrator has not merged it yet. Once the Orchestrator confirms the merge, clean up with `node tools/agent/finish-task.mjs --cleanup <branch>` from the main checkout.
+Give the founder a numbered "How to test" walkthrough (where in the app, what to click, what should happen), or the one line for work with nothing user-facing. Then run `/wrapup` on this same branch, before you hand off or ask for the merge: its note and the north-star refresh are committed here and ride in the same PR, not in a separate docs PR. Once the Orchestrator confirms the merge, clean up with `node tools/agent/finish-task.mjs --cleanup <branch>` from the main checkout.
 
 ## Discipline
 
