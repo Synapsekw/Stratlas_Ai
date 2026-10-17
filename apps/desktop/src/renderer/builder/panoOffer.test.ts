@@ -31,7 +31,7 @@ vi.stubGlobal('window', {});
 
 import { panoImport } from '../panos/panos';
 import { QUEUED_NOTE } from './importSummary';
-import { builder, panoOfferCopy, panoOfferFrom } from './state';
+import { builder, panoOfferCopy, panoOfferExcluded, panoOfferFrom } from './state';
 
 const frames = Array.from(
   { length: 25 },
@@ -189,6 +189,8 @@ describe('panoOfferFrom', () => {
       skipped: [fisheye, { file: 'D:/Pano/x.JPG', reason: 'few-frames' }],
     });
     const copy = offer && panoOfferCopy(offer);
+    // an accepted unplaced 360 stays out of the photo import: it is never brought in twice
+    expect(offer && panoOfferExcluded(offer)).toContain('D:/Pano/ground.jpg');
     expect(copy?.unplaced).toBe(
       '1 360 has no GPS: it imports as not placed, ready to pin on the site.',
     );

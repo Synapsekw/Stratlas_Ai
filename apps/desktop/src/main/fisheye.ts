@@ -20,6 +20,25 @@ const OUTSIDE_PX = 16.5;
 const MAX_OUTSIDE_MEAN = 12;
 /** ... and the circles brighter than this. */
 const MIN_INSIDE_MEAN = 30;
+/**
+ * The gaps where the circles meet the edges and each other (columns 0, 31, 32 and 63, rows 8 to
+ * 23) are darker than this. A night equirect (black sky and ground, a lit horizon band) passes the
+ * two means above, but its horizon runs through these gaps.
+ */
+const MAX_GAP_MEAN = 30;
+
+/** Mean of the gap columns over the middle rows. */
+function gapMean(grey: Uint8Array, w: number, h: number): number {
+  const cols = [0, w / 2 - 1, w / 2, w - 1];
+  let sum = 0;
+  let n = 0;
+  for (let y = h / 4; y < (3 * h) / 4; y++)
+    for (const x of cols) {
+      sum += grey[y * w + x] ?? 0;
+      n++;
+    }
+  return n > 0 ? sum / n : 0;
+}
 
 /** True when a 64 x 32 grey image is two fisheye circles on black, not an equirect. */
 export function looksDualFisheye(grey: Uint8Array, w: number, h: number): boolean {
@@ -41,7 +60,11 @@ export function looksDualFisheye(grey: Uint8Array, w: number, h: number): boolea
       }
     }
   if (outN === 0 || inN === 0) return false;
-  return outSum / outN < MAX_OUTSIDE_MEAN && inSum / inN > MIN_INSIDE_MEAN;
+  return (
+    outSum / outN < MAX_OUTSIDE_MEAN &&
+    inSum / inN > MIN_INSIDE_MEAN &&
+    gapMean(grey, w, h) < MAX_GAP_MEAN
+  );
 }
 
 /** Luma (BT.601) of BGRA pixels, as Electron's `NativeImage.toBitmap` gives them. */

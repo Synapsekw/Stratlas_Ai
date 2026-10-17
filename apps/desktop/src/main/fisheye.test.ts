@@ -32,6 +32,14 @@ describe('looksDualFisheye', () => {
     expect(looksDualFisheye(night, W, H)).toBe(false);
   });
 
+  it('does not take a night equirect (black sky and ground, a lit horizon band) for one', () => {
+    for (const band of [40, 60, 90])
+      for (const blackRows of [5, 8]) {
+        const nightBand = image((_x, y) => (y < blackRows || y >= H - blackRows ? 4 : band));
+        expect(looksDualFisheye(nightBand, W, H)).toBe(false);
+      }
+  });
+
   it('refuses any other size than the 64 x 32 it is judged on', () => {
     expect(looksDualFisheye(new Uint8Array(32 * 16), 32, 16)).toBe(false);
     expect(looksDualFisheye(new Uint8Array(10), W, H)).toBe(false);
