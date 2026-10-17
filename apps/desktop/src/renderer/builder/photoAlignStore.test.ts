@@ -14,14 +14,33 @@ const photo = (id: string, min: number): PhotoRef => ({
   q: cameraQuatFromGimbal(90, -45, 0),
 });
 
-function setup(loaded = true) {
+function setup(loaded = true, lineUp = false) {
   const ws = createWorkspace();
   const items = [photo('p1', 0), photo('p2', 3), photo('p3', 6), photo('p4', 90)];
   ws.getState().openProject({
     id: 'p',
     root: 'x',
     manifest: {
-      layers: [{ kind: 'photos', id: 'photos', name: 'Photos', visible: true, items }],
+      captures: lineUp
+        ? [
+            {
+              id: 'd2',
+              label: 'Second',
+              date: '2026-01-05',
+              lineUp: { eastM: 2, northM: 1, with: 'd1', at: '2026-10-16T08:00:00Z' },
+            },
+          ]
+        : [],
+      layers: [
+        {
+          kind: 'photos',
+          id: 'photos',
+          name: 'Photos',
+          visible: true,
+          items,
+          ...(lineUp ? { capture: 'd2' } : {}),
+        },
+      ],
     } as unknown as ProjectManifest,
   });
   if (loaded) ws.getState().setOrientation(null);
@@ -100,6 +119,19 @@ describe('align photo to map', () => {
     await a().applyNotice();
     expect(item('p1')?.correction).toBeUndefined();
     expect(item('p2')?.correction?.yawDeg).toBe(-10);
+  });
+
+  it('draws a photo of a lined-up date shifted after the correction, and saves the correction alone', async () => {
+    const { store, saves } = setup(true, true);
+    const a = () => store.getState();
+    a().start('photos', 'p2');
+    // opened where the 3D view draws it: the imported pose, then the date's 2 m east, 1 m north
+    expect(a().pose()?.pos).toEqual([22, 40, -1]);
+    a().setOffset([1, 0, 0]);
+    expect(a().pose()?.pos).toEqual([23, 40, -1]);
+    await a().done();
+    // what is saved is the person's own move: the date's shift is not baked in
+    expect(saves).toEqual([{ p2: { yawDeg: 0, pitchDeg: 0, rollDeg: 0, offsetM: [1, 0, 0] } }]);
   });
 
   it('undoes turns, cancels without saving, resets a saved correction with undo', async () => {
