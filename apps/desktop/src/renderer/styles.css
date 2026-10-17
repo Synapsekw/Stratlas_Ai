@@ -2008,7 +2008,7 @@ button.chip-status:hover {
 .pane-head .pane-date .tag {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
+  gap: var(--sp-3);
   white-space: nowrap;
 }
 .pane-head select.input {
@@ -2100,7 +2100,10 @@ html[dir='rtl'] .stage[data-mode='split'] .stage-slot[data-slot='br'] {
   max-inline-size: calc(var(--pane-end-w, 50%) - var(--slot-end) - var(--sp-5) - var(--sp-3));
 }
 .stage[data-mode='split'] .stage-slot[data-slot='tl'] {
-  top: max(calc(var(--pane-head-top) + 40px), calc(var(--isl-open-b, 0px) + var(--sp-4)));
+  inset-block-start: max(
+    calc(var(--pane-head-top) + 40px),
+    calc(var(--isl-open-b, 0px) + var(--sp-4))
+  );
 }
 /* the map's zoom buttons move below the pane header in a split */
 .stage-panes[data-mode='split'] .pane-map .maplibregl-ctrl-top-right {
@@ -2247,46 +2250,51 @@ svg.flip {
 .stage-views:has(> .stage-panes.with-dock) > .stage-slot {
   --slot-dock: var(--dock-w);
 }
+/* The offsets below are geometry, not spacing: the stage controls they stand clear of (the island's
+   row, the right panel's toggle, the map's zoom buttons, the compass and the timeline toggle). */
 .stage-slot[data-slot='tl'] {
   inset-inline-start: var(--sp-5);
-  top: max(54px, calc(var(--isl-open-b, 0px) + var(--sp-4)));
+  inset-block-start: max(54px, calc(var(--isl-open-b, 0px) + var(--sp-4)));
   align-items: flex-start;
 }
 /* under the right panel's toggle and, on the map, under its zoom buttons (corner at 50px, 10px
    margin, two 29px buttons): the Map menu chip stays put as the view changes */
 .stage-slot[data-slot='tr'] {
   inset-inline-end: calc(var(--slot-end) + 10px);
-  top: max(126px, calc(var(--isl-open-b, 0px) + var(--sp-4)));
+  inset-block-start: max(126px, calc(var(--isl-open-b, 0px) + var(--sp-4)));
   align-items: flex-end;
 }
 /* in a split the map's zoom buttons sit below the pane chooser, and so does the slot */
 .stage[data-mode='split'] .stage-slot[data-slot='tr'] {
-  top: max(calc(var(--pane-head-top) + 114px), calc(var(--isl-open-b, 0px) + var(--sp-4)));
+  inset-block-start: max(
+    calc(var(--pane-head-top) + 114px),
+    calc(var(--isl-open-b, 0px) + var(--sp-4))
+  );
 }
 /* a top corner the open island leaves clear keeps its place (data-isl-clear, useIslandReach in
    Stage.tsx): the Map menu chip and the dates stay up beside a medium stage's island */
 .stage[data-isl-clear~='tl'] .stage-slot[data-slot='tl'] {
-  top: 54px;
+  inset-block-start: 54px;
 }
 .stage[data-isl-clear~='tr'] .stage-slot[data-slot='tr'] {
-  top: 126px;
+  inset-block-start: 126px;
 }
 .stage[data-mode='split'][data-isl-clear~='tl'] .stage-slot[data-slot='tl'] {
-  top: calc(var(--pane-head-top) + 40px);
+  inset-block-start: calc(var(--pane-head-top) + 40px);
 }
 .stage[data-mode='split'][data-isl-clear~='tr'] .stage-slot[data-slot='tr'] {
-  top: calc(var(--pane-head-top) + 114px);
+  inset-block-start: calc(var(--pane-head-top) + 114px);
 }
 /* over the map's scale bar and the 3D view's foot */
 .stage-slot[data-slot='bl'] {
   inset-inline-start: var(--sp-5);
-  bottom: 40px;
+  inset-block-end: 40px;
   align-items: flex-start;
 }
 /* left of the engine's compass and above the map's credits; its half less that room */
 .stage-slot[data-slot='br'] {
   inset-inline-end: calc(var(--slot-end) + 80px);
-  bottom: 40px;
+  inset-block-end: 40px;
   align-items: flex-end;
   max-inline-size: calc((100% - var(--slot-end)) / 2 - 80px - var(--sp-2));
 }

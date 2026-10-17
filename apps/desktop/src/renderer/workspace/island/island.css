@@ -223,7 +223,7 @@
 }
 .isl-open .kbd {
   font-size: var(--t-11);
-  padding: 1px 4px;
+  padding: 1px var(--sp-2);
 }
 
 /* a live reading; with a tab to bring back it is a button (I-R44), drawn as the reading */
@@ -418,7 +418,7 @@
 }
 .isl-x .kbd {
   font-size: var(--t-11);
-  padding: 1px 4px;
+  padding: 1px var(--sp-2);
 }
 /* Jobs (I-R47) sits at the row's end beside Close, which then needs no push of its own */
 .island .btn.isl-jobs {
