@@ -1,12 +1,12 @@
 import { getActiveScene } from '@aio/engine';
-import { getActiveMap, onActiveMap, type MapController } from '@aio/maps';
 import { LayerPatch, type PanoRef, type PhotoRef, type Vec3 } from '@aio/schema';
 import { t } from '@aio/ui';
 import { workspace } from '@aio/workspace';
-import { useEffect, useState } from 'react';
+import { useEffect } from 'react';
 import { useStore } from 'zustand';
 import type { StoreApi } from 'zustand/vanilla';
 import type { Intersection } from 'three';
+import { useMap } from '../builder/activeViews';
 import { groundHit } from '../builder/droneHits';
 import { hitLayer, terrainHeightAt, useStagePick } from '../builder/pick';
 import { builder } from '../builder/state';
@@ -90,8 +90,7 @@ export function usePinPicking(store: PinSession = pinSession): void {
   const step = useStore(store, (s) => s.step);
   const onSite = target !== null && SITE_STEPS.includes(step);
   const onPano = target?.kind === 'pano' && PANO_STEPS.includes(step);
-  const [map, setMap] = useState<MapController | null>(() => getActiveMap());
-  useEffect(() => onActiveMap(setMap), []);
+  const map = useMap();
 
   useStagePick(onSite, (hit, c) => {
     sceneClick(store, hit, c.x, c.y);
