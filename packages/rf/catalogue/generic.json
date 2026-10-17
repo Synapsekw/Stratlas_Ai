@@ -1,0 +1,191 @@
+{
+  "schema": "aio.rf-catalogue/1",
+  "entries": [
+    {
+      "kind": "antenna",
+      "id": "generic-panel-65-15",
+      "vendor": "Generic",
+      "model": "Panel 65 deg 15 dBi",
+      "source": "generic assumption, not a vendor product",
+      "verified": false,
+      "ports": [
+        {
+          "id": "p1",
+          "bandRangeMhz": [698, 2690],
+          "gainDbi": 15,
+          "hBeamwidthDeg": 65,
+          "vBeamwidthDeg": 16,
+          "frontToBackDb": 28,
+          "etilt": {
+            "minDeg": 0,
+            "maxDeg": 10,
+            "stepDeg": 1
+          },
+          "patterns": []
+        }
+      ]
+    },
+    {
+      "kind": "antenna",
+      "id": "generic-panel-65-17",
+      "vendor": "Generic",
+      "model": "Panel 65 deg 17 dBi",
+      "source": "generic assumption, not a vendor product",
+      "verified": false,
+      "ports": [
+        {
+          "id": "p1",
+          "bandRangeMhz": [698, 2690],
+          "gainDbi": 17,
+          "hBeamwidthDeg": 65,
+          "vBeamwidthDeg": 10,
+          "frontToBackDb": 28,
+          "etilt": {
+            "minDeg": 0,
+            "maxDeg": 10,
+            "stepDeg": 1
+          },
+          "patterns": []
+        }
+      ]
+    },
+    {
+      "kind": "antenna",
+      "id": "generic-panel-65-18",
+      "vendor": "Generic",
+      "model": "Panel 65 deg 18 dBi",
+      "source": "generic assumption, not a vendor product",
+      "verified": false,
+      "ports": [
+        {
+          "id": "p1",
+          "bandRangeMhz": [1710, 2690],
+          "gainDbi": 18,
+          "hBeamwidthDeg": 65,
+          "vBeamwidthDeg": 7.5,
+          "frontToBackDb": 28,
+          "etilt": {
+            "minDeg": 0,
+            "maxDeg": 10,
+            "stepDeg": 1
+          },
+          "patterns": []
+        }
+      ]
+    },
+    {
+      "kind": "antenna",
+      "id": "generic-panel-33-17",
+      "vendor": "Generic",
+      "model": "Panel 33 deg 17 dBi",
+      "source": "generic assumption, not a vendor product",
+      "verified": false,
+      "ports": [
+        {
+          "id": "p1",
+          "bandRangeMhz": [1710, 2690],
+          "gainDbi": 17,
+          "hBeamwidthDeg": 33,
+          "vBeamwidthDeg": 16,
+          "frontToBackDb": 30,
+          "etilt": {
+            "minDeg": 0,
+            "maxDeg": 10,
+            "stepDeg": 1
+          },
+          "patterns": []
+        }
+      ]
+    },
+    {
+      "kind": "antenna",
+      "id": "generic-panel-33-18",
+      "vendor": "Generic",
+      "model": "Panel 33 deg 18 dBi",
+      "source": "generic assumption, not a vendor product",
+      "verified": false,
+      "ports": [
+        {
+          "id": "p1",
+          "bandRangeMhz": [1710, 2690],
+          "gainDbi": 18,
+          "hBeamwidthDeg": 33,
+          "vBeamwidthDeg": 14,
+          "frontToBackDb": 30,
+          "etilt": {
+            "minDeg": 0,
+            "maxDeg": 10,
+            "stepDeg": 1
+          },
+          "patterns": []
+        }
+      ]
+    },
+    {
+      "kind": "radio",
+      "id": "generic-rru-4t4r-4x40w",
+      "vendor": "Generic",
+      "model": "RRU 4T4R 4 x 40 W",
+      "source": "generic assumption, not a vendor product",
+      "verified": false,
+      "bandRangeMhz": [1710, 2690],
+      "txPorts": 4,
+      "rxPorts": 4,
+      "maxPowerDbmPerPort": 46.02,
+      "maxBandwidthMhz": 60,
+      "mounting": "tower"
+    },
+    {
+      "kind": "radio",
+      "id": "generic-rru-4t4r-4x60w",
+      "vendor": "Generic",
+      "model": "RRU 4T4R 4 x 60 W",
+      "source": "generic assumption, not a vendor product",
+      "verified": false,
+      "bandRangeMhz": [1710, 2690],
+      "txPorts": 4,
+      "rxPorts": 4,
+      "maxPowerDbmPerPort": 47.78,
+      "maxBandwidthMhz": 60,
+      "mounting": "tower"
+    },
+    {
+      "kind": "aau",
+      "id": "generic-aau-64t64r-n78",
+      "vendor": "Generic",
+      "model": "AAU 64T64R 3.5 GHz 200 W",
+      "source": "generic assumption, not a vendor product",
+      "verified": false,
+      "bandRangeMhz": [3300, 3800],
+      "ports": 64,
+      "totalPowerDbm": 53.01,
+      "ssbGainDbi": 18,
+      "ssbHBeamwidthDeg": 90,
+      "ssbVBeamwidthDeg": 12,
+      "etilt": {
+        "minDeg": 0,
+        "maxDeg": 10,
+        "stepDeg": 1
+      }
+    },
+    {
+      "kind": "aau",
+      "id": "generic-aau-32t32r-n78",
+      "vendor": "Generic",
+      "model": "AAU 32T32R 3.5 GHz 200 W",
+      "source": "generic assumption, not a vendor product",
+      "verified": false,
+      "bandRangeMhz": [3300, 3800],
+      "ports": 32,
+      "totalPowerDbm": 53.01,
+      "ssbGainDbi": 17,
+      "ssbHBeamwidthDeg": 90,
+      "ssbVBeamwidthDeg": 14,
+      "etilt": {
+        "minDeg": 0,
+        "maxDeg": 10,
+        "stepDeg": 1
+      }
+    }
+  ]
+}

@@ -1,0 +1,195 @@
+{
+  "schema": "aio.rf-catalogue/1",
+  "entries": [
+    {
+      "kind": "antenna",
+      "id": "commscope-hbxx-6517ds-vtm",
+      "vendor": "CommScope",
+      "model": "HBXX-6517DS-VTM",
+      "source": "public datasheet, CommScope HBXX-6517DS-VTM product specification",
+      "verified": false,
+      "ports": [
+        {
+          "id": "p1",
+          "bandRangeMhz": [698, 896],
+          "gainDbi": 16,
+          "hBeamwidthDeg": 65,
+          "vBeamwidthDeg": 14,
+          "frontToBackDb": 25,
+          "etilt": {
+            "minDeg": 2,
+            "maxDeg": 14,
+            "stepDeg": 1
+          },
+          "patterns": []
+        }
+      ]
+    },
+    {
+      "kind": "antenna",
+      "id": "commscope-sbnhh-1d65c",
+      "vendor": "CommScope",
+      "model": "SBNHH-1D65C",
+      "source": "public datasheet, CommScope SBNHH-1D65C product specification",
+      "verified": false,
+      "ports": [
+        {
+          "id": "p1",
+          "bandRangeMhz": [1695, 2690],
+          "gainDbi": 17.5,
+          "hBeamwidthDeg": 65,
+          "vBeamwidthDeg": 7,
+          "frontToBackDb": 28,
+          "etilt": {
+            "minDeg": 0,
+            "maxDeg": 10,
+            "stepDeg": 1
+          },
+          "patterns": []
+        }
+      ]
+    },
+    {
+      "kind": "antenna",
+      "id": "commscope-nhh-65b-r2b",
+      "vendor": "CommScope",
+      "model": "NHH-65B-R2B",
+      "source": "public datasheet, CommScope NHH-65B-R2B product specification",
+      "verified": false,
+      "ports": [
+        {
+          "id": "low",
+          "bandRangeMhz": [698, 960],
+          "gainDbi": 15,
+          "hBeamwidthDeg": 65,
+          "vBeamwidthDeg": 12.5,
+          "frontToBackDb": 25,
+          "etilt": {
+            "minDeg": 2,
+            "maxDeg": 14,
+            "stepDeg": 1
+          },
+          "patterns": []
+        },
+        {
+          "id": "high",
+          "bandRangeMhz": [1695, 2690],
+          "gainDbi": 17,
+          "hBeamwidthDeg": 65,
+          "vBeamwidthDeg": 7,
+          "frontToBackDb": 28,
+          "etilt": {
+            "minDeg": 2,
+            "maxDeg": 14,
+            "stepDeg": 1
+          },
+          "patterns": []
+        }
+      ]
+    },
+    {
+      "kind": "radio",
+      "id": "ericsson-radio-4415-b3",
+      "vendor": "Ericsson",
+      "model": "Radio 4415 B3",
+      "source": "public datasheet, Ericsson Radio 4415 B3 product description",
+      "verified": false,
+      "bandRangeMhz": [1805, 1880],
+      "txPorts": 4,
+      "rxPorts": 4,
+      "maxPowerDbmPerPort": 46.02,
+      "maxBandwidthMhz": 75,
+      "mounting": "tower"
+    },
+    {
+      "kind": "radio",
+      "id": "ericsson-radio-4449-b5-b8",
+      "vendor": "Ericsson",
+      "model": "Radio 4449 B5/B8",
+      "source": "public datasheet, Ericsson Radio 4449 B5/B8 product description",
+      "verified": false,
+      "bandRangeMhz": [925, 960],
+      "txPorts": 4,
+      "rxPorts": 4,
+      "maxPowerDbmPerPort": 46.02,
+      "maxBandwidthMhz": 35,
+      "mounting": "tower"
+    },
+    {
+      "kind": "aau",
+      "id": "ericsson-air-6449-b77d",
+      "vendor": "Ericsson",
+      "model": "AIR 6449 B77D",
+      "source": "public datasheet, Ericsson AIR 6449 B77D product description; broadcast-beam gain and beamwidths are an estimate, not a datasheet figure",
+      "verified": false,
+      "bandRangeMhz": [3300, 3800],
+      "ports": 64,
+      "totalPowerDbm": 53.01,
+      "ssbGainDbi": 18,
+      "ssbHBeamwidthDeg": 90,
+      "ssbVBeamwidthDeg": 12,
+      "etilt": {
+        "minDeg": 0,
+        "maxDeg": 10,
+        "stepDeg": 1
+      }
+    },
+    {
+      "kind": "aau",
+      "id": "ericsson-air-6419-b77g",
+      "vendor": "Ericsson",
+      "model": "AIR 6419 B77G",
+      "source": "public datasheet, Ericsson AIR 6419 B77G product description; broadcast-beam gain and beamwidths are an estimate, not a datasheet figure",
+      "verified": false,
+      "bandRangeMhz": [3300, 3800],
+      "ports": 32,
+      "totalPowerDbm": 53.01,
+      "ssbGainDbi": 17,
+      "ssbHBeamwidthDeg": 90,
+      "ssbVBeamwidthDeg": 14,
+      "etilt": {
+        "minDeg": 0,
+        "maxDeg": 10,
+        "stepDeg": 1
+      }
+    },
+    {
+      "kind": "aau",
+      "id": "huawei-aau5613",
+      "vendor": "Huawei",
+      "model": "AAU5613",
+      "source": "public datasheet, Huawei AAU5613 product description; broadcast-beam gain and beamwidths are an estimate, not a datasheet figure",
+      "verified": false,
+      "bandRangeMhz": [3300, 3800],
+      "ports": 64,
+      "totalPowerDbm": 53.01,
+      "ssbGainDbi": 18,
+      "ssbHBeamwidthDeg": 90,
+      "ssbVBeamwidthDeg": 12,
+      "etilt": {
+        "minDeg": 0,
+        "maxDeg": 10,
+        "stepDeg": 1
+      }
+    },
+    {
+      "kind": "aau",
+      "id": "nokia-airscale-maa-64t64r-aeqa",
+      "vendor": "Nokia",
+      "model": "AirScale MAA 64T64R AEQA",
+      "source": "public datasheet, Nokia AirScale Massive MIMO Adaptive Antenna 64T64R data sheet; broadcast-beam gain and beamwidths are an estimate, not a datasheet figure",
+      "verified": false,
+      "bandRangeMhz": [3300, 3800],
+      "ports": 64,
+      "totalPowerDbm": 53.01,
+      "ssbGainDbi": 18,
+      "ssbHBeamwidthDeg": 90,
+      "ssbVBeamwidthDeg": 12,
+      "etilt": {
+        "minDeg": 0,
+        "maxDeg": 10,
+        "stepDeg": 1
+      }
+    }
+  ]
+}
