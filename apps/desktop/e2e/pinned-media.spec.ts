@@ -383,7 +383,8 @@ test.describe('pinned media on the map', () => {
     await expect(win.getByTestId('pin-strip')).toBeVisible({ timeout: 30_000 });
     await expect(map).toBeVisible({ timeout: 30_000 });
     const p1At: [number, number, number] = [0, 0, 25];
-    await settleMap(win, [-15, 0, 15]);
+    // the map centred on the spot: near the pane's edge the split's divider takes the click
+    await settleMap(win, p1At);
     const c = await mapPoint(win, p1At);
     await win.mouse.click(c.x, c.y);
     await expect
