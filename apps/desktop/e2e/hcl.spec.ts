@@ -392,7 +392,7 @@ test('@realdata the tank is cut or made transparent only by hand; photos and fli
     )
     .toBe(true);
   expect(await cloudsHidden()).toBe(true);
-  // the popover never scrolls the stage sideways
+  // the Cutaway tab never scrolls the stage sideways
   expect(await win.locator('.stage').evaluate((e) => e.scrollLeft)).toBe(0);
   await win.waitForTimeout(800);
   await shot(win, 'transparent');

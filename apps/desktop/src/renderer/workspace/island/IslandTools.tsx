@@ -1,8 +1,8 @@
 /**
  * The open island: the 3D / Map / Split switch and the group tabs on top, the shown group's quick
  * row under them. Hovering or focusing a tab previews its row; clicking it picks the group and
- * opens its workbench in the right sidebar (D4). Left and Right move along a row (mirrored right to left, as the foundation's Tabs do), Up
- * and Down (and Tab) between the rows.
+ * opens its workbench in the right sidebar (D4). Left and Right move along a row (mirrored right
+ * to left, as the foundation's Tabs do), Up and Down (and Tab) between the rows.
  */
 import { Button, focusables, Icon, Tip, useT, type ShortcutId } from '@aio/ui';
 import { useId, type Dispatch, type KeyboardEvent } from 'react';

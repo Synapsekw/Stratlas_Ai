@@ -95,7 +95,7 @@ test('a project opens on the street map, and the button takes it away and brings
   const button = await streetButton(win);
   await expect(button).toHaveAttribute('aria-pressed', 'true');
   await expect(button).toHaveAccessibleName('Hide the street map under the site');
-  // the Layers popover no longer has the checkbox
+  // no layer list has the checkbox: the chip is its one switch
   await expect(win.getByText('Street map under the site', { exact: true })).toHaveCount(0);
 
   // off: the rings go and the plain ground is back

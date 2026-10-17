@@ -403,7 +403,7 @@ test.describe('@realdata DAMAC', () => {
     expect(check.behind).toBeLessThanOrEqual(Math.ceil(check.checked * 0.05));
   });
 
-  test('one click and I turn the pins off and on, in step with the Layers popover', async ({
+  test('one click and I turn the pins off and on, in step with the Display workbench', async ({
     win,
   }) => {
     await openDamac(win);

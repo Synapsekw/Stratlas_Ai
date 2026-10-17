@@ -1,12 +1,12 @@
 /**
- * Accessibility (M7 D6): every screen and the main popovers and dialogs pass an axe-core audit
- * (WCAG 2.1 AA plus best practices, `AXE_ALLOW` for what is not applicable), and the keyboard
- * walk keeps focus somewhere meaningful: popovers and dialogs take focus, keep Tab inside, close
- * on Esc and hand focus back to the control that opened them.
+ * Accessibility (M7 D6): every screen, the island and the workbench tabs it opens, and the main
+ * dialogs pass an axe-core audit (WCAG 2.1 AA plus best practices, `AXE_ALLOW` for what is not
+ * applicable), and the keyboard walk keeps focus somewhere meaningful: dialogs take focus, keep
+ * Tab inside, close on Esc and hand focus back to the control that opened them.
  *
  * Runs on synthetic projects (CI): the tiny project plus a two-date project with a point cloud,
  * a photo and an issue on it, and a package of the tiny project opened in player mode.
- * The video window and the real-data popovers run on a copy of HCl where the real data has it
+ * The video window and the real-data workbench tabs run on a copy of HCl where the real data has it
  * (realData.ts, @realdata).
  */
 import { ProjectManifest, type ProjectManifestInput } from '@aio/schema';
@@ -307,7 +307,7 @@ test.describe('a synthetic project', () => {
     await richProject(dataRoot);
   });
 
-  test('scene, stage tools and popovers, issue card, photo and every project screen', async ({
+  test('scene, the island and its workbench tabs, issue card, photo and every project screen', async ({
     app,
     win,
   }) => {

@@ -2,7 +2,7 @@
  * The Map menu of the Map view and of the 3D scene (plan 2026-10-14-satellite-providers): the
  * shared `MapMenu` over each view's own choices in `rasterPacks` (`siteTiles.ts`). The Map view
  * keeps its chip under the zoom buttons; the 3D scene has a chip of its own, which took over the
- * ground rows of the Layers popover. An online source used for the first time asks first, in the
+ * ground rows the stage's Layers popover once had. An online source used for the first time asks first, in the
  * menu (`pickBase`, `OnlineSatelliteNotice`).
  */
 import { ONLINE_SOURCES, type AioBridge } from '@aio/schema';
