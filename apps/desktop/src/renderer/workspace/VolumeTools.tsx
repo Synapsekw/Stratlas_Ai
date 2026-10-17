@@ -14,7 +14,7 @@ const BODIES: { v: BodyMode; t: string; d: string }[] = [
   { v: 'off', t: 'Hidden', d: 'Terrain and toe lines only' },
 ];
 
-const NO_CAPTURES: readonly { epoch: string; label: string }[] = [];
+const NO_CAPTURES: readonly { epoch: string; date: string; label: string }[] = [];
 
 /** The survey dates and Swipe, one switch. */
 export function VolumeDateSwipe() {
