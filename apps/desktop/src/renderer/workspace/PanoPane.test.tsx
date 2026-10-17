@@ -7,6 +7,7 @@ import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { threeDates } from './__fixtures__/threeDates';
 import { panoLookLink } from './lookLink';
+import { setPanoPick } from './panoPickHook';
 import { PanoPane } from './PanoPane';
 import type { SplitPref } from './splitModel';
 import { timeline } from './timeline';
@@ -330,6 +331,38 @@ describe('PanoPane', () => {
       workspace.getState().select({ kind: 'pano', id: 'd', layer: 'p-nov' });
     });
     expect(onPick).toHaveBeenLastCalledWith('p-nov/d');
+  });
+
+  it('reports a landmark click as an offset in the panorama frame while a line-up asks', () => {
+    open({ ...threeDates, layers: [layer('p-oct', [pano('x', 0, 0, 40)], 'oct')] });
+    const fn = vi.fn();
+    render(left({ sides: sides('p-oct/x') }));
+    // the first panorama seeds the shared look at its start; turn to yaw 30 afterwards
+    act(() => {
+      panoLookLink.getState().set({ yawDeg: 30, pitchDeg: 0, fovDeg: 70 });
+    });
+    const view = only(only(panes()[0]).querySelector<HTMLElement>('[role="img"]'));
+    view.getBoundingClientRect = () => new DOMRect(0, 0, 800, 400);
+    const click = () => {
+      act(() => {
+        for (const type of ['pointerdown', 'pointerup'])
+          view.dispatchEvent(new MouseEvent(type, { bubbles: true, clientX: 400, clientY: 200 }));
+      });
+    };
+    click();
+    expect(fn).not.toHaveBeenCalled();
+    act(() => {
+      setPanoPick(fn);
+    });
+    click();
+    act(() => {
+      setPanoPick(null);
+    });
+    expect(fn).toHaveBeenCalledTimes(1);
+    const got = fn.mock.calls[0]?.[0] as { layerId: string; panoId: string; offsetDeg: number };
+    expect(got.layerId).toBe('p-oct');
+    expect(got.panoId).toBe('x');
+    expect(got.offsetDeg).toBeCloseTo(350);
   });
 
   it('keeps the spot when the left date changes', () => {

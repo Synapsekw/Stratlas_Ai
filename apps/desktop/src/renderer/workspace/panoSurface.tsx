@@ -7,6 +7,7 @@ import {
   type PanoCoverage,
   type PanoLook,
 } from '@aio/engine';
+import { lookClickBearingDeg } from '@aio/geo';
 import { useT } from '@aio/ui';
 import { assetUrl } from '@aio/workspace';
 import { useEffect, useRef, useState, type KeyboardEvent, type PointerEvent } from 'react';
@@ -18,6 +19,7 @@ import { createPanoImageView, type PanoImageView, type PanoViewStatus } from './
  */
 
 const TURN_DEG = 5;
+const PICK_SLOP_PX = 4;
 const EMPTY_COVERAGE: ReadonlyMap<string, PanoCoverage> = new Map();
 
 /** Partial coverage from `panoramas/panoramas.json`, read once per project (missing: none). */
@@ -87,12 +89,15 @@ export function PanoSurface(p: {
   onStep?: (dir: 1 | -1) => void;
   /** Arrow keys turn the view (default true); off where the arrows step something else. */
   arrowKeys?: boolean;
+  /** Opt-in landmark click: the compass bearing of a click that is not a drag. */
+  onPickBearing?: (compassDeg: number) => void;
 }) {
   const t = useT();
   const host = useRef<HTMLDivElement>(null);
   const view = useRef<PanoImageView | null>(null);
   const live = useRef({ look: p.look, onLook: p.onLook });
   const drag = useRef<{ x: number; y: number } | null>(null);
+  const downAt = useRef<{ x: number; y: number } | null>(null);
   const [status, setStatus] = useState<SurfaceStatus>('loading');
   const [dragging, setDragging] = useState(false);
 
@@ -170,6 +175,7 @@ export function PanoSurface(p: {
     if (typeof e.currentTarget.setPointerCapture === 'function')
       e.currentTarget.setPointerCapture(e.pointerId);
     drag.current = { x: e.clientX, y: e.clientY };
+    downAt.current = { x: e.clientX, y: e.clientY };
     setDragging(true);
   };
   const onMove = (e: PointerEvent<HTMLDivElement>) => {
@@ -185,9 +191,25 @@ export function PanoSurface(p: {
     );
     drag.current = { x: e.clientX, y: e.clientY };
   };
-  const onUp = () => {
+  const onUp = (e: PointerEvent<HTMLDivElement>) => {
+    const down = downAt.current;
     drag.current = null;
+    downAt.current = null;
     setDragging(false);
+    // a landmark click: released within a few pixels of where it went down (a drag only looks)
+    if (!p.onPickBearing || !down || e.type !== 'pointerup') return;
+    if (Math.hypot(e.clientX - down.x, e.clientY - down.y) > PICK_SLOP_PX) return;
+    const r = e.currentTarget.getBoundingClientRect();
+    if (r.width <= 0 || r.height <= 0) return;
+    p.onPickBearing(
+      lookClickBearingDeg(
+        live.current.look,
+        e.clientX - r.left,
+        e.clientY - r.top,
+        r.width,
+        r.height,
+      ),
+    );
   };
 
   const message =
@@ -200,7 +222,8 @@ export function PanoSurface(p: {
   return (
     <div
       ref={host}
-      className={`fill-col walk-view${dragging ? ' dragging' : ''}`}
+      className={`fill-col walk-view${dragging ? ' dragging' : ''}${p.onPickBearing ? ' aiming' : ''}`}
+      {...(p.onPickBearing ? { 'data-picking': 'true' } : {})}
       tabIndex={0}
       role="img"
       aria-label={p.label}

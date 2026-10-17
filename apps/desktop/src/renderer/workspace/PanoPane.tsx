@@ -1,4 +1,5 @@
 import { FULL_SPHERE, PANO_FOV, startLook, type PanoLook } from '@aio/engine';
+import { wrap360 } from '@aio/geo';
 import { Icon, useT } from '@aio/ui';
 import { assetUrl, useWorkspace } from '@aio/workspace';
 import { useEffect, useMemo, useRef, useState } from 'react';
@@ -17,6 +18,7 @@ import {
   stepPano,
   type PanoAt,
 } from './panoPair';
+import { usePanoPick } from './panoPickHook';
 import { PanoSurface, metres, panoFrame, useCoverage } from './panoSurface';
 import type { Side, SplitPref } from './splitModel';
 
@@ -51,6 +53,7 @@ export function PanoPane(p: {
   const index = useCaptureIndex();
   const coverage = useCoverage(projectId);
   const shared = useStore(panoLookLink, (s) => s.look);
+  const pick = usePanoPick();
 
   const leftCapture = side === 'left' ? capture : otherCapture;
   const leftList = useMemo(
@@ -232,6 +235,17 @@ export function PanoPane(p: {
           label={t('pano.compare.label', { id: shown.pano.id, date })}
           onLook={onLook}
           {...(leads ? { onStep: step } : {})}
+          {...(pick
+            ? {
+                onPickBearing: (compassDeg: number) => {
+                  pick({
+                    layerId: shown.layer,
+                    panoId: shown.pano.id,
+                    offsetDeg: wrap360(compassDeg - (frame?.headingDeg ?? shown.pano.headingDeg)),
+                  });
+                },
+              }
+            : {})}
         />
       ) : (
         <div className="pane-empty">
