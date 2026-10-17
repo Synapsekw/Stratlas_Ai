@@ -22,6 +22,7 @@ import {
   stageMode,
   toggleCompareDates,
 } from './island';
+import { captionArea } from './caption';
 import { headerProblems } from './split';
 import { openDemo } from './surveyJobs';
 
@@ -621,4 +622,84 @@ test.describe('with Volumes in front', () => {
     expect(folded.over, `folded, at a ${String(folded.stage)} px stage`).toEqual([]);
     await win.keyboard.press('Escape');
   });
+});
+
+test.describe('the open island and the window buttons', () => {
+  test.skip(
+    !existsSync(join(DEMO_FOLDER, 'demo-tank-farm', 'manifest.json')),
+    `no demos in ${DEMO_FOLDER}: run pnpm demo:build --quick`,
+  );
+  test.use({ appEnv: { QUADRION_WINDOW_SIZE: '1100x720', QUADRION_DEMO: DEMO_FOLDER } });
+
+  /** The parts of the open island that lie under the window's own buttons. */
+  async function islandUnderButtons(win: Page): Promise<string[]> {
+    const area = await captionArea(win);
+    const width = await win.evaluate(() => innerWidth);
+    // the buttons sit at the physical left of the free part, or at its right (or both)
+    const buttons = [
+      { left: 0, right: area.free.left },
+      { left: area.free.right, right: width },
+    ].filter((b) => b.right - b.left > 0);
+    const parts = await win.evaluate(() =>
+      [
+        ...document.querySelectorAll<HTMLElement>(
+          '.ws > .stage > .island-wrap .island, .ws > .stage > .island-wrap .isl-tools',
+        ),
+      ].map((el) => {
+        const r = el.getBoundingClientRect();
+        return { name: el.className, left: r.left, right: r.right, top: r.top };
+      }),
+    );
+    return parts
+      .filter(
+        (p) => p.top < area.height && buttons.some((b) => p.left < b.right && b.left < p.right),
+      )
+      .map((p) => `${p.name} ${String(Math.round(p.left))}-${String(Math.round(p.right))}`);
+  }
+
+  async function sidebar(win: Page, state: 'expanded' | 'collapsed'): Promise<void> {
+    if ((await win.locator('.app').getAttribute('data-sb')) !== state)
+      await win.getByTestId('panel-handle-left').click();
+    await expect(win.locator('.app')).toHaveAttribute('data-sb', state);
+  }
+
+  for (const dir of ['ltr', 'rtl'] as const) {
+    test(`${dir}: folded right, the open tools keep clear of the window's buttons (I-R57)`, async ({
+      win,
+    }, info) => {
+      if (dir === 'rtl') {
+        await win.locator('.nav-item', { hasText: 'Settings' }).click();
+        await win.locator('.set-nav button', { hasText: 'Appearance' }).click();
+        await win.getByRole('button', { name: 'Right to left' }).click();
+        await expect(win.locator('html')).toHaveAttribute('dir', 'rtl');
+        await win.locator('.nav-item', { hasText: 'Projects' }).first().click();
+      }
+      await openDemo(win, 'Demo tank farm', 'demo-tank-farm');
+      const area = await captionArea(win);
+      test.skip(
+        area.kept.right === 0 && area.kept.left === 0,
+        'no window buttons are drawn over the page here',
+      );
+      await win.keyboard.press('Control+Alt+B');
+      await expect(win.locator('.ws')).toHaveClass(/right-off/);
+      // the left sidebar open (the stage moves the island toward the buttons), then a rail
+      for (const state of ['expanded', 'collapsed'] as const) {
+        await sidebar(win, state);
+        await openIslandTools(win);
+        await islandSettled(win);
+        await shot(win, info, `island-open-buttons-${dir}-${state}.png`);
+        expect(await islandUnderButtons(win), `${dir}, the left sidebar ${state}`).toEqual([]);
+        // still centred on the stage
+        const off = await win.evaluate(() => {
+          const s = document.querySelector('.ws > .stage')?.getBoundingClientRect();
+          const i = document
+            .querySelector('.ws > .stage > .island-wrap .island')
+            ?.getBoundingClientRect();
+          return s && i ? Math.abs(i.left + i.width / 2 - (s.left + s.width / 2)) : Infinity;
+        });
+        expect(off, 'the open island stays centred').toBeLessThanOrEqual(2);
+        await closeIslandTools(win);
+      }
+    });
+  }
 });
