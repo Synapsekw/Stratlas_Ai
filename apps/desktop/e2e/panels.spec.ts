@@ -654,3 +654,60 @@ test('the context and the agent keep their sizes until the divider between them 
     await stop(run);
   }
 });
+
+test("the right panel's tab takes its clicks wherever the divider below the context stands", async ({
+  dataRoot,
+}) => {
+  const run = await start(dataRoot);
+  const { win } = run;
+  try {
+    await openScene(win);
+    const handle = win.getByTestId('panel-handle-right');
+    await expect(handle).toHaveAttribute('aria-expanded', 'true');
+    const tab = await handle.boundingBox();
+    if (!tab) throw new Error('no panel handle');
+    const midY = tab.y + tab.height / 2;
+    /** Points over the whole tab that land on something else than the tab. */
+    const strays = () =>
+      win.evaluate((r) => {
+        const out: string[] = [];
+        for (let x = r.x + 1; x < r.x + r.width - 1; x += 2)
+          for (let y = r.y + 1; y < r.y + r.height - 1; y += 4) {
+            const el = document.elementFromPoint(x, y);
+            if (!el?.closest('.ph[data-side="right"]'))
+              out.push(`${String(Math.round(x))},${String(Math.round(y))}: ${el?.className ?? ''}`);
+          }
+        return out.slice(0, 6);
+      }, tab);
+    expect(await strays(), 'the divider where it always stands').toEqual([]);
+
+    // drag the divider (it is moved from now on) down to the tab's height, with the mouse
+    const divider = win.getByRole('separator', { name: 'Resize the agent' });
+    const from = await divider.boundingBox();
+    if (!from) throw new Error('no divider');
+    await win.mouse.move(from.x + from.width / 2, from.y + from.height / 2);
+    await win.mouse.down();
+    await win.mouse.move(from.x + from.width / 2, midY, { steps: 8 });
+    await win.mouse.up();
+    await expect
+      .poll(() =>
+        win.evaluate(() => document.querySelector('.right .rp-split')?.classList.contains('auto')),
+      )
+      .toBe(false);
+    const moved = await divider.boundingBox();
+    if (!moved) throw new Error('no divider');
+    // the divider's hit band crosses the tab
+    expect(moved.y).toBeLessThan(tab.y + tab.height);
+    expect(moved.y + moved.height).toBeGreaterThan(tab.y);
+    expect(await strays(), 'the divider moved to the middle of the tab').toEqual([]);
+
+    // a person's click on the tab folds the panel, and another brings it back
+    await win.mouse.click(tab.x + tab.width / 2, midY);
+    await expect(handle).toHaveAttribute('aria-expanded', 'false');
+    await expect(win.locator('.app[data-fold], .ws[data-fold]')).toHaveCount(0, SETTLED);
+    await handle.click();
+    await expect(handle).toHaveAttribute('aria-expanded', 'true');
+  } finally {
+    await stop(run);
+  }
+});
