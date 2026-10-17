@@ -226,7 +226,19 @@
   padding: 1px 4px;
 }
 
-/* a live reading */
+/* a live reading; with a tab to bring back it is a button (I-R44), drawn as the reading */
+.isl-live-open {
+  display: inline-flex;
+  align-items: center;
+  block-size: 24px;
+  padding: 0;
+  border: 0;
+  border-radius: var(--r-pill);
+  background: none;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
 .isl-live {
   display: inline-flex;
   align-items: center;

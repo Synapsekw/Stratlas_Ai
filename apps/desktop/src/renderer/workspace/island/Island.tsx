@@ -158,6 +158,8 @@ export function Island({ stage, mode, tools, split, linked }: IslandProps) {
   }, [pairKey]);
   const primary = s.swapped && pair.secondary ? pair.secondary : pair.primary;
   const secondary = s.swapped && pair.secondary ? pair.primary : pair.secondary;
+  // the tab the live reading brings back (none for the connection)
+  const primaryTab = primary ? liveTab(primary) : null;
   useSayLive(primary ? liveSay(primary) : '');
 
   const open = s.open === 'tools' || s.open === 'date';
@@ -368,7 +370,28 @@ export function Island({ stage, mode, tools, split, linked }: IslandProps) {
         {primary && (
           <>
             {dates && rest !== 'dots' && <span className="isl-sep" aria-hidden="true" />}
-            <IslandLive item={primary} />
+            {primaryTab ? (
+              // a button, so Enter and Space bring the tab back as a click does (D10, I-R44)
+              <button
+                type="button"
+                className="isl-live-open"
+                aria-label={t('island.liveOpen', { item: liveText(primary) })}
+                onClick={() => {
+                  openBenchFromIsland(primaryTab);
+                }}
+                onKeyDown={(e) => {
+                  // Space on a plain button is the app's play and pause (keys.ts): this one opens
+                  if (e.key !== ' ') return;
+                  e.preventDefault();
+                  e.stopPropagation();
+                  openBenchFromIsland(primaryTab);
+                }}
+              >
+                <IslandLive item={primary} />
+              </button>
+            ) : (
+              <IslandLive item={primary} />
+            )}
           </>
         )}
         {expanded && (
@@ -414,8 +437,11 @@ export function Island({ stage, mode, tools, split, linked }: IslandProps) {
       onPointerMove={() => {
         dispatch({ type: 'near' });
       }}
-      onFocus={() => {
-        if (!returning.current) dispatch({ type: 'near' });
+      onFocus={(e) => {
+        // focus that lands straight on a control of the line at rest (the live reading, the
+        // date) keeps it: waking would draw the line again without that control (I-R44)
+        if (returning.current || layer.current?.contains(e.target)) return;
+        dispatch({ type: 'near' });
       }}
       onBlur={(e) => {
         if (!e.currentTarget.contains(e.relatedTarget)) dispatch({ type: 'leave' });
@@ -436,13 +462,10 @@ export function Island({ stage, mode, tools, split, linked }: IslandProps) {
         ref={capsule}
         className="island"
         onClick={(e) => {
+          // the live reading is a button of its own: it brings its tab back (D10)
           if (open || (e.target as Element).closest('button')) return;
-          // a click on the live reading brings its tab back to the front of the sidebar (D10)
-          const tab =
-            primary && (e.target as Element).closest('.isl-live') ? liveTab(primary) : null;
-          if (tab) openBenchFromIsland(tab);
           // a click on the capsule itself (not one of its buttons) opens the tools
-          else dispatch({ type: 'toggleTools' });
+          dispatch({ type: 'toggleTools' });
         }}
       >
         <div ref={layer} className="isl-layer" key={view}>

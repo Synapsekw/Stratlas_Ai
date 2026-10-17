@@ -581,6 +581,44 @@ describe('Island: the groups open their workbench', () => {
     }
   });
 
+  it("brings the live item's tab to the front from the keyboard too (I-R44)", async () => {
+    live = [{ kind: 'job', id: 'j', label: 'Build the model', progress: 0.3, more: 0 }];
+    await render();
+    const reading = host.querySelector<HTMLButtonElement>('button.isl-live-open');
+    expect(reading?.getAttribute('aria-label')).toBe('Show Build the model 30% in the right panel');
+    // a real button: Enter and Space click it, and it sits in the island's Tab order
+    expect(reading?.tabIndex).toBe(0);
+    act(() => reading?.click());
+    expect(front()).toBe('jobs');
+    expect(island()?.dataset.state).not.toBe('tools');
+    // Space opens it too, and is not left to the app's play and pause
+    workbench.getState().show('selection');
+    const space = new KeyboardEvent('keydown', { key: ' ', bubbles: true, cancelable: true });
+    act(() => {
+      reading?.dispatchEvent(space);
+    });
+    expect(front()).toBe('jobs');
+    expect(space.defaultPrevented).toBe(true);
+    expect(island()?.dataset.state).not.toBe('tools');
+  });
+
+  it('keeps focus on the live reading when it lands there at rest (I-R44)', async () => {
+    live = [{ kind: 'job', id: 'j', label: 'Build the model', progress: 0.3, more: 0 }];
+    await render();
+    const reading = host.querySelector<HTMLButtonElement>('button.isl-live-open');
+    act(() => reading?.focus());
+    // the line is not drawn again around it, so the button that has focus is still there
+    expect(reading?.isConnected).toBe(true);
+    expect(document.activeElement).toBe(reading);
+  });
+
+  it('leaves the connection state a plain reading: it has no tab', async () => {
+    live = [{ kind: 'connection', state: 'offline' }];
+    await render();
+    expect(host.querySelector('.isl-live')).not.toBeNull();
+    expect(host.querySelector('button.isl-live-open')).toBeNull();
+  });
+
   it('still opens the tools on a click beside the live reading', async () => {
     live = [{ kind: 'job', id: 'j', label: 'Build the model', progress: 0.3, more: 0 }];
     await render();
