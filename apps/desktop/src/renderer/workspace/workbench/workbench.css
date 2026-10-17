@@ -22,5 +22,7 @@
 .wb-bench-head {
   display: flex;
   justify-content: flex-end;
-  padding: var(--sp-2) var(--sp-4) 0;
+  /* the benches' common inset (benches.css) */
+  padding-block: var(--sp-2) 0;
+  padding-inline: var(--sp-5);
 }

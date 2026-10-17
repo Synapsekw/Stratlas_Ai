@@ -122,7 +122,7 @@ export function AnnotateBench() {
     return <EmptyState icon="anno" title={t('bench.annotate.readOnly')} />;
   }
   return (
-    <div className="ab">
+    <div className="ab wb-scroll">
       {annotating ? (
         <div className="ab-tools" role="group" aria-label="Annotation tools">
           <div className="ab-close">

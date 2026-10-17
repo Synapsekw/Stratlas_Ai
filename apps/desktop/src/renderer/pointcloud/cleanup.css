@@ -46,13 +46,14 @@
 .cleanup-field .input[aria-invalid='true'] {
   border-color: var(--danger-line);
 }
-/* in the sidebar's Clean up tab: the tab's own column, on the sidebar's surface */
+/* in the sidebar's Clean up tab: the tab's own column, on the sidebar's surface; it fills the tab
+   and scrolls there (the shared .wb-scroll), its rows at their own height */
 .cleanup-panel.in-tab {
   position: static;
   inset-block-start: auto;
-  width: auto;
-  max-height: none;
-  overflow: visible;
+  inline-size: auto;
+  max-block-size: none;
+  align-content: start;
   padding: var(--sp-4) var(--sp-5);
   background: transparent;
   box-shadow: none;

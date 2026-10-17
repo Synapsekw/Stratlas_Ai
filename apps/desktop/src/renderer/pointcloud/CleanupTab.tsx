@@ -2,6 +2,8 @@
 import { CleanupPanel } from './CleanupPanel';
 import { useCleanupStage } from './cleanupStage';
 import { useCleanup } from './cleanupStore';
+// the shared bench scroller (.wb-scroll) the panel uses in the tab
+import '../workspace/workbench/benches/benches.css';
 
 export function CleanupTab() {
   const stage = useCleanupStage();

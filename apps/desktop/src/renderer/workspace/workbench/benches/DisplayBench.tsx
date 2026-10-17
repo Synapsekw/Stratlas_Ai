@@ -141,7 +141,7 @@ export function DisplayBench() {
   const map = useShell((s) => s.stageMode === 'map');
   const layers = useLayerCount();
   return (
-    <div className="wb-bench" data-testid="display-bench">
+    <div className="wb-bench wb-scroll" data-testid="display-bench">
       {!map && (
         <Section id="display-labels" bench={BENCH} title={t('bench.display.labels')} defaultOpen>
           <Labels />

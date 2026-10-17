@@ -8,7 +8,9 @@ import type * as AnnotateModule from '@aio/annotate';
 import type * as VolumetricModule from '@aio/volumetric';
 import type * as ChangeModule from '../../../change';
 import type * as StageToolsModule from '../../StageTools';
+import type { JobRecord } from '@aio/schema';
 import { roadStore } from '../../../road/store';
+import { jobs } from '../../../shell';
 import { threeDates } from '../../__fixtures__/threeDates';
 import { RightSidebar } from '../RightSidebar';
 import { workbench } from '../workbenchStore';
@@ -18,7 +20,10 @@ vi.mock('../../compare', () => ({
   useCaptureIndex: () => ({ captures: [], layers: {} }),
 }));
 vi.mock('../../../shell/RightHeader', () => ({ RightHeader: () => null }));
-vi.mock('../../../survey/TelecomTools', () => ({ TelecomTools: () => null }));
+vi.mock('../../../survey/TelecomTools', () => ({
+  TelecomTools: () => null,
+  useTelecomUnavailable: () => null,
+}));
 vi.mock('../../../agent/AgentHost', () => ({ AgentHost: () => <p>agent</p> }));
 vi.mock('../../../issueCard/IssueCard', () => ({ IssueCard: () => <p>issue card</p> }));
 vi.mock('../../SelectionCard', () => ({ SelectionCard: () => <p>selection</p> }));
@@ -43,6 +48,18 @@ vi.mock('../../StageTools', async (importOriginal) => ({
 }));
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
+const runningJob: JobRecord = {
+  id: 'j1',
+  pipeline: 'photo.products',
+  project: '/p3',
+  status: 'running',
+  progress: 0.4,
+  params: {},
+  steps: [{ name: 'mesh', title: 'Build the mesh', state: 'running' }],
+  artifacts: [],
+  createdAt: '2026-10-11T08:00:00.000Z',
+  updatedAt: '2026-10-11T08:05:00.000Z',
+};
 let host: HTMLDivElement;
 let root: Root | undefined;
 const render = () => {
@@ -90,6 +107,31 @@ describe('the benches in the sidebar', () => {
     expect(front()?.getAttribute('data-front')).toBe('road');
     expect(front()?.querySelector('[data-testid="road-bench"]')).not.toBeNull();
     expect(front()?.querySelector('.wb-bench-head button')).not.toBeNull();
+  });
+
+  // (Video needs a project with flights, Environment and Cutaway the 3D stage, Clean up a cloud:
+  // bench-scroll.spec.ts covers them in the app, on the layout itself)
+  it('makes every bench the scroller of its tab (the tab body does not scroll)', () => {
+    act(() => {
+      jobs.setState({ jobs: [runningJob], logs: {} });
+    });
+    render();
+    for (const id of ['display', 'annotate', 'jobs', 'measure', 'road'] as const) {
+      act(() => {
+        workbench.getState().open(id);
+      });
+      expect(front()?.getAttribute('data-front')).toBe(id);
+      const benches = [...(front()?.children ?? [])].filter(
+        (el) => !el.classList.contains('wb-bench-head'),
+      );
+      expect(
+        benches.map((el) => el.classList.contains('wb-scroll')),
+        id,
+      ).toEqual([true]);
+    }
+    act(() => {
+      jobs.setState({ jobs: [], logs: {} });
+    });
   });
 
   it('shows Environment and Cutaway as panel tabs', () => {

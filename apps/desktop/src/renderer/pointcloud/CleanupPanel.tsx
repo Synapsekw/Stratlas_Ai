@@ -401,7 +401,7 @@ export function CleanupPanel({
   return (
     <div
       ref={panelRef}
-      className={inTab ? 'cleanup-panel in-tab' : 'cleanup-panel overlay-box'}
+      className={inTab ? 'cleanup-panel in-tab wb-scroll' : 'cleanup-panel overlay-box'}
       {...(inTab ? {} : { 'data-surface': 'dark' })}
       data-testid="cleanup-panel"
       role={inTab ? 'region' : 'dialog'}

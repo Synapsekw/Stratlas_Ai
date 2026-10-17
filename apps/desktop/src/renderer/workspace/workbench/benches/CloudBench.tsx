@@ -57,12 +57,12 @@ export function CloudBench() {
   const qaOpen = useQa((s) => s.panel === 'qa');
   if (clouds.length === 0)
     return (
-      <div className="wb-bench" data-testid="cloud-bench">
+      <div className="wb-bench wb-scroll" data-testid="cloud-bench">
         <EmptyState icon="cloud" title={t('bench.cloud.empty')} body={t('bench.cloud.emptyBody')} />
       </div>
     );
   return (
-    <div className="wb-bench" data-testid="cloud-bench">
+    <div className="wb-bench wb-scroll" data-testid="cloud-bench">
       <Section id="cloud-show" bench={BENCH} title={t('bench.cloud.show')} defaultOpen>
         <div className="wb-controls">
           <Button icon="cloud" pressed={shown} data-testid="cloud-show-all" onClick={toggle}>

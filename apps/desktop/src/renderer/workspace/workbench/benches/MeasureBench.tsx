@@ -867,7 +867,7 @@ export function MeasureBench() {
   const [query, setQuery] = useState('');
   const searching = !live && query.trim() !== '';
   return (
-    <div className="meb">
+    <div className="meb wb-scroll">
       {live ? (
         <LiveCard />
       ) : (

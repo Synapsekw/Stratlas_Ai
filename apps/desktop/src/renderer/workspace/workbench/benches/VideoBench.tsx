@@ -196,7 +196,7 @@ export function VideoBench() {
     (s) => s.project?.manifest.layers.filter((l) => l.kind === 'video').length ?? 0,
   );
   return (
-    <div className="vb">
+    <div className="vb wb-scroll">
       <h2 className="vb-title">{t('bench.video.heading')}</h2>
       <PlayerCard />
       <Section id="clips" bench="video" title={t('bench.video.clips')} count={clips} defaultOpen>

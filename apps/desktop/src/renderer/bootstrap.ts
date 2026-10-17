@@ -42,6 +42,7 @@ import { bridge, shell } from './shell';
 import { COMPARE_GPU_BYTES, compareRuntime } from './workspace/compare';
 import { tilesDebug } from './workspace/siteTiles';
 import { registerCorrectedPhotos } from './builder/photoPoses';
+import { workbench } from './workspace/workbench/workbenchStore';
 
 let started = false;
 
@@ -165,6 +166,8 @@ export function bootstrap(): void {
       }),
       /** The screen, the Media and Issues filters and the evidence beside the 3D view (agent tests). */
       shell,
+      /** The right sidebar's workbench tabs (e2e: tabs that have no opener in the app yet). */
+      workbench,
       mediaView,
       issueView,
       evidence,

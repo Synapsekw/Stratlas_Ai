@@ -176,7 +176,7 @@ export function JobsBench() {
     return <EmptyState icon="clock" title={t('bench.jobs.none')} body={t('bench.jobs.noneBody')} />;
   }
   return (
-    <ul className="jb" aria-label={t('wb.jobs')}>
+    <ul className="jb wb-scroll" aria-label={t('wb.jobs')}>
       {mine.map((job) => (
         <JobItem key={job.id} job={job} now={now} />
       ))}

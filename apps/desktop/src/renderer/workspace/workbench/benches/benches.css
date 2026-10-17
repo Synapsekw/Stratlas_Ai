@@ -3,19 +3,21 @@
    tokens. */
 
 /* ----------------------------------------------------------------------- shared */
-/* a bench body that fills the tab and scrolls */
+/* a bench body that fills the tab and scrolls: every bench's root (the tab body, .wb-body, is a
+   flex column that does not scroll itself) */
 .wb-scroll {
   flex: 1 1 auto;
   min-block-size: 0;
   overflow: auto;
 }
-/* a bench of sections of plain controls in the sidebar's column (Display, Point cloud) */
+/* a bench of sections of plain controls in the sidebar's column (Display, Point cloud); every
+   bench is inset --sp-5 from the panel's edges, as the tab row is */
 .wb-bench {
   display: grid;
   align-content: start;
   gap: var(--sp-2);
   padding-block: var(--sp-2) var(--sp-5);
-  padding-inline: var(--sp-4);
+  padding-inline: var(--sp-5);
   min-inline-size: 0;
 }
 /* a section's controls stacked in a grid; its buttons keep their own width */
