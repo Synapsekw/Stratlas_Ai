@@ -122,15 +122,51 @@ test.describe('the island on a project with two dates', () => {
     twoDateProject,
     win,
   }, info) => {
+    // the later date already lined up, so the calendar offers both Line up dates and Remove
+    const file = join(twoDateProject.dir, 'manifest.json');
+    const later = twoDateProject.captures[1];
+    interface Manifest {
+      captures: { id: string; lineUp?: unknown }[];
+    }
+    const read = async () => JSON.parse(await readFile(file, 'utf8')) as Manifest;
+    const manifest = await read();
+    const date = manifest.captures.find((c) => c.id === later);
+    if (!date) throw new Error(`no capture ${later}`);
+    date.lineUp = {
+      eastM: -2,
+      northM: 0,
+      with: twoDateProject.captures[0],
+      at: '2026-10-16T08:00:00Z',
+    };
+    await writeFile(file, JSON.stringify(manifest, null, 2));
+
     await openCard(win, 'E2E two dates', twoDateProject.id);
     const cal = await openIslandCalendar(win);
     const list = island(win).locator('.isl-cal-list');
     await expect(list.getByRole('button', { name: 'Compare the two dates' })).toBeVisible();
     await expect(list.getByRole('button', { name: 'Line up dates', exact: true })).toBeVisible();
-    // no date of this project is lined up yet
-    await expect(list.getByRole('button', { name: 'Remove line-up' })).toHaveCount(0);
+    await expect(list.getByRole('button', { name: 'Remove line-up' })).toBeVisible();
     await expect(cal).toBeVisible();
     await shot(win, info, 'island-calendar-line-up.png');
+
+    // Line up dates opens the line-up step for the shown date, and the island goes to rest
+    await list.getByRole('button', { name: 'Line up dates', exact: true }).click();
+    await expect(win.getByTestId('lineup-dialog')).toBeVisible();
+    await expect(island(win)).toHaveAttribute('data-state', 'rest');
+    await win.getByTestId('lineup-cancel').click();
+    await expect(win.getByTestId('lineup-dialog')).toHaveCount(0);
+
+    // Remove line-up takes the saved line-up off the date
+    await openIslandCalendar(win);
+    await list.getByRole('button', { name: 'Remove line-up' }).click();
+    await expect(island(win)).toHaveAttribute('data-state', 'rest');
+    await expect
+      .poll(async () => (await read()).captures.find((c) => c.id === later)?.lineUp ?? null)
+      .toBeNull();
+    // no date is lined up now: the calendar offers Line up dates only
+    await openIslandCalendar(win);
+    await expect(list.getByRole('button', { name: 'Line up dates', exact: true })).toBeVisible();
+    await expect(list.getByRole('button', { name: 'Remove line-up' })).toHaveCount(0);
     await win.keyboard.press('Escape');
     await expect(island(win)).toHaveAttribute('data-state', 'rest');
   });
