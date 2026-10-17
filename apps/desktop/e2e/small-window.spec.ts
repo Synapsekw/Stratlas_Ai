@@ -601,6 +601,9 @@ test.describe('with Volumes in front', () => {
         .play();
     });
     await expect(island(win).locator('[data-live]')).toHaveCount(1);
+    // and in the sidebar, "Video" with its live dot (D11, I-R62); Volumes stays in front
+    await expect(win.locator('.right #wb-tab-video .tab-live')).toHaveCount(1);
+    await expect(win.locator('.right #wb-tab-volumes')).toHaveAttribute('aria-selected', 'true');
     await near();
     const narrow = await islandOverToggle(win);
     await shot(win, info, 'island-toggle-narrow.png');
