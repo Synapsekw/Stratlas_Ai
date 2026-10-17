@@ -1,9 +1,9 @@
 // @vitest-environment jsdom
 /* eslint-disable @typescript-eslint/no-non-null-assertion -- DOM lookups that fail the test when missing */
 /**
- * The antenna inventory in the real Measure workbench: its section, its CSV tool next to Export
- * survey data, search, the live strip, a 3D pick, and the AI send preview, which is a dialog under
- * <body> that a run can open whatever is on screen.
+ * The antenna inventory in the real Measure workbench, with the runner the stage mounts beside it:
+ * its section, its CSV tool next to Export survey data, search, the live strip, a 3D pick, and the
+ * AI send preview, a dialog under <body> that a run opens whatever is on screen.
  */
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
@@ -18,6 +18,7 @@ import type * as StageToolsModule from '../workspace/StageTools';
 import { jobs, shell } from '../shell';
 import { measureStore, startTool, stopTool } from '../survey/measureStore';
 import { MeasureBench } from '../workspace/workbench/benches/MeasureBench';
+import { AntennaRunner } from './AntennaRunner';
 import { sectionStore } from '../workspace/workbench/sectionState';
 import { antennaStore, loadAntennas, runDetection, setAiLabelPref } from './antennaStore';
 
@@ -132,6 +133,8 @@ const PREVIEW = {
 
 let host: HTMLElement;
 let root: Root | undefined;
+let runnerHost: HTMLElement;
+let runnerRoot: Root | undefined;
 let restore: (() => void)[] = [];
 let scrollSpy = vi.fn();
 
@@ -139,12 +142,17 @@ const flush = () =>
   act(async () => {
     for (let i = 0; i < 6; i++) await Promise.resolve();
   });
-/** The bench as the sidebar shows it, or inside a folded, inert sidebar (the drawer case). */
-async function mount(where: 'sidebar' | 'inert' = 'sidebar') {
+/**
+ * The bench as the sidebar shows it, or inside a folded, inert sidebar (the drawer case), or not
+ * at all (another tab in front); the runner is the stage's, outside the sidebar, always there.
+ */
+async function mount(where: 'sidebar' | 'inert' | 'none' = 'sidebar') {
   host.toggleAttribute('inert', where === 'inert');
   root ??= createRoot(host);
+  runnerRoot ??= createRoot(runnerHost);
   act(() => {
-    root?.render(<MeasureBench />);
+    root?.render(where === 'none' ? null : <MeasureBench />);
+    runnerRoot?.render(<AntennaRunner />);
   });
   await flush();
 }
@@ -169,7 +177,8 @@ async function finishJob() {
 
 beforeEach(() => {
   host = document.createElement('div');
-  document.body.append(host);
+  runnerHost = document.createElement('div');
+  document.body.append(host, runnerHost);
   h.disk = sample();
   h.calls = [];
   h.replies = {};
@@ -213,9 +222,12 @@ beforeEach(() => {
 afterEach(() => {
   act(() => {
     root?.unmount();
+    runnerRoot?.unmount();
   });
   root = undefined;
+  runnerRoot = undefined;
   host.remove();
+  runnerHost.remove();
   stopTool();
   for (const r of restore) r();
   vi.useRealTimers();
@@ -362,11 +374,7 @@ describe('the antenna inventory in the Measure workbench', () => {
 describe('AI labelling after a run', () => {
   async function runAndFinish(where: 'sidebar' | 'inert' | 'none') {
     setAiLabelPref('p1', true);
-    if (where !== 'none') await mount(where);
-    else {
-      // the inventory is read in, as the bench would on another visit
-      antennaStore.setState({ projectId: 'p1', root: 'C:/proj', file: sample(), status: 'ready' });
-    }
+    await mount(where);
     await act(async () => {
       await runDetection();
     });
@@ -412,13 +420,11 @@ describe('AI labelling after a run', () => {
     expect(dialog()).toBeNull();
   });
 
-  it('offers it for a run that ends while another tab is in front', async () => {
+  it('shows it for a run that ends while another tab is in front', async () => {
     h.replies['ai:antennaLabelPreview'] = PREVIEW;
     await runAndFinish('none');
+    expect(section()).toBeNull();
     expect(channels('ai:antennaLabelPreview')).toHaveLength(1);
-    expect(antennaStore.getState().aiPreview).not.toBeNull();
-    // the Measure tab comes back to the front: the preview is there
-    await mount();
     const d = dialog();
     expect(d).not.toBeNull();
     expect(d!.closest('[inert]')).toBeNull();

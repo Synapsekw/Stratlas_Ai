@@ -76,7 +76,6 @@ import {
   useTelecomUnavailable,
 } from '../../../survey/TelecomTools';
 import { AntennaCsvTool } from '../../../telecom/AntennaCsvTool';
-import { AntennaRunner } from '../../../telecom/AntennaRunner';
 import { AntennaSection, antennaSectionMatches } from '../../../telecom/AntennaSection';
 import { useAntennas } from '../../../telecom/antennaStore';
 import { Tool, useEngineStage } from '../../StageTools';
@@ -893,9 +892,6 @@ export function MeasureBench() {
       )}
       {/* the antenna inventory; a search shows it only when its title matches */}
       <AntennaSection query={searching ? query : ''} />
-      {/* TODO(stage 3): mount AntennaRunner once in Stage.tsx so the boxes and the AI preview
-          outlive this bench; until then it lives and dies with it */}
-      <AntennaRunner />
       {/* a search is about the tools: the saved list steps aside until it is cleared */}
       {!searching && <Saved stage={stage} />}
     </div>

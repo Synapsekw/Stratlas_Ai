@@ -2,7 +2,7 @@
  * What the antenna inventory keeps going whatever the workbench shows: the project's inventory
  * read in, its boxes in the 3D view (where their survey date is drawn; a pick selects the unit and
  * reveals its row), and the AI send preview, a modal dialog under <body> so no column, drawer or
- * folded section can clip it or make it inert. Mount it exactly once.
+ * folded section can clip it or make it inert. The stage mounts it, once.
  */
 import { getActiveStage, onActiveScene } from '@aio/engine';
 import { PortalRoot } from '@aio/ui';

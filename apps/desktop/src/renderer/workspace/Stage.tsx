@@ -80,6 +80,9 @@ import { Island } from './island/Island';
 import { useIslandLinked } from './workbench/view';
 import { MeasureMount } from '../survey/MeasureToolbar';
 import { SurveyQaMount } from '../survey/Qa';
+// --- telecom antenna runner (telecom-ui) ---
+import { AntennaRunner } from '../telecom/AntennaRunner';
+// --- end telecom antenna runner ---
 import { useGroundFollowsLayers, useSiteBasemapLayer } from './siteBasemap';
 import { useStreetMap3d } from './streetMap3d';
 import { StageBasemapChip, useStageBasemap } from './MapMenus';
@@ -908,6 +911,10 @@ export function Stage() {
       <HydroMount />
       <HaulRoadMount stage={engine} />
       <DesignsMount stage={engine} />
+      {/* --- telecom antenna runner (telecom-ui) --- the inventory read, its boxes in 3D and the
+          AI send preview, whatever the workbench shows */}
+      <AntennaRunner />
+      {/* --- end telecom antenna runner --- */}
       <SightingPicker kinds={['map']} />
       <SightingPicker kinds={['mesh', 'pointcloud']} />
       {!docked && showVideo && (
