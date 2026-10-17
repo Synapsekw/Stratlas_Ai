@@ -1,6 +1,7 @@
 /**
  * The right sidebar as the workbench (stage island D11, D13 to D17) in the real app: a tool that
- * starts takes the front, except from an issue being edited, where its tab waits live beside it;
+ * starts takes the front, except from an issue being edited, where its tab waits live beside it
+ * and Show it brings it forward;
  * a pinned tab stays when a tool starts and an unpinned one gives way; a bench's sections fold
  * and open all at once and the search keeps only what matches; the sidebar's dragged width is
  * remembered across a relaunch. The agent pane (agent-pane.spec.ts) and the drawer
@@ -104,9 +105,12 @@ test.describe('following (D14)', () => {
     await expect(card.locator('.ic-edit')).toHaveAttribute('open', '');
     await shot(win, 'workbench-follow-issue-edit.png');
 
-    // the person brings it forward when they want it
-    await tab(win, 'measure').click();
+    // the sidebar says so, and "Show it" brings it forward when they want it (I-R52)
+    const showIt = win.locator('.right').getByTestId('wb-show-it');
+    await expect(showIt).toContainText('Measure');
+    await showIt.getByRole('button', { name: 'Show it', exact: true }).click();
     await expect(tab(win, 'measure')).toHaveAttribute('aria-selected', 'true');
+    await expect(showIt).toHaveCount(0);
     await expect(win.locator('.right #wb-panel-measure')).toBeVisible();
     await pressM(win);
     await expect(tab(win, 'measure')).toHaveCount(0);

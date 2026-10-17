@@ -6,7 +6,7 @@
  * (Volumes and Changes, 470 px) while it is in front.
  */
 import { IssueRegister } from '@aio/annotate';
-import { IconButton, useResizableSplit, useT } from '@aio/ui';
+import { Button, IconButton, useResizableSplit, useT } from '@aio/ui';
 import { useVolumetric } from '@aio/volumetric';
 import { useWorkspace } from '@aio/workspace';
 import {
@@ -40,7 +40,7 @@ import { TabBar } from './TabBar';
 import type { TabId } from './tabsModel';
 import { useDrawer } from './drawerStore';
 import { useWorkbenchView } from './view';
-import { workbench } from './workbenchStore';
+import { useWorkbench, workbench } from './workbenchStore';
 // Road, Volumes and environment benches
 import { EnvironmentTab } from '../../environment/EnvironmentTool';
 import { CutawayTab } from '../CutawayTool';
@@ -194,6 +194,29 @@ function BenchHead({ bench }: { bench: TabId }) {
   );
 }
 
+/**
+ * The note beside a tab that waits behind an issue being edited (D14, I-R52): its name and
+ * "Show it", which brings it to the front. Only while the waiting tab is shown and not in front.
+ */
+export function ShowIt({ tabs, front }: { tabs: readonly { id: TabId }[]; front: TabId }) {
+  const t = useT();
+  const attention = useWorkbench((s) => s.attention);
+  if (!attention || attention === front || !tabs.some((tab) => tab.id === attention)) return null;
+  return (
+    <div className="wb-show-it" role="status" data-testid="wb-show-it">
+      <span>{t(`wb.tab.${attention}`)}</span>
+      <Button
+        variant="quiet"
+        onClick={() => {
+          workbench.getState().show(attention);
+        }}
+      >
+        {t('wb.showIt')}
+      </Button>
+    </div>
+  );
+}
+
 /** What the front tab shows: today's context content for the fixed tabs. */
 export function FrontBody({ front, road }: { front: TabId; road: boolean }) {
   const issueId = useWorkspace((s) => (s.selection?.kind === 'issue' ? s.selection.id : null));
@@ -300,6 +323,7 @@ export function RightSidebar() {
           workbench.getState().close(tab);
         }}
       />
+      <ShowIt tabs={tabs} front={id} />
       <AgentPane
         window={focused}
         task={modellerOpen ? 'build' : undefined}

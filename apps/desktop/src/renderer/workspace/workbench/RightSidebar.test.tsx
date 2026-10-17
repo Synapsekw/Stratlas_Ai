@@ -143,6 +143,28 @@ describe('RightSidebar', () => {
     expect(host.querySelector('[role="tabpanel"]')?.getAttribute('data-front')).toBe('measure');
   });
 
+  it('offers Show it for a tool tab waiting behind an issue edit, and brings it front (I-R52)', () => {
+    render();
+    expect(host.querySelector('[data-testid="wb-show-it"]')).toBeNull();
+    act(() => {
+      workbench.getState().open('measure');
+      workbench.getState().show('selection');
+      workbench.setState({ attention: 'measure', waiting: ['measure'] });
+    });
+    const note = host.querySelector<HTMLElement>('[data-testid="wb-show-it"]');
+    expect(note?.textContent).toContain('Measure');
+    const button = [...(note?.querySelectorAll('button') ?? [])].find(
+      (b) => b.textContent === 'Show it',
+    );
+    expect(button).toBeDefined();
+    act(() => {
+      button?.click();
+    });
+    expect(workbench.getState().front).toBe('measure');
+    expect(workbench.getState().attention).toBeNull();
+    expect(host.querySelector('[data-testid="wb-show-it"]')).toBeNull();
+  });
+
   it('hides Volumes and Changes where the project has none', () => {
     render();
     expect(tabIds()).toEqual(['wb-tab-selection', 'wb-tab-issues']);

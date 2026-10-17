@@ -34,3 +34,16 @@
   inset-block-start: 0;
   inset-inline-start: 0;
 }
+
+/* a tool tab waiting behind an issue being edited: its name and Show it (D14, I-R52) */
+.wb-show-it {
+  display: flex;
+  flex: none;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-3);
+  padding-block: var(--sp-1);
+  padding-inline: var(--sp-5);
+  color: var(--fg-2);
+  font-size: var(--t-12);
+}
