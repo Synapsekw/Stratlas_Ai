@@ -26,3 +26,11 @@
   padding-block: var(--sp-2) 0;
   padding-inline: var(--sp-5);
 }
+
+/* The workbench's sr-only heading (I-R45) is absolutely placed, and its containing block lies
+   outside the sidebar: left at its static place it would ride out with the folded sidebar and
+   widen the page (the document then scrolls sideways). Pinned to the block's start corner. */
+.right > .wb-heading {
+  inset-block-start: 0;
+  inset-inline-start: 0;
+}

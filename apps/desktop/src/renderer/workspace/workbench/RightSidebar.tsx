@@ -283,7 +283,7 @@ export function RightSidebar() {
     >
       <RightHeader />
       {/* the workbench's heading, so the agent's h3 below the bench follows an h2 (I-R45) */}
-      <h2 className="sr-only">{t('wb.heading')}</h2>
+      <h2 className="sr-only wb-heading">{t('wb.heading')}</h2>
       <TabBar
         tabs={tabs}
         front={id}
