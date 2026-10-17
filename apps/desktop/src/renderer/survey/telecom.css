@@ -71,3 +71,13 @@
   width: 100%;
   min-width: 0;
 }
+/* antenna rows: hidden actions take no room, so the status chip keeps its text */
+.antenna-row .row-acts {
+  display: none;
+}
+.antenna-row:hover .row-acts,
+.antenna-row:focus-within .row-acts,
+.antenna-row[data-selected] .row-acts,
+.antenna-row:has([aria-expanded='true']) .row-acts {
+  display: inline-flex;
+}

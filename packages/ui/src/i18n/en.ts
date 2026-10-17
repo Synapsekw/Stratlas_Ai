@@ -4476,6 +4476,8 @@ export const en = {
   'telecom.antennas.summary.other': '{count} other equipment',
   'telecom.antennas.summary.review_one': '{count} needs review',
   'telecom.antennas.summary.review_other': '{count} need review',
+  'telecom.antennas.summary.north.project': 'Project north azimuths',
+  'telecom.antennas.summary.north.true': 'True north azimuths',
   'telecom.antennas.kind.panel': 'Panel antennas',
   'telecom.antennas.kind.short': 'Short antennas',
   'telecom.antennas.kind.dish': 'Microwave dishes',

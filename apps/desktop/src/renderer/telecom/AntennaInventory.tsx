@@ -1,7 +1,7 @@
 import type { AntennaKind, AntennasFile, AntennaStatus, AntennaUnit } from '@aio/schema';
 import { Chip, EmptyState, IconButton, Menu, Row, t, type MenuEntry } from '@aio/ui';
 import { useRef, useState, type CSSProperties, type ReactElement } from 'react';
-import { azimuthLines, formatDeg } from './antennaFormat';
+import { azimuthLines, formatDeg, trueAzimuth } from './antennaFormat';
 
 export interface AntennaInventoryProps {
   file: AntennasFile | null;
@@ -23,8 +23,46 @@ const OUTLINE: Record<AntennaStatus, CSSProperties> = {
   rejected: { outline: '1px dotted var(--fg-4)', outlineOffset: -1 },
 };
 
+/** The north every azimuth of the file is from, or null when the units mix them. */
+type North = 'project' | 'true' | null;
+
+function northOf(units: readonly AntennaUnit[]): North {
+  let north: North = null;
+  for (const u of units) {
+    if (!u.azimuthGridDeg) continue;
+    const ref = u.convergenceDeg === null ? 'project' : 'true';
+    if (north !== null && north !== ref) return null;
+    north = ref;
+  }
+  return north;
+}
+
+/** The azimuth of a row: degrees only when the summary names the north, else the full line. */
+function rowAzimuth(unit: AntennaUnit, north: North): string | null {
+  const grid = unit.azimuthGridDeg;
+  if (!grid) return null;
+  if (north === null) return azimuthLines(unit)?.primary ?? null;
+  return formatDeg(
+    unit.convergenceDeg === null ? grid.value : trueAzimuth(grid.value, unit.convergenceDeg),
+  );
+}
+
+/** Never shrinks: the status text stays whole beside the outline style. */
+const CHIP: CSSProperties = { flex: 'none', display: 'inline-flex' };
+/** Name, azimuth and downtilt give way first, with an ellipsis. */
+const TEXT: CSSProperties = {
+  display: 'flex',
+  gap: 'var(--sp-4)',
+  alignItems: 'baseline',
+  minWidth: 0,
+  overflow: 'hidden',
+  textOverflow: 'ellipsis',
+  whiteSpace: 'nowrap',
+};
+
 interface UnitRowProps {
   unit: AntennaUnit;
+  north: North;
   selected: boolean;
   hidden: boolean;
   readOnly: boolean;
@@ -36,6 +74,7 @@ interface UnitRowProps {
 
 function UnitRow({
   unit,
+  north,
   selected,
   hidden,
   readOnly,
@@ -46,7 +85,7 @@ function UnitRow({
 }: UnitRowProps): ReactElement {
   const [open, setOpen] = useState(false);
   const opener = useRef<HTMLButtonElement>(null);
-  const az = azimuthLines(unit);
+  const az = rowAzimuth(unit, north);
   const name = unit.name;
   const items: MenuEntry[] = [
     {
@@ -79,6 +118,7 @@ function UnitRow({
   return (
     <Row
       kind="tree"
+      className="antenna-row"
       role="treeitem"
       aria-selected={selected}
       data-testid="antenna-row"
@@ -97,16 +137,24 @@ function UnitRow({
         }
       }}
       label={
-        <span style={{ display: 'inline-flex', gap: 'var(--sp-4)', alignItems: 'baseline' }}>
-          <span>{name}</span>
-          {az ? <span className="mono">{az.primary}</span> : null}
-          {unit.downtiltDeg ? (
-            <span className="mono">{formatDeg(unit.downtiltDeg.value)}</span>
+        <span style={{ display: 'flex', gap: 'var(--sp-4)', alignItems: 'center', minWidth: 0 }}>
+          <span style={TEXT}>
+            <span>{name}</span>
+            {az ? <span className="mono">{az}</span> : null}
+            {unit.downtiltDeg ? (
+              <span className="mono">{formatDeg(unit.downtiltDeg.value)}</span>
+            ) : null}
+          </span>
+          <span style={CHIP} data-testid="antenna-status">
+            <Chip kind="status" tone={TONE[unit.status]}>
+              {t(`telecom.antennas.status.${unit.status}`)}
+            </Chip>
+          </span>
+          {unit.notFoundInLatest ? (
+            <span style={CHIP}>
+              <Chip kind="tag">{t('telecom.antennas.notFound')}</Chip>
+            </span>
           ) : null}
-          <Chip kind="status" tone={TONE[unit.status]}>
-            {t(`telecom.antennas.status.${unit.status}`)}
-          </Chip>
-          {unit.notFoundInLatest ? <Chip kind="tag">{t('telecom.antennas.notFound')}</Chip> : null}
         </span>
       }
       actions={
@@ -165,10 +213,12 @@ export function AntennaInventory(props: AntennaInventoryProps): ReactElement {
   const antennas = file.units.filter((u) => u.kind !== 'other').length;
   const other = file.units.length - antennas;
   const review = file.units.filter((u) => u.status === 'draft').length;
+  const north = northOf(file.units);
   const summary = [
     antennas > 0 ? t('telecom.antennas.summary.antennas', { count: antennas }) : null,
     other > 0 ? t('telecom.antennas.summary.other', { count: other }) : null,
     review > 0 ? t('telecom.antennas.summary.review', { count: review }) : null,
+    north ? t(`telecom.antennas.summary.north.${north}`) : null,
   ]
     .filter((s): s is string => s !== null)
     .join(' · ');
@@ -199,6 +249,7 @@ export function AntennaInventory(props: AntennaInventoryProps): ReactElement {
                 <UnitRow
                   key={u.id}
                   unit={u}
+                  north={north}
                   selected={props.selected === u.id}
                   hidden={props.hidden[u.id] === true}
                   readOnly={props.readOnly}

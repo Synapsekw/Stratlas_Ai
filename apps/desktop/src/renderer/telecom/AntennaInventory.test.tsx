@@ -95,7 +95,7 @@ describe('AntennaInventory', () => {
     const two = fileOf([mk('ant-1', 'panel'), mk('ant-2', 'short'), mk('ant-3', 'other')]);
     show({ file: two });
     expect(host.querySelector('[data-testid="antenna-summary"]')?.textContent).toBe(
-      '2 antennas · 1 other equipment · 3 need review',
+      '2 antennas · 1 other equipment · 3 need review · Project north azimuths',
     );
   });
 
@@ -133,8 +133,36 @@ describe('AntennaInventory', () => {
     const [panel, other] = [rows()[0]!, rows()[1]!];
     expect(other.textContent).not.toContain('north');
     expect(other.textContent).not.toContain('°');
-    expect(panel.textContent).toContain('Project north 123.4°');
+    expect(panel.textContent).toContain('123.4°');
     expect(panel.textContent).toContain('4.0°');
+  });
+
+  it('names the north once in the summary and keeps rows to degrees', () => {
+    show({ file: fileOf([mk('ant-1', 'panel'), mk('ant-2', 'short')]) });
+    const summary = () => host.querySelector('[data-testid="antenna-summary"]')?.textContent;
+    expect(summary()).toContain('Project north azimuths');
+    expect(rows().map((r) => r.textContent)).toEqual(['A1123.4°4.0°Draft', 'A2123.4°4.0°Draft']);
+    show({
+      file: fileOf([
+        mk('ant-1', 'panel', { convergenceDeg: 1.5 }),
+        mk('ant-2', 'panel', { convergenceDeg: 1.5 }),
+      ]),
+    });
+    expect(summary()).toContain('True north azimuths');
+    expect(rows()[0]!.textContent).toContain('124.9°');
+    expect(rows()[0]!.textContent).not.toContain('123.4°');
+    expect(rows()[0]!.textContent).not.toContain('north');
+  });
+
+  it('keeps the north on each row when the units mix them', () => {
+    show({
+      file: fileOf([mk('ant-1', 'panel'), mk('ant-2', 'panel', { convergenceDeg: 1.5 })]),
+    });
+    expect(host.querySelector('[data-testid="antenna-summary"]')?.textContent).not.toContain(
+      'north',
+    );
+    expect(rows()[0]!.textContent).toContain('Project north 123.4°');
+    expect(rows()[1]!.textContent).toContain('True 124.9°');
   });
 
   it('marks status with text, not colour alone', () => {
