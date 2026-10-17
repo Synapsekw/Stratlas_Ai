@@ -492,7 +492,7 @@ export function houseReportModel(input: HouseInput): HouseModel {
     }
     // placed on the map only: back to the local frame from the project CRS
     const issue = byId.get(r.id);
-    const loc = issue ? issueLocation(m, issue) : null;
+    const loc = issue ? issueLocation(m, issue, input.shiftOf) : null;
     if (loc) {
       const x = loc.project[0] - m.origin[0];
       const z = m.origin[1] - loc.project[1];

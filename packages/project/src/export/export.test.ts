@@ -4,6 +4,7 @@ import { ORIGIN, sampleIssues, sampleManifest } from './fixtures';
 import {
   CSV_COLUMNS,
   issueLocation,
+  issuePosition,
   issueZone,
   issuesCoco,
   issuesCsv,
@@ -59,6 +60,54 @@ describe('issueLocation', () => {
     expect(loc?.wgs84?.slice(0, 2)).toEqual([48, 28.7]);
     expect(loc?.project[2]).toBeNull();
     expect(loc?.project[0]).toBeGreaterThan(100000);
+  });
+});
+
+describe('issues of a lined-up date (exports write the lined-up frame)', () => {
+  // the model's date is lined up 2 m east and 1 m north; the map layer's is not
+  const shift = { eastM: 2, northM: 1 };
+  const shiftOf = (layer: string) => (layer === 'model' ? shift : null);
+  const lined = () => ({ ...ctx(), shiftOf });
+
+  it('places a mesh pin where it is drawn, in the local frame, the project CRS and WGS84', () => {
+    const [glass] = sampleIssues();
+    if (!glass) throw new Error('fixture');
+    expect(issuePosition(glass, shiftOf)).toEqual([12, 2, -21]);
+    const loc = issueLocation(sampleManifest(), glass, shiftOf);
+    expect(loc?.project).toEqual([ORIGIN[0] + 12, ORIGIN[1] + 21, ORIGIN[2] + 2]);
+    const [lon, lat] = toWgs84([ORIGIN[0] + 12, ORIGIN[1] + 21, 0], 32639);
+    expect(loc?.wgs84?.[0]).toBeCloseTo(lon, 9);
+    expect(loc?.wgs84?.[1]).toBeCloseTo(lat, 9);
+  });
+
+  it('moves a map sighting of a lined-up layer in the project CRS', () => {
+    const map = sampleIssues()[2];
+    if (!map) throw new Error('fixture');
+    const plain = issueLocation(sampleManifest(), map);
+    const moved = issueLocation(sampleManifest(), map, () => shift);
+    expect((moved?.project[0] ?? 0) - (plain?.project[0] ?? 0)).toBeCloseTo(2, 6);
+    expect((moved?.project[1] ?? 0) - (plain?.project[1] ?? 0)).toBeCloseTo(1, 6);
+  });
+
+  it('writes the CSV, GeoJSON and kit at the drawn place', () => {
+    const rows = parseCsv(issuesCsv(lined()));
+    const col = (name: string) => CSV_COLUMNS.indexOf(name as (typeof CSV_COLUMNS)[number]);
+    expect(Number(rows[2]?.[col('easting')])).toBeCloseTo(ORIGIN[0] + 12, 3);
+    expect(Number(rows[2]?.[col('northing')])).toBeCloseTo(ORIGIN[1] + 21, 3);
+    const pt = issuesGeoJson(lined()).features[1];
+    const [lon, lat] = toWgs84([ORIGIN[0] + 12, ORIGIN[1] + 21, 0], 32639);
+    expect(pt?.geometry.type === 'Point' && pt.geometry.coordinates[0]).toBeCloseTo(lon, 8);
+    expect(pt?.geometry.type === 'Point' && pt.geometry.coordinates[1]).toBeCloseTo(lat, 8);
+    expect(pt?.properties.easting).toBeCloseTo(ORIGIN[0] + 12, 3);
+    const kit = issuesKitAssessment(lined());
+    const glass = kit.issues.find((i) => i.id === 'i-glass');
+    expect(glass?.position_local).toEqual([12, 2, -21]);
+    expect(glass?.position_crs?.[0]).toBeCloseTo(ORIGIN[0] + 12, 6);
+    const row = reportModel(lined(), {
+      branding: resolveReportBranding(undefined, 'Quadrion AI'),
+    }).rows.find((r) => r.id === 'i-glass');
+    expect(row?.position).toEqual([12, 2, -21]);
+    expect(row?.coords).toContain(`E ${(ORIGIN[0] + 12).toFixed(2)}`);
   });
 });
 

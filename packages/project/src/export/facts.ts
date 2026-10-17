@@ -1,17 +1,33 @@
 import { fromWgs84, isKnownCrs, localToProject, toWgs84 } from '@aio/geo';
-import type {
-  ImageGeom,
-  Issue,
-  IssueClass,
-  ProjectManifest,
-  SeverityModel,
-  Vec3,
+import {
+  isZeroShift,
+  shiftEN,
+  shiftLocal,
+  type DateShift,
+  type ImageGeom,
+  type Issue,
+  type IssueClass,
+  type ProjectManifest,
+  type SeverityModel,
+  type Sighting,
+  type Vec3,
 } from '@aio/schema';
+
+/**
+ * The date shift of a layer, or null when it does not move (line up dates). `@aio/project` does
+ * not resolve shifts itself: callers pass `dateShiftOf` of the manifest (`@aio/workspace`).
+ */
+export type ShiftOf = (layerId: string) => DateShift | null;
 
 /** What every exporter reads: the project and the issues to write. */
 export interface ExportContext {
   manifest: ProjectManifest;
   issues: readonly Issue[];
+  /**
+   * The layers' date shifts. Issue exports write the lined-up frame, where the app draws a
+   * sighting (data-conventions section 38); without it the stored positions go out as they are.
+   */
+  shiftOf?: ShiftOf | undefined;
 }
 
 /**
@@ -94,27 +110,97 @@ const mean = (pts: readonly Vec3[]): Vec3 | null => {
   return [s[0] / pts.length, s[1] / pts.length, s[2] / pts.length];
 };
 
-/** The issue's 3D position in the local frame, from its first mesh or point-cloud sighting. */
-export function issuePosition(issue: Issue): Vec3 | null {
+/**
+ * The issue's 3D position in the local frame, from its first mesh or point-cloud sighting, where
+ * it is drawn: with its layer's date shift (`shiftOf`) when one is given.
+ */
+export function issuePosition(issue: Issue, shiftOf?: ShiftOf): Vec3 | null {
+  const at = (p: Vec3 | null, layer: string): Vec3 | null =>
+    p && shiftOf ? shiftLocal(p, shiftOf(layer)) : p;
   for (const s of issue.sightings) {
     if (s.on === 'mesh') {
       const g = s.geom;
-      if (g.type === 'spoint') return g.p;
+      if (g.type === 'spoint') return at(g.p, s.layer);
       if (g.type === 'spatch') {
-        if (g.center) return g.center;
+        if (g.center) return at(g.center, s.layer);
         continue;
       }
-      return mean(g.points);
+      return at(mean(g.points), s.layer);
     }
     if (s.on === 'pointcloud') {
       const g = s.geom;
-      if (g.type === 'point3') return g.p;
+      if (g.type === 'point3') return at(g.p, s.layer);
       if (g.type === 'box3')
-        return [(g.min[0] + g.max[0]) / 2, (g.min[1] + g.max[1]) / 2, (g.min[2] + g.max[2]) / 2];
-      if (g.type === 'polygon3') return mean(g.points);
+        return at(
+          [(g.min[0] + g.max[0]) / 2, (g.min[1] + g.max[1]) / 2, (g.min[2] + g.max[2]) / 2],
+          s.layer,
+        );
+      if (g.type === 'polygon3') return at(mean(g.points), s.layer);
     }
   }
   return null;
+}
+
+/** A GeoJSON's [lon, lat, ...] positions moved by a shift in the project CRS (`bbox` dropped). */
+function movedGeoJson(v: unknown, s: DateShift, epsg: number): unknown {
+  if (!Array.isArray(v)) {
+    if (!v || typeof v !== 'object') return v;
+    const o = v as Record<string, unknown>;
+    const out: Record<string, unknown> = { ...o };
+    delete out.bbox;
+    for (const k of ['coordinates', 'geometry', 'features', 'geometries'] as const)
+      if (k in o) out[k] = movedGeoJson(o[k], s, epsg);
+    return out;
+  }
+  const arr: unknown[] = v;
+  const [lon, lat] = arr;
+  if (typeof lon !== 'number' || typeof lat !== 'number')
+    return arr.map((x) => movedGeoJson(x, s, epsg));
+  const [e, n] = shiftEN(fromWgs84([lon, lat, 0], epsg), s);
+  const [lo, la] = toWgs84([e, n, 0], epsg);
+  return [lo, la, ...arr.slice(2)];
+}
+
+/**
+ * A sighting where it is drawn: its 3D geometry (local frame) or map geometry (WGS84, through the
+ * project CRS) moved by its layer's date shift. Image and pano sightings stay as they are.
+ */
+export function drawnSighting(
+  s: Sighting,
+  shiftOf: ShiftOf | undefined,
+  epsg: number | null,
+): Sighting {
+  const shift = shiftOf?.(s.layer) ?? null;
+  if (!shift || isZeroShift(shift)) return s;
+  const mv = (p: Vec3): Vec3 => shiftLocal(p, shift);
+  if (s.on === 'mesh') {
+    const g = s.geom;
+    switch (g.type) {
+      case 'spoint':
+        return { ...s, geom: { ...g, p: mv(g.p) } };
+      case 'spolyline':
+      case 'spolygon':
+        return { ...s, geom: { ...g, points: g.points.map(mv) } };
+      case 'spatch':
+        return g.center ? { ...s, geom: { ...g, center: mv(g.center) } } : s;
+    }
+  }
+  if (s.on === 'pointcloud') {
+    const g = s.geom;
+    switch (g.type) {
+      case 'point3':
+        return { ...s, geom: { ...g, p: mv(g.p) } };
+      case 'box3':
+        return { ...s, geom: { ...g, min: mv(g.min), max: mv(g.max) } };
+      case 'polygon3':
+        return { ...s, geom: { ...g, points: g.points.map(mv) } };
+      case 'selection':
+        return s;
+    }
+  }
+  if (s.on === 'map' && epsg !== null)
+    return { ...s, geojson: movedGeoJson(s.geojson, shift, epsg) as Record<string, unknown> };
+  return s;
 }
 
 /** All [lon, lat] positions in a GeoJSON geometry. */
@@ -143,10 +229,17 @@ export interface IssueLocation {
   wgs84: [number, number, number | null] | null;
 }
 
-/** Where an issue is: its 3D position, else the centre of its map geometry. */
-export function issueLocation(m: ProjectManifest, issue: Issue): IssueLocation | null {
+/**
+ * Where an issue is: its 3D position, else the centre of its map geometry; where it is drawn
+ * (its layer's date shift) when `shiftOf` is given.
+ */
+export function issueLocation(
+  m: ProjectManifest,
+  issue: Issue,
+  shiftOf?: ShiftOf,
+): IssueLocation | null {
   const epsg = epsgOf(m);
-  const p = issuePosition(issue);
+  const p = issuePosition(issue, shiftOf);
   if (p) {
     const [e, n, h] = localToProject(p, m.origin);
     const ll = epsg === null ? null : toWgs84([e, n, h], epsg);
@@ -159,8 +252,11 @@ export function issueLocation(m: ProjectManifest, issue: Issue): IssueLocation |
     const lon = pts.reduce((a, q) => a + q[0], 0) / pts.length;
     const lat = pts.reduce((a, q) => a + q[1], 0) / pts.length;
     if (epsg === null) return null;
-    const [e, n] = fromWgs84([lon, lat, 0], epsg);
-    return { project: [e, n, null], wgs84: [lon, lat, null] };
+    const shift = shiftOf?.(s.layer) ?? null;
+    const [e, n] = shiftEN(fromWgs84([lon, lat, 0], epsg), shift);
+    if (!shift || isZeroShift(shift)) return { project: [e, n, null], wgs84: [lon, lat, null] };
+    const [lo, la] = toWgs84([e, n, 0], epsg);
+    return { project: [e, n, null], wgs84: [lo, la, null] };
   }
   return null;
 }

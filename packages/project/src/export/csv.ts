@@ -53,7 +53,7 @@ export function issuesCsv(ctx: ExportContext): string {
   const lines = [CSV_COLUMNS.join(',')];
   for (const issue of sortByCode(ctx.issues)) {
     const sev = severityInfo(m, issue);
-    const loc = issueLocation(m, issue);
+    const loc = issueLocation(m, issue, ctx.shiftOf);
     const photos = [
       ...new Set(issue.sightings.flatMap((s) => (s.on === 'image' ? [s.photo] : []))),
     ];
