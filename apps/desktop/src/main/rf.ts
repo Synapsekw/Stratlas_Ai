@@ -171,6 +171,8 @@ async function findOrphans(src: Source, file: RfSectorsFile): Promise<string[]> 
 interface CatalogueRead {
   entries: RfCatalogueEntry[];
   warnings: string[];
+  /** Set when the project's own catalogue exists but was not read (newer or invalid): never write it. */
+  refused?: string;
 }
 
 async function readCatalogueFile(file: string): Promise<CatalogueRead> {
@@ -209,13 +211,14 @@ async function readProjectCatalogue(src: Source): Promise<CatalogueRead> {
   try {
     raw = await src.json(RF_CATALOGUE_PATH);
   } catch (e) {
-    return { entries: [], warnings: [`${RF_CATALOGUE_PATH} could not be read: ${why(e)}`] };
+    const m = `${RF_CATALOGUE_PATH} could not be read: ${why(e)}`;
+    return { entries: [], warnings: [m], refused: m };
   }
   if (raw === undefined) return { entries: [], warnings: [] };
   const r = parseRfCatalogue(raw);
-  return r.ok
-    ? { entries: r.value.entries, warnings: [] }
-    : { entries: [], warnings: [`${RF_CATALOGUE_PATH}: ${r.error}`] };
+  if (r.ok) return { entries: r.value.entries, warnings: [] };
+  const m = `${RF_CATALOGUE_PATH}: ${r.error}`;
+  return { entries: [], warnings: [m], refused: m };
 }
 
 const catalogueDoc = (entries: RfCatalogueEntry[]) => ({ schema: RF_CATALOGUE_SCHEMA, entries });
@@ -377,6 +380,14 @@ export function createRf(deps: RfDeps) {
       } catch {
         // an unreadable file is replaced; the previous one is kept as .bak
       }
+
+      // The project's own catalogue is never replaced when it was not read (newer or invalid). The
+      // sectors may use entries that only it holds, so the whole save is refused, not just the copy.
+      const projectCatalogue = await readProjectCatalogue(src);
+      if (projectCatalogue.refused !== undefined)
+        return fail(
+          `The coverage settings were not saved, and ${RF_CATALOGUE_PATH} was left as it is. ${projectCatalogue.refused}`,
+        );
 
       const catalogue = await effectiveCatalogue(src);
       const byId = new Map<string, RfCatalogueEntry>();

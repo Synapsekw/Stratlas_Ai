@@ -290,6 +290,29 @@ describe('rf:readSectors and rf:writeSectors', () => {
   });
 });
 
+describe('rf:writeSectors with a project catalogue it cannot read', () => {
+  const catalogueText = {
+    newer: JSON.stringify({ schema: 'aio.rf.catalogue/2', entries: [], future: true }),
+    invalid: '{ "schema": "aio.rf.catalogue/1", "entries": 7 }',
+    garbled: '{ nope',
+  };
+
+  for (const [name, text] of Object.entries(catalogueText)) {
+    it(`refuses the save and leaves a ${name} rf/catalogue.json byte identical`, async () => {
+      const rf = createRf(deps);
+      await mkdir(join(root, 'rf'), { recursive: true });
+      const path = join(root, 'rf', 'catalogue.json');
+      await writeFile(path, text);
+      const before = await readFile(path);
+      const w = await rf.writeSectors({ projectId: 'p', file: sectors() });
+      expect(w.ok).toBe(false);
+      if (!w.ok) expect(w.error).toContain('rf/catalogue.json');
+      expect((await readFile(path)).equals(before)).toBe(true);
+      expect(await readdir(join(root, 'rf'))).toEqual(['catalogue.json']);
+    });
+  }
+});
+
 describe('rf:listCatalogue', () => {
   it('lists built in, own and project entries with their origin', async () => {
     const rf = createRf(deps);
