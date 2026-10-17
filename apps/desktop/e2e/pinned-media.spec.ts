@@ -64,11 +64,18 @@ async function lookDown(win: Page): Promise<void> {
       .stage()
       ?.restoreView({ position: [0, 40, 0.1], target: [0, 0, 0] }, false);
   });
-  await win.waitForTimeout(500);
-  const y = await win.evaluate(
-    () => (window as unknown as Probe).__stratlas.stage()?.camera.position.y ?? 0,
-  );
-  expect(y).toBeCloseTo(40, 0);
+  // the view has settled when the camera stands 40 m up
+  await expect
+    .poll(
+      async () =>
+        Math.round(
+          await win.evaluate(
+            () => (window as unknown as Probe).__stratlas.stage()?.camera.position.y ?? 0,
+          ),
+        ),
+      { timeout: 10_000 },
+    )
+    .toBe(40);
 }
 
 /** The page point of a model point (x, height, z) in the 3D view. */
