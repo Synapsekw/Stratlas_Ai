@@ -38,6 +38,10 @@ export {
   type VolumetricDeps,
 } from './store';
 export { VolumetricScene, type VolumetricView } from './scene/controller';
+/**
+ * The pile register and pile detail. It has no survey date switch of its own: the host puts one
+ * above it (the desktop's Volumes workbench has `VolumeDateSwipe`), so a new host must add one.
+ */
 export { VolumesPanel, BaseSelect } from './components/VolumesPanel';
 export { VolumetricStage } from './components/VolumetricStage';
 export { ProfileChart } from './components/ProfileChart';
