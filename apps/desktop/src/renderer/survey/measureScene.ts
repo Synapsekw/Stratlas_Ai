@@ -40,12 +40,7 @@ import {
   type Object3D,
 } from 'three';
 import type { StoreApi } from 'zustand/vanilla';
-import {
-  drawnPoints,
-  measurementsOn as drawn,
-  storedPoints,
-  type DatesOnScreen,
-} from './measureDates';
+import { drawnPoints, measurementsOn as drawn, type DatesOnScreen } from './measureDates';
 import {
   drawEvent,
   editEvent,
@@ -130,9 +125,8 @@ export function shapesOf(
   return drawn(s, ws).map((m) => {
     const selected = s.selected.includes(m.id);
     const live = s.editing && m.id === s.focus ? s.editing.points : null;
+    // drawn points, and the label reads them out: positions are where the person sees them
     const points = live ?? drawnPoints(m, manifest);
-    // readouts are of the saved frame: the live edit goes back through the date's shift
-    const saved = live ? storedPoints(live, m.scope, manifest) : m.points;
     const style = m.style;
     const only = style?.labelOnlyWhenSelected === true;
     return {
@@ -145,14 +139,7 @@ export function shapesOf(
       label:
         only && !selected
           ? null
-          : labelOf(
-              { ...m, points: saved },
-              units,
-              precision,
-              style?.showPropertyName === true,
-              s,
-              north,
-            ),
+          : labelOf({ ...m, points }, units, precision, style?.showPropertyName === true, s, north),
       labelSize: style?.labelSize ?? 12,
     };
   });

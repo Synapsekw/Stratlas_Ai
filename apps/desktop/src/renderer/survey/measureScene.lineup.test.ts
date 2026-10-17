@@ -80,6 +80,20 @@ describe('measurements in the views', () => {
     ]);
   });
 
+  it('labels a survey-scoped measurement with its drawn position', () => {
+    const spot: SurveyMeasurement = {
+      ...measurement('m-spot', { kind: 'survey', capture: 'jun' }),
+      family: 'point',
+      tool: 'elevation',
+      points: [[100, 200, 5]],
+    };
+    measureStore.setState({ file: { schema: 'aio.measurements/1', measurements: [spot] } });
+    const label = shapesOf(measureStore.getState(), ws, manifest, 'grid north')[0]?.label ?? '';
+    // the first row is the northing: 1 m south of the stored 200
+    expect(label).toContain('199');
+    expect(label).not.toContain('200');
+  });
+
   it('leaves a site measurement where it is', () => {
     expect(pointsOf('m-site')).toEqual([
       [100, 200, 5],
