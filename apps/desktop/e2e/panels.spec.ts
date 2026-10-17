@@ -392,8 +392,11 @@ async function fold(win: Page, left: boolean, right: boolean): Promise<void> {
     if ((await handle.getAttribute('aria-expanded')) === String(folded)) await handle.click();
     await expect(handle).toHaveAttribute('aria-expanded', String(!folded));
   }
-  // the fold has finished before anything is measured: both panels are as wide as their state
-  // says, the main view has what is left of the window, and the 3D view is drawn at that size
+  // the fold has finished before anything is measured: no panel is still sliding (an opening panel
+  // already has its width while it slides in over the stage's edge, useFold.ts), both panels are
+  // as wide as their state says, the main view has what is left of the window, and the 3D view is
+  // drawn at that size
+  await expect(win.locator('.app[data-fold], .ws[data-fold]')).toHaveCount(0, SETTLED);
   const sidebar = left ? RAIL : SIDEBAR;
   const panel = right ? STRIP : RIGHT;
   await expectWidth(win, '.sidebar', sidebar);
