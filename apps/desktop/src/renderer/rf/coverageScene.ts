@@ -103,6 +103,8 @@ export function attachCoverageScene(scene: SceneHandle): CoverageSceneView {
   let mesh: Mesh<PlaneGeometry, MeshBasicMaterial> | null = null;
   let texture: DataTexture | null = null;
   let shownKey: string | null = null;
+  /** The arrows drawn now, as data: they are built again only when it changes, not per opacity. */
+  let arrowsKey: string | null = null;
   const lineMaterials: LineBasicMaterial[] = [];
   let lines: LineSegments[] = [];
   scene.scene.add(group);
@@ -118,6 +120,26 @@ export function attachCoverageScene(scene: SceneHandle): CoverageSceneView {
     for (const m of lineMaterials) m.dispose();
     lines = [];
     lineMaterials.length = 0;
+  };
+
+  const buildLines = (arrows: readonly SceneArrow[]) => {
+    clearLines();
+    for (const a of arrows) {
+      const g = new BufferGeometry();
+      g.setAttribute('position', new Float32BufferAttribute(arrowSegments(a), 3));
+      const m = new LineBasicMaterial({
+        color: a.colour,
+        depthTest: false,
+        transparent: true,
+        toneMapped: false,
+        fog: false,
+      });
+      lineMaterials.push(m);
+      const l = new LineSegments(g, m);
+      l.renderOrder = 2;
+      lines.push(l);
+      group.add(l);
+    }
   };
 
   return {
@@ -177,28 +199,17 @@ export function attachCoverageScene(scene: SceneHandle): CoverageSceneView {
             )
           : null,
       );
-      clearLines();
-      for (const a of d.arrows) {
-        const g = new BufferGeometry();
-        g.setAttribute('position', new Float32BufferAttribute(arrowSegments(a), 3));
-        const m = new LineBasicMaterial({
-          color: a.colour,
-          depthTest: false,
-          transparent: true,
-          toneMapped: false,
-          fog: false,
-        });
-        lineMaterials.push(m);
-        const l = new LineSegments(g, m);
-        l.renderOrder = 2;
-        lines.push(l);
-        group.add(l);
+      const nextArrows = JSON.stringify(d.arrows);
+      if (nextArrows !== arrowsKey) {
+        arrowsKey = nextArrows;
+        buildLines(d.arrows);
       }
       scene.requestRender();
     },
     dispose() {
       reach(null);
       clearLines();
+      arrowsKey = null;
       if (mesh) mesh.geometry.dispose();
       texture?.dispose();
       material.dispose();

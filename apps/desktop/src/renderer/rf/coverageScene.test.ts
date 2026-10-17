@@ -1,8 +1,14 @@
 import type { SceneHandle } from '@aio/engine';
 import type { Box3 } from 'three';
-import { Scene } from 'three';
+import { LineSegments, Mesh, Scene, type MeshBasicMaterial, type PlaneGeometry } from 'three';
 import { describe, expect, it, vi } from 'vitest';
-import { REACH_KEY, SCENE_GROUP, arrowSegments, attachCoverageScene } from './coverageScene';
+import {
+  REACH_KEY,
+  SCENE_GROUP,
+  arrowSegments,
+  attachCoverageScene,
+  type SceneArrow,
+} from './coverageScene';
 
 /** Enough of the engine stage: `isEngineStage` and the reach. */
 function stage() {
@@ -41,6 +47,41 @@ describe('the 3D drape', () => {
     v.dispose();
     expect(setReach.mock.calls.at(-1)).toEqual([REACH_KEY, null]);
     expect(scene.getObjectByName(SCENE_GROUP)).toBeUndefined();
+  });
+
+  it('keeps the arrows on an opacity change and builds them again only when they change', () => {
+    const { h } = stage();
+    const v = attachCoverageScene(h);
+    const arrow: SceneArrow = { from: [0, 30, 0], dir: [1, 0, 0], lengthM: 20, colour: '#fff' };
+    const arrows = [arrow];
+    const lines = () =>
+      v.group.children.filter((c): c is LineSegments => c instanceof LineSegments);
+    v.draw({ sheet, arrows, visible: true, opacity: 0.6 });
+    const first = lines();
+    expect(first).toHaveLength(1);
+    const disposed = vi.fn();
+    first[0]?.geometry.addEventListener('dispose', disposed);
+    // every slider tick: the same arrows (equal, not the same array), another opacity
+    for (const opacity of [0.5, 0.4, 0.3]) {
+      v.draw({ sheet, arrows: structuredClone(arrows), visible: true, opacity });
+    }
+    expect(lines()).toEqual(first);
+    expect(disposed).not.toHaveBeenCalled();
+    const mesh = v.group.children.find(
+      (c): c is Mesh<PlaneGeometry, MeshBasicMaterial> => c instanceof Mesh,
+    );
+    expect(mesh?.material.opacity).toBeCloseTo(0.3, 10);
+    // another arrow: built again, the old one put away
+    v.draw({
+      sheet,
+      arrows: [{ ...arrow, dir: [0, 0, 1] }],
+      visible: true,
+      opacity: 0.3,
+    });
+    expect(lines()).toHaveLength(1);
+    expect(lines()[0]).not.toBe(first[0]);
+    expect(disposed).toHaveBeenCalledOnce();
+    v.dispose();
   });
 
   it('draws an arrow as a shaft and a two-line head', () => {
