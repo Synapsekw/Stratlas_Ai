@@ -6,6 +6,7 @@ import { mkdir, readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { expectAccessible } from './a11y';
 import { PIPELINE_ENV, expect, hasPipelinePython, processingChip, test } from './fixtures';
+import { measureControl } from './island';
 import { writeTelecomTower } from './telecomFixtures';
 
 interface Inspect {
@@ -30,6 +31,13 @@ async function evidence(win: Page, name: string): Promise<void> {
 async function openTiny(win: Page) {
   await win.getByTestId('project-card').filter({ hasText: 'E2E tiny project' }).first().click();
   await expect(win.locator('[data-scene-view] canvas').first()).toBeVisible();
+  await openTelecom(win);
+}
+
+/** The telecom tools are the Measure workbench's Telecom family: open the bench and the section. */
+async function openTelecom(win: Page) {
+  await measureControl(win, 'telecom-tool-clearance');
+  await expect(win.getByTestId('telecom-tools')).toBeVisible();
 }
 
 /** Look at the crown of the synthetic tower (units about 26 to 29 m up). */
@@ -150,6 +158,7 @@ test('detects antennas, accepts one and keeps it after a reload', async ({ win, 
     win.locator('[data-testid="project-card"], [data-scene-view] canvas').first(),
   ).toBeVisible();
   if (await win.getByTestId('project-card').first().isVisible()) await openTiny(win);
+  else await openTelecom(win);
   const reopened = win.getByTestId('antenna-panel').getByTestId('antenna-row');
   await expect(reopened.first()).toHaveAttribute('data-status', 'accepted');
   await expect(win.getByTestId('antenna-panel')).toContainText('Accepted');
