@@ -31,7 +31,7 @@ import { takeTNotice } from '../stagePrefs';
 import { useTimeline } from '../timeline';
 import type { TabId } from '../workbench/tabsModel';
 import { MODES, type GroupCtx } from './groups';
-import { followRoadMeasure, GROUP_TAB, liveTab, openBench } from './islandBench';
+import { followRoadMeasure, GROUP_TAB, liveTab, openBenchFromIsland } from './islandBench';
 import { IslandCalendar, IslandDate, islandDates } from './IslandDate';
 import { IslandLive, LiveGlyph, liveSay, liveText } from './IslandLive';
 import { IslandTools } from './IslandTools';
@@ -176,7 +176,7 @@ export function Island({ stage, mode, tools, split, linked }: IslandProps) {
   const done = close;
   const showBench = useCallback(
     (tab: TabId) => {
-      openBench(tab);
+      openBenchFromIsland(tab);
       done();
     },
     [done],
@@ -442,7 +442,7 @@ export function Island({ stage, mode, tools, split, linked }: IslandProps) {
           // a click on the live reading brings its tab back to the front of the sidebar (D10)
           const tab =
             primary && (e.target as Element).closest('.isl-live') ? liveTab(primary) : null;
-          if (tab) openBench(tab);
+          if (tab) openBenchFromIsland(tab);
           // a click on the capsule itself (not one of its buttons) opens the tools
           else dispatch({ type: 'toggleTools' });
         }}

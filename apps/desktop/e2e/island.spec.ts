@@ -110,6 +110,12 @@ test.describe('the island on a project with two dates', () => {
       await expect(bar.getByRole('tabpanel')).toHaveAccessibleName(name);
       await closeIslandTools(win);
     }
+    // by key too: Space on a group tab opens its workbench (Enter is what islandGroup uses)
+    const bar = await openIslandTools(win);
+    await tab(bar, 'Measure').focus();
+    await win.keyboard.press('Space');
+    await expect(bar).not.toHaveAttribute('data-state', 'tools');
+    await expect(win.locator('#wb-tab-measure')).toHaveAttribute('aria-selected', 'true');
   });
 
   test('the calendar lines up the dates beside Compare the two dates', async ({

@@ -36,14 +36,16 @@ export function liveTab(item: LiveItem): TabId | null {
 }
 
 /**
- * Bring a tab to the front of the workbench, opening it (as an unpinned panel, D15) when it is
- * not there. The island never unfolds the sidebar itself (ruling I-R40): the workbench decides
- * where a folded sidebar shows its front tab.
+ * An open the person makes from the island (a group, a tile, All tools): the tab comes to the
+ * front of the workbench, opened as an unpinned panel (D15) when it is not there yet (on this
+ * base `show` of a missing tab falls back to Selection). The island never unfolds the sidebar
+ * (rulings I-R40, I-R40a): a folded sidebar shows the tab in the workbench drawer.
  */
-export function openBench(id: TabId, bench: StoreApi<WorkbenchState> = workbench): void {
+export function openBenchFromIsland(id: TabId, bench: StoreApi<WorkbenchState> = workbench): void {
   const b = bench.getState();
   if (b.tabs.some((t) => t.id === id)) b.show(id);
   else b.open(id);
+  // I-R40a: openDrawer() when collapsed, wired at integration
 }
 
 /**

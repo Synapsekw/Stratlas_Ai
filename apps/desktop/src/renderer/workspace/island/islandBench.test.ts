@@ -3,7 +3,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { createStore } from 'zustand/vanilla';
 import { shell } from '../../shell';
 import { createWorkbenchStore } from '../workbench/workbenchStore';
-import { followRoadMeasure, GROUP_TAB, liveTab, openBench } from './islandBench';
+import { followRoadMeasure, GROUP_TAB, liveTab, openBenchFromIsland } from './islandBench';
 
 vi.mock('../../issueCard/state', () => ({ isIssueEditing: () => false }));
 
@@ -45,19 +45,19 @@ describe('islandBench', () => {
   });
 
   it('opens a tab that is not there as an unpinned panel, and brings one that is to the front', () => {
-    openBench('jobs', bench);
+    openBenchFromIsland('jobs', bench);
     expect(bench.getState().front).toBe('jobs');
     expect(bench.getState().tabs.find((t) => t.id === 'jobs')).toMatchObject({ pinned: false });
     bench.getState().open('video', { pinned: true });
-    openBench('jobs', bench);
-    openBench('video', bench);
+    openBenchFromIsland('jobs', bench);
+    openBenchFromIsland('video', bench);
     expect(bench.getState().front).toBe('video');
     expect(bench.getState().tabs.find((t) => t.id === 'video')?.pinned).toBe(true);
   });
 
   it('leaves a folded right panel to the workbench (I-R40)', () => {
     shell.setState({ rightCollapsed: true });
-    openBench('volumes', bench);
+    openBenchFromIsland('volumes', bench);
     expect(shell.getState().rightCollapsed).toBe(true);
     expect(bench.getState().front).toBe('volumes');
   });
