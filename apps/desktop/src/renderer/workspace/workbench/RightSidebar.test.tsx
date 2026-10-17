@@ -13,7 +13,8 @@ import type * as AnnotateModule from '@aio/annotate';
 import type * as VolumetricModule from '@aio/volumetric';
 import type * as ChangeModule from '../../change';
 import { agentPane } from '../../agent/agentPaneStore';
-import { RightSidebar, useIslandLinked, useSidebarSplit } from './RightSidebar';
+import { RightSidebar, useSidebarSplit } from './RightSidebar';
+import { useIslandLinked } from './view';
 import { workbench } from './workbenchStore';
 
 // what is live comes from the stores in the app; here each test says what it is

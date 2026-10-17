@@ -1,14 +1,14 @@
 /**
  * What the island opens in the right sidebar (stage island D4, D10, D12, D14): each group's
- * workbench, the panel tabs its caret tiles open, the tab of the live item a click on the island
- * brings back, and the Road tab while the road's measure on the map draws.
+ * workbench, the panel tabs its caret tiles open, and the Road tab while the road's measure on the
+ * map draws. The tab of the live item a click on the island brings back is `liveTab` (view.ts).
  */
 import type { StoreApi } from 'zustand/vanilla';
 import { roadStore, type RoadState } from '../../road/store';
 import { showBench } from '../workbench/followTool';
 import type { TabId } from '../workbench/tabsModel';
 import { workbench, type WorkbenchState } from '../workbench/workbenchStore';
-import type { GroupId, LiveItem } from './islandModel';
+import type { GroupId } from './islandModel';
 
 /** Each group's workbench; View has none (its tiles and caret panels are the whole group). */
 export const GROUP_TAB: Record<GroupId, TabId | null> = {
@@ -21,20 +21,6 @@ export const GROUP_TAB: Record<GroupId, TabId | null> = {
   road: 'road',
   annotate: 'annotate',
 };
-
-/** The tab each kind of live item lives in (D11); the connection has none. */
-export function liveTab(item: LiveItem): TabId | null {
-  switch (item.kind) {
-    case 'tool':
-      return 'measure';
-    case 'playback':
-      return 'video';
-    case 'job':
-      return 'jobs';
-    case 'connection':
-      return null;
-  }
-}
 
 /**
  * An open the person makes from the island (a group, a tile, All tools): the tab comes to the

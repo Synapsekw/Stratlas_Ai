@@ -69,7 +69,7 @@ import {
   useCutawayState,
 } from './useCutaway';
 import { Island } from './island/Island';
-import { useIslandLinked } from './workbench/RightSidebar';
+import { useIslandLinked } from './workbench/view';
 import { MeasureMount } from '../survey/MeasureToolbar';
 import { SurveyQaMount } from '../survey/Qa';
 import { useGroundFollowsLayers, useSiteBasemapLayer } from './siteBasemap';

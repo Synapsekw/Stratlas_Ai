@@ -15,7 +15,8 @@ import { useIsRoad } from '../../road/useRoadMap';
 import { useShell } from '../../shell';
 import './drawer.css';
 import { drawerStore, useDrawer } from './drawerStore';
-import { FrontBody, useWorkbenchView } from './RightSidebar';
+import { FrontBody } from './RightSidebar';
+import { useWorkbenchView } from './view';
 import { useWorkbench } from './workbenchStore';
 
 /** How long a closed drawer stays mounted for its slide out, if no transition ends first. */

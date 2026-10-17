@@ -8,11 +8,10 @@
 import { IssueRegister } from '@aio/annotate';
 import { IconButton, useResizableSplit, useT } from '@aio/ui';
 import { useVolumetric } from '@aio/volumetric';
-import { canCompare, useWorkspace } from '@aio/workspace';
+import { useWorkspace } from '@aio/workspace';
 import {
   useEffect,
   useLayoutEffect,
-  useMemo,
   useRef,
   type AnimationEvent,
   type TransitionEvent,
@@ -30,9 +29,6 @@ import { PANEL_ID } from '../../shell/PanelHandle';
 import { RightHeader } from '../../shell/RightHeader';
 import { useFold } from '../../shell/useFold';
 import { agentWindow } from '../agentWindow';
-import { useCaptureIndex } from '../compare';
-import { pickLive, type LiveItem } from '../island/islandModel';
-import { useIslandLive } from '../island/useIslandLive';
 import { SelectionCard } from '../SelectionCard';
 // Measure bench
 import { HydroTab } from '../../survey/Hydro';
@@ -41,9 +37,10 @@ import { QaSide } from '../../survey/Qa';
 import { MeasureBench } from './benches/MeasureBench';
 import { sectionStore, useSections } from './sectionState';
 import { TabBar } from './TabBar';
-import type { Tab, TabId } from './tabsModel';
+import type { TabId } from './tabsModel';
 import { useDrawer } from './drawerStore';
-import { useWorkbench, workbench } from './workbenchStore';
+import { useWorkbenchView } from './view';
+import { workbench } from './workbenchStore';
 // Road, Volumes and environment benches
 import { EnvironmentTab } from '../../environment/EnvironmentTool';
 import { CutawayTab } from '../CutawayTool';
@@ -65,53 +62,6 @@ import './workbench.css';
 
 /** The workbenches with collapsible sections, whose header holds Collapse all (D16). */
 const BENCHES: readonly TabId[] = ['measure', 'display', 'clouds', 'video', 'road', 'annotate'];
-
-/** The tab each kind of live item lives in (D11); the connection has none. */
-const LIVE_TAB: Partial<Record<LiveItem['kind'], TabId>> = {
-  tool: 'measure',
-  playback: 'video',
-  job: 'jobs',
-};
-
-/** The island is linked when the sidebar's front tab is its primary live item's tab (D10). */
-export function islandLinked(front: TabId, primary: LiveItem | null): boolean {
-  return primary !== null && LIVE_TAB[primary.kind] === front;
-}
-
-/**
- * The tabs the sidebar shows and the one in front: Volumes only in a volumetric project and
- * Changes only with two dates to compare, as before; a front tab that is not shown is Selection.
- */
-export function useWorkbenchView(): { tabs: Tab[]; front: Tab } {
-  const all = useWorkbench((s) => s.tabs);
-  const chosen = useWorkbench((s) => s.front);
-  const volumes = useVolumetric((s) => s.status !== 'none' && s.status !== 'idle');
-  const captureIx = useCaptureIndex();
-  const dated = captureIx !== null && canCompare(captureIx);
-  const tabs = useMemo(
-    () =>
-      all.filter((tab) => (tab.id === 'volumes' ? volumes : tab.id === 'changes' ? dated : true)),
-    [all, volumes, dated],
-  );
-  // Display and Point cloud benches: the cloud tabs only where the project has a cloud (D6)
-  const clouds = useWorkspace((s) =>
-    (s.project?.manifest.layers ?? []).some((l) => l.kind === 'pointcloud'),
-  );
-  const shown = useMemo(
-    () => (clouds ? tabs : tabs.filter((tab) => tab.id !== 'clouds' && tab.id !== 'cleanup')),
-    [tabs, clouds],
-  );
-  const front = shown.find((tab) => tab.id === chosen) ?? SELECTION;
-  return { tabs: shown, front };
-}
-const SELECTION: Tab = { id: 'selection', live: false, pinned: false, fixed: true };
-
-/** Whether the island shows as linked to the sidebar (`linked` on `<Island>`). */
-export function useIslandLinked(): boolean {
-  const { front } = useWorkbenchView();
-  const { primary } = pickLive(useIslandLive());
-  return islandLinked(front.id, primary);
-}
 
 /** The strip the right panel folds to: its border and the 12 px tab (`--ph-w`), as before. */
 const RIGHT_STRIP = 13;

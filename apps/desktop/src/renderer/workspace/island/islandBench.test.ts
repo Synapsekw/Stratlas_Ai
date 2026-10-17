@@ -4,7 +4,8 @@ import { createStore } from 'zustand/vanilla';
 import { shell } from '../../shell';
 import { drawerStore } from '../workbench/drawerStore';
 import { createWorkbenchStore } from '../workbench/workbenchStore';
-import { followRoadMeasure, GROUP_TAB, liveTab, openBenchFromIsland } from './islandBench';
+import { liveTab } from '../workbench/view';
+import { followRoadMeasure, GROUP_TAB, openBenchFromIsland } from './islandBench';
 
 vi.mock('../../issueCard/state', () => ({ isIssueEditing: () => false }));
 
