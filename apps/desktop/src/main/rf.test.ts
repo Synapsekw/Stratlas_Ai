@@ -694,16 +694,8 @@ describe('fix round 1', () => {
 });
 
 describe('rfBuiltinDir', () => {
-  const base = { env: {}, packaged: false, resourcesPath: '/app/resources' };
-  it('takes QUADRION_RF_CATALOGUE first, then resources once packaged', () => {
-    expect(
-      rfBuiltinDir({
-        ...base,
-        env: { QUADRION_RF_CATALOGUE: '/x/cat' },
-        packaged: true,
-        dirname: '/a',
-      }),
-    ).toBe('/x/cat');
+  const base = { packaged: false, resourcesPath: '/app/resources' };
+  it('takes the resources folder once packaged', () => {
     expect(rfBuiltinDir({ ...base, packaged: true, dirname: '/a' })).toBe(
       join('/app/resources', 'rf-catalogue'),
     );

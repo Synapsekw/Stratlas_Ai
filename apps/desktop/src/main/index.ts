@@ -1088,7 +1088,6 @@ function registerIpc(): void {
     userDir: join(app.getPath('userData'), 'rf-catalogue'),
     // the catalogue shipped with the app: beside the repo in development, in resources once packaged
     builtinDir: rfBuiltinDir({
-      env: process.env,
       packaged: app.isPackaged,
       resourcesPath: process.resourcesPath,
       dirname: import.meta.dirname,
