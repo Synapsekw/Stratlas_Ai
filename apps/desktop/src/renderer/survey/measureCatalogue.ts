@@ -4,7 +4,7 @@
  * No React: the bench renders what this lists.
  */
 import type { MeasurementTool } from '@aio/schema';
-import { t, type MessageKey, type ShortcutId } from '@aio/ui';
+import { t, type ShortcutId } from '@aio/ui';
 import { useStore } from 'zustand';
 import { createStore, type StoreApi } from 'zustand/vanilla';
 import { browserStorage } from '../workspace/stagePrefs';
@@ -32,65 +32,73 @@ export interface Family {
   tools: readonly CatalogueEntry[];
 }
 
+/** The catalogue's names for its tools: `measureCat.tool.<name>` and `measureCat.hint.<name>`. */
+type ToolName =
+  | 'elevation'
+  | 'elevationDiff'
+  | 'annotation'
+  | 'distance'
+  | 'grade'
+  | 'vertexDiff'
+  | 'berm'
+  | 'crossSection'
+  | 'area'
+  | 'volume'
+  | 'azimuth'
+  | 'tilt'
+  | 'clearance'
+  | 'freehand'
+  | 'sectionPlane';
+
+// Names and hints are read when shown, in the language in use then (not once at load), and their
+// keys are typed: a renamed key fails the typecheck.
 const entry = (
   tool: CatalogueTool,
-  name: string,
+  name: ToolName,
   saves: boolean,
   key?: ShortcutId,
 ): CatalogueEntry => ({
   tool,
-  label: t(`measureCat.tool.${name}` as MessageKey),
-  hint: t(`measureCat.hint.${name}` as MessageKey),
+  get label() {
+    return t(`measureCat.tool.${name}`);
+  },
+  get hint() {
+    return t(`measureCat.hint.${name}`);
+  },
   saves,
   ...(key ? { key } : {}),
 });
 
+const family = (id: FamilyId, tools: readonly CatalogueEntry[]): Family => ({
+  id,
+  get label() {
+    return t(`measureCat.family.${id}`);
+  },
+  tools,
+});
+
 /** The D12 families in order; Distance and the section plane read without saving. */
 export const FAMILIES: readonly Family[] = [
-  {
-    id: 'point',
-    label: t('measureCat.family.point'),
-    tools: [
-      entry('elevation', 'elevation', true),
-      entry('elevation-difference', 'elevationDiff', true),
-      entry('annotation', 'annotation', true),
-    ],
-  },
-  {
-    id: 'line',
-    label: t('measureCat.family.line'),
-    tools: [
-      entry('distance', 'distance', false, 'scene.measure'),
-      entry('grade', 'grade', true),
-      entry('vertex-table', 'vertexDiff', true),
-      entry('berm-check', 'berm', true),
-      entry('section', 'crossSection', true),
-    ],
-  },
-  {
-    id: 'polygon',
-    label: t('measureCat.family.polygon'),
-    tools: [entry('area', 'area', true), entry('volume', 'volume', true)],
-  },
-  {
-    id: 'telecom',
-    label: t('measureCat.family.telecom'),
-    tools: [
-      entry('azimuth', 'azimuth', true),
-      entry('antenna-tilt', 'tilt', true),
-      entry('clearance', 'clearance', true),
-    ],
-  },
-  {
-    id: 'markup',
-    label: t('measureCat.family.markup'),
-    tools: [entry('freehand', 'freehand', true)],
-  },
-  {
-    id: 'section',
-    label: t('measureCat.family.section'),
-    tools: [entry('section-plane', 'sectionPlane', false, 'scene.section')],
-  },
+  family('point', [
+    entry('elevation', 'elevation', true),
+    entry('elevation-difference', 'elevationDiff', true),
+    entry('annotation', 'annotation', true),
+  ]),
+  family('line', [
+    entry('distance', 'distance', false, 'scene.measure'),
+    entry('grade', 'grade', true),
+    entry('vertex-table', 'vertexDiff', true),
+    entry('berm-check', 'berm', true),
+    entry('section', 'crossSection', true),
+  ]),
+  family('polygon', [entry('area', 'area', true), entry('volume', 'volume', true)]),
+  family('telecom', [
+    entry('azimuth', 'azimuth', true),
+    entry('antenna-tilt', 'tilt', true),
+    entry('clearance', 'clearance', true),
+  ]),
+  family('markup', [entry('freehand', 'freehand', true)]),
+  family('section', [entry('section-plane', 'sectionPlane', false, 'scene.section')]),
 ];
 
 /** Every catalogue entry, in the families' order. */

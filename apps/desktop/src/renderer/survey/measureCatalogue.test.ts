@@ -1,3 +1,4 @@
+import { setLocale } from '@aio/ui';
 import { describe, expect, it } from 'vitest';
 import {
   ALL_TOOLS,
@@ -31,6 +32,19 @@ function memoryStorage(seed: Record<string, string> = {}): Storage {
 }
 
 describe('measure catalogue', () => {
+  it('reads its names in the language in use, and the search follows them', () => {
+    try {
+      setLocale('xx', { 'measureCat.tool.distance': 'Strecke', 'measureCat.family.line': 'Linie' });
+      const distance = ALL_TOOLS.find((e) => e.tool === 'distance');
+      expect(distance?.label).toBe('Strecke');
+      expect(FAMILIES.find((f) => f.id === 'line')?.label).toBe('Linie');
+      expect(distance && matchesQuery(distance, 'strecke')).toBe(true);
+    } finally {
+      setLocale('en');
+    }
+    expect(ALL_TOOLS.find((e) => e.tool === 'distance')?.label).toBe('Distance');
+  });
+
   it('has the 15 tools of D12 in their families', () => {
     expect(ALL_TOOLS).toHaveLength(15);
     expect(FAMILIES.map((f) => [f.id, f.label, f.tools.map((e) => e.label)])).toEqual([
