@@ -31,6 +31,7 @@ import { takeTNotice } from '../stagePrefs';
 import { useTimeline } from '../timeline';
 import type { TabId } from '../workbench/tabsModel';
 import { MODES, type GroupCtx } from './groups';
+import { drawerStore } from '../workbench/drawerStore';
 import { liveTab } from '../workbench/view';
 import { GROUP_TAB, openBenchFromIsland } from './islandBench';
 import { IslandCalendar, IslandDate, islandDates } from './IslandDate';
@@ -542,6 +543,9 @@ export function Island({ stage, mode, tools, split, linked }: IslandProps) {
         onClick={(e) => {
           // the live reading is a button of its own: it brings its tab back (D10)
           if (open || (e.target as Element).closest('button')) return;
+          // with the sidebar folded the drawer took this click (Drawer.tsx, in the capture
+          // phase): one gesture opens one surface, so the tools stay shut (I-R64)
+          if (drawerStore.getState().opened !== null) return;
           // a click on the capsule itself (not one of its buttons) opens the tools
           dispatch({ type: 'toggleTools' });
         }}

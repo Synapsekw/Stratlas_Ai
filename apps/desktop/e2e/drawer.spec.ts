@@ -92,8 +92,13 @@ test.describe('the drawer', () => {
     await openCard(win, 'E2E two dates', twoDateProject.id);
     await foldRight(win);
     await expect(island(win)).not.toHaveAttribute('data-state', /tools|date/);
+    // woken by the pointer first, as a person's click on it is
+    await win.locator('.island').hover({ position: { x: 4, y: 4 } });
+    await expect(island(win)).toHaveAttribute('data-state', 'ready');
     await win.locator('.island').click({ position: { x: 4, y: 4 } });
     await expect(drawer(win)).toHaveAttribute('data-open', '');
+    // one gesture, one surface: the island's tools stay shut behind the drawer (I-R64)
+    await expect(island(win)).not.toHaveAttribute('data-state', /tools|date/);
     await expect
       .poll(() =>
         win.evaluate(() => !!document.activeElement?.closest('[data-testid="wb-drawer"]')),
@@ -101,9 +106,11 @@ test.describe('the drawer', () => {
       .toBe(true);
     await drawerIn(win);
     await shot(win, info, 'drawer-click.png');
+    // one Esc closes it and gives the focus back to an island with nothing open
     await win.keyboard.press('Escape');
     await expect(drawer(win)).toHaveCount(0);
     await expect(island(win)).toBeFocused();
+    await expect(island(win)).not.toHaveAttribute('data-state', /tools|date/);
   });
 });
 

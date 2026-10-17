@@ -12,6 +12,7 @@ import { PANEL_ID } from '../../shell/PanelHandle';
 import { lineUpApp } from '../../lineup/lineUpStore';
 import { timeline } from '../timeline';
 import { useSplit } from '../SplitPanes';
+import { drawerStore } from '../workbench/drawerStore';
 import { workbench } from '../workbench/workbenchStore';
 import { Island, type IslandProps } from './Island';
 import type { LiveItem } from './islandModel';
@@ -67,6 +68,8 @@ afterEach(() => {
   act(() => root?.unmount());
   root = undefined;
   host.remove();
+  // an island open with the sidebar folded opens the drawer (I-R40a): each test starts without it
+  drawerStore.getState().close();
   timeline.getState().attach(null, null);
   workspace.getState().closeProject();
   vi.unstubAllGlobals();
@@ -157,6 +160,31 @@ describe('Island', () => {
     expect(stage.style.getPropertyValue('--isl-open-b')).toMatch(/px$/);
     key('Escape');
     expect(stage.style.getPropertyValue('--isl-open-b')).toBe('');
+  });
+
+  it('opens the tools from a click on the capsule itself', async () => {
+    await render();
+    near();
+    act(() => host.querySelector<HTMLElement>('.island')?.click());
+    expect(island()?.dataset.state).toBe('tools');
+  });
+
+  it('leaves its tools shut on a click the drawer took, the sidebar folded (I-R64)', async () => {
+    await render();
+    // the drawer opens on the same click, in the capture phase (Drawer.tsx)
+    const take = () => {
+      drawerStore.getState().open('click');
+    };
+    document.addEventListener('click', take, true);
+    try {
+      near();
+      act(() => host.querySelector<HTMLElement>('.island')?.click());
+      expect(drawerStore.getState().opened).toBe('click');
+      expect(island()?.dataset.state).not.toBe('tools');
+    } finally {
+      document.removeEventListener('click', take, true);
+      drawerStore.getState().close();
+    }
   });
 
   it('opens the tools: the view switch and the group tabs', async () => {
