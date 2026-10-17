@@ -12,18 +12,31 @@ import {
   usePanoImport,
 } from './panos';
 import './panos.css';
+import { panoSkipText } from './skipText';
 
 const MAP_W = 220;
 const MAP_H = 120;
 
-/** Where the spheres sit, in metres around their middle, fitted into a small box. */
+/** A 360 without GPS (or with half a position) imports unplaced: it has no spot on the map. */
+const placed = (p: { lat?: number | undefined; lon?: number | undefined }) =>
+  p.lat !== undefined && p.lon !== undefined;
+
+/**
+ * Where the spheres sit, in metres around their middle, fitted into a small box. Each keeps the
+ * number of its row; the ones without a place are left off.
+ */
 function SphereMap({ scan, keys }: { scan: PanoScan; keys: ReadonlySet<string> }) {
-  const pts = [...scan.spheres, ...scan.ready].map((p) => ({ key: p.key, lat: p.lat, lon: p.lon }));
+  const pts = [...scan.spheres, ...scan.ready].flatMap((p, i) =>
+    p.lat !== undefined && p.lon !== undefined
+      ? [{ key: p.key, n: i + 1, lat: p.lat, lon: p.lon }]
+      : [],
+  );
   if (pts.length === 0) return null;
   const lat0 = pts.reduce((n, p) => n + p.lat, 0) / pts.length;
   const lon0 = pts.reduce((n, p) => n + p.lon, 0) / pts.length;
   const m = pts.map((p) => ({
     key: p.key,
+    n: p.n,
     x: (p.lon - lon0) * 111_320 * Math.cos((lat0 * Math.PI) / 180),
     y: (p.lat - lat0) * 110_540,
   }));
@@ -41,14 +54,14 @@ function SphereMap({ scan, keys }: { scan: PanoScan; keys: ReadonlySet<string> }
       role="img"
       aria-label={t('pano.preview.mapLabel')}
     >
-      {m.map((p, i) => (
+      {m.map((p) => (
         <g
           key={p.key}
           className={keys.has(p.key) ? 'on' : 'off'}
           transform={`translate(${String(MAP_W / 2 + p.x * s)} ${String(MAP_H / 2 - p.y * s)})`}
         >
           <circle r={7} />
-          <text dy="3.5">{i + 1}</text>
+          <text dy="3.5">{p.n}</text>
         </g>
       ))}
     </svg>
@@ -206,6 +219,7 @@ function Dialog() {
                       <small>{r.file.split(/[\\/]/).pop()}</small>
                     </span>
                     <span className="tbadge info">{t('pano.preview.ready')}</span>
+                    {!placed(r) && <span className="tbadge">{t('pin.notPlaced')}</span>}
                   </label>
                 ))}
               </section>
@@ -218,7 +232,7 @@ function Dialog() {
                     {scan.skipped.slice(0, 200).map((s) => (
                       <li key={s.file}>
                         <span className="mono">{s.file.split(/[\\/]/).pop()}</span>{' '}
-                        {t(`pano.skip.${s.reason}`)}
+                        {panoSkipText(s.reason)}
                       </li>
                     ))}
                   </ul>

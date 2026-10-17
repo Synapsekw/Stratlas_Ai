@@ -90,6 +90,43 @@ describe('PanoImportDialog', () => {
     expect(q('pano-quality-high')).toBeNull(); // the GPU takes 8192 px only
   });
 
+  it('leaves a 360 without GPS off the map, says it is not placed and words a fisheye skip', () => {
+    panoImport.setState({
+      scan: {
+        ...scan,
+        ready: [
+          { key: 'r1', file: 'D:/Pano/placed.jpg', bytes: 1, lat: 46.5005, lon: 7.5005 },
+          { key: 'r2', file: 'D:/Pano/ground.jpg', bytes: 1 },
+          { key: 'r3', file: 'D:/Pano/half.jpg', bytes: 1, lat: 46.5 },
+        ],
+        skipped: [{ file: 'D:\\Pano\\IMG_9.insp', reason: 'dual-fisheye' }],
+      },
+    });
+    act(() => {
+      root.render(<PanoImportDialog />);
+    });
+    const labels = [...(q('pano-map')?.querySelectorAll('text') ?? [])].map((n) => n.textContent);
+    expect(labels).toEqual(['1', '2', '3']); // numbered as the rows, the unplaced left out
+    expect(q('pano-row-r1')?.textContent).not.toContain('Not placed');
+    expect(q('pano-row-r2')?.textContent).toContain('Not placed');
+    expect(q('pano-row-r3')?.textContent).toContain('Not placed');
+    expect(q('pano-skipped')?.textContent).toContain('IMG_9.insp');
+    expect(q('pano-skipped')?.textContent).toContain(
+      'Two fisheye circles, not a 360 yet: export it as a 360 photo from Insta360 Studio first.',
+    );
+  });
+
+  it('draws no map when no panorama has a place', () => {
+    panoImport.setState({
+      scan: { ...scan, spheres: [], ready: [{ key: 'r1', file: 'D:/Pano/g.jpg', bytes: 1 }] },
+    });
+    act(() => {
+      root.render(<PanoImportDialog />);
+    });
+    expect(q('pano-map')).toBeNull();
+    expect(q('pano-row-r1')?.textContent).toContain('Not placed');
+  });
+
   it('imports the checked spheres', async () => {
     act(() => {
       root.render(<PanoImportDialog />);

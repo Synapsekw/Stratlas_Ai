@@ -258,6 +258,35 @@ describe('Add data and drone spheres', () => {
     expect(imports()[0]?.exclude).toBeUndefined();
   });
 
+  it('says why a drop of only a dual-fisheye .insp brings in no 360', async () => {
+    const note =
+      'IMG_7.insp: Two fisheye circles, not a 360 yet: export it as a 360 photo from Insta360 Studio first.';
+    main({
+      ...empty,
+      files: 1,
+      skipped: [{ file: 'D:\\Pano\\IMG_7.insp', reason: 'dual-fisheye' }],
+    });
+    const answer = call.getMockImplementation();
+    if (!answer) throw new Error('expected a main stand-in');
+    call.mockImplementation((channel: string, req: unknown): Promise<unknown> =>
+      channel === 'builder:cloudDates'
+        ? Promise.resolve({ ok: true, value: { ok: true, clouds: [] } })
+        : (answer(channel, req) as Promise<unknown>),
+    );
+    builder.setState({ importNotice: null });
+    await builder.getState().importFiles(['D:/Pano/IMG_7.insp']);
+    expect(builder.getState().panoOffer).toBeNull();
+    expect(builder.getState().importNotice).toBe(note);
+    builder.getState().dismissImport();
+    expect(builder.getState().importNotice).toBeNull();
+    // a cloud dates check that fails as well keeps the sentence beside its own
+    call.mockImplementation(answer);
+    await builder.getState().importFiles(['D:/Pano/IMG_7.insp']);
+    expect(builder.getState().importNotice).toContain(note);
+    expect(builder.getState().importNotice).toContain('Could not read the dates');
+    builder.getState().dismissImport();
+  });
+
   it('stops at the offer when the drop is only ready-made panoramas', async () => {
     main(readyOnly);
     await builder.getState().importFiles(['D:/Pano']);

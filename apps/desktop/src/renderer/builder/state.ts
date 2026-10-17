@@ -14,6 +14,7 @@ import { createStore } from 'zustand/vanilla';
 import { finishStagedDrawings } from '../drawings/importFlow';
 import { drawings } from '../drawings/store';
 import { openPanoScan, panoImport } from '../panos/panos';
+import { fisheyeSkipNote } from '../panos/skipText';
 import { bridge, shell } from '../shell';
 import { heightsPrompt, needsTakeoff, type HeightsPrompt } from './heights';
 import { DROPPED_NOTE, QUEUED_NOTE } from './importSummary';
@@ -197,9 +198,6 @@ export function panoOfferCopy(o: PanoOffer): {
 } {
   const ready = o.scan.ready.length;
   const unplaced = o.scan.ready.filter((r) => r.lat === undefined || r.lon === undefined).length;
-  const fisheye = o.scan.skipped
-    .filter((s) => s.reason === 'dual-fisheye')
-    .map((s) => s.file.split(/[\\/]/).pop() ?? s.file);
   return {
     body:
       o.spheres > 0
@@ -208,8 +206,7 @@ export function panoOfferCopy(o: PanoOffer): {
     extra: o.spheres > 0 && ready > 0 ? t('pano.offer.readyAlso', { count: ready }) : null,
     skip: o.spheres > 0 ? t('pano.offer.no') : t('pano.offer.noReady'),
     unplaced: unplaced > 0 ? t('pano.offer.unplaced', { count: unplaced }) : null,
-    // the skip reason `dual-fisheye` has its sentence under `pano.skip.dualFisheye`
-    fisheye: fisheye.length > 0 ? `${fisheye.join(', ')}: ${t('pano.skip.dualFisheye')}` : null,
+    fisheye: fisheyeSkipNote(o.scan.skipped),
   };
 }
 
@@ -397,6 +394,7 @@ async function runImport(
   altitude: AltitudeChoice | undefined,
   opts: ImportOptions | undefined,
 ): Promise<boolean> {
+  let fisheye: string | null = null;
   // drone sphere frames and ready-made 360s go to the panorama import, not into a photo layer
   // (spec section 2); a queued drop is scanned when its turn comes, like any other. `exclude`
   // says it was answered.
@@ -423,6 +421,10 @@ async function runImport(
       builder.setState({ panoOffer: offer, importResult: null });
       return false;
     }
+    // no offer, but unstitched Insta360 stills were skipped: say why they bring in no 360 (the
+    // photo import leaves `.insp` out); the notice stays until Close
+    fisheye = fisheyeSkipNote(found.value.scan.skipped);
+    if (fisheye) builder.setState({ importNotice: fisheye });
   }
   // a drawing has no camera and a 360 video is not placed: neither asks for camera heights. The
   // survey day of each Bentley .zpc cloud is read with the heights (its file only carries the
@@ -446,7 +448,12 @@ async function runImport(
     // an import confirmed in the heights prompt started (or a prompt opened) while these heights
     // were read: this drop waits for it
     if (askedOrRunning()) return true;
-    if (clouds === null) builder.setState({ importNotice: t('builder.cloudDate.failed') });
+    if (clouds === null)
+      builder.setState({
+        importNotice: fisheye
+          ? `${fisheye} ${t('builder.cloudDate.failed')}`
+          : t('builder.cloudDate.failed'),
+      });
     const asked = clouds?.length ? clouds : undefined;
     if (plan.ok && plan.value.ok && needsTakeoff(plan.value.plan)) {
       const p = plan.value.plan;
