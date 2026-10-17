@@ -33,6 +33,8 @@ export {
 export { extentBbox, siteBbox, type GroundExtent } from './ground';
 export { frameProjection, lonLatToUtm, utmToLonLat, type FrameProjection } from './geo';
 export { buildStyle, BASEMAP_SOURCE, MAP_PROTOCOL } from './style';
+// where overlays drawn from outside the controller go: above the project rasters, under its lines
+export { ABOVE_RASTERS, RASTERS_TOP } from './rasterDisplay';
 export {
   ALL_ISSUES,
   footprint,

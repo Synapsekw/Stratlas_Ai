@@ -79,6 +79,8 @@ import { BuilderLayer } from './builder/BuilderLayer';
 import { DrawingsLayer } from './drawings/DrawingsLayer';
 import { ModellerLayer } from './modeller/ModellerLayer';
 import { EngineerLayer } from './engineer/EngineerLayer';
+// RF coverage (rf-coverage T10): the Coverage layer on the map and in the 3D view
+import { RfLayer } from './rf/RfLayer';
 import { Lightbox } from './issueCard/Lightbox';
 import { LayerProperties } from './shell/LayerProperties';
 import { RemoveHost } from './shell/RemoveHost';
@@ -580,6 +582,7 @@ export function App() {
       <DrawingsLayer />
       <ModellerLayer />
       <EngineerLayer />
+      <RfLayer />
       <Lightbox />
       <RemoveHost />
       <LayerProperties />

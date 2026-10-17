@@ -75,7 +75,7 @@
 /* a long model name wraps instead of being cut at 470 px */
 .btn.rf-pick {
   white-space: normal;
-  height: auto;
+  block-size: auto;
   min-block-size: calc(var(--sp-7) + var(--sp-2));
   padding-block: var(--sp-2);
   text-align: start;
@@ -326,4 +326,100 @@
 .rf-csv-problems {
   color: var(--warn-ink);
   white-space: normal;
+}
+
+/* ----------------------------------------------------------------------- the coverage legend */
+/* No position here: the stage gives the legend a corner slot (stage 3 T21). It sits on the map
+   or the 3D view, so it is a dark overlay box (data-surface='dark') in every theme. */
+.rf-legend {
+  display: grid;
+  gap: var(--sp-4);
+  inline-size: 252px;
+  max-inline-size: 100%;
+  padding-block: var(--sp-4);
+  padding-inline: var(--sp-5);
+  color: var(--fg-1);
+  font-size: var(--t-12);
+}
+.rf-legend-head {
+  display: flex;
+  align-items: baseline;
+  gap: var(--sp-3);
+  color: var(--fg-0);
+  font-weight: 600;
+}
+.rf-legend-src {
+  margin-inline-start: auto;
+  color: var(--fg-2);
+  font-size: var(--t-11);
+  font-weight: 400;
+}
+.rf-legend-rows {
+  display: grid;
+  gap: var(--sp-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.rf-legend-row {
+  display: grid;
+  grid-template-columns: 18px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: var(--sp-4);
+}
+.rf-legend-row[data-dim] .rf-legend-name {
+  color: var(--fg-2);
+}
+.rf-legend-sw {
+  inline-size: 18px;
+  block-size: 12px;
+  border-radius: var(--r-2);
+  outline: 1px solid var(--line-strong);
+  outline-offset: -1px;
+}
+.rf-legend-sw[data-clear] {
+  background: transparent;
+  /* the "no service" swatch is only its outline: drawn in a text tone (4.5:1, tested) */
+  outline: 1px dashed var(--fg-2);
+}
+.rf-legend-val {
+  color: var(--fg-1);
+  font-size: var(--t-11);
+}
+.rf-legend-ctl {
+  display: grid;
+  grid-template-columns: 62px minmax(0, 1fr) 38px;
+  align-items: center;
+  gap: var(--sp-4);
+  color: var(--fg-1);
+  font-size: var(--t-11);
+}
+.rf-legend-ctl input[type='range'] {
+  inline-size: 100%;
+  accent-color: var(--acc);
+}
+.rf-legend-ctl output {
+  text-align: end;
+  color: var(--fg-0);
+}
+.rf-legend-ctl select.input {
+  grid-column: 2 / 4;
+}
+.rf-legend-hatch {
+  display: flex;
+}
+.rf-legend-note {
+  margin: 0;
+  padding-block-start: var(--sp-3);
+  border-block-start: 1px solid var(--line-soft);
+  color: var(--fg-2);
+  font-size: var(--t-11);
+  line-height: 1.45;
+}
+.rf-legend-note + .rf-legend-note {
+  padding-block-start: 0;
+  border-block-start: 0;
+}
+.rf-layer-ctl .rf-legend-ctl {
+  font-size: var(--t-12);
 }

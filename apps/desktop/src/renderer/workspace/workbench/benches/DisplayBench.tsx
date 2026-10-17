@@ -6,6 +6,7 @@
 import { PinControls, pinDisplay, usePinDisplay } from '@aio/annotate';
 import { Button, EmptyState, IconButton, Row, useT } from '@aio/ui';
 import { useWorkspace } from '@aio/workspace';
+import { CoverageGroup } from '../../../rf/CoverageGroup';
 import { shell, useShell } from '../../../shell';
 import { useStreetMapButton } from '../../StreetMapTool';
 import { KINDS, LABEL_MODES, useKindLayers } from '../../tools/display';
@@ -153,6 +154,8 @@ export function DisplayBench() {
       <Section id="display-layers" bench={BENCH} title={t('bench.display.layers')} count={layers}>
         <Layers count={layers} />
       </Section>
+      {/* RF coverage (rf-coverage T10, ruling R3): the Coverage group, from the RF store */}
+      <CoverageGroup bench={BENCH} />
       {!map && <StreetMap />}
     </div>
   );
