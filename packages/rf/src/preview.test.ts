@@ -3,10 +3,12 @@ import { evaluatePoint, margins, subcarrierCount, type MarginSettings } from './
 import { parametricFromPort, makeTwoCutPattern, type AntennaPattern } from './pattern';
 import { pathLossDb, type PathLossSetup } from './propagation';
 import {
+  MAX_PREVIEW_PIXELS,
   NO_SERVER,
   OVERLAP_WINDOW_DB,
   computePreview,
   pathLossGrid,
+  previewTooLarge,
   pixelCentre,
   servePreview,
   studyGrid,
@@ -430,6 +432,38 @@ describe('studyGrid', () => {
     const mid = pixelCentre(g, 300, 300);
     expect(Math.abs(mid.east - 500_123.4)).toBeLessThan(10);
     expect(Math.abs(mid.north - 2_700_456.7)).toBeLessThan(10);
+  });
+});
+
+describe('the preview pixel cap', () => {
+  it('previews the default study and a 10 km study at 10 m, but not the largest the schema allows', () => {
+    expect(MAX_PREVIEW_PIXELS).toBe(2048 * 2048);
+    // the default study: 3 km at 10 m, 601 x 601
+    expect(previewTooLarge(studyGrid(500_000, 2_700_000, 3000, 10))).toBe(false);
+    // 10 km at 10 m: 2001 x 2001, about 4.0 M
+    expect(previewTooLarge(studyGrid(500_000, 2_700_000, 10_000, 10))).toBe(false);
+    // 15 km at 5 m: 6001 x 6001, 36 M pixels, 144 MB per path-loss grid
+    const big = studyGrid(500_000, 2_700_000, 15_000, 5);
+    expect(big.width * big.height).toBe(36_012_001);
+    expect(previewTooLarge(big)).toBe(true);
+  });
+
+  it('refuses a grid past the cap without allocating it', () => {
+    const g: PreviewGrid = {
+      width: 2049,
+      height: 2048,
+      resolutionM: 5,
+      originEast: 0,
+      originNorth: 0,
+    };
+    const setup: PathLossSetup = {
+      model: 'free-space',
+      environment: 'uma',
+      frequencyMHz: 1800,
+      hBsM: 30,
+      hUtM: 1.5,
+    };
+    expect(() => pathLossGrid(g, { east: 0, north: 0 }, setup)).toThrow(/larger than/);
   });
 });
 

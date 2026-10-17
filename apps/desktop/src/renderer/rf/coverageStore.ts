@@ -7,7 +7,7 @@
  *
  * `followCoverage(deps)` follows the stores until its stop function is called (the layer mount).
  */
-import { msiToTwoCut, parseMsi, type TwoCutPattern } from '@aio/rf';
+import { msiToTwoCut, parseMsi, previewTooLarge, type TwoCutPattern } from '@aio/rf';
 import type { RfRun } from '@aio/schema';
 import { createStore, useStore } from 'zustand';
 import {
@@ -157,6 +157,13 @@ export function followCoverage(deps: CoverageDeps): () => void {
       catalogue: s.catalogue.map((c) => c.entry),
     };
     let plan = previewPlan(input, measured());
+    // past the pixel cap the preview is skipped (no pattern read, no Worker); the run still goes
+    if (plan && previewTooLarge(plan.grid)) {
+      coverage.setState({ preview: null, previewSources: [] });
+      if (s.preview.status !== 'too-large') setPreviewState({ status: 'too-large', error: null });
+      publishStats();
+      return;
+    }
     if (plan && (await readPatterns(projectId, plan))) {
       if (mine !== previewToken || stopped) return;
       plan = previewPlan(input, measured());

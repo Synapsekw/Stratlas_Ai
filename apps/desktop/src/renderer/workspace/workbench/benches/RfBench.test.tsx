@@ -19,7 +19,7 @@ import {
 import { processingTools } from '../../../processingTools';
 import { RfLayer } from '../../../rf/RfLayer';
 import { assumptionsText } from '../../../rf/rfText';
-import { resetRf, rfStore } from '../../../rf/rfStore';
+import { resetRf, rfStore, setPreviewState } from '../../../rf/rfStore';
 import { threeDates } from '../../__fixtures__/threeDates';
 import { sectionStore } from '../sectionState';
 import { workbench } from '../workbenchStore';
@@ -258,6 +258,21 @@ describe('RfBench', () => {
     const line = assumptionsText(t, study);
     expect(byTest('rf-indicative')?.textContent).toContain(line);
     expect(line).toMatch(/^Assumes outdoor use: 0 dB penetration, .* dB in all; phone at /);
+  });
+
+  it('a study too large to preview says so, and can still be saved and run', async () => {
+    await render();
+    const save = () => byTest('rf-save-run');
+    setNumber(qi('[data-testid="rf-etilt-number"]'), '6');
+    // the coverage follower (the RF layer) works the preview out; here its state is set directly
+    expect(save()?.getAttribute('aria-disabled')).toBe('true');
+    expect(byTest('rf-preview-too-large')).toBeNull();
+    act(() => {
+      setPreviewState({ status: 'too-large', error: null });
+    });
+    expect(byTest('rf-preview-too-large')?.textContent).toBe(t('rf.results.previewTooLarge'));
+    expect(save()?.getAttribute('aria-disabled')).toBeNull();
+    expect(byTest('rf-run')?.getAttribute('aria-disabled')).toBeNull();
   });
 
   it('a close and reopen of the same project does not bring back unsaved edits', async () => {

@@ -121,10 +121,28 @@ export function studyGrid(
   };
 }
 
+/**
+ * The most pixels the live preview works out: 2048 x 2048, about 4.2 M (a 10 km radius at 10 m
+ * fits). The largest study the schema allows, 15 km at 5 m, is 6001 x 6001, 36 M pixels: 144 MB
+ * per Float32 path-loss grid, one per antenna setup, three output grids and an RGBA picture of the
+ * same size on the main thread, enough to run the renderer out of memory. At the cap a grid is
+ * 16.8 MB. Python works larger studies out with memmaps, so a larger study is still run, just
+ * not previewed (the tab says so).
+ */
+export const MAX_PREVIEW_PIXELS = 2048 * 2048;
+
+/** True when a grid is past what the live preview works out (`MAX_PREVIEW_PIXELS`). */
+export function previewTooLarge(g: Pick<PreviewGrid, 'width' | 'height'>): boolean {
+  return g.width * g.height > MAX_PREVIEW_PIXELS;
+}
+
 function checkGrid(g: PreviewGrid): number {
   if (!(Number.isInteger(g.width) && g.width > 0 && Number.isInteger(g.height) && g.height > 0))
     throw new Error('The preview grid needs a whole, positive width and height');
   if (!(g.resolutionM > 0)) throw new Error('The preview grid resolution must be more than 0 m');
+  // a backstop: the caller skips a study this large before it asks (`previewTooLarge`)
+  if (previewTooLarge(g))
+    throw new Error(`The preview grid is larger than ${String(MAX_PREVIEW_PIXELS)} pixels`);
   return g.width * g.height;
 }
 

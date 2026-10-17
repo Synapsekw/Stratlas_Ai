@@ -1419,8 +1419,10 @@ function ResultsSection() {
         </Button>
         <Button
           icon="plus"
+          data-testid="rf-save-run"
           disabledReason={
-            preview.status === 'ready'
+            // a study past the preview's pixel cap is saved and run without a preview
+            preview.status === 'ready' || preview.status === 'too-large'
               ? running
                 ? undefined
                 : reason
@@ -1474,6 +1476,11 @@ function ResultsSection() {
           ]}
         />
       </div>
+      {preview.status === 'too-large' && (
+        <p className="rf-note" role="status" data-testid="rf-preview-too-large">
+          {t('rf.results.previewTooLarge')}
+        </p>
+      )}
       {packError && (
         <div className="rf-actions" role="alert" data-testid="rf-pack-failed">
           <span className="rf-note rf-err">{t('rf.results.packFailed', { error: packError })}</span>

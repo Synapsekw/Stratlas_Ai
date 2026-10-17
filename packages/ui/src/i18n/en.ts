@@ -4989,6 +4989,8 @@ export const en = {
   'rf.results.running': 'Predicting coverage',
   'rf.results.saveAsRun': 'Save as new run',
   'rf.results.saveNeedsPreview': 'Change a setting to see a live preview first.',
+  'rf.results.previewTooLarge':
+    'This study is too large to preview live. Run coverage to see it, or make the radius smaller or the grid coarser.',
   'rf.results.export': 'Export',
   'rf.results.exportNeedsRun': 'Choose a finished run to export.',
   'rf.results.exportTiff': 'GeoTIFF of the grid',

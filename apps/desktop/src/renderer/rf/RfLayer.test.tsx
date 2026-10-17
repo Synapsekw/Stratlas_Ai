@@ -25,7 +25,7 @@ import { coverage } from './coverageStore';
 import type * as PreviewClientModule from './previewClient';
 import type { PreviewClientPort } from './previewClient';
 import { RfLayer } from './RfLayer';
-import { patchSettings, resetRf, rfStore } from './rfStore';
+import { patchSettings, patchStudy, resetRf, rfStore } from './rfStore';
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -364,6 +364,26 @@ describe('the Coverage layer', () => {
     expect(map.order).toContain(BORESIGHT_LAYER);
     await preview();
     expect(map.order.indexOf(COVERAGE_LAYER)).toBeLessThan(map.order.indexOf(BORESIGHT_LAYER));
+  });
+
+  it('skips the preview of a study past the pixel cap, with no Worker, and keeps the run allowed', async () => {
+    act(() => {
+      // 15 km at 5 m: 6001 x 6001 pixels, past MAX_PREVIEW_PIXELS
+      patchStudy({ radiusM: 15_000, gridResolutionM: 5 });
+    });
+    await until(() => rfStore.getState().preview.status === 'too-large', 'too large');
+    await wait(200);
+    expect(h.workers.started).toBe(0);
+    expect(coverage.getState().preview).toBeNull();
+    expect(map.sources.has(COVERAGE_SOURCE)).toBe(false);
+    expect(rfStore.getState().check.refusals).not.toContain('too-large');
+    // back under the cap: previewed again
+    act(() => {
+      patchStudy({ radiusM: 200, gridResolutionM: 20 });
+    });
+    await until(() => coverage.getState().preview !== null, 'preview again');
+    expect(rfStore.getState().preview.status).toBe('ready');
+    expect(h.workers.started).toBe(1);
   });
 
   it('closing the project resets the RF store and starts no Worker', async () => {

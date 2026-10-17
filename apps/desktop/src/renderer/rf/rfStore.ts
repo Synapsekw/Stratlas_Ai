@@ -66,7 +66,8 @@ export interface RfClassStat {
 }
 
 export interface PreviewState {
-  status: 'idle' | 'computing' | 'ready' | 'error';
+  /** `too-large`: the study is past the preview's pixel cap; it can still be run. */
+  status: 'idle' | 'computing' | 'ready' | 'error' | 'too-large';
   /** Milliseconds the last preview took. */
   elapsedMs: number | null;
   error: string | null;
