@@ -3,7 +3,9 @@
  * `titleBarStyle: 'hidden'`). On Windows the caption buttons drawn by `titleBarOverlay` (40 px
  * high) cover about 138 px at the top end; on macOS the traffic lights (`trafficLightPosition`)
  * cover about 72 px at the start of the left sidebar's top row. App.tsx writes these as
- * `--caption-end` and `--caption-start` on `.app`. Linux window controls are out of scope.
+ * `--caption-end` and `--caption-start` on `.app`. The OS draws them on the same physical side in
+ * either direction, so styles.css keeps the room with physical padding (right for the end, left
+ * for the start). Linux window controls are out of scope.
  */
 export type CaptionPlatform = NodeJS.Platform | 'web';
 

@@ -29,6 +29,20 @@ describe('right-to-left readiness', () => {
     });
   }
 
+  it('keeps the window caption insets on the physical side, whatever the direction', () => {
+    // the OS draws the Windows caption buttons on the right and the macOS traffic lights on the
+    // left in every direction, so the room kept for them is physical (shell/caption.ts)
+    const lines = readFileSync(FILES['styles.css'], 'utf8')
+      .split('\n')
+      .filter((line) => /var\(--caption-(end|start)/.test(line));
+    expect(lines.length).toBeGreaterThanOrEqual(3);
+    for (const line of lines) {
+      if (line.includes('--caption-end')) expect(line).toMatch(/^\s*padding-right:/);
+      else expect(line).toMatch(/^\s*padding-left:/);
+      expect(line).toMatch(/\/\* physical: OS caption buttons \*\//);
+    }
+  });
+
   it('isolates numbers and codes inside mixed-direction text', () => {
     const css = readFileSync(FILES['styles.css'], 'utf8');
     expect(css).toMatch(/\.mono[^{]*\{[^}]*unicode-bidi: isolate/);
