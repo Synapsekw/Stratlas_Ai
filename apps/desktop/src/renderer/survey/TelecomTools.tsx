@@ -144,7 +144,7 @@ export function TelecomTools() {
             : 'Grid north follows the project CRS; this is not true north.'}
         </p>
       )}
-      {/* the antenna detection (DetectAntennas.tsx) mounts here, under the guidance */}
+      <DetectAntennas />
       {(active !== null || measurement !== null) && (
         <div className="telecom-result" aria-live="polite">
           {active && draw && (
@@ -241,7 +241,6 @@ export function TelecomTools() {
           Save measurements
         </button>
       )}
-      <DetectAntennas />
     </section>
   );
 }
