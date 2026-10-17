@@ -3,7 +3,6 @@ import {
   AnnotationToolbar,
   SightingPicker,
   annotateUi,
-  pinDisplay,
   useIssueOverlay,
   useMapDraw,
   usePinDisplay,
@@ -17,22 +16,13 @@ import {
   type MapDrawSeam,
   type MapIssueDisplay,
 } from '@aio/maps';
-import { arrowFocus, ariaKeys, Icon, isShortcut, matchShortcut, shortcutHint, useT } from '@aio/ui';
+import { Button, Icon, isShortcut, useT } from '@aio/ui';
 import { setDroneTelemetry, setFlightPaths, videoRig } from '@aio/video';
-import { useVolumetric, VolumetricStage } from '@aio/volumetric';
+import { VolumetricStage } from '@aio/volumetric';
 import { useWorkspace, workspace } from '@aio/workspace';
-import {
-  useCallback,
-  useEffect,
-  useLayoutEffect,
-  useMemo,
-  useRef,
-  useState,
-  type ReactNode,
-  type RefObject,
-} from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { CloudChangeLegend } from '../change/producers/CloudChangeLegend';
-import { EnvironmentTool, useStageEnvironment } from '../environment/EnvironmentTool';
+import { useStageEnvironment } from '../environment/EnvironmentTool';
 import { FocusZone } from '../FocusZone';
 import { CloseupDock, MeasureBar, PciUnitCard, RoadLegend, useRoadKeys } from '../road/RoadTools';
 import { useRoad } from '../road/store';
@@ -42,7 +32,6 @@ import { isTyping } from '../keys';
 import { photoSplitIsOpen } from '../builder/photoOpen';
 import { shell, useShell } from '../shell';
 import { PANEL_ID } from '../shell/PanelHandle';
-import type { StageMode } from '../store';
 import { FloatingVideo } from './FloatingVideo';
 import {
   compareRuntime,
@@ -52,7 +41,7 @@ import {
   useCaptureEpoch,
   useCompareNotice,
 } from './compare';
-import { CompareButton, CompareMap, useVolumesFollowDate } from './CompareControls';
+import { CompareMap, useVolumesFollowDate } from './CompareControls';
 import { CompareScene } from './CompareScene';
 import { StageComponentBrief } from './ComponentBrief';
 import { ChangeLegends } from './MapSwipe';
@@ -80,12 +69,11 @@ import { usePlacedWalksOnMap, usePlacingOn } from '../walks/placeWalk';
 import { MAP_SURFACE, SCENE_SURFACE } from '../walks/placeModel';
 import { WalkSceneMount } from '../walks/WalkSceneMount';
 import { useTimeline } from './timeline';
-import { hiddenPathClips, togglePaths } from './flightPaths';
-import { telemetryLabels, toggleTelemetry, useTelemetryOn } from './telemetryPref';
-import { flightPathModel, updateFlightPaths, useFlightPathModel } from './pathModel';
-import { nextLabelMode, PopTool, toggleSection, Tool, useEngineStage } from './StageTools';
-import { createToolbarFit, GAP, GROUP_LABEL, type GroupId } from './toolbarFit';
-import { toggleTimeline } from './timelinePref';
+import { hiddenPathClips } from './flightPaths';
+import { telemetryLabels, useTelemetryOn } from './telemetryPref';
+import { useFlightPathModel } from './pathModel';
+import { Tool, useEngineStage } from './StageTools';
+import { useStageKeys } from './stageKeys';
 import {
   insideView,
   setCutawayMode,
@@ -94,10 +82,10 @@ import {
   useCutawayPref,
   useCutawayState,
 } from './useCutaway';
-import { fullGroup, MODES } from './island/groups';
+import { Island } from './island/Island';
 import { MeasureMount } from '../survey/MeasureToolbar';
 import { SurveyQaMount } from '../survey/Qa';
-import { useGroundFollowsLayers, useSiteBasemapLayer, wantsSiteBasemap } from './siteBasemap';
+import { useGroundFollowsLayers, useSiteBasemapLayer } from './siteBasemap';
 import { useStreetMap3d } from './streetMap3d';
 import { MapViewMenu, SceneMapMenu } from './MapMenus';
 import { useSiteTiles } from './siteTiles';
@@ -153,195 +141,26 @@ function ScenePane({
   );
 }
 
-/* ----------------------------------------------------------------------- toolbar */
+/* ----------------------------------------------------------------------- right panel */
 
-function StageToolbar({
-  stage,
-  mode: stageMode,
-  tools,
-  barRef,
-  compare,
-}: {
-  stage: EngineStage | null;
-  mode: StageMode;
-  /** The panes the tools work on (a split may show neither the 3D view nor the map). */
-  tools: StageMode;
-  barRef: RefObject<HTMLDivElement | null>;
-  /** "Compare dates", beside the view modes (projects with two survey dates). */
-  compare?: ReactNode;
-}) {
-  const mode = tools;
-  const road = useRoad((s) => s.status === 'ready');
+/** The right panel's toggle at the stage's top right (D17), beside the View tile and Ctrl+Alt+B. */
+function RightPanelToggle() {
+  const t = useT();
   const rightCollapsed = useShell((s) => s.rightCollapsed);
-  const cloudPanelOpen = useShell((s) => s.cloudPanelOpen);
-  const hasClouds = useWorkspace((s) =>
-    (s.project?.manifest.layers ?? []).some((l) => l.kind === 'pointcloud'),
-  );
-  const hasVolumes = useVolumetric((s) => s.status === 'ready');
-  const map = mode === 'map';
-  const groups: GroupId[] = useMemo(() => {
-    const base: GroupId[] = map
-      ? ['view', 'measure', 'display', 'video', 'annotate']
-      : hasVolumes
-        ? ['view', 'measure', 'volumes', 'display', 'video', 'annotate']
-        : hasClouds
-          ? ['view', 'measure', 'display', 'clouds', 'video', 'annotate']
-          : ['view', 'measure', 'display', 'video', 'annotate'];
-    // the road tools work on the map
-    return road && mode !== '3d' ? [...base.slice(0, -1), 'road', 'annotate'] : base;
-  }, [map, hasClouds, hasVolumes, road, mode]);
-  const [moreOpen, setMoreOpen] = useState(false);
-  // the widths belong to one view and its groups: after a change of view every group is measured
-  // again before anything folds (toolbarFit.ts)
-  const [fitter] = useState(createToolbarFit);
-  const [hidden, setHidden] = useState<GroupId[]>([]);
-  // What decides which tools the groups hold within one view. A folded group cannot be measured,
-  // so when any of this changes the fitter measures every group again: the project, the 3D view
-  // being there (Measure and section), flight paths (Video and camera), a package (no Annotate)
-  // and the survey dates with volumes (a button each).
-  const projectId = useWorkspace((s) => s.project?.id ?? '');
-  const hasPaths = useFlightPathModel() !== null;
-  const inPackage = useShell((s) => Boolean(s.pkg));
-  const volumeDates = useVolumetric((s) => s.file?.captures.length ?? 0);
-  // the street map button comes and goes with the project's place on the Earth
-  const streetMapTool = useWorkspace((s) =>
-    s.project && wantsSiteBasemap(s.project.manifest) ? 1 : 0,
-  );
-  const content = [
-    projectId,
-    stage ? 1 : 0,
-    hasPaths ? 1 : 0,
-    inPackage ? 1 : 0,
-    volumeDates,
-    streetMapTool,
-  ].join('|');
-
-  const fit = useCallback(() => {
-    const bar = barRef.current;
-    if (!bar) return;
-    const shown = new Map<GroupId, number>();
-    for (const el of bar.querySelectorAll<HTMLElement>('[data-group]'))
-      shown.set(el.dataset.group as GroupId, el.offsetWidth);
-    let fixed = 0;
-    for (const el of bar.querySelectorAll<HTMLElement>('[data-fixed]'))
-      fixed += el.offsetWidth + GAP;
-    const next = fitter.fit(mode, groups, shown, fixed, bar.clientWidth, content);
-    setHidden((prev) => (prev.join() === next.join() ? prev : next));
-  }, [barRef, fitter, groups, mode, content]);
-
-  useLayoutEffect(fit);
-  useEffect(() => {
-    const bar = barRef.current;
-    if (!bar) return;
-    const ro = new ResizeObserver(fit);
-    ro.observe(bar);
-    return () => {
-      ro.disconnect();
-    };
-  }, [barRef, fit]);
-
-  const render = (g: GroupId): ReactNode => fullGroup(g, { stage, map });
-
   return (
-    // The tools sit on the stage (street map, imagery), which is dark in every theme.
-    <div
-      className="stbar"
-      ref={barRef}
-      data-surface="dark"
-      role="toolbar"
-      aria-label="Stage tools"
-      onKeyDown={(e) => {
-        // Left and Right move between the tools (Tab still visits each one)
-        if (e.target instanceof HTMLElement && e.target.closest('.stage-pop')) return;
-        const k = e.key === 'ArrowRight' ? 'ArrowDown' : e.key === 'ArrowLeft' ? 'ArrowUp' : null;
-        if (k && barRef.current && arrowFocus(barRef.current, k)) e.preventDefault();
-      }}
-    >
-      <div className="seg overlay-seg" role="group" aria-label="Stage view" data-fixed="">
-        {MODES.map((m) => (
-          <button
-            key={m.mode}
-            type="button"
-            aria-pressed={stageMode === m.mode}
-            aria-keyshortcuts={m.keys}
-            aria-label={m.label}
-            title={`${m.label} (${m.keys})`}
-            onClick={() => {
-              shell.getState().setStageMode(m.mode);
-            }}
-          >
-            <Icon name={m.icon} size={14} />
-            <span className="mode-l">{m.label}</span>
-          </button>
-        ))}
-      </div>
-      {compare}
-      {groups
-        .filter((g) => !hidden.includes(g))
-        .map((g) => (
-          <div
-            key={g}
-            className="tgroup-h overlay-box"
-            role="group"
-            aria-label={GROUP_LABEL[g]}
-            data-group={g}
-          >
-            {render(g)}
-          </div>
-        ))}
-      {hidden.length > 0 && (
-        <div className="tgroup-h overlay-box">
-          <PopTool
-            icon="more"
-            label="More tools"
-            // the point cloud panel opened from the sidebar or palette opens More when it is there
-            open={moreOpen || (cloudPanelOpen && hidden.includes('clouds'))}
-            onOpenChange={(o) => {
-              setMoreOpen(o);
-              if (!o && hidden.includes('clouds')) shell.getState().setCloudPanel(false);
-            }}
-          >
-            <div className="ovf">
-              {groups
-                .filter((g) => hidden.includes(g))
-                .map((g) => (
-                  <div className="ovf-row" key={g} role="group" aria-label={GROUP_LABEL[g]}>
-                    <span className="ovf-h">{GROUP_LABEL[g]}</span>
-                    <div className="tgroup-h">{render(g)}</div>
-                  </div>
-                ))}
-            </div>
-          </PopTool>
-        </div>
-      )}
-      <span className="stbar-sp" />
-      <MeasureMount stage={stage} />
-      <WalkSceneMount stage={stage} />
-      <SurveyQaMount />
-      <HydroMount />
-      <HaulRoadMount stage={stage} />
-      <DesignsMount stage={stage} />
-      {!map && stage && (
-        <div className="tgroup-h overlay-box env-slot" data-fixed="">
-          <EnvironmentTool stage={stage} />
-        </div>
-      )}
-      <div className="tgroup-h overlay-box" data-fixed="">
-        <button
-          type="button"
-          className="tool"
-          aria-pressed={!rightCollapsed}
-          aria-label={rightCollapsed ? 'Show the right panel' : 'Hide the right panel'}
-          aria-keyshortcuts={ariaKeys('global.rightPanel')}
-          aria-controls={PANEL_ID.right}
-          onClick={shell.getState().toggleRight}
-        >
-          <Icon name="sidebar" className="flip" />
-          <span className="tip tip-end">
-            Right panel <span className="kbd">{shortcutHint('global.rightPanel')}</span>
-          </span>
-        </button>
-      </div>
+    <div className="stage-rp overlay-box" data-surface="dark">
+      <Button
+        variant="icon"
+        size="md"
+        pressed={!rightCollapsed}
+        aria-label={rightCollapsed ? t('island.tile.showRight') : t('island.tile.hideRight')}
+        aria-controls={PANEL_ID.right}
+        tip={t('island.toRightPanel')}
+        shortcut="global.rightPanel"
+        onClick={shell.getState().toggleRight}
+      >
+        <Icon name="sidebar" size={16} className="flip" />
+      </Button>
     </div>
   );
 }
@@ -496,7 +315,6 @@ export function Stage() {
   const projectId = useWorkspace((s) => s.project?.id ?? null);
   const mapLayer = useWorkspace((s) => mapLayerId(s.project?.manifest.layers ?? []));
   const stageRef = useRef<HTMLDivElement>(null);
-  const barRef = useRef<HTMLDivElement>(null);
   // Split: each side shows the pane chosen for it (3D and map by default).
   const split = useSplit();
   const splitting = mode === 'split';
@@ -582,7 +400,7 @@ export function Stage() {
     if (!root) return [];
     return [
       ...root.querySelectorAll(
-        '.stbar > :not(.stbar-sp), .stage-under > *, .vwin:not(.docked), .cursor-ro, .stage-pop, .elev-legend, .pane-chooser, .vol-legend',
+        '.island, .stage-rp, .stage-under > *, .vwin:not(.docked), .cursor-ro, .surface-pop, .elev-legend, .pane-chooser, .vol-legend',
       ),
     ].map((e) => e.getBoundingClientRect());
   }, []);
@@ -600,7 +418,6 @@ export function Stage() {
     () => (walkOverlays.length === 0 ? baseOverlays : [...(baseOverlays ?? []), ...walkOverlays]),
     [baseOverlays, walkOverlays],
   );
-  const isRoad = roadMap !== null;
   const closeupOn = useRoad((s) => s.closeup);
   const selectedIssue = useWorkspace((s) =>
     s.selection?.kind === 'issue' ? s.selection.id : null,
@@ -707,43 +524,7 @@ export function Stage() {
   }, [annotating, showMap, setMapDrawMode]);
 
   // Stage shortcuts (single keys; the video annotator's own keys win inside the video window).
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if (e.defaultPrevented || e.ctrlKey || e.metaKey || e.altKey) return;
-      if (isTyping(e.target) || annotateUi.getState().pending) return;
-      if (e.target instanceof HTMLElement && e.target.closest('.vwin')) return;
-      const sh = shell.getState();
-      const ws = workspace.getState();
-      const k = matchShortcut('scene', e);
-      const three = sh.stageMode !== 'map' ? engine : null;
-      if (k === 'scene.mode3d') sh.setStageMode('3d');
-      else if (k === 'scene.modeMap') sh.setStageMode('map');
-      else if (k === 'scene.modeSplit') sh.setStageMode('split');
-      else if (k === 'scene.home') ws.flyTo({ kind: 'home' });
-      else if (k === 'scene.site') ws.flyTo({ kind: 'site' });
-      else if (k === 'scene.flySelection' && ws.selection)
-        ws.flyTo({ kind: 'selection', selection: ws.selection });
-      else if (k === 'scene.measure' && three)
-        three.setTool(three.tool === 'measure' ? 'select' : 'measure');
-      else if (k === 'scene.section' && three) toggleSection(three);
-      else if (k === 'scene.labels' && three) sh.setLabelMode(nextLabelMode(sh.labelMode));
-      else if (k === 'scene.annotate') sh.setAnnotating(!sh.annotating);
-      else if (k === 'scene.video' && ws.activeClip) sh.setVideoHidden(!sh.videoHidden);
-      else if (k === 'scene.flightPaths' && three && flightPathModel())
-        updateFlightPaths(togglePaths);
-      else if (k === 'scene.telemetry' && three && flightPathModel()) toggleTelemetry();
-      else if (k === 'scene.pins') pinDisplay.getState().togglePins();
-      else if (k === 'scene.timeline' && !isRoad) toggleTimeline(ws.project);
-      else if (k === 'scene.inside' && three && ws.activeClip) insideView(three);
-      else if (k === 'scene.escape' && three && three.tool !== 'select') three.setTool('select');
-      else return;
-      e.preventDefault();
-    };
-    window.addEventListener('keydown', onKey);
-    return () => {
-      window.removeEventListener('keydown', onKey);
-    };
-  }, [engine, isRoad]);
+  useStageKeys(engine);
 
   const seam: MapDrawSeam = roadMap?.measure ??
     roadSetup?.seam ?? {
@@ -833,13 +614,20 @@ export function Stage() {
         {closeup && <CloseupDock />}
         {docked && showVideo && <FloatingVideo layerId={activeClip} docked stageRef={stageRef} />}
       </div>
-      <StageToolbar
+      <Island
         stage={engine}
         mode={mode}
         tools={show3d ? (showMap ? 'split' : '3d') : 'map'}
-        barRef={barRef}
-        compare={<CompareButton split={split} />}
+        split={split}
+        linked={false}
       />
+      <RightPanelToggle />
+      <MeasureMount stage={engine} />
+      <WalkSceneMount stage={engine} />
+      <SurveyQaMount />
+      <HydroMount />
+      <HaulRoadMount stage={engine} />
+      <DesignsMount stage={engine} />
       <div className="stage-under" data-surface="dark">
         {annotating && (
           <div className="ann-subbar overlay-box" role="group" aria-label="Annotation tools">

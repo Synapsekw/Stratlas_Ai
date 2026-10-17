@@ -82,7 +82,6 @@ export function WorkspaceLanes() {
       colours={colours}
       dateSlot={<DatePicker up />}
       clockLabel={offsetLabel(offset)}
-      hideKeys="T"
       onFocusLane={(id) => {
         timeline.getState().focusSurvey(id);
       }}

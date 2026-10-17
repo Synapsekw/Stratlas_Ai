@@ -265,10 +265,10 @@
     "title": 3
   },
   "apps/desktop/src/renderer/styles.css": {
-    "fontPx": 26,
+    "fontPx": 25,
     "colour": 25,
     "shadow": 15,
-    "zIndex": 16
+    "zIndex": 15
   },
   "apps/desktop/src/renderer/survey/Cleanup.tsx": {
     "title": 1
@@ -367,9 +367,6 @@
   "apps/desktop/src/renderer/workspace/CutawayTool.tsx": {
     "title": 1
   },
-  "apps/desktop/src/renderer/workspace/DateRow.tsx": {
-    "title": 1
-  },
   "apps/desktop/src/renderer/workspace/DatesOnScreen.tsx": {
     "title": 2
   },
@@ -415,19 +412,19 @@
     "title": 2
   },
   "apps/desktop/src/renderer/workspace/Stage.tsx": {
-    "title": 3
+    "title": 2
   },
   "apps/desktop/src/renderer/workspace/StageLegends.tsx": {
     "title": 1
   },
-  "apps/desktop/src/renderer/workspace/StageTools.tsx": {
-    "title": 2
+  "apps/desktop/src/renderer/workspace/tools/video.tsx": {
+    "title": 1
+  },
+  "apps/desktop/src/renderer/workspace/tools/view.tsx": {
+    "title": 1
   },
   "apps/desktop/src/renderer/workspace/VolumeTools.tsx": {
     "title": 3
-  },
-  "apps/desktop/src/renderer/workspace/WorkspaceScreen.tsx": {
-    "title": 1
   },
   "packages/ui/src/actions/ContextMenu.tsx": {
     "title": 3

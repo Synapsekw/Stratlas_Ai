@@ -1,4 +1,4 @@
-import { Calendar, Icon, Popover, formatDate, useT, type CalendarDay } from '@aio/ui';
+import { Calendar, Popover, formatDate, useT, type CalendarDay } from '@aio/ui';
 import { dateTags, type CaptureIndex } from '@aio/workspace';
 import { useMemo, useRef, useState } from 'react';
 import { timeline, useTimeline } from './timeline';
@@ -25,7 +25,7 @@ export function useCalendarDays(index: CaptureIndex | null): {
 
 /**
  * The focused survey date as a button that opens the calendar. `up` opens the calendar above the
- * button (the timeline and the date row sit at the bottom of the window), rendered on the page
+ * button (the lane timeline sits at the bottom of the window), rendered on the page
  * body so a scrolling box around the button (the lane timeline's body) does not clip it.
  */
 export function DatePicker({ up = false }: { up?: boolean }) {
@@ -77,42 +77,5 @@ export function DatePicker({ up = false }: { up?: boolean }) {
         />
       </Popover>
     </span>
-  );
-}
-
-/** Previous date, the date picker, next date (arrows only with more than one date). */
-export function DateSteps({ up = false }: { up?: boolean }) {
-  const t = useT();
-  const total = useTimeline((s) => s.index?.captures.length ?? 0);
-  return (
-    <>
-      {total > 1 && (
-        <button
-          type="button"
-          className="btn icon sm ghost"
-          data-testid="date-bar-prev"
-          aria-label={t('datebar.prev')}
-          onClick={() => {
-            timeline.getState().step(-1);
-          }}
-        >
-          <Icon name="back" size={14} />
-        </button>
-      )}
-      <DatePicker up={up} />
-      {total > 1 && (
-        <button
-          type="button"
-          className="btn icon sm ghost"
-          data-testid="date-bar-next"
-          aria-label={t('datebar.next')}
-          onClick={() => {
-            timeline.getState().step(1);
-          }}
-        >
-          <Icon name="fwd" size={14} />
-        </button>
-      )}
-    </>
   );
 }

@@ -31,11 +31,12 @@ import {
 import { EnvironmentTool } from '../../environment/EnvironmentTool';
 import { isTyping } from '../../keys';
 import { useRoad } from '../../road/store';
-import { useShell } from '../../shell';
+import { shell, useShell } from '../../shell';
 import type { StageMode } from '../../store';
 import { CompareButton, useCompareDates } from '../CompareControls';
 import type { Side } from '../splitModel';
-import { paneCapture, useSplit } from '../SplitPanes';
+import { paneCapture, type SplitModel } from '../SplitPanes';
+import { takeTNotice } from '../stagePrefs';
 import { useTimeline } from '../timeline';
 import { fullGroup, GROUP_NAME, MODES, type GroupCtx } from './groups';
 import { IslandCalendar, IslandDate, islandDates } from './IslandDate';
@@ -55,6 +56,8 @@ import './island.css';
 const INITIAL: IslandState = { open: 'rest', group: 'view', preview: null, swapped: false };
 /** The pointer within this many px of the stage's top edge wakes the island. */
 const NEAR_PX = 88;
+/** The one-time T notice stays this long at most. */
+const NOTICE_MS = 8000;
 /** Live readings are said at most once a second. */
 const SAY_MS = 1000;
 
@@ -97,15 +100,19 @@ export interface IslandProps {
   mode: StageMode;
   /** The panes the tools work on (a split may show neither the 3D view nor the map). */
   tools: StageMode;
+  /** The split stage's sides and dates (the stage's own, not fetched again). */
+  split: SplitModel;
   /** The sidebar's front tab is the island's live item (D10). */
   linked: boolean;
 }
 
-export function Island({ stage, mode, tools, linked }: IslandProps) {
+export function Island({ stage, mode, tools, split, linked }: IslandProps) {
   const t = useT();
   const [s, dispatch] = useReducer(islandReducer, INITIAL);
   const [full, setFull] = useState<GroupId | null>(null);
   const [side, setSide] = useState<Side>('left');
+  // the first T on this computer says the timeline moved to View
+  const [notice, setNotice] = useState(false);
   const root = useRef<HTMLDivElement>(null);
   const capsule = useRef<HTMLDivElement>(null);
   const layer = useRef<HTMLDivElement>(null);
@@ -129,10 +136,21 @@ export function Island({ stage, mode, tools, linked }: IslandProps) {
   const groups = islandGroups({ map, mode: tools, clouds, volumes, video, road, pkg });
   const group = groups.includes(s.group) ? s.group : 'view';
 
+  // the point cloud panel opened from the sidebar or the palette: the Point cloud group's set
+  const cloudPanel = useShell((x) => x.cloudPanelOpen);
+  const [seenCloudPanel, setSeenCloudPanel] = useState(cloudPanel);
+  if (cloudPanel !== seenCloudPanel) {
+    setSeenCloudPanel(cloudPanel);
+    if (cloudPanel && groups.includes('clouds')) setFull('clouds');
+  }
+  const closeFull = () => {
+    if (full === 'clouds') shell.getState().setCloudPanel(false);
+    setFull(null);
+  };
+
   // the date: the date bar's, or the last focused pane's in Split (D7)
   const index = useTimeline((x) => x.index);
   const focus = useTimeline((x) => x.focus);
-  const split = useSplit();
   const splitting = mode === 'split';
   const dates = islandDates(index, focus, splitting ? split : null, side);
   const rest = islandRest(dates ? dates.order.length : 0);
@@ -232,12 +250,25 @@ export function Island({ stage, mode, tools, linked }: IslandProps) {
       if (matchShortcut('scene', e) !== 'scene.tools') return;
       e.preventDefault();
       dispatch({ type: 'toggleTools' });
+      if (takeTNotice()) setNotice(true);
     };
     window.addEventListener('keydown', onKey);
     return () => {
       window.removeEventListener('keydown', onKey);
     };
   }, []);
+
+  // the notice goes with the tools, or after a while
+  if (notice && s.open !== 'tools') setNotice(false);
+  useEffect(() => {
+    if (!notice) return;
+    const timer = setTimeout(() => {
+      setNotice(false);
+    }, NOTICE_MS);
+    return () => {
+      clearTimeout(timer);
+    };
+  }, [notice]);
 
   // open: focus goes to the picked tab; a press outside closes
   useEffect(() => {
@@ -330,7 +361,7 @@ export function Island({ stage, mode, tools, linked }: IslandProps) {
               }}
             >
               <Icon name={modeInfo?.icon ?? 'scene'} size={14} className="isl-acc" />
-              <span className="isl-mode">{modeInfo?.label}</span>
+              <span className="isl-mode">{modeInfo && t(modeInfo.label)}</span>
               <span className="isl-name">{t('island.tools')}</span>
               <Icon name="chevdown" size={12} />
               <span className="kbd" aria-hidden="true">
@@ -388,6 +419,11 @@ export function Island({ stage, mode, tools, linked }: IslandProps) {
           {content}
         </div>
       </div>
+      {notice && (
+        <p className="isl-notice" role="status" data-testid="t-notice">
+          {t('island.tNotice')}
+        </p>
+      )}
       {/* beside the capsule, outside the centring: the bubble and a comparison's controls */}
       <div className="isl-aside">
         {secondary && !open && (
@@ -406,25 +442,12 @@ export function Island({ stage, mode, tools, linked }: IslandProps) {
         {/* Compare dates itself is the View tile; while comparing, Leave and its tools show here */}
         <CompareButton split={split} whileComparing />
       </div>
-      <Popover
-        open={full !== null}
-        onClose={() => {
-          setFull(null);
-        }}
-        opener={root}
-        className="isl-full"
-      >
+      <Popover open={full !== null} onClose={closeFull} opener={root} className="isl-full">
         {full && (
           <>
             <div className="pop-head">
               <h2 className="pop-title">{t(GROUP_NAME[full])}</h2>
-              <IconButton
-                icon="x"
-                label={t('dialog.close')}
-                onClick={() => {
-                  setFull(null);
-                }}
-              />
+              <IconButton icon="x" label={t('dialog.close')} onClick={closeFull} />
             </div>
             <div className="tgroup-h isl-full-row">
               {fullGroup(full, { stage, map })}

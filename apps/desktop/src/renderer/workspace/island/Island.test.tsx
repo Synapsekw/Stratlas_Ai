@@ -7,7 +7,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { threeDates } from '../__fixtures__/threeDates';
 import { shell } from '../../shell';
 import { timeline } from '../timeline';
-import { Island } from './Island';
+import { useSplit } from '../SplitPanes';
+import { Island, type IslandProps } from './Island';
 import type { LiveItem } from './islandModel';
 import type * as LiveModule from './useIslandLive';
 
@@ -59,11 +60,16 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
+/** The island with the stage's split, as the stage gives it. */
+function WithSplit(props: Omit<IslandProps, 'split'>) {
+  return <Island {...props} split={useSplit()} />;
+}
+
 // async: the split's pane list loads through a promise
 const render = async (linked = false) => {
   root ??= createRoot(host);
   await act(async () => {
-    root?.render(<Island stage={null} mode="3d" tools="3d" linked={linked} />);
+    root?.render(<WithSplit stage={null} mode="3d" tools="3d" linked={linked} />);
     await Promise.resolve();
   });
 };
@@ -296,5 +302,39 @@ describe('Island', () => {
     act(() => button('Close')?.click());
     expect(island()?.dataset.state).toBe('rest');
     expect(document.activeElement).toBe(island());
+  });
+
+  it('opens the point cloud panel when the sidebar or the palette asks for it', async () => {
+    const cloud = { kind: 'pointcloud', id: 'scan', name: 'Scan', visible: true } as const;
+    const withCloud = {
+      ...threeDates,
+      layers: [
+        ...threeDates.layers,
+        { ...cloud, src: { path: 'c.copc.laz' }, format: 'copc' as const },
+      ],
+    };
+    // the panel's placement watches its size
+    const noop = () => undefined;
+    vi.stubGlobal(
+      'ResizeObserver',
+      class {
+        observe = noop;
+        unobserve = noop;
+        disconnect = noop;
+      },
+    );
+    workspace.getState().openProject({ id: 'p3', root: '/p3', manifest: withCloud });
+    shell.getState().setCloudPanel(false);
+    await render();
+    act(() => {
+      shell.getState().openCloudPanel();
+    });
+    expect(document.querySelector('[data-testid="cloud-panel"]')).not.toBeNull();
+    // closing the group's set closes the panel with it
+    act(() =>
+      document.querySelector<HTMLButtonElement>('.isl-full button[aria-label="Close"]')?.click(),
+    );
+    expect(shell.getState().cloudPanelOpen).toBe(false);
+    expect(document.querySelector('[data-testid="cloud-panel"]')).toBeNull();
   });
 });

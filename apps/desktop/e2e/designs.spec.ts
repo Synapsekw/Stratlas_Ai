@@ -13,6 +13,7 @@ import { readFileSync } from 'node:fs';
 import { writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { expect, hasPipelinePython, PIPELINE_ENV, test } from './fixtures';
+import { islandGroup, stageMode } from './island';
 
 test.use({ appEnv: PIPELINE_ENV });
 test.setTimeout(180_000);
@@ -135,11 +136,11 @@ async function answerOpenDialog(app: ElectronApplication, path: string): Promise
 
 /**
  * The Designs button is in the Survey measurements popover, whose tool sits on the toolbar, or
- * under More tools when the toolbar is narrow.
+ * in the island's Measure group.
  */
 async function openDesigns(win: Page): Promise<void> {
   const survey = win.getByRole('button', { name: 'Survey measurements', exact: true });
-  if (!(await survey.isVisible())) await win.getByRole('button', { name: 'More tools' }).click();
+  if (!(await survey.isVisible())) await islandGroup(win, 'measure');
   await survey.click();
   await win.getByRole('button', { name: 'Designs', exact: true }).click();
   await expect(win.getByTestId('designs-panel')).toBeVisible();
@@ -239,8 +240,7 @@ test('a LandXML design imports, shows in the Designs panel and its alignment giv
     .toMatch(/Sta \d+\+\d{3}\.\d{3} {2}Off \d+\.\d{3}/);
 
   // on the map: the designs source with the pad outline, the alignment and its station labels
-  const bar = win.getByRole('toolbar', { name: 'Stage tools' });
-  await bar.getByRole('button', { name: 'Map' }).click();
+  await stageMode(win, 'Map');
   await expect(win.locator('.maplibregl-canvas').first()).toBeVisible();
   await expect
     .poll(() => win.evaluate(mapDesignFeatures), { timeout: 30_000 })

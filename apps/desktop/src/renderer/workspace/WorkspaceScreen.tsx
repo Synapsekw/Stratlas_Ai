@@ -1,9 +1,7 @@
 import { IssueRegister } from '@aio/annotate';
 import { TelecomTools } from '../survey/TelecomTools';
 import {
-  ariaKeys,
   formatDate,
-  Icon,
   neighbourClip,
   ResizableSplit,
   splitPrefs,
@@ -40,8 +38,6 @@ import { useIsRoad } from '../road/useRoadMap';
 import { NoProject } from '../screens/NoProject';
 import { useCaptureIndex } from './compare';
 import { agentWindow } from './agentWindow';
-import { DateBar } from './DateBar';
-import { DateRow } from './DateRow';
 import { usesLanes } from './lanes';
 import { LayerPlaceholder } from './LayerPlaceholder';
 import { pickClip, selectClip } from './pickClip';
@@ -49,7 +45,7 @@ import { SelectionCard } from './SelectionCard';
 import { Stage } from './Stage';
 import { useTimeline } from './timeline';
 import { timelineActions, useTimelineBinding } from './timelineBinding';
-import { toggleTimeline, useTimelineShown } from './timelinePref';
+import { useTimelineShown } from './timelinePref';
 import { LaneFocusFollow, WorkspaceLanes } from './WorkspaceLanes';
 
 const EMPTY_MODEL: TimelineModel = {
@@ -85,7 +81,6 @@ function WorkspaceTimeline() {
       activeClip={activeClip}
       selectedIssue={selectedIssue}
       context={`${capture ? `${formatDate(capture.date)} · ` : ''}UTC`}
-      hideKeys="T"
       onClip={(id, atMs) => {
         // A clip bar selects its clip and seeks; Space or Play plays.
         pickClip(
@@ -101,38 +96,6 @@ function WorkspaceTimeline() {
         workspace.getState().setTime(c.startMs);
       }}
     />
-  );
-}
-
-/**
- * The timeline folded away (projects without video start like this): a thin bar that brings it
- * back, saying why it is folded.
- */
-function TimelineBar() {
-  const t = useT();
-  const clips = useWorkspace(
-    (s) => s.project?.manifest.layers.filter((l) => l.kind === 'video').length ?? 0,
-  );
-  return (
-    <div className="tl-bar" data-testid="timeline-bar">
-      <button
-        type="button"
-        className="tl-bar-btn"
-        aria-label={t('timeline.show')}
-        aria-keyshortcuts={ariaKeys('scene.timeline')}
-        title={`${t('timeline.show')} (T)`}
-        onClick={() => {
-          toggleTimeline(workspace.getState().project);
-        }}
-      >
-        <Icon name="clock" size={14} />
-        {t('timeline.title')}
-        <Icon name="chevup" size={14} />
-      </button>
-      <span className="tl-bar-note">
-        {clips > 0 ? t('timeline.clips', { count: clips }) : t('timeline.noVideo')}
-      </span>
-    </div>
   );
 }
 
@@ -392,23 +355,17 @@ export function WorkspaceScreen() {
       onAnimationEnd={right.onAnimationEnd}
     >
       <h1 className="sr-only">{t('nav.scene')}</h1>
-      {!lanes && <DateBar />}
       {lanes && <LaneFocusFollow />}
       <Stage />
       <LayerPlaceholder />
       <div className="tl-wrap">
+        {/* folded away, the timeline comes back from the island's View tile */}
         {road ? (
           <ChainageRuler />
-        ) : lanes ? (
-          timeline ? (
-            <WorkspaceLanes />
-          ) : (
-            <DateRow />
-          )
-        ) : timeline ? (
-          <WorkspaceTimeline />
+        ) : !timeline ? null : lanes ? (
+          <WorkspaceLanes />
         ) : (
-          <TimelineBar />
+          <WorkspaceTimeline />
         )}
       </div>
       <div

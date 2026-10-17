@@ -94,7 +94,7 @@ export function useTimelineShown(
   return project ? timelineShown(saved, project.manifest.layers) : false;
 }
 
-/** Show or hide the open project's timeline (T, the bar, the palette). */
+/** Show or hide the open project's timeline (the View tile, the palette). */
 export function toggleTimeline(
   project: { id: string; manifest: { layers: readonly Pick<Layer, 'kind'>[] } } | null,
   store: StoreApi<TimelinePrefState> = timelinePref,

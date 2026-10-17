@@ -9,6 +9,7 @@ import type { Page } from '@playwright/test';
 import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { expect, hasPipelinePython, openProject, PIPELINE_ENV, test } from './fixtures';
+import { islandGroup } from './island';
 
 test.use({ appEnv: PIPELINE_ENV });
 test.setTimeout(300_000);
@@ -26,13 +27,13 @@ interface GroundTruth {
 
 /**
  * The Hydrology button is in the Survey measurements popover (Site data), whose tool sits on the
- * toolbar, or under More tools when the toolbar is narrow.
+ * toolbar, or in the island's Measure group.
  */
 async function openHydrology(win: Page): Promise<void> {
   const panel = win.getByTestId('hydro-panel');
   if (await panel.isVisible()) return;
   const survey = win.getByRole('button', { name: 'Survey measurements', exact: true });
-  if (!(await survey.isVisible())) await win.getByRole('button', { name: 'More tools' }).click();
+  if (!(await survey.isVisible())) await islandGroup(win, 'measure');
   await survey.click();
   await win.getByRole('button', { name: 'Hydrology', exact: true }).click();
   await expect(panel).toBeVisible();

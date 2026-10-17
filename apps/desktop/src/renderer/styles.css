@@ -1584,8 +1584,8 @@ button.chip-status:hover {
   /* the panel slides out towards the window's end edge */
   --rp-fold-x: 1;
   grid-template-columns: minmax(0, 1fr) var(--rp-col);
-  grid-template-rows: auto minmax(0, 1fr) auto;
-  grid-template-areas: 'dbar right' 'stage right' 'tl right';
+  grid-template-rows: minmax(0, 1fr) auto;
+  grid-template-areas: 'stage right' 'tl right';
 }
 .ws[data-collapsed] {
   --rp-col: var(--split-size, calc(var(--ph-w) + 1px));
@@ -1658,20 +1658,6 @@ button.chip-status:hover {
   inset-inline-end: calc(100% + 8px);
   translate: 0 -50%;
 }
-.dbar {
-  grid-area: dbar;
-  position: relative;
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  padding: 4px 8px;
-  border-bottom: 1px solid var(--line);
-  background: var(--bg-1);
-  min-height: 34px;
-}
-.dbar:empty {
-  display: none;
-}
 .dbar-date {
   all: unset;
   display: inline-flex;
@@ -1694,11 +1680,6 @@ button.chip-status:hover {
 }
 .dbar-date:focus-visible {
   outline: 2px solid var(--acc);
-}
-.dbar-count {
-  color: var(--fg-3);
-  font-size: var(--t-12);
-  margin-inline-start: 4px;
 }
 .dbar-pop {
   position: absolute;
@@ -1768,8 +1749,8 @@ button.chip-status:hover {
 .stage-panes.with-video[data-mode='split'] {
   grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) var(--dock-w);
 }
-.stage.docked .stbar {
-  inset-inline-end: calc(var(--dock-w) + 12px);
+.stage.docked .stage-rp {
+  inset-inline-end: calc(var(--dock-w) + var(--sp-5));
 }
 .pane {
   position: relative;
@@ -1994,34 +1975,14 @@ button.chip-status:hover {
   z-index: 4;
   text-shadow: 0 1px 2px oklch(0.1 0.01 250 / 0.9);
 }
-.stbar {
+/* the right panel's toggle at the stage's top right (D17); the island holds the tools */
+.stage-rp {
   position: absolute;
-  inset-inline-start: 12px;
-  inset-inline-end: 12px;
-  top: 12px;
+  top: var(--sp-5);
+  inset-inline-end: var(--sp-5);
+  z-index: var(--z-stage-ui);
   display: flex;
-  flex-wrap: nowrap;
-  align-items: center;
-  gap: 8px;
-  pointer-events: none;
-  z-index: 8;
-}
-.stbar > * {
-  pointer-events: auto;
-}
-.stbar-sp {
-  flex: 1;
-  pointer-events: none;
-}
-.overlay-seg {
-  background: var(--scrim);
-}
-/* on a narrow stage the view switch keeps to icons (names in the tooltips), so the tools,
-   the issue pin toggle among them, still fit one row at 1440 px with both side panels open */
-@container (max-width: 900px) {
-  .stbar .mode-l {
-    display: none;
-  }
+  padding: var(--sp-1);
 }
 .tool .tip.tip-end {
   inset-inline-start: auto;
@@ -2044,23 +2005,6 @@ svg.flip {
   border-inline-start: 3px solid transparent;
   border-bottom: 3px solid currentColor;
   opacity: 0.55;
-}
-
-/* overflow menu: groups that do not fit on the row, one per line */
-.ovf {
-  display: grid;
-  gap: 8px;
-}
-.ovf-row {
-  display: grid;
-  gap: 4px;
-}
-.ovf-h {
-  font-size: var(--t-11);
-  color: var(--fg-3);
-}
-.ovf-row .tgroup-h {
-  padding: 0;
 }
 
 /* under the toolbar: annotation tools, then the playing and cut-away status */
@@ -2231,12 +2175,6 @@ svg.flip {
 .stage-pop.wide {
   width: 300px;
 }
-.stbar > :last-child .stage-pop,
-.stbar > [data-group='video'] .stage-pop,
-.ovf-row .stage-pop {
-  inset-inline-start: auto;
-  inset-inline-end: -2px;
-}
 .pop-seg {
   display: flex;
 }
@@ -2358,10 +2296,6 @@ svg.flip {
 /* volumetric projects: a wider right panel for the pile register */
 .ws-vol {
   --rp-w: 400px;
-}
-.stbar .ann-toolbar.stage-ann {
-  border-radius: var(--r-4);
-  backdrop-filter: none;
 }
 /* the annotator's tools sit under the clip chip, clear of the telemetry chips */
 .vframe .ann-video .bar {
@@ -2519,53 +2453,6 @@ svg.flip {
 .tl-wrap {
   grid-area: tl;
   min-width: 0;
-}
-/* the timeline folded away: one thin bar that brings it back */
-.tl-bar {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  height: 28px;
-  padding: 0 8px;
-  background: var(--bg-1);
-  border-top: 1px solid var(--line-soft);
-  min-width: 0;
-}
-.tl-bar-btn {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  height: 22px;
-  padding: 0 6px 0 8px;
-  border-radius: var(--r-4);
-  font-size: var(--t-12);
-  color: var(--fg-1);
-}
-.tl-bar-btn:hover,
-.tl-bar-btn:focus-visible {
-  background: var(--bg-3);
-  color: var(--fg-0);
-}
-.tl-bar-note {
-  font-size: 11px;
-  color: var(--fg-3);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-/* the lane timeline folded away: the date stays reachable */
-.date-row {
-  position: relative;
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  height: 32px;
-  padding: 0 8px;
-  background: var(--bg-1);
-  border-top: 1px solid var(--line-soft);
-}
-.date-row .sp {
-  flex: 1;
 }
 
 /* right panel */

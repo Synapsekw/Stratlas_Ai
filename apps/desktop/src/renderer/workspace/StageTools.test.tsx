@@ -5,7 +5,8 @@ import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { cleanup } from '../pointcloud/cleanupStore';
-import { CloudTools, ViewTools } from './StageTools';
+import { CloudTools } from './tools/cloud';
+import { ViewTools } from './tools/view';
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 let host: HTMLDivElement;

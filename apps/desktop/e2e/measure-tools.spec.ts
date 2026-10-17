@@ -9,6 +9,7 @@ import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { expectAccessible } from './a11y';
 import { expect, openProject, test } from './fixtures';
+import { islandGroup } from './island';
 
 interface Saved {
   schema: string;
@@ -32,6 +33,7 @@ async function openTiny(win: Page): Promise<string> {
 }
 
 async function pickTool(win: Page, testId: string) {
+  await islandGroup(win, 'measure');
   await win.getByRole('button', { name: 'Survey measurements' }).click();
   await win.getByTestId(testId).click();
   await expect(win.getByTestId('survey-drawbar')).toBeVisible();

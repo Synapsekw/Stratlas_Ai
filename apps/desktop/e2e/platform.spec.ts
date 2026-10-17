@@ -3,6 +3,7 @@ import { readdir, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { pmtilesFile } from '../src/main/testing';
 import { expect, test } from './fixtures';
+import { stageMode } from './island';
 
 /** The next native open dialog answers with `path`. */
 async function answerOpenDialog(app: ElectronApplication, path: string): Promise<void> {
@@ -109,7 +110,7 @@ test('street maps stay dark in the light theme: coverage map and Map view', asyn
   // The Map view of a project: the street style, its surface and its controls are dark.
   await win.locator('.nav-item', { hasText: 'Projects' }).click();
   await win.getByTestId('project-card').filter({ hasText: 'E2E tiny project' }).click();
-  await win.getByRole('button', { name: 'Map', exact: true }).first().click();
+  await stageMode(win, 'Map');
   await expect.poll(() => streetMap(win, '.pane-map').then((m) => m?.name)).toBe('Mission dark');
   await expect
     .poll(() => streetMap(win, '.pane-map').then((m) => m?.controls ?? null))

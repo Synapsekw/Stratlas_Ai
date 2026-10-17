@@ -93,18 +93,18 @@ export function IslandTools({
       <div className="isl-r1" data-isl-row="">
         <div className="seg isl-modes" role="group" aria-label={t('island.stageView')}>
           {MODES.map((m) => (
-            <Tip key={m.mode} content={m.label} shortcut={MODE_KEY[m.mode]} repeatsName>
+            <Tip key={m.mode} content={t(m.label)} shortcut={MODE_KEY[m.mode]} repeatsName>
               <button
                 type="button"
                 aria-pressed={mode === m.mode}
                 aria-keyshortcuts={m.keys}
-                aria-label={m.label}
+                aria-label={t(m.label)}
                 onClick={() => {
                   shell.getState().setStageMode(m.mode);
                 }}
               >
                 <Icon name={m.icon} size={14} />
-                <span className="isl-ml">{m.label}</span>
+                <span className="isl-ml">{t(m.label)}</span>
               </button>
             </Tip>
           ))}

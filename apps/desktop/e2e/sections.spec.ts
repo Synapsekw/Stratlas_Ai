@@ -11,6 +11,7 @@ import { join } from 'node:path';
 import { expectAccessible } from './a11y';
 import { expect, hasPipelinePython, PIPELINE_ENV, test, VENV_PYTHON } from './fixtures';
 import { openDemo, prepareSurveys } from './surveyJobs';
+import { islandGroup } from './island';
 
 test.use({ appEnv: PIPELINE_ENV });
 test.skip(!hasPipelinePython(), `no Python with aio_pipelines at ${VENV_PYTHON}`);
@@ -46,6 +47,7 @@ test('a section across the pad: two surveys and the design, a pin, 1:4, the wind
 
   // the tool is on the toolbar
   await openDemo(win, earthworksProject.name, earthworksProject.id);
+  await islandGroup(win, 'measure');
   await win.getByRole('button', { name: 'Survey measurements' }).click();
   await expect(win.getByTestId('survey-tool-section')).toBeVisible();
   await win.getByTestId('survey-list-open').click();

@@ -9,6 +9,7 @@ import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { expectAccessible } from './a11y';
 import { expect, openProject, test } from './fixtures';
+import { islandGroup } from './island';
 
 async function openTiny(win: Page): Promise<string> {
   await win.getByTestId('project-card').filter({ hasText: 'E2E tiny project' }).first().click();
@@ -23,6 +24,7 @@ const readJson = async <T>(path: string): Promise<T> =>
 test.describe('measurement templates', () => {
   test('a custom template with a dropdown field, bookmarked and used twice', async ({ win }) => {
     const root = await openTiny(win);
+    await islandGroup(win, 'measure');
     await win.getByRole('button', { name: 'Survey measurements' }).click();
     await win.getByTestId('survey-templates-open').click();
     const dlg = win.getByTestId('survey-templates');
@@ -56,6 +58,7 @@ test.describe('measurement templates', () => {
     });
 
     // the bookmark is on the toolbar: draw two pads with it
+    await islandGroup(win, 'measure');
     await win.getByRole('button', { name: 'Survey measurements' }).click();
     await win.getByTestId('survey-bookmark-pad-check').click();
     await expect(win.getByTestId('survey-drawbar')).toContainText('Pad check');

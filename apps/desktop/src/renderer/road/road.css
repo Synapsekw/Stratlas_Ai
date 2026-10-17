@@ -5,8 +5,8 @@
 .stage-panes.with-dock[data-mode='split'] {
   grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) var(--dock-w);
 }
-.stage:has(.with-dock) .stbar {
-  right: calc(var(--dock-w) + 12px);
+.stage:has(.with-dock) .stage-rp {
+  inset-inline-end: calc(var(--dock-w) + var(--sp-5));
 }
 .rr-sp {
   flex: 1;

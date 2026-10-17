@@ -12,6 +12,7 @@ import { readdir, readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { expect, hasPipelinePython, openProject, PIPELINE_ENV, test } from './fixtures';
 import type { SurveyDemoProject } from './surveyFixtures';
+import { islandGroup } from './island';
 
 test.use({ appEnv: PIPELINE_ENV });
 test.setTimeout(300_000);
@@ -25,11 +26,11 @@ async function open(win: Page, p: SurveyDemoProject): Promise<void> {
 
 /**
  * The Haul road button is in the Survey measurements popover (Site data), whose tool sits on the
- * toolbar, or under More tools when the toolbar is narrow.
+ * toolbar, or in the island's Measure group.
  */
 async function openHaulRoad(win: Page): Promise<void> {
   const survey = win.getByRole('button', { name: 'Survey measurements', exact: true });
-  if (!(await survey.isVisible())) await win.getByRole('button', { name: 'More tools' }).click();
+  if (!(await survey.isVisible())) await islandGroup(win, 'measure');
   await survey.click();
   await win.getByRole('button', { name: 'Haul road', exact: true }).click();
   await expect(win.getByTestId('haul-panel')).toBeVisible();

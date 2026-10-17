@@ -12,6 +12,7 @@ import {
   VENV_PYTHON,
 } from './fixtures';
 import { ODM_FAKE_DIR, odmEnv } from './photoPack';
+import { stageMode } from './island';
 
 /**
  * Photogrammetry products (M10 G3) on G3's synthetic aligned project (python/tests/products_synth.py:
@@ -141,7 +142,7 @@ photoTest(
     expect(layers.find((l) => l.id === `${run}-mesh`)?.kind).toBe('mesh');
 
     // 4. The ortho is drawn on the map (its pyramid's coarse tiles as image layers).
-    await win.getByRole('button', { name: 'Map', exact: true }).first().click();
+    await stageMode(win, 'Map');
     await expect(win.locator('.stage')).toHaveAttribute('data-mode', 'map');
     await expect
       .poll(

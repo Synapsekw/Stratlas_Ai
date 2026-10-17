@@ -1,11 +1,19 @@
+/** Keys typed into a field belong to the field: shortcuts must leave them alone. */
+export function isTypingTarget(target: EventTarget | null): boolean {
+  if (!(target instanceof HTMLElement)) return false;
+  // the attribute too: not every DOM (jsdom) implements isContentEditable
+  if (
+    target.isContentEditable ||
+    target.closest('[contenteditable]:not([contenteditable="false"])')
+  )
+    return true;
+  return ['INPUT', 'TEXTAREA', 'SELECT'].includes(target.tagName);
+}
+
 /** True when a key press belongs to a text field, an editable element or an open dialog. */
 export function isTyping(target: EventTarget | null): boolean {
   if (!(target instanceof HTMLElement)) return false;
-  return (
-    target.isContentEditable ||
-    ['INPUT', 'TEXTAREA', 'SELECT'].includes(target.tagName) ||
-    target.closest('[role="dialog"]') !== null
-  );
+  return isTypingTarget(target) || target.closest('[role="dialog"]') !== null;
 }
 
 /**

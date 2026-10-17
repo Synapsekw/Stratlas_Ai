@@ -320,6 +320,24 @@
   pointer-events: auto;
 }
 
+/* the one-time notice under the island: T opens the tools, the timeline is in View */
+.isl-notice {
+  position: absolute;
+  top: calc(100% + var(--sp-3));
+  inset-inline: 0;
+  margin: 0 auto;
+  inline-size: max-content;
+  max-inline-size: 100%;
+  padding: var(--sp-2) var(--sp-4);
+  border-radius: var(--r-pill);
+  background: var(--isl-bg);
+  border: 1px solid var(--line);
+  box-shadow: var(--el-2);
+  color: var(--fg-1);
+  font-size: var(--t-12);
+  pointer-events: none;
+}
+
 /* ---------------------------------------------------------------- tools */
 
 .isl-tools {
@@ -466,7 +484,15 @@
 
 /* narrow stages: the group tabs drop their names, the shown one keeps it (D6) */
 @container (max-width: 760px) {
-  .seg.isl-groups button:not([aria-selected='true']) .isl-gl,
+  /* out of sight, still the tab's name */
+  .seg.isl-groups button:not([aria-selected='true']) .isl-gl {
+    position: absolute;
+    inline-size: 1px;
+    block-size: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
   .isl-ml {
     display: none;
   }

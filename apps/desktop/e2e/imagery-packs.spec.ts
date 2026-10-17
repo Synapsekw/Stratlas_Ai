@@ -11,6 +11,7 @@ import { execFileSync } from 'node:child_process';
 import { readdir, readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { expect, hasPipelinePython, PIPELINE_ENV, test, VENV_PYTHON } from './fixtures';
+import { stageMode } from './island';
 
 test.use({ appEnv: PIPELINE_ENV });
 test.setTimeout(180_000);
@@ -102,7 +103,7 @@ test('imports a GeoTIFF as an imagery pack and shows it on the Satellite map', a
   // the project's Map: the pack under the streets, credited
   await win.locator('.nav-item', { hasText: 'Projects' }).click();
   await win.getByTestId('project-card').filter({ hasText: 'E2E tiny project' }).click();
-  await win.getByRole('button', { name: 'Map', exact: true }).first().click();
+  await stageMode(win, 'Map');
   await expect
     .poll(async () => (await mainMap(win))?.sources['g7-raster-imagery-site-ortho'], {
       timeout: 30_000,

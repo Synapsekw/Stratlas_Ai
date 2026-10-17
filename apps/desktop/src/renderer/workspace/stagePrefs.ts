@@ -96,3 +96,24 @@ export const stagePrefs = createStagePrefStore();
 export function useStagePrefs<T>(selector: (s: StagePrefState) => T): T {
   return useStore(stagePrefs, selector);
 }
+
+/** The one-time notice that T opens the tools now (the timeline moved to View): on this computer. */
+const T_NOTICE_KEY = 'stratlas.tNoticeSeen';
+/** Without storage, once in this run. */
+let tNoticeShown = false;
+
+/** True the first time it is asked on this computer, false after. */
+export function takeTNotice(storage: Storage | null = browserStorage()): boolean {
+  try {
+    if (storage) {
+      if (storage.getItem(T_NOTICE_KEY)) return false;
+      storage.setItem(T_NOTICE_KEY, '1');
+      return true;
+    }
+  } catch {
+    // blocked storage: once in this run
+  }
+  if (tNoticeShown) return false;
+  tNoticeShown = true;
+  return true;
+}

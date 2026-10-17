@@ -26,6 +26,7 @@ import {
 } from './fixtures';
 import { prepareSurveys } from './surveyJobs';
 import type { SurveyDemoProject } from './surveyFixtures';
+import { islandGroup } from './island';
 
 const REPO = join(import.meta.dirname, '..', '..', '..');
 
@@ -67,7 +68,7 @@ async function openDemo(win: Page, p: SurveyDemoProject) {
 /** The Survey measurements popover (on the toolbar, or under More tools when it is narrow). */
 async function openSurveyTools(win: Page) {
   const survey = win.getByRole('button', { name: 'Survey measurements', exact: true });
-  if (!(await survey.isVisible())) await win.getByRole('button', { name: 'More tools' }).click();
+  if (!(await survey.isVisible())) await islandGroup(win, 'measure');
   await survey.click();
   await expect(win.getByTestId('survey-tools')).toBeVisible();
 }

@@ -15,6 +15,7 @@ import { join } from 'node:path';
 import { expectAccessible } from './a11y';
 import { expect, hasPipelinePython, openProject, PIPELINE_ENV, test } from './fixtures';
 import type { SurveyDemoProject } from './surveyFixtures';
+import { islandGroup } from './island';
 
 test.use({ appEnv: PIPELINE_ENV });
 
@@ -29,6 +30,7 @@ async function open(win: Page, p: SurveyDemoProject): Promise<void> {
 }
 
 async function openList(win: Page): Promise<void> {
+  await islandGroup(win, 'measure');
   await win.getByRole('button', { name: 'Survey measurements' }).click();
   await win.getByTestId('survey-list-open').click();
   await expect(win.getByTestId('survey-list')).toBeVisible();
@@ -263,6 +265,7 @@ test.describe('volumes and comparisons', () => {
     await settled(panel, 1);
     const before = (await readMeasurements(dir)).measurements.length;
 
+    await islandGroup(win, 'measure');
     await win.getByRole('button', { name: 'Survey measurements' }).click();
     await win.getByTestId('survey-site-open').click();
     const dlg = win.getByTestId('survey-site');

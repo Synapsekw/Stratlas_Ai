@@ -46,7 +46,7 @@ import { createClass, createSeverityModel } from './classes/store';
 import { detections, loadDetections } from './detections/store';
 import { roadStore, startRoadSync } from './road/store';
 import { Toasts } from './exports/Toasts';
-import { spaceIsPlayPause } from './keys';
+import { isTypingTarget, spaceIsPlayPause } from './keys';
 import {
   finishedChangeJob,
   finishedIssuesJob,
@@ -69,7 +69,6 @@ import { SyncHost } from './team/SyncStatus';
 import { applyAppearance, OS_QUERIES } from './theme';
 import { HelpPanel } from './help/HelpPanel';
 import { help } from './help/store';
-import { isTypingTarget } from './workspace/DateBar';
 import { timeline, useTimelineSync } from './workspace/timeline';
 import { connectVolumeDates } from './workspace/volumeDates';
 import { WorkspaceScreen } from './workspace/WorkspaceScreen';

@@ -19,6 +19,7 @@ import {
   recipeOf,
   writeNoisyProject,
 } from './cleanupHelpers';
+import { islandGroup } from './island';
 
 test.use({ appEnv: PIPELINE_ENV });
 test.skip(!hasPipelinePython(), 'no pipeline Python (uv sync in python/, or QUADRION_E2E_PYTHON)');
@@ -117,6 +118,7 @@ test('lasso delete and clip box, saved as a copy and exported with the same poin
     out.replace(/\\/g, '/'),
   );
   // Export survey data as survey-export.spec.ts opens it (Survey measurements, Site data)
+  await islandGroup(win, 'measure');
   await win.getByRole('button', { name: 'Survey measurements' }).click();
   await win.getByTestId('survey-export-open').click();
   const dlg = win.getByTestId('survey-export-dialog');

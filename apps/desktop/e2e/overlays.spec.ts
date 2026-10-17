@@ -11,6 +11,7 @@ import { join } from 'node:path';
 import { expectAccessible } from './a11y';
 import { expect, hasPipelinePython, PIPELINE_ENV, test, VENV_PYTHON } from './fixtures';
 import { openDemo, prepareSurveys } from './surveyJobs';
+import { islandGroup, stageMode } from './island';
 
 test.use({ appEnv: PIPELINE_ENV });
 test.skip(!hasPipelinePython(), `no Python with aio_pipelines at ${VENV_PYTHON}`);
@@ -47,6 +48,7 @@ test('contours and a gradient in degrees are made, listed and shown on the map',
   await prepareSurveys(win, root);
   await openDemo(win, earthworksProject.name, earthworksProject.id);
 
+  await islandGroup(win, 'measure');
   await win.getByRole('button', { name: 'Survey measurements' }).click();
   await win.getByTestId('survey-overlays-open').click();
   const panel = win.getByTestId('overlays-panel');
@@ -93,7 +95,7 @@ test('contours and a gradient in degrees are made, listed and shown on the map',
 
   // shown on the map: the contour lines and the gradient's tiles
   await panel.getByRole('button', { name: 'Close the overlays' }).click();
-  await win.getByRole('button', { name: 'Map', exact: true }).first().click();
+  await stageMode(win, 'Map');
   await expect
     .poll(() => overlayLayers(win), { timeout: 60_000 })
     .toEqual(
@@ -101,6 +103,7 @@ test('contours and a gradient in degrees are made, listed and shown on the map',
     );
 
   // hiding the gradient takes it off the map and is saved
+  await islandGroup(win, 'measure');
   await win.getByRole('button', { name: 'Survey measurements' }).click();
   await win.getByTestId('survey-overlays-open').click();
   // the box follows the saved list, so it clears once the save is done

@@ -43,7 +43,7 @@ git worktree add ../quadrion-wt/s3-engine -b stream/s3-engine
 
 CI runs the end to end specs under conditions a workstation does not have by default, so a spec can pass locally and fail on every CI run:
 
-- **A small window, at display scale 1.** CI asks for no window size (`.github/workflows/ci.yml` sets no `QUADRION_WINDOW_SIZE`). The app asks for its default, 1440 x 900, and the runner's 1024 x 768 screen cuts that down: the width to the app's minimum, 1100, and the height to what the screen has left above the taskbar, about 720 (`src/main/windowMode.ts`). That is not the smallest window, 1100 x 700. The exact size is in the log of every e2e job, in a line the fixtures print with the first window: `[e2e] window 1100 x 720 px at display scale 1`. At that width the stage toolbar folds groups into **More tools** (`COLLAPSE_ORDER` in `workspace/toolbarFit.ts`), panels are narrower and popovers have less room.
+- **A small window, at display scale 1.** CI asks for no window size (`.github/workflows/ci.yml` sets no `QUADRION_WINDOW_SIZE`). The app asks for its default, 1440 x 900, and the runner's 1024 x 768 screen cuts that down: the width to the app's minimum, 1100, and the height to what the screen has left above the taskbar, about 720 (`src/main/windowMode.ts`). That is not the smallest window, 1100 x 700. The exact size is in the log of every e2e job, in a line the fixtures print with the first window: `[e2e] window 1100 x 720 px at display scale 1`. At that width the stage island's group tabs drop their names to icons (`workspace/island/island.css`), panels are narrower and popovers have less room.
 - **A screen at 100 %.** A workstation's screen may be at 150 or 200 %. A CSS pixel is then more than one device pixel and positions round differently: a row that lies a fraction of a pixel across an edge passes a "fully in view" check on one and fails it on the other, in a window of the same size.
 - **A software renderer, WARP.** The runners have no GPU, and Chromium falls back to D3D11 WARP (the e2e log names the "Microsoft Basic Render Driver"). WARP holds the renderer far longer than SwiftShader while the Globe streams tiles, so a spec that passes on SwiftShader can still run out of time on CI.
 - **Every demo built.** CI runs `pnpm demo:build --quick` before the specs, not only the change demo.
@@ -61,7 +61,7 @@ In PowerShell, set `$env:QUADRION_WINDOW_SIZE = '1100x720'`, `$env:QUADRION_E2E_
 
 Write specs so they hold at that size:
 
-- Open a stage tool from the bar, or from **More tools** when it is folded there (`environment.spec.ts`, `designs.spec.ts` and `haul.spec.ts` show how).
+- Open a stage tool through the island, with the helpers in `e2e/island.ts` (`islandGroup`, `stageMode`; `designs.spec.ts` and `haul.spec.ts` show how).
 - Click the 3D, Map or Split switch inside the "Stage tools" toolbar, not the first button named "3D" on the page, and wait for its pressed state.
 - Wait for the scene canvas before looking for a tool that only the 3D view has.
 - A new floating control must not cover the view: assert with `document.elementFromPoint` that clicks on the view reach it, in the smallest window, 1100 x 700, as well.

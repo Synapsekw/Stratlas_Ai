@@ -19,7 +19,8 @@ import { useWorkspace, workspace } from '@aio/workspace';
 import { useReducer, type ReactNode } from 'react';
 import { openCleanupPanel } from '../../pointcloud/cleanupActions';
 import { cleanup, useCleanup } from '../../pointcloud/cleanupStore';
-import { RoadToolGroup, toggleMeasure } from '../../road/RoadTools';
+import { RoadToolGroup, toggleMeasure as toggleRoadMeasure } from '../../road/RoadTools';
+import { useIsRoad } from '../../road/useRoadMap';
 import { setRoad, useRoad } from '../../road/store';
 import { shell, useShell } from '../../shell';
 import { PANEL_ID } from '../../shell/PanelHandle';
@@ -29,30 +30,26 @@ import { startTool, stopTool, useMeasure } from '../../survey/measureStore';
 import type { CompareDates } from '../CompareControls';
 import { PATH_MODES, setPathMode } from '../flightPaths';
 import { updateFlightPaths, useFlightPathModel } from '../pathModel';
-import {
-  AnnotateToggle,
-  CloudTools,
-  DisplayTools,
-  LABEL_MODES,
-  MeasureTools,
-  toggleSection,
-  VideoTools,
-  ViewTools,
-} from '../StageTools';
 import { siteBasemap, streetMapTool } from '../siteBasemap';
 import { StreetMapTool } from '../StreetMapTool';
 import { useStreetMap3d } from '../streetMap3d';
 import { toggleTelemetry, useTelemetryOn } from '../telemetryPref';
 import { toggleTimeline, useTimelineShown } from '../timelinePref';
 import { insideView } from '../useCutaway';
+import { AnnotateToggle } from '../tools/annotate';
+import { CloudTools } from '../tools/cloud';
+import { DisplayTools, LABEL_MODES } from '../tools/display';
+import { MeasureTools, toggleMeasure, toggleSection } from '../tools/measure';
+import { VideoTools } from '../tools/video';
+import { ViewTools } from '../tools/view';
 import { VolumeTools } from '../VolumeTools';
 import type { GroupId } from './islandModel';
 
 /** The stage views, keys 1, 2 and 3. */
-export const MODES: { mode: StageMode; label: string; icon: IconName; keys: string }[] = [
-  { mode: '3d', label: '3D', icon: 'scene', keys: '1' },
-  { mode: 'map', label: 'Map', icon: 'map', keys: '2' },
-  { mode: 'split', label: 'Split', icon: 'split', keys: '3' },
+export const MODES: { mode: StageMode; label: MessageKey; icon: IconName; keys: string }[] = [
+  { mode: '3d', label: 'island.mode.3d', icon: 'scene', keys: '1' },
+  { mode: 'map', label: 'island.mode.map', icon: 'map', keys: '2' },
+  { mode: 'split', label: 'island.mode.split', icon: 'split', keys: '3' },
 ];
 
 /** The group tabs' short names. */
@@ -271,6 +268,8 @@ function ViewRow({ ctx }: { ctx: GroupCtx }) {
   const selection = useWorkspace((s) => s.selection);
   const project = useWorkspace((s) => s.project);
   const timelineOn = useTimelineShown(project);
+  // a road has the chainage ruler, not the timeline
+  const road = useIsRoad();
   const rightCollapsed = useShell((s) => s.rightCollapsed);
   return (
     <>
@@ -335,15 +334,19 @@ function ViewRow({ ctx }: { ctx: GroupCtx }) {
           }}
         />
       )}
-      <Tile
-        icon="track"
-        label={t('island.timeline')}
-        pressed={timelineOn}
-        disabled={!project}
-        onClick={() => {
-          toggleTimeline(workspace.getState().project);
-        }}
-      />
+      {!road && (
+        <Tile
+          icon="track"
+          label={t('island.timeline')}
+          name={timelineOn ? t('timeline.hide') : t('timeline.show')}
+          pressed={timelineOn}
+          disabled={!project}
+          testId="timeline-toggle"
+          onClick={() => {
+            toggleTimeline(workspace.getState().project);
+          }}
+        />
+      )}
       <Tile
         icon="agent"
         label={t('island.tile.askAgent')}
@@ -356,7 +359,8 @@ function ViewRow({ ctx }: { ctx: GroupCtx }) {
         icon="sidebar"
         flip
         label={t('island.toRightPanel')}
-        name={rightCollapsed ? t('island.tile.showRight') : t('island.tile.hideRight')}
+        // the stage's own toggle at its top right keeps the Show / Hide names (one control each)
+        name={t('island.toRightPanel')}
         shortcut="global.rightPanel"
         pressed={!rightCollapsed}
         onClick={shell.getState().toggleRight}
@@ -394,7 +398,9 @@ function MeasureRow({ ctx }: { ctx: GroupCtx }) {
           shortcut="scene.measure"
           pressed={quick}
           disabled={!stage}
-          onClick={() => stage?.setTool(quick ? 'select' : 'measure')}
+          onClick={() => {
+            if (stage) toggleMeasure(stage);
+          }}
         />
       ) : (
         survey && (
@@ -716,7 +722,7 @@ function RoadRow({ ctx }: { ctx: GroupCtx }) {
         shortcut="road.measure"
         pressed={measuring}
         onClick={() => {
-          toggleMeasure();
+          toggleRoadMeasure();
         }}
       />
       <AllTools g="road" ctx={ctx} />

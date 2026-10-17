@@ -14,6 +14,7 @@ import { readdir, readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { expect, hasPipelinePython, openProject, PIPELINE_ENV, test } from './fixtures';
 import type { SurveyDemoProject } from './surveyFixtures';
+import { islandGroup } from './island';
 
 test.use({ appEnv: PIPELINE_ENV });
 
@@ -62,10 +63,10 @@ async function saved(win: Page, dir: string, id: string) {
   return { m, result };
 }
 
-/** The Designs panel, in the Survey measurements popover (or under More tools). */
+/** The Designs panel, in the Survey measurements popover (in the island's Measure group). */
 async function openDesigns(win: Page): Promise<Locator> {
   const survey = win.getByRole('button', { name: 'Survey measurements', exact: true });
-  if (!(await survey.isVisible())) await win.getByRole('button', { name: 'More tools' }).click();
+  if (!(await survey.isVisible())) await islandGroup(win, 'measure');
   await survey.click();
   await win.getByRole('button', { name: 'Designs', exact: true }).click();
   const panel = win.getByTestId('designs-panel');
@@ -89,6 +90,7 @@ test('compliance presets compute cut/fill and remaining to the pad design, with 
   test.setTimeout(480_000);
   const dir = earthworksProject.dir;
   await open(win, earthworksProject);
+  await islandGroup(win, 'measure');
   await win.getByRole('button', { name: 'Survey measurements' }).click();
   await win.getByTestId('survey-list-open').click();
   await expect(win.getByTestId('survey-list')).toBeVisible();

@@ -14,6 +14,7 @@ import { join } from 'node:path';
 import { expectAccessible } from './a11y';
 import { expect, hasPipelinePython, openProject, PIPELINE_ENV, test } from './fixtures';
 import type { SurveyDemoProject } from './surveyFixtures';
+import { islandGroup } from './island';
 
 test.use({ appEnv: PIPELINE_ENV });
 
@@ -43,6 +44,7 @@ test('site materials from CSV, a material on a measurement, and the weight calcu
   await open(win, landfillProject);
 
   // the site list: one material from the demo, the CSV replaces it and adds one
+  await islandGroup(win, 'measure');
   await win.getByRole('button', { name: 'Survey measurements' }).click();
   await win.getByTestId('survey-materials-tool').click();
   const dlg = win.getByTestId('survey-materials');
@@ -72,6 +74,7 @@ test('site materials from CSV, a material on a measurement, and the weight calcu
   ]);
 
   // the lift: prepare the surveys, then compute previous to current
+  await islandGroup(win, 'measure');
   await win.getByRole('button', { name: 'Survey measurements' }).click();
   await win.getByTestId('survey-list-open').click();
   await win
