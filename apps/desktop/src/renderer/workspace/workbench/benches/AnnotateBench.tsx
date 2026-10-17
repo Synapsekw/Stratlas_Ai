@@ -4,12 +4,11 @@
  * here now. Starting annotating (A, or the island) opens this tab as a live tool tab, and closing
  * the tools closes it again (D13).
  */
-import { AnnotationToolbar, annotateUi, type MapDraw } from '@aio/annotate';
+import { AnnotationToolbar, type MapDraw } from '@aio/annotate';
 import type { MapDrawMode } from '@aio/maps';
-import { Button, EmptyState, isShortcut, Row, useT } from '@aio/ui';
+import { Button, EmptyState, Row, useT } from '@aio/ui';
 import { useWorkspace, workspace } from '@aio/workspace';
 import { useEffect, useRef } from 'react';
-import { isTyping } from '../../../keys';
 import { shell, useShell } from '../../../shell';
 import { primaryScene } from '../../compare';
 import { Section } from '../Section';
@@ -40,26 +39,12 @@ export function useAnnotateFollow(): void {
   }, [annotating]);
 }
 
-/** Point, line and area drawing on the map; Enter and Backspace finish and undo, Esc stops. */
+/**
+ * Point, line and area drawing on the map: the buttons only. Enter and Backspace (finish, undo)
+ * and Esc (stop) are the stage's (annotateStage.ts), so they work whichever tab is in front.
+ */
 export function MapDrawTools({ draw }: { draw: MapDraw }) {
-  const { mode, finish, undo, cancel, setMode } = draw;
-  useEffect(() => {
-    if (!mode) return;
-    const onKey = (e: KeyboardEvent) => {
-      if (isTyping(e.target) || annotateUi.getState().pending) return;
-      if (isShortcut('scene.drawFinish', e)) finish();
-      else if (isShortcut('scene.drawUndo', e)) undo();
-      else if (isShortcut('scene.escape', e)) {
-        cancel();
-        setMode(null);
-      } else return;
-      e.preventDefault();
-    };
-    window.addEventListener('keydown', onKey);
-    return () => {
-      window.removeEventListener('keydown', onKey);
-    };
-  }, [mode, finish, undo, cancel, setMode]);
+  const { mode, setMode } = draw;
   return (
     <div className="ann-toolbar stage-ann" role="toolbar" aria-label="Map annotation tools">
       {MAP_MODES.map((m) => (

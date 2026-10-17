@@ -2,11 +2,20 @@
  * What the Annotate workbench needs of the stage: which views the stage shows, and the map
  * drawing the stage owns (the map's click seam draws from it). The stage publishes both; the
  * bench reads them. The functions the bench calls go to the stage's latest drawing, so they stay
- * the same however often the stage draws again.
+ * the same however often the stage draws again. The tools' lifetimes are the stage's too: the 3D
+ * tool runs and the map drawing's keys listen here, whichever tab is in front.
  */
-import { beginSighting, startSceneTool, type MapDraw, type SceneTool } from '@aio/annotate';
+import {
+  annotateUi,
+  beginSighting,
+  startSceneTool,
+  type MapDraw,
+  type SceneTool,
+} from '@aio/annotate';
 import { getActiveScene, onActiveScene } from '@aio/engine';
+import { isShortcut } from '@aio/ui';
 import { useEffect, useSyncExternalStore } from 'react';
+import { isTyping } from '../../../keys';
 import { useShell } from '../../../shell';
 import { useStore } from 'zustand';
 import { createStore } from 'zustand/vanilla';
@@ -88,12 +97,39 @@ export function useAnnotateStageBridge(draw: MapDraw, show3d: boolean, showMap: 
     annotateStage.setState({ show3d, showMap });
   }, [show3d, showMap]);
   useSceneToolRunner(show3d);
+  useMapDrawKeys(draw);
   useEffect(
     () => () => {
       annotateStage.getState().clear();
     },
     [],
   );
+}
+
+/**
+ * The map drawing's keys while a map mode is on: Enter finishes, Backspace undoes, Esc stops. On
+ * the stage, not in the bench, so they keep working with another tab in front (and are installed
+ * once, however many benches show the tools).
+ */
+function useMapDrawKeys(draw: MapDraw): void {
+  const { mode, finish, undo, cancel, setMode } = draw;
+  useEffect(() => {
+    if (!mode) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (isTyping(e.target) || annotateUi.getState().pending) return;
+      if (isShortcut('scene.drawFinish', e)) finish();
+      else if (isShortcut('scene.drawUndo', e)) undo();
+      else if (isShortcut('scene.escape', e)) {
+        cancel();
+        setMode(null);
+      } else return;
+      e.preventDefault();
+    };
+    window.addEventListener('keydown', onKey);
+    return () => {
+      window.removeEventListener('keydown', onKey);
+    };
+  }, [mode, finish, undo, cancel, setMode]);
 }
 
 /**

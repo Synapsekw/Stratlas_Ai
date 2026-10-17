@@ -13,6 +13,7 @@ import { AnnotateBench, useAnnotateFollow } from './AnnotateBench';
 import { annotateStage, useAnnotateStageBridge } from './annotateStage';
 import type * as SceneModule from '../../../../../../../packages/annotate/src/tools/scene';
 import type * as EngineModule from '@aio/engine';
+import type { MapDraw } from '@aio/annotate';
 
 // the 3D view's workspace is the plain one here
 vi.mock('../../compare', async () => ({
@@ -69,15 +70,15 @@ const draw = {
   onClick: vi.fn(),
 };
 let views = { show3d: true, showMap: false };
-function Probe({ bench }: { bench: boolean }) {
-  useAnnotateStageBridge(draw, views.show3d, views.showMap);
+function Probe({ bench, mapDraw = draw }: { bench: boolean; mapDraw?: MapDraw }) {
+  useAnnotateStageBridge(mapDraw, views.show3d, views.showMap);
   useAnnotateFollow();
   useStageKeys(null);
   return bench ? <AnnotateBench /> : null;
 }
-const render = (bench = true) => {
+const render = (bench = true, mapDraw: MapDraw = draw) => {
   root ??= createRoot(host);
-  act(() => root?.render(<Probe bench={bench} />));
+  act(() => root?.render(<Probe bench={bench} mapDraw={mapDraw} />));
 };
 const press = (key: string) => {
   act(() => {
@@ -185,6 +186,46 @@ describe('the 3D tool outlives the bench', () => {
     });
     expect(stopTool).toHaveBeenCalled();
     expect(annotateStage.getState().tool).toBeNull();
+  });
+});
+
+describe('the map drawing keys outlive the bench', () => {
+  const drawing = (): MapDraw => ({ ...draw, mode: 'line', state: null });
+  beforeEach(() => {
+    vi.clearAllMocks();
+    views = { show3d: false, showMap: true };
+    act(() => {
+      shell.getState().setAnnotating(true);
+    });
+  });
+
+  it('finishes, undoes and cancels a map line while another tab is in front', () => {
+    const line = drawing();
+    act(() => {
+      workbench.getState().show('issues');
+    });
+    render(false, line);
+    press('Backspace');
+    expect(line.undo).toHaveBeenCalledTimes(1);
+    press('Enter');
+    expect(line.finish).toHaveBeenCalledTimes(1);
+    press('Escape');
+    expect(line.cancel).toHaveBeenCalledTimes(1);
+    expect(line.setMode).toHaveBeenCalledWith(null);
+  });
+
+  it('finishes once on one Enter with the bench in front too', () => {
+    const line = drawing();
+    render(true, line);
+    expect(host.querySelector('[aria-label="Map annotation tools"]')).not.toBeNull();
+    press('Enter');
+    expect(line.finish).toHaveBeenCalledTimes(1);
+  });
+
+  it('leaves the keys alone with no map drawing', () => {
+    render(false);
+    press('Enter');
+    expect(draw.finish).not.toHaveBeenCalled();
   });
 });
 
