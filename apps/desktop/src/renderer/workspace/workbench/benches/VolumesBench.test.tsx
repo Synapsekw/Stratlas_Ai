@@ -41,8 +41,8 @@ beforeEach(() => {
     body: 'lift',
     file: {
       captures: [
-        { epoch: 'e1', label: 'Jan 2026' },
-        { epoch: 'e2', label: 'Feb 2026' },
+        { epoch: 'e1', date: '2026-01-12', label: '12 Jan 2026' },
+        { epoch: 'e2', date: '2026-02-09', label: '9 Feb 2026' },
       ],
     } as never,
   });
@@ -66,7 +66,7 @@ describe('VolumesBench', () => {
           .querySelector(`[role="group"][aria-label="${label}"]`)
           ?.querySelectorAll('button') ?? []),
       ].map((b) => b.textContent);
-    expect(names('Survey date')).toEqual(['Jan', 'Feb', 'Swipe']);
+    expect(names('Survey date')).toEqual(['12 Jan', '9 Feb', 'Swipe']);
     expect(names('Surface colours')).toEqual(['Photo', 'Elevation', 'Cut / fill']);
     expect(names('Volume bodies')).toEqual(['Lifted', 'In place', 'Hidden']);
     expect(button('Section line between the surveys')).toBeDefined();
@@ -83,7 +83,7 @@ describe('VolumesBench', () => {
     click(button('Cut / fill'));
     expect(volumetric.getState().surface).toBe('change');
     expect(button('Cut / fill')?.getAttribute('aria-pressed')).toBe('true');
-    click(button('Feb'));
+    click(button('9 Feb'));
     expect(volumetric.getState().surface).toBe('photo');
     expect(volumetric.getState().epoch).toBe('e2');
   });
