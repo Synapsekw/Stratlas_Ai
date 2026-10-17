@@ -54,7 +54,7 @@ import {
   finishedIssuesJob,
   finishedManifestJob,
   finishedProjectJob,
-  jobsEnded,
+  watchJobEnds,
   mergeDiskIssues,
 } from './jobs';
 import { bridge, jobs, shell, useShell } from './shell';
@@ -412,13 +412,15 @@ export function App() {
       });
     });
     // a job that ends is said aloud wherever the person is
-    const stopJobAnnounce = jobs.subscribe((s, prev) => {
-      for (const { job, ok } of jobsEnded(prev.jobs, s.jobs, new Set(s.quiet))) {
-        announce(
-          t(ok ? 'announce.jobDone' : 'announce.jobFailed', { job: jobTitle(job.pipeline) }),
-          ok ? 'polite' : 'assertive',
-        );
-      }
+    const stopJobAnnounce = watchJobEnds(jobs, ({ job, ok }) => {
+      announce(
+        t(ok ? 'announce.jobDone' : 'announce.jobFailed', { job: jobTitle(job.pipeline) }),
+        ok ? 'polite' : 'assertive',
+      );
+    });
+    // another project: quiet ids of jobs that are over go with it
+    const stopQuietPrune = workspace.subscribe((s, prev) => {
+      if (s.project?.id !== prev.project?.id) jobs.getState().pruneQuiet();
     });
     void initAuthor(bridge);
     // the agent's one conversation: it listens for as long as the app runs, whatever screen shows
@@ -501,6 +503,7 @@ export function App() {
       window.removeEventListener('keydown', onKeyDown);
       stopFocus();
       stopJobAnnounce();
+      stopQuietPrune();
       stopPlayback();
       stopContinue();
       stopCard();

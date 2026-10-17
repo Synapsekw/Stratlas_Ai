@@ -1,5 +1,5 @@
 import type { IpcChannel, Issue, JobEvent, JobRecord } from '@aio/schema';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import type { Bridge, Res } from './bridge';
 import {
   applyJobEvent,
@@ -14,6 +14,7 @@ import {
   jobsEnded,
   mergeDiskIssues,
   waitForJob,
+  watchJobEnds,
 } from './jobs';
 
 const job = (over: Partial<JobRecord> = {}): JobRecord => ({
@@ -374,5 +375,58 @@ describe('a quiet start', () => {
     expect(
       await store.getState().startQuiet({ pipeline: 'change.lineup', project: 'p', params: {} }),
     ).toEqual({ error: 'No pack.' });
+  });
+});
+
+describe('the quiet list', () => {
+  const quietStore = async () => {
+    const { bridge } = fakeBridge({
+      'jobs:start': () => ({ ok: true, job: job({ id: 'q3', pipeline: 'change.lineup' }) }),
+      'jobs:remove': () => ({ removed: ['q3'] }),
+    });
+    const store = createJobsStore(bridge, undefined);
+    await store.getState().startQuiet({ pipeline: 'change.lineup', project: 'E:/p', params: {} });
+    return store;
+  };
+  const end = (store: ReturnType<typeof createJobsStore>) => {
+    store.setState((s) => ({
+      jobs: s.jobs.map((j) => ({ ...j, status: 'done', updatedAt: 'z' })),
+    }));
+  };
+
+  it('empties once a quiet job has ended, and the end is still not announced', async () => {
+    const store = await quietStore();
+    const ended = vi.fn();
+    const stop = watchJobEnds(store, ended);
+    expect(store.getState().quiet).toEqual(['q3']);
+    end(store);
+    expect(ended).not.toHaveBeenCalled();
+    expect(store.getState().quiet).toEqual([]);
+    stop();
+  });
+
+  it('still announces a job that was not quiet', () => {
+    const { bridge } = fakeBridge({});
+    const store = createJobsStore(bridge, undefined);
+    store.setState({ jobs: [job({ id: 'n1', status: 'running' })] });
+    const ended = vi.fn();
+    const stop = watchJobEnds(store, ended);
+    store.setState({ jobs: [job({ id: 'n1', status: 'done' })] });
+    expect(ended).toHaveBeenCalledTimes(1);
+    stop();
+  });
+
+  it('drops the ids of removed jobs and of jobs that are gone on a prune', async () => {
+    const store = await quietStore();
+    end(store);
+    await store.getState().remove(['q3']);
+    expect(store.getState().quiet).toEqual([]);
+    const again = await quietStore();
+    again.setState({ jobs: [] });
+    again.getState().pruneQuiet();
+    expect(again.getState().quiet).toEqual([]);
+    const running = await quietStore();
+    running.getState().pruneQuiet();
+    expect(running.getState().quiet).toEqual(['q3']);
   });
 });

@@ -30,7 +30,10 @@ export interface JobsState {
   jobs: JobRecord[];
   logs: Record<string, JobLogLine[]>;
   selected: string | null;
-  /** Ids of jobs started quietly (background work): never selected, never announced. */
+  /**
+   * Ids of jobs started quietly (background work): never selected, never announced. An id leaves
+   * once its job has ended and been seen (`watchJobEnds`), is removed, or is gone (`pruneQuiet`).
+   */
   quiet: string[];
   error: string | null;
 }
@@ -46,6 +49,8 @@ export interface JobsActions {
    * Start a job as background work: it joins the list but does not take the Processing selection
    * and its end is not announced. Returns the job id, or why it did not start.
    */
+  /** Forget the quiet ids of jobs that are no longer at work (ended, removed or unknown). */
+  pruneQuiet: () => void;
   startQuiet: (req: IpcRequest<'jobs:start'>) => Promise<{ jobId: string } | { error: string }>;
   cancel: (id: string) => Promise<string | null>;
   /**
@@ -254,6 +259,20 @@ export function jobsEnded(
     .map((job) => ({ job, ok: job.status === 'done' }));
 }
 
+/**
+ * Call `onEnd` for each job that ends, except quiet ones, then forget the quiet ids of ended jobs
+ * (the list must not grow for the life of the app). Returns the stop.
+ */
+export function watchJobEnds(
+  store: StoreApi<Jobs>,
+  onEnd: (ended: { job: JobRecord; ok: boolean }) => void,
+): () => void {
+  return store.subscribe((s, prev) => {
+    for (const ended of jobsEnded(prev.jobs, s.jobs, new Set(s.quiet))) onEnd(ended);
+    if (s.quiet.length > 0) s.pruneQuiet();
+  });
+}
+
 export function isActive(job: Pick<JobRecord, 'status'>): boolean {
   return job.status === 'starting' || job.status === 'running' || job.status === 'cancelling';
 }
@@ -337,6 +356,12 @@ export function createJobsStore(bridge: Bridge, on: AioBridge['on'] | undefined)
       if (r.ok) set((s) => ({ logs: { ...s.logs, [id]: mergeLog(r.value.lines, s.logs[id]) } }));
     },
 
+    pruneQuiet: () => {
+      const { jobs: list, quiet } = get();
+      const live = quiet.filter((id) => list.some((j) => j.id === id && isActive(j)));
+      if (live.length !== quiet.length) set({ quiet: live });
+    },
+
     startQuiet: async (req) => {
       const r = await bridge.call('jobs:start', req);
       if (!r.ok) return { error: r.error };
@@ -384,6 +409,7 @@ export function createJobsStore(bridge: Bridge, on: AioBridge['on'] | undefined)
           jobs: s.jobs.filter((j) => !gone.has(j.id)),
           logs,
           selected: s.selected !== null && gone.has(s.selected) ? null : s.selected,
+          quiet: s.quiet.filter((id) => !gone.has(id)),
         };
       });
       return null;
