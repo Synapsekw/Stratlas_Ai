@@ -25,7 +25,6 @@ import { setRoad, useRoad } from '../../road/store';
 import { shell, useShell } from '../../shell';
 import { openAgent } from '../../shell/RightHeader';
 import type { StageMode } from '../../store';
-import { MeasureToolbar } from '../../survey/MeasureToolbar';
 import { startTool, stopTool, useMeasure } from '../../survey/measureStore';
 import type { CompareDates } from '../CompareControls';
 import { PATH_MODES, setPathMode } from '../flightPaths';
@@ -40,7 +39,7 @@ import { insideView } from '../useCutaway';
 import { AnnotateToggle } from '../tools/annotate';
 import { CloudTools } from '../tools/cloud';
 import { DisplayTools, LABEL_MODES } from '../tools/display';
-import { MeasureTools, toggleMeasure, toggleSection } from '../tools/measure';
+import { toggleMeasure, toggleSection } from '../tools/measure';
 import { VideoTools } from '../tools/video';
 import { ViewTools } from '../tools/view';
 import { VolumeTools } from '../VolumeTools';
@@ -105,10 +104,8 @@ export function fullGroup(g: GroupId, ctx: Pick<GroupCtx, 'stage' | 'map'>): Rea
     case 'view':
       return <ViewTools stage={stage} map={map} />;
     case 'measure':
-      // on the map only the survey measurements (the scene's own tools need the 3D view); the
-      // site data (designs, survey QA, overlays, hydrology, haul road) are in the Survey
-      // measurements popover
-      return map ? <MeasureToolbar /> : <MeasureTools stage={stage} />;
+      // the Measure workbench in the right sidebar (MeasureBench), not a popover
+      return null;
     case 'display':
       return (
         <>
@@ -393,7 +390,7 @@ function MeasureRow({ ctx }: { ctx: GroupCtx }) {
   const readOnly = useMeasure((s) => s.readOnly);
   const pkg = useShell((s) => s.pkg !== null);
   const survey = !readOnly && !pkg;
-  const quick = stage?.tool === 'measure';
+  const distance = active?.tool === 'distance' && !active.template;
   const tool = (v: 'elevation' | 'area' | 'volume', icon: IconName, label: string) => (
     <Tile
       icon={icon}
@@ -407,31 +404,17 @@ function MeasureRow({ ctx }: { ctx: GroupCtx }) {
   );
   return (
     <>
-      {!map ? (
-        <Tile
-          icon="ruler"
-          label={t('island.tile.distance')}
-          name={t('island.tile.measureDistance')}
-          shortcut="scene.measure"
-          pressed={quick}
-          disabled={!stage}
-          onClick={() => {
-            if (stage) toggleMeasure(stage);
-          }}
-        />
-      ) : (
-        survey && (
-          <Tile
-            icon="ruler"
-            label={t('island.tile.distance')}
-            pressed={active?.tool === 'distance' && !active.template}
-            onClick={() => {
-              if (active?.tool === 'distance' && !active.template) stopTool();
-              else startTool('distance');
-            }}
-          />
-        )
-      )}
+      {/* the one Distance (D19): in a read-only package it measures without saving */}
+      <Tile
+        icon="ruler"
+        label={t('island.tile.distance')}
+        name={t('island.tile.measureDistance')}
+        shortcut="scene.measure"
+        pressed={distance}
+        onClick={() => {
+          toggleMeasure(stage);
+        }}
+      />
       {survey && tool('elevation', 'point', t('island.tile.elevation'))}
       {survey && tool('area', 'polygon', t('island.tile.area'))}
       {survey && tool('volume', 'pile', t('island.tile.volume'))}

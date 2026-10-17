@@ -16,7 +16,7 @@ import { colourSegmenterOnnx } from '../src/main/inference/fixtures/colourSegmen
 import { encodePng } from '../src/main/inference/fixtures/markerDetector';
 import { expectAccessible } from './a11y';
 import { expect, launchApp, openProject, test, type DataRoot } from './fixtures';
-import { islandGroup } from './island';
+import { measureControl } from './island';
 
 const ID = 'e2e-magic-polygon';
 const ORIGIN: [number, number, number] = [500_000, 3_200_000, 0];
@@ -190,9 +190,7 @@ test.describe('Suggest boundaries', () => {
       const box = await canvas.boundingBox();
       if (!box) throw new Error('no 3D view');
 
-      await islandGroup(win, 'measure');
-      await win.getByRole('button', { name: 'Survey measurements' }).click();
-      await win.getByTestId('survey-tool-area').click();
+      await (await measureControl(win, 'survey-tool-area')).click();
       const bar = win.getByTestId('survey-drawbar');
       await expect(bar).toBeVisible();
       const magic = bar.getByTestId('survey-magic');
@@ -279,9 +277,7 @@ test.describe('Suggest boundaries', () => {
         .first()
         .click();
       await expect.poll(async () => (await openProject(win)).id, { timeout: 30_000 }).toBe(ID);
-      await islandGroup(win, 'measure');
-      await win.getByRole('button', { name: 'Survey measurements' }).click();
-      await win.getByTestId('survey-tool-area').click();
+      await (await measureControl(win, 'survey-tool-area')).click();
       const magic = win.getByTestId('survey-magic');
       await magic.click();
       await expect(magic).toHaveAttribute('aria-pressed', 'false');

@@ -449,7 +449,7 @@ function useActiveMap() {
   return useSyncExternalStore(onActiveMap, getActiveMap, getActiveMap);
 }
 
-/** The Haul road button (in the Survey measurements popover's Site data group). */
+/** The Haul road button (Measure workbench, Site data). */
 export function HaulRoadTool() {
   const hasProject = useWorkspace((s) => s.project !== null);
   return (

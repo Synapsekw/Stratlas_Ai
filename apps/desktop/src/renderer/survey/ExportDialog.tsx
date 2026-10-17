@@ -48,7 +48,7 @@ export function openExportDialog(open: boolean): void {
   ui.setState({ open });
 }
 
-/** The entry in the Survey measurements popover (Site data). */
+/** The entry in the Measure workbench (Site data). */
 export function ExportTool({ onPicked }: { onPicked?: () => void } = {}) {
   const open = useStore(ui, (s) => s.open);
   const pkg = useShell((s) => s.pkg);

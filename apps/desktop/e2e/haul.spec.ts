@@ -12,7 +12,7 @@ import { readdir, readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { expect, hasPipelinePython, openProject, PIPELINE_ENV, test } from './fixtures';
 import type { SurveyDemoProject } from './surveyFixtures';
-import { islandGroup } from './island';
+import { siteDataButton } from './island';
 
 test.use({ appEnv: PIPELINE_ENV });
 test.setTimeout(300_000);
@@ -24,15 +24,9 @@ async function open(win: Page, p: SurveyDemoProject): Promise<void> {
   await expect(win.locator('[data-scene-view] canvas').first()).toBeVisible();
 }
 
-/**
- * The Haul road button is in the Survey measurements popover (Site data), in the island's Measure
- * set (opened here unless an earlier step left it open).
- */
+/** The Haul road button is in the Measure workbench's Site data (the island's Measure tab). */
 async function openHaulRoad(win: Page): Promise<void> {
-  const survey = win.getByRole('button', { name: 'Survey measurements', exact: true });
-  if (!(await survey.isVisible())) await islandGroup(win, 'measure');
-  await survey.click();
-  await win.getByRole('button', { name: 'Haul road', exact: true }).click();
+  await (await siteDataButton(win, 'Haul road')).click();
   await expect(win.getByTestId('haul-panel')).toBeVisible();
 }
 

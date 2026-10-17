@@ -12,6 +12,7 @@ import {
   startTool,
   stopTool,
   flipAzimuth,
+  setMeasurementHidden,
   setMeasurementsVisible,
 } from './measureStore';
 
@@ -58,6 +59,8 @@ beforeEach(() => {
     autosave: false,
     saving: false,
     measurementsVisible: true,
+    hiddenMeasurements: [],
+    listOpen: false,
   });
 });
 
@@ -183,5 +186,71 @@ describe('saved measurement view visibility', () => {
     startEditing();
     expect(measureStore.getState().measurementsVisible).toBe(true);
     expect(measureStore.getState().editing).not.toBeNull();
+  });
+});
+
+describe('one Distance tool, with a measure-without-saving mode (D19)', () => {
+  it('a transient Distance reads, finishes and keeps its line, but never adds a measurement', () => {
+    startTool('distance', { transient: true });
+    expect(measureStore.getState().tool).toMatchObject({ tool: 'distance', transient: true });
+    click([0, 0, 0]);
+    click([3, 4, 0]);
+    drawEvent({ type: 'key', key: 'Enter' }, env);
+    const s = measureStore.getState();
+    expect(s.file.measurements).toHaveLength(0);
+    expect(isDirty(s)).toBe(false);
+    // the result stays on the canvas: its points, done, the tool still on
+    expect(s.draw?.done).toBe(true);
+    expect(s.draw?.points).toHaveLength(2);
+    expect(s.tool?.tool).toBe('distance');
+    // moving the pointer keeps the finished line; the next click starts a new one
+    drawEvent({ type: 'move', raw: [9, 9, 0], screen: { x: 2, y: 2 }, shift: false }, env);
+    expect(measureStore.getState().draw?.points).toHaveLength(2);
+    click([5, 5, 0]);
+    expect(measureStore.getState().draw?.points).toHaveLength(1);
+  });
+
+  it('a read-only project always measures transient, and only with the tools that read', () => {
+    measureStore.setState({ readOnly: true });
+    startTool('distance');
+    expect(measureStore.getState().tool).toMatchObject({ tool: 'distance', transient: true });
+    click([0, 0, 0]);
+    click([0, 10, 0]);
+    expect(measureStore.getState().draw?.points).toHaveLength(2);
+    drawEvent({ type: 'finish' }, env);
+    expect(measureStore.getState().file.measurements).toHaveLength(0);
+    stopTool();
+    startTool('area');
+    expect(measureStore.getState().tool).toBeNull();
+  });
+
+  it('a normal Distance puts the line in the project on Enter (unsaved until Save)', () => {
+    startTool('distance');
+    expect(measureStore.getState().tool?.transient).toBeFalsy();
+    click([0, 0, 0]);
+    click([3, 4, 0]);
+    drawEvent({ type: 'key', key: 'Enter' }, env);
+    const s = measureStore.getState();
+    expect(s.file.measurements.map((m) => [m.tool, m.label])).toEqual([['distance', 'Distance 1']]);
+    expect(s.listOpen).toBe(true);
+    expect(io.writes).toBe(0);
+  });
+
+  it('hides and shows one saved measurement in the views; Show all brings every one back', () => {
+    startTool('distance');
+    click([0, 0, 0]);
+    click([3, 4, 0]);
+    drawEvent({ type: 'finish' }, env);
+    const id = measureStore.getState().file.measurements[0]?.id ?? '';
+    setMeasurementHidden(id, true);
+    expect(measureStore.getState().hiddenMeasurements).toEqual([id]);
+    setMeasurementHidden(id, false);
+    expect(measureStore.getState().hiddenMeasurements).toEqual([]);
+    setMeasurementHidden(id, true);
+    setMeasurementsVisible(true);
+    expect(measureStore.getState().hiddenMeasurements).toEqual([]);
+    // view state only: the file is untouched
+    expect(isDirty(measureStore.getState())).toBe(true);
+    expect(io.writes).toBe(0);
   });
 });

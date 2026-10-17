@@ -14,7 +14,7 @@ import { readdir, readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { expect, hasPipelinePython, openProject, PIPELINE_ENV, test } from './fixtures';
 import type { SurveyDemoProject } from './surveyFixtures';
-import { islandGroup } from './island';
+import { measurementsList, siteDataButton } from './island';
 
 test.use({ appEnv: PIPELINE_ENV });
 
@@ -63,12 +63,9 @@ async function saved(win: Page, dir: string, id: string) {
   return { m, result };
 }
 
-/** The Designs panel, in the Survey measurements popover (in the island's Measure set). */
+/** The Designs panel, from the Measure workbench's Site data. */
 async function openDesigns(win: Page): Promise<Locator> {
-  const survey = win.getByRole('button', { name: 'Survey measurements', exact: true });
-  if (!(await survey.isVisible())) await islandGroup(win, 'measure');
-  await survey.click();
-  await win.getByRole('button', { name: 'Designs', exact: true }).click();
+  await (await siteDataButton(win, 'Designs')).click();
   const panel = win.getByTestId('designs-panel');
   await expect(panel).toBeVisible();
   return panel;
@@ -77,7 +74,6 @@ async function openDesigns(win: Page): Promise<Locator> {
 async function closePops(win: Page): Promise<void> {
   // from inside the pop (a button that was used may be disabled now, leaving the focus outside)
   await win.getByTestId('designs-panel').getByRole('button', { name: 'Import design' }).focus();
-  await win.keyboard.press('Escape');
   await win.keyboard.press('Escape');
   await expect(win.getByTestId('designs-panel')).toHaveCount(0);
 }
@@ -90,10 +86,7 @@ test('compliance presets compute cut/fill and remaining to the pad design, with 
   test.setTimeout(480_000);
   const dir = earthworksProject.dir;
   await open(win, earthworksProject);
-  await islandGroup(win, 'measure');
-  await win.getByRole('button', { name: 'Survey measurements' }).click();
-  await win.getByTestId('survey-list-open').click();
-  await expect(win.getByTestId('survey-list')).toBeVisible();
+  await measurementsList(win);
   await win
     .getByTestId('survey-item')
     .filter({ hasText: 'Pad to design' })

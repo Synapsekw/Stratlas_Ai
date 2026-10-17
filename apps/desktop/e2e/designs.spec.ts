@@ -13,7 +13,7 @@ import { readFileSync } from 'node:fs';
 import { writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { expect, hasPipelinePython, PIPELINE_ENV, test } from './fixtures';
-import { islandGroup, stageMode } from './island';
+import { siteDataButton, stageMode } from './island';
 
 test.use({ appEnv: PIPELINE_ENV });
 test.setTimeout(180_000);
@@ -134,15 +134,9 @@ async function answerOpenDialog(app: ElectronApplication, path: string): Promise
   }, path);
 }
 
-/**
- * The Designs button is in the Survey measurements popover, in the island's Measure set (opened
- * here unless an earlier step left it open).
- */
+/** The Designs button is in the Measure workbench's Site data (the island's Measure tab). */
 async function openDesigns(win: Page): Promise<void> {
-  const survey = win.getByRole('button', { name: 'Survey measurements', exact: true });
-  if (!(await survey.isVisible())) await islandGroup(win, 'measure');
-  await survey.click();
-  await win.getByRole('button', { name: 'Designs', exact: true }).click();
+  await (await siteDataButton(win, 'Designs')).click();
   await expect(win.getByTestId('designs-panel')).toBeVisible();
 }
 
@@ -214,9 +208,8 @@ test('a LandXML design imports, shows in the Designs panel and its alignment giv
   })) as { ok: boolean; file: { activeAlignment?: string } };
   expect(saved.file.activeAlignment).toBe('Pad-design/CL1');
 
-  // close the panel (and the Survey measurements popover around it), look straight down at the
-  // origin: the cursor readout gains station and offset
-  await win.keyboard.press('Escape');
+  // close the panel, look straight down at the origin: the cursor readout gains station and
+  // offset
   await win.keyboard.press('Escape');
   await win.evaluate(() =>
     (

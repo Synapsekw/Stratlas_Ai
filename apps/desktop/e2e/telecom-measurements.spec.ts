@@ -6,7 +6,7 @@ import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { expectAccessible } from './a11y';
 import { expect, test } from './fixtures';
-import { stageMode } from './island';
+import { measureControl, stageMode } from './island';
 import { writeTelecomFace } from './telecomFixtures';
 
 interface Inspect {
@@ -16,7 +16,8 @@ interface Inspect {
 async function openFace(win: Page) {
   await win.getByTestId('project-card').filter({ hasText: 'E2E tiny project' }).first().click();
   await expect(win.locator('[data-scene-view] canvas').first()).toBeVisible();
-  await expect(win.getByTestId('telecom-tool-clearance')).toBeEnabled();
+  // the telecom tools are the Measure workbench's Telecom family
+  await expect(await measureControl(win, 'telecom-tool-clearance')).toBeEnabled();
   await expect
     .poll(() =>
       win.evaluate(() => {
@@ -84,7 +85,7 @@ for (const kind of ['mesh', 'cloud'] as const) {
       test.setTimeout(120_000);
       await openFace(win);
       const panel = win.getByTestId('telecom-tools');
-      await panel.getByTestId('telecom-tool-azimuth').click();
+      await win.getByTestId('telecom-tool-azimuth').click();
       await pick(win, [-2, 3, 0]);
       await pick(win, [2, 3, 0]);
       await pick(win, [-2, 7, 0]);
@@ -105,12 +106,12 @@ for (const kind of ['mesh', 'cloud'] as const) {
       expect(facing).toBe(true);
       await win.screenshot({ path: testInfo.outputPath('azimuth.png') });
 
-      await panel.getByTestId('telecom-tool-antenna-tilt').click();
+      await win.getByTestId('telecom-tool-antenna-tilt').click();
       await pick(win, [-2, 3, 0]);
       await pick(win, [-2, 7, 0]);
       await expectValue(win, 'inclination', 0);
 
-      await panel.getByTestId('telecom-tool-clearance').click();
+      await win.getByTestId('telecom-tool-clearance').click();
       await pick(win, [-2, 3, 0]);
       await pick(win, [1, 7, 0]);
       await expectValue(win, 'direct-gap', 5);
@@ -200,27 +201,24 @@ for (const kind of ['mesh', 'cloud'] as const) {
     test('supports undo and cancel and prevents map-only drawing', async ({ win, dataRoot }) => {
       await openFace(win);
       const panel = win.getByTestId('telecom-tools');
-      const azimuthButton = panel.getByTestId('telecom-tool-azimuth');
+      const azimuthButton = win.getByTestId('telecom-tool-azimuth');
       const cancelButton = panel.getByRole('button', { name: 'Cancel', exact: true });
       await azimuthButton.focus();
       await win.keyboard.press('Enter');
+      // live, the bench is a strip of tools: the focus stays on the live one, the next one Tab on
       await expect(azimuthButton).toHaveAttribute('aria-pressed', 'true');
+      await expect(azimuthButton).toBeFocused();
       await win.keyboard.press('Tab');
-      await expect(panel.getByTestId('telecom-tool-antenna-tilt')).toBeFocused();
-      await win.keyboard.press('Tab');
-      await win.keyboard.press('Tab');
-      await expect(cancelButton).toBeFocused();
+      await expect(win.getByTestId('telecom-tool-antenna-tilt')).toBeFocused();
+      // the live card above the strip holds Cancel
+      await cancelButton.focus();
       await win.keyboard.press('Space');
       await expect(cancelButton).toHaveCount(0);
 
-      await panel.getByTestId('telecom-tool-azimuth').click();
+      await (await measureControl(win, 'telecom-tool-azimuth')).click();
       await pick(win, [-2, 3, 0]);
       await expect(panel).toContainText('1 / 3 points picked');
-      await azimuthButton.focus();
-      await win.keyboard.press('Tab');
-      await win.keyboard.press('Tab');
-      await win.keyboard.press('Tab');
-      await expect(panel.getByRole('button', { name: 'Undo last point' })).toBeFocused();
+      await panel.getByRole('button', { name: 'Undo last point' }).focus();
       await win.keyboard.press('Enter');
       await expect(panel).toContainText('0 / 3 points picked');
       await win.keyboard.press('Tab');
@@ -228,14 +226,14 @@ for (const kind of ['mesh', 'cloud'] as const) {
       await win.keyboard.press('Space');
       await expect(panel.getByTestId('telecom-save')).toHaveCount(0);
 
-      await panel.getByTestId('telecom-tool-clearance').click();
+      await win.getByTestId('telecom-tool-clearance').click();
       await pick(win, [-2, 3, 0]);
       await stageMode(win, 'Map');
-      await expect(panel.getByTestId('telecom-tool-clearance')).toBeDisabled();
+      await expect(win.getByTestId('telecom-tool-clearance')).toBeDisabled();
       await expect(panel).toContainText('Switch to 3D');
       await expect(panel.getByRole('button', { name: 'Cancel', exact: true })).toHaveCount(0);
       await stageMode(win, '3D');
-      await expect(panel.getByTestId('telecom-tool-clearance')).toBeEnabled();
+      await expect(win.getByTestId('telecom-tool-clearance')).toBeEnabled();
       await panel.getByRole('button', { name: 'Measurements', exact: true }).click();
       await expect(win.getByTestId('survey-item')).toHaveCount(0);
       await expect(

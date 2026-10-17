@@ -72,8 +72,7 @@ function PromptDialog({ prompt }: { prompt: RolePrompt }) {
         ) : (
           <p className="small faint" data-testid="survey-design-roles-none">
             This template compares to a design, and this site has no design surface yet. Import a
-            design (Survey measurements, Site data, Designs) to use those comparisons, or go on
-            without them.
+            design (Measure, Site data, Designs) to use those comparisons, or go on without them.
           </p>
         )}
         {options.length > 0 && (

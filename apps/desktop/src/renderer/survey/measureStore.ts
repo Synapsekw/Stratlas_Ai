@@ -31,7 +31,10 @@ import {
   telecomPointCount,
   telecomProblem,
   flipFace,
+  formatRow,
   measurementFrom,
+  measurementReadout,
+  MIN_POINTS,
   missingRoles,
   removeTemplate,
   templateLibrary,
@@ -71,7 +74,22 @@ export interface ActiveTool {
   prompt?: string;
   /** Called with the finished measurement; the tool then stops (one shape only). */
   then?: (m: SurveyMeasurement) => void;
+  /**
+   * Measure without saving (D19): a finished shape stays on the canvas with its reading and is
+   * never added to the project. Read-only projects and packages always measure this way.
+   */
+  transient?: boolean;
 }
+
+/** How a tool starts: a template, a one-shot drawing for another tool, or without saving. */
+export interface StartToolOptions {
+  template?: SurveyTemplate | null;
+  forOther?: DrawFor;
+  transient?: boolean;
+}
+
+/** The tools that read without saving, so they work in a read-only project too (D6). */
+const READS_WITHOUT_SAVING: ReadonlySet<MeasurementTool> = new Set(['distance']);
 
 /** A one-shot drawing: the prompt shown while drawing and what to do with the shape. */
 export interface DrawFor {
@@ -124,6 +142,8 @@ export interface MeasureState {
   listOpen: boolean;
   /** View-only overlay visibility for every saved tool; reset when changing projects. */
   measurementsVisible: boolean;
+  /** Saved measurements hidden one by one in the views (the eye on their row; view only). */
+  hiddenMeasurements: readonly string[];
   dialog: MeasureDialog;
   snap: SnapSettings;
   /** The surface readouts sample (the 3D view's terrain until G2's prepared surfaces). */
@@ -181,6 +201,7 @@ const initial = (): Omit<MeasureState, 'snap' | 'autosave' | 'surface'> => ({
   editing: null,
   listOpen: false,
   measurementsVisible: true,
+  hiddenMeasurements: [],
   dialog: null,
   rolePrompt: null,
 });
@@ -444,7 +465,21 @@ export function setListOpen(open: boolean): void {
 
 /** View visibility does not mutate saved data, so it is also available in read-only packages. */
 export function setMeasurementsVisible(visible: boolean): void {
-  set({ measurementsVisible: visible, ...(!visible ? { editing: null } : {}) });
+  set({
+    measurementsVisible: visible,
+    hiddenMeasurements: [],
+    ...(!visible ? { editing: null } : {}),
+  });
+}
+
+/** Hide or show one saved measurement in the views (view only, like Show all and Hide all). */
+export function setMeasurementHidden(id: string, hidden: boolean): void {
+  const s = get();
+  const rest = s.hiddenMeasurements.filter((x) => x !== id);
+  set({
+    hiddenMeasurements: hidden ? [...rest, id] : rest,
+    ...(hidden && s.focus === id ? { editing: null } : {}),
+  });
 }
 
 export function openDialog(dialog: MeasureDialog): void {
@@ -467,17 +502,17 @@ export function setSnapSource(source: SnapSource, on: boolean): void {
 
 // ---------------------------------------------------------------- drawing
 
-export function startTool(
-  tool: MeasurementTool,
-  template: SurveyTemplate | null = null,
-  forOther?: DrawFor,
-): void {
-  if (get().readOnly) return;
+export function startTool(tool: MeasurementTool, opts: StartToolOptions = {}): void {
+  const { template = null, forOther } = opts;
+  // a read-only project measures without saving, with the tools that can
+  const readOnly = get().readOnly;
+  if (readOnly && (template || forOther || !READS_WITHOUT_SAVING.has(tool))) return;
+  const transient = opts.transient === true || readOnly;
   const projectId = get().projectId;
   const begin = (picks: RolePicks) => {
-    if (get().readOnly || get().projectId !== projectId) return;
+    if ((get().readOnly && !transient) || get().projectId !== projectId) return;
     set({
-      tool: { tool, template, picks, ...(forOther ?? {}) },
+      tool: { tool, template, picks, ...(forOther ?? {}), ...(transient ? { transient } : {}) },
       measurementsVisible: true,
       draw: initialDraw(TOOL_FAMILY[tool]),
       editing: null,
@@ -559,6 +594,28 @@ export function flipAzimuth(id: string): void {
   if (s.focus === id && s.editing) set({ editing: initialEdit(flipFace(s.editing.points)) });
 }
 
+/**
+ * The live tool's reading, as the island and the live card say it: the first readout row of the
+ * shape drawn so far (to the pointer), or null while it has too few points.
+ */
+export function liveReading(
+  s: Pick<MeasureState, 'tool' | 'draw' | 'settings' | 'surface'>,
+): string | null {
+  const { tool, draw } = s;
+  if (!tool || !draw) return null;
+  const pts = draw.cursor && !draw.done ? [...draw.points, draw.cursor] : draw.points;
+  if (pts.length < MIN_POINTS[draw.family]) return null;
+  const m = measurementFrom(tool.template ?? tool.tool, {
+    id: 'live',
+    label: '',
+    scope: { kind: 'site' },
+    points: pts,
+    createdAt: '',
+  });
+  const first = measurementReadout(m, { surface: s.surface ?? undefined })[0];
+  return first ? formatRow(first, s.settings.units, s.settings.precision) : null;
+}
+
 function nextLabel(base: string): string {
   const taken = new Set(get().file.measurements.map((m) => m.label));
   for (let n = 1; ; n++) {
@@ -581,8 +638,10 @@ export function setDrawInterceptor(f: DrawInterceptor | null): void {
 /** Feed a drawing event; a finished shape becomes a measurement (unsaved until Save). */
 export function drawEvent(e: DrawEvent, env: DrawEnv): void {
   const s = get();
-  if (!s.draw || !s.tool || s.readOnly) return;
+  if (!s.draw || !s.tool || (s.readOnly && !s.tool.transient)) return;
   const telecom = isTelecomTool(s.tool.tool);
+  // a finished line measured without saving stays on the canvas until the next click
+  if (s.tool.transient && s.draw.done && e.type === 'move') return;
   if (telecom && env.view !== '3d') return;
   if (telecom && e.type === 'key' && !['Escape', 'Backspace'].includes(e.key)) return;
   if (telecom && (e.type === 'finish' || e.type === 'stroke')) return;
@@ -604,6 +663,10 @@ export function drawEvent(e: DrawEvent, env: DrawEnv): void {
   }
   if (next.cancelled) {
     stopTool();
+    return;
+  }
+  if (next.done && s.tool.transient) {
+    set({ draw: { ...next, cursor: null }, message: null });
     return;
   }
   if (next.done) {

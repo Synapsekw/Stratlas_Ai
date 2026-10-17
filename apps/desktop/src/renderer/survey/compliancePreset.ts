@@ -51,10 +51,12 @@ export function applyDesignPreset(item: ComparisonItem, label: string): string {
     const err = addDesignItem(m.id, item);
     return err ?? `${label} added to "${m.label}". Its results are in the measurement's panel.`;
   }
-  startTool('volume', null, {
-    prompt: DRAW_PROMPT,
-    then: (drawn) => {
-      addDesignItem(drawn.id, item);
+  startTool('volume', {
+    forOther: {
+      prompt: DRAW_PROMPT,
+      then: (drawn) => {
+        addDesignItem(drawn.id, item);
+      },
     },
   });
   return `No polygon is selected. ${DRAW_PROMPT} ${label} is added to it.`;

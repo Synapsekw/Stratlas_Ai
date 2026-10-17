@@ -9,7 +9,7 @@ import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { expectAccessible } from './a11y';
 import { expect, openProject, test } from './fixtures';
-import { islandGroup } from './island';
+import { measureControl } from './island';
 
 interface Saved {
   schema: string;
@@ -32,10 +32,9 @@ async function openTiny(win: Page): Promise<string> {
   return (await openProject(win)).root ?? '';
 }
 
+/** Pick a tool in the Measure workbench (the island's Measure tab opens it in the sidebar). */
 async function pickTool(win: Page, testId: string) {
-  await islandGroup(win, 'measure');
-  await win.getByRole('button', { name: 'Survey measurements' }).click();
-  await win.getByTestId(testId).click();
+  await (await measureControl(win, testId)).click();
   await expect(win.getByTestId('survey-drawbar')).toBeVisible();
 }
 

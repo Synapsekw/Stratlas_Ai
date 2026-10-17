@@ -1,0 +1,174 @@
+/* The Measure workbench (MeasureBench.tsx) and the survey panels that are sidebar tabs (Survey QA,
+   Terrain overlays, Hydrology): in the tab's body, they scroll there instead of floating. */
+.meb {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+  padding: var(--sp-2) var(--sp-4) var(--sp-5);
+}
+.meb-cat {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+}
+.meb-search {
+  inline-size: 100%;
+  margin-block-end: var(--sp-2);
+}
+.meb-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+/* a catalogue row: the tool's name, its hint after it, its key; the flag stars it */
+.meb-tool {
+  display: flex;
+  align-items: baseline;
+  gap: var(--sp-4);
+  inline-size: 100%;
+  min-inline-size: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: start;
+  cursor: pointer;
+}
+.meb-tool:disabled {
+  color: var(--fg-3);
+  cursor: default;
+}
+.meb-name {
+  flex: none;
+  color: var(--fg-0);
+}
+.meb-tool[aria-pressed='true'] .meb-name {
+  color: var(--acc);
+}
+.meb-hint,
+.meb-faint {
+  min-inline-size: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: var(--fg-3);
+  font-size: var(--t-11);
+}
+.meb-faint {
+  margin: 0;
+  white-space: normal;
+}
+.meb-site,
+.meb-templates {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-4);
+  padding: var(--sp-2) var(--sp-4) var(--sp-4);
+}
+.meb-aids {
+  padding: 0 var(--sp-4) var(--sp-4);
+}
+.meb .wb-section-inner .telecom-tools {
+  max-height: none;
+  border-block-end: 0;
+}
+
+/* the live card (D13): the tool, its large reading, the points so far, Undo, Stop and Save */
+.meb-live {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3);
+  padding: var(--sp-5);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-6);
+  background: var(--bg-2);
+}
+.meb-live .telecom-tools {
+  max-height: none;
+  padding: 0;
+  border-block-end: 0;
+}
+.meb-live-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--sp-4);
+}
+.meb-reading {
+  margin: 0;
+  color: var(--fg-0);
+  font-size: var(--t-24);
+  line-height: 1.1;
+}
+.meb-points {
+  margin: 0;
+  padding-inline-start: var(--sp-6);
+  color: var(--fg-2);
+  font-size: var(--t-11);
+}
+.meb-typed {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-4);
+  font-size: var(--t-12);
+}
+.meb-live-acts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-3);
+}
+.meb-live-acts .kbd {
+  margin-inline-start: var(--sp-2);
+}
+/* while live, the catalogue is a strip of short text buttons (several Line tools share a glyph) */
+.meb-strip {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-1);
+  padding-block: var(--sp-2);
+  border-block-end: 1px solid var(--line);
+}
+
+/* the picked measurement and the saved list sit in the column, not over the stage */
+.meb .sv-card,
+.wb-body .qa-side .sv-card,
+.wb-body .ov-panel {
+  box-shadow: none;
+}
+.meb-selected .sv-card {
+  border: 0;
+  padding: 0;
+  background: transparent;
+}
+.meb .sv-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-4);
+  padding: 0 var(--sp-4) var(--sp-4);
+}
+.meb .sv-item {
+  gap: var(--sp-3);
+}
+.meb .sv-item .row-label {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+}
+.wb-body .qa-side,
+.wb-body .ov-panel,
+.wb-body > .hydro-panel {
+  position: static;
+  inset: auto;
+  inline-size: auto;
+  max-block-size: none;
+  flex: 1 1 auto;
+  min-block-size: 0;
+  overflow: auto;
+  pointer-events: auto;
+}
+.wb-body > .hydro-panel {
+  padding: var(--sp-4) var(--sp-5);
+}

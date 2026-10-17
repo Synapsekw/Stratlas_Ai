@@ -39,6 +39,7 @@ import type { Side } from '../splitModel';
 import { paneCapture, type SplitModel } from '../SplitPanes';
 import { takeTNotice } from '../stagePrefs';
 import { useTimeline } from '../timeline';
+import { showMeasureBench } from '../workbench/benches/MeasureBench';
 import { fullGroup, GROUP_NAME, MODES, type GroupCtx } from './groups';
 import { IslandCalendar, IslandDate, islandDates } from './IslandDate';
 import { IslandLive, LiveGlyph, liveSay, liveText } from './IslandLive';
@@ -180,6 +181,11 @@ export function Island({ stage, mode, tools, split, linked }: IslandProps) {
 
   const openFull = useCallback((g: GroupId) => {
     dispatch({ type: 'pickGroup', group: g });
+    // Measure bench: the group's workbench opens in the right sidebar (D4, D12)
+    if (g === 'measure') {
+      showMeasureBench();
+      return;
+    }
     setFull(g);
   }, []);
   const ctx: GroupCtx = { stage, map, openFull, compare: compareDates };

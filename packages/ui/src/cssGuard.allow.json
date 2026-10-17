@@ -291,9 +291,6 @@
     "zIndex": 5
   },
   "apps/desktop/src/renderer/survey/MeasurementList.tsx": {
-    "title": 2
-  },
-  "apps/desktop/src/renderer/survey/MeasureToolbar.tsx": {
     "title": 1
   },
   "apps/desktop/src/renderer/survey/qa.css": {

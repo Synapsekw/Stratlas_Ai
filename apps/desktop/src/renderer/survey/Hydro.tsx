@@ -1,5 +1,5 @@
 /**
- * Hydrology (M11 G10, PRD HYD-1 to HYD-3): the Hydrology button (Survey measurements popover,
+ * Hydrology (M11 G10, PRD HYD-1 to HYD-3): the Hydrology button (Measure workbench,
  * Site data) and its panel, and `HydroMount`, which draws the runs on the map.
  * Pick a prepared surface, then **Flood to level**, **Runoff**, **Catchment** or **Direct rainfall**
  * (forms in `HydroForms.tsx`); each runs as a pipeline job and lands in `survey/hydro/<run>/`. The
@@ -12,7 +12,7 @@ import { getActiveMap, onActiveMap, type MapController } from '@aio/maps';
 import type { HydroPipeline, HydroRun } from '@aio/schema';
 import { useWorkspace } from '@aio/workspace';
 import { useEffect, useSyncExternalStore, useState } from 'react';
-import { PopTool } from '../workspace/StageTools';
+import { Tool } from '../workspace/StageTools';
 import { attachHydroMap } from './hydroMap';
 import './hydro.css';
 import { CatchmentForm, FloodForm, RainfallForm, RunoffForm } from './HydroForms';
@@ -319,30 +319,34 @@ function HydroMapLayer({
 }
 
 /**
- * The Hydrology button (in the Survey measurements popover's Site data group). Its panel opens
- * from the store, so a point picked on the map opens it again.
+ * The Hydrology button (Measure workbench, Site data). Its panel is the right sidebar's
+ * Hydrology tab (`HydroTab`), opened from the store, so a point picked on the map opens it again.
  */
 export function HydroTool() {
-  const project = useWorkspace((s) => s.project);
-  const projectId = project?.id ?? null;
-  const epsg = project && 'epsg' in project.manifest.crs ? project.manifest.crs.epsg : null;
+  const projectId = useWorkspace((s) => s.project?.id ?? null);
   const open = useHydro((s) => s.open);
-  const map = useActiveMap();
   return (
-    <PopTool
+    <Tool
       icon="target"
       label="Hydrology"
       disabled={!projectId}
-      wide
-      open={open}
-      onOpenChange={(o) => {
-        hydro.setState({ open: o });
-        if (o && projectId) void loadHydro(projectId);
+      pressed={open}
+      testId="hydro-open"
+      onClick={() => {
+        hydro.setState({ open: !open });
+        if (!open && projectId) void loadHydro(projectId);
       }}
-    >
-      <HydroPanel map={map !== null && epsg !== null} />
-    </PopTool>
+    />
   );
+}
+
+/** The Hydrology tab's body: the panel, its map tools on while the project has a CRS. */
+export function HydroTab() {
+  const epsg = useWorkspace((s) =>
+    s.project && 'epsg' in s.project.manifest.crs ? s.project.manifest.crs.epsg : null,
+  );
+  const map = useActiveMap();
+  return <HydroPanel map={map !== null && epsg !== null} />;
 }
 
 /**

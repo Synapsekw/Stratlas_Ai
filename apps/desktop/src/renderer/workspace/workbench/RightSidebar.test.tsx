@@ -31,7 +31,7 @@ vi.mock('../compare', () => ({
 }));
 // the shell under test, not what each tab shows
 vi.mock('../../shell/RightHeader', () => ({ RightHeader: () => null }));
-vi.mock('../../survey/TelecomTools', () => ({ TelecomTools: () => null }));
+vi.mock('./benches/MeasureBench', () => ({ MeasureBench: () => <p>measure bench</p> }));
 vi.mock('../../agent/AgentHost', () => ({ AgentHost: () => <p>agent</p> }));
 vi.mock('../../issueCard/IssueCard', () => ({ IssueCard: () => <p>issue card</p> }));
 vi.mock('../SelectionCard', () => ({ SelectionCard: () => <p>selection</p> }));

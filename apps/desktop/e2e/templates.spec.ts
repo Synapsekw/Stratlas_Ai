@@ -9,7 +9,7 @@ import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { expectAccessible } from './a11y';
 import { expect, openProject, test } from './fixtures';
-import { islandGroup } from './island';
+import { measureControl } from './island';
 
 async function openTiny(win: Page): Promise<string> {
   await win.getByTestId('project-card').filter({ hasText: 'E2E tiny project' }).first().click();
@@ -24,9 +24,7 @@ const readJson = async <T>(path: string): Promise<T> =>
 test.describe('measurement templates', () => {
   test('a custom template with a dropdown field, bookmarked and used twice', async ({ win }) => {
     const root = await openTiny(win);
-    await islandGroup(win, 'measure');
-    await win.getByRole('button', { name: 'Survey measurements' }).click();
-    await win.getByTestId('survey-templates-open').click();
+    await (await measureControl(win, 'survey-templates-open')).click();
     const dlg = win.getByTestId('survey-templates');
     await expect(dlg).toBeVisible();
 
@@ -58,9 +56,7 @@ test.describe('measurement templates', () => {
     });
 
     // the bookmark is on the toolbar: draw two pads with it
-    await islandGroup(win, 'measure');
-    await win.getByRole('button', { name: 'Survey measurements' }).click();
-    await win.getByTestId('survey-bookmark-pad-check').click();
+    await (await measureControl(win, 'survey-bookmark-pad-check')).click();
     await expect(win.getByTestId('survey-drawbar')).toContainText('Pad check');
     const box = await win.locator('[data-scene-view] canvas').first().boundingBox();
     if (!box) throw new Error('no 3D view');

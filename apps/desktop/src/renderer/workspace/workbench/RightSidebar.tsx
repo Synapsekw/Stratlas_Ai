@@ -32,12 +32,16 @@ import { shell, useShell } from '../../shell';
 import { PANEL_ID } from '../../shell/PanelHandle';
 import { RightHeader } from '../../shell/RightHeader';
 import { useFold } from '../../shell/useFold';
-import { TelecomTools } from '../../survey/TelecomTools';
 import { agentWindow } from '../agentWindow';
 import { useCaptureIndex } from '../compare';
 import { pickLive, type LiveItem } from '../island/islandModel';
 import { useIslandLive } from '../island/useIslandLive';
 import { SelectionCard } from '../SelectionCard';
+// Measure bench
+import { HydroTab } from '../../survey/Hydro';
+import { OverlaysPanel } from '../../survey/Overlays';
+import { QaSide } from '../../survey/Qa';
+import { MeasureBench } from './benches/MeasureBench';
 import { sectionStore, useSections } from './sectionState';
 import { TabBar } from './TabBar';
 import type { Tab, TabId } from './tabsModel';
@@ -339,6 +343,17 @@ function FrontBody({ front, road }: { front: TabId; road: boolean }) {
       </>
     );
   }
+  // Measure bench: the bench, and the survey panels it opens as tabs (D18)
+  if (front === 'measure')
+    return (
+      <>
+        <BenchHead bench={front} />
+        <MeasureBench />
+      </>
+    );
+  if (front === 'qa') return <QaSide />;
+  if (front === 'overlays') return <OverlaysPanel />;
+  if (front === 'hydro') return <HydroTab />;
   // the workbenches and tool panels fill their tab in their own tasks
   return BENCHES.includes(front) ? <BenchHead bench={front} /> : null;
 }
@@ -384,7 +399,6 @@ export function RightSidebar() {
           workbench.getState().close(tab);
         }}
       />
-      <TelecomTools />
       <ContextAgentSplit
         context={
           <>

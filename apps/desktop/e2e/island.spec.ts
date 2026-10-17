@@ -17,8 +17,9 @@ import {
   island,
   islandDate,
   islandGroup,
-  openIslandTools,
   islandSettled,
+  measureControl,
+  openIslandTools,
 } from './island';
 import { openDemo } from './surveyJobs';
 
@@ -91,11 +92,18 @@ test.describe('the island on a project with two dates', () => {
       await islandSettled(win);
       expect(await tab(bar, name).boundingBox()).toEqual(before);
       await tab(bar, name).click();
-      // the group's full set opens under the island, and the island folds back to its line
-      await expect(win.locator('.isl-full .pop-title')).toHaveText(name);
       await expect(bar).not.toHaveAttribute('data-state', 'tools');
-      await win.locator('.isl-full').getByRole('button', { name: 'Close', exact: true }).click();
-      await expect(win.locator('.isl-full')).toHaveCount(0);
+      if (name === 'Measure') {
+        // Measure opens its workbench in the right sidebar (D4, D12), and the island folds back
+        await expect(win.getByTestId('survey-tools')).toBeVisible();
+        await expect(win.locator('#wb-tab-measure')).toHaveAttribute('aria-selected', 'true');
+        await expect(win.locator('.isl-full')).toHaveCount(0);
+      } else {
+        // the group's full set opens under the island, and the island folds back to its line
+        await expect(win.locator('.isl-full .pop-title')).toHaveText(name);
+        await win.locator('.isl-full').getByRole('button', { name: 'Close', exact: true }).click();
+        await expect(win.locator('.isl-full')).toHaveCount(0);
+      }
       // opened again, the tools show the picked group
       await openIslandTools(win);
       await expect(tab(bar, name)).toHaveAttribute('aria-selected', 'true');
@@ -112,9 +120,7 @@ test.describe('the island on a project with two dates', () => {
     const cx = box.x + box.width / 2;
     const cy = box.y + box.height / 2;
 
-    await islandGroup(win, 'measure');
-    await win.getByRole('button', { name: 'Survey measurements' }).click();
-    await win.getByTestId('survey-tool-distance').click();
+    await (await measureControl(win, 'survey-tool-distance')).click();
     await expect(win.getByTestId('survey-drawbar')).toBeVisible();
     await win.mouse.click(cx, cy);
     await win.mouse.move(cx + 120, cy + 10);

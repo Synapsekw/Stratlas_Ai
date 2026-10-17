@@ -6,6 +6,7 @@ import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { threeDates } from './__fixtures__/threeDates';
 import { shell } from '../shell';
+import { measureStore } from '../survey/measureStore';
 import { Island } from './island/Island';
 import type * as LiveModule from './island/useIslandLive';
 import { useSplit } from './SplitPanes';
@@ -120,12 +121,14 @@ describe('stage keys', () => {
     expect(engine.setTool).not.toHaveBeenCalled();
   });
 
-  it('M still starts Measure a distance', async () => {
+  it('M still starts Measure a distance: the one survey Distance (D19)', async () => {
     await render();
     key('m', document.body);
-    expect(engine.setTool).toHaveBeenLastCalledWith('measure');
+    expect(measureStore.getState().tool).toMatchObject({ tool: 'distance' });
+    // the view's own measure tool is not used: the view stays on selecting
+    expect(engine.setTool).not.toHaveBeenCalledWith('measure');
     key('m', document.body);
-    expect(engine.setTool).toHaveBeenLastCalledWith('select');
+    expect(measureStore.getState().tool).toBeNull();
   });
 
   it('the timeline toggles from View', async () => {

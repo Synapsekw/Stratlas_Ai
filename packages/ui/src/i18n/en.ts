@@ -4634,6 +4634,28 @@ export const en = {
   'bench.jobs.progress': '{title} progress',
   'bench.jobs.steps': 'Steps',
   'bench.jobs.log': 'Log',
+
+  // Measure bench (workspace/workbench/benches/MeasureBench.tsx)
+  'measureBench.live': '{tool}, live',
+  'measureBench.notSaved': 'Measuring without saving',
+  'measureBench.noReading': 'Click on the site',
+  'measureBench.points_one': '{count} point',
+  'measureBench.points_other': '{count} points',
+  'measureBench.locked': ' · locked {deg}°',
+  'measureBench.snapped': ' · snapped to a {source} {kind}',
+  'measureBench.typedDistance': 'Distance',
+  'measureBench.typedBearing': 'Bearing',
+  'measureBench.undo': 'Undo',
+  'measureBench.stop': 'Stop',
+  'measureBench.save': 'Save',
+  'measureBench.strip': 'Measure tools',
+  'measureBench.star': 'Add {tool} to favourites',
+  'measureBench.unstar': 'Remove {tool} from favourites',
+  'measureBench.noMatch': 'No tool matches',
+  'measureBench.noMatchBody': 'Try another name, or clear the search.',
+  'measureBench.selected': 'Selected measurement',
+  'measureBench.readOnly':
+    'This project is a read-only package: measurements, sections and results are shown only. Distance measures without saving.',
 } as const satisfies Record<string, string>;
 
 /** Every key in the catalogue, plural forms included. */

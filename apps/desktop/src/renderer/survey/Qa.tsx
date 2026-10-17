@@ -4,8 +4,9 @@
  * the RMSE table and histogram, and the hold: a failed check puts the survey on hold (a banner;
  * measurements on it are marked "survey on hold") until a person releases it with a note.
  *
- * `SurveyQaTool` is the stage toolbar's entry (QA, cleanup and crop, surveys, elevation history);
- * `SurveyQaMount` loads the project's QA state and shows the banner and the open panel.
+ * `SurveyQaTool` is the Measure workbench's entry (QA, cleanup and crop, surveys, elevation
+ * history); the open panel is the right sidebar's Survey QA tab (`QaSide`). `SurveyQaMount`
+ * loads the project's QA state and shows the hold banner.
  */
 import type { QaLevel, SurveyQa } from '@aio/schema';
 import { Icon } from '@aio/ui';
@@ -49,7 +50,7 @@ const ENTRIES: {
   { panel: 'history', label: 'Elevation history', icon: 'point' },
 ];
 
-/** The survey QA entry (in the Survey measurements popover); `onPicked` after opening a panel. */
+/** The survey QA entry (Measure workbench, Site data); `onPicked` after opening a panel. */
 export function SurveyQaTool({ onPicked }: { onPicked?: () => void } = {}) {
   const panel = useQa((s) => s.panel);
   const [open, setOpen] = useState(false);
@@ -83,11 +84,10 @@ export function SurveyQaTool({ onPicked }: { onPicked?: () => void } = {}) {
   );
 }
 
-/** Loads the project's QA state; shows the hold banner of the survey in focus and the open panel. */
+/** Loads the project's QA state; shows the hold banner of the survey in focus. */
 export function SurveyQaMount() {
   const project = useWorkspace((s) => s.project);
   const pkg = useShell((s) => s.pkg);
-  const panel = useQa((s) => s.panel);
   const projectId = project?.id ?? null;
   const root = project?.root ?? null;
 
@@ -96,19 +96,20 @@ export function SurveyQaMount() {
   }, [projectId, root, pkg]);
 
   if (!projectId) return null;
-  return createPortal(
-    <>
-      <HoldBanner />
-      {panel && (
-        <aside className="qa-side" aria-label="Survey QA" data-testid="survey-qa-side">
-          {panel === 'qa' && <QaPanelView />}
-          {panel === 'cleanup' && <CleanupPanel />}
-          {panel === 'surveys' && <SurveyPicker />}
-          {panel === 'history' && <ElevationHistory />}
-        </aside>
-      )}
-    </>,
-    document.body,
+  return createPortal(<HoldBanner />, document.body);
+}
+
+/** The open survey QA panel: the right sidebar's Survey QA tab (stage island D18). */
+export function QaSide() {
+  const panel = useQa((s) => s.panel);
+  if (!panel) return null;
+  return (
+    <aside className="qa-side" aria-label="Survey QA" data-testid="survey-qa-side">
+      {panel === 'qa' && <QaPanelView />}
+      {panel === 'cleanup' && <CleanupPanel />}
+      {panel === 'surveys' && <SurveyPicker />}
+      {panel === 'history' && <ElevationHistory />}
+    </aside>
   );
 }
 

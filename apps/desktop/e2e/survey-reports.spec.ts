@@ -14,7 +14,7 @@ import { expect, hasPipelinePython, PIPELINE_ENV, test } from './fixtures';
 import { pdfText } from './pdf';
 import { openDemo } from './surveyJobs';
 import type { SurveyDemoProject } from './surveyFixtures';
-import { islandGroup } from './island';
+import { measurementsList } from './island';
 
 test.use({ appEnv: PIPELINE_ENV });
 
@@ -55,9 +55,7 @@ const flat = (s: string) => s.replace(/\s+/g, '').toLowerCase();
 async function focus(win: Page, label: string): Promise<void> {
   const list = win.getByTestId('survey-list');
   if (!(await list.isVisible())) {
-    await islandGroup(win, 'measure');
-    await win.getByRole('button', { name: 'Survey measurements' }).click();
-    await win.getByTestId('survey-list-open').click();
+    await measurementsList(win);
   }
   await win.getByTestId('survey-item').filter({ hasText: label }).locator('.sv-item-main').click();
   await expect(win.getByTestId('survey-label')).toHaveValue(label);

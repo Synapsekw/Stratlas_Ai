@@ -18,7 +18,7 @@ import {
   VENV_PYTHON,
 } from './fixtures';
 import type { SurveyDemoProject } from './surveyFixtures';
-import { islandGroup } from './island';
+import { siteDataButton } from './island';
 
 test.use({ appEnv: PIPELINE_ENV });
 
@@ -47,14 +47,11 @@ async function journalText(root: string): Promise<string> {
 }
 
 /**
- * The Survey QA and cleanup menu: its tool is in the Survey measurements popover, in the island's
- * Measure set (opened here unless an earlier step left it open).
+ * The Survey QA and cleanup menu: its tool is in the Measure workbench's Site data; the panel it
+ * opens is the sidebar's Survey QA tab.
  */
 async function openQaMenu(win: Page): Promise<void> {
-  const survey = win.getByRole('button', { name: 'Survey measurements', exact: true });
-  if (!(await survey.isVisible())) await islandGroup(win, 'measure');
-  await survey.click();
-  await win.getByRole('button', { name: 'Survey QA and cleanup' }).click();
+  await (await siteDataButton(win, 'Survey QA and cleanup')).click();
 }
 
 async function open(win: Page, p: SurveyDemoProject): Promise<void> {

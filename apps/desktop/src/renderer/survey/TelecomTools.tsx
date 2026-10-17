@@ -6,7 +6,6 @@ import {
   isTelecomTool,
   measurementReadout,
   telecomPointCount,
-  TOOL_LABELS,
   type TelecomTool,
 } from '@aio/survey';
 import { useWorkspace } from '@aio/workspace';
@@ -29,7 +28,6 @@ import {
 } from './measureStore';
 import './telecom.css';
 
-const TOOLS: TelecomTool[] = ['azimuth', 'antenna-tilt', 'clearance'];
 const GUIDANCE: Record<TelecomTool, string> = {
   azimuth:
     'Pick three points spread across the antenna front face. Check the facing arrow, then flip it if needed.',
@@ -46,25 +44,17 @@ const MEANING: Record<TelecomTool, string> = {
   clearance: 'The chosen endpoint gap only. This does not check for an obstacle-free volume.',
 };
 
-/** Small manual measurement controls in the Mission context sidebar. */
-export function TelecomTools() {
+/**
+ * Why the telecom tools cannot pick right now (a package, the map, no 3D view, measurements not
+ * read yet), or null when they can. The Measure workbench's Telecom rows are disabled with it.
+ */
+export function useTelecomUnavailable(): string | null {
   const stage = useSyncExternalStore(onActiveScene, getActiveStage, getActiveStage);
   const mode = useShell((s) => s.stageMode);
   const pkg = useShell((s) => s.pkg);
-  const local = useWorkspace((s) => !!s.project && !('epsg' in s.project.manifest.crs));
-  const tool = useMeasure((s) => s.tool);
-  const draw = useMeasure((s) => s.draw);
   const readOnly = useMeasure((s) => s.readOnly) || pkg !== null;
   const ready = useMeasure((s) => s.status === 'ready');
-  const focused = useMeasure((s) => s.file.measurements.find((m) => m.id === s.focus));
-  const message = useMeasure((s) => s.message);
-  const editing = useMeasure((s) => s.editing);
-  const settings = useMeasure((s) => s.settings);
-  const dirty = useMeasure(isDirty);
-  const saving = useMeasure((s) => s.saving);
-  const active = tool && isTelecomTool(tool.tool) ? tool.tool : null;
-  const measurement = focused && isTelecomTool(focused.tool) ? focused : null;
-  const unavailable = readOnly
+  return readOnly
     ? 'This package is read only. Open a writable project to draw.'
     : mode === 'map'
       ? 'Switch to 3D or Split to pick points on a point cloud or mesh.'
@@ -73,6 +63,35 @@ export function TelecomTools() {
         : !ready
           ? 'Measurements are loading or unavailable.'
           : null;
+}
+
+/** Start a telecom tool: picks are on the 3D view, so annotating and the view's own tool end. */
+export function startTelecomTool(t: TelecomTool): void {
+  shell.getState().setAnnotating(false);
+  getActiveStage()?.setTool('select');
+  startTool(t);
+}
+
+/**
+ * The telecom measurement in hand (Measure workbench, Telecom): what to pick and what it means,
+ * the reading, Undo and Cancel while picking, the endpoints of a picked one, and Save. The tools
+ * themselves are the workbench's Telecom rows.
+ */
+export function TelecomTools() {
+  const pkg = useShell((s) => s.pkg);
+  const local = useWorkspace((s) => !!s.project && !('epsg' in s.project.manifest.crs));
+  const tool = useMeasure((s) => s.tool);
+  const draw = useMeasure((s) => s.draw);
+  const readOnly = useMeasure((s) => s.readOnly) || pkg !== null;
+  const focused = useMeasure((s) => s.file.measurements.find((m) => m.id === s.focus));
+  const message = useMeasure((s) => s.message);
+  const editing = useMeasure((s) => s.editing);
+  const settings = useMeasure((s) => s.settings);
+  const dirty = useMeasure(isDirty);
+  const saving = useMeasure((s) => s.saving);
+  const active = tool && isTelecomTool(tool.tool) ? tool.tool : null;
+  const measurement = focused && isTelecomTool(focused.tool) ? focused : null;
+  const unavailable = useTelecomUnavailable();
   const preview =
     active && draw
       ? {
@@ -110,25 +129,6 @@ export function TelecomTools() {
           Measurements
         </button>
       </header>
-      <div className="telecom-actions" role="group" aria-label="Telecom tools">
-        {TOOLS.map((t) => (
-          <button
-            key={t}
-            type="button"
-            className="btn sm"
-            aria-pressed={active === t}
-            disabled={unavailable !== null}
-            data-testid={`telecom-tool-${t}`}
-            onClick={() => {
-              shell.getState().setAnnotating(false);
-              stage?.setTool('select');
-              startTool(t);
-            }}
-          >
-            {TOOL_LABELS[t]}
-          </button>
-        ))}
-      </div>
       <p className="telecom-help" id="telecom-guidance">
         {unavailable ??
           (active
@@ -144,6 +144,7 @@ export function TelecomTools() {
             : 'Grid north follows the project CRS; this is not true north.'}
         </p>
       )}
+      {/* the antenna detection (DetectAntennas.tsx) mounts here, under the guidance */}
       {(active !== null || measurement !== null) && (
         <div className="telecom-result" aria-live="polite">
           {active && draw && (

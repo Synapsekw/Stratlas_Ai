@@ -1,7 +1,10 @@
-/** The Measure group: the quick distance (M), the section plane (X) and the survey tools. */
+/**
+ * The Measure group's actions: the one Distance tool (M, "Measure a distance", D19) and the
+ * section plane (X). The full set is the Measure workbench (workbench/benches/MeasureBench).
+ */
 import type { EngineStage, SectionState } from '@aio/engine';
-import { MeasureToolbar } from '../../survey/MeasureToolbar';
-import { PopTool, Tool } from '../StageTools';
+import { shell } from '../../shell';
+import { measureStore, startTool, stopTool } from '../../survey/measureStore';
 
 /** Compass bearing from the orbit target toward the camera: the half a viewer wants removed. */
 function cameraBearing(stage: EngineStage): number {
@@ -9,9 +12,25 @@ function cameraBearing(stage: EngineStage): number {
   return Math.round(((Math.atan2(v.x, -v.z) * 180) / Math.PI + 360) % 360);
 }
 
-/** The quick distance on (M, "Measure a distance") or back to selecting. */
-export function toggleMeasure(stage: EngineStage): void {
-  stage.setTool(stage.tool === 'measure' ? 'select' : 'measure');
+/** The Distance tool is on (the plain tool, not a template built on it). */
+export function distanceOn(): boolean {
+  const tool = measureStore.getState().tool;
+  return tool?.tool === 'distance' && !tool.template;
+}
+
+/**
+ * The survey Distance on (M, "Measure a distance"), or off again. A read-only project or a
+ * package measures without saving (D6, D19). The view's own measure tool is not used any more:
+ * the view goes back to selecting, so its picks reach the drawing.
+ */
+export function toggleMeasure(stage: EngineStage | null): void {
+  if (distanceOn()) {
+    stopTool();
+    return;
+  }
+  if (stage && stage.tool !== 'select') stage.setTool('select');
+  const transient = measureStore.getState().readOnly || shell.getState().pkg !== null;
+  startTool('distance', { transient });
 }
 
 /** Turn the section on toward the camera, or off. */
@@ -26,7 +45,8 @@ export function toggleSection(stage: EngineStage): void {
   );
 }
 
-function SectionPanel({ stage }: { stage: EngineStage }) {
+/** The section plane's settings: on, direction, bearing, offset and which half stays. */
+export function SectionPanel({ stage }: { stage: EngineStage }) {
   const s = stage.section;
   const set = (patch: Partial<SectionState>) => {
     stage.setSection(patch);
@@ -97,37 +117,5 @@ function SectionPanel({ stage }: { stage: EngineStage }) {
         />
       </label>
     </div>
-  );
-}
-
-/** Select, measure and section. */
-export function MeasureTools({ stage }: { stage: EngineStage | null }) {
-  const tool = stage?.tool ?? 'select';
-  // No separate Select tool: the ruler toggles off and Esc returns to selecting. The survey tools
-  // took its place, so the bar still fits one row at 1440 px with both side panels open.
-  return (
-    <>
-      <Tool
-        icon="ruler"
-        label="Measure a distance"
-        shortcut="scene.measure"
-        pressed={tool === 'measure'}
-        disabled={!stage}
-        onClick={() => {
-          if (stage) toggleMeasure(stage);
-        }}
-      />
-      {stage && (
-        <PopTool
-          icon="section"
-          label="Section plane"
-          shortcut="scene.section"
-          pressed={stage.section.enabled}
-        >
-          <SectionPanel stage={stage} />
-        </PopTool>
-      )}
-      <MeasureToolbar />
-    </>
   );
 }

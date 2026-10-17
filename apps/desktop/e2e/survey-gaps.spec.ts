@@ -26,7 +26,7 @@ import {
 } from './fixtures';
 import { prepareSurveys } from './surveyJobs';
 import type { SurveyDemoProject } from './surveyFixtures';
-import { islandGroup } from './island';
+import { measureBench, measurementsList, measureSection } from './island';
 
 const REPO = join(import.meta.dirname, '..', '..', '..');
 
@@ -65,12 +65,9 @@ async function openDemo(win: Page, p: SurveyDemoProject) {
   await expect(win.locator('[data-scene-view] canvas').first()).toBeVisible();
 }
 
-/** The Survey measurements popover, in the island's Measure set (opened unless already open). */
-async function openSurveyTools(win: Page) {
-  const survey = win.getByRole('button', { name: 'Survey measurements', exact: true });
-  if (!(await survey.isVisible())) await islandGroup(win, 'measure');
-  await survey.click();
-  await expect(win.getByTestId('survey-tools')).toBeVisible();
+/** The Measure workbench's Site data (the island's Measure tab opens the workbench). */
+async function openSiteData(win: Page) {
+  await measureSection(win, 'siteData');
 }
 
 test('a geoid grid imported in Settings is offered in Site settings and removed again', async ({
@@ -209,7 +206,7 @@ test('a package of a survey project shows its measurements read only, drawn, wit
   await prepareSurveys(win, surveyProject.dir);
 
   // the DTM filter needs a point cloud: this project has none, and the panel says so
-  await openSurveyTools(win);
+  await openSiteData(win);
   await win.getByRole('button', { name: 'Survey QA and cleanup' }).click();
   await win.getByTestId('survey-qa-open-cleanup').click();
   const cleanup = win.getByTestId('cleanup-panel');
@@ -218,7 +215,7 @@ test('a package of a survey project shows its measurements read only, drawn, wit
   await cleanup.getByRole('button', { name: 'Close' }).click();
 
   // hydrology regions come from the polygon measurements
-  await openSurveyTools(win);
+  await openSiteData(win);
   await win.getByRole('button', { name: 'Hydrology', exact: true }).click();
   const hydro = win.getByTestId('hydro-panel');
   await expect(hydro).toBeVisible();
@@ -268,15 +265,15 @@ test('a package of a survey project shows its measurements read only, drawn, wit
     await pw.locator('.sb-nav .nav-item', { hasText: 'Scene' }).first().click();
     await expect(pw.locator('[data-scene-view] canvas').first()).toBeVisible();
 
-    // no drawing tools, templates or units; the list shows the five measurements
-    await openSurveyTools(pw);
-    const tools = pw.getByTestId('survey-tools');
+    // no drawing tools, templates or units, only Distance, which measures without saving
+    // (stage island D6); the list shows the five measurements
+    const tools = await measureBench(pw);
     await expect(tools.getByTestId('survey-tools-readonly')).toBeVisible();
-    await expect(tools.locator('[data-testid^="survey-tool-"]')).toHaveCount(0);
+    await expect(tools.locator('[data-testid^="survey-tool-"]')).toHaveCount(1);
+    await expect(tools.getByTestId('survey-tool-distance')).toHaveCount(1);
     await expect(tools.getByTestId('survey-units-open')).toHaveCount(0);
     await expect(tools.getByTestId('survey-templates-open')).toHaveCount(0);
-    await tools.getByTestId('survey-list-open').click();
-    const list = pw.getByTestId('survey-list');
+    const list = await measurementsList(pw);
     await expect(list.getByTestId('survey-item')).toHaveCount(5);
     await expect(list).toContainText('Cone (synthetic)');
     await expect(list.getByTestId('survey-list-readonly')).toBeVisible();

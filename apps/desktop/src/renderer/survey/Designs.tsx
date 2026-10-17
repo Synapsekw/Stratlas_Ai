@@ -309,7 +309,7 @@ export function DesignsPanel() {
   );
 }
 
-/** The Designs button (in the Survey measurements popover). */
+/** The Designs button (Measure workbench, Site data). */
 export function DesignsTool() {
   const hasProject = useWorkspace((s) => s.project !== null);
   return (

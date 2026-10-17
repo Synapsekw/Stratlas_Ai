@@ -13,7 +13,7 @@ import { expect, test } from './fixtures';
 import {
   closeIslandTools,
   islandCutOff,
-  islandGroup,
+  measureControl,
   openIslandTools,
   stageMode,
   toggleCompareDates,
@@ -187,10 +187,10 @@ test('the Projects header keeps every action in view, down to the smallest windo
   }
 });
 
-// ------------------------------------------------------------------------- the drawing bar
+// ------------------------------------------------------------------------- the live card
 
-/** The boxes of the drawing bar, the stage and the panels beside it, in page pixels. */
-async function drawBarLayout(win: Page) {
+/** The boxes of the live card, the stage and the panels beside it, in page pixels. */
+async function liveCardLayout(win: Page) {
   return win.evaluate(() => {
     const box = (sel: string) => {
       const r = document.querySelector(sel)?.getBoundingClientRect();
@@ -198,87 +198,72 @@ async function drawBarLayout(win: Page) {
         ? { left: r.left, right: r.right, top: r.top, bottom: r.bottom }
         : null;
     };
-    const bar = document.querySelector('[data-testid="survey-drawbar"]');
-    const r = bar?.getBoundingClientRect();
+    const stage = document.querySelector('.ws > .stage')?.getBoundingClientRect();
+    const canvas = document.querySelector('[data-scene-view] canvas');
+    const middle = stage
+      ? document.elementFromPoint(stage.left + stage.width / 2, stage.top + stage.height / 2)
+      : null;
     return {
-      bar: box('[data-testid="survey-drawbar"]'),
+      card: box('[data-testid="survey-drawbar"]'),
       stage: box('.ws > .stage'),
       right: box('.ws > aside.right'),
-      left: box('aside.sidebar'),
-      // rows of controls: the parts of one row share a middle line, whatever their heights
-      rows: bar
-        ? [...bar.children]
-            .map((c) => c.getBoundingClientRect())
-            .filter((c) => c.width > 0)
-            .map((c) => (c.top + c.bottom) / 2)
-            .sort((a, b) => a - b)
-            .filter((y, i, all) => i === 0 || y - (all[i - 1] ?? y) > 8).length
-        : 0,
-      middle: r ? (r.left + r.right) / 2 : null,
-      page: innerWidth,
+      // nothing of the drawing floats over the view: a click in its middle reaches it
+      viewFree: canvas !== null && middle === canvas,
     };
   });
 }
 
-/** Start drawing an area: the bar with its Finish and Cancel shows. */
+/** Start drawing an area from the Measure workbench: its live card shows Save and Stop. */
 async function startArea(win: Page) {
-  // Area is in the Survey measurements popover, in the island's Measure set
-  await islandGroup(win, 'measure');
-  await win.getByRole('button', { name: 'Survey measurements', exact: true }).click();
-  await win.getByTestId('survey-tool-area').click();
-  const bar = win.getByTestId('survey-drawbar');
-  await expect(bar).toContainText('Area');
-  await expect(bar.getByRole('button', { name: 'Finish' })).toBeVisible();
-  return bar;
+  await (await measureControl(win, 'survey-tool-area')).click();
+  const card = win.getByTestId('survey-drawbar');
+  await expect(card).toContainText('Area');
+  await expect(card.getByRole('button', { name: /^Save/ })).toBeVisible();
+  return card;
 }
 
-test('the bar shown while drawing an area stays inside the main view', async ({
+test('the live card shown while drawing an area sits in the right panel, clear of the view', async ({
   app,
   win,
 }, info) => {
   await openProject(win);
-  const bar = await startArea(win);
+  await expect(win.locator('[data-scene-view] canvas').first()).toBeVisible();
+  const card = await startArea(win);
 
-  // the smallest window: the bar lies on the stage, clear of the panel on the right (and of the
-  // sidebar on the left), with every control in view
-  const small = await drawBarLayout(win);
+  // the smallest window: the card is in the right panel, every control in view, and the view
+  // keeps all its room (D13, D18: no drawing bar over the model)
+  const small = await liveCardLayout(win);
   expect(small.right, 'the right panel is open').not.toBeNull();
-  expect(small.bar && small.stage && small.right && small.left).toBeTruthy();
-  if (!small.bar || !small.stage || !small.right || !small.left) return;
-  expect(small.bar.right, 'the bar ends before the right panel').toBeLessThanOrEqual(
-    small.right.left,
-  );
-  expect(small.bar.left, 'the bar starts after the sidebar').toBeGreaterThanOrEqual(
-    small.left.right,
-  );
-  expect(small.bar.left).toBeGreaterThanOrEqual(small.stage.left);
-  expect(small.bar.right).toBeLessThanOrEqual(small.stage.right);
-  expect(small.bar.top).toBeGreaterThanOrEqual(small.stage.top);
-  for (const control of await bar.getByRole('button').all())
+  expect(small.card && small.stage && small.right).toBeTruthy();
+  if (!small.card || !small.stage || !small.right) return;
+  expect(small.card.left).toBeGreaterThanOrEqual(small.right.left);
+  expect(small.card.right).toBeLessThanOrEqual(small.right.right);
+  expect(small.card.left, 'the card is beside the stage').toBeGreaterThanOrEqual(small.stage.right);
+  expect(small.viewFree, 'a click in the middle of the view reaches it').toBe(true);
+  for (const control of await card.getByRole('button').all())
     await expect(control).toBeInViewport({ ratio: 1 });
-  await shot(win, info, 'draw-bar-1100.png');
-  // Cancel is what a click on it reaches, and it puts the tool away
-  const cancel = bar.getByRole('button', { name: 'Cancel' });
+  await shot(win, info, 'live-card-1100.png');
+  // Stop is what a click on it reaches, and it puts the tool away
+  const stop = card.getByRole('button', { name: /^Stop/ });
   expect(
-    await cancel.evaluate((el) => {
+    await stop.evaluate((el) => {
       const r = el.getBoundingClientRect();
       const top = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
       return el === top || el.contains(top);
     }),
   ).toBe(true);
-  await cancel.click();
-  await expect(bar).toHaveCount(0);
+  await stop.click();
+  await expect(card).toHaveCount(0);
 
-  // a wide window: one row in the middle of the window, as it always was
+  // a wide window: the same card in the same place
   // (a screen that cannot hold a 1920 window, a CI runner's, leaves this part out)
   const got = await resize(app, win, 1920, 1000);
   if (got >= 1900) {
     await startArea(win);
-    const wide = await drawBarLayout(win);
-    expect(wide.rows, 'rows of the bar at 1920').toBe(1);
-    expect(Math.abs((wide.middle ?? 0) - wide.page / 2)).toBeLessThanOrEqual(1);
-    expect(wide.bar && wide.right && wide.bar.right <= wide.right.left).toBe(true);
-    await shot(win, info, 'draw-bar-1920.png');
+    const wide = await liveCardLayout(win);
+    expect(wide.card && wide.right && wide.card.left >= wide.right.left).toBe(true);
+    expect(wide.viewFree).toBe(true);
+    await shot(win, info, 'live-card-1920.png');
   }
 });
 

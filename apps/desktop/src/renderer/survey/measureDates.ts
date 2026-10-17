@@ -22,12 +22,17 @@ export type DatesOnScreen = Pick<Workspace, 'dates' | 'hidden'>;
  * shows another date leaves them to the side that shows theirs). The one being edited stays.
  */
 export function measurementsOn(
-  s: Pick<MeasureState, 'file' | 'editing' | 'focus' | 'measurementsVisible'>,
+  s: Pick<MeasureState, 'file' | 'editing' | 'focus' | 'measurementsVisible'> &
+    Partial<Pick<MeasureState, 'hiddenMeasurements'>>,
   ws: DatesOnScreen,
 ): SurveyMeasurement[] {
   if (!s.measurementsVisible) return [];
+  // a measurement hidden by its own eye stays hidden, unless it is the one being edited
+  const off = new Set(s.hiddenMeasurements ?? []);
   return s.file.measurements.filter(
-    (m) => (s.editing !== null && m.id === s.focus) || scopeOnScreen(m.scope, ws.dates, ws.hidden),
+    (m) =>
+      (s.editing !== null && m.id === s.focus) ||
+      (!off.has(m.id) && scopeOnScreen(m.scope, ws.dates, ws.hidden)),
   );
 }
 

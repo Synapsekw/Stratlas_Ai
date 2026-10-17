@@ -1,7 +1,8 @@
 /**
- * The saved measurements (M11 G3, PRD SRV-4): folders, search, sort, filters (template, created
- * by me, last 7 days, scope, dropdown values), fly to, and bulk select (move to a folder,
- * delete; G4 adds totals). Changes wait for **Save measurements** unless autosave is on.
+ * The saved measurements (M11 G3, PRD SRV-4), the Measure workbench's "Saved in this project"
+ * (stage island D12, D18): Show all and Hide all, an eye per row, folders, search, sort, filters
+ * (template, created by me, last 7 days, scope, dropdown values), fly to, and bulk select (move
+ * to a folder, delete; G4 adds totals). Changes wait for **Save measurements** unless autosave is on.
  */
 import type { EngineStage } from '@aio/engine';
 import {
@@ -16,9 +17,9 @@ import {
   type MeasurementFilter,
   type MeasurementSort,
 } from '@aio/survey';
-import { Icon } from '@aio/ui';
+import { Icon, IconButton, Menu, Row, type MenuEntry } from '@aio/ui';
 import { useWorkspace, workspace } from '@aio/workspace';
-import { useMemo, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import { authorName } from '../author';
 import { focusPoint, frameOf } from './measureScene';
 import {
@@ -31,6 +32,7 @@ import {
   setAutosave,
   setFolder,
   setListOpen,
+  setMeasurementHidden,
   setMeasurementsVisible,
   toggleSelected,
   useMeasure,
@@ -46,6 +48,7 @@ const SORTS: { v: MeasurementSort; t: string }[] = [
 export function MeasurementList({ stage }: { stage: EngineStage | null }) {
   const file = useMeasure((s) => s.file);
   const measurementsVisible = useMeasure((s) => s.measurementsVisible);
+  const hiddenOnes = useMeasure((s) => s.hiddenMeasurements);
   const templates = useMeasure((s) => s.templates);
   const settings = useMeasure((s) => s.settings);
   const selected = useMeasure((s) => s.selected);
@@ -98,23 +101,19 @@ export function MeasurementList({ stage }: { stage: EngineStage | null }) {
     stage?.requestRender();
   };
 
+  /** The eye on a row: hide it, or show it (after Hide all: show only this one). */
+  const showOne = (id: string, hidden: boolean) => {
+    if (measurementsVisible) {
+      setMeasurementHidden(id, !hidden);
+      return;
+    }
+    setMeasurementsVisible(true);
+    for (const other of file.measurements)
+      if (other.id !== id) setMeasurementHidden(other.id, true);
+  };
+
   return (
-    <section className="sv-card sv-list" aria-label="Measurements" data-testid="survey-list">
-      <header className="sv-head" role="none">
-        <h2>
-          Measurements <span className="faint">{file.measurements.length}</span>
-        </h2>
-        <button
-          type="button"
-          className="btn ghost sm"
-          aria-label="Close the measurements list"
-          onClick={() => {
-            setListOpen(false);
-          }}
-        >
-          <Icon name="x" size={14} />
-        </button>
-      </header>
+    <section className="sv-list" aria-label="Measurements" data-testid="survey-list">
       <div
         className="sv-row sv-wrap"
         role="group"
@@ -146,9 +145,19 @@ export function MeasurementList({ stage }: { stage: EngineStage | null }) {
         >
           Hide all
         </button>
-        <span className="small faint">
+        <span className="small faint sv-grow">
           {measurementsVisible ? 'Shown in active surveys' : 'Hidden in views'}
         </span>
+        <button
+          type="button"
+          className="btn ghost sm"
+          aria-label="Close the measurements list"
+          onClick={() => {
+            setListOpen(false);
+          }}
+        >
+          <Icon name="x" size={14} />
+        </button>
       </div>
       {status === 'error' && (
         <p className="notice danger small" role="alert">
@@ -357,48 +366,69 @@ export function MeasurementList({ stage }: { stage: EngineStage | null }) {
                     const value = row
                       ? formatRow(row, effectiveUnits(settings.units, m.units), settings.precision)
                       : '';
+                    const hidden = !measurementsVisible || hiddenOnes.includes(m.id);
                     return (
-                      <li
+                      <Row
                         key={m.id}
-                        className={focus === m.id ? 'on' : undefined}
+                        kind="tree"
+                        as="li"
+                        className={focus === m.id ? 'sv-item on' : 'sv-item'}
+                        selected={focus === m.id}
                         data-testid="survey-item"
                         data-id={m.id}
-                      >
-                        <input
-                          type="checkbox"
-                          aria-label={`Select ${m.label}`}
-                          checked={selected.includes(m.id)}
-                          onChange={() => {
-                            toggleSelected(m.id);
-                          }}
-                        />
-                        <button
-                          type="button"
-                          className="sv-item-main"
-                          onClick={() => {
-                            select([m.id], m.id);
-                          }}
-                        >
-                          <span
-                            className="sv-swatch"
-                            style={{ background: m.style?.color ?? '#ffd166' }}
-                          />
-                          <span className="sv-item-label">{m.label}</span>
-                          <span className="faint small">{tpl?.name ?? TOOL_LABELS[m.tool]}</span>
-                          <span className="mono small sv-item-value">{value}</span>
-                        </button>
-                        <button
-                          type="button"
-                          className="btn ghost sm"
-                          aria-label={`Fly to ${m.label}`}
-                          title="Fly to"
-                          onClick={() => {
-                            flyTo(m.id);
-                          }}
-                        >
-                          <Icon name="target" size={12} />
-                        </button>
-                      </li>
+                        label={
+                          <>
+                            <input
+                              type="checkbox"
+                              aria-label={`Select ${m.label}`}
+                              checked={selected.includes(m.id)}
+                              onChange={() => {
+                                toggleSelected(m.id);
+                              }}
+                            />
+                            <button
+                              type="button"
+                              className="sv-item-main"
+                              onClick={() => {
+                                select([m.id], m.id);
+                              }}
+                            >
+                              <span
+                                className="sv-swatch"
+                                style={{ background: m.style?.color ?? '#ffd166' }}
+                              />
+                              <span className="sv-item-label">{m.label}</span>
+                              <span className="faint small">
+                                {tpl?.name ?? TOOL_LABELS[m.tool]}
+                              </span>
+                              <span className="mono small sv-item-value">{value}</span>
+                            </button>
+                          </>
+                        }
+                        actions={
+                          <>
+                            <IconButton
+                              icon="eye"
+                              label={hidden ? `Show ${m.label}` : `Hide ${m.label}`}
+                              pressed={!hidden}
+                              data-testid="survey-item-eye"
+                              onClick={() => {
+                                showOne(m.id, hidden);
+                              }}
+                            />
+                            <ItemMenu
+                              label={m.label}
+                              readOnly={readOnly}
+                              onFly={() => {
+                                flyTo(m.id);
+                              }}
+                              onDelete={() => {
+                                deleteMeasurements([m.id]);
+                              }}
+                            />
+                          </>
+                        }
+                      />
                     );
                   })}
                 </ul>
@@ -447,5 +477,58 @@ export function MeasurementList({ stage }: { stage: EngineStage | null }) {
         </footer>
       )}
     </section>
+  );
+}
+
+/** A saved row's ⋯: fly to it, or delete it (not in a read-only project). */
+function ItemMenu({
+  label,
+  readOnly,
+  onFly,
+  onDelete,
+}: {
+  label: string;
+  readOnly: boolean;
+  onFly: () => void;
+  onDelete: () => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const opener = useRef<HTMLButtonElement>(null);
+  const items: MenuEntry[] = [
+    { id: 'fly', label: 'Fly to', icon: 'target', onSelect: onFly },
+    ...(readOnly
+      ? []
+      : [
+          {
+            id: 'delete',
+            label: 'Delete',
+            icon: 'trash' as const,
+            danger: true,
+            onSelect: onDelete,
+          },
+        ]),
+  ];
+  return (
+    <>
+      <IconButton
+        ref={opener}
+        icon="more"
+        label={`More for ${label}`}
+        aria-haspopup="menu"
+        aria-expanded={open}
+        onClick={() => {
+          setOpen(!open);
+        }}
+      />
+      <Menu
+        open={open}
+        onClose={() => {
+          setOpen(false);
+        }}
+        opener={opener}
+        label={`More for ${label}`}
+        items={items}
+      />
+    </>
   );
 }

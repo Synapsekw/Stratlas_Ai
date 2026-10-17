@@ -1,337 +1,39 @@
 /**
- * Survey measurement tools on the stage toolbar (M11 G3, PRD SRV-3 to SRV-5): the typed tools by
- * family, the bookmarked templates, the drawing aids (snapping, angle lock, typed distance and
- * bearing) and the way into the list, the templates and the units. `MeasureLayer` draws the
- * measurements in the 3D view and on the map and holds the panels; the toolbar mounts it.
+ * The survey measurements' workspace mount (M11 G3, PRD SRV-3 to SRV-5): `MeasureLayer` draws
+ * the measurements in the 3D view and on the map, loads the project's file and shows the dialogs.
+ * The tools, the list, the measurement panel, the drawing aids and the templates are the Measure
+ * workbench in the right sidebar (workspace/workbench/benches/MeasureBench.tsx, stage island D12,
+ * D18); Survey QA, Terrain overlays and Hydrology are sidebar tabs of their own.
  */
 import type { EngineStage } from '@aio/engine';
-import { unitLabel } from '@aio/geo';
 import { getActiveMap, onActiveMap, type MapController } from '@aio/maps';
-import type { MeasurementTool } from '@aio/schema';
-import {
-  bookmarks,
-  FAMILY_LABELS,
-  industryTemplates,
-  isTelecomTool,
-  parseBearing,
-  templateLibrary,
-  TOOL_FAMILY,
-  TOOL_LABELS,
-  type SnapSource,
-} from '@aio/survey';
-import { Icon, type IconName } from '@aio/ui';
+import { isTelecomTool } from '@aio/survey';
 import { useWorkspace } from '@aio/workspace';
-import { useEffect, useMemo, useState, useSyncExternalStore } from 'react';
+import { useEffect, useMemo, useSyncExternalStore } from 'react';
 import { createPortal } from 'react-dom';
 import { useShell } from '../shell';
 import { primaryMap, primaryScene } from '../workspace/compare';
-import { PopTool, Tool } from '../workspace/StageTools';
-import { BulkTotals } from './BulkTotals';
+import { useMeasureFollow } from '../workspace/workbench/benches/MeasureBench';
 import { CompareLayer } from './Comparison';
-import { DesignsTool } from './Designs';
 import { DesignRolePrompt } from './DesignRolePrompt';
-import { ExportDialogMount, ExportTool } from './ExportDialog';
-import { HaulRoadTool } from './HaulRoad';
-import { HydroTool } from './Hydro';
-import { MagicPolygon } from './MagicPolygon';
-import { useHydro } from './hydroStore';
-import { openCompareDialog } from './compareStore';
-import { MeasurementList } from './MeasurementList';
-import { MeasurementPanel } from './MeasurementPanel';
-import { SurveyQaTool } from './Qa';
+import { ExportDialogMount } from './ExportDialog';
 import { attach3d, attachMap, frameOf, stageClamp } from './measureScene';
 import {
-  drawEvent,
   isDirty,
   loadMeasurements,
-  openDialog,
   saveMeasurements,
-  setListOpen,
-  setSnap,
-  setSnapSource,
   setSurface,
-  startTool,
   stopTool,
   stopEditing,
   useMeasure,
 } from './measureStore';
 import { TemplateEditor } from './TemplateEditor';
-import { OverlaysPanel, useOverlaysLoad } from './Overlays';
+import { useOverlaysLoad } from './Overlays';
 import { attachOverlaysMap } from './overlaysMap';
-import { setOverlaysOpen, useOverlays } from './overlaysStore';
 import { SectionDock } from './SectionDock';
 import { attachSectionMap } from './sectionMap';
 import { UnitsDialog } from './UnitsDialog';
 import './measure.css';
-
-/** The tools the toolbar offers, by family (a cross-section opens G5's dock; history with G8). */
-const FAMILIES: { family: 'point' | 'line' | 'polygon' | 'markup'; tools: MeasurementTool[] }[] = [
-  { family: 'point', tools: ['elevation', 'elevation-difference', 'annotation'] },
-  { family: 'line', tools: ['distance', 'grade', 'vertex-table', 'berm-check', 'section'] },
-  { family: 'polygon', tools: ['area', 'volume'] },
-  { family: 'markup', tools: ['freehand'] },
-];
-
-const FAMILY_ICON: Record<string, IconName> = {
-  point: 'point',
-  line: 'path',
-  polygon: 'polygon',
-  markup: 'brush',
-};
-
-const SNAP_SOURCES: { source: SnapSource; label: string }[] = [
-  { source: 'measurement', label: 'Measurements' },
-  { source: 'design', label: 'Designs' },
-  { source: 'alignment', label: 'Alignments' },
-  { source: 'guide', label: 'Guidelines' },
-];
-
-/** The stage toolbar's survey tools (in `MeasureTools`, and alone on the map). */
-export function MeasureToolbar() {
-  const active = useMeasure((s) => s.tool);
-  const listOpen = useMeasure((s) => s.listOpen);
-  const templates = useMeasure((s) => s.templates);
-  const sets = useMeasure((s) => s.settings.templateSets);
-  const snap = useMeasure((s) => s.snap);
-  // a package is read only from the start (main says so too once the measurements are read)
-  const pkg = useShell((s) => s.pkg);
-  const readOnly = useMeasure((s) => s.readOnly) || pkg !== null;
-  const overlaysOpen = useOverlays((s) => s.open);
-  // the Hydrology panel closes while a point is picked on the map and opens again with it
-  const hydroOpen = useHydro((s) => s.open);
-  const lib = useMemo(
-    () => bookmarks(templateLibrary(templates.project, templates.user, industryTemplates(sets))),
-    [templates, sets],
-  );
-  // picking a tool or opening a panel closes the popover, so the keys go to the drawing
-  const [open, setOpen] = useState(false);
-  return (
-    <>
-      <PopTool
-        icon="measure"
-        label="Survey measurements"
-        pressed={active !== null || listOpen}
-        wide
-        open={open || hydroOpen}
-        onOpenChange={setOpen}
-      >
-        <div className="pop-form sv-tools" data-testid="survey-tools">
-          {/* the site's designs, survey QA, terrain overlays, hydrology, haul road and export: here
-              rather than on the bar, which fits one row at 1440 px with both side panels open */}
-          <div className="sv-fam" role="group" aria-label="Site data">
-            <span className="pop-title">
-              <Icon name="layers" size={12} /> Site data
-            </span>
-            <div className="tgroup-h sv-nested">
-              <DesignsTool />
-              <SurveyQaTool
-                onPicked={() => {
-                  setOpen(false);
-                }}
-              />
-              <Tool
-                icon="raster"
-                label="Terrain overlays"
-                testId="survey-overlays-open"
-                pressed={overlaysOpen}
-                onClick={() => {
-                  setOverlaysOpen(!overlaysOpen);
-                  setOpen(false);
-                }}
-              />
-              <HydroTool />
-              <HaulRoadTool />
-              <ExportTool
-                onPicked={() => {
-                  setOpen(false);
-                }}
-              />
-            </div>
-          </div>
-          {!readOnly &&
-            FAMILIES.map((f) => (
-              <div
-                key={f.family}
-                className="sv-fam"
-                role="group"
-                aria-label={FAMILY_LABELS[f.family]}
-              >
-                <span className="pop-title">
-                  <Icon name={FAMILY_ICON[f.family] ?? 'measure'} size={12} />{' '}
-                  {FAMILY_LABELS[f.family]}
-                </span>
-                <div className="sv-tool-row">
-                  {f.tools.map((t) => (
-                    <button
-                      key={t}
-                      type="button"
-                      className="btn sm"
-                      aria-pressed={active?.tool === t && !active.template}
-                      data-testid={`survey-tool-${t}`}
-                      onClick={() => {
-                        if (active?.tool === t && !active.template) stopTool();
-                        else startTool(t);
-                        setOpen(false);
-                      }}
-                    >
-                      {TOOL_LABELS[t]}
-                    </button>
-                  ))}
-                </div>
-              </div>
-            ))}
-          {!readOnly && lib.length > 0 && (
-            <div className="sv-fam" role="group" aria-label="Bookmarked templates">
-              <span className="pop-title">
-                <Icon name="flag" size={12} /> Templates
-              </span>
-              <div className="sv-tool-row">
-                {lib.map(({ template: t }) => (
-                  <button
-                    key={t.id}
-                    type="button"
-                    className="btn sm"
-                    aria-pressed={active?.template?.id === t.id}
-                    data-testid={`survey-bookmark-${t.id}`}
-                    title={t.description ?? TOOL_LABELS[t.tool]}
-                    onClick={() => {
-                      if (active?.template?.id === t.id) stopTool();
-                      else startTool(t.tool, t);
-                      setOpen(false);
-                    }}
-                  >
-                    {t.name}
-                  </button>
-                ))}
-              </div>
-            </div>
-          )}
-          {readOnly && (
-            <p className="pop-note" data-testid="survey-tools-readonly">
-              This project is a read-only package: measurements, sections and results are shown
-              only.
-            </p>
-          )}
-          <span className="pop-title">Drawing aids</span>
-          <label className="pop-row">
-            <span className="pop-grow">Snap to vertices</span>
-            <input
-              type="checkbox"
-              checked={snap.vertices}
-              onChange={(e) => {
-                setSnap({ vertices: e.target.checked });
-              }}
-            />
-          </label>
-          <label className="pop-row">
-            <span className="pop-grow">Snap to edges</span>
-            <input
-              type="checkbox"
-              checked={snap.edges}
-              onChange={(e) => {
-                setSnap({ edges: e.target.checked });
-              }}
-            />
-          </label>
-          <div className="sv-chips" role="group" aria-label="Snap to">
-            {SNAP_SOURCES.map((s) => (
-              <label key={s.source} className="sv-chip">
-                <input
-                  type="checkbox"
-                  checked={snap.sources[s.source]}
-                  onChange={(e) => {
-                    setSnapSource(s.source, e.target.checked);
-                  }}
-                />
-                {s.label}
-              </label>
-            ))}
-          </div>
-          <label className="pop-row">
-            <span>Snap distance</span>
-            <input
-              type="range"
-              min={2}
-              max={30}
-              value={snap.tolerancePx}
-              onChange={(e) => {
-                setSnap({ tolerancePx: Number(e.target.value) });
-              }}
-            />
-            <span className="mono">{snap.tolerancePx} px</span>
-          </label>
-          <p className="pop-note">
-            Hold <span className="kbd">Shift</span> to lock the angle; type a distance and press{' '}
-            <span className="kbd">Enter</span>; <span className="kbd">Tab</span> types a bearing;{' '}
-            <span className="kbd">Esc</span> cancels.
-          </p>
-          <div className="sv-tool-row">
-            <button
-              type="button"
-              className="btn sm"
-              aria-pressed={listOpen}
-              data-testid="survey-list-open"
-              onClick={() => {
-                setListOpen(!listOpen);
-                setOpen(false);
-              }}
-            >
-              <Icon name="layers" size={12} /> Measurements
-            </button>
-            {!readOnly && (
-              <button
-                type="button"
-                className="btn sm"
-                data-testid="survey-templates-open"
-                onClick={() => {
-                  openDialog({ kind: 'templates', edit: null, scope: 'project' });
-                  setOpen(false);
-                }}
-              >
-                <Icon name="flag" size={12} /> Templates
-              </button>
-            )}
-            {!readOnly && (
-              <button
-                type="button"
-                className="btn sm"
-                data-testid="survey-units-open"
-                onClick={() => {
-                  openDialog({ kind: 'units', target: 'site' });
-                  setOpen(false);
-                }}
-              >
-                Units
-              </button>
-            )}
-            <button
-              type="button"
-              className="btn sm"
-              data-testid="survey-materials-tool"
-              onClick={() => {
-                openCompareDialog('materials');
-                setOpen(false);
-              }}
-            >
-              Materials
-            </button>
-            <button
-              type="button"
-              className="btn sm"
-              data-testid="survey-site-open"
-              onClick={() => {
-                openCompareDialog('site');
-                setOpen(false);
-              }}
-            >
-              Whole site cut and fill
-            </button>
-          </div>
-        </div>
-      </PopTool>
-    </>
-  );
-}
 
 function useActiveMap(): MapController | null {
   return useSyncExternalStore(onActiveMap, getActiveMap, getActiveMap);
@@ -348,8 +50,9 @@ export function MeasureMount({ stage }: { stage: EngineStage | null }) {
 }
 
 /**
- * The measurements in the views and their panels: loads the project's file, attaches the 3D and
- * map drawing, and shows the drawing bar, the list, the properties panel and the dialogs.
+ * The measurements in the views: loads the project's file, attaches the 3D and map drawing, keeps
+ * the Measure workbench and the survey panel tabs following the tools, and shows the unsaved
+ * changes bar and the dialogs.
  */
 export function MeasureLayer({ stage }: { stage: EngineStage | null }) {
   const project = useWorkspace((s) => s.project);
@@ -360,13 +63,11 @@ export function MeasureLayer({ stage }: { stage: EngineStage | null }) {
   const manifest = project?.manifest ?? null;
   const map = useActiveMap();
   const frame = useMemo(() => (manifest ? frameOf(manifest) : null), [manifest]);
-  const listOpen = useMeasure((s) => s.listOpen);
-  const focus = useMeasure((s) => s.focus);
   const focusTool = useMeasure((s) => s.file.measurements.find((m) => m.id === s.focus)?.tool);
   const activeTool = useMeasure((s) => s.tool?.tool);
   const dialog = useMeasure((s) => s.dialog);
-  const overlaysOpen = useOverlays((s) => s.open);
   useOverlaysLoad();
+  useMeasureFollow();
 
   useEffect(() => {
     void loadMeasurements(projectId);
@@ -420,17 +121,9 @@ export function MeasureLayer({ stage }: { stage: EngineStage | null }) {
   if (!projectId) return null;
   return createPortal(
     <>
-      <DrawBar />
-      {(listOpen || (focus && focusTool && !isTelecomTool(focusTool))) && (
-        <aside className="sv-side" aria-label="Survey measurements" data-testid="survey-side">
-          {listOpen && <MeasurementList stage={stage} />}
-          {focus && focusTool && !isTelecomTool(focusTool) && <MeasurementPanel />}
-          <BulkTotals />
-        </aside>
-      )}
+      <UnsavedBar />
       <CompareLayer stage={stage} map={map} frame={frame} />
       <SectionDock stage={stage} />
-      {overlaysOpen && <OverlaysPanel />}
       {dialog?.kind === 'templates' && <TemplateEditor />}
       {dialog?.kind === 'units' && <UnitsDialog />}
       <DesignRolePrompt />
@@ -440,112 +133,39 @@ export function MeasureLayer({ stage }: { stage: EngineStage | null }) {
   );
 }
 
-/** While drawing: the tool, the typed distance and bearing, and Finish and Cancel. */
-function DrawBar() {
-  const tool = useMeasure((s) => s.tool);
-  const draw = useMeasure((s) => s.draw);
-  const units = useMeasure((s) => s.settings.units);
+/**
+ * Over the stage while nothing is drawn: unsaved measurement changes and their Save, or what
+ * dragging does while vertices are edited. Drawing itself is the Measure workbench's live card.
+ */
+function UnsavedBar() {
   const dirty = useMeasure(isDirty);
   const saving = useMeasure((s) => s.saving);
+  const drawing = useMeasure((s) => s.tool !== null);
   const editing = useMeasure((s) => s.editing !== null);
   const focusTool = useMeasure((s) => s.file.measurements.find((m) => m.id === s.focus)?.tool);
-  const [, setTick] = useState(0);
-  if (!tool || !draw) {
-    if (!dirty && !editing) return null;
-    return (
-      <div
-        className="sv-drawbar"
-        role="region"
-        aria-label="Unsaved measurements"
-        data-surface="dark"
-      >
-        <span className="small">
-          {editing && focusTool && isTelecomTool(focusTool)
-            ? 'Editing endpoints: drag a point. Vertex count stays fixed.'
-            : editing
-              ? 'Editing vertices: drag, Alt+click deletes, the blue dots insert.'
-              : 'Unsaved measurement changes.'}
-        </span>
-        {dirty && (
-          <button
-            type="button"
-            className="btn sm primary"
-            disabled={saving}
-            data-testid="survey-save"
-            onClick={() => {
-              void saveMeasurements();
-            }}
-          >
-            Save measurements
-          </button>
-        )}
-      </div>
-    );
-  }
-  if (isTelecomTool(tool.tool)) return null;
-  const bearing = parseBearing(draw.typing.bearing);
-  const env = { distanceUnit: units.distance };
+  if (drawing || (!dirty && !editing)) return null;
   return (
-    <div
-      className="sv-drawbar"
-      role="region"
-      aria-label="Drawing"
-      data-testid="survey-drawbar"
-      data-surface="dark"
-    >
-      <b>{tool.template?.name ?? TOOL_LABELS[tool.tool]}</b>
-      {tool.prompt && (
-        <span className="small" role="status" data-testid="survey-draw-prompt">
-          {tool.prompt}
-        </span>
-      )}
-      <span className="faint small">
-        {draw.points.length} {draw.points.length === 1 ? 'point' : 'points'}
-        {draw.lockedBearing !== null && ` · locked ${draw.lockedBearing.toFixed(1)}°`}
-        {draw.snap && ` · snapped to a ${draw.snap.source} ${draw.snap.kind}`}
+    <div className="sv-drawbar" role="region" aria-label="Unsaved measurements" data-surface="dark">
+      <span className="small">
+        {editing && focusTool && isTelecomTool(focusTool)
+          ? 'Editing endpoints: drag a point. Vertex count stays fixed.'
+          : editing
+            ? 'Editing vertices: drag, Alt+click deletes, the blue dots insert.'
+            : 'Unsaved measurement changes.'}
       </span>
-      {TOOL_FAMILY[tool.tool] !== 'point' && (
-        <>
-          <span
-            className={`sv-typed${draw.typing.field === 'distance' ? ' on' : ''}`}
-            data-testid="survey-typed-distance"
-          >
-            Distance <b className="mono">{draw.typing.distance || '...'}</b>{' '}
-            {unitLabel(units.distance)}
-          </span>
-          <span
-            className={`sv-typed${draw.typing.field === 'bearing' ? ' on' : ''}`}
-            data-testid="survey-typed-bearing"
-          >
-            Bearing <b className="mono">{draw.typing.bearing || '...'}</b>
-            {bearing !== null ? '°' : ''}
-          </span>
-        </>
-      )}
-      <span className="sv-grow" />
-      {TOOL_FAMILY[tool.tool] === 'polygon' && <MagicPolygon />}
-      {TOOL_FAMILY[tool.tool] !== 'point' && (
+      {dirty && (
         <button
           type="button"
-          className="btn sm"
-          data-testid="survey-finish"
+          className="btn sm primary"
+          disabled={saving}
+          data-testid="survey-save"
           onClick={() => {
-            drawEvent({ type: 'finish' }, env);
-            setTick((n) => n + 1);
+            void saveMeasurements();
           }}
         >
-          Finish
+          Save measurements
         </button>
       )}
-      <button
-        type="button"
-        className="btn sm ghost"
-        onClick={() => {
-          stopTool();
-        }}
-      >
-        Cancel
-      </button>
     </div>
   );
 }

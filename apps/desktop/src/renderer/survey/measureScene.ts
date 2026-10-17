@@ -561,6 +561,8 @@ export function attach3d(
       return;
     }
     if (!DRAW_KEYS.test(e.key)) return;
+    // Space types into a bearing only ("12 30 00"); otherwise it stays the app's play and pause
+    if (e.key === ' ' && !(s.draw.typing.field === 'bearing' && s.draw.points.length > 0)) return;
     e.preventDefault();
     e.stopImmediatePropagation();
     drawEvent({ type: 'key', key: e.key }, env());
@@ -587,6 +589,7 @@ export function attach3d(
     if (
       s.file !== prev.file ||
       s.measurementsVisible !== prev.measurementsVisible ||
+      s.hiddenMeasurements !== prev.hiddenMeasurements ||
       s.draw !== prev.draw ||
       s.selected !== prev.selected ||
       s.editing !== prev.editing ||
@@ -859,6 +862,7 @@ export function attachMap(
     if (
       s.file !== prev.file ||
       s.measurementsVisible !== prev.measurementsVisible ||
+      s.hiddenMeasurements !== prev.hiddenMeasurements ||
       s.draw !== prev.draw ||
       s.selected !== prev.selected ||
       s.editing !== prev.editing

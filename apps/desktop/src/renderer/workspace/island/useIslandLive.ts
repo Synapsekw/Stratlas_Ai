@@ -4,13 +4,7 @@
  * pure `liveItems` decides the list; `useIslandLive` reads the real stores into it. The survey date
  * is not a live item: it stays visible beside a live reading.
  */
-import {
-  formatRow,
-  MIN_POINTS,
-  measurementFrom,
-  measurementReadout,
-  TOOL_LABELS,
-} from '@aio/survey';
+import { TOOL_LABELS } from '@aio/survey';
 import type { MeasurementTool } from '@aio/schema';
 import { t } from '@aio/ui';
 import { telemetryAt } from '@aio/video';
@@ -22,8 +16,7 @@ import { projectJobs } from '../../processing/model';
 import { jobTitle } from '../../processing/pipelines';
 import { useJobs, useShell } from '../../shell';
 import { useNetworkUp } from '../../shell/connection';
-import { measureStore, useMeasure } from '../../survey/measureStore';
-import { useEngineStage } from '../StageTools';
+import { liveReading, useMeasure } from '../../survey/measureStore';
 import type { LiveItem } from './islandModel';
 
 /** How long "Back online" shows (D3). */
@@ -166,36 +159,14 @@ export function toolLabel(tool: MeasurementTool, template: { name: string } | nu
   return template?.name ?? TOOL_LABELS[tool];
 }
 
+/** The live survey tool and its reading, from the measuring store (M and Distance included). */
 function useToolLive(): LiveInput['tool'] {
-  const quick = useEngineStage()?.tool === 'measure';
   const active = useMeasure((s) => s.tool);
-  const draw = useMeasure((s) => s.draw);
-  const units = useMeasure((s) => s.settings.units);
-  const precision = useMeasure((s) => s.settings.precision);
-  return useMemo(() => {
-    // Quick measure has no reading: the engine exposes none. Task 13 replaces it with the survey
-    // Distance tool, which has one.
-    if (!active) return quick ? { label: t('island.group.measure'), reading: null } : null;
-    const label = toolLabel(active.tool, active.template);
-    let reading: string | null = null;
-    if (draw) {
-      const pts = draw.cursor ? [...draw.points, draw.cursor] : draw.points;
-      if (pts.length >= MIN_POINTS[draw.family]) {
-        const m = measurementFrom(active.template ?? active.tool, {
-          id: 'live',
-          label: '',
-          scope: { kind: 'site' },
-          points: pts,
-          createdAt: '',
-        });
-        const first = measurementReadout(m, {
-          surface: measureStore.getState().surface ?? undefined,
-        })[0];
-        if (first) reading = formatRow(first, units, precision);
-      }
-    }
-    return { label, reading };
-  }, [quick, active, draw, units, precision]);
+  const reading = useMeasure(liveReading);
+  return useMemo(
+    () => (active ? { label: toolLabel(active.tool, active.template), reading } : null),
+    [active, reading],
+  );
 }
 
 function usePlaybackLive(): LiveInput['clip'] {

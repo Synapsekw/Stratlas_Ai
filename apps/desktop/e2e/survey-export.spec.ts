@@ -12,7 +12,7 @@ import { join } from 'node:path';
 import { expectAccessible } from './a11y';
 import { expect, hasPipelinePython, PIPELINE_ENV, test, VENV_PYTHON } from './fixtures';
 import { openDemo, prepareSurveys } from './surveyJobs';
-import { islandGroup } from './island';
+import { measureControl } from './island';
 
 test.use({ appEnv: PIPELINE_ENV });
 test.skip(!hasPipelinePython(), `no Python with aio_pipelines at ${VENV_PYTHON}`);
@@ -55,9 +55,7 @@ test('the design as LandXML and DXF, a DSM as GeoTIFF in WGS 84, measurements as
   );
 
   await openDemo(win, earthworksProject.name, earthworksProject.id);
-  await islandGroup(win, 'measure');
-  await win.getByRole('button', { name: 'Survey measurements' }).click();
-  await win.getByTestId('survey-export-open').click();
+  await (await measureControl(win, 'survey-export-open')).click();
   const dlg = win.getByTestId('survey-export-dialog');
   await expect(dlg).toBeVisible();
   await expectAccessible(win, 'Export survey data', {

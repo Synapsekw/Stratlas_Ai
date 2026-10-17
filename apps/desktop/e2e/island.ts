@@ -185,3 +185,62 @@ export async function islandCutOff(win: Page): Promise<string[]> {
     return cut;
   });
 }
+
+/**
+ * The Measure workbench in the right sidebar, opened from the island's Measure tab (unless it
+ * shows already): its catalogue, `survey-tools`, with every tool, Site data, Drawing aids and
+ * Templates in collapsible sections. While a tool is live the catalogue is a strip instead.
+ */
+export async function measureBench(win: Page): Promise<Locator> {
+  const bench = win.getByTestId('survey-tools');
+  if (!(await bench.isVisible())) {
+    const bar = await openIslandTools(win);
+    // by key: the capsule is still morphing to its open size, so a click could land beside it
+    await bar.getByRole('tab', { name: GROUP_NAME.measure, exact: true }).focus();
+    await win.keyboard.press('Enter');
+    await expect(bar).not.toHaveAttribute('data-state', 'tools');
+  }
+  await expect(bench).toBeVisible();
+  return bench;
+}
+
+/** Open a section's header when it is folded (a Measure workbench section, by its locator). */
+async function unfold(section: Locator): Promise<void> {
+  const head = section.locator('.wb-section-head').first();
+  if ((await head.getAttribute('aria-expanded')) !== 'true') await head.click();
+  await expect(head).toHaveAttribute('aria-expanded', 'true');
+}
+
+/** A section of the Measure workbench, by its id (`siteData`, `line`, `measurements`...), open. */
+export async function measureSection(win: Page, id: string): Promise<Locator> {
+  await measureBench(win);
+  const section = win.getByTestId(`wb-section-${id}`);
+  await unfold(section);
+  return section;
+}
+
+/** A control of the Measure workbench's catalogue by its test id, its section opened first. */
+export async function measureControl(win: Page, testId: string): Promise<Locator> {
+  const bench = await measureBench(win);
+  const control = bench.getByTestId(testId);
+  await unfold(bench.locator('.wb-section', { has: win.getByTestId(testId) }).first());
+  await expect(control).toBeVisible();
+  return control;
+}
+
+/** A Site data button of the Measure workbench by its name ("Designs", "Hydrology"...). */
+export async function siteDataButton(win: Page, name: string): Promise<Locator> {
+  const section = await measureSection(win, 'siteData');
+  return section.getByRole('button', { name, exact: true });
+}
+
+/** "Saved in this project" opened: the measurements list (`survey-list`). */
+export async function measurementsList(win: Page): Promise<Locator> {
+  // the section shows under the live strip too, while a tool draws
+  const section = win.getByTestId('wb-section-measurements');
+  if (!(await section.isVisible())) await measureBench(win);
+  await unfold(section);
+  const list = win.getByTestId('survey-list');
+  await expect(list).toBeVisible();
+  return list;
+}
