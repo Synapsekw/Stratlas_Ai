@@ -11,3 +11,4 @@ export * from './msi';
 export * from './propagation';
 export * from './sectors';
 export * from './preview';
+export * from './gridTiff';

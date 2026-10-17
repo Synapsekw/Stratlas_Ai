@@ -98,6 +98,29 @@ export function pixelCentre(
   };
 }
 
+/**
+ * The study grid around a site (python `rf/grid.py` `build_grid`): snapped to whole multiples of
+ * the resolution, the site in its centre pixel and `ceil(radius / res)` pixels on each side, so a
+ * preview and a run of one site share pixels.
+ */
+export function studyGrid(
+  centreEast: number,
+  centreNorth: number,
+  radiusM: number,
+  resolutionM: number,
+): PreviewGrid {
+  const k = Math.ceil(radiusM / resolutionM - 1e-9);
+  const ce = Math.floor(centreEast / resolutionM);
+  const cn = Math.floor(centreNorth / resolutionM);
+  return {
+    width: 2 * k + 1,
+    height: 2 * k + 1,
+    resolutionM,
+    originEast: (ce - k) * resolutionM,
+    originNorth: (cn + 1 + k) * resolutionM,
+  };
+}
+
 function checkGrid(g: PreviewGrid): number {
   if (!(Number.isInteger(g.width) && g.width > 0 && Number.isInteger(g.height) && g.height > 0))
     throw new Error('The preview grid needs a whole, positive width and height');
@@ -296,6 +319,15 @@ export interface PreviewRequest extends Omit<PreviewInput, 'sectors'> {
 
 export type PreviewMessage =
   | { type: 'path-loss:set'; key: string; pathLossDb: Float32Array }
+  /** Work a path-loss grid out in the Worker (`pathLossGrid`) and keep it under `key`. */
+  | {
+      type: 'path-loss:compute';
+      key: string;
+      grid: PreviewGrid;
+      antenna: { east: number; north: number };
+      setup: PathLossSetup;
+      radiusM: number;
+    }
   | { type: 'path-loss:drop'; key: string }
   | { type: 'preview'; id: number; input: PreviewRequest };
 
@@ -308,10 +340,14 @@ export interface PreviewPort {
   postMessage(message: PreviewReply, transfer: ArrayBuffer[]): void;
 }
 
-/** Resolves path-loss keys against the cache. Throws for an unknown key. */
+/**
+ * Resolves path-loss keys against the cache. Throws for an unknown key, with the reason the grid
+ * could not be worked out when `failed` has one (a refused propagation setup).
+ */
 export function resolvePreviewRequest(
   req: PreviewRequest,
   cache: ReadonlyMap<string, Float32Array>,
+  failed: ReadonlyMap<string, string> = new Map(),
 ): PreviewInput {
   return {
     ...req,
@@ -319,7 +355,10 @@ export function resolvePreviewRequest(
       id: sec.id,
       sources: sec.sources.map(({ pathLossKey, ...rest }) => {
         const pathLossDb = cache.get(pathLossKey);
-        if (!pathLossDb) throw new Error(`No path-loss grid is loaded for ${pathLossKey}`);
+        if (!pathLossDb)
+          throw new Error(
+            failed.get(pathLossKey) ?? `No path-loss grid is loaded for ${pathLossKey}`,
+          );
         return { ...rest, pathLossDb };
       }),
     })),
@@ -329,18 +368,31 @@ export function resolvePreviewRequest(
 /** The Worker side: path-loss cache and preview requests. preview.worker.ts only calls this. */
 export function servePreview(port: PreviewPort, now: () => number = () => performance.now()): void {
   const cache = new Map<string, Float32Array>();
+  const failed = new Map<string, string>();
   port.onmessage = ({ data }) => {
     if (data.type === 'path-loss:set') {
+      failed.delete(data.key);
       cache.set(data.key, data.pathLossDb);
+      return;
+    }
+    if (data.type === 'path-loss:compute') {
+      if (cache.has(data.key)) return;
+      try {
+        cache.set(data.key, pathLossGrid(data.grid, data.antenna, data.setup, data.radiusM));
+        failed.delete(data.key);
+      } catch (e) {
+        failed.set(data.key, e instanceof Error ? e.message : String(e));
+      }
       return;
     }
     if (data.type === 'path-loss:drop') {
       cache.delete(data.key);
+      failed.delete(data.key);
       return;
     }
     const t0 = now();
     try {
-      const output = computePreview(resolvePreviewRequest(data.input, cache));
+      const output = computePreview(resolvePreviewRequest(data.input, cache, failed));
       port.postMessage({ type: 'preview', id: data.id, ok: true, output, elapsedMs: now() - t0 }, [
         output.rsrpDbm.buffer as ArrayBuffer,
         output.bestServer.buffer as ArrayBuffer,

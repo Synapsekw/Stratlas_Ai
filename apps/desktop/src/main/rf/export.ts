@@ -4,9 +4,9 @@
  *
  * No GeoTIFF library is a dependency of the app, so this file writes and reads the one layout it
  * needs: a classic little endian TIFF, one band, uncompressed, stripped, with the GeoTIFF tags for
- * a north up grid in an EPSG projected CRS and the GDAL nodata tag. The reader takes the same
- * layout (it also reads 8, 16 and 32 bit integers and 64 bit floats, which a composite grid such
- * as best server may use) and is how the composite grids of a run are loaded for the exports.
+ * a north up grid in an EPSG projected CRS and the GDAL nodata tag. The reader of that layout is
+ * `@aio/rf` `readGridTiff` (the coverage layer reads the same grids in the renderer); it is how
+ * the composite grids of a run are loaded for the exports.
  */
 import type { RfThresholds } from '@aio/schema';
 
@@ -43,20 +43,6 @@ const SHORT = 3;
 const LONG = 4;
 const DOUBLE = 12;
 const ASCII = 2;
-const TYPE_SIZE: Record<number, number> = {
-  1: 1,
-  2: 1,
-  3: 2,
-  4: 4,
-  5: 8,
-  6: 1,
-  7: 1,
-  8: 2,
-  9: 4,
-  10: 8,
-  11: 4,
-  12: 8,
-};
 /** About this many bytes of pixels per strip. */
 const STRIP_BYTES = 1 << 20;
 
@@ -196,112 +182,8 @@ export function writeGridTiff(data: Float32Array, geo: GridGeo): Buffer {
   return out;
 }
 
-export interface GridTiff {
-  width: number;
-  height: number;
-  data: Float32Array;
-  /** The projected CRS code from the GeoKey directory, when there is one. */
-  epsg: number | null;
-  /** Top left corner, when the file has a tiepoint. */
-  origin: [number, number] | null;
-  pixelSize: [number, number] | null;
-  nodata: number | null;
-}
-
-/** Read the single band of an uncompressed classic TIFF (see the file comment). */
-export function readGridTiff(bytes: Buffer): GridTiff {
-  if (bytes.length < 16) throw new Error('This is not a TIFF file.');
-  const le = bytes.toString('latin1', 0, 2) === 'II';
-  if (!le && bytes.toString('latin1', 0, 2) !== 'MM') throw new Error('This is not a TIFF file.');
-  const u16 = (p: number): number => (le ? bytes.readUInt16LE(p) : bytes.readUInt16BE(p));
-  const u32 = (p: number): number => (le ? bytes.readUInt32LE(p) : bytes.readUInt32BE(p));
-  if (u16(2) !== 42) throw new Error('This is not a classic TIFF file (BigTIFF is not read).');
-  const ifd = u32(4);
-  const n = u16(ifd);
-  const tags = new Map<number, { type: number; count: number; at: number }>();
-  for (let i = 0; i < n; i++) {
-    const p = ifd + 2 + i * 12;
-    const type = u16(p + 2);
-    const count = u32(p + 4);
-    const size = (TYPE_SIZE[type] ?? 1) * count;
-    tags.set(u16(p), { type, count, at: size <= 4 ? p + 8 : u32(p + 8) });
-  }
-  const nums = (tag: number): number[] => {
-    const t = tags.get(tag);
-    if (!t) return [];
-    const out: number[] = [];
-    for (let i = 0; i < t.count; i++) {
-      const size = TYPE_SIZE[t.type] ?? 1;
-      const p = t.at + i * size;
-      if (t.type === SHORT) out.push(u16(p));
-      else if (t.type === LONG) out.push(u32(p));
-      else if (t.type === DOUBLE) out.push(le ? bytes.readDoubleLE(p) : bytes.readDoubleBE(p));
-    }
-    return out;
-  };
-  const one = (tag: number, fallback?: number): number => {
-    const v = nums(tag)[0] ?? fallback;
-    if (v === undefined) throw new Error(`The TIFF has no tag ${String(tag)}.`);
-    return v;
-  };
-  const width = one(T.width);
-  const height = one(T.height);
-  if (one(T.compression, 1) !== 1) throw new Error('Only uncompressed TIFF grids are read.');
-  if (one(T.samples, 1) !== 1) throw new Error('Only single band TIFF grids are read.');
-  const bits = one(T.bits, 1);
-  const format = one(T.sampleFormat, 1);
-  // tiles (tags 322 to 325) or no strips at all: the pixels would read as zeros, so refuse
-  if (tags.has(322) || tags.has(323) || tags.has(324) || tags.has(325) || !tags.has(T.stripOffsets))
-    throw new Error(
-      'This TIFF is tiled, which is not read. Save the grid as a stripped, uncompressed TIFF (GDAL: -co TILED=NO -co COMPRESS=NONE).',
-    );
-  const offsets = nums(T.stripOffsets);
-  const counts = nums(T.stripBytes);
-  const rowsPerStrip = one(T.rowsPerStrip, height);
-  const bytesPer = bits / 8;
-  const data = new Float32Array(width * height);
-  const sample = (p: number): number => {
-    if (format === 3) {
-      if (bits === 32) return le ? bytes.readFloatLE(p) : bytes.readFloatBE(p);
-      if (bits === 64) return le ? bytes.readDoubleLE(p) : bytes.readDoubleBE(p);
-    } else if (format === 2) {
-      if (bits === 8) return bytes.readInt8(p);
-      if (bits === 16) return le ? bytes.readInt16LE(p) : bytes.readInt16BE(p);
-      if (bits === 32) return le ? bytes.readInt32LE(p) : bytes.readInt32BE(p);
-    } else if (format === 1) {
-      if (bits === 8) return bytes.readUInt8(p);
-      if (bits === 16) return u16(p);
-      if (bits === 32) return u32(p);
-    }
-    throw new Error(`A ${String(bits)} bit sample of format ${String(format)} is not read.`);
-  };
-  offsets.forEach((start, s) => {
-    const rows = Math.min(rowsPerStrip, height - s * rowsPerStrip);
-    const len = Math.min(counts[s] ?? rows * width * bytesPer, rows * width * bytesPer);
-    if (start + len > bytes.length) throw new Error('The TIFF is cut short.');
-    const base = s * rowsPerStrip * width;
-    for (let i = 0; i < len / bytesPer; i++) data[base + i] = sample(start + i * bytesPer);
-  });
-
-  const keys = nums(T.geoKeys);
-  let epsg: number | null = null;
-  for (let i = 4; i + 3 < keys.length; i += 4)
-    if (keys[i] === 3072 && keys[i + 1] === 0) epsg = keys[i + 3] ?? null;
-  const scale = nums(T.pixelScale);
-  const tie = nums(T.tiepoint);
-  const nd = tags.get(T.nodata);
-  const ndText = nd ? bytes.toString('latin1', nd.at, nd.at + nd.count).replace(/\0+$/, '') : '';
-  const ndValue = ndText === '' ? null : Number(ndText);
-  return {
-    width,
-    height,
-    data,
-    epsg,
-    origin: tie.length >= 6 ? [tie[3] ?? 0, tie[4] ?? 0] : null,
-    pixelSize: scale.length >= 2 ? [scale[0] ?? 0, scale[1] ?? 0] : null,
-    nodata: ndValue !== null && Number.isFinite(ndValue) ? ndValue : null,
-  };
-}
+/** The grid reader is shared with the renderer's coverage layer (`@aio/rf` gridTiff.ts). */
+export { readGridTiff, type GridTiff } from '@aio/rf';
 
 // ---- contours ------------------------------------------------------------------------------------
 

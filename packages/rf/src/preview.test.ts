@@ -9,6 +9,7 @@ import {
   pathLossGrid,
   pixelCentre,
   servePreview,
+  studyGrid,
   type PreviewGrid,
   type PreviewInput,
   type PreviewMessage,
@@ -339,5 +340,95 @@ describe('servePreview', () => {
     expect(sent.at(-1)?.message).toMatchObject({ type: 'preview', id: 8, ok: false });
     const m = sent.at(-1)?.message;
     expect(m && !m.ok ? m.error : '').toMatch(/k/);
+  });
+
+  it('works a path-loss grid out in the Worker, and says why a refused one cannot be', () => {
+    const { port, sent, send } = fakePort();
+    servePreview(port);
+    const grid = makeGrid(8, 10);
+    const [sector] = sectorsFor(grid, [SPECS[1] ?? []]);
+    const src = sector?.sources[0];
+    if (!src) throw new Error('missing');
+    const { pathLossDb, ...settings } = src;
+    const setup: PathLossSetup = {
+      model: 'tr38901',
+      environment: 'uma',
+      frequencyMHz: 1842.5,
+      hBsM: src.heightM,
+      hUtM: UE,
+    };
+    send({
+      type: 'path-loss:compute',
+      key: 'c',
+      grid,
+      antenna: { east: src.east, north: src.north },
+      setup,
+      radiusM: 1e9,
+    });
+    send({
+      type: 'preview',
+      id: 9,
+      input: {
+        grid,
+        ueHeightM: UE,
+        marginDb: 0,
+        sectors: [{ id: 'sec-a', sources: [{ ...settings, pathLossKey: 'c' }] }],
+      },
+    });
+    const reply = sent.at(-1)?.message;
+    if (!reply?.ok) throw new Error('no reply');
+    const direct = computePreview({
+      grid,
+      ueHeightM: UE,
+      marginDb: 0,
+      sectors: [
+        {
+          id: 'sec-a',
+          sources: [{ ...settings, pathLossDb: pathLossGrid(grid, src, setup) }],
+        },
+      ],
+    });
+    expect(Array.from(reply.output.rsrpDbm)).toEqual(Array.from(direct.rsrpDbm));
+    expect(pathLossDb.length).toBe(64);
+
+    // Okumura-Hata above its range is refused: the preview answers with that reason
+    send({
+      type: 'path-loss:compute',
+      key: 'bad',
+      grid,
+      antenna: { east: src.east, north: src.north },
+      setup: { ...setup, model: 'okumura-hata', frequencyMHz: 3500 },
+      radiusM: 1e9,
+    });
+    send({
+      type: 'preview',
+      id: 10,
+      input: {
+        grid,
+        ueHeightM: UE,
+        marginDb: 0,
+        sectors: [{ id: 'sec-a', sources: [{ ...settings, pathLossKey: 'bad' }] }],
+      },
+    });
+    const bad = sent.at(-1)?.message;
+    expect(bad).toMatchObject({ id: 10, ok: false });
+    expect(bad && !bad.ok ? bad.error : '').toMatch(/MHz/);
+  });
+});
+
+describe('studyGrid', () => {
+  it('snaps to the resolution with the site in the centre pixel, as the job does', () => {
+    const g = studyGrid(500_123.4, 2_700_456.7, 3000, 10);
+    expect(g).toEqual({
+      width: 601,
+      height: 601,
+      resolutionM: 10,
+      originEast: 497_120,
+      originNorth: 2_703_460,
+    });
+    // the site's pixel is the middle one
+    const mid = pixelCentre(g, 300, 300);
+    expect(Math.abs(mid.east - 500_123.4)).toBeLessThan(10);
+    expect(Math.abs(mid.north - 2_700_456.7)).toBeLessThan(10);
   });
 });
